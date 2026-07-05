@@ -1,4 +1,5 @@
 import { fetchLabels, type LabelMap } from '$lib/fetch/position/labels';
+import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import {
@@ -104,7 +105,7 @@ async function fetchElements(
 ): Promise<ElementColumns> {
 	const key = `${zone}:${zoom ?? ''}:${part}:${time ?? ''}`;
 	return elementsCache.getOrCompute(key, async () => {
-		const res = await fetch(elementsUrl(zone, zoom, part, time));
+		const res = await fetchWithTimeout(elementsUrl(zone, zoom, part, time));
 		if (!res.ok) throw new Error(`Failed to fetch elements: ${res.status}`);
 		const ds = new DecompressionStream('gzip');
 		const buffer = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();

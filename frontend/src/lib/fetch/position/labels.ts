@@ -8,6 +8,7 @@
 
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { labelsUrl } from '$lib/fetch/position/format';
+import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 
 /** ASCII Unit Separator — delimiter between fields in label files. */
 const US = '\x1f';
@@ -49,7 +50,7 @@ export async function fetchLabels(lang: string = getLocale()): Promise<LabelMap>
 	if (!p) {
 		p = (async () => {
 			const url = labelsUrl(lang);
-			const res = await fetch(url);
+			const res = await fetchWithTimeout(url);
 			if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
 			const ds = new DecompressionStream('gzip');
 			const text = await new Response(res.body!.pipeThrough(ds)).text();

@@ -5,6 +5,7 @@
  */
 
 import { DATA_BASE } from '$lib/fetch/data-base';
+import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 import * as m from '$lib/paraglide/messages.js';
 
 export type GroupType =
@@ -152,7 +153,7 @@ let pending: Promise<GroupIndex> | null = null;
 
 export function fetchGroupIndex(): Promise<GroupIndex> {
 	if (pending) return pending;
-	const p = fetch(`${DATA_BASE}/v1/groups/__index__.json`).then((r) => {
+	const p = fetchWithTimeout(`${DATA_BASE}/v1/groups/__index__.json`).then((r) => {
 		if (!r.ok) throw new Error(`Failed to fetch group index: ${r.status}`);
 		return r.json() as Promise<GroupIndex>;
 	});

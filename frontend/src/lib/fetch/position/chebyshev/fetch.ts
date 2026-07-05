@@ -5,10 +5,11 @@
 
 import { parsePosition } from '$lib/fetch/position/parse';
 import { chunkedUrl } from '$lib/fetch/position/format';
+import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 import type { ChebyshevBody, ChebyshevChunk } from '$lib/fetch/position/chebyshev/parse';
 
 async function fetchGzBuffer(url: string): Promise<ArrayBuffer> {
-	const res = await fetch(url);
+	const res = await fetchWithTimeout(url);
 	if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
 	const ds = new DecompressionStream('gzip');
 	return new Response(res.body!.pipeThrough(ds)).arrayBuffer();
