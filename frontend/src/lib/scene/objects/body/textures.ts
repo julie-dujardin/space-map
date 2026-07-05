@@ -6,6 +6,7 @@ import { versionedUrl } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/format/date';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { getSettings } from '$lib/state/settings.svelte';
+import { isLowEndDevice } from '$lib/device';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getLabelVariant, setLabelName } from '../../label/factory';
 import { attachDisplacementMap, disposeDisplacementFromMaterial } from '../surface/displacement';
@@ -202,7 +203,11 @@ export async function loadBodyTexture(
 	// DEM sibling — standalone bodies (Vesta/Ceres) load it here since they
 	// never hit the per-system path. Same shape as `system.ts`'s branch.
 	// Debug: displacement off → the sphere keeps its shape without the relief.
-	if (
+	// Low-end/data-saver clients keep the flat textured sphere: the DEM relief
+	// (multi-MB displacement + normal maps) is the heaviest per-body asset.
+	if (detail.global.displacement && !bo.displacementMap && bo.mesh && isLowEndDevice()) {
+		console.info(`Low-end device: skipping DEM relief for ${bo.body.data.id}`);
+	} else if (
 		detail.global.displacement &&
 		!bo.displacementMap &&
 		bo.mesh &&

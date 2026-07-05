@@ -12,12 +12,25 @@
 	import { UrlType } from '$lib/state/view';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { dateToJD, jdToDate } from '$lib/format/date';
-	import DebugMenu from './DebugMenu.svelte';
-	import SkyboxDebugSliders from './SkyboxDebugSliders.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
 	const settings = getSettings();
+
+	// Debug overlays are dev-only, gated behind settings toggles most users never
+	// flip — lazy-load them so they stay out of the main map chunk.
+	let DebugMenu = $state<typeof import('./DebugMenu.svelte').default | null>(null);
+	let SkyboxDebugSliders = $state<typeof import('./SkyboxDebugSliders.svelte').default | null>(
+		null
+	);
+	$effect(() => {
+		if (settings.showDebugInfo && !DebugMenu) {
+			import('./DebugMenu.svelte').then((mod) => (DebugMenu = mod.default));
+		}
+		if (settings.showSkyboxAlign && !SkyboxDebugSliders) {
+			import('./SkyboxDebugSliders.svelte').then((mod) => (SkyboxDebugSliders = mod.default));
+		}
+	});
 
 	interface Props {
 		clock: SimClock;
@@ -289,10 +302,10 @@
 			</button>
 		</div>
 	{/if}
-	{#if settings.showDebugInfo}
+	{#if settings.showDebugInfo && DebugMenu}
 		<DebugMenu getRenderer={() => renderer} {ctx} {clock} />
 	{/if}
-	{#if settings.showSkyboxAlign}
+	{#if settings.showSkyboxAlign && SkyboxDebugSliders}
 		<SkyboxDebugSliders getRenderer={() => renderer} />
 	{/if}
 </div>

@@ -19,7 +19,9 @@
 	import { createAppState } from '$lib/state/app-state.svelte';
 	import { fetchBodyNomenclature, type NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { Focusable, FocusObject } from '$lib/state/focusable';
-	import DetailDrawer from './detail/DetailDrawer.svelte';
+	// Lazy-loaded on first focus so its charts (d3-scale/d3-shape/layercake) and
+	// member lists split out of the initial map chunk.
+	let DetailDrawer = $state<typeof import('./detail/DetailDrawer.svelte').default | null>(null);
 	import MyLocation from './MyLocation.svelte';
 	import ClearPromoted from './ClearPromoted.svelte';
 	import CompassNorthSelector from './CompassNorthSelector.svelte';
@@ -148,6 +150,13 @@
 		if (!selectedBody?.data.id) return null;
 		if (activeFeature) return { kind: 'feature', body: selectedBody, feature: activeFeature };
 		return { kind: 'body', body: selectedBody };
+	});
+
+	// Kick off the drawer chunk fetch the first time anything is focused.
+	$effect(() => {
+		if (focusable && !DetailDrawer) {
+			import('./detail/DetailDrawer.svelte').then((mod) => (DetailDrawer = mod.default));
+		}
 	});
 
 	// Desktop inset: park chips just past the 380px detail sidebar when open,
@@ -426,7 +435,7 @@
 				<SettingsButton />
 				<LayersButton />
 			</div>
-			{#if focusable}
+			{#if focusable && DetailDrawer}
 				<DetailDrawer
 					{focusable}
 					{clock}

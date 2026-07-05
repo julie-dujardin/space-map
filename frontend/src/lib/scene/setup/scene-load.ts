@@ -27,6 +27,7 @@ import { ProbeStore } from '$lib/fetch/position/probes/store';
 import { ZoneRefresher } from '$lib/scene/zone-refresher';
 import { prefetchSkyboxTiers } from '$lib/scene/objects/sky/skybox';
 import { markEagerMinorsDone } from '$lib/scene/setup/load-gates';
+import { isLowEndDevice } from '$lib/device';
 import { createPlaceholderBody } from '$lib/scene/setup/placeholder';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getSettings } from '$lib/state/settings.svelte';
@@ -458,7 +459,15 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// Deferred wave: the unnamed long tail (main-belt zoom-1 parts past the
 	// eager sample). Same ingest path, started only after the eager wave so it
 	// never delays the visually-representative point cloud or the majors.
-	if (deferredChunkArgs.length > 0) {
+	// The tail is ~120 belt parts (100 MB+ of typed arrays) of purely additive
+	// density — skip it entirely on memory-constrained/data-saver clients, where
+	// it's the single largest OOM contributor. The eager sample already renders
+	// a representative belt.
+	if (deferredChunkArgs.length > 0 && isLowEndDevice()) {
+		console.info(
+			`Low-end device: skipping ${deferredChunkArgs.length} deferred minor-belt parts to conserve memory`
+		);
+	} else if (deferredChunkArgs.length > 0) {
 		ctx.bodies.minorStreaming = true;
 		const deferredInterval = setInterval(flush, 1000);
 		try {

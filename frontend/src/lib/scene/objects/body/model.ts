@@ -19,6 +19,7 @@ import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/o
 import { kmToScene } from '$lib/math/units';
 import { bodyMeshColor } from '$lib/utils';
 import { getSettings } from '$lib/state/settings.svelte';
+import { isLowEndDevice } from '$lib/device';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
 import { setLabelNote } from '../../label/factory';
@@ -214,6 +215,16 @@ async function loadNaturalBodyModel(
 		const detail = await fetchObjectDetail(bo.body.data.id, false);
 		const slug = detail.global?.model_name;
 		if (!slug) return; // most bodies: sphere stays visible
+		// Low-end/data-saver clients keep the textured sphere for rough
+		// (non-faithful) shape models. `render_quality` distinguishes a faithful
+		// mission/DEM model ('high') — worth the geometry — from a lightcurve
+		// convex hull ('medium'), which barely beats the ellipsoid it replaces.
+		if (isLowEndDevice() && detail.global?.render_quality !== 'high') {
+			console.info(
+				`Low-end device: skipping ${detail.global?.render_quality ?? 'unrated'} shape mesh for ${bo.body.data.id}`
+			);
+			return;
+		}
 		// A DEM sphere beats the shape model unless the body is listed as an
 		// exception — loadBodyTexture attaches the displacement to the sphere.
 		if (detail.global?.displacement && !PREFER_MODEL_OVER_DEM.has(bo.body.data.id)) return;

@@ -2,7 +2,7 @@
  *  Returns an empty hit list when the env isn't configured, so the UI can
  *  render a disabled state without special-casing the absence. */
 
-import { Meilisearch } from 'meilisearch';
+import type { Meilisearch } from 'meilisearch';
 import { PUBLIC_MEILI_URL, PUBLIC_MEILI_SEARCH_KEY } from '$env/static/public';
 import { pickedThumbnailUrl, type PickedThumbnail } from '$lib/fetch/objects/images';
 import { CLASS_SLUG_PREFIX } from '$lib/fetch/groups/registry';
@@ -99,17 +99,22 @@ export interface GroupHit {
 
 export type SearchHit = FeatureHit | ObjectHit | GroupHit;
 
+// The Meilisearch SDK (~40 kB gzip) is dynamically imported so it splits out of
+// the main map chunk — it only loads once the user actually searches.
 let client: Meilisearch | null = null;
-function getClient(): Meilisearch | null {
-	if (!PUBLIC_MEILI_URL || !PUBLIC_MEILI_SEARCH_KEY) return null;
+async function getClient(): Promise<Meilisearch | null> {
+	if (!isSearchEnabled()) return null;
 	if (!client) {
+		const { Meilisearch } = await import('meilisearch');
 		client = new Meilisearch({ host: PUBLIC_MEILI_URL, apiKey: PUBLIC_MEILI_SEARCH_KEY });
 	}
 	return client;
 }
 
+/** Enablement is a pure env check — no client instantiation, so callers stay
+ *  synchronous and the SDK isn't pulled in just to render the disabled state. */
 export function isSearchEnabled(): boolean {
-	return getClient() !== null;
+	return Boolean(PUBLIC_MEILI_URL && PUBLIC_MEILI_SEARCH_KEY);
 }
 
 /** Unified index name. Objects, surface features and group/collection pages
@@ -172,7 +177,7 @@ export async function search(
 	locale: string,
 	limit: number = 8
 ): Promise<SearchHit[]> {
-	const c = getClient();
+	const c = await getClient();
 	if (!c || !query.trim()) return [];
 	const res = await c.index(INDEX).search(query, { limit, locales: [locale] });
 	return (res.hits ?? []).map((h) => toHit(h as RawHit));
@@ -205,7 +210,7 @@ async function searchMemberPage(
 	limit: number,
 	locale: string
 ): Promise<GroupMemberPage> {
-	const c = getClient();
+	const c = await getClient();
 	if (!c) return { hits: [], estimatedTotalHits: 0 };
 	const res = await c.index(INDEX).search('', {
 		filter,
@@ -420,7 +425,7 @@ export async function searchCatalog(opts: {
 	 *  scroll for pages past the first, where facets/total are already known. */
 	facets?: boolean;
 }): Promise<CatalogResult> {
-	const c = getClient();
+	const c = await getClient();
 	if (!c) return { hits: [], estimatedTotalHits: 0, facets: {} };
 	const sort = buildSort(opts.sort, opts.reverse);
 	const clauses = filterClauses(opts.filters);
@@ -487,7 +492,7 @@ let facetUniverseCache: FacetDistribution | null = null;
 
 export async function catalogFacets(): Promise<FacetDistribution> {
 	if (facetUniverseCache) return facetUniverseCache;
-	const c = getClient();
+	const c = await getClient();
 	if (!c) return {};
 	const res = await c.index(INDEX).search('', { facets: FACETS, limit: 0 });
 	facetUniverseCache = (res.facetDistribution ?? {}) as FacetDistribution;
@@ -503,7 +508,7 @@ let catalogCountCache: number | null = null;
 
 export async function catalogCount(): Promise<number | null> {
 	if (catalogCountCache !== null) return catalogCountCache;
-	const c = getClient();
+	const c = await getClient();
 	if (!c) return null;
 	try {
 		const stats = await c.index(INDEX).getStats();
@@ -521,7 +526,7 @@ const groupCatalogCache = new Map<string, GroupHit[]>();
 export async function fetchGroupCatalog(locale: string): Promise<GroupHit[]> {
 	const cached = groupCatalogCache.get(locale);
 	if (cached) return cached;
-	const c = getClient();
+	const c = await getClient();
 	if (!c) return [];
 	const res = await c.index(INDEX).search('', {
 		filter: 'kind = "group"',

@@ -13,6 +13,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { kmToScene } from '$lib/math/units';
+import { cappedPixelRatio } from '$lib/device';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import { setTrailResolution } from '$lib/scene/objects/trail/material';
@@ -60,7 +61,7 @@ export function bootThree(
 		// Normalize three's bare Error so the caller can branch on type.
 		throw new WebGLUnavailableError(e);
 	}
-	renderer.setPixelRatio(window.devicePixelRatio);
+	renderer.setPixelRatio(cappedPixelRatio());
 	renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
 	// Shadow maps are enabled globally for the model-overlay scene's directional
 	// sun (see renderer.ts). Main-scene lights keep `castShadow = false`, so the
@@ -91,7 +92,7 @@ export function bootThree(
 	const camera = new PerspectiveCamera(60, aspect, kmToScene(0.001), 100000);
 
 	const composer = new EffectComposer(renderer);
-	composer.setPixelRatio(window.devicePixelRatio);
+	composer.setPixelRatio(cappedPixelRatio());
 	composer.setSize(canvas.clientWidth, canvas.clientHeight);
 	composer.addPass(new RenderPass(scene, camera));
 	const bloomPass = new UnrealBloomPass(
