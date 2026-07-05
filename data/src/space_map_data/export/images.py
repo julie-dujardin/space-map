@@ -42,6 +42,7 @@ import threading
 import uuid
 from collections import deque
 from collections.abc import Callable
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import quote
 
@@ -759,25 +760,66 @@ def _license_block(em: dict) -> dict | None:
     return out or None
 
 
+class _HTMLTextExtractor(HTMLParser):
+    """Collect text nodes, turning <br> and block tags into newlines."""
+
+    _BLOCK = {"p", "div", "li", "tr", "ul", "ol", "table", "blockquote"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self._parts.append(data)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "br":
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._BLOCK:
+            self._parts.append("\n")
+
+    def text(self) -> str:
+        # Collapse non-newline whitespace runs, cap consecutive blank lines.
+        joined = "".join(self._parts)
+        collapsed = re.sub(r"[^\S\n]+", " ", joined)
+        return re.sub(r"\n{2,}", "\n\n", collapsed).strip()
+
+
+def _strip_html(value: str) -> str:
+    """Reduce attacker-editable Commons HTML to plain text (defense in depth
+    alongside the client's inert parse)."""
+    if "<" not in value:
+        return value
+    parser = _HTMLTextExtractor()
+    parser.feed(value)
+    parser.close()
+    return parser.text()
+
+
 def _locale_field(field: dict | None) -> str | dict[str, str] | None:
     """Normalize a Commons multilang-or-string extmetadata field.
 
     - Bare strings pass through unchanged (no locale structure in the source).
     - Multilang dicts are restricted to supported locales; ``_type`` is dropped.
+    - HTML markup is stripped to plain text (the fields carry Commons HTML).
     - Empty results collapse to None.
     """
     if not field:
         return None
     value = field.get("value")
     if isinstance(value, str):
-        s = value.strip()
+        s = _strip_html(value).strip()
         return s or None
     if isinstance(value, dict):
-        trimmed = {
-            k: v.strip()
-            for k, v in value.items()
-            if k in LANGUAGES and isinstance(v, str) and v.strip()
-        }
+        trimmed = {}
+        for k, v in value.items():
+            if k not in LANGUAGES or not isinstance(v, str):
+                continue
+            stripped = _strip_html(v).strip()
+            if stripped:
+                trimmed[k] = stripped
         return trimmed or None
     return None
 

@@ -9,15 +9,21 @@
 		<link rel="alternate icon" href="/favicon.ico" sizes="32x32" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<link rel="manifest" href="/manifest.webmanifest" />
+		<!-- Data origin for the preload script below: kept on this meta, not in the
+		     script body, so the script's bytes — and its CSP hash — are env-independent. -->
+		<meta name="sm:data-url" content="%sveltekit.env.PUBLIC_DATA_URL%" />
 		<script>
 			// Early resource hints for the data origin, mirroring DATA_BASE
 			// ($lib/fetch/data-base) so the metadata + systems-global fetches can
 			// overlap the JS bundle download and warm the cross-origin connection.
 			// crossOrigin is set only for an absolute (prod CDN) host so it matches
 			// fetch()'s credentials mode; the dev proxy serves data same-origin.
+			// NOTE: editing this script changes its CSP hash — update svelte.config.js.
 			(function () {
 				try {
-					var base = '%sveltekit.env.PUBLIC_DATA_URL%' || 'https://static.spacemap.co';
+					var meta = document.querySelector('meta[name="sm:data-url"]');
+					var url = (meta && meta.content) || '';
+					var base = url || 'https://static.spacemap.co';
 					var cross = /^https?:\/\//.test(base);
 					var add = function (rel, href, as) {
 						var l = document.createElement('link');
@@ -31,7 +37,7 @@
 					add('preload', base + '/v1/metadata.json', 'fetch');
 					add('preload', base + '/v1/systems/global.json', 'fetch');
 					// Images load from a separate origin in prod; warm it too.
-					var img = '%sveltekit.env.PUBLIC_DATA_URL%' || 'https://images.spacemap.co';
+					var img = url || 'https://images.spacemap.co';
 					if (/^https?:\/\//.test(img) && img !== base) add('preconnect', img);
 				} catch (e) {}
 			})();

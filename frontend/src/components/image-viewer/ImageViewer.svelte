@@ -225,10 +225,10 @@
 		if (value === undefined) return undefined;
 		const raw = typeof value === 'string' ? value : pickLang(value, strictLocale);
 		if (!raw) return undefined;
-		// `innerHTML` parses but doesn't execute scripts (HTML5 spec); using
-		// `.textContent` then gives us a safely-stripped plain-text version.
-		const tmp = document.createElement('div');
-		tmp.innerHTML = raw;
+		// Commons extmetadata HTML is attacker-editable; parse it in an inert
+		// DOMParser doc so `<img onerror>`-style payloads can't fire (a live
+		// element's innerHTML would run them).
+		const tmp = new DOMParser().parseFromString(raw, 'text/html').body;
 		for (const br of tmp.querySelectorAll('br')) br.replaceWith('\n');
 		for (const block of tmp.querySelectorAll('p, div, li')) block.append('\n\n');
 		const text = (tmp.textContent ?? '')
