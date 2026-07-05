@@ -26,5 +26,17 @@ jobs:
       - name: Install dependencies
         run: cd frontend && pnpm install --frozen-lockfile
 
+      - name: Type-check
+        # $env/static types only generate when these PUBLIC_ vars are defined
+        # (empty ok); paraglide messages are compiled in the step below.
+        env:
+          PUBLIC_DATA_URL: ${{ vars.PUBLIC_DATA_URL }}
+          PUBLIC_MEILI_URL: ${{ vars.PUBLIC_MEILI_URL }}
+          PUBLIC_MEILI_SEARCH_KEY: ${{ vars.PUBLIC_MEILI_SEARCH_KEY }}
+        run: |
+          cd frontend
+          npx paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide
+          pnpm check
+
       - name: Run tests
         run: cd frontend && npx vitest run
