@@ -1,5 +1,6 @@
 import { type Material, MeshStandardMaterial, type Scene, type TextureLoader } from 'three';
 import { kmToScene } from '$lib/math/units';
+import { isLowEndDevice } from '$lib/device';
 import { applyOrientation } from '$lib/math/orientation';
 import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
 import { DATA_BASE } from '$lib/fetch/data-base';
@@ -233,8 +234,12 @@ export async function loadSystemData(
 
 		// Displacement/height sibling — drives vertex displacement at true scale.
 		// On the material, so sphere-LOD geometry swaps show more relief on zoom.
-		// Same idempotent gate as the specular branch.
-		if (bodyMeta.displacement && !bo.displacementMap && bo.mesh) {
+		// The DEM (multi-MB maps + self-shadow march) is the heaviest per-body
+		// asset, so low-end/data-saver clients keep the flat sphere — mirrors
+		// the standalone branch in textures.ts.
+		if (bodyMeta.displacement && !bo.displacementMap && bo.mesh && isLowEndDevice()) {
+			console.info(`Low-end device: skipping DEM relief for ${bodyId}`);
+		} else if (bodyMeta.displacement && !bo.displacementMap && bo.mesh) {
 			const dispMeta = bodyMeta.displacement;
 			if (ctx) {
 				ctx.credits.registerDisplacement({
