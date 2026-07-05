@@ -24,6 +24,7 @@ import {
 } from '$lib/fetch/groups/registry';
 import { EARTH_ID } from '$lib/constants';
 import { isLagrangeClass } from '$lib/math/orbit/lagrange';
+import { reportClientError } from '$lib/telemetry/report';
 
 export type { SmallBodyFilter } from '$lib/fetch/groups/registry';
 
@@ -152,6 +153,10 @@ export class ContextManager {
 			await loadScene(this, date, targetId);
 		} catch (e) {
 			this.loading = false;
+			// Surface it so MapPage's error screen renders — else a total failure
+			// (CDN down, metadata 404) falls through to a black scene + wrong toast.
+			this.error = e instanceof Error ? e.message : String(e);
+			reportClientError('scene-load', e);
 			throw e;
 		}
 	}

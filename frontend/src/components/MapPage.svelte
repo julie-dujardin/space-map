@@ -245,6 +245,8 @@
 				check();
 			})
 		]);
+		// Error screen already shown — don't also fire the "not found" toast over it.
+		if (ctx.error) return;
 		const initialBody = ctx.getBody(initialId);
 		if (initialBody) {
 			if (initialId === EARTH_ID && !appState.view.framed) {

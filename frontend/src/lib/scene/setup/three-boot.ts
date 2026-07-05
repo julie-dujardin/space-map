@@ -18,6 +18,15 @@ import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import { setTrailResolution } from '$lib/scene/objects/trail/material';
 import { AMBIENT_INTENSITY } from '$lib/scene/lighting';
 
+/** WebGL2 context creation failed (no-WebGL2 device, GPU blocklist, …);
+ *  Scene.svelte catches it to show the fallback panel. */
+export class WebGLUnavailableError extends Error {
+	constructor(cause?: unknown) {
+		super('WebGL is unavailable on this device.', { cause });
+		this.name = 'WebGLUnavailableError';
+	}
+}
+
 export interface ThreeBoot {
 	renderer: WebGLRenderer;
 	labelRenderer: ThrottledCSS2DRenderer;
@@ -44,7 +53,13 @@ export function bootThree(
 	labelContainer: HTMLElement,
 	ctx: ContextManager
 ): ThreeBoot {
-	const renderer = new WebGLRenderer({ canvas, logarithmicDepthBuffer: true, antialias: true });
+	let renderer: WebGLRenderer;
+	try {
+		renderer = new WebGLRenderer({ canvas, logarithmicDepthBuffer: true, antialias: true });
+	} catch (e) {
+		// Normalize three's bare Error so the caller can branch on type.
+		throw new WebGLUnavailableError(e);
+	}
 	renderer.setPixelRatio(window.devicePixelRatio);
 	renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
 	// Shadow maps are enabled globally for the model-overlay scene's directional

@@ -15,6 +15,7 @@
 	import DebugMenu from './DebugMenu.svelte';
 	import SkyboxDebugSliders from './SkyboxDebugSliders.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	const settings = getSettings();
 
@@ -47,6 +48,10 @@
 	let canvas: HTMLCanvasElement;
 	let labelContainer: HTMLDivElement;
 	let renderer: SceneRenderer | undefined;
+	// WebGL couldn't start → panel instead of a black canvas. contextLost covers
+	// a mid-session GPU context drop (common on mobile), unrecoverable in place.
+	let webglError = $state(false);
+	let contextLost = $state(false);
 	// `.raw` to skip deep proxying — renderer mutates `position`/satrec internals every frame.
 	let focusedBody = $state.raw<PositionedBody | undefined>();
 
@@ -138,8 +143,34 @@
 	let isInitialFocus = true;
 	let isNavigatingBack = false;
 
+	// preventDefault allows restoration, but rebuilding the scene graph in place
+	// isn't worth it — the overlay prompts a reload instead.
+	function onContextLost(e: Event) {
+		e.preventDefault();
+		contextLost = true;
+		console.warn('[scene] WebGL context lost');
+	}
+
 	onMount(() => {
-		renderer = new SceneRenderer(canvas, labelContainer, ctx, clock, initialView, {
+		canvas.addEventListener('webglcontextlost', onContextLost, false);
+
+		let cleanupInner = () => {};
+		try {
+			renderer = buildRenderer();
+			cleanupInner = wireRenderer();
+		} catch (e) {
+			console.error('[scene] renderer init failed:', e);
+			webglError = true;
+		}
+
+		return () => {
+			canvas.removeEventListener('webglcontextlost', onContextLost);
+			cleanupInner();
+		};
+	});
+
+	function buildRenderer(): SceneRenderer {
+		return new SceneRenderer(canvas, labelContainer, ctx, clock, initialView, {
 			onFocusChange(body) {
 				const wasInitial = isInitialFocus;
 				isInitialFocus = false;
@@ -174,7 +205,11 @@
 				onFeatureSelect?.(bodyId, featureId, lat, lon, diameterM);
 			}
 		});
+	}
 
+	/** Wire the resize observer, clock→URL sync, and popstate handler. Returns
+	 *  their teardown. Only called once the renderer built successfully. */
+	function wireRenderer(): () => void {
 		const ro = new ResizeObserver(() => {
 			renderer?.resize(canvas.clientWidth, canvas.clientHeight);
 		});
@@ -206,7 +241,7 @@
 			ro.disconnect();
 			window.removeEventListener('popstate', onPopState);
 		};
-	});
+	}
 
 	$effect(() => {
 		void ctx.bodies.minorBodyVersion; // reactive dependency — re-runs on each flush
@@ -233,6 +268,27 @@
 <div class="relative w-full h-full select-none" style="-webkit-user-select: none;">
 	<canvas bind:this={canvas} class="w-full h-full block pointer-events-auto touch-none"></canvas>
 	<div bind:this={labelContainer} class="absolute inset-0 pointer-events-none z-0"></div>
+	{#if webglError}
+		<div
+			class="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-text"
+		>
+			<h2 class="text-lg font-semibold">{m.webgl_unavailable_title()}</h2>
+			<p class="max-w-md text-sm text-muted-foreground">{m.webgl_unavailable_body()}</p>
+		</div>
+	{:else if contextLost}
+		<div
+			class="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-bg/90 px-6 text-center text-text backdrop-blur"
+		>
+			<h2 class="text-lg font-semibold">{m.webgl_context_lost_title()}</h2>
+			<p class="max-w-md text-sm text-muted-foreground">{m.webgl_context_lost_body()}</p>
+			<button
+				class="rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90"
+				onclick={() => location.reload()}
+			>
+				{m.reload()}
+			</button>
+		</div>
+	{/if}
 	{#if settings.showDebugInfo}
 		<DebugMenu getRenderer={() => renderer} {ctx} {clock} />
 	{/if}
