@@ -339,6 +339,9 @@ export class ZoneRefresher {
 			z.currentTime = time;
 			this.ctx.bodies.minorBodyVersion++;
 			this.ctx.bodies.notifyBodiesAdded(addedIds);
+			// Re-evaluate emphasis even when this snapshot added no bodies (steady
+			// membership, only the valid count moved) — notifyBodiesAdded won't.
+			if (z.zone === 'earth') this.ctx.notifyEarthSatRollover();
 			console.log(
 				`zone-refresher: ${z.zone}@${fromTime} → ${time} (+${added} ~${updated} -${removed})`
 			);

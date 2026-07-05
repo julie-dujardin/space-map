@@ -90,6 +90,8 @@ export class PromotionRegistry {
 			this.reevaluateEarthSatMode();
 			if (this.smallBodyZone !== null) this.refreshSmallBodyEmphasis();
 		});
+		// An add-free rollover fires no `onBodiesAdded`, yet the valid count shifts.
+		deps.ctx.onEarthSatRollover(() => this.reevaluateEarthSatMode());
 		// URL-loaded placeholders flushed before this registry was wired up
 		// don't fire the live `onBodiesAdded` listener — sweep them now.
 		this.promoteExistingAsteroidMoons();

@@ -109,6 +109,10 @@ export class ContextManager {
 	/** Notified after `smallBodyFilter` changes (cheap — no fetch). Used to
 	 *  drive the focused-zone point-cloud emphasis (class kind only). */
 	private readonly smallBodyFilterListeners = new Set<(f: SmallBodyFilter | null) => void>();
+	/** Notified after an Earth-sat snapshot rollover. Emphasis ramps off the
+	 *  currently-valid count, which shifts even when membership is unchanged — so
+	 *  it can't ride `onBodiesAdded` (that short-circuits on an empty id list). */
+	private readonly earthSatRolloverListeners = new Set<() => void>();
 
 	/** Subscribe to filter changes. The callback fires on each `applyGroupFilter`
 	 *  completion. Returns an unsubscribe. */
@@ -122,6 +126,17 @@ export class ContextManager {
 	onSmallBodyFilterChange(cb: (f: SmallBodyFilter | null) => void): () => void {
 		this.smallBodyFilterListeners.add(cb);
 		return () => this.smallBodyFilterListeners.delete(cb);
+	}
+
+	/** Subscribe to Earth-sat snapshot rollovers. Returns an unsubscribe. */
+	onEarthSatRollover(cb: () => void): () => void {
+		this.earthSatRolloverListeners.add(cb);
+		return () => this.earthSatRolloverListeners.delete(cb);
+	}
+
+	/** Fired by {@link ZoneRefresher} after an Earth-sat snapshot rollover. */
+	notifyEarthSatRollover(): void {
+		for (const cb of this.earthSatRolloverListeners) cb();
 	}
 
 	/** Look up any body by ID. Carve-out delegate — see {@link BodyIndex.getBody}. */
