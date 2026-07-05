@@ -13,12 +13,11 @@ import { loadBodyLabel } from '$lib/scene/objects/body/textures';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
 
-/** Group focus shrinks the cloud and promotes its members for visibility:
- *  `half` (<50 currently-visible members) renders each as a halo-only minor
- *  body; `full` (<20) builds the full sphere + trail. `none` keeps everything
- *  as point-cloud dots. Threshold counts use the bodies currently observable
- *  at sim jd, not the group's total membership — so a 1000-member launch site
- *  whose first sat hasn't launched yet starts in `full` and ramps down. */
+/** Sparse-cloud emphasis: `half` (<50 members) renders each as a halo-only minor
+ *  body, `full` (<20) the full sphere + trail, `none` plain dots. Counts bodies
+ *  observable at sim jd, not total membership, so a young group or the
+ *  early-space-age Earth-sat zone starts `full` and ramps down. Targets the
+ *  focused `/g/<slug>` group under a filter, else the whole Earth-sat cloud. */
 export type GroupPromotionMode = 'none' | 'half' | 'full';
 
 const GROUP_HALF_PROMOTE_THRESHOLD = 50;
@@ -62,9 +61,9 @@ export interface PromotionDeps {
  * Tracks the "default-important" set (curated body ids that auto-promote from
  * point-cloud dots to full meshes on load), the "user-promoted" set
  * (click/URL-promoted bodies that can be reverted in one shot), and the
- * "group-promoted" set (members of the focused /g/<slug> group, auto-built at
- * <50 members and torn down when the filter changes). Owns the promote/teardown
- * lifecycle for all three.
+ * "auto-promoted" set (Earth sats built by the sparse-cloud emphasis, torn down
+ * as the count grows past threshold or the filter changes). Owns the
+ * promote/teardown lifecycle for all three.
  */
 export class PromotionRegistry {
 	/** Curated ids waiting for their body to arrive — promoted directly when
@@ -74,10 +73,10 @@ export class PromotionRegistry {
 	private readonly defaults = new Set<string>();
 	/** Click/URL-promoted bodies (not in the curated set). */
 	private readonly userPromoted = new Set<string>();
-	/** Members of the focused group that we've built. Torn down on filter
-	 *  change. Stays disjoint from `userPromoted` so `clearUserPromoted` leaves
-	 *  them alone. */
-	private readonly groupPromoted = new Set<string>();
+	/** Earth sats built by the sparse-cloud emphasis. Kept disjoint from
+	 *  `userPromoted` so `clearUserPromoted` leaves them alone. */
+	private readonly autoPromoted = new Set<string>();
+	/** Active `/g/<slug>` membership filter, or null for the whole Earth-sat zone. */
 	private groupTargets: ReadonlySet<string> | null = null;
 	private groupMode: GroupPromotionMode = 'none';
 	/** Emphasis target: the `small_bodies/<class>` zone for a class filter, null
@@ -88,7 +87,7 @@ export class PromotionRegistry {
 		deps.ctx.bodies.onBodiesAdded((ids) => {
 			this.onBodiesAdded(ids);
 			this.autoPromoteAsteroidMoons(ids);
-			this.onBodiesAddedGroup();
+			this.reevaluateEarthSatMode();
 			if (this.smallBodyZone !== null) this.refreshSmallBodyEmphasis();
 		});
 		// URL-loaded placeholders flushed before this registry was wired up
@@ -218,8 +217,13 @@ export class PromotionRegistry {
 	/** Build mesh, label, halo, and dirty markers for one body. Returns false
 	 *  if the body was already promoted (caller can skip `finalizeBuilds`).
 	 *  `halfPromoteIds`, when non-null, asks `buildMajorBodies` to render the
-	 *  body as a halo-only minor entry — used for group half-promotion. */
-	private buildBodyInstance(body: PositionedBody, halfPromoteIds?: ReadonlySet<string>): boolean {
+	 *  body as a halo-only minor entry — used for half-promotion. `auto` tracks
+	 *  the build in `autoPromoted` rather than `userPromoted`. */
+	private buildBodyInstance(
+		body: PositionedBody,
+		halfPromoteIds?: ReadonlySet<string>,
+		auto = false
+	): boolean {
 		const { bodyObjects, ctx, clock, scene, clickables, meshToBody, circleTexture, renderer } =
 			this.deps;
 		if (bodyObjects.has(body.data.id)) return false;
@@ -265,8 +269,8 @@ export class PromotionRegistry {
 		const id = body.data.id;
 		if (this.defaults.has(id)) {
 			// Curated default — no extra tracking.
-		} else if (this.groupTargets?.has(id)) {
-			this.groupPromoted.add(id);
+		} else if (auto) {
+			this.autoPromoted.add(id);
 		} else {
 			this.userPromoted.add(id);
 			this.emitUserPromotedCount();
@@ -291,19 +295,24 @@ export class PromotionRegistry {
 	}
 
 	/** Build a batch of bodies with a single shared post-processing pass. */
-	private buildBatch(bodies: Iterable<PositionedBody>, halfPromoteIds?: ReadonlySet<string>): void {
+	private buildBatch(
+		bodies: Iterable<PositionedBody>,
+		halfPromoteIds?: ReadonlySet<string>,
+		auto = false
+	): void {
 		let built = false;
 		for (const body of bodies) {
-			if (this.buildBodyInstance(body, halfPromoteIds)) built = true;
+			if (this.buildBodyInstance(body, halfPromoteIds, auto)) built = true;
 		}
 		if (built) this.finalizeBuilds();
 	}
 
-	/** Filter change from `ctx.applyGroupFilter`: update targets, then re-evaluate
-	 *  the mode against the current sim-time count. */
+	/** Filter change from `ctx.applyGroupFilter`: update targets (null = whole
+	 *  Earth-sat zone), then re-evaluate the mode against the current sim-time
+	 *  count. */
 	private applyGroupFilter(filter: ReadonlySet<string> | null): void {
 		this.groupTargets = filter;
-		this.reevaluateGroupMode();
+		this.reevaluateEarthSatMode();
 	}
 
 	/** Only a `class` filter drives the size/brightness emphasis: it hides every
@@ -329,77 +338,61 @@ export class PromotionRegistry {
 		this.deps.pointClouds.setEmphasizedSmallBodyZone(zone, count);
 	}
 
-	/** Chunk-flush hook: every time a new earth-zone segment lands (or any
-	 *  bucket changes), recount currently-visible members and re-evaluate mode.
-	 *  Most events are no-ops; the cost is `O(|spacecraftByParent[EARTH_ID]|)`
-	 *  per call, fine at ~500ms cadence. */
-	private onBodiesAddedGroup(): void {
-		if (!this.groupTargets) return;
-		this.reevaluateGroupMode();
-	}
-
-	/** Recompute count + mode and reconcile group-promoted bodies. Handles all
-	 *  transitions: filter swap, mode flip (half↔full), expired members
-	 *  (validity window ended), newly-arrived members. */
-	private reevaluateGroupMode(): void {
-		if (!this.groupTargets) {
-			// Group cleared: drop everything we built for the group.
-			this.teardownGroupPromoted(true);
-			this.groupMode = 'none';
-			this.deps.pointClouds.setEarthSatEmphasis(null);
-			return;
-		}
-		const count = this.currentMemberCount();
+	/** Recompute count + mode and reconcile auto-promoted bodies. Runs on filter
+	 *  swap and on every chunk flush — an Earth snapshot rollover arrives as a
+	 *  flush, so this tracks the count across sim time without a separate jd hook.
+	 *  Cost is `O(|spacecraftByParent[EARTH_ID]|)`, cheap at the ~500ms flush
+	 *  cadence even for the full modern catalog. */
+	private reevaluateEarthSatMode(): void {
+		const bucket = this.deps.ctx.bodies.spacecraftByParent.get(EARTH_ID);
+		const count = this.currentMemberCount(bucket);
 		const newMode = computeGroupMode(count);
 		this.deps.pointClouds.setEarthSatEmphasis(count);
 		const modeChanged = newMode !== this.groupMode;
-		this.teardownGroupPromoted(modeChanged);
+		this.teardownAutoPromoted(modeChanged);
 		this.groupMode = newMode;
-		if (newMode === 'none') return;
+		if (newMode === 'none' || !bucket) return;
 
 		// Promote currently-valid, currently-loaded targets that aren't yet built.
-		const bucket = this.deps.ctx.bodies.spacecraftByParent.get(EARTH_ID);
-		if (!bucket) return;
 		const jd = this.deps.clock.jd;
 		const matched: PositionedBody[] = [];
 		for (const body of bucket.values()) {
-			if (!this.groupTargets.has(body.data.id)) continue;
+			if (this.groupTargets && !this.groupTargets.has(body.data.id)) continue;
 			if (!isCurrentlyValid(body, jd)) continue;
 			if (this.deps.bodyObjects.has(body.data.id)) continue;
 			matched.push(body);
 		}
 		if (matched.length === 0) return;
-		this.buildBatch(matched, newMode === 'half' ? this.groupTargets : undefined);
+		const halfIds = newMode === 'half' ? new Set(matched.map((b) => b.data.id)) : undefined;
+		this.buildBatch(matched, halfIds, true);
 	}
 
 	/** Count members observable at the current sim jd. Walks the earth-sat
-	 *  bucket (already filtered to group members at chunk-load time) and gates
-	 *  each entry on its per-body `validityStart/validityEnd`. */
-	private currentMemberCount(): number {
-		if (!this.groupTargets) return 0;
-		const bucket = this.deps.ctx.bodies.spacecraftByParent.get(EARTH_ID);
+	 *  bucket, gating each entry on its per-body `validityStart/validityEnd` and
+	 *  (under a group filter) on membership. Null bucket → 0. */
+	private currentMemberCount(bucket: Map<string, PositionedBody> | undefined): number {
 		if (!bucket) return 0;
 		const jd = this.deps.clock.jd;
 		let n = 0;
 		for (const body of bucket.values()) {
-			if (!this.groupTargets.has(body.data.id)) continue;
+			if (this.groupTargets && !this.groupTargets.has(body.data.id)) continue;
 			if (isCurrentlyValid(body, jd)) n++;
 		}
 		return n;
 	}
 
-	/** Tear down group-promoted bodies that no longer belong: dropped from the
-	 *  target set, validity expired, or `forceAll` (mode flip / group cleared).
-	 *  Skips the focused body — ripping its mesh out mid-frame breaks the
-	 *  focus pipeline. */
-	private teardownGroupPromoted(forceAll: boolean): void {
-		if (this.groupPromoted.size === 0) return;
+	/** Tear down auto-promoted bodies that no longer belong: dropped from the
+	 *  group filter, validity expired, or `forceAll` (mode flip / filter change).
+	 *  Skips the focused body — ripping its mesh out mid-frame breaks the focus
+	 *  pipeline. */
+	private teardownAutoPromoted(forceAll: boolean): void {
+		if (this.autoPromoted.size === 0) return;
 		const focusedId = this.deps.getFocusedId();
 		const jd = this.deps.clock.jd;
 		const toRemove: string[] = [];
-		for (const id of this.groupPromoted) {
+		for (const id of this.autoPromoted) {
 			if (id === focusedId) continue;
-			if (forceAll || !this.groupTargets?.has(id)) {
+			if (forceAll || (this.groupTargets && !this.groupTargets.has(id))) {
 				toRemove.push(id);
 				continue;
 			}
@@ -407,7 +400,7 @@ export class PromotionRegistry {
 			if (body && !isCurrentlyValid(body, jd)) toRemove.push(id);
 		}
 		if (toRemove.length === 0) return;
-		this.tearDownBodies(toRemove, this.groupPromoted);
+		this.tearDownBodies(toRemove, this.autoPromoted);
 	}
 
 	/** Tear down every user-promoted body except the focused one, reverting them to point-cloud dots. */

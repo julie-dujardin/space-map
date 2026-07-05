@@ -191,8 +191,9 @@ export class PointCloudSystem {
 	}
 
 	/** Ramp earth-sat cloud size + alpha when only a few members remain. `count`
-	 *  is the active group's member count; `null` resets to baseline. Stage 1
-	 *  (2000 → 500) raises alpha + brightness; stage 2 (500 → 50) raises size. */
+	 *  is the currently-visible member count (focused group under a filter, else
+	 *  the whole cloud); `null` resets to baseline. Stage 1 (10000 → 500) raises
+	 *  alpha + brightness; stage 2 (500 → 50) raises size. */
 	setEarthSatEmphasis(count: number | null): void {
 		this.earthSatEmphasis = this.computeEarthSatEmphasis(count);
 		for (const [key, pts] of this.spacecraftPoints) {
