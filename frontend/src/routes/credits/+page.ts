@@ -7,6 +7,10 @@
 
 import { DATA_BASE } from '$lib/fetch/data-base';
 
+// Attribution page — no SEO value and its loader fetches `/data` (which collides
+// with the [type]/[id] route under SSR), so keep it client-rendered as before.
+export const ssr = false;
+
 export interface TextureCredit {
 	body_id: string;
 	name: string;
