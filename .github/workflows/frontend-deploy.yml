@@ -59,11 +59,9 @@ jobs:
       - name: Install dependencies
         run: cd frontend && pnpm install --frozen-lockfile
 
+      # PUBLIC_* env is runtime-only ($env/dynamic/public), set on the Worker
+      # in the CF dashboard.
       - name: Build
-        env:
-          PUBLIC_DATA_URL: ${{ vars.PUBLIC_DATA_URL }}
-          PUBLIC_MEILI_URL: ${{ vars.PUBLIC_MEILI_URL }}
-          PUBLIC_MEILI_SEARCH_KEY: ${{ vars.PUBLIC_MEILI_SEARCH_KEY }}
         run: cd frontend && pnpm build
 
       # PRs upload a preview-only version; main promotes the live Worker.

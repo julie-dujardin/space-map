@@ -3,7 +3,7 @@
  *  render a disabled state without special-casing the absence. */
 
 import type { Meilisearch } from 'meilisearch';
-import { PUBLIC_MEILI_URL, PUBLIC_MEILI_SEARCH_KEY } from '$env/static/public';
+import { env } from '$env/dynamic/public';
 import { pickedThumbnailUrl, type PickedThumbnail } from '$lib/fetch/objects/images';
 import { CLASS_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 
@@ -106,7 +106,10 @@ async function getClient(): Promise<Meilisearch | null> {
 	if (!isSearchEnabled()) return null;
 	if (!client) {
 		const { Meilisearch } = await import('meilisearch');
-		client = new Meilisearch({ host: PUBLIC_MEILI_URL, apiKey: PUBLIC_MEILI_SEARCH_KEY });
+		client = new Meilisearch({
+			host: env.PUBLIC_MEILI_URL,
+			apiKey: env.PUBLIC_MEILI_SEARCH_KEY
+		});
 	}
 	return client;
 }
@@ -114,7 +117,7 @@ async function getClient(): Promise<Meilisearch | null> {
 /** Enablement is a pure env check — no client instantiation, so callers stay
  *  synchronous and the SDK isn't pulled in just to render the disabled state. */
 export function isSearchEnabled(): boolean {
-	return Boolean(PUBLIC_MEILI_URL && PUBLIC_MEILI_SEARCH_KEY);
+	return Boolean(env.PUBLIC_MEILI_URL && env.PUBLIC_MEILI_SEARCH_KEY);
 }
 
 /** Unified index name. Objects, surface features and group/collection pages
