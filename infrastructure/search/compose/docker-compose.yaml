@@ -11,7 +11,7 @@ services:
       - ${MEILI_DATA_HOST_DIR:-/srv/space-map/meili_data}:/meili_data
     # Admin is Meili directly (master-key protected). Caddy proxies search only.
     ports:
-      - "9751:7700"
+      - "${MEILI_ADMIN_BIND_IP:-127.0.0.1}:9751:7700"
     networks:
       - search
 
@@ -21,14 +21,24 @@ services:
     restart: unless-stopped
     environment:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
-    # Cloudflare handles TLS
-    ports:
-      - "9750:80"
+    # No host port: the only way in is the tunnel (TLS terminates at Cloudflare).
     configs:
       - source: caddyfile
         target: /etc/caddy/Caddyfile
     depends_on:
       - meili
+    networks:
+      - search
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.6.1
+    container_name: space-map-search-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - caddy
     networks:
       - search
 
