@@ -695,6 +695,34 @@
 	"credits_images_individual_note": "راجع كل صورة على حدة للاطلاع على الاعتمادات والترخيص",
 	"min_temperature": "أدنى درجة حرارة",
 	"max_temperature": "أقصى درجة حرارة",
+	"unit_earth_mass_count": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "{display} كتلة الأرض",
+				"countPlural=one": "{display} كتلة الأرض",
+				"countPlural=two": "{display} كتلة الأرض",
+				"countPlural=few": "{display} كتل الأرض",
+				"countPlural=many": "{display} كتلة الأرض",
+				"countPlural=other": "{display} كتلة الأرض"
+			}
+		}
+	],
+	"unit_jupiter_mass_count": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "{display} كتلة المشتري",
+				"countPlural=one": "{display} كتلة المشتري",
+				"countPlural=two": "{display} كتلة المشتري",
+				"countPlural=few": "{display} كتل المشتري",
+				"countPlural=many": "{display} كتلة المشتري",
+				"countPlural=other": "{display} كتلة المشتري"
+			}
+		}
+	],
 	"feature_type_description_AA": "انخفاض دائري في جرم فلكي صلب يتشكل نتيجة اصطدام جسم أصغر",
 	"feature_type_description_CR": "نوع من التضاريس الموجودة على كوكب الزهرة وقمر ميراندا.",
 	"feature_type_description_DO": "حيد أو حافة مرتفعة؛ تضاريس توجد على القمر والمريخ والزهرة",
@@ -1003,34 +1031,6 @@
 	"unit_name_centimetre_per_square_second": "سنتيمتر لكل ثانية مربعة",
 	"unit_name_degree_fahrenheit": "فهرنهايت",
 	"unit_name_deutsche_mark": "مارك ألماني",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=zero": "{display} كتلة الأرض",
-				"countPlural=one": "{display} كتلة الأرض",
-				"countPlural=two": "{display} كتلة الأرض",
-				"countPlural=few": "{display} كتل الأرض",
-				"countPlural=many": "{display} كتلة الأرض",
-				"countPlural=other": "{display} كتلة الأرض"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=zero": "{display} كتلة المشتري",
-				"countPlural=one": "{display} كتلة المشتري",
-				"countPlural=two": "{display} كتلة المشتري",
-				"countPlural=few": "{display} كتل المشتري",
-				"countPlural=many": "{display} كتلة المشتري",
-				"countPlural=other": "{display} كتلة المشتري"
-			}
-		}
-	],
 	"unit_name_earth_mass": "كتلة الأرض",
 	"unit_name_exagram": "إكساغرام",
 	"unit_name_gram": "غرام",

@@ -692,6 +692,28 @@
 	"credits_images_individual_note": "Voir chaque image pour les crédits et la licence",
 	"min_temperature": "température min",
 	"max_temperature": "température maximale",
+	"unit_earth_mass_count": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} masse de la Terre",
+				"countPlural=many": "{display} masses de la Terre",
+				"countPlural=other": "{display} masses de la Terre"
+			}
+		}
+	],
+	"unit_jupiter_mass_count": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} masse jovienne",
+				"countPlural=many": "{display} masses joviennes",
+				"countPlural=other": "{display} masses joviennes"
+			}
+		}
+	],
 	"feature_type_description_AA": "Cratère à la surface d'une planète résultant de la collision avec un autre objet céleste",
 	"feature_type_description_AL": "Région présentant un contraste d'albédo marqué par rapport aux régions voisines",
 	"feature_type_description_AR": "Formation topographique courbe",
@@ -990,28 +1012,6 @@
 	"unit_name_centimetre": "centimètre",
 	"unit_name_centimetre_per_square_second": "centimètre par seconde carrée",
 	"unit_name_degree_fahrenheit": "degré Fahrenheit",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} masse de la Terre",
-				"countPlural=many": "{display} masses de la Terre",
-				"countPlural=other": "{display} masses de la Terre"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} masse jovienne",
-				"countPlural=many": "{display} masses joviennes",
-				"countPlural=other": "{display} masses joviennes"
-			}
-		}
-	],
 	"unit_name_earth_mass": "masse de la Terre",
 	"unit_name_exagram": "exagramme",
 	"unit_name_gram": "gramme",

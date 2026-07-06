@@ -696,6 +696,30 @@
 	"credits_images_individual_note": "Авторство и лицензию смотрите у каждого изображения отдельно",
 	"min_temperature": "мин. температура",
 	"max_temperature": "макс. температура",
+	"unit_earth_mass_count": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} масса Земли",
+				"countPlural=few": "{display} массы Земли",
+				"countPlural=many": "{display} масс Земли",
+				"countPlural=other": "{display} массы Земли"
+			}
+		}
+	],
+	"unit_jupiter_mass_count": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} масса Юпитера",
+				"countPlural=few": "{display} массы Юпитера",
+				"countPlural=many": "{display} масс Юпитера",
+				"countPlural=other": "{display} массы Юпитера"
+			}
+		}
+	],
 	"feature_type_description_AA": "Углубление, появившееся на поверхности космического тела в результате падения другого тела меньшего размера",
 	"feature_type_description_AL": "Зона, которая отличается по альбедо от соседних",
 	"feature_type_description_AR": "Дугообразно изогнутая деталь рельефа астрономического тела",
@@ -1118,30 +1142,6 @@
 	"unit_name_centimetre_per_square_second": "сантиметр на секунду в квадрате",
 	"unit_name_degree_fahrenheit": "градус Фаренгейта",
 	"unit_name_deutsche_mark": "немецкая марка",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} масса Земли",
-				"countPlural=few": "{display} массы Земли",
-				"countPlural=many": "{display} масс Земли",
-				"countPlural=other": "{display} массы Земли"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} масса Юпитера",
-				"countPlural=few": "{display} массы Юпитера",
-				"countPlural=many": "{display} масс Юпитера",
-				"countPlural=other": "{display} массы Юпитера"
-			}
-		}
-	],
 	"unit_name_earth_mass": "масса Земли",
 	"unit_name_exagram": "эксаграмм",
 	"unit_name_gram": "грамм",

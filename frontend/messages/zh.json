@@ -612,6 +612,24 @@
 	"credits_images_individual_note": "请查看各图片以获取署名和许可信息",
 	"min_temperature": "最低温度",
 	"max_temperature": "最高温度",
+	"unit_earth_mass_count": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=other": "{display} 地球质量"
+			}
+		}
+	],
+	"unit_jupiter_mass_count": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=other": "{display} 木星质量"
+			}
+		}
+	],
 	"feature_type_description_AA": "由于陨石的超高速撞击而形成的固体天体上的圆形凹陷",
 	"feature_type_description_CO": "天体上的小山丘或圆丘",
 	"feature_type_description_PE": "不规则的火山口",
@@ -1004,24 +1022,6 @@
 	"unit_name_centimetre_per_square_second": "厘米每二次方秒",
 	"unit_name_degree_fahrenheit": "华氏度",
 	"unit_name_deutsche_mark": "德國馬克",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=other": "{display} 地球质量"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=other": "{display} 木星质量"
-			}
-		}
-	],
 	"unit_name_earth_mass": "地球质量",
 	"unit_name_exagram": "艾克",
 	"unit_name_gram": "克",
