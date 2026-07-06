@@ -44,7 +44,6 @@ jobs:
     environment: cf-pages-deploy
     permissions:
       contents: read
-      deployments: write
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
@@ -67,19 +66,20 @@ jobs:
           PUBLIC_MEILI_SEARCH_KEY: ${{ vars.PUBLIC_MEILI_SEARCH_KEY }}
         run: cd frontend && pnpm build
 
-      - name: Deploy to Cloudflare Pages
+      # PRs upload a preview-only version; main promotes the live Worker.
+      - name: Deploy to Cloudflare Workers
         id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: frontend
-          command: pages deploy --project-name=space-map --branch=${{ github.head_ref || github.ref_name }}
+          command: ${{ github.event_name == 'pull_request' && 'versions upload' || 'deploy' }}
 
       - name: Verify deployment
         env:
-          # The unique deployment URL checks the artifact; on main, spacemap.co
-          # additionally checks that prod routing picked it up.
+          # On main, spacemap.co additionally checks that prod routing
+          # picked it up.
           URLS: >-
             ${{ steps.deploy.outputs.deployment-url }}
             ${{ github.ref == 'refs/heads/main' && 'https://spacemap.co' || '' }}

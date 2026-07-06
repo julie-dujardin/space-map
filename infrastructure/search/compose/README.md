@@ -32,7 +32,7 @@ then use `MEILI_URL=http://127.0.0.1:9751` while the session is open.
 
 ## Indexing
 
-Against Meili directly. Reindex is atomic (load into `features_tmp`, then swap):
+Against Meili directly:
 
 ```
 MEILI_URL=http://<host>:9751 \

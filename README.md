@@ -40,46 +40,6 @@ Each of these is displayed at its current position, and shown at its real size (
 
 ## Architecture
 
-Space Map has a hybrid serverless/bare metal on-premise architecture, allowing high performance and low cost.
-
-```mermaid
-    flowchart LR
-    user((User browser))
-
-    subgraph repo["GitHub repo"]
-        fe[frontend/]
-        data[data/]
-    end
-
-    subgraph ci["GitHub Actions"]
-        wf_fe[frontend-deploy]
-        wf_data[data-deploy]
-    end
-
-    subgraph hosts["Hosting"]
-        pages[("Cloudflare Pages<br/>spacemap.co + static.spacemap.co")]
-        ghcr[("ghcr.io image")]
-    end
-
-    subgraph vm["Debian VM"]
-        container["space-map-data<br/>(daily data pipeline)"]
-        meili["Meilisearch<br/>(search)"]
-    end
-
-    sources((CelesTrak / Space-Track / …))
-
-    fe --> wf_fe -->|deploy| pages
-    data --> wf_data -->|push image| ghcr --> container
-    container -->|fetch| sources
-    container -->|export static data| pages
-    container -->|push index| meili
-
-    user --> pages
-    user -->|search| meili
-```
-
-Data endpoints are exported as static files served by Cloudflare pages. This allows high performance & low maintenance overhead. The exception is the search engine, which runs on a baremetal server.
-
 The export pipeline compresses orbital elements from ~100GiB down to 1.6GiB, and splits them in chunks so the frontend can propagate the current position quickly. The loss in accuracy is significant, but very small for major objects: [planets, moons, and important small objects](docs/chebyshev-accuracy.md) and [spacecraft](docs/probe-accuracy.md) are typically off by meters to hundreds of meters.
 
 ## Other space maps
