@@ -8,6 +8,8 @@
 		name: string;
 		secondary: string;
 		thumbnail?: string;
+		/** DOM id referenced by the combobox input's aria-activedescendant. */
+		id: string;
 		active: boolean;
 		onselect: () => void;
 		onhover: () => void;
@@ -15,7 +17,7 @@
 		metric?: { value: string; unit?: string };
 	};
 
-	let { hit, name, secondary, thumbnail, active, onselect, onhover, metric }: Props = $props();
+	let { hit, name, secondary, thumbnail, id, active, onselect, onhover, metric }: Props = $props();
 
 	// Collection pages (constellations, organizations, orbit classes, …) read as a
 	// navigable group rather than a single object: stacked-card thumbnail, a
@@ -30,8 +32,14 @@
 	}
 </script>
 
+<!-- Combobox pattern: the row is an option, keyboard focus stays on the input
+     (tabindex -1 keeps dozens of rows out of the tab order). -->
 <button
 	type="button"
+	{id}
+	role="option"
+	aria-selected={active}
+	tabindex={-1}
 	class="w-full text-start px-4 py-2 flex items-center gap-3 transition-colors {active
 		? 'bg-neutral-200 dark:bg-accent'
 		: 'hover:bg-neutral-200 dark:hover:bg-accent'}"

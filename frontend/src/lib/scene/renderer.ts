@@ -762,6 +762,18 @@ export class SceneRenderer {
 		this.focusController.clearPendingInitialView();
 	};
 
+	/** Keyboard camera step (canvas arrow keys / zoom keys). Angles in radians;
+	 *  `dolly` > 1 zooms in. Goes through OrbitControls so damping and
+	 *  min/maxDistance clamping apply, but fires no 'end' event — sync the URL
+	 *  here like a pointer drag would. */
+	nudgeCamera(azimuth: number, polar: number, dolly: number): void {
+		if (azimuth !== 0) this.controls.rotateLeft(azimuth);
+		if (polar !== 0) this.controls.rotateUp(polar);
+		// dollyIn scales the orbit radius by its argument, so zooming in needs <1.
+		if (dolly !== 1) this.controls.dollyIn(1 / dolly);
+		this.onControlsEnd();
+	}
+
 	private maybeLoadTexture(body: PositionedBody): void {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (!bo) return;

@@ -300,13 +300,61 @@
 		renderer?.setHaloDebugVisible(settings.showHaloDebug);
 	});
 
+	// Keyboard camera controls: arrows orbit the focused body, +/- zoom, Shift
+	// speeds up. Mirrors OrbitControls' pointer gestures for keyboard-only users.
+	const KEY_ROTATE_RAD = 0.05;
+	const KEY_ZOOM_FACTOR = 1.15;
+	function onCanvasKeyDown(e: KeyboardEvent) {
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
+		const step = (e.shiftKey ? 4 : 1) * KEY_ROTATE_RAD;
+		let azimuth = 0;
+		let polar = 0;
+		let dolly = 1;
+		switch (e.key) {
+			case 'ArrowLeft':
+				azimuth = step;
+				break;
+			case 'ArrowRight':
+				azimuth = -step;
+				break;
+			case 'ArrowUp':
+				polar = step;
+				break;
+			case 'ArrowDown':
+				polar = -step;
+				break;
+			case '+':
+			case '=':
+				dolly = KEY_ZOOM_FACTOR;
+				break;
+			case '-':
+			case '_':
+				dolly = 1 / KEY_ZOOM_FACTOR;
+				break;
+			default:
+				return;
+		}
+		e.preventDefault();
+		renderer?.nudgeCamera(azimuth, polar, dolly);
+	}
+
 	onDestroy(() => {
 		renderer?.dispose();
 	});
 </script>
 
 <div class="relative w-full h-full select-none" style="-webkit-user-select: none;">
-	<canvas bind:this={canvas} class="w-full h-full block pointer-events-auto touch-none"></canvas>
+	<!-- role="application" hands arrow keys through screen readers to the map;
+	     Svelte's lint table misclassifies it as noninteractive on canvas. -->
+	<!-- svelte-ignore a11y_no_interactive_element_to_noninteractive_role -->
+	<canvas
+		bind:this={canvas}
+		tabindex="0"
+		role="application"
+		aria-label={m.scene_canvas_label()}
+		onkeydown={onCanvasKeyDown}
+		class="w-full h-full block pointer-events-auto touch-none focus-visible:outline-2 focus-visible:outline-ring"
+	></canvas>
 	<div bind:this={labelContainer} class="absolute inset-0 pointer-events-none z-0"></div>
 	{#if webglError}
 		<div

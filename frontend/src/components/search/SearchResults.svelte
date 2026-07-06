@@ -3,7 +3,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { thumbnailUrl, type SearchHit } from '$lib/search/client';
-	import { inceptionYear } from '$lib/search/format';
+	import { inceptionYear, optionDomId } from '$lib/search/format';
 	import { CHUNK, type SearchModel } from '$lib/search/model.svelte';
 	import ResultRow from './ResultRow.svelte';
 
@@ -14,19 +14,23 @@
 		model,
 		name,
 		secondary,
-		onselect
+		onselect,
+		highlightedId,
+		onhighlight
 	}: {
 		model: SearchModel;
 		name: (hit: SearchHit) => string;
 		secondary: (hit: SearchHit) => string;
 		onselect: (hit: SearchHit) => void;
+		// Highlight lives in SearchBar so the combobox input's arrow keys and
+		// aria-activedescendant drive the same state as hover.
+		highlightedId: string | null;
+		onhighlight: (id: string) => void;
 	} = $props();
 
 	// Estimated row height. Fixed spacers stand in for unloaded hits, so the
 	// scrollbar spans the full set and the window slides without scroll jumps.
 	const ROW_H = 52;
-
-	let highlighted = $state(-1);
 	let scrollEl = $state<HTMLDivElement>();
 	let didRestore = false;
 	const initialPage = untrack(() => model.page);
@@ -129,18 +133,24 @@
 	{:else}
 		<!-- spacer: hits above the window -->
 		<div style="height: {model.firstIndex * ROW_H}px"></div>
-		<ul class="px-2">
-			{#each model.hits as hit, i (hit.id)}
-				<li>
+		<ul
+			class="px-2"
+			id="search-results-listbox"
+			role="listbox"
+			aria-label={m.search_results_aria()}
+		>
+			{#each model.hits as hit (hit.id)}
+				<li role="presentation">
 					<ResultRow
 						{hit}
+						id={optionDomId(hit.id)}
 						name={name(hit)}
 						secondary={secondary(hit)}
 						thumbnail={thumbnailUrl(hit)}
 						metric={metricFor(hit)}
-						active={i === highlighted}
+						active={hit.id === highlightedId}
 						onselect={() => onselect(hit)}
-						onhover={() => (highlighted = i)}
+						onhover={() => onhighlight(hit.id)}
 					/>
 				</li>
 			{/each}

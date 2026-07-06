@@ -22,7 +22,7 @@
 		type RangeBound,
 		hasBound
 	} from '$lib/search/client';
-	import { capitalize, compact } from '$lib/search/format';
+	import { capitalize, compact, optionDomId } from '$lib/search/format';
 	import { rangeDef } from '$lib/search/ranges';
 	import { SearchModel, type FilterToken } from '$lib/search/model.svelte';
 	import { parseSearchSuffix } from '$lib/search/url';
@@ -546,6 +546,30 @@
 		inputEl?.blur();
 	}
 
+	// Keyboard highlight, tracked by hit id (not index): a new search or a
+	// virtualization window shift just drops the stale id instead of landing the
+	// highlight on an unrelated row. Hover writes the same state.
+	let highlightedId = $state<string | null>(null);
+	const highlightedIndex = $derived(model.hits.findIndex((h) => h.id === highlightedId));
+	const activeDescendant = $derived(
+		expanded && highlightedIndex >= 0 ? optionDomId(highlightedId!) : undefined
+	);
+
+	function moveHighlight(delta: 1 | -1) {
+		const hits = model.hits;
+		if (hits.length === 0) return;
+		const cur = highlightedIndex;
+		const next =
+			cur === -1
+				? delta === 1
+					? 0
+					: hits.length - 1
+				: Math.min(Math.max(cur + delta, 0), hits.length - 1);
+		highlightedId = hits[next].id;
+		if (next >= hits.length - 3) model.ensureNext();
+		document.getElementById(optionDomId(highlightedId))?.scrollIntoView({ block: 'nearest' });
+	}
+
 	function collapse() {
 		expanded = false;
 		filterOpen = false;
@@ -568,7 +592,16 @@
 	});
 
 	function onInputKeyDown(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
+		if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+			e.preventDefault();
+			moveHighlight(e.key === 'ArrowDown' ? 1 : -1);
+		} else if (e.key === 'Enter') {
+			const hit = highlightedIndex >= 0 ? model.hits[highlightedIndex] : undefined;
+			if (hit) {
+				e.preventDefault();
+				pick(hit);
+			}
+		} else if (e.key === 'Escape') {
 			model.setQuery('');
 			collapse();
 			inputEl?.blur();
@@ -625,8 +658,14 @@
 					}}
 					onkeydown={onInputKeyDown}
 					type="text"
+					role="combobox"
+					aria-expanded={expanded && model.hasResults}
+					aria-controls="search-results-listbox"
+					aria-autocomplete="list"
+					aria-activedescendant={activeDescendant}
 					class="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
 					placeholder={m.search_placeholder()}
+					aria-label={m.search_placeholder()}
 					autocomplete="off"
 					spellcheck="false"
 				/>
@@ -745,7 +784,14 @@
 
 		<!-- results -->
 		{#if expanded && model.hasResults}
-			<SearchResults {model} name={rowName} secondary={secondaryText} onselect={pick} />
+			<SearchResults
+				{model}
+				name={rowName}
+				secondary={secondaryText}
+				onselect={pick}
+				{highlightedId}
+				onhighlight={(id) => (highlightedId = id)}
+			/>
 		{/if}
 	</div>
 {/if}
