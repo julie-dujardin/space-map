@@ -3,17 +3,43 @@ name: frontend-deploy
 on:
   push:
     branches: [main]
-    paths: [frontend/**]
+    paths:
+      - frontend/**
+      - .github/workflows/frontend-deploy.yml
+      - .github/workflows/frontend-test.yml
   pull_request:
-    paths: [frontend/**]
+    paths:
+      - frontend/**
+      - .github/workflows/frontend-deploy.yml
+      - .github/workflows/frontend-test.yml
   workflow_dispatch:
 
+# Cancelling is only safe for superseded PR previews; a main deploy must run to
+# completion, so later pushes queue behind it.
 concurrency:
   group: frontend-deploy-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # On PRs the test workflows run standalone via their own pull_request
+  # triggers; gating here too would run everything twice. Only deploys that
+  # ship (main + manual) are gated.
+  test:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/frontend-test.yml
+    permissions:
+      contents: read
+
+  precommit:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+
   deploy:
+    needs: [test, precommit]
+    # Gates passed or were skipped (PR previews); a red gate blocks.
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     environment: cf-pages-deploy
     permissions:
@@ -42,9 +68,23 @@ jobs:
         run: cd frontend && pnpm build
 
       - name: Deploy to Cloudflare Pages
+        id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: frontend
           command: pages deploy --project-name=space-map --branch=${{ github.head_ref || github.ref_name }}
+
+      - name: Verify deployment
+        env:
+          # The unique deployment URL checks the artifact; on main, spacemap.co
+          # additionally checks that prod routing picked it up.
+          URLS: >-
+            ${{ steps.deploy.outputs.deployment-url }}
+            ${{ github.ref == 'refs/heads/main' && 'https://spacemap.co' || '' }}
+        run: |
+          for url in $URLS; do
+            echo "Probing $url"
+            curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "$url" | grep -q '</html>'
+          done

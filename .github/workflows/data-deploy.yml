@@ -7,18 +7,40 @@ on:
       - data/**
       - infrastructure/data/**
       - .github/workflows/data-deploy.yml
+      - .github/workflows/backend-test.yml
   pull_request:
     paths:
       - data/**
       - infrastructure/data/**
       - .github/workflows/data-deploy.yml
+      - .github/workflows/backend-test.yml
 
+# Cancelling is only safe for superseded PR runs; a main run must not die
+# between image push and release, so later pushes queue behind it.
 concurrency:
   group: data-deploy-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # On PRs the test workflows run standalone via their own pull_request
+  # triggers; gating here too would run everything twice. Only deploys that
+  # ship (main + manual) are gated.
+  test:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/backend-test.yml
+    permissions:
+      contents: read
+
+  precommit:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+
   build-push:
+    needs: [test, precommit]
+    # Gates passed or were skipped (PR builds); a red gate blocks.
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write  # create release + tag

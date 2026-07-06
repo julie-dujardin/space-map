@@ -1,10 +1,12 @@
 name: frontend-test
 
+# Standalone check on PRs; called by frontend-deploy to gate deploys that ship.
 on:
-  push:
-    branches: [main]
+  workflow_call:
   pull_request:
-    paths: [frontend/**]
+    paths:
+      - frontend/**
+      - .github/workflows/frontend-test.yml
 
 jobs:
   vitest:

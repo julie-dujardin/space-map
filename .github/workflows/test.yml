@@ -1,8 +1,9 @@
 name: pre-commit
 
+# Standalone check on PRs; called by the deploy workflows to gate deploys that
+# ship.
 on:
-  push:
-    branches: [main]
+  workflow_call:
   pull_request:
 
 jobs:
