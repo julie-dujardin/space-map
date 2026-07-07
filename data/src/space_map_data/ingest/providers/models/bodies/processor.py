@@ -31,6 +31,11 @@ log = logging.getLogger(__name__)
 _yaml = YAML()
 _yaml.preserve_quotes = True
 
+# Manifest ``units`` → km scale. Most archives are already km; a few (e.g. the
+# Stardust Wild 2 cart table) ship metres, which would otherwise record a 1000×
+# true_scale and mis-size any true-km consumer of the mesh.
+_UNIT_TO_KM: dict[str, float] = {"km": 1.0, "m": 0.001}
+
 # Archive-string → MODEL_CATALOGS key, for the credits roll-up. PDS wins when a
 # body is co-hosted (e.g. 67P's ESAC draft + PDS mirror) — cleanest license.
 _CATALOG_MATCHERS: tuple[tuple[str, str], ...] = (
@@ -176,6 +181,7 @@ class BodyModelProcessor:
                     f["format"],
                     force,
                     lon_first=f.get("grid_order") == "lon_lat",
+                    units=f.get("units", "km"),
                 )
             except subprocess.CalledProcessError as exc:
                 stderr = (exc.stderr or "")[-500:]
@@ -194,20 +200,31 @@ class BodyModelProcessor:
         return None
 
     def _cached_tiers(
-        self, slug: str, src: Path, fmt: str, force: bool, *, lon_first: bool = False
+        self,
+        slug: str,
+        src: Path,
+        fmt: str,
+        force: bool,
+        *,
+        lon_first: bool = False,
+        units: str = "km",
     ) -> tuple[Path, Path, dict | None]:
         """Materialise (or reuse) the high+low GLB pair + true km bounds.
 
         Bounds come from the raw pre-Meshopt GLB: Meshopt quantises positions
         to int16, so the shipped GLB's accessor min/max are quantisation range,
-        not km. They're cached so a cache hit doesn't need a reconvert.
+        not km. They're cached so a cache hit doesn't need a reconvert. ``units``
+        scales metre-unit archives into the km convention (see ``_UNIT_TO_KM``).
         """
+        scale = _UNIT_TO_KM[units]
         cache_dir = config.BODY_CONVERTED_DIR / slug
         cache_dir.mkdir(parents=True, exist_ok=True)
         # Keyed on source content (not path) + parse params that change the mesh.
         fid = metadata.sha256_file(src)[:16]
         if lon_first:
             fid += "-lonlat"
+        if scale != 1.0:
+            fid += f"-{units}"
         high_glb = cache_dir / f"{fid}.high.glb"
         low_glb = cache_dir / f"{fid}.low.glb"
         meta_path = cache_dir / f"{fid}.cache.json"
@@ -229,7 +246,9 @@ class BodyModelProcessor:
             work = Path(td)
             from space_map_data.ingest.providers.models.bodies import mesh_formats
 
-            mesh = mesh_formats.normalize_to_mesh(src, fmt, work, lon_first=lon_first)
+            mesh = mesh_formats.normalize_to_mesh(
+                src, fmt, work, lon_first=lon_first, scale=scale
+            )
             for dst, target in (
                 (high_glb, config.BODY_HIGH_TIER_MAX_TRIS),
                 (low_glb, config.BODY_LOW_TIER_TRIS),

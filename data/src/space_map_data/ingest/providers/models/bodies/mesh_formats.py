@@ -21,14 +21,19 @@ _BLENDER_NATIVE = frozenset({"obj", "ply", "stl"})
 
 
 def normalize_to_mesh(
-    src: Path, fmt: str, work_dir: Path, *, lon_first: bool = False
+    src: Path, fmt: str, work_dir: Path, *, lon_first: bool = False, scale: float = 1.0
 ) -> Path:
     """Return a Blender-importable mesh path for ``src`` (format ``fmt``).
 
     Passthrough formats return ``src`` unchanged; gzip wrappers are inflated;
     table/grid/VRML/ICQ dialects are converted to OBJ under ``work_dir``.
     ``lon_first`` flips a lat/lon grid's column order (see ``_parse_grid``).
+    ``scale`` multiplies every coordinate — used to bring metre-unit archives
+    into the km convention the rest of the shape-model pipeline assumes.
     """
+    if fmt in _BLENDER_NATIVE or fmt.endswith(".gz") or src.suffix == ".gz":
+        if scale != 1.0:
+            raise ValueError(f"scale unsupported for native mesh format {fmt!r}")
     if fmt in _BLENDER_NATIVE:
         return src
     if fmt.endswith(".gz") or src.suffix == ".gz":
@@ -38,15 +43,15 @@ def normalize_to_mesh(
         return inflated
     out = work_dir / (src.stem + ".obj")
     if fmt == "icq":
-        icq_to_obj(src, out)
+        icq_to_obj(src, out, scale=scale)
     elif fmt in ("pds-vertab", "wrl"):
-        table_to_obj(src, out, lon_first=lon_first)
+        table_to_obj(src, out, lon_first=lon_first, scale=scale)
     else:
         raise ValueError(f"unknown mesh format {fmt!r} for {src.name}")
     return out
 
 
-def icq_to_obj(src: Path, dst: Path) -> None:
+def icq_to_obj(src: Path, dst: Path, *, scale: float = 1.0) -> None:
     """Gaskell ICQ (Implicitly Connected Quadrilateral) → OBJ.
 
     Six q×q quad-grid cube faces; connectivity is implicit. Seam vertices are
@@ -61,6 +66,8 @@ def icq_to_obj(src: Path, dst: Path) -> None:
     with dst.open("w") as out:
         it = iter(tokens[1:want])
         for x, y, z in zip(it, it, it):
+            if scale != 1.0:
+                x, y, z = float(x) * scale, float(y) * scale, float(z) * scale
             out.write(f"v {x} {y} {z}\n")
         for face in range(6):
             base = 1 + face * per_face
@@ -73,7 +80,9 @@ def icq_to_obj(src: Path, dst: Path) -> None:
                     out.write(f"f {a} {b} {d}\nf {a} {d} {c}\n")
 
 
-def table_to_obj(src: Path, dst: Path, *, lon_first: bool = False) -> tuple[int, int]:
+def table_to_obj(
+    src: Path, dst: Path, *, lon_first: bool = False, scale: float = 1.0
+) -> tuple[int, int]:
     """PDS plate table (.tab) or VRML2 IndexedFaceSet (.wrl) → OBJ."""
     is_wrl = src.suffix.lower() == ".wrl"
     verts, faces = _parse_wrl(src) if is_wrl else _parse_tab(src, lon_first=lon_first)
@@ -83,7 +92,7 @@ def table_to_obj(src: Path, dst: Path, *, lon_first: bool = False) -> tuple[int,
             raise ValueError(f"{src}: face index out of range: {f}")
     with dst.open("w") as out:
         for v in verts:
-            out.write(f"v {v[0]} {v[1]} {v[2]}\n")
+            out.write(f"v {v[0] * scale} {v[1] * scale} {v[2] * scale}\n")
         for f in faces:
             out.write(f"f {f[0]} {f[1]} {f[2]}\n")
     return nv, len(faces)
@@ -100,25 +109,44 @@ def _parse_vf(lines: list[list[str]]) -> tuple[list, list]:
     return verts, faces
 
 
+def _has_leading_index(rows: list[list[str]]) -> bool:
+    """True if the block is prefixed with a 0/1-based running index column.
+
+    PDS plate tables come both ways: a leading row index (idx x y z) or a
+    trailing status flag (x y z flag). Only a leading index counts up
+    row-by-row; distinguishing them decides whether the data is the first or
+    last three columns.
+    """
+    if len(rows[0]) <= 3:
+        return False
+    sample = rows[: min(len(rows), 8)]
+    start = int(float(sample[0][0]))
+    if start not in (0, 1):
+        return False
+    return all(int(float(r[0])) == start + i for i, r in enumerate(sample))
+
+
 def _parse_counts(lines: list[list[str]]) -> tuple[list, list]:
-    """Numeric plate table: header counts, then indexed vertex + plate rows."""
+    """Numeric plate table: header counts, then vertex + plate rows.
+
+    Rows carry the three data columns either first (with an optional trailing
+    status flag) or after a leading running-index column; pick accordingly.
+    """
     header = [int(float(x)) for x in lines[0]]
     nv = header[0]
     row = 1
-    verts = []
-    for parts in lines[row : row + nv]:
-        vals = [float(x) for x in parts]
-        verts.append(tuple(vals[-3:]))  # drop leading index column if present
+    vrows = lines[row : row + nv]
+    vcols = slice(1, 4) if _has_leading_index(vrows) else slice(0, 3)
+    verts = [tuple(float(x) for x in parts[vcols]) for parts in vrows]
     row += nv
     if len(header) > 1:
         np_ = header[1]
     else:
         np_ = int(float(lines[row][0]))
         row += 1
-    faces = []
-    for parts in lines[row : row + np_]:
-        vals = [int(float(x)) for x in parts]
-        faces.append(tuple(vals[-3:]))
+    frows = lines[row : row + np_]
+    fcols = slice(1, 4) if _has_leading_index(frows) else slice(0, 3)
+    faces = [tuple(int(float(x)) for x in parts[fcols]) for parts in frows]
     return verts, faces
 
 
