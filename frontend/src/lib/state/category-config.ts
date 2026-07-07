@@ -7,7 +7,9 @@ import {
 	CAT_DWARF_PLANETS,
 	CAT_SOLAR_SYSTEM,
 	CAT_ASTEROIDS,
-	CAT_COMETS
+	CAT_COMETS,
+	CAT_SATELLITES,
+	CAT_PROBES
 } from '$lib/fetch/groups/registry';
 import type { Focusable } from '$lib/state/focusable';
 
@@ -20,7 +22,7 @@ export interface CategoryConfig {
 	lineup: boolean;
 	/** asteroids/comets: members route through the members tab, no overview strip. */
 	smallBody: boolean;
-	/** Lineup + small-body pages cross-link their sibling categories. */
+	/** Page cross-links its sibling collections (and Earth, for satellites). */
 	crossRefs: boolean;
 }
 
@@ -40,7 +42,9 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 	[CAT_DWARF_PLANETS]: { dwarfPlanets: true, lineup: true, crossRefs: true },
 	[CAT_SOLAR_SYSTEM]: { solarSystem: true },
 	[CAT_ASTEROIDS]: { smallBody: true, crossRefs: true },
-	[CAT_COMETS]: { smallBody: true, crossRefs: true }
+	[CAT_COMETS]: { smallBody: true, crossRefs: true },
+	[CAT_SATELLITES]: { crossRefs: true },
+	[CAT_PROBES]: { crossRefs: true }
 };
 
 // Merged configs, cached per slug so a stable reference comes back each call: a

@@ -10,6 +10,9 @@
 	import FragmentOf from './sections/FragmentOf.svelte';
 	import SmallBodyGroupLinks from './sections/crossref/SmallBodyGroupLinks.svelte';
 	import DwarfPlanetGroupLinks from './sections/crossref/DwarfPlanetGroupLinks.svelte';
+	import PlanetGroupLinks from './sections/crossref/PlanetGroupLinks.svelte';
+	import MoonGroupLinks from './sections/crossref/MoonGroupLinks.svelte';
+	import ZoneCategoryLinks from './sections/crossref/ZoneCategoryLinks.svelte';
 	import BodyCategoryTile from './sections/crossref/BodyCategoryTile.svelte';
 	import { ObjectType } from '$lib/types/objects';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
@@ -24,13 +27,13 @@
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
-	import { fetchGroupIndex, CAT_MOONS, CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
+	import { fetchGroupIndex, CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { DrawerTab } from '$lib/state/view';
 	import { type Focusable, focusableFallbackName, focusableKey } from '$lib/state/focusable';
 	import ObjectHeader from './frame/ObjectHeader.svelte';
 	import DrawerTitle from './frame/DrawerTitle.svelte';
-	import { parentCrumb } from '$lib/state/breadcrumb';
+	import { parentCrumb, parentPlanet } from '$lib/state/breadcrumb';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImageGallery from './frame/ImageGallery.svelte';
 	import ObjectDescription from './sections/ObjectDescription.svelte';
@@ -45,7 +48,7 @@
 	import GroupOrbitMap from './charts/GroupOrbitMap.svelte';
 	import MoonsPerPlanetChart from './charts/MoonsPerPlanetChart.svelte';
 	import ChildGroups from './sections/ChildGroups.svelte';
-	import { categoryPlotType, scatterZoneSlugs } from '$lib/charts/orbit-zones';
+	import { categoryPlotType, classNameFromSlug, scatterZoneSlugs } from '$lib/charts/orbit-zones';
 	import FeatureProperties from './sections/FeatureProperties.svelte';
 	import MemberStrip, { STRIP_CAPACITY } from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
@@ -124,6 +127,10 @@
 	// Asteroid/comet SBDB zones (orbit_class), distinct from earth_orbit_class
 	// satellite zones; their overview drops the notable-members strip.
 	let isSmallBodyZone = $derived(groupDetail?.global?.type === 'orbit_class');
+	// A small-body zone's orbit-class name (e.g. "MBA"), for its category tiles.
+	let smallBodyZoneClass = $derived(
+		isSmallBodyZone && focusable.kind === 'group' ? classNameFromSlug(focusable.slug) : null
+	);
 	let loading = $state(true);
 	// String key so the load effect ignores parent re-derivations that return a
 	// new focusable ref with the same logical identity (replaceFocusName churn).
@@ -457,8 +464,11 @@
 				? ('neo' as const)
 				: undefined
 	);
+	let isPlanetBody = $derived(body?.data.objectType === ObjectType.PLANET);
 	let isDwarfPlanetBody = $derived(body?.data.objectType === ObjectType.DWARF_PLANET);
 	let isMoonBody = $derived(body?.data.objectType === ObjectType.MOON);
+	// A moon's host planet (resolved past the nameless barycenter) for its tile.
+	let moonParent = $derived(isMoonBody && body ? parentPlanet(ctx, body.data.parentId) : undefined);
 	let isStarBody = $derived(body?.data.objectType === ObjectType.STAR);
 	let hasFragments = $derived(!!notableFragments && notableFragments.length > 0);
 	let showFragmentsTab = $derived(hasFragments && fragmentTotal > STRIP_CAPACITY);
@@ -642,10 +652,15 @@
 			{#if fragmentOf}
 				<FragmentOf {fragmentOf} />
 			{/if}
-			{#if isDwarfPlanetBody}
+			{#if isPlanetBody}
+				<PlanetGroupLinks />
+			{:else if isDwarfPlanetBody}
 				<DwarfPlanetGroupLinks {orbitClass} />
 			{:else if isMoonBody}
-				<BodyCategoryTile slug={CAT_MOONS} />
+				<MoonGroupLinks
+					parentId={moonParent?.data.id ?? body?.data.parentId}
+					parentName={moonParent?.data.name ?? data?.global?.parent_name}
+				/>
 			{:else if isStarBody}
 				<BodyCategoryTile slug={CAT_SOLAR_SYSTEM} />
 			{:else if orbitClass}
@@ -687,6 +702,9 @@
 			{:else if isGroupMode}
 				{#if cat.crossRefs && focusable.kind === 'group'}
 					<CategoryCrossRefs slug={focusable.slug} />
+				{/if}
+				{#if smallBodyZoneClass}
+					<ZoneCategoryLinks className={smallBodyZoneClass} />
 				{/if}
 				{#if cat.solarSystem && visibleChildGroups.length}
 					<CategoryChildTiles childGroups={visibleChildGroups} />

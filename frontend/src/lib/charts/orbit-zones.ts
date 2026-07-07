@@ -632,6 +632,31 @@ export const COMET_PLOT_CLASSES = new Set(
 	)
 );
 
+/** Comet SBDB orbit classes; every other small-body class is an asteroid.
+ *  Mirror of COMET_ORBIT_CLASSES in `data/constants/categories.py`. */
+export const COMET_ORBIT_CLASSES = new Set([
+	'ETc',
+	'JFc',
+	'JFC',
+	'CTc',
+	'HTC',
+	'PAR',
+	'HYP',
+	'COM'
+]);
+
+export function isCometClass(className: string): boolean {
+	return COMET_ORBIT_CLASSES.has(className);
+}
+
+/** Small-body SBDB orbit-class names — the ones with a scatter zone, telling
+ *  them apart from earth-orbit classes that share the `orbit_class` group type. */
+export const SMALL_BODY_ORBIT_CLASSES = new Set(Object.values(ORBIT_ZONES).map((z) => z.className));
+
+export function isSmallBodyClass(className: string): boolean {
+	return SMALL_BODY_ORBIT_CLASSES.has(className);
+}
+
 /** Resolve `orbit_class_<NAME>` to its localized label; unknown → raw id. */
 export function orbitClassLabel(className: string): string {
 	const fn = (m as Record<string, unknown>)[`orbit_class_${className}`];

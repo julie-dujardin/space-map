@@ -33,7 +33,7 @@ const EARTH_ID = 'naif-399';
 
 /** A moon's real parent: the dominant planet (not its nameless barycenter),
  *  or the host body directly (e.g. the asteroid an asteroid-moon orbits). */
-function parentPlanet(
+export function parentPlanet(
 	ctx: ContextManager | undefined,
 	parentId: string
 ): PositionedBody | undefined {
