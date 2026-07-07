@@ -110,11 +110,19 @@
 
 	let stats = $derived(probeStats ?? earthSatStats);
 
+	type Tone = 'medium' | 'low';
+
 	interface Card {
 		label: string;
 		value: string;
 		tooltip?: string;
+		tone?: Tone;
 	}
+
+	const toneClasses: Record<Tone, string> = {
+		medium: 'border-yellow-500/40 bg-yellow-500/15',
+		low: 'border-red-500/40 bg-red-500/15'
+	};
 
 	// Glanceable trio for natural bodies, each block first-available: a physical
 	// magnitude, orbital speed, then rotation period (falling back to a live
@@ -180,6 +188,27 @@
 				});
 			}
 		}
+		// Position accuracy from the SBDB condition code (U parameter, 0 best to
+		// 9 worst), bucketed so the quality reads at a glance. Keeps the trio a
+		// trio: rather than a 4th card, it takes block 3's slot.
+		const cc = sbdb?.condition_code;
+		if (cc != null) {
+			if (out.length >= 3) out.pop();
+			// High keeps the default card styling; only degraded accuracy gets a tint.
+			const tone: Tone | undefined = cc <= 2 ? undefined : cc <= 5 ? 'medium' : 'low';
+			const value =
+				tone === undefined
+					? m.position_accuracy_high()
+					: tone === 'medium'
+						? m.position_accuracy_medium()
+						: m.position_accuracy_low();
+			out.push({
+				label: m.position_accuracy(),
+				value,
+				tooltip: m.tooltip_position_accuracy({ code: cc }),
+				tone
+			});
+		}
 		return out;
 	});
 
@@ -217,9 +246,9 @@
 
 {#snippet cardBody(c: Card, props: Record<string, unknown>)}
 	<div
-		class="border-border/60 bg-muted/40 pointer-events-auto flex flex-col gap-1 rounded-md border p-2.5 {c.tooltip
-			? 'cursor-help'
-			: ''}"
+		class="pointer-events-auto flex flex-col gap-1 rounded-md border p-2.5 {c.tone
+			? toneClasses[c.tone]
+			: 'border-border/60 bg-muted/40'} {c.tooltip ? 'cursor-help' : ''}"
 		{...props}
 	>
 		<div class="text-muted-foreground text-[10px] uppercase">{c.label}</div>
