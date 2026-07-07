@@ -30,6 +30,9 @@
 		/** Shape-model slug (`v1/models/<slug>/`); loads the mesh in place of the
 		 *  sphere, sized/tilted to match. Falls back to the sphere on any failure. */
 		model?: string;
+		/** Whether a `v1/textures/<id>/` surface map exists. Explicit `false`
+		 *  skips the fetch entirely; absent (pre-flag export) probes as before. */
+		texture?: boolean;
 	}
 </script>
 
@@ -403,19 +406,21 @@
 				loadModelMesh(b, color, buildToken, loader);
 				continue;
 			}
-			const url = versionedUrl(
-				`/v1/textures/${b.id}/${b.surfaceFrame ? `low_${b.surfaceFrame}` : 'low'}.webp`,
-				'textures'
-			);
-			loader.load(
-				url,
-				(tex) => {
-					setSurfaceMap(material, tex, b.color);
-					render();
-				},
-				undefined,
-				() => {} // keep the flat color on failure
-			);
+			if (b.texture !== false) {
+				const url = versionedUrl(
+					`/v1/textures/${b.id}/${b.surfaceFrame ? `low_${b.surfaceFrame}` : 'low'}.webp`,
+					'textures'
+				);
+				loader.load(
+					url,
+					(tex) => {
+						setSurfaceMap(material, tex, b.color);
+						render();
+					},
+					undefined,
+					() => {} // keep the flat color on failure
+				);
+			}
 			if (b.displacement) loadDisplacement(b, material, loader);
 			if (b.cloudSystem) loadClouds(b.id, b.cloudSystem, mesh);
 		}
@@ -440,17 +445,19 @@
 			}
 			const root = gltf.scene;
 			applyShapeModelMaterial(root, makeShapeModelMaterial(color));
-			loader.load(
-				versionedUrl(`/v1/textures/${b.id}/low.webp`, 'textures'),
-				(tex) => {
-					if (token !== buildToken) return;
-					tex.colorSpace = SRGBColorSpace;
-					setShapeModelMap(root, tex, color, b.color);
-					render();
-				},
-				undefined,
-				() => {} // most shape-model bodies have no surface map — keep the tint
-			);
+			if (b.texture !== false) {
+				loader.load(
+					versionedUrl(`/v1/textures/${b.id}/low.webp`, 'textures'),
+					(tex) => {
+						if (token !== buildToken) return;
+						tex.colorSpace = SRGBColorSpace;
+						setShapeModelMap(root, tex, color, b.color);
+						render();
+					},
+					undefined,
+					() => {} // keep the tint when the surface map fails to load
+				);
+			}
 			root.quaternion.copy(baseQuats.get(b.id) ?? new Quaternion());
 			scene.add(root);
 			modelRoots.set(b.id, root);

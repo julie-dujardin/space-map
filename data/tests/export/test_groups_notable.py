@@ -349,6 +349,22 @@ class TestNotableEntries:
         assert entry["albedo"] == 0.42
         assert entry["spec"] == "V"
 
+    def test_texture_flag_explicit_true_false(self, monkeypatch) -> None:
+        # Explicit false (not omission) so the frontend can tell "no texture"
+        # from a pre-flag bundle; omitted entirely when no set is supplied.
+        monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
+        cache = _StubEntityCache({})
+        members = [_obj("spkid-1", None, "Ceres"), _obj("spkid-2", None, "Pallas")]
+        entries = notable.notable_entries(
+            members,
+            cache,  # type: ignore[arg-type]
+            textured_ids={"spkid-1"},
+        )
+        assert entries[0]["texture"] is True
+        assert entries[1]["texture"] is False
+        entries = notable.notable_entries(members, cache)  # type: ignore[arg-type]
+        assert "texture" not in entries[0]
+
     def test_localized_names_only_when_differing(self, monkeypatch) -> None:
         monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
         cache = _StubEntityCache(

@@ -26,6 +26,7 @@ from space_map_data.export.notable import (
     notable_entries,
     notable_names,
     render_geometry,
+    textured_object_ids,
 )
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.small_body_color import resolve_moon_color
@@ -199,6 +200,7 @@ def attach_notable_moons(
     here).
     """
     hosts = notable_moons_by_host(session, radii, orientation)
+    textured_ids = textured_object_ids(session)
     attached = 0
     for host_id, host_moons in hosts.items():
         global_data = chunk.global_data.get(host_id)
@@ -209,7 +211,11 @@ def attach_notable_moons(
             )
             continue
         entries = notable_entries(
-            host_moons.moons, wikidata_entities, displacement_metadata, model_slugs
+            host_moons.moons,
+            wikidata_entities,
+            displacement_metadata,
+            model_slugs,
+            textured_ids,
         )
         global_data["notable_moons"] = entries
         global_data["moon_count"] = host_moons.total

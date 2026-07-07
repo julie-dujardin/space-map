@@ -55,6 +55,7 @@ interface NotableEntry {
   color?: string;                   // #rrggbb physically-derived surface colour (TrueColorTools). Small bodies: per-body TCT/SBDB colour, else taxonomy chroma × albedo, else albedo grey. Moons: per-body TCT colour (NAIF-keyed), else neutral grey × JPL Horizons geometric albedo. Absent → frontend generic tint
   first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it)
   model?: string;                   // shape-model slug (v1/models/<slug>/); lineup renders the mesh instead of a sphere. shape_model bundles only — spacecraft slugs excluded
+  texture?: boolean;                // v1/textures/<id>/ surface map exists; explicit false ⇒ lineup skips the fetch. Absent only on pre-flag bundles (and mission/fragment strips), which the lineup still probes
   thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
 }
 ```

@@ -96,6 +96,9 @@ export interface NotableMemberEntry {
 	/** Shape-model slug (`v1/models/<slug>/`); the lineup loads the mesh instead
 	 *  of a sphere. Shape-model bundles only — never a spacecraft model. */
 	model?: string;
+	/** A `v1/textures/<id>/` surface map exists. Explicit `false` lets the
+	 *  lineup skip the fetch; absent (pre-flag bundle) means probe as before. */
+	texture?: boolean;
 	thumbnail?: PickedThumbnail;
 }
 

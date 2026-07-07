@@ -46,7 +46,7 @@ from space_map_data.export.groups.solar_system_map import (
     write_solar_system_map,
 )
 from space_map_data.constants.comet_fragments import family_group_slug
-from space_map_data.export.notable import NotableObject
+from space_map_data.export.notable import NotableObject, textured_object_ids
 from space_map_data.export.objects.fragments import build_comet_families
 from space_map_data.export.objects.missions import build_probe_missions
 from space_map_data.export.quantities import UnitConverter
@@ -320,6 +320,7 @@ def run_groups_tier(
         )
         split_comets = _split_comet_groups(session, wikidata_entities)
         launch_vehicle_stats = build_launch_vehicle_stats(session)
+        textured_ids = textured_object_ids(session)
         solar_system_map = build_solar_system_map(
             session,
             radii,
@@ -395,6 +396,7 @@ def run_groups_tier(
         extra_constellation_counts=category_data.constellation_counts,
         displacement_metadata=displacement_metadata,
         model_slugs=model_slugs,
+        textured_ids=textured_ids,
     )
 
 

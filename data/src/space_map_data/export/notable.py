@@ -9,6 +9,8 @@ a per-language label-override map keyed by the same routing id.
 from dataclasses import dataclass
 from typing import NamedTuple
 
+from sqlalchemy.orm import Session
+
 from space_map_data.export.images import (
     collect_group_images,
     collect_object_images,
@@ -18,6 +20,7 @@ from space_map_data.export.systems import displacement_block
 from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.models.object.main import Object
 
 
 @dataclass
@@ -131,6 +134,14 @@ def _member_key(member: NotableObject) -> str:
     return member.group_slug or member.object_id
 
 
+def textured_object_ids(session: Session) -> set[str]:
+    """Ids of objects with an exported surface texture, for the lineup's
+    ``texture`` flag — spares the frontend a speculative (often-404) fetch."""
+    return {
+        row[0] for row in session.query(Object.id).filter(Object.map_texture_available)
+    }
+
+
 # An object can have bundles from several provenances (e.g. Eros: mission +
 # DAMIT); in-situ beats radar beats convex lightcurve.
 _PROVENANCE_RANK = {"missions": 0, "radar": 1, "lightcurve": 2}
@@ -162,6 +173,7 @@ def notable_entries(
     wikidata_entities: WikidataEntityCache,
     displacement_metadata: dict[str, dict] | None = None,
     model_slugs: dict[str, str] | None = None,
+    textured_ids: set[str] | None = None,
 ) -> list[dict]:
     """Denormalized records for a global bundle.
 
@@ -170,7 +182,10 @@ def notable_entries(
     search-card picker over the object's export images. ``displacement_metadata``
     (when supplied) lets a member carry its DEM block so the lineup renders the
     same relief as the main map. ``model_slugs`` ({object_id: slug}, shape-model
-    only) lets a member load its shape mesh instead of a sphere.
+    only) lets a member load its shape mesh instead of a sphere. ``textured_ids``
+    (when supplied) stamps ``texture`` true/false on every object entry —
+    explicit false (not omission) so the frontend can tell "no texture" from a
+    pre-flag bundle it should still probe.
     """
     out: list[dict] = []
     for member in members:
@@ -209,6 +224,8 @@ def notable_entries(
             entry["displacement"] = displacement_block(disp)
         if model_slugs and (slug := model_slugs.get(member.object_id)):
             entry["model"] = slug
+        if textured_ids is not None:
+            entry["texture"] = member.object_id in textured_ids
         thumbnail = pick_thumbnail(collect_object_images(member.object_id))
         if thumbnail:
             entry["thumbnail"] = thumbnail

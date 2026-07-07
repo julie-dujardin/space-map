@@ -635,6 +635,7 @@ def write_group_bundles(
     extra_constellation_counts: dict[str, dict[str, int]] | None = None,
     displacement_metadata: dict[str, dict] | None = None,
     model_slugs: dict[str, str] | None = None,
+    textured_ids: set[str] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
@@ -678,7 +679,11 @@ def write_group_bundles(
         members = (extra_notable_members or {}).get(group.slug)
         member_entries = (
             notable_entries(
-                members, wikidata_entities, displacement_metadata, model_slugs
+                members,
+                wikidata_entities,
+                displacement_metadata,
+                model_slugs,
+                textured_ids,
             )
             if members
             else None

@@ -38,6 +38,8 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 	}
 	if (m.displacement) geom.displacement = m.displacement;
 	if (m.model) geom.model = m.model;
+	// Explicit false only — absent means a pre-flag export, which still probes.
+	geom.texture = m.texture;
 	return { ...geom, ...RENDER_HINTS[m.id], color: BODY_COLORS[m.id] ? undefined : m.color };
 }
 
