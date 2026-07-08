@@ -303,6 +303,7 @@ def _make_entry(filename: str, kind: str) -> dict | None:
         "source_url": f"https://commons.wikimedia.org/wiki/File:{quote(filename)}",
         "kind": kind,
         "variants": bundle["variants"],
+        "attr": _attribution_tier((bundle.get("license") or {}).get("name")),
     }
     if bundle.get("width") and bundle.get("height"):
         entry["width"] = bundle["width"]
@@ -334,6 +335,7 @@ def _ensure_bundle(filename: str) -> dict:
                     "variants": existing.get("variants") or {},
                     "width": existing.get("width"),
                     "height": existing.get("height"),
+                    "license": existing.get("license"),
                 }
             logger.info(
                 "Regenerating stale image bundle %s (schema %s → %s)",
@@ -345,12 +347,14 @@ def _ensure_bundle(filename: str) -> dict:
 
         out_dir.mkdir(parents=True, exist_ok=True)
         variants, dims = _generate_variants(filename, out_dir)
+        license_block = None
         if variants:
-            _write_trimmed_metadata(filename, out_dir, variants, dims)
+            license_block = _write_trimmed_metadata(filename, out_dir, variants, dims)
         return {
             "variants": variants,
             "width": dims[0] if dims else None,
             "height": dims[1] if dims else None,
+            "license": license_block,
         }
 
 
@@ -515,8 +519,11 @@ def _write_trimmed_metadata(
     out_dir: Path,
     variants: dict[str, str],
     dims: tuple[int, int] | None,
-) -> None:
+) -> dict | None:
     """Write the frontend-facing per-image metadata (gzipped JSON).
+
+    Returns the ``{name, url}`` license block (or None) so the caller can
+    derive the object-entry attribution tier without re-reading the bundle.
 
     Trimmed to the subset the frontend actually consumes:
 
@@ -571,6 +578,7 @@ def _write_trimmed_metadata(
     tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
     tmp.write_bytes(gzip.compress(orjson.dumps(payload)))
     tmp.rename(target)
+    return license_block
 
 
 def _aggregate_tree_metadata(
@@ -746,6 +754,49 @@ def _merge_locale_field(
     merged = dict(fallback)
     merged.update(base)
     return merged
+
+
+# Attribution tiers for the social-card image picker, keyed off the Commons
+# LicenseShortName. NC/ND/fair-use never reach here (dropped at download), so
+# the split is only between what needs no credit, what a text credit satisfies,
+# and copyleft/unknown terms we can't honour inside a card.
+# ``free`` keywords must stay precise: a false positive would serve a
+# credit-requiring image with no credit.
+_FREE_LICENSE_KEYWORDS = (
+    "cc0",
+    "public domain",
+    "pd-",
+    "pd ",
+    "no restrictions",
+    "copyrighted free use",
+)
+_CREDIT_LICENSE_KEYWORDS = (
+    "cc by",
+    "cc-by",
+    "attribution",
+    "godl",
+    "kogl",
+    "ogl",
+    "fal",
+    "free art",
+)
+
+
+def _attribution_tier(license_name: str | None) -> str:
+    """Classify a LicenseShortName by what crediting it demands.
+
+    ``free`` needs no credit, ``credit`` is usable with a front-loaded text
+    attribution, ``other`` (copyleft software licenses, unknowns) can't be
+    honoured within a social card.
+    """
+    if not license_name:
+        return "other"
+    lower = license_name.lower()
+    if any(kw in lower for kw in _FREE_LICENSE_KEYWORDS):
+        return "free"
+    if any(kw in lower for kw in _CREDIT_LICENSE_KEYWORDS):
+        return "credit"
+    return "other"
 
 
 def _license_block(em: dict) -> dict | None:

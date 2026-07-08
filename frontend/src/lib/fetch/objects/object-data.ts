@@ -39,6 +39,11 @@ export interface ObjectImage {
 	 *  appear; consumers should treat unknown values as generic photos. */
 	kind: 'photo' | 'logo' | 'locator' | 'radar';
 	variants: ImageVariants;
+	/** Attribution tier from the Commons license, for social-card use where a
+	 *  required credit has no surface: `free` needs none, `credit` needs a text
+	 *  attribution, `other` can't be honoured (copyleft/unknown). Absent on
+	 *  pre-tiering exports — treat missing as non-`free`. */
+	attr?: 'free' | 'credit' | 'other';
 	/** Source pixel dimensions. Omitted for passthrough sources (SVG/WebM)
 	 *  where the exporter never decoded a raster — clients should fall back
 	 *  to measuring the loaded image. Both fields are present together. */

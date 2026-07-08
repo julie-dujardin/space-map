@@ -244,6 +244,7 @@ class TestCollectObjectImages:
             "source_url",
             "kind",
             "variants",
+            "attr",
             "width",
             "height",
         }
@@ -262,6 +263,60 @@ class TestCollectObjectImages:
         )
         assert result is None
         assert caplog.records == []
+
+
+class TestAttributionTier:
+    """`attr` tier on each entry, from the Commons LicenseShortName.
+
+    Drives the social-card picker: `free` needs no credit, `credit` needs a
+    text attribution, `other` can't be honoured in a card.
+    """
+
+    @pytest.mark.parametrize(
+        ("license_name", "expected"),
+        [
+            ("CC0", "free"),
+            ("Public domain", "free"),
+            ("PD-USGov-NASA", "free"),
+            ("No restrictions", "free"),
+            ("Copyrighted free use", "free"),
+            ("CC BY 4.0", "credit"),
+            ("CC BY-SA 3.0", "credit"),
+            ("CC-BY-2.5", "credit"),
+            ("Attribution", "credit"),
+            ("GODL-India", "credit"),
+            ("KOGL Type 1", "credit"),
+            ("OGL 3", "credit"),
+            ("FAL", "credit"),
+            ("GPL", "other"),
+            ("GPLv2", "other"),
+            (None, "other"),
+        ],
+    )
+    def test_classify(self, license_name, expected):
+        assert images_mod._attribution_tier(license_name) == expected
+
+    def test_entry_tier_from_license(self, tmp_path, layout):
+        _stage_download(
+            tmp_path,
+            "pd.jpg",
+            extmetadata={"LicenseShortName": {"value": "Public domain"}},
+        )
+        result = _collect("pd.jpg")
+        assert result is not None and result[0]["attr"] == "free"
+
+    def test_entry_tier_reused_from_existing_bundle(self, tmp_path, layout):
+        # Second pass reads the license back from metadata.json.gz (the skip
+        # marker) rather than the source — the tier must survive that path.
+        _stage_download(
+            tmp_path,
+            "pd.jpg",
+            extmetadata={"LicenseShortName": {"value": "CC0"}},
+        )
+        _collect("pd.jpg")
+        images_mod.clear_export_cache()
+        result = _collect("pd.jpg")
+        assert result is not None and result[0]["attr"] == "free"
 
 
 class TestVariantRules:

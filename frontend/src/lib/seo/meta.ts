@@ -22,8 +22,10 @@ import type {
 } from '$lib/fetch/objects/object-data';
 import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
 
-/** Localized shapes share this description source (object + group bundles). */
-type Describable = { wikipedia?: { extract?: string }; description?: string } | null;
+/** Localized shapes share this description source (object + group bundles).
+ *  `description` is the CC0 Wikidata short description — the Wikipedia extract
+ *  is deliberately absent here (CC BY-SA, no credit surface in a card). */
+type Describable = { description?: string } | null;
 
 export interface SeoMeta {
 	title: string;
@@ -65,7 +67,12 @@ function ogImage(
 	imagesToken: string | undefined,
 	origin: string
 ): string | undefined {
-	const img = images?.find((i) => i.kind === 'photo') ?? images?.find((i) => i.kind === 'logo');
+	// A social card has no surface to show a required credit, so serve only
+	// attribution-free images. Keeps ingest rank order; prefers photo over logo.
+	const free = (i: ObjectImage) => i.attr === 'free';
+	const img =
+		images?.find((i) => i.kind === 'photo' && free(i)) ??
+		images?.find((i) => i.kind === 'logo' && free(i));
 	if (!img) return undefined;
 	for (const label of OG_LABELS) {
 		const ext = img.variants[label];
@@ -88,7 +95,9 @@ function cleanDescription(raw: string): string {
 }
 
 function describe(name: string, localized: Describable): string {
-	const raw = localized?.wikipedia?.extract || localized?.description;
+	// Only the CC0 Wikidata short description — the Wikipedia extract is CC BY-SA
+	// and a social card has no surface for the required credit.
+	const raw = localized?.description;
 	if (raw) return cleanDescription(raw);
 	return `Explore ${name} in Space Map — an interactive 3D map of the solar system.`;
 }

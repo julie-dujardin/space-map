@@ -29,6 +29,18 @@ Which labels appear — and what extension each carries — depends on the sourc
 
 Buckets strictly above the resting bucket are not emitted (no upscaling). The `variants` field on each `ObjectImage` records `{label: ext}` for the emitted set.
 
+## Attribution tier (`ObjectImage.attr`)
+
+Each entry carries an `attr` tier derived from the Commons `LicenseShortName`, so consumers can pick images for surfaces that can't display a credit (Open Graph / social cards) without fetching per-image metadata:
+
+| `attr` | Meaning | Example licenses |
+|--------|---------|------------------|
+| `free`   | No credit required | CC0, Public domain / PD-*, "No restrictions", "Copyrighted free use" |
+| `credit` | Usable with a text credit | CC BY, CC BY-SA, "Attribution", GODL, KOGL, OGL, FAL |
+| `other`  | Can't be honoured in a card | copyleft software licenses (GPL), unknown/missing |
+
+NC/ND/fair-use never appear — they're dropped at download. The credit string (artist + license) lives only in the per-image `metadata.json.gz`, so a `credit` consumer resolves it for the single image it actually uses.
+
 ## Per-image metadata (`v1/images/{filename}/metadata.json.gz`)
 
 ```typescript

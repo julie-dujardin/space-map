@@ -236,6 +236,7 @@ interface ObjectImage {
   source_url: string;     // Wikimedia Commons file page URL (for license/attribution)
   kind: "photo" | "logo" | "locator" | "radar";  // "locator" feature-only; "radar" = small-body shape-model render
   variants: { [label in "s" | "m" | "xl"]?: string };  // label → extension
+  attr: "free" | "credit" | "other";  // attribution tier for social-card use (see images.md)
   width?: number;         // source pixel dimensions (omitted for SVG/WebM passthrough)
   height?: number;
 }
