@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import spiceypy
 
 from .adaptive import SEED_DT_S, adaptive_sample
 from .keyframes import extract_keyframes
@@ -39,6 +40,19 @@ DEFAULT_EPS_DEG = 0.1
 # sampler. Below that, raw motion samples fine and an inverse spin only adds
 # curvature; above it, a fast spinner must be baselined per phase.
 ALIAS_ANGLE_RAD = math.radians(90.0)
+# Cap the span handed to one `adaptive_sample` call. Its per-sample Python
+# lists are ~200 B/sample, so an unbounded window (some CKs cover decades in
+# one interval) at worst-case refinement density would eat GBs. Tiling only
+# adds a couple of keyframes per boundary.
+TILE_S = 4 * 86400.0
+# Some CKs claim implausibly wide interval coverage (HUYGENS' fictional-SCLK
+# CK reports one 45-year window for ~4 h of real descent data), and every
+# in-gap sample costs a thrown SpiceyError ~30× a valid lookup — seed-scanning
+# the claimed span would take hours. Windows longer than the threshold are
+# probed at step resolution and shrunk to the runs that actually resolve,
+# padded one step each side so data between probes survives.
+VALIDATE_SPAN_S = 10 * 86400.0
+VALIDATE_STEP_S = 3600.0
 
 _J2000_JD = 2451545.0
 _S_PER_DAY = 86400.0
@@ -74,10 +88,16 @@ def extract_attitude(
     is the FK-registered name resolvable by `pxform("J2000", frame_name, et)`.
     Coverage is the union of `ck_paths`, partitioned into spin spans, then
     sampled adaptively and keyframed span-by-span to bound memory over decades.
+
+    No coverage for `bus_instr_id` returns an empty result (n_keyframes=0) —
+    it's a property of the kernel set (e.g. an impactor with no bus CK), so
+    the caller caches it like any other empty extraction.
     """
     windows = ck_windows(ck_paths, bus_instr_id)
+    windows = _validate_windows(frame_name, windows)
     if not windows:
-        raise ValueError(f"no CK coverage for instrument {bus_instr_id}")
+        logger.info("attitude: no CK coverage for instrument %d", bus_instr_id)
+        return ExtractionResult(0, write_chunks(out_dir, []), [], 0.0, 0.0)
     global_start = windows[0][0]
     global_end = max(end for _, end in windows)
 
@@ -120,6 +140,50 @@ def extract_attitude(
     )
 
 
+def _resolves(frame_name: str, et: float) -> bool:
+    try:
+        spiceypy.pxform("J2000", frame_name, et)
+        return True
+    except spiceypy.exceptions.SpiceyError:
+        return False
+
+
+def _validate_windows(
+    frame_name: str, windows: list[tuple[float, float]]
+) -> list[tuple[float, float]]:
+    """Shrink windows longer than `VALIDATE_SPAN_S` to their resolvable runs."""
+    out: list[tuple[float, float]] = []
+    for start, end in windows:
+        if end - start <= VALIDATE_SPAN_S:
+            out.append((start, end))
+            continue
+        ets = np.linspace(start, end, int((end - start) / VALIDATE_STEP_S) + 2)
+        kept = 0.0
+        run_start: float | None = None
+        prev = start
+        for et in ets:
+            if _resolves(frame_name, float(et)):
+                if run_start is None:
+                    run_start = max(start, float(et) - VALIDATE_STEP_S)
+                prev = float(et)
+            elif run_start is not None:
+                out.append((run_start, min(end, prev + VALIDATE_STEP_S)))
+                kept += out[-1][1] - out[-1][0]
+                run_start = None
+        if run_start is not None:
+            out.append((run_start, end))
+            kept += end - run_start
+        if kept < (end - start) - VALIDATE_STEP_S:
+            logger.warning(
+                "attitude: %s — CK window claims %.1f d but only %.1f d resolve; "
+                "shrunk to the valid runs",
+                frame_name,
+                (end - start) / 86400.0,
+                kept / 86400.0,
+            )
+    return out
+
+
 def _keyframe_segment(
     frame_name: str,
     seg: SpinSegment,
@@ -129,36 +193,41 @@ def _keyframe_segment(
     """Adaptive-sample + keyframe one span → `(ets, quats, n_samples, n_gaps)`.
 
     The span's baseline residual is the stream we keyframe (raw when None). Each
-    CK window is clipped to the span; `last_et` keeps the span's keyframes
-    time-ascending across overlapping windows. The span's endpoints are sampled,
-    so the boundary attitude is emitted in both adjacent spans' frames — the
-    decoder never SLERPs across the baseline switch.
+    CK window is clipped to the span, then tiled to `TILE_S` so one call's
+    sample stream stays bounded; `last_et` keeps the span's keyframes
+    time-ascending and drops the duplicate sample at each tile boundary. The
+    span's endpoints are sampled, so the boundary attitude is emitted in both
+    adjacent spans' frames — the decoder never SLERPs across the baseline
+    switch. Kept keyframes are copied out per tile (fancy indexing) so no
+    tile's full sample array outlives its iteration.
     """
     transform = seg.baseline.residual if seg.baseline else None
-    kf_ets: list[float] = []
-    kf_quats: list[np.ndarray] = []
+    ets_parts: list[np.ndarray] = []
+    quat_parts: list[np.ndarray] = []
     last_et = -math.inf
     n_samples = 0
     n_gaps = 0
     for win_start, win_end in windows:
         start = max(win_start, seg.start_et, last_et)
         end = min(win_end, seg.end_et)
-        if end - start <= 1.0:
-            continue
-        ets, stream, gaps = adaptive_sample(
-            frame_name, start, end, eps_rad, transform=transform
-        )
-        n_samples += ets.size
-        n_gaps += gaps
-        for i in extract_keyframes(stream, ets, eps_rad):
-            t = float(ets[i])
-            if t <= last_et:
-                continue
-            kf_ets.append(t)
-            kf_quats.append(stream[i])
-            last_et = t
-    quats = np.array(kf_quats) if kf_quats else np.empty((0, 4))
-    return np.array(kf_ets), quats, n_samples, n_gaps
+        while end - start > 1.0:
+            tile_end = min(end, start + TILE_S)
+            ets, stream, gaps = adaptive_sample(
+                frame_name, start, tile_end, eps_rad, transform=transform
+            )
+            n_samples += ets.size
+            n_gaps += gaps
+            keep = [
+                i for i in extract_keyframes(stream, ets, eps_rad) if ets[i] > last_et
+            ]
+            if keep:
+                ets_parts.append(ets[keep])
+                quat_parts.append(stream[keep])
+                last_et = float(ets[keep[-1]])
+            start = tile_end
+    if not quat_parts:
+        return np.empty(0), np.empty((0, 4)), n_samples, n_gaps
+    return np.concatenate(ets_parts), np.concatenate(quat_parts), n_samples, n_gaps
 
 
 def _baseline_json(seg: SpinSegment) -> dict:

@@ -54,17 +54,21 @@ def adaptive_sample(
     `n_gaps` is the count of samples that fell in a CK gap (last good repeated)
     — the caller aggregates it into one log line per probe instead of per file.
     """
-    last_raw: list[np.ndarray] = [_IDENTITY]
+    last_stream: list[np.ndarray] = [_IDENTITY]
     gaps = [0]
 
     def truth(et: float) -> np.ndarray:
         try:
             q = spiceypy.m2q(spiceypy.pxform("J2000", frame, float(et)))
-            last_raw[0] = q
         except spiceypy.exceptions.SpiceyError:
             gaps[0] += 1
-            q = last_raw[0]  # repeat last good across the gap
-        return transform(et, q) if transform else q
+            # Repeat the last *stream* sample: transforming a repeated raw
+            # would spin at the full baseline rate through the gap, driving
+            # refinement to the floor and emitting garbage keyframes.
+            return last_stream[0]
+        s = transform(et, q) if transform else q
+        last_stream[0] = s
+        return s
 
     n_seed = max(2, int(round((t1 - t0) / seed_dt)) + 1)
     grid = np.linspace(t0, t1, n_seed)

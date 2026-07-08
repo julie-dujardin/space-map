@@ -226,16 +226,18 @@ class TestAttitudeCache:
         monkeypatch.setattr(orchestrator, "extract_attitude", fake_extract)
         global_data: dict[str, dict] = {"probe-7": {}}
         summary: dict[str, dict] = {}
-        orchestrator._run_probe(
+        job = orchestrator._plan_probe(
             out_dir,
             {"probe_id": 7, "kernel_sources": [{"mission": "M", "naif_id": -82}]},
             "M",
-            "FRAME",
-            ["/ck/a.bc"],
+            {"frame_name": "FRAME"},
             stamps,
             global_data,
             summary,
         )
+        if job is not None:
+            res = orchestrator._extract_probe(out_dir, "FRAME", ["/ck/a.bc"], job)
+            orchestrator._apply_result("M", res, global_data, summary)
         return global_data, summary
 
     def test_second_run_skips_extraction(self, monkeypatch, tmp_path) -> None:

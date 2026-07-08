@@ -18,16 +18,23 @@ _COVER_CELL_SIZE = 1_000_000
 
 
 def ck_windows(ck_paths: list[str], instr_id: int) -> list[tuple[float, float]]:
-    """Gap-free (start_et, end_et) coverage spans for `instr_id`, TDB, sorted.
+    """Gap-free (start_et, end_et) coverage spans for `instr_id`, TDB, sorted
+    and merged where they overlap.
 
     One entry per real interval, not the file's outer envelope: an envelope's
     holes cost a thrown `SpiceyError` per in-gap sample downstream — millions
     for a sparse CK. Files with no coverage for `instr_id` are skipped (a
-    mission mixes bus and instrument-articulation CKs); spans may overlap.
+    mission mixes bus and instrument-articulation CKs). Merging is
+    overlap-only, so a real gap between intervals is never sampled through.
+
+    The coverage cell is allocated once and reset per file: spiceypy cells
+    are ~8 MB and not promptly freed, so a fresh cell per CK accumulated tens
+    of GB on kernel-heavy missions (LUCY ships 2 500 daily CKs).
     """
     windows: list[tuple[float, float]] = []
+    cover = spiceypy.support_types.SPICEDOUBLE_CELL(_COVER_CELL_SIZE)
     for path in ck_paths:
-        cover = spiceypy.support_types.SPICEDOUBLE_CELL(_COVER_CELL_SIZE)
+        spiceypy.scard(0, cover)
         try:
             spiceypy.ckcov(path, instr_id, False, "INTERVAL", 0.0, "TDB", cover)
         except spiceypy.exceptions.SpiceyError:
@@ -37,7 +44,14 @@ def ck_windows(ck_paths: list[str], instr_id: int) -> list[tuple[float, float]]:
             start, end = spiceypy.wnfetd(cover, i)
             windows.append((float(start), float(end)))
     windows.sort()
-    return windows
+    merged: list[tuple[float, float]] = []
+    for start, end in windows:
+        if merged and start <= merged[-1][1]:
+            if end > merged[-1][1]:
+                merged[-1] = (merged[-1][0], end)
+            continue
+        merged.append((start, end))
+    return merged
 
 
 def sample_truth(frame: str, ets: np.ndarray) -> np.ndarray:

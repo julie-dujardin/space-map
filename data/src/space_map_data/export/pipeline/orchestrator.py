@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import orjson
+from space_map_data.export.position.probes.attitude.orchestrator import write_attitude
 from sqlalchemy import case, or_, true as sa_true
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
@@ -1099,7 +1100,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # Attitude extraction runs after probe positions are written but before
         # the global object bundles are sealed — it mutates `global_data` in
         # place to inject the per-probe attitude manifest under `attitude`.
-        # write_attitude(out_dir, agg.all_objects.global_data)
+        write_attitude(out_dir, agg.all_objects.global_data)
         # Hand-edited per-spacecraft pointing config; injects `pointing` into
         # matching object entries for the frontend's focused-model attitude.
         apply_orientation_config(agg.all_objects.global_data)
