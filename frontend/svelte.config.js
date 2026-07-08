@@ -2,9 +2,9 @@ import adapter from '@sveltejs/adapter-cloudflare';
 
 const dev = process.env.NODE_ENV !== 'production';
 
-// connect-src: prod data/images/search are all HTTPS, so `https:` covers them
-// without baking hostnames in. Dev adds local Meili + Vite's HMR websocket.
-const connectSrc = ['self', 'https:'];
+// `https:` covers all prod endpoints without baking hostnames in; blob: is
+// GLTFLoader fetching embedded textures. Dev adds Meili + Vite HMR.
+const connectSrc = ['self', 'https:', 'blob:'];
 if (dev) connectSrc.push('http://127.0.0.1:7700', 'http://localhost:7700', 'ws:', 'wss:');
 
 /** @type {import('@sveltejs/kit').Config} */
