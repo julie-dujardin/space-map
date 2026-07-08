@@ -62,43 +62,121 @@ function versioned(url: string, token: string | undefined): string {
 	return token ? `${url}?v=${token}` : url;
 }
 
-function ogImage(
+interface OgPick {
+	url: string;
+	file: string;
+	attr: 'free' | 'credit';
+}
+
+// Longest artist string inlined into a card credit before we truncate it.
+const CREDIT_ARTIST_MAX = 60;
+
+// Prefer attribution-free images; fall back to a credit-tier image, which the
+// caller must attribute in the description. `other` (uncreditable) is skipped.
+// Keeps ingest rank order; prefers photo over logo.
+function pickOgImage(
 	images: ObjectImage[] | undefined,
 	imagesToken: string | undefined,
 	origin: string
-): string | undefined {
-	// A social card has no surface to show a required credit, so serve only
-	// attribution-free images. Keeps ingest rank order; prefers photo over logo.
-	const free = (i: ObjectImage) => i.attr === 'free';
-	const img =
-		images?.find((i) => i.kind === 'photo' && free(i)) ??
-		images?.find((i) => i.kind === 'logo' && free(i));
-	if (!img) return undefined;
+): OgPick | undefined {
+	const pick = (tier: 'free' | 'credit') =>
+		images?.find((i) => i.kind === 'photo' && i.attr === tier) ??
+		images?.find((i) => i.kind === 'logo' && i.attr === tier);
+	const img = pick('free') ?? pick('credit');
+	if (img?.attr !== 'free' && img?.attr !== 'credit') return undefined;
 	for (const label of OG_LABELS) {
 		const ext = img.variants[label];
 		if (!ext) continue;
 		const path = `/v1/images/${encodeURIComponent(img.file)}/${label}.${ext}`;
-		return absolutize(versioned(`${IMAGES_BASE}${path}`, imagesToken), origin);
+		return {
+			url: absolutize(versioned(`${IMAGES_BASE}${path}`, imagesToken), origin),
+			file: img.file,
+			attr: img.attr
+		};
 	}
 	return undefined;
 }
 
-function cleanDescription(raw: string): string {
-	const text = raw
+function pickLocale(v: string | Record<string, string> | undefined): string | undefined {
+	if (!v || typeof v === 'string') return v || undefined;
+	return v[SSR_LANG] ?? v.en ?? Object.values(v)[0];
+}
+
+/** Front-loadable credit for a `credit`-tier card image, or null when the
+ *  author is missing — a license name alone can't attribute it. */
+function buildCredit(meta: {
+	license?: { name?: string };
+	artist?: string | Record<string, string>;
+}): string | null {
+	const license = meta.license?.name;
+	const artistRaw = pickLocale(meta.artist);
+	if (!license || !artistRaw) return null;
+	const artist = truncate(stripHtml(artistRaw), CREDIT_ARTIST_MAX);
+	return artist ? `Image: ${artist} (${license})` : null;
+}
+
+/** Fetch the chosen image's metadata and build its credit line. */
+async function fetchImageCredit(
+	file: string,
+	origin: string,
+	imagesToken: string | undefined
+): Promise<string | null> {
+	const url = absolutize(
+		versioned(`${IMAGES_BASE}/v1/images/${encodeURIComponent(file)}/metadata.json.gz`, imagesToken),
+		origin
+	);
+	const meta = await fetchJsonGz(url);
+	return meta
+		? buildCredit(meta as { license?: { name?: string }; artist?: string | Record<string, string> })
+		: null;
+}
+
+/** Resolve the card image + description together: a `credit`-tier image is only
+ *  used when we can front-load its attribution; otherwise it's dropped so the
+ *  card degrades to no image rather than an uncredited one. */
+async function resolveOgCard(
+	images: ObjectImage[] | undefined,
+	baseDescription: string,
+	origin: string,
+	imagesToken: string | undefined
+): Promise<{ image?: string; description: string }> {
+	const pick = pickOgImage(images, imagesToken, origin);
+	if (!pick) return { description: baseDescription };
+	if (pick.attr === 'free') return { image: pick.url, description: baseDescription };
+	const credit = await fetchImageCredit(pick.file, origin, imagesToken);
+	if (!credit) return { description: baseDescription };
+	return { image: pick.url, description: `${credit}. ${baseDescription}` };
+}
+
+function stripHtml(raw: string): string {
+	return raw
 		.replace(/<[^>]*>/g, '')
 		.replace(/\s+/g, ' ')
 		.trim();
-	if (text.length <= DESCRIPTION_MAX) return text;
-	const cut = text.slice(0, DESCRIPTION_MAX);
+}
+
+function truncate(text: string, max: number): string {
+	if (text.length <= max) return text;
+	const cut = text.slice(0, max);
 	const lastSpace = cut.lastIndexOf(' ');
-	return `${cut.slice(0, lastSpace > 0 ? lastSpace : DESCRIPTION_MAX).trimEnd()}…`;
+	return `${cut.slice(0, lastSpace > 0 ? lastSpace : max).trimEnd()}…`;
+}
+
+function cleanDescription(raw: string): string {
+	return truncate(stripHtml(raw), DESCRIPTION_MAX);
+}
+
+// Wikidata short descriptions are sentence-case ("moon of Saturn"); capitalize
+// at display like the sidebar (ObjectHeader) rather than mutate the source.
+function ucfirst(s: string): string {
+	return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
 function describe(name: string, localized: Describable): string {
 	// Only the CC0 Wikidata short description — the Wikipedia extract is CC BY-SA
 	// and a social card has no surface for the required credit.
 	const raw = localized?.description;
-	if (raw) return cleanDescription(raw);
+	if (raw) return ucfirst(cleanDescription(raw));
 	return `Explore ${name} in Space Map — an interactive 3D map of the solar system.`;
 }
 
@@ -155,11 +233,17 @@ export async function loadObjectSeo(
 	const localized = (lBundle?.[fileId] as LocalizedObjectData | undefined) ?? null;
 
 	const name = localized?.name || global.name || '';
+	const card = await resolveOgCard(
+		global.images,
+		describe(name, localized),
+		origin,
+		meta.versions?.images
+	);
 	return {
 		title: pageTitle(name),
-		description: describe(name, localized),
+		description: card.description,
 		canonical: `${origin}${path}`,
-		image: ogImage(global.images, meta.versions?.images, origin),
+		image: card.image,
 		ogType: 'article'
 	};
 }
@@ -216,11 +300,17 @@ export async function loadGroupSeo(
 	if (!global && !localized) return null;
 
 	const name = localized?.name || prettifySlug(slug);
+	const card = await resolveOgCard(
+		global?.images,
+		describe(name, localized),
+		origin,
+		meta.versions?.images
+	);
 	return {
 		title: pageTitle(name),
-		description: describe(name, localized),
+		description: card.description,
 		canonical: `${origin}${path}`,
-		image: ogImage(global?.images, meta.versions?.images, origin),
+		image: card.image,
 		ogType: 'website'
 	};
 }
