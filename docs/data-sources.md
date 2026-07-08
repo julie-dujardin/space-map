@@ -4,18 +4,18 @@
 
 | Entity type | Is ID for type | Primary key | Example | Wikidata property | Provided by |
 |---|---|---|---|---|---|
-| Artificial satellite | ✅ | Norad CAT ID | 20580 | P377 | Celestrak |
+| Artificial satellite | ✅ | Norad CAT ID | 20580 | P377 | Celestrak, Space-Track |
 |  | ❌ | Cospar ID | 1990-037B | P247 | Celestrak, horizons |
 |  | ❌ | NAIF | -48 | P2956 | horizons |
 | Probes | ✅ | Probe ID | 100265984 (MSL/Curiosity) | - | spice probes pipeline (derived from kernel coverage start + per-day dedupe) |
 |  | ❌ | NAIF | -254 | P2956 | horizons, spice — recycled across missions (e.g. -76 was Mariner 10 and is MSL today), so not safe as a primary key |
 |  | ❌ | Cospar ID | 2003-027A | P247 | horizons |
-|  | ❌ | (Norad CAT ID?) | | P377 | celestrak possibly for some entries? |
+|  | ❌ | (Norad CAT ID) | | P377 | celestrak for some entries |
 | Natural body (planet/moon) | ✅ | NAIF | 399 | P2956 | horizons |
 |  | ❌ | Provisional designation | 2003J22 | P490 | horizons |
-| Small body (dwarf/asteroid/comet) | ✅ | SPK ID | 20000001 | P716 | sbdb (horizons: computed from NAIF) |
+| Small body (dwarf/asteroid/comet) | ✅ | SPK ID | 20000001 | P716 | sbdb (naif computed from NAIF) |
 |  | ❌ | MPC designation | 1; 2024 FG9 | P5736 | sbdb |
-|  | ❌ | NAIF | 20000001 | P2956 | horizons (sbdb: computable from NAIF) |
+|  | ❌ | NAIF | 20000001 | P2956 | horizons (spkid computable from NAIF) |
 | Star | ❔ | SIMBAD ID | NAME Proxima Centauri | P3083 | |
 |  | ❔ | Gaia ID | 5853498713190525696 | P13228 | |
 |  | ❔ | Exoplanet Archive ID | Proxima Cen | P5667 | |
@@ -43,5 +43,5 @@
 | Hipparcos | Stars | HIP 70890 | | | P528/P972 w/Q537199 | |
 | Extrasolar Planets Encyclopaedia | Exoplanets | proxima_centauri_b--4042 | https://exoplanet.eu/catalog/proxima_centauri_b--4042/ | | P5653 |  |
 | IAU Gazetteer feature ID | Surface feature | 162 | https://planetarynames.wr.usgs.gov/Feature/\<id\> | | P2824 | https://planetarynames.wr.usgs.gov/GIS_Downloads |
-| Name | Any (reduced coverage) | Earth | | differs by language | name | wikidata |
-| Wikipedia QID | Any (reduced coverage) | Q2 | | | - | wikidata |
+| Name | Any (reduced coverage) | Earth | | differs by language | name | wikidata, horizons, space-track... |
+| Wikipedia QID | Any (reduced coverage) | Q2 | https://www.wikidata.org/wiki/\<id\> | | - | wikidata |
