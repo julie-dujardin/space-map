@@ -14,6 +14,8 @@
 	import { dateToJD, jdToDate } from '$lib/format/date';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import LoadingBar from './LoadingBar.svelte';
+	import { startPageReload } from '$lib/reload';
 
 	const settings = getSettings();
 
@@ -65,6 +67,8 @@
 	// a mid-session GPU context drop (common on mobile), unrecoverable in place.
 	let webglError = $state(false);
 	let contextLost = $state(false);
+	let reloading = $state(false);
+	const startReload = () => startPageReload(() => (reloading = true));
 	// `.raw` to skip deep proxying — renderer mutates `position`/satrec internals every frame.
 	let focusedBody = $state.raw<PositionedBody | undefined>();
 
@@ -370,11 +374,15 @@
 			<h2 class="text-lg font-semibold">{m.webgl_context_lost_title()}</h2>
 			<p class="max-w-md text-sm text-muted-foreground">{m.webgl_context_lost_body()}</p>
 			<button
-				class="rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90"
-				onclick={() => location.reload()}
+				class="rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:opacity-50"
+				disabled={reloading}
+				onclick={startReload}
 			>
 				{m.reload()}
 			</button>
+			{#if reloading}
+				<LoadingBar label={m.reload()} />
+			{/if}
 		</div>
 	{/if}
 	{#if settings.showDebugInfo && DebugMenu}
