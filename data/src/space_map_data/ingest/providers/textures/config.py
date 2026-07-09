@@ -27,6 +27,7 @@ EARTH_CLOUDS_DIR = CLOUDS_DIR / "earth"
 CLOUD_SOURCES: dict[str, str] = {
     "earth": "naif-399",
     "venus": "naif-299",
+    "titan": "naif-606",
 }
 
 # User-facing organisation + description for static cloud bundles. The
@@ -36,6 +37,10 @@ CLOUDS_STATIC_META: dict[str, tuple[str, str]] = {
     "naif-299": (
         "Björn Jónsson",
         "Ultraviolet cloud map mosaicked from Galileo SSI flyby imagery.",
+    ),
+    "naif-606": (
+        "NASA",
+        "Opaque orange haze layer from the NASA 3D Resources Titan map.",
     ),
 }
 

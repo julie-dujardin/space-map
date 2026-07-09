@@ -290,6 +290,16 @@ def _bake_displacement(
     return Image.fromarray(gray, mode="L").convert("RGB"), lo, hi
 
 
+def open_premade_specular_source(src: Path) -> Image.Image:
+    """Load a ready-made specular/roughness map as-is (grayscale → RGB).
+
+    Unlike open_specular_source, no thresholding: the source is already a mask
+    where bright = specular (e.g. Titan's hydrocarbon seas), so it feeds the
+    renderer's roughness slot directly.
+    """
+    return Image.open(src).convert("L").convert("RGB")
+
+
 def open_specular_source(src: Path) -> Image.Image:
     """Derive a binary ocean mask from a bathymetry TIFF.
 
