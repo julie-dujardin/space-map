@@ -9,7 +9,7 @@
 
 	interface Sample {
 		path: string;
-		tier: 'free' | 'credit' | 'drop' | 'none' | 'minimal' | 'nodesc';
+		tier: 'free' | 'credit' | 'drop' | 'none' | 'minimal' | 'auto';
 		note: string;
 	}
 	interface Card extends Sample {
@@ -28,11 +28,15 @@
 		{ path: '/s/20006257', tier: 'credit', note: 'asteroid shape model (CC BY)' },
 		{ path: '/e/31601', tier: 'drop', note: 'credit image, no artist → no image' },
 		{ path: '/b/999999999', tier: 'minimal', note: 'unknown id → minimal fallback' },
-		// Long tail: no Wikidata description → generic fallback, across id types.
-		{ path: '/s/3376041', tier: 'nodesc', note: 'asteroid 2007 HT81 — no description' },
-		{ path: '/e/36964', tier: 'nodesc', note: 'BREEZE-M debris — no description' },
-		{ path: '/b/555', tier: 'nodesc', note: 'small moon S/2003 J18 — no description' },
-		{ path: '/p/41984000', tier: 'nodesc', note: 'Apollo 17 LM stage — no description' },
+		// No Wikidata description → description auto-built from exported data.
+		// One card per root template branch (see $lib/seo/meta.ts).
+		{ path: '/s/3376041', tier: 'auto', note: 'near-Earth asteroid — H-estimated size' },
+		{ path: '/s/20826946', tier: 'auto', note: 'near-Earth asteroid — spectral type' },
+		{ path: '/s/20244979', tier: 'auto', note: 'main-belt asteroid — measured diameter' },
+		{ path: '/s/1001668', tier: 'auto', note: 'comet — first-observed year only' },
+		{ path: '/b/555', tier: 'auto', note: 'moon — parent + discovery year' },
+		{ path: '/e/36964', tier: 'auto', note: 'orbital debris — launch year + orbit' },
+		{ path: '/p/41984000', tier: 'auto', note: 'spacecraft — parent mission' },
 		// Groups.
 		{ path: '/g/const-starlink', tier: 'free', note: 'group — attribution-free' },
 		{ path: '/g/const-iridium', tier: 'none', note: 'group — no image available' },
@@ -92,7 +96,8 @@
 			<h1>OG card preview</h1>
 			<p class="sub">
 				Live from the dev server · attribution-free serves an image; credit-tier front-loads a text
-				credit; uncreditable / no-image degrade to a plain card.
+				credit; uncreditable / no-image degrade to a plain card. <b>auto</b> cards have no Wikidata description
+				and get one built from exported data.
 			</p>
 		</div>
 		<button onclick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
@@ -224,7 +229,7 @@
 	.tag.credit {
 		background: #d29922;
 	}
-	.tag.nodesc {
+	.tag.auto {
 		background: #58a6ff;
 	}
 	.tag.drop,

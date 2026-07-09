@@ -13,8 +13,10 @@
  * the proxy in dev and the CDN in prod.
  */
 
+import * as m from '$lib/paraglide/messages.js';
 import { DATA_BASE, IMAGES_BASE } from '$lib/fetch/data-base';
 import { hashBucket } from '$lib/fetch/metadata';
+import { diameterKmFromH } from '$lib/math/h-magnitude';
 import type {
 	GlobalObjectData,
 	LocalizedObjectData,
@@ -172,12 +174,161 @@ function ucfirst(s: string): string {
 	return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
+function genericDescription(name: string): string {
+	return m.seo_generic_named({ name });
+}
+
+/** Group/feature description: the CC0 Wikidata short description or a generic
+ *  line. The Wikipedia extract is deliberately absent (CC BY-SA, no card credit
+ *  surface). Objects get richer treatment via {@link describeObject}. */
 function describe(name: string, localized: Describable): string {
-	// Only the CC0 Wikidata short description — the Wikipedia extract is CC BY-SA
-	// and a social card has no surface for the required credit.
 	const raw = localized?.description;
 	if (raw) return ucfirst(cleanDescription(raw));
-	return `Explore ${name} in Space Map — an interactive 3D map of the solar system.`;
+	return genericDescription(name);
+}
+
+// --- Auto-built descriptions for objects lacking a Wikidata short description ---
+// Composed from exported physical/orbital data so the long tail (provisional
+// asteroids, debris, uncatalogued moons) still gets a factual card line.
+
+/** First 4-digit year in an ISO-ish date string. */
+function yearOf(date: string | undefined): string | undefined {
+	return date?.match(/\d{4}/)?.[0];
+}
+
+// Lead noun keyed on the coarse export `type`; small bodies refine via sbdb.class.
+const TYPE_NOUN: Record<string, () => string> = {
+	asteroid: m.seo_noun_asteroid,
+	asteroid_main_belt: m.seo_noun_main_belt_asteroid,
+	asteroid_inner: m.seo_noun_near_earth_asteroid,
+	asteroid_trojan: m.seo_noun_jupiter_trojan,
+	asteroid_centaur: m.seo_noun_centaur,
+	asteroid_tno: m.seo_noun_trans_neptunian_object,
+	comet: m.seo_noun_comet
+};
+
+// sbdb.class → noun, authoritative over `type` for the dynamical family.
+const CLASS_NOUN: Record<string, () => string> = {
+	MCA: m.seo_noun_mars_crossing_asteroid,
+	IMB: m.seo_noun_main_belt_asteroid,
+	MBA: m.seo_noun_main_belt_asteroid,
+	OMB: m.seo_noun_main_belt_asteroid,
+	APO: m.seo_noun_near_earth_asteroid,
+	AMO: m.seo_noun_near_earth_asteroid,
+	ATE: m.seo_noun_near_earth_asteroid,
+	IEO: m.seo_noun_near_earth_asteroid,
+	TJN: m.seo_noun_jupiter_trojan,
+	CEN: m.seo_noun_centaur,
+	TNO: m.seo_noun_trans_neptunian_object,
+	COM: m.seo_noun_comet,
+	HYA: m.seo_noun_comet,
+	PAA: m.seo_noun_comet,
+	JFC: m.seo_noun_comet,
+	HTC: m.seo_noun_comet,
+	ETC: m.seo_noun_comet,
+	CTC: m.seo_noun_comet,
+	PAR: m.seo_noun_comet,
+	HYP: m.seo_noun_comet
+};
+
+const CELESTRAK_NOUN: Record<string, () => string> = {
+	rocket_body: m.seo_noun_rocket_body,
+	debris: m.seo_noun_orbital_debris,
+	payload: m.seo_noun_satellite
+};
+
+function diameterClause(km: number): string {
+	if (km < 1) return m.seo_attr_diameter_m({ value: String(Math.round(km * 1000)) });
+	if (km < 10) return m.seo_attr_diameter_km({ value: km.toFixed(1) });
+	return m.seo_attr_diameter_km({ value: String(Math.round(km)) });
+}
+
+function joinNames(names: string[]): string {
+	if (names.length === 1) return names[0];
+	if (names.length === 2) return m.seo_discoverers_two({ a: names[0], b: names[1] });
+	return m.seo_discoverers_many({ first: names[0] });
+}
+
+function smallBodyDescription(
+	global: GlobalObjectData,
+	localized: LocalizedObjectData | null
+): string | null {
+	const sbdb = global.sbdb;
+	if (!sbdb) return null;
+	const noun = (
+		(sbdb.class && CLASS_NOUN[sbdb.class]) ||
+		TYPE_NOUN[global.type] ||
+		m.seo_noun_asteroid
+	)();
+
+	// first_obs is a discovery proxy; a real discoverer only comes from Wikidata.
+	const year = yearOf(global.wikidata?.discovery_date?.[0] ?? sbdb.first_obs);
+	const discoverers = (localized?.discoverers ?? []).map((d) => d.name).filter(Boolean);
+	let lead = noun;
+	if (year && discoverers.length)
+		lead = m.seo_lead_discovered({ noun, year, who: joinNames(discoverers) });
+	else if (year) lead = m.seo_lead_first_observed({ noun, year });
+
+	const parts = [lead];
+	const km = sbdb.diameter ?? (sbdb.H != null ? diameterKmFromH(sbdb.H) : undefined);
+	if (km != null) parts.push(diameterClause(km));
+	const spec = sbdb.spec_B ?? sbdb.spec_T;
+	if (spec) parts.push(m.seo_attr_spectral_type({ spec }));
+	return `${parts.join(', ')}.`;
+}
+
+function moonDescription(global: GlobalObjectData): string | null {
+	if (global.type !== 'moon') return null;
+	const parent = global.parent_name?.replace(/\s*Barycenter$/i, '').trim();
+	const noun = parent ? m.seo_noun_moon_of({ parent }) : m.seo_noun_moon();
+	return global.discovery_year != null
+		? `${noun}, ${m.seo_attr_discovered({ year: String(global.discovery_year) })}.`
+		: `${noun}.`;
+}
+
+function satelliteDescription(global: GlobalObjectData): string | null {
+	const ct = global.celestrak;
+	if (!ct) return null;
+	const noun = (CELESTRAK_NOUN[ct.object_type ?? ''] ?? m.seo_noun_orbiting_object)();
+	const year = yearOf(ct.launch_date);
+	const parts = [year ? m.seo_lead_launched({ noun, year }) : noun];
+	if (ct.orbit_center) parts.push(m.seo_attr_orbiting({ center: ucfirst(ct.orbit_center) }));
+	return `${parts.join(', ')}.`;
+}
+
+function spacecraftDescription(global: GlobalObjectData): string | null {
+	if (global.type !== 'spacecraft') return null;
+	const noun = m.seo_noun_spacecraft();
+	const year = yearOf(global.wikidata?.launch_date);
+	const parts = [year ? m.seo_lead_launched({ noun, year }) : noun];
+	const mission = global.part_of_mission?.name ?? global.mission?.name;
+	if (mission) parts.push(m.seo_attr_part_of_mission({ mission }));
+	return `${parts.join(', ')}.`;
+}
+
+function dynamicObjectDescription(
+	global: GlobalObjectData,
+	localized: LocalizedObjectData | null
+): string | null {
+	return (
+		smallBodyDescription(global, localized) ??
+		moonDescription(global) ??
+		satelliteDescription(global) ??
+		spacecraftDescription(global)
+	);
+}
+
+/** Object description: Wikidata short description, else a factual line built from
+ *  exported data, else the generic fallback. */
+function describeObject(
+	name: string,
+	global: GlobalObjectData,
+	localized: LocalizedObjectData | null
+): string {
+	const raw = localized?.description;
+	if (raw) return ucfirst(cleanDescription(raw));
+	const dynamic = dynamicObjectDescription(global, localized);
+	return dynamic ? cleanDescription(dynamic) : genericDescription(name);
 }
 
 /** Title from an object/collection name, matching the client's `<title>`. */
@@ -191,8 +342,8 @@ export function minimalSeo(name: string, origin: string, path: string): SeoMeta 
 	return {
 		title: pageTitle(name),
 		description: name
-			? `Explore ${name} in Space Map — an interactive 3D map of the solar system.`
-			: 'Space Map — an interactive 3D map of the solar system.',
+			? genericDescription(name)
+			: 'Space Map, an interactive 3D map of the solar system.',
 		canonical: `${origin}${path}`,
 		ogType: 'website'
 	};
@@ -235,7 +386,7 @@ export async function loadObjectSeo(
 	const name = localized?.name || global.name || '';
 	const card = await resolveOgCard(
 		global.images,
-		describe(name, localized),
+		describeObject(name, global, localized),
 		origin,
 		meta.versions?.images
 	);
