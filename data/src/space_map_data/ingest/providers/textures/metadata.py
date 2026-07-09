@@ -110,6 +110,14 @@ def stale_metadata_reason(existing: dict, entry: dict) -> str | None:
         cur_align = existing.get("alignment") or DEFAULT_ALIGNMENT
         if cur_align != entry_alignment(entry):
             return "alignment changed"
+        # Single-frame source swap (e.g. body reassigned to a new map file):
+        # alignment can match yet the pixels differ. Monthly uses a template
+        # path, handled by its own shape check below.
+        if (
+            type_ != "cylindrical_monthly"
+            and existing.get("source_file") != entry["file"]
+        ):
+            return "source file changed"
     if type_ == "cylindrical_monthly":
         if (
             existing.get("type") != type_
