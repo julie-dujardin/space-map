@@ -42,6 +42,7 @@
 	import { urlTypeFromId } from '$lib/state/url';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
+	import { loadProgress } from '$lib/scene/state/load-progress.svelte';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
 	const ctx = new ContextManager();
@@ -355,7 +356,22 @@
 </svelte:head>
 
 {#if ctx.loading}
-	<div class="flex items-center justify-center h-screen bg-bg text-text">{m.loading_data()}</div>
+	<div class="flex h-screen flex-col items-center justify-center gap-3 bg-bg text-text">
+		<span class="text-sm">{m.loading_data()}</span>
+		<div
+			class="h-1 w-56 max-w-[60vw] overflow-hidden rounded-full bg-text/10"
+			role="progressbar"
+			aria-label={m.loading_data()}
+			aria-valuemin={0}
+			aria-valuemax={100}
+			aria-valuenow={Math.round(loadProgress.value * 100)}
+		>
+			<div
+				class="h-full rounded-full bg-text transition-[width] duration-300 ease-out"
+				style="width: {loadProgress.value * 100}%"
+			></div>
+		</div>
+	</div>
 {:else if ctx.error}
 	<div class="flex h-screen flex-col items-center justify-center gap-4 bg-bg px-6 text-center">
 		<p class="max-w-md text-sm text-text-error">{m.error_prefix({ error: ctx.error })}</p>

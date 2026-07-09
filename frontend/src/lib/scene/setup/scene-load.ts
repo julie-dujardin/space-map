@@ -31,6 +31,7 @@ import { isLowEndDevice } from '$lib/device';
 import { createPlaceholderBody } from '$lib/scene/setup/placeholder';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getSettings } from '$lib/state/settings.svelte';
+import { loadProgress } from '$lib/scene/state/load-progress.svelte';
 
 interface MinorChunkArg {
 	zone: string;
@@ -186,6 +187,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// rotation falls back to the first-order model and trail buffers stay
 	// uninitialized until it lands.
 	performance.mark('sm-load-start');
+	loadProgress.reset();
 	void loadSystemsGlobal().catch((e) =>
 		console.warn('scene-load: systems-global (GMs/nutation) failed to load:', e)
 	);
@@ -229,17 +231,21 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	const probePromise = metadataPromise.then((metadata) => buildProbeStore(metadata, jd));
 
 	const metadata = await metadataPromise;
+	loadProgress.reach('metadata');
 	ctx.chebStore = await chebPromise;
 	ctx.probeStore = await probePromise;
+	loadProgress.reach('ephemeris');
 	const loader = new ChunkLoader(ctx.chebStore);
 
 	const major = await loadMajorBodies(ctx, loader, metadata, date, jd);
+	loadProgress.reach('majors');
 	ctx.bodies.addBodies(major);
 	ctx.credits.recordOrbitSources(major);
 
 	// Labels resolve once on app start; awaited here so each MinorBucket can
 	// materialize names/flags on demand without re-awaiting per chunk.
 	const labels = await fetchLabels();
+	loadProgress.reach('labels');
 
 	// Asteroid buckets live directly on ctx.bodies; chunks are added in place and
 	// the outer Map is re-wrapped on flush so reactive observers see a new ref.
@@ -340,6 +346,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 			b.data.objectType !== ObjectType.LAGRANGE_POINT &&
 			b.data.orbitalSource !== OrbitalSource.SPICE_PROBE
 	);
+	loadProgress.reach('done');
 	ctx.loading = false;
 	performance.mark('sm-majors-done');
 
