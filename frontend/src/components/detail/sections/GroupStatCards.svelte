@@ -74,7 +74,8 @@
 		const out: Stat[] = [];
 		// The members tab already shows the count in its badge; only carry the
 		// Members card when there's no tab (sat groups, categories without one).
-		if (!showMembersTab)
+		// For launch vehicles member_count is just tagged debris — misleading here.
+		if (!showMembersTab && global.type !== 'launch_vehicle')
 			out.push({
 				label: m.group_stat_members(),
 				value: formatNumber(global.member_count),
