@@ -43,7 +43,9 @@ Each of these is displayed at its current position, and shown at its real size (
 
 ## Architecture
 
-Space Map's frontend is built with SvelteKit and Three.js (WebGL), and is hosted on Cloudflare Workers. The positions for most asteroids & comets are computed in web workers: that's what makes real-time positions possible with 1.6m objects.
+Space Map's frontend is built with SvelteKit and Three.js (WebGL), and is hosted on Cloudflare Workers.
+Three.js has 32-bit precision for positions. To make a continous solar system work at all scales, the map uses camera-based rendering: the world's origin coordinates is the camera. Objects that are very close to it exist in an area where lots of precision is available, and precision is not wasted on far-off objects. When this goes wrong, the effects are [very visible](https://godotengine.org/article/emulating-double-precision-gpu-render-large-worlds/).
+The positions for most asteroids & comets are computed in web workers: that's what makes real-time positions possible with 1.6m objects.
 
 The data pipeline is built in Python. It downloads each dataset, joins them in a SQLite database, and exports them to static files. Those static files are served as static Cloudflare Workers assets: there's no backend for most of the app. This has drawbacks, but allows serving lots of data very fast, at very low cost. In particular, maintenance is very easy: all "endpoints" are served once, so there's no risk of runtime backend errors. The export format is [documented (written by AI)](docs/export-format/README.md). Search is provided by a Meilisearch database running in a VPS.
 
