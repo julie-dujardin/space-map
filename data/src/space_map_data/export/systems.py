@@ -129,6 +129,8 @@ def texture_attribution(meta: dict) -> dict:
         "organisation": meta["organisation"],
         "type": meta["type"],
     }
+    if meta.get("license") is not None:
+        result["license"] = meta["license"]
     if meta.get("attribution") is not None:
         result["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
@@ -225,6 +227,8 @@ def clouds_block(meta: dict) -> dict:
         "organisation": meta["organisation"],
         "type": meta["type"],
     }
+    if meta.get("license") is not None:
+        block["license"] = meta["license"]
     if meta.get("attribution") is not None:
         block["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
@@ -269,6 +273,8 @@ def specular_block(meta: dict) -> dict:
         "organisation": meta["organisation"],
         "type": meta["type"],
     }
+    if meta.get("license") is not None:
+        block["license"] = meta["license"]
     if meta.get("attribution") is not None:
         block["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
@@ -313,6 +319,8 @@ def night_block(meta: dict) -> dict:
         "organisation": meta["organisation"],
         "type": meta["type"],
     }
+    if meta.get("license") is not None:
+        block["license"] = meta["license"]
     if meta.get("attribution") is not None:
         block["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
@@ -358,6 +366,8 @@ def displacement_block(meta: dict) -> dict:
         "organisation": meta["organisation"],
         "type": meta["type"],
     }
+    if meta.get("license") is not None:
+        block["license"] = meta["license"]
     if meta.get("attribution") is not None:
         block["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
@@ -397,6 +407,8 @@ def skybox_block(meta: dict) -> dict:
         "source": meta["source"],
         "organisation": meta["organisation"],
     }
+    if meta.get("license") is not None:
+        block["license"] = meta["license"]
     if meta.get("attribution") is not None:
         block["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
@@ -464,6 +476,8 @@ def ring_block(meta: dict) -> dict:
         "color_space": meta.get("color_space", "srgb"),
         "channels": {name: rec["file"] for name, rec in meta["channels"].items()},
     }
+    if meta.get("license") is not None:
+        block["license"] = meta["license"]
     if meta.get("attribution") is not None:
         block["attribution"] = meta["attribution"]
     if meta.get("description") is not None:

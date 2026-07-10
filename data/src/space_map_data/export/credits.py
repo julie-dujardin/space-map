@@ -132,6 +132,8 @@ def _sibling_credit_entry(body_id: str, name: str, meta: dict) -> dict:
         "source": meta["source"],
         "organisation": meta["organisation"],
     }
+    if meta.get("license") is not None:
+        entry["license"] = meta["license"]
     if meta.get("attribution") is not None:
         entry["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
@@ -145,6 +147,8 @@ def _skybox_credit_entry(meta: dict) -> dict:
         "source": meta["source"],
         "organisation": meta["organisation"],
     }
+    if meta.get("license") is not None:
+        entry["license"] = meta["license"]
     if meta.get("attribution") is not None:
         entry["attribution"] = meta["attribution"]
     if meta.get("description") is not None:

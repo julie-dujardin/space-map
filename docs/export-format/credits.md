@@ -14,6 +14,7 @@ interface Credits {
       name: string;              // English display name; localisation is deferred
       source: string;            // attribution source URL
       organisation: string;      // short label, deduplicable (e.g. "NASA", "USGS")
+      license?: string;          // Wikimedia-style short license ("Public domain", "CC BY 4.0", …) when known
       type: string;              // cylindrical / cylindrical_monthly / cylindrical_tile / …
       frames?: number;           // only on cylindrical_monthly; frame count
       attribution?: string;      // long-form credit line when available
@@ -24,6 +25,7 @@ interface Credits {
       name: string;              // English display name of the host body
       source: string;
       organisation: string;
+      license?: string;          // Wikimedia-style short license when known
       attribution?: string;
       description?: string;
     }>;
@@ -32,6 +34,7 @@ interface Credits {
       name: string;              // English display name of the host body
       source: string;
       organisation: string;
+      license?: string;          // Wikimedia-style short license when known
       attribution?: string;
       description?: string;
     }>;
@@ -43,6 +46,7 @@ interface Credits {
   skybox?: {                     // whole-sky cubemap backdrop — single global asset, no host body
     source: string;
     organisation: string;
+    license?: string;            // Wikimedia-style short license when known
     attribution?: string;
     description?: string;
   };
@@ -59,6 +63,12 @@ SPICE/IAU rotation kernels, Wikidata, Wikipedia, Wikimedia Commons, IAU
 nomenclature) live in the frontend page itself and don't need to be emitted
 here. The top-level `skybox` block is emitted whenever a cubemap-skybox bundle
 exists under `textures/stars/` and mirrors the credit fields from its metadata.
+
+`license` is a short, Wikimedia-Commons-style string ("Public domain", "CC BY
+4.0", "CC BY-NC-SA 3.0", "Free use with attribution", …) sourced from each
+texture's `license:` manifest field. It's omitted whenever the source license is
+unresolved or restrictive enough to need manual review, so absence means
+"unknown/flagged", not "unrestricted".
 
 The top-level `models` array credits each 3D-model source catalog (NASA-3D-Resources,
 ESA SciFleet, …) with one entry per catalog whose attribution matched at least
