@@ -618,7 +618,7 @@ class ModelProcessor:
         # then invalidate existing sidecars and force a re-emit.
         catalog_by_tier = self._catalog_by_tier(yaml_path, high_pick[0], low_pick[0])
         out_dir = config.PROCESSED_DIR / slug
-        cap_hash = self._cap_hash(cached, high_pick, low_pick, catalog_by_tier)
+        cap_hash = self._cap_hash(cached, high_pick, low_pick, catalog_by_tier, entry)
         if not force and self._sidecar_says_unchanged(slug, cap_hash):
             return
 
@@ -653,16 +653,20 @@ class ModelProcessor:
         high_pick: tuple[dict, cache.Cached],
         low_pick: tuple[dict, cache.Cached],
         catalog_by_tier: dict[str, dict],
+        entry: dict,
     ) -> dict:
         """Build the invalidation key the next run compares against the sidecar.
 
         Includes every cached candidate's source-sha — so if a previously
         rejected oversize file is replaced with a smaller version, the
         rerun picks it up. Also includes the picks themselves so a manual
-        retune of MAX_FILE_BYTES forces a re-link, and the resolved
-        per-tier catalog dict so any change to ``_catalog_by_tier``
-        output (source/attribution/url) re-emits the bundle.
+        retune of MAX_FILE_BYTES forces a re-link, the resolved per-tier
+        catalog dict so any change to ``_catalog_by_tier`` output
+        (source/attribution/url) re-emits the bundle, and the manifest
+        fields copied verbatim into prod metadata (scale/frame) so hand
+        edits propagate without ``--force``.
         """
+        frame_map = _validated_frame_map(entry, entry.get("slug", "?"))
         return {
             "schema": config.SCHEMA_VERSION,
             "knobs": config.COMPRESSION_KNOBS_VERSION,
@@ -675,6 +679,10 @@ class ModelProcessor:
             "catalog": {
                 "high": sorted(catalog_by_tier["high"].items()),
                 "low": sorted(catalog_by_tier["low"].items()),
+            },
+            "entry": {
+                "scale_meters": entry.get("scale_meters"),
+                "frame_map": sorted(frame_map.items()) if frame_map else None,
             },
         }
 
@@ -821,6 +829,11 @@ class ModelProcessor:
         # frontend size the mesh against scene units. Optional, manifest-set.
         if entry.get("scale_meters"):
             payload["scale_meters"] = entry["scale_meters"]
+        # Model axis → spacecraft-body axis; corrects models authored in a
+        # different convention (usually Y-up) than the CK/pointing body frame.
+        frame_map = _validated_frame_map(entry, slug)
+        if frame_map:
+            payload["frame_map"] = frame_map
         (out_dir / "metadata.json").write_text(json.dumps(payload, indent=2))
 
     def _write_sidecar_metadata(
@@ -876,7 +889,9 @@ class ModelProcessor:
             "candidates": candidates,
             "picks": picks,
             "invalidation": (
-                self._cap_hash(cached, high_pick, low_pick, catalog_by_tier or {})
+                self._cap_hash(
+                    cached, high_pick, low_pick, catalog_by_tier or {}, entry
+                )
                 if high_pick is not None
                 and low_pick is not None
                 and catalog_by_tier is not None
@@ -885,6 +900,45 @@ class ModelProcessor:
             "processed_at": datetime.now(UTC).isoformat(),
         }
         sidecar_path.write_text(json.dumps(payload, indent=2))
+
+
+_FRAME_AXES = frozenset({"+x", "-x", "+y", "-y", "+z", "-z"})
+
+
+def _validated_frame_map(entry: dict, slug: str) -> dict[str, str] | None:
+    """Optional ``frame_map`` (model axis → spacecraft-body axis, 1–2 pairs).
+
+    Two pairs must use perpendicular axes on both sides — the frontend derives
+    the third axis by right-handedness. Malformed maps are dropped whole with
+    a warning so a manifest typo can't ship a half-valid rotation.
+    """
+    raw = entry.get("frame_map")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or not 1 <= len(raw) <= 2:
+        log.warning("%s: frame_map must map 1–2 axis pairs; dropping", slug)
+        return None
+    pairs = {str(k): str(v) for k, v in raw.items()}
+    bad = [
+        (k, v) for k, v in pairs.items() if k not in _FRAME_AXES or v not in _FRAME_AXES
+    ]
+    if bad:
+        log.warning(
+            "%s: frame_map has invalid axes %s (want one of %s); dropping",
+            slug,
+            bad,
+            sorted(_FRAME_AXES),
+        )
+        return None
+    if len(pairs) == 2:
+        (k1, v1), (k2, v2) = pairs.items()
+        # Same letter on either side = parallel axes; no frame derivable.
+        if k1[1] == k2[1] or v1[1] == v2[1]:
+            log.warning(
+                "%s: frame_map pairs must use perpendicular axes; dropping", slug
+            )
+            return None
+    return pairs
 
 
 def _sidecar_path(slug: str) -> Path:

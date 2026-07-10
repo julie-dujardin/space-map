@@ -131,12 +131,15 @@ def extract_attitude(
         )
 
     files = write_chunks(out_dir, seg_streams)
+    # Coverage from emitted keyframes, not the CK-claimed window — kernels can
+    # claim years with no resolvable data (Spitzer claims 2000, first keyframe
+    # 2005) and the frontend treats this span as "attitude available".
     return ExtractionResult(
         n_keyframes=sum(len(ets) for ets, _ in seg_streams),
         files=files,
         segments=segments,
-        coverage_start_jd=_et_to_jd(global_start),
-        coverage_end_jd=_et_to_jd(global_end),
+        coverage_start_jd=files[0].start_jd if files else 0.0,
+        coverage_end_jd=files[-1].end_jd if files else 0.0,
     )
 
 
