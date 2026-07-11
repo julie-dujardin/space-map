@@ -10,7 +10,7 @@ import {
 	isMeshUpgradable,
 	upgradeBodyMesh
 } from '$lib/scene/objects/body/lifecycle';
-import { unloadBodyModel } from '$lib/scene/objects/body/model';
+import { isModelBearing, unloadBodyModel } from '$lib/scene/objects/body/model';
 import {
 	disposeNomenclatureLabels,
 	nomenclatureBodyId
@@ -103,11 +103,18 @@ export class FocusController {
 		this.pendingInitialView = null;
 	}
 
-	/** Quaternion of `body`'s (or the focused body's) mesh — undefined if no mesh yet. */
+	/** Quaternion framing the camera's lat/lon around `body` (or the focused body) —
+	 *  undefined for scene-frame (world) framing.
+	 *
+	 *  Spacecraft/probes are deliberately excluded: their mesh spins with attitude,
+	 *  often fast (Juno), so a body-fixed lat/lon would tie the shared view to the
+	 *  rotation rate. They frame in world coordinates; the attitude stays a purely
+	 *  visual spin on top. Only natural bodies, whose slow IAU spin gives lat/lon
+	 *  real geographic meaning, are body-fixed. */
 	focusedBodyQuat(body?: PositionedBody): [number, number, number, number] | undefined {
-		const id = (body ?? this.focusedBody)?.data.id;
-		if (!id) return undefined;
-		const mesh = this.deps.bodyObjects.get(id)?.mesh;
+		const b = body ?? this.focusedBody;
+		if (!b || isModelBearing(b)) return undefined;
+		const mesh = this.deps.bodyObjects.get(b.data.id)?.mesh;
 		if (!mesh) return undefined;
 		const q = mesh.quaternion;
 		return [q.x, q.y, q.z, q.w];
@@ -386,7 +393,11 @@ export class FocusController {
 		const body = this.focusedBody;
 		if (!body) return;
 		const { camera, controls, callbacks } = this.deps;
-		const quat = this.focusedBodyQuat(body) ?? [0, 0, 0, 1];
+		// Spacecraft frame in world coords (undefined quat, see focusedBodyQuat);
+		// natural bodies are body-fixed, falling back to identity until orientation
+		// loads — then the pending replay corrects the angle.
+		const bodyFixed = !isModelBearing(body);
+		const quat = bodyFixed ? (this.focusedBodyQuat(body) ?? [0, 0, 0, 1]) : undefined;
 		const camOffset = sphericalToCartesian([0, 0, 0], latitude, longitude, zoom, quat);
 		camera.position.set(camOffset[0], camOffset[1], camOffset[2]);
 		controls.update();
@@ -395,7 +406,8 @@ export class FocusController {
 		// lon is stored in 0..360 and would otherwise leak straight to the URL.
 		const settled = cartesianToSpherical(camOffset, [0, 0, 0], quat);
 		callbacks.onCameraPosition?.(settled.latitude, settled.longitude, settled.distance);
-		const isIdentity = quat[0] === 0 && quat[1] === 0 && quat[2] === 0 && quat[3] === 1;
+		const isIdentity =
+			bodyFixed && quat![0] === 0 && quat![1] === 0 && quat![2] === 0 && quat![3] === 1;
 		if (isIdentity) {
 			// Replaces whatever the URL's at= had queued — the feature framing
 			// is more specific than the URL's body-level at=.
