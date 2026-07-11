@@ -30,37 +30,54 @@ COMPRESSION_KNOBS_VERSION = "v3-meshopt-webp-doublesided-opaque"
 # Catalog metadata propagated into each model's metadata.json and into the
 # credits.json aggregate. Keyed by the manifest's top-level ``source.name``
 # (NASA) or ``source.catalog`` (ESA) value.
+# ``license`` is a Wikimedia-Commons-style short string, exported per model
+# (``exports.{tier}.credit.license``) and in the credits.json roll-up. Absent =
+# unresolved/flagged, never "unrestricted". An inline manifest ``license`` on a
+# one-off entry overrides the catalog default.
 MODEL_CATALOGS: dict[str, dict[str, str]] = {
     "NASA-3D-Resources": {
         "url": "https://www.nasa.gov/3d-resources/",
         # Repo doesn't ship a license header; the catalog page covers it.
         "default_attribution": "NASA",
+        "license": "Public domain",  # README: "free and without copyright"
     },
     "ESA SciFleet": {
         "url": "https://scifleet.esa.int/",
         "default_attribution": "ESA / scifleet.esa.int",
+        # A model is imagery + metadata, so ESA's standard multimedia terms apply.
+        # https://www.esa.int/ESA_Multimedia/Terms_and_conditions_of_use_of_images_and_videos_available_on_the_esa_website
+        "license": "CC BY-SA 3.0 IGO",
     },
     # Natural-body shape-model archives. Each body bundle sets its tier
     # ``catalog`` to one of these keys so the credits roll-up lists the archive.
     "PDS Small Bodies Node": {
         "url": "https://pds-smallbodies.astro.umd.edu/",
         "default_attribution": "NASA PDS Small Bodies Node",
+        "license": "Public domain",
     },
     "JAXA/ISAS DARTS": {
         "url": "https://data.darts.isas.jaxa.jp/",
         "default_attribution": "JAXA / ISAS DARTS",
+        # ISAS research-data policy is CC BY 4.0-compatible — unlike JAXA's
+        # restrictive general image policy (which the JLPEDA Ryugu texture hits).
+        "license": "CC BY 4.0",
     },
     "ESA/ESAC Rosetta": {
         "url": "https://www.cosmos.esa.int/web/rosetta",
         "default_attribution": "ESA / Rosetta / DLR",
+        # Share-alike; a body's PDS-mirrored copy is public domain, so its
+        # per-entry license wins for those.
+        "license": "CC BY-SA 3.0 IGO",
     },
     "JPL Asteroid Radar Research": {
         "url": "https://echo.jpl.nasa.gov/asteroids/shapes/shapes.html",
         "default_attribution": "NASA/JPL-Caltech Asteroid Radar Research",
+        "license": "Public domain",
     },
     "DAMIT": {
         "url": "https://damit.cuni.cz/projects/damit/",
-        "default_attribution": "DAMIT (Ďurech et al.) / CC BY 4.0",
+        "default_attribution": "DAMIT (Ďurech et al.)",
+        "license": "CC BY 4.0",
     },
 }
 

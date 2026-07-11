@@ -45,7 +45,8 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
       "source_type": "blend",
       "credit": {
         "name": "NASA",
-        "url": "https://www.nasa.gov/3d-resources/"
+        "url": "https://www.nasa.gov/3d-resources/",
+        "license": "Public domain"
       },
       "catalog": "NASA-3D-Resources",
       "downloaded_at": "2025-06-03T09:00:30-07:00",
@@ -60,7 +61,7 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
 - `kind` — coarse category from the manifest (`probe`, `earth_sat`, `station`, `lander`, `rocket`, `asteroid`, `astronomical_object`, `ground_infrastructure`, `equipment`, `instrument`, `subassembly`, `aircraft`, `submersible`, `robot`, `generic_sat`, `concept`). Lets the frontend filter the model browser without re-deriving from mission data.
 - `missions` — every Object whose `model_name` points at this slug; `name` is whatever the manifest entry supplied. Mission resolution priority: `probe_id` → `naif_id` → `norad_cat_id` → `spkid` (the last for asteroids).
 - `exports.{tier}.source_type` — the original file format the tier was converted from (`"glb"`, `"fbx"`, `"blend"`, `"obj"`, `"3ds"`). `"glb"` means pass-through, anything else means a Blender import happened.
-- `exports.{tier}.credit` — the display text and link target for the attribution bar/popover. `name` is always the attribution (`"NASA"`, `"ESA / scifleet.esa.int"`, `"NASA (via Google Arts & Culture)"`, …) so chips stay consistent across catalogs. `url` is the specific resource page when one was given inline in the manifest, else the catalog's landing page.
+- `exports.{tier}.credit` — the display text and link target for the attribution bar/popover. `name` is always the attribution (`"NASA"`, `"ESA / scifleet.esa.int"`, `"NASA (via Google Arts & Culture)"`, …) so chips stay consistent across catalogs. `url` is the specific resource page when one was given inline in the manifest, else the catalog's landing page. `license` is a Wikimedia-style short string (`"Public domain"`, `"CC BY 4.0"`, …) — an inline manifest `license` overrides the catalog default; omitted when the source has no confirmed license.
 - `exports.{tier}.catalog` — present only when the file came from a key in `MODEL_CATALOGS` (`"NASA-3D-Resources"`, `"ESA SciFleet"`). The credits page uses the union across all tiers to pick which primary catalogs to surface; one-off resources (NASA Science pages, Google rehosts) omit this and credit through `credit.name` alone.
 - `exports.{tier}.downloaded_at` — when the source bytes were last fetched, when known. ESA's downloader stamps this when it writes the per-root `metadata.yaml`; NASA falls back to the git HEAD commit time of the `NASA-3D-Resources` checkout.
 - `exports.{tier}.stats` — content stats parsed from the .glb's JSON chunk: `triangles` counts only primitives with mode 4 (TRIANGLES); the rest are top-level array lengths. A handy LOD-impact sanity check (high vs low triangle counts) and a cheap "deployable parts?" hint via `animations > 0`.

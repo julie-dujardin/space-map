@@ -776,7 +776,14 @@ class ModelProcessor:
                 )
                 return {}
             credit_url = inline_url or (catalog["url"] if catalog else None)
-            out: dict = {"credit": {"name": credit_name, "url": credit_url}}
+            credit: dict = {"name": credit_name, "url": credit_url}
+            # Short license: inline entry override (one-offs) else catalog default.
+            credit_license = f.get("license") or (
+                catalog.get("license") if catalog else None
+            )
+            if credit_license:
+                credit["license"] = credit_license
+            out: dict = {"credit": credit}
             if catalog:
                 out["catalog"] = name
             ts = self._catalog_downloaded_at.get(name)

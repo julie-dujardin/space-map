@@ -179,6 +179,7 @@ def _build_models_credits(model_metadata: dict[str, dict]) -> list[dict]:
                 matched.add(name)
     return [
         {"name": name, "url": catalog["url"]}
+        | ({"license": catalog["license"]} if catalog.get("license") else {})
         for name, catalog in MODEL_CATALOGS.items()
         if name in matched
     ]

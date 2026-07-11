@@ -42,6 +42,7 @@ interface Credits {
   models?: Array<{               // 3D-model source catalogs (one entry per catalog with ≥ 1 bundle)
     name: string;                // "NASA-3D-Resources", "ESA SciFleet"
     url: string;                 // user-facing catalog landing page
+    license?: string;            // Wikimedia-style short license when known
   }>;
   skybox?: {                     // whole-sky cubemap backdrop — single global asset, no host body
     source: string;

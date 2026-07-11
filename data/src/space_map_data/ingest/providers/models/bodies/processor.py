@@ -313,6 +313,15 @@ class BodyModelProcessor:
             "name": entry.get("archive") or "NASA PDS",
             "url": entry.get("archive_url") or catalog_url,
         }
+        # Short, uniform license for the credit chip — from the catalog. The
+        # detailed per-entry ``license``/``citation`` stay as top-level metadata.
+        catalog_license = (
+            config.MODEL_CATALOGS[catalog].get("license")
+            if catalog in config.MODEL_CATALOGS
+            else None
+        )
+        if catalog_license:
+            credit["license"] = catalog_license
         exports: dict = {}
         for name, glb in (("high", high_glb), ("low", low_glb)):
             record: dict = {
