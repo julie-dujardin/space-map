@@ -2,6 +2,7 @@
 	import '../app.css';
 	import { getLocale, getTextDirection } from '$lib/paraglide/runtime.js';
 	import Sonner from '$lib/components/ui/sonner/sonner.svelte';
+	import LiveAnnouncer from '$lib/a11y/LiveAnnouncer.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
 
 	let { children } = $props();
@@ -23,4 +24,5 @@
 </script>
 
 <Sonner position={direction === 'rtl' ? 'top-left' : 'top-right'} dir={direction} />
+<LiveAnnouncer />
 {@render children()}

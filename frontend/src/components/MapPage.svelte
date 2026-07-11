@@ -372,12 +372,19 @@
 </svelte:head>
 
 {#if ctx.loading}
-	<div class="flex h-screen flex-col items-center justify-center gap-3 bg-bg text-text">
+	<div
+		class="flex h-screen flex-col items-center justify-center gap-3 bg-bg text-text"
+		role="status"
+		aria-live="polite"
+	>
 		<span class="text-sm">{m.loading_data()}</span>
 		<LoadingBar value={loadProgress.value} label={m.loading_data()} />
 	</div>
 {:else if ctx.error}
-	<div class="flex h-screen flex-col items-center justify-center gap-4 bg-bg px-6 text-center">
+	<div
+		role="alert"
+		class="flex h-screen flex-col items-center justify-center gap-4 bg-bg px-6 text-center"
+	>
 		<p class="max-w-md text-sm text-text-error">{m.error_prefix({ error: ctx.error })}</p>
 		<button
 			class="rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:opacity-50"

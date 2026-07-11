@@ -132,6 +132,13 @@
 		isSmallBodyZone && focusable.kind === 'group' ? classNameFromSlug(focusable.slug) : null
 	);
 	let loading = $state(true);
+	// Set when the detail fetch rejects — drives an alert panel instead of an
+	// empty drawer. `retryNonce` re-triggers the load effect on a retry click.
+	let loadError = $state(false);
+	let retryNonce = $state(0);
+	function retryLoad() {
+		retryNonce++;
+	}
 	// String key so the load effect ignores parent re-derivations that return a
 	// new focusable ref with the same logical identity (replaceFocusName churn).
 	let focusableId = $derived(focusableKey(focusable));
@@ -149,11 +156,22 @@
 		// Track only the stable key — focusable identity churns on every view
 		// reassignment (camera/time/replaceFocusName) and would re-fetch.
 		const key = focusableId;
+		void retryNonce; // re-run on retry
 		const current = untrack(() => focusable);
 		loading = true;
+		loadError = false;
 		data = null;
 		featureDetail = null;
 		groupDetail = null;
+		// A rejected detail fetch used to rethrow into the void, leaving an empty
+		// drawer. Surface it as an alert panel instead; stale loads (key moved on)
+		// are ignored so an old failure can't overwrite a newer focus.
+		const onError = (err: unknown) => {
+			if (focusableId !== key) return;
+			console.warn(`[detail] failed to load ${key}:`, err);
+			loading = false;
+			loadError = true;
+		};
 		if (current.kind === 'feature') {
 			const f = current.feature;
 			fetchFeatureDetail(current.body.data.id, f.featureId)
@@ -163,10 +181,7 @@
 					data = featureDetailToObjectData(detail, f);
 					loading = false;
 				})
-				.catch((err) => {
-					loading = false;
-					throw err;
-				});
+				.catch(onError);
 			return;
 		}
 		if (current.kind === 'group') {
@@ -178,10 +193,7 @@
 					data = groupDetailToObjectData(detail, slug);
 					loading = false;
 				})
-				.catch((err) => {
-					loading = false;
-					throw err;
-				});
+				.catch(onError);
 			return;
 		}
 		const bodyId = current.body.data.id;
@@ -193,10 +205,7 @@
 					loading = false;
 				}
 			})
-			.catch((err) => {
-				loading = false;
-				throw err;
-			});
+			.catch(onError);
 	});
 
 	// Snap points: chrome-only collapsed (measured at runtime so it tracks the
@@ -303,7 +312,9 @@
 	// the user sees *something* identifiable instead of an empty drawer header
 	// (and the console isn't spammed by repeated effect re-runs).
 	$effect(() => {
-		if (loading) return;
+		// A failed load has no name to resolve — the alert panel speaks for it, and
+		// warning "no name resolved" here would just be misleading.
+		if (loading || loadError) return;
 		// Stable key — avoids re-firing (and ping-ponging via replaceFocusName) on view churn.
 		const key = focusableId;
 		if (!resolvedName && !nameMissingLogged.has(key)) {
@@ -607,7 +618,13 @@
 {/snippet}
 
 {#snippet overviewPanel()}
-	{#if loading}
+	{#if loadError}
+		<div role="alert" class="flex flex-col items-center gap-3 px-4 py-16 text-center">
+			<p class="text-sm font-medium text-foreground">{m.detail_error_title()}</p>
+			<p class="max-w-xs text-xs text-muted-foreground">{m.detail_error_body()}</p>
+			<Button variant="secondary" size="sm" onclick={retryLoad}>{m.retry()}</Button>
+		</div>
+	{:else if loading}
 		<div class="flex flex-col gap-4 p-1">
 			<Skeleton class="w-full h-36 rounded-md" />
 			<Skeleton class="w-3/4 h-6" />

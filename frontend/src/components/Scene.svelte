@@ -362,6 +362,7 @@
 	<div bind:this={labelContainer} class="absolute inset-0 pointer-events-none z-0"></div>
 	{#if webglError}
 		<div
+			role="alert"
 			class="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-text"
 		>
 			<h2 class="text-lg font-semibold">{m.webgl_unavailable_title()}</h2>
@@ -369,6 +370,7 @@
 		</div>
 	{:else if contextLost}
 		<div
+			role="alert"
 			class="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-bg/90 px-6 text-center text-text backdrop-blur"
 		>
 			<h2 class="text-lg font-semibold">{m.webgl_context_lost_title()}</h2>

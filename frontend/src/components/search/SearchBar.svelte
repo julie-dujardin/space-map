@@ -24,6 +24,7 @@
 	} from '$lib/search/client';
 	import { capitalize, optionDomId } from '$lib/search/format';
 	import { formatCompactNumber } from '$lib/format/quantities';
+	import { announce } from '$lib/a11y/announcer.svelte';
 	import { rangeDef } from '$lib/search/ranges';
 	import { SearchModel, type FilterToken } from '$lib/search/model.svelte';
 	import { parseSearchSuffix } from '$lib/search/url';
@@ -136,6 +137,19 @@
 		clearTimeout(debounceTimer);
 		debounceTimer = setTimeout(() => model.runSearch(snap), 150);
 		return () => clearTimeout(debounceTimer);
+	});
+
+	// Announce the settled result count / "no results" to screen readers (WCAG
+	// 4.1.3). Polite channel, and skipped mid-load, so it speaks the final tally
+	// once typing pauses rather than every intermediate value. The error case is
+	// left to the results panel's role="alert" to avoid a double announcement.
+	$effect(() => {
+		if (!expanded || model.loading || model.error || !model.hasResults) return;
+		announce(
+			model.total === 0
+				? m.search_no_results()
+				: m.search_results_announce({ count: formatCompactNumber(model.total) })
+		);
 	});
 
 	// ── label helpers ──────────────────────────────────────────────────
@@ -552,6 +566,10 @@
 		collapse();
 		model.setQuery('');
 		inputEl?.blur();
+		// Picking collapses the combobox and blurs the input (focus falls to
+		// <body>); announce the choice so screen-reader users aren't left in
+		// silence while the drawer opens without a focus move.
+		announce(m.search_selected_announce({ name: rowName(hit) }));
 	}
 
 	// Keyboard highlight, tracked by hit id (not index): a new search or a

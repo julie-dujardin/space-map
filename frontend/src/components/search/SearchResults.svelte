@@ -102,7 +102,7 @@
 
 <div bind:this={scrollEl} onscroll={onScroll} class="min-h-0 flex-1 overflow-y-auto">
 	{#if model.error}
-		<div class="px-3 py-10 text-center">
+		<div role="alert" class="px-3 py-10 text-center">
 			<div class="mb-1 text-sm text-foreground">{m.search_error()}</div>
 			<div class="text-xs text-muted-foreground">{m.search_error_hint()}</div>
 		</div>
