@@ -1,6 +1,6 @@
 <script lang="ts">
 	import XIcon from '@lucide/svelte/icons/x';
-	import { Portal } from 'bits-ui';
+	import { Dialog } from 'bits-ui';
 	import type { Component, Snippet } from 'svelte';
 	import * as Popover from '$lib/components/ui/popover';
 	import * as m from '$lib/paraglide/messages.js';
@@ -24,16 +24,6 @@
 		return () => mq.removeEventListener('change', onChange);
 	});
 
-	// Esc-to-close for the mobile fullscreen panel (Popover handles this itself).
-	$effect(() => {
-		if (!open || !isMobile) return;
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') open = false;
-		};
-		window.addEventListener('keydown', onKey);
-		return () => window.removeEventListener('keydown', onKey);
-	});
-
 	const buttonClass = `pointer-events-auto flex items-center justify-center
 		w-10 h-10 md:w-8 md:h-8 rounded-full
 		bg-black/40 backdrop-blur-md hover:bg-black/55
@@ -41,40 +31,29 @@
 </script>
 
 {#if isMobile}
-	<button
-		type="button"
-		class={buttonClass}
-		onclick={() => (open = true)}
-		{title}
-		aria-label={title}
-	>
-		<Icon class="size-5" />
-	</button>
-
-	{#if open}
-		<!-- Portal'd to escape the parent z-10 stacking context.
-		     pointer-events-auto overrides bits-ui's body-level scroll-lock while
-		     DetailDrawer is open. -->
-		<Portal>
-			<div
-				class="fixed inset-0 z-[70] bg-background overflow-y-auto pointer-events-auto pt-[var(--safe-top)] pb-[var(--safe-bottom)] ps-[var(--safe-start)] pe-[var(--safe-end)]"
-				role="dialog"
-				aria-modal="true"
-				aria-label={title}
+	<!-- bits-ui Dialog gives the fullscreen mobile panel real focus management
+	     (trap on open, restore to trigger on close) and makes the covered app
+	     inert — none of which the hand-rolled overlay did. -->
+	<Dialog.Root bind:open>
+		<Dialog.Trigger class={buttonClass} {title} aria-label={title}>
+			<Icon class="size-5" />
+		</Dialog.Trigger>
+		<Dialog.Portal>
+			<Dialog.Overlay class="fixed inset-0 z-[69] bg-black/40" />
+			<Dialog.Content
+				class="fixed inset-0 z-[70] overflow-y-auto bg-background pt-[var(--safe-top)] pb-[var(--safe-bottom)] ps-[var(--safe-start)] pe-[var(--safe-end)] outline-none"
 			>
-				<button
-					type="button"
-					class="absolute top-3 end-3 z-10 inline-flex items-center justify-center
-						w-9 h-9 rounded-md hover:bg-accent transition-colors cursor-pointer"
-					onclick={() => (open = false)}
+				<Dialog.Title class="sr-only">{title}</Dialog.Title>
+				<Dialog.Close
+					class="absolute top-3 end-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent transition-colors cursor-pointer"
 					aria-label={m.close()}
 				>
 					<XIcon class="size-5" />
-				</button>
+				</Dialog.Close>
 				{@render children()}
-			</div>
-		</Portal>
-	{/if}
+			</Dialog.Content>
+		</Dialog.Portal>
+	</Dialog.Root>
 {:else}
 	<Popover.Root bind:open>
 		<Popover.Trigger class={buttonClass} {title} aria-label={title}>

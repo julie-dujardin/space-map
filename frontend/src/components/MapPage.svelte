@@ -131,6 +131,17 @@
 	let scene = $state<Scene>();
 	let drawerHeightDvh = $state(0);
 	let searchExpanded = $state(false);
+	// The search overlay is fullscreen-modal on mobile but a non-modal side panel
+	// on desktop, so only mobile inerts the background behind it.
+	let isMobileViewport = $state(false);
+	$effect(() => {
+		const mq = window.matchMedia('(max-width: 767px)');
+		isMobileViewport = mq.matches;
+		const onChange = (e: MediaQueryListEvent) => (isMobileViewport = e.matches);
+		mq.addEventListener('change', onChange);
+		return () => mq.removeEventListener('change', onChange);
+	});
+	const bgInert = $derived(searchExpanded && isMobileViewport);
 	let userPromotedCount = $state(0);
 	let northRefId = $state<string | null>(null);
 
@@ -381,34 +392,48 @@
 	</div>
 {:else}
 	<Tooltip.Provider delayDuration={300}>
-		<div class="relative w-full h-screen">
-			<Scene
-				bind:this={scene}
-				{clock}
-				{northRefId}
-				onFocusChange={(body) => {
-					cameraFocus = body;
-					selectedBody = body;
-				}}
-				onFeatureSelect={async (bodyId, fid, lat, lon, d) => {
-					const features = await fetchBodyNomenclature(bodyId);
-					const f = features.find((x) => x.featureId === fid);
-					if (!f) {
-						console.warn(`[map] Clicked feature ${fid} on ${bodyId} not in fetched list.`);
-						return;
-					}
-					appState.setFeature({
-						bodyId,
-						featureId: fid,
-						featureName: f.name
-					});
-					// activeFeature is resolved by the $effect above; here we just kick
-					// the camera so the click feels instant instead of waiting on a
-					// cache hit + microtask round-trip.
-					scene?.focusOnFeature(bodyId, lat, lon, d);
-				}}
-				onUserPromotedChange={(count) => (userPromotedCount = count)}
-			/>
+		<a
+			href="#main-content"
+			class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:start-2 focus:z-[100] focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+		>
+			{m.skip_to_content()}
+		</a>
+		<main id="main-content" tabindex="-1" class="relative w-full h-screen outline-none">
+			<!-- The focused object (or app name) is the de-facto page title;
+			     visually-hidden so screen readers get a stable h1 landmark even when
+			     the drawer is closed. -->
+			<h1 class="sr-only">{appState.view.name ?? m.page_title()}</h1>
+			<!-- display:contents wrapper so mobile's fullscreen search can inert the
+			     scene without adding a layout box. -->
+			<div class="contents" inert={bgInert}>
+				<Scene
+					bind:this={scene}
+					{clock}
+					{northRefId}
+					onFocusChange={(body) => {
+						cameraFocus = body;
+						selectedBody = body;
+					}}
+					onFeatureSelect={async (bodyId, fid, lat, lon, d) => {
+						const features = await fetchBodyNomenclature(bodyId);
+						const f = features.find((x) => x.featureId === fid);
+						if (!f) {
+							console.warn(`[map] Clicked feature ${fid} on ${bodyId} not in fetched list.`);
+							return;
+						}
+						appState.setFeature({
+							bodyId,
+							featureId: fid,
+							featureName: f.name
+						});
+						// activeFeature is resolved by the $effect above; here we just kick
+						// the camera so the click feels instant instead of waiting on a
+						// cache hit + microtask round-trip.
+						scene?.focusOnFeature(bodyId, lat, lon, d);
+					}}
+					onUserPromotedChange={(count) => (userPromotedCount = count)}
+				/>
+			</div>
 			<TimeControls {clock} />
 			<div
 				class="fixed top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] pointer-events-auto md:end-auto md:w-[min(400px,calc(100vw-7rem))] {searchExpanded
@@ -447,6 +472,7 @@
 				</div>
 			{/if}
 			<div
+				inert={bgInert}
 				class="fixed end-[calc(var(--safe-end)_+_1rem)] z-10 flex flex-col items-end gap-3 pointer-events-auto {searchEnabled
 					? 'top-[calc(var(--safe-top)_+_7.5rem)] md:top-[calc(var(--safe-top)_+_1rem)]'
 					: 'top-[calc(var(--safe-top)_+_1rem)]'}"
@@ -490,6 +516,7 @@
 				/>
 			{/if}
 			<div
+				inert={bgInert}
 				class="fixed end-[calc(var(--safe-end)_+_1rem)] z-10 flex flex-col-reverse items-end gap-3 transition-[opacity,bottom] duration-300 ease-in-out
 					{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
 				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1.5rem + var(--safe-bottom));"
@@ -521,6 +548,6 @@
 			>
 				<AttributionBar />
 			</div>
-		</div>
+		</main>
 	</Tooltip.Provider>
 {/if}

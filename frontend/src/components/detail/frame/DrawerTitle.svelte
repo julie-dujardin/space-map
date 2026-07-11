@@ -9,8 +9,10 @@
 	interface Props {
 		crumb: Crumb | null;
 		title: string;
+		/** Set so the drawer/aside can name itself via aria-labelledby. */
+		id?: string;
 	}
-	let { crumb, title }: Props = $props();
+	let { crumb, title, id }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -54,7 +56,7 @@
 	// capped at what the title actually needs, so short titles never force a
 	// collapse — only a narrow row with both long does.
 	let rowEl = $state<HTMLDivElement | null>(null);
-	let titleEl = $state<HTMLSpanElement | null>(null);
+	let titleEl = $state<HTMLHeadingElement | null>(null);
 	let probeEl = $state<HTMLSpanElement | null>(null);
 	let showLabel = $state(false);
 
@@ -115,5 +117,5 @@
 			{/if}
 		</a>
 	{/if}
-	<span bind:this={titleEl} class="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
+	<h2 {id} bind:this={titleEl} class="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h2>
 </div>

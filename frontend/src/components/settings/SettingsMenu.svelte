@@ -74,13 +74,16 @@
 			<div class="flex flex-col gap-2">
 				<div class="flex items-center justify-between gap-3">
 					<div class="min-w-0">
-						<div class="text-sm font-medium">{m.settings_language()}</div>
+						<div id="settings-language-label" class="text-sm font-medium">
+							{m.settings_language()}
+						</div>
 					</div>
 					<div class="relative shrink-0">
 						<select
 							class="appearance-none rounded-md border border-input bg-background pe-7 ps-2.5 py-1.5 text-sm
 								cursor-pointer hover:bg-accent transition-colors
 								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+							aria-labelledby="settings-language-label"
 							value={settings.language}
 							onchange={(e) => {
 								const v = (e.currentTarget as HTMLSelectElement).value;

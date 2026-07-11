@@ -856,12 +856,13 @@
 		<Vaul.Portal>
 			<Vaul.Content
 				trapFocus={false}
+				aria-labelledby="detail-drawer-title"
 				class="fixed inset-x-0 bottom-0 z-50 flex h-dvh max-h-dvh flex-col rounded-t-xl border-t bg-background shadow-lg outline-none"
 			>
 				<div bind:this={headerEl} class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
 					<div class="h-1 w-10 rounded-full bg-muted-foreground/40"></div>
 					<div class="flex w-full items-center justify-between gap-2">
-						<DrawerTitle {crumb} title={displayName} />
+						<DrawerTitle {crumb} title={displayName} id="detail-drawer-title" />
 						<div class="flex items-center gap-1.5">
 							{@render drawerToolbar()}
 						</div>
@@ -885,11 +886,12 @@
 {:else}
 	<!-- Desktop: side panel -->
 	<aside
+		aria-labelledby="detail-drawer-title"
 		class="fixed top-0 start-0 z-50 flex h-full w-[380px] max-w-[90vw] flex-col border-e bg-background shadow-lg"
 	>
 		<!-- pt aligns the title/buttons row with the top-4 featured chips beside it. -->
 		<div class="flex items-center justify-between gap-2 px-4 pb-2 pt-[18px]">
-			<DrawerTitle {crumb} title={displayName} />
+			<DrawerTitle {crumb} title={displayName} id="detail-drawer-title" />
 			<div class="flex items-center gap-1.5">
 				{@render drawerToolbar()}
 			</div>
