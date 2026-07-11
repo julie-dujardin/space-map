@@ -236,7 +236,6 @@ export function updateBodyVisibility(
 			continue;
 		}
 
-		if (dist <= r) continue; // camera inside the bounding sphere → no occlusion
 		tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]).applyMatrix4(cameraInverse);
 		const camX = tmpV3.x,
 			camY = tmpV3.y,
