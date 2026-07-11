@@ -735,6 +735,11 @@
 	"attribution_section_source": "Source code",
 	"credits_source_code": "Source code — AGPL-3.0",
 	"wikipedia_license_notice": "Text adapted from Wikipedia, under",
+	"model_provenance_missions": "3D shape model from a spacecraft mission",
+	"model_provenance_radar": "3D shape model from Earth-based radar",
+	"model_provenance_lightcurve": "3D shape model from lightcurve inversion",
+	"attitude_source_spice_ck": "Orientation from SPICE kernels",
+	"attitude_source_estimated": "Orientation estimated",
 	"min_temperature": "min temperature",
 	"max_temperature": "max temperature",
 	"unit_earth_mass_count": [

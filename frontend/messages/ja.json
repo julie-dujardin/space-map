@@ -243,6 +243,11 @@
 	"source_wikipedia_role": "天体の説明",
 	"tooltip_distance_from_sun": "現在の太陽からの距離",
 	"wikipedia_license_notice": "Wikipedia の記事を基にしています。ライセンス:",
+	"model_provenance_missions": "探査機ミッションによる3D形状モデル",
+	"model_provenance_radar": "地上レーダーによる3D形状モデル",
+	"model_provenance_lightcurve": "光度曲線反転による3D形状モデル",
+	"attitude_source_spice_ck": "SPICEカーネルによる姿勢",
+	"attitude_source_estimated": "推定された姿勢",
 	"close": "閉じる",
 	"share": "共有",
 	"link_copied": "リンクをコピーしました",
@@ -1334,5 +1339,18 @@
 	"unit_symbol_astronomical_unit": "au",
 	"unit_symbol_kilometre": "粁",
 	"unit_symbol_magnitude": "等級",
-	"unit_symbol_metre": "米"
+	"unit_symbol_metre": "米",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "国",
+				"countPlural=other": "国"
+			}
+		}
+	],
+	"earth": "地球",
+	"image_zoom": "ズーム",
+	"image_error": "画像を読み込めません"
 }

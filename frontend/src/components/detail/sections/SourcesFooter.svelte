@@ -1,8 +1,12 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import * as m from '$lib/paraglide/messages.js';
 	import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
-	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+	import type { GlobalObjectData, ModelSource } from '$lib/fetch/objects/object-data';
+	import type { AppState } from '$lib/state/app-state.svelte';
+	import type { FocusObject } from '$lib/state/focusable';
+	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
 
 	interface Source {
 		key: string;
@@ -89,6 +93,47 @@
 
 		return out;
 	});
+
+	const appState = getContext<AppState | undefined>('appState');
+	const focusObject = getContext<FocusObject | undefined>('focusObject');
+
+	function provenanceLabel(p: ModelSource['provenance']): string {
+		if (p === 'radar') return m.model_provenance_radar();
+		if (p === 'lightcurve') return m.model_provenance_lightcurve();
+		return m.model_provenance_missions();
+	}
+
+	let modelSource = $derived(global?.model_source);
+
+	// Deep-link to the observing spacecraft's page; the mesh isn't worth flying to.
+	let missionHref = $derived.by(() => {
+		const mission = modelSource?.mission;
+		if (!mission || !appState) return undefined;
+		return serializeUrl(
+			applyFocus(appState.view, {
+				type: urlTypeFromId(mission.primary_id),
+				id: mission.primary_id,
+				name: mission.name
+			})
+		);
+	});
+
+	function openMission(e: MouseEvent) {
+		const mission = modelSource?.mission;
+		if (!mission || !focusObject) return;
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		e.preventDefault();
+		focusObject(mission.primary_id, mission.name, { moveCamera: false });
+	}
+
+	// CK-refit stream, or the estimated two-vector/nadir pointing fallback.
+	let orientationLabel = $derived(
+		global?.attitude
+			? m.attitude_source_spice_ck()
+			: global?.pointing
+				? m.attitude_source_estimated()
+				: null
+	);
 </script>
 
 {#if wikipediaLicensed}
@@ -101,6 +146,32 @@
 			class="underline hover:text-foreground">CC BY-SA 4.0</a
 		>.
 	</p>
+{/if}
+{#if modelSource}
+	<p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+		<span>{provenanceLabel(modelSource.provenance)}</span>
+		{#if modelSource.mission}
+			<a href={missionHref} onclick={openMission} class="underline hover:text-foreground"
+				>{modelSource.mission.name}</a
+			>
+		{/if}
+		{#if modelSource.archive}
+			{#if modelSource.archive_url}
+				<a
+					href={modelSource.archive_url}
+					target="_blank"
+					rel="noopener"
+					class="inline-flex items-center gap-1 underline hover:text-foreground"
+					>{modelSource.archive}<ExternalLinkIcon class="size-3 shrink-0" /></a
+				>
+			{:else}
+				<span>{modelSource.archive}</span>
+			{/if}
+		{/if}
+	</p>
+{/if}
+{#if orientationLabel}
+	<p class="text-xs text-muted-foreground">{orientationLabel}</p>
 {/if}
 {#if sources.length}
 	<p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">

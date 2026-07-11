@@ -704,6 +704,11 @@
 	"attribution_section_source": "Kod źródłowy",
 	"credits_source_code": "Kod źródłowy — AGPL-3.0",
 	"wikipedia_license_notice": "Tekst zaczerpnięty z Wikipedii, na licencji",
+	"model_provenance_missions": "Model kształtu 3D z misji kosmicznej",
+	"model_provenance_radar": "Model kształtu 3D z radaru naziemnego",
+	"model_provenance_lightcurve": "Model kształtu 3D z inwersji krzywej blasku",
+	"attitude_source_spice_ck": "Orientacja z jąder SPICE",
+	"attitude_source_estimated": "Orientacja szacowana",
 	"min_temperature": "temperatura min.",
 	"max_temperature": "temperatura maks.",
 	"unit_earth_mass_count": [
@@ -1077,5 +1082,18 @@
 	"unit_name_year": "rok",
 	"unit_name_yottagram": "jottagram",
 	"unit_symbol_astronomical_unit": "au",
-	"unit_symbol_magnitude": "magnitudo"
+	"unit_symbol_magnitude": "magnitudo",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Kraj",
+				"countPlural=other": "Kraje"
+			}
+		}
+	],
+	"earth": "Ziemia",
+	"image_zoom": "Powiększenie",
+	"image_error": "Nie można załadować obrazu"
 }

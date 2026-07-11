@@ -240,6 +240,11 @@
 	"source_wikipedia_role": "descriptions des objets",
 	"tooltip_distance_from_sun": "Distance actuelle au Soleil",
 	"wikipedia_license_notice": "Texte adapté de Wikipédia, sous",
+	"model_provenance_missions": "Modèle 3D de forme issu d'une mission spatiale",
+	"model_provenance_radar": "Modèle 3D de forme issu d'un radar terrestre",
+	"model_provenance_lightcurve": "Modèle 3D de forme par inversion de courbe de lumière",
+	"attitude_source_spice_ck": "Orientation d'après les noyaux SPICE",
+	"attitude_source_estimated": "Orientation estimée",
 	"close": "Fermer",
 	"share": "Partager",
 	"link_copied": "Lien copié",
@@ -1121,5 +1126,18 @@
 	"unit_name_year": "année",
 	"unit_name_yottagram": "yottagramme",
 	"unit_name_zettagram": "zettagramme",
-	"unit_symbol_astronomical_unit": "UA"
+	"unit_symbol_astronomical_unit": "UA",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Pays",
+				"countPlural=other": "Pays"
+			}
+		}
+	],
+	"earth": "Terre",
+	"image_zoom": "Zoom",
+	"image_error": "Impossible de charger l'image"
 }

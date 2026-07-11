@@ -704,6 +704,11 @@
 	"attribution_section_source": "קוד מקור",
 	"credits_source_code": "קוד מקור — AGPL-3.0",
 	"wikipedia_license_notice": "הטקסט עובד מתוך Wikipedia, תחת",
+	"model_provenance_missions": "מודל צורה תלת-ממדי ממשימת חלל",
+	"model_provenance_radar": "מודל צורה תלת-ממדי מרדאר קרקעי",
+	"model_provenance_lightcurve": "מודל צורה תלת-ממדי מהיפוך עקומת אור",
+	"attitude_source_spice_ck": "כיוון מקובצי SPICE",
+	"attitude_source_estimated": "כיוון משוער",
 	"min_temperature": "טמפרטורה מינימלית",
 	"max_temperature": "טמפרטורה מקסימלית",
 	"unit_earth_mass_count": [
@@ -1213,5 +1218,18 @@
 	"unit_symbol_magnitude": "מגניטודה",
 	"unit_symbol_metre": "מ'",
 	"unit_symbol_millimetre": "מ\"מ",
-	"unit_symbol_square_kilometre": "קמ\"ר"
+	"unit_symbol_square_kilometre": "קמ\"ר",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "מדינה",
+				"countPlural=other": "מדינות"
+			}
+		}
+	],
+	"earth": "כדור הארץ",
+	"image_zoom": "הגדלה",
+	"image_error": "לא ניתן לטעון את התמונה"
 }

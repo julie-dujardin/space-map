@@ -771,6 +771,11 @@
 	"attribution_section_source": "源代码",
 	"credits_source_code": "源代码 — AGPL-3.0",
 	"wikipedia_license_notice": "文本改编自维基百科，遵循",
+	"model_provenance_missions": "来自航天器任务的三维形状模型",
+	"model_provenance_radar": "来自地基雷达的三维形状模型",
+	"model_provenance_lightcurve": "来自光变曲线反演的三维形状模型",
+	"attitude_source_spice_ck": "基于 SPICE 内核的姿态",
+	"attitude_source_estimated": "姿态为估计值",
 	"feature_type_description_AA": "由于陨石的超高速撞击而形成的固体天体上的圆形凹陷",
 	"feature_type_description_AL": "与相邻区域存在反照率对比的区域",
 	"feature_type_description_AR": "弧形地貌",
@@ -1334,5 +1339,18 @@
 	"unit_symbol_kilometre": "公里",
 	"unit_symbol_magnitude": "等",
 	"unit_symbol_metre": "米",
-	"unit_symbol_millimetre": "毫米"
+	"unit_symbol_millimetre": "毫米",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "国家",
+				"countPlural=other": "国家"
+			}
+		}
+	],
+	"earth": "地球",
+	"image_zoom": "缩放",
+	"image_error": "无法加载图像"
 }

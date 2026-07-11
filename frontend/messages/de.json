@@ -704,6 +704,11 @@
 	"attribution_section_source": "Quellcode",
 	"credits_source_code": "Quellcode — AGPL-3.0",
 	"wikipedia_license_notice": "Text übernommen aus Wikipedia, unter",
+	"model_provenance_missions": "3D-Formmodell aus einer Raumfahrtmission",
+	"model_provenance_radar": "3D-Formmodell aus erdgestütztem Radar",
+	"model_provenance_lightcurve": "3D-Formmodell aus Lichtkurven-Inversion",
+	"attitude_source_spice_ck": "Ausrichtung aus SPICE-Kerneln",
+	"attitude_source_estimated": "Ausrichtung geschätzt",
 	"min_temperature": "Min.-Temperatur",
 	"max_temperature": "Max.-Temperatur",
 	"unit_earth_mass_count": [
@@ -1102,5 +1107,18 @@
 	"unit_name_zettagram": "Zettagramm",
 	"unit_symbol_astronomical_unit": "AE",
 	"unit_symbol_hour": "Std.",
-	"unit_symbol_magnitude": "mag"
+	"unit_symbol_magnitude": "mag",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Land",
+				"countPlural=other": "Länder"
+			}
+		}
+	],
+	"earth": "Erde",
+	"image_zoom": "Zoom",
+	"image_error": "Das Bild kann nicht geladen werden"
 }

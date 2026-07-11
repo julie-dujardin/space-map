@@ -130,6 +130,9 @@ export interface SpinBaseline {
  * in `ATTI` v2 format (see `docs/export-format/probe-attitude.md`).
  */
 export interface ProbeAttitude {
+	/** Where the orientation stream came from. Only `spice_ck` today (refit from
+	 *  NAIF CK kernels); absent on pre-`source` bundles — treat as `spice_ck`. */
+	source?: 'spice_ck';
 	/** CK reference frame the quaternions are expressed in. */
 	frame: string;
 	start_jd: number;
@@ -175,6 +178,10 @@ export interface GlobalObjectData {
 	 *  Multiple bodies can share one slug (e.g. all four Cluster II satellites
 	 *  point at `cluster`); the frontend loads `high.glb` from that directory. */
 	model_name?: string;
+	/** Provenance of the shape model (natural bodies only): the technique tier,
+	 *  the archive it came from, and — for mission shapes — a link to the
+	 *  observing spacecraft. Drives the sources-section model paragraph. */
+	model_source?: ModelSource;
 	/** Best-available-asset render tier: high = faithful 3D model, map texture,
 	 *  or procedural star surface; medium = lightcurve convex hull only; low =
 	 *  size-only sphere/ellipsoid. Absent → no known physical extent (halo/point). */
@@ -369,6 +376,18 @@ export interface FragmentOf {
 	/** Parent Object.id ("object") or family group slug ("group"). */
 	primary_id: string;
 	thumbnail?: PickedThumbnail;
+}
+
+/** Shape-model provenance denormalized onto a natural body's global bundle. */
+export interface ModelSource {
+	/** Technique tier: spacecraft mission, Earth-based radar, or lightcurve
+	 *  inversion. */
+	provenance: 'missions' | 'radar' | 'lightcurve';
+	/** Archive the mesh was sourced from (free text, e.g. "PDS SBN (NEAR)"). */
+	archive?: string;
+	archive_url?: string;
+	/** Observing spacecraft (mission shapes only), linking to its probe page. */
+	mission?: FragmentOf;
 }
 
 // --- Localized object data ---

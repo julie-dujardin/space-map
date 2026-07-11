@@ -704,6 +704,11 @@
 	"attribution_section_source": "Codice sorgente",
 	"credits_source_code": "Codice sorgente — AGPL-3.0",
 	"wikipedia_license_notice": "Testo adattato da Wikipedia, sotto",
+	"model_provenance_missions": "Modello 3D della forma da una missione spaziale",
+	"model_provenance_radar": "Modello 3D della forma da radar terrestre",
+	"model_provenance_lightcurve": "Modello 3D della forma da inversione della curva di luce",
+	"attitude_source_spice_ck": "Orientamento dai kernel SPICE",
+	"attitude_source_estimated": "Orientamento stimato",
 	"min_temperature": "temperatura minima",
 	"max_temperature": "temperatura massima",
 	"unit_earth_mass_count": [
@@ -1089,5 +1094,18 @@
 	"unit_name_yottagram": "yottagrammo",
 	"unit_name_zettagram": "zettagrammo",
 	"unit_symbol_astronomical_unit": "UA",
-	"unit_symbol_magnitude": "magnitudine"
+	"unit_symbol_magnitude": "magnitudine",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Paese",
+				"countPlural=other": "Paesi"
+			}
+		}
+	],
+	"earth": "Terra",
+	"image_zoom": "Zoom",
+	"image_error": "Impossibile caricare l’immagine"
 }
