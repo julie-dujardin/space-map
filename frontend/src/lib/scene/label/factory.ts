@@ -56,6 +56,7 @@ function addLabelNameSpan(
 ): HTMLSpanElement {
 	const span = document.createElement('span');
 	span.className = `scene-label__name scene-label__name--${variant}${isLarge ? ' scene-label__name--large' : ''}`;
+	span.dir = 'auto'; // designations like "65803 Didymos" must not bidi-reorder in an RTL page
 	span.textContent = name;
 	span.addEventListener('click', onClick);
 	el.appendChild(span);

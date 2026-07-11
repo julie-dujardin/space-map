@@ -75,16 +75,16 @@
 	</span>
 
 	<span class="flex flex-col gap-0.5 min-w-0 flex-1">
-		<span class="text-sm text-foreground truncate">{name}</span>
+		<span dir="auto" class="text-sm text-foreground truncate">{name}</span>
 		{#if secondary}
-			<span class="text-xs text-muted-foreground truncate">{secondary}</span>
+			<span dir="auto" class="text-xs text-muted-foreground truncate">{secondary}</span>
 		{/if}
 	</span>
 
 	{#if hit.kind === 'group'}
 		<span class="flex shrink-0 items-center gap-1.5 text-muted-foreground">
 			<span class="text-xs tabular-nums text-foreground">{compact(hit.member_count)}</span>
-			<ChevronRightIcon class="size-4" />
+			<ChevronRightIcon class="size-4 rtl:rotate-180" />
 		</span>
 	{:else if metric}
 		<span class="shrink-0 text-end font-mono text-xs tabular-nums text-muted-foreground">

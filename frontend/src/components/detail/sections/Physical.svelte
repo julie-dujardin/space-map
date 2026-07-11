@@ -4,6 +4,7 @@
 	import { isNaturalBodyType } from '$lib/types/objects';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatNumber, formatUnit, formatQuantity } from '$lib/format/quantities';
+	import { ltrIsolate } from '$lib/format/bidi';
 	import { diameterKmFromH, BRIGHT_ALBEDO, DARK_ALBEDO } from '$lib/math/h-magnitude';
 	import { formatTemperature } from '$lib/format/temperature';
 	import { formatDuration } from '$lib/format/duration';
@@ -155,10 +156,13 @@
 		{/if}
 		{#if estimatedDiameterKm}
 			{@const km = formatUnit('kilometre', true)}
+			<!-- LRI…PDI keeps the "(min – max km)" expression from bidi-reordering in RTL. -->
 			<Row
 				label={m.diameter()}
 				value={estimatedDiameterKm.range
-					? `${formatNumber(estimatedDiameterKm.nominal)} ${km} (${formatNumber(estimatedDiameterKm.range[0])} – ${formatNumber(estimatedDiameterKm.range[1])} ${km})`
+					? ltrIsolate(
+							`${formatNumber(estimatedDiameterKm.nominal)} ${km} (${formatNumber(estimatedDiameterKm.range[0])} – ${formatNumber(estimatedDiameterKm.range[1])} ${km})`
+						)
 					: `${formatNumber(estimatedDiameterKm.nominal)} ${km}`}
 				tooltip={m.tooltip_diameter_estimated()}
 			/>

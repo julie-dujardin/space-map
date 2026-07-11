@@ -101,7 +101,7 @@
 				<button
 					type="button"
 					class="flex w-full items-center justify-between gap-3 rounded-lg border bg-background px-3 py-3
-						text-left transition-colors hover:bg-primary/5 cursor-pointer"
+						text-start transition-colors hover:bg-primary/5 cursor-pointer"
 					onclick={() => (showCalendar = !showCalendar)}
 					title={m.time_pick_date()}
 					aria-expanded={showCalendar}

@@ -97,7 +97,7 @@
 			aria-hidden="true"
 			class="invisible pointer-events-none absolute flex w-max items-center gap-0.5 rounded-md py-0.5 pe-2 ps-1 text-xs whitespace-nowrap"
 		>
-			<ChevronLeftIcon class="size-3.5 shrink-0" />
+			<ChevronLeftIcon class="size-3.5 shrink-0 rtl:rotate-180" />
 			<span class="max-w-[14ch] truncate">{c.label}</span>
 		</span>
 		<a
@@ -109,7 +109,7 @@
 				? 'py-0.5 pe-2 ps-1'
 				: 'p-1'}"
 		>
-			<ChevronLeftIcon class="size-3.5 shrink-0" />
+			<ChevronLeftIcon class="size-3.5 shrink-0 rtl:rotate-180" />
 			{#if showLabel}
 				<span class="max-w-[14ch] truncate">{c.label}</span>
 			{/if}

@@ -28,12 +28,12 @@
 	<div class="text-muted-foreground truncate text-sm" title={e.name}>{e.name}</div>
 	<div class="bg-muted/30 relative h-[16px] rounded-sm">
 		<div
-			class="absolute top-1/2 left-0 h-[10px] -translate-y-1/2 rounded-sm"
+			class="absolute top-1/2 start-0 h-[10px] -translate-y-1/2 rounded-sm"
 			style:width="{maxCount > 0 ? (e.n / maxCount) * 100 : 0}%"
 			style:background-color={color(e.primary_id)}
 		></div>
 	</div>
-	<div class="text-muted-foreground text-right text-sm tabular-nums">{formatNumber(e.n)}</div>
+	<div class="text-muted-foreground text-end text-sm tabular-nums">{formatNumber(e.n)}</div>
 {/snippet}
 
 {#if entries.length > 0}

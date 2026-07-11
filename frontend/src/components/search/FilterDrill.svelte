@@ -55,7 +55,7 @@
 				class="inline-flex h-[26px] items-center gap-1 rounded-lg bg-accent px-2 text-sm font-medium text-foreground"
 				onclick={() => (path = path.slice(0, -1))}
 			>
-				<ChevronLeftIcon class="size-4" />
+				<ChevronLeftIcon class="size-4 rtl:rotate-180" />
 				<span class="whitespace-nowrap">{capitalize(current.label)}</span>
 			</button>
 		{:else}
@@ -136,7 +136,7 @@
 						>{compact(node.count)}</span
 					>
 				{/if}
-				<ChevronRightIcon class="size-4 text-muted-foreground" />
+				<ChevronRightIcon class="size-4 text-muted-foreground rtl:rotate-180" />
 			</button>
 		{/each}
 	</div>

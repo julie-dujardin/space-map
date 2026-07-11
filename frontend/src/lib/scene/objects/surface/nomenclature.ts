@@ -178,6 +178,7 @@ export async function attachNomenclatureLabels(
 
 		const el = document.createElement('div');
 		el.className = 'scene-feature-label';
+		el.dir = 'auto'; // Latin feature names must not bidi-reorder in an RTL page
 		el.textContent = feature.name;
 		el.dataset.featureId = String(feature.featureId);
 

@@ -82,7 +82,7 @@
 				class="pointer-events-auto text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs"
 			>
 				{m.members_see_all()}
-				<ArrowRightIcon class="size-3" />
+				<ArrowRightIcon class="size-3 rtl:rotate-180" />
 			</button>
 		{/if}
 	</div>

@@ -44,7 +44,7 @@
 					</button>
 				{/if}
 				{#if wikipediaUrl}
-					<span class="ml-auto">
+					<span class="ms-auto">
 						{m.source_prefix()}
 						<a
 							href={wikipediaUrl}

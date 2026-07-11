@@ -195,24 +195,24 @@
 								</div>
 								<div class="bg-muted/30 relative h-[16px] rounded-sm">
 									<div
-										class="absolute top-1/2 left-0 h-[10px] -translate-y-1/2 rounded-sm"
+										class="absolute top-1/2 start-0 h-[10px] -translate-y-1/2 rounded-sm"
 										style="width: {pct(r.central)}%; background: {r.color}"
 									></div>
 									<!-- 16th–84th percentile whisker -->
 									{#if r.hi / r.lo >= MIN_INTERVAL_RATIO}
 										<div
 											class="absolute top-1/2 -translate-y-1/2"
-											style="left: {lo}%; width: {hi - lo}%; height: 8px"
+											style="inset-inline-start: {lo}%; width: {hi - lo}%; height: 8px"
 										>
 											<div
-												class="bg-foreground/55 absolute top-1/2 left-0 h-px w-full -translate-y-1/2"
+												class="bg-foreground/55 absolute top-1/2 start-0 h-px w-full -translate-y-1/2"
 											></div>
-											<div class="bg-foreground/55 absolute top-0 left-0 h-full w-px"></div>
-											<div class="bg-foreground/55 absolute top-0 right-0 h-full w-px"></div>
+											<div class="bg-foreground/55 absolute top-0 start-0 h-full w-px"></div>
+											<div class="bg-foreground/55 absolute top-0 end-0 h-full w-px"></div>
 										</div>
 									{/if}
 								</div>
-								<div class="text-muted-foreground text-right text-sm tabular-nums">
+								<div class="text-muted-foreground text-end text-sm tabular-nums">
 									{sharePct(r.central / nonSolarTotal)}
 								</div>
 							</a>

@@ -29,6 +29,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FilterNode, FilterLeaf } from '$lib/search/tree';
 	import { groupTypeLabelPlural } from '$lib/format/group';
+	import { ltrIsolate } from '$lib/format/bidi';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 	import { categoryLabel, CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import {
@@ -510,7 +511,9 @@
 				: b.min != null
 					? `≥ ${fmt(b.min)}`
 					: `≤ ${fmt(b.max as number)}`;
-		return `${dim}: ${val}${unit}`;
+		// Isolate the value as an LTR run so the ≥/≤ sign and digits don't
+		// bidi-mirror/reorder inside an RTL chip.
+		return `${dim}: ${ltrIsolate(`${val}${unit}`)}`;
 	}
 
 	const tokens = $derived.by((): FilterToken[] => {

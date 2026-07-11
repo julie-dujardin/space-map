@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import { getLocale, getTextDirection } from '$lib/paraglide/runtime.js';
 	import * as Popover from '$lib/components/ui/popover';
 	import CompassIcon from '@lucide/svelte/icons/compass';
 	import EarthIcon from '@lucide/svelte/icons/earth';
@@ -15,6 +16,9 @@
 
 	let { choices, selectedId, onSelect }: Props = $props();
 	let open = $state(false);
+
+	// The control sits at the inline-end edge; open the popover toward screen centre.
+	const side = $derived(getTextDirection(getLocale()) === 'rtl' ? 'right' : 'left');
 </script>
 
 <Popover.Root bind:open>
@@ -42,7 +46,7 @@
 			{/if}
 		</span>
 	</Popover.Trigger>
-	<Popover.Content side="left" align="end" sideOffset={8} class="w-48 p-1">
+	<Popover.Content {side} align="end" sideOffset={8} class="w-48 p-1">
 		<div class="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">
 			{m.north_reference()}
 		</div>
