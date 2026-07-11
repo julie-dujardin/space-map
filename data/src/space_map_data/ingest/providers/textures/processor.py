@@ -271,12 +271,6 @@ class TextureProcessor:
             src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
             if not src.exists():
                 log.warning("listed in metadata but not found: %s", entry["file"])
-                # Raw file gone but a prior export exists: still propagate
-                # yaml-only edits (e.g. license) and keep it available.
-                out_dir = config.PROCESSED_DIR / entry["body"]
-                if mirror_path(out_dir / "metadata.json").exists():
-                    refresh_metadata_from_yaml(out_dir, entry, entry["file"])
-                    self._mark_texture_available(entry["body"])
                 continue
             self.process(src, force=force)
 
