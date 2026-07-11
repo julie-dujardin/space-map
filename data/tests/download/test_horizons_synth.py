@@ -483,3 +483,39 @@ class TestQidDedupedSynthNaifs:
             self._entry("HORIZONS-SYNTH", -198, None),
         ]
         assert index.qid_deduped_synth_naifs(registry) == set()
+
+
+class TestSampleRuns:
+    """Exclusion intervals split samples into hole-free runs."""
+
+    @staticmethod
+    def _samples(*ets):
+        from space_map_data.download.providers.spice.synth.horizons_api import Sample
+
+        state = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        return [Sample(et=et, state=state) for et in ets]
+
+    def test_no_exclusions_is_one_run(self):
+        from space_map_data.download.providers.spice.synth.spk import _sample_runs
+
+        samples = self._samples(0, 1, 2)
+        assert _sample_runs(samples, []) == [samples]
+
+    def test_suffix_exclusion_trims_tail(self):
+        from space_map_data.download.providers.spice.synth.spk import _sample_runs
+
+        samples = self._samples(0, 1, 2, 3)
+        runs = _sample_runs(samples, [(2.0, 10.0)])
+        assert [[s.et for s in r] for r in runs] == [[0, 1]]
+
+    def test_interior_exclusion_splits_runs(self):
+        from space_map_data.download.providers.spice.synth.spk import _sample_runs
+
+        samples = self._samples(0, 1, 2, 3, 4, 5)
+        runs = _sample_runs(samples, [(1.5, 3.5)])
+        assert [[s.et for s in r] for r in runs] == [[0, 1], [4, 5]]
+
+    def test_fully_excluded_yields_no_runs(self):
+        from space_map_data.download.providers.spice.synth.spk import _sample_runs
+
+        assert _sample_runs(self._samples(0, 1, 2), [(-1.0, 3.0)]) == []

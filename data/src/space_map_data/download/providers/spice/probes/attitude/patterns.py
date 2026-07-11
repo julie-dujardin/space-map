@@ -177,10 +177,14 @@ PATTERNS: dict[str, AttitudePattern | list[AttitudePattern]] = {
         estimated_total_mib=15_000,
     ),
     "DAWN": AttitudePattern(
-        # Skip `dawn_sc_pred_*` (predicted attitude during planning).
-        ck_glob="dawn_sc_rec_*.bc",
-        fk_glob="dawn_v*.tf",
-        sclk_glob="dawn_sclkscet_*.tsc",
+        # Weekly reconstructed bus CKs are date-shaped `dawn_sc_YYMMDD_YYMMDD`
+        # (+ `_vN` revisions). Excludes `_ql` quicklooks; `fstb3_ert` test
+        # files don't fit the date shape. FK is `dawn_v??` — a bare `dawn_v*`
+        # would lex-last-pick the Vesta frames kernel (`dawn_vesta_v00.tf`).
+        ck_glob="dawn_sc_??????_??????*.bc",
+        ck_exclude_glob="*_ql*.bc",
+        fk_glob="dawn_v??.tf",
+        sclk_glob="DAWN_203_SCLKSCET.*.tsc",
         frame_name="DAWN_SPACECRAFT",
         estimated_total_mib=20_000,
     ),

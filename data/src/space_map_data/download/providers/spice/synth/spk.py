@@ -48,12 +48,39 @@ def _write_segment(
     return True
 
 
-def build_one(naif_id: int) -> Path:
+def _sample_runs(
+    samples: list[Sample], exclude: list[tuple[float, float]]
+) -> list[list[Sample]]:
+    """Split `samples` into runs of consecutive samples outside `exclude`.
+
+    Each run becomes its own segment — a single segment spanning a carved-out
+    hole would claim coverage there and interpolate garbage across it.
+    """
+    if not exclude:
+        return [samples]
+    runs: list[list[Sample]] = []
+    cur: list[Sample] = []
+    for s in samples:
+        if any(start <= s.et <= end for start, end in exclude):
+            if cur:
+                runs.append(cur)
+                cur = []
+        else:
+            cur.append(s)
+    if cur:
+        runs.append(cur)
+    return runs
+
+
+def build_one(naif_id: int, exclude: list[tuple[float, float]] | None = None) -> Path:
     """Assemble cached CSVs into a single multi-segment SPK13.
 
     Coarse segment first, then refined segments — SPICE evaluates with the
     last matching segment in the file winning for overlapping epochs, so
     queries inside a refinement window automatically use the 1h data.
+
+    `exclude` carves out ET intervals (agency-SPK coverage) so the synth only
+    claims the complement; raises like an empty build when nothing survives.
 
     Writes to `<spk>.tmp` then atomically replaces `<spk>` so a concurrent
     reader (e.g. an in-flight `space-map-export` furnshing the same file)
@@ -71,19 +98,24 @@ def build_one(naif_id: int) -> Path:
 
     handle = spiceypy.spkopn(str(tmp_path), f"Horizons synth {meta['name']}"[:60], 0)
     written = 0
+
+    def write_runs(samples: list[Sample], segid: str) -> int:
+        n = 0
+        for j, run in enumerate(_sample_runs(samples, exclude or [])):
+            sid = segid if j == 0 else f"{segid}~{j}"
+            if _write_segment(handle, naif_id, run, sid):
+                n += 1
+        return n
+
     try:
         coarse_samples = _parse_chunks((cache_dir / meta["coarse"]["file"]).read_text())
-        if _write_segment(handle, naif_id, coarse_samples, f"coarse_{meta['revised']}"):
-            written += 1
+        written += write_runs(coarse_samples, f"coarse_{meta['revised']}")
         for r in meta["refined"]:
             # `_parse_chunks` handles multi-block CSVs from `_fetch_vectors_chunked`
             # (for tight-cadence refines too big to fit in one request) while still
             # working on legacy single-block 1-h CSVs.
             samples = _parse_chunks((cache_dir / r["file"]).read_text())
-            if _write_segment(
-                handle, naif_id, samples, f"refine_{r['start']}_{r['end']}"
-            ):
-                written += 1
+            written += write_runs(samples, f"refine_{r['start']}_{r['end']}")
     finally:
         spiceypy.spkcls(handle)
 

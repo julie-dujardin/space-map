@@ -27,7 +27,7 @@ import spiceypy
 
 from .adaptive import SEED_DT_S, adaptive_sample
 from .keyframes import extract_keyframes
-from .sample import ck_windows
+from .sample import ck_instrument_ids, ck_windows
 from .segments import SpinSegment, plan_segments
 from .writer import ChunkFile, write_chunks
 
@@ -94,6 +94,22 @@ def extract_attitude(
     the caller caches it like any other empty extraction.
     """
     windows = ck_windows(ck_paths, bus_instr_id)
+    if not windows:
+        # Some missions' bus frame is a switch frame whose CK segments carry a
+        # sub-instrument ID, not `naif*1000` (Hera's HERA_SPACECRAFT delegates
+        # to -91002). The curated globs are bus-only, so whatever instruments
+        # the files actually carry are the bus stream — union their coverage.
+        actual = sorted(ck_instrument_ids(ck_paths) - {bus_instr_id})
+        if actual:
+            logger.info(
+                "attitude: no CK coverage for instrument %d; files carry %s — "
+                "using their union",
+                bus_instr_id,
+                actual,
+            )
+            for instr in actual:
+                windows += ck_windows(ck_paths, instr)
+            windows.sort()
     windows = _validate_windows(frame_name, windows)
     if not windows:
         logger.info("attitude: no CK coverage for instrument %d", bus_instr_id)

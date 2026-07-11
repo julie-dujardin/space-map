@@ -107,15 +107,27 @@ class HorizonsSyntheticDownloader(Downloader):
             if agency_iv:
                 synth_iv = spk_coverage(spk_path, naif_id)
                 if synth_iv and intervals_overlap(synth_iv, agency_iv):
+                    # Rebuild as the agency-coverage complement rather than
+                    # dropping — some agency SPKs cover a sliver of the
+                    # mission (SIRTF ships Spitzer's last 3 months of 16
+                    # years). Fully-inside synths are true duplicates.
+                    try:
+                        build_one(naif_id, exclude=agency_iv)
+                    except RuntimeError:
+                        logger.info(
+                            "naif %d (%s): synth coverage fully inside agency "
+                            "claim; dropping synth",
+                            naif_id,
+                            name,
+                        )
+                        spk_path.unlink(missing_ok=True)
+                        skipped.append((naif_id, name, "agency-window-collision"))
+                        continue
                     logger.info(
-                        "naif %d (%s): synth coverage overlaps agency claim; "
-                        "dropping synth",
+                        "naif %d (%s): trimmed synth to agency-coverage complement",
                         naif_id,
                         name,
                     )
-                    spk_path.unlink(missing_ok=True)
-                    skipped.append((naif_id, name, "agency-window-collision"))
-                    continue
             succeeded[naif_id] = name
             # Light pacing between spacecraft.
             time.sleep(0.5)

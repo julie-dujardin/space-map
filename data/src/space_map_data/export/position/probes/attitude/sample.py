@@ -54,6 +54,25 @@ def ck_windows(ck_paths: list[str], instr_id: int) -> list[tuple[float, float]]:
     return merged
 
 
+def ck_instrument_ids(ck_paths: list[str]) -> set[int]:
+    """Union of CK instrument IDs present across `ck_paths`.
+
+    The cell is allocated once and reset per file (same leak-avoidance as
+    `ck_windows`).
+    """
+    ids: set[int] = set()
+    cell = spiceypy.support_types.SPICEINT_CELL(10_000)
+    for path in ck_paths:
+        spiceypy.scard(0, cell)
+        try:
+            spiceypy.ckobj(path, cell)
+        except spiceypy.exceptions.SpiceyError:
+            logger.warning("attitude: ckobj failed for %s, skipping", path)
+            continue
+        ids |= {int(cell[i]) for i in range(spiceypy.card(cell))}
+    return ids
+
+
 def sample_truth(frame: str, ets: np.ndarray) -> np.ndarray:
     """Sample `pxform("J2000", frame, et)` → quaternion for each `et`.
 
