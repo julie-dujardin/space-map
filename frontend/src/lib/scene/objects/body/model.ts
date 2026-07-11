@@ -1,5 +1,6 @@
 import {
 	Box3,
+	Group,
 	Mesh,
 	MeshStandardMaterial,
 	type Object3D,
@@ -17,6 +18,7 @@ import { versionedUrl } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { kmToScene } from '$lib/math/units';
+import { frameMapQuaternion } from '$lib/math/orientation';
 import { bodyMeshColor } from '$lib/utils';
 import { getSettings } from '$lib/state/settings.svelte';
 import { isLowEndDevice } from '$lib/device';
@@ -65,6 +67,10 @@ export interface ModelBundleMeta {
 		};
 	};
 	scale_meters?: number;
+	/** Model axis → spacecraft-body axis (1–2 pairs, manifest-set). Corrects
+	 *  models authored in a different convention (usually Y-up) than the CK/
+	 *  pointing body frame, e.g. `{"+y": "+z"}` for a Z-axis spinner. */
+	frame_map?: Record<string, string>;
 	/** Natural-body top-level credit + km bounds (shape-model bundles). */
 	credit?: { name: string; url: string };
 	true_scale?: {
@@ -153,25 +159,33 @@ export async function loadBodyModel(
 		// state is owned exclusively here; per-frame culling must not touch it.
 		if (bo.mesh) bo.mesh.visible = false;
 		setHaloLoading(bo, true);
-		// Bundle metadata fires alongside the GLB so credit registers atomically.
+		// Bundle metadata fires alongside the GLB; both must land before the
+		// mount — frame_map has to be baked in before fitToUnitRadius.
 		const metaPromise = fetchBundleMeta(slug);
 		const gltf = await _loader.loadAsync(versionedUrl(`/v1/models/${slug}/high.glb`, 'models'));
+		let meta: ModelBundleMeta | null = null;
+		try {
+			meta = await metaPromise;
+		} catch (e) {
+			// Metadata is a nice-to-have (credit/scale/frame_map); a missing or
+			// corrupt metadata.json shouldn't tear down the loaded model.
+			console.warn(`Failed to load model metadata for ${slug}:`, e);
+		}
 		if ((bo.modelLoadEpoch ?? 0) !== epoch || !bo.mesh) {
 			disposeGltf(gltf.scene);
 			return;
 		}
-		const root = gltf.scene;
+		const root = withBaseFrame(gltf.scene, meta?.frame_map);
 		fitToUnitRadius(root);
 		enableShadows(root);
 		modelScene.add(root);
 		bo.model = root;
 		bo.modelName = slug;
 		setHaloLoading(bo, false);
-		try {
-			const meta = await metaPromise;
+		if (meta) {
 			// True-size the body from the model's longest dimension so the overlay
 			// (sized off radiusScene) renders to scale against the solar system.
-			if (meta.scale_meters && (bo.modelLoadEpoch ?? 0) === epoch) {
+			if (meta.scale_meters) {
 				bo.body.data.radiusKm = meta.scale_meters / 2000; // half the longest dim, km
 				bo.radiusScene = kmToScene(effectiveRadiusKm(bo.body.data));
 			}
@@ -180,10 +194,6 @@ export async function loadBodyModel(
 				source: meta.exports.high.credit.url,
 				organisation: meta.exports.high.credit.name
 			});
-		} catch (e) {
-			// Credit + scale are nice-to-haves; a missing/corrupt metadata.json
-			// shouldn't tear down the loaded model.
-			console.warn(`Failed to apply model metadata for ${slug}:`, e);
 		}
 	} finally {
 		// Load aborted — restore the halo; only natural bodies put the sphere back.
@@ -334,6 +344,21 @@ function setHaloLoading(bo: BodyObjects, loading: boolean): void {
 		bo.loadingEl.remove();
 		bo.loadingEl = null;
 	}
+}
+
+/**
+ * Bake the bundle's model→body base rotation (`frame_map`) into a wrapper
+ * group, so the per-frame attitude/pointing code keeps writing body-frame
+ * quaternions on the returned root. Identity/absent/invalid maps return the
+ * scene untouched.
+ */
+function withBaseFrame(scene: Object3D, frameMap?: Record<string, string>): Object3D {
+	const q = frameMap ? frameMapQuaternion(frameMap) : null;
+	if (!q) return scene;
+	const wrapper = new Group();
+	scene.quaternion.copy(q);
+	wrapper.add(scene);
+	return wrapper;
 }
 
 /**

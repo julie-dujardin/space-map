@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Object3D, Quaternion, Vector3 } from 'three';
-import { applyPointing, applySouthTowardParent } from './orientation';
+import { applyPointing, applySouthTowardParent, frameMapQuaternion } from './orientation';
 
 /** World direction the body's local `axis` ends up aiming after `q`. */
 function aimed(q: Quaternion, axis: [number, number, number]): Vector3 {
@@ -76,5 +76,33 @@ describe('applyPointing', () => {
 		applyPointing(b, { primary: { axis: '-y', target: 'parent' } }, { bodyPos, parentPos });
 		// Same minimal rotation, up to quaternion double-cover sign.
 		expect(Math.abs(a.quaternion.dot(b.quaternion))).toBeCloseTo(1, 5);
+	});
+});
+
+describe('frameMapQuaternion', () => {
+	it('maps a single model axis onto its body axis', () => {
+		const q = frameMapQuaternion({ '+y': '+z' })!;
+		expectDir(aimed(q, [0, 1, 0]), [0, 0, 1]);
+	});
+
+	it('pins the full frame from two pairs, right-handed third axis', () => {
+		// Voyager: model +Y → body -Z, model +Z → body -Y ⇒ model +X → body -X.
+		const q = frameMapQuaternion({ '+y': '-z', '+z': '-y' })!;
+		expectDir(aimed(q, [0, 1, 0]), [0, 0, -1]);
+		expectDir(aimed(q, [0, 0, 1]), [0, -1, 0]);
+		expectDir(aimed(q, [1, 0, 0]), [-1, 0, 0]);
+	});
+
+	it('is a proper rotation (det +1), never a reflection', () => {
+		const q = frameMapQuaternion({ '+y': '-z', '+z': '-y' })!;
+		// A unit quaternion always encodes det +1; verify it round-trips.
+		expect(q.length()).toBeCloseTo(1, 6);
+	});
+
+	it('rejects malformed maps', () => {
+		expect(frameMapQuaternion({})).toBeNull();
+		expect(frameMapQuaternion({ '+y': 'up' })).toBeNull();
+		expect(frameMapQuaternion({ '+y': '+z', '-y': '+x' })).toBeNull();
+		expect(frameMapQuaternion({ '+x': '+z', '+y': '-z' })).toBeNull();
 	});
 });

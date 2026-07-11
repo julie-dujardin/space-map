@@ -54,13 +54,17 @@ export class AttitudeTrack {
 		private readonly probeId: string,
 		manifest: ProbeAttitude
 	) {
-		this.startJd = manifest.start_jd;
-		this.endJd = manifest.end_jd;
+		// Derive coverage from the chunk files, not manifest start/end_jd — those
+		// echo CK-claimed windows, which can start years before the first real
+		// keyframe (Spitzer claims 2000, first keyframe 2005). Trusting them
+		// freeze-clamps the model where the pointing fallback should take over.
+		this.startJd = manifest.files.length ? manifest.files[0].start_jd : 0;
+		this.endJd = manifest.files.length ? manifest.files[manifest.files.length - 1].end_jd : 0;
 		this.baselines = manifest.baselines;
 		this.files = manifest.files;
 	}
 
-	/** True when `jd` is inside the track's coverage window. */
+	/** True when `jd` is inside the track's keyframe coverage. */
 	covers(jd: number): boolean {
 		return jd >= this.startJd && jd <= this.endJd && this.files.length > 0;
 	}

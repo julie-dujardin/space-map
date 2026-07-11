@@ -190,6 +190,42 @@ const AXIS_VECTORS: Record<PointingAxis, Vector3> = {
 	'-z': new Vector3(0, 0, -1)
 };
 
+/**
+ * Base model→body rotation from a model bundle's `frame_map` (`{model axis:
+ * body axis}`, 1–2 pairs). One pair gives the minimal rotation (roll free —
+ * fine for spinners); two perpendicular pairs pin the full frame, the third
+ * axis following right-handedness. Returns null (with a warning) on a
+ * malformed map so a bad manifest degrades to the unrotated model.
+ */
+export function frameMapQuaternion(map: Record<string, string>): Quaternion | null {
+	const pairs: [Vector3, Vector3][] = [];
+	for (const [modelAxis, bodyAxis] of Object.entries(map)) {
+		const m = AXIS_VECTORS[modelAxis as PointingAxis];
+		const b = AXIS_VECTORS[bodyAxis as PointingAxis];
+		if (!m || !b) {
+			console.warn(`frame_map: invalid axis pair ${modelAxis}→${bodyAxis}; ignoring map`);
+			return null;
+		}
+		pairs.push([m, b]);
+	}
+	if (pairs.length < 1 || pairs.length > 2) {
+		console.warn(`frame_map: expected 1–2 axis pairs, got ${pairs.length}; ignoring map`);
+		return null;
+	}
+	if (pairs.length === 1) return new Quaternion().setFromUnitVectors(pairs[0][0], pairs[0][1]);
+	const [[m1, b1], [m2, b2]] = pairs;
+	if (m1.dot(m2) !== 0 || b1.dot(b2) !== 0) {
+		console.warn('frame_map: the two pairs must use perpendicular axes; ignoring map');
+		return null;
+	}
+	const m3 = new Vector3().crossVectors(m1, m2);
+	const b3 = new Vector3().crossVectors(b1, b2);
+	// R = bodyBasis · modelBasisᵀ maps each model axis onto its body axis.
+	const body = new Matrix4().makeBasis(b1, b2, b3);
+	const model = new Matrix4().makeBasis(m1, m2, m3).transpose();
+	return new Quaternion().setFromRotationMatrix(body.multiply(model));
+}
+
 const _pWorld = new Vector3();
 const _sWorld = new Vector3();
 const _e1b = new Vector3();
