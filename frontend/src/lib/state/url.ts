@@ -231,6 +231,19 @@ export function applyFeature(
 	};
 }
 
+/** Query-less route path for a body id — used by scene labels as an `<a href>`
+ *  so middle/⌘-click opens the body in a new tab. No `?at=` framing: a fresh
+ *  open frames by the body's size, same as any unframed load. */
+export function bodyHref(id: string, name: string): string {
+	const type = urlTypeFromId(id);
+	const numericId = id.slice(`${urlTypeToIdPrefix(type)}-`.length);
+	return resolve('/[type]/[id]/[[name]]', {
+		type,
+		id: numericId,
+		name: name ? encodeURIComponent(name) : undefined
+	});
+}
+
 /** Produce the route path for the current MapViewState — `/<type>/<id>/<name>`
  *  for bodies and groups (groups carry a slug in the id slot), or
  *  `/<type>/<id>/f/<featureId>/<name>` for features — plus the shared

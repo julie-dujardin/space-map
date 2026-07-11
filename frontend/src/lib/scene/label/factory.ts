@@ -1,6 +1,7 @@
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, isAsteroid, isMajorBody, type PositionedBody } from '$lib/types/objects';
 import * as m from '$lib/paraglide/messages.js';
+import { isModifiedClick } from '$lib/state/focus-link';
 import type { BodyObjects } from '../types';
 import './label.css';
 
@@ -42,23 +43,17 @@ export function setSpacecraftLanded(halo: HTMLElement | null, landed: boolean): 
 	path.setAttribute('d', landed ? LANDED_PROBE_ICON_D : SPACECRAFT_ICON_D);
 }
 
-/** Click handler attached to a label's name span — stashed on the root via a
- *  WeakMap so {@link setLabelName} can re-bind it when adding the span lazily
- *  (e.g. after a click-promoted minor body's detail bundle resolves). */
-const labelClickHandlers = new WeakMap<HTMLElement, (e: MouseEvent) => void>();
-
 function addLabelNameSpan(
 	el: HTMLElement,
 	name: string,
 	variant: LabelVariant,
-	isLarge: boolean,
-	onClick: (e: MouseEvent) => void
+	isLarge: boolean
 ): HTMLSpanElement {
+	// Plain span — the whole label root is the `<a>`, so halo + name are one link.
 	const span = document.createElement('span');
 	span.className = `scene-label__name scene-label__name--${variant}${isLarge ? ' scene-label__name--large' : ''}`;
 	span.dir = 'auto'; // designations like "65803 Didymos" must not bidi-reorder in an RTL page
 	span.textContent = name;
-	span.addEventListener('click', onClick);
 	el.appendChild(span);
 	return span;
 }
@@ -81,9 +76,7 @@ export function setLabelName(
 		existing.textContent = name;
 		return;
 	}
-	const handler = labelClickHandlers.get(el);
-	if (!handler) return;
-	addLabelNameSpan(el, name, variant, isLarge, handler);
+	addLabelNameSpan(el, name, variant, isLarge);
 }
 
 export function getLabelVariant(body: PositionedBody): LabelVariant {
@@ -105,8 +98,12 @@ export function getLabelVariant(body: PositionedBody): LabelVariant {
 /**
  * Creates a CSS2DObject label for a major body.
  *
- * Root element (el): fixed indicator size, no transition — CSS2DRenderer writes
- * its `transform` every frame to position it in screen space.
+ * Root element (el): an `<a href>` so the whole label (halo + name) is a real
+ * middle/⌘-clickable link screen readers announce; tabindex=-1 keeps the many
+ * on-screen labels out of the tab order (search is the keyboard-equivalent
+ * path). Left-click is intercepted to focus in-app instead of navigating. Fixed
+ * indicator size, no transition — CSS2DRenderer writes its `transform` every
+ * frame to position it in screen space.
  *
  * halo: holds the visual ring/hexagon + transition for hover scale,
  * so it never fights with CSS2DRenderer's positioning transform.
@@ -117,6 +114,7 @@ export function createLabel(
 	color: string,
 	name: string,
 	variant: LabelVariant,
+	href: string,
 	onClick: () => void,
 	isLarge = false,
 	onHoverChange?: (hovered: boolean) => void,
@@ -124,9 +122,13 @@ export function createLabel(
 ): CSS2DObject | null {
 	if (variant === 'none') return null;
 
-	// Root: sized to the indicator only, no transition (CSS2DRenderer writes transform here)
-	const el = document.createElement('div');
+	// Root: the link. Sized to the indicator only (CSS2DRenderer writes transform
+	// here); draggable=false so a camera-drag over a label can't start a link drag.
+	const el = document.createElement('a');
 	el.className = `scene-label scene-label--${variant}`;
+	el.href = href;
+	el.tabIndex = -1;
+	el.draggable = false;
 
 	// halo: visual ring/hexagon, transition lives here not on root
 	let halo: HTMLElement | SVGSVGElement;
@@ -164,17 +166,16 @@ export function createLabel(
 	});
 	const guardedClick = (e: MouseEvent) => {
 		e.stopPropagation();
+		// ⌘/ctrl/shift/middle-click → let the browser follow the anchor href (new tab).
+		if (isModifiedClick(e)) return;
+		e.preventDefault();
 		const dx = e.clientX - downX;
 		const dy = e.clientY - downY;
 		if (dx * dx + dy * dy <= 9) onClick();
 	};
 
-	// Stash the guarded-click handler so setLabelName() can re-bind it if the
-	// span gets added later (lazy-resolved name on click-promoted bodies).
-	labelClickHandlers.set(el, guardedClick);
-
 	// Name text: absolutely positioned to the right, vertically centered on indicator
-	if (name) addLabelNameSpan(el, name, variant, isLarge, guardedClick);
+	if (name) addLabelNameSpan(el, name, variant, isLarge);
 
 	// Minor halos collapse to the same scale as occluded/dimmed labels by
 	// default; on hover they grow to the regular hover size, on mouseleave

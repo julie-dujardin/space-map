@@ -1,11 +1,14 @@
 /* Scene body labels (CSS2DObject) — created by label/factory.ts */
 
 .scene-label {
+	display: block; /* the root is an <a>; keep block sizing (width/height below) */
 	position: relative;
 	left: 0; /* anchor to left edge — CSS2DRenderer uses position:absolute + transform, which breaks in RTL containers without an explicit inset */
 	pointer-events: auto;
 	cursor: pointer;
 	user-select: none;
+	text-decoration: none; /* it's an <a> */
+	color: inherit;
 	touch-action: none; /* prevent browser pinch-zoom; 2nd-finger pointerdown forwarded to canvas */
 	width: 32px;
 	height: 32px;
@@ -58,6 +61,7 @@
 	pointer-events: auto;
 	cursor: pointer;
 	color: white;
+	text-decoration: none;
 	text-shadow:
 		0 0 4px #000,
 		0 0 4px #000;

@@ -20,6 +20,7 @@ import {
 } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { createLabel, getLabelVariant } from '../../label/factory';
+import { bodyHref } from '$lib/state/url';
 import { attachCanvasForwarders } from '../../label/forward';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../sun';
 import { ATMOSPHERE_PARAMS, buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
@@ -129,6 +130,7 @@ export function buildMajorBodies(
 			color,
 			body.data.name ?? '',
 			variant,
+			bodyHref(id, body.data.name ?? ''),
 			() => handleFocus(body),
 			isLarge,
 			onHoverChange ? (hovered) => onHoverChange(id, hovered) : undefined,
