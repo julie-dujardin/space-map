@@ -572,7 +572,7 @@
 </script>
 
 {#snippet tabsBar()}
-	<div class="border-b -mx-1 px-1">
+	<div class="border-b px-4 pt-2">
 		<Tabs.List variant="line" class="h-9 gap-2 -mb-px">
 			<Tabs.Trigger value="overview" class="px-2">{m.tab_overview()}</Tabs.Trigger>
 			{#if hasImages}
@@ -603,6 +603,55 @@
 	</div>
 {/snippet}
 
+<!-- The active tab's hero sits above the (single) tablist, so the tabs read as
+     sub-navigation under the object's hero rather than pinned to the top. -->
+{#snippet activeHero()}
+	{#if activeTab === 'overview'}
+		{#if loading}
+			<div class="flex flex-col gap-4 px-4 pt-1 pb-3">
+				<Skeleton class="w-full h-36 rounded-md" />
+				<Skeleton class="w-3/4 h-6" />
+				<Skeleton class="w-1/2 h-4" />
+			</div>
+		{:else if !loadError}
+			<div class="px-4 pt-1 pb-3">
+				<ObjectHeader
+					global={data?.global ?? null}
+					localized={data?.localized ?? null}
+					{fallbackName}
+					leadingBadges={groupHeaderBadges}
+					hero={cat.solarSystem
+						? solarSystemMapSnippet
+						: lineup.hero && !lineup.isMoonLineup
+							? lineupHeroSnippet
+							: undefined}
+					onShowGallery={() => {
+						appState.setTab('images');
+						appState.setImage(0);
+					}}
+				/>
+			</div>
+		{/if}
+	{:else if activeTab === 'members'}
+		<!-- The lineup is this tab's hero; its imagery/size credits ride at the
+		     foot of the panel, where the spheres render. -->
+		{#if lineup.isMoonLineup}
+			<div class="px-4 pt-1 pb-3">{@render lineupHeroSnippet()}</div>
+		{/if}
+		<!-- Solar System: the minimap is the page hero, so the sphere lineup lives
+		     here (paginated). -->
+		{#if lineup.solarSystemLineup}
+			<div class="px-4 pt-1 pb-3">
+				<BodyLineup
+					bodies={lineup.solarSystemLineup.bodies}
+					ariaLabel={fallbackName}
+					perPage={lineup.solarSystemLineup.perPage}
+				/>
+			</div>
+		{/if}
+	{/if}
+{/snippet}
+
 {#snippet lineupHeroSnippet()}
 	{#if lineup.hero}
 		<BodyLineup
@@ -626,31 +675,11 @@
 		</div>
 	{:else if loading}
 		<div class="flex flex-col gap-4 p-1">
-			<Skeleton class="w-full h-36 rounded-md" />
-			<Skeleton class="w-3/4 h-6" />
-			<Skeleton class="w-1/2 h-4" />
-			{@render tabsBar()}
 			<Skeleton class="w-full h-20" />
 			<Skeleton class="w-full h-32" />
 		</div>
 	{:else}
 		<div class="flex flex-col gap-5 p-1">
-			<ObjectHeader
-				global={data?.global ?? null}
-				localized={data?.localized ?? null}
-				{fallbackName}
-				leadingBadges={groupHeaderBadges}
-				hero={cat.solarSystem
-					? solarSystemMapSnippet
-					: lineup.hero && !lineup.isMoonLineup
-						? lineupHeroSnippet
-						: undefined}
-				onShowGallery={() => {
-					appState.setTab('images');
-					appState.setImage(0);
-				}}
-			/>
-			{@render tabsBar()}
 			{#if isGroupMode && groupDetail?.global}
 				<GroupStatCards global={groupDetail.global} {showMembersTab} />
 			{:else if body}
@@ -762,7 +791,6 @@
 
 {#snippet imagesPanel()}
 	<div class="flex flex-col gap-3 p-1">
-		{@render tabsBar()}
 		{#if viewerImages && viewerImages.length}
 			<ImageGallery images={viewerImages} alt={displayName} />
 		{/if}
@@ -771,21 +799,6 @@
 
 {#snippet membersPanel()}
 	<div class="flex flex-col gap-3 p-1">
-		<!-- The lineup is this tab's hero; its imagery/size credits ride at the
-		     foot here, where the spheres render — not the overview footer. -->
-		{#if lineup.isMoonLineup}
-			{@render lineupHeroSnippet()}
-		{/if}
-		<!-- Solar System: the minimap is the page hero, so the sphere lineup lives
-		     here in the members tab (paginated). -->
-		{#if lineup.solarSystemLineup}
-			<BodyLineup
-				bodies={lineup.solarSystemLineup.bodies}
-				ariaLabel={fallbackName}
-				perPage={lineup.solarSystemLineup.perPage}
-			/>
-		{/if}
-		{@render tabsBar()}
 		{#if isGroupMode && groupDetail?.global}
 			<PaginatedMemberList
 				source={{ kind: 'group', slug: groupDetail.global.slug }}
@@ -809,7 +822,6 @@
 
 {#snippet fragmentsPanel()}
 	<div class="flex flex-col gap-3 p-1">
-		{@render tabsBar()}
 		{#if notableFragments && notableFragments.length > 0}
 			<MemberList
 				members={notableFragments}
@@ -891,10 +903,12 @@
 					class="flex flex-1 min-h-0 flex-col"
 				>
 					<div
-						class="flex-1 min-h-0 px-4 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
+						class="flex-1 min-h-0 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
 						style="padding-bottom: calc(1rem + {TOP_GAP_PX}px + var(--safe-bottom));"
 					>
-						{@render tabPanels(undefined)}
+						{@render activeHero()}
+						{@render tabsBar()}
+						{@render tabPanels('px-4 pt-4')}
 					</div>
 				</Tabs.Root>
 			</Vaul.Content>
@@ -920,7 +934,9 @@
 			class="flex flex-1 min-h-0 flex-col"
 		>
 			<ScrollArea class="flex-1 min-h-0">
-				{@render tabPanels('px-4 pb-4')}
+				{@render activeHero()}
+				{@render tabsBar()}
+				{@render tabPanels('px-4 pt-4 pb-4')}
 			</ScrollArea>
 		</Tabs.Root>
 	</aside>

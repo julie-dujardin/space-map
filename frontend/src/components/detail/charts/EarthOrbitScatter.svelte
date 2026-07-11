@@ -321,16 +321,16 @@
 
 	{#if tip}
 		<div
-			class="bg-popover text-popover-foreground border-border pointer-events-none absolute z-50 rounded-md border px-2 py-1 text-xs shadow-md"
+			class="bg-foreground text-background pointer-events-none absolute z-50 -translate-y-full rounded-md px-2 py-1 text-xs shadow-md"
 			style:left="{Math.min(mouse.x + 10, width - 200)}px"
-			style:top="{Math.max(0, mouse.y - 8)}px"
+			style:top="{mouse.y - 10}px"
 			style:max-width="260px"
 		>
 			<div class="font-semibold">{orbitClassLabel(tip.zone.className)}</div>
-			<div class="text-muted-foreground mt-0.5 whitespace-normal">
+			<div class="text-background/70 mt-0.5 whitespace-normal">
 				{tip.zone.tooltipDefinition()}
 			</div>
-			<div class="text-muted-foreground mt-0.5 tabular-nums">
+			<div class="text-background/70 mt-0.5 tabular-nums">
 				{m.scatter_tooltip_population({ count: zonePopulation(tip.zone.className) })}
 			</div>
 		</div>

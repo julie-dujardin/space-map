@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { thumbnailUrl, type SearchHit } from '$lib/search/client';
 	import { inceptionYear, optionDomId } from '$lib/search/format';
 	import { formatNumber } from '$lib/format/quantities';
@@ -32,7 +33,8 @@
 	// Estimated row height. Fixed spacers stand in for unloaded hits, so the
 	// scrollbar spans the full set and the window slides without scroll jumps.
 	const ROW_H = 52;
-	let scrollEl = $state<HTMLDivElement>();
+	// The ScrollArea viewport is the scrolling element the windowing reads/writes.
+	let scrollEl = $state<HTMLElement | null>(null);
 	let didRestore = false;
 	const initialPage = untrack(() => model.page);
 
@@ -82,6 +84,14 @@
 		});
 	}
 
+	// ScrollArea's viewport doesn't take an onscroll prop, so wire it up directly.
+	$effect(() => {
+		const el = scrollEl;
+		if (!el) return;
+		el.addEventListener('scroll', onScroll, { passive: true });
+		return () => el.removeEventListener('scroll', onScroll);
+	});
+
 	// Re-check after each load to fill a tall panel (check() reads hits/total, so
 	// it re-runs as the window grows; async, so it settles rather than recurses).
 	$effect(() => {
@@ -100,7 +110,7 @@
 	);
 </script>
 
-<div bind:this={scrollEl} onscroll={onScroll} class="min-h-0 flex-1 overflow-y-auto">
+<ScrollArea class="min-h-0 flex-1" bind:viewportRef={scrollEl}>
 	{#if model.error}
 		<div role="alert" class="px-3 py-10 text-center">
 			<div class="mb-1 text-sm text-foreground">{m.search_error()}</div>
@@ -159,4 +169,4 @@
 		<!-- spacer: hits below the window -->
 		<div style="height: {bottomPad}px"></div>
 	{/if}
-</div>
+</ScrollArea>

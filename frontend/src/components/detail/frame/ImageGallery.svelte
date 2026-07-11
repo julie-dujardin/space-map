@@ -59,7 +59,7 @@
 				height={image.height}
 				loading="lazy"
 				decoding="async"
-				{alt}
+				alt={label(image.file) || alt}
 				class="tile-img"
 			/>
 			<span class="tile-label">{label(image.file)}</span>

@@ -151,13 +151,13 @@
 			{#if hovered}
 				<div
 					bind:clientWidth={tipWidth}
-					class="bg-popover text-popover-foreground border-border pointer-events-none absolute z-10 -translate-x-1/2 rounded-md border px-2 py-1 text-center whitespace-nowrap shadow-md"
+					class="bg-foreground text-background pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-md px-2 py-1 text-center whitespace-nowrap shadow-md"
 					style:left="{tipLeft}px"
-					style:top="{BAR_Y + BAR_H + 6}px"
+					style:top="{BAR_Y - 6}px"
 					style:visibility={tipWidth === 0 ? 'hidden' : 'visible'}
 				>
 					<div class="text-xs font-medium">{hovered.name}</div>
-					<div class="text-muted-foreground text-[11px] tabular-nums">
+					<div class="text-background/70 text-[11px] tabular-nums">
 						{formatQuantity({ value: hovered.massEarths, unit: 'earth_mass' })} · {sharePct(
 							hovered.share
 						)}
