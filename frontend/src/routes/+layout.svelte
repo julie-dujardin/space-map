@@ -21,6 +21,10 @@
 	$effect(() => {
 		document.documentElement.classList.toggle('dark', settings.resolvedTheme === 'dark');
 	});
+
+	$effect(() => {
+		document.documentElement.classList.toggle('reduce-motion', settings.resolvedReducedMotion);
+	});
 </script>
 
 <Sonner position={direction === 'rtl' ? 'top-left' : 'top-right'} dir={direction} />

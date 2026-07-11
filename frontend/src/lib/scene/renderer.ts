@@ -91,6 +91,11 @@ import { createUserLocationMarker, removeUserLocationMarker } from './user-locat
 import { updateUserLocationOcclusion } from './user-location/occlusion';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
+/** OrbitControls inertia. The reduced-motion factor is far higher so the camera
+ *  stops promptly on release instead of coasting (three's default is 0.05). */
+const DEFAULT_DAMPING = 0.05;
+const REDUCED_MOTION_DAMPING = 0.4;
+
 export class SceneRenderer {
 	private renderer: WebGLRenderer;
 	private composer: EffectComposer;
@@ -304,6 +309,9 @@ export class SceneRenderer {
 		// OrbitControls — target always at origin
 		this.controls = new OrbitControlsClass(this.camera, canvas);
 		this.controls.enableDamping = true;
+		this.controls.dampingFactor = getSettings().resolvedReducedMotion
+			? REDUCED_MOTION_DAMPING
+			: DEFAULT_DAMPING;
 		this.controls.minDistance = focusBody ? minCameraDistance(focusBody) : kmToScene(0.01);
 		this.controls.maxDistance = 31_620.5 * AU_SCALE; // 0.5 light-year
 		this.controls.target.set(0, 0, 0);
@@ -898,6 +906,11 @@ export class SceneRenderer {
 			const anchor = this.ctx.getBody(result.reanchorId);
 			if (anchor) this.focusController.panCameraToBody(anchor);
 		}
+	}
+
+	/** Reduced motion: shorten orbit inertia so the camera stops promptly on release. */
+	setReducedMotion(on: boolean): void {
+		this.controls.dampingFactor = on ? REDUCED_MOTION_DAMPING : DEFAULT_DAMPING;
 	}
 
 	focusOnBody(id: string, zoom?: number, latitude?: number, longitude?: number): number {

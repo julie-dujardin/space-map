@@ -51,6 +51,13 @@
 		transform: rotate(360deg);
 	}
 }
+/* Keep the loading spinner turning under reduced motion — a frozen status
+   indicator reads as broken, and a small in-place spin is no vestibular
+   trigger. Only the two longhands the global reset overrode need restoring. */
+.reduce-motion .scene-label__loader {
+	animation-duration: 0.9s !important;
+	animation-iteration-count: infinite !important;
+}
 
 .scene-label__name {
 	padding-left: 8px;

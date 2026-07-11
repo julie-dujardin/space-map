@@ -25,6 +25,7 @@ import {
 	type FocusState
 } from '$lib/scene/animation/focus';
 import { f64dist, type Vec3 } from '$lib/scene/animation/math';
+import { getSettings } from '$lib/state/settings.svelte';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
 import type { SystemDataLoader } from '$lib/scene/system-data/loader';
 import { PromotionRegistry, type PromotionDeps } from './promotion';
@@ -155,7 +156,14 @@ export class FocusController {
 	 *  the focus (and its "no data" toast) on the original body. */
 	panCameraToBody(body: PositionedBody): void {
 		const { focus, camera } = this.deps;
-		prepareFocusTarget(focus, [...body.position], camera, this.cameraTruePos());
+		prepareFocusTarget(
+			focus,
+			[...body.position],
+			camera,
+			this.cameraTruePos(),
+			undefined,
+			getSettings().resolvedReducedMotion
+		);
 	}
 
 	/** Click → emit + fly. Re-clicking the focused body re-emits without moving the camera. */
@@ -251,7 +259,14 @@ export class FocusController {
 			if (landingBody) loadTexture(landingBody);
 		}
 		systemData.syncToFocus();
-		prepareFocusTarget(focus, [...body.position], camera, this.cameraTruePos(), camPos);
+		prepareFocusTarget(
+			focus,
+			[...body.position],
+			camera,
+			this.cameraTruePos(),
+			camPos,
+			getSettings().resolvedReducedMotion
+		);
 		// Focus moved on/off a user-promoted body — re-emit so the clear button
 		// (which excludes the focused body) stays in sync.
 		this.promotion.emitUserPromotedCount();
@@ -319,7 +334,13 @@ export class FocusController {
 				focus.focusTruePos = [...body.position];
 				this.deps.repositionAll();
 				pointClouds.rebuildBasis();
-				prepareFlyToCamera(focus, camera, this.cameraTruePos(), camPos);
+				prepareFlyToCamera(
+					focus,
+					camera,
+					this.cameraTruePos(),
+					camPos,
+					getSettings().resolvedReducedMotion
+				);
 			} else {
 				this.setFocusTarget(body, camPos);
 				if (latitude !== undefined && longitude !== undefined) {

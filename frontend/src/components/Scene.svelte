@@ -34,6 +34,14 @@
 		}
 	});
 
+	$effect(() => {
+		// Read first: with `renderer?.` short-circuiting before onMount assigns the
+		// renderer, an inline arg would never be read, so the signal goes untracked
+		// and the effect never re-runs on toggle.
+		const reduced = settings.resolvedReducedMotion;
+		renderer?.setReducedMotion(reduced);
+	});
+
 	interface Props {
 		clock: SimClock;
 		northRefId?: string | null;
@@ -359,7 +367,10 @@
 		onkeydown={onCanvasKeyDown}
 		class="w-full h-full block pointer-events-auto touch-none focus-visible:outline-2 focus-visible:outline-ring"
 	></canvas>
-	<div bind:this={labelContainer} class="absolute inset-0 pointer-events-none z-0"></div>
+	<div
+		bind:this={labelContainer}
+		class="scene-overlay absolute inset-0 pointer-events-none z-0"
+	></div>
 	{#if webglError}
 		<div
 			role="alert"

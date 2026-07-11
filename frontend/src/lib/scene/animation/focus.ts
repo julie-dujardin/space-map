@@ -77,7 +77,8 @@ export function stepFocusAnimation(
 	rebuildPointCloudBasis: () => void
 ): boolean {
 	const elapsed = performance.now() - state.focusStartTime;
-	const t = Math.min(elapsed / state.focusDurationMs, 1);
+	// A zero duration (reduced-motion snap) settles on the first frame.
+	const t = state.focusDurationMs > 0 ? Math.min(elapsed / state.focusDurationMs, 1) : 1;
 	const isAnimating = t < 1;
 	const isFlying = !!(state.camOriginWorld && state.camTargetWorld && state.flyQ0);
 
@@ -191,13 +192,17 @@ export function stepFocusAnimation(
 	return !controls.update();
 }
 
-/** Compute focus animation state for transitioning to a new body. */
+/** Compute focus animation state for transitioning to a new body.
+ *  `reducedMotion` snaps any transition that translates the scene origin or the
+ *  camera (the parallax motion) to instant; a pure in-place rotation — origin
+ *  unchanged, no camPos — keeps its short pan, which has no depth motion. */
 export function prepareFocusTarget(
 	state: FocusState,
 	bodyPosition: Vec3,
 	camera: PerspectiveCamera,
 	cameraTruePos: Vec3,
-	camPos?: Vec3
+	camPos?: Vec3,
+	reducedMotion = false
 ): void {
 	state.focusOriginWorld = [...state.focusTruePos];
 	state.focusTargetWorld = [...bodyPosition];
@@ -270,6 +275,14 @@ export function prepareFocusTarget(
 		const angle = _forwardA.angleTo(_forwardB);
 		state.focusDurationMs = angularDuration(angle, FOCUS_ROT_PACING);
 	}
+
+	if (reducedMotion) {
+		const originMoved =
+			state.focusOriginWorld[0] !== state.focusTargetWorld[0] ||
+			state.focusOriginWorld[1] !== state.focusTargetWorld[1] ||
+			state.focusOriginWorld[2] !== state.focusTargetWorld[2];
+		if (camPos || originMoved) state.focusDurationMs = 0;
+	}
 }
 
 /** Start a fly-to animation around the current focus body (orbit), keeping it centered. */
@@ -277,7 +290,8 @@ export function prepareFlyToCamera(
 	state: FocusState,
 	camera: PerspectiveCamera,
 	cameraTruePos: Vec3,
-	camPos: Vec3
+	camPos: Vec3,
+	reducedMotion = false
 ): void {
 	state.camOriginWorld = cameraTruePos;
 	state.camTargetWorld = [...camPos];
@@ -325,4 +339,5 @@ export function prepareFlyToCamera(
 		spatialDuration(dist, FLY_TRANS_PACING),
 		angularDuration(angle, FLY_ROT_PACING)
 	);
+	if (reducedMotion) state.focusDurationMs = 0;
 }

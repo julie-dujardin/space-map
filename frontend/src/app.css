@@ -230,3 +230,27 @@ body {
 		display: none;
 	}
 }
+
+/* Reduced motion, driven by the settings layer (auto → OS preference, or an
+   explicit on/off override). Class-based so the override wins over the media
+   query; the boot script in app.html sets it before first paint. Near-zeroed,
+   not `none`, so animation/transition end events still fire for any JS awaiting
+   them. Camera flies are handled separately in the scene (settings.svelte.ts). */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+	animation-duration: 0.01ms !important;
+	animation-iteration-count: 1 !important;
+	transition-duration: 0.01ms !important;
+	scroll-behavior: auto !important;
+}
+
+/* The scene-label overlay rewrites every label's transform each frame. The
+   blanket transition-duration above turns each per-frame transform into a
+   micro-transition, retargeted 60×/s across hundreds of labels — measured to
+   triple style-recalc cost. Drop transitions here entirely; instant placement
+   is what reduced motion wants anyway. */
+.reduce-motion .scene-overlay,
+.reduce-motion .scene-overlay * {
+	transition: none !important;
+}

@@ -2,7 +2,12 @@
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale, locales, type Locale } from '$lib/paraglide/runtime.js';
-	import { getSettings, type Clock, type Theme } from '$lib/state/settings.svelte';
+	import {
+		getSettings,
+		type Clock,
+		type ReducedMotion,
+		type Theme
+	} from '$lib/state/settings.svelte';
 
 	const settings = getSettings();
 
@@ -40,6 +45,12 @@
 		{ value: 'iso' as const, label: () => m.settings_dateformat_iso() }
 	];
 
+	const reducedMotionOptions: { value: ReducedMotion; label: () => string }[] = [
+		{ value: 'auto', label: () => m.settings_auto() },
+		{ value: 'off', label: () => m.settings_reduced_motion_off() },
+		{ value: 'on', label: () => m.settings_reduced_motion_on() }
+	];
+
 	function localeLabel(loc: Locale): string {
 		return LOCALE_NAMES[loc] ?? loc;
 	}
@@ -50,6 +61,11 @@
 	);
 	let resolvedThemeLabel = $derived(
 		settings.resolvedTheme === 'dark' ? m.settings_theme_dark() : m.settings_theme_light()
+	);
+	let resolvedReducedMotionLabel = $derived(
+		settings.resolvedReducedMotion
+			? m.settings_reduced_motion_on()
+			: m.settings_reduced_motion_off()
 	);
 	// ISO date format implies 24h; lock the clock toggle so the UI matches the
 	// behavior already enforced by the formatters.
@@ -147,6 +163,47 @@
 						<span
 							>{m.settings_auto_source({
 								value: resolvedThemeLabel,
+								source: m.settings_source_system()
+							})}</span
+						>
+					</div>
+				{/if}
+			</div>
+
+			<!-- Reduced motion -->
+			<div class="flex flex-col gap-2">
+				<div class="flex items-center justify-between gap-3">
+					<div class="min-w-0">
+						<div class="text-sm font-medium">{m.settings_reduced_motion()}</div>
+					</div>
+					<div
+						class="inline-flex shrink-0 rounded-md bg-muted p-0.5"
+						role="radiogroup"
+						aria-label={m.settings_reduced_motion()}
+					>
+						{#each reducedMotionOptions as opt (opt.value)}
+							{@const active = settings.reducedMotion === opt.value}
+							<button
+								type="button"
+								role="radio"
+								aria-checked={active}
+								class="px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer
+									{active
+									? 'bg-background text-foreground shadow-sm'
+									: 'text-muted-foreground hover:text-foreground'}"
+								onclick={() => settings.setReducedMotion(opt.value)}
+							>
+								{opt.label()}
+							</button>
+						{/each}
+					</div>
+				</div>
+				{#if settings.reducedMotion === 'auto'}
+					<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+						<span class="size-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
+						<span
+							>{m.settings_auto_source({
+								value: resolvedReducedMotionLabel,
 								source: m.settings_source_system()
 							})}</span
 						>

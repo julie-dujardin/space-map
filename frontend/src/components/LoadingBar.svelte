@@ -36,4 +36,10 @@
 	.loadbar-sweep {
 		animation: loadbar-sweep 1.1s ease-in-out infinite;
 	}
+	/* Keep the indeterminate sweep moving under reduced motion — a frozen loader
+	   reads as broken, and this small sweep is no vestibular trigger. */
+	:global(.reduce-motion) .loadbar-sweep {
+		animation-duration: 1.1s !important;
+		animation-iteration-count: infinite !important;
+	}
 </style>

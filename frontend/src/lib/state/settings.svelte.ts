@@ -14,6 +14,7 @@ const STORAGE_KEY = 'space-map-settings';
 
 export type Theme = 'auto' | 'light' | 'dark';
 export type Clock = 'auto' | '12h' | '24h';
+export type ReducedMotion = 'auto' | 'on' | 'off';
 export type DateFormatChoice = 'auto' | 'iso';
 export type LanguageChoice = 'auto' | Locale;
 export type ViewMode = 'map' | 'immersive';
@@ -21,6 +22,7 @@ export type ViewMode = 'map' | 'immersive';
 interface Persisted {
 	theme?: Theme;
 	clock?: Clock;
+	reducedMotion?: ReducedMotion;
 	dateFormat?: DateFormatChoice;
 	language?: LanguageChoice;
 	showDebugInfo?: boolean;
@@ -54,6 +56,7 @@ function localeUses12h(locale: string): boolean {
 class SettingsState {
 	theme = $state<Theme>('auto');
 	clock = $state<Clock>('auto');
+	reducedMotion = $state<ReducedMotion>('auto');
 	dateFormat = $state<DateFormatChoice>('auto');
 	language = $state<LanguageChoice>('auto');
 	showDebugInfo = $state(false);
@@ -73,11 +76,13 @@ class SettingsState {
 	 *  the next page load — already-resident chunks aren't unloaded. */
 	maxPartsPerZone = $state(0);
 	#systemDark = $state(false);
+	#systemReducedMotion = $state(false);
 
 	constructor() {
 		const stored = readPersisted();
 		this.theme = stored.theme ?? 'auto';
 		this.clock = stored.clock ?? 'auto';
+		this.reducedMotion = stored.reducedMotion ?? 'auto';
 		this.dateFormat = stored.dateFormat ?? 'auto';
 		this.language = stored.language ?? 'auto';
 		this.showDebugInfo = stored.showDebugInfo ?? false;
@@ -96,6 +101,10 @@ class SettingsState {
 			const mq = window.matchMedia('(prefers-color-scheme: dark)');
 			this.#systemDark = mq.matches;
 			mq.addEventListener('change', (e) => (this.#systemDark = e.matches));
+
+			const rm = window.matchMedia('(prefers-reduced-motion: reduce)');
+			this.#systemReducedMotion = rm.matches;
+			rm.addEventListener('change', (e) => (this.#systemReducedMotion = e.matches));
 		}
 	}
 
@@ -106,6 +115,11 @@ class SettingsState {
 
 	setClock(v: Clock) {
 		this.clock = v;
+		this.persist();
+	}
+
+	setReducedMotion(v: ReducedMotion) {
+		this.reducedMotion = v;
 		this.persist();
 	}
 
@@ -190,6 +204,12 @@ class SettingsState {
 		return this.theme;
 	}
 
+	/** Whether to suppress motion: the OS preference under 'auto', else the explicit choice. */
+	get resolvedReducedMotion(): boolean {
+		if (this.reducedMotion === 'auto') return this.#systemReducedMotion;
+		return this.reducedMotion === 'on';
+	}
+
 	/** Resolved hour-cycle preference: true for 12h, false for 24h. */
 	get resolvedHour12(): boolean {
 		if (this.clock === '12h') return true;
@@ -214,6 +234,7 @@ class SettingsState {
 			const data: Persisted = {
 				theme: this.theme,
 				clock: this.clock,
+				reducedMotion: this.reducedMotion,
 				dateFormat: this.dateFormat,
 				language: this.language,
 				showDebugInfo: this.showDebugInfo,

@@ -43,17 +43,23 @@
 			})();
 		</script>
 		<script>
-			// Resolve theme before first paint so a stored 'light'/'dark' override
+			// Resolve theme + reduced-motion before first paint so a stored override
 			// doesn't FOUC through the system preference. Mirrors the auto logic in
 			// settings.svelte.ts; keep them in sync.
 			(function () {
 				try {
 					var s = localStorage.getItem('space-map-settings');
-					var theme = (s && JSON.parse(s).theme) || 'auto';
+					var stored = s ? JSON.parse(s) : {};
+					var theme = stored.theme || 'auto';
 					var dark =
 						theme === 'dark' ||
 						(theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 					if (dark) document.documentElement.classList.add('dark');
+					var rm = stored.reducedMotion || 'auto';
+					var reduce =
+						rm === 'on' ||
+						(rm === 'auto' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+					if (reduce) document.documentElement.classList.add('reduce-motion');
 				} catch (e) {}
 			})();
 		</script>
