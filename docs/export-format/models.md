@@ -87,6 +87,7 @@ Schema `5`. Same `models/{slug}/{high,low}.glb` layout, but the meshes are **alr
   "citation": "Gaskell, R.W. …",
   "archive": "PDS SBN (NEAR, Gaskell)",
   "archive_url": "https://sbnarchive.psi.edu/…",
+  "probe_id": 77094912,   // mission tier only: the observing spacecraft (manifest `probe_id`); denormalized into each body's `model_source.mission`. Absent for radar/lightcurve and multi-mission/ambiguous shapes
   "true_scale": {
     "max_extent_km": 32.67,
     "bounding_radius_km": 19.33,

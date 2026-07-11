@@ -58,6 +58,8 @@ class ObjectDataContext:
     texture_metadata: dict[str, dict]
     clouds_metadata: dict[str, dict]
     displacement_metadata: dict[str, dict]
+    # shape-model slug -> provenance block (technique/archive/mission link).
+    model_sources: dict[str, dict]
     probe_kernel_sources: dict[int, str | None]
     nomenclature_body_ids: set[str]
     # parent Object.id -> display name, for moons whose parent may live in
@@ -136,6 +138,7 @@ def build_zone_object_data(
         texture_metadata=ctx.texture_metadata,
         clouds_metadata=ctx.clouds_metadata,
         displacement_metadata=ctx.displacement_metadata,
+        model_sources=ctx.model_sources,
         probe_kernel_sources=ctx.probe_kernel_sources,
         nomenclature_body_ids=ctx.nomenclature_body_ids,
         parent_names=ctx.parent_names,

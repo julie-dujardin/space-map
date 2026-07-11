@@ -328,6 +328,9 @@ def _inject_manifest(
             object_key,
         )
         return
+    # Set at inject (not just extraction) so pre-`source` cached manifests still
+    # carry it without forcing a full re-extract. Attitude is CK-only today.
+    manifest.setdefault("source", "spice_ck")
     global_data[object_key]["attitude"] = manifest
 
 

@@ -270,6 +270,7 @@ def manifest_entry(result: ExtractionResult, *, frame_name: str) -> dict:
 
     Schema:
         {
+          "source": "spice_ck",
           "frame": str,
           "start_jd": float,
           "end_jd": float,
@@ -300,6 +301,7 @@ def manifest_entry(result: ExtractionResult, *, frame_name: str) -> dict:
             entry["baseline_index"] = f.baseline_index
         files.append(entry)
     return {
+        "source": "spice_ck",
         "frame": frame_name,
         "start_jd": result.coverage_start_jd,
         "end_jd": result.coverage_end_jd,

@@ -45,6 +45,12 @@ interface GlobalObjectData {
     description?: string;
   };
   model_name?: string;                // slug under /v1/models/{model_name}/ when this body ships a 3D-model bundle (see models.md); shared by bodies that reuse one model
+  model_source?: {                    // shape-model provenance (natural bodies only), denormalized from the bundle for the detail sources section
+    provenance: "missions" | "radar" | "lightcurve"; // technique tier: spacecraft mission, Earth-based radar, or lightcurve inversion
+    archive?: string;                 // archive the mesh came from (free text, e.g. "PDS SBN (NEAR)")
+    archive_url?: string;
+    mission?: { name: string; primary_type: "object"; primary_id: string }; // observing spacecraft (mission shapes only); primary_id is "probe-<id>"
+  };
   render_quality?: "high" | "medium" | "low"; // best-available-asset render tier: high = faithful 3D model (spacecraft/mission/radar), map texture, or procedural star surface; medium = lightcurve-inversion convex hull only; low = size-only sphere/ellipsoid (PCK radii or SBDB diameter). Absent → no known physical extent, halo/point at best
   has_rings?: boolean;                // only present if true; full ring metadata (channels, geometry, attribution) lives in systems/{bary}.json
   clouds?: {                          // only when a cloud overlay was ingested for this body; mirrors systems/{bary}.json

@@ -219,6 +219,7 @@ def build_chunk_object_data(
     texture_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
     displacement_metadata: dict[str, dict],
+    model_sources: dict[str, dict],
     probe_kernel_sources: dict[int, str | None],
     nomenclature_body_ids: set[str],
     parent_names: dict[str, str],
@@ -267,6 +268,7 @@ def build_chunk_object_data(
             texture_metadata,
             clouds_metadata,
             displacement_metadata,
+            model_sources,
             probe_kernel_sources,
             nomenclature_body_ids,
             parent_names,
@@ -375,6 +377,46 @@ def render_quality(obj: Object, radii: dict[int, dict]) -> str | None:
     return None
 
 
+def build_model_sources(
+    model_metadata: dict[str, dict],
+    probe_names: dict[int, str],
+) -> dict[str, dict]:
+    """Map shape-model slug → compact provenance block for the detail drawer.
+
+    Denormalized from the per-slug bundles so the sources section can name the
+    model's technique (mission/radar/lightcurve), credit its archive, and — for
+    mission shapes — link to the observing spacecraft. Keyed by slug to match
+    the ``model_name`` the object actually references; spacecraft bundles
+    (``kind != shape_model``) are excluded — natural bodies only.
+    """
+    out: dict[str, dict] = {}
+    for slug, meta in model_metadata.items():
+        if meta.get("kind") != "shape_model":
+            continue
+        block: dict = {"provenance": meta.get("provenance")}
+        if meta.get("archive"):
+            block["archive"] = meta["archive"]
+        if meta.get("archive_url"):
+            block["archive_url"] = meta["archive_url"]
+        probe_id = meta.get("probe_id")
+        if probe_id is not None:
+            name = probe_names.get(int(probe_id))
+            if name:
+                block["mission"] = {
+                    "name": name,
+                    "primary_type": "object",
+                    "primary_id": f"probe-{int(probe_id)}",
+                }
+            else:
+                logger.warning(
+                    "model %s: probe_id %s absent from registry — no mission link",
+                    slug,
+                    probe_id,
+                )
+        out[slug] = block
+    return out
+
+
 def _build_global(
     obj: Object,
     extracted: dict,
@@ -388,6 +430,7 @@ def _build_global(
     texture_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
     displacement_metadata: dict[str, dict],
+    model_sources: dict[str, dict],
     probe_kernel_sources: dict[int, str | None],
     nomenclature_body_ids: set[str],
     parent_names: dict[str, str],
@@ -408,6 +451,9 @@ def _build_global(
             )
     if obj.model_name is not None:
         data["model_name"] = obj.model_name
+        model_source = model_sources.get(obj.model_name)
+        if model_source:
+            data["model_source"] = model_source
     quality = render_quality(obj, radii)
     if quality is not None:
         data["render_quality"] = quality

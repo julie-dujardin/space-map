@@ -366,6 +366,10 @@ class BodyModelProcessor:
             "exports": exports,
             "processed_at": datetime.now(UTC).isoformat(),
         }
+        # Observing spacecraft for mission-tier shapes — links the model to its
+        # probe page. Absent for multi-mission/ambiguous bodies (see manifest).
+        if entry.get("probe_id") is not None:
+            payload["probe_id"] = int(entry["probe_id"])
         if true_scale:
             payload["true_scale"] = true_scale
         out_dir.mkdir(parents=True, exist_ok=True)

@@ -37,11 +37,13 @@ from space_map_data.export.nomenclature.writer import (
 from space_map_data.export.objects.fragments import attach_comet_fragments
 from space_map_data.export.objects.missions import attach_probe_missions
 from space_map_data.export.notable import shape_model_slugs
+from space_map_data.probes.probe_id import load_registry
 from space_map_data.export.sitemap import write_sitemap
 from space_map_data.export.objects.moons import attach_notable_moons
 from space_map_data.export.objects.satellites import attach_featured_satellites
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
+    build_model_sources,
     write_object_bundles,
 )
 from space_map_data.export.pipeline import incremental
@@ -971,6 +973,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     # {object_id: slug} for shape-model bundles — lets notable-member lineups
     # render the real mesh instead of a sphere (spacecraft bundles excluded).
     model_slugs = shape_model_slugs(model_metadata)
+    # {slug: provenance block} for the detail sources section.
+    model_sources = build_model_sources(
+        model_metadata,
+        {e["probe_id"]: e["name"] for e in load_registry() if e.get("name")},
+    )
     probe_kernel_sources = load_probe_kernel_sources()
 
     ctx = ObjectDataContext(
@@ -984,6 +991,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         texture_metadata=texture_metadata,
         clouds_metadata=clouds_metadata,
         displacement_metadata=displacement_metadata,
+        model_sources=model_sources,
         probe_kernel_sources=probe_kernel_sources,
         nomenclature_body_ids=set(nomenclature_by_body.keys()),
         parent_names=moon_parent_names,

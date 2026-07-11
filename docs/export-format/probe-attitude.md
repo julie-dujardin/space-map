@@ -50,6 +50,7 @@ can discover its streams without listing the directory:
 
 ```typescript
 interface ProbeAttitude {
+  source?: "spice_ck";    // origin of the stream; only spice_ck (refit from NAIF CK) today. Absent on pre-source bundles — treat as spice_ck
   frame: string;          // CK reference frame name the quaternions are expressed in
   start_jd: number;       // coverage start (JD TDB)
   end_jd: number;         // coverage end (JD TDB)
