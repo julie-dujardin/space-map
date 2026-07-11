@@ -80,6 +80,7 @@
 		qualifier?: string;
 		source: string;
 		organisation: string;
+		license?: string;
 	}
 
 	const imageryRows = $derived.by<ImageryRow[]>(() => {
@@ -96,28 +97,30 @@
 				typeKey: 'surface' | 'clouds' | 'night' | 'topography' | 'rings';
 				source: string;
 				organisation: string;
+				license?: string;
 			}>
 		>();
 		const push = (
 			bodyId: string,
 			typeKey: 'surface' | 'clouds' | 'night' | 'topography' | 'rings',
 			source: string,
-			organisation: string
+			organisation: string,
+			license?: string
 		) => {
 			const arr = byBody.get(bodyId) ?? [];
-			arr.push({ typeKey, source, organisation });
+			arr.push({ typeKey, source, organisation, license });
 			byBody.set(bodyId, arr);
 		};
 		for (const c of scopedCredits(ctx.credits.texture.values()))
-			push(c.bodyId, 'surface', c.source, c.organisation);
+			push(c.bodyId, 'surface', c.source, c.organisation, c.license);
 		for (const c of scopedCredits(ctx.credits.cloud.values()))
-			push(c.bodyId, 'clouds', c.source, c.organisation);
+			push(c.bodyId, 'clouds', c.source, c.organisation, c.license);
 		for (const c of scopedCredits(ctx.credits.night.values()))
-			push(c.bodyId, 'night', c.source, c.organisation);
+			push(c.bodyId, 'night', c.source, c.organisation, c.license);
 		for (const c of scopedCredits(ctx.credits.displacement.values()))
-			push(c.bodyId, 'topography', c.source, c.organisation);
+			push(c.bodyId, 'topography', c.source, c.organisation, c.license);
 		for (const c of scopedCredits(ctx.credits.ring.values()))
-			push(c.bodyId, 'rings', c.source, c.organisation);
+			push(c.bodyId, 'rings', c.source, c.organisation, c.license);
 
 		const typeLabel = (k: 'surface' | 'clouds' | 'night' | 'topography' | 'rings'): string => {
 			if (k === 'surface') return m.attribution_type_surface();
@@ -133,7 +136,8 @@
 				key: 'skybox',
 				label: m.attribution_section_skybox(),
 				source: ctx.credits.skybox.source,
-				organisation: ctx.credits.skybox.organisation
+				organisation: ctx.credits.skybox.organisation,
+				license: ctx.credits.skybox.license
 			});
 		}
 		const bodies = [...byBody.keys()].sort((a, b) => bodyName(a).localeCompare(bodyName(b)));
@@ -146,7 +150,8 @@
 					label: bodyName(bodyId),
 					qualifier: multi ? typeLabel(it.typeKey) : undefined,
 					source: it.source,
-					organisation: it.organisation
+					organisation: it.organisation,
+					license: it.license
 				});
 			}
 		}
@@ -221,6 +226,7 @@
 							r.qualifier ? `${r.label} (${r.qualifier})` : r.label,
 							r.organisation
 						)}
+						{#if r.license}<span class="text-muted-foreground"> · {r.license}</span>{/if}
 					</li>
 				{/each}
 			</ul>
@@ -237,6 +243,9 @@
 						bodyName(focusedModel.bodyId),
 						focusedModel.organisation
 					)}
+					{#if focusedModel.license}<span class="text-muted-foreground">
+							· {focusedModel.license}</span
+						>{/if}
 				</li>
 			</ul>
 		</section>

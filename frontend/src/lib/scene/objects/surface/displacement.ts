@@ -18,6 +18,7 @@ export interface DisplacementMeta {
 	absolute_radius: boolean;
 	source: string;
 	organisation: string;
+	license?: string;
 	type: string;
 	attribution?: string;
 	description?: string;

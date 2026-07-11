@@ -293,6 +293,7 @@ export interface SkyboxMetadata {
 	tier_face_size: Record<string, number>;
 	source: string;
 	organisation: string;
+	license?: string;
 	attribution?: string;
 	description?: string;
 }

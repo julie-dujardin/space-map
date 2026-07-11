@@ -199,6 +199,7 @@ export async function loadSkybox(
 		ctx.credits.skybox = {
 			source: meta.skybox.source,
 			organisation: meta.skybox.organisation,
+			license: meta.skybox.license,
 			attribution: meta.skybox.attribution,
 			description: meta.skybox.description
 		};

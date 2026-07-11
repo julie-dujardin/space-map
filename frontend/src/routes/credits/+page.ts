@@ -16,6 +16,7 @@ export interface TextureCredit {
 	name: string;
 	source: string;
 	organisation: string;
+	license?: string;
 	type: string;
 	attribution?: string;
 	description?: string;
@@ -31,6 +32,7 @@ export interface RingCredit {
 	name: string;
 	source: string;
 	organisation: string;
+	license?: string;
 	attribution?: string;
 	description?: string;
 }
@@ -44,6 +46,7 @@ export interface CloudCredit {
 	name: string;
 	source: string;
 	organisation: string;
+	license?: string;
 	attribution?: string;
 	description?: string;
 }
@@ -57,6 +60,7 @@ export interface NightCredit {
 	name: string;
 	source: string;
 	organisation: string;
+	license?: string;
 	attribution?: string;
 	description?: string;
 }
@@ -70,6 +74,7 @@ export interface DisplacementCredit {
 	name: string;
 	source: string;
 	organisation: string;
+	license?: string;
 	attribution?: string;
 	description?: string;
 }
@@ -98,6 +103,7 @@ export interface SystemGroup {
 export interface SkyboxCredit {
 	source: string;
 	organisation: string;
+	license?: string;
 	attribution?: string;
 	description?: string;
 }
@@ -118,6 +124,7 @@ export interface EphemerisArchive {
 export interface ModelCatalog {
 	name: string;
 	url: string;
+	license?: string;
 }
 
 export interface Credits {

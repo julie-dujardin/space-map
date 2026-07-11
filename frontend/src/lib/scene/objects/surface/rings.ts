@@ -34,6 +34,7 @@ import { versionedUrl } from '$lib/fetch/data-base';
 export interface RingMeta {
 	source: string;
 	organisation: string;
+	license?: string;
 	inner_radius_km: number;
 	outer_radius_km: number;
 	sample_count: number;

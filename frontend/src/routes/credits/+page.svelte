@@ -23,6 +23,7 @@
 		qualifier?: string;
 		source: string;
 		organisation: string;
+		license?: string;
 		attribution?: string;
 	}
 
@@ -47,6 +48,7 @@
 			typeKey: ImageryTypeKey;
 			source: string;
 			organisation: string;
+			license?: string;
 			attribution?: string;
 		}
 		// Per-body ordering within the list: surface → clouds → night → topography → rings.
@@ -55,6 +57,7 @@
 			name: string;
 			source: string;
 			organisation: string;
+			license?: string;
 			attribution?: string;
 		};
 		const out: ImagerySystem[] = [];
@@ -76,6 +79,7 @@
 						typeKey,
 						source: c.source,
 						organisation: c.organisation,
+						license: c.license,
 						attribution: c.attribution
 					});
 					byBody.set(c.body_id, arr);
@@ -93,6 +97,7 @@
 						qualifier: multi ? typeLabel(it.typeKey) : undefined,
 						source: it.source,
 						organisation: it.organisation,
+						license: it.license,
 						attribution: it.attribution
 					});
 				}
@@ -245,7 +250,12 @@
 				{@render sectionHeader(m.attribution_section_models())}
 				<ul class="space-y-1">
 					{#each credits.models as cat (cat.url)}
-						<li>{@render link(cat.url, cat.name)}</li>
+						<li>
+							{@render link(cat.url, cat.name)}
+							{#if cat.license}<span class="text-xs text-muted-foreground">
+									· {cat.license}</span
+								>{/if}
+						</li>
 					{/each}
 				</ul>
 			</section>
@@ -257,6 +267,9 @@
 				<ul class="space-y-1">
 					<li>
 						{@render link(credits.skybox.source, credits.skybox.organisation)}
+						{#if credits.skybox.license}<span class="text-xs text-muted-foreground">
+								· {credits.skybox.license}</span
+							>{/if}
 						{#if credits.skybox.attribution}
 							<div class="text-xs text-muted-foreground mt-0.5">{credits.skybox.attribution}</div>
 						{/if}
@@ -280,6 +293,9 @@
 									r.qualifier ? `${r.name} (${r.qualifier})` : r.name,
 									r.organisation
 								)}
+								{#if r.license}<span class="text-xs text-muted-foreground">
+										· {r.license}</span
+									>{/if}
 								{#if r.attribution}
 									<div class="text-xs text-muted-foreground mt-0.5">{r.attribution}</div>
 								{/if}

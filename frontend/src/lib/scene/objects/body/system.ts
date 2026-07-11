@@ -49,6 +49,7 @@ interface SystemBodyMeta {
 	texture?: {
 		source: string;
 		organisation: string;
+		license?: string;
 		type: string;
 		attribution?: string;
 		description?: string;
@@ -130,6 +131,7 @@ export async function loadSystemData(
 				systemId: barycenterId,
 				source: bodyMeta.texture.source,
 				organisation: bodyMeta.texture.organisation,
+				license: bodyMeta.texture.license,
 				type: bodyMeta.texture.type,
 				attribution: bodyMeta.texture.attribution,
 				description: bodyMeta.texture.description
@@ -215,6 +217,7 @@ export async function loadSystemData(
 					systemId: barycenterId,
 					source: nightMeta.source,
 					organisation: nightMeta.organisation,
+					license: nightMeta.license,
 					attribution: nightMeta.attribution,
 					description: nightMeta.description
 				});
@@ -247,6 +250,7 @@ export async function loadSystemData(
 					systemId: barycenterId,
 					source: dispMeta.source,
 					organisation: dispMeta.organisation,
+					license: dispMeta.license,
 					attribution: dispMeta.attribution,
 					description: dispMeta.description
 				});
@@ -278,6 +282,7 @@ export async function loadSystemData(
 					systemId: barycenterId,
 					source: bodyMeta.clouds.source,
 					organisation: bodyMeta.clouds.organisation,
+					license: bodyMeta.clouds.license,
 					attribution: bodyMeta.clouds.attribution,
 					description: bodyMeta.clouds.description
 				});
@@ -321,6 +326,7 @@ export async function loadSystemData(
 					systemId: barycenterId,
 					source: bodyMeta.rings.source,
 					organisation: bodyMeta.rings.organisation,
+					license: bodyMeta.rings.license,
 					attribution: bodyMeta.rings.attribution,
 					description: bodyMeta.rings.description
 				});

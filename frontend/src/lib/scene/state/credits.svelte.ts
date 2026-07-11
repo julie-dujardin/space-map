@@ -12,6 +12,7 @@ export interface TextureCredit {
 	systemId: string;
 	source: string;
 	organisation: string;
+	license?: string;
 	type: string;
 	attribution?: string;
 	description?: string;
@@ -29,6 +30,7 @@ export interface RingCredit {
 	systemId: string;
 	source: string;
 	organisation: string;
+	license?: string;
 	attribution?: string;
 	description?: string;
 }
@@ -44,6 +46,7 @@ export interface CloudCredit {
 	systemId: string;
 	source: string;
 	organisation: string;
+	license?: string;
 	attribution?: string;
 	description?: string;
 }
@@ -59,6 +62,7 @@ export interface NightCredit {
 	systemId: string;
 	source: string;
 	organisation: string;
+	license?: string;
 	attribution?: string;
 	description?: string;
 }
@@ -72,6 +76,7 @@ export interface DisplacementCredit {
 	systemId: string;
 	source: string;
 	organisation: string;
+	license?: string;
 	attribution?: string;
 	description?: string;
 }
@@ -88,6 +93,7 @@ export interface ModelCredit {
 	bodyId: string;
 	source: string;
 	organisation: string;
+	license?: string;
 }
 
 /**
@@ -98,6 +104,7 @@ export interface ModelCredit {
 export interface SkyboxCredit {
 	source: string;
 	organisation: string;
+	license?: string;
 	attribution?: string;
 	description?: string;
 }

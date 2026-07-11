@@ -13,6 +13,7 @@ export interface NightMeta {
 	tiers: string[];
 	source: string;
 	organisation: string;
+	license?: string;
 	type: string;
 	attribution?: string;
 	description?: string;

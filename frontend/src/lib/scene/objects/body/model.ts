@@ -63,6 +63,7 @@ export interface ModelBundleMeta {
 			credit: {
 				name: string;
 				url: string;
+				license?: string;
 			};
 		};
 	};
@@ -72,7 +73,7 @@ export interface ModelBundleMeta {
 	 *  pointing body frame, e.g. `{"+y": "+z"}` for a Z-axis spinner. */
 	frame_map?: Record<string, string>;
 	/** Natural-body top-level credit + km bounds (shape-model bundles). */
-	credit?: { name: string; url: string };
+	credit?: { name: string; url: string; license?: string };
 	true_scale?: {
 		max_extent_km: number;
 		bounding_radius_km: number;
@@ -97,7 +98,11 @@ export function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
 
 /** Credit to display for a shape-model bundle: the natural-body top-level
  *  credit when set, else the high-tier GLB credit. */
-export function shapeModelCredit(meta: ModelBundleMeta): { name: string; url: string } {
+export function shapeModelCredit(meta: ModelBundleMeta): {
+	name: string;
+	url: string;
+	license?: string;
+} {
 	return meta.credit ?? meta.exports.high.credit;
 }
 
@@ -192,7 +197,8 @@ export async function loadBodyModel(
 			ctx?.credits.registerModel({
 				bodyId: bo.body.data.id,
 				source: meta.exports.high.credit.url,
-				organisation: meta.exports.high.credit.name
+				organisation: meta.exports.high.credit.name,
+				license: meta.exports.high.credit.license
 			});
 		}
 	} finally {
@@ -296,7 +302,8 @@ async function loadNaturalBodyModel(
 		ctx?.credits.registerModel({
 			bodyId: bo.body.data.id,
 			source: credit.url,
-			organisation: credit.name
+			organisation: credit.name,
+			license: credit.license
 		});
 	} finally {
 		// Aborted / no model → keep the sphere visible.
