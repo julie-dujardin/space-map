@@ -72,8 +72,10 @@
 				wheelToZoom: true,
 				mainClass: 'pswp-space-map',
 				closeTitle: m.close(),
+				zoomTitle: m.image_zoom(),
 				arrowPrevTitle: m.image_previous(),
 				arrowNextTitle: m.image_next(),
+				errorMsg: m.image_error(),
 				// Desktop reserves the left 380px for the object sidebar (matches
 				// DetailDrawer's `w-[380px]` aside on the same `(min-width: 768px)`
 				// breakpoint). Tell PhotoSwipe the inset width so its image fit

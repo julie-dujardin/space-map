@@ -282,6 +282,6 @@
 		href="/credits"
 		class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2 pt-1"
 	>
-		{m.credits_see_all()} →
+		{m.credits_see_all()} <span class="inline-block rtl:rotate-180">→</span>
 	</a>
 </div>

@@ -14,11 +14,11 @@
 	const ORBIT_LABELS: Record<Exclude<OrbitalSource, OrbitalSource.UNKNOWN>, () => string> = {
 		[OrbitalSource.HORIZONS]: m.provider_nasa,
 		[OrbitalSource.SBDB]: m.provider_nasa,
-		[OrbitalSource.CELESTRAK]: m.provider_celestrak,
+		[OrbitalSource.CELESTRAK]: m.source_celestrak_name,
 		[OrbitalSource.SPICE]: m.provider_nasa,
 		[OrbitalSource.SBDB_MOON]: m.provider_nasa,
 		[OrbitalSource.SPICE_PROBE]: m.provider_nasa,
-		[OrbitalSource.SPACETRACK]: m.provider_spacetrack
+		[OrbitalSource.SPACETRACK]: m.source_spacetrack_name
 	};
 
 	const ORBIT_ORDER: OrbitalSource[] = [

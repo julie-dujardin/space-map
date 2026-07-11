@@ -4,7 +4,8 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import { untrack } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
-	import { capitalize, compact } from '$lib/search/format';
+	import { capitalize } from '$lib/search/format';
+	import { formatCompactNumber } from '$lib/format/quantities';
 	import type { SearchModel } from '$lib/search/model.svelte';
 	import type { FilterNode, FilterLeaf } from '$lib/search/tree';
 	import { rangeDef } from '$lib/search/ranges';
@@ -91,7 +92,7 @@
 				>
 				{#if leaf.count != null}
 					<span class="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
-						>{compact(leaf.count)}</span
+						>{formatCompactNumber(leaf.count)}</span
 					>
 				{/if}
 			</button>
@@ -133,7 +134,7 @@
 					>
 				{:else if node.count != null}
 					<span class="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
-						>{compact(node.count)}</span
+						>{formatCompactNumber(node.count)}</span
 					>
 				{/if}
 				<ChevronRightIcon class="size-4 text-muted-foreground rtl:rotate-180" />

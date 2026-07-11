@@ -2,21 +2,24 @@ import * as m from '$lib/paraglide/messages.js';
 import type { GroupType, OrganizationRole, SatelliteCategory } from '$lib/fetch/groups/registry';
 
 export function groupTypeLabel(type: GroupType): string {
+	// Several types share the exact label of an object-detail field/link, so they
+	// reuse that single message key rather than a duplicate group_type_* one —
+	// one string to translate, no drift between badge and detail row.
 	switch (type) {
 		case 'constellation':
 			return m.group_type_constellation();
 		case 'launch_vehicle':
-			return m.group_type_launch_vehicle();
+			return m.launch_vehicle();
 		case 'organization':
 			return m.group_type_organization();
 		case 'launch_site':
-			return m.group_type_launch_site();
+			return m.launch_site();
 		case 'bus':
 			return m.group_type_bus();
 		case 'country':
-			return m.group_type_country();
+			return m.group_label_country();
 		case 'orbit_class':
-			return m.group_type_orbit_class();
+			return m.orbit_class();
 		case 'earth_orbit_class':
 			return m.group_type_earth_orbit_class();
 		case 'small_body_flag':
@@ -26,7 +29,7 @@ export function groupTypeLabel(type: GroupType): string {
 		case 'split_comet':
 			return m.group_type_split_comet();
 		case 'mission':
-			return m.group_type_mission();
+			return m.mission();
 	}
 }
 

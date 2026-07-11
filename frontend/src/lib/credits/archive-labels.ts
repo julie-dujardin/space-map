@@ -30,7 +30,7 @@ const ARCHIVES: Record<string, Archive> = {
 	spacetrack: {
 		label: m.source_spacetrack_name,
 		url: 'https://www.space-track.org/',
-		role: m.archive_role_spacetrack
+		role: m.archive_role_celestrak
 	},
 	naif: {
 		label: m.source_spice_ephemeris_name,
@@ -40,7 +40,7 @@ const ARCHIVES: Record<string, Archive> = {
 	esa: {
 		label: m.source_archive_esa,
 		url: 'https://www.cosmos.esa.int/web/spice',
-		role: m.archive_role_esa
+		role: m.archive_role_horizons
 	},
 	'naif-pds3': {
 		label: m.source_archive_naif_pds3,
@@ -50,12 +50,12 @@ const ARCHIVES: Record<string, Archive> = {
 	'naif-pds4': {
 		label: m.source_archive_naif_pds4,
 		url: 'https://pds.nasa.gov/',
-		role: m.archive_role_naif_pds4
+		role: m.archive_role_naif_pds3
 	},
 	'jaxa-darts': {
 		label: m.source_archive_jaxa_darts,
 		url: 'https://darts.isas.jaxa.jp/',
-		role: m.archive_role_jaxa_darts
+		role: m.archive_role_horizons
 	}
 };
 

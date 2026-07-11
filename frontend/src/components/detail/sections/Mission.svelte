@@ -167,7 +167,7 @@
 			<Row label={m.rcs()} value={`${formatNumber(ct.rcs)} m²`} tooltip={m.tooltip_rcs()} />
 		{/if}
 		{#if countries.length > 0}
-			<Row label={countries.length === 1 ? m.country() : m.countries()}>
+			<Row label={m.country_count({ count: countries.length })}>
 				<span class="flex flex-wrap justify-end gap-1.5">
 					{#each countries as cc (cc)}
 						{@const name = formatCountry(cc)}

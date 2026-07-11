@@ -4,6 +4,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { thumbnailUrl, type SearchHit } from '$lib/search/client';
 	import { inceptionYear, optionDomId } from '$lib/search/format';
+	import { formatNumber } from '$lib/format/quantities';
 	import { CHUNK, type SearchModel } from '$lib/search/model.svelte';
 	import ResultRow from './ResultRow.svelte';
 
@@ -42,7 +43,7 @@
 		switch (model.sort) {
 			case 'size':
 				return hit.diameter_km != null
-					? { value: Math.round(hit.diameter_km).toLocaleString(), unit: 'km' }
+					? { value: formatNumber(Math.round(hit.diameter_km)), unit: m.unit_symbol_kilometre() }
 					: undefined;
 			case 'brightness':
 				return hit.kind === 'object' && hit.magnitude != null

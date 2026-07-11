@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import LayersIcon from '@lucide/svelte/icons/layers';
+	import { formatCompactNumber } from '$lib/format/quantities';
 	import type { SearchHit } from '$lib/search/client';
 
 	type Props = {
@@ -23,13 +24,6 @@
 	// navigable group rather than a single object: stacked-card thumbnail, a
 	// member count, and a chevron that signals "opens a page". `hit.kind` is
 	// referenced inline below so the discriminated union narrows member_count.
-
-	function compact(n: number): string {
-		if (n >= 1e6) return `${+(n / 1e6).toFixed(1)}M`;
-		if (n >= 1e4) return `${Math.round(n / 1e3)}K`;
-		if (n >= 1e3) return `${+(n / 1e3).toFixed(1)}K`;
-		return n.toLocaleString();
-	}
 </script>
 
 <!-- Combobox pattern: the row is an option, keyboard focus stays on the input
@@ -83,7 +77,9 @@
 
 	{#if hit.kind === 'group'}
 		<span class="flex shrink-0 items-center gap-1.5 text-muted-foreground">
-			<span class="text-xs tabular-nums text-foreground">{compact(hit.member_count)}</span>
+			<span class="text-xs tabular-nums text-foreground"
+				>{formatCompactNumber(hit.member_count)}</span
+			>
 			<ChevronRightIcon class="size-4 rtl:rotate-180" />
 		</span>
 	{:else if metric}

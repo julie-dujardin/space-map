@@ -30,7 +30,7 @@
 
 	let links = $derived.by(() => {
 		const result: Link[] = [];
-		if (wikipediaUrl) result.push({ href: wikipediaUrl, label: m.wikipedia() });
+		if (wikipediaUrl) result.push({ href: wikipediaUrl, label: m.source_wikipedia_name() });
 		if (nasaScienceUrl) result.push({ href: nasaScienceUrl, label: m.nasa_science() });
 		for (const url of websites)
 			result.push({ href: url, label: new URL(url).hostname.replace(/^www\./, '') });

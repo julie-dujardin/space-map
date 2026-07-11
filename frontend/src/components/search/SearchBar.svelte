@@ -22,7 +22,8 @@
 		type RangeBound,
 		hasBound
 	} from '$lib/search/client';
-	import { capitalize, compact, optionDomId } from '$lib/search/format';
+	import { capitalize, optionDomId } from '$lib/search/format';
+	import { formatCompactNumber } from '$lib/format/quantities';
 	import { rangeDef } from '$lib/search/ranges';
 	import { SearchModel, type FilterToken } from '$lib/search/model.svelte';
 	import { parseSearchSuffix } from '$lib/search/url';
@@ -504,7 +505,11 @@
 		const def = rangeDef(facet);
 		const dim = messages[def.labelKey]?.() ?? facet;
 		const unit = def.unit === 'km' ? ` ${m.unit_symbol_kilometre()}` : '';
-		const fmt = (v: number) => (def.unit === 'km' ? compact(v) : v.toLocaleString(locale));
+		// Years render ungrouped (no "1,990"); sizes compact; magnitudes as-is.
+		const fmt = (v: number) =>
+			def.unit === 'km'
+				? formatCompactNumber(v)
+				: v.toLocaleString(locale, { useGrouping: def.unit !== 'year' });
 		const val =
 			b.min != null && b.max != null
 				? `${fmt(b.min)}–${fmt(b.max)}`
@@ -712,7 +717,7 @@
 							</span>
 						{:else if model.hasResults}
 							<span class="font-medium text-foreground"
-								>{compact(model.total)}{model.total >= MAX_TOTAL_HITS ? '+' : ''}</span
+								>{formatCompactNumber(model.total)}{model.total >= MAX_TOTAL_HITS ? '+' : ''}</span
 							>
 							{m.search_results_label()}
 						{:else if catalogTotal === null}

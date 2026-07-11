@@ -2,6 +2,7 @@
  *  at most one ancestor (moon→planet, small body→zone, sat→constellation/class,
  *  planet/group→category, category→Solar System root, feature→body). */
 
+import * as m from '$lib/paraglide/messages.js';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
 import type { GlobalGroupData } from '$lib/fetch/groups/details';
@@ -97,7 +98,7 @@ export function parentCrumb(
 			if (slug === CAT_SOLAR_SYSTEM) return null;
 			// Satellites' real parent is Earth, not the Solar System root.
 			if (slug === CAT_SATELLITES) {
-				const name = ctx?.getBody(EARTH_ID)?.data.name ?? 'Earth';
+				const name = ctx?.getBody(EARTH_ID)?.data.name ?? m.earth();
 				return { label: name, target: { kind: 'focus', id: EARTH_ID, name } };
 			}
 			return categoryCrumb(CAT_SOLAR_SYSTEM);

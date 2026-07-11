@@ -49,6 +49,9 @@
 
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
+	import * as m from '$lib/paraglide/messages.js';
+	import { getLocale } from '$lib/paraglide/runtime.js';
+	import { ltrIsolate } from '$lib/format/bidi';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
@@ -93,6 +96,17 @@
 		if (stripped === stripped.toUpperCase() && /[A-Z]/.test(stripped))
 			return stripped.charAt(0) + stripped.slice(1).toLowerCase();
 		return stripped;
+	}
+
+	// Locale-aware AU distance, isolated LTR so digits/en-dash don't reorder in RTL.
+	function auLabel(parts: number[], digits: number[]): string {
+		const nums = parts.map((v, i) =>
+			v.toLocaleString(getLocale(), {
+				minimumFractionDigits: digits[i],
+				maximumFractionDigits: digits[i]
+			})
+		);
+		return ltrIsolate(`${nums.join('–')} ${m.unit_symbol_astronomical_unit()}`);
 	}
 
 	interface PlacedBody {
@@ -290,7 +304,7 @@
 				cx: b.cx,
 				cy: b.cy - b.r - 4,
 				title: b.name,
-				sub: `${b.a.toFixed(b.a < 10 ? 1 : 0)} AU`
+				sub: auLabel([b.a], [b.a < 10 ? 1 : 0])
 			};
 		const zone = moonZones.find((z) => z.parentId === hoveredMoonZone);
 		if (zone) {
@@ -306,7 +320,7 @@
 				cx: belt.x + belt.width / 2,
 				cy: 44,
 				title: belt.label,
-				sub: `${belt.inner_au.toFixed(1)}–${belt.outer_au.toFixed(0)} AU`
+				sub: auLabel([belt.inner_au, belt.outer_au], [1, 0])
 			};
 		return null;
 	});

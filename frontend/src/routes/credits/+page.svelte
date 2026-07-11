@@ -135,7 +135,7 @@
 			href="/"
 			class="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground mb-6"
 		>
-			<ArrowLeftIcon class="size-4" />
+			<ArrowLeftIcon class="size-4 rtl:rotate-180" />
 			{m.credits_back_to_map()}
 		</a>
 

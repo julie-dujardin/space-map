@@ -79,7 +79,9 @@ export const DEFAULT_VIEW_ELEVATION_DEG = 30;
 export const DEFAULT_VIEW: MapViewState = {
 	type: UrlType.Body,
 	id: EARTH_ID,
-	name: 'Earth',
+	// Empty until the body resolves its localized name (replaceFocusName) — a
+	// hardcoded "Earth" would flash the wrong language for non-English locales.
+	name: '',
 	date: new Date(),
 	isNow: true,
 	// Serialized fallback only — the landing snap places the camera sunward and writes lat/lon back.

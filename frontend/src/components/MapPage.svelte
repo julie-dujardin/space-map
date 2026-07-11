@@ -247,7 +247,7 @@
 		const initialId = appState.view.id;
 		// Friendly label from the URL slug; captured before the Sun fallback
 		// below overwrites appState.view.name.
-		const initialName = appState.view.name ?? initialId;
+		const initialName = appState.view.name || initialId;
 		// URL camera framing — restored onto the real target once it loads, since
 		// the renderer settles its initial focus (on the parent) while the
 		// target's chunk is still streaming.
