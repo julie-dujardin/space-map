@@ -587,6 +587,7 @@
 	// drill that swaps its list (root → leaves) unmounts the just-clicked button,
 	// dropping focus to <body> and reading as "left the cluster".
 	let filterWrapEl: HTMLElement | undefined = $state();
+	let filterTriggerEl: HTMLButtonElement | undefined = $state();
 	$effect(() => {
 		if (!filterOpen) return;
 		const onDown = (e: MouseEvent) => {
@@ -732,6 +733,9 @@
 					<div class="relative shrink-0" bind:this={filterWrapEl}>
 						<button
 							type="button"
+							bind:this={filterTriggerEl}
+							aria-haspopup="dialog"
+							aria-expanded={filterOpen}
 							class="inline-flex h-[30px] items-center gap-1.5 rounded-lg border px-2.5 text-xs whitespace-nowrap text-foreground transition-colors hover:bg-accent {model.activeCount ||
 							filterOpen
 								? 'border-foreground bg-accent'
@@ -751,7 +755,15 @@
 							{/if}
 						</button>
 						{#if filterOpen}
-							<FilterDrill {model} root={tree} openTo={filterOpenTo} />
+							<FilterDrill
+								{model}
+								root={tree}
+								openTo={filterOpenTo}
+								onClose={() => {
+									filterOpen = false;
+									filterTriggerEl?.focus();
+								}}
+							/>
 						{/if}
 					</div>
 				</div>

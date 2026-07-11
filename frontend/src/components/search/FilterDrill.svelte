@@ -2,7 +2,7 @@
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import CheckIcon from '@lucide/svelte/icons/check';
-	import { untrack } from 'svelte';
+	import { untrack, tick } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { capitalize } from '$lib/search/format';
 	import { formatCompactNumber } from '$lib/format/quantities';
@@ -12,7 +12,12 @@
 	import { hasBound } from '$lib/search/client';
 	import RangeControl from './RangeControl.svelte';
 
-	let { model, root, openTo }: { model: SearchModel; root: FilterNode; openTo?: string } = $props();
+	let {
+		model,
+		root,
+		openTo,
+		onClose
+	}: { model: SearchModel; root: FilterNode; openTo?: string; onClose?: () => void } = $props();
 
 	const messages = m as unknown as Record<string, (() => string) | undefined>;
 
@@ -43,10 +48,31 @@
 		for (const child of node.children ?? []) n += activeUnder(child);
 		return n;
 	}
+
+	let listEl = $state<HTMLDivElement | null>(null);
+
+	// Drilling swaps the whole list, unmounting the button that had focus (which
+	// would otherwise drop focus to <body>); move focus onto the new level's first
+	// control instead.
+	function navigate(next: FilterNode[]) {
+		path = next;
+		tick().then(() => listEl?.querySelector<HTMLElement>('button, input')?.focus());
+	}
+
+	function onKeyDown(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			e.stopPropagation();
+			onClose?.();
+		}
+	}
 </script>
 
 <div
 	class="absolute end-0 top-9 z-40 flex max-h-[440px] w-[288px] flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-2xl"
+	role="dialog"
+	tabindex="-1"
+	aria-label={m.search_filter()}
+	onkeydown={onKeyDown}
 >
 	<!-- header: back to parent, or the "Add filter" title at root -->
 	<div class="flex items-center gap-1.5 border-b border-border px-2 py-2">
@@ -54,7 +80,7 @@
 			<button
 				type="button"
 				class="inline-flex h-[26px] items-center gap-1 rounded-lg bg-accent px-2 text-sm font-medium text-foreground"
-				onclick={() => (path = path.slice(0, -1))}
+				onclick={() => navigate(path.slice(0, -1))}
 			>
 				<ChevronLeftIcon class="size-4 rtl:rotate-180" />
 				<span class="whitespace-nowrap">{capitalize(current.label)}</span>
@@ -72,12 +98,14 @@
 		{/if}
 	</div>
 
-	<div class="no-scrollbar overflow-y-auto p-1.5">
+	<div class="no-scrollbar overflow-y-auto p-1.5" bind:this={listEl}>
 		<!-- direct toggle leaves at this level (All / NEO / PHA / Probes …) -->
 		{#each leaves as leaf (leaf.id)}
 			{@const checked = leafChecked(leaf)}
 			<button
 				type="button"
+				role="checkbox"
+				aria-checked={checked}
 				class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-start transition-colors hover:bg-accent"
 				onclick={() => toggleLeaf(leaf)}
 			>
@@ -123,7 +151,7 @@
 			<button
 				type="button"
 				class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-start transition-colors hover:bg-accent"
-				onclick={() => (path = [...path, node])}
+				onclick={() => navigate([...path, node])}
 			>
 				<span class="min-w-0 flex-1 truncate text-sm text-foreground">{capitalize(node.label)}</span
 				>

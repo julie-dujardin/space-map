@@ -113,6 +113,7 @@
 			{clock.direction === -1 ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10'}"
 		onclick={() => clock.toggleDirection()}
 		aria-label={m.time_reverse()}
+		aria-pressed={clock.direction === -1}
 		title={m.time_reverse()}
 	>
 		<RewindIcon class="size-4" />
@@ -136,6 +137,7 @@
 				{Math.abs(clock.timeScale) === value
 				? 'bg-primary text-primary-foreground'
 				: 'hover:bg-primary/10'}"
+			aria-pressed={Math.abs(clock.timeScale) === value}
 			onclick={() => clock.setTimeScale(value)}
 		>
 			{label()}
