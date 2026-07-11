@@ -94,7 +94,16 @@
 	"search_prev_page": "前のページ",
 	"search_next_page": "次のページ",
 	"loading_data": "データを読み込み中…",
-	"group_member_count": "{count} 件",
+	"group_member_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 件",
+				"countPlural=other": "{count} 件"
+			}
+		}
+	],
 	"group_no_summary": "説明はありません。",
 	"group_launch_activity": "打ち上げの推移",
 	"group_top_constellations": "主なコンステレーション",
@@ -103,9 +112,27 @@
 	"legend_per_year": "1 年ごと",
 	"legend_per_n_years": "{n} 年ごと",
 	"legend_cumulative": "累計",
-	"tooltip_launches_count": "{count} 回の打ち上げ",
+	"tooltip_launches_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 回の打ち上げ",
+				"countPlural=other": "{count} 回の打ち上げ"
+			}
+		}
+	],
 	"group_discovery_activity": "発見の推移",
-	"tooltip_discoveries_count": "{count} 件の発見",
+	"tooltip_discoveries_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 件の発見",
+				"countPlural=other": "{count} 件の発見"
+			}
+		}
+	],
 	"group_stat_members": "メンバー",
 	"group_stat_named": "命名済み",
 	"group_stat_active": "稼働中",
@@ -138,8 +165,26 @@
 	"group_label_dissolved": "解散",
 	"group_label_closed": "閉鎖",
 	"group_label_retired": "退役",
-	"group_label_operators": "運用者",
-	"group_label_manufacturers": "製造元",
+	"group_label_operators": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "運用者",
+				"countPlural=other": "運用者"
+			}
+		}
+	],
+	"group_label_manufacturers": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "製造元",
+				"countPlural=other": "製造元"
+			}
+		}
+	],
 	"group_label_country": "国",
 	"group_label_country_of_origin": "本国",
 	"satellite_category_disaster_sar": "災害 / SAR",
@@ -450,7 +495,16 @@
 	"scatter_plot_trajectories": "軌跡",
 	"scatter_tooltip_pha": "潜在的に危険",
 	"scatter_tooltip_neo": "地球近傍",
-	"scatter_tooltip_population": "{count} 件の天体",
+	"scatter_tooltip_population": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 件の天体",
+				"countPlural=other": "{count} 件の天体"
+			}
+		}
+	],
 	"condition_code": "コンディションコード",
 	"position_accuracy": "位置精度",
 	"position_accuracy_high": "高",
@@ -485,7 +539,16 @@
 	"my_location_inaccurate": "報告された精度は {km} km — 実際の位置と異なる場合があります",
 	"my_location_error": "現在地を取得できませんでした",
 	"clear_promoted": "ピン留めしたオブジェクトをクリア",
-	"cleared_n_promoted": "{count} 件のピン留めオブジェクトをクリアしました",
+	"cleared_n_promoted": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 件のピン留めオブジェクトをクリアしました",
+				"countPlural=other": "{count} 件のピン留めオブジェクトをクリアしました"
+			}
+		}
+	],
 	"north_reference": "北の基準",
 	"north_solar_system": "太陽系",
 	"north_solar_system_desc": "J2000 黄道面",
@@ -1008,30 +1071,84 @@
 	"property_name_asteroid_family": "小惑星族",
 	"property_name_blog": "公式ブログ",
 	"property_name_capital_cost": "費用",
-	"property_name_country_of_origin": "本国",
+	"property_name_country_of_origin": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "本国",
+				"countPlural=other": "本国"
+			}
+		}
+	],
 	"property_name_density": "密度",
-	"property_name_developer": "開発元",
+	"property_name_developer": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "開発元",
+				"countPlural=other": "開発元"
+			}
+		}
+	],
 	"property_name_discoverers": "発見者又は発明者",
 	"property_name_discovery_date": "発見日又は発明日",
 	"property_name_discovery_site": "天文学的発見をした場所",
 	"property_name_dissolved": "廃止日",
-	"property_name_funder": "資金提供者",
+	"property_name_funder": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "資金提供者",
+				"countPlural=other": "資金提供者"
+			}
+		}
+	],
 	"property_name_image": "画像",
 	"property_name_inception": "成立日",
 	"property_name_instance_of": "分類",
-	"property_name_launch_contractor": "打ち上げ業者",
+	"property_name_launch_contractor": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "打ち上げ業者",
+				"countPlural=other": "打ち上げ業者"
+			}
+		}
+	],
 	"property_name_launch_date": "宇宙機打上げ日時",
 	"property_name_launch_site": "出発地",
 	"property_name_launch_vehicle": "打ち上げロケット",
 	"property_name_length": "全長",
 	"property_name_logo_image": "ロゴ画像",
-	"property_name_manufacturer": "製造元",
+	"property_name_manufacturer": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "製造元",
+				"countPlural=other": "製造元"
+			}
+		}
+	],
 	"property_name_mass": "質量",
 	"property_name_max_temperature": "最高温度",
 	"property_name_min_temperature": "最低温度",
 	"property_name_minor_planet_group": "小惑星グループ",
 	"property_name_named_after": "名前の由来",
-	"property_name_operators": "運営者",
+	"property_name_operators": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "運営者",
+				"countPlural=other": "運営者"
+			}
+		}
+	],
 	"property_name_part_of": "以下の一部分",
 	"property_name_population": "人口",
 	"property_name_radius": "半径",
@@ -1070,5 +1187,184 @@
 	"unit_name_yottagram": "ヨタグラム",
 	"unit_name_zettagram": "ゼタグラム",
 	"unit_symbol_kilometre": "粁",
-	"unit_symbol_metre": "米"
+	"unit_symbol_metre": "米",
+	"featured_iss": "ISS",
+	"featured_starlink": "スターリンク",
+	"time_scale_realtime": "1×",
+	"seo_noun_asteroid": "小惑星",
+	"seo_noun_main_belt_asteroid": "メインベルト小惑星",
+	"seo_noun_near_earth_asteroid": "地球近傍小惑星",
+	"seo_noun_mars_crossing_asteroid": "火星横断小惑星",
+	"seo_noun_jupiter_trojan": "木星トロヤ群",
+	"seo_noun_centaur": "ケンタウルス族",
+	"seo_noun_trans_neptunian_object": "太陽系外縁天体",
+	"seo_noun_comet": "彗星",
+	"seo_noun_moon": "衛星",
+	"seo_noun_moon_of": "{parent}の衛星",
+	"seo_noun_rocket_body": "ロケット機体",
+	"seo_noun_orbital_debris": "軌道デブリ",
+	"seo_noun_satellite": "人工衛星",
+	"seo_noun_orbiting_object": "周回天体",
+	"seo_noun_spacecraft": "宇宙機",
+	"seo_lead_discovered": "{who}が{year}年に発見した{noun}",
+	"seo_lead_first_observed": "{year}年に初観測された{noun}",
+	"seo_lead_launched": "{year}年に打ち上げられた{noun}",
+	"seo_attr_discovered": "{year}年に発見",
+	"seo_attr_diameter_km": "直径約{value} km",
+	"seo_attr_diameter_m": "直径約{value} m",
+	"seo_attr_spectral_type": "{spec}型",
+	"seo_attr_orbiting": "{center}を周回",
+	"seo_attr_part_of_mission": "{mission}ミッションの一部",
+	"seo_discoverers_two": "{a}と{b}",
+	"seo_discoverers_many": "{first}ほか",
+	"seo_generic_named": "太陽系のインタラクティブな3Dマップ「宇宙マップ」で{name}を探索しよう。",
+	"seo_generic": "宇宙マップ — 太陽系のインタラクティブな3Dマップ。",
+	"neo": "NEO",
+	"pha": "PHA",
+	"method_sgp4": "SGP4",
+	"jpl_horizons": "JPL Horizons ({id})",
+	"nasa_science": "NASA Science",
+	"settings_dateformat_iso": "ISO",
+	"debug_fps": "FPS",
+	"debug_jd": "JD",
+	"provider_celestrak": "CelesTrak",
+	"provider_spacetrack": "Space-Track.org",
+	"source_horizons_name": "NASA JPL Horizons",
+	"source_archive_jaxa_darts": "JAXA DARTS",
+	"archive_role_horizons": "宇宙機の軌道",
+	"archive_role_sbdb": "小惑星・彗星",
+	"archive_role_celestrak": "地球周回衛星",
+	"archive_role_spacetrack": "地球周回衛星",
+	"archive_role_naif": "惑星・衛星・宇宙機",
+	"archive_role_esa": "宇宙機の軌道",
+	"archive_role_naif_pds3": "アーカイブされた宇宙機の軌道",
+	"archive_role_naif_pds4": "アーカイブされた宇宙機の軌道",
+	"archive_role_jaxa_darts": "宇宙機の軌道",
+	"source_celestrak_name": "CelesTrak",
+	"source_spacetrack_name": "Space-Track.org",
+	"source_iau_wgccre_short": "IAU WGCCRE",
+	"source_jpl_satellite_discovery_name": "JPL Planetary Satellite Discovery",
+	"source_jonathan_space_report_name": "Jonathan's Space Report (GCAT)",
+	"feature_type_description_AA": "小さな天体の衝突によって固体天体表面に形成された円形の窪地",
+	"feature_type_description_AL": "隣接する領域とアルベドの差を示す領域",
+	"feature_type_description_AR": "湾曲した地形",
+	"feature_type_description_CA": "クレーターの列",
+	"feature_type_description_CB": "通常は列や群をなす、不規則で急峻な窪地",
+	"feature_type_description_CH": "崩れた、または入り乱れた地形の特徴的な領域",
+	"feature_type_description_CL": "「首」；二裂状小惑星の2つのローブをつなぐ領域",
+	"feature_type_description_CM": "深く細長い急峻な窪地",
+	"feature_type_description_CO": "天体上の小さな丘やこぶ",
+	"feature_type_description_CR": "金星またはミランダ上の楕円形の地形",
+	"feature_type_description_DO": "尾根。月・火星・金星で見られる地形",
+	"feature_type_description_ER": "イオ上の活火山",
+	"feature_type_description_FA": "明るい斑点",
+	"feature_type_description_FE": "扇状の模様をもつごく低い曲線状の尾根",
+	"feature_type_description_FL": "金星・イオ・タイタン上で液体の流出に覆われた地形",
+	"feature_type_description_FM": "液体を運ぶ可能性があるタイタン上の水路",
+	"feature_type_description_FO": "細長く浅い窪地",
+	"feature_type_description_FR": "金星上のパンケーキ状の構造",
+	"feature_type_description_FT": "タイタン上で2つの大きな液体領域をつなぐ液体の海峡",
+	"feature_type_description_IN": "タイタン上で液体領域に囲まれた孤立した陸地",
+	"feature_type_description_LA": "地滑り、特に火星のマリネリス峡谷で見られる",
+	"feature_type_description_LB": "交差する谷または尾根の複合体",
+	"feature_type_description_LC": "月または火星上の小さな平原；タイタン上では明瞭で鋭い境界をもつ小さく暗い平原",
+	"feature_type_description_LF": "アポロ着陸地点またはその付近の月の地形",
+	"feature_type_description_LG": "謎めいた環状の地形",
+	"feature_type_description_LI": "暗色または明色の細長い模様",
+	"feature_type_description_LN": "火星上で丸みを帯びた葉状または舌状の境界をもつ台地の延長部",
+	"feature_type_description_LO": "接触連星小惑星の2つのローブのうちの1つ",
+	"feature_type_description_LU": "タイタン上で干上がった湖底のような外観をもつ不規則な形の窪地",
+	"feature_type_description_MA": "惑星または衛星の表面上の異常に暗い領域",
+	"feature_type_description_ME": "月や火星上の大きな円形の平原；タイタン上では液体炭化水素と考えられる暗い物質の広がり",
+	"feature_type_description_MN": "崖のような縁をもつ平頂の突起",
+	"feature_type_description_MO": "天体上の山",
+	"feature_type_description_PA": "月または火星上の小さな平原",
+	"feature_type_description_PE": "不規則なクレーター",
+	"feature_type_description_PL": "地球外天体上の平原",
+	"feature_type_description_PM": "他の惑星上の台地または高原",
+	"feature_type_description_PR": "月上の岬",
+	"feature_type_description_PU": "トリトン上の氷火山地形",
+	"feature_type_description_RU": "他の惑星上の地形",
+	"feature_type_description_SA": "科学的に重要で、母天体の直径の少なくとも1%の大きさをもつ天体上の岩",
+	"feature_type_description_SC": "葉状または不規則な崖",
+	"feature_type_description_SE": "全長にわたって正負の起伏をもつ区間からなる蛇行地形",
+	"feature_type_description_SF": "関連する地形と名前を共有する地形",
+	"feature_type_description_SI": "月または火星上の小さな平原",
+	"feature_type_description_ST": "宇宙機の着陸地点",
+	"feature_type_description_SU": "天体上の平行またはほぼ平行な尾根と溝が複雑に並ぶ領域",
+	"feature_type_description_TA": "天体上の広大な陸塊",
+	"feature_type_description_TE": "金星上のタイル状・多角形の地形の領域",
+	"feature_type_description_TH": "小さなドーム状の山または丘",
+	"feature_type_description_UN": "金星・火星・タイタン上の砂丘地帯",
+	"feature_type_description_VA": "火星・月などの谷",
+	"feature_type_description_VI": "タイタン上の色の筋または縞",
+	"feature_type_description_VS": "広大な平原",
+	"feature_type_label_AR": "アルクス",
+	"feature_type_label_CB": "カウス",
+	"feature_type_label_CL": "コルム",
+	"feature_type_label_ER": "噴出中心",
+	"feature_type_label_FE": "フレクスス",
+	"feature_type_label_FL": "フルクトゥス",
+	"feature_type_label_FM": "フルメン",
+	"feature_type_label_FT": "フレトゥム",
+	"feature_type_label_IN": "インスラ",
+	"feature_type_label_LA": "ラベス",
+	"feature_type_label_LB": "ラビリントス",
+	"feature_type_label_LC": "ラクス",
+	"feature_type_label_LF": "宇宙飛行士にちなむ地形",
+	"feature_type_label_LG": "大型環状地形",
+	"feature_type_label_LI": "リネア",
+	"feature_type_label_LN": "リングラ",
+	"feature_type_label_LO": "ロブス",
+	"feature_type_label_LU": "ラクナ",
+	"feature_type_label_MA": "マクラ",
+	"feature_type_label_ME": "マレ",
+	"feature_type_label_MN": "メンサ",
+	"feature_type_label_PA": "パルス",
+	"feature_type_label_PE": "パテラ",
+	"feature_type_label_PL": "プラニティア",
+	"feature_type_label_PM": "プラヌム",
+	"feature_type_label_PR": "プロモントリウム",
+	"feature_type_label_PU": "プルーム",
+	"feature_type_label_SA": "サクスム",
+	"feature_type_label_SC": "スコプルス",
+	"feature_type_label_SE": "セルペンス",
+	"feature_type_label_SF": "従属地形",
+	"feature_type_label_SI": "シヌス",
+	"feature_type_label_ST": "スタティオ",
+	"feature_type_label_SU": "スルクス",
+	"feature_type_label_TE": "テッセラ",
+	"feature_type_label_UN": "ウンダ",
+	"feature_type_label_VA": "ヴァリス",
+	"feature_type_label_VI": "ヴィルガ",
+	"feature_type_label_VS": "ヴァスティタス",
+	"unit_name_magnitude": "等級",
+	"unit_symbol_astronomical_unit": "au",
+	"unit_symbol_attometre": "am",
+	"unit_symbol_centimetre": "cm",
+	"unit_symbol_centimetre_per_square_second": "cm/s²",
+	"unit_symbol_degree_fahrenheit": "°F",
+	"unit_symbol_deutsche_mark": "DM",
+	"unit_symbol_earth_mass": "M⊕",
+	"unit_symbol_exagram": "Eg",
+	"unit_symbol_gram": "g",
+	"unit_symbol_gram_per_cubic_centimetre": "g/cm³",
+	"unit_symbol_hour": "h",
+	"unit_symbol_jupiter_mass": "M_J",
+	"unit_symbol_jupiter_radius": "R_J",
+	"unit_symbol_kelvin": "K",
+	"unit_symbol_kilogram": "kg",
+	"unit_symbol_kilogram_per_cubic_metre": "kg/m³",
+	"unit_symbol_kilometre_per_second": "km/s",
+	"unit_symbol_magnitude": "等級",
+	"unit_symbol_metres_per_second_squared": "m/s²",
+	"unit_symbol_millimetre": "mm",
+	"unit_symbol_petagram": "Pg",
+	"unit_symbol_ronnagram": "Rg",
+	"unit_symbol_square_kilometre": "km²",
+	"unit_symbol_teragram": "Tg",
+	"unit_symbol_tonne": "t",
+	"unit_symbol_year": "a",
+	"unit_symbol_yottagram": "Yg",
+	"unit_symbol_zettagram": "Zg"
 }
