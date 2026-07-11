@@ -55,6 +55,7 @@
 		WebGLRenderer
 	} from 'three';
 	import { SilhouetteGlow } from './lineup-silhouette';
+	import { makeLineupSunMaterial } from './lineup-sun';
 	import { disposeGltf, fetchBundleMeta, modelLoader } from '$lib/scene/objects/body/model';
 	import { attachDisplacementMap } from '$lib/scene/objects/surface/displacement';
 	import {
@@ -69,7 +70,7 @@
 		type CloudMeta,
 		type CloudNode
 	} from '$lib/scene/objects/surface/clouds';
-	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
+	import { BODY_COLORS, DEFAULT_BODY_COLOR, SUN_ID } from '$lib/constants';
 	import { DATA_BASE, versionedUrl } from '$lib/fetch/data-base';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
@@ -393,6 +394,15 @@
 		const loader = new TextureLoader();
 		for (const b of visibleItems) {
 			const color = b.color ?? BODY_COLORS[b.id] ?? DEFAULT_BODY_COLOR;
+			// The Sun is self-luminous: unlit limb-darkened disc, no model/texture/relief.
+			if (b.id === SUN_ID) {
+				const mesh = new Mesh(geometry, makeLineupSunMaterial(color));
+				baseQuats.set(b.id, styledQuaternion(b));
+				mesh.quaternion.copy(baseQuats.get(b.id)!);
+				scene.add(mesh);
+				meshes.set(b.id, mesh);
+				continue;
+			}
 			const material = new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
 			const mesh = new Mesh(b.displacement ? dispGeometry : geometry, material);
 			baseQuats.set(b.id, styledQuaternion(b));

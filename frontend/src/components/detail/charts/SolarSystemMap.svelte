@@ -430,10 +430,13 @@
 		data-vaul-no-drag
 	>
 		<defs>
+			<!-- Eddington limb darkening of the thematic tint, matching the 3D
+			     lineup Sun: pure #ffdd44 dimmed toward the rim, no hue shift. -->
 			<radialGradient id="ssmap-sun" cx="50%" cy="50%" r="50%">
-				<stop offset="0%" stop-color="#fff4c2" />
-				<stop offset="55%" stop-color="#ffdd44" />
-				<stop offset="100%" stop-color="#f0a23c" />
+				<stop offset="0%" stop-color="#ffdd44" />
+				<stop offset="55%" stop-color="#f4df41" />
+				<stop offset="80%" stop-color="#e2cf3b" />
+				<stop offset="100%" stop-color="#aa9b2a" />
 			</radialGradient>
 			<pattern id="ssmap-belt" width="9" height="9" patternUnits="userSpaceOnUse">
 				<circle cx="2" cy="2" r="0.9" fill="currentColor" opacity="0.55" />
