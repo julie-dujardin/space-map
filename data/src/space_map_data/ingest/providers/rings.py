@@ -83,6 +83,30 @@ def _save_lossless_webp(img: Image.Image, path: Path) -> dict:
     }
 
 
+def _refresh_credits(out_meta_path: Path, meta: dict) -> None:
+    """Patch yaml-sourced credit fields (license, attribution, …) onto an
+    existing metadata.json without re-encoding the channels — so credit edits
+    ship on a skip run, mirroring the textures ``refresh_metadata_from_yaml``."""
+    try:
+        current = json.loads(out_meta_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+    desired = {
+        "source": meta["source"],
+        "organisation": meta["organisation"],
+        "license": meta.get("license"),
+        "attribution": meta["attribution"],
+        "description": meta.get("description"),
+    }
+    if all(current.get(k) == v for k, v in desired.items()):
+        return
+    current.update(desired)
+    out_meta_path.write_text(json.dumps(current, indent=2))
+    log.info(
+        "refreshed ring credits from yaml: %s/metadata.json", out_meta_path.parent.name
+    )
+
+
 class RingProcessor:
     """Parse downloaded ring profiles and emit lossless WebP exports."""
 
@@ -152,6 +176,8 @@ class RingProcessor:
             log.debug(
                 "skipping %s rings (already processed, use force=True)", object_id
             )
+            # Still ship yaml-only credit edits (e.g. license) without re-encoding.
+            _refresh_credits(out_meta_path, meta)
             self._mark_has_rings(object_id)
             return out_dir
 
@@ -200,6 +226,7 @@ class RingProcessor:
             "id": object_id,
             "source": meta["source"],
             "organisation": meta["organisation"],
+            "license": meta.get("license"),
             "attribution": meta["attribution"],
             "description": meta.get("description"),
             "inner_radius_km": float(meta["inner_radius_km"]),

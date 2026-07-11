@@ -36,6 +36,28 @@ from .metadata import (
 log = logging.getLogger(__name__)
 
 
+def _refresh_cloud_credits(meta_path: Path, download_meta: dict) -> None:
+    """Patch download-sourced credit fields (license, attribution) onto an
+    existing cloud metadata.json on skip — so credit edits ship without
+    re-encoding every frame. Clouds don't flow through the shared
+    ``refresh_metadata_from_yaml`` (their metadata shape differs)."""
+    try:
+        current = json.loads(meta_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+    desired = {
+        "license": download_meta.get("license"),
+        "attribution": download_meta.get("attribution"),
+    }
+    if all(current.get(k) == v for k, v in desired.items()):
+        return
+    current.update(desired)
+    meta_path.write_text(json.dumps(current, indent=2))
+    log.info(
+        "refreshed cloud credits from download metadata: %s", meta_path.parent.name
+    )
+
+
 class TextureProcessor:
     def __init__(self) -> None:
         main_yaml = config.RAW_DIR.parent / "download-metadata.yaml"
@@ -249,6 +271,12 @@ class TextureProcessor:
             src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
             if not src.exists():
                 log.warning("listed in metadata but not found: %s", entry["file"])
+                # Raw file gone but a prior export exists: still propagate
+                # yaml-only edits (e.g. license) and keep it available.
+                out_dir = config.PROCESSED_DIR / entry["body"]
+                if mirror_path(out_dir / "metadata.json").exists():
+                    refresh_metadata_from_yaml(out_dir, entry, entry["file"])
+                    self._mark_texture_available(entry["body"])
                 continue
             self.process(src, force=force)
 
@@ -760,6 +788,7 @@ class TextureProcessor:
                     "skipping clouds (already processed %d frames, use force=True to reprocess)",
                     len(target_frames),
                 )
+                _refresh_cloud_credits(meta_path, download_meta)
                 self._mark_texture_available(object_id)
                 return out_dir
 
@@ -865,6 +894,7 @@ class TextureProcessor:
                 "skipping static clouds %s (already processed, use force=True to reprocess)",
                 object_id,
             )
+            _refresh_cloud_credits(meta_path, download_meta)
             self._mark_texture_available(object_id)
             return out_dir
 
