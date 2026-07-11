@@ -105,7 +105,8 @@
 			class="relative mt-1 w-full"
 			bind:clientWidth={barWidth}
 			style:height="{HEIGHT}px"
-			role="img"
+			role="group"
+			aria-label={m.mass_distribution_title()}
 			onmouseleave={() => (hoveredKey = null)}
 		>
 			{#if barWidth > 0 && segments.length > 0}

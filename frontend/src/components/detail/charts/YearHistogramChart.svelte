@@ -106,7 +106,12 @@
 				{m.legend_cumulative()}
 			</span>
 		</div>
-		<div style:height="{height}px" role="img" onmouseleave={() => (hoveredIndex = null)}>
+		<div
+			style:height="{height}px"
+			role="group"
+			aria-label={kind === 'launch' ? m.group_launch_activity() : m.group_discovery_activity()}
+			onmouseleave={() => (hoveredIndex = null)}
+		>
 			<LayerCake
 				padding={PADDING}
 				x="year"

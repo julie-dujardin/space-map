@@ -91,7 +91,8 @@
 		class="relative mt-1 w-full"
 		bind:clientWidth={width}
 		style:height="{HEIGHT}px"
-		role="img"
+		role="group"
+		aria-label={m.mass_distribution_title()}
 		onmouseleave={() => (hoveredId = null)}
 	>
 		{#if width > 0 && segments.length > 0}

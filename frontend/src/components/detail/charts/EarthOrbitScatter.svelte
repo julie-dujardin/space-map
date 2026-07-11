@@ -179,7 +179,8 @@
 	onpointercancel={endScrub}
 	onpointerleave={endScrub}
 	data-vaul-no-drag
-	role="img"
+	role="group"
+	aria-label={m.scatter_membership_title()}
 >
 	{#if width > 0}
 		<svg {width} {height} viewBox="0 0 {width} {height}" class="block">
