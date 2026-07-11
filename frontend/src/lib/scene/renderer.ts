@@ -85,7 +85,8 @@ import type { Vec3 } from './animation/math';
 import { type FocusState, FOCUS_DURATION_MS, stepFocusAnimation } from './animation/focus';
 import { FocusController } from './focus/controller';
 import { ProbeCoverageWatch } from './probe-coverage-watch';
-import { minCameraDistance } from './visibility/camera-limits';
+import { minCameraDistance, clampCameraOutsideBody } from './visibility/camera-limits';
+import { collisionParentId } from './state/bodies.svelte';
 import { updateBodyVisibility } from './visibility/update';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location/marker';
 import { updateUserLocationOcclusion } from './user-location/occlusion';
@@ -548,6 +549,21 @@ export class SceneRenderer {
 			() => this.repositionAll(),
 			() => this.pointClouds.rebuildBasis()
 		);
+
+		// Keep the camera from tunnelling into the focused object's parent (e.g.
+		// Earth while focused on the ISS): minDistance only guards the focused body
+		// itself, but the orbit sphere around a low orbiter dips below its parent.
+		// The clamp caps its wall at the focused object's own radial distance, so a
+		// low orbiter stays reachable without clipping the parent; a landed probe
+		// gets a thin keep-away shell above the terrain instead.
+		const focused = this.focusController.current;
+		if (focused) {
+			const parentId = collisionParentId(focused.data.parentId);
+			const parent = parentId ? this.ctx.getBody(parentId) : undefined;
+			const landed = Boolean(this.bodyObjects.get(focused.data.id)?.isLanded);
+			if (parent) clampCameraOutsideBody(this.camera, parent, this.focus.focusTruePos, landed);
+		}
+
 		if (this.pendingUrlWrite && controlsSettled) {
 			this.pendingUrlWrite = false;
 			const { latitude, longitude, distance } = this.getCameraState();

@@ -15,6 +15,15 @@ export function dominantPlanetId(id: string): string | null {
 	return m ? `naif-${m[1]}99` : null;
 }
 
+/** The physical body a focused object could realistically clip into: its direct
+ *  parent (planet for an orbiter/moon, or the moon a spacecraft orbits), resolved
+ *  from barycenter to dominant planet. Undefined for Sun/SSB orbiters, whose
+ *  parent is too far to reach. */
+export function collisionParentId(parentId: string): string | undefined {
+	if (isTopLevelParent(parentId)) return undefined;
+	return dominantPlanetId(parentId) ?? parentId;
+}
+
 /**
  * The scene's body store. Owns every loaded `PositionedBody` plus the
  * parent/child graph used to answer system-membership questions. Visibility
