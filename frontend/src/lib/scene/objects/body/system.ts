@@ -1,5 +1,12 @@
-import { type Material, MeshStandardMaterial, type Scene, type TextureLoader } from 'three';
+import {
+	type Material,
+	MeshStandardMaterial,
+	type Scene,
+	SphereGeometry,
+	type TextureLoader
+} from 'three';
 import { kmToScene } from '$lib/math/units';
+import { effectiveRadiusKm } from '$lib/types/objects';
 import { isLowEndDevice } from '$lib/device';
 import { applyOrientation } from '$lib/math/orientation';
 import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
@@ -266,6 +273,8 @@ export async function loadSystemData(
 							return;
 						}
 						bo.displacementMap = tex;
+						bo.displacementMeta = dispMeta;
+						bo.displacementTier = 'low';
 						// Self-shadow + relief shading march the same height field.
 						bo.selfShadow = attachSelfShadowToBody(material, tex, kmToScene(dispMeta.scale_km));
 					}
@@ -401,8 +410,19 @@ export function unloadSystemTextures(
 		if (bo.displacementMap && bo.mesh) {
 			disposeDisplacementFromMaterial(bo.mesh.material as MeshStandardMaterial);
 			bo.displacementMap = null;
+			bo.displacementTier = undefined;
 			detachSelfShadow(bo.selfShadow);
 			bo.selfShadow = null;
+		}
+		// A lingering terrain window is ~100k vertices; a hidden body would keep
+		// it until the next visit, so drop back to the out-of-system sphere here.
+		if (bo.terrainWindow && bo.mesh) {
+			bo.terrainWindow = null;
+			const radius = kmToScene(effectiveRadiusKm(bo.body.data));
+			const old = bo.mesh.geometry;
+			bo.mesh.geometry = new SphereGeometry(radius, 24, 24);
+			old.dispose();
+			bo.currentSegments = 24;
 		}
 		const ring = bo.rings;
 		if (ring) {

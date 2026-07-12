@@ -25,6 +25,7 @@ import { attachCanvasForwarders } from '../../label/forward';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../sun';
 import { ATMOSPHERE_PARAMS, buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
+import { detachSelfShadow } from '../surface/self-shadow';
 import { isModelBearing, unloadBodyModel } from './model';
 import type { BodyObjects } from '../../types';
 
@@ -254,6 +255,16 @@ export function downgradeBodyMesh(
 	unloadBodyModel(bo);
 	const mesh = bo.mesh;
 	if (mesh) {
+		// Displacement state — the material dispose below doesn't release
+		// textures, and a high-tier DataTexture pins its full CPU-side buffer.
+		if (bo.displacementMap) {
+			bo.displacementMap.dispose();
+			bo.displacementMap = null;
+			bo.displacementTier = undefined;
+			detachSelfShadow(bo.selfShadow);
+			bo.selfShadow = null;
+		}
+		bo.terrainWindow = null;
 		scene.remove(mesh);
 		mesh.geometry.dispose();
 		disposeMaterial(mesh.material);

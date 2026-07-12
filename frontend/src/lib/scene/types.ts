@@ -6,6 +6,8 @@ import type { CloudNode } from './objects/surface/clouds';
 import type { AtmosphereNode } from './objects/surface/atmosphere';
 import type { EclipseSelfUniforms } from './objects/surface/eclipse-shadow';
 import type { SelfShadowUniforms } from './objects/surface/self-shadow';
+import type { DisplacementMeta } from './objects/surface/displacement';
+import type { TerrainWindowState } from './lod/terrain-window';
 
 /** Mesh/halo screen-size ratio above which the body label is dropped: the mesh
  *  fills enough of the view to identify itself, and the silhouette-centre offset
@@ -89,9 +91,18 @@ export interface BodyObjects {
 	/** Emissive night-lights map. Stays at the low tier — only sampled on the
 	 *  unlit side, so fine detail isn't worth the bandwidth. */
 	emissiveMap: Texture | null;
-	/** Displacement/height map. Low tier only — relief is broad and sphere-LOD
-	 *  geometry caps detail below the high tier anyway. */
+	/** Displacement/height map. Starts at the low tier; the texture-LOD pass
+	 *  upgrades it by altitude so the terrain window has data to refine into. */
 	displacementMap: Texture | null;
+	/** Displacement metadata, kept for altitude-driven tier swaps. */
+	displacementMeta?: DisplacementMeta;
+	/** Loaded displacement tier; undefined while none is attached. */
+	displacementTier?: string;
+	/** A displacement tier swap is in flight. */
+	displacementLoading?: boolean;
+	/** Active close-zoom terrain window (non-uniform grid); null/undefined when
+	 *  the mesh carries a uniform SphereGeometry. */
+	terrainWindow?: TerrainWindowState | null;
 	/** Terrain self-shadow + relief uniforms; set alongside the displacement map. */
 	selfShadow: SelfShadowUniforms | null;
 	/** Per-body eclipse-shadow uniforms; null on stars and barycenters. */

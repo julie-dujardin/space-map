@@ -8,7 +8,18 @@ import {
 	highestAvailableTier
 } from '$lib/scene/objects/body/textures';
 import { cloudFrameForJd, loadCloudTexture } from '$lib/scene/objects/surface/clouds';
+import { swapDisplacementTier } from '$lib/scene/objects/surface/displacement';
 import { getSettings } from '$lib/state/settings.svelte';
+
+/** DEM tier by altitude (in body radii from the center, like `altitudeRadii`),
+ *  with wide hysteresis — a swap is a multi-MB fetch + full CPU decode. */
+function desiredDemTier(altitudeRadii: number, current: string): string {
+	const up = altitudeRadii < 1.05 ? 'high' : altitudeRadii < 4 ? 'medium' : 'low';
+	if (tierRank(up) > tierRank(current)) return up;
+	const down = altitudeRadii > 7 ? 'low' : altitudeRadii > 1.15 ? 'medium' : 'high';
+	if (tierRank(down) < tierRank(current)) return down;
+	return current;
+}
 
 /** Per-frame texture LOD: upgrade tier by screen-space radius. One-way — prior tier disposed. */
 export function updateTextureLOD(
@@ -66,6 +77,22 @@ export function updateTextureLOD(
 				? highestAvailableTier(desiredRank, bo.availableTiers)
 				: bo.textureTier;
 			if (target) loadBodyTextureTier(bo, target, desiredFrame, textureLoader);
+		}
+
+		// Displacement rides its own altitude ladder: the close-zoom terrain
+		// window can only refine into detail the loaded DEM actually carries.
+		// Tier rank is capped by maxTextureSize — DataTextures aren't resized by
+		// three, so a 16k upload on an 8k-limit GPU would just error out.
+		const dispTiers = bo.displacementMeta?.tiers;
+		if (bo.displacementMap && dispTiers?.length && !bo.displacementLoading) {
+			const maxTex = renderer.capabilities.maxTextureSize;
+			const capRank = maxTex >= 16383 ? 2 : maxTex >= 8192 ? 1 : 0;
+			const current = bo.displacementTier ?? 'low';
+			const target = highestAvailableTier(
+				Math.min(tierRank(desiredDemTier(altitudeRadii, current)), capRank),
+				dispTiers
+			);
+			if (target && target !== current) void swapDisplacementTier(bo, target);
 		}
 
 		// Clamp to whatever the cloud bundle exports (may top out below the

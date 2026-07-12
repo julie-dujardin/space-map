@@ -3,6 +3,7 @@ import { ObjectType, effectiveRadiusKm } from '$lib/types/objects';
 import { kmToScene } from '$lib/math/units';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { BodyObjects } from '$lib/scene/types';
+import { updateTerrainWindow } from './terrain-window';
 
 /** Pixel-radius → segment count, descending. Down-step uses 15% hysteresis. */
 const SPHERE_LOD_TIERS = [
@@ -49,13 +50,20 @@ export function updateSphereLOD(
 	const screenH = renderer.domElement.clientHeight;
 	const projScale = screenH / (2 * Math.tan(fovRad / 2));
 	const activeSystem = ctx.visibility.activeSystemId;
+	// Terrain-window host: the focused body, or the landing body under a
+	// focused landed probe (its parentId is rewritten to the landing body).
+	const focusedBo = focusedId ? bodyObjects.get(focusedId) : undefined;
+	const terrainId = focusedBo?.isLanded ? focusedBo.body.data.parentId : focusedId;
 
 	for (const bo of bodyObjects.values()) {
 		if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;
 		if (bo.cachedDist <= 0) continue;
-		const screenR = (bo.radiusScene / bo.cachedDist) * projScale;
 		const isStar = bo.body.data.objectType === ObjectType.STAR;
 		const id = bo.body.data.id;
+		if (id === terrainId || bo.terrainWindow) {
+			if (updateTerrainWindow(bo, camera, id === terrainId)) continue;
+		}
+		const screenR = (bo.radiusScene / bo.cachedDist) * projScale;
 		const inSystem = activeSystem
 			? id === activeSystem || ctx.visibility.isInActiveSystem(bo.body.data.parentId)
 			: id === focusedId;

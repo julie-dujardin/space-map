@@ -234,6 +234,8 @@ export async function loadBodyTexture(
 		);
 		if (tex) {
 			bo.displacementMap = tex;
+			bo.displacementMeta = dispMeta;
+			bo.displacementTier = 'low';
 			// Debug: self-shadow off → relief without in-shader cast shadows.
 			bo.selfShadow = getSettings().showSelfShadow
 				? attachSelfShadowToBody(material, tex, kmToScene(dispMeta.scale_km))
@@ -289,6 +291,7 @@ export function unloadBodyTexture(bo: BodyObjects): void {
 	if (bo.displacementMap) {
 		disposeDisplacementFromMaterial(material);
 		bo.displacementMap = null;
+		bo.displacementTier = undefined;
 		detachSelfShadow(bo.selfShadow);
 		bo.selfShadow = null;
 	}

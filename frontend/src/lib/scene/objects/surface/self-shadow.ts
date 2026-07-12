@@ -165,8 +165,11 @@ export function attachSelfShadowToBody(
 					float lenTv = length(Tv);
 					vec3 Nw = normalize(vSelfWorldNormal);
 					if (uSelfScale > 0.0 && lenTu > 1e-12 && lenTv > 1e-12) {
-						// Wider-than-one-texel stencil averages out 8-bit terracing.
-						vec2 d = uSelfTexel * ${GRADIENT_STENCIL.toFixed(3)};
+						// Wider-than-one-texel stencil averages out 8-bit terracing. Floored
+						// at the low tier's texel so an altitude-upgraded height map keeps
+						// the same physical smoothing width — at 16k the raw texel stencil
+						// is quantisation noise that flattens the relief.
+						vec2 d = max(uSelfTexel, vec2(1.0 / 2048.0, 1.0 / 1024.0)) * ${GRADIENT_STENCIL.toFixed(3)};
 						float hu = selfHeight(vSelfUv + vec2(d.x, 0.0))
 							- selfHeight(vSelfUv - vec2(d.x, 0.0));
 						float hv = selfHeight(vSelfUv + vec2(0.0, d.y))
