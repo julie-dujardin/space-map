@@ -71,6 +71,7 @@ export function setLabelName(
 ): void {
 	if (variant === 'none' || !name) return;
 	const el = label.element as HTMLElement;
+	el.setAttribute('aria-label', name);
 	const existing = el.querySelector('.scene-label__name') as HTMLSpanElement | null;
 	if (existing) {
 		existing.textContent = name;
@@ -129,6 +130,10 @@ export function createLabel(
 	el.href = href;
 	el.tabIndex = -1;
 	el.draggable = false;
+	// Permanent accessible name: the visible name span is display:none'd while
+	// culled/dimmed, which strips it from the name computation, so the anchor
+	// carries its own aria-label that survives every dim/restore state.
+	if (name) el.setAttribute('aria-label', name);
 
 	// halo: visual ring/hexagon, transition lives here not on root
 	let halo: HTMLElement | SVGSVGElement;

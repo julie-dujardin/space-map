@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, setContext, untrack } from 'svelte';
+	import { onMount, setContext, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Scene from './Scene.svelte';
 	import { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -307,7 +307,8 @@
 			// paints. A stable id de-dupes if the load is retried.
 			toast.warning(m.object_not_found({ name: initialName }), {
 				id: 'object-not-found',
-				duration: Number.POSITIVE_INFINITY
+				duration: Number.POSITIVE_INFINITY,
+				closeButton: true
 			});
 			appState.setFocus({ type: DEFAULT_VIEW.type, id: DEFAULT_VIEW.id, name: DEFAULT_VIEW.name });
 		}
@@ -500,6 +501,9 @@
 						activeFeature = null;
 						appState.closeDetail(anchorId);
 						drawerHeightDvh = 0;
+						// Closing means "back to the map": land focus on the map region after
+						// the drawer unmounts, else it silently falls to <body> (start of document).
+						tick().then(() => document.getElementById('main-content')?.focus());
 					}}
 					onMaximize={() => {
 						if (!selectedBody) return;

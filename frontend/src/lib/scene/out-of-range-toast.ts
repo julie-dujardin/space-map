@@ -98,6 +98,7 @@ export function updateOutOfRangeToast(state: OutOfRangeState): void {
 	toast.warning(m.out_of_range_title(), {
 		id: TOAST_ID,
 		description: lines.join('\n'),
-		duration: Number.POSITIVE_INFINITY
+		duration: Number.POSITIVE_INFINITY,
+		closeButton: true
 	});
 }

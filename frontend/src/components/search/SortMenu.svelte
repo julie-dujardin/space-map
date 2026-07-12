@@ -12,6 +12,7 @@
 	let { model }: { model: SearchModel } = $props();
 
 	let open = $state(false);
+	let triggerEl = $state<HTMLButtonElement>();
 
 	const messages = m as unknown as Record<string, (() => string) | undefined>;
 	function label(key: string): string {
@@ -29,11 +30,23 @@
 		if (next && (e.currentTarget as HTMLElement).contains(next)) return;
 		open = false;
 	}
+
+	function onKeyDown(e: KeyboardEvent) {
+		if (e.key === 'Escape' && open) {
+			open = false;
+			triggerEl?.focus();
+		}
+	}
 </script>
+
+<svelte:window onkeydown={onKeyDown} />
 
 <div class="relative inline-flex shrink-0 items-center" onfocusout={onFocusOut}>
 	<button
 		type="button"
+		bind:this={triggerEl}
+		aria-haspopup="menu"
+		aria-expanded={open}
 		class="inline-flex h-[30px] items-center gap-1.5 rounded-s-lg border border-border px-2 text-xs whitespace-nowrap text-foreground transition-colors hover:bg-accent {open
 			? 'bg-accent'
 			: ''}"
@@ -50,6 +63,7 @@
 			? 'bg-accent'
 			: ''}"
 		aria-label={m.search_sort_reverse()}
+		aria-pressed={model.reverse}
 		title={m.search_sort_reverse()}
 		onclick={() => model.toggleReverse()}
 	>
@@ -60,11 +74,14 @@
 
 	{#if open}
 		<div
+			role="menu"
 			class="absolute end-0 top-9 z-30 min-w-[200px] rounded-xl border border-border bg-popover p-1.5 shadow-xl"
 		>
 			{#each SORTS as s (s.id)}
 				<button
 					type="button"
+					role="menuitemradio"
+					aria-checked={s.id === model.sort}
 					class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start text-sm text-foreground transition-colors hover:bg-accent"
 					onclick={() => choose(s.id)}
 				>

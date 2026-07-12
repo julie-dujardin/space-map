@@ -118,7 +118,7 @@
 		</div>
 	{:else if model.loading && model.hits.length === 0}
 		<!-- initial-load skeletons: same metrics as ResultRow so the list doesn't jump -->
-		<ul class="px-2">
+		<ul class="px-2" aria-hidden="true">
 			{#each SKELETON_ROWS as w, i (i)}
 				<li class="flex items-center gap-3 px-4 py-2">
 					<Skeleton class="size-9 shrink-0" style="animation-delay: {i * 80}ms" />

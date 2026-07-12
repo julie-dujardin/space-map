@@ -619,7 +619,7 @@
 {#snippet activeHero()}
 	{#if activeTab === 'overview'}
 		{#if loading}
-			<div class="flex flex-col gap-4 px-4 pt-1 pb-3">
+			<div class="flex flex-col gap-4 px-4 pt-1 pb-3" aria-hidden="true">
 				<Skeleton class="w-full h-36 rounded-md" />
 				<Skeleton class="w-3/4 h-6" />
 				<Skeleton class="w-1/2 h-4" />
