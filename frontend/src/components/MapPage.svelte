@@ -401,6 +401,7 @@
 	<Tooltip.Provider delayDuration={300}>
 		<a
 			href="#main-content"
+			inert={bgInert}
 			class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:start-2 focus:z-[100] focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
 		>
 			{m.skip_to_content()}
@@ -409,7 +410,7 @@
 			<!-- The focused object (or app name) is the de-facto page title;
 			     visually-hidden so screen readers get a stable h1 landmark even when
 			     the drawer is closed. -->
-			<h1 class="sr-only">{appState.view.name ?? m.page_title()}</h1>
+			<h1 class="sr-only">{appState.view.name || m.page_title()}</h1>
 			<!-- display:contents wrapper so mobile's fullscreen search can inert the
 			     scene without adding a layout box. -->
 			<div class="contents" inert={bgInert}>
@@ -491,6 +492,7 @@
 				<DetailDrawer
 					{focusable}
 					{clock}
+					inert={bgInert}
 					onClose={() => {
 						// One teardown path — no second drawer left under a feature/group close.
 						const anchorId = selectedBody?.data.id ?? appState.view.id;
@@ -549,6 +551,7 @@
 				{/if}
 			</div>
 			<div
+				inert={bgInert}
 				class="fixed end-[var(--safe-end)] z-10 transition-opacity duration-300 ease-in-out
 					{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
 				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + var(--safe-bottom));"

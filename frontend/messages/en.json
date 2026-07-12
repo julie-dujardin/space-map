@@ -21,6 +21,8 @@
 	"search_secondary_feature_on": "{type} on {parent}",
 	"search_clear": "Clear",
 	"search_clear_all": "Clear all",
+	"search_clear_search": "Clear search",
+	"search_remove_filter": "Remove {label}",
 	"search_minimize": "Minimize",
 	"search_filter": "Filter",
 	"search_sort": "Sort",

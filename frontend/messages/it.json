@@ -41,6 +41,8 @@
 	"search_secondary_feature_on": "{type} su {parent}",
 	"search_clear": "Cancella",
 	"search_clear_all": "Cancella tutto",
+	"search_clear_search": "Cancella ricerca",
+	"search_remove_filter": "Rimuovi {label}",
 	"search_minimize": "Riduci",
 	"search_filter": "Filtra",
 	"search_sort": "Ordina",

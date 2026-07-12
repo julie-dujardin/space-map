@@ -79,9 +79,20 @@
 		onMaximize: () => void;
 		onMinimize: () => void;
 		onSheetResize?: (heightDvh: number) => void;
+		// The mobile drawer portals out of <main>, so the parent's background-inert
+		// can't reach it; it inerts itself behind the expanded mobile search.
+		inert?: boolean;
 	}
 
-	let { focusable, clock, onClose, onMaximize, onMinimize, onSheetResize }: Props = $props();
+	let {
+		focusable,
+		clock,
+		onClose,
+		onMaximize,
+		onMinimize,
+		onSheetResize,
+		inert = false
+	}: Props = $props();
 
 	let body = $derived(focusable.kind === 'group' ? null : focusable.body);
 	let feature = $derived(focusable.kind === 'feature' ? focusable.feature : null);
@@ -884,6 +895,7 @@
 	>
 		<Vaul.Portal>
 			<Vaul.Content
+				{inert}
 				trapFocus={false}
 				aria-labelledby="detail-drawer-title"
 				class="fixed inset-x-0 bottom-0 z-50 flex h-dvh max-h-dvh flex-col rounded-t-xl border-t bg-background shadow-lg outline-none"
@@ -917,6 +929,7 @@
 {:else}
 	<!-- Desktop: side panel -->
 	<aside
+		{inert}
 		aria-labelledby="detail-drawer-title"
 		class="fixed top-0 start-0 z-50 flex h-full w-[380px] max-w-[90vw] flex-col border-e bg-background shadow-lg"
 	>

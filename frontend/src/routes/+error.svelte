@@ -8,7 +8,11 @@
 	const message = $derived(isNotFound ? null : page.error?.message || m.error_page_body());
 </script>
 
-<div
+<svelte:head>
+	<title>{title} - {m.page_title()}</title>
+</svelte:head>
+
+<main
 	class="flex h-screen w-full flex-col items-center justify-center gap-4 bg-bg px-6 text-center text-text"
 >
 	<p class="text-4xl font-bold tabular-nums">{page.status}</p>
@@ -22,4 +26,4 @@
 	>
 		{m.error_go_home()}
 	</a>
-</div>
+</main>

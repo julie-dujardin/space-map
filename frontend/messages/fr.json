@@ -36,6 +36,8 @@
 	"search_secondary_feature_on": "{type} sur {parent}",
 	"search_clear": "Effacer",
 	"search_clear_all": "Tout effacer",
+	"search_clear_search": "Effacer la recherche",
+	"search_remove_filter": "Supprimer {label}",
 	"search_minimize": "Réduire",
 	"search_filter": "Filtrer",
 	"search_sort": "Trier",

@@ -41,6 +41,8 @@
 	"search_secondary_feature_on": "{type} na obiekcie {parent}",
 	"search_clear": "Wyczyść",
 	"search_clear_all": "Wyczyść wszystko",
+	"search_clear_search": "Wyczyść wyszukiwanie",
+	"search_remove_filter": "Usuń {label}",
 	"search_minimize": "Zminimalizuj",
 	"search_filter": "Filtruj",
 	"search_sort": "Sortuj",

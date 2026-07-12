@@ -40,6 +40,8 @@
 	"search_secondary_feature_on": "{type} — {parent}",
 	"search_clear": "Очистить",
 	"search_clear_all": "Очистить всё",
+	"search_clear_search": "Очистить поиск",
+	"search_remove_filter": "Удалить {label}",
 	"search_minimize": "Свернуть",
 	"search_filter": "Фильтр",
 	"search_sort": "Сортировка",

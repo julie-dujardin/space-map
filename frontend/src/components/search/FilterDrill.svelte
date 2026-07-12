@@ -2,7 +2,7 @@
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import CheckIcon from '@lucide/svelte/icons/check';
-	import { untrack, tick } from 'svelte';
+	import { untrack, tick, onMount } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { capitalize } from '$lib/search/format';
 	import { formatCompactNumber } from '$lib/format/quantities';
@@ -49,7 +49,12 @@
 		return n;
 	}
 
+	let dialogEl = $state<HTMLDivElement | null>(null);
 	let listEl = $state<HTMLDivElement | null>(null);
+
+	// Focus the dialog itself on open so its Escape handler is live immediately
+	// (before any tab in) and SRs announce the dialog.
+	onMount(() => dialogEl?.focus());
 
 	// Drilling swaps the whole list, unmounting the button that had focus (which
 	// would otherwise drop focus to <body>); move focus onto the new level's first
@@ -68,6 +73,7 @@
 </script>
 
 <div
+	bind:this={dialogEl}
 	class="absolute end-0 top-9 z-40 flex max-h-[440px] w-[288px] flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-2xl"
 	role="dialog"
 	tabindex="-1"

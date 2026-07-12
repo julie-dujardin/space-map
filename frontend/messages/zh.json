@@ -41,6 +41,8 @@
 	"search_secondary_feature_on": "{parent}的{type}",
 	"search_clear": "清除",
 	"search_clear_all": "全部清除",
+	"search_clear_search": "清除搜索",
+	"search_remove_filter": "移除 {label}",
 	"search_minimize": "最小化",
 	"search_filter": "筛选",
 	"search_sort": "排序",

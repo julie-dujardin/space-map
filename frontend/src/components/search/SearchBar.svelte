@@ -704,7 +704,7 @@
 							model.setQuery('');
 							inputEl?.focus();
 						}}
-						aria-label={m.search_clear()}
+						aria-label={m.search_clear_search()}
 					>
 						<XIcon class="size-4" />
 					</button>
@@ -803,7 +803,7 @@
 								<button
 									type="button"
 									class="grid size-[17px] place-items-center rounded-full bg-foreground/10 hover:bg-foreground/20"
-									aria-label={m.search_clear()}
+									aria-label={m.search_remove_filter({ label: capitalize(t.label) })}
 									onclick={() => model.removeToken(t)}
 								>
 									<XIcon class="size-2.5" />
@@ -813,7 +813,7 @@
 						<button
 							type="button"
 							class="h-[26px] px-2 text-xs text-muted-foreground hover:text-foreground"
-							onclick={() => model.clearFilters()}>{m.search_clear()}</button
+							onclick={() => model.clearFilters()}>{m.search_clear_all()}</button
 						>
 					</div>
 				{/if}

@@ -41,6 +41,8 @@
 	"search_secondary_feature_on": "{type} auf {parent}",
 	"search_clear": "Löschen",
 	"search_clear_all": "Alle löschen",
+	"search_clear_search": "Suche löschen",
+	"search_remove_filter": "{label} entfernen",
 	"search_minimize": "Minimieren",
 	"search_filter": "Filtern",
 	"search_sort": "Sortieren",

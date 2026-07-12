@@ -39,6 +39,8 @@
 	"search_secondary_feature_on": "{parent}の{type}",
 	"search_clear": "クリア",
 	"search_clear_all": "すべてクリア",
+	"search_clear_search": "検索をクリア",
+	"search_remove_filter": "{label} を削除",
 	"search_minimize": "最小化",
 	"search_filter": "絞り込み",
 	"search_sort": "並び替え",

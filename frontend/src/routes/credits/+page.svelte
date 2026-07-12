@@ -129,7 +129,7 @@
 	</a>
 {/snippet}
 
-<div class="h-dvh overflow-y-auto bg-bg text-text">
+<main class="h-dvh overflow-y-auto bg-bg text-text">
 	<div class="mx-auto max-w-2xl px-6 py-10 text-sm leading-relaxed">
 		<a
 			href="/"
@@ -306,4 +306,4 @@
 			</section>
 		{/if}
 	</div>
-</div>
+</main>

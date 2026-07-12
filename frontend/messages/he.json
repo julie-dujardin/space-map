@@ -41,6 +41,8 @@
 	"search_secondary_feature_on": "{type} על {parent}",
 	"search_clear": "ניקוי",
 	"search_clear_all": "ניקוי הכול",
+	"search_clear_search": "ניקוי החיפוש",
+	"search_remove_filter": "הסרת {label}",
 	"search_minimize": "מזער",
 	"search_filter": "סינון",
 	"search_sort": "מיון",
