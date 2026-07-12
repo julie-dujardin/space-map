@@ -125,6 +125,10 @@ export function applyLabelDisplay(
 			show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
 		}
 	}
+	// Once the disc replaces the halo, the name is anchored on the right limb. If
+	// that limb has left the viewport the name would be off screen anyway (the body
+	// fills the view or sits past the right edge) — drop it.
+	if (hideHaloRing && bo.labelAnchorOffscreen) show = false;
 	if (bo.trail && hideHaloRing) bo.trail.visible = false;
 
 	label.visible = show;
@@ -133,7 +137,10 @@ export function applyLabelDisplay(
 	// `setHaloLoading`). Show it exactly when the halo would be hidden by
 	// the close-zoom rule — it sits at the viewport centre.
 	if (bo.loadingEl) bo.loadingEl.style.display = hideHaloRing ? '' : 'none';
-	label.center.x = hideHaloRing ? 1 - screenR / 32 : 0.5;
+	// The anchor already sits on the near limb (see updateBodyVisibility); the name
+	// only needs a small fixed gap past it — 4px clear of the 32px halo box, always
+	// to the right (may run off screen, which is fine).
+	label.center.x = hideHaloRing ? 1 - 4 / 32 : 0.5;
 	return show && !wasVisible;
 }
 

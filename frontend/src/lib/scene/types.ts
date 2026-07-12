@@ -7,7 +7,9 @@ import type { AtmosphereNode } from './objects/surface/atmosphere';
 import type { EclipseSelfUniforms } from './objects/surface/eclipse-shadow';
 import type { SelfShadowUniforms } from './objects/surface/self-shadow';
 
-/** Body/halo size ratio above which the label is hidden (focused only). */
+/** Mesh/halo screen-size ratio above which the body label is dropped: the mesh
+ *  fills enough of the view to identify itself, and the silhouette-centre offset
+ *  would otherwise strand the name out near the limb. */
 export const HIDE_LABEL_BODY_HALO_FACTOR = 20;
 /** Halo indicator radius — diameter is 32px. */
 export const HALO_RADIUS_PX = 16;
@@ -53,6 +55,10 @@ export interface BodyObjects {
 	semiAxesScene?: [number, number, number];
 	/** Cached distance from camera, computed once per frame. */
 	cachedDist: number;
+	/** Set per-frame by the visibility pre-pass: the label's right-limb anchor
+	 *  projects outside the viewport, so the name would be off screen too. Drives
+	 *  dropping it. */
+	labelAnchorOffscreen?: boolean;
 	/** Width/height segment count of the mesh's current SphereGeometry; undefined for virtual bodies. */
 	currentSegments?: number;
 	/**

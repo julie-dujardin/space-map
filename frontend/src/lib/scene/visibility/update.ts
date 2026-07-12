@@ -83,6 +83,8 @@ const _meshQuat = new Quaternion();
 const _anchorOut = { ox: 0, oy: 0 };
 // Scratch for the focused model's per-sphere occluder centers.
 const _modelSphereCenter = new Vector3();
+// Scratch for projecting a label anchor to NDC (off-screen-center test).
+const _anchorProj = new Vector3();
 
 /**
  * Per-frame visibility update for all bodies, point clouds, labels, and trails.
@@ -133,6 +135,7 @@ export function updateBodyVisibility(
 		}
 		const label = bo.label;
 		if (!label) continue;
+		bo.labelAnchorOffscreen = false;
 		// No disc to anchor to — keep the label on-center.
 		const r = bo.noPhysical ? 0 : bo.radiusScene;
 		if (!r) {
@@ -146,19 +149,60 @@ export function updateBodyVisibility(
 			camZ = tmpV3.z;
 		const camZ2 = camZ * camZ;
 		const r2 = r * r;
-		// Bail using the bounding-sphere limb: past it the silhouette is unbounded
-		// and the body fills the screen (label hidden anyway).
+		// Bounding-sphere limb crosses the camera plane ⇒ the body engulfs the
+		// view; nothing sensible to anchor, so drop (applyLabelDisplay gate).
 		if (camZ2 <= r2) {
 			label.position.set(0, 0, 0);
+			bo.labelAnchorOffscreen = true;
 			continue;
 		}
-		// Sub-pixel bodies: silhouette center and body center differ by < screenR
-		// px, so the offset is invisible — skip the per-body solve (a full conic
-		// solve for ellipsoids).
-		if ((r / bo.cachedDist) * projScale < 1) {
+		const screenRpx = (r / bo.cachedDist) * projScale;
+		// Sub-pixel bodies: silhouette center and body center differ by < 1px, so
+		// the offset is invisible — skip the per-body solve.
+		if (screenRpx < 1) {
 			label.position.set(0, 0, 0);
 			continue;
 		}
+		if (screenRpx >= HALO_RADIUS_PX) {
+			// The disc has replaced the halo. The name always sits to the right, so
+			// anchor it on the right limb — the silhouette point in the camera +X
+			// direction — rather than the disc centre. ĉ tilted toward +X by the
+			// tangent half-angle α (sin α = r/d); may run off screen, which is fine.
+			const d = bo.cachedDist;
+			const inv = 1 / d;
+			const cx = camX * inv,
+				cy = camY * inv,
+				cz = camZ * inv; // ĉ, unit body direction
+			const sinA = r * inv;
+			const cosA = Math.sqrt(Math.max(1 - sinA * sinA, 0));
+			// t̂: camera +X with its ĉ component removed — the rightward tangent.
+			// Degenerate only if the body lies along ±X (never, for a visible body).
+			let tx = 1 - cx * cx,
+				ty = -cx * cy,
+				tz = -cx * cz;
+			let tl = Math.hypot(tx, ty, tz);
+			if (tl < 1e-4) {
+				tx = -cy * cx;
+				ty = 1 - cy * cy;
+				tz = -cy * cz;
+				tl = Math.hypot(tx, ty, tz);
+			}
+			const tinv = sinA / tl;
+			// d_right = ĉ cosα + t̂ sinα — the tangent ray on the +X (right) side.
+			const nx = cx * cosA + tx * tinv;
+			const ny = cy * cosA + ty * tinv;
+			const nz = cz * cosA + tz * tinv;
+			tmpV3.set(nx * d - camX, ny * d - camY, nz * d - camZ).applyQuaternion(camera.quaternion);
+			label.position.copy(tmpV3);
+			// Right limb off the viewport ⇒ the name would be off screen anyway
+			// (body fills the view or sits past the right edge); drop it.
+			_anchorProj
+				.set(bx - fp[0] + tmpV3.x, by - fp[1] + tmpV3.y, bz - fp[2] + tmpV3.z)
+				.project(camera);
+			bo.labelAnchorOffscreen = Math.abs(_anchorProj.x) > 1 || Math.abs(_anchorProj.y) > 1;
+			continue;
+		}
+		// Small disc (1–16px): keep the label at the exact silhouette centre.
 		if (bo.semiAxesScene && bo.mesh) {
 			const ax = ellipsoidCameraAxes(
 				bo.mesh.getWorldQuaternion(_meshQuat),
