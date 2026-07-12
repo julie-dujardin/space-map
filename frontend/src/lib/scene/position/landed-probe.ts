@@ -16,8 +16,9 @@ import type { Vec3 } from '$lib/scene/animation/math';
  * triangles between `SphereGeometry` grid vertices (≤128 segs → ~166 km facets
  * on Mars), and each facet's chord dips up to ~1 km below the smooth ellipsoid,
  * so seating on the analytic surface left the probe floating. We instead sample
- * the four grid vertices bracketing the probe and bilinearly blend — the exact
- * point on the rendered triangle. Recomputed when the LOD segment count changes;
+ * the four grid vertices bracketing the probe and interpolate over the triangle
+ * the GPU rasterizes — a bilinear blend deviates from it by metres on twisted
+ * quads (rover-height at Gale). Recomputed when the LOD segment count changes;
  * the record's altitude is unused (coarse height maps make it float/sink).
  * Absent until first resolved (probe rests on the mean-radius sphere meanwhile).
  */
@@ -65,7 +66,7 @@ function ensureSurfacePoint(
 			const { a, b, c } = global?.radii ?? { a: radiusKm, b: radiusKm, c: radiusKm };
 			// SphereGeometry grid cell bracketing the probe: theta runs from the +Y
 			// pole, phi from 0 (body-fixed lng = phi + π). Snap to the cell and keep
-			// the fractional position for the bilinear blend.
+			// the fractional position for the in-triangle interpolation.
 			const gy = ((Math.PI / 2 - latRad) * segs) / Math.PI;
 			const iy0 = Math.min(Math.max(Math.floor(gy), 0), segs - 1);
 			const ty = Math.min(Math.max(gy - iy0, 0), 1);
@@ -90,11 +91,15 @@ function ensureSurfacePoint(
 			const pts = corners.map((corner, k) =>
 				displacedPoint(corner.latRad, corner.lonRad, disp[k], radiusKm, a, b, c)
 			);
+			// Barycentric on the triangle the mesh draws: SphereGeometry splits each
+			// quad along the TL–BR diagonal ((a,b,d) + (b,c,d) with b=TL, d=BR).
+			const [tl, tr, bl, br] = pts;
 			const seat: [number, number, number] = [0, 0, 0];
 			for (let axis = 0; axis < 3; axis++) {
-				const top = pts[0][axis] * (1 - tx) + pts[1][axis] * tx;
-				const bot = pts[2][axis] * (1 - tx) + pts[3][axis] * tx;
-				seat[axis] = top * (1 - ty) + bot * ty;
+				seat[axis] =
+					tx >= ty
+						? tl[axis] + (tr[axis] - tl[axis]) * tx + (br[axis] - tr[axis]) * ty
+						: tl[axis] + (br[axis] - bl[axis]) * tx + (bl[axis] - tl[axis]) * ty;
 			}
 			surfacePointKm.set(probeId, seat);
 			surfacePointSegs.set(probeId, segs);
