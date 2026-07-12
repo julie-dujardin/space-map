@@ -383,7 +383,10 @@ export class HaloDebugOverlay {
 					cpz: 0,
 					K: 0,
 					id: '',
-					dist: 0
+					dist: 0,
+					ccx: 0,
+					ccy: 0,
+					ccz: 0
 				},
 				cx: 0,
 				cy: 0,

@@ -68,7 +68,10 @@ function ensureOccluder(idx: number): ScreenOccluder {
 			cpz: 0,
 			K: 0,
 			id: '',
-			dist: 0
+			dist: 0,
+			ccx: 0,
+			ccy: 0,
+			ccz: 0
 		};
 		_occluderPool[idx] = o;
 	}

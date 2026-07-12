@@ -65,6 +65,9 @@ export function setSphereOccluder(
 	occ.f = projScale;
 	occ.id = id;
 	occ.dist = dist;
+	occ.ccx = camX;
+	occ.ccy = camY;
+	occ.ccz = camZ;
 }
 
 /** Fill an occluder for an ellipsoid — the cone test runs in normalized space
@@ -104,6 +107,9 @@ export function setEllipsoidOccluder(
 	occ.f = projScale;
 	occ.id = id;
 	occ.dist = dist;
+	occ.ccx = camX;
+	occ.ccy = camY;
+	occ.ccz = camZ;
 }
 
 /**

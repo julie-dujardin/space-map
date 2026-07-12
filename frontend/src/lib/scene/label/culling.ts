@@ -45,6 +45,10 @@ export type ScreenOccluder = {
 	K: number;
 	id: string;
 	dist: number;
+	/** Body center in camera space — feeds the perspective-horizon depth test. */
+	ccx: number;
+	ccy: number;
+	ccz: number;
 };
 
 export function dimLabel(
@@ -143,7 +147,6 @@ export function isScreenOccluded(
 ): boolean {
 	for (const occ of occluders) {
 		if (occ.id === selfId) continue;
-		if (occ.dist >= dist) continue;
 		// Map the label's camera-space view ray d = (u, v, −f) into the space where
 		// the body is a unit sphere (d' = (d·gx, d·gy, d·gz)), then run the cone test
 		// (d'·c')² > K·|d'|² with the ray pointing toward the body (d'·c' > 0).
@@ -155,7 +158,18 @@ export function isScreenOccluded(
 		const s = u * occ.gzx + v * occ.gzy + w * occ.gzz;
 		const root = p * occ.cpx + q * occ.cpy + s * occ.cpz;
 		if (root <= 0) continue; // ray points to the far side of the body
-		if (root * root > occ.K * (p * p + q * q + s * s)) return true;
+		if (root * root <= occ.K * (p * p + q * q + s * s)) continue; // outside the silhouette cone
+		// Depth: within the silhouette the label is hidden only when it sits on the
+		// body's FAR cap — its outward radial faces away from the camera. This is the
+		// same perspective-horizon test the surface-feature labels use, and because it
+		// keys off the label's OWN distance it stays exact whether the label rides
+		// above or below the occluder's mean radius. A centre-distance gate wrongly
+		// leaked far-side labels nearer than a filling planet's centre; a mean-radius
+		// near-surface gate wrongly hid near-side labels below it. In camera space
+		// (camera at the origin) the visible-cap test C·(P−C) > 0 with P = dist·d̂
+		// reduces to C·d̂ > dist, so hide when C·d ≤ dist·|d|.
+		const cd = u * occ.ccx + v * occ.ccy + w * occ.ccz;
+		if (cd <= dist * Math.hypot(u, v, w)) return true;
 	}
 	return false;
 }

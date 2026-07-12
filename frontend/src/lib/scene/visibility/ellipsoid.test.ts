@@ -31,7 +31,10 @@ function emptyOcc(): ScreenOccluder {
 		cpz: 0,
 		K: 0,
 		id: '',
-		dist: 0
+		dist: 0,
+		ccx: 0,
+		ccy: 0,
+		ccz: 0
 	};
 }
 
@@ -103,6 +106,49 @@ describe('ellipsoid occlusion cone test', () => {
 			if (test !== truth) mismatch++;
 		}
 		expect(mismatch).toBe(0);
+	});
+});
+
+describe('occlusion depth gate', () => {
+	// Camera near the surface: unit sphere whose centre is 1.39 units ahead, so
+	// surface points span 0.39–2.39 in distance. A far-side point off the centre
+	// line can then be NEARER than the centre — the regression a centre-distance
+	// gate mishandled. The perspective-horizon test keys off the label's own
+	// distance, so it also spares near-side points sitting below the mean radius.
+	const c: [number, number, number] = [0, 0, -1.39];
+	const occ = emptyOcc();
+	setSphereOccluder(occ, c[0], c[1], c[2], 1, F, HW, HH, 'b', Math.hypot(...c));
+
+	// A surface point at outward normal n (unit): near cap iff n_z > 0.719 here.
+	const at = (n: [number, number, number], radius = 1): [number, number, number] => [
+		c[0] + radius * n[0],
+		c[1] + radius * n[1],
+		c[2] + radius * n[2]
+	];
+	const occludedAt = (p: [number, number, number]) =>
+		isScreenOccluded(...screenOf(...p), Math.hypot(...p), 'x', [occ]);
+
+	it('occludes a far-side label that is nearer than the occluder centre', () => {
+		// n_z = 0.5 → far cap; the point lands at distance ~1.24 < 1.39 (centre).
+		expect(occludedAt(at([0.866, 0, 0.5]))).toBe(true);
+	});
+
+	it('occludes a far-side label behind the body', () => {
+		expect(occludedAt(at([0.866, 0, -0.5]))).toBe(true);
+	});
+
+	it('leaves a near-side label visible', () => {
+		expect(occludedAt(at([0.436, 0, 0.9]))).toBe(false);
+	});
+
+	it('leaves a near-side label below the mean radius visible', () => {
+		// Sits inside the mean sphere (radius 0.99): a mean-radius near-surface gate
+		// wrongly hid it, hiding probes in front of the planet.
+		expect(occludedAt(at([0.436, 0, 0.9], 0.99))).toBe(false);
+	});
+
+	it('leaves a label off to the side of the body visible', () => {
+		expect(occludedAt([2.5, 0, -1.2])).toBe(false);
 	});
 });
 
