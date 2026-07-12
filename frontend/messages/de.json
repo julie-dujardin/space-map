@@ -538,6 +538,7 @@
 	"north_solar_system": "Sonnensystem",
 	"north_solar_system_desc": "J2000-Ekliptikebene",
 	"north_body_desc": "Rotationsachse des Körpers",
+	"north_probe_desc": "Hochachse des Raumfahrzeugs",
 	"north_galactic": "Galaktisch",
 	"north_galactic_desc": "Nordpol der Milchstraße",
 	"layers_title": "Ebenen",

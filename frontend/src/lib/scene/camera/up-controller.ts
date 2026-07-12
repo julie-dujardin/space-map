@@ -6,9 +6,9 @@ import { SCENE_UP, bodyNorthVector, galacticNorthVector, GALACTIC_REF_ID } from 
 
 /**
  * Drives `camera.up` from a north reference (ecliptic Y / galactic / body
- * pole), slerping across switches so the scene doesn't snap. Also re-pokes
- * `OrbitControls`'s cached up→Y quat — without that, dragging after a switch
- * rotates around the wrong axis.
+ * pole / probe model up), slerping across switches so the scene doesn't snap.
+ * Also re-pokes `OrbitControls`'s cached up→Y quat — without that, dragging
+ * after a switch rotates around the wrong axis.
  */
 export class CameraUpController {
 	private refId: string | null = null;
@@ -26,7 +26,9 @@ export class CameraUpController {
 	constructor(
 		private readonly camera: PerspectiveCamera,
 		private readonly controls: OrbitControls,
-		private readonly ctx: ContextManager
+		private readonly ctx: ContextManager,
+		/** Landed probes get zenith as north instead of the static model up. */
+		private readonly isLanded: (id: string) => boolean
 	) {}
 
 	/** `null` reverts to ecliptic Y; any other id triggers a slerp to its pole. */
@@ -43,7 +45,7 @@ export class CameraUpController {
 			galacticNorthVector(this.targetVec);
 		} else {
 			const refBody = this.refId ? this.ctx.getBody(this.refId) : undefined;
-			if (refBody) bodyNorthVector(refBody, jd, this.targetVec);
+			if (refBody) bodyNorthVector(refBody, jd, this.targetVec, this.isLanded(refBody.data.id));
 			else this.targetVec.copy(SCENE_UP);
 		}
 

@@ -538,6 +538,7 @@
 	"north_solar_system": "Sistema solar",
 	"north_solar_system_desc": "Plano da eclíptica J2000",
 	"north_body_desc": "Eixo de rotação do corpo",
+	"north_probe_desc": "Eixo vertical da nave espacial",
 	"north_galactic": "Galáctica",
 	"north_galactic_desc": "Polo norte da Via Láctea",
 	"layers_title": "Camadas",

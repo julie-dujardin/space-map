@@ -1,4 +1,5 @@
 import type { SatRec } from 'satellite.js';
+import type { Quaternion } from 'three';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { NutPrec, Orientation, PointingSpec } from '$lib/math/orientation';
 import type { AttitudeTrack } from '$lib/fetch/attitude/track';
@@ -137,6 +138,10 @@ export interface PositionedBody {
 	/** Refit-from-CK attitude stream. Loaded lazily on focus; drives the model's
 	 *  orientation directly over its coverage window, ahead of `pointing`. */
 	attitudeTrack?: AttitudeTrack;
+	/** Model→body base rotation (`frame_map`) of the loaded model bundle. Set on
+	 *  focus when the model loads; the probe north reference reads it. Cleared on
+	 *  unfocus. */
+	modelBaseFrame?: Quaternion;
 }
 
 /**

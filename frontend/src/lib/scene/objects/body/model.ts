@@ -180,7 +180,9 @@ export async function loadBodyModel(
 			disposeGltf(gltf.scene);
 			return;
 		}
-		const root = withBaseFrame(gltf.scene, meta?.frame_map);
+		const baseFrame = meta?.frame_map ? frameMapQuaternion(meta.frame_map) : null;
+		bo.body.modelBaseFrame = baseFrame ?? undefined;
+		const root = withBaseFrame(gltf.scene, baseFrame);
 		fitToUnitRadius(root);
 		enableShadows(root);
 		modelScene.add(root);
@@ -332,6 +334,7 @@ export function unloadBodyModel(bo: BodyObjects): void {
 	bo.modelName = undefined;
 	bo.body.pointing = undefined;
 	bo.body.attitudeTrack = undefined;
+	bo.body.modelBaseFrame = undefined;
 	if (bo.mesh && restoreSphere) bo.mesh.visible = true;
 }
 
@@ -356,11 +359,10 @@ function setHaloLoading(bo: BodyObjects, loading: boolean): void {
 /**
  * Bake the bundle's model→body base rotation (`frame_map`) into a wrapper
  * group, so the per-frame attitude/pointing code keeps writing body-frame
- * quaternions on the returned root. Identity/absent/invalid maps return the
- * scene untouched.
+ * quaternions on the returned root. A null rotation returns the scene
+ * untouched.
  */
-function withBaseFrame(scene: Object3D, frameMap?: Record<string, string>): Object3D {
-	const q = frameMap ? frameMapQuaternion(frameMap) : null;
+function withBaseFrame(scene: Object3D, q: Quaternion | null): Object3D {
 	if (!q) return scene;
 	const wrapper = new Group();
 	scene.quaternion.copy(q);

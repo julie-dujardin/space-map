@@ -532,6 +532,7 @@
 	"north_solar_system": "太阳系",
 	"north_solar_system_desc": "J2000 黄道面",
 	"north_body_desc": "天体自转轴",
+	"north_probe_desc": "航天器垂直轴",
 	"north_galactic": "银河",
 	"north_galactic_desc": "银河系北极",
 	"layers_title": "图层",

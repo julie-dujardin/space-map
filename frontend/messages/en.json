@@ -571,6 +571,7 @@
 	"north_solar_system": "Solar system",
 	"north_solar_system_desc": "J2000 ecliptic plane",
 	"north_body_desc": "Body rotation axis",
+	"north_probe_desc": "Spacecraft up axis",
 	"north_galactic": "Galactic",
 	"north_galactic_desc": "Milky Way north pole",
 	"layers_title": "Layers",

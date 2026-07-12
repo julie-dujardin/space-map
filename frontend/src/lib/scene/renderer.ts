@@ -319,7 +319,9 @@ export class SceneRenderer {
 		this.controls.update();
 		this.controls.addEventListener('end', this.onControlsEnd);
 
-		this.cameraUp = new CameraUpController(this.camera, this.controls, ctx);
+		this.cameraUp = new CameraUpController(this.camera, this.controls, ctx, (id) =>
+			Boolean(this.bodyObjects.get(id)?.isLanded)
+		);
 
 		this.systemData = new SystemDataLoader(
 			this.scene,

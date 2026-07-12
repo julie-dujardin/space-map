@@ -5,6 +5,7 @@
 	import CompassIcon from '@lucide/svelte/icons/compass';
 	import EarthIcon from '@lucide/svelte/icons/earth';
 	import OrbitIcon from '@lucide/svelte/icons/orbit';
+	import SatelliteIcon from '@lucide/svelte/icons/satellite';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import { GALACTIC_REF_ID, type NorthChoice } from '$lib/scene/camera/north-reference';
 
@@ -41,6 +42,8 @@
 				<OrbitIcon class="size-3.5" />
 			{:else if selectedId === GALACTIC_REF_ID}
 				<SparklesIcon class="size-3.5" />
+			{:else if choices.find((c) => c.id === selectedId)?.probe}
+				<SatelliteIcon class="size-3.5" />
 			{:else}
 				<EarthIcon class="size-3.5" />
 			{/if}
@@ -78,6 +81,8 @@
 								{m.north_solar_system_desc()}
 							{:else if choice.id === GALACTIC_REF_ID}
 								{m.north_galactic_desc()}
+							{:else if choice.probe}
+								{m.north_probe_desc()}
 							{:else}
 								{m.north_body_desc()}
 							{/if}
