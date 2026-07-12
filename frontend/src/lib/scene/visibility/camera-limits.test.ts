@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { PerspectiveCamera, Vector3 } from 'three';
+import { PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { kmToScene } from '$lib/math/units';
 import { collisionParentId } from '$lib/scene/state/bodies.svelte';
-import { clampCameraOutsideBody, LANDED_KEEP_AWAY_KM } from './camera-limits';
+import {
+	clampCameraOutsideBody,
+	LANDED_KEEP_AWAY_KM,
+	type LandedClampContext
+} from './camera-limits';
 
 function mkBody(
 	data: Partial<BodyData> & Pick<BodyData, 'id'>,
@@ -69,29 +73,92 @@ describe('clampCameraOutsideBody', () => {
 	// Wall sits LANDED_KEEP_AWAY_KM above the probe's own ground spot (1000 km).
 	const LANDED_SHELL = kmToScene(1000 + LANDED_KEEP_AWAY_KM);
 
+	/** Terrain data still loading (radialKm → null) ⇒ shell at the probe. */
+	const landedCtx = (
+		radialKm: LandedClampContext['radialKm'] = () => null
+	): LandedClampContext => ({ invQuat: new Quaternion(), radialKm });
+
+	/** Near plane shrunk to nothing so only the eye constrains — three's default
+	 *  0.1 near is planet-sized against these kmToScene radii. */
+	const landedCam = () => {
+		const cam = new PerspectiveCamera();
+		cam.near = 1e-15;
+		return cam;
+	};
+
 	it('lifts the camera to the keep-away shell above a landed probe', () => {
 		const { body, center } = parentAt(1000);
-		const cam = new PerspectiveCamera();
+		const cam = landedCam();
 		cam.position.set(0, 0, 0); // at the probe / ground level
-		clampCameraOutsideBody(cam, body, FOCUS, true);
+		clampCameraOutsideBody(cam, body, FOCUS, landedCtx());
 		expect(cam.position.distanceTo(center)).toBeCloseTo(LANDED_SHELL, 12);
 	});
 
 	it('leaves a camera already above the keep-away shell untouched', () => {
 		const { body, center } = parentAt(1000);
-		const cam = new PerspectiveCamera();
+		const cam = landedCam();
 		const above = kmToScene(LANDED_KEEP_AWAY_KM) * 2; // comfortably outside the shell
 		cam.position.set(-above, 0, 0); // above ground, away from the planet
-		clampCameraOutsideBody(cam, body, FOCUS, true);
+		clampCameraOutsideBody(cam, body, FOCUS, landedCtx());
 		expect(cam.position.distanceTo(center)).toBeCloseTo(kmToScene(1000) + above, 12);
 	});
 
 	it('blocks the sub-surface volume under a landed probe', () => {
 		const { body, center } = parentAt(1000);
-		const cam = new PerspectiveCamera();
+		const cam = landedCam();
 		cam.position.set(kmToScene(100), 0, 0); // nudged 100 km toward the planet — underground
-		clampCameraOutsideBody(cam, body, FOCUS, true);
+		clampCameraOutsideBody(cam, body, FOCUS, landedCtx());
 		expect(cam.position.distanceTo(center)).toBeCloseTo(LANDED_SHELL, 12); // back to the keep-away shell
+	});
+
+	it('floors the camera on the rendered terrain when it resolves', () => {
+		const { body, center } = parentAt(1000);
+		// Terrain under the camera 5 km above the probe's radial shell — the wall
+		// must follow the terrain, not the probe.
+		const dirs: [number, number, number][] = [];
+		const cam = landedCam();
+		cam.position.set(kmToScene(100), 0, 0); // underground toward the planet
+		clampCameraOutsideBody(
+			cam,
+			body,
+			FOCUS,
+			landedCtx((dir) => {
+				dirs.push(dir);
+				return 1005;
+			})
+		);
+		expect(cam.position.distanceTo(center)).toBeCloseTo(kmToScene(1005 + LANDED_KEEP_AWAY_KM), 12);
+		// Identity orientation: the body-fixed sample directions are the scene-frame
+		// point directions from the body centre — eye + 4 (degenerate) near corners,
+		// all −x here.
+		expect(dirs).toHaveLength(5);
+		for (const dir of dirs) {
+			expect(dir[0]).toBeCloseTo(-1, 9);
+			expect(dir[1]).toBeCloseTo(0, 9);
+			expect(dir[2]).toBeCloseTo(0, 9);
+		}
+	});
+
+	it('keeps the near-plane corners above the terrain, not just the eye', () => {
+		const { body, center } = parentAt(1000);
+		const wall = kmToScene(1000 + LANDED_KEEP_AWAY_KM);
+		const cam = new PerspectiveCamera();
+		cam.fov = 90;
+		cam.aspect = 2;
+		cam.near = kmToScene(1);
+		// Eye exactly on the wall, looking sideways (−z): the −x near corners dip
+		// hw = 2 km toward the planet and must drive the lift.
+		cam.position.copy(center).add(new Vector3(wall, 0, 0));
+		clampCameraOutsideBody(
+			cam,
+			body,
+			FOCUS,
+			landedCtx(() => 1000)
+		);
+		const hh = kmToScene(1); // tan(45°)·near
+		const hw = 2 * hh;
+		const worstCorner = Math.hypot(wall - hw, hh, cam.near);
+		expect(cam.position.distanceTo(center)).toBeCloseTo(wall + (wall - worstCorner), 12);
 	});
 
 	it('is a no-op for a sizeless parent (barycenter)', () => {

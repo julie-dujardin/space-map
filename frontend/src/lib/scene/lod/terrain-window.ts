@@ -172,6 +172,10 @@ export function updateTerrainWindow(
 	const mesh = bo.mesh;
 	const tex = bo.displacementMap;
 	if (!eligible || !mesh || !tex) {
+		if (bo.terrainWindow)
+			console.debug(
+				`terrain window exit ${bo.body.data.id}: eligible=${eligible} mesh=${!!mesh} tex=${!!tex}`
+			);
 		exitWindow(bo);
 		return false;
 	}
@@ -188,6 +192,8 @@ export function updateTerrainWindow(
 	// window tears down right at a landed probe's ground level.
 	const alt = Math.max(dist / geomRadius - 1, 1e-6);
 	if (alt > (bo.terrainWindow ? EXIT_ALT : ENTER_ALT)) {
+		if (bo.terrainWindow)
+			console.debug(`terrain window exit ${bo.body.data.id}: alt=${alt.toFixed(4)}`);
 		exitWindow(bo);
 		return false;
 	}

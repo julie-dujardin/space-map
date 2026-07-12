@@ -57,7 +57,7 @@ export async function attachDisplacementMap(
 	sphereRadius: number,
 	kmToLocal: number = kmToScene(1)
 ): Promise<Texture | null> {
-	const url = versionedUrl(`/v1/textures/${dispMeta.id}/${tier}.webp`, 'textures');
+	const url = displacementTierUrl(dispMeta, tier);
 	let texture: Texture;
 	try {
 		texture = await new Promise<Texture>((resolve, reject) => {
@@ -77,7 +77,11 @@ export async function attachDisplacementMap(
 	return texture;
 }
 
-async function fetchHeightBitmap(url: string): Promise<ImageBitmap | null> {
+export function displacementTierUrl(dispMeta: DisplacementMeta, tier: string): string {
+	return versionedUrl(`/v1/textures/${dispMeta.id}/${tier}.webp`, 'textures');
+}
+
+export async function fetchHeightBitmap(url: string): Promise<ImageBitmap | null> {
 	try {
 		const response = await fetch(url);
 		if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
@@ -96,7 +100,7 @@ const STRIP_PX = 4_000_000;
  *  yield between them so large tiers don't freeze the frame loop. Hidden tabs
  *  skip the yields: there's no frame to protect, and background timer
  *  throttling would stretch a 16k decode to tens of minutes. */
-async function readHeightRows(
+export async function readHeightRows(
 	bitmap: ImageBitmap,
 	y0: number,
 	y1: number
@@ -131,7 +135,7 @@ export async function swapDisplacementTier(bo: BodyObjects, tier: string): Promi
 	if (!meta || !bo.mesh || bo.displacementLoading || bo.displacementTier === tier) return;
 	bo.displacementLoading = true;
 	try {
-		const url = versionedUrl(`/v1/textures/${meta.id}/${tier}.webp`, 'textures');
+		const url = displacementTierUrl(meta, tier);
 		const bitmap = await fetchHeightBitmap(url);
 		if (!bitmap) return;
 		const w = bitmap.width;
@@ -183,7 +187,7 @@ export async function sampleDisplacementOffsets(
 	sphereRadiusScene: number,
 	tier = 'low'
 ): Promise<Float32Array | null> {
-	const url = versionedUrl(`/v1/textures/${dispMeta.id}/${tier}.webp`, 'textures');
+	const url = displacementTierUrl(dispMeta, tier);
 	const bitmap = await fetchHeightBitmap(url);
 	if (!bitmap) return null;
 	const w = bitmap.width;

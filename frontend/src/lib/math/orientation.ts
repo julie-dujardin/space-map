@@ -152,6 +152,12 @@ export function applySouthTowardParent(
 	obj.quaternion.setFromUnitVectors(LOCAL_NORTH, zenithDir);
 }
 
+/** Aim local +Y along `dir` (unit, scene frame), roll free — landed probes
+ *  stand on their terrain facet's normal rather than the radial zenith. */
+export function applyUpVector(obj: Object3D, dir: Vector3): void {
+	obj.quaternion.setFromUnitVectors(LOCAL_NORTH, dir);
+}
+
 export type PointingAxis = '+x' | '-x' | '+y' | '-y' | '+z' | '-z';
 export type PointingTarget = 'parent' | 'sun' | 'velocity';
 

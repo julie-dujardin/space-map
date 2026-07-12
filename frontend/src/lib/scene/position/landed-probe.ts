@@ -6,6 +6,13 @@ import { kmToScene, sceneToKm } from '$lib/math/units';
 import { bodyQuaternion } from '$lib/math/orientation';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { sampleDisplacementOffsets } from '$lib/scene/objects/surface/displacement';
+import {
+	displacedPoint,
+	gridCell,
+	triangleNormalKm,
+	trianglePointKm,
+	type SurfaceGrid
+} from './rendered-surface';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { BodyObjects } from '$lib/scene/types';
 import type { Vec3 } from '$lib/scene/animation/math';
@@ -23,48 +30,18 @@ import type { Vec3 } from '$lib/scene/animation/math';
  * Absent until first resolved (probe rests on the mean-radius sphere meanwhile).
  */
 const surfacePointKm = new Map<string, [number, number, number]>();
+/** Unit facet normal (body-fixed) matching the seat — the probe's up on the slope. */
+const surfaceNormal = new Map<string, [number, number, number]>();
 const surfacePointKey = new Map<string, string>();
 const surfacePointPending = new Set<string>();
 
-/** Grid the landing body's mesh currently renders: a uniform `SphereGeometry`,
- *  or the close-zoom terrain window's explicit row/column angles. */
-type SurfaceGrid =
-	| { kind: 'uniform'; segs: number }
-	| { kind: 'window'; thetas: Float64Array; phis: Float64Array; key: string };
+/** Bumped whenever any probe's seat resolves. The renderer watches it to run a
+ *  position pass while paused — seats resolve asynchronously, and without a jd
+ *  change nothing else would apply the new seat. */
+let seatEpoch = 0;
 
-/** Index i with `arr[i] <= x <= arr[i+1]`, clamped to a valid cell. */
-function cellIndex(arr: Float64Array, x: number): number {
-	let lo = 0;
-	let hi = arr.length - 2;
-	while (lo < hi) {
-		const mid = (lo + hi + 1) >> 1;
-		if (arr[mid] <= x) lo = mid;
-		else hi = mid - 1;
-	}
-	return lo;
-}
-
-/**
- * Displaced ellipsoid point (km) the mesh draws at `latRad`/`lonRad`: the unit
- * normal scaled by the per-axis semi-axes (a,c,b on local x,y,z — see
- * `applyRadiiToMesh`), grown radially by the displacement. Mirrors the vertex
- * shader exactly, so a corner here is the rendered vertex position.
- */
-function displacedPoint(
-	latRad: number,
-	lonRad: number,
-	dispKm: number,
-	radiusKm: number,
-	a: number,
-	b: number,
-	c: number
-): [number, number, number] {
-	const f = (radiusKm + dispKm) / radiusKm;
-	const cosLat = Math.cos(latRad);
-	const nx = cosLat * Math.cos(lonRad);
-	const ny = Math.sin(latRad);
-	const nz = -cosLat * Math.sin(lonRad);
-	return [f * a * nx, f * c * ny, f * b * nz];
+export function landedSeatEpoch(): number {
+	return seatEpoch;
 }
 
 function ensureSurfacePoint(
@@ -84,48 +61,7 @@ function ensureSurfacePoint(
 			const global = (await fetchObjectDetail(landingBodyId, false)).global;
 			const dispMeta = global?.displacement;
 			const { a, b, c } = global?.radii ?? { a: radiusKm, b: radiusKm, c: radiusKm };
-			// Grid cell bracketing the probe: theta runs from the +Y pole, phi from 0
-			// (body-fixed lng = phi + π). Snap to the cell and keep the fractional
-			// position for the in-triangle interpolation.
-			let corners: { latRad: number; lonRad: number }[];
-			let tx: number;
-			let ty: number;
-			if (grid.kind === 'uniform') {
-				const segs = grid.segs;
-				const gy = ((Math.PI / 2 - latRad) * segs) / Math.PI;
-				const iy0 = Math.min(Math.max(Math.floor(gy), 0), segs - 1);
-				ty = Math.min(Math.max(gy - iy0, 0), 1);
-				const gx = ((lonRad - Math.PI) * segs) / (2 * Math.PI);
-				const ix0 = Math.floor(gx);
-				tx = gx - ix0;
-				corners = [
-					[iy0, ix0],
-					[iy0, ix0 + 1],
-					[iy0 + 1, ix0],
-					[iy0 + 1, ix0 + 1]
-				].map(([iy, ix]) => ({
-					latRad: Math.PI / 2 - (Math.min(iy, segs) * Math.PI) / segs,
-					lonRad: Math.PI + (ix * 2 * Math.PI) / segs
-				}));
-			} else {
-				const { thetas, phis } = grid;
-				const theta = Math.PI / 2 - latRad;
-				let phi = (lonRad - Math.PI) % (2 * Math.PI);
-				if (phi < 0) phi += 2 * Math.PI;
-				const iy0 = cellIndex(thetas, theta);
-				const ix0 = cellIndex(phis, phi);
-				ty = Math.min(Math.max((theta - thetas[iy0]) / (thetas[iy0 + 1] - thetas[iy0]), 0), 1);
-				tx = Math.min(Math.max((phi - phis[ix0]) / (phis[ix0 + 1] - phis[ix0]), 0), 1);
-				corners = [
-					[iy0, ix0],
-					[iy0, ix0 + 1],
-					[iy0 + 1, ix0],
-					[iy0 + 1, ix0 + 1]
-				].map(([iy, ix]) => ({
-					latRad: Math.PI / 2 - thetas[iy],
-					lonRad: phis[ix] + Math.PI
-				}));
-			}
+			const { corners, tx, ty } = gridCell(grid, latRad, lonRad);
 			// Displacement (km) the mesh adds at each corner; 0 with no height map.
 			let disp = [0, 0, 0, 0];
 			if (dispMeta) {
@@ -140,30 +76,27 @@ function ensureSurfacePoint(
 			const pts = corners.map((corner, k) =>
 				displacedPoint(corner.latRad, corner.lonRad, disp[k], radiusKm, a, b, c)
 			);
-			// Barycentric on the triangle the mesh draws: both grid builders split
-			// each quad along the TL–BR diagonal ((a,b,d) + (b,c,d) with b=TL, d=BR).
-			const [tl, tr, bl, br] = pts;
-			const seat: [number, number, number] = [0, 0, 0];
-			for (let axis = 0; axis < 3; axis++) {
-				seat[axis] =
-					tx >= ty
-						? tl[axis] + (tr[axis] - tl[axis]) * tx + (br[axis] - tr[axis]) * ty
-						: tl[axis] + (br[axis] - bl[axis]) * tx + (bl[axis] - tl[axis]) * ty;
-			}
+			const seat = trianglePointKm(pts, tx, ty);
 			surfacePointKm.set(probeId, seat);
+			surfaceNormal.set(probeId, triangleNormalKm(pts, tx, ty));
 			surfacePointKey.set(probeId, key);
+			seatEpoch++;
 		} finally {
 			surfacePointPending.delete(probeId);
 		}
 	})();
 }
 
+const _upScene = new Vector3();
+
 /**
  * Place a landed probe on its landing body's rendered surface at the record's
  * lat/lng (see {@link surfacePointKm}). Returns null when the landing body isn't
  * loaded or lacks orientation data (caller hides the probe for the frame).
- * Mutates `d.parentId` so the downstream trail geometry and trail-anchor writes
- * follow the new parent.
+ * `up` is the seat facet's normal in scene frame (the probe stands on the
+ * slope, not the radial); null until the seat resolves. Scratch-backed —
+ * consume within the frame. Mutates `d.parentId` so the downstream trail
+ * geometry and trail-anchor writes follow the new parent.
  */
 export function renderLandedProbe(
 	d: BodyData,
@@ -173,7 +106,7 @@ export function renderLandedProbe(
 	positionMap: Map<string, Vec3>,
 	ctx: ContextManager,
 	bodyObjects: Map<string, BodyObjects>
-): { x: number; y: number; z: number; parentPos: Vec3 } | null {
+): { x: number; y: number; z: number; parentPos: Vec3; up: Vector3 | null } | null {
 	const sample = landedPositionAt(landed, jd);
 	if (!sample) return null;
 	const bodyKey = `naif-${landed.bodyNaifId}`;
@@ -232,6 +165,8 @@ export function renderLandedProbe(
 	}
 	const quat = bodyQuaternion(landingBody.orientation, jd, landingBody.nutPrec);
 	const tmp = new Vector3(bx, by, bz).applyQuaternion(quat);
+	const normal = point ? surfaceNormal.get(d.id) : undefined;
+	const up = normal ? _upScene.set(normal[0], normal[1], normal[2]).applyQuaternion(quat) : null;
 	// `tmp` is body-relative km in scene-frame; no axis swap needed because
 	// `bodyQuaternion` already returns a Three.js-coords rotation.
 	d.parentId = bodyKey;
@@ -239,6 +174,7 @@ export function renderLandedProbe(
 		x: bodyWorldPos[0] + kmToScene(tmp.x),
 		y: bodyWorldPos[1] + kmToScene(tmp.y),
 		z: bodyWorldPos[2] + kmToScene(tmp.z),
-		parentPos: bodyWorldPos
+		parentPos: bodyWorldPos,
+		up
 	};
 }

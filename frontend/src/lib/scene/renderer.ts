@@ -29,7 +29,7 @@ import type { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPas
 import { OrbitControls as OrbitControlsClass } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import { UrlType, type MapViewState } from '$lib/state/view';
-import type { PositionedBody } from '$lib/types/objects';
+import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
@@ -41,7 +41,7 @@ import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies } from './objects/body/lifecycle';
 import { loadBodyTexture, unloadBodyTexture } from './objects/body/textures';
-import { applyOrientation } from '$lib/math/orientation';
+import { applyOrientation, bodyQuaternion } from '$lib/math/orientation';
 import {
 	castModelRadius,
 	isModelBearing,
@@ -86,6 +86,8 @@ import { type FocusState, FOCUS_DURATION_MS, stepFocusAnimation } from './animat
 import { FocusController } from './focus/controller';
 import { ProbeCoverageWatch } from './probe-coverage-watch';
 import { minCameraDistance, clampCameraOutsideBody } from './visibility/camera-limits';
+import { renderedSurfaceRadialKm } from './position/rendered-surface';
+import { landedSeatEpoch } from './position/landed-probe';
 import { collisionParentId } from './state/bodies.svelte';
 import { updateBodyVisibility } from './visibility/update';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location/marker';
@@ -178,6 +180,8 @@ export class SceneRenderer {
 	 *  even when jd is frozen: out-of-system moons are skipped and left stale, so
 	 *  entering their system while paused must recompute them or they render detached. */
 	private lastUpdatedSystemId: string | null = null;
+	/** Focused landed probe's seat config at the last position update. */
+	private lastLandedConfigKey: string | null = null;
 	/** Tracks the focus's out-of-range state across frames so the camera pans onto
 	 *  the parent only on the transition in, not every frame parked there. */
 	private focusWasOutOfRange = false;
@@ -557,13 +561,28 @@ export class SceneRenderer {
 		// itself, but the orbit sphere around a low orbiter dips below its parent.
 		// The clamp caps its wall at the focused object's own radial distance, so a
 		// low orbiter stays reachable without clipping the parent; a landed probe
-		// gets a thin keep-away shell above the terrain instead.
+		// gets a floor on the rendered terrain under the camera instead.
 		const focused = this.focusController.current;
 		if (focused) {
 			const parentId = collisionParentId(focused.data.parentId);
 			const parent = parentId ? this.ctx.getBody(parentId) : undefined;
 			const landed = Boolean(this.bodyObjects.get(focused.data.id)?.isLanded);
-			if (parent) clampCameraOutsideBody(this.camera, parent, this.focus.focusTruePos, landed);
+			if (parent) {
+				const landedCtx =
+					landed && parent.orientation
+						? {
+								invQuat: bodyQuaternion(parent.orientation, this.clock.jd, parent.nutPrec).invert(),
+								radialKm: (dir: [number, number, number]) =>
+									renderedSurfaceRadialKm(
+										this.bodyObjects.get(parent.data.id),
+										parent.data.id,
+										parent.data.radiusKm,
+										dir
+									)
+							}
+						: undefined;
+				clampCameraOutsideBody(this.camera, parent, this.focus.focusTruePos, landedCtx);
+			}
 		}
 
 		if (this.pendingUrlWrite && controlsSettled) {
@@ -879,6 +898,21 @@ export class SceneRenderer {
 		this.focusController.promotion.clearUserPromoted();
 	}
 
+	/** Rendered-mesh state a landed probe's seat is keyed on (parent grid + DEM
+	 *  tier + resolved-seat epoch); null when the focus can't be a landed probe.
+	 *  Gated on the focus being a spacecraft, not `isLanded`: that flag is itself
+	 *  only set by a position pass, which is exactly what this key must force. */
+	private focusedLandedConfigKey(): string | null {
+		const focused = this.focusController.current;
+		if (!focused || focused.data.objectType !== ObjectType.SPACECRAFT) return null;
+		const parentId = collisionParentId(focused.data.parentId);
+		const bo = parentId ? this.bodyObjects.get(parentId) : undefined;
+		if (!bo) return null;
+		const tw = bo.terrainWindow;
+		const grid = tw ? `w${tw.stepLevel}x${tw.texWidth}` : `u${bo.currentSegments ?? 128}`;
+		return `${grid}|${bo.displacementTier ?? 'low'}|${landedSeatEpoch()}`;
+	}
+
 	/** Process a pending jd change now instead of next frame, re-anchoring focus to
 	 *  the current body's new-time position. No-op when jd is already current.
 	 *  `allowOorRefocus` (tick loop only) pans onto the parent when a seek lands
@@ -886,8 +920,17 @@ export class SceneRenderer {
 	private applyJdUpdate(allowOorRefocus = false): void {
 		// Recompute on a focused-system change too, not just a jd change: moons
 		// outside the focused system are skipped and their world positions freeze.
+		// Likewise on a landed-probe seat config change: the landing body's mesh
+		// upgrades on camera-driven schedules (sphere LOD, terrain window, DEM
+		// tier) with no jd change, and a paused clock would strand the probe on a
+		// seat computed against the boot-time mesh.
 		const systemId = this.ctx.visibility.focusedSystemId;
-		if (this.clock.jd === this.lastUpdatedJd && systemId === this.lastUpdatedSystemId) {
+		const landedKey = this.focusedLandedConfigKey();
+		if (
+			this.clock.jd === this.lastUpdatedJd &&
+			systemId === this.lastUpdatedSystemId &&
+			landedKey === this.lastLandedConfigKey
+		) {
 			this.clock.seeked = false;
 			return;
 		}
@@ -895,6 +938,7 @@ export class SceneRenderer {
 		this.clock.seeked = false;
 		this.lastUpdatedJd = this.clock.jd;
 		this.lastUpdatedSystemId = systemId;
+		this.lastLandedConfigKey = landedKey;
 		this.ctx.refreshTick(jdToDate(this.clock.jd));
 		const result = updatePositions({
 			jd: this.clock.jd,
