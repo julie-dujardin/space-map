@@ -1,6 +1,6 @@
 import { Vector3, type Mesh, type PerspectiveCamera, type Scene } from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
 import { cartesianToSpherical, offsetFacing, sphericalToCartesian } from '$lib/math/spherical';
 import type { BodyObjects, Callbacks } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -199,7 +199,10 @@ export class FocusController {
 			loadTexture,
 			assignMapLayerToTrails
 		} = this.deps;
-		this.promotion.ensureBodyObjects(body);
+		// A synthetic surface-feature body renders nothing of its own — the host
+		// (loaded below via its nomenclature id) draws the terrain the camera
+		// orbits. Skip the halo/label allocation a real body would get.
+		if (!isSurfaceFeature(body)) this.promotion.ensureBodyObjects(body);
 
 		// Halo-only-with-mesh-on-focus: asteroids/comets/probes build their
 		// sphere mesh (and a/c their trail) only while focused; reverting
@@ -207,15 +210,20 @@ export class FocusController {
 		// moons extend the upgrade set to their parent so the parent stays
 		// visible (mesh + trail) while the user orbits the moon. minDistance
 		// below reads the focused body's mesh radius, so do the swap first.
-		// Always unload the prev body's overlay model — it isn't tied to the
-		// sphere mesh, so non-upgradable bodies would otherwise leak GLBs.
 		const prev = this.focusedBody;
 		// Labels live on the landing body, not the probe — only dispose when
 		// the effective nomenclature body actually changes.
 		const prevNomBodyId = nomenclatureBodyId(prev, bodyObjects);
 		const newNomBodyId = nomenclatureBodyId(body, bodyObjects);
-		if (prev && prev.data.id !== body.data.id) {
-			const prevBo = bodyObjects.get(prev.data.id);
+		// The overlay model belongs to the focused object's own body — except a
+		// surface feature defers to its host. Unload the prev model only when the
+		// model body actually changes, so focusing a feature on a model-bearing host
+		// keeps the model up (else the hidden sphere leaves nothing to render).
+		const prevModelId =
+			prev && (isSurfaceFeature(prev) ? prev.featureAnchor!.hostId : prev.data.id);
+		const newModelId = isSurfaceFeature(body) ? body.featureAnchor!.hostId : body.data.id;
+		if (prevModelId && prevModelId !== newModelId) {
+			const prevBo = bodyObjects.get(prevModelId);
 			if (prevBo) unloadBodyModel(prevBo);
 		}
 		if (prevNomBodyId && prevNomBodyId !== newNomBodyId) {
@@ -249,11 +257,21 @@ export class FocusController {
 		}
 
 		this.focusedBody = body;
+		// Focusing anything but a feature retires the synthetic feature body so
+		// getBody stops resolving a stale id.
+		if (!isSurfaceFeature(body)) ctx.bodies.focusFeature = null;
 		controls.minDistance = minCameraDistance(body);
-		ctx.visibility.setFocused(body);
+		// System/attribution follow the host for a surface feature (a crater has no
+		// ephemeris of its own); the camera still orbits the feature body.
+		const featureHost = isSurfaceFeature(body)
+			? ctx.getBody(body.featureAnchor!.hostId)
+			: undefined;
+		ctx.visibility.setFocused(featureHost ?? body);
 		callbacks.onFocusChange(body);
-		loadTexture(body);
-		// Landed probe: also load the landing body so its nomenclature attaches.
+		// The feature body has no detail bundle of its own; its host loads below.
+		if (!isSurfaceFeature(body)) loadTexture(body);
+		// Landed probe / surface feature: also load the host so its nomenclature
+		// (and terrain) attaches.
 		if (newNomBodyId && newNomBodyId !== body.data.id) {
 			const landingBody = ctx.getBody(newNomBodyId);
 			if (landingBody) loadTexture(landingBody);
@@ -471,6 +489,13 @@ export class FocusController {
  *  instead of dropping back to a label-only halo. */
 function upgradeTargets(focus: PositionedBody | undefined, ctx: ContextManager): PositionedBody[] {
 	if (!focus) return [];
+	// A focused surface feature renders no mesh itself; its host must carry one so
+	// the camera has terrain to orbit (majors already do — this catches halo-only
+	// hosts like small moons/asteroids that bear nomenclature).
+	if (isSurfaceFeature(focus)) {
+		const host = ctx.getBody(focus.featureAnchor!.hostId);
+		return host && isMeshUpgradable(host) ? [host] : [];
+	}
 	const out: PositionedBody[] = [];
 	if (isMeshUpgradable(focus)) out.push(focus);
 	if (focus.data.objectType === ObjectType.MOON) {

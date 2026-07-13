@@ -3,8 +3,12 @@
 	import { SceneRenderer } from '$lib/scene/renderer';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
-	import { effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
-	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
+	import {
+		effectiveRadiusKm,
+		isSurfaceFeature,
+		type FeatureAnchor,
+		type PositionedBody
+	} from '$lib/types/objects';
 	import { kmToScene } from '$lib/math/units';
 	import { page } from '$app/state';
 	import { sphericalToCartesian } from '$lib/math/spherical';
@@ -105,42 +109,33 @@
 		renderer?.snapToBodyFacing(id, towardId, elevationDeg, distance);
 	}
 
-	/** Fly the camera onto a surface feature. Picks a zoom that frames the
-	 *  feature: small craters get pulled in close, ocean-sized features stay
-	 *  pulled back so they fit on screen. Clamped to the body's own min camera
-	 *  distance below and a fraction of its radius above. All distances are
-	 *  in scene units — `focusOnBody` writes camera positions in scene space,
-	 *  so the km-side numbers go through `kmToScene` first.
+	/** Focus a surface feature as a real orbitable body seated on its host. Picks a
+	 *  standoff that frames the feature — small craters pulled in close, ocean-sized
+	 *  ones kept back so they fit — floored so sub-metre features don't collapse to
+	 *  nothing and capped at a few host radii. Distances are scene units.
 	 *
-	 *  `snap`: skip the fly animation and place the camera at the feature
-	 *  framing immediately. Used on URL-load (`/<type>/<bodyId>/f/<featureId>/…`) so
-	 *  the page opens already framed on the feature, not animating in from
-	 *  the URL's `at=` framing. */
+	 *  `mode`: `pan` re-aims without moving (a 3D label click); `frame` flies/arcs
+	 *  to the framing (search, sidebar); `snap` places it instantly for URL
+	 *  deep-links (`/<type>/<bodyId>/f/<featureId>/…`), where `view` (the URL's
+	 *  seat-relative `at=`) overrides the diameter-based framing. */
 	export function focusOnFeature(
 		bodyId: string,
+		featureId: number,
 		lat: number,
 		lon: number,
 		diameterM: number,
-		snap = false
+		name: string | null,
+		mode: 'pan' | 'frame' | 'snap' = 'frame',
+		view: { latitude: number; longitude: number; zoom: number } | null = null
 	): number {
-		const body = ctx.getBody(bodyId);
-		if (!body) return 0;
-		const minDist = minCameraDistance(body);
+		const host = ctx.getBody(bodyId);
+		if (!host) return 0;
 		const idealScene = kmToScene((diameterM * 4) / 1000);
-		const maxScene = kmToScene(effectiveRadiusKm(body.data) * 5);
-		// Shape-model bodies: frame from the actual surface under the feature —
-		// center-based distances make the approach altitude swing with the local
-		// terrain radius (Eros spans 5–16 km lobe vs waist).
-		const surface = renderer?.modelSurfaceRadiusScene(bodyId, lat, lon);
-		const zoom =
-			surface != null
-				? Math.min(Math.max(surface + idealScene, minDist), maxScene)
-				: Math.min(Math.max(idealScene, minDist * 2), maxScene);
-		if (snap) {
-			renderer?.snapToBodyFrame(lat, lon, zoom);
-			return 0;
-		}
-		return renderer?.focusOnBody(bodyId, zoom, lat, lon) ?? 0;
+		const minScene = kmToScene(0.02);
+		const maxScene = kmToScene(effectiveRadiusKm(host.data) * 5);
+		const zoom = Math.min(Math.max(idealScene, minScene), maxScene);
+		const anchor: FeatureAnchor = { hostId: bodyId, featureId, lat, lon, diameterM };
+		return renderer?.focusOnFeature(anchor, name, zoom, mode, view) ?? 0;
 	}
 
 	export function setUserLocation(latitude: number, longitude: number): void {
@@ -227,6 +222,13 @@
 				const wasInitial = isInitialFocus;
 				isInitialFocus = false;
 				focusedBody = body;
+				// The camera orbits the synthetic feature body, but the app focuses its
+				// host — the URL/drawer are set by the setFeature caller, so just report
+				// the host upward and skip the generic body auto-setFocus below.
+				if (body && isSurfaceFeature(body)) {
+					onFocusChange?.(ctx.getBody(body.featureAnchor!.hostId));
+					return;
+				}
 				onFocusChange?.(body);
 				// Skip the auto-setFocus when the URL already names this body:
 				// programmatic navigators (search, deep links) push their target

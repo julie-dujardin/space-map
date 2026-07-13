@@ -1,5 +1,6 @@
 import { Quaternion, Vector3 } from 'three';
-import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
+import { seatFeatureBody } from '$lib/scene/focus/feature-focus';
 import { kmToScene } from '$lib/math/units';
 import {
 	applyOrientation,
@@ -566,6 +567,19 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 
 	oorState.satellites = ctx.refresher?.satelliteCoverage(jd) ?? { kind: 'covered' };
 	updateOutOfRangeToast(oorState);
+
+	// Re-seat a focused surface feature on its host's current-LOD surface before
+	// the focus-tracking block pins focusTruePos to it. The host is a major, so
+	// its world position is already fresh this frame; without it the seat can't
+	// be placed, so treat the feature as out-of-range (camera holds on the host).
+	if (focusedBody && isSurfaceFeature(focusedBody)) {
+		const host = ctx.getBody(focusedBody.featureAnchor!.hostId);
+		if (host && positionMap.has(host.data.id)) {
+			seatFeatureBody(focusedBody, host, bodyObjects.get(host.data.id), jd, focus.focusTruePos);
+		} else {
+			oorState.focusedOutOfRange = true;
+		}
+	}
 
 	// Lock focus onto the focused body's new position unless an animation is
 	// driving it. Also refresh body-relative camera target so the fly

@@ -50,10 +50,9 @@ export function updateSphereLOD(
 	const screenH = renderer.domElement.clientHeight;
 	const projScale = screenH / (2 * Math.tan(fovRad / 2));
 	const activeSystem = ctx.visibility.activeSystemId;
-	// Terrain-window host: the focused body, or the landing body under a
-	// focused landed probe (its parentId is rewritten to the landing body).
-	const focusedBo = focusedId ? bodyObjects.get(focusedId) : undefined;
-	const terrainId = focusedBo?.isLanded ? focusedBo.body.data.parentId : focusedId;
+	// Terrain-window host, already resolved by the caller (a focused landed probe
+	// or surface feature defers to its host body).
+	const terrainId = focusedId;
 
 	for (const bo of bodyObjects.values()) {
 		if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;

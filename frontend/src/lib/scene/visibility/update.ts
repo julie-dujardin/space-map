@@ -23,7 +23,8 @@ import { HALO_RADIUS_PX, type BodyObjects } from '../types';
 import { moonVisFlags, bodyVisFlags } from './flags';
 import {
 	updateNomenclatureVisibility,
-	cullOverlappingNomenclatureLabels
+	cullOverlappingNomenclatureLabels,
+	nomenclatureBodyId
 } from '../objects/surface/nomenclature';
 import { f64dist, type Vec3 } from '../animation/math';
 import { modelUnitScene, type OccluderSphere } from '../objects/body/model';
@@ -334,12 +335,11 @@ export function updateBodyVisibility(
 	// for the 1–2 frames until the throttled (every-3rd-frame) cull would run.
 	let newlyShownLabel = false;
 
-	// Landed probe defers to its landing body for surface-label focus.
-	let nomFocusedBodyId = focusedBodyId;
-	if (focusedBodyId) {
-		const focusedBo = bodyObjects.get(focusedBodyId);
-		if (focusedBo?.isLanded) nomFocusedBodyId = focusedBo.body.data.parentId;
-	}
+	// A focused landed probe or surface feature defers to its host body, so the
+	// host's surface labels (incl. the focused feature's own) stay visible.
+	const nomFocusedBodyId = focusedBodyId
+		? nomenclatureBodyId(ctx.getBody(focusedBodyId), bodyObjects)
+		: undefined;
 	for (const bo of bodyObjects.values()) {
 		const { body, group, trail } = bo;
 		const dist = bo.cachedDist;

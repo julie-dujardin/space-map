@@ -29,7 +29,13 @@ import type { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPas
 import { OrbitControls as OrbitControlsClass } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import { UrlType, type MapViewState } from '$lib/state/view';
-import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import {
+	isSurfaceFeature,
+	ObjectType,
+	type FeatureAnchor,
+	type PositionedBody
+} from '$lib/types/objects';
+import { makeFeatureBody, seatFeatureBody } from './focus/feature-focus';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
@@ -43,7 +49,6 @@ import { buildMajorBodies } from './objects/body/lifecycle';
 import { loadBodyTexture, unloadBodyTexture } from './objects/body/textures';
 import { applyOrientation, bodyQuaternion } from '$lib/math/orientation';
 import {
-	castModelRadius,
 	isModelBearing,
 	loadBodyModel,
 	unloadBodyModel,
@@ -58,7 +63,11 @@ import {
 } from './lighting';
 import { getSettings } from '$lib/state/settings.svelte';
 import type { PointingSpec } from '$lib/math/orientation';
-import { attachNomenclatureLabels, setActiveFeatureLabel } from './objects/surface/nomenclature';
+import {
+	attachNomenclatureLabels,
+	nomenclatureBodyId,
+	setActiveFeatureLabel
+} from './objects/surface/nomenclature';
 import { buildTrails } from './objects/body/bulk';
 import { makeCircleTexture } from './objects/pointcloud';
 import { SystemDataLoader } from './system-data/loader';
@@ -82,12 +91,16 @@ import { updateSphereLOD } from './lod/sphere-lod';
 import { updateTextureLOD } from './lod/texture-lod';
 import { type BodyObjects, type Callbacks } from './types';
 import type { Vec3 } from './animation/math';
-import { type FocusState, FOCUS_DURATION_MS, stepFocusAnimation } from './animation/focus';
+import {
+	type FocusState,
+	FOCUS_DURATION_MS,
+	prepareFlyToCamera,
+	stepFocusAnimation
+} from './animation/focus';
 import { FocusController } from './focus/controller';
 import { ProbeCoverageWatch } from './probe-coverage-watch';
 import { minCameraDistance, clampCameraOutsideBody } from './visibility/camera-limits';
-import { renderedSurfaceRadialKm } from './position/rendered-surface';
-import { surfaceDataEpoch } from './position/rendered-surface';
+import { renderedSurfaceRadialKm, surfaceDataEpoch } from './position/rendered-surface';
 import { collisionParentId } from './state/bodies.svelte';
 import { updateBodyVisibility } from './visibility/update';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location/marker';
@@ -180,8 +193,8 @@ export class SceneRenderer {
 	 *  even when jd is frozen: out-of-system moons are skipped and left stale, so
 	 *  entering their system while paused must recompute them or they render detached. */
 	private lastUpdatedSystemId: string | null = null;
-	/** Focused landed probe's seat config at the last position update. */
-	private lastLandedConfigKey: string | null = null;
+	/** Focused landed probe's / surface feature's seat config at the last position update. */
+	private lastSeatConfigKey: string | null = null;
 	private lastProbeVersion = 0;
 	/** Tracks the focus's out-of-range state across frames so the camera pans onto
 	 *  the parent only on the transition in, not every frame parked there. */
@@ -562,24 +575,23 @@ export class SceneRenderer {
 		// itself, but the orbit sphere around a low orbiter dips below its parent.
 		// The clamp caps its wall at the focused object's own radial distance, so a
 		// low orbiter stays reachable without clipping the parent; a landed probe
-		// gets a floor on the rendered terrain under the camera instead.
+		// or surface feature gets a floor on the rendered terrain under the camera.
 		const focused = this.focusController.current;
 		if (focused) {
 			const parentId = collisionParentId(focused.data.parentId);
 			const parent = parentId ? this.ctx.getBody(parentId) : undefined;
-			const landed = Boolean(this.bodyObjects.get(focused.data.id)?.isLanded);
+			const seated =
+				Boolean(this.bodyObjects.get(focused.data.id)?.isLanded) || isSurfaceFeature(focused);
 			if (parent) {
+				const parentBo = this.bodyObjects.get(parent.data.id);
+				// Model-bearing hosts render the shape model, not the sphere mesh the
+				// terrain sampler mirrors — fall back to the seat-radius shell there.
 				const landedCtx =
-					landed && parent.orientation
+					seated && parent.orientation && !parentBo?.model
 						? {
 								invQuat: bodyQuaternion(parent.orientation, this.clock.jd, parent.nutPrec).invert(),
 								radialKm: (dir: [number, number, number]) =>
-									renderedSurfaceRadialKm(
-										this.bodyObjects.get(parent.data.id),
-										parent.data.id,
-										parent.data.radiusKm,
-										dir
-									)
+									renderedSurfaceRadialKm(parentBo, parent.data.id, parent.data.radiusKm, dir)
 							}
 						: undefined;
 				clampCameraOutsideBody(this.camera, parent, this.focus.focusTruePos, landedCtx);
@@ -645,7 +657,9 @@ export class SceneRenderer {
 
 		updateUserLocationOcclusion(this.userLocationMarker, this.bodyObjects, this.camera);
 
-		const focusedIdLod = this.focusController.current?.data.id;
+		// Terrain/texture LOD follow the surface the camera actually orbits: a
+		// focused landed probe or surface feature resolves to its host body.
+		const focusedIdLod = nomenclatureBodyId(this.focusController.current, this.bodyObjects);
 		updateTextureLOD(
 			this.bodyObjects,
 			this.camera,
@@ -697,7 +711,12 @@ export class SceneRenderer {
 	private renderModelOverlay(): void {
 		const focusBody = this.focusController.current;
 		if (!focusBody) return;
-		const bo = this.bodyObjects.get(focusBody.data.id);
+		// A focused surface feature has no model of its own — its host carries the
+		// overlay model the camera is orbiting.
+		const modelId = isSurfaceFeature(focusBody)
+			? focusBody.featureAnchor!.hostId
+			: focusBody.data.id;
+		const bo = this.bodyObjects.get(modelId);
 		if (!bo?.model) return;
 
 		// Seat a landed probe on its feet at the surface (origin) so it rests on the
@@ -733,7 +752,7 @@ export class SceneRenderer {
 		const sunBody = this.bodyObjects.get(SUN_ID)?.body;
 		if (sunBody) {
 			const [sx, sy, sz] = sunBody.position;
-			const [fx, fy, fz] = focusBody.position;
+			const [fx, fy, fz] = bo.body.position;
 			this._tmpSun.set(sx - fx, sy - fy, sz - fz).normalize();
 			this.modelLight.position.copy(this._tmpSun).multiplyScalar(10);
 		}
@@ -899,14 +918,16 @@ export class SceneRenderer {
 		this.focusController.promotion.clearUserPromoted();
 	}
 
-	/** Rendered-mesh state a landed probe's seat is keyed on (parent grid incl.
-	 *  window recenters + the bound height texture + async surface-data epoch);
-	 *  null when the focus can't be a landed probe. Gated on the focus being a
-	 *  spacecraft, not `isLanded`: that flag is itself only set by a position
-	 *  pass, which is exactly what this key must force. */
-	private focusedLandedConfigKey(): string | null {
+	/** Rendered-mesh state a landed probe's or surface feature's seat is keyed on
+	 *  (host grid incl. window recenters + the bound height texture + async
+	 *  surface-data epoch); null when the focus can't be seated. Gated on the
+	 *  focus being a spacecraft or feature, not `isLanded`: that flag is itself
+	 *  only set by a position pass, which is exactly what this key must force. */
+	private focusedSeatConfigKey(): string | null {
 		const focused = this.focusController.current;
-		if (!focused || focused.data.objectType !== ObjectType.SPACECRAFT) return null;
+		if (!focused) return null;
+		if (focused.data.objectType !== ObjectType.SPACECRAFT && !isSurfaceFeature(focused))
+			return null;
 		const parentId = collisionParentId(focused.data.parentId);
 		const bo = parentId ? this.bodyObjects.get(parentId) : undefined;
 		if (!bo) return null;
@@ -924,20 +945,20 @@ export class SceneRenderer {
 	private applyJdUpdate(allowOorRefocus = false): void {
 		// Recompute on a focused-system change too, not just a jd change: moons
 		// outside the focused system are skipped and their world positions freeze.
-		// Likewise on a landed-probe seat config change: the landing body's mesh
-		// upgrades on camera-driven schedules (sphere LOD, terrain window, DEM
-		// tier) with no jd change, and a paused clock would strand the probe on a
-		// seat computed against the boot-time mesh. Probe-chunk arrival is a
-		// trigger too: a deep link boots paused, and the boot pass runs before
-		// the records exist — without it the probe stays wherever that first
-		// pass left it (e.g. inside the planet, unlanded).
+		// Likewise on a seat config change: the host body's mesh upgrades on
+		// camera-driven schedules (sphere LOD, terrain window, DEM tier) with no
+		// jd change, and a paused clock would strand the probe/feature on a seat
+		// computed against the boot-time mesh. Probe-chunk arrival is a trigger
+		// too: a deep link boots paused, and the boot pass runs before the
+		// records exist — without it the probe stays wherever that first pass
+		// left it (e.g. inside the planet, unlanded).
 		const systemId = this.ctx.visibility.focusedSystemId;
-		const landedKey = this.focusedLandedConfigKey();
+		const seatKey = this.focusedSeatConfigKey();
 		const probeVersion = this.ctx.probeStore?.version ?? 0;
 		if (
 			this.clock.jd === this.lastUpdatedJd &&
 			systemId === this.lastUpdatedSystemId &&
-			landedKey === this.lastLandedConfigKey &&
+			seatKey === this.lastSeatConfigKey &&
 			probeVersion === this.lastProbeVersion
 		) {
 			this.clock.seeked = false;
@@ -947,7 +968,7 @@ export class SceneRenderer {
 		this.clock.seeked = false;
 		this.lastUpdatedJd = this.clock.jd;
 		this.lastUpdatedSystemId = systemId;
-		this.lastLandedConfigKey = landedKey;
+		this.lastSeatConfigKey = seatKey;
 		this.lastProbeVersion = probeVersion;
 		this.ctx.refreshTick(jdToDate(this.clock.jd));
 		const result = updatePositions({
@@ -993,8 +1014,138 @@ export class SceneRenderer {
 		return this.focusController.focusOnBody(id, zoom, latitude, longitude);
 	}
 
-	snapToBodyFrame(latitude: number, longitude: number, zoom: number): void {
-		this.focusController.snapToBodyFrame(latitude, longitude, zoom);
+	/**
+	 * Focus a surface feature as a real orbitable body seated on its host. `mode`:
+	 *  - `pan`: keep the camera put and re-aim onto the seat (a label click — the
+	 *    feature is already on screen, so no camera move is wanted).
+	 *  - `frame`: move to a `zoom`-scene-unit standoff along the local zenith. When
+	 *    already on this host (parent or a sibling feature focused) it arcs around
+	 *    at constant radius so the path can't cut a chord through the body;
+	 *    arriving from a different object it flies in.
+	 *  - `snap`: settle at that framing instantly, for URL deep-links. `view`
+	 *    (the URL's `at=`, seat-relative) overrides the zenith standoff so a
+	 *    shared link restores the exact camera.
+	 * The camera then orbits/zooms the seat like any body; `updatePositions`
+	 * re-seats it each frame. Returns the animation duration (ms).
+	 */
+	focusOnFeature(
+		anchor: FeatureAnchor,
+		name: string | null,
+		zoom: number,
+		mode: 'pan' | 'frame' | 'snap' = 'frame',
+		view?: { latitude: number; longitude: number; zoom: number } | null
+	): number {
+		this.applyJdUpdate();
+		this.focusWasOutOfRange = false;
+		const host = this.ctx.getBody(anchor.hostId);
+		if (!host) return 0;
+		// The feature framing supersedes the URL's body-level at=: the queued
+		// initial-view replay (fired when the host's system data lands — see
+		// reapplyInitialViewIfPending) would otherwise re-frame the host and
+		// clobber a deep link's feature snap.
+		this.focusController.clearPendingInitialView();
+
+		// Capture whether we're already orbiting this host before the focus switch.
+		const alreadyOnHost =
+			nomenclatureBodyId(this.focusController.current, this.bodyObjects) === anchor.hostId;
+
+		const fb = makeFeatureBody(anchor, name);
+		this.ctx.bodies.focusFeature = fb;
+		// Tag the feature's label active now so the seat lands on its (ray-cast)
+		// surface point from the first frame. Otherwise the async texture/model
+		// reload re-tags it a few frames later, jerking the pivot from the ellipsoid
+		// fallback onto the real surface — very visible on shape models.
+		const hostBo = this.bodyObjects.get(host.data.id);
+		this.selectedFeatureId = anchor.featureId;
+		if (hostBo) setActiveFeatureLabel(hostBo, anchor.featureId);
+		seatFeatureBody(fb, host, hostBo, this.clock.jd, this.focus.focusTruePos);
+
+		const seat = fb.position;
+		const quat = this.focusController.focusedBodyQuat(fb);
+
+		if (mode === 'pan') {
+			// No camPos → pure re-pivot: the camera keeps its world position and pans
+			// to re-centre on the seat. That destination is known now and no later
+			// settle emits it (the camera never "moves"), so sync the URL here —
+			// mirrors focusOnBody's emit-before-dispatch.
+			const s = cartesianToSpherical(this.focusController.cameraTruePos(), seat, quat);
+			this.callbacks.onCameraPosition?.(s.latitude, s.longitude, s.distance);
+			this.focusController.setFocusTarget(fb);
+			return this.focus.focusDurationMs;
+		}
+
+		// Camera along the local zenith above the seat; fall back to scene-up at a
+		// pole where the zenith is degenerate.
+		let zx = seat[0] - host.position[0];
+		let zy = seat[1] - host.position[1];
+		let zz = seat[2] - host.position[2];
+		const len = Math.hypot(zx, zy, zz);
+		if (len > 1e-9) {
+			zx /= len;
+			zy /= len;
+			zz /= len;
+		} else {
+			zx = 0;
+			zy = 1;
+			zz = 0;
+		}
+		const camPos: Vec3 =
+			mode === 'snap' && view
+				? sphericalToCartesian(seat, view.latitude, view.longitude, view.zoom, quat)
+				: [seat[0] + zx * zoom, seat[1] + zy * zoom, seat[2] + zz * zoom];
+
+		// Emit the destination camera state before any dispatch (see focusOnBody)
+		// so at= reflects the feature framing immediately.
+		const s = cartesianToSpherical(camPos, seat, quat);
+		this.callbacks.onCameraPosition?.(s.latitude, s.longitude, s.distance);
+
+		if (mode === 'snap') {
+			this.focusController.setFocusTarget(fb, camPos);
+			// Deterministic settle on the seat (mirrors settleOnBodyInstant) so a
+			// URL deep-link opens framed on the feature instead of racing the fly.
+			const f = this.focus;
+			f.focusTruePos = [...seat];
+			f.focusOriginWorld = [...seat];
+			f.focusTargetWorld = [...seat];
+			f.focusStartTime = -FOCUS_DURATION_MS;
+			f.camOriginWorld = null;
+			f.camTargetWorld = null;
+			f.camTargetOffset = null;
+			f.camOriginOffset = null;
+			f.flyQ0 = null;
+			f.orbitFly = false;
+			f.arcOrbit = false;
+			f.cameraStaysOnBody = false;
+			this.repositionAll();
+			this.pointClouds.rebuildBasis();
+			this.camera.position.set(camPos[0] - seat[0], camPos[1] - seat[1], camPos[2] - seat[2]);
+			this.controls.update();
+			return 0;
+		}
+
+		if (alreadyOnHost) {
+			// Orbit around at constant radius. Reorigin onto the seat while holding
+			// the camera's world position (image unchanged — a pure coordinate
+			// re-base), then arc from there to the framing standoff.
+			const camWorld = this.focusController.cameraTruePos();
+			this.focusController.setFocusTarget(fb);
+			this.focus.focusTruePos = [...seat];
+			this.camera.position.set(camWorld[0] - seat[0], camWorld[1] - seat[1], camWorld[2] - seat[2]);
+			this.repositionAll();
+			this.pointClouds.rebuildBasis();
+			prepareFlyToCamera(
+				this.focus,
+				this.camera,
+				camWorld,
+				camPos,
+				getSettings().resolvedReducedMotion
+			);
+		} else {
+			// Different object: approach fly, orbit mode so the host stays centred.
+			this.focusController.setFocusTarget(fb, camPos);
+			this.focus.orbitFly = true;
+		}
+		return this.focus.focusDurationMs;
 	}
 
 	/** Focused body when the NDC ray hits its overlay model, else null. Cast in
@@ -1008,17 +1159,6 @@ export class SceneRenderer {
 		this._pickNdc.set(ndcX, ndcY);
 		this._modelRaycaster.setFromCamera(this._pickNdc, this.modelCamera);
 		return this._modelRaycaster.intersectObject(bo.model, true).length > 0 ? focused : null;
-	}
-
-	/** Scene-units distance from body center to the loaded shape model's surface
-	 *  under the given body-fixed lat/lon; null without a model (or on a scan
-	 *  hole), letting callers fall back to radius-based framing. */
-	modelSurfaceRadiusScene(bodyId: string, latDeg: number, lonDeg: number): number | null {
-		const bo = this.bodyObjects.get(bodyId);
-		if (!bo?.model) return null;
-		const DEG2RAD = Math.PI / 180;
-		const r = castModelRadius(bo.model, latDeg * DEG2RAD, lonDeg * DEG2RAD);
-		return r === null ? null : r * modelUnitScene(bo);
 	}
 
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {

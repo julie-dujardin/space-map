@@ -26,19 +26,22 @@ import { Group, Quaternion, Vector3, type Camera, type Object3D, type SphereGeom
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
-import { effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
+import { effectiveRadiusKm, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
 import { attachCanvasForwarders } from '$lib/scene/label/forward';
-import { sampleDisplacementOffsets } from './displacement';
+import { bodyFixedUnit, displacementsKmAt } from '$lib/scene/position/rendered-surface';
+import { kmToScene } from '$lib/math/units';
 import { acceptedBodyLabelRects } from '$lib/scene/label/culling';
 import { castModelRadius, modelUnitScene } from '../body/model';
 import type { BodyObjects } from '$lib/scene/types';
 
-/** Effective focus for surface labels: a landed probe defers to its landing body. */
+/** Effective focus for surface labels: a landed probe or a focused surface
+ *  feature defers to its host body (where the labels actually live). */
 export function nomenclatureBodyId(
 	focused: PositionedBody | undefined,
 	bodyObjects: Map<string, BodyObjects>
 ): string | undefined {
 	if (!focused) return undefined;
+	if (isSurfaceFeature(focused)) return focused.featureAnchor!.hostId;
 	const bo = bodyObjects.get(focused.data.id);
 	if (bo?.isLanded) return focused.data.parentId;
 	return focused.data.id;
@@ -151,17 +154,21 @@ export async function attachNomenclatureLabels(
 		const r = geometry.parameters?.radius;
 		if (!r) return; // not a SphereGeometry (virtual body — can't place features)
 
-		// Lift labels onto the displaced terrain, else they float at the base radius.
-		let dispOffsets: Float32Array | null = null;
+		// Lift labels onto the displaced terrain, else they float at the base
+		// radius. Same height rows the probe seat / camera floor sample, so a
+		// label and the terrain under it can't disagree.
+		let dispKm: Float64Array | null = null;
 		if (detail.global.displacement) {
-			dispOffsets = await sampleDisplacementOffsets(
+			dispKm = await displacementsKmAt(
+				bo,
+				bo.body.data.id,
 				detail.global.displacement,
-				renderable.map((f) => ({ latRad: f.lat * DEG2RAD, lonRad: f.lon * DEG2RAD })),
-				bo.radiusScene
+				effectiveRadiusKm(bo.body.data),
+				renderable.map((f) => ({ latRad: f.lat * DEG2RAD, lonRad: f.lon * DEG2RAD }))
 			);
 			if (bo.nomenclatureLabels || !bo.mesh) return;
 		}
-		for (let i = 0; i < n; i++) radial[i] = r + (dispOffsets ? dispOffsets[i] : 0);
+		for (let i = 0; i < n; i++) radial[i] = r + (dispKm ? kmToScene(dispKm[i]) : 0);
 		parent = bo.mesh!;
 	}
 	const labels: CSS2DObject[] = new Array(n);
@@ -206,17 +213,10 @@ export async function attachNomenclatureLabels(
 			});
 		}
 
-		const latRad = feature.lat * DEG2RAD;
-		const lonRad = feature.lon * DEG2RAD;
-		const cosLat = Math.cos(latRad);
-
+		const [ux, uy, uz] = bodyFixedUnit(feature.lat * DEG2RAD, feature.lon * DEG2RAD);
 		const rf = radial[i];
 		const obj = new CSS2DObject(el);
-		obj.position.set(
-			rf * cosLat * Math.cos(lonRad),
-			rf * Math.sin(latRad),
-			-rf * cosLat * Math.sin(lonRad)
-		);
+		obj.position.set(rf * ux, rf * uy, rf * uz);
 		parent.add(obj);
 		labels[i] = obj;
 		diamsM[i] = effDiam;
@@ -264,10 +264,7 @@ async function sampleModelSurface(
 		if (r !== null) {
 			radii[i] = r;
 		} else {
-			const cosLat = Math.cos(latRad);
-			const dx = cosLat * Math.cos(lonRad);
-			const dy = Math.sin(latRad);
-			const dz = -cosLat * Math.sin(lonRad);
+			const [dx, dy, dz] = bodyFixedUnit(latRad, lonRad);
 			const hx = Math.max(he?.x ?? 1, 1e-3);
 			const hy = Math.max(he?.y ?? 1, 1e-3);
 			const hz = Math.max(he?.z ?? 1, 1e-3);

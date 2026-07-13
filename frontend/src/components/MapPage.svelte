@@ -153,6 +153,19 @@
 	// browser nav) fly. Not a `$state` so toggling it inside the effect
 	// doesn't re-trigger.
 	let firstFeatureResolve = appState.view.featureId !== null;
+	// URL camera for the feature snap, captured before boot-time camera syncs
+	// overwrite appState.view — restores a shared link's exact framing.
+	const initialFeatureView =
+		firstFeatureResolve && appState.view.framed
+			? {
+					latitude: appState.view.latitude,
+					longitude: appState.view.longitude,
+					zoom: appState.view.zoom
+				}
+			: null;
+	// Feature whose camera a 3D label click already drove (a pan in place). The
+	// resolve effect skips re-driving it so the pan isn't restarted a beat later.
+	let panFeatureId: number | null = null;
 
 	const northChoices = $derived.by(() => {
 		void ctx.bodies.orientationVersion; // re-run when system data lands orientation
@@ -222,7 +235,23 @@
 				if (found) {
 					activeFeature = found;
 					scene?.setSelectedFeature(fid);
-					scene?.focusOnFeature(bodyId, found.lat, found.lon, found.diameterM, firstFeatureResolve);
+					// A label click already panned the camera in place; re-driving here
+					// would restart the animation a beat later and hitch. Only the
+					// effect-only paths (deep-link, browser nav) drive from here.
+					if (panFeatureId === fid) {
+						panFeatureId = null;
+					} else {
+						scene?.focusOnFeature(
+							bodyId,
+							found.featureId,
+							found.lat,
+							found.lon,
+							found.diameterM,
+							found.name,
+							firstFeatureResolve ? 'snap' : 'frame',
+							firstFeatureResolve ? initialFeatureView : null
+						);
+					}
 					firstFeatureResolve = false;
 				} else {
 					console.warn(
@@ -288,7 +317,11 @@
 		// Error screen already shown — don't also fire the "not found" toast over it.
 		if (ctx.error) return;
 		const initialBody = ctx.getBody(initialId);
-		if (initialBody) {
+		if (initialBody && appState.view.featureId !== null) {
+			// Feature deep-link: the featureId→activeFeature effect frames the camera
+			// on the feature seat (and loads the host). Skip host framing here — it
+			// runs after that effect and would clobber the feature focus.
+		} else if (initialBody) {
 			if (initialId === EARTH_ID && !appState.view.framed) {
 				// Home view (`/` redirects here): Earth looking sunward, tilted above the ecliptic.
 				scene?.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
@@ -430,6 +463,9 @@
 							console.warn(`[map] Clicked feature ${fid} on ${bodyId} not in fetched list.`);
 							return;
 						}
+						// A visible label was clicked → pan in place, and tell the resolve
+						// effect not to re-drive (which would restart the pan).
+						panFeatureId = fid;
 						appState.setFeature({
 							bodyId,
 							featureId: fid,
@@ -438,7 +474,7 @@
 						// activeFeature is resolved by the $effect above; here we just kick
 						// the camera so the click feels instant instead of waiting on a
 						// cache hit + microtask round-trip.
-						scene?.focusOnFeature(bodyId, lat, lon, d);
+						scene?.focusOnFeature(bodyId, fid, lat, lon, d, f.name, 'pan');
 					}}
 					onUserPromotedChange={(count) => (userPromotedCount = count)}
 				/>
@@ -460,7 +496,15 @@
 								featureId: hit.feature_id,
 								featureName: name
 							});
-							scene?.focusOnFeature(hit.body_id, hit.center_lat, hit.center_lon, diameterM);
+							scene?.focusOnFeature(
+								hit.body_id,
+								hit.feature_id,
+								hit.center_lat,
+								hit.center_lon,
+								diameterM,
+								name,
+								'frame'
+							);
 							return;
 						}
 						if (hit.kind === 'group') {

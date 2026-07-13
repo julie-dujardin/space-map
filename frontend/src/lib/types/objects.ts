@@ -142,6 +142,15 @@ export interface PositionedBody {
 	 *  focus when the model loads; the probe north reference reads it. Cleared on
 	 *  unfocus. */
 	modelBaseFrame?: Quaternion;
+	/** Set on synthetic surface-feature focus bodies. The camera orbits `position`
+	 *  (the seat); everything data-facing (terrain, nomenclature, attribution)
+	 *  defers to `featureAnchor.hostId`. */
+	featureAnchor?: FeatureAnchor;
+}
+
+/** A synthetic surface-feature focus target — see {@link FeatureAnchor}. */
+export function isSurfaceFeature(body: PositionedBody): boolean {
+	return body.data.objectType === ObjectType.SURFACE_FEATURE;
 }
 
 /**
@@ -164,7 +173,23 @@ export enum ObjectType {
 	COMET = 12,
 	SPACECRAFT = 13,
 	DEBRIS = 14,
-	UNDOCUMENTED = 15
+	UNDOCUMENTED = 15,
+	/** Frontend-only: a synthetic focus target for an IAU surface feature seated on
+	 *  a host body. Never appears in binary chunks (ordinals 0–15 are the wire
+	 *  format), so it can't collide with a real object type. */
+	SURFACE_FEATURE = 16
+}
+
+/** Identifies a {@link PositionedBody} synthesised as an orbitable surface
+ *  feature (see {@link ObjectType.SURFACE_FEATURE}). The camera orbits the seat;
+ *  the `host` supplies terrain, nomenclature and attribution. */
+export interface FeatureAnchor {
+	hostId: string;
+	featureId: number;
+	/** Planetographic degrees, IAU convention (lon 0–360 east-positive). */
+	lat: number;
+	lon: number;
+	diameterM: number;
 }
 /**
  * Semi-major axis range (AU) for each SBDB orbit-class zone.
@@ -229,7 +254,10 @@ const NOMINAL_RADIUS_KM_BY_SOURCE: Partial<Record<OrbitalSource, number>> = {
 };
 const NOMINAL_RADIUS_KM_BY_TYPE: Partial<Record<ObjectType, number>> = {
 	[ObjectType.SPACECRAFT]: 0.005,
-	[ObjectType.DEBRIS]: 0.005
+	[ObjectType.DEBRIS]: 0.005,
+	// Metres-scale so min-zoom lets the camera reach the surface at the feature;
+	// arrival framing is sized from the feature diameter separately.
+	[ObjectType.SURFACE_FEATURE]: 0.001
 };
 const NOMINAL_RADIUS_KM_DEFAULT = 0.1;
 

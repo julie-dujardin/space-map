@@ -3,7 +3,8 @@ import {
 	bilinearHeightTexel,
 	fetchHeightBitmap,
 	readHeightRows,
-	displacementTierUrl
+	displacementTierUrl,
+	type DisplacementMeta
 } from '$lib/scene/objects/surface/displacement';
 import type { BodyObjects } from '$lib/scene/types';
 
@@ -26,6 +27,16 @@ function cellIndex(arr: Float64Array, x: number): number {
 }
 
 /**
+ * Body-fixed unit direction for a planetographic lat/lon, IAU convention:
+ * +X = prime meridian, +Y = north pole, −Z = east. Shared by every surface
+ * seat (labels, landed probes, focused features) so they land on one point.
+ */
+export function bodyFixedUnit(latRad: number, lonRad: number): [number, number, number] {
+	const cosLat = Math.cos(latRad);
+	return [cosLat * Math.cos(lonRad), Math.sin(latRad), -cosLat * Math.sin(lonRad)];
+}
+
+/**
  * Displaced ellipsoid point (km) the mesh draws at `latRad`/`lonRad`: the unit
  * normal scaled by the per-axis semi-axes (a,c,b on local x,y,z — see
  * `applyRadiiToMesh`), grown radially by the displacement. Mirrors the vertex
@@ -41,10 +52,7 @@ function displacedPoint(
 	c: number
 ): [number, number, number] {
 	const f = (radiusKm + dispKm) / radiusKm;
-	const cosLat = Math.cos(latRad);
-	const nx = cosLat * Math.cos(lonRad);
-	const ny = Math.sin(latRad);
-	const nz = -cosLat * Math.sin(lonRad);
+	const [nx, ny, nz] = bodyFixedUnit(latRad, lonRad);
 	return [f * a * nx, f * c * ny, f * b * nz];
 }
 
@@ -163,7 +171,8 @@ interface HeightField {
 	bottomUp: boolean;
 }
 
-const lowFields = new Map<string, HeightField | 'pending' | 'failed'>();
+const lowFields = new Map<string, HeightField | 'failed'>();
+const lowFieldLoads = new Map<string, Promise<HeightField | null>>();
 
 /** Bumped when async surface inputs (height rows, radii) resolve. The renderer
  *  watches it to run a position pass while paused — without a jd change nothing
@@ -172,6 +181,34 @@ let dataEpoch = 0;
 
 export function surfaceDataEpoch(): number {
 	return dataEpoch;
+}
+
+/** One-shot low-tier readback per body (~2 MB), shared by every sampler. */
+function loadLowField(bodyId: string, meta: DisplacementMeta): Promise<HeightField | null> {
+	let load = lowFieldLoads.get(bodyId);
+	if (load) return load;
+	load = (async () => {
+		const bitmap = await fetchHeightBitmap(displacementTierUrl(meta, 'low'));
+		const rows = bitmap && (await readHeightRows(bitmap, 0, bitmap.height - 1));
+		if (!bitmap || !rows) {
+			// fetchHeightBitmap already logged the cause.
+			bitmap?.close();
+			lowFields.set(bodyId, 'failed');
+			return null;
+		}
+		const hf: HeightField = {
+			data: rows,
+			width: bitmap.width,
+			height: bitmap.height,
+			bottomUp: false
+		};
+		bitmap.close();
+		lowFields.set(bodyId, hf);
+		dataEpoch++;
+		return hf;
+	})();
+	lowFieldLoads.set(bodyId, load);
+	return load;
 }
 
 function heightFieldFor(bo: BodyObjects, bodyId: string): HeightField | null {
@@ -183,29 +220,9 @@ function heightFieldFor(bo: BodyObjects, bodyId: string): HeightField | null {
 		return { data: image.data, width: image.width, height: image.height, bottomUp: true };
 	}
 	const cached = lowFields.get(bodyId);
-	if (cached && cached !== 'pending' && cached !== 'failed') return cached;
+	if (cached && cached !== 'failed') return cached;
 	const meta = bo.displacementMeta;
-	if (!cached && meta) {
-		lowFields.set(bodyId, 'pending');
-		void (async () => {
-			const bitmap = await fetchHeightBitmap(displacementTierUrl(meta, 'low'));
-			const rows = bitmap && (await readHeightRows(bitmap, 0, bitmap.height - 1));
-			if (!bitmap || !rows) {
-				// fetchHeightBitmap already logged the cause.
-				bitmap?.close();
-				lowFields.set(bodyId, 'failed');
-				return;
-			}
-			lowFields.set(bodyId, {
-				data: rows,
-				width: bitmap.width,
-				height: bitmap.height,
-				bottomUp: false
-			});
-			bitmap.close();
-			dataEpoch++;
-		})();
-	}
+	if (!cached && meta) void loadLowField(bodyId, meta);
 	return null;
 }
 
@@ -216,6 +233,31 @@ function sampleHeightTexel(hf: HeightField, latRad: number, lonRad: number): num
 	const fx = (u - Math.floor(u)) * hf.width - 0.5;
 	const fy = (hf.bottomUp ? v : 1 - v) * hf.height - 0.5;
 	return bilinearHeightTexel(hf.data, hf.width, hf.height, fx, fy);
+}
+
+/**
+ * Displacement (km, relative to the base sphere) the mesh adds at each point,
+ * from the same cached height rows the seat and camera-floor samplers read —
+ * one readback per body, shared. Prefers the currently bound tier's CPU-side
+ * rows; awaits the shared low-tier readback otherwise (`meta` is passed in so
+ * callers can sample before the GPU texture attaches). Null when the height
+ * map failed to load.
+ */
+export async function displacementsKmAt(
+	bo: BodyObjects | undefined,
+	bodyId: string,
+	meta: DisplacementMeta,
+	radiusKm: number,
+	points: { latRad: number; lonRad: number }[]
+): Promise<Float64Array | null> {
+	const hf = (bo && heightFieldFor(bo, bodyId)) ?? (await loadLowField(bodyId, meta));
+	if (!hf) return null;
+	const biasKm = meta.bias_km - (meta.absolute_radius ? radiusKm : 0);
+	const out = new Float64Array(points.length);
+	for (let i = 0; i < points.length; i++) {
+		out[i] = sampleHeightTexel(hf, points[i].latRad, points[i].lonRad) * meta.scale_km + biasKm;
+	}
+	return out;
 }
 
 const radiiCache = new Map<string, { a: number; b: number; c: number }>();

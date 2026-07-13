@@ -53,6 +53,12 @@ export class BodyIndex {
 	 *  per-id Map, not a {@link MinorBucket}. Outer key is the parent id. */
 	spacecraftByParent = new Map<string, Map<string, PositionedBody>>();
 
+	/** The one synthetic surface-feature body currently focused, if any. Kept off
+	 *  `bodiesById`/`majorBodies` (it isn't propagated — the renderer re-seats it
+	 *  each frame), but resolvable via {@link getBody} so the focus + north-ref
+	 *  paths can look it up by id. */
+	focusFeature: PositionedBody | null = null;
+
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
 	dirtyAsteroidZones = new Set<string>();
 	dirtySpacecraftGroups = new Set<string>();
@@ -110,6 +116,7 @@ export class BodyIndex {
 	getBody(id: string, zone?: string): PositionedBody | undefined {
 		const major = this.bodiesById.get(id);
 		if (major) return major;
+		if (this.focusFeature?.data.id === id) return this.focusFeature;
 		if (zone !== undefined) {
 			return (
 				this.spacecraftByParent.get(zone)?.get(id) ?? this.asteroidBodiesByZone.get(zone)?.get(id)

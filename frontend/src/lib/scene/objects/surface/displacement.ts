@@ -204,59 +204,6 @@ export function bilinearHeightTexel(
 }
 
 /**
- * Per-feature radial offsets (scene units) so surface labels and landed probes
- * sit on the displaced terrain, not the base sphere. `tier` must match the map
- * the GPU displaces with. Offsets match {@link attachDisplacementMap}'s
- * scale/bias; null on fetch/decode failure.
- */
-export async function sampleDisplacementOffsets(
-	dispMeta: DisplacementMeta,
-	points: { latRad: number; lonRad: number }[],
-	sphereRadiusScene: number,
-	tier = 'low'
-): Promise<Float32Array | null> {
-	const url = displacementTierUrl(dispMeta, tier);
-	const bitmap = await fetchHeightBitmap(url);
-	if (!bitmap) return null;
-	const w = bitmap.width;
-	const h = bitmap.height;
-
-	// Texel coordinates per point, and the row window covering them all (+1 row
-	// of bilinear margin). Only that window is read back — clustered points
-	// (probe cell corners) cost a few rows even on the 16k tier.
-	const fxs = new Float64Array(points.length);
-	const fys = new Float64Array(points.length);
-	let rowLo = h - 1;
-	let rowHi = 0;
-	for (let i = 0; i < points.length; i++) {
-		const u = 0.5 + points[i].lonRad / (2 * Math.PI);
-		const v = 0.5 + points[i].latRad / Math.PI;
-		fxs[i] = (u - Math.floor(u)) * w - 0.5; // lon east-positive 0..2π wraps
-		fys[i] = (1 - v) * h - 0.5;
-		const y0 = Math.floor(fys[i]);
-		rowLo = Math.min(rowLo, Math.max(0, y0));
-		rowHi = Math.max(rowHi, Math.min(h - 1, y0 + 1));
-	}
-	const rows = await readHeightRows(bitmap, rowLo, rowHi);
-	bitmap.close();
-	if (!rows) {
-		console.warn(`Failed to sample displacement map ${url}: no 2D context`);
-		return null;
-	}
-
-	const scale = kmToScene(dispMeta.scale_km);
-	const bias = kmToScene(dispMeta.bias_km) - (dispMeta.absolute_radius ? sphereRadiusScene : 0);
-	const out = new Float32Array(points.length);
-	// Bilinear so a probe/label lands on the rendered surface and not up to a
-	// quantisation step off it — the 8-bit map's levels are ~scale_km/255 apart.
-	for (let i = 0; i < points.length; i++) {
-		const texel = bilinearHeightTexel(rows, w, rowHi - rowLo + 1, fxs[i], fys[i] - rowLo);
-		out[i] = texel * scale + bias;
-	}
-	return out;
-}
-
-/**
  * Release the texture and reset the material's displacement slots to inert
  * defaults (scale 1, bias 0); three.js drops the vertex chunk once the map is null.
  */
