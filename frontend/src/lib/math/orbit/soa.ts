@@ -65,6 +65,10 @@ export interface OrbitColumns {
 	 */
 	validityStart: number;
 	validityEnd: number;
+	/** Base global pick-id for this group: row `idx` gets pick-id `pickBase + idx`,
+	 *  written by `writePositions` into the compact `outIds` buffer for GPU picking.
+	 *  The main thread maps `pickBase + idx` back to a body via {@link PickRegistry}. */
+	pickBase: number;
 }
 
 /**
@@ -208,7 +212,8 @@ export function allocColumns(count: number): OrbitColumns {
 		visibleFromDays: new Float32Array(count).fill(NaN),
 		applyFlagFilter: false,
 		validityStart: -Infinity,
-		validityEnd: Infinity
+		validityEnd: Infinity,
+		pickBase: 0
 	};
 }
 
@@ -235,6 +240,9 @@ export function writePositions(
 	basisY: number,
 	basisZ: number,
 	out: Float32Array,
+	/** Compact per-survivor pick-id bytes (RGBA, little-endian `pickBase + idx`),
+	 *  written in lockstep with `out` for GPU picking. Null to skip. */
+	outIds: Uint8Array | null = null,
 	requiredFlags: number = 0
 ): number {
 	// Bail on the whole group when jd sits outside the chunk's validity window
@@ -260,6 +268,7 @@ export function writePositions(
 		visibleFromDays
 	} = cols;
 	const filterActive = requiredFlags !== 0 && cols.applyFlagFilter;
+	const pickBase = cols.pickBase;
 	const capacity = (out.length / 3) | 0;
 	// Hide bodies that don't exist yet at this jd (undiscovered / not launched).
 	// visibleFromDays is days from J2000; NaN (no gating) makes the compare
@@ -297,6 +306,14 @@ export function writePositions(
 			out[writeIdx * 3] = parentX + sx - basisX;
 			out[writeIdx * 3 + 1] = parentY + sy - basisY;
 			out[writeIdx * 3 + 2] = parentZ + sz - basisZ;
+			if (outIds) {
+				const pid = pickBase + idx;
+				const o = writeIdx * 4;
+				outIds[o] = pid & 255;
+				outIds[o + 1] = (pid >>> 8) & 255;
+				outIds[o + 2] = (pid >>> 16) & 255;
+				outIds[o + 3] = (pid >>> 24) & 255;
+			}
 			writeIdx++;
 			continue;
 		}
@@ -375,6 +392,14 @@ export function writePositions(
 		out[writeIdx * 3] = parentX + sx - basisX;
 		out[writeIdx * 3 + 1] = parentY + sy - basisY;
 		out[writeIdx * 3 + 2] = parentZ + sz - basisZ;
+		if (outIds) {
+			const pid = pickBase + idx;
+			const o = writeIdx * 4;
+			outIds[o] = pid & 255;
+			outIds[o + 1] = (pid >>> 8) & 255;
+			outIds[o + 2] = (pid >>> 16) & 255;
+			outIds[o + 3] = (pid >>> 24) & 255;
+		}
 		writeIdx++;
 	}
 	return writeIdx;

@@ -21,6 +21,7 @@ import { buildPointClouds } from '$lib/scene/objects/body/bulk';
 import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/pointcloud';
 import { resolveBodyColor } from '$lib/utils';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
+import { PickRegistry } from '$lib/scene/interaction/pick-registry';
 
 const REBASE_THRESHOLD_AU = 0.01;
 
@@ -130,6 +131,9 @@ const SMALL_BODY_MAX_OPACITY = EMPHASIS_MAX_OPACITY;
  */
 export class PointCloudSystem {
 	readonly orbitPool = new OrbitWorkerPool();
+	/** Maps a GPU pick-pass hit back to a body id. Populated per group at wire
+	 *  time; consumed by the pointer's pick pass. */
+	readonly pickRegistry = new PickRegistry();
 	private asteroidPoints = new Map<string, Points>();
 	private spacecraftPoints = new Map<string, Points>();
 	private moonPoints = new Map<string, Points>();
@@ -416,6 +420,7 @@ export class PointCloudSystem {
 				if (!group || group.cols.count === 0) {
 					this.orbitPool.unwireOne(groupId);
 					this.forgetGroupGate(groupId);
+					this.pickRegistry.release(groupId);
 					const stale = this.asteroidPoints.get(key);
 					if (stale) {
 						this.scene.remove(stale);
@@ -429,6 +434,9 @@ export class PointCloudSystem {
 				// A repack grows the buffer (streaming chunks); force one solve so the
 				// new points get positions and drawRange expands instead of being gated.
 				this.lastSolvedJd.delete(groupId);
+				// Assign this group's GPU pick-id range before wiring — the worker
+				// writes `pickBase + row` per survivor for the pick pass to decode.
+				group.cols.pickBase = this.pickRegistry.allocate(groupId, group.ids);
 				this.orbitPool.rewireOneCols(groupId, group.cols, (baseWorker + i) % k);
 				const existing = this.asteroidPoints.get(key);
 				if (existing) {
@@ -477,6 +485,7 @@ export class PointCloudSystem {
 				if (bodies.length === 0) {
 					this.orbitPool.unwireOne(groupId);
 					this.forgetGroupGate(groupId);
+					this.pickRegistry.release(groupId);
 					const stale = this.spacecraftPoints.get(key);
 					if (stale) {
 						this.scene.remove(stale);
@@ -484,7 +493,20 @@ export class PointCloudSystem {
 					}
 					continue;
 				}
-				await this.orbitPool.rewireOne(groupId, bodies, skip, (baseWorker + i) % k);
+				// packBodiesSliced fills rows in `bodies` order, so ids line up with
+				// the worker's `pickBase + row` pick-ids.
+				const pickBase = this.pickRegistry.allocate(
+					groupId,
+					bodies.map((b) => b.data.id)
+				);
+				await this.orbitPool.rewireOne(
+					groupId,
+					bodies,
+					skip,
+					(baseWorker + i) % k,
+					false,
+					pickBase
+				);
 				this.groupKinematics.set(groupId, {
 					maxSpeedScene: SPACECRAFT_MAX_SPEED_SCENE,
 					alwaysSolve: false
@@ -618,7 +640,8 @@ export class PointCloudSystem {
 		count: number,
 		basisUsed: Vec3,
 		parentUsed: Vec3,
-		jd: number
+		jd: number,
+		pickIds: Uint8Array
 	): void => {
 		const [kind, key] = groupId.split(':') as ['asteroid' | 'spacecraft', string];
 		const pts = kind === 'asteroid' ? this.asteroidPoints.get(key) : this.spacecraftPoints.get(key);
@@ -633,6 +656,7 @@ export class PointCloudSystem {
 		if (arr.length !== positions.length) return;
 		arr.set(positions);
 		posAttr.needsUpdate = true;
+		this.bindPickIds(pts, pickIds);
 		pts.geometry.setDrawRange(0, count);
 		// The front buffer now reflects this jd; the gate measures drift from here.
 		this.lastSolvedJd.set(groupId, jd);
@@ -658,6 +682,20 @@ export class PointCloudSystem {
 		const sz = parentNow ? parentNow[2] - parentUsed[2] : 0;
 		pts.position.set(basisUsed[0] - fx + sx, basisUsed[1] - fy + sy, basisUsed[2] - fz + sz);
 	};
+
+	/** Copy the worker's compact pick-id bytes into a stable, geometry-owned
+	 *  `pickColor` attribute. Owned separately from the pool's ping-pong buffer,
+	 *  which gets transferred back to the worker next tick. Normalized so the
+	 *  pick shader passes the raw bytes straight through as the fragment colour. */
+	private bindPickIds(pts: Points, pickIds: Uint8Array): void {
+		const attr = pts.geometry.getAttribute('pickColor') as BufferAttribute | undefined;
+		if (attr && attr.array.length === pickIds.length) {
+			(attr.array as Uint8Array).set(pickIds);
+			attr.needsUpdate = true;
+		} else {
+			pts.geometry.setAttribute('pickColor', new BufferAttribute(pickIds.slice(), 4, true));
+		}
+	}
 
 	/**
 	 * Reposition every cloud against the current focus. Minor clouds use their
@@ -872,6 +910,7 @@ export class PointCloudSystem {
 	 *  each map→credits→map round trip leaks a fresh set of workers. */
 	dispose(): void {
 		this.orbitPool.destroy();
+		this.pickRegistry.clear();
 		for (const map of [this.asteroidPoints, this.spacecraftPoints, this.moonPoints]) {
 			for (const pts of map.values()) {
 				this.scene.remove(pts);

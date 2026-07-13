@@ -23,6 +23,9 @@ import { yieldToMain } from '$lib/yield';
 export interface WorkerGroup {
 	cols: OrbitColumns;
 	colors: Float32Array | null;
+	/** Body id per SoA row (KIND_SKIP rows included), so a GPU pick's global
+	 *  pick-id (`cols.pickBase + row`) resolves back to a body. */
+	ids: string[];
 }
 
 /** Integer hash for numeric-id partitioning — avoids building the id string. */
@@ -157,7 +160,11 @@ export class MinorBucket {
 		for (let b = 0; b < k; b++) {
 			const cols = allocColumns(counts[b]);
 			cols.applyFlagFilter = false;
-			groups.push({ cols, colors: withColors ? new Float32Array(counts[b] * 3) : null });
+			groups.push({
+				cols,
+				colors: withColors ? new Float32Array(counts[b] * 3) : null,
+				ids: new Array<string>(counts[b])
+			});
 		}
 
 		// Pass 2: fill each subgroup, widening its validity window across rows.
@@ -165,7 +172,6 @@ export class MinorBucket {
 		const ends = new Array<number>(k).fill(-Infinity);
 		const writeIdx = new Array<number>(k).fill(0);
 		const tmp = withColors ? new Color() : null;
-		const haveSkip = skip.size > 0;
 		sliceStart = performance.now();
 		for (let r = 0; r < refs.length; r++) {
 			if ((r & 16383) === 16383 && performance.now() - sliceStart > 6) {
@@ -177,7 +183,8 @@ export class MinorBucket {
 			const b = bucketOf[r];
 			const g = groups[b];
 			const outIdx = writeIdx[b]++;
-			const id = haveSkip ? cols.idMap.get(i) : undefined; // string only when skipping
+			const id = cols.idMap.get(i); // needed for both the skip test and pick-id mapping
+			g.ids[outIdx] = id ?? '';
 			if (fillOrbitColumnRow(cols, i, g.cols, outIdx, id, skip)) {
 				if (cols.validityStart < starts[b]) starts[b] = cols.validityStart;
 				if (cols.validityEnd > ends[b]) ends[b] = cols.validityEnd;

@@ -5,19 +5,33 @@ import {
 	type Intersection,
 	type Mesh,
 	type Object3D,
-	type PerspectiveCamera
+	type PerspectiveCamera,
+	type Points
 } from 'three';
 import type { PositionedBody } from '$lib/types/objects';
 import type { FocusState } from '$lib/scene/animation/focus';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import { pickPointCloudBody } from './picking';
+import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
+import { pickMoonDot } from './picking';
+import type { GpuPickPass } from './gpu-pick';
+import type { PickRegistry } from './pick-registry';
 
 const CLICK_DRAG_PX2 = 9; // 3px move tolerance — anything larger reads as a drag, not a click.
 
+/** One resolved point-cloud candidate, comparable to a moon CPU hit. */
+interface PointHit {
+	body: PositionedBody;
+	/** Scene-unit distance from the camera (for depth tie-breaks vs mesh hits). */
+	distance: number;
+	/** CSS-px distance from the cursor (primary ranking). */
+	screenDist: number;
+}
+
 /**
  * Pointer-down/up handlers that distinguish a click from a drag and pick the
- * topmost body under the cursor (mesh hits first, then point-cloud bodies).
+ * topmost body under the cursor. Moons and meshes resolve on the CPU; the
+ * asteroid/spacecraft clouds (~1.3M dots) resolve on the GPU via {@link GpuPickPass}.
  * Stateless across instances — `attach` returns a cleanup function.
  */
 export class PointerInteraction {
@@ -39,7 +53,11 @@ export class PointerInteraction {
 		/** Focused body when the NDC ray hits its overlay model, else null. The
 		 *  overlay composites over the whole main scene, so such a ray must both
 		 *  resolve to the focused body and occlude every pick behind it. */
-		private readonly modelPick: (ndcX: number, ndcY: number) => PositionedBody | null
+		private readonly modelPick: (ndcX: number, ndcY: number) => PositionedBody | null,
+		private readonly gpuPick: GpuPickPass,
+		/** Live asteroid + spacecraft clouds to render in the GPU pick pass. */
+		private readonly getClouds: () => Iterable<Points>,
+		private readonly pickRegistry: PickRegistry
 	) {}
 
 	attach(): void {
@@ -83,9 +101,10 @@ export class PointerInteraction {
 		// point-cloud body always wins so small dots stay clickable (esp. touch).
 		const meshBody = this.resolveMeshHit(this.raycaster.intersectObjects(this.clickables))?.body;
 
-		// Point-cloud bodies (asteroids, spacecraft, moons-as-dots). isDotVisible
-		// skips dots hidden behind a planet, so the nearest *visible* dot wins.
-		const pointHit = pickPointCloudBody(
+		// Moon dots (CPU — few hundred) and asteroid/spacecraft dots (GPU pick
+		// pass). The nearer-to-cursor of the two wins, depth breaking ties, so a
+		// clicked moon still outranks an asteroid dot drifting behind it.
+		const moonHit = pickMoonDot(
 			this.pointer,
 			this.camera,
 			this.ctx,
@@ -97,10 +116,61 @@ export class PointerInteraction {
 			e.pointerType,
 			this.isDotVisible
 		);
+		const gpuHit = this.gpuPickCloud(e, rect);
+		const pointHit = this.nearer(moonHit, gpuHit);
 
 		const bestBody = pointHit?.body ?? meshBody;
 		if (bestBody) this.onPick(bestBody);
 	};
+
+	/** Nearer of two point-cloud candidates: smaller cursor distance wins, depth
+	 *  breaks ties — matching the CPU picker's ranking across dot sources. */
+	private nearer(a: PointHit | null, b: PointHit | null): PointHit | null {
+		if (!a) return b;
+		if (!b) return a;
+		if (b.screenDist < a.screenDist) return b;
+		if (b.screenDist === a.screenDist && b.distance < a.distance) return b;
+		return a;
+	}
+
+	/** GPU-pick the asteroid/spacecraft clouds, then resolve the nearest candidate
+	 *  that isn't hidden behind a mesh on its own ray. */
+	private gpuPickCloud(e: PointerEvent, rect: DOMRect): PointHit | null {
+		const radius = e.pointerType === 'touch' || e.pointerType === 'pen' ? 48 : 24;
+		const jd = this.clock.jd;
+		const candidates = this.gpuPick.pick(
+			this.getClouds(),
+			this.camera,
+			e.clientX,
+			e.clientY,
+			rect,
+			radius
+		);
+		for (const c of candidates) {
+			const bodyId = this.pickRegistry.resolve(c.pickId);
+			if (!bodyId) continue;
+			const body = this.ctx.getBody(bodyId);
+			if (!body) continue;
+			// Advance the CPU copy to the current jd so its position matches the
+			// rendered dot (and feeds the focus animation), mirroring the CPU picker.
+			refreshMinorBodyPosition(body, jd, this.ctx);
+			const worldDist = this.worldDistOf(body);
+			if (!this.isDotVisible(c.ndcX, c.ndcY, worldDist)) continue; // occluded — try next
+			return { body, distance: worldDist, screenDist: c.pixelDist };
+		}
+		return null;
+	}
+
+	/** Scene-unit distance from the camera to a body's rendered position. */
+	private worldDistOf(body: PositionedBody): number {
+		const [fx, fy, fz] = this.focus.focusTruePos;
+		const cam = this.camera.position;
+		return Math.hypot(
+			body.position[0] - fx - cam.x,
+			body.position[1] - fy - cam.y,
+			body.position[2] - fz - cam.z
+		);
+	}
 
 	/** First raycast hit that resolves to a body. Walks parents so child meshes
 	 *  (cloud shells, nomenclature labels) resolve to their planet. */

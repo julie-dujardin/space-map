@@ -43,6 +43,7 @@ import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { bootThree } from './setup/three-boot';
 import { cappedPixelRatio } from '$lib/device';
 import { PointerInteraction } from './interaction/pointer';
+import { GpuPickPass } from './interaction/gpu-pick';
 import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies } from './objects/body/lifecycle';
@@ -121,6 +122,7 @@ export class SceneRenderer {
 	private camera: PerspectiveCamera;
 	private controls: OrbitControls;
 	private pointerInteraction!: PointerInteraction;
+	private gpuPick!: GpuPickPass;
 
 	private canvas: HTMLCanvasElement;
 	private ctx: ContextManager;
@@ -424,6 +426,7 @@ export class SceneRenderer {
 		if (focusBody) this.maybeLoadTexture(focusBody);
 		this.systemData.syncToFocus();
 
+		this.gpuPick = new GpuPickPass(this.renderer, this.camera);
 		this.pointerInteraction = new PointerInteraction(
 			canvas,
 			this.camera,
@@ -433,7 +436,10 @@ export class SceneRenderer {
 			this.clickables,
 			this.meshToBody,
 			(body) => this.focusController.handleFocus(body),
-			(ndcX, ndcY) => this.pickFocusedModel(ndcX, ndcY)
+			(ndcX, ndcY) => this.pickFocusedModel(ndcX, ndcY),
+			this.gpuPick,
+			() => [...this.pointClouds.asteroids().values(), ...this.pointClouds.spacecraft().values()],
+			this.pointClouds.pickRegistry
 		);
 		this.pointerInteraction.attach();
 
@@ -1357,6 +1363,7 @@ export class SceneRenderer {
 	dispose(): void {
 		cancelAnimationFrame(this.rafId);
 		this.pointerInteraction.detach();
+		this.gpuPick.dispose();
 		this.controls.removeEventListener('end', this.onControlsEnd);
 		this.controls.dispose();
 		this.haloDebug.dispose();

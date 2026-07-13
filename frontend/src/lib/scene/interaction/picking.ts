@@ -4,8 +4,11 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import type { Vec3 } from '../animation/math';
 
-/** Find the closest visible point-cloud body to the given pointer (NDC). */
-export function pickPointCloudBody(
+/** Find the closest visible moon dot to the given pointer (NDC). Asteroids and
+ *  spacecraft — the ~1.3M-dot clouds — are picked on the GPU (see
+ *  {@link GpuPickPass}); only the few hundred moons are cheap enough to scan
+ *  exactly on the CPU, so they stay here. */
+export function pickMoonDot(
 	pointer: Vector2,
 	camera: PerspectiveCamera,
 	ctx: ContextManager,
@@ -19,8 +22,7 @@ export function pickPointCloudBody(
 	 *  *visible* dot wins instead of the nearest dot. Args are the dot's NDC and
 	 *  its scene-unit distance from the camera. */
 	isVisible?: (ndcX: number, ndcY: number, worldDist: number) => boolean
-): { body: PositionedBody; distance: number } | null {
-	// TODO: earth still focus-steals a lot. Maybe de-prioritise very large objects?
+): { body: PositionedBody; distance: number; screenDist: number } | null {
 	const SCREEN_THRESHOLD = pointerType === 'touch' || pointerType === 'pen' ? 48 : 24;
 	// Convert NDC pointer to pixel coords
 	const px = (pointer.x + 1) * 0.5 * canvasWidth;
@@ -34,9 +36,9 @@ export function pickPointCloudBody(
 	let bestWorldDist = Infinity;
 
 	const testBody = (body: PositionedBody): void => {
-		// Point-cloud bodies' positions are advanced on the GPU; refresh the
-		// CPU copy from orbital elements at the current jd so picking matches
-		// the rendered dot even while paused.
+		// Moon dots' positions are advanced on the GPU; refresh the CPU copy from
+		// orbital elements at the current jd so picking matches the rendered dot
+		// even while paused.
 		refreshMinorBodyPosition(body, jd, ctx);
 		// Render-space position (focus sits at the scene origin, so subtracting
 		// focusTruePos puts the body in the same frame as `camera.position`).
@@ -65,49 +67,12 @@ export function pickPointCloudBody(
 		bestBody = body;
 	};
 
-	// A definitive hit (cursor effectively on a dot) lets us bail before
-	// scanning the long tail — MBA alone holds ~1.3M asteroids.
-	const DEFINITIVE_PX = pointerType === 'touch' || pointerType === 'pen' ? 16 : 8;
-
-	// Moons are few; test them all up front so they outrank overlapping
-	// asteroid dots in dense regions.
 	for (const body of ctx.bodies.majorBodies) {
 		if (body.data.objectType !== ObjectType.MOON) continue;
 		if (!ctx.visibility.isMoonGroupVisible(body.data.parentId)) continue;
 		testBody(body);
 	}
 
-	// Round-robin asteroid zones + spacecraft groups one loader-chunk
-	// (10k bodies) at a time, so every visible bucket gets sampled before
-	// we commit to a deep scan of any one zone. Bail after a full round
-	// once we have a definitive hit.
-	if (bestScreenDist > DEFINITIVE_PX) {
-		const CHUNK_BAIL_SIZE = 10_000;
-		const iters: IterableIterator<PositionedBody>[] = [];
-		for (const [zone, byId] of ctx.bodies.asteroidBodiesByZone) {
-			if (ctx.visibility.isAsteroidGroupVisible(zone)) iters.push(byId.values());
-		}
-		for (const [gid, byId] of ctx.bodies.spacecraftByParent) {
-			if (ctx.visibility.isSpacecraftGroupVisible(gid)) iters.push(byId.values());
-		}
-
-		let anyProgress = true;
-		while (anyProgress) {
-			anyProgress = false;
-			for (const it of iters) {
-				for (let i = 0; i < CHUNK_BAIL_SIZE; i++) {
-					const next = it.next();
-					if (next.done) break;
-					testBody(next.value);
-					anyProgress = true;
-				}
-			}
-			// Bail only after a full round so every visible bucket gets an equal
-			// shot before we commit — else earlier zones (APO before MBA) win ties.
-			if (bestScreenDist <= DEFINITIVE_PX) break;
-		}
-	}
-
 	if (!bestBody) return null;
-	return { body: bestBody, distance: bestWorldDist };
+	return { body: bestBody, distance: bestWorldDist, screenDist: bestScreenDist };
 }

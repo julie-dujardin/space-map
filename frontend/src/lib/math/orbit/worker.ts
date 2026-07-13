@@ -37,6 +37,9 @@ type TickMsg = {
 		parent: [number, number, number];
 		/** Pre-allocated Float32Array the worker writes into (length = capacity*3). */
 		out: Float32Array;
+		/** Pre-allocated pick-id bytes buffer (length = capacity*4), written in
+		 *  lockstep with `out` and transferred back for GPU picking. */
+		outIds: Uint8Array;
 	}[];
 };
 
@@ -57,15 +60,15 @@ self.onmessage = (ev: MessageEvent<InMsg>) => {
 		return;
 	}
 	if (msg.type === 'tick') {
-		const out: { id: string; count: number; buf: ArrayBufferLike }[] = [];
+		const out: { id: string; count: number; buf: ArrayBufferLike; idbuf: ArrayBufferLike }[] = [];
 		const transfers: Transferable[] = [];
 		const [bx, by, bz] = msg.basis;
 		for (const g of msg.groups) {
 			const cols = groups.get(g.id);
 			if (!cols) {
-				// Return the buffer back unmodified so main can reuse it.
-				out.push({ id: g.id, count: 0, buf: g.out.buffer });
-				transfers.push(g.out.buffer as Transferable);
+				// Return both buffers back unmodified so main can reuse them.
+				out.push({ id: g.id, count: 0, buf: g.out.buffer, idbuf: g.outIds.buffer });
+				transfers.push(g.out.buffer as Transferable, g.outIds.buffer as Transferable);
 				continue;
 			}
 			const count = writePositions(
@@ -78,10 +81,11 @@ self.onmessage = (ev: MessageEvent<InMsg>) => {
 				by,
 				bz,
 				g.out,
+				g.outIds,
 				msg.requiredFlags ?? 0
 			);
-			out.push({ id: g.id, count, buf: g.out.buffer });
-			transfers.push(g.out.buffer as Transferable);
+			out.push({ id: g.id, count, buf: g.out.buffer, idbuf: g.outIds.buffer });
+			transfers.push(g.out.buffer as Transferable, g.outIds.buffer as Transferable);
 		}
 		(self as unknown as Worker).postMessage({ type: 'tickResult', groups: out }, transfers);
 		return;

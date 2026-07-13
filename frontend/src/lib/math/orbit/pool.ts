@@ -29,6 +29,9 @@ interface GroupState {
 	front: Float32Array;
 	/** Free array the next tick will send to the worker, or null if in flight. */
 	back: Float32Array | null;
+	/** Pick-id bytes (RGBA per point) paired with `front`; ping-ponged in lockstep. */
+	idFront: Uint8Array;
+	idBack: Uint8Array | null;
 	count: number;
 	/** Basis passed to the worker at dispatch of the in-flight tick (if any). */
 	pendingBasis: Vec3 | null;
@@ -51,12 +54,13 @@ export type GroupResultHandler = (
 	count: number,
 	basis: Vec3,
 	parent: Vec3,
-	jd: number
+	jd: number,
+	pickIds: Uint8Array
 ) => void;
 
 type TickResult = {
 	type: 'tickResult';
-	groups: { id: string; count: number; buf: ArrayBufferLike }[];
+	groups: { id: string; count: number; buf: ArrayBufferLike; idbuf: ArrayBufferLike }[];
 };
 
 type PoolInMsg = TickResult | { type: 'pong' };
@@ -153,13 +157,15 @@ export class OrbitWorkerPool {
 		bodies: PositionedBody[],
 		skip: Set<string>,
 		workerHint: number,
-		applyFlagFilter: boolean = false
+		applyFlagFilter: boolean = false,
+		pickBase: number = 0
 	): Promise<void> {
 		if (bodies.length === 0) {
 			this.unwireOne(id);
 			return;
 		}
 		const cols = await packBodiesSliced(bodies, skip, applyFlagFilter);
+		cols.pickBase = pickBase;
 		// Pool may have been destroyed while the pack yielded.
 		if (this.workers.length === 0) return;
 		this.wireCols(id, cols, workerHint, bodies.length);
@@ -188,15 +194,23 @@ export class OrbitWorkerPool {
 
 		let front: Float32Array;
 		let back: Float32Array | null;
+		let idFront: Uint8Array;
+		let idBack: Uint8Array | null;
 		if (prev && prev.capacity === capacity) {
 			front = prev.front;
 			back = prev.back;
+			idFront = prev.idFront;
+			idBack = prev.idBack;
 		} else {
 			front = new Float32Array(capacity * 3);
 			back = new Float32Array(capacity * 3);
+			idFront = new Uint8Array(capacity * 4);
+			idBack = new Uint8Array(capacity * 4);
 			if (prev) {
 				const n = Math.min(prev.front.length, front.length);
 				front.set(prev.front.subarray(0, n));
+				const idn = Math.min(prev.idFront.length, idFront.length);
+				idFront.set(prev.idFront.subarray(0, idn));
 			}
 		}
 
@@ -209,6 +223,8 @@ export class OrbitWorkerPool {
 			capacity,
 			front,
 			back,
+			idFront,
+			idBack,
 			count: prev?.count ?? capacity,
 			pendingBasis: inFlight ? prev!.pendingBasis : null,
 			pendingParent: inFlight ? prev!.pendingParent : null,
@@ -245,18 +261,21 @@ export class OrbitWorkerPool {
 			id: string;
 			parent: [number, number, number];
 			out: Float32Array;
+			outIds: Uint8Array;
 		}[][] = this.workers.map(() => []);
 
 		for (const [id, state] of this.groups) {
-			if (!state.back) continue;
+			if (!state.back || !state.idBack) continue;
 			const parent = parents.get(id);
 			if (!parent) continue;
 			perWorker[state.workerIdx].push({
 				id,
 				parent: [parent[0], parent[1], parent[2]],
-				out: state.back
+				out: state.back,
+				outIds: state.idBack
 			});
 			state.back = null;
+			state.idBack = null;
 			state.pendingBasis = [basis[0], basis[1], basis[2]];
 			state.pendingParent = [parent[0], parent[1], parent[2]];
 			state.pendingJd = jd;
@@ -265,7 +284,10 @@ export class OrbitWorkerPool {
 		for (let i = 0; i < this.workers.length; i++) {
 			const groupMsgs = perWorker[i];
 			if (groupMsgs.length === 0) continue;
-			const transfers: Transferable[] = groupMsgs.map((g) => g.out.buffer as Transferable);
+			const transfers: Transferable[] = groupMsgs.flatMap((g) => [
+				g.out.buffer as Transferable,
+				g.outIds.buffer as Transferable
+			]);
 			this.workers[i].postMessage(
 				{
 					type: 'tick',
@@ -293,6 +315,10 @@ export class OrbitWorkerPool {
 			const oldFront = state.front;
 			state.front = returned;
 			state.back = oldFront;
+			const returnedIds = new Uint8Array(g.idbuf);
+			const oldIdFront = state.idFront;
+			state.idFront = returnedIds;
+			state.idBack = oldIdFront;
 			state.count = g.count;
 			const basis = state.pendingBasis ?? state.frontBasis;
 			const parent = state.pendingParent ?? state.frontParent;
@@ -303,7 +329,7 @@ export class OrbitWorkerPool {
 			state.pendingBasis = null;
 			state.pendingParent = null;
 			state.pendingJd = null;
-			this.onResult?.(g.id, returned, g.count, basis, parent, jd);
+			this.onResult?.(g.id, returned, g.count, basis, parent, jd, returnedIds);
 		}
 	}
 
