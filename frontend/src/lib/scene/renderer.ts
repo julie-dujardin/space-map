@@ -87,7 +87,7 @@ import { FocusController } from './focus/controller';
 import { ProbeCoverageWatch } from './probe-coverage-watch';
 import { minCameraDistance, clampCameraOutsideBody } from './visibility/camera-limits';
 import { renderedSurfaceRadialKm } from './position/rendered-surface';
-import { landedSeatEpoch } from './position/landed-probe';
+import { surfaceDataEpoch } from './position/rendered-surface';
 import { collisionParentId } from './state/bodies.svelte';
 import { updateBodyVisibility } from './visibility/update';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location/marker';
@@ -182,6 +182,7 @@ export class SceneRenderer {
 	private lastUpdatedSystemId: string | null = null;
 	/** Focused landed probe's seat config at the last position update. */
 	private lastLandedConfigKey: string | null = null;
+	private lastProbeVersion = 0;
 	/** Tracks the focus's out-of-range state across frames so the camera pans onto
 	 *  the parent only on the transition in, not every frame parked there. */
 	private focusWasOutOfRange = false;
@@ -898,10 +899,11 @@ export class SceneRenderer {
 		this.focusController.promotion.clearUserPromoted();
 	}
 
-	/** Rendered-mesh state a landed probe's seat is keyed on (parent grid + DEM
-	 *  tier + resolved-seat epoch); null when the focus can't be a landed probe.
-	 *  Gated on the focus being a spacecraft, not `isLanded`: that flag is itself
-	 *  only set by a position pass, which is exactly what this key must force. */
+	/** Rendered-mesh state a landed probe's seat is keyed on (parent grid incl.
+	 *  window recenters + the bound height texture + async surface-data epoch);
+	 *  null when the focus can't be a landed probe. Gated on the focus being a
+	 *  spacecraft, not `isLanded`: that flag is itself only set by a position
+	 *  pass, which is exactly what this key must force. */
 	private focusedLandedConfigKey(): string | null {
 		const focused = this.focusController.current;
 		if (!focused || focused.data.objectType !== ObjectType.SPACECRAFT) return null;
@@ -909,8 +911,10 @@ export class SceneRenderer {
 		const bo = parentId ? this.bodyObjects.get(parentId) : undefined;
 		if (!bo) return null;
 		const tw = bo.terrainWindow;
-		const grid = tw ? `w${tw.stepLevel}x${tw.texWidth}` : `u${bo.currentSegments ?? 128}`;
-		return `${grid}|${bo.displacementTier ?? 'low'}|${landedSeatEpoch()}`;
+		const grid = tw
+			? `w${tw.stepLevel}x${tw.texWidth}@${tw.centerTheta.toFixed(6)},${tw.centerPhi.toFixed(6)}`
+			: `u${bo.currentSegments ?? 128}`;
+		return `${grid}|${bo.displacementMap?.uuid ?? 'none'}|${surfaceDataEpoch()}`;
 	}
 
 	/** Process a pending jd change now instead of next frame, re-anchoring focus to
@@ -923,13 +927,18 @@ export class SceneRenderer {
 		// Likewise on a landed-probe seat config change: the landing body's mesh
 		// upgrades on camera-driven schedules (sphere LOD, terrain window, DEM
 		// tier) with no jd change, and a paused clock would strand the probe on a
-		// seat computed against the boot-time mesh.
+		// seat computed against the boot-time mesh. Probe-chunk arrival is a
+		// trigger too: a deep link boots paused, and the boot pass runs before
+		// the records exist — without it the probe stays wherever that first
+		// pass left it (e.g. inside the planet, unlanded).
 		const systemId = this.ctx.visibility.focusedSystemId;
 		const landedKey = this.focusedLandedConfigKey();
+		const probeVersion = this.ctx.probeStore?.version ?? 0;
 		if (
 			this.clock.jd === this.lastUpdatedJd &&
 			systemId === this.lastUpdatedSystemId &&
-			landedKey === this.lastLandedConfigKey
+			landedKey === this.lastLandedConfigKey &&
+			probeVersion === this.lastProbeVersion
 		) {
 			this.clock.seeked = false;
 			return;
@@ -939,6 +948,7 @@ export class SceneRenderer {
 		this.lastUpdatedJd = this.clock.jd;
 		this.lastUpdatedSystemId = systemId;
 		this.lastLandedConfigKey = landedKey;
+		this.lastProbeVersion = probeVersion;
 		this.ctx.refreshTick(jdToDate(this.clock.jd));
 		const result = updatePositions({
 			jd: this.clock.jd,

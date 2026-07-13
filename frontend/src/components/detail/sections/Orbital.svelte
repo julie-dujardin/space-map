@@ -16,6 +16,7 @@
 		findSubChunkIndex,
 		isLandedAt,
 		jdToEt,
+		landedOpenEnded,
 		landedPositionAt
 	} from '$lib/fetch/position/probes/propagate';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -78,15 +79,15 @@
 		}
 		const probe = ctx.probeStore.probe(body.data.id, jd);
 		if (!probe || !probe.landed || !isLandedAt(probe, jd)) return null;
-		return probe.landed;
+		return { landed: probe.landed, holdPastEnd: landedOpenEnded(probe) };
 	});
 	let landedSample = $derived.by(() => {
 		if (!landedProbe) return null;
-		return landedPositionAt(landedProbe, jd);
+		return landedPositionAt(landedProbe.landed, jd, landedProbe.holdPastEnd);
 	});
 	let landedBody = $derived.by(() => {
 		if (!landedProbe) return null;
-		return ctx?.bodies.bodiesById.get(`naif-${landedProbe.bodyNaifId}`) ?? null;
+		return ctx?.bodies.bodiesById.get(`naif-${landedProbe.landed.bodyNaifId}`) ?? null;
 	});
 	let landedBodyName = $derived(landedBody?.data.name ?? null);
 
@@ -290,7 +291,7 @@
 		{/if}
 		<Row
 			label={m.surface_state()}
-			value={landedProbe.isStatic ? m.surface_state_stationary() : m.surface_state_mobile()}
+			value={landedProbe.landed.isStatic ? m.surface_state_stationary() : m.surface_state_mobile()}
 			tooltip={m.tooltip_surface_state()}
 		/>
 		{#if dataSourceLabel}

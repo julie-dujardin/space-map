@@ -176,6 +176,34 @@ export async function swapDisplacementTier(bo: BodyObjects, tier: string): Promi
 }
 
 /**
+ * Bilinear texel (0..1) of a single-channel height map at fractional texel
+ * coords `(fx, fy)`, matching the GPU's sampling: wrap S, clamp T, 8-bit
+ * levels. `data` may be a row window — pass its height and re-base `fy`; the
+ * window's ±1-row bilinear margin keeps the clamp equivalent to the full map's.
+ */
+export function bilinearHeightTexel(
+	data: Uint8Array | Uint8ClampedArray,
+	w: number,
+	h: number,
+	fx: number,
+	fy: number
+): number {
+	const x0 = Math.floor(fx);
+	const y0 = Math.floor(fy);
+	const tx = fx - x0;
+	const ty = fy - y0;
+	const wrapCol = (x: number) => ((x % w) + w) % w;
+	const clampRow = (y: number) => (y < 0 ? 0 : y > h - 1 ? h - 1 : y);
+	const c0 = wrapCol(x0);
+	const c1 = wrapCol(x0 + 1);
+	const r0 = clampRow(y0) * w;
+	const r1 = clampRow(y0 + 1) * w;
+	const top = data[r0 + c0] * (1 - tx) + data[r0 + c1] * tx;
+	const bot = data[r1 + c0] * (1 - tx) + data[r1 + c1] * tx;
+	return (top * (1 - ty) + bot * ty) / 255;
+}
+
+/**
  * Per-feature radial offsets (scene units) so surface labels and landed probes
  * sit on the displaced terrain, not the base sphere. `tier` must match the map
  * the GPU displaces with. Offsets match {@link attachDisplacementMap}'s
@@ -219,23 +247,10 @@ export async function sampleDisplacementOffsets(
 	const scale = kmToScene(dispMeta.scale_km);
 	const bias = kmToScene(dispMeta.bias_km) - (dispMeta.absolute_radius ? sphereRadiusScene : 0);
 	const out = new Float32Array(points.length);
-	// Bilinear, matching the GPU's displacement sampling (wrap S, clamp T), so a
-	// probe/label lands on the rendered surface and not up to a quantisation step
-	// off it — the 8-bit map's levels are ~scale_km/255 apart.
-	const wrapCol = (x: number) => ((x % w) + w) % w;
-	const clampRow = (y: number) => (y < rowLo ? rowLo : y > rowHi ? rowHi : y);
+	// Bilinear so a probe/label lands on the rendered surface and not up to a
+	// quantisation step off it — the 8-bit map's levels are ~scale_km/255 apart.
 	for (let i = 0; i < points.length; i++) {
-		const x0 = Math.floor(fxs[i]);
-		const y0 = Math.floor(fys[i]);
-		const tx = fxs[i] - x0;
-		const ty = fys[i] - y0;
-		const c0 = wrapCol(x0);
-		const c1 = wrapCol(x0 + 1);
-		const r0 = (clampRow(y0) - rowLo) * w;
-		const r1 = (clampRow(y0 + 1) - rowLo) * w;
-		const top = rows[r0 + c0] * (1 - tx) + rows[r0 + c1] * tx;
-		const bot = rows[r1 + c0] * (1 - tx) + rows[r1 + c1] * tx;
-		const texel = (top * (1 - ty) + bot * ty) / 255;
+		const texel = bilinearHeightTexel(rows, w, rowHi - rowLo + 1, fxs[i], fys[i] - rowLo);
 		out[i] = texel * scale + bias;
 	}
 	return out;

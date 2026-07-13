@@ -221,24 +221,40 @@ export function probePositionScene(
 	return [kmToScene(km[0]), kmToScene(km[2]), -kmToScene(km[1])];
 }
 
+/**
+ * True when nothing flies after the chunk's landed phase: the record's end is
+ * the data horizon, not a departure. Landers/rovers stay put past it, so
+ * callers hold the last sample instead of dropping to the flying path — the
+ * sim parks users exactly on `endEt` (coverage stops, deep links), where the
+ * half-open window would otherwise strand the probe mid-frame.
+ */
+export function landedOpenEnded(probe: Probe): boolean {
+	if (!probe.landed) return false;
+	const n = probe.subEndEt.length;
+	return n === 0 || probe.subEndEt[n - 1] <= probe.landed.endEt;
+}
+
 /** True iff a probe has a landed record active at `jd` — the renderer uses
  *  this to dispatch between the flying and landed branches. */
 export function isLandedAt(probe: Probe, jd: number): boolean {
 	if (!probe.landed) return false;
 	const et = jdToEt(jd);
-	return et >= probe.landed.startEt && et < probe.landed.endEt;
+	return et >= probe.landed.startEt && (et < probe.landed.endEt || landedOpenEnded(probe));
 }
 
 /** Stair-step lookup into a `LandedRecord`: returns the (lat°, lon°, alt m)
  *  of the latest sample whose et ≤ now, or the reference position for
  *  static phases / pre-first-sample times. Returns null when `jd` is
- *  outside the landed window — caller falls back to the flying path. */
+ *  outside the landed window — caller falls back to the flying path.
+ *  `holdPastEnd` (see {@link landedOpenEnded}) keeps returning the last
+ *  sample at/after `endEt`. */
 export function landedPositionAt(
 	landed: LandedRecord,
-	jd: number
+	jd: number,
+	holdPastEnd = false
 ): { latDeg: number; lngDeg: number; altM: number } | null {
 	const et = jdToEt(jd);
-	if (et < landed.startEt || et >= landed.endEt) return null;
+	if (et < landed.startEt || (!holdPastEnd && et >= landed.endEt)) return null;
 	const n = landed.sampleEt.length;
 	if (n === 0 || et < landed.sampleEt[0]) {
 		return { latDeg: landed.latRefDeg, lngDeg: landed.lngRefDeg, altM: landed.altRefM };

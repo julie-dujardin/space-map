@@ -1,5 +1,6 @@
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import {
+	bilinearHeightTexel,
 	fetchHeightBitmap,
 	readHeightRows,
 	displacementTierUrl
@@ -8,12 +9,12 @@ import type { BodyObjects } from '$lib/scene/types';
 
 /** Grid a body's mesh currently renders: a uniform `SphereGeometry`, or the
  *  close-zoom terrain window's explicit row/column angles. */
-export type SurfaceGrid =
+type SurfaceGrid =
 	| { kind: 'uniform'; segs: number }
-	| { kind: 'window'; thetas: Float64Array; phis: Float64Array; key: string };
+	| { kind: 'window'; thetas: Float64Array; phis: Float64Array };
 
 /** Index i with `arr[i] <= x <= arr[i+1]`, clamped to a valid cell. */
-export function cellIndex(arr: Float64Array, x: number): number {
+function cellIndex(arr: Float64Array, x: number): number {
 	let lo = 0;
 	let hi = arr.length - 2;
 	while (lo < hi) {
@@ -30,7 +31,7 @@ export function cellIndex(arr: Float64Array, x: number): number {
  * `applyRadiiToMesh`), grown radially by the displacement. Mirrors the vertex
  * shader exactly, so a corner here is the rendered vertex position.
  */
-export function displacedPoint(
+function displacedPoint(
 	latRad: number,
 	lonRad: number,
 	dispKm: number,
@@ -47,7 +48,7 @@ export function displacedPoint(
 	return [f * a * nx, f * c * ny, f * b * nz];
 }
 
-export interface GridCell {
+interface GridCell {
 	/** TL, TR, BL, BR vertex parameters of the bracketing cell. */
 	corners: { latRad: number; lonRad: number }[];
 	tx: number;
@@ -57,7 +58,7 @@ export interface GridCell {
 /** Grid cell bracketing (lat, lon): theta runs from the +Y pole, phi from 0
  *  (body-fixed lng = phi + π), with the fractional in-cell position for the
  *  in-triangle interpolation. */
-export function gridCell(grid: SurfaceGrid, latRad: number, lonRad: number): GridCell {
+function gridCell(grid: SurfaceGrid, latRad: number, lonRad: number): GridCell {
 	if (grid.kind === 'uniform') {
 		const segs = grid.segs;
 		const gy = ((Math.PI / 2 - latRad) * segs) / Math.PI;
@@ -115,6 +116,22 @@ export function trianglePointKm(
 	return out;
 }
 
+/** Vertex and unnormalized cross product of the facet plane at (tx, ty) —
+ *  same TL–BR triangle split as {@link trianglePointKm}. */
+function facetPlane(
+	pts: [number, number, number][],
+	tx: number,
+	ty: number
+): { p0: [number, number, number]; n: [number, number, number] } {
+	const [p0, p1, p2] = tx >= ty ? [pts[0], pts[1], pts[3]] : [pts[0], pts[2], pts[3]];
+	const e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+	const e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+	return {
+		p0,
+		n: [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]]
+	};
+}
+
 /** Unit outward normal of the facet {@link trianglePointKm} seats on — the
  *  rendered slope under a landed probe. Degenerate (pole-pinched) facets fall
  *  back to the radial through TL. */
@@ -123,19 +140,14 @@ export function triangleNormalKm(
 	tx: number,
 	ty: number
 ): [number, number, number] {
-	const [p0, p1, p2] = tx >= ty ? [pts[0], pts[1], pts[3]] : [pts[0], pts[2], pts[3]];
-	const e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-	const e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-	const nx = e1[1] * e2[2] - e1[2] * e2[1];
-	const ny = e1[2] * e2[0] - e1[0] * e2[2];
-	const nz = e1[0] * e2[1] - e1[1] * e2[0];
-	const len = Math.hypot(nx, ny, nz);
+	const { p0, n } = facetPlane(pts, tx, ty);
+	const len = Math.hypot(n[0], n[1], n[2]);
 	if (len < 1e-12) {
 		const r = Math.hypot(p0[0], p0[1], p0[2]);
 		return [p0[0] / r, p0[1] / r, p0[2] / r];
 	}
-	const s = nx * p0[0] + ny * p0[1] + nz * p0[2] < 0 ? -1 / len : 1 / len;
-	return [nx * s, ny * s, nz * s];
+	const s = n[0] * p0[0] + n[1] * p0[1] + n[2] * p0[2] < 0 ? -1 / len : 1 / len;
+	return [n[0] * s, n[1] * s, n[2] * s];
 }
 
 /**
@@ -152,6 +164,15 @@ interface HeightField {
 }
 
 const lowFields = new Map<string, HeightField | 'pending' | 'failed'>();
+
+/** Bumped when async surface inputs (height rows, radii) resolve. The renderer
+ *  watches it to run a position pass while paused — without a jd change nothing
+ *  else would re-seat a landed probe on the newly exact surface. */
+let dataEpoch = 0;
+
+export function surfaceDataEpoch(): number {
+	return dataEpoch;
+}
 
 function heightFieldFor(bo: BodyObjects, bodyId: string): HeightField | null {
 	const image = bo.displacementMap?.image as
@@ -182,6 +203,7 @@ function heightFieldFor(bo: BodyObjects, bodyId: string): HeightField | null {
 				bottomUp: false
 			});
 			bitmap.close();
+			dataEpoch++;
 		})();
 	}
 	return null;
@@ -189,24 +211,11 @@ function heightFieldFor(bo: BodyObjects, bodyId: string): HeightField | null {
 
 /** Bilinear height texel (0..1) matching the GPU's sampling (wrap S, clamp T). */
 function sampleHeightTexel(hf: HeightField, latRad: number, lonRad: number): number {
-	const { data, width: w, height: h } = hf;
 	const u = 0.5 + lonRad / (2 * Math.PI);
 	const v = 0.5 + latRad / Math.PI;
-	const fx = (u - Math.floor(u)) * w - 0.5;
-	const fy = (hf.bottomUp ? v : 1 - v) * h - 0.5;
-	const x0 = Math.floor(fx);
-	const y0 = Math.floor(fy);
-	const tx = fx - x0;
-	const ty = fy - y0;
-	const wrapCol = (x: number) => ((x % w) + w) % w;
-	const clampRow = (y: number) => (y < 0 ? 0 : y > h - 1 ? h - 1 : y);
-	const c0 = wrapCol(x0);
-	const c1 = wrapCol(x0 + 1);
-	const r0 = clampRow(y0) * w;
-	const r1 = clampRow(y0 + 1) * w;
-	const top = data[r0 + c0] * (1 - tx) + data[r0 + c1] * tx;
-	const bot = data[r1 + c0] * (1 - tx) + data[r1 + c1] * tx;
-	return (top * (1 - ty) + bot * ty) / 255;
+	const fx = (u - Math.floor(u)) * hf.width - 0.5;
+	const fy = (hf.bottomUp ? v : 1 - v) * hf.height - 0.5;
+	return bilinearHeightTexel(hf.data, hf.width, hf.height, fx, fy);
 }
 
 const radiiCache = new Map<string, { a: number; b: number; c: number }>();
@@ -227,6 +236,7 @@ function radiiFor(bodyId: string, radiusKm: number): { a: number; b: number; c: 
 				radiiCache.set(bodyId, { a: radiusKm, b: radiusKm, c: radiusKm });
 			} finally {
 				radiiPending.delete(bodyId);
+				dataEpoch++;
 			}
 		})();
 	}
@@ -234,11 +244,71 @@ function radiiFor(bodyId: string, radiusKm: number): { a: number; b: number; c: 
 }
 
 /** Grid the body's mesh renders this frame. */
-export function gridForBody(bo: BodyObjects | undefined): SurfaceGrid {
+function gridForBody(bo: BodyObjects | undefined): SurfaceGrid {
 	const tw = bo?.terrainWindow;
 	return tw
-		? { kind: 'window', thetas: tw.thetas, phis: tw.phis, key: `w${tw.stepLevel}x${tw.texWidth}` }
+		? { kind: 'window', thetas: tw.thetas, phis: tw.phis }
 		: { kind: 'uniform', segs: bo?.currentSegments ?? 128 };
+}
+
+/**
+ * The rendered grid cell bracketing (lat, lon): the four displaced vertex
+ * positions (km) the GPU rasterizes this frame — current grid, current height
+ * map — plus the in-cell fractions. Null while the height rows or radii are
+ * still loading. Both the landed-probe seat and the camera terrain floor
+ * derive from this one sampler, so they can never disagree on the surface.
+ */
+function renderedCell(
+	bo: BodyObjects | undefined,
+	bodyId: string,
+	radiusKm: number,
+	latRad: number,
+	lonRad: number
+): { pts: [number, number, number][]; tx: number; ty: number } | null {
+	const radii = radiiFor(bodyId, radiusKm);
+	if (!radii) return null;
+	let hf: HeightField | null = null;
+	let scaleKm = 0;
+	let biasKm = 0;
+	const meta = bo?.displacementMeta;
+	if (meta && bo?.displacementMap) {
+		hf = heightFieldFor(bo, bodyId);
+		if (!hf) return null;
+		scaleKm = meta.scale_km;
+		biasKm = meta.bias_km - (meta.absolute_radius ? radiusKm : 0);
+	}
+	const { corners, tx, ty } = gridCell(gridForBody(bo), latRad, lonRad);
+	const pts = corners.map((corner) => {
+		const dispKm = hf ? sampleHeightTexel(hf, corner.latRad, corner.lonRad) * scaleKm + biasKm : 0;
+		return displacedPoint(
+			corner.latRad,
+			corner.lonRad,
+			dispKm,
+			radiusKm,
+			radii.a,
+			radii.b,
+			radii.c
+		);
+	});
+	return { pts, tx, ty };
+}
+
+/** Seat for a landed probe: the rendered-triangle point at the record's
+ *  (lat, lon) and the facet's unit normal (the probe's up on the slope), in
+ *  body-fixed km. Null while surface data loads — caller falls back. */
+export function renderedSeatAt(
+	bo: BodyObjects | undefined,
+	bodyId: string,
+	radiusKm: number,
+	latRad: number,
+	lonRad: number
+): { pointKm: [number, number, number]; normal: [number, number, number] } | null {
+	const cell = renderedCell(bo, bodyId, radiusKm, latRad, lonRad);
+	if (!cell) return null;
+	return {
+		pointKm: trianglePointKm(cell.pts, cell.tx, cell.ty),
+		normal: triangleNormalKm(cell.pts, cell.tx, cell.ty)
+	};
 }
 
 /**
@@ -258,41 +328,19 @@ export function renderedSurfaceRadialKm(
 ): number | null {
 	const radii = radiiFor(bodyId, radiusKm);
 	if (!radii) return null;
-	let hf: HeightField | null = null;
-	let scaleKm = 0;
-	let biasKm = 0;
-	const meta = bo?.displacementMeta;
-	if (meta && bo?.displacementMap) {
-		hf = heightFieldFor(bo, bodyId);
-		if (!hf) return null;
-		scaleKm = meta.scale_km;
-		biasKm = meta.bias_km - (meta.absolute_radius ? radiusKm : 0);
-	}
-	const latRad = Math.asin(Math.min(Math.max(dir[1], -1), 1));
-	const lonRad = Math.atan2(-dir[2], dir[0]);
-	const { corners, tx, ty } = gridCell(gridForBody(bo), latRad, lonRad);
-	const pts = corners.map((corner) => {
-		const dispKm = hf ? sampleHeightTexel(hf, corner.latRad, corner.lonRad) * scaleKm + biasKm : 0;
-		return displacedPoint(
-			corner.latRad,
-			corner.lonRad,
-			dispKm,
-			radiusKm,
-			radii.a,
-			radii.b,
-			radii.c
-		);
-	});
-	// The cell is picked from the normal parametrization — a border mispick is
-	// harmless since adjacent triangles share edges.
-	const [p0, p1, p2] = tx >= ty ? [pts[0], pts[1], pts[3]] : [pts[0], pts[2], pts[3]];
-	const e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-	const e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-	const nx = e1[1] * e2[2] - e1[2] * e2[1];
-	const ny = e1[2] * e2[0] - e1[0] * e2[2];
-	const nz = e1[0] * e2[1] - e1[1] * e2[0];
-	const denom = dir[0] * nx + dir[1] * ny + dir[2] * nz;
+	// Parametric coords of the surface point along `dir`: displacement grows
+	// points radially, so the crossing keeps the direction of (a·nx, c·ny, b·nz)
+	// — invert that, not asin(dir.y). On oblate bodies the geocentric latitude
+	// is off by up to ~flattening radians, which at a texel-perfect terrain
+	// window picks a facet many cells away and extends its plane far outside
+	// its footprint (tens of metres on rough terrain).
+	const latRad = Math.atan2(dir[1] / radii.c, Math.hypot(dir[0] / radii.a, dir[2] / radii.b));
+	const lonRad = Math.atan2(-dir[2] / radii.b, dir[0] / radii.a);
+	const cell = renderedCell(bo, bodyId, radiusKm, latRad, lonRad);
+	if (!cell) return null;
+	const { p0, n } = facetPlane(cell.pts, cell.tx, cell.ty);
+	const denom = dir[0] * n[0] + dir[1] * n[1] + dir[2] * n[2];
 	if (Math.abs(denom) < 1e-12) return null;
-	const t = (p0[0] * nx + p0[1] * ny + p0[2] * nz) / denom;
+	const t = (p0[0] * n[0] + p0[1] * n[1] + p0[2] * n[2]) / denom;
 	return t > 0 ? t : null;
 }

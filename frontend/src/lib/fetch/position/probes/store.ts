@@ -88,6 +88,13 @@ export class ProbeStore {
 	 *  `ensure()` calls don't kick off duplicate fetches. */
 	private readonly inflight = new Map<string, Promise<void>>();
 	private lastEnsuredJd: number = NaN;
+	/** Bumped per stored chunk. The renderer watches it so a paused clock still
+	 *  gets a position pass when probe data arrives after the boot pass. */
+	private _version = 0;
+
+	get version(): number {
+		return this._version;
+	}
 
 	constructor(zoneParams: Map<string, ProbeZoneParams>) {
 		this.zoneParams = zoneParams;
@@ -177,6 +184,7 @@ export class ProbeStore {
 		}
 		const chunk = await fetchProbes(zone, chunkIdx, params.float64_coeffs);
 		zoneMap.set(chunkIdx, chunk);
+		this._version++;
 	}
 
 	/**
