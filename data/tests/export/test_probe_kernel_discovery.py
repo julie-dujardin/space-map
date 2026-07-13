@@ -12,7 +12,10 @@ from pathlib import Path
 from space_map_data.download.providers.spice.probes.downloader import (
     _existing_extrap_records,
 )
-from space_map_data.export.position.probes.kernels import kernels_from_index
+from space_map_data.export.position.probes.kernels import (
+    collect_generic_kernels,
+    kernels_from_index,
+)
 
 
 def _write_index(mdir: Path, files: list[dict], targets: dict) -> None:
@@ -69,3 +72,22 @@ def test_downloader_drops_extrap_record_when_file_gone(tmp_path: Path) -> None:
     )
     # File deleted (verdict flipped PROPAGATE → SKIP) but index lagging.
     assert _existing_extrap_records(mdir) == []
+
+
+def test_landed_missions_excluded_from_generic_pool(tmp_path: Path) -> None:
+    """Landed-mission SPKs must not reach the generic pool. They're furnshed
+    last, so a recycled NAIF (MSL's -76 = old Mariner 10) would otherwise win
+    last-loaded-wins and drag the earlier probe onto the lander's body."""
+    (tmp_path / "spk").mkdir()
+    (tmp_path / "spk" / "de440.bsp").touch()
+    (tmp_path / "lsk").mkdir()
+    (tmp_path / "lsk" / "naif.tls").touch()
+    (tmp_path / "landed-missions" / "MSL").mkdir(parents=True)
+    (tmp_path / "landed-missions" / "MSL" / "msl_atls_ops.bsp").touch()
+    (tmp_path / "missions" / "M10").mkdir(parents=True)
+    (tmp_path / "missions" / "M10" / "M10_archive_1.bsp").touch()
+
+    lsk_pck, generic_spk = collect_generic_kernels(tmp_path)
+    names = {p.name for p in generic_spk}
+    assert names == {"de440.bsp"}
+    assert [p.name for p in lsk_pck] == ["naif.tls"]

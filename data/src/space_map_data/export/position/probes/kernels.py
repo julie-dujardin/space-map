@@ -157,9 +157,12 @@ def collect_generic_kernels(
         kernels like p11-a.bsp embed their own 1970s-era planetary data,
         which would otherwise contaminate the fit.
 
-    `missions/` and `probes/` subtrees are excluded (handled per-probe).
+    `missions/`, `landed-missions/`, and `probes/` subtrees are excluded
+    (handled per-probe). Landed kernels especially must NOT leak in: they're
+    furnshed last here, so a recycled NAIF (MSL's -76 = old Mariner 10) would
+    win last-loaded-wins and drag the earlier probe onto the lander's body.
     """
-    skip_dirs = {"missions", "probes"}
+    skip_dirs = {"missions", "landed-missions", "probes"}
     lsk_pck: list[Path] = []
     generic_spk: list[Path] = []
     for path in sorted(kernels_dir.rglob("*")):
