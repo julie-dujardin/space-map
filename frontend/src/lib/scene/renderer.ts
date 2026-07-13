@@ -901,9 +901,9 @@ export class SceneRenderer {
 	 *  see the right selection. */
 	setSelectedFeature(featureId: number | null): void {
 		this.selectedFeatureId = featureId;
-		const focused = this.focusController.current;
-		if (!focused) return;
-		const bo = this.bodyObjects.get(focused.data.id);
+		// The labels live on the host body when a feature/landed probe is focused.
+		const nomId = nomenclatureBodyId(this.focusController.current, this.bodyObjects);
+		const bo = nomId ? this.bodyObjects.get(nomId) : undefined;
 		if (bo) setActiveFeatureLabel(bo, featureId);
 	}
 

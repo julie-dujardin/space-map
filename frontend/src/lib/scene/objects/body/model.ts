@@ -116,26 +116,40 @@ export function modelUnitScene(bo: BodyObjects): number {
 }
 
 /**
- * Fetch and attach the spacecraft 3D model into the overlay scene at unit-radius
+ * Fetch and attach the body's 3D model into the overlay scene at unit-radius
  * scale, hiding the placeholder sphere. No-op when the body has no `model_name`.
+ * Concurrent calls share one in-flight load: callers chain settle-time work
+ * (nomenclature attach reads `bo.model` to pick sphere vs model placement), so
+ * a second call must resolve when the load finishes, not immediately.
  */
-export async function loadBodyModel(
+export function loadBodyModel(
 	bo: BodyObjects,
 	modelScene: Scene,
 	ctx?: ContextManager
 ): Promise<void> {
-	if (bo.model || bo.modelLoading) return;
+	if (bo.model) return Promise.resolve();
+	if (bo.modelLoadPromise) return bo.modelLoadPromise;
 	// Natural bodies with a shape-model bundle share the overlay path — extreme
 	// zoom corrupts in-scene meshes, so both live in the unit-radius overlay.
-	if (!isModelBearing(bo.body)) {
-		await loadNaturalBodyModel(bo, modelScene, ctx);
-		return;
-	}
+	const p = (
+		isModelBearing(bo.body)
+			? loadSpacecraftModel(bo, modelScene, ctx)
+			: loadNaturalBodyModel(bo, modelScene, ctx)
+	).finally(() => {
+		if (bo.modelLoadPromise === p) bo.modelLoadPromise = undefined;
+	});
+	bo.modelLoadPromise = p;
+	return p;
+}
+
+async function loadSpacecraftModel(
+	bo: BodyObjects,
+	modelScene: Scene,
+	ctx?: ContextManager
+): Promise<void> {
 	const epoch = bo.modelLoadEpoch ?? 0;
-	bo.modelLoading = true;
 	// Model-bearing types show the cuboid/model, never the sphere placeholder.
-	const modelBearing = isModelBearing(bo.body);
-	if (modelBearing && bo.mesh) bo.mesh.visible = false;
+	if (bo.mesh) bo.mesh.visible = false;
 	try {
 		const detail = await fetchObjectDetail(bo.body.data.id, false);
 		// Hand-edited pointing spec drives the focused model's attitude; the
@@ -150,12 +164,8 @@ export async function loadBodyModel(
 		}
 		const slug = detail.global?.model_name;
 		if (!slug) {
-			// Model-bearing → halo only (close-range note); natural bodies restore their sphere.
-			if (modelBearing) {
-				bo.noPhysical = 'model';
-			} else if (bo.mesh) {
-				bo.mesh.visible = true;
-			}
+			// No GLB → halo only, with the close-range note.
+			bo.noPhysical = 'model';
 			return;
 		}
 		// Cancelled by a focus change mid-fetch; don't stack a stale overlay.
@@ -204,12 +214,8 @@ export async function loadBodyModel(
 			});
 		}
 	} finally {
-		// Load aborted — restore the halo; only natural bodies put the sphere back.
-		if (!bo.model) {
-			if (bo.mesh && !modelBearing) bo.mesh.visible = true;
-			setHaloLoading(bo, false);
-		}
-		bo.modelLoading = false;
+		// Load aborted → back to the halo (never the sphere for these types).
+		if (!bo.model) setHaloLoading(bo, false);
 	}
 }
 
@@ -228,7 +234,6 @@ async function loadNaturalBodyModel(
 	// Debug: shape mesh off → keep the textured (triaxial) sphere, skip the mesh.
 	if (!getSettings().showShapeMesh) return;
 	const epoch = bo.modelLoadEpoch ?? 0;
-	bo.modelLoading = true;
 	try {
 		const detail = await fetchObjectDetail(bo.body.data.id, false);
 		const slug = detail.global?.model_name;
@@ -310,7 +315,6 @@ async function loadNaturalBodyModel(
 	} finally {
 		// Aborted / no model → keep the sphere visible.
 		if (!bo.model && bo.mesh) bo.mesh.visible = true;
-		bo.modelLoading = false;
 	}
 }
 
@@ -320,6 +324,9 @@ async function loadNaturalBodyModel(
  */
 export function unloadBodyModel(bo: BodyObjects): void {
 	bo.modelLoadEpoch = (bo.modelLoadEpoch ?? 0) + 1;
+	// The epoch bump aborts the in-flight load; drop its shared promise so the
+	// next loadBodyModel starts fresh instead of latching onto the aborted one.
+	bo.modelLoadPromise = undefined;
 	setHaloLoading(bo, false);
 	// Model-bearing types revert to their dot, never the sphere.
 	const restoreSphere = !isModelBearing(bo.body);

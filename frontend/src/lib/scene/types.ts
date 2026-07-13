@@ -147,7 +147,9 @@ export interface BodyObjects {
 	model: Object3D | null;
 	/** Slug of the currently loaded model bundle. */
 	modelName?: string;
-	modelLoading?: boolean;
+	/** In-flight model load, shared by concurrent loadBodyModel calls so every
+	 *  caller's settle-time work waits on the same load. */
+	modelLoadPromise?: Promise<void>;
 	/** Bumped by unload; in-flight loads re-check after each await and abort if it changed. */
 	modelLoadEpoch?: number;
 	/** Nothing physical to draw — drives the close-range note under the label.
