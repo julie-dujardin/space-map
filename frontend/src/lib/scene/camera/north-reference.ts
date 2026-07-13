@@ -8,16 +8,16 @@ import { isModelBearing } from '$lib/scene/objects/body/model';
 import { SSB_ID } from '$lib/constants';
 
 /**
- * A camera "north" reference. `id === null` is the always-available
- * solar-system option (ecliptic Y, scene frame); `id === GALACTIC_REF_ID` is
- * the Milky Way's galactic north pole. For body refs, `id` is the body id and
- * `name` is the display label resolved at choice-build time; `probe` marks a
- * spacecraft ref (model up rather than rotation axis).
+ * A camera "north" reference. `id === null` → solar-system (ecliptic Y);
+ * `id === GALACTIC_REF_ID` → galactic pole; else `id` is a body id with `name`
+ * its label. `probe` = spacecraft model-up; `feature` = surface feature (local
+ * vertical).
  */
 export interface NorthChoice {
 	id: string | null;
 	name: string | null;
 	probe?: boolean;
+	feature?: boolean;
 }
 
 /** Sentinel id for the galactic-north choice. Distinct from any NAIF/SBDB id. */
@@ -27,14 +27,9 @@ export const GALACTIC_REF_ID = 'galactic';
 export const SCENE_UP = new Vector3(0, 1, 0);
 
 /**
- * Galactic north pole direction in the Three.js scene frame.
- *
- * Defined by the IAU 1958 galactic coordinate system, refreshed to J2000:
- * α_G = 192.85948°, δ_G = 27.12825° in J2000 equatorial coordinates. The
- * conversion to the scene frame matches `equatorialToThreeJS` in
- * `$lib/math/orientation` (obliquity tilt followed by ecliptic→Three.js
- * axis swap), so the resulting vector is consistent with every body's IAU
- * pole calculation.
+ * Galactic north pole in the scene frame. IAU 1958 pole at J2000
+ * (α = 192.85948°, δ = 27.12825°), converted the same way as every body's IAU
+ * pole (`equatorialToThreeJS`) so the references stay mutually consistent.
  */
 const GALACTIC_NORTH_SCENE: Vector3 = (() => {
 	const DEG2RAD = Math.PI / 180;
@@ -61,12 +56,11 @@ export function galacticNorthVector(out?: Vector3): Vector3 {
 }
 
 /**
- * Unit vector pointing toward the body's north, in scene frame. For bodies
- * with IAU orientation data that's the pole at `jd`. For a landed probe it's
- * the local zenith (probe position away from the landing body). For a flying
- * probe it's the model's up axis through the bundle's base rotation only —
- * static, no attitude, which would tumble the camera up for spinning probes.
- * Falls back to scene Y so the renderer survives a stale id.
+ * Unit "north" for a body in the scene frame: IAU pole at `jd` when oriented;
+ * local zenith for a landed probe or focused surface feature (no orientation —
+ * `position` is the seat, `orbitCenter` the host centre); else a flying probe's
+ * static model-up (base frame only — attitude would tumble the camera on
+ * spinners). Falls back to scene Y on a stale id.
  */
 export function bodyNorthVector(
 	body: PositionedBody,
@@ -77,7 +71,7 @@ export function bodyNorthVector(
 	const target = out ?? new Vector3();
 	if (!body.orientation) {
 		if (landed && body.orbitCenter) {
-			// orbitCenter holds the landing body's position for landed probes.
+			// orbitCenter = host centre, so this resolves to the local zenith.
 			target.set(
 				body.position[0] - body.orbitCenter[0],
 				body.position[1] - body.orbitCenter[1],
@@ -94,17 +88,16 @@ export function bodyNorthVector(
 }
 
 /**
- * Walks focused → ancestors via `parentId`, collecting every body with
- * orientation data, and appends solar-system as the always-present fallback.
- * Stops at the SSB (`naif-0`). Caller hides the selector when length ≤ 1.
+ * Focused → ancestors (via `parentId`, up to the SSB), collecting every
+ * orientation-bearing body, plus solar-system as the always-present fallback.
+ * Caller hides the selector when length ≤ 1.
  *
- * A focused probe (model-bearing, no IAU frame) is offered as its own ref —
- * `bodyNorthVector` resolves it to the static model up.
+ * A focused probe is its own ref (static model-up). A focused surface feature
+ * reports its host upward (see Scene.svelte), so `focused` is the host; the
+ * feature is pulled from `ctx.bodies` and appended innermost (local vertical).
  *
- * Planetary barycenters (NAIF id `naif-1`…`naif-9`) carry no rotational
- * frame, so the SPICE convention's dominant planet (`naif-{X}99`) is
- * substituted in their place — e.g. walking up from the Moon
- * (Moon → EMB → SSB) surfaces Earth as the EMB stand-in.
+ * Barycenters (`naif-1`…`naif-9`) carry no frame, so the dominant planet
+ * (`naif-{X}99`) stands in — e.g. Moon → EMB surfaces Earth.
  */
 export function getNorthChoices(
 	focused: PositionedBody | undefined,
@@ -124,15 +117,19 @@ export function getNorthChoices(
 		}
 		const probeRef = cur === focused && !chosen.orientation && isModelBearing(cur);
 		if ((chosen.orientation || probeRef) && !choices.some((c) => c.id === chosen.data.id)) {
-			// Insert at index 1 so the result reads outermost → innermost:
-			// [Solar System, Sun, …, parent, focused].
+			// index 1 → outermost-to-innermost: [Solar System, …, parent, focused].
 			choices.splice(1, 0, { id: chosen.data.id, name: chosen.data.name, probe: probeRef });
 		}
 
 		if (cur.data.parentId === SSB_ID) break;
 		cur = ctx.getBody(cur.data.parentId);
 	}
-	// galactic north: always first
+	// Innermost: focused surface feature (local vertical).
+	const feature = ctx.bodies.focusFeature;
+	if (feature?.featureAnchor && focused && feature.featureAnchor.hostId === focused.data.id) {
+		choices.push({ id: feature.data.id, name: feature.data.name, feature: true });
+	}
+	// galactic: always first
 	choices.splice(0, 0, { id: GALACTIC_REF_ID, name: null });
 	return choices;
 }

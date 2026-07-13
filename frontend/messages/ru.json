@@ -553,6 +553,7 @@
 	"north_solar_system_desc": "Плоскость эклиптики J2000",
 	"north_body_desc": "Ось вращения тела",
 	"north_probe_desc": "Вертикальная ось космического аппарата",
+	"north_feature_desc": "Локальная вертикаль",
 	"north_galactic": "Галактический",
 	"north_galactic_desc": "Северный полюс Млечного Пути",
 	"layers_title": "Слои",

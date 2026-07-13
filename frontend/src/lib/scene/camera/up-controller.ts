@@ -45,8 +45,14 @@ export class CameraUpController {
 			galacticNorthVector(this.targetVec);
 		} else {
 			const refBody = this.refId ? this.ctx.getBody(this.refId) : undefined;
-			if (refBody) bodyNorthVector(refBody, jd, this.targetVec, this.isLanded(refBody.data.id));
-			else this.targetVec.copy(SCENE_UP);
+			if (refBody) {
+				// A surface feature has no orientation and carries the host centre in
+				// `orbitCenter` — the landed-probe path then yields the local zenith.
+				const landed = !!refBody.featureAnchor || this.isLanded(refBody.data.id);
+				bodyNorthVector(refBody, jd, this.targetVec, landed);
+			} else {
+				this.targetVec.copy(SCENE_UP);
+			}
 		}
 
 		if (this.needsDurationCalc) {

@@ -539,6 +539,7 @@
 	"north_solar_system_desc": "מישור המילקה J2000",
 	"north_body_desc": "ציר הסיבוב של הגוף",
 	"north_probe_desc": "הציר האנכי של החללית",
+	"north_feature_desc": "אנך מקומי",
 	"north_galactic": "גלקטי",
 	"north_galactic_desc": "הקוטב הצפוני של שביל החלב",
 	"layers_title": "שכבות",

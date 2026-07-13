@@ -553,6 +553,7 @@
 	"north_solar_system_desc": "Plan de l'écliptique J2000",
 	"north_body_desc": "Axe de rotation du corps",
 	"north_probe_desc": "Axe vertical de l'engin spatial",
+	"north_feature_desc": "Verticale locale",
 	"north_galactic": "Galactique",
 	"north_galactic_desc": "Pôle nord de la Voie lactée",
 	"layers_title": "Couches",

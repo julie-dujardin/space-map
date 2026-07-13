@@ -539,6 +539,7 @@
 	"north_solar_system_desc": "Piano dell'eclittica J2000",
 	"north_body_desc": "Asse di rotazione del corpo",
 	"north_probe_desc": "Asse verticale del veicolo spaziale",
+	"north_feature_desc": "Verticale locale",
 	"north_galactic": "Galattico",
 	"north_galactic_desc": "Polo nord della Via Lattea",
 	"layers_title": "Livelli",

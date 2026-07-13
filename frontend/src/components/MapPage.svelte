@@ -169,6 +169,7 @@
 
 	const northChoices = $derived.by(() => {
 		void ctx.bodies.orientationVersion; // re-run when system data lands orientation
+		void activeFeature; // re-run when a surface feature is focused/cleared
 		return getNorthChoices(cameraFocus, ctx);
 	});
 

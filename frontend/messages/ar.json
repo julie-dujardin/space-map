@@ -562,6 +562,7 @@
 	"north_solar_system_desc": "مستوى مسار الشمس J2000",
 	"north_body_desc": "محور دوران الجرم",
 	"north_probe_desc": "المحور الرأسي للمركبة الفضائية",
+	"north_feature_desc": "العمودي المحلي",
 	"north_galactic": "مجري",
 	"north_galactic_desc": "القطب الشمالي لمجرة درب التبانة",
 	"layers_title": "الطبقات",
