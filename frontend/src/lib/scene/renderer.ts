@@ -1064,7 +1064,7 @@ export class SceneRenderer {
 		const hostBo = this.bodyObjects.get(host.data.id);
 		this.selectedFeatureId = anchor.featureId;
 		if (hostBo) setActiveFeatureLabel(hostBo, anchor.featureId);
-		seatFeatureBody(fb, host, hostBo, this.clock.jd, this.focus.focusTruePos);
+		seatFeatureBody(fb, host, hostBo, this.clock.jd);
 
 		const seat = fb.position;
 		const quat = this.focusController.focusedBodyQuat(fb);

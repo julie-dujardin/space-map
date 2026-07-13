@@ -586,7 +586,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 	if (focusedBody && isSurfaceFeature(focusedBody)) {
 		const host = ctx.getBody(focusedBody.featureAnchor!.hostId);
 		if (host && positionMap.has(host.data.id)) {
-			seatFeatureBody(focusedBody, host, bodyObjects.get(host.data.id), jd, focus.focusTruePos);
+			seatFeatureBody(focusedBody, host, bodyObjects.get(host.data.id), jd);
 		} else {
 			oorState.focusedOutOfRange = true;
 		}
