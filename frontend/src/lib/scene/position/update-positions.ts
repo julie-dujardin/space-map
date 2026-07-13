@@ -414,10 +414,15 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				const last = tb.newestJd;
 				const dt = jd - last;
 				const span = tb.stepDays * tb.capacity;
-				if (isFinite(last) && (dt < 0 || dt > span) && ctx.probeStore) {
+				// A backward jump or a gap wider than one buffered period invalidates
+				// the samples. A tight orbit trips this every frame above ~day/s, so a
+				// full per-period reseed would run continuously for every probe.
+				const discontinuity = isFinite(last) && (dt < 0 || dt > span);
+				if (discontinuity && d.id === focusedId && ctx.probeStore) {
+					// Focused probe only: rebuild one accurate osculating period ending on
+					// the body so a close-up stays smooth even when a frame skips many
+					// orbits. Re-derive params — the orbit may have changed across the jump.
 					tb.clear();
-					// Same frame, but the osculating orbit may have changed across the
-					// jump (e.g. scrub from cruise to post-encounter) — re-derive.
 					const jumpElements = probeOsculatingElements(located.probe, jd, primaryMu);
 					const params = deriveProbeTrailParams(
 						jumpElements,
@@ -433,6 +438,12 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 						probeParentKey,
 						jd
 					);
+				} else if (discontinuity) {
+					// Unfocused: the orbit is sub-pixel at the speeds that trip this, so the
+					// per-period reseed is wasted work. Drop the stale samples (an orbit-wide
+					// facet would otherwise spike) and restart on the body.
+					tb.clear();
+					tb.append(jd, probeOffsetX, probeOffsetY, probeOffsetZ);
 				} else if (!isFinite(last)) {
 					tb.append(jd, probeOffsetX, probeOffsetY, probeOffsetZ);
 				} else if (isFinite(tb.epsilonScene)) {

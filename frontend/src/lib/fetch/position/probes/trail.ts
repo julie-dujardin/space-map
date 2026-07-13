@@ -194,6 +194,21 @@ export function populateProbeTrailBuffer(
 	centerJd: number
 ): void {
 	const sample = buildParentGatedSampler(probeStore, cheb, probeId, currentParentKey);
+	backfillTrailFromSampler(buf, sample, centerJd);
+}
+
+/**
+ * Back-fill `buf` by walking `sample` backwards from `centerJd`, using the same
+ * chord-error subdivision (or uniform `stepDays` when `epsilonScene` is
+ * Infinity) as {@link extendProbeTrailBuffer}. Split out from
+ * {@link populateProbeTrailBuffer} so callers with a ready sampler (and tests)
+ * can drive the exact production walk without the store lookup.
+ */
+export function backfillTrailFromSampler(
+	buf: TrailBuffer,
+	sample: Sampler,
+	centerJd: number
+): void {
 	const headPos = sample(centerJd);
 	if (!headPos) return;
 

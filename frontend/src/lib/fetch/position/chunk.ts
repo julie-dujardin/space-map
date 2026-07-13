@@ -37,7 +37,6 @@ import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { NUM_TRAIL_POINTS } from '$lib/scene/objects/trail/points';
-import { PROBE_METHOD_CHEBYSHEV } from '$lib/fetch/position/format';
 
 /** Position-only materialization (moon-host parents) doesn't need names. */
 const NO_LABELS: LabelMap = new Map();
@@ -449,13 +448,15 @@ export class ChunkLoader {
 				const freshPrimaryMu = getGmKm3s2(freshPrimaryNaif) ?? 0;
 				return probeOsculatingElements(located.probe, newJd, freshPrimaryMu);
 			};
-			// Chebyshev probes: an osculating-ellipse trail is wrong during non-Kepler
-			// phases (flyby, capture burn), so sample real past positions. Buffer spans
-			// one osculating period, falling back to the chunk window when elements are
-			// unavailable (mu=0 at first paint).
-			const hasChebyshev = probe.subChunks.some((sc) => sc.method === PROBE_METHOD_CHEBYSHEV);
+			// Every probe polylines its real past positions rather than an
+			// osculating-ellipse curve: the ellipse is wrong during non-Kepler phases
+			// (flyby, capture burn), and even for a clean Kepler orbit its 512 points
+			// span the whole loop, so a focused close-up quantises the head into a
+			// visible kink. The buffer's live head sits exactly on the body and
+			// densifies near it instead. Spans one osculating period, falling back to
+			// the chunk window when elements are unavailable (mu=0 at first paint).
 			let trailBuffer: TrailBuffer | undefined;
-			if (hasChebyshev) {
+			{
 				const { stepDays, epsilonScene, spanDays } = deriveProbeTrailParams(
 					elements,
 					endJd - startJd,
