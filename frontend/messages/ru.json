@@ -811,6 +811,21 @@
 	"model_provenance_lightcurve": "3D-модель формы по инверсии кривой блеска",
 	"attitude_source_spice_ck": "Ориентация по ядрам SPICE",
 	"attitude_source_estimated": "Ориентация оценена",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Страна",
+				"countPlural=few": "Страны",
+				"countPlural=many": "Страны",
+				"countPlural=other": "Страны"
+			}
+		}
+	],
+	"earth": "Земля",
+	"image_zoom": "Увеличение",
+	"image_error": "Не удалось загрузить изображение",
 	"feature_type_description_AA": "Углубление, появившееся на поверхности космического тела в результате падения другого тела меньшего размера",
 	"feature_type_description_AL": "Зона, которая отличается по альбедо от соседних",
 	"feature_type_description_AR": "Дугообразно изогнутая деталь рельефа астрономического тела",
@@ -1324,20 +1339,5 @@
 	"unit_symbol_tonne": "т",
 	"unit_symbol_year": "г.",
 	"unit_symbol_yottagram": "Йг",
-	"unit_symbol_zettagram": "Зг",
-	"country_count": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "Страна",
-				"countPlural=few": "Страны",
-				"countPlural=many": "Страны",
-				"countPlural=other": "Страны"
-			}
-		}
-	],
-	"earth": "Земля",
-	"image_zoom": "Увеличение",
-	"image_error": "Не удалось загрузить изображение"
+	"unit_symbol_zettagram": "Зг"
 }

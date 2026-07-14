@@ -782,6 +782,19 @@
 	"tooltip_distance_from_sun": "Distância atual ao Sol",
 	"source_jpl_satellite_discovery_name": "JPL Planetary Satellite Discovery",
 	"source_jpl_satellite_discovery_role": "datas de descoberta de luas naturais",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "País",
+				"countPlural=other": "Países"
+			}
+		}
+	],
+	"earth": "Terra",
+	"image_zoom": "Zoom",
+	"image_error": "Não foi possível carregar a imagem",
 	"feature_type_description_AA": "Depressão circular num corpo astronómico sólido formada pelo impacto de um objeto menor",
 	"feature_type_description_AL": "Área que apresenta um contraste de albedo com as áreas adjacentes",
 	"feature_type_description_AR": "Formação curva",
@@ -1106,18 +1119,5 @@
 	"unit_name_year": "ano",
 	"unit_name_yottagram": "iotagrama",
 	"unit_name_zettagram": "zetagrama",
-	"unit_symbol_astronomical_unit": "UA",
-	"country_count": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "País",
-				"countPlural=other": "Países"
-			}
-		}
-	],
-	"earth": "Terra",
-	"image_zoom": "Zoom",
-	"image_error": "Não foi possível carregar a imagem"
+	"unit_symbol_astronomical_unit": "UA"
 }

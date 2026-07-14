@@ -823,6 +823,23 @@
 	"model_provenance_lightcurve": "نموذج شكل ثلاثي الأبعاد من عكس منحنى الضوء",
 	"attitude_source_spice_ck": "التوجيه من نوى SPICE",
 	"attitude_source_estimated": "توجيه تقديري",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "دول",
+				"countPlural=one": "دولة",
+				"countPlural=two": "دولتان",
+				"countPlural=few": "دول",
+				"countPlural=many": "دول",
+				"countPlural=other": "دول"
+			}
+		}
+	],
+	"earth": "الأرض",
+	"image_zoom": "تكبير",
+	"image_error": "تعذّر تحميل الصورة",
 	"feature_type_description_AA": "انخفاض دائري في جرم فلكي صلب يتشكل نتيجة اصطدام جسم أصغر",
 	"feature_type_description_AL": "منطقة تُظهر تباينًا في البياض مع المناطق المجاورة",
 	"feature_type_description_AR": "معلم منحنٍ",
@@ -1280,22 +1297,5 @@
 	"unit_symbol_tonne": "طن",
 	"unit_symbol_year": "‎a‎",
 	"unit_symbol_yottagram": "يوغ",
-	"unit_symbol_zettagram": "زتغ",
-	"country_count": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=zero": "دول",
-				"countPlural=one": "دولة",
-				"countPlural=two": "دولتان",
-				"countPlural=few": "دول",
-				"countPlural=many": "دول",
-				"countPlural=other": "دول"
-			}
-		}
-	],
-	"earth": "الأرض",
-	"image_zoom": "تكبير",
-	"image_error": "تعذّر تحميل الصورة"
+	"unit_symbol_zettagram": "زتغ"
 }

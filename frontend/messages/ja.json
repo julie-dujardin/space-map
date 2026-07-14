@@ -783,6 +783,19 @@
 	"source_iau_wgccre_short": "IAU WGCCRE",
 	"source_jpl_satellite_discovery_name": "JPL Planetary Satellite Discovery",
 	"source_jonathan_space_report_name": "Jonathan's Space Report (GCAT)",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "国",
+				"countPlural=other": "国"
+			}
+		}
+	],
+	"earth": "地球",
+	"image_zoom": "ズーム",
+	"image_error": "画像を読み込めません",
 	"feature_type_description_AA": "小さな天体の衝突によって固体天体表面に形成された円形の窪地",
 	"feature_type_description_AL": "隣接する領域とアルベドの差を示す領域",
 	"feature_type_description_AR": "湾曲した地形",
@@ -1347,18 +1360,5 @@
 	"unit_symbol_astronomical_unit": "au",
 	"unit_symbol_kilometre": "粁",
 	"unit_symbol_magnitude": "等級",
-	"unit_symbol_metre": "米",
-	"country_count": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "国",
-				"countPlural=other": "国"
-			}
-		}
-	],
-	"earth": "地球",
-	"image_zoom": "ズーム",
-	"image_error": "画像を読み込めません"
+	"unit_symbol_metre": "米"
 }

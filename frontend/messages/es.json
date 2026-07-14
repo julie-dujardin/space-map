@@ -782,6 +782,19 @@
 	"tooltip_distance_from_sun": "Distancia actual al Sol",
 	"source_jpl_satellite_discovery_name": "JPL Planetary Satellite Discovery",
 	"source_jpl_satellite_discovery_role": "fechas de descubrimiento de lunas naturales",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "País",
+				"countPlural=other": "Países"
+			}
+		}
+	],
+	"earth": "Tierra",
+	"image_zoom": "Zoom",
+	"image_error": "No se puede cargar la imagen",
 	"feature_type_description_AA": "Depresión circular en un cuerpo astronómico sólido formada por el impacto de un objeto más pequeño",
 	"feature_type_description_AL": "Área con un albedo que contrasta de forma marcada con el de las zonas adyacentes",
 	"feature_type_description_AR": "Accidente curvo",
@@ -1115,18 +1128,5 @@
 	"unit_name_yottagram": "yottagramo",
 	"unit_name_zettagram": "zettagramo",
 	"unit_symbol_astronomical_unit": "UA",
-	"unit_symbol_magnitude": "mag",
-	"country_count": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "País",
-				"countPlural=other": "Países"
-			}
-		}
-	],
-	"earth": "Tierra",
-	"image_zoom": "Zoom",
-	"image_error": "No se puede cargar la imagen"
+	"unit_symbol_magnitude": "mag"
 }

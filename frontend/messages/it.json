@@ -782,6 +782,19 @@
 	"tooltip_distance_from_sun": "Distanza attuale dal Sole",
 	"source_jpl_satellite_discovery_name": "JPL Planetary Satellite Discovery",
 	"source_jpl_satellite_discovery_role": "date di scoperta delle lune naturali",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Paese",
+				"countPlural=other": "Paesi"
+			}
+		}
+	],
+	"earth": "Terra",
+	"image_zoom": "Zoom",
+	"image_error": "Impossibile caricare l’immagine",
 	"feature_type_description_AA": "Depressione sulla superficie di un pianeta creata dall'impatto di un corpo celeste esterno",
 	"feature_type_description_AL": "Area che mostra un contrasto di albedo con le aree adiacenti",
 	"feature_type_description_AR": "Formazione curva",
@@ -1102,18 +1115,5 @@
 	"unit_name_yottagram": "yottagrammo",
 	"unit_name_zettagram": "zettagrammo",
 	"unit_symbol_astronomical_unit": "UA",
-	"unit_symbol_magnitude": "magnitudine",
-	"country_count": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "Paese",
-				"countPlural=other": "Paesi"
-			}
-		}
-	],
-	"earth": "Terra",
-	"image_zoom": "Zoom",
-	"image_error": "Impossibile caricare l’immagine"
+	"unit_symbol_magnitude": "magnitudine"
 }

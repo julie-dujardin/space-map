@@ -784,6 +784,19 @@
 	"tooltip_distance_from_sun": "המרחק הנוכחי מהשמש",
 	"source_jpl_satellite_discovery_name": "JPL Planetary Satellite Discovery",
 	"source_jpl_satellite_discovery_role": "תאריכי גילוי ירחים טבעיים",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "מדינה",
+				"countPlural=other": "מדינות"
+			}
+		}
+	],
+	"earth": "כדור הארץ",
+	"image_zoom": "הגדלה",
+	"image_error": "לא ניתן לטעון את התמונה",
 	"feature_type_description_AA": "שקע שנוצר מפגיעת עצם גדול בפניו של עצם אחר",
 	"feature_type_description_AL": "אזור המראה ניגוד באלבדו לעומת אזורים סמוכים",
 	"feature_type_description_AR": "תצורה קשתית",
@@ -1226,18 +1239,5 @@
 	"unit_symbol_magnitude": "מגניטודה",
 	"unit_symbol_metre": "מ'",
 	"unit_symbol_millimetre": "מ\"מ",
-	"unit_symbol_square_kilometre": "קמ\"ר",
-	"country_count": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "מדינה",
-				"countPlural=other": "מדינות"
-			}
-		}
-	],
-	"earth": "כדור הארץ",
-	"image_zoom": "הגדלה",
-	"image_error": "לא ניתן לטעון את התמונה"
+	"unit_symbol_square_kilometre": "קמ\"ר"
 }

@@ -787,6 +787,19 @@
 	"source_spacetrack_name": "Space-Track.org",
 	"source_jpl_satellite_discovery_name": "JPL Planetary Satellite Discovery",
 	"source_jonathan_space_report_name": "Jonathan's Space Report (GCAT)",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Pays",
+				"countPlural=other": "Pays"
+			}
+		}
+	],
+	"earth": "Terre",
+	"image_zoom": "Zoom",
+	"image_error": "Impossible de charger l'image",
 	"feature_type_description_AA": "Cratère à la surface d'une planète résultant de la collision avec un autre objet céleste",
 	"feature_type_description_AL": "Région présentant un contraste d'albédo marqué par rapport aux régions voisines",
 	"feature_type_description_AR": "Formation topographique courbe",
@@ -1134,18 +1147,5 @@
 	"unit_name_year": "année",
 	"unit_name_yottagram": "yottagramme",
 	"unit_name_zettagram": "zettagramme",
-	"unit_symbol_astronomical_unit": "UA",
-	"country_count": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "Pays",
-				"countPlural=other": "Pays"
-			}
-		}
-	],
-	"earth": "Terre",
-	"image_zoom": "Zoom",
-	"image_error": "Impossible de charger l'image"
+	"unit_symbol_astronomical_unit": "UA"
 }

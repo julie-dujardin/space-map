@@ -784,6 +784,19 @@
 	"tooltip_distance_from_sun": "Aktualna odległość od Słońca",
 	"source_jpl_satellite_discovery_name": "JPL Planetary Satellite Discovery",
 	"source_jpl_satellite_discovery_role": "daty odkrycia naturalnych księżyców",
+	"country_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Kraj",
+				"countPlural=other": "Kraje"
+			}
+		}
+	],
+	"earth": "Ziemia",
+	"image_zoom": "Powiększenie",
+	"image_error": "Nie można załadować obrazu",
 	"feature_type_description_AA": "Zagłębienie terenu utworzone przez uderzenie ciała niebieskiego",
 	"feature_type_description_AL": "Obszar wykazujący kontrast albedo względem sąsiednich obszarów",
 	"feature_type_description_AR": "Zakrzywiona forma terenu",
@@ -1090,18 +1103,5 @@
 	"unit_name_year": "rok",
 	"unit_name_yottagram": "jottagram",
 	"unit_symbol_astronomical_unit": "au",
-	"unit_symbol_magnitude": "magnitudo",
-	"country_count": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "Kraj",
-				"countPlural=other": "Kraje"
-			}
-		}
-	],
-	"earth": "Ziemia",
-	"image_zoom": "Powiększenie",
-	"image_error": "Nie można załadować obrazu"
+	"unit_symbol_magnitude": "magnitudo"
 }
