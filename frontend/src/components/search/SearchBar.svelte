@@ -667,7 +667,7 @@
 		bind:this={wrapperEl}
 	>
 		<!-- header chrome: input · controls (count/sort/filter) · applied tokens -->
-		<div class={expanded ? 'shrink-0 border-b border-border' : ''}>
+		<div class={expanded ? `shrink-0 ${model.hasResults ? 'border-b border-border' : ''}` : ''}>
 			<div
 				class={expanded
 					? 'flex h-[46px] items-center gap-2 px-3'
