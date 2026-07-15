@@ -574,6 +574,8 @@
 	"layers_section_layers": "الطبقات",
 	"layers_clouds": "السحب",
 	"layers_clouds_desc": "طبقات الغلاف الجوي السحابية",
+	"layers_atmosphere": "الغلاف الجوي",
+	"layers_atmosphere_desc": "توهّج السماء وتشتّت الضوء عند الأفق وقت الغروب",
 	"layers_high_ambient": "إضاءة محيطة عالية",
 	"layers_high_ambient_desc": "يضيء الجانب الليلي بالتساوي",
 	"settings_title": "الإعدادات",

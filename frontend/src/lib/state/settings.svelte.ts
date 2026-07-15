@@ -29,6 +29,7 @@ interface Persisted {
 	showSkyboxAlign?: boolean;
 	showHaloDebug?: boolean;
 	showClouds?: boolean;
+	showAtmospheres?: boolean;
 	highAmbient?: boolean;
 	showShapeMesh?: boolean;
 	showSurfaceTexture?: boolean;
@@ -63,6 +64,8 @@ class SettingsState {
 	showSkyboxAlign = $state(false);
 	showHaloDebug = $state(false);
 	showClouds = $state(true);
+	/** Per-body atmospheric-scattering shells (sky glow, sunset limb). */
+	showAtmospheres = $state(true);
 	/** Flood the scene with flat ambient fill so night sides are fully lit. */
 	highAmbient = $state(false);
 	/** Debug body-layer toggles: peel back the focused body's render stack to
@@ -89,6 +92,7 @@ class SettingsState {
 		this.showSkyboxAlign = stored.showSkyboxAlign ?? false;
 		this.showHaloDebug = stored.showHaloDebug ?? false;
 		this.showClouds = stored.showClouds ?? true;
+		this.showAtmospheres = stored.showAtmospheres ?? true;
 		this.highAmbient = stored.highAmbient ?? false;
 		this.showShapeMesh = stored.showShapeMesh ?? true;
 		this.showSurfaceTexture = stored.showSurfaceTexture ?? true;
@@ -145,6 +149,11 @@ class SettingsState {
 
 	setShowClouds(v: boolean) {
 		this.showClouds = v;
+		this.persist();
+	}
+
+	setShowAtmospheres(v: boolean) {
+		this.showAtmospheres = v;
 		this.persist();
 	}
 
@@ -241,6 +250,7 @@ class SettingsState {
 				showSkyboxAlign: this.showSkyboxAlign,
 				showHaloDebug: this.showHaloDebug,
 				showClouds: this.showClouds,
+				showAtmospheres: this.showAtmospheres,
 				highAmbient: this.highAmbient,
 				showShapeMesh: this.showShapeMesh,
 				showSurfaceTexture: this.showSurfaceTexture,

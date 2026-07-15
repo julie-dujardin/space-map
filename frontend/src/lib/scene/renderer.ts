@@ -680,7 +680,7 @@ export class SceneRenderer {
 		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd);
 
 		updateRingShaders(this.bodyObjects, this.focus.focusTruePos);
-		updateAtmosphereShaders(this.bodyObjects);
+		updateAtmosphereShaders(this.bodyObjects, this.camera.position, getSettings().showAtmospheres);
 		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);
 
 		// High-ambient toggle: flat fill so night sides stay visible for inspection.

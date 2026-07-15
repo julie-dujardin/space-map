@@ -61,6 +61,16 @@
 			</label>
 			<label class="flex items-center justify-between gap-3 cursor-pointer">
 				<div class="flex flex-col min-w-0">
+					<span class="text-sm font-medium">{m.layers_atmosphere()}</span>
+					<span class="text-xs text-muted-foreground">{m.layers_atmosphere_desc()}</span>
+				</div>
+				<Switch
+					checked={settings.showAtmospheres}
+					onCheckedChange={(v) => settings.setShowAtmospheres(v)}
+				/>
+			</label>
+			<label class="flex items-center justify-between gap-3 cursor-pointer">
+				<div class="flex flex-col min-w-0">
 					<span class="text-sm font-medium">{m.layers_high_ambient()}</span>
 					<span class="text-xs text-muted-foreground">{m.layers_high_ambient_desc()}</span>
 				</div>

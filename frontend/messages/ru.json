@@ -565,6 +565,8 @@
 	"layers_section_layers": "Слои",
 	"layers_clouds": "Облака",
 	"layers_clouds_desc": "Атмосферные облачные слои",
+	"layers_atmosphere": "Атмосфера",
+	"layers_atmosphere_desc": "Свечение неба и рассеяние на лимбе на закате",
 	"layers_high_ambient": "Яркий фоновый свет",
 	"layers_high_ambient_desc": "Равномерно освещает ночную сторону",
 	"settings_title": "Настройки",

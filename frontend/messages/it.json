@@ -551,6 +551,8 @@
 	"layers_section_layers": "Livelli",
 	"layers_clouds": "Nubi",
 	"layers_clouds_desc": "Sovrapposizioni di nubi atmosferiche",
+	"layers_atmosphere": "Atmosfera",
+	"layers_atmosphere_desc": "Bagliore del cielo e diffusione al lembo al tramonto",
 	"layers_high_ambient": "Luce ambientale intensa",
 	"layers_high_ambient_desc": "Illumina uniformemente il lato notturno",
 	"settings_title": "Impostazioni",

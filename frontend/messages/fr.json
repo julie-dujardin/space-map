@@ -565,6 +565,8 @@
 	"layers_section_layers": "Couches",
 	"layers_clouds": "Nuages",
 	"layers_clouds_desc": "Couches nuageuses atmosphériques",
+	"layers_atmosphere": "Atmosphère",
+	"layers_atmosphere_desc": "Lueur du ciel et diffusion au limbe au coucher du soleil",
 	"layers_high_ambient": "Lumière ambiante élevée",
 	"layers_high_ambient_desc": "Éclaire uniformément la face nocturne",
 	"settings_title": "Paramètres",

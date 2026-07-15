@@ -584,6 +584,8 @@
 	"layers_section_layers": "Layers",
 	"layers_clouds": "Clouds",
 	"layers_clouds_desc": "Atmospheric cloud overlays",
+	"layers_atmosphere": "Atmosphere",
+	"layers_atmosphere_desc": "Sky glow and sunset-limb scattering",
 	"layers_high_ambient": "High ambient light",
 	"layers_high_ambient_desc": "Evenly lights the night side",
 	"settings_title": "Settings",

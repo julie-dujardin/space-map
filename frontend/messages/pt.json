@@ -551,6 +551,8 @@
 	"layers_section_layers": "Camadas",
 	"layers_clouds": "Nuvens",
 	"layers_clouds_desc": "Sobreposições de nuvens atmosféricas",
+	"layers_atmosphere": "Atmosfera",
+	"layers_atmosphere_desc": "Brilho do céu e dispersão no limbo ao pôr do sol",
 	"layers_high_ambient": "Luz ambiente alta",
 	"layers_high_ambient_desc": "Ilumina uniformemente o lado noturno",
 	"settings_title": "Definições",

@@ -11,6 +11,7 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getLabelVariant, setLabelName } from '../../label/factory';
 import { attachDisplacementMap, disposeDisplacementFromMaterial } from '../surface/displacement';
 import { attachSelfShadowToBody, detachSelfShadow } from '../surface/self-shadow';
+import { syncAtmosphereEllipsoid } from '../surface/atmosphere';
 import { setShapeModelMap, setSurfaceMap } from './model-texture';
 import type { BodyObjects } from '../../types';
 
@@ -127,6 +128,11 @@ export function applyRadiiToMesh(
 	bo.radiusScene = kmToScene(Math.max(a, b, c));
 	// Mesh-local x/y/z semi-axes (matches the scale order) for ellipsoid occlusion.
 	bo.semiAxesScene = [kmToScene(a), kmToScene(c), kmToScene(b)];
+	// Reshape the scattering shell to the same ellipsoid.
+	if (bo.atmosphere) {
+		const eqKm = Math.max(a, b);
+		syncAtmosphereEllipsoid(bo.atmosphere, eqKm, c, kmToScene(eqKm));
+	}
 	bo.radiiApplied = true;
 }
 

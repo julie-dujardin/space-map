@@ -545,6 +545,8 @@
 	"layers_section_layers": "图层",
 	"layers_clouds": "云层",
 	"layers_clouds_desc": "大气云层覆盖",
+	"layers_atmosphere": "大气",
+	"layers_atmosphere_desc": "天空辉光与日落边缘散射",
 	"layers_high_ambient": "高环境光",
 	"layers_high_ambient_desc": "均匀照亮夜面",
 	"settings_title": "设置",

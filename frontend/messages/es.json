@@ -551,6 +551,8 @@
 	"layers_section_layers": "Capas",
 	"layers_clouds": "Nubes",
 	"layers_clouds_desc": "Superposiciones de nubes atmosféricas",
+	"layers_atmosphere": "Atmósfera",
+	"layers_atmosphere_desc": "Resplandor del cielo y dispersión en el limbo al atardecer",
 	"layers_high_ambient": "Luz ambiental alta",
 	"layers_high_ambient_desc": "Ilumina uniformemente la cara nocturna",
 	"settings_title": "Ajustes",

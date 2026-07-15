@@ -551,6 +551,8 @@
 	"layers_section_layers": "Ebenen",
 	"layers_clouds": "Wolken",
 	"layers_clouds_desc": "Atmosphärische Wolkenüberlagerungen",
+	"layers_atmosphere": "Atmosphäre",
+	"layers_atmosphere_desc": "Himmelsleuchten und Streuung am Sonnenuntergangsrand",
 	"layers_high_ambient": "Starkes Umgebungslicht",
 	"layers_high_ambient_desc": "Beleuchtet die Nachtseite gleichmäßig",
 	"settings_title": "Einstellungen",

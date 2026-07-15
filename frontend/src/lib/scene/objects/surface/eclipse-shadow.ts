@@ -56,6 +56,81 @@ const SHARED: EclipseSceneUniforms = {
 	uOccluders: { value: Array.from({ length: MAX_OCCLUDERS }, () => new Vector4()) }
 };
 
+/**
+ * GLSL closed-form Sun-disc obscuration, shared by every receiver material and
+ * the atmosphere shell. Declares the scene-wide occluder uniforms; the caller
+ * supplies the fragment position, the receiver's own center (self-skip), and
+ * the sun direction. Mirrored on the CPU by {@link evaluateEclipseFactor};
+ * keep both in sync (eclipse-shadow.test.ts is the contract). Requires
+ * three.js `<common>` (PI).
+ *
+ * Two regimes:
+ *  (1) Comparable angular sizes (e.g. solar eclipse on Earth: aSun ≈ aMoon):
+ *      the standard two-circle intersection (lens-area) formula. Numerically
+ *      stable here because no term dominates by orders of magnitude.
+ *  (2) Occluder much larger than the Sun (e.g. ISS in LEO sees Earth at
+ *      aOc ≈ 1.2 rad against aSun ≈ 0.005 rad): the lens formula's
+ *      b²·acos((c-x)/b) and c·y terms are each O(b·aSun) but cancel to
+ *      O(aSun²), amplifying float32 noise in sep by b/aSun (the blocky LEO
+ *      shading). The occluder limb is locally straight at sun-disc scale
+ *      (relative error O((aSun/sin(aOc))²) ≈ 1e-5 when aOc > 10·aSun), so use
+ *      the chord approximation: covered fraction = Sun-disc area on one side
+ *      of a chord at signed distance (aOc − sep).
+ */
+export const ECLIPSE_FACTOR_GLSL = `
+	#define ECLIPSE_MAX_OCCLUDERS ${MAX_OCCLUDERS}
+	uniform float uSunAngularRadius;
+	uniform int uOccluderCount;
+	uniform vec4 uOccluders[ECLIPSE_MAX_OCCLUDERS];
+
+	float eclipseFactorAt(vec3 fragPos, vec3 selfPos, vec3 sunDir) {
+		if (uSunAngularRadius <= 0.0) return 1.0;
+		float aSun = uSunAngularRadius;
+		float result = 1.0;
+		for (int i = 0; i < ECLIPSE_MAX_OCCLUDERS; i++) {
+			if (i >= uOccluderCount) break;
+			vec4 oc = uOccluders[i];
+			float r = oc.w;
+			if (r <= 0.0) continue;
+			// Skip the receiver's own body. Distinct bodies don't overlap, so
+			// any occluder closer than its own radius to the receiver center
+			// IS the receiver.
+			if (length(oc.xyz - selfPos) < r * 0.5) continue;
+			vec3 toOc = oc.xyz - fragPos;
+			float dOc = length(toOc);
+			if (dOc < 1e-5) continue;
+			float aOc = asin(min(r / dOc, 1.0));
+			float sep = acos(clamp(dot(sunDir, toOc) / dOc, -1.0, 1.0));
+
+			if (aOc > 10.0 * aSun) {
+				// Regime (2): chord approximation.
+				float t = (aOc - sep) / aSun;
+				if (t >= 1.0) { result = 0.0; break; }    // sun fully behind
+				if (t <= -1.0) continue;                  // no overlap
+				float covered = (acos(-t) + t * sqrt(max(1.0 - t * t, 0.0))) / PI;
+				result *= 1.0 - covered;
+				continue;
+			}
+
+			// Regime (1): lens formula.
+			if (sep >= aSun + aOc) continue;                  // no overlap
+			if (sep + aSun <= aOc) { result = 0.0; break; }   // total
+			if (sep + aOc <= aSun) {                          // annular
+				result *= 1.0 - (aOc * aOc) / (aSun * aSun);
+				continue;
+			}
+			float a = aSun, b = aOc, c = sep;
+			float x = (c * c + a * a - b * b) / (2.0 * c);
+			float y = sqrt(max(a * a - x * x, 0.0));
+			float A = a * a * acos(clamp(x / a, -1.0, 1.0))
+				+ b * b * acos(clamp((c - x) / b, -1.0, 1.0))
+				- c * y;
+			result *= 1.0 - A / (PI * a * a);
+		}
+		return result;
+	}
+`;
+
 /** The single scene-wide eclipse uniform set. Every receiver's
  *  `onBeforeCompile` re-pins these references via `Object.assign`, so
  *  mutating the values here propagates to every body. */
@@ -70,8 +145,8 @@ export interface EclipseSelfUniforms {
 }
 
 /**
- * CPU port of the GLSL `eclipseFactor()` defined below. Reads the same
- * `SHARED` uniforms the shader does, so call after `updateEclipseUniforms`.
+ * CPU port of {@link ECLIPSE_FACTOR_GLSL}. Reads the same `SHARED` uniforms
+ * the shader does, so call after `updateEclipseUniforms`.
  *
  * Used for the spacecraft 3D-model overlay: the model lives in a parallel
  * scene with its own coordinates, so the per-fragment shader path can't run
@@ -173,81 +248,12 @@ export function attachEclipseShadowToBody(
 			.replace(
 				'#include <common>',
 				`#include <common>
-				#define ECLIPSE_MAX_OCCLUDERS ${MAX_OCCLUDERS}
 				uniform vec3 uSunDir;
-				uniform float uSunAngularRadius;
-				uniform int uOccluderCount;
-				uniform vec4 uOccluders[ECLIPSE_MAX_OCCLUDERS];
 				uniform vec3 uEclipseSelfPos;
 				varying vec3 vEclipseWorldPos;
-
-				// Closed-form Sun-disc obscuration. Two regimes.
-				// Mirrored on the CPU by evaluateEclipseFactor above;
-				// keep both in sync (eclipse-shadow.test.ts is the contract).
-				//
-				//  (1) Comparable angular sizes (e.g. solar eclipse on Earth:
-				//      aSun ≈ aMoon): use the standard two-circle intersection
-				//      (lens-area) formula. Numerically stable in this regime
-				//      because no term dominates by orders of magnitude.
-				//
-				//  (2) Occluder much larger than the Sun (e.g. ISS in LEO sees
-				//      Earth at aOc ≈ 1.2 rad against aSun ≈ 0.005 rad — ratio
-				//      ~250): the lens formula's b²·acos((c-x)/b) and c·y
-				//      terms are each O(b·aSun) but cancel to O(aSun²). Tiny
-				//      per-fragment perturbations in sep (down to ~1e-7 rad
-				//      from float32 vEclipseWorldPos quantisation) amplify
-				//      through that cancellation by b/aSun, producing the
-				//      blocky shading the LEO satellite placeholders showed.
-				//      Switch to the chord approximation — the occluder limb
-				//      is locally straight at sun-disc scale (relative error
-				//      O((aSun/sin(aOc))²) ≈ 1e-5 when aOc > 10·aSun) so the
-				//      covered fraction is just the area of the Sun disc on
-				//      one side of a chord at signed distance (aOc − sep).
+				${ECLIPSE_FACTOR_GLSL}
 				float eclipseFactor() {
-					if (uSunAngularRadius <= 0.0) return 1.0;
-					float aSun = uSunAngularRadius;
-					float result = 1.0;
-					for (int i = 0; i < ECLIPSE_MAX_OCCLUDERS; i++) {
-						if (i >= uOccluderCount) break;
-						vec4 oc = uOccluders[i];
-						float r = oc.w;
-						if (r <= 0.0) continue;
-						// Skip the receiver's own body. Distinct bodies don't
-						// overlap, so any occluder closer than its own radius
-						// to the receiver center IS the receiver.
-						if (length(oc.xyz - uEclipseSelfPos) < r * 0.5) continue;
-						vec3 toOc = oc.xyz - vEclipseWorldPos;
-						float dOc = length(toOc);
-						if (dOc < 1e-5) continue;
-						float aOc = asin(min(r / dOc, 1.0));
-						float sep = acos(clamp(dot(uSunDir, toOc) / dOc, -1.0, 1.0));
-
-						if (aOc > 10.0 * aSun) {
-							// Regime (2): chord approximation.
-							float t = (aOc - sep) / aSun;
-							if (t >= 1.0) { result = 0.0; break; }    // sun fully behind
-							if (t <= -1.0) continue;                  // no overlap
-							float covered = (acos(-t) + t * sqrt(max(1.0 - t * t, 0.0))) / PI;
-							result *= 1.0 - covered;
-							continue;
-						}
-
-						// Regime (1): lens formula.
-						if (sep >= aSun + aOc) continue;                  // no overlap
-						if (sep + aSun <= aOc) { result = 0.0; break; }   // total
-						if (sep + aOc <= aSun) {                          // annular
-							result *= 1.0 - (aOc * aOc) / (aSun * aSun);
-							continue;
-						}
-						float a = aSun, b = aOc, c = sep;
-						float x = (c * c + a * a - b * b) / (2.0 * c);
-						float y = sqrt(max(a * a - x * x, 0.0));
-						float A = a * a * acos(clamp(x / a, -1.0, 1.0))
-							+ b * b * acos(clamp((c - x) / b, -1.0, 1.0))
-							- c * y;
-						result *= 1.0 - A / (PI * a * a);
-					}
-					return result;
+					return eclipseFactorAt(vEclipseWorldPos, uEclipseSelfPos, uSunDir);
 				}
 				`
 			)

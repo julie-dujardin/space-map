@@ -551,6 +551,8 @@
 	"layers_section_layers": "שכבות",
 	"layers_clouds": "עננים",
 	"layers_clouds_desc": "שכבות-על של עננים אטמוספריים",
+	"layers_atmosphere": "אטמוספירה",
+	"layers_atmosphere_desc": "זוהר השמיים ופיזור אור בשוליים בשקיעה",
 	"layers_high_ambient": "תאורה סביבתית חזקה",
 	"layers_high_ambient_desc": "מאיר באופן אחיד את צד הלילה",
 	"settings_title": "הגדרות",

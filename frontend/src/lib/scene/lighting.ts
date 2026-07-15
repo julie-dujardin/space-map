@@ -8,7 +8,7 @@ export const AMBIENT_INTENSITY = 0.01;
  *  solar-system PointLight, the sub-system shadow DirectionalLight, and the
  *  model-overlay light — so a body reads the same brightness whether it renders
  *  as a sphere, a DEM, or a shape-model/spacecraft mesh. */
-export const SUN_LIGHT_INTENSITY = 2;
+export const SUN_LIGHT_INTENSITY = 3.5;
 
 /** Ambient level for the "high ambient" layer toggle: floods the scene with flat
  *  fill so a body's night side (and its texture/relief) is fully visible for
