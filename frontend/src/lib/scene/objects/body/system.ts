@@ -13,6 +13,7 @@ import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
+import { attachRingShadowToAtmosphere } from '../surface/atmosphere';
 import {
 	attachRingShadowToPlanet,
 	disposeRingNode,
@@ -365,6 +366,17 @@ export async function loadSystemData(
 							node.outerScene,
 							node.transparency
 						);
+						// The rings shade the scattering shell's air column too,
+						// sharing the same per-frame uniform refs.
+						if (bo.atmosphere) {
+							attachRingShadowToAtmosphere(
+								bo.atmosphere,
+								node.planetShadow,
+								node.transparency,
+								node.innerScene,
+								node.outerScene
+							);
+						}
 					}
 					// Reverse direction: configure the ring's own analytical
 					// planet-shadow with the planet's oblate-spheroid extent.

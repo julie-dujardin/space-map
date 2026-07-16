@@ -1,12 +1,20 @@
 /**
- * Per-body atmospheric-scattering shell. Additive sphere drawn just outside the
- * planet; the fragment shader ray-marches single-scattered sunlight (Rayleigh +
- * Mie + one absorber band). Coordinates run in planet-radius-normalised units to keep
- * float32 well-conditioned — Earth's 8 km scale height in scene units is mush.
+ * Per-body atmospheric-scattering shell. Sphere drawn just outside the planet;
+ * the fragment shader ray-marches single-scattered sunlight (Rayleigh + Mie +
+ * one absorber band) and composites premultiplied over the scene: in-scatter
+ * adds, and alpha = 1 − view-path transmittance attenuates what lies behind, so
+ * optically thick decks (Titan, Venus) read opaque down to the ground while
+ * thin columns only tint. Coordinates run in planet-radius-normalised units to
+ * keep float32 well-conditioned — Earth's 8 km scale height in scene units is
+ * mush.
  *
  * Recipe follows Maxime Heckel's "On rendering realistic-looking skies, sunsets,
  * and planets" (which distills Bruneton/Hillaire); brute-force per-fragment
  * march is fine because the shell only ever covers the planet's screen footprint.
+ * Aerosols scatter and absorb per RGB channel, with phase functions tabulated
+ * offline from Mie theory per body ({@link MIE_PHASE}) — that spectral
+ * asymmetry, not the Rayleigh column, is what makes Mars butterscotch, Titan
+ * orange and Venus sulfur-pale.
  *
  * Oblate bodies: the mesh stays a sphere sized to the equatorial radius (it is
  * only a coverage primitive), and the shader ray-marches in a "squashed" space
@@ -21,15 +29,36 @@
  */
 
 import {
-	AdditiveBlending,
+	CustomBlending,
+	DataTexture,
 	FrontSide,
 	type Material,
 	Mesh,
+	OneFactor,
+	OneMinusSrcAlphaFactor,
 	ShaderMaterial,
 	SphereGeometry,
+	type Texture,
 	Vector3
 } from 'three';
 import { ECLIPSE_FACTOR_GLSL, getEclipseSceneUniforms } from './eclipse-shadow';
+import { MIE_PHASE } from './mie-phase';
+import type { PlanetRingShadowUniforms } from './rings';
+
+/** Rendered terrain can dip this far below the analytic ellipsoid (Gale crater
+ *  sits at −4.5 km); the shell keeps marching (and glowing) down to it. */
+const TERRAIN_DIP_KM = 6;
+
+// Placeholder for the ring-shadow sampler while a body has no rings — the
+// shader guards on uRingShadowOuterScene, but the sampler must still be bound.
+let white: DataTexture | null = null;
+function whiteTexture(): DataTexture {
+	if (!white) {
+		white = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+		white.needsUpdate = true;
+	}
+	return white;
+}
 
 /**
  * Physical parameters of a body's atmosphere, in human-readable units (per-km
@@ -44,14 +73,18 @@ export interface AtmosphereParams {
 	rayleighScatterPerKm: [number, number, number];
 	/** Rayleigh density e-folding height, km. */
 	rayleighScaleHeightKm: number;
-	/** Mie scattering coefficient at sea level, per km (wavelength-independent). */
-	mieScatterPerKm: number;
-	/** Mie *extinction* (scattering + absorption) at sea level, per km. */
-	mieExtinctionPerKm: number;
+	/** Mie scattering coefficient at sea level, per km, for (R, G, B) — real
+	 *  aerosols (dust, tholins, H₂SO₄ droplets) are big enough to colour the
+	 *  scattered light, unlike the grey-Mie textbook shortcut. */
+	mieScatterPerKm: [number, number, number];
+	/** Mie *absorption* at sea level, per km, for (R, G, B). Extinction =
+	 *  scattering + this. */
+	mieAbsorptionPerKm: [number, number, number];
 	/** Mie density e-folding height, km. */
 	mieScaleHeightKm: number;
-	/** Mie phase asymmetry g ∈ [0, 1) — forward-scatter bias of aerosols. */
-	mieG: number;
+	/** Tabulated per-channel Mie phase for the body's aerosol ({@link MIE_PHASE}),
+	 *  3×128 floats. */
+	miePhase: readonly number[];
 	/** Absorption coefficient of the body's absorber band (ozone on Earth,
 	 *  tholins on Titan…), per km, for (R, G, B). Pure absorption, no
 	 *  scattering — it carves colour out of the transmitted light. */
@@ -66,34 +99,36 @@ export interface AtmosphereParams {
 	 *  optically thick atmospheres (Titan, Venus) that wrongly darkens the
 	 *  poles and the terminator, so thick/bright atmospheres want ≥ 1. */
 	multiScatterGain: number;
-	/** Linear gain on the in-scattered radiance. The scene renders LDR with no
-	 *  tone mapping, so this is the knob that fits the glow brightness to it. */
+	/** Linear gain on the in-scattered radiance ahead of the shader's 1−exp
+	 *  rolloff (and the composer's ACES). ~22 ≈ 1-AU solar irradiance in the
+	 *  bench calibration this port follows; per-body deviations are taste. */
 	sunIntensity: number;
 	/** Sun colour the scattering integral is multiplied by. */
 	sunColor: [number, number, number];
 }
 
 /**
- * Earth's atmosphere. Rayleigh / Mie / ozone coefficients and the ozone tent
- * are the sRGB-fitted values from Bruneton's "Precomputed Atmospheric
- * Scattering" reference model (also the defaults Sébastien Hillaire's paper
- * uses); the 100 km atmosphere top matches Hillaire's `ATMOSPHERE_TOP`.
- * `sunIntensity` is a free knob tuned against this project's LDR rendering, not
- * a physical irradiance.
+ * Earth's atmosphere. Rayleigh and the ozone tent are the sRGB-fitted values
+ * from Bruneton's "Precomputed Atmospheric Scattering" reference model; the
+ * aerosol is a near-grey continental-average column (n≈1.44, r≈0.3 µm).
+ * `sunIntensity` sits well below the physical ~22: the satellite-mosaic
+ * texture already bakes in the atmosphere seen from above, so the shell only
+ * tops up the limb/terminator — full physical in-scatter would double-count
+ * into a milky disc.
  */
 const EARTH: AtmosphereParams = {
-	topAltitudeKm: 80,
+	topAltitudeKm: 67,
 	rayleighScatterPerKm: [5.802e-3, 13.558e-3, 33.1e-3],
-	rayleighScaleHeightKm: 8,
-	mieScatterPerKm: 3.996e-3,
-	mieExtinctionPerKm: 4.4e-3,
+	rayleighScaleHeightKm: 8.4,
+	mieScatterPerKm: [4e-3, 4e-3, 4e-3],
+	mieAbsorptionPerKm: [4e-4, 4e-4, 4e-4],
 	mieScaleHeightKm: 1.2,
-	mieG: 0.8,
+	miePhase: MIE_PHASE.earth,
 	absorptionPerKm: [0.65e-3, 1.881e-3, 0.085e-3],
 	absorptionCenterKm: 25,
 	absorptionWidthKm: 15,
 	multiScatterGain: 0.3,
-	sunIntensity: 3,
+	sunIntensity: 5,
 	sunColor: [1.0, 1.0, 1.0]
 };
 
@@ -102,130 +137,181 @@ const EARTH: AtmosphereParams = {
  * atmosphere's composition, refractivity, King factor and number density at the
  * reference level (surface, cloud top, or 1-bar level — whatever the rendered
  * sphere shows), calibrated so the same formula reproduces Bruneton's Earth
- * values. Mie/haze rows are visual starting knobs, not derived: real aerosol
- * spectra are out of scope (cf. CosmoScout's Mie-theory paper). Gas giants and
- * the ice giants get a near-neutral shell — Uranus/Neptune's blue-green is CH₄
- * red absorption already baked into their cloud textures, so it isn't repeated
- * here. Titan's bluish Rayleigh shell above the orange haze texture matches its
- * real detached upper haze.
+ * values. Aerosol RGB scatter/absorption columns and the phase tables come from
+ * Mie theory over each body's literature particle population (see
+ * mie-phase.ts). Gas and ice giants get a near-neutral thin haze —
+ * Uranus/Neptune's blue-green is CH₄ red absorption already baked into their
+ * cloud textures, so it isn't repeated here. Titan's bluish Rayleigh shell
+ * above the orange haze texture matches its real detached upper haze.
+ * Atmosphere tops sit where the optical contribution dies:
+ * max(8·H_Rayleigh, 6·H_Mie).
+ *
+ * Giants' βR is the 1-bar derivation ÷3–4: their textures show the visible
+ * deck (upper hazes, ~0.1–0.5 bar), so the shell's reference sits 1–1.5 scale
+ * heights above 1 bar — at the raw values the leftover Rayleigh column
+ * white-washed the banding it's supposed to sit above.
  */
 
-/** Mars: thin CO₂ column (~2% of Earth's β_R) under a dominant dust layer. */
+/** Mars: thin CO₂ column (~2% of Earth's β_R) under a dominant dust layer.
+ *  Red-weighted dust scatter + blue absorption → butterscotch sky; the dust
+ *  phase's strong blue forward peak is what blues the glow around the Sun. */
 const MARS: AtmosphereParams = {
-	topAltitudeKm: 100,
-	rayleighScatterPerKm: [1.32e-4, 3.084e-4, 7.53e-4],
+	topAltitudeKm: 87,
+	rayleighScatterPerKm: [1.32e-4, 3.08e-4, 7.53e-4],
 	rayleighScaleHeightKm: 10.9,
-	mieScatterPerKm: 5e-3,
-	mieExtinctionPerKm: 5.5e-3,
+	mieScatterPerKm: [5.5e-3, 4.5e-3, 3e-3],
+	mieAbsorptionPerKm: [5e-4, 1.5e-3, 4e-3],
 	mieScaleHeightKm: 11,
-	mieG: 0.65,
+	miePhase: MIE_PHASE.mars,
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
 	multiScatterGain: 0.4,
-	sunIntensity: 3,
+	// Below physical like Earth: the mosaic bakes in the dust haze.
+	sunIntensity: 7,
 	sunColor: [1.0, 1.0, 1.0]
 };
 
-/** Venus above the rendered cloud deck (~1 bar): dense CO₂ + bright limb haze. */
+/** Venus above the rendered cloud deck (~1 bar): dense CO₂ Rayleigh under an
+ *  optically thick H₂SO₄ droplet haze (r≈1.05 µm) — pale-yellow disc, bright limb. */
 const VENUS: AtmosphereParams = {
-	topAltitudeKm: 70,
+	topAltitudeKm: 132,
 	rayleighScatterPerKm: [1.531e-2, 3.578e-2, 8.736e-2],
 	rayleighScaleHeightKm: 6.5,
-	mieScatterPerKm: 2e-2,
-	mieExtinctionPerKm: 2.2e-2,
-	mieScaleHeightKm: 5,
-	mieG: 0.7,
+	mieScatterPerKm: [1.35e-1, 1.28e-1, 1.02e-1],
+	mieAbsorptionPerKm: [2e-3, 3.5e-3, 1.4e-2],
+	mieScaleHeightKm: 22,
+	miePhase: MIE_PHASE.venus,
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
 	multiScatterGain: 1.5,
-	sunIntensity: 3,
+	// Kept under the rolloff shoulder so the H2SO4 cream tint survives.
+	sunIntensity: 12,
 	sunColor: [1.0, 1.0, 1.0]
 };
 
-/** Titan: cold dense N₂ column; the orange haze is the texture itself. */
+/** Titan: cold dense N₂ column under a deep blue-absorbing tholin haze →
+ *  orange; the phase table is an empirical fit for fractal aggregates, which
+ *  sphere-based Mie theory cannot represent. */
 const TITAN: AtmosphereParams = {
-	topAltitudeKm: 300,
+	topAltitudeKm: 360,
 	rayleighScatterPerKm: [3.067e-2, 7.166e-2, 1.749e-1],
 	rayleighScaleHeightKm: 21.1,
-	mieScatterPerKm: 8e-3,
-	mieExtinctionPerKm: 8.8e-3,
-	mieScaleHeightKm: 50,
-	mieG: 0.6,
+	mieScatterPerKm: [8e-2, 6.2e-2, 3.2e-2],
+	mieAbsorptionPerKm: [1e-2, 3.2e-2, 9.5e-2],
+	mieScaleHeightKm: 60,
+	miePhase: MIE_PHASE.titan,
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
 	multiScatterGain: 0.5,
-	sunIntensity: 3,
+	// High sun saturates the 1-exp rolloff and bleaches the tholin orange to cream.
+	sunIntensity: 9,
 	sunColor: [1.0, 1.0, 1.0]
 };
 
-/** Jupiter above the 1-bar cloud texture: weak H₂/He Rayleigh, soft blue limb. */
+/** Jupiter above the 1-bar cloud texture: weak H₂/He Rayleigh + thin NH₃ haze
+ *  (r≈0.55 µm), soft blue limb. */
 const JUPITER: AtmosphereParams = {
 	topAltitudeKm: 200,
-	rayleighScatterPerKm: [1.955e-3, 4.569e-3, 1.116e-2],
+	rayleighScatterPerKm: [0.65e-3, 1.52e-3, 3.72e-3],
 	rayleighScaleHeightKm: 25.0,
-	mieScatterPerKm: 1e-3,
-	mieExtinctionPerKm: 1.1e-3,
+	mieScatterPerKm: [1e-3, 1e-3, 1e-3],
+	mieAbsorptionPerKm: [1e-4, 1e-4, 1e-4],
 	mieScaleHeightKm: 25,
-	mieG: 0.6,
+	miePhase: MIE_PHASE.jupiter,
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
 	multiScatterGain: 0.3,
-	sunIntensity: 3,
+	sunIntensity: 6,
 	sunColor: [1.0, 1.0, 1.0]
 };
 
 /** Saturn above the 1-bar cloud texture: like Jupiter, taller scale height. */
 const SATURN: AtmosphereParams = {
-	topAltitudeKm: 400,
-	rayleighScatterPerKm: [2.646e-3, 6.184e-3, 1.51e-2],
+	topAltitudeKm: 413,
+	rayleighScatterPerKm: [0.66e-3, 1.55e-3, 3.78e-3],
 	rayleighScaleHeightKm: 51.6,
-	mieScatterPerKm: 1e-3,
-	mieExtinctionPerKm: 1.1e-3,
+	mieScatterPerKm: [1e-3, 1e-3, 1e-3],
+	mieAbsorptionPerKm: [1e-4, 1e-4, 1e-4],
 	mieScaleHeightKm: 50,
-	mieG: 0.6,
+	miePhase: MIE_PHASE.saturn,
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
 	multiScatterGain: 0.3,
-	sunIntensity: 3,
+	sunIntensity: 6,
 	sunColor: [1.0, 1.0, 1.0]
 };
 
-/** Uranus above the 1-bar level: near-neutral H₂/He shell. */
+/** Uranus above the 1-bar level: near-neutral H₂/He shell + thin haze. */
 const URANUS: AtmosphereParams = {
-	topAltitudeKm: 220,
-	rayleighScatterPerKm: [4.32e-3, 1.009e-2, 2.464e-2],
+	topAltitudeKm: 224,
+	rayleighScatterPerKm: [1.44e-3, 3.36e-3, 8.21e-3],
 	rayleighScaleHeightKm: 28.0,
-	mieScatterPerKm: 5e-4,
-	mieExtinctionPerKm: 5.5e-4,
+	mieScatterPerKm: [5e-4, 5e-4, 5e-4],
+	mieAbsorptionPerKm: [5e-5, 5e-5, 5e-5],
 	mieScaleHeightKm: 28,
-	mieG: 0.5,
+	miePhase: MIE_PHASE.uranus,
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
 	multiScatterGain: 0.4,
-	sunIntensity: 3,
+	sunIntensity: 6,
 	sunColor: [1.0, 1.0, 1.0]
 };
 
-/** Neptune above the 1-bar level: near-neutral H₂/He shell. */
+/** Neptune above the 1-bar level: near-neutral H₂/He shell + thin haze. */
 const NEPTUNE: AtmosphereParams = {
 	topAltitudeKm: 170,
-	rayleighScatterPerKm: [4.062e-3, 9.492e-3, 2.317e-2],
+	rayleighScatterPerKm: [1.35e-3, 3.16e-3, 7.72e-3],
 	rayleighScaleHeightKm: 21.2,
-	mieScatterPerKm: 5e-4,
-	mieExtinctionPerKm: 5.5e-4,
-	mieScaleHeightKm: 21,
-	mieG: 0.5,
+	mieScatterPerKm: [5e-4, 5e-4, 5e-4],
+	mieAbsorptionPerKm: [5e-5, 5e-5, 5e-5],
+	mieScaleHeightKm: 21.2,
+	miePhase: MIE_PHASE.neptune,
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
 	multiScatterGain: 0.4,
-	sunIntensity: 3,
+	sunIntensity: 6,
+	sunColor: [1.0, 1.0, 1.0]
+};
+
+/** Triton: faint N₂ Rayleigh + blue tholin haze — a wisp at the backlit limb. */
+const TRITON: AtmosphereParams = {
+	topAltitudeKm: 144,
+	rayleighScatterPerKm: [6.24e-7, 1.46e-6, 3.56e-6],
+	rayleighScaleHeightKm: 18,
+	mieScatterPerKm: [5e-4, 9e-4, 1.6e-3],
+	mieAbsorptionPerKm: [2e-4, 2e-4, 2e-4],
+	mieScaleHeightKm: 20,
+	miePhase: MIE_PHASE.triton,
+	absorptionPerKm: [0, 0, 0],
+	absorptionCenterKm: 0,
+	absorptionWidthKm: 1,
+	multiScatterGain: 0.4,
+	sunIntensity: 22,
+	sunColor: [1.0, 1.0, 1.0]
+};
+
+/** Pluto: thin N₂ column + blue tholin haze, hugely extended (~34% of the
+ *  radius); like Triton it only really shows backlit. */
+const PLUTO: AtmosphereParams = {
+	topAltitudeKm: 400,
+	rayleighScatterPerKm: [4.16e-7, 9.72e-7, 2.37e-6],
+	rayleighScaleHeightKm: 50,
+	mieScatterPerKm: [1e-3, 1.7e-3, 3e-3],
+	mieAbsorptionPerKm: [3e-4, 3e-4, 3e-4],
+	mieScaleHeightKm: 50,
+	miePhase: MIE_PHASE.pluto,
+	absorptionPerKm: [0, 0, 0],
+	absorptionCenterKm: 0,
+	absorptionWidthKm: 1,
+	multiScatterGain: 0.4,
+	sunIntensity: 22,
 	sunColor: [1.0, 1.0, 1.0]
 };
 
@@ -241,7 +327,9 @@ export const ATMOSPHERE_PARAMS: Record<string, AtmosphereParams> = {
 	'naif-606': TITAN,
 	'naif-699': SATURN,
 	'naif-799': URANUS,
-	'naif-899': NEPTUNE
+	'naif-801': TRITON,
+	'naif-899': NEPTUNE,
+	'naif-999': PLUTO
 };
 
 /** Scene-side handle for a body's atmosphere shell. */
@@ -283,34 +371,44 @@ const FRAGMENT_SHADER = `
 	uniform float uStretch;          // equatorial radius / polar radius, >= 1
 	uniform float uPlanetRadiusScene; // equatorial, scene units
 	uniform float uAtmosphereRatio;  // (planet radius + atmosphere top) / planet radius
+	uniform float uSurfaceBlockR;    // march floor, ~6 km below the datum, in planet radii
 	uniform vec3 uRayleighScatter;   // β_R, per planet radius, (R,G,B)
 	uniform float uRayleighScaleHeight;
-	uniform float uMieScatter;       // β_M scattering, per planet radius
-	uniform float uMieExtinction;    // β_M extinction, per planet radius
+	uniform vec3 uMieScatter;        // β_M scattering, per planet radius, (R,G,B)
+	uniform vec3 uMieExtinction;     // β_M extinction, per planet radius, (R,G,B)
 	uniform float uMieScaleHeight;
-	uniform float uMieG;
+	uniform float uMiePhase[384];    // tabulated Mie phase, 3x128 (R,G,B)
 	uniform vec3 uAbsorption;        // absorber band β, per planet radius, (R,G,B)
 	uniform float uAbsorptionCenter;
 	uniform float uAbsorptionWidth;
 	uniform float uMultiScatter;
 	uniform float uSunIntensity;
 	uniform vec3 uSunColor;
+	// Ring shadow on the air column — same analytic ray-plane march as
+	// attachRingShadowToPlanet, shared value-refs once rings load.
+	uniform sampler2D uRingShadowTransparency;
+	uniform float uRingShadowInnerScene;
+	uniform float uRingShadowOuterScene; // 0 = no rings
+	uniform vec3 uRingShadowSunDir;
+	uniform vec3 uRingShadowPoleDir;
+	uniform vec3 uRingShadowCenter;
 
 	varying vec3 vWorldPos;
 	varying vec3 vPlanetCenter;
 
 	${ECLIPSE_FACTOR_GLSL}
 
-	#define PRIMARY_STEPS 16
+	#define PRIMARY_STEPS 32
 	#define LIGHT_STEPS 8
 	#define ISO_PHASE 0.0795775   // 1 / 4π — isotropic phase for the ambient term
 	#define MS_DIFFUSION 0.3      // slant-τ weight in the diffusive ambient falloff
 
 	// Rendered terrain (DEM craters, below-datum landing sites) dips under the
-	// analytic ellipsoid; ray blocking uses a slightly smaller sphere so the
-	// shell's horizon never floats above the drawn ground. Density still
-	// references the true surface (altitude 0 at radius 1).
-	#define SURFACE_BLOCK_R 0.996
+	// analytic ellipsoid; the march floor sits ~6 km below the datum (set per
+	// body, see setRadiusUniforms) so air keeps glowing in front of that
+	// terrain instead of leaving a dark band under the horizon. Density below
+	// the datum clamps to the surface value, so the overshoot on rays that hit
+	// normal ground stays a bounded sliver.
 
 	// Squashed space: stretch the spin-axis component so the oblate ellipsoid
 	// becomes a sphere of equatorial radius. Linear, so rays stay straight;
@@ -322,6 +420,20 @@ const FRAGMENT_SHADER = `
 	// Inverse of squash — squashed offsets back to world offsets.
 	vec3 unsquash(vec3 v) {
 		return v + (1.0 / uStretch - 1.0) * dot(v, uSpinAxis) * uSpinAxis;
+	}
+
+	// One channel of the tabulated aerosol phase function. Tables are sampled
+	// at theta = pi*(i/127)^2, so the lookup warps back with a square root —
+	// most of the 128 samples sit on the sharp forward peak.
+	float miePhaseAt(float theta, int off) {
+		float w = sqrt(theta / PI) * 127.0;
+		int i0 = clamp(int(floor(w)), 0, 126);
+		return mix(uMiePhase[off + i0], uMiePhase[off + i0 + 1], w - float(i0));
+	}
+
+	vec3 miePhase(float mu) {
+		float theta = acos(clamp(mu, -1.0, 1.0));
+		return vec3(miePhaseAt(theta, 0), miePhaseAt(theta, 128), miePhaseAt(theta, 256));
 	}
 
 	// Ray (origin ro, unit dir rd) vs sphere centred at the origin, radius r.
@@ -339,18 +451,37 @@ const FRAGMENT_SHADER = `
 
 	// Local (Rayleigh, Mie, absorber) densities at altitude h, in planet radii
 	// above the surface. The absorber is a linear tent peaking at uAbsorptionCenter.
-	// Below-surface altitudes are clamped so grazing sun rays integrate a huge
-	// but finite optical depth — light through the deep atmosphere fades and
-	// reddens smoothly instead of cutting off at a binary horizon test.
+	// Below-datum altitudes clamp to surface density: rays grazing under the
+	// datum (real below-datum terrain, sun paths past the terminator) keep
+	// integrating smoothly growing optical depth — path length, not a density
+	// blow-up, provides the soft horizon/twilight falloff.
 	vec3 densities(float h) {
-		float hc = max(h, -0.02);
-		// min() keeps the sub-surface exponentials finite in float32 (tiny
-		// scale heights would overflow); 1e20 still collapses transmittance.
+		float hc = max(h, 0.0);
 		return vec3(
-			min(exp(-hc / uRayleighScaleHeight), 1e20),
-			min(exp(-hc / uMieScaleHeight), 1e20),
+			exp(-hc / uRayleighScaleHeight),
+			exp(-hc / uMieScaleHeight),
 			max(0.0, 1.0 - abs(hc - uAbsorptionCenter) / uAbsorptionWidth)
 		);
+	}
+
+	// Ring transmittance toward the sun from a world-space point: intersect the
+	// ring plane, sample the transparency profile, Beer–Lambert with slant
+	// correction. Mirrors attachRingShadowToPlanet so the shadow the rings cast
+	// on the surface continues up through the air above it.
+	float ringShadowAt(vec3 worldPos) {
+		if (uRingShadowOuterScene <= 0.0) return 1.0;
+		float denom = dot(uRingShadowSunDir, uRingShadowPoleDir);
+		if (abs(denom) < 1e-6) return 1.0;
+		vec3 rel = worldPos - uRingShadowCenter;
+		float t = -dot(rel, uRingShadowPoleDir) / denom;
+		if (t < 0.0) return 1.0;
+		vec3 hit = rel + t * uRingShadowSunDir;
+		vec3 hitPerp = hit - dot(hit, uRingShadowPoleDir) * uRingShadowPoleDir;
+		float r = length(hitPerp);
+		if (r < uRingShadowInnerScene || r > uRingShadowOuterScene) return 1.0;
+		float u = (r - uRingShadowInnerScene) / (uRingShadowOuterScene - uRingShadowInnerScene);
+		float trans = texture2D(uRingShadowTransparency, vec2(clamp(u, 0.0, 1.0), 0.5)).r;
+		return pow(max(trans, 1e-4), 1.0 / max(abs(denom), 0.02));
 	}
 
 	// Optical depth (Rayleigh, Mie, absorber), in planet-radius units, from p
@@ -362,7 +493,7 @@ const FRAGMENT_SHADER = `
 	vec3 sunOpticalDepth(vec3 p, vec3 sd, float sunLen) {
 		// Block only on a real forward hit (a miss returns +1e9/-1e9, so also
 		// require .y > 0) — sun more than ~10° below the horizon ends twilight.
-		vec2 block = raySphere(p, sd, SURFACE_BLOCK_R - 0.015);
+		vec2 block = raySphere(p, sd, uSurfaceBlockR - 0.015);
 		if (block.x > 0.0 && block.y > 0.0) return vec3(1e6);
 		float far = raySphere(p, sd, uAtmosphereRatio).y;
 		float dt = far / float(LIGHT_STEPS);
@@ -387,7 +518,7 @@ const FRAGMENT_SHADER = `
 		vec2 atmoHit = raySphere(ro, rd, uAtmosphereRatio);
 		if (atmoHit.y < 0.0) discard;             // atmosphere entirely behind us
 
-		vec2 planetHit = raySphere(ro, rd, SURFACE_BLOCK_R);
+		vec2 planetHit = raySphere(ro, rd, uSurfaceBlockR);
 		float tStart = max(atmoHit.x, 0.0);       // covers the camera-inside case too
 		float tEnd = atmoHit.y;
 		if (planetHit.x > tStart && planetHit.x < tEnd) tEnd = planetHit.x; // march stops at the surface
@@ -395,10 +526,7 @@ const FRAGMENT_SHADER = `
 
 		float mu = dot(rdWorld, uSunDir);         // phase angle is physical — world space
 		float phaseR = (3.0 / (16.0 * PI)) * (1.0 + mu * mu);
-		float g = uMieG;
-		float phaseM = (3.0 / (8.0 * PI))
-			* ((1.0 - g * g) * (1.0 + mu * mu))
-			/ ((2.0 + g * g) * pow(max(1.0 + g * g - 2.0 * g * mu, 1e-4), 1.5));
+		vec3 phaseM = miePhase(mu);
 
 		vec3 sunSq = squash(uSunDir);
 		float sunLen = length(sunSq);
@@ -406,7 +534,8 @@ const FRAGMENT_SHADER = `
 
 		float dt = (tEnd - tStart) / float(PRIMARY_STEPS);
 		float dtWorld = dt / dLen;                // squashed step → world path length
-		vec3 viewOD = vec3(0.0);                  // optical depth, camera → current sample
+		vec3 viewT = vec3(1.0);                   // running transmittance, camera → sample
+		vec3 viewOD = vec3(0.0);                  // total marched optical depth (for alpha)
 		vec3 accumR = vec3(0.0);                  // Σ transmittance · ρ_R · dt, per channel
 		vec3 accumM = vec3(0.0);
 		vec3 accumMS = vec3(0.0);                 // isotropic multiple-scatter ambient
@@ -417,24 +546,30 @@ const FRAGMENT_SHADER = `
 			vec3 dStep = dens * dtWorld;
 			viewOD += dStep;
 
-			vec3 viewT = exp(-(
-				uRayleighScatter * viewOD.x +
-				uMieExtinction * viewOD.y +
-				uAbsorption * viewOD.z
-			));
+			// Energy-conserving step: (1 − e^−τ)/τ is the step's average
+			// transmittance, so one optically thick step still emits its
+			// saturated share instead of self-extinguishing to black — dense
+			// limbs (Venus) stay lit however coarse the sampling.
+			vec3 tauStep = uRayleighScatter * dStep.x +
+				uMieExtinction * dStep.y +
+				uAbsorption * dStep.z;
+			vec3 stepT = exp(-tauStep);
+			vec3 wStep = (vec3(1.0) - stepT) / max(tauStep, vec3(1e-5));
+
 			vec3 sunOD = sunOpticalDepth(p, sd, sunLen);
 			vec3 sunT = exp(-(
 				uRayleighScatter * sunOD.x +
 				uMieExtinction * sunOD.y +
 				uAbsorption * sunOD.z
 			));
-			// Sun-disc occlusion by other bodies (e.g. the Moon during a solar
-			// eclipse) dims the light reaching this sample — the shadow cone
-			// sweeps through the atmosphere just like across the surface.
+			// Sun-disc occlusion by other bodies (a moon during a solar
+			// eclipse) and by the ring system both dim the light reaching this
+			// sample — the shadows sweep through the atmosphere just like
+			// across the surface.
 			vec3 pWorld = vPlanetCenter + unsquash(p) * uPlanetRadiusScene;
-			float eclipse = eclipseFactorAt(pWorld, vPlanetCenter, uSunDir);
+			float sunVis = eclipseFactorAt(pWorld, vPlanetCenter, uSunDir) * ringShadowAt(pWorld);
 
-			vec3 direct = viewT * sunT * eclipse;
+			vec3 direct = viewT * wStep * sunT * sunVis;
 			accumR += direct * dStep.x;
 			accumM += direct * dStep.y;
 
@@ -449,9 +584,11 @@ const FRAGMENT_SHADER = `
 				(1.0 + MS_DIFFUSION * (uRayleighScatter * sunOD.x + uMieScatter * sunOD.y));
 			vec3 odVert = uRayleighScatter * (uRayleighScaleHeight * dens.x) +
 				uMieExtinction * (uMieScaleHeight * dens.y);
-			accumMS += viewT * exp(-odVert) * msSunT *
+			accumMS += viewT * wStep * exp(-odVert) * msSunT *
 				(uRayleighScatter * dStep.x + uMieScatter * dStep.y) *
-				(uMultiScatter * eclipse);
+				(uMultiScatter * sunVis);
+
+			viewT *= stepT;
 		}
 
 		vec3 color = uSunIntensity * uSunColor * (
@@ -460,12 +597,35 @@ const FRAGMENT_SHADER = `
 			accumMS * ISO_PHASE
 		);
 
+		// Soft HDR rolloff: keeps thick-deck in-scatter below the bloom
+		// threshold and inside ACES's comfortable range while staying ≈ linear
+		// for faint glows.
+		color = 1.0 - exp(-max(color, 0.0));
+
+		// What the ray marched through also occludes what lies behind it —
+		// surface texture for disk rays, stars/bodies past the limb. Scalar
+		// alpha (luminance-weighted) approximates the per-channel transmittance.
+		vec3 occT = exp(-(
+			uRayleighScatter * viewOD.x +
+			uMieExtinction * viewOD.y +
+			uAbsorption * viewOD.z
+		));
+		float alpha = 1.0 - dot(occT, vec3(0.2126, 0.7152, 0.0722));
+
 		// Fade out as the planet shrinks below ~half a pixel — beyond that the
 		// limb-width ray-sphere math is just float32 noise, and the glow is
 		// invisible anyway. length(roWorld) is the camera distance in planet radii.
-		color *= 1.0 - smoothstep(2000.0, 6000.0, length(roWorld));
+		float fade = 1.0 - smoothstep(2000.0, 6000.0, length(roWorld));
+		color *= fade;
+		alpha *= fade;
 
-		gl_FragColor = vec4(max(color, 0.0), 1.0);
+		// Contributes nothing → keep the depth buffer untouched too (the
+		// material writes depth from outside so point clouds/trails composite
+		// by depth); without this, invisible outer-annulus fragments would
+		// still cull dots behind them.
+		if (max(alpha, max(color.r, max(color.g, color.b))) < 0.004) discard;
+
+		gl_FragColor = vec4(color, alpha);
 		#include <logdepthbuf_fragment>
 	}
 `;
@@ -483,14 +643,21 @@ function setRadiusUniforms(
 ): void {
 	const toNorm = (perKm: number) => perKm * planetRadiusKm;
 	const r = params.rayleighScatterPerKm;
+	const ms = params.mieScatterPerKm;
+	const ma = params.mieAbsorptionPerKm;
 	const ab = params.absorptionPerKm;
 	const u = material.uniforms;
 	u.uPlanetRadiusScene.value = planetRadiusScene;
 	u.uAtmosphereRatio.value = 1 + params.topAltitudeKm / planetRadiusKm;
+	u.uSurfaceBlockR.value = 1 - TERRAIN_DIP_KM / planetRadiusKm;
 	(u.uRayleighScatter.value as Vector3).set(toNorm(r[0]), toNorm(r[1]), toNorm(r[2]));
 	u.uRayleighScaleHeight.value = params.rayleighScaleHeightKm / planetRadiusKm;
-	u.uMieScatter.value = toNorm(params.mieScatterPerKm);
-	u.uMieExtinction.value = toNorm(params.mieExtinctionPerKm);
+	(u.uMieScatter.value as Vector3).set(toNorm(ms[0]), toNorm(ms[1]), toNorm(ms[2]));
+	(u.uMieExtinction.value as Vector3).set(
+		toNorm(ms[0] + ma[0]),
+		toNorm(ms[1] + ma[1]),
+		toNorm(ms[2] + ma[2])
+	);
 	u.uMieScaleHeight.value = params.mieScaleHeightKm / planetRadiusKm;
 	(u.uAbsorption.value as Vector3).set(toNorm(ab[0]), toNorm(ab[1]), toNorm(ab[2]));
 	u.uAbsorptionCenter.value = params.absorptionCenterKm / planetRadiusKm;
@@ -527,12 +694,20 @@ export function buildAtmosphereNode(
 			uStretch: { value: 1 },
 			uPlanetRadiusScene: { value: 0 },
 			uAtmosphereRatio: { value: 0 },
+			uSurfaceBlockR: { value: 1 },
+			// Inert until attachRingShadowToAtmosphere swaps in the live refs.
+			uRingShadowTransparency: { value: whiteTexture() },
+			uRingShadowInnerScene: { value: 0 },
+			uRingShadowOuterScene: { value: 0 },
+			uRingShadowSunDir: { value: new Vector3(1, 0, 0) },
+			uRingShadowPoleDir: { value: new Vector3(0, 1, 0) },
+			uRingShadowCenter: { value: new Vector3() },
 			uRayleighScatter: { value: new Vector3() },
 			uRayleighScaleHeight: { value: 0 },
-			uMieScatter: { value: 0 },
-			uMieExtinction: { value: 0 },
+			uMieScatter: { value: new Vector3() },
+			uMieExtinction: { value: new Vector3() },
 			uMieScaleHeight: { value: 0 },
-			uMieG: { value: params.mieG },
+			uMiePhase: { value: Float32Array.from(params.miePhase) },
 			uAbsorption: { value: new Vector3() },
 			uAbsorptionCenter: { value: 0 },
 			uAbsorptionWidth: { value: 0 },
@@ -543,8 +718,18 @@ export function buildAtmosphereNode(
 		vertexShader: VERTEX_SHADER,
 		fragmentShader: FRAGMENT_SHADER,
 		transparent: true,
-		depthWrite: false,
-		blending: AdditiveBlending,
+		// From outside, the shell writes depth so later transparents (point-
+		// cloud dots, trails at renderOrder 3) depth-sort against it: dots
+		// behind the limb glow hide, dots in front draw over. Nothing orbits
+		// inside the thin shell, so the single depth is a faithful proxy.
+		// updateAtmosphereShaders clears it when the camera is inside — the
+		// far hemisphere must not cull the night sky's dots.
+		depthWrite: true,
+		// Premultiplied compositing: src + dst·(1−α). In-scatter radiance is
+		// already transmittance-weighted, so it must not be multiplied by α again.
+		blending: CustomBlending,
+		blendSrc: OneFactor,
+		blendDst: OneMinusSrcAlphaFactor,
 		side: FrontSide
 	});
 	setRadiusUniforms(material, params, planetRadiusScene, planetRadiusKm);
@@ -576,6 +761,28 @@ export function syncAtmosphereEllipsoid(
 	node.material.uniforms.uStretch.value = equatorialKm / polarKm;
 	const shellScene = equatorialScene * (1 + node.params.topAltitudeKm / equatorialKm);
 	node.mesh.scale.setScalar(shellScene / node.geometryRadiusScene);
+}
+
+/**
+ * Point the shell's ring-shadow uniforms at the ring system once it loads.
+ * The Vector3 slots are the *same objects* `updateRingShaders` mutates for the
+ * planet-surface shadow each frame, so the air column and the ground stay in
+ * lockstep for free.
+ */
+export function attachRingShadowToAtmosphere(
+	node: AtmosphereNode,
+	ringShadow: PlanetRingShadowUniforms,
+	transparency: Texture,
+	innerScene: number,
+	outerScene: number
+): void {
+	const u = node.material.uniforms;
+	u.uRingShadowTransparency.value = transparency;
+	u.uRingShadowInnerScene.value = innerScene;
+	u.uRingShadowOuterScene.value = outerScene;
+	u.uRingShadowSunDir = ringShadow.uRingShadowSunDir;
+	u.uRingShadowPoleDir = ringShadow.uRingShadowPoleDir;
+	u.uRingShadowCenter = ringShadow.uRingShadowCenter;
 }
 
 /** Dispose the GPU resources owned by an atmosphere node. */

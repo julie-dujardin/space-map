@@ -11,10 +11,12 @@ import type { PositionedBody } from '$lib/types/objects';
 
 const F32_MAX = 3.4028235e38;
 
-// Render after the planet's transparent overlays (clouds=1, atmosphere=2). All
-// three are transparent + depthWrite=false; without an explicit order, points
-// (renderOrder 0) get painted over by the cloud sphere's dark-side fragments —
-// satellites geometrically in front of Earth visibly dim under the cloud layer.
+// Render after the planet's transparent overlays (clouds=1, atmosphere=2):
+// clouds write no depth, so points drawn earlier would get painted over by the
+// cloud sphere's dark-side fragments — satellites geometrically in front of
+// Earth visibly dim under the cloud layer. The atmosphere shell DOES write
+// depth when seen from outside, which is what sorts dots behind the limb glow
+// under it while dots in front stay on top.
 const POINT_CLOUD_RENDER_ORDER = 3;
 
 // Point-cloud dots read directly as the body's halo colour under ACES; scale

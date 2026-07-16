@@ -36,5 +36,12 @@ export function updateAtmosphereShaders(
 		const shellRadius = bo.atmosphere.geometryRadiusScene * atmoMesh.scale.x;
 		const inside = cameraPosition.distanceToSquared(atmoMesh.position) < shellRadius * shellRadius;
 		bo.atmosphere.material.side = inside ? BackSide : FrontSide;
+		// From inside, the visible shell fragment is the far hemisphere — writing
+		// its depth would cull the point clouds/trails beyond the night sky, and
+		// depth-testing it against the nearer terrain would reject the very
+		// fragments that carry the camera→ground aerial perspective. The march
+		// stops at the analytic surface, so drawing over terrain is ≈ right.
+		bo.atmosphere.material.depthWrite = !inside;
+		bo.atmosphere.material.depthTest = !inside;
 	}
 }
