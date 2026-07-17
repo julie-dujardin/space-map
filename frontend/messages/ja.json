@@ -572,6 +572,8 @@
 	"layers_atmosphere_desc": "空の輝きと夕焼けのリム散乱",
 	"layers_high_ambient": "強い環境光",
 	"layers_high_ambient_desc": "夜側を均一に照らす",
+	"layers_realistic_lighting": "リアルな照明",
+	"layers_realistic_lighting_desc": "太陽から離れるほど太陽光が弱くなる",
 	"settings_title": "設定",
 	"settings_stored_locally": "このデバイスにローカル保存",
 	"settings_section_display": "表示",

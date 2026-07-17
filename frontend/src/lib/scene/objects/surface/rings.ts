@@ -211,6 +211,9 @@ const FRAGMENT_SHADER = `
 	uniform vec3 uPlanetPoleDir;
 	uniform float uPlanetEquatorialScene;
 	uniform float uPlanetPolarScene;
+	// Solar irradiance factor for the realistic-lighting toggle; 1 otherwise.
+	// The BJJ profiles are pre-lit albedo, so scene lights never touch rings.
+	uniform float uLightScale;
 
 	varying vec3 vLocalPos;
 	varying vec3 vWorldPos;
@@ -318,7 +321,7 @@ const FRAGMENT_SHADER = `
 		// (sunlight filters through the rings only where the sun is unblocked).
 		float shadow = planetShadow();
 
-		gl_FragColor = vec4(finalAlbedo * shadow, alpha);
+		gl_FragColor = vec4(finalAlbedo * shadow * uLightScale, alpha);
 		#include <logdepthbuf_fragment>
 	}
 `;
@@ -493,7 +496,8 @@ export async function loadRingNode(
 			uPlanetCenter: { value: new Vector3() },
 			uPlanetPoleDir: { value: new Vector3(0, 1, 0) },
 			uPlanetEquatorialScene: { value: 0 },
-			uPlanetPolarScene: { value: 0 }
+			uPlanetPolarScene: { value: 0 },
+			uLightScale: { value: 1 }
 		},
 		vertexShader: VERTEX_SHADER,
 		fragmentShader: FRAGMENT_SHADER,

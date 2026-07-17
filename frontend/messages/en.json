@@ -588,6 +588,8 @@
 	"layers_atmosphere_desc": "Sky glow and sunset-limb scattering",
 	"layers_high_ambient": "High ambient light",
 	"layers_high_ambient_desc": "Evenly lights the night side",
+	"layers_realistic_lighting": "Realistic lighting",
+	"layers_realistic_lighting_desc": "Sunlight fades with distance from the Sun",
 	"settings_title": "Settings",
 	"settings_stored_locally": "Stored locally on this device",
 	"settings_section_display": "Display",

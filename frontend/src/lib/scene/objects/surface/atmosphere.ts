@@ -172,15 +172,18 @@ const MARS: AtmosphereParams = {
 	sunColor: [1.0, 1.0, 1.0]
 };
 
-/** Venus above the rendered cloud deck (~1 bar): dense CO₂ Rayleigh under an
- *  optically thick H₂SO₄ droplet haze (r≈1.05 µm) — pale-yellow disc, bright limb. */
+/** Venus referenced to the ~65 km cloud tops the texture shows (≈0.1 bar,
+ *  243 K): CO₂ Rayleigh at 0.29× Earth's β under the H₂SO₄ upper haze
+ *  (r≈1.05 µm mode-2, measured scale height 3.3–3.8 km, vertical τ ≈ 0.4) —
+ *  pale-yellow disc with a thin brilliant limb ring. The deck itself is baked
+ *  into the texture, so the shell only carries what lies above it. */
 const VENUS: AtmosphereParams = {
-	topAltitudeKm: 132,
-	rayleighScatterPerKm: [1.531e-2, 3.578e-2, 8.736e-2],
-	rayleighScaleHeightKm: 6.5,
+	topAltitudeKm: 42,
+	rayleighScatterPerKm: [1.68e-3, 3.93e-3, 9.6e-3],
+	rayleighScaleHeightKm: 5.3,
 	mieScatterPerKm: [1.35e-1, 1.28e-1, 1.02e-1],
 	mieAbsorptionPerKm: [2e-3, 3.5e-3, 1.4e-2],
-	mieScaleHeightKm: 22,
+	mieScaleHeightKm: 3.8,
 	miePhase: MIE_PHASE.venus,
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,

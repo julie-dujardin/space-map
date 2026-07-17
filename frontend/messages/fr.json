@@ -569,6 +569,8 @@
 	"layers_atmosphere_desc": "Lueur du ciel et diffusion au limbe au coucher du soleil",
 	"layers_high_ambient": "Lumière ambiante élevée",
 	"layers_high_ambient_desc": "Éclaire uniformément la face nocturne",
+	"layers_realistic_lighting": "Éclairage réaliste",
+	"layers_realistic_lighting_desc": "La lumière du Soleil décroît avec la distance",
 	"settings_title": "Paramètres",
 	"settings_stored_locally": "Enregistré localement sur cet appareil",
 	"settings_section_display": "Affichage",

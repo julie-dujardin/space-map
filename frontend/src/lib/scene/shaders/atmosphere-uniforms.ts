@@ -1,6 +1,7 @@
 import { BackSide, FrontSide, Vector3 } from 'three';
 import type { BodyObjects } from '$lib/scene/types';
 import { SUN_ID } from '$lib/constants';
+import { sunIrradianceFactor } from '$lib/scene/lighting';
 
 const spinAxis = new Vector3();
 
@@ -8,12 +9,14 @@ const spinAxis = new Vector3();
  * Refresh per-frame shell state: `uSunDir`, the body's spin axis (world-space
  * pole for the shader's oblateness squash), and the material side — the shell
  * flips to BackSide when the camera enters it, so the sky keeps rendering from
- * inside the atmosphere.
+ * inside the atmosphere. `realistic` scales the tuned sun intensity by the
+ * body's inverse-square distance from the Sun.
  */
 export function updateAtmosphereShaders(
 	bodyObjects: Map<string, BodyObjects>,
 	cameraPosition: Vector3,
-	visible: boolean
+	visible: boolean,
+	realistic: boolean
 ): void {
 	const sunPos = bodyObjects.get(SUN_ID)?.body.position;
 	if (!sunPos) return;
@@ -23,9 +26,14 @@ export function updateAtmosphereShaders(
 		if (!visible) continue;
 		const [bx, by, bz] = bo.body.position;
 		const uniforms = bo.atmosphere.material.uniforms;
-		(uniforms.uSunDir.value as Vector3)
-			.set(sunPos[0] - bx, sunPos[1] - by, sunPos[2] - bz)
-			.normalize();
+		const sunVec = (uniforms.uSunDir.value as Vector3).set(
+			sunPos[0] - bx,
+			sunPos[1] - by,
+			sunPos[2] - bz
+		);
+		uniforms.uSunIntensity.value =
+			bo.atmosphere.params.sunIntensity * (realistic ? sunIrradianceFactor(sunVec.length()) : 1);
+		sunVec.normalize();
 		// applyOrientation puts the pole on mesh-local +Y; the quaternion's spin
 		// component is about that same axis, so the phase doesn't matter.
 		if (bo.mesh) {

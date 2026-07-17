@@ -61,7 +61,8 @@ import {
 	AMBIENT_INTENSITY,
 	ENV_BASE_INTENSITY,
 	SUN_LIGHT_INTENSITY,
-	makeEnvMap
+	makeEnvMap,
+	sunIrradianceFactor
 } from './lighting';
 import { getSettings } from '$lib/state/settings.svelte';
 import type { PointingSpec } from '$lib/math/orientation';
@@ -679,12 +680,28 @@ export class SceneRenderer {
 		// just flipped on, so they don't render at a stale basis for one frame.
 		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd);
 
-		updateRingShaders(this.bodyObjects, this.focus.focusTruePos);
-		updateAtmosphereShaders(this.bodyObjects, this.camera.position, getSettings().showAtmospheres);
+		updateRingShaders(this.bodyObjects, this.focus.focusTruePos, getSettings().realisticLighting);
+		updateAtmosphereShaders(
+			this.bodyObjects,
+			this.camera.position,
+			getSettings().showAtmospheres,
+			getSettings().realisticLighting
+		);
 		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);
 
 		// High-ambient toggle: flat fill so night sides stay visible for inspection.
-		const ambient = getSettings().highAmbient ? AMBIENT_BOOST_INTENSITY : AMBIENT_INTENSITY;
+		// The base fill stands in for scattered sunlight, so realistic mode scales
+		// it with the focus body's solar distance — otherwise it exceeds direct
+		// sunlight past ~Saturn and night sides read brighter than day sides. The
+		// high-ambient boost stays unscaled: it exists to defeat darkness.
+		let ambient = getSettings().highAmbient ? AMBIENT_BOOST_INTENSITY : AMBIENT_INTENSITY;
+		if (!getSettings().highAmbient && getSettings().realisticLighting) {
+			const sunPos = this.bodyObjects.get(SUN_ID)?.body.position;
+			if (sunPos && this.ctx.visibility.activeSystemId) {
+				const [fx, fy, fz] = this.focus.focusTruePos;
+				ambient *= sunIrradianceFactor(Math.hypot(sunPos[0] - fx, sunPos[1] - fy, sunPos[2] - fz));
+			}
+		}
 		for (const light of this.ambientLights) light.intensity = ambient;
 
 		updateUserLocationOcclusion(this.userLocationMarker, this.bodyObjects, this.camera);
@@ -710,7 +727,8 @@ export class SceneRenderer {
 			this.shadowLight,
 			this.sunPointLight,
 			distance,
-			this._tmpV3
+			this._tmpV3,
+			getSettings().realisticLighting
 		);
 
 		// One point-cloud upload per frame to spread GPU cost. Auto-promotion
@@ -905,10 +923,13 @@ export class SceneRenderer {
 		// Sun direction in the overlay = (sun - focus) normalised, applied as
 		// the directional light position (target at origin, distance arbitrary).
 		const sunBody = this.bodyObjects.get(SUN_ID)?.body;
+		let irradiance = 1;
 		if (sunBody) {
 			const [sx, sy, sz] = sunBody.position;
 			const [fx, fy, fz] = bo.body.position;
-			this._tmpSun.set(sx - fx, sy - fy, sz - fz).normalize();
+			this._tmpSun.set(sx - fx, sy - fy, sz - fz);
+			if (getSettings().realisticLighting) irradiance = sunIrradianceFactor(this._tmpSun.length());
+			this._tmpSun.normalize();
 			this.modelLight.position.copy(this._tmpSun).multiplyScalar(10);
 		}
 
@@ -926,7 +947,7 @@ export class SceneRenderer {
 
 		// Dim the sun by the analytical eclipse occlusion at the focused body's center.
 		this._tmpV3.set(0, 0, 0);
-		const factor = evaluateEclipseFactor(this._tmpV3, this._tmpV3);
+		const factor = evaluateEclipseFactor(this._tmpV3, this._tmpV3) * irradiance;
 		this.modelLight.intensity = SUN_LIGHT_INTENSITY * factor;
 		this.modelScene.environmentIntensity = ENV_BASE_INTENSITY * factor;
 

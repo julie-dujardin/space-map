@@ -555,6 +555,8 @@
 	"layers_atmosphere_desc": "Resplandor del cielo y dispersión en el limbo al atardecer",
 	"layers_high_ambient": "Luz ambiental alta",
 	"layers_high_ambient_desc": "Ilumina uniformemente la cara nocturna",
+	"layers_realistic_lighting": "Iluminación realista",
+	"layers_realistic_lighting_desc": "La luz solar se atenúa con la distancia al Sol",
 	"settings_title": "Ajustes",
 	"settings_stored_locally": "Guardado localmente en este dispositivo",
 	"settings_section_display": "Visualización",
