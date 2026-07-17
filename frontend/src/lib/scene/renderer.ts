@@ -48,6 +48,11 @@ import { GpuPickPass } from './interaction/gpu-pick';
 import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies } from './objects/body/lifecycle';
+import {
+	ATMOSPHERE_PARAMS,
+	applyAtmosphereParams,
+	type AtmosphereParams
+} from './objects/surface/atmosphere';
 import { loadBodyTexture, unloadBodyTexture } from './objects/body/textures';
 import { applyOrientation, bodyQuaternion } from '$lib/math/orientation';
 import {
@@ -685,7 +690,8 @@ export class SceneRenderer {
 			this.bodyObjects,
 			this.camera.position,
 			getSettings().showAtmospheres,
-			getSettings().realisticLighting
+			getSettings().realisticLighting,
+			this.sunIntensityScale
 		);
 		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);
 
@@ -728,7 +734,8 @@ export class SceneRenderer {
 			this.sunPointLight,
 			distance,
 			this._tmpV3,
-			getSettings().realisticLighting
+			getSettings().realisticLighting,
+			this.sunIntensityScale
 		);
 
 		// One point-cloud upload per frame to spread GPU cost. Auto-promotion
@@ -948,7 +955,7 @@ export class SceneRenderer {
 		// Dim the sun by the analytical eclipse occlusion at the focused body's center.
 		this._tmpV3.set(0, 0, 0);
 		const factor = evaluateEclipseFactor(this._tmpV3, this._tmpV3) * irradiance;
-		this.modelLight.intensity = SUN_LIGHT_INTENSITY * factor;
+		this.modelLight.intensity = SUN_LIGHT_INTENSITY * factor * this.sunIntensityScale;
 		this.modelScene.environmentIntensity = ENV_BASE_INTENSITY * factor;
 
 		// Debug axis arrows share the model's world attitude (model sits at the
@@ -1448,6 +1455,41 @@ export class SceneRenderer {
 		sprite.scale.setScalar(0.175);
 		sprite.renderOrder = 1000;
 		return sprite;
+	}
+
+	/** Debug lighting-tuner multiplier applied to every direct-sunlight path
+	 *  (point/shadow/model lights + atmosphere shells) each frame. */
+	private sunIntensityScale = 1;
+
+	getSunIntensityScale(): number {
+		return this.sunIntensityScale;
+	}
+
+	setSunIntensityScale(v: number): void {
+		this.sunIntensityScale = v;
+	}
+
+	/** Debug: the focused body's live atmosphere params and the shipped set to
+	 *  reset/diff against; null when the focused body has no scattering shell. */
+	getFocusedAtmosphere(): {
+		id: string;
+		current: AtmosphereParams;
+		shipped: AtmosphereParams;
+	} | null {
+		const id = this.focusController.current?.data.id;
+		if (!id) return null;
+		const node = this.bodyObjects.get(id)?.atmosphere;
+		const shipped = ATMOSPHERE_PARAMS[id];
+		if (!node || !shipped) return null;
+		return { id, current: node.params, shipped };
+	}
+
+	/** Debug: swap the focused body's atmosphere params live (uniforms + shell
+	 *  scale re-derived). Lost if the body's render stack rebuilds. */
+	setFocusedAtmosphereParams(params: AtmosphereParams): void {
+		const id = this.focusController.current?.data.id;
+		const node = id ? this.bodyObjects.get(id)?.atmosphere : undefined;
+		if (node) applyAtmosphereParams(node, params);
 	}
 
 	getSkyboxAdjust(): { rxDeg: number; ryDeg: number; rzDeg: number } {

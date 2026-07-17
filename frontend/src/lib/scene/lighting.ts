@@ -32,10 +32,12 @@ export function sunIrradianceFactor(sunDistScene: number): number {
 
 /** Configure the heliocentric PointLight for the current lighting mode.
  *  Realistic = physical inverse-square decay, with intensity chosen so 1 AU
- *  still receives SUN_LIGHT_INTENSITY; off = uniform brightness everywhere. */
-export function applySunPointLightMode(light: PointLight, realistic: boolean): void {
+ *  still receives SUN_LIGHT_INTENSITY; off = uniform brightness everywhere.
+ *  `scale` is the debug lighting-tuner multiplier. */
+export function applySunPointLightMode(light: PointLight, realistic: boolean, scale = 1): void {
 	light.decay = realistic ? 2 : 0;
-	light.intensity = realistic ? SUN_LIGHT_INTENSITY * AU_SCALE * AU_SCALE : SUN_LIGHT_INTENSITY;
+	light.intensity =
+		(realistic ? SUN_LIGHT_INTENSITY * AU_SCALE * AU_SCALE : SUN_LIGHT_INTENSITY) * scale;
 }
 
 /** Neutral IBL cubemap for the model-overlay scene. */

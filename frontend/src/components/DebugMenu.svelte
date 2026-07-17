@@ -278,6 +278,14 @@
 			/>
 			<span>Label halo overlay</span>
 		</label>
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
+				checked={settings.showLightingTuner}
+				onchange={(e) => settings.setShowLightingTuner(e.currentTarget.checked)}
+			/>
+			<span>Lighting tuner</span>
+		</label>
 		<label class="flex items-center gap-2">
 			<span>Max parts/zone</span>
 			<input

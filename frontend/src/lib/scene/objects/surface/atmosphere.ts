@@ -94,6 +94,15 @@ export interface AtmosphereParams {
 	/** Half-width of the absorber tent, km — density falls linearly to 0 at
 	 *  `absorptionCenterKm ± absorptionWidthKm`. */
 	absorptionWidthKm: number;
+	/** 0..1: fraction of a vertical atmospheric column assumed already baked
+	 *  into the surface texture (satellite mosaics and cloud-deck photos are
+	 *  shot through the air above them). Surface-hitting rays render only the
+	 *  slant excess over that column, so the disc keeps the texture's own tint
+	 *  and the shell contributes where the texture can't — limb and terminator.
+	 *  0 for bodies whose texture is NOT the photographed appearance: Titan's
+	 *  map is the haze-hidden surface, Venus's the cloud deck itself — there the
+	 *  shell must stay opaque over the disc. */
+	bakedCompensation: number;
 	/** Gain on the isotropic multiple-scattering ambient term. Single scatter
 	 *  alone goes black wherever the direct sun path is extinguished — for
 	 *  optically thick atmospheres (Titan, Venus) that wrongly darkens the
@@ -127,6 +136,7 @@ const EARTH: AtmosphereParams = {
 	absorptionPerKm: [0.65e-3, 1.881e-3, 0.085e-3],
 	absorptionCenterKm: 25,
 	absorptionWidthKm: 15,
+	bakedCompensation: 1,
 	multiScatterGain: 0.3,
 	sunIntensity: 5,
 	sunColor: [1.0, 1.0, 1.0]
@@ -166,6 +176,7 @@ const MARS: AtmosphereParams = {
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
+	bakedCompensation: 1,
 	multiScatterGain: 0.4,
 	// Below physical like Earth: the mosaic bakes in the dust haze.
 	sunIntensity: 7,
@@ -188,6 +199,8 @@ const VENUS: AtmosphereParams = {
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
+	// The shell IS the visible cloud deck's overburden — keep it opaque.
+	bakedCompensation: 0,
 	multiScatterGain: 1.5,
 	// Kept under the rolloff shoulder so the H2SO4 cream tint survives.
 	sunIntensity: 12,
@@ -208,6 +221,9 @@ const TITAN: AtmosphereParams = {
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
+	// Texture is the haze-hidden surface map, not Titan's photographed look —
+	// the orange shell must stay opaque over it.
+	bakedCompensation: 0,
 	multiScatterGain: 0.5,
 	// High sun saturates the 1-exp rolloff and bleaches the tholin orange to cream.
 	sunIntensity: 9,
@@ -227,6 +243,7 @@ const JUPITER: AtmosphereParams = {
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
+	bakedCompensation: 1,
 	multiScatterGain: 0.3,
 	sunIntensity: 6,
 	sunColor: [1.0, 1.0, 1.0]
@@ -244,6 +261,7 @@ const SATURN: AtmosphereParams = {
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
+	bakedCompensation: 1,
 	multiScatterGain: 0.3,
 	sunIntensity: 6,
 	sunColor: [1.0, 1.0, 1.0]
@@ -261,6 +279,7 @@ const URANUS: AtmosphereParams = {
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
+	bakedCompensation: 1,
 	multiScatterGain: 0.4,
 	sunIntensity: 6,
 	sunColor: [1.0, 1.0, 1.0]
@@ -278,6 +297,7 @@ const NEPTUNE: AtmosphereParams = {
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
+	bakedCompensation: 1,
 	multiScatterGain: 0.4,
 	sunIntensity: 6,
 	sunColor: [1.0, 1.0, 1.0]
@@ -295,6 +315,7 @@ const TRITON: AtmosphereParams = {
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
+	bakedCompensation: 1,
 	multiScatterGain: 0.4,
 	sunIntensity: 22,
 	sunColor: [1.0, 1.0, 1.0]
@@ -313,6 +334,7 @@ const PLUTO: AtmosphereParams = {
 	absorptionPerKm: [0, 0, 0],
 	absorptionCenterKm: 0,
 	absorptionWidthKm: 1,
+	bakedCompensation: 1,
 	multiScatterGain: 0.4,
 	sunIntensity: 22,
 	sunColor: [1.0, 1.0, 1.0]
@@ -339,11 +361,14 @@ export const ATMOSPHERE_PARAMS: Record<string, AtmosphereParams> = {
 export interface AtmosphereNode {
 	mesh: Mesh;
 	material: ShaderMaterial;
-	/** Source params, kept so {@link syncAtmosphereEllipsoid} can re-derive the
-	 *  radius-normalised uniforms when SPICE radii arrive. */
+	/** Source params, kept so {@link syncAtmosphereEllipsoid} and the debug
+	 *  tuner ({@link applyAtmosphereParams}) can re-derive the radius-normalised
+	 *  uniforms. The per-frame uniform update reads `sunIntensity` from here. */
 	params: AtmosphereParams;
 	/** Radius the shell's SphereGeometry was built with, scene units. */
 	geometryRadiusScene: number;
+	/** Reference radius (equatorial once SPICE radii land), km. */
+	planetRadiusKm: number;
 }
 
 const VERTEX_SHADER = `
@@ -385,6 +410,7 @@ const FRAGMENT_SHADER = `
 	uniform float uAbsorptionCenter;
 	uniform float uAbsorptionWidth;
 	uniform float uMultiScatter;
+	uniform float uBakedComp;        // 0..1, vertical column already in the texture
 	uniform float uSunIntensity;
 	uniform vec3 uSunColor;
 	// Ring shadow on the air column — same analytic ray-plane march as
@@ -524,7 +550,11 @@ const FRAGMENT_SHADER = `
 		vec2 planetHit = raySphere(ro, rd, uSurfaceBlockR);
 		float tStart = max(atmoHit.x, 0.0);       // covers the camera-inside case too
 		float tEnd = atmoHit.y;
-		if (planetHit.x > tStart && planetHit.x < tEnd) tEnd = planetHit.x; // march stops at the surface
+		float hitSurface = 0.0;                   // baked-texture compensation applies
+		if (planetHit.x > tStart && planetHit.x < tEnd) {
+			tEnd = planetHit.x;                   // march stops at the surface
+			hitSurface = 1.0;
+		}
 		if (tEnd <= tStart) discard;
 
 		float mu = dot(rdWorld, uSunDir);         // phase angle is physical — world space
@@ -600,19 +630,32 @@ const FRAGMENT_SHADER = `
 			accumMS * ISO_PHASE
 		);
 
+		// Baked-texture compensation: a surface-hitting ray ends on a texture that
+		// was itself photographed through one vertical air column, so the shell
+		// may only add the slant excess over that column — thin-limit share
+		// (τ_view − τ_vert)/τ_view of the in-scatter, τ_view − τ_vert of the
+		// occlusion. Disc-centre rays cancel to ≈ the bare texture; at the limb
+		// τ_view ≫ τ_vert and the full glow survives. τ_vert is analytic:
+		// β·H per exponential species, tent area β·W for the absorber.
+		vec3 tauView = uRayleighScatter * viewOD.x +
+			uMieExtinction * viewOD.y +
+			uAbsorption * viewOD.z;
+		vec3 tauVert = uRayleighScatter * uRayleighScaleHeight +
+			uMieExtinction * uMieScaleHeight +
+			uAbsorption * uAbsorptionWidth;
+		vec3 tauBaked = min(tauVert, tauView) * (uBakedComp * hitSurface);
+		color *= 1.0 - tauBaked / max(tauView, vec3(1e-6));
+
 		// Soft HDR rolloff: keeps thick-deck in-scatter below the bloom
 		// threshold and inside ACES's comfortable range while staying ≈ linear
 		// for faint glows.
 		color = 1.0 - exp(-max(color, 0.0));
 
 		// What the ray marched through also occludes what lies behind it —
-		// surface texture for disk rays, stars/bodies past the limb. Scalar
-		// alpha (luminance-weighted) approximates the per-channel transmittance.
-		vec3 occT = exp(-(
-			uRayleighScatter * viewOD.x +
-			uMieExtinction * viewOD.y +
-			uAbsorption * viewOD.z
-		));
+		// surface texture for disk rays, stars/bodies past the limb — minus the
+		// baked share the texture already absorbed. Scalar alpha
+		// (luminance-weighted) approximates the per-channel transmittance.
+		vec3 occT = exp(-(tauView - tauBaked));
 		float alpha = 1.0 - dot(occT, vec3(0.2126, 0.7152, 0.0722));
 
 		// Fade out as the planet shrinks below ~half a pixel — beyond that the
@@ -715,6 +758,7 @@ export function buildAtmosphereNode(
 			uAbsorptionCenter: { value: 0 },
 			uAbsorptionWidth: { value: 0 },
 			uMultiScatter: { value: params.multiScatterGain },
+			uBakedComp: { value: params.bakedCompensation },
 			uSunIntensity: { value: params.sunIntensity },
 			uSunColor: { value: new Vector3(c[0], c[1], c[2]) }
 		},
@@ -744,7 +788,26 @@ export function buildAtmosphereNode(
 	// glow composites over everything else around the body.
 	mesh.renderOrder = 2;
 	mesh.userData.isAtmosphereMesh = true;
-	return { mesh, material, params, geometryRadiusScene };
+	return { mesh, material, params, geometryRadiusScene, planetRadiusKm };
+}
+
+/**
+ * Debug tuner entry point: swap in a full replacement param set and re-derive
+ * every uniform (plus the shell scale, for `topAltitudeKm` changes) against the
+ * node's current reference radius. The phase table is per-aerosol offline data,
+ * not a tunable — it stays whatever the body was built with.
+ */
+export function applyAtmosphereParams(node: AtmosphereNode, params: AtmosphereParams): void {
+	node.params = params;
+	const u = node.material.uniforms;
+	const planetRadiusScene = u.uPlanetRadiusScene.value as number;
+	setRadiusUniforms(node.material, params, planetRadiusScene, node.planetRadiusKm);
+	u.uMultiScatter.value = params.multiScatterGain;
+	u.uBakedComp.value = params.bakedCompensation;
+	const c = params.sunColor;
+	(u.uSunColor.value as Vector3).set(c[0], c[1], c[2]);
+	const shellScene = planetRadiusScene * (1 + params.topAltitudeKm / node.planetRadiusKm);
+	node.mesh.scale.setScalar(shellScene / node.geometryRadiusScene);
 }
 
 /**
@@ -760,6 +823,7 @@ export function syncAtmosphereEllipsoid(
 	polarKm: number,
 	equatorialScene: number
 ): void {
+	node.planetRadiusKm = equatorialKm;
 	setRadiusUniforms(node.material, node.params, equatorialScene, equatorialKm);
 	node.material.uniforms.uStretch.value = equatorialKm / polarKm;
 	const shellScene = equatorialScene * (1 + node.params.topAltitudeKm / equatorialKm);

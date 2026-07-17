@@ -18,6 +18,7 @@ const LIGHT_DIST = 10;
  * distance. No ring floor — rings ray-march their own planet shadow.
  * `realistic` scales sunlight by inverse-square distance from the Sun — the
  * PointLight via physical decay, the DirectionalLight via the focus distance.
+ * `sunScale` is the debug lighting-tuner multiplier on all direct sunlight.
  */
 export function updateSunShadowLight(
 	bodyObjects: Map<string, BodyObjects>,
@@ -27,12 +28,13 @@ export function updateSunShadowLight(
 	sunPointLight: PointLight | undefined,
 	cameraDistance: number,
 	tmpV3: Vector3,
-	realistic: boolean
+	realistic: boolean,
+	sunScale: number
 ): void {
 	const sysId = ctx.visibility.activeSystemId;
 	if (!sysId) {
 		shadowLight.intensity = 0;
-		if (sunPointLight) applySunPointLightMode(sunPointLight, realistic);
+		if (sunPointLight) applySunPointLightMode(sunPointLight, realistic, sunScale);
 		return;
 	}
 
@@ -46,7 +48,8 @@ export function updateSunShadowLight(
 
 	shadowLight.position.copy(sunDir).multiplyScalar(LIGHT_DIST);
 	shadowLight.target.position.set(0, 0, 0);
-	shadowLight.intensity = SUN_LIGHT_INTENSITY * (realistic ? sunIrradianceFactor(sunDist) : 1);
+	shadowLight.intensity =
+		SUN_LIGHT_INTENSITY * (realistic ? sunIrradianceFactor(sunDist) : 1) * sunScale;
 	if (sunPointLight) sunPointLight.intensity = 0;
 
 	const lateral = Math.max(cameraDistance * 2, 0.001);

@@ -28,6 +28,7 @@ interface Persisted {
 	showDebugInfo?: boolean;
 	showSkyboxAlign?: boolean;
 	showHaloDebug?: boolean;
+	showLightingTuner?: boolean;
 	showClouds?: boolean;
 	showAtmospheres?: boolean;
 	highAmbient?: boolean;
@@ -64,6 +65,7 @@ class SettingsState {
 	showDebugInfo = $state(false);
 	showSkyboxAlign = $state(false);
 	showHaloDebug = $state(false);
+	showLightingTuner = $state(false);
 	showClouds = $state(true);
 	/** Per-body atmospheric-scattering shells (sky glow, sunset limb). */
 	showAtmospheres = $state(true);
@@ -95,6 +97,7 @@ class SettingsState {
 		this.showDebugInfo = stored.showDebugInfo ?? false;
 		this.showSkyboxAlign = stored.showSkyboxAlign ?? false;
 		this.showHaloDebug = stored.showHaloDebug ?? false;
+		this.showLightingTuner = stored.showLightingTuner ?? false;
 		this.showClouds = stored.showClouds ?? true;
 		this.showAtmospheres = stored.showAtmospheres ?? true;
 		this.highAmbient = stored.highAmbient ?? false;
@@ -149,6 +152,11 @@ class SettingsState {
 
 	setShowHaloDebug(v: boolean) {
 		this.showHaloDebug = v;
+		this.persist();
+	}
+
+	setShowLightingTuner(v: boolean) {
+		this.showLightingTuner = v;
 		this.persist();
 	}
 
@@ -259,6 +267,7 @@ class SettingsState {
 				showDebugInfo: this.showDebugInfo,
 				showSkyboxAlign: this.showSkyboxAlign,
 				showHaloDebug: this.showHaloDebug,
+				showLightingTuner: this.showLightingTuner,
 				showClouds: this.showClouds,
 				showAtmospheres: this.showAtmospheres,
 				highAmbient: this.highAmbient,
