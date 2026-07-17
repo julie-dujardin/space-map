@@ -114,6 +114,10 @@ export interface AtmosphereParams {
 	sunIntensity: number;
 	/** Sun colour the scattering integral is multiplied by. */
 	sunColor: [number, number, number];
+	/** Apply the inverse-square solar irradiance even with realistic lighting
+	 *  off. For far-out wisps tuned at the physical `sunIntensity`, flat 1-AU
+	 *  sunlight blows the faint backlit haze into an opaque glowing shell. */
+	realisticSunAlways?: boolean;
 }
 
 /**
@@ -318,7 +322,8 @@ const TRITON: AtmosphereParams = {
 	bakedCompensation: 1,
 	multiScatterGain: 0.4,
 	sunIntensity: 22,
-	sunColor: [1.0, 1.0, 1.0]
+	sunColor: [1.0, 1.0, 1.0],
+	realisticSunAlways: true
 };
 
 /** Pluto: thin N₂ column + blue tholin haze, hugely extended (~34% of the
@@ -337,7 +342,8 @@ const PLUTO: AtmosphereParams = {
 	bakedCompensation: 1,
 	multiScatterGain: 0.4,
 	sunIntensity: 22,
-	sunColor: [1.0, 1.0, 1.0]
+	sunColor: [1.0, 1.0, 1.0],
+	realisticSunAlways: true
 };
 
 /**
