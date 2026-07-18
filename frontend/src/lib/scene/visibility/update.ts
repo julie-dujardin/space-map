@@ -269,7 +269,10 @@ export function updateBodyVisibility(
 						bz - fp[2] + _modelSphereCenter.z
 					)
 					.applyMatrix4(cameraInverse);
-				if (tmpV3.z >= 0) continue; // sphere center behind the camera
+				// Skip only when the whole sphere is behind the camera plane — near a
+				// surface the center can sit behind the camera while the sphere still
+				// fills half the screen (e.g. looking up at a landed probe).
+				if (tmpV3.z >= rSphere) continue;
 				const dSq = tmpV3.lengthSq();
 				if (dSq <= rSphere * rSphere) continue; // camera inside this blob
 				const z2 = tmpV3.z * tmpV3.z;
@@ -298,7 +301,11 @@ export function updateBodyVisibility(
 		const camX = tmpV3.x,
 			camY = tmpV3.y,
 			camZ = tmpV3.z;
-		if (camZ >= 0) continue; // body center behind the camera
+		// Skip only when the whole body is behind the camera plane — a camera just
+		// above a surface looking away from the center (below a landed probe) has
+		// camZ > 0 while the body still fills half the screen; the tangent-cone
+		// test handles that limb-crossing regime, so keep the occluder.
+		if (camZ >= r) continue;
 		const bz2 = camZ * camZ;
 		// Gate on the bounding-sphere tangential screen radius ≥ halo size (over-
 		// includes oblate bodies, which the exact cone test below then refines);
