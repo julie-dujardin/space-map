@@ -2,6 +2,7 @@ import type { PerspectiveCamera, Vector2, Vector3 } from 'three';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
+import { ndcZVisible } from '$lib/scene/setup/depth-mode';
 import type { Vec3 } from '../animation/math';
 
 /** Find the closest visible moon dot to the given pointer (NDC). Asteroids and
@@ -51,8 +52,8 @@ export function pickMoonDot(
 		const worldDist = Math.hypot(v.x - cam.x, v.y - cam.y, v.z - cam.z);
 		v.project(camera);
 		// project() flips signs for points behind the camera (negative w),
-		// pushing NDC z outside [-1, 1].
-		if (v.z < -1 || v.z > 1) return;
+		// pushing NDC z outside the visible depth range.
+		if (!ndcZVisible(v.z)) return;
 		const sx = (v.x + 1) * 0.5 * canvasWidth;
 		const sy = (1 - v.y) * 0.5 * canvasHeight;
 		const screenDist = Math.hypot(sx - px, sy - py);

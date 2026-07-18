@@ -5,6 +5,7 @@
  */
 import { Matrix4, Vector3, type Camera, type Object3D } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { ndcZVisible } from '$lib/scene/setup/depth-mode';
 
 type CacheEntry = {
 	tx: number;
@@ -103,7 +104,7 @@ export class ThrottledCSS2DRenderer {
 			this._vector.setFromMatrixPosition(object.matrixWorld);
 			this._vector.applyMatrix4(this._viewProjectionMatrix);
 			const z = this._vector.z;
-			const inFrustum = z >= -1 && z <= 1;
+			const inFrustum = ndcZVisible(z);
 			const layerOk = object.layers.test(camera.layers);
 			const visible = inFrustum && layerOk;
 

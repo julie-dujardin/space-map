@@ -28,6 +28,7 @@ import {
 } from '../objects/surface/nomenclature';
 import { f64dist, type Vec3 } from '../animation/math';
 import { AU_SCALE } from '$lib/math/units';
+import { ndcZVisible } from '$lib/scene/setup/depth-mode';
 import { modelUnitScene, type OccluderSphere } from '../objects/body/model';
 import { parentIdFromSubkey } from '$lib/math/orbit/partition';
 import {
@@ -514,7 +515,7 @@ export function updateBodyVisibility(
 			const lp = bo.label.position;
 			tmpV3.set(bx - fp[0] + lp.x, by - fp[1] + lp.y, bz - fp[2] + lp.z);
 			tmpV3.project(camera);
-			if (tmpV3.z > 1) continue;
+			if (!ndcZVisible(tmpV3.z)) continue;
 			if (
 				isScreenOccluded(
 					(tmpV3.x * 0.5 + 0.5) * screenW,

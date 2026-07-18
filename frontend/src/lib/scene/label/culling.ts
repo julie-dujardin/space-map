@@ -1,5 +1,6 @@
 import { Vector3, type PerspectiveCamera } from 'three';
 import { ObjectType } from '$lib/types/objects';
+import { ndcZVisible } from '$lib/scene/setup/depth-mode';
 import { VISIBILITY } from '$lib/scene/visibility/thresholds';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import {
@@ -293,7 +294,7 @@ export function cullOverlappingLabels(
 			bz - focusTruePos[2] + lp.z
 		);
 		_tmpProj.project(camera);
-		if (_tmpProj.z > 1) continue;
+		if (!ndcZVisible(_tmpProj.z)) continue;
 		const isFocused = body.data.id === focusedBodyId;
 		const isHovered = hoveredBodyIds.has(body.data.id);
 		const screenX = (_tmpProj.x * 0.5 + 0.5) * screenWidth;
@@ -443,7 +444,7 @@ export function refreshVisibleBodyLabelRects(
 			bz - focusTruePos[2] + lp.z
 		);
 		_tmpProj.project(camera);
-		if (_tmpProj.z > 1) continue;
+		if (!ndcZVisible(_tmpProj.z)) continue;
 		const screenX = (_tmpProj.x * 0.5 + 0.5) * screenWidth;
 		const screenY = (-_tmpProj.y * 0.5 + 0.5) * screenHeight;
 		const rootLeft = screenX - label.center.x * 32;

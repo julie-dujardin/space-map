@@ -41,6 +41,7 @@ import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { bootThree, CAMERA_FAR_DEFAULT } from './setup/three-boot';
+import { isReversedDepth } from './setup/depth-mode';
 import { cappedPixelRatio } from '$lib/device';
 import { PointerInteraction } from './interaction/pointer';
 import { GpuPickPass } from './interaction/gpu-pick';
@@ -741,6 +742,9 @@ export class SceneRenderer {
 	 *  of its own — the host body whose terrain the camera orbits is the scale
 	 *  that matters, measured from its centre (the focus sits on the surface). */
 	private updateTightFar(distance: number): void {
+		// Reversed-Z precision is distance-relative — no far squeeze needed, the
+		// real Sun and heliocentric trails stay renderable at any zoom.
+		if (isReversedDepth()) return;
 		const focused = this.focusController.current;
 		const anchorId = focused ? nomenclatureBodyId(focused, this.bodyObjects) : undefined;
 		const anchorBo = anchorId ? this.bodyObjects.get(anchorId) : undefined;
@@ -768,6 +772,7 @@ export class SceneRenderer {
 	 * nothing about its trail's far side.
 	 */
 	private updateDepthFar(): void {
+		if (isReversedDepth()) return;
 		let far = CAMERA_FAR_DEFAULT;
 		const sysId = this.ctx.visibility.activeSystemId;
 		if (sysId) {
