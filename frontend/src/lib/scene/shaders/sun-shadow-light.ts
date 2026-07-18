@@ -4,7 +4,11 @@ import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { AU_SCALE } from '$lib/math/units';
 import { SUN_ID } from '$lib/constants';
-import { SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
+import {
+	applySunPointLightMode,
+	SUN_LIGHT_INTENSITY,
+	sunIrradianceFactor
+} from '$lib/scene/lighting';
 
 const LIGHT_DIST = 10;
 
@@ -12,6 +16,9 @@ const LIGHT_DIST = 10;
  * Swap between the solar-system `PointLight` and the sub-system shadow-casting
  * `DirectionalLight`, sizing the shadow camera tightly to the current view
  * distance. No ring floor — rings ray-march their own planet shadow.
+ * `realistic` scales sunlight by inverse-square distance from the Sun — the
+ * PointLight via physical decay, the DirectionalLight via the focus distance.
+ * `sunScale` is the debug lighting-tuner multiplier on all direct sunlight.
  */
 export function updateSunShadowLight(
 	bodyObjects: Map<string, BodyObjects>,
@@ -20,12 +27,14 @@ export function updateSunShadowLight(
 	shadowLight: DirectionalLight,
 	sunPointLight: PointLight | undefined,
 	cameraDistance: number,
-	tmpV3: Vector3
+	tmpV3: Vector3,
+	realistic: boolean,
+	sunScale: number
 ): void {
 	const sysId = ctx.visibility.activeSystemId;
 	if (!sysId) {
 		shadowLight.intensity = 0;
-		if (sunPointLight) sunPointLight.intensity = SUN_LIGHT_INTENSITY;
+		if (sunPointLight) applySunPointLightMode(sunPointLight, realistic, sunScale);
 		return;
 	}
 
@@ -34,11 +43,13 @@ export function updateSunShadowLight(
 	const sunRelX = (sunPos?.[0] ?? 0) - fx;
 	const sunRelY = (sunPos?.[1] ?? 0) - fy;
 	const sunRelZ = (sunPos?.[2] ?? 0) - fz;
+	const sunDist = Math.hypot(sunRelX, sunRelY, sunRelZ);
 	const sunDir = tmpV3.set(sunRelX, sunRelY, sunRelZ).normalize();
 
 	shadowLight.position.copy(sunDir).multiplyScalar(LIGHT_DIST);
 	shadowLight.target.position.set(0, 0, 0);
-	shadowLight.intensity = SUN_LIGHT_INTENSITY;
+	shadowLight.intensity =
+		SUN_LIGHT_INTENSITY * (realistic ? sunIrradianceFactor(sunDist) : 1) * sunScale;
 	if (sunPointLight) sunPointLight.intensity = 0;
 
 	const lateral = Math.max(cameraDistance * 2, 0.001);

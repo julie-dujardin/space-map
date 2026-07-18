@@ -211,6 +211,9 @@ const FRAGMENT_SHADER = `
 	uniform vec3 uPlanetPoleDir;
 	uniform float uPlanetEquatorialScene;
 	uniform float uPlanetPolarScene;
+	// Solar irradiance factor for the realistic-lighting toggle; 1 otherwise.
+	// The BJJ profiles are pre-lit albedo, so scene lights never touch rings.
+	uniform float uLightScale;
 
 	varying vec3 vLocalPos;
 	varying vec3 vWorldPos;
@@ -318,7 +321,7 @@ const FRAGMENT_SHADER = `
 		// (sunlight filters through the rings only where the sun is unblocked).
 		float shadow = planetShadow();
 
-		gl_FragColor = vec4(finalAlbedo * shadow, alpha);
+		gl_FragColor = vec4(finalAlbedo * shadow * uLightScale, alpha);
 		#include <logdepthbuf_fragment>
 	}
 `;
@@ -493,7 +496,8 @@ export async function loadRingNode(
 			uPlanetCenter: { value: new Vector3() },
 			uPlanetPoleDir: { value: new Vector3(0, 1, 0) },
 			uPlanetEquatorialScene: { value: 0 },
-			uPlanetPolarScene: { value: 0 }
+			uPlanetPolarScene: { value: 0 },
+			uLightScale: { value: 1 }
 		},
 		vertexShader: VERTEX_SHADER,
 		fragmentShader: FRAGMENT_SHADER,
@@ -511,7 +515,11 @@ export async function loadRingNode(
 
 	const mesh = new Mesh(geometry, material);
 	mesh.frustumCulled = false; // repositioned by the renderer each frame
-	mesh.renderOrder = 1; // draw after opaque planet so transparent alpha composites cleanly
+	// After the opaque planet AND the atmosphere shell (renderOrder 2): the shell
+	// writes depth from outside, so foreground rings depth-test in front of the
+	// glow and the dense inner ring composites over it instead of the glow
+	// bleeding through. Ties with trails/points (also 3) resolve by distance.
+	mesh.renderOrder = 3;
 	mesh.userData.isRingMesh = true;
 	// Both shadow directions are handled by per-pixel analytical ray-marches —
 	// ring → planet inside the planet's own MeshStandardMaterial (see

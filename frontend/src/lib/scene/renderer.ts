@@ -48,6 +48,12 @@ import { GpuPickPass } from './interaction/gpu-pick';
 import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies } from './objects/body/lifecycle';
+import {
+	ATMOSPHERE_PARAMS,
+	applyAtmosphereParams,
+	type AtmosphereParams
+} from './objects/surface/atmosphere';
+import { AtmosphereDepthPass } from './objects/surface/atmosphere-depth';
 import { loadBodyTexture, unloadBodyTexture } from './objects/body/textures';
 import { applyOrientation, bodyQuaternion } from '$lib/math/orientation';
 import {
@@ -61,7 +67,8 @@ import {
 	AMBIENT_INTENSITY,
 	ENV_BASE_INTENSITY,
 	SUN_LIGHT_INTENSITY,
-	makeEnvMap
+	makeEnvMap,
+	sunIrradianceFactor
 } from './lighting';
 import { getSettings } from '$lib/state/settings.svelte';
 import type { PointingSpec } from '$lib/math/orientation';
@@ -134,6 +141,7 @@ const SUN_PROXY_FAR_FRACTION = 0.9;
 export class SceneRenderer {
 	private renderer: WebGLRenderer;
 	private composer: EffectComposer;
+	private atmoDepthPass: AtmosphereDepthPass;
 	private bloomPass: UnrealBloomPass;
 	private labelRenderer: ThrottledCSS2DRenderer;
 	private scene: Scene;
@@ -277,6 +285,8 @@ export class SceneRenderer {
 		this.composer = boot.composer;
 		this.bloomPass = boot.bloomPass;
 		this.shadowLight = boot.shadowLight;
+		const drawSize = this.renderer.getDrawingBufferSize(new Vector2());
+		this.atmoDepthPass = new AtmosphereDepthPass(drawSize.x, drawSize.y);
 
 		this.modelScene = new SceneClass();
 		this.modelScene.environment = makeEnvMap(this.renderer);
@@ -679,12 +689,32 @@ export class SceneRenderer {
 		// just flipped on, so they don't render at a stale basis for one frame.
 		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd);
 
-		updateRingShaders(this.bodyObjects, this.focus.focusTruePos);
-		updateAtmosphereShaders(this.bodyObjects);
+		updateRingShaders(this.bodyObjects, this.focus.focusTruePos, getSettings().realisticLighting);
+		const atmoState = updateAtmosphereShaders(
+			this.bodyObjects,
+			this.camera.position,
+			getSettings().showAtmospheres,
+			getSettings().realisticLighting,
+			this.sunIntensityScale
+		);
+		// Inside a shell, stars dim by the extinction of the air above the
+		// camera plus a daylight-aware exposure compensation (skyboxDimFactor).
+		this.scene.backgroundIntensity = atmoState.skyboxIntensity;
 		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);
 
 		// High-ambient toggle: flat fill so night sides stay visible for inspection.
-		const ambient = getSettings().highAmbient ? AMBIENT_BOOST_INTENSITY : AMBIENT_INTENSITY;
+		// The base fill stands in for scattered sunlight, so realistic mode scales
+		// it with the focus body's solar distance — otherwise it exceeds direct
+		// sunlight past ~Saturn and night sides read brighter than day sides. The
+		// high-ambient boost stays unscaled: it exists to defeat darkness.
+		let ambient = getSettings().highAmbient ? AMBIENT_BOOST_INTENSITY : AMBIENT_INTENSITY;
+		if (!getSettings().highAmbient && getSettings().realisticLighting) {
+			const sunPos = this.bodyObjects.get(SUN_ID)?.body.position;
+			if (sunPos && this.ctx.visibility.activeSystemId) {
+				const [fx, fy, fz] = this.focus.focusTruePos;
+				ambient *= sunIrradianceFactor(Math.hypot(sunPos[0] - fx, sunPos[1] - fy, sunPos[2] - fz));
+			}
+		}
 		for (const light of this.ambientLights) light.intensity = ambient;
 
 		updateUserLocationOcclusion(this.userLocationMarker, this.bodyObjects, this.camera);
@@ -710,7 +740,9 @@ export class SceneRenderer {
 			this.shadowLight,
 			this.sunPointLight,
 			distance,
-			this._tmpV3
+			this._tmpV3,
+			getSettings().realisticLighting,
+			this.sunIntensityScale
 		);
 
 		// One point-cloud upload per frame to spread GPU cost. Auto-promotion
@@ -720,6 +752,12 @@ export class SceneRenderer {
 
 		this.updateDepthFar();
 		this.updateSunProxy();
+		// Only when the camera is inside a shell (surface zoom): supplies the
+		// opaque depth those shells clamp their march to, so haze stops at
+		// foreground terrain instead of painting over it.
+		if (atmoState.insideShell) {
+			this.atmoDepthPass.run(this.renderer, this.scene, this.camera, this.bodyObjects);
+		}
 
 		this.composer.render();
 		this.renderModelOverlay();
@@ -905,10 +943,13 @@ export class SceneRenderer {
 		// Sun direction in the overlay = (sun - focus) normalised, applied as
 		// the directional light position (target at origin, distance arbitrary).
 		const sunBody = this.bodyObjects.get(SUN_ID)?.body;
+		let irradiance = 1;
 		if (sunBody) {
 			const [sx, sy, sz] = sunBody.position;
 			const [fx, fy, fz] = bo.body.position;
-			this._tmpSun.set(sx - fx, sy - fy, sz - fz).normalize();
+			this._tmpSun.set(sx - fx, sy - fy, sz - fz);
+			if (getSettings().realisticLighting) irradiance = sunIrradianceFactor(this._tmpSun.length());
+			this._tmpSun.normalize();
 			this.modelLight.position.copy(this._tmpSun).multiplyScalar(10);
 		}
 
@@ -926,8 +967,8 @@ export class SceneRenderer {
 
 		// Dim the sun by the analytical eclipse occlusion at the focused body's center.
 		this._tmpV3.set(0, 0, 0);
-		const factor = evaluateEclipseFactor(this._tmpV3, this._tmpV3);
-		this.modelLight.intensity = SUN_LIGHT_INTENSITY * factor;
+		const factor = evaluateEclipseFactor(this._tmpV3, this._tmpV3) * irradiance;
+		this.modelLight.intensity = SUN_LIGHT_INTENSITY * factor * this.sunIntensityScale;
 		this.modelScene.environmentIntensity = ENV_BASE_INTENSITY * factor;
 
 		// Debug axis arrows share the model's world attitude (model sits at the
@@ -1429,6 +1470,41 @@ export class SceneRenderer {
 		return sprite;
 	}
 
+	/** Debug lighting-tuner multiplier applied to every direct-sunlight path
+	 *  (point/shadow/model lights + atmosphere shells) each frame. */
+	private sunIntensityScale = 1;
+
+	getSunIntensityScale(): number {
+		return this.sunIntensityScale;
+	}
+
+	setSunIntensityScale(v: number): void {
+		this.sunIntensityScale = v;
+	}
+
+	/** Debug: the focused body's live atmosphere params and the shipped set to
+	 *  reset/diff against; null when the focused body has no scattering shell. */
+	getFocusedAtmosphere(): {
+		id: string;
+		current: AtmosphereParams;
+		shipped: AtmosphereParams;
+	} | null {
+		const id = this.focusController.current?.data.id;
+		if (!id) return null;
+		const node = this.bodyObjects.get(id)?.atmosphere;
+		const shipped = ATMOSPHERE_PARAMS[id];
+		if (!node || !shipped) return null;
+		return { id, current: node.params, shipped };
+	}
+
+	/** Debug: swap the focused body's atmosphere params live (uniforms + shell
+	 *  scale re-derived). Lost if the body's render stack rebuilds. */
+	setFocusedAtmosphereParams(params: AtmosphereParams): void {
+		const id = this.focusController.current?.data.id;
+		const node = id ? this.bodyObjects.get(id)?.atmosphere : undefined;
+		if (node) applyAtmosphereParams(node, params);
+	}
+
 	getSkyboxAdjust(): { rxDeg: number; ryDeg: number; rzDeg: number } {
 		return this.skyboxAdjuster.get();
 	}
@@ -1501,6 +1577,8 @@ export class SceneRenderer {
 	resize(width: number, height: number): void {
 		this.renderer.setSize(width, height, false);
 		this.composer.setSize(width, height);
+		const drawSize = this.renderer.getDrawingBufferSize(new Vector2());
+		this.atmoDepthPass.setSize(drawSize.x, drawSize.y);
 		this.bloomPass.setSize(width, height);
 		this.labelRenderer.setSize(width, height);
 		this.camera.aspect = width / height;
@@ -1529,6 +1607,7 @@ export class SceneRenderer {
 		this.bodyObjects.clear();
 		// EffectComposer render targets (bloom mips) survive renderer.dispose().
 		this.composer.dispose();
+		this.atmoDepthPass.dispose();
 		this.renderer.dispose();
 	}
 

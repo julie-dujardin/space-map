@@ -29,12 +29,18 @@
 	let SkyboxDebugSliders = $state<typeof import('./SkyboxDebugSliders.svelte').default | null>(
 		null
 	);
+	let LightingDebugSliders = $state<typeof import('./LightingDebugSliders.svelte').default | null>(
+		null
+	);
 	$effect(() => {
 		if (settings.showDebugInfo && !DebugMenu) {
 			import('./DebugMenu.svelte').then((mod) => (DebugMenu = mod.default));
 		}
 		if (settings.showSkyboxAlign && !SkyboxDebugSliders) {
 			import('./SkyboxDebugSliders.svelte').then((mod) => (SkyboxDebugSliders = mod.default));
+		}
+		if (settings.showLightingTuner && !LightingDebugSliders) {
+			import('./LightingDebugSliders.svelte').then((mod) => (LightingDebugSliders = mod.default));
 		}
 	});
 
@@ -405,5 +411,8 @@
 	{/if}
 	{#if settings.showSkyboxAlign && SkyboxDebugSliders}
 		<SkyboxDebugSliders getRenderer={() => renderer} />
+	{/if}
+	{#if settings.showLightingTuner && LightingDebugSliders}
+		<LightingDebugSliders getRenderer={() => renderer} />
 	{/if}
 </div>

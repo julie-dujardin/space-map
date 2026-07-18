@@ -28,8 +28,11 @@ interface Persisted {
 	showDebugInfo?: boolean;
 	showSkyboxAlign?: boolean;
 	showHaloDebug?: boolean;
+	showLightingTuner?: boolean;
 	showClouds?: boolean;
+	showAtmospheres?: boolean;
 	highAmbient?: boolean;
+	realisticLighting?: boolean;
 	showShapeMesh?: boolean;
 	showSurfaceTexture?: boolean;
 	showDisplacement?: boolean;
@@ -62,9 +65,15 @@ class SettingsState {
 	showDebugInfo = $state(false);
 	showSkyboxAlign = $state(false);
 	showHaloDebug = $state(false);
+	showLightingTuner = $state(false);
 	showClouds = $state(true);
+	/** Per-body atmospheric-scattering shells (sky glow, sunset limb). */
+	showAtmospheres = $state(true);
 	/** Flood the scene with flat ambient fill so night sides are fully lit. */
 	highAmbient = $state(false);
+	/** Scale sunlight with the true inverse-square distance from the Sun instead
+	 *  of lighting every body as if it sat at 1 AU. */
+	realisticLighting = $state(false);
 	/** Debug body-layer toggles: peel back the focused body's render stack to
 	 *  isolate a layer (e.g. shape mesh off → textured triaxial sphere). */
 	showShapeMesh = $state(true);
@@ -88,8 +97,11 @@ class SettingsState {
 		this.showDebugInfo = stored.showDebugInfo ?? false;
 		this.showSkyboxAlign = stored.showSkyboxAlign ?? false;
 		this.showHaloDebug = stored.showHaloDebug ?? false;
+		this.showLightingTuner = stored.showLightingTuner ?? false;
 		this.showClouds = stored.showClouds ?? true;
+		this.showAtmospheres = stored.showAtmospheres ?? true;
 		this.highAmbient = stored.highAmbient ?? false;
+		this.realisticLighting = stored.realisticLighting ?? false;
 		this.showShapeMesh = stored.showShapeMesh ?? true;
 		this.showSurfaceTexture = stored.showSurfaceTexture ?? true;
 		this.showDisplacement = stored.showDisplacement ?? true;
@@ -143,13 +155,28 @@ class SettingsState {
 		this.persist();
 	}
 
+	setShowLightingTuner(v: boolean) {
+		this.showLightingTuner = v;
+		this.persist();
+	}
+
 	setShowClouds(v: boolean) {
 		this.showClouds = v;
 		this.persist();
 	}
 
+	setShowAtmospheres(v: boolean) {
+		this.showAtmospheres = v;
+		this.persist();
+	}
+
 	setHighAmbient(v: boolean) {
 		this.highAmbient = v;
+		this.persist();
+	}
+
+	setRealisticLighting(v: boolean) {
+		this.realisticLighting = v;
 		this.persist();
 	}
 
@@ -240,8 +267,11 @@ class SettingsState {
 				showDebugInfo: this.showDebugInfo,
 				showSkyboxAlign: this.showSkyboxAlign,
 				showHaloDebug: this.showHaloDebug,
+				showLightingTuner: this.showLightingTuner,
 				showClouds: this.showClouds,
+				showAtmospheres: this.showAtmospheres,
 				highAmbient: this.highAmbient,
+				realisticLighting: this.realisticLighting,
 				showShapeMesh: this.showShapeMesh,
 				showSurfaceTexture: this.showSurfaceTexture,
 				showDisplacement: this.showDisplacement,

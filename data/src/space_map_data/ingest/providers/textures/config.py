@@ -27,7 +27,7 @@ EARTH_CLOUDS_DIR = CLOUDS_DIR / "earth"
 CLOUD_SOURCES: dict[str, str] = {
     "earth": "naif-399",
     "venus": "naif-299",
-    "titan": "naif-606",
+    # "titan": "naif-606",  # skipped
 }
 
 # User-facing organisation + description for static cloud bundles. The

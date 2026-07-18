@@ -2,9 +2,18 @@ import { Vector3 } from 'three';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { BodyObjects } from '$lib/scene/types';
 import { SUN_ID } from '$lib/constants';
+import { sunIrradianceFactor } from '$lib/scene/lighting';
 
-/** Refresh per-frame ring + planet-ring-shadow uniforms (sun dir, planet center, pole). */
-export function updateRingShaders(bodyObjects: Map<string, BodyObjects>, focusTruePos: Vec3): void {
+/**
+ * Refresh per-frame ring + planet-ring-shadow uniforms (sun dir, planet center,
+ * pole). `realistic` scales the pre-lit ring albedo by inverse-square distance
+ * from the Sun, since scene lights never touch the ring ShaderMaterial.
+ */
+export function updateRingShaders(
+	bodyObjects: Map<string, BodyObjects>,
+	focusTruePos: Vec3,
+	realistic: boolean
+): void {
 	const sunPos = bodyObjects.get(SUN_ID)?.body.position;
 	if (!sunPos) return;
 	const [fx, fy, fz] = focusTruePos;
@@ -14,7 +23,11 @@ export function updateRingShaders(bodyObjects: Map<string, BodyObjects>, focusTr
 
 		// Body → sun direction (the focus offset cancels, so world == scene-rel).
 		const ringSunDir = bo.rings.material.uniforms.uSunDir.value as Vector3;
-		ringSunDir.set(sunPos[0] - bx, sunPos[1] - by, sunPos[2] - bz).normalize();
+		ringSunDir.set(sunPos[0] - bx, sunPos[1] - by, sunPos[2] - bz);
+		bo.rings.material.uniforms.uLightScale.value = realistic
+			? sunIrradianceFactor(ringSunDir.length())
+			: 1;
+		ringSunDir.normalize();
 
 		// Shared by both ray-marches: planet-shadow-on-ring (always present)
 		// and ring-shadow-on-planet (present once attachRingShadowToPlanet runs).
