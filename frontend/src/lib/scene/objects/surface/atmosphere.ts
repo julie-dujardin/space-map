@@ -431,11 +431,13 @@ const FRAGMENT_SHADER = `
 	// Opaque-scene depth, sampled only when the camera is inside the shell (the
 	// far-hemisphere pass runs with depthTest off so the sky renders, which
 	// would otherwise paint over foreground terrain). uUseDepth gates it; the
-	// texture holds the logarithmic-depth buffer, decoded to an eye-forward
-	// distance below.
+	// texture holds reversed-Z or logarithmic depth depending on the renderer's
+	// mode (uReversedDepth), decoded to an eye-forward distance below.
 	uniform sampler2D uSceneDepth;
 	uniform float uUseDepth;
+	uniform float uReversedDepth;
 	uniform vec3 uCamForward;   // unit, world — camera view axis
+	uniform float uCameraNear;
 	uniform float uCameraFar;
 	uniform vec2 uResolution;
 
@@ -572,7 +574,7 @@ const FRAGMENT_SHADER = `
 			tEnd = planetHit.x;                   // march stops at the surface
 			hitSurface = 1.0;
 		}
-		// Stop at real opaque terrain (decoded from the log-depth prepass), which
+		// Stop at real opaque terrain (decoded from the depth prepass), which
 		// the analytic-surface march is blind to. Clamp tEnd *before* the step
 		// size is set so the samples spread smoothly up to the surface — a
 		// mid-march cutoff quantises the haze depth into bands down a slope. Only
@@ -587,8 +589,12 @@ const FRAGMENT_SHADER = `
 			// ground.
 			float d = texture2D(uSceneDepth, gl_FragCoord.xy / uResolution).x;
 			float fwd = dot(rdWorld, uCamForward);
-			if (d < 1.0 && fwd > 1e-4) {
-				float terrainW = exp2(d * log2(uCameraFar + 1.0)) - 1.0;
+			// "No geometry" is the cleared value: 0 under reversed-Z, 1 under log.
+			bool hitGeom = uReversedDepth > 0.5 ? d > 0.0 : d < 1.0;
+			if (hitGeom && fwd > 1e-4) {
+				float terrainW = uReversedDepth > 0.5
+					? uCameraNear * uCameraFar / (d * (uCameraFar - uCameraNear) + uCameraNear)
+					: exp2(d * log2(uCameraFar + 1.0)) - 1.0;
 				float tTerrain = terrainW * dLen / (uPlanetRadiusScene * fwd);
 				if (tTerrain < tEnd) {
 					tEnd = tTerrain;
@@ -806,7 +812,9 @@ export function buildAtmosphereNode(
 			// shell (see updateAtmosphereShaders / the depth prepass).
 			uSceneDepth: { value: whiteTexture() },
 			uUseDepth: { value: 0 },
+			uReversedDepth: { value: 0 },
 			uCamForward: { value: new Vector3(0, 0, -1) },
+			uCameraNear: { value: 0.001 },
 			uCameraFar: { value: 1 },
 			uResolution: { value: new Vector2(1, 1) }
 		},

@@ -9,6 +9,7 @@ import {
 	WebGLRenderTarget
 } from 'three';
 import type { BodyObjects } from '$lib/scene/types';
+import { isReversedDepth } from '$lib/scene/setup/depth-mode';
 
 /**
  * Opaque-depth prepass feeding the atmosphere shells. When the camera is inside
@@ -67,6 +68,8 @@ export class AtmosphereDepthPass {
 			if (!u) continue;
 			u.uSceneDepth.value = this.#target.depthTexture;
 			(u.uCamForward.value as Vector3).copy(this.#forward);
+			u.uReversedDepth.value = isReversedDepth() ? 1 : 0;
+			u.uCameraNear.value = camera.near;
 			u.uCameraFar.value = camera.far;
 			(u.uResolution.value as Vector2).copy(this.#size);
 		}
@@ -80,9 +83,10 @@ export class AtmosphereDepthPass {
 
 function makeTarget(width: number, height: number): WebGLRenderTarget {
 	// The colour attachment is unused — only depthTexture is read — but a target
-	// still needs one. FloatType keeps full precision: the shader decodes the
-	// logarithmic-depth value through an exponential, so a low-bit depth texture
-	// quantises the terrain distance into visible bands (and jitters per frame).
+	// still needs one. FloatType keeps full precision: both decodes (reversed-Z
+	// hyperbolic, log-depth exponential) magnify small value differences, so a
+	// low-bit depth texture quantises the terrain distance into visible bands
+	// (and jitters per frame).
 	const target = new WebGLRenderTarget(width, height);
 	target.depthTexture = new DepthTexture(width, height, FloatType);
 	return target;
