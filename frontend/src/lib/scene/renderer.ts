@@ -119,6 +119,17 @@ const FAR_MIN = kmToScene(1e6); // floor: never squeeze far below a planetary sy
 /** Skip the projection-matrix rebuild until far drifts more than this fraction. */
 const FAR_UPDATE_EPS = 0.02;
 
+/** Tight-far regime: camera within ~1 focused-body radius of the surface
+ *  (< 2 radii from centre). The Sun leaves the far computation (a scaled proxy
+ *  stands in — {@link SceneRenderer.updateSunProxy}) and heliocentric trails
+ *  hide. Looser release keeps the trail from flickering at the boundary. */
+const TIGHT_FAR_ENGAGE = 2;
+const TIGHT_FAR_RELEASE = 2.3;
+/** Proxy-Sun distance as a fraction of far. Below 1/FAR_MARGIN, so the proxy
+ *  sits beyond every in-system body and depth-sorts behind them (e.g. a moon
+ *  transiting the disc). */
+const SUN_PROXY_FAR_FRACTION = 0.9;
+
 export class SceneRenderer {
 	private renderer: WebGLRenderer;
 	private composer: EffectComposer;
@@ -225,6 +236,12 @@ export class SceneRenderer {
 	/** Both scenes' ambient fills; driven together by the high-ambient toggle. */
 	private readonly ambientLights: AmbientLight[];
 	private sunPointLight: PointLight | undefined;
+	/** Tight-far regime active (see TIGHT_FAR_ENGAGE / updateDepthFar). */
+	private tightFar = false;
+	/** Current proxy-Sun scale factor; 1 = Sun rendered at its true position. */
+	private sunProxyK = 1;
+	private sunBaseMeshScale = 1;
+	private sunBaseCoronaScale = 0;
 	/** Pinned user-location dot on Earth's surface (Google-Maps-style). */
 	private userLocationMarker: CSS2DObject | null = null;
 	/** DOM container for CSS2D labels; hidden entirely in immersive mode. */
@@ -626,6 +643,7 @@ export class SceneRenderer {
 
 		const { distance } = this.getCameraState();
 		this.ctx.visibility.updateCamera(distance, this.clock.jd);
+		this.updateTightFar(distance);
 
 		// A flyby probe entering a planet's system mid-play (time advancing, not a
 		// focus change) flips `focusedSystemId` inside updateCamera with no focus
@@ -652,7 +670,8 @@ export class SceneRenderer {
 			// the throttled (every-3rd-frame) pass judges stale positions and lets
 			// overlapping labels both stay maximized mid-motion. Throttle resumes
 			// once the camera settles; clock-only drift at 1x is sub-pixel/frame.
-			!controlsSettled
+			!controlsSettled,
+			this.tightFar
 		);
 
 		// Catches lines updatePositions skipped (visible=false) that updateBodyVisibility
@@ -699,6 +718,7 @@ export class SceneRenderer {
 		this.pointClouds.drainOnePendingSceneAdd();
 
 		this.updateDepthFar();
+		this.updateSunProxy();
 
 		this.composer.render();
 		this.renderModelOverlay();
@@ -716,18 +736,41 @@ export class SceneRenderer {
 		}
 	};
 
+	/** Hysteresis gate for the tight-far regime (`distance` = camera to focus,
+	 *  scene units). A focused landed probe or surface feature has ~zero radius
+	 *  of its own — the host body whose terrain the camera orbits is the scale
+	 *  that matters, measured from its centre (the focus sits on the surface). */
+	private updateTightFar(distance: number): void {
+		const focused = this.focusController.current;
+		const anchorId = focused ? nomenclatureBodyId(focused, this.bodyObjects) : undefined;
+		const anchorBo = anchorId ? this.bodyObjects.get(anchorId) : undefined;
+		const radius = anchorBo?.radiusScene ?? 0;
+		let dist = distance;
+		if (focused && anchorBo && anchorId !== focused.data.id) {
+			const [fx, fy, fz] = this.focus.focusTruePos;
+			const [bx, by, bz] = anchorBo.body.position;
+			const cam = this.camera.position;
+			dist = Math.hypot(fx + cam.x - bx, fy + cam.y - by, fz + cam.z - bz);
+		}
+		const bound = this.tightFar ? TIGHT_FAR_RELEASE : TIGHT_FAR_ENGAGE;
+		this.tightFar =
+			radius > 0 && this.ctx.visibility.activeSystemId !== null && dist < radius * bound;
+	}
+
 	/**
-	 * Pull the far plane in when zoomed into a subsystem. The logarithmic depth
-	 * buffer distributes precision as 1/log2(far+1), so collapsing far from the
-	 * ~0.5 ly solar-system default down to just the Sun (which dominates) plus the
-	 * focused planetary system sharply cuts the z-fighting seen in close-up terrain
-	 * like moon craters. Near is irrelevant to log-depth precision, so it stays put.
-	 * Everything outside the active system is already hidden while zoomed in, so it
-	 * mustn't hold the far plane out — only the Sun and in-system bodies count.
+	 * Pull the far plane in when zoomed into a subsystem. Log-depth precision
+	 * scales as 1/log2(far+1) — near is irrelevant — so collapsing far from the
+	 * ~0.5 ly default sharply cuts z-fighting in close-up terrain. Bodies
+	 * outside the active system are hidden while zoomed in and mustn't hold the
+	 * plane out. Normally the Sun dominates far; in the tight-far regime it
+	 * drops out too (updateSunProxy stands in) and the system-extent term keeps
+	 * sibling-moon orbit trails inside the plane — a body position alone says
+	 * nothing about its trail's far side.
 	 */
 	private updateDepthFar(): void {
 		let far = CAMERA_FAR_DEFAULT;
-		if (this.ctx.visibility.activeSystemId) {
+		const sysId = this.ctx.visibility.activeSystemId;
+		if (sysId) {
 			const [fx, fy, fz] = this.focus.focusTruePos;
 			// Seed with the camera's own reach so we never clip what we're looking at.
 			let maxDistSq = this.camera.position.lengthSq();
@@ -738,14 +781,30 @@ export class SceneRenderer {
 				const d2 = dx * dx + dy * dy + dz * dz;
 				if (d2 > maxDistSq) maxDistSq = d2;
 			};
-			// The Sun stays lit and visible from inside a subsystem (its parent is
-			// top-level, so hasFullRendering excludes it) — keep it in range.
-			const sun = this.bodyObjects.get(SUN_ID)?.body;
-			if (sun) consider(sun.position);
-			// Only the bodies actually rendered while zoomed in: the focused planet,
-			// its moons, in-system probes. Other planets and dwarfs are hidden here.
-			for (const b of this.ctx.bodies.majorBodies) {
-				if (this.ctx.visibility.hasFullRendering(b)) consider(b.position);
+			const sunBo = this.bodyObjects.get(SUN_ID);
+			if (this.tightFar) {
+				// Any in-system orbit stays within apoapsis < 2·a of the root.
+				const root = this.bodyObjects.get(sysId)?.body;
+				if (root) {
+					const rootDist = Math.hypot(
+						root.position[0] - fx,
+						root.position[1] - fy,
+						root.position[2] - fz
+					);
+					const reach = rootDist + this.ctx.bodies.getSystemExtent(sysId) * AU_SCALE * 2;
+					maxDistSq = Math.max(maxDistSq, reach * reach);
+				}
+			} else {
+				// The Sun stays lit and visible from inside a subsystem
+				// (hasFullRendering excludes it) — keep it in range.
+				if (sunBo) consider(sunBo.body.position);
+			}
+			// Everything rendered while zoomed in holds the far plane — bodyObjects,
+			// not ctx.bodies.majorBodies, so in-system probes (JWST from the Moon)
+			// and L-point markers count too. Out-of-system bodies fail
+			// hasFullRendering; their sub-pixel meshes clip harmlessly.
+			for (const bo of this.bodyObjects.values()) {
+				if (this.ctx.visibility.hasFullRendering(bo.body)) consider(bo.body.position);
 			}
 			far = Math.min(CAMERA_FAR_DEFAULT, Math.max(FAR_MIN, Math.sqrt(maxDistSq) * FAR_MARGIN));
 		}
@@ -753,6 +812,44 @@ export class SceneRenderer {
 			this.camera.far = far;
 			this.camera.updateProjectionMatrix();
 		}
+	}
+
+	/**
+	 * Stand-in Sun for the tight-far regime: re-seat the Sun's visuals at
+	 * SUN_PROXY_FAR_FRACTION × far along the true direction, scaled by the same
+	 * factor — angular size and surface brightness are distance-invariant, so
+	 * disc, corona, and bloom render pixel-identical. Lighting and the
+	 * eclipse/atmosphere/shadow uniforms read the true `body.position` and are
+	 * unaffected (the PointLight rides along at zero intensity in subsystems).
+	 * Must run after updateDepthFar (this frame's far) and after
+	 * repositionBodies (so this write wins).
+	 */
+	private updateSunProxy(): void {
+		const sunBo = this.bodyObjects.get(SUN_ID);
+		if (!sunBo) return;
+		const [fx, fy, fz] = this.focus.focusTruePos;
+		const [sx, sy, sz] = sunBo.body.position;
+		const rx = sx - fx;
+		const ry = sy - fy;
+		const rz = sz - fz;
+		let k = 1;
+		if (this.tightFar) {
+			const proxyDist = this.camera.far * SUN_PROXY_FAR_FRACTION;
+			const trueDist = Math.hypot(rx, ry, rz);
+			if (trueDist > proxyDist) k = proxyDist / trueDist;
+		}
+		// k = 1 with no proxy applied: positions are repositionBodies' — nothing to do.
+		if (k === 1 && this.sunProxyK === 1) return;
+		if (this.sunProxyK === 1) {
+			// Entering the regime: capture bases (mesh scale may carry PCK radii).
+			this.sunBaseMeshScale = sunBo.mesh?.scale.x ?? 1;
+			this.sunBaseCoronaScale = sunBo.corona?.scale.x ?? 0;
+		}
+		sunBo.group.position.set(rx * k, ry * k, rz * k);
+		for (const obj of sunBo.extraObjects) obj.position.set(rx * k, ry * k, rz * k);
+		sunBo.mesh?.scale.setScalar(this.sunBaseMeshScale * k);
+		sunBo.corona?.scale.set(this.sunBaseCoronaScale * k, this.sunBaseCoronaScale * k, 1);
+		this.sunProxyK = k;
 	}
 
 	/**

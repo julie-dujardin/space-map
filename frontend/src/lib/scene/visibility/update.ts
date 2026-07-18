@@ -27,6 +27,7 @@ import {
 	nomenclatureBodyId
 } from '../objects/surface/nomenclature';
 import { f64dist, type Vec3 } from '../animation/math';
+import { AU_SCALE } from '$lib/math/units';
 import { modelUnitScene, type OccluderSphere } from '../objects/body/model';
 import { parentIdFromSubkey } from '$lib/math/orbit/partition';
 import {
@@ -43,6 +44,14 @@ import {
  * side of the handoff.
  */
 const STAR_POINT_HANDOFF_R = STAR_POINT_SIZE_PX / 2;
+
+/** Orbit-centre distance (from focus) past which a trail counts as
+ *  heliocentric for tight-far suppression: 0.1 AU clears every planetary
+ *  system's own orbits, while the nearest Sun-centred one (Mercury) is
+ *  0.39 AU out. */
+const HELIO_CENTER_DIST_SQ = (0.1 * AU_SCALE) ** 2;
+// Scratch for the orbit-centre distance test.
+const _focusV3 = new Vector3();
 
 // Pooled occluder array — reused across frames; trimmed to active prefix via
 // `.length = active` so existing iter/`for-of` consumers keep working. Empty
@@ -105,7 +114,8 @@ export function updateBodyVisibility(
 	cullFrameCounter: number,
 	renderer: WebGLRenderer,
 	tmpV3: Vector3,
-	forceCull: boolean
+	forceCull: boolean,
+	suppressHeliocentricTrails: boolean
 ): number {
 	const fovRad = (camera.fov * Math.PI) / 180;
 	const screenW = renderer.domElement.clientWidth;
@@ -442,6 +452,17 @@ export function updateBodyVisibility(
 		// span and halo scale are handled in cullOverlappingLabels.
 		if (bo.isMinor && !isFocused && trail) {
 			trail.visible = false;
+		}
+
+		// Tight-far regime: a Sun-centred trail would render cut off at the
+		// collapsed far plane — hide it. Judged by orbit centre, not parentId:
+		// Earth's trail is heliocentric though its data parent is the unrendered
+		// EMB. Buffer trails carry no orbitCenter and are left alone.
+		if (suppressHeliocentricTrails && trail?.visible) {
+			const oc = trail.userData.orbitCenter as Vector3 | undefined;
+			if (oc && oc.distanceToSquared(_focusV3.set(fp[0], fp[1], fp[2])) > HELIO_CENTER_DIST_SQ) {
+				trail.visible = false;
+			}
 		}
 
 		// Detach labels from hidden groups so CSS2DRenderer's recursive
