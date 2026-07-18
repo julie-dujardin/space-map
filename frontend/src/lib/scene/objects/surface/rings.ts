@@ -515,7 +515,11 @@ export async function loadRingNode(
 
 	const mesh = new Mesh(geometry, material);
 	mesh.frustumCulled = false; // repositioned by the renderer each frame
-	mesh.renderOrder = 1; // draw after opaque planet so transparent alpha composites cleanly
+	// After the opaque planet AND the atmosphere shell (renderOrder 2): the shell
+	// writes depth from outside, so foreground rings depth-test in front of the
+	// glow and the dense inner ring composites over it instead of the glow
+	// bleeding through. Ties with trails/points (also 3) resolve by distance.
+	mesh.renderOrder = 3;
 	mesh.userData.isRingMesh = true;
 	// Both shadow directions are handled by per-pixel analytical ray-marches —
 	// ring → planet inside the planet's own MeshStandardMaterial (see

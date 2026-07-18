@@ -53,6 +53,7 @@ import {
 	applyAtmosphereParams,
 	type AtmosphereParams
 } from './objects/surface/atmosphere';
+import { AtmosphereDepthPass } from './objects/surface/atmosphere-depth';
 import { loadBodyTexture, unloadBodyTexture } from './objects/body/textures';
 import { applyOrientation, bodyQuaternion } from '$lib/math/orientation';
 import {
@@ -140,6 +141,7 @@ const SUN_PROXY_FAR_FRACTION = 0.9;
 export class SceneRenderer {
 	private renderer: WebGLRenderer;
 	private composer: EffectComposer;
+	private atmoDepthPass: AtmosphereDepthPass;
 	private bloomPass: UnrealBloomPass;
 	private labelRenderer: ThrottledCSS2DRenderer;
 	private scene: Scene;
@@ -283,6 +285,8 @@ export class SceneRenderer {
 		this.composer = boot.composer;
 		this.bloomPass = boot.bloomPass;
 		this.shadowLight = boot.shadowLight;
+		const drawSize = this.renderer.getDrawingBufferSize(new Vector2());
+		this.atmoDepthPass = new AtmosphereDepthPass(drawSize.x, drawSize.y);
 
 		this.modelScene = new SceneClass();
 		this.modelScene.environment = makeEnvMap(this.renderer);
@@ -686,7 +690,7 @@ export class SceneRenderer {
 		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd);
 
 		updateRingShaders(this.bodyObjects, this.focus.focusTruePos, getSettings().realisticLighting);
-		updateAtmosphereShaders(
+		const cameraInsideShell = updateAtmosphereShaders(
 			this.bodyObjects,
 			this.camera.position,
 			getSettings().showAtmospheres,
@@ -745,6 +749,12 @@ export class SceneRenderer {
 
 		this.updateDepthFar();
 		this.updateSunProxy();
+		// Only when the camera is inside a shell (surface zoom): supplies the
+		// opaque depth those shells clamp their march to, so haze stops at
+		// foreground terrain instead of painting over it.
+		if (cameraInsideShell) {
+			this.atmoDepthPass.run(this.renderer, this.scene, this.camera, this.bodyObjects);
+		}
 
 		this.composer.render();
 		this.renderModelOverlay();
@@ -1564,6 +1574,8 @@ export class SceneRenderer {
 	resize(width: number, height: number): void {
 		this.renderer.setSize(width, height, false);
 		this.composer.setSize(width, height);
+		const drawSize = this.renderer.getDrawingBufferSize(new Vector2());
+		this.atmoDepthPass.setSize(drawSize.x, drawSize.y);
 		this.bloomPass.setSize(width, height);
 		this.labelRenderer.setSize(width, height);
 		this.camera.aspect = width / height;
@@ -1592,6 +1604,7 @@ export class SceneRenderer {
 		this.bodyObjects.clear();
 		// EffectComposer render targets (bloom mips) survive renderer.dispose().
 		this.composer.dispose();
+		this.atmoDepthPass.dispose();
 		this.renderer.dispose();
 	}
 

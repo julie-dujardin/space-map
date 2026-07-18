@@ -39,6 +39,7 @@ import {
 	ShaderMaterial,
 	SphereGeometry,
 	type Texture,
+	Vector2,
 	Vector3
 } from 'three';
 import { ECLIPSE_FACTOR_GLSL, getEclipseSceneUniforms } from './eclipse-shadow';
@@ -427,6 +428,16 @@ const FRAGMENT_SHADER = `
 	uniform vec3 uRingShadowSunDir;
 	uniform vec3 uRingShadowPoleDir;
 	uniform vec3 uRingShadowCenter;
+	// Opaque-scene depth, sampled only when the camera is inside the shell (the
+	// far-hemisphere pass runs with depthTest off so the sky renders, which
+	// would otherwise paint over foreground terrain). uUseDepth gates it; the
+	// texture holds the logarithmic-depth buffer, decoded to an eye-forward
+	// distance below.
+	uniform sampler2D uSceneDepth;
+	uniform float uUseDepth;
+	uniform vec3 uCamForward;   // unit, world — camera view axis
+	uniform float uCameraFar;
+	uniform vec2 uResolution;
 
 	varying vec3 vWorldPos;
 	varying vec3 vPlanetCenter;
@@ -561,6 +572,30 @@ const FRAGMENT_SHADER = `
 			tEnd = planetHit.x;                   // march stops at the surface
 			hitSurface = 1.0;
 		}
+		// Stop at real opaque terrain (decoded from the log-depth prepass), which
+		// the analytic-surface march is blind to. Clamp tEnd *before* the step
+		// size is set so the samples spread smoothly up to the surface — a
+		// mid-march cutoff quantises the haze depth into bands down a slope. Only
+		// active inside the shell, where depthTest is off (updateAtmosphereShaders);
+		// forward distance decodes as t = w·dLen / (R·(rd·camFwd)).
+		if (uUseDepth > 0.5) {
+			// Single-tap, so the clamp sits exactly at the opaque depth: averaging
+			// neighbours pulls in the far sky value at the silhouette and bleeds
+			// haze onto the ground there. The hard per-pixel edge can shimmer as
+			// terrain drifts sub-pixel (single-sample depth vs the MSAA'd colour
+			// edge), but that's less objectionable than glow leaking through solid
+			// ground.
+			float d = texture2D(uSceneDepth, gl_FragCoord.xy / uResolution).x;
+			float fwd = dot(rdWorld, uCamForward);
+			if (d < 1.0 && fwd > 1e-4) {
+				float terrainW = exp2(d * log2(uCameraFar + 1.0)) - 1.0;
+				float tTerrain = terrainW * dLen / (uPlanetRadiusScene * fwd);
+				if (tTerrain < tEnd) {
+					tEnd = tTerrain;
+					hitSurface = 1.0;
+				}
+			}
+		}
 		if (tEnd <= tStart) discard;
 
 		float mu = dot(rdWorld, uSunDir);         // phase angle is physical — world space
@@ -581,6 +616,7 @@ const FRAGMENT_SHADER = `
 
 		for (int i = 0; i < PRIMARY_STEPS; i++) {
 			vec3 p = ro + rd * (tStart + dt * (float(i) + 0.5));
+			vec3 pWorld = vPlanetCenter + unsquash(p) * uPlanetRadiusScene;
 			vec3 dens = densities(length(p) - 1.0); // (ρ_R, ρ_M, ρ_A)
 			vec3 dStep = dens * dtWorld;
 			viewOD += dStep;
@@ -605,7 +641,6 @@ const FRAGMENT_SHADER = `
 			// eclipse) and by the ring system both dim the light reaching this
 			// sample — the shadows sweep through the atmosphere just like
 			// across the surface.
-			vec3 pWorld = vPlanetCenter + unsquash(p) * uPlanetRadiusScene;
 			float sunVis = eclipseFactorAt(pWorld, vPlanetCenter, uSunDir) * ringShadowAt(pWorld);
 
 			vec3 direct = viewT * wStep * sunT * sunVis;
@@ -766,7 +801,14 @@ export function buildAtmosphereNode(
 			uMultiScatter: { value: params.multiScatterGain },
 			uBakedComp: { value: params.bakedCompensation },
 			uSunIntensity: { value: params.sunIntensity },
-			uSunColor: { value: new Vector3(c[0], c[1], c[2]) }
+			uSunColor: { value: new Vector3(c[0], c[1], c[2]) },
+			// Depth-clamp inputs, bound by the renderer only while inside the
+			// shell (see updateAtmosphereShaders / the depth prepass).
+			uSceneDepth: { value: whiteTexture() },
+			uUseDepth: { value: 0 },
+			uCamForward: { value: new Vector3(0, 0, -1) },
+			uCameraFar: { value: 1 },
+			uResolution: { value: new Vector2(1, 1) }
 		},
 		vertexShader: VERTEX_SHADER,
 		fragmentShader: FRAGMENT_SHADER,
@@ -790,8 +832,9 @@ export function buildAtmosphereNode(
 	const geometryRadiusScene = planetRadiusScene * (1 + params.topAltitudeKm / planetRadiusKm);
 	const geometry = new SphereGeometry(geometryRadiusScene, 64, 64);
 	const mesh = new Mesh(geometry, material);
-	// Draw after the opaque planet and after clouds/rings (renderOrder 1) so the
-	// glow composites over everything else around the body.
+	// Draw after the opaque planet and clouds (renderOrder 1) so the glow
+	// composites over the surface, but before the rings (renderOrder 3) — the
+	// shell writes depth from outside, so foreground rings occlude the glow.
 	mesh.renderOrder = 2;
 	mesh.userData.isAtmosphereMesh = true;
 	return { mesh, material, params, geometryRadiusScene, planetRadiusKm };

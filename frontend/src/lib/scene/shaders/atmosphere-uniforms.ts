@@ -13,6 +13,9 @@ const spinAxis = new Vector3();
  * body's inverse-square distance from the Sun (bodies flagged
  * `realisticSunAlways` get that scaling in every mode); `sunScale` is the
  * debug lighting-tuner multiplier shared with the scene's sun lights.
+ *
+ * Returns whether any shell now has the camera inside it — the renderer uses
+ * that to decide whether to run the opaque-depth prepass those shells sample.
  */
 export function updateAtmosphereShaders(
 	bodyObjects: Map<string, BodyObjects>,
@@ -20,9 +23,10 @@ export function updateAtmosphereShaders(
 	visible: boolean,
 	realistic: boolean,
 	sunScale: number
-): void {
+): boolean {
 	const sunPos = bodyObjects.get(SUN_ID)?.body.position;
-	if (!sunPos) return;
+	if (!sunPos) return false;
+	let anyInside = false;
 	for (const bo of bodyObjects.values()) {
 		if (!bo.atmosphere) continue;
 		bo.atmosphere.mesh.visible = visible;
@@ -53,9 +57,13 @@ export function updateAtmosphereShaders(
 		// From inside, the visible shell fragment is the far hemisphere — writing
 		// its depth would cull the point clouds/trails beyond the night sky, and
 		// depth-testing it against the nearer terrain would reject the very
-		// fragments that carry the camera→ground aerial perspective. The march
-		// stops at the analytic surface, so drawing over terrain is ≈ right.
+		// fragments that carry the camera→ground aerial perspective. So depth
+		// test/write are off; instead the shader samples the opaque-depth prepass
+		// (uUseDepth) to stop its march at real terrain.
 		bo.atmosphere.material.depthWrite = !inside;
 		bo.atmosphere.material.depthTest = !inside;
+		bo.atmosphere.material.uniforms.uUseDepth.value = inside ? 1 : 0;
+		if (inside) anyInside = true;
 	}
+	return anyInside;
 }
