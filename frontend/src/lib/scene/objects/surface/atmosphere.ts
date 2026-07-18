@@ -31,11 +31,13 @@
 import {
 	CustomBlending,
 	DataTexture,
+	FloatType,
 	FrontSide,
 	type Material,
 	Mesh,
 	OneFactor,
 	OneMinusSrcAlphaFactor,
+	RGBAFormat,
 	ShaderMaterial,
 	SphereGeometry,
 	type Texture,
@@ -59,6 +61,21 @@ function whiteTexture(): DataTexture {
 		white.needsUpdate = true;
 	}
 	return white;
+}
+
+/** Pack a 3×128 phase table (R,G,B blocks of 128) into a 128×1 RGBA float
+ *  texture — see the uMiePhaseTex shader comment for why not a uniform array. */
+function miePhaseTexture(table: readonly number[]): DataTexture {
+	const data = new Float32Array(128 * 4);
+	for (let i = 0; i < 128; i++) {
+		data[i * 4] = table[i];
+		data[i * 4 + 1] = table[i + 128];
+		data[i * 4 + 2] = table[i + 256];
+		data[i * 4 + 3] = 1;
+	}
+	const tex = new DataTexture(data, 128, 1, RGBAFormat, FloatType);
+	tex.needsUpdate = true;
+	return tex;
 }
 
 /**
@@ -412,7 +429,10 @@ const FRAGMENT_SHADER = `
 	uniform vec3 uMieScatter;        // β_M scattering, per planet radius, (R,G,B)
 	uniform vec3 uMieExtinction;     // β_M extinction, per planet radius, (R,G,B)
 	uniform float uMieScaleHeight;
-	uniform float uMiePhase[384];    // tabulated Mie phase, 3x128 (R,G,B)
+	// Tabulated Mie phase, 128x1 RGBA float texel row (RGB used). A texture, not
+	// a uniform array: 384 floats would eat 384 uniform vectors and blow past
+	// mobile GPUs' fragment-uniform limit (~224), which kills the program link.
+	uniform sampler2D uMiePhaseTex;
 	uniform vec3 uAbsorption;        // absorber band β, per planet radius, (R,G,B)
 	uniform float uAbsorptionCenter;
 	uniform float uAbsorptionWidth;
@@ -470,18 +490,17 @@ const FRAGMENT_SHADER = `
 		return v + (1.0 / uStretch - 1.0) * dot(v, uSpinAxis) * uSpinAxis;
 	}
 
-	// One channel of the tabulated aerosol phase function. Tables are sampled
-	// at theta = pi*(i/127)^2, so the lookup warps back with a square root —
-	// most of the 128 samples sit on the sharp forward peak.
-	float miePhaseAt(float theta, int off) {
-		float w = sqrt(theta / PI) * 127.0;
-		int i0 = clamp(int(floor(w)), 0, 126);
-		return mix(uMiePhase[off + i0], uMiePhase[off + i0 + 1], w - float(i0));
-	}
-
+	// Tabulated aerosol phase function. Texels sit at theta = pi*(i/127)^2, so
+	// the lookup warps back with a square root — most of the 128 samples sit on
+	// the sharp forward peak. Two nearest taps + manual lerp: linear filtering
+	// of float textures is an optional extension on mobile.
 	vec3 miePhase(float mu) {
 		float theta = acos(clamp(mu, -1.0, 1.0));
-		return vec3(miePhaseAt(theta, 0), miePhaseAt(theta, 128), miePhaseAt(theta, 256));
+		float w = sqrt(theta / PI) * 127.0;
+		float i0 = clamp(floor(w), 0.0, 126.0);
+		vec3 a = texture2D(uMiePhaseTex, vec2((i0 + 0.5) / 128.0, 0.5)).rgb;
+		vec3 b = texture2D(uMiePhaseTex, vec2((i0 + 1.5) / 128.0, 0.5)).rgb;
+		return mix(a, b, w - i0);
 	}
 
 	// Ray (origin ro, unit dir rd) vs sphere centred at the origin, radius r.
@@ -800,7 +819,7 @@ export function buildAtmosphereNode(
 			uMieScatter: { value: new Vector3() },
 			uMieExtinction: { value: new Vector3() },
 			uMieScaleHeight: { value: 0 },
-			uMiePhase: { value: Float32Array.from(params.miePhase) },
+			uMiePhaseTex: { value: miePhaseTexture(params.miePhase) },
 			uAbsorption: { value: new Vector3() },
 			uAbsorptionCenter: { value: 0 },
 			uAbsorptionWidth: { value: 0 },
@@ -912,5 +931,6 @@ export function attachRingShadowToAtmosphere(
 /** Dispose the GPU resources owned by an atmosphere node. */
 export function disposeAtmosphereNode(node: AtmosphereNode): void {
 	node.mesh.geometry.dispose();
+	(node.material.uniforms.uMiePhaseTex.value as Texture).dispose();
 	(node.mesh.material as Material).dispose();
 }
