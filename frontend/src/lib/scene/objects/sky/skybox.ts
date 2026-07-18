@@ -182,8 +182,9 @@ async function loadFromMeta(
 /**
  * Fetch the top-level metadata (memoized; shares the chunk-prefetcher's
  * promise), pick a tier, and install the cubemap-skybox bundle as
- * `scene.background`. Also publishes the bundle's credit fields onto
- * `ctx.credits.skybox` so the in-map attribution popover can surface them.
+ * `scene.background`. When a ContextManager is given (the debug tuner passes
+ * none), also publishes the bundle's credit fields onto `ctx.credits.skybox`
+ * for the in-map attribution popover.
  * Fire-and-forget from the renderer init path — errors (including a missing
  * skybox block) are swallowed with a console warning so the scene falls back
  * to its default black background instead of breaking.
@@ -191,18 +192,19 @@ async function loadFromMeta(
 export async function loadSkybox(
 	scene: Scene,
 	renderer: WebGLRenderer,
-	ctx: ContextManager
+	ctx?: ContextManager
 ): Promise<void> {
 	try {
 		const meta = await fetchMetadata();
 		if (!meta.skybox) return;
-		ctx.credits.skybox = {
-			source: meta.skybox.source,
-			organisation: meta.skybox.organisation,
-			license: meta.skybox.license,
-			attribution: meta.skybox.attribution,
-			description: meta.skybox.description
-		};
+		if (ctx)
+			ctx.credits.skybox = {
+				source: meta.skybox.source,
+				organisation: meta.skybox.organisation,
+				license: meta.skybox.license,
+				attribution: meta.skybox.attribution,
+				description: meta.skybox.description
+			};
 		await loadFromMeta(scene, renderer, meta.skybox);
 	} catch (err) {
 		console.warn('Failed to load skybox:', err);

@@ -43,6 +43,8 @@
 	import { versionedUrl } from '$lib/fetch/data-base';
 	import { AU_KM } from '$lib/math/units';
 	import { AMBIENT_INTENSITY, SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
+	import { loadSkybox, SKYBOX_BASE_ROTATION } from '$lib/scene/objects/sky/skybox';
+	import { skyboxDimFactor } from '$lib/scene/shaders/atmosphere-uniforms';
 
 	interface BodyDef {
 		id: string;
@@ -164,6 +166,21 @@
 	// it. Not shown as sliders: the mouse owns aiming, the sliders own position.
 	let lookYaw = $state(0);
 	let lookPitch = $state(0);
+
+	// Star-map dim for the tuned params at the current altitude and sun — the
+	// same factor production feeds `scene.backgroundIntensity`.
+	const skyDim = $derived.by(() => {
+		const latR = camLat * DEG;
+		const lonR = camLon * DEG;
+		const elR = sunEl * DEG;
+		const azR = sunAz * DEG;
+		// up(camera) · sunDirection, both on the unit sphere.
+		const sinSunElev =
+			Math.cos(latR) * Math.cos(lonR) * Math.cos(elR) * Math.cos(azR) +
+			Math.sin(latR) * Math.sin(elR) +
+			Math.cos(latR) * Math.sin(lonR) * Math.cos(elR) * Math.sin(azR);
+		return skyboxDimFactor(resolved(), altRadii * currentBody.radiusKm, sinSunElev);
+	});
 
 	function shipped(): AtmosphereParams {
 		return ATMOSPHERE_PARAMS[bodyId];
@@ -522,6 +539,7 @@
 			atmoNode.material.depthWrite = !inside;
 			atmoNode.material.depthTest = !inside;
 		}
+		scene.backgroundIntensity = skyDim;
 
 		composer.render();
 	}
@@ -547,6 +565,8 @@
 		textureLoader = new TextureLoader();
 
 		scene = new Scene();
+		scene.backgroundRotation.setFromQuaternion(SKYBOX_BASE_ROTATION);
+		void loadSkybox(scene, renderer);
 		scene.add(new AmbientLight(0xffffff, AMBIENT_INTENSITY));
 		pointLight = new PointLight(0xffffff, SUN_LIGHT_INTENSITY, 0, 0);
 		scene.add(pointLight);
@@ -687,6 +707,10 @@
 					oninput={positionCamera}
 				/>
 				<span class="val">{Math.round(camLat)}°</span>
+
+				<span class="lbl" title="Star-map factor: extinction × exposure compensation">Skybox</span>
+				<span></span>
+				<span class="val">×{skyDim.toFixed(3)}</span>
 			</div>
 
 			<div class="section">

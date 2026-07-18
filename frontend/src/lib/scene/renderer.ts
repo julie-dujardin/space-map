@@ -690,13 +690,16 @@ export class SceneRenderer {
 		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd);
 
 		updateRingShaders(this.bodyObjects, this.focus.focusTruePos, getSettings().realisticLighting);
-		const cameraInsideShell = updateAtmosphereShaders(
+		const atmoState = updateAtmosphereShaders(
 			this.bodyObjects,
 			this.camera.position,
 			getSettings().showAtmospheres,
 			getSettings().realisticLighting,
 			this.sunIntensityScale
 		);
+		// Inside a shell, stars dim by the extinction of the air above the
+		// camera plus a daylight-aware exposure compensation (skyboxDimFactor).
+		this.scene.backgroundIntensity = atmoState.skyboxIntensity;
 		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);
 
 		// High-ambient toggle: flat fill so night sides stay visible for inspection.
@@ -752,7 +755,7 @@ export class SceneRenderer {
 		// Only when the camera is inside a shell (surface zoom): supplies the
 		// opaque depth those shells clamp their march to, so haze stops at
 		// foreground terrain instead of painting over it.
-		if (cameraInsideShell) {
+		if (atmoState.insideShell) {
 			this.atmoDepthPass.run(this.renderer, this.scene, this.camera, this.bodyObjects);
 		}
 
