@@ -19,6 +19,11 @@ import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import { setTrailResolution } from '$lib/scene/objects/trail/material';
 import { AMBIENT_INTENSITY } from '$lib/scene/lighting';
 
+/** Solar-system-view far plane (scene units, ~0.5 ly). With the logarithmic
+ *  depth buffer, precision scales as 1/log2(far), so the renderer pulls this
+ *  in when zoomed into a subsystem — see `SceneRenderer.updateDepthFar`. */
+export const CAMERA_FAR_DEFAULT = 100000;
+
 /** WebGL2 context creation failed (no-WebGL2 device, GPU blocklist, …);
  *  Scene.svelte catches it to show the fallback panel. */
 export class WebGLUnavailableError extends Error {
@@ -89,7 +94,7 @@ export function bootThree(
 	scene.add(shadowLight.target);
 
 	const aspect = canvas.clientWidth / canvas.clientHeight;
-	const camera = new PerspectiveCamera(60, aspect, kmToScene(0.001), 100000);
+	const camera = new PerspectiveCamera(60, aspect, kmToScene(0.001), CAMERA_FAR_DEFAULT);
 
 	const composer = new EffectComposer(renderer);
 	composer.setPixelRatio(cappedPixelRatio());

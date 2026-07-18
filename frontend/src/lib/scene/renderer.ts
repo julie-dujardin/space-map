@@ -40,7 +40,7 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
-import { bootThree } from './setup/three-boot';
+import { bootThree, CAMERA_FAR_DEFAULT } from './setup/three-boot';
 import { cappedPixelRatio } from '$lib/device';
 import { PointerInteraction } from './interaction/pointer';
 import { GpuPickPass } from './interaction/gpu-pick';
@@ -112,6 +112,12 @@ import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
  *  stops promptly on release instead of coasting (three's default is 0.05). */
 const DEFAULT_DAMPING = 0.05;
 const REDUCED_MOTION_DAMPING = 0.4;
+
+/** Depth-far tuning for subsystem views (see {@link SceneRenderer.updateDepthFar}). */
+const FAR_MARGIN = 1.2; // headroom past the farthest anchor so its halo isn't clipped
+const FAR_MIN = kmToScene(1e6); // floor: never squeeze far below a planetary system's own extent
+/** Skip the projection-matrix rebuild until far drifts more than this fraction. */
+const FAR_UPDATE_EPS = 0.02;
 
 export class SceneRenderer {
 	private renderer: WebGLRenderer;
@@ -692,6 +698,8 @@ export class SceneRenderer {
 		// listens on `BodyIndex.onBodiesAdded`).
 		this.pointClouds.drainOnePendingSceneAdd();
 
+		this.updateDepthFar();
+
 		this.composer.render();
 		this.renderModelOverlay();
 		this.labelRenderer.render(this.scene, this.camera);
@@ -707,6 +715,45 @@ export class SceneRenderer {
 			);
 		}
 	};
+
+	/**
+	 * Pull the far plane in when zoomed into a subsystem. The logarithmic depth
+	 * buffer distributes precision as 1/log2(far+1), so collapsing far from the
+	 * ~0.5 ly solar-system default down to just the Sun (which dominates) plus the
+	 * focused planetary system sharply cuts the z-fighting seen in close-up terrain
+	 * like moon craters. Near is irrelevant to log-depth precision, so it stays put.
+	 * Everything outside the active system is already hidden while zoomed in, so it
+	 * mustn't hold the far plane out — only the Sun and in-system bodies count.
+	 */
+	private updateDepthFar(): void {
+		let far = CAMERA_FAR_DEFAULT;
+		if (this.ctx.visibility.activeSystemId) {
+			const [fx, fy, fz] = this.focus.focusTruePos;
+			// Seed with the camera's own reach so we never clip what we're looking at.
+			let maxDistSq = this.camera.position.lengthSq();
+			const consider = (pos: [number, number, number]) => {
+				const dx = pos[0] - fx;
+				const dy = pos[1] - fy;
+				const dz = pos[2] - fz;
+				const d2 = dx * dx + dy * dy + dz * dz;
+				if (d2 > maxDistSq) maxDistSq = d2;
+			};
+			// The Sun stays lit and visible from inside a subsystem (its parent is
+			// top-level, so hasFullRendering excludes it) — keep it in range.
+			const sun = this.bodyObjects.get(SUN_ID)?.body;
+			if (sun) consider(sun.position);
+			// Only the bodies actually rendered while zoomed in: the focused planet,
+			// its moons, in-system probes. Other planets and dwarfs are hidden here.
+			for (const b of this.ctx.bodies.majorBodies) {
+				if (this.ctx.visibility.hasFullRendering(b)) consider(b.position);
+			}
+			far = Math.min(CAMERA_FAR_DEFAULT, Math.max(FAR_MIN, Math.sqrt(maxDistSq) * FAR_MARGIN));
+		}
+		if (Math.abs(far - this.camera.far) > this.camera.far * FAR_UPDATE_EPS) {
+			this.camera.far = far;
+			this.camera.updateProjectionMatrix();
+		}
+	}
 
 	/**
 	 * Composite the focused body's 3D model on top of the main render. The model
