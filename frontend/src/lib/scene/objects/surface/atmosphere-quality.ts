@@ -21,6 +21,10 @@ export interface AtmosphereQualityConfig {
 	 *  opaque-depth prepass + skybox dimming). Off = the shell simply vanishes
 	 *  once entered, and the prepass is never paid. */
 	insideView: boolean;
+	/** Sun-transmittance tints (sunset surface light, disc chroma, corona).
+	 *  Uniform-gated, but the surface march covers full-screen landed terrain
+	 *  — off on low tiers, which keep the untinted sun. */
+	sunTint: boolean;
 }
 
 export type ResolvedAtmosphereTier = 'low' | 'medium' | 'high' | 'ultra';
@@ -29,36 +33,41 @@ export type AtmosphereQualityTier = 'auto' | ResolvedAtmosphereTier;
 /** Step-down ladder for the perf governor, worst → best. */
 const TIER_ORDER: ResolvedAtmosphereTier[] = ['low', 'medium', 'high', 'ultra'];
 
-// Every tier keeps the full feature set — tiers differ only in march budget,
-// so stepping down degrades smoothly instead of popping features off.
+// March budget is the main lever so stepping down degrades smoothly; sunTint
+// is the exception — its surface march lands on exactly the devices the low
+// tiers target.
 export const ATMOSPHERE_QUALITY_PRESETS: Record<ResolvedAtmosphereTier, AtmosphereQualityConfig> = {
 	low: {
 		primarySteps: 6,
 		lightSteps: 2,
 		eclipseShadows: true,
 		ringShadows: true,
-		insideView: true
+		insideView: true,
+		sunTint: false
 	},
 	medium: {
 		primarySteps: 12,
 		lightSteps: 3,
 		eclipseShadows: true,
 		ringShadows: true,
-		insideView: true
+		insideView: true,
+		sunTint: false
 	},
 	high: {
 		primarySteps: 16,
 		lightSteps: 4,
 		eclipseShadows: true,
 		ringShadows: true,
-		insideView: true
+		insideView: true,
+		sunTint: true
 	},
 	ultra: {
 		primarySteps: 32,
 		lightSteps: 8,
 		eclipseShadows: true,
 		ringShadows: true,
-		insideView: true
+		insideView: true,
+		sunTint: true
 	}
 };
 
@@ -101,7 +110,8 @@ export function currentAtmosphereConfig(): AtmosphereQualityConfig {
 }
 
 /** Identity key for change detection — shells rebuild their program when the
- *  key they were compiled with stops matching. */
+ *  key they were compiled with stops matching. `sunTint` is uniform-gated,
+ *  so it stays out of the key. */
 export function atmosphereConfigKey(c: AtmosphereQualityConfig): string {
 	return `${c.primarySteps}|${c.lightSteps}|${+c.eclipseShadows}|${+c.ringShadows}|${+c.insideView}`;
 }

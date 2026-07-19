@@ -420,6 +420,14 @@
 			/>
 			<span>Inside view <span class="text-muted-foreground">(sky + depth prepass)</span></span>
 		</label>
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
+				checked={atmoCfg.sunTint}
+				onchange={(e) => settings.setAtmoQualityOverrides({ sunTint: e.currentTarget.checked })}
+			/>
+			<span>Sun tint <span class="text-muted-foreground">(sunset light + disc chroma)</span></span>
+		</label>
 	</div>
 
 	{#if pointingSupported}

@@ -8,7 +8,13 @@ import {
 } from '$lib/scene/objects/surface/atmosphere';
 import type { AtmosphereQualityConfig } from '$lib/scene/objects/surface/atmosphere-quality';
 import { getEclipseSceneUniforms } from '$lib/scene/objects/surface/eclipse-shadow';
-import type { Vector4 } from 'three';
+import {
+	bindViewTint,
+	setSunTransmittanceEnabled,
+	sunPathTransmittance
+} from '$lib/scene/objects/surface/sun-transmittance';
+import { starViewTintUniforms } from '$lib/scene/objects/sun';
+import type { Material, Vector4 } from 'three';
 
 const spinAxis = new Vector3();
 const camUp = new Vector3();
@@ -88,7 +94,21 @@ export interface AtmosphereFrameState {
 	/** `scene.backgroundIntensity` target: 1 in space; inside a shell, the
 	 *  {@link skyboxDimFactor} of the air above the camera. */
 	skyboxIntensity: number;
+	/** Corona/star-point chroma ({@link applyStarTint}): camera→sun
+	 *  transmittance over its luminance — the shell's scalar alpha owns the
+	 *  dimming. The disc uses per-fragment VIEW_TINT_GLSL instead. Shared
+	 *  scratch — consume within the frame. */
+	sunTint: Vector3;
 }
+
+/** Camera distance bound, in shell radii, for the sun tints. Covers GEO and
+ *  the Moon-distance Earth-eclipse ring (~57 R); far past it the band is
+ *  sub-pixel and cross-system transits are out of scope. */
+const SUN_TINT_MAX_RATIO = 200;
+
+const frameSunTint = new Vector3();
+const sunT = new Vector3();
+const camRel = new Vector3();
 
 /**
  * Fill a shell's private occluder uniforms from the scene-wide set, keeping
@@ -151,9 +171,16 @@ export function updateAtmosphereShaders(
 	const state: AtmosphereFrameState = {
 		insideShell: false,
 		shellProminent: false,
-		skyboxIntensity: 1
+		skyboxIntensity: 1,
+		sunTint: frameSunTint.set(1, 1, 1)
 	};
-	const sunPos = bodyObjects.get(SUN_ID)?.body.position;
+	setSunTransmittanceEnabled(visible && quality.sunTint);
+	const sunBo = bodyObjects.get(SUN_ID);
+	// Disc chroma re-aims (or stays off) every frame — clear before the loop.
+	const sunViewTint = starViewTintUniforms(sunBo?.mesh?.material as Material | undefined);
+	if (sunViewTint) sunViewTint.uAtmoTEnable.value = 0;
+	let bestViewTintRatio = SUN_TINT_MAX_RATIO;
+	const sunPos = sunBo?.body.position;
 	if (!sunPos) return state;
 	for (const bo of bodyObjects.values()) {
 		if (!bo.atmosphere) continue;
@@ -207,6 +234,38 @@ export function updateAtmosphereShaders(
 				.divideScalar(camDist)
 				.dot(sunVec);
 			state.skyboxIntensity *= skyboxDimFactor(params, altKm, sinSunElev);
+		}
+		const shellRatio = camDist / shellRadius;
+		if (quality.sunTint && shellRatio < SUN_TINT_MAX_RATIO) {
+			const planetRadiusScene =
+				shellRadius / (1 + params.topAltitudeKm / bo.atmosphere.planetRadiusKm);
+			camRel.copy(cameraPosition).sub(atmoMesh.position);
+			if (
+				sunPathTransmittance(
+					params,
+					camRel,
+					sunVec,
+					planetRadiusScene,
+					bo.atmosphere.planetRadiusKm,
+					sunT
+				)
+			) {
+				const lum = LUM[0] * sunT.x + LUM[1] * sunT.y + LUM[2] * sunT.z;
+				if (lum > 1e-4) {
+					state.sunTint.multiply(sunT.divideScalar(lum));
+				}
+			}
+			// One uniform set → one shell; nearest in shell radii wins.
+			if (sunViewTint && shellRatio < bestViewTintRatio) {
+				bestViewTintRatio = shellRatio;
+				bindViewTint(
+					sunViewTint,
+					params,
+					atmoMesh.position,
+					planetRadiusScene,
+					bo.atmosphere.planetRadiusKm
+				);
+			}
 		}
 	}
 	return state;

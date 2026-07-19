@@ -4,6 +4,7 @@ import {
 	CanvasTexture,
 	Color,
 	Float32BufferAttribute,
+	type Material,
 	PointLight,
 	Points,
 	Scene,
@@ -13,6 +14,11 @@ import {
 	Vector3
 } from 'three';
 import { SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
+import {
+	makeViewTintUniforms,
+	VIEW_TINT_GLSL,
+	type ViewTintUniforms
+} from './surface/sun-transmittance';
 
 /**
  * Photosphere → star-point bloom handoff constants. Tuned together so the
@@ -102,17 +108,23 @@ export function makeStarSurfaceMaterial(): ShaderMaterial {
 	return new ShaderMaterial({
 		uniforms: {
 			uCentreColor: { value: new Vector3(centre.r, centre.g, centre.b) },
-			uLimbColor: { value: new Vector3(limb.r, limb.g, limb.b) }
+			uLimbColor: { value: new Vector3(limb.r, limb.g, limb.b) },
+			// Per-fragment atmospheric chroma, aimed at a nearby shell each frame
+			// by updateAtmosphereShaders — from orbit the disc outsizes the
+			// atmosphere band, so a single colour can't work.
+			...makeViewTintUniforms()
 		},
 		vertexShader: `
 			#include <common>
 			#include <logdepthbuf_pars_vertex>
 			varying vec3 vNormalView;
 			varying vec3 vViewDir;
+			varying vec3 vWorldPos;
 			void main() {
 				vec4 viewPos = modelViewMatrix * vec4(position, 1.0);
 				vNormalView = normalize(normalMatrix * normal);
 				vViewDir = normalize(-viewPos.xyz);
+				vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
 				gl_Position = projectionMatrix * viewPos;
 				#include <logdepthbuf_vertex>
 			}
@@ -124,6 +136,8 @@ export function makeStarSurfaceMaterial(): ShaderMaterial {
 			uniform vec3 uLimbColor;
 			varying vec3 vNormalView;
 			varying vec3 vViewDir;
+			varying vec3 vWorldPos;
+			${VIEW_TINT_GLSL}
 			void main() {
 				#include <logdepthbuf_fragment>
 				float mu = max(dot(normalize(vNormalView), normalize(vViewDir)), 0.0);
@@ -139,7 +153,8 @@ export function makeStarSurfaceMaterial(): ShaderMaterial {
 				// 1.0 and tone-maps via ACES, so the disc centre saturates to
 				// white with a soft halo of bleeding light — same look a camera
 				// gets when pointed at the Sun, rather than a flat cream ball.
-				gl_FragColor = vec4(tint * darkening * ${SUN_HDR_MULTIPLIER.toFixed(1)}, 1.0);
+				vec3 hdr = tint * darkening * ${SUN_HDR_MULTIPLIER.toFixed(1)};
+				gl_FragColor = vec4(atmoViewTint(vWorldPos) * hdr, 1.0);
 			}
 		`
 	});
@@ -181,6 +196,7 @@ function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
 		uniforms: {
 			uColor: { value: new Vector3(c.r, c.g, c.b) },
 			uIntensity: { value: STAR_POINT_HANDOFF_INTENSITY },
+			uTint: { value: new Vector3(1, 1, 1) },
 			uMap: { value: circleTexture }
 		},
 		vertexShader: `
@@ -197,12 +213,13 @@ function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
 			#include <logdepthbuf_pars_fragment>
 			uniform vec3 uColor;
 			uniform float uIntensity;
+			uniform vec3 uTint;
 			uniform sampler2D uMap;
 			void main() {
 				#include <logdepthbuf_fragment>
 				vec4 texel = texture2D(uMap, gl_PointCoord);
 				if (texel.a < 0.01) discard;
-				gl_FragColor = vec4(uColor * uIntensity, texel.a);
+				gl_FragColor = vec4(uTint * uColor * uIntensity, texel.a);
 			}
 		`,
 		transparent: true,
@@ -233,4 +250,28 @@ export function buildStarExtras(
 	const starPoint = makeStarPoint(color, circleTexture);
 	scene.add(starPoint);
 	return { light, corona, starPoint };
+}
+
+/**
+ * Colour the corona and star point by `AtmosphereFrameState.sunTint` — a
+ * single colour suffices for soft glows; the disc shades per fragment via
+ * VIEW_TINT_GLSL. Chroma only: the shell's alpha owns the dimming.
+ */
+export function applyStarTint(
+	corona: Sprite | null,
+	starPoint: Points | null,
+	tint: Vector3
+): void {
+	if (corona) (corona.material as SpriteMaterial).color.setRGB(tint.x, tint.y, tint.z);
+	if (starPoint) {
+		((starPoint.material as ShaderMaterial).uniforms.uTint.value as Vector3).copy(tint);
+	}
+}
+
+/** The photosphere's view-tint handle, for updateAtmosphereShaders to aim. */
+export function starViewTintUniforms(
+	material: Material | null | undefined
+): ViewTintUniforms | null {
+	const uniforms = (material as ShaderMaterial | null | undefined)?.uniforms;
+	return uniforms?.uAtmoTEnable ? (uniforms as unknown as ViewTintUniforms) : null;
 }

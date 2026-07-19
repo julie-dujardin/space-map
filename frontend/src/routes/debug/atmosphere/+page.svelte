@@ -53,6 +53,20 @@
 	import { AMBIENT_INTENSITY, SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
 	import { loadSkybox, SKYBOX_BASE_ROTATION } from '$lib/scene/objects/sky/skybox';
 	import { skyboxDimFactor } from '$lib/scene/shaders/atmosphere-uniforms';
+	import {
+		attachEclipseShadowToBody,
+		getEclipseSceneUniforms
+	} from '$lib/scene/objects/surface/eclipse-shadow';
+	import {
+		attachSunTransmittanceToBody,
+		attachViewTintToMaterial,
+		bindViewTint,
+		setSunTransmittanceEnabled,
+		sunPathTransmittance,
+		syncSunTransmittanceUniforms,
+		type SunTransmittanceUniforms,
+		type ViewTintUniforms
+	} from '$lib/scene/objects/surface/sun-transmittance';
 
 	interface BodyDef {
 		id: string;
@@ -153,6 +167,7 @@
 	let qEclipse = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].eclipseShadows);
 	let qRings = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].ringShadows);
 	let qInside = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].insideView);
+	let qSunTint = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].sunTint);
 
 	function qualityConfig(): AtmosphereQualityConfig {
 		return {
@@ -160,7 +175,8 @@
 			lightSteps: qLightSteps,
 			eclipseShadows: qEclipse,
 			ringShadows: qRings,
-			insideView: qInside
+			insideView: qInside,
+			sunTint: qSunTint
 		};
 	}
 
@@ -176,6 +192,7 @@
 		qEclipse = p.eclipseShadows;
 		qRings = p.ringShadows;
 		qInside = p.insideView;
+		qSunTint = p.sunTint;
 	}
 
 	function setTier(t: ResolvedAtmosphereTier): void {
@@ -203,6 +220,10 @@
 	let textureLoader: TextureLoader;
 	let planetMesh: Mesh | null = null;
 	let atmoNode: AtmosphereNode | null = null;
+	// Surface sun-transmittance patch handle — re-synced on every slider push.
+	let sunTUniforms: SunTransmittanceUniforms | null = null;
+	// Per-fragment disc chroma handle (attachViewTintToMaterial on the sun disc).
+	let discTintUniforms: ViewTintUniforms | null = null;
 	let sunMesh: Mesh;
 	// Reactive: the altitude slider bounds and the realistic-sun label read it.
 	let currentBody = $state<BodyDef>(BODIES[1]);
@@ -237,6 +258,35 @@
 		return skyboxDimFactor(resolved(), altRadii * currentBody.radiusKm, sinSunElev);
 	});
 
+	const tintCam = new Vector3();
+	const tintSunDir = new Vector3();
+	const tintT = new Vector3();
+	// Swatch readout: the production sunTint chroma (camera→sun-centre ray);
+	// the disc itself shades per fragment.
+	const sunTint = $derived.by(() => {
+		if (!qSunTint) return [1, 1, 1];
+		const latR = camLat * DEG;
+		const lonR = camLon * DEG;
+		tintCam
+			.set(Math.cos(latR) * Math.cos(lonR), Math.sin(latR), Math.cos(latR) * Math.sin(lonR))
+			.multiplyScalar(RADIUS_SCENE * (1 + Math.max(altRadii, 0)));
+		const elR = sunEl * DEG;
+		const azR = sunAz * DEG;
+		tintSunDir.set(Math.cos(elR) * Math.cos(azR), Math.sin(elR), Math.cos(elR) * Math.sin(azR));
+		const through = sunPathTransmittance(
+			resolved(),
+			tintCam,
+			tintSunDir,
+			RADIUS_SCENE,
+			currentBody.radiusKm,
+			tintT
+		);
+		if (!through) return [1, 1, 1];
+		const lum = 0.2126 * tintT.x + 0.7152 * tintT.y + 0.0722 * tintT.z;
+		if (lum < 1e-4) return [1, 1, 1];
+		return [tintT.x / lum, tintT.y / lum, tintT.z / lum];
+	});
+
 	function shipped(): AtmosphereParams {
 		return ATMOSPHERE_PARAMS[bodyId];
 	}
@@ -263,8 +313,16 @@
 		};
 	}
 
+	const PLANET_ORIGIN = new Vector3();
+
 	function push(): void {
 		if (atmoNode) applyAtmosphereParams(atmoNode, resolved());
+		if (sunTUniforms) {
+			syncSunTransmittanceUniforms(sunTUniforms, resolved(), RADIUS_SCENE, currentBody.radiusKm);
+		}
+		if (discTintUniforms) {
+			bindViewTint(discTintUniforms, resolved(), PLANET_ORIGIN, RADIUS_SCENE, currentBody.radiusKm);
+		}
 	}
 
 	// Reset every slider to the body's shipped baseline (all multipliers → ×1).
@@ -453,6 +511,7 @@
 		p.set('qec', qEclipse ? '1' : '0');
 		p.set('qrs', qRings ? '1' : '0');
 		p.set('qiv', qInside ? '1' : '0');
+		p.set('qst', qSunTint ? '1' : '0');
 		return p.toString();
 	}
 
@@ -489,6 +548,7 @@
 		if (p.has('qec')) qEclipse = p.get('qec') === '1';
 		if (p.has('qrs')) qRings = p.get('qrs') === '1';
 		if (p.has('qiv')) qInside = p.get('qiv') === '1';
+		if (p.has('qst')) qSunTint = p.get('qst') === '1';
 		positionCamera();
 		push();
 		pushQuality();
@@ -522,6 +582,7 @@
 	}
 
 	function disposePlanet(): void {
+		sunTUniforms = null;
 		if (atmoNode) {
 			scene.remove(atmoNode.mesh);
 			disposeAtmosphereNode(atmoNode);
@@ -545,6 +606,18 @@
 		const geometry = new SphereGeometry(RADIUS_SCENE, 128, 128);
 		// Untextured fallback stays visible until the CDN texture resolves.
 		const material = new MeshStandardMaterial({ color: 0x777777, roughness: 1, metalness: 0 });
+		// Eclipse patch only as scaffolding for the sun-transmittance patch —
+		// the frame loop zeroes the occluder set, so its own factor is 1.
+		const eclipseSelf = attachEclipseShadowToBody(material);
+		sunTUniforms = attachSunTransmittanceToBody(
+			material,
+			resolved(),
+			RADIUS_SCENE,
+			currentBody.radiusKm,
+			eclipseSelf
+		);
+		// Re-aim the disc's per-fragment chroma at the newly selected body.
+		push();
 		planetMesh = new Mesh(geometry, material);
 		planetMesh.renderOrder = 1;
 		scene.add(planetMesh);
@@ -593,6 +666,15 @@
 		const sd = sunDirection();
 		const sunScale = 2 ** sunScaleX; // sun-light bar (log2)
 		const invSq = 1 / (currentBody.au * currentBody.au);
+
+		// Scene-shared eclipse refs + tint enables, per frame — SPA navigation
+		// can leave the map page's last state in them.
+		const eclipse = getEclipseSceneUniforms();
+		eclipse.uSunDir.value.copy(sd);
+		eclipse.uSunAngularRadius.value = 0;
+		eclipse.uOccluderCount.value = 0;
+		setSunTransmittanceEnabled(qSunTint);
+		if (discTintUniforms) discTintUniforms.uAtmoTEnable.value = qSunTint ? 1 : 0;
 
 		pointLight.position.copy(sd).multiplyScalar(50);
 		pointLight.intensity = SUN_LIGHT_INTENSITY * sunScale;
@@ -658,6 +740,9 @@
 		pointLight = new PointLight(0xffffff, SUN_LIGHT_INTENSITY, 0, 0);
 		scene.add(pointLight);
 		sunMesh = new Mesh(new SphereGeometry(1, 32, 32), new MeshBasicMaterial({ color: 0xffffff }));
+		// Per-fragment disc chroma, mirroring the production photosphere;
+		// push() aims it at the current body's params.
+		discTintUniforms = attachViewTintToMaterial(sunMesh.material as MeshBasicMaterial);
 		scene.add(sunMesh);
 
 		camera = new PerspectiveCamera(50, canvas.clientWidth / canvas.clientHeight, 1e-4, 1000);
@@ -819,6 +904,20 @@
 				<span class="lbl" title="Multiplies shell + surface sunlight">Sun light</span>
 				<input type="range" min="-3" max="3" step="0.05" bind:value={sunScaleX} />
 				<span class="val">×{(2 ** sunScaleX).toFixed(2)}</span>
+
+				<span
+					class="lbl"
+					title="Camera→sun-centre transmittance chroma ÷ luminance — the disc itself shades per fragment; the shell handles the dimming"
+					>Sun tint</span
+				>
+				<span></span>
+				<span
+					class="val tint-swatch"
+					title={sunTint.map((v) => v.toFixed(2)).join(' / ')}
+					style="background: rgb({sunTint
+						.map((v) => Math.round((v / Math.max(...sunTint, 1e-6)) * 255))
+						.join(' ')})"
+				></span>
 			</div>
 
 			<label class="toggle">
@@ -897,6 +996,17 @@
 					}}
 				/>
 				<span>Inside view</span>
+			</label>
+			<label class="toggle" title="Off: untinted sun and white direct light (low/medium default)">
+				<input
+					type="checkbox"
+					checked={qSunTint}
+					onchange={(e) => {
+						qSunTint = e.currentTarget.checked;
+						pushQuality();
+					}}
+				/>
+				<span>Sun tint</span>
 			</label>
 
 			<div class="section">
@@ -1104,6 +1214,12 @@
 		text-align: end;
 		font-variant-numeric: tabular-nums;
 		width: 56px;
+	}
+	/* Hue-only readout (max channel → full): exact values live in the tooltip. */
+	.tint-swatch {
+		height: 12px;
+		border-radius: 3px;
+		border: 1px solid #454b57;
 	}
 	input[type='range'] {
 		width: 100%;

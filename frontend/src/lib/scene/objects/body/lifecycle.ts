@@ -25,6 +25,7 @@ import { attachCanvasForwarders } from '../../label/forward';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../sun';
 import { ATMOSPHERE_PARAMS, buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
+import { attachSunTransmittanceToBody } from '../surface/sun-transmittance';
 import { detachSelfShadow } from '../surface/self-shadow';
 import { isModelBearing, unloadBodyModel } from './model';
 import type { BodyObjects } from '../../types';
@@ -120,6 +121,15 @@ export function buildMajorBodies(
 				atmosphere = buildAtmosphereNode(atmoParams, radius, effectiveRadiusKm(body.data));
 				scene.add(atmosphere.mesh);
 				extraObjects.push(atmosphere.mesh);
+				if (eclipseShadow) {
+					attachSunTransmittanceToBody(
+						material as MeshStandardMaterial,
+						atmoParams,
+						radius,
+						effectiveRadiusKm(body.data),
+						eclipseShadow
+					);
+				}
 			}
 		}
 
@@ -235,6 +245,13 @@ export function upgradeBodyMesh(
 		bo.atmosphere = buildAtmosphereNode(atmoParams, radiusScene, effectiveRadiusKm(body.data));
 		scene.add(bo.atmosphere.mesh);
 		bo.extraObjects.push(bo.atmosphere.mesh);
+		attachSunTransmittanceToBody(
+			material,
+			atmoParams,
+			radiusScene,
+			effectiveRadiusKm(body.data),
+			bo.eclipseShadow
+		);
 	}
 }
 

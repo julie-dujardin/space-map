@@ -13,6 +13,7 @@ import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
+import { attachSunTransmittanceToBody } from '../surface/sun-transmittance';
 import { attachRingShadowToAtmosphere } from '../surface/atmosphere';
 import {
 	attachRingShadowToPlanet,
@@ -321,6 +322,15 @@ export async function loadSystemData(
 					// per-frame write in the renderer.
 					if (bo.eclipseShadow) {
 						attachEclipseShadowToBody(node.material, bo.eclipseShadow);
+						if (bo.atmosphere) {
+							attachSunTransmittanceToBody(
+								node.material,
+								bo.atmosphere.params,
+								bo.radiusScene,
+								bo.atmosphere.planetRadiusKm,
+								bo.eclipseShadow
+							);
+						}
 					}
 					bo.clouds = node;
 				})

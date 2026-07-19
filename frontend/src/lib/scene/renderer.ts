@@ -48,6 +48,7 @@ import { GpuPickPass } from './interaction/gpu-pick';
 import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies } from './objects/body/lifecycle';
+import { applyStarTint } from './objects/sun';
 import {
 	ATMOSPHERE_PARAMS,
 	applyAtmosphereParams,
@@ -712,6 +713,10 @@ export class SceneRenderer {
 		// Inside a shell, stars dim by the extinction of the air above the
 		// camera plus a daylight-aware exposure compensation (skyboxDimFactor).
 		this.scene.backgroundIntensity = atmoState.skyboxIntensity;
+		// Corona/star-point chroma through nearby air; the disc's per-fragment
+		// tint is aimed inside updateAtmosphereShaders.
+		const sunBo = this.bodyObjects.get(SUN_ID);
+		if (sunBo) applyStarTint(sunBo.corona, sunBo.starPoint, atmoState.sunTint);
 
 		// High-ambient toggle: flat fill so night sides stay visible for inspection.
 		// The base fill stands in for scattered sunlight, so realistic mode scales

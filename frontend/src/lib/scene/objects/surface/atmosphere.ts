@@ -56,7 +56,7 @@ import type { PlanetRingShadowUniforms } from './rings';
 
 /** Rendered terrain can dip this far below the analytic ellipsoid (Gale crater
  *  sits at −4.5 km); the shell keeps marching (and glowing) down to it. */
-const TERRAIN_DIP_KM = 6;
+export const TERRAIN_DIP_KM = 6;
 
 // Placeholder for the ring-shadow sampler while a body has no rings — the
 // shader guards on uRingShadowOuterScene, but the sampler must still be bound.
