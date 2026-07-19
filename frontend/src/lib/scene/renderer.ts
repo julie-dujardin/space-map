@@ -54,6 +54,10 @@ import {
 	type AtmosphereParams
 } from './objects/surface/atmosphere';
 import { AtmosphereDepthPass } from './objects/surface/atmosphere-depth';
+import {
+	currentAtmosphereConfig,
+	recordAtmospherePerf
+} from './objects/surface/atmosphere-quality';
 import { loadBodyTexture, unloadBodyTexture } from './objects/body/textures';
 import { applyOrientation, bodyQuaternion } from '$lib/math/orientation';
 import {
@@ -236,6 +240,7 @@ export class SceneRenderer {
 	private paused = false;
 	private firstFrame = true;
 	private pendingUrlWrite = false;
+	private lastTickMs = 0;
 	/** Ring buffer of recent tick timestamps; fps = (n-1) / (last - first). */
 	private static readonly FPS_SAMPLE_FRAMES = 30;
 	private fpsSamples: number[] = [];
@@ -578,6 +583,8 @@ export class SceneRenderer {
 		this.rafId = requestAnimationFrame(this.tick);
 
 		const nowMs = performance.now();
+		const frameDtMs = this.lastTickMs ? nowMs - this.lastTickMs : 0;
+		this.lastTickMs = nowMs;
 		if (this.fpsSamples.length < SceneRenderer.FPS_SAMPLE_FRAMES) {
 			this.fpsSamples.push(nowMs);
 		} else {
@@ -690,17 +697,21 @@ export class SceneRenderer {
 		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd);
 
 		updateRingShaders(this.bodyObjects, this.focus.focusTruePos, getSettings().realisticLighting);
+		// Before the atmosphere update — shells cull their private occluder
+		// sets against this frame's scene-wide list.
+		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);
 		const atmoState = updateAtmosphereShaders(
 			this.bodyObjects,
 			this.camera.position,
 			getSettings().showAtmospheres,
 			getSettings().realisticLighting,
-			this.sunIntensityScale
+			this.sunIntensityScale,
+			currentAtmosphereConfig()
 		);
+		recordAtmospherePerf(frameDtMs, atmoState.shellProminent);
 		// Inside a shell, stars dim by the extinction of the air above the
 		// camera plus a daylight-aware exposure compensation (skyboxDimFactor).
 		this.scene.backgroundIntensity = atmoState.skyboxIntensity;
-		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);
 
 		// High-ambient toggle: flat fill so night sides stay visible for inspection.
 		// The base fill stands in for scattered sunlight, so realistic mode scales

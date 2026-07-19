@@ -32,12 +32,20 @@
 	import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 	import {
 		applyAtmosphereParams,
+		applyAtmosphereQuality,
 		ATMOSPHERE_PARAMS,
 		type AtmosphereNode,
 		type AtmosphereParams,
 		buildAtmosphereNode,
 		disposeAtmosphereNode
 	} from '$lib/scene/objects/surface/atmosphere';
+	import {
+		ATMOSPHERE_QUALITY_PRESETS,
+		resolveAtmosphereTier,
+		type AtmosphereQualityConfig,
+		type ResolvedAtmosphereTier
+	} from '$lib/scene/objects/surface/atmosphere-quality';
+	import { getSettings } from '$lib/state/settings.svelte';
 	import { replaceState } from '$app/navigation';
 	import { fetchMetadata } from '$lib/fetch/metadata';
 	import { versionedUrl } from '$lib/fetch/data-base';
@@ -133,6 +141,47 @@
 	let rayleighHX = $state(0);
 	let mieHX = $state(0);
 	let copied = $state(false);
+
+	// Quality: page-local (never writes the app settings) so the bench can A/B
+	// tiers freely. Starts at what the app would resolve on this device; knob
+	// edits are overrides on the selected tier's preset.
+	const QUALITY_TIERS: ResolvedAtmosphereTier[] = ['low', 'medium', 'high', 'ultra'];
+	const initTier = resolveAtmosphereTier(getSettings().atmosphereQuality);
+	let qTier = $state<ResolvedAtmosphereTier>(initTier);
+	let qPrimarySteps = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].primarySteps);
+	let qLightSteps = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].lightSteps);
+	let qEclipse = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].eclipseShadows);
+	let qRings = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].ringShadows);
+	let qInside = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].insideView);
+
+	function qualityConfig(): AtmosphereQualityConfig {
+		return {
+			primarySteps: qPrimarySteps,
+			lightSteps: qLightSteps,
+			eclipseShadows: qEclipse,
+			ringShadows: qRings,
+			insideView: qInside
+		};
+	}
+
+	function pushQuality(): void {
+		if (atmoNode) applyAtmosphereQuality(atmoNode, qualityConfig());
+	}
+
+	function loadTierPreset(t: ResolvedAtmosphereTier): void {
+		qTier = t;
+		const p = ATMOSPHERE_QUALITY_PRESETS[t];
+		qPrimarySteps = p.primarySteps;
+		qLightSteps = p.lightSteps;
+		qEclipse = p.eclipseShadows;
+		qRings = p.ringShadows;
+		qInside = p.insideView;
+	}
+
+	function setTier(t: ResolvedAtmosphereTier): void {
+		loadTierPreset(t);
+		pushQuality();
+	}
 
 	const LOG_SLIDERS: { label: string; get: () => number; set: (v: number) => void }[] = [
 		{ label: 'Top altitude', get: () => topX, set: (v) => (topX = v) },
@@ -392,6 +441,12 @@
 		p.set('abs', r(absorberX));
 		p.set('rayH', r(rayleighHX));
 		p.set('mieH', r(mieHX));
+		p.set('q', qTier);
+		p.set('qps', String(qPrimarySteps));
+		p.set('qls', String(qLightSteps));
+		p.set('qec', qEclipse ? '1' : '0');
+		p.set('qrs', qRings ? '1' : '0');
+		p.set('qiv', qInside ? '1' : '0');
 		return p.toString();
 	}
 
@@ -421,8 +476,16 @@
 		absorberX = num('abs', absorberX);
 		rayleighHX = num('rayH', rayleighHX);
 		mieHX = num('mieH', mieHX);
+		const qt = p.get('q') as ResolvedAtmosphereTier | null;
+		if (qt && QUALITY_TIERS.includes(qt)) loadTierPreset(qt);
+		qPrimarySteps = num('qps', qPrimarySteps);
+		qLightSteps = num('qls', qLightSteps);
+		if (p.has('qec')) qEclipse = p.get('qec') === '1';
+		if (p.has('qrs')) qRings = p.get('qrs') === '1';
+		if (p.has('qiv')) qInside = p.get('qiv') === '1';
 		positionCamera();
 		push();
+		pushQuality();
 	}
 
 	function loadOne(url: string): Promise<Texture> {
@@ -482,6 +545,9 @@
 		void loadTexture(bodyId, planetMesh);
 
 		atmoNode = buildAtmosphereNode(resolved(), RADIUS_SCENE, currentBody.radiusKm);
+		// The builder compiles against the app-wide config; re-apply the bench's
+		// own quality state (no-op when they match).
+		applyAtmosphereQuality(atmoNode, qualityConfig());
 		scene.add(atmoNode.mesh);
 
 		// First body frames itself; later switches keep the current camera and
@@ -532,14 +598,17 @@
 			const shellFactor = sunScale * (realistic || atmoNode.params.realisticSunAlways ? invSq : 1);
 			u.uSunIntensity.value = atmoNode.params.sunIntensity * shellFactor;
 			// Flip to BackSide once the camera enters the shell so the sky still
-			// renders from inside; drop depth writes there too (mirrors production).
+			// renders from inside; drop depth writes there too (mirrors production,
+			// including insideView-off tiers where the shell vanishes when entered).
 			const shellR = atmoNode.geometryRadiusScene * atmoNode.mesh.scale.x;
-			const inside = camera.position.lengthSq() < shellR * shellR;
+			const inside = qInside && camera.position.lengthSq() < shellR * shellR;
 			atmoNode.material.side = inside ? BackSide : FrontSide;
 			atmoNode.material.depthWrite = !inside;
 			atmoNode.material.depthTest = !inside;
 		}
-		scene.backgroundIntensity = skyDim;
+		// Production dims the star map only via the inside-shell path; the
+		// readout still shows the would-be factor when the toggle is off.
+		scene.backgroundIntensity = qInside ? skyDim : 1;
 
 		composer.render();
 	}
@@ -739,6 +808,79 @@
 			</label>
 
 			<div class="section">
+				<span>Quality</span>
+			</div>
+			<div class="presets">
+				{#each QUALITY_TIERS as t (t)}
+					<button type="button" class:active={qTier === t} onclick={() => setTier(t)}>
+						{t === 'medium' ? 'med' : t}
+					</button>
+				{/each}
+			</div>
+			<div class="grid">
+				<span class="lbl">March steps</span>
+				<input
+					type="range"
+					min="4"
+					max="64"
+					step="1"
+					value={qPrimarySteps}
+					oninput={(e) => {
+						qPrimarySteps = Number(e.currentTarget.value);
+						pushQuality();
+					}}
+				/>
+				<span class="val">{qPrimarySteps}</span>
+
+				<span class="lbl">Sun steps</span>
+				<input
+					type="range"
+					min="1"
+					max="16"
+					step="1"
+					value={qLightSteps}
+					oninput={(e) => {
+						qLightSteps = Number(e.currentTarget.value);
+						pushQuality();
+					}}
+				/>
+				<span class="val">{qLightSteps}</span>
+			</div>
+			<label class="toggle" title="No occluders in this scene — affects compile cost only">
+				<input
+					type="checkbox"
+					checked={qEclipse}
+					onchange={(e) => {
+						qEclipse = e.currentTarget.checked;
+						pushQuality();
+					}}
+				/>
+				<span>Eclipse shadows</span>
+			</label>
+			<label class="toggle" title="No rings in this scene — affects compile cost only">
+				<input
+					type="checkbox"
+					checked={qRings}
+					onchange={(e) => {
+						qRings = e.currentTarget.checked;
+						pushQuality();
+					}}
+				/>
+				<span>Ring shadows</span>
+			</label>
+			<label class="toggle" title="Off: the shell vanishes once the camera enters it">
+				<input
+					type="checkbox"
+					checked={qInside}
+					onchange={(e) => {
+						qInside = e.currentTarget.checked;
+						pushQuality();
+					}}
+				/>
+				<span>Inside view</span>
+			</label>
+
+			<div class="section">
 				<span>Atmosphere</span>
 				<div class="actions">
 					<button type="button" onclick={resetShipped}>shipped</button>
@@ -920,6 +1062,11 @@
 	.presets button:hover {
 		background: #2b313a;
 		color: #e7e9ee;
+	}
+	.presets button.active {
+		background: #2b313a;
+		color: #e7e9ee;
+		border-color: #4a5160;
 	}
 	.grid {
 		display: grid;

@@ -8,6 +8,10 @@
 		type ReducedMotion,
 		type Theme
 	} from '$lib/state/settings.svelte';
+	import {
+		resolveAtmosphereTier,
+		type AtmosphereQualityTier
+	} from '$lib/scene/objects/surface/atmosphere-quality';
 
 	const settings = getSettings();
 
@@ -51,6 +55,21 @@
 		{ value: 'on', label: () => m.settings_reduced_motion_on() }
 	];
 
+	const TIER_LABELS: Record<'low' | 'medium' | 'high' | 'ultra', () => string> = {
+		low: () => m.settings_quality_low(),
+		medium: () => m.settings_quality_medium(),
+		high: () => m.settings_quality_high(),
+		ultra: () => m.settings_quality_ultra()
+	};
+
+	const atmoQualityOptions: { value: AtmosphereQualityTier; label: () => string }[] = [
+		{ value: 'auto', label: () => m.settings_auto() },
+		{ value: 'low', label: TIER_LABELS.low },
+		{ value: 'medium', label: TIER_LABELS.medium },
+		{ value: 'high', label: TIER_LABELS.high },
+		{ value: 'ultra', label: TIER_LABELS.ultra }
+	];
+
 	function localeLabel(loc: Locale): string {
 		return LOCALE_NAMES[loc] ?? loc;
 	}
@@ -66,6 +85,9 @@
 		settings.resolvedReducedMotion
 			? m.settings_reduced_motion_on()
 			: m.settings_reduced_motion_off()
+	);
+	let resolvedAtmoQualityLabel = $derived(
+		TIER_LABELS[resolveAtmosphereTier(settings.atmosphereQuality)]()
 	);
 	// ISO date format implies 24h; lock the clock toggle so the UI matches the
 	// behavior already enforced by the formatters.
@@ -295,6 +317,57 @@
 							>{m.settings_auto_source({
 								value: resolvedClockLabel,
 								source: m.settings_source_locale()
+							})}</span
+						>
+					</div>
+				{/if}
+			</div>
+		</section>
+
+		<!-- GRAPHICS -->
+		<section class="flex flex-col gap-4">
+			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+				{m.settings_section_graphics()}
+			</h3>
+
+			<!-- Atmosphere quality -->
+			<div class="flex flex-col gap-2">
+				<div class="flex items-center justify-between gap-3">
+					<div class="min-w-0">
+						<div id="settings-atmo-quality-label" class="text-sm font-medium">
+							{m.settings_atmosphere_quality()}
+						</div>
+					</div>
+					<div class="relative shrink-0">
+						<select
+							class="appearance-none rounded-md border border-input bg-background pe-7 ps-2.5 py-1.5 text-sm
+								cursor-pointer hover:bg-accent transition-colors
+								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+							aria-labelledby="settings-atmo-quality-label"
+							value={settings.atmosphereQuality}
+							onchange={(e) =>
+								settings.setAtmosphereQuality(
+									(e.currentTarget as HTMLSelectElement).value as AtmosphereQualityTier
+								)}
+						>
+							{#each atmoQualityOptions as opt (opt.value)}
+								<option value={opt.value}>{opt.label()}</option>
+							{/each}
+						</select>
+						<ChevronDownIcon
+							class="absolute end-1.5 top-1/2 -translate-y-1/2 size-3.5 opacity-50 pointer-events-none"
+						/>
+					</div>
+				</div>
+				{#if settings.atmosphereQuality === 'auto'}
+					<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+						<span class="size-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
+						<span
+							>{m.settings_auto_source({
+								value: resolvedAtmoQualityLabel,
+								source: settings.atmosphereAutoTier
+									? m.settings_source_perf()
+									: m.settings_source_device()
 							})}</span
 						>
 					</div>

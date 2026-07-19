@@ -5,6 +5,10 @@
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
+	import {
+		currentAtmosphereConfig,
+		resolveAtmosphereTier
+	} from '$lib/scene/objects/surface/atmosphere-quality';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { PointingAxis, PointingSpec, PointingTarget } from '$lib/math/orientation';
 
@@ -172,6 +176,11 @@
 	let totalObjects = $derived(
 		counts.planets + counts.moons + counts.probes + counts.earthSatellites + counts.smallBodies
 	);
+
+	// Effective atmosphere quality: resolved tier preset + session overrides.
+	// currentAtmosphereConfig reads the settings runes, so this tracks both.
+	let atmoTier = $derived(resolveAtmosphereTier(settings.atmosphereQuality));
+	let atmoCfg = $derived(currentAtmosphereConfig());
 </script>
 
 <div
@@ -333,6 +342,83 @@
 				onchange={(e) => settings.setShowSelfShadow(e.currentTarget.checked)}
 			/>
 			<span>Self-shadow</span>
+		</label>
+	</div>
+
+	<div class="mt-2 pt-2 border-t border-border/40 space-y-1">
+		<div class="text-muted-foreground">
+			Atmosphere quality ({settings.atmosphereQuality === 'auto' ? `auto → ${atmoTier}` : atmoTier})
+			<span class="opacity-70">— overrides last until reload</span>
+		</div>
+		{#if settings.atmosphereAutoTier}
+			<div class="flex items-center gap-2">
+				<span class="text-muted-foreground flex-1"
+					>perf-capped at {settings.atmosphereAutoTier}</span
+				>
+				<button
+					type="button"
+					class="px-1.5 py-0.5 rounded bg-background border border-border/60 hover:bg-accent
+						transition-colors cursor-pointer"
+					onclick={() => settings.setAtmosphereAutoTier(null)}
+				>
+					reset
+				</button>
+			</div>
+		{/if}
+		<label class="flex items-center gap-2">
+			<span class="flex-1">March steps</span>
+			<input
+				type="number"
+				min="4"
+				max="64"
+				step="1"
+				class="w-14 px-1 py-0.5 rounded bg-background border border-border/60 text-end tabular-nums"
+				value={atmoCfg.primarySteps}
+				onchange={(e) =>
+					settings.setAtmoQualityOverrides({
+						primarySteps: Math.max(4, Math.min(64, Math.floor(Number(e.currentTarget.value)) || 4))
+					})}
+			/>
+		</label>
+		<label class="flex items-center gap-2">
+			<span class="flex-1">Sun steps</span>
+			<input
+				type="number"
+				min="1"
+				max="16"
+				step="1"
+				class="w-14 px-1 py-0.5 rounded bg-background border border-border/60 text-end tabular-nums"
+				value={atmoCfg.lightSteps}
+				onchange={(e) =>
+					settings.setAtmoQualityOverrides({
+						lightSteps: Math.max(1, Math.min(16, Math.floor(Number(e.currentTarget.value)) || 1))
+					})}
+			/>
+		</label>
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
+				checked={atmoCfg.eclipseShadows}
+				onchange={(e) =>
+					settings.setAtmoQualityOverrides({ eclipseShadows: e.currentTarget.checked })}
+			/>
+			<span>Eclipse shadows</span>
+		</label>
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
+				checked={atmoCfg.ringShadows}
+				onchange={(e) => settings.setAtmoQualityOverrides({ ringShadows: e.currentTarget.checked })}
+			/>
+			<span>Ring shadows</span>
+		</label>
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
+				checked={atmoCfg.insideView}
+				onchange={(e) => settings.setAtmoQualityOverrides({ insideView: e.currentTarget.checked })}
+			/>
+			<span>Inside view <span class="text-muted-foreground">(sky + depth prepass)</span></span>
 		</label>
 	</div>
 

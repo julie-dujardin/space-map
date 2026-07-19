@@ -1,4 +1,9 @@
 import { cookieName, getLocale, setLocale, type Locale } from '$lib/paraglide/runtime.js';
+import type {
+	AtmosphereQualityConfig,
+	AtmosphereQualityTier,
+	ResolvedAtmosphereTier
+} from '$lib/scene/objects/surface/atmosphere-quality';
 
 /**
  * User-tunable display settings, persisted to localStorage. A module-level
@@ -31,6 +36,8 @@ interface Persisted {
 	showLightingTuner?: boolean;
 	showClouds?: boolean;
 	showAtmospheres?: boolean;
+	atmosphereQuality?: AtmosphereQualityTier;
+	atmosphereAutoTier?: ResolvedAtmosphereTier;
 	highAmbient?: boolean;
 	realisticLighting?: boolean;
 	showShapeMesh?: boolean;
@@ -69,6 +76,14 @@ class SettingsState {
 	showClouds = $state(true);
 	/** Per-body atmospheric-scattering shells (sky glow, sunset limb). */
 	showAtmospheres = $state(true);
+	/** Shell quality tier; 'auto' resolves from device capability. */
+	atmosphereQuality = $state<AtmosphereQualityTier>('auto');
+	/** Tier the perf governor settled on for this device (auto mode only);
+	 *  null until a downgrade has ever triggered. */
+	atmosphereAutoTier = $state<ResolvedAtmosphereTier | null>(null);
+	/** Session-only debug knob overrides on top of the tier preset — not
+	 *  persisted, and cleared when the tier is changed. */
+	atmoQualityOverrides = $state<Partial<AtmosphereQualityConfig>>({});
 	/** Flood the scene with flat ambient fill so night sides are fully lit. */
 	highAmbient = $state(false);
 	/** Scale sunlight with the true inverse-square distance from the Sun instead
@@ -100,6 +115,8 @@ class SettingsState {
 		this.showLightingTuner = stored.showLightingTuner ?? false;
 		this.showClouds = stored.showClouds ?? true;
 		this.showAtmospheres = stored.showAtmospheres ?? true;
+		this.atmosphereQuality = stored.atmosphereQuality ?? 'auto';
+		this.atmosphereAutoTier = stored.atmosphereAutoTier ?? null;
 		this.highAmbient = stored.highAmbient ?? false;
 		this.realisticLighting = stored.realisticLighting ?? false;
 		this.showShapeMesh = stored.showShapeMesh ?? true;
@@ -168,6 +185,22 @@ class SettingsState {
 	setShowAtmospheres(v: boolean) {
 		this.showAtmospheres = v;
 		this.persist();
+	}
+
+	setAtmosphereQuality(v: AtmosphereQualityTier) {
+		this.atmosphereQuality = v;
+		this.atmoQualityOverrides = {};
+		this.persist();
+	}
+
+	setAtmosphereAutoTier(v: ResolvedAtmosphereTier | null) {
+		this.atmosphereAutoTier = v;
+		this.persist();
+	}
+
+	/** Merge debug knob overrides onto the current tier preset (session-only). */
+	setAtmoQualityOverrides(patch: Partial<AtmosphereQualityConfig>) {
+		this.atmoQualityOverrides = { ...this.atmoQualityOverrides, ...patch };
 	}
 
 	setHighAmbient(v: boolean) {
@@ -270,6 +303,8 @@ class SettingsState {
 				showLightingTuner: this.showLightingTuner,
 				showClouds: this.showClouds,
 				showAtmospheres: this.showAtmospheres,
+				atmosphereQuality: this.atmosphereQuality,
+				atmosphereAutoTier: this.atmosphereAutoTier ?? undefined,
 				highAmbient: this.highAmbient,
 				realisticLighting: this.realisticLighting,
 				showShapeMesh: this.showShapeMesh,

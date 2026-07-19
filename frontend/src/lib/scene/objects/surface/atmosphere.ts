@@ -42,9 +42,15 @@ import {
 	SphereGeometry,
 	type Texture,
 	Vector2,
-	Vector3
+	Vector3,
+	Vector4
 } from 'three';
-import { ECLIPSE_FACTOR_GLSL, getEclipseSceneUniforms } from './eclipse-shadow';
+import {
+	atmosphereConfigKey,
+	currentAtmosphereConfig,
+	type AtmosphereQualityConfig
+} from './atmosphere-quality';
+import { ECLIPSE_FACTOR_GLSL, getEclipseSceneUniforms, MAX_OCCLUDERS } from './eclipse-shadow';
 import { MIE_PHASE } from './mie-phase';
 import type { PlanetRingShadowUniforms } from './rings';
 
@@ -393,6 +399,9 @@ export interface AtmosphereNode {
 	geometryRadiusScene: number;
 	/** Reference radius (equatorial once SPICE radii land), km. */
 	planetRadiusKm: number;
+	/** {@link atmosphereConfigKey} of the quality config the program was
+	 *  compiled with — {@link applyAtmosphereQuality} rebuilds on mismatch. */
+	qualityKey: string;
 }
 
 const VERTEX_SHADER = `
@@ -466,8 +475,9 @@ const FRAGMENT_SHADER = `
 
 	${ECLIPSE_FACTOR_GLSL}
 
-	#define PRIMARY_STEPS 32
-	#define LIGHT_STEPS 8
+	// PRIMARY_STEPS / LIGHT_STEPS and the ATMO_ECLIPSE / ATMO_RING_SHADOW /
+	// ATMO_INSIDE feature flags come from material.defines — quality tiers
+	// recompile the program rather than branch per fragment.
 	#define ISO_PHASE 0.0795775   // 1 / 4π — isotropic phase for the ambient term
 	#define MS_DIFFUSION 0.3      // slant-τ weight in the diffusive ambient falloff
 
@@ -599,6 +609,7 @@ const FRAGMENT_SHADER = `
 		// mid-march cutoff quantises the haze depth into bands down a slope. Only
 		// active inside the shell, where depthTest is off (updateAtmosphereShaders);
 		// forward distance decodes as t = w·dLen / (R·(rd·camFwd)).
+		#ifdef ATMO_INSIDE
 		if (uUseDepth > 0.5) {
 			// Single-tap, so the clamp sits exactly at the opaque depth: averaging
 			// neighbours pulls in the far sky value at the silhouette and bleeds
@@ -621,6 +632,7 @@ const FRAGMENT_SHADER = `
 				}
 			}
 		}
+		#endif
 		if (tEnd <= tStart) discard;
 
 		float mu = dot(rdWorld, uSunDir);         // phase angle is physical — world space
@@ -641,7 +653,6 @@ const FRAGMENT_SHADER = `
 
 		for (int i = 0; i < PRIMARY_STEPS; i++) {
 			vec3 p = ro + rd * (tStart + dt * (float(i) + 0.5));
-			vec3 pWorld = vPlanetCenter + unsquash(p) * uPlanetRadiusScene;
 			vec3 dens = densities(length(p) - 1.0); // (ρ_R, ρ_M, ρ_A)
 			vec3 dStep = dens * dtWorld;
 			viewOD += dStep;
@@ -666,7 +677,16 @@ const FRAGMENT_SHADER = `
 			// eclipse) and by the ring system both dim the light reaching this
 			// sample — the shadows sweep through the atmosphere just like
 			// across the surface.
-			float sunVis = eclipseFactorAt(pWorld, vPlanetCenter, uSunDir) * ringShadowAt(pWorld);
+			float sunVis = 1.0;
+			#if defined(ATMO_ECLIPSE) || defined(ATMO_RING_SHADOW)
+			vec3 pWorld = vPlanetCenter + unsquash(p) * uPlanetRadiusScene;
+			#endif
+			#ifdef ATMO_ECLIPSE
+			sunVis *= eclipseFactorAt(pWorld, vPlanetCenter, uSunDir);
+			#endif
+			#ifdef ATMO_RING_SHADOW
+			sunVis *= ringShadowAt(pWorld);
+			#endif
 
 			vec3 direct = viewT * wStep * sunT * sunVis;
 			accumR += direct * dStep.x;
@@ -794,13 +814,18 @@ export function buildAtmosphereNode(
 ): AtmosphereNode {
 	const c = params.sunColor;
 	const eclipse = getEclipseSceneUniforms();
+	const quality = currentAtmosphereConfig();
 	const material = new ShaderMaterial({
+		defines: qualityDefines(quality),
 		uniforms: {
-			// Scene-wide eclipse occluder set — shared value refs, mutated in
-			// place by updateEclipseUniforms each frame.
+			// Shared scene ref (mutated in place by updateEclipseUniforms).
 			uSunAngularRadius: eclipse.uSunAngularRadius,
-			uOccluderCount: eclipse.uOccluderCount,
-			uOccluders: eclipse.uOccluders,
+			// Own occluder set, unlike surface materials which share the scene
+			// list: the shell pays the eclipse loop per march sample, so
+			// updateAtmosphereShaders culls it down to occluders that could
+			// actually shadow this shell (almost always none).
+			uOccluderCount: { value: 0 },
+			uOccluders: { value: Array.from({ length: MAX_OCCLUDERS }, () => new Vector4()) },
 			uSunDir: { value: new Vector3(1, 0, 0) },
 			uSpinAxis: { value: new Vector3(0, 1, 0) },
 			uStretch: { value: 1 },
@@ -864,7 +889,38 @@ export function buildAtmosphereNode(
 	// shell writes depth from outside, so foreground rings occlude the glow.
 	mesh.renderOrder = 2;
 	mesh.userData.isAtmosphereMesh = true;
-	return { mesh, material, params, geometryRadiusScene, planetRadiusKm };
+	return {
+		mesh,
+		material,
+		params,
+		geometryRadiusScene,
+		planetRadiusKm,
+		qualityKey: atmosphereConfigKey(quality)
+	};
+}
+
+function qualityDefines(config: AtmosphereQualityConfig): Record<string, string | number> {
+	const defines: Record<string, string | number> = {
+		PRIMARY_STEPS: config.primarySteps,
+		LIGHT_STEPS: config.lightSteps
+	};
+	if (config.eclipseShadows) defines.ATMO_ECLIPSE = '';
+	if (config.ringShadows) defines.ATMO_RING_SHADOW = '';
+	if (config.insideView) defines.ATMO_INSIDE = '';
+	return defines;
+}
+
+/** Recompile the shell for a new quality config; no-op when it already
+ *  matches. Rare and ≤10 programs, so the compile hitch is acceptable. */
+export function applyAtmosphereQuality(
+	node: AtmosphereNode,
+	config: AtmosphereQualityConfig
+): void {
+	const key = atmosphereConfigKey(config);
+	if (key === node.qualityKey) return;
+	node.qualityKey = key;
+	node.material.defines = qualityDefines(config);
+	node.material.needsUpdate = true;
 }
 
 /**

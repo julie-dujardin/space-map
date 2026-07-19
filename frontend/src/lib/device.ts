@@ -39,6 +39,17 @@ export function isLowEndDevice(): boolean {
 	return typeof mem === 'number' && mem > 0 && mem <= LOW_MEMORY_GIB;
 }
 
+/** Primary pointer is coarse (touch) — the phone/tablet signal. Memoised:
+ *  docking a keyboard mid-session shouldn't flip render quality under the user. */
+let coarsePointer: boolean | undefined;
+export function isCoarsePointer(): boolean {
+	if (coarsePointer === undefined) {
+		coarsePointer =
+			typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+	}
+	return coarsePointer;
+}
+
 /** `window.devicePixelRatio` clamped to {@link MAX_PIXEL_RATIO}. */
 export function cappedPixelRatio(): number {
 	if (typeof window === 'undefined') return 1;

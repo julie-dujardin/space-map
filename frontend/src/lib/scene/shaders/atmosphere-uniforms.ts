@@ -2,7 +2,13 @@ import { BackSide, FrontSide, Vector3 } from 'three';
 import type { BodyObjects } from '$lib/scene/types';
 import { SUN_ID } from '$lib/constants';
 import { sunIrradianceFactor } from '$lib/scene/lighting';
-import type { AtmosphereParams } from '$lib/scene/objects/surface/atmosphere';
+import {
+	applyAtmosphereQuality,
+	type AtmosphereParams
+} from '$lib/scene/objects/surface/atmosphere';
+import type { AtmosphereQualityConfig } from '$lib/scene/objects/surface/atmosphere-quality';
+import { getEclipseSceneUniforms } from '$lib/scene/objects/surface/eclipse-shadow';
+import type { Vector4 } from 'three';
 
 const spinAxis = new Vector3();
 const camUp = new Vector3();
@@ -76,9 +82,50 @@ export function skyboxDimFactor(p: AtmosphereParams, hKm: number, sinSunElev: nu
 export interface AtmosphereFrameState {
 	/** Any shell has the camera inside it — gates the opaque-depth prepass. */
 	insideShell: boolean;
+	/** Any shell spans a meaningful part of the view — the perf governor only
+	 *  counts slow frames the atmosphere could actually be causing. */
+	shellProminent: boolean;
 	/** `scene.backgroundIntensity` target: 1 in space; inside a shell, the
 	 *  {@link skyboxDimFactor} of the air above the camera. */
 	skyboxIntensity: number;
+}
+
+/**
+ * Fill a shell's private occluder uniforms from the scene-wide set, keeping
+ * only bodies whose shadow cone could touch the shell: sunward of it, and
+ * within (shell + occluder + penumbra-growth) of the shell's sun axis. The
+ * scene list is every loaded body (~32), and the shell evaluates its loop per
+ * march sample — unculled, that tax dwarfed the march itself on views with no
+ * shadow anywhere near. Conservative test: kept occluders render identically,
+ * culled ones could never have contributed. Requires updateEclipseUniforms to
+ * have run this frame.
+ */
+function cullShellOccluders(
+	uniforms: Record<string, { value: unknown }>,
+	shellCenter: Vector3,
+	sunDir: Vector3,
+	shellRadius: number
+): void {
+	const shared = getEclipseSceneUniforms();
+	const aSun = shared.uSunAngularRadius.value;
+	const src = shared.uOccluders.value;
+	const srcCount = shared.uOccluderCount.value;
+	const dst = uniforms.uOccluders.value as Vector4[];
+	let n = 0;
+	for (let i = 0; i < srcCount; i++) {
+		const oc = src[i];
+		const ox = oc.x - shellCenter.x;
+		const oy = oc.y - shellCenter.y;
+		const oz = oc.z - shellCenter.z;
+		const d2 = ox * ox + oy * oy + oz * oz;
+		if (d2 < oc.w * oc.w * 0.25) continue; // the shell's own planet (shader self-skip)
+		const t = ox * sunDir.x + oy * sunDir.y + oz * sunDir.z;
+		if (t < -(shellRadius + oc.w)) continue; // anti-sunward — casts away from the shell
+		const reach = shellRadius + oc.w + aSun * (t + shellRadius) * 1.5;
+		if (d2 - t * t > reach * reach) continue; // off the sun axis beyond any penumbra
+		dst[n++].copy(oc);
+	}
+	uniforms.uOccluderCount.value = n;
 }
 
 /**
@@ -89,21 +136,30 @@ export interface AtmosphereFrameState {
  * body's inverse-square distance from the Sun (bodies flagged
  * `realisticSunAlways` get that scaling in every mode); `sunScale` is the
  * debug lighting-tuner multiplier shared with the scene's sun lights.
+ * `quality` is the effective tier config — shells compiled against a different
+ * config recompile here, and `insideView: false` keeps every shell an
+ * outside-only FrontSide mesh (never inside → the depth prepass never runs).
  */
 export function updateAtmosphereShaders(
 	bodyObjects: Map<string, BodyObjects>,
 	cameraPosition: Vector3,
 	visible: boolean,
 	realistic: boolean,
-	sunScale: number
+	sunScale: number,
+	quality: AtmosphereQualityConfig
 ): AtmosphereFrameState {
-	const state: AtmosphereFrameState = { insideShell: false, skyboxIntensity: 1 };
+	const state: AtmosphereFrameState = {
+		insideShell: false,
+		shellProminent: false,
+		skyboxIntensity: 1
+	};
 	const sunPos = bodyObjects.get(SUN_ID)?.body.position;
 	if (!sunPos) return state;
 	for (const bo of bodyObjects.values()) {
 		if (!bo.atmosphere) continue;
 		bo.atmosphere.mesh.visible = visible;
 		if (!visible) continue;
+		applyAtmosphereQuality(bo.atmosphere, quality);
 		const [bx, by, bz] = bo.body.position;
 		const uniforms = bo.atmosphere.material.uniforms;
 		const sunVec = (uniforms.uSunDir.value as Vector3).set(
@@ -126,7 +182,11 @@ export function updateAtmosphereShaders(
 		const atmoMesh = bo.atmosphere.mesh;
 		const shellRadius = bo.atmosphere.geometryRadiusScene * atmoMesh.scale.x;
 		const camDist = cameraPosition.distanceTo(atmoMesh.position);
-		const inside = camDist < shellRadius;
+		// ~11°+ of view — big enough that its fragments dominate frame cost.
+		if (shellRadius > camDist * 0.1) state.shellProminent = true;
+		if (quality.eclipseShadows)
+			cullShellOccluders(uniforms, atmoMesh.position, sunVec, shellRadius);
+		const inside = quality.insideView && camDist < shellRadius;
 		bo.atmosphere.material.side = inside ? BackSide : FrontSide;
 		// From inside, the visible shell fragment is the far hemisphere — writing
 		// its depth would cull the point clouds/trails beyond the night sky, and
