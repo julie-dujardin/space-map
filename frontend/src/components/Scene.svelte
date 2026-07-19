@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, getContext } from 'svelte';
 	import { SceneRenderer } from '$lib/scene/renderer';
+	import { calibrationUi } from '$lib/scene/perf/calibration-state.svelte';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import {
@@ -358,6 +359,15 @@
 		renderer?.nudgeCamera(azimuth, polar, dolly);
 	}
 
+	// User-triggered benchmark re-run: halt the map's render loop so the bench
+	// measures an uncontended GPU. Resume must not race the context-lost pause.
+	$effect(() => {
+		const benchRunning = calibrationUi.progress !== null;
+		if (!renderer) return;
+		if (benchRunning) renderer.pause();
+		else if (!renderer.isContextLost()) renderer.resume();
+	});
+
 	onDestroy(() => {
 		renderer?.dispose();
 	});
@@ -404,6 +414,14 @@
 			{#if reloading}
 				<LoadingBar label={m.reload()} />
 			{/if}
+		</div>
+	{/if}
+	{#if calibrationUi.progress !== null}
+		<div
+			class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-bg/60 backdrop-blur-sm pointer-events-auto"
+		>
+			<p class="text-sm text-text">{m.settings_recalibrate_running()}</p>
+			<LoadingBar value={calibrationUi.progress} label={m.settings_recalibrate_running()} />
 		</div>
 	{/if}
 	{#if settings.showDebugInfo && DebugMenu}

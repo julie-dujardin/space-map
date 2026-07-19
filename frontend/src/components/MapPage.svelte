@@ -43,6 +43,8 @@
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { loadProgress } from '$lib/scene/state/load-progress.svelte';
+	import { scheduleAtmosphereCalibration } from '$lib/scene/perf/atmosphere-calibration';
+	import { calibrationUi } from '$lib/scene/perf/calibration-state.svelte';
 	import LoadingBar from './LoadingBar.svelte';
 	import { startPageReload } from '$lib/reload';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
@@ -284,6 +286,12 @@
 		return watchDataVersion(showStale);
 	});
 
+	onMount(() => {
+		// Runs behind the loading screen, in parallel with the data loads — the
+		// screen holds until both settle, so the bench gets an uncontended GPU.
+		scheduleAtmosphereCalibration();
+	});
+
 	onMount(async () => {
 		const initialId = appState.view.id;
 		// Friendly label from the URL slug; captured before the Sun fallback
@@ -406,14 +414,22 @@
 	>
 </svelte:head>
 
-{#if ctx.loading}
+{#if ctx.loading || calibrationUi.bootPending}
 	<div
 		class="flex h-screen flex-col items-center justify-center gap-3 bg-bg text-text"
 		role="status"
 		aria-live="polite"
 	>
-		<span class="text-sm">{m.loading_data()}</span>
-		<LoadingBar value={loadProgress.value} label={m.loading_data()} />
+		{#if ctx.loading}
+			<span class="text-sm">{m.loading_data()}</span>
+			<LoadingBar value={loadProgress.value} label={m.loading_data()} />
+		{:else}
+			<span class="text-sm">{m.settings_recalibrate_running()}</span>
+			<LoadingBar
+				value={calibrationUi.progress ?? undefined}
+				label={m.settings_recalibrate_running()}
+			/>
+		{/if}
 	</div>
 {:else if ctx.error}
 	<div

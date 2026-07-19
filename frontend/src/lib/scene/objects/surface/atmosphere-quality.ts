@@ -29,15 +29,16 @@ export type AtmosphereQualityTier = 'auto' | ResolvedAtmosphereTier;
 /** Step-down ladder for the perf governor, worst → best. */
 const TIER_ORDER: ResolvedAtmosphereTier[] = ['low', 'medium', 'high', 'ultra'];
 
+// Every tier keeps the full feature set — tiers differ only in march budget,
+// so stepping down degrades smoothly instead of popping features off.
 export const ATMOSPHERE_QUALITY_PRESETS: Record<ResolvedAtmosphereTier, AtmosphereQualityConfig> = {
 	low: {
 		primarySteps: 6,
 		lightSteps: 2,
-		eclipseShadows: false,
-		ringShadows: false,
+		eclipseShadows: true,
+		ringShadows: true,
 		insideView: true
 	},
-	// The phone tier: full feature set at a lean march budget.
 	medium: {
 		primarySteps: 12,
 		lightSteps: 3,
@@ -61,6 +62,16 @@ export const ATMOSPHERE_QUALITY_PRESETS: Record<ResolvedAtmosphereTier, Atmosphe
 	}
 };
 
+/** Boot-time benchmark result (see perf/atmosphere-calibration.ts). */
+export interface AtmosphereCalibration {
+	/** GPU + resolution identity the run is valid for — a mismatch re-calibrates. */
+	key: string;
+	tier: ResolvedAtmosphereTier;
+	/** Worse-scenario median per measured tier, so thresholds can be re-derived
+	 *  without another run. */
+	worstMs: Partial<Record<ResolvedAtmosphereTier, number>>;
+}
+
 /** First guess from coarse device signals — phones/tablets start at medium,
  *  desktops at ultra, and the Chromium-only low-end probe steps either down one. */
 export function heuristicAtmosphereTier(): ResolvedAtmosphereTier {
@@ -69,14 +80,15 @@ export function heuristicAtmosphereTier(): ResolvedAtmosphereTier {
 }
 
 /**
- * Resolve 'auto': a tier the perf governor has settled on wins; otherwise the
- * device-signal guess. Optimistic starts are fine because
- * {@link recordAtmospherePerf} walks the tier down as soon as sustained frame
- * times prove the guess wrong.
+ * Resolve 'auto': a tier the perf governor settled on wins (later, real-scene
+ * evidence — and each fresh calibration clears it); then the boot benchmark's
+ * measured tier; the device-signal guess covers the first load, before any
+ * calibration has completed.
  */
 export function resolveAtmosphereTier(tier: AtmosphereQualityTier): ResolvedAtmosphereTier {
 	if (tier !== 'auto') return tier;
-	return getSettings().atmosphereAutoTier ?? heuristicAtmosphereTier();
+	const s = getSettings();
+	return s.atmosphereAutoTier ?? s.atmosphereCalibration?.tier ?? heuristicAtmosphereTier();
 }
 
 /** The effective config right now: resolved tier preset + session debug overrides. */

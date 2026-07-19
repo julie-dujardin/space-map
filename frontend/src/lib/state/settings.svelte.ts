@@ -1,5 +1,6 @@
 import { cookieName, getLocale, setLocale, type Locale } from '$lib/paraglide/runtime.js';
 import type {
+	AtmosphereCalibration,
 	AtmosphereQualityConfig,
 	AtmosphereQualityTier,
 	ResolvedAtmosphereTier
@@ -38,6 +39,7 @@ interface Persisted {
 	showAtmospheres?: boolean;
 	atmosphereQuality?: AtmosphereQualityTier;
 	atmosphereAutoTier?: ResolvedAtmosphereTier;
+	atmosphereCalibration?: AtmosphereCalibration;
 	highAmbient?: boolean;
 	realisticLighting?: boolean;
 	showShapeMesh?: boolean;
@@ -81,6 +83,8 @@ class SettingsState {
 	/** Tier the perf governor settled on for this device (auto mode only);
 	 *  null until a downgrade has ever triggered. */
 	atmosphereAutoTier = $state<ResolvedAtmosphereTier | null>(null);
+	/** Boot benchmark result; null until the first calibration completes. */
+	atmosphereCalibration = $state<AtmosphereCalibration | null>(null);
 	/** Session-only debug knob overrides on top of the tier preset — not
 	 *  persisted, and cleared when the tier is changed. */
 	atmoQualityOverrides = $state<Partial<AtmosphereQualityConfig>>({});
@@ -117,6 +121,7 @@ class SettingsState {
 		this.showAtmospheres = stored.showAtmospheres ?? true;
 		this.atmosphereQuality = stored.atmosphereQuality ?? 'auto';
 		this.atmosphereAutoTier = stored.atmosphereAutoTier ?? null;
+		this.atmosphereCalibration = stored.atmosphereCalibration ?? null;
 		this.highAmbient = stored.highAmbient ?? false;
 		this.realisticLighting = stored.realisticLighting ?? false;
 		this.showShapeMesh = stored.showShapeMesh ?? true;
@@ -195,6 +200,11 @@ class SettingsState {
 
 	setAtmosphereAutoTier(v: ResolvedAtmosphereTier | null) {
 		this.atmosphereAutoTier = v;
+		this.persist();
+	}
+
+	setAtmosphereCalibration(v: AtmosphereCalibration | null) {
+		this.atmosphereCalibration = v;
 		this.persist();
 	}
 
@@ -305,6 +315,7 @@ class SettingsState {
 				showAtmospheres: this.showAtmospheres,
 				atmosphereQuality: this.atmosphereQuality,
 				atmosphereAutoTier: this.atmosphereAutoTier ?? undefined,
+				atmosphereCalibration: this.atmosphereCalibration ?? undefined,
 				highAmbient: this.highAmbient,
 				realisticLighting: this.realisticLighting,
 				showShapeMesh: this.showShapeMesh,

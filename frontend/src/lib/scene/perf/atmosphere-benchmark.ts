@@ -88,6 +88,8 @@ export interface BenchmarkProgress {
 	phase: 'warmup' | 'measure';
 	frame: number;
 	frames: number;
+	/** Overall completion, 0..1. Jumps ahead when tiers are skipped. */
+	fraction: number;
 }
 
 export interface BenchmarkOptions {
@@ -196,8 +198,21 @@ export async function runAtmosphereBenchmark(
 		scenario: BenchScenario
 	): Promise<ScenarioSample> => {
 		setScenario(scenario);
+		const stepFrames = WARMUP_FRAMES + MEASURE_FRAMES;
+		const step = (scenario === 'sky' ? tiers.length : 0) + tierIndex;
 		const progress = (phase: 'warmup' | 'measure', frame: number, frames: number) =>
-			onProgress?.({ tier, tierIndex, tierCount: tiers.length, scenario, phase, frame, frames });
+			onProgress?.({
+				tier,
+				tierIndex,
+				tierCount: tiers.length,
+				scenario,
+				phase,
+				frame,
+				frames,
+				fraction:
+					(step * stepFrames + (phase === 'measure' ? WARMUP_FRAMES : 0) + frame) /
+					(tiers.length * 2 * stepFrames)
+			});
 
 		// Warmup absorbs the shader recompile (each tier is a new program) and
 		// pipeline spin-up; the last warmup timing calibrates the batch size.

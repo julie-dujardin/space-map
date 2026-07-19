@@ -12,8 +12,21 @@
 		resolveAtmosphereTier,
 		type AtmosphereQualityTier
 	} from '$lib/scene/objects/surface/atmosphere-quality';
+	import { recalibrateAtmosphere } from '$lib/scene/perf/atmosphere-calibration';
 
 	const settings = getSettings();
+
+	let recalibrating = $state(false);
+
+	async function rerunBenchmark(): Promise<void> {
+		if (recalibrating) return;
+		recalibrating = true;
+		try {
+			await recalibrateAtmosphere();
+		} finally {
+			recalibrating = false;
+		}
+	}
 
 	// Native-name labels so users see their language in their language. Lookups
 	// fall back to the locale tag if the entry is missing.
@@ -367,9 +380,21 @@
 								value: resolvedAtmoQualityLabel,
 								source: settings.atmosphereAutoTier
 									? m.settings_source_perf()
-									: m.settings_source_device()
+									: settings.atmosphereCalibration
+										? m.settings_source_benchmark()
+										: m.settings_source_device()
 							})}</span
 						>
+						<button
+							type="button"
+							class="ms-auto shrink-0 underline underline-offset-2 hover:text-foreground
+								disabled:opacity-60 disabled:no-underline transition-colors
+								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 rounded-sm"
+							disabled={recalibrating}
+							onclick={rerunBenchmark}
+						>
+							{recalibrating ? m.settings_recalibrate_running() : m.settings_recalibrate()}
+						</button>
 					</div>
 				{/if}
 			</div>

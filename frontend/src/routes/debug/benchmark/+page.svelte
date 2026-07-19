@@ -160,8 +160,9 @@
 			</div>
 
 			<p class="verdict">
-				measured → <strong>{recommended}</strong> · heuristic guess → {heuristic} · app currently resolves
-				→ {resolveAtmosphereTier(settings.atmosphereQuality)}{settings.atmosphereAutoTier
+				measured → <strong>{recommended}</strong> · heuristic guess → {heuristic} · boot calibration →
+				{settings.atmosphereCalibration?.tier ?? 'none'} · app currently resolves →
+				{resolveAtmosphereTier(settings.atmosphereQuality)}{settings.atmosphereAutoTier
 					? ` (governor learned ${settings.atmosphereAutoTier})`
 					: ''}
 			</p>
