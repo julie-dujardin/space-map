@@ -12,7 +12,7 @@ import logging
 from collections import defaultdict
 from pathlib import Path
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from space_map_data.constants.minor_planet_moons import (
     MINOR_PLANET_MOON_QID_BY_DESIGNATION,
@@ -287,25 +287,44 @@ def _link_minor_planet_moons(session) -> int:
     """Attach hardcoded minor-planet-moon QIDs, joined by provisional designation.
 
     Their synthetic SPK-IDs never match a Wikidata external-ID property, so the
-    SPARQL resolver can't reach them — the curated table is authoritative and
-    overwrites. Designations are unique per moon, so at most one row matches each.
+    SPARQL resolver can't reach them — the curated table is authoritative. Each
+    QID is first stripped from any other object, then set on the moon: Wikidata
+    occasionally carries a wrong NAIF/MPC claim (e.g. Dactyl's P2956 points at
+    asteroid 431011's NAIF ID) that the resolver would otherwise leave attached
+    to the wrong body. Designations are unique, so one row matches each.
     """
     updated = 0
     missing: list[tuple[str, str]] = []
+    reclaimed: list[tuple[str, str]] = []
     for designation, qid in MINOR_PLANET_MOON_QID_BY_DESIGNATION.items():
-        result = session.execute(
-            update(Object)
-            .where(
+        moon_id = session.execute(
+            select(Object.id).where(
                 Object.provisional_designation == designation,
                 Object.object_type == ObjectType.moon,
             )
-            .values(wikidata_qid=qid)
-        )
-        if result.rowcount:
-            updated += result.rowcount
-        else:
+        ).scalar_one_or_none()
+        if moon_id is None:
             missing.append((designation, qid))
+            continue
+        stripped = session.execute(
+            update(Object)
+            .where(Object.wikidata_qid == qid, Object.id != moon_id)
+            .values(wikidata_qid=None)
+        ).rowcount
+        session.execute(
+            update(Object).where(Object.id == moon_id).values(wikidata_qid=qid)
+        )
+        updated += 1
+        if stripped:
+            reclaimed.append((qid, designation))
     session.commit()
+    if reclaimed:
+        logger.warning(
+            "%d minor-planet-moon QID(s) reclaimed from another object the "
+            "resolver had matched via a stale/incorrect Wikidata external ID: %s",
+            len(reclaimed),
+            ", ".join(f"{q} -> {d}" for q, d in reclaimed),
+        )
     if missing:
         logger.warning(
             "%d/%d hardcoded minor-planet moons had no matching object "
