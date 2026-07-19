@@ -15,6 +15,7 @@
 		type BenchmarkReport
 	} from '$lib/scene/perf/atmosphere-benchmark';
 	import {
+		ATMOSPHERE_QUALITY_PRESETS,
 		heuristicAtmosphereTier,
 		resolveAtmosphereTier
 	} from '$lib/scene/objects/surface/atmosphere-quality';
@@ -111,7 +112,7 @@
 		{:else if running && progress}
 			<p class="status">
 				{progress.tier}
-				({progress.tierIndex + 1}/{progress.tierCount}) · {progress.phase}
+				({progress.tierIndex + 1}/{progress.tierCount}) · {progress.scenario} · {progress.phase}
 				{progress.frame}/{progress.frames}
 			</p>
 		{/if}
@@ -119,21 +120,35 @@
 		{#if report}
 			<table>
 				<thead>
-					<tr><th>tier</th><th>median</th><th>p75</th><th>≈fps</th><th>batch</th></tr>
+					<tr><th>tier</th><th>view</th><th>median</th><th>p75</th><th>≈fps</th><th>batch</th></tr>
 				</thead>
 				<tbody>
 					{#each report.tiers as t (t.tier)}
-						<tr class:pick={t.tier === recommended}>
-							<td>{t.tier}</td>
-							{#if t.skipped}
-								<td colspan="4" class="skipped">skipped (previous tier over cutoff)</td>
-							{:else}
-								<td>{fmtMs(t.medianMs)}</td>
-								<td>{fmtMs(t.p75Ms)}</td>
-								<td>{(1000 / t.medianMs).toFixed(0)}</td>
-								<td>×{t.repeats}</td>
-							{/if}
-						</tr>
+						{#if t.skipped}
+							<tr>
+								<td>{t.tier}</td>
+								<td colspan="5" class="skipped">skipped (previous tier over cutoff)</td>
+							</tr>
+						{:else}
+							{#each [{ label: 'limb', s: t.limb }, { label: 'sky', s: t.sky }] as row (row.label)}
+								<tr class:pick={t.tier === recommended}>
+									<td>{row.label === 'limb' ? t.tier : ''}</td>
+									<td>{row.label}</td>
+									{#if row.s}
+										<td>{fmtMs(row.s.medianMs)}</td>
+										<td>{fmtMs(row.s.p75Ms)}</td>
+										<td>{(1000 / row.s.medianMs).toFixed(0)}</td>
+										<td>×{row.s.repeats}</td>
+									{:else}
+										<td colspan="4" class="skipped">
+											{row.label === 'sky' && !ATMOSPHERE_QUALITY_PRESETS[t.tier].insideView
+												? 'no inside view'
+												: 'skipped (over cutoff)'}
+										</td>
+									{/if}
+								</tr>
+							{/each}
+						{/if}
 					{/each}
 				</tbody>
 			</table>
@@ -153,8 +168,9 @@
 		{/if}
 
 		<p class="note">
-			Shell-only cost at near-full-canvas coverage; production adds the rest of the scene + bloom,
-			so real frame rates land below the ≈fps column.
+			Shell-only cost; production adds the rest of the scene + bloom, so real frame rates land below
+			the ≈fps column. The pick holds the target in each tier's worse view (usually sky — the
+			in-atmosphere march covers every pixel).
 		</p>
 	</div>
 </div>

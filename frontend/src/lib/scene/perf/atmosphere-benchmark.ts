@@ -1,5 +1,7 @@
 import {
+	BackSide,
 	DirectionalLight,
+	FrontSide,
 	Mesh,
 	MeshStandardMaterial,
 	PerspectiveCamera,
@@ -25,6 +27,12 @@ import {
  * tier selection can start from data instead of coarse device signals plus
  * reactive downgrades. Self-contained (no network assets) so it can run
  * against a hidden canvas during the app's initial data loads.
+ *
+ * Two scenarios per tier: 'limb' (camera outside, shell disc overflowing the
+ * viewport) and 'sky' (camera near the ground inside the shell — the BackSide
+ * path, where the march covers every pixel). Sky is usually the worst case,
+ * so the tier pick uses each tier's worse scenario. Runs as two passes (limb
+ * across all tiers, then sky) so the visible run holds one viewpoint per pass.
  */
 
 /** Earth is the reference workload: mid-pack params, and the body users most
@@ -32,9 +40,9 @@ import {
 const BENCH_BODY = 'naif-399';
 const EARTH_RADIUS_KM = 6371;
 
-// Camera just outside the shell, close enough that the shell's disc overflows
-// the viewport height — the "shell prominent" case the perf governor guards.
-const CAMERA_DIST = 1.6;
+const LIMB_CAMERA_DIST = 1.6;
+/** ~3 km up: safely inside the shell without the surface clipping the view. */
+const SKY_CAMERA_DIST = 1.0005;
 const SUN_DIR = new Vector3(0.55, 0.25, 0.8).normalize();
 
 /** Cheap → costly, so blowing the abort threshold skips only costlier tiers. */
@@ -47,13 +55,21 @@ const MEASURE_FRAMES = 12;
 const TARGET_SAMPLE_MS = 10;
 const MAX_REPEATS = 16;
 
-export interface TierSample {
-	tier: ResolvedAtmosphereTier;
+export type BenchScenario = 'limb' | 'sky';
+
+export interface ScenarioSample {
 	/** Cost of one render, ms (CPU submit + GPU, serialised by the sync). */
 	medianMs: number;
 	p75Ms: number;
-	/** Renders batched per timing sample for this tier. */
+	/** Renders batched per timing sample. */
 	repeats: number;
+}
+
+export interface TierSample {
+	tier: ResolvedAtmosphereTier;
+	limb: ScenarioSample | null;
+	/** Null when the tier compiles without the inside view (nothing to march). */
+	sky: ScenarioSample | null;
 	/** Not measured: a cheaper tier already exceeded `abortAboveMs`. */
 	skipped: boolean;
 }
@@ -68,6 +84,7 @@ export interface BenchmarkProgress {
 	tier: ResolvedAtmosphereTier;
 	tierIndex: number;
 	tierCount: number;
+	scenario: BenchScenario;
 	phase: 'warmup' | 'measure';
 	frame: number;
 	frames: number;
@@ -75,16 +92,25 @@ export interface BenchmarkProgress {
 
 export interface BenchmarkOptions {
 	tiers?: ResolvedAtmosphereTier[];
-	/** Skip remaining (costlier) tiers once a median exceeds this. */
+	/** Skip remaining (costlier) tiers once a worst-scenario median exceeds this. */
 	abortAboveMs?: number;
 	signal?: AbortSignal;
 	onProgress?: (p: BenchmarkProgress) => void;
 }
 
-/** Costliest measured tier whose median fits the budget; low is the floor. */
+/** A tier's cost is its worse scenario, ms. NaN when it wasn't measured. */
+export function tierWorstMs(t: TierSample): number {
+	if (!t.limb) return NaN;
+	return Math.max(t.limb.medianMs, t.sky?.medianMs ?? 0);
+}
+
+/** Costliest measured tier whose worst scenario fits the budget; low is the floor. */
 export function pickTier(report: BenchmarkReport, budgetMs: number): ResolvedAtmosphereTier {
 	let pick: ResolvedAtmosphereTier = 'low';
-	for (const t of report.tiers) if (!t.skipped && t.medianMs <= budgetMs) pick = t.tier;
+	for (const t of report.tiers) {
+		const worst = tierWorstMs(t);
+		if (!Number.isNaN(worst) && worst <= budgetMs) pick = t.tier;
+	}
 	return pick;
 }
 
@@ -109,11 +135,9 @@ export async function runAtmosphereBenchmark(
 	const camera = new PerspectiveCamera(
 		50,
 		gl.drawingBufferWidth / Math.max(gl.drawingBufferHeight, 1),
-		0.01,
+		0.005,
 		100
 	);
-	camera.position.set(0, 0, CAMERA_DIST);
-	camera.lookAt(0, 0, 0);
 
 	// The planet disc costs the same in every tier; it's here so the visible
 	// bench frame reads as a sanity check (terminator matching the limb glow).
@@ -132,6 +156,24 @@ export async function runAtmosphereBenchmark(
 	u.uSunIntensity.value = params.sunIntensity;
 	scene.add(atmoNode.mesh);
 
+	// Mirrors the production inside-shell flip: BackSide + no depth so the sky
+	// still rasterises with the camera inside the shell geometry.
+	const setScenario = (s: BenchScenario): void => {
+		const inside = s === 'sky';
+		if (inside) {
+			camera.position.set(0, SKY_CAMERA_DIST, 0);
+			// A few degrees above the horizon: sky fills the frame, limb glow at
+			// the bottom edge keeps the visible run interpretable.
+			camera.lookAt(1, SKY_CAMERA_DIST + 0.1, 0);
+		} else {
+			camera.position.set(0, 0, LIMB_CAMERA_DIST);
+			camera.lookAt(0, 0, 0);
+		}
+		atmoNode.material.side = inside ? BackSide : FrontSide;
+		atmoNode.material.depthWrite = !inside;
+		atmoNode.material.depthTest = !inside;
+	};
+
 	const pixel = new Uint8Array(4);
 	const nextFrame = (): Promise<void> =>
 		new Promise((resolve, reject) =>
@@ -148,42 +190,67 @@ export async function runAtmosphereBenchmark(
 		return (performance.now() - t0) / repeats;
 	};
 
-	const results: TierSample[] = [];
+	const measureScenario = async (
+		tier: ResolvedAtmosphereTier,
+		tierIndex: number,
+		scenario: BenchScenario
+	): Promise<ScenarioSample> => {
+		setScenario(scenario);
+		const progress = (phase: 'warmup' | 'measure', frame: number, frames: number) =>
+			onProgress?.({ tier, tierIndex, tierCount: tiers.length, scenario, phase, frame, frames });
+
+		// Warmup absorbs the shader recompile (each tier is a new program) and
+		// pipeline spin-up; the last warmup timing calibrates the batch size.
+		let warm = 0;
+		for (let f = 0; f < WARMUP_FRAMES; f++) {
+			progress('warmup', f + 1, WARMUP_FRAMES);
+			await nextFrame();
+			warm = sample(1);
+		}
+		const repeats = Math.min(
+			MAX_REPEATS,
+			Math.max(1, Math.ceil(TARGET_SAMPLE_MS / Math.max(warm, 0.25)))
+		);
+
+		const samples: number[] = [];
+		for (let f = 0; f < MEASURE_FRAMES; f++) {
+			progress('measure', f + 1, MEASURE_FRAMES);
+			await nextFrame();
+			samples.push(sample(repeats));
+		}
+		samples.sort((a, b) => a - b);
+		return {
+			medianMs: samples[Math.floor(samples.length / 2)],
+			p75Ms: samples[Math.floor(samples.length * 0.75)],
+			repeats
+		};
+	};
+
+	const limbBy = new Map<ResolvedAtmosphereTier, ScenarioSample | null>();
+	const skyBy = new Map<ResolvedAtmosphereTier, ScenarioSample | null>();
 	try {
 		let skip = false;
 		for (const [tierIndex, tier] of tiers.entries()) {
 			if (skip) {
-				results.push({ tier, medianMs: NaN, p75Ms: NaN, repeats: 0, skipped: true });
+				limbBy.set(tier, null);
 				continue;
 			}
 			applyAtmosphereQuality(atmoNode, ATMOSPHERE_QUALITY_PRESETS[tier]);
-			const progress = (phase: 'warmup' | 'measure', frame: number, frames: number) =>
-				onProgress?.({ tier, tierIndex, tierCount: tiers.length, phase, frame, frames });
-
-			// Warmup absorbs the shader recompile (each tier is a new program) and
-			// pipeline spin-up; the last warmup timing calibrates the batch size.
-			let warm = 0;
-			for (let f = 0; f < WARMUP_FRAMES; f++) {
-				progress('warmup', f + 1, WARMUP_FRAMES);
-				await nextFrame();
-				warm = sample(1);
+			const limb = await measureScenario(tier, tierIndex, 'limb');
+			limbBy.set(tier, limb);
+			if (limb.medianMs > abortAboveMs) skip = true;
+		}
+		skip = false;
+		for (const [tierIndex, tier] of tiers.entries()) {
+			const preset = ATMOSPHERE_QUALITY_PRESETS[tier];
+			if (skip || !limbBy.get(tier) || !preset.insideView) {
+				skyBy.set(tier, null);
+				continue;
 			}
-			const repeats = Math.min(
-				MAX_REPEATS,
-				Math.max(1, Math.ceil(TARGET_SAMPLE_MS / Math.max(warm, 0.25)))
-			);
-
-			const samples: number[] = [];
-			for (let f = 0; f < MEASURE_FRAMES; f++) {
-				progress('measure', f + 1, MEASURE_FRAMES);
-				await nextFrame();
-				samples.push(sample(repeats));
-			}
-			samples.sort((a, b) => a - b);
-			const medianMs = samples[Math.floor(samples.length / 2)];
-			const p75Ms = samples[Math.floor(samples.length * 0.75)];
-			results.push({ tier, medianMs, p75Ms, repeats, skipped: false });
-			if (medianMs > abortAboveMs) skip = true;
+			applyAtmosphereQuality(atmoNode, preset);
+			const sky = await measureScenario(tier, tierIndex, 'sky');
+			skyBy.set(tier, sky);
+			if (sky.medianMs > abortAboveMs) skip = true;
 		}
 	} finally {
 		scene.remove(planet, light, atmoNode.mesh);
@@ -194,7 +261,10 @@ export async function runAtmosphereBenchmark(
 	}
 
 	return {
-		tiers: results,
+		tiers: tiers.map((tier) => {
+			const limb = limbBy.get(tier) ?? null;
+			return { tier, limb, sky: skyBy.get(tier) ?? null, skipped: !limb };
+		}),
 		drawWidth: gl.drawingBufferWidth,
 		drawHeight: gl.drawingBufferHeight
 	};
