@@ -38,8 +38,9 @@ v1/
   nomenclature/__global__/{body_id}.json.gz       lean per-body marker metadata (name, approval_date, origin, parent_feature_id)
   nomenclature/details/__global__/{bucket}.json.gz   feature detail bundles, hash-bucketed by `{body_id}:{feature_id}`
   nomenclature/details/{lang}/{bucket}.json.gz       localized feature details, hash-bucketed
-  images/{filename}/{label}.{ext}                 thumbnail variants (label = s | m | xl)
-  images/{filename}/metadata.json.gz              per-image license + variants map
+  images/{filename}/{label}.{ext}                 thumbnail variants (label = s | m | xl); license/artist metadata embedded in EXIF
+  images/{filename}/sidecar.json.gz               metadata fallback, only for bundles whose variants can't embed (SVG/WebM, oversize)
+  images/{filename}/metadata.json.gz              per-image license + variants map (completion marker; excluded from deploys)
   textures/{id}/{tier}.webp                       tier = low | medium | high (single-frame)
   textures/{id}/{tier}_{NN}.webp                  monthly frames (type = cylindrical_monthly), NN = 01..frames
   textures/{id}/metadata.json                     texture source + exports

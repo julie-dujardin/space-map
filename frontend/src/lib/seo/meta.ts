@@ -15,6 +15,7 @@
 
 import * as m from '$lib/paraglide/messages.js';
 import { DATA_BASE, IMAGES_BASE } from '$lib/fetch/data-base';
+import { extractEmbeddedImageMetadata, smallestRasterVariant } from '$lib/fetch/objects/images';
 import { hashBucket } from '$lib/fetch/metadata';
 import { diameterKmFromH } from '$lib/math/h-magnitude';
 import type {
@@ -66,7 +67,7 @@ function versioned(url: string, token: string | undefined): string {
 
 interface OgPick {
 	url: string;
-	file: string;
+	image: ObjectImage;
 	attr: 'free' | 'credit';
 }
 
@@ -92,7 +93,7 @@ function pickOgImage(
 		const path = `/v1/images/${encodeURIComponent(img.file)}/${label}.${ext}`;
 		return {
 			url: absolutize(versioned(`${IMAGES_BASE}${path}`, imagesToken), origin),
-			file: img.file,
+			image: img,
 			attr: img.attr
 		};
 	}
@@ -117,17 +118,32 @@ function buildCredit(meta: {
 	return artist ? `Image: ${artist} (${license})` : null;
 }
 
-/** Fetch the chosen image's metadata and build its credit line. */
+/** Fetch the chosen image's metadata and build its credit line.
+ *
+ * Metadata is embedded in the variants' EXIF; the imported helpers are pure
+ * functions, so the self-containment note above still holds. The sidecar
+ * fallback covers bundles that couldn't embed. */
 async function fetchImageCredit(
-	file: string,
+	image: ObjectImage,
 	origin: string,
 	imagesToken: string | undefined
 ): Promise<string | null> {
-	const url = absolutize(
-		versioned(`${IMAGES_BASE}/v1/images/${encodeURIComponent(file)}/metadata.json.gz`, imagesToken),
-		origin
+	const base = `${IMAGES_BASE}/v1/images/${encodeURIComponent(image.file)}`;
+	const label = smallestRasterVariant(image.variants);
+	if (label) {
+		const url = absolutize(
+			versioned(`${base}/${label}.${image.variants[label]}`, imagesToken),
+			origin
+		);
+		const res = await fetch(url).catch(() => null);
+		if (res?.ok) {
+			const meta = extractEmbeddedImageMetadata(new Uint8Array(await res.arrayBuffer()));
+			if (meta) return buildCredit(meta);
+		}
+	}
+	const meta = await fetchJsonGz(
+		absolutize(versioned(`${base}/sidecar.json.gz`, imagesToken), origin)
 	);
-	const meta = await fetchJsonGz(url);
 	return meta
 		? buildCredit(meta as { license?: { name?: string }; artist?: string | Record<string, string> })
 		: null;
@@ -145,7 +161,7 @@ async function resolveOgCard(
 	const pick = pickOgImage(images, imagesToken, origin);
 	if (!pick) return { description: baseDescription };
 	if (pick.attr === 'free') return { image: pick.url, description: baseDescription };
-	const credit = await fetchImageCredit(pick.file, origin, imagesToken);
+	const credit = await fetchImageCredit(pick.image, origin, imagesToken);
 	if (!credit) return { description: baseDescription };
 	return { image: pick.url, description: `${credit}. ${baseDescription}` };
 }

@@ -1003,3 +1003,203 @@ class TestDepictsExtraction:
         )
         _collect("Original.jpg")
         assert self._read_metadata(layout, "Original.jpg")["depicts"] == ["Q111"]
+
+
+class TestEmbeddedMetadata:
+    """Viewer metadata embedded in variant EXIF, with sidecar.json.gz fallback.
+
+    The deploy excludes metadata.json.gz (file-count budget), so every raster
+    variant must carry the sentinel-wrapped payload; bundles that can't embed
+    (passthrough formats, oversize payloads, fake-extension non-JPEGs) must
+    write the deployed sidecar instead.
+    """
+
+    SENTINEL = b"SPACEMAP-META:v1:"
+
+    def _embedded_payload(self, path: Path) -> dict:
+        data = path.read_bytes()
+        at = data.find(self.SENTINEL)
+        assert at != -1, f"no embedded metadata in {path.name}"
+        rest = data[at + len(self.SENTINEL) :]
+        length, _, tail = rest.partition(b":")
+        return orjson.loads(tail[: int(length)])
+
+    _EXTMETADATA = {
+        "LicenseShortName": {"value": "CC BY-SA 4.0"},
+        "LicenseUrl": {"value": "https://creativecommons.org/licenses/by-sa/4.0"},
+        "Artist": {"value": "Jane Doe"},
+    }
+
+    def test_every_webp_variant_carries_payload(self, tmp_path, layout):
+        _stage_download(
+            tmp_path, "big.png", width=5000, height=2500, extmetadata=self._EXTMETADATA
+        )
+        _collect("big.png")
+        bundle = layout["export"] / "big.png"
+        for label in ("s", "m", "xl"):
+            payload = self._embedded_payload(bundle / f"{label}.webp")
+            assert payload["license"]["name"] == "CC BY-SA 4.0"
+            assert payload["artist"] == "Jane Doe"
+            assert payload["source_url"].endswith("File:big.png")
+        assert not (bundle / "sidecar.json.gz").exists()
+
+    def test_webp_payload_survives_exif_parse(self, tmp_path, layout):
+        # The sentinel scan is the client's fast path, but the blob must also
+        # be real EXIF so tooling (and any future proper parser) sees it.
+        _stage_download(tmp_path, "img.png", width=800, height=400)
+        _collect("img.png")
+        with Image.open(layout["export"] / "img.png" / "s.webp") as img:
+            desc = img.getexif().get(0x010E)
+        assert desc is not None and desc.startswith("SPACEMAP-META:v1:")
+
+    def test_verbatim_jpg_gets_lossless_app1_insert(self, tmp_path, layout):
+        source = _make_source_jpg(2000, 1000)
+        _stage_download(
+            tmp_path, "med.jpg", bytes_=source, extmetadata=self._EXTMETADATA
+        )
+        _collect("med.jpg")
+        bundle = layout["export"] / "med.jpg"
+        out = (bundle / "xl.jpg").read_bytes()
+        payload = self._embedded_payload(bundle / "xl.jpg")
+        assert payload["artist"] == "Jane Doe"
+        # Splice-only: dropping the inserted APP1 segment restores the source
+        # byte-for-byte (no re-encode).
+        seg_len = int.from_bytes(out[4:6], "big")
+        assert out[:2] + out[4 + seg_len :] == source
+        assert not (bundle / "sidecar.json.gz").exists()
+
+    def test_animated_avif_carries_payload(self, tmp_path, layout):
+        _stage_download(
+            tmp_path,
+            "anim.gif",
+            bytes_=_make_source_animated_gif(2000, 1000),
+            extmetadata=self._EXTMETADATA,
+        )
+        _collect("anim.gif")
+        bundle = layout["export"] / "anim.gif"
+        for label in ("s", "m", "xl"):
+            payload = self._embedded_payload(bundle / f"{label}.avif")
+            assert payload["license"]["name"] == "CC BY-SA 4.0"
+        assert not (bundle / "sidecar.json.gz").exists()
+
+    def test_svg_passthrough_stays_verbatim_and_writes_sidecar(self, tmp_path, layout):
+        svg_bytes = (
+            b'<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">'
+            b'<rect width="10" height="10" fill="red"/></svg>'
+        )
+        _stage_download(
+            tmp_path, "icon.svg", bytes_=svg_bytes, extmetadata=self._EXTMETADATA
+        )
+        _collect("icon.svg")
+        bundle = layout["export"] / "icon.svg"
+        assert (bundle / "xl.svg").read_bytes() == svg_bytes
+        sidecar = orjson.loads(
+            gzip.decompress((bundle / "sidecar.json.gz").read_bytes())
+        )
+        assert sidecar["license"]["name"] == "CC BY-SA 4.0"
+        assert sidecar["artist"] == "Jane Doe"
+        # Bundle bookkeeping stays out of the deployed sidecar.
+        assert "schema" not in sidecar
+        assert "variants" not in sidecar
+
+    def test_oversize_payload_falls_back_to_sidecar(
+        self, tmp_path, layout, monkeypatch
+    ):
+        monkeypatch.setattr(images_mod, "_EMBED_MAX_BYTES", 16)
+        _stage_download(
+            tmp_path, "img.png", width=800, height=400, extmetadata=self._EXTMETADATA
+        )
+        _collect("img.png")
+        bundle = layout["export"] / "img.png"
+        assert self.SENTINEL not in (bundle / "s.webp").read_bytes()
+        sidecar = orjson.loads(
+            gzip.decompress((bundle / "sidecar.json.gz").read_bytes())
+        )
+        assert sidecar["artist"] == "Jane Doe"
+
+    def test_fake_jpg_extension_falls_back_to_sidecar(self, tmp_path, layout):
+        # A PNG masquerading as .jpg is copied verbatim at the resting bucket
+        # (no APP1 splice possible), so the bundle needs the sidecar.
+        _stage_download(
+            tmp_path,
+            "fake.jpg",
+            bytes_=_make_source_png(400, 400),
+            extmetadata=self._EXTMETADATA,
+        )
+        _collect("fake.jpg")
+        bundle = layout["export"] / "fake.jpg"
+        assert self.SENTINEL not in (bundle / "s.jpg").read_bytes()
+        assert (bundle / "sidecar.json.gz").exists()
+
+    def test_mpo_jpeg_still_embeds(self, tmp_path, layout):
+        # MPO is a JPEG stream — the APP1 splice applies.
+        _stage_download(
+            tmp_path,
+            "stereo.jpg",
+            bytes_=_make_source_mpo(2000, 1000),
+            extmetadata=self._EXTMETADATA,
+        )
+        _collect("stereo.jpg")
+        bundle = layout["export"] / "stereo.jpg"
+        assert self._embedded_payload(bundle / "xl.jpg")["artist"] == "Jane Doe"
+        assert not (bundle / "sidecar.json.gz").exists()
+
+    def test_stale_schema_wipe_removes_old_sidecar(self, tmp_path, layout):
+        bundle = layout["export"] / "img.png"
+        bundle.mkdir(parents=True)
+        (bundle / "sidecar.json.gz").write_bytes(gzip.compress(orjson.dumps({})))
+        (bundle / "metadata.json.gz").write_bytes(
+            gzip.compress(orjson.dumps({"schema": 4, "variants": {"s": "webp"}}))
+        )
+        _stage_download(tmp_path, "img.png", width=400, height=400)
+        _collect("img.png")
+        # Regenerated as an embedding bundle: no sidecar left behind.
+        assert not (bundle / "sidecar.json.gz").exists()
+        assert self.SENTINEL in (bundle / "s.webp").read_bytes()
+
+
+class TestPruneImageBundles:
+    """Orphan-bundle pruning against the union of the selection caches."""
+
+    def _seed_caches(self, objects=None, features=None, groups=None):
+        images_mod._OBJECT_IMAGES_CACHE = objects or {}
+        images_mod._FEATURE_IMAGES_CACHE = features or {}
+        images_mod._GROUP_IMAGES_CACHE = groups or {}
+
+    def _make_bundle(self, layout, name: str) -> Path:
+        d = layout["export"] / name
+        d.mkdir(parents=True)
+        (d / "s.webp").write_bytes(b"stub")
+        return d
+
+    def test_prunes_unreferenced_keeps_referenced(self, layout):
+        kept_obj = self._make_bundle(layout, "obj.jpg")
+        kept_feat = self._make_bundle(layout, "feat.jpg")
+        kept_group = self._make_bundle(layout, "group.jpg")
+        orphan = self._make_bundle(layout, "orphan.jpg")
+        self._seed_caches(
+            objects={"o1": [{"file": "obj.jpg", "kind": "photo"}]},
+            features={"f1": [{"file": "feat.jpg", "kind": "photo"}]},
+            groups={"g1": [{"file": "group.jpg", "kind": "photo"}]},
+        )
+        images_mod.prune_image_bundles()
+        assert kept_obj.exists() and kept_feat.exists() and kept_group.exists()
+        assert not orphan.exists()
+
+    def test_reference_is_canonicalized(self, layout):
+        # Cache entries may carry the space form; bundle dirs use the
+        # canonical underscore form.
+        kept = self._make_bundle(layout, "A_photo.jpg")
+        self._seed_caches(objects={"o1": [{"file": "A photo.jpg", "kind": "photo"}]})
+        images_mod.prune_image_bundles()
+        assert kept.exists()
+
+    def test_empty_caches_skip_prune(self, layout, caplog):
+        # Empty caches mean ingest didn't run — never treat that as
+        # "nothing referenced".
+        caplog.set_level("WARNING", logger="space_map_data.export.images")
+        survivor = self._make_bundle(layout, "obj.jpg")
+        self._seed_caches()
+        images_mod.prune_image_bundles()
+        assert survivor.exists()
+        assert any("skipping bundle prune" in r.message for r in caplog.records)

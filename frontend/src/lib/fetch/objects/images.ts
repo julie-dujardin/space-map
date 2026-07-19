@@ -2,13 +2,18 @@
  * Helpers for resolving image URLs against the per-image bundle layout:
  *
  *   /data/v1/images/<file>/{s,m,xl}.<ext>
- *   /data/v1/images/<file>/metadata.json.gz
+ *   /data/v1/images/<file>/sidecar.json.gz   (only when EXIF can't carry)
  *
  * The exporter emits only the variants the source actually covers — small
  * sources produce only `s` (verbatim, no upscale). Callers pass a target
  * pixel width; `pickImageUrl` returns the URL for the smallest variant that
  * meets it, falling back to the largest available when the source is
  * smaller than the request.
+ *
+ * Viewer metadata (license/artist/description/…) rides inside each raster
+ * variant's EXIF — a per-image JSON file would count against the images
+ * Worker's file budget. Bundles whose variants can't embed (SVG/WebM
+ * passthrough, oversize payloads) ship the sidecar instead.
  */
 
 import { versionedImageUrl } from '$lib/fetch/data-base';
@@ -62,14 +67,81 @@ export function pickedThumbnailUrl(t: PickedThumbnail): string {
 	return versionedImageUrl(`/v1/images/${encodeURIComponent(t.file)}/${t.label}.${t.ext}`);
 }
 
-/** URL of the gzipped per-image metadata JSON. */
-export function metadataUrl(image: ObjectImage): string {
-	return versionedImageUrl(`/v1/images/${encodeURIComponent(image.file)}/metadata.json.gz`);
+/** Formats that can't carry the embedded EXIF payload. */
+const NO_EXIF_EXTS = new Set(['svg', 'webm']);
+
+/** Smallest variant that can carry the EXIF payload — the cheapest bytes to
+ *  fetch for metadata (usually already in the HTTP cache from display). */
+export function smallestRasterVariant(variants: ImageVariants): VariantLabel | undefined {
+	return LABEL_ORDER.find((l) => {
+		const ext = variants[l];
+		return ext !== undefined && !NO_EXIF_EXTS.has(ext);
+	});
 }
 
-/** Fetch and decompress the per-image metadata JSON. */
+const META_SENTINEL = 'SPACEMAP-META:v1:';
+
+/**
+ * Extract the exporter's sentinel-wrapped metadata JSON from raw image bytes.
+ *
+ * A byte scan, not an EXIF parse: the payload is length-prefixed ASCII JSON
+ * (`SPACEMAP-META:v1:<byte-len>:<json>`) placed in an EXIF ImageDescription,
+ * so searching bytes is container-agnostic (WebP/JPEG/AVIF) and works in
+ * workerd, whose TextDecoder is UTF-8-only.
+ */
+export function extractEmbeddedImageMetadata(bytes: Uint8Array): ImageMetadata | null {
+	const at = findAscii(bytes, META_SENTINEL);
+	if (at === -1) return null;
+	let i = at + META_SENTINEL.length;
+	let len = 0;
+	while (i < bytes.length && bytes[i] >= 0x30 && bytes[i] <= 0x39) {
+		len = len * 10 + (bytes[i] - 0x30);
+		i++;
+	}
+	if (len <= 0 || bytes[i] !== 0x3a /* ':' */ || i + 1 + len > bytes.length) return null;
+	try {
+		return JSON.parse(
+			new TextDecoder().decode(bytes.subarray(i + 1, i + 1 + len))
+		) as ImageMetadata;
+	} catch {
+		return null;
+	}
+}
+
+function findAscii(bytes: Uint8Array, needle: string): number {
+	const first = needle.charCodeAt(0);
+	outer: for (let i = 0; i + needle.length <= bytes.length; i++) {
+		if (bytes[i] !== first) continue;
+		for (let j = 1; j < needle.length; j++) {
+			if (bytes[i + j] !== needle.charCodeAt(j)) continue outer;
+		}
+		return i;
+	}
+	return -1;
+}
+
+/** URL of the gzipped fallback metadata JSON. */
+function sidecarUrl(image: ObjectImage): string {
+	return versionedImageUrl(`/v1/images/${encodeURIComponent(image.file)}/sidecar.json.gz`);
+}
+
+/** Fetch the per-image metadata: EXIF from the smallest raster variant,
+ *  falling back to the sidecar for bundles that couldn't embed. */
 export async function fetchImageMetadata(image: ObjectImage): Promise<ImageMetadata | null> {
-	const res = await fetch(metadataUrl(image));
+	const label = smallestRasterVariant(image.variants);
+	const url = label ? variantUrl(image, label) : undefined;
+	if (url) {
+		try {
+			const res = await fetch(url);
+			if (res.ok) {
+				const meta = extractEmbeddedImageMetadata(new Uint8Array(await res.arrayBuffer()));
+				if (meta) return meta;
+			}
+		} catch {
+			// Embed miss or network hiccup — the sidecar below is authoritative.
+		}
+	}
+	const res = await fetch(sidecarUrl(image));
 	if (!res.ok) return null;
 	const ds = new DecompressionStream('gzip');
 	return (await new Response(res.body!.pipeThrough(ds)).json()) as ImageMetadata;

@@ -5,3 +5,6 @@
 !/v1/
 /v1/*
 !/v1/images/
+# Local completion marker only — the payload ships inside variant EXIF (or
+# sidecar.json.gz for bundles that can't embed). One file slot per image adds up.
+metadata.json.gz

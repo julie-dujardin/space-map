@@ -7,7 +7,8 @@ for each servable image::
     EXPORT_DIR/v1/images/<filename>/s.<ext>     # 512px (webp/avif, or verbatim jpg)
     EXPORT_DIR/v1/images/<filename>/m.<ext>     # 1024px (when source is larger)
     EXPORT_DIR/v1/images/<filename>/xl.<ext>    # 4096px (when source is larger)
-    EXPORT_DIR/v1/images/<filename>/metadata.json.gz
+    EXPORT_DIR/v1/images/<filename>/metadata.json.gz   # marker, not deployed
+    EXPORT_DIR/v1/images/<filename>/sidecar.json.gz    # only when EXIF can't carry
 
 Size buckets and bucket extensions follow these rules:
 - Passthrough sources (svg, webm) are copied verbatim to ``xl.<ext>``
@@ -29,12 +30,17 @@ Size buckets and bucket extensions follow these rules:
 - The resting bucket is the first bucket whose target dim is ≥ the source's
   largest dim. Buckets above it are not emitted (no upscaling).
 
-``metadata.json.gz`` embeds the ``variants`` map (``{label: ext}``) alongside
-the license/artist/description fields and doubles as the completion marker —
-no separate variants.json is written.
+The frontend-facing metadata (license/artist/description/date/depicts) rides
+inside every raster variant as an EXIF ImageDescription so the deploy doesn't
+spend a Cloudflare Workers-assets file slot per image on a sidecar. Bundles
+that can't embed (SVG/WebM passthrough, oversize payloads, fake-extension
+non-JPEGs) get a deployed ``sidecar.json.gz`` fallback. ``metadata.json.gz``
+keeps the full payload plus the ``variants`` map and doubles as the completion
+marker, but is excluded from deploys via ``.assetsignore``.
 """
 
 import gzip
+import json
 import logging
 import re
 import shutil
@@ -48,6 +54,7 @@ from urllib.parse import quote
 
 import orjson
 from PIL import Image, ImageFile, ImageSequence
+from PIL.ExifTags import Base as ExifBase
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.utils.commons_images import (
@@ -114,7 +121,16 @@ _ANIMATED_FORMATS = {"GIF", "WEBP", "PNG"}
 # dropped/added formats) OR the metadata payload gains/drops fields. Existing
 # bundles whose metadata.json.gz carries an older schema are wiped and
 # regenerated on the next export.
-_BUNDLE_SCHEMA = 4
+_BUNDLE_SCHEMA = 5
+
+# Embedded-metadata envelope: EXIF ImageDescription =
+# "SPACEMAP-META:v1:<byte-len>:<json>". The JSON is ensure_ascii so byte
+# offsets equal character offsets and the client can byte-scan for the
+# sentinel instead of parsing EXIF. Cap keeps the blob under the JPEG APP1
+# segment limit (65533 bytes incl. the Exif header); oversize payloads fall
+# back to sidecar.json.gz.
+_META_SENTINEL = "SPACEMAP-META:v1:"
+_EMBED_MAX_BYTES = 60_000
 
 # P571 inception precision codes we accept. Wikidata uses the WikibaseTime
 # precision enum: 11=day, 10=month, 9=year, lower=decade/century/millennium
@@ -346,15 +362,18 @@ def _ensure_bundle(filename: str) -> dict:
             _wipe_bundle_dir(out_dir)
 
         out_dir.mkdir(parents=True, exist_ok=True)
-        variants, dims = _generate_variants(filename, out_dir)
-        license_block = None
+        payload = _viewer_payload(filename)
+        exif = _exif_blob(filename, payload)
+        variants, dims, embedded = _generate_variants(filename, out_dir, exif)
         if variants:
-            license_block = _write_trimmed_metadata(filename, out_dir, variants, dims)
+            if not embedded:
+                _write_json_gz(out_dir / "sidecar.json.gz", payload)
+            _write_marker_metadata(out_dir, payload, variants, dims)
         return {
             "variants": variants,
             "width": dims[0] if dims else None,
             "height": dims[1] if dims else None,
-            "license": license_block,
+            "license": payload.get("license"),
         }
 
 
@@ -366,22 +385,23 @@ def _wipe_bundle_dir(out_dir: Path) -> None:
 
 
 def _generate_variants(
-    filename: str, out_dir: Path
-) -> tuple[dict[str, str], tuple[int, int] | None]:
+    filename: str, out_dir: Path, exif: bytes | None
+) -> tuple[dict[str, str], tuple[int, int] | None, bool]:
     """Write s/m/xl output files.
 
-    Returns ``(variants, dims)`` where ``variants`` is the ``{label: ext}`` map
-    of emitted buckets and ``dims`` is ``(width, height)`` of the decoded source
-    raster — ``None`` for passthrough/skipped sources where we never opened a
-    raster. Dimensions match the source, not the variant; PhotoSwipe/clients
-    use them only for aspect ratio.
+    Returns ``(variants, dims, embedded)``: ``variants`` is the ``{label: ext}``
+    map of emitted buckets; ``dims`` is ``(width, height)`` of the decoded
+    source raster — ``None`` for passthrough/skipped sources where we never
+    opened a raster (clients use them only for aspect ratio); ``embedded``
+    says every emitted variant carries the ``exif`` metadata blob, so the
+    caller knows whether a sidecar fallback is needed.
     """
     src = source_path(filename)
     src_ext = src.suffix.lower()
 
     if src_ext in _SKIP_EXTENSIONS:
         logger.debug("Skipping unshippable format %s: %s", src_ext, filename)
-        return {}, None
+        return {}, None, False
 
     if src_ext in _PASSTHROUGH_EXTENSIONS:
         size = src.stat().st_size
@@ -393,19 +413,19 @@ def _generate_variants(
                 _PASSTHROUGH_MAX_BYTES,
                 filename,
             )
-            return {}, None
+            return {}, None, False
         ext = src_ext.lstrip(".")
         target = out_dir / f"xl.{ext}"
         if not target.exists():
             _atomic_copy(src, target)
-        return {"xl": ext}, None
+        return {"xl": ext}, None, False
 
     try:
         img = Image.open(src)
         img.load()
     except Exception as exc:
         logger.warning("Skipping unreadable image %s: %s", filename, exc)
-        return {}, None
+        return {}, None, False
 
     source_max = max(img.width, img.height)
     dims = (img.width, img.height)
@@ -417,6 +437,7 @@ def _generate_variants(
     )
 
     variants: dict[str, str] = {}
+    embedded = exif is not None
     for label, dim in _BUCKETS:
         out_stem = out_dir / label
         if dim < source_max:
@@ -424,9 +445,9 @@ def _generate_variants(
             target = out_stem.with_suffix(f".{ext}")
             if not target.exists():
                 if animated:
-                    _write_animated_avif(img, dim, target)
+                    _write_animated_avif(img, dim, target, exif)
                 else:
-                    _write_webp(img, dim, target)
+                    _write_webp(img, dim, target, exif)
             variants[label] = ext
             continue
 
@@ -436,25 +457,34 @@ def _generate_variants(
             ext = "avif"
             target = out_stem.with_suffix(f".{ext}")
             if not target.exists():
-                _write_animated_avif(img, dim, target)
+                _write_animated_avif(img, dim, target, exif)
         elif lossy_source:
             ext = src_ext.lstrip(".")
             target = out_stem.with_suffix(f".{ext}")
+            # A ``.jpg`` source can decode as some other format (extension
+            # lies); only a real JPEG stream can take the APP1 insert.
+            jpeg_exif = exif if img.format in ("JPEG", "MPO") else None
             if not target.exists():
-                _atomic_copy(src, target)
+                if jpeg_exif is not None:
+                    _copy_jpeg_with_exif(src, target, jpeg_exif)
+                else:
+                    _atomic_copy(src, target)
+            embedded = embedded and jpeg_exif is not None
         else:
             ext = "webp"
             target = out_stem.with_suffix(f".{ext}")
             if not target.exists():
-                _write_webp(img, dim, target)
+                _write_webp(img, dim, target, exif)
         variants[label] = ext
         break
 
     img.close()
-    return variants, dims
+    return variants, dims, embedded
 
 
-def _write_webp(img: Image.Image, max_dim: int, target: Path) -> None:
+def _write_webp(
+    img: Image.Image, max_dim: int, target: Path, exif: bytes | None
+) -> None:
     """Resize (preserving aspect) to ``max_dim`` on the longest side and save as lossy webp."""
     w, h = img.size
     if max_dim < max(w, h):
@@ -471,14 +501,16 @@ def _write_webp(img: Image.Image, max_dim: int, target: Path) -> None:
         to_save = to_save.convert("RGB")
 
     tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
-    to_save.save(tmp, "webp", quality=80)
+    to_save.save(tmp, "webp", quality=80, **({"exif": exif} if exif else {}))
     tmp.rename(target)
 
     if resized is not img:
         resized.close()
 
 
-def _write_animated_avif(img: Image.Image, max_dim: int, target: Path) -> None:
+def _write_animated_avif(
+    img: Image.Image, max_dim: int, target: Path, exif: bytes | None
+) -> None:
     """Iterate frames of an animated image, resize each, save as animated AVIF."""
     frames: list[Image.Image] = []
     durations: list[int] = []
@@ -503,6 +535,7 @@ def _write_animated_avif(img: Image.Image, max_dim: int, target: Path) -> None:
         loop=img.info.get("loop", 0),
         quality=_ANIMATED_AVIF_QUALITY,
         speed=_ANIMATED_AVIF_SPEED,
+        **({"exif": exif} if exif else {}),
     )
     tmp.rename(target)
 
@@ -514,22 +547,25 @@ def _atomic_copy(src: Path, dst: Path) -> None:
     tmp.rename(dst)
 
 
-def _write_trimmed_metadata(
-    filename: str,
-    out_dir: Path,
-    variants: dict[str, str],
-    dims: tuple[int, int] | None,
-) -> dict | None:
-    """Write the frontend-facing per-image metadata (gzipped JSON).
+def _copy_jpeg_with_exif(src: Path, dst: Path, exif: bytes) -> None:
+    """Copy a JPEG verbatim except for an inserted APP1 EXIF segment.
 
-    Returns the ``{name, url}`` license block (or None) so the caller can
-    derive the object-entry attribution tier without re-reading the bundle.
+    Image data is untouched — only the metadata segment is spliced in after
+    SOI, ahead of any pre-existing APP segments. Callers must ensure ``src``
+    is a real JPEG stream.
+    """
+    data = src.read_bytes()
+    segment = b"\xff\xe1" + (len(exif) + 2).to_bytes(2, "big") + exif
+    tmp = dst.with_name(f".{dst.name}.{uuid.uuid4().hex}.tmp")
+    tmp.write_bytes(data[:2] + segment + data[2:])
+    tmp.rename(dst)
+
+
+def _viewer_payload(filename: str) -> dict:
+    """Build the frontend-facing per-image metadata.
 
     Trimmed to the subset the frontend actually consumes:
 
-    - ``variants``: ``{label: ext}`` map of emitted size buckets
-    - ``width``/``height``: source pixel dimensions when known (omitted for
-      passthrough sources that never went through PIL)
     - ``license``: ``{"name", "url"}`` from extmetadata LicenseShortName + LicenseUrl
     - ``artist``, ``description``: multilang-capable fields, restricted to
       supported locales (with bare strings passed through unchanged). Both
@@ -554,12 +590,8 @@ def _write_trimmed_metadata(
     base_em = (base.get("imageinfo") or {}).get("extmetadata") or {}
 
     payload: dict = {
-        "schema": _BUNDLE_SCHEMA,
         "source_url": f"https://commons.wikimedia.org/wiki/File:{quote(filename)}",
-        "variants": variants,
     }
-    if dims:
-        payload["width"], payload["height"] = dims
     license_block = _license_block(base_em)
     if license_block:
         payload["license"] = license_block
@@ -573,12 +605,50 @@ def _write_trimmed_metadata(
         payload["date"] = date
     if depicts:
         payload["depicts"] = depicts
+    return payload
 
-    target = out_dir / "metadata.json.gz"
+
+def _exif_blob(filename: str, payload: dict) -> bytes | None:
+    """Encode the viewer payload as sentinel-wrapped EXIF bytes.
+
+    Returns None (→ sidecar fallback) when the blob would overflow a JPEG
+    APP1 segment.
+    """
+    body = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+    exif = Image.Exif()
+    exif[ExifBase.ImageDescription] = f"{_META_SENTINEL}{len(body)}:{body}"
+    blob = exif.tobytes()
+    if len(blob) > _EMBED_MAX_BYTES:
+        logger.info(
+            "Metadata too large to embed (%d bytes) — sidecar fallback: %s",
+            len(blob),
+            filename,
+        )
+        return None
+    return blob
+
+
+def _write_json_gz(target: Path, payload: dict) -> None:
+    """Write gzipped JSON via a temp file + rename."""
     tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
     tmp.write_bytes(gzip.compress(orjson.dumps(payload)))
     tmp.rename(target)
-    return license_block
+
+
+def _write_marker_metadata(
+    out_dir: Path,
+    payload: dict,
+    variants: dict[str, str],
+    dims: tuple[int, int] | None,
+) -> None:
+    """Write metadata.json.gz: the viewer payload plus the bundle bookkeeping
+    (``schema``, ``variants``, source ``width``/``height``) that makes it the
+    completion/skip marker. Written last so a crash never leaves a marked-but-
+    incomplete bundle."""
+    full: dict = {"schema": _BUNDLE_SCHEMA, "variants": variants, **payload}
+    if dims:
+        full["width"], full["height"] = dims
+    _write_json_gz(out_dir / "metadata.json.gz", full)
 
 
 def _aggregate_tree_metadata(
@@ -875,6 +945,43 @@ def _locale_field(field: dict | None) -> str | dict[str, str] | None:
     return None
 
 
+def prune_image_bundles() -> None:
+    """Delete bundle dirs for images no longer referenced by any selection.
+
+    The bundle writers only ever add; selection changes (image replaced on
+    Wikidata, object dropped, exclusion added) would otherwise leave orphan
+    bundles shipping forever. Referenced = union of the object/feature/group
+    selection caches, canonicalized like the collectors do.
+
+    Skipped with a warning when every cache is empty — that means ingest
+    hasn't run, not that nothing is referenced.
+    """
+    keep: set[str] = set()
+    for cache_loader in (
+        _object_images_cache,
+        _feature_images_cache,
+        _group_images_cache,
+    ):
+        for entries in cache_loader().values():
+            for entry in entries:
+                keep.add(canonical_filename(entry["file"]))
+    if not keep:
+        logger.warning("All image selection caches empty — skipping bundle prune")
+        return
+
+    if not _EXPORT_IMAGES_DIR.exists():
+        return
+    deleted = 0
+    for d in _EXPORT_IMAGES_DIR.iterdir():
+        if not d.is_dir() or d.name in keep:
+            continue
+        logger.debug("Pruning orphan image bundle: %s", d.name)
+        shutil.rmtree(d)
+        deleted += 1
+    if deleted:
+        logger.info("Pruned %d orphan image bundles", deleted)
+
+
 def clear_export_cache() -> None:
     """Reset per-export caches. For tests that monkeypatch paths."""
     global _OBJECT_IMAGES_CACHE, _FEATURE_IMAGES_CACHE, _GROUP_IMAGES_CACHE
@@ -890,6 +997,7 @@ __all__ = [
     "collect_feature_images",
     "collect_group_images",
     "pick_thumbnail",
+    "prune_image_bundles",
     "clear_export_cache",
     "DOWNLOADS_IMAGES_DIR",
 ]
