@@ -17,6 +17,10 @@ from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATIONS,
     SatelliteCategory,
 )
+from space_map_data.constants.minor_planet_moons import (
+    MINOR_PLANET_MOONS,
+    UNLINKED_MINOR_PLANET_MOON_QIDS,
+)
 from space_map_data.constants.providers import ID_TYPE_TO_WIKIDATA_PID, ID_TYPES
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, SBDB
@@ -57,6 +61,9 @@ SPARQL_URL = "https://query.wikidata.org/sparql"
 SPARQL_BATCH_SIZE = 1000
 NAME_BATCH_SIZE = 200
 AFTER_REQUEST_DELAY_SECONDS = 2  # pls don't ban me
+
+# "minor planet moon" — instance-of value shared by satellites of asteroids/TNOs.
+MINOR_PLANET_MOON_P31_QID = "Q657829"
 
 # Each source maps to: (id_type, db_query_func_name, label)
 SOURCES = (
@@ -153,6 +160,59 @@ class WikidataIdResolver:
         # filtered to entries whose object_id prefix matches the requested types.
         all_qids.update(self._read_resolved_conflict_qids(id_types))
         return all_qids
+
+    def warn_minor_planet_moon_drift(self) -> None:
+        """Warn when Wikidata's P31=Q657829 set diverges from our hardcoded table.
+
+        Minor-planet moons are linked from a hand-curated constant (their
+        synthetic SPK-IDs match no external-ID property), so this doesn't change
+        any linkage — it only flags, in either direction, moons to add or
+        hardcoded entries that Wikidata reclassified/renamed, for manual review.
+        """
+        query = (
+            "SELECT ?item ?itemLabel WHERE {\n"
+            f"  ?item wdt:P31 wd:{MINOR_PLANET_MOON_P31_QID} .\n"
+            '  SERVICE wikibase:label { bd:serviceParam wikibase:language "en" }\n'
+            "}"
+        )
+        try:
+            results = self._sparql_query(query)
+        except (httpx.HTTPError, RuntimeError) as exc:
+            logger.warning("Minor-planet-moon drift check skipped: %s", exc)
+            return
+
+        live = {
+            row["item"]["value"].rsplit("/", 1)[-1]: row.get("itemLabel", {}).get(
+                "value", ""
+            )
+            for row in results
+        }
+        hardcoded = {m.qid: m for m in MINOR_PLANET_MOONS}
+        new_qids = live.keys() - hardcoded.keys() - UNLINKED_MINOR_PLANET_MOON_QIDS
+        stale_qids = hardcoded.keys() - live.keys()
+        for qid in sorted(new_qids):
+            logger.warning(
+                "Minor-planet moon %r (%s) is P31=Q657829 on Wikidata but not in "
+                "constants/minor_planet_moons.py — consider adding",
+                live[qid],
+                qid,
+            )
+        for qid in sorted(stale_qids):
+            moon = hardcoded[qid]
+            logger.warning(
+                "Hardcoded minor-planet moon %r (%s, parent %s) is no longer "
+                "P31=Q657829 on Wikidata — renamed or reclassified?",
+                moon.name,
+                qid,
+                moon.parent,
+            )
+        logger.info(
+            "Minor-planet-moon drift: %d live, %d hardcoded, %d new, %d stale",
+            len(live),
+            len(hardcoded),
+            len(new_qids),
+            len(stale_qids),
+        )
 
     # -- CSV helpers --
 

@@ -14,8 +14,11 @@ from pathlib import Path
 
 from sqlalchemy import update
 
+from space_map_data.constants.minor_planet_moons import (
+    MINOR_PLANET_MOON_QID_BY_DESIGNATION,
+)
 from space_map_data.ingest.providers.wikidata.csv_io import read_ids_csv
-from space_map_data.models.object import Object, OrbitalSource
+from space_map_data.models.object import Object, ObjectType, OrbitalSource
 from space_map_data.models.object.satcat import Satcat
 from space_map_data.utils.db import get_session
 from tqdm import tqdm
@@ -280,6 +283,40 @@ def _insert_satcat_unambiguous(
     return updated
 
 
+def _link_minor_planet_moons(session) -> int:
+    """Attach hardcoded minor-planet-moon QIDs, joined by provisional designation.
+
+    Their synthetic SPK-IDs never match a Wikidata external-ID property, so the
+    SPARQL resolver can't reach them — the curated table is authoritative and
+    overwrites. Designations are unique per moon, so at most one row matches each.
+    """
+    updated = 0
+    missing: list[tuple[str, str]] = []
+    for designation, qid in MINOR_PLANET_MOON_QID_BY_DESIGNATION.items():
+        result = session.execute(
+            update(Object)
+            .where(
+                Object.provisional_designation == designation,
+                Object.object_type == ObjectType.moon,
+            )
+            .values(wikidata_qid=qid)
+        )
+        if result.rowcount:
+            updated += result.rowcount
+        else:
+            missing.append((designation, qid))
+    session.commit()
+    if missing:
+        logger.warning(
+            "%d/%d hardcoded minor-planet moons had no matching object "
+            "(designation not ingested): %s",
+            len(missing),
+            len(MINOR_PLANET_MOON_QID_BY_DESIGNATION),
+            ", ".join(f"{d} ({q})" for d, q in missing),
+        )
+    return updated
+
+
 def ingest(download_dir: Path) -> None:
     ids_dir = download_dir / "sources" / "metadata" / "wikidata" / "ids"
     if not ids_dir.exists():
@@ -306,6 +343,9 @@ def ingest(download_dir: Path) -> None:
     inserted = _insert_unambiguous(session, obj_to_qids, qid_to_objs)
     _write_ambiguous(ids_dir, obj_to_qids, qid_to_objs)
     logger.info("Wikidata ingest: %d objects updated", inserted)
+
+    moon_linked = _link_minor_planet_moons(session)
+    logger.info("Wikidata ingest: %d minor-planet moons linked", moon_linked)
 
     # Satcat QID matching (covers all ~65k SATCAT entries)
     session.execute(update(Satcat).values(wikidata_qid=None))

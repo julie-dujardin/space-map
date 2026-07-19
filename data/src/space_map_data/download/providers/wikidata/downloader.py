@@ -15,6 +15,7 @@ from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_
 from space_map_data.constants.earth_sats.launch_vehicles import LAUNCH_VEHICLE_VARIANTS
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.constants.earth_sats.reusable_vehicles import REUSABLE_VEHICLE_QIDS
+from space_map_data.constants.minor_planet_moons import minor_planet_moon_qids
 from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
 from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
@@ -74,6 +75,10 @@ class WikidataDownloader(Downloader):
         # Probe QIDs are hand-curated in spice/probe_ids.json (no external
         # ID property gets us there via SPARQL), so seed them directly.
         object_qids |= load_probe_qids()
+        # Minor-planet moons are likewise hand-curated (synthetic SPK-IDs match
+        # no external-ID property); seed their entities and warn on drift.
+        object_qids |= minor_planet_moon_qids()
+        resolver.warn_minor_planet_moon_drift()
         objects_dir = self.out_dir / "objects"
         objects_dir.mkdir(exist_ok=True)
         self._fetch_entities(
