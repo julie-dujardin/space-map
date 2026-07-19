@@ -1,8 +1,9 @@
 <!--
-  Dev tool: runs the atmosphere tier benchmark in a visible frame to validate
-  the calibration methodology (timing stability, tier spread, sensible budget
-  thresholds) before it moves offscreen into app boot. Numbers are shell-only
-  at near-full-canvas coverage — no composer/bloom, no rest-of-scene.
+  Dev tool: runs the same benchmark boot calibration runs behind the loading
+  screen, but in a visible frame — for eyeballing timing stability and tier
+  spread on a device. Page-local: never writes the stored calibration, and
+  measures every tier (no target cutoff). Numbers are shell-only at
+  near-full-canvas coverage — no composer/bloom, no rest-of-scene.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';

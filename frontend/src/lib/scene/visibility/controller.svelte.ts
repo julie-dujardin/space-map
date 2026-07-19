@@ -178,9 +178,14 @@ export class VisibilityController {
 		this.recomputeFullMoons();
 	}
 
-	/** Ratio-based visibility for a moon. Gated on the focused system, except for
-	 *  asteroid moons — their parent is sun-orbiting, so setFocused never sets a
-	 *  system root to gate on; they also skip the crowding cap (sparse per parent). */
+	/** Ratio-based visibility for a moon, gated on the focused system — the
+	 *  distance ratio alone can't gate: camera-to-focus distance says nothing
+	 *  about proximity to the parent, so an ungated moon pops in whenever the
+	 *  camera zooms close to anything. An asteroid's "system" is the asteroid
+	 *  itself: focusing one of its moons resolves focusedSystemId to it, but
+	 *  focusing the asteroid leaves focusedSystemId null (top-level parent),
+	 *  so match focusedBodyId too. Asteroid moons also skip the crowding cap
+	 *  (sparse per parent). */
 	getMoonVisibility(moon: PositionedBody): VISIBILITY {
 		const cached = this.moonVisibilityCache.get(moon.data.id);
 		if (cached !== undefined) return cached;
@@ -188,7 +193,9 @@ export class VisibilityController {
 		// Asteroid parents live in `asteroidBodiesByZone`, not `bodiesById`, so go through getBody.
 		const parent = this.bodies.getBody(moon.data.parentId);
 		const isAsteroidMoon = parent !== undefined && isAsteroid(parent.data.objectType);
-		if (!isAsteroidMoon && !this.isInFocusedSystem(moon.data.parentId)) {
+		let inFamily = this.isInFocusedSystem(moon.data.parentId);
+		if (isAsteroidMoon && moon.data.parentId === this.focusedBodyIdPlain) inFamily = true;
+		if (!inFamily) {
 			vis = VISIBILITY.HIDE;
 		} else if (isAsteroidMoon && !this.matchesSmallBodyClass(moon.data.parentId)) {
 			// Asteroid moon inherits its parent's class — hide when the parent's
