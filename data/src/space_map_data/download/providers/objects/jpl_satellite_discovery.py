@@ -8,6 +8,7 @@ to one record per moon for the ingest match.
 
 import json
 import logging
+from datetime import timedelta
 
 import httpx
 from bs4 import BeautifulSoup
@@ -49,6 +50,8 @@ def _parse_table(html: str) -> list[dict]:
 
 class JPLSatelliteDiscoveryDownloader(Downloader):
     name = PROVIDERS.JPL_SATELLITE_DISCOVERY
+    # New irregulars get announced now and then; the table is one cheap page.
+    max_age = timedelta(days=7)
 
     def __init__(self, client: httpx.Client) -> None:
         self.client = client

@@ -1,5 +1,6 @@
 import logging
 import time
+from datetime import timedelta
 from posixpath import basename as url_basename
 from urllib.parse import urlparse
 
@@ -33,6 +34,9 @@ def _parse_download_links(html: str) -> dict[str, list[str]]:
 
 class IAUNomenclatureDownloader(Downloader):
     name = PROVIDERS.IAU_NOMENCLATURE
+    # The IAU approves new feature names year-round; archives are regenerated
+    # in place, so stale files must be re-fetched, not just missing ones.
+    max_age = timedelta(days=7)
 
     def __init__(self, client: httpx.Client) -> None:
         self.client = client
@@ -64,7 +68,7 @@ class IAUNomenclatureDownloader(Downloader):
                 filename = url.rsplit("/", 1)[-1]
                 out_path = body_dir / filename
 
-                if out_path.exists():
+                if self._is_fresh(out_path):
                     skipped += 1
                     continue
 
