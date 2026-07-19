@@ -31,13 +31,13 @@ const TIER_ORDER: ResolvedAtmosphereTier[] = ['low', 'medium', 'high', 'ultra'];
 
 export const ATMOSPHERE_QUALITY_PRESETS: Record<ResolvedAtmosphereTier, AtmosphereQualityConfig> = {
 	low: {
-		primarySteps: 12,
-		lightSteps: 3,
+		primarySteps: 6,
+		lightSteps: 2,
 		eclipseShadows: false,
 		ringShadows: false,
-		insideView: false
+		insideView: true
 	},
-	// Low's march budget with the full feature set — the phone tier.
+	// The phone tier: full feature set at a lean march budget.
 	medium: {
 		primarySteps: 12,
 		lightSteps: 3,
@@ -61,19 +61,22 @@ export const ATMOSPHERE_QUALITY_PRESETS: Record<ResolvedAtmosphereTier, Atmosphe
 	}
 };
 
+/** First guess from coarse device signals — phones/tablets start at medium,
+ *  desktops at ultra, and the Chromium-only low-end probe steps either down one. */
+export function heuristicAtmosphereTier(): ResolvedAtmosphereTier {
+	if (isCoarsePointer()) return isLowEndDevice() ? 'low' : 'medium';
+	return isLowEndDevice() ? 'high' : 'ultra';
+}
+
 /**
- * Resolve 'auto': a tier the perf governor has settled on wins; otherwise a
- * first guess from coarse device signals — phones/tablets start at medium,
- * desktops at ultra, and the Chromium-only low-end probe steps either down one.
- * Optimistic starts are fine because {@link recordAtmospherePerf} walks the
- * tier down as soon as sustained frame times prove the guess wrong.
+ * Resolve 'auto': a tier the perf governor has settled on wins; otherwise the
+ * device-signal guess. Optimistic starts are fine because
+ * {@link recordAtmospherePerf} walks the tier down as soon as sustained frame
+ * times prove the guess wrong.
  */
 export function resolveAtmosphereTier(tier: AtmosphereQualityTier): ResolvedAtmosphereTier {
 	if (tier !== 'auto') return tier;
-	const learned = getSettings().atmosphereAutoTier;
-	if (learned) return learned;
-	if (isCoarsePointer()) return isLowEndDevice() ? 'low' : 'medium';
-	return isLowEndDevice() ? 'high' : 'ultra';
+	return getSettings().atmosphereAutoTier ?? heuristicAtmosphereTier();
 }
 
 /** The effective config right now: resolved tier preset + session debug overrides. */

@@ -7,6 +7,11 @@
 			note: 'Tune body atmosphere shells in a live WebGL scene.'
 		},
 		{
+			path: '/debug/benchmark',
+			title: 'Perf benchmark',
+			note: 'Measure atmosphere tier cost on this device and preview the calibrated pick.'
+		},
+		{
 			path: '/debug/og-preview',
 			title: 'OG preview',
 			note: 'Preview Open Graph / social cards for sample pages.'

@@ -215,6 +215,12 @@
 	// it. Not shown as sliders: the mouse owns aiming, the sliders own position.
 	let lookYaw = $state(0);
 	let lookPitch = $state(0);
+	// FPS readout, refreshed in ~500 ms windows so the label is legible instead
+	// of flickering every frame.
+	let fps = $state(0);
+	let fpsWindowMs = 0;
+	let fpsFrames = 0;
+	let lastFrameMs = 0;
 
 	// Star-map dim for the tuned params at the current altitude and sun — the
 	// same factor production feeds `scene.backgroundIntensity`.
@@ -572,6 +578,18 @@
 	function frame(): void {
 		raf = requestAnimationFrame(frame);
 
+		const now = performance.now();
+		if (lastFrameMs) {
+			fpsWindowMs += now - lastFrameMs;
+			fpsFrames++;
+			if (fpsWindowMs >= 500) {
+				fps = (fpsFrames * 1000) / fpsWindowMs;
+				fpsWindowMs = 0;
+				fpsFrames = 0;
+			}
+		}
+		lastFrameMs = now;
+
 		const sd = sunDirection();
 		const sunScale = 2 ** sunScaleX; // sun-light bar (log2)
 		const invSq = 1 / (currentBody.au * currentBody.au);
@@ -702,6 +720,7 @@
 				{collapsed ? '▸' : '▾'}
 			</button>
 			<span class="title">Atmosphere tuner</span>
+			<span class="fps">{fps.toFixed(0)}fps</span>
 			<label class="body-select">
 				<select
 					bind:value={bodyId}
@@ -1006,6 +1025,10 @@
 		flex: 1;
 		font-weight: 600;
 		font-size: 13px;
+	}
+	.fps {
+		color: #9aa1ad;
+		font-variant-numeric: tabular-nums;
 	}
 	.body-select select {
 		background: #21262d;
