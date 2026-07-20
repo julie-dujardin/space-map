@@ -120,17 +120,17 @@ def build_earth_archive_part_signature(date_iso: str) -> dict:
 def build_sbdb_part_signature(download_dir: Path) -> dict:
     """Compute the expected sidecar contents for one small_bodies/* part.
 
-    The unit of cacheability is the entire SBDB download — JPL ships the
-    full small-body catalog as one snapshot and our downloader replaces
-    every row when fetching. So every small_bodies/* part across all zones
-    shares the same signature, and a fresh SBDB pull invalidates every
-    part at once (same model as a kernel update for probes).
+    The unit of cacheability is the whole SBDB mirror: every
+    small_bodies/* part across all zones shares the same signature, and
+    any mirror change invalidates every part at once (same model as a
+    kernel update for probes).
 
-    Reads `sbdb/metadata.json` written by `Downloader._save_metadata`. The
-    `downloaded_at` timestamp alone would suffice to detect re-downloads,
-    but `record_count` + `complete` are included so a sidecar from a
-    partial/aborted download (`complete: false`) doesn't get conflated
-    with a later complete one that happened to land at the same timestamp.
+    Reads `sbdb/metadata.json`; the incremental downloader bumps its
+    `downloaded_at` only when a sync actually changed rows, so no-op
+    syncs don't invalidate parts. `record_count` + `complete` are
+    included so a sidecar from a partial mirror (`complete: false`)
+    doesn't get conflated with a later complete one that happened to
+    land at the same timestamp.
     """
     meta_path = download_dir / "sources" / "position" / "sbdb" / "metadata.json"
     meta = json.loads(meta_path.read_text())

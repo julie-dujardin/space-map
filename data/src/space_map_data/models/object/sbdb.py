@@ -75,7 +75,7 @@ class CometPrefix(StrEnum):
 
 
 class SBDB(Base):
-    """Full mirror of sbdb/small-bodies_*.csv."""
+    """Full mirror of the sbdb.sqlite catalog mirror."""
 
     __tablename__ = "sbdb"
 

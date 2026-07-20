@@ -1,9 +1,9 @@
-"""Ingest SBDB small-bodies CSV chunks into the database."""
+"""Ingest the SBDB sqlite mirror into the database."""
 
-import csv
 import logging
 import multiprocessing
 import re
+import sqlite3
 from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES, make_object_id
@@ -20,7 +20,6 @@ from space_map_data.models.object import (
 )
 from space_map_data.ingest.convert import (
     bool_or_none,
-    count_csv_rows,
     float_or_none,
     int_or_none,
     normalize_partial_date,
@@ -36,7 +35,7 @@ G_KM3_PER_KG_S2 = 6.67430e-20
 
 SUB_CHUNK_SIZE = 10_000
 
-# All SBDB CSV column names, in the order they appear in the ORM model.
+# All SBDB column names, in the order they appear in the ORM model.
 _SBDB_COLUMNS = [
     "spkid",
     "full_name",
@@ -285,78 +284,69 @@ def _sbdb_dict(row: dict[str, str]) -> dict:
     return d
 
 
-def _parse_chunk(
-    chunk_path: Path, *, skip_rows: int = 0, max_rows: int | None = None
-) -> list[dict]:
-    """Parse a slice of a CSV chunk into a list of (object_dict, sbdb_dict) pairs."""
+def _fetch_rows(db_path: Path, lo: int, hi: int) -> list[dict[str, str]]:
+    """Read a spkid range from the mirror as CSV-like string dicts."""
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        cur = con.execute("SELECT * FROM bodies WHERE spkid BETWEEN ? AND ?", (lo, hi))
+        cols = [d[0] for d in cur.description]
+        return [
+            dict(zip(cols, ("" if v is None else str(v) for v in row))) for row in cur
+        ]
+    finally:
+        con.close()
+
+
+def _parse_slice(db_path: Path, lo: int, hi: int) -> list[dict]:
+    """Parse a spkid range into a list of (object_dict, sbdb_dict) pairs."""
     rows = []
-    expected_cols = {*_SBDB_COLUMNS, "class"}
-    with open(chunk_path, newline="") as f:
-        reader = csv.DictReader(f)
-        actual_cols = set(reader.fieldnames or [])
-        missing = expected_cols - actual_cols
-        extra = actual_cols - expected_cols
-        if missing or extra:
-            raise ValueError(
-                f"Column mismatch in {chunk_path.name}: "
-                f"missing={missing or '{}'}, extra={extra or '{}'}"
-            )
-        for idx, row in enumerate(reader):
-            if idx < skip_rows:
-                continue
-            if max_rows is not None and len(rows) >= max_rows:
-                break
+    for row in _fetch_rows(db_path, lo, hi):
+        spkid = int_or_none(row["spkid"])
+        assert spkid is not None, f"Missing or invalid SPKID in range {lo}..{hi}"
+        object_type = _object_type(row)
+        object_id = make_object_id(ID_TYPES.SPKID, spkid)
+        provisional_designation = _provisional_designation(row["full_name"])
+        name = string_or_none(row["name"])
+        if provisional_designation == name:
+            provisional_designation = None
+        pdes = string_or_none(row["pdes"])
+        if pdes == provisional_designation:
+            pdes = None
 
-            spkid = int_or_none(row["spkid"])
-            assert spkid is not None, (
-                f"Missing or invalid SPKID in row {idx} of {chunk_path.name}"
-            )
-            object_type = _object_type(row)
-            object_id = make_object_id(ID_TYPES.SPKID, spkid)
-            provisional_designation = _provisional_designation(row["full_name"])
-            name = string_or_none(row["name"])
-            if provisional_designation == name:
-                provisional_designation = None
-            pdes = string_or_none(row["pdes"])
-            if pdes == provisional_designation:
-                pdes = None
+        naif_id = naif_id_from_spk(spkid, object_type)
 
-            naif_id = naif_id_from_spk(spkid, object_type)
-
-            rows.append(
-                {
-                    "sbdb": {
-                        **_sbdb_dict(row),
-                        "object_id": object_id,
-                        "provisional_designation": provisional_designation,
-                    },
-                    "object": {
-                        "id": object_id,
-                        "name": _display_name(
-                            row, object_type, provisional_designation
-                        ),
-                        "object_type": object_type,
-                        "provisional_designation": provisional_designation,
-                        "spkid": spkid,
-                        "naif_id": naif_id,
-                        "mpc_designation": pdes,
-                        "orbital_source": OrbitalSource.sbdb.value,
-                        "parent_id": _parent_id(naif_id),
-                        # SBDB rows always carry orbital elements (the bulk
-                        # CSV is the orbit catalog); condition_code=9 cases
-                        # ship as MISSING_FLOAT64 in the binary, not dropped.
-                        "has_position": True,
-                    },
-                }
-            )
+        rows.append(
+            {
+                "sbdb": {
+                    **_sbdb_dict(row),
+                    "object_id": object_id,
+                    "provisional_designation": provisional_designation,
+                },
+                "object": {
+                    "id": object_id,
+                    "name": _display_name(row, object_type, provisional_designation),
+                    "object_type": object_type,
+                    "provisional_designation": provisional_designation,
+                    "spkid": spkid,
+                    "naif_id": naif_id,
+                    "mpc_designation": pdes,
+                    "orbital_source": OrbitalSource.sbdb.value,
+                    "parent_id": _parent_id(naif_id),
+                    # SBDB rows always carry orbital elements (the mirror
+                    # is the orbit catalog); condition_code=9 cases
+                    # ship as MISSING_FLOAT64 in the binary, not dropped.
+                    "has_position": True,
+                },
+            }
+        )
 
     return rows
 
 
-def _parse_chunk_star(args: tuple) -> list[dict]:
+def _parse_slice_star(args: tuple) -> list[dict]:
     """Unpack args for multiprocessing imap_unordered."""
-    path, skip, max_rows = args
-    return _parse_chunk(path, skip_rows=skip, max_rows=max_rows)
+    db_path, lo, hi = args
+    return _parse_slice(db_path, lo, hi)
 
 
 class SBDBIngestor:
@@ -367,14 +357,24 @@ class SBDBIngestor:
         self.sbdb_dir = download_dir / "sources" / "position" / "sbdb"
         self.total_rows = 0
 
-    def _find_chunks(self) -> list[Path]:
-        chunk_pattern = re.compile(r"small-bodies_\d+_\d+\.csv$")
-        chunks = sorted(
-            p for p in self.sbdb_dir.iterdir() if chunk_pattern.search(p.name)
-        )
-        if not chunks:
-            logger.warning("No SBDB chunk CSVs found in %s, skipping", self.sbdb_dir)
-        return chunks
+    @property
+    def db_file(self) -> Path:
+        return self.sbdb_dir / "sbdb.sqlite"
+
+    def _check_columns(self) -> None:
+        con = sqlite3.connect(f"file:{self.db_file}?mode=ro", uri=True)
+        try:
+            actual_cols = {r[1] for r in con.execute("PRAGMA table_info(bodies)")}
+        finally:
+            con.close()
+        expected_cols = {*_SBDB_COLUMNS, "class"}
+        missing = expected_cols - actual_cols
+        extra = actual_cols - expected_cols
+        if missing or extra:
+            raise ValueError(
+                f"Column mismatch in {self.db_file.name}: "
+                f"missing={missing or '{}'}, extra={extra or '{}'}"
+            )
 
     def _insert(self, rows: list[dict]) -> None:
         """Insert Object + SBDB row pairs in batches."""
@@ -397,27 +397,36 @@ class SBDBIngestor:
         self.session.commit()
 
     def run(self) -> None:
-        chunks = self._find_chunks()
-        if not chunks:
+        if not self.db_file.exists():
+            logger.warning("No SBDB mirror at %s, skipping", self.db_file)
             return
+        self._check_columns()
         self._clear()
 
-        # Build sub-chunk work items: (file, skip_rows, max_rows)
-        work_items: list[tuple[Path, int, int]] = []
-        for chunk_path in chunks:
-            n_rows = count_csv_rows(chunk_path)
-            for offset in range(0, n_rows, SUB_CHUNK_SIZE):
-                work_items.append((chunk_path, offset, SUB_CHUNK_SIZE))
+        # Slice the spkid space into work items: (db, first spkid, last spkid)
+        con = sqlite3.connect(f"file:{self.db_file}?mode=ro", uri=True)
+        try:
+            spkids = [
+                r[0] for r in con.execute("SELECT spkid FROM bodies ORDER BY spkid")
+            ]
+        finally:
+            con.close()
+        work_items: list[tuple[Path, int, int]] = [
+            (self.db_file, batch[0], batch[-1])
+            for batch in (
+                spkids[i : i + SUB_CHUNK_SIZE]
+                for i in range(0, len(spkids), SUB_CHUNK_SIZE)
+            )
+        ]
 
         logger.info(
-            "Processing %d sub-chunks (%d files) across %d workers",
+            "Processing %d slices across %d workers",
             len(work_items),
-            len(chunks),
             multiprocessing.cpu_count(),
         )
 
         with multiprocessing.Pool() as pool:
-            results = pool.imap_unordered(_parse_chunk_star, work_items)
+            results = pool.imap_unordered(_parse_slice_star, work_items)
             for rows in tqdm(results, total=len(work_items), desc="SBDB ingest"):
                 self._insert(rows)
                 self.total_rows += len(rows)
