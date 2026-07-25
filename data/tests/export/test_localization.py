@@ -153,6 +153,29 @@ class TestMergeIntoFile:
         )
         assert self._read(msg_dir, "fr")["property_name_mass"] == "Masse (hand)"
 
+    def test_unmanaged_generated_keys_kept_and_resorted(self, msg_dir):
+        # A groups-only run must leave the same key order a full run would.
+        (msg_dir / "en.json").write_bytes(
+            orjson.dumps(
+                {
+                    "tab_images": "Images",
+                    "group_name_foo": "Foo",
+                    "property_name_mass": "Mass",
+                    "unit_name_hour": "hour",
+                }
+            )
+        )
+        _merge_into_file(
+            "en", {"group_name_bar": "Bar"}, {"group_name_bar"}, ("group_name_",)
+        )
+        en = self._read(msg_dir, "en")
+        assert list(en) == [
+            "tab_images",
+            "group_name_bar",
+            "property_name_mass",
+            "unit_name_hour",
+        ]  # group_name_foo stale-pruned, unmanaged keys survive in sorted position
+
     def test_stale_generated_key_pruned(self, msg_dir):
         prefixes = ("property_name_",)
         (msg_dir / "fr.json").write_bytes(

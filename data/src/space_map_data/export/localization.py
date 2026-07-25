@@ -1,7 +1,10 @@
 """Merge generated localization entries into frontend/messages/{lang}.json."""
 
+import json
 import orjson
 import logging
+import subprocess
+from collections.abc import Callable
 
 from space_map_data.constants.earth_sats.constellations import CONSTELLATION_SLUG_PREFIX
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_SLUG
@@ -258,39 +261,58 @@ def write_messages(
             **group_name_labels.get(lang, {}),
         }
 
-    # Base locale always has every generated key, so it defines which keys
-    # are still live; anything else belongs to a removed group/unit/property.
-    # It also seeds the values other locales are compared against — a
-    # translation identical to baseLocale is dropped so Paraglide's fallback
-    # serves it instead.
-    live_keys = set(collect(BASE_LOCALE))
-    base_values = _merge_into_file(
-        BASE_LOCALE, collect(BASE_LOCALE), live_keys, GENERATED_PREFIXES
-    )
-    for lang in LANGUAGES:
-        if lang == BASE_LOCALE:
-            continue
-        _merge_into_file(
-            lang, collect(lang), live_keys, GENERATED_PREFIXES, base_values
-        )
+    _merge_all_locales(collect, GENERATED_PREFIXES)
 
 
 def write_group_messages(wikidata_entities: WikidataEntityCache) -> None:
     """Fill missing ``group_name_*`` keys; leave other generated keys intact."""
     group_name_labels = _collect_group_name_labels(wikidata_entities)
-    live_keys = set(group_name_labels.get(BASE_LOCALE, {}))
+    _merge_all_locales(lambda lang: group_name_labels.get(lang, {}), ("group_name_",))
+
+
+def _merge_all_locales(
+    collect: Callable[[str], dict[str, str]],
+    prefixes: tuple[str, ...],
+) -> None:
+    """Merge the *prefixes* slice of generated entries into every locale file.
+
+    Base locale always has every generated key, so it defines which keys are
+    still live; anything else belongs to a removed group/unit/property. It also
+    seeds the values other locales are compared against — a translation
+    identical to baseLocale is dropped so Paraglide's fallback serves it instead.
+    """
+    live_keys = set(collect(BASE_LOCALE))
     base_values = _merge_into_file(
-        BASE_LOCALE, group_name_labels.get(BASE_LOCALE, {}), live_keys, ("group_name_",)
+        BASE_LOCALE, collect(BASE_LOCALE), live_keys, prefixes
     )
     for lang in LANGUAGES:
         if lang == BASE_LOCALE:
             continue
-        _merge_into_file(
-            lang,
-            group_name_labels.get(lang, {}),
-            live_keys,
-            ("group_name_",),
-            base_values,
+        _merge_into_file(lang, collect(lang), live_keys, prefixes, base_values)
+    _format_messages()
+
+
+def _format_messages() -> None:
+    """Run the frontend's prettier over the message files.
+
+    The export writes near-prettier JSON; delegating the final shape keeps it
+    byte-identical to `pnpm format` instead of re-deriving its wrap rules here.
+    """
+    try:
+        result = subprocess.run(
+            ["pnpm", "exec", "prettier", "--write", "--log-level", "warn", "*.json"],
+            cwd=MESSAGES_DIR,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        logger.warning("Could not run prettier on message files (%s)", exc)
+        return
+    if result.returncode != 0:
+        logger.warning(
+            "prettier failed on message files (exit %d): %s",
+            result.returncode,
+            result.stderr.strip(),
         )
 
 
@@ -303,22 +325,37 @@ def _merge_into_file(
 ) -> dict[str, str]:
     """Merge *fresh* generated entries into the *lang* message file.
 
-    Existing translations win — generated values only fill gaps. Keys under
-    *prefixes* that are no longer in *live_keys* are pruned. When *base_values*
-    is given (non-base locales), any generated value identical to the base
-    locale is omitted so Paraglide's compile-time fallback serves it instead.
-    Returns the effective generated map for this locale.
+    Existing translations win — generated values only fill gaps. *prefixes*
+    scopes what this run manages: only those keys are pruned against
+    *live_keys*. Generated keys outside that scope keep their values but are
+    still re-sorted with the rest, so a partial run leaves the same layout a
+    full one would. When *base_values* is given (non-base locales), any
+    generated value identical to the base locale is omitted so Paraglide's
+    compile-time fallback serves it instead. Returns the effective generated
+    map for this locale.
     """
     msg_file = MESSAGES_DIR / f"{lang}.json"
     existing = orjson.loads(msg_file.read_bytes()) if msg_file.exists() else {}
 
-    manual = {
-        k: v for k, v in existing.items() if not any(k.startswith(p) for p in prefixes)
-    }
-    kept = {k: v for k, v in existing.items() if k not in manual and k in live_keys}
-    pruned = len(existing) - len(manual) - len(kept)
+    def generated_by(key: str, group: tuple[str, ...]) -> bool:
+        return any(key.startswith(p) for p in group)
 
-    generated = {**fresh, **kept}
+    manual = {
+        k: v for k, v in existing.items() if not generated_by(k, GENERATED_PREFIXES)
+    }
+    carried = {
+        k: v
+        for k, v in existing.items()
+        if k not in manual and not generated_by(k, prefixes)
+    }
+    kept = {
+        k: v
+        for k, v in existing.items()
+        if k not in manual and k not in carried and k in live_keys
+    }
+    pruned = len(existing) - len(manual) - len(carried) - len(kept)
+
+    generated = {**carried, **fresh, **kept}
     redundant = (
         {k for k, v in generated.items() if base_values.get(k) == v}
         if base_values is not None
@@ -327,8 +364,10 @@ def _merge_into_file(
     generated = {k: v for k, v in generated.items() if k not in redundant}
     merged = {**manual, **dict(sorted(generated.items()))}
 
-    msg_file.write_bytes(orjson.dumps(merged, option=orjson.OPT_INDENT_2))
-    filled = sum(1 for k in generated if k not in kept)
+    msg_file.write_text(
+        json.dumps(merged, ensure_ascii=False, indent="\t") + "\n", encoding="utf-8"
+    )
+    filled = sum(1 for k in generated if k not in existing)
     logger.info(
         "Merged %d generated keys into %s "
         "(%d kept, %d filled, %d pruned, %d == base, %d total)",
