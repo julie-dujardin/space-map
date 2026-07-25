@@ -18,6 +18,7 @@ from space_map_data.constants.categories import (
     ASTEROIDS_SLUG,
     COMET_ORBIT_CLASSES,
     COMETS_SLUG,
+    DEBRIS_SLUG,
     DWARF_PLANETS_SLUG,
     MOONS_SLUG,
     PLANETS_SLUG,
@@ -25,8 +26,12 @@ from space_map_data.constants.categories import (
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
 )
-from space_map_data.constants.earth_sats.constellations import CONSTELLATION_SLUG_PREFIX
+from space_map_data.constants.earth_sats.constellations import (
+    CONSTELLATION_SLUG_PREFIX,
+    DEBRIS_CONSTELLATION_SLUGS,
+)
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
+from space_map_data.export.groups.earth_sat import EarthOrbitClassStats
 from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
@@ -54,6 +59,9 @@ logger = logging.getLogger(__name__)
 # Constellations are long-tailed (~190 specs); the Satellites page shows only
 # the largest fleets, ranked by member count.
 TOP_CONSTELLATIONS = 12
+# Same treatment for the Debris page's two child lists (97 launch-vehicle
+# families, 15 curated breakup clouds).
+TOP_LAUNCH_VEHICLES = 12
 
 # Notable members shown on the Solar System root (Sun + top bodies). Sized so the
 # members-tab sphere lineup fills 3 pages of 8.
@@ -82,7 +90,8 @@ class CategoryData:
     # cat slug -> bar-chart rows (moons per planet/dwarf, distance-ordered).
     moon_counts: dict[str, list[dict]] = field(default_factory=dict)
     # cat slug -> {bare constellation slug: fleet size}; the Satellites page's
-    # top-constellations bar chart (the bundle ranks + caps the list).
+    # top-constellations bar chart and the Debris page's top-sources one (the
+    # bundle ranks + caps the list).
     constellation_counts: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
@@ -420,13 +429,19 @@ def _probe_members(
     )
 
 
+def _is_debris_constellation(group_slug: str) -> bool:
+    """Whether a ``const-`` group is a breakup cloud rather than a fleet."""
+    bare = group_slug.removeprefix(CONSTELLATION_SLUG_PREFIX)
+    return bare in DEBRIS_CONSTELLATION_SLUGS
+
+
 def build_category_data(
     session: Session,
     member_counts: dict[str, int],
     feature_type_counts: dict[str, int],
     named_counts: dict[str, int],
     discovery_histograms: dict[str, dict[int, int]],
-    launch_histograms: dict[str, dict[int, int]],
+    earth_orbit: EarthOrbitClassStats,
     radii: dict[int, dict],
     gms: dict[int, float],
     orientation: dict[int, dict],
@@ -439,10 +454,10 @@ def build_category_data(
     groups; used to drop empty zones and rank constellations.
     ``feature_type_counts`` is ``{ft- slug: feature count}``; it fills the
     Surface Features browse node, whose children are the feature-type pages.
-    ``discovery_histograms`` is keyed by small-body class slug and
-    ``launch_histograms`` by earth orbit-class slug; both are summed over the
-    classes that partition each category (orbit classes for small bodies, the
-    primary shape classes for satellites) to give the category-level chart.
+    ``discovery_histograms`` is keyed by small-body class slug and summed over
+    the orbit classes that partition each category. ``earth_orbit`` supplies the
+    same roll-up for Earth orbiters, already split payload/debris so Satellites
+    and Debris each get their own totals and launch chart.
     """
 
     def nonempty(slug: str) -> bool:
@@ -468,19 +483,34 @@ def build_category_data(
         for c in EarthOrbitClass
         if nonempty(slug := f"{CLASS_SLUG_PREFIX}{c.name}")
     ]
-    constellations = sorted(
-        (
-            g.slug
-            for g in GROUPS
-            if g.type is GroupType.CONSTELLATION and nonempty(g.slug)
-        ),
-        key=lambda s: member_counts.get(s, 0),
-        reverse=True,
+
+    def by_count(slugs) -> list[str]:
+        return sorted(slugs, key=lambda s: (-member_counts.get(s, 0), s))
+
+    # Breakup clouds belong to the Debris page, not the Satellites one, so the
+    # two constellation lists partition the same group type.
+    constellation_slugs = [
+        g.slug for g in GROUPS if g.type is GroupType.CONSTELLATION and nonempty(g.slug)
+    ]
+    constellations = by_count(
+        s for s in constellation_slugs if not _is_debris_constellation(s)
     )[:TOP_CONSTELLATIONS]
+    debris_clouds = by_count(
+        s for s in constellation_slugs if _is_debris_constellation(s)
+    )
+    launch_vehicles = by_count(
+        g.slug
+        for g in GROUPS
+        if g.type is GroupType.LAUNCH_VEHICLE and nonempty(g.slug)
+    )[:TOP_LAUNCH_VEHICLES]
     satellites = earth_classes + constellations
+    # Spent stages (lv-) and breakup clouds (const-) are the two ways an object
+    # ends up here, so the Debris page lists both.
+    debris_children = debris_clouds + launch_vehicles
     # The same fleets feed the Satellites page's top-constellations bar chart
     # (keyed bare for _constellation_refs, which ranks + caps them); the chips
-    # are hidden there in favour of it.
+    # are hidden there in favour of it. Debris ranks by where the fragments came
+    # from, which the scan counted per object rather than per zone.
     satellite_constellation_counts = {
         slug.removeprefix(CONSTELLATION_SLUG_PREFIX): member_counts.get(slug, 0)
         for slug in constellations
@@ -522,6 +552,7 @@ def build_category_data(
         ASTEROIDS_SLUG: asteroids,
         COMETS_SLUG: comets,
         SATELLITES_SLUG: satellites,
+        DEBRIS_SLUG: debris_children,
         SURFACE_FEATURES_SLUG: feature_types,
     }
     # Object totals, not child counts: orbit classes partition their bodies, so
@@ -529,11 +560,15 @@ def build_category_data(
     asteroids_total = sum(member_counts.get(s, 0) for s in asteroid_classes)
     asteroids_named = sum(named_counts.get(s, 0) for s in asteroid_classes)
     comets_total = sum(member_counts.get(s, 0) for s in comet_classes)
+    # Primary shape classes partition the Earth orbiters; the payload/debris
+    # split makes each object land in exactly one of the two categories.
+    primary_sat_slugs = [
+        f"{CLASS_SLUG_PREFIX}{c.name}" for c in EarthOrbitClass if c.primary
+    ]
     satellites_total = sum(
-        member_counts.get(f"{CLASS_SLUG_PREFIX}{c.name}", 0)
-        for c in EarthOrbitClass
-        if c.primary
+        earth_orbit.payload_counts.get(s, 0) for s in primary_sat_slugs
     )
+    debris_total = sum(earth_orbit.debris_counts.get(s, 0) for s in primary_sat_slugs)
     member_counts_out = {
         # The root counts every categorized object across the solar system.
         SOLAR_SYSTEM_SLUG: len(planet_members)
@@ -541,10 +576,12 @@ def build_category_data(
         + asteroids_total
         + comets_total
         + satellites_total
+        + debris_total
         + probes_total,
         ASTEROIDS_SLUG: asteroids_total,
         COMETS_SLUG: comets_total,
         SATELLITES_SLUG: satellites_total,
+        DEBRIS_SLUG: debris_total,
         PLANETS_SLUG: len(planet_members),
         # Dwarf planets are SBDB-tracked, so they already fall inside
         # asteroids_total (their orbit classes) — counted here for the page's own
@@ -557,19 +594,24 @@ def build_category_data(
     }
 
     # Discovery/launch charts: sum the histograms over the classes that
-    # partition each category (flags are subsets, so they're excluded; sats
-    # sum only the primary shape classes — same partition as satellites_total).
-    primary_sat_slugs = [
-        f"{CLASS_SLUG_PREFIX}{c.name}" for c in EarthOrbitClass if c.primary
-    ]
+    # partition each category (flags are subsets, so they're excluded; the two
+    # Earth categories sum only the primary shape classes — same partition as
+    # their totals above).
     discovery_out: dict[str, dict[int, int]] = {}
     if asteroid_hist := _sum_histograms(asteroid_classes, discovery_histograms):
         discovery_out[ASTEROIDS_SLUG] = asteroid_hist
     if comet_hist := _sum_histograms(comet_classes, discovery_histograms):
         discovery_out[COMETS_SLUG] = comet_hist
     launch_out: dict[str, dict[int, int]] = {}
-    if sat_hist := _sum_histograms(primary_sat_slugs, launch_histograms):
-        launch_out[SATELLITES_SLUG] = sat_hist
+    for cat_slug, side in (
+        (SATELLITES_SLUG, earth_orbit.payload_satcat_stats),
+        (DEBRIS_SLUG, earth_orbit.debris_satcat_stats),
+    ):
+        per_slug = {
+            slug: s.launch_histogram for slug, s in side.items() if s.launch_histogram
+        }
+        if hist := _sum_histograms(primary_sat_slugs, per_slug):
+            launch_out[cat_slug] = hist
 
     # Category lineup heroes: the most prominent asteroids / comets across all
     # their orbit classes. Dwarf planets are excluded from Asteroids (they keep
@@ -610,7 +652,8 @@ def build_category_data(
     logger.info(
         "Built category data: planets=%d, dwarf planets=%d, moons=%d (%d notable, "
         "%d planet/dwarf hosts), asteroid zones=%d, comet families=%d, satellite "
-        "groups=%d, probes=%d",
+        "groups=%d (%d payloads), debris groups=%d (%d pieces from %d sources), "
+        "probes=%d",
         len(planet_members),
         len(dwarf_members),
         moons_total,
@@ -619,6 +662,10 @@ def build_category_data(
         len(asteroids),
         len(comets),
         len(satellites),
+        satellites_total,
+        len(debris_children),
+        debris_total,
+        len(earth_orbit.debris_source_counts),
         probes_total,
     )
     return CategoryData(
@@ -631,9 +678,12 @@ def build_category_data(
         discovery_histograms=discovery_out,
         launch_histograms=launch_out,
         moon_counts={MOONS_SLUG: moon_counts} if moon_counts else {},
-        constellation_counts=(
-            {SATELLITES_SLUG: satellite_constellation_counts}
-            if satellite_constellation_counts
-            else {}
-        ),
+        constellation_counts={
+            slug: counts
+            for slug, counts in (
+                (SATELLITES_SLUG, satellite_constellation_counts),
+                (DEBRIS_SLUG, earth_orbit.debris_source_counts),
+            )
+            if counts
+        },
     )

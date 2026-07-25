@@ -13,6 +13,7 @@ import {
 	CATEGORY_SLUG_PREFIX,
 	CAT_ASTEROIDS,
 	CAT_COMETS,
+	CAT_DEBRIS,
 	CAT_DWARF_PLANETS,
 	CAT_PLANETS,
 	CAT_PROBES,
@@ -100,8 +101,8 @@ export function parentCrumb(
 		const slug = focusable.slug;
 		if (slug.startsWith(CATEGORY_SLUG_PREFIX)) {
 			if (slug === CAT_SOLAR_SYSTEM) return null;
-			// Satellites' real parent is Earth, not the Solar System root.
-			if (slug === CAT_SATELLITES) {
+			// The Earth-orbiter collections' real parent is Earth, not the root.
+			if (slug === CAT_SATELLITES || slug === CAT_DEBRIS) {
 				const name = ctx?.getBody(EARTH_ID)?.data.name ?? m.earth();
 				return { label: name, target: { kind: 'focus', id: EARTH_ID, name } };
 			}
@@ -115,7 +116,12 @@ export function parentCrumb(
 			const cls = classNameFromSlug(slug);
 			return categoryCrumb(cls && smallBodyCategory(cls) === 'comet' ? CAT_COMETS : CAT_ASTEROIDS);
 		}
-		if (appliesTo === 'earth_sat') return categoryCrumb(CAT_SATELLITES);
+		// Earth orbiters split between Satellites and Debris; the export resolves
+		// which, since spent stages and breakup clouds look like any other fleet
+		// from here.
+		if (appliesTo === 'earth_sat') {
+			return categoryCrumb(groupGlobal?.parent_category ?? CAT_SATELLITES);
+		}
 		return null;
 	}
 

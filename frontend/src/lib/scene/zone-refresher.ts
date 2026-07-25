@@ -265,7 +265,9 @@ export class ZoneRefresher {
 				)
 			);
 
-			const earthFilter = z.zone === 'earth' ? this.ctx.earthSatFilter : null;
+			const isEarth = z.zone === 'earth';
+			const earthFilter = isEarth ? this.ctx.earthSatFilter : null;
+			const typeFilter = isEarth ? this.ctx.earthTypeFilter : null;
 			let filteredOut = 0;
 			const newBuckets = new Map<string, Map<string, PositionedBody>>();
 			for (const chunk of chunks) {
@@ -280,6 +282,10 @@ export class ZoneRefresher {
 						continue;
 					}
 					if (earthFilter && !earthFilter.has(body.data.id)) {
+						filteredOut++;
+						continue;
+					}
+					if (typeFilter && !typeFilter.has(t)) {
 						filteredOut++;
 						continue;
 					}

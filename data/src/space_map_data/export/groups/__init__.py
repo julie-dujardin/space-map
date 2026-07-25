@@ -11,7 +11,7 @@ import orjson
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.categories import SATELLITES_SLUG
+from space_map_data.constants.categories import DEBRIS_SLUG, SATELLITES_SLUG
 from space_map_data.export.groups.bundles import write_group_bundles
 from space_map_data.export.groups.categories import build_category_data
 from space_map_data.export.groups.feature_type import build_feature_type_groups
@@ -123,8 +123,18 @@ def _earth_zone_notable_members(
     for const_slug, zone_slug in earth_orbit_stats.constellation_zone.items():
         zone_constellations.setdefault(zone_slug, []).append(const_slug)
 
+    # A zone holds both sides of the population, so its strip draws from both
+    # pools; the shared sitelinks sort below picks the top of the union.
+    per_zone: dict[str, list[NotableObject]] = {}
+    for pool in (
+        earth_orbit_stats.notable_members,
+        earth_orbit_stats.debris_notable_members,
+    ):
+        for zone_slug, members in pool.items():
+            per_zone.setdefault(zone_slug, []).extend(members)
+
     out: dict[str, list[NotableObject]] = {}
-    for zone_slug, sats in earth_orbit_stats.notable_members.items():
+    for zone_slug, sats in per_zone.items():
         members = list(sats)
         for const_slug in zone_constellations.get(zone_slug, ()):
             spec = CONSTELLATION_BY_SLUG.get(
@@ -151,14 +161,15 @@ def _earth_zone_notable_members(
     return out
 
 
-def _satellites_category_notable(
-    earth_orbit_stats: EarthOrbitClassStats,
+def _earth_category_notable(
+    per_zone: dict[str, list[NotableObject]],
 ) -> list[NotableObject]:
-    """Top individual sats across every earth orbit-class zone, for the
-    Satellites category strip. Constellations have their own breakdown there, so
-    only real objects count; a sat spanning zones is deduped on its best signal."""
+    """Top individual objects across every earth orbit-class zone, for the
+    Satellites and Debris category strips. Constellations have their own
+    breakdown there, so only real objects count; one spanning zones is deduped
+    on its best signal."""
     best: dict[str, NotableObject] = {}
-    for members in earth_orbit_stats.notable_members.values():
+    for members in per_zone.values():
         for member in members:
             if not member.object_id:
                 continue
@@ -303,18 +314,13 @@ def run_groups_tier(
             for slug, ids in mem.items()
         }
         all_counts.update(extra_member_counts)
-        earth_launch_histograms = {
-            slug: s.launch_histogram
-            for slug, s in earth_orbit_stats.satcat_stats.items()
-            if s.launch_histogram
-        }
         category_data = build_category_data(
             session,
             all_counts,
             feature_types.member_counts,
             small_body_stats.named_counts,
             small_body_stats.discovery_histograms,
-            earth_launch_histograms,
+            earth_orbit_stats,
             radii,
             gms,
             orientation,
@@ -355,8 +361,12 @@ def run_groups_tier(
     extra_notable_members.update(
         _earth_zone_notable_members(earth_orbit_stats, wikidata_entities)
     )
-    if sat_notable := _satellites_category_notable(earth_orbit_stats):
-        extra_notable_members[SATELLITES_SLUG] = sat_notable
+    for cat_slug, pool in (
+        (SATELLITES_SLUG, earth_orbit_stats.notable_members),
+        (DEBRIS_SLUG, earth_orbit_stats.debris_notable_members),
+    ):
+        if notable := _earth_category_notable(pool):
+            extra_notable_members[cat_slug] = notable
     # Constellation → its dominant zone, so the group index can list each
     # constellation among its zone's members.
     constellation_orbit_classes = {

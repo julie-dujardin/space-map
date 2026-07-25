@@ -390,9 +390,12 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// merge, including URL-placeholder reconciliation.
 	const handleChunk = (zone: string, chunk: PositionedBody[]) => {
 		ctx.credits.recordOrbitSources(chunk);
-		const earthFilter = zone === 'earth' ? ctx.earthSatFilter : null;
+		const isEarth = zone === 'earth';
+		const earthFilter = isEarth ? ctx.earthSatFilter : null;
+		const typeFilter = isEarth ? ctx.earthTypeFilter : null;
 		for (const b of chunk) {
 			if (earthFilter && !earthFilter.has(b.data.id)) continue;
+			if (typeFilter && !typeFilter.has(b.data.objectType)) continue;
 			const placeholder = placeholderById.get(b.data.id);
 			if (placeholder) {
 				placeholder.data = b.data;

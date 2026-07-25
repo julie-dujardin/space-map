@@ -13,7 +13,7 @@
  */
 
 import * as m from '$lib/paraglide/messages.js';
-import { CAT_ASTEROIDS, CAT_COMETS, CAT_SATELLITES } from '$lib/fetch/groups/registry';
+import { CAT_ASTEROIDS, CAT_COMETS, CAT_DEBRIS, CAT_SATELLITES } from '$lib/fetch/groups/registry';
 
 export type PlotType = 'a-q' | 'q-e' | 'a-T' | 'peri-apo';
 
@@ -674,7 +674,7 @@ export function orbitClassShortLabel(className: string): string {
 export function categoryPlotType(slug: string): PlotType | null {
 	if (slug === CAT_ASTEROIDS) return 'a-q';
 	if (slug === CAT_COMETS) return 'a-T';
-	if (slug === CAT_SATELLITES) return 'peri-apo';
+	if (slug === CAT_SATELLITES || slug === CAT_DEBRIS) return 'peri-apo';
 	return null;
 }
 

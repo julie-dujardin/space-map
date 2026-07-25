@@ -8,7 +8,11 @@ Every group type's slug carries a type prefix (`const-`, `lv-`, `org-`, `site-`,
 never collide across types and a slug's type is recognizable on sight. A launch
 vehicle (`lv-<slug>`) merges a rocket's spent stages tracked in orbit (the
 former ROCKET `const-` page) with its GCAT launchlog history; `UPPER_STAGE`
-constellations stay `const-`. An organization
+constellations stay `const-`. Earth orbiters split across two category pages by
+object type: working payloads under `cat-satellites`, spent stages and breakup
+fragments under `cat-debris` (whose children are the curated breakup clouds plus
+the `lv-` families). The `class-` orbit zones are shared — they're regions of
+space, not fleets, so they hold both. An organization
 (`org-<slug>`) is the merged company/agency entity that subsumes the former
 operator and manufacturer roles; its roles are surfaced as tags rather than
 separate pages. Group bundles use the **same hash-bucketing scheme as object
@@ -69,6 +73,12 @@ interface GlobalGroupData {
   type: GroupType;
   applies_to: GroupCategory;
   member_count: number;
+  // Earth-orbiter groups only: the `cat-` slug the breadcrumb climbs to.
+  // `applies_to` can't say — `cat-satellites` and `cat-debris` share `earth_sat`.
+  // Spent stages (`lv-`) and breakup clouds go to `cat-debris`; every other
+  // earth-sat group (fleets, operators, launch sites, orbit zones) to
+  // `cat-satellites`.
+  parent_category?: string;
   // IAU-named members; present (when > 0) on asteroid orbit_class groups and
   // the Asteroids category — asteroids are only ~1.7 % named. Comets are
   // omitted: they all carry a designation, so named/total is meaningless.
@@ -82,7 +92,8 @@ interface GlobalGroupData {
 
   // Earth-sat groups (constellation / organization / launch_site / country).
   // Computed from SATCAT; absent on small-body groups. Also present on the
-  // Satellites category, summed over the primary shape classes (LEO/MEO/...).
+  // Satellites and Debris categories, each summed over the primary shape
+  // classes (LEO/MEO/...) for its own side of the payload/debris split.
   launch_histogram?: Record<string, number>;  // year string → count, sorted ascending
   first_launch_date?: string;                 // Earliest SATCAT launch_date among members (ISO date string)
   active_count?: number;                      // Members with ops_status operational/partial/extended and no decay
@@ -350,7 +361,7 @@ interface LocalizedGroupData {
   country_of_origin?: EntityRef[];    // Omitted on country pages (would be self)
   instance_of?: EntityRef[];
   launch_sites?: { name: string; n: number; primary_type: "group"; primary_id: string }[];   // Top sites by member count
-  constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented
+  constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented. A ROCKET constellation has no `const-` page, so its row points at the `lv-` one instead. On `cat-debris` this is the "where the fragments came from" breakdown (breakup clouds + rocket families), counted once per object.
   child_groups?: { name: string; n: number; primary_type: "group"; primary_id: string; role: GroupType }[]; // Child groups rendered as chips, sectioned by role: a category's zones/families/classes/constellations, an organization's satellite buses, and a constellation's buses (n = within-constellation count, not the bus's global total). `cat-surface-features` lists every non-empty `ft-` type, most features first; its own member_count is the feature total (features aren't objects, so it stays out of the `cat-solar-system` tally)
   variant_refs?: Record<string, EntityRef>;  // lv-<slug> only: GCAT variant name (from the global `variants` list) → its Wikipedia ref, for variants matched to a more-specific Wikidata entity than the family. The breakdown keeps the GCAT name as its label and uses this only for the per-variant link; absent for family-level / unmatched variants.
   reusable_vehicle_refs?: Record<string, EntityRef>;  // lv-<slug> only: reusable-vehicle name (from `reusable_vehicles`) → its Wikipedia ref. Shuttle orbiters resolve; Falcon cores have no article so are absent (shown as serial + count).

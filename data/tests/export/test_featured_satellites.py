@@ -98,7 +98,8 @@ def test_attaches_objects_and_constellation(session: Session, monkeypatch) -> No
 
     g = chunk.global_data[EARTH_ID]
     assert g["satellites_group"] == SATELLITES_SLUG
-    assert g["satellite_count"] == 3  # 2 spacecraft + 1 debris
+    # Debris belongs to the Debris page, so it's out of this tally.
+    assert g["satellite_count"] == 2
     assert g["notable_satellites"] == [
         {"name": "International Space Station", "id": "norad_satcat-25544"},
         {"name": "Hubble Space Telescope", "id": "norad_satcat-20580"},

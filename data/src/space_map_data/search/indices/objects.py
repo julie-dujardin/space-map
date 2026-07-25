@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from space_map_data.constants.categories import (
+    DEBRIS_SLUG,
     MOONS_SLUG,
     PROBES_SLUG,
     SATELLITES_SLUG,
@@ -145,9 +146,12 @@ def _load_earth_membership(export_dir: Path) -> dict[str, list[str]]:
 
 
 def _spacecraft_category(g: dict[str, Any], otype: str) -> str | None:
-    """Probe vs Earth-satellite split for the search filter. Spacecraft in the
-    CelesTrak (NORAD) catalog orbit Earth (`cat-satellites`); the rest are
-    deep-space probes (`cat-probes`). None for non-spacecraft."""
+    """Category slug for a tracked craft, for the search filter. Spacecraft in
+    the CelesTrak (NORAD) catalog orbit Earth (`cat-satellites`); the rest are
+    deep-space probes (`cat-probes`). Debris is catalogued the same way but
+    belongs to `cat-debris`. None for everything else."""
+    if otype == "debris":
+        return DEBRIS_SLUG if g.get("celestrak") else None
     if otype != "spacecraft":
         return None
     return SATELLITES_SLUG if g.get("celestrak") else PROBES_SLUG
@@ -272,8 +276,9 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
 
             # Group membership — backs the "show all members" query and the search
             # filter tree. Small-body slugs from SBDB class/flags, earth-sat slugs
-            # from the inverted membership index, plus the probe/satellite category
-            # for spacecraft. An object draws from one of these, so a union is safe.
+            # from the inverted membership index, plus the satellite/debris/probe
+            # category for tracked craft. An object draws from one of these, so a
+            # union is safe.
             groups = _small_body_groups(sbdb) + earth_groups.get(obj_id, [])
             spacecraft_cat = _spacecraft_category(g, otype)
             if spacecraft_cat:

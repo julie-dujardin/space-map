@@ -72,7 +72,8 @@ class TestSmallBodyGroups:
 
 
 class TestSpacecraftCategory:
-    """`_spacecraft_category` splits spacecraft into Earth satellites vs probes."""
+    """`_spacecraft_category` splits tracked craft into satellites, debris and
+    probes."""
 
     def test_celestrak_spacecraft_is_satellite(self):
         assert _spacecraft_category(
@@ -82,10 +83,17 @@ class TestSpacecraftCategory:
     def test_spacecraft_without_celestrak_is_probe(self):
         assert _spacecraft_category({}, "spacecraft") == "cat-probes"
 
-    def test_non_spacecraft_is_none(self):
+    def test_celestrak_debris_is_debris(self):
         assert (
-            _spacecraft_category({"celestrak": {"ops_status": "+"}}, "debris") is None
+            _spacecraft_category({"celestrak": {"ops_status": "?"}}, "debris")
+            == "cat-debris"
         )
+
+    def test_debris_without_celestrak_is_none(self):
+        assert _spacecraft_category({}, "debris") is None
+
+    def test_non_spacecraft_is_none(self):
+        assert _spacecraft_category({"celestrak": {"ops_status": "+"}}, "moon") is None
 
 
 class TestRadiiDiameterKm:

@@ -1,4 +1,4 @@
-import type { PositionedBody } from '$lib/types/objects';
+import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { CreditsStore } from '$lib/scene/state/credits.svelte';
 import { BodyIndex } from '$lib/scene/state/bodies.svelte';
 import { VisibilityController } from '$lib/scene/visibility/controller.svelte';
@@ -11,6 +11,8 @@ import { fetchGroupDetail } from '$lib/fetch/groups/details';
 import {
 	CAT_ASTEROIDS,
 	CAT_COMETS,
+	CAT_DEBRIS,
+	CAT_SATELLITES,
 	CLASS_SLUG_PREFIX,
 	MISSION_SLUG_PREFIX,
 	SMALL_BODY_FLAG_MASK,
@@ -26,6 +28,13 @@ import { EARTH_ID } from '$lib/constants';
 import { isLagrangeClass } from '$lib/math/orbit/lagrange';
 
 export type { SmallBodyFilter } from '$lib/fetch/groups/registry';
+
+/** Earth-zone object types each category page keeps. Singletons so
+ *  `applyGroupFilter` can compare them by identity. */
+const EARTH_TYPES_BY_CATEGORY: Record<string, ReadonlySet<ObjectType>> = {
+	[CAT_SATELLITES]: new Set([ObjectType.SPACECRAFT]),
+	[CAT_DEBRIS]: new Set([ObjectType.DEBRIS])
+};
 
 /**
  * Top-level state holder for the rendered scene. Composes four sub-stores —
@@ -93,6 +102,10 @@ export class ContextManager {
 	 *  /g/<slug> pages render only group members. */
 	earthSatFilter: Set<string> | null = null;
 	private earthSatFilterSlug: string | null = null;
+	/** Keep only these object types in the earth zone. The Satellites and Debris
+	 *  category pages partition the same population by type, which the per-point
+	 *  `objectType` already carries — no membership fetch needed. */
+	earthTypeFilter: ReadonlySet<ObjectType> | null = null;
 	/** Active small-body filter (class or flag) when /g/<slug> is for a small-
 	 *  body group; null otherwise. Read by `VisibilityController` for both the
 	 *  per-zone hide and the per-tick flag mask. */
@@ -152,6 +165,11 @@ export class ContextManager {
 	isMemberOfActiveGroup(bodyId: string): boolean {
 		if (this.missionMemberIds?.has(bodyId) === true) return true;
 		if (this.earthSatFilter?.has(bodyId) === true) return true;
+		const types = this.earthTypeFilter;
+		if (types) {
+			const type = this.bodies.getBody(bodyId)?.data.objectType;
+			if (type !== undefined && types.has(type)) return true;
+		}
 		const f = this.smallBodyFilter;
 		if (f === null) return false;
 		if (f.kind === 'class' || f.kind === 'category') {
@@ -230,17 +248,22 @@ export class ContextManager {
 			slug.startsWith(CLASS_SLUG_PREFIX) &&
 			isLagrangeClass(slug.slice(CLASS_SLUG_PREFIX.length));
 		const nextEarthSlug = entry?.applies_to === 'earth_sat' && !isLagrange ? slug : null;
+		const nextTypes = EARTH_TYPES_BY_CATEGORY[slug ?? ''] ?? null;
 		if (!smallBodyFiltersEqual(this.smallBodyFilter, nextSmallBody)) {
 			this.smallBodyFilter = nextSmallBody;
 			for (const cb of this.smallBodyFilterListeners) cb(nextSmallBody);
 		}
 
-		if (nextEarthSlug === this.earthSatFilterSlug) return;
+		// Sets are module-level singletons, so identity is the right comparison.
+		if (nextEarthSlug === this.earthSatFilterSlug && nextTypes === this.earthTypeFilter) {
+			return;
+		}
 
 		const filter = nextEarthSlug ? await fetchEarthGroupMembers(nextEarthSlug) : null;
 		if (slug !== this.currentGroupSlug) return;
 		this.earthSatFilter = filter;
 		this.earthSatFilterSlug = nextEarthSlug;
+		this.earthTypeFilter = nextTypes;
 		for (const cb of this.groupFilterListeners) cb(filter);
 		if (this.loading) return;
 		this.bodies.spacecraftByParent.delete(EARTH_ID);

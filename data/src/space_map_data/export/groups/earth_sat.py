@@ -63,17 +63,32 @@ class EarthOrbitSample:
 
 @dataclass
 class EarthOrbitClassStats:
-    """Per-class roll-up for the orbit-class group bundles."""
+    """Per-class roll-up for the orbit-class group bundles.
+
+    Zones hold working payloads and debris alike — they're regions of space, not
+    fleets — so ``member_counts``/``membership``/``satcat_stats`` stay combined.
+    The payload/debris fields split the same scan for the Satellites and Debris
+    category pages, which each own one side of the population.
+    """
 
     member_counts: dict[str, int] = field(default_factory=dict)
     membership: dict[str, list[str]] = field(default_factory=dict)
     orbit_samples: list[EarthOrbitSample] = field(default_factory=list)
     satcat_stats: dict[str, GroupSatcatStats] = field(default_factory=dict)
-    # Top sats per zone (sitelink-ranked); the orchestrator merges in member
-    # constellations before writing.
+    # Top sats per zone (sitelink-ranked); the orchestrator merges the two sides
+    # back together, plus the zone's member constellations, before writing.
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
+    debris_notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
     # Each constellation's dominant zone, so it lists among that zone's members.
     constellation_zone: dict[str, str] = field(default_factory=dict)
+    payload_counts: dict[str, int] = field(default_factory=dict)
+    debris_counts: dict[str, int] = field(default_factory=dict)
+    payload_satcat_stats: dict[str, GroupSatcatStats] = field(default_factory=dict)
+    debris_satcat_stats: dict[str, GroupSatcatStats] = field(default_factory=dict)
+    # {bare constellation slug: debris pieces}, counted once per object (not per
+    # zone) — the Debris page's "where it came from" chart. Rocket families are
+    # included; the bundle maps them to their lv- page.
+    debris_source_counts: dict[str, int] = field(default_factory=dict)
 
 
 def _load_latest_inclinations() -> dict[int, float]:
@@ -176,6 +191,7 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
             Object.wikidata_qid,
             Object.sitelinks_count,
             Object.image_available,
+            Object.object_type,
             Satcat.NORAD_CAT_ID,
             Satcat.OBJECT_NAME,
             Satcat.perigee,
@@ -206,7 +222,9 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
     population_per_class: Counter[str] = Counter()
     pool: dict[str, list[tuple[str, str, float, float, float | None, list[str]]]] = {}
     # Notable-member candidates per zone: (image_available, sitelinks, id, qid, name).
+    # Split by payload/debris so each category page draws from its own side.
     notable_pool: dict[str, list[tuple[bool, int, str, str | None, str]]] = {}
+    debris_notable_pool: dict[str, list[tuple[bool, int, str, str | None, str]]] = {}
     # Per constellation, its sat count per zone (→ dominant zone). Rocket
     # "constellations" that surface as lv- pages are excluded.
     constellation_zone_counts: dict[str, Counter[str]] = {}
@@ -217,6 +235,7 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
         wikidata_qid,
         sitelinks_count,
         image_available,
+        object_type,
         norad,
         sat_name,
         perigee,
@@ -257,23 +276,37 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
         primary = next(c for c in classes if c.primary)
         primary_slug = f"{CLASS_SLUG_PREFIX}{primary.name}"
 
+        is_debris = object_type == ObjectType.debris
+        if is_debris and constellation_slug:
+            stats.debris_source_counts[constellation_slug] = (
+                stats.debris_source_counts.get(constellation_slug, 0) + 1
+            )
+        side_counts = stats.debris_counts if is_debris else stats.payload_counts
+        side_stats = (
+            stats.debris_satcat_stats if is_debris else stats.payload_satcat_stats
+        )
         for s in slugs:
             stats.membership.setdefault(s, []).append(obj_id)
             population_per_class[s] += 1
-            satcat_stats = stats.satcat_stats.setdefault(s, GroupSatcatStats())
+            side_counts[s] = side_counts.get(s, 0) + 1
             # Launch sites are deliberately not accumulated: a zone's top-sites
             # breakdown isn't meaningful, so the bundle ships without it.
-            _accumulate(
-                satcat_stats,
-                launch_date,
-                ops_status,
-                None,
-                None,
-                constellation_slug,
-            )
+            for bucket in (
+                stats.satcat_stats.setdefault(s, GroupSatcatStats()),
+                side_stats.setdefault(s, GroupSatcatStats()),
+            ):
+                _accumulate(
+                    bucket,
+                    launch_date,
+                    ops_status,
+                    None,
+                    None,
+                    constellation_slug,
+                )
 
         display_name = sat_name or obj_name or f"NORAD {norad}"
-        notable_pool.setdefault(primary_slug, []).append(
+        side_pool = debris_notable_pool if is_debris else notable_pool
+        side_pool.setdefault(primary_slug, []).append(
             (
                 bool(image_available),
                 sitelinks_count or 0,
@@ -304,21 +337,8 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
         slug = f"{CLASS_SLUG_PREFIX}{cls.name}"
         stats.member_counts.setdefault(slug, 0)
 
-    # Top sats per zone: most-photogenic, then most-notable. The id tiebreak
-    # keeps the pick deterministic across runs.
-    for slug, candidates in notable_pool.items():
-        candidates.sort(key=lambda c: (not c[0], -c[1], c[2]))
-        stats.notable_members[slug] = [
-            NotableObject(
-                object_id=obj_id,
-                wikidata_qid=qid,
-                fallback_name=name,
-                diameter_km=None,
-                first_obs=None,
-                sitelinks_count=sitelinks,
-            )
-            for _img, sitelinks, obj_id, qid, name in candidates[:NOTABLE_MEMBER_COUNT]
-        ]
+    stats.notable_members = _rank_notable(notable_pool)
+    stats.debris_notable_members = _rank_notable(debris_notable_pool)
 
     # Each constellation belongs to its most-populated zone (count, then slug
     # for a stable tiebreak).
@@ -329,17 +349,45 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
     stats.orbit_samples = _build_samples(pool)
 
     classified = len(rows) - sum(skip_counters.values())
+    primary_slugs = [
+        f"{CLASS_SLUG_PREFIX}{c.name}" for c in EarthOrbitClass if c.primary
+    ]
     logger.info(
-        "Earth orbit-class build: %d sats classified into %d zones; "
-        "skipped %s; samples=%d; notable zones=%d; constellations mapped=%d",
+        "Earth orbit-class build: %d sats classified into %d zones "
+        "(%d payloads, %d debris); skipped %s; samples=%d; notable zones=%d; "
+        "constellations mapped=%d",
         classified,
         sum(1 for v in stats.member_counts.values() if v),
+        sum(stats.payload_counts.get(s, 0) for s in primary_slugs),
+        sum(stats.debris_counts.get(s, 0) for s in primary_slugs),
         dict(skip_counters),
         len(stats.orbit_samples),
         len(stats.notable_members),
         len(stats.constellation_zone),
     )
     return stats
+
+
+def _rank_notable(
+    pool: dict[str, list[tuple[bool, int, str, str | None, str]]],
+) -> dict[str, list[NotableObject]]:
+    """Top members per zone: most-photogenic, then most-notable. The id tiebreak
+    keeps the pick deterministic across runs."""
+    out: dict[str, list[NotableObject]] = {}
+    for slug, candidates in pool.items():
+        candidates.sort(key=lambda c: (not c[0], -c[1], c[2]))
+        out[slug] = [
+            NotableObject(
+                object_id=obj_id,
+                wikidata_qid=qid,
+                fallback_name=name,
+                diameter_km=None,
+                first_obs=None,
+                sitelinks_count=sitelinks,
+            )
+            for _img, sitelinks, obj_id, qid, name in candidates[:NOTABLE_MEMBER_COUNT]
+        ]
+    return out
 
 
 def _allocate_samples(

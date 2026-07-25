@@ -1603,6 +1603,12 @@ CONSTELLATION_BY_SLUG: dict[str, ConstellationSpec] = {
     c.slug: c for c in CONSTELLATIONS
 }
 
+# Breakup clouds (ASAT tests, collisions, dispersals) rather than fleets: these
+# belong to the Debris category page, not Satellites.
+DEBRIS_CONSTELLATION_SLUGS: frozenset[str] = frozenset(
+    c.slug for c in CONSTELLATIONS if SatelliteCategory.DEBRIS in c.category
+)
+
 # Matching is case-insensitive: SATCAT names are upper-case, so keys are
 # upper-cased here (and the name upper-cased at lookup) — otherwise a mixed-case
 # rule string silently never matches.

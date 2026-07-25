@@ -9,6 +9,7 @@ import {
 	CAT_ASTEROIDS,
 	CAT_COMETS,
 	CAT_SATELLITES,
+	CAT_DEBRIS,
 	CAT_PROBES
 } from '$lib/fetch/groups/registry';
 import type { Focusable } from '$lib/state/focusable';
@@ -53,6 +54,7 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 	[CAT_ASTEROIDS]: { smallBody: true, crossRefs: true },
 	[CAT_COMETS]: { smallBody: true, crossRefs: true },
 	[CAT_SATELLITES]: { crossRefs: true },
+	[CAT_DEBRIS]: { crossRefs: true },
 	[CAT_PROBES]: { crossRefs: true }
 };
 

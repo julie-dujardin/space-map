@@ -33,8 +33,9 @@ from space_map_data.models.object.main import Object, ObjectType
 
 logger = logging.getLogger(__name__)
 
-# Tracked objects parented to Earth that count toward the "+N more" tile.
-_SAT_TYPES = (ObjectType.spacecraft, ObjectType.debris)
+# Tracked objects parented to Earth that count toward the "+N more" tile. Debris
+# is excluded: the tile opens the Satellites page, which no longer holds it.
+_SAT_TYPES = (ObjectType.spacecraft,)
 _CONSTELLATION_QID = {c.slug: c.wikidata_qid for c in CONSTELLATIONS}
 
 

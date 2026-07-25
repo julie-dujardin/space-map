@@ -12,16 +12,24 @@ from pathlib import Path
 
 import orjson
 
-from space_map_data.constants.categories import CATEGORY_BY_SLUG
+from space_map_data.constants.categories import (
+    CATEGORY_BY_SLUG,
+    DEBRIS_SLUG,
+    SATELLITES_SLUG,
+)
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_BY_SLUG,
     CONSTELLATION_SLUG_PREFIX,
+    DEBRIS_CONSTELLATION_SLUGS,
 )
 from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_BY_CODE,
     LAUNCH_SITE_BY_SLUG,
 )
-from space_map_data.constants.earth_sats.launch_vehicles import GCAT_LV_TYPE_TO_QID
+from space_map_data.constants.earth_sats.launch_vehicles import (
+    GCAT_LV_TYPE_TO_QID,
+    LAUNCH_VEHICLE_BY_CONSTELLATION,
+)
 from space_map_data.constants.earth_sats.manufacturers import (
     MANUFACTURER_BY_CONSTELLATION,
 )
@@ -43,10 +51,12 @@ from space_map_data.export.groups.registry import (
     BUS_SLUG_PREFIX,
     CLASS_SLUG_PREFIX,
     LAUNCH_SITE_SLUG_PREFIX,
+    LAUNCH_VEHICLE_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
     GROUP_BY_SLUG,
     GROUPS,
     Group,
+    GroupCategory,
     GroupType,
 )
 from space_map_data.export.groups.small_body import LargestBody
@@ -115,6 +125,8 @@ def _build_global(
         "applies_to": str(group.applies_to),
         "member_count": member_count,
     }
+    if parent_category := _category_parent(group):
+        data["parent_category"] = parent_category
     if group.wikidata_qid:
         data["wikidata_qid"] = group.wikidata_qid
     # Wikidata prominence — the catalog index's cross-kind ranking tiebreaker,
@@ -536,22 +548,53 @@ def _launch_site_refs(
     return out
 
 
+def _category_parent(group: Group) -> str | None:
+    """Category page an Earth-orbiter group breadcrumbs to.
+
+    Spent stages (``lv-``) and breakup clouds are debris; every other earth-sat
+    group — fleets, operators, launch sites, orbit zones — sits under Satellites.
+    None for group types whose parent the frontend derives from the slug prefix.
+    """
+    if group.applies_to is not GroupCategory.EARTH_SAT:
+        return None
+    if group.type is GroupType.LAUNCH_VEHICLE:
+        return DEBRIS_SLUG
+    if (
+        group.type is GroupType.CONSTELLATION
+        and group.slug.removeprefix(CONSTELLATION_SLUG_PREFIX)
+        in DEBRIS_CONSTELLATION_SLUGS
+    ):
+        return DEBRIS_SLUG
+    return SATELLITES_SLUG
+
+
 def _constellation_refs(
     counts: dict[str, int],
     lang: str,
     wikidata_entities: WikidataEntityCache,
     limit: int = _TOP_CONSTELLATIONS,
 ) -> list[dict]:
-    """Top constellations with localized ref + count; unknown slugs dropped."""
+    """Top constellations with localized ref + count; unknown slugs dropped.
+
+    ROCKET constellations emit no ``const-`` page — they surface as ``lv-``
+    launch vehicles — so they're rewritten to that slug here rather than
+    pointing at a group that doesn't exist.
+    """
     top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:limit]
     out: list[dict] = []
     for slug, n in top:
         spec = CONSTELLATION_BY_SLUG.get(slug)
         if not spec:
             continue
-        name = spec.slug
-        if spec.wikidata_qid:
-            ref = resolve_entity_ref(spec.wikidata_qid, lang, wikidata_entities)
+        lv = LAUNCH_VEHICLE_BY_CONSTELLATION.get(spec.slug)
+        if lv is not None:
+            primary_id = f"{LAUNCH_VEHICLE_SLUG_PREFIX}{lv.slug}"
+            name, qid = lv.name or lv.slug, lv.qid
+        else:
+            primary_id = f"{CONSTELLATION_SLUG_PREFIX}{spec.slug}"
+            name, qid = spec.slug, spec.wikidata_qid
+        if qid:
+            ref = resolve_entity_ref(qid, lang, wikidata_entities)
             if ref is not None and ref.name:
                 name = ref.name
         out.append(
@@ -559,7 +602,7 @@ def _constellation_refs(
                 "n": n,
                 "name": name,
                 "primary_type": "group",
-                "primary_id": f"{CONSTELLATION_SLUG_PREFIX}{spec.slug}",
+                "primary_id": primary_id,
             }
         )
     return out

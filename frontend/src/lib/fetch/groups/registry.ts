@@ -56,6 +56,7 @@ export const CAT_MOONS = `${CATEGORY_SLUG_PREFIX}moons`;
 export const CAT_ASTEROIDS = `${CATEGORY_SLUG_PREFIX}asteroids`;
 export const CAT_COMETS = `${CATEGORY_SLUG_PREFIX}comets`;
 export const CAT_SATELLITES = `${CATEGORY_SLUG_PREFIX}satellites`;
+export const CAT_DEBRIS = `${CATEGORY_SLUG_PREFIX}debris`;
 export const CAT_PROBES = `${CATEGORY_SLUG_PREFIX}probes`;
 export const CAT_SURFACE_FEATURES = `${CATEGORY_SLUG_PREFIX}surface-features`;
 
@@ -68,6 +69,7 @@ const CATEGORY_NAME: Record<string, () => string> = {
 	[CAT_ASTEROIDS]: m.category_name_asteroids,
 	[CAT_COMETS]: m.category_name_comets,
 	[CAT_SATELLITES]: m.category_name_satellites,
+	[CAT_DEBRIS]: m.category_name_debris,
 	[CAT_PROBES]: m.category_name_probes,
 	[CAT_SURFACE_FEATURES]: m.category_name_surface_features
 };

@@ -2,6 +2,7 @@ import { resolve } from '$app/paths';
 import { page } from '$app/state';
 import {
 	CATEGORY_SLUG_PREFIX,
+	CAT_DEBRIS,
 	CAT_SATELLITES,
 	CLASS_SLUG_PREFIX,
 	COMET_FAMILY_SLUG_PREFIX,
@@ -65,8 +66,9 @@ const SUN_GROUP_ZOOM = SUN_VIEW_ZOOM;
  *  centers on Earth. */
 export function groupAnchor(slug: string): { id: string; zoom: number } {
 	if (slug.startsWith(CATEGORY_SLUG_PREFIX)) {
-		// Satellites frame on Earth; the rest of the tree is heliocentric.
-		return slug === CAT_SATELLITES
+		// The two Earth-orbiter collections frame on Earth; the rest of the tree is
+		// heliocentric.
+		return slug === CAT_SATELLITES || slug === CAT_DEBRIS
 			? { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM }
 			: { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
 	}

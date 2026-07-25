@@ -40,6 +40,7 @@ MOONS_SLUG = f"{CATEGORY_SLUG_PREFIX}moons"
 ASTEROIDS_SLUG = f"{CATEGORY_SLUG_PREFIX}asteroids"
 COMETS_SLUG = f"{CATEGORY_SLUG_PREFIX}comets"
 SATELLITES_SLUG = f"{CATEGORY_SLUG_PREFIX}satellites"
+DEBRIS_SLUG = f"{CATEGORY_SLUG_PREFIX}debris"
 PROBES_SLUG = f"{CATEGORY_SLUG_PREFIX}probes"
 SURFACE_FEATURES_SLUG = f"{CATEGORY_SLUG_PREFIX}surface-features"
 
@@ -51,6 +52,9 @@ CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(ASTEROIDS_SLUG, "Asteroids", "Q3863"),
     CategorySpec(COMETS_SLUG, "Comets", "Q3559"),
     CategorySpec(SATELLITES_SLUG, "Satellites", "Q26540"),
+    # Sibling of Satellites: the spent stages and breakup fragments SATCAT
+    # tracks alongside working payloads.
+    CategorySpec(DEBRIS_SLUG, "Space Debris", "Q275450"),
     CategorySpec(PROBES_SLUG, "Probes", "Q26529"),  # "space probe"
     # Parent of the ft- feature-type pages; the QID the IAU descriptor terms
     # hang off (`?item wdt:P361 wd:Q1463003`).

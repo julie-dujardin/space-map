@@ -48,6 +48,9 @@ export interface GlobalGroupData {
 	type: GroupType;
 	applies_to: GroupCategory;
 	member_count: number;
+	/** Earth-orbiter groups only: the `cat-` slug the breadcrumb climbs to.
+	 *  `applies_to` can't say — satellites and debris share it. */
+	parent_category?: string;
 	/** Organization-only: role tags (operator and/or manufacturer) for badges. */
 	roles?: OrganizationRole[];
 	/** IAU-named members; present (when > 0) on asteroid orbit_class groups and the Asteroids category. */
