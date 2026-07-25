@@ -63,10 +63,8 @@
 	import ObjectLinks from './sections/ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
-	// Generated per-locale IAU type keys, looked up dynamically — see
-	// data/.../export/localization.py.
-	const messages = m as unknown as Record<string, (() => string) | undefined>;
 	import { categoryConfig } from '$lib/state/category-config';
+	import { featureTypeLabel } from '$lib/format/feature-type';
 	import { featureDetailToObjectData, groupDetailToObjectData } from '$lib/state/detail-adapters';
 	import { LineupHero } from './charts/lineup-hero.svelte';
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
@@ -114,9 +112,8 @@
 		untrack(() => {
 			featureTypeSlug(code).then((slug) => {
 				if (feature?.typeCode !== code) return;
-				featureType = slug
-					? { slug, label: messages[`feature_type_label_${code}`]?.() ?? code }
-					: null;
+				const label = featureTypeLabel(slug);
+				featureType = slug && label ? { slug, label } : null;
 			});
 		});
 	});

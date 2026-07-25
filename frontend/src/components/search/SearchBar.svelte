@@ -33,7 +33,8 @@
 	import { groupTypeLabelPlural } from '$lib/format/group';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
-	import { categoryLabel, CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+	import { categoryLabel, fetchGroupIndex, CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+	import { featureTypeLabel as featureTypeName } from '$lib/format/feature-type';
 	import {
 		smallBodyCategory,
 		CAT_PROBES,
@@ -175,8 +176,20 @@
 		const key = type.startsWith('asteroid') ? 'type_asteroid' : `type_${type}`;
 		return messages[key]?.() ?? type.replace(/_/g, ' ');
 	}
+	// Facet values are IAU codes but the names live on each type's `ft-` slug;
+	// the group index (fetched once, cached) is the bridge.
+	let featureTypeSlugByCode = $state<Record<string, string>>({});
+	$effect(() => {
+		fetchGroupIndex().then((index) => {
+			const out: Record<string, string> = {};
+			for (const [slug, entry] of Object.entries(index)) {
+				if (entry.code) out[entry.code] = slug;
+			}
+			featureTypeSlugByCode = out;
+		});
+	});
 	function featureTypeLabel(code: string): string {
-		return messages[`feature_type_label_${code}`]?.() ?? code;
+		return featureTypeName(featureTypeSlugByCode[code]) ?? code;
 	}
 	// Plural category labels for the filter tree (standalone headers, e.g.
 	// "Asteroids", "Launch sites"). The numeric count sits in its own column, so
@@ -196,7 +209,8 @@
 	}
 	// Localized group name for filter leaves, tokens and rows. Categories use
 	// `category_name_*`, orbit classes `orbit_class_*` (then the index name, then
-	// the bare code); other kinds use `group_name_<slug>`, else the exported name.
+	// the bare code), feature types `feature_type_label_*`; other kinds use
+	// `group_name_<slug>`, else the exported name.
 	function groupName(g: GroupHit, locale: string): string {
 		if (g.slug.startsWith(CATEGORY_SLUG_PREFIX)) return categoryLabel(g.slug);
 		const className = classNameFromSlug(g.slug);
@@ -206,6 +220,9 @@
 			const idx = localizedName(g, locale);
 			return idx && idx !== g.slug ? idx : className;
 		}
+		// Feature types own `feature_type_label_<stem>` — no group_name_ twin.
+		const featureType = featureTypeName(g.slug);
+		if (featureType) return featureType;
 		const fn = messages[`group_name_${g.slug}`];
 		if (fn) return fn();
 		return localizedName(g, locale);

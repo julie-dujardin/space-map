@@ -10,14 +10,11 @@
 	import Row from './kit/Row.svelte';
 	import EntityLinks from './kit/EntityLinks.svelte';
 	import { featureTypeSlug } from '$lib/fetch/groups/registry';
+	import { featureTypeDescription, featureTypeLabel } from '$lib/format/feature-type';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 
 	const appState = getContext<AppState | undefined>('appState');
-
-	// Dynamic lookup for `feature_type_label_<CODE>` / `feature_type_description_<CODE>`
-	// messages — see data/.../export/localization.py for how they're generated.
-	const messages = m as unknown as Record<string, (() => string) | undefined>;
 
 	interface Props {
 		feature: NomenclatureFeature;
@@ -30,12 +27,6 @@
 	let wd = $derived(detail?.global?.wikidata);
 	let loc = $derived(detail?.localized);
 
-	let typeLabel = $derived(
-		messages[`feature_type_label_${feature.typeCode}`]?.() ?? feature.typeCode
-	);
-	let typeDescription = $derived(
-		messages[`feature_type_description_${feature.typeCode}`]?.() ?? null
-	);
 	let diameterText = $derived.by(() => {
 		if (!feature.diameterM || feature.diameterM <= 0) return null;
 		// IAU diameters span metres (small craters) to thousands of km (maria),
@@ -58,6 +49,10 @@
 			});
 		});
 	});
+	// Names live on the type's `ft-` slug, so both wait on that lookup; the IAU
+	// code stands in for the moment before it lands.
+	let typeLabel = $derived(featureTypeLabel(typeSlug) ?? feature.typeCode);
+	let typeDescription = $derived(featureTypeDescription(typeSlug) ?? null);
 	let typeHref = $derived(
 		typeSlug && appState ? serializeUrl(applyGroup(appState.view, typeSlug, typeLabel)) : undefined
 	);

@@ -230,6 +230,16 @@ FEATURE_TYPE_CODE_BY_SLUG: dict[str, str] = {
     slug: code for code, slug in FEATURE_TYPE_SLUGS.items()
 }
 
+
+def feature_type_key(code: str) -> str:
+    """i18n key suffix for a type: the readable slug stem, not the IAU code.
+
+    One name per type across the whole app — the ``ft-`` page, the nomenclature
+    popover and the search facet all read ``feature_type_label_<stem>``.
+    """
+    return FEATURE_TYPE_SLUGS[code].removeprefix(FEATURE_TYPE_SLUG_PREFIX)
+
+
 assert len(FEATURE_TYPE_CODE_BY_SLUG) == len(FEATURE_TYPE_SLUGS), (
     "Duplicate feature-type slug"
 )
