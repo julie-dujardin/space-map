@@ -7,6 +7,7 @@
 	import {
 		isSearchEnabled,
 		localizedName,
+		searchBodyFeatures,
 		searchChildMembers,
 		searchGroupMembers,
 		type GroupMemberPage,
@@ -23,8 +24,11 @@
 	} from '$lib/state/url';
 	import { formatQuantity } from '$lib/format/quantities';
 
-	/** A group's members (by slug) or a body's moons (by host id). */
-	type MemberSource = { kind: 'group'; slug: string } | { kind: 'parent'; parentId: string };
+	/** A group's members (by slug), or a body's moons / surface features (by id). */
+	type MemberSource =
+		| { kind: 'group'; slug: string }
+		| { kind: 'parent'; parentId: string }
+		| { kind: 'features'; bodyId: string };
 
 	interface Props {
 		source: MemberSource;
@@ -62,7 +66,13 @@
 
 	// Primitive identity of the source, so the load effect tracks only a change
 	// of group/body — not the fresh object literal the parent passes each render.
-	let sourceKey = $derived(source.kind === 'group' ? `g:${source.slug}` : `p:${source.parentId}`);
+	let sourceKey = $derived(
+		source.kind === 'group'
+			? `g:${source.slug}`
+			: source.kind === 'features'
+				? `f:${source.bodyId}`
+				: `p:${source.parentId}`
+	);
 
 	function fetchPage(
 		src: MemberSource,
@@ -70,9 +80,9 @@
 		limit: number,
 		locale: string
 	): Promise<GroupMemberPage> {
-		return src.kind === 'group'
-			? searchGroupMembers(src.slug, offset, limit, locale)
-			: searchChildMembers(src.parentId, offset, limit, locale);
+		if (src.kind === 'group') return searchGroupMembers(src.slug, offset, limit, locale);
+		if (src.kind === 'features') return searchBodyFeatures(src.bodyId, offset, limit, locale);
+		return searchChildMembers(src.parentId, offset, limit, locale);
 	}
 
 	function yearOf(s?: string): string | undefined {

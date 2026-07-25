@@ -150,6 +150,7 @@
 		}
 	],
 	"group_discovery_activity": "الجدول الزمني للاكتشاف",
+	"group_naming_activity": "الجدول الزمني للتسمية",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -161,6 +162,20 @@
 				"countPlural=few": "{count} اكتشافات",
 				"countPlural=many": "{count} اكتشافًا",
 				"countPlural=other": "{count} اكتشاف"
+			}
+		}
+	],
+	"tooltip_names_approved_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا أسماء معتمدة",
+				"countPlural=one": "اسم واحد معتمد",
+				"countPlural=two": "اسمان معتمدان",
+				"countPlural=few": "{count} أسماء معتمدة",
+				"countPlural=many": "{count} اسمًا معتمدًا",
+				"countPlural=other": "{count} اسم معتمد"
 			}
 		}
 	],
@@ -278,6 +293,8 @@
 	"members_load_more": "تحميل المزيد",
 	"members_top_of_total": "أفضل {top} من أصل {total}",
 	"tab_moons": "الأقمار",
+	"tab_features": "السطح",
+	"features_section": "تضاريس السطح",
 	"moons_section": "الأقمار",
 	"satellites_section": "الأقمار الصناعية",
 	"part_of_mission": "جزء من المهمة",

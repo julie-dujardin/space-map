@@ -129,6 +129,7 @@
 		}
 	],
 	"group_discovery_activity": "Cronologia delle scoperte",
+	"group_naming_activity": "Cronologia dei nomi",
 	"scatter_membership_title": "Mappa orbitale",
 	"scatter_axis_a": "semiasse maggiore (UA)",
 	"scatter_axis_q": "perielio (UA)",
@@ -201,6 +202,16 @@
 			"match": {
 				"countPlural=one": "{count} scoperta",
 				"countPlural=other": "{count} scoperte"
+			}
+		}
+	],
+	"tooltip_names_approved_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} nome approvato",
+				"countPlural=other": "{count} nomi approvati"
 			}
 		}
 	],
@@ -319,6 +330,8 @@
 	"members_load_more": "Carica altri",
 	"members_top_of_total": "Primi {top} di {total}",
 	"tab_moons": "Lune",
+	"tab_features": "Superficie",
+	"features_section": "Formazioni superficiali",
 	"moons_section": "Lune",
 	"satellites_section": "Satelliti",
 	"part_of_mission": "Parte della missione",

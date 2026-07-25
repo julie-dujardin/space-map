@@ -129,6 +129,7 @@
 		}
 	],
 	"group_discovery_activity": "Cronologia de descobertas",
+	"group_naming_activity": "Cronologia dos nomes",
 	"scatter_membership_title": "Mapa de órbitas",
 	"scatter_axis_a": "semieixo maior (UA)",
 	"scatter_axis_q": "periélio (UA)",
@@ -201,6 +202,16 @@
 			"match": {
 				"countPlural=one": "{count} descoberta",
 				"countPlural=other": "{count} descobertas"
+			}
+		}
+	],
+	"tooltip_names_approved_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} nome aprovado",
+				"countPlural=other": "{count} nomes aprovados"
 			}
 		}
 	],
@@ -319,6 +330,8 @@
 	"members_load_more": "Carregar mais",
 	"members_top_of_total": "Top {top} de {total}",
 	"tab_moons": "Luas",
+	"tab_features": "Superfície",
+	"features_section": "Formações de superfície",
 	"moons_section": "Luas",
 	"satellites_section": "Satélites",
 	"part_of_mission": "Parte da missão",

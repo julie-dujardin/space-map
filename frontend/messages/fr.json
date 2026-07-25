@@ -124,6 +124,7 @@
 		}
 	],
 	"group_discovery_activity": "Chronologie des découvertes",
+	"group_naming_activity": "Chronologie des noms",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -131,6 +132,16 @@
 			"match": {
 				"countPlural=one": "{count} découverte",
 				"countPlural=other": "{count} découvertes"
+			}
+		}
+	],
+	"tooltip_names_approved_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} nom approuvé",
+				"countPlural=other": "{count} noms approuvés"
 			}
 		}
 	],
@@ -273,6 +284,8 @@
 	"members_load_more": "Afficher plus",
 	"members_top_of_total": "Top {top} sur {total}",
 	"tab_moons": "Lunes",
+	"tab_features": "Surface",
+	"features_section": "Formations de surface",
 	"moons_section": "Lunes",
 	"satellites_section": "Satellites",
 	"part_of_mission": "Partie de la mission",

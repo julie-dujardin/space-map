@@ -113,6 +113,7 @@
 		}
 	],
 	"group_discovery_activity": "Discovery timeline",
+	"group_naming_activity": "Naming timeline",
 	"group_moons_per_planet": "Moons per planet",
 	"scatter_membership_title": "Orbit map",
 	"scatter_axis_a": "semi-major axis (AU)",
@@ -186,6 +187,16 @@
 			"match": {
 				"countPlural=one": "{count} discovery",
 				"countPlural=other": "{count} discoveries"
+			}
+		}
+	],
+	"tooltip_names_approved_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} name approved",
+				"countPlural=other": "{count} names approved"
 			}
 		}
 	],
@@ -314,6 +325,8 @@
 	"members_load_more": "Load more",
 	"members_top_of_total": "Top {top} of {total}",
 	"tab_moons": "Moons",
+	"tab_features": "Surface",
+	"features_section": "Surface features",
 	"moons_section": "Moons",
 	"satellites_section": "Satellites",
 	"part_of_mission": "Part of mission",

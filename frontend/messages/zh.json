@@ -129,6 +129,7 @@
 		}
 	],
 	"group_discovery_activity": "发现时间线",
+	"group_naming_activity": "命名时间线",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -136,6 +137,16 @@
 			"match": {
 				"countPlural=one": "{count} 次发现",
 				"countPlural=other": "{count} 次发现"
+			}
+		}
+	],
+	"tooltip_names_approved_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "批准 {count} 个名称",
+				"countPlural=other": "批准 {count} 个名称"
 			}
 		}
 	],
@@ -253,6 +264,8 @@
 	"members_load_more": "加载更多",
 	"members_top_of_total": "共 {total} 个中的前 {top} 个",
 	"tab_moons": "卫星",
+	"tab_features": "表面",
+	"features_section": "表面地貌",
 	"moons_section": "卫星",
 	"satellites_section": "卫星",
 	"part_of_mission": "所属任务",

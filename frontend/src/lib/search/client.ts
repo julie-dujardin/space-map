@@ -271,6 +271,17 @@ export async function searchGroupMembers(
 	return searchMemberPage(filter, offset, limit, locale);
 }
 
+/** A paginated slice of a body's IAU surface features, ranked notable-first —
+ *  the same order the feature's own `ft-` type page lists it in. */
+export function searchBodyFeatures(
+	bodyId: string,
+	offset: number,
+	limit: number,
+	locale: string
+): Promise<GroupMemberPage> {
+	return searchMemberPage(`feature.body_id = "${bodyId}"`, offset, limit, locale);
+}
+
 /** A paginated slice of a body's moons, ranked notable-first. `parentId` is the
  *  host body's Object id (a planet/dwarf-planet; its barycenter's moons are
  *  re-parented to it in the index). The planet itself shares that parent_id, so

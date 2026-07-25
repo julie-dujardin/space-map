@@ -14,7 +14,7 @@ import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { DEFAULT_VIEW, SUN_VIEW_ZOOM, UrlType, type DrawerTab, type MapViewState } from './view';
 
 /** Tabs that serialize a `&tab=` block; overview is the null default. */
-const DEEP_LINK_TABS: readonly string[] = ['images', 'members', 'fragments'];
+const DEEP_LINK_TABS: readonly string[] = ['images', 'members', 'features', 'fragments'];
 
 function parseTab(raw: string | null): Exclude<DrawerTab, 'overview'> | null {
 	return raw && DEEP_LINK_TABS.includes(raw) ? (raw as Exclude<DrawerTab, 'overview'>) : null;
@@ -266,10 +266,11 @@ export function serializeUrl(state: MapViewState): string {
 		typeof state.imageIndex === 'number' && Number.isInteger(state.imageIndex)
 			? `&img=${state.imageIndex}`
 			: '';
-	// `mp` is only meaningful under the members tab — the one paginated list.
+	// `mp` is only meaningful under the paginated lists (members / features).
 	const tab = state.tab ? `&tab=${state.tab}` : '';
+	const paginated = state.tab === 'members' || state.tab === 'features';
 	const mp =
-		state.tab === 'members' &&
+		paginated &&
 		typeof state.memberPage === 'number' &&
 		Number.isInteger(state.memberPage) &&
 		state.memberPage > 1

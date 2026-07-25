@@ -17,6 +17,10 @@ from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPE_SLUGS,
     FEATURE_TYPES,
 )
+from space_map_data.export.nomenclature.notable import (
+    feature_sitelinks,
+    rank_notable_features,
+)
 from space_map_data.export.nomenclature.writer import renderable_feature_filter
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.wikidata_claims import make_feature_entityref
@@ -29,8 +33,6 @@ logger = logging.getLogger(__name__)
 # Chart rows per page. Craters span 50 bodies; past a dozen the bars are noise
 # and the body-count stat already carries the long tail.
 TOP_BODIES = 12
-# Members shown in the notable strip before the paginated list takes over.
-NOTABLE_FEATURES = 20
 
 
 @dataclass
@@ -65,39 +67,6 @@ class FeatureTypeGroups:
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
 
 
-def _sitelinks(feature: Feature, wikidata_entities: WikidataEntityCache) -> int:
-    if not feature.wikidata_qid:
-        return 0
-    wd = wikidata_entities.get_feature_entity(feature.wikidata_qid)
-    return len(wd["sitelinks"]) if wd else 0
-
-
-def _notable(
-    features: list[tuple[int, Feature]],
-) -> list[NotableObject]:
-    """Top features of one type, most prominent first.
-
-    Prominence is the feature's own Wikidata sitelink count (Tycho over a
-    bigger but anonymous crater), with diameter as the tiebreaker — and as the
-    only signal for the ~44% of features with no Wikidata item.
-    """
-    ranked = sorted(
-        features, key=lambda e: (-e[0], -(e[1].diameter or 0.0), e[1].feature_id)
-    )
-    return [
-        NotableObject(
-            object_id=f.object_id or "",
-            wikidata_qid=f.wikidata_qid,
-            fallback_name=f.name,
-            diameter_km=f.diameter or None,
-            first_obs=f.approval_date.isoformat() if f.approval_date else None,
-            feature_id=f.feature_id,
-            sitelinks_count=sitelinks or None,
-        )
-        for sitelinks, f in ranked[:NOTABLE_FEATURES]
-    ]
-
-
 def build_feature_type_groups(
     session: Session, wikidata_entities: WikidataEntityCache
 ) -> FeatureTypeGroups:
@@ -109,7 +78,9 @@ def build_feature_type_groups(
         if f.feature_type_code not in FEATURE_TYPES:
             unknown_codes[f.feature_type_code] += 1
             continue
-        by_code[f.feature_type_code].append((_sitelinks(f, wikidata_entities), f))
+        by_code[f.feature_type_code].append(
+            (feature_sitelinks(f, wikidata_entities), f)
+        )
     if unknown_codes:
         logger.warning(
             "Skipped features with codes missing from FEATURE_TYPES: %s",
@@ -127,6 +98,7 @@ def build_feature_type_groups(
     out = FeatureTypeGroups()
     dropped_rows = 0
     empty: list[str] = []
+    all_approvals: dict[int, int] = defaultdict(int)
     for code in FEATURE_TYPES:
         slug = FEATURE_TYPE_SLUGS[code]
         entries = by_code.get(code, [])
@@ -147,6 +119,7 @@ def build_feature_type_groups(
             per_body[f.object_id] += 1
             if f.approval_date:
                 histogram[f.approval_date.year] += 1
+                all_approvals[f.approval_date.year] += 1
                 approvals.append(f.approval_date.isoformat())
             if f.diameter and (largest is None or f.diameter > (largest.diameter or 0)):
                 largest = f
@@ -185,14 +158,16 @@ def build_feature_type_groups(
             },
         )
         out.member_counts[slug] = len(entries)
-        out.notable_members[slug] = _notable(entries)
+        out.notable_members[slug] = rank_notable_features(entries)
 
-    # The meta category's own stat cards. Deliberately absent from
-    # ``member_counts``: the category tier sums that map for its member total.
+    # The meta category's own stat cards + whole-gazetteer naming timeline.
+    # Deliberately absent from ``member_counts``: the category tier sums that
+    # map for its member total. No first/last approval — three cards is the row.
     out.stats[SURFACE_FEATURES_SLUG] = FeatureTypeStats(
         feature_count=sum(out.member_counts.values()),
         body_count=len(body_ids),
         type_count=len(FEATURE_TYPES) - len(empty),
+        approval_histogram=dict(sorted(all_approvals.items())),
     )
 
     logger.info(

@@ -129,6 +129,7 @@
 		}
 	],
 	"group_discovery_activity": "Oś czasu odkryć",
+	"group_naming_activity": "Oś czasu nazewnictwa",
 	"scatter_membership_title": "Mapa orbit",
 	"scatter_axis_a": "wielka półoś (au)",
 	"scatter_axis_q": "peryhelium (au)",
@@ -201,6 +202,16 @@
 			"match": {
 				"countPlural=one": "{count} odkrycie",
 				"countPlural=other": "{count} odkryć"
+			}
+		}
+	],
+	"tooltip_names_approved_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} zatwierdzona nazwa",
+				"countPlural=other": "{count} zatwierdzonych nazw"
 			}
 		}
 	],
@@ -319,6 +330,8 @@
 	"members_load_more": "Wczytaj więcej",
 	"members_top_of_total": "Najlepsze {top} z {total}",
 	"tab_moons": "Księżyce",
+	"tab_features": "Powierzchnia",
+	"features_section": "Formy terenu",
 	"moons_section": "Księżyce",
 	"satellites_section": "Satelity",
 	"part_of_mission": "Część misji",

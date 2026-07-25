@@ -129,6 +129,7 @@
 		}
 	],
 	"group_discovery_activity": "Entdeckungsverlauf",
+	"group_naming_activity": "Benennungsverlauf",
 	"scatter_membership_title": "Bahnkarte",
 	"scatter_axis_a": "große Halbachse (AE)",
 	"scatter_axis_q": "Perihel (AE)",
@@ -201,6 +202,16 @@
 			"match": {
 				"countPlural=one": "{count} Entdeckung",
 				"countPlural=other": "{count} Entdeckungen"
+			}
+		}
+	],
+	"tooltip_names_approved_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} Name genehmigt",
+				"countPlural=other": "{count} Namen genehmigt"
 			}
 		}
 	],
@@ -319,6 +330,8 @@
 	"members_load_more": "Mehr laden",
 	"members_top_of_total": "Top {top} von {total}",
 	"tab_moons": "Monde",
+	"tab_features": "Oberfläche",
+	"features_section": "Oberflächenstrukturen",
 	"moons_section": "Monde",
 	"satellites_section": "Satelliten",
 	"part_of_mission": "Teil der Mission",

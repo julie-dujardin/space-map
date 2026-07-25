@@ -491,6 +491,20 @@
 		else appState.setTab('members');
 	}
 
+	// A body's own IAU surface features. The strip is the top few; the tab holds
+	// the full gazetteer for that body (Mars alone has ~2k).
+	let notableFeatures = $derived(
+		isGroupMode || isFeatureMode ? undefined : data?.global?.notable_features
+	);
+	let featureNames = $derived(data?.localized?.notable_feature_names);
+	let featureTotal = $derived(data?.global?.feature_count ?? 0);
+	let hasFeatures = $derived(!!notableFeatures && notableFeatures.length > 0);
+	let showFeaturesTab = $derived(hasFeatures && featureTotal > STRIP_CAPACITY);
+
+	function seeAllFeatures() {
+		appState.setTab('features');
+	}
+
 	// Split-comet fragments: a strip + tab on the intact parent comet, mirroring
 	// moons. `fragment_of` (the fragment side) drives the breadcrumb + a card.
 	let notableFragments = $derived(isGroupMode ? undefined : data?.global?.fragments);
@@ -564,6 +578,17 @@
 				onSeeAll: seeAllMembers
 			});
 		}
+		// Surface features sit below the moons strip: same card UI, but focusing a
+		// row flies to a point on this body rather than to another object.
+		if (hasFeatures && notableFeatures) {
+			strips.push({
+				members: notableFeatures,
+				localizedNames: featureNames,
+				totalCount: featureTotal,
+				heading: m.features_section(),
+				onSeeAll: seeAllFeatures
+			});
+		}
 		if (hasFragments && notableFragments) {
 			strips.push({
 				members: notableFragments,
@@ -592,15 +617,29 @@
 			? 'images'
 			: appState.view.tab === 'members' && showMembersTab
 				? 'members'
-				: appState.view.tab === 'fragments' && showFragmentsTab
-					? 'fragments'
-					: 'overview'
+				: appState.view.tab === 'features' && showFeaturesTab
+					? 'features'
+					: appState.view.tab === 'fragments' && showFragmentsTab
+						? 'fragments'
+						: 'overview'
+	);
+	// What the URL is focused on, in `focusableKey` form. A tile that opens
+	// another body on a specific tab (moon → planet's Moons, feature → host's
+	// Features) rewrites the URL a beat before the renderer hands us the new
+	// focusable; without this the scrub below would wipe the tab in that gap.
+	let viewFocusKey = $derived(
+		appState.view.groupSlug
+			? `group-${appState.view.groupSlug}`
+			: appState.view.featureId != null
+				? `feature-${appState.view.featureId}`
+				: appState.view.id
 	);
 	// Scrub a deep-link tab pointing at absent content (e.g. ?tab=members on a
 	// moonless body). The !loading guard avoids wiping a valid link mid-fetch,
 	// while showMembersTab is still false.
 	$effect(() => {
-		if (!loading && appState.view.tab && activeTab === 'overview') {
+		const settled = viewFocusKey === focusableId;
+		if (settled && !loading && appState.view.tab && activeTab === 'overview') {
 			untrack(() => appState.setTab('overview'));
 		}
 	});
@@ -623,6 +662,14 @@
 					{membersTabLabel}
 					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
 						{formatCompactNumber(memberTotal)}
+					</Badge>
+				</Tabs.Trigger>
+			{/if}
+			{#if showFeaturesTab}
+				<Tabs.Trigger value="features" class="px-2">
+					{m.tab_features()}
+					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
+						{formatCompactNumber(featureTotal)}
 					</Badge>
 				</Tabs.Trigger>
 			{/if}
@@ -867,6 +914,19 @@
 	</div>
 {/snippet}
 
+{#snippet featuresPanel()}
+	<div class="flex flex-col gap-3 p-1">
+		{#if body && hasFeatures}
+			<PaginatedMemberList
+				source={{ kind: 'features', bodyId: body.data.id }}
+				totalCount={featureTotal}
+				localizedNames={featureNames}
+				fallback={notableFeatures ?? []}
+			/>
+		{/if}
+	</div>
+{/snippet}
+
 {#snippet fragmentsPanel()}
 	<div class="flex flex-col gap-3 p-1">
 		{#if notableFragments && notableFragments.length > 0}
@@ -914,6 +974,9 @@
 	</Tabs.Content>
 	<Tabs.Content value="members" class={contentClass}>
 		{@render membersPanel()}
+	</Tabs.Content>
+	<Tabs.Content value="features" class={contentClass}>
+		{@render featuresPanel()}
 	</Tabs.Content>
 	<Tabs.Content value="fragments" class={contentClass}>
 		{@render fragmentsPanel()}

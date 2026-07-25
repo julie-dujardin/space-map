@@ -19,5 +19,7 @@
 	{#if typeSlug && typeLabel}
 		<GroupTile slug={typeSlug} name={typeLabel} label={groupTypeLabel('feature_type')} />
 	{/if}
-	<BodyTile id={hostId} name={hostName} class={typeSlug ? '' : 'col-span-2'} />
+	<!-- The host tile lands on its Features tab: the feature's neighbours, not
+	     the body's overview. -->
+	<BodyTile id={hostId} name={hostName} tab="features" class={typeSlug ? '' : 'col-span-2'} />
 </div>

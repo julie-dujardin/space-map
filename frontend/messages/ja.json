@@ -127,6 +127,7 @@
 		}
 	],
 	"group_discovery_activity": "発見の推移",
+	"group_naming_activity": "命名の推移",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -134,6 +135,16 @@
 			"match": {
 				"countPlural=one": "{count} 件の発見",
 				"countPlural=other": "{count} 件の発見"
+			}
+		}
+	],
+	"tooltip_names_approved_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 件の命名",
+				"countPlural=other": "{count} 件の命名"
 			}
 		}
 	],
@@ -276,6 +287,8 @@
 	"members_load_more": "もっと見る",
 	"members_top_of_total": "全{total}件中 上位{top}件",
 	"tab_moons": "衛星",
+	"tab_features": "表面",
+	"features_section": "表面地形",
 	"moons_section": "衛星",
 	"satellites_section": "衛星",
 	"part_of_mission": "所属ミッション",

@@ -43,6 +43,9 @@
 	);
 	let reusableRefs = $derived(localized?.reusable_vehicle_refs ?? {});
 	let discoveryHistogram = $derived(global?.discovery_histogram);
+	// IAU name approvals per year — a ft- page's own, or every type on the
+	// Surface Features meta page.
+	let approvalHistogram = $derived(global?.approval_histogram);
 	let operators = $derived(localized?.operators ?? []);
 	let manufacturers = $derived(localized?.manufacturers ?? []);
 	let countries = $derived(localized?.country_of_origin ?? []);
@@ -178,6 +181,7 @@
 		entries={featureBodies}
 		title={m.group_features_per_body()}
 		names={localized?.body_names}
+		tab="features"
 	/>
 {/if}
 
@@ -269,6 +273,16 @@
 				</li>
 			{/each}
 		</ul>
+	</div>
+{/if}
+
+{#if approvalHistogram}
+	<div class="flex flex-col gap-1">
+		<h3 class="text-sm font-medium">{m.group_naming_activity()}</h3>
+		<div class="border-border/60 border-t"></div>
+		<div class="pt-1">
+			<YearHistogramChart histogram={approvalHistogram} kind="naming" />
+		</div>
 	</div>
 {/if}
 

@@ -37,7 +37,7 @@ export const FEATURE_ROUTE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** Detail-drawer tab; 'overview' is the null default in URL state. */
-export type DrawerTab = 'overview' | 'images' | 'members' | 'fragments';
+export type DrawerTab = 'overview' | 'images' | 'members' | 'features' | 'fragments';
 
 /**
  * Shape of the URL-backed app state. One source of truth for what gets shared,
@@ -63,8 +63,8 @@ export interface MapViewState {
 	groupSlug: string | null;
 	/** Active drawer tab; null = overview. Deep-linked as `&tab=`. */
 	tab: Exclude<DrawerTab, 'overview'> | null;
-	/** Pages loaded in the members list; null = first. Deep-linked as `&mp=` to
-	 *  restore scroll depth. Only meaningful while `tab === 'members'`. */
+	/** Pages loaded in a paginated list; null = first. Deep-linked as `&mp=` to
+	 *  restore scroll depth. Only meaningful under the members/features tabs. */
 	memberPage: number | null;
 }
 

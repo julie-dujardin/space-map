@@ -9,7 +9,7 @@
 	import HoverTooltip from '$lib/charts/HoverTooltip.svelte';
 	import OverlayLine from '$lib/charts/OverlayLine.svelte';
 
-	type Kind = 'launch' | 'discovery';
+	type Kind = 'launch' | 'discovery' | 'naming';
 	interface Props {
 		histogram: Record<string, number>;
 		kind: Kind;
@@ -18,9 +18,15 @@
 	let { histogram, kind, height = 110 }: Props = $props();
 
 	function tooltipCount(n: number): string {
-		return kind === 'discovery'
-			? m.tooltip_discoveries_count({ count: n })
-			: m.tooltip_launches_count({ count: n });
+		if (kind === 'discovery') return m.tooltip_discoveries_count({ count: n });
+		if (kind === 'naming') return m.tooltip_names_approved_count({ count: n });
+		return m.tooltip_launches_count({ count: n });
+	}
+
+	function ariaLabel(): string {
+		if (kind === 'discovery') return m.group_discovery_activity();
+		if (kind === 'naming') return m.group_naming_activity();
+		return m.group_launch_activity();
 	}
 
 	const PADDING = { top: 18, right: 4, bottom: 16, left: 4 };
@@ -109,7 +115,7 @@
 		<div
 			style:height="{height}px"
 			role="group"
-			aria-label={kind === 'launch' ? m.group_launch_activity() : m.group_discovery_activity()}
+			aria-label={ariaLabel()}
 			onmouseleave={() => (hoveredIndex = null)}
 		>
 			<LayerCake

@@ -143,6 +143,7 @@
 		}
 	],
 	"group_discovery_activity": "Хронология открытий",
+	"group_naming_activity": "Хронология названий",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -152,6 +153,18 @@
 				"countPlural=few": "{count} открытия",
 				"countPlural=many": "{count} открытий",
 				"countPlural=other": "{count} открытия"
+			}
+		}
+	],
+	"tooltip_names_approved_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} утверждённое название",
+				"countPlural=few": "{count} утверждённых названия",
+				"countPlural=many": "{count} утверждённых названий",
+				"countPlural=other": "{count} утверждённых названия"
 			}
 		}
 	],
@@ -269,6 +282,8 @@
 	"members_load_more": "Показать ещё",
 	"members_top_of_total": "Топ-{top} из {total}",
 	"tab_moons": "Луны",
+	"tab_features": "Поверхность",
+	"features_section": "Детали поверхности",
 	"moons_section": "Луны",
 	"satellites_section": "Спутники",
 	"part_of_mission": "Часть миссии",

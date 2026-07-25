@@ -193,6 +193,15 @@ interface GlobalObjectData {
   named_moon_count?: number;          // moons with an IAU name; present when > 0 (asteroid moonlets and provisional
                                       // outer-planet moons are unnamed, so this is < moon_count for those hosts)
 
+  // IAU surface features of this body (see nomenclature.md). `has_nomenclature`
+  // gates the map's label layer; the two below drive the Features tab —
+  // notable_features is the same NotableEntry shape as a ft- page's members
+  // (host `id` + `feature_id`), ranked by (sitelinks, diameter) and capped at
+  // 20, with per-language overrides in LocalizedObjectData.notable_feature_names.
+  has_nomenclature?: true;
+  notable_features?: NotableEntry[];
+  feature_count?: number;             // renderable features on this body; drives the tab badge
+
   // Curated featured satellites (Earth only). The Moons section is relabelled
   // "Satellites" and renders these after the Moon; the "+N more" tile links to
   // the Satellites browse page (`satellites_group`) instead of an in-drawer
@@ -295,6 +304,7 @@ interface LocalizedObjectData {
   };
   notable_moon_names?: Record<string, string>; // notable-moon Object.id → localized label, only where it differs from the global name
   notable_moon_descriptions?: Record<string, string>; // notable-moon Object.id → localized Wikidata short description, for the planet-page moon lineup hover tooltip
+  notable_feature_names?: Record<string, string>; // notable-feature "<body_id>:<feature_id>" → localized label, only where it differs
   notable_satellite_names?: Record<string, string>; // featured-satellite id-or-slug → localized label, only where it differs
   fragment_names?: Record<string, string>;     // fragment Object.id → localized label, only where it differs from the global name
   mission_member_names?: Record<string, string>; // mission-member Object.id → localized label, only where it differs from the global name

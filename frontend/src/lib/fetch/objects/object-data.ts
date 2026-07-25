@@ -180,6 +180,11 @@ export interface GlobalObjectData {
 	/** True when this body has IAU planetary nomenclature features exported.
 	 *  Gates the per-body fetch of `v1/nomenclature/{positions,__global__}/{id}.*`. */
 	has_nomenclature?: true;
+	/** Top surface features of this body (sitelinks, then diameter), same shape
+	 *  as a ft- page's members. Seeds the Features tab before search answers. */
+	notable_features?: NotableMemberEntry[];
+	/** Renderable features on this body — the Features tab badge. */
+	feature_count?: number;
 	map_texture_available?: boolean;
 	/** Only present when `map_texture_available` — mirrors `texture` in systems/{bary}.json. */
 	texture?: TextureAttribution;
@@ -448,6 +453,8 @@ export interface LocalizedObjectData {
 	notable_moon_names?: Record<string, string>;
 	/** notable-moon Object.id → localized Wikidata short description, for the planet-page moon lineup hover tooltip. */
 	notable_moon_descriptions?: Record<string, string>;
+	/** notable-feature `<body_id>:<feature_id>` → localized label, only where it differs. */
+	notable_feature_names?: Record<string, string>;
 	/** featured-satellite id/slug → localized label, only where it differs. */
 	notable_satellite_names?: Record<string, string>;
 	/** fragment Object.id → localized label, only where it differs from the global name. */
