@@ -185,6 +185,11 @@ interface GlobalGroupData {
   last_approval_date?: string;                // Latest IAU name-approval date (ISO date)
   approval_histogram?: Record<string, number>; // Approval year string → count, sorted ascending
 
+  // `cat-surface-features` (the browse node above the ft- pages) only. Its
+  // member_count is the whole gazetteer's feature tally and `body_count` above
+  // spans every type.
+  feature_type_count?: number;                // Types with at least one feature (= its child chips)
+
   // `mission` groups only — focus redirect to the primary probe (not a filter).
   primary?: { primary_type: "object"; primary_id: string };  // "probe-<id>"
 

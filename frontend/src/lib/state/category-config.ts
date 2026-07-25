@@ -18,8 +18,11 @@ export interface CategoryConfig {
 	moons: boolean;
 	dwarfPlanets: boolean;
 	solarSystem: boolean;
-	/** planets/moons/dwarf: hero is a sphere lineup; no member strip/tab. */
+	/** planets/moons/dwarf: hero is a sphere lineup, so no member strip. */
 	lineup: boolean;
+	/** The lineup is the whole membership (8 planets, 9 dwarfs) — a members tab
+	 *  would just repeat it. Moons show only the notable few, so they keep one. */
+	lineupCoversMembers: boolean;
 	/** asteroids/comets: members route through the members tab, no overview strip. */
 	smallBody: boolean;
 	/** Page cross-links its sibling collections (and Earth, for satellites). */
@@ -32,14 +35,20 @@ const NONE: CategoryConfig = {
 	dwarfPlanets: false,
 	solarSystem: false,
 	lineup: false,
+	lineupCoversMembers: false,
 	smallBody: false,
 	crossRefs: false
 };
 
 const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
-	[CAT_PLANETS]: { planets: true, lineup: true, crossRefs: true },
+	[CAT_PLANETS]: { planets: true, lineup: true, lineupCoversMembers: true, crossRefs: true },
 	[CAT_MOONS]: { moons: true, lineup: true, crossRefs: true },
-	[CAT_DWARF_PLANETS]: { dwarfPlanets: true, lineup: true, crossRefs: true },
+	[CAT_DWARF_PLANETS]: {
+		dwarfPlanets: true,
+		lineup: true,
+		lineupCoversMembers: true,
+		crossRefs: true
+	},
 	[CAT_SOLAR_SYSTEM]: { solarSystem: true },
 	[CAT_ASTEROIDS]: { smallBody: true, crossRefs: true },
 	[CAT_COMETS]: { smallBody: true, crossRefs: true },

@@ -139,6 +139,20 @@
 				onClick: (e) => focusBody(bodyId, largest.name, e)
 			});
 		}
+		// Surface Features meta page: its members are features, not objects, so
+		// the count that has nowhere else to go (no members strip) rides a card.
+		if (global.feature_type_count != null) {
+			out.push({
+				label: m.group_stat_types(),
+				value: formatNumber(global.feature_type_count),
+				dot: 'bg-sky-400'
+			});
+			out.push({
+				label: m.group_stat_features(),
+				value: formatNumber(global.member_count),
+				dot: 'bg-teal-400'
+			});
+		}
 		if (global.body_count != null && global.body_count > 0)
 			out.push({
 				label: m.group_stat_bodies(),

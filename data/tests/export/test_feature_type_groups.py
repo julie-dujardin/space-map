@@ -218,6 +218,49 @@ class TestBuildFeatureTypeGroups:
         assert members[0].sitelinks_count == 42
 
 
+class TestMetaCategoryStats:
+    """The Surface Features browse node's own stat cards."""
+
+    def test_totals_span_every_type(self, session: Session):
+        _body(session, "naif-301", "Moon")
+        _body(session, "naif-499", "Mars")
+        _feature(session, 1)
+        _feature(session, 2, object_id="naif-499")
+        _feature(session, 3, object_id="naif-499", feature_type_code="VA")
+        session.flush()
+
+        stats = build_feature_type_groups(session, _entities()).stats[
+            SURFACE_FEATURES_SLUG
+        ]
+        assert stats.feature_count == 3
+        assert stats.body_count == 2
+        # Types with no features get a page but no chip, so they don't count.
+        assert stats.type_count == 2
+
+    def test_meta_node_is_absent_from_member_counts(self, session: Session):
+        """The category tier sums that map — an entry here would double it."""
+        _body(session, "naif-301", "Moon")
+        _feature(session, 1)
+        session.flush()
+
+        out = build_feature_type_groups(session, _entities())
+        assert SURFACE_FEATURES_SLUG not in out.member_counts
+        assert sum(out.member_counts.values()) == 1
+
+    def test_per_type_stats_carry_no_type_count(self, session: Session):
+        """Only the meta node emits ``feature_type_count`` in the bundle."""
+        _body(session, "naif-301", "Moon")
+        _feature(session, 1)
+        session.flush()
+
+        assert (
+            build_feature_type_groups(session, _entities())
+            .stats["ft-crater"]
+            .type_count
+            == 0
+        )
+
+
 class TestNotableFeatureEntries:
     """Bundle entries for feature members route to the body's feature URL."""
 

@@ -179,9 +179,12 @@ def _build_global(
         if lv_stats.reusable_vehicles:
             data["reusable_vehicles"] = lv_stats.reusable_vehicles
     # Feature types: the IAU gazetteer roll-up behind an ft- page. member_count
-    # already carries the feature tally, so only the extras land here.
+    # already carries the feature tally, so only the extras land here. The
+    # Surface Features meta node fills only the two counts.
     if ft_stats is not None:
         data["body_count"] = ft_stats.body_count
+        if ft_stats.type_count:
+            data["feature_type_count"] = ft_stats.type_count
         if ft_stats.bodies:
             data["feature_bodies"] = ft_stats.bodies
         if ft_stats.largest:

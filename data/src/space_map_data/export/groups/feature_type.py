@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.categories import SURFACE_FEATURES_SLUG
 from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPE_SLUGS,
     FEATURE_TYPES,
@@ -34,10 +35,16 @@ NOTABLE_FEATURES = 20
 
 @dataclass
 class FeatureTypeStats:
-    """Per-type roll-up consumed by the ft- group bundle."""
+    """Per-type roll-up consumed by the ft- group bundle.
+
+    The Surface Features meta category rides the same struct for its own
+    stat cards, filling only ``type_count`` / ``feature_count`` / ``body_count``.
+    """
 
     feature_count: int = 0
     body_count: int = 0
+    # Meta node only: how many types have at least one feature (= its chips).
+    type_count: int = 0
     # Bar-chart rows, most features first: {name, primary_type, primary_id, n}.
     bodies: list[dict] = field(default_factory=list)
     # Biggest named example, as an EntityRef + its diameter.
@@ -180,13 +187,22 @@ def build_feature_type_groups(
         out.member_counts[slug] = len(entries)
         out.notable_members[slug] = _notable(entries)
 
+    # The meta category's own stat cards. Deliberately absent from
+    # ``member_counts``: the category tier sums that map for its member total.
+    out.stats[SURFACE_FEATURES_SLUG] = FeatureTypeStats(
+        feature_count=sum(out.member_counts.values()),
+        body_count=len(body_ids),
+        type_count=len(FEATURE_TYPES) - len(empty),
+    )
+
     logger.info(
-        "Feature-type group pages: %d types (%d with no features: %s), %d features, "
-        "%d body rows past the top %d dropped from the charts",
-        len(out.stats),
+        "Feature-type group pages: %d types (%d with no features: %s), %d features "
+        "on %d bodies, %d body rows past the top %d dropped from the charts",
+        len(FEATURE_TYPES),
         len(empty),
         ", ".join(empty) if empty else "[]",
         sum(out.member_counts.values()),
+        len(body_ids),
         dropped_rows,
         TOP_BODIES,
     )

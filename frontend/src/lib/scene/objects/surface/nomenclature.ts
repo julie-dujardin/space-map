@@ -76,19 +76,18 @@ const DEFAULT_FEATURE_DIAMETER_M = 100;
 const FEATURE_LINE_H = 16;
 
 /** Feature types whose geometry isn't usefully approximated by a center+radius
- *  circle. Hidden until a dedicated vector layer can render them properly. */
+ *  circle. Hidden until a dedicated vector layer can render them properly.
+ *  Codes are IAU descriptor codes — see `FEATURE_TYPES` in the data package. */
 const NON_CIRCULAR_TYPE_CODES = new Set([
-	'CA', // catena, catenae — crater chains
-	'DO', // dorsum, dorsa — ridges
-	'FL', // flumen, flumina — channels
-	'FO', // fossa, fossae — long narrow depressions
-	'LF', // landing site flow
-	'LI', // lineae — linear features (Europa)
-	'RI', // rima, rimae — fissures
-	'RT', // rupes — scarp/cliff
-	'VA', // vallis, valles — valleys
-	'VL', // vallis lineae?
-	'CH' // chasma, chasmata — deep elongated depressions
+	'CA', // catena — crater chains
+	'CH', // chasma — deep elongated depressions
+	'DO', // dorsum — ridges
+	'FL', // fluctus — flow terrain
+	'FO', // fossa — long narrow depressions
+	'LI', // linea — elongate markings (Europa)
+	'RI', // rima — fissures
+	'RU', // rupes — scarps
+	'VA' // vallis — valleys
 ]);
 
 /** Click on a feature label — fired with the feature's id and the lat/lon

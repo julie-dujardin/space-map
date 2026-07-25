@@ -473,15 +473,17 @@
 				? m.tab_fragments()
 				: isMissionGroup
 					? m.mission_members_section()
-					: m.tab_members()
+					: cat.moons
+						? m.tab_moons()
+						: m.tab_members()
 			: m.tab_moons()
 	);
 	let hasMembers = $derived(!!notableMembers && notableMembers.length > 0);
 	// Tab only earns its place past the overview strip's capacity; ≤5 fit there.
 	// Earth's Satellites strip sends "+N more" to the group, so no in-drawer tab.
-	// The planet/moon lineups already cross-link every member, so they need neither.
+	// Planet/dwarf lineups are their own complete member list, so they need none.
 	let showMembersTab = $derived(
-		hasMembers && !satellitesGroup && memberTotal > STRIP_CAPACITY && !cat.lineup
+		hasMembers && !satellitesGroup && memberTotal > STRIP_CAPACITY && !cat.lineupCoversMembers
 	);
 
 	function seeAllMembers() {
