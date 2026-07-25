@@ -21,7 +21,6 @@ import {
 	CLASS_SLUG_PREFIX,
 	COMET_FAMILY_SLUG_PREFIX,
 	CAT_SURFACE_FEATURES,
-	CONSTELLATION_SLUG_PREFIX,
 	FEATURE_TYPE_SLUG_PREFIX,
 	smallBodyCategory
 } from '$lib/fetch/groups/registry';
@@ -74,12 +73,6 @@ function classGroup(className: string): Crumb {
 function categoryCrumb(slug: string): Crumb {
 	const label = categoryLabel(slug);
 	return { label, target: { kind: 'group', slug, name: label } };
-}
-
-/** Title-case a bare constellation slug as a last resort when the localized
- *  detail hasn't supplied a display name. */
-function prettifySlug(slug: string): string {
-	return slug.charAt(0).toUpperCase() + slug.slice(1);
 }
 
 export function parentCrumb(
@@ -186,12 +179,17 @@ export function parentCrumb(
 
 	// Earth satellite → its constellation, else its orbit-class zone.
 	if (urlType === UrlType.EarthSatellite) {
-		const ct = detail?.global?.celestrak;
-		if (ct?.constellation_slug) {
-			const name = detail?.localized?.constellation?.name ?? prettifySlug(ct.constellation_slug);
-			const slug = `${CONSTELLATION_SLUG_PREFIX}${ct.constellation_slug}`;
-			return { label: name, target: { kind: 'group', slug, name } };
+		// The export resolves the destination itself (ROCKET constellations land on
+		// their lv- page, not a const- one that doesn't exist), so never re-derive
+		// the slug from `celestrak.constellation_slug`.
+		const con = detail?.localized?.constellation;
+		if (con?.primary_type === 'group' && con.primary_id) {
+			return {
+				label: con.name,
+				target: { kind: 'group', slug: con.primary_id, name: con.name }
+			};
 		}
+		const ct = detail?.global?.celestrak;
 		if (ct) {
 			const classes = classifyEarthOrbit(ct.perigee, ct.apogee, data.i);
 			if (classes.length > 0) return classGroup(classes[0]);
