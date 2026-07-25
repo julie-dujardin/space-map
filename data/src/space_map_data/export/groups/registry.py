@@ -2,7 +2,7 @@
 
 Every group type's ``/g/`` slug carries a prefix
 (``const-``/``org-``/``site-``/``country-``/``class-``/``flag-``/``cat-``/
-``bus-``/``comet-family-``) so the same entity can appear in multiple roles
+``bus-``/``comet-family-``/``ft-``) so the same entity can appear in multiple roles
 without slug collisions and a slug's type is recognizable on sight.
 """
 
@@ -33,6 +33,10 @@ from space_map_data.constants.earth_sats.satellite_models import (
     BUS_SLUG_PREFIX,
     SATELLITE_BUSES,
 )
+from space_map_data.constants.nomenclature.feature_types import (
+    FEATURE_TYPE_SLUGS,
+    FEATURE_TYPES,
+)
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
 from space_map_data.models.object.sbdb import OrbitClass
 
@@ -60,6 +64,9 @@ class GroupType(StrEnum):
     # Synthetic per-mission page (primary probe + sibling craft), built from the
     # probe registry; carries a `primary` redirect that focuses the primary probe.
     MISSION = "mission"
+    # One page per IAU feature-type code (crater, mons, vallis, ...); members are
+    # surface features across every body, not objects.
+    FEATURE_TYPE = "feature_type"
 
 
 # Orthogonal to orbit class (an object can be both NEO and MBA). Membership is
@@ -77,6 +84,7 @@ class GroupCategory(StrEnum):
     SMALL_BODY = "small_body"
     PROBE = "probe"  # mission pages; focus redirects to the primary probe
     CATEGORY = "category"  # browse-tree node; no scene filter
+    SURFACE_FEATURE = "surface_feature"  # members are features, not objects
 
 
 __all__ = [
@@ -205,6 +213,15 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for c in CATEGORIES
     )
+    feature_types = tuple(
+        Group(
+            slug=FEATURE_TYPE_SLUGS[code],
+            type=GroupType.FEATURE_TYPE,
+            applies_to=GroupCategory.SURFACE_FEATURE,
+            wikidata_qid=ft.qid,
+        )
+        for code, ft in FEATURE_TYPES.items()
+    )
     return (
         constellations
         + launch_vehicles
@@ -216,6 +233,7 @@ def _build_groups() -> tuple[Group, ...]:
         + small_body_flags
         + earth_orbit_classes
         + categories
+        + feature_types
     )
 
 

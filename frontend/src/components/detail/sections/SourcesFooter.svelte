@@ -18,6 +18,8 @@
 		global: GlobalObjectData | null;
 		/** True for earth satellites and earth-satellite group pages — credits CelesTrak SATCAT + GCAT. */
 		earthSat?: boolean;
+		/** True for feature-type group pages — their whole content is the IAU gazetteer. */
+		nomenclature?: boolean;
 		/** Show the CC BY-SA notice when the description text is drawn from Wikipedia. */
 		wikipediaLicensed?: boolean;
 		/** Collection-page lineup draws radii/pole/mass from SPICE PCK → credit IAU WGCCRE + NAIF. */
@@ -33,6 +35,7 @@
 	let {
 		global,
 		earthSat = false,
+		nomenclature = false,
 		wikipediaLicensed = false,
 		pck = false,
 		sbdb = false,
@@ -83,7 +86,7 @@
 		}
 
 		// Surface-feature names come from the IAU gazetteer (hosted by USGS).
-		if (global?.type === 'feature' || global?.has_nomenclature)
+		if (nomenclature || global?.type === 'feature' || global?.has_nomenclature)
 			add('iau-naming', m.source_iau_naming_name(), 'https://planetarynames.wr.usgs.gov/');
 
 		if (earthSat) {

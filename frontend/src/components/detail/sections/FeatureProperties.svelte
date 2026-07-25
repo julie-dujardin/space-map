@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getContext, untrack } from 'svelte';
 	import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import { formatNumber, formatQuantity, formatUnit } from '$lib/format/quantities';
@@ -8,6 +9,11 @@
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
 	import EntityLinks from './kit/EntityLinks.svelte';
+	import { featureTypeSlug } from '$lib/fetch/groups/registry';
+	import type { AppState } from '$lib/state/app-state.svelte';
+	import { applyGroup, serializeUrl } from '$lib/state/url';
+
+	const appState = getContext<AppState | undefined>('appState');
 
 	// Dynamic lookup for `feature_type_label_<CODE>` / `feature_type_description_<CODE>`
 	// messages — see data/.../export/localization.py for how they're generated.
@@ -40,7 +46,39 @@
 		return `${formatNumber(feature.diameterM)} ${formatUnit('metre')}`;
 	});
 	let coordsText = $derived(`${formatNumber(feature.lat)}°, ${formatNumber(feature.lon)}°`);
+
+	// The type row links to that type's collection page. The slug comes from the
+	// group index (untracked so resolving it doesn't re-trigger the load).
+	let typeSlug = $state<string | undefined>(undefined);
+	$effect(() => {
+		const code = feature.typeCode;
+		untrack(() => {
+			featureTypeSlug(code).then((slug) => {
+				if (feature.typeCode === code) typeSlug = slug;
+			});
+		});
+	});
+	let typeHref = $derived(
+		typeSlug && appState ? serializeUrl(applyGroup(appState.view, typeSlug, typeLabel)) : undefined
+	);
+
+	function openType(e: MouseEvent) {
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		if (!appState || !typeSlug) return;
+		e.preventDefault();
+		appState.setGroup(typeSlug, typeLabel);
+	}
 </script>
+
+{#snippet typeText()}
+	{#if typeHref}
+		<a href={typeHref} onclick={openType} class="pointer-events-auto hover:text-foreground"
+			>{typeLabel}</a
+		>
+	{:else}
+		{typeLabel}
+	{/if}
+{/snippet}
 
 <Section title={m.surface_feature()}>
 	<Row label={m.feature_type()}>
@@ -49,14 +87,14 @@
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
 						<span class="cursor-help decoration-dotted underline underline-offset-2" {...props}>
-							{typeLabel}
+							{@render typeText()}
 						</span>
 					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>{typeDescription}</Tooltip.Content>
 			</Tooltip.Root>
 		{:else}
-			{typeLabel}
+			{@render typeText()}
 		{/if}
 	</Row>
 	<Row label={m.coordinates()} value={coordsText} />

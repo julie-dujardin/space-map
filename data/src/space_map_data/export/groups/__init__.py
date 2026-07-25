@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from space_map_data.constants.categories import SATELLITES_SLUG
 from space_map_data.export.groups.bundles import write_group_bundles
 from space_map_data.export.groups.categories import build_category_data
+from space_map_data.export.groups.feature_type import build_feature_type_groups
 from space_map_data.export.groups.launch_vehicle import build_launch_vehicle_stats
 from space_map_data.export.groups.earth_sat import (
     NOTABLE_MEMBER_COUNT,
@@ -288,6 +289,7 @@ def run_groups_tier(
             session, radii, units, wikidata_entities, orientation
         )
         earth_orbit_stats = build_earth_orbit_classes(session)
+        feature_types = build_feature_type_groups(session, wikidata_entities)
         build.membership[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.membership
         build.stats[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.satcat_stats
 
@@ -309,6 +311,7 @@ def run_groups_tier(
         category_data = build_category_data(
             session,
             all_counts,
+            feature_types.member_counts,
             small_body_stats.named_counts,
             small_body_stats.discovery_histograms,
             earth_launch_histograms,
@@ -341,12 +344,14 @@ def run_groups_tier(
     extra_member_counts.update(category_data.member_counts)
     extra_member_counts.update(split_comets.member_counts)
     extra_member_counts.update(missions.member_counts)
+    extra_member_counts.update(feature_types.member_counts)
     extra_named_counts = dict(small_body_stats.named_counts)
     extra_named_counts.update(category_data.named_counts)
     extra_notable_members = dict(small_body_stats.notable_members)
     extra_notable_members.update(category_data.notable_members)
     extra_notable_members.update(split_comets.notable_members)
     extra_notable_members.update(missions.notable_members)
+    extra_notable_members.update(feature_types.notable_members)
     extra_notable_members.update(
         _earth_zone_notable_members(earth_orbit_stats, wikidata_entities)
     )
@@ -392,6 +397,7 @@ def run_groups_tier(
         extra_groups=(*split_comets.groups, *missions.groups),
         extra_group_names=split_comets.names,
         launch_vehicle_stats=launch_vehicle_stats,
+        feature_type_stats=feature_types.stats,
         constellation_orbit_classes=constellation_orbit_classes,
         extra_constellation_counts=category_data.constellation_counts,
         displacement_metadata=displacement_metadata,

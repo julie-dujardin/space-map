@@ -31,7 +31,12 @@ from space_map_data.constants.earth_sats.organizations import (
     ORGANIZATION_SLUG_PREFIX,
 )
 from space_map_data.constants.earth_sats.satellite_models import BUS_BY_SLUG
+from space_map_data.constants.nomenclature.feature_types import (
+    FEATURE_TYPE_CODE_BY_SLUG,
+    FEATURE_TYPES,
+)
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.groups.feature_type import FeatureTypeStats
 from space_map_data.export.groups.launch_vehicle import LaunchVehicleStats
 from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.registry import (
@@ -102,6 +107,7 @@ def _build_global(
     primary_id: str | None,
     lv_stats: LaunchVehicleStats | None,
     orbit_classes: list[str] | None,
+    ft_stats: FeatureTypeStats | None,
 ) -> dict:
     data: dict = {
         "slug": group.slug,
@@ -172,6 +178,22 @@ def _build_global(
             data["variants"] = lv_stats.variants
         if lv_stats.reusable_vehicles:
             data["reusable_vehicles"] = lv_stats.reusable_vehicles
+    # Feature types: the IAU gazetteer roll-up behind an ft- page. member_count
+    # already carries the feature tally, so only the extras land here.
+    if ft_stats is not None:
+        data["body_count"] = ft_stats.body_count
+        if ft_stats.bodies:
+            data["feature_bodies"] = ft_stats.bodies
+        if ft_stats.largest:
+            data["largest_feature"] = ft_stats.largest
+        if ft_stats.first_approval:
+            data["first_approval_date"] = ft_stats.first_approval
+        if ft_stats.last_approval:
+            data["last_approval_date"] = ft_stats.last_approval
+        if ft_stats.approval_histogram:
+            data["approval_histogram"] = {
+                str(year): n for year, n in ft_stats.approval_histogram.items()
+            }
     if discovery_histogram:
         data["discovery_histogram"] = {
             str(year): n for year, n in sorted(discovery_histogram.items())
@@ -213,6 +235,20 @@ def _build_global(
     return data
 
 
+def _group_entity(group: Group, wikidata_entities: WikidataEntityCache):
+    """The group's own Wikidata entity.
+
+    Feature types are preloaded in their own tier for the nomenclature popover,
+    so a ft- page renders even before the group-QID download pass has seeded
+    ``referenced/``.
+    """
+    if group.type is GroupType.FEATURE_TYPE:
+        wd = wikidata_entities.get_feature_type(group.wikidata_qid)
+        if wd is not None:
+            return wd
+    return wikidata_entities.get_referenced(group.wikidata_qid)
+
+
 def _prettify_slug(slug: str, prefix: str) -> str:
     """Title-cased fallback label from a kebab slug ("const-tianqi" → "Tianqi")."""
     return slug.removeprefix(prefix).replace("-", " ").title()
@@ -248,6 +284,12 @@ def _fallback_group_name(group: Group) -> str | None:
         site = LAUNCH_SITE_BY_SLUG.get(group.slug.removeprefix(LAUNCH_SITE_SLUG_PREFIX))
         if site:
             return site.name
+    if group.type is GroupType.FEATURE_TYPE:
+        # Four codes have no Wikidata entry (CL, LF, LO, ST); the IAU singular
+        # is the only name they'll ever have.
+        code = FEATURE_TYPE_CODE_BY_SLUG.get(group.slug)
+        if code:
+            return FEATURE_TYPES[code].singular
     return None
 
 
@@ -264,6 +306,7 @@ def _build_localized(
     display_name: str | None = None,
     lv_stats: LaunchVehicleStats | None = None,
     constellation_counts: dict[str, int] | None = None,
+    ft_stats: FeatureTypeStats | None = None,
 ) -> dict:
     data: dict = {}
     # Categories carry a hand-set plural name (the Wikidata label is singular
@@ -277,7 +320,7 @@ def _build_localized(
     elif group.type is GroupType.SPLIT_COMET and display_name:
         data["name"] = display_name
     if group.wikidata_qid:
-        wd = wikidata_entities.get_referenced(group.wikidata_qid)
+        wd = _group_entity(group, wikidata_entities)
         if wd:
             # Orbit classes name from frontend i18n, not the Wikidata label
             # (IMB/MBA/OMB → "asteroid belt"; EL1/EL2 → bare "L1"/"L2").
@@ -287,9 +330,13 @@ def _build_localized(
             ):
                 name = wd["labels"].get(lang) or wd["labels"].get("en")
                 if name:
-                    # Wikidata labels orbit zones sentence-case ("low Earth
-                    # orbit"); the UI wants a capitalized leading letter.
-                    if group.type is GroupType.EARTH_ORBIT_CLASS:
+                    # Wikidata labels orbit zones and landforms sentence-case
+                    # ("low Earth orbit", "crater"); the UI wants a capitalized
+                    # leading letter.
+                    if group.type in (
+                        GroupType.EARTH_ORBIT_CLASS,
+                        GroupType.FEATURE_TYPE,
+                    ):
                         name = name[:1].upper() + name[1:]
                     data["name"] = name
             desc = wd["descriptions"].get(lang)
@@ -358,6 +405,17 @@ def _build_localized(
         )
         if child_groups:
             data["child_groups"] = child_groups
+    # Localized labels for the feature-type page's per-body bar chart; the
+    # global rows carry English body names.
+    if ft_stats is not None and ft_stats.body_qids:
+        body_names = {
+            object_id: label
+            for object_id, qid in ft_stats.body_qids.items()
+            if (wd := wikidata_entities.get_entity(qid))
+            and (label := wd["labels"].get(lang))
+        }
+        if body_names:
+            data["body_names"] = body_names
     if lv_stats and lv_stats.variants:
         variant_refs = _variant_refs(lv_stats.variants, lang, wikidata_entities)
         if variant_refs:
@@ -420,17 +478,18 @@ def _child_group_refs(
                 ref = resolve_entity_ref(child.wikidata_qid, lang, wikidata_entities)
                 if ref is not None and ref.name:
                     name = ref.name
+                    # Wikidata labels these sentence-case ("low Earth orbit",
+                    # "impact crater"); chips read as titles, same as the page.
                     if child.type in (
                         GroupType.ORBIT_CLASS,
                         GroupType.EARTH_ORBIT_CLASS,
+                        GroupType.FEATURE_TYPE,
                     ):
                         name = name[:1].upper() + name[1:]
-            elif child.type is GroupType.BUS:
-                # QID-less buses (7 of them) carry no Wikidata label; fall back
-                # to the first alias rather than the raw "bus-…" slug.
-                bus = BUS_BY_SLUG.get(slug.removeprefix(BUS_SLUG_PREFIX))
-                if bus is not None and bus.also_known_as:
-                    name = bus.also_known_as[0]
+            else:
+                # QID-less children (7 buses, 4 feature types) carry no Wikidata
+                # label; the curated constant beats the raw slug.
+                name = _fallback_group_name(child) or slug
         n = member_counts.get(slug, 0)
         if child_counts is not None and slug in child_counts:
             n = child_counts[slug]
@@ -631,6 +690,7 @@ def write_group_bundles(
     extra_groups: tuple[Group, ...] = (),
     extra_group_names: dict[str, str] | None = None,
     launch_vehicle_stats: dict[str, LaunchVehicleStats] | None = None,
+    feature_type_stats: dict[str, FeatureTypeStats] | None = None,
     constellation_orbit_classes: dict[str, list[str]] | None = None,
     extra_constellation_counts: dict[str, dict[str, int]] | None = None,
     displacement_metadata: dict[str, dict] | None = None,
@@ -663,11 +723,7 @@ def write_group_bundles(
             # A curated article-section extract overrides the sparse sitelink summary.
             wiki_summaries.update(load_wikipedia_sections_for_qid(group.wikidata_qid))
         extracted = _extract_group_claims(group, wikidata_entities)
-        wd = (
-            wikidata_entities.get_referenced(group.wikidata_qid)
-            if group.wikidata_qid
-            else None
-        )
+        wd = _group_entity(group, wikidata_entities) if group.wikidata_qid else None
         sitelinks_count = len(wd["sitelinks"]) if wd else 0
         images = collect_group_images(group.slug)
         stats = satcat_stats.get(group.slug)
@@ -690,6 +746,7 @@ def write_group_bundles(
         )
         moon_counts = (extra_moon_counts or {}).get(group.slug)
         lv_stats = (launch_vehicle_stats or {}).get(group.slug)
+        ft_stats = (feature_type_stats or {}).get(group.slug)
         global_by_slug[group.slug] = _build_global(
             group,
             member_counts.get(group.slug, 0),
@@ -707,6 +764,7 @@ def write_group_bundles(
             (extra_primary_ids or {}).get(group.slug),
             lv_stats,
             (constellation_orbit_classes or {}).get(group.slug),
+            ft_stats,
         )
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
         child_counts = (child_counts_by_group or {}).get(group.slug)
@@ -726,6 +784,7 @@ def write_group_bundles(
                 display_name,
                 lv_stats,
                 constellation_counts,
+                ft_stats,
             )
             if members and member_entries:
                 member_names = notable_names(
@@ -764,6 +823,10 @@ def write_group_bundles(
             "type": data["type"],
             "applies_to": data["applies_to"],
             "n": data["member_count"],
+            # Feature types only: the IAU code, so the frontend maps slug ↔ code
+            # (member search filter, feature → type link) off the index it
+            # already loads instead of duplicating the 57-entry table.
+            **({"code": code} if (code := FEATURE_TYPE_CODE_BY_SLUG.get(slug)) else {}),
         }
         for slug, data in global_by_slug.items()
     }

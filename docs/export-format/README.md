@@ -35,7 +35,7 @@ v1/
   groups/__sat_orbit_samples__.json.gz            earth-sat orbit-class scatter samples
   membership/earth.json.gz                        earth-sat group inverted index (slug → [object_id])
   nomenclature/positions/{body_id}.bin.gz         IAU surface-feature marker positions (SMNF format)
-  nomenclature/__global__/{body_id}.json.gz       lean per-body marker metadata (name, approval_date, origin, parent_feature_id)
+  nomenclature/labels/{lang}/{body_id}.txt.gz     per-body marker labels, one line per position record
   nomenclature/details/__global__/{bucket}.json.gz   feature detail bundles, hash-bucketed by `{body_id}:{feature_id}`
   nomenclature/details/{lang}/{bucket}.json.gz       localized feature details, hash-bucketed
   images/{filename}/{label}.{ext}                 thumbnail variants (label = s | m | xl); license/artist metadata embedded in EXIF

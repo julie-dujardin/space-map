@@ -20,7 +20,9 @@ import {
 	CAT_SOLAR_SYSTEM,
 	CLASS_SLUG_PREFIX,
 	COMET_FAMILY_SLUG_PREFIX,
+	CAT_SURFACE_FEATURES,
 	CONSTELLATION_SLUG_PREFIX,
+	FEATURE_TYPE_SLUG_PREFIX,
 	smallBodyCategory
 } from '$lib/fetch/groups/registry';
 import { classifyEarthOrbit, classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
@@ -84,10 +86,19 @@ export function parentCrumb(
 	focusable: Focusable,
 	ctx: ContextManager | undefined,
 	detail: ObjectDetailData | null,
-	groupGlobal: GlobalGroupData | null
+	groupGlobal: GlobalGroupData | null,
+	featureType: { slug: string; label: string } | null = null
 ): Crumb | null {
-	// A surface feature belongs to the body it sits on.
+	// A surface feature climbs to its type's collection page; its host body is
+	// one of the two cross-ref tiles instead. Falls back to the body while the
+	// group index (which resolves the type slug) is still in flight.
 	if (focusable.kind === 'feature') {
+		if (featureType) {
+			return {
+				label: featureType.label,
+				target: { kind: 'group', slug: featureType.slug, name: featureType.label }
+			};
+		}
 		const b = focusable.body.data;
 		return b.name ? { label: b.name, target: { kind: 'focus', id: b.id, name: b.name } } : null;
 	}
@@ -105,6 +116,7 @@ export function parentCrumb(
 		}
 		// A split-comet family is always a comet, regardless of orbit class.
 		if (slug.startsWith(COMET_FAMILY_SLUG_PREFIX)) return categoryCrumb(CAT_COMETS);
+		if (slug.startsWith(FEATURE_TYPE_SLUG_PREFIX)) return categoryCrumb(CAT_SURFACE_FEATURES);
 		const appliesTo = groupGlobal?.applies_to;
 		if (appliesTo === 'small_body') {
 			const cls = classNameFromSlug(slug);

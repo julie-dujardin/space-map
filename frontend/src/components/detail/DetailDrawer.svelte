@@ -14,6 +14,7 @@
 	import MoonGroupLinks from './sections/crossref/MoonGroupLinks.svelte';
 	import ZoneCategoryLinks from './sections/crossref/ZoneCategoryLinks.svelte';
 	import BodyCategoryTile from './sections/crossref/BodyCategoryTile.svelte';
+	import FeatureGroupLinks from './sections/crossref/FeatureGroupLinks.svelte';
 	import { ObjectType } from '$lib/types/objects';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -27,7 +28,7 @@
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
-	import { fetchGroupIndex, CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
+	import { fetchGroupIndex, featureTypeSlug, CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { DrawerTab } from '$lib/state/view';
 	import { type Focusable, focusableFallbackName, focusableKey } from '$lib/state/focusable';
@@ -46,7 +47,7 @@
 	import Mission from './sections/Mission.svelte';
 	import GroupProperties from './sections/GroupProperties.svelte';
 	import GroupOrbitMap from './charts/GroupOrbitMap.svelte';
-	import MoonsPerPlanetChart from './charts/MoonsPerPlanetChart.svelte';
+	import CountPerBodyChart from './charts/CountPerBodyChart.svelte';
 	import ChildGroups from './sections/ChildGroups.svelte';
 	import { categoryPlotType, classNameFromSlug, scatterZoneSlugs } from '$lib/charts/orbit-zones';
 	import FeatureProperties from './sections/FeatureProperties.svelte';
@@ -62,6 +63,9 @@
 	import ObjectLinks from './sections/ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
+	// Generated per-locale IAU type keys, looked up dynamically — see
+	// data/.../export/localization.py.
+	const messages = m as unknown as Record<string, (() => string) | undefined>;
 	import { categoryConfig } from '$lib/state/category-config';
 	import { featureDetailToObjectData, groupDetailToObjectData } from '$lib/state/detail-adapters';
 	import { LineupHero } from './charts/lineup-hero.svelte';
@@ -97,6 +101,25 @@
 	let body = $derived(focusable.kind === 'group' ? null : focusable.body);
 	let feature = $derived(focusable.kind === 'feature' ? focusable.feature : null);
 	let isFeatureMode = $derived(focusable.kind === 'feature');
+	// The focused feature's type page (`ft-<slug>`), for the breadcrumb + cross-ref
+	// tile. The slug lives in the group index, so it resolves asynchronously;
+	// untracked so writing the result doesn't re-run the lookup.
+	let featureType = $state<{ slug: string; label: string } | null>(null);
+	$effect(() => {
+		const code = feature?.typeCode;
+		if (!code) {
+			featureType = null;
+			return;
+		}
+		untrack(() => {
+			featureTypeSlug(code).then((slug) => {
+				if (feature?.typeCode !== code) return;
+				featureType = slug
+					? { slug, label: messages[`feature_type_label_${code}`]?.() ?? code }
+					: null;
+			});
+		});
+	});
 	let isGroupMode = $derived(focusable.kind === 'group');
 	let cat = $derived(categoryConfig(focusable));
 	let groupHeaderBadges = $derived.by(() => {
@@ -294,7 +317,7 @@
 		onSheetResize?.(dvh);
 	});
 
-	let crumb = $derived(parentCrumb(focusable, ctx, data, groupDetail?.global ?? null));
+	let crumb = $derived(parentCrumb(focusable, ctx, data, groupDetail?.global ?? null, featureType));
 
 	// Categories render the orbit map here; class/NEO/PHA pages get it from
 	// GroupProperties (slug-derived). Chips fold into GroupOrbitMap, so both show them.
@@ -434,6 +457,8 @@
 			? groupDetail?.global?.applies_to === 'earth_sat'
 			: data?.global?.cross_refs?.norad_cat_id != null
 	);
+	// A feature-type page is entirely IAU gazetteer content.
+	let nomenclatureCredit = $derived(groupDetail?.global?.type === 'feature_type');
 	let membersHeading = $derived(
 		isGroupMode
 			? isSplitCometGroup
@@ -692,7 +717,7 @@
 	{:else}
 		<div class="flex flex-col gap-5 p-1">
 			{#if isGroupMode && groupDetail?.global}
-				<GroupStatCards global={groupDetail.global} {showMembersTab} />
+				<GroupStatCards global={groupDetail.global} />
 			{:else if body}
 				<ObjectStats
 					global={data?.global ?? null}
@@ -709,7 +734,14 @@
 			{#if fragmentOf}
 				<FragmentOf {fragmentOf} />
 			{/if}
-			{#if isPlanetBody}
+			{#if isFeatureMode && body}
+				<FeatureGroupLinks
+					hostId={body.data.id}
+					hostName={body.data.name ?? undefined}
+					typeSlug={featureType?.slug}
+					typeLabel={featureType?.label}
+				/>
+			{:else if isPlanetBody}
 				<PlanetGroupLinks />
 			{:else if isDwarfPlanetBody}
 				<DwarfPlanetGroupLinks {orbitClass} />
@@ -773,7 +805,11 @@
 					<SolarSystemMassChart />
 				{/if}
 				{#if moonCounts && moonCounts.length > 0}
-					<MoonsPerPlanetChart entries={moonCounts} />
+					<CountPerBodyChart
+						entries={moonCounts}
+						title={m.group_moons_per_planet()}
+						tab="members"
+					/>
 				{/if}
 				{#if categoryPlot && groupDetail?.global}
 					<GroupOrbitMap global={groupDetail.global} plotOverride={categoryPlot} />
@@ -790,6 +826,7 @@
 			<SourcesFooter
 				global={data?.global ?? null}
 				earthSat={earthSatCredit}
+				nomenclature={nomenclatureCredit}
 				wikipediaLicensed={!!data?.localized?.wikipedia?.extract}
 				pck={lineup.overviewCredits.pck}
 				sbdb={lineup.overviewCredits.sbdb}

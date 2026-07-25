@@ -14,6 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.categories import (
+    SURFACE_FEATURES_SLUG,
     ASTEROIDS_SLUG,
     COMET_ORBIT_CLASSES,
     COMETS_SLUG,
@@ -422,6 +423,7 @@ def _probe_members(
 def build_category_data(
     session: Session,
     member_counts: dict[str, int],
+    feature_type_counts: dict[str, int],
     named_counts: dict[str, int],
     discovery_histograms: dict[str, dict[int, int]],
     launch_histograms: dict[str, dict[int, int]],
@@ -435,6 +437,8 @@ def build_category_data(
 
     ``member_counts`` is the flattened ``{slug: n}`` for all non-category
     groups; used to drop empty zones and rank constellations.
+    ``feature_type_counts`` is ``{ft- slug: feature count}``; it fills the
+    Surface Features browse node, whose children are the feature-type pages.
     ``discovery_histograms`` is keyed by small-body class slug and
     ``launch_histograms`` by earth orbit-class slug; both are summed over the
     classes that partition each category (orbit classes for small bodies, the
@@ -499,6 +503,11 @@ def build_category_data(
     probe_members, probes_total = _probe_members(session, radii, gms, orientation)
     moons_total, moon_counts = _moon_data(session, planet_elements)
 
+    # Most-populated type first: with 57 chips, alphabetical would bury craters.
+    feature_types = sorted(
+        (slug for slug, n in feature_type_counts.items() if n > 0),
+        key=lambda slug: (-feature_type_counts[slug], slug),
+    )
     children = {
         # Satellites is reachable under Earth (its real parent), not the root.
         SOLAR_SYSTEM_SLUG: [
@@ -508,10 +517,12 @@ def build_category_data(
             ASTEROIDS_SLUG,
             COMETS_SLUG,
             PROBES_SLUG,
+            SURFACE_FEATURES_SLUG,
         ],
         ASTEROIDS_SLUG: asteroids,
         COMETS_SLUG: comets,
         SATELLITES_SLUG: satellites,
+        SURFACE_FEATURES_SLUG: feature_types,
     }
     # Object totals, not child counts: orbit classes partition their bodies, so
     # summing is exact; flags are subsets, and satellites sum shape classes only.
@@ -541,6 +552,8 @@ def build_category_data(
         DWARF_PLANETS_SLUG: len(dwarf_members),
         MOONS_SLUG: moons_total,
         PROBES_SLUG: probes_total,
+        # Features aren't objects, so this tally stays out of the root total.
+        SURFACE_FEATURES_SLUG: sum(feature_type_counts.values()),
     }
 
     # Discovery/launch charts: sum the histograms over the classes that

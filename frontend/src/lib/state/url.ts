@@ -5,6 +5,7 @@ import {
 	CAT_SATELLITES,
 	CLASS_SLUG_PREFIX,
 	COMET_FAMILY_SLUG_PREFIX,
+	FEATURE_TYPE_SLUG_PREFIX,
 	SMALL_BODY_FLAG_SLUG_PREFIX
 } from '$lib/fetch/groups/registry';
 import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
@@ -79,6 +80,11 @@ export function groupAnchor(slug: string): { id: string; zoom: number } {
 			: { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
 	}
 	if (slug.startsWith(SMALL_BODY_FLAG_SLUG_PREFIX) || slug.startsWith(COMET_FAMILY_SLUG_PREFIX)) {
+		return { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
+	}
+	// Feature types span every body that carries them — frame the system, not
+	// one host.
+	if (slug.startsWith(FEATURE_TYPE_SLUG_PREFIX)) {
 		return { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
 	}
 	return { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM };
@@ -225,6 +231,9 @@ export function applyFeature(
 		id: focus.bodyId,
 		name: focus.featureName,
 		featureId: focus.featureId,
+		// Opening a feature from a collection page (ft-*) leaves that page —
+		// a lingering slug would keep the group route winning over the feature.
+		groupSlug: null,
 		imageIndex: null,
 		tab: null,
 		memberPage: null

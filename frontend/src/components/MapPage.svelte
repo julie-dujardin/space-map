@@ -18,7 +18,7 @@
 	import { EARTH_ID, SUN_ID } from '$lib/constants';
 	import { createAppState } from '$lib/state/app-state.svelte';
 	import { fetchBodyNomenclature, type NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
-	import type { Focusable, FocusObject } from '$lib/state/focusable';
+	import type { Focusable, FocusFeature, FocusObject } from '$lib/state/focusable';
 	// Lazy-loaded on first focus so its charts (d3-scale/d3-shape/layercake) and
 	// member lists split out of the initial map chunk.
 	let DetailDrawer = $state<typeof import('./detail/DetailDrawer.svelte').default | null>(null);
@@ -109,6 +109,24 @@
 	};
 	setContext('focusObject', focusObject);
 
+	// Feature picks from a collection page cross bodies: stream the host in and
+	// point selectedBody at it, then the resolve effect below fetches its
+	// nomenclature and frames the feature.
+	const focusFeature: FocusFeature = (bodyId, featureId, name) => {
+		void (async () => {
+			await snapClockIntoCoverage(bodyId);
+			if (!ctx.getBody(bodyId)) await ctx.ensureBody(bodyId, jdToDate(clock.jd));
+			const body = ctx.getBody(bodyId);
+			if (!body) {
+				console.warn(`[map] focusFeature: host ${bodyId} not resolvable — nothing to focus.`);
+				return;
+			}
+			selectedBody = body;
+			appState.setFeature({ bodyId, featureId, featureName: name });
+		})();
+	};
+	setContext('focusFeature', focusFeature);
+
 	// Open a /g/<slug> group view, framing its camera anchor at the default angle.
 	function openGroup(slug: string, name: string) {
 		appState.setGroup(slug, name);
@@ -168,6 +186,11 @@
 	// Feature whose camera a 3D label click already drove (a pan in place). The
 	// resolve effect skips re-driving it so the pan isn't restarted a beat later.
 	let panFeatureId: number | null = null;
+	// Orientation version the active feature was framed against. A cross-body
+	// pick frames before the host's system data (PCK orientation) has landed,
+	// which seats the feature in an unrotated body frame — the camera then aims
+	// at the wrong longitude. Bumps here re-frame it once the real pole arrives.
+	let framedOrientationVersion = -1;
 
 	const northChoices = $derived.by(() => {
 		void ctx.bodies.orientationVersion; // re-run when system data lands orientation
@@ -210,6 +233,17 @@
 		if (target) selectedBody = target;
 	});
 
+	// Re-frame the active feature when its host's orientation lands after the
+	// framing (streamed-in host: the seat was computed unrotated).
+	$effect(() => {
+		const version = ctx.bodies.orientationVersion;
+		const f = activeFeature;
+		const body = selectedBody;
+		if (!f || !body || framedOrientationVersion < 0 || version === framedOrientationVersion) return;
+		framedOrientationVersion = version;
+		scene?.focusOnFeature(body.data.id, f.featureId, f.lat, f.lon, f.diameterM, f.name, 'frame');
+	});
+
 	// Resolve `view.featureId` → `activeFeature` whenever either the URL's
 	// featureId or the currently-selected body changes. Stale URLs (feature id
 	// not in the body's nomenclature, or body has no nomenclature) get cleaned
@@ -244,6 +278,7 @@
 					if (panFeatureId === fid) {
 						panFeatureId = null;
 					} else {
+						framedOrientationVersion = ctx.bodies.orientationVersion;
 						scene?.focusOnFeature(
 							bodyId,
 							found.featureId,

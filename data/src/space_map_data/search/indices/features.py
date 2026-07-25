@@ -167,9 +167,14 @@ def build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             # Detail-tier bundles use ``{body}:{fid}`` as the key — mirrors
             # ``feature_bucket_key`` in the nomenclature writer.
             detail_key = f"{body_id}:{fid}"
-            thumb = pick_thumbnail((global_details.get(detail_key) or {}).get("images"))
+            detail_global = global_details.get(detail_key) or {}
+            thumb = pick_thumbnail(detail_global.get("images"))
             if thumb:
                 doc["thumbnail"] = thumb
+            # Prominence ranking key, shared with objects/groups — ranks a
+            # feature-type page's member list notable-first.
+            if sitelinks := detail_global.get("sitelinks_count"):
+                doc["sitelinks_count"] = sitelinks
             for lang in LANGUAGES:
                 label = labels_by_lang[lang][i]
                 if label:

@@ -76,6 +76,10 @@ export interface NotableMemberEntry {
 	/** Group slug for entries that route to a group page instead of an object —
 	 *  e.g. a featured constellation (Starlink) in Earth's Satellites strip. */
 	group?: string;
+	/** IAU feature id for entries that route to a surface feature (feature-type
+	 *  group members); `id` then holds the host body. Localized-name overrides
+	 *  key on `<id>:<feature_id>`. */
+	feature_id?: number;
 	/** Equivalent-sphere diameter (members) or mean PCK-radii diameter (moons). */
 	diameter_km?: number;
 	/** Body mass (kg) from PCK GM; major bodies only. Drives the planets mass chart. */
@@ -105,6 +109,14 @@ export interface NotableMemberEntry {
 	 *  lineup skip the fetch; absent (pre-flag bundle) means probe as before. */
 	texture?: boolean;
 	thumbnail?: PickedThumbnail;
+}
+
+/** Stable per-entry key: list keying and the localized-name/description maps
+ *  both use it. Feature entries share their host body's `id`, so they key on
+ *  the pair — mirrors `feature_member_key` in data/export/notable.py. */
+export function memberEntryKey(e: NotableMemberEntry): string {
+	if (e.feature_id != null) return `${e.id}:${e.feature_id}`;
+	return e.group ?? e.id ?? '';
 }
 
 /** One rate-stable spin span's baseline, subtracted before encoding so the

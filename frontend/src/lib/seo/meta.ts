@@ -424,7 +424,8 @@ const GROUP_PREFIXES = [
 	'comet-family-',
 	'mission-',
 	'bus-',
-	'lv-'
+	'lv-',
+	'ft-'
 ];
 
 function prettifySlug(slug: string): string {

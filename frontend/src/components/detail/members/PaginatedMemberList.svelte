@@ -2,7 +2,7 @@
 	import { getContext, untrack } from 'svelte';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-	import type { NotableMemberEntry } from '$lib/fetch/groups/details';
+	import { memberEntryKey, type NotableMemberEntry } from '$lib/fetch/objects/object-data';
 	import { pickedThumbnailUrl, type PickedThumbnail } from '$lib/fetch/objects/images';
 	import {
 		isSearchEnabled,
@@ -13,8 +13,14 @@
 		type MemberHit
 	} from '$lib/search/client';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import type { FocusObject } from '$lib/state/focusable';
-	import { applyFocus, applyGroup, serializeUrl, urlTypeFromId } from '$lib/state/url';
+	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
+	import {
+		applyFeature,
+		applyFocus,
+		applyGroup,
+		serializeUrl,
+		urlTypeFromId
+	} from '$lib/state/url';
 	import { formatQuantity } from '$lib/format/quantities';
 
 	/** A group's members (by slug) or a body's moons (by host id). */
@@ -31,6 +37,7 @@
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
+	const focusFeature = getContext<FocusFeature | undefined>('focusFeature');
 
 	const PAGE_SIZE = 30;
 	// Meili caps results at maxTotalHits (1000); never page past it.
@@ -40,10 +47,13 @@
 	const SKELETON_ROWS = [70, 55, 64];
 
 	interface Row {
-		/** Object id (focus a mesh) — or `group` instead for a constellation row. */
+		/** Object id (focus a mesh) — or `group` instead for a constellation row.
+		 *  On a feature row it holds the host body. */
 		id?: string;
 		/** Group slug; set → the row routes to /g/<slug> instead of focusing. */
 		group?: string;
+		/** IAU feature id; set → the row opens that feature on its host body. */
+		featureId?: number;
 		name: string;
 		thumbnail?: PickedThumbnail;
 		diameter_km?: number;
@@ -74,10 +84,11 @@
 		return fallback
 			.filter((e) => e.id || e.group)
 			.map((e) => {
-				const key = (e.id ?? e.group)!;
+				const key = memberEntryKey(e);
 				return {
 					id: e.id,
 					group: e.group,
+					featureId: e.feature_id,
 					name: localizedNames?.[key] ?? e.name,
 					thumbnail: e.thumbnail,
 					diameter_km: e.diameter_km,
@@ -91,6 +102,16 @@
 		const name = localizedNames?.[key] ?? localizedName(hit, locale);
 		// A constellation member routes to its group page; an object focuses its mesh.
 		if (hit.kind === 'group') return { group: hit.slug, name, thumbnail: hit.thumbnail };
+		// A feature member opens on its host body.
+		if (hit.kind === 'feature') {
+			return {
+				id: hit.body_id,
+				featureId: hit.feature_id,
+				name,
+				thumbnail: hit.thumbnail,
+				diameter_km: hit.diameter_km
+			};
+		}
 		return {
 			id: hit.id,
 			name,
@@ -191,10 +212,28 @@
 		return () => io.disconnect();
 	});
 
+	function rowKey(row: Row): string {
+		return memberEntryKey({
+			name: row.name,
+			id: row.id,
+			group: row.group,
+			feature_id: row.featureId
+		});
+	}
+
 	function rowHref(row: Row): string | undefined {
 		if (!appState) return undefined;
 		if (row.group) return serializeUrl(applyGroup(appState.view, row.group, row.name));
 		if (!row.id) return undefined;
+		if (row.featureId != null) {
+			return serializeUrl(
+				applyFeature(appState.view, {
+					bodyId: row.id,
+					featureId: row.featureId,
+					featureName: row.name
+				})
+			);
+		}
 		return serializeUrl(
 			applyFocus(appState.view, { type: urlTypeFromId(row.id), id: row.id, name: row.name })
 		);
@@ -209,6 +248,14 @@
 			appState.setGroup(row.group, row.name);
 			return;
 		}
+		// A feature row hands off to the map, which streams in the host body and
+		// frames the feature on it.
+		if (row.featureId != null && row.id) {
+			if (!focusFeature) return;
+			e.preventDefault();
+			focusFeature(row.id, row.featureId, row.name);
+			return;
+		}
 		if (!focusObject || !row.id) return;
 		e.preventDefault();
 		focusObject(row.id, row.name, { moveCamera: true });
@@ -217,7 +264,7 @@
 
 <div class="flex flex-col gap-1">
 	<ul class="flex flex-col">
-		{#each rows as row (row.id ?? row.group)}
+		{#each rows as row (rowKey(row))}
 			<li>
 				<a
 					href={rowHref(row)}

@@ -20,11 +20,12 @@ export type GroupType =
 	| 'earth_orbit_class'
 	| 'category'
 	| 'split_comet'
-	| 'mission';
+	| 'mission'
+	| 'feature_type';
 
 /** An organization's role tags, surfaced as badges on its /g/org-<slug> page. */
 export type OrganizationRole = 'operator' | 'manufacturer';
-export type GroupCategory = 'earth_sat' | 'small_body' | 'category' | 'probe';
+export type GroupCategory = 'earth_sat' | 'small_body' | 'category' | 'probe' | 'surface_feature';
 
 /** Mirrors ``CONSTELLATION_SLUG_PREFIX`` in
  *  ``data/constants/earth_sats/constellations.py``. */
@@ -42,6 +43,10 @@ export const MISSION_SLUG_PREFIX = 'mission-';
 /** Mirrors ``SMALL_BODY_FLAG_SLUG_PREFIX`` in ``data/export/groups/registry.py``. */
 export const SMALL_BODY_FLAG_SLUG_PREFIX = 'flag-';
 
+/** Mirrors ``FEATURE_TYPE_SLUG_PREFIX`` in
+ *  ``data/constants/nomenclature/feature_types.py``. */
+export const FEATURE_TYPE_SLUG_PREFIX = 'ft-';
+
 /** Mirrors ``CATEGORY_SLUG_PREFIX`` in ``data/constants/categories.py``. */
 export const CATEGORY_SLUG_PREFIX = 'cat-';
 export const CAT_SOLAR_SYSTEM = `${CATEGORY_SLUG_PREFIX}solar-system`;
@@ -52,6 +57,7 @@ export const CAT_ASTEROIDS = `${CATEGORY_SLUG_PREFIX}asteroids`;
 export const CAT_COMETS = `${CATEGORY_SLUG_PREFIX}comets`;
 export const CAT_SATELLITES = `${CATEGORY_SLUG_PREFIX}satellites`;
 export const CAT_PROBES = `${CATEGORY_SLUG_PREFIX}probes`;
+export const CAT_SURFACE_FEATURES = `${CATEGORY_SLUG_PREFIX}surface-features`;
 
 /** Plural category headers, not the singular Wikidata label. */
 const CATEGORY_NAME: Record<string, () => string> = {
@@ -62,7 +68,8 @@ const CATEGORY_NAME: Record<string, () => string> = {
 	[CAT_ASTEROIDS]: m.category_name_asteroids,
 	[CAT_COMETS]: m.category_name_comets,
 	[CAT_SATELLITES]: m.category_name_satellites,
-	[CAT_PROBES]: m.category_name_probes
+	[CAT_PROBES]: m.category_name_probes,
+	[CAT_SURFACE_FEATURES]: m.category_name_surface_features
 };
 
 /** Localized display name for a `cat-` slug; the raw slug if unknown. */
@@ -145,11 +152,27 @@ export interface GroupIndexEntry {
 	applies_to: GroupCategory;
 	/** Member count baked at export time. */
 	n: number;
+	/** Feature-type groups only: the 2-letter IAU descriptor code. */
+	code?: string;
 }
 
 export type GroupIndex = Record<string, GroupIndexEntry>;
 
 let pending: Promise<GroupIndex> | null = null;
+
+/** IAU code ↔ ft- slug, resolved from the group index so the 57-entry table
+ *  lives in one place (the export) rather than being mirrored here. */
+export async function featureTypeCode(slug: string): Promise<string | undefined> {
+	return (await fetchGroupIndex())[slug]?.code;
+}
+
+export async function featureTypeSlug(code: string): Promise<string | undefined> {
+	const index = await fetchGroupIndex();
+	for (const [slug, entry] of Object.entries(index)) {
+		if (entry.code === code) return slug;
+	}
+	return undefined;
+}
 
 export function fetchGroupIndex(): Promise<GroupIndex> {
 	if (pending) return pending;

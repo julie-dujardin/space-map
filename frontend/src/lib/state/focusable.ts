@@ -3,7 +3,7 @@
  *  what renders. */
 
 import { classNameFromSlug, FLAG_SLUG_PREFIX, orbitClassLabel } from '$lib/charts/orbit-zones';
-import { categoryLabel } from '$lib/fetch/groups/registry';
+import { categoryLabel, FEATURE_TYPE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 import type { PositionedBody } from '$lib/types/objects';
 import type { DrawerTab } from './view';
@@ -28,6 +28,11 @@ export type FocusObject = (
 	opts?: { moveCamera?: boolean; tab?: Exclude<DrawerTab, 'overview'> }
 ) => void;
 
+/** Open a surface feature on its host body, streaming the body in if the
+ *  camera isn't already in that system (a feature-type page lists features
+ *  across every body). Provided by MapPage on the `focusFeature` context. */
+export type FocusFeature = (bodyId: string, featureId: number, name: string) => void;
+
 /** Stable identity for cache/dedupe keys (detail-fetch effects, log dedupe). */
 export function focusableKey(f: Focusable): string {
 	if (f.kind === 'feature') return `feature-${f.feature.featureId}`;
@@ -51,6 +56,12 @@ export function groupSlugLabel(slug: string): string {
 	if (className != null) return orbitClassLabel(className);
 	if (slug === `${FLAG_SLUG_PREFIX}neo`) return m.neo();
 	if (slug === `${FLAG_SLUG_PREFIX}pha`) return m.pha();
+	// Feature types carry their English name in the slug — a readable stand-in
+	// until the localized bundle lands.
+	if (slug.startsWith(FEATURE_TYPE_SLUG_PREFIX)) {
+		const name = slug.slice(FEATURE_TYPE_SLUG_PREFIX.length).replace(/-/g, ' ');
+		return name.charAt(0).toUpperCase() + name.slice(1);
+	}
 	return categoryLabel(slug);
 }
 

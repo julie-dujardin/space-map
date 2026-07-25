@@ -1,10 +1,11 @@
 # Group detail files
 
 Aggregation entities behind `/g/<slug>` pages (constellations, launch vehicles,
-organizations, launch sites, countries, orbit classes, and small-body flags).
+organizations, launch sites, countries, orbit classes, small-body flags, and IAU
+surface-feature types).
 Every group type's slug carries a type prefix (`const-`, `lv-`, `org-`, `site-`,
-`bus-`, `country-`, `class-`, `flag-`, `cat-`, `comet-family-`) so slugs never
-collide across types and a slug's type is recognizable on sight. A launch
+`bus-`, `country-`, `class-`, `flag-`, `cat-`, `comet-family-`, `ft-`) so slugs
+never collide across types and a slug's type is recognizable on sight. A launch
 vehicle (`lv-<slug>`) merges a rocket's spent stages tracked in orbit (the
 former ROCKET `const-` page) with its GCAT launchlog history; `UPPER_STAGE`
 constellations stay `const-`. An organization
@@ -25,9 +26,10 @@ Small, **ungzipped** map written once. Loaded eagerly to validate
 
 ```typescript
 interface GroupIndexEntry {
-  type: GroupType;            // "constellation" | "launch_vehicle" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet" | "mission"
-  applies_to: GroupCategory;  // "earth_sat" | "small_body" | "probe" | "category"
-  n: number;                  // member count
+  type: GroupType;            // "constellation" | "launch_vehicle" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet" | "mission" | "feature_type"
+  applies_to: GroupCategory;  // "earth_sat" | "small_body" | "probe" | "category" | "surface_feature"
+  n: number;                  // member count (surface features on a feature_type group)
+  code?: string;              // feature_type groups only: the 2-letter IAU descriptor code (slug ↔ code without a duplicated table)
 }
 // File body: Record<slug, GroupIndexEntry>
 ```
@@ -45,6 +47,7 @@ interface NotableEntry {
   name: string;                     // English Wikidata label (matching object bundles), or the DB fallback name
   id?: string;                      // full Object.id; route /<type>/<id> (e.g. spkid-2000004, naif-502). Absent on group entries
   group?: string;                   // group slug; route /g/<slug> instead of an object (featured constellations in notable_satellites)
+  feature_id?: number;              // IAU feature id (feature_type groups); `id` holds the host body — route /<type>/<id>/f/<feature_id>. Label/description overrides key on "<id>:<feature_id>"
   diameter_km?: number;             // equivalent-sphere diameter (members) / mean PCK-radii diameter (moons)
   mass_kg?: number;                 // body mass from PCK GM (major bodies only — e.g. category planet/moon members)
   radii?: { a: number; b: number; c: number }; // triaxial PCK radii km, body-fixed X/Y/Z (equatorial a, polar c); major bodies, Ceres/Pluto + PCK moons
@@ -153,7 +156,34 @@ interface GlobalGroupData {
   // On the `cat-planets` / `cat-dwarf-planets` / `cat-moons` category pages
   // these are the bodies the lineup hero renders (planets in heliocentric
   // order; dwarf planets and moons by prominence).
+  // On a `feature_type` group (slug `ft-<slug>`) these are surface features
+  // (carrying `feature_id` beside their host body `id`), ranked by the
+  // feature's own Wikidata sitelink count then diameter.
   notable_members?: NotableEntry[];
+
+  // Feature-type groups (ft-<slug>, one per IAU 2-letter descriptor code) only.
+  // Computed from the IAU gazetteer over the same features the map and search
+  // index carry (matched to a body, with a position and a type code), so
+  // member_count is the feature tally. A type the IAU defines but the current
+  // gazetteer doesn't use still gets a page, with these fields absent.
+  body_count?: number;                        // Distinct bodies carrying this feature type
+  feature_bodies?: {                          // Bar-chart rows, most features first (top 12; body_count keeps the tail)
+    name: string;                             // English Object.name; per-language overrides in LocalizedGroupData.body_names
+    n: number;                                // Features of this type on that body
+    primary_type: "object";
+    primary_id: string;                       // Object.id; route /<type>/<id>
+  }[];
+  largest_feature?: {                         // Biggest example by IAU diameter; absent when none is measured
+    name: string;                             // IAU feature name
+    diameter_km: number;
+    primary_type: string;                     // host body id type ("naif")
+    primary_id: string;                       // host body id value; route /<type>/<id>/f/<secondary_id>
+    secondary_type: "feature";
+    secondary_id: string;                     // IAU feature id
+  };
+  first_approval_date?: string;               // Earliest IAU name-approval date among the features (ISO date)
+  last_approval_date?: string;                // Latest IAU name-approval date (ISO date)
+  approval_histogram?: Record<string, number>; // Approval year string → count, sorted ascending
 
   // `mission` groups only — focus redirect to the primary probe (not a filter).
   primary?: { primary_type: "object"; primary_id: string };  // "probe-<id>"
@@ -316,10 +346,11 @@ interface LocalizedGroupData {
   instance_of?: EntityRef[];
   launch_sites?: { name: string; n: number; primary_type: "group"; primary_id: string }[];   // Top sites by member count
   constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented
-  child_groups?: { name: string; n: number; primary_type: "group"; primary_id: string; role: GroupType }[]; // Child groups rendered as chips, sectioned by role: a category's zones/families/classes/constellations, an organization's satellite buses, and a constellation's buses (n = within-constellation count, not the bus's global total)
+  child_groups?: { name: string; n: number; primary_type: "group"; primary_id: string; role: GroupType }[]; // Child groups rendered as chips, sectioned by role: a category's zones/families/classes/constellations, an organization's satellite buses, and a constellation's buses (n = within-constellation count, not the bus's global total). `cat-surface-features` lists every non-empty `ft-` type, most features first; its own member_count is the feature total (features aren't objects, so it stays out of the `cat-solar-system` tally)
   variant_refs?: Record<string, EntityRef>;  // lv-<slug> only: GCAT variant name (from the global `variants` list) → its Wikipedia ref, for variants matched to a more-specific Wikidata entity than the family. The breakdown keeps the GCAT name as its label and uses this only for the per-variant link; absent for family-level / unmatched variants.
   reusable_vehicle_refs?: Record<string, EntityRef>;  // lv-<slug> only: reusable-vehicle name (from `reusable_vehicles`) → its Wikipedia ref. Shuttle orbiters resolve; Falcon cores have no article so are absent (shown as serial + count).
-  notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name
+  notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name (feature members key on "<body id>:<feature_id>")
+  body_names?: Record<string, string>;        // ft-<slug> only: `feature_bodies` row Object.id → localized body label
 }
 ```
 

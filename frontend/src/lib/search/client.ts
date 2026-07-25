@@ -5,7 +5,11 @@
 import type { Meilisearch } from 'meilisearch';
 import { env } from '$env/dynamic/public';
 import { pickedThumbnailUrl, type PickedThumbnail } from '$lib/fetch/objects/images';
-import { CLASS_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+import {
+	CLASS_SLUG_PREFIX,
+	FEATURE_TYPE_SLUG_PREFIX,
+	featureTypeCode
+} from '$lib/fetch/groups/registry';
 
 /** Pre-resolved thumbnail descriptor written by the search indexer.
  *  Already narrowed to a single emitted variant — the frontend doesn't pick
@@ -187,8 +191,9 @@ export async function search(
 }
 
 /** A group/moon member — usually an object, but an earth-sat zone also lists
- *  the constellations that call it home, so a member can be a group too. */
-export type MemberHit = ObjectHit | GroupHit;
+ *  the constellations that call it home, and a feature-type page lists surface
+ *  features, so a member can be any catalog kind. */
+export type MemberHit = ObjectHit | GroupHit | FeatureHit;
 
 /** One page of a group's members from the catalog index. */
 export interface GroupMemberPage {
@@ -222,9 +227,7 @@ async function searchMemberPage(
 		limit,
 		locales: [locale]
 	});
-	const hits = (res.hits ?? []).map((h) =>
-		(h as RawHit).kind === 'group' ? toGroupHit(h as RawHit) : toObjectHit(h as RawHit)
-	);
+	const hits = (res.hits ?? []).map((h) => toHit(h as RawHit));
 	return { hits, estimatedTotalHits: res.estimatedTotalHits ?? hits.length };
 }
 
@@ -242,12 +245,22 @@ const CATEGORY_MEMBER_FILTER: Record<string, string> = {
  *  collection, or a top-level category), ranked notable-first. Empty when search
  *  is unconfigured or the slug tags no objects (e.g. split-comet families, whose
  *  baked member lists are already complete). */
-export function searchGroupMembers(
+export async function searchGroupMembers(
 	slug: string,
 	offset: number,
 	limit: number,
 	locale: string
 ): Promise<GroupMemberPage> {
+	// Feature types tag no object — their members are the features themselves,
+	// matched on the IAU code the group index carries for the slug.
+	if (slug.startsWith(FEATURE_TYPE_SLUG_PREFIX)) {
+		const code = await featureTypeCode(slug);
+		if (!code) {
+			console.warn(`[search] No IAU code for ${slug} in the group index — no members.`);
+			return { hits: [], estimatedTotalHits: 0 };
+		}
+		return searchMemberPage(`feature.type = "${code}"`, offset, limit, locale);
+	}
 	// Earth-sat zones (class-*) also surface the constellations that call them
 	// home, interleaved with sats by the shared sitelinks_count sort. (Small-body
 	// classes share the prefix but no group points at them, so the OR is inert.)

@@ -20,6 +20,9 @@ const RENDER_HINTS: Record<string, Pick<LineupGeometry, 'surfaceFrame' | 'cloudS
  *  BODY_COLORS bodies, which defer to their texture). `null` when sizeless — it
  *  can't be drawn, which doubles as the renderable filter. */
 export function geometryFromMember(m: NotableMemberEntry & { id: string }): LineupGeometry | null {
+	// A surface feature isn't a body — its `id` is the host it sits on, so it
+	// would draw (and key) as a duplicate of that host's sphere.
+	if (m.feature_id != null) return null;
 	const geom: LineupGeometry = { radiusKm: 0 };
 	if (m.radii) {
 		const eq = Math.max(m.radii.a, m.radii.b, m.radii.c);

@@ -12,6 +12,7 @@ from typing import NamedTuple
 from sqlalchemy.orm import Session
 
 from space_map_data.export.images import (
+    collect_feature_images,
     collect_group_images,
     collect_object_images,
     pick_thumbnail,
@@ -25,11 +26,14 @@ from space_map_data.models.object.main import Object
 
 @dataclass
 class NotableObject:
-    """One statically-picked notable member: an object, a moon, or a group.
+    """One statically-picked notable member: an object, a moon, a group, or a
+    surface feature.
 
     A group member (e.g. a constellation listed in its orbit zone) sets
     ``group_slug`` and routes to ``/g/<slug>`` instead of focusing an object —
-    ``object_id`` is empty for it. ``wikidata_qid`` still drives localized labels.
+    ``object_id`` is empty for it. A feature member (on a ``ft-`` page) sets
+    ``feature_id`` and keeps its host body in ``object_id``, routing to
+    ``/b/<body>/f/<feature_id>``. ``wikidata_qid`` still drives localized labels.
     """
 
     object_id: str  # full Object.id — both the routing/focus id and image-cache key
@@ -38,6 +42,7 @@ class NotableObject:
     diameter_km: float | None
     first_obs: str | None  # discovery proxy, YYYY-MM-DD or YYYY
     group_slug: str | None = None  # set → a group member, routes to /g/<slug>
+    feature_id: int | None = None  # set → a surface feature on `object_id`
     sitelinks_count: int | None = None  # Wikidata prominence, for cross-member ranking
     mass_kg: float | None = None  # from PCK GM; major bodies only
     radii: dict | None = None  # triaxial PCK radii {a, b, c} km; major bodies only
@@ -122,16 +127,28 @@ def render_geometry(
 
 def _member_entity(member: NotableObject, wikidata_entities: WikidataEntityCache):
     """The member's Wikidata entity. Group members (constellations) are only
-    referenced from claims, not downloaded as own entities."""
+    referenced from claims, not downloaded as own entities; feature entities
+    live in their own nomenclature store."""
     if member.group_slug is not None:
         return wikidata_entities.get_referenced(member.wikidata_qid)
+    if member.feature_id is not None:
+        return wikidata_entities.get_feature_entity(member.wikidata_qid)
     return wikidata_entities.get_entity(member.wikidata_qid)
 
 
 def _member_key(member: NotableObject) -> str:
     """The routing id the frontend keys label/description overrides by
-    (``member.id ?? member.group``)."""
-    return member.group_slug or member.object_id
+    (``member.group ?? feature key ?? member.id``)."""
+    if member.group_slug is not None:
+        return member.group_slug
+    if member.feature_id is not None:
+        return feature_member_key(member.object_id, member.feature_id)
+    return member.object_id
+
+
+def feature_member_key(object_id: str, feature_id: int) -> str:
+    """Routing key for a feature member; mirrored by the frontend member list."""
+    return f"{object_id}:{feature_id}"
 
 
 def textured_object_ids(session: Session) -> set[str]:
@@ -195,6 +212,23 @@ def notable_entries(
         if member.group_slug is not None:
             entry: dict = {"name": name, "group": member.group_slug}
             thumbnail = pick_thumbnail(collect_group_images(member.group_slug))
+            if thumbnail:
+                entry["thumbnail"] = thumbnail
+            out.append(entry)
+            continue
+        # Feature members carry their host body in `id` and route to its
+        # feature URL; none of the render fields below apply to them.
+        if member.feature_id is not None:
+            entry = {
+                "name": name,
+                "id": member.object_id,
+                "feature_id": member.feature_id,
+            }
+            if member.diameter_km is not None:
+                entry["diameter_km"] = member.diameter_km
+            if member.first_obs:
+                entry["first_obs"] = member.first_obs
+            thumbnail = pick_thumbnail(collect_feature_images(member.feature_id))
             if thumbnail:
                 entry["thumbnail"] = thumbnail
             out.append(entry)

@@ -99,6 +99,26 @@ export interface GlobalGroupData {
 	/** Moons category only: moons per planet/dwarf host, ordered by heliocentric
 	 *  distance. Drives the moons-per-planet bar chart. */
 	moon_counts?: { name: string; primary_type: 'object'; primary_id: string; n: number }[];
+	/** Feature-type only: distinct bodies carrying this feature type (the chart
+	 *  rows are capped, this is the full tally). */
+	body_count?: number;
+	/** Feature-type only: features of this type per body, most first (top 12).
+	 *  Shares the ``moon_counts`` row shape — both drive CountPerBodyChart. */
+	feature_bodies?: { name: string; primary_type: 'object'; primary_id: string; n: number }[];
+	/** Feature-type only: biggest example by IAU diameter; routes to the feature. */
+	largest_feature?: {
+		name: string;
+		diameter_km: number;
+		primary_type: string;
+		primary_id: string;
+		secondary_type: 'feature';
+		secondary_id: string;
+	};
+	/** Feature-type only: earliest / latest IAU name approval (ISO date strings). */
+	first_approval_date?: string;
+	last_approval_date?: string;
+	/** Feature-type only: IAU name approvals per year, sorted ascending. */
+	approval_histogram?: Record<string, number>;
 	/** Mission groups: focus redirect to the primary probe. The camera flies
 	 *  there when the mission is opened from outside (see MapPage); members open
 	 *  it without moving the camera. */
@@ -145,6 +165,8 @@ export interface LocalizedGroupData {
 	notable_member_names?: Record<string, string>;
 	/** member Object.id → localized Wikidata short description, for the lineup hero's hover tooltip. */
 	notable_member_descriptions?: Record<string, string>;
+	/** ft- only: `feature_bodies` row Object.id → localized body label. */
+	body_names?: Record<string, string>;
 }
 
 export interface GroupDetailData {

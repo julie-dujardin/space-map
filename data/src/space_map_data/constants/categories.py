@@ -41,6 +41,7 @@ ASTEROIDS_SLUG = f"{CATEGORY_SLUG_PREFIX}asteroids"
 COMETS_SLUG = f"{CATEGORY_SLUG_PREFIX}comets"
 SATELLITES_SLUG = f"{CATEGORY_SLUG_PREFIX}satellites"
 PROBES_SLUG = f"{CATEGORY_SLUG_PREFIX}probes"
+SURFACE_FEATURES_SLUG = f"{CATEGORY_SLUG_PREFIX}surface-features"
 
 CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(SOLAR_SYSTEM_SLUG, "Solar System", "Q544"),
@@ -51,6 +52,9 @@ CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(COMETS_SLUG, "Comets", "Q3559"),
     CategorySpec(SATELLITES_SLUG, "Satellites", "Q26540"),
     CategorySpec(PROBES_SLUG, "Probes", "Q26529"),  # "space probe"
+    # Parent of the ft- feature-type pages; the QID the IAU descriptor terms
+    # hang off (`?item wdt:P361 wd:Q1463003`).
+    CategorySpec(SURFACE_FEATURES_SLUG, "Surface Features", "Q1463003"),
 )
 
 CATEGORY_BY_SLUG: dict[str, CategorySpec] = {c.slug: c for c in CATEGORIES}

@@ -4,22 +4,23 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalGroupData } from '$lib/fetch/groups/details';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import type { FocusObject } from '$lib/state/focusable';
-	import { applyFocus, applyGroup, serializeUrl } from '$lib/state/url';
+	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
+	import { applyFeature, applyFocus, applyGroup, serializeUrl } from '$lib/state/url';
 	import { UrlType } from '$lib/state/view';
 	import { formatIsoDate } from '$lib/format/date';
 	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 
 	interface Props {
 		global: GlobalGroupData | null;
-		/** Whether the members tab (with its count badge) is shown — if so the
-		 * Members card is redundant and dropped in favour of the Named card. */
-		showMembersTab?: boolean;
 	}
-	let { global, showMembersTab = false }: Props = $props();
+	let { global }: Props = $props();
+
+	// Three across is what the row fits; a fourth squeezes every value.
+	const MAX_CARDS = 3;
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
+	const focusFeature = getContext<FocusFeature | undefined>('focusFeature');
 
 	interface Stat {
 		label: string;
@@ -36,6 +37,13 @@
 		if (!focusObject) return;
 		e.preventDefault();
 		focusObject(id, name);
+	}
+
+	function openFeature(bodyId: string, featureId: number, name: string, e: MouseEvent) {
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		if (!focusFeature) return;
+		e.preventDefault();
+		focusFeature(bodyId, featureId, name);
 	}
 
 	function focusGroup(slug: string, name: string, e: MouseEvent) {
@@ -69,18 +77,20 @@
 		return best == null ? null : { year: String(best) };
 	});
 
+	// Feature types: when the IAU first approved a name of this kind.
+	let firstApproval = $derived.by<{ year: string; full?: string } | null>(() => {
+		const iso = global?.first_approval_date;
+		if (!iso) return null;
+		const year = iso.slice(0, 4);
+		if (!Number.isFinite(parseInt(year, 10))) return null;
+		return { year, full: formatIsoDate(iso) };
+	});
+
 	let stats = $derived.by<Stat[]>(() => {
 		if (!global) return [];
 		const out: Stat[] = [];
-		// The members tab already shows the count in its badge; only carry the
-		// Members card when there's no tab (sat groups, categories without one).
-		// For launch vehicles member_count is just tagged debris — misleading here.
-		if (!showMembersTab && global.type !== 'launch_vehicle')
-			out.push({
-				label: m.group_stat_members(),
-				value: formatNumber(global.member_count),
-				dot: 'bg-sky-400'
-			});
+		// No members card: the count rides the members tab's badge, and a strip
+		// short enough to have no tab is short enough to count by eye.
 		if (global.named_count != null)
 			out.push({
 				label: m.group_stat_named(),
@@ -129,6 +139,34 @@
 				onClick: (e) => focusBody(bodyId, largest.name, e)
 			});
 		}
+		if (global.body_count != null && global.body_count > 0)
+			out.push({
+				label: m.group_stat_bodies(),
+				value: formatNumber(global.body_count),
+				dot: 'bg-violet-400'
+			});
+		const largestFeature = global.largest_feature;
+		if (largestFeature && appState) {
+			const bodyId = `${largestFeature.primary_type}-${largestFeature.primary_id}`;
+			const featureId = parseInt(largestFeature.secondary_id, 10);
+			out.push({
+				label: m.group_stat_largest(),
+				value: formatQuantity({ value: largestFeature.diameter_km, unit: 'kilometre' }, true),
+				tooltip: largestFeature.name,
+				dot: 'bg-amber-400',
+				href: serializeUrl(
+					applyFeature(appState.view, { bodyId, featureId, featureName: largestFeature.name })
+				),
+				onClick: (e) => openFeature(bodyId, featureId, largestFeature.name, e)
+			});
+		}
+		if (firstApproval != null)
+			out.push({
+				label: m.group_stat_first_named(),
+				value: firstApproval.year,
+				tooltip: firstApproval.full,
+				dot: 'bg-zinc-500'
+			});
 		if (global.pha && appState) {
 			const pha = global.pha;
 			const label = m.group_stat_pha();
@@ -141,7 +179,13 @@
 				onClick: (e) => focusGroup(pha.primary_id, label, e)
 			});
 		}
-		return out;
+		if (out.length > MAX_CARDS) {
+			console.warn(
+				`[group] ${global.slug} produced ${out.length} stat cards; showing the first ${MAX_CARDS}: ` +
+					out.map((s) => s.label).join(', ')
+			);
+		}
+		return out.slice(0, MAX_CARDS);
 	});
 </script>
 

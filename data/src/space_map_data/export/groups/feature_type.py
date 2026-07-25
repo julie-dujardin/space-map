@@ -1,0 +1,193 @@
+"""IAU nomenclature stats for feature-type (``ft-``) group pages.
+
+One page per 2-letter IAU descriptor code: how many features of that kind
+exist, which bodies carry them, the largest example, and when the IAU approved
+the names. Members are surface features, so they route to
+``/b/<body>/f/<feature_id>`` rather than focusing an object.
+"""
+
+import logging
+from collections import defaultdict
+from dataclasses import dataclass, field
+
+from sqlalchemy.orm import Session
+
+from space_map_data.constants.nomenclature.feature_types import (
+    FEATURE_TYPE_SLUGS,
+    FEATURE_TYPES,
+)
+from space_map_data.export.nomenclature.writer import renderable_feature_filter
+from space_map_data.export.notable import NotableObject
+from space_map_data.export.objects.wikidata_claims import make_feature_entityref
+from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.models.feature import Feature
+from space_map_data.models.object.main import Object
+
+logger = logging.getLogger(__name__)
+
+# Chart rows per page. Craters span 50 bodies; past a dozen the bars are noise
+# and the body-count stat already carries the long tail.
+TOP_BODIES = 12
+# Members shown in the notable strip before the paginated list takes over.
+NOTABLE_FEATURES = 20
+
+
+@dataclass
+class FeatureTypeStats:
+    """Per-type roll-up consumed by the ft- group bundle."""
+
+    feature_count: int = 0
+    body_count: int = 0
+    # Bar-chart rows, most features first: {name, primary_type, primary_id, n}.
+    bodies: list[dict] = field(default_factory=list)
+    # Biggest named example, as an EntityRef + its diameter.
+    largest: dict | None = None
+    first_approval: str | None = None  # ISO date
+    last_approval: str | None = None
+    approval_histogram: dict[int, int] = field(default_factory=dict)
+    # Chart-row body id -> Wikidata QID, so the bundle can localize row labels.
+    body_qids: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class FeatureTypeGroups:
+    """Everything the group tier needs for the ft- pages."""
+
+    stats: dict[str, FeatureTypeStats] = field(default_factory=dict)
+    member_counts: dict[str, int] = field(default_factory=dict)
+    notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
+
+
+def _sitelinks(feature: Feature, wikidata_entities: WikidataEntityCache) -> int:
+    if not feature.wikidata_qid:
+        return 0
+    wd = wikidata_entities.get_feature_entity(feature.wikidata_qid)
+    return len(wd["sitelinks"]) if wd else 0
+
+
+def _notable(
+    features: list[tuple[int, Feature]],
+) -> list[NotableObject]:
+    """Top features of one type, most prominent first.
+
+    Prominence is the feature's own Wikidata sitelink count (Tycho over a
+    bigger but anonymous crater), with diameter as the tiebreaker — and as the
+    only signal for the ~44% of features with no Wikidata item.
+    """
+    ranked = sorted(
+        features, key=lambda e: (-e[0], -(e[1].diameter or 0.0), e[1].feature_id)
+    )
+    return [
+        NotableObject(
+            object_id=f.object_id or "",
+            wikidata_qid=f.wikidata_qid,
+            fallback_name=f.name,
+            diameter_km=f.diameter or None,
+            first_obs=f.approval_date.isoformat() if f.approval_date else None,
+            feature_id=f.feature_id,
+            sitelinks_count=sitelinks or None,
+        )
+        for sitelinks, f in ranked[:NOTABLE_FEATURES]
+    ]
+
+
+def build_feature_type_groups(
+    session: Session, wikidata_entities: WikidataEntityCache
+) -> FeatureTypeGroups:
+    """Stats + notable members for every ft- page, keyed by group slug."""
+    by_code: dict[str, list[tuple[int, Feature]]] = defaultdict(list)
+    unknown_codes: dict[str, int] = defaultdict(int)
+    for f in session.query(Feature).filter(*renderable_feature_filter()).all():
+        assert f.feature_type_code is not None  # SQL filter guarantees this
+        if f.feature_type_code not in FEATURE_TYPES:
+            unknown_codes[f.feature_type_code] += 1
+            continue
+        by_code[f.feature_type_code].append((_sitelinks(f, wikidata_entities), f))
+    if unknown_codes:
+        logger.warning(
+            "Skipped features with codes missing from FEATURE_TYPES: %s",
+            ", ".join(f"{c}={n}" for c, n in sorted(unknown_codes.items())),
+        )
+
+    body_ids = {f.object_id for entries in by_code.values() for _, f in entries}
+    bodies = {
+        object_id: (name, qid)
+        for object_id, name, qid in session.query(
+            Object.id, Object.name, Object.wikidata_qid
+        ).filter(Object.id.in_(body_ids))
+    }
+
+    out = FeatureTypeGroups()
+    dropped_rows = 0
+    empty: list[str] = []
+    for code in FEATURE_TYPES:
+        slug = FEATURE_TYPE_SLUGS[code]
+        entries = by_code.get(code, [])
+        if not entries:
+            # Defined by the IAU but unused in the current gazetteer; the page
+            # still exists (Wikidata description + IAU definition), just empty.
+            empty.append(code)
+            out.stats[slug] = FeatureTypeStats()
+            out.member_counts[slug] = 0
+            continue
+
+        per_body: dict[str, int] = defaultdict(int)
+        histogram: dict[int, int] = defaultdict(int)
+        approvals: list[str] = []
+        largest: Feature | None = None
+        for _, f in entries:
+            assert f.object_id is not None  # SQL filter guarantees this
+            per_body[f.object_id] += 1
+            if f.approval_date:
+                histogram[f.approval_date.year] += 1
+                approvals.append(f.approval_date.isoformat())
+            if f.diameter and (largest is None or f.diameter > (largest.diameter or 0)):
+                largest = f
+
+        ranked_bodies = sorted(per_body.items(), key=lambda kv: (-kv[1], kv[0]))
+        dropped_rows += max(0, len(ranked_bodies) - TOP_BODIES)
+        top_bodies = ranked_bodies[:TOP_BODIES]
+        largest_ref = None
+        if largest is not None:
+            assert largest.object_id is not None
+            largest_ref = make_feature_entityref(
+                largest.object_id, largest.feature_id, largest.name
+            ).to_dict()
+            largest_ref["diameter_km"] = largest.diameter
+
+        out.stats[slug] = FeatureTypeStats(
+            feature_count=len(entries),
+            body_count=len(per_body),
+            bodies=[
+                {
+                    "name": bodies[object_id][0],
+                    "primary_type": "object",
+                    "primary_id": object_id,
+                    "n": n,
+                }
+                for object_id, n in top_bodies
+            ],
+            largest=largest_ref,
+            first_approval=min(approvals) if approvals else None,
+            last_approval=max(approvals) if approvals else None,
+            approval_histogram=dict(sorted(histogram.items())),
+            body_qids={
+                object_id: qid
+                for object_id, _ in top_bodies
+                if (qid := bodies[object_id][1])
+            },
+        )
+        out.member_counts[slug] = len(entries)
+        out.notable_members[slug] = _notable(entries)
+
+    logger.info(
+        "Feature-type group pages: %d types (%d with no features: %s), %d features, "
+        "%d body rows past the top %d dropped from the charts",
+        len(out.stats),
+        len(empty),
+        ", ".join(empty) if empty else "[]",
+        sum(out.member_counts.values()),
+        dropped_rows,
+        TOP_BODIES,
+    )
+    return out

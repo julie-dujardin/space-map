@@ -17,6 +17,7 @@ description) in the frontend. Sourced via SPARQL ``?item wdt:P361 wd:Q1463003``
 entry — those keep their English-only constants in the frontend.
 """
 
+import re
 from typing import NamedTuple
 
 
@@ -210,3 +211,25 @@ FEATURE_TYPES: dict[str, FeatureType] = {
     "VI": FeatureType("Virga", "virgae", "A streak or stripe of color", "Q20743945"),
     "VS": FeatureType("Vastitas", "vastitates", "Extensive plain", "Q3555010"),
 }
+
+
+FEATURE_TYPE_SLUG_PREFIX = "ft-"
+
+
+def _slugify(singular: str) -> str:
+    """Kebab-case a singular type name ("Albedo Feature" → "albedo-feature")."""
+    return re.sub(r"[^a-z0-9]+", "-", singular.lower()).strip("-")
+
+
+# Readable over code-based ("ft-crater", not "ft-AA") — these slugs are URLs.
+FEATURE_TYPE_SLUGS: dict[str, str] = {
+    code: f"{FEATURE_TYPE_SLUG_PREFIX}{_slugify(ft.singular)}"
+    for code, ft in FEATURE_TYPES.items()
+}
+FEATURE_TYPE_CODE_BY_SLUG: dict[str, str] = {
+    slug: code for code, slug in FEATURE_TYPE_SLUGS.items()
+}
+
+assert len(FEATURE_TYPE_CODE_BY_SLUG) == len(FEATURE_TYPE_SLUGS), (
+    "Duplicate feature-type slug"
+)

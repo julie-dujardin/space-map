@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, untrack } from 'svelte';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
@@ -9,6 +9,7 @@
 	import { formatNumber } from '$lib/format/quantities';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import { fetchEarthMembership } from '$lib/fetch/groups/membership';
+	import { featureTypeCode } from '$lib/fetch/groups/registry';
 	import { SAT_ORBIT_ZONES, CLASS_SLUG_PREFIX, orbitClassLabel } from '$lib/charts/orbit-zones';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
@@ -16,6 +17,11 @@
 	import YearHistogramChart from '../charts/YearHistogramChart.svelte';
 	import GroupOrbitMap from '../charts/GroupOrbitMap.svelte';
 	import ChildGroups from './ChildGroups.svelte';
+	import CountPerBodyChart from '../charts/CountPerBodyChart.svelte';
+
+	// Generated per-locale IAU descriptor keys, looked up dynamically — see
+	// data/.../export/localization.py for how they're generated.
+	const messages = m as unknown as Record<string, (() => string) | undefined>;
 
 	const appState = getContext<AppState | undefined>('appState');
 
@@ -132,6 +138,36 @@
 		groupType === 'launch_site' ? m.group_label_country() : m.group_label_country_of_origin()
 	);
 
+	// Feature types: the IAU descriptor definition, keyed by the 2-letter code
+	// the group index carries. Untracked so the resolved code doesn't re-trigger
+	// the load. Suppressed when Wikidata's description says the same thing —
+	// both come from the type's Wikidata entity for most codes.
+	let featureTypeDefinition = $state<string | undefined>(undefined);
+	let showDefinition = $derived(
+		!!featureTypeDefinition &&
+			normalize(featureTypeDefinition) !== normalize(localized?.description)
+	);
+
+	function normalize(s: string | undefined): string {
+		return (s ?? '').trim().toLowerCase().replace(/\.$/, '');
+	}
+
+	$effect(() => {
+		const slug = global?.slug;
+		if (!slug || global?.type !== 'feature_type') {
+			featureTypeDefinition = undefined;
+			return;
+		}
+		untrack(() => {
+			featureTypeCode(slug).then((code) => {
+				if (global?.slug !== slug) return;
+				featureTypeDefinition = code ? messages[`feature_type_description_${code}`]?.() : undefined;
+			});
+		});
+	});
+
+	let featureBodies = $derived(global?.feature_bodies ?? []);
+
 	function groupHref(slug: string, name: string): string | undefined {
 		if (!appState) return undefined;
 		return serializeUrl(applyGroup(appState.view, slug, name));
@@ -146,6 +182,22 @@
 </script>
 
 <GroupOrbitMap {global} />
+
+{#if showDefinition}
+	<div class="flex flex-col gap-1">
+		<h3 class="text-sm font-medium">{m.group_iau_definition()}</h3>
+		<div class="border-border/60 border-t"></div>
+		<p class="text-muted-foreground pt-1 text-sm">{featureTypeDefinition}</p>
+	</div>
+{/if}
+
+{#if featureBodies.length > 0}
+	<CountPerBodyChart
+		entries={featureBodies}
+		title={m.group_features_per_body()}
+		names={localized?.body_names}
+	/>
+{/if}
 
 {#if launchHistogram}
 	<div class="flex flex-col gap-1">

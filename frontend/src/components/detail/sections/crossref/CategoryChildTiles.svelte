@@ -25,11 +25,12 @@
 
 {#if tiles.length > 0}
 	<div class="grid grid-cols-2 gap-2">
-		{#each tiles as c (c.primary_id)}
+		{#each tiles as c, i (c.primary_id)}
 			<GroupTile
 				slug={c.primary_id ?? ''}
 				name={childName(c)}
 				label="{formatCompactNumber(c.n)} {m.group_stat_members()}"
+				class={i === tiles.length - 1 && tiles.length % 2 === 1 ? 'col-span-2' : ''}
 			/>
 		{/each}
 	</div>

@@ -159,6 +159,15 @@ class WikidataDownloader(Downloader):
             limit=None,
             fetch_desc="quadrangles",
         )
+        # The same feature-type entities again, as group QIDs: the ft- page
+        # bundles and the Wikipedia/Commons downloaders resolve group QIDs from
+        # referenced/, not from the popover-only feature_types/ tier.
+        self._fetch_entities(
+            feature_type_qids,
+            referenced_dir,
+            limit=None,
+            fetch_desc="feature types (groups)",
+        )
         # Probe-mission group QIDs (primary_qid in the probe registry). Not an
         # object's own QID, so not fetched via the object tier — seed directly
         # so /g/mission-<slug> pages get a name, description, and sitelinks.

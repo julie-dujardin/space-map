@@ -158,6 +158,21 @@ def feature_bucket_key(object_id: str, feature_id: int) -> str:
     return f"{object_id}:{feature_id}"
 
 
+def renderable_feature_filter() -> tuple:
+    """SQL filter for features that reach the export (and so the frontend/search).
+
+    Shared with the feature-type group tier so a group's member count can't
+    drift from the set the map and search index actually carry.
+    """
+    return (
+        Feature.object_id.isnot(None),
+        Feature.center_lat.isnot(None),
+        Feature.center_lon.isnot(None),
+        Feature.feature_type_code.isnot(None),
+        Feature.feature_type_code != "",
+    )
+
+
 def build_nomenclature(session: Session) -> dict[str, list[Feature]]:
     """Group renderable features by parent body, in stable feature_id order.
 
@@ -768,6 +783,11 @@ def _build_detail_global(
         data["origin"] = _TRAILING_ORIGIN_DOT_RE.sub("", feature.origin)
     if feature.wikidata_qid:
         data["wikidata_qid"] = feature.wikidata_qid
+        # Prominence key: ranks features notable-first in search member lists
+        # (a feature-type page lists Tycho before a bigger anonymous crater).
+        wd = wikidata_entities.get_feature_entity(feature.wikidata_qid)
+        if wd and wd["sitelinks"]:
+            data["sitelinks_count"] = len(wd["sitelinks"])
     if feature.parent_feature_id is not None:
         assert feature.object_id is not None
         parent_name = name_lookup_per_body.get(feature.object_id, {}).get(
