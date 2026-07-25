@@ -125,6 +125,17 @@
 	],
 	"group_discovery_activity": "Chronologie des découvertes",
 	"group_naming_activity": "Chronologie des noms",
+	"feature_family_impact": "Impact",
+	"feature_family_volcanic": "Volcanique",
+	"feature_family_tectonic": "Tectonique",
+	"feature_family_fluvial": "Fluvial, glaciaire et éolien",
+	"feature_family_liquid": "Étendues liquides et glacées",
+	"feature_family_relief": "Terrain et relief",
+	"feature_family_albedo": "Marques d'albédo",
+	"feature_family_human": "Nommé par l'homme",
+	"group_family_summary": "{types} types · {families} familles",
+	"group_family_collapse": "Réduire",
+	"group_name_origins": "Origine des noms",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

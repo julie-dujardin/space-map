@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.categories import CATEGORY_BY_SLUG, SURFACE_FEATURES_SLUG
+from space_map_data.constants.nomenclature.families import FEATURE_FAMILY_CODES
 from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPE_CODE_BY_SLUG,
     FEATURE_TYPE_SLUG_PREFIX,
@@ -246,6 +247,71 @@ class TestMetaCategoryStats:
         out = build_feature_type_groups(session, _entities())
         assert SURFACE_FEATURES_SLUG not in out.member_counts
         assert sum(out.member_counts.values()) == 1
+
+    def test_families_cover_every_type_exactly_once(self, session: Session):
+        """The curated grouping is a partition of the 57 descriptor codes."""
+        _body(session, "naif-301", "Moon")
+        for i, code in enumerate(FEATURE_TYPES):
+            _feature(session, i, feature_type_code=code)
+        session.flush()
+
+        families = (
+            build_feature_type_groups(session, _entities())
+            .stats[SURFACE_FEATURES_SLUG]
+            .families
+        )
+        slugs = [slug for fam in families for slug in fam["types"]]
+        assert sorted(slugs) == sorted(FEATURE_TYPE_SLUGS.values())
+        assert len(slugs) == len(set(slugs))
+        # Narrative order, not by size — impact leads even before any counting.
+        assert [f["key"] for f in families] == list(FEATURE_FAMILY_CODES)
+
+    def test_family_counts_and_type_order(self, session: Session):
+        _body(session, "naif-301", "Moon")
+        _feature(session, 1)  # AA — impact
+        _feature(session, 2, feature_type_code="SF")  # impact
+        _feature(session, 3, feature_type_code="SF")
+        _feature(session, 4, feature_type_code="VA")  # fluvial
+        session.flush()
+
+        families = {
+            f["key"]: f
+            for f in build_feature_type_groups(session, _entities())
+            .stats[SURFACE_FEATURES_SLUG]
+            .families
+        }
+        assert families["impact"]["n"] == 3
+        # Most-populated type first within the family.
+        assert families["impact"]["types"][:2] == ["ft-satellite-feature", "ft-crater"]
+        assert families["fluvial"]["n"] == 1
+
+    def test_unused_types_and_families_drop_out(self, session: Session):
+        """A type with no chip can't be rendered, so it can't be listed."""
+        _body(session, "naif-301", "Moon")
+        _feature(session, 1)  # AA — impact, the only populated family
+        session.flush()
+
+        families = (
+            build_feature_type_groups(session, _entities())
+            .stats[SURFACE_FEATURES_SLUG]
+            .families
+        )
+        assert families == [{"key": "impact", "n": 1, "types": ["ft-crater"]}]
+
+    def test_naming_origins_ranked_and_capped(self, session: Session):
+        _body(session, "naif-301", "Moon")
+        _feature(session, 1, ethnicity="Greek")
+        _feature(session, 2, ethnicity="Greek")
+        _feature(session, 3, ethnicity="Latin")
+        _feature(session, 4, ethnicity=None)  # unattributed → not charted
+        session.flush()
+
+        origins = (
+            build_feature_type_groups(session, _entities())
+            .stats[SURFACE_FEATURES_SLUG]
+            .naming_origins
+        )
+        assert origins == [{"name": "Greek", "n": 2}, {"name": "Latin", "n": 1}]
 
     def test_per_type_stats_carry_no_type_count(self, session: Session):
         """Only the meta node emits ``feature_type_count`` in the bundle."""

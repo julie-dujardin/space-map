@@ -43,6 +43,14 @@ export interface ReusableVehicle {
 	last_flight?: string;
 }
 
+/** One landform family: its constants key, its feature total, and the `ft-`
+ *  slugs it holds (most-populated type first). */
+export interface FeatureFamily {
+	key: string;
+	n: number;
+	types: string[];
+}
+
 export interface GlobalGroupData {
 	slug: string;
 	type: GroupType;
@@ -109,6 +117,12 @@ export interface GlobalGroupData {
 	/** Surface Features category only: feature types with at least one feature
 	 *  (its child chips). Marks the page whose members are features. */
 	feature_type_count?: number;
+	/** Surface Features category only: the curated landform families its type
+	 *  chips group into, in the export's narrative order. */
+	feature_families?: FeatureFamily[];
+	/** Surface Features category only: features per name etymology (IAU
+	 *  `ethnicity`), most-named first, capped at the top 60. */
+	naming_origins?: { name: string; n: number }[];
 	/** Feature-type only: features of this type per body, most first (top 12).
 	 *  Shares the ``moon_counts`` row shape — both drive CountPerBodyChart. */
 	feature_bodies?: { name: string; primary_type: 'object'; primary_id: string; n: number }[];

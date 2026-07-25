@@ -144,6 +144,17 @@
 	],
 	"group_discovery_activity": "Хронология открытий",
 	"group_naming_activity": "Хронология названий",
+	"feature_family_impact": "Ударные",
+	"feature_family_volcanic": "Вулканические",
+	"feature_family_tectonic": "Тектонические",
+	"feature_family_fluvial": "Речные, ледниковые и эоловые",
+	"feature_family_liquid": "Жидкие и ледяные тела",
+	"feature_family_relief": "Рельеф",
+	"feature_family_albedo": "Альбедо-детали",
+	"feature_family_human": "Названные в честь людей",
+	"group_family_summary": "{types} типов · {families} групп",
+	"group_family_collapse": "Свернуть",
+	"group_name_origins": "Происхождение названий",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

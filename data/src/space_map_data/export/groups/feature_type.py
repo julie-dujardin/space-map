@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.categories import SURFACE_FEATURES_SLUG
+from space_map_data.constants.nomenclature.families import FEATURE_FAMILY_CODES
 from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPE_SLUGS,
     FEATURE_TYPES,
@@ -33,20 +34,56 @@ logger = logging.getLogger(__name__)
 # Chart rows per page. Craters span 50 bodies; past a dozen the bars are noise
 # and the body-count stat already carries the long tail.
 TOP_BODIES = 12
+# Etymology rows on the meta page. The IAU records 360 distinct origins; the
+# tail is one-offs, and every group page pays for this bundle.
+TOP_ORIGINS = 60
+
+
+def _families(member_counts: dict[str, int]) -> list[dict]:
+    """Landform families with their type slugs, most-populated type first.
+
+    Families keep the constants' narrative order. Unused types (and so empty
+    families) are dropped — they carry no chip in ``child_groups`` either, so
+    the frontend would have no name to render.
+    """
+    out: list[dict] = []
+    for family, codes in FEATURE_FAMILY_CODES.items():
+        slugs = sorted(
+            (
+                slug
+                for code in codes
+                if member_counts.get(slug := FEATURE_TYPE_SLUGS[code], 0) > 0
+            ),
+            key=lambda slug: (-member_counts[slug], slug),
+        )
+        if slugs:
+            out.append(
+                {
+                    "key": family,
+                    "n": sum(member_counts[slug] for slug in slugs),
+                    "types": slugs,
+                }
+            )
+    return out
 
 
 @dataclass
 class FeatureTypeStats:
     """Per-type roll-up consumed by the ft- group bundle.
 
-    The Surface Features meta category rides the same struct for its own
-    stat cards, filling only ``type_count`` / ``feature_count`` / ``body_count``.
+    The Surface Features meta category rides the same struct for its own page;
+    ``type_count`` / ``families`` / ``naming_origins`` are meta-only.
     """
 
     feature_count: int = 0
     body_count: int = 0
     # Meta node only: how many types have at least one feature (= its chips).
     type_count: int = 0
+    # Meta node only: landform families, in the constants' narrative order —
+    # [{key, n, types: [ft- slug, most features first]}].
+    families: list[dict] = field(default_factory=list)
+    # Meta node only: name-etymology tally, most-named first: [{name, n}].
+    naming_origins: list[dict] = field(default_factory=list)
     # Bar-chart rows, most features first: {name, primary_type, primary_id, n}.
     bodies: list[dict] = field(default_factory=list)
     # Biggest named example, as an EntityRef + its diameter.
@@ -73,6 +110,7 @@ def build_feature_type_groups(
     """Stats + notable members for every ft- page, keyed by group slug."""
     by_code: dict[str, list[tuple[int, Feature]]] = defaultdict(list)
     unknown_codes: dict[str, int] = defaultdict(int)
+    origins: dict[str, int] = defaultdict(int)
     for f in session.query(Feature).filter(*renderable_feature_filter()).all():
         assert f.feature_type_code is not None  # SQL filter guarantees this
         if f.feature_type_code not in FEATURE_TYPES:
@@ -81,6 +119,8 @@ def build_feature_type_groups(
         by_code[f.feature_type_code].append(
             (feature_sitelinks(f, wikidata_entities), f)
         )
+        if f.ethnicity:
+            origins[f.ethnicity] += 1
     if unknown_codes:
         logger.warning(
             "Skipped features with codes missing from FEATURE_TYPES: %s",
@@ -160,15 +200,31 @@ def build_feature_type_groups(
         out.member_counts[slug] = len(entries)
         out.notable_members[slug] = rank_notable_features(entries)
 
-    # The meta category's own stat cards + whole-gazetteer naming timeline.
-    # Deliberately absent from ``member_counts``: the category tier sums that
-    # map for its member total. No first/last approval — three cards is the row.
+    # The meta category's own page: stat cards, family grouping for its 57
+    # chips, whole-gazetteer naming timeline + etymology chart. Deliberately
+    # absent from ``member_counts``: the category tier sums that map for its
+    # member total. No first/last approval — three stat cards is the row.
+    ranked_origins = sorted(origins.items(), key=lambda kv: (-kv[1], kv[0]))
     out.stats[SURFACE_FEATURES_SLUG] = FeatureTypeStats(
         feature_count=sum(out.member_counts.values()),
         body_count=len(body_ids),
         type_count=len(FEATURE_TYPES) - len(empty),
+        families=_families(out.member_counts),
+        naming_origins=[
+            {"name": name, "n": n} for name, n in ranked_origins[:TOP_ORIGINS]
+        ],
         approval_histogram=dict(sorted(all_approvals.items())),
     )
+    if len(ranked_origins) > TOP_ORIGINS:
+        dropped = sum(n for _, n in ranked_origins[TOP_ORIGINS:])
+        logger.info(
+            "Naming origins: kept the top %d of %d (%d features in the %d-origin "
+            "tail are not charted)",
+            TOP_ORIGINS,
+            len(ranked_origins),
+            dropped,
+            len(ranked_origins) - TOP_ORIGINS,
+        )
 
     logger.info(
         "Feature-type group pages: %d types (%d with no features: %s), %d features "

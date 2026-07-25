@@ -197,9 +197,18 @@ interface GlobalGroupData {
   approval_histogram?: Record<string, number>; // Approval year string → count, sorted ascending
 
   // `cat-surface-features` (the browse node above the ft- pages) only. Its
-  // member_count is the whole gazetteer's feature tally and `body_count` above
-  // spans every type.
+  // member_count is the whole gazetteer's feature tally, `body_count` above
+  // spans every type, and `approval_histogram` sums every type's approvals.
   feature_type_count?: number;                // Types with at least one feature (= its child chips)
+  feature_families?: {                        // Curated landform families (constants/nomenclature/families.py), narrative order
+    key: string;                              // family key; the frontend localizes it (`feature_family_<key>`)
+    n: number;                                // features across the family's types
+    types: string[];                          // ft- slugs, most-populated first; unused types are omitted
+  }[];
+  naming_origins?: {                          // Name etymology (IAU `ethnicity`), most-named first, top 60 — the tail is one-offs
+    name: string;                             // IAU-supplied English label ("Germany", "Greek", …); not localized
+    n: number;
+  }[];
 
   // `mission` groups only — focus redirect to the primary probe (not a filter).
   primary?: { primary_type: "object"; primary_id: string };  // "probe-<id>"

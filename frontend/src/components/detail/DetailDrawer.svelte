@@ -49,6 +49,7 @@
 	import GroupOrbitMap from './charts/GroupOrbitMap.svelte';
 	import CountPerBodyChart from './charts/CountPerBodyChart.svelte';
 	import ChildGroups from './sections/ChildGroups.svelte';
+	import FeatureTypeFamilies from './sections/FeatureTypeFamilies.svelte';
 	import { categoryPlotType, classNameFromSlug, scatterZoneSlugs } from '$lib/charts/orbit-zones';
 	import FeatureProperties from './sections/FeatureProperties.svelte';
 	import MemberStrip, { STRIP_CAPACITY } from './members/MemberStrip.svelte';
@@ -322,6 +323,8 @@
 	// Moons category: the per-planet/dwarf bar chart replaces the notable-members
 	// strip and members list this page deliberately omits.
 	let moonCounts = $derived(cat.moons ? groupDetail?.global?.moon_counts : undefined);
+	// Surface Features only: its type chips group by landform family.
+	let featureFamilies = $derived(groupDetail?.global?.feature_families);
 	let visibleChildGroups = $derived.by(() => {
 		// Bus chips live in GroupProperties; zones live in the orbit map;
 		// constellations fold into the top-constellations bar chart when present.
@@ -861,7 +864,12 @@
 					<GroupOrbitMap global={groupDetail.global} plotOverride={categoryPlot} />
 				{/if}
 				{#if visibleChildGroups.length && !cat.solarSystem}
-					<ChildGroups childGroups={visibleChildGroups} />
+					<!-- Surface Features groups its 57 type chips by landform family. -->
+					{#if featureFamilies}
+						<FeatureTypeFamilies families={featureFamilies} childGroups={visibleChildGroups} />
+					{:else}
+						<ChildGroups childGroups={visibleChildGroups} />
+					{/if}
 				{/if}
 				<GroupProperties
 					global={groupDetail?.global ?? null}

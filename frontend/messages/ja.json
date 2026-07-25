@@ -128,6 +128,17 @@
 	],
 	"group_discovery_activity": "発見の推移",
 	"group_naming_activity": "命名の推移",
+	"feature_family_impact": "衝突",
+	"feature_family_volcanic": "火山",
+	"feature_family_tectonic": "地殻変動",
+	"feature_family_fluvial": "河川・氷河・風成",
+	"feature_family_liquid": "液体・氷の領域",
+	"feature_family_relief": "地形と起伏",
+	"feature_family_albedo": "アルベド模様",
+	"feature_family_human": "人名由来",
+	"group_family_summary": "{types} 種類 · {families} 系統",
+	"group_family_collapse": "閉じる",
+	"group_name_origins": "名前の由来",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

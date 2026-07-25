@@ -46,6 +46,8 @@
 	// IAU name approvals per year — a ft- page's own, or every type on the
 	// Surface Features meta page.
 	let approvalHistogram = $derived(global?.approval_histogram);
+	// Meta page: which cultures the IAU drew names from (its `ethnicity` field).
+	let namingOrigins = $derived(global?.naming_origins ?? []);
 	let operators = $derived(localized?.operators ?? []);
 	let manufacturers = $derived(localized?.manufacturers ?? []);
 	let countries = $derived(localized?.country_of_origin ?? []);
@@ -274,6 +276,10 @@
 			{/each}
 		</ul>
 	</div>
+{/if}
+
+{#if namingOrigins.length > 0}
+	<CountPerBodyChart entries={namingOrigins} title={m.group_name_origins()} />
 {/if}
 
 {#if approvalHistogram}

@@ -197,6 +197,10 @@ def _build_global(
         data["body_count"] = ft_stats.body_count
         if ft_stats.type_count:
             data["feature_type_count"] = ft_stats.type_count
+        if ft_stats.families:
+            data["feature_families"] = ft_stats.families
+        if ft_stats.naming_origins:
+            data["naming_origins"] = ft_stats.naming_origins
         if ft_stats.bodies:
             data["feature_bodies"] = ft_stats.bodies
         if ft_stats.largest:

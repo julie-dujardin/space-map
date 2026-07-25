@@ -151,6 +151,17 @@
 	],
 	"group_discovery_activity": "الجدول الزمني للاكتشاف",
 	"group_naming_activity": "الجدول الزمني للتسمية",
+	"feature_family_impact": "ارتطام",
+	"feature_family_volcanic": "بركاني",
+	"feature_family_tectonic": "تكتوني",
+	"feature_family_fluvial": "نهري وجليدي وريحي",
+	"feature_family_liquid": "أجسام سائلة وجليدية",
+	"feature_family_relief": "التضاريس والارتفاعات",
+	"feature_family_albedo": "علامات البياض",
+	"feature_family_human": "تسمية بشرية",
+	"group_family_summary": "{types} نوع · {families} عائلات",
+	"group_family_collapse": "عرض أقل",
+	"group_name_origins": "أصول الأسماء",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
