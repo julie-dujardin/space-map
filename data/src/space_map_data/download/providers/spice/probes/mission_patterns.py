@@ -30,12 +30,15 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "EXOMARS2016": (r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",),
     "ExoMars2016": (r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",),
     "DAWN": (r"^Dawn_ephem_\d+\.bsp$",),
-    # MPO+MMO+MTM composite during cruise (`bc_mcs_mct_*`), and post-separation
-    # MMO/MPO long-term plans (`bc_mmo_mlt_*`, `bc_mpo_mlt_*`) plus their
-    # post-2028 SLT extensions. Each MLT iteration covers a different date
-    # span (different planning epochs), so we keep all matches rather than
-    # lex-last; SPICE's last-furnish-wins handles overlap fine.
+    # `bc_mpo_fcp_*` is the flown trajectory (launch→2027, ops-updated); the
+    # mct/mlt planning series disagrees with it by hours/thousands of km at
+    # the swingbys. `fcp` is a recon token so it out-furnishes them wherever
+    # it covers; mlt/slt still supply post-2027 planning coverage. Each MLT
+    # iteration covers a different date span, so keep all matches rather
+    # than lex-last. Per-swingby `bc_mpo_fcp_*SwingbyMTP_*` files are
+    # excluded — redundant with the full-arc fcp.
     "BEPICOLOMBO": (
+        r"^bc_mpo_fcp_\d+_\d+_\d+_v\d+\.bsp$",
         r"^bc_mcs_mct_\d+_\d+_\d+_v\d+\.bsp$",
         r"^bc_mmo_mlt_\d+_\d+_\d+_v\d+\.bsp$",
         r"^bc_mpo_mlt_\d+_\d+_\d+_v\d+\.bsp$",
