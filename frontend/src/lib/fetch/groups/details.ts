@@ -110,9 +110,8 @@ export interface GlobalGroupData {
 	/** Moons category only: moons per planet/dwarf host, ordered by heliocentric
 	 *  distance. Drives the moons-per-planet bar chart. */
 	moon_counts?: { name: string; primary_type: 'object'; primary_id: string; n: number }[];
-	/** Feature-type only: distinct bodies carrying this feature type (the chart
-	 *  rows are capped, this is the full tally). Also set on the Surface
-	 *  Features category, where it counts bodies across every type. */
+	/** Feature-type only: distinct bodies carrying this feature type. Also set on
+	 *  the Surface Features category, where it counts bodies across every type. */
 	body_count?: number;
 	/** Surface Features category only: feature types with at least one feature
 	 *  (its child chips). Marks the page whose members are features. */
@@ -123,8 +122,9 @@ export interface GlobalGroupData {
 	/** Surface Features category only: features per name etymology (IAU
 	 *  `ethnicity`), most-named first, capped at the top 60. */
 	naming_origins?: { name: string; n: number }[];
-	/** Feature-type only: features of this type per body, most first (top 12).
-	 *  Shares the ``moon_counts`` row shape — both drive CountPerBodyChart. */
+	/** Feature-type only: features of this type per body, most first — every body
+	 *  it appears on, uncapped (the gazetteer covers ~50). Shares the
+	 *  ``moon_counts`` row shape; both drive CountPerBodyChart. */
 	feature_bodies?: { name: string; primary_type: 'object'; primary_id: string; n: number }[];
 	/** Feature-type only: biggest example by IAU diameter; routes to the feature. */
 	largest_feature?: {

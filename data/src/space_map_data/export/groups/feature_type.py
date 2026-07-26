@@ -31,8 +31,6 @@ from space_map_data.models.object.main import Object
 
 logger = logging.getLogger(__name__)
 
-# The chart pages at 12 rows, and the gazetteer only covers ~50 bodies, so every
-# body a type appears on is charted rather than capped to the first page.
 # Etymology rows on the meta page. The IAU records 360 distinct origins; the
 # tail is one-offs, and every group page pays for this bundle.
 TOP_ORIGINS = 60

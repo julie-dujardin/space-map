@@ -26,7 +26,7 @@ export interface CategoryConfig {
 	lineupCoversMembers: boolean;
 	/** asteroids/comets: members route through the members tab, no overview strip. */
 	smallBody: boolean;
-	/** Page cross-links its sibling collections (and Earth, for satellites). */
+	/** Page cross-links its sibling collections. */
 	crossRefs: boolean;
 }
 

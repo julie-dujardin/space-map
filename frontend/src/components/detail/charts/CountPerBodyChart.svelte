@@ -34,8 +34,8 @@
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
-	/** Rows per page. The per-body charts are capped below this and never show
-	 *  the pager; the 60 naming origins run to five pages. */
+	/** Rows per page. Craters span ~50 bodies and the naming origins run to 60,
+	 *  so both page; a planet's moons fit in one. */
 	const PAGE_SIZE = 12;
 
 	// Bars scale against the whole set, not the page, so pages stay comparable.
