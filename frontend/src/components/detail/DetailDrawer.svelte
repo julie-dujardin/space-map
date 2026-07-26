@@ -27,6 +27,9 @@
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
+	import { fetchBodyQuadrangles, type Quadrangle } from '$lib/fetch/nomenclature/quadrangles';
+	import SurfaceHero from './sections/SurfaceHero.svelte';
+	import FeatureTypeFilter from './sections/FeatureTypeFilter.svelte';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
 	import { fetchGroupIndex, featureTypeSlug, CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -512,6 +515,36 @@
 		appState.setTab('features');
 	}
 
+	// The Surface tab's hero needs a map texture; the IAU chart grid is a bonus
+	// only Mercury, Venus, Mars and the Moon carry.
+	let showSurfaceHero = $derived(
+		!isGroupMode && !isFeatureMode && hasFeatures && !!data?.global?.map_texture_available
+	);
+	let quadrangles = $state<Quadrangle[] | null>(null);
+	$effect(() => {
+		const id = isGroupMode || isFeatureMode ? null : body?.data.id;
+		if (!id || !hasFeatures) {
+			quadrangles = null;
+			return;
+		}
+		let live = true;
+		untrack(() => fetchBodyQuadrangles(id)).then((q) => {
+			if (live) quadrangles = q;
+		});
+		return () => {
+			live = false;
+		};
+	});
+	// Only honoured while the hero is up, so a stale `&quad=` can't silently
+	// filter the list on a body with no grid.
+	let selectedQuad = $derived(
+		quadrangles?.some((q) => q.code === appState.view.quad) ? appState.view.quad : null
+	);
+	let selectedQuadEntry = $derived(quadrangles?.find((q) => q.code === selectedQuad));
+	let selectedQuadCount = $derived(selectedQuadEntry?.n);
+	// Feature the list is hovering — the hero marks it on the map.
+	let hoveredFeatureId = $state<number | null>(null);
+
 	// Split-comet fragments: a strip + tab on the intact parent comet, mirroring
 	// moons. `fragment_of` (the fragment side) drives the breadcrumb + a card.
 	let notableFragments = $derived(isGroupMode ? undefined : data?.global?.fragments);
@@ -721,6 +754,20 @@
 				/>
 			</div>
 		{/if}
+	{:else if activeTab === 'features'}
+		<!-- The quadrangle map is this tab's hero: picking a chart filters the
+		     list below it. -->
+		{#if body && showSurfaceHero}
+			<div class="px-4 pt-1 pb-3">
+				<SurfaceHero
+					bodyId={body.data.id}
+					quads={quadrangles ?? []}
+					selected={selectedQuad}
+					onselect={(code) => appState.setQuad(code)}
+					markedFeatureId={hoveredFeatureId}
+				/>
+			</div>
+		{/if}
 	{:else if activeTab === 'members'}
 		<!-- The lineup is this tab's hero; its imagery/size credits ride at the
 		     foot of the panel, where the spheres render. -->
@@ -828,7 +875,12 @@
 				/>
 			{/each}
 			{#if feature}
-				<FeatureProperties {feature} detail={featureDetail} />
+				<FeatureProperties
+					{feature}
+					detail={featureDetail}
+					hostId={body?.data.id}
+					hostName={body?.data.name ?? undefined}
+				/>
 			{:else if body}
 				<Physical global={data?.global ?? null} />
 				<Orbital
@@ -929,11 +981,24 @@
 {#snippet featuresPanel()}
 	<div class="flex flex-col gap-3 p-1">
 		{#if body && hasFeatures}
+			<FeatureTypeFilter
+				bodyId={body.data.id}
+				quad={selectedQuad}
+				selected={appState.view.featureType}
+				onselect={(code) => appState.setFeatureType(code)}
+			/>
+			{@const narrowed = selectedQuad != null || appState.view.featureType != null}
 			<PaginatedMemberList
-				source={{ kind: 'features', bodyId: body.data.id }}
-				totalCount={featureTotal}
+				source={{
+					kind: 'features',
+					bodyId: body.data.id,
+					quad: selectedQuad ?? undefined,
+					featureType: appState.view.featureType ?? undefined
+				}}
+				totalCount={selectedQuad ? (selectedQuadCount ?? 0) : featureTotal}
 				localizedNames={featureNames}
-				fallback={notableFeatures ?? []}
+				fallback={narrowed ? [] : (notableFeatures ?? [])}
+				onHoverFeature={(id) => (hoveredFeatureId = id)}
 			/>
 		{/if}
 	</div>

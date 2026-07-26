@@ -19,8 +19,10 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from space_map_data.constants.nomenclature.quadrangle_grid import quadrangle_for
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.images import pick_thumbnail
+from space_map_data.export.nomenclature.quadrangles import load_quadrangles
 from space_map_data.export.nomenclature.format import (
     HEADER_SIZE,
     MAGIC,
@@ -120,6 +122,12 @@ def build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
 
     details_by_lang = _load_localized_details(export_dir)
     global_details = _load_global_details(export_dir)
+    # Quadrangle membership is geometric; `overrides` carries the few features
+    # the gazetteer files against the neighbouring cell (see quadrangles.py).
+    quad_overrides = {
+        body: data.get("overrides") or {}
+        for body, data in load_quadrangles(export_dir).items()
+    }
     body_files = sorted(positions_dir.glob("*.bin.gz"))
     logger.info("Indexing features from %d bodies", len(body_files))
 
@@ -165,6 +173,11 @@ def build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             }
             if dia_m:
                 doc["diameter_km"] = round(dia_m / 1000.0, 3)
+            quad = quad_overrides.get(body_id, {}).get(str(fid)) or quadrangle_for(
+                body_id, lat, lon
+            )
+            if quad:
+                doc["feature"]["quad"] = quad
             # Detail-tier bundles use ``{body}:{fid}`` as the key — mirrors
             # ``feature_bucket_key`` in the nomenclature writer.
             detail_key = f"{body_id}:{fid}"

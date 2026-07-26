@@ -115,7 +115,9 @@ export function parseUrl(): MapViewState | null {
 			imageIndex: parseImageIndex(page.url.searchParams.get('img')),
 			featureId: null,
 			tab: parseTab(page.url.searchParams.get('tab')),
-			memberPage: parseMemberPage(page.url.searchParams.get('mp'))
+			memberPage: parseMemberPage(page.url.searchParams.get('mp')),
+			quad: null,
+			featureType: null
 		};
 		return applyAtParam(defaults);
 	}
@@ -158,7 +160,9 @@ export function parseUrl(): MapViewState | null {
 		imageIndex,
 		featureId: null,
 		tab: parseTab(page.url.searchParams.get('tab')),
-		memberPage: parseMemberPage(page.url.searchParams.get('mp'))
+		memberPage: parseMemberPage(page.url.searchParams.get('mp')),
+		quad: page.url.searchParams.get('quad'),
+		featureType: page.url.searchParams.get('ftype')
 	};
 	return applyAtParam(defaults);
 }
@@ -189,7 +193,14 @@ function applyAtParam(defaults: MapViewState): MapViewState {
  *  hrefs and the committed state stay in lockstep. */
 export function applyFocus(
 	current: MapViewState,
-	focus: { type: string; id: string; name: string; tab?: Exclude<DrawerTab, 'overview'> }
+	focus: {
+		type: string;
+		id: string;
+		name: string;
+		tab?: Exclude<DrawerTab, 'overview'>;
+		/** Preselect a quadrangle on the Surface tab (feature → host body link). */
+		quad?: string;
+	}
 ): MapViewState {
 	return {
 		...current,
@@ -200,7 +211,9 @@ export function applyFocus(
 		// Land on a requested tab (e.g. a moon→planet link opening the Moons tab);
 		// overview otherwise. Falls back to overview client-side if the tab is absent.
 		tab: focus.tab ?? null,
-		memberPage: null
+		memberPage: null,
+		quad: focus.quad ?? null,
+		featureType: null
 	};
 }
 
@@ -218,7 +231,9 @@ export function applyGroup(current: MapViewState, slug: string, name: string): M
 		imageIndex: null,
 		featureId: null,
 		tab: null,
-		memberPage: null
+		memberPage: null,
+		quad: null,
+		featureType: null
 	};
 }
 
@@ -238,7 +253,9 @@ export function applyFeature(
 		groupSlug: null,
 		imageIndex: null,
 		tab: null,
-		memberPage: null
+		memberPage: null,
+		quad: null,
+		featureType: null
 	};
 }
 
@@ -268,8 +285,14 @@ export function serializeUrl(state: MapViewState): string {
 		typeof state.imageIndex === 'number' && Number.isInteger(state.imageIndex)
 			? `&img=${state.imageIndex}`
 			: '';
-	// `mp` is only meaningful under the paginated lists (members / features).
+	// `mp` is only meaningful under the paginated lists (members / features),
+	// `quad`/`ftype` only under the features tab's surface hero + list.
 	const tab = state.tab ? `&tab=${state.tab}` : '';
+	const surface =
+		state.tab === 'features'
+			? (state.quad ? `&quad=${encodeURIComponent(state.quad)}` : '') +
+				(state.featureType ? `&ftype=${encodeURIComponent(state.featureType)}` : '')
+			: '';
 	const paginated = state.tab === 'members' || state.tab === 'features';
 	const mp =
 		paginated &&
@@ -285,7 +308,7 @@ export function serializeUrl(state: MapViewState): string {
 			id: state.groupSlug,
 			name: state.name ? encodeURIComponent(state.name) : undefined
 		});
-		return `${path}?at=${at}${img}${tab}${mp}`;
+		return `${path}?at=${at}${img}${tab}${surface}${mp}`;
 	}
 
 	const bodyType = urlTypeFromId(state.id);
@@ -308,5 +331,5 @@ export function serializeUrl(state: MapViewState): string {
 		id: numericId,
 		name: state.name ? encodeURIComponent(state.name) : undefined
 	});
-	return `${path}?at=${at}${img}${tab}${mp}`;
+	return `${path}?at=${at}${img}${tab}${surface}${mp}`;
 }

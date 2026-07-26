@@ -33,6 +33,7 @@ export type ArrayFacet =
 	| 'moonClass'
 	| 'featureType'
 	| 'featureBody'
+	| 'featureQuad'
 	| 'groupType';
 export type BoolFacet = 'neo' | 'pha' | 'named';
 export type { RangeFacet };
@@ -64,6 +65,7 @@ function countActive(f: CatalogFilters): number {
 		(f.moonClass?.length ?? 0) +
 		(f.featureType?.length ?? 0) +
 		(f.featureBody?.length ?? 0) +
+		(f.featureQuad?.length ?? 0) +
 		(f.groupType?.length ?? 0);
 	if (f.named) n++;
 	if (f.neo) n++;

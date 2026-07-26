@@ -75,5 +75,38 @@ takes priority over Wikidata `P706` as the canonical "this feature sits on
 that one" link — `P706` is much sparser (~1%) and is folded into `inside_of`
 as supplemental metadata rather than as the authoritative parent.
 
+## Quadrangle index
+
+`nomenclature/quadrangles.json.gz` — one small file (~4 kB) covering every body
+on an IAU quadrangle grid: Mercury's 15 `H-` charts, Venus' 62 `v`, Mars' 30
+`mc`, the Moon's 144 `LAC`. It backs the body drawer's Surface tab hero, which
+draws the cells over the body's map texture and narrows the feature list to a
+selected one.
+
+```typescript
+type Quadrangles = Record<string /* body id */, {
+  quads: {
+    code: string;      // IAU quadrangle code, e.g. "mc09"
+    name: string;      // IAU chart name, else the code when no feature names it
+    n: number;         // renderable features inside it
+    lat_min: number;
+    lat_max: number;
+    lon_min: number;   // east-positive; a cell straddling the prime meridian
+    lon_span: number;  // has lon_min + lon_span > 360
+  }[];
+  overrides: Record<string /* feature_id */, string /* code */>;
+}>
+```
+
+Cell geometry is generated from the row specs in
+`constants/nomenclature/quadrangle_grid.py`, reconstructed from the gazetteer
+itself — every feature carrying a `quad_code` falls inside the derived box for
+that code, bar eleven classical Mars albedo features centred exactly on a cell
+edge. Those ride in `overrides`, where the gazetteer's own assignment wins; the
+search index applies them on top of its geometric lookup (`feature.quad`).
+
+Written by the nomenclature tier, and on its own by
+`space-map-export --only quadrangles` (additive — nothing else is touched).
+
 Feature-type collection pages (`/g/ft-<slug>`, one per 2-letter IAU descriptor
 code) are documented in [groups.md](groups.md).

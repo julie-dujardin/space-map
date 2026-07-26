@@ -32,6 +32,7 @@ const ARRAY_FACETS: [keyof CatalogFilters, string][] = [
 	['moonClass', 'mclass'],
 	['featureType', 'ftype'],
 	['featureBody', 'fbody'],
+	['featureQuad', 'fquad'],
 	['groupType', 'gtype']
 ];
 const TOKEN_TO_KEY = new Map(ARRAY_FACETS.map(([k, t]) => [t, k]));
@@ -68,6 +69,7 @@ export function searchActive(s: SearchUrlState): boolean {
 		f.moonClass?.length ||
 		f.featureType?.length ||
 		f.featureBody?.length ||
+		f.featureQuad?.length ||
 		f.groupType?.length ||
 		f.named ||
 		f.neo ||

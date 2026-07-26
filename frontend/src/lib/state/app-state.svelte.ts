@@ -84,6 +84,7 @@ export class AppState {
 		id: string;
 		name: string;
 		tab?: Exclude<DrawerTab, 'overview'>;
+		quad?: string;
 	}) {
 		this.view = applyFocus(this.view, focus);
 		this.pushNow();
@@ -109,7 +110,9 @@ export class AppState {
 			featureId: null,
 			name: '',
 			tab: null,
-			memberPage: null
+			memberPage: null,
+			quad: null,
+			featureType: null
 		};
 		this.pushNow();
 	}
@@ -128,7 +131,9 @@ export class AppState {
 			name: bodyName,
 			featureId: null,
 			tab: null,
-			memberPage: null
+			memberPage: null,
+			quad: null,
+			featureType: null
 		};
 		this.pushNow();
 	}
@@ -150,7 +155,22 @@ export class AppState {
 	setTab(tab: DrawerTab) {
 		const next = tab === 'overview' ? null : tab;
 		if (next === this.view.tab && this.view.memberPage === null) return;
-		this.view = { ...this.view, tab: next, memberPage: null };
+		this.view = { ...this.view, tab: next, memberPage: null, quad: null, featureType: null };
+		this.replaceNow();
+	}
+
+	/** Select (or clear, with null) the Surface tab's quadrangle. Resets member
+	 *  depth — the list underneath is a different set. */
+	setQuad(code: string | null) {
+		if (code === this.view.quad) return;
+		this.view = { ...this.view, quad: code, memberPage: null };
+		this.replaceNow();
+	}
+
+	/** Narrow the Surface tab's list to one IAU feature type (null = all). */
+	setFeatureType(code: string | null) {
+		if (code === this.view.featureType) return;
+		this.view = { ...this.view, featureType: code, memberPage: null };
 		this.replaceNow();
 	}
 

@@ -272,14 +272,40 @@ export async function searchGroupMembers(
 }
 
 /** A paginated slice of a body's IAU surface features, ranked notable-first —
- *  the same order the feature's own `ft-` type page lists it in. */
+ *  the same order the feature's own `ft-` type page lists it in. `quad` narrows
+ *  to one IAU quadrangle (the Surface tab's hero selection). */
 export function searchBodyFeatures(
 	bodyId: string,
 	offset: number,
 	limit: number,
-	locale: string
+	locale: string,
+	quad?: string,
+	featureType?: string
 ): Promise<GroupMemberPage> {
-	return searchMemberPage(`feature.body_id = "${bodyId}"`, offset, limit, locale);
+	return searchMemberPage(bodyFeatureFilter(bodyId, quad, featureType), offset, limit, locale);
+}
+
+function bodyFeatureFilter(bodyId: string, quad?: string, featureType?: string): string {
+	const parts = [`feature.body_id = ${quote(bodyId)}`];
+	if (quad) parts.push(`feature.quad = ${quote(quad)}`);
+	if (featureType) parts.push(`feature.type = ${quote(featureType)}`);
+	return parts.join(' AND ');
+}
+
+/** Feature counts per IAU type for one body, narrowed to a quadrangle when one
+ *  is picked — the Surface tab's type chips and their tallies. */
+export async function bodyFeatureTypeCounts(
+	bodyId: string,
+	quad?: string
+): Promise<Record<string, number>> {
+	const c = await getClient();
+	if (!c) return {};
+	const res = await c.index(INDEX).search('', {
+		filter: bodyFeatureFilter(bodyId, quad),
+		facets: ['feature.type'],
+		limit: 0
+	});
+	return ((res.facetDistribution ?? {}) as FacetDistribution)['feature.type'] ?? {};
 }
 
 /** A paginated slice of a body's moons, ranked notable-first. `parentId` is the
@@ -330,6 +356,7 @@ export interface CatalogFilters {
 	moonClass?: string[]; // object.moon_class — planetary | minor_planet
 	featureType?: string[]; // feature.type codes
 	featureBody?: string[]; // feature.body_id — the body a surface feature sits on
+	featureQuad?: string[]; // feature.quad — IAU quadrangle code, scoped to one body
 	groupType?: string[]; // group.type names (collection kinds)
 	neo?: boolean;
 	pha?: boolean;
@@ -379,6 +406,8 @@ const FACETS = [
 	'group.type',
 	'feature.type',
 	'feature.body_id'
+	// `feature.quad` is filterable but not faceted — the Surface tab's hero
+	// gets its per-cell counts from the exported quadrangle index instead.
 ];
 
 // Sortable attribute + its "natural" first direction (reversed by the toggle).
@@ -424,6 +453,8 @@ function filterClauses(f: CatalogFilters): Map<string, string> {
 	if (featureType) out.set('feature.type', featureType);
 	const featureBody = orClause('feature.body_id', f.featureBody);
 	if (featureBody) out.set('feature.body_id', featureBody);
+	const featureQuad = orClause('feature.quad', f.featureQuad);
+	if (featureQuad) out.set('feature.quad', featureQuad);
 	const groupType = orClause('group.type', f.groupType);
 	if (groupType) out.set('group.type', groupType);
 	if (f.named) out.set('object.iau_named', 'object.iau_named = true');

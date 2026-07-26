@@ -40,7 +40,9 @@ const initialView: MapViewState = {
 	featureId: null,
 	groupSlug: null,
 	tab: null,
-	memberPage: null
+	memberPage: null,
+	quad: null,
+	featureType: null
 };
 
 beforeEach(() => {

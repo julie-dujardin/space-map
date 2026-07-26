@@ -12,16 +12,20 @@
 	import { featureTypeSlug } from '$lib/fetch/groups/registry';
 	import { featureTypeDescription, featureTypeLabel } from '$lib/format/feature-type';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { applyGroup, serializeUrl } from '$lib/state/url';
+	import { applyFocus, applyGroup, serializeUrl, urlTypeFromId } from '$lib/state/url';
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 
 	const appState = getContext<AppState | undefined>('appState');
 
 	interface Props {
 		feature: NomenclatureFeature;
 		detail: FeatureDetailData | null;
+		/** Host body, so the quadrangle row can open its Surface tab. */
+		hostId?: string;
+		hostName?: string;
 	}
 
-	let { feature, detail }: Props = $props();
+	let { feature, detail, hostId, hostName }: Props = $props();
 
 	let glb = $derived(detail?.global);
 	let wd = $derived(detail?.global?.wikidata);
@@ -62,6 +66,38 @@
 		if (!appState || !typeSlug) return;
 		e.preventDefault();
 		appState.setGroup(typeSlug, typeLabel);
+	}
+
+	// The quadrangle row targets the host body's Surface tab, zoomed onto that
+	// chart. The code rides in `short_name` (see the nomenclature writer).
+	let quadTarget = $derived.by(() => {
+		const code = loc?.quadrangle?.short_name;
+		if (!code || !hostId || !appState) return undefined;
+		return {
+			code,
+			href: serializeUrl(
+				applyFocus(appState.view, {
+					type: urlTypeFromId(hostId),
+					id: hostId,
+					name: hostName ?? '',
+					tab: 'features',
+					quad: code
+				})
+			)
+		};
+	});
+
+	function openQuad(e: MouseEvent) {
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		if (!appState || !hostId || !quadTarget) return;
+		e.preventDefault();
+		appState.setFocus({
+			type: urlTypeFromId(hostId),
+			id: hostId,
+			name: hostName ?? '',
+			tab: 'features',
+			quad: quadTarget.code
+		});
 	}
 </script>
 
@@ -134,7 +170,27 @@
 	{/if}
 	{#if loc?.quadrangle}
 		<Row label={m.feature_quadrangle()}>
-			<EntityLinks entities={[loc.quadrangle]} />
+			{#if quadTarget}
+				<span class="text-muted-foreground flex min-w-0 items-center justify-end gap-1.5">
+					<a
+						href={quadTarget.href}
+						onclick={openQuad}
+						class="hover:text-foreground pointer-events-auto truncate underline"
+						>{loc.quadrangle.name}</a
+					>
+					{#if loc.quadrangle.wikipedia}
+						<a
+							href={loc.quadrangle.wikipedia}
+							target="_blank"
+							rel="noopener"
+							class="hover:text-foreground pointer-events-auto shrink-0"
+							aria-label={m.source_wikipedia_name()}><ExternalLinkIcon class="size-3" /></a
+						>
+					{/if}
+				</span>
+			{:else}
+				<EntityLinks entities={[loc.quadrangle]} />
+			{/if}
 		</Row>
 	{/if}
 	{#if loc?.inside_of?.length}

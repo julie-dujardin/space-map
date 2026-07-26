@@ -66,6 +66,11 @@ export interface MapViewState {
 	/** Pages loaded in a paginated list; null = first. Deep-linked as `&mp=` to
 	 *  restore scroll depth. Only meaningful under the members/features tabs. */
 	memberPage: number | null;
+	/** IAU quadrangle selected on the Surface tab; null = the whole body.
+	 *  Deep-linked as `&quad=` so a feature's Quadrangle row can target it. */
+	quad: string | null;
+	/** IAU feature-type code narrowing the Surface tab's list; null = all. */
+	featureType: string | null;
 }
 
 /** Default vantage angle for a body framed with no explicit camera (search, click, group). */
@@ -92,5 +97,7 @@ export const DEFAULT_VIEW: MapViewState = {
 	featureId: null,
 	groupSlug: null,
 	tab: null,
-	memberPage: null
+	memberPage: null,
+	quad: null,
+	featureType: null
 };

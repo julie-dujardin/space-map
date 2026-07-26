@@ -27,6 +27,10 @@ from space_map_data.export.groups import run_groups_tier
 from space_map_data.export.labels import write_global_labels
 from space_map_data.export.localization import write_messages
 from space_map_data.export.manual import inject_manual_objects
+from space_map_data.export.nomenclature.quadrangles import (
+    build_quadrangles,
+    write_quadrangles,
+)
 from space_map_data.export.nomenclature.writer import (
     build_feature_details,
     build_nomenclature,
@@ -1128,6 +1132,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         )
         write_nomenclature_positions(out_dir, nomenclature_by_body)
         write_nomenclature_labels(out_dir, nomenclature_by_body, wikidata_entities)
+        write_quadrangles(out_dir, build_quadrangles(session))
         # Feature details are built after object data so the unit converter has
         # already absorbed object-side `used_units`; nomenclature claims may add
         # more (km, m, ...) that the localization writer needs to see below.

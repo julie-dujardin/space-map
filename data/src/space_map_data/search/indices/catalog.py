@@ -61,6 +61,7 @@ def _catalog_settings() -> dict[str, Any]:
             "feature.body_id",
             "feature.type",
             "feature.named",
+            "feature.quad",
             "diameter_km",
         ],
         "sortableAttributes": [

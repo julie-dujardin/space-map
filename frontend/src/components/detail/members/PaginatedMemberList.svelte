@@ -28,7 +28,7 @@
 	type MemberSource =
 		| { kind: 'group'; slug: string }
 		| { kind: 'parent'; parentId: string }
-		| { kind: 'features'; bodyId: string };
+		| { kind: 'features'; bodyId: string; quad?: string; featureType?: string };
 
 	interface Props {
 		source: MemberSource;
@@ -36,8 +36,10 @@
 		localizedNames?: Record<string, string>;
 		/** Baked top members shown instantly, before/without the search backend. */
 		fallback: NotableMemberEntry[];
+		/** Feature rows report hover/focus so the surface hero can mark them. */
+		onHoverFeature?: (featureId: number | null) => void;
 	}
-	let { source, totalCount, localizedNames, fallback }: Props = $props();
+	let { source, totalCount, localizedNames, fallback, onHoverFeature }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -70,7 +72,7 @@
 		source.kind === 'group'
 			? `g:${source.slug}`
 			: source.kind === 'features'
-				? `f:${source.bodyId}`
+				? `f:${source.bodyId}:${source.quad ?? ''}:${source.featureType ?? ''}`
 				: `p:${source.parentId}`
 	);
 
@@ -81,7 +83,8 @@
 		locale: string
 	): Promise<GroupMemberPage> {
 		if (src.kind === 'group') return searchGroupMembers(src.slug, offset, limit, locale);
-		if (src.kind === 'features') return searchBodyFeatures(src.bodyId, offset, limit, locale);
+		if (src.kind === 'features')
+			return searchBodyFeatures(src.bodyId, offset, limit, locale, src.quad, src.featureType);
 		return searchChildMembers(src.parentId, offset, limit, locale);
 	}
 
@@ -279,6 +282,10 @@
 				<a
 					href={rowHref(row)}
 					onclick={(e) => focusRow(e, row)}
+					onmouseenter={() => onHoverFeature?.(row.featureId ?? null)}
+					onmouseleave={() => onHoverFeature?.(null)}
+					onfocus={() => onHoverFeature?.(row.featureId ?? null)}
+					onblur={() => onHoverFeature?.(null)}
 					class="pointer-events-auto hover:bg-muted/40 -mx-1 flex items-center gap-3 rounded-md px-1 py-2"
 				>
 					{#if row.thumbnail}
