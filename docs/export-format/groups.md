@@ -110,7 +110,7 @@ interface GlobalGroupData {
   success_count?: number;                     // Launches with a success outcome
   failure_count?: number;                     // Launches with a failure outcome
   last_launch_date?: string;                  // Latest launch date (ISO string)
-  variants?: {                                // Per-variant breakdown, most-launched first (top 25)
+  variants?: {                                // Per-variant breakdown, most-launched first (top 48, paginated)
     name: string;                             // GCAT lv_type, e.g. "Atlas V 551" — also the join key into LocalizedGroupData.variant_refs
     n: number;                                // Distinct launches of this variant
     launch_mass_t?: number;                   // lv.tsv specs, present when GCAT records them
@@ -120,7 +120,7 @@ interface GlobalGroupData {
     length_m?: number;
     diameter_m?: number;
   }[];
-  reusable_vehicles?: {                        // Top individual reusable vehicles by flights (top 10); Shuttle orbiters + Falcon cores
+  reusable_vehicles?: {                        // Top individual reusable vehicles by flights (top 40, paginated); Shuttle orbiters + Falcon cores
     name: string;                             // Vehicle id + display: orbiter name ("Discovery") or Falcon core serial ("B1067"); join key into LocalizedGroupData.reusable_vehicle_refs
     n: number;                                // Flights flown by this vehicle
     first_flight?: string;                    // ISO date of first/last flight
@@ -178,7 +178,7 @@ interface GlobalGroupData {
   // member_count is the feature tally. A type the IAU defines but the current
   // gazetteer doesn't use still gets a page, with these fields absent.
   body_count?: number;                        // Distinct bodies carrying this feature type
-  feature_bodies?: {                          // Bar-chart rows, most features first (top 12; body_count keeps the tail)
+  feature_bodies?: {                          // Bar-chart rows, most features first — every body the type appears on (paginated)
     name: string;                             // English Object.name; per-language overrides in LocalizedGroupData.body_names
     n: number;                                // Features of this type on that body
     primary_type: "object";
@@ -369,8 +369,8 @@ interface LocalizedGroupData {
   manufacturers?: EntityRef[];        // Constellation hardware primes; on a bus page, the bus's single manufacturer; link to /g/org-<slug>
   country_of_origin?: EntityRef[];    // Omitted on country pages (would be self)
   instance_of?: EntityRef[];
-  launch_sites?: { name: string; n: number; primary_type: "group"; primary_id: string }[];   // Top sites by member count
-  constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented. A ROCKET constellation has no `const-` page, so its row points at the `lv-` one instead. On `cat-debris` this is the "where the fragments came from" breakdown (breakup clouds + rocket families), counted once per object.
+  launch_sites?: { name: string; n: number; primary_type: "group"; primary_id: string }[];   // Top sites by member count (top 24, paginated)
+  constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented (top 24, or 40 on the Satellites category page; paginated). A ROCKET constellation has no `const-` page, so its row points at the `lv-` one instead. On `cat-debris` this is the "where the fragments came from" breakdown (breakup clouds + rocket families), counted once per object.
   child_groups?: { name: string; n: number; primary_type: "group"; primary_id: string; role: GroupType }[]; // Child groups rendered as chips, sectioned by role: a category's zones/families/classes/constellations, an organization's satellite buses, and a constellation's buses (n = within-constellation count, not the bus's global total). `cat-surface-features` lists every non-empty `ft-` type, most features first; its own member_count is the feature total (features aren't objects, so it stays out of the `cat-solar-system` tally)
   variant_refs?: Record<string, EntityRef>;  // lv-<slug> only: GCAT variant name (from the global `variants` list) → its Wikipedia ref, for variants matched to a more-specific Wikidata entity than the family. The breakdown keeps the GCAT name as its label and uses this only for the per-variant link; absent for family-level / unmatched variants.
   reusable_vehicle_refs?: Record<string, EntityRef>;  // lv-<slug> only: reusable-vehicle name (from `reusable_vehicles`) → its Wikipedia ref. Shuttle orbiters resolve; Falcon cores have no article so are absent (shown as serial + count).

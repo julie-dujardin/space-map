@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
-	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
-	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import * as m from '$lib/paraglide/messages.js';
 	import { formatNumber } from '$lib/format/quantities';
+	import ChartPager from './ChartPager.svelte';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
@@ -72,29 +70,7 @@
 	<div class="flex flex-col gap-1">
 		<div class="flex items-baseline justify-between gap-2">
 			<h3 class="text-sm font-medium">{title}</h3>
-			{#if pageCount > 1}
-				<div class="text-muted-foreground flex items-center gap-1 text-xs">
-					<button
-						type="button"
-						onclick={() => (page = Math.max(0, page - 1))}
-						disabled={page === 0}
-						aria-label={m.search_prev_page()}
-						class="hover:text-foreground pointer-events-auto rounded p-0.5 transition disabled:opacity-30"
-					>
-						<ChevronLeftIcon size={14} />
-					</button>
-					<span class="tabular-nums">{page + 1}/{pageCount}</span>
-					<button
-						type="button"
-						onclick={() => (page = Math.min(pageCount - 1, page + 1))}
-						disabled={page === pageCount - 1}
-						aria-label={m.search_next_page()}
-						class="hover:text-foreground pointer-events-auto rounded p-0.5 transition disabled:opacity-30"
-					>
-						<ChevronRightIcon size={14} />
-					</button>
-				</div>
-			{/if}
+			<ChartPager {page} {pageCount} onpage={(p) => (page = p)} />
 		</div>
 		<div class="border-border/60 border-t"></div>
 		<div class="mt-1 flex flex-col gap-[3px]">

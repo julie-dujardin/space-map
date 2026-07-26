@@ -38,6 +38,10 @@ BASE_LOCALE = "en"
 # All prefixes managed by this module. Generated values only fill gaps:
 # existing translations (hand-fixed or otherwise) always win, and keys no
 # longer generated for the base locale are pruned.
+#
+# A hand-written key must never start with one of these: the prune claims the
+# whole namespace, so an export would delete it. Pruned keys are logged by name
+# for that reason — a count alone hides the mistake.
 GENERATED_PREFIXES = (
     "unit_name_",
     "unit_symbol_",
@@ -366,7 +370,9 @@ def _merge_into_file(
         for k, v in existing.items()
         if k not in manual and k not in carried and k in live_keys
     }
-    pruned = len(existing) - len(manual) - len(carried) - len(kept)
+    pruned = [
+        k for k in existing if k not in manual and k not in carried and k not in kept
+    ]
 
     generated = {**carried, **fresh, **kept}
     redundant = (
@@ -383,12 +389,13 @@ def _merge_into_file(
     filled = sum(1 for k in generated if k not in existing)
     logger.info(
         "Merged %d generated keys into %s "
-        "(%d kept, %d filled, %d pruned, %d == base, %d total)",
+        "(%d kept, %d filled, %d pruned%s, %d == base, %d total)",
         len(generated),
         msg_file.name,
         len(generated) - filled,
         filled,
-        pruned,
+        len(pruned),
+        ": " + ", ".join(sorted(pruned)) if pruned else "",
         len(redundant),
         len(merged),
     )

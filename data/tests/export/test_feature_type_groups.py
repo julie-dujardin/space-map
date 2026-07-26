@@ -17,7 +17,6 @@ from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPES,
 )
 from space_map_data.export.groups.feature_type import (
-    TOP_BODIES,
     build_feature_type_groups,
 )
 from space_map_data.export.groups.registry import (
@@ -185,17 +184,17 @@ class TestBuildFeatureTypeGroups:
             "diameter_km": 93.0,
         }
 
-    def test_chart_rows_capped_with_the_tail_kept_in_body_count(self, session: Session):
-        for i in range(TOP_BODIES + 3):
+    def test_every_body_is_charted_most_features_first(self, session: Session):
+        for i in range(15):
             _body(session, f"naif-{i}", f"Body {i}")
             for j in range(i + 1):
                 _feature(session, i * 100 + j, object_id=f"naif-{i}")
         session.flush()
 
         stats = build_feature_type_groups(session, _entities()).stats["ft-crater"]
-        assert len(stats.bodies) == TOP_BODIES
-        assert stats.body_count == TOP_BODIES + 3
-        # Most features first.
+        # The chart paginates, so the tail past the first page is kept too.
+        assert len(stats.bodies) == 15
+        assert stats.body_count == 15
         assert [b["n"] for b in stats.bodies] == sorted(
             (b["n"] for b in stats.bodies), reverse=True
         )

@@ -85,11 +85,13 @@ logger = logging.getLogger(__name__)
 
 K_GLOBAL = 1000
 K_LOCALIZED = 600
-_TOP_LAUNCH_SITES = 5
-_TOP_CONSTELLATIONS = 5
+# Both lists are paginated in the frontend (8 rows a page), so these are sized
+# to a few pages of tail rather than to what fits on screen at once.
+_TOP_LAUNCH_SITES = 24
+_TOP_CONSTELLATIONS = 24
 # The Satellites category page devotes a whole section to constellations, so it
 # lists more than the per-group breakdown does.
-_CATEGORY_TOP_CONSTELLATIONS = 10
+_CATEGORY_TOP_CONSTELLATIONS = 40
 
 
 _FLAG_PHA_SLUG = f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"
@@ -530,6 +532,10 @@ def _launch_site_refs(
     wikidata_entities: WikidataEntityCache,
 ) -> list[dict]:
     """Top sites with localized ref + count; unknown codes dropped."""
+    if len(counts) > _TOP_LAUNCH_SITES:
+        logger.debug(
+            "Launch sites: charting the top %d of %d", _TOP_LAUNCH_SITES, len(counts)
+        )
     top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:_TOP_LAUNCH_SITES]
     out: list[dict] = []
     for code, n in top:
@@ -584,6 +590,8 @@ def _constellation_refs(
     launch vehicles — so they're rewritten to that slug here rather than
     pointing at a group that doesn't exist.
     """
+    if len(counts) > limit:
+        logger.debug("Constellations: charting the top %d of %d", limit, len(counts))
     top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:limit]
     out: list[dict] = []
     for slug, n in top:

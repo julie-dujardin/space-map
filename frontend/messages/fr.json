@@ -139,7 +139,7 @@
 	"feature_family_albedo": "Marques d'albédo",
 	"feature_family_human": "Nommé par l'homme",
 	"group_family_collapse": "Réduire",
-	"group_name_origins": "Origine des noms",
+	"group_naming_origins": "Origine des noms",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

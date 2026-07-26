@@ -165,7 +165,7 @@
 	"feature_family_albedo": "علامات البياض",
 	"feature_family_human": "تسمية بشرية",
 	"group_family_collapse": "عرض أقل",
-	"group_name_origins": "أصول الأسماء",
+	"group_naming_origins": "أصول الأسماء",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

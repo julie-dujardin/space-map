@@ -144,7 +144,7 @@
 	"feature_family_albedo": "Marcas de albedo",
 	"feature_family_human": "Nombrado por humanos",
 	"group_family_collapse": "Mostrar menos",
-	"group_name_origins": "Origen de los nombres",
+	"group_naming_origins": "Origen de los nombres",
 	"scatter_membership_title": "Mapa de órbitas",
 	"scatter_axis_a": "semieje mayor (UA)",
 	"scatter_axis_q": "perihelio (UA)",

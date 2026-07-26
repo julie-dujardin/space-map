@@ -28,8 +28,10 @@ from space_map_data.models.object import LaunchVehicle, Launchlog
 
 logger = logging.getLogger(__name__)
 
-_TOP_VARIANTS = 25
-_TOP_REUSABLE = 10
+# Paginated in the frontend at 8 rows a page, so these are sized to a few pages
+# of tail rather than to what fits on screen at once.
+_TOP_VARIANTS = 48
+_TOP_REUSABLE = 40
 # Spec fields copied from the LaunchVehicle row onto each variant entry.
 _VARIANT_SPECS = (
     "launch_mass_t",
@@ -156,6 +158,10 @@ def build_launch_vehicle_stats(session: Session) -> dict[str, LaunchVehicleStats
 def _reusable_entries(reusable: dict[str, dict]) -> list[dict]:
     """Top reusable vehicles by flight count, with first/last flight dates."""
     top = sorted(reusable.items(), key=lambda kv: kv[1]["n"], reverse=True)
+    if len(top) > _TOP_REUSABLE:
+        logger.debug(
+            "Reusable vehicles: charting the top %d of %d", _TOP_REUSABLE, len(top)
+        )
     out: list[dict] = []
     for name, acc in top[:_TOP_REUSABLE]:
         entry: dict = {"name": name, "n": acc["n"]}
@@ -172,6 +178,8 @@ def _variant_entries(
 ) -> list[dict]:
     """Top variants by launch count, each with its launchlog tally + lv.tsv specs."""
     top = sorted(variant_launches.items(), key=lambda kv: kv[1], reverse=True)
+    if len(top) > _TOP_VARIANTS:
+        logger.debug("Variants: charting the top %d of %d", _TOP_VARIANTS, len(top))
     out: list[dict] = []
     for name, n in top[:_TOP_VARIANTS]:
         entry: dict = {"name": name, "n": n}

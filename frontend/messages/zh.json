@@ -144,7 +144,7 @@
 	"feature_family_albedo": "反照率标记",
 	"feature_family_human": "人为命名",
 	"group_family_collapse": "收起",
-	"group_name_origins": "命名来源",
+	"group_naming_origins": "命名来源",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

@@ -142,7 +142,7 @@
 	"feature_family_albedo": "アルベド模様",
 	"feature_family_human": "人名由来",
 	"group_family_collapse": "閉じる",
-	"group_name_origins": "名前の由来",
+	"group_naming_origins": "名前の由来",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

@@ -158,7 +158,7 @@
 	"feature_family_albedo": "Альбедо-детали",
 	"feature_family_human": "Названные в честь людей",
 	"group_family_collapse": "Свернуть",
-	"group_name_origins": "Происхождение названий",
+	"group_naming_origins": "Происхождение названий",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

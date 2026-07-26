@@ -18,6 +18,7 @@
 	import GroupOrbitMap from '../charts/GroupOrbitMap.svelte';
 	import ChildGroups from './ChildGroups.svelte';
 	import CountPerBodyChart from '../charts/CountPerBodyChart.svelte';
+	import PagedBarList from '../charts/PagedBarList.svelte';
 
 	const appState = getContext<AppState | undefined>('appState');
 
@@ -33,14 +34,10 @@
 	let launchHistogram = $derived(global?.launch_histogram);
 	// Launch-vehicle variant breakdown (most-launched first), with GCAT specs.
 	let variants = $derived(global?.variants ?? []);
-	let maxVariantCount = $derived(variants.length > 0 ? Math.max(...variants.map((v) => v.n)) : 0);
 	// GCAT variant name → Wikipedia ref, for variants matched to a Wikidata entity.
 	let variantRefs = $derived(localized?.variant_refs ?? {});
 	// Top individual reusable vehicles (Shuttle orbiters / Falcon cores) by flights.
 	let reusableVehicles = $derived(global?.reusable_vehicles ?? []);
-	let maxReusableCount = $derived(
-		reusableVehicles.length > 0 ? Math.max(...reusableVehicles.map((v) => v.n)) : 0
-	);
 	let reusableRefs = $derived(localized?.reusable_vehicle_refs ?? {});
 	let discoveryHistogram = $derived(global?.discovery_histogram);
 	// IAU name approvals per year — a ft- page's own, or every type on the
@@ -59,13 +56,6 @@
 	// Hide the top-launch-sites and orbit-class breakdowns when constellations
 	// are shown — each constellation already surfaces its own, so they're redundant.
 	let showLaunchSites = $derived(launchSites.length > 0 && constellations.length === 0);
-
-	let maxSiteCount = $derived(
-		launchSites.length > 0 ? Math.max(...launchSites.map((s) => s.n)) : 0
-	);
-	let maxConstellationCount = $derived(
-		constellations.length > 0 ? Math.max(...constellations.map((c) => c.n)) : 0
-	);
 
 	// Orbit-class breakdown for the focused group: intersect the cached
 	// membership map against each class-* slug, drop zones with ≤10 % share.
@@ -197,89 +187,47 @@
 	</div>
 {/if}
 
-{#if variants.length > 0}
-	<div class="flex flex-col gap-1">
-		<div class="flex items-baseline justify-between">
-			<h3 class="text-sm font-medium">{m.group_variants()}</h3>
-			<span class="text-muted-foreground text-[10px] uppercase">{m.group_variants_launches()}</span>
-		</div>
-		<div class="border-border/60 border-t"></div>
-		<ul class="flex flex-col gap-2 pt-1 text-sm">
-			{#each variants as v (v.name)}
-				<li class="flex flex-col gap-1">
-					<div class="flex items-baseline justify-between gap-2">
-						<span class="min-w-0 truncate">
-							{#if variantRefs[v.name]?.wikipedia}
-								<a
-									href={variantRefs[v.name].wikipedia}
-									target="_blank"
-									rel="noopener"
-									class="hover:text-foreground inline-flex items-center gap-1 align-bottom underline"
-									>{v.name}<ExternalLinkIcon class="size-3 shrink-0" /></a
-								>
-							{:else}
-								{v.name}
-							{/if}
-							{#if v.leo_capacity_kg}
-								<span class="text-muted-foreground text-xs"
-									>· {m.group_variant_payload_leo({ kg: formatNumber(v.leo_capacity_kg) })}</span
-								>
-							{/if}
-						</span>
-						<span class="text-muted-foreground tabular-nums">{formatNumber(v.n)}</span>
-					</div>
-					<div class="bg-muted h-1 overflow-hidden rounded-full">
-						<div
-							class="bg-primary h-full rounded-full"
-							style:width="{maxVariantCount > 0 ? (v.n / maxVariantCount) * 100 : 0}%"
-						></div>
-					</div>
-				</li>
-			{/each}
-		</ul>
-	</div>
-{/if}
+{#snippet wikipediaLabel(name: string, ref: EntityRef | undefined)}
+	{#if ref?.wikipedia}
+		<a
+			href={ref.wikipedia}
+			target="_blank"
+			rel="noopener"
+			class="hover:text-foreground inline-flex items-center gap-1 align-bottom underline"
+			>{name}<ExternalLinkIcon class="size-3 shrink-0" /></a
+		>
+	{:else}
+		{name}
+	{/if}
+{/snippet}
 
-{#if reusableVehicles.length > 0}
-	<div class="flex flex-col gap-1">
-		<div class="flex items-baseline justify-between">
-			<h3 class="text-sm font-medium">{m.group_reusable_vehicles()}</h3>
-			<span class="text-muted-foreground text-[10px] uppercase">{m.group_reusable_flights()}</span>
-		</div>
-		<div class="border-border/60 border-t"></div>
-		<ul class="flex flex-col gap-2 pt-1 text-sm">
-			{#each reusableVehicles as v (v.name)}
-				<li class="flex flex-col gap-1">
-					<div class="flex items-baseline justify-between gap-2">
-						<span class="min-w-0 truncate">
-							{#if reusableRefs[v.name]?.wikipedia}
-								<a
-									href={reusableRefs[v.name].wikipedia}
-									target="_blank"
-									rel="noopener"
-									class="hover:text-foreground inline-flex items-center gap-1 align-bottom underline"
-									>{v.name}<ExternalLinkIcon class="size-3 shrink-0" /></a
-								>
-							{:else}
-								{v.name}
-							{/if}
-						</span>
-						<span class="text-muted-foreground tabular-nums">{formatNumber(v.n)}</span>
-					</div>
-					<div class="bg-muted h-1 overflow-hidden rounded-full">
-						<div
-							class="bg-primary h-full rounded-full"
-							style:width="{maxReusableCount > 0 ? (v.n / maxReusableCount) * 100 : 0}%"
-						></div>
-					</div>
-				</li>
-			{/each}
-		</ul>
-	</div>
-{/if}
+<PagedBarList entries={variants} title={m.group_variants()} unit={m.group_variants_launches()}>
+	{#snippet label(v)}
+		<span class="min-w-0 truncate">
+			{@render wikipediaLabel(v.name, variantRefs[v.name])}
+			{#if v.leo_capacity_kg}
+				<span class="text-muted-foreground text-xs"
+					>· {m.group_variant_payload_leo({ kg: formatNumber(v.leo_capacity_kg) })}</span
+				>
+			{/if}
+		</span>
+	{/snippet}
+</PagedBarList>
+
+<PagedBarList
+	entries={reusableVehicles}
+	title={m.group_reusable_vehicles()}
+	unit={m.group_reusable_flights()}
+>
+	{#snippet label(v)}
+		<span class="min-w-0 truncate">
+			{@render wikipediaLabel(v.name, reusableRefs[v.name])}
+		</span>
+	{/snippet}
+</PagedBarList>
 
 {#if namingOrigins.length > 0}
-	<CountPerBodyChart entries={namingOrigins} title={m.group_name_origins()} />
+	<CountPerBodyChart entries={namingOrigins} title={m.group_naming_origins()} />
 {/if}
 
 {#if approvalHistogram}
@@ -342,90 +290,53 @@
 	</div>
 {/if}
 
+<!-- Launch sites and constellations link the same way: to the group page when
+     the row is one of ours, else out to Wikipedia. -->
+{#snippet groupOrWikipediaLabel(e: {
+	name: string;
+	primary_type?: string;
+	primary_id?: string;
+	wikipedia?: string;
+})}
+	{#if appState && e.primary_type === 'group' && e.primary_id}
+		{@const slug = e.primary_id}
+		{@const name = e.name}
+		<a
+			href={groupHref(slug, name)}
+			onclick={(ev) => handleGroupClick(ev, slug, name)}
+			class="pointer-events-auto hover:text-foreground inline-flex min-w-0 items-center gap-1 truncate underline"
+			><span class="truncate">{e.name}</span></a
+		>
+	{:else if e.wikipedia}
+		<a
+			href={e.wikipedia}
+			target="_blank"
+			rel="noopener"
+			class="pointer-events-auto hover:text-foreground truncate underline">{e.name}</a
+		>
+	{:else}
+		<span class="truncate">{e.name}</span>
+	{/if}
+{/snippet}
+
 {#if showLaunchSites}
-	<div class="flex flex-col gap-1">
-		<div class="flex items-baseline justify-between">
-			<h3 class="text-sm font-medium">{m.group_top_launch_sites()}</h3>
-			<span class="text-muted-foreground text-[10px] uppercase">{m.satellites_label()}</span>
-		</div>
-		<div class="border-border/60 border-t"></div>
-		<ul class="flex flex-col gap-2 pt-1 text-sm">
-			{#each launchSites as site (site.primary_id ?? site.name)}
-				<li class="flex flex-col gap-1">
-					<div class="flex items-baseline justify-between gap-2">
-						{#if appState && site.primary_type === 'group' && site.primary_id}
-							{@const slug = site.primary_id}
-							{@const name = site.name}
-							<a
-								href={groupHref(slug, name)}
-								onclick={(e) => handleGroupClick(e, slug, name)}
-								class="pointer-events-auto hover:text-foreground inline-flex min-w-0 items-center gap-1 truncate underline"
-								><span class="truncate">{site.name}</span></a
-							>
-						{:else if site.wikipedia}
-							<a
-								href={site.wikipedia}
-								target="_blank"
-								rel="noopener"
-								class="pointer-events-auto hover:text-foreground truncate underline">{site.name}</a
-							>
-						{:else}
-							<span class="truncate">{site.name}</span>
-						{/if}
-						<span class="text-muted-foreground tabular-nums">{formatNumber(site.n)}</span>
-					</div>
-					<div class="bg-muted h-1 overflow-hidden rounded-full">
-						<div
-							class="bg-primary h-full rounded-full"
-							style:width="{maxSiteCount > 0 ? (site.n / maxSiteCount) * 100 : 0}%"
-						></div>
-					</div>
-				</li>
-			{/each}
-		</ul>
-	</div>
+	<PagedBarList
+		entries={launchSites}
+		title={m.group_top_launch_sites()}
+		unit={m.satellites_label()}
+	>
+		{#snippet label(site)}
+			{@render groupOrWikipediaLabel(site)}
+		{/snippet}
+	</PagedBarList>
 {/if}
 
-{#if constellations.length > 0}
-	<div class="flex flex-col gap-1">
-		<div class="flex items-baseline justify-between">
-			<h3 class="text-sm font-medium">{m.group_top_constellations()}</h3>
-			<span class="text-muted-foreground text-[10px] uppercase">{m.satellites_label()}</span>
-		</div>
-		<div class="border-border/60 border-t"></div>
-		<ul class="flex flex-col gap-2 pt-1 text-sm">
-			{#each constellations as c (c.primary_id ?? c.name)}
-				<li class="flex flex-col gap-1">
-					<div class="flex items-baseline justify-between gap-2">
-						{#if appState && c.primary_type === 'group' && c.primary_id}
-							{@const slug = c.primary_id}
-							{@const name = c.name}
-							<a
-								href={groupHref(slug, name)}
-								onclick={(e) => handleGroupClick(e, slug, name)}
-								class="pointer-events-auto hover:text-foreground inline-flex min-w-0 items-center gap-1 truncate underline"
-								><span class="truncate">{c.name}</span></a
-							>
-						{:else if c.wikipedia}
-							<a
-								href={c.wikipedia}
-								target="_blank"
-								rel="noopener"
-								class="pointer-events-auto hover:text-foreground truncate underline">{c.name}</a
-							>
-						{:else}
-							<span class="truncate">{c.name}</span>
-						{/if}
-						<span class="text-muted-foreground tabular-nums">{formatNumber(c.n)}</span>
-					</div>
-					<div class="bg-muted h-1 overflow-hidden rounded-full">
-						<div
-							class="bg-primary h-full rounded-full"
-							style:width="{maxConstellationCount > 0 ? (c.n / maxConstellationCount) * 100 : 0}%"
-						></div>
-					</div>
-				</li>
-			{/each}
-		</ul>
-	</div>
-{/if}
+<PagedBarList
+	entries={constellations}
+	title={m.group_top_constellations()}
+	unit={m.satellites_label()}
+>
+	{#snippet label(c)}
+		{@render groupOrWikipediaLabel(c)}
+	{/snippet}
+</PagedBarList>

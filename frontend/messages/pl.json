@@ -144,7 +144,7 @@
 	"feature_family_albedo": "Znaki albedo",
 	"feature_family_human": "Nazwane od ludzi",
 	"group_family_collapse": "Pokaż mniej",
-	"group_name_origins": "Pochodzenie nazw",
+	"group_naming_origins": "Pochodzenie nazw",
 	"scatter_membership_title": "Mapa orbit",
 	"scatter_axis_a": "wielka półoś (au)",
 	"scatter_axis_q": "peryhelium (au)",

@@ -129,7 +129,7 @@
 	"feature_family_albedo": "Albedo markings",
 	"feature_family_human": "Human-named",
 	"group_family_collapse": "Show less",
-	"group_name_origins": "Name origins",
+	"group_naming_origins": "Name origins",
 	"group_moons_per_planet": "Moons per planet",
 	"scatter_membership_title": "Orbit map",
 	"scatter_axis_a": "semi-major axis (AU)",

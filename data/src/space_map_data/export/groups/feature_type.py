@@ -31,9 +31,8 @@ from space_map_data.models.object.main import Object
 
 logger = logging.getLogger(__name__)
 
-# Chart rows per page. Craters span 50 bodies; past a dozen the bars are noise
-# and the body-count stat already carries the long tail.
-TOP_BODIES = 12
+# The chart pages at 12 rows, and the gazetteer only covers ~50 bodies, so every
+# body a type appears on is charted rather than capped to the first page.
 # Etymology rows on the meta page. The IAU records 360 distinct origins; the
 # tail is one-offs, and every group page pays for this bundle.
 TOP_ORIGINS = 60
@@ -136,7 +135,6 @@ def build_feature_type_groups(
     }
 
     out = FeatureTypeGroups()
-    dropped_rows = 0
     empty: list[str] = []
     all_approvals: dict[int, int] = defaultdict(int)
     for code in FEATURE_TYPES:
@@ -164,9 +162,7 @@ def build_feature_type_groups(
             if f.diameter and (largest is None or f.diameter > (largest.diameter or 0)):
                 largest = f
 
-        ranked_bodies = sorted(per_body.items(), key=lambda kv: (-kv[1], kv[0]))
-        dropped_rows += max(0, len(ranked_bodies) - TOP_BODIES)
-        top_bodies = ranked_bodies[:TOP_BODIES]
+        top_bodies = sorted(per_body.items(), key=lambda kv: (-kv[1], kv[0]))
         largest_ref = None
         if largest is not None:
             assert largest.object_id is not None
@@ -228,13 +224,11 @@ def build_feature_type_groups(
 
     logger.info(
         "Feature-type group pages: %d types (%d with no features: %s), %d features "
-        "on %d bodies, %d body rows past the top %d dropped from the charts",
+        "on %d bodies",
         len(FEATURE_TYPES),
         len(empty),
         ", ".join(empty) if empty else "[]",
         sum(out.member_counts.values()),
         len(body_ids),
-        dropped_rows,
-        TOP_BODIES,
     )
     return out
