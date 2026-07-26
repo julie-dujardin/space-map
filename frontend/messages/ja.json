@@ -57,6 +57,7 @@
 	"search_facet_kind": "種別",
 	"search_facet_type": "タイプ",
 	"search_facet_properties": "プロパティ",
+	"search_facet_body": "天体",
 	"search_filter_all": "すべて",
 	"search_facet_feature_type": "地形タイプ",
 	"search_facet_collection_type": "コレクションの種類",
@@ -136,7 +137,6 @@
 	"feature_family_relief": "地形と起伏",
 	"feature_family_albedo": "アルベド模様",
 	"feature_family_human": "人名由来",
-	"group_family_summary": "{types} 種類 · {families} 系統",
 	"group_family_collapse": "閉じる",
 	"group_name_origins": "名前の由来",
 	"tooltip_discoveries_count": [

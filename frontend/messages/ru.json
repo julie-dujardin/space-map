@@ -58,6 +58,7 @@
 	"search_facet_kind": "Категория",
 	"search_facet_type": "Тип",
 	"search_facet_properties": "Свойства",
+	"search_facet_body": "Тело",
 	"search_filter_all": "Все",
 	"search_facet_feature_type": "Тип рельефа",
 	"search_facet_collection_type": "Тип коллекции",
@@ -152,7 +153,6 @@
 	"feature_family_relief": "Рельеф",
 	"feature_family_albedo": "Альбедо-детали",
 	"feature_family_human": "Названные в честь людей",
-	"group_family_summary": "{types} типов · {families} групп",
 	"group_family_collapse": "Свернуть",
 	"group_name_origins": "Происхождение названий",
 	"tooltip_discoveries_count": [

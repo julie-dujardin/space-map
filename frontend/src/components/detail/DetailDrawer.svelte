@@ -457,8 +457,12 @@
 			? groupDetail?.global?.applies_to === 'earth_sat'
 			: data?.global?.cross_refs?.norad_cat_id != null
 	);
-	// A feature-type page is entirely IAU gazetteer content.
-	let nomenclatureCredit = $derived(groupDetail?.global?.type === 'feature_type');
+	// Feature-type pages are entirely IAU gazetteer content, as is the Surface
+	// Features browse node above them (`feature_type_count` marks it) — its
+	// families, naming timeline and etymology all come from the gazetteer.
+	let nomenclatureCredit = $derived(
+		groupDetail?.global?.type === 'feature_type' || groupDetail?.global?.feature_type_count != null
+	);
 	let membersHeading = $derived(
 		isGroupMode
 			? isSplitCometGroup

@@ -54,6 +54,7 @@
 	"search_facet_kind": "Nature",
 	"search_facet_type": "Type",
 	"search_facet_properties": "Propriétés",
+	"search_facet_body": "Corps",
 	"search_filter_all": "Tout",
 	"search_facet_feature_type": "Type de relief",
 	"search_facet_collection_type": "Type de collection",
@@ -133,7 +134,6 @@
 	"feature_family_relief": "Terrain et relief",
 	"feature_family_albedo": "Marques d'albédo",
 	"feature_family_human": "Nommé par l'homme",
-	"group_family_summary": "{types} types · {families} familles",
 	"group_family_collapse": "Réduire",
 	"group_name_origins": "Origine des noms",
 	"tooltip_discoveries_count": [

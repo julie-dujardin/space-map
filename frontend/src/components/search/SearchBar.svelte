@@ -39,8 +39,10 @@
 		smallBodyCategory,
 		CAT_PROBES,
 		CAT_SATELLITES,
+		CAT_SURFACE_FEATURES,
 		type GroupType
 	} from '$lib/fetch/groups/registry';
+	import { fetchGroupDetail, type FeatureFamily } from '$lib/fetch/groups/details';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import SortMenu from './SortMenu.svelte';
@@ -191,6 +193,25 @@
 	function featureTypeLabel(code: string): string {
 		return featureTypeName(featureTypeSlugByCode[code]) ?? code;
 	}
+	// Landform families for the type drill — same curated grouping the Surface
+	// Features page shows, read from its bundle rather than duplicated here.
+	// Until it lands the drill falls back to one flat list of types.
+	let featureFamilies = $state<FeatureFamily[]>([]);
+	$effect(() => {
+		fetchGroupDetail(CAT_SURFACE_FEATURES).then((d) => {
+			featureFamilies = d.global?.feature_families ?? [];
+		});
+	});
+	const FAMILY_NAME: Record<string, () => string> = {
+		impact: m.feature_family_impact,
+		volcanic: m.feature_family_volcanic,
+		tectonic: m.feature_family_tectonic,
+		fluvial: m.feature_family_fluvial,
+		liquid: m.feature_family_liquid,
+		relief: m.feature_family_relief,
+		albedo: m.feature_family_albedo,
+		human: m.feature_family_human
+	};
 	// Plural category labels for the filter tree (standalone headers, e.g.
 	// "Asteroids", "Launch sites"). The numeric count sits in its own column, so
 	// these are invariant plurals — separate keys, since `type_*`/`group_type_*`
@@ -282,6 +303,7 @@
 		const typeDist = small['object.type'] ?? {};
 		const groupDist = small['object.groups'] ?? {};
 		const featDist = small['feature.type'] ?? {};
+		const featBodyDist = small['feature.body_id'] ?? {};
 		const gtypeDist = small['group.type'] ?? {};
 		const kindDist = small['kind'] ?? {};
 		const neoCount = small['object.neo']?.['true'] ?? 0;
@@ -445,20 +467,61 @@
 				.filter((l) => l.count > 0 || (model.filters.featureType ?? []).includes(l.code))
 				.sort((a, b) => b.count - a.count)
 				.slice(0, 80)
-				.map(
-					(l): FilterLeaf => ({
+				.map((l) => ({
+					code: l.code,
+					leaf: {
 						id: `feat-${l.code}`,
 						kind: 'array',
 						facet: 'featureType',
 						values: [l.code],
 						label: l.label,
 						count: l.count
+					} satisfies FilterLeaf
+				}));
+			// Which body a feature sits on — its own drill, since a type spans
+			// bodies (craters are everywhere) and a body spans types. Listed
+			// first: "what's on Mars" is the more common way in.
+			const bodies = Object.keys(featBodyDist)
+				.map((id) => ({ id, label: bodyName(id), count: featBodyDist[id] ?? 0 }))
+				.filter((b) => b.count > 0 || (model.filters.featureBody ?? []).includes(b.id))
+				.sort((a, b) => b.count - a.count)
+				.map(
+					(b): FilterLeaf => ({
+						id: `feat-body-${b.id}`,
+						kind: 'array',
+						facet: 'featureBody',
+						values: [b.id],
+						label: b.label,
+						count: b.count
 					})
 				);
+			// Types drill by landform family (8 rows) rather than 57 flat chips;
+			// until the family bundle lands, fall back to the flat list.
+			const leafBySlug = new Map(
+				fl.map((leaf) => [featureTypeSlugByCode[leaf.code] ?? '', leaf.leaf])
+			);
+			const familyNodes: FilterNode[] = [];
+			for (const family of featureFamilies) {
+				const leaves = family.types
+					.map((slug) => leafBySlug.get(slug))
+					.filter((leaf) => leaf != null);
+				if (!leaves.length) continue;
+				familyNodes.push({
+					id: `feat-fam-${family.key}`,
+					label: FAMILY_NAME[family.key]?.() ?? family.key,
+					count: leaves.reduce((n, leaf) => n + (leaf.count ?? 0), 0),
+					leaves
+				});
+			}
+			const subs: FilterNode[] = [];
+			if (bodies.length)
+				subs.push({ id: 'feat-bodies', label: m.search_facet_body(), leaves: bodies });
+			subs.push(...familyNodes);
 			children.push({
 				id: 'feature',
 				label: m.search_kind_feature(),
 				count: cnt,
+				children: subs.length ? subs : undefined,
 				leaves: [
 					{
 						id: 'feat-all',
@@ -468,7 +531,8 @@
 						label: m.search_filter_all(),
 						count: cnt
 					},
-					...fl
+					// No families yet (bundle still in flight) — keep the flat list.
+					...(familyNodes.length ? [] : fl.map((e) => e.leaf))
 				]
 			});
 		}
@@ -565,6 +629,8 @@
 		}
 		for (const code of model.filters.featureType ?? [])
 			out.push({ key: 'featureType', value: code, label: featureTypeLabel(code) });
+		for (const id of model.filters.featureBody ?? [])
+			out.push({ key: 'featureBody', value: id, label: bodyName(id) });
 		for (const t of model.filters.groupType ?? [])
 			out.push({ key: 'groupType', value: t, label: groupTypeLabelPlural(t as GroupType) });
 		for (const facet of ['diameter', 'magnitude', 'inception'] as RangeFacet[]) {

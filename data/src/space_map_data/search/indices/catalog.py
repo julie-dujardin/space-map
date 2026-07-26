@@ -56,6 +56,7 @@ def _catalog_settings() -> dict[str, Any]:
             "group.orbit_classes",
             "feature.body_id",
             "feature.type",
+            "feature.named",
             "diameter_km",
         ],
         "sortableAttributes": [

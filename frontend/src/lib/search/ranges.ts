@@ -38,6 +38,8 @@ export const RANGE_DEFS: RangeDef[] = [
 		scale: 'linear'
 	},
 	{
+		// Covers both an object's discovery/launch year and a surface feature's
+		// IAU naming year (1935 onwards) — see RANGE_FIELDS.
 		facet: 'inception',
 		labelKey: 'search_sort_date',
 		unit: 'year',

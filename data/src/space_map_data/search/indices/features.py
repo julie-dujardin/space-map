@@ -124,6 +124,7 @@ def build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
     logger.info("Indexing features from %d bodies", len(body_files))
 
     total = 0
+    unparsed_dates = 0
     for body_path in body_files:
         body_id = body_path.name.removesuffix(".bin.gz")
         records = _read_positions(body_path)
@@ -175,6 +176,15 @@ def build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             # feature-type page's member list notable-first.
             if sitelinks := detail_global.get("sitelinks_count"):
                 doc["sitelinks_count"] = sitelinks
+            # IAU approval year — the naming-date range filter. Kept as a bare
+            # year (the gazetteer's own precision is the year for older names).
+            approval = detail_global.get("approval_date")
+            if approval:
+                year = approval[:4]
+                if year.isdigit():
+                    doc["feature"]["named"] = int(year)
+                else:
+                    unparsed_dates += 1
             for lang in LANGUAGES:
                 label = labels_by_lang[lang][i]
                 if label:
@@ -185,4 +195,9 @@ def build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             yield doc
             total += 1
 
+    if unparsed_dates:
+        logger.warning(
+            "%d feature(s) had an unparseable approval_date — no naming year indexed",
+            unparsed_dates,
+        )
     logger.info("Built %d feature documents", total)

@@ -59,6 +59,7 @@
 	"search_facet_kind": "النوع",
 	"search_facet_type": "الفئة",
 	"search_facet_properties": "الخصائص",
+	"search_facet_body": "الجرم",
 	"search_filter_all": "الكل",
 	"search_facet_feature_type": "نوع المعلم",
 	"search_facet_collection_type": "نوع المجموعة",
@@ -159,7 +160,6 @@
 	"feature_family_relief": "التضاريس والارتفاعات",
 	"feature_family_albedo": "علامات البياض",
 	"feature_family_human": "تسمية بشرية",
-	"group_family_summary": "{types} نوع · {families} عائلات",
 	"group_family_collapse": "عرض أقل",
 	"group_name_origins": "أصول الأسماء",
 	"tooltip_discoveries_count": [

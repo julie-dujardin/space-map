@@ -48,7 +48,13 @@ describe('parseSearchSuffix', () => {
 	it('round-trips a full state', () => {
 		const s: SearchUrlState = {
 			query: 'phobos',
-			filters: { type: ['moon'], featureType: ['AA'], groups: ['country-us'], pha: true },
+			filters: {
+				type: ['moon'],
+				featureType: ['AA'],
+				featureBody: ['naif-499'],
+				groups: ['country-us'],
+				pha: true
+			},
 			sort: 'brightness',
 			reverse: true,
 			page: 2

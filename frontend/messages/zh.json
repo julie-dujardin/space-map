@@ -59,6 +59,7 @@
 	"search_facet_kind": "种类",
 	"search_facet_type": "类型",
 	"search_facet_properties": "属性",
+	"search_facet_body": "天体",
 	"search_filter_all": "全部",
 	"search_facet_feature_type": "地形类型",
 	"search_facet_collection_type": "合集类型",
@@ -138,7 +139,6 @@
 	"feature_family_relief": "地形与起伏",
 	"feature_family_albedo": "反照率标记",
 	"feature_family_human": "人为命名",
-	"group_family_summary": "{types} 类型 · {families} 族",
 	"group_family_collapse": "收起",
 	"group_name_origins": "命名来源",
 	"tooltip_discoveries_count": [

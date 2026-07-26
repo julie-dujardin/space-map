@@ -25,7 +25,7 @@ export interface FilterToken {
 	label: string;
 }
 
-export type ArrayFacet = 'kind' | 'type' | 'groups' | 'featureType' | 'groupType';
+export type ArrayFacet = 'kind' | 'type' | 'groups' | 'featureType' | 'featureBody' | 'groupType';
 export type BoolFacet = 'neo' | 'pha';
 export type { RangeFacet };
 
@@ -53,6 +53,7 @@ function countActive(f: CatalogFilters): number {
 		(f.type?.length ?? 0) +
 		(f.groups?.length ?? 0) +
 		(f.featureType?.length ?? 0) +
+		(f.featureBody?.length ?? 0) +
 		(f.groupType?.length ?? 0);
 	if (f.neo) n++;
 	if (f.pha) n++;

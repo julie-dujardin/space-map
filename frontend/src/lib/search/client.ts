@@ -307,7 +307,7 @@ export function searchChildMembers(
 export type SortId = 'relevance' | 'name' | 'size' | 'brightness' | 'date';
 
 /** Numeric range facets. Values are in display units (km, magnitude H, calendar
- *  year); `RANGE_FIELD` + `toRangeField` map them to the Meili attribute/value. */
+ *  year); `RANGE_FIELDS` maps them to the Meili attribute(s)/value. */
 export type RangeFacet = 'diameter' | 'magnitude' | 'inception';
 export interface RangeBound {
 	min?: number;
@@ -327,25 +327,31 @@ export interface CatalogFilters {
 	type?: string[]; // object.type
 	groups?: string[]; // object.groups slugs (orbit class, constellation, …)
 	featureType?: string[]; // feature.type codes
+	featureBody?: string[]; // feature.body_id — the body a surface feature sits on
 	groupType?: string[]; // group.type names (collection kinds)
 	neo?: boolean;
 	pha?: boolean;
 	ranges?: Partial<Record<RangeFacet, RangeBound>>;
 }
 
-// Numeric range facet → its filterable Meili attribute.
-const RANGE_FIELD: Record<RangeFacet, string> = {
-	diameter: 'diameter_km',
-	magnitude: 'object.magnitude',
-	inception: 'object.inception'
-};
-
-/** Display value → Meili field value. inception is a YYYYMMDD int, so a year
- *  widens to its whole span: min edge → Jan-1, max edge → Dec-31. */
-function toRangeField(facet: RangeFacet, v: number, edge: 'min' | 'max'): number {
-	if (facet === 'inception') return edge === 'min' ? v * 10000 : v * 10000 + 1231;
-	return v;
+/** A range facet's Meili attribute, plus how a display value maps onto it. */
+interface RangeTarget {
+	field: string;
+	encode?: (v: number, edge: 'min' | 'max') => number;
 }
+
+// `object.inception` is a YYYYMMDD int, so a year widens to its whole span.
+const yearSpan = (v: number, edge: 'min' | 'max') =>
+	edge === 'min' ? v * 10000 : v * 10000 + 1231;
+
+// A facet with several targets ORs across them: each kind dates by whatever
+// field it actually has, so one year slider covers objects (discovery/launch)
+// and surface features (IAU name approval) alike.
+const RANGE_FIELDS: Record<RangeFacet, RangeTarget[]> = {
+	diameter: [{ field: 'diameter_km' }],
+	magnitude: [{ field: 'object.magnitude' }],
+	inception: [{ field: 'object.inception', encode: yearSpan }, { field: 'feature.named' }]
+};
 
 /** A facet value → match-count map, keyed by facet attribute. */
 export type FacetDistribution = Record<string, Record<string, number>>;
@@ -364,7 +370,8 @@ const FACETS = [
 	'object.neo',
 	'object.pha',
 	'group.type',
-	'feature.type'
+	'feature.type',
+	'feature.body_id'
 ];
 
 // Sortable attribute + its "natural" first direction (reversed by the toggle).
@@ -404,6 +411,8 @@ function filterClauses(f: CatalogFilters): Map<string, string> {
 	if (groups) out.set('object.groups', groups);
 	const featureType = orClause('feature.type', f.featureType);
 	if (featureType) out.set('feature.type', featureType);
+	const featureBody = orClause('feature.body_id', f.featureBody);
+	if (featureBody) out.set('feature.body_id', featureBody);
 	const groupType = orClause('group.type', f.groupType);
 	if (groupType) out.set('group.type', groupType);
 	if (f.neo) out.set('object.neo', 'object.neo = true');
@@ -415,9 +424,14 @@ function filterClauses(f: CatalogFilters): Map<string, string> {
 function rangeClauses(f: CatalogFilters): string[] {
 	const out: string[] = [];
 	for (const [facet, b] of Object.entries(f.ranges ?? {}) as [RangeFacet, RangeBound][]) {
-		const field = RANGE_FIELD[facet];
-		if (b.min != null) out.push(`${field} >= ${toRangeField(facet, b.min, 'min')}`);
-		if (b.max != null) out.push(`${field} <= ${toRangeField(facet, b.max, 'max')}`);
+		const perField = RANGE_FIELDS[facet].map(({ field, encode }) => {
+			const bits: string[] = [];
+			if (b.min != null) bits.push(`${field} >= ${encode ? encode(b.min, 'min') : b.min}`);
+			if (b.max != null) bits.push(`${field} <= ${encode ? encode(b.max, 'max') : b.max}`);
+			return bits.join(' AND ');
+		});
+		if (perField.length === 1) out.push(perField[0]);
+		else out.push(`(${perField.map((c) => `(${c})`).join(' OR ')})`);
 	}
 	return out;
 }

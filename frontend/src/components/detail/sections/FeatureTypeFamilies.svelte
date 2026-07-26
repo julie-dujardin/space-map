@@ -53,8 +53,6 @@
 			.map((f) => ({ ...f, chips: f.types.map((s) => bySlug.get(s)).filter((c) => c != null) }))
 			.filter((f) => f.chips.length > 0)
 	);
-	let typeTotal = $derived(rows.reduce((n, f) => n + f.chips.length, 0));
-
 	let expanded = $state(new Set<string>());
 	function toggle(key: string) {
 		// Reassign — a mutated Set isn't a new value, so `$derived` wouldn't fire.
@@ -66,12 +64,7 @@
 
 {#if rows.length > 0}
 	<div class="flex flex-col gap-1">
-		<div class="flex items-baseline justify-between gap-2">
-			<h3 class="text-sm font-medium">{groupTypeLabelPlural('feature_type')}</h3>
-			<span class="text-muted-foreground text-xs">
-				{m.group_family_summary({ types: typeTotal, families: rows.length })}
-			</span>
-		</div>
+		<h3 class="text-sm font-medium">{groupTypeLabelPlural('feature_type')}</h3>
 		<div class="border-border/60 border-t"></div>
 		<div class="flex flex-col gap-2.5 pt-1.5">
 			{#each rows as family (family.key)}
