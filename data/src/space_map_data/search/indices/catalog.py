@@ -41,8 +41,12 @@ def _catalog_settings() -> dict[str, Any]:
         ),
         "filterableAttributes": [
             "kind",
+            "object.id",
             "object.type",
             "object.parent_id",
+            "object.moon_host",
+            "object.moon_class",
+            "object.iau_named",
             "object.groups",
             "object.neo",
             "object.pha",

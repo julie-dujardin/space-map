@@ -52,6 +52,8 @@ describe('parseSearchSuffix', () => {
 				type: ['moon'],
 				featureType: ['AA'],
 				featureBody: ['naif-499'],
+				moonHost: ['naif-599'],
+				moonClass: ['planetary'],
 				groups: ['country-us'],
 				pha: true
 			},

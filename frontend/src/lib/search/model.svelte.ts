@@ -25,8 +25,16 @@ export interface FilterToken {
 	label: string;
 }
 
-export type ArrayFacet = 'kind' | 'type' | 'groups' | 'featureType' | 'featureBody' | 'groupType';
-export type BoolFacet = 'neo' | 'pha';
+export type ArrayFacet =
+	| 'kind'
+	| 'type'
+	| 'groups'
+	| 'moonHost'
+	| 'moonClass'
+	| 'featureType'
+	| 'featureBody'
+	| 'groupType';
+export type BoolFacet = 'neo' | 'pha' | 'named';
 export type { RangeFacet };
 
 /** Sort options in menu order; labels resolve via `search_sort_*` messages. */
@@ -52,9 +60,12 @@ function countActive(f: CatalogFilters): number {
 		(f.kind?.length ?? 0) +
 		(f.type?.length ?? 0) +
 		(f.groups?.length ?? 0) +
+		(f.moonHost?.length ?? 0) +
+		(f.moonClass?.length ?? 0) +
 		(f.featureType?.length ?? 0) +
 		(f.featureBody?.length ?? 0) +
 		(f.groupType?.length ?? 0);
+	if (f.named) n++;
 	if (f.neo) n++;
 	if (f.pha) n++;
 	for (const b of Object.values(f.ranges ?? {})) if (hasBound(b)) n++;
@@ -239,7 +250,7 @@ export class SearchModel {
 	}
 
 	removeToken(t: FilterToken): void {
-		if (t.key === 'neo' || t.key === 'pha') this.toggleBool(t.key);
+		if (t.key === 'neo' || t.key === 'pha' || t.key === 'named') this.toggleBool(t.key);
 		else if (t.key === 'ranges' && t.value != null) this.clearRange(t.value as RangeFacet);
 		else if (t.value != null) this.toggleValues(t.key as ArrayFacet, [t.value]);
 		this.page = 1;

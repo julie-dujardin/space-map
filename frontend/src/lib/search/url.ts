@@ -28,6 +28,8 @@ const ARRAY_FACETS: [keyof CatalogFilters, string][] = [
 	['kind', 'kind'],
 	['type', 'type'],
 	['groups', 'groups'],
+	['moonHost', 'mhost'],
+	['moonClass', 'mclass'],
 	['featureType', 'ftype'],
 	['featureBody', 'fbody'],
 	['groupType', 'gtype']
@@ -62,9 +64,12 @@ export function searchActive(s: SearchUrlState): boolean {
 		f.kind?.length ||
 		f.type?.length ||
 		f.groups?.length ||
+		f.moonHost?.length ||
+		f.moonClass?.length ||
 		f.featureType?.length ||
 		f.featureBody?.length ||
 		f.groupType?.length ||
+		f.named ||
 		f.neo ||
 		f.pha ||
 		hasRange
@@ -91,6 +96,7 @@ export function serializeSearchSuffix(s: SearchUrlState | null | undefined): str
 		if (!hasBound(b)) continue;
 		seg.push(`${token}:${b!.min ?? ''}..${b!.max ?? ''}`);
 	}
+	if (s.filters.named) seg.push('named');
 	if (s.filters.neo) seg.push('neo');
 	if (s.filters.pha) seg.push('pha');
 	if (seg.length) parts.push(`f=${seg.join(';')}`);
@@ -113,6 +119,10 @@ export function parseSearchSuffix(params: URLSearchParams): SearchUrlState | nul
 		for (const segRaw of f.split(';')) {
 			const seg = segRaw.trim();
 			if (!seg) continue;
+			if (seg === 'named') {
+				filters.named = true;
+				continue;
+			}
 			if (seg === 'neo') {
 				filters.neo = true;
 				continue;

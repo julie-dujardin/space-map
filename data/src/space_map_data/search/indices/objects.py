@@ -30,6 +30,10 @@ from space_map_data.constants.categories import (
 )
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.images import pick_thumbnail
+from space_map_data.utils.designations import (
+    format_provisional_designation,
+    is_iau_named,
+)
 from space_map_data.utils.manual_overlay import read_manual_aliases
 
 from .base import object_pk
@@ -66,6 +70,11 @@ _PLANET_BY_BARYCENTER = {
     "naif-8": "naif-899",
     "naif-9": "naif-999",
 }
+
+# The eight planets. A moon of one of these is a planetary satellite, named by
+# the IAU's WGPSN; everything else orbits a minor planet — dwarf planets
+# included, Pluto being minor planet 134340 — and is named by the WGSBN.
+_PLANET_IDS = frozenset(f"naif-{n}99" for n in range(1, 9))
 
 
 def _load_localized(
@@ -222,6 +231,20 @@ def _inception(g: dict[str, Any]) -> int | None:
     return None
 
 
+def _display_name(g: dict[str, Any], obj_id: str, otype: str) -> str:
+    """Searchable name. Unnamed moons — 267 of them — carry only a NAIF
+    provisional designation, so fall back to that in its IAU spelling rather
+    than to a bare object id."""
+    name = g.get("name")
+    if otype == "moon":
+        formatted = format_provisional_designation(
+            name or g.get("provisional_designation")
+        )
+        if formatted:
+            return formatted
+    return name or obj_id
+
+
 def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
     objects_dir = export_dir / "v1" / "objects"
     global_dir = objects_dir / "__global__"
@@ -237,7 +260,12 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
 
     total_seen = 0
     total_indexed = 0
+    named_moons = 0
     skipped_no_translation = 0
+    # Minor-planet moons carry no orbit, so their host only shows up on the
+    # parent's `notable_moons`. Collected while streaming, applied at the end.
+    moon_host_by_child: dict[str, str] = {}
+    deferred_moons: list[dict[str, Any]] = []
 
     for bundle in global_files:
         entries: dict[str, dict[str, Any]] = json.loads(
@@ -246,6 +274,12 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
         for obj_id, g in entries.items():
             total_seen += 1
             otype = g.get("type", "undocumented")
+            # Harvested before the skip: an unindexed asteroid still names the
+            # host of its (indexed) moon.
+            for child in g.get("notable_moons") or []:
+                child_id = child.get("id")
+                if child_id:
+                    moon_host_by_child[child_id] = obj_id
             if otype not in _ALWAYS_INDEX and not _is_notable(obj_id, localized):
                 skipped_no_translation += 1
                 continue
@@ -283,9 +317,28 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             spacecraft_cat = _spacecraft_category(g, otype)
             if spacecraft_cat:
                 groups.append(spacecraft_cat)
-            # Natural satellites back the Moons category's "show all members".
+            # Natural satellites back the Moons category's "show all members",
+            # and drill by host body / satellite class in the filter tree.
             if otype == "moon":
                 groups.append(MOONS_SLUG)
+                host = obj.get("parent_id")
+                if host:
+                    obj["moon_host"] = host
+                    obj["moon_class"] = (
+                        "planetary" if host in _PLANET_IDS else "minor_planet"
+                    )
+                # Fallback label for the host-body filter leaves: most minor
+                # planets with a moon are too obscure to be indexed themselves,
+                # so their own document can't supply a name. Barycenter names
+                # are skipped — the host id resolves to the planet.
+                host_name = g.get("parent_name")
+                if host_name and not host_name.endswith("Barycenter"):
+                    obj["moon_host_name"] = host_name
+                obj["iau_named"] = is_iau_named(
+                    g.get("name"), g.get("provisional_designation")
+                )
+                if obj["iau_named"]:
+                    named_moons += 1
             if groups:
                 obj["groups"] = groups
 
@@ -301,7 +354,7 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             doc: dict[str, Any] = {
                 "id": object_pk(obj_id),
                 "kind": "object",
-                "name": g.get("name") or obj_id,
+                "name": _display_name(g, obj_id, otype),
                 "object": obj,
             }
 
@@ -340,9 +393,33 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
                     key = f"aliases_{lang}"
                     obj[key] = (obj.get(key) or []) + terms
 
-            yield doc
+            # A moon with no propagated orbit has no host yet — hold it until
+            # every bundle's `notable_moons` has been seen.
+            if otype == "moon" and "moon_host" not in obj:
+                deferred_moons.append(doc)
+            else:
+                yield doc
             total_indexed += 1
 
+    unhosted = 0
+    for doc in deferred_moons:
+        host = moon_host_by_child.get(doc["object"]["id"])
+        if host:
+            doc["object"]["moon_host"] = host
+            doc["object"]["moon_class"] = (
+                "planetary" if host in _PLANET_IDS else "minor_planet"
+            )
+        else:
+            unhosted += 1
+        yield doc
+    if unhosted:
+        logger.warning(
+            "%d moon(s) have neither an orbit parent nor a listing on their "
+            "host — no host/class facet",
+            unhosted,
+        )
+
+    logger.info("Indexed %d IAU-named moons", named_moons)
     logger.info(
         "Built %d object documents (saw %d, skipped %d asteroids without translation)",
         total_indexed,

@@ -326,11 +326,15 @@ export interface CatalogFilters {
 	kind?: string[]; // object | feature | group
 	type?: string[]; // object.type
 	groups?: string[]; // object.groups slugs (orbit class, constellation, …)
+	moonHost?: string[]; // object.moon_host — the body a moon orbits
+	moonClass?: string[]; // object.moon_class — planetary | minor_planet
 	featureType?: string[]; // feature.type codes
 	featureBody?: string[]; // feature.body_id — the body a surface feature sits on
 	groupType?: string[]; // group.type names (collection kinds)
 	neo?: boolean;
 	pha?: boolean;
+	/** Moons only: carries an IAU name rather than a provisional designation. */
+	named?: boolean;
 	ranges?: Partial<Record<RangeFacet, RangeBound>>;
 }
 
@@ -369,6 +373,9 @@ const FACETS = [
 	'object.groups',
 	'object.neo',
 	'object.pha',
+	'object.moon_host',
+	'object.moon_class',
+	'object.iau_named',
 	'group.type',
 	'feature.type',
 	'feature.body_id'
@@ -409,12 +416,17 @@ function filterClauses(f: CatalogFilters): Map<string, string> {
 	if (type) out.set('object.type', type);
 	const groups = orClause('object.groups', f.groups);
 	if (groups) out.set('object.groups', groups);
+	const moonHost = orClause('object.moon_host', f.moonHost);
+	if (moonHost) out.set('object.moon_host', moonHost);
+	const moonClass = orClause('object.moon_class', f.moonClass);
+	if (moonClass) out.set('object.moon_class', moonClass);
 	const featureType = orClause('feature.type', f.featureType);
 	if (featureType) out.set('feature.type', featureType);
 	const featureBody = orClause('feature.body_id', f.featureBody);
 	if (featureBody) out.set('feature.body_id', featureBody);
 	const groupType = orClause('group.type', f.groupType);
 	if (groupType) out.set('group.type', groupType);
+	if (f.named) out.set('object.iau_named', 'object.iau_named = true');
 	if (f.neo) out.set('object.neo', 'object.neo = true');
 	if (f.pha) out.set('object.pha', 'object.pha = true');
 	return out;
@@ -578,6 +590,61 @@ export async function fetchGroupCatalog(locale: string): Promise<GroupHit[]> {
 	const groups = (res.hits ?? []).map((h) => toGroupHit(h as RawHit));
 	groupCatalogCache.set(locale, groups);
 	return groups;
+}
+
+// Object id → localized name, filled on demand. Filter leaves are labelled by
+// id (a facet value), and the scene only knows bodies it has loaded — most
+// minor planets aren't among them — so names come from the catalog instead.
+const objectNameCache = new Map<string, string>();
+
+/** Localized names for the given object ids, from cache plus one batched
+ *  lookup for the rest. Ids the catalog doesn't carry are simply absent. */
+export async function fetchObjectNames(
+	ids: string[],
+	locale: string
+): Promise<Map<string, string>> {
+	const missing = ids.filter((id) => !objectNameCache.has(`${locale}:${id}`));
+	if (missing.length) {
+		const c = await getClient();
+		if (!c) return new Map();
+		const res = await c.index(INDEX).search('', {
+			filter: `object.id IN [${missing.map(quote).join(', ')}]`,
+			limit: missing.length,
+			locales: [locale]
+		});
+		for (const raw of res.hits ?? []) {
+			const hit = toObjectHit(raw as RawHit);
+			objectNameCache.set(`${locale}:${hit.id}`, localizedName(hit, locale));
+		}
+		// Most minor planets with a moon are too obscure to be indexed
+		// themselves, so a second pass reads the host name their moons carry.
+		const stillMissing = missing.filter((id) => !objectNameCache.has(`${locale}:${id}`));
+		if (stillMissing.length) {
+			const moons = await c.index(INDEX).search('', {
+				filter: `object.moon_host IN [${stillMissing.map(quote).join(', ')}]`,
+				limit: 1000,
+				locales: [locale]
+			});
+			for (const raw of moons.hits ?? []) {
+				const o = ((raw as RawHit).object ?? {}) as RawHit;
+				const host = o.moon_host as string | undefined;
+				const name = o.moon_host_name as string | undefined;
+				if (host && name) objectNameCache.set(`${locale}:${host}`, name);
+			}
+		}
+		// Blank-cache what neither pass could name, so a re-render doesn't
+		// re-query it forever.
+		for (const id of missing) {
+			const key = `${locale}:${id}`;
+			if (!objectNameCache.has(key)) objectNameCache.set(key, '');
+		}
+	}
+	const out = new Map<string, string>();
+	for (const id of ids) {
+		const name = objectNameCache.get(`${locale}:${id}`);
+		if (name) out.set(id, name);
+	}
+	return out;
 }
 
 /** Display name for a hit in the active locale, falling back to canonical. */

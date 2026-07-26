@@ -25,6 +25,7 @@ from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS, PROMOTED_TYPES
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.models.object import ObjectType
+from space_map_data.utils.designations import format_provisional_designation
 from space_map_data.probes.probe_id import load_registry
 from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
@@ -139,7 +140,11 @@ def _resolve_label(
     """
     loc_name = loc.get("name") if loc else None
     db_name = glob.get("name")
-    designation = glob.get("provisional_designation")
+    raw_designation = glob.get("provisional_designation")
+    designation = format_provisional_designation(raw_designation)
+    # A DB name that is just the designation reads better in the IAU spelling.
+    if db_name and db_name == raw_designation:
+        db_name = designation
     name = loc_name or db_name or designation or ""
     is_minor_moon = (
         glob.get("type") == ObjectType.moon

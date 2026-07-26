@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -13,6 +13,7 @@
 		fetchGroupCatalog,
 		catalogCount,
 		catalogFacets,
+		fetchObjectNames,
 		isSearchEnabled,
 		MAX_TOTAL_HITS,
 		type SearchHit,
@@ -202,6 +203,12 @@
 			featureFamilies = d.global?.feature_families ?? [];
 		});
 	});
+	// IAU naming authority split: WGPSN names the planets' moons, WGSBN the
+	// minor planets' (dwarf planets included — Pluto is minor planet 134340).
+	const MOON_CLASS_NAME = {
+		planetary: m.moon_class_planetary,
+		minor_planet: m.moon_class_minor_planet
+	};
 	const FAMILY_NAME: Record<string, () => string> = {
 		impact: m.feature_family_impact,
 		volcanic: m.feature_family_volcanic,
@@ -219,9 +226,32 @@
 	function typeLabelPlural(type: string): string {
 		return messages[`search_cat_${type}`]?.() ?? typeLabel(type);
 	}
+	// Body labels for filter leaves/tokens, which only ever hold an id. The
+	// scene knows the bodies it has loaded — rarely a minor planet — so
+	// anything it misses is looked up in the catalog (batched, cached, and
+	// localized, unlike the scene's name).
+	let catalogNames = $state(new Map<string, string>());
 	function bodyName(bodyId: string): string {
-		return ctx.getBody(bodyId)?.data.name ?? bodyId;
+		return ctx.getBody(bodyId)?.data.name ?? catalogNames.get(bodyId) ?? bodyId;
 	}
+	// Ids the scene can't name, gathered from every facet that labels by body.
+	let unnamedBodyIds = $derived.by(() => {
+		const dist = model.hasResults ? model.facets : facetUniverse;
+		const ids = [
+			...Object.keys(dist['object.moon_host'] ?? {}),
+			...Object.keys(dist['feature.body_id'] ?? {})
+		];
+		return ids.filter((id) => !ctx.getBody(id) && !catalogNames.has(id));
+	});
+	$effect(() => {
+		const ids = unnamedBodyIds;
+		const locale = getLocale();
+		if (!ids.length) return;
+		untrack(() => fetchObjectNames(ids, locale)).then((named) => {
+			if (!named.size) return;
+			catalogNames = new Map([...catalogNames, ...named]);
+		});
+	});
 	function kindLabel(k: string): string {
 		if (k === 'object') return m.search_kind_object();
 		if (k === 'feature') return m.search_kind_feature();
@@ -363,8 +393,65 @@
 			ranges: ['diameter', 'magnitude', 'inception']
 		});
 
+		// Moons — All / satellite class, drilling by host body. The class split
+		// comes from the index (the eight planets vs every minor planet), so it
+		// holds even where the host body itself isn't in the catalog.
+		{
+			const cnt = sumType(['moon']);
+			const hostDist = small['object.moon_host'] ?? {};
+			const classDist = small['object.moon_class'] ?? {};
+			const hosts = Object.keys(hostDist)
+				.map((id) => ({ id, label: bodyName(id), count: hostDist[id] ?? 0 }))
+				.filter((h) => h.count > 0 || (model.filters.moonHost ?? []).includes(h.id))
+				.sort((a, b) => b.count - a.count)
+				.slice(0, 80)
+				.map(
+					(h): FilterLeaf => ({
+						id: `moon-host-${h.id}`,
+						kind: 'array',
+						facet: 'moonHost',
+						values: [h.id],
+						label: h.label,
+						count: h.count
+					})
+				);
+			const classes = (['planetary', 'minor_planet'] as const)
+				.filter((c) => (classDist[c] ?? 0) > 0 || (model.filters.moonClass ?? []).includes(c))
+				.map(
+					(c): FilterLeaf => ({
+						id: `moon-class-${c}`,
+						kind: 'array',
+						facet: 'moonClass',
+						values: [c],
+						label: MOON_CLASS_NAME[c](),
+						count: classDist[c] ?? 0
+					})
+				);
+			const namedCount = small['object.iau_named']?.['true'] ?? 0;
+			children.push({
+				id: 'moon',
+				label: typeLabelPlural('moon'),
+				count: cnt,
+				leaves: [
+					allLeaf('moon-all', ['moon'], cnt),
+					...classes,
+					// Most moons are still a provisional designation (S/2019 S 37).
+					{
+						id: 'moon-named',
+						kind: 'bool',
+						facet: 'named',
+						label: m.search_prop_named(),
+						count: namedCount
+					}
+				],
+				children: hosts.length
+					? [{ id: 'moon-hosts', label: m.search_facet_parent(), leaves: hosts }]
+					: undefined
+			});
+		}
+
 		// Types with no sub-filters — a plain checkbox right at the root level.
-		const rootLeaves: FilterLeaf[] = (['planet', 'dwarf_planet', 'moon'] as const).map((type) => ({
+		const rootLeaves: FilterLeaf[] = (['planet', 'dwarf_planet'] as const).map((type) => ({
 			id: `root-${type}`,
 			kind: 'array',
 			facet: 'type',
@@ -627,6 +714,14 @@
 			const g = groupBySlug.get(slug);
 			out.push({ key: 'groups', value: slug, label: g ? groupName(g, locale) : slug });
 		}
+		for (const id of model.filters.moonHost ?? [])
+			out.push({ key: 'moonHost', value: id, label: bodyName(id) });
+		for (const c of model.filters.moonClass ?? [])
+			out.push({
+				key: 'moonClass',
+				value: c,
+				label: MOON_CLASS_NAME[c as keyof typeof MOON_CLASS_NAME]?.() ?? c
+			});
 		for (const code of model.filters.featureType ?? [])
 			out.push({ key: 'featureType', value: code, label: featureTypeLabel(code) });
 		for (const id of model.filters.featureBody ?? [])
@@ -638,6 +733,7 @@
 			if (hasBound(b))
 				out.push({ key: 'ranges', value: facet, label: rangeTokenLabel(facet, b!, locale) });
 		}
+		if (model.filters.named) out.push({ key: 'named', label: m.search_prop_named() });
 		if (model.filters.neo) out.push({ key: 'neo', label: m.search_prop_neo() });
 		if (model.filters.pha) out.push({ key: 'pha', label: m.search_prop_pha() });
 		return out;
