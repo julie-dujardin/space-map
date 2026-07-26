@@ -5,6 +5,7 @@ import type { RingNode } from './objects/surface/rings';
 import type { CloudNode } from './objects/surface/clouds';
 import type { AtmosphereNode } from './objects/surface/atmosphere';
 import type { EclipseSelfUniforms } from './objects/surface/eclipse-shadow';
+import type { SunTransmittanceUniforms } from './objects/surface/sun-transmittance';
 import type { SelfShadowUniforms } from './objects/surface/self-shadow';
 import type { DisplacementMeta } from './objects/surface/displacement';
 import type { TerrainWindowState } from './lod/terrain-window';
@@ -107,6 +108,10 @@ export interface BodyObjects {
 	selfShadow: SelfShadowUniforms | null;
 	/** Per-body eclipse-shadow uniforms; null on stars and barycenters. */
 	eclipseShadow: EclipseSelfUniforms | null;
+	/** Sun-transmittance patches on the body (and cloud) materials, kept so
+	 *  {@link applyRadiiToMesh} can re-sync them to the SPICE equatorial radius
+	 *  — their β/height normalisation is baked at attach time. */
+	sunTint?: SunTransmittanceUniforms[];
 	/** IAU nomenclature labels attached to the body mesh (sphere path) or to
 	 *  {@link nomenclatureAnchor} (shape-model path); null when not loaded. */
 	nomenclatureLabels: CSS2DObject[] | null;

@@ -240,6 +240,8 @@ export function updateAtmosphereShaders(
 			const planetRadiusScene =
 				shellRadius / (1 + params.topAltitudeKm / bo.atmosphere.planetRadiusKm);
 			camRel.copy(cameraPosition).sub(atmoMesh.position);
+			const shellSpinAxis = uniforms.uSpinAxis.value as Vector3;
+			const shellStretch = uniforms.uStretch.value as number;
 			if (
 				sunPathTransmittance(
 					params,
@@ -247,7 +249,9 @@ export function updateAtmosphereShaders(
 					sunVec,
 					planetRadiusScene,
 					bo.atmosphere.planetRadiusKm,
-					sunT
+					sunT,
+					shellSpinAxis,
+					shellStretch
 				)
 			) {
 				const lum = LUM[0] * sunT.x + LUM[1] * sunT.y + LUM[2] * sunT.z;
@@ -263,7 +267,9 @@ export function updateAtmosphereShaders(
 					params,
 					atmoMesh.position,
 					planetRadiusScene,
-					bo.atmosphere.planetRadiusKm
+					bo.atmosphere.planetRadiusKm,
+					shellSpinAxis,
+					shellStretch
 				);
 			}
 		}

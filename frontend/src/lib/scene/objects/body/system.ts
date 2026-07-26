@@ -323,12 +323,15 @@ export async function loadSystemData(
 					if (bo.eclipseShadow) {
 						attachEclipseShadowToBody(node.material, bo.eclipseShadow);
 						if (bo.atmosphere) {
-							attachSunTransmittanceToBody(
-								node.material,
-								bo.atmosphere.params,
-								bo.radiusScene,
-								bo.atmosphere.planetRadiusKm,
-								bo.eclipseShadow
+							(bo.sunTint ??= []).push(
+								attachSunTransmittanceToBody(
+									node.material,
+									bo.atmosphere.params,
+									bo.radiusScene,
+									bo.atmosphere.planetRadiusKm,
+									bo.eclipseShadow,
+									bo.atmosphere
+								)
 							);
 						}
 					}

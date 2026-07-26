@@ -25,7 +25,10 @@ import { attachCanvasForwarders } from '../../label/forward';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../sun';
 import { ATMOSPHERE_PARAMS, buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
-import { attachSunTransmittanceToBody } from '../surface/sun-transmittance';
+import {
+	attachSunTransmittanceToBody,
+	type SunTransmittanceUniforms
+} from '../surface/sun-transmittance';
 import { detachSelfShadow } from '../surface/self-shadow';
 import { isModelBearing, unloadBodyModel } from './model';
 import type { BodyObjects } from '../../types';
@@ -88,6 +91,7 @@ export function buildMajorBodies(
 		let starExtras: StarExtras | null = null;
 		let eclipseShadow: EclipseSelfUniforms | null = null;
 		let atmosphere: AtmosphereNode | null = null;
+		let sunTint: SunTransmittanceUniforms[] | undefined;
 		const extraObjects: Object3D[] = [];
 		if (!isVirtual && !noPhysical) {
 			if (isStar) {
@@ -122,13 +126,16 @@ export function buildMajorBodies(
 				scene.add(atmosphere.mesh);
 				extraObjects.push(atmosphere.mesh);
 				if (eclipseShadow) {
-					attachSunTransmittanceToBody(
-						material as MeshStandardMaterial,
-						atmoParams,
-						radius,
-						effectiveRadiusKm(body.data),
-						eclipseShadow
-					);
+					sunTint = [
+						attachSunTransmittanceToBody(
+							material as MeshStandardMaterial,
+							atmoParams,
+							radius,
+							effectiveRadiusKm(body.data),
+							eclipseShadow,
+							atmosphere
+						)
+					];
 				}
 			}
 		}
@@ -179,6 +186,7 @@ export function buildMajorBodies(
 			rings: null,
 			clouds: null,
 			atmosphere,
+			sunTint,
 			specularMap: null,
 			emissiveMap: null,
 			displacementMap: null,
@@ -245,13 +253,16 @@ export function upgradeBodyMesh(
 		bo.atmosphere = buildAtmosphereNode(atmoParams, radiusScene, effectiveRadiusKm(body.data));
 		scene.add(bo.atmosphere.mesh);
 		bo.extraObjects.push(bo.atmosphere.mesh);
-		attachSunTransmittanceToBody(
-			material,
-			atmoParams,
-			radiusScene,
-			effectiveRadiusKm(body.data),
-			bo.eclipseShadow
-		);
+		bo.sunTint = [
+			attachSunTransmittanceToBody(
+				material,
+				atmoParams,
+				radiusScene,
+				effectiveRadiusKm(body.data),
+				bo.eclipseShadow,
+				bo.atmosphere
+			)
+		];
 	}
 }
 
@@ -293,6 +304,7 @@ export function downgradeBodyMesh(
 		bo.mesh = null;
 		bo.currentSegments = undefined;
 		bo.eclipseShadow = null;
+		bo.sunTint = undefined;
 		// The new mesh on re-upgrade starts with identity scale, so the
 		// triaxial scale needs to be re-applied. (`bo.radiusScene` keeps its
 		// bumped value — the next sphere is built at that size, and the

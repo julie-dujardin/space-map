@@ -10,12 +10,14 @@
  * - {@link sunPathTransmittance}: CPU ratio for corona/star point.
  *
  * Tints are T/lum(T) ratios, so the shell's alpha keeps sole ownership of
- * dimming. Same columns as the shell, on the unsquashed sphere — oblateness
- * is below what a tint resolves.
+ * dimming. Same columns as the shell, in its squashed space where the oblate
+ * ellipsoid is the unit sphere — on gas giants the polar dip is hundreds of
+ * scale heights, so a spherical march reads mid-latitudes as deep underground
+ * and blacks out most of the disc.
  */
 
 import { type Material, type MeshStandardMaterial, Vector3 } from 'three';
-import { type AtmosphereParams, TERRAIN_DIP_KM } from './atmosphere';
+import { type AtmosphereNode, type AtmosphereParams, TERRAIN_DIP_KM } from './atmosphere';
 import { type EclipseSelfUniforms, getEclipseSceneUniforms } from './eclipse-shadow';
 
 /** Kept well under the shell's LIGHT_STEPS — the surface patch runs over
@@ -45,6 +47,15 @@ const PARAM_DECLS = `
 	uniform float uAtmoTRadiusScene;
 	uniform float uAtmoTEnable;
 	uniform vec3 uAtmoTCenter;       // body centre, scene/world space
+	uniform vec3 uAtmoTSpinAxis;     // unit, world — body pole
+	uniform float uAtmoTStretch;     // equatorial radius / polar radius, >= 1
+
+	// Shell parity: stretch the spin-axis component so the oblate ellipsoid
+	// becomes the unit sphere. Linear, so rays stay straight; squashed path
+	// lengths are converted back to world lengths by the callers.
+	vec3 atmoTSquash(vec3 v) {
+		return v + (uAtmoTStretch - 1.0) * dot(v, uAtmoTSpinAxis) * uAtmoTSpinAxis;
+	}
 `;
 
 const SUN_TINT_GLSL = `
@@ -68,8 +79,15 @@ const SUN_TINT_GLSL = `
 
 	vec3 atmoSunTint(vec3 worldPos) {
 		if (uAtmoTEnable < 0.5) return vec3(1.0);
-		vec3 p = (worldPos - uAtmoTCenter) / uAtmoTRadiusScene;
-		float b = dot(p, uAtmoTSunDir);
+		vec3 p = atmoTSquash((worldPos - uAtmoTCenter) / uAtmoTRadiusScene);
+		// Mesh chords and DEM dips put fragments under the datum sphere, where
+		// clamped-density columns overcount fast — start on the datum instead.
+		float pLen = length(p);
+		if (pLen < 1.0) p /= pLen;
+		vec3 sd = atmoTSquash(uAtmoTSunDir);
+		float sunLen = length(sd);
+		sd /= sunLen;
+		float b = dot(p, sd);
 		float c = dot(p, p);
 		// Sun under the horizon: zero, not huge τ — only clips DEM slopes, the
 		// analytic sphere's NdotL is already ≤ 0 there.
@@ -83,13 +101,14 @@ const SUN_TINT_GLSL = `
 		float dt = tFar / ${FRAGMENT_STEPS.toFixed(1)};
 		vec3 od = vec3(0.0);
 		for (int i = 0; i < ${FRAGMENT_STEPS}; i++) {
-			float h = max(length(p + uAtmoTSunDir * (dt * (float(i) + 0.5))) - 1.0, 0.0);
+			float h = max(length(p + sd * (dt * (float(i) + 0.5))) - 1.0, 0.0);
 			od += vec3(
 				exp(-h / uAtmoTRayleighH),
 				exp(-h / uAtmoTMieH),
 				max(0.0, 1.0 - abs(h - uAtmoTAbsCenter) / uAtmoTAbsWidth)
 			) * dt;
 		}
+		od /= sunLen; // squashed → world path length
 		vec3 tau = uAtmoTBetaR * od.x + uAtmoTBetaMExt * od.y + uAtmoTBetaA * od.z;
 		// Only the slant excess over the texture's baked vertical column —
 		// noon stays untouched, the terminator reddens.
@@ -114,8 +133,10 @@ export const VIEW_TINT_GLSL = `
 
 	vec3 atmoViewTint(vec3 worldPos) {
 		if (uAtmoTEnable < 0.5) return vec3(1.0);
-		vec3 p = (cameraPosition - uAtmoTCenter) / uAtmoTRadiusScene;
-		vec3 rd = normalize(worldPos - cameraPosition);
+		vec3 p = atmoTSquash((cameraPosition - uAtmoTCenter) / uAtmoTRadiusScene);
+		vec3 rd = atmoTSquash(normalize(worldPos - cameraPosition));
+		float rdLen = length(rd);
+		rd /= rdLen;
 		float b = dot(p, rd);
 		float c = dot(p, p);
 		float d = b * b - (c - uAtmoTBlockR * uAtmoTBlockR);
@@ -136,6 +157,7 @@ export const VIEW_TINT_GLSL = `
 				max(0.0, 1.0 - abs(h - uAtmoTAbsCenter) / uAtmoTAbsWidth)
 			) * dt;
 		}
+		od /= rdLen; // squashed → world path length
 		vec3 t = exp(-(uAtmoTBetaR * od.x + uAtmoTBetaMExt * od.y + uAtmoTBetaA * od.z));
 		float lum = dot(t, vec3(0.2126, 0.7152, 0.0722));
 		return t / max(lum, 1e-4);
@@ -157,6 +179,8 @@ export interface SunTransmittanceParamUniforms {
 	uAtmoTBakedComp: { value: number };
 	uAtmoTRadiusScene: { value: number };
 	uAtmoTEnable: { value: number };
+	uAtmoTSpinAxis: { value: Vector3 };
+	uAtmoTStretch: { value: number };
 }
 
 /** Surface-patch handle: params + the re-bound eclipse sun-dir/centre refs. */
@@ -184,7 +208,9 @@ function makeParamUniforms(enable: { value: number }): SunTransmittanceParamUnif
 		uAtmoTBlockR: { value: 0 },
 		uAtmoTBakedComp: { value: 0 },
 		uAtmoTRadiusScene: { value: 0 },
-		uAtmoTEnable: enable
+		uAtmoTEnable: enable,
+		uAtmoTSpinAxis: { value: new Vector3(0, 1, 0) },
+		uAtmoTStretch: { value: 1 }
 	};
 }
 
@@ -219,16 +245,22 @@ export function makeViewTintUniforms(): ViewTintUniforms {
 	return { ...makeParamUniforms({ value: 0 }), uAtmoTCenter: { value: new Vector3() } };
 }
 
-/** Aim a view-tint uniform set at one body's shell for this frame. */
+/** Aim a view-tint uniform set at one body's shell for this frame. Omitted
+ *  `spinAxis`/`stretch` mean a spherical body. */
 export function bindViewTint(
 	u: ViewTintUniforms,
 	params: AtmosphereParams,
 	center: Vector3,
 	planetRadiusScene: number,
-	planetRadiusKm: number
+	planetRadiusKm: number,
+	spinAxis?: Vector3,
+	stretch = 1
 ): void {
 	syncSunTransmittanceUniforms(u, params, planetRadiusScene, planetRadiusKm);
 	u.uAtmoTCenter.value.copy(center);
+	if (spinAxis) u.uAtmoTSpinAxis.value.copy(spinAxis);
+	else u.uAtmoTSpinAxis.value.set(0, 1, 0);
+	u.uAtmoTStretch.value = stretch;
 	u.uAtmoTEnable.value = 1;
 }
 
@@ -238,19 +270,28 @@ export function bindViewTint(
  * reuses its `vEclipseWorldPos` varying and value refs. Indirect light stays
  * untouched, same rationale as the eclipse patch. Returns the handle for the
  * tuner's live re-syncs; production params are fixed per body.
+ *
+ * `shell` shares the body's shell uniforms for the oblateness squash — its
+ * per-frame spin-axis sync and SPICE-radii stretch propagate here through the
+ * shared value refs. Omitted (the tuner's spheres): identity squash.
  */
 export function attachSunTransmittanceToBody(
 	material: MeshStandardMaterial,
 	params: AtmosphereParams,
 	planetRadiusScene: number,
 	planetRadiusKm: number,
-	self: EclipseSelfUniforms
+	self: EclipseSelfUniforms,
+	shell?: AtmosphereNode
 ): SunTransmittanceUniforms {
 	const uniforms: SunTransmittanceUniforms = {
 		...makeParamUniforms(SCENE.uAtmoTEnable),
 		uAtmoTSunDir: getEclipseSceneUniforms().uSunDir,
 		uAtmoTCenter: self.uEclipseSelfPos
 	};
+	if (shell) {
+		uniforms.uAtmoTSpinAxis = shell.material.uniforms.uSpinAxis as { value: Vector3 };
+		uniforms.uAtmoTStretch = shell.material.uniforms.uStretch as { value: number };
+	}
 	syncSunTransmittanceUniforms(uniforms, params, planetRadiusScene, planetRadiusKm);
 	const prev = material.onBeforeCompile;
 	material.onBeforeCompile = (shader, renderer) => {
@@ -302,11 +343,19 @@ export function attachViewTintToMaterial(material: Material): ViewTintUniforms {
 }
 
 const _p = new Vector3();
+const _sd = new Vector3();
+
+/** In-place squashed-space transform, mirroring the GLSL `atmoTSquash`. */
+function squash(v: Vector3, spinAxis: Vector3 | undefined, stretch: number): Vector3 {
+	if (!spinAxis || stretch === 1) return v;
+	return v.addScaledVector(spinAxis, (stretch - 1) * v.dot(spinAxis));
+}
 
 /**
  * CPU twin of the fragment march, along the camera→Sun ray. `camRelPos` is
  * camera − body centre in scene units. Writes `out`; false when the ray
  * misses the shell or the body blocks the sun (disc occluded — no tint).
+ * Omitted `spinAxis`/`stretch` mean a spherical body.
  */
 export function sunPathTransmittance(
 	params: AtmosphereParams,
@@ -314,12 +363,17 @@ export function sunPathTransmittance(
 	sunDir: Vector3,
 	planetRadiusScene: number,
 	planetRadiusKm: number,
-	out: Vector3
+	out: Vector3,
+	spinAxis?: Vector3,
+	stretch = 1
 ): boolean {
-	const p = _p.copy(camRelPos).divideScalar(planetRadiusScene);
+	const p = squash(_p.copy(camRelPos).divideScalar(planetRadiusScene), spinAxis, stretch);
+	const sd = squash(_sd.copy(sunDir), spinAxis, stretch);
+	const sunLen = sd.length();
+	sd.divideScalar(sunLen);
 	const topR = 1 + params.topAltitudeKm / planetRadiusKm;
 	const blockR = 1 - TERRAIN_DIP_KM / planetRadiusKm - 0.015;
-	const b = p.dot(sunDir);
+	const b = p.dot(sd);
 	const c = p.lengthSq();
 	let d = b * b - (c - blockR * blockR);
 	if (d > 0 && -b - Math.sqrt(d) > 0) return false;
@@ -330,14 +384,15 @@ export function sunPathTransmittance(
 	if (tFar <= 0) return false;
 	const tNear = Math.max(-b - s, 0);
 	const dt = (tFar - tNear) / CPU_STEPS;
-	const dtKm = dt * planetRadiusKm;
+	// Squashed step → world path length.
+	const dtKm = (dt * planetRadiusKm) / sunLen;
 	let odR = 0;
 	let odM = 0;
 	let odA = 0;
 	for (let i = 0; i < CPU_STEPS; i++) {
 		const t = tNear + dt * (i + 0.5);
 		const hKm = Math.max(
-			(Math.hypot(p.x + sunDir.x * t, p.y + sunDir.y * t, p.z + sunDir.z * t) - 1) * planetRadiusKm,
+			(Math.hypot(p.x + sd.x * t, p.y + sd.y * t, p.z + sd.z * t) - 1) * planetRadiusKm,
 			0
 		);
 		odR += Math.exp(-hKm / params.rayleighScaleHeightKm) * dtKm;

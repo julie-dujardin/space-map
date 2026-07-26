@@ -12,6 +12,7 @@ import { getLabelVariant, setLabelName } from '../../label/factory';
 import { attachDisplacementMap, disposeDisplacementFromMaterial } from '../surface/displacement';
 import { attachSelfShadowToBody, detachSelfShadow } from '../surface/self-shadow';
 import { syncAtmosphereEllipsoid } from '../surface/atmosphere';
+import { syncSunTransmittanceUniforms } from '../surface/sun-transmittance';
 import { setShapeModelMap, setSurfaceMap } from './model-texture';
 import type { BodyObjects } from '../../types';
 
@@ -128,10 +129,15 @@ export function applyRadiiToMesh(
 	bo.radiusScene = kmToScene(Math.max(a, b, c));
 	// Mesh-local x/y/z semi-axes (matches the scale order) for ellipsoid occlusion.
 	bo.semiAxesScene = [kmToScene(a), kmToScene(c), kmToScene(b)];
-	// Reshape the scattering shell to the same ellipsoid.
+	// Reshape the scattering shell to the same ellipsoid, and re-normalise the
+	// sun-transmittance patches — their baked mean-radius β/heights would put
+	// the equatorial surface many scale heights off the datum.
 	if (bo.atmosphere) {
 		const eqKm = Math.max(a, b);
 		syncAtmosphereEllipsoid(bo.atmosphere, eqKm, c, kmToScene(eqKm));
+		for (const u of bo.sunTint ?? []) {
+			syncSunTransmittanceUniforms(u, bo.atmosphere.params, kmToScene(eqKm), eqKm);
+		}
 	}
 	bo.radiiApplied = true;
 }
