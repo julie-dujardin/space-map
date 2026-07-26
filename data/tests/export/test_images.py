@@ -60,6 +60,15 @@ def _make_source_animated_gif(width: int, height: int, n_frames: int = 3) -> byt
     return buf.getvalue()
 
 
+def _make_rotated_jpg(width: int, height: int, orientation: int = 6) -> bytes:
+    img = Image.new("RGB", (width, height), color="red")
+    exif = Image.Exif()
+    exif[0x0112] = orientation
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=90, exif=exif)
+    return buf.getvalue()
+
+
 def _make_source_mpo(width: int, height: int) -> bytes:
     # MPO is a JPEG container with embedded secondary frames (stereoscopic
     # pairs, camera exposure stacks). Pillow reports is_animated=True and
@@ -550,6 +559,51 @@ class TestVariantRules:
         assert result[0]["variants"] == {"s": "webp", "m": "webp", "xl": "webp"}
         assert not (bundle / "xl.png").exists()
         assert (bundle / "xl.webp").exists()
+
+
+class TestExifOrientation:
+    """EXIF orientation is baked into the pixels of every emitted variant.
+
+    Re-encoded variants carry only the synthetic metadata EXIF (no
+    Orientation tag), so rotated sources must be transposed before encoding
+    — and a transposed JPEG can no longer ship verbatim at the resting
+    bucket.
+    """
+
+    def test_rotated_jpg_resting_bucket_is_webp(self, tmp_path, layout):
+        _stage_download(tmp_path, "rot.jpg", bytes_=_make_rotated_jpg(2000, 1000))
+        result = _collect("rot.jpg")
+        assert result is not None
+        assert result[0]["variants"] == {"s": "webp", "m": "webp", "xl": "webp"}
+        bundle = layout["export"] / "rot.jpg"
+        assert not (bundle / "xl.jpg").exists()
+
+    def test_all_variants_upright(self, tmp_path, layout):
+        # Orientation 6 (rotate 90 CW to display): 2000x1000 stored pixels
+        # display as 1000x2000 portrait.
+        _stage_download(tmp_path, "rot.jpg", bytes_=_make_rotated_jpg(2000, 1000))
+        _collect("rot.jpg")
+        bundle = layout["export"] / "rot.jpg"
+        expected_sizes = (("s", (256, 512)), ("m", (512, 1024)), ("xl", (1000, 2000)))
+        for label, expected in expected_sizes:
+            with Image.open(bundle / f"{label}.webp") as im:
+                assert im.size == expected
+                assert im.getexif().get(0x0112) is None
+
+    def test_entry_dims_are_displayed_dims(self, tmp_path, layout):
+        _stage_download(tmp_path, "rot.jpg", bytes_=_make_rotated_jpg(2000, 1000))
+        result = _collect("rot.jpg")
+        assert result is not None
+        assert (result[0]["width"], result[0]["height"]) == (1000, 2000)
+
+    def test_unrotated_jpg_still_verbatim(self, tmp_path, layout):
+        # Orientation 1 is the identity: verbatim resting bucket must survive.
+        _stage_download(
+            tmp_path, "plain.jpg", bytes_=_make_rotated_jpg(2000, 1000, orientation=1)
+        )
+        result = _collect("plain.jpg")
+        assert result is not None
+        assert result[0]["variants"]["xl"] == "jpg"
 
 
 class TestMetadataTrimming:

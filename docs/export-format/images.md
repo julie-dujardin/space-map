@@ -21,6 +21,7 @@ Which labels appear — and what extension each carries — depends on the sourc
 | Source                        | Downscaled buckets | Resting bucket (first ≥ source dim) |
 |-------------------------------|--------------------|-------------------------------------|
 | `.jpg` / `.jpeg`              | lossy webp         | verbatim `.jpg` (re-encoding lossy just degrades) |
+| EXIF-rotated `.jpg` / `.jpeg` | lossy webp         | lossy webp at source dim            |
 | `.png` and other lossless     | lossy webp         | lossy webp at source dim            |
 | animated `.gif` (n_frames > 1)| animated AVIF      | animated AVIF at source dim         |
 | static `.gif`                 | lossy webp         | lossy webp at source dim            |
@@ -28,6 +29,8 @@ Which labels appear — and what extension each carries — depends on the sourc
 | `.pdf`, `.stl`, `.djvu`       | — (skipped entirely — not renderable as thumbnails)       ||
 
 Buckets strictly above the resting bucket are not emitted (no upscaling). The `variants` field on each `ObjectImage` records `{label: ext}` for the emitted set.
+
+EXIF orientation is baked into the pixels of every non-animated raster before encoding, so variants display upright without EXIF handling and `width`/`height` describe the image as displayed (an orientation tag on an animated source is ignored with a warning).
 
 ## Attribution tier (`ObjectImage.attr`)
 

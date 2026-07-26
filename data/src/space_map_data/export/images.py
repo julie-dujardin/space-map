@@ -22,7 +22,8 @@ Size buckets and bucket extensions follow these rules:
   at every emitted bucket, preserving frames and timing.
 - Non-animated lossy sources (jpg/jpeg) emit lossy webp for downscaled
   buckets and are copied verbatim at the resting bucket (re-encoding lossy
-  just degrades further).
+  just degrades further). EXIF-rotated JPEGs are the exception: their pixels
+  are baked upright, so every bucket re-encodes to webp.
 - Non-animated lossless sources (png, etc.) emit lossy webp at every bucket,
   including the resting bucket — one lossless→lossy re-encode is visually
   equivalent to encoding from the original and avoids shipping multi-MiB
@@ -53,7 +54,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import orjson
-from PIL import Image, ImageFile, ImageSequence
+from PIL import Image, ImageFile, ImageOps, ImageSequence
 from PIL.ExifTags import Base as ExifBase
 
 from space_map_data.constants.providers import LANGUAGES
@@ -121,7 +122,7 @@ _ANIMATED_FORMATS = {"GIF", "WEBP", "PNG"}
 # dropped/added formats) OR the metadata payload gains/drops fields. Existing
 # bundles whose metadata.json.gz carries an older schema are wiped and
 # regenerated on the next export.
-_BUNDLE_SCHEMA = 5
+_BUNDLE_SCHEMA = 6
 
 # Embedded-metadata envelope: EXIF ImageDescription =
 # "SPACEMAP-META:v1:<byte-len>:<json>". The JSON is ensure_ascii so byte
@@ -427,14 +428,33 @@ def _generate_variants(
         logger.warning("Skipping unreadable image %s: %s", filename, exc)
         return {}, None, False
 
-    source_max = max(img.width, img.height)
-    dims = (img.width, img.height)
-    lossy_source = src_ext in _LOSSY_EXTENSIONS
     animated = (
         img.format in _ANIMATED_FORMATS
         and getattr(img, "is_animated", False)
         and getattr(img, "n_frames", 1) > 1
     )
+
+    # Bake EXIF orientation into the pixels: re-encoded variants carry only
+    # our synthetic EXIF (no Orientation tag), and exported width/height must
+    # describe the image as displayed.
+    orientation = img.getexif().get(ExifBase.Orientation, 1)
+    transposed = orientation != 1 and not animated
+    if orientation != 1 and animated:
+        logger.warning(
+            "Ignoring EXIF orientation %s on animated source: %s",
+            orientation,
+            filename,
+        )
+    if transposed:
+        upright = ImageOps.exif_transpose(img)
+        img.close()
+        img = upright
+
+    source_max = max(img.width, img.height)
+    dims = (img.width, img.height)
+    # A transposed JPEG can't ship verbatim (stored pixels are rotated), so it
+    # takes the lossless→webp resting path instead.
+    lossy_source = src_ext in _LOSSY_EXTENSIONS and not transposed
 
     variants: dict[str, str] = {}
     embedded = exif is not None
