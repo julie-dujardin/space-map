@@ -2,6 +2,7 @@
 	import { getContext, untrack } from 'svelte';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import * as m from '$lib/paraglide/messages.js';
+	import { getLocale } from '$lib/paraglide/runtime.js';
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -10,6 +11,7 @@
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import { fetchEarthMembership } from '$lib/fetch/groups/membership';
 	import { featureTypeDescription } from '$lib/format/feature-type';
+	import { namingOriginLabel } from '$lib/format/naming-origin';
 	import { featureTypeCode } from '$lib/fetch/groups/registry';
 	import { SAT_ORBIT_ZONES, CLASS_SLUG_PREFIX, orbitClassLabel } from '$lib/charts/orbit-zones';
 	import Section from './kit/Section.svelte';
@@ -45,7 +47,14 @@
 	// Surface Features meta page.
 	let approvalHistogram = $derived(global?.approval_histogram);
 	// Meta page: which cultures the IAU drew names from (its `ethnicity` field).
-	let namingOrigins = $derived(global?.naming_origins ?? []);
+	// Rows arrive as the gazetteer's own English strings, localized here.
+	let namingOrigins = $derived.by(() => {
+		void getLocale();
+		return (global?.naming_origins ?? []).map((o) => ({
+			...o,
+			name: namingOriginLabel(o.name)
+		}));
+	});
 	let operators = $derived(localized?.operators ?? []);
 	let manufacturers = $derived(localized?.manufacturers ?? []);
 	let countries = $derived(localized?.country_of_origin ?? []);
