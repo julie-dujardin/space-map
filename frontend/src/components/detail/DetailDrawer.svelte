@@ -27,7 +27,12 @@
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
-	import { fetchBodyQuadrangles, type Quadrangle } from '$lib/fetch/nomenclature/quadrangles';
+	import {
+		fetchBodyQuadrangles,
+		fetchQuadrangleText,
+		type Quadrangle,
+		type QuadrangleText
+	} from '$lib/fetch/nomenclature/quadrangles';
 	import SurfaceHero from './sections/SurfaceHero.svelte';
 	import FeatureTypeFilter from './sections/FeatureTypeFilter.svelte';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
@@ -67,6 +72,7 @@
 	import ObjectLinks from './sections/ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
+	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { categoryConfig } from '$lib/state/category-config';
 	import { featureTypeLabel } from '$lib/format/feature-type';
 	import { featureDetailToObjectData, groupDetailToObjectData } from '$lib/state/detail-adapters';
@@ -544,6 +550,26 @@
 	let selectedQuadCount = $derived(selectedQuadEntry?.n);
 	// Feature the list is hovering — the hero marks it on the map.
 	let hoveredFeatureId = $state<number | null>(null);
+	// Wikipedia intro for the picked chart. A quadrangle is a part of its body,
+	// not a page of its own, so this is all there is to say about one; the
+	// per-language file only loads once one is picked.
+	let quadText = $state<QuadrangleText | null>(null);
+	$effect(() => {
+		const id = body?.data.id;
+		const code = selectedQuad;
+		const lang = getLocale();
+		if (!id || !code) {
+			quadText = null;
+			return;
+		}
+		let live = true;
+		untrack(() => fetchQuadrangleText(id, code, lang)).then((t) => {
+			if (live) quadText = t;
+		});
+		return () => {
+			live = false;
+		};
+	});
 
 	// Split-comet fragments: a strip + tab on the intact parent comet, mirroring
 	// moons. `fragment_of` (the fragment side) drives the breadcrumb + a card.
@@ -980,6 +1006,13 @@
 
 {#snippet featuresPanel()}
 	<div class="flex flex-col gap-3 p-1">
+		{#if quadText}
+			<ObjectDescription
+				extract={quadText.extract}
+				wikipediaUrl={quadText.url}
+				truncateLength={200}
+			/>
+		{/if}
 		{#if body && hasFeatures}
 			<FeatureTypeFilter
 				bodyId={body.data.id}

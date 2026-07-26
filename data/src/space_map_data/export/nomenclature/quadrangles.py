@@ -9,6 +9,9 @@ come from the gazetteer. Where the IAU's own ``quad_code`` disagrees with the
 grid — a handful of classical Mars albedo features centred exactly on a cell
 edge — the gazetteer wins and the feature rides in ``overrides`` so the search
 index can reproduce the same assignment.
+
+Per-language Wikipedia extracts for the mapped charts sit beside the geometry
+as ``{lang}.json.gz``, fetched only once a chart is picked.
 """
 
 import gzip
@@ -24,13 +27,16 @@ from space_map_data.constants.nomenclature.quadrangle_grid import (
     QUADRANGLES,
     quadrangle_for,
 )
+from space_map_data.constants.nomenclature.quadrangles import QUADRANGLE_QIDS
+from space_map_data.export.objects.wikipedia import load_wikipedia_summaries_for_qid
 from space_map_data.export.nomenclature.writer import renderable_feature_filter
 from space_map_data.models.feature import Feature
 from space_map_data.utils.paths import EXPORT_DIR
 
 logger = logging.getLogger(__name__)
 
-QUADRANGLE_FILE = "quadrangles.json.gz"
+QUADRANGLE_DIR = "quadrangles"
+GLOBAL_FILE = "__global__.json.gz"
 
 
 def build_quadrangles(session: Session) -> dict[str, dict]:
@@ -107,18 +113,44 @@ def build_quadrangles(session: Session) -> dict[str, dict]:
     return out
 
 
-def write_quadrangles(out_dir: Path, payload: dict[str, dict]) -> None:
-    """Write the quadrangle index under ``out_dir/nomenclature``."""
+def build_quadrangle_texts() -> dict[str, dict[str, dict]]:
+    """``{lang: {"<body>:<code>": {extract, url}}}`` from the mapped charts'
+    Wikipedia articles. Only Mercury, Venus and Mars charts carry a QID — the
+    Moon's LAC sheets aren't on Wikipedia."""
+    out: dict[str, dict[str, dict]] = {}
+    for (body_id, code), qid in QUADRANGLE_QIDS.items():
+        for lang, summary in load_wikipedia_summaries_for_qid(qid).items():
+            if not summary.extract:
+                continue
+            out.setdefault(lang, {})[f"{body_id}:{code}"] = {
+                "extract": summary.extract,
+                **({"url": summary.url} if summary.url else {}),
+            }
+    missing = len(QUADRANGLE_QIDS) - len(out.get("en", {}))
+    if missing > 0:
+        logger.info("%d quadrangle(s) have no English Wikipedia extract", missing)
+    return out
+
+
+def write_quadrangles(
+    out_dir: Path,
+    payload: dict[str, dict],
+    texts: dict[str, dict[str, dict]] | None = None,
+) -> None:
+    """Write the quadrangle index under ``out_dir/nomenclature/quadrangles``."""
     if not payload:
         logger.info("No quadrangle data to export")
         return
-    target = out_dir / "nomenclature"
+    target = out_dir / "nomenclature" / QUADRANGLE_DIR
     target.mkdir(parents=True, exist_ok=True)
-    (target / QUADRANGLE_FILE).write_bytes(gzip.compress(orjson.dumps(payload)))
+    (target / GLOBAL_FILE).write_bytes(gzip.compress(orjson.dumps(payload)))
+    for lang, entries in (texts or {}).items():
+        (target / f"{lang}.json.gz").write_bytes(gzip.compress(orjson.dumps(entries)))
     logger.info(
-        "Wrote quadrangle index for %d bodies (%d quadrangles)",
+        "Wrote quadrangle index for %d bodies (%d quadrangles, %d languages of text)",
         len(payload),
         sum(len(b["quads"]) for b in payload.values()),
+        len(texts or {}),
     )
 
 
@@ -128,12 +160,12 @@ def export_quadrangles_only(engine: Engine) -> None:
     if not out_dir.exists():
         raise SystemExit(f"Export dir {out_dir} missing — run a full export first.")
     with Session(engine) as session:
-        write_quadrangles(out_dir, build_quadrangles(session))
+        write_quadrangles(out_dir, build_quadrangles(session), build_quadrangle_texts())
 
 
 def load_quadrangles(export_dir: Path) -> dict[str, dict]:
     """Read the exported quadrangle index, or {} when it hasn't been written."""
-    path = export_dir / "v1" / "nomenclature" / QUADRANGLE_FILE
+    path = export_dir / "v1" / "nomenclature" / QUADRANGLE_DIR / GLOBAL_FILE
     if not path.exists():
         logger.warning("No quadrangle index at %s", path)
         return {}

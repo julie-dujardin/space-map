@@ -24,6 +24,13 @@ export interface Quadrangle {
 	lon_span: number;
 }
 
+/** Wikipedia intro for one chart, in the active locale. Absent for the Moon's
+ *  LAC sheets and for charts with no article. */
+export interface QuadrangleText {
+	extract: string;
+	url?: string;
+}
+
 export interface BodyQuadrangles {
 	quads: Quadrangle[];
 	/** feature_id → code, for the few features the gazetteer files against the
@@ -34,7 +41,20 @@ export interface BodyQuadrangles {
 /** A body's quadrangles, or null when it isn't on a mapped grid. */
 export async function fetchBodyQuadrangles(bodyId: string): Promise<Quadrangle[] | null> {
 	const all = await fetchGzipBundle<BodyQuadrangles>(
-		versionedUrl('/v1/nomenclature/quadrangles.json.gz', 'nomenclature')
+		versionedUrl('/v1/nomenclature/quadrangles/__global__.json.gz', 'nomenclature')
 	);
 	return all[bodyId]?.quads ?? null;
+}
+
+/** A chart's Wikipedia intro, or null when that language has no article for it.
+ *  The per-language file is only fetched once a chart is actually picked. */
+export async function fetchQuadrangleText(
+	bodyId: string,
+	code: string,
+	lang: string
+): Promise<QuadrangleText | null> {
+	const entries = await fetchGzipBundle<QuadrangleText>(
+		versionedUrl(`/v1/nomenclature/quadrangles/${lang}.json.gz`, 'nomenclature')
+	);
+	return entries[`${bodyId}:${code}`] ?? null;
 }

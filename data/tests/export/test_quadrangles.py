@@ -11,7 +11,11 @@ from space_map_data.constants.nomenclature.quadrangle_grid import (
     quadrangle,
     quadrangle_for,
 )
-from space_map_data.export.nomenclature.quadrangles import build_quadrangles
+from space_map_data.export.nomenclature.quadrangles import (
+    build_quadrangles,
+    load_quadrangles,
+    write_quadrangles,
+)
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.models.object.base import Base
@@ -175,3 +179,33 @@ class TestBuildQuadrangles:
 
         quads = {q["code"]: q for q in build_quadrangles(session)["naif-499"]["quads"]}
         assert quads["mc09"]["n"] == 1
+
+
+class TestWriteQuadrangles:
+    """File layout: geometry global, Wikipedia intros split per language."""
+
+    def test_round_trips_and_splits_languages(self, session: Session, tmp_path):
+        session.add(Object(id="naif-499", name="Mars", object_type=ObjectType.planet))
+        session.add(
+            _feature(1, "naif-499", 0.0, 0.0, quad_code="mc12", quad_name="Arabia")
+        )
+        session.commit()
+        payload = build_quadrangles(session)
+        texts = {
+            "en": {"naif-499:mc12": {"extract": "The Arabia quadrangle…"}},
+            "fr": {"naif-499:mc12": {"extract": "Le quadrangle d'Arabia…"}},
+        }
+
+        write_quadrangles(tmp_path / "v1", payload, texts)
+
+        quads = tmp_path / "v1" / "nomenclature" / "quadrangles"
+        assert {p.name for p in quads.iterdir()} == {
+            "__global__.json.gz",
+            "en.json.gz",
+            "fr.json.gz",
+        }
+        assert load_quadrangles(tmp_path)["naif-499"]["quads"][11]["code"] == "mc12"
+
+    def test_no_payload_writes_nothing(self, tmp_path):
+        write_quadrangles(tmp_path / "v1", {}, {})
+        assert not (tmp_path / "v1").exists()

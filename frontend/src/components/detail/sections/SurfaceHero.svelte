@@ -124,9 +124,25 @@
 			live = false;
 		};
 	});
+	/** Marker radius in viewBox units before the zoom is divided out. */
+	const MARKER_R = 3.5;
+
 	let marker = $derived.by(() => {
 		const at = markedFeatureId != null ? positions.get(markedFeatureId) : undefined;
-		return at ? { x: xOf(at.lon), y: 90 - at.lat } : null;
+		if (!at) return null;
+		const { scale, tx, ty } = view;
+		const r = MARKER_R / scale;
+		// Held inside the visible window, so a feature outside the zoomed-in
+		// chart still shows which way it lies instead of vanishing.
+		const clamp = (v: number, offset: number, span: number) => {
+			const min = (-offset / scale) * span;
+			return Math.min(Math.max(v, min + r), min + span / scale - r);
+		};
+		return {
+			x: clamp(xOf(at.lon), tx, 360),
+			y: clamp(90 - at.lat, ty, 180),
+			r
+		};
 	});
 
 	let mapFailed = $state(false);
@@ -196,13 +212,13 @@
 					</g>
 				{/each}
 				{#if marker}
-					<!-- Constant on-screen size: radii and stroke divide the zoom back
-					     out, and the viewBox is 2:1 stretched so x/y radii differ. -->
-					<ellipse
+					<!-- Constant on-screen size: the radius divides the zoom back out.
+					     The viewBox is 2:1 into a 2:1 box, so units are square and a
+					     circle stays round. -->
+					<circle
 						cx={marker.x}
 						cy={marker.y}
-						rx={5 / view.scale}
-						ry={2.5 / view.scale}
+						r={marker.r}
 						class="fill-primary/30 stroke-primary"
 						stroke-width={2 / view.scale}
 						vector-effect="non-scaling-stroke"

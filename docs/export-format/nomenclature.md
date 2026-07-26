@@ -77,8 +77,8 @@ as supplemental metadata rather than as the authoritative parent.
 
 ## Quadrangle index
 
-`nomenclature/quadrangles.json.gz` — one small file (~4 kB) covering every body
-on an IAU quadrangle grid: Mercury's 15 `H-` charts, Venus' 62 `v`, Mars' 30
+`nomenclature/quadrangles/__global__.json.gz` — one small file (~4 kB) covering
+every body on an IAU quadrangle grid: Mercury's 15 `H-` charts, Venus' 62 `v`, Mars' 30
 `mc`, the Moon's 144 `LAC`. It backs the body drawer's Surface tab hero, which
 draws the cells over the body's map texture and narrows the feature list to a
 selected one.
@@ -104,6 +104,19 @@ itself — every feature carrying a `quad_code` falls inside the derived box for
 that code, bar eleven classical Mars albedo features centred exactly on a cell
 edge. Those ride in `overrides`, where the gazetteer's own assignment wins; the
 search index applies them on top of its geometric lookup (`feature.quad`).
+
+`nomenclature/quadrangles/{lang}.json.gz` — the charts' Wikipedia intros,
+keyed `"<body id>:<code>"`, fetched only once a chart is picked:
+
+```typescript
+type QuadrangleTexts = Record<string, { extract: string; url?: string }>
+```
+
+Only Mercury, Venus and Mars charts are mapped to Wikidata (see
+`constants/nomenclature/quadrangles.py`); the Moon's 144 LAC sheets have no
+articles, and coverage is patchy per language — 8 languages ship a file, the
+largest 16 kB. A quadrangle has no page of its own in the frontend: it's shown
+as part of its parent body, on that body's Surface tab.
 
 Written by the nomenclature tier, and on its own by
 `space-map-export --only quadrangles` (additive — nothing else is touched).

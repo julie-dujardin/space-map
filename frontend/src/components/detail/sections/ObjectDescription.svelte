@@ -7,18 +7,21 @@
 	interface Props {
 		extract?: string;
 		wikipediaUrl?: string;
+		/** Characters shown before "Read more". Secondary blurbs (a selected
+		 *  quadrangle) take half the object default so they don't crowd out the
+		 *  list they sit above. */
+		truncateLength?: number;
 	}
 
-	let { extract, wikipediaUrl }: Props = $props();
+	let { extract, wikipediaUrl, truncateLength = 400 }: Props = $props();
 	let expanded = $state(false);
 
-	const TRUNCATE_LENGTH = 400;
-	let needsTruncation = $derived(extract ? extract.length > TRUNCATE_LENGTH : false);
+	let needsTruncation = $derived(extract ? extract.length > truncateLength : false);
 	let displayText = $derived(
 		extract
 			? expanded || !needsTruncation
 				? extract
-				: extract.slice(0, TRUNCATE_LENGTH).replace(/\s+\S*$/, '') + '…'
+				: extract.slice(0, truncateLength).replace(/\s+\S*$/, '') + '…'
 			: ''
 	);
 </script>

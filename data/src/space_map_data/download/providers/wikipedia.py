@@ -10,6 +10,7 @@ from typing import Iterator
 
 import httpx
 from httpx import Response
+from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.groups.registry import GROUPS
 from space_map_data.utils.paths import SOURCES_METADATA_DIR
@@ -57,7 +58,8 @@ class WikipediaDownloader(Downloader):
                 f"({', '.join(self._ENTITY_SUBDIRS)}) — download wikidata first"
             )
 
-        tasks_by_lang = self._collect_tasks(present, self._group_entity_files())
+        extra = self._group_entity_files() + self._quadrangle_entity_files()
+        tasks_by_lang = self._collect_tasks(present, extra)
         if not tasks_by_lang:
             logger.info("No summaries to fetch")
             return
@@ -83,6 +85,16 @@ class WikipediaDownloader(Downloader):
             if path.exists():
                 files.append(path)
         return files
+
+    def _quadrangle_entity_files(self) -> list[Path]:
+        """IAU quadrangles are referenced entities too — their articles back the
+        Surface tab's description of a selected chart."""
+        referenced = SOURCES_METADATA_DIR / "wikidata" / "referenced"
+        return [
+            path
+            for qid in sorted(quadrangle_qids())
+            if (path := referenced / f"{qid}.json").exists()
+        ]
 
     def _collect_tasks(
         self,
