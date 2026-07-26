@@ -85,6 +85,7 @@ export class AppState {
 		name: string;
 		tab?: Exclude<DrawerTab, 'overview'>;
 		quad?: string;
+		featureType?: string;
 	}) {
 		this.view = applyFocus(this.view, focus);
 		this.pushNow();

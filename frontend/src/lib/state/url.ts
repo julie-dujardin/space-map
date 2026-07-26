@@ -200,6 +200,8 @@ export function applyFocus(
 		tab?: Exclude<DrawerTab, 'overview'>;
 		/** Preselect a quadrangle on the Surface tab (feature → host body link). */
 		quad?: string;
+		/** Preselect a feature type on the Surface tab (ft- page → host body). */
+		featureType?: string;
 	}
 ): MapViewState {
 	return {
@@ -213,7 +215,7 @@ export function applyFocus(
 		tab: focus.tab ?? null,
 		memberPage: null,
 		quad: focus.quad ?? null,
-		featureType: null
+		featureType: focus.featureType ?? null
 	};
 }
 

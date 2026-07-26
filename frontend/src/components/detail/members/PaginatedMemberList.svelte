@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
+	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { memberEntryKey, type NotableMemberEntry } from '$lib/fetch/objects/object-data';
@@ -135,6 +136,20 @@
 	}
 
 	let rows = $state<Row[]>([]);
+
+	/** Column labels for the stacked right-hand values, in render order. A
+	 *  group's rows can mix launches and discoveries (Starlink vs an asteroid
+	 *  family), so only a body's own moons get the specific "Discovery". */
+	let valueLabels = $derived.by(() => {
+		void getLocale();
+		const out: string[] = [];
+		if (rows.some((r) => r.diameter_km != null)) out.push(m.diameter());
+		if (rows.some((r) => r.year)) {
+			out.push(source.kind === 'parent' ? m.discovery() : m.search_sort_date());
+		}
+		return out;
+	});
+
 	// Refined by estimatedTotalHits once a search page lands; the $effect seeds it.
 	let total = $state(0);
 	let loading = $state(false);
@@ -276,6 +291,16 @@
 </script>
 
 <div class="flex flex-col gap-1">
+	<!-- Names what the right-hand column holds: "876 km" against a crater is
+	     otherwise anyone's guess. Only the metrics the rows actually carry. -->
+	{#if valueLabels.length > 0}
+		<div
+			class="text-muted-foreground flex justify-end px-1 text-[10px] tracking-wide uppercase"
+			aria-hidden="true"
+		>
+			{valueLabels.join(' · ')}
+		</div>
+	{/if}
 	<ul class="flex flex-col">
 		{#each rows as row (rowKey(row))}
 			<li>

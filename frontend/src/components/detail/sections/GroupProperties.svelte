@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, untrack } from 'svelte';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
@@ -10,6 +10,7 @@
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import { fetchEarthMembership } from '$lib/fetch/groups/membership';
 	import { featureTypeDescription } from '$lib/format/feature-type';
+	import { featureTypeCode } from '$lib/fetch/groups/registry';
 	import { SAT_ORBIT_ZONES, CLASS_SLUG_PREFIX, orbitClassLabel } from '$lib/charts/orbit-zones';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
@@ -145,6 +146,24 @@
 
 	let featureBodies = $derived(global?.feature_bodies ?? []);
 
+	// On an ft- page the per-body rows should land on that body's features *of
+	// this type*, so the row's count matches the list it opens.
+	let rowFeatureType = $state<string | undefined>(undefined);
+	$effect(() => {
+		const slug = global?.type === 'feature_type' ? global.slug : undefined;
+		if (!slug) {
+			rowFeatureType = undefined;
+			return;
+		}
+		let live = true;
+		untrack(() => featureTypeCode(slug)).then((code) => {
+			if (live) rowFeatureType = code;
+		});
+		return () => {
+			live = false;
+		};
+	});
+
 	function groupHref(slug: string, name: string): string | undefined {
 		if (!appState) return undefined;
 		return serializeUrl(applyGroup(appState.view, slug, name));
@@ -174,6 +193,7 @@
 		title={m.group_features_per_body()}
 		names={localized?.body_names}
 		tab="features"
+		featureType={rowFeatureType}
 	/>
 {/if}
 

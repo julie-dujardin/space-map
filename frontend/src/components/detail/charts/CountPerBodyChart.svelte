@@ -25,8 +25,11 @@
 		tab?: Exclude<DrawerTab, 'overview'>;
 		/** Body id → localized label, when the bundle ships one. */
 		names?: Record<string, string>;
+		/** Narrows the target tab's list to one feature type, so a row on an
+		 *  `ft-` page lands on that body's features of that type — not all of them. */
+		featureType?: string;
 	}
-	let { entries, title, tab, names }: Props = $props();
+	let { entries, title, tab, names, featureType }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -77,8 +80,8 @@
 			{#each visible as e (e.primary_id ?? e.name)}
 				{#if appState && e.primary_id}
 					<a
-						href={focusHref(appState, e.primary_id, label(e), tab)}
-						onclick={focusClick(focusObject, e.primary_id, label(e), { tab })}
+						href={focusHref(appState, e.primary_id, label(e), tab, featureType)}
+						onclick={focusClick(focusObject, e.primary_id, label(e), { tab, featureType })}
 						class="hover:bg-muted/40 grid items-center gap-2 rounded-sm px-1 py-px"
 						style="grid-template-columns: minmax(0, 9rem) 1fr 2.5rem"
 					>

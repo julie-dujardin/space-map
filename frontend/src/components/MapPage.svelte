@@ -89,7 +89,7 @@
 			// Stream an out-of-view target in place (probe/sat) — no page reload.
 			if (!ctx.getBody(id)) await ctx.ensureBody(id, jdToDate(clock.jd));
 
-			appState.setFocus({ type, id, name, tab: opts?.tab });
+			appState.setFocus({ type, id, name, tab: opts?.tab, featureType: opts?.featureType });
 
 			const body = ctx.getBody(id);
 			if (!body) {

@@ -25,7 +25,12 @@ export type Focusable =
 export type FocusObject = (
 	id: string,
 	name: string,
-	opts?: { moveCamera?: boolean; tab?: Exclude<DrawerTab, 'overview'> }
+	opts?: {
+		moveCamera?: boolean;
+		tab?: Exclude<DrawerTab, 'overview'>;
+		/** Narrow the Surface tab to one feature type on arrival. */
+		featureType?: string;
+	}
 ) => void;
 
 /** Open a surface feature on its host body, streaming the body in if the
