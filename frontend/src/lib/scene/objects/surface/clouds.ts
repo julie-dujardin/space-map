@@ -44,7 +44,7 @@ export interface CloudNode {
  * Small enough to be visually indistinguishable; large enough to avoid the
  * coplanar-fragment depth-equality glitch on some GPUs.
  */
-const CLOUD_RADIUS_OFFSET = 1.002;
+export const CLOUD_RADIUS_OFFSET = 1.002;
 
 /**
  * Minimum wall-clock interval between cloud-texture swaps. At high time-warp

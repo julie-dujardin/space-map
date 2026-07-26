@@ -49,6 +49,7 @@ const PARAM_DECLS = `
 	uniform vec3 uAtmoTCenter;       // body centre, scene/world space
 	uniform vec3 uAtmoTSpinAxis;     // unit, world — body pole
 	uniform float uAtmoTStretch;     // equatorial radius / polar radius, >= 1
+	uniform float uAtmoTMeshR;       // host mesh's nominal radius / planet radius
 
 	// Shell parity: stretch the spin-axis component so the oblate ellipsoid
 	// becomes the unit sphere. Linear, so rays stay straight; squashed path
@@ -80,10 +81,10 @@ const SUN_TINT_GLSL = `
 	vec3 atmoSunTint(vec3 worldPos) {
 		if (uAtmoTEnable < 0.5) return vec3(1.0);
 		vec3 p = atmoTSquash((worldPos - uAtmoTCenter) / uAtmoTRadiusScene);
-		// Mesh chords and DEM dips put fragments under the datum sphere, where
-		// clamped-density columns overcount fast — start on the datum instead.
-		float pLen = length(p);
-		if (pLen < 1.0) p /= pLen;
+		// Snap the start to the mesh's analytic sphere: interpolated positions
+		// ripple below it between vertices (chords, DEM), and the exponential
+		// density turns that tessellation ripple into per-quad tint blotches.
+		p = normalize(p) * uAtmoTMeshR;
 		vec3 sd = atmoTSquash(uAtmoTSunDir);
 		float sunLen = length(sd);
 		sd /= sunLen;
@@ -181,6 +182,7 @@ export interface SunTransmittanceParamUniforms {
 	uAtmoTEnable: { value: number };
 	uAtmoTSpinAxis: { value: Vector3 };
 	uAtmoTStretch: { value: number };
+	uAtmoTMeshR: { value: number };
 }
 
 /** Surface-patch handle: params + the re-bound eclipse sun-dir/centre refs. */
@@ -210,7 +212,8 @@ function makeParamUniforms(enable: { value: number }): SunTransmittanceParamUnif
 		uAtmoTRadiusScene: { value: 0 },
 		uAtmoTEnable: enable,
 		uAtmoTSpinAxis: { value: new Vector3(0, 1, 0) },
-		uAtmoTStretch: { value: 1 }
+		uAtmoTStretch: { value: 1 },
+		uAtmoTMeshR: { value: 1 }
 	};
 }
 
@@ -274,6 +277,10 @@ export function bindViewTint(
  * `shell` shares the body's shell uniforms for the oblateness squash — its
  * per-frame spin-axis sync and SPICE-radii stretch propagate here through the
  * shared value refs. Omitted (the tuner's spheres): identity squash.
+ *
+ * `meshRadiusRatio` is the host mesh's nominal radius over the planet radius
+ * (1 for the surface, the cloud offset for the cloud layer) — the march start
+ * snaps to that analytic sphere, so tessellation never shows in the tint.
  */
 export function attachSunTransmittanceToBody(
 	material: MeshStandardMaterial,
@@ -281,13 +288,15 @@ export function attachSunTransmittanceToBody(
 	planetRadiusScene: number,
 	planetRadiusKm: number,
 	self: EclipseSelfUniforms,
-	shell?: AtmosphereNode
+	shell?: AtmosphereNode,
+	meshRadiusRatio = 1
 ): SunTransmittanceUniforms {
 	const uniforms: SunTransmittanceUniforms = {
 		...makeParamUniforms(SCENE.uAtmoTEnable),
 		uAtmoTSunDir: getEclipseSceneUniforms().uSunDir,
 		uAtmoTCenter: self.uEclipseSelfPos
 	};
+	uniforms.uAtmoTMeshR.value = meshRadiusRatio;
 	if (shell) {
 		uniforms.uAtmoTSpinAxis = shell.material.uniforms.uSpinAxis as { value: Vector3 };
 		uniforms.uAtmoTStretch = shell.material.uniforms.uStretch as { value: number };

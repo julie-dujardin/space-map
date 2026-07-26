@@ -22,6 +22,7 @@ import {
 	type RingMeta
 } from '../surface/rings';
 import {
+	CLOUD_RADIUS_OFFSET,
 	cloudFrameForJd,
 	disposeCloudNode,
 	loadCloudNode,
@@ -330,7 +331,8 @@ export async function loadSystemData(
 									bo.radiusScene,
 									bo.atmosphere.planetRadiusKm,
 									bo.eclipseShadow,
-									bo.atmosphere
+									bo.atmosphere,
+									CLOUD_RADIUS_OFFSET
 								)
 							);
 						}
