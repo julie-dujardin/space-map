@@ -6,8 +6,9 @@ promoted set plus anything with a real Wikidata presence — and writes a single
 and the sitemap URL share an origin (no Search Console cross-host step).
 
 Canonical URL = ``/<type>/<id>/<name>`` for objects (name from ``obj.name``,
-the same value the bundles expose and the app puts in the URL) and ``/g/<slug>``
-for groups. Kept in lockstep with ``frontend/src/lib/state/url.ts``.
+the same value the bundles expose and the app puts in the URL), ``/g/<slug>``
+for groups and ``/<type>/<id>/f/<featureId>/<name>`` for surface features.
+Kept in lockstep with ``frontend/src/lib/state/url.ts``.
 """
 
 import datetime
@@ -21,6 +22,8 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS
+from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
 
 logger = logging.getLogger(__name__)
@@ -93,6 +96,47 @@ def _notable_paths(session: Session) -> list[str]:
     return paths
 
 
+def _feature_paths(
+    session: Session, wikidata_entities: WikidataEntityCache
+) -> list[str]:
+    """Canonical paths for surface features at or above the sitelink floor.
+
+    Same notability bar as objects. Most of the 16k gazetteer entries are
+    anonymous craters whose page would be a name and a coordinate; the ones
+    with a real Wikidata presence carry a description worth indexing.
+    """
+    rows = session.execute(
+        select(
+            Feature.feature_id,
+            Feature.object_id,
+            Feature.name,
+            Feature.unicode_name,
+            Feature.wikidata_qid,
+        ).where(Feature.wikidata_qid.isnot(None), Feature.object_id.isnot(None))
+    ).all()
+    paths: list[str] = []
+    skipped = 0
+    for feature_id, object_id, name, unicode_name, qid in rows:
+        wd = wikidata_entities.get_feature_entity(qid)
+        if not wd or len(wd["sitelinks"]) < SITELINKS_THRESHOLD:
+            continue
+        base = _object_path(object_id, None)
+        if base is None:
+            skipped += 1
+            continue
+        canonical = unicode_name or name
+        paths.append(f"{base}/f/{feature_id}/{quote(canonical, safe=_URI_SAFE)}")
+    if skipped:
+        logger.warning("sitemap: skipped %d features with unmapped host id", skipped)
+    logger.info(
+        "sitemap: %d of %d Wikidata-backed features meet the %d-sitelink floor",
+        len(paths),
+        len(rows),
+        SITELINKS_THRESHOLD,
+    )
+    return paths
+
+
 def _group_paths(out_dir: Path) -> list[str]:
     """``/g/<slug>`` for every exported group. Slug is already descriptive, so
     no name segment."""
@@ -116,12 +160,18 @@ def _urlset(paths: list[str], lastmod: str) -> bytes:
     return "\n".join(lines).encode()
 
 
-def write_sitemap(session: Session, out_dir: Path) -> int:
+def write_sitemap(
+    session: Session, out_dir: Path, wikidata_entities: WikidataEntityCache
+) -> int:
     """Write ``v1/seo/sitemap.xml`` and return the URL count.
 
     Reads the group index that the groups tier already wrote to ``out_dir``.
     """
-    paths = _notable_paths(session) + _group_paths(out_dir)
+    paths = (
+        _notable_paths(session)
+        + _group_paths(out_dir)
+        + _feature_paths(session, wikidata_entities)
+    )
     if len(paths) > _MAX_URLS_PER_FILE:
         logger.warning(
             "sitemap: %d URLs exceeds single-file budget (%d) — add chunking",

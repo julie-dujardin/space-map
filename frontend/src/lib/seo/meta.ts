@@ -24,6 +24,7 @@ import type {
 	ObjectImage
 } from '$lib/fetch/objects/object-data';
 import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
+import type { FeatureGlobalData, FeatureLocalizedData } from '$lib/fetch/nomenclature/details';
 
 /** Localized shapes share this description source (object + group bundles).
  *  `description` is the CC0 Wikidata short description — the Wikipedia extract
@@ -406,6 +407,70 @@ export async function loadObjectSeo(
 		origin,
 		meta.versions?.images
 	);
+	return {
+		title: pageTitle(name),
+		description: card.description,
+		canonical: `${origin}${path}`,
+		image: card.image,
+		ogType: 'article'
+	};
+}
+
+/** Meta for a surface-feature page (`/<type>/<id>/f/<featureId>/<name>`).
+ *
+ * Description order: the CC0 Wikidata short description, then the IAU
+ * name-origin blurb — public-domain gazetteer text, and the one line that
+ * actually distinguishes one anonymous crater from the next. The Wikipedia
+ * extract stays out for the licensing reason noted above. */
+export async function loadFeatureSeo(
+	bodyId: string,
+	featureId: number,
+	name: string,
+	origin: string,
+	path: string
+): Promise<SeoMeta | null> {
+	const base = absolutize(DATA_BASE, origin);
+	const metaRes = await fetch(`${base}/v1/metadata.json`);
+	if (!metaRes.ok) return null;
+	const meta = (await metaRes.json()) as {
+		feature_bundles?: Record<string, number>;
+		versions?: Record<string, string>;
+	};
+	const bundles = meta.feature_bundles;
+	if (!bundles) return null;
+	const token = meta.versions?.nomenclature;
+
+	const key = `${bodyId}:${featureId}`;
+	const nGlobal = bundles.global ?? 0;
+	const nLocalized = bundles[SSR_LANG] ?? 0;
+	const [gBucket, lBucket] = await Promise.all([
+		nGlobal ? hashBucket(key, nGlobal) : Promise.resolve(-1),
+		nLocalized ? hashBucket(key, nLocalized) : Promise.resolve(-1)
+	]);
+
+	const [gBundle, lBundle] = await Promise.all([
+		gBucket >= 0
+			? fetchJsonGz(
+					versioned(`${base}/v1/nomenclature/details/__global__/${gBucket}.json.gz`, token)
+				)
+			: Promise.resolve(null),
+		lBucket >= 0
+			? fetchJsonGz(
+					versioned(`${base}/v1/nomenclature/details/${SSR_LANG}/${lBucket}.json.gz`, token)
+				)
+			: Promise.resolve(null)
+	]);
+
+	const global = (gBundle?.[key] as FeatureGlobalData | undefined) ?? null;
+	const localized = (lBundle?.[key] as FeatureLocalizedData | undefined) ?? null;
+	if (!global && !localized) return null;
+
+	const description = localized?.description
+		? ucfirst(cleanDescription(localized.description))
+		: global?.origin
+			? cleanDescription(ucfirst(global.origin.replace(/\.?$/, '.')))
+			: genericDescription(name);
+	const card = await resolveOgCard(global?.images, description, origin, meta.versions?.images);
 	return {
 		title: pageTitle(name),
 		description: card.description,
