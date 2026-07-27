@@ -806,6 +806,7 @@
 	"attribution_title": "Data sources",
 	"attribution_section_orbits": "Orbital elements",
 	"attribution_section_rotation": "Rotation, orientation & radii",
+	"attribution_section_atmospheres": "Atmospheres",
 	"attribution_section_imagery": "Surface imagery",
 	"attribution_section_rings": "Planetary rings",
 	"attribution_section_clouds": "Cloud cover",

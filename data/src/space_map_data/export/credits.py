@@ -11,6 +11,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.atmosphere.references import ATMOSPHERE_REFERENCES
 from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
 from space_map_data.export.systems import texture_attribution
 from space_map_data.ingest.providers.models.config import MODEL_CATALOGS
@@ -360,6 +361,9 @@ def write_credits(
     payload: dict = {
         "systems": systems_out,
         "ephemeris_archives": EPHEMERIS_ARCHIVES,
+        # Literature behind the derived scattering parameters — see
+        # constants/atmosphere/references.py.
+        "atmosphere_references": [r._asdict() for r in ATMOSPHERE_REFERENCES],
     }
     if models_out:
         payload["models"] = models_out

@@ -39,6 +39,11 @@ interface Credits {
       description?: string;
     }>;
   }>;
+  atmosphere_references: Array<{ // literature behind the derived scattering params
+    title: string;               // "Fulchignoni et al. 2005 (Nature 438)"
+    url: string;                 // DOI or stable publisher/archive link
+    contribution: string;        // one-liner: what the pipeline takes from it
+  }>;
   models?: Array<{               // 3D-model source catalogs (one entry per catalog with ≥ 1 bundle)
     name: string;                // "NASA-3D-Resources", "ESA SciFleet"
     url: string;                 // user-facing catalog landing page
@@ -70,6 +75,11 @@ exists under `textures/stars/` and mirrors the credit fields from its metadata.
 texture's `license:` manifest field. It's omitted whenever the source license is
 unresolved or restrictive enough to need manual review, so absence means
 "unknown/flagged", not "unrestricted".
+
+`atmosphere_references` is the flat literature list behind `atmospheres.json`
+(curated in `data/src/space_map_data/constants/atmosphere/references.py` — one
+row per work numbers are actually taken from, English-only like the rest of
+this payload).
 
 The top-level `models` array credits each 3D-model source catalog (NASA-3D-Resources,
 ESA SciFleet, …) with one entry per catalog whose attribution matched at least

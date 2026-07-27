@@ -287,9 +287,28 @@
 		return [tintT.x / lum, tintT.y / lum, tintT.z / lum];
 	});
 
+	// Inert stand-in: template $deriveds evaluate during mount, before the
+	// onMount loadAtmospheres() has populated the registry — real params land
+	// before `ready` gates any visible use.
+	const PENDING_PARAMS: AtmosphereParams = {
+		topAltitudeKm: 1,
+		rayleighScatterPerKm: [0, 0, 0],
+		rayleighScaleHeightKm: 1,
+		mieScatterPerKm: [0, 0, 0],
+		mieAbsorptionPerKm: [0, 0, 0],
+		mieScaleHeightKm: 1,
+		miePhase: new Array(384).fill(0),
+		absorptionPerKm: [0, 0, 0],
+		absorptionCenterKm: 0,
+		absorptionWidthKm: 1,
+		bakedCompensation: 0,
+		multiScatterGain: 0,
+		sunIntensity: 0,
+		sunColor: [1, 1, 1]
+	};
+
 	function shipped(): AtmosphereParams {
-		// Load is awaited before `ready`, so the entry exists for every BODIES id.
-		return getAtmosphereParams(bodyId)!;
+		return getAtmosphereParams(bodyId) ?? PENDING_PARAMS;
 	}
 
 	function resolved(): AtmosphereParams {

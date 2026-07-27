@@ -788,6 +788,7 @@
 	"attribution_title": "データソース",
 	"attribution_section_orbits": "軌道要素",
 	"attribution_section_rotation": "自転・向き・半径",
+	"attribution_section_atmospheres": "大気",
 	"attribution_section_imagery": "表面画像",
 	"attribution_section_rings": "惑星の環",
 	"attribution_section_clouds": "雲量",

@@ -127,9 +127,21 @@ export interface ModelCatalog {
 	license?: string;
 }
 
+/**
+ * One literature source behind the derived atmospheric-scattering parameters
+ * (see data/src/space_map_data/constants/atmosphere/references.py). English-
+ * only like the rest of the credits payload.
+ */
+export interface AtmosphereReference {
+	title: string;
+	url: string;
+	contribution: string;
+}
+
 export interface Credits {
 	systems: SystemGroup[];
 	ephemeris_archives: EphemerisArchive[];
+	atmosphere_references?: AtmosphereReference[];
 	models?: ModelCatalog[];
 	skybox?: SkyboxCredit;
 }
