@@ -5,6 +5,7 @@ import logging
 import logging.config
 import tomllib
 
+from space_map_data.export.atmospheres import export_atmospheres_only
 from space_map_data.export.groups import export_groups_only
 from space_map_data.export.nomenclature.quadrangles import export_quadrangles_only
 from space_map_data.export.pipeline.orchestrator import export
@@ -18,7 +19,7 @@ def cli():
     )
     parser.add_argument(
         "--only",
-        choices=("groups", "quadrangles"),
+        choices=("groups", "quadrangles", "atmospheres"),
         default=None,
         help="Run only the named tier (additive — leaves other outputs untouched)",
     )
@@ -27,6 +28,10 @@ def cli():
     with open(DATA_DIR / "logging.toml", "rb") as f:
         logging.config.dictConfig(tomllib.load(f))
 
+    if args.only == "atmospheres":
+        # Pure constants + derivation — no DB.
+        export_atmospheres_only()
+        return
     with engine_scope() as engine:
         if args.only == "groups":
             export_groups_only(engine)

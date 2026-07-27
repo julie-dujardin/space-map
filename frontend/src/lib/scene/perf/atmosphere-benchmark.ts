@@ -12,7 +12,7 @@ import {
 } from 'three';
 import {
 	applyAtmosphereQuality,
-	ATMOSPHERE_PARAMS,
+	type AtmosphereParams,
 	buildAtmosphereNode,
 	disposeAtmosphereNode
 } from '$lib/scene/objects/surface/atmosphere';
@@ -35,10 +35,41 @@ import {
  * across all tiers, then sky) so the visible run holds one viewpoint per pass.
  */
 
-/** Earth is the reference workload: mid-pack params, and the body users most
- *  often sit next to when a shell is prominent. */
-const BENCH_BODY = 'naif-399';
 const EARTH_RADIUS_KM = 6371;
+
+/** Normalised Henyey-Greenstein LUT in the shader's 3×128 quadratic-warp
+ *  layout. Shader cost doesn't depend on table contents, so a synthetic phase
+ *  keeps the bench free of the fetched atmospheres.json. */
+function benchPhaseTable(g: number): number[] {
+	const n = 128;
+	const channel: number[] = [];
+	for (let i = 0; i < n; i++) {
+		const theta = Math.PI * (i / (n - 1)) ** 2;
+		const mu = Math.cos(theta);
+		channel.push(((1 / (4 * Math.PI)) * (1 - g * g)) / (1 + g * g - 2 * g * mu) ** 1.5);
+	}
+	return [...channel, ...channel, ...channel];
+}
+
+/** Earth-like reference workload: mid-pack params for the body users most
+ *  often sit next to when a shell is prominent. Values only need to be
+ *  representative — the timings measure the march, not the look. */
+const BENCH_PARAMS: AtmosphereParams = {
+	topAltitudeKm: 67,
+	rayleighScatterPerKm: [5.8e-3, 13.6e-3, 33.1e-3],
+	rayleighScaleHeightKm: 8.4,
+	mieScatterPerKm: [4e-3, 4e-3, 4e-3],
+	mieAbsorptionPerKm: [4e-4, 4e-4, 4e-4],
+	mieScaleHeightKm: 1.2,
+	miePhase: benchPhaseTable(0.75),
+	absorptionPerKm: [0.65e-3, 1.881e-3, 0.085e-3],
+	absorptionCenterKm: 25,
+	absorptionWidthKm: 15,
+	bakedCompensation: 1,
+	multiScatterGain: 0.3,
+	sunIntensity: 5,
+	sunColor: [1, 1, 1]
+};
 
 const LIMB_CAMERA_DIST = 1.6;
 /** ~3 km up: safely inside the shell without the surface clipping the view. */
@@ -151,7 +182,7 @@ export async function runAtmosphereBenchmark(
 	light.position.copy(SUN_DIR);
 	scene.add(light);
 
-	const params = ATMOSPHERE_PARAMS[BENCH_BODY];
+	const params = BENCH_PARAMS;
 	const atmoNode = buildAtmosphereNode(params, 1, EARTH_RADIUS_KM);
 	const u = atmoNode.material.uniforms;
 	(u.uSunDir.value as Vector3).copy(SUN_DIR);

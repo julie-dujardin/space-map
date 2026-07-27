@@ -4,6 +4,7 @@ import { fetchLabels } from '$lib/fetch/position/labels';
 import { MinorBucket } from '$lib/fetch/position/minor-columns';
 import type { ElementColumns } from '$lib/fetch/position/elements/parse';
 import { OrbitalSource } from '$lib/fetch/position/format';
+import { loadAtmospheres } from '$lib/fetch/atmospheres';
 import { loadSystemsGlobal } from '$lib/fetch/systems-global';
 import {
 	chebyshevZoneParams,
@@ -191,6 +192,12 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	void loadSystemsGlobal().catch((e) =>
 		console.warn('scene-load: systems-global (GMs/nutation) failed to load:', e)
 	);
+	// Awaited before majors land (below): the scattering shells are built
+	// synchronously with each body mesh, so the params must already be in the
+	// registry. Parallel with metadata/ephemeris, so effectively free.
+	const atmospheresPromise = loadAtmospheres().catch((e) =>
+		console.warn('scene-load: atmospheres failed to load — rendering without shells:', e)
+	);
 	const jd = dateToJD(date);
 	const metadataPromise = fetchMetadata();
 
@@ -239,6 +246,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 
 	const major = await loadMajorBodies(ctx, loader, metadata, date, jd);
 	loadProgress.reach('majors');
+	await atmospheresPromise;
 	ctx.bodies.addBodies(major);
 	ctx.credits.recordOrbitSources(major);
 

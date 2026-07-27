@@ -49,11 +49,8 @@ import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies } from './objects/body/lifecycle';
 import { applyStarTint } from './objects/sun';
-import {
-	ATMOSPHERE_PARAMS,
-	applyAtmosphereParams,
-	type AtmosphereParams
-} from './objects/surface/atmosphere';
+import { getAtmosphereParams } from '$lib/fetch/atmospheres';
+import { applyAtmosphereParams, type AtmosphereParams } from './objects/surface/atmosphere';
 import { AtmosphereDepthPass } from './objects/surface/atmosphere-depth';
 import {
 	currentAtmosphereConfig,
@@ -1508,7 +1505,7 @@ export class SceneRenderer {
 		const id = this.focusController.current?.data.id;
 		if (!id) return null;
 		const node = this.bodyObjects.get(id)?.atmosphere;
-		const shipped = ATMOSPHERE_PARAMS[id];
+		const shipped = getAtmosphereParams(id);
 		if (!node || !shipped) return null;
 		return { id, current: node.params, shipped };
 	}

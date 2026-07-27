@@ -23,7 +23,8 @@ import { createLabel, getLabelVariant } from '../../label/factory';
 import { bodyHref } from '$lib/state/url';
 import { attachCanvasForwarders } from '../../label/forward';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../sun';
-import { ATMOSPHERE_PARAMS, buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
+import { getAtmosphereParams } from '$lib/fetch/atmospheres';
+import { buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
 import {
 	attachSunTransmittanceToBody,
@@ -120,7 +121,7 @@ export function buildMajorBodies(
 			meshToBody.set(mesh, body);
 
 			// Scattering shell, kept centred on the body via extraObjects.
-			const atmoParams = isStar ? undefined : ATMOSPHERE_PARAMS[id];
+			const atmoParams = isStar ? undefined : getAtmosphereParams(id);
 			if (atmoParams) {
 				atmosphere = buildAtmosphereNode(atmoParams, radius, effectiveRadiusKm(body.data));
 				scene.add(atmosphere.mesh);
@@ -248,7 +249,7 @@ export function upgradeBodyMesh(
 	bo.eclipseShadow = attachEclipseShadowToBody(material);
 	bo.currentSegments = segments;
 
-	const atmoParams = ATMOSPHERE_PARAMS[body.data.id];
+	const atmoParams = getAtmosphereParams(body.data.id);
 	if (atmoParams) {
 		bo.atmosphere = buildAtmosphereNode(atmoParams, radiusScene, effectiveRadiusKm(body.data));
 		scene.add(bo.atmosphere.mesh);

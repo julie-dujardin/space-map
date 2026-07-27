@@ -4,6 +4,8 @@ import { SUN_ID } from '$lib/constants';
 import { sunIrradianceFactor } from '$lib/scene/lighting';
 import {
 	applyAtmosphereQuality,
+	ATMOSPHERE_INSIDE_RENDER_ORDER,
+	ATMOSPHERE_RENDER_ORDER,
 	type AtmosphereParams
 } from '$lib/scene/objects/surface/atmosphere';
 import type { AtmosphereQualityConfig } from '$lib/scene/objects/surface/atmosphere-quality';
@@ -215,6 +217,10 @@ export function updateAtmosphereShaders(
 			cullShellOccluders(uniforms, atmoMesh.position, sunVec, shellRadius);
 		const inside = quality.insideView && camDist < shellRadius;
 		bo.atmosphere.material.side = inside ? BackSide : FrontSide;
+		// With depth test off inside, order alone decides compositing — hoist
+		// the sky above rings/other shells/dots so Saturn can't draw over
+		// Titan's haze from within it.
+		atmoMesh.renderOrder = inside ? ATMOSPHERE_INSIDE_RENDER_ORDER : ATMOSPHERE_RENDER_ORDER;
 		// From inside, the visible shell fragment is the far hemisphere — writing
 		// its depth would cull the point clouds/trails beyond the night sky, and
 		// depth-testing it against the nearer terrain would reject the very

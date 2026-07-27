@@ -12,9 +12,14 @@
  * and planets" (which distills Bruneton/Hillaire); brute-force per-fragment
  * march is fine because the shell only ever covers the planet's screen footprint.
  * Aerosols scatter and absorb per RGB channel, with phase functions tabulated
- * offline from Mie theory per body ({@link MIE_PHASE}) — that spectral
- * asymmetry, not the Rayleigh column, is what makes Mars butterscotch, Titan
- * orange and Venus sulfur-pale.
+ * by the data pipeline from Mie theory per body — that spectral asymmetry, not
+ * the Rayleigh column, is what makes Mars butterscotch, Titan orange and Venus
+ * sulfur-pale.
+ *
+ * Per-body parameters arrive via `$lib/fetch/atmospheres` (exported
+ * `atmospheres.json`, derived from cited constants in
+ * data/src/space_map_data/constants/atmosphere/); this module only defines the
+ * parameter shape and the shader that consumes it.
  *
  * Oblate bodies: the mesh stays a sphere sized to the equatorial radius (it is
  * only a coverage primitive), and the shader ray-marches in a "squashed" space
@@ -51,12 +56,21 @@ import {
 	type AtmosphereQualityConfig
 } from './atmosphere-quality';
 import { ECLIPSE_FACTOR_GLSL, getEclipseSceneUniforms, MAX_OCCLUDERS } from './eclipse-shadow';
-import { MIE_PHASE } from './mie-phase';
 import type { PlanetRingShadowUniforms } from './rings';
 
 /** Rendered terrain can dip this far below the analytic ellipsoid (Gale crater
  *  sits at −4.5 km); the shell keeps marching (and glowing) down to it. */
 export const TERRAIN_DIP_KM = 6;
+
+/** Outside view: after the opaque planet and clouds (renderOrder 1) so the
+ *  glow composites over the surface, but before the rings (renderOrder 3) —
+ *  the shell writes depth from outside, so foreground rings occlude the glow. */
+export const ATMOSPHERE_RENDER_ORDER = 2;
+/** Inside view: the sky is the frame's backdrop and depth test is off, so it
+ *  must draw after every scene-level transparent — rings, other bodies'
+ *  shells, point clouds, trails (all ≤ 3) — and composite them away behind
+ *  its 1−transmittance alpha. Debug overlays (999+) stay on top. */
+export const ATMOSPHERE_INSIDE_RENDER_ORDER = 10;
 
 // Placeholder for the ring-shadow sampler while a body has no rings — the
 // shader guards on uRingShadowOuterScene, but the sampler must still be bound.
@@ -106,8 +120,8 @@ export interface AtmosphereParams {
 	mieAbsorptionPerKm: [number, number, number];
 	/** Mie density e-folding height, km. */
 	mieScaleHeightKm: number;
-	/** Tabulated per-channel Mie phase for the body's aerosol ({@link MIE_PHASE}),
-	 *  3×128 floats. */
+	/** Tabulated per-channel Mie phase for the body's aerosol, 3×128 floats
+	 *  (R, G, B blocks sampled at θ = π·(i/127)²). */
 	miePhase: readonly number[];
 	/** Absorption coefficient of the body's absorber band (ozone on Earth,
 	 *  tholins on Titan…), per km, for (R, G, B). Pure absorption, no
@@ -143,249 +157,6 @@ export interface AtmosphereParams {
 	 *  sunlight blows the faint backlit haze into an opaque glowing shell. */
 	realisticSunAlways?: boolean;
 }
-
-/**
- * Earth's atmosphere. Rayleigh and the ozone tent are the sRGB-fitted values
- * from Bruneton's "Precomputed Atmospheric Scattering" reference model; the
- * aerosol is a near-grey continental-average column (n≈1.44, r≈0.3 µm).
- * `sunIntensity` sits well below the physical ~22: the satellite-mosaic
- * texture already bakes in the atmosphere seen from above, so the shell only
- * tops up the limb/terminator — full physical in-scatter would double-count
- * into a milky disc.
- */
-const EARTH: AtmosphereParams = {
-	topAltitudeKm: 67,
-	rayleighScatterPerKm: [5.802e-3, 13.558e-3, 33.1e-3],
-	rayleighScaleHeightKm: 8.4,
-	mieScatterPerKm: [4e-3, 4e-3, 4e-3],
-	mieAbsorptionPerKm: [4e-4, 4e-4, 4e-4],
-	mieScaleHeightKm: 1.2,
-	miePhase: MIE_PHASE.earth,
-	absorptionPerKm: [0.65e-3, 1.881e-3, 0.085e-3],
-	absorptionCenterKm: 25,
-	absorptionWidthKm: 15,
-	bakedCompensation: 1,
-	multiScatterGain: 0.3,
-	sunIntensity: 5,
-	sunColor: [1.0, 1.0, 1.0]
-};
-
-/*
- * Non-Earth Rayleigh coefficients and scale heights are computed from each
- * atmosphere's composition, refractivity, King factor and number density at the
- * reference level (surface, cloud top, or 1-bar level — whatever the rendered
- * sphere shows), calibrated so the same formula reproduces Bruneton's Earth
- * values. Aerosol RGB scatter/absorption columns and the phase tables come from
- * Mie theory over each body's literature particle population (see
- * mie-phase.ts). Gas and ice giants get a near-neutral thin haze —
- * Uranus/Neptune's blue-green is CH₄ red absorption already baked into their
- * cloud textures, so it isn't repeated here. Titan's bluish Rayleigh shell
- * above the orange haze texture matches its real detached upper haze.
- * Atmosphere tops sit where the optical contribution dies:
- * max(8·H_Rayleigh, 6·H_Mie).
- *
- * Giants' βR is the 1-bar derivation ÷3–4: their textures show the visible
- * deck (upper hazes, ~0.1–0.5 bar), so the shell's reference sits 1–1.5 scale
- * heights above 1 bar — at the raw values the leftover Rayleigh column
- * white-washed the banding it's supposed to sit above.
- */
-
-/** Mars: thin CO₂ column (~2% of Earth's β_R) under a dominant dust layer.
- *  Red-weighted dust scatter + blue absorption → butterscotch sky; the dust
- *  phase's strong blue forward peak is what blues the glow around the Sun. */
-const MARS: AtmosphereParams = {
-	topAltitudeKm: 87,
-	rayleighScatterPerKm: [1.32e-4, 3.08e-4, 7.53e-4],
-	rayleighScaleHeightKm: 10.9,
-	mieScatterPerKm: [5.5e-3, 4.5e-3, 3e-3],
-	mieAbsorptionPerKm: [5e-4, 1.5e-3, 4e-3],
-	mieScaleHeightKm: 11,
-	miePhase: MIE_PHASE.mars,
-	absorptionPerKm: [0, 0, 0],
-	absorptionCenterKm: 0,
-	absorptionWidthKm: 1,
-	bakedCompensation: 1,
-	multiScatterGain: 0.4,
-	// Below physical like Earth: the mosaic bakes in the dust haze.
-	sunIntensity: 7,
-	sunColor: [1.0, 1.0, 1.0]
-};
-
-/** Venus referenced to the ~65 km cloud tops the texture shows (≈0.1 bar,
- *  243 K): CO₂ Rayleigh at 0.29× Earth's β under the H₂SO₄ upper haze
- *  (r≈1.05 µm mode-2, measured scale height 3.3–3.8 km, vertical τ ≈ 0.4) —
- *  pale-yellow disc with a thin brilliant limb ring. The deck itself is baked
- *  into the texture, so the shell only carries what lies above it. */
-const VENUS: AtmosphereParams = {
-	topAltitudeKm: 42,
-	rayleighScatterPerKm: [1.68e-3, 3.93e-3, 9.6e-3],
-	rayleighScaleHeightKm: 5.3,
-	mieScatterPerKm: [1.35e-1, 1.28e-1, 1.02e-1],
-	mieAbsorptionPerKm: [2e-3, 3.5e-3, 1.4e-2],
-	mieScaleHeightKm: 3.8,
-	miePhase: MIE_PHASE.venus,
-	absorptionPerKm: [0, 0, 0],
-	absorptionCenterKm: 0,
-	absorptionWidthKm: 1,
-	// The shell IS the visible cloud deck's overburden — keep it opaque.
-	bakedCompensation: 0,
-	multiScatterGain: 1.5,
-	// Kept under the rolloff shoulder so the H2SO4 cream tint survives.
-	sunIntensity: 12,
-	sunColor: [1.0, 1.0, 1.0]
-};
-
-/** Titan: cold dense N₂ column under a deep blue-absorbing tholin haze →
- *  orange; the phase table is an empirical fit for fractal aggregates, which
- *  sphere-based Mie theory cannot represent. */
-const TITAN: AtmosphereParams = {
-	topAltitudeKm: 360,
-	rayleighScatterPerKm: [3.067e-2, 7.166e-2, 1.749e-1],
-	rayleighScaleHeightKm: 21.1,
-	mieScatterPerKm: [8e-2, 6.2e-2, 3.2e-2],
-	mieAbsorptionPerKm: [1e-2, 3.2e-2, 9.5e-2],
-	mieScaleHeightKm: 60,
-	miePhase: MIE_PHASE.titan,
-	absorptionPerKm: [0, 0, 0],
-	absorptionCenterKm: 0,
-	absorptionWidthKm: 1,
-	// Texture is the haze-hidden surface map, not Titan's photographed look —
-	// the orange shell must stay opaque over it.
-	bakedCompensation: 0,
-	multiScatterGain: 0.5,
-	// High sun saturates the 1-exp rolloff and bleaches the tholin orange to cream.
-	sunIntensity: 9,
-	sunColor: [1.0, 1.0, 1.0]
-};
-
-/** Jupiter above the 1-bar cloud texture: weak H₂/He Rayleigh + thin NH₃ haze
- *  (r≈0.55 µm), soft blue limb. */
-const JUPITER: AtmosphereParams = {
-	topAltitudeKm: 200,
-	rayleighScatterPerKm: [0.65e-3, 1.52e-3, 3.72e-3],
-	rayleighScaleHeightKm: 25.0,
-	mieScatterPerKm: [1e-3, 1e-3, 1e-3],
-	mieAbsorptionPerKm: [1e-4, 1e-4, 1e-4],
-	mieScaleHeightKm: 25,
-	miePhase: MIE_PHASE.jupiter,
-	absorptionPerKm: [0, 0, 0],
-	absorptionCenterKm: 0,
-	absorptionWidthKm: 1,
-	bakedCompensation: 1,
-	multiScatterGain: 0.3,
-	sunIntensity: 6,
-	sunColor: [1.0, 1.0, 1.0]
-};
-
-/** Saturn above the 1-bar cloud texture: like Jupiter, taller scale height. */
-const SATURN: AtmosphereParams = {
-	topAltitudeKm: 413,
-	rayleighScatterPerKm: [0.66e-3, 1.55e-3, 3.78e-3],
-	rayleighScaleHeightKm: 51.6,
-	mieScatterPerKm: [1e-3, 1e-3, 1e-3],
-	mieAbsorptionPerKm: [1e-4, 1e-4, 1e-4],
-	mieScaleHeightKm: 50,
-	miePhase: MIE_PHASE.saturn,
-	absorptionPerKm: [0, 0, 0],
-	absorptionCenterKm: 0,
-	absorptionWidthKm: 1,
-	bakedCompensation: 1,
-	multiScatterGain: 0.3,
-	sunIntensity: 6,
-	sunColor: [1.0, 1.0, 1.0]
-};
-
-/** Uranus above the 1-bar level: near-neutral H₂/He shell + thin haze. */
-const URANUS: AtmosphereParams = {
-	topAltitudeKm: 224,
-	rayleighScatterPerKm: [1.44e-3, 3.36e-3, 8.21e-3],
-	rayleighScaleHeightKm: 28.0,
-	mieScatterPerKm: [5e-4, 5e-4, 5e-4],
-	mieAbsorptionPerKm: [5e-5, 5e-5, 5e-5],
-	mieScaleHeightKm: 28,
-	miePhase: MIE_PHASE.uranus,
-	absorptionPerKm: [0, 0, 0],
-	absorptionCenterKm: 0,
-	absorptionWidthKm: 1,
-	bakedCompensation: 1,
-	multiScatterGain: 0.4,
-	sunIntensity: 6,
-	sunColor: [1.0, 1.0, 1.0]
-};
-
-/** Neptune above the 1-bar level: near-neutral H₂/He shell + thin haze. */
-const NEPTUNE: AtmosphereParams = {
-	topAltitudeKm: 170,
-	rayleighScatterPerKm: [1.35e-3, 3.16e-3, 7.72e-3],
-	rayleighScaleHeightKm: 21.2,
-	mieScatterPerKm: [5e-4, 5e-4, 5e-4],
-	mieAbsorptionPerKm: [5e-5, 5e-5, 5e-5],
-	mieScaleHeightKm: 21.2,
-	miePhase: MIE_PHASE.neptune,
-	absorptionPerKm: [0, 0, 0],
-	absorptionCenterKm: 0,
-	absorptionWidthKm: 1,
-	bakedCompensation: 1,
-	multiScatterGain: 0.4,
-	sunIntensity: 6,
-	sunColor: [1.0, 1.0, 1.0]
-};
-
-/** Triton: faint N₂ Rayleigh + blue tholin haze — a wisp at the backlit limb. */
-const TRITON: AtmosphereParams = {
-	topAltitudeKm: 144,
-	rayleighScatterPerKm: [6.24e-7, 1.46e-6, 3.56e-6],
-	rayleighScaleHeightKm: 18,
-	mieScatterPerKm: [5e-4, 9e-4, 1.6e-3],
-	mieAbsorptionPerKm: [2e-4, 2e-4, 2e-4],
-	mieScaleHeightKm: 20,
-	miePhase: MIE_PHASE.triton,
-	absorptionPerKm: [0, 0, 0],
-	absorptionCenterKm: 0,
-	absorptionWidthKm: 1,
-	bakedCompensation: 1,
-	multiScatterGain: 0.4,
-	sunIntensity: 22,
-	sunColor: [1.0, 1.0, 1.0],
-	realisticSunAlways: true
-};
-
-/** Pluto: thin N₂ column + blue tholin haze, hugely extended (~34% of the
- *  radius); like Triton it only really shows backlit. */
-const PLUTO: AtmosphereParams = {
-	topAltitudeKm: 400,
-	rayleighScatterPerKm: [4.16e-7, 9.72e-7, 2.37e-6],
-	rayleighScaleHeightKm: 50,
-	mieScatterPerKm: [1e-3, 1.7e-3, 3e-3],
-	mieAbsorptionPerKm: [3e-4, 3e-4, 3e-4],
-	mieScaleHeightKm: 50,
-	miePhase: MIE_PHASE.pluto,
-	absorptionPerKm: [0, 0, 0],
-	absorptionCenterKm: 0,
-	absorptionWidthKm: 1,
-	bakedCompensation: 1,
-	multiScatterGain: 0.4,
-	sunIntensity: 22,
-	sunColor: [1.0, 1.0, 1.0],
-	realisticSunAlways: true
-};
-
-/**
- * Atmosphere parameters keyed by NAIF body id. Only bodies listed here get a
- * scattering shell.
- */
-export const ATMOSPHERE_PARAMS: Record<string, AtmosphereParams> = {
-	'naif-299': VENUS,
-	'naif-399': EARTH,
-	'naif-499': MARS,
-	'naif-599': JUPITER,
-	'naif-606': TITAN,
-	'naif-699': SATURN,
-	'naif-799': URANUS,
-	'naif-801': TRITON,
-	'naif-899': NEPTUNE,
-	'naif-999': PLUTO
-};
 
 /** Scene-side handle for a body's atmosphere shell. */
 export interface AtmosphereNode {
@@ -884,10 +655,7 @@ export function buildAtmosphereNode(
 	const geometryRadiusScene = planetRadiusScene * (1 + params.topAltitudeKm / planetRadiusKm);
 	const geometry = new SphereGeometry(geometryRadiusScene, 64, 64);
 	const mesh = new Mesh(geometry, material);
-	// Draw after the opaque planet and clouds (renderOrder 1) so the glow
-	// composites over the surface, but before the rings (renderOrder 3) — the
-	// shell writes depth from outside, so foreground rings occlude the glow.
-	mesh.renderOrder = 2;
+	mesh.renderOrder = ATMOSPHERE_RENDER_ORDER;
 	mesh.userData.isAtmosphereMesh = true;
 	return {
 		mesh,

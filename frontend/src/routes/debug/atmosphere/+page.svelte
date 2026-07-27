@@ -33,12 +33,12 @@
 	import {
 		applyAtmosphereParams,
 		applyAtmosphereQuality,
-		ATMOSPHERE_PARAMS,
 		type AtmosphereNode,
 		type AtmosphereParams,
 		buildAtmosphereNode,
 		disposeAtmosphereNode
 	} from '$lib/scene/objects/surface/atmosphere';
+	import { getAtmosphereParams, loadAtmospheres } from '$lib/fetch/atmospheres';
 	import {
 		ATMOSPHERE_QUALITY_PRESETS,
 		resolveAtmosphereTier,
@@ -288,7 +288,8 @@
 	});
 
 	function shipped(): AtmosphereParams {
-		return ATMOSPHERE_PARAMS[bodyId];
+		// Load is awaited before `ready`, so the entry exists for every BODIES id.
+		return getAtmosphereParams(bodyId)!;
 	}
 
 	function resolved(): AtmosphereParams {
@@ -758,17 +759,19 @@
 		);
 		composer.addPass(new OutputPass());
 
-		fetchMetadata()
-			.catch(() => undefined)
-			.finally(() => {
-				// Select the URL's body before building so it frames itself, then
-				// overlay the rest of the saved state.
-				const bid = initialParams.get('b');
-				if (bid && ATMOSPHERE_PARAMS[`naif-${bid}`]) bodyId = `naif-${bid}`;
-				buildBody();
-				applyInitialState();
-				ready = true;
-			});
+		Promise.allSettled([fetchMetadata(), loadAtmospheres()]).then(() => {
+			if (!getAtmosphereParams(bodyId)) {
+				console.error('atmosphere tuner: atmospheres.json failed to load — nothing to tune');
+				return;
+			}
+			// Select the URL's body before building so it frames itself, then
+			// overlay the rest of the saved state.
+			const bid = initialParams.get('b');
+			if (bid && getAtmosphereParams(`naif-${bid}`)) bodyId = `naif-${bid}`;
+			buildBody();
+			applyInitialState();
+			ready = true;
+		});
 
 		canvas.addEventListener('pointerdown', onPointerDown);
 		window.addEventListener('pointermove', onPointerMove);
