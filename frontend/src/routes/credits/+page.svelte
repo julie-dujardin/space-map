@@ -173,17 +173,6 @@
 			</ul>
 		</section>
 
-		{#if credits.atmosphere_references?.length}
-			<section>
-				{@render sectionHeader(m.attribution_section_atmospheres())}
-				<ul class="space-y-1">
-					{#each credits.atmosphere_references as ref (ref.url)}
-						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
-					{/each}
-				</ul>
-			</section>
-		{/if}
-
 		<section>
 			{@render sectionHeader(m.attribution_section_metadata())}
 			<ul class="space-y-1">
@@ -314,6 +303,17 @@
 						{/each}
 					</ul>
 				{/each}
+			</section>
+		{/if}
+
+		{#if credits.atmosphere_references?.length}
+			<section>
+				{@render sectionHeader(m.attribution_section_atmospheres())}
+				<ul class="space-y-1">
+					{#each credits.atmosphere_references as ref (ref.url)}
+						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
+					{/each}
+				</ul>
 			</section>
 		{/if}
 	</div>

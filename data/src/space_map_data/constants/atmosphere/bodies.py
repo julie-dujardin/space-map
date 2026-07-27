@@ -205,8 +205,11 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
         gravity_m_s2=0.78,
         aerosol="triton_haze",
         tuning=RenderTuning(
-            # Far-out wisp tuned at the physical sun — flat 1-AU sunlight
-            # would blow the faint backlit haze into an opaque shell.
+            # There is no good flat-sun exposure for the far wisps: 1-AU
+            # sunlight on the measured haze gives an Earth-sky-class glowing
+            # rim (limb τ_sca(blue) ≈ 0.3 × sunIntensity 22), while true
+            # inverse-square at 30 AU puts it ~3 orders below visibility.
+            # The exemption IS the exposure choice: physical sun, faint wisp.
             baked_compensation=1.0,
             multi_scatter_gain=0.4,
             sun_intensity=22.0,
@@ -242,6 +245,10 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
         gravity_m_s2=0.62,
         aerosol="pluto_tholin",
         tuning=RenderTuning(
+            # Same exposure choice as Triton (limb τ_sca(blue) ≈ 0.4 —
+            # flat sun renders a full New-Horizons-style blue halo, nice but
+            # ahistoric for a map default; inverse-square at 39.5 AU keeps
+            # the wisp).
             baked_compensation=1.0,
             multi_scatter_gain=0.4,
             sun_intensity=22.0,

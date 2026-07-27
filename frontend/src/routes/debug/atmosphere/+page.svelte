@@ -451,7 +451,8 @@
 		sunAz = DEFAULT_SUN_AZ;
 		sunEl = DEFAULT_SUN_EL;
 		sunScaleX = 0;
-		realistic = false;
+		// Back to the body's shipped default, not flat — matches buildBody.
+		realistic = shipped().realisticSunAlways ?? false;
 	}
 
 	// Drag orbits (longitude/latitude); wheel changes altitude.
@@ -621,6 +622,10 @@
 	function buildBody(): void {
 		disposePlanet();
 		currentBody = BODIES.find((b) => b.id === bodyId) ?? BODIES[1];
+		// Always-realistic bodies start with inverse-square on (their shipped
+		// look); the URL's `real` param overrides this on initial load since
+		// applyInitialState runs after.
+		realistic = shipped().realisticSunAlways ?? false;
 		syncFromShipped();
 
 		const geometry = new SphereGeometry(RADIUS_SCENE, 128, 128);
@@ -713,9 +718,10 @@
 		if (atmoNode && planetMesh) {
 			const u = atmoNode.material.uniforms;
 			(u.uSunDir.value as Vector3).copy(sd);
-			// Shell keeps the production factor: inverse-square when realistic OR the
-			// body is always-realistic (Pluto/Triton are tuned for it).
-			const shellFactor = sunScale * (realistic || atmoNode.params.realisticSunAlways ? invSq : 1);
+			// Unlike production, the checkbox alone decides inverse-square here —
+			// always-realistic bodies (Pluto/Triton) default it ON in buildBody,
+			// but the tuner must be able to inspect the flat-sun look too.
+			const shellFactor = sunScale * (realistic ? invSq : 1);
 			u.uSunIntensity.value = atmoNode.params.sunIntensity * shellFactor;
 			// Flip to BackSide once the camera enters the shell so the sky still
 			// renders from inside; drop depth writes there too (mirrors production,

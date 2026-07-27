@@ -303,11 +303,17 @@ const FRAGMENT_SHADER = `
 	// datum (real below-datum terrain, sun paths past the terminator) keep
 	// integrating smoothly growing optical depth — path length, not a density
 	// blow-up, provides the soft horizon/twilight falloff.
+	// Each exponential is shifted down by its value at the shell top so density
+	// reaches exactly 0 at the boundary: the raw truncated profile leaves a
+	// finite residue there (Mars dust: ~3e-4 of surface density) that the
+	// forward-scatter lobe near the sun amplifies into glow with a hard edge
+	// at the sphere's silhouette.
 	vec3 densities(float h) {
 		float hc = max(h, 0.0);
+		float top = uAtmosphereRatio - 1.0;
 		return vec3(
-			exp(-hc / uRayleighScaleHeight),
-			exp(-hc / uMieScaleHeight),
+			max(exp(-hc / uRayleighScaleHeight) - exp(-top / uRayleighScaleHeight), 0.0),
+			max(exp(-hc / uMieScaleHeight) - exp(-top / uMieScaleHeight), 0.0),
 			max(0.0, 1.0 - abs(hc - uAbsorptionCenter) / uAbsorptionWidth)
 		);
 	}

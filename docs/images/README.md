@@ -5,6 +5,7 @@
 | earth | [![earth](earth.png)](https://spacemap.co/b/399/Earth?at=2026-06-21T14:24:57.661Z,30.63812,-22.71399,0.0019850) |
 | artemis-2 | [![artemis-2](artemis-2.png)](https://spacemap.co/p/121737217?at=2026-04-06T22:22:33.709Z,80.13701,46.79577,2.9204e-8) |
 | mars | [![mars](mars.png)](https://spacemap.co/b/499/Mars?at=2026-06-03T05:09:05.427Z,-9.72405,91.33456,0.00093713) |
+| curiosity | [![curiosity](curiosity.png)](https://spacemap.co/p/100265984/Mars%20Science%20Laboratory?at=2026-07-28T14:17:41.132Z,-42.90792,-107.14203,4.6896e-10) |
 | bennu | [![bennu](bennu.png)](https://spacemap.co/s/20101955/101955%20Bennu?at=now,-16.79942,96.57172,7.6093e-8) |
 | juno | [![juno](juno.png)](https://spacemap.co/p/107159552/Juno?at=2026-06-03T05:10:21.609Z,3.80217,41.36422,5.4677e-10) |
 | saturn | [![saturn](saturn.png)](https://spacemap.co/b/699/Saturn?at=2020-06-02T14:10:11.542Z,39.08590,-147.48087,0.097742) |
