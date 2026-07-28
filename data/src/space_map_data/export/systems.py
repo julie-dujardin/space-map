@@ -476,6 +476,8 @@ def ring_block(meta: dict) -> dict:
         # Stored channel value × intensity_scale = physical value; synthetic
         # tenuous systems are normalised so 8-bit survives τ ~1e-6.
         "intensity_scale": float(meta.get("intensity_scale", 1.0)),
+        # 0 = flat rings (no thickness row); else km per unit of that row.
+        "thickness_scale_km": float(meta.get("thickness_scale_km", 0.0)),
         "color_space": meta.get("color_space", "srgb"),
         "strip": meta["strip"]["file"],
         "strip_height": int(meta["strip"]["height"]),

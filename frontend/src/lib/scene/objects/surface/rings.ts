@@ -24,6 +24,8 @@
 import {
 	CanvasTexture,
 	DoubleSide,
+	InstancedBufferAttribute,
+	InstancedMesh,
 	LinearFilter,
 	LinearMipmapLinearFilter,
 	type Material,
@@ -46,6 +48,10 @@ export type RingChannel =
 	| 'unlitside'
 	| 'transparency';
 
+/** The five channels every bundle has, plus the optional thickness profile. */
+type StripRows = Record<RingChannel, number> & { thickness?: number };
+type StripTextures = Record<RingChannel, Texture> & { thickness?: Texture };
+
 export interface RingMeta {
 	source: string;
 	organisation: string;
@@ -55,10 +61,12 @@ export interface RingMeta {
 	sample_count: number;
 	/** Stored channel value × this = physical value. */
 	intensity_scale: number;
+	/** km per unit of the thickness row; 0 = flat rings (no such row). */
+	thickness_scale_km?: number;
 	color_space?: string;
 	strip: string;
 	strip_height: number;
-	strip_rows: Record<RingChannel, number>;
+	strip_rows: StripRows;
 	attribution?: string;
 	description?: string;
 }
@@ -110,6 +118,11 @@ export interface PlanetShadowOnRingUniforms {
 }
 
 const RING_ANGULAR_SEGMENTS = 256;
+// Radial tessellation for thickness-displaced rings (vertex-sampled profile).
+const RING_RADIAL_SEGMENTS = 96;
+// Vertical sheet count for thick rings; enough that Jupiter's halo reads as
+// a volume at grazing angles without meaningful overdraw cost.
+const RING_THICKNESS_LAYERS = 9;
 
 /**
  * Fetch the body's N×5 strip and split each channel row into its own 2-tall
@@ -125,9 +138,9 @@ const RING_ANGULAR_SEGMENTS = 256;
  */
 async function loadStripTextures(
 	url: string,
-	rows: Record<RingChannel, number>,
+	rows: StripRows,
 	maxTextureSize: number
-): Promise<Record<RingChannel, Texture>> {
+): Promise<StripTextures> {
 	const response = await fetch(url);
 	if (!response.ok) {
 		throw new Error(`Failed to load ${url}: ${response.status} ${response.statusText}`);
@@ -140,8 +153,8 @@ async function loadStripTextures(
 			`Ring strip ${url}: downscaling ${bitmap.width}px → ${targetWidth}px to fit GL MAX_TEXTURE_SIZE.`
 		);
 	}
-	const textures = {} as Record<RingChannel, Texture>;
-	for (const [channel, row] of Object.entries(rows) as [RingChannel, number][]) {
+	const textures = {} as StripTextures;
+	for (const [channel, row] of Object.entries(rows) as [keyof StripTextures, number][]) {
 		const canvas = document.createElement('canvas');
 		canvas.width = targetWidth;
 		canvas.height = 2;
@@ -178,13 +191,29 @@ const VERTEX_SHADER = `
 	#include <common>
 	#include <logdepthbuf_pars_vertex>
 
+	uniform sampler2D uThickness;
+	uniform float uThicknessScene; // 0 = flat ring, no displacement
+	uniform float uInnerScene;
+	uniform float uOuterScene;
+
+	// Per-instance layer offset in [-0.5, 0.5] for vertically thick rings.
+	// Plain (non-instanced) meshes leave the attribute unbound, which GL
+	// defines as 0 — the flat midplane sheet.
+	attribute float aLayer;
+
 	varying vec3 vLocalPos;
 	varying vec3 vWorldPos;
 	varying vec3 vWorldNormal;
 
 	void main() {
-		vLocalPos = position;
-		vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+		vec3 displaced = position;
+		if (uThicknessScene > 0.0) {
+			float t = clamp(
+				(length(position.xz) - uInnerScene) / (uOuterScene - uInnerScene), 0.0, 1.0);
+			displaced.y += aLayer * texture2D(uThickness, vec2(t, 0.5)).r * uThicknessScene;
+		}
+		vLocalPos = displaced;
+		vec4 worldPosition = modelMatrix * vec4(displaced, 1.0);
 		vWorldPos = worldPosition.xyz;
 		vWorldNormal = normalize(mat3(modelMatrix) * vec3(0.0, 1.0, 0.0));
 		gl_Position = projectionMatrix * viewMatrix * worldPosition;
@@ -252,6 +281,11 @@ const FRAGMENT_SHADER = `
 	// Saturn's measured profiles; ~1e-6..0.7 for the synthetic tenuous
 	// systems. The overexpose-rings toggle sets it to 1.
 	uniform float uIntensityScale;
+	// Sun's angular radius as seen from the ring, for penumbra widths.
+	uniform float uSunAngularRadius;
+	// 1/layerCount: opacity is split across the vertical layer instances so
+	// the composited stack reproduces the strip's alpha.
+	uniform float uLayerAlphaExp;
 
 	varying vec3 vLocalPos;
 	varying vec3 vWorldPos;
@@ -271,9 +305,10 @@ const FRAGMENT_SHADER = `
 	// Saturn's shadow on the rings: ray-march from the fragment toward the
 	// sun against the planet's oblate spheroid. Working in the pole-aligned
 	// frame, apply the affine warp (eq⁻¹, pol⁻¹, eq⁻¹) so the spheroid
-	// becomes a unit sphere, then test the scaled ray against it. Smooth
-	// edge via fwidth — closestSq is screen-stable so a 1-texel feather
-	// gives a clean limb without softening the whole shadow.
+	// becomes a unit sphere, then test the scaled ray against it. Edge width
+	// is the larger of a 1-texel fwidth feather (screen stability) and the
+	// physical penumbra: the sun's angular radius times the distance from
+	// the fragment to the occluding limb.
 	float planetShadow() {
 		if (uPlanetEquatorialScene <= 0.0) return 1.0;
 		vec3 originRel = vWorldPos - uPlanetCenter;
@@ -291,7 +326,10 @@ const FRAGMENT_SHADER = `
 		// so the planet can't occlude the sun from here.
 		if (b > 0.0) return 1.0;
 		float closest = sqrt(max(dot(oScaled, oScaled) - b * b / a, 0.0));
-		float w = max(fwidth(closest), 1e-5);
+		// Distance to the closest-approach point in unit-sphere units: the
+		// penumbra grows linearly with it (umbra shrinks correspondingly).
+		float penumbra = uSunAngularRadius * (-b) / sqrt(a);
+		float w = max(fwidth(closest), max(penumbra, 1e-5));
 		return smoothstep(1.0 - w, 1.0 + w, closest);
 	}
 
@@ -353,6 +391,9 @@ const FRAGMENT_SHADER = `
 		}
 		// BJJ transparency: 1.0 = empty space, 0.0 = opaque material.
 		float alpha = clamp((1.0 - texture2D(uTransparency, uv).r) * uIntensityScale, 0.0, 1.0);
+		// Split opacity across the vertical layer instances so the composited
+		// stack reproduces the strip's alpha (coincident layers included).
+		alpha = 1.0 - pow(1.0 - alpha, uLayerAlphaExp);
 
 		// Planet shadow modulates both branches: the lit-side reflection
 		// from blocked direct sunlight, and the unlit-side transmission
@@ -377,6 +418,8 @@ export interface PlanetRingShadowUniforms {
 	/** Same physical multiplier as the ring material's `uIntensityScale`, so
 	 *  the cast shadow tracks the overexpose-rings toggle. */
 	uRingShadowIntensity: { value: number };
+	/** Sun's angular radius from the planet, for the shadow's penumbra. */
+	uRingShadowSunAngularRadius: { value: number };
 	/** World-space unit vector pointing from the planet toward the sun. */
 	uRingShadowSunDir: { value: Vector3 };
 	/** World-space unit vector along the planet's spin axis (= ring plane normal). */
@@ -418,6 +461,7 @@ export function attachRingShadowToPlanet(
 		uRingShadowInnerScene: { value: innerScene },
 		uRingShadowOuterScene: { value: outerScene },
 		uRingShadowIntensity: { value: intensityScale },
+		uRingShadowSunAngularRadius: { value: 0 },
 		uRingShadowSunDir: { value: new Vector3(1, 0, 0) },
 		uRingShadowPoleDir: { value: new Vector3(0, 1, 0) },
 		uRingShadowCenter: { value: new Vector3(0, 0, 0) },
@@ -453,10 +497,21 @@ export function attachRingShadowToPlanet(
 				uniform float uRingShadowInnerScene;
 				uniform float uRingShadowOuterScene;
 				uniform float uRingShadowIntensity;
+				uniform float uRingShadowSunAngularRadius;
 				uniform vec3 uRingShadowSunDir;
 				uniform vec3 uRingShadowPoleDir;
 				uniform vec3 uRingShadowCenter;
 				varying vec3 vRingShadowWorldPos;
+
+				// Physical (× intensity) transmittance of the ring profile at u;
+				// outside the annulus is empty space.
+				float ringShadowTrans(float u) {
+					if (u < 0.0 || u > 1.0) return 1.0;
+					return 1.0 - clamp(
+						(1.0 - texture2D(uRingShadowTransparency, vec2(u, 0.5)).r)
+							* uRingShadowIntensity,
+						0.0, 1.0);
+				}
 
 				float ringShadowFactor() {
 					// Ray-plane intersect: starting from the lit surface, march
@@ -471,13 +526,22 @@ export function attachRingShadowToPlanet(
 					// Radial distance in the ring plane (subtract out-of-plane component).
 					vec3 hitPerp = hit - dot(hit, uRingShadowPoleDir) * uRingShadowPoleDir;
 					float r = length(hitPerp);
-					if (r < uRingShadowInnerScene || r > uRingShadowOuterScene) return 1.0;
-					float u = (r - uRingShadowInnerScene) / (uRingShadowOuterScene - uRingShadowInnerScene);
-					// Stored value is normalised; × intensity recovers the physical opacity.
-					float trans = 1.0 - clamp(
-						(1.0 - texture2D(uRingShadowTransparency, vec2(clamp(u, 0.0, 1.0), 0.5)).r)
-							* uRingShadowIntensity,
-						0.0, 1.0);
+					// Penumbra half-width at the ring plane: the sun's angular
+					// radius times the surface→ring distance. Reject only when
+					// even the penumbra-widened band misses the annulus.
+					float penumbra = t * uRingShadowSunAngularRadius;
+					if (r < uRingShadowInnerScene - penumbra || r > uRingShadowOuterScene + penumbra)
+						return 1.0;
+					float uSpan = uRingShadowOuterScene - uRingShadowInnerScene;
+					float u = (r - uRingShadowInnerScene) / uSpan;
+					// 5-tap box over the penumbra: averages the profile the sun
+					// disc actually spans, softening shadow edges physically.
+					float pu = penumbra / uSpan;
+					float trans = (
+						ringShadowTrans(u - pu) + ringShadowTrans(u - 0.5 * pu) +
+						ringShadowTrans(u) +
+						ringShadowTrans(u + 0.5 * pu) + ringShadowTrans(u + pu)
+					) / 5.0;
 					// Beer–Lambert with slant correction: ray traverses 1/sin(B)
 					// times the normal optical depth where B is the sun's
 					// elevation above the ring plane. transparency stored on
@@ -510,7 +574,7 @@ export async function loadRingNode(
 	const outerScene = kmToScene(meta.outer_radius_km);
 	const intensityScale = meta.intensity_scale ?? 1;
 
-	let textures: Record<RingChannel, Texture>;
+	let textures: StripTextures;
 	try {
 		textures = await loadStripTextures(
 			versionedUrl(`/v1/rings/${bodyId}/${meta.strip}`, 'rings'),
@@ -522,6 +586,14 @@ export async function loadRingNode(
 		return null;
 	}
 
+	// Vertically thick rings (Jupiter's halo torus) render as a stack of
+	// instanced sheets, each displaced by the per-radius thickness profile;
+	// the fragment shader splits opacity across the stack. Flat bundles stay
+	// a single sheet.
+	const thicknessScene =
+		meta.thickness_scale_km && textures.thickness ? kmToScene(meta.thickness_scale_km) : 0;
+	const layers = thicknessScene > 0 ? RING_THICKNESS_LAYERS : 1;
+
 	const material = new ShaderMaterial({
 		uniforms: {
 			uBackscattered: { value: textures.backscattered },
@@ -529,9 +601,15 @@ export async function loadRingNode(
 			uUnlitside: { value: textures.unlitside },
 			uTransparency: { value: textures.transparency },
 			uColor: { value: textures.color },
+			// Falls back to any bound texture: never sampled when
+			// uThicknessScene is 0, but the sampler must be complete.
+			uThickness: { value: textures.thickness ?? textures.transparency },
+			uThicknessScene: { value: thicknessScene },
+			uLayerAlphaExp: { value: 1 / layers },
 			uInnerScene: { value: innerScene },
 			uOuterScene: { value: outerScene },
 			uSunDir: { value: new Vector3(1, 0, 0) },
+			uSunAngularRadius: { value: 0 },
 			uPlanetCenter: { value: new Vector3() },
 			uPlanetPoleDir: { value: new Vector3(0, 1, 0) },
 			uPlanetEquatorialScene: { value: 0 },
@@ -550,10 +628,37 @@ export async function loadRingNode(
 	// RingGeometry lies in the XY plane with normals +Z; rotate to XZ plane
 	// (normals +Y) so applyOrientation's pole-to-+Y mapping puts the ring on
 	// the equator with no extra fixup.
-	const geometry = new RingGeometry(innerScene, outerScene, RING_ANGULAR_SEGMENTS, 1);
+	//
+	// The polygon is inscribed in the annulus: mid-chord, the outer boundary
+	// dips inside the true circle by outer·(1 − cos(π/N)) — enough to
+	// periodically clip rings narrower than that sagitta (Neptune's 15 km
+	// Adams ring rendered as dotted arcs). Circumscribe the outer edge
+	// instead; the fragment shader's t > 1 discard trims back to the exact
+	// circle. The inner chords already dip inward, covered by the t < 0
+	// discard. Radial segments only matter when the vertex shader samples
+	// the thickness profile.
+	const sagittaPad = 1 / Math.cos(Math.PI / RING_ANGULAR_SEGMENTS);
+	const geometry = new RingGeometry(
+		innerScene,
+		outerScene * sagittaPad,
+		RING_ANGULAR_SEGMENTS,
+		layers > 1 ? RING_RADIAL_SEGMENTS : 1
+	);
 	geometry.rotateX(-Math.PI / 2);
 
-	const mesh = new Mesh(geometry, material);
+	let mesh: Mesh;
+	if (layers > 1) {
+		geometry.setAttribute(
+			'aLayer',
+			new InstancedBufferAttribute(
+				Float32Array.from({ length: layers }, (_, i) => i / (layers - 1) - 0.5),
+				1
+			)
+		);
+		mesh = new InstancedMesh(geometry, material, layers);
+	} else {
+		mesh = new Mesh(geometry, material);
+	}
 	mesh.frustumCulled = false; // repositioned by the renderer each frame
 	// After the opaque planet AND the atmosphere shell (renderOrder 2): the shell
 	// writes depth from outside, so foreground rings depth-test in front of the
@@ -594,7 +699,8 @@ export function disposeRingNode(ring: RingNode): void {
 		'uForwardscattered',
 		'uUnlitside',
 		'uTransparency',
-		'uColor'
+		'uColor',
+		'uThickness'
 	]) {
 		const tex = uniforms[key]?.value as Texture | undefined;
 		tex?.dispose();

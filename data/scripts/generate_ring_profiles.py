@@ -61,12 +61,18 @@ PREVIEW_EQ_RADIUS_KM = {
 
 def synthesise(
     system: RingSystem,
-) -> tuple[float, float, float, dict[str, np.ndarray]]:
-    """Rasterise the feature table into the five channel arrays.
+) -> tuple[float, float, float, float, dict[str, np.ndarray]]:
+    """Rasterise the feature table into the channel arrays.
 
-    Returns (inner_km, outer_km, intensity_scale, channels) where scalar
-    channels are (N,) and color is (N, 3), all in [0, 1]; multiplying a
-    stored value by intensity_scale recovers the physical one.
+    Returns (inner_km, outer_km, intensity_scale, thickness_scale_km,
+    channels) where scalar channels are (N,) and color is (N, 3), all in
+    [0, 1]; multiplying a stored value by its scale recovers the physical
+    one. A ``thickness`` channel is present only when a feature has a
+    tabulated vertical extent (thickness_scale_km > 0): the τ-weighted mean
+    over the features covering each radius. The renderer spreads all material
+    at a radius over one thickness, so weighting by opacity keeps the bright
+    thin main ring thin where the faint 8,800 km Thebe ring overlaps it,
+    while pure-gossamer radii keep their full extent.
     """
     inner = min(f.inner_km for f in system.features)
     outer = max(f.outer_km for f in system.features)
@@ -77,6 +83,7 @@ def synthesise(
     tau = np.zeros_like(r)
     tau_ch = {c: np.zeros_like(r) for c in KIND_WEIGHTS["dense"]}
     rgb_num = np.zeros((n, SUPERSAMPLE, 3))
+    thickness_num = np.zeros_like(r)
 
     for f in system.features:
         x = (r - f.inner_km) / (f.outer_km - f.inner_km)
@@ -94,6 +101,7 @@ def synthesise(
         for c, w in KIND_WEIGHTS[f.kind].items():
             tau_ch[c] += w * contrib
         rgb_num += contrib[..., None] * np.asarray(f.tint or system.tint)
+        thickness_num += contrib * f.thickness_km
 
     tau_px = tau.mean(axis=1)
     alpha = 1.0 - np.exp(-tau_px)
@@ -109,13 +117,19 @@ def synthesise(
     rgb = rgb_num.mean(axis=1) / np.maximum(tau_px, 1e-12)[:, None]
     rgb[tau_px <= 0.0] = system.tint
     channels["color"] = np.clip(rgb, 0.0, 1.0)
-    return inner, outer, scale, channels
+
+    thickness_scale_km = float(max(f.thickness_km for f in system.features))
+    if thickness_scale_km > 0.0:
+        thickness_px = thickness_num.mean(axis=1) / np.maximum(tau_px, 1e-12)
+        thickness_px[tau_px <= 0.0] = 0.0
+        channels["thickness"] = np.clip(thickness_px / thickness_scale_km, 0.0, 1.0)
+    return inner, outer, scale, thickness_scale_km, channels
 
 
 def write_bundle(
     body_id: str, system: RingSystem, out_root: Path
 ) -> tuple[float, float, float, dict[str, np.ndarray]]:
-    inner, outer, scale, channels = synthesise(system)
+    inner, outer, scale, thickness_scale_km, channels = synthesise(system)
     out_dir = out_root / system.slug
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -151,6 +165,9 @@ def write_bundle(
         "intensity_scale": scale,
         "channels": files,
     }
+    if thickness_scale_km > 0.0:
+        # Physical km for a thickness-channel value of 1.0.
+        payload["thickness_scale_km"] = thickness_scale_km
     (out_dir / "ring-metadata.yaml").write_text(
         yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
     )

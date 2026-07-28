@@ -233,6 +233,7 @@ const FRAGMENT_SHADER = `
 	uniform float uRingShadowInnerScene;
 	uniform float uRingShadowOuterScene; // 0 = no rings
 	uniform float uRingShadowIntensity;
+	uniform float uRingShadowSunAngularRadius;
 	uniform vec3 uRingShadowSunDir;
 	uniform vec3 uRingShadowPoleDir;
 	uniform vec3 uRingShadowCenter;
@@ -326,10 +327,21 @@ const FRAGMENT_SHADER = `
 		);
 	}
 
+	// Physical (× intensity) ring transmittance at u; outside the annulus is
+	// empty space.
+	float ringShadowTrans(float u) {
+		if (u < 0.0 || u > 1.0) return 1.0;
+		return 1.0 - clamp(
+			(1.0 - texture2D(uRingShadowTransparency, vec2(u, 0.5)).r)
+				* uRingShadowIntensity,
+			0.0, 1.0);
+	}
+
 	// Ring transmittance toward the sun from a world-space point: intersect the
-	// ring plane, sample the transparency profile, Beer–Lambert with slant
-	// correction. Mirrors attachRingShadowToPlanet so the shadow the rings cast
-	// on the surface continues up through the air above it.
+	// ring plane, box-average the transparency profile over the sun disc's
+	// penumbra, Beer–Lambert with slant correction. Mirrors
+	// attachRingShadowToPlanet so the shadow the rings cast on the surface
+	// continues up through the air above it.
 	float ringShadowAt(vec3 worldPos) {
 		if (uRingShadowOuterScene <= 0.0) return 1.0;
 		float denom = dot(uRingShadowSunDir, uRingShadowPoleDir);
@@ -340,13 +352,17 @@ const FRAGMENT_SHADER = `
 		vec3 hit = rel + t * uRingShadowSunDir;
 		vec3 hitPerp = hit - dot(hit, uRingShadowPoleDir) * uRingShadowPoleDir;
 		float r = length(hitPerp);
-		if (r < uRingShadowInnerScene || r > uRingShadowOuterScene) return 1.0;
-		float u = (r - uRingShadowInnerScene) / (uRingShadowOuterScene - uRingShadowInnerScene);
-		// Stored value is normalised; × intensity recovers the physical opacity.
-		float trans = 1.0 - clamp(
-			(1.0 - texture2D(uRingShadowTransparency, vec2(clamp(u, 0.0, 1.0), 0.5)).r)
-				* uRingShadowIntensity,
-			0.0, 1.0);
+		float penumbra = t * uRingShadowSunAngularRadius;
+		if (r < uRingShadowInnerScene - penumbra || r > uRingShadowOuterScene + penumbra)
+			return 1.0;
+		float uSpan = uRingShadowOuterScene - uRingShadowInnerScene;
+		float u = (r - uRingShadowInnerScene) / uSpan;
+		float pu = penumbra / uSpan;
+		float trans = (
+			ringShadowTrans(u - pu) + ringShadowTrans(u - 0.5 * pu) +
+			ringShadowTrans(u) +
+			ringShadowTrans(u + 0.5 * pu) + ringShadowTrans(u + pu)
+		) / 5.0;
 		return pow(max(trans, 1e-4), 1.0 / max(abs(denom), 0.02));
 	}
 
@@ -627,6 +643,7 @@ export function buildAtmosphereNode(
 			uRingShadowInnerScene: { value: 0 },
 			uRingShadowOuterScene: { value: 0 },
 			uRingShadowIntensity: { value: 1 },
+			uRingShadowSunAngularRadius: { value: 0 },
 			uRingShadowSunDir: { value: new Vector3(1, 0, 0) },
 			uRingShadowPoleDir: { value: new Vector3(0, 1, 0) },
 			uRingShadowCenter: { value: new Vector3() },
@@ -770,8 +787,9 @@ export function attachRingShadowToAtmosphere(
 	u.uRingShadowSunDir = ringShadow.uRingShadowSunDir;
 	u.uRingShadowPoleDir = ringShadow.uRingShadowPoleDir;
 	u.uRingShadowCenter = ringShadow.uRingShadowCenter;
-	// Shared ref: the renderer's overexpose-rings writes reach both materials.
+	// Shared refs: the renderer's per-frame writes reach both materials.
 	u.uRingShadowIntensity = ringShadow.uRingShadowIntensity;
+	u.uRingShadowSunAngularRadius = ringShadow.uRingShadowSunAngularRadius;
 }
 
 /** Dispose the GPU resources owned by an atmosphere node. */

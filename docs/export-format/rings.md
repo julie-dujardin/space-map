@@ -13,6 +13,7 @@ One lossless RGB WebP per body, N×5: each row is a 1-D radial profile (channel)
 | 2                  | `forwardscattered` | scalar | Brightness at high phase (≈ 139°).                      |
 | 3                  | `unlitside`        | scalar | Brightness on the un-lit side (back-lit transmission).  |
 | 4                  | `transparency`     | scalar | Per-radius opacity (1 = transparent, 0 = opaque).       |
+| 5 (optional)       | `thickness`        | scalar | Vertical extent, × `thickness_scale_km` = km. Only present when the bundle tabulates thickness (Jupiter); absent → rings render flat. |
 
 The renderer blends `backscattered`/`forwardscattered` by phase angle, swaps in `unlitside` when the sun-side ray to a fragment is occluded by the host body, multiplies by `color`, and uses `transparency` for the alpha component (and for the host body's surface shader, which samples the same channel along the sun ray to project a ring shadow onto the planet).
 
@@ -49,5 +50,6 @@ The renderer blends `backscattered`/`forwardscattered` by phase angle, swaps in 
 
 - `inner_radius_km` / `outer_radius_km` — radial domain (km from the host body's centre) the profile spans. Samples are uniformly distributed across the closed interval.
 - `intensity_scale` — multiply stored scalar-channel values (and `1 − transparency`) by this to recover physical brightness/opacity. `1.0` for measured data (Saturn); the synthetic tenuous systems (Jupiter/Uranus/Neptune) store channels normalised to their physical maximum because 8-bit cannot hold optical depths of ~1e-6 directly. The renderer must apply it — these systems are *supposed* to render extremely faint.
+- `thickness_scale_km` — km per unit of the optional `thickness` row; `0` when the bundle has no thickness data (rings render as a flat sheet). The renderer spreads the ring material vertically over the per-radius extent (Jupiter's halo torus vs its thin main ring).
 - `color_space` — color space for the `color` channel; `"srgb"` today.
 - `attribution` / `description` — optional; when present they propagate to `systems/{bary}.json` and `credits.json`.

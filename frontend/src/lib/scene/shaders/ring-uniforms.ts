@@ -3,6 +3,12 @@ import type { Vec3 } from '$lib/scene/animation/math';
 import type { BodyObjects } from '$lib/scene/types';
 import { SUN_ID } from '$lib/constants';
 import { sunIrradianceFactor } from '$lib/scene/lighting';
+import { kmToScene } from '$lib/math/units';
+
+// IAU nominal solar radius; over the ring-planet distance this gives the
+// sun's angular radius, which sets the penumbra widths of both ring-shadow
+// ray-marches.
+const SUN_RADIUS_SCENE = kmToScene(695_700);
 
 /**
  * Refresh per-frame ring + planet-ring-shadow uniforms (sun dir, planet center,
@@ -30,9 +36,10 @@ export function updateRingShaders(
 		// Body → sun direction (the focus offset cancels, so world == scene-rel).
 		const ringSunDir = bo.rings.material.uniforms.uSunDir.value as Vector3;
 		ringSunDir.set(sunPos[0] - bx, sunPos[1] - by, sunPos[2] - bz);
-		bo.rings.material.uniforms.uLightScale.value = realistic
-			? sunIrradianceFactor(ringSunDir.length())
-			: 1;
+		const sunDist = ringSunDir.length();
+		const sunAngularRadius = SUN_RADIUS_SCENE / sunDist;
+		bo.rings.material.uniforms.uSunAngularRadius.value = sunAngularRadius;
+		bo.rings.material.uniforms.uLightScale.value = realistic ? sunIrradianceFactor(sunDist) : 1;
 		ringSunDir.normalize();
 
 		// Shared by both ray-marches: planet-shadow-on-ring (always present)
@@ -45,8 +52,9 @@ export function updateRingShaders(
 
 		const ps = bo.rings.planetShadow;
 		if (!ps) continue;
-		// Shared ref with the atmosphere shell's ring-shadow uniforms.
+		// Shared refs with the atmosphere shell's ring-shadow uniforms.
 		ps.uRingShadowIntensity.value = intensity;
+		ps.uRingShadowSunAngularRadius.value = sunAngularRadius;
 		ps.uRingShadowSunDir.value.copy(ringSunDir);
 		ps.uRingShadowPoleDir.value.copy(psOnRing.uPlanetPoleDir.value);
 		ps.uRingShadowCenter.value.copy(psOnRing.uPlanetCenter.value);

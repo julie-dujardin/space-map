@@ -41,6 +41,8 @@ PROCESSED_DIR = EXPORT_DIR / "v1" / "rings"
 COLOR_CHANNEL = "color"
 
 # Row assignment inside strip.webp; scalar channels are replicated to RGB.
+# ``thickness`` (vertical extent profile, × thickness_scale_km = km) is only
+# present for bundles that declare it — measured Saturn data has none.
 STRIP_ROWS: dict[str, int] = {
     "color": 0,
     "backscattered": 1,
@@ -48,6 +50,7 @@ STRIP_ROWS: dict[str, int] = {
     "unlitside": 3,
     "transparency": 4,
 }
+OPTIONAL_ROWS = ("thickness",)
 STRIP_FILE = "strip.webp"
 
 
@@ -202,8 +205,13 @@ class RingProcessor:
                 f"{metadata_yaml}: channels {sorted(missing)} absent from yaml"
             )
 
-        rows = np.zeros((len(STRIP_ROWS), sample_count, 3), dtype=np.uint8)
-        for channel, row in STRIP_ROWS.items():
+        strip_rows = dict(STRIP_ROWS)
+        for extra in OPTIONAL_ROWS:
+            if extra in channels:
+                strip_rows[extra] = len(strip_rows)
+
+        rows = np.zeros((len(strip_rows), sample_count, 3), dtype=np.uint8)
+        for channel, row in strip_rows.items():
             src = raw_dir / channels[channel]
             if not src.exists():
                 raise FileNotFoundError(
@@ -230,7 +238,7 @@ class RingProcessor:
         strip = _save_lossless_webp(
             Image.fromarray(rows, mode="RGB"), out_dir / STRIP_FILE
         )
-        strip["rows"] = dict(STRIP_ROWS)
+        strip["rows"] = strip_rows
         log.debug(
             "wrote %s/%s (%dx%d, %d bytes)",
             object_id,
@@ -253,6 +261,8 @@ class RingProcessor:
             # Synthetic bundles store channels normalised so 8-bit survives
             # τ ~1e-6; stored × intensity_scale = physical. Measured data is 1.
             "intensity_scale": float(meta.get("intensity_scale", 1.0)),
+            # 0 = no thickness channel; else km per unit of the thickness row.
+            "thickness_scale_km": float(meta.get("thickness_scale_km", 0.0)),
             "color_space": "srgb",
             "processed_at": datetime.now(UTC).isoformat(),
             "strip": strip,
@@ -262,7 +272,7 @@ class RingProcessor:
             "processed rings for %s -> %s (%d rows)",
             object_id,
             out_dir.relative_to(EXPORT_DIR),
-            len(STRIP_ROWS),
+            len(strip_rows),
         )
 
         self._mark_has_rings(object_id)

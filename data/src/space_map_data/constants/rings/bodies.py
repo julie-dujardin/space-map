@@ -31,6 +31,8 @@ class RingFeature(NamedTuple):
     profile: Literal["flat", "fade_inner", "fade_outer", "peak"] = "flat"
     # sRGB tint override for the color channel; None = system tint.
     tint: tuple[float, float, float] | None = None
+    # Full vertical extent. 0 = not tabulated / negligible — rendered flat.
+    thickness_km: float = 0.0
 
 
 class RingSystem(NamedTuple):
@@ -60,8 +62,8 @@ RING_SYSTEMS: dict[str, RingSystem] = {
         source="https://pds-rings.seti.org/jupiter/jupiter_rings_table.html",
         features=(
             # Halo: 100,000-122,400 km, τ ~1e-6 (PDS; NSSDCA: 89,400-123,000,
-            # τ 3e-6). A vertically thick torus that brightens toward the main
-            # ring. Sub-µm grains → bluish tint.
+            # τ 3e-6). A vertically thick torus (~10,000 km, PDS/NSSDCA) that
+            # brightens toward the main ring. Sub-µm grains → bluish tint.
             RingFeature(
                 "Halo",
                 100_000,
@@ -70,23 +72,51 @@ RING_SYSTEMS: dict[str, RingSystem] = {
                 "dusty",
                 "fade_inner",
                 tint=(0.72, 0.80, 1.00),
+                thickness_km=10_000,
             ),
             # Main ring: 122,400-129,100 km (PDS; NSSDCA 123,000-128,940).
             # τ 5e-6 (NSSDCA; PDS "<8e-6"); particle albedo ~0.015 (NSSDCA)
-            # → dark red-brown.
+            # → dark red-brown. Thickness 100 km (PDS; NSSDCA "<~100").
             RingFeature(
-                "Main Ring", 122_400, 129_100, 5e-6, "dense", tint=(1.00, 0.83, 0.68)
+                "Main Ring",
+                122_400,
+                129_100,
+                5e-6,
+                "dense",
+                tint=(1.00, 0.83, 0.68),
+                thickness_km=100,
             ),
             # The gossamer rings overlap: each spans from the ill-defined
             # inner boundary (PDS lists 122,400 for both) out to its source
             # moon's orbit; summing overlaps reproduces the observed
             # staircase profile. τ per PDS (NSSDCA: 1e-7 for both).
-            RingFeature("Amalthea Gossamer Ring", 122_400, 181_350, 5e-7, "dusty"),
-            RingFeature("Thebe Gossamer Ring", 122_400, 221_900, 1e-7, "dusty"),
-            # Faint decay past Thebe's orbit, τ ~1e-9 (PDS, out to 270,000 km;
-            # NSSDCA 280,000).
+            # Thickness per PDS/NSSDCA: set by each moon's orbital inclination.
             RingFeature(
-                "Thebe Extension", 221_900, 270_000, 1e-9, "dusty", "fade_outer"
+                "Amalthea Gossamer Ring",
+                122_400,
+                181_350,
+                5e-7,
+                "dusty",
+                thickness_km=2_600,
+            ),
+            RingFeature(
+                "Thebe Gossamer Ring",
+                122_400,
+                221_900,
+                1e-7,
+                "dusty",
+                thickness_km=8_800,
+            ),
+            # Faint decay past Thebe's orbit, τ ~1e-9 (PDS, out to 270,000 km;
+            # NSSDCA 280,000). Same vertical extent as the Thebe ring (PDS).
+            RingFeature(
+                "Thebe Extension",
+                221_900,
+                270_000,
+                1e-9,
+                "dusty",
+                "fade_outer",
+                thickness_km=8_800,
             ),
         ),
         # ~21 km/px; nothing narrower than the 6,700 km main ring.
