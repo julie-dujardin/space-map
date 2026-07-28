@@ -132,7 +132,7 @@ export interface ModelCatalog {
  * (see data/src/space_map_data/constants/atmosphere/references.py). English-
  * only like the rest of the credits payload.
  */
-export interface AtmosphereReference {
+export interface Reference {
 	title: string;
 	url: string;
 	contribution: string;
@@ -141,7 +141,8 @@ export interface AtmosphereReference {
 export interface Credits {
 	systems: SystemGroup[];
 	ephemeris_archives: EphemerisArchive[];
-	atmosphere_references?: AtmosphereReference[];
+	atmosphere_references?: Reference[];
+	ring_references?: Reference[];
 	models?: ModelCatalog[];
 	skybox?: SkyboxCredit;
 }

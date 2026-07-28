@@ -1,8 +1,15 @@
-"""Citable sources behind the synthetic ring profiles, for the /credits page.
+"""Citable literature behind the synthetic ring profiles, for the /credits page.
 
 Same shape as constants/atmosphere/references.py: one entry per work we take
-numbers from, full per-value provenance as comments next to each constant.
-Not yet exported — wiring into credits.json comes with full ring integration.
+numbers from, with a one-line "what we get"; the full per-value provenance
+lives as comments next to each constant in bodies.py.
+
+Deliberately *not* a copy of the data-source list. The PDS ring tables and
+NSSDCA fact sheets the numbers are read off are credited per body through each
+bundle's own ``sources``, so repeating them here would double every row. What
+belongs here is the literature standing behind those tables, which no per-body
+row names — and it stays on /credits rather than the in-scene attribution UI,
+which would become unusable listing individual papers.
 """
 
 from typing import NamedTuple
@@ -15,51 +22,19 @@ class RingReference(NamedTuple):
 
 
 RING_REFERENCES: tuple[RingReference, ...] = (
+    # The PDS Jupiter, Uranus and Neptune tables each attribute their values to
+    # a chapter of this one book, so it is a single citation rather than three.
     RingReference(
-        "PDS Ring-Moon Systems Node — Jupiter ring table",
-        "https://pds-rings.seti.org/jupiter/jupiter_rings_table.html",
-        "Jovian ring boundaries + optical depths (De Pater et al. 2018 values)",
-    ),
-    RingReference(
-        "PDS Ring-Moon Systems Node — Saturn ring table",
-        "https://pds-rings.seti.org/saturn/saturn_rings_table.html",
-        "D ring and outer tenuous ring boundaries + optical depths; E ring "
-        "vertical extent (the main rings ship as measured Cassini profiles)",
-    ),
-    RingReference(
-        "NSSDCA Saturnian Rings Fact Sheet",
-        "https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html",
-        "Main-ring vertical thickness (C/B/Cassini/A); G and E ring thickness",
-    ),
-    RingReference(
-        "PDS Ring-Moon Systems Node — Uranus ring table",
-        "https://pds-rings.seti.org/uranus/uranus_rings_table.html",
-        "Uranian ring mid-radii, widths + optical depths "
-        "(Nicholson et al. 2018 values)",
-    ),
-    RingReference(
-        "PDS Ring-Moon Systems Node — Neptune ring table",
-        "https://pds-rings.seti.org/neptune/neptune_rings_table.html",
-        "Neptunian ring mid-radii, widths + optical depths",
-    ),
-    RingReference(
-        "NSSDCA Jupiter Rings Fact Sheet",
-        "https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupringfact.html",
-        "Cross-check boundaries; main-ring τ + particle albedo",
-    ),
-    RingReference(
-        "NSSDCA Uranus Rings Fact Sheet",
-        "https://nssdc.gsfc.nasa.gov/planetary/factsheet/uranringfact.html",
-        "Cross-check radii; eccentric-ring width ranges + particle albedos",
-    ),
-    RingReference(
-        "NSSDCA Neptunian Rings Fact Sheet",
-        "https://nssdc.gsfc.nasa.gov/planetary/factsheet/nepringfact.html",
-        "Cross-check radii + optical depths",
+        "Tiscareno & Murray (eds) 2018, Planetary Ring Systems "
+        "(Cambridge University Press)",
+        "https://doi.org/10.1017/9781316286791",
+        "Ring boundaries, radii, widths and normal optical depths for Jupiter "
+        "and Neptune (De Pater et al.) and for Uranus (Nicholson et al.), as "
+        "tabulated by the PDS Ring-Moon Systems Node",
     ),
     RingReference(
         "de Pater et al. 2006 (Science 312)",
         "https://doi.org/10.1126/science.1125110",
-        "Colors of the outer Uranian dust rings (ν red, µ blue)",
+        "Colours of the outer Uranian dust rings (ν red, µ blue)",
     ),
 )

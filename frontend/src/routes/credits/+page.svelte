@@ -319,5 +319,16 @@
 				</ul>
 			</section>
 		{/if}
+
+		{#if credits.ring_references?.length}
+			<section>
+				{@render sectionHeader(m.attribution_section_rings())}
+				<ul class="space-y-1">
+					{#each credits.ring_references as ref (ref.url)}
+						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
 	</div>
 </main>
