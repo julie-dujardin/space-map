@@ -381,7 +381,7 @@ class ESA3DDownloader(Downloader):
                 "catalog": "ESA SciFleet",
                 "catalog_url": PAGE_URL,
                 "catalog_api": CATALOG_URL,
-                "attribution": "ESA / scifleet.esa.int",
+                "attribution": "ESA",
                 "downloaded_at": datetime.now(UTC).isoformat(),
             },
             "entries": entries,

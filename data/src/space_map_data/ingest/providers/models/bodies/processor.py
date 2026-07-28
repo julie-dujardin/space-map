@@ -310,7 +310,11 @@ class BodyModelProcessor:
             else None
         )
         credit = {
-            "name": entry.get("archive") or "NASA PDS",
+            "name": (
+                config.MODEL_CATALOGS[catalog]["default_attribution"]
+                if catalog in config.MODEL_CATALOGS
+                else "NASA"
+            ),
             "url": entry.get("archive_url") or catalog_url,
         }
         # Short, uniform license for the credit chip — from the catalog. The
