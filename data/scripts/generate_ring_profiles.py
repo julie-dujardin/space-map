@@ -1,9 +1,11 @@
-"""Synthesise ring radial-profile bundles for Jupiter, Uranus and Neptune.
+"""Synthesise ring radial-profile bundles for the tenuous ring systems.
 
-Saturn's ring strips are measured Cassini data (bjj_rings downloader); no
+Saturn's *main* rings are measured Cassini data (bjj_rings downloader); no
 published equivalent exists for the tenuous systems, so this generates the
 same five-channel 1×N bundle from ``constants/rings/bodies.py``: tabulated
 feature boundaries + normal optical depths → supersampled τ(r) → channels.
+That covers Jupiter, Uranus and Neptune whole, plus the Saturn bundles that
+fall outside the measured strip (its D ring and its outer tenuous rings).
 
 Opacity stays physical. 8-bit strips cannot hold τ ~1e-6 directly, so every
 channel is stored normalised to the bundle's ``intensity_scale`` (recorded in
@@ -47,15 +49,21 @@ KIND_WEIGHTS = {
     "dusty": {"backscattered": 0.30, "forwardscattered": 2.0, "unlitside": 1.2},
 }
 
-ORGANISATION = "NASA PDS Ring-Moon Systems Node / NSSDCA"
-LICENSE = "Public domain (NASA)"
-
-# NSSDCA equatorial radii, preview planet disc only.
+# NSSDCA equatorial radii, preview planet disc only. Keyed by planet name
+# since several bundles can share one host.
 PREVIEW_EQ_RADIUS_KM = {
-    "jupiter": 71_492.0,
-    "saturn": 60_268.0,
-    "uranus": 25_559.0,
-    "neptune": 24_766.0,
+    "Jupiter": 71_492.0,
+    "Saturn": 60_268.0,
+    "Uranus": 25_559.0,
+    "Neptune": 24_766.0,
+}
+
+# --preview-bundle reads a downloaded bundle, whose yaml names only the body.
+PLANET_BY_BODY = {
+    "naif-599": "Jupiter",
+    "naif-699": "Saturn",
+    "naif-799": "Uranus",
+    "naif-899": "Neptune",
 }
 
 
@@ -101,7 +109,14 @@ def synthesise(
         for c, w in KIND_WEIGHTS[f.kind].items():
             tau_ch[c] += w * contrib
         rgb_num += contrib[..., None] * np.asarray(f.tint or system.tint)
-        thickness_num += contrib * f.thickness_km
+        if f.thickness_outer_km is None:
+            thickness = f.thickness_km
+        else:
+            # Flaring ring (Saturn's outer E ring): interpolate the extent
+            # across the feature instead of stepping between sub-features.
+            span = f.thickness_outer_km - f.thickness_km
+            thickness = f.thickness_km + span * np.clip(x, 0.0, 1.0)
+        thickness_num += contrib * thickness
 
     tau_px = tau.mean(axis=1)
     alpha = 1.0 - np.exp(-tau_px)
@@ -118,7 +133,9 @@ def synthesise(
     rgb[tau_px <= 0.0] = system.tint
     channels["color"] = np.clip(rgb, 0.0, 1.0)
 
-    thickness_scale_km = float(max(f.thickness_km for f in system.features))
+    thickness_scale_km = float(
+        max(max(f.thickness_km, f.thickness_outer_km or 0.0) for f in system.features)
+    )
     if thickness_scale_km > 0.0:
         thickness_px = thickness_num.mean(axis=1) / np.maximum(tau_px, 1e-12)
         thickness_px[tau_px <= 0.0] = 0.0
@@ -127,7 +144,7 @@ def synthesise(
 
 
 def write_bundle(
-    body_id: str, system: RingSystem, out_root: Path
+    system: RingSystem, out_root: Path
 ) -> tuple[float, float, float, dict[str, np.ndarray]]:
     inner, outer, scale, thickness_scale_km, channels = synthesise(system)
     out_dir = out_root / system.slug
@@ -139,22 +156,30 @@ def write_bundle(
         np.savetxt(out_dir / filename, arr, fmt="%.6f")
         files[name] = filename
 
-    planet = system.slug.capitalize()
+    planet = system.planet
     payload = {
-        "body": body_id,
-        "source": system.source,
-        "organisation": ORGANISATION,
-        "license": LICENSE,
-        "attribution": (
-            f"{planet} ring geometry and optical depths from the NASA PDS "
-            "Ring-Moon Systems Node ring tables and the NSSDCA planetary ring "
-            "fact sheets; radial profiles synthesised for rendering, not "
-            "measured photometry."
-        ),
+        "body": system.body,
+        "bundle": system.bundle,
+        # One entry per work, each stating its own contribution — a bundle
+        # mixes boundaries from one table with vertical extents from another.
+        "sources": [
+            {
+                "source": s.url,
+                "organisation": s.organisation,
+                "license": s.license,
+                "work": s.work,
+                "contribution": s.contribution,
+                # Credits appends a caveat: these profiles are reconstructions
+                # from the tabulated numbers, not the source's own photometry.
+                "synthesised": True,
+            }
+            for s in system.sources
+        ],
         "description": (
-            f"Synthetic 1-D radial profiles of {planet}'s rings: the same "
-            "five-channel bundle as the measured Saturn strips, generated "
-            "from tabulated feature boundaries and normal optical depths."
+            f"Synthetic 1-D radial profiles of {planet}'s {system.covers}: "
+            "the same five-channel bundle as the measured Saturn strips, "
+            "generated from tabulated feature boundaries and normal optical "
+            "depths."
         ),
         "generated_at": datetime.now(UTC).isoformat(),
         "inner_radius_km": float(inner),
@@ -197,6 +222,7 @@ def _lit_premultiplied(channels: dict[str, np.ndarray], scale: float) -> np.ndar
 
 def render_previews(
     slug: str,
+    planet: str,
     sample_count: int,
     inner: float,
     outer: float,
@@ -225,7 +251,7 @@ def render_previews(
     out = (cum[i1] - cum[i0]) / np.maximum(i1 - i0, 1)[..., None]
     out[i1 <= i0] = 0.0
     out = np.clip(out * PREVIEW_GAIN, 0.0, 1.0) ** (1.0 / 2.2)
-    out[r_km <= PREVIEW_EQ_RADIUS_KM[slug]] = 0.18
+    out[r_km <= PREVIEW_EQ_RADIUS_KM[planet]] = 0.18
     Image.fromarray((out * 255.0 + 0.5).clip(0, 255).astype(np.uint8)).save(
         preview_dir / f"{slug}_annulus.png"
     )
@@ -258,6 +284,7 @@ def preview_bundle(bundle_dir: Path, preview_dir: Path) -> None:
     }
     render_previews(
         bundle_dir.name,
+        PLANET_BY_BODY[meta["body"]],
         int(meta["sample_count"]),
         float(meta["inner_radius_km"]),
         float(meta["outer_radius_km"]),
@@ -285,13 +312,14 @@ def main() -> None:
         preview_bundle(args.preview_bundle, args.preview_dir)
         return
 
-    for body_id, system in RING_SYSTEMS.items():
+    for system in RING_SYSTEMS.values():
         if args.only and system.slug != args.only:
             continue
-        inner, outer, scale, channels = write_bundle(body_id, system, args.out_root)
+        inner, outer, scale, channels = write_bundle(system, args.out_root)
         if args.preview_dir:
             render_previews(
                 system.slug,
+                system.planet,
                 system.sample_count,
                 inner,
                 outer,

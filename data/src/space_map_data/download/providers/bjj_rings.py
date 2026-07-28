@@ -14,6 +14,10 @@ https://bjj.mmedia.is/acknow.html. See the ``ring-metadata.yaml``
 written alongside the channel `.txt` files for the canonical
 attribution string.
 
+A sixth ``thickness`` channel is derived locally rather than downloaded: BJJ
+publishes no vertical extent, so it is rasterised from the NSSDCA per-region
+figures in constants/rings/bodies.py and credited separately in the yaml.
+
 On-disk layout::
 
     sources/textures/rings/saturn/{channel}.txt
@@ -28,6 +32,11 @@ import httpx
 import yaml
 
 from space_map_data.constants.providers import PROVIDERS
+from space_map_data.constants.rings.bodies import (
+    NASA,
+    NASA_LICENSE,
+    SATURN_MEASURED_THICKNESS,
+)
 from space_map_data.download.downloader import DownloadError, Downloader
 from space_map_data.utils.paths import SOURCES_TEXTURES_DIR
 
@@ -35,12 +44,8 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://bjj.mmedia.is/data/s_rings"
 BODY = "naif-699"
-ORGANISATION = "Björn Jónsson"
+BUNDLE = "primary"
 SOURCE_PAGE = f"{BASE_URL}/index.html"
-ATTRIBUTION = (
-    "Saturn ring profiles created by Björn Jónsson "
-    "(https://bjj.mmedia.is/data/s_rings/) from NASA PDS Cassini imaging data."
-)
 DESCRIPTION = (
     "1-D radial profiles of Saturn's main rings: separate channels for "
     "back-scattered light (sun-lit side), forward-scattered light (~139° phase), "
@@ -62,6 +67,35 @@ CHANNELS: dict[str, str] = {
     "color": "sat_rings_color.txt",
 }
 
+# Derived locally from NSSDCA figures, not fetched.
+THICKNESS_FILE = "thickness.txt"
+THICKNESS_SCALE_KM = max(z.thickness_m for z in SATURN_MEASURED_THICKNESS) / 1000.0
+# The photometry and the vertical extent come from different works, so each
+# is credited for what it actually contributed.
+SOURCES = [
+    {
+        "source": SOURCE_PAGE,
+        "organisation": "Björn Jónsson",
+        "license": "Free use with attribution",
+        "work": "Saturn ring profiles",
+        "contribution": (
+            "back-scattered, forward-scattered and unlit-side brightness, "
+            "transparency and colour of the main rings, measured from NASA PDS "
+            "Cassini imaging"
+        ),
+    },
+    {
+        "source": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html",
+        "organisation": NASA,
+        "license": NASA_LICENSE,
+        "work": "NSSDCA Saturnian Rings Fact Sheet",
+        "contribution": (
+            "vertical thickness of the C, B, Cassini Division and A regions "
+            "(D. R. Williams, NASA Goddard Space Flight Center)"
+        ),
+    },
+]
+
 REQUEST_DELAY_SECONDS = 2.0
 
 
@@ -78,6 +112,8 @@ class BJJRingsDownloader(Downloader):
 
     def is_complete(self, limit: int | None) -> bool:
         if not self.metadata_yaml.exists():
+            return False
+        if not (self.out_dir / THICKNESS_FILE).exists():
             return False
         return all((self.out_dir / fn).exists() for fn in CHANNELS.values())
 
@@ -114,20 +150,46 @@ class BJJRingsDownloader(Downloader):
                 f"{len(text):,}",
             )
 
+        self._write_thickness()
         self._write_metadata_yaml()
+
+    def _write_thickness(self) -> None:
+        """Rasterise the NSSDCA per-region thickness onto the BJJ sample grid,
+        normalised to THICKNESS_SCALE_KM. Radii outside every tabulated region
+        (the Roche Division and F ring past the A ring) get 0 — rendered flat."""
+        step = (OUTER_RADIUS_KM - INNER_RADIUS_KM) / (SAMPLE_COUNT - 1)
+        lines = []
+        for i in range(SAMPLE_COUNT):
+            radius = INNER_RADIUS_KM + i * step
+            thickness_m = next(
+                (
+                    z.thickness_m
+                    for z in SATURN_MEASURED_THICKNESS
+                    if z.inner_km <= radius < z.outer_km
+                ),
+                0.0,
+            )
+            lines.append(f"{thickness_m / 1000.0 / THICKNESS_SCALE_KM:.6f}")
+        (self.out_dir / THICKNESS_FILE).write_text("\n".join(lines) + "\n")
+        logger.info(
+            "Wrote %s (%s samples, %.0f m full scale)",
+            THICKNESS_FILE,
+            f"{SAMPLE_COUNT:,}",
+            THICKNESS_SCALE_KM * 1000.0,
+        )
 
     def _write_metadata_yaml(self) -> None:
         payload = {
             "body": BODY,
-            "source": SOURCE_PAGE,
-            "organisation": ORGANISATION,
-            "attribution": ATTRIBUTION,
+            "bundle": BUNDLE,
+            "sources": [dict(s) for s in SOURCES],
             "description": DESCRIPTION,
             "downloaded_at": datetime.now(UTC).isoformat(),
             "inner_radius_km": INNER_RADIUS_KM,
             "outer_radius_km": OUTER_RADIUS_KM,
             "sample_count": SAMPLE_COUNT,
-            "channels": dict(CHANNELS),
+            "thickness_scale_km": THICKNESS_SCALE_KM,
+            "channels": {**CHANNELS, "thickness": THICKNESS_FILE},
         }
         self.metadata_yaml.write_text(
             yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)

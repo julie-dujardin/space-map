@@ -698,7 +698,9 @@ export class SceneRenderer {
 			this.bodyObjects,
 			this.focus.focusTruePos,
 			getSettings().realisticLighting,
-			getSettings().overexposeRings
+			getSettings().overexposeRings,
+			this.camera.position,
+			this.pxPerRad()
 		);
 		// Before the atmosphere update — shells cull their private occluder
 		// sets against this frame's scene-wide list.
@@ -1016,13 +1018,17 @@ export class SceneRenderer {
 	/** View geometry for the point clouds' subpixel solve gate. Camera position is
 	 *  already focus-relative (controls target is the origin); pxPerRad converts an
 	 *  angular size at the camera into CSS pixels from the vertical FOV + height. */
+	/** CSS pixels per radian of angular size at the camera. */
+	private pxPerRad(): number {
+		const height = this.renderer.domElement.clientHeight || 1;
+		return height / 2 / Math.tan((this.camera.fov * Math.PI) / 360);
+	}
+
 	private cloudViewInfo(): CloudViewInfo {
 		const cam = this.camera.position;
-		const height = this.renderer.domElement.clientHeight || 1;
-		const halfFov = (this.camera.fov * Math.PI) / 360;
 		return {
 			camPos: [cam.x, cam.y, cam.z],
-			pxPerRad: height / 2 / Math.tan(halfFov)
+			pxPerRad: this.pxPerRad()
 		};
 	}
 

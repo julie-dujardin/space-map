@@ -184,7 +184,7 @@ export function buildMajorBodies(
 			isMinor,
 			noPhysical,
 			noteEl: null,
-			rings: null,
+			rings: [],
 			clouds: null,
 			atmosphere,
 			sunTint,

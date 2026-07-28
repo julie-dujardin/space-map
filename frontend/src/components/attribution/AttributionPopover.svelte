@@ -143,15 +143,27 @@
 		const bodies = [...byBody.keys()].sort((a, b) => bodyName(a).localeCompare(bodyName(b)));
 		for (const bodyId of bodies) {
 			const items = byBody.get(bodyId)!;
-			const multi = items.length > 1;
+			// One line per kind of imagery, even when several works went into
+			// it (Saturn's rings credit Björn Jónsson and NASA): the popover is
+			// a glance, /credits carries the per-source detail.
+			const byType = new Map<string, typeof items>();
 			for (const it of items) {
+				const arr = byType.get(it.typeKey) ?? [];
+				arr.push(it);
+				byType.set(it.typeKey, arr);
+			}
+			const multi = byType.size > 1;
+			for (const [typeKey, group] of byType) {
+				const orgs = [...new Set(group.map((g) => g.organisation))];
+				const licenses = new Set(group.map((g) => g.license));
 				rows.push({
-					key: `${bodyId}-${it.typeKey}`,
+					key: `${bodyId}-${typeKey}`,
 					label: bodyName(bodyId),
-					qualifier: multi ? typeLabel(it.typeKey) : undefined,
-					source: it.source,
-					organisation: it.organisation,
-					license: it.license
+					qualifier: multi ? typeLabel(group[0].typeKey) : undefined,
+					source: group[0].source,
+					organisation: orgs.join(' & '),
+					// Only meaningful when every work shares it.
+					license: licenses.size === 1 ? group[0].license : undefined
 				});
 			}
 		}

@@ -21,6 +21,17 @@ RING_REFERENCES: tuple[RingReference, ...] = (
         "Jovian ring boundaries + optical depths (De Pater et al. 2018 values)",
     ),
     RingReference(
+        "PDS Ring-Moon Systems Node — Saturn ring table",
+        "https://pds-rings.seti.org/saturn/saturn_rings_table.html",
+        "D ring and outer tenuous ring boundaries + optical depths; E ring "
+        "vertical extent (the main rings ship as measured Cassini profiles)",
+    ),
+    RingReference(
+        "NSSDCA Saturnian Rings Fact Sheet",
+        "https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html",
+        "Main-ring vertical thickness (C/B/Cassini/A); G and E ring thickness",
+    ),
+    RingReference(
         "PDS Ring-Moon Systems Node — Uranus ring table",
         "https://pds-rings.seti.org/uranus/uranus_rings_table.html",
         "Uranian ring mid-radii, widths + optical depths "

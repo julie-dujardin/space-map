@@ -149,8 +149,11 @@ export class CreditsStore {
 	}
 
 	registerRing(credit: RingCredit): void {
-		if (this.ring.has(credit.bodyId)) return;
-		this.ring.set(credit.bodyId, credit);
+		// Keyed by body *and* source: a body's ring bundles cite several works
+		// (Saturn credits Björn Jónsson and NASA separately).
+		const key = `${credit.bodyId}\u0000${credit.source}`;
+		if (this.ring.has(key)) return;
+		this.ring.set(key, credit);
 		this.ringVersion++;
 	}
 

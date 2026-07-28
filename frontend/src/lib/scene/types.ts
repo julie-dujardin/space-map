@@ -84,7 +84,10 @@ export interface BodyObjects {
 	labelTextWidth?: number;
 	/** Minor-promoted halo: rendered as a small ring; expands on hover. From {@link MINOR_PROMOTED_IDS}. */
 	isMinor: boolean;
-	rings: RingNode | null;
+	/** Ring bundles, inner → outer. Saturn owns three (D ring, measured main
+	 *  rings, tenuous outer rings); the others one. Index 0 is not special —
+	 *  the shadow caster is chosen by opacity when the bundles load. */
+	rings: RingNode[];
 	clouds: CloudNode | null;
 	atmosphere: AtmosphereNode | null;
 	/** Specular/roughness map. Stays at the low tier — binary mask doesn't benefit from LOD. */

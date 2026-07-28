@@ -1,14 +1,20 @@
 """Convert raw 1-D ring profile text files to a single lossless WebP strip.
 
-Iterates ``DOWNLOAD_DIR/rings/<body>/ring-metadata.yaml`` for every downloaded
-body, parses each channel's text file (one float per line for L channels;
+Iterates ``DOWNLOAD_DIR/rings/<dir>/ring-metadata.yaml`` for every downloaded
+bundle, parses each channel's text file (one float per line for L channels;
 whitespace-separated R G B per line for the color channel), and writes one
 5×N ``strip.webp`` (one row per channel, order in ``STRIP_ROWS``) plus a
-``metadata.json`` to ``EXPORT_DIR/v1/rings/<object_id>/``. One file per body
-keeps it to a single request; the client splits the rows back into separate
-textures after decode, so per-channel filtering is unaffected. Mirrors the
-textures pipeline so the ring metadata block in ``systems/<bary>.json`` can be
-assembled by the export step from the on-disk ``metadata.json``.
+``metadata.json`` to ``EXPORT_DIR/v1/rings/<object_id>/<bundle>/``. One file
+per bundle keeps it to a single request; the client splits the rows back into
+separate textures after decode, so per-channel filtering is unaffected.
+Mirrors the textures pipeline so the ring metadata block in
+``systems/<bary>.json`` can be assembled by the export step from the on-disk
+``metadata.json``.
+
+A body may own several radially disjoint bundles — Saturn's measured main
+rings plus the synthetic D ring inside them and tenuous rings outside — each
+with its own sample density and intensity/thickness scale, which is how one
+export holds both a τ~5 B ring and a τ~5e-6 E ring.
 
 The DB ``has_rings`` flag on ``Object`` is reset for every run and re-marked
 per body that has a successfully processed ring bundle (same idempotency
@@ -107,10 +113,7 @@ def _refresh_credits(out_meta_path: Path, meta: dict) -> None:
     except (OSError, json.JSONDecodeError):
         return
     desired = {
-        "source": meta["source"],
-        "organisation": meta["organisation"],
-        "license": meta.get("license"),
-        "attribution": meta["attribution"],
+        "sources": meta["sources"],
         "description": meta.get("description"),
     }
     if all(current.get(k) == v for k, v in desired.items()):
@@ -181,8 +184,16 @@ class RingProcessor:
         object_id = meta["body"]
         sample_count = int(meta["sample_count"])
         channels: dict[str, str] = meta["channels"]
+        bundle = meta.get("bundle")
+        if not bundle:
+            bundle = "primary"
+            log.warning(
+                "%s declares no bundle name, defaulting to %r",
+                metadata_yaml.parent.name,
+                bundle,
+            )
 
-        out_dir = PROCESSED_DIR / object_id
+        out_dir = PROCESSED_DIR / object_id / bundle
         out_dir.mkdir(parents=True, exist_ok=True)
         out_meta_path = mirror_path(out_dir / "metadata.json")
         out_meta_path.parent.mkdir(parents=True, exist_ok=True)
@@ -229,11 +240,16 @@ class RingProcessor:
             q = _quantize(arr)
             rows[row] = q if q.ndim == 2 else q[:, None]
 
-        # Per-channel files from the pre-strip format would otherwise linger.
-        for stale in out_dir.glob("*.webp"):
-            if stale.name != STRIP_FILE:
+        # Per-channel files from the pre-strip format, and strips written to
+        # the body dir before bundles gained their own sub-directory, would
+        # otherwise linger.
+        for stale in (*out_dir.glob("*.webp"), *out_dir.parent.glob("*.webp")):
+            if stale.name != STRIP_FILE or stale.parent != out_dir:
                 stale.unlink()
-                log.info("removed stale ring export %s/%s", object_id, stale.name)
+                log.info(
+                    "removed stale ring export %s",
+                    stale.relative_to(PROCESSED_DIR),
+                )
 
         strip = _save_lossless_webp(
             Image.fromarray(rows, mode="RGB"), out_dir / STRIP_FILE
@@ -250,10 +266,9 @@ class RingProcessor:
 
         out_meta = {
             "id": object_id,
-            "source": meta["source"],
-            "organisation": meta["organisation"],
-            "license": meta.get("license"),
-            "attribution": meta["attribution"],
+            "bundle": bundle,
+            # Works behind this bundle, each with its own contribution note.
+            "sources": meta["sources"],
             "description": meta.get("description"),
             "inner_radius_km": float(meta["inner_radius_km"]),
             "outer_radius_km": float(meta["outer_radius_km"]),

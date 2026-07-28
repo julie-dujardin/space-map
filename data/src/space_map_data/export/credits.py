@@ -186,11 +186,62 @@ def _build_models_credits(model_metadata: dict[str, dict]) -> list[dict]:
     ]
 
 
+# Appended once to a merged attribution when any contributing bundle rebuilt
+# its profiles from the work's tabulated numbers rather than shipping the
+# work's own measurements.
+_SYNTHESISED_NOTE = (
+    " The radial profiles here are reconstructed from those numbers for "
+    "rendering, not measured photometry."
+)
+
+
+def _merge_ring_sources(body_id: str, name: str, metas: list[dict]) -> list[dict]:
+    """Collapse a body's ring bundles into one credit row per cited work.
+
+    A body's bundles routinely cite the same work for different things —
+    Saturn's D-ring, main-ring and outer bundles all draw on the NSSDCA fact
+    sheet — so rows are merged by (url, organisation) and their contributions
+    joined, rather than deduped down to whichever bundle happened to come
+    first.
+    """
+    merged: dict[tuple[str, str], dict] = {}
+    contributions: dict[tuple[str, str], list[str]] = {}
+    synthesised: set[tuple[str, str]] = set()
+    for meta in metas:
+        for src in meta["sources"]:
+            key = (src["source"], src["organisation"])
+            merged.setdefault(
+                key,
+                {
+                    "body_id": body_id,
+                    "name": name,
+                    "source": src["source"],
+                    "organisation": src["organisation"],
+                    **({"license": src["license"]} if src.get("license") else {}),
+                    "work": src["work"],
+                },
+            )
+            parts = contributions.setdefault(key, [])
+            if src["contribution"] not in parts:
+                parts.append(src["contribution"])
+            if src.get("synthesised"):
+                synthesised.add(key)
+
+    out: list[dict] = []
+    for key, entry in merged.items():
+        entry["attribution"] = (
+            f"{entry.pop('work')}: {'; '.join(contributions[key])}."
+            + (_SYNTHESISED_NOTE if key in synthesised else "")
+        )
+        out.append(entry)
+    return out
+
+
 def write_credits(
     session: Session,
     out_dir: Path,
     texture_metadata: dict[str, dict],
-    ring_metadata: dict[str, dict],
+    ring_metadata: dict[str, list[dict]],
     clouds_metadata: dict[str, dict],
     night_metadata: dict[str, dict],
     displacement_metadata: dict[str, dict],
@@ -248,7 +299,7 @@ def write_credits(
         textures_grouped.setdefault(sys_id, []).append(entry)
 
     rings_grouped: dict[str | None, list[dict]] = {}
-    for body_id, meta in ring_metadata.items():
+    for body_id, metas in ring_metadata.items():
         obj = by_id.get(body_id)
         if obj is None:
             logger.warning(
@@ -257,9 +308,8 @@ def write_credits(
             )
             continue
         sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
-        rings_grouped.setdefault(sys_id, []).append(
-            _sibling_credit_entry(body_id, _body_name(obj), meta)
-        )
+        for entry in _merge_ring_sources(body_id, _body_name(obj), metas):
+            rings_grouped.setdefault(sys_id, []).append(entry)
 
     clouds_grouped: dict[str | None, list[dict]] = {}
     for body_id, meta in clouds_metadata.items():

@@ -416,23 +416,33 @@ def skybox_block(meta: dict) -> dict:
     return block
 
 
-def load_ring_metadata(out_dir: Path) -> dict[str, dict]:
-    """Load all per-body ring metadata.json files from the export tree.
+def load_ring_metadata(out_dir: Path) -> dict[str, list[dict]]:
+    """Load all per-bundle ring metadata.json files from the export tree.
 
-    Returns {object_id: metadata_dict}. Only bodies whose ring bundle was
-    successfully ingested are included.
+    Returns {object_id: [metadata_dict, ...]} ordered inner → outer. Only
+    bodies with at least one successfully ingested bundle are included; a
+    body may own several radially disjoint ones (Saturn).
     """
     rings_dir = out_dir / "rings"
-    result: dict[str, dict] = {}
+    result: dict[str, list[dict]] = {}
     if not rings_dir.exists():
         return result
     for body_dir in rings_dir.iterdir():
         if not body_dir.is_dir():
             continue
-        meta_file = mirror_path(body_dir / "metadata.json")
-        if meta_file.exists():
-            result[body_dir.name] = orjson.loads(meta_file.read_bytes())
-    logger.info("Loaded ring metadata for %d bodies", len(result))
+        for bundle_dir in sorted(p for p in body_dir.iterdir() if p.is_dir()):
+            meta_file = mirror_path(bundle_dir / "metadata.json")
+            if meta_file.exists():
+                result.setdefault(body_dir.name, []).append(
+                    orjson.loads(meta_file.read_bytes())
+                )
+    for metas in result.values():
+        metas.sort(key=lambda m: float(m["inner_radius_km"]))
+    logger.info(
+        "Loaded ring metadata for %d bodies (%d bundles)",
+        len(result),
+        sum(len(m) for m in result.values()),
+    )
     return result
 
 
@@ -459,17 +469,20 @@ def load_model_metadata(out_dir: Path) -> dict[str, dict]:
 
 
 def ring_block(meta: dict) -> dict:
-    """Build the per-body `rings` block emitted into systems/{bary}.json and
-    the global object detail.
+    """Build one entry of the per-body `rings` array emitted into
+    systems/{bary}.json and the global object detail.
 
     Carries the geometry constants the renderer needs (inner/outer radius,
     sample count, intensity scale, color space) plus credit fields and the
     strip file + channel→row map; the frontend fetches
-    ``/v1/rings/{body_id}/{strip}`` once and splits the rows into textures.
+    ``/v1/rings/{body_id}/{strip}`` once per bundle and splits the rows into
+    textures. ``strip`` is bundle-relative so that URL needs no other part.
     """
+    bundle = meta.get("bundle", "primary")
     block = {
-        "source": meta["source"],
-        "organisation": meta["organisation"],
+        "bundle": bundle,
+        # Every work behind the bundle, each with its own contribution note.
+        "sources": meta["sources"],
         "inner_radius_km": float(meta["inner_radius_km"]),
         "outer_radius_km": float(meta["outer_radius_km"]),
         "sample_count": int(meta["sample_count"]),
@@ -479,14 +492,10 @@ def ring_block(meta: dict) -> dict:
         # 0 = flat rings (no thickness row); else km per unit of that row.
         "thickness_scale_km": float(meta.get("thickness_scale_km", 0.0)),
         "color_space": meta.get("color_space", "srgb"),
-        "strip": meta["strip"]["file"],
+        "strip": f"{bundle}/{meta['strip']['file']}",
         "strip_height": int(meta["strip"]["height"]),
         "strip_rows": meta["strip"]["rows"],
     }
-    if meta.get("license") is not None:
-        block["license"] = meta["license"]
-    if meta.get("attribution") is not None:
-        block["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
         block["description"] = meta["description"]
     return block
@@ -591,7 +600,7 @@ def write_system_metadata(
     radii: dict[int, dict],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
-    ring_metadata: dict[str, dict],
+    ring_metadata: dict[str, list[dict]],
     clouds_metadata: dict[str, dict],
     specular_metadata: dict[str, dict],
     night_metadata: dict[str, dict],
@@ -679,11 +688,12 @@ def write_system_metadata(
             if obj.naif_id is not None and obj.naif_id in radii:
                 entry["radii"] = radii[obj.naif_id]
 
-            # Ring profile bundle (only on bodies whose ingest produced one).
+            # Ring profile bundles, inner → outer (only on bodies whose
+            # ingest produced at least one).
             if obj.has_rings:
-                meta = ring_metadata.get(obj.id)
-                if meta is not None:
-                    entry["rings"] = ring_block(meta)
+                metas = ring_metadata.get(obj.id)
+                if metas:
+                    entry["rings"] = [ring_block(m) for m in metas]
                 else:
                     logger.warning(
                         "Ring metadata missing for %s (system %s), skipping",

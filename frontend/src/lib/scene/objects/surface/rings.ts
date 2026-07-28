@@ -52,10 +52,20 @@ export type RingChannel =
 type StripRows = Record<RingChannel, number> & { thickness?: number };
 type StripTextures = Record<RingChannel, Texture> & { thickness?: Texture };
 
-export interface RingMeta {
+/** One work behind a bundle. Bundles mix sources — Saturn's measured strips
+ *  are Björn Jónsson's photometry with NSSDCA vertical extents — so each
+ *  states what it contributed rather than the bundle claiming one origin. */
+export interface RingSource {
 	source: string;
 	organisation: string;
 	license?: string;
+	attribution?: string;
+}
+
+export interface RingMeta {
+	/** Bundle name within the body; also its export sub-directory. */
+	bundle: string;
+	sources: RingSource[];
 	inner_radius_km: number;
 	outer_radius_km: number;
 	sample_count: number;
@@ -67,7 +77,6 @@ export interface RingMeta {
 	strip: string;
 	strip_height: number;
 	strip_rows: StripRows;
-	attribution?: string;
 	description?: string;
 }
 
@@ -75,6 +84,11 @@ export interface RingMeta {
 export interface RingNode {
 	mesh: Mesh;
 	material: ShaderMaterial;
+	/** The sheet stack for a vertically thick bundle, so the renderer can vary
+	 *  `count` with apparent thickness; null when the bundle renders flat. */
+	layers: InstancedMesh | null;
+	/** Full vertical extent of the stack in scene units (0 = flat). */
+	thicknessScene: number;
 	/** Transparency profile texture — shared with the planet's ray-march
 	 *  ring-shadow path so we don't load it twice. */
 	transparency: Texture;
@@ -120,9 +134,28 @@ export interface PlanetShadowOnRingUniforms {
 const RING_ANGULAR_SEGMENTS = 256;
 // Radial tessellation for thickness-displaced rings (vertex-sampled profile).
 const RING_RADIAL_SEGMENTS = 96;
-// Vertical sheet count for thick rings; enough that Jupiter's halo reads as
-// a volume at grazing angles without meaningful overdraw cost.
-const RING_THICKNESS_LAYERS = 9;
+// Upper bound on the vertical sheet stack. The renderer picks the live count
+// from how far the stack spreads *on screen*, which inverts the cost the
+// helpful way: face-on the sheets project onto each other and one suffices,
+// and the counts that approach this bound only happen edge-on, where the ring
+// covers a thin band. Sheets are a discrete stand-in for a volume, so they
+// separate into visible lines once they land more than a pixel apart — this
+// is the ceiling on how fine that approximation can get.
+export const RING_THICKNESS_LAYERS_MAX = 48;
+
+/**
+ * Peak opacity below which a bundle cannot change any pixel, so the renderer
+ * skips drawing it unless the overexpose toggle is on.
+ *
+ * A ring affects the frame two ways. What it *adds* goes as intensity² (the
+ * albedo and the alpha both carry the scale), but what it *hides* of the
+ * background goes as intensity alone — so occlusion is what sets this floor.
+ * A quarter of an 8-bit code value against a fully white backdrop is already
+ * generous: the bundles this culls (Jupiter's τ~5e-6 rings, Saturn's outer
+ * tenuous system) sit two to three orders of magnitude under it, while the
+ * faintest bundle that survives — Neptune's, at 0.0031 — clears it 3×.
+ */
+export const RING_MIN_VISIBLE_ALPHA = 0.25 / 255;
 
 /**
  * Fetch the body's N×5 strip and split each channel row into its own 2-tall
@@ -196,10 +229,14 @@ const VERTEX_SHADER = `
 	uniform float uInnerScene;
 	uniform float uOuterScene;
 
-	// Per-instance layer offset in [-0.5, 0.5] for vertically thick rings.
-	// Plain (non-instanced) meshes leave the attribute unbound, which GL
-	// defines as 0 — the flat midplane sheet.
-	attribute float aLayer;
+	// Sheet index within the vertical stack, and how many of them are being
+	// drawn this frame. Deriving the offset from the live count (rather than
+	// baking it into the attribute) keeps the sheets evenly spread across the
+	// full extent at every LOD level. A plain (non-instanced) mesh leaves the
+	// attribute unbound, which GL defines as 0, so with uLayerCount 1 it lands
+	// on the midplane.
+	attribute float aLayerIndex;
+	uniform float uLayerCount;
 
 	varying vec3 vLocalPos;
 	varying vec3 vWorldPos;
@@ -210,7 +247,9 @@ const VERTEX_SHADER = `
 		if (uThicknessScene > 0.0) {
 			float t = clamp(
 				(length(position.xz) - uInnerScene) / (uOuterScene - uInnerScene), 0.0, 1.0);
-			displaced.y += aLayer * texture2D(uThickness, vec2(t, 0.5)).r * uThicknessScene;
+			// Cell centres: 1 sheet sits at the midplane, N spread symmetrically.
+			float layer = (aLayerIndex + 0.5) / uLayerCount - 0.5;
+			displaced.y += layer * texture2D(uThickness, vec2(t, 0.5)).r * uThicknessScene;
 		}
 		vLocalPos = displaced;
 		vec4 worldPosition = modelMatrix * vec4(displaced, 1.0);
@@ -514,6 +553,9 @@ export function attachRingShadowToPlanet(
 				}
 
 				float ringShadowFactor() {
+					// Zeroed by the renderer for a bundle too faint to darken
+					// anything, so the march below is skipped outright.
+					if (uRingShadowIntensity <= 0.0) return 1.0;
 					// Ray-plane intersect: starting from the lit surface, march
 					// along the sun direction. The ring plane passes through the
 					// planet's center with normal = pole direction.
@@ -592,7 +634,7 @@ export async function loadRingNode(
 	// a single sheet.
 	const thicknessScene =
 		meta.thickness_scale_km && textures.thickness ? kmToScene(meta.thickness_scale_km) : 0;
-	const layers = thicknessScene > 0 ? RING_THICKNESS_LAYERS : 1;
+	const layers = thicknessScene > 0 ? RING_THICKNESS_LAYERS_MAX : 1;
 
 	const material = new ShaderMaterial({
 		uniforms: {
@@ -605,7 +647,10 @@ export async function loadRingNode(
 			// uThicknessScene is 0, but the sampler must be complete.
 			uThickness: { value: textures.thickness ?? textures.transparency },
 			uThicknessScene: { value: thicknessScene },
-			uLayerAlphaExp: { value: 1 / layers },
+			// Both are re-derived per frame by the LOD; start as a single
+			// midplane sheet so the first frame can't flash a partial stack.
+			uLayerCount: { value: 1 },
+			uLayerAlphaExp: { value: 1 },
 			uInnerScene: { value: innerScene },
 			uOuterScene: { value: outerScene },
 			uSunDir: { value: new Vector3(1, 0, 0) },
@@ -649,13 +694,15 @@ export async function loadRingNode(
 	let mesh: Mesh;
 	if (layers > 1) {
 		geometry.setAttribute(
-			'aLayer',
+			'aLayerIndex',
 			new InstancedBufferAttribute(
-				Float32Array.from({ length: layers }, (_, i) => i / (layers - 1) - 0.5),
+				Float32Array.from({ length: layers }, (_, i) => i),
 				1
 			)
 		);
-		mesh = new InstancedMesh(geometry, material, layers);
+		const instanced = new InstancedMesh(geometry, material, layers);
+		instanced.count = 1; // until the first LOD pass
+		mesh = instanced;
 	} else {
 		mesh = new Mesh(geometry, material);
 	}
@@ -681,6 +728,8 @@ export async function loadRingNode(
 	return {
 		mesh,
 		material,
+		layers: mesh instanceof InstancedMesh ? mesh : null,
+		thicknessScene,
 		transparency: textures.transparency,
 		intensityScale,
 		innerScene,

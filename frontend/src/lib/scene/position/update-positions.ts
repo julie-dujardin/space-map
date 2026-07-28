@@ -547,8 +547,10 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		// Rings inherit the planet's pole orientation (geometry pre-rotated so
 		// local +Y is the pole). Re-apply each frame so nutation/precession/spin
 		// stay in sync with the planet.
-		if (body.orientation && bo.rings) {
-			applyOrientation(bo.rings.mesh, body.orientation, jd, body.nutPrec);
+		if (body.orientation) {
+			for (const ring of bo.rings) {
+				applyOrientation(ring.mesh, body.orientation, jd, body.nutPrec);
+			}
 		}
 	};
 

@@ -90,9 +90,12 @@
 			const bodies = [...byBody.values()].sort((a, b) => a[0].name.localeCompare(b[0].name));
 			for (const items of bodies) {
 				const multi = items.length > 1;
-				for (const it of items) {
+				for (const [i, it] of items.entries()) {
 					rows.push({
-						key: `${it.body_id}-${it.typeKey}`,
+						// Body + type is not unique: one body can credit several
+						// distinct sources for the same kind of imagery (Saturn's
+						// ring bundles come from different surveys).
+						key: `${it.body_id}-${it.typeKey}-${i}`,
 						name: it.name,
 						qualifier: multi ? typeLabel(it.typeKey) : undefined,
 						source: it.source,

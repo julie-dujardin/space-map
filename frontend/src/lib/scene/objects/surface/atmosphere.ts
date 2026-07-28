@@ -343,7 +343,8 @@ const FRAGMENT_SHADER = `
 	// attachRingShadowToPlanet so the shadow the rings cast on the surface
 	// continues up through the air above it.
 	float ringShadowAt(vec3 worldPos) {
-		if (uRingShadowOuterScene <= 0.0) return 1.0;
+		// Second test: zeroed for a bundle too faint to darken anything.
+		if (uRingShadowOuterScene <= 0.0 || uRingShadowIntensity <= 0.0) return 1.0;
 		float denom = dot(uRingShadowSunDir, uRingShadowPoleDir);
 		if (abs(denom) < 1e-6) return 1.0;
 		vec3 rel = worldPos - uRingShadowCenter;
