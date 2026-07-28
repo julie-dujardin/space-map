@@ -6,6 +6,7 @@ import {
 	applyAtmosphereQuality,
 	ATMOSPHERE_INSIDE_RENDER_ORDER,
 	ATMOSPHERE_RENDER_ORDER,
+	TERRAIN_DIP_KM,
 	type AtmosphereParams
 } from '$lib/scene/objects/surface/atmosphere';
 import type { AtmosphereQualityConfig } from '$lib/scene/objects/surface/atmosphere-quality';
@@ -230,6 +231,10 @@ export function updateAtmosphereShaders(
 		bo.atmosphere.material.depthWrite = !inside;
 		bo.atmosphere.material.depthTest = !inside;
 		bo.atmosphere.material.uniforms.uUseDepth.value = inside ? 1 : 0;
+		// Sink the march floor under the datum only from inside, where a camera
+		// below it would otherwise have its horizon rays blocked at t≈0. See
+		// TERRAIN_DIP_KM — from outside the slab is pure spurious column.
+		uniforms.uSurfaceBlockR.value = inside ? 1 - TERRAIN_DIP_KM / bo.atmosphere.planetRadiusKm : 1;
 		if (inside) {
 			state.insideShell = true;
 			const kmPerScene = (bo.atmosphere.planetRadiusKm + params.topAltitudeKm) / shellRadius;

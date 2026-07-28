@@ -36,7 +36,8 @@
 		type AtmosphereNode,
 		type AtmosphereParams,
 		buildAtmosphereNode,
-		disposeAtmosphereNode
+		disposeAtmosphereNode,
+		TERRAIN_DIP_KM
 	} from '$lib/scene/objects/surface/atmosphere';
 	import { getAtmosphereParams, loadAtmospheres } from '$lib/fetch/atmospheres';
 	import {
@@ -731,6 +732,8 @@
 			atmoNode.material.side = inside ? BackSide : FrontSide;
 			atmoNode.material.depthWrite = !inside;
 			atmoNode.material.depthTest = !inside;
+			// Sub-datum march floor is an inside-only allowance (see TERRAIN_DIP_KM).
+			u.uSurfaceBlockR.value = inside ? 1 - TERRAIN_DIP_KM / atmoNode.planetRadiusKm : 1;
 		}
 		// Production dims the star map only via the inside-shell path; the
 		// readout still shows the would-be factor when the toggle is off.

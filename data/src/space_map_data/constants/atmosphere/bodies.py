@@ -93,9 +93,13 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
         gravity_m_s2=9.80665,
         aerosol="continental",
         tuning=RenderTuning(
-            # sunIntensity well below physical ~22: the satellite mosaic
-            # already bakes in the atmosphere seen from above.
-            baked_compensation=1.0,
+            # Unlike every other textured body here, Earth's map has no
+            # atmosphere in it to compensate for: Blue Marble: Next Generation
+            # land is MOD09 surface reflectance (molecular and aerosol effects
+            # corrected out) and its ocean is a bathymetry depth-shading, not an
+            # observation. So the shell owns the whole column — which is what
+            # makes the ocean blue from space in the first place.
+            baked_compensation=0.0,
             multi_scatter_gain=0.3,
             sun_intensity=5.0,
         ),

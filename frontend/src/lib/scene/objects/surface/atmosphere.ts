@@ -59,7 +59,14 @@ import { ECLIPSE_FACTOR_GLSL, getEclipseSceneUniforms, MAX_OCCLUDERS } from './e
 import type { PlanetRingShadowUniforms } from './rings';
 
 /** Rendered terrain can dip this far below the analytic ellipsoid (Gale crater
- *  sits at −4.5 km); the shell keeps marching (and glowing) down to it. */
+ *  sits at −4.5 km); the shell keeps marching (and glowing) down to it.
+ *
+ * Only applied with the camera inside the shell, where a camera below the datum
+ * would otherwise have its horizon rays blocked at t≈0. From outside, sinking
+ * the floor makes every disc ray integrate a slab of surface-density air under
+ * the ground — 6 km against Earth's 1.2 km aerosol scale height is 6× the real
+ * column, and it defeats the baked-texture compensation (which can only cancel
+ * one vertical column out of the inflated total). */
 export const TERRAIN_DIP_KM = 6;
 
 /** Outside view: after the opaque planet and clouds (renderOrder 1) so the
@@ -558,7 +565,8 @@ function setRadiusUniforms(
 	const u = material.uniforms;
 	u.uPlanetRadiusScene.value = planetRadiusScene;
 	u.uAtmosphereRatio.value = 1 + params.topAltitudeKm / planetRadiusKm;
-	u.uSurfaceBlockR.value = 1 - TERRAIN_DIP_KM / planetRadiusKm;
+	// Outside default; updateAtmosphereShaders sinks it once the camera is in.
+	u.uSurfaceBlockR.value = 1;
 	(u.uRayleighScatter.value as Vector3).set(toNorm(r[0]), toNorm(r[1]), toNorm(r[2]));
 	u.uRayleighScaleHeight.value = params.rayleighScaleHeightKm / planetRadiusKm;
 	(u.uMieScatter.value as Vector3).set(toNorm(ms[0]), toNorm(ms[1]), toNorm(ms[2]));
