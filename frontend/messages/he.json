@@ -898,7 +898,9 @@
 	"seo_generic_named": "חקרו את {name} ב־Space Map, מפה תלת-ממדית אינטראקטיבית של מערכת השמש.",
 	"seo_generic": "Space Map, מפה תלת-ממדית אינטראקטיבית של מערכת השמש.",
 	"distance_from_sun": "מרחק מהשמש",
+	"distance_from_body": "מרחק מ־{name}",
 	"tooltip_distance_from_sun": "המרחק הנוכחי מהשמש",
+	"tooltip_distance_from_body": "המרחק הנוכחי מ־{name}",
 	"source_jpl_satellite_discovery_name": "JPL Planetary Satellite Discovery",
 	"source_jpl_satellite_discovery_role": "תאריכי גילוי ירחים טבעיים",
 	"country_count": [

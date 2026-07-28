@@ -896,7 +896,9 @@
 	"seo_generic_named": "Explora {name} en Space Map, un mapa 3D interactivo del sistema solar.",
 	"seo_generic": "Space Map, un mapa 3D interactivo del sistema solar.",
 	"distance_from_sun": "Distancia al Sol",
+	"distance_from_body": "Distancia a {name}",
 	"tooltip_distance_from_sun": "Distancia actual al Sol",
+	"tooltip_distance_from_body": "Distancia actual a {name}",
 	"source_jpl_satellite_discovery_name": "JPL Planetary Satellite Discovery",
 	"source_jpl_satellite_discovery_role": "fechas de descubrimiento de lunas naturales",
 	"country_count": [

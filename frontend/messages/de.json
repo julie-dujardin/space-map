@@ -894,7 +894,9 @@
 	"seo_generic_named": "Entdecke {name} in Space Map, einer interaktiven 3D-Karte des Sonnensystems.",
 	"seo_generic": "Space Map, eine interaktive 3D-Karte des Sonnensystems.",
 	"distance_from_sun": "Entfernung von der Sonne",
+	"distance_from_body": "Entfernung von {name}",
 	"tooltip_distance_from_sun": "Aktuelle Entfernung von der Sonne",
+	"tooltip_distance_from_body": "Aktuelle Entfernung von {name}",
 	"source_jpl_satellite_discovery_name": "JPL Planetary Satellite Discovery",
 	"source_jpl_satellite_discovery_role": "Entdeckungsdaten natürlicher Monde",
 	"country_count": [

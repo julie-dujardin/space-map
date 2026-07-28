@@ -14,6 +14,7 @@
 	import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
 	import { getGmKm3s2 } from '$lib/fetch/systems-global';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import { dominantPlanetId, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 	import { currentStateFromElements } from '$lib/math/orbit/state';
 	import { sgp4State } from '$lib/math/orbit/sgp4';
 	import { AU_KM, AU_SCALE, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
@@ -48,6 +49,18 @@
 	// Earth satellites (SGP4 from TLE). These get the card set in place of the
 	// altitude/speed/period rows the Orbital table would otherwise show.
 	let isEarthSat = $derived(global?.celestrak?.orbit_center === 'earth');
+
+	// The body a moon's elements are measured from: its parent, with a system
+	// barycenter (`naif-6` for Saturn's moons — no radius, no usable name)
+	// resolved to the dominant planet. Only moons carry parent-relative
+	// elements; planets borrow their barycenter's heliocentric ones, so they
+	// stay on the Sun-relative branch.
+	let primary = $derived.by(() => {
+		if (body?.data.objectType !== ObjectType.MOON) return undefined;
+		const parentId = body.data.parentId;
+		if (isTopLevelParent(parentId)) return undefined;
+		return ctx?.getBody(dominantPlanetId(parentId) ?? parentId);
+	});
 
 	// Mirror the renderer's parent resolution so altitude is measured against the
 	// body the probe is fit to (Sun on heliocentric cruise, else planet/moon).
@@ -160,8 +173,10 @@
 				tooltip: m.tooltip_orbital_speed()
 			});
 
-		// Block 3 — rotation period, else a live distance: altitude over the
-		// parent for moons, heliocentric distance for everything else.
+		// Block 3 — rotation period, else a live distance. `state.rKm` is measured
+		// from whatever the elements orbit, so only Sun/SSB orbiters are truly
+		// heliocentric; everything else reports altitude over its primary, or
+		// distance to it when no radius is known.
 		const w1 = global?.orientation?.w1;
 		const rotationPeriodDays = w1 ? 360 / Math.abs(w1) : sbdb?.rot_per ? sbdb.rot_per / 24 : null;
 		if (rotationPeriodDays != null)
@@ -170,23 +185,26 @@
 				value: formatDuration(rotationPeriodDays),
 				tooltip: m.tooltip_rotation_period()
 			});
-		else if (state) {
-			const isMoon = body.data.objectType === ObjectType.MOON;
-			if (isMoon && parentBody && parentBody.data.radiusKm > 0) {
-				const altitudeKm = state.rKm - parentBody.data.radiusKm;
-				if (altitudeKm > 0)
-					out.push({
-						label: m.altitude(),
-						value: formatDistance(altitudeKm / AU_KM),
-						tooltip: m.tooltip_altitude()
-					});
-			} else {
+		else if (state && !primary)
+			out.push({
+				label: m.distance_from_sun(),
+				value: formatDistance(state.rKm / AU_KM),
+				tooltip: m.tooltip_distance_from_sun()
+			});
+		else if (state && primary) {
+			const altitudeKm = state.rKm - primary.data.radiusKm;
+			if (primary.data.radiusKm > 0 && altitudeKm > 0)
 				out.push({
-					label: m.distance_from_sun(),
-					value: formatDistance(state.rKm / AU_KM),
-					tooltip: m.tooltip_distance_from_sun()
+					label: m.altitude(),
+					value: formatDistance(altitudeKm / AU_KM),
+					tooltip: m.tooltip_altitude()
 				});
-			}
+			else if (primary.data.name)
+				out.push({
+					label: m.distance_from_body({ name: primary.data.name }),
+					value: formatDistance(state.rKm / AU_KM),
+					tooltip: m.tooltip_distance_from_body({ name: primary.data.name })
+				});
 		}
 		// Position accuracy from the SBDB condition code (U parameter, 0 best to
 		// 9 worst), bucketed so the quality reads at a glance. Keeps the trio a
