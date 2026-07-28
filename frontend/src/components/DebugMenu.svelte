@@ -295,6 +295,17 @@
 			/>
 			<span>Lighting tuner</span>
 		</label>
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
+				checked={settings.overexposeRings}
+				onchange={(e) => settings.setOverexposeRings(e.currentTarget.checked)}
+			/>
+			<span>
+				Overexpose rings
+				<span class="text-muted-foreground">(full stored dynamic range)</span>
+			</span>
+		</label>
 		<label class="flex items-center gap-2">
 			<span>Max parts/zone</span>
 			<input

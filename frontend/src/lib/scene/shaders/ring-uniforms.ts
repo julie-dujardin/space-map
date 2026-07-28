@@ -8,11 +8,14 @@ import { sunIrradianceFactor } from '$lib/scene/lighting';
  * Refresh per-frame ring + planet-ring-shadow uniforms (sun dir, planet center,
  * pole). `realistic` scales the pre-lit ring albedo by inverse-square distance
  * from the Sun, since scene lights never touch the ring ShaderMaterial.
+ * `overexpose` renders the stored (peak-normalised) channel values unscaled
+ * instead of × intensity_scale, lifting faint systems to full visibility.
  */
 export function updateRingShaders(
 	bodyObjects: Map<string, BodyObjects>,
 	focusTruePos: Vec3,
-	realistic: boolean
+	realistic: boolean,
+	overexpose: boolean
 ): void {
 	const sunPos = bodyObjects.get(SUN_ID)?.body.position;
 	if (!sunPos) return;
@@ -20,6 +23,9 @@ export function updateRingShaders(
 	for (const bo of bodyObjects.values()) {
 		if (!bo.rings) continue;
 		const [bx, by, bz] = bo.body.position;
+
+		const intensity = overexpose ? 1 : bo.rings.intensityScale;
+		bo.rings.material.uniforms.uIntensityScale.value = intensity;
 
 		// Body → sun direction (the focus offset cancels, so world == scene-rel).
 		const ringSunDir = bo.rings.material.uniforms.uSunDir.value as Vector3;
@@ -39,6 +45,8 @@ export function updateRingShaders(
 
 		const ps = bo.rings.planetShadow;
 		if (!ps) continue;
+		// Shared ref with the atmosphere shell's ring-shadow uniforms.
+		ps.uRingShadowIntensity.value = intensity;
 		ps.uRingShadowSunDir.value.copy(ringSunDir);
 		ps.uRingShadowPoleDir.value.copy(psOnRing.uPlanetPoleDir.value);
 		ps.uRingShadowCenter.value.copy(psOnRing.uPlanetCenter.value);

@@ -99,7 +99,7 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
             # corrected out) and its ocean is a bathymetry depth-shading, not an
             # observation. So the shell owns the whole column — which is what
             # makes the ocean blue from space in the first place.
-            baked_compensation=0.0,
+            baked_compensation=0.35,
             multi_scatter_gain=0.3,
             sun_intensity=5.0,
         ),

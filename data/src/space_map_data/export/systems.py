@@ -463,9 +463,9 @@ def ring_block(meta: dict) -> dict:
     the global object detail.
 
     Carries the geometry constants the renderer needs (inner/outer radius,
-    sample count, color space) plus credit fields and a flat channel→file
-    map; the frontend composes URLs as
-    ``/v1/rings/{body_id}/{channels[name]}``.
+    sample count, intensity scale, color space) plus credit fields and the
+    strip file + channel→row map; the frontend fetches
+    ``/v1/rings/{body_id}/{strip}`` once and splits the rows into textures.
     """
     block = {
         "source": meta["source"],
@@ -473,8 +473,13 @@ def ring_block(meta: dict) -> dict:
         "inner_radius_km": float(meta["inner_radius_km"]),
         "outer_radius_km": float(meta["outer_radius_km"]),
         "sample_count": int(meta["sample_count"]),
+        # Stored channel value × intensity_scale = physical value; synthetic
+        # tenuous systems are normalised so 8-bit survives τ ~1e-6.
+        "intensity_scale": float(meta.get("intensity_scale", 1.0)),
         "color_space": meta.get("color_space", "srgb"),
-        "channels": {name: rec["file"] for name, rec in meta["channels"].items()},
+        "strip": meta["strip"]["file"],
+        "strip_height": int(meta["strip"]["height"]),
+        "strip_rows": meta["strip"]["rows"],
     }
     if meta.get("license") is not None:
         block["license"] = meta["license"]

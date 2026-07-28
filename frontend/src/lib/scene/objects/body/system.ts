@@ -342,7 +342,7 @@ export async function loadSystemData(
 			);
 		}
 
-		// Ring annulus — only present for ringed bodies (Saturn today). Idempotent:
+		// Ring annulus — present for the four ringed giants. Idempotent:
 		// re-entering the system with `bo.rings` already set is a no-op.
 		if (bodyMeta.rings && !bo.rings) {
 			if (ctx) {
@@ -379,7 +379,8 @@ export async function loadSystemData(
 							bo.mesh.material as MeshStandardMaterial,
 							node.innerScene,
 							node.outerScene,
-							node.transparency
+							node.transparency,
+							node.intensityScale
 						);
 						// The rings shade the scattering shell's air column too,
 						// sharing the same per-frame uniform refs.

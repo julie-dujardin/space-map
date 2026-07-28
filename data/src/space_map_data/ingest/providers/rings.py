@@ -1,12 +1,14 @@
-"""Convert raw 1-D ring profile text files to lossless WebP exports.
+"""Convert raw 1-D ring profile text files to a single lossless WebP strip.
 
 Iterates ``DOWNLOAD_DIR/rings/<body>/ring-metadata.yaml`` for every downloaded
 body, parses each channel's text file (one float per line for L channels;
-whitespace-separated R G B per line for the color channel), and writes
-1×N lossless WebP images plus a ``metadata.json`` to
-``EXPORT_DIR/v1/rings/<object_id>/``. Mirrors the textures pipeline so the
-ring metadata block in ``systems/<bary>.json`` can be assembled by the export
-step from the on-disk ``metadata.json``.
+whitespace-separated R G B per line for the color channel), and writes one
+5×N ``strip.webp`` (one row per channel, order in ``STRIP_ROWS``) plus a
+``metadata.json`` to ``EXPORT_DIR/v1/rings/<object_id>/``. One file per body
+keeps it to a single request; the client splits the rows back into separate
+textures after decode, so per-channel filtering is unaffected. Mirrors the
+textures pipeline so the ring metadata block in ``systems/<bary>.json`` can be
+assembled by the export step from the on-disk ``metadata.json``.
 
 The DB ``has_rings`` flag on ``Object`` is reset for every run and re-marked
 per body that has a successfully processed ring bundle (same idempotency
@@ -37,6 +39,16 @@ PROCESSED_DIR = EXPORT_DIR / "v1" / "rings"
 # to uint8 here matches the actual information content. Three.js consumes
 # everything as 8-bit per channel anyway.
 COLOR_CHANNEL = "color"
+
+# Row assignment inside strip.webp; scalar channels are replicated to RGB.
+STRIP_ROWS: dict[str, int] = {
+    "color": 0,
+    "backscattered": 1,
+    "forwardscattered": 2,
+    "unlitside": 3,
+    "transparency": 4,
+}
+STRIP_FILE = "strip.webp"
 
 
 def _read_scalar_channel(path: Path) -> np.ndarray:
@@ -181,46 +193,52 @@ class RingProcessor:
             self._mark_has_rings(object_id)
             return out_dir
 
-        raw_dir = metadata_yaml.parent / "raw"
-        exports: dict[str, dict] = {}
+        raw_dir = metadata_yaml.parent
+        missing = set(STRIP_ROWS) - set(channels)
+        if missing:
+            # Loud failure rather than swallow — a missing channel makes the
+            # whole bundle unusable for the renderer.
+            raise ValueError(
+                f"{metadata_yaml}: channels {sorted(missing)} absent from yaml"
+            )
 
-        for channel, filename in channels.items():
-            src = raw_dir / filename
+        rows = np.zeros((len(STRIP_ROWS), sample_count, 3), dtype=np.uint8)
+        for channel, row in STRIP_ROWS.items():
+            src = raw_dir / channels[channel]
             if not src.exists():
-                # Loud failure rather than swallow — a missing channel makes
-                # the whole bundle unusable for the renderer.
                 raise FileNotFoundError(
                     f"ring profile {src} listed in {metadata_yaml.name} but not on disk"
                 )
-
             if channel == COLOR_CHANNEL:
                 arr = _read_color_channel(src)
-                if arr.shape[0] != sample_count:
-                    raise ValueError(
-                        f"{src.name}: {arr.shape[0]} rows, "
-                        f"expected sample_count={sample_count}"
-                    )
-                pixels = _quantize(arr).reshape(1, sample_count, 3)
-                img = Image.fromarray(pixels, mode="RGB")
             else:
                 arr = _read_scalar_channel(src)
-                if arr.shape[0] != sample_count:
-                    raise ValueError(
-                        f"{src.name}: {arr.shape[0]} samples, "
-                        f"expected sample_count={sample_count}"
-                    )
-                pixels = _quantize(arr).reshape(1, sample_count)
-                img = Image.fromarray(pixels, mode="L")
+            if arr.shape[0] != sample_count:
+                raise ValueError(
+                    f"{src.name}: {arr.shape[0]} samples, "
+                    f"expected sample_count={sample_count}"
+                )
+            q = _quantize(arr)
+            rows[row] = q if q.ndim == 2 else q[:, None]
 
-            exports[channel] = _save_lossless_webp(img, out_dir / f"{channel}.webp")
-            log.debug(
-                "wrote %s/%s.webp (%dx%d, %d bytes)",
-                object_id,
-                channel,
-                exports[channel]["width"],
-                exports[channel]["height"],
-                exports[channel]["size_bytes"],
-            )
+        # Per-channel files from the pre-strip format would otherwise linger.
+        for stale in out_dir.glob("*.webp"):
+            if stale.name != STRIP_FILE:
+                stale.unlink()
+                log.info("removed stale ring export %s/%s", object_id, stale.name)
+
+        strip = _save_lossless_webp(
+            Image.fromarray(rows, mode="RGB"), out_dir / STRIP_FILE
+        )
+        strip["rows"] = dict(STRIP_ROWS)
+        log.debug(
+            "wrote %s/%s (%dx%d, %d bytes)",
+            object_id,
+            STRIP_FILE,
+            strip["width"],
+            strip["height"],
+            strip["size_bytes"],
+        )
 
         out_meta = {
             "id": object_id,
@@ -232,16 +250,19 @@ class RingProcessor:
             "inner_radius_km": float(meta["inner_radius_km"]),
             "outer_radius_km": float(meta["outer_radius_km"]),
             "sample_count": sample_count,
+            # Synthetic bundles store channels normalised so 8-bit survives
+            # τ ~1e-6; stored × intensity_scale = physical. Measured data is 1.
+            "intensity_scale": float(meta.get("intensity_scale", 1.0)),
             "color_space": "srgb",
             "processed_at": datetime.now(UTC).isoformat(),
-            "channels": exports,
+            "strip": strip,
         }
         out_meta_path.write_text(json.dumps(out_meta, indent=2))
         log.info(
-            "processed rings for %s -> %s (%d channels)",
+            "processed rings for %s -> %s (%d rows)",
             object_id,
             out_dir.relative_to(EXPORT_DIR),
-            len(exports),
+            len(STRIP_ROWS),
         )
 
         self._mark_has_rings(object_id)

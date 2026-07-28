@@ -1,7 +1,15 @@
 /**
- * Ring annulus disc, albedo sampled from 1-D radial-profile WebPs shipped per
- * body under `v1/rings/{id}/` (backscattered, forwardscattered, unlitside,
- * transparency=1−opacity, color).
+ * Ring annulus disc, albedo sampled from 1-D radial profiles shipped per body
+ * as a single N×5 `v1/rings/{id}/strip.webp` (one row per channel: color,
+ * backscattered, forwardscattered, unlitside, transparency=1−opacity). The
+ * strip is split into separate 1-row textures after decode so per-channel
+ * trilinear/anisotropic filtering can't bleed rows into each other.
+ *
+ * Channel values are stored normalised; × `intensity_scale` recovers physical
+ * brightness/opacity (1 for Saturn's measured data, ~1e-6..0.7 for the
+ * synthetic tenuous systems). The overexpose-rings layer toggle renders the
+ * stored values unscaled instead, lifting each system to its full dynamic
+ * range.
  *
  * Mesh is a scene-level sibling of the body (not a child) so the planet's
  * triaxial-flattening scale doesn't distort the circular profile. The renderer
@@ -31,6 +39,13 @@ import {
 import { kmToScene } from '$lib/math/units';
 import { versionedUrl } from '$lib/fetch/data-base';
 
+export type RingChannel =
+	| 'color'
+	| 'backscattered'
+	| 'forwardscattered'
+	| 'unlitside'
+	| 'transparency';
+
 export interface RingMeta {
 	source: string;
 	organisation: string;
@@ -38,14 +53,12 @@ export interface RingMeta {
 	inner_radius_km: number;
 	outer_radius_km: number;
 	sample_count: number;
+	/** Stored channel value × this = physical value. */
+	intensity_scale: number;
 	color_space?: string;
-	channels: {
-		backscattered: string;
-		forwardscattered: string;
-		unlitside: string;
-		transparency: string;
-		color: string;
-	};
+	strip: string;
+	strip_height: number;
+	strip_rows: Record<RingChannel, number>;
 	attribution?: string;
 	description?: string;
 }
@@ -57,6 +70,10 @@ export interface RingNode {
 	/** Transparency profile texture — shared with the planet's ray-march
 	 *  ring-shadow path so we don't load it twice. */
 	transparency: Texture;
+	/** Physical multiplier for the stored channel values. The renderer writes
+	 *  it (or 1 when the overexpose-rings toggle is on) into the material and
+	 *  ring-shadow uniforms each frame. */
+	intensityScale: number;
 	/** Inner ring radius in scene units. Used by the planet's ring-shadow
 	 *  ray-march to clip intersections to the actual annulus. */
 	innerScene: number;
@@ -94,12 +111,23 @@ export interface PlanetShadowOnRingUniforms {
 
 const RING_ANGULAR_SEGMENTS = 256;
 
-async function loadTexture(url: string, srgb: boolean, maxTextureSize: number): Promise<Texture> {
-	// Decode via fetch + createImageBitmap + 2-tall canvas (not TextureLoader): (a)
-	// works around an Android-Chrome bug that gives all-zero samples for 1-px-tall
-	// VP8L WebPs, (b) lets us downscale past GL MAX_TEXTURE_SIZE (Saturn's profile
-	// is ~13177 px; Adreno 5xx caps at 4096 and silently uploads incomplete textures).
-	// The doubled row lets mipmap generation succeed; shader samples at v = 0.5.
+/**
+ * Fetch the body's N×5 strip and split each channel row into its own 2-tall
+ * CanvasTexture. Split-after-decode (not one multi-row texture): mipmap
+ * levels of a row-per-channel texture would average adjacent rows, bleeding
+ * channels into each other under trilinear minification.
+ *
+ * Per-channel canvases (not TextureLoader): (a) works around an Android-Chrome
+ * bug that gives all-zero samples for 1-px-tall VP8L WebPs, (b) lets us
+ * downscale past GL MAX_TEXTURE_SIZE (Saturn's profile is ~13177 px; Adreno
+ * 5xx caps at 4096 and silently uploads incomplete textures). The doubled row
+ * lets mipmap generation succeed; the shader samples at v = 0.5.
+ */
+async function loadStripTextures(
+	url: string,
+	rows: Record<RingChannel, number>,
+	maxTextureSize: number
+): Promise<Record<RingChannel, Texture>> {
 	const response = await fetch(url);
 	if (!response.ok) {
 		throw new Error(`Failed to load ${url}: ${response.status} ${response.statusText}`);
@@ -109,35 +137,41 @@ async function loadTexture(url: string, srgb: boolean, maxTextureSize: number): 
 	const targetWidth = Math.min(bitmap.width, maxTextureSize);
 	if (targetWidth < bitmap.width) {
 		console.info(
-			`Ring texture ${url}: downscaling ${bitmap.width}px → ${targetWidth}px to fit GL MAX_TEXTURE_SIZE.`
+			`Ring strip ${url}: downscaling ${bitmap.width}px → ${targetWidth}px to fit GL MAX_TEXTURE_SIZE.`
 		);
 	}
-	const canvas = document.createElement('canvas');
-	canvas.width = targetWidth;
-	canvas.height = 2;
-	const ctx = canvas.getContext('2d');
-	if (!ctx) throw new Error(`Failed to acquire 2D context for ring texture ${url}`);
-	ctx.imageSmoothingEnabled = true;
-	ctx.imageSmoothingQuality = 'high';
-	ctx.drawImage(bitmap, 0, 0, targetWidth, 1);
-	ctx.drawImage(bitmap, 0, 1, targetWidth, 1);
-	bitmap.close();
+	const textures = {} as Record<RingChannel, Texture>;
+	for (const [channel, row] of Object.entries(rows) as [RingChannel, number][]) {
+		const canvas = document.createElement('canvas');
+		canvas.width = targetWidth;
+		canvas.height = 2;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) throw new Error(`Failed to acquire 2D context for ring strip ${url}`);
+		ctx.imageSmoothingEnabled = true;
+		ctx.imageSmoothingQuality = 'high';
+		ctx.drawImage(bitmap, 0, row, bitmap.width, 1, 0, 0, targetWidth, 1);
+		ctx.drawImage(bitmap, 0, row, bitmap.width, 1, 0, 1, targetWidth, 1);
 
-	const tex = new CanvasTexture(canvas);
-	if (srgb) tex.colorSpace = SRGBColorSpace;
-	// 1×13177 radial profile: at distance many radial samples fall in one
-	// pixel and a single nearest/linear tap aliases into sparkle, while at
-	// grazing angles the U-gradient across the screen is far higher than the
-	// V-gradient (V is constant) — exactly the case anisotropic filtering is
-	// designed for. Trilinear + max anisotropy addresses both. Three.js
-	// silently clamps anisotropy to whatever the GPU advertises, so 16 is
-	// safe without poking the renderer.
-	tex.minFilter = LinearMipmapLinearFilter;
-	tex.magFilter = LinearFilter;
-	tex.generateMipmaps = true;
-	tex.anisotropy = 16;
-	tex.needsUpdate = true;
-	return tex;
+		const tex = new CanvasTexture(canvas);
+		// Color is a perceptual albedo tint (sRGB); the scalar profiles are
+		// linear (packed uint8 luminance, not gamma-encoded).
+		if (channel === 'color') tex.colorSpace = SRGBColorSpace;
+		// 1×N radial profile: at distance many radial samples fall in one
+		// pixel and a single nearest/linear tap aliases into sparkle, while at
+		// grazing angles the U-gradient across the screen is far higher than
+		// the V-gradient (V is constant) — exactly the case anisotropic
+		// filtering is designed for. Trilinear + max anisotropy addresses
+		// both. Three.js silently clamps anisotropy to whatever the GPU
+		// advertises, so 16 is safe without poking the renderer.
+		tex.minFilter = LinearMipmapLinearFilter;
+		tex.magFilter = LinearFilter;
+		tex.generateMipmaps = true;
+		tex.anisotropy = 16;
+		tex.needsUpdate = true;
+		textures[channel] = tex;
+	}
+	bitmap.close();
+	return textures;
 }
 
 const VERTEX_SHADER = `
@@ -214,6 +248,10 @@ const FRAGMENT_SHADER = `
 	// Solar irradiance factor for the realistic-lighting toggle; 1 otherwise.
 	// The BJJ profiles are pre-lit albedo, so scene lights never touch rings.
 	uniform float uLightScale;
+	// Stored channel value × this = physical brightness/opacity. 1 for
+	// Saturn's measured profiles; ~1e-6..0.7 for the synthetic tenuous
+	// systems. The overexpose-rings toggle sets it to 1.
+	uniform float uIntensityScale;
 
 	varying vec3 vLocalPos;
 	varying vec3 vWorldPos;
@@ -314,14 +352,14 @@ const FRAGMENT_SHADER = `
 			finalAlbedo = texture2D(uUnlitside, uv).rgb * UNLIT_TINT;
 		}
 		// BJJ transparency: 1.0 = empty space, 0.0 = opaque material.
-		float alpha = 1.0 - texture2D(uTransparency, uv).r;
+		float alpha = clamp((1.0 - texture2D(uTransparency, uv).r) * uIntensityScale, 0.0, 1.0);
 
 		// Planet shadow modulates both branches: the lit-side reflection
 		// from blocked direct sunlight, and the unlit-side transmission
 		// (sunlight filters through the rings only where the sun is unblocked).
 		float shadow = planetShadow();
 
-		gl_FragColor = vec4(finalAlbedo * shadow * uLightScale, alpha);
+		gl_FragColor = vec4(finalAlbedo * uIntensityScale * shadow * uLightScale, alpha);
 		#include <logdepthbuf_fragment>
 	}
 `;
@@ -336,6 +374,9 @@ export interface PlanetRingShadowUniforms {
 	uRingShadowTransparency: { value: Texture };
 	uRingShadowInnerScene: { value: number };
 	uRingShadowOuterScene: { value: number };
+	/** Same physical multiplier as the ring material's `uIntensityScale`, so
+	 *  the cast shadow tracks the overexpose-rings toggle. */
+	uRingShadowIntensity: { value: number };
 	/** World-space unit vector pointing from the planet toward the sun. */
 	uRingShadowSunDir: { value: Vector3 };
 	/** World-space unit vector along the planet's spin axis (= ring plane normal). */
@@ -368,13 +409,15 @@ export function attachRingShadowToPlanet(
 	planetMaterial: MeshStandardMaterial,
 	innerScene: number,
 	outerScene: number,
-	transparency: Texture
+	transparency: Texture,
+	intensityScale: number
 ): PlanetRingShadowUniforms {
 	const prev = planetMaterial.onBeforeCompile;
 	const uniforms: PlanetRingShadowUniforms = {
 		uRingShadowTransparency: { value: transparency },
 		uRingShadowInnerScene: { value: innerScene },
 		uRingShadowOuterScene: { value: outerScene },
+		uRingShadowIntensity: { value: intensityScale },
 		uRingShadowSunDir: { value: new Vector3(1, 0, 0) },
 		uRingShadowPoleDir: { value: new Vector3(0, 1, 0) },
 		uRingShadowCenter: { value: new Vector3(0, 0, 0) },
@@ -409,6 +452,7 @@ export function attachRingShadowToPlanet(
 				uniform sampler2D uRingShadowTransparency;
 				uniform float uRingShadowInnerScene;
 				uniform float uRingShadowOuterScene;
+				uniform float uRingShadowIntensity;
 				uniform vec3 uRingShadowSunDir;
 				uniform vec3 uRingShadowPoleDir;
 				uniform vec3 uRingShadowCenter;
@@ -429,7 +473,11 @@ export function attachRingShadowToPlanet(
 					float r = length(hitPerp);
 					if (r < uRingShadowInnerScene || r > uRingShadowOuterScene) return 1.0;
 					float u = (r - uRingShadowInnerScene) / (uRingShadowOuterScene - uRingShadowInnerScene);
-					float trans = texture2D(uRingShadowTransparency, vec2(clamp(u, 0.0, 1.0), 0.5)).r;
+					// Stored value is normalised; × intensity recovers the physical opacity.
+					float trans = 1.0 - clamp(
+						(1.0 - texture2D(uRingShadowTransparency, vec2(clamp(u, 0.0, 1.0), 0.5)).r)
+							* uRingShadowIntensity,
+						0.0, 1.0);
 					// Beer–Lambert with slant correction: ray traverses 1/sin(B)
 					// times the normal optical depth where B is the sun's
 					// elevation above the ring plane. transparency stored on
@@ -460,36 +508,27 @@ export async function loadRingNode(
 ): Promise<RingNode | null> {
 	const innerScene = kmToScene(meta.inner_radius_km);
 	const outerScene = kmToScene(meta.outer_radius_km);
+	const intensityScale = meta.intensity_scale ?? 1;
 
-	// Color channel is sRGB (perceptual albedo tint); the scalar profiles are
-	// linear (packed uint8 luminance, not gamma-encoded).
-	const ringUrl = (channel: string) => versionedUrl(`/v1/rings/${bodyId}/${channel}`, 'rings');
-	const ch = meta.channels;
-	let backscattered: Texture,
-		forwardscattered: Texture,
-		unlitside: Texture,
-		transparency: Texture,
-		color: Texture;
+	let textures: Record<RingChannel, Texture>;
 	try {
-		[backscattered, forwardscattered, unlitside, transparency, color] = await Promise.all([
-			loadTexture(ringUrl(ch.backscattered), false, maxTextureSize),
-			loadTexture(ringUrl(ch.forwardscattered), false, maxTextureSize),
-			loadTexture(ringUrl(ch.unlitside), false, maxTextureSize),
-			loadTexture(ringUrl(ch.transparency), false, maxTextureSize),
-			loadTexture(ringUrl(ch.color), true, maxTextureSize)
-		]);
+		textures = await loadStripTextures(
+			versionedUrl(`/v1/rings/${bodyId}/${meta.strip}`, 'rings'),
+			meta.strip_rows,
+			maxTextureSize
+		);
 	} catch (err) {
-		console.warn(`Failed to load ring textures for ${bodyId}:`, err);
+		console.warn(`Failed to load ring strip for ${bodyId}:`, err);
 		return null;
 	}
 
 	const material = new ShaderMaterial({
 		uniforms: {
-			uBackscattered: { value: backscattered },
-			uForwardscattered: { value: forwardscattered },
-			uUnlitside: { value: unlitside },
-			uTransparency: { value: transparency },
-			uColor: { value: color },
+			uBackscattered: { value: textures.backscattered },
+			uForwardscattered: { value: textures.forwardscattered },
+			uUnlitside: { value: textures.unlitside },
+			uTransparency: { value: textures.transparency },
+			uColor: { value: textures.color },
 			uInnerScene: { value: innerScene },
 			uOuterScene: { value: outerScene },
 			uSunDir: { value: new Vector3(1, 0, 0) },
@@ -497,7 +536,8 @@ export async function loadRingNode(
 			uPlanetPoleDir: { value: new Vector3(0, 1, 0) },
 			uPlanetEquatorialScene: { value: 0 },
 			uPlanetPolarScene: { value: 0 },
-			uLightScale: { value: 1 }
+			uLightScale: { value: 1 },
+			uIntensityScale: { value: intensityScale }
 		},
 		vertexShader: VERTEX_SHADER,
 		fragmentShader: FRAGMENT_SHADER,
@@ -536,7 +576,8 @@ export async function loadRingNode(
 	return {
 		mesh,
 		material,
-		transparency,
+		transparency: textures.transparency,
+		intensityScale,
 		innerScene,
 		outerScene,
 		planetShadow: null,

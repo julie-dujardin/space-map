@@ -694,7 +694,12 @@ export class SceneRenderer {
 		// just flipped on, so they don't render at a stale basis for one frame.
 		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd);
 
-		updateRingShaders(this.bodyObjects, this.focus.focusTruePos, getSettings().realisticLighting);
+		updateRingShaders(
+			this.bodyObjects,
+			this.focus.focusTruePos,
+			getSettings().realisticLighting,
+			getSettings().overexposeRings
+		);
 		// Before the atmosphere update — shells cull their private occluder
 		// sets against this frame's scene-wide list.
 		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);

@@ -42,6 +42,7 @@ interface Persisted {
 	atmosphereCalibration?: AtmosphereCalibration;
 	highAmbient?: boolean;
 	realisticLighting?: boolean;
+	overexposeRings?: boolean;
 	showShapeMesh?: boolean;
 	showSurfaceTexture?: boolean;
 	showDisplacement?: boolean;
@@ -93,6 +94,10 @@ class SettingsState {
 	/** Scale sunlight with the true inverse-square distance from the Sun instead
 	 *  of lighting every body as if it sat at 1 AU. */
 	realisticLighting = $state(false);
+	/** Render ring systems at their full stored dynamic range instead of the
+	 *  physical intensity scale — Jupiter/Uranus/Neptune's rings are otherwise
+	 *  (correctly) near-invisible. */
+	overexposeRings = $state(false);
 	/** Debug body-layer toggles: peel back the focused body's render stack to
 	 *  isolate a layer (e.g. shape mesh off → textured triaxial sphere). */
 	showShapeMesh = $state(true);
@@ -124,6 +129,7 @@ class SettingsState {
 		this.atmosphereCalibration = stored.atmosphereCalibration ?? null;
 		this.highAmbient = stored.highAmbient ?? false;
 		this.realisticLighting = stored.realisticLighting ?? false;
+		this.overexposeRings = stored.overexposeRings ?? false;
 		this.showShapeMesh = stored.showShapeMesh ?? true;
 		this.showSurfaceTexture = stored.showSurfaceTexture ?? true;
 		this.showDisplacement = stored.showDisplacement ?? true;
@@ -223,6 +229,11 @@ class SettingsState {
 		this.persist();
 	}
 
+	setOverexposeRings(v: boolean) {
+		this.overexposeRings = v;
+		this.persist();
+	}
+
 	setShowShapeMesh(v: boolean) {
 		this.showShapeMesh = v;
 		this.persist();
@@ -318,6 +329,7 @@ class SettingsState {
 				atmosphereCalibration: this.atmosphereCalibration ?? undefined,
 				highAmbient: this.highAmbient,
 				realisticLighting: this.realisticLighting,
+				overexposeRings: this.overexposeRings,
 				showShapeMesh: this.showShapeMesh,
 				showSurfaceTexture: this.showSurfaceTexture,
 				showDisplacement: this.showDisplacement,

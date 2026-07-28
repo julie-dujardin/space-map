@@ -232,6 +232,7 @@ const FRAGMENT_SHADER = `
 	uniform sampler2D uRingShadowTransparency;
 	uniform float uRingShadowInnerScene;
 	uniform float uRingShadowOuterScene; // 0 = no rings
+	uniform float uRingShadowIntensity;
 	uniform vec3 uRingShadowSunDir;
 	uniform vec3 uRingShadowPoleDir;
 	uniform vec3 uRingShadowCenter;
@@ -341,7 +342,11 @@ const FRAGMENT_SHADER = `
 		float r = length(hitPerp);
 		if (r < uRingShadowInnerScene || r > uRingShadowOuterScene) return 1.0;
 		float u = (r - uRingShadowInnerScene) / (uRingShadowOuterScene - uRingShadowInnerScene);
-		float trans = texture2D(uRingShadowTransparency, vec2(clamp(u, 0.0, 1.0), 0.5)).r;
+		// Stored value is normalised; × intensity recovers the physical opacity.
+		float trans = 1.0 - clamp(
+			(1.0 - texture2D(uRingShadowTransparency, vec2(clamp(u, 0.0, 1.0), 0.5)).r)
+				* uRingShadowIntensity,
+			0.0, 1.0);
 		return pow(max(trans, 1e-4), 1.0 / max(abs(denom), 0.02));
 	}
 
@@ -621,6 +626,7 @@ export function buildAtmosphereNode(
 			uRingShadowTransparency: { value: whiteTexture() },
 			uRingShadowInnerScene: { value: 0 },
 			uRingShadowOuterScene: { value: 0 },
+			uRingShadowIntensity: { value: 1 },
 			uRingShadowSunDir: { value: new Vector3(1, 0, 0) },
 			uRingShadowPoleDir: { value: new Vector3(0, 1, 0) },
 			uRingShadowCenter: { value: new Vector3() },
@@ -764,6 +770,8 @@ export function attachRingShadowToAtmosphere(
 	u.uRingShadowSunDir = ringShadow.uRingShadowSunDir;
 	u.uRingShadowPoleDir = ringShadow.uRingShadowPoleDir;
 	u.uRingShadowCenter = ringShadow.uRingShadowCenter;
+	// Shared ref: the renderer's overexpose-rings writes reach both materials.
+	u.uRingShadowIntensity = ringShadow.uRingShadowIntensity;
 }
 
 /** Dispose the GPU resources owned by an atmosphere node. */
