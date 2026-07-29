@@ -25,6 +25,11 @@ _HEIGHT_UNIT_KM = {"m": 1e-3, "km": 1.0, "half_m": 5e-4}
 # per-band working set (~650 MiB float32 at ds=6 on a 100k-wide DEM).
 _DISPLACEMENT_BAND_OUT_ROWS = 256
 
+# Neighbour-interpolation passes over nodata before falling back to the flat
+# fill; each pass closes one pixel from either side, so 4 repairs slivers up to
+# 8 px wide and leaves genuinely unmapped regions to `fill`.
+_GAP_REPAIR_PASSES = 4
+
 
 def open_image(path: Path) -> Image.Image:
     try:
@@ -208,6 +213,59 @@ def open_displacement_source(
         )
 
 
+def _gap_front(known: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Coordinates of the unknown pixels that touch a known 4-neighbour.
+
+    Longitude wraps (u=0 and u=1 are the same meridian); latitude clamps, since
+    there is no row beyond a pole.
+    """
+    touching = np.roll(known, 1, axis=1)
+    touching |= np.roll(known, -1, axis=1)
+    touching[1:] |= known[:-1]
+    touching[:-1] |= known[1:]
+    touching &= ~known
+    ys, xs = np.nonzero(touching)
+    return ys, xs
+
+
+def _repair_thin_gaps(elev: np.ndarray, finite: np.ndarray) -> int:
+    """Fill narrow nodata slivers from their neighbours in place; return px fixed.
+
+    Global DEMs routinely ship a dead edge column or blank polar row (Schenk's
+    Enceladus, Magellan Venus). Sinking those to the flat fill cuts a canyon one
+    texel wide, which the cylindrical alignment shift can park mid-map — a lit
+    ridge with a shadow trench either side, visible from pole to pole.
+
+    Only the advancing front is materialised as coordinates, so the extra
+    working set stays proportional to gap perimeter, not gap area — a
+    half-unmapped DEM like Io must not cost another whole-image array.
+    """
+    h, w = elev.shape
+    known = finite.copy()
+    repaired = 0
+    for _ in range(_GAP_REPAIR_PASSES):
+        ys, xs = _gap_front(known)
+        if ys.size == 0:
+            break
+        total = np.zeros(ys.size, dtype=np.float32)
+        count = np.zeros(ys.size, dtype=np.float32)
+        for yy, xx in (
+            (np.maximum(ys - 1, 0), xs),
+            (np.minimum(ys + 1, h - 1), xs),
+            (ys, (xs - 1) % w),
+            (ys, (xs + 1) % w),
+        ):
+            valid = known[yy, xx]
+            total += np.where(valid, elev[yy, xx], 0.0)
+            count += valid
+        # Every read above sees the pre-pass `known`, so the whole front
+        # advances at once and the result does not depend on visit order.
+        elev[ys, xs] = (total / count).astype(elev.dtype)
+        known[ys, xs] = True
+        repaired += int(ys.size)
+    return repaired
+
+
 def _bake_displacement(
     mm: np.ndarray,
     src_name: str,
@@ -276,15 +334,18 @@ def _bake_displacement(
     # ellipsoid instead of the deepest basin.
     fill = lo if nodata_fill_km is None else nodata_fill_km
     n_gap = int((~finite).sum())
+    n_repaired = _repair_thin_gaps(out_elev, finite) if n_gap else 0
     if n_gap:
         log.info(
-            "%s: %d/%d output px unmapped, filled at %.3f km",
+            "%s: %d/%d output px unmapped (%d interpolated, %d filled at %.3f km)",
             src_name,
             n_gap,
             out_elev.size,
+            n_repaired,
+            n_gap - n_repaired,
             fill,
         )
-    out_elev[~finite] = fill
+    out_elev[~np.isfinite(out_elev)] = fill
     norm = np.clip((out_elev - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
     gray = (norm * 255.0).astype(np.uint8)
     return Image.fromarray(gray, mode="L").convert("RGB"), lo, hi
