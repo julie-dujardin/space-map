@@ -21,13 +21,13 @@
 	 *  of a family at a glance; the rest are one click away. */
 	const COLLAPSED = 3;
 
-	// Warm for endogenic/impact, cool for fluids, neutral for terrain, violet
-	// for the human-named odd one out — the ramp groups the groups.
+	// Warm for endogenic/impact, cool for the water/wind/ice terms, neutral for
+	// terrain, violet for the human-named odd one out — the ramp groups the groups.
 	const FAMILY_DOT: Record<string, string> = {
 		impact: 'bg-amber-400',
 		volcanic: 'bg-orange-500',
 		tectonic: 'bg-rose-500',
-		fluvial: 'bg-sky-400',
+		erosional: 'bg-sky-400',
 		liquid: 'bg-blue-500',
 		relief: 'bg-stone-400',
 		albedo: 'bg-zinc-300',
@@ -38,7 +38,7 @@
 		impact: m.feature_family_impact,
 		volcanic: m.feature_family_volcanic,
 		tectonic: m.feature_family_tectonic,
-		fluvial: m.feature_family_fluvial,
+		erosional: m.feature_family_erosional,
 		liquid: m.feature_family_liquid,
 		relief: m.feature_family_relief,
 		albedo: m.feature_family_albedo,

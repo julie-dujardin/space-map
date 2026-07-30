@@ -1,13 +1,20 @@
-"""Landform families: the eight formation origins the 57 IAU descriptor codes group into.
+"""Landform families: the eight buckets the 57 IAU descriptor codes group into.
 
 The IAU gazetteer has no such grouping — descriptor terms are a flat list — so
 this is curated, assigned from each term's own definition in
 :mod:`space_map_data.constants.nomenclature.feature_types`. It exists to make 57
 chips browsable; a family is a *naming* bucket, not a geological claim about any
-individual feature.
+individual feature. The buckets don't share one axis: impact/volcanic/tectonic/
+erosional are processes, liquid/relief/albedo are what the term names, human is
+where the name came from.
 
 Judgement calls worth knowing:
 
+- ``erosional`` vs ``liquid`` is the axis collision, and the boundary is the
+  term's referent, not whether liquid is present: ``erosional`` takes landforms
+  something carved or piled up (water, wind, ice, gravity), ``liquid`` takes
+  terms naming a standing body of liquid. Hence Flumen — a channel — parts ways
+  with Lacuna, a dry lake bed.
 - ``MO`` Mons is defined as plain "Mountain"; most named montes are volcanic
   edifices (Olympus, Maat), but lunar Montes are impact-basin rims.
 - ``RE`` Regio is defined twice over — "reflectivity or color distinctions" *or*
@@ -16,7 +23,8 @@ Judgement calls worth knowing:
 - ``LI`` Linea reads as an albedo term ("elongate marking"), but Europa's lineae
   — nearly all of them — are tectonic bands.
 - ``LC``/``ME``/``SI``/``PA``/``OC`` are lunar basalt plains named as water
-  bodies; they group by that naming conceit, alongside Titan's actual lakes.
+  bodies; they sit in ``liquid`` by that naming conceit, alongside Titan's actual
+  hydrocarbon seas.
 """
 
 from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
@@ -42,7 +50,7 @@ FEATURE_FAMILY_CODES: dict[str, tuple[str, ...]] = {
         "FE",
         "AR",
     ),
-    "fluvial": ("VA", "CB", "UN", "FM", "LA"),
+    "erosional": ("VA", "CB", "UN", "FM", "LA"),
     "liquid": ("LC", "SI", "ME", "LU", "IN", "PA", "FT", "OC"),
     "relief": (
         "PL",

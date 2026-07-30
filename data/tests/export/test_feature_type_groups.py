@@ -270,7 +270,7 @@ class TestMetaCategoryStats:
         _feature(session, 1)  # AA — impact
         _feature(session, 2, feature_type_code="SF")  # impact
         _feature(session, 3, feature_type_code="SF")
-        _feature(session, 4, feature_type_code="VA")  # fluvial
+        _feature(session, 4, feature_type_code="VA")  # erosional
         session.flush()
 
         families = {
@@ -282,7 +282,7 @@ class TestMetaCategoryStats:
         assert families["impact"]["n"] == 3
         # Most-populated type first within the family.
         assert families["impact"]["types"][:2] == ["ft-satellite-feature", "ft-crater"]
-        assert families["fluvial"]["n"] == 1
+        assert families["erosional"]["n"] == 1
 
     def test_unused_types_and_families_drop_out(self, session: Session):
         """A type with no chip can't be rendered, so it can't be listed."""

@@ -213,7 +213,7 @@
 		impact: m.feature_family_impact,
 		volcanic: m.feature_family_volcanic,
 		tectonic: m.feature_family_tectonic,
-		fluvial: m.feature_family_fluvial,
+		erosional: m.feature_family_erosional,
 		liquid: m.feature_family_liquid,
 		relief: m.feature_family_relief,
 		albedo: m.feature_family_albedo,
