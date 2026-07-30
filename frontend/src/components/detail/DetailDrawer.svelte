@@ -60,6 +60,7 @@
 	import FeatureTypeFamilies from './sections/FeatureTypeFamilies.svelte';
 	import { categoryPlotType, classNameFromSlug, scatterZoneSlugs } from '$lib/charts/orbit-zones';
 	import FeatureProperties from './sections/FeatureProperties.svelte';
+	import FeatureStatCards from './sections/FeatureStatCards.svelte';
 	import MemberStrip, { STRIP_CAPACITY } from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
@@ -844,6 +845,8 @@
 		<div class="flex flex-col gap-5 p-1">
 			{#if isGroupMode && groupDetail?.global}
 				<GroupStatCards global={groupDetail.global} />
+			{:else if feature}
+				<FeatureStatCards {feature} detail={featureDetail} />
 			{:else if body}
 				<ObjectStats
 					global={data?.global ?? null}

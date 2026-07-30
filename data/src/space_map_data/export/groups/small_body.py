@@ -14,6 +14,7 @@ scan out of the ORM.
 import gzip
 import logging
 import math
+import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -63,11 +64,17 @@ class OrbitClassSample:
 
 @dataclass
 class LargestBody:
-    """The biggest member (by ``SBDB.diameter``) of a small-body group."""
+    """The biggest member of a group, by diameter.
+
+    ``primary_type`` routes the card: small-body groups measure SBDB diameters
+    and link by spkid, the solar-system categories rank PCK radii and link the
+    NAIF body.
+    """
 
     name: str
     diameter_km: float
-    spkid: str
+    primary_id: str
+    primary_type: str = "spkid"
 
 
 @dataclass
@@ -84,6 +91,8 @@ class SmallBodyGroupStats:
     pha_counts: dict[str, int] = field(default_factory=dict)
     largest_bodies: dict[str, LargestBody] = field(default_factory=dict)
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
+    # Typical Earth MOID, flag groups only — how close the population comes.
+    median_moids: dict[str, float] = field(default_factory=dict)
 
 
 def _exported_sbdb_filter():
@@ -216,7 +225,7 @@ def _largest_body(session: Session, *filter_clauses) -> LargestBody | None:
     return LargestBody(
         name=full_name or name or pdes or spkid,
         diameter_km=diameter,
-        spkid=spkid,
+        primary_id=spkid,
     )
 
 
@@ -442,6 +451,31 @@ def build_small_body_group_stats(
     if pha_largest is not None:
         largest_bodies[f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"] = pha_largest
 
+    # Flag groups only: the classes already headline named/largest/hazardous,
+    # and a class-wide MOID says little when the class is defined by its orbit.
+    median_moids: dict[str, float] = {}
+    for slug, flag_clause in (
+        (f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo", SBDB.neo.is_(True)),
+        (f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha", SBDB.pha.is_(True)),
+    ):
+        moids = [
+            moid
+            for (moid,) in base.with_entities(SBDB.moid)
+            .filter(flag_clause, SBDB.moid.is_not(None))
+            .all()
+        ]
+        total = member_counts[slug]
+        if moids:
+            median_moids[slug] = statistics.median(moids)
+        if len(moids) < total:
+            logger.info(
+                "%s median MOID computed over %d of %d members (%d lack a moid)",
+                slug,
+                len(moids),
+                total,
+                total - len(moids),
+            )
+
     notable_members: dict[str, list[NotableObject]] = {}
     for cls in class_counts:
         members = _notable_members(
@@ -496,6 +530,7 @@ def build_small_body_group_stats(
         pha_counts=pha_counts,
         largest_bodies=largest_bodies,
         notable_members=notable_members,
+        median_moids=median_moids,
     )
 
 

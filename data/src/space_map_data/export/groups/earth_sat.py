@@ -10,6 +10,7 @@ import csv
 import gzip
 import logging
 import math
+import statistics
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -89,6 +90,9 @@ class EarthOrbitClassStats:
     # zone) — the Debris page's "where it came from" chart. Rocket families are
     # included; the bundle maps them to their lv- page.
     debris_source_counts: dict[str, int] = field(default_factory=dict)
+    # Typical perigee (km) per zone, for the zone page's third stat card.
+    # Lagrange classes are absent: they have no Keplerian shape.
+    median_perigees: dict[str, float] = field(default_factory=dict)
 
 
 def _load_latest_inclinations() -> dict[int, float]:
@@ -221,6 +225,7 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
     skip_counters: Counter[str] = Counter()
     population_per_class: Counter[str] = Counter()
     pool: dict[str, list[tuple[str, str, float, float, float | None, list[str]]]] = {}
+    perigee_pool: dict[str, list[float]] = {}
     # Notable-member candidates per zone: (image_available, sitelinks, id, qid, name).
     # Split by payload/debris so each category page draws from its own side.
     notable_pool: dict[str, list[tuple[bool, int, str, str | None, str]]] = {}
@@ -289,6 +294,8 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
             stats.membership.setdefault(s, []).append(obj_id)
             population_per_class[s] += 1
             side_counts[s] = side_counts.get(s, 0) + 1
+            if lagrange is None:
+                perigee_pool.setdefault(s, []).append(float(perigee))
             # Launch sites are deliberately not accumulated: a zone's top-sites
             # breakdown isn't meaningful, so the bundle ships without it.
             for bucket in (
@@ -347,6 +354,9 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
         stats.constellation_zone[f"{CONSTELLATION_SLUG_PREFIX}{c_slug}"] = best_zone
 
     stats.orbit_samples = _build_samples(pool)
+    stats.median_perigees = {
+        slug: statistics.median(perigees) for slug, perigees in perigee_pool.items()
+    }
 
     classified = len(rows) - sum(skip_counters.values())
     primary_slugs = [

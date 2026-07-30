@@ -113,6 +113,18 @@ export function formatIsoDate(raw: string): string {
 	return `${dateStr} ${timeStr}`;
 }
 
+/**
+ * Format an IAU name-approval date, dropping the day the gazetteer invented.
+ *
+ * Year-only records are stamped 1 January — 87 % of the gazetteer, including
+ * every one of the 7 278 features approved in the 2006 bulk pass. No real
+ * dated approval falls on 1 January (the next-commonest day carries 57), so
+ * the date is safe to read as year-only.
+ */
+export function formatApprovalDate(raw: string): string {
+	return formatIsoDate(raw.endsWith('-01-01') ? raw.slice(0, 4) : raw);
+}
+
 /** Format a Julian Date (TDB) as a localized date string (or ISO 8601 date). */
 export function formatJulianDate(jd: number): string {
 	const d = jdToDate(jd);

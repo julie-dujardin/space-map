@@ -3,11 +3,27 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalGroupData } from '$lib/fetch/groups/details';
+	import {
+		CAT_ASTEROIDS,
+		CAT_COMETS,
+		CAT_DEBRIS,
+		CAT_DWARF_PLANETS,
+		CAT_MOONS,
+		CAT_PLANETS,
+		CAT_PROBES,
+		CAT_SATELLITES,
+		CAT_SURFACE_FEATURES
+	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
-	import { applyFeature, applyFocus, applyGroup, serializeUrl } from '$lib/state/url';
-	import { UrlType } from '$lib/state/view';
-	import { formatIsoDate } from '$lib/format/date';
+	import {
+		applyFeature,
+		applyFocus,
+		applyGroup,
+		serializeUrl,
+		urlTypeFromId
+	} from '$lib/state/url';
+	import { formatDistance } from '$lib/format/distance';
 	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 
 	interface Props {
@@ -15,8 +31,15 @@
 	}
 	let { global }: Props = $props();
 
-	// Three across is what the row fits; a fourth squeezes every value.
+	// Three across is what the row fits; a fourth squeezes every value. Each
+	// family below names at most three, in slot order: how many, the extreme,
+	// how it changes. A family with nothing for a slot leaves it empty rather
+	// than reaching for a fact the charts and rows below already show.
 	const MAX_CARDS = 3;
+	// Mirrors the members strip: past this, the count rides its tab badge.
+	const STRIP_CAPACITY = 5;
+	// A hazardous share is a fraction of a percent — the bar would be a speck.
+	const MIN_BAR_SHARE = 0.05;
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -26,7 +49,11 @@
 		label: string;
 		value: string;
 		tooltip?: string;
-		dot: string;
+		/** Only where the colour carries meaning: state, hazard, outcome. */
+		dot?: string;
+		/** 0–1; draws the bar that gives the value its denominator. Below
+		 *  MIN_BAR_SHARE the bar is a sliver that says less than the tooltip. */
+		share?: number;
 		href?: string;
 		onClick?: (e: MouseEvent) => void;
 	}
@@ -53,153 +80,225 @@
 		appState.setGroup(slug, name);
 	}
 
-	function formatPercent(n: number, total: number): string {
-		if (!total) return '';
-		return `${formatNumber((n / total) * 100)}%`;
+	function ofTotal(n: number, total: number): string | undefined {
+		if (!total) return undefined;
+		return m.group_stat_of_total({
+			n: formatNumber(n),
+			total: formatNumber(total),
+			percent: formatNumber((n / total) * 100)
+		});
 	}
 
-	let firstLaunch = $derived.by<{ year: string; full?: string } | null>(() => {
-		const iso = global?.first_launch_date;
-		if (iso) {
-			const year = iso.slice(0, 4);
-			if (!Number.isFinite(parseInt(year, 10))) return null;
-			return { year, full: formatIsoDate(iso) };
-		}
-		const h = global?.launch_histogram;
-		if (!h) return null;
-		let best: number | null = null;
-		for (const [y, n] of Object.entries(h)) {
-			if (n <= 0) continue;
-			const year = parseInt(y, 10);
-			if (!Number.isFinite(year)) continue;
-			if (best == null || year < best) best = year;
-		}
-		return best == null ? null : { year: String(best) };
-	});
+	function km(label: string, value: number | undefined): Stat | null {
+		if (value == null) return null;
+		return { label, value: formatQuantity({ value, unit: 'kilometre' }, true) };
+	}
 
-	// Feature types: when the IAU first approved a name of this kind.
-	let firstApproval = $derived.by<{ year: string; full?: string } | null>(() => {
-		const iso = global?.first_approval_date;
-		if (!iso) return null;
-		const year = iso.slice(0, 4);
-		if (!Number.isFinite(parseInt(year, 10))) return null;
-		return { year, full: formatIsoDate(iso) };
-	});
+	function count(label: string, n: number | undefined): Stat | null {
+		if (!n) return null;
+		return { label, value: formatNumber(n) };
+	}
+
+	/** Years are labels, not quantities — no thousands separator. */
+	function year(label: string, y: number | undefined): Stat | null {
+		if (!y) return null;
+		return { label, value: String(y) };
+	}
+
+	/** AU down to ~1.5 M km, then kilometres — the app's distance convention. */
+	function distance(label: string, valueAu: number | undefined, tooltip?: string): Stat | null {
+		if (valueAu == null) return null;
+		return { label, value: formatDistance(valueAu), tooltip };
+	}
+
+	/** The member total, unless a strip or the tab badge already spells it out. */
+	function members(g: GlobalGroupData, label: string): Stat | null {
+		const notable = g.notable_members?.length ?? 0;
+		if (notable > 0 && g.member_count > STRIP_CAPACITY) return null;
+		return count(label, g.member_count);
+	}
+
+	function active(g: GlobalGroupData): Stat | null {
+		if (!g.active_count) return null;
+		return {
+			label: m.group_stat_active(),
+			value: formatNumber(g.active_count),
+			tooltip: ofTotal(g.active_count, g.member_count),
+			share: g.member_count ? g.active_count / g.member_count : undefined,
+			dot: 'bg-emerald-400'
+		};
+	}
+
+	function largestBody(g: GlobalGroupData): Stat | null {
+		const largest = g.largest_body;
+		if (!largest || !appState) return null;
+		// `object` ids are whole already; SBDB ones carry the bare spkid.
+		const bodyId =
+			largest.primary_type === 'object'
+				? largest.primary_id
+				: `${largest.primary_type}-${largest.primary_id}`;
+		return {
+			label: m.group_stat_largest(),
+			value: formatQuantity({ value: largest.diameter_km, unit: 'kilometre' }, true),
+			tooltip: largest.name,
+			href: serializeUrl(
+				applyFocus(appState.view, {
+					type: urlTypeFromId(bodyId),
+					id: bodyId,
+					name: largest.name
+				})
+			),
+			onClick: (e) => focusBody(bodyId, largest.name, e)
+		};
+	}
+
+	function largestFeature(g: GlobalGroupData): Stat | null {
+		const largest = g.largest_feature;
+		if (!largest || !appState) return null;
+		const bodyId = `${largest.primary_type}-${largest.primary_id}`;
+		const featureId = parseInt(largest.secondary_id, 10);
+		return {
+			label: m.group_stat_largest(),
+			value: formatQuantity({ value: largest.diameter_km, unit: 'kilometre' }, true),
+			tooltip: largest.name,
+			href: serializeUrl(
+				applyFeature(appState.view, { bodyId, featureId, featureName: largest.name })
+			),
+			onClick: (e) => openFeature(bodyId, featureId, largest.name, e)
+		};
+	}
+
+	function hazardous(g: GlobalGroupData): Stat | null {
+		if (!g.pha || !appState) return null;
+		const pha = g.pha;
+		const label = m.group_stat_pha();
+		return {
+			label,
+			value: formatNumber(pha.n),
+			tooltip: ofTotal(pha.n, g.member_count),
+			share: g.member_count ? pha.n / g.member_count : undefined,
+			dot: 'bg-rose-400',
+			href: serializeUrl(applyGroup(appState.view, pha.primary_id, label)),
+			onClick: (e) => focusGroup(pha.primary_id, label, e)
+		};
+	}
+
+	function success(g: GlobalGroupData): Stat | null {
+		if (!g.launch_count || g.success_count == null) return null;
+		return {
+			label: m.group_stat_success(),
+			value: `${formatNumber((g.success_count / g.launch_count) * 100)}%`,
+			tooltip: m.group_stat_failures({ count: g.failure_count ?? 0 }),
+			dot: 'bg-emerald-400'
+		};
+	}
+
+	function missionStatus(g: GlobalGroupData): Stat | null {
+		if (!g.mission_status) return null;
+		const [value, dot] =
+			g.mission_status === 'operating'
+				? [m.group_status_operating(), 'bg-emerald-400']
+				: g.mission_status === 'lost'
+					? [m.group_status_lost(), 'bg-rose-400']
+					: [m.group_status_ended(), undefined];
+		return { label: m.group_stat_status(), value, dot };
+	}
+
+	function categoryStats(g: GlobalGroupData): (Stat | null)[] {
+		switch (g.slug) {
+			case CAT_ASTEROIDS:
+				return [count(m.group_stat_named(), g.named_count), largestBody(g), hazardous(g)];
+			case CAT_COMETS:
+				return [largestBody(g), count(m.group_stat_split_families(), g.child_group_count)];
+			case CAT_PLANETS:
+			case CAT_DWARF_PLANETS:
+				return [largestBody(g), count(m.group_stat_moons(), g.moon_total)];
+			case CAT_MOONS:
+				return [count(m.group_stat_hosts(), g.host_count), largestBody(g)];
+			case CAT_SATELLITES:
+				return [active(g)];
+			case CAT_DEBRIS:
+				return [count(m.group_stat_sources(), g.child_group_count)];
+			case CAT_PROBES:
+				return [
+					count(m.group_stat_missions(), g.child_group_count),
+					year(m.group_stat_launched(), g.launch_year)
+				];
+			case CAT_SURFACE_FEATURES:
+				return [
+					members(g, m.group_stat_features()),
+					largestFeature(g),
+					count(m.group_stat_bodies(), g.body_count)
+				];
+			default:
+				// The Solar System root: every number on it belongs to a child.
+				return [];
+		}
+	}
+
+	// Comet orbit classes fall out of the small-body row with the largest member
+	// alone: they carry neither an IAU-named count nor a hazardous subset, and
+	// the discovery span they could show is the timeline chart's own x-axis.
+	function statsFor(g: GlobalGroupData): (Stat | null)[] {
+		switch (g.type) {
+			case 'constellation':
+			case 'organization':
+			case 'country':
+			case 'bus':
+			case 'launch_site':
+				return [
+					members(g, m.group_stat_objects()),
+					active(g),
+					count(m.group_stat_decayed(), g.decayed_count)
+				];
+			case 'earth_orbit_class':
+				return [
+					members(g, m.group_stat_objects()),
+					active(g),
+					km(m.group_stat_perigee(), g.median_perigee_km)
+				];
+			case 'launch_vehicle':
+				return [
+					count(m.group_stat_launches(), g.launch_count),
+					count(m.group_stat_payloads(), g.payload_count),
+					success(g)
+				];
+			case 'orbit_class':
+				return [count(m.group_stat_named(), g.named_count), largestBody(g), hazardous(g)];
+			case 'small_body_flag':
+				return [
+					members(g, m.group_stat_objects()),
+					largestBody(g),
+					distance(m.group_stat_moid(), g.median_moid_au, m.tooltip_group_stat_moid())
+				];
+			case 'feature_type':
+				return [
+					count(m.group_stat_bodies(), g.body_count),
+					largestFeature(g),
+					km(m.group_stat_median_diameter(), g.median_diameter_km)
+				];
+			case 'mission':
+				return [
+					members(g, m.group_stat_craft()),
+					year(m.group_stat_launched(), g.launch_year),
+					missionStatus(g)
+				];
+			case 'split_comet':
+				return [
+					members(g, m.group_stat_fragments()),
+					year(m.group_stat_discovered(), g.discovery_year),
+					distance(m.group_stat_perihelion(), g.perihelion_au)
+				];
+			case 'category':
+				return categoryStats(g);
+		}
+	}
 
 	let stats = $derived.by<Stat[]>(() => {
 		if (!global) return [];
-		const out: Stat[] = [];
-		// No members card: the count rides the members tab's badge, and a strip
-		// short enough to have no tab is short enough to count by eye.
-		if (global.named_count != null)
-			out.push({
-				label: m.group_stat_named(),
-				value: formatNumber(global.named_count),
-				tooltip: formatPercent(global.named_count, global.member_count),
-				dot: 'bg-teal-400'
-			});
-		if (global.active_count != null && global.active_count > 0)
-			out.push({
-				label: m.group_stat_active(),
-				value: formatNumber(global.active_count),
-				dot: 'bg-emerald-400'
-			});
-		if (global.launch_count != null && global.launch_count > 0) {
-			out.push({
-				label: m.group_stat_launches(),
-				value: formatNumber(global.launch_count),
-				dot: 'bg-indigo-400'
-			});
-			if (global.success_count != null)
-				out.push({
-					label: m.group_stat_success(),
-					value: formatPercent(global.success_count, global.launch_count),
-					tooltip: m.group_stat_failures({ count: global.failure_count ?? 0 }),
-					dot: 'bg-emerald-400'
-				});
-		}
-		if (firstLaunch != null)
-			out.push({
-				label: m.group_stat_first_launch(),
-				value: firstLaunch.year,
-				tooltip: firstLaunch.full,
-				dot: 'bg-zinc-500'
-			});
-		const largest = global.largest_body;
-		if (largest && appState) {
-			const bodyId = `${largest.primary_type}-${largest.primary_id}`;
-			out.push({
-				label: m.group_stat_largest(),
-				value: formatQuantity({ value: largest.diameter_km, unit: 'kilometre' }, true),
-				tooltip: largest.name,
-				dot: 'bg-amber-400',
-				href: serializeUrl(
-					applyFocus(appState.view, { type: UrlType.SmallBody, id: bodyId, name: largest.name })
-				),
-				onClick: (e) => focusBody(bodyId, largest.name, e)
-			});
-		}
-		// Surface Features meta page: its members are features, not objects, so
-		// the count that has nowhere else to go (no members strip) rides a card.
-		if (global.feature_type_count != null) {
-			out.push({
-				label: m.group_stat_types(),
-				value: formatNumber(global.feature_type_count),
-				dot: 'bg-sky-400'
-			});
-			out.push({
-				label: m.group_stat_features(),
-				value: formatNumber(global.member_count),
-				dot: 'bg-teal-400'
-			});
-		}
-		if (global.body_count != null && global.body_count > 0)
-			out.push({
-				label: m.group_stat_bodies(),
-				value: formatNumber(global.body_count),
-				dot: 'bg-violet-400'
-			});
-		const largestFeature = global.largest_feature;
-		if (largestFeature && appState) {
-			const bodyId = `${largestFeature.primary_type}-${largestFeature.primary_id}`;
-			const featureId = parseInt(largestFeature.secondary_id, 10);
-			out.push({
-				label: m.group_stat_largest(),
-				value: formatQuantity({ value: largestFeature.diameter_km, unit: 'kilometre' }, true),
-				tooltip: largestFeature.name,
-				dot: 'bg-amber-400',
-				href: serializeUrl(
-					applyFeature(appState.view, { bodyId, featureId, featureName: largestFeature.name })
-				),
-				onClick: (e) => openFeature(bodyId, featureId, largestFeature.name, e)
-			});
-		}
-		if (firstApproval != null)
-			out.push({
-				label: m.group_stat_first_named(),
-				value: firstApproval.year,
-				tooltip: firstApproval.full,
-				dot: 'bg-zinc-500'
-			});
-		if (global.pha && appState) {
-			const pha = global.pha;
-			const label = m.group_stat_pha();
-			out.push({
-				label,
-				value: formatPercent(pha.n, global.member_count),
-				tooltip: formatNumber(pha.n),
-				dot: 'bg-rose-400',
-				href: serializeUrl(applyGroup(appState.view, pha.primary_id, label)),
-				onClick: (e) => focusGroup(pha.primary_id, label, e)
-			});
-		}
-		if (out.length > MAX_CARDS) {
-			console.warn(
-				`[group] ${global.slug} produced ${out.length} stat cards; showing the first ${MAX_CARDS}: ` +
-					out.map((s) => s.label).join(', ')
-			);
-		}
-		return out.slice(0, MAX_CARDS);
+		return statsFor(global)
+			.filter((s): s is Stat => s != null)
+			.slice(0, MAX_CARDS);
 	});
 </script>
 
@@ -222,7 +321,9 @@
 		{#each stats as s (s.label)}
 			<div class="border-border/60 bg-muted/40 flex flex-col gap-1 rounded-md border p-2.5">
 				<div class="text-muted-foreground flex items-center gap-1.5 text-[10px] uppercase">
-					<span class="inline-block size-1.5 rounded-full {s.dot}"></span>
+					{#if s.dot}
+						<span class="inline-block size-1.5 rounded-full {s.dot}"></span>
+					{/if}
 					{s.label}
 				</div>
 				{#if s.tooltip}
@@ -238,6 +339,14 @@
 					</Tooltip.Root>
 				{:else}
 					{@render valueNode(s)}
+				{/if}
+				{#if s.share != null && s.share >= MIN_BAR_SHARE}
+					<div class="bg-muted-foreground/30 h-0.5 w-full overflow-hidden rounded-full">
+						<div
+							class="h-full rounded-full {s.dot ?? 'bg-muted-foreground'}"
+							style="width: {Math.min(100, Math.max(0, s.share * 100))}%"
+						></div>
+					</div>
 				{/if}
 			</div>
 		{/each}

@@ -7,6 +7,7 @@ the names. Members are surface features, so they route to
 """
 
 import logging
+import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -34,6 +35,11 @@ logger = logging.getLogger(__name__)
 # Etymology rows on the meta page. The IAU records 360 distinct origins; the
 # tail is one-offs, and every group page pays for this bundle.
 TOP_ORIGINS = 60
+
+# A median needs enough measured diameters to stand for the type. Albedo
+# features are the case this rejects: 172 named, 3 sized.
+MIN_MEDIAN_SAMPLE = 5
+MIN_MEDIAN_SHARE = 0.5
 
 
 def _families(member_counts: dict[str, int]) -> list[dict]:
@@ -85,6 +91,9 @@ class FeatureTypeStats:
     bodies: list[dict] = field(default_factory=list)
     # Biggest named example, as an EntityRef + its diameter.
     largest: dict | None = None
+    # Typical size of the landform, over members with a measured diameter.
+    # Absent when too few carry one to be representative.
+    median_diameter_km: float | None = None
     first_approval: str | None = None  # ISO date
     last_approval: str | None = None
     approval_histogram: dict[int, int] = field(default_factory=dict)
@@ -134,6 +143,7 @@ def build_feature_type_groups(
 
     out = FeatureTypeGroups()
     empty: list[str] = []
+    unsized: list[str] = []
     all_approvals: dict[int, int] = defaultdict(int)
     for code in FEATURE_TYPES:
         slug = FEATURE_TYPE_SLUGS[code]
@@ -149,6 +159,7 @@ def build_feature_type_groups(
         per_body: dict[str, int] = defaultdict(int)
         histogram: dict[int, int] = defaultdict(int)
         approvals: list[str] = []
+        diameters: list[float] = []
         largest: Feature | None = None
         for _, f in entries:
             assert f.object_id is not None  # SQL filter guarantees this
@@ -157,8 +168,19 @@ def build_feature_type_groups(
                 histogram[f.approval_date.year] += 1
                 all_approvals[f.approval_date.year] += 1
                 approvals.append(f.approval_date.isoformat())
-            if f.diameter and (largest is None or f.diameter > (largest.diameter or 0)):
-                largest = f
+            if f.diameter:
+                diameters.append(f.diameter)
+                if largest is None or f.diameter > (largest.diameter or 0):
+                    largest = f
+
+        median_diameter = None
+        if (
+            len(diameters) >= MIN_MEDIAN_SAMPLE
+            and len(diameters) >= len(entries) * MIN_MEDIAN_SHARE
+        ):
+            median_diameter = statistics.median(diameters)
+        elif diameters:
+            unsized.append(f"{code}={len(diameters)}/{len(entries)}")
 
         top_bodies = sorted(per_body.items(), key=lambda kv: (-kv[1], kv[0]))
         largest_ref = None
@@ -182,6 +204,7 @@ def build_feature_type_groups(
                 for object_id, n in top_bodies
             ],
             largest=largest_ref,
+            median_diameter_km=median_diameter,
             first_approval=min(approvals) if approvals else None,
             last_approval=max(approvals) if approvals else None,
             approval_histogram=dict(sorted(histogram.items())),
@@ -208,7 +231,19 @@ def build_feature_type_groups(
             {"name": name, "n": n} for name, n in ranked_origins[:TOP_ORIGINS]
         ],
         approval_histogram=dict(sorted(all_approvals.items())),
+        # The biggest named landform anywhere, whatever its kind.
+        largest=max(
+            (s.largest for s in out.stats.values() if s.largest),
+            key=lambda ref: ref["diameter_km"],
+            default=None,
+        ),
     )
+    if unsized:
+        logger.info(
+            "Feature types with too few measured diameters for a median (skipped, "
+            "sized/total): %s",
+            ", ".join(sorted(unsized)),
+        )
     if len(ranked_origins) > TOP_ORIGINS:
         dropped = sum(n for _, n in ranked_origins[TOP_ORIGINS:])
         logger.info(

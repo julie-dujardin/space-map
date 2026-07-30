@@ -96,11 +96,13 @@ export interface GlobalGroupData {
 	reusable_vehicles?: ReusableVehicle[];
 	/** Discoveries per year across SBDB members (orbit_class / NEO / PHA), from `first_obs`. */
 	discovery_histogram?: Record<string, number>;
-	/** Member with the largest SBDB.diameter; absent when no member has a measured diameter. */
+	/** Biggest member by diameter; absent when nothing has a measured size.
+	 *  `spkid` ids need the prefix; `object` ids are already whole (the
+	 *  solar-system categories, ranked from PCK radii rather than SBDB). */
 	largest_body?: {
 		name: string;
 		diameter_km: number;
-		primary_type: 'spkid';
+		primary_type: 'spkid' | 'object';
 		primary_id: string;
 	};
 	/** PHA subset of this orbit_class group; absent on flag-pha (self-link suppressed) and when zero. */
@@ -148,6 +150,28 @@ export interface GlobalGroupData {
 	inception?: string;
 	/** Wikidata P576 — programme dissolution (ISO date string). */
 	dissolved?: string;
+	/** Earth orbit zones: typical perigee of the population, in km. */
+	median_perigee_km?: number;
+	/** Small-body flags: typical Earth MOID, in AU. */
+	median_moid_au?: number;
+	/** Feature types: typical diameter of the landform, in km. Absent when too
+	 *  few members carry a measured one (albedo features). */
+	median_diameter_km?: number;
+	/** Planets / Dwarf planets categories: moons hosted across the category. */
+	moon_total?: number;
+	/** Moons category: distinct planet/dwarf hosts that have a moon. */
+	host_count?: number;
+	/** Categories that list child groups: Comets → split families, Probes →
+	 *  missions. The label comes from the page, not the field. */
+	child_group_count?: number;
+	/** Missions: launch year. Probes category: the first probe launch. */
+	launch_year?: number;
+	/** Missions: state of the primary craft. */
+	mission_status?: 'operating' | 'lost' | 'ended';
+	/** Split-comet families: year the parent was first observed. */
+	discovery_year?: number;
+	/** Split-comet families: parent perihelion distance, in AU. */
+	perihelion_au?: number;
 	/** Same Commons pipeline / bundle layout as ``GlobalObjectData.images``. */
 	images?: ObjectImage[];
 }

@@ -38,7 +38,9 @@ from space_map_data.export.groups.registry import (
     GROUPS,
     GroupType,
 )
-from space_map_data.export.groups.small_body import _notable_members
+from space_map_data.export.groups.membership import GroupSatcatStats
+from space_map_data.export.groups.small_body import LargestBody, _notable_members
+from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.notable import NotableObject, render_geometry
 from space_map_data.export.small_body_color import (
     resolve_moon_color,
@@ -87,6 +89,15 @@ class CategoryData:
         default_factory=dict
     )  # cat slug -> {year: count}
     launch_histograms: dict[str, dict[int, int]] = field(default_factory=dict)
+    # A category's headline member, inherited from whichever child group holds
+    # it (asteroid/comet classes) or ranked from PCK radii (planets, moons).
+    largest_bodies: dict[str, LargestBody] = field(default_factory=dict)
+    # Hazardous tally for the Asteroids page, mirroring the orbit-class cards.
+    pha_counts: dict[str, int] = field(default_factory=dict)
+    # Active/decayed roll-ups for the two Earth categories, in the same shape
+    # the membership-backed groups produce.
+    satcat_stats: dict[str, GroupSatcatStats] = field(default_factory=dict)
+    extra_stats: dict[str, GroupExtraStats] = field(default_factory=dict)
     # cat slug -> bar-chart rows (moons per planet/dwarf, distance-ordered).
     moon_counts: dict[str, list[dict]] = field(default_factory=dict)
     # cat slug -> {bare constellation slug: fleet size}; the Satellites page's
@@ -142,6 +153,38 @@ def _body_member(
         # tint stands) for planets/dwarfs and unmeasured moons.
         color=resolve_moon_color(naif_id)[0],
     )
+
+
+def _largest_by_radius(
+    session: Session, where, radii: dict[int, dict]
+) -> LargestBody | None:
+    """Biggest body matching ``where``, by mean PCK radius.
+
+    The small-body categories inherit a measured SBDB diameter from their
+    classes; the major bodies have no SBDB row, so their size comes from the
+    same PCK radii the renderer uses. Triaxial bodies average their axes.
+    """
+    best: LargestBody | None = None
+    rows = session.query(Object.id, Object.naif_id, Object.name).filter(where).all()
+    for obj_id, naif_id, name in rows:
+        axes = radii.get(naif_id) if naif_id is not None else None
+        if not axes:
+            continue
+        mean_radius = sum(axes[k] for k in ("a", "b", "c")) / 3
+        if best is None or mean_radius * 2 > best.diameter_km:
+            best = LargestBody(
+                name=name or obj_id,
+                diameter_km=mean_radius * 2,
+                primary_id=obj_id,
+                primary_type="object",
+            )
+    if best is None:
+        logger.info(
+            "No PCK radius for any of the %d bodies matching %s; no largest card",
+            len(rows),
+            where,
+        )
+    return best
 
 
 def _ranked_members(
@@ -266,9 +309,20 @@ def _dwarf_planet_members(
     return members
 
 
-def _moon_data(
-    session: Session, planet_elements: dict[int, dict]
-) -> tuple[int, list[dict]]:
+@dataclass
+class MoonTallies:
+    """Moon counts behind the Moons page's chart and the three moon stat cards."""
+
+    total: int = 0
+    # Bar-chart rows, ordered by the host's heliocentric distance.
+    rows: list[dict] = field(default_factory=list)
+    # Hosts that actually have a moon (Mercury/Venus keep a bar, at zero).
+    host_count: int = 0
+    planet_moons: int = 0
+    dwarf_moons: int = 0
+
+
+def _moon_data(session: Session, planet_elements: dict[int, dict]) -> MoonTallies:
     """Total moon count + per-planet/dwarf tallies for the Moons-page bar chart.
 
     A moon's host is its parent planet/dwarf; parents that are barycenters
@@ -365,7 +419,16 @@ def _moon_data(
         else:
             ranked.append((au, row))
     ranked.sort(key=lambda t: t[0])
-    return total, [row for _, row in ranked] + unranked
+    rows = [row for _, row in ranked] + unranked
+    return MoonTallies(
+        total=total,
+        rows=rows,
+        host_count=sum(1 for row in rows if row["n"]),
+        planet_moons=sum(host_counts.get(r.id, 0) for r in planet_rows),
+        # Dwarf hosts are already filtered to the ones with a moon; asteroid
+        # moons (in ``total``, charted nowhere) are excluded by construction.
+        dwarf_moons=sum(host_counts.get(r.id, 0) for r in dwarf_rows),
+    )
 
 
 def _star_member(
@@ -441,6 +504,7 @@ def build_category_data(
     feature_type_counts: dict[str, int],
     named_counts: dict[str, int],
     discovery_histograms: dict[str, dict[int, int]],
+    largest_bodies: dict[str, LargestBody],
     earth_orbit: EarthOrbitClassStats,
     radii: dict[int, dict],
     gms: dict[int, float],
@@ -454,10 +518,11 @@ def build_category_data(
     groups; used to drop empty zones and rank constellations.
     ``feature_type_counts`` is ``{ft- slug: feature count}``; it fills the
     Surface Features browse node, whose children are the feature-type pages.
-    ``discovery_histograms`` is keyed by small-body class slug and summed over
-    the orbit classes that partition each category. ``earth_orbit`` supplies the
-    same roll-up for Earth orbiters, already split payload/debris so Satellites
-    and Debris each get their own totals and launch chart.
+    ``discovery_histograms`` and ``largest_bodies`` are keyed by small-body
+    class slug and rolled up over the orbit classes that partition each
+    category. ``earth_orbit`` supplies the same roll-up for Earth orbiters,
+    already split payload/debris so Satellites and Debris each get their own
+    totals and launch chart.
     """
 
     def nonempty(slug: str) -> bool:
@@ -531,7 +596,8 @@ def build_category_data(
     )
     star = _star_member(session, radii, gms, orientation)
     probe_members, probes_total = _probe_members(session, radii, gms, orientation)
-    moons_total, moon_counts = _moon_data(session, planet_elements)
+    moons = _moon_data(session, planet_elements)
+    moons_total, moon_counts = moons.total, moons.rows
 
     # Most-populated type first: with 57 chips, alphabetical would bury craters.
     feature_types = sorted(
@@ -649,6 +715,52 @@ def build_category_data(
     solar_system = _solar_system_members(session, star, radii, gms, orientation)
     if solar_system:
         notable_members[SOLAR_SYSTEM_SLUG] = solar_system
+
+    # Stat cards. The small-body categories inherit the biggest member of any
+    # class that partitions them; the major-body ones rank PCK radii. Flags are
+    # excluded — a subset can't hold a body its own class doesn't.
+    def _largest_of(class_slugs: list[str]) -> LargestBody | None:
+        candidates = [b for s in class_slugs if (b := largest_bodies.get(s))]
+        return max(candidates, key=lambda b: b.diameter_km, default=None)
+
+    largest_out: dict[str, LargestBody | None] = {
+        ASTEROIDS_SLUG: _largest_of(asteroid_classes),
+        COMETS_SLUG: _largest_of(comet_classes),
+        PLANETS_SLUG: _largest_by_radius(
+            session, Object.object_type == ObjectType.planet, radii
+        ),
+        DWARF_PLANETS_SLUG: _largest_by_radius(
+            session, Object.object_type == ObjectType.dwarf_planet, radii
+        ),
+        MOONS_SLUG: _largest_by_radius(
+            session, Object.object_type == ObjectType.moon, radii
+        ),
+    }
+    # The Asteroids page mirrors its classes' hazardous card, over the whole
+    # category; the flag group is the same population, so its total is exact.
+    pha_total = member_counts.get(f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha", 0)
+
+    # How much of the fleet still works, over the primary shape classes (they
+    # partition the population, so summing double-counts nothing). Debris gets
+    # no such card: the handful of fragments SATCAT still calls operational is
+    # a data lag, not a fact about the population.
+    payloads = earth_orbit.payload_satcat_stats
+    satcat_out = {
+        SATELLITES_SLUG: GroupSatcatStats(
+            active=sum(payloads[s].active for s in primary_sat_slugs if s in payloads)
+        )
+    }
+
+    extra_stats = {
+        PLANETS_SLUG: GroupExtraStats(moon_total=moons.planet_moons),
+        DWARF_PLANETS_SLUG: GroupExtraStats(moon_total=moons.dwarf_moons),
+        MOONS_SLUG: GroupExtraStats(host_count=moons.host_count),
+        # Every breakup and spent stage the fragments trace back to. The chart
+        # below ranks them; only the tally says how long the tail is.
+        DEBRIS_SLUG: GroupExtraStats(
+            child_group_count=len(earth_orbit.debris_source_counts)
+        ),
+    }
     logger.info(
         "Built category data: planets=%d, dwarf planets=%d, moons=%d (%d notable, "
         "%d planet/dwarf hosts), asteroid zones=%d, comet families=%d, satellite "
@@ -677,6 +789,10 @@ def build_category_data(
         named_counts={ASTEROIDS_SLUG: asteroids_named} if asteroids_named else {},
         discovery_histograms=discovery_out,
         launch_histograms=launch_out,
+        largest_bodies={s: b for s, b in largest_out.items() if b},
+        pha_counts={ASTEROIDS_SLUG: pha_total} if pha_total else {},
+        satcat_stats=satcat_out,
+        extra_stats=extra_stats,
         moon_counts={MOONS_SLUG: moon_counts} if moon_counts else {},
         constellation_counts={
             slug: counts

@@ -3,7 +3,7 @@
 	import { NO_SURFACE_BODY_IDS } from '$lib/constants';
 	import { isNaturalBodyType } from '$lib/types/objects';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-	import { formatNumber, formatUnit, formatQuantity } from '$lib/format/quantities';
+	import { formatDensity, formatNumber, formatUnit, formatQuantity } from '$lib/format/quantities';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import { diameterKmFromH, BRIGHT_ALBEDO, DARK_ALBEDO } from '$lib/math/h-magnitude';
 	import { formatTemperature } from '$lib/format/temperature';
@@ -174,7 +174,7 @@
 			/>
 		{/if}
 		{#if wd?.density}
-			<Row label={m.property_name_density()} value={formatQuantity(wd.density)} />
+			<Row label={m.property_name_density()} value={formatDensity(wd.density)} />
 		{/if}
 		{#if wd?.surface_gravity}
 			<Row label={m.property_name_surface_gravity()} value={formatQuantity(wd.surface_gravity)} />

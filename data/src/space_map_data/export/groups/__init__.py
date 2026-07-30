@@ -11,7 +11,12 @@ import orjson
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.categories import DEBRIS_SLUG, SATELLITES_SLUG
+from space_map_data.constants.categories import (
+    COMETS_SLUG,
+    DEBRIS_SLUG,
+    PROBES_SLUG,
+    SATELLITES_SLUG,
+)
 from space_map_data.export.groups.bundles import write_group_bundles
 from space_map_data.export.groups.categories import build_category_data
 from space_map_data.export.groups.feature_type import build_feature_type_groups
@@ -49,7 +54,11 @@ from space_map_data.export.groups.solar_system_map import (
 from space_map_data.constants.comet_fragments import family_group_slug
 from space_map_data.export.notable import NotableObject, textured_object_ids
 from space_map_data.export.objects.fragments import build_comet_families
-from space_map_data.export.objects.missions import build_probe_missions
+from space_map_data.export.groups.stats import GroupExtraStats
+from space_map_data.export.objects.missions import (
+    build_probe_missions,
+    first_probe_launch_year,
+)
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object
@@ -67,6 +76,7 @@ class SplitCometGroups:
     member_counts: dict[str, int] = field(default_factory=dict)
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
     names: dict[str, str] = field(default_factory=dict)
+    extra_stats: dict[str, GroupExtraStats] = field(default_factory=dict)
 
 
 @dataclass
@@ -77,6 +87,7 @@ class MissionGroups:
     member_counts: dict[str, int] = field(default_factory=dict)
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
     primary_ids: dict[str, str] = field(default_factory=dict)
+    extra_stats: dict[str, GroupExtraStats] = field(default_factory=dict)
 
 
 def _mission_groups() -> MissionGroups:
@@ -100,6 +111,9 @@ def _mission_groups() -> MissionGroups:
         out.member_counts[mission.slug] = len(members)
         out.notable_members[mission.slug] = members
         out.primary_ids[mission.slug] = mission.primary_object_id
+        out.extra_stats[mission.slug] = GroupExtraStats(
+            launch_year=mission.launch_year, mission_status=mission.status
+        )
     logger.info("Mission group pages: %d", len(out.groups))
     return out
 
@@ -206,6 +220,47 @@ def _designation_qids() -> dict[str, list[str]]:
     return {designation: sorted(qids) for designation, qids in out.items()}
 
 
+def _split_comet_orbits(
+    session: Session, member_ids: dict[str, list[str]]
+) -> dict[str, GroupExtraStats]:
+    """Discovery year + perihelion per family, from its fragments' SBDB rows.
+
+    Fragments share the parent's orbit, so the smallest perihelion among them
+    stands for the family. The discovery year is the earliest observation of
+    any piece — the parent comet's own discovery, in practice.
+    """
+    all_ids = [oid for ids in member_ids.values() for oid in ids]
+    rows = {
+        object_id: (first_obs, q)
+        for object_id, first_obs, q in session.query(
+            SBDB.object_id, SBDB.first_obs, SBDB.q
+        ).filter(SBDB.object_id.in_(all_ids))
+    }
+    out: dict[str, GroupExtraStats] = {}
+    for slug, ids in member_ids.items():
+        years: list[int] = []
+        perihelia: list[float] = []
+        for object_id in ids:
+            first_obs, q = rows.get(object_id, (None, None))
+            if first_obs:
+                try:
+                    years.append(int(first_obs[:4]))
+                except ValueError:
+                    logger.info(
+                        "%s: unparseable first_obs %r, excluded from the "
+                        "discovery year",
+                        slug,
+                        first_obs,
+                    )
+            if q is not None:
+                perihelia.append(q)
+        out[slug] = GroupExtraStats(
+            discovery_year=min(years) if years else None,
+            perihelion_au=min(perihelia) if perihelia else None,
+        )
+    return out
+
+
 def _split_comet_groups(
     session: Session, wikidata_entities: WikidataEntityCache
 ) -> SplitCometGroups:
@@ -229,6 +284,7 @@ def _split_comet_groups(
     }
     out = SplitCometGroups()
     skipped: list[str] = []
+    member_ids: dict[str, list[str]] = {}
     by_designation = 0
     for family in families.values():
         if family.parent_object_id is not None:
@@ -258,6 +314,8 @@ def _split_comet_groups(
         out.member_counts[slug] = len(members)
         out.notable_members[slug] = members
         out.names[slug] = name
+        member_ids[slug] = [f.object_id for f in members]
+    out.extra_stats = _split_comet_orbits(session, member_ids)
     enriched = sum(1 for g in out.groups if g.wikidata_qid)
     logger.info(
         "Split-comet group pages: %d parentless families (%d with a Wikidata QID, "
@@ -320,6 +378,7 @@ def run_groups_tier(
             feature_types.member_counts,
             small_body_stats.named_counts,
             small_body_stats.discovery_histograms,
+            small_body_stats.largest_bodies,
             earth_orbit_stats,
             radii,
             gms,
@@ -378,6 +437,32 @@ def run_groups_tier(
     # carry no GroupSatcatStats.
     extra_histograms = dict(small_body_stats.discovery_histograms)
     extra_histograms.update(category_data.discovery_histograms)
+    extra_largest_bodies = dict(small_body_stats.largest_bodies)
+    extra_largest_bodies.update(category_data.largest_bodies)
+    extra_pha_counts = dict(small_body_stats.pha_counts)
+    extra_pha_counts.update(category_data.pha_counts)
+    # Categories carry no membership, so their active/decayed roll-up joins the
+    # per-type stats map the writer flattens.
+    build.stats[GroupType.CATEGORY] = category_data.satcat_stats
+
+    extra_stats: dict[str, GroupExtraStats] = {
+        **category_data.extra_stats,
+        **split_comets.extra_stats,
+        **missions.extra_stats,
+    }
+    for slug, median in earth_orbit_stats.median_perigees.items():
+        extra_stats.setdefault(slug, GroupExtraStats()).median_perigee_km = median
+    for slug, moid in small_body_stats.median_moids.items():
+        extra_stats.setdefault(slug, GroupExtraStats()).median_moid_au = moid
+    # The Comets and Probes pages are lists of child groups; their own tally is
+    # the one number the chips below don't add up to.
+    extra_stats.setdefault(COMETS_SLUG, GroupExtraStats()).child_group_count = len(
+        split_comets.groups
+    )
+    extra_stats.setdefault(PROBES_SLUG, GroupExtraStats()).child_group_count = len(
+        missions.groups
+    )
+    extra_stats[PROBES_SLUG].launch_year = first_probe_launch_year()
 
     write_earth_membership(out_dir, build.membership)
     write_orbit_samples(out_dir, small_body_stats.orbit_samples)
@@ -392,8 +477,9 @@ def run_groups_tier(
         extra_member_counts=extra_member_counts,
         extra_histograms=extra_histograms,
         extra_launch_histograms=category_data.launch_histograms,
-        extra_largest_bodies=small_body_stats.largest_bodies,
-        extra_pha_counts=small_body_stats.pha_counts,
+        extra_largest_bodies=extra_largest_bodies,
+        extra_pha_counts=extra_pha_counts,
+        extra_stats=extra_stats,
         extra_named_counts=extra_named_counts,
         extra_notable_members=extra_notable_members,
         extra_moon_counts=category_data.moon_counts,

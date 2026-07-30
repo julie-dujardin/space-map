@@ -3,7 +3,7 @@
 	import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import { formatNumber, formatQuantity, formatUnit } from '$lib/format/quantities';
-	import { formatIsoDate } from '$lib/format/date';
+	import { formatApprovalDate } from '$lib/format/date';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import Section from './kit/Section.svelte';
@@ -151,7 +151,7 @@
 		<Row label={m.feature_elevation()} value={formatQuantity(wd.elevation)} />
 	{/if}
 	{#if glb?.approval_date}
-		<Row label={m.feature_named_date()} value={formatIsoDate(glb.approval_date)} />
+		<Row label={m.feature_named_date()} value={formatApprovalDate(glb.approval_date)} />
 	{/if}
 	{#if glb?.origin}
 		<Row label={m.feature_origin()}>

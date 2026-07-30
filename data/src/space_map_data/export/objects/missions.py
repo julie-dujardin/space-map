@@ -7,6 +7,8 @@ row with ``primary_qid`` + ``mission_slug`` and each sibling **member** with
 Both link to the mission group page, whose focus resolves to the primary probe.
 """
 
+import datetime
+import json
 import logging
 from dataclasses import dataclass, field
 
@@ -14,11 +16,19 @@ from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.notable import NotableObject, notable_entries, notable_names
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.probes.landing_events import EVENTS_DIR
 from space_map_data.probes.probe_id import load_registry
 
 logger = logging.getLogger(__name__)
 
 MISSION_SLUG_PREFIX = "mission-"
+
+_MJD_ZERO = datetime.date(1858, 11, 17)
+
+# The events files track each craft's physical fate; a mission page only wants
+# to know whether anything is still flying it.
+_STILL_FLYING = frozenset({"active", "in_transit"})
+_LOST = frozenset({"lost"})
 
 
 @dataclass
@@ -30,6 +40,61 @@ class ProbeMission:
     primary_object_id: str  # "probe-<primary_probe_id>"
     primary: NotableObject
     members: list[NotableObject] = field(default_factory=list)  # siblings, ranked
+    launch_year: int | None = None
+    # "operating" | "lost" | "ended", from the primary's curated event row.
+    status: str | None = None
+
+
+def _probe_statuses() -> dict[str, str]:
+    """Curated craft status by COSPAR id and by name, from the events files.
+
+    Both keys are needed: pre-COSPAR and never-catalogued craft (Comet
+    Interceptor) carry no id, and registry names match the events files.
+    """
+    out: dict[str, str] = {}
+    for path in sorted(EVENTS_DIR.glob("*.json")):
+        try:
+            probes = json.loads(path.read_text()).get("probes", [])
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Probe events file %s unreadable (%s); skipped", path, exc)
+            continue
+        for probe in probes:
+            status = probe.get("status")
+            if not status:
+                continue
+            if cospar := probe.get("cospar_id"):
+                out[cospar] = status
+            if name := probe.get("name"):
+                out.setdefault(name, status)
+    return out
+
+
+def _mission_status(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    if raw in _STILL_FLYING:
+        return "operating"
+    return "lost" if raw in _LOST else "ended"
+
+
+def _launch_year(inception_mjd: int | None) -> int | None:
+    if inception_mjd is None:
+        return None
+    return (_MJD_ZERO + datetime.timedelta(days=int(inception_mjd))).year
+
+
+def first_probe_launch_year() -> int | None:
+    """Earliest launch year across every registered probe, for the Probes page.
+
+    Wider than the mission pages: most probes fly outside a multi-craft mission,
+    and the first of them predates every mission group.
+    """
+    years = [
+        year
+        for entry in load_registry()
+        if (year := _launch_year(entry.get("inception_mjd"))) is not None
+    ]
+    return min(years) if years else None
 
 
 def _notable(entry: dict) -> NotableObject:
@@ -51,6 +116,8 @@ def build_probe_missions() -> list[ProbeMission]:
     are ranked by Wikidata-label presence then fallback name for a stable strip.
     """
     registry = load_registry()
+    statuses = _probe_statuses()
+    unmatched: list[str] = []
     members_by_primary: dict[int, list[dict]] = {}
     for entry in registry:
         primary = entry.get("primary_probe_id")
@@ -67,6 +134,13 @@ def build_probe_missions() -> list[ProbeMission]:
         member_rows.sort(
             key=lambda r: (r.get("wikidata_qid") is None, r.get("name") or "")
         )
+        # The mission's state is its primary craft's; siblings are stages and
+        # landers whose own fates the page lists individually.
+        raw_status = statuses.get(entry.get("cospar_id") or "") or statuses.get(
+            entry.get("name") or ""
+        )
+        if raw_status is None:
+            unmatched.append(entry.get("name") or slug)
         missions.append(
             ProbeMission(
                 slug=f"{MISSION_SLUG_PREFIX}{slug}",
@@ -74,12 +148,17 @@ def build_probe_missions() -> list[ProbeMission]:
                 primary_object_id=f"probe-{entry['probe_id']}",
                 primary=_notable(entry),
                 members=[_notable(r) for r in member_rows],
+                launch_year=_launch_year(entry.get("inception_mjd")),
+                status=_mission_status(raw_status),
             )
         )
     logger.info(
-        "Built %d probe missions (%d member craft total)",
+        "Built %d probe missions (%d member craft total); %d with no curated "
+        "status: %s",
         len(missions),
         sum(len(m.members) for m in missions),
+        len(unmatched),
+        ", ".join(sorted(unmatched)) if unmatched else "[]",
     )
     return missions
 

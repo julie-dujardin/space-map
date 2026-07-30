@@ -60,6 +60,7 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.groups.small_body import LargestBody
+from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.images import collect_group_images
 from space_map_data.export.notable import (
     NotableObject,
@@ -120,6 +121,7 @@ def _build_global(
     lv_stats: LaunchVehicleStats | None,
     orbit_classes: list[str] | None,
     ft_stats: FeatureTypeStats | None,
+    extra_stats: GroupExtraStats | None,
 ) -> dict:
     data: dict = {
         "slug": group.slug,
@@ -207,6 +209,8 @@ def _build_global(
             data["feature_bodies"] = ft_stats.bodies
         if ft_stats.largest:
             data["largest_feature"] = ft_stats.largest
+        if ft_stats.median_diameter_km is not None:
+            data["median_diameter_km"] = ft_stats.median_diameter_km
         if ft_stats.first_approval:
             data["first_approval_date"] = ft_stats.first_approval
         if ft_stats.last_approval:
@@ -223,8 +227,8 @@ def _build_global(
         data["largest_body"] = {
             "name": largest_body.name,
             "diameter_km": largest_body.diameter_km,
-            "primary_type": "spkid",
-            "primary_id": largest_body.spkid,
+            "primary_type": largest_body.primary_type,
+            "primary_id": largest_body.primary_id,
         }
     # Only asteroid classes + the Asteroids category carry a named count.
     if named_count:
@@ -243,6 +247,9 @@ def _build_global(
     # Focus redirect for mission pages (fly to the primary probe, not a filter).
     if primary_id:
         data["primary"] = {"primary_type": "object", "primary_id": primary_id}
+    # Page-specific stat-row facts (medians, moon totals, mission status).
+    if extra_stats is not None:
+        data.update(extra_stats.to_dict())
     if extracted:
         websites = extracted.get("website")
         if websites:
@@ -739,6 +746,7 @@ def write_group_bundles(
     extra_launch_histograms: dict[str, dict[int, int]] | None = None,
     extra_largest_bodies: dict[str, LargestBody] | None = None,
     extra_pha_counts: dict[str, int] | None = None,
+    extra_stats: dict[str, GroupExtraStats] | None = None,
     extra_named_counts: dict[str, int] | None = None,
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
     extra_moon_counts: dict[str, list[dict]] | None = None,
@@ -823,6 +831,7 @@ def write_group_bundles(
             lv_stats,
             (constellation_orbit_classes or {}).get(group.slug),
             ft_stats,
+            (extra_stats or {}).get(group.slug),
         )
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
         child_counts = (child_counts_by_group or {}).get(group.slug)

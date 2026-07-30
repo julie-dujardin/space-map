@@ -97,7 +97,11 @@ interface GlobalGroupData {
   launch_histogram?: Record<string, number>;  // year string → count, sorted ascending
   first_launch_date?: string;                 // Earliest SATCAT launch_date among members (ISO date string)
   active_count?: number;                      // Members with ops_status operational/partial/extended and no decay
-  decayed_count?: number;                     // Members with a SATCAT decay_date
+                                              // Also on cat-satellites, summed over the primary shape classes.
+                                              // Not on cat-debris: the few fragments SATCAT still calls
+                                              // operational are a data lag, not a fact about the population.
+  decayed_count?: number;                     // Members with a SATCAT decay_date. Absent on the zone (class-)
+                                              // and category pages: that scan counts current occupancy only.
 
   // Launch-vehicle groups (lv-<slug>) only. Computed from the GCAT launchlog,
   // not SATCAT — so launch_histogram + first_launch_date above are overridden
@@ -136,18 +140,23 @@ interface GlobalGroupData {
   // categories, summed over their constituent orbit classes (flags excluded).
   discovery_histogram?: Record<string, number>;  // year string → count, sorted ascending
 
-  // Member with the largest SBDB.diameter; absent when no member has a
-  // measured diameter. Present on orbit_class groups and on flag-neo/flag-pha.
+  // Biggest member by diameter; absent when nothing has a measured size.
+  // Present on orbit_class groups, flag-neo/flag-pha, and the Asteroids /
+  // Comets / Planets / Dwarf planets / Moons categories. The small-body ones
+  // inherit the largest of whatever classes partition them, measured from
+  // SBDB; the major-body categories rank the PCK radii the renderer uses and
+  // report 2 × the mean of the three axes.
   largest_body?: {
-    name: string;        // SBDB full_name (fallback: name, pdes, spkid)
+    name: string;        // SBDB full_name (fallback: name, pdes, spkid) or Object.name
     diameter_km: number; // equivalent-sphere diameter
-    primary_type: "spkid";
-    primary_id: string;  // SBDB.spkid; route /o/spkid-<id>
+    primary_type: "spkid" | "object";  // "object" ids are whole; spkid ones need the prefix
+    primary_id: string;  // SBDB.spkid → /o/spkid-<id>, or Object.id → /<type>/<id>
   };
 
-  // PHA member count for orbit_class groups; absent when 0 and on flag-pha
-  // itself (self-link suppressed). NEO is intentionally not shipped — by
-  // definition it's 100 % on IEO/ATE/APO/AMO and 0 % on every other class.
+  // PHA member count for orbit_class groups and the Asteroids category;
+  // absent when 0 and on flag-pha itself (self-link suppressed). NEO is
+  // intentionally not shipped — by definition it's 100 % on IEO/ATE/APO/AMO
+  // and 0 % on every other class.
   pha?: { n: number; primary_type: "group"; primary_id: "flag-pha" };
 
   // Top 20 members picked at export time, ordered by
@@ -195,6 +204,8 @@ interface GlobalGroupData {
   first_approval_date?: string;               // Earliest IAU name-approval date among the features (ISO date)
   last_approval_date?: string;                // Latest IAU name-approval date (ISO date)
   approval_histogram?: Record<string, number>; // Approval year string → count, sorted ascending
+  median_diameter_km?: number;                // Typical size of the landform; absent when under 5 members
+                                              // — or under half of them — carry a measured diameter
 
   // `cat-surface-features` (the browse node above the ft- pages) only. Its
   // member_count is the whole gazetteer's feature tally, `body_count` above
@@ -212,6 +223,19 @@ interface GlobalGroupData {
 
   // `mission` groups only — focus redirect to the primary probe (not a filter).
   primary?: { primary_type: "object"; primary_id: string };  // "probe-<id>"
+
+  // Stat-row facts, one page family each (export/groups/stats.py). Every one
+  // is optional and only the pages listed emit it.
+  median_perigee_km?: number;   // earth_orbit_class — typical perigee of the zone's population
+  median_moid_au?: number;      // flag-neo / flag-pha — typical Earth MOID
+  moon_total?: number;          // cat-planets / cat-dwarf-planets — moons hosted across the category
+  host_count?: number;          // cat-moons — planet/dwarf hosts that have at least one moon
+  child_group_count?: number;   // cat-comets (split families), cat-probes (missions),
+                                // cat-debris (distinct fragment sources)
+  launch_year?: number;         // mission- (its launch), cat-probes (the first probe launch)
+  mission_status?: "operating" | "lost" | "ended";  // mission- — the primary craft's curated status
+  discovery_year?: number;      // comet-family- — earliest first_obs among the fragments
+  perihelion_au?: number;       // comet-family- — smallest fragment perihelion (the family's orbit)
 
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)
@@ -341,7 +365,7 @@ The 17 Earth orbit zones from
 `membership/earth.json.gz`, and bucket pages under `groups/__global__/`
 and `groups/{lang}/` — the same shape as constellation/organization/etc.
 groups. Per-class bundles carry `launch_histogram`, `first_launch_date`,
-`active_count`, plus a localized `constellations` cross-link table
+`active_count`, `median_perigee_km`, plus a localized `constellations` cross-link table
 (no `launch_sites` breakdown). An object holds exactly one shape class plus at most
 one inclination band (e.g. VLEO + SSO) — membership rules in
 `classify_earth_orbit`.

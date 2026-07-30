@@ -16,6 +16,7 @@
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import { dominantPlanetId, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 	import { currentStateFromElements } from '$lib/math/orbit/state';
+	import { diameterKmFromH } from '$lib/math/h-magnitude';
 	import { sgp4State } from '$lib/math/orbit/sgp4';
 	import { AU_KM, AU_SCALE, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
 	import { EARTH_ID } from '$lib/constants';
@@ -123,19 +124,14 @@
 
 	let stats = $derived(probeStats ?? earthSatStats);
 
-	type Tone = 'medium' | 'low';
-
 	interface Card {
 		label: string;
 		value: string;
 		tooltip?: string;
-		tone?: Tone;
+		/** Same convention as the group stat row: a dot only where the colour
+		 *  means something, and the same green/amber/red for good/degraded/bad. */
+		dot?: string;
 	}
-
-	const toneClasses: Record<Tone, string> = {
-		medium: 'border-yellow-500/40 bg-yellow-500/15',
-		low: 'border-red-500/40 bg-red-500/15'
-	};
 
 	// Glanceable trio for natural bodies, each block first-available: a physical
 	// magnitude, orbital speed, then rotation period (falling back to a live
@@ -147,20 +143,37 @@
 		const wd = global?.wikidata;
 		const radii = global?.radii;
 
-		// Block 1 — mass, else equatorial radius (the X axis), else diameter.
-		if (sbdb?.mass) out.push({ label: m.property_name_mass(), value: formatQuantity(sbdb.mass) });
-		else if (wd?.mass) out.push({ label: m.property_name_mass(), value: formatQuantity(wd.mass) });
-		else if (radii)
-			out.push({
-				label: m.property_name_radius(),
-				value: formatQuantity({ value: radii.a, unit: 'kilometre' }, true)
-			});
-		else if (wd?.radius)
-			out.push({ label: m.property_name_radius(), value: formatQuantity(wd.radius) });
-		else if (sbdb?.diameter != null)
+		// Block 1 — a size, in kilometres. Wikidata stores mass in whatever unit
+		// its source used (exagram, zettagram, yottagram), which reads as noise
+		// at a glance, so it only stands in for the dozen small moons that have
+		// no measured size at all. Triaxial bodies average their axes; the
+		// per-axis figures are in the Physical panel.
+		const diameterKm =
+			sbdb?.diameter ?? (radii ? ((radii.a + radii.b + radii.c) / 3) * 2 : undefined);
+		if (diameterKm != null)
 			out.push({
 				label: m.diameter(),
-				value: formatQuantity({ value: sbdb.diameter, unit: 'kilometre' }, true)
+				value: formatQuantity({ value: diameterKm, unit: 'kilometre' }, true)
+			});
+		else if (wd?.radius)
+			out.push({
+				label: m.diameter(),
+				value: formatQuantity({ value: wd.radius.value * 2, unit: wd.radius.unit }, true)
+			});
+		else if (sbdb?.H != null)
+			// No measured size: the H-magnitude estimate, as in the Physical panel.
+			out.push({
+				label: m.diameter(),
+				value: formatQuantity(
+					{ value: diameterKmFromH(sbdb.H, sbdb.albedo ?? undefined), unit: 'kilometre' },
+					true
+				),
+				tooltip: m.tooltip_diameter_estimated()
+			});
+		else if (sbdb?.mass ?? wd?.mass)
+			out.push({
+				label: m.property_name_mass(),
+				value: formatQuantity((sbdb?.mass ?? wd?.mass)!)
 			});
 
 		// Block 2 — orbital speed via vis-viva from the body's own elements.
@@ -212,19 +225,17 @@
 		const cc = sbdb?.condition_code;
 		if (cc != null) {
 			if (out.length >= 3) out.pop();
-			// High keeps the default card styling; only degraded accuracy gets a tint.
-			const tone: Tone | undefined = cc <= 2 ? undefined : cc <= 5 ? 'medium' : 'low';
-			const value =
-				tone === undefined
-					? m.position_accuracy_high()
-					: tone === 'medium'
-						? m.position_accuracy_medium()
-						: m.position_accuracy_low();
+			const [value, dot] =
+				cc <= 2
+					? [m.position_accuracy_high(), 'bg-emerald-400']
+					: cc <= 5
+						? [m.position_accuracy_medium(), 'bg-amber-400']
+						: [m.position_accuracy_low(), 'bg-rose-400'];
 			out.push({
 				label: m.position_accuracy(),
 				value,
 				tooltip: m.tooltip_position_accuracy({ code: cc }),
-				tone
+				dot
 			});
 		}
 		return out;
@@ -264,12 +275,17 @@
 
 {#snippet cardBody(c: Card, props: Record<string, unknown>)}
 	<div
-		class="pointer-events-auto flex flex-col gap-1 rounded-md border p-2.5 {c.tone
-			? toneClasses[c.tone]
-			: 'border-border/60 bg-muted/40'} {c.tooltip ? 'cursor-help' : ''}"
+		class="border-border/60 bg-muted/40 pointer-events-auto flex flex-col gap-1 rounded-md border p-2.5 {c.tooltip
+			? 'cursor-help'
+			: ''}"
 		{...props}
 	>
-		<div class="text-muted-foreground text-[10px] uppercase">{c.label}</div>
+		<div class="text-muted-foreground flex items-center gap-1.5 text-[10px] uppercase">
+			{#if c.dot}
+				<span class="inline-block size-1.5 rounded-full {c.dot}"></span>
+			{/if}
+			{c.label}
+		</div>
 		<div class="text-sm font-semibold tabular-nums">{c.value}</div>
 	</div>
 {/snippet}
