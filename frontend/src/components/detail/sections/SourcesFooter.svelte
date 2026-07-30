@@ -85,6 +85,11 @@
 			add('naif', m.source_spice_pck_name(), 'https://naif.jpl.nasa.gov/naif/');
 		}
 
+		// Atmospheric facts carry their own per-value citations, so these are
+		// exact rather than inferred like the rest of this list.
+		for (const source of global?.atmosphere?.sources ?? [])
+			add(source.url, source.title, source.url);
+
 		// Surface-feature names come from the IAU gazetteer (hosted by USGS).
 		if (nomenclature || global?.type === 'feature' || global?.has_nomenclature)
 			add('iau-naming', m.source_iau_naming_name(), 'https://planetarynames.wr.usgs.gov/');

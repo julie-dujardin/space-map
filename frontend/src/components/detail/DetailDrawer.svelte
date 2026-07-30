@@ -48,6 +48,7 @@
 	import ObjectDescription from './sections/ObjectDescription.svelte';
 	import SourcesFooter from './sections/SourcesFooter.svelte';
 	import Physical from './sections/Physical.svelte';
+	import Atmosphere from './sections/Atmosphere.svelte';
 	import ObjectStats from './sections/ObjectStats.svelte';
 	import SatCrossRefs from './sections/SatCrossRefs.svelte';
 	import Orbital from './sections/Orbital.svelte';
@@ -912,6 +913,7 @@
 				/>
 			{:else if body}
 				<Physical global={data?.global ?? null} />
+				<Atmosphere global={data?.global ?? null} />
 				<Orbital
 					global={data?.global ?? null}
 					localized={data?.localized ?? null}

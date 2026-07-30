@@ -71,6 +71,20 @@
 	--chart-3: oklch(0.546 0.245 262.881);
 	--chart-4: oklch(0.488 0.243 264.376);
 	--chart-5: oklch(0.424 0.199 265.638);
+	/* Gas-species slots for atmosphere composition bars. A categorical set:
+	   hues carry identity (H₂ is the same blue everywhere), so they are
+	   assigned per species, never per rank. Steps are the light-surface arm of
+	   a palette checked for CVD separation and contrast; --gas-trace is the
+	   neutral "everything else" bucket. */
+	--gas-1: #2a78d6;
+	--gas-2: #eb6834;
+	--gas-3: #1baf7a;
+	--gas-4: #eda100;
+	--gas-5: #e87ba4;
+	--gas-6: #008300;
+	--gas-7: #4a3aa7;
+	--gas-8: #e34948;
+	--gas-trace: oklch(0.556 0 0);
 	--radius: 0.625rem;
 	--sidebar: oklch(0.985 0 0);
 	--sidebar-foreground: oklch(0.145 0 0);
@@ -139,6 +153,17 @@ body {
 	--chart-3: oklch(0.546 0.245 262.881);
 	--chart-4: oklch(0.488 0.243 264.376);
 	--chart-5: oklch(0.424 0.199 265.638);
+	/* Dark arm of the gas-species palette — re-stepped against the dark
+	   surface, not a flip of the light values. */
+	--gas-1: #3987e5;
+	--gas-2: #d95926;
+	--gas-3: #199e70;
+	--gas-4: #c98500;
+	--gas-5: #d55181;
+	--gas-6: #008300;
+	--gas-7: #9085e9;
+	--gas-8: #e66767;
+	--gas-trace: oklch(0.708 0 0);
 	--sidebar: oklch(0.205 0 0);
 	--sidebar-foreground: oklch(0.985 0 0);
 	--sidebar-primary: oklch(0.488 0.243 264.376);

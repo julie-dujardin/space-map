@@ -52,6 +52,24 @@ interface GlobalObjectData {
     mission?: { name: string; primary_type: "object"; primary_id: string }; // observing spacecraft (mission shapes only); primary_id is "probe-<id>"
   };
   render_quality?: "high" | "medium" | "low"; // best-available-asset render tier: high = faithful 3D model (spacecraft/mission/radar), map texture, or procedural star surface; medium = lightcurve-inversion convex hull only; low = size-only sphere/ellipsoid (PCK radii or SBDB diameter). Absent → no known physical extent, halo/point at best
+  atmosphere?: {                      // cited atmospheric facts for the ~24 bodies with a measured envelope (see below)
+    type: string;                     // "stellar_atmosphere" | "gas_giant_envelope" | "thick_atmosphere" | "thin_atmosphere" | "tenuous_collisional" | "tenuous_exosphere" | "exosphere" | "transient_exosphere" | "localized_plume" | "frozen_collapsed" | "none_detected"
+    note?: string;                    // what sustains or varies it ("volcanic", "seasonal_orbit", "sputtered_ice", …); the frontend holds the sentence
+    pressure?: {
+      pa: number;                     // pressure at the level below
+      level: string;                  // "surface" | "sea_level" | "areoid" | "cloud_top" | "one_bar" | "photosphere"
+      qualifier?: "upper_limit" | "approximate" | "variable";
+    };
+    composition?: {                   // omitted below two species — a share needs something to be a share of
+      unit: "volume_fraction" | "mass_fraction" | "column_density" | "number_density";
+      species: Array<{
+        formula: string;              // "CO2", "He-4" (isotopes keep the mass number)
+        share: number;                // normalized over the listed species, descending
+        limit?: boolean;              // non-detection upper limit, not a measured abundance
+      }>;
+    };
+    sources: Array<{ title: string; url: string }>; // works the values are read off, deduped, pressure source first
+  };
   has_rings?: boolean;                // only present if true; full ring metadata (channels, geometry, attribution) lives in systems/{bary}.json
   clouds?: {                          // only when a cloud overlay was ingested for this body; mirrors systems/{bary}.json
     id: string;                       // export bundle id, e.g. "naif-399_clouds" — used to compose /v1/textures/{id}/{tier}_{frame}.webp
@@ -271,6 +289,27 @@ interface QuantityWithUnit { value: number; unit: string; }
 // Currencies use ISO 4217 codes (e.g. "EUR", "USD")
 interface CurrencyQuantity { value: number; currency: string; }
 ```
+
+### `atmosphere`
+
+Hand-curated in `data/src/space_map_data/constants/atmosphere/facts.py`, one
+entry per body with a measured gaseous envelope (24 today), each value citing a
+key in `ATMOSPHERE_FACT_SOURCES`. Distinct from `v1/atmospheres.json`, which
+states the same atmospheres at whichever level their shell is *rendered* from —
+Venus at its cloud top, the giants at a ~0.3 bar deck. This block quotes the
+level a reader expects: the surface where there is one, the 0.1 bar cloud deck
+for the giants, the photosphere for the Sun. Where the two disagree at the same
+level, `tests/export/test_atmosphere_facts.py` fails.
+
+`note` names *why* an atmosphere behaves as it does where the classification
+leaves that unsaid — Io's snowing out each eclipse, Pluto's following its orbit.
+Only the key ships, so the sentence stays translatable.
+
+`share` is normalized over the species listed, so what it is a share *of*
+depends on `unit`: a real mixing ratio for volume/mass fractions, but for the
+thin envelopes a ratio of column or number densities measured separately, at
+different times and geometries. The frontend says so in a tooltip and hatches
+`limit` species.
 
 ## Localized (`objects/{lang}/{bucket}.json.gz`)
 

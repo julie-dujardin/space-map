@@ -214,6 +214,7 @@ export interface GlobalObjectData {
 	 *  or procedural star surface; medium = lightcurve convex hull only; low =
 	 *  size-only sphere/ellipsoid. Absent → no known physical extent (halo/point). */
 	render_quality?: 'high' | 'medium' | 'low';
+	atmosphere?: AtmosphereBlock;
 	images?: ObjectImage[];
 	sbdb_primary_designation?: string;
 	provisional_designation?: string;
@@ -414,6 +415,35 @@ export interface ModelSource {
 	archive_url?: string;
 	/** Observing spacecraft (mission shapes only), linking to its probe page. */
 	mission?: FragmentOf;
+}
+
+/** Cited atmospheric facts for the ~two dozen bodies that have a measured
+ *  gaseous envelope. Distinct from the render parameters in
+ *  `v1/atmospheres.json`: those are stated at whichever level the shell is
+ *  drawn from, these at the level a reader expects (surface, or the cloud
+ *  deck for the giants). */
+export interface AtmosphereBlock {
+	/** Enum from the pipeline, e.g. "exosphere", "gas_giant_envelope". */
+	type: string;
+	/** What sustains or varies this atmosphere ("volcanic", "seasonal_orbit",
+	 *  …) — the frontend holds the sentence, the pipeline only the key. */
+	note?: string;
+	pressure?: {
+		pa: number;
+		/** Reference level the pressure is quoted at ("surface", "cloud_top", …). */
+		level: string;
+		qualifier?: 'upper_limit' | 'approximate' | 'variable';
+	};
+	composition?: {
+		/** What the shares are shares OF — thin envelopes only have per-species
+		 *  column or number densities, never a mixing ratio. */
+		unit: 'volume_fraction' | 'mass_fraction' | 'column_density' | 'number_density';
+		/** Normalized over the listed species, descending. `limit` marks a
+		 *  non-detection upper limit rather than a measured abundance. */
+		species: { formula: string; share: number; limit?: boolean }[];
+	};
+	/** Works the numbers come from, deduped per body. */
+	sources?: { title: string; url: string }[];
 }
 
 // --- Localized object data ---
