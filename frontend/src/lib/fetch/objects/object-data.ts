@@ -18,6 +18,17 @@ export interface CurrencyQuantity {
 	currency: string;
 }
 
+/** Where on the body a temperature applies; ordered headline-first by the exporter. */
+export type TemperaturePart = 'surface' | 'photosphere' | 'corona' | 'core';
+
+/** Readings for one part. Always kelvin, so log positioning stays valid. */
+export interface TemperatureEntry {
+	part: TemperaturePart;
+	min?: QuantityWithUnit;
+	mean?: QuantityWithUnit;
+	max?: QuantityWithUnit;
+}
+
 /**
  * Per-image thumbnail manifest emitted by the exporter.
  *
@@ -320,9 +331,7 @@ export interface GlobalObjectData {
 		surface_gravity?: QuantityWithUnit;
 		absolute_magnitude?: number;
 		apparent_magnitude?: number;
-		temperature?: QuantityWithUnit;
-		min_temperature?: QuantityWithUnit;
-		max_temperature?: QuantityWithUnit;
+		temperatures?: TemperatureEntry[];
 		population?: number;
 		website?: string[];
 		blog?: string[];

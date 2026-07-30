@@ -833,8 +833,6 @@
 	"credits_see_all": "عرض الاعتمادات الكاملة",
 	"credits_other_bodies": "أجرام أخرى",
 	"credits_images_individual_note": "راجع كل صورة على حدة للاطلاع على الاعتمادات والترخيص",
-	"min_temperature": "أدنى درجة حرارة",
-	"max_temperature": "أقصى درجة حرارة",
 	"unit_earth_mass_count": [
 		{
 			"declarations": ["input count", "input display", "local countPlural = count: plural"],
@@ -945,6 +943,19 @@
 	"model_provenance_radar": "نموذج شكل ثلاثي الأبعاد من رادار أرضي",
 	"model_provenance_lightcurve": "نموذج شكل ثلاثي الأبعاد من عكس منحنى الضوء",
 	"attitude_source_spice_ck": "التوجيه من نوى SPICE",
+	"temperature_of_surface": "درجة حرارة السطح",
+	"temperature_of_photosphere": "درجة حرارة الغلاف الضوئي",
+	"temperature_of_corona": "درجة حرارة الإكليل",
+	"temperature_of_core": "درجة حرارة النواة",
+	"temperature_part_surface": "السطح",
+	"temperature_part_photosphere": "الغلاف الضوئي",
+	"temperature_part_corona": "الإكليل",
+	"temperature_part_core": "النواة",
+	"temperature_reading_min": "أدنى",
+	"temperature_reading_mean": "متوسط",
+	"temperature_reading_max": "أقصى",
+	"tooltip_temperature_scale": "الموضع على مقياس ثابت من الصفر المطلق إلى 1000 كلفن. يشير الشريط الأخضر إلى النطاق الذي يكون فيه الماء سائلًا عند ضغط جوي واحد.",
+	"tooltip_temperature_scale_stellar": "الموضع على مقياس لوغاريتمي من 1000 كلفن إلى 100 مليون كلفن، ملوَّن باللون الذي يشعّه الجسم الأسود عند تلك الدرجة.",
 	"attitude_source_estimated": "توجيه تقديري",
 	"country_count": [
 		{
@@ -1395,6 +1406,7 @@
 	"unit_symbol_attometre": "‎am‎",
 	"unit_symbol_centimetre": "سم",
 	"unit_symbol_centimetre_per_square_second": "‎cm/s²‎",
+	"unit_symbol_degree_celsius": "‎°C‎",
 	"unit_symbol_degree_fahrenheit": "‎°F‎",
 	"unit_symbol_deutsche_mark": "‎DM‎",
 	"unit_symbol_earth_mass": "‎M⊕‎",

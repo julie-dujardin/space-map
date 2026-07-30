@@ -800,8 +800,6 @@
 	"credits_see_all": "查看完整鸣谢",
 	"credits_other_bodies": "其他天体",
 	"credits_images_individual_note": "请查看各图片以获取署名和许可信息",
-	"min_temperature": "最低温度",
-	"max_temperature": "最高温度",
 	"unit_earth_mass_count": [
 		{
 			"declarations": ["input count", "input display", "local countPlural = count: plural"],
@@ -902,6 +900,19 @@
 	"model_provenance_radar": "来自地基雷达的三维形状模型",
 	"model_provenance_lightcurve": "来自光变曲线反演的三维形状模型",
 	"attitude_source_spice_ck": "基于 SPICE 内核的姿态",
+	"temperature_of_surface": "表面温度",
+	"temperature_of_photosphere": "光球温度",
+	"temperature_of_corona": "日冕温度",
+	"temperature_of_core": "核心温度",
+	"temperature_part_surface": "表面",
+	"temperature_part_photosphere": "光球",
+	"temperature_part_corona": "日冕",
+	"temperature_part_core": "核心",
+	"temperature_reading_min": "最低",
+	"temperature_reading_mean": "平均",
+	"temperature_reading_max": "最高",
+	"tooltip_temperature_scale": "在从绝对零度到 1000 K 的固定标度上的位置。绿色区段表示 1 个大气压下水呈液态的范围。",
+	"tooltip_temperature_scale_stellar": "在 1000 K 到 1 亿 K 对数标度上的位置，颜色为该温度下黑体所发出的颜色。",
 	"attitude_source_estimated": "姿态为估计值",
 	"country_count": [
 		{

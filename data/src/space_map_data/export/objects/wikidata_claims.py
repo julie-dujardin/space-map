@@ -15,6 +15,8 @@ from space_map_data.export.wikidata import (
     WikidataEntity,
     WikidataEntityCache,
     active_statements,
+    prefer_rank,
+    undeprecated_statements,
 )
 
 logger = logging.getLogger(__name__)
@@ -174,7 +176,7 @@ GLOBAL_CLAIMS = (
     GlobalClaim("surface_gravity", "P7015", "quantity"),
     GlobalClaim("absolute_magnitude", "P1457", "quantity", needs_unit=False),
     GlobalClaim("apparent_magnitude", "P1215", "quantity", needs_unit=False),
-    # temperature (P2076) is handled separately — see P1480 routing below.
+    # P2076/P7422/P6591 fold into the `temperatures` list — see _route_temperatures.
     GlobalClaim("min_temperature", "P7422", "quantity"),
     GlobalClaim("max_temperature", "P6591", "quantity"),
     GlobalClaim("website", "P856", "url", multiple=True),
@@ -220,7 +222,7 @@ ENTITY_REF_CLAIMS = (
 PID_TO_KEY: dict[str, str] = {
     c.pid: c.key for c in (*GLOBAL_CLAIMS, *ENTITY_REF_CLAIMS)
 } | {
-    "P2076": "temperature",  # routed via P1480, not a regular GlobalClaim
+    "P2076": "temperature",  # folded into `temperatures`, not a regular GlobalClaim
 }
 
 
@@ -277,28 +279,9 @@ def extract_claims(
             result[claim.key] = v
 
     if route_temperature:
-        # P2076 (temperature): group by P1480/P5102 qualifier, then
-        # disambiguate each group. P7422/P6591 from the loop above take
-        # priority via setdefault.
-        _NATURE_ROUTE = {
-            _QID_MINIMUM: "min_temperature",
-            _QID_MAXIMUM: "max_temperature",
-            _QID_AVERAGE: "temperature",
-            _QID_MEAN: "temperature",
-        }
-        grouped: dict[str, list[dict]] = {}
-        for stmt in active_statements(claims, "P2076"):
-            nature = (
-                _qualifier_qid(stmt, "P1480")
-                or _qualifier_qid(stmt, "P5102")
-                or _qualifier_qid(stmt, "P518")
-            )
-            key = _NATURE_ROUTE.get(nature, "temperature") if nature else "temperature"
-            grouped.setdefault(key, []).append(stmt)
-        for key, stmts in grouped.items():
-            v = _resolve_quantity(_qty_pairs(stmts), "P2076", qid=qid)
-            if v:
-                result.setdefault(key, v)
+        temperatures = _route_temperatures(claims, qid, result)
+        if temperatures:
+            result["temperatures"] = temperatures
 
     for claim in entity_ref_claims:
         if claim.multiple:
@@ -314,6 +297,49 @@ def extract_claims(
                 result[claim.key] = ref_qid
 
     return result
+
+
+def _route_temperatures(claims: dict, qid: str, result: dict) -> list[dict]:
+    """Group P2076 into one entry per body part, each with min/mean/max.
+
+    The Sun carries three unrelated readings (core, photosphere, corona) under
+    one property, so a single scalar would silently pick one; keeping them
+    apart lets each be shown on its own scale. ``result`` is consumed for the
+    P7422/P6591 record extremes, which are surface readings under their own
+    properties and take priority over any P2076 min/max.
+    """
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    for stmt in undeprecated_statements(claims, "P2076"):
+        nature = _qualifier_qid(stmt, "P1480") or _qualifier_qid(stmt, "P5102")
+        part = "surface"
+        if part_qid := _qualifier_qid(stmt, "P518"):
+            if part_qid in _TEMPERATURE_PARTS:
+                part = _TEMPERATURE_PARTS[part_qid]
+            elif part_qid in _NATURE_ROUTE:
+                # Wikidata's own inconsistency: P518 standing in for P1480.
+                nature = nature or part_qid
+            else:
+                logger.warning(
+                    "Unknown P2076 part %s on %s — treating as surface", part_qid, qid
+                )
+        grouped.setdefault((part, _NATURE_ROUTE.get(nature, "mean")), []).append(stmt)
+
+    entries: dict[str, dict] = {}
+    for (part, nature), stmts in grouped.items():
+        pairs = _qty_pairs(prefer_rank(stmts))
+        if v := _resolve_quantity(pairs, "P2076", qid=qid):
+            entries.setdefault(part, {})[nature] = v
+
+    for nature, key in (("min", "min_temperature"), ("max", "max_temperature")):
+        if v := result.pop(key, None):
+            entries.setdefault("surface", {})[nature] = v
+
+    return [
+        {"part": part, **values}
+        for part, values in sorted(
+            entries.items(), key=lambda kv: _TEMPERATURE_PART_ORDER.index(kv[0])
+        )
+    ]
 
 
 def drop_covered_qids(extracted: dict, covered: set[str], obj_id: str) -> None:
@@ -452,7 +478,30 @@ def resolve_unit(
 _QID_MINIMUM = "Q10585806"
 _QID_MAXIMUM = "Q10578722"
 _QID_AVERAGE = "Q202785"
+_QID_AVERAGE_ALT = "Q54835811"
 _QID_MEAN = "Q2796622"
+
+# None keys in: an unqualified statement is the part's mean reading.
+_NATURE_ROUTE: dict[str | None, str] = {
+    _QID_MINIMUM: "min",
+    _QID_MAXIMUM: "max",
+    _QID_AVERAGE: "mean",
+    _QID_AVERAGE_ALT: "mean",
+    _QID_MEAN: "mean",
+}
+
+# P518 "applies to part" values naming where on a body a temperature applies.
+# Statements without one are surface readings by convention.
+_TEMPERATURE_PARTS: dict[str, str] = {
+    "Q484298": "surface",
+    "Q30318034": "surface",  # astronomical object's surface
+    "Q3230": "surface",  # atmosphere of Earth — the near-surface air reading
+    "Q6372": "photosphere",
+    "Q170754": "corona",  # solar corona
+    "Q23595": "core",  # center
+}
+# Headline first, so a star leads with its effective (photospheric) temperature.
+_TEMPERATURE_PART_ORDER = ("surface", "photosphere", "corona", "core")
 
 # P518 "applies to part" = the spacecraft itself, distinguishing a value scoped
 # to the object from one scoped to a broader unit (e.g. the whole space mission).

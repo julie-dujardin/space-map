@@ -5,9 +5,11 @@
 		title: string;
 		children: Snippet;
 		header?: Snippet;
+		/** Full-width content after the rows — for anything that isn't a label/value pair. */
+		footer?: Snippet;
 	}
 
-	let { title, children, header }: Props = $props();
+	let { title, children, header, footer }: Props = $props();
 </script>
 
 <div class="flex flex-col gap-1">
@@ -17,4 +19,7 @@
 	<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
 		{@render children()}
 	</dl>
+	{#if footer}
+		<div class="mt-2.5 flex flex-col gap-3">{@render footer()}</div>
+	{/if}
 </div>

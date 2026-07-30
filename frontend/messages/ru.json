@@ -823,8 +823,6 @@
 	"credits_see_all": "Полный список авторов",
 	"credits_other_bodies": "Другие тела",
 	"credits_images_individual_note": "Авторство и лицензию смотрите у каждого изображения отдельно",
-	"min_temperature": "мин. температура",
-	"max_temperature": "макс. температура",
 	"unit_earth_mass_count": [
 		{
 			"declarations": ["input count", "input display", "local countPlural = count: plural"],
@@ -931,6 +929,19 @@
 	"model_provenance_radar": "3D-модель формы по данным наземного радара",
 	"model_provenance_lightcurve": "3D-модель формы по инверсии кривой блеска",
 	"attitude_source_spice_ck": "Ориентация по ядрам SPICE",
+	"temperature_of_surface": "Температура поверхности",
+	"temperature_of_photosphere": "Температура фотосферы",
+	"temperature_of_corona": "Температура короны",
+	"temperature_of_core": "Температура ядра",
+	"temperature_part_surface": "поверхность",
+	"temperature_part_photosphere": "фотосфера",
+	"temperature_part_corona": "корона",
+	"temperature_part_core": "ядро",
+	"temperature_reading_min": "мин.",
+	"temperature_reading_mean": "сред.",
+	"temperature_reading_max": "макс.",
+	"tooltip_temperature_scale": "Положение на фиксированной шкале от абсолютного нуля до 1000 K. Зелёная полоса отмечает диапазон, в котором вода жидкая при давлении 1 атм.",
+	"tooltip_temperature_scale_stellar": "Положение на логарифмической шкале от 1000 K до 100 миллионов K; цвет соответствует свечению абсолютно чёрного тела при этой температуре.",
 	"attitude_source_estimated": "Ориентация оценена",
 	"country_count": [
 		{

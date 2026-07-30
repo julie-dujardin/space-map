@@ -885,13 +885,15 @@ class TestExtractClaims:
         assert result["asteroid_family"] == "Q123456"
 
     def test_p2076_temperature_routing_no_qualifier(self):
-        """P2076 without P1480 qualifier defaults to 'temperature'."""
+        """P2076 without qualifiers is the surface mean."""
         claims = {"P2076": [_stmt(_qty_snak("+15", "Q25267"))]}
         result = extract_claims(claims, "Q2")
-        assert result["temperature"] == {"value": 15.0, "unit": "Q25267"}
+        assert result["temperatures"] == [
+            {"part": "surface", "mean": {"value": 15.0, "unit": "Q25267"}}
+        ]
 
     def test_p2076_min_temperature_qualifier(self):
-        """P2076 with P1480=Q10585806 (minimum) routes to min_temperature."""
+        """P2076 with P1480=Q10585806 (minimum) routes to the part's min."""
         claims = {
             "P2076": [
                 _stmt(
@@ -901,10 +903,12 @@ class TestExtractClaims:
             ]
         }
         result = extract_claims(claims, "Q2")
-        assert result["min_temperature"] == {"value": 15.0, "unit": "Q25267"}
+        assert result["temperatures"] == [
+            {"part": "surface", "min": {"value": 15.0, "unit": "Q25267"}}
+        ]
 
     def test_p7422_takes_priority_over_p2076_min(self):
-        """P7422 (min temp) from GLOBAL_CLAIMS should take priority via setdefault."""
+        """P7422 (min temp record) should override a P2076 minimum."""
         claims = {
             "P7422": [_stmt(_qty_snak("-89.2", "Q25267"))],
             "P2076": [
@@ -915,36 +919,61 @@ class TestExtractClaims:
             ],
         }
         result = extract_claims(claims, "Q2")
-        assert result["min_temperature"] == {"value": -89.2, "unit": "Q25267"}
+        assert result["temperatures"] == [
+            {"part": "surface", "min": {"value": -89.2, "unit": "Q25267"}}
+        ]
+        assert "min_temperature" not in result
 
-    def test_sun_temperature_preferred_rank(self):
-        """Q525 Sun: preferred P2076 statement (15.71M K) wins over normal ones."""
+    def test_sun_temperature_parts_stay_separate(self):
+        """Q525 Sun: core/photosphere/corona readings each keep their own entry."""
         claims = {
             "P2076": [
-                _stmt(_qty_snak("+15710000", "Q11579"), rank="preferred"),
-                _stmt(_qty_snak("+5772", "Q11579"), rank="normal"),
-                _stmt(_qty_snak("+2000000", "Q11579"), rank="normal"),
+                _stmt(
+                    _qty_snak("+15710000", "Q11579"),
+                    rank="preferred",
+                    qualifiers={"P518": [_entity_snak("Q23595")]},  # center
+                ),
+                _stmt(
+                    _qty_snak("+5772", "Q11579"),
+                    qualifiers={"P518": [_entity_snak("Q6372")]},  # photosphere
+                ),
+                _stmt(
+                    _qty_snak("+2000000", "Q11579"),
+                    qualifiers={"P518": [_entity_snak("Q170754")]},  # corona
+                ),
             ]
         }
         result = extract_claims(claims, "Q525")
-        assert result["temperature"] == {"value": 15710000.0, "unit": "Q11579"}
-        assert "min_temperature" not in result
-        assert "max_temperature" not in result
+        assert result["temperatures"] == [
+            {"part": "photosphere", "mean": {"value": 5772.0, "unit": "Q11579"}},
+            {"part": "corona", "mean": {"value": 2000000.0, "unit": "Q11579"}},
+            {"part": "core", "mean": {"value": 15710000.0, "unit": "Q11579"}},
+        ]
 
     def test_earth_temperature_with_p7422_p6591(self):
-        """Q2 Earth: P2076 for avg, P7422 for min, P6591 for max."""
+        """Q2 Earth: P2076 mean joins the P7422/P6591 records in one entry."""
         claims = {
-            "P2076": [_stmt(_qty_snak("+15", "Q25267"))],
+            "P2076": [
+                _stmt(
+                    _qty_snak("+15", "Q25267"),
+                    qualifiers={"P518": [_entity_snak("Q3230")]},  # atmosphere
+                )
+            ],
             "P7422": [_stmt(_qty_snak("-89.2", "Q25267"))],
             "P6591": [_stmt(_qty_snak("+56.7", "Q25267"))],
         }
         result = extract_claims(claims, "Q2")
-        assert result["temperature"] == {"value": 15.0, "unit": "Q25267"}
-        assert result["min_temperature"] == {"value": -89.2, "unit": "Q25267"}
-        assert result["max_temperature"] == {"value": 56.7, "unit": "Q25267"}
+        assert result["temperatures"] == [
+            {
+                "part": "surface",
+                "mean": {"value": 15.0, "unit": "Q25267"},
+                "min": {"value": -89.2, "unit": "Q25267"},
+                "max": {"value": 56.7, "unit": "Q25267"},
+            }
+        ]
 
     def test_venus_temperature_p1480_mean(self):
-        """Q313 Venus: two P2076 stmts route to temperature; NASA source wins."""
+        """Q313 Venus: two P2076 stmts land in one mean; NASA source wins."""
         claims = {
             "P2076": [
                 _stmt(
@@ -961,10 +990,12 @@ class TestExtractClaims:
             ]
         }
         result = extract_claims(claims, "Q313")
-        assert result["temperature"] == {"value": 464.0, "unit": "Q25267"}
+        assert result["temperatures"] == [
+            {"part": "surface", "mean": {"value": 464.0, "unit": "Q25267"}}
+        ]
 
     def test_mars_temperature_mixed_p1480(self):
-        """Q111 Mars: P2076 without qualifier is avg, others have P1480 min/max."""
+        """Q111 Mars: P2076 without qualifier is the mean, others carry P1480."""
         claims = {
             "P2076": [
                 _stmt(_qty_snak("-63", "Q25267")),
@@ -979,9 +1010,14 @@ class TestExtractClaims:
             ]
         }
         result = extract_claims(claims, "Q111")
-        assert result["temperature"] == {"value": -63.0, "unit": "Q25267"}
-        assert result["min_temperature"] == {"value": -143.0, "unit": "Q25267"}
-        assert result["max_temperature"] == {"value": 35.0, "unit": "Q25267"}
+        assert result["temperatures"] == [
+            {
+                "part": "surface",
+                "mean": {"value": -63.0, "unit": "Q25267"},
+                "min": {"value": -143.0, "unit": "Q25267"},
+                "max": {"value": 35.0, "unit": "Q25267"},
+            }
+        ]
 
     def test_bennu_temperature_p5102_qualifier(self):
         """Q11558 Bennu: P2076 uses P5102 instead of P1480 for nature-of-value."""
@@ -1002,12 +1038,17 @@ class TestExtractClaims:
             ]
         }
         result = extract_claims(claims, "Q11558")
-        assert result["temperature"] == {"value": 259.0, "unit": "Q11579"}
-        assert result["min_temperature"] == {"value": 236.0, "unit": "Q11579"}
-        assert result["max_temperature"] == {"value": 279.0, "unit": "Q11579"}
+        assert result["temperatures"] == [
+            {
+                "part": "surface",
+                "min": {"value": 236.0, "unit": "Q11579"},
+                "mean": {"value": 259.0, "unit": "Q11579"},
+                "max": {"value": 279.0, "unit": "Q11579"},
+            }
+        ]
 
     def test_vesta_temperature_p518_qualifier(self):
-        """Q3030 Vesta: P2076 uses P518 (applies to part) for min/max routing."""
+        """Q3030 Vesta: P518 stands in for P1480 as the nature-of-value."""
         claims = {
             "P2076": [
                 _stmt(
@@ -1021,9 +1062,30 @@ class TestExtractClaims:
             ]
         }
         result = extract_claims(claims, "Q3030")
-        assert result["min_temperature"] == {"value": 85.0, "unit": "Q11579"}
-        assert result["max_temperature"] == {"value": 270.0, "unit": "Q11579"}
-        assert "temperature" not in result
+        assert result["temperatures"] == [
+            {
+                "part": "surface",
+                "min": {"value": 85.0, "unit": "Q11579"},
+                "max": {"value": 270.0, "unit": "Q11579"},
+            }
+        ]
+
+    def test_unknown_part_falls_back_to_surface(self, caplog):
+        """An unmapped P518 is kept as a surface reading, and logged."""
+        claims = {
+            "P2076": [
+                _stmt(
+                    _qty_snak("+100", "Q11579"),
+                    qualifiers={"P518": [_entity_snak("Q99999999")]},
+                ),
+            ]
+        }
+        with caplog.at_level(logging.WARNING):
+            result = extract_claims(claims, "Q3030")
+        assert result["temperatures"] == [
+            {"part": "surface", "mean": {"value": 100.0, "unit": "Q11579"}}
+        ]
+        assert "Q99999999" in caplog.text
 
     def test_empty_claims(self):
         assert extract_claims({}, "Q2") == {}

@@ -171,9 +171,20 @@ interface GlobalObjectData {
     surface_gravity?: QuantityWithUnit;
     absolute_magnitude?: number;
     apparent_magnitude?: number;
-    temperature?: QuantityWithUnit;
-    min_temperature?: QuantityWithUnit;
-    max_temperature?: QuantityWithUnit;
+    // One entry per part of the body a temperature was measured at, ordered
+    // headline-first (surface, photosphere, corona, core) — the Sun carries
+    // three unrelated readings under one Wikidata property, so a single scalar
+    // would silently pick one. Always kelvin, whatever unit the source used:
+    // the frontend places readings on a shared scale whose stellar segment is
+    // logarithmic, and only a ratio scale survives that. Bodies without a
+    // P518 "applies to part" qualifier are surface readings by convention;
+    // P7422/P6591 (record extremes) fold into the surface entry.
+    temperatures?: {
+      part: 'surface' | 'photosphere' | 'corona' | 'core';
+      min?: QuantityWithUnit;   // unit is always "kelvin"
+      mean?: QuantityWithUnit;
+      max?: QuantityWithUnit;
+    }[];
     website?: string;
     blog?: string;
     capital_cost?: CurrencyQuantity;

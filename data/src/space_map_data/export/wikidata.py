@@ -194,11 +194,24 @@ def _extract_lang_aliases(
     return result
 
 
-def active_statements(claims: dict, prop: str) -> list[dict]:
-    """Return non-deprecated statements for *prop*, preferring ``preferred`` rank."""
-    stmts = [s for s in claims.get(prop, []) if s.get("rank") != "deprecated"]
+def prefer_rank(stmts: list[dict]) -> list[dict]:
+    """Keep only ``preferred``-rank statements when the group has any."""
     preferred = [s for s in stmts if s.get("rank") == "preferred"]
     return preferred if preferred else stmts
+
+
+def undeprecated_statements(claims: dict, prop: str) -> list[dict]:
+    """Return every non-deprecated statement for *prop*, ranks intact.
+
+    Callers that subdivide a property into groups of non-rival claims apply
+    ``prefer_rank`` per group instead — a rank only outranks rival values.
+    """
+    return [s for s in claims.get(prop, []) if s.get("rank") != "deprecated"]
+
+
+def active_statements(claims: dict, prop: str) -> list[dict]:
+    """Return non-deprecated statements for *prop*, preferring ``preferred`` rank."""
+    return prefer_rank(undeprecated_statements(claims, prop))
 
 
 def _extract_sitelinks(data: dict) -> dict[str, str]:

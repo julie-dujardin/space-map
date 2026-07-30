@@ -343,9 +343,9 @@ def _write_hashed_bundles(
 
 _IMAGE_KEYS = {"image", "logo_image"}
 
-# Quantity keys carrying a temperature — normalized to canonical kelvin so every
-# body's temperature displays in one scale regardless of the source unit.
-_TEMPERATURE_KEYS = {"temperature", "min_temperature", "max_temperature"}
+# Readings inside a `temperatures` entry, normalized to canonical kelvin so
+# every body plots on one scale regardless of the source unit.
+_TEMPERATURE_READINGS = ("min", "mean", "max")
 
 
 def render_quality(obj: Object, radii: dict[int, dict]) -> str | None:
@@ -415,6 +415,37 @@ def build_model_sources(
                 )
         out[slug] = block
     return out
+
+
+def _normalized_temperatures(
+    extracted: dict, units: UnitConverter, obj_id: str
+) -> list[dict]:
+    """Convert each temperature reading to canonical kelvin, dropping unknowns.
+
+    Kelvin because the frontend positions readings on a shared scale, and only
+    a ratio scale survives the log segment used for stellar temperatures.
+    """
+    result = []
+    for entry in extracted.get("temperatures", []):
+        readings = {}
+        for reading in _TEMPERATURE_READINGS:
+            val = entry.get(reading)
+            if val is None:
+                continue
+            kelvin = units.convert_temperature(float(val["value"]), val["unit"])
+            if kelvin is None:
+                logger.warning(
+                    "Dropping %s %s temperature on %s: unknown unit %s",
+                    entry["part"],
+                    reading,
+                    obj_id,
+                    val["unit"],
+                )
+                continue
+            readings[reading] = kelvin
+        if readings:
+            result.append({"part": entry["part"], **readings})
+    return result
 
 
 def _build_global(
@@ -578,8 +609,7 @@ def _build_global(
     # Wikidata claims (non-localized, excluding image fields handled above)
     if extracted:
         wikidata_section: dict = {}
-        # Keys from GLOBAL_CLAIMS + "temperature" (routed from P2076, not a GlobalClaim)
-        wikidata_keys = [c.key for c in GLOBAL_CLAIMS] + ["temperature"]
+        wikidata_keys = [c.key for c in GLOBAL_CLAIMS]
         # SPICE PCK radii supersede the Wikidata radius — skip it when present.
         if "radii" in data:
             wikidata_keys = [k for k in wikidata_keys if k != "radius"]
@@ -589,27 +619,21 @@ def _build_global(
             if key in extracted:
                 val = extracted[key]
                 if isinstance(val, dict) and "unit" in val:
-                    normalized_temp = (
-                        units.convert_temperature(float(val["value"]), val["unit"])
-                        if key in _TEMPERATURE_KEYS
-                        else None
-                    )
-                    if normalized_temp is not None:
-                        val = normalized_temp
+                    iso = _iso_currency_code(val["unit"], wikidata_entities)
+                    if iso:
+                        val = {"value": val["value"], "currency": iso}
                     else:
-                        iso = _iso_currency_code(val["unit"], wikidata_entities)
-                        if iso:
-                            val = {"value": val["value"], "currency": iso}
+                        converted = units.convert(float(val["value"]), val["unit"])
+                        if converted is not None:
+                            val = converted
                         else:
-                            converted = units.convert(float(val["value"]), val["unit"])
-                            if converted is not None:
-                                val = converted
-                            else:
-                                resolved = resolve_unit(val["unit"], wikidata_entities)
-                                if resolved:
-                                    units.used_units.add(resolved)
-                                    val = {**val, "unit": resolved}
+                            resolved = resolve_unit(val["unit"], wikidata_entities)
+                            if resolved:
+                                units.used_units.add(resolved)
+                                val = {**val, "unit": resolved}
                 wikidata_section[key] = val
+        if temperatures := _normalized_temperatures(extracted, units, obj.id):
+            wikidata_section["temperatures"] = temperatures
         if wikidata_section:
             data["wikidata"] = wikidata_section
 

@@ -6,10 +6,10 @@
 	import { formatDensity, formatNumber, formatUnit, formatQuantity } from '$lib/format/quantities';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import { diameterKmFromH, BRIGHT_ALBEDO, DARK_ALBEDO } from '$lib/math/h-magnitude';
-	import { formatTemperature } from '$lib/format/temperature';
 	import { formatDuration } from '$lib/format/duration';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
+	import TemperatureScale from './kit/TemperatureScale.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -102,6 +102,8 @@
 		};
 	});
 
+	let temperatures = $derived(wd?.temperatures ?? []);
+
 	let hasContent = $derived(
 		wd?.mass ||
 			sbdb?.mass ||
@@ -115,9 +117,7 @@
 			wd?.surface_gravity ||
 			sbdb?.albedo ||
 			rotationPeriodDays != null ||
-			wd?.temperature ||
-			wd?.min_temperature ||
-			wd?.max_temperature ||
+			temperatures.length > 0 ||
 			wd?.population ||
 			wd?.absolute_magnitude != null ||
 			sbdb?.H != null ||
@@ -189,15 +189,6 @@
 				tooltip={m.tooltip_rotation_period()}
 			/>
 		{/if}
-		{#if wd?.temperature}
-			<Row label={m.property_name_temperature()} value={formatTemperature(wd.temperature)} />
-		{/if}
-		{#if wd?.min_temperature}
-			<Row label={m.min_temperature()} value={formatTemperature(wd.min_temperature)} />
-		{/if}
-		{#if wd?.max_temperature}
-			<Row label={m.max_temperature()} value={formatTemperature(wd.max_temperature)} />
-		{/if}
 		{#if wd?.population}
 			<Row label={m.property_name_population()} value={formatNumber(wd.population)} />
 		{/if}
@@ -253,5 +244,10 @@
 				value={String(sats)}
 			/>
 		{/if}
+		{#snippet footer()}
+			{#if temperatures.length}
+				<TemperatureScale entries={temperatures} />
+			{/if}
+		{/snippet}
 	</Section>
 {/if}

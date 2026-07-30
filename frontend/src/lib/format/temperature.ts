@@ -51,11 +51,13 @@ function roundToPrecision(n: number, precision: number): number {
 }
 
 /** Convert a temperature quantity to the preferred unit, preserving significant digits. */
-export function convertTemperature(q: { value: number; unit: string }): {
+export function convertTemperature(
+	q: { value: number; unit: string },
+	target: TemperatureUnit = PREFERRED_TEMPERATURE_UNIT
+): {
 	value: number;
 	unit: TemperatureUnit;
 } {
-	const target = PREFERRED_TEMPERATURE_UNIT;
 	const source = q.unit as TemperatureUnit;
 	if (source === target) return { value: q.value, unit: target };
 	const converted = fromKelvin(toKelvin(q.value, source), target);
@@ -63,6 +65,17 @@ export function convertTemperature(q: { value: number; unit: string }): {
 	return { value: roundToPrecision(converted, precision), unit: target };
 }
 
-export function formatTemperature(q: { value: number; unit: string }): string {
-	return formatQuantity(convertTemperature(q), true);
+export function formatTemperature(
+	q: { value: number; unit: string },
+	target?: TemperatureUnit
+): string {
+	return formatQuantity(convertTemperature(q, target), true);
+}
+
+/**
+ * Stellar temperatures stay in kelvin: the 273.15 offset to °C is noise beside
+ * a million-degree corona, and kelvin is the convention for stars anyway.
+ */
+export function formatStellarTemperature(q: { value: number; unit: string }): string {
+	return formatQuantity(convertTemperature(q, 'kelvin'), true);
 }
