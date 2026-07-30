@@ -1,0 +1,134 @@
+"""Per-body atmosphere stat blocks: payload invariants and agreement with the
+render constants where the two describe the same level."""
+
+import pytest
+
+from space_map_data.constants.atmosphere.bodies import ATMOSPHERE_BODIES
+from space_map_data.constants.atmosphere.facts import (
+    ATMOSPHERE_FACTS,
+    VOLUME_FRACTION,
+    Pressure,
+)
+from space_map_data.export.objects.atmosphere import atmosphere_block
+
+BODY_IDS = sorted(ATMOSPHERE_FACTS)
+
+
+class TestPayload:
+    """Shape of the block the object bundles carry."""
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_block_builds(self, object_id: str):
+        """Enum and citation validation runs for every body, not just the ones
+        a smoke test happens to touch."""
+        block = atmosphere_block(object_id)
+        assert block is not None
+        assert block["sources"], f"{object_id} cites nothing"
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_shares_normalized_and_ranked(self, object_id: str):
+        composition = _block(object_id).get("composition")
+        if composition is None:
+            return
+        shares = [s["share"] for s in composition["species"]]
+        assert shares == sorted(shares, reverse=True)
+        assert sum(shares) == pytest.approx(1.0, abs=1e-3)
+
+    def test_absent_for_airless_bodies(self):
+        assert atmosphere_block("naif-401") is None  # Phobos
+
+    def test_single_species_ships_no_bar(self):
+        """Dione has one published density; a lone species would draw a full
+        bar of itself."""
+        block = _block("naif-604")
+        assert "composition" not in block
+        assert block["type"] == "exosphere"
+
+
+class TestValues:
+    """Spot checks on numbers that were corrected during the source review, so
+    a future edit cannot quietly revert them."""
+
+    def test_volume_fractions_sum_near_one(self):
+        """A mixing ratio that sums well past 1 means a species was quoted at
+        the wrong level or in the wrong unit."""
+        for object_id, facts in ATMOSPHERE_FACTS.items():
+            if facts.composition_unit != VOLUME_FRACTION or not facts.composition:
+                continue
+            total = sum(s.value for s in facts.composition)
+            assert total <= 1.02, f"{object_id} fractions sum to {total}"
+
+    def test_mercury_sodium_column(self):
+        """NSSDCA tabulates columns "in 10^6 per cm2" — the compiled dataset
+        this came from read 12,000 as 1.2e11 rather than 1.2e10."""
+        sodium = _species("naif-199", "Na")
+        assert sodium.value == pytest.approx(1.2e10)
+
+    def test_mercury_helium_is_a_limit(self):
+        assert _species("naif-199", "He").upper_limit
+
+    def test_sun_photosphere_pressure(self):
+        """125 mb at optical depth 1 — not the 0.868 mb at the photosphere's
+        top, which is what the compiled dataset carried."""
+        assert _pressure("naif-10").pascals == pytest.approx(1.25e4)
+
+    def test_titan_surface_methane(self):
+        """5.65% is the near-surface value that goes with the surface pressure;
+        1.48% is the stratosphere."""
+        assert _species("naif-606", "CH4").value == pytest.approx(0.0565)
+
+    def test_giants_quote_the_cloud_deck(self):
+        for object_id in ("naif-599", "naif-699", "naif-799", "naif-899"):
+            pressure = _pressure(object_id)
+            assert pressure.level == "cloud_top"
+            assert pressure.pascals == pytest.approx(1e4)
+
+
+class TestAgainstRenderConstants:
+    """The two tables state the same atmospheres at different levels; where the
+    level is shared they must not disagree, and where they differ it is on
+    purpose."""
+
+    # Bodies the two tables deliberately describe differently:
+    #   Venus  — rendered from its ~0.1 bar cloud top, quoted at the surface.
+    #   Triton — the renderer holds the Voyager epoch, the panel carries the
+    #            2009 methane measurement; the atmosphere is seasonal.
+    #   Pluto  — the renderer takes NSSDCA's rounded 0.5% CH₄, the panel the
+    #            New Horizons UV occultation (Young et al. 2018, ~0.3%).
+    NOT_COMPARABLE = {"naif-299", "naif-801", "naif-999"}
+
+    def test_compositions_agree(self):
+        for object_id, render in ATMOSPHERE_BODIES.items():
+            facts = ATMOSPHERE_FACTS.get(object_id)
+            if facts is None or object_id in self.NOT_COMPARABLE:
+                continue
+            shipped = {s.formula: s.value for s in facts.composition}
+            for gas, fraction in render.composition.items():
+                assert gas in shipped, f"{object_id} panel is missing {gas}"
+                assert shipped[gas] == pytest.approx(fraction, rel=0.02), (
+                    f"{object_id} {gas}: panel {shipped[gas]} vs render {fraction}"
+                )
+
+    def test_venus_differs_by_level(self):
+        """Guards the exemption itself: if these ever converge, the render
+        constants stopped describing the cloud top."""
+        render = ATMOSPHERE_BODIES["naif-299"]
+        assert _pressure("naif-299").pascals > render.pressure_pa * 100
+
+
+def _block(object_id: str) -> dict:
+    block = atmosphere_block(object_id)
+    assert block is not None
+    return block
+
+
+def _pressure(object_id: str) -> Pressure:
+    pressure = ATMOSPHERE_FACTS[object_id].pressure
+    assert pressure is not None
+    return pressure
+
+
+def _species(object_id: str, formula: str):
+    return next(
+        s for s in ATMOSPHERE_FACTS[object_id].composition if s.formula == formula
+    )

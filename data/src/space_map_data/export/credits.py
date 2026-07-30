@@ -11,7 +11,10 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.atmosphere.references import ATMOSPHERE_REFERENCES
+from space_map_data.constants.atmosphere.references import (
+    ATMOSPHERE_FACT_SOURCES,
+    ATMOSPHERE_REFERENCES,
+)
 from space_map_data.constants.rings.references import RING_REFERENCES
 from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
 from space_map_data.export.systems import texture_attribution
@@ -156,6 +159,18 @@ def _skybox_credit_entry(meta: dict) -> dict:
     if meta.get("description") is not None:
         entry["description"] = meta["description"]
     return entry
+
+
+def _atmosphere_references() -> list[dict]:
+    """Render literature first, then the works behind the per-body facts.
+    A handful back both (the Galileo helium paper, Huygens' descent) — one
+    credit each, keeping the scattering-side contribution line."""
+    out = [r._asdict() for r in ATMOSPHERE_REFERENCES]
+    seen = {r["url"] for r in out}
+    out.extend(
+        r._asdict() for r in ATMOSPHERE_FACT_SOURCES.values() if r.url not in seen
+    )
+    return out
 
 
 def _build_models_credits(model_metadata: dict[str, dict]) -> list[dict]:
@@ -412,9 +427,11 @@ def write_credits(
     payload: dict = {
         "systems": systems_out,
         "ephemeris_archives": EPHEMERIS_ARCHIVES,
-        # Literature behind the derived scattering parameters — see
-        # constants/atmosphere/references.py.
-        "atmosphere_references": [r._asdict() for r in ATMOSPHERE_REFERENCES],
+        # Literature behind the derived scattering parameters, plus the works
+        # the per-body atmospheric facts are read off — both live in
+        # constants/atmosphere/references.py. The panels credit the facts per
+        # body; this list is the whole bibliography in one place.
+        "atmosphere_references": _atmosphere_references(),
         # Likewise for the ring profiles; the tables the numbers are read off
         # are credited per body, so these are the works behind those tables.
         "ring_references": [r._asdict() for r in RING_REFERENCES],

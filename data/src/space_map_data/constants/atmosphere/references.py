@@ -323,3 +323,239 @@ ATMOSPHERE_REFERENCES: tuple[AtmosphereReference, ...] = (
         "the real-time shell shader recipe this renderer follows",
     ),
 )
+
+
+# Sources behind the per-body atmospheric facts in `facts.py`, keyed so each
+# value can cite one. These also ship per body in the object bundles, so the
+# panel can credit exactly the works its numbers came from — hence the split
+# from the render literature above, which is credited globally.
+#
+# NSSDCA fact sheets link Internet Archive snapshots: the site has been offline
+# since early 2025, and the snapshot is what was actually read.
+ATMOSPHERE_FACT_SOURCES: dict[str, AtmosphereReference] = {
+    "nssdc_sun": AtmosphereReference(
+        "NASA Sun Fact Sheet (NSSDCA)",
+        "https://web.archive.org/web/20240608182027/https://nssdc.gsfc.nasa.gov/planetary/factsheet/sunfact.html",
+        "photospheric pressure and temperature",
+    ),
+    "stanford_solar": AtmosphereReference(
+        "The Sun's Vital Statistics (Stanford Solar Center)",
+        "https://web.archive.org/web/20240129234549/http://solar-center.stanford.edu/vitalstats.html",
+        "solar photospheric abundances by mass",
+    ),
+    "nssdc_mercury": AtmosphereReference(
+        "NASA Mercury Fact Sheet (NSSDCA)",
+        "https://web.archive.org/web/20241130091522/https://nssdc.gsfc.nasa.gov/planetary/factsheet/mercuryfact.html",
+        "Mercury exospheric pressure and column abundances",
+    ),
+    "wiki_mercury_atm": AtmosphereReference(
+        "Atmosphere of Mercury (Wikipedia)",
+        "https://en.wikipedia.org/wiki/Atmosphere_of_Mercury",
+        "Mercury helium and calcium columns",
+    ),
+    "nssdc_venus": AtmosphereReference(
+        "NASA Venus Fact Sheet (NSSDCA)",
+        "https://web.archive.org/web/20241130090017/https://nssdc.gsfc.nasa.gov/planetary/factsheet/venusfact.html",
+        "Venus surface pressure and composition",
+    ),
+    "nssdc_earth": AtmosphereReference(
+        "NASA Earth Fact Sheet (NSSDCA)",
+        "https://web.archive.org/web/20241201104126/https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "Earth sea-level pressure and dry-air composition",
+    ),
+    "nssdc_mars": AtmosphereReference(
+        "NASA Mars Fact Sheet (NSSDCA)",
+        "https://web.archive.org/web/20250603204342/https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "Mars surface pressure and composition",
+    ),
+    "webster_2018": AtmosphereReference(
+        "Webster et al. 2018 (Science 360)",
+        "https://doi.org/10.1126/science.aaq0131",
+        "Mars background methane abundance",
+    ),
+    "nssdc_jupiter": AtmosphereReference(
+        "NASA Jupiter Fact Sheet (NSSDCA)",
+        "https://web.archive.org/web/20240528013855/https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupiterfact.html",
+        "Jupiter reference levels and minor species",
+    ),
+    "von_zahn_1998": AtmosphereReference(
+        "von Zahn et al. 1998 (JGR 103)",
+        "https://doi.org/10.1029/98JE00695",
+        "Jupiter helium abundance (Galileo probe)",
+    ),
+    "nssdc_saturn": AtmosphereReference(
+        "NASA Saturn Fact Sheet (NSSDCA)",
+        "https://web.archive.org/web/20240605165339/https://nssdc.gsfc.nasa.gov/planetary/factsheet/saturnfact.html",
+        "Saturn reference levels and minor species",
+    ),
+    "conrath_gautier_2000": AtmosphereReference(
+        "Conrath & Gautier 2000 (Icarus 144)",
+        "https://doi.org/10.1006/icar.1999.6265",
+        "Saturn helium abundance (Voyager reanalysis)",
+    ),
+    "nssdc_uranus": AtmosphereReference(
+        "NASA Uranus Fact Sheet (NSSDCA)",
+        "https://web.archive.org/web/20240602195651/https://nssdc.gsfc.nasa.gov/planetary/factsheet/uranusfact.html",
+        "Uranus reference levels and composition",
+    ),
+    "nssdc_neptune": AtmosphereReference(
+        "NASA Neptune Fact Sheet (NSSDCA)",
+        "https://web.archive.org/web/20240530201330/https://nssdc.gsfc.nasa.gov/planetary/factsheet/neptunefact.html",
+        "Neptune reference levels and composition",
+    ),
+    "nssdc_moon": AtmosphereReference(
+        "NASA Moon Fact Sheet (NSSDCA)",
+        "https://web.archive.org/web/20240601000000/https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html",
+        "lunar nighttime exospheric densities and pressure",
+    ),
+    "wiki_moon_atm": AtmosphereReference(
+        "Atmosphere of the Moon (Wikipedia)",
+        "https://en.wikipedia.org/wiki/Atmosphere_of_the_Moon",
+        "lunar daytime sodium and potassium densities",
+    ),
+    "kuppers_2014": AtmosphereReference(
+        "Küppers et al. 2014 (Nature 505)",
+        "https://doi.org/10.1038/nature12918",
+        "Ceres water-vapour detection",
+    ),
+    "nssdc_pluto": AtmosphereReference(
+        "NASA Pluto Fact Sheet (NSSDCA)",
+        "https://web.archive.org/web/20240601000000/https://nssdc.gsfc.nasa.gov/planetary/factsheet/plutofact.html",
+        "Pluto atmospheric nitrogen fraction",
+    ),
+    "hinson_2017": AtmosphereReference(
+        "Hinson et al. 2017 (Icarus 290)",
+        "https://doi.org/10.1016/j.icarus.2017.02.031",
+        "Pluto surface pressure (New Horizons radio occultation)",
+    ),
+    "young_2018": AtmosphereReference(
+        "Young et al. 2018 (Icarus 300)",
+        "https://doi.org/10.1016/j.icarus.2017.09.006",
+        "Pluto methane abundance (New Horizons UV occultation)",
+    ),
+    "wiki_pluto_atm": AtmosphereReference(
+        "Atmosphere of Pluto (Wikipedia)",
+        "https://en.wikipedia.org/wiki/Atmosphere_of_Pluto",
+        "Pluto carbon monoxide and hydrocarbon fractions",
+    ),
+    "wiki_triton_atm": AtmosphereReference(
+        "Atmosphere of Triton (Wikipedia)",
+        "https://en.wikipedia.org/wiki/Atmosphere_of_Triton",
+        "Triton atmospheric nitrogen fraction",
+    ),
+    "lellouch_2010": AtmosphereReference(
+        "Lellouch et al. 2010 (A&A 512)",
+        "https://doi.org/10.1051/0004-6361/201014339",
+        "Triton carbon monoxide and methane abundances",
+    ),
+    "sicardy_2024": AtmosphereReference(
+        "Sicardy et al. 2024 (A&A 682)",
+        "https://doi.org/10.1051/0004-6361/202348756",
+        "Triton surface pressure through 2022",
+    ),
+    "sicardy_2011": AtmosphereReference(
+        "Sicardy et al. 2011 (Nature 478)",
+        "https://doi.org/10.1038/nature10550",
+        "Eris atmospheric upper limit",
+    ),
+    "ortiz_2012": AtmosphereReference(
+        "Ortiz et al. 2012 (Nature 491)",
+        "https://doi.org/10.1038/nature11597",
+        "Makemake atmospheric upper limit",
+    ),
+    "ortiz_2017": AtmosphereReference(
+        "Ortiz et al. 2017 (Nature 550)",
+        "https://doi.org/10.1038/nature24051",
+        "Haumea atmospheric upper limit",
+    ),
+    "huygens_hasi": AtmosphereReference(
+        "Fulchignoni et al. 2005 (Nature 438)",
+        "https://doi.org/10.1038/nature04314",
+        "Titan surface pressure and temperature",
+    ),
+    "niemann_2010": AtmosphereReference(
+        "Niemann et al. 2010 (JGR 115)",
+        "https://doi.org/10.1029/2010JE003659",
+        "Titan lower-atmosphere composition",
+    ),
+    "dekok_2007": AtmosphereReference(
+        "de Kok et al. 2007 (Icarus 186)",
+        "https://doi.org/10.1016/j.icarus.2006.09.016",
+        "Titan carbon monoxide abundance",
+    ),
+    "waite_2017": AtmosphereReference(
+        "Waite et al. 2017 (Science 356)",
+        "https://doi.org/10.1126/science.aai8703",
+        "Enceladus plume composition",
+    ),
+    "hansen_2020": AtmosphereReference(
+        "Hansen et al. 2020 (Icarus 344)",
+        "https://doi.org/10.1016/j.icarus.2019.113461",
+        "Enceladus plume structure and source rate",
+    ),
+    "teolis_2010": AtmosphereReference(
+        "Teolis et al. 2010 (Science 330)",
+        "https://doi.org/10.1126/science.1198366",
+        "Rhea oxygen-carbon dioxide exosphere",
+    ),
+    "teolis_waite_2016": AtmosphereReference(
+        "Teolis & Waite 2016 (Icarus 272)",
+        "https://doi.org/10.1016/j.icarus.2016.02.031",
+        "Dione and Rhea exospheric densities",
+    ),
+    "tokar_2012": AtmosphereReference(
+        "Tokar et al. 2012 (GRL 39)",
+        "https://doi.org/10.1029/2011GL050452",
+        "Dione exospheric oxygen detection",
+    ),
+    "wiki_io": AtmosphereReference(
+        "Io (moon) (Wikipedia)",
+        "https://en.wikipedia.org/wiki/Io_(moon)",
+        "Io dayside surface pressure",
+    ),
+    "wiki_io_atm": AtmosphereReference(
+        "Atmosphere of Io (Wikipedia)",
+        "https://en.wikipedia.org/wiki/Atmosphere_of_Io",
+        "Io sulphur dioxide and sulphur monoxide fractions",
+    ),
+    "mcgrath_2009": AtmosphereReference(
+        "McGrath et al. 2009 (Europa, University of Arizona Press)",
+        "https://ui.adsabs.harvard.edu/abs/2009euro.book..485M/abstract",
+        "Europa equivalent surface pressure",
+    ),
+    "cervantes_2022": AtmosphereReference(
+        "Cervantes & Saur 2022 (JGR Space Physics 127)",
+        "https://doi.org/10.1029/2022JA030472",
+        "Europa subsolar O₂ and H₂O columns",
+    ),
+    "roth_2021_europa": AtmosphereReference(
+        "Roth 2021 (GRL 48)",
+        "https://doi.org/10.1029/2021GL094289",
+        "Europa atomic oxygen column",
+    ),
+    "hall_1998": AtmosphereReference(
+        "Hall et al. 1998 (ApJ 499)",
+        "https://doi.org/10.1086/305604",
+        "Ganymede O₂ column and exospheric pressure",
+    ),
+    "roth_2021_ganymede": AtmosphereReference(
+        "Roth et al. 2021 (Nature Astronomy 5)",
+        "https://doi.org/10.1038/s41550-021-01426-9",
+        "Ganymede sublimated water column",
+    ),
+    "dekleer_2023": AtmosphereReference(
+        "de Kleer et al. 2023 (Planet. Sci. J. 4)",
+        "https://doi.org/10.3847/PSJ/acb53c",
+        "Ganymede and Callisto oxygen columns from aurora",
+    ),
+    "carlson_1999": AtmosphereReference(
+        "Carlson 1999 (Science 283)",
+        "https://doi.org/10.1126/science.283.5403.820",
+        "Callisto carbon dioxide atmosphere and pressure",
+    ),
+    "cartwright_2024": AtmosphereReference(
+        "Cartwright et al. 2024 (Planet. Sci. J. 5)",
+        "https://doi.org/10.3847/PSJ/ad23e6",
+        "Callisto carbon dioxide column",
+    ),
+}

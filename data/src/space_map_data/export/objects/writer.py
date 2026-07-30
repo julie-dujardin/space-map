@@ -39,6 +39,7 @@ from space_map_data.export.objects.celestrak import (
     covered_authoritative_qids,
     merge_operator_qids,
 )
+from space_map_data.export.objects.atmosphere import atmosphere_block
 from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.small_body_color import resolve_moon_color
 from space_map_data.export.quantities import UnitConverter
@@ -588,6 +589,12 @@ def _build_global(
     # Gravitational parameter (km^3/s^2) from SPICE PCK
     if obj.naif_id is not None and obj.naif_id in gms:
         data["gm"] = gms[obj.naif_id]
+
+    # Cited atmospheric facts — only the two dozen bodies with a measured
+    # envelope have one.
+    atmosphere = atmosphere_block(obj.id)
+    if atmosphere is not None:
+        data["atmosphere"] = atmosphere
 
     # SBDB extras
     if sbdb is not None:
