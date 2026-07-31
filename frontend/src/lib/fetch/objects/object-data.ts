@@ -231,6 +231,7 @@ export interface GlobalObjectData {
 	 *  size-only sphere/ellipsoid. Absent → no known physical extent (halo/point). */
 	render_quality?: 'high' | 'medium' | 'low';
 	atmosphere?: AtmosphereBlock;
+	interior?: InteriorBlock;
 	temperatures?: Temperatures;
 	images?: ObjectImage[];
 	sbdb_primary_designation?: string;
@@ -458,6 +459,31 @@ export interface AtmosphereBlock {
 		 *  non-detection upper limit rather than a measured abundance. */
 		species: { formula: string; share: number; limit?: boolean }[];
 	};
+	/** Works the numbers come from, deduped per body. */
+	sources?: { title: string; url: string }[];
+}
+
+/** What a body is made of, by mass. Two routes into one shape: a layer model
+ *  for the bodies a mission constrained, or the bulk chemistry of a meteorite
+ *  analogue for an asteroid that only has a spectrum (`estimated`). */
+export interface InteriorBlock {
+	/** How far the body separated — "differentiated", "rubble_pile", "fluid",
+	 *  … Absent on the estimate route, where a spectrum says nothing about it. */
+	structure?: string;
+	/** Read off a taxonomic class, not measured on this body. */
+	estimated?: true;
+	/** Estimate route: meteorite group key, e.g. "ordinary_chondrite". */
+	analogue?: string;
+	/** Estimate route: the class as reported, and which taxonomy it belongs
+	 *  to — a letter means different things under Tholen and Bus-DeMeo. */
+	taxonomy_class?: string;
+	taxonomy_scheme?: string;
+	/** "subsurface_ocean", "hydrated_rock", … — the frontend holds the
+	 *  sentence, the pipeline only the key. */
+	note?: string;
+	/** Whole-body roll-up, descending. Absent where the source constrains
+	 *  geometry but not masses (the Sun). */
+	composition?: { material: string; share: number }[];
 	/** Works the numbers come from, deduped per body. */
 	sources?: { title: string; url: string }[];
 }

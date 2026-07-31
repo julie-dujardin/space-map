@@ -47,8 +47,10 @@
 	import ImageGallery from './frame/ImageGallery.svelte';
 	import ObjectDescription from './sections/ObjectDescription.svelte';
 	import SourcesFooter from './sections/SourcesFooter.svelte';
-	import Physical from './sections/Physical.svelte';
+	import Bulk from './sections/Bulk.svelte';
+	import Brightness from './sections/Brightness.svelte';
 	import Atmosphere from './sections/Atmosphere.svelte';
+	import Interior from './sections/Interior.svelte';
 	import ObjectStats from './sections/ObjectStats.svelte';
 	import SatCrossRefs from './sections/SatCrossRefs.svelte';
 	import Orbital from './sections/Orbital.svelte';
@@ -912,8 +914,10 @@
 					hostName={body?.data.name ?? undefined}
 				/>
 			{:else if body}
-				<Physical global={data?.global ?? null} />
+				<Bulk global={data?.global ?? null} />
+				<Interior global={data?.global ?? null} />
 				<Atmosphere global={data?.global ?? null} />
+				<Brightness global={data?.global ?? null} />
 				<Orbital
 					global={data?.global ?? null}
 					localized={data?.localized ?? null}

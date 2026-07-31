@@ -12,6 +12,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
+from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.atmosphere.references import (
     ATMOSPHERE_FACT_SOURCES,
     ATMOSPHERE_REFERENCES,
@@ -438,6 +439,10 @@ def write_credits(
         "ring_references": [r._asdict() for r in RING_REFERENCES],
         # Measured temperatures and the interior models behind core estimates.
         "temperature_references": [r._asdict() for r in TEMPERATURE_SOURCES.values()],
+        # The gravity, seismic and meteorite work behind the interior layer
+        # models and the taxonomic-class estimates. Credited per body on the
+        # panel; this is the whole bibliography in one place.
+        "interior_references": [r._asdict() for r in INTERIOR_SOURCES.values()],
     }
     if models_out:
         payload["models"] = models_out

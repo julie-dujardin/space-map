@@ -129,15 +129,53 @@ class TestTemperatureBlock:
     def test_readings_are_ordered_headline_part_first(self):
         block = temperature_block("naif-10")
         assert block is not None
-        assert [r["part"] for r in block["readings"]] == ["photosphere", "corona"]
+        assert [r["part"] for r in block["readings"]] == [
+            "photosphere",
+            "corona",
+            "core",
+            "core",
+        ]
 
     def test_conditions_survive_to_the_export(self):
         block = temperature_block("naif-199")
         assert block is not None
-        by_kind = {r["kind"]: r for r in block["readings"]}
-        assert by_kind["min"]["condition"] == "night"
-        assert by_kind["max"]["condition"] == "day"
-        assert "condition" not in by_kind["mean"]
+        # Keyed by part as well as kind: a body with a modelled core has two
+        # readings of kind "min", and one of them is not the cold side of
+        # Mercury.
+        surface = {r["kind"]: r for r in block["readings"] if r["part"] == "surface"}
+        assert surface["min"]["condition"] == "night"
+        assert surface["max"]["condition"] == "day"
+        assert "condition" not in surface["mean"]
+
+
+class TestModelledCore:
+    """Central temperatures ride in `readings` but are drawn elsewhere."""
+
+    def test_core_is_a_bracket_flagged_as_modelled(self):
+        block = temperature_block("naif-599")
+        assert block is not None
+        core = [r for r in block["readings"] if r["part"] == "core"]
+        assert [r["kind"] for r in core] == ["min", "max"]
+        assert all(r["condition"] == "modelled" for r in core)
+        assert core[0]["k"] < core[1]["k"]
+
+    def test_core_sources_join_the_block(self):
+        """Jupiter's core cites two works its cloud deck does not."""
+        block = temperature_block("naif-599")
+        assert block is not None
+        assert len(block["sources"]) > 1
+
+    def test_body_without_a_core_model_is_unchanged(self):
+        block = temperature_block("naif-606")
+        assert block is not None
+        assert all(r["part"] != "core" for r in block["readings"])
+
+    def test_core_does_not_claim_the_outside_was_measured(self):
+        """An estimated surface stays estimated when a modelled core joins it —
+        the origin describes the readings the bar draws, not the core."""
+        block = temperature_block("spkid-1", None, 2.77, 0.09)
+        assert block is not None
+        assert block["origin"] == "estimated"
 
 
 class TestConstantsIntegrity:

@@ -16,6 +16,7 @@ import logging
 import math
 
 from space_map_data.constants.temperature.bodies import TEMPERATURE_BODIES
+from space_map_data.constants.temperature.cores import CORE_TEMPERATURES
 from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 # deck you can actually see.
 PART_ORDER = ("surface", "cloud_top", "photosphere", "corona", "core")
 READING_ORDER = ("min", "mean", "max")
-CONDITIONS = ("night", "day", "record")
+CONDITIONS = ("night", "day", "record", "modelled")
 
 # IAU nominal total solar irradiance at 1 AU, W/m^2.
 _SOLAR_CONSTANT = 1361.0
@@ -107,6 +108,38 @@ def heliocentric_distance_au(
     return None
 
 
+def _core_readings(object_id: str) -> tuple[list[dict], list[str]]:
+    """The modelled central temperature, as a low-high pair, plus its sources.
+
+    Nobody has measured a planetary core, so this is model output and the
+    bracket is model spread rather than error — hence `condition="modelled"`
+    on both ends. It rides in `readings` like any other part so the export
+    shape stays one list, but it never shares a bar with the outside of the
+    body: the Sun's core runs 15.5 million K against a 5772 K photosphere, and
+    one scale holding both would flatten everything else to a point.
+    """
+    core = CORE_TEMPERATURES.get(object_id)
+    if core is None:
+        return [], []
+    for key in core.sources:
+        if key not in TEMPERATURE_SOURCES:
+            raise ValueError(f"{object_id}: no such source {key}")
+    return (
+        [
+            _reading("core", "min", core.low_k, "modelled"),
+            _reading("core", "max", core.high_k, "modelled"),
+        ],
+        list(core.sources),
+    )
+
+
+def _source_entries(keys: list[str]) -> list[dict]:
+    return [
+        {"title": TEMPERATURE_SOURCES[k].title, "url": TEMPERATURE_SOURCES[k].url}
+        for k in dict.fromkeys(keys)
+    ]
+
+
 def temperature_block(
     object_id: str,
     wikidata_readings: list[dict] | None = None,
@@ -115,11 +148,15 @@ def temperature_block(
 ) -> dict | None:
     """Build the `temperatures` block, or None if the body has no temperature.
 
-    Three sources in descending order of confidence: a cited constant, then
-    whatever Wikidata carries, then the computed estimate. They are not merged
-    — a body gets exactly one origin, because a bar mixing a measured mean with
-    an estimated maximum would be readable as neither.
+    Three sources in descending order of confidence for the *outside* of the
+    body: a cited constant, then whatever Wikidata carries, then the computed
+    estimate. They are not merged — a body gets exactly one origin, because a
+    bar mixing a measured mean with an estimated maximum would be readable as
+    neither. The modelled core rides along with any of them, flagged, because
+    it is drawn somewhere else entirely.
     """
+    core, core_sources = _core_readings(object_id)
+
     if constants := TEMPERATURE_BODIES.get(object_id):
         _validate(object_id, constants)
         readings = [
@@ -127,29 +164,37 @@ def temperature_block(
             for part in constants
             for r in part.readings
         ]
-        keys = list(dict.fromkeys(k for part in constants for k in part.sources))
+        keys = [k for part in constants for k in part.sources] + core_sources
         return {
-            "readings": _sorted(readings),
+            "readings": _sorted(readings + core),
             "origin": "measured",
-            "sources": [
-                {
-                    "title": TEMPERATURE_SOURCES[k].title,
-                    "url": TEMPERATURE_SOURCES[k].url,
-                }
-                for k in keys
-            ],
+            "sources": _source_entries(keys),
         }
 
     if wikidata_readings:
-        return {"readings": _sorted(wikidata_readings), "origin": "measured"}
+        block = {"readings": _sorted(wikidata_readings + core), "origin": "measured"}
+        if core_sources:
+            block["sources"] = _source_entries(core_sources)
+        return block
 
     if distance_au is not None:
         kelvin = equilibrium_temperature(distance_au, geometric_albedo)
         if kelvin is not None:
-            return {
-                "readings": [_reading("surface", "mean", kelvin)],
+            block = {
+                "readings": _sorted([_reading("surface", "mean", kelvin)] + core),
                 "origin": "estimated",
             }
+            if core_sources:
+                block["sources"] = _source_entries(core_sources)
+            return block
+
+    # A body with nothing but a modelled core still has something to say.
+    if core:
+        return {
+            "readings": core,
+            "origin": "measured",
+            "sources": _source_entries(core_sources),
+        }
     return None
 
 

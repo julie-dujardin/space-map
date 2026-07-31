@@ -4,21 +4,18 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { compositionSegments, speciesName } from '$lib/charts/atmosphere-species';
+	import type { CompositionSegment } from '$lib/charts/composition-bar';
 	import { formatPressure, EARTH_SEA_LEVEL_PA, formatEarthRatio } from '$lib/format/pressure';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
+	import CompositionBar from './kit/CompositionBar.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;
 	}
 
 	let { global }: Props = $props();
-
-	// Upper limits are drawn hatched over their hue and read "under" in every
-	// label, so a bound never passes for a measurement at a glance.
-	const HATCH =
-		'background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(0,0,0,0.35) 3px 5px)';
 
 	const TYPE_LABEL: Record<string, () => string> = {
 		exosphere: m.atmosphere_type_exosphere,
@@ -66,7 +63,7 @@
 	// Everything the bar shows is a share of the species we list, so a body
 	// whose sources only pin one gas is a full bar of that gas — true, but it
 	// reads as a measurement it isn't. Two species minimum.
-	let segments = $derived(
+	let bars = $derived(
 		atmosphere?.composition && atmosphere.composition.species.length > 1
 			? compositionSegments(atmosphere.composition.species)
 			: []
@@ -75,7 +72,7 @@
 	// The gases the trace segment stands for, biggest first — named in its
 	// tooltip so the bucket isn't a dead end.
 	let traceMembers = $derived.by(() => {
-		const shown = new Set(segments.map((s) => s.key));
+		const shown = new Set(bars.map((s) => s.key));
 		return (atmosphere?.composition?.species ?? [])
 			.filter((s) => !shown.has(s.formula))
 			.sort((a, b) => b.share - a.share);
@@ -126,10 +123,25 @@
 			? m.atmosphere_species_limit({ name, value })
 			: m.atmosphere_species_value({ name, value });
 	}
+
+	// Every species here is a formula, so every one has a name to reveal; the
+	// trace bucket also lists what it stands for.
+	let segments: CompositionSegment[] = $derived(
+		bars.map((segment) => ({
+			key: segment.key,
+			label: segment.formula ?? m.atmosphere_trace(),
+			value: `${segment.limit ? '<' : ''}${percent.format(segment.share)}`,
+			tooltip: segmentLabel(segment),
+			share: segment.share,
+			color: segment.color,
+			limit: segment.limit,
+			labelIsAbbreviated: true
+		}))
+	);
 </script>
 
-{#snippet traceDetail()}
-	{#if traceMembers.length}
+{#snippet detail(segment: CompositionSegment)}
+	{#if segment.key === '__trace__' && traceMembers.length}
 		<dl class="mt-1 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 leading-snug opacity-70">
 			{#each traceMembers as gas (gas.formula)}
 				<dt>{speciesName(gas.formula)}</dt>
@@ -142,67 +154,7 @@
 {#if atmosphere}
 	<Section title={m.atmosphere()}>
 		{#snippet header()}
-			{#if segments.length}
-				<div class="mt-2 mb-1.5 flex flex-col gap-2">
-					<div
-						class="flex h-2.5 w-full gap-0.5"
-						role="img"
-						aria-label={segments.map(segmentLabel).join(', ')}
-					>
-						{#each segments as segment (segment.key)}
-							<Tooltip.Root>
-								<Tooltip.Trigger>
-									{#snippet child({ props })}
-										<span
-											class="h-full cursor-help rounded-[2px] first:rounded-s-full last:rounded-e-full"
-											style="flex: {segment.share}; background: {segment.color}; {segment.limit
-												? HATCH
-												: ''}"
-											{...props}
-										></span>
-									{/snippet}
-								</Tooltip.Trigger>
-								<Tooltip.Content class="flex-col items-start gap-0">
-									{segmentLabel(segment)}
-									{#if segment.formula === null}{@render traceDetail()}{/if}
-								</Tooltip.Content>
-							</Tooltip.Root>
-						{/each}
-					</div>
-
-					<ul class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-						{#each segments as segment (segment.key)}
-							<li>
-								<Tooltip.Root>
-									<Tooltip.Trigger>
-										{#snippet child({ props })}
-											<span class="flex cursor-help items-center gap-1.5" {...props}>
-												<span
-													class="size-2 shrink-0 rounded-full"
-													style="background: {segment.color}"
-													aria-hidden="true"
-												></span>
-												<span>{segment.formula ?? m.atmosphere_trace()}</span>
-												<span class="text-muted-foreground tabular-nums"
-													>{segment.limit ? '<' : ''}{percent.format(segment.share)}</span
-												>
-											</span>
-										{/snippet}
-									</Tooltip.Trigger>
-									<Tooltip.Content class="flex-col items-start gap-0">
-										{segmentLabel(segment)}
-										{#if segment.formula === null}{@render traceDetail()}{/if}
-									</Tooltip.Content>
-								</Tooltip.Root>
-							</li>
-						{/each}
-					</ul>
-
-					{#if compositionNote}
-						<p class="text-muted-foreground text-[11px] leading-snug">{compositionNote}</p>
-					{/if}
-				</div>
-			{/if}
+			<CompositionBar {segments} {detail} caption={compositionNote} />
 		{/snippet}
 
 		<Row

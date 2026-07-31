@@ -40,6 +40,7 @@ from space_map_data.export.objects.celestrak import (
     merge_operator_qids,
 )
 from space_map_data.export.objects.atmosphere import atmosphere_block
+from space_map_data.export.objects.interior import interior_block
 from space_map_data.export.objects.temperature import (
     heliocentric_distance_au,
     temperature_block,
@@ -228,6 +229,7 @@ def build_chunk_object_data(
     probe_kernel_sources: dict[int, str | None],
     nomenclature_body_ids: set[str],
     parent_names: dict[str, str],
+    taxonomy: dict,
 ) -> ChunkObjectData:
     """Build per-object global and localized JSON dicts (no I/O).
 
@@ -277,6 +279,7 @@ def build_chunk_object_data(
             probe_kernel_sources,
             nomenclature_body_ids,
             parent_names,
+            taxonomy,
         )
 
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
@@ -473,6 +476,7 @@ def _build_global(
     probe_kernel_sources: dict[int, str | None],
     nomenclature_body_ids: set[str],
     parent_names: dict[str, str],
+    taxonomy: dict,
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -602,6 +606,12 @@ def _build_global(
     atmosphere = atmosphere_block(obj.id)
     if atmosphere is not None:
         data["atmosphere"] = atmosphere
+
+    # Cited interior facts: a layer model for the bodies a mission reached,
+    # a spectral estimate for the asteroids that only have a class.
+    interior = interior_block(obj.id, taxonomy)
+    if interior is not None:
+        data["interior"] = interior
 
     # SBDB extras
     if sbdb is not None:

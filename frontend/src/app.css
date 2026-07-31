@@ -114,6 +114,27 @@
 	--gas-si: #00739a;
 	--gas-xe: #4c5683;
 	--gas-trace: #8c8c8c;
+	/* One colour per interior material, same idea as the gas palette above:
+	   the hue names the material, not its rank. Only two groups ever share a
+	   bar — rock/ice bodies and giants/stars — so the palette was separated
+	   within each and validated for CVD and normal-vision floors on both
+	   surfaces. Silicate keeps rock's ochre and water the ocean blue; the
+	   rest were moved off their literal colour to clear the floors.
+	   heavy-elements is the astronomer's Z, everything above helium.
+	   Light-surface arm. */
+	--material-silicate: #ad7a00;
+	--material-metal: #8b1a91;
+	--material-water: #437bda;
+	--material-sulfide: #099c6c;
+	--material-organic: #b02e40;
+	--material-volatile-ice: #0d94b0;
+	/* Hydrogen and helium are the same substance in both charts, so they are
+	   the same swatch — referenced, not copied, because a gas giant draws the
+	   two bars one above the other and any drift between them shows. Heavy
+	   elements is re-stepped to clear those two rather than chosen freely. */
+	--material-hydrogen: var(--gas-h2);
+	--material-helium: var(--gas-he);
+	--material-heavy-elements: #a6a233;
 	--radius: 0.625rem;
 	--sidebar: oklch(0.985 0 0);
 	--sidebar-foreground: oklch(0.145 0 0);
@@ -221,6 +242,17 @@ body {
 	--gas-si: #097db1;
 	--gas-xe: #526184;
 	--gas-trace: #8f8f8f;
+	/* Interior materials, dark-surface arm — re-stepped against the dark
+	   panel rather than lightened from the light arm, and validated there. */
+	--material-silicate: #d27601;
+	--material-metal: #9043a4;
+	--material-water: #308bdf;
+	--material-sulfide: #2ba771;
+	--material-organic: #a73c3c;
+	--material-volatile-ice: #3fbcd4;
+	--material-hydrogen: var(--gas-h2);
+	--material-helium: var(--gas-he);
+	--material-heavy-elements: #bc8810;
 	--sidebar: oklch(0.205 0 0);
 	--sidebar-foreground: oklch(0.985 0 0);
 	--sidebar-primary: oklch(0.488 0.243 264.376);

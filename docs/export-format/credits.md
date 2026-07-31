@@ -44,6 +44,9 @@ interface Credits {
     url: string;                 // DOI or stable publisher/archive link
     contribution: string;        // one-liner: what the pipeline takes from it
   }>;
+  ring_references: Array<Reference>;        // works behind the ring profiles
+  temperature_references: Array<Reference>; // measured temperatures + core estimates
+  interior_references: Array<Reference>;    // gravity/seismic/meteorite work behind the interior blocks
   models?: Array<{               // 3D-model source catalogs (one entry per catalog with ≥ 1 bundle)
     name: string;                // "NASA-3D-Resources", "ESA SciFleet"
     url: string;                 // user-facing catalog landing page
@@ -80,6 +83,11 @@ unresolved or restrictive enough to need manual review, so absence means
 (curated in `data/src/space_map_data/constants/atmosphere/references.py` — one
 row per work numbers are actually taken from, English-only like the rest of
 this payload).
+
+`ring_references`, `temperature_references` and `interior_references` are the
+same shape, one per constants package under `data/src/space_map_data/constants/`.
+Each per-body panel credits only the works its own numbers come from; these
+lists are the whole bibliography in one place, for the credits page.
 
 The top-level `models` array credits each 3D-model source catalog (NASA-3D-Resources,
 ESA SciFleet, …) with one entry per catalog whose attribution matched at least

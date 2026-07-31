@@ -601,7 +601,6 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     "naif-799": BodyInterior(
         structure="fluid",
         structure_source="helled_2011",
-        note="no_solid_surface",
         layers=(
             Layer(
                 role="bulk",
@@ -624,7 +623,6 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     "naif-899": BodyInterior(
         structure="fluid",
         structure_source="helled_2011",
-        note="no_solid_surface",
         layers=(
             Layer(
                 role="bulk",
@@ -656,7 +654,6 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     "naif-10": BodyInterior(
         structure="fluid",
         structure_source="bahcall_2005",
-        note="no_solid_surface",
         layers=(
             Layer(
                 role="convective_zone",
@@ -747,6 +744,13 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
         ),
     ),
+    # The four giants and the Sun deliberately carry no `no_solid_surface`
+    # note. `structure="fluid"` already renders as "no solid surface" on the
+    # panel, and their atmosphere blocks carry the fuller version of the same
+    # sentence — the one that also explains why the pressures are quoted at a
+    # cloud deck. Three statements of one fact stacked down the panel is what
+    # it looked like.
+    #
     # Jupiter. Juno's gravity harmonics need more heavy elements than a clean
     # core-plus-envelope allows, and the way they fit is a *dilute* core: the
     # heavy elements are not a ball with a surface but a smear reaching a
@@ -764,7 +768,6 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     "naif-599": BodyInterior(
         structure="fluid",
         structure_source="wahl_2017",
-        note="no_solid_surface",
         layers=(
             Layer(
                 role="envelope",
@@ -802,7 +805,6 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     "naif-699": BodyInterior(
         structure="fluid",
         structure_source="iess_2019",
-        note="no_solid_surface",
         layers=(
             Layer(
                 role="envelope",

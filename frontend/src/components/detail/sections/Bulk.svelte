@@ -1,4 +1,14 @@
 <script lang="ts">
+	/**
+	 * What the body weighs and how big it is — the facts that describe it as a
+	 * whole rather than at any one place on or inside it.
+	 *
+	 * Density lives here rather than under Interior on purpose: for most of the
+	 * bodies with an interior model it is the *input*, not a conclusion. Rhea,
+	 * Iapetus, Pluto and the Uranian moons have nothing else, which is what
+	 * their `from_bulk_density` note says. Putting it beside the composition
+	 * would state the premise as a result.
+	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import { NO_SURFACE_BODY_IDS } from '$lib/constants';
 	import { isNaturalBodyType } from '$lib/types/objects';
@@ -9,7 +19,6 @@
 	import { formatDuration } from '$lib/format/duration';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
-	import TemperatureScale from './kit/TemperatureScale.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -21,25 +30,7 @@
 	let sbdb = $derived(global?.sbdb);
 	let orientation = $derived(global?.orientation);
 	let radii = $derived(global?.radii);
-
 	let sats = $derived(sbdb?.sats);
-
-	// Physically-derived surface colour + how it was obtained, for the swatch +
-	// TrueColorTools credit.
-	const COLOUR_METHOD = {
-		spectrum: m.colour_method_spectrum,
-		photometry: m.colour_method_photometry,
-		taxonomy: m.colour_method_taxonomy,
-		albedo: m.colour_method_albedo
-	};
-	// Small bodies carry it under `sbdb`; moons top-level, when textureless
-	let colourSource = $derived(
-		sbdb ?? (global && !global.map_texture_available ? global : undefined)
-	);
-	let colour = $derived(colourSource?.color);
-	let colourMethod = $derived(
-		colourSource?.color_method ? COLOUR_METHOD[colourSource.color_method]() : null
-	);
 
 	let rotationPeriodDays = $derived(
 		orientation?.w1 ? 360 / Math.abs(orientation.w1) : sbdb?.rot_per ? sbdb.rot_per / 24 : null
@@ -102,8 +93,6 @@
 		};
 	});
 
-	let temperatures = $derived(global?.temperatures);
-
 	let hasContent = $derived(
 		wd?.mass ||
 			sbdb?.mass ||
@@ -113,24 +102,18 @@
 			sbdb?.extent ||
 			wd?.length ||
 			wd?.width ||
+			estimatedDiameterKm ||
+			surfaceAreaKm2 != null ||
 			wd?.density ||
 			wd?.surface_gravity ||
-			sbdb?.albedo ||
 			rotationPeriodDays != null ||
-			temperatures != null ||
 			wd?.population ||
-			wd?.absolute_magnitude != null ||
-			sbdb?.H != null ||
-			wd?.apparent_magnitude != null ||
-			sbdb?.spec_B ||
-			sbdb?.spec_T ||
-			colour ||
 			(sats != null && sats > 0)
 	);
 </script>
 
 {#if hasContent}
-	<Section title={m.physical_properties()}>
+	<Section title={m.bulk_properties()}>
 		{#if sbdb?.mass}
 			<Row label={m.property_name_mass()} value={formatQuantity(sbdb.mass)} />
 		{:else if wd?.mass}
@@ -179,9 +162,6 @@
 		{#if wd?.surface_gravity}
 			<Row label={m.property_name_surface_gravity()} value={formatQuantity(wd.surface_gravity)} />
 		{/if}
-		{#if sbdb?.albedo}
-			<Row label={m.albedo()} value={formatNumber(sbdb.albedo)} tooltip={m.tooltip_albedo()} />
-		{/if}
 		{#if rotationPeriodDays != null}
 			<Row
 				label={m.rotation_period()}
@@ -192,51 +172,6 @@
 		{#if wd?.population}
 			<Row label={m.property_name_population()} value={formatNumber(wd.population)} />
 		{/if}
-		{#if wd?.absolute_magnitude != null}
-			<Row
-				label={m.property_name_absolute_magnitude()}
-				value={formatNumber(wd.absolute_magnitude)}
-				tooltip={m.tooltip_absolute_magnitude()}
-			/>
-		{:else if sbdb?.H != null}
-			<Row
-				label={m.absolute_magnitude_h()}
-				value={formatNumber(sbdb.H)}
-				tooltip={m.tooltip_absolute_magnitude_h()}
-			/>
-		{/if}
-		{#if wd?.apparent_magnitude != null}
-			<Row
-				label={m.property_name_apparent_magnitude()}
-				value={formatNumber(wd.apparent_magnitude)}
-				tooltip={m.tooltip_apparent_magnitude()}
-			/>
-		{/if}
-		{#if sbdb?.spec_B}
-			<Row
-				label={m.spectral_type_smassii()}
-				value={sbdb.spec_B}
-				tooltip={m.tooltip_spectral_type_smassii()}
-			/>
-		{/if}
-		{#if sbdb?.spec_T}
-			<Row
-				label={m.spectral_type_tholen()}
-				value={sbdb.spec_T}
-				tooltip={m.tooltip_spectral_type_tholen()}
-			/>
-		{/if}
-		{#if colour}
-			<Row label={m.surface_colour()} tooltip={m.tooltip_surface_colour()}>
-				<span class="inline-flex items-center gap-1.5">
-					{#if colourMethod}<span class="text-muted-foreground">{colourMethod}</span>{/if}
-					<span
-						class="size-3.5 rounded-full border border-border"
-						style="background-color: {colour}"
-					></span>
-				</span>
-			</Row>
-		{/if}
 		{#if sats != null && sats > 0}
 			<Row
 				label={m.known_satellites()}
@@ -244,10 +179,5 @@
 				value={String(sats)}
 			/>
 		{/if}
-		{#snippet footer()}
-			{#if temperatures}
-				<TemperatureScale {temperatures} />
-			{/if}
-		{/snippet}
 	</Section>
 {/if}

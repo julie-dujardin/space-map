@@ -66,6 +66,9 @@ class ObjectDataContext:
     # another chunk (lets the frontend breadcrumb name the host without the
     # parent body being resident in the scene).
     parent_names: dict[str, str]
+    # Object.id -> (class, complex, scheme, albedo) from SsODNet, for the
+    # asteroids whose interior is estimated from a spectrum.
+    taxonomy: dict[str, tuple[str | None, str | None, str | None, float | None]]
 
 
 @dataclass
@@ -142,6 +145,7 @@ def build_zone_object_data(
         probe_kernel_sources=ctx.probe_kernel_sources,
         nomenclature_body_ids=ctx.nomenclature_body_ids,
         parent_names=ctx.parent_names,
+        taxonomy=ctx.taxonomy,
     )
 
 

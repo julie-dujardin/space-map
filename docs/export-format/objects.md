@@ -70,6 +70,19 @@ interface GlobalObjectData {
     };
     sources: Array<{ title: string; url: string }>; // works the values are read off, deduped, pressure source first
   };
+  interior?: {                        // what the body is made of, by mass (see below)
+    structure?: string;               // "differentiated" | "partially_differentiated" | "undifferentiated" | "rubble_pile" | "fluid"; absent on the estimate route
+    estimated?: true;                 // present iff this came from a spectral class rather than a layer model
+    analogue?: string;                // estimate route: meteorite group key, e.g. "ordinary_chondrite"
+    taxonomy_class?: string;          // estimate route: class as reported, e.g. "Sq"
+    taxonomy_scheme?: string;         // estimate route: which taxonomy that letter belongs to
+    note?: string;                    // "subsurface_ocean", "hydrated_rock", "from_bulk_density", …; the frontend holds the sentence
+    composition?: Array<{             // whole-body roll-up, descending; omitted where layer masses are unknown (the Sun)
+      material: string;               // "metal" | "sulfide" | "silicate" | "water" | "volatile_ice" | "organic" | "hydrogen" | "helium" | "heavy_elements"
+      share: number;                  // normalized over the materials listed
+    }>;
+    sources: Array<{ title: string; url: string }>; // works the values are read off, deduped, structure source first
+  };
   temperatures?: {                    // absent only when even the estimate can't be computed (no heliocentric distance)
     // Flat rather than grouped by part: a body's readings all plot on one bar,
     // and a reading needs its part, its kind and what produced it together.
@@ -83,8 +96,15 @@ interface GlobalObjectData {
       k: number;                      // kelvin
       // What produces the extreme, where bare min/max would misread: Mercury's
       // are its night and day sides, Earth's are one-off weather records.
-      condition?: "night" | "day" | "record";
+      condition?: "night" | "day" | "record" | "modelled"; // "modelled" marks the core bracket — model spread, not a measurement
     }>;
+    // `core` readings always come as a min/max pair from
+    // `constants/temperature/cores.py`, and the pair is model spread rather
+    // than measurement error — nobody has measured a planetary core. They ride
+    // in this list so the export shape stays one array, but the panel draws
+    // them under Interior rather than on the temperature scale: the Sun's core
+    // is 15.5 million K against a 5772 K photosphere, and one bar holding both
+    // flattens everything else to a point.
     // Whole-block, not per reading. "estimated" is a radiative equilibrium
     // calculation from heliocentric distance and albedo, which is what most of
     // the catalogue gets; mixing one into measured readings would leave the bar
@@ -318,6 +338,32 @@ depends on `unit`: a real mixing ratio for volume/mass fractions, but for the
 thin envelopes a ratio of column or number densities measured separately, at
 different times and geometries. The frontend says so in a tooltip and hatches
 `limit` species.
+
+### `interior`
+
+Two routes, one shape. Bodies a mission or a seismometer actually constrained
+have a hand-curated layer model in
+`data/src/space_map_data/constants/interior/bodies.py` (30 today); asteroids
+that only have a spectrum get their meteorite analogue's bulk chemistry from
+`taxonomy.py`, keyed on the SsODNet class we ingest, and carry `estimated`
+so the panel can say "estimated from its S-type spectrum" rather than "is". A
+layer model always wins where a body has both — Dawn's gravity beats the fact
+that V-types look like HEDs.
+
+What ships is the roll-up, one share per material summed over the layers,
+because that is what the composition chart draws. The layers themselves stay
+in the constants until there is a per-layer view to spend the bytes on: they
+would cost every one of ~150,000 asteroid bundles something to draw nothing.
+
+The roll-up is a mass balance over layers rather than an elemental one — water
+bound in a phyllosilicate counts as water, not as oxygen shared out among the
+rocks — so a reader gets "two-thirds rock, one-third water" rather than an
+oxide table. `heavy_elements` is the astronomer's Z, everything above helium,
+and says the split is unresolved: an ice giant's are 0.76 of the planet as
+rock and 0.89 as ice with nothing choosing between them.
+
+Materials below 0.5% of the body are dropped and the rest renormalized —
+Tethys's 0.1% of rock drew an invisible sliver with a legend entry.
 
 ## Localized (`objects/{lang}/{bucket}.json.gz`)
 
