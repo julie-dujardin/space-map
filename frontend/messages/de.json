@@ -1239,6 +1239,7 @@
 	"unit_name_attometre": "Attometer",
 	"unit_name_centimetre": "Zentimeter",
 	"unit_name_centimetre_per_square_second": "Zentimeter pro Quadratsekunde",
+	"unit_name_degree_celsius": "Grad Celsius",
 	"unit_name_degree_fahrenheit": "Grad Fahrenheit",
 	"unit_name_earth_mass": "Erdmasse",
 	"unit_name_exagram": "Exagramm",
@@ -1265,6 +1266,7 @@
 	"unit_name_yottagram": "Yottagramm",
 	"unit_name_zettagram": "Zettagramm",
 	"unit_symbol_astronomical_unit": "AE",
+	"unit_symbol_degree_celsius": "℃",
 	"unit_symbol_hour": "Std.",
 	"unit_symbol_magnitude": "mag"
 }

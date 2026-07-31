@@ -45,10 +45,14 @@ class TestBodies:
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_layer_masses_account_for_the_whole_body(self, object_id: str):
         """A body whose layers do not sum to its mass would silently distort
-        the roll-up, which is the one number the panel shows."""
-        body = INTERIOR_FACTS[object_id]
-        total = sum(layer.mass_fraction or 0 for layer in body.layers)
-        assert total == pytest.approx(1.0, abs=0.002)
+        the roll-up, which is the one number the panel shows. A body whose
+        source gives geometry but no masses is allowed to carry none at all —
+        but not some, which would under-count without ever looking wrong."""
+        fractions = [layer.mass_fraction for layer in INTERIOR_FACTS[object_id].layers]
+        if all(f is None for f in fractions):
+            return
+        assert None not in fractions
+        assert sum(fractions) == pytest.approx(1.0, abs=0.002)
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_vocabularies_are_closed(self, object_id: str):
@@ -60,6 +64,23 @@ class TestBodies:
             assert layer.note is None or layer.note in NOTES
             assert sum(c.fraction for c in layer.composition) == pytest.approx(1.0)
             assert all(c.material in MATERIALS for c in layer.composition)
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_published_widths_bracket_the_shipped_value(self, object_id: str):
+        """The point value is what the roll-up uses and the range is what the
+        panel draws around it, so a range that does not contain its own value
+        would put the marker outside its own error bar."""
+        for layer in INTERIOR_FACTS[object_id].layers:
+            if layer.mass_fraction_range:
+                assert layer.mass_fraction is not None
+                lo, hi = layer.mass_fraction_range
+                assert lo <= layer.mass_fraction <= hi
+                assert lo < hi
+            for component in layer.composition:
+                if component.fraction_range:
+                    lo, hi = component.fraction_range
+                    assert lo <= component.fraction <= hi
+                    assert lo < hi
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_layers_run_outermost_first(self, object_id: str):

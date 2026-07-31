@@ -23,10 +23,27 @@ SILICATE = "silicate"  # anhydrous rock
 WATER = "water"  # ice, liquid, or structurally bound in phyllosilicates
 VOLATILE_ICE = "volatile_ice"  # CO₂, CH₄, N₂, NH₃, CO
 ORGANIC = "organic"  # carbonaceous matter
-HYDROGEN_HELIUM = "hydrogen_helium"  # giant envelopes
+HYDROGEN = "hydrogen"
+HELIUM = "helium"
+# Everything above helium, where nothing separates it further. This is the
+# astronomer's Z, and it is a statement about the evidence rather than the
+# rock: an ice giant's heavy elements weigh 0.76 of the planet if you model
+# them as rock and 0.89 if you model them as ice, and no measurement chooses.
+# Use SILICATE/WATER instead wherever a source does resolve the split.
+HEAVY_ELEMENTS = "heavy_elements"
 
 MATERIALS = frozenset(
-    {METAL, SULFIDE, SILICATE, WATER, VOLATILE_ICE, ORGANIC, HYDROGEN_HELIUM}
+    {
+        METAL,
+        SULFIDE,
+        SILICATE,
+        WATER,
+        VOLATILE_ICE,
+        ORGANIC,
+        HYDROGEN,
+        HELIUM,
+        HEAVY_ELEMENTS,
+    }
 )
 
 # `Layer.role` values, outermost first. `bulk` is the whole body in one piece:
@@ -41,6 +58,11 @@ LAYER_ROLES = frozenset(
         "ice_mantle",  # high-pressure ice below an ocean
         "envelope",  # H/He, molecular
         "metallic_hydrogen",
+        # Stellar. Zones of how energy travels rather than of what the gas is
+        # made of, which is why they carry compositions that differ without
+        # any boundary between materials.
+        "radiative_zone",
+        "convective_zone",
         "core",
         "outer_core",
         "inner_core",
@@ -91,6 +113,10 @@ class Component(NamedTuple):
     material: str
     fraction: float
     source: str
+    # The published width, where the source gives one. `fraction` stays the
+    # value to draw; this is what the panel shows as the honest spread around
+    # it, so a modelled number never reads as a measured one.
+    fraction_range: tuple[float, float] | None = None
 
 
 class Detail(NamedTuple):
@@ -119,6 +145,14 @@ class Layer(NamedTuple):
     # densities rather than a number the source quotes. Ships through to the
     # panel so a modelled split never reads as a measured one.
     derived: bool = False
+    # The published width, where the source gives one — Jupiter's core is
+    # anywhere from 7 to 25 Earth masses and there is no honest midpoint. The
+    # roll-up keeps using `mass_fraction`; this is what gets drawn around it.
+    mass_fraction_range: tuple[float, float] | None = None
+    # True where the layer has no boundary to draw: Jupiter's core is heavy
+    # elements smeared through the envelope, not a ball with a surface, and
+    # `outer_radius_km` is then where it fades out rather than where it ends.
+    diffuse: bool = False
 
 
 class BodyInterior(NamedTuple):

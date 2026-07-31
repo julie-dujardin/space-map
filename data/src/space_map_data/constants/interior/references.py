@@ -73,6 +73,96 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "https://doi.org/10.1126/science.abf2966",
         "Mars upper-mantle structure from InSight",
     ),
+    "weber_2011": InteriorReference(
+        "Weber et al. 2011 (Science 331)",
+        "https://doi.org/10.1126/science.1199375",
+        "Lunar inner and outer core radii and densities from Apollo seismograms",
+    ),
+    "anderson_2001_io": InteriorReference(
+        "Anderson et al. 2001 (J. Geophys. Res. 106 E12)",
+        "https://doi.org/10.1029/2000JE001367",
+        "Io gravity field, moment of inertia and core-radius bounds from Galileo",
+    ),
+    "anderson_1998": InteriorReference(
+        "Anderson et al. 1998 (Science 281)",
+        "https://doi.org/10.1126/science.281.5385.2019",
+        "Europa moment of inertia and water-shell thickness from Galileo",
+    ),
+    "anderson_1996": InteriorReference(
+        "Anderson et al. 1996 (Nature 384)",
+        "https://doi.org/10.1038/384541a0",
+        "Ganymede moment of inertia, core mass range and ice-rock interface",
+    ),
+    "anderson_2001_callisto": InteriorReference(
+        "Anderson et al. 2001 (Icarus 153)",
+        "https://doi.org/10.1006/icar.2001.6664",
+        "Callisto radius, moment of inertia and partially differentiated interior",
+    ),
+    "iess_2012": InteriorReference(
+        "Iess et al. 2012 (Science 337)",
+        "https://doi.org/10.1126/science.1219631",
+        "Titan tidal Love number — evidence for a global subsurface ocean",
+    ),
+    "hussmann_2006": InteriorReference(
+        "Hussmann, Sohl & Spohn 2006 (Icarus 185)",
+        "https://doi.org/10.1016/j.icarus.2006.06.005",
+        "Two-layer rock/ice mass fractions for the medium-sized icy satellites",
+    ),
+    "ermakov_2014": InteriorReference(
+        "Ermakov et al. 2014 (Icarus 240)",
+        "https://doi.org/10.1016/j.icarus.2014.05.015",
+        "Vesta core radius and density, and crustal thickness, from Dawn",
+    ),
+    "park_2016": InteriorReference(
+        "Park et al. 2016 (Nature 537)",
+        "https://doi.org/10.1038/nature18955",
+        "Ceres core size and shell density from Dawn gravity and shape",
+    ),
+    "zannoni_2020": InteriorReference(
+        "Zannoni et al. 2020 (Icarus 345)",
+        "https://doi.org/10.1016/j.icarus.2020.113713",
+        "Dione gravity field, core size and floating ice shell from Cassini",
+    ),
+    "wahl_2017": InteriorReference(
+        "Wahl et al. 2017 (Geophys. Res. Lett. 44)",
+        "https://doi.org/10.1002/2017GL073160",
+        "Jupiter dilute-core heavy-element mass and envelope composition from Juno",
+    ),
+    "iess_2019": InteriorReference(
+        "Iess et al. 2019 (Science 364)",
+        "https://doi.org/10.1126/science.aat2965",
+        "Saturn core mass and radius, and envelope abundances, from the Grand Finale",
+    ),
+    "helled_2011": InteriorReference(
+        "Helled, Anderson, Podolak & Schubert 2011 (Astrophys. J. 726)",
+        "https://doi.org/10.1088/0004-637X/726/1/15",
+        "Uranus and Neptune bulk hydrogen, helium and heavy-element fractions",
+    ),
+    "bahcall_2005": InteriorReference(
+        "Bahcall, Serenelli & Basu 2005 (Astrophys. J. 621)",
+        "https://doi.org/10.1086/428929",
+        "Standard solar model — surface and central abundances, convective-zone depth",
+    ),
+    "durante_2019": InteriorReference(
+        "Durante et al. 2019 (Icarus 326)",
+        "https://doi.org/10.1016/j.icarus.2019.03.003",
+        "Titan gravity field, moment of inertia and two-layer interior from Cassini",
+    ),
+    "genova_2019": InteriorReference(
+        "Genova et al. 2019 (Geophys. Res. Lett. 46)",
+        "https://doi.org/10.1029/2018GL081135",
+        "Mercury crustal thickness and density, and outer- and inner-core radii",
+    ),
+    "bierson_2022": InteriorReference(
+        "Bierson & Nimmo 2022 (Icarus 373)",
+        "https://doi.org/10.1016/j.icarus.2021.114776",
+        "Uranian satellite core radii and rock fractions on post-Voyager masses",
+    ),
+    "nimmo_2025": InteriorReference(
+        "Nimmo, Bierson & McKinnon 2025 (in Triton and Pluto, IOP Publishing)",
+        "https://doi.org/10.1088/2514-3433/ad5278ch2",
+        "Pluto, Charon and Triton radii, densities and rock mass fractions",
+    ),
     # --- taxonomy → meteorite analogue ------------------------------------
     "demeo_2009": InteriorReference(
         "DeMeo et al. 2009 (Icarus 202)",

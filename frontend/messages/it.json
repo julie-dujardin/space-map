@@ -1227,6 +1227,7 @@
 	"unit_name_attometre": "attometro",
 	"unit_name_centimetre": "centimetro",
 	"unit_name_centimetre_per_square_second": "centimetro al secondo quadrato",
+	"unit_name_degree_celsius": "grado Celsius",
 	"unit_name_degree_fahrenheit": "grado Fahrenheit",
 	"unit_name_deutsche_mark": "marco tedesco",
 	"unit_name_earth_mass": "massa terrestre",
@@ -1253,5 +1254,6 @@
 	"unit_name_yottagram": "yottagrammo",
 	"unit_name_zettagram": "zettagrammo",
 	"unit_symbol_astronomical_unit": "UA",
+	"unit_symbol_degree_celsius": "℃",
 	"unit_symbol_magnitude": "magnitudine"
 }
