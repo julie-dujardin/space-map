@@ -1,25 +1,31 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
-	import type { TemperatureEntry, TemperaturePart } from '$lib/fetch/objects/object-data';
+	import type {
+		TemperaturePart,
+		TemperatureReading,
+		Temperatures
+	} from '$lib/fetch/objects/object-data';
 	import { ucfirst } from '$lib/format/quantities';
-	import { formatStellarTemperature, formatTemperature } from '$lib/format/temperature';
+	import { formatTemperature } from '$lib/format/temperature';
 	import { gradientStops, regimeFor, scalePosition } from '$lib/math/temperature-scale';
 
 	interface Props {
-		entries: TemperatureEntry[];
+		temperatures: Temperatures;
 	}
 
-	let { entries }: Props = $props();
+	let { temperatures }: Props = $props();
 
 	const PART_TITLE: Record<TemperaturePart, () => string> = {
 		surface: m.temperature_of_surface,
+		cloud_top: m.temperature_of_cloud_top,
 		photosphere: m.temperature_of_photosphere,
 		corona: m.temperature_of_corona,
 		core: m.temperature_of_core
 	};
 	const PART_LABEL: Record<TemperaturePart, () => string> = {
 		surface: m.temperature_part_surface,
+		cloud_top: m.temperature_part_cloud_top,
 		photosphere: m.temperature_part_photosphere,
 		corona: m.temperature_part_corona,
 		core: m.temperature_part_core
@@ -31,31 +37,40 @@
 	} as const;
 
 	// One bar for the whole body: a reading is only legible next to the others.
-	// Named by part when the body has several (the Sun's core vs photosphere),
-	// otherwise by reading, which is the same information at one location.
-	let flat = $derived(
-		entries.flatMap((entry) =>
-			(['min', 'mean', 'max'] as const)
-				.filter((kind) => entry[kind] != null)
-				.map((kind) => ({ part: entry.part, kind, quantity: entry[kind]! }))
-		)
-	);
-	let byPart = $derived(entries.length > 1);
-	let regime = $derived(regimeFor(flat.map((r) => r.quantity.value)));
+	let entries = $derived(temperatures.readings);
+	let parts = $derived(new Set(entries.map((r) => r.part)));
+	let regime = $derived(regimeFor(entries.map((r) => r.k)));
+
+	// A condition beats the bare min/max wording wherever the exporter set one:
+	// Mercury's extremes are its night and day sides, Earth's are one-off
+	// weather records, and "min"/"max" flattens both into the same claim.
+	// Otherwise name the part when there are several, else the reading.
+	function labelFor(reading: TemperatureReading): string {
+		if (reading.condition === 'night') return m.temperature_condition_night();
+		if (reading.condition === 'day') return m.temperature_condition_day();
+		if (reading.condition === 'record') {
+			return reading.kind === 'min'
+				? m.temperature_condition_record_low()
+				: m.temperature_condition_record_high();
+		}
+		return parts.size > 1 ? PART_LABEL[reading.part]() : READING_LABEL[reading.kind]();
+	}
 
 	let readings = $derived(
-		flat
+		entries
 			.map((r) => ({
 				kind: r.kind,
-				label: byPart ? PART_LABEL[r.part]() : READING_LABEL[r.kind](),
-				kelvin: r.quantity.value,
-				text:
-					regime === 'stellar'
-						? formatStellarTemperature(r.quantity)
-						: formatTemperature(r.quantity)
+				label: labelFor(r),
+				kelvin: r.k,
+				// Every reading formats the same way whatever the regime — the scale
+				// switching to logarithmic is not a reason to switch units under the
+				// reader, who would be comparing °C here against K one body away.
+				text: formatTemperature({ value: r.k, unit: 'kelvin' })
 			}))
 			.sort((a, b) => a.kelvin - b.kelvin)
 	);
+
+	let estimated = $derived(temperatures.origin === 'estimated');
 
 	let gradient = $derived(
 		`linear-gradient(to right, ${gradientStops(regime)
@@ -111,23 +126,45 @@
 </script>
 
 <div class="flex flex-col gap-1.5">
-	<Tooltip.Root>
-		<Tooltip.Trigger>
-			{#snippet child({ props })}
-				<span
-					class="text-muted-foreground w-fit cursor-help text-sm decoration-dotted underline underline-offset-2"
-					{...props}
-				>
-					{entries.length === 1
-						? PART_TITLE[entries[0].part]()
-						: ucfirst(m.property_name_temperature())}
-				</span>
-			{/snippet}
-		</Tooltip.Trigger>
-		<Tooltip.Content>
-			{regime === 'stellar' ? m.tooltip_temperature_scale_stellar() : m.tooltip_temperature_scale()}
-		</Tooltip.Content>
-	</Tooltip.Root>
+	<div class="flex items-baseline gap-2">
+		<Tooltip.Root>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<span
+						class="text-muted-foreground w-fit cursor-help text-sm decoration-dotted underline underline-offset-2"
+						{...props}
+					>
+						{parts.size === 1
+							? PART_TITLE[entries[0].part]()
+							: ucfirst(m.property_name_temperature())}
+					</span>
+				{/snippet}
+			</Tooltip.Trigger>
+			<Tooltip.Content>
+				{regime === 'stellar'
+					? m.tooltip_temperature_scale_stellar()
+					: m.tooltip_temperature_scale()}
+			</Tooltip.Content>
+		</Tooltip.Root>
+
+		<!-- Nobody has measured most of these bodies; the number is a radiative
+		     equilibrium calculation and has to say so next to itself. -->
+		{#if estimated}
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}
+						<span
+							class="text-muted-foreground/80 border-muted-foreground/30 w-fit cursor-help rounded border px-1 text-[0.65rem] uppercase"
+							{...props}
+						>
+							{m.temperature_estimated()}
+						</span>
+					{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content>{m.tooltip_temperature_estimated()}</Tooltip.Content>
+			</Tooltip.Root>
+		{/if}
+	</div>
 
 	<!-- A quantitative axis: kept left-to-right in every locale so the gradient,
 	     ticks and labels can't disagree about which end is cold. -->

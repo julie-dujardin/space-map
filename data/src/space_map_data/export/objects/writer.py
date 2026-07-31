@@ -40,6 +40,10 @@ from space_map_data.export.objects.celestrak import (
     merge_operator_qids,
 )
 from space_map_data.export.objects.atmosphere import atmosphere_block
+from space_map_data.export.objects.temperature import (
+    heliocentric_distance_au,
+    temperature_block,
+)
 from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.small_body_color import resolve_moon_color
 from space_map_data.export.quantities import UnitConverter
@@ -418,17 +422,16 @@ def build_model_sources(
     return out
 
 
-def _normalized_temperatures(
+def _wikidata_readings(
     extracted: dict, units: UnitConverter, obj_id: str
 ) -> list[dict]:
-    """Convert each temperature reading to canonical kelvin, dropping unknowns.
+    """Flatten Wikidata's temperature claims to kelvin readings.
 
     Kelvin because the frontend positions readings on a shared scale, and only
     a ratio scale survives the log segment used for stellar temperatures.
     """
     result = []
     for entry in extracted.get("temperatures", []):
-        readings = {}
         for reading in _TEMPERATURE_READINGS:
             val = entry.get(reading)
             if val is None:
@@ -443,9 +446,13 @@ def _normalized_temperatures(
                     val["unit"],
                 )
                 continue
-            readings[reading] = kelvin
-        if readings:
-            result.append({"part": entry["part"], **readings})
+            result.append(
+                {
+                    "part": entry["part"],
+                    "kind": reading,
+                    "k": kelvin["value"],
+                }
+            )
     return result
 
 
@@ -639,10 +646,21 @@ def _build_global(
                                 units.used_units.add(resolved)
                                 val = {**val, "unit": resolved}
                 wikidata_section[key] = val
-        if temperatures := _normalized_temperatures(extracted, units, obj.id):
-            wikidata_section["temperatures"] = temperatures
         if wikidata_section:
             data["wikidata"] = wikidata_section
+
+    # Top-level rather than under `wikidata`: a cited constant or a computed
+    # estimate outranks Wikidata here, so most bodies' temperature no longer
+    # comes from there at all.
+    temperatures = temperature_block(
+        obj.id,
+        _wikidata_readings(extracted, units, obj.id),
+        heliocentric_distance_au(orbit.get("a"), obj.parent_id),
+        sbdb.albedo if sbdb else None,
+    )
+    if temperatures is not None:
+        data["temperatures"] = temperatures
+        units.used_units.add("kelvin")
 
     return data
 

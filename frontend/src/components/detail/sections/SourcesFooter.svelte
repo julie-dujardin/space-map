@@ -90,6 +90,11 @@
 		for (const source of global?.atmosphere?.sources ?? [])
 			add(source.url, source.title, source.url);
 
+		// Likewise the measured temperatures. Estimated ones ship no sources —
+		// there is no work to credit for a number we computed here.
+		for (const source of global?.temperatures?.sources ?? [])
+			add(source.url, source.title, source.url);
+
 		// Surface-feature names come from the IAU gazetteer (hosted by USGS).
 		if (nomenclature || global?.type === 'feature' || global?.has_nomenclature)
 			add('iau-naming', m.source_iau_naming_name(), 'https://planetarynames.wr.usgs.gov/');

@@ -19,14 +19,30 @@ export interface CurrencyQuantity {
 }
 
 /** Where on the body a temperature applies; ordered headline-first by the exporter. */
-export type TemperaturePart = 'surface' | 'photosphere' | 'corona' | 'core';
+export type TemperaturePart = 'surface' | 'cloud_top' | 'photosphere' | 'corona' | 'core';
 
-/** Readings for one part. Always kelvin, so log positioning stays valid. */
-export interface TemperatureEntry {
+/** What produces an extreme, where bare min/max would misread. */
+export type TemperatureCondition = 'night' | 'day' | 'record';
+
+/** One reading. `k` is always kelvin, so log positioning stays valid. */
+export interface TemperatureReading {
 	part: TemperaturePart;
-	min?: QuantityWithUnit;
-	mean?: QuantityWithUnit;
-	max?: QuantityWithUnit;
+	kind: 'min' | 'mean' | 'max';
+	k: number;
+	condition?: TemperatureCondition;
+}
+
+/**
+ * A body's temperatures, ordered headline-first by the exporter.
+ *
+ * `origin` is the whole block's, not per reading: an estimate is a radiative
+ * equilibrium calculation, and mixing one into measured readings would leave
+ * the bar readable as neither.
+ */
+export interface Temperatures {
+	readings: TemperatureReading[];
+	origin: 'measured' | 'estimated';
+	sources?: { title: string; url: string }[];
 }
 
 /**
@@ -215,6 +231,7 @@ export interface GlobalObjectData {
 	 *  size-only sphere/ellipsoid. Absent → no known physical extent (halo/point). */
 	render_quality?: 'high' | 'medium' | 'low';
 	atmosphere?: AtmosphereBlock;
+	temperatures?: Temperatures;
 	images?: ObjectImage[];
 	sbdb_primary_designation?: string;
 	provisional_designation?: string;
@@ -332,7 +349,6 @@ export interface GlobalObjectData {
 		surface_gravity?: QuantityWithUnit;
 		absolute_magnitude?: number;
 		apparent_magnitude?: number;
-		temperatures?: TemperatureEntry[];
 		population?: number;
 		website?: string[];
 		blog?: string[];

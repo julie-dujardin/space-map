@@ -70,6 +70,28 @@ interface GlobalObjectData {
     };
     sources: Array<{ title: string; url: string }>; // works the values are read off, deduped, pressure source first
   };
+  temperatures?: {                    // absent only when even the estimate can't be computed (no heliocentric distance)
+    // Flat rather than grouped by part: a body's readings all plot on one bar,
+    // and a reading needs its part, its kind and what produced it together.
+    // Ordered headline-part first (surface, cloud_top, photosphere, corona,
+    // core), then min/mean/max. Always kelvin, whatever unit the source used —
+    // the scale's stellar segment is logarithmic and only a ratio scale
+    // survives that.
+    readings: Array<{
+      part: "surface" | "cloud_top" | "photosphere" | "corona" | "core";
+      kind: "min" | "mean" | "max";
+      k: number;                      // kelvin
+      // What produces the extreme, where bare min/max would misread: Mercury's
+      // are its night and day sides, Earth's are one-off weather records.
+      condition?: "night" | "day" | "record";
+    }>;
+    // Whole-block, not per reading. "estimated" is a radiative equilibrium
+    // calculation from heliocentric distance and albedo, which is what most of
+    // the catalogue gets; mixing one into measured readings would leave the bar
+    // readable as neither. Estimated blocks carry no sources — nothing to cite.
+    origin: "measured" | "estimated";
+    sources?: Array<{ title: string; url: string }>;
+  };
   has_rings?: boolean;                // only present if true; full ring metadata (channels, geometry, attribution) lives in systems/{bary}.json
   clouds?: {                          // only when a cloud overlay was ingested for this body; mirrors systems/{bary}.json
     id: string;                       // export bundle id, e.g. "naif-399_clouds" — used to compose /v1/textures/{id}/{tier}_{frame}.webp
@@ -189,20 +211,6 @@ interface GlobalObjectData {
     surface_gravity?: QuantityWithUnit;
     absolute_magnitude?: number;
     apparent_magnitude?: number;
-    // One entry per part of the body a temperature was measured at, ordered
-    // headline-first (surface, photosphere, corona, core) — the Sun carries
-    // three unrelated readings under one Wikidata property, so a single scalar
-    // would silently pick one. Always kelvin, whatever unit the source used:
-    // the frontend places readings on a shared scale whose stellar segment is
-    // logarithmic, and only a ratio scale survives that. Bodies without a
-    // P518 "applies to part" qualifier are surface readings by convention;
-    // P7422/P6591 (record extremes) fold into the surface entry.
-    temperatures?: {
-      part: 'surface' | 'photosphere' | 'corona' | 'core';
-      min?: QuantityWithUnit;   // unit is always "kelvin"
-      mean?: QuantityWithUnit;
-      max?: QuantityWithUnit;
-    }[];
     website?: string;
     blog?: string;
     capital_cost?: CurrencyQuantity;

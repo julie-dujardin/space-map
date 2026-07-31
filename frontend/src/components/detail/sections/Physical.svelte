@@ -102,7 +102,7 @@
 		};
 	});
 
-	let temperatures = $derived(wd?.temperatures ?? []);
+	let temperatures = $derived(global?.temperatures);
 
 	let hasContent = $derived(
 		wd?.mass ||
@@ -117,7 +117,7 @@
 			wd?.surface_gravity ||
 			sbdb?.albedo ||
 			rotationPeriodDays != null ||
-			temperatures.length > 0 ||
+			temperatures != null ||
 			wd?.population ||
 			wd?.absolute_magnitude != null ||
 			sbdb?.H != null ||
@@ -245,8 +245,8 @@
 			/>
 		{/if}
 		{#snippet footer()}
-			{#if temperatures.length}
-				<TemperatureScale entries={temperatures} />
+			{#if temperatures}
+				<TemperatureScale {temperatures} />
 			{/if}
 		{/snippet}
 	</Section>
