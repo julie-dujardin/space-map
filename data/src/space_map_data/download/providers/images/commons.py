@@ -27,6 +27,7 @@ from httpx import Response
 from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
+from space_map_data.constants.wikidata_topics import topic_page_qids
 from space_map_data.download.downloader import Downloader
 from space_map_data.export.groups.registry import GROUPS
 from space_map_data.utils.commons_images import (
@@ -153,6 +154,8 @@ class CommonsDownloader(Downloader):
             scans.append(
                 ("groups", self._group_entity_files(referenced_dir), ("P18", "P154"))
             )
+            # Topic pages carry a single illustrative P18 and no logo.
+            scans.append(("topics", self._topic_entity_files(referenced_dir), ("P18",)))
         for label, entity_files, pids in scans:
             for entity_file in tqdm(
                 entity_files,
@@ -225,6 +228,15 @@ class CommonsDownloader(Downloader):
             f"{len(non_commons):,}",
         )
         return commons, non_commons
+
+    @staticmethod
+    def _topic_entity_files(referenced_dir: Path) -> list[Path]:
+        """Resolve detail-panel topic QIDs to entity files under ``referenced/``."""
+        return [
+            path
+            for qid in sorted(topic_page_qids())
+            if (path := referenced_dir / f"{qid}.json").exists()
+        ]
 
     @staticmethod
     def _group_entity_files(referenced_dir: Path) -> list[Path]:

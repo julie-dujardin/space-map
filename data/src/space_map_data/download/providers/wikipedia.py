@@ -12,6 +12,7 @@ import httpx
 from httpx import Response
 from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.constants.wikidata_topics import topic_page_qids
 from space_map_data.export.groups.registry import GROUPS
 from space_map_data.utils.paths import SOURCES_METADATA_DIR
 from tqdm import tqdm
@@ -58,7 +59,11 @@ class WikipediaDownloader(Downloader):
                 f"({', '.join(self._ENTITY_SUBDIRS)}) — download wikidata first"
             )
 
-        extra = self._group_entity_files() + self._quadrangle_entity_files()
+        extra = (
+            self._group_entity_files()
+            + self._quadrangle_entity_files()
+            + self._topic_entity_files()
+        )
         tasks_by_lang = self._collect_tasks(present, extra)
         if not tasks_by_lang:
             logger.info("No summaries to fetch")
@@ -93,6 +98,20 @@ class WikipediaDownloader(Downloader):
         return [
             path
             for qid in sorted(quadrangle_qids())
+            if (path := referenced / f"{qid}.json").exists()
+        ]
+
+    def _topic_entity_files(self) -> list[Path]:
+        """Detail-panel topic pages (atmosphere, interior, rings, concepts).
+
+        Coverage across these is uneven and deliberately not filled in from
+        English, so a QID missing a sitelink for a language simply yields no
+        task for it.
+        """
+        referenced = SOURCES_METADATA_DIR / "wikidata" / "referenced"
+        return [
+            path
+            for qid in sorted(topic_page_qids())
             if (path := referenced / f"{qid}.json").exists()
         ]
 

@@ -20,6 +20,7 @@ from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
 from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
+from space_map_data.constants.wikidata_topics import topic_page_qids
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
 from space_map_data.export.nomenclature.wikidata_claims import (
@@ -191,6 +192,15 @@ class WikidataDownloader(Downloader):
             referenced_dir,
             limit=None,
             fetch_desc="reusable vehicles",
+        )
+        # Topic pages for the detail panels (atmosphere, interior, rings, and
+        # the concepts the stat cards name). No object claim reaches them —
+        # they describe a subject, not an entity we hold.
+        self._fetch_entities(
+            topic_page_qids(),
+            referenced_dir,
+            limit=None,
+            fetch_desc="topic pages",
         )
 
         # Second pass: fetch referenced entities and units. Each primary tier
