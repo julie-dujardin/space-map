@@ -71,20 +71,49 @@
 	--chart-3: oklch(0.546 0.245 262.881);
 	--chart-4: oklch(0.488 0.243 264.376);
 	--chart-5: oklch(0.424 0.199 265.638);
-	/* Gas-species slots for atmosphere composition bars. A categorical set:
-	   hues carry identity (H₂ is the same blue everywhere), so they are
-	   assigned per species, never per rank. Steps are the light-surface arm of
-	   a palette checked for CVD separation and contrast; --gas-trace is the
-	   neutral "everything else" bucket. */
-	--gas-1: #2a78d6;
-	--gas-2: #eb6834;
-	--gas-3: #1baf7a;
-	--gas-4: #eda100;
-	--gas-5: #e87ba4;
-	--gas-6: #008300;
-	--gas-7: #4a3aa7;
-	--gas-8: #e34948;
-	--gas-trace: oklch(0.556 0 0);
+	/* One colour per gas for atmosphere composition bars, seeded by where you
+	   see the gas — Io's sulphur yellow, Neptune's methane cyan, ocean blue for
+	   water — then separated until every pair that can share a bar clears the
+	   CVD and normal-vision floors. Two gases never share a colour, so a hue
+	   names the gas rather than its rank. --gas-trace is the deliberately
+	   neutral "everything else" bucket; light-surface arm. */
+	--gas-ar: #5b348c;
+	--gas-ar-36: #7c47ae;
+	--gas-ar-40: #c6a3fe;
+	--gas-c: #914c6c;
+	--gas-c2h2: #067764;
+	--gas-c2h4: #37b19e;
+	--gas-c2h6: #029487;
+	--gas-ch4: #07d0da;
+	--gas-co: #396971;
+	--gas-co2: #fe996f;
+	--gas-ca: #e07879;
+	--gas-fe: #9a4c37;
+	--gas-h: #f897c8;
+	--gas-h2: #a764a3;
+	--gas-h2o: #1c5dd0;
+	--gas-hd: #785e83;
+	--gas-hdo: #4264a5;
+	--gas-he: #b3301e;
+	--gas-he-4: #c9593b;
+	--gas-k: #b885c8;
+	--gas-kr: #6d5ea8;
+	--gas-mg: #6d9edf;
+	--gas-n: #c89020;
+	--gas-n2: #666200;
+	--gas-nh3: #885d02;
+	--gas-no: #a59c58;
+	--gas-na: #f4a51d;
+	--gas-ne: #d24a5d;
+	--gas-ne-20: #ff939c;
+	--gas-ne-22: #92032e;
+	--gas-o: #139948;
+	--gas-o2: #58c4fd;
+	--gas-so: #4b7400;
+	--gas-so2: #a2a20d;
+	--gas-si: #00739a;
+	--gas-xe: #4c5683;
+	--gas-trace: #8c8c8c;
 	--radius: 0.625rem;
 	--sidebar: oklch(0.985 0 0);
 	--sidebar-foreground: oklch(0.145 0 0);
@@ -155,15 +184,43 @@ body {
 	--chart-5: oklch(0.424 0.199 265.638);
 	/* Dark arm of the gas-species palette — re-stepped against the dark
 	   surface, not a flip of the light values. */
-	--gas-1: #3987e5;
-	--gas-2: #d95926;
-	--gas-3: #199e70;
-	--gas-4: #c98500;
-	--gas-5: #d55181;
-	--gas-6: #008300;
-	--gas-7: #9085e9;
-	--gas-8: #e66767;
-	--gas-trace: oklch(0.708 0 0);
+	--gas-ar: #ae7ef3;
+	--gas-ar-36: #69439c;
+	--gas-ar-40: #cb72dc;
+	--gas-c: #965070;
+	--gas-c2h2: #0d7c65;
+	--gas-c2h4: #1ea28f;
+	--gas-c2h6: #048e81;
+	--gas-ch4: #056385;
+	--gas-co: #0d6863;
+	--gas-co2: #973902;
+	--gas-ca: #cd6769;
+	--gas-fe: #9f503b;
+	--gas-h: #9d1869;
+	--gas-h2: #7a6fb1;
+	--gas-h2o: #0d50c3;
+	--gas-hd: #796184;
+	--gas-hdo: #4669aa;
+	--gas-he: #7f4c00;
+	--gas-he-4: #804e0a;
+	--gas-k: #a674b6;
+	--gas-kr: #6b5baf;
+	--gas-mg: #5d8ccc;
+	--gas-n: #b79414;
+	--gas-n2: #768200;
+	--gas-nh3: #d88620;
+	--gas-no: #988c51;
+	--gas-na: #a46e0b;
+	--gas-ne: #cb4457;
+	--gas-ne-20: #e64c63;
+	--gas-ne-22: #c1154b;
+	--gas-o: #15ba53;
+	--gas-o2: #01778b;
+	--gas-so: #446700;
+	--gas-so2: #90910b;
+	--gas-si: #097db1;
+	--gas-xe: #526184;
+	--gas-trace: #8f8f8f;
 	--sidebar: oklch(0.205 0 0);
 	--sidebar-foreground: oklch(0.985 0 0);
 	--sidebar-primary: oklch(0.488 0.243 264.376);

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { compositionSegments, formatFormula } from './atmosphere-species';
 import { formatPressure, formatEarthRatio } from '$lib/format/pressure';
 
@@ -14,38 +14,25 @@ describe('compositionSegments', () => {
 		expect(segments.at(-1)?.share).toBeCloseTo(0.004);
 	});
 
-	it('gives a species the same hue wherever it appears', () => {
-		const jupiter = compositionSegments([
-			{ formula: 'H2', share: 0.86 },
-			{ formula: 'He', share: 0.14 }
+	// Isotopes are the only formulas whose variable name is not just the
+	// lowercased formula, so they are the only naming case worth asserting.
+	it('keeps the hyphen when an isotope names its variable', () => {
+		const segments = compositionSegments([
+			{ formula: 'He-4', share: 0.7 },
+			{ formula: 'Ne-20', share: 0.3 }
 		]);
-		const saturn = compositionSegments([
-			{ formula: 'H2', share: 0.88 },
-			{ formula: 'He', share: 0.12 }
-		]);
-		expect(jupiter[0].color).toBe(saturn[0].color);
-		expect(jupiter[1].color).toBe(saturn[1].color);
+		expect(segments.map((s) => s.color)).toEqual(['var(--gas-he-4)', 'var(--gas-ne-20)']);
 	});
 
-	it('never repeats a hue when unmapped species take spare slots', () => {
+	it('falls back visibly for a species the palette has never seen', () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const segments = compositionSegments([
-			{ formula: 'Mg', share: 0.4 },
-			{ formula: 'Na', share: 0.3 },
-			{ formula: 'K', share: 0.2 },
-			{ formula: 'Ca', share: 0.1 }
+			{ formula: 'N2', share: 0.6 },
+			{ formula: 'PH3', share: 0.4 }
 		]);
-		expect(new Set(segments.map((s) => s.color)).size).toBe(segments.length);
-	});
-
-	it('never draws one hue twice, even when two mapped gases share a slot', () => {
-		// Ar and H2 share slot 1 — they never co-occur in the shipped data, but
-		// the bar must survive it if they ever do.
-		const segments = compositionSegments([
-			{ formula: 'H2', share: 0.6 },
-			{ formula: 'Ar', share: 0.4 }
-		]);
-		expect(segments[0].color).toBe('var(--gas-1)');
-		expect(segments[1].color).not.toBe(segments[0].color);
+		expect(segments[1].color).toBe('var(--muted-foreground)');
+		expect(warn).toHaveBeenCalled();
+		warn.mockRestore();
 	});
 
 	it('carries the upper-limit flag through', () => {
