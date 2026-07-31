@@ -25,6 +25,37 @@ from space_map_data.constants.interior.schema import (
 
 
 INTERIOR_FACTS: dict[str, BodyInterior] = {
+    # Mercury, the one terrestrial planet that is mostly core. MESSENGER's
+    # moment-of-inertia pair puts the top of the liquid core at 2020 ± 30 km
+    # under a solid shell 410 ± 37 km thick of density 3650 ± 225 kg/m³:
+    #   (4/3)π(2439.7³ - 2020³) km³ = 2.630e19 m³ × 3650 = 9.60e22 kg
+    #   9.60e22 / 3.3011e23 = 0.291 shell, so 0.709 core
+    "naif-199": BodyInterior(
+        structure="differentiated",
+        structure_source="hauck_2013",
+        layers=(
+            Layer(
+                role="mantle",
+                mass_fraction=0.291,
+                composition=(Component(SILICATE, 1.0, "hauck_2013"),),
+                source="hauck_2013",
+                outer_radius_km=2439.7,
+                derived=True,
+                note="from_moment_of_inertia",
+            ),
+            # Fe-S-Si, with a solid FeS layer possibly floating at its top and
+            # a solid inner core below — none of which is resolved well enough
+            # to split into separate layers, so it stays one metal core.
+            Layer(
+                role="core",
+                mass_fraction=0.709,
+                composition=(Component(METAL, 1.0, "hauck_2013"),),
+                source="hauck_2013",
+                outer_radius_km=2020.0,
+                derived=True,
+            ),
+        ),
+    ),
     # Earth. Layer masses are quoted directly: McDonough 2003 tabulates the
     # Earth at 5.9736e24 kg against an inner core of 9.675e22, an outer core
     # of 1.835e24 and a mantle of 4.043e24 — so the core is 32.3% of the
@@ -123,6 +154,45 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 composition=(Component(METAL, 1.0, "stahler_2021"),),
                 source="stahler_2021",
                 outer_radius_km=1830.0,
+                derived=True,
+            ),
+        ),
+    ),
+    # The Moon. Two independent measurements, one per end: GRAIL gives a crust
+    # 34-43 km thick at a bulk density of 2550 kg/m³ (12% porous), and
+    # VPREMOON's core-reflected shear phases give a core of 380 ± 40 km at
+    # 5200 ± 1000 kg/m³.
+    #   crust  4π(1737.4 km)² × 38.5 km = 1.460e18 m³ × 2550 = 3.72e21 kg → 0.051
+    #   core   (4/3)π(380 km)³ = 2.299e17 m³ × 5200 = 1.20e21 kg      → 0.016
+    #   mantle the remainder                                          → 0.933
+    # The core's error bars are wide enough to span 0.009-0.026, which is the
+    # honest width of "the Moon is 1.6% metal".
+    "naif-301": BodyInterior(
+        structure="differentiated",
+        structure_source="garcia_2011",
+        layers=(
+            Layer(
+                role="crust",
+                mass_fraction=0.051,
+                composition=(Component(SILICATE, 1.0, "wieczorek_2013"),),
+                source="wieczorek_2013",
+                outer_radius_km=1737.4,
+                derived=True,
+            ),
+            Layer(
+                role="mantle",
+                mass_fraction=0.933,
+                composition=(Component(SILICATE, 1.0, "garcia_2011"),),
+                source="garcia_2011",
+                outer_radius_km=1698.9,
+                derived=True,
+            ),
+            Layer(
+                role="core",
+                mass_fraction=0.016,
+                composition=(Component(METAL, 1.0, "garcia_2011"),),
+                source="garcia_2011",
+                outer_radius_km=380.0,
                 derived=True,
             ),
         ),

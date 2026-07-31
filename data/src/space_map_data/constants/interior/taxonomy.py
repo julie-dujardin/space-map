@@ -114,6 +114,41 @@ TAXONOMY_COMPOSITION: dict[str, ClassComposition] = {
         ),
         source="demeo_2009",
     ),
+    # Metal-rich, but not the iron bar people picture. The best spectral match
+    # across the M-type population is Landes — an iron shot through with
+    # silicate inclusions, 81% NiFe and 16% silicate — rather than a clean iron
+    # like Odessa. Renormalised to 100%.
+    "M": ClassComposition(
+        analogue="iron_with_silicate",
+        composition=(
+            Component(METAL, 0.83, "neeley_2014"),
+            Component(SILICATE, 0.17, "neeley_2014"),
+        ),
+        source="neeley_2014",
+    ),
+    # Aubrites: enstatite achondrites, near-FeO-free pyroxene. The high albedo
+    # that separates them from M is the same thing as their iron-poor silicate.
+    "E": ClassComposition(
+        analogue="aubrite",
+        composition=(
+            Component(SILICATE, 0.98, "krot_2014"),
+            Component(METAL, 0.01, "krot_2014"),
+            Component(SULFIDE, 0.01, "krot_2014"),
+        ),
+        source="demeo_2009",
+    ),
+    # CAI-rich: L-types carry up to 30% refractory inclusions, but the bulk is
+    # still CV/CO chondrite, so the composition is K's.
+    "L": ClassComposition(
+        analogue="cv_co_chondrite",
+        composition=(
+            Component(SILICATE, 0.85, "krot_2014"),
+            Component(METAL, 0.05, "krot_2014"),
+            Component(SULFIDE, 0.05, "krot_2014"),
+            Component(ORGANIC, 0.05, "wasson_1988"),
+        ),
+        source="sunshine_2008",
+    ),
     # Olivine-dominated: pallasite mantles and brachinites, an interior laid
     # bare rather than a surface.
     "A": ClassComposition(
@@ -131,3 +166,50 @@ TAXONOMY_COMPOSITION: dict[str, ClassComposition] = {
 # "Sq" is an S. Kept explicit rather than string-prefix matching, because
 # prefixes lie: a "Cgh" is a C, but an "L" is not an "LS".
 COMPLEX_FALLBACK = frozenset({"S", "C", "V", "B", "K", "A", "Q"})
+
+# The X complex is three different rocks sharing one featureless spectrum, and
+# only albedo tells them apart: dark P, moderate M, bright E. That is Tholen's
+# original split, which Mahlke et al. 2022 reinstated by feeding albedo back
+# into the classification — so applying it here reproduces their method for
+# the objects classified under schemes that left it out.
+#
+# P is absent from the table above on purpose. Its analogue is genuinely
+# unsettled (the Tagish Lake link that once carried it is no longer thought
+# representative), so dark X-types get no composition rather than a guess.
+X_ALBEDO_METAL = 0.10  # below this is P, above is M
+X_ALBEDO_ENSTATITE = 0.30  # above this is E
+
+
+def resolve_class(
+    taxonomy_class: str, complex_: str | None, albedo: float | None
+) -> str | None:
+    """Reduce a reported class to one this table can answer for.
+
+    Returns None when nothing here applies — an unsplittable X, a class whose
+    analogue is disputed, or an intermediate like "LS" that is genuinely two
+    rocks at once.
+    """
+    if taxonomy_class in TAXONOMY_COMPOSITION:
+        return taxonomy_class
+
+    # X splits on albedo, and only if we have one.
+    if taxonomy_class == "X" or complex_ == "X":
+        if albedo is None or albedo < X_ALBEDO_METAL:
+            return None
+        return "E" if albedo > X_ALBEDO_ENSTATITE else "M"
+
+    # A lowercase suffix qualifies the leading class rather than replacing it
+    # ("Ds" is a D with s-like features), so the first letter carries the
+    # composition. Two capitals mean an object sitting between two classes —
+    # "LS", "CX" — and those we decline.
+    head = taxonomy_class[:1]
+    if (
+        len(taxonomy_class) > 1
+        and taxonomy_class[1:].islower()
+        and head in TAXONOMY_COMPOSITION
+    ):
+        return head
+
+    if complex_ in COMPLEX_FALLBACK and complex_ in TAXONOMY_COMPOSITION:
+        return complex_
+    return None
