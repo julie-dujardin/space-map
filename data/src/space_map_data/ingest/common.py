@@ -24,6 +24,7 @@ from space_map_data.ingest.providers.objects import (
     sbdb,
     sbdb_moons,
     spice,
+    ssodnet,
 )
 from space_map_data.ingest.providers.wikidata import (
     comet_fragments,
@@ -58,6 +59,9 @@ def ingest_objects(download_dir: Path) -> None:
     # moons can find existing rows (e.g. Pluto's Charon) and merge SBDB
     # metadata onto them instead of producing duplicate Object rows.
     sbdb_moons.ingest(download_dir)
+    # Taxonomic classes for the small bodies, keyed on the SBDB SPK-IDs the
+    # sbdb ingest above just wrote.
+    ssodnet.ingest(download_dir)
     # Discovery year for natural moons; matches the JPL table to existing
     # SPICE/Horizons moon rows by name/designation.
     jpl_satellite_discovery.ingest(download_dir)

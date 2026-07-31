@@ -6,6 +6,7 @@ class PROVIDERS(StrEnum):
     GCAT = "gcat"
     SBDB = "sbdb"
     SBDB_MOONS = "sbdb_moons"
+    SSODNET = "ssodnet"
     JPL_SATELLITE_DISCOVERY = "jpl_satellite_discovery"
     SPACETRACK = "spacetrack"
     SPICE = "spice"

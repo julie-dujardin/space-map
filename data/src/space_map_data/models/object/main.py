@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from space_map_data.models.object.satcat import Satcat
     from space_map_data.models.object.sbdb import SBDB
     from space_map_data.models.object.sbdb_moon import SBDBMoon
+    from space_map_data.models.object.ssodnet import SsODNet
 
 
 # IAU-recognized dwarf planets
@@ -232,6 +233,7 @@ class Object(Base):
     # Relationships
     horizons: Mapped["Horizons | None"] = relationship(back_populates="object")
     sbdb: Mapped["SBDB | None"] = relationship(back_populates="object")
+    ssodnet: Mapped["SsODNet | None"] = relationship(back_populates="object")
     celestrak: Mapped["CelesTrak | None"] = relationship(
         foreign_keys=[celestrak_norad_cat_id]
     )
