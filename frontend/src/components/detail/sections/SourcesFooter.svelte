@@ -2,7 +2,8 @@
 	import { getContext } from 'svelte';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import * as m from '$lib/paraglide/messages.js';
-	import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
+	import { archiveLabel, archiveRole, archiveUrl } from '$lib/credits/archive-labels';
+	import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
 	import type { GlobalObjectData, ModelSource } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
@@ -12,6 +13,9 @@
 		key: string;
 		label: string;
 		url: string;
+		/** A few words on what this one contributed. Carried by the providers,
+		 *  not the papers — a title and a year already say what those are. */
+		note?: string;
 	}
 
 	interface Props {
@@ -49,41 +53,72 @@
 	let sources = $derived.by(() => {
 		const out: Source[] = [];
 		const seen = new Set<string>();
-		const add = (key: string, label: string, url: string | null | undefined) => {
+		const add = (key: string, label: string, url: string | null | undefined, note?: string) => {
 			if (!url || seen.has(key)) return;
 			seen.add(key);
-			out.push({ key, label, url });
+			// A label that already ends in a qualifier — "NASA SPICE kernels
+			// (NAIF)" — would stack a second parenthetical, so it goes bare.
+			out.push({ key, label, url, note: label.endsWith(')') ? undefined : note });
+		};
+		// The IAU working group sets the rotational elements and radii; NAIF is
+		// where we read them, so both are credited wherever either applies.
+		const addPck = () => {
+			add(
+				'iau-wgccre',
+				m.source_iau_wgccre_short(),
+				'https://www.iau.org/WG100/WG100/Home.aspx',
+				m.source_iau_wgccre_role()
+			);
+			add(
+				'naif',
+				m.source_spice_pck_name(),
+				'https://naif.jpl.nasa.gov/naif/',
+				m.source_spice_pck_role()
+			);
 		};
 
 		const eph = global?.ephemeris_source;
-		if (eph) add(eph, archiveLabel(eph) ?? eph, archiveUrl(eph));
+		if (eph) add(eph, archiveLabel(eph) ?? eph, archiveUrl(eph), archiveRole(eph) ?? undefined);
 
 		const qid = global?.cross_refs?.wikidata_qid;
-		if (qid) add('wikidata', m.source_wikidata_name(), `https://www.wikidata.org/wiki/${qid}`);
+		if (qid)
+			add(
+				'wikidata',
+				m.source_wikidata_name(),
+				`https://www.wikidata.org/wiki/${qid}`,
+				m.source_wikidata_role()
+			);
 		// Lineup radius fallback (Wikidata P2120) — credit Wikidata even on a page
 		// whose own group has no QID. Deduped against the QID link above by key.
-		else if (wikidata) add('wikidata', m.source_wikidata_name(), 'https://www.wikidata.org/');
+		else if (wikidata)
+			add(
+				'wikidata',
+				m.source_wikidata_name(),
+				'https://www.wikidata.org/',
+				m.source_wikidata_role()
+			);
 
 		// Collection-page lineup geometry/metadata, derived from the members shown.
-		if (sbdb) add('sbdb', m.source_sbdb_name(), 'https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html');
-		if (pck) {
-			add('iau-wgccre', m.source_iau_wgccre_short(), 'https://www.iau.org/WG100/WG100/Home.aspx');
-			add('naif', m.source_spice_pck_name(), 'https://naif.jpl.nasa.gov/naif/');
-		}
+		if (sbdb)
+			add(
+				'sbdb',
+				m.source_sbdb_name(),
+				'https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html',
+				m.source_sbdb_role()
+			);
+		if (pck) addPck();
 
 		const mpc = global?.cross_refs?.mpc_designation;
 		if (mpc)
 			add(
 				'mpc',
 				m.source_mpc_name(),
-				`https://www.minorplanetcenter.net/db_search/show_object?utf8=%E2%9C%93&object_id=${encodeURIComponent(mpc)}`
+				`https://www.minorplanetcenter.net/db_search/show_object?utf8=%E2%9C%93&object_id=${encodeURIComponent(mpc)}`,
+				m.source_mpc_role()
 			);
 
 		// Rotational elements / physical constants for planets & moons.
-		if (global?.orientation) {
-			add('iau-wgccre', m.source_iau_wgccre_short(), 'https://www.iau.org/WG100/WG100/Home.aspx');
-			add('naif', m.source_spice_pck_name(), 'https://naif.jpl.nasa.gov/naif/');
-		}
+		if (global?.orientation) addPck();
 
 		// Atmospheric facts carry their own per-value citations, so these are
 		// exact rather than inferred like the rest of this list.
@@ -95,13 +130,41 @@
 		for (const source of global?.temperatures?.sources ?? [])
 			add(source.url, source.title, source.url);
 
+		// The interior ships the works behind what its panel draws, so a body
+		// whose composition is a spectral-class estimate credits the meteorite
+		// chemistry, not a gravity field it never had.
+		for (const source of global?.interior?.sources ?? []) add(source.url, source.title, source.url);
+
+		// Where the class itself came from. Ids, not citations — see
+		// `$lib/credits/taxonomy-sources`.
+		for (const id of global?.interior?.taxonomy_sources ?? []) {
+			const source = TAXONOMY_SOURCES[id];
+			if (source) add(id, source.label(), source.url, source.role());
+			else console.warn(`Missing taxonomy source: ${id}`);
+		}
+
 		// Surface-feature names come from the IAU gazetteer (hosted by USGS).
 		if (nomenclature || global?.type === 'feature' || global?.has_nomenclature)
-			add('iau-naming', m.source_iau_naming_name(), 'https://planetarynames.wr.usgs.gov/');
+			add(
+				'iau-naming',
+				m.source_iau_naming_name(),
+				'https://planetarynames.wr.usgs.gov/',
+				m.source_iau_naming_role()
+			);
 
 		if (earthSat) {
-			add('celestrak', m.source_celestrak_name(), 'https://celestrak.org/satcat/');
-			add('jonathan', m.source_jonathan_space_report_name(), 'https://planet4589.org/space/');
+			add(
+				'celestrak',
+				m.source_celestrak_name(),
+				'https://celestrak.org/satcat/',
+				m.source_celestrak_role()
+			);
+			add(
+				'jonathan',
+				m.source_jonathan_space_report_name(),
+				'https://planet4589.org/space/',
+				m.source_jonathan_space_report_role()
+			);
 		}
 
 		return out;
@@ -190,13 +253,16 @@
 	<p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
 		<span>{m.metadata_sources_prefix()}</span>
 		{#each sources as source (source.key)}
-			<a
-				href={source.url}
-				target="_blank"
-				rel="noopener"
-				class="inline-flex items-center gap-1 underline hover:text-foreground"
-				>{source.label}<ExternalLinkIcon class="size-3 shrink-0" /></a
-			>
+			<span class="inline-flex items-center gap-1">
+				<a
+					href={source.url}
+					target="_blank"
+					rel="noopener"
+					class="inline-flex items-center gap-1 underline hover:text-foreground"
+					>{source.label}<ExternalLinkIcon class="size-3 shrink-0" /></a
+				>
+				{#if source.note}<span class="opacity-75">({source.note})</span>{/if}
+			</span>
 		{/each}
 	</p>
 {/if}

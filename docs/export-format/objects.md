@@ -76,6 +76,7 @@ interface GlobalObjectData {
     analogue?: string;                // estimate route: meteorite group key, e.g. "ordinary_chondrite"
     taxonomy_class?: string;          // estimate route: class as reported, e.g. "Sq"
     taxonomy_scheme?: string;         // estimate route: which taxonomy that letter belongs to
+    taxonomy_sources?: string[];      // estimate route: "ssodnet", optionally "mahlke" — ids, not citations
     note?: string;                    // "subsurface_ocean", "hydrated_rock", "from_bulk_density", …; the frontend holds the sentence
     composition?: Array<{             // whole-body roll-up, descending; omitted where layer masses are unknown (the Sun)
       material: string;               // "metal" | "sulfide" | "silicate" | "water" | "volatile_ice" | "organic" | "hydrogen" | "helium" | "heavy_elements"
@@ -364,6 +365,19 @@ rock and 0.89 as ice with nothing choosing between them.
 
 Materials below 0.5% of the body are dropped and the rest renormalized —
 Tethys's 0.1% of rock drew an invisible sliver with a legend entry.
+
+`sources` is the works behind what the panel shows, not the whole model: the
+structure, the layer masses the bar is summed from, and the chemistry of the
+materials that survived the sliver cut. The full bibliography is in
+`credits.json` as `interior_references`.
+
+`taxonomy_sources` credits the class letter rather than the composition, and
+ships ids because 171,000 asteroids carry it — full citations would be
+megabytes of bundle for two names that never vary. Always `"ssodnet"`, plus
+`"mahlke"` where the class was reported under Mahlke's scheme or where the
+albedo cut resolved an X into an E or an M. The frontend resolves both from
+`$lib/credits/taxonomy-sources`, and the credits page lists them under object
+metadata rather than in `interior_references`.
 
 ## Localized (`objects/{lang}/{bucket}.json.gz`)
 

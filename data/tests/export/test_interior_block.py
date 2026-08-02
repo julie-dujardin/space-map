@@ -4,6 +4,8 @@ the two routes answers for a body."""
 import pytest
 
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
+from space_map_data.constants.interior.references import INTERIOR_SOURCES
+from space_map_data.constants.interior.schema import BodyInterior, Component, Layer
 from space_map_data.export.objects.interior import interior_block
 
 # (1) Ceres, C-class, in the spectral table — but Dawn flew there.
@@ -101,3 +103,54 @@ class TestSources:
         should list it once."""
         sources = block("naif-602")["sources"]
         assert len(sources) == len({s["url"] for s in sources})
+
+    def test_the_class_is_credited_by_id(self):
+        """Full citations for 171,000 asteroids would be megabytes of bundle
+        for two names that never vary; the frontend resolves these itself."""
+        assert block(EROS, EROS_TAXONOMY)["taxonomy_sources"] == ["ssodnet"]
+
+    def test_mahlkes_scheme_is_credited(self):
+        assert block(EROS, {EROS: ("S", "S", "Mahlke", 0.25)})["taxonomy_sources"] == [
+            "ssodnet",
+            "mahlke",
+        ]
+
+    def test_the_albedo_split_credits_mahlke_under_any_scheme(self):
+        """An X we resolved ourselves is Mahlke's cut whoever reported the
+        letter."""
+        assert block(EROS, {EROS: ("X", "X", "Bus-DeMeo", 0.25)})[
+            "taxonomy_sources"
+        ] == ["ssodnet", "mahlke"]
+
+    def test_a_layer_model_credits_no_taxonomy(self):
+        """Ganymede's interior is a gravity field; no spectrum went near it."""
+        assert "taxonomy_sources" not in block("naif-503")
+
+    def test_a_dropped_material_drops_its_citation(self, monkeypatch):
+        """Credit follows the bar. No real body relies on this — every sliver
+        we cut is cited elsewhere on the same body — but the panel must not
+        credit a work for a segment it never drew."""
+        monkeypatch.setitem(
+            INTERIOR_FACTS,
+            "test-1",
+            BodyInterior(
+                structure="differentiated",
+                structure_source="park_2016",
+                layers=(
+                    Layer(
+                        role="mantle",
+                        mass_fraction=1.0,
+                        source="park_2016",
+                        composition=(
+                            Component("silicate", 0.999, "krot_2014"),
+                            Component("organic", 0.001, "wasson_1988"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        result = block("test-1")
+        assert [c["material"] for c in result["composition"]] == ["silicate"]
+        urls = {s["url"] for s in result["sources"]}
+        assert INTERIOR_SOURCES["krot_2014"].url in urls
+        assert INTERIOR_SOURCES["wasson_1988"].url not in urls

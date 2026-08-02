@@ -89,6 +89,11 @@ same shape, one per constants package under `data/src/space_map_data/constants/`
 Each per-body panel credits only the works its own numbers come from; these
 lists are the whole bibliography in one place, for the credits page.
 
+`interior_references` is interior work only. SsODNet and Mahlke, which supply
+and define the spectral classes the estimate route reads, are not shipped
+here — the credits page lists them under object metadata, and objects point at
+them through `interior.taxonomy_sources`.
+
 The top-level `models` array credits each 3D-model source catalog (NASA-3D-Resources,
 ESA SciFleet, …) with one entry per catalog whose attribution matched at least
 one model bundle under `models/{slug}/`. The catalog license is what matters, not

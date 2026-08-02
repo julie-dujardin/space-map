@@ -18,6 +18,8 @@ X is the clearest case, where the same spectrum fits an iron, an enstatite
 chondrite and a hydrated primitive body, and only albedo separates them.
 """
 
+from typing import NamedTuple
+
 from space_map_data.constants.interior.schema import (
     ClassComposition,
     Component,
@@ -179,10 +181,27 @@ COMPLEX_FALLBACK = frozenset({"S", "C", "V", "B", "K", "A", "Q"})
 X_ALBEDO_METAL = 0.10  # below this is P, above is M
 X_ALBEDO_ENSTATITE = 0.30  # above this is E
 
+# SsODNet's name for Mahlke's scheme. Where a class is reported under it the
+# letter is Mahlke's call rather than Bus-DeMeo's, which is what makes the
+# scheme worth crediting per object.
+MAHLKE_SCHEME = "Mahlke"
+
+
+class Resolution(NamedTuple):
+    """A reported class reduced to one the table answers for.
+
+    `from_albedo_split` marks the X cases, where the class we serve is our own
+    reading of the albedo rather than anything the classifier reported — the
+    one place the method itself needs crediting.
+    """
+
+    key: str
+    from_albedo_split: bool = False
+
 
 def resolve_class(
     taxonomy_class: str, complex_: str | None, albedo: float | None
-) -> str | None:
+) -> Resolution | None:
     """Reduce a reported class to one this table can answer for.
 
     Returns None when nothing here applies — an unsplittable X, a class whose
@@ -190,13 +209,13 @@ def resolve_class(
     rocks at once.
     """
     if taxonomy_class in TAXONOMY_COMPOSITION:
-        return taxonomy_class
+        return Resolution(taxonomy_class)
 
     # X splits on albedo, and only if we have one.
     if taxonomy_class == "X" or complex_ == "X":
         if albedo is None or albedo < X_ALBEDO_METAL:
             return None
-        return "E" if albedo > X_ALBEDO_ENSTATITE else "M"
+        return Resolution("E" if albedo > X_ALBEDO_ENSTATITE else "M", True)
 
     # A lowercase suffix qualifies the leading class rather than replacing it
     # ("Ds" is a D with s-like features), so the first letter carries the
@@ -208,8 +227,8 @@ def resolve_class(
         and taxonomy_class[1:].islower()
         and head in TAXONOMY_COMPOSITION
     ):
-        return head
+        return Resolution(head)
 
     if complex_ in COMPLEX_FALLBACK and complex_ in TAXONOMY_COMPOSITION:
-        return complex_
+        return Resolution(complex_)
     return None

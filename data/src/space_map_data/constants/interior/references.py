@@ -3,6 +3,12 @@
 One entry per work a number actually comes from, keyed by the `source` strings
 used in `bodies.py` and `taxonomy.py`. Per-value provenance stays as comments
 next to each constant; this is what gets exported.
+
+Two works are deliberately absent: SsODNet, which supplies the spectral
+classes rather than any interior number, and Mahlke, whose scheme and albedo
+cut decide the class letter. They are credited under object metadata on the
+/credits page and reach the panel through `interior.taxonomy_sources`, which
+ships ids rather than citations because 171,000 asteroids carry them.
 """
 
 from typing import NamedTuple
@@ -12,13 +18,6 @@ class InteriorReference(NamedTuple):
     title: str
     url: str
     contribution: str
-
-
-# Credited for the data itself rather than for any one value, so no constant
-# carries them as a `source`: SsODNet supplies the classes we ingest, and
-# Mahlke is both the scheme behind many of them and the method `resolve_class`
-# reproduces when it splits X on albedo.
-PIPELINE_SOURCES = frozenset({"berthier_2023", "mahlke_2022"})
 
 
 INTERIOR_SOURCES: dict[str, InteriorReference] = {
@@ -169,11 +168,6 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "https://doi.org/10.1016/j.icarus.2009.02.005",
         "Bus-DeMeo taxonomy — the class definitions the estimates key off",
     ),
-    "mahlke_2022": InteriorReference(
-        "Mahlke, Carry & Mattei 2022 (A&A 665)",
-        "https://doi.org/10.1051/0004-6361/202243587",
-        "Asteroid taxonomy from spectra plus albedo",
-    ),
     "neeley_2014": InteriorReference(
         "Neeley et al. 2014 (Icarus 238)",
         "https://doi.org/10.1016/j.icarus.2014.05.008",
@@ -198,10 +192,5 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "Wasson & Kallemeyn 1988 (Phil. Trans. R. Soc. A 325)",
         "https://doi.org/10.1098/rsta.1988.0066",
         "Chondrite compositions — carbonaceous water and carbon contents",
-    ),
-    "berthier_2023": InteriorReference(
-        "Berthier et al. 2023 (A&A 671)",
-        "https://doi.org/10.1051/0004-6361/202244878",
-        "SsODNet — the aggregated best-estimate taxonomies we ingest",
     ),
 }

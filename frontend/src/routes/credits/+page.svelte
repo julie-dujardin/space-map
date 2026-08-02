@@ -2,6 +2,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import { archiveLabel, archiveRole } from '$lib/credits/archive-labels';
+	import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
 	import { GITHUB_REPO_URL } from '$lib/constants';
 	import type { Credits } from './+page';
 
@@ -235,6 +236,12 @@
 						m.source_truecolortools_role()
 					)}
 				</li>
+				<!-- The spectral classes, and the scheme that decides the letter. They
+				     sit here rather than under Interiors: they say what an asteroid is
+				     called, and the composition estimate is downstream of that. -->
+				{#each Object.entries(TAXONOMY_SOURCES) as [id, source] (id)}
+					<li>{@render link(source.url, source.label(), source.role())}</li>
+				{/each}
 			</ul>
 		</section>
 
@@ -325,6 +332,28 @@
 				{@render sectionHeader(m.attribution_section_rings())}
 				<ul class="space-y-1">
 					{#each credits.ring_references as ref (ref.url)}
+						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
+		{#if credits.interior_references?.length}
+			<section>
+				{@render sectionHeader(m.attribution_section_interiors())}
+				<ul class="space-y-1">
+					{#each credits.interior_references as ref (ref.url)}
+						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
+		{#if credits.temperature_references?.length}
+			<section>
+				{@render sectionHeader(m.attribution_section_temperatures())}
+				<ul class="space-y-1">
+					{#each credits.temperature_references as ref (ref.url)}
 						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
 					{/each}
 				</ul>

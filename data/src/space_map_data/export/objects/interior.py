@@ -27,6 +27,7 @@ from space_map_data.constants.interior.schema import (
     BodyInterior,
 )
 from space_map_data.constants.interior.taxonomy import (
+    MAHLKE_SCHEME,
     TAXONOMY_COMPOSITION,
     resolve_class,
 )
@@ -86,9 +87,7 @@ def _from_layers(object_id: str, facts: BodyInterior) -> dict:
     block: dict = {"structure": facts.structure}
     if facts.note is not None:
         block["note"] = facts.note
-    sources: list[str] = []
-    if facts.structure_source is not None:
-        sources.append(facts.structure_source)
+    composition: list[dict] = []
 
     # A body whose source gives geometry but no masses — the Sun — has nothing
     # to roll up. It still ships: the structure and the works behind it are
@@ -118,14 +117,31 @@ def _from_layers(object_id: str, facts: BodyInterior) -> dict:
                 shares[component.material] = shares.get(component.material, 0.0) + (
                     mass * component.fraction
                 )
-        block["composition"] = _shares(object_id, shares)
+        composition = _shares(object_id, shares)
+        block["composition"] = composition
 
-    for layer in facts.layers:
-        sources.append(layer.source)
-        sources.extend(c.source for c in layer.composition)
-
-    block["sources"] = _sources(sources)
+    block["sources"] = _sources(_layer_source_keys(facts, composition))
     return block
+
+
+def _layer_source_keys(facts: BodyInterior, composition: list[dict]) -> list[str]:
+    """The works behind what the panel actually shows.
+
+    The structure line, then the layer masses the bar is summed from and the
+    chemistry of the materials that survived the sliver cut. A paper cited
+    only for Tethys's 0.1% of rock is not credited under a bar that never
+    drew it.
+    """
+    keys: list[str] = []
+    if facts.structure_source is not None:
+        keys.append(facts.structure_source)
+    if not composition:
+        return keys
+    shown = {c["material"] for c in composition}
+    for layer in facts.layers:
+        keys.append(layer.source)
+        keys.extend(c.source for c in layer.composition if c.material in shown)
+    return keys
 
 
 def _from_taxonomy(
@@ -141,7 +157,11 @@ def _from_taxonomy(
     resolved = resolve_class(taxonomy_class, complex_, albedo)
     if resolved is None:
         return None
-    entry = TAXONOMY_COMPOSITION[resolved]
+    entry = TAXONOMY_COMPOSITION[resolved.key]
+    composition = _shares(
+        object_id, {c.material: c.fraction for c in entry.composition}
+    )
+    shown = {c["material"] for c in composition}
 
     block: dict = {
         # Never "differentiated": a spectrum is a statement about the surface,
@@ -149,18 +169,35 @@ def _from_taxonomy(
         "estimated": True,
         "analogue": entry.analogue,
         "taxonomy_class": taxonomy_class,
-        "composition": _shares(
-            object_id, {c.material: c.fraction for c in entry.composition}
-        ),
+        "composition": composition,
     }
     # A class letter means different things under Tholen, Bus and Bus-DeMeo,
     # so the scheme travels with it to the panel.
     if scheme is not None:
         block["taxonomy_scheme"] = scheme
+    block["taxonomy_sources"] = _class_credits(scheme, resolved.from_albedo_split)
     if entry.note is not None:
         block["note"] = entry.note
-    block["sources"] = _sources([entry.source, *(c.source for c in entry.composition)])
+    block["sources"] = _sources(
+        [entry.source, *(c.source for c in entry.composition if c.material in shown)]
+    )
     return block
+
+
+def _class_credits(scheme: str | None, from_albedo_split: bool) -> list[str]:
+    """Who to credit for the spectral class, as ids rather than citations.
+
+    171,000 asteroids take this route, so a title and a url each would be
+    megabytes of bundle for two names the frontend can hold itself. `sources`
+    above stays full citations: it varies per body, these two do not.
+    """
+    credits = ["ssodnet"]
+    # Mahlke both defines the scheme many of these classes are reported under
+    # and is the albedo cut that splits an X into E or M. Either way the
+    # letter we serve is theirs.
+    if scheme == MAHLKE_SCHEME or from_albedo_split:
+        credits.append("mahlke")
+    return credits
 
 
 def _shares(object_id: str, shares: dict[str, float]) -> list[dict]:

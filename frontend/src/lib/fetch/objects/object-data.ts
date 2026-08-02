@@ -478,6 +478,10 @@ export interface InteriorBlock {
 	 *  to — a letter means different things under Tholen and Bus-DeMeo. */
 	taxonomy_class?: string;
 	taxonomy_scheme?: string;
+	/** Estimate route: who to credit for the class letter, as ids rather than
+	 *  citations — 171,000 asteroids carry this. Resolved by
+	 *  `$lib/credits/taxonomy-sources`. */
+	taxonomy_sources?: string[];
 	/** "subsurface_ocean", "hydrated_rock", … — the frontend holds the
 	 *  sentence, the pipeline only the key. */
 	note?: string;

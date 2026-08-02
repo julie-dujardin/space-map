@@ -4,10 +4,7 @@ answers for a reported taxonomic class."""
 import pytest
 
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
-from space_map_data.constants.interior.references import (
-    INTERIOR_SOURCES,
-    PIPELINE_SOURCES,
-)
+from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.interior.schema import (
     LAYER_ROLES,
     MATERIALS,
@@ -118,25 +115,26 @@ class TestSources:
 
     def test_no_unused_references(self):
         """A reference nothing cites is either a dead entry or a value that
-        lost its citation in an edit — unless it credits the dataset itself."""
-        assert not set(INTERIOR_SOURCES) - _source_keys() - PIPELINE_SOURCES
-
-    def test_pipeline_sources_exist(self):
-        assert not PIPELINE_SOURCES - set(INTERIOR_SOURCES)
+        lost its citation in an edit."""
+        assert not set(INTERIOR_SOURCES) - _source_keys()
 
 
 class TestResolveClass:
     """Which row answers for a reported class."""
 
     def test_direct_hit(self):
-        assert resolve_class("S", "S", None) == "S"
+        assert resolve_class("S", "S", None) == ("S", False)
 
     @pytest.mark.parametrize(
         "albedo,expected",
         [(0.05, None), (0.10, "M"), (0.25, "M"), (0.31, "E"), (0.60, "E")],
     )
     def test_x_complex_splits_on_albedo(self, albedo: float, expected: str | None):
-        assert resolve_class("X", "X", albedo) == expected
+        resolved = resolve_class("X", "X", albedo)
+        assert (resolved.key if resolved else None) == expected
+        # The split is our reading of the albedo, so it owes Mahlke a credit
+        # the reported class does not.
+        assert resolved is None or resolved.from_albedo_split
 
     def test_x_without_albedo_is_unanswerable(self):
         """Three different rocks share the X spectrum; without albedo there is
@@ -147,7 +145,7 @@ class TestResolveClass:
         "reported,expected", [("Kl", "K"), ("Sq", "S"), ("Cgh", "C")]
     )
     def test_lowercase_suffix_defers_to_its_head(self, reported: str, expected: str):
-        assert resolve_class(reported, "U", None) == expected
+        assert resolve_class(reported, "U", None) == (expected, False)
 
     @pytest.mark.parametrize("reported", ["LS", "CX", "DL", "XD"])
     def test_two_capitals_are_declined(self, reported: str):

@@ -128,9 +128,10 @@ export interface ModelCatalog {
 }
 
 /**
- * One literature source behind the derived atmospheric-scattering parameters
- * (see data/src/space_map_data/constants/atmosphere/references.py). English-
- * only like the rest of the credits payload.
+ * One literature source behind a hand-curated constant — an atmosphere, a
+ * ring, a temperature, an interior model (see the `references.py` beside each
+ * in data/src/space_map_data/constants/). English-only like the rest of the
+ * credits payload.
  */
 export interface Reference {
 	title: string;
@@ -143,6 +144,8 @@ export interface Credits {
 	ephemeris_archives: EphemerisArchive[];
 	atmosphere_references?: Reference[];
 	ring_references?: Reference[];
+	temperature_references?: Reference[];
+	interior_references?: Reference[];
 	models?: ModelCatalog[];
 	skybox?: SkyboxCredit;
 }
