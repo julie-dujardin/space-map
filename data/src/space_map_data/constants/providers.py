@@ -20,6 +20,7 @@ class PROVIDERS(StrEnum):
     IAU_NOMENCLATURE = "iau_nomenclature"
     TEXTURE_SOURCES = "texture_sources"
     BJJ_RINGS = "bjj_rings"
+    PSG_ATMOSPHERE = "psg_atmosphere"
     NASA_3D = "nasa_3d"
     ESA_3D = "esa_3d"
     BODY_SHAPES = "body_shapes"

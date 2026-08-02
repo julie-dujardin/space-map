@@ -325,8 +325,11 @@ ATMOSPHERE_REFERENCES: tuple[AtmosphereReference, ...] = (
 )
 
 
-# Sources behind the per-body atmospheric facts in `facts.py`, keyed so each
-# value can cite one. These also ship per body in the object bundles, so the
+# Sources behind the per-body atmospheric facts in `facts.py` and the vertical
+# layers in `structure.py`, keyed so each value can cite one. One registry for
+# both: a body's panel credits its conditions and its cross-section together,
+# and several works back numbers in each. These also ship per body in the
+# object bundles, so the
 # panel can credit exactly the works its numbers came from — hence the split
 # from the render literature above, which is credited globally.
 #
@@ -557,5 +560,142 @@ ATMOSPHERE_FACT_SOURCES: dict[str, AtmosphereReference] = {
         "Cartwright et al. 2024 (Planet. Sci. J. 5)",
         "https://doi.org/10.3847/PSJ/ad23e6",
         "Callisto carbon dioxide column",
+    ),
+    # --- vertical structure (structure.py) --------------------------------
+    "val_c_1981": AtmosphereReference(
+        "Vernazza, Avrett & Loeser 1981 (ApJS 45)",
+        "https://doi.org/10.1086/190731",
+        "solar photosphere height scale and temperature minimum (VAL-C)",
+    ),
+    "wiki_solar_atm": AtmosphereReference(
+        "Sun (Wikipedia)",
+        "https://en.wikipedia.org/wiki/Sun#Atmosphere",
+        "solar chromosphere, transition region and corona boundaries",
+    ),
+    "seiff_1985": AtmosphereReference(
+        "Seiff et al. 1985 — VIRA (Adv. Space Res. 5)",
+        "https://doi.org/10.1016/0273-1177(85)90197-8",
+        "Venus troposphere depth and tropopause conditions",
+    ),
+    "limaye_2018": AtmosphereReference(
+        "Limaye et al. 2018 (Space Sci. Rev. 214)",
+        "https://doi.org/10.1007/s11214-018-0525-2",
+        "Venus mesosphere, thermosphere and exosphere boundaries",
+    ),
+    "niemann_1980_venus": AtmosphereReference(
+        "Niemann et al. 1980 (JGR 85)",
+        "https://doi.org/10.1029/JA085iA13p07817",
+        "Venus homopause and thermospheric species separation (Pioneer Venus ONMS)",
+    ),
+    "us_standard_1976": AtmosphereReference(
+        "US Standard Atmosphere 1976 (NOAA/NASA/USAF)",
+        "https://www.ngdc.noaa.gov/stp/space-weather/online-publications/miscellaneous/us-standard-atmosphere-1976/us-standard-atmosphere_st76-1562_noaa.pdf",
+        "Earth tropopause, stratopause and mesopause breakpoints",
+    ),
+    "wiki_earth_atm": AtmosphereReference(
+        "Atmosphere of Earth (Wikipedia)",
+        "https://en.wikipedia.org/wiki/Atmosphere_of_Earth",
+        "Earth thermosphere, exosphere and turbopause altitudes",
+    ),
+    "haberle_2015": AtmosphereReference(
+        "Haberle 2015 (Encyclopedia of Atmospheric Sciences, 2nd ed.)",
+        "https://doi.org/10.1016/B978-0-12-382225-3.00312-1",
+        "Mars layer boundaries and mesopause pressure band",
+    ),
+    "millour_2015": AtmosphereReference(
+        "Millour et al. 2015 — Mars Climate Database v5.3 (EPSC)",
+        "https://ui.adsabs.harvard.edu/abs/2015EPSC...10..438M/abstract",
+        "Mars pressure at the layer boundaries",
+    ),
+    "mahaffy_2015": AtmosphereReference(
+        "Mahaffy et al. 2015 (GRL 42)",
+        "https://doi.org/10.1002/2015GL065329",
+        "Mars homopause altitude (MAVEN NGIMS)",
+    ),
+    "seiff_1998": AtmosphereReference(
+        "Seiff et al. 1998 (JGR 103)",
+        "https://doi.org/10.1029/98JE01766",
+        "Jupiter tropopause conditions (Galileo probe ASI)",
+    ),
+    "yelle_miller_2004": AtmosphereReference(
+        "Yelle & Miller 2004 (Jupiter, Cambridge University Press)",
+        "https://ui.adsabs.harvard.edu/abs/2004jpsm.book..185Y/abstract",
+        "Jupiter thermosphere and homopause",
+    ),
+    "wiki_jupiter_atm": AtmosphereReference(
+        "Atmosphere of Jupiter (Wikipedia)",
+        "https://en.wikipedia.org/wiki/Atmosphere_of_Jupiter",
+        "Jupiter stratosphere and exosphere extent",
+    ),
+    "fletcher_2018": AtmosphereReference(
+        "Fletcher et al. 2018 (Saturn in the 21st Century, Cambridge)",
+        "https://arxiv.org/abs/1510.05690",
+        "Saturn tropopause and middle-atmosphere pressure range",
+    ),
+    "koskinen_2013": AtmosphereReference(
+        "Koskinen et al. 2013 (Icarus 226)",
+        "https://doi.org/10.1016/j.icarus.2013.07.037",
+        "Saturn exobase altitude and temperature (Cassini/UVIS)",
+    ),
+    "lunine_1993": AtmosphereReference(
+        "Lunine 1993 (ARA&A 31)",
+        "https://doi.org/10.1146/annurev.aa.31.090193.001245",
+        "Uranus troposphere and stratosphere extent",
+    ),
+    "herbert_sandel_1999": AtmosphereReference(
+        "Herbert & Sandel 1999 (Planet. Space Sci. 47)",
+        "https://doi.org/10.1016/S0032-0633(98)00142-1",
+        "Uranus thermosphere temperature and exobase",
+    ),
+    "wiki_neptune": AtmosphereReference(
+        "Neptune (Wikipedia)",
+        "https://en.wikipedia.org/wiki/Neptune#Atmosphere",
+        "Neptune layer boundaries and thermosphere temperature",
+    ),
+    "robinson_catling_2014": AtmosphereReference(
+        "Robinson & Catling 2014 (Nature Geoscience 7)",
+        "https://doi.org/10.1038/ngeo2020",
+        "the common 0.1 bar tropopause of thick atmospheres",
+    ),
+    "gladstone_2016": AtmosphereReference(
+        "Gladstone et al. 2016 (Science 351)",
+        "https://doi.org/10.1126/science.aad8866",
+        "Pluto thermal structure, haze layering and exobase (New Horizons)",
+    ),
+    "strobel_zhu_2017": AtmosphereReference(
+        "Strobel & Zhu 2017 (Icarus 291)",
+        "https://doi.org/10.1016/j.icarus.2017.03.013",
+        "Triton thermospheric temperature structure",
+    ),
+    "wiki_thermopause": AtmosphereReference(
+        "Thermopause (Wikipedia)",
+        "https://en.wikipedia.org/wiki/Thermopause",
+        "Earth thermopause altitude and temperature over the solar cycle",
+    ),
+    "lindal_1985": AtmosphereReference(
+        "Lindal, Sweetnam & Eshleman 1985 (AJ 90)",
+        "https://doi.org/10.1086/113820",
+        "Saturn tropopause height, pressure and temperature (Voyager 2)",
+    ),
+    "lindal_1992": AtmosphereReference(
+        "Lindal 1992 (AJ 103)",
+        "https://doi.org/10.1086/116119",
+        "Neptune tropopause height, pressure and temperature (Voyager 2)",
+    ),
+    "strobel_2018": AtmosphereReference(
+        "Strobel, Koskinen & Müller-Wodarg 2018 "
+        "(Saturn in the 21st Century, Cambridge)",
+        "https://doi.org/10.1017/9781316227220.009",
+        "Saturn homopause level and thermosphere base temperature",
+    ),
+    "moses_2018": AtmosphereReference(
+        "Moses et al. 2018 (Icarus 307)",
+        "https://doi.org/10.1016/j.icarus.2018.02.004",
+        "Uranus and Neptune methane homopause levels",
+    ),
+    "broadfoot_1989": AtmosphereReference(
+        "Broadfoot et al. 1989 (Science 246)",
+        "https://doi.org/10.1126/science.246.4936.1459",
+        "Neptune thermospheric temperature (Voyager 2 UVS occultation)",
     ),
 }

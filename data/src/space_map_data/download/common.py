@@ -39,6 +39,7 @@ from space_map_data.download.providers.metadata.texture_sources import (
     TextureSourcesDownloader,
 )
 from space_map_data.download.providers.bjj_rings import BJJRingsDownloader
+from space_map_data.download.providers.psg import PSGAtmosphereDownloader
 from space_map_data.download.providers.three_d.nasa import NASA3DResourcesDownloader
 from space_map_data.download.providers.three_d.esa import ESA3DDownloader
 from space_map_data.download.providers.three_d.body_shapes import BodyShapesDownloader
@@ -67,6 +68,7 @@ PROVIDERS_CLASSES = [
     IAUNomenclatureDownloader,
     TextureSourcesDownloader,
     BJJRingsDownloader,
+    PSGAtmosphereDownloader,
     NASA3DResourcesDownloader,
     ESA3DDownloader,
     BodyShapesDownloader,

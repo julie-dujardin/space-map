@@ -7,6 +7,10 @@ citation next to it; derived rendering parameters live in the export code, and
 `tests/export/test_atmospheres.py` checks the derivations against published
 reference numbers (measured Rayleigh cross sections, NSSDCA scale heights).
 
+`facts` and `structure` are the panel's pair — one states the conditions at a
+single level, the other the named layers that level sits on. Neither feeds
+rendering.
+
 Banked for the future high/ultra shader work (no consumer yet): `layers`
 (piecewise vertical aerosol structure), `spectra` (band absorption cross
 sections beyond the RGB triplets), `photometry` (ground albedos for sky
