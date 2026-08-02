@@ -126,7 +126,7 @@ RING_SYSTEMS: dict[str, RingSystem] = {
                 "(De Pater et al. 2018 values)",
             ),
             RingSource(
-                "https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupringfact.html",
+                "https://web.archive.org/web/20240624063359/https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupringfact.html",
                 NASA,
                 NASA_LICENSE,
                 "NSSDCA Jovian Rings Fact Sheet",
@@ -213,7 +213,7 @@ RING_SYSTEMS: dict[str, RingSystem] = {
                 "the D68 and D72 ringlets",
             ),
             RingSource(
-                "https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html",
+                "https://web.archive.org/web/20241206102306/https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html",
                 NASA,
                 NASA_LICENSE,
                 "NSSDCA Saturnian Rings Fact Sheet",
@@ -254,7 +254,7 @@ RING_SYSTEMS: dict[str, RingSystem] = {
                 "G and E rings, and the E ring's maximum vertical extent",
             ),
             RingSource(
-                "https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html",
+                "https://web.archive.org/web/20241206102306/https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html",
                 NASA,
                 NASA_LICENSE,
                 "NSSDCA Saturnian Rings Fact Sheet",
@@ -324,7 +324,7 @@ RING_SYSTEMS: dict[str, RingSystem] = {
                 "al. 2018 values)",
             ),
             RingSource(
-                "https://nssdc.gsfc.nasa.gov/planetary/factsheet/uranringfact.html",
+                "https://web.archive.org/web/20241013202357/https://nssdc.gsfc.nasa.gov/planetary/factsheet/uranringfact.html",
                 NASA,
                 NASA_LICENSE,
                 "NSSDCA Uranian Rings Fact Sheet",
@@ -394,7 +394,7 @@ RING_SYSTEMS: dict[str, RingSystem] = {
                 "ring mid-radii, widths and normal optical depths",
             ),
             RingSource(
-                "https://nssdc.gsfc.nasa.gov/planetary/factsheet/nepringfact.html",
+                "https://web.archive.org/web/20240808174508/https://nssdc.gsfc.nasa.gov/planetary/factsheet/nepringfact.html",
                 NASA,
                 NASA_LICENSE,
                 "NSSDCA Neptunian Rings Fact Sheet",

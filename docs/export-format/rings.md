@@ -34,7 +34,7 @@ The renderer blends `backscattered`/`forwardscattered` by phase angle, swaps in 
       "contribution": "back-scattered, forward-scattered and unlit-side brightness, transparency and colour of the main rings, measured from NASA PDS Cassini imaging"
     },
     {
-      "source": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html",
+      "source": "https://web.archive.org/web/20241206102306/https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html",
       "organisation": "NASA",
       "license": "Public domain",
       "work": "NSSDCA Saturnian Rings Fact Sheet",

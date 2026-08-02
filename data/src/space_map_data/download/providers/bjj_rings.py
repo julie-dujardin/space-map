@@ -85,7 +85,7 @@ SOURCES = [
         ),
     },
     {
-        "source": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html",
+        "source": "https://web.archive.org/web/20241206102306/https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html",
         "organisation": NASA,
         "license": NASA_LICENSE,
         "work": "NSSDCA Saturnian Rings Fact Sheet",
