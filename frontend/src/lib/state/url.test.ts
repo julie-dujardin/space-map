@@ -31,7 +31,8 @@ const baseView: MapViewState = {
 	tab: null,
 	memberPage: null,
 	quad: null,
-	featureType: null
+	featureType: null,
+	ring: null
 };
 
 describe('serializeUrl', () => {
@@ -165,6 +166,23 @@ describe('serializeUrl', () => {
 		// other tabs even if the field is stale.
 		it('omits mp= when the active tab is not members', () => {
 			expect(serializeUrl({ ...baseView, tab: 'images', memberPage: 5 })).not.toContain('mp=');
+		});
+	});
+
+	describe('ring serialization', () => {
+		it('emits &ring= under the rings tab', () => {
+			const url = serializeUrl({ ...baseView, tab: 'rings', ring: 'cassini-division' });
+			expect(url).toContain('&tab=rings&ring=cassini-division');
+		});
+
+		it('omits ring= at the top of the catalogue', () => {
+			expect(serializeUrl({ ...baseView, tab: 'rings', ring: null })).not.toContain('ring=');
+		});
+
+		// The drill path belongs to the rings panel alone; a stale slug must not
+		// ride along on another tab's link.
+		it('omits ring= when the active tab is not rings', () => {
+			expect(serializeUrl({ ...baseView, tab: 'images', ring: 'c-ring' })).not.toContain('ring=');
 		});
 	});
 });

@@ -406,6 +406,83 @@
 	"members_top_of_total": "Top {top} de {total}",
 	"tab_moons": "Luas",
 	"tab_features": "Superfície",
+	"tab_rings": "Anéis",
+	"rings_optical_depth": "profundidade óptica",
+	"rings_invisible": "invisível",
+	"rings_opaque": "opaco",
+	"rings_axis_body_radii": "raios planetários",
+	"rings_axis_km": "km",
+	"rings_thickness": "de espessura",
+	"rings_count_ring": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} anel",
+				"countPlural=other": "{count} anéis"
+			}
+		}
+	],
+	"rings_count_division": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} divisão",
+				"countPlural=other": "{count} divisões"
+			}
+		}
+	],
+	"rings_count_gap": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} lacuna",
+				"countPlural=other": "{count} lacunas"
+			}
+		}
+	],
+	"rings_count_ringlet": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} anelete",
+				"countPlural=other": "{count} aneletes"
+			}
+		}
+	],
+	"rings_count_region": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} região",
+				"countPlural=other": "{count} regiões"
+			}
+		}
+	],
+	"rings_count_arc": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} arco",
+				"countPlural=other": "{count} arcos"
+			}
+		}
+	],
+	"rings_count_dust": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} faixa de poeira",
+				"countPlural=other": "{count} faixas de poeira"
+			}
+		}
+	],
 	"features_section": "Formações de superfície",
 	"moons_section": "Luas",
 	"satellites_section": "Satélites",

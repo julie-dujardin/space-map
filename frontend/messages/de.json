@@ -406,6 +406,83 @@
 	"members_top_of_total": "Top {top} von {total}",
 	"tab_moons": "Monde",
 	"tab_features": "Oberfläche",
+	"tab_rings": "Ringe",
+	"rings_optical_depth": "optische Tiefe",
+	"rings_invisible": "unsichtbar",
+	"rings_opaque": "undurchsichtig",
+	"rings_axis_body_radii": "Planetenradien",
+	"rings_axis_km": "km",
+	"rings_thickness": "dick",
+	"rings_count_ring": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} Ring",
+				"countPlural=other": "{count} Ringe"
+			}
+		}
+	],
+	"rings_count_division": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} Teilung",
+				"countPlural=other": "{count} Teilungen"
+			}
+		}
+	],
+	"rings_count_gap": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} Lücke",
+				"countPlural=other": "{count} Lücken"
+			}
+		}
+	],
+	"rings_count_ringlet": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} Ringlet",
+				"countPlural=other": "{count} Ringlets"
+			}
+		}
+	],
+	"rings_count_region": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} Region",
+				"countPlural=other": "{count} Regionen"
+			}
+		}
+	],
+	"rings_count_arc": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} Bogen",
+				"countPlural=other": "{count} Bögen"
+			}
+		}
+	],
+	"rings_count_dust": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} Staubband",
+				"countPlural=other": "{count} Staubbänder"
+			}
+		}
+	],
 	"features_section": "Oberflächenstrukturen",
 	"moons_section": "Monde",
 	"satellites_section": "Satelliten",

@@ -383,6 +383,83 @@
 	"members_top_of_total": "Top {top} sur {total}",
 	"tab_moons": "Lunes",
 	"tab_features": "Surface",
+	"tab_rings": "Anneaux",
+	"rings_optical_depth": "profondeur optique",
+	"rings_invisible": "invisible",
+	"rings_opaque": "opaque",
+	"rings_axis_body_radii": "rayons planétaires",
+	"rings_axis_km": "km",
+	"rings_thickness": "d'épaisseur",
+	"rings_count_ring": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} anneau",
+				"countPlural=other": "{count} anneaux"
+			}
+		}
+	],
+	"rings_count_division": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} division",
+				"countPlural=other": "{count} divisions"
+			}
+		}
+	],
+	"rings_count_gap": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} lacune",
+				"countPlural=other": "{count} lacunes"
+			}
+		}
+	],
+	"rings_count_ringlet": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} annelet",
+				"countPlural=other": "{count} annelets"
+			}
+		}
+	],
+	"rings_count_region": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} région",
+				"countPlural=other": "{count} régions"
+			}
+		}
+	],
+	"rings_count_arc": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} arc",
+				"countPlural=other": "{count} arcs"
+			}
+		}
+	],
+	"rings_count_dust": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} bande de poussière",
+				"countPlural=other": "{count} bandes de poussière"
+			}
+		}
+	],
 	"features_section": "Formations de surface",
 	"moons_section": "Lunes",
 	"satellites_section": "Satellites",

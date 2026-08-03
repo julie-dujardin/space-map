@@ -16,6 +16,7 @@
  * passthrough, oversize payloads) ship the sidecar instead.
  */
 
+import { getLocale } from '$lib/paraglide/runtime.js';
 import { versionedImageUrl } from '$lib/fetch/data-base';
 import type { ImageVariants, ObjectImage } from './object-data';
 
@@ -162,4 +163,47 @@ export interface ImageMetadata {
 	date?: string;
 	/** Wikidata QIDs from Commons SDC P180 ("depicts"). */
 	depicts?: string[];
+}
+
+/** Resolve a multilang metadata field to plain text.
+ *
+ *  The exporter writes bare strings when Commons didn't return a multilang
+ *  blob and `{<locale>: str}` dicts (restricted to supported locales) when it
+ *  did. HTML fragments from Commons ride along and are stripped here.
+ *
+ *  With `strictLocale` a dict resolves only for the reader's own locale — a
+ *  description in an arbitrary other language is unreadable, where a credit
+ *  ("NASA/JPL") is the same name whatever the locale. Bare strings are
+ *  returned either way. */
+export function imageMetadataText(
+	value: string | Record<string, string> | undefined,
+	strictLocale = false
+): string | undefined {
+	if (value === undefined) return undefined;
+	const raw = typeof value === 'string' ? value : pickLang(value, strictLocale);
+	if (!raw) return undefined;
+	// Commons extmetadata HTML is attacker-editable; parse it in an inert
+	// DOMParser doc so `<img onerror>`-style payloads can't fire (a live
+	// element's innerHTML would run them).
+	const tmp = new DOMParser().parseFromString(raw, 'text/html').body;
+	for (const br of tmp.querySelectorAll('br')) br.replaceWith('\n');
+	for (const block of tmp.querySelectorAll('p, div, li')) block.append('\n\n');
+	const text = (tmp.textContent ?? '')
+		// Collapse non-newline whitespace runs; keep newlines intact.
+		.replace(/[^\S\n]+/g, ' ')
+		// Normalize any run of 2+ newlines to exactly one blank line.
+		.replace(/\n{2,}/g, '\n\n')
+		.trim();
+	return text || undefined;
+}
+
+function pickLang(value: Record<string, string>, strictLocale: boolean): string {
+	const locale = getLocale();
+	if (typeof value[locale] === 'string') return value[locale];
+	if (strictLocale) return '';
+	if (typeof value.en === 'string') return value.en;
+	for (const v of Object.values(value)) {
+		if (typeof v === 'string') return v;
+	}
+	return '';
 }

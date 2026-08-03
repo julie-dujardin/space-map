@@ -37,7 +37,7 @@ export const FEATURE_ROUTE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** Detail-drawer tab; 'overview' is the null default in URL state. */
-export type DrawerTab = 'overview' | 'images' | 'members' | 'features' | 'fragments';
+export type DrawerTab = 'overview' | 'images' | 'members' | 'features' | 'fragments' | 'rings';
 
 /**
  * Shape of the URL-backed app state. One source of truth for what gets shared,
@@ -71,6 +71,10 @@ export interface MapViewState {
 	quad: string | null;
 	/** IAU feature-type code narrowing the Surface tab's list; null = all. */
 	featureType: string | null;
+	/** Ring feature the Rings tab is drilled into; null = the whole system.
+	 *  Deep-linked as `&ring=`. The chart's clustered rows have no slug of
+	 *  their own, so a path ending in one shares as its enclosing feature. */
+	ring: string | null;
 }
 
 /** Default vantage angle for a body framed with no explicit camera (search, click, group). */
@@ -99,5 +103,6 @@ export const DEFAULT_VIEW: MapViewState = {
 	tab: null,
 	memberPage: null,
 	quad: null,
-	featureType: null
+	featureType: null,
+	ring: null
 };

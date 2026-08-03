@@ -232,6 +232,16 @@ export interface GlobalObjectData {
 	render_quality?: 'high' | 'medium' | 'low';
 	atmosphere?: AtmosphereBlock;
 	interior?: InteriorBlock;
+	/** Named rings, gaps and ringlets of the four ringed giants, keyed by slug.
+	 *  The catalogue behind the Rings tab — distinct from the `rings` render
+	 *  bundles in systems/{bary}.json, and includes features we never draw. */
+	ring_features?: Record<string, RingFeature>;
+	/** The tables the catalogue was transcribed from — credited under the tab. */
+	ring_sources?: Array<{ title: string; url: string; organisation: string }>;
+	/** One picture of the system, opening the Rings tab. Hand-picked from the
+	 *  pages the panel cites, so it carries no baked-in caption to mistranslate
+	 *  — hence the global block rather than the localized one. */
+	ring_hero?: ObjectImage;
 	temperatures?: Temperatures;
 	images?: ObjectImage[];
 	sbdb_primary_designation?: string;
@@ -534,6 +544,11 @@ export interface LocalizedObjectData {
 		description?: string;
 		url?: string;
 	};
+	/** Ring feature slug → localized label + Wikipedia lead, for the features
+	 *  this locale has an article or label for (see `ring_features`). */
+	ring_features?: Record<string, LocalizedRingFeature>;
+	/** The "Rings of X" article in this locale — the ring panel's opening blurb. */
+	ring_system?: LocalizedRingFeature;
 	/** notable-moon Object.id → localized label, only where it differs from the global name. */
 	notable_moon_names?: Record<string, string>;
 	/** notable-moon Object.id → localized Wikidata short description, for the planet-page moon lineup hover tooltip. */
@@ -546,6 +561,59 @@ export interface LocalizedObjectData {
 	fragment_names?: Record<string, string>;
 	/** mission-member Object.id → localized label, only where it differs from the global name. */
 	mission_member_names?: Record<string, string>;
+}
+
+/** What a ring feature is, in nomenclature terms. `division` is the broad
+ *  separation between named rings (Cassini, Roche), `gap` a narrow clearing
+ *  inside one; `region` marks the B ring's unnamed structural subdivisions and
+ *  `dust` the diffuse bands that carry no formal name. */
+export type RingFeatureKind = 'ring' | 'division' | 'gap' | 'ringlet' | 'region' | 'arc' | 'dust';
+
+/** Normal optical depth as its source states it — rarely a single number. */
+export interface RingOpticalDepth {
+	low: number;
+	/** Absent for a single stated value. */
+	high?: number;
+	/** Source wrote "~". */
+	approximate?: true;
+	/** Source wrote "<": `low` bounds the value from above. */
+	upper_limit?: true;
+}
+
+export interface RingFeature {
+	name: string;
+	kind: RingFeatureKind;
+	/** Key of the containing feature. Keys run inner → outer, which does not
+	 *  put a parent before its children, so group rather than walk. */
+	parent?: string;
+	/** Absent where the source publishes only a radius (the co-orbital rings). */
+	inner_radius_km?: number;
+	outer_radius_km?: number;
+	mid_radius_km: number;
+	width_km?: number;
+	/** The radius is the source moon's orbit, not a measured edge. */
+	radius_approximate?: true;
+	optical_depth?: RingOpticalDepth;
+	thickness_km?: number;
+	eccentricity?: number;
+	inclination_deg?: number;
+	/** Provisional designation still in common use ("1986 U2R"). */
+	designation?: string;
+	/** Macroscopic particles (back-scatter bright) vs µm dust (forward-scatter bright). */
+	particles?: 'dense' | 'dusty';
+	/** Shepherds, embedded and source moons; `id` absent when the moon isn't exported. */
+	moons?: Array<{ name: string; id?: string }>;
+	wikidata_qid?: string;
+	/** The PDS table's own description. English wherever it appears — there is
+	 *  no translated source, so the localized extract replaces it when a locale
+	 *  has an article. */
+	note?: string;
+}
+
+export interface LocalizedRingFeature {
+	name?: string;
+	extract?: string;
+	url?: string;
 }
 
 // --- Fetching ---

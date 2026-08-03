@@ -358,6 +358,97 @@
 	"members_top_of_total": "Топ-{top} из {total}",
 	"tab_moons": "Луны",
 	"tab_features": "Поверхность",
+	"tab_rings": "Кольца",
+	"rings_optical_depth": "оптическая толщина",
+	"rings_invisible": "прозрачно",
+	"rings_opaque": "непрозрачно",
+	"rings_axis_body_radii": "радиусы планеты",
+	"rings_axis_km": "км",
+	"rings_thickness": "толщина",
+	"rings_count_ring": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} кольцо",
+				"countPlural=few": "{count} кольца",
+				"countPlural=many": "{count} колец",
+				"countPlural=other": "{count} кольца"
+			}
+		}
+	],
+	"rings_count_division": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} деление",
+				"countPlural=few": "{count} деления",
+				"countPlural=many": "{count} делений",
+				"countPlural=other": "{count} деления"
+			}
+		}
+	],
+	"rings_count_gap": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} щель",
+				"countPlural=few": "{count} щели",
+				"countPlural=many": "{count} щелей",
+				"countPlural=other": "{count} щели"
+			}
+		}
+	],
+	"rings_count_ringlet": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} колечко",
+				"countPlural=few": "{count} колечка",
+				"countPlural=many": "{count} колечек",
+				"countPlural=other": "{count} колечка"
+			}
+		}
+	],
+	"rings_count_region": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} область",
+				"countPlural=few": "{count} области",
+				"countPlural=many": "{count} областей",
+				"countPlural=other": "{count} области"
+			}
+		}
+	],
+	"rings_count_arc": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} дуга",
+				"countPlural=few": "{count} дуги",
+				"countPlural=many": "{count} дуг",
+				"countPlural=other": "{count} дуги"
+			}
+		}
+	],
+	"rings_count_dust": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} пылевая полоса",
+				"countPlural=few": "{count} пылевые полосы",
+				"countPlural=many": "{count} пылевых полос",
+				"countPlural=other": "{count} пылевые полосы"
+			}
+		}
+	],
 	"features_section": "Детали поверхности",
 	"moons_section": "Луны",
 	"satellites_section": "Спутники",

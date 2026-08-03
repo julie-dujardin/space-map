@@ -113,7 +113,8 @@ export class AppState {
 			tab: null,
 			memberPage: null,
 			quad: null,
-			featureType: null
+			featureType: null,
+			ring: null
 		};
 		this.pushNow();
 	}
@@ -134,7 +135,8 @@ export class AppState {
 			tab: null,
 			memberPage: null,
 			quad: null,
-			featureType: null
+			featureType: null,
+			ring: null
 		};
 		this.pushNow();
 	}
@@ -156,7 +158,14 @@ export class AppState {
 	setTab(tab: DrawerTab) {
 		const next = tab === 'overview' ? null : tab;
 		if (next === this.view.tab && this.view.memberPage === null) return;
-		this.view = { ...this.view, tab: next, memberPage: null, quad: null, featureType: null };
+		this.view = {
+			...this.view,
+			tab: next,
+			memberPage: null,
+			quad: null,
+			featureType: null,
+			ring: null
+		};
 		this.replaceNow();
 	}
 
@@ -172,6 +181,15 @@ export class AppState {
 	setFeatureType(code: string | null) {
 		if (code === this.view.featureType) return;
 		this.view = { ...this.view, featureType: code, memberPage: null };
+		this.replaceNow();
+	}
+
+	/** Follow the Rings tab into a feature, or back out with null. replaceState:
+	 *  the panel keeps its own breadcrumb, so browser-back belongs to the body,
+	 *  not to every ringlet opened on the way down. */
+	setRing(slug: string | null) {
+		if (slug === this.view.ring) return;
+		this.view = { ...this.view, ring: slug };
 		this.replaceNow();
 	}
 

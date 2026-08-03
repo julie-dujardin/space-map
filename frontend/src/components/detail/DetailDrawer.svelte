@@ -34,6 +34,8 @@
 		type QuadrangleText
 	} from '$lib/fetch/nomenclature/quadrangles';
 	import SurfaceHero from './sections/SurfaceHero.svelte';
+	import RingCatalog from './sections/RingCatalog.svelte';
+	import RingHero from './sections/RingHero.svelte';
 	import FeatureTypeFilter from './sections/FeatureTypeFilter.svelte';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
 	import { fetchGroupIndex, featureTypeSlug, CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
@@ -601,7 +603,39 @@
 	let moonParent = $derived(isMoonBody && body ? parentPlanet(ctx, body.data.parentId) : undefined);
 	let isStarBody = $derived(body?.data.objectType === ObjectType.STAR);
 	let hasFragments = $derived(!!notableFragments && notableFragments.length > 0);
+
+	// Named rings, gaps and ringlets — the four ringed giants only.
+	let ringFeatures = $derived(isGroupMode ? undefined : data?.global?.ring_features);
+	let showRingsTab = $derived(Object.values(ringFeatures ?? {}).some((f) => !f.parent));
+	// Credits for the Rings tab alone: the catalogue's tables, plus whatever
+	// prose and names this locale actually got.
+	let ringHero = $derived(isGroupMode ? undefined : data?.global?.ring_hero);
+	let ringCredits = $derived(
+		(data?.global?.ring_sources ?? []).map((s) => ({ key: s.url, label: s.title, url: s.url }))
+	);
+	let ringLocalized = $derived(Object.values(data?.localized?.ring_features ?? {}));
+	let ringProseFromWikipedia = $derived(
+		!!data?.localized?.ring_system?.extract || ringLocalized.some((f) => f.extract)
+	);
+	// Feature names come from Wikidata labels outside English, where the
+	// catalogue's own names are used.
+	let ringNamesLocalized = $derived(ringLocalized.some((f) => f.name));
 	let showFragmentsTab = $derived(hasFragments && fragmentTotal > STRIP_CAPACITY);
+
+	// Undo shadcn's flex-1: a tab is as wide as its label, so a full bar's slack
+	// falls between the tabs instead of padding out the shortest one.
+	const TAB_TRIGGER_CLASS = 'px-2 flex-none';
+
+	// Four is the most any object earns (a ringed giant: overview, images, rings,
+	// moons); a full bar spreads across the drawer instead of running off it.
+	let tabCount = $derived(
+		1 +
+			(hasImages ? 1 : 0) +
+			(showRingsTab ? 1 : 0) +
+			(showMembersTab ? 1 : 0) +
+			(showFeaturesTab ? 1 : 0) +
+			(showFragmentsTab ? 1 : 0)
+	);
 
 	function seeAllFragments() {
 		appState.setTab('fragments');
@@ -691,7 +725,9 @@
 					? 'features'
 					: appState.view.tab === 'fragments' && showFragmentsTab
 						? 'fragments'
-						: 'overview'
+						: appState.view.tab === 'rings' && showRingsTab
+							? 'rings'
+							: 'overview'
 	);
 	// What the URL is focused on, in `focusableKey` form. A tile that opens
 	// another body on a specific tab (moon → planet's Moons, feature → host's
@@ -716,19 +752,35 @@
 </script>
 
 {#snippet tabsBar()}
-	<div class="border-b px-4 pt-2">
-		<Tabs.List variant="line" class="h-9 gap-2 -mb-px">
-			<Tabs.Trigger value="overview" class="px-2">{m.tab_overview()}</Tabs.Trigger>
+	<!-- Scrolls on its own if a body ever exceeds four tabs; without this the
+	     whole drawer scrolls sideways. -->
+	<div
+		class="border-b px-4 pt-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+	>
+		<!-- Trigger padding is spacing between tabs, so the outer two drop theirs
+		     and sit flush with the drawer's own edge. -->
+		<Tabs.List
+			variant="line"
+			class={[
+				'h-9 -mb-px [&>*:first-child]:ps-0 [&>*:last-child]:pe-0',
+				tabCount >= 4 ? 'w-full justify-between' : 'w-max gap-2'
+			]}
+		>
+			<Tabs.Trigger value="overview" class={TAB_TRIGGER_CLASS}>{m.tab_overview()}</Tabs.Trigger>
 			{#if hasImages}
-				<Tabs.Trigger value="images" class="px-2">
+				<Tabs.Trigger value="images" class={TAB_TRIGGER_CLASS}>
 					{m.tab_images()}
 					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
 						{viewerImages?.length}
 					</Badge>
 				</Tabs.Trigger>
 			{/if}
+			{#if showRingsTab}
+				<!-- No count: the ring bar is the widest, and the chart states it. -->
+				<Tabs.Trigger value="rings" class={TAB_TRIGGER_CLASS}>{m.tab_rings()}</Tabs.Trigger>
+			{/if}
 			{#if showMembersTab}
-				<Tabs.Trigger value="members" class="px-2">
+				<Tabs.Trigger value="members" class={TAB_TRIGGER_CLASS}>
 					{membersTabLabel}
 					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
 						{formatCompactNumber(memberTotal)}
@@ -736,7 +788,7 @@
 				</Tabs.Trigger>
 			{/if}
 			{#if showFeaturesTab}
-				<Tabs.Trigger value="features" class="px-2">
+				<Tabs.Trigger value="features" class={TAB_TRIGGER_CLASS}>
 					{m.tab_features()}
 					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
 						{formatCompactNumber(featureTotal)}
@@ -744,7 +796,7 @@
 				</Tabs.Trigger>
 			{/if}
 			{#if showFragmentsTab}
-				<Tabs.Trigger value="fragments" class="px-2">
+				<Tabs.Trigger value="fragments" class={TAB_TRIGGER_CLASS}>
 					{m.tab_fragments()}
 					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
 						{formatCompactNumber(fragmentTotal)}
@@ -796,6 +848,13 @@
 					onselect={(code) => appState.setQuad(code)}
 					markedFeatureId={hoveredFeatureId}
 				/>
+			</div>
+		{/if}
+	{:else if activeTab === 'rings'}
+		<!-- One picture of the system, above the chart that anatomises it. -->
+		{#if ringHero}
+			<div class="px-4 pt-1 pb-3">
+				<RingHero image={ringHero} alt={data?.localized?.ring_system?.name ?? m.tab_rings()} />
 			</div>
 		{/if}
 	{:else if activeTab === 'members'}
@@ -1046,6 +1105,28 @@
 	</div>
 {/snippet}
 
+{#snippet ringsPanel()}
+	<div class="flex flex-col gap-3 p-1">
+		{#if ringFeatures}
+			<RingCatalog
+				features={ringFeatures}
+				localized={data?.localized?.ring_features}
+				system={data?.localized?.ring_system}
+				bodyRadiusKm={data?.global?.radii?.a}
+				bodyId={body?.data.id}
+				systemId={body?.data.parentId}
+				{clock}
+			/>
+			<SourcesFooter
+				global={null}
+				rings={ringCredits}
+				wikidata={ringNamesLocalized}
+				wikipediaLicensed={ringProseFromWikipedia}
+			/>
+		{/if}
+	</div>
+{/snippet}
+
 {#snippet fragmentsPanel()}
 	<div class="flex flex-col gap-3 p-1">
 		{#if notableFragments && notableFragments.length > 0}
@@ -1096,6 +1177,9 @@
 	</Tabs.Content>
 	<Tabs.Content value="features" class={contentClass}>
 		{@render featuresPanel()}
+	</Tabs.Content>
+	<Tabs.Content value="rings" class={contentClass}>
+		{@render ringsPanel()}
 	</Tabs.Content>
 	<Tabs.Content value="fragments" class={contentClass}>
 		{@render fragmentsPanel()}

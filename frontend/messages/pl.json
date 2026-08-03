@@ -406,6 +406,97 @@
 	"members_top_of_total": "Najlepsze {top} z {total}",
 	"tab_moons": "Księżyce",
 	"tab_features": "Powierzchnia",
+	"tab_rings": "Pierścienie",
+	"rings_optical_depth": "głębokość optyczna",
+	"rings_invisible": "niewidoczne",
+	"rings_opaque": "nieprzezroczyste",
+	"rings_axis_body_radii": "promienie planety",
+	"rings_axis_km": "km",
+	"rings_thickness": "grubości",
+	"rings_count_ring": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} pierścień",
+				"countPlural=few": "{count} pierścienie",
+				"countPlural=many": "{count} pierścieni",
+				"countPlural=other": "{count} pierścienie"
+			}
+		}
+	],
+	"rings_count_division": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} przerwa",
+				"countPlural=few": "{count} przerwy",
+				"countPlural=many": "{count} przerw",
+				"countPlural=other": "{count} przerwy"
+			}
+		}
+	],
+	"rings_count_gap": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} szczelina",
+				"countPlural=few": "{count} szczeliny",
+				"countPlural=many": "{count} szczelin",
+				"countPlural=other": "{count} szczeliny"
+			}
+		}
+	],
+	"rings_count_ringlet": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} pierścionek",
+				"countPlural=few": "{count} pierścionki",
+				"countPlural=many": "{count} pierścionków",
+				"countPlural=other": "{count} pierścionki"
+			}
+		}
+	],
+	"rings_count_region": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} obszar",
+				"countPlural=few": "{count} obszary",
+				"countPlural=many": "{count} obszarów",
+				"countPlural=other": "{count} obszary"
+			}
+		}
+	],
+	"rings_count_arc": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} łuk",
+				"countPlural=few": "{count} łuki",
+				"countPlural=many": "{count} łuków",
+				"countPlural=other": "{count} łuki"
+			}
+		}
+	],
+	"rings_count_dust": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} pas pyłu",
+				"countPlural=few": "{count} pasy pyłu",
+				"countPlural=many": "{count} pasów pyłu",
+				"countPlural=other": "{count} pasy pyłu"
+			}
+		}
+	],
 	"features_section": "Formy terenu",
 	"moons_section": "Księżyce",
 	"satellites_section": "Satelity",

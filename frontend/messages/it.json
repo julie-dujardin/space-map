@@ -406,6 +406,83 @@
 	"members_top_of_total": "Primi {top} di {total}",
 	"tab_moons": "Lune",
 	"tab_features": "Superficie",
+	"tab_rings": "Anelli",
+	"rings_optical_depth": "profondità ottica",
+	"rings_invisible": "invisibile",
+	"rings_opaque": "opaco",
+	"rings_axis_body_radii": "raggi planetari",
+	"rings_axis_km": "km",
+	"rings_thickness": "di spessore",
+	"rings_count_ring": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} anello",
+				"countPlural=other": "{count} anelli"
+			}
+		}
+	],
+	"rings_count_division": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} divisione",
+				"countPlural=other": "{count} divisioni"
+			}
+		}
+	],
+	"rings_count_gap": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} lacuna",
+				"countPlural=other": "{count} lacune"
+			}
+		}
+	],
+	"rings_count_ringlet": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} anellino",
+				"countPlural=other": "{count} anellini"
+			}
+		}
+	],
+	"rings_count_region": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} regione",
+				"countPlural=other": "{count} regioni"
+			}
+		}
+	],
+	"rings_count_arc": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} arco",
+				"countPlural=other": "{count} archi"
+			}
+		}
+	],
+	"rings_count_dust": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} banda di polvere",
+				"countPlural=other": "{count} bande di polvere"
+			}
+		}
+	],
 	"features_section": "Formazioni superficiali",
 	"moons_section": "Lune",
 	"satellites_section": "Satelliti",

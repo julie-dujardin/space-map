@@ -2,10 +2,14 @@
 	import { getContext, mount, onDestroy, unmount } from 'svelte';
 	import 'photoswipe/style.css';
 	import type PhotoSwipeT from 'photoswipe';
-	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
-	import { fetchImageMetadata, variantUrl, type ImageMetadata } from '$lib/fetch/objects/images';
+	import {
+		fetchImageMetadata,
+		imageMetadataText,
+		variantUrl,
+		type ImageMetadata
+	} from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import ImageViewerCaption, { type Attribution } from './ImageViewerCaption.svelte';
 
@@ -204,53 +208,13 @@
 		return {
 			license: meta.license?.name,
 			license_url: meta.license?.url,
-			artist: plainText(meta.artist),
+			artist: imageMetadataText(meta.artist),
 			// For descriptions, a multilang fallback to an arbitrary language
 			// would be unreadable, so we only pick the user's own locale. Bare
 			// (unlocalized) strings are always shown if nothing better is available.
-			description: plainText(meta.description, true),
+			description: imageMetadataText(meta.description, true),
 			date: meta.date
 		};
-	}
-
-	/** Resolve a trimmed multilang field to a plain-text string.
-	 *
-	 *  The exporter writes bare strings when Commons didn't return a multilang
-	 *  blob and `{<locale>: str}` dicts (restricted to supported locales) when
-	 *  it did. HTML from Commons still passes through — we strip it here.
-	 *  With `strictLocale`, a dict is only resolved for the current locale;
-	 *  bare strings are always returned regardless. */
-	function plainText(
-		value: string | Record<string, string> | undefined,
-		strictLocale = false
-	): string | undefined {
-		if (value === undefined) return undefined;
-		const raw = typeof value === 'string' ? value : pickLang(value, strictLocale);
-		if (!raw) return undefined;
-		// Commons extmetadata HTML is attacker-editable; parse it in an inert
-		// DOMParser doc so `<img onerror>`-style payloads can't fire (a live
-		// element's innerHTML would run them).
-		const tmp = new DOMParser().parseFromString(raw, 'text/html').body;
-		for (const br of tmp.querySelectorAll('br')) br.replaceWith('\n');
-		for (const block of tmp.querySelectorAll('p, div, li')) block.append('\n\n');
-		const text = (tmp.textContent ?? '')
-			// Collapse non-newline whitespace runs; keep newlines intact.
-			.replace(/[^\S\n]+/g, ' ')
-			// Normalize any run of 2+ newlines to exactly one blank line.
-			.replace(/\n{2,}/g, '\n\n')
-			.trim();
-		return text || undefined;
-	}
-
-	function pickLang(value: Record<string, string>, strictLocale: boolean): string {
-		const locale = getLocale();
-		if (typeof value[locale] === 'string') return value[locale];
-		if (strictLocale) return '';
-		if (typeof value.en === 'string') return value.en;
-		for (const v of Object.values(value)) {
-			if (typeof v === 'string') return v;
-		}
-		return '';
 	}
 </script>
 

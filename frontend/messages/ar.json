@@ -369,6 +369,111 @@
 	"members_top_of_total": "أفضل {top} من أصل {total}",
 	"tab_moons": "الأقمار",
 	"tab_features": "السطح",
+	"tab_rings": "الحلقات",
+	"rings_optical_depth": "العمق البصري",
+	"rings_invisible": "شفاف",
+	"rings_opaque": "معتم",
+	"rings_axis_body_radii": "أنصاف أقطار الكوكب",
+	"rings_axis_km": "كم",
+	"rings_thickness": "سماكة",
+	"rings_count_ring": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا حلقات",
+				"countPlural=one": "حلقة واحدة",
+				"countPlural=two": "حلقتان",
+				"countPlural=few": "{count} حلقات",
+				"countPlural=many": "{count} حلقةً",
+				"countPlural=other": "{count} حلقة"
+			}
+		}
+	],
+	"rings_count_division": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا فواصل",
+				"countPlural=one": "فاصل واحد",
+				"countPlural=two": "فاصلان",
+				"countPlural=few": "{count} فواصل",
+				"countPlural=many": "{count} فاصلًا",
+				"countPlural=other": "{count} فاصل"
+			}
+		}
+	],
+	"rings_count_gap": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا فجوات",
+				"countPlural=one": "فجوة واحدة",
+				"countPlural=two": "فجوتان",
+				"countPlural=few": "{count} فجوات",
+				"countPlural=many": "{count} فجوةً",
+				"countPlural=other": "{count} فجوة"
+			}
+		}
+	],
+	"rings_count_ringlet": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا حُليقات",
+				"countPlural=one": "حُليقة واحدة",
+				"countPlural=two": "حُليقتان",
+				"countPlural=few": "{count} حُليقات",
+				"countPlural=many": "{count} حُليقةً",
+				"countPlural=other": "{count} حُليقة"
+			}
+		}
+	],
+	"rings_count_region": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا مناطق",
+				"countPlural=one": "منطقة واحدة",
+				"countPlural=two": "منطقتان",
+				"countPlural=few": "{count} مناطق",
+				"countPlural=many": "{count} منطقةً",
+				"countPlural=other": "{count} منطقة"
+			}
+		}
+	],
+	"rings_count_arc": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا أقواس",
+				"countPlural=one": "قوس واحد",
+				"countPlural=two": "قوسان",
+				"countPlural=few": "{count} أقواس",
+				"countPlural=many": "{count} قوسًا",
+				"countPlural=other": "{count} قوس"
+			}
+		}
+	],
+	"rings_count_dust": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا نطاقات غبار",
+				"countPlural=one": "نطاق غبار واحد",
+				"countPlural=two": "نطاقا غبار",
+				"countPlural=few": "{count} نطاقات غبار",
+				"countPlural=many": "{count} نطاق غبار",
+				"countPlural=other": "{count} نطاق غبار"
+			}
+		}
+	],
 	"features_section": "تضاريس السطح",
 	"moons_section": "الأقمار",
 	"satellites_section": "الأقمار الصناعية",

@@ -406,6 +406,83 @@
 	"members_top_of_total": "{top} principales de {total}",
 	"tab_moons": "Lunas",
 	"tab_features": "Superficie",
+	"tab_rings": "Anillos",
+	"rings_optical_depth": "profundidad óptica",
+	"rings_invisible": "invisible",
+	"rings_opaque": "opaco",
+	"rings_axis_body_radii": "radios planetarios",
+	"rings_axis_km": "km",
+	"rings_thickness": "de grosor",
+	"rings_count_ring": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} anillo",
+				"countPlural=other": "{count} anillos"
+			}
+		}
+	],
+	"rings_count_division": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} división",
+				"countPlural=other": "{count} divisiones"
+			}
+		}
+	],
+	"rings_count_gap": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} hueco",
+				"countPlural=other": "{count} huecos"
+			}
+		}
+	],
+	"rings_count_ringlet": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} anillete",
+				"countPlural=other": "{count} anilletes"
+			}
+		}
+	],
+	"rings_count_region": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} región",
+				"countPlural=other": "{count} regiones"
+			}
+		}
+	],
+	"rings_count_arc": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} arco",
+				"countPlural=other": "{count} arcos"
+			}
+		}
+	],
+	"rings_count_dust": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} banda de polvo",
+				"countPlural=other": "{count} bandas de polvo"
+			}
+		}
+	],
 	"features_section": "Accidentes de superficie",
 	"moons_section": "Lunas",
 	"satellites_section": "Satélites",

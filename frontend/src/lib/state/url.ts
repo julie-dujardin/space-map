@@ -15,7 +15,7 @@ import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { DEFAULT_VIEW, SUN_VIEW_ZOOM, UrlType, type DrawerTab, type MapViewState } from './view';
 
 /** Tabs that serialize a `&tab=` block; overview is the null default. */
-const DEEP_LINK_TABS: readonly string[] = ['images', 'members', 'features', 'fragments'];
+const DEEP_LINK_TABS: readonly string[] = ['images', 'members', 'features', 'fragments', 'rings'];
 
 function parseTab(raw: string | null): Exclude<DrawerTab, 'overview'> | null {
 	return raw && DEEP_LINK_TABS.includes(raw) ? (raw as Exclude<DrawerTab, 'overview'>) : null;
@@ -117,7 +117,8 @@ export function parseUrl(): MapViewState | null {
 			tab: parseTab(page.url.searchParams.get('tab')),
 			memberPage: parseMemberPage(page.url.searchParams.get('mp')),
 			quad: null,
-			featureType: null
+			featureType: null,
+			ring: null
 		};
 		return applyAtParam(defaults);
 	}
@@ -162,7 +163,8 @@ export function parseUrl(): MapViewState | null {
 		tab: parseTab(page.url.searchParams.get('tab')),
 		memberPage: parseMemberPage(page.url.searchParams.get('mp')),
 		quad: page.url.searchParams.get('quad'),
-		featureType: page.url.searchParams.get('ftype')
+		featureType: page.url.searchParams.get('ftype'),
+		ring: page.url.searchParams.get('ring')
 	};
 	return applyAtParam(defaults);
 }
@@ -215,7 +217,8 @@ export function applyFocus(
 		tab: focus.tab ?? null,
 		memberPage: null,
 		quad: focus.quad ?? null,
-		featureType: focus.featureType ?? null
+		featureType: focus.featureType ?? null,
+		ring: null
 	};
 }
 
@@ -235,7 +238,8 @@ export function applyGroup(current: MapViewState, slug: string, name: string): M
 		tab: null,
 		memberPage: null,
 		quad: null,
-		featureType: null
+		featureType: null,
+		ring: null
 	};
 }
 
@@ -257,7 +261,8 @@ export function applyFeature(
 		tab: null,
 		memberPage: null,
 		quad: null,
-		featureType: null
+		featureType: null,
+		ring: null
 	};
 }
 
@@ -288,13 +293,15 @@ export function serializeUrl(state: MapViewState): string {
 			? `&img=${state.imageIndex}`
 			: '';
 	// `mp` is only meaningful under the paginated lists (members / features),
-	// `quad`/`ftype` only under the features tab's surface hero + list.
+	// `quad`/`ftype` only under the features tab's surface hero + list, and
+	// `ring` only under the rings tab's drill path.
 	const tab = state.tab ? `&tab=${state.tab}` : '';
 	const surface =
 		state.tab === 'features'
 			? (state.quad ? `&quad=${encodeURIComponent(state.quad)}` : '') +
 				(state.featureType ? `&ftype=${encodeURIComponent(state.featureType)}` : '')
 			: '';
+	const ring = state.tab === 'rings' && state.ring ? `&ring=${encodeURIComponent(state.ring)}` : '';
 	const paginated = state.tab === 'members' || state.tab === 'features';
 	const mp =
 		paginated &&
@@ -310,7 +317,7 @@ export function serializeUrl(state: MapViewState): string {
 			id: state.groupSlug,
 			name: state.name ? encodeURIComponent(state.name) : undefined
 		});
-		return `${path}?at=${at}${img}${tab}${surface}${mp}`;
+		return `${path}?at=${at}${img}${tab}${surface}${ring}${mp}`;
 	}
 
 	const bodyType = urlTypeFromId(state.id);
@@ -333,5 +340,5 @@ export function serializeUrl(state: MapViewState): string {
 		id: numericId,
 		name: state.name ? encodeURIComponent(state.name) : undefined
 	});
-	return `${path}?at=${at}${img}${tab}${surface}${mp}`;
+	return `${path}?at=${at}${img}${tab}${surface}${ring}${mp}`;
 }

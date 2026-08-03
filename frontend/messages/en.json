@@ -423,6 +423,83 @@
 	"members_top_of_total": "Top {top} of {total}",
 	"tab_moons": "Moons",
 	"tab_features": "Surface",
+	"tab_rings": "Rings",
+	"rings_optical_depth": "optical depth",
+	"rings_invisible": "invisible",
+	"rings_opaque": "opaque",
+	"rings_axis_body_radii": "planetary radii",
+	"rings_axis_km": "km",
+	"rings_thickness": "thick",
+	"rings_count_ring": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} ring",
+				"countPlural=other": "{count} rings"
+			}
+		}
+	],
+	"rings_count_division": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} division",
+				"countPlural=other": "{count} divisions"
+			}
+		}
+	],
+	"rings_count_gap": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} gap",
+				"countPlural=other": "{count} gaps"
+			}
+		}
+	],
+	"rings_count_ringlet": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} ringlet",
+				"countPlural=other": "{count} ringlets"
+			}
+		}
+	],
+	"rings_count_region": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} region",
+				"countPlural=other": "{count} regions"
+			}
+		}
+	],
+	"rings_count_arc": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} arc",
+				"countPlural=other": "{count} arcs"
+			}
+		}
+	],
+	"rings_count_dust": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} dust band",
+				"countPlural=other": "{count} dust bands"
+			}
+		}
+	],
 	"features_section": "Surface features",
 	"moons_section": "Moons",
 	"satellites_section": "Satellites",

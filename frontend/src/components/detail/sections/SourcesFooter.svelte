@@ -34,6 +34,9 @@
 		wikidata?: boolean;
 		/** Distinct surface-imagery credits for the lineup spheres (deduped by author). */
 		imagery?: Source[];
+		/** Ring tab: the catalogue's own tables (PDS vital statistics, the IAU
+		 *  gazetteer), which the object block carries per body. */
+		rings?: Source[];
 	}
 
 	let {
@@ -44,7 +47,8 @@
 		pck = false,
 		sbdb = false,
 		wikidata = false,
-		imagery = []
+		imagery = [],
+		rings = []
 	}: Props = $props();
 
 	// Per-object metadata has no per-field provenance, so we credit each source
@@ -119,6 +123,10 @@
 
 		// Rotational elements / physical constants for planets & moons.
 		if (global?.orientation) addPck();
+
+		// Ring catalogue tables — an exact citation like the blocks below, and
+		// the whole content of the Rings tab.
+		for (const source of rings) add(source.url, source.label, source.url);
 
 		// Atmospheric facts carry their own per-value citations, so these are
 		// exact rather than inferred like the rest of this list.

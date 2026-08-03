@@ -406,6 +406,83 @@
 	"members_top_of_total": "{top} המובילים מתוך {total}",
 	"tab_moons": "ירחים",
 	"tab_features": "פני השטח",
+	"tab_rings": "טבעות",
+	"rings_optical_depth": "עומק אופטי",
+	"rings_invisible": "שקוף",
+	"rings_opaque": "אטום",
+	"rings_axis_body_radii": "רדיוסים פלנטריים",
+	"rings_axis_km": "ק\"מ",
+	"rings_thickness": "עובי",
+	"rings_count_ring": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "טבעת {count}",
+				"countPlural=other": "{count} טבעות"
+			}
+		}
+	],
+	"rings_count_division": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "חיץ {count}",
+				"countPlural=other": "{count} חיצים"
+			}
+		}
+	],
+	"rings_count_gap": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "רווח {count}",
+				"countPlural=other": "{count} רווחים"
+			}
+		}
+	],
+	"rings_count_ringlet": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "טבעתון {count}",
+				"countPlural=other": "{count} טבעתונים"
+			}
+		}
+	],
+	"rings_count_region": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "אזור {count}",
+				"countPlural=other": "{count} אזורים"
+			}
+		}
+	],
+	"rings_count_arc": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "קשת {count}",
+				"countPlural=other": "{count} קשתות"
+			}
+		}
+	],
+	"rings_count_dust": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "רצועת אבק {count}",
+				"countPlural=other": "{count} רצועות אבק"
+			}
+		}
+	],
 	"features_section": "תצורות פני השטח",
 	"moons_section": "ירחים",
 	"satellites_section": "לוויינים",

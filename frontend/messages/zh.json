@@ -340,6 +340,83 @@
 	"members_top_of_total": "共 {total} 个中的前 {top} 个",
 	"tab_moons": "卫星",
 	"tab_features": "表面",
+	"tab_rings": "环",
+	"rings_optical_depth": "光学深度",
+	"rings_invisible": "透明",
+	"rings_opaque": "不透明",
+	"rings_axis_body_radii": "行星半径",
+	"rings_axis_km": "公里",
+	"rings_thickness": "厚",
+	"rings_count_ring": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 个环",
+				"countPlural=other": "{count} 个环"
+			}
+		}
+	],
+	"rings_count_division": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 个环缝",
+				"countPlural=other": "{count} 个环缝"
+			}
+		}
+	],
+	"rings_count_gap": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 个缝隙",
+				"countPlural=other": "{count} 个缝隙"
+			}
+		}
+	],
+	"rings_count_ringlet": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 条细环",
+				"countPlural=other": "{count} 条细环"
+			}
+		}
+	],
+	"rings_count_region": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 个区域",
+				"countPlural=other": "{count} 个区域"
+			}
+		}
+	],
+	"rings_count_arc": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 个弧",
+				"countPlural=other": "{count} 个弧"
+			}
+		}
+	],
+	"rings_count_dust": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 条尘埃带",
+				"countPlural=other": "{count} 条尘埃带"
+			}
+		}
+	],
 	"features_section": "表面地貌",
 	"moons_section": "卫星",
 	"satellites_section": "卫星",

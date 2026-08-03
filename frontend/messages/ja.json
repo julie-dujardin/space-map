@@ -386,6 +386,83 @@
 	"members_top_of_total": "全{total}件中 上位{top}件",
 	"tab_moons": "衛星",
 	"tab_features": "表面",
+	"tab_rings": "環",
+	"rings_optical_depth": "光学的厚さ",
+	"rings_invisible": "透明",
+	"rings_opaque": "不透明",
+	"rings_axis_body_radii": "惑星半径",
+	"rings_axis_km": "km",
+	"rings_thickness": "の厚さ",
+	"rings_count_ring": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 本のリング",
+				"countPlural=other": "{count} 本のリング"
+			}
+		}
+	],
+	"rings_count_division": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 個の間隙",
+				"countPlural=other": "{count} 個の間隙"
+			}
+		}
+	],
+	"rings_count_gap": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 個の空隙",
+				"countPlural=other": "{count} 個の空隙"
+			}
+		}
+	],
+	"rings_count_ringlet": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 本の細環",
+				"countPlural=other": "{count} 本の細環"
+			}
+		}
+	],
+	"rings_count_region": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 個の領域",
+				"countPlural=other": "{count} 個の領域"
+			}
+		}
+	],
+	"rings_count_arc": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 個の弧",
+				"countPlural=other": "{count} 個の弧"
+			}
+		}
+	],
+	"rings_count_dust": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 本のダスト帯",
+				"countPlural=other": "{count} 本のダスト帯"
+			}
+		}
+	],
 	"features_section": "表面地形",
 	"moons_section": "衛星",
 	"satellites_section": "衛星",

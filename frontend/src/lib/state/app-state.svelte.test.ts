@@ -42,7 +42,8 @@ const initialView: MapViewState = {
 	tab: null,
 	memberPage: null,
 	quad: null,
-	featureType: null
+	featureType: null,
+	ring: null
 };
 
 beforeEach(() => {
