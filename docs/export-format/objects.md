@@ -122,7 +122,8 @@ interface GlobalObjectData {
     }>;
     sources: Array<{ title: string; url: string }>; // works the values are read off, deduped, structure source first
   };
-  ring_features?: Record<string, {    // named rings, divisions, gaps, ringlets and arcs — the four ringed giants only (see below)
+  rings?: RingBlock[];                // ring render bundles, inner → outer — same blocks as `rings` in systems/{bary}.json (see rings.md)
+  ring_features?: Record<string, {    // named rings, divisions, gaps, ringlets and arcs — the eight ringed bodies only (see below)
     // Keyed by slug ("cassini-division"), the same key the localized bundle
     // and panel URLs use. Keys run inner → outer, but a parent can follow its
     // children, so a consumer groups by `parent` rather than walking order.
@@ -209,7 +210,7 @@ interface GlobalObjectData {
   };
   nasa_science_url?: string;          // URL to science.nasa.gov page
   images?: ObjectImage[];             // from Wikidata P18/P154 + all Wikipedia languages
-  orientation?: {                     // SPICE PCK IAU rotation polynomial
+  orientation?: {                     // IAU rotation polynomial: SPICE PCK, else DAMIT lightcurve spin, else an occultation-fitted ring pole
     // α(T) = pole_ra_0 + pole_ra_1·T   (T = Julian centuries since J2000)
     // δ(T) = pole_dec_0 + pole_dec_1·T
     // W(d) = w0 + w1·d + w2·d²         (d = days since J2000)
@@ -221,7 +222,7 @@ interface GlobalObjectData {
     // α += Σ ra[i]  · sin(θ_i(T)),  δ += Σ dec[i] · cos(θ_i(T)),  W += Σ pm[i] · sin(θ_i(T))
     ra: number[]; dec: number[]; pm: number[];
   };
-  radii?: {                           // SPICE PCK triaxial radii (km, body-fixed X/Y/Z)
+  radii?: {                           // triaxial radii (km, body-fixed X/Y/Z): SPICE PCK, else an occultation-fitted ellipsoid
     a: number; b: number; c: number;
   };
   pointing?: {                        // hand-edited per-spacecraft attitude (spacecraft-orientation.yaml)
@@ -486,17 +487,20 @@ metadata rather than in `interior_references`.
 ### `ring_features`
 
 The catalogue behind the ring panel, from
-`data/src/space_map_data/constants/rings/catalog.py`: every named feature the
-PDS Ring-Moon Systems Node's "vital statistics" tables carry, cross-checked
-against the IAU Gazetteer's ring page. Four bodies have one, and Saturn's 43
-rows are the largest, so it rides the object bundle rather than a lazily
-fetched tier like surface features do.
+`data/src/space_map_data/constants/rings/catalog.py`. For the four giants it is
+every named feature the PDS Ring-Moon Systems Node's "vital statistics" tables
+carry, cross-checked against the IAU Gazetteer's ring page. For Chariklo,
+Haumea, Quaoar and Chiron there is no such table and the rows come from the
+occultation papers instead, so those four carry only a handful of features
+each, no IAU names, and — for Chiron — rings that the sources agree are not
+permanent. Saturn's 43 rows are the largest table, so the whole thing rides
+the object bundle rather than a lazily fetched tier like surface features do.
 
-It is a catalogue, not a render manifest. The `rings` array in
-`systems/{bary}.json` says what the scene draws; this says what the rings are,
-and includes features the renderer deliberately omits — Saturn's Phoebe ring
-(it sits in Phoebe's orbital plane, not Saturn's equator) and Neptune's five
-arcs (azimuthal structure a radial strip cannot carry). Where both describe
+It is a catalogue, not a render manifest. The `rings` array says what the
+scene draws; this says what the rings are, and includes features the renderer
+deliberately omits — Saturn's Phoebe ring (it sits in Phoebe's orbital plane,
+not Saturn's equator) and the arcs of Neptune, Quaoar and Chiron (azimuthal
+structure a radial strip cannot carry). Where both describe
 the same ring they agree by test, not by construction: the render tables carry
 their own tuning and occasionally split a row (the E ring ships as two bundle
 halves so its optical depth peaks at Enceladus).
@@ -518,8 +522,9 @@ consumer builds the tree by grouping on `parent` and sorting siblings by
 radius.
 
 `ring_sources` rides alongside: the same works the credits page lists for this
-body's catalogue, trimmed to title and link so the panel can credit what it
-shows without pulling the whole credits bundle. The per-source `contribution`
+body's catalogue — PDS and IAU tables for the giants, the occultation papers
+for the small bodies — trimmed to title and link so the panel can credit what
+it shows without pulling the whole credits bundle. The per-source `contribution`
 sentence stays on the credits page.
 
 `ring_hero` is one picture of the system, in the same shape as an `images`
@@ -527,7 +532,9 @@ entry and resolving against the same `/v1/images/<file>/` bundles — including
 the credit, which rides in the variant's own metadata rather than here. It is
 hand-picked per body (`constants/rings/images.py`) from the images the ring
 pages already carry, and lives in the global block because the choice avoids
-pictures with text baked into them: the same frame serves every locale.
+pictures with text baked into them: the same frame serves every locale. Only
+the giants have one — no small body's rings have ever been resolved, so the
+only pictures of them are artists' impressions.
 
 ## Localized (`objects/{lang}/{bucket}.json.gz`)
 

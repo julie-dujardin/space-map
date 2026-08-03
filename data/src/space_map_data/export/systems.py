@@ -11,6 +11,10 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.occultation_shapes import (
+    occultation_orientations,
+    occultation_radii,
+)
 from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.models.object import Object, ObjectType
 
@@ -65,11 +69,13 @@ def _read_orientation_csv(csv_path: Path) -> dict[int, dict]:
 
 
 def load_orientation(download_dir: Path) -> dict[int, dict]:
-    """Load orientation polynomials, SPICE PCK merged with DAMIT lightcurve spin.
+    """Load orientation polynomials: SPICE PCK merged with DAMIT lightcurve
+    spin and the occultation-derived poles of the ringed small bodies.
 
     Returns {naif_id: {pole_ra_0, pole_ra_1, pole_dec_0, pole_dec_1, w0, w1, w2}}.
     PCK orientation wins where both exist — DAMIT convex spin only fills
-    asteroids the generic/mission PCKs don't cover.
+    asteroids the generic/mission PCKs don't cover, and the occultation poles
+    only the four ringed ones neither reaches.
     """
     tables = download_dir / "derived" / "position" / "tables"
     csv_path = tables / "orientation.csv"
@@ -85,6 +91,11 @@ def load_orientation(download_dir: Path) -> dict[int, dict]:
         added = sum(1 for naif in damit if naif not in result)
         result = {**damit, **result}  # PCK entries override DAMIT
         logger.info("Merged %d DAMIT spin-orientation records", added)
+
+    occultation = occultation_orientations()
+    added = sum(1 for naif in occultation if naif not in result)
+    result = {**occultation, **result}
+    logger.info("Merged %d occultation spin-orientation records", added)
 
     logger.info("Loaded %d orientation records", len(result))
     return result
@@ -502,15 +513,17 @@ def ring_block(meta: dict) -> dict:
 
 
 def load_radii(download_dir: Path) -> dict[int, dict]:
-    """Load triaxial radii from SPICE radii.csv.
+    """Load triaxial radii, SPICE radii.csv merged with the occultation-fitted
+    ellipsoids of the ringed small bodies.
 
-    Returns {naif_id: {a, b, c}} in km along body-fixed X, Y, Z.
+    Returns {naif_id: {a, b, c}} in km along body-fixed X, Y, Z. PCK radii win
+    where both exist.
     """
     csv_path = download_dir / "derived" / "position" / "tables" / "radii.csv"
     if not csv_path.exists():
         logger.warning("No radii CSV at %s", csv_path)
-        return {}
-    result: dict[int, dict] = {}
+        return dict(occultation_radii())
+    result: dict[int, dict] = dict(occultation_radii())
     with csv_path.open(newline="") as f:
         for row in csv.DictReader(f):
             naif_id = int(row["naif_id"])

@@ -614,8 +614,15 @@
 	let isStarBody = $derived(body?.data.objectType === ObjectType.STAR);
 	let hasFragments = $derived(!!notableFragments && notableFragments.length > 0);
 
-	// Named rings, gaps and ringlets — the four ringed giants only.
+	// Named rings, gaps and ringlets — the eight ringed bodies only.
 	let ringFeatures = $derived(isGroupMode ? undefined : data?.global?.ring_features);
+	// Which object the host's moons hang off, for the chart's moon column: a
+	// planet's are parented on the system barycentre, a minor planet's on the
+	// body itself. Chariklo and friends orbit the Sun, whose children are the
+	// whole small-body catalogue rather than a system.
+	let ringMoonHostId = $derived(
+		parentBody?.data.objectType === ObjectType.BARYCENTER ? parentBody.data.id : body?.data.id
+	);
 	let showRingsTab = $derived(Object.values(ringFeatures ?? {}).some((f) => !f.parent));
 	// Credits for the Rings tab alone: the catalogue's tables, plus whatever
 	// prose and names this locale actually got.
@@ -1171,7 +1178,7 @@
 				system={data?.localized?.ring_system}
 				bodyRadiusKm={data?.global?.radii?.a}
 				bodyId={body?.data.id}
-				systemId={body?.data.parentId}
+				systemId={ringMoonHostId}
 				{clock}
 			/>
 			<SourcesFooter

@@ -1,4 +1,4 @@
-import { MeshStandardMaterial, type Texture, type TextureLoader } from 'three';
+import { MeshStandardMaterial, type Scene, type Texture, type TextureLoader } from 'three';
 import { bodyMeshColor } from '$lib/utils';
 import { kmToScene } from '$lib/math/units';
 import { ObjectType } from '$lib/types/objects';
@@ -12,6 +12,7 @@ import { getLabelVariant, setLabelName } from '../../label/factory';
 import { attachDisplacementMap, disposeDisplacementFromMaterial } from '../surface/displacement';
 import { attachSelfShadowToBody, detachSelfShadow } from '../surface/self-shadow';
 import { syncAtmosphereEllipsoid } from '../surface/atmosphere';
+import { attachRingBundles } from '../surface/ring-attach';
 import { syncSunTransmittanceUniforms } from '../surface/sun-transmittance';
 import { setShapeModelMap, setSurfaceMap } from './model-texture';
 import type { BodyObjects } from '../../types';
@@ -149,15 +150,18 @@ export function applyRadiiToMesh(
  * credit standalone bodies (e.g. Bennu, Ceres) the same way it credits bodies
  * registered via loadSystemData.
  *
- * For non-system bodies this is also where SPICE orientation + triaxial radii
- * from the global JSON get applied (loadSystemData handles system bodies via
- * the per-system metadata file). Per-frame orientation re-application happens
- * in the renderer's main loop based on `bo.body.orientation`.
+ * For non-system bodies this is also where orientation, triaxial radii and
+ * ring bundles from the global JSON get applied (loadSystemData handles system
+ * bodies via the per-system metadata file). Per-frame orientation
+ * re-application happens in the renderer's main loop based on
+ * `bo.body.orientation`.
  */
 export async function loadBodyTexture(
 	bo: BodyObjects,
 	textureLoader: TextureLoader,
 	currentJd: number,
+	scene: Scene,
+	maxTextureSize: number,
 	ctx?: ContextManager
 ): Promise<void> {
 	if (bo.textureTier || bo.textureLoading) return;
@@ -181,6 +185,24 @@ export async function loadBodyTexture(
 		!detail.global.displacement?.absolute_radius
 	) {
 		applyRadiiToMesh(bo, detail.global.radii);
+	}
+
+	// Ring annuli for the ringed small bodies. Before the map-texture
+	// early-return below, because none of the four has a surface map — they
+	// would never reach it.
+	if (detail.global.rings?.length) {
+		await Promise.allSettled(
+			attachRingBundles(
+				bo.body.data.id,
+				bo.body.data.id,
+				detail.global.rings,
+				detail.global.radii,
+				bo,
+				scene,
+				maxTextureSize,
+				ctx
+			)
+		);
 	}
 
 	// Physically-derived per-body surface colour for small bodies. Applied here

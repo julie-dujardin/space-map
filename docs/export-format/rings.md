@@ -1,6 +1,6 @@
 # Rings
 
-Generated during ingest (not export) and written directly to the export directory. Each ringed body's `has_rings` flag in its global JSON signals that at least one ring bundle exists; the per-system metadata (below) carries the renderer-facing blocks with strip URLs and geometry constants.
+Generated during ingest (not export) and written directly to the export directory. Each ringed body's `has_rings` flag in its global JSON signals that at least one ring bundle exists, and the renderer-facing blocks with strip URLs and geometry constants ride two places: the per-system metadata (below) and the body's own global JSON. The second is what carries the four ringed small bodies, which orbit the Sun directly and so appear in no system file; the giants get both copies, built from the same loaded metadata.
 
 **Path:** `rings/{id}/{bundle}/strip.webp`
 
@@ -12,7 +12,9 @@ by `data/tests/constants/test_ring_catalog.py`, which asserts that every
 rendered feature agrees with its catalogue row on span, optical depth and
 vertical extent.
 
-A body owns one or more *bundles* — radially disjoint groups of rings, each with its own sample density and scales. Saturn has three (`inner` = D ring, `primary` = the measured Cassini profiles of the main rings, `outer` = the tenuous G/E system); the other ringed giants have one, named `primary`. Bundles exist because a single 8-bit strip cannot span Saturn's range: its B ring reaches τ ≈ 5 while its E ring is τ ≈ 5e-6, and a shared `intensity_scale` would quantize the E ring to nothing. Splitting also keeps 5 km/sample across the main rings without exceeding WebP's 16 383 px dimension cap over the full 66 900–480 000 km extent.
+Eight bodies carry rings: the four giants, plus Chariklo, Haumea, Quaoar and Chiron, whose rings are known only from stellar occultations.
+
+A body owns one or more *bundles* — radially disjoint groups of rings, each with its own sample density and scales. Saturn has three (`inner` = D ring, `primary` = the measured Cassini profiles of the main rings, `outer` = the tenuous G/E system) and Chiron two (`primary` = the broad disk with its three confined rings, `outer` = the faint Chi4R feature 500 km beyond them); the rest have one, named `primary`. Bundles exist because a single 8-bit strip cannot span Saturn's range: its B ring reaches τ ≈ 5 while its E ring is τ ≈ 5e-6, and a shared `intensity_scale` would quantize the E ring to nothing. Splitting also keeps 5 km/sample across the main rings without exceeding WebP's 16 383 px dimension cap over the full 66 900–480 000 km extent.
 
 One lossless RGB WebP per bundle, N×5 (or N×6): each row is a 1-D radial profile (channel), sampled uniformly between `inner_radius_km` and `outer_radius_km`; `sample_count` (= image width) is fixed per bundle. Scalar channels are replicated across RGB. The single file keeps loading to one request; the client splits the rows back into separate 1-px textures after decode (row-per-channel in one texture would let mipmaps bleed channels into each other), sampling `.r` for scalar channels and `.rgb` for `color`.
 
@@ -74,7 +76,7 @@ The renderer blends `backscattered`/`forwardscattered` by phase angle, swaps in 
 }
 ```
 
-- `bundle` — name of this bundle within the body, and its sub-directory. In `systems/{bary}.json` the body's `rings` is an **array** of these blocks ordered inner → outer, and each block's `strip` is bundle-relative (`"primary/strip.webp"`), so the URL is `/v1/rings/{id}/{strip}`.
+- `bundle` — name of this bundle within the body, and its sub-directory. In `systems/{bary}.json` and in the body's global JSON the body's `rings` is an **array** of these blocks ordered inner → outer, and each block's `strip` is bundle-relative (`"primary/strip.webp"`), so the URL is `/v1/rings/{id}/{strip}`.
 - `inner_radius_km` / `outer_radius_km` — radial domain (km from the host body's centre) the bundle spans. Samples are uniformly distributed across the closed interval. Bundles of one body never overlap.
 - `intensity_scale` — multiply stored scalar-channel values (and `1 − transparency`) by this to recover physical brightness/opacity. `1.0` for measured data (Saturn's main rings); synthetic bundles store channels normalised to their physical maximum because 8-bit cannot hold optical depths of ~1e-6 directly. The renderer must apply it — those bundles are *supposed* to render extremely faint. It doubles as the opacity ranking that picks the shadow-casting bundle.
 - `thickness_scale_km` — km per unit of the optional `thickness` row; `0` when the bundle has no thickness data (renders as a flat sheet). The renderer spreads the ring material vertically over the per-radius extent, collapsing back to a single sheet whenever the stack spans less than about a pixel.
@@ -82,4 +84,4 @@ The renderer blends `backscattered`/`forwardscattered` by phase angle, swaps in 
 - `sources` — every work the bundle draws on, each naming what it contributed. Bundles routinely mix provenance: Saturn's measured strips are Björn Jónsson's photometry with NSSDCA vertical extents. `organisation` is deliberately short ("NASA", not "NASA PDS Ring-Moon Systems Node / NSSDCA") so one body reads as one name across the credit UI; the specific work goes in `work`, and `contribution` is a lowercase noun phrase. `synthesised` marks a work whose tabulated numbers we rebuilt profiles from rather than shipping its own measurements.
 
   `credits.json` merges these across a body's bundles into one row per (URL, organisation), joining the contributions — Saturn's bundles all cite the NSSDCA fact sheet for different things, and listing it three times or keeping only the first would both misrepresent it. The in-scene attribution popover collapses further still, to one line per body and imagery kind with the organisations joined.
-- `description` — optional; propagates to `systems/{bary}.json` and `credits.json`.
+- `description` — optional; propagates to `systems/{bary}.json`, the object's global JSON and `credits.json`.

@@ -1,26 +1,27 @@
 """Per-object ring catalogue, denormalized onto a ringed body's bundles.
 
-The render bundles (`systems/{bary}.json → rings[]`) say what the scene draws;
-this says what the rings *are* — every named ring, division, gap, ringlet,
+The render bundles (the body's `rings[]`, in its system file or on its own
+global block) say what the scene draws; this says what the rings *are* — every named ring, division, gap, ringlet,
 region and arc from `constants/rings/catalog.py`, nested by `parent`, with the
 geometry and optical depths their sources publish.
 
-Only four bodies carry it and the largest table is Saturn's forty-odd rows, so
-it rides the object's own bundles rather than earning a lazily-fetched tier of
-its own like surface features do.
+Only eight bodies carry it and the largest table is Saturn's forty-odd rows,
+so it rides the object's own bundles rather than earning a lazily-fetched tier
+of its own like surface features do.
 
 Per-feature prose is split the way the bundles are: the English note from the
 PDS table is language-independent and ships in the global block, while the
 localized block carries the Wikipedia extract for locales that have an article.
 Coverage there is thin and lopsided — English Wikipedia folds every ring into
 "Rings of X", so only the Cassini Division has an English article while French
-and Italian have nearly the full set (see `constants/rings/wikidata.py`).
+and Italian have nearly the full set, and the small bodies' rings have no
+article of their own anywhere (see `constants/rings/wikidata.py`).
 """
 
 import logging
 from functools import cache
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from space_map_data.constants.rings.catalog import (
     RING_CATALOGS,
@@ -37,7 +38,7 @@ from space_map_data.constants.rings.wikidata import (
 from space_map_data.export.images import collect_named_image
 from space_map_data.export.objects.wikipedia import load_wikipedia_summaries_for_qid
 from space_map_data.export.wikidata import WikidataEntityCache
-from space_map_data.models.object.main import Object
+from space_map_data.models.object.main import Object, ObjectType
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +57,12 @@ def load_ring_moon_ids(session: Session) -> dict[str, str]:
     """Object id per moon named in the catalogue, keyed "{host}/{moon name}".
 
     Scoped to the moons of the host's own system so the lookup cannot pick up
-    an asteroid that shares a moon's name (4450 Pan vs Saturn's Pan). Moons
-    hang off the system barycentre, not the planet, so the host's own
-    `parent_id` is what identifies its satellites.
+    an asteroid that shares a moon's name (4450 Pan vs Saturn's Pan). Which
+    object the moons hang off depends on the host: a planet's satellites are
+    parented on the system barycentre, a minor planet's directly on the body,
+    since it has no barycentre of its own. Only a barycentre parent is
+    followed — the ringed small bodies are parented on the Sun, and searching
+    its children would scan the whole catalogue for a name match.
     """
     wanted = {
         (body, moon)
@@ -66,13 +70,17 @@ def load_ring_moon_ids(session: Session) -> dict[str, str]:
         for feature in catalog.features
         for moon in feature.moons
     }
-    hosts = {
-        bary: body
-        for body, bary in session.query(Object.id, Object.parent_id)
+    parent = aliased(Object)
+    hosts: dict[str, str] = {}
+    for body, parent_id, parent_type in (
+        session.query(Object.id, Object.parent_id, parent.object_type)
+        .outerjoin(parent, Object.parent_id == parent.id)
         .filter(Object.id.in_(sorted(RING_CATALOGS)))
         .all()
-        if bary
-    }
+    ):
+        hosts[body] = body
+        if parent_id is not None and parent_type == ObjectType.barycenter.value:
+            hosts[parent_id] = body
     rows = (
         session.query(Object.id, Object.name, Object.parent_id)
         .filter(Object.parent_id.in_(sorted(hosts)))

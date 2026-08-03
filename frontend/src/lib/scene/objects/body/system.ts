@@ -1,10 +1,4 @@
-import {
-	type Material,
-	MeshStandardMaterial,
-	type Scene,
-	SphereGeometry,
-	type TextureLoader
-} from 'three';
+import { MeshStandardMaterial, type Scene, SphereGeometry, type TextureLoader } from 'three';
 import { kmToScene } from '$lib/math/units';
 import { effectiveRadiusKm } from '$lib/types/objects';
 import { isLowEndDevice } from '$lib/device';
@@ -14,13 +8,8 @@ import { DATA_BASE } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
 import { attachSunTransmittanceToBody } from '../surface/sun-transmittance';
-import { attachRingShadowToAtmosphere } from '../surface/atmosphere';
-import {
-	attachRingShadowToPlanet,
-	disposeRingNode,
-	loadRingNode,
-	type RingMeta
-} from '../surface/rings';
+import { disposeRingNode, type RingMeta } from '../surface/rings';
+import { attachRingBundles } from '../surface/ring-attach';
 import {
 	CLOUD_RADIUS_OFFSET,
 	cloudFrameForJd,
@@ -344,85 +333,20 @@ export async function loadSystemData(
 			);
 		}
 
-		// Ring annuli — present for the four ringed giants, one node per
-		// bundle (Saturn has three). Idempotent: re-entering the system with
-		// `bo.rings` already populated is a no-op.
-		if (bodyMeta.rings?.length && !bo.rings.length) {
-			// Only the densest bundle casts a shadow worth ray-marching, and
-			// the shader marches one annulus: Saturn's main rings reach τ~5
-			// while its D and E rings are τ~1e-3 and τ~5e-6, which would
-			// darken nothing. intensity_scale is each bundle's peak physical
-			// opacity, so it ranks them directly.
-			const shadowCaster = bodyMeta.rings.reduce((best, meta) =>
-				meta.intensity_scale > best.intensity_scale ? meta : best
+		// Ring annuli, one node per bundle (Saturn has three).
+		if (bodyMeta.rings?.length) {
+			promises.push(
+				...attachRingBundles(
+					bodyId,
+					barycenterId,
+					bodyMeta.rings,
+					bodyMeta.radii,
+					bo,
+					scene,
+					maxTextureSize,
+					ctx
+				)
 			);
-			for (const ringMeta of bodyMeta.rings) {
-				if (ctx) {
-					// A bundle mixes works (Saturn: Björn Jónsson's photometry,
-					// NSSDCA's vertical extents) — credit each for its own part.
-					for (const src of ringMeta.sources) {
-						ctx.credits.registerRing({
-							bodyId,
-							systemId: barycenterId,
-							source: src.source,
-							organisation: src.organisation,
-							license: src.license,
-							attribution: src.attribution,
-							description: ringMeta.description
-						});
-					}
-				}
-				promises.push(
-					loadRingNode(bodyId, ringMeta, maxTextureSize).then((node) => {
-						if (!node) return;
-						if (bo.rings.some((r) => r.mesh.userData.ringBundle === ringMeta.bundle)) {
-							// A concurrent system reload finished first — drop ours.
-							node.mesh.geometry.dispose();
-							(node.mesh.material as Material).dispose();
-							return;
-						}
-						node.mesh.userData.ringBundle = ringMeta.bundle;
-						bo.rings.push(node);
-						scene.add(node.mesh);
-						bo.extraObjects.push(node.mesh);
-						// Analytical ring shadow on the planet itself. The planet
-						// material is built as a MeshStandardMaterial in
-						// `buildMajorBodies`; this swaps in an onBeforeCompile that
-						// adds a ray-march to the ring plane after the standard
-						// lighting calc.
-						if (bo.mesh && ringMeta === shadowCaster) {
-							node.planetShadow = attachRingShadowToPlanet(
-								bo.mesh.material as MeshStandardMaterial,
-								node.innerScene,
-								node.outerScene,
-								node.transparency,
-								node.intensityScale
-							);
-							// The rings shade the scattering shell's air column too,
-							// sharing the same per-frame uniform refs.
-							if (bo.atmosphere) {
-								attachRingShadowToAtmosphere(
-									bo.atmosphere,
-									node.planetShadow,
-									node.transparency,
-									node.innerScene,
-									node.outerScene
-								);
-							}
-						}
-						// Reverse direction: configure the ring's own analytical
-						// planet-shadow with the planet's oblate-spheroid extent.
-						// Saturn is essentially biaxial (a ≈ b), so collapsing the
-						// two equatorial axes to their mean is exact enough for the
-						// limb of the cast shadow.
-						if (bodyMeta.radii) {
-							const { a, b, c } = bodyMeta.radii;
-							node.planetShadowOnRing.uPlanetEquatorialScene.value = kmToScene((a + b) / 2);
-							node.planetShadowOnRing.uPlanetPolarScene.value = kmToScene(c);
-						}
-					})
-				);
-			}
 		}
 	}
 	await Promise.allSettled(promises);

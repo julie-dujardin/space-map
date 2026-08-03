@@ -56,8 +56,14 @@ class TestBlock:
 class TestHero:
     """The picture that opens the panel."""
 
-    def test_every_ringed_body_has_one(self):
-        assert sorted(RING_HERO_IMAGES) == sorted(RING_CATALOGS)
+    def test_heroes_name_ringed_bodies(self):
+        # Not every ringed body has one: no photograph of a small body's rings
+        # exists, so those four ship without (see constants/rings/images.py).
+        assert set(RING_HERO_IMAGES) <= set(RING_CATALOGS)
+
+    def test_every_giant_has_one(self):
+        giants = {b for b in RING_CATALOGS if b.startswith("naif-")}
+        assert giants <= set(RING_HERO_IMAGES)
 
     @pytest.mark.parametrize("body", sorted(RING_HERO_IMAGES))
     def test_filenames_are_commons_canonical(self, body: str):

@@ -1062,7 +1062,14 @@ export class SceneRenderer {
 	private maybeLoadTexture(body: PositionedBody): void {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (!bo) return;
-		void loadBodyTexture(bo, this.textureLoader, this.clock.jd, this.ctx).then(() => {
+		void loadBodyTexture(
+			bo,
+			this.textureLoader,
+			this.clock.jd,
+			this.scene,
+			this.renderer.capabilities.maxTextureSize,
+			this.ctx
+		).then(() => {
 			// Standalone focus (asteroids, comets) doesn't go through
 			// systemData.onLoaded, so the URL-load snap initially runs with an
 			// identity mesh quat and any queued pendingInitialView never gets

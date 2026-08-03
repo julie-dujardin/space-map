@@ -72,6 +72,10 @@ class ObjectDataContext:
     # "{host}/{moon name}" -> Object.id, for the moons a ring catalogue row
     # names as shepherd, source or embedded (Pan in the Encke Gap).
     ring_moon_ids: dict[str, str]
+    # Object.id -> render bundles, inner to outer. Only bodies outside a
+    # planetary system read it here; the giants get theirs from their
+    # system's metadata file instead.
+    ring_metadata: dict[str, list[dict]]
 
 
 @dataclass
@@ -150,6 +154,7 @@ def build_zone_object_data(
         parent_names=ctx.parent_names,
         taxonomy=ctx.taxonomy,
         ring_moon_ids=ctx.ring_moon_ids,
+        ring_metadata=ctx.ring_metadata,
     )
 
 

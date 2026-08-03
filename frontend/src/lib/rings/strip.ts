@@ -2,14 +2,17 @@
  * The rendered rings' own radial profiles, read back for the Rings tab chart.
  *
  * The scene loads `v1/rings/{body}/{bundle}/strip.webp` — one row per channel
- * across the annulus — to texture the ring mesh. The chart draws the same
+ * across the annulus — to texture the ring mesh; the bundle list comes off the
+ * body's own global block, which carries it for system and standalone bodies
+ * alike. The chart draws the same
  * strips, so the panel shows the rings as they look rather than as flat
  * optical-depth bands. Only radii a bundle covers get a profile; the chart
  * falls back to the catalogue's optical depths elsewhere (Saturn's Phoebe ring
  * is catalogued and never drawn).
  */
 
-import { DATA_BASE, versionedUrl } from '$lib/fetch/data-base';
+import { versionedUrl } from '$lib/fetch/data-base';
+import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 
 export interface RingStripProfile {
 	inner: number;
@@ -101,20 +104,15 @@ async function decode(bodyId: string, meta: StripMeta): Promise<RingStripProfile
 	};
 }
 
-async function load(bodyId: string, systemId: string): Promise<RingStripProfile[]> {
-	const response = await fetch(`${DATA_BASE}/v1/systems/${systemId}.json`);
-	if (!response.ok) {
-		console.warn(
-			`Ring strips for ${bodyId}: systems/${systemId}.json returned ${response.status}, falling back to catalogue bands`
-		);
-		return [];
-	}
-	const meta: Record<string, { rings?: StripMeta[] }> = await response.json();
-	const bundles = meta[bodyId]?.rings ?? [];
+async function load(bodyId: string): Promise<RingStripProfile[]> {
+	// The body's own bundles, not its system file's: the ringed small bodies
+	// belong to no system, and the panel has already fetched this detail to
+	// render at all, so it costs nothing here.
+	const detail = await fetchObjectDetail(bodyId, false);
+	const bundles = (detail.global?.rings ?? []) as StripMeta[];
 	// A ringed body with no render bundles is the export being stale, not a
 	// body without rings — the catalogue is what put the panel on screen.
-	if (!bundles.length)
-		console.warn(`Ring strips for ${bodyId}: systems/${systemId}.json lists no ring bundles`);
+	if (!bundles.length) console.warn(`Ring strips for ${bodyId}: no ring bundles on the object`);
 	const profiles: RingStripProfile[] = [];
 	for (const bundle of bundles) {
 		try {
@@ -129,16 +127,15 @@ async function load(bodyId: string, systemId: string): Promise<RingStripProfile[
 	return profiles;
 }
 
-export function loadRingStrips(bodyId: string, systemId: string): Promise<RingStripProfile[]> {
-	const key = `${systemId}/${bodyId}`;
-	let pending = cache.get(key);
+export function loadRingStrips(bodyId: string): Promise<RingStripProfile[]> {
+	let pending = cache.get(bodyId);
 	if (!pending) {
-		pending = load(bodyId, systemId).catch((err) => {
+		pending = load(bodyId).catch((err) => {
 			console.warn(`Ring strips for ${bodyId} unavailable:`, err);
-			cache.delete(key);
+			cache.delete(bodyId);
 			return [];
 		});
-		cache.set(key, pending);
+		cache.set(bodyId, pending);
 	}
 	return pending;
 }

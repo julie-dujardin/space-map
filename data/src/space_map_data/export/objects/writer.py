@@ -58,6 +58,7 @@ from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.systems import (
     clouds_block,
     displacement_block,
+    ring_block,
     texture_attribution,
 )
 from space_map_data.export.objects.wikidata_claims import (
@@ -238,6 +239,7 @@ def build_chunk_object_data(
     parent_names: dict[str, str],
     taxonomy: dict,
     ring_moon_ids: dict[str, str],
+    ring_metadata: dict[str, list[dict]],
 ) -> ChunkObjectData:
     """Build per-object global and localized JSON dicts (no I/O).
 
@@ -289,6 +291,7 @@ def build_chunk_object_data(
             parent_names,
             taxonomy,
             ring_moon_ids,
+            ring_metadata,
         )
 
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
@@ -487,6 +490,7 @@ def _build_global(
     parent_names: dict[str, str],
     taxonomy: dict,
     ring_moon_ids: dict[str, str],
+    ring_metadata: dict[str, list[dict]],
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -518,6 +522,16 @@ def _build_global(
         data["displacement"] = displacement_block(disp_meta)
     if obj.has_rings:
         data["has_rings"] = True
+        # The render bundles ride the object too, not just its system file:
+        # the four ringed small bodies sit directly under the Sun, so no
+        # system file covers them. Emitted for the giants as well rather than
+        # branching on system membership here — both come from the same
+        # loaded metadata, so the two copies cannot disagree.
+        metas = ring_metadata.get(obj.id)
+        if metas:
+            data["rings"] = [ring_block(m) for m in metas]
+        else:
+            logger.warning("Ring metadata missing for %s; skipping bundles", obj.id)
     if obj.id in nomenclature_body_ids:
         data["has_nomenclature"] = True
     if obj.name is not None:

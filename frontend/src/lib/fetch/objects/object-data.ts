@@ -5,6 +5,7 @@ import { versionedUrl } from '$lib/fetch/data-base';
 import type { PickedThumbnail } from '$lib/fetch/objects/images';
 import type { PointingSpec } from '$lib/math/orientation';
 import type { DisplacementMeta } from '$lib/scene/objects/surface/displacement';
+import type { RingMeta } from '$lib/scene/objects/surface/rings';
 
 // --- Global object data (non-localized) ---
 
@@ -232,15 +233,20 @@ export interface GlobalObjectData {
 	render_quality?: 'high' | 'medium' | 'low';
 	atmosphere?: AtmosphereBlock;
 	interior?: InteriorBlock;
-	/** Named rings, gaps and ringlets of the four ringed giants, keyed by slug.
-	 *  The catalogue behind the Rings tab — distinct from the `rings` render
-	 *  bundles in systems/{bary}.json, and includes features we never draw. */
+	/** Ring render bundles, inner → outer, mirroring `rings` in
+	 *  systems/{bary}.json. Carries the four ringed small bodies, which orbit
+	 *  the Sun directly and so appear in no system file. */
+	rings?: RingMeta[];
+	/** Named rings, gaps and ringlets of a ringed body, keyed by slug. The
+	 *  catalogue behind the Rings tab — distinct from the `rings` render
+	 *  bundles, and includes features we never draw. */
 	ring_features?: Record<string, RingFeature>;
-	/** The tables the catalogue was transcribed from — credited under the tab. */
+	/** The tables and papers the catalogue was read off — credited under the tab. */
 	ring_sources?: Array<{ title: string; url: string; organisation: string }>;
 	/** One picture of the system, opening the Rings tab. Hand-picked from the
 	 *  pages the panel cites, so it carries no baked-in caption to mistranslate
-	 *  — hence the global block rather than the localized one. */
+	 *  — hence the global block rather than the localized one. Absent for the
+	 *  small bodies: no photograph of their rings exists. */
 	ring_hero?: ObjectImage;
 	temperatures?: Temperatures;
 	images?: ObjectImage[];

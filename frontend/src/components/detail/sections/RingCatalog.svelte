@@ -419,11 +419,10 @@
 	let strips = $state.raw<RingStripProfile[]>([]);
 	$effect(() => {
 		const body = bodyId;
-		const bary = systemId;
 		strips = [];
-		if (!body || !bary) return;
+		if (!body) return;
 		let live = true;
-		loadRingStrips(body, bary).then((loaded) => {
+		loadRingStrips(body).then((loaded) => {
 			if (live) strips = loaded;
 		});
 		return () => {

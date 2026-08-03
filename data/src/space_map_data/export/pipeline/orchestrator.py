@@ -1007,6 +1007,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         parent_names=moon_parent_names,
         taxonomy=load_taxonomy(session),
         ring_moon_ids=load_ring_moon_ids(session),
+        ring_metadata=ring_metadata,
     )
 
     write_systems_global(out_dir, gms, nut_prec_angles)
