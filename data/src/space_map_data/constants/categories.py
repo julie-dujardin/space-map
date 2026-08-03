@@ -11,18 +11,11 @@ from space_map_data.models.object.sbdb import OrbitClass
 
 CATEGORY_SLUG_PREFIX = "cat-"
 
-# Comet orbit classes; every other OrbitClass member is an asteroid.
+# Derived from the SBDB display names so the set can't drift from the enum;
+# every other member (Centaurs and TNOs included) counts as an asteroid in
+# the browse tree.
 COMET_ORBIT_CLASSES: frozenset[OrbitClass] = frozenset(
-    {
-        OrbitClass.ETc,
-        OrbitClass.JFc,
-        OrbitClass.JFC,
-        OrbitClass.CTc,
-        OrbitClass.HTC,
-        OrbitClass.PAR,
-        OrbitClass.HYP,
-        OrbitClass.COM,
-    }
+    c for c in OrbitClass if "Comet" in c.value
 )
 
 

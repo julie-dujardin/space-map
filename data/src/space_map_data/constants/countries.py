@@ -141,3 +141,4 @@ COUNTRY_BY_QID: dict[str, CountrySpec] = {c.wikidata_qid: c for c in COUNTRIES}
 
 assert len(COUNTRY_BY_CODE) == len(COUNTRIES), "Duplicate country code"
 assert len(COUNTRY_BY_SLUG) == len(COUNTRIES), "Duplicate country slug"
+assert len(COUNTRY_BY_QID) == len(COUNTRIES), "Duplicate country QID"

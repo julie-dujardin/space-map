@@ -52,6 +52,9 @@ MINOR_PLANET_MOONS: tuple[MinorPlanetMoon, ...] = (
     MinorPlanetMoon("Q9325977", "S/2002 (121) 1", "S/2002 (121) 1", "121 Hermione"),
     MinorPlanetMoon("Q18483223", "S/2003 (130) 1", "S/2003 (130) 1", "130 Elektra"),
     MinorPlanetMoon("Q20160674", "S/2014 (130) 1", "S/2014 (130) 1", "130 Elektra"),
+    # SBDB ships the third moon unnamed (sat 3, year 2021); our synthesized
+    # designation disagrees with the CBET one Wikidata uses.
+    MinorPlanetMoon("Q20160665", "S/2014 (130) 2", "S/2021 (130) 3", "130 Elektra"),
     MinorPlanetMoon("Q510728", "Dactyl", "S/1993 (243) 1", "243 Ida"),
     MinorPlanetMoon("Q20160764", "S/2003 (283) 1", "S/2003 (283) 1", "283 Emma"),
     MinorPlanetMoon("Q20160736", "S/2009 (317) 1", "S/2009 (317) 1", "317 Roxane"),

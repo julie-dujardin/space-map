@@ -14,6 +14,8 @@ DB may pre-date the current Wikipedia label):
 - Venus v06 Regio→Mons, v38 Maat Mons→Stanton, v47 Dorsum→Chasma.
 """
 
+from space_map_data.constants.nomenclature.quadrangle_grid import quadrangle
+
 QUADRANGLE_QIDS: dict[tuple[str, str], str] = {
     # -- Mercury (15) -------------------------------------------------------
     ("naif-199", "H-01"): "Q3642430",  # Borealis
@@ -125,6 +127,11 @@ QUADRANGLE_QIDS: dict[tuple[str, str], str] = {
     ("naif-299", "v60"): "Q29563245",  # Godiva
     ("naif-299", "v61"): "Q29563359",  # Mylitta Fluctus
 }
+
+# A typo'd key would import fine and then never match a feature at export;
+# bind every entry to the generated grid.
+for _body, _code in QUADRANGLE_QIDS:
+    assert quadrangle(_body, _code) is not None, f"unknown quadrangle {_body}/{_code}"
 
 
 def quadrangle_qids() -> set[str]:

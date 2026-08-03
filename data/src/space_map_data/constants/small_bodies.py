@@ -33,3 +33,9 @@ ORBIT_CLASS_QIDS = {
     OrbitClass.HYP: "Q20717849",  # No wikipedia page
     OrbitClass.COM: None,  # Catch-all "unclassified comet" bucket; the generic "comet" page misrepresents it
 }
+
+# A new OrbitClass member must take a stance here — even an explicit None —
+# or its group page silently ships without a QID.
+assert set(ORBIT_CLASS_QIDS) == set(OrbitClass), (
+    "ORBIT_CLASS_QIDS out of sync with OrbitClass"
+)
