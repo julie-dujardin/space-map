@@ -44,6 +44,16 @@ export interface AtmosphereProfile {
 const CAPPED_BAND = 0.11;
 
 /**
+ * The height the drawn-to-scale part runs to — also what the interior chart's
+ * atmosphere strip draws against, so the two charts agree on where the
+ * atmosphere ends.
+ */
+export function drawableTopKm(structure: AtmosphereStructure): number | null {
+	const scaled = structure.layers.filter((l) => !CAPPED_ROLES.has(l.role));
+	return scaled.at(-1)?.top_km ?? null;
+}
+
+/**
  * Stack the layers bottom-up. Returns null for a body with nothing to draw —
  * an exosphere with no scale height is a fact, not a chart.
  */
@@ -53,7 +63,7 @@ export function atmosphereProfile(structure: AtmosphereStructure): AtmospherePro
 
 	const scaled = layers.filter((l) => !CAPPED_ROLES.has(l.role));
 	const capped = layers.filter((l) => CAPPED_ROLES.has(l.role));
-	const scaleKm = scaled.at(-1)?.top_km ?? 0;
+	const scaleKm = drawableTopKm(structure) ?? 0;
 
 	// Callisto: an exosphere by itself. There is no boundary to scale against,
 	// so the chart becomes the scale height and nothing else.
@@ -103,15 +113,3 @@ function opacityAt(index: number, total: number): number {
 	if (total <= 1) return 0.8;
 	return 0.8 - (index / (total - 1)) * 0.45;
 }
-
-/**
- * The height the interior chart's atmosphere strip draws to — the same top the
- * profile above is scaled against, so the two charts agree on where the
- * atmosphere ends.
- */
-export function drawableTopKm(structure: AtmosphereStructure): number | null {
-	const scaled = structure.layers.filter((l) => !CAPPED_ROLES.has(l.role));
-	return scaled.at(-1)?.top_km ?? null;
-}
-
-export { CAPPED_ROLES };

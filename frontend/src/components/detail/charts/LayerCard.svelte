@@ -16,6 +16,7 @@
 	import type { InteriorLayer } from '$lib/fetch/objects/object-data';
 	import type { InteriorBand } from '$lib/charts/interior-cross-section';
 	import type { CompositionSegment } from '$lib/charts/composition-bar';
+	import type { TemperatureBracket } from '$lib/charts/layer-appearance';
 	import { layerName, stateName, layerNote } from '$lib/charts/interior-layers';
 	import { compositionSegments, materialName } from '$lib/charts/interior-materials';
 	import { formatFormula } from '$lib/charts/atmosphere-species';
@@ -31,7 +32,7 @@
 		swatch: string;
 		/** Kelvin, where the body has a reading for this layer. Most mantles have
 		 *  none and simply show nothing. */
-		temperature?: { lowK: number; highK: number } | null;
+		temperature?: TemperatureBracket | null;
 		/** Another layer is hovered, so this one steps back. */
 		dimmed?: boolean;
 		/** Nothing sits above it — which changes what `diffuse` means. */

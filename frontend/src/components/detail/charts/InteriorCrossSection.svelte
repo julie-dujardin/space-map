@@ -14,16 +14,15 @@
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import type { InteriorLayer } from '$lib/fetch/objects/object-data';
+	import { crossSection, bandPath, type InteriorBand } from '$lib/charts/interior-cross-section';
 	import {
-		crossSection,
-		bandPath,
-		spreadLabels,
-		type InteriorBand
-	} from '$lib/charts/interior-cross-section';
-	import { interiorLayerRgb, plasmaRgb } from '$lib/charts/layer-appearance';
+		bandColor,
+		type PlasmaRange,
+		type TemperatureBracket
+	} from '$lib/charts/layer-appearance';
 	import { layerName } from '$lib/charts/interior-layers';
-	import { stackedRows } from '$lib/charts/label-fit';
-	import { formatQuantity } from '$lib/format/quantities';
+	import { spreadRows, stackedRows } from '$lib/charts/label-fit';
+	import { formatKm, formatKmRange } from '$lib/format/distance';
 	import { formatTemperatureRange } from '$lib/format/temperature';
 	import { ltrIsolate } from '$lib/format/bidi';
 
@@ -36,10 +35,10 @@
 		/** Per layer index, for the ones the body has a reading for — a bracket
 		 *  where the value is modelled rather than measured. Everything else stays
 		 *  at its material's colour and says nothing. */
-		temperatures?: ({ lowK: number; highK: number } | null)[];
+		temperatures?: (TemperatureBracket | null)[];
 		/** Anchors for shading a star's zones, which sit between two readings and
 		 *  have none of their own. */
-		plasmaRange?: { innerK: number; outerK: number };
+		plasmaRange?: PlasmaRange;
 		active?: number | null;
 	}
 
@@ -78,17 +77,8 @@
 	// on a chart whose whole claim is that it is to scale.
 	let bodyR = $derived(R / (1 + (section?.atmosphere?.height ?? 0)));
 
-	/** The one number a bracket can be shaded as. */
-	function midK(i: number): number | null {
-		const reading = temperatures[i];
-		return reading ? (reading.lowK + reading.highK) / 2 : null;
-	}
-
 	function fill(band: InteriorBand, i: number): string {
-		if (band.layer.state === 'plasma' && plasmaRange && temperatures[i] == null) {
-			return plasmaRgb((band.outer + band.inner) / 2, plasmaRange.innerK, plasmaRange.outerK);
-		}
-		return interiorLayerRgb(band.layer, midK(i), 1 - (band.outer + band.inner) / 2);
+		return bandColor(band, temperatures[i], plasmaRange);
 	}
 
 	/** Rides on the name line, the way the atmosphere chart's boundary readings
@@ -104,15 +94,9 @@
 		);
 	}
 
-	function km(value: number): string {
-		return ltrIsolate(formatQuantity({ value, unit: 'kilometre' }, true));
-	}
-
 	/** "0–50 km", the way anyone places a layer. */
 	function depthRange(band: InteriorBand): string {
-		return ltrIsolate(
-			`${Math.round(band.depthFromKm).toLocaleString()}–${Math.round(band.depthToKm).toLocaleString()} km`
-		);
+		return ltrIsolate(formatKmRange(band.depthFromKm, band.depthToKm));
 	}
 
 	/**
@@ -125,27 +109,18 @@
 	 */
 	let rows = $derived.by(() => {
 		if (!section) return [];
-		const entries = section.bands.map((band, i) => ({
-			band,
-			index: i,
-			anchorY: CY - ((band.outer + band.inner) / 2) * bodyR
-		}));
+		const entries: { band: InteriorBand | null; index: number; anchorY: number }[] =
+			section.bands.map((band, i) => ({
+				band,
+				index: i,
+				anchorY: CY - ((band.outer + band.inner) / 2) * bodyR
+			}));
 		if (section.atmosphere) {
-			entries.unshift({
-				band: null as unknown as InteriorBand,
-				index: -1,
-				anchorY: CY - (bodyR + R) / 2
-			});
+			entries.unshift({ band: null, index: -1, anchorY: CY - (bodyR + R) / 2 });
 		}
 		// Outermost first, which is already top-to-bottom down the edge — the
-		// order `spreadLabels` expects.
-		const ys = spreadLabels(
-			entries.map((e) => e.anchorY),
-			LABEL_SPACING,
-			14,
-			H - 10
-		);
-		return entries.map((e, i) => ({ ...e, labelY: ys[i] }));
+		// order `spreadRows` expects.
+		return spreadRows(entries, LABEL_SPACING, 14, H - 10);
 	});
 
 	// Where a name and its temperature cannot share the line, the temperature
@@ -268,7 +243,7 @@
 						{/if}
 					{/if}
 					<text x={GUTTER} y={row.labelY + 11} class="fill-muted-foreground text-[9px]">
-						{row.band ? depthRange(row.band) : km(section.atmosphere?.km ?? 0)}
+						{row.band ? depthRange(row.band) : ltrIsolate(formatKm(section.atmosphere?.km ?? 0))}
 					</text>
 				</g>
 			{/each}

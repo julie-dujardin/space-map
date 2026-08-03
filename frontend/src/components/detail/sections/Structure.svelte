@@ -14,10 +14,10 @@
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-	import { crossSection, type InteriorBand } from '$lib/charts/interior-cross-section';
+	import { crossSection } from '$lib/charts/interior-cross-section';
 	import { drawableTopKm } from '$lib/charts/atmosphere-cross-section';
-	import { interiorLayerRgb, plasmaRgb, skyRgb } from '$lib/charts/layer-appearance';
-	import { formatQuantity } from '$lib/format/quantities';
+	import { bandColor, skyRgb } from '$lib/charts/layer-appearance';
+	import { formatKm } from '$lib/format/distance';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import Section from './kit/Section.svelte';
 	import InteriorCrossSection from '../charts/InteriorCrossSection.svelte';
@@ -70,8 +70,6 @@
 		})
 	);
 
-	let temperatureK = $derived(layerTemperatures.map((t) => (t ? (t.lowK + t.highK) / 2 : null)));
-
 	// A star's zones sit between its core and its surface with no reading of
 	// their own; the two ends anchor a ramp used for shading and nothing else.
 	let plasmaRange = $derived.by(() => {
@@ -80,13 +78,6 @@
 		return { innerK: (coreBracket.lowK + coreBracket.highK) / 2, outerK: outerReading.lowK };
 	});
 
-	function swatch(band: InteriorBand, i: number): string {
-		if (band.layer.state === 'plasma' && plasmaRange && temperatureK[i] == null) {
-			return plasmaRgb((band.outer + band.inner) / 2, plasmaRange.innerK, plasmaRange.outerK);
-		}
-		return interiorLayerRgb(band.layer, temperatureK[i], 1 - (band.outer + band.inner) / 2);
-	}
-
 	// What the sky would look like, read off what the air is made of — the same
 	// treatment the cutaway gets, and not the categorical hue the composition
 	// bar uses to tell one gas from another.
@@ -94,17 +85,11 @@
 
 	let interiorMeta = $derived(
 		section
-			? m.structure_to_scale_radius({
-					value: ltrIsolate(formatQuantity({ value: section.radiusKm, unit: 'kilometre' }, true))
-				})
+			? m.structure_to_scale_radius({ value: ltrIsolate(formatKm(section.radiusKm)) })
 			: undefined
 	);
 	let atmosphereMeta = $derived(
-		atmosphereKm
-			? m.structure_to_scale({
-					value: ltrIsolate(formatQuantity({ value: atmosphereKm, unit: 'kilometre' }, true))
-				})
-			: undefined
+		atmosphereKm ? m.structure_to_scale({ value: ltrIsolate(formatKm(atmosphereKm)) }) : undefined
 	);
 </script>
 
@@ -124,7 +109,7 @@
 			{#each section.bands as band, i (band.layer.role + i)}
 				<LayerCard
 					{band}
-					swatch={swatch(band, i)}
+					swatch={bandColor(band, layerTemperatures[i], plasmaRange)}
 					temperature={layerTemperatures[i]}
 					outermost={i === 0}
 					dimmed={active !== null && active !== i}

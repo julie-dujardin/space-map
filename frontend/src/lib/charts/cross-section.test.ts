@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { crossSection, bandPath, spreadLabels } from './interior-cross-section';
+import { crossSection, bandPath } from './interior-cross-section';
 import { atmosphereProfile, drawableTopKm } from './atmosphere-cross-section';
+import { spreadLabels } from './label-fit';
 import type { InteriorLayer, AtmosphereStructure } from '$lib/fetch/objects/object-data';
 
 /** Europa, as the pipeline ships it. */
@@ -44,12 +45,6 @@ describe('interior cross-section', () => {
 		const section = crossSection(EUROPA)!;
 		expect(section.radiusKm).toBe(1560.8);
 		expect(section.bands[2].outer).toBeCloseTo(1462.4 / 1560.8, 6);
-	});
-
-	it('colours a layer by its dominant material', () => {
-		const section = crossSection(EUROPA)!;
-		expect(section.bands[0].color).toBe('var(--material-water)');
-		expect(section.bands[3].color).toBe('var(--material-metal)');
 	});
 
 	it('draws the atmosphere strip to the same scale as the body', () => {

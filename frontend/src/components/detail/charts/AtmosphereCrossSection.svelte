@@ -18,10 +18,9 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { AtmosphereStructure } from '$lib/fetch/objects/object-data';
 	import { atmosphereProfile } from '$lib/charts/atmosphere-cross-section';
-	import { spreadLabels } from '$lib/charts/interior-cross-section';
 	import { atmosphereLayerName, atmosphereLayerNote } from '$lib/charts/atmosphere-layers';
-	import { stackedRows } from '$lib/charts/label-fit';
-	import { formatQuantity } from '$lib/format/quantities';
+	import { spreadRows, stackedRows } from '$lib/charts/label-fit';
+	import { formatKm, formatKmRange } from '$lib/format/distance';
 	import { formatPressure } from '$lib/format/pressure';
 	import { formatTemperatureRange } from '$lib/format/temperature';
 	import { ltrIsolate } from '$lib/format/bidi';
@@ -66,7 +65,7 @@
 	};
 
 	function km(value: number): string {
-		return ltrIsolate(formatQuantity({ value, unit: 'kilometre' }, true));
+		return ltrIsolate(formatKm(value));
 	}
 
 	/** Half-width the arcs have to span to run clear off both edges. */
@@ -131,7 +130,7 @@
 	}): string | undefined {
 		const bits: string[] = [];
 		if (layer.top_km_range)
-			bits.push(ltrIsolate(`${km(layer.top_km_range[0])}–${km(layer.top_km_range[1])}`));
+			bits.push(ltrIsolate(formatKmRange(layer.top_km_range[0], layer.top_km_range[1])));
 		if (layer.top_temperature_range_k)
 			bits.push(
 				ltrIsolate(
@@ -149,18 +148,12 @@
 		const entries = profile.bands.map((band, i) => ({
 			band,
 			index: i,
-			y: GROUND_Y - ((band.base + band.top) / 2) * AIR
+			anchorY: GROUND_Y - ((band.base + band.top) / 2) * AIR
 		}));
 		// Top of the stack first, so the spread runs down the frame in the order
 		// the labels appear.
 		entries.reverse();
-		const ys = spreadLabels(
-			entries.map((e) => e.y),
-			LABEL_SPACING,
-			12,
-			H - 10
-		);
-		return entries.map((e, i) => ({ ...e, labelY: ys[i] }));
+		return spreadRows(entries, LABEL_SPACING, 12, H - 10);
 	});
 
 	// Where a name and its temperature cannot share the line, the temperature
@@ -224,13 +217,13 @@
 				<rect x={SCRIM_X} y="0" width={W - SCRIM_X} height={H} fill="url(#atmo-scrim)" />
 
 				{#each rows as row, i (row.index)}
-					{@const y0 = GROUND_Y - ((row.band.base + row.band.top) / 2) * AIR}
 					{@const width = spread(row.band.layer)}
 					{@const value = temperature(row.band.layer)}
 					<g class={width ? 'cursor-help' : undefined}>
 						{#if width}<title>{width}</title>{/if}
 						<path
-							d="M {SCRIM_X - 26} {y0} L {GUTTER - 8} {row.labelY - 3} L {GUTTER} {row.labelY - 3}"
+							d="M {SCRIM_X - 26} {row.anchorY} L {GUTTER - 8} {row.labelY -
+								3} L {GUTTER} {row.labelY - 3}"
 							class="stroke-border fill-none"
 							stroke-width="1"
 						/>

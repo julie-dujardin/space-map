@@ -7,23 +7,15 @@
  * own R, which is 1560.8 km for Europa where the exported radius is 1565 — and
  * normalizing to the body would leave a gap or an overshoot at the surface on
  * every body whose paper picked a different R.
- *
- * A layer's colour is its dominant material's, so the ochre that means rock in
- * the composition bar means rock here too.
  */
 
 import type { InteriorLayer } from '$lib/fetch/objects/object-data';
-import { materialName } from './interior-materials';
 
 export interface InteriorBand {
 	layer: InteriorLayer;
 	/** Fraction of the drawn radius, 0–1, outer edge and inner edge. */
 	outer: number;
 	inner: number;
-	/** The dominant material's colour. */
-	color: string;
-	/** Its name, for the caller that wants to say what the colour means. */
-	material: string | null;
 	/** Below the surface, in km — how anyone actually places a layer. The core
 	 *  runs to the centre, so its far end is the body's radius. */
 	depthFromKm: number;
@@ -64,14 +56,11 @@ export function crossSection(
 	if (!(radiusKm > 0)) return null;
 
 	const bands = layers.map((layer, i) => {
-		const dominant = layer.composition[0] ?? null;
 		const innerKm = i + 1 < layers.length ? layers[i + 1].outer_radius_km : 0;
 		return {
 			layer,
 			outer: layer.outer_radius_km / radiusKm,
 			inner: innerKm / radiusKm,
-			color: dominant ? `var(--material-${dominant.material.replace('_', '-')})` : 'var(--muted)',
-			material: dominant ? materialName(dominant.material) : null,
 			depthFromKm: radiusKm - layer.outer_radius_km,
 			depthToKm: radiusKm - innerKm,
 			thicknessKm: layer.outer_radius_km - innerKm
@@ -87,37 +76,6 @@ export function crossSection(
 			: null;
 
 	return { bands, radiusKm, atmosphere };
-}
-
-/**
- * Slide labels apart until none overlaps, keeping each as close to the point it
- * points at as it can.
- *
- * Two passes, down then up: the first opens every gap to `spacing`, the second
- * pulls the stack back inside `[min, max]` without reopening one. Bands are
- * nested, so a body with a 24 km ice shell over a 1,000 km mantle would
- * otherwise stack three labels on the same pixel.
- */
-export function spreadLabels(
-	anchors: number[],
-	spacing: number,
-	min: number,
-	max: number
-): number[] {
-	const out = [...anchors];
-	for (let i = 1; i < out.length; i++) {
-		if (out[i] - out[i - 1] < spacing) out[i] = out[i - 1] + spacing;
-	}
-	const overflow = out.length ? out[out.length - 1] - max : 0;
-	if (overflow > 0) {
-		for (let i = 0; i < out.length; i++) out[i] -= overflow;
-		for (let i = out.length - 2; i >= 0; i--) {
-			if (out[i + 1] - out[i] < spacing) out[i] = out[i + 1] - spacing;
-		}
-	}
-	const under = out.length ? min - out[0] : 0;
-	if (under > 0) for (let i = 0; i < out.length; i++) out[i] += under;
-	return out;
 }
 
 /**

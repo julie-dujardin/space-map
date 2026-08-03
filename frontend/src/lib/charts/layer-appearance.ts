@@ -43,7 +43,7 @@ const FALLBACK: RGB = [120, 120, 120];
  * describing a colour anyone could see. The Sun's 15.5 MK core is drawn at that
  * ceiling rather than extrapolated into a blue nobody would perceive.
  */
-export function blackbodyRgb(kelvin: number): RGB {
+function blackbodyRgb(kelvin: number): RGB {
 	const t = Math.min(Math.max(kelvin, 1000), 9000) / 100;
 	const r = t <= 66 ? 255 : 329.698727446 * Math.pow(t - 60, -0.1332047592);
 	const g =
@@ -107,7 +107,7 @@ function materialRgb(layer: InteriorLayer, kelvin: number | null): RGB {
  * little. Without it Mars's crust and mantle are both "silicate" and draw as one
  * undivided brown.
  */
-export function interiorLayerRgb(layer: InteriorLayer, kelvin: number | null, depth = 0): string {
+function interiorLayerRgb(layer: InteriorLayer, kelvin: number | null, depth = 0): string {
 	const base = shade(materialRgb(layer, kelvin), depth);
 	if (kelvin === null) return css(base);
 	return css(mix(base, blackbodyRgb(kelvin), glowWeight(kelvin)));
@@ -153,10 +153,40 @@ export function skyRgb(species: { formula: string; share: number }[] | undefined
  * derived from it is ever shown: a layer with no measured value still displays
  * none.
  */
-export function plasmaRgb(fraction: number, innerK: number, outerK: number): string {
+function plasmaRgb(fraction: number, innerK: number, outerK: number): string {
 	// Radius runs linearly, temperature over millions of kelvin does not.
 	const k = Math.exp(Math.log(innerK) + (Math.log(outerK) - Math.log(innerK)) * fraction);
 	return css(blackbodyRgb(k));
+}
+
+/** The low–high bracket a model gives where nobody has measured a value. */
+export interface TemperatureBracket {
+	lowK: number;
+	highK: number;
+}
+
+/** Anchors for shading a star's zones, which sit between two readings and have
+ *  none of their own. */
+export interface PlasmaRange {
+	innerK: number;
+	outerK: number;
+}
+
+/**
+ * The fill for one band of the cutaway. An unmeasured plasma zone takes the
+ * ramp between the star's core and surface anchors; everything else takes its
+ * material's colour, with the glow its own reading earns.
+ */
+export function bandColor(
+	band: { layer: InteriorLayer; outer: number; inner: number },
+	bracket: TemperatureBracket | null | undefined,
+	plasmaRange?: PlasmaRange
+): string {
+	const mid = (band.outer + band.inner) / 2;
+	if (band.layer.state === 'plasma' && plasmaRange && !bracket) {
+		return plasmaRgb(mid, plasmaRange.innerK, plasmaRange.outerK);
+	}
+	return interiorLayerRgb(band.layer, bracket ? (bracket.lowK + bracket.highK) / 2 : null, 1 - mid);
 }
 
 function mix(a: RGB, b: RGB, t: number): RGB {
