@@ -44,7 +44,7 @@
 	import { type Focusable, focusableFallbackName, focusableKey } from '$lib/state/focusable';
 	import ObjectHeader from './frame/ObjectHeader.svelte';
 	import DrawerTitle from './frame/DrawerTitle.svelte';
-	import { parentCrumb, parentPlanet } from '$lib/state/breadcrumb';
+	import { parentCrumb, parentPlanet, type Crumb } from '$lib/state/breadcrumb';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImageGallery from './frame/ImageGallery.svelte';
 	import ObjectDescription from './sections/ObjectDescription.svelte';
@@ -636,18 +636,38 @@
 	// falls between the tabs instead of padding out the shortest one.
 	const TAB_TRIGGER_CLASS = 'px-2 flex-none';
 
-	// Five is the most any object earns (a ringed giant: overview, images, rings,
-	// moons, structure); a full bar spreads across the drawer instead of running
-	// off it.
-	let tabCount = $derived(
-		1 +
-			(hasImages ? 1 : 0) +
-			(showRingsTab ? 1 : 0) +
-			(showMembersTab ? 1 : 0) +
-			(showFeaturesTab ? 1 : 0) +
-			(showStructureTab ? 1 : 0) +
-			(showFragmentsTab ? 1 : 0)
-	);
+	let tabPresent = $derived<Record<DrawerTab, boolean>>({
+		overview: true,
+		images: hasImages,
+		rings: showRingsTab,
+		members: showMembersTab,
+		features: showFeaturesTab,
+		structure: showStructureTab,
+		fragments: showFragmentsTab
+	});
+	let tabCount = $derived(Object.values(tabPresent).filter(Boolean).length);
+
+	// What the desktop bar holds before it crowds; past that it hands tabs over,
+	// in this order, to whatever in the overview leads to them — the pill on the
+	// hero image, for Images. A tab with no such way in can't be listed here.
+	// (Coverage varies wildly per object, so this is a per-object budget, not a
+	// fixed set: most objects never reach it and keep every tab in the bar.)
+	const TAB_BUDGET = 4;
+	const PROMOTABLE: readonly DrawerTab[] = ['images'];
+
+	// Mobile scrolls its bar instead — the tabs stay where a thumb expects them.
+	let promotedTabs = $derived.by(() => {
+		const promoted = new Set<DrawerTab>();
+		if (isMobile) return promoted;
+		let inBar = tabCount;
+		for (const tab of PROMOTABLE) {
+			if (inBar <= TAB_BUDGET) break;
+			if (!tabPresent[tab]) continue;
+			promoted.add(tab);
+			inBar--;
+		}
+		return promoted;
+	});
 
 	function seeAllFragments() {
 		appState.setTab('fragments');
@@ -743,6 +763,21 @@
 								? 'rings'
 								: 'overview'
 	);
+	// A promoted tab drops the bar and takes the header instead: the object's name
+	// moves into the crumb and the tab names the view. Still the same tab in the
+	// URL — only the chrome around it differs.
+	let soloTab = $derived<DrawerTab | null>(promotedTabs.has(activeTab) ? activeTab : null);
+	let soloCrumb = $derived<Crumb | null>(
+		soloTab ? { label: displayName, target: { kind: 'tab', tab: 'overview' } } : null
+	);
+	let soloTitle = $derived(soloTab === 'images' ? m.tab_images() : displayName);
+	let barTabCount = $derived(tabCount - promotedTabs.size);
+
+	/** A tab earns a place in the bar when the object has it and the bar kept it. */
+	function inBar(tab: DrawerTab): boolean {
+		return tabPresent[tab] && !promotedTabs.has(tab);
+	}
+
 	// What the URL is focused on, in `focusableKey` form. A tile that opens
 	// another body on a specific tab (moon → planet's Moons, feature → host's
 	// Features) rewrites the URL a beat before the renderer hands us the new
@@ -766,64 +801,66 @@
 </script>
 
 {#snippet tabsBar()}
-	<!-- Scrolls on its own if a body ever exceeds four tabs; without this the
+	<!-- A lone Overview tab switches nothing, so the bar goes with it. Scrolls on
+	     its own past the budget (mobile, which promotes nothing); without this the
 	     whole drawer scrolls sideways. -->
-	<div
-		class="border-b px-4 pt-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-	>
-		<!-- Trigger padding is spacing between tabs, so the outer two drop theirs
-		     and sit flush with the drawer's own edge. -->
-		<Tabs.List
-			variant="line"
-			class={[
-				'h-9 -mb-px [&>*:first-child]:ps-0 [&>*:last-child]:pe-0',
-				tabCount >= 4 ? 'w-full justify-between' : 'w-max gap-2'
-			]}
+	{#if barTabCount >= 2}
+		<div
+			class="border-b px-4 pt-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 		>
-			<Tabs.Trigger value="overview" class={TAB_TRIGGER_CLASS}>{m.tab_overview()}</Tabs.Trigger>
-			{#if hasImages}
-				<Tabs.Trigger value="images" class={TAB_TRIGGER_CLASS}>
-					{m.tab_images()}
-					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
-						{viewerImages?.length}
-					</Badge>
-				</Tabs.Trigger>
-			{/if}
-			{#if showRingsTab}
-				<!-- No count: the ring bar is the widest, and the chart states it. -->
-				<Tabs.Trigger value="rings" class={TAB_TRIGGER_CLASS}>{m.tab_rings()}</Tabs.Trigger>
-			{/if}
-			{#if showMembersTab}
-				<Tabs.Trigger value="members" class={TAB_TRIGGER_CLASS}>
-					{membersTabLabel}
-					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
-						{formatCompactNumber(memberTotal)}
-					</Badge>
-				</Tabs.Trigger>
-			{/if}
-			{#if showFeaturesTab}
-				<Tabs.Trigger value="features" class={TAB_TRIGGER_CLASS}>
-					{m.tab_features()}
-					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
-						{formatCompactNumber(featureTotal)}
-					</Badge>
-				</Tabs.Trigger>
-			{/if}
-			{#if showStructureTab}
-				<Tabs.Trigger value="structure" class={TAB_TRIGGER_CLASS}>
-					{m.tab_structure()}
-				</Tabs.Trigger>
-			{/if}
-			{#if showFragmentsTab}
-				<Tabs.Trigger value="fragments" class={TAB_TRIGGER_CLASS}>
-					{m.tab_fragments()}
-					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
-						{formatCompactNumber(fragmentTotal)}
-					</Badge>
-				</Tabs.Trigger>
-			{/if}
-		</Tabs.List>
-	</div>
+			<!-- Trigger padding is spacing between tabs, so the outer two drop theirs
+		     and sit flush with the drawer's own edge. -->
+			<Tabs.List
+				variant="line"
+				class={[
+					'h-9 -mb-px [&>*:first-child]:ps-0 [&>*:last-child]:pe-0',
+					barTabCount >= 4 ? 'w-full justify-between' : 'w-max gap-2'
+				]}
+			>
+				<Tabs.Trigger value="overview" class={TAB_TRIGGER_CLASS}>{m.tab_overview()}</Tabs.Trigger>
+				{#if inBar('images')}
+					<Tabs.Trigger value="images" class={TAB_TRIGGER_CLASS}>
+						{m.tab_images()}
+						<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
+							{viewerImages?.length}
+						</Badge>
+					</Tabs.Trigger>
+				{/if}
+				{#if inBar('rings')}
+					<!-- No count: the ring bar is the widest, and the chart states it. -->
+					<Tabs.Trigger value="rings" class={TAB_TRIGGER_CLASS}>{m.tab_rings()}</Tabs.Trigger>
+				{/if}
+				{#if inBar('members')}
+					<Tabs.Trigger value="members" class={TAB_TRIGGER_CLASS}>
+						{membersTabLabel}
+						<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
+							{formatCompactNumber(memberTotal)}
+						</Badge>
+					</Tabs.Trigger>
+				{/if}
+				{#if inBar('features')}
+					<!-- No count: five figures of nomenclature is the widest badge the bar
+					     can be handed, and the list under it opens on the total anyway. -->
+					<Tabs.Trigger value="features" class={TAB_TRIGGER_CLASS}>
+						{m.tab_features()}
+					</Tabs.Trigger>
+				{/if}
+				{#if inBar('structure')}
+					<Tabs.Trigger value="structure" class={TAB_TRIGGER_CLASS}>
+						{m.tab_structure()}
+					</Tabs.Trigger>
+				{/if}
+				{#if inBar('fragments')}
+					<Tabs.Trigger value="fragments" class={TAB_TRIGGER_CLASS}>
+						{m.tab_fragments()}
+						<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
+							{formatCompactNumber(fragmentTotal)}
+						</Badge>
+					</Tabs.Trigger>
+				{/if}
+			</Tabs.List>
+		</div>
+	{/if}
 {/snippet}
 
 <!-- The active tab's hero sits above the (single) tablist, so the tabs read as
@@ -852,6 +889,7 @@
 						appState.setTab('images');
 						appState.setImage(0);
 					}}
+					onShowList={() => appState.setTab('images')}
 				/>
 			</div>
 		{/if}
@@ -1191,6 +1229,17 @@
 	</Button>
 {/snippet}
 
+<!-- A promoted tab's panel, rendered outside Tabs.Root: with no trigger left in
+     the bar there is nothing for a tabpanel to be labelled by, so it stops being
+     one and becomes the drawer's only content. -->
+{#snippet soloPanel(contentClass: string)}
+	<div class={contentClass}>
+		{#if soloTab === 'images'}
+			{@render imagesPanel()}
+		{/if}
+	</div>
+{/snippet}
+
 {#snippet tabPanels(contentClass: string | undefined)}
 	<Tabs.Content value="overview" class={contentClass}>
 		{@render overviewPanel()}
@@ -1266,23 +1315,36 @@
 	>
 		<!-- pt aligns the title/buttons row with the top-4 featured chips beside it. -->
 		<div class="flex items-center justify-between gap-2 px-4 pb-2 pt-[18px]">
-			<DrawerTitle {crumb} title={displayName} id="detail-drawer-title" />
+			<DrawerTitle
+				crumb={soloCrumb ?? crumb}
+				title={soloTitle}
+				ariaLabel={soloTab ? `${displayName} \u2014 ${soloTitle}` : undefined}
+				id="detail-drawer-title"
+			/>
 			<div class="flex items-center gap-1.5">
 				{@render drawerToolbar()}
 			</div>
 		</div>
 
-		<Tabs.Root
-			value={activeTab}
-			onValueChange={(v) => appState.setTab(v as DrawerTab)}
-			class="flex flex-1 min-h-0 flex-col"
-		>
-			<ScrollArea class="flex-1 min-h-0">
-				{@render activeHero()}
-				{@render tabsBar()}
-				{@render tabPanels('px-4 pt-4 pb-4')}
-			</ScrollArea>
-		</Tabs.Root>
+		{#if soloTab}
+			<div class="flex flex-1 min-h-0 flex-col">
+				<ScrollArea class="flex-1 min-h-0">
+					{@render soloPanel('px-4 pt-4 pb-4')}
+				</ScrollArea>
+			</div>
+		{:else}
+			<Tabs.Root
+				value={activeTab}
+				onValueChange={(v) => appState.setTab(v as DrawerTab)}
+				class="flex flex-1 min-h-0 flex-col"
+			>
+				<ScrollArea class="flex-1 min-h-0">
+					{@render activeHero()}
+					{@render tabsBar()}
+					{@render tabPanels('px-4 pt-4 pb-4')}
+				</ScrollArea>
+			</Tabs.Root>
+		{/if}
 	</aside>
 {/if}
 

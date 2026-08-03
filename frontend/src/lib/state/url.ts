@@ -229,6 +229,19 @@ export function applyFocus(
 	};
 }
 
+/** Next view when switching drawer tabs. Depth reached inside a tab (member
+ *  page, quadrangle, ring drill) belongs to the tab being left, so it clears. */
+export function applyTab(current: MapViewState, tab: DrawerTab): MapViewState {
+	return {
+		...current,
+		tab: tab === 'overview' ? null : tab,
+		memberPage: null,
+		quad: null,
+		featureType: null,
+		ring: null
+	};
+}
+
 /** Next view when opening a group. Parks `id` on the group's camera anchor
  *  so the body route resolves to the anchor body. */
 export function applyGroup(current: MapViewState, slug: string, name: string): MapViewState {

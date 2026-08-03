@@ -4,30 +4,36 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import type { Crumb } from '$lib/state/breadcrumb';
-	import { applyFocus, applyGroup, serializeUrl, urlTypeFromId } from '$lib/state/url';
+	import { applyFocus, applyGroup, applyTab, serializeUrl, urlTypeFromId } from '$lib/state/url';
 
 	interface Props {
 		crumb: Crumb | null;
 		title: string;
+		/** Overrides the accessible name when the visible title alone is too little
+		 *  context — a promoted tab shows "Images" but must announce whose. */
+		ariaLabel?: string;
 		/** Set so the drawer/aside can name itself via aria-labelledby. */
 		id?: string;
 	}
-	let { crumb, title, id }: Props = $props();
+	let { crumb, title, ariaLabel, id }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
 	function crumbHref(c: Crumb): string | undefined {
 		if (!appState) return undefined;
+		const t = c.target;
 		const next =
-			c.target.kind === 'focus'
+			t.kind === 'focus'
 				? applyFocus(appState.view, {
-						type: urlTypeFromId(c.target.id),
-						id: c.target.id,
-						name: c.target.name,
-						tab: c.target.tab
+						type: urlTypeFromId(t.id),
+						id: t.id,
+						name: t.name,
+						tab: t.tab
 					})
-				: applyGroup(appState.view, c.target.slug, c.target.name);
+				: t.kind === 'group'
+					? applyGroup(appState.view, t.slug, t.name)
+					: applyTab(appState.view, t.tab);
 		return serializeUrl(next);
 	}
 
@@ -36,16 +42,17 @@
 	function onCrumbClick(e: MouseEvent, c: Crumb) {
 		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 		if (!appState) return;
-		if (c.target.kind === 'focus') {
+		const t = c.target;
+		if (t.kind === 'focus') {
 			if (!focusObject) return; // no in-session nav available — let the href win
 			e.preventDefault();
-			focusObject(c.target.id, c.target.name, {
-				moveCamera: c.target.moveCamera,
-				tab: c.target.tab
-			});
+			focusObject(t.id, t.name, { moveCamera: t.moveCamera, tab: t.tab });
+		} else if (t.kind === 'group') {
+			e.preventDefault();
+			appState.setGroup(t.slug, t.name);
 		} else {
 			e.preventDefault();
-			appState.setGroup(c.target.slug, c.target.name);
+			appState.setTab(t.tab);
 		}
 	}
 
@@ -117,5 +124,12 @@
 			{/if}
 		</a>
 	{/if}
-	<h2 {id} bind:this={titleEl} class="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h2>
+	<h2
+		{id}
+		aria-label={ariaLabel}
+		bind:this={titleEl}
+		class="min-w-0 flex-1 truncate text-sm font-semibold"
+	>
+		{title}
+	</h2>
 </div>

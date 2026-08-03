@@ -1,6 +1,14 @@
 import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
 import { DEFAULT_VIEW, UrlType, type DrawerTab, type MapViewState } from './view';
-import { applyFeature, applyFocus, applyGroup, parseUrl, serializeUrl, urlTypeFromId } from './url';
+import {
+	applyFeature,
+	applyFocus,
+	applyGroup,
+	applyTab,
+	parseUrl,
+	serializeUrl,
+	urlTypeFromId
+} from './url';
 import { serializeSearchSuffix, type SearchUrlState } from '$lib/search/url';
 
 // The sim clock ticks ~2×/s, so its URL writes are throttled to at most one per
@@ -158,14 +166,7 @@ export class AppState {
 	setTab(tab: DrawerTab) {
 		const next = tab === 'overview' ? null : tab;
 		if (next === this.view.tab && this.view.memberPage === null) return;
-		this.view = {
-			...this.view,
-			tab: next,
-			memberPage: null,
-			quad: null,
-			featureType: null,
-			ring: null
-		};
+		this.view = applyTab(this.view, tab);
 		this.replaceNow();
 	}
 

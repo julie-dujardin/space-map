@@ -1,10 +1,12 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import ImagesIcon from '@lucide/svelte/icons/images';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { pickImageUrl } from '$lib/fetch/objects/images';
 	import { formatCategory, formatObjectType } from '$lib/format/satellite';
+	import { formatNumber } from '$lib/format/quantities';
 	import { objectTypeLabel } from '$lib/format/object-type';
 
 	interface Props {
@@ -12,13 +14,17 @@
 		localized: LocalizedObjectData | null;
 		fallbackName: string | null;
 		onShowGallery: () => void;
+		/** Opens the images list rather than the viewer — the hero's own way into
+		 *  the Images tab, which the drawer drops from its bar when it runs long. */
+		onShowList: () => void;
 		/** Pre-resolved badges shown before any auto-detected ones (groups use this). */
 		leadingBadges?: string[];
 		/** Replaces the hero image when set (e.g. the planets-category lineup). */
 		hero?: Snippet;
 	}
 
-	let { global, localized, fallbackName, onShowGallery, leadingBadges, hero }: Props = $props();
+	let { global, localized, fallbackName, onShowGallery, onShowList, leadingBadges, hero }: Props =
+		$props();
 
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
 	let images = $derived(global?.images);
@@ -48,20 +54,36 @@
 	{#if hero}
 		{@render hero()}
 	{:else if imageSrc}
-		<button
-			type="button"
-			onclick={onShowGallery}
-			aria-label={m.image_open_viewer()}
-			class="cursor-zoom-in overflow-hidden rounded-md"
-		>
-			<img
-				src={imageSrc}
-				alt={name}
-				loading="lazy"
-				decoding="async"
-				class="w-full max-h-48 object-cover"
-			/>
-		</button>
+		<!-- Two destinations on one picture: the image opens the viewer, the pill
+		     opens the list. The pill is hover/focus-only so it stays out of the way
+		     of the picture; `hover:` is media-gated, so touch never reveals it and
+		     the tab bar remains the way in there. -->
+		<div class="group/hero relative overflow-hidden rounded-md">
+			<button
+				type="button"
+				onclick={onShowGallery}
+				aria-label={m.image_open_viewer()}
+				class="block w-full cursor-zoom-in"
+			>
+				<img
+					src={imageSrc}
+					alt={name}
+					loading="lazy"
+					decoding="async"
+					class="w-full max-h-48 object-cover"
+				/>
+			</button>
+			<button
+				type="button"
+				onclick={onShowList}
+				class="bg-background/85 text-foreground hover:bg-background absolute top-2 end-2 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover/hero:opacity-100 focus-visible:opacity-100"
+			>
+				<ImagesIcon class="size-3.5 shrink-0" />
+				{m.image_see_all()}
+				<span class="text-muted-foreground">·</span>
+				<span class="tabular-nums">{formatNumber(images?.length ?? 0)}</span>
+			</button>
+		</div>
 	{/if}
 	<div class="flex flex-wrap items-start gap-2">
 		{#if leadingBadges && leadingBadges.length > 0}

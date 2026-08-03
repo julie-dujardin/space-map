@@ -56,7 +56,10 @@ export type CrumbTarget =
 			moveCamera?: boolean;
 			tab?: Exclude<DrawerTab, 'overview'>;
 	  }
-	| { kind: 'group'; slug: string; name: string };
+	| { kind: 'group'; slug: string; name: string }
+	// Stays on this object and only changes tab — what a tab promoted out of the
+	// bar puts in the crumb slot to get back to the object it belongs to.
+	| { kind: 'tab'; tab: DrawerTab };
 
 export interface Crumb {
 	label: string;
