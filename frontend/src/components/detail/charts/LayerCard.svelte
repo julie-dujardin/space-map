@@ -13,15 +13,15 @@
 	 * draws no bar at all.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
-	import { getLocale } from '$lib/paraglide/runtime.js';
 	import type { InteriorLayer } from '$lib/fetch/objects/object-data';
 	import type { InteriorBand } from '$lib/charts/interior-cross-section';
 	import type { CompositionSegment } from '$lib/charts/composition-bar';
 	import { layerName, stateName, layerNote } from '$lib/charts/interior-layers';
 	import { compositionSegments, materialName } from '$lib/charts/interior-materials';
 	import { formatFormula } from '$lib/charts/atmosphere-species';
-	import { formatQuantity } from '$lib/format/quantities';
-	import { formatTemperature } from '$lib/format/temperature';
+	import { formatPercent } from '$lib/format/quantities';
+	import { formatKm, formatKmRange } from '$lib/format/distance';
+	import { formatTemperatureRange } from '$lib/format/temperature';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import CompositionBar from '../sections/kit/CompositionBar.svelte';
 
@@ -52,10 +52,6 @@
 
 	let layer = $derived<InteriorLayer>(band.layer);
 
-	let percent = $derived(
-		new Intl.NumberFormat(getLocale(), { style: 'percent', maximumSignificantDigits: 2 })
-	);
-
 	/** The published widths, by material, for the hover to add. */
 	let spreads = $derived(
 		new Map(
@@ -73,7 +69,7 @@
 		if (layer.detail) {
 			return layer.detail.entries.map((entry, i) => {
 				const name = formatFormula(entry.species);
-				const value = percent.format(entry.fraction);
+				const value = formatPercent(entry.fraction);
 				return {
 					key: entry.species,
 					label: name,
@@ -90,10 +86,10 @@
 			return compositionSegments(layer.composition).map((segment) => ({
 				key: segment.material,
 				label: segment.symbol,
-				value: percent.format(segment.share),
+				value: formatPercent(segment.share),
 				tooltip: m.interior_material_value({
 					name: segment.name,
-					value: percent.format(segment.share)
+					value: formatPercent(segment.share)
 				}),
 				labelIsAbbreviated: segment.symbol !== segment.name,
 				share: segment.share,
@@ -123,33 +119,31 @@
 		} else if (material) {
 			bits.push(materialName(material.material));
 		}
-		bits.push(
-			ltrIsolate(
-				`${Math.round(band.depthFromKm).toLocaleString()}–${Math.round(band.depthToKm).toLocaleString()} km`
-			)
-		);
+		bits.push(ltrIsolate(formatKmRange(band.depthFromKm, band.depthToKm)));
 		return bits.join(' · ');
 	});
 
-	let reading = $derived.by(() => {
-		if (!temperature) return null;
-		const low = formatTemperature({ value: temperature.lowK, unit: 'kelvin' });
-		if (temperature.lowK === temperature.highK) return ltrIsolate(low);
-		return ltrIsolate(
-			`${low} – ${formatTemperature({ value: temperature.highK, unit: 'kelvin' })}`
-		);
-	});
+	let reading = $derived(
+		temperature
+			? ltrIsolate(
+					formatTemperatureRange(
+						{ value: temperature.lowK, unit: 'kelvin' },
+						{ value: temperature.highK, unit: 'kelvin' }
+					)
+				)
+			: null
+	);
 
 	/** The share of the body, with its published width where the source gives
 	 *  one — Venus's core is 24% to 57% and a lone 39% reads as a measurement. */
 	let mass = $derived.by(() => {
 		if (layer.mass_fraction === undefined) return null;
-		const value = percent.format(layer.mass_fraction);
+		const value = formatPercent(layer.mass_fraction);
 		return layer.mass_fraction_range
 			? m.structure_layer_mass_range({
 					value,
-					low: percent.format(layer.mass_fraction_range[0]),
-					high: percent.format(layer.mass_fraction_range[1])
+					low: formatPercent(layer.mass_fraction_range[0]),
+					high: formatPercent(layer.mass_fraction_range[1])
 				})
 			: m.structure_layer_mass({ value });
 	});
@@ -180,8 +174,8 @@
 	{#if range}
 		<span class="opacity-70">
 			{m.structure_share_range({
-				low: percent.format(range[0]),
-				high: percent.format(range[1])
+				low: formatPercent(range[0]),
+				high: formatPercent(range[1])
 			})}
 		</span>
 	{/if}
@@ -199,7 +193,7 @@
 		<span class="flex-1 text-sm font-medium">{layerName(layer.role)}</span>
 		<span class="text-muted-foreground shrink-0 text-[11px] tabular-nums">
 			{m.structure_layer_thick({
-				value: ltrIsolate(formatQuantity({ value: band.thicknessKm, unit: 'kilometre' }, true))
+				value: ltrIsolate(formatKm(band.thicknessKm))
 			})}
 		</span>
 	</div>

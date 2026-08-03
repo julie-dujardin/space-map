@@ -1,10 +1,10 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { compositionSegments, speciesName } from '$lib/charts/atmosphere-species';
 	import type { CompositionSegment } from '$lib/charts/composition-bar';
+	import { formatPercent } from '$lib/format/quantities';
 	import { formatPressure, EARTH_SEA_LEVEL_PA, formatEarthRatio } from '$lib/format/pressure';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import Section from './kit/Section.svelte';
@@ -93,15 +93,6 @@
 		}
 	});
 
-	let percent = $derived(
-		new Intl.NumberFormat(getLocale(), { style: 'percent', maximumSignificantDigits: 2 })
-	);
-	// Trace members run down to parts per billion, where a percentage with a
-	// fixed digit count rounds everything to zero.
-	let traceShare = $derived(
-		new Intl.NumberFormat(getLocale(), { style: 'percent', maximumSignificantDigits: 1 })
-	);
-
 	// Sixteen orders of magnitude of pressure mean nothing on their own; Earth
 	// is the ruler everyone carries. Skipped on Earth, where it would read
 	// "100% of Earth".
@@ -118,7 +109,7 @@
 		limit: boolean;
 	}): string {
 		const name = segment.formula === null ? m.atmosphere_trace_full() : speciesName(segment.key);
-		const value = percent.format(segment.share);
+		const value = formatPercent(segment.share);
 		return segment.limit
 			? m.atmosphere_species_limit({ name, value })
 			: m.atmosphere_species_value({ name, value });
@@ -130,7 +121,7 @@
 		bars.map((segment) => ({
 			key: segment.key,
 			label: segment.formula ?? m.atmosphere_trace(),
-			value: `${segment.limit ? '<' : ''}${percent.format(segment.share)}`,
+			value: `${segment.limit ? '<' : ''}${formatPercent(segment.share)}`,
 			tooltip: segmentLabel(segment),
 			share: segment.share,
 			color: segment.color,
@@ -145,7 +136,9 @@
 		<dl class="mt-1 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 leading-snug opacity-70">
 			{#each traceMembers as gas (gas.formula)}
 				<dt>{speciesName(gas.formula)}</dt>
-				<dd class="text-end tabular-nums">{traceShare.format(gas.share)}</dd>
+				<!-- One significant digit: trace members run down to parts per billion,
+				     where a fixed digit count rounds everything to zero. -->
+				<dd class="text-end tabular-nums">{formatPercent(gas.share, 1)}</dd>
 			{/each}
 		</dl>
 	{/if}

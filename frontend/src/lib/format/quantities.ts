@@ -37,6 +37,14 @@ export function formatNumber(n: number): string {
 	return n.toLocaleString(getLocale(), precisionOptions(n));
 }
 
+/** "12%", from a 0–1 fraction. */
+export function formatPercent(fraction: number, significantDigits = 2): string {
+	return new Intl.NumberFormat(getLocale(), {
+		style: 'percent',
+		maximumSignificantDigits: significantDigits
+	}).format(fraction);
+}
+
 /** Locale-aware compact notation ("1.34M"), ~3 significant digits. */
 export function formatCompactNumber(n: number): string {
 	if (!Number.isFinite(n)) return String(n);

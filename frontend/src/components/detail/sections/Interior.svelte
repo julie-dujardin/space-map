@@ -3,12 +3,12 @@
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { compositionSegments } from '$lib/charts/interior-materials';
 	import type { CompositionSegment } from '$lib/charts/composition-bar';
-	import { formatTemperature } from '$lib/format/temperature';
+	import { formatPercent } from '$lib/format/quantities';
+	import { formatTemperatureRange } from '$lib/format/temperature';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
@@ -64,8 +64,9 @@
 		const low = readings.find((r) => r.kind === 'min');
 		const high = readings.find((r) => r.kind === 'max');
 		if (!low || !high) return null;
-		const format = (k: number) => formatTemperature({ value: k, unit: 'kelvin' });
-		return ltrIsolate(`${format(low.k)} – ${format(high.k)}`);
+		return ltrIsolate(
+			formatTemperatureRange({ value: low.k, unit: 'kelvin' }, { value: high.k, unit: 'kelvin' })
+		);
 	});
 
 	const appState = getContext<AppState>('appState');
@@ -75,9 +76,6 @@
 	// The layer stack and the atmosphere's are one tab, so either one earns the
 	// link across from here.
 	let hasCrossSection = $derived(!!interior?.layers?.length || !!global?.atmosphere?.structure);
-	let percent = $derived(
-		new Intl.NumberFormat(getLocale(), { style: 'percent', maximumSignificantDigits: 2 })
-	);
 
 	// The bar hovers everywhere — a coloured block says nothing on its own. The
 	// legend only hovers where it shows a symbol: "H" needs spelling out,
@@ -86,10 +84,10 @@
 		(interior?.composition ? compositionSegments(interior.composition) : []).map((segment) => ({
 			key: segment.material,
 			label: segment.symbol,
-			value: percent.format(segment.share),
+			value: formatPercent(segment.share),
 			tooltip: m.interior_material_value({
 				name: segment.name,
-				value: percent.format(segment.share)
+				value: formatPercent(segment.share)
 			}),
 			labelIsAbbreviated: segment.symbol !== segment.name,
 			share: segment.share,
