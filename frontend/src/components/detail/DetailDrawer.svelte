@@ -640,8 +640,12 @@
 	let showFragmentsTab = $derived(hasFragments && fragmentTotal > STRIP_CAPACITY);
 
 	// Undo shadcn's flex-1: a tab is as wide as its label, so a full bar's slack
-	// falls between the tabs instead of padding out the shortest one.
-	const TAB_TRIGGER_CLASS = 'px-2 flex-none';
+	// falls between the tabs instead of padding out the shortest one. h-full and
+	// the raised underline keep the trigger and its indicator inside the list box:
+	// the bar is a scroll container, which clips at its padding box, so shadcn's
+	// default -5px underline would be cut off (! beats the variant's higher
+	// specificity).
+	const TAB_TRIGGER_CLASS = 'px-2 flex-none h-full after:-bottom-1!';
 
 	let tabPresent = $derived<Record<DrawerTab, boolean>>({
 		overview: true,
@@ -805,6 +809,26 @@
 			untrack(() => appState.setTab('overview'));
 		}
 	});
+
+	// A deep link can land on a tab past the scrollable bar's edge; nudge the
+	// bar until the trigger clears the px-4 edge inset. Instant on the
+	// load-time run, animated on later switches. barTabCount re-runs this when
+	// late-loading data reflows the bar under an unchanged active tab.
+	let tabBarEl = $state<HTMLElement | null>(null);
+	let tabBarSettled = false;
+	$effect(() => {
+		void activeTab;
+		void barTabCount;
+		const active = tabBarEl?.querySelector<HTMLElement>('[data-state="active"]');
+		if (!tabBarEl || !active) return;
+		const bar = tabBarEl.getBoundingClientRect();
+		const trigger = active.getBoundingClientRect();
+		const start = trigger.left - bar.left - 16;
+		const end = trigger.right - bar.right + 16;
+		const delta = start < 0 ? start : end > 0 ? end : 0;
+		if (delta) tabBarEl.scrollBy({ left: delta, behavior: tabBarSettled ? 'smooth' : 'instant' });
+		tabBarSettled = true;
+	});
 </script>
 
 {#snippet tabsBar()}
@@ -813,15 +837,24 @@
 	     whole drawer scrolls sideways. -->
 	{#if barTabCount >= 2}
 		<div
-			class="border-b px-4 pt-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+			bind:this={tabBarEl}
+			class="pt-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 		>
-			<!-- Trigger padding is spacing between tabs, so the outer two drop theirs
-		     and sit flush with the drawer's own edge. -->
+			<!-- The list, not the scroll wrapper, carries the border and edge padding:
+			     a scroll container's own end padding and border don't travel with
+			     overflowing content, which left the last tab flush against the screen
+			     edge and the underline clipped. min-w-max keeps every tab inside the
+			     list box when the bar overflows.
+			     Trigger padding is spacing between tabs, so the outer two drop theirs
+			     and sit flush with the drawer's own edge. -->
 			<Tabs.List
 				variant="line"
 				class={[
-					'h-9 -mb-px [&>*:first-child]:ps-0 [&>*:last-child]:pe-0',
-					barTabCount >= 4 ? 'w-full justify-between' : 'w-max gap-2'
+					'w-full min-w-max border-b px-4 [&>*:first-child]:ps-0 [&>*:last-child]:pe-0',
+					// Only a full desktop bar spreads; anywhere else the list is wider
+					// than its tabs (w-full slack, or mobile's scroll room), and the
+					// variant's justify-center would float them mid-bar.
+					!isMobile && barTabCount >= 4 ? 'justify-between' : 'justify-start gap-2'
 				]}
 			>
 				<Tabs.Trigger value="overview" class={TAB_TRIGGER_CLASS}>{m.tab_overview()}</Tabs.Trigger>
