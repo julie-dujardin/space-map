@@ -1434,6 +1434,7 @@
 	"property_name_width": "Breite",
 	"unit_name_astronomical_unit": "astronomische Einheit",
 	"unit_name_attometre": "Attometer",
+	"unit_name_bar": "Bar",
 	"unit_name_centimetre": "Zentimeter",
 	"unit_name_centimetre_per_square_second": "Zentimeter pro Quadratsekunde",
 	"unit_name_degree_celsius": "Grad Celsius",
@@ -1454,6 +1455,7 @@
 	"unit_name_metre": "Meter",
 	"unit_name_metres_per_second_squared": "Meter pro Quadratsekunde",
 	"unit_name_millimetre": "Millimeter",
+	"unit_name_pascal": "Pascal",
 	"unit_name_petagram": "Petagramm",
 	"unit_name_ronnagram": "Ronnagramm",
 	"unit_name_square_kilometre": "Quadratkilometer",
@@ -1463,7 +1465,9 @@
 	"unit_name_yottagram": "Yottagramm",
 	"unit_name_zettagram": "Zettagramm",
 	"unit_symbol_astronomical_unit": "AE",
+	"unit_symbol_bar": "bar",
 	"unit_symbol_degree_celsius": "℃",
 	"unit_symbol_hour": "Std.",
-	"unit_symbol_magnitude": "mag"
+	"unit_symbol_magnitude": "mag",
+	"unit_symbol_pascal": "Pa"
 }

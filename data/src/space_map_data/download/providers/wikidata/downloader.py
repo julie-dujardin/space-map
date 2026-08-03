@@ -23,6 +23,7 @@ from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
 from space_map_data.constants.wikidata_topics import topic_page_qids
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
+from space_map_data.export.localization import SEEDED_UNIT_QIDS
 from space_map_data.export.nomenclature.wikidata_claims import (
     FEATURE_ENTITY_REF_CLAIMS,
     FEATURE_PID_TO_KEY,
@@ -235,6 +236,7 @@ class WikidataDownloader(Downloader):
                 limit=None,
                 fetch_desc="referenced",
             )
+        unit_qids |= SEEDED_UNIT_QIDS
         if unit_qids:
             logger.info("Fetching %d unit entities", len(unit_qids))
             self._fetch_entities(unit_qids, units_dir, limit=None, fetch_desc="units")

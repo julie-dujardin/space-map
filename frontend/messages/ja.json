@@ -1664,6 +1664,7 @@
 	"property_name_width": "全幅",
 	"unit_name_astronomical_unit": "天文単位",
 	"unit_name_attometre": "アトメートル",
+	"unit_name_bar": "バール",
 	"unit_name_centimetre": "センチメートル",
 	"unit_name_centimetre_per_square_second": "センチメートル毎秒毎秒",
 	"unit_name_degree_celsius": "セルシウス度",
@@ -1685,6 +1686,7 @@
 	"unit_name_metre": "メートル",
 	"unit_name_metres_per_second_squared": "メートル毎秒毎秒",
 	"unit_name_millimetre": "ミリメートル",
+	"unit_name_pascal": "パスカル",
 	"unit_name_petagram": "ペタグラム",
 	"unit_name_ronnagram": "ロナグラム",
 	"unit_name_square_kilometre": "平方キロメートル",
@@ -1694,8 +1696,10 @@
 	"unit_name_yottagram": "ヨタグラム",
 	"unit_name_zettagram": "ゼタグラム",
 	"unit_symbol_astronomical_unit": "au",
+	"unit_symbol_bar": "bar",
 	"unit_symbol_degree_celsius": "℃",
 	"unit_symbol_kilometre": "粁",
 	"unit_symbol_magnitude": "等級",
-	"unit_symbol_metre": "米"
+	"unit_symbol_metre": "米",
+	"unit_symbol_pascal": "Pa"
 }

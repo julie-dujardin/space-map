@@ -64,6 +64,16 @@ _ALWAYS_INCLUDE_UNITS: set[str] = {
     "year",  # sbdb per_y - orbital period
     "jupiter_radius",  # exoplanet radii
     "kilometre_per_second",  # orbital speed readout
+    "pascal",  # surface pressure readout (formatPressure)
+    "bar",  # surface pressure readout (formatPressure)
+}
+
+# No object claim carries pressure in these units (formatPressure works on raw
+# Pa from the atmosphere constants), so the downloader must seed the entities
+# for the labels above to be generated at all.
+SEEDED_UNIT_QIDS: set[str] = {
+    "Q44395",  # pascal
+    "Q103510",  # bar
 }
 
 # Units with no Wikidata entity — reuse the same label/symbol across all languages.

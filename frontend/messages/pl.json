@@ -1429,6 +1429,7 @@
 	"property_name_width": "szerokość",
 	"unit_name_astronomical_unit": "jednostka astronomiczna",
 	"unit_name_attometre": "attometr",
+	"unit_name_bar": "bar",
 	"unit_name_centimetre": "centymetr",
 	"unit_name_centimetre_per_square_second": "centymetr na sekundę do kwadratu",
 	"unit_name_degree_celsius": "stopień Celsjusza",
@@ -1448,11 +1449,14 @@
 	"unit_name_metre": "metr",
 	"unit_name_metres_per_second_squared": "metr na sekundę do kwadratu",
 	"unit_name_millimetre": "milimetr",
+	"unit_name_pascal": "paskal",
 	"unit_name_square_kilometre": "kilometr kwadratowy",
 	"unit_name_tonne": "tona",
 	"unit_name_year": "rok",
 	"unit_name_yottagram": "jottagram",
 	"unit_symbol_astronomical_unit": "au",
+	"unit_symbol_bar": "bar",
 	"unit_symbol_degree_celsius": "℃",
-	"unit_symbol_magnitude": "magnitudo"
+	"unit_symbol_magnitude": "magnitudo",
+	"unit_symbol_pascal": "Pa"
 }

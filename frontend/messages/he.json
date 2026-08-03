@@ -1538,6 +1538,7 @@
 	"property_name_width": "רוחב",
 	"unit_name_astronomical_unit": "יחידה אסטרונומית",
 	"unit_name_attometre": "אטומטר",
+	"unit_name_bar": "בר",
 	"unit_name_centimetre": "סנטימטר",
 	"unit_name_centimetre_per_square_second": "סנטימטר לשנייה בריבוע",
 	"unit_name_degree_celsius": "מעלות צלזיוס",
@@ -1559,6 +1560,7 @@
 	"unit_name_metre": "מטר",
 	"unit_name_metres_per_second_squared": "מטר לשנייה בריבוע",
 	"unit_name_millimetre": "מילימטר",
+	"unit_name_pascal": "פסקל",
 	"unit_name_petagram": "פטה-גרם",
 	"unit_name_ronnagram": "רונה-גרם",
 	"unit_name_square_kilometre": "קילומטר רבוע",
@@ -1567,6 +1569,7 @@
 	"unit_name_year": "שנה",
 	"unit_name_yottagram": "יוטה-גרם",
 	"unit_name_zettagram": "זטה-גרם",
+	"unit_symbol_bar": "bar",
 	"unit_symbol_centimetre": "ס\"מ",
 	"unit_symbol_degree_celsius": "℃",
 	"unit_symbol_gram": "ג'",
@@ -1576,5 +1579,6 @@
 	"unit_symbol_magnitude": "מגניטודה",
 	"unit_symbol_metre": "מ'",
 	"unit_symbol_millimetre": "מ\"מ",
+	"unit_symbol_pascal": "Pa",
 	"unit_symbol_square_kilometre": "קמ\"ר"
 }

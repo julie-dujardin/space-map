@@ -1662,6 +1662,7 @@
 	"property_name_width": "宽度",
 	"unit_name_astronomical_unit": "天文单位",
 	"unit_name_attometre": "阿米",
+	"unit_name_bar": "巴",
 	"unit_name_centimetre": "厘米",
 	"unit_name_centimetre_per_square_second": "厘米每二次方秒",
 	"unit_name_degree_celsius": "攝氏度",
@@ -1683,6 +1684,7 @@
 	"unit_name_metre": "米",
 	"unit_name_metres_per_second_squared": "米每二次方秒",
 	"unit_name_millimetre": "毫米",
+	"unit_name_pascal": "帕斯卡",
 	"unit_name_petagram": "拍克",
 	"unit_name_ronnagram": "容克",
 	"unit_name_square_kilometre": "平方千米",
@@ -1691,11 +1693,13 @@
 	"unit_name_year": "年",
 	"unit_name_yottagram": "尧克",
 	"unit_name_zettagram": "泽克",
+	"unit_symbol_bar": "bar",
 	"unit_symbol_centimetre": "厘米",
 	"unit_symbol_degree_celsius": "℃",
 	"unit_symbol_hour": "時",
 	"unit_symbol_kilometre": "公里",
 	"unit_symbol_magnitude": "等",
 	"unit_symbol_metre": "米",
-	"unit_symbol_millimetre": "毫米"
+	"unit_symbol_millimetre": "毫米",
+	"unit_symbol_pascal": "Pa"
 }
