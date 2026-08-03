@@ -760,19 +760,7 @@
 	// URL-backed so it's deep-linkable. A tab whose content this object lacks
 	// falls back to overview, never rendering empty.
 	let activeTab = $derived<DrawerTab>(
-		appState.view.tab === 'images' && hasImages
-			? 'images'
-			: appState.view.tab === 'members' && showMembersTab
-				? 'members'
-				: appState.view.tab === 'features' && showFeaturesTab
-					? 'features'
-					: appState.view.tab === 'structure' && showStructureTab
-						? 'structure'
-						: appState.view.tab === 'fragments' && showFragmentsTab
-							? 'fragments'
-							: appState.view.tab === 'rings' && showRingsTab
-								? 'rings'
-								: 'overview'
+		appState.view.tab && tabPresent[appState.view.tab] ? appState.view.tab : 'overview'
 	);
 	// A promoted tab drops the bar and takes the header instead: the object's name
 	// moves into the crumb and the tab names the view. Still the same tab in the
