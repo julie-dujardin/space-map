@@ -1,20 +1,26 @@
-"""Named ring features of the four ringed giants — the one table behind both
-the ring panel and the synthetic ring strips.
+"""Named ring features of every ringed body — the one table behind both the
+ring panel and the synthetic ring strips.
 
-Rows follow the PDS Ring-Moon Systems Node "vital statistics" tables: every
-named ring, division, gap, ringlet, structural region and arc those tables
-carry, with the boundaries, optical depths and descriptive notes verbatim.
-Official names and provisional designations are cross-checked against the IAU
-Gazetteer's ring page. Only obvious typos in the PDS notes are corrected.
+For the four giants, rows follow the PDS Ring-Moon Systems Node "vital
+statistics" tables: every named ring, division, gap, ringlet, structural
+region and arc those tables carry, with the boundaries, optical depths and
+descriptive notes verbatim. Official names and provisional designations are
+cross-checked against the IAU Gazetteer's ring page. Only obvious typos in the
+PDS notes are corrected.
+
+The four small bodies (Chariklo, Haumea, Quaoar and Chiron) have no such
+table. Their rows come from the occultation literature, preferring Table 3 of
+Sicardy et al. 2024 where it consolidates several events, and the descriptions
+are written here rather than quoted.
 
 Each row doubles as the render manifest: `render` carries the strip
 generator's tuning where the strips draw the feature (the τ picked from a
 published range or limit, stand-in widths where only a radius is tabulated,
 profiles, tints). Rows without it are catalogue-only — features the renderer
 deliberately omits (Saturn's Phoebe ring sits in Phoebe's orbital plane rather
-than Saturn's equator; Neptune's arcs are azimuthal structure a radial strip
-cannot carry; everything inside Saturn's measured main-ring strip ships as
-Cassini data instead). Each body also carries its strip `bundles` — the
+than Saturn's equator; the arcs of Neptune, Quaoar and Chiron are azimuthal
+structure a radial strip cannot carry; everything inside Saturn's measured
+main-ring strip ships as Cassini data instead). Each body also carries its strip `bundles` — the
 per-bundle parameters (resolution, default tint, credited works) —
 and `bundle_features` resolves what a bundle draws for
 `scripts/generate_ring_profiles.py`; `tests/constants/test_ring_catalog.py`
@@ -31,6 +37,7 @@ from typing import Literal, NamedTuple
 from space_map_data.constants.rings.attribution import (
     IAU,
     IAU_LICENSE,
+    LUCKY_STAR,
     NASA,
     NASA_LICENSE,
     RingSource,
@@ -178,6 +185,12 @@ def _pds_source(planet: str, url: str, contribution: str) -> RingSource:
         f"PDS Ring-Moon Systems Node vital statistics for {planet}'s rings",
         contribution,
     )
+
+
+def _occultation_source(doi: str, work: str, contribution: str) -> RingSource:
+    """A small-body ring paper. No licence: what these give is measurements,
+    and the credits UI drops the field rather than claim terms over numbers."""
+    return RingSource(f"https://doi.org/{doi}", LUCKY_STAR, "", work, contribution)
 
 
 _IAU_RINGS = RingSource(
@@ -1456,6 +1469,406 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                     "The dimmest of the five ring arcs embedded in the Adams "
                     "Ring, about 7.3 degrees ahead of Liberté in longitude."
                 ),
+            ),
+        ),
+    ),
+    # --- small bodies -----------------------------------------------------
+    # No agency publishes a vital-statistics table for these four, so the rows
+    # are read off the occultation papers instead, preferring the review's
+    # Table 3 (Sicardy et al. 2024) where it consolidates several events. The
+    # geometry is thinner than the giants': widths are often unresolved, only
+    # Chariklo has enough chords to bound an eccentricity, and every ring here
+    # is circular by assumption unless stated. Chiron is the odd one out and
+    # its rows say so.
+    "spkid-20010199": RingCatalog(
+        body="spkid-20010199",
+        sources=(
+            _occultation_source(
+                "10.1051/0004-6361/202141543",
+                "Morgado et al. 2021 (A&A 652, A141)",
+                "ring radii, pole orientation and the C1R width range from "
+                "eleven occultations",
+            ),
+            _occultation_source(
+                "10.3847/1538-3881/aa830d",
+                "Bérard et al. 2017 (AJ 154, 144)",
+                "normal opacities, equivalent widths and the sharpness of the "
+                "ring edges",
+            ),
+            _occultation_source(
+                "10.1038/nature13155",
+                "Braga-Ribas et al. 2014 (Nature 508, 72)",
+                "the discovery, and the C2R width and optical depth still "
+                "quoted for it",
+            ),
+        ),
+        bundles=(
+            # Water ice with tholins, (I/F)_V = 0.07 (Duffard et al. 2014, via
+            # the review's Table 3) — mildly red, well short of Saturn's warmth.
+            RingBundle(
+                name="primary",
+                slug="chariklo",
+                covers="rings",
+                sources=(
+                    _occultation_source(
+                        "10.1051/0004-6361/202141543",
+                        "Morgado et al. 2021 (A&A 652, A141)",
+                        "ring radii and widths",
+                    ),
+                    _occultation_source(
+                        "10.3847/1538-3881/aa830d",
+                        "Bérard et al. 2017 (AJ 154, 144)",
+                        "normal optical depths",
+                    ),
+                ),
+                # ~4 m/px: C2R is under a kilometre wide.
+                sample_count=4_096,
+                tint=(1.00, 0.93, 0.85),
+            ),
+        ),
+        features=(
+            CatalogFeature(
+                "c1r",
+                "C1R",
+                "ring",
+                mid_km=385.9,
+                # Mean of the resolved profiles; the width varies with
+                # longitude between 4.8 and 9.1 km.
+                width_km=6.9,
+                optical_depth=OpticalDepth(0.4, approximate=True),
+                designation="2013C1R",
+                particles="dense",
+                description=(
+                    "The inner and denser of Chariklo's two rings, nicknamed "
+                    "Oiapoque after the river on Brazil's northern border. Its "
+                    "resolved profiles are W-shaped with edges sharp to within "
+                    "a kilometre, and its width varies with longitude, both of "
+                    "which recall the narrow eccentric ringlets of Saturn and "
+                    "Uranus. Its eccentricity is bounded at 0.022."
+                ),
+                render=RENDERED,
+            ),
+            CatalogFeature(
+                "c2r",
+                "C2R",
+                "ring",
+                mid_km=399.8,
+                # Later work leaves the width and depth degenerate (0.1 to 1 km
+                # against a fixed equivalent width of 0.2 km); this pair is the
+                # discovery paper's and the one the literature keeps quoting.
+                width_km=3.4,
+                optical_depth=OpticalDepth(0.06, approximate=True),
+                designation="2013C2R",
+                particles="dense",
+                description=(
+                    "The outer ring, nicknamed Chuí after the river on Brazil's "
+                    "southern border. It holds about a tenth of the material in "
+                    "C1R and has never been radially resolved. The 8 km between "
+                    "the two rings is empty to a normal opacity of 0.009."
+                ),
+                render=RENDERED,
+            ),
+        ),
+    ),
+    "spkid-20136108": RingCatalog(
+        body="spkid-20136108",
+        sources=(
+            _occultation_source(
+                "10.1038/nature24051",
+                "Ortiz et al. 2017 (Nature 550, 219)",
+                "the ring radius, width, opacity and pole from the 2017 occultation",
+            ),
+        ),
+        bundles=(
+            RingBundle(
+                name="primary",
+                slug="haumea",
+                covers="ring",
+                sources=(
+                    _occultation_source(
+                        "10.1038/nature24051",
+                        "Ortiz et al. 2017 (Nature 550, 219)",
+                        "the ring radius, width and normal optical depth",
+                    ),
+                ),
+                sample_count=2_048,
+                # Collisional debris from a body whose surface is nearly pure
+                # water ice, so all but neutral.
+                tint=(0.97, 0.98, 1.00),
+            ),
+        ),
+        features=(
+            CatalogFeature(
+                "h1r",
+                "H1R",
+                "ring",
+                mid_km=2287,
+                width_km=70,
+                optical_depth=OpticalDepth(0.1, approximate=True),
+                # No source states the regime; a 70 km ring at this depth is
+                # the dense-particle case rather than a dust sheet.
+                particles="dense",
+                moons=("Hi'iaka",),
+                description=(
+                    "Haumea's only known ring, and the first found around a "
+                    "trans-Neptunian object. It lies in Haumea's equatorial "
+                    "plane, which Hi'iaka's orbit also shares, and sits within "
+                    "the dwarf planet's Roche limit, close enough that its "
+                    "particles cannot accrete into a moon. Its radius matches "
+                    "the 3:1 spin-orbit resonance, where a particle circles "
+                    "once for every three of Haumea's very fast rotations."
+                ),
+                render=RENDERED,
+            ),
+        ),
+    ),
+    "spkid-20050000": RingCatalog(
+        body="spkid-20050000",
+        sources=(
+            _occultation_source(
+                "10.1038/s41586-022-05629-6",
+                "Morgado et al. 2023 (Nature 614, 239)",
+                "the discovery of Q1R and its azimuthal variation in width and "
+                "optical depth",
+            ),
+            _occultation_source(
+                "10.1051/0004-6361/202346365",
+                "Pereira et al. 2023 (A&A 673, L4)",
+                "the refined Q1R radius and pole, and the discovery of Q2R",
+            ),
+        ),
+        bundles=(
+            RingBundle(
+                name="primary",
+                slug="quaoar",
+                covers="rings",
+                sources=(
+                    _occultation_source(
+                        "10.1051/0004-6361/202346365",
+                        "Pereira et al. 2023 (A&A 673, L4)",
+                        "ring radii, widths and normal optical depths",
+                    ),
+                ),
+                # ~0.4 km/px over 1,700 km; Q2R spans ~24 px.
+                sample_count=4_096,
+                tint=(1.00, 0.96, 0.92),
+            ),
+        ),
+        features=(
+            CatalogFeature(
+                "q2r",
+                "Q2R",
+                "ring",
+                mid_km=2520,
+                width_km=10,
+                optical_depth=OpticalDepth(0.005, 0.01),
+                # Neither paper states a regime for Q2R; faint and narrow.
+                particles="dusty",
+                description=(
+                    "The inner ring, seen on a single chord from Mauna Kea in "
+                    "2022 and assumed circular and coplanar with Q1R on that "
+                    "evidence. It orbits at about 4.3 Quaoar radii, outside the "
+                    "classical Roche limit, and lies near the 5:7 spin-orbit "
+                    "resonance."
+                ),
+                # Midpoint of the stated range; the spread is measurement
+                # uncertainty on a single chord, not structure.
+                render=(Render(tau=0.0075),),
+            ),
+            CatalogFeature(
+                "q1r",
+                "Q1R",
+                "ring",
+                mid_km=4057,
+                # The faint continuous component, which is what runs all the
+                # way round; it has been measured anywhere from 40 to 300 km.
+                width_km=300,
+                optical_depth=OpticalDepth(0.005, 0.02),
+                particles="dusty",
+                moons=("Weywot",),
+                description=(
+                    "Quaoar's main ring, and the reason the system is unusual: "
+                    "at more than seven Quaoar radii it orbits far outside the "
+                    "classical Roche limit, where ring material was expected to "
+                    "gather into a moon instead. It is strongly inhomogeneous, "
+                    "a faint sheet around most of the orbit with one dense "
+                    "segment, and sits near both the 3:1 spin-orbit resonance "
+                    "and the 6:1 resonance with Weywot."
+                ),
+                # Midpoint of the faint component's range; the spread here is
+                # azimuthal, and a radial strip has to pick one longitude.
+                render=(Render(tau=0.0125),),
+            ),
+            # Azimuthal structure a radial strip cannot carry, exactly like
+            # Neptune's Adams arcs: the ring renders at its continuous depth.
+            CatalogFeature(
+                "q1r-dense",
+                "Q1R dense segment",
+                "arc",
+                parent="q1r",
+                mid_km=4057,
+                width_km=6,
+                optical_depth=OpticalDepth(0.20, 0.25),
+                particles="dense",
+                description=(
+                    "The dense part of Q1R, covering somewhere between 20 and "
+                    "70 degrees of the orbit. Where it has been resolved its "
+                    "radial profile is Lorentzian, about 5 km across at half "
+                    "maximum and reaching a normal optical depth of 0.4 at the "
+                    "peak."
+                ),
+            ),
+        ),
+    ),
+    "spkid-20002060": RingCatalog(
+        body="spkid-20002060",
+        sources=(
+            _occultation_source(
+                "10.3847/2041-8213/ae0b6d",
+                "Pereira et al. 2025 (ApJL 992, L19)",
+                "the three-ring solution, the broad disk and the outer feature "
+                "from the 2023 occultation",
+            ),
+            _occultation_source(
+                "10.1051/0004-6361/202347025",
+                "Ortiz et al. 2023 (A&A 676, L12)",
+                "the 2022 detections and the ring pole",
+            ),
+            _occultation_source(
+                "10.1051/0004-6361/201424461",
+                "Ortiz et al. 2015 (A&A 576, A18)",
+                "the first interpretation of Chiron's occultation features as "
+                "ring material",
+            ),
+        ),
+        bundles=(
+            # Two bundles because Chi4R sits a kilometre-scale 500 km outside
+            # everything else and is three hundred times fainter than the disk
+            # it would have to share a strip with.
+            RingBundle(
+                name="primary",
+                slug="chiron",
+                covers="disk and confined rings",
+                sources=(
+                    _occultation_source(
+                        "10.3847/2041-8213/ae0b6d",
+                        "Pereira et al. 2025 (ApJL 992, L19)",
+                        "ring radii and normal optical depths",
+                    ),
+                ),
+                sample_count=4_096,
+                # Dust off a neutral-to-blue surface; kept near white.
+                tint=(0.96, 0.97, 1.00),
+            ),
+            RingBundle(
+                name="outer",
+                slug="chiron-outer",
+                covers="outer feature",
+                sources=(
+                    _occultation_source(
+                        "10.3847/2041-8213/ae0b6d",
+                        "Pereira et al. 2025 (ApJL 992, L19)",
+                        "the radius, width and peak optical depth of Chi4R",
+                    ),
+                ),
+                sample_count=1_024,
+                tint=(0.96, 0.97, 1.00),
+            ),
+        ),
+        features=(
+            CatalogFeature(
+                "broad-disk",
+                "Broad disk",
+                "dust",
+                inner_km=200,
+                outer_km=800,
+                # Median over the region; the profile is far from flat.
+                optical_depth=OpticalDepth(0.016),
+                particles="dusty",
+                description=(
+                    "A flat, disk-like sheet of material in Chiron's equatorial "
+                    "plane, about 550 km across, with the confined rings "
+                    "embedded in it. It was absent from the 1994, 2011 and 2018 "
+                    "occultations and would have made Chiron brighter than it "
+                    "was observed to be, so it appears to have formed within "
+                    "the last decade. A disk fits the light curves; concentric "
+                    "spherical shells do not."
+                ),
+                render=RENDERED,
+            ),
+            CatalogFeature(
+                "chi1r",
+                "Chi1R",
+                "ring",
+                parent="broad-disk",
+                mid_km=273,
+                optical_depth=OpticalDepth(0.045, 0.12),
+                particles="dense",
+                description=(
+                    "The innermost confined ring, marginally present in the 2011 "
+                    "data and clear in 2023. It aligns with the 1:2 spin-orbit "
+                    "resonance and lies inside Chiron's Roche limit."
+                ),
+                # No width is published; equivalent width 0.2 to 0.8 km over
+                # this depth puts it near 6 km.
+                render=(Render(tau=0.08, width_km=6.3),),
+            ),
+            CatalogFeature(
+                "chi2r",
+                "Chi2R",
+                "ring",
+                parent="broad-disk",
+                mid_km=325,
+                optical_depth=OpticalDepth(0.1, 0.35),
+                particles="dense",
+                description=(
+                    "The best established of Chiron's rings, seen in 2011, 2018, "
+                    "2022 and 2023, and made of two components separated by a "
+                    "gap of 2 to 9 km that varies with longitude. Its optical "
+                    "depth has fallen steadily since 2011, from 0.35 to 0.1. It "
+                    "sits at the 1:3 spin-orbit resonance."
+                ),
+                # Same derivation as Chi1R, doubled for the pair plus its gap.
+                render=(Render(tau=0.2, width_km=13),),
+            ),
+            CatalogFeature(
+                "chi3r",
+                "Chi3R",
+                "ring",
+                parent="broad-disk",
+                mid_km=438,
+                # Tenuous at ingress, dense at egress: azimuthal, not radial.
+                optical_depth=OpticalDepth(0.03, 0.3),
+                particles="dense",
+                description=(
+                    "The outermost confined ring, beyond Chiron's Roche limit, "
+                    "and the least uniform: its width ranges from 7 to 44 km and "
+                    "its optical depth from 0.03 to 0.3 around the orbit. That "
+                    "makes it a closer analogue of Quaoar's Q1R, Saturn's F ring "
+                    "and Neptune's arcs than of the two rings inside it. Its "
+                    "dense stretch spans at least 25 degrees of the orbit, "
+                    "about 190 km, and combining the 2022 detections it may "
+                    "reach 140 degrees. That stretch has no name of its own, "
+                    "so it is described here rather than listed separately."
+                ),
+                # The tenuous end of the range, as for Neptune's Adams ring:
+                # a radial strip cannot carry the dense arc.
+                render=(Render(tau=0.03, width_km=25),),
+            ),
+            CatalogFeature(
+                "chi4r",
+                "Chi4R",
+                "dust",
+                mid_km=1380,
+                width_km=93,
+                optical_depth=OpticalDepth(1e-3, approximate=True),
+                particles="dusty",
+                description=(
+                    "A faint, broad feature far outside the rest of the system, "
+                    "detected for the first time in 2023 and yet to be "
+                    "confirmed. Its profile is Gaussian rather than confined."
+                ),
+                render=(Render(bundle="outer"),),
             ),
         ),
     ),

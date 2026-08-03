@@ -10,11 +10,18 @@ article makes the better case. Two rules decided every row:
   Italian) in all twelve locales. That rules out the P18 images of Uranus and
   Neptune, both schemes, and Jupiter's annotated cutaway.
 
+Between them those rules leave the four ringed small bodies with nothing. None
+of their systems has ever been resolved — they are known only from the dips
+they cut in a star's light — so the only pictures that exist are artists'
+impressions, and a panel hero reads as a photograph of the thing. Those four
+ship without one; `ring_hero_image` returns None and the panel opens on the
+chart.
+
 Values are Commons filenames in the underscore form the download layout uses.
-All four are public domain.
+All are public domain.
 """
 
-# Keyed to the host body, matching ``RingCatalog.body``.
+# Keyed to the host body, matching ``RingCatalog.body``; a body may be absent.
 RING_HERO_IMAGES: dict[str, str] = {
     # Galileo, the main ring lit from behind either side of Jupiter's shadow.
     # The one photograph in the set that shows a ring rather than a planet

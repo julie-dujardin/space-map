@@ -1,12 +1,14 @@
-"""Synthesise ring radial-profile bundles for the tenuous ring systems.
+"""Synthesise ring radial-profile bundles for every system but Saturn's main
+rings.
 
 Saturn's *main* rings are measured Cassini data (bjj_rings downloader); no
-published equivalent exists for the tenuous systems, so this generates the
+published equivalent exists anywhere else, so this generates the
 same five-channel 1×N bundle from the ring catalogue
-(``constants/rings/catalog.py``): tabulated feature boundaries + normal
+(``constants/rings/catalog.py``): published feature boundaries + normal
 optical depths → supersampled τ(r) → channels.
-That covers Jupiter, Uranus and Neptune whole, plus the Saturn bundles that
-fall outside the measured strip (its D ring and its outer tenuous rings).
+That covers Jupiter, Uranus, Neptune and the four ringed small bodies whole,
+plus the Saturn bundles that fall outside the measured strip (its D ring and
+its outer tenuous rings).
 
 Opacity stays physical. 8-bit strips cannot hold τ ~1e-6 directly, so every
 channel is stored normalised to the bundle's ``intensity_scale`` (recorded in
@@ -28,6 +30,7 @@ import logging
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import yaml
@@ -55,22 +58,27 @@ KIND_WEIGHTS = {
     "dusty": {"backscattered": 0.30, "forwardscattered": 2.0, "unlitside": 1.2},
 }
 
-# NSSDCA equatorial radii, preview planet disc only. Keyed by planet name
-# since several bundles can share one host.
-PREVIEW_EQ_RADIUS_KM = {
-    "Jupiter": 71_492.0,
-    "Saturn": 60_268.0,
-    "Uranus": 25_559.0,
-    "Neptune": 24_766.0,
-}
 
-# Planet display names for generated text and previews; the catalogue and
-# downloaded bundle yamls name only the NAIF body.
-PLANET_BY_BODY = {
-    "naif-599": "Jupiter",
-    "naif-699": "Saturn",
-    "naif-799": "Uranus",
-    "naif-899": "Neptune",
+class Host(NamedTuple):
+    """Display name for generated text, and the equatorial radius the preview
+    draws the body's disc at. The catalogue and the downloaded bundle yamls
+    name only the body id, and several bundles can share one host."""
+
+    name: str
+    equatorial_radius_km: float
+
+
+# Giants from the NSSDCA fact sheets; small bodies from the longest semi-axis
+# of the occultation-fitted ellipsoid (Table 4 of Sicardy et al. 2024).
+HOSTS: dict[str, Host] = {
+    "naif-599": Host("Jupiter", 71_492.0),
+    "naif-699": Host("Saturn", 60_268.0),
+    "naif-799": Host("Uranus", 25_559.0),
+    "naif-899": Host("Neptune", 24_766.0),
+    "spkid-20010199": Host("Chariklo", 143.8),
+    "spkid-20136108": Host("Haumea", 1_161.0),
+    "spkid-20050000": Host("Quaoar", 580.0),
+    "spkid-20002060": Host("Chiron", 126.0),
 }
 
 
@@ -166,7 +174,7 @@ def write_bundle(
         np.savetxt(out_dir / filename, arr, fmt="%.6f")
         files[name] = filename
 
-    planet = PLANET_BY_BODY[body]
+    host = HOSTS[body].name
     payload = {
         "body": body,
         "bundle": bundle.name,
@@ -186,9 +194,9 @@ def write_bundle(
             for s in bundle.sources
         ],
         "description": (
-            f"Synthetic 1-D radial profiles of {planet}'s {bundle.covers}: "
+            f"Synthetic 1-D radial profiles of {host}'s {bundle.covers}: "
             "the same five-channel bundle as the measured Saturn strips, "
-            "generated from tabulated feature boundaries and normal optical "
+            "generated from published feature boundaries and normal optical "
             "depths."
         ),
         "generated_at": datetime.now(UTC).isoformat(),
@@ -232,7 +240,7 @@ def _lit_premultiplied(channels: dict[str, np.ndarray], scale: float) -> np.ndar
 
 def render_previews(
     slug: str,
-    planet: str,
+    body: str,
     sample_count: int,
     inner: float,
     outer: float,
@@ -261,7 +269,7 @@ def render_previews(
     out = (cum[i1] - cum[i0]) / np.maximum(i1 - i0, 1)[..., None]
     out[i1 <= i0] = 0.0
     out = np.clip(out * PREVIEW_GAIN, 0.0, 1.0) ** (1.0 / 2.2)
-    out[r_km <= PREVIEW_EQ_RADIUS_KM[planet]] = 0.18
+    out[r_km <= HOSTS[body].equatorial_radius_km] = 0.18
     Image.fromarray((out * 255.0 + 0.5).clip(0, 255).astype(np.uint8)).save(
         preview_dir / f"{slug}_annulus.png"
     )
@@ -294,7 +302,7 @@ def preview_bundle(bundle_dir: Path, preview_dir: Path) -> None:
     }
     render_previews(
         bundle_dir.name,
-        PLANET_BY_BODY[meta["body"]],
+        meta["body"],
         int(meta["sample_count"]),
         float(meta["inner_radius_km"]),
         float(meta["outer_radius_km"]),
@@ -337,7 +345,7 @@ def main() -> None:
         if args.preview_dir:
             render_previews(
                 bundle.slug,
-                PLANET_BY_BODY[body],
+                body,
                 bundle.sample_count,
                 inner,
                 outer,

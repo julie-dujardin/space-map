@@ -24,6 +24,9 @@ RING_SYSTEM_PAGES: dict[str, tuple[str, ...]] = {
     "naif-699": ("Q194",),  # rings of Saturn — all 12
     "naif-799": ("Q171473",),  # rings of Uranus — all 12
     "naif-899": ("Q48400",),  # rings of Neptune — all 12
+    # Haumea and Quaoar are missing on purpose
+    "spkid-20010199": ("Q15981112",),  # rings of Chariklo — en fr it pt ru zh ar
+    "spkid-20002060": ("Q19606404",),  # rings of Chiron — fr
 }
 
 # Keyed "<body>/<CatalogFeature.slug>". Features absent here have no Wikidata
@@ -93,7 +96,6 @@ RING_EXTRA_PAGES: dict[str, tuple[str, ...]] = {
     # and the IAU ring page but still carried by fr/it Wikipedia.
     "saturn_guerin_division": ("Q3032372",),  # Division de Guérin — fr it
     # Ring systems on bodies we hold no ring geometry for.
-    "chariklo": ("Q15981112",),  # rings of Chariklo — en fr zh ar ru pt it
     "rhea": ("Q2331877",),  # rings of Rhea — en fr zh ar ru pt es he pl
     "mercury_dust_ring": ("Q65154163",),  # Mercury's dust ring — fr
 }
