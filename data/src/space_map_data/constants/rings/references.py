@@ -2,7 +2,7 @@
 
 Same shape as constants/atmosphere/references.py: one entry per work we take
 numbers from, with a one-line "what we get"; the full per-value provenance
-lives as comments next to each constant in bodies.py.
+lives as comments next to each constant in catalog.py.
 
 Deliberately *not* a copy of the data-source list. The PDS ring tables and
 NSSDCA fact sheets the numbers are read off are credited per body through each

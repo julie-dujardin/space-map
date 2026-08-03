@@ -84,6 +84,39 @@ interface GlobalObjectData {
     }>;
     sources: Array<{ title: string; url: string }>; // works the values are read off, deduped, structure source first
   };
+  ring_features?: Record<string, {    // named rings, divisions, gaps, ringlets and arcs — the four ringed giants only (see below)
+    // Keyed by slug ("cassini-division"), the same key the localized bundle
+    // and panel URLs use. Keys run inner → outer, but a parent can follow its
+    // children, so a consumer groups by `parent` rather than walking order.
+    name: string;                     // English name from the PDS table; the localized bundle overrides it where an entity has a label
+    kind: "ring" | "division" | "gap" | "ringlet" | "region" | "arc" | "dust";
+    parent?: string;                  // key of the containing feature
+    inner_radius_km?: number;         // absent where the source publishes only a radius (the co-orbital rings)
+    outer_radius_km?: number;
+    mid_radius_km: number;            // always present, derived where the source tabulates boundaries
+    width_km?: number;
+    radius_approximate?: true;        // the radius is the source moon's orbit, not a measured edge
+    optical_depth?: {                 // normal optical depth, as the source qualifies it
+      low: number;
+      high?: number;                  // absent for a single stated value
+      approximate?: true;             // source wrote "~"
+      upper_limit?: true;             // source wrote "<"; `low` bounds it from above
+    };
+    thickness_km?: number;            // full vertical extent, where tabulated
+    eccentricity?: number;            // fitted shapes of the Uranian narrow rings
+    inclination_deg?: number;
+    designation?: string;             // provisional designation still in use ("1986 U2R")
+    particles?: "dense" | "dusty";    // macroscopic (back-scatter bright) vs µm dust (forward-scatter bright)
+    moons?: Array<{ name: string; id?: string }>; // shepherds, embedded and source moons; `id` absent when the moon isn't in the export
+    wikidata_qid?: string;
+    note?: string;                    // the PDS table's own description, English, language-independent
+  }>;
+  ring_sources?: Array<{              // present with `ring_features`: the tables the catalogue was transcribed from, for the panel's credit line
+    title: string;                    // the work, e.g. "PDS Ring-Moon Systems Node vital statistics for Saturn's rings"
+    url: string;
+    organisation: string;
+  }>;
+  ring_hero?: ObjectImage;            // one picture of the ring system, same shape as an `images` entry (see below)
   temperatures?: {                    // absent only when even the estimate can't be computed (no heliocentric distance)
     // Flat rather than grouped by part: a body's readings all plot on one bar,
     // and a reading needs its part, its kind and what produced it together.
@@ -379,6 +412,52 @@ albedo cut resolved an X into an E or an M. The frontend resolves both from
 `$lib/credits/taxonomy-sources`, and the credits page lists them under object
 metadata rather than in `interior_references`.
 
+### `ring_features`
+
+The catalogue behind the ring panel, from
+`data/src/space_map_data/constants/rings/catalog.py`: every named feature the
+PDS Ring-Moon Systems Node's "vital statistics" tables carry, cross-checked
+against the IAU Gazetteer's ring page. Four bodies have one, and Saturn's 43
+rows are the largest, so it rides the object bundle rather than a lazily
+fetched tier like surface features do.
+
+It is a catalogue, not a render manifest. The `rings` array in
+`systems/{bary}.json` says what the scene draws; this says what the rings are,
+and includes features the renderer deliberately omits — Saturn's Phoebe ring
+(it sits in Phoebe's orbital plane, not Saturn's equator) and Neptune's five
+arcs (azimuthal structure a radial strip cannot carry). Where both describe
+the same ring they agree by test, not by construction: the render tables carry
+their own tuning and occasionally split a row (the E ring ships as two bundle
+halves so its optical depth peaks at Enceladus).
+
+Per-feature prose is split by whether it has a language. `note` is the PDS
+table's own sentence and is English wherever it appears; the localized bundle
+carries the Wikipedia extract for the locales that have an article. That
+coverage is thin and lopsided — English Wikipedia folds every ring into "Rings
+of X", so only the Cassini Division has an English article, while French and
+Italian have nearly the full set. A panel showing one feature therefore has,
+in order: the localized extract, else the English `note`, else nothing but
+numbers.
+
+Both the global and localized blocks are keyed by the same slug, so a feature
+reads as one lookup in each. The keys are emitted inner → outer for
+legibility, but that ordering does not put a parent before its children —
+Uranus' ζ dust extensions lie inside the ζ ring they belong to — so a
+consumer builds the tree by grouping on `parent` and sorting siblings by
+radius.
+
+`ring_sources` rides alongside: the same works the credits page lists for this
+body's catalogue, trimmed to title and link so the panel can credit what it
+shows without pulling the whole credits bundle. The per-source `contribution`
+sentence stays on the credits page.
+
+`ring_hero` is one picture of the system, in the same shape as an `images`
+entry and resolving against the same `/v1/images/<file>/` bundles — including
+the credit, which rides in the variant's own metadata rather than here. It is
+hand-picked per body (`constants/rings/images.py`) from the images the ring
+pages already carry, and lives in the global block because the choice avoids
+pictures with text baked into them: the same frame serves every locale.
+
 ## Localized (`objects/{lang}/{bucket}.json.gz`)
 
 Per-language bundles. `bucket = sha256(id)[:4] % N_{lang}` where `N_{lang}`
@@ -415,6 +494,16 @@ interface LocalizedObjectData {
   country_of_origin?: EntityRef[];
   launch_contractor?: EntityRef[];
   part_of?: EntityRef[];          // Wikidata P361; QIDs already shown via a CelesTrak-derived field (constellation, bus, launch_site, operators, manufacturer) are dropped
+  ring_features?: Record<string, {  // same keys as the global `ring_features` map; only the features this locale has anything for
+    name?: string;                  // Wikidata label in this language. Never present for `en`: the catalogue name is the English name, and Wikidata's English labels are translations of the fr/it article titles ("Huygens Division" for the IAU's Huygens Gap)
+    extract?: string;               // Wikipedia lead extract; absent when the locale has no article
+    url?: string;                   // article URL
+  }>;
+  ring_system?: {                   // the "Rings of X" article — the ring panel's opening blurb. Unlike the individual features, all four exist in every shipped language
+    name?: string;
+    extract?: string;
+    url?: string;
+  };
   wikipedia?: {
     extract?: string;
     description?: string;

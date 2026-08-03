@@ -195,6 +195,18 @@ def collect_group_images(slug: str) -> list[dict] | None:
     return _collect_images_from_cache(slug, _group_images_cache)
 
 
+def collect_named_image(filename: str, kind: str = "photo") -> dict | None:
+    """One hand-picked Commons file as an image entry.
+
+    For sections illustrating a subject that is not a row in the database and
+    so has no selection to consult — the ring panel's hero, which belongs to
+    a ring system rather than to the planet wearing it. The filename comes
+    from a constants table; everything downstream (bundle, variants,
+    attribution tier) is the same as for a selected image.
+    """
+    return _make_entry(canonical_filename(filename), kind)
+
+
 def _collect_images_from_cache(
     key: str,
     cache_loader: Callable[[], dict[str, list[dict]]],

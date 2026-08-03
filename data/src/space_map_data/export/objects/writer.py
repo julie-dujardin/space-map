@@ -41,6 +41,13 @@ from space_map_data.export.objects.celestrak import (
 )
 from space_map_data.export.objects.atmosphere import atmosphere_block
 from space_map_data.export.objects.interior import interior_block
+from space_map_data.export.objects.rings import (
+    ring_feature_localized,
+    ring_features_block,
+    ring_hero_image,
+    ring_sources_block,
+    ring_system_localized,
+)
 from space_map_data.export.objects.temperature import (
     heliocentric_distance_au,
     temperature_block,
@@ -230,6 +237,7 @@ def build_chunk_object_data(
     nomenclature_body_ids: set[str],
     parent_names: dict[str, str],
     taxonomy: dict,
+    ring_moon_ids: dict[str, str],
 ) -> ChunkObjectData:
     """Build per-object global and localized JSON dicts (no I/O).
 
@@ -280,6 +288,7 @@ def build_chunk_object_data(
             nomenclature_body_ids,
             parent_names,
             taxonomy,
+            ring_moon_ids,
         )
 
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
@@ -477,6 +486,7 @@ def _build_global(
     nomenclature_body_ids: set[str],
     parent_names: dict[str, str],
     taxonomy: dict,
+    ring_moon_ids: dict[str, str],
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -613,6 +623,16 @@ def _build_global(
     if interior is not None:
         data["interior"] = interior
 
+    # Named rings, gaps and ringlets: what the ring system *is*, next to the
+    # render bundles in systems/{bary}.json that say what it looks like.
+    ring_features = ring_features_block(obj.id, ring_moon_ids)
+    if ring_features:
+        data["ring_features"] = ring_features
+        data["ring_sources"] = ring_sources_block(obj.id)
+        hero = ring_hero_image(obj.id)
+        if hero:
+            data["ring_hero"] = hero
+
     # SBDB extras
     if sbdb is not None:
         sbdb_data = build_sbdb(sbdb, units)
@@ -734,5 +754,14 @@ def _build_localized(
 
     if wiki_summary:
         data["wikipedia"] = wiki_summary.to_dict()
+
+    # Only the locales with an article for a given ring get an entry; the panel
+    # falls back to the global name and PDS note for the rest.
+    ring_features = ring_feature_localized(obj.id, lang, wikidata_entities)
+    if ring_features:
+        data["ring_features"] = ring_features
+    ring_system = ring_system_localized(obj.id, lang, wikidata_entities)
+    if ring_system:
+        data["ring_system"] = ring_system
 
     return data

@@ -4,6 +4,14 @@ Generated during ingest (not export) and written directly to the export director
 
 **Path:** `rings/{id}/{bundle}/strip.webp`
 
+These bundles are what the renderer draws. What the rings *are* — the named
+rings, divisions, gaps, ringlets and arcs, with the boundaries and optical
+depths their sources publish — is a separate catalogue that rides the body's
+object bundle as `ring_features` (see `objects.md`). The two are cross-checked
+by `data/tests/constants/test_ring_catalog.py`, which asserts that every
+rendered feature agrees with its catalogue row on span, optical depth and
+vertical extent.
+
 A body owns one or more *bundles* — radially disjoint groups of rings, each with its own sample density and scales. Saturn has three (`inner` = D ring, `primary` = the measured Cassini profiles of the main rings, `outer` = the tenuous G/E system); the other ringed giants have one, named `primary`. Bundles exist because a single 8-bit strip cannot span Saturn's range: its B ring reaches τ ≈ 5 while its E ring is τ ≈ 5e-6, and a shared `intensity_scale` would quantize the E ring to nothing. Splitting also keeps 5 km/sample across the main rings without exceeding WebP's 16 383 px dimension cap over the full 66 900–480 000 km extent.
 
 One lossless RGB WebP per bundle, N×5 (or N×6): each row is a 1-D radial profile (channel), sampled uniformly between `inner_radius_km` and `outer_radius_km`; `sample_count` (= image width) is fixed per bundle. Scalar channels are replicated across RGB. The single file keeps loading to one request; the client splits the rows back into separate 1-px textures after decode (row-per-channel in one texture would let mipmaps bleed channels into each other), sampling `.r` for scalar channels and `.rgb` for `color`.

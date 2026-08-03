@@ -69,6 +69,9 @@ class ObjectDataContext:
     # Object.id -> (class, complex, scheme, albedo) from SsODNet, for the
     # asteroids whose interior is estimated from a spectrum.
     taxonomy: dict[str, tuple[str | None, str | None, str | None, float | None]]
+    # "{host}/{moon name}" -> Object.id, for the moons a ring catalogue row
+    # names as shepherd, source or embedded (Pan in the Encke Gap).
+    ring_moon_ids: dict[str, str]
 
 
 @dataclass
@@ -146,6 +149,7 @@ def build_zone_object_data(
         nomenclature_body_ids=ctx.nomenclature_body_ids,
         parent_names=ctx.parent_names,
         taxonomy=ctx.taxonomy,
+        ring_moon_ids=ctx.ring_moon_ids,
     )
 
 

@@ -1,0 +1,243 @@
+"""Per-object ring catalogue, denormalized onto a ringed body's bundles.
+
+The render bundles (`systems/{bary}.json → rings[]`) say what the scene draws;
+this says what the rings *are* — every named ring, division, gap, ringlet,
+region and arc from `constants/rings/catalog.py`, nested by `parent`, with the
+geometry and optical depths their sources publish.
+
+Only four bodies carry it and the largest table is Saturn's forty-odd rows, so
+it rides the object's own bundles rather than earning a lazily-fetched tier of
+its own like surface features do.
+
+Per-feature prose is split the way the bundles are: the English note from the
+PDS table is language-independent and ships in the global block, while the
+localized block carries the Wikipedia extract for locales that have an article.
+Coverage there is thin and lopsided — English Wikipedia folds every ring into
+"Rings of X", so only the Cassini Division has an English article while French
+and Italian have nearly the full set (see `constants/rings/wikidata.py`).
+"""
+
+import logging
+from functools import cache
+
+from sqlalchemy.orm import Session
+
+from space_map_data.constants.rings.catalog import (
+    RING_CATALOGS,
+    CatalogFeature,
+    feature_mid,
+    feature_span,
+    feature_width,
+)
+from space_map_data.constants.rings.images import RING_HERO_IMAGES
+from space_map_data.constants.rings.wikidata import (
+    RING_FEATURE_PAGES,
+    RING_SYSTEM_PAGES,
+)
+from space_map_data.export.images import collect_named_image
+from space_map_data.export.objects.wikipedia import load_wikipedia_summaries_for_qid
+from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.models.object.main import Object
+
+logger = logging.getLogger(__name__)
+
+
+def feature_qids(body_id: str, slug: str) -> tuple[str, ...]:
+    return RING_FEATURE_PAGES.get(f"{body_id}/{slug}", ())
+
+
+@cache
+def _summaries(qid: str):
+    """Memoized per QID: the same feature is read once per language otherwise."""
+    return load_wikipedia_summaries_for_qid(qid)
+
+
+def load_ring_moon_ids(session: Session) -> dict[str, str]:
+    """Object id per moon named in the catalogue, keyed "{host}/{moon name}".
+
+    Scoped to the moons of the host's own system so the lookup cannot pick up
+    an asteroid that shares a moon's name (4450 Pan vs Saturn's Pan). Moons
+    hang off the system barycentre, not the planet, so the host's own
+    `parent_id` is what identifies its satellites.
+    """
+    wanted = {
+        (body, moon)
+        for body, catalog in RING_CATALOGS.items()
+        for feature in catalog.features
+        for moon in feature.moons
+    }
+    hosts = {
+        bary: body
+        for body, bary in session.query(Object.id, Object.parent_id)
+        .filter(Object.id.in_(sorted(RING_CATALOGS)))
+        .all()
+        if bary
+    }
+    rows = (
+        session.query(Object.id, Object.name, Object.parent_id)
+        .filter(Object.parent_id.in_(sorted(hosts)))
+        .filter(Object.name.in_(sorted({moon for _, moon in wanted})))
+        .all()
+    )
+    found = {
+        f"{hosts[parent]}/{name}": obj_id for obj_id, name, parent in rows if parent
+    }
+    if missing := sorted(f"{b}/{m}" for b, m in wanted if f"{b}/{m}" not in found):
+        logger.warning(
+            "Ring catalogue: %d associated moons unresolved, shipping names "
+            "without links: %s",
+            len(missing),
+            ", ".join(missing),
+        )
+    return found
+
+
+def _optical_depth(feature: CatalogFeature) -> dict | None:
+    tau = feature.optical_depth
+    if tau is None:
+        return None
+    block: dict = {"low": tau.low}
+    if tau.high is not None:
+        block["high"] = tau.high
+    if tau.approximate:
+        block["approximate"] = True
+    if tau.upper_limit:
+        block["upper_limit"] = True
+    return block
+
+
+def _feature_entry(
+    body_id: str, feature: CatalogFeature, moon_ids: dict[str, str]
+) -> dict:
+    entry: dict = {"name": feature.name, "kind": feature.kind}
+    if feature.parent:
+        entry["parent"] = feature.parent
+    if span := feature_span(feature):
+        entry["inner_radius_km"], entry["outer_radius_km"] = span
+    # Always present, derived from the boundaries where the source tabulates
+    # those instead: the panel places every feature on one radial axis.
+    entry["mid_radius_km"] = feature_mid(feature)
+    if (width := feature_width(feature)) is not None:
+        entry["width_km"] = width
+    if feature.radius_approximate:
+        entry["radius_approximate"] = True
+    if (tau := _optical_depth(feature)) is not None:
+        entry["optical_depth"] = tau
+    for field in ("thickness_km", "eccentricity", "inclination_deg"):
+        if (value := getattr(feature, field)) is not None:
+            entry[field] = value
+    if feature.designation:
+        entry["designation"] = feature.designation
+    if feature.particles:
+        entry["particles"] = feature.particles
+    if feature.moons:
+        entry["moons"] = [
+            {"name": moon, "id": moon_ids[key]}
+            if (key := f"{body_id}/{moon}") in moon_ids
+            else {"name": moon}
+            for moon in feature.moons
+        ]
+    if qids := feature_qids(body_id, feature.slug):
+        entry["wikidata_qid"] = qids[0]
+    if feature.description:
+        entry["note"] = feature.description
+    return entry
+
+
+def ring_features_block(
+    body_id: str, moon_ids: dict[str, str]
+) -> dict[str, dict] | None:
+    """The body's catalogue rows, keyed by slug so lookups match the localized
+    map, and emitted in the catalogue's radial order."""
+    catalog = RING_CATALOGS.get(body_id)
+    if catalog is None:
+        return None
+    return {f.slug: _feature_entry(body_id, f, moon_ids) for f in catalog.features}
+
+
+def ring_sources_block(body_id: str) -> list[dict] | None:
+    """The works the catalogue draws on, for the Rings tab's credit line.
+
+    Titles and links only — the per-source `contribution` is the level of
+    detail the credits page wants, not a footer under a chart.
+    """
+    catalog = RING_CATALOGS.get(body_id)
+    if catalog is None:
+        return None
+    return [
+        {"title": source.work, "url": source.url, "organisation": source.organisation}
+        for source in catalog.sources
+    ]
+
+
+def ring_hero_image(body_id: str) -> dict | None:
+    """The photograph that opens the Rings tab, or None for an unringed body.
+
+    Language-independent, so it rides the global block: the picture is of the
+    system itself and the credit under it is a name, not prose.
+    """
+    filename = RING_HERO_IMAGES.get(body_id)
+    if filename is None:
+        return None
+    entry = collect_named_image(filename)
+    if entry is None:
+        logger.warning(
+            "No hero image for %s: %s is missing, unservable or unbundled",
+            body_id,
+            filename,
+        )
+    return entry
+
+
+def ring_system_localized(
+    body_id: str, lang: str, wikidata_entities: WikidataEntityCache
+) -> dict | None:
+    """The "Rings of X" article for this locale — the panel's opening blurb.
+
+    Unlike the individual features, all four system articles exist in every
+    language we ship, so this is the one piece of ring prose a reader always
+    gets.
+    """
+    entry: dict = {}
+    for qid in RING_SYSTEM_PAGES.get(body_id, ()):
+        entity = wikidata_entities.get_referenced(qid)
+        if entity and (label := entity["labels"].get(lang)):
+            entry.setdefault("name", label)
+        if summary := _summaries(qid).get(lang):
+            if summary.extract:
+                entry.setdefault("extract", summary.extract)
+            if summary.url:
+                entry.setdefault("url", summary.url)
+    return entry or None
+
+
+def ring_feature_localized(
+    body_id: str, lang: str, wikidata_entities: WikidataEntityCache
+) -> dict[str, dict]:
+    """Localized names, Wikipedia extracts and article links, keyed by slug.
+
+    Returns only what this language actually has: a feature with no entity, or
+    an entity with no article in `lang`, contributes nothing and the panel
+    falls back to the global name and PDS note.
+    """
+    catalog = RING_CATALOGS.get(body_id)
+    if catalog is None:
+        return {}
+    out: dict[str, dict] = {}
+    for feature in catalog.features:
+        entry: dict = {}
+        for qid in feature_qids(body_id, feature.slug):
+            entity = wikidata_entities.get_referenced(qid)
+            # English keeps the catalogue name: the Wikidata English labels are
+            # translations of the French and Italian article titles, and would
+            # rename the IAU's "Huygens Gap" to "Huygens Division".
+            if lang != "en" and entity and (label := entity["labels"].get(lang)):
+                entry.setdefault("name", label)
+            if summary := _summaries(qid).get(lang):
+                if summary.extract:
+                    entry.setdefault("extract", summary.extract)
+                if summary.url:
+                    entry.setdefault("url", summary.url)
+        if entry:
+            out[feature.slug] = entry
+    return out

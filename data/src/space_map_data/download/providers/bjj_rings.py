@@ -16,7 +16,7 @@ attribution string.
 
 A sixth ``thickness`` channel is derived locally rather than downloaded: BJJ
 publishes no vertical extent, so it is rasterised from the NSSDCA per-region
-figures in constants/rings/bodies.py and credited separately in the yaml.
+figures in constants/rings/catalog.py and credited separately in the yaml.
 
 On-disk layout::
 
@@ -32,11 +32,8 @@ import httpx
 import yaml
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.constants.rings.bodies import (
-    NASA,
-    NASA_LICENSE,
-    SATURN_MEASURED_THICKNESS,
-)
+from space_map_data.constants.rings.attribution import NASA, NASA_LICENSE
+from space_map_data.constants.rings.catalog import SATURN_MEASURED_THICKNESS
 from space_map_data.download.downloader import DownloadError, Downloader
 from space_map_data.utils.paths import SOURCES_TEXTURES_DIR
 

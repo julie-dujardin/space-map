@@ -2,8 +2,9 @@
 
 Saturn's *main* rings are measured Cassini data (bjj_rings downloader); no
 published equivalent exists for the tenuous systems, so this generates the
-same five-channel 1×N bundle from ``constants/rings/bodies.py``: tabulated
-feature boundaries + normal optical depths → supersampled τ(r) → channels.
+same five-channel 1×N bundle from the ring catalogue
+(``constants/rings/catalog.py``): tabulated feature boundaries + normal
+optical depths → supersampled τ(r) → channels.
 That covers Jupiter, Uranus and Neptune whole, plus the Saturn bundles that
 fall outside the measured strip (its D ring and its outer tenuous rings).
 
@@ -31,7 +32,12 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from space_map_data.constants.rings.bodies import RING_SYSTEMS, RingSystem
+from space_map_data.constants.rings.catalog import (
+    RING_CATALOGS,
+    RenderedFeature,
+    RingBundle,
+    bundle_features,
+)
 from space_map_data.utils.paths import SOURCES_TEXTURES_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
@@ -58,7 +64,8 @@ PREVIEW_EQ_RADIUS_KM = {
     "Neptune": 24_766.0,
 }
 
-# --preview-bundle reads a downloaded bundle, whose yaml names only the body.
+# Planet display names for generated text and previews; the catalogue and
+# downloaded bundle yamls name only the NAIF body.
 PLANET_BY_BODY = {
     "naif-599": "Jupiter",
     "naif-699": "Saturn",
@@ -68,7 +75,7 @@ PLANET_BY_BODY = {
 
 
 def synthesise(
-    system: RingSystem,
+    bundle: RingBundle, features: tuple[RenderedFeature, ...]
 ) -> tuple[float, float, float, float, dict[str, np.ndarray]]:
     """Rasterise the feature table into the channel arrays.
 
@@ -82,9 +89,9 @@ def synthesise(
     thin main ring thin where the faint 8,800 km Thebe ring overlaps it,
     while pure-gossamer radii keep their full extent.
     """
-    inner = min(f.inner_km for f in system.features)
-    outer = max(f.outer_km for f in system.features)
-    n = system.sample_count
+    inner = min(f.inner_km for f in features)
+    outer = max(f.outer_km for f in features)
+    n = bundle.sample_count
     edges = np.linspace(inner, outer, n * SUPERSAMPLE + 1)
     r = ((edges[:-1] + edges[1:]) / 2.0).reshape(n, SUPERSAMPLE)
 
@@ -93,7 +100,7 @@ def synthesise(
     rgb_num = np.zeros((n, SUPERSAMPLE, 3))
     thickness_num = np.zeros_like(r)
 
-    for f in system.features:
+    for f in features:
         x = (r - f.inner_km) / (f.outer_km - f.inner_km)
         inside = (x >= 0.0) & (x <= 1.0)
         if f.profile == "flat":
@@ -108,7 +115,7 @@ def synthesise(
         tau += contrib
         for c, w in KIND_WEIGHTS[f.kind].items():
             tau_ch[c] += w * contrib
-        rgb_num += contrib[..., None] * np.asarray(f.tint or system.tint)
+        rgb_num += contrib[..., None] * np.asarray(f.tint or bundle.tint)
         if f.thickness_outer_km is None:
             thickness = f.thickness_km
         else:
@@ -130,11 +137,11 @@ def synthesise(
     # Opacity-weighted mean of the feature tints; gaps fall back to the system
     # tint (fully transparent there anyway).
     rgb = rgb_num.mean(axis=1) / np.maximum(tau_px, 1e-12)[:, None]
-    rgb[tau_px <= 0.0] = system.tint
+    rgb[tau_px <= 0.0] = bundle.tint
     channels["color"] = np.clip(rgb, 0.0, 1.0)
 
     thickness_scale_km = float(
-        max(max(f.thickness_km, f.thickness_outer_km or 0.0) for f in system.features)
+        max(max(f.thickness_km, f.thickness_outer_km or 0.0) for f in features)
     )
     if thickness_scale_km > 0.0:
         thickness_px = thickness_num.mean(axis=1) / np.maximum(tau_px, 1e-12)
@@ -144,10 +151,13 @@ def synthesise(
 
 
 def write_bundle(
-    system: RingSystem, out_root: Path
+    body: str,
+    bundle: RingBundle,
+    features: tuple[RenderedFeature, ...],
+    out_root: Path,
 ) -> tuple[float, float, float, dict[str, np.ndarray]]:
-    inner, outer, scale, thickness_scale_km, channels = synthesise(system)
-    out_dir = out_root / system.slug
+    inner, outer, scale, thickness_scale_km, channels = synthesise(bundle, features)
+    out_dir = out_root / bundle.slug
     out_dir.mkdir(parents=True, exist_ok=True)
 
     files: dict[str, str] = {}
@@ -156,10 +166,10 @@ def write_bundle(
         np.savetxt(out_dir / filename, arr, fmt="%.6f")
         files[name] = filename
 
-    planet = system.planet
+    planet = PLANET_BY_BODY[body]
     payload = {
-        "body": system.body,
-        "bundle": system.bundle,
+        "body": body,
+        "bundle": bundle.name,
         # One entry per work, each stating its own contribution — a bundle
         # mixes boundaries from one table with vertical extents from another.
         "sources": [
@@ -173,10 +183,10 @@ def write_bundle(
                 # from the tabulated numbers, not the source's own photometry.
                 "synthesised": True,
             }
-            for s in system.sources
+            for s in bundle.sources
         ],
         "description": (
-            f"Synthetic 1-D radial profiles of {planet}'s {system.covers}: "
+            f"Synthetic 1-D radial profiles of {planet}'s {bundle.covers}: "
             "the same five-channel bundle as the measured Saturn strips, "
             "generated from tabulated feature boundaries and normal optical "
             "depths."
@@ -184,7 +194,7 @@ def write_bundle(
         "generated_at": datetime.now(UTC).isoformat(),
         "inner_radius_km": float(inner),
         "outer_radius_km": float(outer),
-        "sample_count": system.sample_count,
+        "sample_count": bundle.sample_count,
         # Stored channel value × intensity_scale = physical value; the strips
         # only use the 8-bit range fully, they do not brighten anything.
         "intensity_scale": scale,
@@ -199,10 +209,10 @@ def write_bundle(
     logger.info(
         "wrote %s: %d samples over %.0f-%.0f km (%d features, scale %.3g)",
         out_dir,
-        system.sample_count,
+        bundle.sample_count,
         inner,
         outer,
-        len(system.features),
+        len(features),
         scale,
     )
     return inner, outer, scale, channels
@@ -295,10 +305,16 @@ def preview_bundle(bundle_dir: Path, preview_dir: Path) -> None:
 
 
 def main() -> None:
+    bundles = [
+        (catalog.body, bundle, bundle_features(catalog, bundle.name))
+        for catalog in RING_CATALOGS.values()
+        for bundle in catalog.bundles
+    ]
+
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out-root", type=Path, default=SOURCES_TEXTURES_DIR / "rings")
     ap.add_argument("--preview-dir", type=Path, default=None)
-    ap.add_argument("--only", choices=[s.slug for s in RING_SYSTEMS.values()])
+    ap.add_argument("--only", choices=[b.slug for _, b, _ in bundles])
     ap.add_argument(
         "--preview-bundle",
         type=Path,
@@ -312,15 +328,17 @@ def main() -> None:
         preview_bundle(args.preview_bundle, args.preview_dir)
         return
 
-    for system in RING_SYSTEMS.values():
-        if args.only and system.slug != args.only:
+    for body, bundle, features in bundles:
+        if args.only and bundle.slug != args.only:
             continue
-        inner, outer, scale, channels = write_bundle(system, args.out_root)
+        inner, outer, scale, channels = write_bundle(
+            body, bundle, features, args.out_root
+        )
         if args.preview_dir:
             render_previews(
-                system.slug,
-                system.planet,
-                system.sample_count,
+                bundle.slug,
+                PLANET_BY_BODY[body],
+                bundle.sample_count,
                 inner,
                 outer,
                 channels,

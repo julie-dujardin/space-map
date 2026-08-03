@@ -17,6 +17,8 @@ from space_map_data.constants.atmosphere.references import (
     ATMOSPHERE_FACT_SOURCES,
     ATMOSPHERE_REFERENCES,
 )
+from space_map_data.constants.rings.attribution import RingSource
+from space_map_data.constants.rings.catalog import RING_CATALOGS
 from space_map_data.constants.rings.references import RING_REFERENCES
 from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
 from space_map_data.export.systems import texture_attribution
@@ -213,6 +215,14 @@ _SYNTHESISED_NOTE = (
 )
 
 
+def _catalog_source(source: RingSource) -> dict:
+    """A catalogue citation in the shape the bundle metadata uses (`source`,
+    not `url`), so both feed one merge."""
+    row = source._asdict()
+    row["source"] = row.pop("url")
+    return row
+
+
 def _merge_ring_sources(body_id: str, name: str, metas: list[dict]) -> list[dict]:
     """Collapse a body's ring bundles into one credit row per cited work.
 
@@ -285,6 +295,7 @@ def write_credits(
     body_ids = (
         set(texture_metadata)
         | set(ring_metadata)
+        | set(RING_CATALOGS)
         | set(clouds_metadata)
         | set(night_metadata)
         | set(displacement_metadata)
@@ -317,7 +328,15 @@ def write_credits(
         textures_grouped.setdefault(sys_id, []).append(entry)
 
     rings_grouped: dict[str | None, list[dict]] = {}
-    for body_id, metas in ring_metadata.items():
+    # A body may appear here for its render bundles, its catalogue, or both:
+    # Saturn's Phoebe ring is catalogued and never drawn.
+    for body_id in sorted(set(ring_metadata) | set(RING_CATALOGS)):
+        metas = ring_metadata.get(body_id, [])
+        if catalog := RING_CATALOGS.get(body_id):
+            metas = [
+                *metas,
+                {"sources": [_catalog_source(s) for s in catalog.sources]},
+            ]
         obj = by_id.get(body_id)
         if obj is None:
             logger.warning(

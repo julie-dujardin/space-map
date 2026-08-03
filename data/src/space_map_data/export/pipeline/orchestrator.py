@@ -49,6 +49,7 @@ from space_map_data.export.objects.features import attach_notable_features
 from space_map_data.export.objects.moons import attach_notable_moons
 from space_map_data.export.objects.satellites import attach_featured_satellites
 from space_map_data.export.objects.interior import load_taxonomy
+from space_map_data.export.objects.rings import load_ring_moon_ids
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
     build_model_sources,
@@ -1005,6 +1006,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         nomenclature_body_ids=set(nomenclature_by_body.keys()),
         parent_names=moon_parent_names,
         taxonomy=load_taxonomy(session),
+        ring_moon_ids=load_ring_moon_ids(session),
     )
 
     write_systems_global(out_dir, gms, nut_prec_angles)
