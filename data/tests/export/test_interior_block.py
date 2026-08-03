@@ -60,6 +60,79 @@ class TestRollUp:
         assert result["sources"]
 
 
+class TestLayers:
+    """The stack the Structure tab's cross-section draws."""
+
+    @pytest.mark.parametrize("object_id", sorted(INTERIOR_FACTS))
+    def test_radii_descend(self, object_id: str):
+        """Layers ship outermost first and the disc is drawn by walking them
+        inwards; one out of order would nest a core outside its mantle."""
+        radii = [
+            layer["outer_radius_km"]
+            for layer in block(object_id)["layers"]
+            if "outer_radius_km" in layer
+        ]
+        assert radii == sorted(radii, reverse=True)
+
+    @pytest.mark.parametrize("object_id", sorted(INTERIOR_FACTS))
+    def test_every_layer_can_be_drawn(self, object_id: str):
+        """A layer with no outer radius has no band to occupy, and the ones
+        below it would silently slide outwards to fill the gap."""
+        for layer in block(object_id)["layers"]:
+            assert "outer_radius_km" in layer, layer["role"]
+
+    def test_a_layer_carries_its_own_composition(self):
+        """Europa's ocean is water where the body is mostly rock; the per-layer
+        bars are what make that visible."""
+        layers = {layer["role"]: layer for layer in block("naif-502")["layers"]}
+        assert [c["material"] for c in layers["ocean"]["composition"]] == ["water"]
+        assert [c["material"] for c in layers["core"]["composition"]] == ["metal"]
+
+    def test_published_widths_ride_along(self):
+        """Europa's core is anywhere from 6.8% to 11.9% of the moon, and a
+        single number would read as a measurement."""
+        core = next(
+            layer for layer in block("naif-502")["layers"] if layer["role"] == "core"
+        )
+        assert core["mass_fraction_range"] == [0.0681, 0.1185]
+        assert core["note"] == "core_size_disputed"
+
+    def test_a_diffuse_layer_says_so(self):
+        """Jupiter's core is heavy elements smeared through the envelope, so
+        its radius is where it fades out rather than where it ends."""
+        core = next(
+            layer for layer in block("naif-599")["layers"] if layer["role"] == "core"
+        )
+        assert core["diffuse"] is True
+        assert core["outer_radius_km"] == 35746.0
+
+    def test_chemistry_ships_where_there_is_any(self):
+        """Mars's crust has an oxide table behind it; most layers have only the
+        coarse material split."""
+        crust = next(
+            layer for layer in block("naif-499")["layers"] if layer["role"] == "crust"
+        )
+        assert crust["detail"]["unit"] == "oxide_weight"
+        species = [e["species"] for e in crust["detail"]["entries"]]
+        assert species[0] == "SiO2"
+
+    def test_a_massless_body_still_has_a_stack(self):
+        """The Sun has zone radii but no zone masses, and the cross-section is
+        the one thing it can still draw."""
+        layers = block("naif-10")["layers"]
+        assert [layer["role"] for layer in layers] == [
+            "convective_zone",
+            "radiative_zone",
+            "core",
+        ]
+        assert all("mass_fraction" not in layer for layer in layers)
+
+    def test_the_estimate_route_has_no_layers(self):
+        """A spectrum says nothing about how a body is arranged, and 150,000
+        asteroids take this route."""
+        assert "layers" not in block(EROS, EROS_TAXONOMY)
+
+
 class TestRoutes:
     def test_layer_model_beats_the_spectrum(self):
         """Ceres is a C-type and would get the carbonaceous-chondrite estimate,

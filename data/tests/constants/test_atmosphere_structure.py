@@ -20,10 +20,14 @@ BODY_IDS = sorted(ATMOSPHERE_STRUCTURE)
 
 def _source_keys(body: BodyStructure) -> set[str]:
     keys = {body.homopause_source} if body.homopause_source else set()
+    if body.scale_height_source:
+        keys.add(body.scale_height_source)
     for layer in body.layers:
         keys.add(layer.source)
         if layer.pressure_source:
             keys.add(layer.pressure_source)
+        if layer.altitude_source:
+            keys.add(layer.altitude_source)
         keys |= {s.source for s in layer.composition}
     return keys
 

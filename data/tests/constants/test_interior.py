@@ -9,6 +9,7 @@ from space_map_data.constants.interior.schema import (
     LAYER_ROLES,
     MATERIALS,
     NOTES,
+    STATES,
     STRUCTURES,
 )
 from space_map_data.constants.interior.taxonomy import (
@@ -59,6 +60,7 @@ class TestBodies:
         for layer in body.layers:
             assert layer.role in LAYER_ROLES
             assert layer.note is None or layer.note in NOTES
+            assert layer.state is None or layer.state in STATES
             assert sum(c.fraction for c in layer.composition) == pytest.approx(1.0)
             assert all(c.material in MATERIALS for c in layer.composition)
 

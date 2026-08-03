@@ -9,9 +9,17 @@ from space_map_data.constants.atmosphere.facts import (
     VOLUME_FRACTION,
     Pressure,
 )
+from space_map_data.constants.atmosphere.references import ATMOSPHERE_FACT_SOURCES
+from space_map_data.constants.atmosphere.structure import ATMOSPHERE_STRUCTURE
 from space_map_data.export.objects.atmosphere import atmosphere_block
 
 BODY_IDS = sorted(ATMOSPHERE_FACTS)
+
+# Too thin to draw to scale against the layers below — Earth's exosphere is
+# 100× its mesosphere and holds none of its mass. The cross-section caps these
+# to a fixed band and puts the real height in the label; the frontend keeps its
+# own copy of this list.
+_CAPPED = frozenset({"thermosphere", "exosphere", "corona"})
 
 
 class TestPayload:
@@ -43,6 +51,63 @@ class TestPayload:
         block = _block("naif-604")
         assert "composition" not in block
         assert block["type"] == "exosphere"
+
+
+class TestStructure:
+    """The vertical stack the Structure tab's cross-section draws."""
+
+    @pytest.mark.parametrize("object_id", sorted(ATMOSPHERE_STRUCTURE))
+    def test_structure_ships_where_it_exists(self, object_id: str):
+        """Every structured body has flat facts too, so none of these stacks
+        can be stranded behind an early return."""
+        assert "structure" in _block(object_id)
+
+    @pytest.mark.parametrize("object_id", sorted(ATMOSPHERE_STRUCTURE))
+    def test_layers_stack_upwards(self, object_id: str):
+        """A layer is drawn from the one below's top to its own, so an
+        out-of-order height would draw a stratosphere under its troposphere."""
+        structure = _block(object_id)["structure"]
+        tops = [layer["top_km"] for layer in structure["layers"] if "top_km" in layer]
+        assert tops == sorted(tops)
+
+    def test_the_cross_section_has_a_top_to_draw_to(self):
+        """The chart runs to scale up to the highest layer that is not one of
+        the tenuous outer ones, which are capped to a fixed band with their
+        real height in the label. Without that boundary there is no scale to
+        draw the rest against."""
+        for object_id, structure in (
+            (i, _block(i)["structure"]) for i in sorted(ATMOSPHERE_STRUCTURE)
+        ):
+            lower = [
+                layer for layer in structure["layers"] if layer["role"] not in _CAPPED
+            ]
+            if not lower:
+                # Callisto: an exosphere alone, described by how fast it thins.
+                assert "scale_height_km" in structure, object_id
+                continue
+            assert "top_km" in lower[-1], object_id
+
+    def test_a_layer_composition_is_not_renormalized(self):
+        """Titan's stratospheric methane is a mixing ratio against the whole
+        atmosphere; as a share of the species listed it would be 100%."""
+        layers = {
+            layer["role"]: layer for layer in _block("naif-606")["structure"]["layers"]
+        }
+        assert layers["stratosphere"]["species"] == [
+            {"formula": "CH4", "value": 0.0148}
+        ]
+
+    def test_structure_sources_join_the_block(self):
+        """Neptune's exobase height and the temperature defining it come from
+        different works, and both are on screen."""
+        urls = {s["url"] for s in _block("naif-899")["sources"]}
+        assert ATMOSPHERE_FACT_SOURCES["melin_2020"].url in urls
+        assert ATMOSPHERE_FACT_SOURCES["broadfoot_1989"].url in urls
+
+    def test_bodies_without_a_named_stack_ship_none(self):
+        """Most of the 24 are one pressure and a species list; only twelve have
+        layers anyone has named."""
+        assert "structure" not in _block("naif-501")  # Io
 
 
 class TestValues:

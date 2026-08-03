@@ -6,10 +6,12 @@ gets its meteorite analogue's bulk chemistry from `constants/interior/
 taxonomy.py`, and ships flagged as an estimate so the panel can say "estimated
 from its S-type spectrum" rather than "is".
 
-What ships is the whole-body roll-up — one share per material, summed over the
-layers — because that is what the single composition chart draws. The layers
-themselves stay in the constants until the per-layer view exists; putting them
-on every bundle now would cost bytes on 150,000 asteroids to draw nothing.
+Two shapes ship. The whole-body roll-up — one share per material, summed over
+the layers — is what the Overview's single composition chart draws, and it is
+all the estimate route can offer. The layer stack underneath it is what the
+Structure tab's cross-section draws, and only the ~30 bodies with a layer model
+carry it; the 150,000 asteroids on the estimate route have no layers to spend
+bytes on.
 
 The roll-up is a mass balance over layers, not an elemental one: water bound
 in a phyllosilicate counts as water, not as oxygen shared out among the rocks.
@@ -20,11 +22,14 @@ import logging
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.interior.schema import (
+    DETAIL_UNITS,
     LAYER_ROLES,
     MATERIALS,
     NOTES,
+    STATES,
     STRUCTURES,
     BodyInterior,
+    Layer,
 )
 from space_map_data.constants.interior.taxonomy import (
     MAHLKE_SCHEME,
@@ -120,27 +125,86 @@ def _from_layers(object_id: str, facts: BodyInterior) -> dict:
         composition = _shares(object_id, shares)
         block["composition"] = composition
 
-    block["sources"] = _sources(_layer_source_keys(facts, composition))
+    layers = [_layer(object_id, layer) for layer in facts.layers]
+    block["layers"] = layers
+    block["sources"] = _sources(_layer_source_keys(facts, composition, layers))
     return block
 
 
-def _layer_source_keys(facts: BodyInterior, composition: list[dict]) -> list[str]:
+def _layer(object_id: str, layer: Layer) -> dict:
+    """One layer of the cross-section.
+
+    Radii are the source's own R, not the body's exported mean radius — the
+    two disagree by a few km on Europa depending on the paper. The frontend
+    normalizes the disc to the outermost layer rather than to the body, so
+    the stack closes at the surface instead of leaving a gap.
+    """
+    out: dict = {"role": layer.role}
+    if layer.outer_radius_km is not None:
+        out["outer_radius_km"] = layer.outer_radius_km
+    if layer.mass_fraction is not None:
+        out["mass_fraction"] = _sig(layer.mass_fraction)
+    if layer.mass_fraction_range is not None:
+        out["mass_fraction_range"] = [_sig(v) for v in layer.mass_fraction_range]
+    if layer.state is not None:
+        out["state"] = layer.state
+    if layer.note is not None:
+        out["note"] = layer.note
+    if layer.derived:
+        out["derived"] = True
+    if layer.diffuse:
+        out["diffuse"] = True
+
+    composition = _shares(
+        object_id,
+        {c.material: c.fraction for c in layer.composition},
+        of=f"its {layer.role}",
+    )
+    # The published width rides alongside the value it brackets, so a modelled
+    # split never draws as sharply as a measured one.
+    ranges = {
+        c.material: c.fraction_range
+        for c in layer.composition
+        if c.fraction_range is not None
+    }
+    for entry in composition:
+        width = ranges.get(entry["material"])
+        if width is not None:
+            entry["share_range"] = [_sig(v) for v in width]
+    out["composition"] = composition
+
+    if layer.detail is not None:
+        out["detail"] = {
+            "unit": layer.detail.unit,
+            "entries": [
+                {"species": species, "fraction": _sig(fraction)}
+                for species, fraction in layer.detail.entries
+            ],
+        }
+    return out
+
+
+def _layer_source_keys(
+    facts: BodyInterior, composition: list[dict], layers: list[dict]
+) -> list[str]:
     """The works behind what the panel actually shows.
 
-    The structure line, then the layer masses the bar is summed from and the
-    chemistry of the materials that survived the sliver cut. A paper cited
-    only for Tethys's 0.1% of rock is not credited under a bar that never
-    drew it.
+    The structure line, then every layer — the cross-section draws each one's
+    radius whatever its chemistry — then the chemistry of the materials that
+    survived a sliver cut *somewhere*. A material can miss the whole-body bar
+    and still fill its own layer, which is the case a sulphur-bearing core a
+    percent of the body makes: 20% of the core, 0.2% of the planet.
     """
     keys: list[str] = []
     if facts.structure_source is not None:
         keys.append(facts.structure_source)
-    if not composition:
-        return keys
     shown = {c["material"] for c in composition}
-    for layer in facts.layers:
+    for layer, drawn in zip(facts.layers, layers):
         keys.append(layer.source)
-        keys.extend(c.source for c in layer.composition if c.material in shown)
+        in_layer = shown | {c["material"] for c in drawn["composition"]}
+        keys.extend(c.source for c in layer.composition if c.material in in_layer)
+        if layer.detail is not None:
+            keys.append(layer.detail.source)
     return keys
 
 
@@ -200,16 +264,19 @@ def _class_credits(scheme: str | None, from_albedo_split: bool) -> list[str]:
     return credits
 
 
-def _shares(object_id: str, shares: dict[str, float]) -> list[dict]:
+def _shares(
+    object_id: str, shares: dict[str, float], of: str = "the body"
+) -> list[dict]:
     """Largest first, slivers dropped, renormalized over what is left."""
     kept = {m: v for m, v in shares.items() if v >= _MIN_SHARE}
     dropped = sorted(set(shares) - set(kept))
     if dropped:
         logger.info(
-            "%s: dropping %s below %.1f%% of the body",
+            "%s: dropping %s below %.1f%% of %s",
             object_id,
             ", ".join(dropped),
             _MIN_SHARE * 100,
+            of,
         )
     total = sum(kept.values())
     return [
@@ -230,6 +297,10 @@ def _validate(object_id: str, facts: BodyInterior) -> None:
             raise ValueError(f"{object_id}: unknown layer role {layer.role}")
         if layer.note is not None and layer.note not in NOTES:
             raise ValueError(f"{object_id}: unknown note {layer.note}")
+        if layer.state is not None and layer.state not in STATES:
+            raise ValueError(f"{object_id}: unknown state {layer.state}")
+        if layer.detail is not None and layer.detail.unit not in DETAIL_UNITS:
+            raise ValueError(f"{object_id}: unknown detail unit {layer.detail.unit}")
         for component in layer.composition:
             if component.material not in MATERIALS:
                 raise ValueError(f"{object_id}: unknown material {component.material}")

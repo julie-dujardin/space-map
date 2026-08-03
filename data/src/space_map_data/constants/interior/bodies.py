@@ -58,6 +58,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="genova_2019",
                 outer_radius_km=2439.7,
                 derived=True,
+                state="solid",
             ),
             Layer(
                 role="mantle",
@@ -67,6 +68,24 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=2404.7,
                 derived=True,
                 note="from_moment_of_inertia",
+                # Reconstructed from MESSENGER's northern-plains lavas by
+                # putting the melt back together with the enstatite and
+                # forsterite left behind. FeO of 0.02 wt% is the number worth
+                # noticing: Mercury's rock is iron-free to a part in a
+                # thousand, because Mercury assembled reduced enough that
+                # essentially every atom of iron went to the core.
+                detail=Detail(
+                    unit=OXIDE_WEIGHT,
+                    entries=(
+                        ("SiO2", 0.5367),
+                        ("MgO", 0.3689),
+                        ("Al2O3", 0.0457),
+                        ("CaO", 0.0226),
+                        ("TiO2", 0.0024),
+                    ),
+                    source="nittler_2018",
+                ),
+                state="solid",
             ),
             # Fe-S-Si, with a solid FeS layer possibly floating at its top and
             # a solid inner core below — none of which is resolved well enough
@@ -78,6 +97,49 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="hauck_2013",
                 outer_radius_km=2020.0,
                 derived=True,
+                state="liquid",
+            ),
+        ),
+    ),
+    # Venus, the last terrestrial planet to get a measured moment of inertia:
+    # C/MR² = 0.337 ± 0.024, from fifteen years of radar speckle tracking the
+    # precession of its spin axis. The paper closes its own two-layer model by
+    # borrowing the one number the tidal models agree on — every Dumoulin
+    # interior within the plausible C/MR² range has a core density within 1%
+    # of 10358 kg/m³ — and solving for the rest against ρ̄ = 5242.8:
+    #   core   3508 km (0.580 R) at 10358 → 0.385
+    #   mantle the rest at 4006           → 0.615
+    # Almost exactly Earth's core radius, in a planet 5% smaller.
+    #
+    # The ±0.024 on C/MR² is ±500 km on that radius, which is 0.24 to 0.57 of
+    # the planet in mass — so "about a third metal" is the whole claim, and
+    # the crust (a few tenths of a percent, and unmeasured) is folded into the
+    # mantle. Whether any of the core is solid is likewise open: the tidal
+    # Love number allows a fully solid one once the mantle's anelasticity is
+    # accounted for.
+    "naif-299": BodyInterior(
+        structure="differentiated",
+        structure_source="margot_2021",
+        layers=(
+            Layer(
+                role="mantle",
+                mass_fraction=0.615,
+                composition=(Component(SILICATE, 1.0, "dumoulin_2017"),),
+                source="margot_2021",
+                outer_radius_km=6051.8,
+                derived=True,
+                note="from_moment_of_inertia",
+                state="solid",
+            ),
+            Layer(
+                role="core",
+                mass_fraction=0.385,
+                mass_fraction_range=(0.243, 0.574),
+                composition=(Component(METAL, 1.0, "dumoulin_2017"),),
+                source="margot_2021",
+                outer_radius_km=3508.0,
+                derived=True,
+                note="core_size_disputed",
             ),
         ),
     ),
@@ -90,14 +152,42 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
         structure_source="dziewonski_1981",
         layers=(
             Layer(
+                role="crust",
+                mass_fraction=0.0035,
+                composition=(Component(SILICATE, 1.0, "taylor_mclennan_2009"),),
+                source="taylor_mclennan_2009",
+                outer_radius_km=6371.0,
+                note="continental_crust_only",
+                # Table 11.3's bulk continental crust, and with it that
+                # chapter's 41 km average thickness and 0.35% of Earth's mass.
+                # The oceanic crust is a fifth of the volume and none of these
+                # numbers; a global mean would have to blend the two, and the
+                # book gives no oceanic density to blend with.
+                detail=Detail(
+                    unit=OXIDE_WEIGHT,
+                    entries=(
+                        ("SiO2", 0.574),
+                        ("Al2O3", 0.159),
+                        ("FeO", 0.0912),
+                        ("CaO", 0.0741),
+                        ("MgO", 0.0531),
+                        ("Na2O", 0.0311),
+                        ("K2O", 0.0132),
+                        ("TiO2", 0.0090),
+                    ),
+                    source="taylor_mclennan_2009",
+                ),
+                state="solid",
+            ),
+            Layer(
                 role="mantle",
-                mass_fraction=0.6768,
+                mass_fraction=0.6733,
                 composition=(Component(SILICATE, 1.0, "mcdonough_1995"),),
                 source="mcdonough_2003",
-                outer_radius_km=6371.0,
-                # Bulk silicate Earth, the pyrolite model. Crust is folded in:
-                # at 0.4% of the planet it is a rounding error on this bar,
-                # and separating it would need a second source.
+                outer_radius_km=6330.0,
+                # Bulk silicate Earth, the pyrolite model, which is mantle plus
+                # crust. The crust it includes is half a percent of that mass,
+                # so it moves no digit here.
                 detail=Detail(
                     unit=OXIDE_WEIGHT,
                     entries=(
@@ -109,6 +199,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     ),
                     source="mcdonough_1995",
                 ),
+                state="solid",
             ),
             Layer(
                 role="outer_core",
@@ -130,6 +221,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     ),
                     source="mcdonough_2003",
                 ),
+                state="liquid",
             ),
             Layer(
                 role="inner_core",
@@ -137,6 +229,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 composition=(Component(METAL, 1.0, "mcdonough_2003"),),
                 source="mcdonough_2003",
                 outer_radius_km=1221.5,
+                state="solid",
             ),
         ),
     ),
@@ -161,6 +254,23 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="knapmeyer_endrun_2021",
                 outer_radius_km=3389.5,
                 derived=True,
+                # Basalt, and not much else: the whole crust averages close to
+                # a single tholeiitic lava. Assembled from rover and orbiter
+                # measurements rather than from one instrument — major elements
+                # off S- and Cl-free soil and dust corrected for a meteoritic
+                # component, cross-checked against Odyssey's gamma-ray maps.
+                detail=Detail(
+                    unit=OXIDE_WEIGHT,
+                    entries=(
+                        ("SiO2", 0.493),
+                        ("FeO", 0.182),
+                        ("Al2O3", 0.105),
+                        ("MgO", 0.0906),
+                        ("CaO", 0.0692),
+                    ),
+                    source="taylor_mclennan_2009",
+                ),
+                state="solid",
             ),
             Layer(
                 role="mantle",
@@ -172,6 +282,21 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 # One rocky layer, not Earth's two: the core is large enough
                 # that Mars never had room for a bridgmanite lower mantle.
                 note="from_moment_of_inertia",
+                # Bulk silicate Mars, and the same composition InSight's own
+                # mantle inversion was run on. Twice Earth's FeO at the same
+                # MgO is the difference between the two planets' rock.
+                detail=Detail(
+                    unit=OXIDE_WEIGHT,
+                    entries=(
+                        ("SiO2", 0.437),
+                        ("MgO", 0.305),
+                        ("FeO", 0.181),
+                        ("Al2O3", 0.0304),
+                        ("CaO", 0.0243),
+                    ),
+                    source="taylor_2013",
+                ),
+                state="solid",
             ),
             Layer(
                 role="core",
@@ -180,6 +305,19 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="stahler_2021",
                 outer_radius_km=1830.0,
                 derived=True,
+                # A fifth of the core by weight is sulphur — five times
+                # Earth's light-element budget, and why Mars can run a core
+                # this large at a mean density under 6.3 g/cm³. The figure is
+                # geochemical, from a bulk sulphur inventory rather than from
+                # the seismology, and if anything reads low against InSight's
+                # core, which came out larger and lighter than the 1680 km the
+                # geophysical model of the same era assumed.
+                detail=Detail(
+                    unit=ELEMENT_WEIGHT,
+                    entries=(("Fe-Ni", 0.786), ("S", 0.214)),
+                    source="taylor_2013",
+                ),
+                state="liquid",
             ),
         ),
     ),
@@ -208,6 +346,22 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="wieczorek_2013",
                 outer_radius_km=1737.4,
                 derived=True,
+                # 28% alumina, against 6% for the whole Moon: the highland
+                # crust is plagioclase feldspar that floated to the top of a
+                # magma ocean, which is why it is bright and why it is the
+                # oldest surface anyone has walked on.
+                detail=Detail(
+                    unit=OXIDE_WEIGHT,
+                    entries=(
+                        ("SiO2", 0.460),
+                        ("Al2O3", 0.280),
+                        ("CaO", 0.160),
+                        ("FeO", 0.045),
+                        ("MgO", 0.045),
+                    ),
+                    source="taylor_mclennan_2009",
+                ),
+                state="solid",
             ),
             Layer(
                 role="mantle",
@@ -216,6 +370,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="garcia_2011",
                 outer_radius_km=1698.9,
                 derived=True,
+                state="solid",
             ),
             Layer(
                 role="outer_core",
@@ -224,6 +379,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="weber_2011",
                 outer_radius_km=330.0,
                 derived=True,
+                state="liquid",
             ),
             Layer(
                 role="inner_core",
@@ -232,6 +388,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="weber_2011",
                 outer_radius_km=240.0,
                 derived=True,
+                state="solid",
             ),
         ),
     ),
@@ -259,6 +416,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="iess_2014",
                 outer_radius_km=252.1,
                 derived=True,
+                state="solid",
             ),
             Layer(
                 role="ocean",
@@ -267,6 +425,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="iess_2014",
                 outer_radius_km=222.1,
                 derived=True,
+                state="liquid",
             ),
             Layer(
                 role="core",
@@ -277,6 +436,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=191.0,
                 derived=True,
                 note="from_moment_of_inertia",
+                state="solid",
             ),
         ),
     ),
@@ -302,6 +462,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=1821.6,
                 derived=True,
                 note="from_moment_of_inertia",
+                state="solid",
             ),
             Layer(
                 role="core",
@@ -312,87 +473,142 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=725.0,
                 derived=True,
                 note="core_size_disputed",
+                state="liquid",
             ),
         ),
     ),
-    # Europa. Galileo pins C/MR² = 0.346, which with the mean density fixes how
-    # much of Europa is water and nothing else: Hussmann's two-layer fit — a
-    # 160 km H₂O shell at 920 kg/m³ over a 1405 km interior at 3780 — reproduces
-    # that moment of inertia exactly, and gives
-    #   shell (4/3)π(1565³ - 1405³) km³ = 4.438e18 m³ × 920 = 4.08e21 kg → 0.085
-    # Anderson argues the interior is differentiated further, into a rock mantle
-    # and a metallic core, because a well-mixed rock-metal Europa would have to
-    # be 12% richer in iron than Io. But the gravity cannot size that core, and
-    # the 3780 kg/m³ the moment of inertia demands is already denser than
-    # silicate alone — so the metal is inside this layer rather than beside it.
+    # Europa, four layers from two measurements and two assumptions. The
+    # reanalysis of Galileo's tracking raises C/MR² to 0.3547 ± 0.0024, which
+    # with R = 1560.8 km and ρ̄ = 3013 kg/m³ is again two constraints; fixing
+    # the ice thickness at Howell's 24.3 km and taking Vance's densities (ice
+    # 925, ocean 1030, rock 3300, fcc iron 8000) closes the system, and solving
+    # mass balance together with C/MR² = 0.4·Σρᵢ(fᵢ⁵−fᵢ₋₁⁵)/ρ̄ gives
+    #   ice    1560.8 → 1536.5 km   0.0141
+    #   ocean  1536.5 → 1462.4 km   0.0450
+    #   mantle 1462.4 →  460.3 km   0.8728
+    #   core          →  460.3 km   0.0681
+    # Run against Vance's own inputs instead (R 1565, ρ̄ 2989, C/MR² 0.346) the
+    # same solver returns 1449.7 and 507.8 km where his full equation-of-state
+    # model returns 1447 and 521 — close enough that the uniform-shell
+    # shortcut is not what limits this.
+    #
+    # 98 km of water is thin against the 135-185 km usually quoted, and that is
+    # the iron core doing it: Gomez Casajus notes that adding one pulls the H₂O
+    # thickness down by several tens of kilometres from their own core-free
+    # 138.7 km, because a dense centre already supplies the concentration the
+    # moment of inertia is asking for.
+    #
+    # Gravity sees none of the boundaries inside the water — ice and ocean are
+    # within 10% of each other in density — so the ice shell is a thermal
+    # result rather than a measured one. Howell propagates twenty parameters
+    # through a steady-state heat balance to a distribution rather than a
+    # number: 24.3 km is its mode, the +22.8/−1.5 asymmetry is real, and the
+    # tail says a shell under 10 km is the unlikely case, not the default one.
+    # The core's size rides entirely on what it is made of: 460 km as pure
+    # iron, 641 km at the Fe-FeS eutectic.
     "naif-502": BodyInterior(
         structure="differentiated",
-        structure_source="anderson_1998",
+        structure_source="gomez_casajus_2021",
         note="subsurface_ocean",
         layers=(
-            # Ice or ocean: their densities are too close for gravity to tell
-            # apart, so this is one layer of water in whatever phase.
             Layer(
                 role="ice_shell",
-                mass_fraction=0.085,
-                composition=(Component(WATER, 1.0, "anderson_1998"),),
-                source="hussmann_2006",
-                outer_radius_km=1565.0,
+                mass_fraction=0.0141,
+                mass_fraction_range=(0.0133, 0.0270),
+                composition=(Component(WATER, 1.0, "vance_2018"),),
+                source="howell_2021",
+                outer_radius_km=1560.8,
                 derived=True,
+                note="shell_thickness_modelled",
+                state="solid",
             ),
             Layer(
-                role="core",
-                mass_fraction=0.915,
-                composition=(Component(SILICATE, 1.0, "anderson_1998"),),
-                source="hussmann_2006",
-                outer_radius_km=1405.0,
+                role="ocean",
+                mass_fraction=0.0450,
+                mass_fraction_range=(0.0299, 0.0460),
+                composition=(Component(WATER, 1.0, "vance_2018"),),
+                source="gomez_casajus_2021",
+                outer_radius_km=1536.5,
                 derived=True,
-                note="core_size_disputed",
-            ),
-        ),
-    ),
-    # Ganymede, the most centrally condensed solid body in the Solar System:
-    # C/MR² = 0.3105 against 0.334 for Earth. Three layers, four unknowns and
-    # two constraints again, so the paper reports a family — an Fe-FeS core of
-    # 0.2-0.5 R with 2-33% of the mass, ice at 1000-1350 kg/m³, and the ice-rock
-    # interface between 0.53 and 0.73 R. Fixing the two densities the paper
-    # calls most reasonable (1100 for the ice, 3300 for the silicates alone)
-    # leaves exactly one member of that family, and it is the one that ships:
-    #   core   770 km (0.29 R) at 5150 → 0.067
-    #   mantle out to 1872 km (0.71 R) at 3300 → 0.569
-    #   ice    the outer 762 km at 1100 → 0.364
-    # It reproduces ρ̄ = 1936 kg/m³ and C/MR² = 0.3105 to five figures and lands
-    # inside every range the paper quotes, including its own "~800 km" ice shell.
-    "naif-503": BodyInterior(
-        structure="differentiated",
-        structure_source="anderson_1996",
-        layers=(
-            Layer(
-                role="ice_shell",
-                mass_fraction=0.364,
-                composition=(Component(WATER, 1.0, "anderson_1996"),),
-                source="anderson_1996",
-                outer_radius_km=2634.0,
-                derived=True,
+                state="liquid",
             ),
             Layer(
                 role="mantle",
-                mass_fraction=0.569,
-                composition=(Component(SILICATE, 1.0, "anderson_1996"),),
-                source="anderson_1996",
-                outer_radius_km=1872.0,
+                mass_fraction=0.8728,
+                composition=(Component(SILICATE, 1.0, "anderson_1998"),),
+                source="gomez_casajus_2021",
+                outer_radius_km=1462.4,
                 derived=True,
                 note="from_moment_of_inertia",
+                state="solid",
             ),
             Layer(
                 role="core",
-                mass_fraction=0.067,
-                mass_fraction_range=(0.02, 0.33),
-                composition=(Component(METAL, 1.0, "anderson_1996"),),
-                source="anderson_1996",
-                outer_radius_km=770.0,
+                mass_fraction=0.0681,
+                mass_fraction_range=(0.0681, 0.1185),
+                composition=(Component(METAL, 1.0, "vance_2018"),),
+                source="gomez_casajus_2021",
+                outer_radius_km=460.3,
                 derived=True,
                 note="core_size_disputed",
+            ),
+        ),
+    ),
+    # Ganymede, and a rare case of a newer measurement knowing *less*. Juno's
+    # flyby, solved without assuming the degree-2 field is hydrostatic, raises
+    # C/MR² from Galileo's 0.3105 ± 0.0028 to 0.3159 ± 0.0052 — a body slightly
+    # less concentrated towards its centre than the Galileo analysis implied,
+    # and with error bars twice as wide, because dropping the hydrostatic
+    # assumption is what those bars were hiding.
+    #
+    # Same three-layer construction as before — Fe-FeS core at 5150 kg/m³, a
+    # silicate mantle at 3300, an ice-water layer the paper leaves free between
+    # 1060 and 1370 — and again two constraints for three unknowns, so it is a
+    # family, not an answer. Solving mass balance with C/MR² across that ice
+    # range walks the core from nothing to 0.527 R:
+    #   ice 1060 → no core at all
+    #   ice 1215 → core 835 km (0.317 R) → 0.0849, and this is what ships
+    #   ice 1370 → core 1388 km (0.527 R) → 0.389, and no mantle left
+    # The two ends reproduce the paper's own limits — it puts the core "up to
+    # ~50% of the total radius, representing up to 33% of Ganymede's mass", and
+    # says it cannot exceed that "without the complete disappearance of the
+    # mantle". The midpoint of the ice range is the shipped member because the
+    # paper prefers none.
+    "naif-503": BodyInterior(
+        structure="differentiated",
+        structure_source="gomez_casajus_2022",
+        layers=(
+            Layer(
+                role="ice_shell",
+                mass_fraction=0.4272,
+                mass_fraction_range=(0.3324, 0.5979),
+                composition=(Component(WATER, 1.0, "anderson_1996"),),
+                source="gomez_casajus_2022",
+                outer_radius_km=2632.7,
+                derived=True,
+                state="solid",
+            ),
+            Layer(
+                role="mantle",
+                mass_fraction=0.4879,
+                mass_fraction_range=(0.0131, 0.6680),
+                composition=(Component(SILICATE, 1.0, "anderson_1996"),),
+                source="gomez_casajus_2022",
+                outer_radius_km=1798.0,
+                derived=True,
+                note="from_moment_of_inertia",
+                state="solid",
+            ),
+            Layer(
+                role="core",
+                mass_fraction=0.0849,
+                mass_fraction_range=(0.0, 0.389),
+                composition=(Component(METAL, 1.0, "anderson_1996"),),
+                source="gomez_casajus_2022",
+                outer_radius_km=835.3,
+                derived=True,
+                note="core_size_disputed",
+                state="liquid",
             ),
         ),
     ),
@@ -437,18 +653,23 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     # above what a solid body of Titan's size could manage, so some global
     # layer inside it deforms like a fluid on a 16-day timescale — an ocean.
     # The end-of-mission gravity solution adds the piece k₂ alone could not
-    # give: J₂ and C₂₂ put the moment of inertia at 0.341, which with R = 2575
-    # km and ρ̄ = 1881 kg/m³ closes a two-layer model. Solving mass and moment
-    # of inertia together for an H₂O layer at 1000 kg/m³:
-    #   881 f² = 0.341ρ̄/0.4 - 1000 → f = 0.828, so the core is 2131 km at
-    #   2554 kg/m³ under 444 km of water → core 0.770, hydrosphere 0.230
-    # The paper quotes the same model as "~400 km" thick over a core "around
-    # 2500 kg/m³"; the numbers here are the exact solution of it.
+    # give: J₂ and C₂₂ put the moment of inertia at 0.341, and a re-analysis
+    # of the same Cassini tracking searches the four-layer space directly,
+    # coming out with a core of 2110 ± 76 km at 2528 ± 175 kg/m³ — quoted,
+    # rather than solved for here. Its mass follows:
+    #   (4/3)π(2110 km)³ × 2528 = 9.947e22 kg / 1.3452e23 → 0.7395
+    # and the 465 km of H₂O left over has to average 1090 kg/m³ to make up
+    # Titan's mass. That is the check worth having: the same paper derives an
+    # ocean density of 1091 ± 107 kg/m³ from the Love number, by a route that
+    # never touches this arithmetic.
     #
-    # One H₂O layer, not three: ice I, the ocean and the high-pressure ice
-    # below it are close enough in density that gravity never separates them.
-    # And 2554 kg/m³ is far too light for dry rock, so the core is hydrated or
-    # porous or both — the same story as Enceladus, one order of magnitude up.
+    # Still one H₂O layer, not three. Ice I, the ocean and the high-pressure
+    # ice below it are close enough in density that gravity never separates
+    # them, and the paper says so outright — it could not pin the ocean or the
+    # crust thickness, and its solutions pile up against the 50 km floor it
+    # imposed rather than converging on one. And 2528 kg/m³ is far too light
+    # for dry rock, so the core is hydrated or porous or both — the same story
+    # as Enceladus, one order of magnitude up.
     "naif-606": BodyInterior(
         structure="differentiated",
         structure_source="iess_2012",
@@ -456,20 +677,25 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
         layers=(
             Layer(
                 role="ice_shell",
-                mass_fraction=0.230,
+                mass_fraction=0.2605,
+                mass_fraction_range=(0.2346, 0.2917),
+                # That the outer layer is water rather than light rock is the
+                # moment of inertia's statement, not this paper's.
                 composition=(Component(WATER, 1.0, "durante_2019"),),
-                source="durante_2019",
-                outer_radius_km=2575.0,
+                source="goossens_2024",
+                outer_radius_km=2574.73,
                 derived=True,
             ),
             Layer(
                 role="core",
-                mass_fraction=0.770,
-                composition=(Component(SILICATE, 1.0, "durante_2019"),),
-                source="durante_2019",
-                outer_radius_km=2131.0,
+                mass_fraction=0.7395,
+                mass_fraction_range=(0.7083, 0.7654),
+                composition=(Component(SILICATE, 1.0, "goossens_2024"),),
+                source="goossens_2024",
+                outer_radius_km=2110.0,
                 derived=True,
                 note="hydrated_rock",
+                state="solid",
             ),
         ),
     ),
@@ -613,6 +839,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="helled_2011",
                 outer_radius_km=25362.0,
                 diffuse=True,
+                state="fluid",
             ),
         ),
     ),
@@ -635,22 +862,33 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="helled_2011",
                 outer_radius_km=24622.0,
                 diffuse=True,
+                state="fluid",
             ),
         ),
     ),
-    # The Sun. Two zones with measured compositions and no masses: this source
-    # is a solar model paper, and it tabulates abundances and the depth of the
-    # convective zone but not how the Sun's mass divides between them, so the
-    # layers here carry geometry and chemistry only.
+    # The Sun. Three zones with compositions and no masses: the solar model
+    # paper tabulates abundances and the depth of the convective zone but not
+    # how the Sun's mass divides between them, so these layers carry geometry
+    # and chemistry only.
     #
-    # The interesting number is what 4.6 Gyr of fusion has done. The
-    # convective zone is stirred well enough that its surface abundances are
-    # the whole zone's — hydrogen 0.740, helium 0.243 — while at the centre
-    # helium has gone from the 0.2725 the Sun formed with to 0.634, more than
-    # doubling. Between them lies the radiative zone, which is not a layer
-    # here because it is the gradient between the two rather than a third
-    # composition; helioseismology puts its top at 0.713 ± 0.001 R☉ against
-    # this model's 0.7138, one of the better agreements in the subject.
+    # Boundaries, both at fractions of R☉ = 695 700 km. The convective zone's
+    # base is the model's 0.7138 — helioseismology's own 0.713 ± 0.001 agrees,
+    # one of the better agreements in the subject. The core's top is 0.2, which
+    # is the definition the gravity-mode work uses when it says g modes are the
+    # only thing that probes down there; the same paper is why the core is
+    # separated from the radiative zone at all, having found it spinning
+    # several times faster than the zone around it.
+    #
+    # The interesting number is what 4.6 Gyr of fusion has done. The convective
+    # zone is stirred well enough that its surface abundances are the whole
+    # zone's — hydrogen 0.740, helium 0.243 — while at the centre helium has
+    # gone from the 0.2725 the Sun formed with to 0.634, more than doubling.
+    # Two caveats to read the bars with: the core's numbers are the centre's,
+    # and helium falls outwards from there, so they are the extreme of that
+    # layer rather than its average. And the radiative zone carries the Sun's
+    # zero-age composition, because it is the part where nothing has burned and
+    # nothing has mixed — a statement about what the layer *is*, not a fourth
+    # column in the model's table.
     "naif-10": BodyInterior(
         structure="fluid",
         structure_source="bahcall_2005",
@@ -665,6 +903,20 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 ),
                 source="bahcall_2005",
                 outer_radius_km=695700.0,
+                state="plasma",
+            ),
+            Layer(
+                role="radiative_zone",
+                mass_fraction=None,
+                composition=(
+                    Component(HYDROGEN, 0.7087, "bahcall_2005"),
+                    Component(HELIUM, 0.2725, "bahcall_2005"),
+                    Component(HEAVY_ELEMENTS, 0.0188, "bahcall_2005"),
+                ),
+                source="bahcall_2005",
+                outer_radius_km=496590.0,
+                derived=True,
+                state="plasma",
             ),
             Layer(
                 role="core",
@@ -674,7 +926,10 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     Component(HYDROGEN, 0.346, "bahcall_2005"),
                     Component(HEAVY_ELEMENTS, 0.020, "bahcall_2005"),
                 ),
-                source="bahcall_2005",
+                source="garcia_2007",
+                outer_radius_km=139140.0,
+                derived=True,
+                state="plasma",
             ),
         ),
     ),
@@ -780,13 +1035,20 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 ),
                 source="wahl_2017",
                 outer_radius_km=71492.0,
+                state="fluid",
             ),
+            # Half the planet's radius: 0.50 r_J is what the dilute-core models
+            # need to fit Juno's J₄, against 0.15 for the compact core they
+            # replace. `diffuse` because that is where the enrichment fades,
+            # not a surface.
             Layer(
                 role="core",
                 mass_fraction=0.050,
                 mass_fraction_range=(0.022, 0.079),
                 composition=(Component(HEAVY_ELEMENTS, 1.0, "wahl_2017"),),
                 source="wahl_2017",
+                outer_radius_km=35746.0,
+                derived=True,
                 diffuse=True,
             ),
         ),
@@ -817,6 +1079,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 ),
                 source="iess_2019",
                 outer_radius_km=58232.0,
+                state="fluid",
             ),
             Layer(
                 role="core",

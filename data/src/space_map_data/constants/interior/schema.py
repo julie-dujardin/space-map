@@ -96,6 +96,28 @@ NOTES = frozenset(
         "hydrated_rock",
         "no_solid_surface",
         "taxonomy_estimate",
+        # The boundary is a thermal model's, not a measurement's: ice and
+        # liquid water differ by too little in density for gravity to place
+        # the base of an ice shell.
+        "shell_thickness_modelled",
+        # Earth's crust as its continental crust: the thickness, mass and
+        # chemistry of the continents, with the thinner oceanic crust left out
+        # rather than averaged in.
+        "continental_crust_only",
+    }
+)
+
+# `Layer.state` values. What phase the layer is in, which is the other half
+# of what a reader wants under a layer's name: "liquid iron alloy" says more
+# than "core". Left unset wherever a source stops short of it — Venus's core
+# is the case in point, where the tides allow a solid one and nobody knows.
+STATES = frozenset(
+    {
+        "solid",
+        "liquid",
+        "partial_melt",  # solid with melt through it, not a magma ocean
+        "fluid",  # no phase boundary to cross; the giants' envelopes
+        "plasma",
     }
 )
 
@@ -140,6 +162,9 @@ class Layer(NamedTuple):
     source: str  # backs mass_fraction and the layer's existence
     outer_radius_km: float | None = None
     detail: Detail | None = None
+    # One of STATES. Carries no separate citation: every value here is stated
+    # by the work already backing the layer.
+    state: str | None = None
     note: str | None = None
     # True where the mass fraction is arithmetic on the source's radii and
     # densities rather than a number the source quotes. Ships through to the

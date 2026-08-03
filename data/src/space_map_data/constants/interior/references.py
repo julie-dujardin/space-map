@@ -87,6 +87,66 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "https://doi.org/10.1126/science.281.5385.2019",
         "Europa moment of inertia and water-shell thickness from Galileo",
     ),
+    "garcia_2007": InteriorReference(
+        "García et al. 2007 (Science 316)",
+        "https://doi.org/10.1126/science.1140598",
+        "The solar core as the region below 0.2 R☉, and its faster rotation",
+    ),
+    "howell_2021": InteriorReference(
+        "Howell 2021 (Planetary Science Journal 2)",
+        "https://doi.org/10.3847/PSJ/abfe10",
+        "Europa ice-shell thickness distribution from a steady-state heat balance",
+    ),
+    "taylor_mclennan_2009": InteriorReference(
+        "Taylor & McLennan 2009 (Planetary Crusts, Cambridge)",
+        "https://doi.org/10.1017/CBO9780511575358",
+        "Bulk oxide compositions of the Martian, lunar highland and "
+        "terrestrial continental crusts, and the continental crust's "
+        "thickness and share of Earth's mass",
+    ),
+    "margot_2021": InteriorReference(
+        "Margot et al. 2021 (Nature Astronomy 5)",
+        "https://doi.org/10.1038/s41550-021-01339-7",
+        "Venus moment of inertia from radar speckle tracking, and the "
+        "two-layer core radius that follows",
+    ),
+    "dumoulin_2017": InteriorReference(
+        "Dumoulin et al. 2017 (JGR Planets 122)",
+        "https://doi.org/10.1002/2016JE005249",
+        "Venus core density and the tidal models behind it",
+    ),
+    "taylor_2013": InteriorReference(
+        "Taylor 2013 (Chemie der Erde 73)",
+        "https://doi.org/10.1016/j.chemer.2013.09.006",
+        "Bulk silicate Mars oxide composition and the core's sulphur fraction",
+    ),
+    "nittler_2018": InteriorReference(
+        "Nittler et al. 2018 (Mercury: The View after MESSENGER, Cambridge)",
+        "https://doi.org/10.1017/9781316650684.003",
+        "Mercury mantle silicate composition reconstructed from MESSENGER lavas",
+    ),
+    "gomez_casajus_2021": InteriorReference(
+        "Gomez Casajus et al. 2021 (Icarus 358)",
+        "https://doi.org/10.1016/j.icarus.2020.114187",
+        "Europa gravity field and moment of inertia, reanalysed from Galileo tracking",
+    ),
+    "goossens_2024": InteriorReference(
+        "Goossens et al. 2024 (Nature Astronomy 8)",
+        "https://doi.org/10.1038/s41550-024-02253-4",
+        "Titan's core radius and density, and the low-density ocean above it",
+    ),
+    "gomez_casajus_2022": InteriorReference(
+        "Gomez Casajus et al. 2022 (Geophysical Research Letters 49)",
+        "https://doi.org/10.1029/2022GL099475",
+        "Ganymede's moment of inertia from Juno, solved without the "
+        "hydrostatic assumption, and the interior family it allows",
+    ),
+    "vance_2018": InteriorReference(
+        "Vance et al. 2018 (JGR Planets 123)",
+        "https://doi.org/10.1002/2017JE005341",
+        "Ice-shell, ocean and core structure of the icy ocean worlds from "
+        "self-consistent thermodynamics",
+    ),
     "anderson_1996": InteriorReference(
         "Anderson et al. 1996 (Nature 384)",
         "https://doi.org/10.1038/384541a0",

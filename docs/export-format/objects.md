@@ -68,6 +68,25 @@ interface GlobalObjectData {
         limit?: boolean;              // non-detection upper limit, not a measured abundance
       }>;
     };
+    structure?: {                     // named vertical layers, for the Structure tab's cross-section (12 bodies)
+      datum: "surface" | "one_bar" | "photosphere"; // what altitude 0 means; giants hang off 1 bar and run negative below it
+      layers: Array<{                 // lowest first; a layer's base is the one below's top, the lowest one's base is `datum`
+        role: string;                 // "boundary_layer" | "troposphere" | "stratosphere" | "mesosphere" | "thermosphere" | "exosphere" | "photosphere" | "chromosphere" | "transition_region" | "corona"
+        top_km?: number;              // height of the boundary above `datum`
+        top_km_range?: [number, number]; // where it actually sits — Earth's tropopause runs 9 km polar to 17 km equatorial
+        top_pressure_pa?: number;
+        top_temperature_k?: number;
+        top_temperature_range_k?: [number, number]; // spread over latitude and solar cycle, not an error bar
+        note?: string;                // "well_mixed", "heterosphere", "exobase", "diffuse_top", …; the frontend holds the sentence
+        species?: Array<{             // only where a layer's abundance differs from the body's
+          formula: string;
+          value: number;              // raw mixing ratio in the block's `composition.unit` — NOT a normalized share
+        }>;
+      }>;
+      homopause_km?: number;          // above it species sort by mass and the body's single composition stops meaning anything
+      homopause_pressure_pa?: number; // stated in pressure on the giants, where it is a model level rather than a measured height
+      scale_height_km?: number;       // exosphere-only bodies: how fast it thins, in place of boundaries it has none of
+    };
     sources: Array<{ title: string; url: string }>; // works the values are read off, deduped, pressure source first
   };
   interior?: {                        // what the body is made of, by mass (see below)
@@ -81,6 +100,25 @@ interface GlobalObjectData {
     composition?: Array<{             // whole-body roll-up, descending; omitted where layer masses are unknown (the Sun)
       material: string;               // "metal" | "sulfide" | "silicate" | "water" | "volatile_ice" | "organic" | "hydrogen" | "helium" | "heavy_elements"
       share: number;                  // normalized over the materials listed
+    }>;
+    layers?: Array<{                  // outermost first; layer-model route only, for the Structure tab's cross-section
+      role: string;                   // "crust" | "ice_shell" | "ocean" | "mantle" | "ice_mantle" | "envelope" | "metallic_hydrogen" | "radiative_zone" | "convective_zone" | "core" | "outer_core" | "inner_core" | "bulk"
+      outer_radius_km: number;        // the source's own R, which is not the body's exported mean radius — normalize the disc to the outermost layer
+      mass_fraction?: number;         // of the whole body; absent where a source gives geometry but no mass (the Sun)
+      mass_fraction_range?: [number, number]; // the published width, where there is one
+      state?: string;                 // "solid" | "liquid" | "partial_melt" | "fluid" | "plasma"; absent where nobody knows
+      note?: string;                  // "core_size_disputed", "shell_thickness_modelled", …; the frontend holds the sentence
+      derived?: true;                 // the mass is our arithmetic on the source's radii and densities, not a number it quotes
+      diffuse?: true;                 // no boundary to draw: `outer_radius_km` is where it fades out, not where it ends
+      composition: Array<{            // of this layer, same materials and same sliver cut as the roll-up
+        material: string;
+        share: number;
+        share_range?: [number, number];
+      }>;
+      detail?: {                      // finer chemistry where the literature gives one (7 layers today)
+        unit: "oxide_weight" | "element_weight" | "mineral_volume";
+        entries: Array<{ species: string; fraction: number }>; // descending, as the source tabulates them
+      };
     }>;
     sources: Array<{ title: string; url: string }>; // works the values are read off, deduped, structure source first
   };
@@ -373,21 +411,51 @@ thin envelopes a ratio of column or number densities measured separately, at
 different times and geometries. The frontend says so in a tooltip and hatches
 `limit` species.
 
+`structure` is the vertical axis that pressure sits on, from
+`constants/atmosphere/structure.py` — twelve bodies, the ones whose layers
+anyone has named. Each layer is described by its *top*, because a boundary is
+almost always a turning point in temperature rather than a surface, and what a
+source pins is sometimes a height, sometimes a pressure, rarely both. Every
+field is optional for that reason; every internal boundary does have a height.
+
+A layer's `species` are raw mixing ratios in the block's own `composition.unit`,
+**not** normalized shares — a layer lists a species only where its abundance
+differs from the body's, and Titan's stratospheric methane normalized against
+itself would draw a pure-methane layer. Composition otherwise stays on the
+block: below the homopause an atmosphere is well mixed, and repeating the
+body's numbers per layer would be one measurement written five times.
+
+The cross-section draws to scale up to the highest layer that is *not*
+`thermosphere`, `exosphere` or `corona`; those three are capped to a fixed band
+with their real height in the label, because they hold no mass and Earth's
+exosphere alone is 100× its mesosphere. That boundary always has a `top_km`.
+The one body with nothing below the cap is Callisto, an exosphere by itself,
+which carries `scale_height_km` instead.
+
 ### `interior`
 
 Two routes, one shape. Bodies a mission or a seismometer actually constrained
 have a hand-curated layer model in
-`data/src/space_map_data/constants/interior/bodies.py` (30 today); asteroids
+`data/src/space_map_data/constants/interior/bodies.py` (31 today); asteroids
 that only have a spectrum get their meteorite analogue's bulk chemistry from
 `taxonomy.py`, keyed on the SsODNet class we ingest, and carry `estimated`
 so the panel can say "estimated from its S-type spectrum" rather than "is". A
 layer model always wins where a body has both — Dawn's gravity beats the fact
 that V-types look like HEDs.
 
-What ships is the roll-up, one share per material summed over the layers,
-because that is what the composition chart draws. The layers themselves stay
-in the constants until there is a per-layer view to spend the bytes on: they
-would cost every one of ~150,000 asteroid bundles something to draw nothing.
+Two shapes ship with it. The roll-up, one share per material summed over the
+layers, is what the Overview's composition chart draws and all the estimate
+route can offer. `layers` underneath it is what the Structure tab's
+cross-section draws, and only the layer-model route carries it — the ~150,000
+asteroids on the estimate route have no layers to spend bytes on.
+
+`outer_radius_km` is the source's own R rather than the body's exported mean
+radius; the two disagree by a few km on Europa depending on the paper. Normalize
+the disc to the outermost layer's radius, not to the body's, or the stack shows
+a gap or an overshoot at the surface. `derived` marks a mass that is our own
+arithmetic on the source's radii and densities, and `diffuse` a layer with no
+boundary at all — Jupiter's core is heavy elements smeared through the envelope,
+so its radius is where it fades out.
 
 The roll-up is a mass balance over layers rather than an elemental one — water
 bound in a phyllosilicate counts as water, not as oxygen shared out among the
@@ -396,12 +464,15 @@ oxide table. `heavy_elements` is the astronomer's Z, everything above helium,
 and says the split is unresolved: an ice giant's are 0.76 of the planet as
 rock and 0.89 as ice with nothing choosing between them.
 
-Materials below 0.5% of the body are dropped and the rest renormalized —
-Tethys's 0.1% of rock drew an invisible sliver with a legend entry.
+Materials below 0.5% are dropped and the rest renormalized — Tethys's 0.1% of
+rock drew an invisible sliver with a legend entry. The cut runs per bar, so a
+material can miss the whole-body roll-up and still fill its own layer: a
+sulphur-bearing core a percent of the body is 20% of the core and 0.2% of the
+planet.
 
 `sources` is the works behind what the panel shows, not the whole model: the
-structure, the layer masses the bar is summed from, and the chemistry of the
-materials that survived the sliver cut. The full bibliography is in
+structure, every layer the cross-section draws, and the chemistry of the
+materials that survived the sliver cut somewhere. The full bibliography is in
 `credits.json` as `interior_references`.
 
 `taxonomy_sources` credits the class letter rather than the composition, and

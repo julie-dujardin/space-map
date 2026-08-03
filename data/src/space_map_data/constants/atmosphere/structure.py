@@ -83,6 +83,9 @@ class AtmosphereLayer(NamedTuple):
     top_temperature_range_k: tuple[float, float] | None = None
     # Set where the pressure comes from a different work than the altitude.
     pressure_source: str | None = None
+    # And the mirror of it: set where the height comes from a different work
+    # than the temperature that defines the boundary.
+    altitude_source: str | None = None
     # In the body's `facts.py` composition unit. Empty means well mixed: read
     # the body's composition instead.
     composition: tuple[Species, ...] = ()
@@ -99,6 +102,14 @@ class BodyStructure(NamedTuple):
     homopause_km: float | None = None
     homopause_pressure_pa: float | None = None
     homopause_source: str | None = None
+    # For envelopes with no boundaries to name: how fast the density falls,
+    # rather than where it stops. This is the whole vertical structure of a
+    # surface-bounded exosphere. It is only meaningful where one species
+    # dominates — the Moon's and Mercury's exospheres are mixtures whose
+    # species differ by an order of magnitude in scale height, so they have
+    # none rather than an average of numbers that describe nothing.
+    scale_height_km: float | None = None
+    scale_height_source: str | None = None
     note: str | None = None
 
 
@@ -230,14 +241,20 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
             # maximum, which is also why low-orbit satellites decay in bursts.
             # The temperature moves with it — Arecibo reads 800-1500 K at the
             # thermopause over a cycle.
+            # The pressure is the standard atmosphere's at the nominal 600 km,
+            # not at the moving thermopause. Do not read a height off this and
+            # the mesopause by interpolating between them: the scale height
+            # more than triples across the thermosphere, and doing so puts the
+            # 100 km level — the one altitude here everybody knows — at 167.
             AtmosphereLayer(
                 role="thermosphere",
                 top_km=600.0,
-                top_pressure_pa=None,
+                top_pressure_pa=8.213e-8,
                 source="wiki_thermopause",
                 top_temperature_k=1000.0,
                 top_km_range=(500.0, 1000.0),
                 top_temperature_range_k=(800.0, 1500.0),
+                pressure_source="us_standard_atmosphere_1976",
                 note="heterosphere",
             ),
             AtmosphereLayer(
@@ -358,9 +375,14 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 top_temperature_k=82.0,
                 top_temperature_range_k=(80.0, 87.0),
             ),
+            # No source states this boundary's height, so it is read off the
+            # two altitudes Strobel does pin — peak cooling at 870 km and
+            # 70 nbar, peak heating at 1450 km and 0.65 nbar — as the level
+            # where 10 nbar falls between them:
+            #   870 + 530·ln(70/10)/ln(70/0.65) ≈ 1090 km
             AtmosphereLayer(
                 role="stratosphere",
-                top_km=None,
+                top_km=1090.0,
                 top_pressure_pa=1.0e-3,
                 source="strobel_2018",
                 top_temperature_k=150.0,
@@ -441,6 +463,12 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
     # K at 0.3 mbar — and does not stop until the 750 K thermosphere, which is
     # the outlier of the four giants: Neptune gets a thousandth of Earth's
     # sunlight and is as hot up there as Uranus.
+    #
+    # Nothing measures a temperature between the two, though: Lindal's
+    # occultation ends at 0.3 mbar and 130 ± 12 K with the profile still
+    # climbing, and the UVS picks it up again only where it is already
+    # hundreds of kelvin. The heights below are real; the shape between them
+    # is not known.
     "naif-899": BodyStructure(
         datum="one_bar",
         layers=(
@@ -452,20 +480,32 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 top_temperature_k=52.0,
                 top_temperature_range_k=(50.0, 54.0),
             ),
+            # Placed at the homopause, the way Saturn's is: on a giant the
+            # stratosphere has no temperature turning point to end on, and the
+            # level where mixing stops is the one thing anyone measured up
+            # there. Voyager's UVS puts it at 400-500 km, and the pressure
+            # Moses's photochemistry gives sits inside the same band.
             AtmosphereLayer(
                 role="stratosphere",
-                top_km=None,
-                top_pressure_pa=1.0,
-                source="wiki_neptune",
+                top_km=450.0,
+                top_pressure_pa=8.0e-3,
+                source="broadfoot_1989",
+                top_km_range=(400.0, 500.0),
+                pressure_source="moses_2018",
+                note="weakly_defined",
             ),
+            # Neptune's is the shortest thermosphere of the four giants —
+            # Uranus's exobase sits at 6600 km on the same plot — and it is
+            # nearly isothermal, at 750 K from about 2000 km up.
             AtmosphereLayer(
                 role="thermosphere",
-                top_km=None,
+                top_km=4000.0,
                 top_pressure_pa=None,
                 source="broadfoot_1989",
                 top_temperature_k=750.0,
                 top_temperature_range_k=(600.0, 900.0),
-                note="heterosphere",
+                altitude_source="melin_2020",
+                note="exobase",
             ),
             AtmosphereLayer(
                 role="exosphere",
@@ -499,17 +539,19 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
             AtmosphereLayer(
                 role="stratosphere",
                 top_km=250.0,
-                top_pressure_pa=None,
+                top_pressure_pa=1.0,
                 source="huygens_hasi",
                 top_temperature_k=186.0,
+                pressure_source="nixon_2024",
                 composition=(Species("CH4", 0.0148, "niemann_2010"),),
             ),
             AtmosphereLayer(
                 role="mesosphere",
                 top_km=500.0,
-                top_pressure_pa=None,
+                top_pressure_pa=0.1,
                 source="huygens_hasi",
                 top_temperature_k=152.0,
+                pressure_source="nixon_2024",
                 note="weakly_defined",
             ),
             AtmosphereLayer(
@@ -599,5 +641,25 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 note="exobase",
             ),
         ),
+    ),
+    # Callisto, and the shape a surface-bounded exosphere takes here: one
+    # layer with no top, described by how fast it thins instead. Galileo's
+    # near-infrared spectrometer caught the CO₂ airglow in a single limb scan,
+    # and an isothermal fit at 150 K gives 23 km. The emission faded into the
+    # noise near 100 km, which is where the instrument stopped rather than
+    # where the gas does.
+    "naif-504": BodyStructure(
+        datum="surface",
+        layers=(
+            AtmosphereLayer(
+                role="exosphere",
+                top_km=None,
+                top_pressure_pa=None,
+                source="carlson_1999",
+                note="diffuse_top",
+            ),
+        ),
+        scale_height_km=23.0,
+        scale_height_source="carlson_1999",
     ),
 }

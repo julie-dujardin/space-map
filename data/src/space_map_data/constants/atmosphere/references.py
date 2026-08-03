@@ -698,4 +698,24 @@ ATMOSPHERE_FACT_SOURCES: dict[str, AtmosphereReference] = {
         "https://doi.org/10.1126/science.246.4936.1459",
         "Neptune thermospheric temperature (Voyager 2 UVS occultation)",
     ),
+    "us_standard_atmosphere_1976": AtmosphereReference(
+        "U.S. Standard Atmosphere 1976 (NOAA/NASA/USAF)",
+        "https://www.ngdc.noaa.gov/stp/space-weather/online-publications/"
+        "miscellaneous/us-standard-atmosphere-1976/"
+        "us-standard-atmosphere_st76-1562_noaa.pdf",
+        "Earth's pressure-altitude table, including the 3.2012e-2 Pa that "
+        "defines the 100 km level",
+    ),
+    "nixon_2024": AtmosphereReference(
+        "Nixon 2024 (Titan After Cassini-Huygens, chapter 6)",
+        "https://ntrs.nasa.gov/citations/20240013879",
+        "Pressures of Titan's stratopause and mesopause, read off the Huygens "
+        "temperature-pressure-altitude profile",
+    ),
+    "melin_2020": AtmosphereReference(
+        "Melin 2020 (Phil. Trans. R. Soc. A 378)",
+        "https://doi.org/10.1098/rsta.2019.0478",
+        "Neptune exobase altitude — the Voyager 2 UVS profiles replotted "
+        "against height above 1 bar",
+    ),
 }
