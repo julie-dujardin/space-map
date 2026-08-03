@@ -32,6 +32,9 @@
 		 *  outermost layer is already its atmosphere. */
 		atmosphereKm?: number;
 		hasOwnAtmosphere?: boolean;
+		/** What the strip is filled with — the sky's colour off the composition,
+		 *  so the strip and the atmosphere chart describe the same air. */
+		atmosphereColor?: string;
 		/** Per layer index, for the ones the body has a reading for — a bracket
 		 *  where the value is modelled rather than measured. Everything else stays
 		 *  at its material's colour and says nothing. */
@@ -46,6 +49,7 @@
 		layers,
 		atmosphereKm,
 		hasOwnAtmosphere = true,
+		atmosphereColor = 'rgb(150 165 185)',
 		temperatures = [],
 		plasmaRange,
 		active = $bindable(null)
@@ -170,7 +174,8 @@
 					{@const outer = Math.max(R, bodyR + 1.5)}
 					<path
 						d={bandPath({ outer: outer / bodyR, inner: 1 }, CX, CY, bodyR)}
-						class="fill-sky-400/80 dark:fill-sky-300/80"
+						fill={atmosphereColor}
+						opacity="0.8"
 					/>
 				{/if}
 

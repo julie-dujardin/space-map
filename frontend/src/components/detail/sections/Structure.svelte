@@ -100,6 +100,7 @@
 				{layers}
 				{atmosphereKm}
 				{hasOwnAtmosphere}
+				atmosphereColor={gasColor}
 				temperatures={layerTemperatures}
 				{plasmaRange}
 				bind:active
