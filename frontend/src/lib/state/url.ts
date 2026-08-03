@@ -15,7 +15,14 @@ import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { DEFAULT_VIEW, SUN_VIEW_ZOOM, UrlType, type DrawerTab, type MapViewState } from './view';
 
 /** Tabs that serialize a `&tab=` block; overview is the null default. */
-const DEEP_LINK_TABS: readonly string[] = ['images', 'members', 'features', 'fragments', 'rings'];
+const DEEP_LINK_TABS: readonly string[] = [
+	'images',
+	'members',
+	'features',
+	'structure',
+	'fragments',
+	'rings'
+];
 
 function parseTab(raw: string | null): Exclude<DrawerTab, 'overview'> | null {
 	return raw && DEEP_LINK_TABS.includes(raw) ? (raw as Exclude<DrawerTab, 'overview'>) : null;

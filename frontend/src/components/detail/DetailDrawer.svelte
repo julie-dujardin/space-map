@@ -53,6 +53,7 @@
 	import Brightness from './sections/Brightness.svelte';
 	import Atmosphere from './sections/Atmosphere.svelte';
 	import Interior from './sections/Interior.svelte';
+	import Structure from './sections/Structure.svelte';
 	import ObjectStats from './sections/ObjectStats.svelte';
 	import SatCrossRefs from './sections/SatCrossRefs.svelte';
 	import Orbital from './sections/Orbital.svelte';
@@ -527,6 +528,15 @@
 		appState.setTab('features');
 	}
 
+	// The body cut open. Needs a layer model or a named atmosphere stack — the
+	// ~30 bodies a mission actually constrained, not the 150,000 asteroids whose
+	// interior is an estimate from a spectrum.
+	let showStructureTab = $derived(
+		!isGroupMode &&
+			!isFeatureMode &&
+			(!!data?.global?.interior?.layers?.length || !!data?.global?.atmosphere?.structure)
+	);
+
 	// The Surface tab's hero needs a map texture; the IAU chart grid is a bonus
 	// only Mercury, Venus, Mars and the Moon carry.
 	let showSurfaceHero = $derived(
@@ -626,14 +636,16 @@
 	// falls between the tabs instead of padding out the shortest one.
 	const TAB_TRIGGER_CLASS = 'px-2 flex-none';
 
-	// Four is the most any object earns (a ringed giant: overview, images, rings,
-	// moons); a full bar spreads across the drawer instead of running off it.
+	// Five is the most any object earns (a ringed giant: overview, images, rings,
+	// moons, structure); a full bar spreads across the drawer instead of running
+	// off it.
 	let tabCount = $derived(
 		1 +
 			(hasImages ? 1 : 0) +
 			(showRingsTab ? 1 : 0) +
 			(showMembersTab ? 1 : 0) +
 			(showFeaturesTab ? 1 : 0) +
+			(showStructureTab ? 1 : 0) +
 			(showFragmentsTab ? 1 : 0)
 	);
 
@@ -723,11 +735,13 @@
 				? 'members'
 				: appState.view.tab === 'features' && showFeaturesTab
 					? 'features'
-					: appState.view.tab === 'fragments' && showFragmentsTab
-						? 'fragments'
-						: appState.view.tab === 'rings' && showRingsTab
-							? 'rings'
-							: 'overview'
+					: appState.view.tab === 'structure' && showStructureTab
+						? 'structure'
+						: appState.view.tab === 'fragments' && showFragmentsTab
+							? 'fragments'
+							: appState.view.tab === 'rings' && showRingsTab
+								? 'rings'
+								: 'overview'
 	);
 	// What the URL is focused on, in `focusableKey` form. A tile that opens
 	// another body on a specific tab (moon → planet's Moons, feature → host's
@@ -793,6 +807,11 @@
 					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
 						{formatCompactNumber(featureTotal)}
 					</Badge>
+				</Tabs.Trigger>
+			{/if}
+			{#if showStructureTab}
+				<Tabs.Trigger value="structure" class={TAB_TRIGGER_CLASS}>
+					{m.tab_structure()}
 				</Tabs.Trigger>
 			{/if}
 			{#if showFragmentsTab}
@@ -1139,6 +1158,13 @@
 	</div>
 {/snippet}
 
+{#snippet structurePanel()}
+	<div class="flex flex-col gap-5 p-1">
+		<Structure global={data?.global ?? null} />
+		<SourcesFooter global={data?.global ?? null} />
+	</div>
+{/snippet}
+
 {#snippet drawerToolbar()}
 	{#if showCameraButtons}
 		<Button
@@ -1180,6 +1206,9 @@
 	</Tabs.Content>
 	<Tabs.Content value="rings" class={contentClass}>
 		{@render ringsPanel()}
+	</Tabs.Content>
+	<Tabs.Content value="structure" class={contentClass}>
+		{@render structurePanel()}
 	</Tabs.Content>
 	<Tabs.Content value="fragments" class={contentClass}>
 		{@render fragmentsPanel()}

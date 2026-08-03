@@ -469,8 +469,50 @@ export interface AtmosphereBlock {
 		 *  non-detection upper limit rather than a measured abundance. */
 		species: { formula: string; share: number; limit?: boolean }[];
 	};
+	/** Named vertical layers, for the Structure tab's cross-section. Only the
+	 *  dozen bodies whose layers anyone has named. */
+	structure?: AtmosphereStructure;
 	/** Works the numbers come from, deduped per body. */
 	sources?: { title: string; url: string }[];
+}
+
+/** The vertical axis the block's single pressure sits on. Every field is
+ *  optional because a boundary is a turning point in temperature rather than a
+ *  surface, so a source pins sometimes a height, sometimes a pressure. */
+export interface AtmosphereStructure {
+	/** What altitude 0 means. The giants hang off the 1 bar level and run
+	 *  negative below it. */
+	datum: 'surface' | 'one_bar' | 'photosphere';
+	/** Lowest first. A layer's base is the one below's top; the lowest one's
+	 *  base is `datum`. */
+	layers: AtmosphereLayer[];
+	/** Above it species sort by mass and the body's single composition stops
+	 *  describing anything. */
+	homopause_km?: number;
+	homopause_pressure_pa?: number;
+	/** Exosphere-only bodies: how fast it thins, in place of the boundaries it
+	 *  has none of. */
+	scale_height_km?: number;
+}
+
+export interface AtmosphereLayer {
+	/** "troposphere", "thermosphere", "corona", … */
+	role: string;
+	top_km?: number;
+	/** Where the boundary actually sits — Earth's tropopause runs 9 km over the
+	 *  poles to 17 km over the equator. */
+	top_km_range?: [number, number];
+	top_pressure_pa?: number;
+	top_temperature_k?: number;
+	/** Spread over latitude and solar cycle, not an error bar on one number. */
+	top_temperature_range_k?: [number, number];
+	/** "well_mixed", "heterosphere", "exobase", … — the frontend holds the
+	 *  sentence, the pipeline only the key. */
+	note?: string;
+	/** Raw mixing ratios in the block's `composition.unit`, NOT normalized
+	 *  shares: a layer lists a species only where its abundance differs from the
+	 *  body's. */
+	species?: { formula: string; value: number }[];
 }
 
 /** What a body is made of, by mass. Two routes into one shape: a layer model
@@ -498,8 +540,42 @@ export interface InteriorBlock {
 	/** Whole-body roll-up, descending. Absent where the source constrains
 	 *  geometry but not masses (the Sun). */
 	composition?: { material: string; share: number }[];
+	/** Outermost first, layer-model route only — the estimate route has no
+	 *  layers, and 150,000 asteroids take it. */
+	layers?: InteriorLayer[];
 	/** Works the numbers come from, deduped per body. */
 	sources?: { title: string; url: string }[];
+}
+
+/** One shell of the cross-section. */
+export interface InteriorLayer {
+	/** "crust", "ice_shell", "ocean", "mantle", "core", "convective_zone", … */
+	role: string;
+	/** The source's own R, which is not the body's exported mean radius — the
+	 *  two disagree by a few km on Europa depending on the paper. Normalize the
+	 *  disc to the outermost layer or the stack gaps at the surface. */
+	outer_radius_km: number;
+	/** Of the whole body. Absent where a source gives geometry but no mass. */
+	mass_fraction?: number;
+	mass_fraction_range?: [number, number];
+	/** "solid", "liquid", "partial_melt", "fluid", "plasma". Absent where
+	 *  nobody knows — Venus's core, which the tides allow to be solid. */
+	state?: string;
+	/** "core_size_disputed", "shell_thickness_modelled", … */
+	note?: string;
+	/** The mass is arithmetic on the source's radii and densities rather than a
+	 *  number it quotes. */
+	derived?: true;
+	/** No boundary to draw: `outer_radius_km` is where the layer fades out
+	 *  rather than where it ends. Jupiter's core is the case. */
+	diffuse?: true;
+	/** Of this layer, same materials and same sliver cut as the roll-up. */
+	composition: { material: string; share: number; share_range?: [number, number] }[];
+	/** Finer chemistry where the literature gives one. */
+	detail?: {
+		unit: 'oxide_weight' | 'element_weight' | 'mineral_volume';
+		entries: { species: string; fraction: number }[];
+	};
 }
 
 // --- Localized object data ---

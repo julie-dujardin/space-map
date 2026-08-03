@@ -37,7 +37,14 @@ export const FEATURE_ROUTE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** Detail-drawer tab; 'overview' is the null default in URL state. */
-export type DrawerTab = 'overview' | 'images' | 'members' | 'features' | 'fragments' | 'rings';
+export type DrawerTab =
+	| 'overview'
+	| 'images'
+	| 'members'
+	| 'features'
+	| 'structure'
+	| 'fragments'
+	| 'rings';
 
 /**
  * Shape of the URL-backed app state. One source of truth for what gets shared,

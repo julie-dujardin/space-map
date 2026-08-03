@@ -1,8 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
-vi.mock('$lib/paraglide/runtime.js', () => ({ getLocale: () => 'en-US' }));
-
-import { convertTemperature } from './temperature';
+// No runtime mock: the unit symbols come out of paraglide, and stubbing the
+// runtime cuts the messages off from their locale.
+import { convertTemperature, formatTemperatureRange } from './temperature';
 
 describe('convertTemperature', () => {
 	it.each([
@@ -29,5 +29,32 @@ describe('convertTemperature', () => {
 	it('returns input unchanged when source matches target', () => {
 		const result = convertTemperature({ value: 20, unit: 'degree_celsius' });
 		expect(result).toEqual({ value: 20, unit: 'degree_celsius' });
+	});
+});
+
+describe('formatTemperatureRange', () => {
+	const kelvin = (value: number) => ({ value, unit: 'kelvin' });
+
+	it('says the unit once across a bracket', () => {
+		expect(formatTemperatureRange(kelvin(2000), kelvin(2400))).toBe('1,727–2,127 °C');
+	});
+
+	it('collapses a bracket whose ends agree', () => {
+		expect(formatTemperatureRange(kelvin(288), kelvin(288))).toBe('15 °C');
+	});
+
+	it('reads a lone value as a bracket of one', () => {
+		expect(formatTemperatureRange(kelvin(288))).toBe('15 °C');
+	});
+
+	// The Sun's core is 24 characters written out, which no chart label fits.
+	it('compacts a stellar bracket', () => {
+		expect(formatTemperatureRange(kelvin(15_500_000), kelvin(15_700_000))).toBe('15.5M – 15.7M °C');
+	});
+
+	// A thousands suffix next to a temperature reads as kelvin, so compaction
+	// starts above it — Jupiter's core stays in digits.
+	it('leaves thousands written out', () => {
+		expect(formatTemperatureRange(kelvin(15_000), kelvin(36_000))).toBe('14,730–35,730 °C');
 	});
 });

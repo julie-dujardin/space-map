@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
+	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 	import * as m from '$lib/paraglide/messages.js';
+	import type { AppState } from '$lib/state/app-state.svelte';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
@@ -65,8 +68,13 @@
 		return ltrIsolate(`${format(low.k)} – ${format(high.k)}`);
 	});
 
+	const appState = getContext<AppState>('appState');
+
 	let interior = $derived(global?.interior);
 	let note = $derived(interior?.note ? (NOTE[interior.note]?.() ?? null) : null);
+	// The layer stack and the atmosphere's are one tab, so either one earns the
+	// link across from here.
+	let hasCrossSection = $derived(!!interior?.layers?.length || !!global?.atmosphere?.structure);
 	let percent = $derived(
 		new Intl.NumberFormat(getLocale(), { style: 'percent', maximumSignificantDigits: 2 })
 	);
@@ -134,6 +142,18 @@
 		{/if}
 		{#if note}
 			<dd class="text-muted-foreground col-span-2 -mt-1.5 text-[11px] leading-snug">{note}</dd>
+		{/if}
+		{#if hasCrossSection}
+			<dd class="col-span-2">
+				<button
+					type="button"
+					class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
+					onclick={() => appState.setTab('structure')}
+				>
+					{m.structure_see_tab()}
+					<ArrowRightIcon class="size-3 rtl:rotate-180" />
+				</button>
+			</dd>
 		{/if}
 	</Section>
 {/if}

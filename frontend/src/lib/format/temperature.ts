@@ -1,4 +1,11 @@
-import { formatQuantity } from './quantities';
+import { getLocale } from '$lib/paraglide/runtime.js';
+import {
+	formatCompactNumber,
+	formatNumber,
+	formatQuantity,
+	formatUnit,
+	precisionOptions
+} from './quantities';
 
 export type TemperatureUnit = 'kelvin' | 'degree_celsius' | 'degree_fahrenheit';
 
@@ -66,4 +73,41 @@ export function formatTemperature(
 	target?: TemperatureUnit
 ): string {
 	return formatQuantity(convertTemperature(q, target), true);
+}
+
+/**
+ * Where a stellar reading stops being digits anyone reads and starts being a
+ * width no chart label has. Set at a million so compact notation never reaches
+ * for its thousands suffix: "15.5M °C" is clear, "5.5K °C" reads as kelvin.
+ */
+const COMPACT_ABOVE = 1_000_000;
+
+/**
+ * A temperature, or the bracket a model gives instead of one, in the space a
+ * chart label has: the unit said once at the end, and the numbers compacted
+ * together once either end runs long.
+ *
+ * `formatRange` rather than two numbers with a dash between them, because a
+ * locale that spells its magnitude out only spells it once — Russian gives
+ * "15,5–15,7 млн", not "15,5 млн–15,7 млн" — and because the separator itself
+ * is a locale's own (an ideographic "～" in Japanese).
+ */
+export function formatTemperatureRange(
+	low: { value: number; unit: string },
+	high?: { value: number; unit: string } | null,
+	target?: TemperatureUnit
+): string {
+	const a = convertTemperature(low, target);
+	const b = high ? convertTemperature(high, target) : a;
+	const peak = Math.max(Math.abs(a.value), Math.abs(b.value));
+	const compact = peak >= COMPACT_ABOVE;
+	const unit = formatUnit(a.unit, true);
+	if (a.value === b.value) {
+		return `${compact ? formatCompactNumber(a.value) : formatNumber(a.value)} ${unit}`;
+	}
+	const format = new Intl.NumberFormat(
+		getLocale(),
+		compact ? { notation: 'compact', maximumSignificantDigits: 3 } : precisionOptions(peak)
+	);
+	return `${format.formatRange(a.value, b.value)} ${unit}`;
 }
