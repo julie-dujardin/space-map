@@ -49,8 +49,8 @@ class OrganizationSpec:
 def _build_organizations() -> tuple[OrganizationSpec, ...]:
     """Union OPERATORS + MANUFACTURERS by slug into one tagged registry.
 
-    A dual's name/QID is identical across the two tables (asserted at import in
-    manufacturers.py via matching slugs), so first-writer-wins is safe.
+    A dual's name/QID must be identical across the two tables (asserted below),
+    so first-writer-wins is safe.
     """
     names: dict[str, str] = {}
     qids: dict[str, str | None] = {}
@@ -63,6 +63,10 @@ def _build_organizations() -> tuple[OrganizationSpec, ...]:
         urls.setdefault(o.slug, o.url)
         is_op[o.slug] = True
     for m in MANUFACTURERS:
+        if m.slug in names:
+            assert (m.name, m.wikidata_qid) == (names[m.slug], qids[m.slug]), (
+                f"operator/manufacturer dual '{m.slug}' disagrees on name or QID"
+            )
         names.setdefault(m.slug, m.name)
         qids.setdefault(m.slug, m.wikidata_qid)
         is_mfr[m.slug] = True

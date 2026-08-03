@@ -1284,7 +1284,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         ),
         model_url="https://sketchfab.com/3d-models/communication-satellite-eurostar-3000-07f3c3573afe49fb8c8257af6e608eec",
         model_format="glTF",
-        model_license="Sketchfab free / CC BY",
+        model_license="Sketchfab free / CC BY (elliptic studio)",
         notes="First commercial bus with Li-ion batteries; 3D-printed TTC brackets (2015). "
         "E3000EOR adds Safran PPS5000 Hall thrusters for electric orbit raising.",
     ),

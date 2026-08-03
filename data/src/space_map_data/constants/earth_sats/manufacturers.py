@@ -242,6 +242,8 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "Khrunichev State Research and Production Space Center",
         "khrunichev",
         "Q1197016",
+        # "proton" is the 1960s science-sat series, built at the Khrunichev
+        # plant in its OKB-52 Branch 1 days — not a rocket slug typo.
         constellations=("proton", "proton-m", "proton-rocket", "rokot"),
     ),
     ManufacturerSpec(

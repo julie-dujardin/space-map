@@ -200,6 +200,8 @@ LAUNCH_VEHICLES: tuple[LaunchVehicleSpec, ...] = (
     LaunchVehicleSpec(
         "sls", ("SLS",), wikidata_qid="Q64127", name="Space Launch System"
     ),
+    # Slug shadows the capsule constellation; the lv-/const- page namespaces
+    # keep the two apart, and only the rocket carries a Voskhod lv_type.
     LaunchVehicleSpec("voskhod", ("Voskhod",), wikidata_qid="Q1526424", name="Voskhod"),
     LaunchVehicleSpec("angara", ("Angara",), wikidata_qid="Q530600", name="Angara"),
     LaunchVehicleSpec(

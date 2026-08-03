@@ -1,12 +1,11 @@
-"""Typed enums for CelesTrak SATCAT lunch sites.
+"""CelesTrak SATCAT source (owner) codes.
 
-Source: https://celestrak.org/satcat/launchsites.php
+Source: https://celestrak.org/satcat/sources.php
 """
 
 from dataclasses import dataclass
 
 
-# https://celestrak.org/satcat/sources.php
 @dataclass(frozen=True)
 class SourceSpec:
     code: str  # SATCAT short code (primary key)

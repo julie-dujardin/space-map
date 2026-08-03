@@ -1663,7 +1663,9 @@ PREFERRED_SLUGS: tuple[str, ...] = (
     "fengyun-1c-asat-debris",
     "iridium-33-debris",
     "cosmos-2251-debris",
-    "o3b",  # more specific than SES (its parent operator)
+    # More specific than SES (their parent operator)
+    "o3b-gen1",
+    "o3b-mpower",
 )
 
 # Opposite of PREFERRED_SLUGS: in case of conflict, any other candidate is preferred over these.
@@ -1676,7 +1678,6 @@ UNPREFERRED_SLUGS: frozenset[str] = frozenset(
         "cosmos",
         "ses",
         "telesat",
-        "intelsat",
         "tdrss",  # secondary use of some sats (iss)
         "intelsat",  # Multiple constellations
         *CLASSIFIED_BY_OWNER.values(),

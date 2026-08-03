@@ -289,7 +289,8 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         ),
     ),
     OperatorSpec(
-        "S.P. Korolev Rocket and Space Corporation Energia - OKB-1",
+        # The Molniya fleet was flown by the bureau in its OKB-1 days.
+        "S.P. Korolev Rocket and Space Corporation Energia",
         "energia",
         "Q763402",
         constellations=("molniya",),
@@ -348,7 +349,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Soviet Armed Forces",
         "soviet-armed-forces",
         "Q7915590",
-        constellations=("cosmos", "cis-classified", "resurs-", "raduga"),
+        constellations=("cosmos", "cis-classified", "resurs-f", "raduga"),
         active_until=1991,
     ),
     OperatorSpec(
@@ -359,7 +360,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "cosmos",
             "blagovest",
             "cis-classified",
-            "resurs-",
+            "resurs-f",  # flights continued to 1999
             "cosmos-1408-debris",  # 2021 Nudol ASAT test
             "cosmos-2251-debris",  # Strela-2M military comsat (2009 collision)
             "raduga",
@@ -494,7 +495,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Northrop Grumman",
         "northrop-grumman",
         "Q86894155",
-        constellations=("cygnus", "minotaur", "antares"),
+        constellations=("cygnus", "minotaur", "antares", "taurus-minotaur-c"),
     ),
     OperatorSpec(
         "Outpost Space",
