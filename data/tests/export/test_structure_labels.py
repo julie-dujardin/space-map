@@ -11,10 +11,6 @@ to the key, so a missing translation degrades to readable English; a missing key
 degrades to nothing at all.
 """
 
-import json
-
-import pytest
-
 from space_map_data.constants.atmosphere.structure import ATMOSPHERE_STRUCTURE
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.utils.paths import PROJECT_ROOT
