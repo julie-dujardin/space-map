@@ -57,6 +57,7 @@
 	import { SilhouetteGlow } from './lineup-silhouette';
 	import { makeLineupSunMaterial } from './lineup-sun';
 	import { disposeGltf, fetchBundleMeta, modelLoader } from '$lib/scene/objects/body/model';
+	import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 	import { attachDisplacementMap } from '$lib/scene/objects/surface/displacement';
 	import {
 		applyShapeModelMaterial,
@@ -412,7 +413,7 @@
 			// Shape-model members swap in the mesh (unless a DEM exists — the
 			// textured relief sphere wins, matching the main scene). The
 			// flat-colour sphere is the placeholder and the silent fallback.
-			if (b.model && !b.displacement) {
+			if (lineupDrawsShapeModel(b)) {
 				loadModelMesh(b, color, buildToken, loader);
 				continue;
 			}

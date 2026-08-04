@@ -24,3 +24,15 @@ export function shapeModelSkipReason(
 	if (global.displacement && !PREFER_MODEL_OVER_DEM.has(global.id)) return 'dem-preferred';
 	return null;
 }
+
+/** The lineup's version of the same question. Its spheres carry no
+ *  `render_quality` and it always loads the cheap tier, so a DEM is the only
+ *  thing that keeps a member's mesh off screen — and off the credit list. */
+export function lineupDrawsShapeModel(member: {
+	id: string;
+	model?: string;
+	displacement?: unknown;
+}): boolean {
+	if (!member.model) return false;
+	return !member.displacement || PREFER_MODEL_OVER_DEM.has(member.id);
+}

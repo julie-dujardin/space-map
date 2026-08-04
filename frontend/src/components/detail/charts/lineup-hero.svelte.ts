@@ -8,6 +8,7 @@ import { STRIP_CAPACITY } from '../members/MemberStrip.svelte';
 import type { LineupBody } from './BodyLineup.svelte';
 import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
 import { fetchBundleMeta, shapeModelCredit } from '$lib/scene/objects/body/model';
+import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 import type { CategoryConfig } from '$lib/state/category-config';
 import * as m from '$lib/paraglide/messages.js';
@@ -192,7 +193,7 @@ export class LineupHero {
 		$effect(() => {
 			const hero = this.hero;
 			if (!hero) return;
-			const models = hero.bodies.filter((b) => b.model);
+			const models = hero.bodies.filter(lineupDrawsShapeModel);
 			if (models.length === 0) return;
 			let cancelled = false;
 			Promise.all(

@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 const lowEnd = vi.hoisted(() => ({ value: false }));
 vi.mock('$lib/device', () => ({ isLowEndDevice: () => lowEnd.value }));
 
-import { shapeModelSkipReason } from './shape-model-policy';
+import { lineupDrawsShapeModel, shapeModelSkipReason } from './shape-model-policy';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 
 function body(g: Partial<GlobalObjectData>): GlobalObjectData {
@@ -32,6 +32,14 @@ describe('shapeModelSkipReason', () => {
 	it('reports no bundle when the body has no model', () => {
 		expect(shapeModelSkipReason(body({}))).toBe('no-bundle');
 		expect(shapeModelSkipReason(null)).toBe('no-bundle');
+	});
+
+	it('matches the lineup rule, which credits only the members it draws', () => {
+		expect(lineupDrawsShapeModel({ id: 'naif-2000001', model: 'damit-5915' })).toBe(true);
+		expect(
+			lineupDrawsShapeModel({ id: 'naif-2000001', model: 'damit-5915', displacement: dem })
+		).toBe(false);
+		expect(lineupDrawsShapeModel({ id: 'naif-2000004' })).toBe(false);
 	});
 
 	it('skips rough meshes on low-end devices but keeps faithful ones', () => {
