@@ -135,6 +135,26 @@
 	--material-hydrogen: var(--gas-h2);
 	--material-helium: var(--gas-he);
 	--material-heavy-elements: #a6a233;
+	/* Layer-detail species (crust/mantle oxides + core elements), the gas
+	   palette's idea again: the colour is the substance — quartz sand,
+	   sapphire, rust, sodium amber, sulphur yellow. Fe and Si reference their
+	   gas swatch so an element reads the same in a core as in an exosphere.
+	   Validated per real bar (dataviz validator): touching segments clear
+	   normal ΔE 15 / CVD 8, same-bar 11/6, everything else 6. */
+	--species-sio2: #d8ac62;
+	--species-al2o3: #455eae;
+	--species-feo: #863a04;
+	--species-mgo: #47ab92;
+	--species-cao: #fb6968;
+	--species-na2o: #cf7609;
+	--species-k2o: #ab7bc5;
+	--species-tio2: #8cb6f4;
+	--species-fe: var(--gas-fe);
+	--species-ni: #718943;
+	--species-co: #1858cb;
+	--species-s: #c3b32e;
+	--species-si: var(--gas-si);
+	--species-fe-ni: #5a89c4;
 	--radius: 0.625rem;
 	--sidebar: oklch(0.985 0 0);
 	--sidebar-foreground: oklch(0.145 0 0);
@@ -253,6 +273,24 @@ body {
 	--material-hydrogen: var(--gas-h2);
 	--material-helium: var(--gas-he);
 	--material-heavy-elements: #bc8810;
+	/* Dark arm of the species set. Two accepted near-misses, both deliberate:
+	   Fe↔Ni CVD 5.2 (vs 6 — non-adjacent in the one bar they share, with Si's
+	   teal between them) and FeO vs --material-organic ΔE 4.8 (vs 6 — no body
+	   with an FeO detail bar carries organic material, so they never meet). */
+	--species-sio2: #99700a;
+	--species-al2o3: #7683f5;
+	--species-feo: #a92900;
+	--species-mgo: #1a9473;
+	--species-cao: #dd5557;
+	--species-na2o: #a09803;
+	--species-k2o: #9c62a5;
+	--species-tio2: #3f9fd0;
+	--species-fe: var(--gas-fe);
+	--species-ni: #346f00;
+	--species-co: #646bdc;
+	--species-s: #749815;
+	--species-si: var(--gas-si);
+	--species-fe-ni: #748ed5;
 	--sidebar: oklch(0.205 0 0);
 	--sidebar-foreground: oklch(0.985 0 0);
 	--sidebar-primary: oklch(0.488 0.243 264.376);

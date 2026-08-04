@@ -30,6 +30,7 @@ def _in_use() -> dict[str, set[str]]:
         "interior_state": set(),
         "interior_note": set(),
         "material": set(),
+        "species_name": set(),
         "atmosphere_layer": set(),
         "atmosphere_structure_note": set(),
         "atmosphere_datum": set(),
@@ -43,6 +44,11 @@ def _in_use() -> dict[str, set[str]]:
                 used["interior_note"].add(layer.note)
             for component in layer.composition:
                 used["material"].add(component.material)
+            if layer.detail:
+                # Normalized the way the frontend builds the key: formula
+                # lowercased, "-" to "_" (Fe-Ni → species_name_fe_ni).
+                for species, _ in layer.detail.entries:
+                    used["species_name"].add(species.lower().replace("-", "_"))
     for body in ATMOSPHERE_STRUCTURE.values():
         used["atmosphere_datum"].add(body.datum)
         if body.note:

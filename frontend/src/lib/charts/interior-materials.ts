@@ -1,6 +1,6 @@
 /**
- * Presentation rules for the interior composition bar: which colour a material
- * gets and how it is named.
+ * Presentation rules for the interior composition bars: which colour a
+ * material or a layer-detail species gets, and how each is named.
  *
  * Colour follows the material, not its rank, so silicate reads the same ochre
  * on Mercury and on Pluto. Nine materials, but only two groups ever share a
@@ -12,6 +12,7 @@
  */
 
 import * as m from '$lib/paraglide/messages.js';
+import { formatFormula } from '$lib/charts/atmosphere-species';
 
 /** Every material the pipeline can emit; see `constants/interior/schema.py`. */
 const KNOWN_MATERIALS = new Set([
@@ -99,4 +100,48 @@ function materialColor(material: string): string {
 		return 'var(--muted-foreground)';
 	}
 	return `var(--material-${material.replace('_', '-')})`;
+}
+
+/**
+ * Every species a layer `Detail` can list; see `constants/interior/bodies.py`.
+ * Each has a `--species-<formula>` in app.css, seeded from what the substance
+ * looks like the way the gas palette is; Fe and Si alias their `--gas-*`
+ * colours, so the element reads the same in a core as in an exosphere.
+ */
+const KNOWN_SPECIES = new Set([
+	'SiO2',
+	'Al2O3',
+	'FeO',
+	'MgO',
+	'CaO',
+	'Na2O',
+	'K2O',
+	'TiO2',
+	'Fe',
+	'Ni',
+	'Co',
+	'S',
+	'Si',
+	'Fe-Ni'
+]);
+
+/** Localized species name for the hover label, e.g. "SiO2" → "silicon
+ *  dioxide". Falls back to the formula for a species with no message yet. */
+export function detailSpeciesName(species: string): string {
+	const key = `species_name_${species.toLowerCase().replace('-', '_')}`;
+	const fn = (m as unknown as Record<string, (() => string) | undefined>)[key];
+	if (!fn) {
+		console.warn(`Missing species name: ${key}`);
+		return formatFormula(species);
+	}
+	return fn();
+}
+
+/** A species with no colour of its own would draw as nothing at all. */
+export function detailSpeciesColor(species: string): string {
+	if (!KNOWN_SPECIES.has(species)) {
+		console.warn(`Missing species colour: ${species}`);
+		return 'var(--muted-foreground)';
+	}
+	return `var(--species-${species.toLowerCase()})`;
 }

@@ -1,11 +1,15 @@
 <script lang="ts">
 	/**
-	 * The Structure tab: the body cut open, then the air above it.
+	 * The Structure tab: the air first, then the body cut open under it — the
+	 * page reads top-down the way the body stacks.
 	 *
 	 * Two charts rather than one because the scales cannot be shared — Earth's
 	 * mantle is 2,900 km against 85 km of drawable atmosphere. The giants and
 	 * the Sun get only the first: their outermost layer already *is* their
 	 * atmosphere, and a strip on top of it would draw the same gas twice.
+	 *
+	 * The atmosphere section also carries the Overview's composition bar, and
+	 * shows for it even where the vertical stack has nothing to draw.
 	 *
 	 * Temperature is attached per layer rather than shown as one "core
 	 * temperature" row, but only where a reading exists: bodies carry a modelled
@@ -20,6 +24,7 @@
 	import { formatKm } from '$lib/format/distance';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import Section from './kit/Section.svelte';
+	import AtmosphereComposition, { hasCompositionBar } from './kit/AtmosphereComposition.svelte';
 	import InteriorCrossSection from '../charts/InteriorCrossSection.svelte';
 	import AtmosphereCrossSection from '../charts/AtmosphereCrossSection.svelte';
 	import LayerCard from '../charts/LayerCard.svelte';
@@ -40,9 +45,12 @@
 	let atmosphereKm = $derived(structure ? (drawableTopKm(structure) ?? undefined) : undefined);
 	let section = $derived(crossSection(layers, { atmosphereKm, hasOwnAtmosphere }));
 
-	// Callisto is the only one: an exosphere nobody has put a top on, so there
-	// are no bands and the section would be a heading over a sentence.
+	// Callisto is the only miss: an exosphere nobody has put a top on has no
+	// bands to draw. The section still shows for its composition bar.
 	let hasChart = $derived(!!structure && !!atmosphereProfile(structure)?.bands.length);
+
+	let composition = $derived(global?.atmosphere?.composition);
+	let hasBar = $derived(hasCompositionBar(composition));
 
 	let readings = $derived(global?.temperatures?.readings ?? []);
 
@@ -97,6 +105,17 @@
 	);
 </script>
 
+{#if hasChart || hasBar}
+	<Section title={m.structure_atmosphere()} meta={atmosphereMeta}>
+		{#snippet header()}
+			{#if hasChart && structure}
+				<AtmosphereCrossSection {structure} color={gasColor} />
+			{/if}
+			<AtmosphereComposition {composition} />
+		{/snippet}
+	</Section>
+{/if}
+
 {#if section}
 	<Section title={m.structure_interior()} meta={interiorMeta}>
 		{#snippet header()}
@@ -122,14 +141,6 @@
 					onleave={() => (active = null)}
 				/>
 			{/each}
-		{/snippet}
-	</Section>
-{/if}
-
-{#if hasChart && structure}
-	<Section title={m.structure_atmosphere()} meta={atmosphereMeta}>
-		{#snippet header()}
-			<AtmosphereCrossSection {structure} color={gasColor} />
 		{/snippet}
 	</Section>
 {/if}

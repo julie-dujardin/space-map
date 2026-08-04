@@ -18,7 +18,12 @@
 	import type { CompositionSegment } from '$lib/charts/composition-bar';
 	import type { TemperatureBracket } from '$lib/charts/layer-appearance';
 	import { layerName, stateName, layerNote } from '$lib/charts/interior-layers';
-	import { compositionSegments, materialName } from '$lib/charts/interior-materials';
+	import {
+		compositionSegments,
+		materialName,
+		detailSpeciesName,
+		detailSpeciesColor
+	} from '$lib/charts/interior-materials';
 	import { formatFormula } from '$lib/charts/atmosphere-species';
 	import { formatPercent } from '$lib/format/quantities';
 	import { formatKm, formatKmRange } from '$lib/format/distance';
@@ -63,21 +68,23 @@
 	);
 
 	// Chemistry first: it is the finer statement, and it is only ever present
-	// where somebody measured it. Oxides and minerals have no palette of their
-	// own — they are not the nine materials — so they take the chart ramp and
-	// their formulas are typeset the way the atmosphere's are.
+	// where somebody measured it. Species follow the atmosphere's convention —
+	// formula on the bar, its own colour, the spelled-out name on hover.
 	let segments: CompositionSegment[] = $derived.by(() => {
 		if (layer.detail) {
-			return layer.detail.entries.map((entry, i) => {
-				const name = formatFormula(entry.species);
+			return layer.detail.entries.map((entry) => {
 				const value = formatPercent(entry.fraction);
 				return {
 					key: entry.species,
-					label: name,
+					label: formatFormula(entry.species),
 					value,
-					tooltip: m.interior_material_value({ name, value }),
+					tooltip: m.interior_material_value({
+						name: detailSpeciesName(entry.species),
+						value
+					}),
+					labelIsAbbreviated: true,
 					share: entry.fraction,
-					color: `var(--chart-${(i % 5) + 1})`
+					color: detailSpeciesColor(entry.species)
 				};
 			});
 		}
