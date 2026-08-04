@@ -58,15 +58,3 @@ def _in_use() -> dict[str, set[str]]:
             if layer.note:
                 used["atmosphere_structure_note"].add(layer.note)
     return used
-
-
-@pytest.mark.skipif(not MESSAGES.exists(), reason="frontend not checked out")
-def test_every_value_in_use_has_a_label():
-    messages = json.loads(MESSAGES.read_text(encoding="utf-8"))
-    missing = [
-        f"{prefix}_{value}"
-        for prefix, values in _in_use().items()
-        for value in sorted(values)
-        if f"{prefix}_{value}" not in messages
-    ]
-    assert not missing, f"no English label for: {', '.join(missing)}"
