@@ -247,7 +247,8 @@ interface GlobalGroupData {
 }
 ```
 
-On `cat-ring-systems` the images are selected from the "Rings of X" topic items
+On `cat-ring-systems` the images are the per-body `ring_images` pooled (see
+`docs/export-format/objects.md`), selected from the "Rings of X" topic items
 (`constants/rings/wikidata.py`) rather than from the group's own Wikidata item
 or its members: the item is the generic "planetary ring" concept, and the member
 fallback would fill a page about rings with portraits of Jupiter and Saturn.

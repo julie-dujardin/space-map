@@ -195,6 +195,15 @@ def collect_group_images(slug: str) -> list[dict] | None:
     return _collect_images_from_cache(slug, _group_images_cache)
 
 
+def collect_ring_images(body_id: str) -> list[dict] | None:
+    """Build the ``ring_images`` array for one ringed body.
+
+    Pictures of the ring system, not of the planet wearing it — a separate
+    selection from the body's own ``images`` (see ``RING_IMAGES_PATH``).
+    """
+    return _collect_images_from_cache(body_id, _ring_images_cache)
+
+
 def _collect_images_from_cache(
     key: str,
     cache_loader: Callable[[], dict[str, list[dict]]],
@@ -266,9 +275,27 @@ def _group_images_cache() -> dict[str, list[dict]]:
     return _GROUP_IMAGES_CACHE
 
 
+def _ring_images_cache() -> dict[str, list[dict]]:
+    """Lazy-load and cache ``ring_images.json`` for the export run."""
+    global _RING_IMAGES_CACHE
+    if _RING_IMAGES_CACHE is None:
+        from space_map_data.ingest.providers.image_selection import (
+            read_ring_images,
+        )
+
+        _RING_IMAGES_CACHE = read_ring_images()
+        if not _RING_IMAGES_CACHE:
+            logger.warning(
+                "ring_images.json missing or empty — run `space-map-ingest "
+                "--targets images` first; the Rings tabs will open on the chart"
+            )
+    return _RING_IMAGES_CACHE
+
+
 _OBJECT_IMAGES_CACHE: dict[str, list[dict]] | None = None
 _FEATURE_IMAGES_CACHE: dict[str, list[dict]] | None = None
 _GROUP_IMAGES_CACHE: dict[str, list[dict]] | None = None
+_RING_IMAGES_CACHE: dict[str, list[dict]] | None = None
 
 
 # Smallest variant first — buckets ascend left-to-right in the export.

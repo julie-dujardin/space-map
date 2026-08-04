@@ -33,6 +33,8 @@ export interface LineupHeroDeps {
 	satellitesGroup: () => string | undefined;
 	moonCount: () => number;
 	fallbackName: () => string;
+	/** Whether this page asked for a sphere lineup — see `CategoryConfig`. */
+	sphereLineup: () => boolean;
 	notableMembers: () => NotableMemberEntry[] | undefined;
 	memberNames: () => Record<string, string> | undefined;
 	memberDescriptions: () => Record<string, string> | undefined;
@@ -82,9 +84,13 @@ export class LineupHero {
 				descriptions: d.memberDescriptions()
 			})
 		);
+		// Opt-in: a page says it wants spheres, rather than getting them by virtue
+		// of having enough renderable members. The ring systems page is why —
+		// eight renderable bodies, and a row of them pictures the planets rather
+		// than the rings the page is about.
 		const isSmallBodyLineup = $derived(
 			d.isGroupMode() &&
-				!d.cat().lineup &&
+				d.sphereLineup() &&
 				renderableCount(d.notableMembers()) >= SMALL_BODY_LINEUP_FLOOR
 		);
 

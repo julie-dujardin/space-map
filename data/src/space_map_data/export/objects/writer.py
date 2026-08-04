@@ -44,6 +44,7 @@ from space_map_data.export.objects.interior import interior_block
 from space_map_data.export.objects.rings import (
     ring_feature_localized,
     ring_features_block,
+    ring_images_block,
     ring_sources_block,
     ring_system_localized,
 )
@@ -650,6 +651,8 @@ def _build_global(
     if ring_features:
         data["ring_features"] = ring_features
         data["ring_sources"] = ring_sources_block(obj.id)
+        if ring_images := ring_images_block(obj.id):
+            data["ring_images"] = ring_images
 
     # SBDB extras
     if sbdb is not None:

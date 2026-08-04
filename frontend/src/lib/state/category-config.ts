@@ -30,6 +30,12 @@ export interface CategoryConfig {
 	membersShownInFull: boolean;
 	/** asteroids/comets: members route through the members tab, no overview strip. */
 	smallBody: boolean;
+	/** Opts the page into the sphere-lineup hero. Off by default: a row of
+	 *  spheres is a picture of the *bodies*, which is only the subject on a page
+	 *  that collects bodies — the ring systems page collects what orbits them.
+	 *  The small-body zones and families opt in through `applies_to` instead,
+	 *  since they have no entry here. */
+	sphereLineup: boolean;
 	/** Page cross-links its sibling collections. */
 	crossRefs: boolean;
 }
@@ -43,6 +49,7 @@ const NONE: CategoryConfig = {
 	lineup: false,
 	membersShownInFull: false,
 	smallBody: false,
+	sphereLineup: false,
 	crossRefs: false
 };
 
@@ -57,8 +64,8 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 		crossRefs: true
 	},
 	[CAT_SOLAR_SYSTEM]: { solarSystem: true },
-	[CAT_ASTEROIDS]: { smallBody: true, crossRefs: true },
-	[CAT_COMETS]: { smallBody: true, crossRefs: true },
+	[CAT_ASTEROIDS]: { smallBody: true, sphereLineup: true, crossRefs: true },
+	[CAT_COMETS]: { smallBody: true, sphereLineup: true, crossRefs: true },
 	[CAT_SATELLITES]: { crossRefs: true },
 	[CAT_DEBRIS]: { crossRefs: true },
 	[CAT_PROBES]: { crossRefs: true }

@@ -18,13 +18,15 @@
 		label?: string;
 		/** Open the linked body on this tab (e.g. `members` for a moon list). */
 		tab?: Exclude<DrawerTab, 'overview'>;
-		/** Custom backdrop, rendered instead of the object's lead image — for a
-		 *  tile about one aspect of the body, which its portrait doesn't show. */
+		/** Tile picture, replacing the object's lead image — for a tile about one
+		 *  aspect of the body, which its portrait doesn't show. */
+		hero?: string | Promise<string | undefined>;
+		/** Custom backdrop, rendered instead of any picture at all. */
 		background?: Snippet;
 		/** Extra classes, e.g. `col-span-2` to span a 2-col grid row. */
 		class?: string;
 	}
-	let { id, name, label, tab, background, class: className }: Props = $props();
+	let { id, name, label, tab, hero, background, class: className }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	// Scene-aware focus: selects the body in the renderer so the drawer follows.
@@ -34,11 +36,12 @@
 	// One cached bundle fetch backs the name, label and hero (also warms the
 	// destination page).
 	let detail = $derived(fetchObjectDetail(id));
-	let hero = $derived(
-		detail.then((d) => {
-			const img = d.global?.images?.[0];
-			return img ? pickImageUrl(img, 300) : undefined;
-		})
+	let leadImage = $derived(
+		hero ??
+			detail.then((d) => {
+				const img = d.global?.images?.[0];
+				return img ? pickImageUrl(img, 300) : undefined;
+			})
 	);
 	// Name/label from the bundle, fetched only when the caller didn't supply them.
 	let fetched = $state<{ name: string; label: string } | null>(null);
@@ -78,7 +81,7 @@
 	{href}
 	onclick={open}
 	title={resolvedName}
-	{hero}
+	hero={leadImage}
 	{background}
 	display={resolvedName}
 	label={resolvedLabel}

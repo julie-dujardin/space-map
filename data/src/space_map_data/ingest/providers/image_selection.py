@@ -13,6 +13,8 @@ The results are cached at:
   the ``image_available`` flag on Object rows.
 * ``FEATURE_IMAGES_PATH`` keyed by IAU ``Feature.feature_id`` (stringified).
 * ``GROUP_IMAGES_PATH`` keyed by ``Group.slug``.
+* ``RING_IMAGES_PATH`` keyed by the ringed body's ``Object.id`` — pictures of
+  the ring system rather than of the planet wearing it.
 
 Exports read these caches instead of re-walking sources.
 """
@@ -87,6 +89,7 @@ logger = logging.getLogger(__name__)
 OBJECT_IMAGES_PATH = COMMONS_DIR / "object_images.json"
 FEATURE_IMAGES_PATH = COMMONS_DIR / "feature_images.json"
 GROUP_IMAGES_PATH = COMMONS_DIR / "group_images.json"
+RING_IMAGES_PATH = COMMONS_DIR / "ring_images.json"
 
 SCHEMA_VERSION = 1
 
@@ -203,7 +206,11 @@ def ingest() -> None:
         session,
         craft_groups,
     )
-    _fill_ring_systems(group_selections, metadata_cache, wikidata_root / "referenced")
+    # One selection, two consumers: each ringed body's own Rings tab, and the
+    # collection page that pools them.
+    ring_images = _select_ring_images(metadata_cache, wikidata_root / "referenced")
+    _write_cache(RING_IMAGES_PATH, "ring_systems", ring_images)
+    _fill_ring_systems(group_selections, ring_images)
     _write_cache(GROUP_IMAGES_PATH, "groups", group_selections)
     _log_written(GROUP_IMAGES_PATH, "groups", group_selections, groups)
 
@@ -352,34 +359,26 @@ def _select_for_qid(
     return out
 
 
-def _fill_ring_systems(
-    selections: dict[str, list[dict]],
+def _select_ring_images(
     metadata_cache: dict[str, dict | None],
     referenced_dir: Path,
-) -> None:
-    """Give the Ring Systems page pictures of the rings, not of the planets.
+) -> dict[str, list[dict]]:
+    """Pictures of each ring system, keyed by the host body.
 
-    Its own Wikidata item is the generic "planetary ring" concept, and the two
-    other routes to a picture both lead somewhere wrong: the member fallback
-    would fill the page with portraits of Jupiter and Saturn, and a hand-picked
-    file per body is what this replaced. The candidates come from the "Rings of
-    X" topic items instead — the same articles the Rings tab already cites, so
-    their pictures are already downloaded — scored by the same tree walk as
-    everything else.
+    Taken from the "Rings of X" topic items — the same articles the Rings tab
+    already cites, so their pictures are already downloaded — and scored by the
+    same tree walk as everything else. The body's own images are no use here:
+    they are portraits of the planet, which say nothing about the rings, and a
+    hand-picked file per body is what this replaced.
 
-    Saturn leads because the first image is what the collection's tile shows,
-    and its rings are what the subject is recognised by. Two of the eight
-    bodies contribute nothing: neither Haumea nor Quaoar has a ring article in
-    any language.
+    Two of the eight bodies contribute nothing: neither Haumea nor Quaoar has a
+    ring article in any language. Their tiles fall back to the ring plane.
     """
-    exemplar = "naif-699"
-    # `sorted` is stable, so the rest keep the catalogue's order behind Saturn.
-    bodies = sorted(RING_SYSTEM_PAGES, key=lambda body: body != exemplar)
-    existing = list(selections.get(RING_SYSTEMS_SLUG) or ())
-    seen = {entry["file"] for entry in existing}
-    picks: list[dict] = []
-    for body in bodies:
-        for qid in RING_SYSTEM_PAGES[body]:
+    out: dict[str, list[dict]] = {}
+    for body, qids in RING_SYSTEM_PAGES.items():
+        picks: list[dict] = []
+        seen: set[str] = set()
+        for qid in qids:
             for entry in _select_for_qid(
                 qid,
                 metadata_cache,
@@ -392,12 +391,47 @@ def _fill_ring_systems(
                     continue
                 seen.add(entry["file"])
                 picks.append(entry)
+        if picks:
+            out[body] = picks
+    missing = [b for b in RING_SYSTEM_PAGES if b not in out]
+    logger.info(
+        "Ring system images: %d picture(s) across %d of %d articles%s",
+        sum(len(v) for v in out.values()),
+        len(out),
+        len(RING_SYSTEM_PAGES),
+        f"; nothing for {', '.join(missing)}" if missing else "",
+    )
+    return out
+
+
+def _fill_ring_systems(
+    selections: dict[str, list[dict]],
+    ring_images: dict[str, list[dict]],
+) -> None:
+    """Pool the per-system pictures onto the Ring Systems collection page.
+
+    Its own Wikidata item is the generic "planetary ring" concept and the
+    member fallback would fill a page about rings with portraits of Jupiter and
+    Saturn, so the systems' own pictures lead. Saturn goes first, because the
+    first image is what the collection's tile shows and its rings are what the
+    subject is recognised by.
+    """
+    exemplar = "naif-699"
+    # `sorted` is stable, so the rest keep the catalogue's order behind Saturn.
+    bodies = sorted(ring_images, key=lambda body: body != exemplar)
+    existing = list(selections.get(RING_SYSTEMS_SLUG) or ())
+    seen = {entry["file"] for entry in existing}
+    picks: list[dict] = []
+    for body in bodies:
+        for entry in ring_images[body]:
+            if entry["file"] in seen:
+                continue
+            seen.add(entry["file"])
+            picks.append(entry)
     if not picks:
         logger.warning(
-            "Ring Systems page: no image selected from any of the %d ring "
-            "articles; the page falls back to the %d image(s) its own concept "
-            "item carries",
-            len(RING_SYSTEM_PAGES),
+            "Ring Systems page: no image selected from any ring article; the "
+            "page falls back to the %d image(s) its own concept item carries",
             len(existing),
         )
         return
@@ -855,6 +889,11 @@ def read_feature_images() -> dict[str, list[dict]]:
 def read_group_images() -> dict[str, list[dict]]:
     """Return the cached ``{group_slug: [{file, kind}, ...]}`` mapping."""
     return _read_cache(GROUP_IMAGES_PATH, "groups")
+
+
+def read_ring_images() -> dict[str, list[dict]]:
+    """Return the cached ``{body_id: [{file, kind}, ...]}`` mapping."""
+    return _read_cache(RING_IMAGES_PATH, "ring_systems")
 
 
 def _read_cache(path: Path, payload_key: str) -> dict[str, list[dict]]:

@@ -35,6 +35,7 @@
 	} from '$lib/fetch/nomenclature/quadrangles';
 	import SurfaceHero from './sections/SurfaceHero.svelte';
 	import RingCatalog from './sections/RingCatalog.svelte';
+	import RingHero from './sections/RingHero.svelte';
 	import FeatureTypeFilter from './sections/FeatureTypeFilter.svelte';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
 	import { fetchGroupIndex, featureTypeSlug, CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
@@ -453,6 +454,10 @@
 		satellitesGroup: () => satellitesGroup,
 		moonCount: () => data?.global?.moon_count ?? 0,
 		fallbackName: () => fallbackName,
+		// Opt-in: the two small-body categories say so in their config, and the
+		// zones, flags and split-comet families through the category their
+		// members belong to — none of them has a config entry.
+		sphereLineup: () => cat.sphereLineup || groupDetail?.global?.applies_to === 'small_body',
 		notableMembers: () => notableMembers,
 		memberNames: () => memberNames,
 		memberDescriptions: () => memberDescriptions,
@@ -624,6 +629,7 @@
 		parentBody?.data.objectType === ObjectType.BARYCENTER ? parentBody.data.id : body?.data.id
 	);
 	let showRingsTab = $derived(Object.values(ringFeatures ?? {}).some((f) => !f.parent));
+	let ringHero = $derived(isGroupMode ? undefined : data?.global?.ring_images?.[0]);
 	// Credits for the Rings tab alone: the catalogue's tables, plus whatever
 	// prose and names this locale actually got.
 	let ringCredits = $derived(
@@ -933,6 +939,13 @@
 					onselect={(code) => appState.setQuad(code)}
 					markedFeatureId={hoveredFeatureId}
 				/>
+			</div>
+		{/if}
+	{:else if activeTab === 'rings'}
+		<!-- One picture of the system, above the chart that anatomises it. -->
+		{#if ringHero}
+			<div class="px-4 pt-1 pb-3">
+				<RingHero image={ringHero} alt={data?.localized?.ring_system?.name ?? m.tab_rings()} />
 			</div>
 		{/if}
 	{:else if activeTab === 'members'}

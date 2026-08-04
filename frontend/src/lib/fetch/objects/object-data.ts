@@ -245,6 +245,10 @@ export interface GlobalObjectData {
 	ring_features?: Record<string, RingFeature>;
 	/** The tables and papers the catalogue was read off — credited under the tab. */
 	ring_sources?: Array<{ title: string; url: string; organisation: string }>;
+	/** Pictures of the ring system — of the rings, not of the planet wearing
+	 *  them. Selected from the "Rings of X" article; the first opens the tab.
+	 *  Absent for the bodies whose rings no article illustrates. */
+	ring_images?: ObjectImage[];
 	temperatures?: Temperatures;
 	images?: ObjectImage[];
 	sbdb_primary_designation?: string;

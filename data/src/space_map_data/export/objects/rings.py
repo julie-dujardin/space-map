@@ -34,6 +34,7 @@ from space_map_data.constants.rings.wikidata import (
     RING_FEATURE_PAGES,
     RING_SYSTEM_PAGES,
 )
+from space_map_data.export.images import collect_ring_images
 from space_map_data.export.objects.wikipedia import load_wikipedia_summaries_for_qid
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, ObjectType
@@ -159,6 +160,16 @@ def ring_features_block(
     if catalog is None:
         return None
     return {f.slug: _feature_entry(body_id, f, moon_ids) for f in catalog.features}
+
+
+def ring_images_block(body_id: str) -> list[dict] | None:
+    """Pictures of this body's ring system, the first of which opens the tab.
+
+    Language-independent, so they ride the global block: the subject is the
+    system itself and the credit under it is a name, not prose. Absent for the
+    bodies whose rings no article illustrates.
+    """
+    return collect_ring_images(body_id)
 
 
 def ring_sources_block(body_id: str) -> list[dict] | None:

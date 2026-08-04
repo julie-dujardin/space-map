@@ -163,6 +163,7 @@ interface GlobalObjectData {
     url: string;
     organisation: string;
   }>;
+  ring_images?: ObjectImage[];        // pictures of the ring system, same shape as an `images` entry (see below)
   temperatures?: {                    // absent only when even the estimate can't be computed (no heliocentric distance)
     // Flat rather than grouped by part: a body's readings all plot on one bar,
     // and a reading needs its part, its kind and what produced it together.
@@ -559,10 +560,15 @@ for the small bodies — trimmed to title and link so the panel can credit what
 it shows without pulling the whole credits bundle. The per-source `contribution`
 sentence stays on the credits page.
 
-Pictures of the rings are not carried per body: every photograph that exists
-shows the planet wearing them, and half the eight ringed bodies have none at
-all. They ride the `cat-ring-systems` group's `images` instead, selected from
-the "Rings of X" topic items — see `docs/export-format/groups.md`.
+`ring_images` are pictures of the *rings*, kept apart from the body's own
+`images` (portraits of the planet): they are selected from the "Rings of X"
+topic item rather than the body's, and the first opens the Rings tab. Same
+shape as an `images` entry, resolving against the same `/v1/images/<file>/`
+bundles — including the credit, which rides in the variant's own metadata. Two
+of the eight ringed bodies have none, since neither Haumea's nor Quaoar's rings
+have an article in any language; the tab and the collection tile fall back to
+the ring-plane chart. The same selection is pooled onto the `cat-ring-systems`
+page — see `docs/export-format/groups.md`.
 
 ## Localized (`objects/{lang}/{bucket}.json.gz`)
 
