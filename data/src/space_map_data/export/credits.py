@@ -177,6 +177,48 @@ def _atmosphere_references() -> list[dict]:
     return out
 
 
+# Shortest list first, which is also most-specific first. A shared work stays
+# in the list that would notice losing it: the twelve-entry temperature
+# bibliography without the NSSDCA fact sheets would read as an omission, while
+# the atmosphere list sheds six of a hundred and twenty-five and still holds
+# every other work behind the same numbers.
+_REFERENCE_SECTIONS = ("ring", "temperature", "interior", "atmosphere")
+
+
+def _merge_references(sections: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    """Collapse the bibliography to one row per work, across all four lists.
+
+    The lists are curated per constants package, so a work that measured two
+    things lands in two of them — Huygens' descent gave Titan's surface
+    pressure and its temperature in one fall, and the NSSDCA sheets back
+    nearly everything. The page is a bibliography rather than a per-topic
+    index, so each work appears once, carrying every contribution it makes.
+    """
+    kept: dict[str, dict] = {}
+    out: dict[str, list[dict]] = {}
+    merged: list[str] = []
+    for name in _REFERENCE_SECTIONS:
+        rows: list[dict] = []
+        for row in sections[name]:
+            first = kept.get(row["url"])
+            if first is None:
+                kept[row["url"]] = row
+                rows.append(row)
+                continue
+            if row["contribution"] not in first["contribution"]:
+                first["contribution"] += f"; {row['contribution']}"
+            merged.append(f"{name}/{row['title']}")
+        out[name] = rows
+    if merged:
+        logger.info(
+            "Merged %d duplicate reference row%s into an earlier section: %s",
+            len(merged),
+            "" if len(merged) == 1 else "s",
+            ", ".join(merged),
+        )
+    return out
+
+
 def _build_models_credits(model_metadata: dict[str, dict]) -> list[dict]:
     """Emit one entry per 3D-model source catalog that has at least one bundle.
 
@@ -445,23 +487,31 @@ def write_credits(
 
     models_out = _build_models_credits(model_metadata)
 
+    # Each list is the whole bibliography behind one constants package; the
+    # per-body panels credit only the works their own numbers come from.
+    references = _merge_references(
+        {
+            # Literature behind the derived scattering parameters, plus the
+            # works the per-body atmospheric facts are read off — both live in
+            # constants/atmosphere/references.py.
+            "atmosphere": _atmosphere_references(),
+            # The works behind the tables the ring profiles are read off.
+            "ring": [r._asdict() for r in RING_REFERENCES],
+            # The gravity, seismic and meteorite work behind the interior
+            # layer models and the taxonomic-class estimates.
+            "interior": [r._asdict() for r in INTERIOR_SOURCES.values()],
+            # Measured temperatures.
+            "temperature": [r._asdict() for r in TEMPERATURE_SOURCES.values()],
+        }
+    )
+
     payload: dict = {
         "systems": systems_out,
         "ephemeris_archives": EPHEMERIS_ARCHIVES,
-        # Literature behind the derived scattering parameters, plus the works
-        # the per-body atmospheric facts are read off — both live in
-        # constants/atmosphere/references.py. The panels credit the facts per
-        # body; this list is the whole bibliography in one place.
-        "atmosphere_references": _atmosphere_references(),
-        # Likewise for the ring profiles; the tables the numbers are read off
-        # are credited per body, so these are the works behind those tables.
-        "ring_references": [r._asdict() for r in RING_REFERENCES],
-        # Measured temperatures and the interior models behind core estimates.
-        "temperature_references": [r._asdict() for r in TEMPERATURE_SOURCES.values()],
-        # The gravity, seismic and meteorite work behind the interior layer
-        # models and the taxonomic-class estimates. Credited per body on the
-        # panel; this is the whole bibliography in one place.
-        "interior_references": [r._asdict() for r in INTERIOR_SOURCES.values()],
+        "atmosphere_references": references["atmosphere"],
+        "ring_references": references["ring"],
+        "temperature_references": references["temperature"],
+        "interior_references": references["interior"],
     }
     if models_out:
         payload["models"] = models_out

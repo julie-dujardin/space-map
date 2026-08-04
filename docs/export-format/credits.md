@@ -89,6 +89,15 @@ same shape, one per constants package under `data/src/space_map_data/constants/`
 Each per-body panel credits only the works its own numbers come from; these
 lists are the whole bibliography in one place, for the credits page.
 
+The four lists are deduplicated against each other by `url`, shortest list
+first (`ring` → `temperature` → `interior` → `atmosphere`), so a shared work
+stays in the list that would notice losing it. A work cited by two packages —
+Huygens' descent measured Titan's surface pressure and its temperature, the
+NSSDCA sheets back nearly everything — appears once, with the other list's
+`contribution` appended after a semicolon. So a list is not an exhaustive
+index of its topic: to find every work behind one topic, read the
+`contribution` strings across all four.
+
 `interior_references` is interior work only. SsODNet and Mahlke, which supply
 and define the spectral classes the estimate route reads, are not shipped
 here — the credits page lists them under object metadata, and objects point at

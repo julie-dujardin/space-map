@@ -28,7 +28,9 @@ class VenusCloudLayer(NamedTuple):
 # haze reaches ~110 km with extinction falling > 2 orders over 25 km; cloud
 # top 72±1 km at low latitudes descending to 61-67 km at the poles; global
 # mean total opacity at 1 µm ≈ 34.7 (Haus et al. 2013). Detached haze layers
-# at 80-85 km appear in ~60% of high-resolution profiles.
+# at 80-85 km appear in ~60% of high-resolution profiles. That latitude
+# spread is why the shipped cross-section carries VIRA's 65 km global
+# reference instead (structure.py).
 VENUS_CLOUD_LAYERS: tuple[VenusCloudLayer, ...] = (
     VenusCloudLayer("upper haze", 70.0, 90.0, 0.2, 1.0, ((0.4, 500.0),)),
     VenusCloudLayer("upper cloud", 56.5, 70.0, 6.0, 8.0, ((0.4, 1500.0), (2.0, 50.0))),

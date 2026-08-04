@@ -1,7 +1,10 @@
 """Citable sources behind the temperature constants, for the /credits page.
 
 Keyed so each constant names the works it came from; the full per-value
-provenance lives as comments next to the value. Exported into credits.json.
+provenance lives as comments next to the value. Keys are `name_year`, the
+style the atmosphere and interior registries use, so a work cited by two
+packages is recognisably the same key in both. Exported into credits.json,
+where a work shared with another package is credited once.
 
 NSSDCA has been offline since early 2025 — its entries link the Wayback
 Machine's last pre-outage snapshots.
@@ -26,45 +29,47 @@ TEMPERATURE_SOURCES: dict[str, TemperatureReference] = {
     "nasa_temperatures": TemperatureReference(
         "NASA Science — Temperatures Across Our Solar System",
         "https://science.nasa.gov/solar-system/temperatures-across-our-solar-system/",
-        "day/night extremes cross-checked against the fact sheets",
+        "the solar corona, and day/night extremes cross-checked against the fact sheets",
     ),
-    "iau2015b3": TemperatureReference(
+    "iau_2015_b3": TemperatureReference(
         "IAU 2015 Resolution B3",
         "https://www.iau.org/static/resolutions/IAU2015_English.pdf",
         "nominal solar effective temperature",
     ),
     # --- mission and laboratory measurements ------------------------------
-    "seiff1985": TemperatureReference(
+    # Contributions read as additions to the atmosphere list's line for the
+    # same work where there is one: the credits page merges them.
+    "seiff_1985": TemperatureReference(
         "Seiff et al. 1985 — VIRA (Adv. Space Res. 5)",
         "https://doi.org/10.1016/0273-1177(85)90197-8",
         "Venus cloud-top reference temperature",
     ),
-    "fulchignoni2005": TemperatureReference(
+    "fulchignoni_2005": TemperatureReference(
         "Fulchignoni et al. 2005 (Nature 438)",
         "https://doi.org/10.1038/nature04314",
-        "Titan surface temperature (Huygens HASI)",
+        "Titan's 93.65 K surface reading",
     ),
-    "conrath1989": TemperatureReference(
+    "conrath_1989": TemperatureReference(
         "Conrath et al. 1989 (Science 246)",
         "https://doi.org/10.1126/science.246.4936.1454",
-        "Triton surface temperature (Voyager 2 IRIS)",
+        "Triton's 38 K surface reading",
     ),
-    "hinson2017": TemperatureReference(
+    "hinson_2017": TemperatureReference(
         "Hinson et al. 2017 (Icarus 290)",
         "https://doi.org/10.1016/j.icarus.2017.02.031",
         "Pluto near-surface temperatures (New Horizons REX occultation)",
     ),
-    "earle2017": TemperatureReference(
+    "earle_2017": TemperatureReference(
         "Earle et al. 2017 (Icarus 287)",
         "https://doi.org/10.1016/j.icarus.2016.09.036",
         "Pluto's albedo-driven surface temperature spread",
     ),
-    "holler2017": TemperatureReference(
+    "holler_2017": TemperatureReference(
         "Holler et al. 2017 (Icarus 284)",
         "https://doi.org/10.1016/j.icarus.2016.12.003",
         "Charon surface ice temperature (Keck/OSIRIS)",
     ),
-    "tosi2015": TemperatureReference(
+    "tosi_2015": TemperatureReference(
         "Tosi et al. 2015 (LPSC XLVI, 1745)",
         "https://www.hou.usra.edu/meetings/lpsc2015/pdf/1745.pdf",
         "Ceres peak subsolar temperature (Dawn VIR)",
@@ -74,9 +79,9 @@ TEMPERATURE_SOURCES: dict[str, TemperatureReference] = {
         "https://wmo.asu.edu/content/world-meteorological-organization-global-weather-climate-extremes-archive",
         "Earth's record surface extremes",
     ),
-    "us_std_atm_1976": TemperatureReference(
+    "us_standard_1976": TemperatureReference(
         "US Standard Atmosphere 1976",
         "https://www.ngdc.noaa.gov/stp/space-weather/online-publications/miscellaneous/us-standard-atmosphere-1976/us-standard-atmosphere_st76-1562_noaa.pdf",
-        "Earth sea-level reference temperature",
+        "the 288.15 K sea-level temperature",
     ),
 }

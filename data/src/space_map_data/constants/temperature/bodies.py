@@ -39,7 +39,7 @@ TEMPERATURE_BODIES: dict[str, tuple[PartTemperature, ...]] = {
     # not here — it is a model result attached to a boundary, and lives with
     # the boundary in constants/interior/bodies.py.
     "naif-10": (
-        PartTemperature("photosphere", (Reading("mean", 5772.0),), ("iau2015b3",)),
+        PartTemperature("photosphere", (Reading("mean", 5772.0),), ("iau_2015_b3",)),
         PartTemperature("corona", (Reading("mean", 2.0e6),), ("nasa_temperatures",)),
     ),
     # Mercury: no atmosphere to move heat, so the extremes are simply the lit
@@ -61,7 +61,7 @@ TEMPERATURE_BODIES: dict[str, tuple[PartTemperature, ...]] = {
     # VIRA tropopause the atmosphere shell also references.
     "naif-299": (
         PartTemperature("surface", (Reading("mean", 737.0),), ("nssdca",)),
-        PartTemperature("cloud_top", (Reading("mean", 245.0),), ("seiff1985",)),
+        PartTemperature("cloud_top", (Reading("mean", 245.0),), ("seiff_1985",)),
     ),
     # Earth. Min/max are single-station weather records (Vostok 1983-07-21,
     # Death Valley 1913-07-10), not a climatology — hence the record marker.
@@ -73,7 +73,7 @@ TEMPERATURE_BODIES: dict[str, tuple[PartTemperature, ...]] = {
                 Reading("mean", 288.15),
                 Reading("max", 329.85, "record"),
             ),
-            ("us_std_atm_1976", "wmo_extremes"),
+            ("us_standard_1976", "wmo_extremes"),
         ),
     ),
     # Moon: equatorial diurnal range, plus the global mean the fact sheets
@@ -111,11 +111,11 @@ TEMPERATURE_BODIES: dict[str, tuple[PartTemperature, ...]] = {
     "naif-899": (PartTemperature("cloud_top", (Reading("mean", 55.0),), ("nssdca",)),),
     # Titan, Huygens HASI at the landing site.
     "naif-606": (
-        PartTemperature("surface", (Reading("mean", 93.65),), ("fulchignoni2005",)),
+        PartTemperature("surface", (Reading("mean", 93.65),), ("fulchignoni_2005",)),
     ),
     # Triton, in N2-ice vapour equilibrium at the Voyager 2 epoch.
     "naif-801": (
-        PartTemperature("surface", (Reading("mean", 38.0),), ("conrath1989",)),
+        PartTemperature("surface", (Reading("mean", 38.0),), ("conrath_1989",)),
     ),
     # Pluto. NSSDCA's "24-38 K" sits under its Atmosphere heading and is not a
     # surface figure — the apparent conflict with the ~33-55 K usually quoted
@@ -130,13 +130,13 @@ TEMPERATURE_BODIES: dict[str, tuple[PartTemperature, ...]] = {
                 Reading("mean", 44.0),
                 Reading("max", 55.0),
             ),
-            ("earle2017", "hinson2017"),
+            ("earle_2017", "hinson_2017"),
         ),
     ),
     # Charon: 45 +/- 14 K from Keck/OSIRIS, consistent with the 43.7 K ALMA
     # brightness temperature.
     "naif-901": (
-        PartTemperature("surface", (Reading("mean", 45.0),), ("holler2017",)),
+        PartTemperature("surface", (Reading("mean", 45.0),), ("holler_2017",)),
     ),
     # Ceres: fact-sheet mean, with Dawn's measured peak subsolar reading
     # (235 +/- 4 K at 2.77 AU) as the maximum.
@@ -144,7 +144,7 @@ TEMPERATURE_BODIES: dict[str, tuple[PartTemperature, ...]] = {
         PartTemperature(
             "surface",
             (Reading("mean", 168.0), Reading("max", 235.0, "day")),
-            ("nssdca", "tosi2015"),
+            ("nssdca", "tosi_2015"),
         ),
     ),
 }

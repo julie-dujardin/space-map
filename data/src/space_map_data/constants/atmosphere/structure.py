@@ -157,12 +157,16 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 source="wiki_solar_atm",
                 top_temperature_k=1.0e6,
             ),
+            # 2 MK is the top of the quiet corona's 1-2 MK band and the same
+            # number the temperatures panel ships for it (constants/
+            # temperature/bodies.py) — the two are drawn on one drawer.
             AtmosphereLayer(
                 role="corona",
                 top_km=None,
                 top_pressure_pa=None,
                 source="wiki_solar_atm",
-                top_temperature_k=1.5e6,
+                top_temperature_k=2.0e6,
+                top_temperature_range_k=(1.0e6, 2.0e6),
                 note="diffuse_top",
             ),
         ),
@@ -264,7 +268,7 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 top_temperature_k=1000.0,
                 top_km_range=(500.0, 1000.0),
                 top_temperature_range_k=(800.0, 1500.0),
-                pressure_source="us_standard_atmosphere_1976",
+                pressure_source="us_standard_1976",
                 note="heterosphere",
             ),
             AtmosphereLayer(

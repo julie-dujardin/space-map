@@ -107,7 +107,9 @@ AEROSOLS: dict[str, Aerosol] = {
         scatter_per_km=(0.0133, 0.0125, 0.0095),
         absorption_per_km=(3.4e-4, 1.1e-3, 4.1e-3),
     ),
-    # Venus upper haze above the ~70 km cloud tops the texture shows:
+    # Venus upper haze above the ~70 km low-latitude cloud tops the texture
+    # shows — the deck is latitude-dependent, so structure.py ships VIRA's
+    # 65 km global reference rather than this one:
     # τ(0.63 µm) 0.2-1.0, H = 4.4±1.0 km low latitudes (Titov et al. 2018,
     # SSR 214, 126) → mid-range τ ≈ 0.5 → β_sca ≈ 0.11/km, grey (1 µm
     # droplets). Absorption: the unknown UV absorber (0.32-0.5 µm band,

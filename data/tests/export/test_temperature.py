@@ -233,22 +233,48 @@ class TestConstantsIntegrity:
                     assert by_kind["mean"] <= by_kind["max"], object_id
 
 
-class TestGiantsAgreeWithTheAtmosphereShell:
-    """The cloud-top reading and the rendered atmosphere must cite one level.
+class TestTheShellAgreesWithTheMeasurement:
+    """Every body both tables describe must quote one temperature for it.
 
-    Two blocks on the same panel quoting different temperatures for the same
-    deck is the bug this pins shut.
+    Two blocks on the same drawer disagreeing about the same deck is the bug
+    this pins shut. Giants and Venus are read at their cloud top, everything
+    else at its surface.
     """
 
-    @pytest.mark.parametrize("object_id", _GIANTS)
-    def test_cloud_top_matches_atmosphere_reference(self, object_id):
-        parts = TEMPERATURE_BODIES[object_id]
-        cloud_top = next(p for p in parts if p.part == "cloud_top")
-        mean = next(r for r in cloud_top.readings if r.kind == "mean")
-        assert mean.kelvin == ATMOSPHERE_BODIES[object_id].temperature_k
+    # Exempt because the render constant is a different quantity, not a
+    # second opinion on the same one:
+    #   Mars  — the isothermal temperature reproducing NSSDCA's published
+    #           11.1 km scale height, against the sheet's 210 K average.
+    #   Pluto — REX's near-surface air, against the surface-ice mean.
+    DIFFERENT_QUANTITY = {"naif-499", "naif-999"}
 
-    def test_venus_cloud_top_matches_too(self):
-        parts = TEMPERATURE_BODIES["naif-299"]
-        cloud_top = next(p for p in parts if p.part == "cloud_top")
-        mean = next(r for r in cloud_top.readings if r.kind == "mean")
-        assert mean.kelvin == ATMOSPHERE_BODIES["naif-299"].temperature_k
+    @pytest.mark.parametrize(
+        "object_id", sorted(set(ATMOSPHERE_BODIES) & set(TEMPERATURE_BODIES))
+    )
+    def test_render_matches_the_headline_reading(self, object_id):
+        if object_id in self.DIFFERENT_QUANTITY:
+            pytest.skip("render constant describes a different quantity")
+        assert _headline(object_id) == ATMOSPHERE_BODIES[object_id].temperature_k
+
+    @pytest.mark.parametrize("object_id", sorted(DIFFERENT_QUANTITY))
+    def test_the_exemptions_stay_exemptions(self, object_id):
+        """Guards the exemption itself: converging would mean one of the two
+        stopped describing what its comment says it does."""
+        assert _headline(object_id) != ATMOSPHERE_BODIES[object_id].temperature_k
+
+    @pytest.mark.parametrize("object_id", _GIANTS)
+    def test_a_giant_is_read_at_its_deck(self, object_id):
+        """The exemption above would also pass if a giant simply lost its
+        cloud-top part, so pin that the deck is what is being compared."""
+        parts = TEMPERATURE_BODIES[object_id]
+        assert any(p.part == "cloud_top" for p in parts)
+
+
+def _headline(object_id: str) -> float | None:
+    """The reading the shell renders against — the visible deck where there is
+    one, the surface otherwise."""
+    means = {
+        p.part: next((r.kelvin for r in p.readings if r.kind == "mean"), None)
+        for p in TEMPERATURE_BODIES[object_id]
+    }
+    return means.get("cloud_top") or means.get("surface")

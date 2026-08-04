@@ -590,7 +590,8 @@ ATMOSPHERE_FACT_SOURCES: dict[str, AtmosphereReference] = {
     "us_standard_1976": AtmosphereReference(
         "US Standard Atmosphere 1976 (NOAA/NASA/USAF)",
         "https://www.ngdc.noaa.gov/stp/space-weather/online-publications/miscellaneous/us-standard-atmosphere-1976/us-standard-atmosphere_st76-1562_noaa.pdf",
-        "Earth tropopause, stratopause and mesopause breakpoints",
+        "Earth tropopause, stratopause and mesopause breakpoints, and the "
+        "pressure-altitude table behind them",
     ),
     "wiki_earth_atm": AtmosphereReference(
         "Atmosphere of Earth (Wikipedia)",
@@ -697,14 +698,6 @@ ATMOSPHERE_FACT_SOURCES: dict[str, AtmosphereReference] = {
         "Broadfoot et al. 1989 (Science 246)",
         "https://doi.org/10.1126/science.246.4936.1459",
         "Neptune thermospheric temperature (Voyager 2 UVS occultation)",
-    ),
-    "us_standard_atmosphere_1976": AtmosphereReference(
-        "U.S. Standard Atmosphere 1976 (NOAA/NASA/USAF)",
-        "https://www.ngdc.noaa.gov/stp/space-weather/online-publications/"
-        "miscellaneous/us-standard-atmosphere-1976/"
-        "us-standard-atmosphere_st76-1562_noaa.pdf",
-        "Earth's pressure-altitude table, including the 3.2012e-2 Pa that "
-        "defines the 100 km level",
     ),
     "nixon_2024": AtmosphereReference(
         "Nixon 2024 (Titan After Cassini-Huygens, chapter 6)",

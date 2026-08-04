@@ -110,9 +110,13 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
             width_km=15.0,
         ),
     ),
-    # Mars at the mean-radius datum: 636 Pa, 214 K average, g = 3.73
-    # (NSSDCA 2025 sheet; pressure is seasonal ±25%, 4.0-8.7 mbar).
-    # Composition: NSSDCA (Curiosity/SAM-era rows).
+    # Mars at the mean-radius datum: 636 Pa, g = 3.73 (NSSDCA 2025 sheet;
+    # pressure is seasonal ±25%, 4.0-8.7 mbar). Composition: NSSDCA
+    # (Curiosity/SAM-era rows). 214 K is not the fact sheet's 210 K average
+    # the panel quotes (constants/temperature/bodies.py) — it is the
+    # isothermal temperature that reproduces the sheet's own 11.1 km scale
+    # height, which is what an exponential shell needs. 210 K would give
+    # 10.8 km and thin the column against the published profile.
     "naif-499": BodyAtmosphere(
         composition={"CO2": 0.951, "N2": 0.0259, "Ar": 0.0194, "O2": 0.0016},
         pressure_pa=636.0,
@@ -128,8 +132,10 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
     ),
     # Jupiter above the 1-bar cloud texture, referenced to the ~0.3 bar
     # visible deck; T ≈ 125 K interpolated on the Voyager occultation
-    # profile between the 110 K / 0.14 bar tropopause and 165±5 K / 1 bar
-    # (Lindal et al. 1981). He = 0.1359±0.0027 from the Galileo probe
+    # profile between the 110 K / ~0.1 bar tropopause and 165±5 K / 1 bar
+    # (Lindal et al. 1981; the Galileo probe lands on the same boundary —
+    # Seiff et al. 1998, which is the level structure.py draws).
+    # He = 0.1359±0.0027 from the Galileo probe
     # (von Zahn et al. 1998) — the NSSDCA row still carries the Voyager-era
     # 10.2%. g: NSSDCA equatorial acceleration (rotation included).
     "naif-599": BodyAtmosphere(
@@ -164,8 +170,9 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
         ),
     ),
     # Saturn, ~0.3 bar deck; T ≈ 110 K interpolated between the 82 K /
-    # 70 mbar tropopause and 134 K / 1 bar (Voyager: Tyler et al. 1982,
-    # Lindal et al. 1985). He is genuinely unsettled — Voyager IRIS 3.25%,
+    # 60 mbar tropopause and 134 K / 1 bar (Voyager: Tyler et al. 1982,
+    # Lindal et al. 1985 — Table I's minimum, the level structure.py draws).
+    # He is genuinely unsettled — Voyager IRIS 3.25%,
     # Conrath & Gautier 2000 He/H₂ = 0.11-0.16, Cassini CIRS 2020 ~0.052;
     # mid Conrath & Gautier (He/H₂ = 0.135) adopted here.
     "naif-699": BodyAtmosphere(
@@ -239,7 +246,9 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
     # Pluto, New Horizons epoch (2015-07-14): surface 1.15±0.07 Pa (REX
     # radio occultation, Hinson et al. 2017); T = 50 K representative of
     # the REX near-surface range (38.9 K ingress boundary layer to 57 K
-    # egress; strong inversion above). Composition: N₂ + 0.5% CH₄
+    # egress; strong inversion above). That is the air, not the ground: the
+    # panel's 44 K (constants/temperature/bodies.py) is the albedo-driven
+    # surface-ice mean, a different quantity. Composition: N₂ + 0.5% CH₄
     # (NSSDCA). g = 0.62. The pressure has been rising for decades (Meza
     # et al. 2019) — this is the flyby snapshot.
     "naif-999": BodyAtmosphere(

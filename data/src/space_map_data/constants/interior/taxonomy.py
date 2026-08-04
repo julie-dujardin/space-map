@@ -9,7 +9,8 @@ Splits are mass fractions rounded to whole percent. Rounding is the point: the
 class-to-analogue step is worth about that much, and a table of four-digit
 fractions would claim a precision the mapping does not have. Metal and
 sulphide come from the modal abundances in Krot et al. 2014 recomputed by
-mass, cross-checked against the bulk analyses in Jarosewich 1990; volatile
+mass, except on the ordinary chondrites, where Jarosewich 1990's bulk
+analyses give the H→LL metal span directly and are cited instead; volatile
 contents are the carbonaceous-chondrite water and carbon of Wasson &
 Kallemeyn 1988.
 
@@ -58,13 +59,14 @@ TAXONOMY_COMPOSITION: dict[str, ClassComposition] = {
         source="demeo_2009",
     ),
     # Basaltic achondrites — the HED suite, chipped off Vesta. Differentiated,
-    # so the metal went to a core and the crust is nearly pure silicate.
+    # so the metal went to a core and the crust is nearly pure silicate. Same
+    # trace split as the aubrites below, off the same modal abundances.
     "V": ClassComposition(
         analogue="hed_achondrite",
         composition=(
             Component(SILICATE, 0.98, "krot_2014"),
-            Component(METAL, 0.01, "jarosewich_1990"),
-            Component(SULFIDE, 0.01, "jarosewich_1990"),
+            Component(METAL, 0.01, "krot_2014"),
+            Component(SULFIDE, 0.01, "krot_2014"),
         ),
         source="demeo_2009",
     ),
