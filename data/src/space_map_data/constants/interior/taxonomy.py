@@ -69,7 +69,7 @@ TAXONOMY_COMPOSITION: dict[str, ClassComposition] = {
         source="demeo_2009",
     ),
     # Carbonaceous chondrites. The water is real but bound in phyllosilicates
-    # rather than sitting around as ice — see the note key.
+    # rather than sitting around as ice.
     "C": ClassComposition(
         analogue="carbonaceous_chondrite",
         composition=(

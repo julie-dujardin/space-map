@@ -1306,12 +1306,9 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
         ),
     ),
-    # The four giants and the Sun deliberately carry no `no_solid_surface`
-    # note. `structure="fluid"` already renders as "no solid surface" on the
-    # panel, and their atmosphere blocks carry the fuller version of the same
-    # sentence — the one that also explains why the pressures are quoted at a
-    # cloud deck. Three statements of one fact stacked down the panel is what
-    # it looked like.
+    # The four giants and the Sun carry no note: `structure="fluid"` says it
+    # all, and the frontend derives its "no solid surface" sentence from that
+    # field directly.
     #
     # Jupiter. Juno's gravity harmonics need more heavy elements than a clean
     # core-plus-envelope allows, and the way they fit is a *dilute* core: the

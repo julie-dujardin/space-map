@@ -17,7 +17,7 @@
 	import type { InteriorBand } from '$lib/charts/interior-cross-section';
 	import type { CompositionSegment } from '$lib/charts/composition-bar';
 	import type { TemperatureBracket } from '$lib/charts/layer-appearance';
-	import { layerName, stateName, layerNote } from '$lib/charts/interior-layers';
+	import { layerName, stateName } from '$lib/charts/interior-layers';
 	import {
 		materialSegments,
 		materialName,
@@ -135,19 +135,15 @@
 			: m.structure_layer_mass({ value });
 	});
 
-	let footnote = $derived.by(() => {
-		const bits: string[] = [];
-		// A diffuse layer with nothing above it is not fading into anything: it
-		// is a body whose interior nobody has divided.
-		if (layer.diffuse) {
-			bits.push(outermost ? m.structure_layer_no_boundaries() : m.structure_layer_diffuse());
-		}
-		if (layer.note) {
-			const note = layerNote(layer.note);
-			if (note) bits.push(note);
-		}
-		return bits.join(' · ');
-	});
+	// A diffuse layer with nothing above it is not fading into anything: it
+	// is a body whose interior nobody has divided.
+	let footnote = $derived(
+		layer.diffuse
+			? outermost
+				? m.structure_layer_no_boundaries()
+				: m.structure_layer_diffuse()
+			: ''
+	);
 </script>
 
 <!-- The width a source published around a share, added under the hover rather

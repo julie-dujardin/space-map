@@ -544,8 +544,8 @@ export interface InteriorBlock {
 	 *  citations — 171,000 asteroids carry this. Resolved by
 	 *  `$lib/credits/taxonomy-sources`. */
 	taxonomy_sources?: string[];
-	/** "subsurface_ocean", "hydrated_rock", … — the frontend holds the
-	 *  sentence, the pipeline only the key. */
+	/** "subsurface_ocean", "hydrated_rock", … — only the ocean note gets a
+	 *  sentence; the rest is provenance metadata. */
 	note?: string;
 	/** Whole-body roll-up, descending. Absent where the source constrains
 	 *  geometry but not masses (the Sun). */
@@ -571,7 +571,8 @@ export interface InteriorLayer {
 	/** "solid", "liquid", "partial_melt", "fluid", "plasma". Absent where
 	 *  nobody knows — Venus's core, which the tides allow to be solid. */
 	state?: string;
-	/** "core_size_disputed", "shell_thickness_modelled", … */
+	/** "core_size_disputed", "shell_thickness_modelled", … — provenance
+	 *  metadata, except "continental_crust_only" which renames the layer. */
 	note?: string;
 	/** The mass is arithmetic on the source's radii and densities rather than a
 	 *  number it quotes. */

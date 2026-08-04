@@ -97,7 +97,7 @@ interface GlobalObjectData {
     taxonomy_class?: string;          // estimate route: class as reported, e.g. "Sq"
     taxonomy_scheme?: string;         // estimate route: which taxonomy that letter belongs to
     taxonomy_sources?: string[];      // estimate route: "ssodnet", optionally "mahlke" — ids, not citations
-    note?: string;                    // "subsurface_ocean", "hydrated_rock", "from_bulk_density", …; the frontend holds the sentence
+    note?: string;                    // "subsurface_ocean", "hydrated_rock"; only the ocean note is rendered, the rest is provenance metadata
     composition?: Array<{             // whole-body roll-up, descending; omitted where layer masses are unknown (the Sun)
       material: string;               // "metal" | "sulfide" | "silicate" | "water" | "volatile_ice" | "organic" | "hydrogen" | "helium" | "heavy_elements"
       share: number;                  // normalized over the materials listed
@@ -109,7 +109,7 @@ interface GlobalObjectData {
       mass_fraction?: number;         // of the whole body; absent where a source gives geometry but no mass (the Sun)
       mass_fraction_range?: [number, number]; // the published width, where there is one
       state?: string;                 // "solid" | "liquid" | "partial_melt" | "fluid" | "plasma"; absent where nobody knows
-      note?: string;                  // "core_size_disputed", "shell_thickness_modelled", …; the frontend holds the sentence
+      note?: string;                  // "core_size_disputed", "shell_thickness_modelled", …; provenance metadata, except "continental_crust_only" which renames the layer
       derived?: true;                 // the mass is our arithmetic on the source's radii and densities, not a number it quotes
       diffuse?: true;                 // no boundary to draw: `outer_radius_km` is where it fades out, not where it ends
       composition: Array<{            // of this layer, same materials and same sliver cut as the roll-up

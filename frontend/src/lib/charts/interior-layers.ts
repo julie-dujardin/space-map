@@ -1,8 +1,8 @@
 /**
- * Names for the interior cross-section's layers: what a shell is called, what
- * phase it is in, and the caveats a shell cannot carry on its own.
+ * Names for the interior cross-section's layers: what a shell is called and
+ * what phase it is in.
  *
- * The pipeline ships keys and the sentences live here, the same contract the
+ * The pipeline ships keys and the names live here, the same contract the
  * composition bar's materials use, so the prose stays translatable.
  */
 
@@ -34,19 +34,11 @@ const STATE_NAME: Record<string, () => string> = {
 };
 
 /** Notes that name the shell instead of footnoting it: what the numbers are of
- *  is the shell's identity, and Earth's crust card is entirely continental. */
+ *  is the shell's identity, and Earth's crust card is entirely continental.
+ *  Every other layer note is provenance metadata a card already conveys — the
+ *  published range around a modelled value — so none of them earn a sentence. */
 const NAME_BY_NOTE: Record<string, () => string> = {
 	continental_crust_only: m.interior_layer_continental_crust
-};
-
-/** Layer-level notes: what the shell *is*, never how its numbers were arrived
- *  at. A card already shows the published range around a modelled value, and a
- *  sentence restating that the value is modelled says nothing the range does
- *  not. The block-level notes stay in `Interior.svelte`. */
-const LAYER_NOTE: Record<string, () => string> = {
-	subsurface_ocean: m.interior_note_subsurface_ocean,
-	magma_ocean: m.interior_note_magma_ocean,
-	hydrated_rock: m.interior_note_hydrated_rock
 };
 
 export function layerName(role: string, note?: string): string {
@@ -65,18 +57,6 @@ export function stateName(state: string): string {
 	if (!fn) {
 		console.warn(`Missing interior state name: ${state}`);
 		return state;
-	}
-	return fn();
-}
-
-/** Falls back to nothing rather than to the key: a raw `shell_thickness_
- *  modelled` under a layer name reads as a bug, and the layer is fine without
- *  its footnote. */
-export function layerNote(note: string): string {
-	const fn = LAYER_NOTE[note];
-	if (!fn) {
-		console.warn(`Missing interior layer note: ${note}`);
-		return '';
 	}
 	return fn();
 }

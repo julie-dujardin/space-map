@@ -27,22 +27,6 @@
 		fluid: m.interior_structure_fluid
 	};
 
-	// The caveat a material list can't carry on its own — why a core is only
-	// an estimate, or that the water is locked in the rock rather than lying
-	// on top of it.
-	const NOTE: Record<string, () => string> = {
-		subsurface_ocean: m.interior_note_subsurface_ocean,
-		magma_ocean: m.interior_note_magma_ocean,
-		no_seismic_data: m.interior_note_no_seismic_data,
-		from_moment_of_inertia: m.interior_note_from_moment_of_inertia,
-		from_bulk_density: m.interior_note_from_bulk_density,
-		core_size_disputed: m.interior_note_core_size_disputed,
-		rubble_pile: m.interior_note_rubble_pile,
-		hydrated_rock: m.interior_note_hydrated_rock,
-		no_solid_surface: m.interior_note_no_solid_surface,
-		taxonomy_estimate: m.interior_note_taxonomy_estimate
-	};
-
 	const ANALOGUE: Record<string, () => string> = {
 		ordinary_chondrite: m.interior_analogue_ordinary_chondrite,
 		carbonaceous_chondrite: m.interior_analogue_carbonaceous_chondrite,
@@ -66,7 +50,18 @@
 	const appState = getContext<AppState>('appState');
 
 	let interior = $derived(global?.interior);
-	let note = $derived(interior?.note ? (NOTE[interior.note]?.() ?? null) : null);
+	// The panel's one caveat line. Only the ocean arrives as a `note` key — the
+	// rest of that vocabulary is provenance metadata — while the others derive
+	// from fields already on show, whose one-word labels ("rubble pile") need a
+	// sentence to unpack.
+	let note = $derived.by(() => {
+		if (!interior) return null;
+		if (interior.note === 'subsurface_ocean') return m.interior_note_subsurface_ocean();
+		if (interior.estimated) return m.interior_note_taxonomy_estimate();
+		if (interior.structure === 'rubble_pile') return m.interior_note_rubble_pile();
+		if (interior.structure === 'fluid') return m.interior_note_no_solid_surface();
+		return null;
+	});
 	// The layer stack and the atmosphere's are one tab, so either one earns the
 	// link across from here.
 	let hasCrossSection = $derived(!!interior?.layers?.length || !!global?.atmosphere?.structure);

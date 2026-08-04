@@ -58,8 +58,6 @@ LAYER_ROLES = frozenset(
         "ice_mantle",  # high-pressure ice below an ocean
         # Molten silicate resting on the core. Mars's is the only one anyone
         # has evidence for, and it is rock rather than the ice-world `ocean`.
-        # Distinct from the `magma_ocean` *note*, which is the early global
-        # melt layer a body cooled out of rather than one it still has.
         "magma",
         "envelope",  # H/He, molecular
         "metallic_hydrogen",
@@ -86,21 +84,16 @@ STRUCTURES = frozenset(
     }
 )
 
-# `BodyInterior.note` / `Layer.note` values. Same trick as the atmosphere
-# facts: the pipeline ships a key, the frontend ships the sentence, so the
-# prose stays translatable.
+# `BodyInterior.note` / `Layer.note` values. Shipped as keys the frontend is
+# free to ignore: today it renders a sentence for the ocean note and a layer
+# name for `continental_crust_only`; the rest travel as provenance metadata.
 NOTES = frozenset(
     {
         "subsurface_ocean",
-        "magma_ocean",
-        "no_seismic_data",
         "from_moment_of_inertia",
         "from_bulk_density",
         "core_size_disputed",
-        "rubble_pile",
         "hydrated_rock",
-        "no_solid_surface",
-        "taxonomy_estimate",
         # The boundary is a thermal model's, not a measurement's: ice and
         # liquid water differ by too little in density for gravity to place
         # the base of an ice shell.
