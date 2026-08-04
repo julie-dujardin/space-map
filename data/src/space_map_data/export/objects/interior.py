@@ -201,6 +201,8 @@ def _layer_source_keys(
     shown = {c["material"] for c in composition}
     for layer, drawn in zip(facts.layers, layers):
         keys.append(layer.source)
+        if layer.state_source is not None:
+            keys.append(layer.state_source)
         in_layer = shown | {c["material"] for c in drawn["composition"]}
         keys.extend(c.source for c in layer.composition if c.material in in_layer)
         if layer.detail is not None:

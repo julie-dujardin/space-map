@@ -110,16 +110,27 @@
 		temperature ? formatKelvinRange(temperature.lowK, temperature.highK) : null
 	);
 
+	/** Two significant digits, except where that would round a layer up to the
+	 *  whole body: Tethys's ice shell is 99.942% of it and the 0.058% left is
+	 *  the core sitting right underneath in the same list. */
+	function massPercent(fraction: number): string {
+		for (let digits = 2; digits < 6; digits++) {
+			const text = formatPercent(fraction, digits);
+			if (fraction >= 1 || !text.includes('100')) return text;
+		}
+		return formatPercent(fraction, 6);
+	}
+
 	/** The share of the body, with its published width where the source gives
 	 *  one — Venus's core is 24% to 57% and a lone 39% reads as a measurement. */
 	let mass = $derived.by(() => {
 		if (layer.mass_fraction === undefined) return null;
-		const value = formatPercent(layer.mass_fraction);
+		const value = massPercent(layer.mass_fraction);
 		return layer.mass_fraction_range
 			? m.structure_layer_mass_range({
 					value,
-					low: formatPercent(layer.mass_fraction_range[0]),
-					high: formatPercent(layer.mass_fraction_range[1])
+					low: massPercent(layer.mass_fraction_range[0]),
+					high: massPercent(layer.mass_fraction_range[1])
 				})
 			: m.structure_layer_mass({ value });
 	});

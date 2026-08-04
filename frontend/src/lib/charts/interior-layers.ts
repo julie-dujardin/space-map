@@ -14,6 +14,7 @@ const LAYER_NAME: Record<string, () => string> = {
 	ocean: m.interior_layer_ocean,
 	mantle: m.interior_layer_mantle,
 	ice_mantle: m.interior_layer_ice_mantle,
+	magma: m.interior_layer_magma,
 	envelope: m.interior_layer_envelope,
 	metallic_hydrogen: m.interior_layer_metallic_hydrogen,
 	radiative_zone: m.interior_layer_radiative_zone,

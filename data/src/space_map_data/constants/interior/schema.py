@@ -56,6 +56,11 @@ LAYER_ROLES = frozenset(
         "ocean",
         "mantle",
         "ice_mantle",  # high-pressure ice below an ocean
+        # Molten silicate resting on the core. Mars's is the only one anyone
+        # has evidence for, and it is rock rather than the ice-world `ocean`.
+        # Distinct from the `magma_ocean` *note*, which is the early global
+        # melt layer a body cooled out of rather than one it still has.
+        "magma",
         "envelope",  # H/He, molecular
         "metallic_hydrogen",
         # Stellar. Zones of how energy travels rather than of what the gas is
@@ -162,9 +167,12 @@ class Layer(NamedTuple):
     source: str  # backs mass_fraction and the layer's existence
     outer_radius_km: float | None = None
     detail: Detail | None = None
-    # One of STATES. Carries no separate citation: every value here is stated
-    # by the work already backing the layer.
+    # One of STATES. `state_source` is for the case where the phase is a
+    # different work's result from the geometry — Io, whose layers are
+    # Galileo's gravity and whose mantle is known not to be a magma ocean
+    # because Juno measured the tidal response twenty-four years later.
     state: str | None = None
+    state_source: str | None = None
     note: str | None = None
     # True where the mass fraction is arithmetic on the source's radii and
     # densities rather than a number the source quotes. Ships through to the

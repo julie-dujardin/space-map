@@ -220,7 +220,69 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
     "nimmo_2025": InteriorReference(
         "Nimmo, Bierson & McKinnon 2025 (in Triton and Pluto, IOP Publishing)",
         "https://doi.org/10.1088/2514-3433/ad5278ch2",
-        "Pluto, Charon and Triton radii, densities and rock mass fractions",
+        "Pluto, Charon and Triton radii, densities and rock mass fractions, "
+        "and the thermal models behind Pluto's ice-shell and ocean thicknesses",
+    ),
+    "saur_2015": InteriorReference(
+        "Saur et al. 2015 (JGR Space Physics 120)",
+        "https://doi.org/10.1002/2014JA020778",
+        "Ganymede's subsurface ocean, from the damping of its auroral ovals",
+    ),
+    "zimmer_2000": InteriorReference(
+        "Zimmer, Khurana & Kivelson 2000 (Icarus 147)",
+        "https://doi.org/10.1006/icar.2000.6456",
+        "Europa's and Callisto's oceans, from Galileo's induced magnetic fields",
+    ),
+    "beuthe_2016": InteriorReference(
+        "Beuthe, Rivoldini & Trinh 2016 (Geophys. Res. Lett. 43)",
+        "https://doi.org/10.1002/2016GL070650",
+        "Enceladus's and Dione's ice-shell and ocean thicknesses from "
+        "minimum-stress isostasy",
+    ),
+    "khan_2023": InteriorReference(
+        "Khan et al. 2023 (Nature 622)",
+        "https://doi.org/10.1038/s41586-023-06586-4",
+        "Mars's molten silicate layer, and the smaller, denser core beneath it",
+    ),
+    "bi_2025": InteriorReference(
+        "Bi et al. 2025 (Nature 645)",
+        "https://doi.org/10.1038/s41586-025-09361-9",
+        "Mars's solid inner core, from PKKP and PKiKP arrivals",
+    ),
+    "park_2025_io": InteriorReference(
+        "Park et al. 2025 (Nature 638)",
+        "https://doi.org/10.1038/s41586-024-08442-5",
+        "Io's tidal Love number, which excludes a global magma ocean",
+    ),
+    "park_2025_vesta": InteriorReference(
+        "Park et al. 2025 (Nature Astronomy 9)",
+        "https://doi.org/10.1038/s41550-025-02533-7",
+        "Vesta's moment of inertia, and the crust, mantle and small core it allows",
+    ),
+    "pamerleau_2024": InteriorReference(
+        "Pamerleau, Sori & Scully 2024 (Nature Astronomy 8)",
+        "https://doi.org/10.1038/s41550-024-02350-4",
+        "Ceres's ice content, from crater relaxation under an impure ice rheology",
+    ),
+    "james_2013": InteriorReference(
+        "James, Zuber & Phillips 2013 (JGR Planets 118)",
+        "https://doi.org/10.1029/2012JE004237",
+        "Venus's mean crustal thickness from gravity and topography",
+    ),
+    "nettelmann_2012": InteriorReference(
+        "Nettelmann et al. 2012 (Astrophys. J. 750)",
+        "https://doi.org/10.1088/0004-637X/750/1/52",
+        "Jupiter's molecular/metallic hydrogen boundary and the mass inside it",
+    ),
+    "militzer_2022": InteriorReference(
+        "Militzer et al. 2022 (Planetary Science Journal 3)",
+        "https://doi.org/10.3847/PSJ/ac7ec8",
+        "Jupiter's layer boundaries and the helium enrichment below its rain layer",
+    ),
+    "mankovich_2021": InteriorReference(
+        "Mankovich & Fuller 2021 (Nature Astronomy 5)",
+        "https://doi.org/10.1038/s41550-021-01448-3",
+        "Saturn's diffuse core, from gravity modes seen in its rings",
     ),
     # --- taxonomy → meteorite analogue ------------------------------------
     "demeo_2009": InteriorReference(

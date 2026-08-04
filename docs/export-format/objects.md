@@ -103,7 +103,8 @@ interface GlobalObjectData {
       share: number;                  // normalized over the materials listed
     }>;
     layers?: Array<{                  // outermost first; layer-model route only, for the Structure tab's cross-section
-      role: string;                   // "crust" | "ice_shell" | "ocean" | "mantle" | "ice_mantle" | "envelope" | "metallic_hydrogen" | "radiative_zone" | "convective_zone" | "core" | "outer_core" | "inner_core" | "bulk"
+      role: string;                   // "crust" | "ice_shell" | "ocean" | "mantle" | "ice_mantle" | "magma" | "envelope" | "metallic_hydrogen" | "radiative_zone" | "convective_zone" | "core" | "outer_core" | "inner_core" | "bulk"
+                                      // a role can repeat within one body: the Moon's mantle ships twice, solid over partly molten
       outer_radius_km: number;        // the source's own R, which is not the body's exported mean radius — normalize the disc to the outermost layer
       mass_fraction?: number;         // of the whole body; absent where a source gives geometry but no mass (the Sun)
       mass_fraction_range?: [number, number]; // the published width, where there is one

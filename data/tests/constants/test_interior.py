@@ -28,6 +28,8 @@ def _source_keys() -> set[str]:
             keys.add(body.structure_source)
         for layer in body.layers:
             keys.add(layer.source)
+            if layer.state_source:
+                keys.add(layer.state_source)
             keys |= {c.source for c in layer.composition}
             if layer.detail:
                 keys.add(layer.detail.source)
@@ -51,6 +53,27 @@ class TestBodies:
             return
         assert None not in fractions
         assert sum(fractions) == pytest.approx(1.0, abs=0.002)
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_an_ocean_note_comes_with_an_ocean_layer(self, object_id: str):
+        """Ganymede shipped for a while as a body labelled "has a subsurface
+        ocean" whose cross-section was solid ice from the surface to the rock.
+        The note and the layer are the same claim and have to travel together,
+        in both directions."""
+        body = INTERIOR_FACTS[object_id]
+        has_layer = any(layer.role == "ocean" for layer in body.layers)
+        assert has_layer == (body.note == "subsurface_ocean")
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_layers_run_outermost_to_innermost(self, object_id: str):
+        """The cross-section draws them in order and never sorts. A layer out
+        of sequence would render as a shell inside the one that contains it."""
+        radii = [
+            layer.outer_radius_km
+            for layer in INTERIOR_FACTS[object_id].layers
+            if layer.outer_radius_km is not None
+        ]
+        assert radii == sorted(radii, reverse=True)
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_vocabularies_are_closed(self, object_id: str):
