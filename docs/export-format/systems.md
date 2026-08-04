@@ -33,7 +33,7 @@ A single tiny top-level file fetched once at app start, paired with the per-syst
 
 ## System metadata (`systems/{barycenter_id}.json`)
 
-Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Per-body entries carry available texture tiers, texture attribution, SPICE PCK orientation (pole/spin polynomial), nutation/precession coefficients, and triaxial radii when known.
+Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Per-body entries carry available texture tiers, texture attribution, orientation (pole/spin polynomial, tagged with the `source` that published it — see `objects.md`), nutation/precession coefficients, and triaxial radii when known.
 
 ```json
 {
@@ -65,7 +65,8 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
     "orientation": {
       "pole_ra_0": 0.0, "pole_ra_1": -0.641,
       "pole_dec_0": 90.0, "pole_dec_1": -0.557,
-      "w0": 190.147, "w1": 360.9856235, "w2": 0.0
+      "w0": 190.147, "w1": 360.9856235, "w2": 0.0,
+      "source": "pck"
     },
     "nut_prec": { "ra": [], "dec": [], "pm": [] },
     "radii": { "a": 6378.1366, "b": 6378.1366, "c": 6356.7519 }

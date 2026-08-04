@@ -11,6 +11,7 @@ from typing import NamedTuple
 
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.orientation import ORIENTATION_SOURCE_PCK
 from space_map_data.export.images import (
     collect_feature_images,
     collect_group_images,
@@ -84,15 +85,20 @@ def render_size(
 def pole_from_orientation(
     orientation: dict[int, dict], naif_id: int | None
 ) -> dict | None:
-    """The body's IAU J2000 pole {ra, dec} (deg) from PCK orientation, if known.
+    """The body's IAU J2000 pole {ra, dec} (deg), if known.
 
-    Gives the lineup hero its true axial tilt; only major bodies and the PCK
-    dwarfs (Ceres, Pluto) appear in the orientation table.
+    Gives the lineup hero its true axial tilt. The orientation table is a merge
+    of three sets (see ``load_orientation``), so the pole carries the ``source``
+    of whichever published it — a small-body lineup tilts its members on DAMIT
+    poles and must not credit them to the PCK.
     """
     if naif_id is None or naif_id not in orientation:
         return None
     o = orientation[naif_id]
-    return {"ra": o["pole_ra_0"], "dec": o["pole_dec_0"]}
+    pole = {"ra": o["pole_ra_0"], "dec": o["pole_dec_0"]}
+    if o.get("source") and o["source"] != ORIENTATION_SOURCE_PCK:
+        pole["source"] = o["source"]
+    return pole
 
 
 class RenderGeometry(NamedTuple):

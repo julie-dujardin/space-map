@@ -1114,6 +1114,7 @@
 				nomenclature={nomenclatureCredit}
 				wikipediaLicensed={!!data?.localized?.wikipedia?.extract}
 				pck={lineup.overviewCredits.pck}
+				lightcurvePole={lineup.overviewCredits.lightcurvePole}
 				sbdb={lineup.overviewCredits.sbdb}
 				wikidata={lineup.overviewCredits.wikidata}
 				imagery={lineup.overviewCredits.imagery}
@@ -1148,7 +1149,12 @@
 			/>
 		{/if}
 		{#if lineup.isMoonLineup}
-			<SourcesFooter global={null} pck={lineup.pck} imagery={lineup.imagery} />
+			<SourcesFooter
+				global={null}
+				pck={lineup.pck}
+				lightcurvePole={lineup.lightcurvePole}
+				imagery={lineup.imagery}
+			/>
 		{/if}
 	</div>
 {/snippet}

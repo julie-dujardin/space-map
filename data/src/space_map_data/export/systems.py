@@ -6,6 +6,7 @@ planetary system.
 
 import csv
 import logging
+from collections import Counter
 import orjson
 from pathlib import Path
 
@@ -14,6 +15,10 @@ from sqlalchemy.orm import Session
 from space_map_data.constants.occultation_shapes import (
     occultation_orientations,
     occultation_radii,
+)
+from space_map_data.constants.orientation import (
+    ORIENTATION_SOURCE_LIGHTCURVE,
+    ORIENTATION_SOURCE_PCK,
 )
 from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.models.object import Object, ObjectType
@@ -52,7 +57,7 @@ _SYSTEM_TYPES = frozenset(
 )
 
 
-def _read_orientation_csv(csv_path: Path) -> dict[int, dict]:
+def _read_orientation_csv(csv_path: Path, source: str) -> dict[int, dict]:
     result: dict[int, dict] = {}
     with csv_path.open(newline="") as f:
         for row in csv.DictReader(f):
@@ -64,6 +69,7 @@ def _read_orientation_csv(csv_path: Path) -> dict[int, dict]:
                 "w0": float(row["w0"]),
                 "w1": float(row["w1"]),
                 "w2": float(row["w2"]),
+                "source": source,
             }
     return result
 
@@ -72,10 +78,12 @@ def load_orientation(download_dir: Path) -> dict[int, dict]:
     """Load orientation polynomials: SPICE PCK merged with DAMIT lightcurve
     spin and the occultation-derived poles of the ringed small bodies.
 
-    Returns {naif_id: {pole_ra_0, pole_ra_1, pole_dec_0, pole_dec_1, w0, w1, w2}}.
-    PCK orientation wins where both exist — DAMIT convex spin only fills
-    asteroids the generic/mission PCKs don't cover, and the occultation poles
-    only the four ringed ones neither reaches.
+    Returns {naif_id: {pole_ra_0, …, w2, source[, reference]}}. PCK orientation
+    wins where both exist — DAMIT convex spin only fills asteroids the
+    generic/mission PCKs don't cover, and the occultation poles only the four
+    ringed ones neither reaches. Every record names its own ``source``: the
+    three sets are indistinguishable once merged, and the frontend credits the
+    pole to whoever actually published it.
     """
     tables = download_dir / "derived" / "position" / "tables"
     csv_path = tables / "orientation.csv"
@@ -83,11 +91,11 @@ def load_orientation(download_dir: Path) -> dict[int, dict]:
         logger.warning("No orientation CSV at %s", csv_path)
         result: dict[int, dict] = {}
     else:
-        result = _read_orientation_csv(csv_path)
+        result = _read_orientation_csv(csv_path, ORIENTATION_SOURCE_PCK)
 
     damit_path = download_dir / "derived" / "models" / "damit_orientation.csv"
     if damit_path.exists():
-        damit = _read_orientation_csv(damit_path)
+        damit = _read_orientation_csv(damit_path, ORIENTATION_SOURCE_LIGHTCURVE)
         added = sum(1 for naif in damit if naif not in result)
         result = {**damit, **result}  # PCK entries override DAMIT
         logger.info("Merged %d DAMIT spin-orientation records", added)
@@ -97,7 +105,8 @@ def load_orientation(download_dir: Path) -> dict[int, dict]:
     result = {**occultation, **result}
     logger.info("Merged %d occultation spin-orientation records", added)
 
-    logger.info("Loaded %d orientation records", len(result))
+    by_source = Counter(record["source"] for record in result.values())
+    logger.info("Loaded %d orientation records %s", len(result), dict(by_source))
     return result
 
 

@@ -10,6 +10,8 @@
 	import type { FocusObject } from '$lib/state/focusable';
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
 
+	type OrientationSource = NonNullable<NonNullable<GlobalObjectData['orientation']>['source']>;
+
 	interface Source {
 		key: string;
 		label: string;
@@ -29,6 +31,9 @@
 		wikipediaLicensed?: boolean;
 		/** Collection-page lineup draws radii/pole/mass from SPICE PCK → credit IAU WGCCRE + NAIF. */
 		pck?: boolean;
+		/** Collection-page lineup tilts at least one member on a DAMIT lightcurve
+		 *  pole rather than a PCK one → credit DAMIT for the spin. */
+		lightcurvePole?: boolean;
 		/** Collection-page lineup draws diameter/albedo/spectral type from the Small-Body Database. */
 		sbdb?: boolean;
 		/** Collection-page lineup uses the Wikidata radius fallback for some bodies' size. */
@@ -46,6 +51,7 @@
 		nomenclature = false,
 		wikipediaLicensed = false,
 		pck = false,
+		lightcurvePole = false,
 		sbdb = false,
 		wikidata = false,
 		imagery = [],
@@ -80,6 +86,20 @@
 				'https://naif.jpl.nasa.gov/naif/',
 				m.source_spice_pck_role()
 			);
+		};
+
+		// A spin pole comes from the PCK (planets, moons, the handful of visited
+		// asteroids), from DAMIT's lightcurve inversion, or — for the ringed
+		// small bodies, which no kernel covers — from an occultation paper.
+		const addPole = (
+			source: OrientationSource | undefined,
+			reference?: { title: string; url: string }
+		) => {
+			if (source === 'lightcurve')
+				add('damit', m.source_damit_name(), 'https://damit.cuni.cz/', m.source_spin_pole_role());
+			else if (source === 'occultation') {
+				if (reference) add(reference.url, reference.title, reference.url);
+			} else addPck();
 		};
 
 		const eph = global?.ephemeris_source;
@@ -122,8 +142,12 @@
 				m.source_mpc_role()
 			);
 
-		// Rotational elements / physical constants for planets & moons.
-		if (global?.orientation) addPck();
+		// Rotational elements. The orientation table merges three disjoint sets,
+		// so the pole is credited to whichever published it — most asteroids on
+		// the map spin on a DAMIT lightcurve pole the IAU never tabulated.
+		const orientation = global?.orientation;
+		if (orientation) addPole(orientation.source, orientation.reference);
+		if (lightcurvePole) addPole('lightcurve');
 
 		// Ring catalogue tables — an exact citation like the blocks below, and
 		// the whole content of the Rings tab.

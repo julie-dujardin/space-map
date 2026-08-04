@@ -17,6 +17,15 @@ import * as m from '$lib/paraglide/messages.js';
 // diameter; below the floor it falls back to the plain member-strip page.
 const SMALL_BODY_LINEUP_FLOOR = 3;
 
+// A member's pole tilts its sphere, but only a PCK pole is the IAU's to credit:
+// an asteroid lineup runs on poles converted from DAMIT lightcurve inversions.
+// Named rather than inlined — boolean groups inside `$derived` lose their
+// parens through the .svelte.ts transform.
+const hasPckPole = (mm: NotableMemberEntry) => !!mm.pole && !mm.pole.source;
+const hasLightcurvePole = (mm: NotableMemberEntry) => mm.pole?.source === 'lightcurve';
+const hasPckGeometry = (mm: NotableMemberEntry) =>
+	!!mm.radii || mm.mass_kg != null || hasPckPole(mm);
+
 export interface LineupHeroDeps {
 	isGroupMode: () => boolean;
 	cat: () => CategoryConfig;
@@ -53,12 +62,14 @@ export class LineupHero {
 	readonly solarSystemLineup: { bodies: LineupBody[]; perPage: number } | null;
 	readonly imagery: ImageryCredit[];
 	readonly pck: boolean;
+	readonly lightcurvePole: boolean;
 	readonly wikidata: boolean;
 	readonly sbdb: boolean;
 	// The moon-lineup hero moves its credits to the members tab where the spheres
 	// render, so the overview footer drops them.
 	readonly overviewCredits: {
 		pck: boolean;
+		lightcurvePole: boolean;
 		wikidata: boolean;
 		sbdb: boolean;
 		imagery: ImageryCredit[];
@@ -165,10 +176,10 @@ export class LineupHero {
 		// Metadata sources the lineup members draw on: radii/pole/mass ⇒ PCK (moon
 		// diameters are PCK mean radii too); radius fallback ⇒ Wikidata; small-body
 		// diameter/albedo/spectral data ⇒ SBDB.
-		this.pck = $derived(
-			!!this.hero &&
-				(this.isMoonLineup ||
-					(d.notableMembers() ?? []).some((mm) => mm.radii || mm.pole || mm.mass_kg != null))
+		const pckClaim = $derived(this.isMoonLineup || (d.notableMembers() ?? []).some(hasPckGeometry));
+		this.pck = $derived(!!this.hero && pckClaim);
+		this.lightcurvePole = $derived(
+			!!this.hero && (d.notableMembers() ?? []).some(hasLightcurvePole)
 		);
 		this.wikidata = $derived(
 			!!this.hero && (d.notableMembers() ?? []).some((mm) => mm.radius_km != null)
@@ -177,8 +188,14 @@ export class LineupHero {
 
 		this.overviewCredits = $derived(
 			this.isMoonLineup
-				? { pck: false, wikidata: false, sbdb: false, imagery: [] }
-				: { pck: this.pck, wikidata: this.wikidata, sbdb: this.sbdb, imagery: this.imagery }
+				? { pck: false, lightcurvePole: false, wikidata: false, sbdb: false, imagery: [] }
+				: {
+						pck: this.pck,
+						lightcurvePole: this.lightcurvePole,
+						wikidata: this.wikidata,
+						sbdb: this.sbdb,
+						imagery: this.imagery
+					}
 		);
 
 		// Load surface-imagery credits lazily, once a lineup is actually shown.

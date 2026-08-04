@@ -427,3 +427,28 @@ class TestNotableEntries:
         ]
         descs = notable.notable_descriptions(members, "en", cache)  # type: ignore[arg-type]
         assert descs == {"spkid-1": "dwarf planet"}
+
+
+class TestMemberPoleProvenance:
+    """A member's tilt names its publisher when it isn't the PCK — the footer
+    credits the IAU only for poles the IAU actually tabulated."""
+
+    def test_pck_pole_carries_no_source(self, session: Session) -> None:
+        _add_member(session, 2000001, naif_id=2000001)
+        orientation = {
+            2000001: {"pole_ra_0": 291.418, "pole_dec_0": 66.764, "source": "pck"}
+        }
+        (member,) = _notable_members(
+            session, SBDB.class_ == OrbitClass.MBA, orientation=orientation
+        )
+        assert member.pole == {"ra": 291.418, "dec": 66.764}
+
+    def test_lightcurve_pole_is_labelled(self, session: Session) -> None:
+        _add_member(session, 2000021, naif_id=2000021)
+        orientation = {
+            2000021: {"pole_ra_0": 130.0, "pole_dec_0": -59.0, "source": "lightcurve"}
+        }
+        (member,) = _notable_members(
+            session, SBDB.class_ == OrbitClass.MBA, orientation=orientation
+        )
+        assert member.pole == {"ra": 130.0, "dec": -59.0, "source": "lightcurve"}

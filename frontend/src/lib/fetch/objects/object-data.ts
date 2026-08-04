@@ -117,8 +117,10 @@ export interface NotableMemberEntry {
 	/** Scalar render radius (km) from the Wikidata radius — the render-size
 	 *  fallback for bodies with no PCK radii or SBDB diameter (most TNO dwarfs). */
 	radius_km?: number;
-	/** IAU J2000 pole RA/Dec (deg) from PCK; the lineup's true axial tilt (major bodies + dwarfs). */
-	pole?: { ra: number; dec: number };
+	/** IAU J2000 pole RA/Dec (deg); the lineup's true axial tilt. `source` names
+	 *  the publisher when it isn't the PCK — small-body members tilt on DAMIT
+	 *  lightcurve poles, which the footer credits separately. */
+	pole?: { ra: number; dec: number; source?: 'lightcurve' | 'occultation' };
 	/** SBDB geometric albedo (small bodies only). */
 	albedo?: number;
 	/** SBDB taxonomic type — SMASS else Tholen (small bodies only). */
@@ -294,6 +296,14 @@ export interface GlobalObjectData {
 		w0: number;
 		w1: number;
 		w2: number;
+		/** Who published these elements. The export merges the IAU/NAIF PCK with
+		 *  poles converted from DAMIT lightcurve inversions and with the four
+		 *  ringed small bodies' occultation fits; absent on pre-`source`
+		 *  bundles — treat as `pck`, which is what they all used to claim. */
+		source?: 'pck' | 'lightcurve' | 'occultation';
+		/** The paper behind an `occultation` pole — those come from the
+		 *  literature, not a kernel. */
+		reference?: { title: string; url: string };
 	};
 	nut_prec?: {
 		ra: number[];

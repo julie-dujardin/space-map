@@ -225,6 +225,8 @@ interface GlobalObjectData {
     pole_ra_0: number; pole_ra_1: number;
     pole_dec_0: number; pole_dec_1: number;
     w0: number; w1: number; w2: number;
+    source?: "pck" | "lightcurve" | "occultation"; // who published these elements; absent on pre-`source` bundles (treat as "pck"). The three sets are disjoint and indistinguishable once merged, so the sidebar credits the pole from this and not from the fact that an orientation exists
+    reference?: { title: string; url: string };    // `occultation` only: the paper the pole is fitted in (no kernel covers these four bodies)
   };
   nut_prec?: {                        // SPICE PCK nutation/precession sums (paired with `nut_prec_angles` in /v1/systems/global.json)
     // α += Σ ra[i]  · sin(θ_i(T)),  δ += Σ dec[i] · cos(θ_i(T)),  W += Σ pm[i] · sin(θ_i(T))

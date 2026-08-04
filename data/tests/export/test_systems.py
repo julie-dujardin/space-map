@@ -7,6 +7,7 @@ from space_map_data.export.systems import (
     clouds_block,
     load_clouds_metadata,
     load_night_metadata,
+    load_orientation,
     load_texture_metadata,
     night_block,
     texture_attribution,
@@ -233,3 +234,53 @@ class TestLoadNightMetadata:
 
     def test_missing_textures_dir_returns_empty(self, tmp_path):
         assert load_night_metadata(tmp_path) == {}
+
+
+class TestLoadOrientation:
+    """The orientation table merges three disjoint publishers into one dict, so
+    every record has to say which one it came from."""
+
+    _HEADER = (
+        "naif_id,pole_ra_0,pole_ra_1,pole_dec_0,pole_dec_1,w0,w1,w2\n"
+        "{naif},10,0,20,0,30,40,0\n"
+    )
+
+    def _download_dir(self, tmp_path, *, pck=None, damit=None):
+        tables = tmp_path / "derived" / "position" / "tables"
+        tables.mkdir(parents=True)
+        if pck is not None:
+            (tables / "orientation.csv").write_text(self._HEADER.format(naif=pck))
+        models = tmp_path / "derived" / "models"
+        models.mkdir(parents=True)
+        if damit is not None:
+            (models / "damit_orientation.csv").write_text(
+                self._HEADER.format(naif=damit)
+            )
+        return tmp_path
+
+    def test_each_set_is_tagged(self, tmp_path):
+        result = load_orientation(self._download_dir(tmp_path, pck=599, damit=2000021))
+        assert result[599]["source"] == "pck"
+        assert result[2000021]["source"] == "lightcurve"
+        # Chariklo, from the occultation literature, with its paper attached.
+        assert result[2010199]["source"] == "occultation"
+        assert result[2010199]["reference"]["url"].startswith("https://doi.org/")
+
+    def test_pck_wins_and_keeps_its_own_tag(self, tmp_path):
+        # Same body in both tables: the PCK record must not inherit the DAMIT
+        # label, or a visited asteroid would credit DAMIT for a NAIF pole.
+        result = load_orientation(
+            self._download_dir(tmp_path, pck=2000433, damit=2000433)
+        )
+        assert result[2000433]["source"] == "pck"
+
+    def test_numeric_fields_survive_the_tag(self, tmp_path):
+        (record,) = [
+            r
+            for naif, r in load_orientation(
+                self._download_dir(tmp_path, pck=599)
+            ).items()
+            if naif == 599
+        ]
+        assert record["pole_ra_0"] == 10.0
+        assert record["w1"] == 40.0
