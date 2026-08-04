@@ -1,8 +1,16 @@
 import { WebGLRenderer } from 'three';
 import { cappedPixelRatio } from '$lib/device';
 import { getSettings } from '$lib/state/settings.svelte';
-import type { ResolvedAtmosphereTier } from '$lib/scene/objects/surface/atmosphere-quality';
-import { gpuLabel, pickTier, runAtmosphereBenchmark, tierWorstMs } from './atmosphere-benchmark';
+import {
+	heuristicAtmosphereTier,
+	type ResolvedAtmosphereTier
+} from '$lib/scene/objects/surface/atmosphere-quality';
+import {
+	gpuLabel,
+	pickTier,
+	runAdaptiveAtmosphereBenchmark,
+	tierWorstMs
+} from './atmosphere-benchmark';
 import { calibrationUi } from './calibration-state.svelte';
 
 /**
@@ -83,10 +91,11 @@ async function calibrate(force: boolean): Promise<void> {
 		// and the settings re-run overlay (which also pauses the map via Scene's
 		// effect — at boot the map isn't mounted, so that's a no-op).
 		calibrationUi.progress = 0;
-		const report = await runAtmosphereBenchmark(renderer, {
-			// A tier over the target can't be picked, so costlier ones are skipped
-			// outright — on slow devices this is most of the run.
-			abortAboveMs: 1000 / TARGET_FPS,
+		// Adaptive: walks the tier ladder from the device-signal guess to the
+		// budget boundary, so only the tiers that decide the pick get measured.
+		const report = await runAdaptiveAtmosphereBenchmark(renderer, {
+			budgetMs: 1000 / TARGET_FPS,
+			startTier: heuristicAtmosphereTier(),
 			onProgress: (p) => (calibrationUi.progress = p.fraction)
 		});
 		const worstMs: Partial<Record<ResolvedAtmosphereTier, number>> = {};

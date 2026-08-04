@@ -22,7 +22,7 @@ import {
 } from '$lib/scene/objects/surface/atmosphere-quality';
 
 /**
- * Measures what each atmosphere quality tier actually costs on this device by
+ * Measures what atmosphere quality tiers actually cost on this device by
  * rendering the real shell shader and timing it with a forced GPU sync, so
  * tier selection can start from data instead of coarse device signals plus
  * reactive downgrades. Self-contained (no network assets) so it can run
@@ -30,9 +30,14 @@ import {
  *
  * Two scenarios per tier: 'limb' (camera outside, shell disc overflowing the
  * viewport) and 'sky' (camera near the ground inside the shell — the BackSide
- * path, where the march covers every pixel). Sky is usually the worst case,
- * so the tier pick uses each tier's worse scenario. Runs as two passes (limb
- * across all tiers, then sky) so the visible run holds one viewpoint per pass.
+ * path, where the march covers every pixel). A tier's cost is its worse
+ * scenario, usually sky.
+ *
+ * Two drivers share the render harness:
+ * - {@link runAtmosphereBenchmark} sweeps every tier cheap → costly, limb pass
+ *   then sky pass (the visible debug run holds one viewpoint per pass).
+ * - {@link runAdaptiveAtmosphereBenchmark} measures only the tiers that decide
+ *   the pick against a frame budget — what boot calibration wants.
  */
 
 const EARTH_RADIUS_KM = 6371;
@@ -76,7 +81,7 @@ const LIMB_CAMERA_DIST = 1.6;
 const SKY_CAMERA_DIST = 1.0005;
 const SUN_DIR = new Vector3(0.55, 0.25, 0.8).normalize();
 
-/** Cheap → costly, so blowing the abort threshold skips only costlier tiers. */
+/** Cheap → costly; both drivers rely on cost rising monotonically with tier. */
 const BENCH_TIERS: ResolvedAtmosphereTier[] = ['low', 'medium', 'high', 'ultra'];
 
 const WARMUP_FRAMES = 4;
@@ -85,6 +90,8 @@ const MEASURE_FRAMES = 12;
  *  Firefox's 1 ms performance.now() quantisation can't swamp a fast tier. */
 const TARGET_SAMPLE_MS = 10;
 const MAX_REPEATS = 16;
+/** Samples before an early verdict is allowed. */
+const MIN_DECIDE_FRAMES = 5;
 
 export type BenchScenario = 'limb' | 'sky';
 
@@ -98,10 +105,11 @@ export interface ScenarioSample {
 
 export interface TierSample {
 	tier: ResolvedAtmosphereTier;
+	/** Null when unmeasured (cutoff skip, or its sky already failed the budget). */
 	limb: ScenarioSample | null;
-	/** Null when the tier compiles without the inside view (nothing to march). */
+	/** Null when the tier compiles without the inside view, or wasn't measured. */
 	sky: ScenarioSample | null;
-	/** Not measured: a cheaper tier already exceeded `abortAboveMs`. */
+	/** Neither scenario ran: the cutoff/budget made the tier irrelevant. */
 	skipped: boolean;
 }
 
@@ -131,10 +139,20 @@ export interface BenchmarkOptions {
 	onProgress?: (p: BenchmarkProgress) => void;
 }
 
-/** A tier's cost is its worse scenario, ms. NaN when it wasn't measured. */
+export interface AdaptiveBenchmarkOptions {
+	/** Frame budget the picked tier must fit in its worse scenario. */
+	budgetMs: number;
+	/** Ladder entry point — the better the guess, the shorter the walk. */
+	startTier?: ResolvedAtmosphereTier;
+	tiers?: ResolvedAtmosphereTier[];
+	signal?: AbortSignal;
+	onProgress?: (p: BenchmarkProgress) => void;
+}
+
+/** A tier's cost is its worse measured scenario, ms. NaN when neither ran. */
 export function tierWorstMs(t: TierSample): number {
-	if (!t.limb) return NaN;
-	return Math.max(t.limb.medianMs, t.sky?.medianMs ?? 0);
+	if (!t.limb && !t.sky) return NaN;
+	return Math.max(t.limb?.medianMs ?? 0, t.sky?.medianMs ?? 0);
 }
 
 /** Costliest measured tier whose worst scenario fits the budget; low is the floor. */
@@ -155,14 +173,23 @@ export function gpuLabel(renderer: WebGLRenderer): string {
 	return String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
 }
 
-export async function runAtmosphereBenchmark(
-	renderer: WebGLRenderer,
-	opts: BenchmarkOptions = {}
-): Promise<BenchmarkReport> {
-	const tiers = opts.tiers ?? BENCH_TIERS;
-	const abortAboveMs = opts.abortAboveMs ?? 40;
-	const { signal, onProgress } = opts;
+interface MeasureOptions {
+	/** Stop sampling once the verdict against this budget is decisive; a
+	 *  near-budget tier still runs the full frame count for the tight estimate. */
+	decideMs?: number;
+	onFrame?: (phase: 'warmup' | 'measure', frame: number) => void;
+}
 
+interface BenchHarness {
+	measure(
+		tier: ResolvedAtmosphereTier,
+		scenario: BenchScenario,
+		opts?: MeasureOptions
+	): Promise<ScenarioSample>;
+	dispose(): void;
+}
+
+function createHarness(renderer: WebGLRenderer, signal?: AbortSignal): BenchHarness {
 	const gl = renderer.getContext();
 	const scene = new Scene();
 	const camera = new PerspectiveCamera(
@@ -223,33 +250,19 @@ export async function runAtmosphereBenchmark(
 		return (performance.now() - t0) / repeats;
 	};
 
-	const measureScenario = async (
+	const measure = async (
 		tier: ResolvedAtmosphereTier,
-		tierIndex: number,
-		scenario: BenchScenario
+		scenario: BenchScenario,
+		{ decideMs, onFrame }: MeasureOptions = {}
 	): Promise<ScenarioSample> => {
+		applyAtmosphereQuality(atmoNode, ATMOSPHERE_QUALITY_PRESETS[tier]);
 		setScenario(scenario);
-		const stepFrames = WARMUP_FRAMES + MEASURE_FRAMES;
-		const step = (scenario === 'sky' ? tiers.length : 0) + tierIndex;
-		const progress = (phase: 'warmup' | 'measure', frame: number, frames: number) =>
-			onProgress?.({
-				tier,
-				tierIndex,
-				tierCount: tiers.length,
-				scenario,
-				phase,
-				frame,
-				frames,
-				fraction:
-					(step * stepFrames + (phase === 'measure' ? WARMUP_FRAMES : 0) + frame) /
-					(tiers.length * 2 * stepFrames)
-			});
 
 		// Warmup absorbs the shader recompile (each tier is a new program) and
 		// pipeline spin-up; the last warmup timing calibrates the batch size.
 		let warm = 0;
 		for (let f = 0; f < WARMUP_FRAMES; f++) {
-			progress('warmup', f + 1, WARMUP_FRAMES);
+			onFrame?.('warmup', f + 1);
 			await nextFrame();
 			warm = sample(1);
 		}
@@ -259,18 +272,81 @@ export async function runAtmosphereBenchmark(
 		);
 
 		const samples: number[] = [];
+		const stats = (): { medianMs: number; p75Ms: number } => {
+			const s = [...samples].sort((a, b) => a - b);
+			return { medianMs: s[Math.floor(s.length / 2)], p75Ms: s[Math.floor(s.length * 0.75)] };
+		};
 		for (let f = 0; f < MEASURE_FRAMES; f++) {
-			progress('measure', f + 1, MEASURE_FRAMES);
+			onFrame?.('measure', f + 1);
 			await nextFrame();
 			samples.push(sample(repeats));
+			if (decideMs !== undefined && samples.length >= MIN_DECIDE_FRAMES) {
+				const { medianMs, p75Ms } = stats();
+				if (medianMs > decideMs * 1.4 || p75Ms < decideMs * 0.7) break;
+			}
 		}
-		samples.sort((a, b) => a - b);
-		return {
-			medianMs: samples[Math.floor(samples.length / 2)],
-			p75Ms: samples[Math.floor(samples.length * 0.75)],
-			repeats
-		};
+		return { ...stats(), repeats };
 	};
+
+	const dispose = (): void => {
+		scene.remove(planet, light, atmoNode.mesh);
+		planet.geometry.dispose();
+		planetMaterial.dispose();
+		light.dispose();
+		disposeAtmosphereNode(atmoNode);
+	};
+
+	return { measure, dispose };
+}
+
+function buildReport(
+	renderer: WebGLRenderer,
+	tiers: ResolvedAtmosphereTier[],
+	limbBy: Map<ResolvedAtmosphereTier, ScenarioSample | null>,
+	skyBy: Map<ResolvedAtmosphereTier, ScenarioSample | null>
+): BenchmarkReport {
+	const gl = renderer.getContext();
+	return {
+		tiers: tiers.map((tier) => {
+			const limb = limbBy.get(tier) ?? null;
+			const sky = skyBy.get(tier) ?? null;
+			return { tier, limb, sky, skipped: !limb && !sky };
+		}),
+		drawWidth: gl.drawingBufferWidth,
+		drawHeight: gl.drawingBufferHeight
+	};
+}
+
+/** Full sweep, for the debug page: every tier in both scenarios, no early
+ *  sample exits — the point is eyeballing the whole spread. */
+export async function runAtmosphereBenchmark(
+	renderer: WebGLRenderer,
+	opts: BenchmarkOptions = {}
+): Promise<BenchmarkReport> {
+	const tiers = opts.tiers ?? BENCH_TIERS;
+	const abortAboveMs = opts.abortAboveMs ?? 40;
+	const { signal, onProgress } = opts;
+	const harness = createHarness(renderer, signal);
+
+	const stepFrames = WARMUP_FRAMES + MEASURE_FRAMES;
+	const measure = (tierIndex: number, scenario: BenchScenario): Promise<ScenarioSample> =>
+		harness.measure(tiers[tierIndex], scenario, {
+			onFrame: (phase, frame) =>
+				onProgress?.({
+					tier: tiers[tierIndex],
+					tierIndex,
+					tierCount: tiers.length,
+					scenario,
+					phase,
+					frame,
+					frames: phase === 'measure' ? MEASURE_FRAMES : WARMUP_FRAMES,
+					fraction:
+						(((scenario === 'sky' ? tiers.length : 0) + tierIndex) * stepFrames +
+							(phase === 'measure' ? WARMUP_FRAMES : 0) +
+							frame) /
+						(tiers.length * 2 * stepFrames)
+				})
+		});
 
 	const limbBy = new Map<ResolvedAtmosphereTier, ScenarioSample | null>();
 	const skyBy = new Map<ResolvedAtmosphereTier, ScenarioSample | null>();
@@ -281,37 +357,102 @@ export async function runAtmosphereBenchmark(
 				limbBy.set(tier, null);
 				continue;
 			}
-			applyAtmosphereQuality(atmoNode, ATMOSPHERE_QUALITY_PRESETS[tier]);
-			const limb = await measureScenario(tier, tierIndex, 'limb');
+			const limb = await measure(tierIndex, 'limb');
 			limbBy.set(tier, limb);
 			if (limb.medianMs > abortAboveMs) skip = true;
 		}
 		skip = false;
 		for (const [tierIndex, tier] of tiers.entries()) {
-			const preset = ATMOSPHERE_QUALITY_PRESETS[tier];
-			if (skip || !limbBy.get(tier) || !preset.insideView) {
+			if (skip || !limbBy.get(tier) || !ATMOSPHERE_QUALITY_PRESETS[tier].insideView) {
 				skyBy.set(tier, null);
 				continue;
 			}
-			applyAtmosphereQuality(atmoNode, preset);
-			const sky = await measureScenario(tier, tierIndex, 'sky');
+			const sky = await measure(tierIndex, 'sky');
 			skyBy.set(tier, sky);
 			if (sky.medianMs > abortAboveMs) skip = true;
 		}
 	} finally {
-		scene.remove(planet, light, atmoNode.mesh);
-		planet.geometry.dispose();
-		planetMaterial.dispose();
-		light.dispose();
-		disposeAtmosphereNode(atmoNode);
+		harness.dispose();
 	}
 
-	return {
-		tiers: tiers.map((tier) => {
-			const limb = limbBy.get(tier) ?? null;
-			return { tier, limb, sky: skyBy.get(tier) ?? null, skipped: !limb };
-		}),
-		drawWidth: gl.drawingBufferWidth,
-		drawHeight: gl.drawingBufferHeight
+	return buildReport(renderer, tiers, limbBy, skyBy);
+}
+
+/**
+ * Boot-calibration driver: finds the costliest tier fitting `budgetMs`
+ * without sweeping the ladder. Starts at `startTier`, climbs while tiers fit
+ * or descends until one does. Sky (usually the worse scenario) runs first, so
+ * a tier failing there skips its limb pass, and sampling stops early on
+ * decisive verdicts. The floor tier isn't measured when everything above
+ * already failed — it gets picked regardless. Unmeasured tiers come back with
+ * null scenarios.
+ */
+export async function runAdaptiveAtmosphereBenchmark(
+	renderer: WebGLRenderer,
+	opts: AdaptiveBenchmarkOptions
+): Promise<BenchmarkReport> {
+	const tiers = opts.tiers ?? BENCH_TIERS;
+	const { budgetMs, signal, onProgress } = opts;
+	const startIdx = Math.max(0, tiers.indexOf(opts.startTier ?? tiers[tiers.length - 1]));
+	const harness = createHarness(renderer, signal);
+
+	// Progress assumes the walk ends with the current tier — usually true, and
+	// the honest alternative (worst-case remainder) parks the bar at ~20% on
+	// the common one-tier run. Extra tiers slow the bar asymptotically instead;
+	// the max() keeps it monotonic for the determinate loading bar.
+	const stepFrames = WARMUP_FRAMES + MEASURE_FRAMES;
+	let framesDone = 0;
+	let fraction = 0;
+
+	const measure = (
+		tierIndex: number,
+		scenario: BenchScenario,
+		scenariosAfter: number
+	): Promise<ScenarioSample> =>
+		harness.measure(tiers[tierIndex], scenario, {
+			decideMs: budgetMs,
+			onFrame: (phase, frame) => {
+				if (!onProgress) return;
+				framesDone++;
+				const doneInScenario = (phase === 'measure' ? WARMUP_FRAMES : 0) + frame;
+				const remaining = stepFrames - doneInScenario + scenariosAfter * stepFrames;
+				fraction = Math.max(fraction, framesDone / (framesDone + remaining));
+				onProgress({
+					tier: tiers[tierIndex],
+					tierIndex,
+					tierCount: tiers.length,
+					scenario,
+					phase,
+					frame,
+					frames: phase === 'measure' ? MEASURE_FRAMES : WARMUP_FRAMES,
+					fraction
+				});
+			}
+		});
+
+	const limbBy = new Map<ResolvedAtmosphereTier, ScenarioSample | null>();
+	const skyBy = new Map<ResolvedAtmosphereTier, ScenarioSample | null>();
+	const measureTier = async (i: number): Promise<boolean> => {
+		const tier = tiers[i];
+		if (ATMOSPHERE_QUALITY_PRESETS[tier].insideView) {
+			const sky = await measure(i, 'sky', 1);
+			skyBy.set(tier, sky);
+			if (sky.medianMs > budgetMs) return false; // limb can't rescue the worst case
+		}
+		const limb = await measure(i, 'limb', 0);
+		limbBy.set(tier, limb);
+		return limb.medianMs <= budgetMs;
 	};
+
+	try {
+		if (await measureTier(startIdx)) {
+			for (let i = startIdx + 1; i < tiers.length && (await measureTier(i)); i++);
+		} else {
+			for (let i = startIdx - 1; i >= 1 && !(await measureTier(i)); i--);
+		}
+	} finally {
+		harness.dispose();
+	}
+
+	return buildReport(renderer, tiers, limbBy, skyBy);
 }

@@ -1,8 +1,9 @@
 <!--
-  Dev tool: runs the same benchmark boot calibration runs behind the loading
-  screen, but in a visible frame — for eyeballing timing stability and tier
-  spread on a device. Page-local: never writes the stored calibration, and
-  measures every tier (no target cutoff). Numbers are shell-only at
+  Dev tool: runs the atmosphere benchmark in a visible frame — for eyeballing
+  timing stability and tier spread on a device. Page-local: never writes the
+  stored calibration. "full" measures every tier (no target cutoff);
+  "adaptive" replays what boot calibration does (ladder walk from the
+  heuristic guess against the target budget). Numbers are shell-only at
   near-full-canvas coverage — no composer/bloom, no rest-of-scene.
 -->
 <script lang="ts">
@@ -12,6 +13,7 @@
 		gpuLabel,
 		pickTier,
 		runAtmosphereBenchmark,
+		runAdaptiveAtmosphereBenchmark,
 		type BenchmarkProgress,
 		type BenchmarkReport
 	} from '$lib/scene/perf/atmosphere-benchmark';
@@ -39,17 +41,25 @@
 	const heuristic = heuristicAtmosphereTier();
 	const settings = getSettings();
 
-	async function run(): Promise<void> {
+	async function run(mode: 'full' | 'adaptive' = 'full'): Promise<void> {
 		if (!renderer || running) return;
 		abort = new AbortController();
 		running = true;
 		error = null;
 		report = null;
 		try {
-			report = await runAtmosphereBenchmark(renderer, {
-				signal: abort.signal,
-				onProgress: (p) => (progress = p)
-			});
+			report =
+				mode === 'adaptive'
+					? await runAdaptiveAtmosphereBenchmark(renderer, {
+							budgetMs: 1000 / targetFps,
+							startTier: heuristic,
+							signal: abort.signal,
+							onProgress: (p) => (progress = p)
+						})
+					: await runAtmosphereBenchmark(renderer, {
+							signal: abort.signal,
+							onProgress: (p) => (progress = p)
+						});
 		} catch (e) {
 			if (!abort.signal.aborted) error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -96,9 +106,14 @@
 	<div class="panel">
 		<div class="row header">
 			<span class="title">Perf benchmark</span>
-			<button type="button" class="run" disabled={running} onclick={run}>
-				{running ? 'running…' : 're-run'}
-			</button>
+			<span class="buttons">
+				<button type="button" class="run" disabled={running} onclick={() => run('full')}>
+					{running ? 'running…' : 'full'}
+				</button>
+				<button type="button" class="run" disabled={running} onclick={() => run('adaptive')}>
+					adaptive
+				</button>
+			</span>
 		</div>
 
 		<p class="info">{gpu}</p>
@@ -128,7 +143,7 @@
 						{#if t.skipped}
 							<tr>
 								<td>{t.tier}</td>
-								<td colspan="5" class="skipped">skipped (previous tier over cutoff)</td>
+								<td colspan="5" class="skipped">not measured</td>
 							</tr>
 						{:else}
 							{#each [{ label: 'limb', s: t.limb }, { label: 'sky', s: t.sky }] as row (row.label)}
@@ -144,7 +159,7 @@
 										<td colspan="4" class="skipped">
 											{row.label === 'sky' && !ATMOSPHERE_QUALITY_PRESETS[t.tier].insideView
 												? 'no inside view'
-												: 'skipped (over cutoff)'}
+												: 'not measured'}
 										</td>
 									{/if}
 								</tr>
@@ -211,6 +226,10 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
+	}
+	.buttons {
+		display: flex;
+		gap: 6px;
 	}
 	.title {
 		font-weight: 600;
