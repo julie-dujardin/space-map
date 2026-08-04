@@ -1071,6 +1071,7 @@
 	"model_provenance_missions": "3D shape model from a spacecraft mission",
 	"model_provenance_radar": "3D shape model from Earth-based radar",
 	"model_provenance_lightcurve": "3D shape model from lightcurve inversion",
+	"model_provenance_lightcurve_resolved": "3D shape model from lightcurves and resolved imaging",
 	"attitude_source_spice_ck": "Orientation from SPICE kernels",
 	"temperature_of_cloud_top": "Cloud-top temperature",
 	"temperature_part_cloud_top": "cloud top",

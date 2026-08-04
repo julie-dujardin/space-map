@@ -1059,6 +1059,7 @@
 	"model_provenance_missions": "来自航天器任务的三维形状模型",
 	"model_provenance_radar": "来自地基雷达的三维形状模型",
 	"model_provenance_lightcurve": "来自光变曲线反演的三维形状模型",
+	"model_provenance_lightcurve_resolved": "来自光变曲线与分辨成像的三维形状模型",
 	"attitude_source_spice_ck": "基于 SPICE 内核的姿态",
 	"temperature_of_cloud_top": "云顶温度",
 	"temperature_part_cloud_top": "云顶",

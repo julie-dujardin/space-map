@@ -78,6 +78,7 @@ Schema `5`. Same `models/{slug}/{high,low}.glb` layout, but the meshes are **alr
   "schema": 5,
   "kind": "shape_model",
   "provenance": "missions",
+  "technique": "lightcurve_resolved",  // DAMIT bundles only; see below
   "object_id": "spkid-20000433",
   "naif_id": 2000433,
   "name": "433 Eros",
@@ -106,6 +107,7 @@ Schema `5`. Same `models/{slug}/{high,low}.glb` layout, but the meshes are **alr
 ```
 
 - `provenance` — the source tier (`missions` / `radar` / `lightcurve`), fidelity descending.
+- `technique` — DAMIT bundles only; the finer split the tier hides. `"lightcurve_convex"` is a convex hull from lightcurves alone; `"lightcurve_resolved"` is a non-convex solution (DAMIT's `nonconvex` flag) that needed resolved data too — VLT/SPHERE adaptive optics for most, radar or occultation chords for the rest. Roughly 75 of the ~10.7k shipped bundles are `lightcurve_resolved`, including Ceres, Vesta and most of the big main-belt asteroids.
 - `object_id` / `naif_id` / `name` — the resolved DB Object (bodies resolve by `naif_id`, no mission list).
 - `credit` (top-level) — display name + link (the archive landing page, or a DAMIT asteroid permalink). Also mirrored per tier as `exports.{tier}.credit`. `license` / `license_url` / `citation` / `archive` / `archive_url` carry the manifest's provenance verbatim; DAMIT sets `license: "CC BY 4.0"` and links the model's publication reference.
 - `exports.{tier}.catalog` — `"PDS Small Bodies Node"`, `"JAXA/ISAS DARTS"`, `"ESA/ESAC Rosetta"`, or `"DAMIT"` (all keys in `MODEL_CATALOGS`), so each archive surfaces once on the credits page.

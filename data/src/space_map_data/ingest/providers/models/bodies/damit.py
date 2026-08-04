@@ -1,11 +1,11 @@
-"""DAMIT lightcurve-tier ingest: convex models → GLB bundles + spin orientation.
+"""DAMIT lightcurve-tier ingest: inversion models → GLB bundles + spin orientation.
 
 Reads the extracted DAMIT bulk archive (``DAMIT_DIR``): per-model files under
 ``files/asteroid_<aid>/model_<mid>/`` plus the CSV tables (``asteroids``,
 ``asteroid_models`` — spin parameters inline — and the references join table).
 Every model is exported (the file cap is 100k; the full set fits); the
 preferred model per asteroid drives ``Object.model_name`` and the spin
-orientation the frontend applies. Convex models are dimensionless — scaled to
+orientation the frontend applies. Meshes are dimensionless — scaled to
 DAMIT's own calibrated diameter when present, else SBDB's measured diameter,
 else a diameter estimated from absolute magnitude H — and Blender-free (see
 ``glb_writer``) so the ~16k-model pass is subprocess-free.
@@ -58,6 +58,20 @@ _J2000_JD = 2451545.0
 _H_MAG_CONST_KM = 1329.0
 _ASSUMED_ALBEDO = 0.14
 
+# What actually produced the shape, within the lightcurve tier. DAMIT's
+# `nonconvex` flag separates the two: a convex hull comes from lightcurves
+# alone, while every non-convex solution is an ADAM/KOALA/SAGE-style inversion
+# that needed resolved data too (VLT/SPHERE adaptive optics for most, radar or
+# occultation chords for the rest) — crediting those as lightcurve inversion
+# misstates where the shape came from.
+_TECHNIQUE_CONVEX = "lightcurve_convex"
+_TECHNIQUE_RESOLVED = "lightcurve_resolved"
+
+# Bump when the metadata.json payload changes shape. Refreshes the sidecar on
+# the next run without rebuilding the GLB (which only DAMIT_KNOBS_VERSION and
+# the geometry inputs invalidate).
+_METADATA_VERSION = "v2-technique"
+
 
 @dataclass(frozen=True)
 class DamitModel:
@@ -69,6 +83,12 @@ class DamitModel:
     jd0: float
     phi0_deg: float
     equiv_diameter_km: float | None
+    nonconvex: bool
+
+    @property
+    def technique(self) -> str:
+        """Exported technique label — see ``_TECHNIQUE_*``."""
+        return _TECHNIQUE_RESOLVED if self.nonconvex else _TECHNIQUE_CONVEX
 
     @property
     def dir(self) -> Path:
@@ -81,7 +101,7 @@ class DamitModel:
 
 
 class DamitProcessor:
-    """Convert + export the DAMIT convex lightcurve models."""
+    """Convert + export the DAMIT lightcurve-tier models."""
 
     def __init__(self, session) -> None:
         self._session = session
@@ -128,6 +148,7 @@ class DamitProcessor:
         )
 
         exported = 0
+        resolved = 0
         for m in models:
             object_id = self._resolve_object_id(m.asteroid_id, asteroids)
             if object_id is None:
@@ -161,6 +182,7 @@ class DamitProcessor:
                 continue
             if ok:
                 exported += 1
+                resolved += m.nonconvex
                 if is_preferred:
                     # Mission/radar bundles (BodyModelProcessor, runs first)
                     # outrank convex lightcurve models — never overwrite them.
@@ -175,7 +197,12 @@ class DamitProcessor:
                         synchronize_session=False,
                     )
         self._write_orientation_csv()
-        log.info("DAMIT: exported %d model bundles", exported)
+        log.info(
+            "DAMIT: exported %d model bundles (%d non-convex, credited as %s)",
+            exported,
+            resolved,
+            _TECHNIQUE_RESOLVED,
+        )
 
     # --- per-model ---------------------------------------------------------
 
@@ -201,13 +228,17 @@ class DamitProcessor:
         # Stamp lives outside the export tree: every exported file counts
         # against the CDN's 100k-file cap.
         stamp = _STAMPS_DIR / f"{slug}.json"
-        if force or not _stamp_matches(stamp, out_dir, shape_path, diameter_km):
+        geometry_fresh, metadata_fresh = _stamp_state(
+            stamp, out_dir, shape_path, diameter_km
+        )
+        if force or not geometry_fresh or not metadata_fresh:
             verts, faces = _parse_shape(shape_path)
             verts = _scale_to_diameter(verts, faces, diameter_km)
             verts = _body_z_up_to_gltf_y_up(verts)
-            # Convex models are already tiny; ship a single "high" tier
-            # (a duplicate low.glb would double the exported file count).
-            glb_writer.write_glb(verts, faces, out_dir / "high.glb")
+            if force or not geometry_fresh:
+                # Convex models are already tiny; ship a single "high" tier
+                # (a duplicate low.glb would double the exported file count).
+                glb_writer.write_glb(verts, faces, out_dir / "high.glb")
             self._write_metadata(
                 out_dir,
                 slug,
@@ -289,6 +320,7 @@ class DamitProcessor:
             "schema": config.SCHEMA_VERSION,
             "kind": "shape_model",
             "provenance": "lightcurve",
+            "technique": m.technique,
             "object_id": object_id,
             "naif_id": naif_id,
             "credit": credit,
@@ -343,6 +375,7 @@ class DamitProcessor:
                     aid,
                     *cast("list[float]", spin),
                     equiv_diameter_km=_float(row.get("equiv_diameter")),
+                    nonconvex=_int(row.get("nonconvex")) == 1,
                 )
             )
         return out
@@ -492,18 +525,30 @@ def _mesh_volume(verts: np.ndarray, faces: np.ndarray) -> float:
     return float(abs(np.sum(np.einsum("ij,ij->i", v0, np.cross(v1, v2))) / 6.0))
 
 
-def _stamp_matches(stamp: Path, out_dir: Path, shape: Path, diameter_km: float) -> bool:
-    if not stamp.exists() or not (out_dir / "high.glb").exists():
-        return False
+def _stamp_state(
+    stamp: Path, out_dir: Path, shape: Path, diameter_km: float
+) -> tuple[bool, bool]:
+    """``(geometry fresh, metadata fresh)`` for an already-converted model.
+
+    Split so a metadata-only schema bump rewrites the sidecars without paying
+    to rebuild ~16k GLBs that didn't change.
+    """
+    if not stamp.exists():
+        return False, False
     try:
         data = json.loads(stamp.read_text())
     except OSError, json.JSONDecodeError:
-        return False
-    return (
-        data.get("knobs") == config.DAMIT_KNOBS_VERSION
+        return False, False
+    geometry = (
+        (out_dir / "high.glb").exists()
+        and data.get("knobs") == config.DAMIT_KNOBS_VERSION
         and data.get("shape_sha") == metadata.sha256_file(shape)
         and data.get("diameter_km") == diameter_km
     )
+    meta_fresh = (out_dir / "metadata.json").exists() and data.get(
+        "metadata"
+    ) == _METADATA_VERSION
+    return geometry, meta_fresh
 
 
 def _write_stamp(stamp: Path, shape: Path, diameter_km: float) -> None:
@@ -512,6 +557,7 @@ def _write_stamp(stamp: Path, shape: Path, diameter_km: float) -> None:
         json.dumps(
             {
                 "knobs": config.DAMIT_KNOBS_VERSION,
+                "metadata": _METADATA_VERSION,
                 "shape_sha": metadata.sha256_file(shape),
                 "diameter_km": diameter_km,
             }

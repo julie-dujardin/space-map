@@ -1102,6 +1102,7 @@
 	"model_provenance_missions": "3D-модель формы по данным космической миссии",
 	"model_provenance_radar": "3D-модель формы по данным наземного радара",
 	"model_provenance_lightcurve": "3D-модель формы по инверсии кривой блеска",
+	"model_provenance_lightcurve_resolved": "3D-модель формы по кривым блеска и изображениям с разрешением диска",
 	"attitude_source_spice_ck": "Ориентация по ядрам SPICE",
 	"temperature_of_cloud_top": "Температура верхней границы облаков",
 	"temperature_part_cloud_top": "верх облаков",

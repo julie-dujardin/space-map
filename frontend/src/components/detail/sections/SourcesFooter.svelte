@@ -5,6 +5,7 @@
 	import { archiveLabel, archiveRole, archiveUrl } from '$lib/credits/archive-labels';
 	import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
 	import type { GlobalObjectData, ModelSource } from '$lib/fetch/objects/object-data';
+	import { shapeModelSkipReason } from '$lib/scene/objects/body/shape-model-policy';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
@@ -181,13 +182,18 @@
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
-	function provenanceLabel(p: ModelSource['provenance']): string {
-		if (p === 'radar') return m.model_provenance_radar();
-		if (p === 'lightcurve') return m.model_provenance_lightcurve();
+	function provenanceLabel(source: ModelSource): string {
+		if (source.provenance === 'radar') return m.model_provenance_radar();
+		if (source.provenance === 'lightcurve')
+			return source.technique === 'lightcurve_resolved'
+				? m.model_provenance_lightcurve_resolved()
+				: m.model_provenance_lightcurve();
 		return m.model_provenance_missions();
 	}
 
-	let modelSource = $derived(global?.model_source);
+	// Only credit the mesh the scene actually draws — a body whose DEM sphere
+	// wins never loads its bundle.
+	let modelSource = $derived(shapeModelSkipReason(global) ? undefined : global?.model_source);
 
 	// Deep-link to the observing spacecraft's page; the mesh isn't worth flying to.
 	let missionHref = $derived.by(() => {
@@ -233,7 +239,7 @@
 {/if}
 {#if modelSource}
 	<p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-		<span>{provenanceLabel(modelSource.provenance)}</span>
+		<span>{provenanceLabel(modelSource)}</span>
 		{#if modelSource.mission}
 			<a href={missionHref} onclick={openMission} class="underline hover:text-foreground"
 				>{modelSource.mission.name}</a

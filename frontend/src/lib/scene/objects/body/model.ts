@@ -21,17 +21,11 @@ import { kmToScene } from '$lib/math/units';
 import { frameMapQuaternion } from '$lib/math/orientation';
 import { bodyMeshColor } from '$lib/utils';
 import { getSettings } from '$lib/state/settings.svelte';
-import { isLowEndDevice } from '$lib/device';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
 import { setLabelNote } from '../../label/factory';
 import { applyShapeModelMaterial, makeShapeModelMaterial, setShapeModelMap } from './model-texture';
-
-/** Bodies whose shape model should render even though a DEM exists. By default
- *  a displacement map wins (textured relief sphere beats an untextured mesh —
- *  e.g. Dawn's Ceres/Vesta vs their convex lightcurve blobs); list exceptions
- *  here case by case. */
-const PREFER_MODEL_OVER_DEM = new Set<string>([]);
+import { shapeModelSkipReason } from './shape-model-policy';
 
 /** Body types whose placeholder sphere is meaningless and should be hidden
  *  the moment a load starts (rather than waiting for the detail fetch to
@@ -238,19 +232,15 @@ async function loadNaturalBodyModel(
 		const detail = await fetchObjectDetail(bo.body.data.id, false);
 		const slug = detail.global?.model_name;
 		if (!slug) return; // most bodies: sphere stays visible
-		// Low-end/data-saver clients keep the textured sphere for rough
-		// (non-faithful) shape models. `render_quality` distinguishes a faithful
-		// mission/DEM model ('high') — worth the geometry — from a lightcurve
-		// convex hull ('medium'), which barely beats the ellipsoid it replaces.
-		if (isLowEndDevice() && detail.global?.render_quality !== 'high') {
+		// Same gate the sources footer credits off; a DEM sphere wins here, and
+		// loadBodyTexture attaches the displacement to it.
+		const skip = shapeModelSkipReason(detail.global);
+		if (skip) {
 			console.info(
-				`Low-end device: skipping ${detail.global?.render_quality ?? 'unrated'} shape mesh for ${bo.body.data.id}`
+				`Skipping ${detail.global?.render_quality ?? 'unrated'} shape mesh for ${bo.body.data.id}: ${skip}`
 			);
 			return;
 		}
-		// A DEM sphere beats the shape model unless the body is listed as an
-		// exception — loadBodyTexture attaches the displacement to the sphere.
-		if (detail.global?.displacement && !PREFER_MODEL_OVER_DEM.has(bo.body.data.id)) return;
 		// Model load can win the race against loadBodyTexture; make sure the spin
 		// axis is on the body so the per-frame orientation pass finds it.
 		if (detail.global?.orientation && !bo.body.orientation) {

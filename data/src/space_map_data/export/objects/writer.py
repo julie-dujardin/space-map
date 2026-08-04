@@ -404,8 +404,9 @@ def build_model_sources(
     """Map shape-model slug → compact provenance block for the detail drawer.
 
     Denormalized from the per-slug bundles so the sources section can name the
-    model's technique (mission/radar/lightcurve), credit its archive, and — for
-    mission shapes — link to the observing spacecraft. Keyed by slug to match
+    tier (mission/radar/lightcurve) and, where the tier alone would misdescribe
+    the shape, the finer ``technique``; credit its archive; and — for mission
+    shapes — link to the observing spacecraft. Keyed by slug to match
     the ``model_name`` the object actually references; spacecraft bundles
     (``kind != shape_model``) are excluded — natural bodies only.
     """
@@ -414,6 +415,8 @@ def build_model_sources(
         if meta.get("kind") != "shape_model":
             continue
         block: dict = {"provenance": meta.get("provenance")}
+        if meta.get("technique"):
+            block["technique"] = meta["technique"]
         if meta.get("archive"):
             block["archive"] = meta["archive"]
         if meta.get("archive_url"):

@@ -1,5 +1,6 @@
 """Natural-body shape-model ingest: mesh parsing, GLB writing, DAMIT orientation."""
 
+import json
 import math
 
 import numpy as np
@@ -10,6 +11,8 @@ from space_map_data.ingest.providers.models.bodies.damit import (
     DamitModel,
     DamitProcessor,
     _parse_shape,
+    _stamp_state,
+    _write_stamp,
 )
 from space_map_data.ingest.providers.models.bodies.orientation import damit_to_iau
 
@@ -160,7 +163,7 @@ class TestDamitParsers:
         from space_map_data.ingest.providers.models import config
 
         monkeypatch.setattr(config, "DAMIT_DIR", tmp_path)
-        m = DamitModel(2, 1, 35.0, -60.0, 7.3, 2451800.5, 210.0, None)
+        m = DamitModel(2, 1, 35.0, -60.0, 7.3, 2451800.5, 210.0, None, nonconvex=False)
         if iauspin is not None:
             m.dir.mkdir(parents=True)
             (m.dir / "IAUspin").write_text(iauspin)
@@ -179,6 +182,83 @@ class TestDamitParsers:
         m = self._model(tmp_path, monkeypatch, None)
         row = DamitProcessor._iau_orientation(m)
         assert row == damit_to_iau(35.0, -60.0, 7.3, 210.0, 2451800.5)
+
+
+class TestDamitTechnique:
+    """DAMIT's `nonconvex` flag separates convex lightcurve hulls from the
+    solutions that needed resolved data, which the sidebar credits differently."""
+
+    def _processor(self, tmp_path, monkeypatch) -> DamitProcessor:
+        from space_map_data.ingest.providers.models import config
+
+        tables = tmp_path / "tables"
+        tables.mkdir(parents=True)
+        (tables / "asteroids.csv").write_text("id,number,name\n1,1,Ceres\n")
+        (tables / "asteroid_models.csv").write_text(
+            "id,asteroid_id,lambda,beta,period,jd0,phi0,equiv_diameter,nonconvex\n"
+            "5915,1,350,81,9.074173,2434407,0,938,1\n"
+            "116,1,42,-30,5.1,2434407,0,,0\n"
+        )
+        monkeypatch.setattr(config, "DAMIT_DIR", tmp_path)
+        return DamitProcessor(session=None)
+
+    def test_nonconvex_models_are_credited_as_resolved(self, tmp_path, monkeypatch):
+        models = {
+            m.model_id: m for m in self._processor(tmp_path, monkeypatch)._load_models()
+        }
+        assert models[5915].nonconvex is True
+        assert models[5915].technique == "lightcurve_resolved"
+        assert models[116].nonconvex is False
+        assert models[116].technique == "lightcurve_convex"
+
+    def test_missing_flag_reads_as_convex(self, tmp_path, monkeypatch):
+        from space_map_data.ingest.providers.models import config
+
+        tables = tmp_path / "tables"
+        tables.mkdir(parents=True)
+        (tables / "asteroids.csv").write_text("id,number,name\n1,1,Ceres\n")
+        (tables / "asteroid_models.csv").write_text(
+            "id,asteroid_id,lambda,beta,period,jd0,phi0,equiv_diameter\n"
+            "116,1,42,-30,5.1,2434407,0,\n"
+        )
+        monkeypatch.setattr(config, "DAMIT_DIR", tmp_path)
+        (model,) = DamitProcessor(session=None)._load_models()
+        assert model.technique == "lightcurve_convex"
+
+
+class TestDamitStamp:
+    """A metadata-schema bump must refresh the sidecars without rebuilding GLBs."""
+
+    def _stamp(self, tmp_path, diameter_km: float = 10.0):
+        shape = tmp_path / "shape.txt"
+        shape.write_text("3 1\n0 0 0\n1 0 0\n0 1 0\n1 2 3\n")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        (out_dir / "high.glb").write_bytes(b"glb")
+        (out_dir / "metadata.json").write_text("{}")
+        stamp = tmp_path / "stamp.json"
+        _write_stamp(stamp, shape, diameter_km)
+        return stamp, out_dir, shape
+
+    def test_fresh_stamp_is_fresh_both_ways(self, tmp_path):
+        stamp, out_dir, shape = self._stamp(tmp_path)
+        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, True)
+
+    def test_metadata_version_bump_spares_the_glb(self, tmp_path):
+        stamp, out_dir, shape = self._stamp(tmp_path)
+        data = json.loads(stamp.read_text())
+        data["metadata"] = "v1-stale"
+        stamp.write_text(json.dumps(data))
+        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, False)
+
+    def test_changed_diameter_rebuilds_geometry(self, tmp_path):
+        stamp, out_dir, shape = self._stamp(tmp_path)
+        assert _stamp_state(stamp, out_dir, shape, 11.0) == (False, True)
+
+    def test_missing_sidecar_is_stale(self, tmp_path):
+        stamp, out_dir, shape = self._stamp(tmp_path)
+        (out_dir / "metadata.json").unlink()
+        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, False)
 
 
 def _damit_prime_meridian_equatorial(

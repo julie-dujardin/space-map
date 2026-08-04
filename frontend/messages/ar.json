@@ -1130,6 +1130,7 @@
 	"model_provenance_missions": "نموذج شكل ثلاثي الأبعاد من مهمة فضائية",
 	"model_provenance_radar": "نموذج شكل ثلاثي الأبعاد من رادار أرضي",
 	"model_provenance_lightcurve": "نموذج شكل ثلاثي الأبعاد من عكس منحنى الضوء",
+	"model_provenance_lightcurve_resolved": "نموذج شكل ثلاثي الأبعاد من منحنيات الضوء والتصوير المحلول مكانيًا",
 	"attitude_source_spice_ck": "التوجيه من نوى SPICE",
 	"temperature_of_cloud_top": "درجة حرارة قمة السحب",
 	"temperature_part_cloud_top": "قمة السحب",

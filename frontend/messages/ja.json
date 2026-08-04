@@ -420,6 +420,7 @@
 	"model_provenance_missions": "探査機ミッションによる3D形状モデル",
 	"model_provenance_radar": "地上レーダーによる3D形状モデル",
 	"model_provenance_lightcurve": "光度曲線反転による3D形状モデル",
+	"model_provenance_lightcurve_resolved": "光度曲線と空間分解撮像による3D形状モデル",
 	"attitude_source_spice_ck": "SPICEカーネルによる姿勢",
 	"temperature_of_cloud_top": "雲頂温度",
 	"temperature_part_cloud_top": "雲頂",

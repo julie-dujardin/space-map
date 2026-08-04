@@ -443,6 +443,10 @@ export interface ModelSource {
 	/** Technique tier: spacecraft mission, Earth-based radar, or lightcurve
 	 *  inversion. */
 	provenance: 'missions' | 'radar' | 'lightcurve';
+	/** Finer technique, where the tier alone would misdescribe the shape: DAMIT
+	 *  ships non-convex solutions that needed resolved data (adaptive optics,
+	 *  radar, occultation chords) beside its convex lightcurve hulls. */
+	technique?: 'lightcurve_convex' | 'lightcurve_resolved';
 	/** Archive the mesh was sourced from (free text, e.g. "PDS SBN (NEAR)"). */
 	archive?: string;
 	archive_url?: string;

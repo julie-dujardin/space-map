@@ -992,6 +992,7 @@
 	"model_provenance_missions": "Modello 3D della forma da una missione spaziale",
 	"model_provenance_radar": "Modello 3D della forma da radar terrestre",
 	"model_provenance_lightcurve": "Modello 3D della forma da inversione della curva di luce",
+	"model_provenance_lightcurve_resolved": "Modello 3D della forma da curve di luce e immagini risolte",
 	"attitude_source_spice_ck": "Orientamento dai kernel SPICE",
 	"temperature_of_cloud_top": "Temperatura alla sommità delle nubi",
 	"temperature_part_cloud_top": "sommità delle nubi",

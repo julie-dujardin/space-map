@@ -10,6 +10,7 @@ from space_map_data.export.objects.writer import (
     K_LOCALIZED,
     _iso_currency_code,
     _pick_attrs,
+    build_model_sources,
     hash_bucket,
     render_quality,
     write_object_bundles,
@@ -235,3 +236,37 @@ class TestRenderQuality:
     def test_no_size_signal_is_none(self):
         obj = make_object(id="probe-2", object_type=ObjectType.spacecraft)
         assert render_quality(obj, {}) is None
+
+
+class TestBuildModelSources:
+    """Compact per-slug provenance block behind the detail drawer's model line."""
+
+    def test_damit_technique_rides_along(self):
+        out = build_model_sources(
+            {
+                "damit-5915": {
+                    "kind": "shape_model",
+                    "provenance": "lightcurve",
+                    "technique": "lightcurve_resolved",
+                    "archive": "DAMIT",
+                    "archive_url": "https://damit.cuni.cz/…/3414",
+                }
+            },
+            {},
+        )
+        assert out["damit-5915"] == {
+            "provenance": "lightcurve",
+            "technique": "lightcurve_resolved",
+            "archive": "DAMIT",
+            "archive_url": "https://damit.cuni.cz/…/3414",
+        }
+
+    def test_technique_absent_on_mission_shapes(self):
+        out = build_model_sources(
+            {"eros": {"kind": "shape_model", "provenance": "missions"}}, {}
+        )
+        assert out["eros"] == {"provenance": "missions"}
+
+    def test_spacecraft_bundles_are_excluded(self):
+        out = build_model_sources({"cassini": {"provenance": "spacecraft"}}, {})
+        assert out == {}

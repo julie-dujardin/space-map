@@ -992,6 +992,7 @@
 	"model_provenance_missions": "מודל צורה תלת-ממדי ממשימת חלל",
 	"model_provenance_radar": "מודל צורה תלת-ממדי מרדאר קרקעי",
 	"model_provenance_lightcurve": "מודל צורה תלת-ממדי מהיפוך עקומת אור",
+	"model_provenance_lightcurve_resolved": "מודל צורה תלת-ממדי מעקומות אור ומהדמיה בהפרדה מרחבית",
 	"attitude_source_spice_ck": "כיוון מקובצי SPICE",
 	"temperature_of_cloud_top": "טמפרטורת צמרות העננים",
 	"temperature_part_cloud_top": "צמרות העננים",

@@ -992,6 +992,7 @@
 	"model_provenance_missions": "3D-Formmodell aus einer Raumfahrtmission",
 	"model_provenance_radar": "3D-Formmodell aus erdgestütztem Radar",
 	"model_provenance_lightcurve": "3D-Formmodell aus Lichtkurven-Inversion",
+	"model_provenance_lightcurve_resolved": "3D-Formmodell aus Lichtkurven und aufgelöster Bildgebung",
 	"attitude_source_spice_ck": "Ausrichtung aus SPICE-Kerneln",
 	"temperature_of_cloud_top": "Temperatur der Wolkenobergrenze",
 	"temperature_part_cloud_top": "Wolkenobergrenze",

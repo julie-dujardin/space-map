@@ -1006,6 +1006,7 @@
 	"model_provenance_missions": "Model kształtu 3D z misji kosmicznej",
 	"model_provenance_radar": "Model kształtu 3D z radaru naziemnego",
 	"model_provenance_lightcurve": "Model kształtu 3D z inwersji krzywej blasku",
+	"model_provenance_lightcurve_resolved": "Model kształtu 3D z krzywych blasku i obrazowania tarczy",
 	"attitude_source_spice_ck": "Orientacja z jąder SPICE",
 	"temperature_of_cloud_top": "Temperatura wierzchołków chmur",
 	"temperature_part_cloud_top": "wierzchołki chmur",

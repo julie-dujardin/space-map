@@ -47,6 +47,7 @@ interface GlobalObjectData {
   model_name?: string;                // slug under /v1/models/{model_name}/ when this body ships a 3D-model bundle (see models.md); shared by bodies that reuse one model
   model_source?: {                    // shape-model provenance (natural bodies only), denormalized from the bundle for the detail sources section
     provenance: "missions" | "radar" | "lightcurve"; // technique tier: spacecraft mission, Earth-based radar, or lightcurve inversion
+    technique?: "lightcurve_convex" | "lightcurve_resolved"; // DAMIT bundles only: a convex hull from lightcurves alone, or a non-convex solution that also needed resolved data (adaptive optics, radar, occultations)
     archive?: string;                 // archive the mesh came from (free text, e.g. "PDS SBN (NEAR)")
     archive_url?: string;
     mission?: { name: string; primary_type: "object"; primary_id: string }; // observing spacecraft (mission shapes only); primary_id is "probe-<id>"
