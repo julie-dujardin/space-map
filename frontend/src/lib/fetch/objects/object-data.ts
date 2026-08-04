@@ -243,11 +243,6 @@ export interface GlobalObjectData {
 	ring_features?: Record<string, RingFeature>;
 	/** The tables and papers the catalogue was read off — credited under the tab. */
 	ring_sources?: Array<{ title: string; url: string; organisation: string }>;
-	/** One picture of the system, opening the Rings tab. Hand-picked from the
-	 *  pages the panel cites, so it carries no baked-in caption to mistranslate
-	 *  — hence the global block rather than the localized one. Absent for the
-	 *  small bodies: no photograph of their rings exists. */
-	ring_hero?: ObjectImage;
 	temperatures?: Temperatures;
 	images?: ObjectImage[];
 	sbdb_primary_designation?: string;

@@ -127,6 +127,42 @@ async function load(bodyId: string): Promise<RingStripProfile[]> {
 	return profiles;
 }
 
+/** The profile across a radius interval, since one chart pixel can swallow
+ *  hundreds of samples. The densest sample wins rather than the mean: Uranus'
+ *  ε ring is a dozen samples of τ ≈ 1 among a hundred of dust, and an average
+ *  would erase the ring the row points at. Null where no bundle covers the
+ *  interval — the caller falls back to the catalogue's optical depths. */
+export function sampleProfiles(
+	profiles: readonly RingStripProfile[],
+	lo: number,
+	hi: number
+): { rgb: [number, number, number]; tau: number } | null {
+	let covered = false;
+	let tau = -1;
+	let red = 0;
+	let green = 0;
+	let blue = 0;
+	for (const profile of profiles) {
+		const n = profile.tau.length;
+		const perKm = (n - 1) / (profile.outer - profile.inner);
+		const first = Math.round((Math.max(lo, profile.inner) - profile.inner) * perKm);
+		const last = Math.round((Math.min(hi, profile.outer) - profile.inner) * perKm);
+		if (last < first || first >= n || last < 0) continue;
+		covered = true;
+		for (let i = Math.max(0, first); i <= Math.min(n - 1, last); i++) {
+			// An opaque sample has infinite τ; clamp it to something the opacity
+			// ramp can compare, well past the densest ring anyone has measured.
+			const sample = Number.isFinite(profile.tau[i]) ? profile.tau[i] : 10;
+			if (sample <= tau) continue;
+			tau = sample;
+			red = profile.rgb[i * 3];
+			green = profile.rgb[i * 3 + 1];
+			blue = profile.rgb[i * 3 + 2];
+		}
+	}
+	return covered ? { rgb: [red, green, blue], tau } : null;
+}
+
 export function loadRingStrips(bodyId: string): Promise<RingStripProfile[]> {
 	let pending = cache.get(bodyId);
 	if (!pending) {

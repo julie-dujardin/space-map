@@ -20,7 +20,7 @@ Exports read these caches instead of re-walking sources.
 import json
 import logging
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Container, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -32,9 +32,12 @@ from space_map_data.constants.categories import (
     ASTEROIDS_SLUG,
     COMET_ORBIT_CLASSES,
     COMETS_SLUG,
+    DEBRIS_SLUG,
     DWARF_PLANETS_SLUG,
     MOONS_SLUG,
     PLANETS_SLUG,
+    PROBES_SLUG,
+    RING_SYSTEMS_SLUG,
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
 )
@@ -49,6 +52,7 @@ from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
 from space_map_data.constants.earth_sats.organizations import (
     ORGANIZATION_SLUG_PREFIX,
 )
+from space_map_data.constants.rings.wikidata import RING_SYSTEM_PAGES
 from space_map_data.export.groups.earth_sat import (
     LAGRANGE_ORBIT_CENTERS,
     primary_orbit_class_slug,
@@ -57,6 +61,7 @@ from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
     GROUPS,
     SMALL_BODY_FLAG_SLUG_PREFIX,
+    GroupCategory,
 )
 from space_map_data.export.groups.small_body import _exported_sbdb_filter
 from space_map_data.export.objects.missions import build_probe_missions
@@ -92,6 +97,17 @@ GROUP_FALLBACK_TARGET_COUNT = 15
 GROUP_FALLBACK_PER_MEMBER_CAP = 3
 GROUP_FALLBACK_MIN_GALLERY_DIM = 800
 GROUP_FALLBACK_MIN_HERO_DIM = 1600
+# Subjects that keep their cutaways and schematics: things humans built, where
+# the schematic is often the only illustration there is. Everything else drops
+# them — see ``image_exclusion_reason(drop_subject_diagrams=...)``.
+_SCHEMATIC_OBJECT_TYPES = frozenset(
+    {ObjectType.spacecraft.value, ObjectType.debris.value}
+)
+# A group follows its members. `applies_to` answers this for every group except
+# the browse categories, which share one value whatever they hold — so the three
+# whose members are craft are named.
+_SCHEMATIC_GROUP_CATEGORIES = frozenset({GroupCategory.EARTH_SAT, GroupCategory.PROBE})
+_SCHEMATIC_CATEGORY_SLUGS = frozenset({SATELLITES_SLUG, DEBRIS_SLUG, PROBES_SLUG})
 # Earth-sat filter mirrored from `membership.build_earth_groups_data` so the
 # fallback's member set matches the rows actually shipped per zone.
 _FALLBACK_SAT_TYPE_VALUES = [ObjectType.spacecraft.value, ObjectType.debris.value]
@@ -104,12 +120,18 @@ def ingest() -> None:
     metadata_cache: dict[str, dict | None] = {}
     wikidata_root = SOURCES_METADATA_DIR / "wikidata"
 
-    objects = [
-        (oid, qid)
-        for oid, qid in session.query(Object.id, Object.wikidata_qid)
+    object_rows = (
+        session.query(Object.id, Object.wikidata_qid, Object.object_type)
         .filter(Object.wikidata_qid.is_not(None))
         .all()
-    ]
+    )
+    objects = [(oid, qid) for oid, qid, _ in object_rows]
+    # Only built things keep their schematics: a cutaway of a planet or a ring
+    # system restates a view the app renders, but for a probe the schematic is
+    # often the only illustration that exists.
+    craft = {
+        oid for oid, _, obj_type in object_rows if obj_type in _SCHEMATIC_OBJECT_TYPES
+    }
     selections = _select_for_qids(
         objects,
         metadata_cache,
@@ -118,6 +140,7 @@ def ingest() -> None:
         aux_kind="logo",
         desc="Selecting per-object images",
         unit="obj",
+        keep_diagrams=craft,
     )
     _merge_manual_extras(selections)
     _write_cache(OBJECT_IMAGES_PATH, "objects", selections)
@@ -153,7 +176,14 @@ def ingest() -> None:
         for g in GROUPS
         if g.wikidata_qid and not g.slug.startswith(COUNTRY_SLUG_PREFIX)
     ]
-    groups += [(m.slug, m.mission_qid) for m in build_probe_missions()]
+    missions = build_probe_missions()
+    groups += [(m.slug, m.mission_qid) for m in missions]
+    craft_groups = {
+        g.slug
+        for g in GROUPS
+        if g.applies_to in _SCHEMATIC_GROUP_CATEGORIES
+        or g.slug in _SCHEMATIC_CATEGORY_SLUGS
+    } | {m.slug for m in missions}
     group_selections = _select_for_qids(
         groups,
         metadata_cache,
@@ -162,12 +192,18 @@ def ingest() -> None:
         aux_kind="logo",
         desc="Selecting per-group images",
         unit="group",
+        keep_diagrams=craft_groups,
     )
     # Picture-less groups (no own QID or QID yielded no image) fall back to
     # photos of their member objects, ranked by member sitelink count.
     _fill_groups_from_members(
-        group_selections, metadata_cache, wikidata_root / "objects", session
+        group_selections,
+        metadata_cache,
+        wikidata_root / "objects",
+        session,
+        craft_groups,
     )
+    _fill_ring_systems(group_selections, metadata_cache, wikidata_root / "referenced")
     _write_cache(GROUP_IMAGES_PATH, "groups", group_selections)
     _log_written(GROUP_IMAGES_PATH, "groups", group_selections, groups)
 
@@ -181,13 +217,20 @@ def _select_for_qids(
     aux_kind: str,
     desc: str,
     unit: str,
+    keep_diagrams: Container[str] = frozenset(),
 ) -> dict[str, list[dict]]:
-    """Run :func:`_select_for_qid` over ``(key, qid)`` pairs, deduping per QID."""
-    qid_cache: dict[str, list[dict]] = {}
+    """Run :func:`_select_for_qid` over ``(key, qid)`` pairs, deduping per QID.
+
+    Subjects in ``keep_diagrams`` keep their cutaways and schematics; every
+    other subject drops them (see ``drop_subject_diagrams``). The two answers
+    are cached separately, since one QID can be reached from both sides.
+    """
+    qid_cache: dict[tuple[str, bool], list[dict]] = {}
     selections: dict[str, list[dict]] = {}
     excluded: Counter[str] = Counter()
     for key, qid in tqdm(items, desc=desc, unit=unit):
-        selected = qid_cache.get(qid)
+        drop_diagrams = key not in keep_diagrams
+        selected = qid_cache.get((qid, drop_diagrams))
         if selected is None:
             selected = _select_for_qid(
                 qid,
@@ -196,8 +239,9 @@ def _select_for_qids(
                 aux_pid=aux_pid,
                 aux_kind=aux_kind,
                 excluded=excluded,
+                drop_diagrams=drop_diagrams,
             )
-            qid_cache[qid] = selected
+            qid_cache[(qid, drop_diagrams)] = selected
         if selected:
             selections[key] = selected
     if excluded:
@@ -232,6 +276,7 @@ def _select_for_qid(
     aux_pid: str,
     aux_kind: str,
     excluded: Counter[str] | None = None,
+    drop_diagrams: bool = False,
 ) -> list[dict]:
     """Pick the best-of-tree image list for one QID."""
     direct, kind_of, pageimage_count = collect_qid_image_candidates(
@@ -257,7 +302,10 @@ def _select_for_qid(
 
     def _acceptable(name: str) -> bool:
         reason = image_exclusion_reason(
-            name, metadata_by_filename.get(name), drop_locator_maps=drop_locator_maps
+            name,
+            metadata_by_filename.get(name),
+            drop_locator_maps=drop_locator_maps,
+            drop_subject_diagrams=drop_diagrams,
         )
         if reason is not None:
             if excluded is not None:
@@ -304,11 +352,70 @@ def _select_for_qid(
     return out
 
 
+def _fill_ring_systems(
+    selections: dict[str, list[dict]],
+    metadata_cache: dict[str, dict | None],
+    referenced_dir: Path,
+) -> None:
+    """Give the Ring Systems page pictures of the rings, not of the planets.
+
+    Its own Wikidata item is the generic "planetary ring" concept, and the two
+    other routes to a picture both lead somewhere wrong: the member fallback
+    would fill the page with portraits of Jupiter and Saturn, and a hand-picked
+    file per body is what this replaced. The candidates come from the "Rings of
+    X" topic items instead — the same articles the Rings tab already cites, so
+    their pictures are already downloaded — scored by the same tree walk as
+    everything else.
+
+    Saturn leads because the first image is what the collection's tile shows,
+    and its rings are what the subject is recognised by. Two of the eight
+    bodies contribute nothing: neither Haumea nor Quaoar has a ring article in
+    any language.
+    """
+    exemplar = "naif-699"
+    # `sorted` is stable, so the rest keep the catalogue's order behind Saturn.
+    bodies = sorted(RING_SYSTEM_PAGES, key=lambda body: body != exemplar)
+    existing = list(selections.get(RING_SYSTEMS_SLUG) or ())
+    seen = {entry["file"] for entry in existing}
+    picks: list[dict] = []
+    for body in bodies:
+        for qid in RING_SYSTEM_PAGES[body]:
+            for entry in _select_for_qid(
+                qid,
+                metadata_cache,
+                referenced_dir,
+                aux_pid="P154",
+                aux_kind="logo",
+                drop_diagrams=True,
+            ):
+                if entry["file"] in seen:
+                    continue
+                seen.add(entry["file"])
+                picks.append(entry)
+    if not picks:
+        logger.warning(
+            "Ring Systems page: no image selected from any of the %d ring "
+            "articles; the page falls back to the %d image(s) its own concept "
+            "item carries",
+            len(RING_SYSTEM_PAGES),
+            len(existing),
+        )
+        return
+    selections[RING_SYSTEMS_SLUG] = picks + existing
+    logger.info(
+        "Ring Systems page: %d image(s) from the ring articles, ahead of %d "
+        "from the concept item",
+        len(picks),
+        len(existing),
+    )
+
+
 def _fill_groups_from_members(
     selections: dict[str, list[dict]],
     metadata_cache: dict[str, dict | None],
     wikidata_dir: Path,
     session,
+    craft_groups: Container[str],
 ) -> None:
     """Augment every group's selection in-place with member-object photos.
 
@@ -354,6 +461,7 @@ def _fill_groups_from_members(
             target_count=remaining,
             exclude_files={e["file"] for e in existing},
             promote_hero=not existing,
+            drop_diagrams=slug not in craft_groups,
         )
         if not picks:
             continue
@@ -554,6 +662,7 @@ def _pick_fallback_images(
     target_count: int = GROUP_FALLBACK_TARGET_COUNT,
     exclude_files: set[str] | None = None,
     promote_hero: bool = True,
+    drop_diagrams: bool = False,
 ) -> list[dict]:
     """Pick up to ``target_count`` member photos for one group.
 
@@ -574,7 +683,12 @@ def _pick_fallback_images(
         cached = photos_cache.get(qid)
         if cached is None:
             picks = _select_for_qid(
-                qid, metadata_cache, wikidata_dir, aux_pid="P154", aux_kind="logo"
+                qid,
+                metadata_cache,
+                wikidata_dir,
+                aux_pid="P154",
+                aux_kind="logo",
+                drop_diagrams=drop_diagrams,
             )
             # Radar shape-model renders count as gallery photos (they were
             # plain "photo" before tagging); only logos/locators are unwanted.

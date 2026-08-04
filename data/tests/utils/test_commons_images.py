@@ -299,6 +299,50 @@ class TestImageExclusionReason:
     @pytest.mark.parametrize(
         "filename, categories",
         [
+            # Category alone, in the language the text is baked in — and in
+            # English, which is no different.
+            ("Neptunian_rings_scheme_ru.png", ["Russian-language diagrams"]),
+            ("Neptunian_rings_scheme_2.svg", ["English-language SVG diagrams"]),
+            ("Whatever.png", ["Astronomical diagrams"]),
+            # Filename alone: uploaders often file these under nothing but the
+            # body they draw.
+            ("Uranian_rings_scheme.png", ["Uranus (rings)"]),
+            ("Anillos_de_Neptuno_esquema.svg", ["Rings of Neptune"]),
+            ("Uranian_system_schematic-en.svg", []),
+            # A photograph relabelled in one language; its categories are those
+            # of the photograph it was drawn over.
+            ("Annotated_Uranian_rings.png", ["Images by NIRCam", "PD NASA"]),
+        ],
+    )
+    def test_subject_diagrams(self, filename, categories):
+        meta = _meta_with_categories(*categories)
+        assert ci.image_exclusion_reason(filename, meta) is None
+        assert (
+            ci.image_exclusion_reason(filename, meta, drop_subject_diagrams=True)
+            == "subject-diagram"
+        )
+
+    @pytest.mark.parametrize(
+        "filename, categories",
+        [
+            ("Astro-H_schema_(es).png", ["Spanish-language diagrams"]),
+            ("Skylab_diagram.jpg", ["English-language diagrams"]),
+            ("Tianwen-1_schematic.png", ["Chinese-language diagrams"]),
+        ],
+    )
+    def test_spacecraft_schematics_survive_where_the_flag_is_off(
+        self, filename, categories
+    ):
+        # The same signals tag a probe's cutaway, which is often the only
+        # illustration of it there is — so the flag is off for built things.
+        assert (
+            ci.image_exclusion_reason(filename, _meta_with_categories(*categories))
+            is None
+        )
+
+    @pytest.mark.parametrize(
+        "filename, categories",
+        [
             # Localized spacecraft schematics must NOT be tagged comparison —
             # the broad "<lang>-language diagrams" category is deliberately unused.
             ("Astro-h_schema.jpg", ["ASTRO-H", "French-language diagrams"]),

@@ -23,9 +23,11 @@ from space_map_data.constants.categories import (
     MOONS_SLUG,
     PLANETS_SLUG,
     PROBES_SLUG,
+    RING_SYSTEMS_SLUG,
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
 )
+from space_map_data.constants.rings.catalog import RING_CATALOGS
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_SLUG_PREFIX,
     DEBRIS_CONSTELLATION_SLUGS,
@@ -473,6 +475,39 @@ def _solar_system_members(
     return members[:SOLAR_SYSTEM_NOTABLE_COUNT]
 
 
+def _ring_system_members(
+    session: Session,
+    radii: dict[int, dict],
+    gms: dict[int, float],
+    orientation: dict[int, dict],
+) -> list[NotableObject]:
+    """Every body the ring catalogue covers, in its curated order.
+
+    Not a query with a ranking: the eight are exactly the bodies
+    ``RING_CATALOGS`` holds a table for, and the catalogue already orders them
+    the way the page should read — the four giants outward, then the four
+    small bodies whose rings are known only from occultations.
+    """
+    rows = {
+        obj_id: (obj_id, naif_id, qid, name)
+        for obj_id, naif_id, qid, name in session.query(
+            Object.id, Object.naif_id, Object.wikidata_qid, Object.name
+        ).filter(Object.id.in_(sorted(RING_CATALOGS)))
+    }
+    if missing := [body for body in RING_CATALOGS if body not in rows]:
+        logger.warning(
+            "Ring systems: %d catalogued bodies are not in the object table, "
+            "no tile for them: %s",
+            len(missing),
+            ", ".join(missing),
+        )
+    return [
+        _body_member(*rows[body], radii=radii, gms=gms, orientation=orientation)
+        for body in RING_CATALOGS
+        if body in rows
+    ]
+
+
 def _probe_members(
     session: Session,
     radii: dict[int, dict],
@@ -594,6 +629,7 @@ def build_category_data(
         gms,
         orientation,
     )
+    ring_members = _ring_system_members(session, radii, gms, orientation)
     star = _star_member(session, radii, gms, orientation)
     probe_members, probes_total = _probe_members(session, radii, gms, orientation)
     moons = _moon_data(session, planet_elements)
@@ -610,6 +646,7 @@ def build_category_data(
             PLANETS_SLUG,
             DWARF_PLANETS_SLUG,
             MOONS_SLUG,
+            RING_SYSTEMS_SLUG,
             ASTEROIDS_SLUG,
             COMETS_SLUG,
             PROBES_SLUG,
@@ -654,6 +691,9 @@ def build_category_data(
         # tally, but not re-added to the root total above.
         DWARF_PLANETS_SLUG: len(dwarf_members),
         MOONS_SLUG: moons_total,
+        # The ringed bodies are counted by their own categories too, so this
+        # tally stays out of the root total.
+        RING_SYSTEMS_SLUG: len(ring_members),
         PROBES_SLUG: probes_total,
         # Features aren't objects, so this tally stays out of the root total.
         SURFACE_FEATURES_SLUG: sum(feature_type_counts.values()),
@@ -706,6 +746,8 @@ def build_category_data(
         notable_members[DWARF_PLANETS_SLUG] = dwarf_members
     if moon_members:
         notable_members[MOONS_SLUG] = moon_members
+    if ring_members:
+        notable_members[RING_SYSTEMS_SLUG] = ring_members
     if asteroid_notable:
         notable_members[ASTEROIDS_SLUG] = asteroid_notable
     if comet_notable:
@@ -763,14 +805,15 @@ def build_category_data(
     }
     logger.info(
         "Built category data: planets=%d, dwarf planets=%d, moons=%d (%d notable, "
-        "%d planet/dwarf hosts), asteroid zones=%d, comet families=%d, satellite "
-        "groups=%d (%d payloads), debris groups=%d (%d pieces from %d sources), "
-        "probes=%d",
+        "%d planet/dwarf hosts), ring systems=%d, asteroid zones=%d, comet "
+        "families=%d, satellite groups=%d (%d payloads), debris groups=%d "
+        "(%d pieces from %d sources), probes=%d",
         len(planet_members),
         len(dwarf_members),
         moons_total,
         len(moon_members),
         len(moon_counts),
+        len(ring_members),
         len(asteroids),
         len(comets),
         len(satellites),

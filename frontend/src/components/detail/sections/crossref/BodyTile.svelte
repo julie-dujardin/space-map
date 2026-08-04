@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, type Snippet } from 'svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import type { DrawerTab } from '$lib/state/view';
@@ -18,10 +18,13 @@
 		label?: string;
 		/** Open the linked body on this tab (e.g. `members` for a moon list). */
 		tab?: Exclude<DrawerTab, 'overview'>;
+		/** Custom backdrop, rendered instead of the object's lead image — for a
+		 *  tile about one aspect of the body, which its portrait doesn't show. */
+		background?: Snippet;
 		/** Extra classes, e.g. `col-span-2` to span a 2-col grid row. */
 		class?: string;
 	}
-	let { id, name, label, tab, class: className }: Props = $props();
+	let { id, name, label, tab, background, class: className }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	// Scene-aware focus: selects the body in the renderer so the drawer follows.
@@ -76,6 +79,7 @@
 	onclick={open}
 	title={resolvedName}
 	{hero}
+	{background}
 	display={resolvedName}
 	label={resolvedLabel}
 	class={className}

@@ -53,6 +53,7 @@ export const CAT_SOLAR_SYSTEM = `${CATEGORY_SLUG_PREFIX}solar-system`;
 export const CAT_PLANETS = `${CATEGORY_SLUG_PREFIX}planets`;
 export const CAT_DWARF_PLANETS = `${CATEGORY_SLUG_PREFIX}dwarf-planets`;
 export const CAT_MOONS = `${CATEGORY_SLUG_PREFIX}moons`;
+export const CAT_RING_SYSTEMS = `${CATEGORY_SLUG_PREFIX}ring-systems`;
 export const CAT_ASTEROIDS = `${CATEGORY_SLUG_PREFIX}asteroids`;
 export const CAT_COMETS = `${CATEGORY_SLUG_PREFIX}comets`;
 export const CAT_SATELLITES = `${CATEGORY_SLUG_PREFIX}satellites`;
@@ -66,6 +67,7 @@ const CATEGORY_NAME: Record<string, () => string> = {
 	[CAT_PLANETS]: m.category_name_planets,
 	[CAT_DWARF_PLANETS]: m.category_name_dwarf_planets,
 	[CAT_MOONS]: m.category_name_moons,
+	[CAT_RING_SYSTEMS]: m.category_name_ring_systems,
 	[CAT_ASTEROIDS]: m.category_name_asteroids,
 	[CAT_COMETS]: m.category_name_comets,
 	[CAT_SATELLITES]: m.category_name_satellites,

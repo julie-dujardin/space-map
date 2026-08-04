@@ -16,6 +16,7 @@ extension) — it is the stable Commons identity.
 
 import json
 import logging
+import re
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -49,6 +50,21 @@ _ORBIT_FILENAME_SUBSTRINGS = (
     "orbit_diagram",
 )
 _DIAGRAM_FILENAME_PREFIXES = ("innersolarsystem", "outersolarsystem", "eighttnos")
+
+# Diagrams of a *subject the app draws itself* — ring cutaways, belt maps, moon
+# line-ups, orbit schematics. Dropped only for those subjects (see
+# ``drop_subject_diagrams``), never for spacecraft, whose schematics are often
+# the only illustration that exists.
+#
+# Two signals, because neither covers the family alone. The category one catches
+# the translated sets, whose uploads are tagged by the language of the text
+# baked into them; the filename one catches the diagrams that carry no category
+# beyond the body they depict (Commons files the uploader only filed under
+# "Uranus (rings)"). "annotated" is a prefix rather than a substring: it marks a
+# photograph relabelled in one language, and only ever leads a filename.
+_SUBJECT_DIAGRAM_FILENAME_SUBSTRINGS = ("scheme", "schema", "esquema", "schematic")
+_SUBJECT_DIAGRAM_FILENAME_PREFIXES = ("annotated",)
+_LANGUAGE_DIAGRAM_CATEGORY = re.compile(r"-language (svg )?diagrams$")
 
 # Small-body radar / shape-model render categories. These get tagged
 # (kind="radar") rather than dropped so they stay visible until 3D shape
@@ -109,7 +125,11 @@ def _image_categories(metadata: dict | None) -> list[str]:
 
 
 def image_exclusion_reason(
-    filename: str, metadata: dict | None, *, drop_locator_maps: bool = False
+    filename: str,
+    metadata: dict | None,
+    *,
+    drop_locator_maps: bool = False,
+    drop_subject_diagrams: bool = False,
 ) -> str | None:
     """Classify an image as redundant noise to skip, or ``None`` to keep.
 
@@ -120,18 +140,27 @@ def image_exclusion_reason(
     nomenclature-feature pass) also drops ``"locator-map"`` red-dot/outline
     locators — these are surface features whose position the app shows itself.
 
-    Comparison-diagram detection deliberately avoids the broad
-    ``"<lang>-language diagrams"`` category: it also tags *localized spacecraft
-    schematics* (e.g. Astro-H), which are kept. The diagram families that only
-    carry that category instead match by filename. Locator detection is scoped
-    to features so constellation coverage maps (categorised as country locator
-    maps) survive; country groups drop their own maps via the selection skip.
+    ``drop_subject_diagrams`` adds ``"subject-diagram"``: cutaways and maps of
+    the subject itself — ring schemes, belt maps, moon line-ups — which restate
+    what the scene and the charts already draw, and restate it in one language,
+    since these families are drawn once and then retranslated file by file. It
+    is off by default, and off for spacecraft in particular: the same signals
+    tag *localized spacecraft schematics* (Astro-H, Ranger, Skylab), and for a
+    probe with no photograph the schematic is the only illustration there is.
+    Locator detection is likewise scoped to features so constellation coverage
+    maps (categorised as country locator maps) survive; country groups drop
+    their own maps via the selection skip.
     """
     lname = filename.lower()
     if is_excluded(filename) or any(s in lname for s in _ORBIT_FILENAME_SUBSTRINGS):
         return "orbit-diagram"
     if lname.startswith(_DIAGRAM_FILENAME_PREFIXES):
         return "comparison-diagram"
+    if drop_subject_diagrams and (
+        lname.startswith(_SUBJECT_DIAGRAM_FILENAME_PREFIXES)
+        or any(s in lname for s in _SUBJECT_DIAGRAM_FILENAME_SUBSTRINGS)
+    ):
+        return "subject-diagram"
     for cat in _image_categories(metadata):
         c = cat.lower()
         if (
@@ -151,6 +180,10 @@ def image_exclusion_reason(
             or "euler diagram" in c
         ):
             return "comparison-diagram"
+        if drop_subject_diagrams and (
+            c == "astronomical diagrams" or _LANGUAGE_DIAGRAM_CATEGORY.search(c)
+        ):
+            return "subject-diagram"
         if drop_locator_maps and "locator map" in c:
             return "locator-map"
     return None

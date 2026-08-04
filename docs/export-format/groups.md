@@ -176,6 +176,10 @@ interface GlobalGroupData {
   // On the `cat-planets` / `cat-dwarf-planets` / `cat-moons` category pages
   // these are the bodies the lineup hero renders (planets in heliocentric
   // order; dwarf planets and moons by prominence).
+  // On `cat-ring-systems` these are every body the ring catalogue covers, in
+  // its curated order (the four giants outward, then the four small bodies);
+  // the page tiles them onto their Rings tabs. They are counted by their own
+  // categories too, so the tally stays out of the `cat-solar-system` total.
   // On a `feature_type` group (slug `ft-<slug>`) these are surface features
   // (carrying `feature_id` beside their host body `id`), ranked by the
   // feature's own Wikidata sitelink count then diameter.
@@ -242,6 +246,21 @@ interface GlobalGroupData {
   images?: ObjectImage[];           // Same pipeline / layout as GlobalObjectData.images
 }
 ```
+
+On `cat-ring-systems` the images are selected from the "Rings of X" topic items
+(`constants/rings/wikidata.py`) rather than from the group's own Wikidata item
+or its members: the item is the generic "planetary ring" concept, and the member
+fallback would fill a page about rings with portraits of Jupiter and Saturn.
+Saturn's article leads, since the first image is what the collection's tile
+shows. Haumea and Quaoar contribute nothing — neither has a ring article in any
+language.
+
+The result is photographs only: cutaway schemes and belt maps are dropped for
+every subject except an individual craft, since they restate what the scene and
+the charts already draw, and they exist once per language
+(`image_exclusion_reason(drop_subject_diagrams=...)`). That applies across the
+tiers, not just here — a body, an orbit zone or a category no longer selects
+one.
 
 ## `groups/__orbit_samples__.json.gz`
 

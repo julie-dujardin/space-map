@@ -30,12 +30,10 @@ from space_map_data.constants.rings.catalog import (
     feature_span,
     feature_width,
 )
-from space_map_data.constants.rings.images import RING_HERO_IMAGES
 from space_map_data.constants.rings.wikidata import (
     RING_FEATURE_PAGES,
     RING_SYSTEM_PAGES,
 )
-from space_map_data.export.images import collect_named_image
 from space_map_data.export.objects.wikipedia import load_wikipedia_summaries_for_qid
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, ObjectType
@@ -176,25 +174,6 @@ def ring_sources_block(body_id: str) -> list[dict] | None:
         {"title": source.work, "url": source.url, "organisation": source.organisation}
         for source in catalog.sources
     ]
-
-
-def ring_hero_image(body_id: str) -> dict | None:
-    """The photograph that opens the Rings tab, or None for an unringed body.
-
-    Language-independent, so it rides the global block: the picture is of the
-    system itself and the credit under it is a name, not prose.
-    """
-    filename = RING_HERO_IMAGES.get(body_id)
-    if filename is None:
-        return None
-    entry = collect_named_image(filename)
-    if entry is None:
-        logger.warning(
-            "No hero image for %s: %s is missing, unservable or unbundled",
-            body_id,
-            filename,
-        )
-    return entry
 
 
 def ring_system_localized(

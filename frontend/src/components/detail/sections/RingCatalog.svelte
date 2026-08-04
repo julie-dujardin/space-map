@@ -17,7 +17,7 @@
 		tauOpacity,
 		type RingRow
 	} from '$lib/rings/catalog';
-	import { loadRingStrips, type RingStripProfile } from '$lib/rings/strip';
+	import { loadRingStrips, sampleProfiles, type RingStripProfile } from '$lib/rings/strip';
 	import { formatNumber } from '$lib/format/quantities';
 	import { AU_KM } from '$lib/math/units';
 	import { TYPE_COLOR_MOON } from '$lib/constants';
@@ -463,14 +463,14 @@
 			const to = radiusAt((row + 1) / STRIP_OVERSAMPLE);
 			if (Number.isNaN(from) || Number.isNaN(to)) continue;
 			const [lo, hi] = from <= to ? [from, to] : [to, from];
-			const sample = sampleStrips(lo, hi);
+			const sample = sampleProfiles(strips, lo, hi);
 			let red = 241;
 			let green = 245;
 			let blue = 249;
 			let alpha = 0;
 			if (sample) {
 				[red, green, blue] = sample.rgb;
-				alpha = sample.alpha;
+				alpha = tauOpacity(sample.tau);
 			} else {
 				const mid = (lo + hi) / 2;
 				for (const band of bands)
@@ -509,43 +509,6 @@
 		ctx.putImageData(image, 0, 0);
 		return canvas.toDataURL();
 	});
-
-	/** The profile across a radius interval, since one chart pixel can swallow
-	 *  hundreds of samples. The densest sample wins rather than the mean:
-	 *  Uranus' ε ring is a dozen samples of τ ≈ 1 among a hundred of dust, and
-	 *  an average would erase the ring the row points at. Null where no bundle
-	 *  covers the interval. */
-	function sampleStrips(
-		lo: number,
-		hi: number
-	): { rgb: [number, number, number]; alpha: number } | null {
-		let covered = false;
-		let tau = -1;
-		let red = 0;
-		let green = 0;
-		let blue = 0;
-		for (const profile of strips) {
-			const n = profile.tau.length;
-			const perKm = (n - 1) / (profile.outer - profile.inner);
-			const first = Math.round((Math.max(lo, profile.inner) - profile.inner) * perKm);
-			const last = Math.round((Math.min(hi, profile.outer) - profile.inner) * perKm);
-			if (last < first || first >= n || last < 0) continue;
-			covered = true;
-			for (let i = Math.max(0, first); i <= Math.min(n - 1, last); i++) {
-				const sample = Number.isFinite(profile.tau[i]) ? profile.tau[i] : 10;
-				if (sample <= tau) continue;
-				tau = sample;
-				red = profile.rgb[i * 3];
-				green = profile.rgb[i * 3 + 1];
-				blue = profile.rgb[i * 3 + 2];
-			}
-		}
-		if (!covered) return null;
-		return {
-			rgb: [red, green, blue],
-			alpha: tauOpacity(tau)
-		};
-	}
 
 	/** The moons the chart can place, one dot each down the left edge **at the
 	 *  moon's own orbit** — never at the feature that names it, since a gap is

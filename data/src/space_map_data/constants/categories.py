@@ -30,6 +30,7 @@ SOLAR_SYSTEM_SLUG = f"{CATEGORY_SLUG_PREFIX}solar-system"
 PLANETS_SLUG = f"{CATEGORY_SLUG_PREFIX}planets"
 DWARF_PLANETS_SLUG = f"{CATEGORY_SLUG_PREFIX}dwarf-planets"
 MOONS_SLUG = f"{CATEGORY_SLUG_PREFIX}moons"
+RING_SYSTEMS_SLUG = f"{CATEGORY_SLUG_PREFIX}ring-systems"
 ASTEROIDS_SLUG = f"{CATEGORY_SLUG_PREFIX}asteroids"
 COMETS_SLUG = f"{CATEGORY_SLUG_PREFIX}comets"
 SATELLITES_SLUG = f"{CATEGORY_SLUG_PREFIX}satellites"
@@ -42,6 +43,10 @@ CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(PLANETS_SLUG, "Planets", "Q634"),
     CategorySpec(DWARF_PLANETS_SLUG, "Dwarf Planets", "Q2199"),  # "dwarf planet"
     CategorySpec(MOONS_SLUG, "Moons", "Q2537"),  # "natural satellite"
+    # "planetary ring" rather than "ring system" (Q28951811): the concept is the
+    # same but only the former has an article in all twelve locales, and the
+    # latter's Korean sitelink is about a single exoplanet candidate.
+    CategorySpec(RING_SYSTEMS_SLUG, "Ring Systems", "Q179792"),
     CategorySpec(ASTEROIDS_SLUG, "Asteroids", "Q3863"),
     CategorySpec(COMETS_SLUG, "Comets", "Q3559"),
     CategorySpec(SATELLITES_SLUG, "Satellites", "Q26540"),

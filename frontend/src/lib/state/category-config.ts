@@ -10,7 +10,8 @@ import {
 	CAT_COMETS,
 	CAT_SATELLITES,
 	CAT_DEBRIS,
-	CAT_PROBES
+	CAT_PROBES,
+	CAT_RING_SYSTEMS
 } from '$lib/fetch/groups/registry';
 import type { Focusable } from '$lib/state/focusable';
 
@@ -19,11 +20,14 @@ export interface CategoryConfig {
 	moons: boolean;
 	dwarfPlanets: boolean;
 	solarSystem: boolean;
+	/** Members are the ringed bodies, shown as tiles onto their Rings tab. */
+	ringSystems: boolean;
 	/** planets/moons/dwarf: hero is a sphere lineup, so no member strip. */
 	lineup: boolean;
-	/** The lineup is the whole membership (8 planets, 9 dwarfs) — a members tab
-	 *  would just repeat it. Moons show only the notable few, so they keep one. */
-	lineupCoversMembers: boolean;
+	/** The overview already shows every member — the lineup for planets and
+	 *  dwarfs, the tiles for ring systems — so a members tab would just repeat
+	 *  it. Moons show only the notable few, so they keep one. */
+	membersShownInFull: boolean;
 	/** asteroids/comets: members route through the members tab, no overview strip. */
 	smallBody: boolean;
 	/** Page cross-links its sibling collections. */
@@ -35,19 +39,21 @@ const NONE: CategoryConfig = {
 	moons: false,
 	dwarfPlanets: false,
 	solarSystem: false,
+	ringSystems: false,
 	lineup: false,
-	lineupCoversMembers: false,
+	membersShownInFull: false,
 	smallBody: false,
 	crossRefs: false
 };
 
 const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
-	[CAT_PLANETS]: { planets: true, lineup: true, lineupCoversMembers: true, crossRefs: true },
+	[CAT_PLANETS]: { planets: true, lineup: true, membersShownInFull: true, crossRefs: true },
 	[CAT_MOONS]: { moons: true, lineup: true, crossRefs: true },
+	[CAT_RING_SYSTEMS]: { ringSystems: true, membersShownInFull: true },
 	[CAT_DWARF_PLANETS]: {
 		dwarfPlanets: true,
 		lineup: true,
-		lineupCoversMembers: true,
+		membersShownInFull: true,
 		crossRefs: true
 	},
 	[CAT_SOLAR_SYSTEM]: { solarSystem: true },

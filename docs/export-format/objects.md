@@ -162,7 +162,6 @@ interface GlobalObjectData {
     url: string;
     organisation: string;
   }>;
-  ring_hero?: ObjectImage;            // one picture of the ring system, same shape as an `images` entry (see below)
   temperatures?: {                    // absent only when even the estimate can't be computed (no heliocentric distance)
     // Flat rather than grouped by part: a body's readings all plot on one bar,
     // and a reading needs its part, its kind and what produced it together.
@@ -557,14 +556,10 @@ for the small bodies — trimmed to title and link so the panel can credit what
 it shows without pulling the whole credits bundle. The per-source `contribution`
 sentence stays on the credits page.
 
-`ring_hero` is one picture of the system, in the same shape as an `images`
-entry and resolving against the same `/v1/images/<file>/` bundles — including
-the credit, which rides in the variant's own metadata rather than here. It is
-hand-picked per body (`constants/rings/images.py`) from the images the ring
-pages already carry, and lives in the global block because the choice avoids
-pictures with text baked into them: the same frame serves every locale. Only
-the giants have one — no small body's rings have ever been resolved, so the
-only pictures of them are artists' impressions.
+Pictures of the rings are not carried per body: every photograph that exists
+shows the planet wearing them, and half the eight ringed bodies have none at
+all. They ride the `cat-ring-systems` group's `images` instead, selected from
+the "Rings of X" topic items — see `docs/export-format/groups.md`.
 
 ## Localized (`objects/{lang}/{bucket}.json.gz`)
 

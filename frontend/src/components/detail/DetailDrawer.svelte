@@ -35,7 +35,6 @@
 	} from '$lib/fetch/nomenclature/quadrangles';
 	import SurfaceHero from './sections/SurfaceHero.svelte';
 	import RingCatalog from './sections/RingCatalog.svelte';
-	import RingHero from './sections/RingHero.svelte';
 	import FeatureTypeFilter from './sections/FeatureTypeFilter.svelte';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
 	import { fetchGroupIndex, featureTypeSlug, CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
@@ -74,6 +73,7 @@
 	import SolarSystemMap from './charts/SolarSystemMap.svelte';
 	import CategoryCrossRefs from './sections/crossref/CategoryCrossRefs.svelte';
 	import CategoryChildTiles from './sections/crossref/CategoryChildTiles.svelte';
+	import RingSystemTiles from './sections/crossref/RingSystemTiles.svelte';
 	import PlanetMassChart from './charts/PlanetMassChart.svelte';
 	import SolarSystemMassChart from './charts/SolarSystemMassChart.svelte';
 	import ObjectLinks from './sections/ObjectLinks.svelte';
@@ -506,7 +506,7 @@
 	// Earth's Satellites strip sends "+N more" to the group, so no in-drawer tab.
 	// Planet/dwarf lineups are their own complete member list, so they need none.
 	let showMembersTab = $derived(
-		hasMembers && !satellitesGroup && memberTotal > STRIP_CAPACITY && !cat.lineupCoversMembers
+		hasMembers && !satellitesGroup && memberTotal > STRIP_CAPACITY && !cat.membersShownInFull
 	);
 
 	function seeAllMembers() {
@@ -626,7 +626,6 @@
 	let showRingsTab = $derived(Object.values(ringFeatures ?? {}).some((f) => !f.parent));
 	// Credits for the Rings tab alone: the catalogue's tables, plus whatever
 	// prose and names this locale actually got.
-	let ringHero = $derived(isGroupMode ? undefined : data?.global?.ring_hero);
 	let ringCredits = $derived(
 		(data?.global?.ring_sources ?? []).map((s) => ({ key: s.url, label: s.title, url: s.url }))
 	);
@@ -697,8 +696,8 @@
 	}
 
 	// Overview member strips (same card UI, different sources): body moons/sats,
-	// split-comet fragments, mission craft. Lineup/small-body/Solar-System pages
-	// route members through their own hero or tab, so drop the plain strip.
+	// split-comet fragments, mission craft. Lineup/small-body/Solar-System/ring
+	// pages route members through their own hero or tiles, so drop the plain strip.
 	interface OverviewStrip {
 		members: NotableMemberEntry[];
 		localizedNames?: Record<string, string>;
@@ -714,6 +713,7 @@
 			notableMembers.length > 0 &&
 			!cat.lineup &&
 			!cat.solarSystem &&
+			!cat.ringSystems &&
 			!isSmallBodyZone &&
 			!cat.smallBody
 		) {
@@ -935,13 +935,6 @@
 				/>
 			</div>
 		{/if}
-	{:else if activeTab === 'rings'}
-		<!-- One picture of the system, above the chart that anatomises it. -->
-		{#if ringHero}
-			<div class="px-4 pt-1 pb-3">
-				<RingHero image={ringHero} alt={data?.localized?.ring_system?.name ?? m.tab_rings()} />
-			</div>
-		{/if}
 	{:else if activeTab === 'members'}
 		<!-- The lineup is this tab's hero; its imagery/size credits ride at the
 		     foot of the panel, where the spheres render. -->
@@ -1081,6 +1074,9 @@
 				{/if}
 				{#if cat.solarSystem && visibleChildGroups.length}
 					<CategoryChildTiles childGroups={visibleChildGroups} />
+				{/if}
+				{#if cat.ringSystems && notableMembers && notableMembers.length > 0}
+					<RingSystemTiles members={notableMembers} localizedNames={memberNames} />
 				{/if}
 				{#if cat.planets && notableMembers && notableMembers.length > 0}
 					<PlanetMassChart members={notableMembers} localizedNames={memberNames} />

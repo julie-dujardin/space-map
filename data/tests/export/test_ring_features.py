@@ -3,11 +3,10 @@
 import pytest
 
 from space_map_data.constants.rings.catalog import RING_CATALOGS
-from space_map_data.constants.rings.images import RING_HERO_IMAGES
+from space_map_data.constants.rings.wikidata import RING_SYSTEM_PAGES
 from space_map_data.export.objects.rings import (
     feature_qids,
     ring_features_block,
-    ring_hero_image,
     ring_sources_block,
 )
 
@@ -53,29 +52,18 @@ class TestBlock:
             assert entry.get("parent", slug) in block, slug
 
 
-class TestHero:
-    """The picture that opens the panel."""
+class TestSystemPages:
+    """The "Rings of X" articles, which supply both the panel's opening blurb
+    and the pictures on the collection page."""
 
-    def test_heroes_name_ringed_bodies(self):
-        # Not every ringed body has one: no photograph of a small body's rings
-        # exists, so those four ship without (see constants/rings/images.py).
-        assert set(RING_HERO_IMAGES) <= set(RING_CATALOGS)
+    def test_pages_name_ringed_bodies(self):
+        # Two are absent on purpose: neither Haumea nor Quaoar has a ring
+        # article in any language.
+        assert set(RING_SYSTEM_PAGES) <= set(RING_CATALOGS)
 
     def test_every_giant_has_one(self):
         giants = {b for b in RING_CATALOGS if b.startswith("naif-")}
-        assert giants <= set(RING_HERO_IMAGES)
-
-    @pytest.mark.parametrize("body", sorted(RING_HERO_IMAGES))
-    def test_filenames_are_commons_canonical(self, body: str):
-        # The download layout keys on the underscore form with its extension;
-        # a "File:" prefix or a space would miss the directory entirely.
-        filename = RING_HERO_IMAGES[body]
-        assert not filename.startswith("File:")
-        assert " " not in filename
-        assert "." in filename
-
-    def test_bodies_without_rings_get_nothing(self):
-        assert ring_hero_image("naif-399") is None
+        assert giants <= set(RING_SYSTEM_PAGES)
 
 
 class TestSources:
