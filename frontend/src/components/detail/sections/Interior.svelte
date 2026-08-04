@@ -5,11 +5,10 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-	import { compositionSegments } from '$lib/charts/interior-materials';
+	import { materialSegments } from '$lib/charts/interior-materials';
+	import { coreBracket } from '$lib/charts/layer-appearance';
 	import type { CompositionSegment } from '$lib/charts/composition-bar';
-	import { formatPercent } from '$lib/format/quantities';
-	import { formatTemperatureRange } from '$lib/format/temperature';
-	import { ltrIsolate } from '$lib/format/bidi';
+	import { formatKelvinRange } from '$lib/format/temperature';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
 	import CompositionBar from './kit/CompositionBar.svelte';
@@ -60,13 +59,8 @@
 	// the bracket, off the temperature scale that draws the outside of the body
 	// — the two are millions of kelvin apart on the Sun.
 	let coreTemperature = $derived.by(() => {
-		const readings = global?.temperatures?.readings.filter((r) => r.part === 'core') ?? [];
-		const low = readings.find((r) => r.kind === 'min');
-		const high = readings.find((r) => r.kind === 'max');
-		if (!low || !high) return null;
-		return ltrIsolate(
-			formatTemperatureRange({ value: low.k, unit: 'kelvin' }, { value: high.k, unit: 'kelvin' })
-		);
+		const bracket = coreBracket(global?.temperatures?.readings ?? []);
+		return bracket ? formatKelvinRange(bracket.lowK, bracket.highK) : null;
 	});
 
 	const appState = getContext<AppState>('appState');
@@ -77,22 +71,8 @@
 	// link across from here.
 	let hasCrossSection = $derived(!!interior?.layers?.length || !!global?.atmosphere?.structure);
 
-	// The bar hovers everywhere — a coloured block says nothing on its own. The
-	// legend only hovers where it shows a symbol: "H" needs spelling out,
-	// "rock" does not.
 	let segments: CompositionSegment[] = $derived(
-		(interior?.composition ? compositionSegments(interior.composition) : []).map((segment) => ({
-			key: segment.material,
-			label: segment.symbol,
-			value: formatPercent(segment.share),
-			tooltip: m.interior_material_value({
-				name: segment.name,
-				value: formatPercent(segment.share)
-			}),
-			labelIsAbbreviated: segment.symbol !== segment.name,
-			share: segment.share,
-			color: segment.color
-		}))
+		interior?.composition ? materialSegments(interior.composition) : []
 	);
 </script>
 

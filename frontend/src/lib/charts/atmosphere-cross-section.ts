@@ -39,6 +39,8 @@ export interface AtmosphereBand {
 
 export interface AtmosphereProfile {
 	bands: AtmosphereBand[];
+	/** What height zero means on this body, for the ground label. */
+	datum: AtmosphereStructure['datum'];
 	/** The height the scaled part is drawn against, in km. */
 	scaleKm: number;
 	/** Set only where there are no boundaries at all: Callisto's exosphere,
@@ -82,7 +84,7 @@ export function atmosphereProfile(structure: AtmosphereStructure): AtmospherePro
 	// so the chart becomes the scale height and nothing else.
 	if (!scaled.length || scaleKm <= 0) {
 		return structure.scale_height_km
-			? { bands: [], scaleKm: 0, scaleHeightKm: structure.scale_height_km }
+			? { bands: [], datum: structure.datum, scaleKm: 0, scaleHeightKm: structure.scale_height_km }
 			: null;
 	}
 
@@ -117,7 +119,12 @@ export function atmosphereProfile(structure: AtmosphereStructure): AtmospherePro
 		base += CAPPED_BAND;
 	}
 
-	return { bands, scaleKm, scaleHeightKm: structure.scale_height_km ?? null };
+	return {
+		bands,
+		datum: structure.datum,
+		scaleKm,
+		scaleHeightKm: structure.scale_height_km ?? null
+	};
 }
 
 /** Denser at the bottom, because that is where the mass is. The floor is high

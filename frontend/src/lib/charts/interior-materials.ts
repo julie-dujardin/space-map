@@ -13,6 +13,8 @@
 
 import * as m from '$lib/paraglide/messages.js';
 import { formatFormula } from '$lib/charts/atmosphere-species';
+import type { CompositionSegment } from '$lib/charts/composition-bar';
+import { formatPercent } from '$lib/format/quantities';
 
 /** Every material the pipeline can emit; see `constants/interior/schema.py`. */
 const KNOWN_MATERIALS = new Set([
@@ -58,7 +60,7 @@ export interface MaterialShare {
 	share: number;
 }
 
-export interface MaterialSegment {
+interface MaterialSegment {
 	material: string;
 	/** What the bar and legend show. */
 	symbol: string;
@@ -70,7 +72,7 @@ export interface MaterialSegment {
 
 /** Rank materials and assign colours. Input order is ignored — the bar always
  *  reads most to least abundant. */
-export function compositionSegments(composition: MaterialShare[]): MaterialSegment[] {
+function compositionSegments(composition: MaterialShare[]): MaterialSegment[] {
 	return [...composition]
 		.sort((a, b) => b.share - a.share)
 		.map((c) => ({
@@ -80,6 +82,27 @@ export function compositionSegments(composition: MaterialShare[]): MaterialSegme
 			share: c.share,
 			color: materialColor(c.material)
 		}));
+}
+
+/**
+ * The bar-ready segments, shared by the Interior panel and the layer cards so a
+ * share of rock reads and hovers identically in both. The bar always hovers —
+ * a coloured block says nothing on its own — but the legend only hovers where
+ * its label is a symbol: "H" needs spelling out, "rock" does not.
+ */
+export function materialSegments(composition: MaterialShare[]): CompositionSegment[] {
+	return compositionSegments(composition).map((segment) => ({
+		key: segment.material,
+		label: segment.symbol,
+		value: formatPercent(segment.share),
+		tooltip: m.interior_material_value({
+			name: segment.name,
+			value: formatPercent(segment.share)
+		}),
+		labelIsAbbreviated: segment.symbol !== segment.name,
+		share: segment.share,
+		color: segment.color
+	}));
 }
 
 /** Localized material name, e.g. "silicate" → "rock". Falls back to the key

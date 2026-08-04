@@ -3,6 +3,12 @@
  * apart, and whether a label's name and its reading can share a line.
  */
 
+/** The cross-section frame, sized to the drawer's content width so the label
+ *  sizes in the charts render at the sizes they say — scaling a 320-wide chart
+ *  into 264px shrank 10px text to 8. */
+export const FRAME_W = 264;
+export const FRAME_H = 190;
+
 /**
  * Slide labels apart until none overlaps, keeping each as close to the point it
  * points at as it can.

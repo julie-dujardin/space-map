@@ -21,35 +21,24 @@
 	 * label saying "troposphere 245 K" contradicts everything else on the body.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
-	import type { AtmosphereStructure } from '$lib/fetch/objects/object-data';
-	import { atmosphereProfile, type AtmosphereBand } from '$lib/charts/atmosphere-cross-section';
+	import type { AtmosphereBand, AtmosphereProfile } from '$lib/charts/atmosphere-cross-section';
 	import { atmosphereLayerName } from '$lib/charts/atmosphere-layers';
-	import { spreadRows, stackedRows } from '$lib/charts/label-fit';
+	import { FRAME_W as W, FRAME_H as H, spreadRows, stackedRows } from '$lib/charts/label-fit';
 	import { formatKm, formatKmRange } from '$lib/format/distance';
 	import { formatPressure } from '$lib/format/pressure';
-	import {
-		formatTemperature,
-		formatTemperatureRange,
-		formatTemperatureSpan
-	} from '$lib/format/temperature';
+	import { formatKelvin, formatKelvinRange, formatKelvinSpan } from '$lib/format/temperature';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 
 	interface Props {
-		structure: AtmosphereStructure;
+		profile: AtmosphereProfile;
 		/** Hue the bands are drawn in — the dominant gas's, so this chart and the
 		 *  composition bar agree on what the air is made of. */
 		color?: string;
 	}
 
-	let { structure, color = 'rgb(120 160 210)' }: Props = $props();
+	let { profile, color = 'rgb(120 160 210)' }: Props = $props();
 
-	let profile = $derived(atmosphereProfile(structure));
-
-	// Matches the drawer's content width, so the label sizes below render at the
-	// sizes they say.
-	const W = 264;
-	const H = 190;
 	/** Apex pushed left of centre: the labels need the other half. */
 	const CX = 72;
 	/** A radius far larger than the frame, so the limb reads as a gentle curve
@@ -116,10 +105,6 @@
 		return `M ${ax} ${ay} A ${PLANET_R} ${PLANET_R} 0 0 1 ${bx} ${by} L ${bx} ${H} L ${ax} ${H} Z`;
 	}
 
-	function kelvin(value: number): string {
-		return ltrIsolate(formatTemperature({ value, unit: 'kelvin' }));
-	}
-
 	/**
 	 * What the layer runs between, on the name line — the same place the interior
 	 * cross-section puts a layer's temperature.
@@ -131,13 +116,9 @@
 	function temperature(band: AtmosphereBand): string | null {
 		const bottom = band.baseTemperatureK;
 		const top = band.layer.top_temperature_k;
-		if (bottom !== null && top !== undefined) {
-			return ltrIsolate(
-				formatTemperatureSpan({ value: bottom, unit: 'kelvin' }, { value: top, unit: 'kelvin' })
-			);
-		}
-		if (top !== undefined) return m.structure_temperature_up_to({ value: kelvin(top) });
-		if (bottom !== null) return m.structure_temperature_from({ value: kelvin(bottom) });
+		if (bottom !== null && top !== undefined) return formatKelvinSpan(bottom, top);
+		if (top !== undefined) return m.structure_temperature_up_to({ value: formatKelvin(top) });
+		if (bottom !== null) return m.structure_temperature_from({ value: formatKelvin(bottom) });
 		return null;
 	}
 
@@ -162,7 +143,7 @@
 		const lines: string[] = [];
 		const layer = band.layer;
 		const top = [readings(layer)].filter(Boolean);
-		if (layer.top_temperature_k !== undefined) top.push(kelvin(layer.top_temperature_k));
+		if (layer.top_temperature_k !== undefined) top.push(formatKelvin(layer.top_temperature_k));
 		if (top.length) lines.push(m.structure_layer_top({ value: top.join(' · ') }));
 
 		const widths: string[] = [];
@@ -170,17 +151,12 @@
 			widths.push(ltrIsolate(formatKmRange(layer.top_km_range[0], layer.top_km_range[1])));
 		if (layer.top_temperature_range_k)
 			widths.push(
-				ltrIsolate(
-					formatTemperatureRange(
-						{ value: layer.top_temperature_range_k[0], unit: 'kelvin' },
-						{ value: layer.top_temperature_range_k[1], unit: 'kelvin' }
-					)
-				)
+				formatKelvinRange(layer.top_temperature_range_k[0], layer.top_temperature_range_k[1])
 			);
 		if (widths.length) lines.push(m.structure_boundary_spread({ value: widths.join(' · ') }));
 
 		if (band.baseTemperatureK !== null) {
-			lines.push(m.structure_layer_bottom({ value: kelvin(band.baseTemperatureK) }));
+			lines.push(m.structure_layer_bottom({ value: formatKelvin(band.baseTemperatureK) }));
 		}
 		// Last, and only where it applies: the one thing the drawing gets wrong
 		// belongs on the band that is drawn wrong, not under the whole chart.
@@ -196,7 +172,6 @@
 	}
 
 	let rows: Row[] = $derived.by(() => {
-		if (!profile) return [];
 		const entries = profile.bands.map((band, i) => ({
 			band,
 			index: i,
@@ -243,71 +218,64 @@
 	</text>
 {/snippet}
 
-{#if profile && profile.bands.length}
-	<div class="bg-muted/25 border-border/60 overflow-hidden rounded-md border p-2">
-		<svg
-			viewBox="0 0 {W} {H}"
-			class="w-full"
-			role="img"
-			aria-label={m.structure_atmosphere_chart()}
-		>
-			{#each profile.bands as band, i (band.layer.role + i)}
-				<path d={bandPath(band.base, band.top)} fill={color} opacity={band.opacity}></path>
-			{/each}
+<div class="bg-muted/25 border-border/60 overflow-hidden rounded-md border p-2">
+	<svg viewBox="0 0 {W} {H}" class="w-full" role="img" aria-label={m.structure_atmosphere_chart()}>
+		{#each profile.bands as band, i (band.layer.role + i)}
+			<path d={bandPath(band.base, band.top)} fill={color} opacity={band.opacity}></path>
+		{/each}
 
-			<!-- The labels sit over the limb, so the sky fades out under them
-			     rather than the text fighting the band it crosses. -->
-			<defs>
-				<linearGradient id="atmo-scrim" x1="0" x2="1" y1="0" y2="0">
-					<stop offset="0" stop-color="var(--background)" stop-opacity="0" />
-					<stop offset="0.55" stop-color="var(--background)" stop-opacity="0.9" />
-					<stop offset="1" stop-color="var(--background)" stop-opacity="0.9" />
-				</linearGradient>
-			</defs>
-			<!-- Every boundary gets a line of its own, so a layer too thin to
-			     draw is still visible as the line at its top. Uranus's 50 km
-			     troposphere under a 4,000 km stratosphere is 1% of the chart, and
-			     to scale that is a band a pixel high. -->
-			{#each profile.bands as band, i (band.layer.role + i)}
-				<path
-					d={boundaryPath(band.top)}
-					fill="none"
-					stroke="rgb(255 255 255 / 0.35)"
-					stroke-dasharray={band.capped ? '3 3' : undefined}
-					stroke-width="0.75"
-				/>
-			{/each}
-
-			<!-- The body itself, so the air reads as sitting on something. -->
+		<!-- The labels sit over the limb, so the sky fades out under them
+		     rather than the text fighting the band it crosses. -->
+		<defs>
+			<linearGradient id="atmo-scrim" x1="0" x2="1" y1="0" y2="0">
+				<stop offset="0" stop-color="var(--background)" stop-opacity="0" />
+				<stop offset="0.55" stop-color="var(--background)" stop-opacity="0.9" />
+				<stop offset="1" stop-color="var(--background)" stop-opacity="0.9" />
+			</linearGradient>
+		</defs>
+		<!-- Every boundary gets a line of its own, so a layer too thin to
+		     draw is still visible as the line at its top. Uranus's 50 km
+		     troposphere under a 4,000 km stratosphere is 1% of the chart, and
+		     to scale that is a band a pixel high. -->
+		{#each profile.bands as band, i (band.layer.role + i)}
 			<path
-				d={groundPath()}
-				fill="rgb(58 58 62)"
-				stroke="rgb(255 255 255 / 0.25)"
+				d={boundaryPath(band.top)}
+				fill="none"
+				stroke="rgb(255 255 255 / 0.35)"
+				stroke-dasharray={band.capped ? '3 3' : undefined}
 				stroke-width="0.75"
 			/>
-			<text x="8" y={GROUND_Y + 13} class="fill-white/70 text-[9px]">
-				{(DATUM_LABEL[structure.datum] ?? DATUM_LABEL.surface)()}
-			</text>
+		{/each}
 
-			<rect x={SCRIM_X} y="0" width={W - SCRIM_X} height={H} fill="url(#atmo-scrim)" />
+		<!-- The body itself, so the air reads as sitting on something. -->
+		<path
+			d={groundPath()}
+			fill="rgb(58 58 62)"
+			stroke="rgb(255 255 255 / 0.25)"
+			stroke-width="0.75"
+		/>
+		<text x="8" y={GROUND_Y + 13} class="fill-white/70 text-[9px]">
+			{(DATUM_LABEL[profile.datum] ?? DATUM_LABEL.surface)()}
+		</text>
 
-			{#each rows as row, i (row.index)}
-				{@const lines = tooltip(row.band)}
-				{#if lines.length}
-					<Tooltip.Root>
-						<Tooltip.Trigger>
-							{#snippet child({ props })}
-								<g class="cursor-help" {...props}>{@render label(row, i)}</g>
-							{/snippet}
-						</Tooltip.Trigger>
-						<Tooltip.Content class="flex-col items-start gap-0">
-							{#each lines as line (line)}<span>{line}</span>{/each}
-						</Tooltip.Content>
-					</Tooltip.Root>
-				{:else}
-					<g>{@render label(row, i)}</g>
-				{/if}
-			{/each}
-		</svg>
-	</div>
-{/if}
+		<rect x={SCRIM_X} y="0" width={W - SCRIM_X} height={H} fill="url(#atmo-scrim)" />
+
+		{#each rows as row, i (row.index)}
+			{@const lines = tooltip(row.band)}
+			{#if lines.length}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<g class="cursor-help" {...props}>{@render label(row, i)}</g>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content class="flex-col items-start gap-0">
+						{#each lines as line (line)}<span>{line}</span>{/each}
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{:else}
+				<g>{@render label(row, i)}</g>
+			{/if}
+		{/each}
+	</svg>
+</div>

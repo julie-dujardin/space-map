@@ -12,7 +12,7 @@
  * 5,700 K is white-hot under a light theme too.
  */
 
-import type { InteriorLayer } from '$lib/fetch/objects/object-data';
+import type { InteriorLayer, TemperatureReading } from '$lib/fetch/objects/object-data';
 
 type RGB = [number, number, number];
 
@@ -163,6 +163,14 @@ function plasmaRgb(fraction: number, innerK: number, outerK: number): string {
 export interface TemperatureBracket {
 	lowK: number;
 	highK: number;
+}
+
+/** The modelled core bracket among a body's readings — it belongs to the core
+ *  layers and to nothing else. */
+export function coreBracket(readings: TemperatureReading[]): TemperatureBracket | null {
+	const low = readings.find((r) => r.part === 'core' && r.kind === 'min');
+	const high = readings.find((r) => r.part === 'core' && r.kind === 'max');
+	return low && high ? { lowK: low.k, highK: high.k } : null;
 }
 
 /** Anchors for shading a star's zones, which sit between two readings and have

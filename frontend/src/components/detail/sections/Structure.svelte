@@ -20,7 +20,7 @@
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { crossSection } from '$lib/charts/interior-cross-section';
 	import { atmosphereProfile, drawableTopKm } from '$lib/charts/atmosphere-cross-section';
-	import { bandColor, skyRgb } from '$lib/charts/layer-appearance';
+	import { bandColor, coreBracket, skyRgb } from '$lib/charts/layer-appearance';
 	import { formatKm } from '$lib/format/distance';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import Section from './kit/Section.svelte';
@@ -47,19 +47,15 @@
 
 	// Callisto is the only miss: an exosphere nobody has put a top on has no
 	// bands to draw. The section still shows for its composition bar.
-	let hasChart = $derived(!!structure && !!atmosphereProfile(structure)?.bands.length);
+	let profile = $derived(structure ? atmosphereProfile(structure) : null);
+	let hasChart = $derived(!!profile?.bands.length);
 
 	let composition = $derived(global?.atmosphere?.composition);
 	let hasBar = $derived(hasCompositionBar(composition));
 
 	let readings = $derived(global?.temperatures?.readings ?? []);
 
-	/** The modelled bracket, which belongs to the core and to nothing else. */
-	let coreBracket = $derived.by(() => {
-		const low = readings.find((r) => r.part === 'core' && r.kind === 'min');
-		const high = readings.find((r) => r.part === 'core' && r.kind === 'max');
-		return low && high ? { lowK: low.k, highK: high.k } : null;
-	});
+	let core = $derived(coreBracket(readings));
 
 	/** What the outside of the body is at. The Sun quotes its photosphere where
 	 *  everything else quotes a surface. */
@@ -76,7 +72,7 @@
 	// every mantle, every ice shell — has none, and gets none.
 	let layerTemperatures = $derived(
 		layers.map((layer, i) => {
-			if (CORE_ROLES.has(layer.role)) return coreBracket;
+			if (CORE_ROLES.has(layer.role)) return core;
 			if (i === 0) return outerReading;
 			return null;
 		})
@@ -86,8 +82,8 @@
 	// their own; the two ends anchor a ramp used for shading and nothing else.
 	let plasmaRange = $derived.by(() => {
 		if (!layers.some((l) => l.state === 'plasma')) return undefined;
-		if (!coreBracket || !outerReading) return undefined;
-		return { innerK: (coreBracket.lowK + coreBracket.highK) / 2, outerK: outerReading.lowK };
+		if (!core || !outerReading) return undefined;
+		return { innerK: (core.lowK + core.highK) / 2, outerK: outerReading.lowK };
 	});
 
 	// What the sky would look like, read off what the air is made of — the same
@@ -108,8 +104,8 @@
 {#if hasChart || hasBar}
 	<Section title={m.structure_atmosphere()} meta={atmosphereMeta}>
 		{#snippet header()}
-			{#if hasChart && structure}
-				<AtmosphereCrossSection {structure} color={gasColor} />
+			{#if profile && profile.bands.length}
+				<AtmosphereCrossSection {profile} color={gasColor} />
 			{/if}
 			<AtmosphereComposition {composition} />
 		{/snippet}
@@ -120,9 +116,7 @@
 	<Section title={m.structure_interior()} meta={interiorMeta}>
 		{#snippet header()}
 			<InteriorCrossSection
-				{layers}
-				{atmosphereKm}
-				{hasOwnAtmosphere}
+				{section}
 				atmosphereColor={gasColor}
 				temperatures={layerTemperatures}
 				{plasmaRange}

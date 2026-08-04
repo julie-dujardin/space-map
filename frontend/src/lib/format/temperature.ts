@@ -1,4 +1,5 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
+import { ltrIsolate } from './bidi';
 import {
 	formatCompactNumber,
 	formatNumber,
@@ -143,4 +144,23 @@ export function formatTemperatureSpan(
 
 function oneNumber(value: number): string {
 	return Math.abs(value) >= COMPACT_ABOVE ? formatCompactNumber(value) : formatNumber(value);
+}
+
+// The charts carry temperatures as bare kelvin numbers; these wrap them for
+// display, isolated so the digits survive an RTL sentence.
+
+export function formatKelvin(k: number): string {
+	return ltrIsolate(formatTemperature({ value: k, unit: 'kelvin' }));
+}
+
+export function formatKelvinRange(lowK: number, highK: number): string {
+	return ltrIsolate(
+		formatTemperatureRange({ value: lowK, unit: 'kelvin' }, { value: highK, unit: 'kelvin' })
+	);
+}
+
+export function formatKelvinSpan(bottomK: number, topK: number): string {
+	return ltrIsolate(
+		formatTemperatureSpan({ value: bottomK, unit: 'kelvin' }, { value: topK, unit: 'kelvin' })
+	);
 }

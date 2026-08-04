@@ -19,7 +19,7 @@
 	import type { TemperatureBracket } from '$lib/charts/layer-appearance';
 	import { layerName, stateName, layerNote } from '$lib/charts/interior-layers';
 	import {
-		compositionSegments,
+		materialSegments,
 		materialName,
 		detailSpeciesName,
 		detailSpeciesColor
@@ -27,7 +27,7 @@
 	import { formatFormula } from '$lib/charts/atmosphere-species';
 	import { formatPercent } from '$lib/format/quantities';
 	import { formatKm, formatKmRange } from '$lib/format/distance';
-	import { formatTemperatureRange } from '$lib/format/temperature';
+	import { formatKelvinRange } from '$lib/format/temperature';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import CompositionBar from '../sections/kit/CompositionBar.svelte';
 
@@ -88,22 +88,7 @@
 				};
 			});
 		}
-		if (layer.composition.length > 1) {
-			// Exactly the mapping `Interior.svelte` does, so a share of rock reads
-			// and hovers identically in both panels.
-			return compositionSegments(layer.composition).map((segment) => ({
-				key: segment.material,
-				label: segment.symbol,
-				value: formatPercent(segment.share),
-				tooltip: m.interior_material_value({
-					name: segment.name,
-					value: formatPercent(segment.share)
-				}),
-				labelIsAbbreviated: segment.symbol !== segment.name,
-				share: segment.share,
-				color: segment.color
-			}));
-		}
+		if (layer.composition.length > 1) return materialSegments(layer.composition);
 		return [];
 	});
 
@@ -122,14 +107,7 @@
 	});
 
 	let reading = $derived(
-		temperature
-			? ltrIsolate(
-					formatTemperatureRange(
-						{ value: temperature.lowK, unit: 'kelvin' },
-						{ value: temperature.highK, unit: 'kelvin' }
-					)
-				)
-			: null
+		temperature ? formatKelvinRange(temperature.lowK, temperature.highK) : null
 	);
 
 	/** The share of the body, with its published width where the source gives
