@@ -2,6 +2,7 @@ import { Color, type MeshStandardMaterial, type Texture, type TextureLoader } fr
 import { SRGBColorSpace } from 'three';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { getEclipseSceneUniforms } from './eclipse-shadow';
+import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
 
 /**
  * Per-body night-lights metadata block from `systems/{bary}.json`. Mirrors
@@ -130,6 +131,7 @@ export async function attachNightLights(
 				);
 		};
 	}
+	tagShaderModifier(material, 'nightLights');
 	material.needsUpdate = true;
 	return texture;
 }

@@ -18,6 +18,7 @@
 
 import { type MeshStandardMaterial, type Texture, Vector2 } from 'three';
 import { getEclipseSceneUniforms } from './eclipse-shadow';
+import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
 
 /** Self-shadow march sample count. */
 const STEPS = 32;
@@ -237,6 +238,7 @@ export function attachSelfShadowToBody(
 				}`
 			);
 	};
+	tagShaderModifier(material, 'selfShadow');
 	material.needsUpdate = true;
 	return uniforms;
 }

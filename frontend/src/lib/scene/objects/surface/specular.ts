@@ -1,5 +1,6 @@
 import { type MeshStandardMaterial, type Texture, type TextureLoader } from 'three';
 import { versionedUrl } from '$lib/fetch/data-base';
+import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
 
 /**
  * Per-body specular-map metadata block from `systems/{bary}.json`. Mirrors
@@ -86,6 +87,7 @@ export async function attachSpecularMap(
 				);
 		};
 	}
+	tagShaderModifier(material, 'specular');
 	material.needsUpdate = true;
 	return texture;
 }

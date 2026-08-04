@@ -40,6 +40,7 @@ import {
 } from 'three';
 import { kmToScene } from '$lib/math/units';
 import { versionedUrl } from '$lib/fetch/data-base';
+import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
 
 export type RingChannel =
 	| 'color'
@@ -447,11 +448,12 @@ const FRAGMENT_SHADER = `
 /**
  * Per-frame uniforms driving the ring-shadow ray-march inside the planet's
  * MeshStandardMaterial — see {@link attachRingShadowToPlanet}. The renderer
- * updates each Vector3 in place each frame; the texture and radii are
- * loaded once.
+ * updates each Vector3 in place each frame; the texture and radii change only
+ * when a bundle loads or unloads. One set per material, reused across visits.
  */
 export interface PlanetRingShadowUniforms {
-	uRingShadowTransparency: { value: Texture };
+	/** Null while no bundle is resident; paired with a zeroed intensity. */
+	uRingShadowTransparency: { value: Texture | null };
 	uRingShadowInnerScene: { value: number };
 	uRingShadowOuterScene: { value: number };
 	/** Same physical multiplier as the ring material's `uIntensityScale`, so
@@ -465,11 +467,16 @@ export interface PlanetRingShadowUniforms {
 	uRingShadowPoleDir: { value: Vector3 };
 	/** World-space (focus-relative) position of the planet's center. */
 	uRingShadowCenter: { value: Vector3 };
-	/** Restore the planet material's `onBeforeCompile` to its pre-attachment
-	 *  state and force a recompile, dropping the ring-shadow ray-march from the
-	 *  fragment shader. Idempotent and safe to call after a subsequent attach
-	 *  has replaced the hook (the new hook stays). */
-	detach: () => void;
+	/** Zero the shadow and release the profile texture when the ring bundle
+	 *  unloads. Does *not* remove the ray-march from the shader — see
+	 *  {@link attachRingShadowToPlanet}. */
+	disable: () => void;
+}
+
+/** Where {@link attachRingShadowToPlanet} parks a material's uniforms so a
+ *  re-attach reuses them. */
+interface RingShadowCarrier {
+	ringShadow?: PlanetRingShadowUniforms;
 }
 
 /**
@@ -483,9 +490,17 @@ export interface PlanetRingShadowUniforms {
  * resolution, no dither artifacts, partial transparency comes out for free
  * via `pow(transparency, 1 / sin(elevation))`.
  *
- * `material.onBeforeCompile` triggers a one-shot recompile (we set
- * `needsUpdate`); the returned uniforms object is the live reference the
- * renderer mutates each frame.
+ * The hook and its uniforms are installed once per material and then kept for
+ * its lifetime: leaving the system zeroes the intensity (`disable`) and
+ * re-entering re-points the same uniform objects at the reloaded bundle.
+ * Detaching instead would strip the ray-march but leave the shadow broken on
+ * the way back — three.js keys its program cache on
+ * `onBeforeCompile.toString()`, so removing and re-adding the hook returns the
+ * material to a key it has already compiled under. That path reuses the cached
+ * program *without* re-running `onBeforeCompile`, which is the only place the
+ * uniforms get wired in, so the surface keeps sampling the previous bundle's
+ * dead uniforms while the atmosphere shell (a ShaderMaterial, whose uniform
+ * object the renderer reads directly) still shades correctly.
  */
 export function attachRingShadowToPlanet(
 	planetMaterial: MeshStandardMaterial,
@@ -494,6 +509,16 @@ export function attachRingShadowToPlanet(
 	transparency: Texture,
 	intensityScale: number
 ): PlanetRingShadowUniforms {
+	const carrier = planetMaterial.userData as RingShadowCarrier;
+	const existing = carrier.ringShadow;
+	if (existing) {
+		existing.uRingShadowTransparency.value = transparency;
+		existing.uRingShadowInnerScene.value = innerScene;
+		existing.uRingShadowOuterScene.value = outerScene;
+		existing.uRingShadowIntensity.value = intensityScale;
+		return existing;
+	}
+
 	const prev = planetMaterial.onBeforeCompile;
 	const uniforms: PlanetRingShadowUniforms = {
 		uRingShadowTransparency: { value: transparency },
@@ -504,13 +529,12 @@ export function attachRingShadowToPlanet(
 		uRingShadowSunDir: { value: new Vector3(1, 0, 0) },
 		uRingShadowPoleDir: { value: new Vector3(0, 1, 0) },
 		uRingShadowCenter: { value: new Vector3(0, 0, 0) },
-		detach: () => {
-			// Only restore if our hook is still the active one — a subsequent
-			// reattach replaced it and owns the slot now.
-			if (planetMaterial.onBeforeCompile === hook) {
-				planetMaterial.onBeforeCompile = prev;
-				planetMaterial.needsUpdate = true;
-			}
+		disable: () => {
+			// The march early-outs on a non-positive intensity, so the stale
+			// radii left behind can't shade anything. Dropping the texture lets
+			// the unload dispose it; a null sampler binds three's empty texture.
+			uniforms.uRingShadowIntensity.value = 0;
+			uniforms.uRingShadowTransparency.value = null;
 		}
 	};
 	const hook: MeshStandardMaterial['onBeforeCompile'] = (shader, renderer) => {
@@ -603,7 +627,9 @@ export function attachRingShadowToPlanet(
 			);
 	};
 	planetMaterial.onBeforeCompile = hook;
+	tagShaderModifier(planetMaterial, 'ringShadow');
 	planetMaterial.needsUpdate = true;
+	carrier.ringShadow = uniforms;
 	return uniforms;
 }
 

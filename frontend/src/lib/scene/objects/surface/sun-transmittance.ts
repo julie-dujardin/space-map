@@ -19,6 +19,7 @@
 import { type Material, type MeshStandardMaterial, Vector3 } from 'three';
 import { type AtmosphereNode, type AtmosphereParams, TERRAIN_DIP_KM } from './atmosphere';
 import { type EclipseSelfUniforms, getEclipseSceneUniforms } from './eclipse-shadow';
+import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
 
 /** Kept well under the shell's LIGHT_STEPS — the surface patch runs over
  *  full-screen landed terrain. */
@@ -316,6 +317,7 @@ export function attachSunTransmittanceToBody(
 				reflectedLight.directSpecular *= atmoTint;`
 			);
 	};
+	tagShaderModifier(material, 'sunTint');
 	material.needsUpdate = true;
 	return uniforms;
 }
@@ -347,6 +349,7 @@ export function attachViewTintToMaterial(material: Material): ViewTintUniforms {
 				'#include <color_fragment>\ndiffuseColor.rgb *= atmoViewTint(vAtmoTWorldPos);'
 			);
 	};
+	tagShaderModifier(material, 'viewTint');
 	material.needsUpdate = true;
 	return uniforms;
 }

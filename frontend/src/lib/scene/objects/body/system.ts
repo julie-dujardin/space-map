@@ -395,7 +395,7 @@ export function unloadSystemTextures(
 			bo.currentSegments = 24;
 		}
 		for (const ring of bo.rings) {
-			ring.planetShadow?.detach();
+			ring.planetShadow?.disable();
 			scene.remove(ring.mesh);
 			const idx = bo.extraObjects.indexOf(ring.mesh);
 			if (idx >= 0) bo.extraObjects.splice(idx, 1);

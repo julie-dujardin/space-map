@@ -17,6 +17,7 @@
  */
 
 import { type MeshStandardMaterial, Vector3, Vector4 } from 'three';
+import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
 
 /** Hard cap on simultaneously-tracked occluders. The shader loops up to
  *  {@link EclipseSceneUniforms.uOccluderCount} so unused slots cost
@@ -265,6 +266,7 @@ export function attachEclipseShadowToBody(
 				reflectedLight.directSpecular *= eclipseShadow;`
 			);
 	};
+	tagShaderModifier(material, 'eclipse');
 	material.needsUpdate = true;
 	return self;
 }
