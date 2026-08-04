@@ -24,7 +24,16 @@
 		type TemperatureBracket
 	} from '$lib/charts/layer-appearance';
 	import { layerName } from '$lib/charts/interior-layers';
-	import { FRAME_W as W, FRAME_H as H, spreadRows, stackedRows } from '$lib/charts/label-fit';
+	import type { AtmosphereStructure } from '$lib/fetch/objects/object-data';
+	import {
+		FRAME_W as W,
+		FRAME_H as H,
+		LABEL_MAX_Y,
+		SECOND_LINE_DY,
+		remeasure,
+		spreadRows,
+		stackedRows
+	} from '$lib/charts/label-fit';
 	import { formatKm, formatKmRange } from '$lib/format/distance';
 	import { formatKelvinRange } from '$lib/format/temperature';
 	import { ltrIsolate } from '$lib/format/bidi';
@@ -41,6 +50,10 @@
 		/** Anchors for shading a star's zones, which sit between two readings and
 		 *  have none of their own. */
 		plasmaRange?: PlasmaRange;
+		/** What the body's radius is measured to, which is what the outer end of
+		 *  the axis is. A giant has no surface to name and the Sun quotes its
+		 *  photosphere. */
+		datum?: AtmosphereStructure['datum'];
 		active?: number | null;
 	}
 
@@ -49,8 +62,15 @@
 		atmosphereColor = 'rgb(150 165 185)',
 		temperatures = [],
 		plasmaRange,
+		datum = 'surface',
 		active = $bindable(null)
 	}: Props = $props();
+
+	const DATUM_LABEL: Record<string, () => string> = {
+		surface: m.structure_disc_surface,
+		one_bar: m.structure_disc_one_bar,
+		photosphere: m.structure_disc_photosphere
+	};
 
 	/** The centre of the body, at the foot of the vertical edge. The quarter
 	 *  opens up and to the *left* of it, so the edge the labels stand beside is
@@ -107,18 +127,31 @@
 		}
 		// Outermost first, which is already top-to-bottom down the edge — the
 		// order `spreadRows` expects.
-		return spreadRows(entries, LABEL_SPACING, 14, H - 10);
+		return spreadRows(entries, LABEL_SPACING, 14, LABEL_MAX_Y);
 	});
 
 	// Where a name and its temperature cannot share the line, the temperature
 	// drops to the line below and right-aligns beside the depth range.
 	let nameEls = $state<(SVGTextElement | undefined)[]>([]);
 	let readingEls = $state<(SVGTextElement | undefined)[]>([]);
-	let stacked = $derived(stackedRows(rows, nameEls, readingEls, W - 2 - GUTTER));
+	let stacked = $state<boolean[]>([]);
+	let svgEl = $state<SVGSVGElement>();
+
+	// An effect rather than a derived, so the text is on the page before it is
+	// measured — see `stackedRows`. Measured on every run so the effect tracks
+	// the rows even while the tab is hidden, but only kept where the chart has
+	// a box to have been measured in.
+	$effect(() =>
+		remeasure(svgEl, () => {
+			const next = stackedRows(rows, nameEls, readingEls, W - 2 - GUTTER);
+			if (svgEl?.getClientRects().length) stacked = next;
+		})
+	);
 </script>
 
 <div class="bg-muted/25 border-border/60 rounded-md border p-2">
 	<svg
+		bind:this={svgEl}
 		viewBox="0 0 {W} {H}"
 		class="w-full"
 		role="img"
@@ -130,11 +163,16 @@
 			     boundary the paper says is not there. It only fades where there
 			     is something above to fade *into* — on Uranus the whole planet is
 			     one diffuse layer, and fading it out at the surface would draw a
-			     body evaporating into the page. -->
+			     body evaporating into the page.
+			     The fade spans the layer's outer half, so the inner half still
+			     carries the layer's own colour. Ramping from a fixed fraction of
+			     the outer radius instead put Jupiter's metallic hydrogen fully
+			     opaque only below its own floor: the shell drew as the envelope's
+			     cream everywhere, whatever colour it was given. -->
 			{#each section.bands as band, i (band.layer.role + i)}
 				{#if band.layer.diffuse && i > 0}
 					<radialGradient id="diffuse-{i}" gradientUnits="userSpaceOnUse" cx={CX} cy={CY} r={bodyR}>
-						<stop offset={band.outer * 0.3} stop-color={fill(band, i)} />
+						<stop offset={(band.inner + band.outer) / 2} stop-color={fill(band, i)} />
 						<stop offset={band.outer} stop-color={fill(band, i)} stop-opacity="0" />
 					</radialGradient>
 				{/if}
@@ -177,9 +215,12 @@
 		</g>
 
 		<!-- Which end of the edge is which. Both sit clear of the disc, above
-		     its apex and below its centre. -->
+		     its apex and below its centre. The outer end is named after what the
+		     radius is measured to: Jupiter has no surface, and saying it had one
+		     would contradict the atmosphere chart above, which measures its own
+		     heights from the 1 bar level. -->
 		<text x={CX - 3} y={CY - R - 6} text-anchor="end" class="fill-muted-foreground text-[9px]">
-			{m.structure_disc_surface()}
+			{(DATUM_LABEL[datum] ?? DATUM_LABEL.surface)()}
 		</text>
 		<text x={CX - 3} y={CY + 11} text-anchor="end" class="fill-muted-foreground text-[9px]">
 			{m.structure_disc_centre()}
@@ -212,7 +253,7 @@
 						<text
 							bind:this={readingEls[i]}
 							x={W - 2}
-							y={row.labelY + (stacked[i] ? 11 : 0)}
+							y={row.labelY + (stacked[i] ? SECOND_LINE_DY : 0)}
 							text-anchor="end"
 							class="fill-muted-foreground text-[9px]"
 						>
@@ -220,7 +261,7 @@
 						</text>
 					{/if}
 				{/if}
-				<text x={GUTTER} y={row.labelY + 11} class="fill-muted-foreground text-[9px]">
+				<text x={GUTTER} y={row.labelY + SECOND_LINE_DY} class="fill-muted-foreground text-[9px]">
 					{row.band ? depthRange(row.band) : ltrIsolate(formatKm(section.atmosphere?.km ?? 0))}
 				</text>
 			</g>

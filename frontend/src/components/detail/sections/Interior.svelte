@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
-	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { materialSegments } from '$lib/charts/interior-materials';
 	import { coreBracket } from '$lib/charts/layer-appearance';
+	import { structureLink } from '$lib/charts/structure-link';
 	import type { CompositionSegment } from '$lib/charts/composition-bar';
 	import { formatKelvinRange } from '$lib/format/temperature';
 	import Section from './kit/Section.svelte';
@@ -62,9 +62,9 @@
 		if (interior.structure === 'fluid') return m.interior_note_no_solid_surface();
 		return null;
 	});
-	// The layer stack and the atmosphere's are one tab, so either one earns the
-	// link across from here.
-	let hasCrossSection = $derived(!!interior?.layers?.length || !!global?.atmosphere?.structure);
+	let link = $derived(structureLink(global));
+	let openStructure = $derived(link ? () => appState.setTab('structure') : undefined);
+	let linkLabel = $derived(link?.layers ? m.structure_see_layers() : m.structure_see_more());
 
 	let segments: CompositionSegment[] = $derived(
 		interior?.composition ? materialSegments(interior.composition) : []
@@ -72,7 +72,7 @@
 </script>
 
 {#if interior || coreTemperature}
-	<Section title={m.interior()}>
+	<Section title={m.interior()} onActivate={openStructure} activateLabel={linkLabel}>
 		{#snippet header()}
 			<CompositionBar {segments} />
 		{/snippet}
@@ -109,24 +109,12 @@
 			/>
 		{/if}
 		{#if coreTemperature}
-			<Row label={m.temperature_of_core()} tooltip={m.tooltip_core_temperature_modelled()}>
+			<Row label={m.temperature_of_core()}>
 				<span class="tabular-nums">{coreTemperature}</span>
 			</Row>
 		{/if}
 		{#if note}
 			<dd class="text-muted-foreground col-span-2 -mt-1.5 text-[11px] leading-snug">{note}</dd>
-		{/if}
-		{#if hasCrossSection}
-			<dd class="col-span-2">
-				<button
-					type="button"
-					class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
-					onclick={() => appState.setTab('structure')}
-				>
-					{m.structure_see_tab()}
-					<ArrowRightIcon class="size-3 rtl:rotate-180" />
-				</button>
-			</dd>
 		{/if}
 	</Section>
 {/if}

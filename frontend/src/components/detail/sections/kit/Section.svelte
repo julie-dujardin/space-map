@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 
 	interface Props {
 		title: string;
@@ -11,16 +12,37 @@
 		/** A qualifier on the whole section, set opposite the title. The
 		 *  cross-sections use it to say what they are drawn to scale against. */
 		meta?: string;
+		/** Where the section continues, if it does. Set opposite the title, the
+		 *  way the member strips carry "See all" — a row of its own under the
+		 *  values read as another datum. */
+		onActivate?: () => void;
+		/** What following it leads to. */
+		activateLabel?: string;
 	}
 
-	let { title, children, header, footer, meta }: Props = $props();
+	let { title, children, header, footer, meta, onActivate, activateLabel }: Props = $props();
 </script>
 
 <div class="flex flex-col gap-1">
 	<div class="flex items-baseline justify-between gap-3">
-		<h3 class="text-sm font-medium">{title}</h3>
+		<h3 class="min-w-0 truncate text-sm font-medium">{title}</h3>
 		{#if meta}
 			<span class="text-muted-foreground shrink-0 text-[10px] tabular-nums">{meta}</span>
+		{/if}
+		{#if onActivate}
+			<!-- The section is named again, silently, after the label: on its own
+			     "See layers" is one of several identical buttons down the panel to
+			     anyone listening to them rather than reading them. It follows the
+			     visible text rather than replacing it, which an aria-label would. -->
+			<button
+				type="button"
+				onclick={onActivate}
+				class="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs"
+			>
+				{activateLabel}
+				<span class="sr-only">— {title}</span>
+				<ArrowRightIcon class="size-3 rtl:rotate-180" />
+			</button>
 		{/if}
 	</div>
 	<div class="border-border/60 border-t"></div>

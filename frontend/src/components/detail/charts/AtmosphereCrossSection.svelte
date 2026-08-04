@@ -23,7 +23,15 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { AtmosphereBand, AtmosphereProfile } from '$lib/charts/atmosphere-cross-section';
 	import { atmosphereLayerName } from '$lib/charts/atmosphere-layers';
-	import { FRAME_W as W, FRAME_H as H, spreadRows, stackedRows } from '$lib/charts/label-fit';
+	import {
+		FRAME_W as W,
+		FRAME_H as H,
+		LABEL_MAX_Y,
+		SECOND_LINE_DY,
+		remeasure,
+		spreadRows,
+		stackedRows
+	} from '$lib/charts/label-fit';
 	import { formatKm, formatKmRange } from '$lib/format/distance';
 	import { formatPressure } from '$lib/format/pressure';
 	import { formatKelvin, formatKelvinRange, formatKelvinSpan } from '$lib/format/temperature';
@@ -48,10 +56,12 @@
 	const AIR = 132;
 	const GROUND_Y = H - 18;
 	const CY = GROUND_Y + PLANET_R;
-	/** Where the labels begin. Far enough left that a long layer name and its
-	 *  temperature share one line — the Sun's "Région de transition · 999 700 ℃"
-	 *  is the widest pair any body asks for. */
-	const GUTTER = 114;
+	/** Where the labels begin. Far enough left that a long layer name and the
+	 *  span it runs over share one line — the Sun's chromosphere reads
+	 *  "4,170 – 19,730 °C", and had 0.5px to spare at the old gutter. Its
+	 *  transition region is wider than any gutter that leaves the limb visible
+	 *  and takes the second line instead. */
+	const GUTTER = 106;
 	/** The scrim stays put when the gutter moves: it is placed against the limb
 	 *  it has to fade out, not against the text. */
 	const SCRIM_X = 92;
@@ -180,14 +190,26 @@
 		// Top of the stack first, so the spread runs down the frame in the order
 		// the labels appear.
 		entries.reverse();
-		return spreadRows(entries, LABEL_SPACING, 12, H - 10);
+		return spreadRows(entries, LABEL_SPACING, 12, LABEL_MAX_Y);
 	});
 
 	// Where a name and its temperature cannot share the line, the temperature
 	// drops to the line below and right-aligns beside the height.
 	let nameEls = $state<(SVGTextElement | undefined)[]>([]);
 	let readingEls = $state<(SVGTextElement | undefined)[]>([]);
-	let stacked = $derived(stackedRows(rows, nameEls, readingEls, W - 2 - (GUTTER + 4)));
+	let stacked = $state<boolean[]>([]);
+	let svgEl = $state<SVGSVGElement>();
+
+	// An effect rather than a derived, so the text is on the page before it is
+	// measured — see `stackedRows`. Measured on every run so the effect tracks
+	// the rows even while the tab is hidden, but only kept where the chart has
+	// a box to have been measured in.
+	$effect(() =>
+		remeasure(svgEl, () => {
+			const next = stackedRows(rows, nameEls, readingEls, W - 2 - (GUTTER + 4));
+			if (svgEl?.getClientRects().length) stacked = next;
+		})
+	);
 </script>
 
 <!-- The leader line and the two text lines, shared so that a row reads the same
@@ -195,7 +217,7 @@
 {#snippet label(row: Row, i: number)}
 	{@const value = temperature(row.band)}
 	<path
-		d="M {SCRIM_X - 26} {row.anchorY} L {GUTTER - 8} {row.labelY - 3} L {GUTTER} {row.labelY - 3}"
+		d="M {SCRIM_X - 26} {row.anchorY} L {GUTTER - 4} {row.labelY - 3} L {GUTTER} {row.labelY - 3}"
 		class="stroke-border fill-none"
 		stroke-width="1"
 	/>
@@ -206,20 +228,26 @@
 		<text
 			bind:this={readingEls[i]}
 			x={W - 2}
-			y={row.labelY + (stacked[i] ? 11 : 0)}
+			y={row.labelY + (stacked[i] ? SECOND_LINE_DY : 0)}
 			text-anchor="end"
 			class="fill-muted-foreground text-[9px]"
 		>
 			{value}
 		</text>
 	{/if}
-	<text x={GUTTER + 4} y={row.labelY + 11} class="fill-muted-foreground text-[9px]">
+	<text x={GUTTER + 4} y={row.labelY + SECOND_LINE_DY} class="fill-muted-foreground text-[9px]">
 		{readings(row.band.layer)}
 	</text>
 {/snippet}
 
 <div class="bg-muted/25 border-border/60 overflow-hidden rounded-md border p-2">
-	<svg viewBox="0 0 {W} {H}" class="w-full" role="img" aria-label={m.structure_atmosphere_chart()}>
+	<svg
+		bind:this={svgEl}
+		viewBox="0 0 {W} {H}"
+		class="w-full"
+		role="img"
+		aria-label={m.structure_atmosphere_chart()}
+	>
 		{#each profile.bands as band, i (band.layer.role + i)}
 			<path d={bandPath(band.base, band.top)} fill={color} opacity={band.opacity}></path>
 		{/each}

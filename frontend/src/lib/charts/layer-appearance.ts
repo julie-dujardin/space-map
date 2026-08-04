@@ -29,6 +29,15 @@ const MATERIAL_RGB: Record<string, RGB> = {
 	heavy_elements: [93, 83, 72]
 };
 
+/** Shells whose material does not decide their colour. Metallic hydrogen is
+ *  still hydrogen, so it would otherwise draw as the same cream as the envelope
+ *  above it on Jupiter, with only depth shading between them; what makes it a
+ *  distinct layer is that it conducts, so it is drawn as the metal it behaves
+ *  like. */
+const ROLE_RGB: Record<string, RGB> = {
+	metallic_hydrogen: [152, 148, 154]
+};
+
 /** Water ice, which is a different colour from the ocean under it. */
 const WATER_ICE: RGB = [200, 224, 240];
 
@@ -88,6 +97,8 @@ function isIce(layer: InteriorLayer, kelvin: number | null): boolean {
 }
 
 function materialRgb(layer: InteriorLayer, kelvin: number | null): RGB {
+	const byRole = ROLE_RGB[layer.role];
+	if (byRole) return byRole;
 	const material = dominant(layer);
 	if (material === null) return FALLBACK;
 	// Ice and ocean are the same material and nothing like the same colour.

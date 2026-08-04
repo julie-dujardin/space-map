@@ -9,6 +9,13 @@
 export const FRAME_W = 264;
 export const FRAME_H = 190;
 
+/** A label is two lines: the name, and the layer's extent under it. */
+export const SECOND_LINE_DY = 11;
+
+/** How far down a label's name can be pushed. The second line hangs below it,
+ *  so a bound set off the frame alone clips that line out of the SVG. */
+export const LABEL_MAX_Y = FRAME_H - SECOND_LINE_DY - 3;
+
 /**
  * Slide labels apart until none overlaps, keeping each as close to the point it
  * points at as it can.
@@ -57,6 +64,29 @@ export function spreadRows<T extends { anchorY: number }>(
 	return entries.map((e, i) => ({ ...e, labelY: ys[i] }));
 }
 
+/**
+ * Wire a chart's measurement to everything that invalidates it, and return the
+ * teardown. Call from an `$effect`, whose own dependency tracking covers the
+ * data changing; this covers the page changing under it.
+ *
+ * Twice beyond the initial run: once the webfont resolves, because until then
+ * the widths are the fallback family's, and whenever `el` is laid out. The
+ * second is what catches a chart built inside a hidden tab panel — the drawer
+ * mounts the Structure tab while the Overview is showing, and a text node in a
+ * hidden subtree measures 0, so every label "fits" until the panel is revealed.
+ */
+export function remeasure(el: Element | undefined, measure: () => void): () => void {
+	measure();
+	let live = true;
+	document.fonts.ready.then(() => live && measure());
+	const observer = new ResizeObserver(() => measure());
+	if (el) observer.observe(el);
+	return () => {
+		live = false;
+		observer.disconnect();
+	};
+}
+
 /** Breathing room between a left-aligned name and a right-aligned reading. */
 const GAP = 4;
 
@@ -69,6 +99,16 @@ const GAP = 4;
  * `rows` is what the labels were built from: passing it is what makes the
  * measurement re-run when the chart's contents change, not just when its text
  * elements are replaced.
+ *
+ * Call this from an `$effect`, never a `$derived`, and wire it up with
+ * `remeasure`. A derived is read while the `<text>` nodes still hold the empty
+ * content they were cloned with — Svelte sets a row's `y` before it sets the
+ * name's text — so every pair measures 0 and "fits", and nothing invalidates
+ * the derived once the text lands. The Sun's "Transition region · 19,730 –
+ * 999,700 °C" then printed over itself.
+ *
+ * The answer is only meaningful where the chart has a box; callers drop it
+ * otherwise rather than committing a screenful of zeroes.
  */
 export function stackedRows(
 	rows: readonly unknown[],

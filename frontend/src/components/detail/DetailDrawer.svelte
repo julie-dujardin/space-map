@@ -1059,8 +1059,8 @@
 				/>
 			{:else if body}
 				<Bulk global={data?.global ?? null} />
-				<Interior global={data?.global ?? null} />
 				<Atmosphere global={data?.global ?? null} />
+				<Interior global={data?.global ?? null} />
 				<Brightness global={data?.global ?? null} />
 				<Orbital
 					global={data?.global ?? null}

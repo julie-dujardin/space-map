@@ -21,10 +21,12 @@
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { crossSection } from '$lib/charts/interior-cross-section';
 	import { atmosphereProfile, drawableTopKm } from '$lib/charts/atmosphere-cross-section';
+	import { atmosphereNoteBesideChart, atmosphereTypeName } from '$lib/charts/atmosphere-layers';
 	import { bandColor, coreBracket, layerSpans, skyRgb } from '$lib/charts/layer-appearance';
 	import { formatKm } from '$lib/format/distance';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import Section from './kit/Section.svelte';
+	import Row from './kit/Row.svelte';
 	import AtmosphereComposition, { hasCompositionBar } from './kit/AtmosphereComposition.svelte';
 	import InteriorCrossSection from '../charts/InteriorCrossSection.svelte';
 	import AtmosphereCrossSection from '../charts/AtmosphereCrossSection.svelte';
@@ -53,6 +55,9 @@
 
 	let composition = $derived(global?.atmosphere?.composition);
 	let hasBar = $derived(hasCompositionBar(composition));
+
+	let note = $derived(atmosphereNoteBesideChart(global?.atmosphere?.note));
+	let type = $derived(global?.atmosphere ? atmosphereTypeName(global.atmosphere.type) : null);
 
 	let readings = $derived(global?.temperatures?.readings ?? []);
 
@@ -106,7 +111,18 @@
 
 {#if hasChart || hasBar}
 	<Section title={m.structure_atmosphere()} meta={atmosphereMeta}>
-		{#snippet header()}
+		<!-- What kind of atmosphere this is, then what the drawing cannot show:
+		     that the whole envelope comes and goes. Mars freezes a quarter of its
+		     air onto the winter cap, and the stack below is the half of the year
+		     it is in the air. The interior gets no such line — a layer's caveats
+		     are on its own card under the disc. -->
+		{#if type}
+			<Row label={m.atmosphere_classification()} value={type} />
+		{/if}
+		{#if note}
+			<dd class="text-muted-foreground col-span-2 -mt-1.5 text-[11px] leading-snug">{note}</dd>
+		{/if}
+		{#snippet footer()}
 			{#if profile && profile.bands.length}
 				<AtmosphereCrossSection {profile} color={gasColor} />
 			{/if}
@@ -123,6 +139,7 @@
 				atmosphereColor={gasColor}
 				temperatures={layerTemperatures}
 				{plasmaRange}
+				datum={structure?.datum}
 				bind:active
 			/>
 		{/snippet}
