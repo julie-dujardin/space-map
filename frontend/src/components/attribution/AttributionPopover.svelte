@@ -3,6 +3,7 @@
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { ModelCredit } from '$lib/scene/state/credits.svelte';
+	import { orientationCredits } from '$lib/credits/orientation-sources';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
@@ -184,6 +185,21 @@
 		return bodyId ? ctx.credits.model.get(bodyId) : undefined;
 	});
 
+	// Rotational elements the scene is actually spinning bodies by, deduped
+	// across everything loaded this session. Most bodies run on the PCK, but an
+	// asteroid's pole comes from DAMIT's lightcurve inversion and the ringed
+	// small bodies' from an occultation paper — same mapper the detail sidebar
+	// credits from.
+	const rotationRows = $derived.by(() => {
+		void ctx.credits.orientationVersion;
+		const rows = new Map<string, { key: string; label: string; url: string }>();
+		for (const credit of ctx.credits.orientation.values())
+			for (const entry of orientationCredits(credit.source, credit.reference))
+				if (!rows.has(entry.key))
+					rows.set(entry.key, { key: entry.key, label: entry.long, url: entry.url });
+		return [...rows.values()];
+	});
+
 	function bodyName(id: string): string {
 		return ctx.getBody(id)?.data.name ?? id;
 	}
@@ -249,15 +265,16 @@
 		</section>
 	{/if}
 
-	<section class="space-y-1">
-		{@render sectionHeader(m.attribution_section_rotation())}
-		<ul class="space-y-0.5">
-			<li>{@render link('https://naif.jpl.nasa.gov/naif/', m.source_spice_pck_name())}</li>
-			<li>
-				{@render link('https://www.iau.org/WG100/WG100/Home.aspx', m.source_iau_wgccre_name())}
-			</li>
-		</ul>
-	</section>
+	{#if rotationRows.length > 0}
+		<section class="space-y-1">
+			{@render sectionHeader(m.attribution_section_rotation())}
+			<ul class="space-y-0.5">
+				{#each rotationRows as row (row.key)}
+					<li>{@render link(row.url, row.label)}</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
 
 	{#if imageryRows.length > 0}
 		<section class="space-y-1">

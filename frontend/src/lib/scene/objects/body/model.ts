@@ -26,6 +26,7 @@ import type { BodyObjects } from '../../types';
 import { setLabelNote } from '../../label/factory';
 import { applyShapeModelMaterial, makeShapeModelMaterial, setShapeModelMap } from './model-texture';
 import { shapeModelSkipReason } from './shape-model-policy';
+import { applyBodyOrientation } from './orientation-apply';
 
 /** Body types whose placeholder sphere is meaningless and should be hidden
  *  the moment a load starts (rather than waiting for the detail fetch to
@@ -244,7 +245,7 @@ async function loadNaturalBodyModel(
 		// Model load can win the race against loadBodyTexture; make sure the spin
 		// axis is on the body so the per-frame orientation pass finds it.
 		if (detail.global?.orientation && !bo.body.orientation) {
-			bo.body.orientation = detail.global.orientation;
+			applyBodyOrientation(bo, detail.global.orientation, ctx);
 		}
 		const metaPromise = fetchBundleMeta(slug);
 		const gltf = await _loader.loadAsync(versionedUrl(`/v1/models/${slug}/high.glb`, 'models'));

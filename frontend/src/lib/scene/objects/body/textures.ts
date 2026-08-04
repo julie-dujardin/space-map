@@ -16,6 +16,7 @@ import { attachRingBundles } from '../surface/ring-attach';
 import { syncSunTransmittanceUniforms } from '../surface/sun-transmittance';
 import { setShapeModelMap, setSurfaceMap } from './model-texture';
 import type { BodyObjects } from '../../types';
+import { applyBodyOrientation } from './orientation-apply';
 
 /** Ordered tier names: lower → higher resolution. Index = rank. */
 export const TIER_NAMES = ['low', 'medium', 'high'] as const;
@@ -174,7 +175,7 @@ export async function loadBodyTexture(
 	// before the map-texture early-return below so bodies without a surface
 	// map (most asteroids) still get their ellipsoid shape and spin axis.
 	if (detail.global.orientation && !bo.body.orientation) {
-		bo.body.orientation = detail.global.orientation;
+		applyBodyOrientation(bo, detail.global.orientation, ctx);
 	}
 	// Absolute-radius DEM bodies (Vesta/Ceres) skip triaxial — the displacement
 	// carries the full shape, so the ellipsoid would double-count it.

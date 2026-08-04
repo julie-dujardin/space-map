@@ -2,10 +2,13 @@
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import * as m from '$lib/paraglide/messages.js';
 	import { archiveLabel, archiveRole, archiveUrl } from '$lib/credits/archive-labels';
+	import {
+		orientationCredits,
+		type OrientationReference,
+		type OrientationSource
+	} from '$lib/credits/orientation-sources';
 	import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-
-	type OrientationSource = NonNullable<NonNullable<GlobalObjectData['orientation']>['source']>;
 
 	interface Source {
 		key: string;
@@ -66,36 +69,16 @@
 			// (NAIF)" — would stack a second parenthetical, so it goes bare.
 			out.push({ key, label, url, note: label.endsWith(')') ? undefined : note });
 		};
-		// The IAU working group sets the rotational elements and radii; NAIF is
-		// where we read them, so both are credited wherever either applies.
-		const addPck = () => {
-			add(
-				'iau-wgccre',
-				m.source_iau_wgccre_short(),
-				'https://www.iau.org/WG100/WG100/Home.aspx',
-				m.source_iau_wgccre_role()
-			);
-			add(
-				'naif',
-				m.source_spice_pck_name(),
-				'https://naif.jpl.nasa.gov/naif/',
-				m.source_spice_pck_role()
-			);
-		};
-
 		// A spin pole comes from the PCK (planets, moons, the handful of visited
-		// asteroids), from DAMIT's lightcurve inversion, or — for the ringed
-		// small bodies, which no kernel covers — from an occultation paper.
-		const addPole = (
-			source: OrientationSource | undefined,
-			reference?: { title: string; url: string }
-		) => {
-			if (source === 'lightcurve')
-				add('damit', m.source_damit_name(), 'https://damit.cuni.cz/', m.source_spin_pole_role());
-			else if (source === 'occultation') {
-				if (reference) add(reference.url, reference.title, reference.url);
-			} else addPck();
+		// asteroids), from DAMIT's lightcurve inversion, or — for the ringed small
+		// bodies, which no kernel covers — from an occultation paper. Shared with
+		// the scene's attribution popover, which credits the same elements.
+		const addPole = (source: OrientationSource | undefined, reference?: OrientationReference) => {
+			for (const credit of orientationCredits(source, reference))
+				add(credit.key, credit.short, credit.url, credit.role);
 		};
+		// The lineup's radii/mass come from the same kernels as a PCK pole.
+		const addPck = () => addPole(undefined);
 
 		const eph = global?.ephemeris_source;
 		if (eph) add(eph, archiveLabel(eph) ?? eph, archiveUrl(eph), archiveRole(eph) ?? undefined);

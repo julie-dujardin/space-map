@@ -35,6 +35,7 @@ import {
 import { attachSelfShadowToBody, detachSelfShadow } from '../surface/self-shadow';
 import { disposeNomenclatureLabels } from '../surface/nomenclature';
 import type { BodyObjects } from '../../types';
+import { applyBodyOrientation } from './orientation-apply';
 import {
 	applyRadiiToMesh,
 	loadBodyTextureTier,
@@ -143,7 +144,7 @@ export async function loadSystemData(
 
 		// Apply orientation (axial tilt + spin) and cache for per-frame re-application.
 		if (bodyMeta.orientation) {
-			bo.body.orientation = bodyMeta.orientation;
+			applyBodyOrientation(bo, bodyMeta.orientation, ctx, barycenterId);
 
 			// Resolve per-body nutation/precession by joining coefficients with the
 			// system-shared angles (one IAU table per planetary system).

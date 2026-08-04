@@ -1,4 +1,5 @@
 import { OrbitalSource } from '$lib/fetch/position/format';
+import type { OrientationReference, OrientationSource } from '$lib/credits/orientation-sources';
 import type { PositionedBody } from '$lib/types/objects';
 
 /**
@@ -89,6 +90,19 @@ export interface DisplacementCredit {
  * `https://www.nasa.gov/3d-resources/`), `organisation` the catalog name
  * (`NASA-3D-Resources`).
  */
+/**
+ * Per-body rotational-elements attribution, recorded when the scene adopts a
+ * body's orientation. The renderer spins bodies by these elements, so the
+ * popover credits whoever published them — PCK for the kernels, DAMIT for a
+ * lightcurve pole, the paper itself for an occultation fit.
+ */
+export interface OrientationCredit {
+	bodyId: string;
+	systemId: string;
+	source: OrientationSource | undefined;
+	reference?: OrientationReference;
+}
+
 export interface ModelCredit {
 	bodyId: string;
 	source: string;
@@ -141,6 +155,8 @@ export class CreditsStore {
 	displacementVersion = $state(0);
 	model = new Map<string, ModelCredit>();
 	modelVersion = $state(0);
+	orientation = new Map<string, OrientationCredit>();
+	orientationVersion = $state(0);
 	skybox = $state<SkyboxCredit | null>(null);
 	/**
 	 * Providers that have contributed at least one body to the loaded scene.
@@ -182,6 +198,12 @@ export class CreditsStore {
 		if (this.displacement.has(credit.bodyId)) return;
 		this.displacement.set(credit.bodyId, credit);
 		this.displacementVersion++;
+	}
+
+	registerOrientation(credit: OrientationCredit): void {
+		if (this.orientation.has(credit.bodyId)) return;
+		this.orientation.set(credit.bodyId, credit);
+		this.orientationVersion++;
 	}
 
 	registerModel(credit: ModelCredit): void {
