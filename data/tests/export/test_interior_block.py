@@ -133,6 +133,48 @@ class TestLayers:
         assert "layers" not in block(EROS, EROS_TAXONOMY)
 
 
+class TestBoundaryTemperatures:
+    """The temperature at a boundary, where anyone has published one."""
+
+    def test_a_boundary_ships_its_reading(self):
+        """Earth's inner-core boundary is the one place in any planet where a
+        phase change fixes the temperature, and it ships as value plus width."""
+        inner = next(
+            layer
+            for layer in block("naif-399")["layers"]
+            if layer["role"] == "inner_core"
+        )
+        assert inner["outer_temperature_k"] == 5500.0
+        assert inner["outer_temperature_range_k"] == [5000.0, 6000.0]
+
+    def test_a_width_can_be_the_whole_claim(self):
+        """Venus's core-mantle boundary is 4000 to 5000 K with nothing between
+        preferred, so no point value ships to imply one."""
+        core = next(
+            layer for layer in block("naif-299")["layers"] if layer["role"] == "core"
+        )
+        assert core["outer_temperature_range_k"] == [4000.0, 5000.0]
+        assert "outer_temperature_k" not in core
+
+    def test_the_centre_rides_on_the_body(self):
+        """A dilute core has no radius to hang a boundary on, so Jupiter's only
+        temperature is its middle."""
+        assert block("naif-599")["centre_temperature_range_k"] == [15000.0, 36000.0]
+
+    def test_a_body_without_one_ships_nothing(self):
+        """Most of the thirty-one layer models have no published geotherm, and
+        an absent field is how the panel knows to draw no temperature."""
+        io = block("naif-501")
+        assert "centre_temperature_k" not in io
+        assert all("outer_temperature_k" not in layer for layer in io["layers"])
+
+    def test_the_temperature_source_is_credited(self):
+        """Gravity sized Mercury's core and Hauck heated it; both are works the
+        panel has to name."""
+        urls = {source["url"] for source in block("naif-199")["sources"]}
+        assert "https://doi.org/10.1002/jgre.20091" in urls
+
+
 class TestRoutes:
     def test_layer_model_beats_the_spectrum(self):
         """Ceres is a C-type and would get the carbonaceous-chondrite estimate,

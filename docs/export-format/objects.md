@@ -98,6 +98,8 @@ interface GlobalObjectData {
     taxonomy_scheme?: string;         // estimate route: which taxonomy that letter belongs to
     taxonomy_sources?: string[];      // estimate route: "ssodnet", optionally "mahlke" — ids, not citations
     note?: string;                    // "subsurface_ocean", "hydrated_rock"; only the ocean note is rendered, the rest is provenance metadata
+    centre_temperature_k?: number;    // at r=0; closes the innermost layer's span. Present where a body has a published centre rather than a boundary — the Sun and the four giants, whose dilute cores have no radius to hang a boundary on
+    centre_temperature_range_k?: [number, number]; // usually the whole claim, the value above being absent: Jupiter's 15000–36000 K is classical adiabat against post-Juno model, not an error bar
     composition?: Array<{             // whole-body roll-up, descending; omitted where layer masses are unknown (the Sun)
       material: string;               // "metal" | "sulfide" | "silicate" | "water" | "volatile_ice" | "organic" | "hydrogen" | "helium" | "heavy_elements"
       share: number;                  // normalized over the materials listed
@@ -112,6 +114,8 @@ interface GlobalObjectData {
       note?: string;                  // "core_size_disputed", "shell_thickness_modelled", …; provenance metadata, except "continental_crust_only" which renames the layer
       derived?: true;                 // the mass is our arithmetic on the source's radii and densities, not a number it quotes
       diffuse?: true;                 // no boundary to draw: `outer_radius_km` is where it fades out, not where it ends
+      outer_temperature_k?: number;   // at `outer_radius_km` — geotherms are published at boundaries (Moho, 660 km, CMB, ICB), not averaged over shells. A layer's span is this against the next layer's; the innermost one's inner end is `centre_temperature_k`. Never on the outermost layer: that boundary is the surface, and `temperatures` measures it
+      outer_temperature_range_k?: [number, number]; // usually the whole claim, the value above being absent — most of these are a spread across models or experiments rather than an error bar on one
       composition: Array<{            // of this layer, same materials and same sliver cut as the roll-up
         material: string;
         share: number;
@@ -173,9 +177,11 @@ interface GlobalObjectData {
       // are its night and day sides, Earth's are one-off weather records.
       condition?: "night" | "day" | "record" | "modelled"; // "modelled" marks the core bracket — model spread, not a measurement
     }>;
-    // `core` readings always come as a min/max pair from
-    // `constants/temperature/cores.py`, and the pair is model spread rather
-    // than measurement error — nobody has measured a planetary core. They ride
+    // `core` readings always come as a min/max pair, read off the interior
+    // model's deepest core boundary — `interior.centre_temperature_*` where a
+    // body has one, otherwise the innermost core layer's
+    // `outer_temperature_*`. The pair is model spread rather than measurement
+    // error: nobody has measured a planetary core. They ride
     // in this list so the export shape stays one array, but the panel draws
     // them under Interior rather than on the temperature scale: the Sun's core
     // is 15.5 million K against a 5772 K photosphere, and one bar holding both
@@ -469,6 +475,17 @@ a gap or an overshoot at the surface. `derived` marks a mass that is our own
 arithmetic on the source's radii and densities, and `diffuse` a layer with no
 boundary at all — Jupiter's core is heavy elements smeared through the envelope,
 so its radius is where it fades out.
+
+Temperature runs on the boundaries rather than on the shells, because that is
+the form the literature publishes: a geotherm is quoted at the Moho, at 660 km,
+at the core-mantle boundary. A layer's two ends are its own
+`outer_temperature_*` and the next layer down's, and the innermost layer closes
+against `centre_temperature_*` on the body — the same contract the atmosphere
+layers use, where each is described by its top and the lowest closes against the
+datum. Twenty readings across seventeen bodies carry one today; everything else
+has none, and a layer with no number should draw none rather than interpolate.
+The outermost layer never carries one: its boundary is the surface, which
+`temperatures` already measures.
 
 The roll-up is a mass balance over layers rather than an elemental one — water
 bound in a phyllosilicate counts as water, not as oxygen shared out among the

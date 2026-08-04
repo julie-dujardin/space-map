@@ -33,6 +33,16 @@ from space_map_data.constants.interior.schema import (
 )
 
 
+# The base of a floating ice shell is a phase boundary rather than a modelled
+# temperature: it sits on the melting curve of ice I, which runs from 273 K at
+# low pressure down to 251 K at the ice I-III triple point, and lower again
+# where the ocean is salty. Every ocean world gets the same bracket because it
+# is the same curve — Vance's models span it end to end across the five moons
+# they cover — and no shell thickness is known well enough to say where on it a
+# given body sits.
+ICE_OCEAN_INTERFACE_K = (250.0, 273.0)
+
+
 INTERIOR_FACTS: dict[str, BodyInterior] = {
     # Mercury, the one terrestrial planet that is mostly core. MESSENGER's
     # moment-of-inertia pair puts the top of the liquid core at 2020 ± 30 km
@@ -103,6 +113,11 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=2020.0,
                 derived=True,
                 state="liquid",
+                # Hauck's 1475-1825 C at the core-mantle boundary, which is
+                # what Mercury's models constrain; the centre is hotter by an
+                # adiabat nobody has pinned.
+                outer_temperature_range_k=(1750.0, 2100.0),
+                temperature_sources=("hauck_2013",),
             ),
             Layer(
                 role="inner_core",
@@ -171,6 +186,12 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=3508.0,
                 derived=True,
                 note="core_size_disputed",
+                # The widest bracket of the four terrestrials, and for the same
+                # reason everything else about Venus is wide: no seismometer
+                # has ever worked there, so this is a thermal-evolution model
+                # anchored on an Earth-like composition.
+                outer_temperature_range_k=(4000.0, 5000.0),
+                temperature_sources=("dumoulin_2017",),
             ),
         ),
     ),
@@ -253,6 +274,12 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     source="mcdonough_2003",
                 ),
                 state="liquid",
+                # A spread across experiments rather than an error bar: the
+                # pyrolite solidus bounds it from above at 3570 ± 200 K, and
+                # iron melting curves and later solidus work land either side.
+                # No experiment prefers a number the others do not contest.
+                outer_temperature_range_k=(3400.0, 4200.0),
+                temperature_sources=("nomura_2014",),
             ),
             Layer(
                 role="inner_core",
@@ -261,6 +288,13 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="mcdonough_2003",
                 outer_radius_km=1221.5,
                 state="solid",
+                # The one boundary in any planet fixed by a phase change we can
+                # reproduce: the inner core ends where iron freezes. Pure iron
+                # melts at 6230 ± 500 K at that pressure and the light elements
+                # in the alloy depress it by ~700 K.
+                outer_temperature_k=5500.0,
+                outer_temperature_range_k=(5000.0, 6000.0),
+                temperature_sources=("anzellini_2013",),
             ),
         ),
     ),
@@ -389,6 +423,11 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     source="khan_2023",
                 ),
                 state="liquid",
+                # InSight sized and weighed the core; the temperature is the
+                # mantle adiabat run down to it rather than anything the
+                # seismology sees directly.
+                outer_temperature_range_k=(2000.0, 2400.0),
+                temperature_sources=("stahler_2021",),
             ),
             Layer(
                 role="inner_core",
@@ -476,6 +515,11 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=330.0,
                 derived=True,
                 state="liquid",
+                # Fixed by what the seismology sees rather than by a thermal
+                # model: the outer core is liquid and the inner one is not, so
+                # the boundary sits on the iron-sulphur melting range.
+                outer_temperature_range_k=(1600.0, 1900.0),
+                temperature_sources=("weber_2011",),
             ),
             Layer(
                 role="inner_core",
@@ -532,6 +576,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=229.1,
                 derived=True,
                 state="liquid",
+                outer_temperature_range_k=ICE_OCEAN_INTERFACE_K,
+                temperature_sources=("vance_2018",),
             ),
             Layer(
                 role="core",
@@ -647,6 +693,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=1536.5,
                 derived=True,
                 state="liquid",
+                outer_temperature_range_k=ICE_OCEAN_INTERFACE_K,
+                temperature_sources=("vance_2018",),
             ),
             Layer(
                 role="mantle",
@@ -738,6 +786,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=2562.7,
                 derived=True,
                 state="liquid",
+                outer_temperature_range_k=ICE_OCEAN_INTERFACE_K,
+                temperature_sources=("vance_2018",),
             ),
             Layer(
                 role="ice_mantle",
@@ -823,6 +873,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=2310.3,
                 derived=True,
                 state="liquid",
+                outer_temperature_range_k=ICE_OCEAN_INTERFACE_K,
+                temperature_sources=("vance_2018",),
             ),
             Layer(
                 role="ice_mantle",
@@ -907,6 +959,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=2434.73,
                 derived=True,
                 state="liquid",
+                outer_temperature_range_k=ICE_OCEAN_INTERFACE_K,
+                temperature_sources=("vance_2018",),
             ),
             Layer(
                 role="ice_mantle",
@@ -1086,6 +1140,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=465.1,
                 derived=True,
                 state="liquid",
+                outer_temperature_range_k=ICE_OCEAN_INTERFACE_K,
+                temperature_sources=("vance_2018",),
             ),
             Layer(
                 role="core",
@@ -1128,6 +1184,13 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 state="fluid",
             ),
         ),
+        # A factor of five, which is the state of the question rather than a
+        # sloppy model: standard adiabatic interiors land near 6000 K, and
+        # models that drop the fully-convective assumption — which Uranus's
+        # feeble internal heat flux invites — reach several times that. Voyager
+        # 2 is the only visit either ice giant has had.
+        centre_temperature_range_k=(6000.0, 28000.0),
+        centre_temperature_sources=("scheibe_2019",),
     ),
     # Neptune runs the same models to nearly the same answer — the two planets
     # differ less in composition than in anything else about them. The one
@@ -1151,6 +1214,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 state="fluid",
             ),
         ),
+        centre_temperature_range_k=(6000.0, 28000.0),
+        centre_temperature_sources=("scheibe_2019",),
     ),
     # The Sun. Three zones with compositions and no masses: the solar model
     # paper tabulates abundances and the depth of the convective zone but not
@@ -1203,6 +1268,11 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=496590.0,
                 derived=True,
                 state="plasma",
+                # Where convection starts, and the one place in the Sun a
+                # temperature is quoted to two figures rather than a bracket:
+                # the standard model and helioseismology agree here.
+                outer_temperature_k=2.0e6,
+                temperature_sources=("bahcall_2005",),
             ),
             Layer(
                 role="core",
@@ -1216,8 +1286,17 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=139140.0,
                 derived=True,
                 state="plasma",
+                # 0.2 R☉, where fusion has effectively stopped — the reason the
+                # core is drawn as ending there at all.
+                outer_temperature_k=7.0e6,
+                temperature_sources=("bahcall_2005",),
             ),
         ),
+        # The best-constrained centre of any body here: helioseismology and the
+        # neutrino flux both pin it, so the bracket is model spread rather than
+        # uncertainty about the Sun.
+        centre_temperature_range_k=(15.5e6, 15.7e6),
+        centre_temperature_sources=("bahcall_2005",),
     ),
     # Pluto, Charon and Triton, from the review that reads them side by side.
     # None of the three has a measured moment of inertia, so the split is the
@@ -1270,6 +1349,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=940.0,
                 derived=True,
                 state="liquid",
+                outer_temperature_range_k=ICE_OCEAN_INTERFACE_K,
+                temperature_sources=("vance_2018",),
             ),
             Layer(
                 role="core",
@@ -1398,6 +1479,12 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 diffuse=True,
             ),
         ),
+        # The centre rather than a boundary, because a dilute core has none.
+        # The two ends are two eras: the low one is the classical three-layer
+        # adiabat, the high one a post-Juno dilute-core interior. The gap
+        # between them is an open question, not an error bar.
+        centre_temperature_range_k=(15000.0, 36000.0),
+        centre_temperature_sources=("guillot_2005", "helled_2024"),
     ),
     # Saturn, from the Grand Finale orbits. The gravity rules out uniform
     # rotation outright, and once differential rotation is in the models the
@@ -1447,6 +1534,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 diffuse=True,
             ),
         ),
+        centre_temperature_range_k=(8000.0, 12000.0),
+        centre_temperature_sources=("guillot_2005", "helled_2024"),
     ),
     # Triton has almost no observational constraint on its interior — its shape
     # permits nearly anything and its surface is 10 Myr old, so nothing early

@@ -15,6 +15,10 @@ bytes on.
 
 The roll-up is a mass balance over layers, not an elemental one: water bound
 in a phyllosilicate counts as water, not as oxygen shared out among the rocks.
+
+Boundary temperatures ride on the layer stack, on the boundaries rather than
+the shells, and only where somebody has published one — twenty readings across
+seventeen bodies against thirty-one layer models.
 """
 
 import logging
@@ -92,6 +96,12 @@ def _from_layers(object_id: str, facts: BodyInterior) -> dict:
     block: dict = {"structure": facts.structure}
     if facts.note is not None:
         block["note"] = facts.note
+    if facts.centre_temperature_k is not None:
+        block["centre_temperature_k"] = _sig(facts.centre_temperature_k)
+    if facts.centre_temperature_range_k is not None:
+        block["centre_temperature_range_k"] = [
+            _sig(v) for v in facts.centre_temperature_range_k
+        ]
     composition: list[dict] = []
 
     # A body whose source gives geometry but no masses — the Sun — has nothing
@@ -154,6 +164,12 @@ def _layer(object_id: str, layer: Layer) -> dict:
         out["derived"] = True
     if layer.diffuse:
         out["diffuse"] = True
+    if layer.outer_temperature_k is not None:
+        out["outer_temperature_k"] = _sig(layer.outer_temperature_k)
+    if layer.outer_temperature_range_k is not None:
+        out["outer_temperature_range_k"] = [
+            _sig(v) for v in layer.outer_temperature_range_k
+        ]
 
     composition = _shares(
         object_id,
@@ -194,15 +210,20 @@ def _layer_source_keys(
     survived a sliver cut *somewhere*. A material can miss the whole-body bar
     and still fill its own layer, which is the case a sulphur-bearing core a
     percent of the body makes: 20% of the core, 0.2% of the planet.
+
+    Temperature sources ride along wherever a boundary carries one; they are a
+    different paper from the geometry's nearly every time.
     """
     keys: list[str] = []
     if facts.structure_source is not None:
         keys.append(facts.structure_source)
+    keys.extend(facts.centre_temperature_sources)
     shown = {c["material"] for c in composition}
     for layer, drawn in zip(facts.layers, layers):
         keys.append(layer.source)
         if layer.state_source is not None:
             keys.append(layer.state_source)
+        keys.extend(layer.temperature_sources)
         in_layer = shown | {c["material"] for c in drawn["composition"]}
         keys.extend(c.source for c in layer.composition if c.material in in_layer)
         if layer.detail is not None:
@@ -294,6 +315,13 @@ def _validate(object_id: str, facts: BodyInterior) -> None:
         raise ValueError(f"{object_id}: unknown structure {facts.structure}")
     if facts.note is not None and facts.note not in NOTES:
         raise ValueError(f"{object_id}: unknown note {facts.note}")
+    _validate_temperature(
+        object_id,
+        "centre",
+        facts.centre_temperature_k,
+        facts.centre_temperature_range_k,
+        facts.centre_temperature_sources,
+    )
     for layer in facts.layers:
         if layer.role not in LAYER_ROLES:
             raise ValueError(f"{object_id}: unknown layer role {layer.role}")
@@ -306,6 +334,43 @@ def _validate(object_id: str, facts: BodyInterior) -> None:
         for component in layer.composition:
             if component.material not in MATERIALS:
                 raise ValueError(f"{object_id}: unknown material {component.material}")
+        _validate_temperature(
+            object_id,
+            layer.role,
+            layer.outer_temperature_k,
+            layer.outer_temperature_range_k,
+            layer.temperature_sources,
+        )
+
+
+def _validate_temperature(
+    object_id: str,
+    where: str,
+    value: float | None,
+    width: tuple[float, float] | None,
+    sources: tuple[str, ...],
+) -> None:
+    """A boundary temperature has to be cited and has to be a temperature.
+
+    Uncited is the one that matters: a number with no work behind it would draw
+    exactly like the rest and credit nobody.
+    """
+    if value is None and width is None:
+        if sources:
+            raise ValueError(f"{object_id}: {where} cites a temperature it has not got")
+        return
+    if not sources:
+        raise ValueError(f"{object_id}: {where} temperature has no source")
+    for key in sources:
+        if key not in INTERIOR_SOURCES:
+            raise ValueError(f"{object_id}: no such interior source {key}")
+    if width is not None and not width[0] < width[1]:
+        raise ValueError(f"{object_id}: {where} temperature range is not ascending")
+    if value is not None and width is not None and not width[0] <= value <= width[1]:
+        raise ValueError(f"{object_id}: {where} temperature sits outside its range")
+    for kelvin in (value, *(width or ())):
+        if kelvin is not None and kelvin <= 0.0:
+            raise ValueError(f"{object_id}: {where} temperature is not above zero")
 
 
 def _sources(keys: list[str]) -> list[dict]:

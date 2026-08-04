@@ -4,7 +4,6 @@ import pytest
 
 from space_map_data.constants.atmosphere.bodies import ATMOSPHERE_BODIES
 from space_map_data.constants.temperature.bodies import TEMPERATURE_BODIES
-from space_map_data.constants.temperature.cores import CORE_TEMPERATURES
 from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
 from space_map_data.export.objects.temperature import (
     CONDITIONS,
@@ -165,10 +164,29 @@ class TestModelledCore:
         assert block is not None
         assert len(block["sources"]) > 1
 
-    def test_body_without_a_core_model_is_unchanged(self):
+    def test_only_a_core_boundary_answers_for_the_core(self):
+        """Titan's innermost published temperature is its ice-ocean interface,
+        250 K a thousand kilometres above the rock. Reported as a core
+        temperature it would be worse than reporting nothing."""
         block = temperature_block("naif-606")
         assert block is not None
         assert all(r["part"] != "core" for r in block["readings"])
+
+    def test_the_bracket_is_the_deepest_boundary_with_a_number(self):
+        """Mercury's is its core-mantle boundary, which is what its models
+        constrain — the old constant read as a central temperature and was
+        never one."""
+        block = temperature_block("naif-199")
+        assert block is not None
+        core = [r["k"] for r in block["readings"] if r["part"] == "core"]
+        assert core == [1750.0, 2100.0]
+
+    def test_a_centre_beats_a_boundary(self):
+        """The Sun has both; the centre is the deeper of the two."""
+        block = temperature_block("naif-10")
+        assert block is not None
+        core = [r["k"] for r in block["readings"] if r["part"] == "core"]
+        assert core == [15.5e6, 15.7e6]
 
     def test_core_does_not_claim_the_outside_was_measured(self):
         """An estimated surface stays estimated when a modelled core joins it —
@@ -189,14 +207,12 @@ class TestConstantsIntegrity:
         keys = {
             k for parts in TEMPERATURE_BODIES.values() for p in parts for k in p.sources
         }
-        keys |= {k for c in CORE_TEMPERATURES.values() for k in c.sources}
         assert keys <= set(TEMPERATURE_SOURCES)
 
     def test_no_source_goes_uncited(self):
         used = {
             k for parts in TEMPERATURE_BODIES.values() for p in parts for k in p.sources
         }
-        used |= {k for c in CORE_TEMPERATURES.values() for k in c.sources}
         assert set(TEMPERATURE_SOURCES) == used
 
     def test_enums_are_closed(self):
@@ -215,10 +231,6 @@ class TestConstantsIntegrity:
                     assert by_kind["min"] < by_kind["max"], object_id
                 if "mean" in by_kind and "max" in by_kind:
                     assert by_kind["mean"] <= by_kind["max"], object_id
-
-    def test_cores_bracket_the_right_way_round(self):
-        for object_id, core in CORE_TEMPERATURES.items():
-            assert core.low_k < core.high_k, object_id
 
 
 class TestGiantsAgreeWithTheAtmosphereShell:

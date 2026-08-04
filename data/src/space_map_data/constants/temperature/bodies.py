@@ -36,7 +36,8 @@ class PartTemperature(NamedTuple):
 TEMPERATURE_BODIES: dict[str, tuple[PartTemperature, ...]] = {
     # Sun. The photosphere is the IAU's nominal effective temperature, which
     # is the number every other stellar comparison is built on. The core is
-    # not here — it is a model result, see cores.py.
+    # not here — it is a model result attached to a boundary, and lives with
+    # the boundary in constants/interior/bodies.py.
     "naif-10": (
         PartTemperature("photosphere", (Reading("mean", 5772.0),), ("iau2015b3",)),
         PartTemperature("corona", (Reading("mean", 2.0e6),), ("nasa_temperatures",)),

@@ -173,6 +173,51 @@ export function coreBracket(readings: TemperatureReading[]): TemperatureBracket 
 	return low && high ? { lowK: low.k, highK: high.k } : null;
 }
 
+/** One boundary's reading, from either the value, the width, or both. */
+function boundary(
+	value: number | undefined,
+	width: [number, number] | undefined
+): TemperatureBracket | null {
+	if (width) return { lowK: width[0], highK: width[1] };
+	if (value !== undefined) return { lowK: value, highK: value };
+	return null;
+}
+
+function union(a: TemperatureBracket, b: TemperatureBracket): TemperatureBracket {
+	return { lowK: Math.min(a.lowK, b.lowK), highK: Math.max(a.highK, b.highK) };
+}
+
+/**
+ * How hot each layer runs, from its own two boundaries: its outer one against
+ * the next layer down's, with the outermost closing on the body's surface and
+ * the innermost on its centre.
+ *
+ * A layer whose *outer* boundary is unpinned reports nothing even when the one
+ * below it is known, because that reading describes where the layer ends
+ * rather than what it is: Earth's core-mantle boundary is 3400-4200 K, and
+ * printing that against "Mantle" would claim the whole shell is at the
+ * temperature of its floor. The exception is the innermost layer, whose two
+ * boundaries are its top and the centre and so has nothing else to report.
+ */
+export function layerSpans(
+	layers: InteriorLayer[],
+	centre: TemperatureBracket | null,
+	surfaceK: number | null
+): (TemperatureBracket | null)[] {
+	return layers.map((layer, i) => {
+		const outer =
+			i === 0 && surfaceK !== null
+				? { lowK: surfaceK, highK: surfaceK }
+				: boundary(layer.outer_temperature_k, layer.outer_temperature_range_k);
+		const last = i === layers.length - 1;
+		const inner = last
+			? centre
+			: boundary(layers[i + 1].outer_temperature_k, layers[i + 1].outer_temperature_range_k);
+		if (outer) return inner ? union(outer, inner) : outer;
+		return last ? inner : null;
+	});
+}
+
 /** Anchors for shading a star's zones, which sit between two readings and have
  *  none of their own. */
 export interface PlasmaRange {

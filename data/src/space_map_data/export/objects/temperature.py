@@ -15,8 +15,9 @@ why measured values (constants/temperature/bodies.py) always win.
 import logging
 import math
 
+from space_map_data.constants.interior.bodies import INTERIOR_FACTS
+from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.temperature.bodies import TEMPERATURE_BODIES
-from space_map_data.constants.temperature.cores import CORE_TEMPERATURES
 from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,9 @@ _PHASE_INTEGRAL = 0.39
 # Beyond this the "surface" is a cloud deck with its own heat budget, and
 # radiative equilibrium stops describing anything.
 _MAX_GEOMETRIC_ALBEDO = 1.0
+
+# Which interior layers a `part="core"` reading may be read off.
+_CORE_ROLES = frozenset({"core", "outer_core", "inner_core"})
 
 
 def bond_albedo(geometric_albedo: float | None) -> float:
@@ -108,8 +112,18 @@ def heliocentric_distance_au(
     return None
 
 
-def _core_readings(object_id: str) -> tuple[list[dict], list[str]]:
-    """The modelled central temperature, as a low-high pair, plus its sources.
+def _core_readings(object_id: str) -> tuple[list[dict], list[dict]]:
+    """The hottest the body gets, as a low-high pair, plus its citations.
+
+    Read off the interior model rather than stated here, because the interior
+    is where a temperature is attached to the boundary it belongs to. This is
+    the deepest of those: the centre where a body has one, and otherwise the
+    innermost *core* boundary anybody has put a number on — which for Mercury
+    is the top of its core, not its middle.
+
+    Core boundaries only. Titan's ice-ocean interface is the innermost number
+    it has and it is 250 K a thousand kilometres above the rock; reported as a
+    core temperature it would be worse than reporting nothing.
 
     Nobody has measured a planetary core, so this is model output and the
     bracket is model spread rather than error — hence `condition="modelled"`
@@ -118,18 +132,43 @@ def _core_readings(object_id: str) -> tuple[list[dict], list[str]]:
     body: the Sun's core runs 15.5 million K against a 5772 K photosphere, and
     one scale holding both would flatten everything else to a point.
     """
-    core = CORE_TEMPERATURES.get(object_id)
-    if core is None:
+    facts = INTERIOR_FACTS.get(object_id)
+    if facts is None:
         return [], []
-    for key in core.sources:
-        if key not in TEMPERATURE_SOURCES:
-            raise ValueError(f"{object_id}: no such source {key}")
+
+    deepest = (
+        facts.centre_temperature_k,
+        facts.centre_temperature_range_k,
+        facts.centre_temperature_sources,
+    )
+    if deepest[0] is None and deepest[1] is None:
+        for layer in reversed(facts.layers):
+            if layer.role not in _CORE_ROLES:
+                continue
+            if layer.outer_temperature_k is not None or layer.outer_temperature_range_k:
+                deepest = (
+                    layer.outer_temperature_k,
+                    layer.outer_temperature_range_k,
+                    layer.temperature_sources,
+                )
+                break
+    value, width, sources = deepest
+    if width is not None:
+        low, high = width
+    elif value is not None:
+        low = high = value
+    else:
+        return [], []
+
     return (
         [
-            _reading("core", "min", core.low_k, "modelled"),
-            _reading("core", "max", core.high_k, "modelled"),
+            _reading("core", "min", low, "modelled"),
+            _reading("core", "max", high, "modelled"),
         ],
-        list(core.sources),
+        [
+            {"title": INTERIOR_SOURCES[k].title, "url": INTERIOR_SOURCES[k].url}
+            for k in dict.fromkeys(sources)
+        ],
     )
 
 
@@ -164,17 +203,17 @@ def temperature_block(
             for part in constants
             for r in part.readings
         ]
-        keys = [k for part in constants for k in part.sources] + core_sources
+        keys = [k for part in constants for k in part.sources]
         return {
             "readings": _sorted(readings + core),
             "origin": "measured",
-            "sources": _source_entries(keys),
+            "sources": _dedupe(_source_entries(keys) + core_sources),
         }
 
     if wikidata_readings:
         block = {"readings": _sorted(wikidata_readings + core), "origin": "measured"}
         if core_sources:
-            block["sources"] = _source_entries(core_sources)
+            block["sources"] = core_sources
         return block
 
     if distance_au is not None:
@@ -185,17 +224,22 @@ def temperature_block(
                 "origin": "estimated",
             }
             if core_sources:
-                block["sources"] = _source_entries(core_sources)
+                block["sources"] = core_sources
             return block
 
     # A body with nothing but a modelled core still has something to say.
     if core:
-        return {
-            "readings": core,
-            "origin": "measured",
-            "sources": _source_entries(core_sources),
-        }
+        return {"readings": core, "origin": "measured", "sources": core_sources}
     return None
+
+
+def _dedupe(entries: list[dict]) -> list[dict]:
+    """One credit per work. The interior and temperature reference tables both
+    carry a few of the same papers, so the same url can arrive twice."""
+    seen: dict[str, dict] = {}
+    for entry in entries:
+        seen.setdefault(entry["url"], entry)
+    return list(seen.values())
 
 
 def _reading(part: str, kind: str, kelvin: float, condition: str | None = None) -> dict:

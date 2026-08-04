@@ -547,6 +547,11 @@ export interface InteriorBlock {
 	/** "subsurface_ocean", "hydrated_rock", … — only the ocean note gets a
 	 *  sentence; the rest is provenance metadata. */
 	note?: string;
+	/** At r=0, closing the innermost layer's span. Only where a body has a
+	 *  published centre rather than a boundary — the Sun, and the giants whose
+	 *  dilute cores have no radius to hang one on. */
+	centre_temperature_k?: number;
+	centre_temperature_range_k?: [number, number];
 	/** Whole-body roll-up, descending. Absent where the source constrains
 	 *  geometry but not masses (the Sun). */
 	composition?: { material: string; share: number }[];
@@ -580,6 +585,15 @@ export interface InteriorLayer {
 	/** No boundary to draw: `outer_radius_km` is where the layer fades out
 	 *  rather than where it ends. Jupiter's core is the case. */
 	diffuse?: true;
+	/** At `outer_radius_km`. Geotherms are published at boundaries — the Moho,
+	 *  660 km, the core-mantle boundary — so a layer's span is this against the
+	 *  next layer down's, and the innermost closes against the body's centre.
+	 *  Never on the outermost layer: that boundary is the surface, which
+	 *  `temperatures` measures. */
+	outer_temperature_k?: number;
+	/** Usually the whole claim, `outer_temperature_k` being absent: most of
+	 *  these are a spread across models rather than an error bar on one. */
+	outer_temperature_range_k?: [number, number];
 	/** Of this layer, same materials and same sliver cut as the roll-up. */
 	composition: { material: string; share: number; share_range?: [number, number] }[];
 	/** Finer chemistry where the literature gives one. */

@@ -26,11 +26,13 @@ def _source_keys() -> set[str]:
     for body in INTERIOR_FACTS.values():
         if body.structure_source:
             keys.add(body.structure_source)
+        keys |= set(body.centre_temperature_sources)
         for layer in body.layers:
             keys.add(layer.source)
             if layer.state_source:
                 keys.add(layer.state_source)
             keys |= {c.source for c in layer.composition}
+            keys |= set(layer.temperature_sources)
             if layer.detail:
                 keys.add(layer.detail.source)
     for entry in TAXONOMY_COMPOSITION.values():
@@ -113,6 +115,62 @@ class TestBodies:
             if layer.outer_radius_km is not None
         ]
         assert radii == sorted(radii, reverse=True)
+
+
+def _coolest(value: float | None, width: tuple[float, float] | None) -> float | None:
+    """The low end of what a boundary might be, for ordering comparisons."""
+    if width is not None:
+        return width[0]
+    return value
+
+
+class TestBoundaryTemperatures:
+    """Temperatures attach to boundaries, not to shells."""
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_the_outermost_layer_carries_none(self, object_id: str):
+        """Its outer boundary is the surface, which constants/temperature
+        measures. Two places holding it would let them drift apart."""
+        outermost = INTERIOR_FACTS[object_id].layers[0]
+        assert outermost.outer_temperature_k is None
+        assert outermost.outer_temperature_range_k is None
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_a_temperature_is_cited(self, object_id: str):
+        """A number with no work behind it would draw like the rest and credit
+        nobody."""
+        facts = INTERIOR_FACTS[object_id]
+        for layer in facts.layers:
+            has = (
+                layer.outer_temperature_k is not None
+                or layer.outer_temperature_range_k is not None
+            )
+            assert has == bool(layer.temperature_sources), layer.role
+        has_centre = (
+            facts.centre_temperature_k is not None
+            or facts.centre_temperature_range_k is not None
+        )
+        assert has_centre == bool(facts.centre_temperature_sources)
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_temperatures_descend_outwards(self, object_id: str):
+        """Nothing in a planet is cooler than the shell above it, so a stack
+        that warms outwards is a boundary attached to the wrong layer."""
+        facts = INTERIOR_FACTS[object_id]
+        known = [
+            low
+            for layer in facts.layers
+            if (
+                low := _coolest(
+                    layer.outer_temperature_k, layer.outer_temperature_range_k
+                )
+            )
+            is not None
+        ]
+        assert known == sorted(known)
+        centre = _coolest(facts.centre_temperature_k, facts.centre_temperature_range_k)
+        if known and centre is not None:
+            assert centre >= known[-1]
 
 
 class TestTaxonomy:

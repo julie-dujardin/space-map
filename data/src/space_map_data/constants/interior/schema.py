@@ -10,6 +10,11 @@ pass, so it is collected now.
 The roll-up is deliberately a mass balance over layers rather than an
 elemental one: a reader reads "two-thirds rock, one-third water", and water
 bound in a phyllosilicate is water, not oxygen shared out among the rocks.
+
+Temperature runs on the boundaries rather than on the shells, because that is
+the form the literature publishes: a geotherm is quoted at the Moho, at 660 km,
+at the core-mantle boundary. A layer's two ends are its own boundary and the
+next one down's, which is the same contract the atmosphere layers use.
 """
 
 from typing import NamedTuple
@@ -179,6 +184,26 @@ class Layer(NamedTuple):
     # elements smeared through the envelope, not a ball with a surface, and
     # `outer_radius_km` is then where it fades out rather than where it ends.
     diffuse: bool = False
+    # The temperature at `outer_radius_km` — the layer's own top, matching how
+    # geotherms are published: a number at the Moho, at 660 km, at the
+    # core-mantle boundary, not an average over a shell nobody can average.
+    # A layer's span is therefore this against the *next* layer's, and the
+    # innermost one's inner end is `BodyInterior.centre_temperature_k`.
+    #
+    # Left unset on the outermost layer: that boundary is the surface, and
+    # constants/temperature already measures it. Restating it here would give
+    # the same body two surface temperatures that could drift apart.
+    outer_temperature_k: float | None = None
+    # Most of these are a spread across models or experiments rather than an
+    # error bar on one, so the range is usually the whole claim and the value
+    # above stays unset — Venus's core-mantle boundary is 4000 to 5000 K and
+    # nothing between is preferred. Set both only where a source does prefer a
+    # number and brackets it.
+    outer_temperature_range_k: tuple[float, float] | None = None
+    # Plural because a bracket's two ends routinely come from two traditions —
+    # the giants' low ends are classical adiabats and their high ends post-Juno
+    # models — and crediting only one of them would misattribute the other.
+    temperature_sources: tuple[str, ...] = ()
 
 
 class BodyInterior(NamedTuple):
@@ -186,6 +211,13 @@ class BodyInterior(NamedTuple):
     layers: tuple[Layer, ...]
     structure_source: str | None = None
     note: str | None = None
+    # The centre, which closes the innermost layer's span the way the datum
+    # closes the atmosphere's lowest one. Separate from any layer because it is
+    # a point rather than a boundary between two shells — and it is all a
+    # diffuse core has, there being no radius at which it starts.
+    centre_temperature_k: float | None = None
+    centre_temperature_range_k: tuple[float, float] | None = None
+    centre_temperature_sources: tuple[str, ...] = ()
 
 
 class ClassComposition(NamedTuple):

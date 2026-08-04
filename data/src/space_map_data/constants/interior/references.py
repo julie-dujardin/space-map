@@ -284,6 +284,35 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "https://doi.org/10.1038/s41550-021-01448-3",
         "Saturn's diffuse core, from gravity modes seen in its rings",
     ),
+    # --- boundary temperatures ---------------------------------------------
+    # Gravity sizes a layer; none of it says how hot the layer is. These are
+    # the works that put a number on a boundary, and they are separate papers
+    # from the ones above almost every time.
+    "anzellini_2013": InteriorReference(
+        "Anzellini et al. 2013 (Science 340)",
+        "https://doi.org/10.1126/science.1233514",
+        "Earth's inner-core boundary temperature, from the iron melting curve",
+    ),
+    "nomura_2014": InteriorReference(
+        "Nomura et al. 2014 (Science 343)",
+        "https://doi.org/10.1126/science.1248186",
+        "Earth's core-mantle boundary temperature, bounded by the pyrolite solidus",
+    ),
+    "guillot_2005": InteriorReference(
+        "Guillot 2005 (Annu. Rev. Earth Planet. Sci. 33)",
+        "https://doi.org/10.1146/annurev.earth.32.101802.120325",
+        "Giant-planet interior adiabats and central temperatures",
+    ),
+    "helled_2024": InteriorReference(
+        "Helled 2024 (AGU Advances 5)",
+        "https://doi.org/10.1029/2024AV001171",
+        "Post-Juno fuzzy-core interiors of Jupiter and Saturn",
+    ),
+    "scheibe_2019": InteriorReference(
+        "Scheibe, Nettelmann & Redmer 2019 (A&A 632)",
+        "https://doi.org/10.1051/0004-6361/201936378",
+        "Thermal evolution models of Uranus and Neptune",
+    ),
     # --- taxonomy → meteorite analogue ------------------------------------
     "demeo_2009": InteriorReference(
         "DeMeo et al. 2009 (Icarus 202)",

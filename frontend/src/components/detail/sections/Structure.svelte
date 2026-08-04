@@ -12,15 +12,16 @@
 	 * shows for it even where the vertical stack has nothing to draw.
 	 *
 	 * Temperature is attached per layer rather than shown as one "core
-	 * temperature" row, but only where a reading exists: bodies carry a modelled
-	 * core bracket and a measured surface value, and nothing for the mantles in
-	 * between. A layer with no number shows none.
+	 * temperature" row, and comes from the layer's two boundaries: geotherms are
+	 * published at the Moho, at the core-mantle boundary, at the centre, never
+	 * as an average over a shell. Most boundaries have no published number and
+	 * the layer then shows none.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { crossSection } from '$lib/charts/interior-cross-section';
 	import { atmosphereProfile, drawableTopKm } from '$lib/charts/atmosphere-cross-section';
-	import { bandColor, coreBracket, skyRgb } from '$lib/charts/layer-appearance';
+	import { bandColor, coreBracket, layerSpans, skyRgb } from '$lib/charts/layer-appearance';
 	import { formatKm } from '$lib/format/distance';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import Section from './kit/Section.svelte';
@@ -59,31 +60,33 @@
 
 	/** What the outside of the body is at. The Sun quotes its photosphere where
 	 *  everything else quotes a surface. */
-	let outerReading = $derived.by(() => {
+	let surfaceK = $derived.by(() => {
 		const value =
 			readings.find((r) => r.part === 'surface' && r.kind === 'mean') ??
 			readings.find((r) => r.part === 'photosphere' && r.kind === 'mean');
-		return value ? { lowK: value.k, highK: value.k } : null;
+		return value?.k ?? null;
 	});
 
-	const CORE_ROLES = new Set(['core', 'inner_core', 'outer_core']);
+	/** The centre, where a body publishes one — the Sun and the giants, whose
+	 *  dilute cores have no radius to hang a boundary on. */
+	let centre = $derived.by(() => {
+		const interior = global?.interior;
+		if (interior?.centre_temperature_range_k) {
+			const [lowK, highK] = interior.centre_temperature_range_k;
+			return { lowK, highK };
+		}
+		const value = interior?.centre_temperature_k;
+		return value !== undefined ? { lowK: value, highK: value } : null;
+	});
 
-	// Only the two ends of the body have a reading. Everything between them —
-	// every mantle, every ice shell — has none, and gets none.
-	let layerTemperatures = $derived(
-		layers.map((layer, i) => {
-			if (CORE_ROLES.has(layer.role)) return core;
-			if (i === 0) return outerReading;
-			return null;
-		})
-	);
+	let layerTemperatures = $derived(layerSpans(layers, centre, surfaceK));
 
-	// A star's zones sit between its core and its surface with no reading of
+	// A star's zones sit between its centre and its surface with no boundary of
 	// their own; the two ends anchor a ramp used for shading and nothing else.
 	let plasmaRange = $derived.by(() => {
 		if (!layers.some((l) => l.state === 'plasma')) return undefined;
-		if (!core || !outerReading) return undefined;
-		return { innerK: (core.lowK + core.highK) / 2, outerK: outerReading.lowK };
+		if (!core || surfaceK === null) return undefined;
+		return { innerK: (core.lowK + core.highK) / 2, outerK: surfaceK };
 	});
 
 	// What the sky would look like, read off what the air is made of — the same
