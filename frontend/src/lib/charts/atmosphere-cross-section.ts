@@ -23,6 +23,12 @@ export interface AtmosphereBand {
 	/** Fraction of the drawn height, 0–1. Bottom and top edges. */
 	base: number;
 	top: number;
+	/** The temperature at the bottom of the band — the layer below's top, or
+	 *  the datum's for the lowest one. A layer's own reading is its top, so
+	 *  without this the label states a boundary and reads as a layer. Null
+	 *  where the profile has a gap: nothing measures Neptune between its
+	 *  tropopause and its thermosphere. */
+	baseTemperatureK: number | null;
 	/** Drawn at a fixed size rather than to scale; the label carries the real
 	 *  height, where the source gives one. */
 	capped: boolean;
@@ -61,8 +67,15 @@ export function atmosphereProfile(structure: AtmosphereStructure): AtmospherePro
 	const layers = structure.layers;
 	if (!layers.length) return null;
 
-	const scaled = layers.filter((l) => !CAPPED_ROLES.has(l.role));
-	const capped = layers.filter((l) => CAPPED_ROLES.has(l.role));
+	// Each layer's base is the one below's top, so the stack is walked before
+	// it is split: a capped band still takes its base from the layer under it.
+	const stack = layers.map((layer, i) => ({
+		layer,
+		baseTemperatureK:
+			(i === 0 ? structure.datum_temperature_k : layers[i - 1].top_temperature_k) ?? null
+	}));
+	const scaled = stack.filter((l) => !CAPPED_ROLES.has(l.layer.role));
+	const capped = stack.filter((l) => CAPPED_ROLES.has(l.layer.role));
 	const scaleKm = drawableTopKm(structure) ?? 0;
 
 	// Callisto: an exosphere by itself. There is no boundary to scale against,
@@ -78,13 +91,13 @@ export function atmosphereProfile(structure: AtmosphereStructure): AtmospherePro
 	const bands: AtmosphereBand[] = [];
 	let base = 0;
 
-	for (const layer of scaled) {
+	for (const entry of scaled) {
 		// A layer with no top of its own cannot be drawn to scale; it borrows the
 		// stack's top rather than collapsing to nothing.
-		const topKm = layer.top_km ?? scaleKm;
+		const topKm = entry.layer.top_km ?? scaleKm;
 		const top = (topKm / scaleKm) * room;
 		bands.push({
-			layer,
+			...entry,
 			base,
 			top,
 			capped: false,
@@ -93,9 +106,9 @@ export function atmosphereProfile(structure: AtmosphereStructure): AtmospherePro
 		base = top;
 	}
 
-	for (const layer of capped) {
+	for (const entry of capped) {
 		bands.push({
-			layer,
+			...entry,
 			base,
 			top: base + CAPPED_BAND,
 			capped: true,

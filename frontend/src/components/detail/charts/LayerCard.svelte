@@ -100,16 +100,6 @@
 		return [];
 	});
 
-	const DETAIL_CAPTION: Record<string, () => string> = {
-		oxide_weight: m.structure_detail_oxide_weight,
-		element_weight: m.structure_detail_element_weight,
-		mineral_volume: m.structure_detail_mineral_volume
-	};
-
-	/** What a chemistry bar's shares are shares *of* — weight as oxides is not
-	 *  the same claim as volume as minerals. */
-	let caption = $derived(layer.detail ? (DETAIL_CAPTION[layer.detail.unit]?.() ?? null) : null);
-
 	// What the layer is, in the words the data actually supports: its phase and
 	// its dominant material, then the caveat the source attached.
 	let descriptor = $derived.by(() => {
@@ -149,10 +139,6 @@
 			: m.structure_layer_mass({ value });
 	});
 
-	// Two thirds of all layers are `derived`, so the sentence saying so rides in
-	// a hover rather than under every card.
-	let massNote = $derived(layer.derived ? m.structure_layer_derived() : undefined);
-
 	let footnote = $derived.by(() => {
 		const bits: string[] = [];
 		// A diffuse layer with nothing above it is not fading into anything: it
@@ -191,7 +177,7 @@
 	role="presentation"
 >
 	<div class="flex items-baseline gap-2">
-		<span class="flex-1 text-sm font-medium">{layerName(layer.role)}</span>
+		<span class="flex-1 text-sm font-medium">{layerName(layer.role, layer.note)}</span>
 		<span class="text-muted-foreground shrink-0 text-[11px] tabular-nums">
 			{m.structure_layer_thick({
 				value: ltrIsolate(formatKm(band.thicknessKm))
@@ -206,18 +192,11 @@
 		{/if}
 	</div>
 
-	<CompositionBar {segments} {caption} detail={spread} />
+	<CompositionBar {segments} detail={spread} />
 
 	{#if mass || footnote}
 		<div class="text-muted-foreground mt-1 text-[10px] leading-snug">
-			{#if mass}
-				<span
-					class:cursor-help={massNote}
-					class:underline={massNote}
-					class:decoration-dotted={massNote}
-					title={massNote}>{mass}</span
-				>{footnote ? ' · ' : ''}
-			{/if}{footnote}
+			{#if mass}{mass}{footnote ? ' · ' : ''}{/if}{footnote}
 		</div>
 	{/if}
 </div>

@@ -111,3 +111,36 @@ export function formatTemperatureRange(
 	);
 	return `${format.formatRange(a.value, b.value)} ${unit}`;
 }
+
+// Spaced, because an end can be negative and "464 –-28" jams a separator
+// against a minus sign.
+const SPAN_SEPARATOR = ' – ';
+
+/**
+ * The two ends of something that has two ends — a layer, bottom first, against
+ * a boundary's single reading.
+ *
+ * Bottom first rather than lowest first: a troposphere cools with height and
+ * the stratosphere above it warms, and a sorted range would report both the
+ * same way.
+ *
+ * Each end is formatted on its own rather than as a range, because a span can
+ * cross the point where compact notation takes over and "20K – 1M ℃" would
+ * read as 20 kelvin. That is also why this cannot use `formatRange`.
+ */
+export function formatTemperatureSpan(
+	bottom: { value: number; unit: string },
+	top: { value: number; unit: string },
+	target?: TemperatureUnit
+): string {
+	const a = convertTemperature(bottom, target);
+	const b = convertTemperature(top, target);
+	const unit = formatUnit(a.unit, true);
+	// An isothermal layer has one temperature, not a span of the same number.
+	if (a.value === b.value) return `${oneNumber(a.value)} ${unit}`;
+	return `${oneNumber(a.value)}${SPAN_SEPARATOR}${oneNumber(b.value)} ${unit}`;
+}
+
+function oneNumber(value: number): string {
+	return Math.abs(value) >= COMPACT_ABOVE ? formatCompactNumber(value) : formatNumber(value);
+}

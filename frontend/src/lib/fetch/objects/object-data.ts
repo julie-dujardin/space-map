@@ -492,6 +492,10 @@ export interface AtmosphereStructure {
 	/** Lowest first. A layer's base is the one below's top; the lowest one's
 	 *  base is `datum`. */
 	layers: AtmosphereLayer[];
+	/** The temperature at the datum, so the lowest layer has a base to be read
+	 *  between. The body's surface reading, or the 1 bar temperature on a
+	 *  giant. */
+	datum_temperature_k?: number;
 	/** Above it species sort by mass and the body's single composition stops
 	 *  describing anything. */
 	homopause_km?: number;

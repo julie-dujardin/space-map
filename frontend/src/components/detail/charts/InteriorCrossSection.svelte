@@ -231,7 +231,9 @@
 						y={row.labelY}
 						class="fill-foreground text-[10px]"
 					>
-						{row.band ? layerName(row.band.layer.role) : m.structure_layer_atmosphere()}
+						{row.band
+							? layerName(row.band.layer.role, row.band.layer.note)
+							: m.structure_layer_atmosphere()}
 					</text>
 					{#if row.band}
 						{@const value = reading(row.index)}

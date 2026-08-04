@@ -32,21 +32,25 @@ const STATE_NAME: Record<string, () => string> = {
 	plasma: m.interior_state_plasma
 };
 
-/** Layer-level notes. The block-level ones stay in `Interior.svelte`; these
- *  are the two that qualify a single shell rather than the whole body. */
-const LAYER_NOTE: Record<string, () => string> = {
-	core_size_disputed: m.interior_note_core_size_disputed,
-	shell_thickness_modelled: m.interior_note_shell_thickness_modelled,
-	continental_crust_only: m.interior_note_continental_crust_only,
-	from_moment_of_inertia: m.interior_note_from_moment_of_inertia,
-	from_bulk_density: m.interior_note_from_bulk_density,
-	subsurface_ocean: m.interior_note_subsurface_ocean,
-	magma_ocean: m.interior_note_magma_ocean,
-	hydrated_rock: m.interior_note_hydrated_rock,
-	no_seismic_data: m.interior_note_no_seismic_data
+/** Notes that name the shell instead of footnoting it: what the numbers are of
+ *  is the shell's identity, and Earth's crust card is entirely continental. */
+const NAME_BY_NOTE: Record<string, () => string> = {
+	continental_crust_only: m.interior_layer_continental_crust
 };
 
-export function layerName(role: string): string {
+/** Layer-level notes: what the shell *is*, never how its numbers were arrived
+ *  at. A card already shows the published range around a modelled value, and a
+ *  sentence restating that the value is modelled says nothing the range does
+ *  not. The block-level notes stay in `Interior.svelte`. */
+const LAYER_NOTE: Record<string, () => string> = {
+	subsurface_ocean: m.interior_note_subsurface_ocean,
+	magma_ocean: m.interior_note_magma_ocean,
+	hydrated_rock: m.interior_note_hydrated_rock
+};
+
+export function layerName(role: string, note?: string): string {
+	const named = note ? NAME_BY_NOTE[note] : undefined;
+	if (named) return named();
 	const fn = LAYER_NAME[role];
 	if (!fn) {
 		console.warn(`Missing interior layer name: ${role}`);

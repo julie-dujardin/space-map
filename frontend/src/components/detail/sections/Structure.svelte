@@ -15,7 +15,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { crossSection } from '$lib/charts/interior-cross-section';
-	import { drawableTopKm } from '$lib/charts/atmosphere-cross-section';
+	import { atmosphereProfile, drawableTopKm } from '$lib/charts/atmosphere-cross-section';
 	import { bandColor, skyRgb } from '$lib/charts/layer-appearance';
 	import { formatKm } from '$lib/format/distance';
 	import { ltrIsolate } from '$lib/format/bidi';
@@ -39,6 +39,10 @@
 	let hasOwnAtmosphere = $derived(global?.interior?.structure === 'fluid');
 	let atmosphereKm = $derived(structure ? (drawableTopKm(structure) ?? undefined) : undefined);
 	let section = $derived(crossSection(layers, { atmosphereKm, hasOwnAtmosphere }));
+
+	// Callisto is the only one: an exosphere nobody has put a top on, so there
+	// are no bands and the section would be a heading over a sentence.
+	let hasChart = $derived(!!structure && !!atmosphereProfile(structure)?.bands.length);
 
 	let readings = $derived(global?.temperatures?.readings ?? []);
 
@@ -122,7 +126,7 @@
 	</Section>
 {/if}
 
-{#if structure}
+{#if hasChart && structure}
 	<Section title={m.structure_atmosphere()} meta={atmosphereMeta}>
 		{#snippet header()}
 			<AtmosphereCrossSection {structure} color={gasColor} />

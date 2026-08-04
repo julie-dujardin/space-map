@@ -38,6 +38,7 @@ from space_map_data.constants.atmosphere.structure import (
 from space_map_data.constants.atmosphere.structure import (
     BodyStructure,
 )
+from space_map_data.constants.temperature.bodies import TEMPERATURE_BODIES
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ def atmosphere_block(object_id: str) -> dict | None:
     structure = ATMOSPHERE_STRUCTURE.get(object_id)
     if structure is not None:
         _validate_structure(object_id, structure)
-        block["structure"] = _structure(structure)
+        block["structure"] = _structure(object_id, structure)
         sources.extend(_structure_source_keys(structure))
 
     block["sources"] = [
@@ -107,7 +108,7 @@ def atmosphere_block(object_id: str) -> dict | None:
     return block
 
 
-def _structure(structure: BodyStructure) -> dict:
+def _structure(object_id: str, structure: BodyStructure) -> dict:
     """The vertical stack, lowest layer first.
 
     Each layer is described by its top; its base is the layer below's top, and
@@ -118,6 +119,9 @@ def _structure(structure: BodyStructure) -> dict:
     out: dict = {"datum": structure.datum}
     if structure.note is not None:
         out["note"] = structure.note
+    datum_k = _datum_temperature(object_id, structure)
+    if datum_k is not None:
+        out["datum_temperature_k"] = datum_k
     if structure.homopause_km is not None:
         out["homopause_km"] = structure.homopause_km
     if structure.homopause_pressure_pa is not None:
@@ -155,6 +159,32 @@ def _structure(structure: BodyStructure) -> dict:
     return out
 
 
+def _datum_temperature(object_id: str, structure: BodyStructure) -> float | None:
+    """The temperature at altitude 0, which is the lowest layer's base.
+
+    Without it that layer has one end and reads as a single value, which is
+    the tropopause rather than the troposphere. On a surface it is the body's
+    own measured temperature — the same reading the `temperatures` block
+    ships, taken from the constants so the two cannot drift — and only the
+    giants, whose datum is the 1 bar level, state one of their own.
+    """
+    if structure.datum_temperature_k is not None:
+        return structure.datum_temperature_k
+    wanted = "photosphere" if structure.datum == "photosphere" else "surface"
+    for part in TEMPERATURE_BODIES.get(object_id, ()):
+        if part.part != wanted:
+            continue
+        for reading in part.readings:
+            if reading.kind == "mean":
+                return reading.kelvin
+    logger.info(
+        "%s: no %s temperature, so its lowest layer ships with an open base",
+        object_id,
+        wanted,
+    )
+    return None
+
+
 def _structure_source_keys(structure: BodyStructure) -> list[str]:
     """Every work behind the cross-section — height, pressure and temperature
     on a boundary can each come from a different one."""
@@ -166,6 +196,8 @@ def _structure_source_keys(structure: BodyStructure) -> list[str]:
         if layer.pressure_source is not None:
             keys.append(layer.pressure_source)
         keys.extend(s.source for s in layer.composition)
+    if structure.datum_temperature_source is not None:
+        keys.append(structure.datum_temperature_source)
     if structure.homopause_source is not None:
         keys.append(structure.homopause_source)
     if structure.scale_height_source is not None:

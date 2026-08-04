@@ -11,19 +11,29 @@
 	 * that honest rather than convenient; their real height stays in the label.
 	 *
 	 * The limb's centre sits left of the frame so the right half stays clear for
-	 * the labels. Each carries its boundary's temperature beside the name and the
-	 * height and pressure under it — the layout the interior cross-section uses,
-	 * so temperature is in the same place on both halves of the tab.
+	 * the labels. Each carries the layer's temperature from bottom to top beside
+	 * the name, and the height and pressure of its top boundary under it — the
+	 * layout the interior cross-section uses, so temperature is in the same place
+	 * on both halves of the tab.
+	 *
+	 * Bottom to top rather than one reading, because the data describes every
+	 * layer by its top: Venus's tropopause is 245 K under a 737 K surface, and a
+	 * label saying "troposphere 245 K" contradicts everything else on the body.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import type { AtmosphereStructure } from '$lib/fetch/objects/object-data';
-	import { atmosphereProfile } from '$lib/charts/atmosphere-cross-section';
-	import { atmosphereLayerName, atmosphereLayerNote } from '$lib/charts/atmosphere-layers';
+	import { atmosphereProfile, type AtmosphereBand } from '$lib/charts/atmosphere-cross-section';
+	import { atmosphereLayerName } from '$lib/charts/atmosphere-layers';
 	import { spreadRows, stackedRows } from '$lib/charts/label-fit';
 	import { formatKm, formatKmRange } from '$lib/format/distance';
 	import { formatPressure } from '$lib/format/pressure';
-	import { formatTemperatureRange } from '$lib/format/temperature';
+	import {
+		formatTemperature,
+		formatTemperatureRange,
+		formatTemperatureSpan
+	} from '$lib/format/temperature';
 	import { ltrIsolate } from '$lib/format/bidi';
+	import * as Tooltip from '$lib/components/ui/tooltip';
 
 	interface Props {
 		structure: AtmosphereStructure;
@@ -106,11 +116,29 @@
 		return `M ${ax} ${ay} A ${PLANET_R} ${PLANET_R} 0 0 1 ${bx} ${by} L ${bx} ${H} L ${ax} ${H} Z`;
 	}
 
-	/** The temperature at the boundary, on the name line — the same place the
-	 *  interior cross-section puts a layer's. */
-	function temperature(layer: { top_temperature_k?: number }): string | null {
-		if (layer.top_temperature_k === undefined) return null;
-		return ltrIsolate(formatTemperatureRange({ value: layer.top_temperature_k, unit: 'kelvin' }));
+	function kelvin(value: number): string {
+		return ltrIsolate(formatTemperature({ value, unit: 'kelvin' }));
+	}
+
+	/**
+	 * What the layer runs between, on the name line — the same place the interior
+	 * cross-section puts a layer's temperature.
+	 *
+	 * One end is missing wherever the profile is: Neptune's stratosphere is
+	 * unmeasured above its tropopause, and no exosphere ends anywhere. Those read
+	 * as open rather than as a layer sitting at one temperature.
+	 */
+	function temperature(band: AtmosphereBand): string | null {
+		const bottom = band.baseTemperatureK;
+		const top = band.layer.top_temperature_k;
+		if (bottom !== null && top !== undefined) {
+			return ltrIsolate(
+				formatTemperatureSpan({ value: bottom, unit: 'kelvin' }, { value: top, unit: 'kelvin' })
+			);
+		}
+		if (top !== undefined) return m.structure_temperature_up_to({ value: kelvin(top) });
+		if (bottom !== null) return m.structure_temperature_from({ value: kelvin(bottom) });
+		return null;
 	}
 
 	/** Where the boundary is and what the air is down to there. */
@@ -122,17 +150,26 @@
 		return bits.join(' · ');
 	}
 
-	/** The published widths on a boundary, for the hover. Where a source gives
-	 *  one, the drawn line is a value inside a spread rather than a surface. */
-	function spread(layer: {
-		top_km_range?: [number, number];
-		top_temperature_range_k?: [number, number];
-	}): string | undefined {
-		const bits: string[] = [];
+	/**
+	 * The hover, which is where each number is said to belong to an end rather
+	 * than to the layer. Stacked the way the layer is: its top first, then the
+	 * width published around that boundary, then the base it stands on.
+	 *
+	 * Everything on the top line is the top boundary, including the pressure,
+	 * which is a quarter of the surface's on Earth.
+	 */
+	function tooltip(band: AtmosphereBand): string[] {
+		const lines: string[] = [];
+		const layer = band.layer;
+		const top = [readings(layer)].filter(Boolean);
+		if (layer.top_temperature_k !== undefined) top.push(kelvin(layer.top_temperature_k));
+		if (top.length) lines.push(m.structure_layer_top({ value: top.join(' · ') }));
+
+		const widths: string[] = [];
 		if (layer.top_km_range)
-			bits.push(ltrIsolate(formatKmRange(layer.top_km_range[0], layer.top_km_range[1])));
+			widths.push(ltrIsolate(formatKmRange(layer.top_km_range[0], layer.top_km_range[1])));
 		if (layer.top_temperature_range_k)
-			bits.push(
+			widths.push(
 				ltrIsolate(
 					formatTemperatureRange(
 						{ value: layer.top_temperature_range_k[0], unit: 'kelvin' },
@@ -140,10 +177,25 @@
 					)
 				)
 			);
-		return bits.length ? m.structure_boundary_spread({ value: bits.join(' · ') }) : undefined;
+		if (widths.length) lines.push(m.structure_boundary_spread({ value: widths.join(' · ') }));
+
+		if (band.baseTemperatureK !== null) {
+			lines.push(m.structure_layer_bottom({ value: kelvin(band.baseTemperatureK) }));
+		}
+		// Last, and only where it applies: the one thing the drawing gets wrong
+		// belongs on the band that is drawn wrong, not under the whole chart.
+		if (band.capped) lines.push(m.structure_atmosphere_capped());
+		return lines;
 	}
 
-	let rows = $derived.by(() => {
+	interface Row {
+		band: AtmosphereBand;
+		index: number;
+		anchorY: number;
+		labelY: number;
+	}
+
+	let rows: Row[] = $derived.by(() => {
 		if (!profile) return [];
 		const entries = profile.bands.map((band, i) => ({
 			band,
@@ -163,118 +215,99 @@
 	let stacked = $derived(stackedRows(rows, nameEls, readingEls, W - 2 - (GUTTER + 4)));
 </script>
 
-{#if profile}
-	{#if profile.bands.length}
-		<div class="bg-muted/25 border-border/60 overflow-hidden rounded-md border p-2">
-			<svg
-				viewBox="0 0 {W} {H}"
-				class="w-full"
-				role="img"
-				aria-label={m.structure_atmosphere_chart()}
-			>
-				{#each profile.bands as band, i (band.layer.role + i)}
-					<path d={bandPath(band.base, band.top)} fill={color} opacity={band.opacity}>
-						{#if band.layer.note}
-							<title>{atmosphereLayerNote(band.layer.note)}</title>
-						{/if}
-					</path>
-				{/each}
+<!-- The leader line and the two text lines, shared so that a row reads the same
+     whether or not it has anything to say on hover. -->
+{#snippet label(row: Row, i: number)}
+	{@const value = temperature(row.band)}
+	<path
+		d="M {SCRIM_X - 26} {row.anchorY} L {GUTTER - 8} {row.labelY - 3} L {GUTTER} {row.labelY - 3}"
+		class="stroke-border fill-none"
+		stroke-width="1"
+	/>
+	<text bind:this={nameEls[i]} x={GUTTER + 4} y={row.labelY} class="fill-foreground text-[10px]">
+		{atmosphereLayerName(row.band.layer.role)}
+	</text>
+	{#if value}
+		<text
+			bind:this={readingEls[i]}
+			x={W - 2}
+			y={row.labelY + (stacked[i] ? 11 : 0)}
+			text-anchor="end"
+			class="fill-muted-foreground text-[9px]"
+		>
+			{value}
+		</text>
+	{/if}
+	<text x={GUTTER + 4} y={row.labelY + 11} class="fill-muted-foreground text-[9px]">
+		{readings(row.band.layer)}
+	</text>
+{/snippet}
 
-				<!-- The labels sit over the limb, so the sky fades out under them
-				     rather than the text fighting the band it crosses. -->
-				<defs>
-					<linearGradient id="atmo-scrim" x1="0" x2="1" y1="0" y2="0">
-						<stop offset="0" stop-color="var(--background)" stop-opacity="0" />
-						<stop offset="0.55" stop-color="var(--background)" stop-opacity="0.9" />
-						<stop offset="1" stop-color="var(--background)" stop-opacity="0.9" />
-					</linearGradient>
-				</defs>
-				<!-- Every boundary gets a line of its own, so a layer too thin to
-				     draw is still visible as the line at its top. Uranus's 50 km
-				     troposphere under a 4,000 km stratosphere is 1% of the chart, and
-				     to scale that is a band a pixel high. -->
-				{#each profile.bands as band, i (band.layer.role + i)}
-					<path
-						d={boundaryPath(band.top)}
-						fill="none"
-						stroke="rgb(255 255 255 / 0.35)"
-						stroke-dasharray={band.capped ? '3 3' : undefined}
-						stroke-width="0.75"
-					/>
-				{/each}
+{#if profile && profile.bands.length}
+	<div class="bg-muted/25 border-border/60 overflow-hidden rounded-md border p-2">
+		<svg
+			viewBox="0 0 {W} {H}"
+			class="w-full"
+			role="img"
+			aria-label={m.structure_atmosphere_chart()}
+		>
+			{#each profile.bands as band, i (band.layer.role + i)}
+				<path d={bandPath(band.base, band.top)} fill={color} opacity={band.opacity}></path>
+			{/each}
 
-				<!-- The body itself, so the air reads as sitting on something. -->
+			<!-- The labels sit over the limb, so the sky fades out under them
+			     rather than the text fighting the band it crosses. -->
+			<defs>
+				<linearGradient id="atmo-scrim" x1="0" x2="1" y1="0" y2="0">
+					<stop offset="0" stop-color="var(--background)" stop-opacity="0" />
+					<stop offset="0.55" stop-color="var(--background)" stop-opacity="0.9" />
+					<stop offset="1" stop-color="var(--background)" stop-opacity="0.9" />
+				</linearGradient>
+			</defs>
+			<!-- Every boundary gets a line of its own, so a layer too thin to
+			     draw is still visible as the line at its top. Uranus's 50 km
+			     troposphere under a 4,000 km stratosphere is 1% of the chart, and
+			     to scale that is a band a pixel high. -->
+			{#each profile.bands as band, i (band.layer.role + i)}
 				<path
-					d={groundPath()}
-					fill="rgb(58 58 62)"
-					stroke="rgb(255 255 255 / 0.25)"
+					d={boundaryPath(band.top)}
+					fill="none"
+					stroke="rgb(255 255 255 / 0.35)"
+					stroke-dasharray={band.capped ? '3 3' : undefined}
 					stroke-width="0.75"
 				/>
-				<text x="8" y={GROUND_Y + 13} class="fill-white/70 text-[9px]">
-					{(DATUM_LABEL[structure.datum] ?? DATUM_LABEL.surface)()}
-				</text>
+			{/each}
 
-				<rect x={SCRIM_X} y="0" width={W - SCRIM_X} height={H} fill="url(#atmo-scrim)" />
+			<!-- The body itself, so the air reads as sitting on something. -->
+			<path
+				d={groundPath()}
+				fill="rgb(58 58 62)"
+				stroke="rgb(255 255 255 / 0.25)"
+				stroke-width="0.75"
+			/>
+			<text x="8" y={GROUND_Y + 13} class="fill-white/70 text-[9px]">
+				{(DATUM_LABEL[structure.datum] ?? DATUM_LABEL.surface)()}
+			</text>
 
-				{#each rows as row, i (row.index)}
-					{@const width = spread(row.band.layer)}
-					{@const value = temperature(row.band.layer)}
-					<g class={width ? 'cursor-help' : undefined}>
-						{#if width}<title>{width}</title>{/if}
-						<path
-							d="M {SCRIM_X - 26} {row.anchorY} L {GUTTER - 8} {row.labelY -
-								3} L {GUTTER} {row.labelY - 3}"
-							class="stroke-border fill-none"
-							stroke-width="1"
-						/>
-						<text
-							bind:this={nameEls[i]}
-							x={GUTTER + 4}
-							y={row.labelY}
-							class="fill-foreground text-[10px]"
-						>
-							{atmosphereLayerName(row.band.layer.role)}
-						</text>
-						{#if value}
-							<text
-								bind:this={readingEls[i]}
-								x={W - 2}
-								y={row.labelY + (stacked[i] ? 11 : 0)}
-								text-anchor="end"
-								class="fill-muted-foreground text-[9px]"
-							>
-								{value}
-							</text>
-						{/if}
-						<text x={GUTTER + 4} y={row.labelY + 11} class="fill-muted-foreground text-[9px]">
-							{readings(row.band.layer)}
-						</text>
-					</g>
-				{/each}
-			</svg>
-		</div>
-	{:else if profile.scaleHeightKm !== null}
-		<!-- No boundaries anyone has named: how fast it thins is the whole
-		     vertical structure there is. -->
-		<p class="text-muted-foreground text-[11px] leading-snug">
-			{m.structure_atmosphere_scale_height({ value: km(profile.scaleHeightKm) })}
-		</p>
-	{/if}
+			<rect x={SCRIM_X} y="0" width={W - SCRIM_X} height={H} fill="url(#atmo-scrim)" />
 
-	{#if profile.bands.some((b) => b.capped)}
-		<p class="text-muted-foreground text-[11px] leading-snug">
-			{m.structure_atmosphere_capped()}
-		</p>
-	{/if}
-
-	{#if structure.homopause_km !== undefined || structure.homopause_pressure_pa !== undefined}
-		<p class="text-muted-foreground text-[11px] leading-snug">
-			{m.structure_atmosphere_homopause({
-				value:
-					structure.homopause_km !== undefined
-						? km(structure.homopause_km)
-						: ltrIsolate(formatPressure(structure.homopause_pressure_pa!))
-			})}
-		</p>
-	{/if}
+			{#each rows as row, i (row.index)}
+				{@const lines = tooltip(row.band)}
+				{#if lines.length}
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<g class="cursor-help" {...props}>{@render label(row, i)}</g>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content class="flex-col items-start gap-0">
+							{#each lines as line (line)}<span>{line}</span>{/each}
+						</Tooltip.Content>
+					</Tooltip.Root>
+				{:else}
+					<g>{@render label(row, i)}</g>
+				{/if}
+			{/each}
+		</svg>
+	</div>
 {/if}

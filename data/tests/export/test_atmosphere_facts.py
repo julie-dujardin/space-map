@@ -87,6 +87,29 @@ class TestStructure:
                 continue
             assert "top_km" in lower[-1], object_id
 
+    def test_every_drawn_stack_has_a_base_temperature(self):
+        """The lowest layer's base is the datum, and without a temperature
+        there it reads as sitting at its own top — Venus's troposphere at its
+        245 K tropopause, under a 737 K surface."""
+        for object_id in sorted(ATMOSPHERE_STRUCTURE):
+            structure = _block(object_id)["structure"]
+            if not [x for x in structure["layers"] if x["role"] not in _CAPPED]:
+                continue  # Callisto draws no bands at all
+            assert "datum_temperature_k" in structure, object_id
+
+    def test_the_base_is_the_bodys_own_surface_reading(self):
+        """Taken from the temperature constants rather than restated here, so
+        the Structure tab and the temperature scale cannot disagree."""
+        assert _block("naif-299")["structure"]["datum_temperature_k"] == 737.0
+        assert _block("naif-10")["structure"]["datum_temperature_k"] == 5772.0
+
+    def test_giants_state_their_own_1_bar_temperature(self):
+        """They have no surface to read, so the datum carries a cited value
+        and the work behind it joins the block."""
+        assert _block("naif-599")["structure"]["datum_temperature_k"] == 165.0
+        urls = {s["url"] for s in _block("naif-599")["sources"]}
+        assert ATMOSPHERE_FACT_SOURCES["lindal_1992"].url in urls
+
     def test_a_layer_composition_is_not_renormalized(self):
         """Titan's stratospheric methane is a mixing ratio against the whole
         atmosphere; as a share of the species listed it would be 100%."""

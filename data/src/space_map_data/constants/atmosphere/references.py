@@ -680,7 +680,7 @@ ATMOSPHERE_FACT_SOURCES: dict[str, AtmosphereReference] = {
     "lindal_1992": AtmosphereReference(
         "Lindal 1992 (AJ 103)",
         "https://doi.org/10.1086/116119",
-        "Neptune tropopause height, pressure and temperature (Voyager 2)",
+        "Neptune tropopause conditions, and all four giants at 1 bar (Voyager)",
     ),
     "strobel_2018": AtmosphereReference(
         "Strobel, Koskinen & Müller-Wodarg 2018 "

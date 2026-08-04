@@ -142,6 +142,50 @@ describe('atmosphere cross-section', () => {
 		}
 	});
 
+	it('takes each layer’s base from the layer under it', () => {
+		const profile = atmosphereProfile({
+			datum: 'surface',
+			datum_temperature_k: 288.15,
+			layers: [
+				{ role: 'troposphere', top_km: 11, top_temperature_k: 216.65 },
+				{ role: 'stratosphere', top_km: 47, top_temperature_k: 270.65 },
+				{ role: 'mesosphere', top_km: 84.85, top_temperature_k: 186.87 }
+			]
+		})!;
+		// The surface, not the tropopause: the troposphere is what the 288 K
+		// everyone knows about Earth is a reading of.
+		expect(profile.bands.map((b) => b.baseTemperatureK)).toEqual([288.15, 216.65, 270.65]);
+	});
+
+	it('carries the base across the cap, where the layer below is drawn to scale', () => {
+		const profile = atmosphereProfile({
+			datum: 'surface',
+			datum_temperature_k: 288.15,
+			layers: [
+				{ role: 'mesosphere', top_km: 84.85, top_temperature_k: 186.87 },
+				{ role: 'thermosphere', top_km: 600, top_temperature_k: 1000 },
+				{ role: 'exosphere', top_km: 10000 }
+			]
+		})!;
+		const exosphere = profile.bands.find((b) => b.layer.role === 'exosphere')!;
+		expect(exosphere.baseTemperatureK).toBe(1000);
+	});
+
+	it('leaves the base null where the profile has a gap', () => {
+		// Neptune: nothing measures a temperature between its tropopause and its
+		// thermosphere, so the layer between them has neither end.
+		const profile = atmosphereProfile({
+			datum: 'one_bar',
+			datum_temperature_k: 72,
+			layers: [
+				{ role: 'troposphere', top_km: 40, top_temperature_k: 52 },
+				{ role: 'stratosphere', top_km: 450 },
+				{ role: 'thermosphere', top_km: 4000, top_temperature_k: 750 }
+			]
+		})!;
+		expect(profile.bands.map((b) => b.baseTemperatureK)).toEqual([72, 52, null]);
+	});
+
 	it('handles a stellar stack, where the corona is the capped one', () => {
 		const sun: AtmosphereStructure = {
 			datum: 'photosphere',

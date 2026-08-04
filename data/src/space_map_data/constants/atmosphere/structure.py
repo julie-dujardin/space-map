@@ -16,7 +16,11 @@ differs — Titan's methane, which halves between the surface and the
 stratosphere.
 
 Gas giants have no surface, so their altitudes hang off the 1 bar level and
-run negative below it; `datum` says which zero a body uses.
+run negative below it; `datum` says which zero a body uses. They also need
+`datum_temperature_k`, because a layer is only readable as a layer once both
+its ends are known and the lowest one's base is the datum — everywhere else
+that base is the body's own surface reading and the export takes it from
+there.
 """
 
 from typing import NamedTuple
@@ -95,6 +99,12 @@ class AtmosphereLayer(NamedTuple):
 class BodyStructure(NamedTuple):
     datum: str
     layers: tuple[AtmosphereLayer, ...]  # lowest first
+    # The temperature at altitude 0, which is the base of the lowest layer.
+    # Only for bodies whose datum is not a surface: everywhere else this is
+    # the body's measured surface temperature, and the export reads it from
+    # constants/temperature rather than restating it here.
+    datum_temperature_k: float | None = None
+    datum_temperature_source: str | None = None
     # Where mixing stops and diffusive separation begins — above it the body's
     # single composition stops meaning anything. Stated in pressure on the
     # giants, where it is a level in a photochemical model rather than a
@@ -354,6 +364,12 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 note="diffuse_top",
             ),
         ),
+        # 165 +/- 5 K. Lindal's Table 2 gives all four giants at 1 bar from
+        # their Voyager and Pioneer occultations, so the four data below come
+        # from one method and one set of assumed H/He mixes rather than from
+        # four papers that each define the level slightly differently.
+        datum_temperature_k=165.0,
+        datum_temperature_source="lindal_1992",
         homopause_km=320.0,
         homopause_source="yelle_miller_2004",
     ),
@@ -409,6 +425,10 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 note="diffuse_top",
             ),
         ),
+        # 134 +/- 4 K. Lindal's own ingress profile reads 134.8 K at the
+        # 1000 mbar row of the same table the tropopause above comes from.
+        datum_temperature_k=134.0,
+        datum_temperature_source="lindal_1992",
         # Published as a band, 0.01-0.1 µbar; the middle of it is taken here.
         homopause_pressure_pa=3.0e-3,
         homopause_source="strobel_2018",
@@ -451,6 +471,9 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 note="diffuse_top",
             ),
         ),
+        # 76 +/- 2 K.
+        datum_temperature_k=76.0,
+        datum_temperature_source="lindal_1992",
         # Barely mixed at all: Uranus's stratosphere is stagnant enough to
         # hold the methane homopause down at 0.07 mbar, three orders of
         # magnitude deeper than Neptune's.
@@ -515,6 +538,9 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 note="diffuse_top",
             ),
         ),
+        # 72 +/- 2 K, the value the paragraph above opens on.
+        datum_temperature_k=72.0,
+        datum_temperature_source="lindal_1992",
         homopause_pressure_pa=8.0e-3,
         homopause_source="moses_2018",
     ),

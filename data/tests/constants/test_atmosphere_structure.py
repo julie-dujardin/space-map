@@ -1,6 +1,8 @@
 """Atmosphere vertical structure: table invariants, and a cross-check of the
 published layer boundaries against the downloaded PSG reference profiles."""
 
+import math
+
 import pytest
 
 from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
@@ -17,11 +19,15 @@ from space_map_data.download.providers.psg import read_profile
 
 BODY_IDS = sorted(ATMOSPHERE_STRUCTURE)
 
+_ONE_BAR_PA = 1.0e5
+
 
 def _source_keys(body: BodyStructure) -> set[str]:
     keys = {body.homopause_source} if body.homopause_source else set()
     if body.scale_height_source:
         keys.add(body.scale_height_source)
+    if body.datum_temperature_source:
+        keys.add(body.datum_temperature_source)
     for layer in body.layers:
         keys.add(layer.source)
         if layer.pressure_source:
@@ -104,6 +110,18 @@ class TestTable:
         assert placed == (body.homopause_source is not None)
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_only_a_surfaceless_body_states_its_datum_temperature(self, object_id: str):
+        """The base of the lowest layer is the body's surface reading wherever
+        it has a surface, and the export takes it from there. Restating it here
+        would be a second copy of a measured number, free to drift from the one
+        the temperature scale draws."""
+        body = ATMOSPHERE_STRUCTURE[object_id]
+        assert (body.datum_temperature_k is not None) == (body.datum == "one_bar")
+        assert (body.datum_temperature_source is not None) == (
+            body.datum_temperature_k is not None
+        )
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_the_body_has_conditions_to_go_with_its_layers(self, object_id: str):
         """A cross-section with no pressure or composition beside it is half a
         panel; `facts.py` is where the other half lives."""
@@ -155,6 +173,42 @@ class TestAgainstPSGProfiles:
         assert 1 / 3 <= ratio <= 3.0, (
             f"{object_id}: profile is coldest at {coldest.pressure_pa:.4g} Pa, "
             f"table puts the tropopause at {tropopause.top_pressure_pa:.4g} Pa"
+        )
+
+    @pytest.mark.parametrize(
+        "object_id", ["naif-599", "naif-699", "naif-799", "naif-899"]
+    )
+    def test_the_1_bar_temperature_matches_the_profile(self, object_id: str):
+        """The giants' datum temperature against an independent model of the
+        same level. 15% is the honest width: PSG's templates are models rather
+        than the Voyager occultations these values come from, and they disagree
+        by 10 K on Jupiter."""
+        try:
+            levels = read_profile(object_id)
+        except FileNotFoundError:
+            pytest.skip(f"no PSG profile downloaded for {object_id}")
+
+        stated = ATMOSPHERE_STRUCTURE[object_id].datum_temperature_k
+        assert stated is not None
+        rows = sorted(levels, key=lambda level: level.pressure_pa)
+        below = max(
+            (level for level in rows if level.pressure_pa <= _ONE_BAR_PA),
+            key=lambda level: level.pressure_pa,
+        )
+        above = min(
+            (level for level in rows if level.pressure_pa >= _ONE_BAR_PA),
+            key=lambda level: level.pressure_pa,
+        )
+        # Temperature runs linear in log pressure between two levels, which is
+        # what a scale height is.
+        span = math.log(above.pressure_pa / below.pressure_pa)
+        fraction = math.log(_ONE_BAR_PA / below.pressure_pa) / span if span else 0.0
+        modelled = below.temperature_k + fraction * (
+            above.temperature_k - below.temperature_k
+        )
+        assert modelled == pytest.approx(stated, rel=0.15), (
+            f"{object_id}: table says {stated} K at 1 bar, profile gives "
+            f"{modelled:.1f} K"
         )
 
     @pytest.mark.parametrize("object_id", sorted(PSG_BODIES.values()))

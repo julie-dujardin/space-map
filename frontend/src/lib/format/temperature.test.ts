@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 // No runtime mock: the unit symbols come out of paraglide, and stubbing the
 // runtime cuts the messages off from their locale.
-import { convertTemperature, formatTemperatureRange } from './temperature';
+import { convertTemperature, formatTemperatureRange, formatTemperatureSpan } from './temperature';
 
 describe('convertTemperature', () => {
 	it.each([
@@ -56,5 +56,26 @@ describe('formatTemperatureRange', () => {
 	// starts above it — Jupiter's core stays in digits.
 	it('leaves thousands written out', () => {
 		expect(formatTemperatureRange(kelvin(15_000), kelvin(36_000))).toBe('14,730–35,730 °C');
+	});
+});
+
+describe('formatTemperatureSpan', () => {
+	const kelvin = (value: number) => ({ value, unit: 'kelvin' });
+
+	// Earth's troposphere. Written as a range it reads as 217 to 288, which is
+	// the wrong way round and hides that a troposphere cools with height.
+	it('runs bottom to top, whichever end is warmer', () => {
+		expect(formatTemperatureSpan(kelvin(288.15), kelvin(216.65))).toBe('15 – -56 °C');
+		expect(formatTemperatureSpan(kelvin(216.65), kelvin(270.65))).toBe('-56 – -2 °C');
+	});
+
+	// The Sun's transition region. Compacting both ends together would print
+	// "20K", which beside a temperature reads as 20 kelvin.
+	it('compacts each end on its own magnitude', () => {
+		expect(formatTemperatureSpan(kelvin(20_000), kelvin(1_500_000))).toBe('19,730 – 1.5M °C');
+	});
+
+	it('says an isothermal layer once', () => {
+		expect(formatTemperatureSpan(kelvin(150), kelvin(150))).toBe('-123 °C');
 	});
 });
