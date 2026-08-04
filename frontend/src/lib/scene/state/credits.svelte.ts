@@ -94,6 +94,15 @@ export interface ModelCredit {
 	source: string;
 	organisation: string;
 	license?: string;
+	/** Natural-body shape models carry their provenance too, denormalized from
+	 *  `model_source` when the mesh loads: how the shape was derived, the
+	 *  archive that distributes it, and the spacecraft that observed it. The
+	 *  mesh is scene content, so this is the surface that credits it. */
+	provenance?: 'missions' | 'radar' | 'lightcurve';
+	technique?: 'lightcurve_convex' | 'lightcurve_resolved';
+	archive?: string;
+	archiveUrl?: string;
+	mission?: { name: string; id: string };
 }
 
 /**

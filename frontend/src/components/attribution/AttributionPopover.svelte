@@ -2,11 +2,17 @@
 	import { getContext } from 'svelte';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import type { ModelCredit } from '$lib/scene/state/credits.svelte';
+	import type { AppState } from '$lib/state/app-state.svelte';
+	import type { FocusObject } from '$lib/state/focusable';
+	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import { GITHUB_REPO_URL } from '$lib/constants';
 	import * as m from '$lib/paraglide/messages.js';
 
 	const ctx = getContext<ContextManager>('ctx');
+	const appState = getContext<AppState | undefined>('appState');
+	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
 	interface SourceEntry {
 		name: string;
@@ -181,6 +187,32 @@
 	function bodyName(id: string): string {
 		return ctx.getBody(id)?.data.name ?? id;
 	}
+
+	// How a natural body's shape was derived. The mesh is what the scene draws,
+	// so its provenance is credited here rather than in the detail sidebar.
+	function provenanceLabel(credit: ModelCredit): string | null {
+		if (credit.provenance === 'radar') return m.model_provenance_radar();
+		if (credit.provenance === 'missions') return m.model_provenance_missions();
+		if (credit.provenance !== 'lightcurve') return null;
+		return credit.technique === 'lightcurve_resolved'
+			? m.model_provenance_lightcurve_resolved()
+			: m.model_provenance_lightcurve();
+	}
+
+	// Deep-link to the observing spacecraft's page; the mesh isn't worth flying to.
+	function missionHref(id: string): string | undefined {
+		if (!appState) return undefined;
+		return serializeUrl(
+			applyFocus(appState.view, { type: urlTypeFromId(id), id, name: bodyName(id) })
+		);
+	}
+
+	function openMission(e: MouseEvent, id: string, name: string) {
+		if (!focusObject) return;
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		e.preventDefault();
+		focusObject(id, name, { moveCamera: false });
+	}
 </script>
 
 {#snippet sectionHeader(label: string)}
@@ -259,6 +291,26 @@
 							· {focusedModel.license}</span
 						>{/if}
 				</li>
+				{#if provenanceLabel(focusedModel)}
+					<li class="text-muted-foreground">
+						{provenanceLabel(focusedModel)}
+						{#if focusedModel.mission}
+							· <a
+								href={missionHref(focusedModel.mission.id)}
+								onclick={(e) =>
+									openMission(e, focusedModel.mission!.id, focusedModel.mission!.name)}
+								class="text-foreground hover:underline underline-offset-2"
+								>{focusedModel.mission.name}</a
+							>
+						{/if}
+						{#if focusedModel.archive}
+							· {#if focusedModel.archiveUrl}{@render link(
+									focusedModel.archiveUrl,
+									focusedModel.archive
+								)}{:else}{focusedModel.archive}{/if}
+						{/if}
+					</li>
+				{/if}
 			</ul>
 		</section>
 	{/if}

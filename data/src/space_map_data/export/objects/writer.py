@@ -416,6 +416,11 @@ def build_model_sources(
         block: dict = {"provenance": meta.get("provenance")}
         if meta.get("technique"):
             block["technique"] = meta["technique"]
+        # Who derived the shape, when that isn't just the archive under another
+        # name — DAMIT bundles credit the inversion's authors.
+        author = (meta.get("credit") or {}).get("name")
+        if author and author != meta.get("archive"):
+            block["author"] = author
         if meta.get("archive"):
             block["archive"] = meta["archive"]
         if meta.get("archive_url"):

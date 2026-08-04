@@ -45,9 +45,10 @@ interface GlobalObjectData {
     description?: string;
   };
   model_name?: string;                // slug under /v1/models/{model_name}/ when this body ships a 3D-model bundle (see models.md); shared by bodies that reuse one model
-  model_source?: {                    // shape-model provenance (natural bodies only), denormalized from the bundle for the detail sources section
+  model_source?: {                    // shape-model provenance (natural bodies only), denormalized from the bundle. Consumed by the scene's attribution popover, which credits the mesh it draws — not by the detail sidebar, whose sources list covers only what the sidebar itself renders
     provenance: "missions" | "radar" | "lightcurve"; // technique tier: spacecraft mission, Earth-based radar, or lightcurve inversion
     technique?: "lightcurve_convex" | "lightcurve_resolved"; // DAMIT bundles only: a convex hull from lightcurves alone, or a non-convex solution that also needed resolved data (adaptive optics, radar, occultations)
+    author?: string;                  // who derived the shape ("Vernazza et al. (2021)"), when that isn't the archive under another name. DAMIT distributes other people's inversions, so its bundles name the paper's authors; a mission bundle whose credit repeats its archive omits this
     archive?: string;                 // archive the mesh came from (free text, e.g. "PDS SBN (NEAR)")
     archive_url?: string;
     mission?: { name: string; primary_type: "object"; primary_id: string }; // observing spacecraft (mission shapes only); primary_id is "probe-<id>"

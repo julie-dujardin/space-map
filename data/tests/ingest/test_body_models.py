@@ -282,3 +282,61 @@ def _damit_prime_meridian_equatorial(
     prime_ecl = a.T @ np.array([1.0, 0, 0])
     prime_eq = rx(_OBLIQUITY_DEG) @ prime_ecl
     return prime_eq / np.linalg.norm(prime_eq)
+
+
+class TestDamitAuthorship:
+    """DAMIT distributes the mesh; the inversion is someone else's work, so the
+    bundle credits the paper's authors when the archive names them."""
+
+    def _processor(self, tmp_path, monkeypatch, refs: str, joins: str):
+        from space_map_data.ingest.providers.models import config
+
+        tables = tmp_path / "tables"
+        tables.mkdir(parents=True)
+        (tables / "asteroids.csv").write_text("id,number,name\n1,1,Ceres\n")
+        (tables / "asteroid_models.csv").write_text(
+            "id,asteroid_id,lambda,beta,period,jd0,phi0,equiv_diameter,nonconvex\n"
+            "5915,1,350,81,9.074173,2434407,0,938,1\n"
+        )
+        (tables / "references.csv").write_text(refs)
+        (tables / "asteroid_models_references.csv").write_text(joins)
+        monkeypatch.setattr(config, "DAMIT_DIR", tmp_path)
+        return DamitProcessor(session=None)
+
+    _REFS = (
+        "id,author_short,year,title,journal\n"
+        "660,Vernazza et al.,2021,VLT/SPHERE imaging survey,A&A\n"
+        "100,Ďurech et al.,2011,Earlier solution,Icarus\n"
+    )
+
+    def test_byline_credits_the_authors(self, tmp_path, monkeypatch):
+        p = self._processor(
+            tmp_path,
+            monkeypatch,
+            self._REFS,
+            "id,asteroid_model_id,reference_id\n1,5915,660\n",
+        )
+        citation = p._load_citations()[5915]
+        assert citation.author == "Vernazza et al. (2021)"
+        assert "VLT/SPHERE imaging survey" in citation.text
+
+    def test_newest_paper_wins_the_byline(self, tmp_path, monkeypatch):
+        p = self._processor(
+            tmp_path,
+            monkeypatch,
+            self._REFS,
+            "id,asteroid_model_id,reference_id\n1,5915,100\n2,5915,660\n",
+        )
+        citation = p._load_citations()[5915]
+        assert citation.author == "Vernazza et al. (2021)"
+        # The full line still lists both, in join order.
+        assert citation.text.count(";") == 1
+
+    def test_no_short_author_falls_back_to_the_catalog(self, tmp_path, monkeypatch):
+        p = self._processor(
+            tmp_path,
+            monkeypatch,
+            "id,author,year,title,journal\n660,A Long Author List,2021,Some paper,A&A\n",
+            "id,asteroid_model_id,reference_id\n1,5915,660\n",
+        )
+        assert p._load_citations()[5915].author is None

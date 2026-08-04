@@ -23,7 +23,7 @@ import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import NamedTuple, cast
 
 import numpy as np
 
@@ -70,7 +70,24 @@ _TECHNIQUE_RESOLVED = "lightcurve_resolved"
 # Bump when the metadata.json payload changes shape. Refreshes the sidecar on
 # the next run without rebuilding the GLB (which only DAMIT_KNOBS_VERSION and
 # the geometry inputs invalidate).
-_METADATA_VERSION = "v2-technique"
+_METADATA_VERSION = "v3-model-author"
+
+
+class Citation(NamedTuple):
+    """A model's publication reference.
+
+    ``text`` is the full line the bundle carries; ``byline`` is
+    ``(year, "Author et al. (year)")`` for the newest paper behind the model,
+    which is who the shape is credited to. DAMIT archives the mesh, it didn't
+    derive it — the resolved models in particular are other people's work.
+    """
+
+    text: str
+    byline: tuple[int, str] | None
+
+    @property
+    def author(self) -> str | None:
+        return self.byline[1] if self.byline else None
 
 
 @dataclass(frozen=True)
@@ -214,7 +231,7 @@ class DamitProcessor:
         naif_id: int | None,
         diameter_km: float,
         scale_source: str,
-        citation: str | None,
+        citation: Citation | None,
         is_preferred: bool,
         force: bool,
     ) -> bool:
@@ -292,7 +309,7 @@ class DamitProcessor:
         object_id: str,
         naif_id: int | None,
         scale_source: str,
-        citation: str | None,
+        citation: Citation | None,
         verts: np.ndarray,
         faces: np.ndarray,
     ) -> None:
@@ -300,8 +317,11 @@ class DamitProcessor:
             f"https://damit.cuni.cz/projects/damit/asteroids/view/{m.asteroid_id}"
         )
         catalog = "DAMIT"
+        # The people whose inversion produced this shape, when the archive
+        # names them; the catalog attribution is the fallback, not the default.
         credit = {
-            "name": config.MODEL_CATALOGS[catalog]["default_attribution"],
+            "name": (citation and citation.author)
+            or config.MODEL_CATALOGS[catalog]["default_attribution"],
             "url": permalink,
         }
         extent = (verts.max(axis=0) - verts.min(axis=0)).tolist()
@@ -326,7 +346,7 @@ class DamitProcessor:
             "credit": credit,
             "license": "CC BY 4.0",
             "license_url": "https://creativecommons.org/licenses/by/4.0/",
-            "citation": citation,
+            "citation": citation.text if citation else None,
             "archive": "DAMIT (Database of Asteroid Models from Inversion Techniques)",
             "archive_url": permalink,
             "damit_model_id": m.model_id,
@@ -392,32 +412,61 @@ class DamitProcessor:
             out[aid] = row
         return out
 
-    def _load_citations(self) -> dict[int, str]:
-        """model_id → formatted citation(s), via the references join table."""
+    def _load_citations(self) -> dict[int, Citation]:
+        """model_id → its publication reference(s), via the references join table."""
         path = self._tables_dir()
         if path is None:
             return {}
         texts: dict[int, str] = {}
+        # (year, "Author et al. (year)") per reference, for the short credit.
+        bylines: dict[int, tuple[int, str]] = {}
         for row in _read_csv(path / "references.csv"):
             rid = _int(row.get("id"))
             if rid is None:
                 continue
+            year = row.get("year") or ""
             parts = [
                 row.get("author_short") or row.get("author"),
-                f"({row['year']})" if row.get("year") else None,
+                f"({year})" if year else None,
                 row.get("title"),
                 row.get("journal"),
             ]
             text = " ".join(p.strip() for p in parts if p and p.strip())
             if text:
                 texts[rid] = text
-        out: dict[int, str] = {}
+            author_short = (row.get("author_short") or "").strip()
+            if author_short:
+                bylines[rid] = (
+                    _int(year) or 0,
+                    f"{author_short} ({year})" if year else author_short,
+                )
+        out: dict[int, Citation] = {}
         for row in _read_csv(path / "asteroid_models_references.csv"):
             mid = _int(row.get("asteroid_model_id"))
             rid = _int(row.get("reference_id"))
             if mid is None or rid is None or rid not in texts:
                 continue
-            out[mid] = f"{out[mid]}; {texts[rid]}" if mid in out else texts[rid]
+            previous = out.get(mid)
+            text = f"{previous.text}; {texts[rid]}" if previous else texts[rid]
+            # Newest byline wins: a model refined across papers is credited to
+            # the solution we actually ship, not to its first appearance.
+            byline = max(
+                (
+                    b
+                    for b in (bylines.get(rid), previous.byline if previous else None)
+                    if b
+                ),
+                default=None,
+            )
+            out[mid] = Citation(text, byline)
+        missing = sum(1 for c in out.values() if c.byline is None)
+        if missing:
+            log.info(
+                "DAMIT: %d of %d cited models have no short author — "
+                "those keep the catalog attribution",
+                missing,
+                len(out),
+            )
         return out
 
     def _load_diameters(self) -> dict[str, tuple[float, str]]:

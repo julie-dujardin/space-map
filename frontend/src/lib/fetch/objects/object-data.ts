@@ -452,6 +452,10 @@ export interface ModelSource {
 	 *  ships non-convex solutions that needed resolved data (adaptive optics,
 	 *  radar, occultation chords) beside its convex lightcurve hulls. */
 	technique?: 'lightcurve_convex' | 'lightcurve_resolved';
+	/** Who derived the shape, when that isn't the archive under another name —
+	 *  a DAMIT bundle credits the inversion's authors ("Vernazza et al. (2021)"),
+	 *  since the archive only distributes it. */
+	author?: string;
 	/** Archive the mesh was sourced from (free text, e.g. "PDS SBN (NEAR)"). */
 	archive?: string;
 	archive_url?: string;

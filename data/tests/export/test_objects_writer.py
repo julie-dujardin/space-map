@@ -261,6 +261,34 @@ class TestBuildModelSources:
             "archive_url": "https://damit.cuni.cz/…/3414",
         }
 
+    def test_author_rides_along_when_it_isnt_the_archive(self):
+        out = build_model_sources(
+            {
+                "damit-5915": {
+                    "kind": "shape_model",
+                    "provenance": "lightcurve",
+                    "archive": "DAMIT (Database of Asteroid Models from Inversion Techniques)",
+                    "credit": {"name": "Vernazza et al. (2021)"},
+                }
+            },
+            {},
+        )
+        assert out["damit-5915"]["author"] == "Vernazza et al. (2021)"
+
+    def test_author_omitted_when_it_repeats_the_archive(self):
+        out = build_model_sources(
+            {
+                "eros": {
+                    "kind": "shape_model",
+                    "provenance": "missions",
+                    "archive": "PDS SBN (NEAR, Gaskell)",
+                    "credit": {"name": "PDS SBN (NEAR, Gaskell)"},
+                }
+            },
+            {},
+        )
+        assert "author" not in out["eros"]
+
     def test_technique_absent_on_mission_shapes(self):
         out = build_model_sources(
             {"eros": {"kind": "shape_model", "provenance": "missions"}}, {}

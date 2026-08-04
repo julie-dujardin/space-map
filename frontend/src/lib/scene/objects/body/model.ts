@@ -296,11 +296,20 @@ async function loadNaturalBodyModel(
 			}
 		}
 		const credit = shapeModelCredit(meta);
+		const shape = detail.global?.model_source;
 		ctx?.credits.registerModel({
 			bodyId: bo.body.data.id,
 			source: credit.url,
 			organisation: credit.name,
-			license: credit.license
+			license: credit.license,
+			provenance: shape?.provenance,
+			technique: shape?.technique,
+			archive: shape?.archive,
+			archiveUrl: shape?.archive_url,
+			mission: shape?.mission && {
+				name: shape.mission.name,
+				id: shape.mission.primary_id
+			}
 		});
 	} finally {
 		// Aborted / no model → keep the sphere visible.
