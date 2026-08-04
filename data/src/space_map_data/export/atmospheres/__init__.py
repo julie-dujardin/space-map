@@ -20,10 +20,21 @@ from space_map_data.constants.atmosphere.bodies import (
     ATMOSPHERE_BODIES,
     RENDER_WAVELENGTHS_M,
 )
+from space_map_data.constants.atmosphere.photometry import (
+    GROUND_BOUNCE_ALBEDOS,
+    SUN_LIMB_DARKENING_ALPHA_RGB,
+)
 from space_map_data.export.atmospheres.absorber import absorber_band
 from space_map_data.export.atmospheres.phase import PHASE_N, build_phase_lut
+from space_map_data.export.atmospheres.profiles import (
+    MIN_PROFILE_TOP_KM,
+    PROFILE_N,
+    build_mie_profile,
+    mars_seasonal_table,
+)
 from space_map_data.export.atmospheres.rayleigh import (
     mean_molar_mass_g_mol,
+    mixture_refractivity,
     rayleigh_beta_per_m,
     scale_height_km,
 )
@@ -72,6 +83,9 @@ def build_atmospheres() -> dict:
         top_km = max(
             _TOP_RAYLEIGH_SCALE_HEIGHTS * rayleigh_h_km,
             _TOP_MIE_SCALE_HEIGHTS * aerosol.scale_height_km,
+            # A layered profile can hold structure (Titan's detached haze)
+            # far above where the exponentials die.
+            MIN_PROFILE_TOP_KM.get(object_id, 0.0),
         )
 
         absorption_per_km, absorption_center_km, absorption_width_km = absorber_band(
@@ -91,12 +105,34 @@ def build_atmospheres() -> dict:
             "baked_compensation": body.tuning.baked_compensation,
             "multi_scatter_gain": body.tuning.multi_scatter_gain,
             "sun_intensity": body.tuning.sun_intensity,
+            # (n − 1) at the reference level, for in-atmosphere refraction.
+            "refractivity": [
+                _sig(
+                    mixture_refractivity(
+                        body.composition, body.pressure_pa, body.temperature_k, wl
+                    ),
+                    3,
+                )
+                for wl in RENDER_WAVELENGTHS_M.values()
+            ],
         }
         if body.tuning.realistic_sun_always:
             entry["realistic_sun_always"] = True
+        if (ground_albedo := GROUND_BOUNCE_ALBEDOS.get(object_id)) is not None:
+            entry["ground_albedo"] = ground_albedo
+        if (profile := build_mie_profile(object_id, round(top_km))) is not None:
+            entry["mie_profile"] = [_sig(v) for v in profile]
+        if object_id == "naif-499":
+            entry["seasonal"] = mars_seasonal_table()
         bodies[object_id] = entry
 
-    return {"phase_n": PHASE_N, "phases": phases, "bodies": bodies}
+    return {
+        "phase_n": PHASE_N,
+        "phases": phases,
+        "profile_n": PROFILE_N,
+        "sun": {"limb_darkening_alpha": list(SUN_LIMB_DARKENING_ALPHA_RGB)},
+        "bodies": bodies,
+    }
 
 
 def _sig(value: float, digits: int = 4) -> float:

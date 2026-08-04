@@ -207,6 +207,21 @@ ATMOSPHERE_REFERENCES: tuple[AtmosphereReference, ...] = (
         "Mars dust vertical profile parameterisation",
     ),
     AtmosphereReference(
+        "Montabone et al. 2015 (Icarus 251)",
+        "https://doi.org/10.1016/j.icarus.2014.12.034",
+        "Mars dust optical-depth climatology (seasonal cycle)",
+    ),
+    AtmosphereReference(
+        "Tillman et al. 1993 (JGR 98)",
+        "https://doi.org/10.1029/93JE01084",
+        "Mars annual surface-pressure cycle (Viking landers)",
+    ),
+    AtmosphereReference(
+        "Allison & McEwen 2000 (Planet. Space Sci. 48)",
+        "https://doi.org/10.1016/S0032-0633(99)00092-6",
+        "Mars solar longitude (L_s) algorithm",
+    ),
+    AtmosphereReference(
         "Hansen & Hovenier 1974 (J. Atmos. Sci. 31)",
         "https://journals.ametsoc.org/view/journals/atsc/31/4/1520-0469_1974_031_1137_iotpov_2_0_co_2.xml",
         "Venus cloud droplet size and refractive index",

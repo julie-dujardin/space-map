@@ -23,20 +23,22 @@ import {
 /**
  * Photosphere → star-point bloom handoff constants. Tuned together so the
  * star-point's per-pixel HDR at handoff matches the mesh's disc-averaged HDR:
- *   uIntensity · STAR_POINT_TEXEL_ALPHA = SUN_HDR_MULTIPLIER · EDDINGTON_DISC_AVG
+ *   uIntensity · STAR_POINT_TEXEL_ALPHA = SUN_HDR_MULTIPLIER · LIMB_DISC_AVG
  *
- * EDDINGTON_DISC_AVG = 1 − u/3 = 0.8 (limb-darkening law I(μ) = I₀(1 − u + u·μ), u = 0.6).
+ * LIMB_DISC_AVG: the I(μ) = μ^α limb law disc-averages to 2/(α+2), ≈ 0.8 at
+ * the luminance-weighted α (identical to the classical Eddington average, so
+ * the handoff is insensitive to whether the exported α has arrived).
  * STAR_POINT_TEXEL_ALPHA = 0.3 is the circle-texture fill alpha (`makeCircleTexture`).
  * STAR_POINT_FLOOR_INTENSITY sits just above the bloom threshold so faint stars
  * still get a halo rather than reading as a hard LDR speck.
  */
 export const SUN_HDR_MULTIPLIER = 6;
-const EDDINGTON_DISC_AVG = 0.8;
+const LIMB_DISC_AVG = 0.8;
 /** Switch mesh → point when projected radius drops below SIZE/2 (equal areas). */
 export const STAR_POINT_SIZE_PX = 4;
 const STAR_POINT_TEXEL_ALPHA = 0.3;
 export const STAR_POINT_HANDOFF_INTENSITY =
-	(SUN_HDR_MULTIPLIER * EDDINGTON_DISC_AVG) / STAR_POINT_TEXEL_ALPHA;
+	(SUN_HDR_MULTIPLIER * LIMB_DISC_AVG) / STAR_POINT_TEXEL_ALPHA;
 export const STAR_POINT_FLOOR_INTENSITY = 3;
 
 /** Bundle of scene objects the Sun contributes beyond the photosphere sphere. */
@@ -95,12 +97,13 @@ const PHOTOSPHERE_CENTRE_COLOR = '#fff5eb';
 const PHOTOSPHERE_LIMB_COLOR = '#ffd9a8';
 
 /**
- * Photosphere material for a star sphere. Eddington limb darkening
- * (I = 1 - u + u·μ, u ≈ 0.6) with a warmer tint at the rim — the limb is
- * cooler upper photosphere seen at grazing angles, so it reads more orange
- * than the white-hot disc centre. View-direction driven only; no per-frame
- * uniforms. Output is HDR (×6) so the bloom + ACES tone-map pipeline saturates
- * the centre to white and bleeds light outward.
+ * Photosphere material for a star sphere. Per-channel power-law limb
+ * darkening I(μ) = μ^α(λ) (Hestroffer & Magnan 1998) — α rises toward the
+ * blue, so the rim physically warms — plus the artistic thin-rim tint below.
+ * α ships in atmospheres.json ({@link setStarLimbAlpha}); until it lands, a
+ * neutral α = 0.5 matches the classical Eddington falloff. Output is HDR (×6)
+ * so the bloom + ACES tone-map pipeline saturates the centre to white and
+ * bleeds light outward.
  */
 export function makeStarSurfaceMaterial(): ShaderMaterial {
 	const centre = new Color(PHOTOSPHERE_CENTRE_COLOR);
@@ -109,6 +112,7 @@ export function makeStarSurfaceMaterial(): ShaderMaterial {
 		uniforms: {
 			uCentreColor: { value: new Vector3(centre.r, centre.g, centre.b) },
 			uLimbColor: { value: new Vector3(limb.r, limb.g, limb.b) },
+			uLimbAlpha: { value: new Vector3(0.5, 0.5, 0.5) },
 			// Per-fragment atmospheric chroma, aimed at a nearby shell each frame
 			// by updateAtmosphereShaders — from orbit the disc outsizes the
 			// atmosphere band, so a single colour can't work.
@@ -134,6 +138,7 @@ export function makeStarSurfaceMaterial(): ShaderMaterial {
 			#include <logdepthbuf_pars_fragment>
 			uniform vec3 uCentreColor;
 			uniform vec3 uLimbColor;
+			uniform vec3 uLimbAlpha;
 			varying vec3 vNormalView;
 			varying vec3 vViewDir;
 			varying vec3 vWorldPos;
@@ -141,8 +146,9 @@ export function makeStarSurfaceMaterial(): ShaderMaterial {
 			void main() {
 				#include <logdepthbuf_fragment>
 				float mu = max(dot(normalize(vNormalView), normalize(vViewDir)), 0.0);
-				// Eddington classical limb darkening, u=0.6 fits the visible band.
-				float darkening = 1.0 - 0.6 + 0.6 * mu;
+				// Hestroffer & Magnan power law, per channel — the steeper blue
+				// exponent is what physically warms the rim.
+				vec3 darkening = pow(vec3(max(mu, 1e-4)), uLimbAlpha);
 				// Confine the warm tint to a thin rim. A linear mix on mu would
 				// pull most of the disc warm because mu = sqrt(1 - r²/R²) stays
 				// high across the projected disc and only collapses near the
@@ -274,4 +280,17 @@ export function starViewTintUniforms(
 ): ViewTintUniforms | null {
 	const uniforms = (material as ShaderMaterial | null | undefined)?.uniforms;
 	return uniforms?.uAtmoTEnable ? (uniforms as unknown as ViewTintUniforms) : null;
+}
+
+/** Push the exported limb-darkening exponents onto a photosphere material —
+ *  no-op until the data (or the material) exists, so callers can just call it
+ *  every frame. */
+export function setStarLimbAlpha(
+	material: Material | null | undefined,
+	alpha: readonly [number, number, number] | null
+): void {
+	const uniforms = (material as ShaderMaterial | null | undefined)?.uniforms;
+	if (alpha && uniforms?.uLimbAlpha) {
+		(uniforms.uLimbAlpha.value as Vector3).set(alpha[0], alpha[1], alpha[2]);
+	}
 }

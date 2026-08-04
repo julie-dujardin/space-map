@@ -61,6 +61,25 @@ def rayleigh_beta_per_m(
     return number_density(pressure_pa, temperature_k) * sigma
 
 
+def mixture_refractivity(
+    composition: dict[str, float],
+    pressure_pa: float,
+    temperature_k: float,
+    wavelength_m: float,
+) -> float:
+    """(n - 1) of a gas mixture at (P, T). Refractivities scale linearly with
+    number density and add by partial density (Lorentz-Lorenz at n ≈ 1)."""
+    total = sum(composition.values())
+    n_ref = number_density(pressure_pa, temperature_k)
+    return sum(
+        fraction
+        / total
+        * GAS_OPTICS[gas].refractivity(wavelength_m)
+        * (n_ref / GAS_OPTICS[gas].fit_number_density)
+        for gas, fraction in composition.items()
+    )
+
+
 def scale_height_km(
     mean_molar_mass_g_mol: float, temperature_k: float, gravity_m_s2: float
 ) -> float:

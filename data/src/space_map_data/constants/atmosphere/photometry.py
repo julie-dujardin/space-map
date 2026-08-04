@@ -1,6 +1,5 @@
-"""Ground albedos + solar limb darkening — data for ground-albedo coupling
-into the sky in-scatter and for a sun-disc limb model. No consumer yet.
-"""
+"""Ground albedos + solar limb darkening. Consumed by export/atmospheres/
+(`ground_albedo` per body + the `sun` limb-darkening block)."""
 
 from typing import NamedTuple
 
@@ -28,6 +27,13 @@ SURFACE_ALBEDOS: dict[str, SurfaceAlbedo] = {
     # 0.85±0.05 (Hillier et al. 1991); geometric 0.72 (NSSDCA).
     "naif-801": SurfaceAlbedo(bond=0.75, geometric=0.72),
 }
+
+# Albedo the sky's ground-bounce coupling uses: Bond (it weights an energy
+# term), except Earth per the note above — the shell renders over a texture
+# whose clouds already carry their share of the bounce.
+GROUND_BOUNCE_ALBEDOS: dict[str, float] = {
+    object_id: albedo.bond for object_id, albedo in SURFACE_ALBEDOS.items()
+} | {"naif-399": 0.15}
 
 # Triton spectral geometric albedos in the Voyager filters (Nelson et al.
 # 1990, GRL 17, 1761) — the uv→green rise is the slightly pink-neutral RGB

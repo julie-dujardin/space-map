@@ -25,6 +25,18 @@ export interface AtmosphereQualityConfig {
 	 *  Uniform-gated, but the surface march covers full-screen landed terrain
 	 *  — off on low tiers, which keep the untinted sun. */
 	sunTint: boolean;
+	/** Piecewise Mie density profiles (Venus decks, Titan's detached haze):
+	 *  two LUT taps per march sample instead of one exp — high/ultra. */
+	layeredDensity: boolean;
+	/** Ground-bounce boost on the multiple-scatter ambient. Uniform-gated and
+	 *  reuses already-marched densities — free, on everywhere. */
+	groundAlbedo: boolean;
+	/** Mars seasonal dust/pressure cycle from the simulation clock. CPU-only
+	 *  param derivation, on everywhere. */
+	seasonal: boolean;
+	/** Refraction lift of the Sun's visuals seen from inside a shell.
+	 *  CPU-only, on everywhere. */
+	refraction: boolean;
 }
 
 export type ResolvedAtmosphereTier = 'low' | 'medium' | 'high' | 'ultra';
@@ -43,7 +55,11 @@ export const ATMOSPHERE_QUALITY_PRESETS: Record<ResolvedAtmosphereTier, Atmosphe
 		eclipseShadows: true,
 		ringShadows: true,
 		insideView: true,
-		sunTint: false
+		sunTint: false,
+		layeredDensity: false,
+		groundAlbedo: true,
+		seasonal: true,
+		refraction: true
 	},
 	medium: {
 		primarySteps: 12,
@@ -51,7 +67,11 @@ export const ATMOSPHERE_QUALITY_PRESETS: Record<ResolvedAtmosphereTier, Atmosphe
 		eclipseShadows: true,
 		ringShadows: true,
 		insideView: true,
-		sunTint: false
+		sunTint: false,
+		layeredDensity: false,
+		groundAlbedo: true,
+		seasonal: true,
+		refraction: true
 	},
 	high: {
 		primarySteps: 16,
@@ -59,7 +79,11 @@ export const ATMOSPHERE_QUALITY_PRESETS: Record<ResolvedAtmosphereTier, Atmosphe
 		eclipseShadows: true,
 		ringShadows: true,
 		insideView: true,
-		sunTint: true
+		sunTint: true,
+		layeredDensity: true,
+		groundAlbedo: true,
+		seasonal: true,
+		refraction: true
 	},
 	ultra: {
 		primarySteps: 32,
@@ -67,7 +91,11 @@ export const ATMOSPHERE_QUALITY_PRESETS: Record<ResolvedAtmosphereTier, Atmosphe
 		eclipseShadows: true,
 		ringShadows: true,
 		insideView: true,
-		sunTint: true
+		sunTint: true,
+		layeredDensity: true,
+		groundAlbedo: true,
+		seasonal: true,
+		refraction: true
 	}
 };
 
@@ -110,10 +138,10 @@ export function currentAtmosphereConfig(): AtmosphereQualityConfig {
 }
 
 /** Identity key for change detection — shells rebuild their program when the
- *  key they were compiled with stops matching. `sunTint` is uniform-gated,
- *  so it stays out of the key. */
+ *  key they were compiled with stops matching. `sunTint`, `groundAlbedo`,
+ *  `seasonal` and `refraction` are uniform/CPU-gated, so they stay out. */
 export function atmosphereConfigKey(c: AtmosphereQualityConfig): string {
-	return `${c.primarySteps}|${c.lightSteps}|${+c.eclipseShadows}|${+c.ringShadows}|${+c.insideView}`;
+	return `${c.primarySteps}|${c.lightSteps}|${+c.eclipseShadows}|${+c.ringShadows}|${+c.insideView}|${+c.layeredDensity}`;
 }
 
 // Perf governor state. FPS is an EMA (~0.5 s time constant) so one dropped

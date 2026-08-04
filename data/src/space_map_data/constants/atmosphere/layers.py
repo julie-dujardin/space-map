@@ -1,9 +1,10 @@
-"""Layered aerosol vertical structure — data for the future piecewise-density
-shader upgrade (the current shader is single-exponential per body; these are
-the published profiles it can't represent yet).
+"""Layered aerosol vertical structure. export/atmospheres/profiles.py reduces
+these to the shipped forms: Venus/Titan Mie-density LUTs and the Mars
+Conrath-ν seasonal scale heights; the rest (Earth Junge layer, Pluto's
+embedded layers) still awaits a consumer.
 
 Each body keeps its source's own shape and units rather than being forced into
-one generic schema; the consumer that eventually samples these decides the
+one generic schema; the consumer that samples these decides the
 parameterisation.
 """
 

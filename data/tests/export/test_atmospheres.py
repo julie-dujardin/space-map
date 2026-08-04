@@ -14,9 +14,18 @@ from space_map_data.constants.atmosphere.bodies import (
     ATMOSPHERE_BODIES,
     RENDER_WAVELENGTHS_M,
 )
+from space_map_data.constants.atmosphere.photometry import (
+    SUN_LIMB_DARKENING_ALPHA_RGB,
+    sun_limb_darkening_alpha,
+)
 from space_map_data.export.atmospheres import build_atmospheres
+from space_map_data.export.atmospheres.profiles import (
+    PROFILE_N,
+    conrath_dust_scale_height_km,
+)
 from space_map_data.export.atmospheres.rayleigh import (
     mean_molar_mass_g_mol,
+    mixture_refractivity,
     rayleigh_beta_per_m,
     rayleigh_cross_section,
     scale_height_km,
@@ -110,6 +119,13 @@ class TestMixtures:
         # kT/(mg) at 288.15 K ≈ 8.4 km — the value Earth renderers use.
         h = scale_height_km(mean_molar_mass_g_mol(_AIR), _AIR_T, 9.80665)
         assert h == pytest.approx(8.4, abs=0.1)
+
+    def test_air_refractivity(self):
+        # Standard air at 15 °C / 101.325 kPa: n − 1 ≈ 2.78e-4 at 550 nm
+        # (Edlén/Ciddor family).
+        assert mixture_refractivity(_AIR, _AIR_P, _AIR_T, 550e-9) == pytest.approx(
+            2.78e-4, rel=0.01
+        )
 
 
 class TestBodies:
@@ -214,6 +230,98 @@ class TestPayload:
             assert entry["rayleigh_scale_height_km"] > 0
             assert entry["mie_scale_height_km"] > 0
             assert entry["top_altitude_km"] > 0
+
+    def test_refractivity_positive_and_dispersive(self, payload):
+        # Blue must refract more than red (normal dispersion) for every body.
+        for object_id, entry in payload["bodies"].items():
+            r, g, b = entry["refractivity"]
+            assert 0 < r < g < b < 1e-2, object_id
+
+    def test_ground_albedos(self, payload):
+        with_albedo = {
+            object_id
+            for object_id, entry in payload["bodies"].items()
+            if "ground_albedo" in entry
+        }
+        assert with_albedo == {
+            "naif-299",
+            "naif-399",
+            "naif-499",
+            "naif-801",
+            "naif-999",
+        }
+        # Earth couples the clear-sky surface albedo, not the TOA bond value.
+        assert payload["bodies"]["naif-399"]["ground_albedo"] == pytest.approx(0.15)
+        for object_id in with_albedo:
+            assert 0 < payload["bodies"][object_id]["ground_albedo"] <= 1
+
+    def test_sun_limb_darkening(self, payload):
+        alphas = payload["sun"]["limb_darkening_alpha"]
+        assert tuple(alphas) == SUN_LIMB_DARKENING_ALPHA_RGB
+        # Table anchors vs the α(λ) law they were reduced from.
+        for alpha, wl in zip(alphas, (680e-9, 550e-9, 440e-9)):
+            assert alpha == pytest.approx(sun_limb_darkening_alpha(wl), abs=0.03)
+
+    def test_mie_profiles(self, payload):
+        assert payload["profile_n"] == PROFILE_N
+        layered = {
+            object_id
+            for object_id, entry in payload["bodies"].items()
+            if "mie_profile" in entry
+        }
+        assert layered == {"naif-299", "naif-606"}
+        for object_id in layered:
+            entry = payload["bodies"][object_id]
+            profile = entry["mie_profile"]
+            assert len(profile) == PROFILE_N
+            assert profile[0] > 0
+            assert profile[-1] == 0.0
+            assert all(0 <= v <= 2.0 for v in profile), object_id
+            # Column-preserving normalisation: the LUT's ∫ρ dh must equal the
+            # exponential's β·H column, so disc opacity matches across tiers.
+            dh = entry["top_altitude_km"] / (PROFILE_N - 1)
+            column = sum(profile) * dh - 0.5 * dh * profile[0]
+            assert column == pytest.approx(entry["mie_scale_height_km"], rel=0.02)
+
+    def test_titan_profile_holds_detached_layer(self, payload):
+        # The shell top must reach the ~500 km Cassini-era detached layer, and
+        # the LUT must show it as a local maximum over its surroundings.
+        entry = payload["bodies"]["naif-606"]
+        top = entry["top_altitude_km"]
+        assert top >= 550
+        profile = entry["mie_profile"]
+        km_per_texel = top / (PROFILE_N - 1)
+        peak_i = round(500 / km_per_texel)
+        window = profile[peak_i - 5 : peak_i + 6]
+        assert max(window) > profile[peak_i - 12]
+        assert max(window) > profile[min(peak_i + 12, PROFILE_N - 1)]
+
+    def test_mars_seasonal_table(self, payload):
+        seasonal = payload["bodies"]["naif-499"]["seasonal"]
+        n = len(seasonal["ls_deg"])
+        assert seasonal["ls_deg"][0] == 0.0
+        for key in ("dust_tau_factor", "dust_scale_height_km", "pressure_factor"):
+            assert len(seasonal[key]) == n
+        # Clear-season baseline is the shipped look (factor 1); the dusty
+        # season stays inside the cited non-storm range (τ ≤ ~0.45).
+        assert min(seasonal["dust_tau_factor"]) == pytest.approx(1.0)
+        assert max(seasonal["dust_tau_factor"]) <= 3.0
+        # Pressure factors are normalised to the annual mean (the datum).
+        mean = sum(seasonal["pressure_factor"]) / n
+        assert mean == pytest.approx(1.0, abs=0.005)
+        # CO₂ condensation swing ~25% peak-to-trough.
+        swing = max(seasonal["pressure_factor"]) - min(seasonal["pressure_factor"])
+        assert 0.15 < swing < 0.35
+        # Storm-free dust mixes at most to the well-mixed gas column.
+        gas_h = payload["bodies"]["naif-499"]["mie_scale_height_km"]
+        assert max(seasonal["dust_scale_height_km"]) <= gas_h + 1e-6
+        assert min(seasonal["dust_scale_height_km"]) > 0.4 * gas_h
+
+    def test_conrath_scale_height_limits(self):
+        # ν → 0 is well-mixed dust: the fitted exponential tends to the gas
+        # scale height; ν = 0.3 confines it to roughly half.
+        assert conrath_dust_scale_height_km(1e-6, 11.1) == pytest.approx(11.1, rel=0.02)
+        assert conrath_dust_scale_height_km(0.3, 11.1) < 0.6 * 11.1
 
     def test_aerosol_keys_resolve(self):
         from space_map_data.constants.atmosphere.aerosols import PHASE_MODELS

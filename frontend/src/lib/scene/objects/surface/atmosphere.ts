@@ -90,6 +90,33 @@ function whiteTexture(): DataTexture {
 	return white;
 }
 
+/** Pack a layered Mie density profile into an N×1 RGBA float texture (R used). */
+function mieProfileTexture(profile: readonly number[]): DataTexture {
+	const data = new Float32Array(profile.length * 4);
+	for (let i = 0; i < profile.length; i++) {
+		data[i * 4] = profile[i];
+		data[i * 4 + 3] = 1;
+	}
+	const tex = new DataTexture(data, profile.length, 1, RGBAFormat, FloatType);
+	tex.needsUpdate = true;
+	return tex;
+}
+
+/** Rebind the profile LUT when a param swap changes it (body switch in the
+ *  debug tuner; seasonal derivations keep the same array ref → no-op). */
+function syncProfileTexture(
+	material: ShaderMaterial,
+	prev: readonly number[] | undefined,
+	next: readonly number[] | undefined
+): void {
+	if (prev === next) return;
+	const u = material.uniforms;
+	if (u.uMieProfileTex.value !== white) (u.uMieProfileTex.value as Texture).dispose();
+	u.uMieProfileTex.value = next ? mieProfileTexture(next) : whiteTexture();
+	u.uMieProfileOn.value = next ? 1 : 0;
+	u.uMieProfileN.value = next?.length ?? 1;
+}
+
 /** Pack a 3×128 phase table (R,G,B blocks of 128) into a 128×1 RGBA float
  *  texture — see the uMiePhaseTex shader comment for why not a uniform array. */
 function miePhaseTexture(table: readonly number[]): DataTexture {
@@ -163,6 +190,29 @@ export interface AtmosphereParams {
 	 *  off. For far-out wisps tuned at the physical `sunIntensity`, flat 1-AU
 	 *  sunlight blows the faint backlit haze into an opaque glowing shell. */
 	realisticSunAlways?: boolean;
+	/** (n − 1) at the reference level for (R, G, B) — drives the in-atmosphere
+	 *  refraction lift of the Sun's visuals near the horizon. */
+	refractivity?: [number, number, number];
+	/** Bond-ish albedo of what the shell sits above (surface or cloud deck) —
+	 *  boosts the multiple-scatter ambient near the ground. */
+	groundAlbedo?: number;
+	/** Layered Mie density LUT: densities at equal altitude steps over
+	 *  [0, topAltitudeKm], 0 at the top, column-normalised to match the
+	 *  exponential's β·H. Sampled by the ATMO_LAYERED shader path
+	 *  (high/ultra); other tiers and profile-less bodies keep the single
+	 *  exponential. */
+	mieProfile?: readonly number[];
+	/** Mars-style seasonal cycle (interpolated per frame from L_s). Lives on
+	 *  the base params; derived seasonal params drop it. */
+	seasonal?: AtmosphereSeasonalTable;
+}
+
+/** Piecewise-linear seasonal factors on a wrap-around solar-longitude grid. */
+export interface AtmosphereSeasonalTable {
+	lsDeg: readonly number[];
+	dustTauFactor: readonly number[];
+	dustScaleHeightKm: readonly number[];
+	pressureFactor: readonly number[];
 }
 
 /** Scene-side handle for a body's atmosphere shell. */
@@ -216,6 +266,15 @@ const FRAGMENT_SHADER = `
 	uniform vec3 uMieScatter;        // β_M scattering, per planet radius, (R,G,B)
 	uniform vec3 uMieExtinction;     // β_M extinction, per planet radius, (R,G,B)
 	uniform float uMieScaleHeight;
+	// Layered Mie density LUT over [0, shell top] (Venus decks, Titan's
+	// detached haze), normalised to 1 at the reference level. Only sampled on
+	// ATMO_LAYERED tiers and only when uMieProfileOn is set.
+	uniform sampler2D uMieProfileTex;
+	uniform float uMieProfileOn;
+	uniform float uMieProfileN;      // texel count of uMieProfileTex
+	// Ground-bounce gain on the multiple-scatter ambient: sunlight reflected
+	// by the surface/deck under the shell and rescattered by the air above it.
+	uniform float uGroundAlbedo;
 	// Tabulated Mie phase, 128x1 RGBA float texel row (RGB used). A texture, not
 	// a uniform array: 384 floats would eat 384 uniform vectors and blow past
 	// mobile GPUs' fragment-uniform limit (~224), which kills the program link.
@@ -320,9 +379,25 @@ const FRAGMENT_SHADER = `
 	vec3 densities(float h) {
 		float hc = max(h, 0.0);
 		float top = uAtmosphereRatio - 1.0;
+		float mie;
+		#ifdef ATMO_LAYERED
+		if (uMieProfileOn > 0.5) {
+			// Piecewise profile LUT; two nearest taps + manual lerp, same
+			// float-filtering caveat as the phase table. Ends at exactly 0, so
+			// no shell-top shift is needed on this path.
+			float w = clamp(hc / top, 0.0, 1.0) * (uMieProfileN - 1.0);
+			float i0 = min(floor(w), uMieProfileN - 2.0);
+			float a = texture2D(uMieProfileTex, vec2((i0 + 0.5) / uMieProfileN, 0.5)).r;
+			float b = texture2D(uMieProfileTex, vec2((i0 + 1.5) / uMieProfileN, 0.5)).r;
+			mie = mix(a, b, w - i0);
+		} else
+		#endif
+		{
+			mie = max(exp(-hc / uMieScaleHeight) - exp(-top / uMieScaleHeight), 0.0);
+		}
 		return vec3(
 			max(exp(-hc / uRayleighScaleHeight) - exp(-top / uRayleighScaleHeight), 0.0),
-			max(exp(-hc / uMieScaleHeight) - exp(-top / uMieScaleHeight), 0.0),
+			mie,
 			max(0.0, 1.0 - abs(hc - uAbsorptionCenter) / uAbsorptionWidth)
 		);
 	}
@@ -451,6 +526,16 @@ const FRAGMENT_SHADER = `
 
 		float dt = (tEnd - tStart) / float(PRIMARY_STEPS);
 		float dtWorld = dt / dLen;                // squashed step → world path length
+		// Midpoint sampling, except on layered profiles: their sharp features
+		// (Titan's ~30 km detached layer vs ~100 km steps) alias into
+		// concentric bands, so the sample point is jittered per fragment
+		// (interleaved gradient noise) — trades the bands for fine grain.
+		float samplePos = 0.5;
+		#ifdef ATMO_LAYERED
+		if (uMieProfileOn > 0.5) {
+			samplePos = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+		}
+		#endif
 		vec3 viewT = vec3(1.0);                   // running transmittance, camera → sample
 		vec3 viewOD = vec3(0.0);                  // total marched optical depth (for alpha)
 		vec3 accumR = vec3(0.0);                  // Σ transmittance · ρ_R · dt, per channel
@@ -458,7 +543,7 @@ const FRAGMENT_SHADER = `
 		vec3 accumMS = vec3(0.0);                 // isotropic multiple-scatter ambient
 
 		for (int i = 0; i < PRIMARY_STEPS; i++) {
-			vec3 p = ro + rd * (tStart + dt * (float(i) + 0.5));
+			vec3 p = ro + rd * (tStart + dt * (float(i) + samplePos));
 			vec3 dens = densities(length(p) - 1.0); // (ρ_R, ρ_M, ρ_A)
 			vec3 dStep = dens * dtWorld;
 			viewOD += dStep;
@@ -509,9 +594,14 @@ const FRAGMENT_SHADER = `
 				(1.0 + MS_DIFFUSION * (uRayleighScatter * sunOD.x + uMieScatter * sunOD.y));
 			vec3 odVert = uRayleighScatter * (uRayleighScaleHeight * dens.x) +
 				uMieExtinction * (uMieScaleHeight * dens.y);
+			// Ground bounce: the surface/deck reflects uGroundAlbedo of the
+			// sunlight into the air above it, weighted by proximity to the
+			// ground via the local (normalised) density; msSunT already carries
+			// the day/night gating.
+			float bounce = 1.0 + uGroundAlbedo * 0.5 * (dens.x + dens.y);
 			accumMS += viewT * wStep * exp(-odVert) * msSunT *
 				(uRayleighScatter * dStep.x + uMieScatter * dStep.y) *
-				(uMultiScatter * sunVis);
+				(uMultiScatter * sunVis * bounce);
 
 			viewT *= stepT;
 		}
@@ -654,6 +744,13 @@ export function buildAtmosphereNode(
 			uMieExtinction: { value: new Vector3() },
 			uMieScaleHeight: { value: 0 },
 			uMiePhaseTex: { value: miePhaseTexture(params.miePhase) },
+			uMieProfileTex: {
+				value: params.mieProfile ? mieProfileTexture(params.mieProfile) : whiteTexture()
+			},
+			uMieProfileOn: { value: params.mieProfile ? 1 : 0 },
+			uMieProfileN: { value: params.mieProfile?.length ?? 1 },
+			// Quality-gated per frame by updateAtmosphereShaders (0 = off).
+			uGroundAlbedo: { value: params.groundAlbedo ?? 0 },
 			uAbsorption: { value: new Vector3() },
 			uAbsorptionCenter: { value: 0 },
 			uAbsorptionWidth: { value: 0 },
@@ -713,6 +810,7 @@ function qualityDefines(config: AtmosphereQualityConfig): Record<string, string 
 	if (config.eclipseShadows) defines.ATMO_ECLIPSE = '';
 	if (config.ringShadows) defines.ATMO_RING_SHADOW = '';
 	if (config.insideView) defines.ATMO_INSIDE = '';
+	if (config.layeredDensity) defines.ATMO_LAYERED = '';
 	return defines;
 }
 
@@ -736,8 +834,10 @@ export function applyAtmosphereQuality(
  * not a tunable — it stays whatever the body was built with.
  */
 export function applyAtmosphereParams(node: AtmosphereNode, params: AtmosphereParams): void {
+	syncProfileTexture(node.material, node.params.mieProfile, params.mieProfile);
 	node.params = params;
 	const u = node.material.uniforms;
+	u.uGroundAlbedo.value = params.groundAlbedo ?? 0;
 	const planetRadiusScene = u.uPlanetRadiusScene.value as number;
 	setRadiusUniforms(node.material, params, planetRadiusScene, node.planetRadiusKm);
 	u.uMultiScatter.value = params.multiScatterGain;
@@ -797,5 +897,7 @@ export function attachRingShadowToAtmosphere(
 export function disposeAtmosphereNode(node: AtmosphereNode): void {
 	node.mesh.geometry.dispose();
 	(node.material.uniforms.uMiePhaseTex.value as Texture).dispose();
+	const profileTex = node.material.uniforms.uMieProfileTex.value as Texture;
+	if (profileTex !== white) profileTex.dispose();
 	(node.mesh.material as Material).dispose();
 }

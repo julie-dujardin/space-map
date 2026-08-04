@@ -46,6 +46,10 @@
 		type AtmosphereQualityConfig,
 		type ResolvedAtmosphereTier
 	} from '$lib/scene/objects/surface/atmosphere-quality';
+	import {
+		marsSolarLongitudeDeg,
+		seasonalAtmosphereParams
+	} from '$lib/scene/objects/surface/atmosphere-season';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { replaceState } from '$app/navigation';
 	import { fetchMetadata } from '$lib/fetch/metadata';
@@ -53,7 +57,7 @@
 	import { AU_KM } from '$lib/math/units';
 	import { AMBIENT_INTENSITY, SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
 	import { loadSkybox, SKYBOX_BASE_ROTATION } from '$lib/scene/objects/sky/skybox';
-	import { skyboxDimFactor } from '$lib/scene/shaders/atmosphere-uniforms';
+	import { refractionLiftRad, skyboxDimFactor } from '$lib/scene/shaders/atmosphere-uniforms';
 	import {
 		attachEclipseShadowToBody,
 		getEclipseSceneUniforms
@@ -169,6 +173,14 @@
 	let qRings = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].ringShadows);
 	let qInside = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].insideView);
 	let qSunTint = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].sunTint);
+	let qLayered = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].layeredDensity);
+	let qGroundAlbedo = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].groundAlbedo);
+	let qSeasonal = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].seasonal);
+	let qRefraction = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].refraction);
+	// Mars solar longitude the seasonal toggle renders; starts at today's.
+	let lsDeg = $state(
+		Math.round(marsSolarLongitudeDeg(Date.now() / 86400000 + 2440587.5) * 10) / 10
+	);
 
 	function qualityConfig(): AtmosphereQualityConfig {
 		return {
@@ -177,7 +189,11 @@
 			eclipseShadows: qEclipse,
 			ringShadows: qRings,
 			insideView: qInside,
-			sunTint: qSunTint
+			sunTint: qSunTint,
+			layeredDensity: qLayered,
+			groundAlbedo: qGroundAlbedo,
+			seasonal: qSeasonal,
+			refraction: qRefraction
 		};
 	}
 
@@ -194,6 +210,10 @@
 		qRings = p.ringShadows;
 		qInside = p.insideView;
 		qSunTint = p.sunTint;
+		qLayered = p.layeredDensity;
+		qGroundAlbedo = p.groundAlbedo;
+		qSeasonal = p.seasonal;
+		qRefraction = p.refraction;
 	}
 
 	function setTier(t: ResolvedAtmosphereTier): void {
@@ -233,6 +253,10 @@
 	let firstBuild = true;
 	const sunVec = new Vector3();
 	const camDir = new Vector3();
+	// Refraction-lift scratches (sun-disc direction, camera zenith, lift axis).
+	const refrSd = new Vector3();
+	const refrUp = new Vector3();
+	const refrPerp = new Vector3();
 	// Free-look orientation (mouse-driven, degrees) — $state so URL sync tracks
 	// it. Not shown as sliders: the mouse owns aiming, the sliders own position.
 	let lookYaw = $state(0);
@@ -313,7 +337,8 @@
 	}
 
 	function resolved(): AtmosphereParams {
-		const base = shipped();
+		// Season first (its factors are part of the baseline), sliders on top.
+		const base = qSeasonal ? seasonalAtmosphereParams(shipped(), lsDeg) : shipped();
 		const scale3 = (v: [number, number, number], f: number): [number, number, number] => [
 			v[0] * f,
 			v[1] * f,
@@ -330,7 +355,10 @@
 			mieScaleHeightKm: base.mieScaleHeightKm * 2 ** mieHX,
 			bakedCompensation: comp,
 			multiScatterGain: multiScatter,
-			sunIntensity
+			sunIntensity,
+			// The albedo toggle is uniform-level in production; here the zeroed
+			// param flows through applyAtmosphereParams to the same uniform.
+			groundAlbedo: qGroundAlbedo ? shipped().groundAlbedo : 0
 		};
 	}
 
@@ -534,6 +562,11 @@
 		p.set('qrs', qRings ? '1' : '0');
 		p.set('qiv', qInside ? '1' : '0');
 		p.set('qst', qSunTint ? '1' : '0');
+		p.set('qld', qLayered ? '1' : '0');
+		p.set('qga', qGroundAlbedo ? '1' : '0');
+		p.set('qss', qSeasonal ? '1' : '0');
+		p.set('qrf', qRefraction ? '1' : '0');
+		p.set('mls', r(lsDeg));
 		return p.toString();
 	}
 
@@ -571,6 +604,11 @@
 		if (p.has('qrs')) qRings = p.get('qrs') === '1';
 		if (p.has('qiv')) qInside = p.get('qiv') === '1';
 		if (p.has('qst')) qSunTint = p.get('qst') === '1';
+		if (p.has('qld')) qLayered = p.get('qld') === '1';
+		if (p.has('qga')) qGroundAlbedo = p.get('qga') === '1';
+		if (p.has('qss')) qSeasonal = p.get('qss') === '1';
+		if (p.has('qrf')) qRefraction = p.get('qrf') === '1';
+		lsDeg = num('mls', lsDeg);
 		positionCamera();
 		push();
 		pushQuality();
@@ -708,7 +746,30 @@
 		// Visible Sun disc at its true apparent size, floored to SUN_MIN_PX so a
 		// far-out sun never drops below the rasteriser. Brightness tracks the
 		// sun-light bar and the realistic toggle only. Blooms once it's HDR-white.
-		sunMesh.position.copy(sd).multiplyScalar(SUN_DIST);
+		// The rendered direction carries the in-atmosphere refraction lift
+		// (production: updateSunProxy) — Earth ground view lifts a horizon sun
+		// by ~34′, about one disc diameter.
+		refrSd.copy(sd);
+		if (qRefraction) {
+			const p = resolved();
+			const altKm = Math.max(altRadii, 0) * currentBody.radiusKm;
+			if (p.refractivity && altKm < p.topAltitudeKm) {
+				refrUp.copy(camera.position).normalize();
+				const sinE = Math.min(1, Math.max(-1, refrUp.dot(sd)));
+				const n1 = p.refractivity[1] * Math.exp(-altKm / p.rayleighScaleHeightKm);
+				const lift = refractionLiftRad(
+					n1,
+					Math.asin(sinE),
+					p.rayleighScaleHeightKm,
+					currentBody.radiusKm
+				);
+				refrPerp.copy(refrUp).addScaledVector(refrSd, -refrUp.dot(refrSd));
+				if (lift > 5e-6 && refrPerp.lengthSq() > 1e-12) {
+					refrSd.addScaledVector(refrPerp.normalize(), lift).normalize();
+				}
+			}
+		}
+		sunMesh.position.copy(refrSd).multiplyScalar(SUN_DIST);
 		const distToSun = camera.position.distanceTo(sunMesh.position);
 		const realAngRadius = SUN_RADIUS_KM / (currentBody.au * AU_KM);
 		const minAngRadius = (SUN_MIN_PX * ((camera.fov * DEG) / canvas.clientHeight)) / 2;
@@ -1039,6 +1100,46 @@
 				/>
 				<span>Sun tint</span>
 			</label>
+			<label
+				class="toggle"
+				title="Piecewise Mie density profiles (Venus decks, Titan detached haze) — high/ultra default"
+			>
+				<input
+					type="checkbox"
+					checked={qLayered}
+					onchange={(e) => {
+						qLayered = e.currentTarget.checked;
+						pushQuality();
+					}}
+				/>
+				<span>Layered density</span>
+			</label>
+			<label class="toggle" title="Ground-bounce boost on the multiple-scatter ambient">
+				<input
+					type="checkbox"
+					checked={qGroundAlbedo}
+					onchange={(e) => {
+						qGroundAlbedo = e.currentTarget.checked;
+						push();
+					}}
+				/>
+				<span>Ground albedo</span>
+			</label>
+			<label class="toggle" title="Mars dust/pressure cycle at the L_s slider below">
+				<input
+					type="checkbox"
+					checked={qSeasonal}
+					onchange={(e) => {
+						qSeasonal = e.currentTarget.checked;
+						push();
+					}}
+				/>
+				<span>Seasonal (Mars)</span>
+			</label>
+			<label class="toggle" title="Refraction lift of the sun disc seen from inside the shell">
+				<input type="checkbox" bind:checked={qRefraction} />
+				<span>Refraction</span>
+			</label>
 
 			<div class="section">
 				<span>Atmosphere</span>
@@ -1089,6 +1190,25 @@
 					}}
 				/>
 				<span class="val">{multiScatter.toFixed(2)}</span>
+
+				{#if shipped().seasonal}
+					<span class="lbl" title="Mars solar longitude driving the seasonal dust/pressure cycle"
+						>Season L_s</span
+					>
+					<input
+						type="range"
+						min="0"
+						max="360"
+						step="1"
+						value={lsDeg}
+						disabled={!qSeasonal}
+						oninput={(e) => {
+							lsDeg = Number(e.currentTarget.value);
+							push();
+						}}
+					/>
+					<span class="val">{Math.round(lsDeg)}°</span>
+				{/if}
 
 				{#each LOG_SLIDERS as s (s.label)}
 					<span class="lbl">{s.label}</span>

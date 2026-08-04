@@ -139,6 +139,8 @@ const TIGHT_FAR_RELEASE = 2.3;
  *  sits beyond every in-system body and depth-sorts behind them (e.g. a moon
  *  transiting the disc). */
 const SUN_PROXY_FAR_FRACTION = 0.9;
+/** Scratch for the refraction lift in {@link SceneRenderer.updateSunProxy}. */
+const _sunLiftDir = new Vector3();
 
 export class SceneRenderer {
 	private renderer: WebGLRenderer;
@@ -711,7 +713,8 @@ export class SceneRenderer {
 			getSettings().showAtmospheres,
 			getSettings().realisticLighting,
 			this.sunIntensityScale,
-			currentAtmosphereConfig()
+			currentAtmosphereConfig(),
+			this.clock.jd
 		);
 		recordAtmospherePerf(frameDtMs, atmoState.shellProminent);
 		// Inside a shell, stars dim by the extinction of the air above the
@@ -771,7 +774,7 @@ export class SceneRenderer {
 		this.pointClouds.drainOnePendingSceneAdd();
 
 		this.updateDepthFar();
-		this.updateSunProxy();
+		this.updateSunProxy(atmoState.sunRefraction);
 		// Only when the camera is inside a shell (surface zoom): supplies the
 		// opaque depth those shells clamp their march to, so haze stops at
 		// foreground terrain instead of painting over it.
@@ -886,23 +889,43 @@ export class SceneRenderer {
 	 * unaffected (the PointLight rides along at zero intensity in subsystems).
 	 * Must run after updateDepthFar (this frame's far) and after
 	 * repositionBodies (so this write wins).
+	 *
+	 * `refraction` (camera inside a shell) rotates the camera→Sun direction by
+	 * the atmospheric lift before the proxy re-seat — visuals only, lighting
+	 * keeps the true direction.
 	 */
-	private updateSunProxy(): void {
+	private updateSunProxy(refraction: { angleRad: number; up: Vector3 } | null): void {
 		const sunBo = this.bodyObjects.get(SUN_ID);
 		if (!sunBo) return;
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		const [sx, sy, sz] = sunBo.body.position;
-		const rx = sx - fx;
-		const ry = sy - fy;
-		const rz = sz - fz;
+		let rx = sx - fx;
+		let ry = sy - fy;
+		let rz = sz - fz;
+		if (refraction) {
+			const cam = this.camera.position;
+			const dir = this._tmpV3.set(rx - cam.x, ry - cam.y, rz - cam.z);
+			const dist = dir.length();
+			dir.divideScalar(dist);
+			// Lift toward the zenith component perpendicular to the view ray;
+			// small-angle rotation is exact enough at ≲1°.
+			const lift = _sunLiftDir.copy(refraction.up).addScaledVector(dir, -refraction.up.dot(dir));
+			if (lift.lengthSq() > 1e-12) {
+				dir.addScaledVector(lift.normalize(), refraction.angleRad).normalize();
+				rx = cam.x + dir.x * dist;
+				ry = cam.y + dir.y * dist;
+				rz = cam.z + dir.z * dist;
+			}
+		}
 		let k = 1;
 		if (this.tightFar) {
 			const proxyDist = this.camera.far * SUN_PROXY_FAR_FRACTION;
 			const trueDist = Math.hypot(rx, ry, rz);
 			if (trueDist > proxyDist) k = proxyDist / trueDist;
 		}
-		// k = 1 with no proxy applied: positions are repositionBodies' — nothing to do.
-		if (k === 1 && this.sunProxyK === 1) return;
+		// k = 1 with no proxy and no lift applied: positions are
+		// repositionBodies' — nothing to do.
+		if (k === 1 && this.sunProxyK === 1 && !refraction) return;
 		if (this.sunProxyK === 1) {
 			// Entering the regime: capture bases (mesh scale may carry PCK radii).
 			this.sunBaseMeshScale = sunBo.mesh?.scale.x ?? 1;

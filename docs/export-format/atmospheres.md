@@ -26,13 +26,19 @@ interface AtmospheresFile {
 	// distribution; irregular particles (Mars dust, Titan aggregates) from
 	// published double-Henyey-Greenstein fits.
 	phases: Record<string, number[]>;
+	// Samples in each layered `mie_profile` LUT (128).
+	profile_n: number;
+	// Solar-disc photometry: per-channel exponents of the Hestroffer &
+	// Magnan limb-darkening power law I(μ) = μ^α at the render wavelengths.
+	sun: { limb_darkening_alpha: [number, number, number] };
 	// Keyed by object id (`naif-399`).
 	bodies: Record<string, AtmosphereBody>;
 }
 
 interface AtmosphereBody {
 	// Shell top above the reference radius, km: max(8·H_Rayleigh, 6·H_Mie),
-	// where the optical contribution dies.
+	// where the optical contribution dies — raised where a mie_profile holds
+	// higher structure (Titan: 600 km for the detached layer).
 	top_altitude_km: number;
 	// Rayleigh scattering coefficient at the reference level, per km, at the
 	// render wavelengths (680, 550, 440 nm). Derived from composition,
@@ -71,5 +77,32 @@ interface AtmosphereBody {
 	// apply inverse-square solar irradiance even with realistic lighting off
 	// (far-out wisps tuned at physical intensity — Pluto, Triton).
 	realistic_sun_always?: boolean;
+	// (n − 1) of the gas mixture at the reference level per channel — the
+	// frontend's astronomical-refraction lift of the Sun near the horizon.
+	refractivity: [number, number, number];
+	// Albedo of what the shell sits above (Bond; Earth uses the clear-sky
+	// surface value) — boosts the multiple-scatter ambient near the ground.
+	// Absent for bodies without a curated value.
+	ground_albedo?: number;
+	// Layered Mie density LUT (Venus decks, Titan's detached haze):
+	// profile_n densities at equal altitude steps over [0, top_altitude_km],
+	// 0 at the top, normalised so the LUT's vertical column equals the
+	// exponential's mie_scale_height_km column (the cited optical depths
+	// anchor β·H, so disc opacity matches across tiers). Only on bodies with
+	// published vertical structure; the shader's high/ultra tiers sample it,
+	// other tiers keep the mie_scale_height_km exponential.
+	mie_profile?: number[];
+	// Mars only: seasonal climatology on a wrap-around solar-longitude grid
+	// (piecewise-linear in L_s, computed client-side from the sim clock).
+	// dust_tau_factor scales the dust column (1 = the clear-season baseline
+	// the mie_* coefficients encode), dust_scale_height_km replaces
+	// mie_scale_height_km (Conrath-ν confinement), pressure_factor scales
+	// the Rayleigh column around the annual-mean datum.
+	seasonal?: {
+		ls_deg: number[];
+		dust_tau_factor: number[];
+		dust_scale_height_km: number[];
+		pressure_factor: number[];
+	};
 }
 ```

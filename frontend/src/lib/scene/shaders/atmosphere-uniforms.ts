@@ -1,8 +1,10 @@
 import { BackSide, FrontSide, Vector3 } from 'three';
 import type { BodyObjects } from '$lib/scene/types';
 import { SUN_ID } from '$lib/constants';
+import { getAtmosphereParams, getSunLimbAlpha } from '$lib/fetch/atmospheres';
 import { sunIrradianceFactor } from '$lib/scene/lighting';
 import {
+	applyAtmosphereParams,
 	applyAtmosphereQuality,
 	ATMOSPHERE_INSIDE_RENDER_ORDER,
 	ATMOSPHERE_RENDER_ORDER,
@@ -10,13 +12,15 @@ import {
 	type AtmosphereParams
 } from '$lib/scene/objects/surface/atmosphere';
 import type { AtmosphereQualityConfig } from '$lib/scene/objects/surface/atmosphere-quality';
+import { seasonalParamsForJd } from '$lib/scene/objects/surface/atmosphere-season';
 import { getEclipseSceneUniforms } from '$lib/scene/objects/surface/eclipse-shadow';
 import {
 	bindViewTint,
 	setSunTransmittanceEnabled,
-	sunPathTransmittance
+	sunPathTransmittance,
+	syncSunTransmittanceUniforms
 } from '$lib/scene/objects/surface/sun-transmittance';
-import { starViewTintUniforms } from '$lib/scene/objects/sun';
+import { setStarLimbAlpha, starViewTintUniforms } from '$lib/scene/objects/sun';
 import type { Material, Vector4 } from 'three';
 
 const spinAxis = new Vector3();
@@ -102,6 +106,31 @@ export interface AtmosphereFrameState {
 	 *  dimming. The disc uses per-fragment VIEW_TINT_GLSL instead. Shared
 	 *  scratch — consume within the frame. */
 	sunTint: Vector3;
+	/** Astronomical-refraction lift of the Sun's visuals for a camera inside a
+	 *  shell: rotate the camera→Sun direction by `angleRad` toward `up` (the
+	 *  camera's local zenith). Applied by the renderer's sun-proxy pass so the
+	 *  proxy re-seat and the lift compose. Shared scratch `up` — consume
+	 *  within the frame. */
+	sunRefraction: { angleRad: number; up: Vector3 } | null;
+}
+
+/**
+ * Refraction lift of the Sun at true elevation `e` (radians) under a
+ * `refractivity`-strength atmosphere: n−1 times an airmass-like factor that
+ * saturates at √(πR/2H) on the horizon (exponential-atmosphere limit — Earth:
+ * 2.77e-4 × 35.4 ≈ 34′) and decays over the horizon-dip scale √(2H/R) once
+ * the Sun is geometrically below it.
+ */
+export function refractionLiftRad(
+	n1: number,
+	e: number,
+	scaleHeightKm: number,
+	radiusKm: number
+): number {
+	const w = Math.sqrt((2 * scaleHeightKm) / radiusKm);
+	const qHorizon = Math.sqrt((Math.PI * radiusKm) / (2 * scaleHeightKm));
+	if (e >= 0) return n1 / (Math.tan(e) + 1 / qHorizon);
+	return n1 * qHorizon * Math.exp(e / w);
 }
 
 /** Camera distance bound, in shell radii, for the sun tints. Covers GEO and
@@ -112,6 +141,7 @@ const SUN_TINT_MAX_RATIO = 200;
 const frameSunTint = new Vector3();
 const sunT = new Vector3();
 const camRel = new Vector3();
+const refractionUp = new Vector3();
 
 /**
  * Fill a shell's private occluder uniforms from the scene-wide set, keeping
@@ -169,16 +199,19 @@ export function updateAtmosphereShaders(
 	visible: boolean,
 	realistic: boolean,
 	sunScale: number,
-	quality: AtmosphereQualityConfig
+	quality: AtmosphereQualityConfig,
+	jd: number
 ): AtmosphereFrameState {
 	const state: AtmosphereFrameState = {
 		insideShell: false,
 		shellProminent: false,
 		skyboxIntensity: 1,
-		sunTint: frameSunTint.set(1, 1, 1)
+		sunTint: frameSunTint.set(1, 1, 1),
+		sunRefraction: null
 	};
 	setSunTransmittanceEnabled(visible && quality.sunTint);
 	const sunBo = bodyObjects.get(SUN_ID);
+	setStarLimbAlpha(sunBo?.mesh?.material as Material | undefined, getSunLimbAlpha());
 	// Disc chroma re-aims (or stays off) every frame — clear before the loop.
 	const sunViewTint = starViewTintUniforms(sunBo?.mesh?.material as Material | undefined);
 	if (sunViewTint) sunViewTint.uAtmoTEnable.value = 0;
@@ -190,8 +223,26 @@ export function updateAtmosphereShaders(
 		bo.atmosphere.mesh.visible = visible;
 		if (!visible) continue;
 		applyAtmosphereQuality(bo.atmosphere, quality);
+		// Seasonal bodies (Mars) re-derive their params when L_s drifts; off
+		// (or reverting) snaps back to the base params. Derived objects are
+		// cached, so the identity check keeps this a per-frame no-op.
+		const base = getAtmosphereParams(bo.body.data.id);
+		if (base?.seasonal) {
+			const target = quality.seasonal ? seasonalParamsForJd(base, jd) : base;
+			if (bo.atmosphere.params !== target) {
+				applyAtmosphereParams(bo.atmosphere, target);
+				// The surface/cloud sunset-tint patches march the same columns.
+				const prs = bo.atmosphere.material.uniforms.uPlanetRadiusScene.value as number;
+				for (const patch of bo.sunTint ?? []) {
+					syncSunTransmittanceUniforms(patch, target, prs, bo.atmosphere.planetRadiusKm);
+				}
+			}
+		}
 		const [bx, by, bz] = bo.body.position;
 		const uniforms = bo.atmosphere.material.uniforms;
+		uniforms.uGroundAlbedo.value = quality.groundAlbedo
+			? (bo.atmosphere.params.groundAlbedo ?? 0)
+			: 0;
 		const sunVec = (uniforms.uSunDir.value as Vector3).set(
 			sunPos[0] - bx,
 			sunPos[1] - by,
@@ -245,6 +296,22 @@ export function updateAtmosphereShaders(
 				.divideScalar(camDist)
 				.dot(sunVec);
 			state.skyboxIntensity *= skyboxDimFactor(params, altKm, sinSunElev);
+			if (quality.refraction && params.refractivity) {
+				// Green-channel refractivity at the camera's altitude; the lift
+				// direction is the camera's zenith on this body.
+				const n1 =
+					params.refractivity[1] * Math.exp(-Math.max(altKm, 0) / params.rayleighScaleHeightKm);
+				const lift = refractionLiftRad(
+					n1,
+					Math.asin(Math.min(1, Math.max(-1, sinSunElev))),
+					params.rayleighScaleHeightKm,
+					bo.atmosphere.planetRadiusKm
+				);
+				// Sub-arcsecond lifts are float noise on the disc — skip.
+				if (lift > 5e-6) {
+					state.sunRefraction = { angleRad: lift, up: refractionUp.copy(camUp) };
+				}
+			}
 		}
 		const shellRatio = camDist / shellRadius;
 		if (quality.sunTint && shellRatio < SUN_TINT_MAX_RATIO) {
