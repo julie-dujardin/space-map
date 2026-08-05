@@ -596,6 +596,10 @@ export interface InteriorLayer {
 	/** "solid", "liquid", "partial_melt", "fluid", "plasma". Absent where
 	 *  nobody knows — Venus's core, which the tides allow to be solid. */
 	state?: string;
+	/** "ice_i", "ice_v", "ice_vi", … — which crystal structure a solid took,
+	 *  where the pressure picks one. It supersedes `state`: "solid water" is
+	 *  true of both an ice shell and the ice mantle far below it. */
+	phase?: string;
 	/** "core_size_disputed", "shell_thickness_modelled", … — provenance
 	 *  metadata, except "continental_crust_only" which renames the layer. */
 	note?: string;

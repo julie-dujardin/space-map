@@ -39,6 +39,7 @@
 	"interior_state_partial_melt": "منصهرة جزئيًا",
 	"interior_state_fluid": "مائعة",
 	"interior_state_plasma": "بلازما",
+	"interior_phase_ice": "جليد {numeral}",
 	"structure_interior": "الباطن",
 	"structure_atmosphere": "الغلاف الجوي",
 	"structure_layer_atmosphere": "الغلاف الجوي",

@@ -7,6 +7,7 @@
  */
 
 import * as m from '$lib/paraglide/messages.js';
+import { ltrIsolate } from '$lib/format/bidi';
 
 const LAYER_NAME: Record<string, () => string> = {
 	crust: m.interior_layer_crust,
@@ -33,6 +34,17 @@ const STATE_NAME: Record<string, () => string> = {
 	plasma: m.interior_state_plasma
 };
 
+/** The numeral rather than a message key per polymorph: ice VI is ice VI in
+ *  every language, so one parameterized name covers the phases we ship and the
+ *  ones we do not yet. */
+const ICE_NUMERAL: Record<string, string> = {
+	ice_i: 'I',
+	ice_iii: 'III',
+	ice_v: 'V',
+	ice_vi: 'VI',
+	ice_vii: 'VII'
+};
+
 /** Notes that name the shell instead of footnoting it: what the numbers are of
  *  is the shell's identity, and Earth's crust card is entirely continental.
  *  Every other layer note is provenance metadata a card already conveys — the
@@ -50,6 +62,17 @@ export function layerName(role: string, note?: string): string {
 		return role;
 	}
 	return fn();
+}
+
+/** Null where the phase is one we have no name for, so the caller can fall back
+ *  to the state rather than print a key. */
+export function phaseName(phase: string): string | null {
+	const numeral = ICE_NUMERAL[phase];
+	if (!numeral) {
+		console.warn(`Missing interior phase name: ${phase}`);
+		return null;
+	}
+	return m.interior_phase_ice({ numeral: ltrIsolate(numeral) });
 }
 
 export function stateName(state: string): string {

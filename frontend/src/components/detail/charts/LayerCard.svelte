@@ -17,7 +17,7 @@
 	import type { InteriorBand } from '$lib/charts/interior-cross-section';
 	import type { CompositionSegment } from '$lib/charts/composition-bar';
 	import type { TemperatureBracket } from '$lib/charts/layer-appearance';
-	import { layerName, stateName } from '$lib/charts/interior-layers';
+	import { layerName, phaseName, stateName } from '$lib/charts/interior-layers';
 	import {
 		materialSegments,
 		materialName,
@@ -93,11 +93,16 @@
 	});
 
 	// What the layer is, in the words the data actually supports: its phase and
-	// its dominant material, then the caveat the source attached.
+	// its dominant material, then the caveat the source attached. A named
+	// polymorph stands in for both — "ice VI" already says solid water, and
+	// says which of the two solid-water layers this one is.
 	let descriptor = $derived.by(() => {
 		const bits: string[] = [];
 		const material = layer.composition[0];
-		if (layer.state && material) {
+		const phase = layer.phase ? phaseName(layer.phase) : null;
+		if (phase) {
+			bits.push(phase);
+		} else if (layer.state && material) {
 			bits.push(`${stateName(layer.state)} ${materialName(material.material)}`);
 		} else if (material) {
 			bits.push(materialName(material.material));

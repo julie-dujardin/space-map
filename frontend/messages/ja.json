@@ -39,6 +39,7 @@
 	"interior_state_partial_melt": "部分溶融",
 	"interior_state_fluid": "流体",
 	"interior_state_plasma": "プラズマ",
+	"interior_phase_ice": "氷{numeral}",
 	"structure_interior": "内部",
 	"structure_atmosphere": "大気",
 	"structure_layer_atmosphere": "大気",

@@ -1182,6 +1182,7 @@
 	"interior_state_partial_melt": "partly molten",
 	"interior_state_fluid": "fluid",
 	"interior_state_plasma": "plasma",
+	"interior_phase_ice": "ice {numeral}",
 	"structure_interior": "Interior",
 	"structure_atmosphere": "Atmosphere",
 	"structure_layer_atmosphere": "Atmosphere",

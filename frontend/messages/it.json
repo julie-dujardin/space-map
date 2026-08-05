@@ -39,6 +39,7 @@
 	"interior_state_partial_melt": "parzialmente fuso",
 	"interior_state_fluid": "fluido",
 	"interior_state_plasma": "plasma",
+	"interior_phase_ice": "ghiaccio {numeral}",
 	"structure_interior": "Interno",
 	"structure_atmosphere": "Atmosfera",
 	"structure_layer_atmosphere": "Atmosfera",

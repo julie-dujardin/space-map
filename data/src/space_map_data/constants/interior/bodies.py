@@ -852,6 +852,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=2187.7,
                 derived=True,
                 state="solid",
+                phase="ice_vi",
             ),
             Layer(
                 role="mantle",
@@ -938,6 +939,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=2178.3,
                 derived=True,
                 state="solid",
+                phase="ice_v",
             ),
             Layer(
                 role="bulk",
@@ -1025,6 +1027,10 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=2212.4,
                 derived=True,
                 state="solid",
+                # Vance's phase, not Goossens's: the gravity solution sees one
+                # hydrosphere, and ice VI is what the 1400 kg/m³ above was.
+                phase="ice_vi",
+                phase_source="vance_2018",
             ),
             Layer(
                 role="core",

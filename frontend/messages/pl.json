@@ -39,6 +39,7 @@
 	"interior_state_partial_melt": "częściowo stopione",
 	"interior_state_fluid": "płynne",
 	"interior_state_plasma": "plazma",
+	"interior_phase_ice": "lód {numeral}",
 	"structure_interior": "Wnętrze",
 	"structure_atmosphere": "Atmosfera",
 	"structure_layer_atmosphere": "Atmosfera",

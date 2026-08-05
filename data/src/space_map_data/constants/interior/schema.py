@@ -110,10 +110,10 @@ NOTES = frozenset(
     }
 )
 
-# `Layer.state` values. What phase the layer is in, which is the other half
-# of what a reader wants under a layer's name: "liquid iron alloy" says more
-# than "core". Left unset wherever a source stops short of it — Venus's core
-# is the case in point, where the tides allow a solid one and nobody knows.
+# `Layer.state` values — the state of matter, which is the other half of what a
+# reader wants under a layer's name: "liquid iron alloy" says more than "core".
+# Left unset wherever a source stops short of it — Venus's core is the case in
+# point, where the tides allow a solid one and nobody knows.
 STATES = frozenset(
     {
         "solid",
@@ -121,6 +121,20 @@ STATES = frozenset(
         "partial_melt",  # solid with melt through it, not a magma ocean
         "fluid",  # no phase boundary to cross; the giants' envelopes
         "plasma",
+    }
+)
+
+# `Layer.phase` values — which crystal structure a solid layer took, where the
+# pressure picks one and the source names it. "Solid water" is true of the ice
+# shell and of the ice mantle 800 km below it, and the difference between them
+# is the whole reason the second layer exists.
+PHASES = frozenset(
+    {
+        "ice_i",  # ordinary ice, the only phase stable at surface pressures
+        "ice_iii",
+        "ice_v",
+        "ice_vi",
+        "ice_vii",
     }
 )
 
@@ -171,6 +185,13 @@ class Layer(NamedTuple):
     # because Juno measured the tidal response twenty-four years later.
     state: str | None = None
     state_source: str | None = None
+    # One of PHASES, for a solid whose polymorph the source names. Usually the
+    # same model as the geometry — the phase is what fixed the density the
+    # thicknesses were solved with — so `phase_source` is only for where it is
+    # not: Titan, whose layers are a gravity solution that sees one hydrosphere
+    # and cannot tell which ice is at the bottom of it.
+    phase: str | None = None
+    phase_source: str | None = None
     note: str | None = None
     # True where the mass fraction is arithmetic on the source's radii and
     # densities rather than a number the source quotes. Ships through to the

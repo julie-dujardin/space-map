@@ -39,6 +39,7 @@
 	"interior_state_partial_melt": "частично расплавленное",
 	"interior_state_fluid": "флюидное",
 	"interior_state_plasma": "плазма",
+	"interior_phase_ice": "лёд {numeral}",
 	"structure_interior": "Недра",
 	"structure_atmosphere": "Атмосфера",
 	"structure_layer_atmosphere": "Атмосфера",

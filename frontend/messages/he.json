@@ -39,6 +39,7 @@
 	"interior_state_partial_melt": "מותכת חלקית",
 	"interior_state_fluid": "נוזלית-גזית",
 	"interior_state_plasma": "פלזמה",
+	"interior_phase_ice": "קרח {numeral}",
 	"structure_interior": "פנים הגוף",
 	"structure_atmosphere": "אטמוספירה",
 	"structure_layer_atmosphere": "אטמוספירה",

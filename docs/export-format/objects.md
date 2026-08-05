@@ -114,6 +114,7 @@ interface GlobalObjectData {
       mass_fraction?: number;         // of the whole body; absent where a source gives geometry but no mass (the Sun)
       mass_fraction_range?: [number, number]; // the published width, where there is one
       state?: string;                 // "solid" | "liquid" | "partial_melt" | "fluid" | "plasma"; absent where nobody knows
+      phase?: string;                 // "ice_i" | "ice_iii" | "ice_v" | "ice_vi" | "ice_vii" — which crystal structure a solid took, where the pressure picks one and the source names it; the high-pressure ice mantles of Ganymede, Callisto and Titan today
       note?: string;                  // "core_size_disputed", "shell_thickness_modelled", …; provenance metadata, except "continental_crust_only" which renames the layer
       derived?: true;                 // the mass is our arithmetic on the source's radii and densities, not a number it quotes
       diffuse?: true;                 // no boundary to draw: `outer_radius_km` is where it fades out, not where it ends
@@ -484,6 +485,12 @@ a gap or an overshoot at the surface. `derived` marks a mass that is our own
 arithmetic on the source's radii and densities, and `diffuse` a layer with no
 boundary at all — Jupiter's core is heavy elements smeared through the envelope,
 so its radius is where it fades out.
+
+`state` is the state of matter; `phase` is which crystal structure a solid took,
+and only appears where the pressure picks one and the source names it. "Solid
+water" is true of an icy moon's shell and of the ice mantle 800 km below it, and
+that difference is the whole reason the second layer exists — so a consumer with
+a `phase` should say "ice VI" and drop the state, rather than print both.
 
 Temperature runs on the boundaries rather than on the shells, because that is
 the form the literature publishes: a geotherm is quoted at the Moho, at 660 km,
