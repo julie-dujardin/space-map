@@ -252,6 +252,18 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     source="mcdonough_1995",
                 ),
                 state="solid",
+                # The Moho, and the only end of the mantle anyone measures
+                # directly. Eight Canadian Shield provinces spanning Archean to
+                # Paleozoic, all modelled at a 40 km Moho — which is the
+                # thickness the continental crust above is drawn at — come out
+                # between 287 and 705 C, and six of the eight fall within 20 C
+                # of 425. The width is real geology rather than error: it is
+                # the difference between a cold craton and the Wopmay Orogen.
+                # Active extensional provinces run hotter still and are not in
+                # the set, so read the top of the range as a floor.
+                outer_temperature_k=700.0,
+                outer_temperature_range_k=(560.0, 980.0),
+                temperature_sources=("jaupart_2007",),
             ),
             Layer(
                 role="outer_core",
@@ -259,6 +271,9 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 composition=(Component(METAL, 1.0, "mcdonough_2003"),),
                 source="mcdonough_2003",
                 outer_radius_km=3480.0,
+                # McDonough tabulates the core as one body rather than in two
+                # pieces; it stands as the outer core's because the inner core
+                # is 5% of the mass, which is inside the estimate's own width.
                 # The light elements are alloyed into the metal rather than
                 # sitting as a separate sulphide phase, so the layer stays one
                 # material and the split lives here.
@@ -287,6 +302,31 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 composition=(Component(METAL, 1.0, "mcdonough_2003"),),
                 source="mcdonough_2003",
                 outer_radius_km=1221.5,
+                # Cleaner than the outer core's and known far less precisely.
+                # The inner core is 4-5% less dense than pure iron at the same
+                # pressure, so a couple of percent of it is light elements, but
+                # only nickel has a number rather than a bound:
+                #   Ni 5, S 0-1.1, Si 0-2.3, C 0-1.3, H 0-0.23 wt%
+                # Below is the middle of each bound, which sums to 2.5 wt% of
+                # light elements and so lands where the density deficit wants
+                # it; no individual figure is a measurement. Silicon is the
+                # element most often proposed and is the one to distrust — an
+                # Fe-Si inner core matches the density and the P-wave speed and
+                # then fails the high Vp/Vs the seismology sees. Oxygen is left
+                # out entirely: it does not partition into the solid at all,
+                # which is part of why the boundary is a density step.
+                detail=Detail(
+                    unit=ELEMENT_WEIGHT,
+                    entries=(
+                        ("Fe", 0.9253),
+                        ("Ni", 0.050),
+                        ("Si", 0.0115),
+                        ("C", 0.0065),
+                        ("S", 0.0055),
+                        ("H", 0.0012),
+                    ),
+                    source="hirose_2021",
+                ),
                 state="solid",
                 # The one boundary in any planet fixed by a phase change we can
                 # reproduce: the inner core ends where iron freezes. Pure iron
@@ -297,6 +337,12 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 temperature_sources=("anzellini_2013",),
             ),
         ),
+        # The inner core is close to isentropic and only 1221 km deep, so the
+        # centre sits a few hundred kelvin above the boundary above it rather
+        # than a few thousand. Shipped without a bracket because the review
+        # quotes none: the spread is the inner-core boundary's, carried down.
+        centre_temperature_k=6000.0,
+        centre_temperature_sources=("wilson_2025",),
     ),
     # Mars, and a core that got smaller after everyone had finished quoting it.
     # InSight's first answer put the core-mantle boundary at 1830 ± 40 km with
@@ -395,6 +441,14 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=1825.0,
                 derived=True,
                 state="liquid",
+                # The layer's temperature rather than its ceiling's: 150 km of
+                # liquid rock is thin enough that the inversions quote one
+                # range for the whole of it. What the number is for is the Mg
+                # number — only an iron-rich melt, Mg/(Mg+Fe) of 0.2-0.3, stays
+                # liquid this cold, which is the same enrichment its density
+                # asks for.
+                outer_temperature_range_k=(2000.0, 2300.0),
+                temperature_sources=("khan_2023",),
             ),
             Layer(
                 role="outer_core",
@@ -1459,6 +1513,12 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 derived=True,
                 diffuse=True,
                 state="fluid",
+                # Off the same model profile the radius came from, at the
+                # 400 GPa step where its density jumps: hydrogen goes metallic
+                # 9000 K down, a third of the way into the planet. Where the
+                # helium rains out is where the sky stops being a sky.
+                outer_temperature_k=9000.0,
+                temperature_sources=("nettelmann_2012",),
             ),
             # Half the planet's radius: 0.50 r_J is what the dilute-core models
             # need to fit Juno's J₄, against 0.15 for the compact core they

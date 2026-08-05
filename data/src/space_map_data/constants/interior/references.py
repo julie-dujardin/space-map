@@ -27,6 +27,11 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "https://doi.org/10.1016/B0-08-043751-6/02015-6",
         "Earth's inner core, outer core and mantle masses; core element budget",
     ),
+    "hirose_2021": InteriorReference(
+        "Hirose, Wood & Vočadlo 2021 (Nature Reviews Earth & Environment 2)",
+        "https://doi.org/10.1038/s43017-021-00203-6",
+        "Light-element budget of Earth's inner core",
+    ),
     "mcdonough_1995": InteriorReference(
         "McDonough & Sun 1995 (Chemical Geology 120)",
         "https://doi.org/10.1016/0009-2541(94)00140-4",
@@ -297,6 +302,17 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "Nomura et al. 2014 (Science 343)",
         "https://doi.org/10.1126/science.1248186",
         "Earth's core-mantle boundary temperature, bounded by the pyrolite solidus",
+    ),
+    "wilson_2025": InteriorReference(
+        "Wilson et al. 2025 (Nature Reviews Earth & Environment 6)",
+        "https://doi.org/10.1038/s43017-024-00639-6",
+        "Temperature at the centre of the Earth",
+    ),
+    "jaupart_2007": InteriorReference(
+        "Jaupart & Mareschal 2007 (Treatise on Geophysics 6.05)",
+        "https://doi.org/10.1016/B978-044452748-6.00104-8",
+        "Temperature at the base of the continental crust, across eight "
+        "Canadian Shield provinces",
     ),
     "guillot_2005": InteriorReference(
         "Guillot 2005 (Annu. Rev. Earth Planet. Sci. 33)",
