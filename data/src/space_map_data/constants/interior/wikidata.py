@@ -1,9 +1,14 @@
 """Wikidata topic pages behind the interior panel.
 
 The thinnest section of the four. English Wikipedia has a dedicated
-interior article for Earth and the Moon only; Italian carries a complete
-"Struttura interna di X" series that covers nine more bodies and nothing
-else does. Mars is the one body where two items both apply.
+interior article for Earth and the Moon only; Italian carries a
+"Struttura interna di X" series that covers seven more bodies and nothing
+else does.
+
+That series predates Juno, InSight and Margot 2021, so on the giants it
+describes a layering our own cross-section declines to draw. It ships anyway:
+it is the right kind of article, and no amount of curation here keeps a
+Wikipedia lead current.
 
 Values are tuples because one topic occasionally splits across two Wikidata
 items with disjoint sitelinks — no single item covers every language. Nothing
@@ -17,8 +22,8 @@ written or merged — treat the comments as of 2026-07-31.
 """
 
 # Keyed by body id. Io, Europa, Callisto, Enceladus, Dione, Triton, Charon,
-# Ceres and Vesta have no interior article anywhere; Venus has one but no
-# INTERIOR_FACTS row yet.
+# Ceres and Vesta have no interior article anywhere, which leaves 10 of the 31
+# bodies the Structure tab draws a cutaway for.
 INTERIOR_PAGES: dict[str, tuple[str, ...]] = {
     "naif-10": ("Q619448",),  # solar core — en fr ja zh ar ru pt it es he
     "naif-199": ("Q3976185",),  # internal structure of Mercury — it
@@ -27,19 +32,24 @@ INTERIOR_PAGES: dict[str, tuple[str, ...]] = {
     "naif-301": ("Q1358214",),
     # internal structure of Earth — en fr ja zh ar ru pt de it es he
     "naif-399": ("Q1664027",),
-    # Two items with disjoint sitelinks, and not quite the same topic: the
-    # first is about what Mars is made of, the second how it is layered.
-    # Q5156794 composition of Mars — en zh ar ru es
-    # Q3976184 struttura interna di Marte — it
-    "naif-499": ("Q5156794", "Q3976184"),
+    "naif-499": ("Q3976184",),  # struttura interna di Marte — it
     "naif-503": ("Q3976183",),  # internal structure of Ganymede — it
     "naif-599": ("Q3976182",),  # internal structure of Jupiter — it
-    "naif-606": ("Q63523002",),  # internal structure of Titan — it
     "naif-699": ("Q3976188",),  # internal structure of Saturn — it
     "naif-799": ("Q3976189",),  # internal structure of Uranus — it
     "naif-899": ("Q3976186",),  # internal structure of Neptune — it
-    "naif-999": ("Q3976187",),  # internal structure of Pluto — it
 }
+
+# Three articles are deliberately absent, each contentless in every language it
+# has rather than merely dated, so a link would spend the reader's click on a
+# sentence they already have. Re-check before re-adding, not after:
+#   Q5156794 composition of Mars (en zh ar ru es) — "the composition of Mars
+#     covers the branch of the geology of Mars that describes the make-up of
+#     the planet Mars", and nothing more, in all five.
+#   Q63523002 struttura interna di Titano (it) — says only that Cassini-Huygens
+#     improved our understanding of it.
+#   Q3976187 struttura interna di Plutone (it) — the same sentence, for
+#     New Horizons.
 
 # Keyed by the material vocabulary in ``constants.interior.schema``. These are
 # the closest standing article to each bucket, not a definition of it —

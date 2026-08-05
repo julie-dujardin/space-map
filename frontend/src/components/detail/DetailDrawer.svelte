@@ -642,6 +642,11 @@
 	// Feature names come from Wikidata labels outside English, where the
 	// catalogue's own names are used.
 	let ringNamesLocalized = $derived(ringLocalized.some((f) => f.name));
+	// The Structure tab's own credit: the two topic blurbs are the only licensed
+	// text on it, and either one alone earns the CC BY-SA line.
+	let structureProseFromWikipedia = $derived(
+		!!data?.localized?.interior_page?.extract || !!data?.localized?.atmosphere_page?.extract
+	);
 	let showFragmentsTab = $derived(hasFragments && fragmentTotal > STRIP_CAPACITY);
 
 	// Undo shadcn's flex-1: a tab is as wide as its label, so a full bar's slack
@@ -1241,8 +1246,8 @@
 
 {#snippet structurePanel()}
 	<div class="flex flex-col gap-5 p-1">
-		<Structure global={data?.global ?? null} />
-		<SourcesFooter global={data?.global ?? null} />
+		<Structure global={data?.global ?? null} localized={data?.localized ?? null} />
+		<SourcesFooter global={data?.global ?? null} wikipediaLicensed={structureProseFromWikipedia} />
 	</div>
 {/snippet}
 

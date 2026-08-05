@@ -18,7 +18,7 @@
 	 * the layer then shows none.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
-	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { crossSection } from '$lib/charts/interior-cross-section';
 	import { atmosphereProfile, drawableTopKm } from '$lib/charts/atmosphere-cross-section';
 	import { atmosphereNoteBesideChart, atmosphereTypeName } from '$lib/charts/atmosphere-layers';
@@ -27,6 +27,7 @@
 	import { ltrIsolate } from '$lib/format/bidi';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
+	import TopicSummary from './kit/TopicSummary.svelte';
 	import AtmosphereComposition, { hasCompositionBar } from './kit/AtmosphereComposition.svelte';
 	import InteriorCrossSection from '../charts/InteriorCrossSection.svelte';
 	import AtmosphereCrossSection from '../charts/AtmosphereCrossSection.svelte';
@@ -34,9 +35,10 @@
 
 	interface Props {
 		global: GlobalObjectData | null;
+		localized: LocalizedObjectData | null;
 	}
 
-	let { global }: Props = $props();
+	let { global, localized }: Props = $props();
 
 	let layers = $derived(global?.interior?.layers ?? []);
 	let structure = $derived(global?.atmosphere?.structure);
@@ -111,6 +113,12 @@
 
 {#if hasChart || hasBar}
 	<Section title={m.structure_atmosphere()} meta={atmosphereMeta}>
+		<!-- "Atmosphere of X", where this locale has it. The tab is otherwise
+		     charts and numbers end to end, so this is the only place a reader is
+		     told in words what they are looking at, and it opens the section. -->
+		{#snippet header()}
+			<TopicSummary page={localized?.atmosphere_page} />
+		{/snippet}
 		<!-- What kind of atmosphere this is, then what the drawing cannot show:
 		     that the whole envelope comes and goes. Mars freezes a quarter of its
 		     air onto the winter cap, and the stack below is the half of the year
@@ -134,6 +142,7 @@
 {#if section}
 	<Section title={m.structure_interior()} meta={interiorMeta}>
 		{#snippet header()}
+			<TopicSummary page={localized?.interior_page} />
 			<InteriorCrossSection
 				{section}
 				atmosphereColor={gasColor}

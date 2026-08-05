@@ -674,6 +674,11 @@ export interface LocalizedObjectData {
 	ring_features?: Record<string, LocalizedRingFeature>;
 	/** The "Rings of X" article in this locale — the ring panel's opening blurb. */
 	ring_system?: LocalizedRingFeature;
+	/** "Internal structure of X" in this locale, for the Structure tab. Thin
+	 *  coverage: 10 bodies, 7 of them Italian-only. */
+	interior_page?: TopicPage;
+	/** "Atmosphere of X" in this locale, for the Structure tab. */
+	atmosphere_page?: TopicPage;
 	/** notable-moon Object.id → localized label, only where it differs from the global name. */
 	notable_moon_names?: Record<string, string>;
 	/** notable-moon Object.id → localized Wikidata short description, for the planet-page moon lineup hover tooltip. */
@@ -738,6 +743,15 @@ export interface RingFeature {
 export interface LocalizedRingFeature {
 	name?: string;
 	extract?: string;
+	url?: string;
+}
+
+/** A Wikipedia article about a topic rather than about the body — "Atmosphere
+ *  of Mars", not "Mars". Only present for locales that have the article; the
+ *  extract is always set, since a link with nothing to introduce it renders
+ *  nothing. */
+export interface TopicPage {
+	extract: string;
 	url?: string;
 }
 

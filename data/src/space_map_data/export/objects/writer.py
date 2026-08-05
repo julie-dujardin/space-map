@@ -52,6 +52,10 @@ from space_map_data.export.objects.temperature import (
     heliocentric_distance_au,
     temperature_block,
 )
+from space_map_data.export.objects.topic_pages import (
+    atmosphere_page_localized,
+    interior_page_localized,
+)
 from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.small_body_color import resolve_moon_color
 from space_map_data.export.quantities import UnitConverter
@@ -784,5 +788,14 @@ def _build_localized(
     ring_system = ring_system_localized(obj.id, lang, wikidata_entities)
     if ring_system:
         data["ring_system"] = ring_system
+
+    # The Structure tab's two blurbs. Which sections exist is the tab's call,
+    # not ours — a blurb for a section it doesn't draw simply goes unread.
+    interior_page = interior_page_localized(obj.id, lang)
+    if interior_page:
+        data["interior_page"] = interior_page
+    atmosphere_page = atmosphere_page_localized(obj.id, lang)
+    if atmosphere_page:
+        data["atmosphere_page"] = atmosphere_page
 
     return data

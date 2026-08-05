@@ -633,6 +633,14 @@ interface LocalizedObjectData {
     extract?: string;
     url?: string;
   };
+  interior_page?: {                 // "Internal structure of X" — the Structure tab's interior blurb. 10 bodies, 7 of them Italian-only
+    extract: string;                // always set: an article whose intro extract comes back empty is dropped rather than shipped as a bare link
+    url?: string;
+  };
+  atmosphere_page?: {               // "Atmosphere of X" — the Structure tab's atmosphere blurb. 17 bodies, 12 with an English article
+    extract: string;
+    url?: string;
+  };
   wikipedia?: {
     extract?: string;
     description?: string;
