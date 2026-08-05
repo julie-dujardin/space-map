@@ -47,6 +47,19 @@ logger = logging.getLogger(__name__)
 # composition, and would draw a full bar of itself.
 _MIN_SPECIES = 2
 
+# Which datum a flat `Pressure.level` is a reading at. Sea level and the areoid
+# are the surface with a shape attached; a cloud top is a level inside the
+# atmosphere and no datum at all.
+_DATUM_OF_LEVEL = {
+    "surface": "surface",
+    "sea_level": "surface",
+    "areoid": "surface",
+    "photosphere": "photosphere",
+    "one_bar": "one_bar",
+}
+
+_ONE_BAR_PA = 1.0e5
+
 
 def atmosphere_block(object_id: str) -> dict | None:
     """Build the `atmosphere` block for `object_id`, or None if the body has no
@@ -99,7 +112,7 @@ def atmosphere_block(object_id: str) -> dict | None:
     structure = ATMOSPHERE_STRUCTURE.get(object_id)
     if structure is not None:
         _validate_structure(object_id, structure)
-        block["structure"] = _structure(object_id, structure)
+        block["structure"] = _structure(object_id, structure, facts)
         sources.extend(_structure_source_keys(structure))
 
     block["sources"] = [
@@ -109,7 +122,7 @@ def atmosphere_block(object_id: str) -> dict | None:
     return block
 
 
-def _structure(object_id: str, structure: BodyStructure) -> dict:
+def _structure(object_id: str, structure: BodyStructure, facts: BodyFacts) -> dict:
     """The vertical stack, lowest layer first.
 
     Each layer is described by its top; its base is the layer below's top, and
@@ -123,6 +136,9 @@ def _structure(object_id: str, structure: BodyStructure) -> dict:
     datum_k = _datum_temperature(object_id, structure)
     if datum_k is not None:
         out["datum_temperature_k"] = datum_k
+    datum_pa = _datum_pressure(object_id, structure, facts)
+    if datum_pa is not None:
+        out["datum_pressure_pa"] = datum_pa
     if structure.homopause_km is not None:
         out["homopause_km"] = structure.homopause_km
     if structure.homopause_pressure_pa is not None:
@@ -204,6 +220,44 @@ def _datum_temperature(object_id: str, structure: BodyStructure) -> float | None
         wanted,
     )
     return None
+
+
+def _datum_pressure(
+    object_id: str, structure: BodyStructure, facts: BodyFacts
+) -> float | None:
+    """The pressure at altitude 0, which is the lowest layer's base.
+
+    The mirror of `_datum_temperature`: without it that layer states only the
+    boundary at its top, and Earth's troposphere reads as 226 mb under a 1 bar
+    sky. On a datum the body already quotes a pressure at it is that number,
+    read from the flat facts so the two cannot drift; on the giants the datum
+    *is* one bar, by definition rather than by measurement.
+    """
+    if structure.datum == "one_bar":
+        return _ONE_BAR_PA
+    if facts.pressure is None:
+        return None
+    if _DATUM_OF_LEVEL.get(facts.pressure.level) != structure.datum:
+        logger.info(
+            "%s: its pressure is quoted at %s, not at the %s its layers hang "
+            "off, so its lowest layer ships with an open base",
+            object_id,
+            facts.pressure.level,
+            structure.datum,
+        )
+        return None
+    # A non-detection limit is not a reading to span a layer between: Mercury's
+    # "below 5·10⁻¹⁰ Pa" as the bottom of a range would be the most confident
+    # number on the chart.
+    if facts.pressure.qualifier == "upper_limit":
+        logger.info(
+            "%s: its %s pressure is an upper limit, so its lowest layer ships "
+            "with an open base",
+            object_id,
+            facts.pressure.level,
+        )
+        return None
+    return facts.pressure.pascals
 
 
 def _structure_source_keys(structure: BodyStructure) -> list[str]:

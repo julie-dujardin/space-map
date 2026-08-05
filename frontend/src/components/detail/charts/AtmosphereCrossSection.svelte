@@ -12,9 +12,9 @@
 	 *
 	 * The limb's centre sits left of the frame so the right half stays clear for
 	 * the labels. Each carries the layer's temperature from bottom to top beside
-	 * the name, and the height and pressure of its top boundary under it — the
-	 * layout the interior cross-section uses, so temperature is in the same place
-	 * on both halves of the tab.
+	 * the name — the layout the interior cross-section uses, so temperature is in
+	 * the same place on both halves of the tab — and under it the height of its
+	 * top boundary, with the pressure spanning the layer the same way.
 	 *
 	 * Bottom to top rather than one reading, because the data describes every
 	 * layer by its top: Venus's tropopause is 245 K under a 737 K surface, and a
@@ -33,7 +33,7 @@
 		stackedRows
 	} from '$lib/charts/label-fit';
 	import { formatKm, formatKmRange } from '$lib/format/distance';
-	import { formatPressure } from '$lib/format/pressure';
+	import { formatPressure, formatPressureSpan } from '$lib/format/pressure';
 	import { formatKelvin, formatKelvinRange, formatKelvinSpan } from '$lib/format/temperature';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import * as Tooltip from '$lib/components/ui/tooltip';
@@ -115,44 +115,52 @@
 		return `M ${ax} ${ay} A ${PLANET_R} ${PLANET_R} 0 0 1 ${bx} ${by} L ${bx} ${H} L ${ax} ${H} Z`;
 	}
 
+	interface Format {
+		one: (value: number) => string;
+		span: (bottom: number, top: number) => string;
+	}
+
+	const KELVIN: Format = { one: formatKelvin, span: formatKelvinSpan };
+	const PRESSURE: Format = {
+		one: (pa) => ltrIsolate(formatPressure(pa)),
+		span: (bottom, top) => ltrIsolate(formatPressureSpan(bottom, top))
+	};
+
 	/**
-	 * What the layer runs between, on the name line — the same place the interior
-	 * cross-section puts a layer's temperature.
+	 * What the layer runs between, bottom first.
 	 *
 	 * One end is missing wherever the profile is: Neptune's stratosphere is
-	 * unmeasured above its tropopause, and no exosphere ends anywhere. Those read
-	 * as open rather than as a layer sitting at one temperature.
+	 * unmeasured above its tropopause, no exosphere ends anywhere, and pressure
+	 * is pinned on far fewer boundaries than temperature — Pluto's whole stack
+	 * has none. Those read as open rather than as a layer sitting at one value.
 	 */
-	function temperature(band: AtmosphereBand): string | null {
-		const bottom = band.baseTemperatureK;
-		const top = band.layer.top_temperature_k;
-		if (bottom !== null && top !== undefined) return formatKelvinSpan(bottom, top);
-		if (top !== undefined) return m.structure_temperature_up_to({ value: formatKelvin(top) });
-		if (bottom !== null) return m.structure_temperature_from({ value: formatKelvin(bottom) });
+	function span(bottom: number | null, top: number | undefined, format: Format): string | null {
+		if (bottom !== null && top !== undefined) return format.span(bottom, top);
+		if (top !== undefined) return m.structure_span_up_to({ value: format.one(top) });
+		if (bottom !== null) return m.structure_span_from({ value: format.one(bottom) });
 		return null;
 	}
 
-	/** Where the boundary is and what the air is down to there. */
-	function readings(layer: { top_km?: number; top_pressure_pa?: number }): string {
-		const bits: string[] = [];
-		if (layer.top_km !== undefined) bits.push(km(layer.top_km));
-		if (layer.top_pressure_pa !== undefined)
-			bits.push(ltrIsolate(formatPressure(layer.top_pressure_pa)));
-		return bits.join(' · ');
+	function temperature(band: AtmosphereBand): string | null {
+		return span(band.baseTemperatureK, band.layer.top_temperature_k, KELVIN);
+	}
+
+	function pressure(band: AtmosphereBand): string | null {
+		return span(band.basePressurePa, band.layer.top_pressure_pa, PRESSURE);
 	}
 
 	/**
 	 * The hover, which is where each number is said to belong to an end rather
 	 * than to the layer. Stacked the way the layer is: its top first, then the
-	 * width published around that boundary, then the base it stands on.
-	 *
-	 * Everything on the top line is the top boundary, including the pressure,
-	 * which is a quarter of the surface's on Earth.
+	 * width published around that boundary, then the base it stands on. Each end
+	 * reads height, pressure, temperature, in that order.
 	 */
 	function tooltip(band: AtmosphereBand): string[] {
 		const lines: string[] = [];
 		const layer = band.layer;
-		const top = [readings(layer)].filter(Boolean);
+		const top: string[] = [];
+		if (layer.top_km !== undefined) top.push(km(layer.top_km));
+		if (layer.top_pressure_pa !== undefined) top.push(PRESSURE.one(layer.top_pressure_pa));
 		if (layer.top_temperature_k !== undefined) top.push(formatKelvin(layer.top_temperature_k));
 		if (top.length) lines.push(m.structure_layer_top({ value: top.join(' · ') }));
 
@@ -165,9 +173,10 @@
 			);
 		if (widths.length) lines.push(m.structure_boundary_spread({ value: widths.join(' · ') }));
 
-		if (band.baseTemperatureK !== null) {
-			lines.push(m.structure_layer_bottom({ value: formatKelvin(band.baseTemperatureK) }));
-		}
+		const bottom: string[] = [];
+		if (band.basePressurePa !== null) bottom.push(PRESSURE.one(band.basePressurePa));
+		if (band.baseTemperatureK !== null) bottom.push(formatKelvin(band.baseTemperatureK));
+		if (bottom.length) lines.push(m.structure_layer_bottom({ value: bottom.join(' · ') }));
 		// Last, and only where it applies: the one thing the drawing gets wrong
 		// belongs on the band that is drawn wrong, not under the whole chart.
 		if (band.capped) lines.push(m.structure_atmosphere_capped());
@@ -213,9 +222,18 @@
 </script>
 
 <!-- The leader line and the two text lines, shared so that a row reads the same
-     whether or not it has anything to say on hover. -->
+     whether or not it has anything to say on hover. Both spans right-align, one
+     under the other, with the boundary's height under the name: temperature and
+     pressure describe the same two ends of the same layer, and a column of them
+     reads as one pair rather than as two unrelated readings.
+
+     Where a name and its temperature cannot share a line the temperature takes
+     the second line's right and the pressure falls back beside the height. Only
+     the Sun's names run that long, and none of its boundaries has a pressure. -->
 {#snippet label(row: Row, i: number)}
 	{@const value = temperature(row.band)}
+	{@const air = pressure(row.band)}
+	{@const topKm = row.band.layer.top_km}
 	<path
 		d="M {SCRIM_X - 26} {row.anchorY} L {GUTTER - 4} {row.labelY - 3} L {GUTTER} {row.labelY - 3}"
 		class="stroke-border fill-none"
@@ -236,8 +254,18 @@
 		</text>
 	{/if}
 	<text x={GUTTER + 4} y={row.labelY + SECOND_LINE_DY} class="fill-muted-foreground text-[9px]">
-		{readings(row.band.layer)}
+		{[topKm !== undefined ? km(topKm) : '', stacked[i] ? air : ''].filter(Boolean).join(' · ')}
 	</text>
+	{#if air && !stacked[i]}
+		<text
+			x={W - 2}
+			y={row.labelY + SECOND_LINE_DY}
+			text-anchor="end"
+			class="fill-muted-foreground text-[9px]"
+		>
+			{air}
+		</text>
+	{/if}
 {/snippet}
 
 <div class="bg-muted/25 border-border/60 overflow-hidden rounded-md border p-2">

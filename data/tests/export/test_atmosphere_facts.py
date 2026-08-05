@@ -104,6 +104,20 @@ class TestStructure:
         assert _block("naif-299")["structure"]["datum_temperature_k"] == 737.0
         assert _block("naif-10")["structure"]["datum_temperature_k"] == 5772.0
 
+    def test_the_base_pressure_is_the_bodys_own_reading(self):
+        """Same chaining as the temperature: read off the flat facts rather
+        than restated, so the stat block and the cross-section agree."""
+        assert _block("naif-299")["structure"]["datum_pressure_pa"] == 9.2e6
+        # Earth's is quoted at sea level, which is the surface its layers hang
+        # off.
+        assert _block("naif-399")["structure"]["datum_pressure_pa"] == 1.014e5
+
+    def test_giants_hang_off_one_bar_exactly(self):
+        """Their flat pressure is the cloud deck, a level inside the
+        atmosphere; the datum is 1 bar by definition."""
+        for object_id in ("naif-599", "naif-699", "naif-799", "naif-899"):
+            assert _block(object_id)["structure"]["datum_pressure_pa"] == 1.0e5
+
     def test_giants_state_their_own_1_bar_temperature(self):
         """They have no surface to read, so the datum carries a cited value
         and the work behind it joins the block."""

@@ -157,6 +157,22 @@ describe('atmosphere cross-section', () => {
 		expect(profile.bands.map((b) => b.baseTemperatureK)).toEqual([288.15, 216.65, 270.65]);
 	});
 
+	it('chains the base pressure the same way, from the datum up', () => {
+		const profile = atmosphereProfile({
+			datum: 'surface',
+			datum_pressure_pa: 101400,
+			layers: [
+				{ role: 'troposphere', top_km: 11, top_pressure_pa: 22632 },
+				{ role: 'stratosphere', top_km: 51, top_pressure_pa: 66.939 },
+				// Pluto's boundaries are heights alone, and a layer over one of
+				// them has nothing under it either.
+				{ role: 'mesosphere', top_km: 84.85 },
+				{ role: 'thermosphere', top_km: 600 }
+			]
+		})!;
+		expect(profile.bands.map((b) => b.basePressurePa)).toEqual([101400, 22632, 66.939, null]);
+	});
+
 	it('carries the base across the cap, where the layer below is drawn to scale', () => {
 		const profile = atmosphereProfile({
 			datum: 'surface',

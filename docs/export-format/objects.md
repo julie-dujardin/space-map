@@ -73,6 +73,7 @@ interface GlobalObjectData {
     structure?: {                     // named vertical layers, for the Structure tab's cross-section (12 bodies)
       datum: "surface" | "one_bar" | "photosphere"; // what altitude 0 means; giants hang off 1 bar and run negative below it
       datum_temperature_k?: number;   // temperature at the datum, so the lowest layer has a base as well as a top
+      datum_pressure_pa?: number;     // and the pressure there — the block's own `pressure` where it is quoted at the datum, 1 bar on the giants
       layers: Array<{                 // lowest first; a layer's base is the one below's top, the lowest one's base is `datum`
         role: string;                 // "boundary_layer" | "troposphere" | "stratosphere" | "mesosphere" | "thermosphere" | "exosphere" | "photosphere" | "chromosphere" | "transition_region" | "corona"
         top_km?: number;              // height of the boundary above `datum`
@@ -439,14 +440,18 @@ block: below the homopause an atmosphere is well mixed, and repeating the
 body's numbers per layer would be one measurement written five times.
 
 Every reading on a layer is its **top**, so a layer is only readable as a layer
-once the base is chained in: it is the layer below's `top_temperature_k`, and
-for the lowest one it is `datum_temperature_k`. Skip that and Venus's
-troposphere reads 245 K, its tropopause, on a planet whose surface is 737 K.
-`datum_temperature_k` is the body's measured surface temperature — the same
-value the `temperatures` block carries — except on the four giants, whose datum
-is the 1 bar level and who state one of their own. Either end can still be
-missing where nobody measured it: nothing pins Neptune's profile between its
-tropopause and its thermosphere, and no exosphere has a top.
+once the base is chained in: it is the layer below's `top_temperature_k` or
+`top_pressure_pa`, and for the lowest one it is `datum_temperature_k` or
+`datum_pressure_pa`. Skip that and Venus's troposphere reads 245 K, its
+tropopause, on a planet whose surface is 737 K. `datum_temperature_k` is the
+body's measured surface temperature — the same value the `temperatures` block
+carries — except on the four giants, whose datum is the 1 bar level and who
+state one of their own. `datum_pressure_pa` is the block's own `pressure`,
+shipped only where that is quoted at the datum (never a `cloud_top`, never an
+`upper_limit`); on the giants it is 1 bar by definition of the datum. Either
+end can still be missing where nobody measured it: nothing pins Neptune's
+profile between its tropopause and its thermosphere, and no exosphere has a
+top.
 
 The cross-section draws to scale up to the highest layer that is *not*
 `thermosphere`, `exosphere` or `corona`; those three are capped to a fixed band

@@ -513,6 +513,9 @@ export interface AtmosphereStructure {
 	 *  between. The body's surface reading, or the 1 bar temperature on a
 	 *  giant. */
 	datum_temperature_k?: number;
+	/** And the pressure there — the block's own `pressure` where that is quoted
+	 *  at the datum, 1 bar on the giants. */
+	datum_pressure_pa?: number;
 	/** Above it species sort by mass and the body's single composition stops
 	 *  describing anything. */
 	homopause_km?: number;

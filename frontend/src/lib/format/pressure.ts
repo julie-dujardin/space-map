@@ -14,10 +14,37 @@ export const EARTH_SEA_LEVEL_PA = 101400;
  * stop being countable.
  */
 export function formatPressure(pa: number): string {
-	if (!Number.isFinite(pa) || pa <= 0) return '';
-	if (pa >= 1e3) return `${sig(pa / 1e5, 3)} ${formatUnit('bar', true)}`;
-	if (pa >= 1e-2) return `${sig(pa, 3)} ${formatUnit('pascal', true)}`;
-	return `${scientific(pa)} ${formatUnit('pascal', true)}`;
+	const parts = pressureParts(pa);
+	return parts ? `${parts.value} ${parts.unit}` : '';
+}
+
+/** The number and its unit apart, so a span can say the unit once. */
+function pressureParts(pa: number): { value: string; unit: string } | null {
+	if (!Number.isFinite(pa) || pa <= 0) return null;
+	if (pa >= 1e3) return { value: sig(pa / 1e5, 3), unit: formatUnit('bar', true) };
+	const value = pa >= 1e-2 ? sig(pa, 3) : scientific(pa);
+	return { value, unit: formatUnit('pascal', true) };
+}
+
+// The temperature span's separator, so a layer's two readings read as a pair.
+const SPAN_SEPARATOR = ' – ';
+
+/**
+ * The two ends of a layer, bottom first — the pressure counterpart of
+ * `formatTemperatureSpan`.
+ *
+ * Each end carries its own unit wherever they differ, which across a layer they
+ * usually do: Earth's stratosphere runs from 0.226 bar to 66.9 Pa, and saying
+ * the unit once would be off by four orders of magnitude.
+ */
+export function formatPressureSpan(bottomPa: number, topPa: number): string {
+	const a = pressureParts(bottomPa);
+	const b = pressureParts(topPa);
+	if (!a || !b) return formatPressure(bottomPa) || formatPressure(topPa);
+	// Ends that round to the same figure are one reading, not a span of it.
+	if (a.value === b.value && a.unit === b.unit) return `${a.value} ${a.unit}`;
+	const bottom = a.unit === b.unit ? a.value : `${a.value} ${a.unit}`;
+	return `${bottom}${SPAN_SEPARATOR}${b.value} ${b.unit}`;
 }
 
 /**

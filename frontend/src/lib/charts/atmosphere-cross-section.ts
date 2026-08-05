@@ -29,6 +29,9 @@ export interface AtmosphereBand {
 	 *  where the profile has a gap: nothing measures Neptune between its
 	 *  tropopause and its thermosphere. */
 	baseTemperatureK: number | null;
+	/** The same chain for pressure, which is pinned on far fewer boundaries —
+	 *  Pluto's whole stack has none. */
+	basePressurePa: number | null;
 	/** Drawn at a fixed size rather than to scale; the label carries the real
 	 *  height, where the source gives one. */
 	capped: boolean;
@@ -74,7 +77,8 @@ export function atmosphereProfile(structure: AtmosphereStructure): AtmospherePro
 	const stack = layers.map((layer, i) => ({
 		layer,
 		baseTemperatureK:
-			(i === 0 ? structure.datum_temperature_k : layers[i - 1].top_temperature_k) ?? null
+			(i === 0 ? structure.datum_temperature_k : layers[i - 1].top_temperature_k) ?? null,
+		basePressurePa: (i === 0 ? structure.datum_pressure_pa : layers[i - 1].top_pressure_pa) ?? null
 	}));
 	const scaled = stack.filter((l) => !CAPPED_ROLES.has(l.layer.role));
 	const capped = stack.filter((l) => CAPPED_ROLES.has(l.layer.role));
