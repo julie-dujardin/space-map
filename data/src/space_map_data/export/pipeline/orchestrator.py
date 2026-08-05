@@ -1126,11 +1126,13 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # the global object bundles are sealed — it mutates `global_data` in
         # place to inject the per-probe attitude manifest under `attitude`.
         write_attitude(out_dir, agg.all_objects.global_data)
+        # Hand-authored extra objects (no DB row) fold into the bundles here.
+        # Before the pointing config below, which addresses objects by id and
+        # would report these as missing if they had not arrived yet.
+        inject_manual_objects(agg.all_objects, wikidata_entities)
         # Hand-edited per-spacecraft pointing config; injects `pointing` into
         # matching object entries for the frontend's focused-model attitude.
         apply_orientation_config(agg.all_objects.global_data)
-        # Hand-authored extra objects (no DB row) fold into the bundles here.
-        inject_manual_objects(agg.all_objects, wikidata_entities)
         # Coverage rides the global bundle (like attitude) — only read for the
         # focused probe; must land before the bundles are sealed below.
         _inject_probe_coverage(agg.all_objects.global_data, probe_coverage)

@@ -6,10 +6,12 @@ the automated providers can't discover, merged at search/export time.
 - ``aliases.json`` — ``{object_id: {lang: [alias, ...]}}``, extra search names.
 - ``objects.json`` — objects with no DB row / position chunk, folded into the
   regular object bundles at export (export/manual.py):
-  ``{id, wikidata_qid, parent_id, elements, radius_km, model_slug}``. Use an
-  ``extra-<n>`` id so it routes to ``/u/<n>``. Each ``wikidata_qid`` is fetched
-  into the manual Wikidata subdir so the Wikipedia downloader gives it a
-  description.
+  ``{id, wikidata_qid, parent_id, elements, radius_km, model_slug, interior}``.
+  Use an ``extra-<n>`` id so it routes to ``/u/<n>``. Each ``wikidata_qid`` is
+  fetched into the manual Wikidata subdir so the Wikipedia downloader gives it
+  a description. ``interior`` is ``BodyInterior`` in JSON plus its own
+  ``sources`` table, since these bodies are not in ``references.py``; see
+  ``export/objects/interior.interior_from_mapping``.
 """
 
 import logging

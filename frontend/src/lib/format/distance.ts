@@ -20,8 +20,13 @@ export function formatDistance(au: number): string {
 	return formatQuantity(convertDistance(au), true);
 }
 
-/** "84.85 km". */
+/** "84.85 km", or metres under a kilometre — three decimals of a km is "0 km"
+ *  for anything smaller, and a layer nobody can read the thickness of may as
+ *  well not be drawn. */
 export function formatKm(value: number): string {
+	if (value !== 0 && Math.abs(value) < 1) {
+		return formatQuantity({ value: value * 1000, unit: 'metre' }, true);
+	}
 	return formatQuantity({ value, unit: 'kilometre' }, true);
 }
 
@@ -31,12 +36,18 @@ export function formatKm(value: number): string {
  * collapse to one value rather than taking `formatRange`'s "~" approximation.
  */
 export function formatKmRange(fromKm: number, toKm: number): string {
+	// Both ends in metres or neither: a range whose units disagree end to end
+	// reads as two quantities rather than one span. The wider end decides.
+	const widest = Math.max(Math.abs(fromKm), Math.abs(toKm));
+	const metres = widest !== 0 && widest < 1;
+	const [from_, to_] = metres ? [fromKm * 1000, toKm * 1000] : [fromKm, toKm];
+
 	const format = new Intl.NumberFormat(
 		getLocale(),
-		precisionOptions(Math.max(Math.abs(fromKm), Math.abs(toKm)))
+		precisionOptions(metres ? widest * 1000 : widest)
 	);
-	const unit = formatUnit('kilometre', true);
-	const from = format.format(fromKm);
-	if (from === format.format(toKm)) return `${from} ${unit}`;
-	return `${format.formatRange(fromKm, toKm)} ${unit}`;
+	const unit = formatUnit(metres ? 'metre' : 'kilometre', true);
+	const from = format.format(from_);
+	if (from === format.format(to_)) return `${from} ${unit}`;
+	return `${format.formatRange(from_, to_)} ${unit}`;
 }

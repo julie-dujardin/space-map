@@ -463,7 +463,7 @@ which carries `scale_height_km` instead.
 
 ### `interior`
 
-Two routes, one shape. Bodies a mission or a seismometer actually constrained
+Three routes, one shape. Bodies a mission or a seismometer actually constrained
 have a hand-curated layer model in
 `data/src/space_map_data/constants/interior/bodies.py` (31 today); asteroids
 that only have a spectrum get their meteorite analogue's bulk chemistry from
@@ -471,6 +471,11 @@ that only have a spectrum get their meteorite analogue's bulk chemistry from
 so the panel can say "estimated from its S-type spectrum" rather than "is". A
 layer model always wins where a body has both — Dawn's gravity beats the fact
 that V-types look like HEDs.
+
+The third is for objects that have no database row to hang a constant off: the
+hand-authored overlay carries the layer model in the entry itself, along with
+its own citations, and it reaches this same shape through the same roll-up and
+the same checks. Nothing in the exported block says which route it took.
 
 Two shapes ship with it. The roll-up, one share per material summed over the
 layers, is what the Overview's composition chart draws and all the estimate

@@ -1,10 +1,12 @@
 """Per-object interior stat block, denormalized onto a body's global bundle.
 
-Two sources feed one shape. A body a mission actually constrained has a layer
+Three sources feed one shape. A body a mission actually constrained has a layer
 model in `constants/interior/bodies.py`; an asteroid that only has a spectrum
 gets its meteorite analogue's bulk chemistry from `constants/interior/
 taxonomy.py`, and ships flagged as an estimate so the panel can say "estimated
-from its S-type spectrum" rather than "is".
+from its S-type spectrum" rather than "is"; and a body carried by the
+hand-authored overlay brings its layer model with it, as data rather than as a
+constant (`interior_from_mapping`, for objects with no DB row at all).
 
 Two shapes ship. The whole-body roll-up — one share per material, summed over
 the layers — is what the Overview's single composition chart draws, and it is
@@ -24,7 +26,10 @@ seventeen bodies against thirty-one layer models.
 import logging
 
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
-from space_map_data.constants.interior.references import INTERIOR_SOURCES
+from space_map_data.constants.interior.references import (
+    INTERIOR_SOURCES,
+    InteriorReference,
+)
 from space_map_data.constants.interior.schema import (
     DETAIL_UNITS,
     LAYER_ROLES,
@@ -34,6 +39,8 @@ from space_map_data.constants.interior.schema import (
     STATES,
     STRUCTURES,
     BodyInterior,
+    Component,
+    Detail,
     Layer,
 )
 from space_map_data.constants.interior.taxonomy import (
@@ -90,9 +97,96 @@ def interior_block(object_id: str, taxonomy: dict) -> dict | None:
     return None
 
 
-def _from_layers(object_id: str, facts: BodyInterior) -> dict:
+def interior_from_mapping(object_id: str, mapping: dict) -> dict | None:
+    """Build the block for a body whose layer model arrives as data, not as a
+    constant — the hand-authored overlay in the download dir.
+
+    The mapping is `BodyInterior` in JSON, and takes the same route from there:
+    the same roll-up, the same sliver cut, the same enum and citation checks.
+    What it does not share is `references.py` — a body that is not in the
+    constants has nowhere to put a citation but next to the numbers it backs,
+    so the mapping carries its own `sources` table and layers key into it.
+
+    A malformed one costs the body its panel and nothing else: the overlay is
+    edited by hand and outside the repo, which is not somewhere a typo should
+    be able to take the whole export down with it.
+    """
+    try:
+        refs = INTERIOR_SOURCES | _references(mapping.get("sources") or {})
+        layers = tuple(_parse_layer(layer) for layer in mapping.get("layers") or ())
+        body = _named(
+            BodyInterior, {k: v for k, v in mapping.items() if k not in _BODY_OWN}
+        )
+        return _from_layers(object_id, BodyInterior(layers=layers, **body), refs)
+    except (AttributeError, TypeError, ValueError) as exc:
+        logger.warning(
+            "%s: unusable hand-authored interior (%s); shipping without one",
+            object_id,
+            exc,
+        )
+        return None
+
+
+# Handled before the generic pass: one is parsed into its own tuples, the other
+# is a table `BodyInterior` has no field for.
+_BODY_OWN = frozenset({"layers", "sources"})
+
+
+def _references(table: dict) -> dict[str, InteriorReference]:
+    """The mapping's own citations. No `contribution`: that column is the
+    /credits page's, which reads the constants rather than this."""
+    return {
+        key: InteriorReference(ref["title"], ref["url"], ref.get("contribution", ""))
+        for key, ref in table.items()
+    }
+
+
+def _parse_layer(mapping: dict) -> Layer:
+    composition = tuple(
+        Component(**_named(Component, c)) for c in mapping.get("composition") or ()
+    )
+    detail = mapping.get("detail")
+    return Layer(
+        composition=composition,
+        detail=_parse_detail(detail) if detail else None,
+        **_named(Layer, {k: v for k, v in mapping.items() if k not in _LAYER_OWN}),
+    )
+
+
+_LAYER_OWN = frozenset({"composition", "detail"})
+
+
+def _parse_detail(mapping: dict) -> Detail:
+    """A `[species, fraction]` pair per entry, in the order they are to be
+    drawn — JSON's only ordered container, where the constants use a tuple."""
+    fields = _named(Detail, mapping)
+    return Detail(**fields | {"entries": tuple(tuple(e) for e in fields["entries"])})
+
+
+def _named(cls, mapping: dict) -> dict:
+    """Keyword arguments for a schema NamedTuple, from its JSON spelling.
+
+    Read off `_fields` rather than listed here, so a field added to the schema
+    reaches this route without anyone remembering to come back. Tuples arrive
+    as JSON arrays; an unknown key is a typo in a hand-edited file and stops
+    the parse rather than being dropped silently.
+    """
+    unknown = set(mapping) - set(cls._fields)
+    if unknown:
+        raise ValueError(f"unknown {cls.__name__} field(s) {sorted(unknown)}")
+    return {
+        key: tuple(value) if isinstance(value, list) else value
+        for key, value in mapping.items()
+    }
+
+
+def _from_layers(
+    object_id: str,
+    facts: BodyInterior,
+    refs: dict[str, InteriorReference] = INTERIOR_SOURCES,
+) -> dict:
     """Roll a per-body layer model up into one composition."""
-    _validate(object_id, facts)
+    _validate(object_id, facts, refs)
 
     block: dict = {"structure": facts.structure}
     if facts.note is not None:
@@ -138,7 +232,7 @@ def _from_layers(object_id: str, facts: BodyInterior) -> dict:
 
     layers = [_layer(object_id, layer) for layer in facts.layers]
     block["layers"] = layers
-    block["sources"] = _sources(_layer_source_keys(facts, composition, layers))
+    block["sources"] = _sources(_layer_source_keys(facts, composition, layers), refs)
     return block
 
 
@@ -271,7 +365,8 @@ def _from_taxonomy(
     if entry.note is not None:
         block["note"] = entry.note
     block["sources"] = _sources(
-        [entry.source, *(c.source for c in entry.composition if c.material in shown)]
+        [entry.source, *(c.source for c in entry.composition if c.material in shown)],
+        INTERIOR_SOURCES,
     )
     return block
 
@@ -313,7 +408,9 @@ def _shares(
     ]
 
 
-def _validate(object_id: str, facts: BodyInterior) -> None:
+def _validate(
+    object_id: str, facts: BodyInterior, refs: dict[str, InteriorReference]
+) -> None:
     """Enum and citation check — a typo here would ship a body with an
     unlabelled tag or an uncredited number."""
     if facts.structure not in STRUCTURES:
@@ -326,6 +423,7 @@ def _validate(object_id: str, facts: BodyInterior) -> None:
         facts.centre_temperature_k,
         facts.centre_temperature_range_k,
         facts.centre_temperature_sources,
+        refs,
     )
     for layer in facts.layers:
         if layer.role not in LAYER_ROLES:
@@ -349,6 +447,7 @@ def _validate(object_id: str, facts: BodyInterior) -> None:
             layer.outer_temperature_k,
             layer.outer_temperature_range_k,
             layer.temperature_sources,
+            refs,
         )
 
 
@@ -358,6 +457,7 @@ def _validate_temperature(
     value: float | None,
     width: tuple[float, float] | None,
     sources: tuple[str, ...],
+    refs: dict[str, InteriorReference],
 ) -> None:
     """A boundary temperature has to be cited and has to be a temperature.
 
@@ -371,7 +471,7 @@ def _validate_temperature(
     if not sources:
         raise ValueError(f"{object_id}: {where} temperature has no source")
     for key in sources:
-        if key not in INTERIOR_SOURCES:
+        if key not in refs:
             raise ValueError(f"{object_id}: no such interior source {key}")
     if width is not None and not width[0] < width[1]:
         raise ValueError(f"{object_id}: {where} temperature range is not ascending")
@@ -382,11 +482,11 @@ def _validate_temperature(
             raise ValueError(f"{object_id}: {where} temperature is not above zero")
 
 
-def _sources(keys: list[str]) -> list[dict]:
+def _sources(keys: list[str], refs: dict[str, InteriorReference]) -> list[dict]:
     """Dedupe, first occurrence wins — the work behind the structure leads."""
     out = []
     for key in dict.fromkeys(keys):
-        ref = INTERIOR_SOURCES.get(key)
+        ref = refs.get(key)
         if ref is None:
             raise ValueError(f"no such interior source {key}")
         out.append({"title": ref.title, "url": ref.url})

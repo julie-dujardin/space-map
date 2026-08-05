@@ -14,6 +14,7 @@ from space_map_data.export.objects.wikidata_claims import (
     INSTANCE_OF_IGNORED,
     resolve_entity_ref,
 )
+from space_map_data.export.objects.interior import interior_from_mapping
 from space_map_data.export.objects.wikipedia import load_wikipedia_summaries_for_qid
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.wikidata import WikidataEntityCache
@@ -27,7 +28,12 @@ logger = logging.getLogger(__name__)
 
 
 def _global(entry: dict, name: str) -> dict:
-    """Language-independent bundle entry (mirrors export/objects/writer._build_global)."""
+    """Language-independent bundle entry (mirrors export/objects/writer._build_global).
+
+    An entry may carry an `interior` mapping, which takes the same route to the
+    same shape the constants do — the Overview's composition bar and the
+    Structure tab's cross-section both read it without knowing the difference.
+    """
     e = entry.get("elements") or {}
     data: dict = {"id": entry["id"], "type": "spacecraft", "name": name}
     if entry.get("model_slug"):
@@ -36,6 +42,10 @@ def _global(entry: dict, name: str) -> dict:
         data["cross_refs"] = {"wikidata_qid": entry["wikidata_qid"]}
     if entry.get("radius_km"):
         data["sbdb"] = {"diameter": entry["radius_km"] * 2}
+    if entry.get("interior"):
+        interior = interior_from_mapping(entry["id"], entry["interior"])
+        if interior is not None:
+            data["interior"] = interior
     # Mirrors writer.render_quality for these DB-less rows.
     if entry.get("model_slug"):
         data["render_quality"] = "high"

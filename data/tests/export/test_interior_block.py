@@ -1,12 +1,15 @@
 """The interior block: what the roll-up does to a layer model, and which of
-the two routes answers for a body."""
+the three routes answers for a body."""
 
 import pytest
 
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.interior.schema import BodyInterior, Component, Layer
-from space_map_data.export.objects.interior import interior_block
+from space_map_data.export.objects.interior import (
+    interior_block,
+    interior_from_mapping,
+)
 
 # (1) Ceres, C-class, in the spectral table — but Dawn flew there.
 CERES = "naif-2000001"
@@ -269,3 +272,97 @@ class TestSources:
         urls = {s["url"] for s in result["sources"]}
         assert INTERIOR_SOURCES["krot_2014"].url in urls
         assert INTERIOR_SOURCES["wasson_1988"].url not in urls
+
+
+MAPPED: dict = {
+    "structure": "differentiated",
+    "sources": {"a": {"title": "A work", "url": "https://example.invalid/a"}},
+    "layers": [
+        {
+            "role": "crust",
+            "outer_radius_km": 10.0,
+            "mass_fraction": 0.25,
+            "state": "solid",
+            "source": "a",
+            "composition": [{"material": "silicate", "fraction": 1.0, "source": "a"}],
+        },
+        {
+            "role": "core",
+            "outer_radius_km": 5.0,
+            "mass_fraction": 0.75,
+            "source": "a",
+            "composition": [{"material": "metal", "fraction": 1.0, "source": "a"}],
+        },
+    ],
+}
+
+
+def mapped(**overrides) -> dict | None:
+    return interior_from_mapping("test-mapped", MAPPED | overrides)
+
+
+class TestFromMapping:
+    """A layer model that arrives as data rather than as a constant, for the
+    objects that have no database row to key one off."""
+
+    def test_it_reaches_the_same_shape(self):
+        result = mapped()
+        assert result is not None
+        assert result["structure"] == "differentiated"
+        assert result["composition"] == [
+            {"material": "metal", "share": 0.75},
+            {"material": "silicate", "share": 0.25},
+        ]
+        assert [layer["role"] for layer in result["layers"]] == ["crust", "core"]
+        assert result["layers"][0]["state"] == "solid"
+
+    def test_a_layer_can_carry_a_finer_chemistry(self):
+        """Ordered pairs rather than an object, so the drawn order is the
+        file's order and not the JSON parser's."""
+        result = interior_from_mapping(
+            "test-mapped",
+            MAPPED
+            | {
+                "layers": [
+                    MAPPED["layers"][0]
+                    | {
+                        "detail": {
+                            "unit": "oxide_weight",
+                            "entries": [["SiO2", 0.6], ["Al2O3", 0.4]],
+                            "source": "a",
+                        }
+                    },
+                    MAPPED["layers"][1],
+                ]
+            },
+        )
+        assert result is not None
+        assert result["layers"][0]["detail"]["entries"] == [
+            {"species": "SiO2", "fraction": 0.6},
+            {"species": "Al2O3", "fraction": 0.4},
+        ]
+
+    def test_it_carries_its_own_citations(self):
+        """These bodies are not in `references.py`, so the mapping is the only
+        place a citation can live."""
+        result = mapped()
+        assert result is not None
+        assert result["sources"] == [
+            {"title": "A work", "url": "https://example.invalid/a"}
+        ]
+
+    @pytest.mark.parametrize(
+        "broken",
+        [
+            {"structure": "melted"},
+            {"layers": [{"role": "crust", "mass_fractionn": 1.0, "source": "a"}]},
+            {"centre_temperature_k": 300.0},
+            {"sources": {}},
+        ],
+        ids=["bad-enum", "typo-field", "uncited-temperature", "unknown-source"],
+    )
+    def test_a_broken_one_costs_only_its_own_panel(self, broken, caplog):
+        """The file is hand-edited and outside the repo; a typo there must not
+        take the export down with it."""
+        assert mapped(**broken) is None
+        assert "test-mapped" in caplog.text
