@@ -19,6 +19,8 @@ is what the panel draws around it.
 
 from space_map_data.constants.interior.schema import (
     BodyInterior,
+    COMPOUND_VOLUME,
+    COMPOUND_WEIGHT,
     Component,
     Detail,
     ELEMENT_WEIGHT,
@@ -29,6 +31,7 @@ from space_map_data.constants.interior.schema import (
     METAL,
     OXIDE_WEIGHT,
     SILICATE,
+    VOLATILE,
     WATER,
 )
 
@@ -199,22 +202,72 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     # Earth at 5.9736e24 kg against an inner core of 9.675e22, an outer core
     # of 1.835e24 and a mantle of 4.043e24 — so the core is 32.3% of the
     # planet and the inner core 5.0% of the core.
+    #
+    # The outer three layers are the only place in this file where the stack is
+    # not a stack. Ocean, continental crust and oceanic crust are laid out by
+    # radius, because that is the contract the cross-section reads, but the two
+    # crusts are side by side: the continents stand 41 km thick over 41% of the
+    # globe, the ocean floor is 6-7 km of basalt under 3.7 km of water over the
+    # rest, and there is no depth at which one becomes the other. Hence
+    # `area_fraction`, and hence the mantle's outer radius staying the
+    # continental Moho — the same boundary sits 30 km shallower at sea.
     "naif-399": BodyInterior(
         structure="differentiated",
         structure_source="dziewonski_1981",
         layers=(
+            # Charette & Smith re-derived the ocean from satellite altimetry:
+            # 1.33238e9 km³ over 361.841e6 km² at a mean depth of 3682 m, both
+            # to ±1.2%. The mass is that volume against seawater's density at
+            # its own mid-depth, which is where a near-linear ρ(p) averages —
+            # TEOS-10 gives 1036 kg/m³ at S_A 34.9 g/kg, 3.5 °C and 1841 dbar:
+            #   1.33238e18 m³ × 1036 = 1.380e21 kg / 5.9736e24 = 2.31e-4
+            # The width below is the volume's, which dominates: density spans
+            # only 1028 kg/m³ at the surface to 1044 at the deepest sea floor.
+            # Area is 361.841e6 / 4π(6371 km)² = 70.9% of the globe, and the
+            # sea floor sits at 6371 − 3.68 km.
+            Layer(
+                role="ocean",
+                mass_fraction=0.000231,
+                mass_fraction_range=(0.000228, 0.000234),
+                composition=(Component(WATER, 1.0, "millero_2008"),),
+                source="charette_smith_2010",
+                density_source="iapso_2010",
+                outer_radius_km=6371.0,
+                area_fraction=0.709,
+                derived=True,
+                # Reference Seawater as water and salt rather than as elements:
+                # Millero's solute mass fractions scaled onto S_R = 35.16504
+                # g/kg, leaving 964.835 g of H₂O. Broken into elements the
+                # table reads 86% oxygen and 11% hydrogen, which is true of
+                # every ocean anywhere and says nothing about this one. Ions
+                # keep their neutral formula.
+                detail=Detail(
+                    unit=COMPOUND_WEIGHT,
+                    entries=(
+                        ("H2O", 0.96483),
+                        ("Cl", 0.019353),
+                        ("Na", 0.010781),
+                        ("SO4", 0.0027124),
+                        ("Mg", 0.0012837),
+                        ("Ca", 0.00041208),
+                        ("K", 0.00039910),
+                    ),
+                    source="millero_2008",
+                ),
+                state="liquid",
+            ),
             Layer(
                 role="crust",
                 mass_fraction=0.0035,
                 composition=(Component(SILICATE, 1.0, "taylor_mclennan_2009"),),
                 source="taylor_mclennan_2009",
                 outer_radius_km=6371.0,
+                area_fraction=0.412,
                 note="continental_crust_only",
                 # Table 11.3's bulk continental crust, and with it that
                 # chapter's 41 km average thickness and 0.35% of Earth's mass.
-                # The oceanic crust is a fifth of the volume and none of these
-                # numbers; a global mean would have to blend the two, and the
-                # book gives no oceanic density to blend with.
+                # The appendix's 2.10e8 km² is 41.2% of the globe, which is
+                # also what fixes the ocean floor's area below.
                 detail=Detail(
                     unit=OXIDE_WEIGHT,
                     entries=(
@@ -231,9 +284,61 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 ),
                 state="solid",
             ),
+            # The ocean floor: everything the continents leave, which is
+            # 4π(6371 km)² − 2.10e8 km² = 3.00e8 km², or 58.8% of the globe.
+            # White & Klein put the crust there at 6.5 km thick, and Carlson &
+            # Raskin's three independent methods land on 2890 ± 40 kg/m³:
+            #   3.00e8 km² × 6.5 km = 1.95e9 km³ × 2890 = 5.64e21 kg
+            #   5.64e21 / 5.9736e24 = 9.4e-4
+            # The range is the thickness's, which is where all the argument is:
+            # Christeson's seismic synthesis averages 6.15 km over 2-D profiles
+            # (8.9e-4) and Taylor & McLennan quote a whole-ocean volume of
+            # 1.7e9 km³ (8.2e-4), while their own §8.2 says 6-7 km (up to
+            # 1.02e-3). Seismic profiles under-weight the oceanic plateaus,
+            # where the crust reaches 39 km, so read 6.15 as a floor.
+            #
+            # It is a fifth of the crust by mass and nothing like it in
+            # chemistry: half the potassium of a granite continent and twice
+            # the magnesium, because it is mantle melt that froze where it
+            # erupted rather than rock distilled through arcs for four billion
+            # years.
+            Layer(
+                role="oceanic_crust",
+                mass_fraction=0.00094,
+                mass_fraction_range=(0.00082, 0.00102),
+                composition=(Component(SILICATE, 1.0, "white_klein_2014"),),
+                source="white_klein_2014",
+                density_source="carlson_raskin_1984",
+                outer_radius_km=6367.3,
+                area_fraction=0.588,
+                derived=True,
+                # Table 7's bulk crust, which is the parental magma reconstructed
+                # from mean MORB rather than any rock anyone has held: the lavas
+                # of layer 2 are evolved melt and the gabbros of layer 3 are the
+                # crystals they left behind, so only the two together average to
+                # what came out of the mantle. Iron is the table's FeO(T).
+                detail=Detail(
+                    unit=OXIDE_WEIGHT,
+                    entries=(
+                        ("SiO2", 0.501),
+                        ("Al2O3", 0.157),
+                        ("CaO", 0.118),
+                        ("MgO", 0.103),
+                        ("FeO", 0.083),
+                        ("Na2O", 0.0221),
+                        ("TiO2", 0.011),
+                        ("K2O", 0.0011),
+                    ),
+                    source="white_klein_2014",
+                ),
+                state="solid",
+            ),
             Layer(
                 role="mantle",
-                mass_fraction=0.6733,
+                # McDonough's mantle is everything outside the core, so the two
+                # crusts and the ocean come out of it: 0.6768 − 0.0035 − 0.00094
+                # − 0.000231.
+                mass_fraction=0.6721,
                 composition=(Component(SILICATE, 1.0, "mcdonough_1995"),),
                 source="mcdonough_2003",
                 outer_radius_km=6330.0,
@@ -993,6 +1098,56 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
         structure_source="iess_2012",
         note="subsurface_ocean",
         layers=(
+            # The other liquid, and the only standing liquid on any surface but
+            # Earth's. Cassini's altimeter got a bottom echo through Ligeia,
+            # Punga and two arms of Kraken, which both proved the seas
+            # transparent — so methane-dominated, rather than the ethane sludge
+            # photochemistry had led everyone to expect — and calibrated
+            # bathymetry for the rest: ~7e4 km³ over 1.1% of the globe, a
+            # global-equivalent depth of about a metre. The volume is a lower
+            # limit; the main body of Kraken never returned a bottom.
+            #
+            # Density is the volume-weighted mix of the three pure liquids at
+            # Titan's surface, which is the same ideal-mixing assumption the
+            # loss-tangent inversion makes. NIST gives 447.5 kg/m³ for methane
+            # and 647.9 for ethane at 93.7 K and 1.467 bar, and 725.4 for
+            # nitrogen as saturated liquid at that temperature — nitrogen boils
+            # at 4.89 bar there, so it is in the sea only because it is
+            # dissolved in the hydrocarbons.
+            #   0.71×447.5 + 0.12×647.9 + 0.17×725.4 = 519 kg/m³
+            #   7e13 m³ × 519 = 3.63e16 kg / 1.3452e23 = 2.7e-7
+            # The range is the two pure hydrocarbon ends, 450 to 650, which is
+            # wider than anything the composition allows. A ten-millionth of
+            # the moon, against a subsurface ocean that is an eighth of it —
+            # nothing downstream turns on this digit, and the layer is here
+            # because the standing liquid is the fact.
+            Layer(
+                role="sea",
+                mass_fraction=2.7e-7,
+                mass_fraction_range=(2.3e-7, 3.4e-7),
+                composition=(Component(VOLATILE, 1.0, "hayes_2016"),),
+                source="hayes_2016",
+                density_source="nist_webbook",
+                outer_radius_km=2574.73,
+                area_fraction=0.011,
+                derived=True,
+                state="liquid",
+                # Ligeia Mare, from the best-fit loss tangent of the T91
+                # sounding against Mitchell's lab permittivities. The maria
+                # hold essentially all the volume, so they answer for the
+                # layer; the small southern lake Ontario Lacus is 560 km³ of
+                # the 70,000 and runs 49% CH₄ / 41% C₂H₆ / 10% N₂, which is
+                # the compositional spread nobody has explained yet.
+                detail=Detail(
+                    unit=COMPOUND_VOLUME,
+                    entries=(
+                        ("CH4", 0.71),
+                        ("N2", 0.17),
+                        ("C2H6", 0.12),
+                    ),
+                    source="hayes_2016",
+                ),
+            ),
             Layer(
                 role="ice_shell",
                 mass_fraction=0.0755,

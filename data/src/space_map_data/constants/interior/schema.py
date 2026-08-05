@@ -26,7 +26,10 @@ METAL = "metal"  # Fe-Ni metal
 SULFIDE = "sulfide"  # troilite and friends, the core's light-element carrier
 SILICATE = "silicate"  # anhydrous rock
 WATER = "water"  # ice, liquid, or structurally bound in phyllosilicates
-VOLATILE_ICE = "volatile_ice"  # CO₂, CH₄, N₂, NH₃, CO
+# CO₂, CH₄, C₂H₆, N₂, NH₃, CO. The substance, not the state — `Layer.state`
+# already says whether it is frozen, and Titan's seas are the same material
+# as Pluto's frosts.
+VOLATILE = "volatile"
 ORGANIC = "organic"  # carbonaceous matter
 HYDROGEN = "hydrogen"
 HELIUM = "helium"
@@ -43,7 +46,7 @@ MATERIALS = frozenset(
         SULFIDE,
         SILICATE,
         WATER,
-        VOLATILE_ICE,
+        VOLATILE,
         ORGANIC,
         HYDROGEN,
         HELIUM,
@@ -57,8 +60,19 @@ MATERIALS = frozenset(
 LAYER_ROLES = frozenset(
     {
         "crust",
+        # Earth's second crust, and the reason `area_fraction` exists: basalt
+        # under the sea against granite under the land, side by side rather
+        # than one above the other.
+        "oceanic_crust",
         "ice_shell",
+        # Liquid water, whether it lies on the surface or under an ice shell.
+        # Only Earth's is on top; the test that ties the `subsurface_ocean`
+        # note to a layer keys on which one it is.
         "ocean",
+        # Standing liquid that is not water and does not go round: Titan's
+        # maria. Kept apart from `ocean` because Titan has both, 100 km of ice
+        # apart, and one word for the two would be the worst place to use it.
+        "sea",
         "mantle",
         "ice_mantle",  # high-pressure ice below an ocean
         # Molten silicate resting on the core. Mars's is the only one anyone
@@ -103,9 +117,9 @@ NOTES = frozenset(
         # liquid water differ by too little in density for gravity to place
         # the base of an ice shell.
         "shell_thickness_modelled",
-        # Earth's crust as its continental crust: the thickness, mass and
-        # chemistry of the continents, with the thinner oceanic crust left out
-        # rather than averaged in.
+        # Earth's `crust` layer as its continental crust: the thickness, mass
+        # and chemistry of the continents, with the ocean floor carried
+        # separately as `oceanic_crust` rather than averaged in.
         "continental_crust_only",
     }
 )
@@ -138,12 +152,31 @@ PHASES = frozenset(
     }
 )
 
-# `Detail.unit` values — what the detailed composition is expressed in.
+# `Detail.unit` values — what the detailed composition is expressed in, named
+# <what>_<measure>. Each layer takes the one its own source publishes: rock
+# comes as oxides by weight, a core as elements by weight, a sea as the
+# molecules themselves, and nothing is converted between them here.
 OXIDE_WEIGHT = "oxide_weight"  # wt% of oxides, the usual geochemistry table
 ELEMENT_WEIGHT = "element_weight"
 MINERAL_VOLUME = "mineral_volume"
+# Whole molecules by mass, for the layers where the compound is the fact and
+# its elements are not: seawater is 96.5% H₂O and 3.5% salt, which "86% oxygen"
+# manages to say without saying. Dissolved ions ride here too, written as the
+# neutral formula — the charge is not what a reader is reading for.
+COMPOUND_WEIGHT = "compound_weight"
+# The same, by volume, which is how the radar sounding of a cryogenic liquid
+# reports itself.
+COMPOUND_VOLUME = "compound_volume"
 
-DETAIL_UNITS = frozenset({OXIDE_WEIGHT, ELEMENT_WEIGHT, MINERAL_VOLUME})
+DETAIL_UNITS = frozenset(
+    {
+        OXIDE_WEIGHT,
+        ELEMENT_WEIGHT,
+        MINERAL_VOLUME,
+        COMPOUND_WEIGHT,
+        COMPOUND_VOLUME,
+    }
+)
 
 
 class Component(NamedTuple):
@@ -178,6 +211,16 @@ class Layer(NamedTuple):
     composition: tuple[Component, ...]
     source: str  # backs mass_fraction and the layer's existence
     outer_radius_km: float | None = None
+    # Share of the body's surface the layer covers, for the layers that are
+    # patches rather than shells: Earth's ocean floors its 71%, its continents
+    # the other 41% of the crust's own area, and the two crusts meet at a
+    # coastline instead of a depth. Unset means a global shell, which is every
+    # other layer on every other body.
+    area_fraction: float | None = None
+    # Where the density that turned this layer's geometry into a mass is a
+    # different work from the geometry itself — the ocean's volume is
+    # bathymetry and its density an equation of state.
+    density_source: str | None = None
     detail: Detail | None = None
     # One of STATES. `state_source` is for the case where the phase is a
     # different work's result from the geometry — Io, whose layers are

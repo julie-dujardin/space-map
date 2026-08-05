@@ -1115,7 +1115,7 @@
 	"material_sulfide": "Sulfide",
 	"material_silicate": "Gestein",
 	"material_water": "Wasser",
-	"material_volatile_ice": "gefrorene Gase",
+	"material_volatile": "flüchtige Stoffe",
 	"material_organic": "Organik",
 	"material_hydrogen": "Wasserstoff",
 	"material_helium": "Helium",

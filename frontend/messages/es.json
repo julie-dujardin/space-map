@@ -1117,7 +1117,7 @@
 	"material_sulfide": "sulfuros",
 	"material_silicate": "roca",
 	"material_water": "agua",
-	"material_volatile_ice": "gases congelados",
+	"material_volatile": "volátiles",
 	"material_organic": "orgánicos",
 	"material_hydrogen": "hidrógeno",
 	"material_helium": "helio",

@@ -60,7 +60,7 @@ MATERIAL_PAGES: dict[str, tuple[str, ...]] = {
     "sulfide": ("Q6073081",),  # iron sulfide — en fr ja ar ru de es pl
     "silicate": ("Q7130787",),  # silicate — en fr ja zh ar ru pt es he pl
     "water": ("Q125745585",),  # phases of ice — en
-    "volatile_ice": ("Q864080",),  # clathrate hydrate — en fr ja zh ar ru pt de it es
+    "volatile": ("Q1306723",),  # volatiles — en fr zh ar pt es
     "organic": ("Q73017",),  # tholin — en fr ja zh ar ru pt de it es pl
     "hydrogen": ("Q428895",),  # metallic hydrogen — en fr ja zh ar ru pt de it es pl
     "helium": ("Q560",),  # helium — all 12

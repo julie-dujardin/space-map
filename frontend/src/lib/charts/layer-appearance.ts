@@ -22,7 +22,7 @@ const MATERIAL_RGB: Record<string, RGB> = {
 	sulfide: [160, 139, 79], // troilite, brassy
 	silicate: [111, 95, 78], // anhydrous rock
 	water: [43, 108, 176], // the ocean; ice is WATER_ICE, chosen by isIce()
-	volatile_ice: [214, 232, 238], // CO₂, N₂, CH₄ frosts
+	volatile: [214, 232, 238], // CO₂, N₂, CH₄ — frost on Pluto, sea on Titan
 	organic: [63, 52, 43], // carbonaceous matter
 	hydrogen: [201, 183, 154],
 	helium: [232, 222, 208],

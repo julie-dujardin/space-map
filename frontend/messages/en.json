@@ -1225,7 +1225,7 @@
 	"material_sulfide": "sulphides",
 	"material_silicate": "rock",
 	"material_water": "water",
-	"material_volatile_ice": "frozen gases",
+	"material_volatile": "volatiles",
 	"material_organic": "organics",
 	"material_hydrogen": "hydrogen",
 	"material_helium": "helium",

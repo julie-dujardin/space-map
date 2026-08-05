@@ -104,13 +104,15 @@ interface GlobalObjectData {
     centre_temperature_k?: number;    // at r=0; closes the innermost layer's span. Present where a body has a published centre rather than a boundary — the Sun and the four giants, whose dilute cores have no radius to hang a boundary on
     centre_temperature_range_k?: [number, number]; // usually the whole claim, the value above being absent: Jupiter's 15000–36000 K is classical adiabat against post-Juno model, not an error bar
     composition?: Array<{             // whole-body roll-up, descending; omitted where layer masses are unknown (the Sun)
-      material: string;               // "metal" | "sulfide" | "silicate" | "water" | "volatile_ice" | "organic" | "hydrogen" | "helium" | "heavy_elements"
+      material: string;               // "metal" | "sulfide" | "silicate" | "water" | "volatile" | "organic" | "hydrogen" | "helium" | "heavy_elements"
       share: number;                  // normalized over the materials listed
     }>;
     layers?: Array<{                  // outermost first; layer-model route only, for the Structure tab's cross-section
-      role: string;                   // "crust" | "ice_shell" | "ocean" | "mantle" | "ice_mantle" | "magma" | "envelope" | "metallic_hydrogen" | "radiative_zone" | "convective_zone" | "core" | "outer_core" | "inner_core" | "bulk"
+      role: string;                   // "crust" | "oceanic_crust" | "ice_shell" | "ocean" | "sea" | "mantle" | "ice_mantle" | "magma" | "envelope" | "metallic_hydrogen" | "radiative_zone" | "convective_zone" | "core" | "outer_core" | "inner_core" | "bulk"
                                       // a role can repeat within one body: the Moon's mantle ships twice, solid over partly molten
+                                      // "ocean" is liquid water at any depth — Earth's is on the surface, everyone else's is under an ice shell. "sea" is standing liquid that is not water, i.e. Titan's maria, which sit 100 km above Titan's own "ocean"
       outer_radius_km: number;        // the source's own R, which is not the body's exported mean radius — normalize the disc to the outermost layer
+      area_fraction?: number;         // share of the globe the layer covers, on the layers that are patches rather than shells. Earth's ocean 0.709, continental crust 0.412, oceanic crust 0.588; Titan's seas 0.011. Layers carrying one are still ordered by radius, but they overlap in depth — Earth's two crusts meet at a coastline, not at a boundary
       mass_fraction?: number;         // of the whole body; absent where a source gives geometry but no mass (the Sun)
       mass_fraction_range?: [number, number]; // the published width, where there is one
       state?: string;                 // "solid" | "liquid" | "partial_melt" | "fluid" | "plasma"; absent where nobody knows
@@ -126,7 +128,8 @@ interface GlobalObjectData {
         share_range?: [number, number];
       }>;
       detail?: {                      // finer chemistry where the literature gives one (7 layers today)
-        unit: "oxide_weight" | "element_weight" | "mineral_volume";
+        unit: "oxide_weight" | "element_weight" | "mineral_volume" | "compound_weight" | "compound_volume";
+                                      // whichever the layer's own source publishes; nothing is converted between them. The compound units carry whole molecules — seawater as H₂O and salt, Titan's seas as CH₄/N₂/C₂H₆ — and dissolved ions appear there under their neutral formula
         entries: Array<{ species: string; fraction: number }>; // descending, as the source tabulates them
       };
     }>;

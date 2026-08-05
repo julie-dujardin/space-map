@@ -1133,7 +1133,7 @@
 	"material_sulfide": "siarczki",
 	"material_silicate": "skała",
 	"material_water": "woda",
-	"material_volatile_ice": "zamarznięte gazy",
+	"material_volatile": "substancje lotne",
 	"material_organic": "związki organiczne",
 	"material_hydrogen": "wodór",
 	"material_helium": "hel",

@@ -127,7 +127,7 @@
 	--material-water: #437bda;
 	--material-sulfide: #099c6c;
 	--material-organic: #b02e40;
-	--material-volatile-ice: #0d94b0;
+	--material-volatile: #0d94b0;
 	/* Hydrogen and helium are the same substance in both charts, so they are
 	   the same swatch — referenced, not copied, because a gas giant draws the
 	   two bars one above the other and any drift between them shows. Heavy
@@ -269,7 +269,7 @@ body {
 	--material-water: #308bdf;
 	--material-sulfide: #2ba771;
 	--material-organic: #a73c3c;
-	--material-volatile-ice: #3fbcd4;
+	--material-volatile: #3fbcd4;
 	--material-hydrogen: var(--gas-h2);
 	--material-helium: var(--gas-he);
 	--material-heavy-elements: #bc8810;

@@ -107,7 +107,42 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "https://doi.org/10.1017/CBO9780511575358",
         "Bulk oxide compositions of the Martian, lunar highland and "
         "terrestrial continental crusts, and the continental crust's "
-        "thickness and share of Earth's mass",
+        "thickness, area and share of Earth's mass",
+    ),
+    "white_klein_2014": InteriorReference(
+        "White & Klein 2014 (Treatise on Geochemistry 4.13)",
+        "https://doi.org/10.1016/B978-0-08-095975-7.00315-6",
+        "Thickness and bulk oxide composition of Earth's oceanic crust",
+    ),
+    "carlson_raskin_1984": InteriorReference(
+        "Carlson & Raskin 1984 (Nature 311)",
+        "https://doi.org/10.1038/311555a0",
+        "Mean density of Earth's oceanic crust",
+    ),
+    "charette_smith_2010": InteriorReference(
+        "Charette & Smith 2010 (Oceanography 23)",
+        "https://doi.org/10.5670/oceanog.2010.51",
+        "Volume, area and mean depth of Earth's ocean from satellite altimetry",
+    ),
+    "millero_2008": InteriorReference(
+        "Millero et al. 2008 (Deep-Sea Research I 55)",
+        "https://doi.org/10.1016/j.dsr.2007.10.001",
+        "Reference Composition of seawater",
+    ),
+    "hayes_2016": InteriorReference(
+        "Hayes 2016 (Annu. Rev. Earth Planet. Sci. 44)",
+        "https://doi.org/10.1146/annurev-earth-060115-012247",
+        "Volume, area and ternary composition of Titan's lakes and seas",
+    ),
+    "nist_webbook": InteriorReference(
+        "NIST Chemistry WebBook (SRD 69)",
+        "https://webbook.nist.gov/chemistry/fluid/",
+        "Liquid methane and ethane densities at Titan's surface conditions",
+    ),
+    "iapso_2010": InteriorReference(
+        "IOC, SCOR & IAPSO 2010 (TEOS-10, IOC Manuals and Guides 56)",
+        "https://www.teos-10.org/pubs/TEOS-10_Manual.pdf",
+        "Seawater equation of state, for the ocean's mean in-situ density",
     ),
     "margot_2021": InteriorReference(
         "Margot et al. 2021 (Nature Astronomy 5)",

@@ -29,6 +29,8 @@ def _source_keys() -> set[str]:
         keys |= set(body.centre_temperature_sources)
         for layer in body.layers:
             keys.add(layer.source)
+            if layer.density_source:
+                keys.add(layer.density_source)
             if layer.state_source:
                 keys.add(layer.state_source)
             keys |= {c.source for c in layer.composition}
@@ -61,10 +63,11 @@ class TestBodies:
         """Ganymede shipped for a while as a body labelled "has a subsurface
         ocean" whose cross-section was solid ice from the surface to the rock.
         The note and the layer are the same claim and have to travel together,
-        in both directions."""
+        in both directions. What makes an ocean subsurface is having something
+        above it, which is why Earth's does not take the note."""
         body = INTERIOR_FACTS[object_id]
-        has_layer = any(layer.role == "ocean" for layer in body.layers)
-        assert has_layer == (body.note == "subsurface_ocean")
+        buried = any(layer.role == "ocean" for layer in body.layers[1:])
+        assert buried == (body.note == "subsurface_ocean")
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_layers_run_outermost_to_innermost(self, object_id: str):
@@ -76,6 +79,31 @@ class TestBodies:
             if layer.outer_radius_km is not None
         ]
         assert radii == sorted(radii, reverse=True)
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_a_partial_layer_covers_part_of_the_surface(self, object_id: str):
+        """`area_fraction` is what says a layer is a patch rather than a shell,
+        so 1.0 is not a value it can take — an unset field already means the
+        layer goes all the way round."""
+        for layer in INTERIOR_FACTS[object_id].layers:
+            if layer.area_fraction is not None:
+                assert 0.0 < layer.area_fraction < 1.0, layer.role
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_crusts_tile_the_whole_surface(self, object_id: str):
+        """Earth has two crusts and every point of it stands on one of them.
+        A body whose crusts left a gap would be missing a third."""
+        crusts = [
+            layer
+            for layer in INTERIOR_FACTS[object_id].layers
+            if layer.role.endswith("crust")
+        ]
+        if len(crusts) < 2:
+            return
+        assert all(layer.area_fraction is not None for layer in crusts)
+        assert sum(layer.area_fraction for layer in crusts) == pytest.approx(
+            1.0, abs=0.01
+        )
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_vocabularies_are_closed(self, object_id: str):

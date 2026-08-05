@@ -5,7 +5,7 @@
  * Colour follows the material, not its rank, so silicate reads the same ochre
  * on Mercury and on Pluto. Nine materials, but only two groups ever share a
  * bar — rock-and-ice bodies draw from {silicate, metal, water, sulfide,
- * organic, volatile_ice}, giants and stars from {hydrogen, helium,
+ * organic, volatile}, giants and stars from {hydrogen, helium,
  * heavy_elements} — so those are the sets the palette was separated across.
  * The pipeline drops anything under 0.5% of the body, so there is no trace
  * bucket here: what arrives is already the list worth drawing.
@@ -22,7 +22,7 @@ const KNOWN_MATERIALS = new Set([
 	'sulfide',
 	'silicate',
 	'water',
-	'volatile_ice',
+	'volatile',
 	'organic',
 	'hydrogen',
 	'helium',
@@ -34,7 +34,7 @@ const MATERIAL_NAME: Record<string, () => string> = {
 	sulfide: m.material_sulfide,
 	silicate: m.material_silicate,
 	water: m.material_water,
-	volatile_ice: m.material_volatile_ice,
+	volatile: m.material_volatile,
 	organic: m.material_organic,
 	hydrogen: m.material_hydrogen,
 	helium: m.material_helium,

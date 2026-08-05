@@ -247,6 +247,8 @@ def _layer(object_id: str, layer: Layer) -> dict:
     out: dict = {"role": layer.role}
     if layer.outer_radius_km is not None:
         out["outer_radius_km"] = layer.outer_radius_km
+    if layer.area_fraction is not None:
+        out["area_fraction"] = layer.area_fraction
     if layer.mass_fraction is not None:
         out["mass_fraction"] = _sig(layer.mass_fraction)
     if layer.mass_fraction_range is not None:
@@ -318,6 +320,8 @@ def _layer_source_keys(
     shown = {c["material"] for c in composition}
     for layer, drawn in zip(facts.layers, layers):
         keys.append(layer.source)
+        if layer.density_source is not None:
+            keys.append(layer.density_source)
         if layer.state_source is not None:
             keys.append(layer.state_source)
         if layer.phase_source is not None:
