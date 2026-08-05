@@ -25,6 +25,7 @@ from space_map_data.constants.atmosphere.photometry import (
     SUN_LIMB_DARKENING_ALPHA_RGB,
 )
 from space_map_data.export.atmospheres.absorber import absorber_band
+from space_map_data.export.atmospheres.conditions import render_conditions
 from space_map_data.export.atmospheres.phase import PHASE_N, build_phase_lut
 from space_map_data.export.atmospheres.profiles import (
     MIN_PROFILE_TOP_KM,
@@ -69,16 +70,17 @@ def build_atmospheres() -> dict:
                 asymmetry["b"],
             )
 
+        level = render_conditions(object_id, body)
         rayleigh_per_km = [
             rayleigh_beta_per_m(
-                body.composition, body.pressure_pa, body.temperature_k, wl
+                level.composition, level.pressure_pa, level.temperature_k, wl
             )
             * 1000.0
             for wl in RENDER_WAVELENGTHS_M.values()
         ]
-        molar_mass = mean_molar_mass_g_mol(body.composition)
+        molar_mass = mean_molar_mass_g_mol(level.composition)
         rayleigh_h_km = scale_height_km(
-            molar_mass, body.temperature_k, body.gravity_m_s2
+            molar_mass, level.temperature_k, body.gravity_m_s2
         )
         top_km = max(
             _TOP_RAYLEIGH_SCALE_HEIGHTS * rayleigh_h_km,
@@ -109,7 +111,7 @@ def build_atmospheres() -> dict:
             "refractivity": [
                 _sig(
                     mixture_refractivity(
-                        body.composition, body.pressure_pa, body.temperature_k, wl
+                        level.composition, level.pressure_pa, level.temperature_k, wl
                     ),
                     3,
                 )

@@ -22,6 +22,7 @@ from space_map_data.constants.atmosphere.seasonal import (
     MARS_PRESSURE_MBAR,
     MARS_SEASON_LS_DEG,
 )
+from space_map_data.export.atmospheres.conditions import render_conditions
 from space_map_data.export.atmospheres.rayleigh import (
     mean_molar_mass_g_mol,
     scale_height_km,
@@ -123,8 +124,9 @@ def mars_seasonal_table() -> dict:
     (normalised to the annual mean so the shipped 636 Pa datum is the mean).
     """
     mars = ATMOSPHERE_BODIES["naif-499"]
+    level = render_conditions("naif-499", mars)
     gas_h = scale_height_km(
-        mean_molar_mass_g_mol(mars.composition), mars.temperature_k, mars.gravity_m_s2
+        mean_molar_mass_g_mol(level.composition), level.temperature_k, mars.gravity_m_s2
     )
     aerosol_h = AEROSOLS[mars.aerosol].scale_height_km
     tau_min = min(MARS_DUST_TAU_VIS)

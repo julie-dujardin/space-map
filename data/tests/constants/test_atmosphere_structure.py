@@ -16,6 +16,7 @@ from space_map_data.constants.atmosphere.structure import (
 )
 from space_map_data.download.providers.psg import BODIES as PSG_BODIES
 from space_map_data.download.providers.psg import read_profile
+from space_map_data.export.objects.atmosphere import layer_temperature
 
 BODY_IDS = sorted(ATMOSPHERE_STRUCTURE)
 
@@ -78,7 +79,9 @@ class TestTable:
         for layer in ATMOSPHERE_STRUCTURE[object_id].layers:
             for value, span in (
                 (layer.top_km, layer.top_km_range),
-                (layer.top_temperature_k, layer.top_temperature_range_k),
+                # Resolved, not read off the field: a boundary that reads its
+                # temperature from the panel still has a range of its own.
+                (layer_temperature(object_id, layer), layer.top_temperature_range_k),
             ):
                 if span is None:
                     continue

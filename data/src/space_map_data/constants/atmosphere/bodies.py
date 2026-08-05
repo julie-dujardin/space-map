@@ -45,17 +45,30 @@ class RenderTuning(NamedTuple):
 
 
 class BodyAtmosphere(NamedTuple):
-    # Gas name -> volume (number) fraction at the reference level. Truncated
-    # tails are renormalised by the derivation, so fractions need not sum to 1.
-    composition: dict[str, float]
-    pressure_pa: float
-    temperature_k: float
+    """What rendering adds, and only that.
+
+    The three overrides below are each a claim that the published number
+    describes something other than what the shell is drawn from. Setting one
+    without that being true reintroduces the drift this table exists to
+    avoid; `export/atmospheres/conditions.py` resolves the rest.
+    """
+
     # Effective (rotation-included) gravity at the reference level — the
-    # NSSDCA "acceleration" rows for the fast-spinning giants.
+    # NSSDCA "acceleration" rows for the fast-spinning giants. Not published
+    # per level anywhere else, so it lives here.
     gravity_m_s2: float
     aerosol: str
     tuning: RenderTuning
     absorber: AbsorberBand | None = None
+    # Set where the shell renders from a level `facts.py` does not quote.
+    pressure_pa: float | None = None
+    # Set where the panel's headline reading is the wrong *quantity* for an
+    # exponential shell, not merely a different number.
+    temperature_k: float | None = None
+    # Gas name -> volume (number) fraction. Set only where the render holds a
+    # different epoch or rounding than the panel; truncated tails are
+    # renormalised by the derivation, so fractions need not sum to 1.
+    composition: dict[str, float] | None = None
 
 
 ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
@@ -66,9 +79,10 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
     # (8.87 surface, NSSDCA). Surface conditions (92 bar, 735 K) are NOT
     # rendered — the deck is opaque.
     "naif-299": BodyAtmosphere(
-        composition={"CO2": 0.965, "N2": 0.035},
+        # The panel quotes the 92-bar surface; the deck is opaque, so the
+        # shell starts at the cloud top. Its 245 K is the panel's own
+        # cloud-top reading and is read from there.
         pressure_pa=1.0e4,
-        temperature_k=245.0,
         gravity_m_s2=8.7,
         aerosol="h2so4_cloud",
         tuning=RenderTuning(
@@ -87,9 +101,9 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
     # Serdyuchenko/Gorshelev dataset (Gorshelev et al. 2014, AMT 7, 609;
     # doi:10.5281/zenodo.5793206).
     "naif-399": BodyAtmosphere(
-        composition={"N2": 0.7808, "O2": 0.2095, "Ar": 0.00934, "CO2": 0.00042},
+        # The one body with an exact defined sea level: 101325 Pa by
+        # definition, against the panel's rounded 1014 mb fact-sheet row.
         pressure_pa=101325.0,
-        temperature_k=288.15,
         gravity_m_s2=9.80665,
         aerosol="continental",
         tuning=RenderTuning(
@@ -118,8 +132,6 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
     # height, which is what an exponential shell needs. 210 K would give
     # 10.8 km and thin the column against the published profile.
     "naif-499": BodyAtmosphere(
-        composition={"CO2": 0.951, "N2": 0.0259, "Ar": 0.0194, "O2": 0.0016},
-        pressure_pa=636.0,
         temperature_k=214.0,
         gravity_m_s2=3.73,
         aerosol="mars_dust",
@@ -139,9 +151,7 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
     # (von Zahn et al. 1998) — the NSSDCA row still carries the Voyager-era
     # 10.2%. g: NSSDCA equatorial acceleration (rotation included).
     "naif-599": BodyAtmosphere(
-        composition={"H2": 0.861, "He": 0.136, "CH4": 0.003},
         pressure_pa=3.0e4,
-        temperature_k=125.0,
         gravity_m_s2=23.12,
         aerosol="nh3_haze",
         tuning=RenderTuning(
@@ -154,10 +164,9 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
     # (HASI, Fulchignoni et al. 2005). Composition: GCMS near-surface
     # CH₄ = 5.65±0.18%, H₂ = 0.101% (Niemann et al. 2010), N₂ balance.
     # g = 1.35 (GM/r² from NSSDCA mass + 2575 km radius).
+    # The one rendered body with nothing to override: Huygens measured the
+    # surface the panel quotes and the shell renders from.
     "naif-606": BodyAtmosphere(
-        composition={"N2": 0.942, "CH4": 0.0565, "H2": 0.00101},
-        pressure_pa=1.467e5,
-        temperature_k=93.65,
         gravity_m_s2=1.35,
         aerosol="titan_tholin",
         tuning=RenderTuning(
@@ -176,9 +185,7 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
     # Conrath & Gautier 2000 He/H₂ = 0.11-0.16, Cassini CIRS 2020 ~0.052;
     # mid Conrath & Gautier (He/H₂ = 0.135) adopted here.
     "naif-699": BodyAtmosphere(
-        composition={"H2": 0.877, "He": 0.118, "CH4": 0.0045},
         pressure_pa=3.0e4,
-        temperature_k=110.0,
         gravity_m_s2=8.96,
         aerosol="nh3_haze_saturn",
         tuning=RenderTuning(
@@ -193,9 +200,7 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
     # 1.2 bar CH₄ cloud, and the modern deep value is latitude-dependent
     # 1.4-4%, Karkoschka & Tomasko 2009). g: equatorial acceleration.
     "naif-799": BodyAtmosphere(
-        composition={"H2": 0.825, "He": 0.152, "CH4": 0.023},
         pressure_pa=3.0e4,
-        temperature_k=58.0,
         gravity_m_s2=8.69,
         aerosol="ice_giant_haze",
         tuning=RenderTuning(
@@ -210,9 +215,11 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
     # g = 0.78 (GM/r²). A 2017 occultation found the pressure still
     # consistent with 1989 (Marques Oliveira et al. 2022).
     "naif-801": BodyAtmosphere(
-        composition={"N2": 0.9999, "CH4": 0.0001},
+        # The texture is Voyager's, so the shell holds Voyager's epoch: the
+        # panel carries the 2022 occultation pressure and the 2009 methane,
+        # and this atmosphere is seasonal enough that the two differ.
         pressure_pa=1.5,
-        temperature_k=38.0,
+        composition={"N2": 0.9999, "CH4": 0.0001},
         gravity_m_s2=0.78,
         aerosol="triton_haze",
         tuning=RenderTuning(
@@ -232,9 +239,7 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
     # He = 0.190±0.032 (Conrath et al. 1991); CH₄ 1.5% above the cloud
     # (NSSDCA; deep value 4±1%, Karkoschka & Tomasko 2011).
     "naif-899": BodyAtmosphere(
-        composition={"H2": 0.80, "He": 0.19, "CH4": 0.015},
         pressure_pa=3.0e4,
-        temperature_k=55.0,
         gravity_m_s2=11.00,
         aerosol="ice_giant_haze_neptune",
         tuning=RenderTuning(
@@ -252,9 +257,10 @@ ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
     # (NSSDCA). g = 0.62. The pressure has been rising for decades (Meza
     # et al. 2019) — this is the flyby snapshot.
     "naif-999": BodyAtmosphere(
-        composition={"N2": 0.995, "CH4": 0.005},
-        pressure_pa=1.15,
         temperature_k=50.0,
+        # NSSDCA's rounded 0.5% CH₄, against the panel's New Horizons UV
+        # occultation value (~0.3%, Young et al. 2018).
+        composition={"N2": 0.995, "CH4": 0.005},
         gravity_m_s2=0.62,
         aerosol="pluto_tholin",
         tuning=RenderTuning(

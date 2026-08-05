@@ -36,6 +36,7 @@ from space_map_data.constants.atmosphere.structure import (
     NOTES as STRUCTURE_NOTES,
 )
 from space_map_data.constants.atmosphere.structure import (
+    AtmosphereLayer,
     BodyStructure,
 )
 from space_map_data.constants.temperature.bodies import TEMPERATURE_BODIES
@@ -140,8 +141,9 @@ def _structure(object_id: str, structure: BodyStructure) -> dict:
             entry["top_km_range"] = list(layer.top_km_range)
         if layer.top_pressure_pa is not None:
             entry["top_pressure_pa"] = layer.top_pressure_pa
-        if layer.top_temperature_k is not None:
-            entry["top_temperature_k"] = layer.top_temperature_k
+        top_k = layer_temperature(object_id, layer)
+        if top_k is not None:
+            entry["top_temperature_k"] = top_k
         if layer.top_temperature_range_k is not None:
             entry["top_temperature_range_k"] = list(layer.top_temperature_range_k)
         if layer.note is not None:
@@ -157,6 +159,25 @@ def _structure(object_id: str, structure: BodyStructure) -> dict:
         layers.append(entry)
     out["layers"] = layers
     return out
+
+
+def layer_temperature(object_id: str, layer: AtmosphereLayer) -> float | None:
+    """A boundary's temperature, resolved where it is a published reading.
+
+    Venus's tropopause is its cloud top and the Sun's corona is the corona:
+    the same claim the `temperatures` block ships, so it is read from there
+    rather than restated beside the altitude.
+    """
+    if layer.top_temperature_from is None:
+        return layer.top_temperature_k
+    part_name, kind = layer.top_temperature_from
+    for part in TEMPERATURE_BODIES.get(object_id, ()):
+        if part.part != part_name:
+            continue
+        for reading in part.readings:
+            if reading.kind == kind:
+                return reading.kelvin
+    raise ValueError(f"{object_id}: no {kind} {part_name} temperature to read")
 
 
 def _datum_temperature(object_id: str, structure: BodyStructure) -> float | None:
@@ -216,6 +237,12 @@ def _validate_structure(object_id: str, structure: BodyStructure) -> None:
             raise ValueError(f"{object_id}: unknown layer role {layer.role}")
         if layer.note is not None and layer.note not in STRUCTURE_NOTES:
             raise ValueError(f"{object_id}: unknown note {layer.note}")
+        if layer.top_temperature_k is not None and layer.top_temperature_from:
+            raise ValueError(
+                f"{object_id}: {layer.role} states a top temperature and reads "
+                "one; the second copy is the drift this field exists to stop"
+            )
+        layer_temperature(object_id, layer)
     for key in _structure_source_keys(structure):
         if key not in ATMOSPHERE_FACT_SOURCES:
             raise ValueError(f"{object_id}: no such source {key}")

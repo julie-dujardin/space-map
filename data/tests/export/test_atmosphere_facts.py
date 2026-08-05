@@ -11,6 +11,7 @@ from space_map_data.constants.atmosphere.facts import (
 )
 from space_map_data.constants.atmosphere.references import ATMOSPHERE_FACT_SOURCES
 from space_map_data.constants.atmosphere.structure import ATMOSPHERE_STRUCTURE
+from space_map_data.export.atmospheres.conditions import render_conditions
 from space_map_data.export.objects.atmosphere import atmosphere_block
 
 BODY_IDS = sorted(ATMOSPHERE_FACTS)
@@ -173,34 +174,43 @@ class TestValues:
 
 
 class TestAgainstRenderConstants:
-    """The two tables state the same atmospheres at different levels; where the
-    level is shared they must not disagree, and where they differ it is on
-    purpose."""
+    """The render table no longer restates the facts, so what is left to check
+    is that every override it does declare is earned."""
 
-    # Bodies the two tables deliberately describe differently:
-    #   Venus  — rendered from its ~0.1 bar cloud top, quoted at the surface.
-    #   Triton — the renderer holds the Voyager epoch, the panel carries the
-    #            2009 methane measurement; the atmosphere is seasonal.
-    #   Pluto  — the renderer takes NSSDCA's rounded 0.5% CH₄, the panel the
-    #            New Horizons UV occultation (Young et al. 2018, ~0.3%).
-    NOT_COMPARABLE = {"naif-299", "naif-801", "naif-999"}
+    def test_the_facts_back_every_rendered_body(self):
+        """The render table has no numbers of its own to fall back on."""
+        for object_id, body in ATMOSPHERE_BODIES.items():
+            level = render_conditions(object_id, body)
+            assert level.composition and level.pressure_pa > 0
+            assert level.temperature_k > 0
 
-    def test_compositions_agree(self):
-        for object_id, render in ATMOSPHERE_BODIES.items():
-            facts = ATMOSPHERE_FACTS.get(object_id)
-            if facts is None or object_id in self.NOT_COMPARABLE:
-                continue
-            shipped = {s.formula: s.value for s in facts.composition}
-            for gas, fraction in render.composition.items():
-                assert gas in shipped, f"{object_id} panel is missing {gas}"
-                assert shipped[gas] == pytest.approx(fraction, rel=0.02), (
-                    f"{object_id} {gas}: panel {shipped[gas]} vs render {fraction}"
-                )
+    @pytest.mark.parametrize(
+        "object_id", sorted(o for o, b in ATMOSPHERE_BODIES.items() if b.composition)
+    )
+    def test_a_composition_override_is_a_real_difference(self, object_id):
+        """An override that matches the panel is a second copy of it, which is
+        exactly what the resolver exists to prevent."""
+        shipped = {s.formula: s.value for s in ATMOSPHERE_FACTS[object_id].composition}
+        override = ATMOSPHERE_BODIES[object_id].composition or {}
+        assert any(
+            gas not in shipped or shipped[gas] != pytest.approx(fraction, rel=0.02)
+            for gas, fraction in override.items()
+        ), f"{object_id} overrides its composition with the panel's own numbers"
+
+    @pytest.mark.parametrize(
+        "object_id", sorted(o for o, b in ATMOSPHERE_BODIES.items() if b.pressure_pa)
+    )
+    def test_a_pressure_override_is_a_real_difference(self, object_id):
+        published = _pressure(object_id).pascals
+        assert ATMOSPHERE_BODIES[object_id].pressure_pa != published, (
+            f"{object_id} overrides its pressure with the panel's own number"
+        )
 
     def test_venus_differs_by_level(self):
         """Guards the exemption itself: if these ever converge, the render
         constants stopped describing the cloud top."""
         render = ATMOSPHERE_BODIES["naif-299"]
+        assert render.pressure_pa is not None
         assert _pressure("naif-299").pascals > render.pressure_pa * 100
 
 

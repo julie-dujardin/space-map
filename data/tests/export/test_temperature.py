@@ -5,6 +5,7 @@ import pytest
 from space_map_data.constants.atmosphere.bodies import ATMOSPHERE_BODIES
 from space_map_data.constants.temperature.bodies import TEMPERATURE_BODIES
 from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
+from space_map_data.export.atmospheres.conditions import render_conditions
 from space_map_data.export.objects.temperature import (
     CONDITIONS,
     PART_ORDER,
@@ -233,16 +234,17 @@ class TestConstantsIntegrity:
                     assert by_kind["mean"] <= by_kind["max"], object_id
 
 
-class TestTheShellAgreesWithTheMeasurement:
-    """Every body both tables describe must quote one temperature for it.
+class TestTheShellReadsTheMeasurement:
+    """The shell no longer keeps its own copy of a body's temperature, so what
+    is left to check is that it resolves to the reading the panel shows and
+    that the two overrides are earned.
 
-    Two blocks on the same drawer disagreeing about the same deck is the bug
-    this pins shut. Giants and Venus are read at their cloud top, everything
-    else at its surface.
+    Giants and Venus are read at their cloud top, everything else at its
+    surface.
     """
 
-    # Exempt because the render constant is a different quantity, not a
-    # second opinion on the same one:
+    # Overridden because the render needs a different quantity, not a second
+    # opinion on the same one:
     #   Mars  — the isothermal temperature reproducing NSSDCA's published
     #           11.1 km scale height, against the sheet's 210 K average.
     #   Pluto — REX's near-surface air, against the surface-ice mean.
@@ -251,23 +253,27 @@ class TestTheShellAgreesWithTheMeasurement:
     @pytest.mark.parametrize(
         "object_id", sorted(set(ATMOSPHERE_BODIES) & set(TEMPERATURE_BODIES))
     )
-    def test_render_matches_the_headline_reading(self, object_id):
-        if object_id in self.DIFFERENT_QUANTITY:
-            pytest.skip("render constant describes a different quantity")
-        assert _headline(object_id) == ATMOSPHERE_BODIES[object_id].temperature_k
+    def test_the_shell_resolves_to_the_headline_reading(self, object_id):
+        body = ATMOSPHERE_BODIES[object_id]
+        expected = body.temperature_k or _headline(object_id)
+        assert render_conditions(object_id, body).temperature_k == expected
+
+    def test_only_the_documented_two_override_it(self):
+        """A third override appearing without a reason beside it is the drift
+        this table was flattened to prevent."""
+        overridden = {o for o, b in ATMOSPHERE_BODIES.items() if b.temperature_k}
+        assert overridden == self.DIFFERENT_QUANTITY
 
     @pytest.mark.parametrize("object_id", sorted(DIFFERENT_QUANTITY))
-    def test_the_exemptions_stay_exemptions(self, object_id):
-        """Guards the exemption itself: converging would mean one of the two
-        stopped describing what its comment says it does."""
-        assert _headline(object_id) != ATMOSPHERE_BODIES[object_id].temperature_k
+    def test_an_override_is_a_real_difference(self, object_id):
+        """An override equal to the panel's number is just a second copy."""
+        assert ATMOSPHERE_BODIES[object_id].temperature_k != _headline(object_id)
 
     @pytest.mark.parametrize("object_id", _GIANTS)
     def test_a_giant_is_read_at_its_deck(self, object_id):
-        """The exemption above would also pass if a giant simply lost its
-        cloud-top part, so pin that the deck is what is being compared."""
-        parts = TEMPERATURE_BODIES[object_id]
-        assert any(p.part == "cloud_top" for p in parts)
+        """The resolver falls back to a surface reading, and a giant has none;
+        losing the cloud-top part would strand it rather than fail loudly."""
+        assert any(p.part == "cloud_top" for p in TEMPERATURE_BODIES[object_id])
 
 
 def _headline(object_id: str) -> float | None:

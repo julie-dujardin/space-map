@@ -78,6 +78,12 @@ class AtmosphereLayer(NamedTuple):
     top_pressure_pa: float | None
     source: str  # backs the boundary and the layer's existence
     top_temperature_k: float | None = None
+    # Set instead of `top_temperature_k` where the boundary's temperature is a
+    # reading the body already publishes — Venus's cloud top *is* its
+    # tropopause, and one drawer showing both must not show two numbers.
+    # `(part, kind)` into constants/temperature/bodies.py; the export resolves
+    # it and `source` above still backs the boundary itself.
+    top_temperature_from: tuple[str, str] | None = None
     # Where the boundary actually sits — Earth's tropopause runs 9 km over the
     # poles to 17 km over the equator, and drawing 11 km without saying so
     # claims a sharpness the atmosphere does not have.
@@ -157,15 +163,14 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 source="wiki_solar_atm",
                 top_temperature_k=1.0e6,
             ),
-            # 2 MK is the top of the quiet corona's 1-2 MK band and the same
-            # number the temperatures panel ships for it (constants/
-            # temperature/bodies.py) — the two are drawn on one drawer.
+            # The panel's corona reading is the top of the quiet 1-2 MK band;
+            # the band itself is this layer's own claim.
             AtmosphereLayer(
                 role="corona",
                 top_km=None,
                 top_pressure_pa=None,
                 source="wiki_solar_atm",
-                top_temperature_k=2.0e6,
+                top_temperature_from=("corona", "mean"),
                 top_temperature_range_k=(1.0e6, 2.0e6),
                 note="diffuse_top",
             ),
@@ -182,12 +187,14 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
     "naif-299": BodyStructure(
         datum="surface",
         layers=(
+            # This boundary is the cloud top the panel quotes, so the reading
+            # comes from there rather than being written twice.
             AtmosphereLayer(
                 role="troposphere",
                 top_km=65.0,
                 top_pressure_pa=1.0e4,
                 source="seiff_1985",
-                top_temperature_k=245.0,
+                top_temperature_from=("cloud_top", "mean"),
                 note="cloud_deck",
             ),
             AtmosphereLayer(

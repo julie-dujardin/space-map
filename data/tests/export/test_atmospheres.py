@@ -19,6 +19,7 @@ from space_map_data.constants.atmosphere.photometry import (
     sun_limb_darkening_alpha,
 )
 from space_map_data.export.atmospheres import build_atmospheres
+from space_map_data.export.atmospheres.conditions import render_conditions
 from space_map_data.export.atmospheres.profiles import (
     PROFILE_N,
     conrath_dust_scale_height_km,
@@ -149,8 +150,8 @@ class TestBodies:
     def test_scale_heights_at_published_conditions(
         self, object_id, t_k, g, h_km, m_pub, tol
     ):
-        body = ATMOSPHERE_BODIES[object_id]
-        molar = mean_molar_mass_g_mol(body.composition)
+        level = render_conditions(object_id, ATMOSPHERE_BODIES[object_id])
+        molar = mean_molar_mass_g_mol(level.composition)
         assert molar == pytest.approx(m_pub, rel=tol)
         assert scale_height_km(molar, t_k, g) == pytest.approx(h_km, rel=tol)
 
@@ -159,8 +160,8 @@ class TestBodies:
         # surface scale height against HASI/GCMS numbers directly:
         # kT/(mg) at 93.65 K (Fulchignoni et al. 2005) with the GCMS mean
         # molar mass (~27.3, N2 + 5.65% CH4) ≈ 21 km.
-        body = ATMOSPHERE_BODIES["naif-606"]
-        molar = mean_molar_mass_g_mol(body.composition)
+        level = render_conditions("naif-606", ATMOSPHERE_BODIES["naif-606"])
+        molar = mean_molar_mass_g_mol(level.composition)
         assert molar == pytest.approx(27.3, rel=0.01)
         assert scale_height_km(molar, 93.65, 1.35) == pytest.approx(21.1, rel=0.02)
 
