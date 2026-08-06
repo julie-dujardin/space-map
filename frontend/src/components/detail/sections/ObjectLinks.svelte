@@ -2,6 +2,7 @@
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
+	import Row from './kit/Row.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -19,9 +20,25 @@
 	let mpcDesignation = $derived(global?.cross_refs?.mpc_designation ?? global?.cross_refs?.spkid);
 	let naifId = $derived(global?.cross_refs?.naif_id);
 	let noradCatId = $derived(global?.cross_refs?.norad_cat_id);
-	let designation = $derived(
-		global?.provisional_designation ?? global?.cross_refs?.mpc_designation
-	);
+
+	// Catalogue IDs read as links too — each is this object's key in someone
+	// else's dataset. The export's own `<type>-<number>` key and a probe's
+	// synthetic id identify nothing outside this project, so neither is listed;
+	// `sbdb_primary_designation` is a copy of `cross_refs.mpc_designation`.
+	// Name-like designations first, then catalogue numbers in issuer order.
+	let identifiers = $derived.by(() => {
+		const x = global?.cross_refs;
+		const out: Array<{ label: string; value: string }> = [];
+		if (x?.mpc_designation) out.push({ label: m.id_mpc(), value: String(x.mpc_designation) });
+		if (global?.provisional_designation)
+			out.push({ label: m.id_provisional(), value: global.provisional_designation });
+		if (x?.naif_id != null) out.push({ label: m.id_naif(), value: String(x.naif_id) });
+		if (x?.spkid != null) out.push({ label: m.id_spk(), value: String(x.spkid) });
+		if (x?.norad_cat_id != null) out.push({ label: m.id_norad(), value: String(x.norad_cat_id) });
+		if (x?.cospar_id) out.push({ label: m.id_cospar(), value: x.cospar_id });
+		if (x?.wikidata_qid) out.push({ label: m.id_wikidata(), value: x.wikidata_qid });
+		return out;
+	});
 
 	interface Link {
 		href: string;
@@ -38,34 +55,40 @@
 		if (naifId)
 			result.push({
 				href: `https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='${naifId}'`,
-				label: m.jpl_horizons({ id: String(naifId) })
+				label: m.jpl_horizons()
 			});
 		if (mpcDesignation)
 			result.push({
 				href: `https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=${encodeURIComponent(String(mpcDesignation))}`,
-				label: m.jpl_sbdb({ id: String(mpcDesignation) })
+				label: m.jpl_sbdb()
 			});
 		if (noradCatId) {
 			result.push({
 				href: `https://celestrak.org/NORAD/elements/graph-orbit-data.php?CATNR=${noradCatId}`,
-				label: m.celestrak_orbit_data({ id: String(noradCatId) })
+				label: m.celestrak_orbit_data()
 			});
 			result.push({
 				href: `https://www.n2yo.com/satellite/?s=${noradCatId}`,
-				label: m.n2yo_satellite_tracker({ id: String(noradCatId) })
+				label: m.n2yo_satellite_tracker()
 			});
 		}
 		return result;
 	});
 </script>
 
-{#if links.length || designation || aliases.length}
+{#if links.length || aliases.length || identifiers.length}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">{m.links()}</h3>
 		<div class="border-border/60 border-t"></div>
 		<div class="flex flex-col gap-2.5 text-sm">
-			{#if designation}
-				<p class="text-muted-foreground">{m.designation_label({ designation })}</p>
+			{#if identifiers.length}
+				<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5">
+					{#each identifiers as id (id.label)}
+						<Row label={id.label}>
+							<span class="tabular-nums select-all">{id.value}</span>
+						</Row>
+					{/each}
+				</dl>
 			{/if}
 			{#if aliases.length}
 				<p class="text-muted-foreground">
