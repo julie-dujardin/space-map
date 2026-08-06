@@ -38,7 +38,12 @@
 	import RingHero from './sections/RingHero.svelte';
 	import FeatureTypeFilter from './sections/FeatureTypeFilter.svelte';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
-	import { fetchGroupIndex, featureTypeSlug, CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
+	import {
+		fetchGroupIndex,
+		featureTypeSlug,
+		CAT_RING_SYSTEMS,
+		CAT_SOLAR_SYSTEM
+	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { DrawerTab } from '$lib/state/view';
 	import { type Focusable, focusableFallbackName, focusableKey } from '$lib/state/focusable';
@@ -1222,6 +1227,9 @@
 				systemId={ringMoonHostId}
 				{clock}
 			/>
+			<!-- The way back out to the other ringed bodies: this tab is where a
+			     visitor finds out there are rings to compare. -->
+			<BodyCategoryTile slug={CAT_RING_SYSTEMS} />
 			<SourcesFooter
 				global={null}
 				rings={ringCredits}
