@@ -660,10 +660,10 @@
 	let tabPresent = $derived<Record<DrawerTab, boolean>>({
 		overview: true,
 		images: hasImages,
-		rings: showRingsTab,
-		members: showMembersTab,
 		features: showFeaturesTab,
 		structure: showStructureTab,
+		rings: showRingsTab,
+		members: showMembersTab,
 		fragments: showFragmentsTab
 	});
 	let tabCount = $derived(Object.values(tabPresent).filter(Boolean).length);
@@ -865,18 +865,6 @@
 						</Badge>
 					</Tabs.Trigger>
 				{/if}
-				{#if inBar('rings')}
-					<!-- No count: the ring bar is the widest, and the chart states it. -->
-					<Tabs.Trigger value="rings" class={TAB_TRIGGER_CLASS}>{m.tab_rings()}</Tabs.Trigger>
-				{/if}
-				{#if inBar('members')}
-					<Tabs.Trigger value="members" class={TAB_TRIGGER_CLASS}>
-						{membersTabLabel}
-						<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
-							{formatCompactNumber(memberTotal)}
-						</Badge>
-					</Tabs.Trigger>
-				{/if}
 				{#if inBar('features')}
 					<!-- No count: five figures of nomenclature is the widest badge the bar
 					     can be handed, and the list under it opens on the total anyway. -->
@@ -887,6 +875,18 @@
 				{#if inBar('structure')}
 					<Tabs.Trigger value="structure" class={TAB_TRIGGER_CLASS}>
 						{m.tab_structure()}
+					</Tabs.Trigger>
+				{/if}
+				{#if inBar('rings')}
+					<!-- No count: the ring bar is the widest, and the chart states it. -->
+					<Tabs.Trigger value="rings" class={TAB_TRIGGER_CLASS}>{m.tab_rings()}</Tabs.Trigger>
+				{/if}
+				{#if inBar('members')}
+					<Tabs.Trigger value="members" class={TAB_TRIGGER_CLASS}>
+						{membersTabLabel}
+						<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
+							{formatCompactNumber(memberTotal)}
+						</Badge>
 					</Tabs.Trigger>
 				{/if}
 				{#if inBar('fragments')}

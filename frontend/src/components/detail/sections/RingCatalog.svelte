@@ -937,7 +937,16 @@
 					>
 					<line x1={axisGutter - 4} x2={axisGutter} y1={tick.y} y2={tick.y} class="stroke-border" />
 				{/each}
-				<rect x={axisGutter} y="0" width={STRIP_WIDTH} height={chartHeight} class="fill-black/50" />
+				<!-- Opaque near-black in both themes, like the strip bars elsewhere: the
+				     bands are pale and translucent, and over a light card the faint
+				     ones vanish into it. -->
+				<rect
+					x={axisGutter}
+					y="0"
+					width={STRIP_WIDTH}
+					height={chartHeight}
+					class="fill-[#05070e]"
+				/>
 				{#if stripImage}
 					<image
 						href={stripImage}
@@ -1000,7 +1009,7 @@
 							y={box.middle - box.half}
 							width={STRIP_WIDTH}
 							height={box.half * 2}
-							class="fill-white/10 stroke-foreground/80"
+							class="fill-white/10 stroke-white/80"
 						/>
 					{/if}
 					<path
@@ -1137,7 +1146,8 @@
 		<!-- Fixed left-to-right, like the labels either side of it: Tailwind's
 		     `rtl:` variant keys on an ancestor `dir`, so an RTL override here
 		     would flip the ramp under a row the ScrollArea keeps LTR. -->
-		<span class="h-1.5 grow rounded-full bg-linear-to-r from-slate-400/6 to-slate-200"></span>
+		<span class="h-1.5 grow rounded-full bg-[#05070e] bg-linear-to-r from-slate-400/6 to-slate-200"
+		></span>
 		<span>{m.rings_opaque()}</span>
 		<span>· {m.rings_optical_depth()}</span>
 	</div>

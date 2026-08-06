@@ -36,16 +36,17 @@ export const FEATURE_ROUTE_TYPES: ReadonlySet<string> = new Set([
 	UrlType.Extra
 ]);
 
-/** Every detail-drawer tab; 'overview' is the null default in URL state. The
- *  one list the tab type and the URL codec both derive from. */
+/** Every detail-drawer tab, in the order the drawer's bar lists them;
+ *  'overview' is the null default in URL state. The one list the tab type and
+ *  the URL codec both derive from. */
 export const DRAWER_TABS = [
 	'overview',
 	'images',
-	'members',
 	'features',
 	'structure',
-	'fragments',
-	'rings'
+	'rings',
+	'members',
+	'fragments'
 ] as const;
 
 export type DrawerTab = (typeof DRAWER_TABS)[number];
