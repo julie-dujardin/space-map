@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { crossSection, bandPath } from './interior-cross-section';
+import { crossSection, bandPath, layerRows } from './interior-cross-section';
 import { atmosphereProfile, drawableTopKm } from './atmosphere-cross-section';
 import { spreadLabels } from './label-fit';
 import type { InteriorLayer, AtmosphereStructure } from '$lib/fetch/objects/object-data';
@@ -65,6 +65,89 @@ describe('interior cross-section', () => {
 	it('closes the innermost band on the centre rather than leaving a hole', () => {
 		expect(bandPath({ outer: 1, inner: 0 }, 0, 0, 10)).toContain('M 0 0 L 10 0');
 		expect(bandPath({ outer: 1, inner: 0.5 }, 0, 0, 10)).toContain('M 5 0 L 10 0');
+	});
+
+	it('cuts a band down to its slice of the arc', () => {
+		// Half the quarter, so the far end lands on the 45° diagonal rather
+		// than on the vertical edge.
+		const half = bandPath({ outer: 1, inner: 0, from: 0, to: 0.5 }, 0, 0, 10);
+		expect(half).toContain('M 0 0 L 10 0');
+		expect(half).toMatch(/A 10 10 0 0 0 7\.07/);
+	});
+});
+
+/** Earth, whose outer layers are laid side by side rather than stacked. */
+const EARTH: InteriorLayer[] = [
+	{
+		role: 'ocean',
+		outer_radius_km: 6371,
+		base_radius_km: 6367.3,
+		area_fraction: 0.709,
+		composition: [{ material: 'water', share: 1 }]
+	},
+	{
+		role: 'crust',
+		outer_radius_km: 6371,
+		base_radius_km: 6330,
+		area_fraction: 0.412,
+		note: 'continental_crust_only',
+		composition: [{ material: 'silicate', share: 1 }]
+	},
+	{
+		role: 'oceanic_crust',
+		outer_radius_km: 6367.3,
+		base_radius_km: 6360.8,
+		area_fraction: 0.588,
+		composition: [{ material: 'silicate', share: 1 }]
+	},
+	{ role: 'mantle', outer_radius_km: 6330, composition: [{ material: 'silicate', share: 1 }] },
+	{ role: 'core', outer_radius_km: 3480, composition: [{ material: 'metal', share: 1 }] }
+];
+
+describe('layers that cover part of the surface', () => {
+	const bands = crossSection(EARTH)!.bands;
+	const band = (role: string) => bands.find((b) => b.layer.role === role)!;
+
+	it('floors a patch on its own base, not on the next layer', () => {
+		// The continental crust follows the ocean in the list and is 41 km
+		// thick; without its own floor the ocean would inherit that depth.
+		expect(band('ocean').thicknessKm).toBeCloseTo(3.7, 3);
+		expect(band('crust').thicknessKm).toBeCloseTo(41, 3);
+		expect(band('oceanic_crust').thicknessKm).toBeCloseTo(6.5, 3);
+	});
+
+	it('tiles the arc with the two crusts', () => {
+		expect(band('crust').from).toBe(0);
+		expect(band('crust').to).toBeCloseTo(0.412, 6);
+		expect(band('oceanic_crust').from).toBeCloseTo(0.412, 6);
+		expect(band('oceanic_crust').to).toBe(1);
+	});
+
+	it('laps the ocean onto the continental side, which is the shelves', () => {
+		const ocean = band('ocean');
+		expect(ocean.to).toBe(1);
+		expect(ocean.from).toBeLessThan(band('oceanic_crust').from);
+	});
+
+	it('leaves a shell spanning the whole quarter', () => {
+		expect(band('mantle').from).toBe(0);
+		expect(band('mantle').to).toBe(1);
+	});
+
+	it('puts the two crusts in one row and everything else on its own', () => {
+		const rows = layerRows(bands).map((row) => row.map((b) => b.layer.role));
+		expect(rows).toEqual([['ocean'], ['crust', 'oceanic_crust'], ['mantle'], ['core']]);
+	});
+
+	it('keeps the ocean out of that row, since it lies over both', () => {
+		// It reaches onto the continental side by the width of the shelves, so
+		// it is not beside the crusts — it is on top of them.
+		const rows = layerRows(bands);
+		expect(rows[0]).toHaveLength(1);
+	});
+
+	it('rows a body of plain shells one per line', () => {
+		expect(layerRows(crossSection(EUROPA)!.bands).every((row) => row.length === 1)).toBe(true);
 	});
 });
 

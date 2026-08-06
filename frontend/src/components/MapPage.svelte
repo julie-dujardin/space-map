@@ -215,9 +215,11 @@
 		}
 	});
 
-	// Desktop inset: park chips just past the 380px detail sidebar when open,
-	// else the collapsed 240px search bar. Mobile stacks them below instead.
-	const featuredStart = $derived(focusable ? 'calc(380px + 1rem)' : 'calc(240px + 2rem)');
+	// Desktop inset: park chips just past the detail sidebar when open, else the
+	// collapsed 240px search bar. Mobile stacks them below instead.
+	const featuredStart = $derived(
+		focusable ? 'calc(var(--detail-panel) + 1rem)' : 'calc(240px + 2rem)'
+	);
 
 	$effect(() => {
 		if (northRefId === null) return;

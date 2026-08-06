@@ -11,8 +11,10 @@ import { ltrIsolate } from '$lib/format/bidi';
 
 const LAYER_NAME: Record<string, () => string> = {
 	crust: m.interior_layer_crust,
+	oceanic_crust: m.interior_layer_oceanic_crust,
 	ice_shell: m.interior_layer_ice_shell,
 	ocean: m.interior_layer_ocean,
+	sea: m.interior_layer_sea,
 	mantle: m.interior_layer_mantle,
 	ice_mantle: m.interior_layer_ice_mantle,
 	magma: m.interior_layer_magma,

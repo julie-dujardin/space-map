@@ -155,6 +155,30 @@
 	--species-s: #c3b32e;
 	--species-si: var(--gas-si);
 	--species-fe-ni: #5a89c4;
+	/* Seawater and Titan's seas. Where the same substance already has a gas
+	   swatch it is referenced, not copied — methane in Titan's air and methane
+	   in its seas draw one above the other on the Structure tab, and any drift
+	   between them shows. Only the first three of the seawater set ever draw:
+	   the rest sit under the trace bucket, so the separation that matters is
+	   H2O / Cl / Na / trace. */
+	--species-h2o: var(--gas-h2o);
+	--species-cl: #5c9302;
+	--species-na: var(--gas-na);
+	--species-so4: #7d6b1e;
+	--species-mg: var(--gas-mg);
+	--species-ca: var(--gas-ca);
+	--species-k: var(--gas-k);
+	--species-ch4: var(--gas-ch4);
+	--species-n2: var(--gas-n2);
+	--species-c2h6: var(--gas-c2h6);
+	/* Oxygen, carbon and hydrogen light Mars's core, and are the one place the
+	   gas swatch could not be reused: against iron's rust and nickel's olive
+	   the gas palette's mauve carbon and green oxygen both fall under the
+	   separation the bar needs. Chosen against that set — iron, sulphur,
+	   nickel — rather than freely. */
+	--species-o: #1a7ea8;
+	--species-c: #8a55d0;
+	--species-h: #e879b4;
 	--radius: 0.625rem;
 	--sidebar: oklch(0.985 0 0);
 	--sidebar-foreground: oklch(0.145 0 0);
@@ -186,6 +210,13 @@ body {
 [dir='rtl'] {
 	--safe-start: env(safe-area-inset-right, 0px);
 	--safe-end: env(safe-area-inset-left, 0px);
+}
+
+/* The desktop detail panel's width. Three other places lay themselves out
+   against the edge of it — the featured chips, and the image viewer twice —
+   and a number that lives in four files drifts. */
+:root {
+	--detail-panel: 390px;
 }
 
 :root {
@@ -291,6 +322,19 @@ body {
 	--species-s: #749815;
 	--species-si: var(--gas-si);
 	--species-fe-ni: #748ed5;
+	--species-h2o: var(--gas-h2o);
+	--species-cl: #6fae12;
+	--species-na: var(--gas-na);
+	--species-so4: #a08a2a;
+	--species-mg: var(--gas-mg);
+	--species-ca: var(--gas-ca);
+	--species-k: var(--gas-k);
+	--species-ch4: var(--gas-ch4);
+	--species-n2: var(--gas-n2);
+	--species-c2h6: var(--gas-c2h6);
+	--species-o: #16a6b8;
+	--species-c: #9b7ae0;
+	--species-h: #e88bbd;
 	--sidebar: oklch(0.205 0 0);
 	--sidebar-foreground: oklch(0.985 0 0);
 	--sidebar-primary: oklch(0.488 0.243 264.376);

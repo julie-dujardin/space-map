@@ -1,5 +1,5 @@
 /**
- * Presentation rules for the interior composition bars: which colour a
+ * The interior's two vocabularies for the composition bar: which colour a
  * material or a layer-detail species gets, and how each is named.
  *
  * Colour follows the material, not its rank, so silicate reads the same ochre
@@ -7,14 +7,11 @@
  * bar — rock-and-ice bodies draw from {silicate, metal, water, sulfide,
  * organic, volatile}, giants and stars from {hydrogen, helium,
  * heavy_elements} — so those are the sets the palette was separated across.
- * The pipeline drops anything under 0.5% of the body, so there is no trace
- * bucket here: what arrives is already the list worth drawing.
  */
 
 import * as m from '$lib/paraglide/messages.js';
 import { formatFormula } from '$lib/charts/atmosphere-species';
-import type { CompositionSegment } from '$lib/charts/composition-bar';
-import { formatPercent } from '$lib/format/quantities';
+import type { CompositionEntry } from '$lib/charts/composition-bar';
 
 /** Every material the pipeline can emit; see `constants/interior/schema.py`. */
 const KNOWN_MATERIALS = new Set([
@@ -58,50 +55,36 @@ export interface MaterialShare {
 	material: string;
 	/** Fraction of the body by mass, 0–1. */
 	share: number;
-}
-
-interface MaterialSegment {
-	material: string;
-	/** What the bar and legend show. */
-	symbol: string;
-	/** What the hover shows — the symbol spelled out. */
-	name: string;
-	share: number;
-	color: string;
-}
-
-/** Rank materials and assign colours. Input order is ignored — the bar always
- *  reads most to least abundant. */
-function compositionSegments(composition: MaterialShare[]): MaterialSegment[] {
-	return [...composition]
-		.sort((a, b) => b.share - a.share)
-		.map((c) => ({
-			material: c.material,
-			symbol: MATERIAL_SYMBOL[c.material] ?? materialName(c.material),
-			name: materialName(c.material),
-			share: c.share,
-			color: materialColor(c.material)
-		}));
+	/** The width the source published around it, on a layer's split. */
+	share_range?: [number, number];
 }
 
 /**
- * The bar-ready segments, shared by the Interior panel and the layer cards so a
- * share of rock reads and hovers identically in both. The bar always hovers —
- * a coloured block says nothing on its own — but the legend only hovers where
- * its label is a symbol: "H" needs spelling out, "rock" does not.
+ * The coarse split, shared by the Interior panel and the layer cards so a share
+ * of rock reads and hovers identically in both.
  */
-export function materialSegments(composition: MaterialShare[]): CompositionSegment[] {
-	return compositionSegments(composition).map((segment) => ({
-		key: segment.material,
-		label: segment.symbol,
-		value: formatPercent(segment.share),
-		tooltip: m.interior_material_value({
-			name: segment.name,
-			value: formatPercent(segment.share)
-		}),
-		labelIsAbbreviated: segment.symbol !== segment.name,
-		share: segment.share,
-		color: segment.color
+export function materialEntries(composition: MaterialShare[]): CompositionEntry[] {
+	return composition.map((c) => ({
+		key: c.material,
+		label: MATERIAL_SYMBOL[c.material] ?? materialName(c.material),
+		name: materialName(c.material),
+		share: c.share,
+		color: materialColor(c.material),
+		range: c.share_range
+	}));
+}
+
+/** A layer's chemistry, where the literature gives one. Follows the
+ *  atmosphere's convention: formula on the bar, the substance on hover. */
+export function detailEntries(
+	entries: { species: string; fraction: number }[]
+): CompositionEntry[] {
+	return entries.map((e) => ({
+		key: e.species,
+		label: formatFormula(e.species),
+		name: detailSpeciesName(e.species),
+		share: e.fraction,
+		color: detailSpeciesColor(e.species)
 	}));
 }
 
@@ -145,7 +128,22 @@ const KNOWN_SPECIES = new Set([
 	'Co',
 	'S',
 	'Si',
-	'Fe-Ni'
+	'Fe-Ni',
+	'O',
+	'C',
+	'H',
+	// Seawater, and the salt in it.
+	'H2O',
+	'Cl',
+	'Na',
+	'SO4',
+	'Mg',
+	'Ca',
+	'K',
+	// Titan's seas.
+	'CH4',
+	'N2',
+	'C2H6'
 ]);
 
 /** Localized species name for the hover label, e.g. "SiO2" → "silicon

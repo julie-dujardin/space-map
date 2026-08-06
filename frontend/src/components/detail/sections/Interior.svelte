@@ -4,10 +4,10 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-	import { materialSegments } from '$lib/charts/interior-materials';
+	import { materialEntries } from '$lib/charts/interior-materials';
 	import { coreBracket } from '$lib/charts/layer-appearance';
 	import { structureLink } from '$lib/charts/structure-link';
-	import type { CompositionSegment } from '$lib/charts/composition-bar';
+	import type { CompositionEntry } from '$lib/charts/composition-bar';
 	import { formatKelvinRange } from '$lib/format/temperature';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
@@ -66,15 +66,15 @@
 	let openStructure = $derived(link ? () => appState.setTab('structure') : undefined);
 	let linkLabel = $derived(link?.layers ? m.structure_see_layers() : m.structure_see_more());
 
-	let segments: CompositionSegment[] = $derived(
-		interior?.composition ? materialSegments(interior.composition) : []
+	let entries: CompositionEntry[] = $derived(
+		interior?.composition ? materialEntries(interior.composition) : []
 	);
 </script>
 
 {#if interior || coreTemperature}
 	<Section title={m.interior()} onActivate={openStructure} activateLabel={linkLabel}>
 		{#snippet header()}
-			<CompositionBar {segments} />
+			<CompositionBar {entries} />
 		{/snippet}
 
 		{#if interior?.structure}

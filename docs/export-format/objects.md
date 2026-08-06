@@ -113,6 +113,7 @@ interface GlobalObjectData {
                                       // "ocean" is liquid water at any depth — Earth's is on the surface, everyone else's is under an ice shell. "sea" is standing liquid that is not water, i.e. Titan's maria, which sit 100 km above Titan's own "ocean"
       outer_radius_km: number;        // the source's own R, which is not the body's exported mean radius — normalize the disc to the outermost layer
       area_fraction?: number;         // share of the globe the layer covers, on the layers that are patches rather than shells. Earth's ocean 0.709, continental crust 0.412, oceanic crust 0.588; Titan's seas 0.011. Layers carrying one are still ordered by radius, but they overlap in depth — Earth's two crusts meet at a coastline, not at a boundary
+      base_radius_km?: number;        // where the layer stops, on the layers whose floor is not the next one's top: under Earth's ocean is the sea floor, not the continental crust that follows it. Always present with `area_fraction`, and the two close the arithmetic — area × thickness × 4πR² comes back to the published volume
       mass_fraction?: number;         // of the whole body; absent where a source gives geometry but no mass (the Sun)
       mass_fraction_range?: [number, number]; // the published width, where there is one
       state?: string;                 // "solid" | "liquid" | "partial_melt" | "fluid" | "plasma"; absent where nobody knows

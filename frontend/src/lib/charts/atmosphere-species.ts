@@ -1,19 +1,15 @@
 /**
- * Presentation rules for the atmosphere composition bar: which colour a gas
- * gets, how its formula is typeset, and where the bar stops resolving species
- * and starts calling them trace.
+ * The atmosphere's vocabulary for the composition bar: which colour a gas gets,
+ * how its formula is typeset, and what it is called when spelled out. Ranking
+ * and the trace bucket belong to the bar, which draws every composition in the
+ * panel the same way.
  *
  * Colour follows the species, not its rank in the bar, so H₂ reads the same
  * violet on Jupiter and on Saturn.
  */
 
 import * as m from '$lib/paraglide/messages.js';
-
-/** Species below this share are summed into the neutral trace segment. */
-const TRACE_SHARE = 0.005;
-
-/** Segments never outnumber the palette; the tail folds into trace. */
-const MAX_SEGMENTS = 6;
+import type { CompositionEntry } from '$lib/charts/composition-bar';
 
 /**
  * Every gas the composition data can name. Each has its own `--gas-<formula>`
@@ -67,43 +63,16 @@ export interface SpeciesShare {
 	limit?: boolean;
 }
 
-export interface BarSegment {
-	key: string;
-	/** Typeset formula, or null for the trace bucket (which gets a label). */
-	formula: string | null;
-	share: number;
-	color: string;
-	/** Hatched and labelled "<": an upper limit, not an abundance. */
-	limit: boolean;
-}
-
-/**
- * Rank species, fold the tail into trace, and assign colours. Input order is
- * ignored — the bar always reads most to least abundant.
- */
-export function compositionSegments(species: SpeciesShare[]): BarSegment[] {
-	const ranked = [...species].sort((a, b) => b.share - a.share);
-	const shown = ranked.filter((s) => s.share >= TRACE_SHARE).slice(0, MAX_SEGMENTS);
-
-	const segments: BarSegment[] = shown.map((s) => ({
+/** Formula on the bar, the gas spelled out on hover. */
+export function speciesEntries(species: SpeciesShare[]): CompositionEntry[] {
+	return species.map((s) => ({
 		key: s.formula,
-		formula: formatFormula(s.formula),
+		label: formatFormula(s.formula),
+		name: speciesName(s.formula),
 		share: s.share,
 		color: gasColor(s.formula),
 		limit: s.limit === true
 	}));
-
-	const trace =
-		ranked.reduce((sum, s) => sum + s.share, 0) - shown.reduce((s, x) => s + x.share, 0);
-	if (trace >= 0.001)
-		segments.push({
-			key: '__trace__',
-			formula: null,
-			share: trace,
-			color: 'var(--gas-trace)',
-			limit: false
-		});
-	return segments;
 }
 
 /** Localized gas name for the hover label, e.g. "SO2" → "sulphur dioxide".

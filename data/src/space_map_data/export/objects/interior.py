@@ -247,6 +247,8 @@ def _layer(object_id: str, layer: Layer) -> dict:
     out: dict = {"role": layer.role}
     if layer.outer_radius_km is not None:
         out["outer_radius_km"] = layer.outer_radius_km
+    if layer.base_radius_km is not None:
+        out["base_radius_km"] = layer.base_radius_km
     if layer.area_fraction is not None:
         out["area_fraction"] = layer.area_fraction
     if layer.mass_fraction is not None:

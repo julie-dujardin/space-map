@@ -590,6 +590,14 @@ export interface InteriorLayer {
 	 *  two disagree by a few km on Europa depending on the paper. Normalize the
 	 *  disc to the outermost layer or the stack gaps at the surface. */
 	outer_radius_km: number;
+	/** Where the layer stops, on the layers whose floor is not the next one's
+	 *  top: under Earth's ocean is the sea floor, not the continental crust
+	 *  that follows it. Absent on a shell, which ends where the next begins. */
+	base_radius_km?: number;
+	/** Share of the globe the layer covers, on the layers that are patches
+	 *  rather than shells — Earth's two crusts meet at a coastline, not at a
+	 *  depth, so they are drawn side by side along the disc's arc. */
+	area_fraction?: number;
 	/** Of the whole body. Absent where a source gives geometry but no mass. */
 	mass_fraction?: number;
 	mass_fraction_range?: [number, number];
@@ -622,7 +630,12 @@ export interface InteriorLayer {
 	composition: { material: string; share: number; share_range?: [number, number] }[];
 	/** Finer chemistry where the literature gives one. */
 	detail?: {
-		unit: 'oxide_weight' | 'element_weight' | 'mineral_volume';
+		unit:
+			| 'oxide_weight'
+			| 'element_weight'
+			| 'mineral_volume'
+			| 'compound_weight'
+			| 'compound_volume';
 		entries: { species: string; fraction: number }[];
 	};
 }

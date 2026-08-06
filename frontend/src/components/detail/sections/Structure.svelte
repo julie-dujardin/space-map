@@ -19,7 +19,7 @@
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
-	import { crossSection } from '$lib/charts/interior-cross-section';
+	import { crossSection, layerRows, type InteriorBand } from '$lib/charts/interior-cross-section';
 	import { atmosphereProfile, drawableTopKm } from '$lib/charts/atmosphere-cross-section';
 	import { atmosphereNoteBesideChart, atmosphereTypeName } from '$lib/charts/atmosphere-layers';
 	import { bandColor, coreBracket, layerSpans, skyRgb } from '$lib/charts/layer-appearance';
@@ -49,6 +49,14 @@
 	let hasOwnAtmosphere = $derived(global?.interior?.structure === 'fluid');
 	let atmosphereKm = $derived(structure ? (drawableTopKm(structure) ?? undefined) : undefined);
 	let section = $derived(crossSection(layers, { atmosphereKm, hasOwnAtmosphere }));
+
+	// Layers that share a depth but not a place are laid out across, not down:
+	// Earth's two crusts meet at a coastline, and one card under the other says
+	// the basalt is buried in the granite. Equal columns rather than columns
+	// sized by area — the cards carry the same weight of numbers either way,
+	// and each says its own share of the surface on its last line.
+	let rows = $derived(section ? layerRows(section.bands) : []);
+	let index = $derived(new Map(section?.bands.map((band, i) => [band, i]) ?? []));
 
 	// Callisto is the only miss: an exosphere nobody has put a top on has no
 	// bands to draw. The section still shows for its composition bar.
@@ -139,6 +147,21 @@
 	</Section>
 {/if}
 
+<!-- Declared out here rather than inside `Section`: a snippet in a component's
+     markup is one of its props. -->
+{#snippet card(band: InteriorBand)}
+	{@const i = index.get(band) ?? 0}
+	<LayerCard
+		{band}
+		swatch={bandColor(band, layerTemperatures[i], plasmaRange)}
+		temperature={layerTemperatures[i]}
+		outermost={i === 0}
+		dimmed={active !== null && active !== i}
+		onenter={() => (active = i)}
+		onleave={() => (active = null)}
+	/>
+{/snippet}
+
 {#if section}
 	<Section title={m.structure_interior()} meta={interiorMeta}>
 		{#snippet header()}
@@ -153,16 +176,19 @@
 			/>
 		{/snippet}
 		{#snippet footer()}
-			{#each section.bands as band, i (band.layer.role + i)}
-				<LayerCard
-					{band}
-					swatch={bandColor(band, layerTemperatures[i], plasmaRange)}
-					temperature={layerTemperatures[i]}
-					outermost={i === 0}
-					dimmed={active !== null && active !== i}
-					onenter={() => (active = i)}
-					onleave={() => (active = null)}
-				/>
+			{#each rows as row, r (row[0].layer.role + r)}
+				{#if row.length > 1}
+					<div
+						class="grid gap-x-3"
+						style="grid-template-columns: repeat({row.length}, minmax(0, 1fr))"
+					>
+						{#each row as band (band.layer.role)}
+							{@render card(band)}
+						{/each}
+					</div>
+				{:else}
+					{@render card(row[0])}
+				{/if}
 			{/each}
 		{/snippet}
 	</Section>

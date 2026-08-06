@@ -22,6 +22,13 @@
 
 	const appState = getContext<AppState>('appState');
 
+	/** Read rather than repeated: the sidebar's width is `--detail-panel`, and
+	 *  PhotoSwipe needs it as a number. */
+	function panelWidth(): number {
+		const value = getComputedStyle(document.documentElement).getPropertyValue('--detail-panel');
+		return parseFloat(value) || 0;
+	}
+
 	// Plain `let` (not $state) so the lifecycle effect tracks only
 	// `imageIndex` — not our own ref mutations.
 	let pswp: PhotoSwipeT | null = null;
@@ -80,13 +87,12 @@
 				arrowPrevTitle: m.image_previous(),
 				arrowNextTitle: m.image_next(),
 				errorMsg: m.image_error(),
-				// Desktop reserves the left 380px for the object sidebar (matches
-				// DetailDrawer's `w-[380px]` aside on the same `(min-width: 768px)`
-				// breakpoint). Tell PhotoSwipe the inset width so its image fit
-				// math doesn't oversize past the visible viewer area.
+				// Desktop reserves the start edge for the object sidebar, on the same
+				// breakpoint the aside uses. Tell PhotoSwipe the inset width so its
+				// image fit math doesn't oversize past the visible viewer area.
 				getViewportSizeFn: () => ({
 					x: window.matchMedia('(min-width: 768px)').matches
-						? Math.max(0, window.innerWidth - 380)
+						? Math.max(0, window.innerWidth - panelWidth())
 						: window.innerWidth,
 					y: window.innerHeight
 				})
@@ -235,14 +241,14 @@
 		pointer-events: auto;
 	}
 
-	/* Desktop: leave the left 380px clear for the object sidebar (the gallery
+	/* Desktop: leave the sidebar's width clear at the start edge (the gallery
 	   controls live there). PhotoSwipe is body-level and otherwise fullscreen;
 	   we shift the start edge in and drop its `width: 100%` so the end edge
-	   stays at the viewport's right (otherwise the overlay overflows by 380px).
-	   Width matches DetailDrawer's `w-[380px]` aside under the same breakpoint. */
+	   stays at the viewport's right (otherwise the overlay overflows by as
+	   much). */
 	@media (min-width: 768px) {
 		:global(.pswp.pswp-space-map) {
-			inset-inline-start: 380px;
+			inset-inline-start: var(--detail-panel);
 			inset-inline-end: 0;
 			width: auto;
 		}

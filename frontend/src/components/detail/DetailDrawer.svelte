@@ -1359,7 +1359,7 @@
 	<aside
 		{inert}
 		aria-labelledby="detail-drawer-title"
-		class="fixed top-0 start-0 z-50 flex h-full w-[380px] max-w-[90vw] flex-col border-e bg-background shadow-lg"
+		class="fixed top-0 start-0 z-50 flex h-full w-[var(--detail-panel)] max-w-[90vw] flex-col border-e bg-background shadow-lg"
 	>
 		<!-- pt aligns the title/buttons row with the top-4 featured chips beside it. -->
 		<div class="flex items-center justify-between gap-2 px-4 pb-2 pt-[18px]">

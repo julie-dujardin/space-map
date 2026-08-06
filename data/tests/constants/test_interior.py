@@ -90,6 +90,19 @@ class TestBodies:
                 assert 0.0 < layer.area_fraction < 1.0, layer.role
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_a_patch_carries_its_own_floor(self, object_id: str):
+        """A shell's floor is the next layer's top; a patch's is not — what is
+        under Earth's ocean is the sea floor, not the continental crust that
+        follows it in the list. Without this the cross-section draws the ocean
+        41 km deep and the card says so."""
+        for layer in INTERIOR_FACTS[object_id].layers:
+            if layer.area_fraction is None:
+                continue
+            assert layer.base_radius_km is not None, layer.role
+            assert layer.outer_radius_km is not None
+            assert 0 < layer.base_radius_km < layer.outer_radius_km, layer.role
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_crusts_tile_the_whole_surface(self, object_id: str):
         """Earth has two crusts and every point of it stands on one of them.
         A body whose crusts left a gap would be missing a third."""

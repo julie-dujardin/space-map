@@ -224,7 +224,10 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             # The width below is the volume's, which dominates: density spans
             # only 1028 kg/m³ at the surface to 1044 at the deepest sea floor.
             # Area is 361.841e6 / 4π(6371 km)² = 70.9% of the globe, and the
-            # sea floor sits at 6371 − 3.68 km.
+            # sea floor sits at 6371 − 3.68 km. Those three close on each
+            # other: 0.709 × 4π(6371 km)² × 3.682 km = 1.332e9 km³, the volume
+            # back — which is what `area_fraction` and `base_radius_km` have to
+            # do together on any layer that is a patch rather than a shell.
             Layer(
                 role="ocean",
                 mass_fraction=0.000231,
@@ -233,6 +236,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="charette_smith_2010",
                 density_source="iapso_2010",
                 outer_radius_km=6371.0,
+                base_radius_km=6367.3,
                 area_fraction=0.709,
                 derived=True,
                 # Reference Seawater as water and salt rather than as elements:
@@ -262,6 +266,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 composition=(Component(SILICATE, 1.0, "taylor_mclennan_2009"),),
                 source="taylor_mclennan_2009",
                 outer_radius_km=6371.0,
+                base_radius_km=6330.0,
                 area_fraction=0.412,
                 note="continental_crust_only",
                 # Table 11.3's bulk continental crust, and with it that
@@ -310,6 +315,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="white_klein_2014",
                 density_source="carlson_raskin_1984",
                 outer_radius_km=6367.3,
+                base_radius_km=6360.8,
                 area_fraction=0.588,
                 derived=True,
                 # Table 7's bulk crust, which is the parental magma reconstructed
@@ -1116,6 +1122,11 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             # dissolved in the hydrocarbons.
             #   0.71×447.5 + 0.12×647.9 + 0.17×725.4 = 519 kg/m³
             #   7e13 m³ × 519 = 3.63e16 kg / 1.3452e23 = 2.7e-7
+            # The base radius is the seas' own mean depth rather than the metre
+            # they would make spread over the globe: 7e4 km³ over 1.1% of
+            # 4π(2574.73 km)² is 76 m, which is what a bathymetry map would give
+            # and what a thickness has to be.
+            #
             # The range is the two pure hydrocarbon ends, 450 to 650, which is
             # wider than anything the composition allows. A ten-millionth of
             # the moon, against a subsurface ocean that is an eighth of it —
@@ -1129,6 +1140,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="hayes_2016",
                 density_source="nist_webbook",
                 outer_radius_km=2574.73,
+                base_radius_km=2574.654,
                 area_fraction=0.011,
                 derived=True,
                 state="liquid",

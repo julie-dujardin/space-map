@@ -217,6 +217,12 @@ class Layer(NamedTuple):
     # coastline instead of a depth. Unset means a global shell, which is every
     # other layer on every other body.
     area_fraction: float | None = None
+    # Where the layer stops. A shell needs none — the next layer's top is its
+    # floor — but a patch's floor is its own: what lies under Earth's ocean is
+    # the sea floor, not the continental crust that follows it in this list.
+    # Required with `area_fraction`, and the two together close the arithmetic,
+    # since area × thickness × 4πR² has to come back to the published volume.
+    base_radius_km: float | None = None
     # Where the density that turned this layer's geometry into a mass is a
     # different work from the geometry itself — the ocean's volume is
     # bathymetry and its density an equation of state.

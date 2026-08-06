@@ -4,27 +4,16 @@
 	 * what it is made of.
 	 *
 	 * The bar is the same `CompositionBar` the Overview draws, over the same
-	 * palette and the same hover sentences — a layer's rock has to be the colour
-	 * the body's rock is, or the two panels are describing different planets.
-	 *
-	 * It prefers the layer's own chemistry where the literature gives one: Mars's
-	 * crust has an oxide table and "rock 100%" says nothing next to it. Where it
-	 * does not, the coarse material split stands in, and a layer of one material
-	 * draws no bar at all.
+	 * palette — a layer's rock has to be the colour the body's rock is, or the
+	 * two panels are describing different planets.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import type { InteriorLayer } from '$lib/fetch/objects/object-data';
 	import type { InteriorBand } from '$lib/charts/interior-cross-section';
-	import type { CompositionSegment } from '$lib/charts/composition-bar';
+	import type { CompositionEntry } from '$lib/charts/composition-bar';
 	import type { TemperatureBracket } from '$lib/charts/layer-appearance';
 	import { layerName, phaseName, stateName } from '$lib/charts/interior-layers';
-	import {
-		materialSegments,
-		materialName,
-		detailSpeciesName,
-		detailSpeciesColor
-	} from '$lib/charts/interior-materials';
-	import { formatFormula } from '$lib/charts/atmosphere-species';
+	import { materialEntries, detailEntries, materialName } from '$lib/charts/interior-materials';
 	import { formatPercent } from '$lib/format/quantities';
 	import { formatKm, formatKmRange } from '$lib/format/distance';
 	import { formatKelvinRange } from '$lib/format/temperature';
@@ -58,37 +47,12 @@
 
 	let layer = $derived<InteriorLayer>(band.layer);
 
-	/** The published widths, by material, for the hover to add. */
-	let spreads = $derived(
-		new Map(
-			layer.composition
-				.filter((c) => c.share_range)
-				.map((c) => [c.material, c.share_range as [number, number]])
-		)
-	);
-
-	// Chemistry first: it is the finer statement, and it is only ever present
-	// where somebody measured it. Species follow the atmosphere's convention —
-	// formula on the bar, its own colour, the spelled-out name on hover.
-	let segments: CompositionSegment[] = $derived.by(() => {
-		if (layer.detail) {
-			return layer.detail.entries.map((entry) => {
-				const value = formatPercent(entry.fraction);
-				return {
-					key: entry.species,
-					label: formatFormula(entry.species),
-					value,
-					tooltip: m.interior_material_value({
-						name: detailSpeciesName(entry.species),
-						value
-					}),
-					labelIsAbbreviated: true,
-					share: entry.fraction,
-					color: detailSpeciesColor(entry.species)
-				};
-			});
-		}
-		if (layer.composition.length > 1) return materialSegments(layer.composition);
+	// Chemistry first where the literature gives one: Mars's crust has an oxide
+	// table and "rock 100%" says nothing next to it. Otherwise the coarse
+	// material split, and a layer of one material draws no bar at all.
+	let entries: CompositionEntry[] = $derived.by(() => {
+		if (layer.detail) return detailEntries(layer.detail.entries);
+		if (layer.composition.length > 1) return materialEntries(layer.composition);
 		return [];
 	});
 
@@ -127,18 +91,31 @@
 	}
 
 	/** The share of the body, with its published width where the source gives
-	 *  one — Venus's core is 24% to 57% and a lone 39% reads as a measurement. */
+	 *  one — Venus's core is 24% to 57% and a lone 39% reads as a measurement.
+	 *
+	 *  A width narrower than the rounding is dropped rather than printed: the
+	 *  ocean is 0.0228% to 0.0234% of the Earth, which at the two significant
+	 *  digits the rest of the panel uses comes out as "0.023% (0.023%–0.023%)"
+	 *  — a bracket that says only that somebody had one. */
 	let mass = $derived.by(() => {
 		if (layer.mass_fraction === undefined) return null;
 		const value = massPercent(layer.mass_fraction);
-		return layer.mass_fraction_range
-			? m.structure_layer_mass_range({
-					value,
-					low: massPercent(layer.mass_fraction_range[0]),
-					high: massPercent(layer.mass_fraction_range[1])
-				})
-			: m.structure_layer_mass({ value });
+		const range = layer.mass_fraction_range;
+		if (!range) return m.structure_layer_mass({ value });
+		const [low, high] = range.map(massPercent);
+		if (low === value && high === value) return m.structure_layer_mass({ value });
+		return m.structure_layer_mass_range({ value, low, high });
 	});
+
+	/** How much of the globe it is under, on the layers that are patches rather
+	 *  than shells. Without it the two crusts read as a stack — 41 km of granite
+	 *  with 6 km of basalt somewhere inside it — instead of as the two halves of
+	 *  a surface that meet at a coastline. */
+	let coverage = $derived(
+		layer.area_fraction === undefined
+			? null
+			: m.structure_layer_surface({ value: formatPercent(layer.area_fraction) })
+	);
 
 	// A diffuse layer with nothing above it is not fading into anything: it
 	// is a body whose interior nobody has divided.
@@ -151,20 +128,6 @@
 	);
 </script>
 
-<!-- The width a source published around a share, added under the hover rather
-     than beside the legend: it is the qualifier, not the number. -->
-{#snippet spread(segment: CompositionSegment)}
-	{@const range = spreads.get(segment.key)}
-	{#if range}
-		<span class="opacity-70">
-			{m.structure_share_range({
-				low: formatPercent(range[0]),
-				high: formatPercent(range[1])
-			})}
-		</span>
-	{/if}
-{/snippet}
-
 <div
 	class="border-s-2 ps-2.5 transition-opacity"
 	class:opacity-50={dimmed}
@@ -173,7 +136,10 @@
 	onmouseleave={onleave}
 	role="presentation"
 >
-	<div class="flex items-baseline gap-2">
+	<!-- Wrapping, because a card is not always the width of the panel: Earth's
+	     two crusts share the row and "Continental crust · 41 km thick" does not
+	     fit across 41% of it. -->
+	<div class="flex flex-wrap items-baseline gap-x-2">
 		<span class="flex-1 text-sm font-medium">{layerName(layer.role, layer.note)}</span>
 		<span class="text-muted-foreground shrink-0 text-[11px] tabular-nums">
 			{m.structure_layer_thick({
@@ -189,11 +155,11 @@
 		{/if}
 	</div>
 
-	<CompositionBar {segments} detail={spread} />
+	<CompositionBar {entries} />
 
-	{#if mass || footnote}
+	{#if mass || coverage || footnote}
 		<div class="text-muted-foreground mt-1 text-[10px] leading-snug">
-			{#if mass}{mass}{footnote ? ' · ' : ''}{/if}{footnote}
+			{[mass, coverage, footnote].filter(Boolean).join(' · ')}
 		</div>
 	{/if}
 </div>
