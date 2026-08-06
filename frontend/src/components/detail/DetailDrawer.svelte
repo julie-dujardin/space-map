@@ -1216,6 +1216,7 @@
 		active={activeGallery}
 		alt={displayName}
 		subjectName={(subject) => gallerySubjectNames.get(subject)}
+		titles={isGroupMode ? groupDetail?.localized?.image_titles : data?.localized?.image_titles}
 	/>
 {/snippet}
 

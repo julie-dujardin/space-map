@@ -406,11 +406,12 @@ interface ObjectImage {
   width?: number;         // source pixel dimensions (omitted for SVG/WebM passthrough)
   height?: number;
   subject?: string | number;  // what it's a picture of, in a pooled gallery: an Object.id or a feature_id
+  title?: string;         // short tile title from the Commons description (see below)
 }
 
 // One pooled shelf in the Images tab, beside the object's own `images`
 interface ImageGallery {
-  key: "features" | "moons";  // URL token (`&gal=`); collections also key by member Object.id
+  key: "atmosphere" | "features" | "moons";  // URL token (`&gal=`); collections also key by member Object.id
   subject?: string;           // set when the whole shelf is about one object (collections) — pooled shelves put it per-image instead
   images: ObjectImage[];
 }
@@ -602,6 +603,16 @@ have an article in any language; the tab and the collection tile fall back to
 the ring-plane chart. The same selection is pooled onto the `cat-ring-systems`
 page — see `docs/export-format/groups.md`.
 
+`atmosphere` is a *topic* shelf: the pictures from the body's atmosphere
+article, the same one the Structure tab quotes. It is the shelf the mockup's
+"storms & atmosphere" wanted, without a curated list behind it — Jupiter's
+article illustrates with the Great Red Spot and Juno's polar cyclones. SVGs are
+dropped: a vector on Commons is a diagram, and a topic article's diagrams
+restate the cross-section and composition bar the app draws itself. The
+interior articles are selected and cached the same way (`topic_images.json`
+holds both) but not emitted — theirs are cutaway schematics, often lettered in
+a single language. `_TOPICS` in `export/objects/galleries.py` is the switch.
+
 `galleries` are the *pooled* shelves: `features` takes one picture of each of
 the body's notable surface features, `moons` up to two of each notable moon,
 both walked in the ranking those lists already carry and interleaved so a
@@ -612,6 +623,20 @@ shown under `images` or `ring_images` are not repeated, and IAU locator maps
 are dropped: they are outline drawings, not pictures of the feature. Shelf
 sizes are `FEATURE_GALLERY_LIMIT` / `MOON_GALLERY_LIMIT` in
 `export/objects/galleries.py`.
+
+### Picture titles
+
+`ObjectImage.title` is a tile caption, not the viewer's: the first line of the
+Commons description, and only when it already reads as a name — under 110
+characters, no truncation. Descriptions that run to prose get no title and the
+client falls back to de-slugging the filename, which is what
+`imageLabel(file)` does in `fetch/objects/images.ts`. A title identical to that
+fallback is omitted rather than shipped twice.
+
+The localized bundles carry `image_titles` (`{filename: title}`) for languages
+Commons described the picture in, only where that differs from the base title
+in the global entry — the same shape as the notable-name overrides, and keyed
+by filename so one map covers every shelf on the page.
 
 ## Localized (`objects/{lang}/{bucket}.json.gz`)
 

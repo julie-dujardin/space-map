@@ -266,7 +266,9 @@ notable list's first sort key; the union is there so nothing notable and
 nothing well-photographed is missed. Files the group's own `images` already
 show are dropped, since a member-fallback group draws that gallery from these
 very members. Counts are `MEMBER_GALLERY_COUNT` (per ranking) and
-`MEMBER_GALLERY_IMAGES` (per shelf) in `export/groups/bundles.py`.
+`MEMBER_GALLERY_IMAGES` (per shelf) in `export/groups/bundles.py`. The
+localized bundles carry `image_titles` for both, keyed by filename — see
+`docs/export-format/objects.md`.
 
 The result is photographs only: cutaway schemes and belt maps are dropped for
 every subject except an individual craft, since they restate what the scene and

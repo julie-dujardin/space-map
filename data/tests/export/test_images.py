@@ -1257,3 +1257,62 @@ class TestPruneImageBundles:
         images_mod.prune_image_bundles()
         assert survivor.exists()
         assert any("skipping bundle prune" in r.message for r in caplog.records)
+
+
+class TestImageTitles:
+    """Short tile titles read off the Commons description."""
+
+    def test_a_label_shaped_first_line_becomes_the_title(self):
+        titles = images_mod.image_titles(
+            {"en": "Jupiter in true color by Hubble's OPAL"}
+        )
+        assert titles == {"en": "Jupiter in true color by Hubble's OPAL"}
+
+    def test_a_bare_description_is_filed_under_the_base_language(self):
+        assert images_mod.image_titles("Saturn's rings") == {"en": "Saturn's rings"}
+
+    def test_prose_is_left_to_the_caption(self):
+        long_text = "This true color picture was assembled from " + "images " * 20
+        assert images_mod.image_titles({"en": long_text}) == {}
+
+    # Cutting a paragraph mid-sentence reads as breakage, so only the first
+    # line is considered — the rest of the description stays in the viewer.
+    def test_only_the_first_line_is_considered(self):
+        titles = images_mod.image_titles({"en": "Great Red Spot\nTaken by Voyager 1."})
+        assert titles == {"en": "Great Red Spot"}
+
+    def test_markup_is_reduced_to_text(self):
+        titles = images_mod.image_titles({"en": "<b>Tycho</b> crater"})
+        assert titles == {"en": "Tycho crater"}
+
+    def test_nothing_from_an_empty_description(self):
+        assert images_mod.image_titles(None) == {}
+        assert images_mod.image_titles({"en": "  "}) == {}
+
+
+class TestLocalizedImageTitles:
+    """Per-language overrides, keyed by filename like the notable-name maps."""
+
+    @pytest.fixture(autouse=True)
+    def _titles(self, monkeypatch):
+        monkeypatch.setattr(
+            images_mod,
+            "_IMAGE_TITLES",
+            {"a.jpg": {"en": "Great Red Spot", "fr": "Grande Tache rouge"}},
+        )
+
+    def test_a_language_of_its_own_overrides(self):
+        assert images_mod.localized_image_titles(["a.jpg"], "fr") == {
+            "a.jpg": "Grande Tache rouge"
+        }
+
+    # The global entry already carries the base title; repeating it per language
+    # would be the same string twelve times.
+    def test_the_base_language_is_not_an_override(self):
+        assert images_mod.localized_image_titles(["a.jpg"], "en") == {}
+
+    def test_a_language_with_no_title_is_skipped(self):
+        assert images_mod.localized_image_titles(["a.jpg"], "de") == {}
+
+    def test_an_unrendered_file_is_skipped(self):
+        assert images_mod.localized_image_titles(["b.jpg"], "fr") == {}

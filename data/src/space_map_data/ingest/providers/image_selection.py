@@ -54,6 +54,8 @@ from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
 from space_map_data.constants.earth_sats.organizations import (
     ORGANIZATION_SLUG_PREFIX,
 )
+from space_map_data.constants.atmosphere.wikidata import ATMOSPHERE_PAGES
+from space_map_data.constants.interior.wikidata import INTERIOR_PAGES
 from space_map_data.constants.rings.wikidata import RING_SYSTEM_PAGES
 from space_map_data.export.groups.earth_sat import (
     LAGRANGE_ORBIT_CENTERS,
@@ -90,6 +92,15 @@ OBJECT_IMAGES_PATH = COMMONS_DIR / "object_images.json"
 FEATURE_IMAGES_PATH = COMMONS_DIR / "feature_images.json"
 GROUP_IMAGES_PATH = COMMONS_DIR / "group_images.json"
 RING_IMAGES_PATH = COMMONS_DIR / "ring_images.json"
+TOPIC_IMAGES_PATH = COMMONS_DIR / "topic_images.json"
+
+# Topic shelves: the articles about a body's envelope and its insides, which
+# illustrate what the Structure tab describes in prose. Keyed ``<topic>:<id>``
+# in one cache, since both sides are the same shape as the ring selection.
+TOPIC_PAGE_TABLES: tuple[tuple[str, dict[str, tuple[str, ...]]], ...] = (
+    ("atmosphere", ATMOSPHERE_PAGES),
+    ("interior", INTERIOR_PAGES),
+)
 
 SCHEMA_VERSION = 1
 
@@ -211,6 +222,12 @@ def ingest() -> None:
     ring_images = _select_ring_images(metadata_cache, wikidata_root / "referenced")
     _write_cache(RING_IMAGES_PATH, "ring_systems", ring_images)
     _fill_ring_systems(group_selections, ring_images)
+    # Atmosphere and interior articles: one shelf each on the body's Images tab.
+    _write_cache(
+        TOPIC_IMAGES_PATH,
+        "topics",
+        _select_topic_images(metadata_cache, wikidata_root / "referenced"),
+    )
     _write_cache(GROUP_IMAGES_PATH, "groups", group_selections)
     _log_written(GROUP_IMAGES_PATH, "groups", group_selections, groups)
 
@@ -359,23 +376,21 @@ def _select_for_qid(
     return out
 
 
-def _select_ring_images(
+def _select_from_pages(
+    pages: dict[str, tuple[str, ...]],
     metadata_cache: dict[str, dict | None],
     referenced_dir: Path,
 ) -> dict[str, list[dict]]:
-    """Pictures of each ring system, keyed by the host body.
+    """Pictures from a topic-page table, keyed by the body each row is about.
 
-    Taken from the "Rings of X" topic items — the same articles the Rings tab
-    already cites, so their pictures are already downloaded — and scored by the
-    same tree walk as everything else. The body's own images are no use here:
-    they are portraits of the planet, which say nothing about the rings, and a
-    hand-picked file per body is what this replaced.
-
-    Two of the eight bodies contribute nothing: neither Haumea nor Quaoar has a
-    ring article in any language. Their tiles fall back to the ring plane.
+    The tables map a body to the articles *about* one aspect of it — its rings,
+    its atmosphere, its insides. Those articles are already downloaded (the
+    panels cite them), and their pictures are scored by the same tree walk as
+    everything else. The body's own images are no use for this: a portrait of
+    the planet says nothing about the rings it wears.
     """
     out: dict[str, list[dict]] = {}
-    for body, qids in RING_SYSTEM_PAGES.items():
+    for body, qids in pages.items():
         picks: list[dict] = []
         seen: set[str] = set()
         for qid in qids:
@@ -393,14 +408,51 @@ def _select_ring_images(
                 picks.append(entry)
         if picks:
             out[body] = picks
-    missing = [b for b in RING_SYSTEM_PAGES if b not in out]
+    return out
+
+
+def _log_page_selection(
+    label: str, pages: dict[str, tuple[str, ...]], out: dict[str, list[dict]]
+) -> None:
+    missing = [body for body in pages if body not in out]
     logger.info(
-        "Ring system images: %d picture(s) across %d of %d articles%s",
+        "%s images: %d picture(s) across %d of %d articles%s",
+        label,
         sum(len(v) for v in out.values()),
         len(out),
-        len(RING_SYSTEM_PAGES),
+        len(pages),
         f"; nothing for {', '.join(missing)}" if missing else "",
     )
+
+
+def _select_ring_images(
+    metadata_cache: dict[str, dict | None],
+    referenced_dir: Path,
+) -> dict[str, list[dict]]:
+    """Pictures of each ring system, keyed by the host body.
+
+    Two of the eight bodies contribute nothing: neither Haumea nor Quaoar has a
+    ring article in any language. Their tiles fall back to the ring plane.
+    """
+    out = _select_from_pages(RING_SYSTEM_PAGES, metadata_cache, referenced_dir)
+    _log_page_selection("Ring system", RING_SYSTEM_PAGES, out)
+    return out
+
+
+def _select_topic_images(
+    metadata_cache: dict[str, dict | None],
+    referenced_dir: Path,
+) -> dict[str, list[dict]]:
+    """Pictures from each body's atmosphere and interior articles.
+
+    One flat cache keyed ``<topic>:<object_id>``, since a body can be in both
+    tables and the export asks for one topic at a time.
+    """
+    out: dict[str, list[dict]] = {}
+    for topic, pages in TOPIC_PAGE_TABLES:
+        picks = _select_from_pages(pages, metadata_cache, referenced_dir)
+        _log_page_selection(topic.capitalize(), pages, picks)
+        out.update({f"{topic}:{body}": entries for body, entries in picks.items()})
     return out
 
 
@@ -889,6 +941,11 @@ def read_feature_images() -> dict[str, list[dict]]:
 def read_group_images() -> dict[str, list[dict]]:
     """Return the cached ``{group_slug: [{file, kind}, ...]}`` mapping."""
     return _read_cache(GROUP_IMAGES_PATH, "groups")
+
+
+def read_topic_images() -> dict[str, list[dict]]:
+    """Topic-article pictures keyed ``<topic>:<object_id>``."""
+    return _read_cache(TOPIC_IMAGES_PATH, "topics")
 
 
 def read_ring_images() -> dict[str, list[dict]]:

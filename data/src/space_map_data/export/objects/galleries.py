@@ -1,21 +1,29 @@
 """Extra image galleries attached to an object's global bundle.
 
 A page shows one gallery per *subject*: the body itself (``images``), its rings
-(``ring_images``), and the pooled galleries built here — the pictures of its
-named surface features and of its moons. Each is a separate shelf in the Images
+(``ring_images``), and the galleries built here — its atmosphere, its insides,
+its named surface features and its moons. Each is a separate shelf in the Images
 tab rather than one undifferentiated pile, so a picture of Ganymede is filed
 under Ganymede instead of sitting between two portraits of Jupiter.
 
-Both pools are drawn from the notable lists the tiers above already ranked, so
-a picture leads its gallery for the same reason its subject leads the list. The
-subject id rides on every entry: it labels the tile and links out of the viewer.
+The topic shelves come from the articles the Structure tab already cites. The
+pooled shelves are drawn from the notable lists the tiers above ranked, so a
+picture leads its gallery for the same reason its subject leads the list, and
+the subject id rides on every entry: it labels the tile and links out of the
+viewer.
 """
 
 import logging
 from collections import Counter
 from collections.abc import Iterable, Sequence
 
-from space_map_data.export.images import collect_feature_images, collect_object_images
+from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.images import (
+    collect_feature_images,
+    collect_object_images,
+    collect_topic_images,
+    localized_image_titles,
+)
 from space_map_data.export.objects.writer import ChunkObjectData
 
 logger = logging.getLogger(__name__)
@@ -31,6 +39,17 @@ MOON_PER_SUBJECT_CAP = 2
 # Locator maps are IAU outline drawings, not pictures of the feature.
 _GALLERY_KINDS = frozenset({"photo", "radar"})
 
+# Shelves about one aspect of the body, ahead of the ones about other bodies.
+# Interior is deliberately absent: its articles illustrate with cutaway
+# schematics (often lettered in one language), which is what the Structure tab
+# already draws. Its selection is cached all the same — adding it back is this
+# tuple.
+_TOPICS = ("atmosphere",)
+
+# Vectors on Commons are diagrams, never photographs, and a topic article's
+# diagrams restate the cross-section and composition bar the app draws itself.
+_DIAGRAM_SUFFIX = ".svg"
+
 
 def attach_galleries(chunk: ChunkObjectData) -> None:
     """Inject ``galleries`` into every global bundle that earns one.
@@ -39,7 +58,7 @@ def attach_galleries(chunk: ChunkObjectData) -> None:
     after the notable moon and feature passes, whose output it pools.
     """
     counts: Counter[str] = Counter()
-    for global_data in chunk.global_data.values():
+    for object_id, global_data in chunk.global_data.items():
         # Nothing is worth showing twice: the body's own pictures and its ring
         # pictures are galleries of their own, one shelf up.
         seen = {
@@ -48,6 +67,18 @@ def attach_galleries(chunk: ChunkObjectData) -> None:
             for entry in global_data.get(key) or ()
         }
         galleries = []
+        for topic in _TOPICS:
+            pictures = [
+                entry
+                for entry in collect_topic_images(object_id, topic) or ()
+                if entry["kind"] in _GALLERY_KINDS
+                and entry["file"] not in seen
+                and not entry["file"].lower().endswith(_DIAGRAM_SUFFIX)
+            ]
+            if pictures:
+                seen.update(entry["file"] for entry in pictures)
+                galleries.append({"key": topic, "images": pictures})
+                counts[topic] += 1
         features = _pool(
             [
                 (fid, collect_feature_images(fid))
@@ -74,11 +105,31 @@ def attach_galleries(chunk: ChunkObjectData) -> None:
                 counts[key] += 1
         if galleries:
             global_data["galleries"] = galleries
+            _attach_titles(chunk, object_id, galleries)
     logger.info(
         "Attached pooled image galleries: %s",
         ", ".join(f"{key} on {n} bodies" for key, n in sorted(counts.items()))
         or "none",
     )
+
+
+def _attach_titles(
+    chunk: ChunkObjectData, object_id: str, galleries: list[dict]
+) -> None:
+    """Fold these shelves' picture titles into the object's localized bundles.
+
+    The writer only knows about the object's own and its ring pictures, so the
+    pooled ones are added here. Never onto a language with no entry of its own:
+    the ``has_localized`` bit is already baked into the binary chunk.
+    """
+    files = [entry["file"] for gallery in galleries for entry in gallery["images"]]
+    for lang in LANGUAGES:
+        localized = chunk.localized_data.get(lang, {}).get(object_id)
+        if localized is None:
+            continue
+        titles = localized_image_titles(files, lang)
+        if titles:
+            localized.setdefault("image_titles", {}).update(titles)
 
 
 def _subject_ids(entries: Iterable[dict] | None, id_key: str) -> list:

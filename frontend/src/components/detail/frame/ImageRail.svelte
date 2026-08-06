@@ -3,7 +3,7 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
-	import { imageLabel, imageSrcset, smallestVariantUrl } from '$lib/fetch/objects/images';
+	import { imageSrcset, smallestVariantUrl } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { galleryHref, imageHref, isModifiedClick } from '$lib/state/focus-link';
 
@@ -13,21 +13,17 @@
 		/** Gallery key this rail scrolls through — what `&gal=` carries. */
 		gallery: string;
 		alt: string;
-		subjectName?: (subject: string) => string | undefined;
+		/** How each tile is captioned; see `imageTitle`. */
+		label: (image: ObjectImage) => string;
 	}
 
-	let { title, images, gallery, alt, subjectName }: Props = $props();
+	let { title, images, gallery, alt, label }: Props = $props();
 
 	const appState = getContext<AppState>('appState');
 
 	// A taste of the shelf; the gallery itself holds the rest.
 	const RAIL_LIMIT = 6;
 	let shown = $derived(images.slice(0, RAIL_LIMIT));
-
-	function label(image: ObjectImage): string {
-		const named = image.subject === undefined ? undefined : subjectName?.(String(image.subject));
-		return named ?? imageLabel(image.file);
-	}
 
 	function open(e: MouseEvent, i: number) {
 		if (isModifiedClick(e)) return;

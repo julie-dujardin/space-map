@@ -9,6 +9,7 @@
  */
 
 import * as m from '$lib/paraglide/messages.js';
+import { imageLabel } from './images';
 import type { ImageGalleryData, ObjectImage } from './object-data';
 
 /** URL token for the subject's own pictures — the shelf that always leads. */
@@ -32,8 +33,11 @@ export interface GallerySource {
 	galleries?: ImageGalleryData[];
 }
 
-/** Titles for the pooled shelves; anything else is named after its subject. */
+/** Titles for the shelves the exporter names by kind rather than by subject:
+ *  the body's own aspects first, then the shelves about other things. */
 const POOLED_TITLES: Record<string, () => string> = {
+	atmosphere: m.atmosphere,
+	interior: m.interior,
 	features: m.features_section,
 	moons: m.moons_section
 };
@@ -68,6 +72,21 @@ export function buildGalleries(
 		});
 	}
 	return out;
+}
+
+/**
+ * What a tile is captioned with, best first: the picture's title in the reading
+ * language, the exporter's base-language one, the subject it is a picture of
+ * (in a pooled shelf, where the subject says more than the picture's own name),
+ * and failing all of those the Commons filename.
+ */
+export function imageTitle(
+	image: ObjectImage,
+	localized?: Record<string, string>,
+	subjectName?: (subject: string) => string | undefined
+): string {
+	const subject = image.subject === undefined ? undefined : subjectName?.(String(image.subject));
+	return localized?.[image.file] ?? image.title ?? subject ?? imageLabel(image.file);
 }
 
 /** The shelf a `&gal=` token names, or undefined when it names none. */

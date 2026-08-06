@@ -154,8 +154,9 @@ export function parseUrl(): MapViewState | null {
 			id,
 			name,
 			featureId: numericFeatureId,
-			imageIndex: null,
-			gallery: null
+			imageIndex: parseImageIndex(page.url.searchParams.get('img')),
+			gallery: page.url.searchParams.get('gal'),
+			tab: parseTab(page.url.searchParams.get('tab'))
 		};
 		return applyAtParam(defaults);
 	}
@@ -383,8 +384,9 @@ export function serializeUrl(state: MapViewState): string {
 			featureId: String(state.featureId),
 			name: state.name ? encodeURIComponent(state.name) : undefined
 		});
-		// No `&img=` for features — there's no gallery on a feature yet.
-		return `${path}?at=${at}`;
+		// A feature's own pictures are its only shelf; the rest of the query
+		// block belongs to lists and drills it doesn't have.
+		return `${path}?at=${at}${img}${tab}${gal}`;
 	}
 
 	const path = resolve('/[type]/[id]/[[name]]', {

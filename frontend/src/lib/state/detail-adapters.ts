@@ -28,7 +28,8 @@ export function featureDetailToObjectData(
 					aliases: detail.localized.aliases,
 					instance_of: detail.localized.instance_of,
 					named_after: detail.localized.named_after,
-					wikipedia: detail.localized.wikipedia
+					wikipedia: detail.localized.wikipedia,
+					image_titles: detail.localized.image_titles
 				}
 			: null
 	};

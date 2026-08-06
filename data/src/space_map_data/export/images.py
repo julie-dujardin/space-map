@@ -48,7 +48,7 @@ import shutil
 import threading
 import uuid
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import quote
@@ -195,6 +195,15 @@ def collect_group_images(slug: str) -> list[dict] | None:
     return _collect_images_from_cache(slug, _group_images_cache)
 
 
+def collect_topic_images(object_id: str, topic: str) -> list[dict] | None:
+    """Build one topic shelf for a body — its atmosphere or its interior.
+
+    Pictures from the article *about* that aspect, not of the body: the same
+    arrangement as ``collect_ring_images``, from one shared cache.
+    """
+    return _collect_images_from_cache(f"{topic}:{object_id}", _topic_images_cache)
+
+
 def collect_ring_images(body_id: str) -> list[dict] | None:
     """Build the ``ring_images`` array for one ringed body.
 
@@ -275,6 +284,23 @@ def _group_images_cache() -> dict[str, list[dict]]:
     return _GROUP_IMAGES_CACHE
 
 
+def _topic_images_cache() -> dict[str, list[dict]]:
+    """Lazy-load and cache ``topic_images.json`` for the export run."""
+    global _TOPIC_IMAGES_CACHE
+    if _TOPIC_IMAGES_CACHE is None:
+        from space_map_data.ingest.providers.image_selection import (
+            read_topic_images,
+        )
+
+        _TOPIC_IMAGES_CACHE = read_topic_images()
+        if not _TOPIC_IMAGES_CACHE:
+            logger.warning(
+                "topic_images.json missing or empty — run `space-map-ingest "
+                "--targets images` first; export will emit no topic galleries"
+            )
+    return _TOPIC_IMAGES_CACHE
+
+
 def _ring_images_cache() -> dict[str, list[dict]]:
     """Lazy-load and cache ``ring_images.json`` for the export run."""
     global _RING_IMAGES_CACHE
@@ -296,6 +322,7 @@ _OBJECT_IMAGES_CACHE: dict[str, list[dict]] | None = None
 _FEATURE_IMAGES_CACHE: dict[str, list[dict]] | None = None
 _GROUP_IMAGES_CACHE: dict[str, list[dict]] | None = None
 _RING_IMAGES_CACHE: dict[str, list[dict]] | None = None
+_TOPIC_IMAGES_CACHE: dict[str, list[dict]] | None = None
 
 
 # Smallest variant first — buckets ascend left-to-right in the export.
@@ -349,10 +376,22 @@ def _make_entry(filename: str, kind: str) -> dict | None:
         "variants": bundle["variants"],
         "attr": _attribution_tier((bundle.get("license") or {}).get("name")),
     }
+    titles = image_titles(bundle.get("description"))
+    _IMAGE_TITLES[filename] = titles
+    title = _base_title(titles)
+    # Nothing gained by shipping what the client derives from the filename anyway.
+    if title and title.casefold() != _filename_label(filename).casefold():
+        entry["title"] = title
     if bundle.get("width") and bundle.get("height"):
         entry["width"] = bundle["width"]
         entry["height"] = bundle["height"]
     return entry
+
+
+def _filename_label(filename: str) -> str:
+    """What the client shows without a title: the filename, de-slugged.
+    Mirrors ``imageLabel`` in the frontend's ``fetch/objects/images.ts``."""
+    return re.sub(r"\.[^.]+$", "", filename).replace("_", " ")
 
 
 def _ensure_bundle(filename: str) -> dict:
@@ -964,6 +1003,62 @@ def _strip_html(value: str) -> str:
     parser.feed(value)
     parser.close()
     return parser.text()
+
+
+# A tile label, not a caption: past this a description is prose about the
+# picture rather than a name for it, and the filename reads better than a
+# truncated paragraph. Two lines at the tile's font size.
+MAX_TITLE_CHARS = 110
+
+# filename -> {lang: title}, filled as bundles are rendered and read back when
+# the localized bundles are built. Titles only, not payloads: the export holds
+# tens of thousands of images at once.
+_IMAGE_TITLES: dict[str, dict[str, str]] = {}
+
+
+def image_titles(description: str | dict[str, str] | None) -> dict[str, str]:
+    """Per-language tile titles from a Commons description.
+
+    The first line, and only when it is already label-shaped — Commons
+    descriptions run from a name to three paragraphs of restoration notes, and
+    there is no way to cut the long ones that doesn't read as a truncation.
+    A bare (non-multilang) description is filed under the base language.
+    """
+    if not description:
+        return {}
+    by_lang = (
+        description if isinstance(description, dict) else {LANGUAGES[0]: description}
+    )
+    out: dict[str, str] = {}
+    for lang, text in by_lang.items():
+        first_line = _strip_html(text).strip().split("\n", 1)[0].strip()
+        if first_line and len(first_line) <= MAX_TITLE_CHARS:
+            out[lang] = first_line
+    return out
+
+
+def _base_title(titles: dict[str, str]) -> str | None:
+    """The title the global entry carries: the base language, else whichever
+    single language Commons happened to describe the picture in."""
+    return titles.get(LANGUAGES[0]) or next(iter(titles.values()), None)
+
+
+def localized_image_titles(files: Iterable[str], lang: str) -> dict[str, str]:
+    """Title overrides for one language, keyed by filename.
+
+    Only where the language has a title of its own that differs from the one
+    already in the global entry — the same shape (and the same reason) as the
+    notable-member name overrides.
+    """
+    out: dict[str, str] = {}
+    for filename in files:
+        titles = _IMAGE_TITLES.get(canonical_filename(filename))
+        if not titles:
+            continue
+        title = titles.get(lang)
+        if title and title != _base_title(titles):
+            out[filename] = title
+    return out
 
 
 def _locale_field(field: dict | None) -> str | dict[str, str] | None:

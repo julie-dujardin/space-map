@@ -45,7 +45,7 @@ from urllib.parse import quote
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.constants.nomenclature.quadrangles import QUADRANGLE_QIDS
-from space_map_data.export.images import collect_feature_images
+from space_map_data.export.images import collect_feature_images, localized_image_titles
 from space_map_data.export.nomenclature.format import (
     pack_header,
     pack_record,
@@ -497,6 +497,14 @@ def build_feature_details(
                 body_names,
             )
             if lang_entry:
+                # Only onto an entry that exists for other reasons, so a title
+                # can't conjure a localized bundle for a language (mirrors the
+                # object writer).
+                titles = localized_image_titles(
+                    [entry["file"] for entry in images or ()], lang
+                )
+                if titles:
+                    lang_entry["image_titles"] = titles
                 out.localized_data[lang][bucket_key] = lang_entry
 
     if skipped_no_enrichment:

@@ -62,7 +62,11 @@ from space_map_data.export.groups.registry import (
 )
 from space_map_data.export.groups.small_body import LargestBody
 from space_map_data.export.groups.stats import GroupExtraStats
-from space_map_data.export.images import collect_group_images, collect_object_images
+from space_map_data.export.images import (
+    collect_group_images,
+    collect_object_images,
+    localized_image_titles,
+)
 from space_map_data.export.notable import (
     NotableObject,
     notable_descriptions,
@@ -862,6 +866,12 @@ def write_group_bundles(
         moon_counts = (extra_moon_counts or {}).get(group.slug)
         lv_stats = (launch_vehicle_stats or {}).get(group.slug)
         ft_stats = (feature_type_stats or {}).get(group.slug)
+        galleries = _member_galleries(members, images)
+        picture_files = [
+            entry["file"]
+            for entries in (images or (), *(g["images"] for g in galleries or ()))
+            for entry in entries
+        ]
         global_by_slug[group.slug] = _build_global(
             group,
             member_counts.get(group.slug, 0),
@@ -881,7 +891,7 @@ def write_group_bundles(
             (constellation_orbit_classes or {}).get(group.slug),
             ft_stats,
             (extra_stats or {}).get(group.slug),
-            _member_galleries(members, images),
+            galleries,
         )
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
         child_counts = (child_counts_by_group or {}).get(group.slug)
@@ -914,7 +924,13 @@ def write_group_bundles(
                 )
                 if member_descriptions:
                     lang_data["notable_member_descriptions"] = member_descriptions
+            # Only onto an entry that exists for other reasons (mirrors the
+            # object writer); covers the group's own pictures and its member
+            # shelves in one map, since both key by filename.
             if lang_data:
+                titles = localized_image_titles(picture_files, lang)
+                if titles:
+                    lang_data["image_titles"] = titles
                 localized_by_slug[lang][group.slug] = lang_data
 
     bundle_ns: dict[str, int] = {}

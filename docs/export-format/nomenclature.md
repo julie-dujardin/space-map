@@ -41,7 +41,7 @@ the bucket from a URL.
     parent_feature?: EntityRef;    // IAU satellite-feature parent (same body)
     satellite_features?: EntityRef[]; // inverse of parent_feature
     contains?: EntityRef[];        // inverse of the localized `inside_of`
-    images?: ObjectImage[];        // P18 → 'photo', P242 → 'locator'
+    images?: ObjectImage[];        // P18 → 'photo', P242 → 'locator'; the feature's Images tab
     wikidata?: {
       length?: QuantityWithUnit;
       width?: QuantityWithUnit;

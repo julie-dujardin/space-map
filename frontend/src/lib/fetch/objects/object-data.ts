@@ -90,6 +90,10 @@ export interface ObjectImage {
 	 *  Object.id in a `moons` gallery, an IAU feature id in a `features` one.
 	 *  Names the tile and links out of the viewer. */
 	subject?: string | number;
+	/** Short title from the Commons description, when it reads as a name rather
+	 *  than a caption. Absent when the filename says as much — the tile falls
+	 *  back to `imageLabel(file)`. The localized bundle overrides per language. */
+	title?: string;
 }
 
 /**
@@ -721,6 +725,9 @@ export interface LocalizedObjectData {
 	/** "Atmosphere of X" in this locale, for the Structure tab. */
 	atmosphere_page?: TopicPage;
 	/** notable-moon Object.id → localized label, only where it differs from the global name. */
+	/** Commons filename → localized picture title, only where the language has
+	 *  one of its own. Covers every gallery on the page — they key by filename. */
+	image_titles?: Record<string, string>;
 	notable_moon_names?: Record<string, string>;
 	/** notable-moon Object.id → localized Wikidata short description, for the planet-page moon lineup hover tooltip. */
 	notable_moon_descriptions?: Record<string, string>;

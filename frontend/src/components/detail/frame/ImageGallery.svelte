@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
-	import { imageLabel, imageSrcset, smallestVariantUrl } from '$lib/fetch/objects/images';
+	import { imageSrcset, smallestVariantUrl } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { imageHref, isModifiedClick } from '$lib/state/focus-link';
 
@@ -10,19 +10,13 @@
 		alt: string;
 		/** Gallery key the viewer indexes into — what `&gal=` carries. */
 		gallery: string;
-		/** Name for a pooled image's subject (a moon, a surface feature), which
-		 *  says more than the Commons filename does. */
-		subjectName?: (subject: string) => string | undefined;
+		/** How each tile is captioned; see `imageTitle`. */
+		label: (image: ObjectImage) => string;
 	}
 
-	let { images, alt, gallery, subjectName }: Props = $props();
+	let { images, alt, gallery, label }: Props = $props();
 
 	const appState = getContext<AppState>('appState');
-
-	function label(image: ObjectImage): string {
-		const named = image.subject === undefined ? undefined : subjectName?.(String(image.subject));
-		return named ?? imageLabel(image.file);
-	}
 
 	function open(e: MouseEvent, i: number) {
 		if (isModifiedClick(e)) return;

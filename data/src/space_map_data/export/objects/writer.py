@@ -32,7 +32,7 @@ from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,
     load_wikipedia_summaries_for_qid,
 )
-from space_map_data.export.images import collect_object_images
+from space_map_data.export.images import collect_object_images, localized_image_titles
 from space_map_data.export.objects.celestrak import (
     build_satcat_global,
     build_satcat_localized,
@@ -276,7 +276,7 @@ def build_chunk_object_data(
         drop_covered_qids(extracted, covered_authoritative_qids(sat), obj.id)
         merge_operator_qids(extracted, sat)
 
-        out.global_data[obj.id] = _build_global(
+        global_data = _build_global(
             obj,
             extracted,
             wikidata_entities,
@@ -297,8 +297,14 @@ def build_chunk_object_data(
             ring_moon_ids,
             ring_metadata,
         )
+        out.global_data[obj.id] = global_data
 
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
+        picture_files = [
+            entry["file"]
+            for key in ("images", "ring_images")
+            for entry in global_data.get(key) or ()
+        ]
 
         any_localized = False
         for lang in LANGUAGES:
@@ -306,7 +312,13 @@ def build_chunk_object_data(
             lang_data = _build_localized(
                 obj, lang, wikidata_entities, wd, extracted, wiki_summary
             )
+            # Only onto an entry that exists for other reasons: an object's
+            # `has_localized` bit ships in the binary chunk and can't be
+            # flipped by a picture title (mirrors the notable-name passes).
             if lang_data:
+                titles = localized_image_titles(picture_files, lang)
+                if titles:
+                    lang_data["image_titles"] = titles
                 out.localized_data[lang][obj.id] = lang_data
                 any_localized = True
         out.has_localized[obj.id] = any_localized

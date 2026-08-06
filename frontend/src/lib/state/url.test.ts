@@ -170,6 +170,25 @@ describe('serializeUrl', () => {
 		});
 	});
 
+	// A feature's own pictures are a gallery like any other; its route just has
+	// fewer query blocks to carry.
+	describe('feature query block', () => {
+		const feature = { ...baseView, type: 'f', id: 'naif-499', featureId: 1000, name: 'Candor' };
+
+		it('carries the tab and the open image', () => {
+			const url = serializeUrl({ ...feature, tab: 'images', imageIndex: 2 });
+			expect(url).toContain('/b/499/f/1000/Candor?at=');
+			expect(url).toContain('&img=2');
+			expect(url).toContain('&tab=images');
+		});
+
+		it('omits the blocks a feature has no lists for', () => {
+			const url = serializeUrl({ ...feature, tab: 'images', memberPage: 3, ring: 'c-ring' });
+			expect(url).not.toContain('mp=');
+			expect(url).not.toContain('ring=');
+		});
+	});
+
 	describe('gallery serialization', () => {
 		it('emits &gal= under the images tab', () => {
 			const url = serializeUrl({ ...baseView, tab: 'images', gallery: 'moons' });

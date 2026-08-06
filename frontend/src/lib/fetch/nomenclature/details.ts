@@ -68,6 +68,8 @@ export interface FeatureLocalizedData {
 		description?: string;
 		url?: string;
 	};
+	/** Commons filename → localized picture title, for the feature's gallery. */
+	image_titles?: Record<string, string>;
 }
 
 export interface FeatureDetailData {

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
-	import type { Gallery } from '$lib/fetch/objects/galleries';
+	import { imageTitle, type Gallery } from '$lib/fetch/objects/galleries';
+	import type { ObjectImage } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { focusHref, isModifiedClick } from '$lib/state/focus-link';
@@ -13,10 +14,16 @@
 		/** The open gallery; undefined shows the index of shelves. */
 		active?: Gallery;
 		alt: string;
+		/** Names a pooled picture's subject — a moon, a surface feature. */
 		subjectName?: (subject: string) => string | undefined;
+		/** Commons filename → title in the reading language, from the localized
+		 *  bundle; overrides the base-language title in the picture itself. */
+		titles?: Record<string, string>;
 	}
 
-	let { galleries, active, alt, subjectName }: Props = $props();
+	let { galleries, active, alt, subjectName, titles }: Props = $props();
+
+	const label = (image: ObjectImage) => imageTitle(image, titles, subjectName);
 
 	const appState = getContext<AppState>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -50,7 +57,7 @@
 				<ArrowRightIcon class="size-3 rtl:rotate-180" />
 			</a>
 		{/if}
-		<ImageGallery images={open.images} gallery={open.key} {alt} {subjectName} />
+		<ImageGallery images={open.images} gallery={open.key} {alt} {label} />
 	{:else}
 		{#each galleries as gallery (gallery.key)}
 			<ImageRail
@@ -58,7 +65,7 @@
 				images={gallery.images}
 				gallery={gallery.key}
 				{alt}
-				{subjectName}
+				{label}
 			/>
 		{/each}
 	{/if}

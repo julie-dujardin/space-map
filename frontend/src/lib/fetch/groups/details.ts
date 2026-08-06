@@ -214,6 +214,9 @@ export interface LocalizedGroupData {
 	/** lv- only: reusable-vehicle name → Wikipedia ref (Shuttle orbiters; cores have none). Keyed by `reusable_vehicles[].name`. */
 	reusable_vehicle_refs?: Record<string, EntityRef>;
 	/** member Object.id → localized label for notable_members, only where it differs from the global name. */
+	/** Commons filename → localized picture title; covers the collection's own
+	 *  pictures and its member shelves alike. */
+	image_titles?: Record<string, string>;
 	notable_member_names?: Record<string, string>;
 	/** member Object.id → localized Wikidata short description, for the lineup hero's hover tooltip. */
 	notable_member_descriptions?: Record<string, string>;

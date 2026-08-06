@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGalleries, findGallery, MAIN_GALLERY, RINGS_GALLERY } from './galleries';
+import { buildGalleries, findGallery, imageTitle, MAIN_GALLERY, RINGS_GALLERY } from './galleries';
 import type { ObjectImage } from './object-data';
 
 function image(file: string, subject?: string | number): ObjectImage {
@@ -70,6 +70,27 @@ describe('buildGalleries', () => {
 			'Jupiter'
 		);
 		expect(galleries).toHaveLength(1);
+	});
+});
+
+describe('imageTitle', () => {
+	it('prefers the reading language over the exported base title', () => {
+		const img = { ...image('a.jpg'), title: 'Jupiter in true color' };
+		expect(imageTitle(img, { 'a.jpg': 'Jupiter en couleurs réelles' })).toBe(
+			'Jupiter en couleurs réelles'
+		);
+	});
+
+	it('falls back to the base title, then the subject, then the filename', () => {
+		expect(imageTitle({ ...image('a.jpg'), title: 'Great Red Spot' })).toBe('Great Red Spot');
+		expect(imageTitle(image('a.jpg', 'naif-502'), undefined, () => 'Europa')).toBe('Europa');
+		expect(imageTitle(image('Jupiter_OPAL_2024.png'))).toBe('Jupiter OPAL 2024');
+	});
+
+	// A title says what the picture is; the subject only says whose shelf it is on.
+	it('lets a picture with both keep its own title', () => {
+		const img = { ...image('a.jpg', 'naif-502'), title: 'Europa transiting Jupiter' };
+		expect(imageTitle(img, undefined, () => 'Europa')).toBe('Europa transiting Jupiter');
 	});
 });
 
