@@ -495,6 +495,13 @@
 	"rings_axis_body_radii": "רדיוסים פלנטריים",
 	"rings_axis_km": "ק\"מ",
 	"rings_thickness": "עובי",
+	"rings_see_all": "הצגת כל הטבעות",
+	"rings_extent": "טווח",
+	"tooltip_rings_extent": "הקצה הפנימי והחיצוני של מערכת הטבעות, נמדדים ממרכז הגוף",
+	"rings_width": "רוחב",
+	"rings_sections": "מקטעים",
+	"rings_densest": "הטבעת הצפופה ביותר",
+	"rings_bar_cut": "טבעות מעבר ל־{radius} אינן מוצגות בתרשים.",
 	"rings_count_ring": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

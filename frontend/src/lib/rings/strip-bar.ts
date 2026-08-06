@@ -48,10 +48,12 @@ function extent(
 }
 
 /** A 1-pixel-tall PNG of the body's rings, inner edge at the left, or null
- *  when nothing is known to draw. The caller stretches it over the tile. */
+ *  when nothing is known to draw. The caller stretches it over the tile, or
+ *  over the stretch of a wider chart `window` names. */
 export function paintRingBar(
 	profiles: readonly RingStripProfile[],
-	features: Record<string, RingFeature> | undefined
+	features: Record<string, RingFeature> | undefined,
+	window?: readonly [number, number]
 ): string | null {
 	if (typeof document === 'undefined') return null;
 	const bands: Band[] = Object.values(features ?? {})
@@ -61,9 +63,9 @@ export function paintRingBar(
 		})
 		// Narrowest last, so a ringlet paints over the ring that contains it.
 		.sort((a, b) => b.outer - b.inner - (a.outer - a.inner));
-	const window = extent(profiles, bands);
-	if (!window) return null;
-	const [min, max] = window;
+	const drawn = window ?? extent(profiles, bands);
+	if (!drawn) return null;
+	const [min, max] = drawn;
 
 	const canvas = document.createElement('canvas');
 	canvas.width = WIDTH;
@@ -77,11 +79,13 @@ export function paintRingBar(
 		const hi = lo + perPixel;
 		const sample = sampleProfiles(profiles, lo, hi);
 		let [red, green, blue] = PALE;
-		let alpha = 0;
-		if (sample) {
-			[red, green, blue] = sample.rgb;
-			alpha = tauOpacity(sample.tau);
-		} else {
+		let alpha = sample ? tauOpacity(sample.tau) : 0;
+		if (alpha > 0) [red, green, blue] = sample!.rgb;
+		// A bundle whose eight bits quantise its faintest material away says as
+		// little as no bundle at all: Uranus' ν and µ rings sit four decades under
+		// the ε ring its strip is scaled for and come back empty. The catalogue
+		// has a number for them.
+		if (!alpha) {
 			const mid = (lo + hi) / 2;
 			for (const band of bands) if (mid >= band.inner && mid <= band.outer) alpha = band.alpha;
 		}

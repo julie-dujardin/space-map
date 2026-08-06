@@ -495,6 +495,13 @@
 	"rings_axis_body_radii": "radios planetarios",
 	"rings_axis_km": "km",
 	"rings_thickness": "de grosor",
+	"rings_see_all": "Ver todos los anillos",
+	"rings_extent": "Extensión",
+	"tooltip_rings_extent": "Borde interior y exterior del sistema de anillos, medidos desde el centro del cuerpo",
+	"rings_width": "Anchura",
+	"rings_sections": "Secciones",
+	"rings_densest": "Anillo más denso",
+	"rings_bar_cut": "Los anillos más allá de {radius} no se representan.",
 	"rings_count_ring": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

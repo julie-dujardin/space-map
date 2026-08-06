@@ -473,6 +473,13 @@
 	"rings_axis_body_radii": "rayons planétaires",
 	"rings_axis_km": "km",
 	"rings_thickness": "d'épaisseur",
+	"rings_see_all": "Voir tous les anneaux",
+	"rings_extent": "Étendue",
+	"tooltip_rings_extent": "Bord interne et bord externe du système d'anneaux, mesurés depuis le centre du corps",
+	"rings_width": "Largeur",
+	"rings_sections": "Sections",
+	"rings_densest": "Anneau le plus dense",
+	"rings_bar_cut": "Les anneaux au-delà de {radius} ne sont pas représentés.",
 	"rings_count_ring": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

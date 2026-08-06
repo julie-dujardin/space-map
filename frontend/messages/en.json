@@ -452,6 +452,13 @@
 	"rings_axis_body_radii": "planetary radii",
 	"rings_axis_km": "km",
 	"rings_thickness": "thick",
+	"rings_see_all": "See all rings",
+	"rings_extent": "Extent",
+	"tooltip_rings_extent": "Inner and outer edge of the ring system, measured from the centre of the body",
+	"rings_width": "Width",
+	"rings_sections": "Sections",
+	"rings_densest": "Densest ring",
+	"rings_bar_cut": "Rings beyond {radius} are left off the chart.",
 	"rings_count_ring": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

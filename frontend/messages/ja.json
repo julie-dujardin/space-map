@@ -476,6 +476,13 @@
 	"rings_axis_body_radii": "惑星半径",
 	"rings_axis_km": "km",
 	"rings_thickness": "の厚さ",
+	"rings_see_all": "すべての環を見る",
+	"rings_extent": "範囲",
+	"tooltip_rings_extent": "環系の内縁と外縁。天体の中心から測った距離",
+	"rings_width": "幅",
+	"rings_sections": "区分",
+	"rings_densest": "最も濃い環",
+	"rings_bar_cut": "{radius} より外側の環は図に描かれていません。",
 	"rings_count_ring": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

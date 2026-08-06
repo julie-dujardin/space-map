@@ -458,6 +458,13 @@
 	"rings_axis_body_radii": "أنصاف أقطار الكوكب",
 	"rings_axis_km": "كم",
 	"rings_thickness": "سماكة",
+	"rings_see_all": "عرض جميع الحلقات",
+	"rings_extent": "المدى",
+	"tooltip_rings_extent": "الحافتان الداخلية والخارجية لنظام الحلقات، مقيستان من مركز الجرم",
+	"rings_width": "العرض",
+	"rings_sections": "الأقسام",
+	"rings_densest": "أكثف حلقة",
+	"rings_bar_cut": "الحلقات الواقعة خارج {radius} غير مرسومة في المخطط.",
 	"rings_count_ring": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

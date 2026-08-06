@@ -429,6 +429,13 @@
 	"rings_axis_body_radii": "行星半径",
 	"rings_axis_km": "公里",
 	"rings_thickness": "厚",
+	"rings_see_all": "查看所有环",
+	"rings_extent": "范围",
+	"tooltip_rings_extent": "环系的内缘与外缘，自天体中心量起",
+	"rings_width": "宽度",
+	"rings_sections": "分区",
+	"rings_densest": "最稠密的环",
+	"rings_bar_cut": "{radius} 以外的环未在图中显示。",
 	"rings_count_ring": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

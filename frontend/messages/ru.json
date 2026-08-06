@@ -447,6 +447,13 @@
 	"rings_axis_body_radii": "радиусы планеты",
 	"rings_axis_km": "км",
 	"rings_thickness": "толщина",
+	"rings_see_all": "Показать все кольца",
+	"rings_extent": "Протяжённость",
+	"tooltip_rings_extent": "Внутренний и внешний край системы колец, отсчитанные от центра тела",
+	"rings_width": "Ширина",
+	"rings_sections": "Части",
+	"rings_densest": "Самое плотное кольцо",
+	"rings_bar_cut": "Кольца за пределами {radius} на диаграмме не показаны.",
 	"rings_count_ring": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

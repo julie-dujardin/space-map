@@ -495,6 +495,13 @@
 	"rings_axis_body_radii": "Planetenradien",
 	"rings_axis_km": "km",
 	"rings_thickness": "dick",
+	"rings_see_all": "Alle Ringe ansehen",
+	"rings_extent": "Ausdehnung",
+	"tooltip_rings_extent": "Innerer und äußerer Rand des Ringsystems, gemessen vom Mittelpunkt des Körpers",
+	"rings_width": "Breite",
+	"rings_sections": "Abschnitte",
+	"rings_densest": "Dichtester Ring",
+	"rings_bar_cut": "Ringe jenseits von {radius} sind nicht dargestellt.",
 	"rings_count_ring": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

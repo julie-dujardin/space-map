@@ -60,6 +60,7 @@
 	import Brightness from './sections/Brightness.svelte';
 	import Atmosphere from './sections/Atmosphere.svelte';
 	import Interior from './sections/Interior.svelte';
+	import Rings from './sections/Rings.svelte';
 	import Structure from './sections/Structure.svelte';
 	import ObjectStats from './sections/ObjectStats.svelte';
 	import SatCrossRefs from './sections/SatCrossRefs.svelte';
@@ -1139,6 +1140,7 @@
 				<Bulk global={data?.global ?? null} />
 				<Atmosphere global={data?.global ?? null} />
 				<Interior global={data?.global ?? null} />
+				<Rings global={data?.global ?? null} localized={data?.localized ?? null} {body} />
 				<Brightness global={data?.global ?? null} />
 				<Orbital
 					global={data?.global ?? null}
