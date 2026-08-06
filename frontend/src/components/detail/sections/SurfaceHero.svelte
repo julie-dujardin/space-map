@@ -5,9 +5,11 @@
 	 *  narrows the list. Cells are keyboard-reachable through a single tab stop
 	 *  with arrow keys walking them (144 charts on the Moon). */
 
-	import { untrack } from 'svelte';
+	import { getContext, untrack } from 'svelte';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import * as m from '$lib/paraglide/messages.js';
+	import type { AppState } from '$lib/state/app-state.svelte';
+	import { isModifiedClick, quadHref } from '$lib/state/focus-link';
 	import { versionedUrl } from '$lib/fetch/data-base';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
@@ -23,6 +25,14 @@
 		markedFeatureId?: number | null;
 	}
 	let { bodyId, quads, selected, onselect, markedFeatureId = null }: Props = $props();
+
+	const appState = getContext<AppState | undefined>('appState');
+
+	function selectAll(e: MouseEvent) {
+		if (isModifiedClick(e)) return;
+		e.preventDefault();
+		onselect(null);
+	}
 
 	/** Beyond this the low-tier map (2048 px wide) turns to mush; a small
 	 *  quadrangle stays centred rather than filling the frame. */
@@ -233,10 +243,10 @@
 	     preview, since a crumb pointing at something unselected would lie. -->
 	<div class="flex min-h-5 items-baseline gap-1.5 text-xs">
 		{#if selected && caption?.code === selected}
-			<button
-				type="button"
+			<a
+				href={quadHref(appState, null)}
 				class="text-muted-foreground hover:text-foreground transition-colors"
-				onclick={() => onselect(null)}>{m.feature_quadrangle_all()}</button
+				onclick={selectAll}>{m.feature_quadrangle_all()}</a
 			>
 			<ChevronRightIcon class="text-muted-foreground size-3 self-center rtl:rotate-180" />
 		{/if}

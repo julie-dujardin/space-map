@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import type { AppState } from '$lib/state/app-state.svelte';
+	import { focusHref, groupHref, isModifiedClick } from '$lib/state/focus-link';
 
 	// Curated shortcuts beside the search bar / detail sidebar. Objects fly the
 	// camera; groups open the /g view.
@@ -22,7 +25,17 @@
 		{ kind: 'object', id: 'probe-121737217', label: m.featured_artemis_2() }
 	];
 
-	function pick(item: FeaturedItem) {
+	const appState = getContext<AppState | undefined>('appState');
+
+	function href(item: FeaturedItem): string | undefined {
+		return item.kind === 'group'
+			? groupHref(appState, item.slug, item.label)
+			: focusHref(appState, item.id, item.label);
+	}
+
+	function pick(e: MouseEvent, item: FeaturedItem) {
+		if (isModifiedClick(e)) return;
+		e.preventDefault();
 		if (item.kind === 'group') onGroup(item.slug, item.label);
 		else onObject(item.id, item.label);
 	}
@@ -33,12 +46,12 @@
 	aria-label={m.featured_label()}
 >
 	{#each items as item (item.label)}
-		<button
-			type="button"
+		<a
+			href={href(item)}
 			class="inline-flex h-7 shrink-0 items-center rounded-full border border-border bg-popover/90 px-2.5 text-xs whitespace-nowrap text-foreground shadow-lg backdrop-blur-md transition-colors hover:bg-accent"
-			onclick={() => pick(item)}
+			onclick={(e) => pick(e, item)}
 		>
 			{item.label}
-		</button>
+		</a>
 	{/each}
 </div>

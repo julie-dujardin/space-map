@@ -7,6 +7,7 @@
 	import { materialEntries } from '$lib/charts/interior-materials';
 	import { coreBracket } from '$lib/charts/layer-appearance';
 	import { structureLink } from '$lib/charts/structure-link';
+	import { isModifiedClick, tabHref } from '$lib/state/focus-link';
 	import type { CompositionEntry } from '$lib/charts/composition-bar';
 	import { formatKelvinRange } from '$lib/format/temperature';
 	import Section from './kit/Section.svelte';
@@ -63,8 +64,14 @@
 		return null;
 	});
 	let link = $derived(structureLink(global));
-	let openStructure = $derived(link ? () => appState.setTab('structure') : undefined);
+	let structureHref = $derived(link ? tabHref(appState, 'structure') : undefined);
 	let linkLabel = $derived(link?.layers ? m.structure_see_layers() : m.structure_see_more());
+
+	function openStructure(e: MouseEvent) {
+		if (isModifiedClick(e)) return;
+		e.preventDefault();
+		appState.setTab('structure');
+	}
 
 	let entries: CompositionEntry[] = $derived(
 		interior?.composition ? materialEntries(interior.composition) : []
@@ -72,7 +79,12 @@
 </script>
 
 {#if interior || coreTemperature}
-	<Section title={m.interior()} onActivate={openStructure} activateLabel={linkLabel}>
+	<Section
+		title={m.interior()}
+		activateHref={structureHref}
+		onActivate={openStructure}
+		activateLabel={linkLabel}
+	>
 		{#snippet header()}
 			<CompositionBar {entries} />
 		{/snippet}

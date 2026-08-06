@@ -242,6 +242,17 @@ export function applyTab(current: MapViewState, tab: DrawerTab): MapViewState {
 	};
 }
 
+/** Next view when selecting the Surface tab's quadrangle (null = all of them).
+ *  The list underneath is a different set, so paging depth clears. */
+export function applyQuad(current: MapViewState, code: string | null): MapViewState {
+	return { ...current, quad: code, memberPage: null };
+}
+
+/** Next view when opening the image viewer on one image. */
+export function applyImage(current: MapViewState, index: number | null): MapViewState {
+	return { ...current, imageIndex: index };
+}
+
 /** Next view when opening a group. Parks `id` on the group's camera anchor
  *  so the body route resolves to the anchor body. */
 export function applyGroup(current: MapViewState, slug: string, name: string): MapViewState {

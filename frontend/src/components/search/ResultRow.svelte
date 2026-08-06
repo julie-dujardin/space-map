@@ -1,8 +1,18 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import LayersIcon from '@lucide/svelte/icons/layers';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import type { SearchHit } from '$lib/search/client';
+	import type { AppState } from '$lib/state/app-state.svelte';
+	import {
+		applyFeature,
+		applyFocus,
+		applyGroup,
+		serializeUrl,
+		urlTypeFromId
+	} from '$lib/state/url';
+	import { isModifiedClick } from '$lib/state/focus-link';
 
 	type Props = {
 		hit: SearchHit;
@@ -24,12 +34,35 @@
 	// navigable group rather than a single object: stacked-card thumbnail, a
 	// member count, and a chevron that signals "opens a page". `hit.kind` is
 	// referenced inline below so the discriminated union narrows member_count.
+
+	const appState = getContext<AppState | undefined>('appState');
+
+	let href = $derived.by(() => {
+		if (!appState) return undefined;
+		const view = appState.view;
+		if (hit.kind === 'feature')
+			return serializeUrl(
+				applyFeature(view, { bodyId: hit.body_id, featureId: hit.feature_id, featureName: name })
+			);
+		if (hit.kind === 'group') return serializeUrl(applyGroup(view, hit.slug, name));
+		return serializeUrl(applyFocus(view, { type: urlTypeFromId(hit.id), id: hit.id, name }));
+	});
+
+	// Plain left-click picks in-session, which also collapses the search; a
+	// modified click opens the destination in a new tab and leaves it open.
+	function onClick(e: MouseEvent) {
+		if (isModifiedClick(e)) return;
+		e.preventDefault();
+		onselect();
+	}
 </script>
 
 <!-- Combobox pattern: the row is an option, keyboard focus stays on the input
-     (tabindex -1 keeps dozens of rows out of the tab order). -->
-<button
-	type="button"
+     (tabindex -1 keeps dozens of rows out of the tab order). `role="option"`
+     replaces the link role for assistive tech, which loses nothing — the input
+     is what's being operated — while the href stays there for the pointer. -->
+<a
+	{href}
 	{id}
 	role="option"
 	aria-selected={active}
@@ -38,7 +71,7 @@
 		? 'bg-neutral-200 dark:bg-accent'
 		: 'hover:bg-neutral-200 dark:hover:bg-accent'}"
 	onmouseenter={onhover}
-	onclick={onselect}
+	onclick={onClick}
 >
 	<span class="relative size-9 shrink-0">
 		{#if hit.kind === 'group'}
@@ -89,4 +122,4 @@
 				>{/if}
 		</span>
 	{/if}
-</button>
+</a>

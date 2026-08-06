@@ -4,6 +4,8 @@ import {
 	applyFeature,
 	applyFocus,
 	applyGroup,
+	applyImage,
+	applyQuad,
 	applyTab,
 	parseUrl,
 	serializeUrl,
@@ -174,7 +176,7 @@ export class AppState {
 	 *  depth — the list underneath is a different set. */
 	setQuad(code: string | null) {
 		if (code === this.view.quad) return;
-		this.view = { ...this.view, quad: code, memberPage: null };
+		this.view = applyQuad(this.view, code);
 		this.replaceNow();
 	}
 
@@ -205,7 +207,7 @@ export class AppState {
 
 	setImage(index: number | null) {
 		const prev = this.view.imageIndex;
-		this.view = { ...this.view, imageIndex: index };
+		this.view = applyImage(this.view, index);
 		// Push on open/close so browser-back toggles the viewer; replace on
 		// in-viewer navigation so each arrow-press doesn't grow history.
 		const toggled = (prev === null) !== (index === null);

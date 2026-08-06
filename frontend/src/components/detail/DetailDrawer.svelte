@@ -45,6 +45,7 @@
 		CAT_SOLAR_SYSTEM
 	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import { groupHref, imageHref, tabHref } from '$lib/state/focus-link';
 	import type { DrawerTab } from '$lib/state/view';
 	import { type Focusable, focusableFallbackName, focusableKey } from '$lib/state/focusable';
 	import ObjectHeader from './frame/ObjectHeader.svelte';
@@ -519,6 +520,13 @@
 		hasMembers && !satellitesGroup && memberTotal > STRIP_CAPACITY && !cat.membersShownInFull
 	);
 
+	// Earth's satellites live on their own collection page rather than a tab here.
+	let seeAllMembersHref = $derived(
+		satellitesGroup
+			? groupHref(appState, satellitesGroup, membersHeading)
+			: tabHref(appState, 'members')
+	);
+
 	function seeAllMembers() {
 		if (satellitesGroup) appState?.setGroup(satellitesGroup, membersHeading);
 		else appState.setTab('members');
@@ -706,6 +714,11 @@
 	let missionMemberTotal = $derived(data?.global?.mission_member_count ?? 0);
 	let hasMissionMembers = $derived(!!missionMembers && missionMembers.length > 0);
 
+	let seeAllMissionMembersHref = $derived.by(() => {
+		const link = data?.global?.mission;
+		return link ? groupHref(appState, link.primary_id, link.name) : undefined;
+	});
+
 	function seeAllMissionMembers() {
 		const link = data?.global?.mission;
 		if (link) appState?.setGroup(link.primary_id, link.name);
@@ -719,6 +732,7 @@
 		localizedNames?: Record<string, string>;
 		totalCount: number;
 		heading: string;
+		seeAllHref?: string;
 		onSeeAll: () => void;
 		focusMovesCamera?: boolean;
 	}
@@ -738,6 +752,7 @@
 				localizedNames: memberNames,
 				totalCount: memberTotal,
 				heading: membersHeading,
+				seeAllHref: seeAllMembersHref,
 				onSeeAll: seeAllMembers
 			});
 		}
@@ -749,6 +764,7 @@
 				localizedNames: featureNames,
 				totalCount: featureTotal,
 				heading: m.features_section(),
+				seeAllHref: tabHref(appState, 'features'),
 				onSeeAll: seeAllFeatures
 			});
 		}
@@ -758,6 +774,7 @@
 				localizedNames: fragmentNames,
 				totalCount: fragmentTotal,
 				heading: m.fragments_section(),
+				seeAllHref: tabHref(appState, 'fragments'),
 				onSeeAll: seeAllFragments,
 				focusMovesCamera: false
 			});
@@ -768,6 +785,7 @@
 				localizedNames: missionMemberNames,
 				totalCount: missionMemberTotal,
 				heading: m.mission_members_section(),
+				seeAllHref: seeAllMissionMembersHref,
 				onSeeAll: seeAllMissionMembers
 			});
 		}
@@ -929,10 +947,12 @@
 						: lineup.hero && !lineup.isMoonLineup
 							? lineupHeroSnippet
 							: undefined}
+					galleryHref={imageHref(appState, 0, 'images')}
 					onShowGallery={() => {
 						appState.setTab('images');
 						appState.setImage(0);
 					}}
+					listHref={tabHref(appState, 'images')}
 					onShowList={() => appState.setTab('images')}
 				/>
 			</div>
@@ -1062,6 +1082,7 @@
 					localizedNames={strip.localizedNames}
 					totalCount={strip.totalCount}
 					heading={strip.heading}
+					seeAllHref={strip.seeAllHref}
 					onSeeAll={strip.onSeeAll}
 					focusMovesCamera={strip.focusMovesCamera ?? true}
 				/>

@@ -6,6 +6,7 @@
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { atmosphereNote, atmosphereTypeName } from '$lib/charts/atmosphere-layers';
 	import { structureLink } from '$lib/charts/structure-link';
+	import { isModifiedClick, tabHref } from '$lib/state/focus-link';
 	import { formatPressure, EARTH_SEA_LEVEL_PA, formatEarthRatio } from '$lib/format/pressure';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import Section from './kit/Section.svelte';
@@ -34,8 +35,14 @@
 	let note = $derived(atmosphereNote(atmosphere?.note));
 
 	let link = $derived(structureLink(global));
-	let openStructure = $derived(link ? () => appState.setTab('structure') : undefined);
+	let structureHref = $derived(link ? tabHref(appState, 'structure') : undefined);
 	let linkLabel = $derived(link?.layers ? m.structure_see_layers() : m.structure_see_more());
+
+	function openStructure(e: MouseEvent) {
+		if (isModifiedClick(e)) return;
+		e.preventDefault();
+		appState.setTab('structure');
+	}
 
 	// Sixteen orders of magnitude of pressure mean nothing on their own; Earth
 	// is the ruler everyone carries. Skipped on Earth, where it would read
@@ -48,7 +55,12 @@
 </script>
 
 {#if atmosphere}
-	<Section title={m.atmosphere()} onActivate={openStructure} activateLabel={linkLabel}>
+	<Section
+		title={m.atmosphere()}
+		activateHref={structureHref}
+		onActivate={openStructure}
+		activateLabel={linkLabel}
+	>
 		{#snippet header()}
 			<AtmosphereComposition composition={atmosphere.composition} />
 		{/snippet}

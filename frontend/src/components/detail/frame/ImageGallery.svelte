@@ -3,6 +3,7 @@
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
 	import { variantUrl } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import { imageHref, isModifiedClick } from '$lib/state/focus-link';
 
 	interface Props {
 		images: ObjectImage[];
@@ -39,14 +40,22 @@
 	function label(file: string): string {
 		return file.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
 	}
+
+	function open(e: MouseEvent, i: number) {
+		if (isModifiedClick(e)) return;
+		e.preventDefault();
+		appState.setImage(i);
+	}
 </script>
 
 <div class="gallery">
 	{#each images as image, i (image.file)}
-		<button
-			type="button"
+		<!-- Pinned to the Images tab rather than whatever's in view: the drawer
+		     keeps every tab panel mounted, so the current tab is not this one. -->
+		<a
+			href={imageHref(appState, i, 'images')}
 			class="tile"
-			onclick={() => appState.setImage(i)}
+			onclick={(e) => open(e, i)}
 			style:aspect-ratio={image.width && image.height
 				? `${image.width} / ${image.height}`
 				: undefined}
@@ -63,7 +72,7 @@
 				class="tile-img"
 			/>
 			<span class="tile-label">{label(image.file)}</span>
-		</button>
+		</a>
 	{/each}
 </div>
 

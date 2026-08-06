@@ -19,6 +19,7 @@
 		serializeUrl,
 		urlTypeFromId
 	} from '$lib/state/url';
+	import { isModifiedClick } from '$lib/state/focus-link';
 	import { formatCompactNumber } from '$lib/format/quantities';
 
 	interface Props {
@@ -26,6 +27,8 @@
 		localizedNames?: Record<string, string>;
 		totalCount: number;
 		heading: string;
+		/** Where "See all" goes — a tab of this object, or a collection page. */
+		seeAllHref?: string;
 		onSeeAll: () => void;
 		/** Fragment lists pass false: select the piece without flying to its mesh. */
 		focusMovesCamera?: boolean;
@@ -35,9 +38,16 @@
 		localizedNames,
 		totalCount,
 		heading,
+		seeAllHref,
 		onSeeAll,
 		focusMovesCamera = true
 	}: Props = $props();
+
+	function seeAll(e: MouseEvent) {
+		if (isModifiedClick(e)) return;
+		e.preventDefault();
+		onSeeAll();
+	}
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -72,7 +82,7 @@
 	}
 
 	function focusMember(e: MouseEvent, member: NotableMemberEntry) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		if (isModifiedClick(e)) return;
 		const name = displayName(member);
 		// Group entry → open the group; otherwise focus the object. With no
 		// appState/focusObject in context, let the href do a full-page nav.
@@ -99,14 +109,15 @@
 	<div class="flex items-baseline justify-between gap-2">
 		<h3 class="text-sm font-medium min-w-0 truncate">{heading}</h3>
 		{#if hasOverflow}
-			<button
-				type="button"
-				onclick={onSeeAll}
+			<a
+				href={seeAllHref}
+				onclick={seeAll}
 				class="pointer-events-auto text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs"
 			>
 				{m.members_see_all()}
+				<span class="sr-only">— {heading}</span>
 				<ArrowRightIcon class="size-3 rtl:rotate-180" />
-			</button>
+			</a>
 		{/if}
 	</div>
 	<div class="border-border/60 border-t"></div>
@@ -140,9 +151,9 @@
 			</a>
 		{/each}
 		{#if moreCount > 0}
-			<button
-				type="button"
-				onclick={onSeeAll}
+			<a
+				href={seeAllHref}
+				onclick={seeAll}
 				class="pointer-events-auto group flex min-w-0 flex-col items-center gap-1"
 			>
 				<div
@@ -155,7 +166,7 @@
 				>
 					{m.members_more()}
 				</span>
-			</button>
+			</a>
 		{/if}
 	</div>
 </div>

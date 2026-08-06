@@ -15,12 +15,15 @@
 		/** Where the section continues, if it does. Set opposite the title, the
 		 *  way the member strips carry "See all" — a row of its own under the
 		 *  values read as another datum. */
-		onActivate?: () => void;
+		activateHref?: string;
+		/** Takes the plain left-click in-session; the href covers the rest. */
+		onActivate?: (e: MouseEvent) => void;
 		/** What following it leads to. */
 		activateLabel?: string;
 	}
 
-	let { title, children, header, footer, meta, onActivate, activateLabel }: Props = $props();
+	let { title, children, header, footer, meta, activateHref, onActivate, activateLabel }: Props =
+		$props();
 </script>
 
 <div class="flex flex-col gap-1">
@@ -29,20 +32,20 @@
 		{#if meta}
 			<span class="text-muted-foreground shrink-0 text-[10px] tabular-nums">{meta}</span>
 		{/if}
-		{#if onActivate}
+		{#if activateHref}
 			<!-- The section is named again, silently, after the label: on its own
-			     "See layers" is one of several identical buttons down the panel to
+			     "See layers" is one of several identical links down the panel to
 			     anyone listening to them rather than reading them. It follows the
 			     visible text rather than replacing it, which an aria-label would. -->
-			<button
-				type="button"
+			<a
+				href={activateHref}
 				onclick={onActivate}
 				class="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs"
 			>
 				{activateLabel}
 				<span class="sr-only">— {title}</span>
 				<ArrowRightIcon class="size-3 rtl:rotate-180" />
-			</button>
+			</a>
 		{/if}
 	</div>
 	<div class="border-border/60 border-t"></div>
