@@ -91,7 +91,8 @@ interface GlobalObjectData {
       homopause_pressure_pa?: number; // stated in pressure on the giants, where it is a model level rather than a measured height
       scale_height_km?: number;       // exosphere-only bodies: how fast it thins, in place of boundaries it has none of
     };
-    sources: Array<{ title: string; url: string }>; // works the values are read off, deduped, pressure source first
+    sources: Array<{ title: string; url: string; note?: string }>; // works the values are read off, deduped, pressure source first
+                                    // `note` is a few words on what this one gave, for the panel's credit line; the credits page keeps the full sentence
   };
   interior?: {                        // what the body is made of, by mass (see below)
     structure?: string;               // "differentiated" | "partially_differentiated" | "undifferentiated" | "rubble_pile" | "fluid"; absent on the estimate route
@@ -134,7 +135,8 @@ interface GlobalObjectData {
         entries: Array<{ species: string; fraction: number }>; // descending, as the source tabulates them
       };
     }>;
-    sources: Array<{ title: string; url: string }>; // works the values are read off, deduped, structure source first
+    sources: Array<{ title: string; url: string; note?: string }>; // works the values are read off, deduped, structure source first
+                                    // `note` as above; absent on a hand-authored overlay's own citations, which need not carry one
   };
   rings?: RingBlock[];                // ring render bundles, inner → outer — same blocks as `rings` in systems/{bary}.json (see rings.md)
   ring_features?: Record<string, {    // named rings, divisions, gaps, ringlets and arcs — the eight ringed bodies only (see below)
@@ -199,7 +201,7 @@ interface GlobalObjectData {
     // the catalogue gets; mixing one into measured readings would leave the bar
     // readable as neither. Estimated blocks carry no sources — nothing to cite.
     origin: "measured" | "estimated";
-    sources?: Array<{ title: string; url: string }>;
+    sources?: Array<{ title: string; url: string; note?: string }>;
   };
   has_rings?: boolean;                // only present if true; full ring metadata (channels, geometry, attribution) lives in systems/{bary}.json
   clouds?: {                          // only when a cloud overlay was ingested for this body; mirrors systems/{bary}.json

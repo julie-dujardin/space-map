@@ -19,6 +19,15 @@ export interface CurrencyQuantity {
 	currency: string;
 }
 
+/** One work a body's numbers were read off, as the atmosphere, interior and
+ *  temperature blocks all ship it. `note` is a few words on what it gave — the
+ *  credits page's full sentence stays there. */
+export interface CitedWork {
+	title: string;
+	url: string;
+	note?: string;
+}
+
 /** Where on the body a temperature applies; ordered headline-first by the exporter. */
 export type TemperaturePart = 'surface' | 'cloud_top' | 'photosphere' | 'corona' | 'core';
 
@@ -43,7 +52,7 @@ export interface TemperatureReading {
 export interface Temperatures {
 	readings: TemperatureReading[];
 	origin: 'measured' | 'estimated';
-	sources?: { title: string; url: string }[];
+	sources?: CitedWork[];
 }
 
 /**
@@ -496,7 +505,7 @@ export interface AtmosphereBlock {
 	 *  dozen bodies whose layers anyone has named. */
 	structure?: AtmosphereStructure;
 	/** Works the numbers come from, deduped per body. */
-	sources?: { title: string; url: string }[];
+	sources?: CitedWork[];
 }
 
 /** The vertical axis the block's single pressure sits on. Every field is
@@ -579,7 +588,7 @@ export interface InteriorBlock {
 	 *  layers, and 150,000 asteroids take it. */
 	layers?: InteriorLayer[];
 	/** Works the numbers come from, deduped per body. */
-	sources?: { title: string; url: string }[];
+	sources?: CitedWork[];
 }
 
 /** One shell of the cross-section. */

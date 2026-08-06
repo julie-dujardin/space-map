@@ -48,6 +48,7 @@ from space_map_data.constants.interior.taxonomy import (
     TAXONOMY_COMPOSITION,
     resolve_class,
 )
+from space_map_data.export.objects.sources import source_row
 from space_map_data.models.object.ssodnet import SsODNet
 
 logger = logging.getLogger(__name__)
@@ -134,9 +135,15 @@ _BODY_OWN = frozenset({"layers", "sources"})
 
 def _references(table: dict) -> dict[str, InteriorReference]:
     """The mapping's own citations. No `contribution`: that column is the
-    /credits page's, which reads the constants rather than this."""
+    /credits page's, which reads the constants rather than this. A `note` is
+    optional — without one the panel credits the work by title alone."""
     return {
-        key: InteriorReference(ref["title"], ref["url"], ref.get("contribution", ""))
+        key: InteriorReference(
+            ref["title"],
+            ref["url"],
+            ref.get("contribution", ""),
+            ref.get("note", ""),
+        )
         for key, ref in table.items()
     }
 
@@ -495,7 +502,7 @@ def _sources(keys: list[str], refs: dict[str, InteriorReference]) -> list[dict]:
         ref = refs.get(key)
         if ref is None:
             raise ValueError(f"no such interior source {key}")
-        out.append({"title": ref.title, "url": ref.url})
+        out.append(source_row(ref))
     return out
 
 

@@ -8,14 +8,14 @@
 		type OrientationSource
 	} from '$lib/credits/orientation-sources';
 	import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
-	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+	import type { CitedWork, GlobalObjectData } from '$lib/fetch/objects/object-data';
 
 	interface Source {
 		key: string;
 		label: string;
 		url: string;
-		/** A few words on what this one contributed. Carried by the providers,
-		 *  not the papers — a title and a year already say what those are. */
+		/** A few words on what this one contributed. Providers carry their own;
+		 *  a cited work ships one next to its title. */
 		note?: string;
 	}
 
@@ -68,6 +68,13 @@
 			// A label that already ends in a qualifier — "NASA SPICE kernels
 			// (NAIF)" — would stack a second parenthetical, so it goes bare.
 			out.push({ key, label, url, note: label.endsWith(')') ? undefined : note });
+		};
+		// A cited work keeps its note: the parenthetical its title ends in is the
+		// journal, which says nothing about what this body took from the paper.
+		const addWork = (work: CitedWork) => {
+			if (seen.has(work.url)) return;
+			seen.add(work.url);
+			out.push({ key: work.url, label: work.title, url: work.url, note: work.note });
 		};
 		// A spin pole comes from the PCK (planets, moons, the handful of visited
 		// asteroids), from DAMIT's lightcurve inversion, or — for the ringed small
@@ -133,18 +140,16 @@
 
 		// Atmospheric facts carry their own per-value citations, so these are
 		// exact rather than inferred like the rest of this list.
-		for (const source of global?.atmosphere?.sources ?? [])
-			add(source.url, source.title, source.url);
+		for (const source of global?.atmosphere?.sources ?? []) addWork(source);
 
 		// Likewise the measured temperatures. Estimated ones ship no sources —
 		// there is no work to credit for a number we computed here.
-		for (const source of global?.temperatures?.sources ?? [])
-			add(source.url, source.title, source.url);
+		for (const source of global?.temperatures?.sources ?? []) addWork(source);
 
 		// The interior ships the works behind what its panel draws, so a body
 		// whose composition is a spectral-class estimate credits the meteorite
 		// chemistry, not a gravity field it never had.
-		for (const source of global?.interior?.sources ?? []) add(source.url, source.title, source.url);
+		for (const source of global?.interior?.sources ?? []) addWork(source);
 
 		// Where the class itself came from. Ids, not citations — see
 		// `$lib/credits/taxonomy-sources`.
@@ -206,21 +211,24 @@
 	<p class="text-xs text-muted-foreground">{orientationLabel}</p>
 {/if}
 {#if sources.length}
-	<p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+	<!-- One line per credit. The title gives up its tail to the ellipsis — it is
+	     in the tooltip, and this is a panel, not a bibliography — so the note,
+	     which says why the work is here, always fits. -->
+	<div class="text-xs/5 text-muted-foreground">
 		<span>{m.metadata_sources_prefix()}</span>
 		{#each sources as source (source.key)}
-			<span class="inline-flex items-center gap-1">
+			<div class="flex">
 				<a
 					href={source.url}
 					target="_blank"
 					rel="noopener"
-					class="inline-flex items-center gap-1 underline hover:text-foreground"
-					>{source.label}<ExternalLinkIcon class="size-3 shrink-0" /></a
+					title={source.label}
+					class="truncate underline hover:text-foreground">{source.label}</a
 				>
-				{#if source.note}<span class="opacity-75">({source.note})</span>{/if}
-			</span>
+				{#if source.note}<span class="ms-1 shrink-0 opacity-75">({source.note})</span>{/if}
+			</div>
 		{/each}
-	</p>
+	</div>
 {/if}
 {#if imagery.length}
 	<p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">

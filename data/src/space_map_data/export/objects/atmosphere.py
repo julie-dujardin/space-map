@@ -40,6 +40,7 @@ from space_map_data.constants.atmosphere.structure import (
     BodyStructure,
 )
 from space_map_data.constants.temperature.bodies import TEMPERATURE_BODIES
+from space_map_data.export.objects.sources import source_row
 
 logger = logging.getLogger(__name__)
 
@@ -116,8 +117,7 @@ def atmosphere_block(object_id: str) -> dict | None:
         sources.extend(_structure_source_keys(structure))
 
     block["sources"] = [
-        {"title": ref.title, "url": ref.url}
-        for ref in (ATMOSPHERE_FACT_SOURCES[key] for key in _unique(sources))
+        source_row(ATMOSPHERE_FACT_SOURCES[key]) for key in _unique(sources)
     ]
     return block
 

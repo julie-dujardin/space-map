@@ -19,6 +19,7 @@ from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.temperature.bodies import TEMPERATURE_BODIES
 from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
+from space_map_data.export.objects.sources import source_row
 
 logger = logging.getLogger(__name__)
 
@@ -165,18 +166,12 @@ def _core_readings(object_id: str) -> tuple[list[dict], list[dict]]:
             _reading("core", "min", low, "modelled"),
             _reading("core", "max", high, "modelled"),
         ],
-        [
-            {"title": INTERIOR_SOURCES[k].title, "url": INTERIOR_SOURCES[k].url}
-            for k in dict.fromkeys(sources)
-        ],
+        [source_row(INTERIOR_SOURCES[k]) for k in dict.fromkeys(sources)],
     )
 
 
 def _source_entries(keys: list[str]) -> list[dict]:
-    return [
-        {"title": TEMPERATURE_SOURCES[k].title, "url": TEMPERATURE_SOURCES[k].url}
-        for k in dict.fromkeys(keys)
-    ]
+    return [source_row(TEMPERATURE_SOURCES[k]) for k in dict.fromkeys(keys)]
 
 
 def temperature_block(

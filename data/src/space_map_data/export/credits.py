@@ -21,6 +21,7 @@ from space_map_data.constants.rings.attribution import RingSource
 from space_map_data.constants.rings.catalog import RING_CATALOGS
 from space_map_data.constants.rings.references import RING_REFERENCES
 from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
+from space_map_data.export.objects.sources import Reference
 from space_map_data.export.systems import texture_attribution
 from space_map_data.ingest.providers.models.config import MODEL_CATALOGS
 from space_map_data.models.object import Object, ObjectType
@@ -165,14 +166,24 @@ def _skybox_credit_entry(meta: dict) -> dict:
     return entry
 
 
+def _bibliography_row(ref: Reference) -> dict:
+    """A citation as the /credits page lists it. `note` is the object panel's
+    abbreviation of `contribution` and has nothing to add next to it."""
+    row = ref._asdict()
+    row.pop("note", None)
+    return row
+
+
 def _atmosphere_references() -> list[dict]:
     """Render literature first, then the works behind the per-body facts.
     A handful back both (the Galileo helium paper, Huygens' descent) — one
     credit each, keeping the scattering-side contribution line."""
-    out = [r._asdict() for r in ATMOSPHERE_REFERENCES]
+    out = [_bibliography_row(r) for r in ATMOSPHERE_REFERENCES]
     seen = {r["url"] for r in out}
     out.extend(
-        r._asdict() for r in ATMOSPHERE_FACT_SOURCES.values() if r.url not in seen
+        _bibliography_row(r)
+        for r in ATMOSPHERE_FACT_SOURCES.values()
+        if r.url not in seen
     )
     return out
 
@@ -499,9 +510,9 @@ def write_credits(
             "ring": [r._asdict() for r in RING_REFERENCES],
             # The gravity, seismic and meteorite work behind the interior
             # layer models and the taxonomic-class estimates.
-            "interior": [r._asdict() for r in INTERIOR_SOURCES.values()],
+            "interior": [_bibliography_row(r) for r in INTERIOR_SOURCES.values()],
             # Measured temperatures.
-            "temperature": [r._asdict() for r in TEMPERATURE_SOURCES.values()],
+            "temperature": [_bibliography_row(r) for r in TEMPERATURE_SOURCES.values()],
         }
     )
 
