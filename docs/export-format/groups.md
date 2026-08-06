@@ -244,6 +244,7 @@ interface GlobalGroupData {
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)
   images?: ObjectImage[];           // Same pipeline / layout as GlobalObjectData.images
+  galleries?: ImageGallery[];       // one shelf per notable member, keyed by its Object.id
 }
 ```
 
@@ -255,6 +256,17 @@ fallback would fill a page about rings with portraits of Jupiter and Saturn.
 Saturn's article leads, since the first image is what the collection's tile
 shows. Haumea and Quaoar contribute nothing — neither has a ring article in any
 language.
+
+`galleries` gives a collection's Images tab one shelf per member rather than
+one undifferentiated pile: a member's `key` and `subject` are both its
+`Object.id`, so the shelf is named after it and links to its page. Members come
+from two rankings unioned — the top of the notable list, and the members with
+the most pictures — which mostly agree, since `image_available` is already the
+notable list's first sort key; the union is there so nothing notable and
+nothing well-photographed is missed. Files the group's own `images` already
+show are dropped, since a member-fallback group draws that gallery from these
+very members. Counts are `MEMBER_GALLERY_COUNT` (per ranking) and
+`MEMBER_GALLERY_IMAGES` (per shelf) in `export/groups/bundles.py`.
 
 The result is photographs only: cutaway schemes and belt maps are dropped for
 every subject except an individual craft, since they restate what the scene and

@@ -67,8 +67,12 @@ export interface MapViewState {
 	/** Camera framing (lat/lon/zoom) was explicit — an `?at=` block or group
 	 *  anchor. Absent for a bare deep link, which frames by target size/model. */
 	framed?: boolean;
-	/** 0-based index into the focused object's images; null when the viewer is closed. */
+	/** 0-based index into the active gallery's images; null when the viewer is
+	 *  closed. Which gallery that is comes from `gallery`. */
 	imageIndex: number | null;
+	/** Image gallery opened under the Images tab; null = the shelf index.
+	 *  Deep-linked as `&gal=`, and what `imageIndex` counts into. */
+	gallery: string | null;
 	/** IAU feature id when a surface feature is the active selection; null otherwise. */
 	featureId: number | null;
 	/** Slug when /g/<slug> is active; filters the group's applies_to category. */
@@ -110,6 +114,7 @@ export const DEFAULT_VIEW: MapViewState = {
 	longitude: DEFAULT_FRAMING_LON,
 	zoom: 15, // ~1.5 AU from Earth
 	imageIndex: null,
+	gallery: null,
 	featureId: null,
 	groupSlug: null,
 	tab: null,

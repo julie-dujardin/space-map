@@ -86,6 +86,24 @@ export interface ObjectImage {
 	 *  to measuring the loaded image. Both fields are present together. */
 	width?: number;
 	height?: number;
+	/** What this picture is of, when the gallery pools several subjects: an
+	 *  Object.id in a `moons` gallery, an IAU feature id in a `features` one.
+	 *  Names the tile and links out of the viewer. */
+	subject?: string | number;
+}
+
+/**
+ * One pooled image gallery beside the subject's own `images` — pictures of its
+ * surface features, of its moons, or (on a collection) of one member. The key
+ * is the URL token: a fixed name for the pooled kinds, the member's Object.id
+ * for a collection's shelves.
+ */
+export interface ImageGalleryData {
+	key: string;
+	/** Set when the whole gallery is about one object — its shelves link to it.
+	 *  Pooled galleries carry a per-image `subject` instead. */
+	subject?: string;
+	images: ObjectImage[];
 }
 
 /** Texture attribution block — mirrors `texture_attribution()` in export/systems.py. */
@@ -260,6 +278,7 @@ export interface GlobalObjectData {
 	ring_images?: ObjectImage[];
 	temperatures?: Temperatures;
 	images?: ObjectImage[];
+	galleries?: ImageGalleryData[];
 	sbdb_primary_designation?: string;
 	provisional_designation?: string;
 	nasa_science_url?: string;

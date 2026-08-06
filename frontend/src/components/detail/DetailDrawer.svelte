@@ -52,7 +52,8 @@
 	import DrawerTitle from './frame/DrawerTitle.svelte';
 	import { parentCrumb, parentPlanet, type Crumb } from '$lib/state/breadcrumb';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
-	import ImageGallery from './frame/ImageGallery.svelte';
+	import ImagesPanel from './frame/ImagesPanel.svelte';
+	import { buildGalleries, findGallery, MAIN_GALLERY } from '$lib/fetch/objects/galleries';
 	import ObjectDescription from './sections/ObjectDescription.svelte';
 	import SourcesFooter from './sections/SourcesFooter.svelte';
 	import Bulk from './sections/Bulk.svelte';
@@ -388,17 +389,6 @@
 		appState && body ? appState.view.zoom <= minCameraDistance(body) * 20 : false
 	);
 	let showCameraButtons = $derived(!isFeatureMode && !isGroupMode);
-	let viewerImages = $derived(data?.global?.images);
-	let viewerIndex = $derived(appState?.view.imageIndex);
-	// Gate the viewer mount on a valid index AND a loaded images list. The
-	// AppState's `?img=` URL parser doesn't know how many images this object
-	// has, so we belt-and-braces the bound here too.
-	let viewerActive = $derived(
-		!!viewerImages &&
-			viewerImages.length > 0 &&
-			viewerIndex != null &&
-			viewerIndex < viewerImages.length
-	);
 
 	async function handleShare() {
 		const url = window.location.href;
@@ -420,7 +410,6 @@
 		}
 	}
 
-	let hasImages = $derived(!!viewerImages && viewerImages.length > 0);
 	// Earth folds its artificial satellites into the moons section: the Moon plus
 	// curated featured sats (ISS, Hubble, Starlink), "+N more" → the group page.
 	let satellitesGroup = $derived(isGroupMode ? undefined : data?.global?.satellites_group);
@@ -542,6 +531,44 @@
 	let hasFeatures = $derived(!!notableFeatures && notableFeatures.length > 0);
 	let showFeaturesTab = $derived(hasFeatures && featureTotal > STRIP_CAPACITY);
 
+	// Pictures come in one shelf per subject: the object's own, its rings, and
+	// the pooled shelves (its features, its moons, or a collection's members).
+	// A pooled picture is labelled by its subject rather than its filename, so
+	// the names the lists above already resolved are handed down.
+	let gallerySubjectNames = $derived.by(() => {
+		const names = new Map<string, string>();
+		for (const member of notableMembers ?? []) {
+			if (member.id) names.set(member.id, memberNames?.[member.id] ?? member.name);
+		}
+		for (const feature of notableFeatures ?? []) {
+			const key = `${feature.id}:${feature.feature_id}`;
+			names.set(String(feature.feature_id), featureNames?.[key] ?? feature.name);
+		}
+		return names;
+	});
+	let galleries = $derived(
+		buildGalleries(
+			(isGroupMode ? groupDetail?.global : data?.global) ?? undefined,
+			displayName,
+			(subject) => gallerySubjectNames.get(subject)
+		)
+	);
+	// A `&gal=` naming no shelf here (a stale link, another object's member)
+	// falls back to the index, and the viewer to the leading shelf.
+	let activeGallery = $derived(findGallery(galleries, appState?.view.gallery ?? null));
+	let hasImages = $derived(galleries.length > 0);
+	let viewerImages = $derived((activeGallery ?? galleries[0])?.images);
+	let viewerIndex = $derived(appState?.view.imageIndex);
+	// Gate the viewer mount on a valid index AND a loaded images list. The
+	// AppState's `?img=` URL parser doesn't know how many images this gallery
+	// has, so we belt-and-braces the bound here too.
+	let viewerActive = $derived(
+		!!viewerImages &&
+			viewerImages.length > 0 &&
+			viewerIndex != null &&
+			viewerIndex < viewerImages.length
+	);
+
 	function seeAllFeatures() {
 		appState.setTab('features');
 	}
@@ -642,7 +669,7 @@
 		parentBody?.data.objectType === ObjectType.BARYCENTER ? parentBody.data.id : body?.data.id
 	);
 	let showRingsTab = $derived(Object.values(ringFeatures ?? {}).some((f) => !f.parent));
-	let ringHero = $derived(isGroupMode ? undefined : data?.global?.ring_images?.[0]);
+	let ringImages = $derived(isGroupMode ? undefined : data?.global?.ring_images);
 	// Credits for the Rings tab alone: the catalogue's tables, plus whatever
 	// prose and names this locale actually got.
 	let ringCredits = $derived(
@@ -799,11 +826,19 @@
 	// A promoted tab drops the bar and takes the header instead: the object's name
 	// moves into the crumb and the tab names the view. Still the same tab in the
 	// URL — only the chrome around it differs.
-	let soloTab = $derived<DrawerTab | null>(promotedTabs.has(activeTab) ? activeTab : null);
-	let soloCrumb = $derived<Crumb | null>(
-		soloTab ? { label: displayName, target: { kind: 'tab', tab: 'overview' } } : null
+	let soloTab = $derived<DrawerTab | null>(
+		promotedTabs.has(activeTab) || activeGallery ? activeTab : null
 	);
-	let soloTitle = $derived(soloTab === 'images' ? m.tab_images() : displayName);
+	let soloCrumb = $derived<Crumb | null>(
+		activeGallery
+			? { label: m.tab_images(), target: { kind: 'tab', tab: 'images' } }
+			: soloTab
+				? { label: displayName, target: { kind: 'tab', tab: 'overview' } }
+				: null
+	);
+	let soloTitle = $derived(
+		activeGallery ? activeGallery.title : soloTab === 'images' ? m.tab_images() : displayName
+	);
 	let barTabCount = $derived(tabCount - promotedTabs.size);
 
 	/** A tab earns a place in the bar when the object has it and the bar kept it. */
@@ -829,6 +864,15 @@
 		const settled = viewFocusKey === focusableId;
 		if (settled && !loading && appState.view.tab && activeTab === 'overview') {
 			untrack(() => appState.setTab('overview'));
+		}
+	});
+
+	// Same for a `&gal=` naming no shelf on this object — a stale link, or a
+	// member gallery carried over from the collection it was opened on.
+	$effect(() => {
+		const settled = viewFocusKey === focusableId;
+		if (settled && !loading && appState.view.gallery && !activeGallery) {
+			untrack(() => appState.setGallery(null));
 		}
 	});
 
@@ -947,11 +991,8 @@
 						: lineup.hero && !lineup.isMoonLineup
 							? lineupHeroSnippet
 							: undefined}
-					galleryHref={imageHref(appState, 0, 'images')}
-					onShowGallery={() => {
-						appState.setTab('images');
-						appState.setImage(0);
-					}}
+					galleryHref={imageHref(appState, 0, MAIN_GALLERY)}
+					onShowGallery={() => appState.setImage(0, MAIN_GALLERY)}
 					listHref={tabHref(appState, 'images')}
 					onShowList={() => appState.setTab('images')}
 				/>
@@ -973,9 +1014,9 @@
 		{/if}
 	{:else if activeTab === 'rings'}
 		<!-- One picture of the system, above the chart that anatomises it. -->
-		{#if ringHero}
+		{#if ringImages?.length}
 			<div class="px-4 pt-1 pb-3">
-				<RingHero image={ringHero} alt={data?.localized?.ring_system?.name ?? m.tab_rings()} />
+				<RingHero images={ringImages} alt={data?.localized?.ring_system?.name ?? m.tab_rings()} />
 			</div>
 		{/if}
 	{:else if activeTab === 'members'}
@@ -1168,11 +1209,12 @@
 {/snippet}
 
 {#snippet imagesPanel()}
-	<div class="flex flex-col gap-3 p-1">
-		{#if viewerImages && viewerImages.length}
-			<ImageGallery images={viewerImages} alt={displayName} />
-		{/if}
-	</div>
+	<ImagesPanel
+		{galleries}
+		active={activeGallery}
+		alt={displayName}
+		subjectName={(subject) => gallerySubjectNames.get(subject)}
+	/>
 {/snippet}
 
 {#snippet membersPanel()}

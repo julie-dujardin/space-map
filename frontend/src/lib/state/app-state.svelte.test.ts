@@ -37,6 +37,7 @@ const initialView: MapViewState = {
 	longitude: 0,
 	zoom: 42.43,
 	imageIndex: null,
+	gallery: null,
 	featureId: null,
 	groupSlug: null,
 	tab: null,

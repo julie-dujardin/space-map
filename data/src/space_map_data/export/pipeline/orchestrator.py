@@ -46,6 +46,7 @@ from space_map_data.probes.probe_id import load_registry
 from space_map_data.export.images import prune_image_bundles
 from space_map_data.export.sitemap import write_sitemap
 from space_map_data.export.objects.features import attach_notable_features
+from space_map_data.export.objects.galleries import attach_galleries
 from space_map_data.export.objects.moons import attach_notable_moons
 from space_map_data.export.objects.satellites import attach_featured_satellites
 from space_map_data.export.objects.interior import load_taxonomy
@@ -1122,6 +1123,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             agg.all_objects, nomenclature_by_body, wikidata_entities
         )
         attach_probe_missions(agg.all_objects, wikidata_entities)
+        # Pools the moon and feature lists the two passes above just wrote.
+        attach_galleries(agg.all_objects)
         # Attitude extraction runs after probe positions are written but before
         # the global object bundles are sealed — it mutates `global_data` in
         # place to inject the per-probe attitude manifest under `attitude`.

@@ -8,6 +8,7 @@ under ``group_bundles`` for slug→bundle resolution.
 import gzip
 import logging
 import math
+from collections.abc import Sequence
 from pathlib import Path
 
 import orjson
@@ -61,7 +62,7 @@ from space_map_data.export.groups.registry import (
 )
 from space_map_data.export.groups.small_body import LargestBody
 from space_map_data.export.groups.stats import GroupExtraStats
-from space_map_data.export.images import collect_group_images
+from space_map_data.export.images import collect_group_images, collect_object_images
 from space_map_data.export.notable import (
     NotableObject,
     notable_descriptions,
@@ -103,6 +104,50 @@ _LAGRANGE_CLASS_SLUGS = frozenset(
 )
 
 
+# A collection's Images tab is one shelf per member. Two rankings feed it: the
+# notable order the rest of the page uses, and the members with the most
+# pictures — mostly the same members, which is the point (nothing notable and
+# nothing well-photographed is missed).
+MEMBER_GALLERY_COUNT = 8
+MEMBER_GALLERY_IMAGES = 8
+
+
+def _member_galleries(
+    members: Sequence[NotableObject] | None,
+    own_images: list[dict] | None,
+) -> list[dict] | None:
+    """One image shelf per notable member, keyed and subjected by its id.
+
+    Group and feature members are skipped: they route elsewhere and their
+    pictures aren't the collection's to pool. Files the group's own gallery
+    already shows are dropped, since a member-fallback group draws that gallery
+    from these very members.
+    """
+    if not members:
+        return None
+    seen = {entry["file"] for entry in own_images or ()}
+    # Insertion order is the notable ranking.
+    pools = {
+        m.object_id: images
+        for m in members
+        if m.object_id and m.group_slug is None and m.feature_id is None
+        if (images := collect_object_images(m.object_id))
+    }
+    by_pictures = sorted(pools, key=lambda oid: len(pools[oid]), reverse=True)
+    chosen = dict.fromkeys(
+        list(pools)[:MEMBER_GALLERY_COUNT] + by_pictures[:MEMBER_GALLERY_COUNT]
+    )
+    galleries = []
+    for oid in chosen:
+        images = [entry for entry in pools[oid] if entry["file"] not in seen][
+            :MEMBER_GALLERY_IMAGES
+        ]
+        if images:
+            seen.update(entry["file"] for entry in images)
+            galleries.append({"key": oid, "subject": oid, "images": images})
+    return galleries or None
+
+
 def _build_global(
     group: Group,
     member_count: int,
@@ -122,6 +167,7 @@ def _build_global(
     orbit_classes: list[str] | None,
     ft_stats: FeatureTypeStats | None,
     extra_stats: GroupExtraStats | None,
+    galleries: list[dict] | None,
 ) -> dict:
     data: dict = {
         "slug": group.slug,
@@ -260,6 +306,9 @@ def _build_global(
             data["dissolved"] = dissolved
     if images:
         data["images"] = images
+    # One shelf per member, beside the collection's own pictures.
+    if galleries:
+        data["galleries"] = galleries
     return data
 
 
@@ -832,6 +881,7 @@ def write_group_bundles(
             (constellation_orbit_classes or {}).get(group.slug),
             ft_stats,
             (extra_stats or {}).get(group.slug),
+            _member_galleries(members, images),
         )
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
         child_counts = (child_counts_by_group or {}).get(group.slug)

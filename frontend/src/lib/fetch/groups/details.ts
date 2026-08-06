@@ -7,7 +7,12 @@ import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
 import { fetchGzipBundle } from '$lib/fetch/bundle-cache';
 import { DATA_BASE } from '$lib/fetch/data-base';
-import type { EntityRef, NotableMemberEntry, ObjectImage } from '$lib/fetch/objects/object-data';
+import type {
+	EntityRef,
+	ImageGalleryData,
+	NotableMemberEntry,
+	ObjectImage
+} from '$lib/fetch/objects/object-data';
 import type { GroupCategory, GroupType, OrganizationRole, SatelliteCategory } from './registry';
 
 export type { NotableMemberEntry };
@@ -174,6 +179,8 @@ export interface GlobalGroupData {
 	perihelion_au?: number;
 	/** Same Commons pipeline / bundle layout as ``GlobalObjectData.images``. */
 	images?: ObjectImage[];
+	/** One shelf per notable member, keyed by its Object.id. */
+	galleries?: ImageGalleryData[];
 }
 
 export interface ChildGroupEntry extends EntityRef {

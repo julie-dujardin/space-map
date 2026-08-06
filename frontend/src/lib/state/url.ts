@@ -120,6 +120,7 @@ export function parseUrl(): MapViewState | null {
 			name: decodeURIComponent(page.params.name ?? ''),
 			groupSlug: idStr,
 			imageIndex: parseImageIndex(page.url.searchParams.get('img')),
+			gallery: page.url.searchParams.get('gal'),
 			featureId: null,
 			tab: parseTab(page.url.searchParams.get('tab')),
 			memberPage: parseMemberPage(page.url.searchParams.get('mp')),
@@ -153,7 +154,8 @@ export function parseUrl(): MapViewState | null {
 			id,
 			name,
 			featureId: numericFeatureId,
-			imageIndex: null
+			imageIndex: null,
+			gallery: null
 		};
 		return applyAtParam(defaults);
 	}
@@ -166,6 +168,7 @@ export function parseUrl(): MapViewState | null {
 		id,
 		name,
 		imageIndex,
+		gallery: page.url.searchParams.get('gal'),
 		featureId: null,
 		tab: parseTab(page.url.searchParams.get('tab')),
 		memberPage: parseMemberPage(page.url.searchParams.get('mp')),
@@ -217,6 +220,7 @@ export function applyFocus(
 		...current,
 		...focus,
 		imageIndex: null,
+		gallery: null,
 		featureId: null,
 		groupSlug: null,
 		// Land on a requested tab (e.g. a moon→planet link opening the Moons tab);
@@ -235,6 +239,7 @@ export function applyTab(current: MapViewState, tab: DrawerTab): MapViewState {
 	return {
 		...current,
 		tab: tab === 'overview' ? null : tab,
+		gallery: null,
 		memberPage: null,
 		quad: null,
 		featureType: null,
@@ -248,9 +253,21 @@ export function applyQuad(current: MapViewState, code: string | null): MapViewSt
 	return { ...current, quad: code, memberPage: null };
 }
 
-/** Next view when opening the image viewer on one image. */
+/** Next view when opening the image viewer on one image of the active gallery. */
 export function applyImage(current: MapViewState, index: number | null): MapViewState {
 	return { ...current, imageIndex: index };
+}
+
+/** Next view when opening one gallery (null = back to the shelf index). The
+ *  viewer indexes into the gallery, so an open one closes. Opening one also
+ *  lands on the Images tab, since that's the only place a shelf renders. */
+export function applyGallery(current: MapViewState, key: string | null): MapViewState {
+	return {
+		...current,
+		tab: key === null ? current.tab : 'images',
+		gallery: key,
+		imageIndex: null
+	};
 }
 
 /** Next view when opening a group. Parks `id` on the group's camera anchor
@@ -265,6 +282,7 @@ export function applyGroup(current: MapViewState, slug: string, name: string): M
 		groupSlug: slug,
 		name,
 		imageIndex: null,
+		gallery: null,
 		featureId: null,
 		tab: null,
 		memberPage: null,
@@ -289,6 +307,7 @@ export function applyFeature(
 		// a lingering slug would keep the group route winning over the feature.
 		groupSlug: null,
 		imageIndex: null,
+		gallery: null,
 		tab: null,
 		memberPage: null,
 		quad: null,
@@ -333,6 +352,8 @@ export function serializeUrl(state: MapViewState): string {
 				(state.featureType ? `&ftype=${encodeURIComponent(state.featureType)}` : '')
 			: '';
 	const ring = state.tab === 'rings' && state.ring ? `&ring=${encodeURIComponent(state.ring)}` : '';
+	const gal =
+		state.tab === 'images' && state.gallery ? `&gal=${encodeURIComponent(state.gallery)}` : '';
 	const paginated = state.tab === 'members' || state.tab === 'features';
 	const mp =
 		paginated &&
@@ -348,7 +369,7 @@ export function serializeUrl(state: MapViewState): string {
 			id: state.groupSlug,
 			name: state.name ? encodeURIComponent(state.name) : undefined
 		});
-		return `${path}?at=${at}${img}${tab}${surface}${ring}${mp}`;
+		return `${path}?at=${at}${img}${tab}${gal}${surface}${ring}${mp}`;
 	}
 
 	const bodyType = urlTypeFromId(state.id);
@@ -371,5 +392,5 @@ export function serializeUrl(state: MapViewState): string {
 		id: numericId,
 		name: state.name ? encodeURIComponent(state.name) : undefined
 	});
-	return `${path}?at=${at}${img}${tab}${surface}${ring}${mp}`;
+	return `${path}?at=${at}${img}${tab}${gal}${surface}${ring}${mp}`;
 }

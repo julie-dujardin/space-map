@@ -12,6 +12,7 @@ import type { FocusObject } from './focusable';
 import type { DrawerTab } from './view';
 import {
 	applyFocus,
+	applyGallery,
 	applyGroup,
 	applyImage,
 	applyQuad,
@@ -50,16 +51,24 @@ export function groupHref(
 	return appState ? serializeUrl(applyGroup(appState.view, slug, name)) : undefined;
 }
 
-/** The URL for the image viewer opened on one image; pass `tab` when the link
- *  also has to switch to the gallery it indexes into. */
+/** The URL for the image viewer opened on one image. Pass the gallery key when
+ *  the link also has to switch shelves — the index counts into that gallery. */
 export function imageHref(
 	appState: AppState | undefined,
 	index: number,
-	tab?: DrawerTab
+	gallery?: string
 ): string | undefined {
 	if (!appState) return undefined;
-	const base = tab ? applyTab(appState.view, tab) : appState.view;
+	const base = gallery === undefined ? appState.view : applyGallery(appState.view, gallery);
 	return serializeUrl(applyImage(base, index));
+}
+
+/** The URL for one image gallery under the Images tab, or its shelf index. */
+export function galleryHref(
+	appState: AppState | undefined,
+	key: string | null
+): string | undefined {
+	return appState ? serializeUrl(applyGallery(appState.view, key)) : undefined;
 }
 
 /** The URL for the Surface tab narrowed to one quadrangle, or all of them. */

@@ -4,6 +4,7 @@ import {
 	applyFeature,
 	applyFocus,
 	applyGroup,
+	applyGallery,
 	applyImage,
 	applyQuad,
 	applyTab,
@@ -163,11 +164,15 @@ export class AppState {
 		this.replaceNow();
 	}
 
-	/** Switch tabs (replaceState — no history spam). Resets member-page depth: a
-	 *  manual switch lands at the top. Pass 'overview' to clear. */
+	/** Switch tabs (replaceState — no history spam). Resets the depth reached
+	 *  inside a tab — member page, open gallery — so a manual switch lands at
+	 *  the top, including a switch to the tab already showing. Pass 'overview'
+	 *  to clear. */
 	setTab(tab: DrawerTab) {
 		const next = tab === 'overview' ? null : tab;
-		if (next === this.view.tab && this.view.memberPage === null) return;
+		if (next === this.view.tab && this.view.memberPage === null && this.view.gallery === null) {
+			return;
+		}
 		this.view = applyTab(this.view, tab);
 		this.replaceNow();
 	}
@@ -205,9 +210,23 @@ export class AppState {
 		this.replaceNow();
 	}
 
-	setImage(index: number | null) {
+	/** Open one image gallery under the Images tab, or go back to the shelf
+	 *  index with null. Opening pushes, so browser-back returns to the index the
+	 *  way it closes the viewer; clearing replaces, since it only ever undoes a
+	 *  link that named no shelf here. */
+	setGallery(key: string | null) {
+		if (key === this.view.gallery && this.view.imageIndex === null) return;
+		this.view = applyGallery(this.view, key);
+		if (key === null) this.replaceNow();
+		else this.pushNow();
+	}
+
+	/** Open the viewer on one image, or close it with null. Pass a gallery key
+	 *  to open it on another shelf — the index counts into that gallery. */
+	setImage(index: number | null, gallery?: string) {
 		const prev = this.view.imageIndex;
-		this.view = applyImage(this.view, index);
+		const base = gallery === undefined ? this.view : applyGallery(this.view, gallery);
+		this.view = applyImage(base, index);
 		// Push on open/close so browser-back toggles the viewer; replace on
 		// in-viewer navigation so each arrow-press doesn't grow history.
 		const toggled = (prev === null) !== (index === null);

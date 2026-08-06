@@ -26,6 +26,7 @@ const baseView: MapViewState = {
 	longitude: 0,
 	zoom: 42.43,
 	imageIndex: null,
+	gallery: null,
 	featureId: null,
 	groupSlug: null,
 	tab: null,
@@ -166,6 +167,29 @@ describe('serializeUrl', () => {
 		// other tabs even if the field is stale.
 		it('omits mp= when the active tab is not members', () => {
 			expect(serializeUrl({ ...baseView, tab: 'images', memberPage: 5 })).not.toContain('mp=');
+		});
+	});
+
+	describe('gallery serialization', () => {
+		it('emits &gal= under the images tab', () => {
+			const url = serializeUrl({ ...baseView, tab: 'images', gallery: 'moons' });
+			expect(url).toContain('&tab=images&gal=moons');
+		});
+
+		it('omits gal= at the shelf index', () => {
+			expect(serializeUrl({ ...baseView, tab: 'images', gallery: null })).not.toContain('gal=');
+		});
+
+		// A collection's shelves key by member id, which carries a prefix separator.
+		it('encodes the gallery key', () => {
+			const url = serializeUrl({ ...baseView, tab: 'images', gallery: 'naif-599' });
+			expect(url).toContain('&gal=naif-599');
+		});
+
+		// The open shelf belongs to the images panel alone; a stale key must not
+		// ride along on another tab's link.
+		it('omits gal= when the active tab is not images', () => {
+			expect(serializeUrl({ ...baseView, tab: 'rings', gallery: 'moons' })).not.toContain('gal=');
 		});
 	});
 

@@ -1,59 +1,40 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
-	import { variantUrl } from '$lib/fetch/objects/images';
+	import { imageLabel, imageSrcset, smallestVariantUrl } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { imageHref, isModifiedClick } from '$lib/state/focus-link';
 
 	interface Props {
 		images: ObjectImage[];
 		alt: string;
+		/** Gallery key the viewer indexes into — what `&gal=` carries. */
+		gallery: string;
+		/** Name for a pooled image's subject (a moon, a surface feature), which
+		 *  says more than the Commons filename does. */
+		subjectName?: (subject: string) => string | undefined;
 	}
 
-	let { images, alt }: Props = $props();
+	let { images, alt, gallery, subjectName }: Props = $props();
 
 	const appState = getContext<AppState>('appState');
 
-	// Bucket pixel widths kept in sync with images.ts BUCKET_DIMS.
-	const BUCKETS = { s: 512, m: 1024, xl: 4096 } as const;
-
-	function srcsetFor(image: ObjectImage): string | undefined {
-		const parts: string[] = [];
-		for (const label of ['s', 'm', 'xl'] as const) {
-			const url = variantUrl(image, label);
-			if (url) parts.push(`${url} ${BUCKETS[label]}w`);
-		}
-		return parts.length ? parts.join(', ') : undefined;
-	}
-
-	function smallestUrl(image: ObjectImage): string | undefined {
-		for (const label of ['s', 'm', 'xl'] as const) {
-			const url = variantUrl(image, label);
-			if (url) return url;
-		}
-		return undefined;
-	}
-
-	// Wikimedia Commons file → readable label: drop the extension and turn
-	// underscores into spaces. Good enough until the exporter surfaces a
-	// dedicated short title; fancier parsing belongs in the data layer, not here.
-	function label(file: string): string {
-		return file.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
+	function label(image: ObjectImage): string {
+		const named = image.subject === undefined ? undefined : subjectName?.(String(image.subject));
+		return named ?? imageLabel(image.file);
 	}
 
 	function open(e: MouseEvent, i: number) {
 		if (isModifiedClick(e)) return;
 		e.preventDefault();
-		appState.setImage(i);
+		appState.setImage(i, gallery);
 	}
 </script>
 
 <div class="gallery">
 	{#each images as image, i (image.file)}
-		<!-- Pinned to the Images tab rather than whatever's in view: the drawer
-		     keeps every tab panel mounted, so the current tab is not this one. -->
 		<a
-			href={imageHref(appState, i, 'images')}
+			href={imageHref(appState, i, gallery)}
 			class="tile"
 			onclick={(e) => open(e, i)}
 			style:aspect-ratio={image.width && image.height
@@ -61,17 +42,17 @@
 				: undefined}
 		>
 			<img
-				src={smallestUrl(image)}
-				srcset={srcsetFor(image)}
+				src={smallestVariantUrl(image)}
+				srcset={imageSrcset(image)}
 				sizes="(min-width: 768px) 180px, 45vw"
 				width={image.width}
 				height={image.height}
 				loading="lazy"
 				decoding="async"
-				alt={label(image.file) || alt}
+				alt={label(image) || alt}
 				class="tile-img"
 			/>
-			<span class="tile-label">{label(image.file)}</span>
+			<span class="tile-label">{label(image)}</span>
 		</a>
 	{/each}
 </div>

@@ -228,6 +228,7 @@ interface GlobalObjectData {
   };
   nasa_science_url?: string;          // URL to science.nasa.gov page
   images?: ObjectImage[];             // from Wikidata P18/P154 + all Wikipedia languages
+  galleries?: ImageGallery[];         // pooled shelves beside `images` (see below)
   orientation?: {                     // IAU rotation polynomial: SPICE PCK, else DAMIT lightcurve spin, else an occultation-fitted ring pole
     // α(T) = pole_ra_0 + pole_ra_1·T   (T = Julian centuries since J2000)
     // δ(T) = pole_dec_0 + pole_dec_1·T
@@ -404,6 +405,14 @@ interface ObjectImage {
   attr: "free" | "credit" | "other";  // attribution tier for social-card use (see images.md)
   width?: number;         // source pixel dimensions (omitted for SVG/WebM passthrough)
   height?: number;
+  subject?: string | number;  // what it's a picture of, in a pooled gallery: an Object.id or a feature_id
+}
+
+// One pooled shelf in the Images tab, beside the object's own `images`
+interface ImageGallery {
+  key: "features" | "moons";  // URL token (`&gal=`); collections also key by member Object.id
+  subject?: string;           // set when the whole shelf is about one object (collections) — pooled shelves put it per-image instead
+  images: ObjectImage[];
 }
 // Quantities use best-fit units from Wikidata (e.g. "solar_mass", "kilometre")
 interface QuantityWithUnit { value: number; unit: string; }
@@ -592,6 +601,17 @@ of the eight ringed bodies have none, since neither Haumea's nor Quaoar's rings
 have an article in any language; the tab and the collection tile fall back to
 the ring-plane chart. The same selection is pooled onto the `cat-ring-systems`
 page — see `docs/export-format/groups.md`.
+
+`galleries` are the *pooled* shelves: `features` takes one picture of each of
+the body's notable surface features, `moons` up to two of each notable moon,
+both walked in the ranking those lists already carry and interleaved so a
+capped shelf still spans the system. Each picture's `subject` names what it is
+of — a `feature_id` under `features`, an `Object.id` under `moons` — which is
+what the tile is labelled by and what the viewer links out to. Files already
+shown under `images` or `ring_images` are not repeated, and IAU locator maps
+are dropped: they are outline drawings, not pictures of the feature. Shelf
+sizes are `FEATURE_GALLERY_LIMIT` / `MOON_GALLERY_LIMIT` in
+`export/objects/galleries.py`.
 
 ## Localized (`objects/{lang}/{bucket}.json.gz`)
 

@@ -63,6 +63,30 @@ export interface PickedThumbnail {
 	ext: string;
 }
 
+/** Every emitted variant as a `srcset`, so the browser picks by layout width. */
+export function imageSrcset(image: ObjectImage): string | undefined {
+	const parts = LABEL_ORDER.flatMap((label) => {
+		const url = variantUrl(image, label);
+		return url ? [`${url} ${BUCKET_DIMS[label]}w`] : [];
+	});
+	return parts.length ? parts.join(', ') : undefined;
+}
+
+/** The `src` a `srcset` falls back to: the smallest variant the source covers. */
+export function smallestVariantUrl(image: ObjectImage): string | undefined {
+	for (const label of LABEL_ORDER) {
+		const url = variantUrl(image, label);
+		if (url) return url;
+	}
+	return undefined;
+}
+
+/** Commons filename → readable label: drop the extension, undo the underscores.
+ *  Good enough until the exporter surfaces a dedicated short title. */
+export function imageLabel(file: string): string {
+	return file.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
+}
+
 /** URL for a pre-picked thumbnail descriptor. */
 export function pickedThumbnailUrl(t: PickedThumbnail): string {
 	return versionedImageUrl(`/v1/images/${encodeURIComponent(t.file)}/${t.label}.${t.ext}`);
