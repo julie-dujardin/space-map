@@ -18,6 +18,7 @@ class PROVIDERS(StrEnum):
     COMMONS = "commons"
     EARTH_CLOUDS = "earth_clouds"
     IAU_NOMENCLATURE = "iau_nomenclature"
+    GVP = "gvp"
     TEXTURE_SOURCES = "texture_sources"
     BJJ_RINGS = "bjj_rings"
     PSG_ATMOSPHERE = "psg_atmosphere"
