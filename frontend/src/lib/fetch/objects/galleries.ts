@@ -19,6 +19,10 @@ export const MAIN_GALLERY = 'main';
 export const RINGS_GALLERY = 'rings';
 /** URL token for the atmosphere shelf, linked from the Structure tab. */
 export const ATMOSPHERE_GALLERY = 'atmosphere';
+/** URL token for the shelf pooled from the body's moons, linked from Members. */
+export const MOONS_GALLERY = 'moons';
+/** URL token for the shelf pooled from its named surface features. */
+export const FEATURES_GALLERY = 'features';
 
 export interface Gallery {
 	/** Stable URL token: a fixed name, or a member's Object.id. */
@@ -78,9 +82,29 @@ export interface GallerySource {
 const POOLED_TITLES: Record<string, () => string> = {
 	[ATMOSPHERE_GALLERY]: m.atmosphere,
 	interior: m.interior,
-	features: m.features_section,
-	moons: m.moons_section
+	[FEATURES_GALLERY]: m.features_section,
+	[MOONS_GALLERY]: m.moons_section
 };
+
+/**
+ * Shelf order, mirroring the drawer's tab bar: the object's own pictures lead,
+ * then one shelf per aspect in the order the tabs covering them are listed. A
+ * shelf that names a subject instead of an aspect — a collection's members —
+ * has no tab to follow and keeps the exporter's order behind them.
+ */
+const SHELF_ORDER = [
+	MAIN_GALLERY,
+	FEATURES_GALLERY,
+	ATMOSPHERE_GALLERY,
+	'interior',
+	RINGS_GALLERY,
+	MOONS_GALLERY
+];
+
+function shelfRank(key: string): number {
+	const rank = SHELF_ORDER.indexOf(key);
+	return rank === -1 ? SHELF_ORDER.length : rank;
+}
 
 /**
  * Assemble the shelves for one page. `subjectName` resolves a pooled entry's
@@ -111,7 +135,8 @@ export function buildGalleries(
 			subjectId: gallery.subject
 		});
 	}
-	return out;
+	// Stable: the member shelves all rank the same and keep the order they came in.
+	return out.sort((a, b) => shelfRank(a.key) - shelfRank(b.key));
 }
 
 /**

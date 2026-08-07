@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, untrack } from 'svelte';
+	import { getContext, untrack, type Snippet } from 'svelte';
 	import { Drawer as Vaul } from 'vaul-svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -38,6 +38,9 @@
 	import RingCatalog from './sections/RingCatalog.svelte';
 	import GalleryHero from './sections/GalleryHero.svelte';
 	import RingStripBar from './charts/RingStripBar.svelte';
+	import AtmosphereBandBar from './charts/AtmosphereBandBar.svelte';
+	import MoonDiscRow from './charts/MoonDiscRow.svelte';
+	import SurfaceMapBar from './charts/SurfaceMapBar.svelte';
 	import FeatureTypeFilter from './sections/FeatureTypeFilter.svelte';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
 	import {
@@ -65,9 +68,11 @@
 	import {
 		ATMOSPHERE_GALLERY,
 		buildGalleries,
+		FEATURES_GALLERY,
 		findGallery,
 		imageCount,
 		MAIN_GALLERY,
+		MOONS_GALLERY,
 		RINGS_GALLERY,
 		type Gallery,
 		type ShelfLink
@@ -113,6 +118,7 @@
 	import { featureTypeLabel } from '$lib/format/feature-type';
 	import { featureDetailToObjectData, groupDetailToObjectData } from '$lib/state/detail-adapters';
 	import { LineupHero } from './charts/lineup-hero.svelte';
+	import { buildLineup, geometryFromMember } from './charts/lineup';
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 
 	// Module-scope dedupe so the "no name resolved" warning fires at most once
@@ -759,6 +765,26 @@
 
 	/** The body the ring-plane backdrop is drawn from — this page's own. */
 	let ringStripId = $derived(body?.data.id);
+	/** The air the Structure tab charts, for that shelf's backdrop. Needs the
+	 *  layer stack: a composition bar alone has no picture to draw. */
+	let shelfAtmosphere = $derived(
+		data?.global?.atmosphere?.structure ? data.global.atmosphere : undefined
+	);
+	/** The body whose global map backs the surface shelf — the same texture the
+	 *  Surface tab opens on, under its chart grid. */
+	let surfaceMapId = $derived(
+		!isGroupMode && data?.global?.map_texture_available ? body?.data.id : undefined
+	);
+	/** The moons the shelf is pooled from, for its backdrop. Built here rather
+	 *  than taken from `lineup.hero`, which only exists on the bodies that earn
+	 *  a sphere lineup — Mars has a moons shelf and two moons to draw. */
+	let moonDiscs = $derived(
+		isGroupMode
+			? []
+			: buildLineup(data?.global?.notable_moons ?? [], geometryFromMember, {
+					names: data?.localized?.notable_moon_names
+				})
+	);
 
 	/** This page's own portrait, for a tile leading to another of its tabs. */
 	let pageHero = $derived.by(() => {
@@ -812,18 +838,28 @@
 		};
 	}
 
+	/** The destination tab's own drawing, where it has one for this shelf. */
+	function shelfBackdrop(key: string): Snippet | undefined {
+		if (key === RINGS_GALLERY) return ringStripId ? ringPlaneTile : undefined;
+		if (key === ATMOSPHERE_GALLERY) return shelfAtmosphere ? atmosphereBandTile : undefined;
+		if (key === MOONS_GALLERY) return moonDiscs.length ? moonDiscTile : undefined;
+		if (key === FEATURES_GALLERY) return surfaceMapId ? surfaceMapTile : undefined;
+		return undefined;
+	}
+
 	function shelfLink(gallery: Gallery): ShelfLink | undefined {
 		if (gallery.subjectId) return subjectLink(gallery.subjectId);
 		const tab = SHELF_TABS[gallery.key];
 		if (!tab || !tabPresent[tab]) return undefined;
-		// The ring plane the Ring Systems page draws, rather than a photograph:
-		// every photograph of these rings is already on the shelf underneath.
-		const plane = gallery.key === RINGS_GALLERY && ringStripId ? ringPlaneTile : undefined;
+		// What the destination tab draws, rather than a photograph: every
+		// photograph of the subject is already on the shelf underneath, and the
+		// chart is what the tab has that the gallery doesn't.
+		const drawn = shelfBackdrop(gallery.key);
 		return {
 			label: tabLabels[tab] ?? gallery.title,
 			kind: displayName,
-			hero: plane ? undefined : pageHero,
-			background: plane,
+			hero: drawn ? undefined : pageHero,
+			background: drawn,
 			href: tabHref(appState, tab),
 			open: () => appState.setTab(tab)
 		};
@@ -1178,6 +1214,20 @@
 
 {#snippet ringPlaneTile()}
 	<RingStripBar bodyId={ringStripId ?? ''} />
+{/snippet}
+
+{#snippet atmosphereBandTile()}
+	{#if shelfAtmosphere}
+		<AtmosphereBandBar atmosphere={shelfAtmosphere} />
+	{/if}
+{/snippet}
+
+{#snippet moonDiscTile()}
+	<MoonDiscRow bodies={moonDiscs} />
+{/snippet}
+
+{#snippet surfaceMapTile()}
+	<SurfaceMapBar bodyId={surfaceMapId ?? ''} />
 {/snippet}
 
 {#snippet lineupHeroSnippet()}

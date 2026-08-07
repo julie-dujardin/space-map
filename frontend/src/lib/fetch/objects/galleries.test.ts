@@ -35,20 +35,46 @@ describe('buildGalleries', () => {
 		expect(galleries[1].images).toHaveLength(1);
 	});
 
-	it('names a pooled shelf by its kind and keeps the exporter order', () => {
+	// The panel's shelves read in the order the tab bar lists what they are
+	// about, whatever order the exporter emitted them in.
+	it('orders the aspect shelves the way the tabs are', () => {
 		const galleries = buildGalleries(
 			{
 				images: [image('a.jpg')],
+				ring_images: [image('r.jpg')],
 				galleries: [
-					{ key: 'features', images: [image('f.jpg', 14940)] },
-					{ key: 'moons', images: [image('m.jpg', 'naif-502')] }
+					{ key: 'moons', images: [image('m.jpg', 'naif-502')] },
+					{ key: 'atmosphere', images: [image('at.jpg')] },
+					{ key: 'features', images: [image('f.jpg', 14940)] }
 				]
 			},
 			'Jupiter'
 		);
-		expect(galleries.map((g) => g.key)).toEqual([MAIN_GALLERY, 'features', 'moons']);
+		expect(galleries.map((g) => g.key)).toEqual([
+			MAIN_GALLERY,
+			'features',
+			'atmosphere',
+			RINGS_GALLERY,
+			'moons'
+		]);
 		expect(galleries[1].title).not.toBe('features');
-		expect(galleries[2].title).not.toBe('moons');
+		expect(galleries[4].title).not.toBe('moons');
+	});
+
+	// A collection's member shelves name a body, not an aspect, so no tab
+	// orders them; they follow the aspects in the order they were exported.
+	it('keeps the exporter order for member shelves, behind the aspects', () => {
+		const galleries = buildGalleries(
+			{
+				galleries: [
+					{ key: 'naif-502', subject: 'naif-502', images: [image('e.jpg')] },
+					{ key: 'naif-501', subject: 'naif-501', images: [image('i.jpg')] },
+					{ key: 'features', images: [image('f.jpg', 14940)] }
+				]
+			},
+			'Moons'
+		);
+		expect(galleries.map((g) => g.key)).toEqual(['features', 'naif-502', 'naif-501']);
 	});
 
 	it("names a member's shelf after the member, and links to it", () => {
