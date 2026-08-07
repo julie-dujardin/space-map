@@ -7,12 +7,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import py360convert
-import yaml
 from PIL import Image
 
+from space_map_data.constants.manifests.textures import load_entries
 from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
+from space_map_data.utils.paths import SOURCES_TEXTURES_DIR
 
 from . import config, skybox
 from .alignment import align_cylindrical, entry_alignment
@@ -60,23 +61,7 @@ def _refresh_cloud_credits(meta_path: Path, download_meta: dict) -> None:
 
 class TextureProcessor:
     def __init__(self) -> None:
-        main_yaml = config.RAW_DIR.parent / "download-metadata.yaml"
-        bodies: list[dict] = yaml.safe_load(main_yaml.read_text())["bodies"]
-        for entry in bodies:
-            entry["_source_dir"] = config.RAW_DIR
-
-        # Each non-surface asset dir (e.g. star-map/, night/earth/) carries its
-        # own download-metadata.yaml with the same schema; entries get stamped
-        # with `_source_dir` pointing at the asset dir so the processor finds
-        # the file without a global flat-layout move.
-        for sub_yaml in sorted(config.iter_extra_asset_yamls()):
-            data = yaml.safe_load(sub_yaml.read_text()) or {}
-            sub = sub_yaml.parent
-            for entry in data.get("bodies") or []:
-                entry["_source_dir"] = sub
-                bodies.append(entry)
-
-        self._raw_meta: list[dict] = bodies
+        self._raw_meta: list[dict] = load_entries(SOURCES_TEXTURES_DIR)
 
     def _reset_texture_available(self) -> None:
         session = get_session()
@@ -237,7 +222,7 @@ class TextureProcessor:
         meta_path.write_text(json.dumps(metadata, indent=2))
 
     def process_all(self, force: bool = False) -> None:
-        """Process all textures listed in download-metadata.yaml.
+        """Process all textures listed in the manifests.
 
         Warns about any image files in RAW_DIR not referenced by the metadata.
         """
@@ -247,7 +232,7 @@ class TextureProcessor:
         # have their own per-subdir manifests and aren't expected in raw/.
         known_files: set[str] = set()
         for entry in self._raw_meta:
-            if entry.get("_source_dir", config.RAW_DIR) == config.RAW_DIR:
+            if entry["_source_dir"] == config.RAW_DIR:
                 known_files.update(expand_entry_files(entry))
 
         for entry in self._raw_meta:
@@ -268,7 +253,7 @@ class TextureProcessor:
             if entry.get("type") == "cubemap_skybox":
                 self._process_skybox(entry, force=force)
                 continue
-            src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
+            src = entry["_source_dir"] / entry["file"]
             if not src.exists():
                 log.warning("listed in metadata but not found: %s", entry["file"])
                 continue
@@ -278,22 +263,22 @@ class TextureProcessor:
 
         for f in sorted(config.RAW_DIR.iterdir()):
             if f.suffix.lower() in config.IMAGE_EXTS and f.name not in known_files:
-                log.warning("untracked file not in download-metadata.yaml: %s", f.name)
+                log.warning("untracked file not in the texture manifests: %s", f.name)
 
     def process(self, src: Path | str, force: bool = False) -> Path:
         """Process a raw texture into WebP exports.
 
-        Reads body info from raw/download-metadata.yaml.
+        Reads body info from the root texture manifest.
         Exports are written to PROCESSED_DIR/<object_id>/ alongside a metadata.json.
         Returns the output directory.
         """
         src = Path(src)
         entry = next((b for b in self._raw_meta if b["file"] == src.name), None)
         if entry is None:
-            log.warning("%s not found in download-metadata.yaml", src.name)
+            log.warning("%s not found in the texture manifests", src.name)
             return config.PROCESSED_DIR
         if entry.get("skip"):
-            log.debug("skipping %s (marked skip in download-metadata.yaml)", src.name)
+            log.debug("skipping %s (marked skip in the manifest)", src.name)
             return config.PROCESSED_DIR
 
         object_id = entry["body"]
@@ -332,7 +317,7 @@ class TextureProcessor:
         is thresholded into a binary ocean mask (land=0, ocean=255); an entry
         with ``premade: true`` carries a ready-made grayscale map used as-is.
         """
-        src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
+        src = entry["_source_dir"] / entry["file"]
         if not src.exists():
             log.warning("specular source missing: %s", entry["file"])
             return config.PROCESSED_DIR
@@ -385,7 +370,7 @@ class TextureProcessor:
         plain RGB cylindrical map; the renderer samples it as an emissive
         contribution multiplied by the body's unlit fraction.
         """
-        src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
+        src = entry["_source_dir"] / entry["file"]
         if not src.exists():
             log.warning("night-lights source missing: %s", entry["file"])
             return config.PROCESSED_DIR
@@ -433,7 +418,7 @@ class TextureProcessor:
         Output goes to ``{body}_displacement/`` (single-frame, like ``_specular``).
         Records the km at texel 0/255 so the renderer scales displacement true.
         """
-        src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
+        src = entry["_source_dir"] / entry["file"]
         if not src.exists():
             log.warning("displacement source missing: %s", entry["file"])
             return config.PROCESSED_DIR
@@ -505,7 +490,7 @@ class TextureProcessor:
         circuits when metadata exists, the entry shape is unchanged, and no
         export exceeds the size cap.
         """
-        src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
+        src = entry["_source_dir"] / entry["file"]
         if not src.exists():
             log.warning("skybox source missing: %s", entry["file"])
             return config.PROCESSED_DIR
@@ -624,7 +609,7 @@ class TextureProcessor:
         months = entry.get("months", 12)
         file_template = entry["file"]
         expected_files = expand_entry_files(entry)
-        source_dir: Path = entry.get("_source_dir", config.RAW_DIR)
+        source_dir: Path = entry["_source_dir"]
 
         missing = [f for f in expected_files if not (source_dir / f).exists()]
         if missing:

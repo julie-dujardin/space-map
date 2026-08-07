@@ -1,0 +1,15 @@
+# Manifest for the manually downloaded GEBCO topography/bathymetry pair from
+# the Blue Marble: Next Generation page. These aren't fetched by the
+# texture_sources downloader, so the source/attribution lives next to the
+# files; TextureProcessor merges every misc/*/download-metadata.yaml into the
+# main download-metadata.yaml at startup.
+bodies:
+- body: naif-399
+  body_name: earth
+  source: https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/topography-bathymetry-maps/
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA Earth Observatory — Blue Marble: Next Generation topography/bathymetry maps. Bathymetry derived from GEBCO."
+  description: "Ocean specular mask derived from GEBCO bathymetry — bright over water, matte over land."
+  file: gebco_08_rev_bath_21600x10800.tif
+  type: cylindrical_specular

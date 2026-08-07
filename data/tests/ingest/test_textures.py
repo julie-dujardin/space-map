@@ -221,6 +221,8 @@ class TestProcessMonthly:
         monkeypatch.setattr(config, "RAW_DIR", raw)
         monkeypatch.setattr(config, "PROCESSED_DIR", processed)
         proc = TextureProcessor.__new__(TextureProcessor)
+        # The manifest loader stamps every entry with its source directory.
+        entry["_source_dir"] = raw
         proc._raw_meta = [entry]
         # Skip the DB writes; the texture-availability flag is exercised by the
         # full ingest harness, not this unit test.

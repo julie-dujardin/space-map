@@ -1,20 +1,17 @@
 """Shared constants and paths for the textures provider."""
 
-from collections.abc import Iterator
-from pathlib import Path
-
 from space_map_data.utils.paths import (
     DERIVED_TEXTURES_DIR,
     EXPORT_DIR,
     SOURCES_TEXTURES_DIR,
 )
 
-# Per-body surface textures (flat — filename encodes the body). The main
-# download-metadata.yaml at the SOURCES_TEXTURES_DIR root maps them.
+# Per-body surface textures (flat — filename encodes the body). The root
+# manifest in constants/manifests/textures/ maps them.
 RAW_DIR = SOURCES_TEXTURES_DIR / "surfaces"
 PROCESSED_DIR = EXPORT_DIR / "v1" / "textures"
 # Per-texture scraped source metadata (written by the texture_sources downloader);
-# used as a fallback for `attribution` when download-metadata.yaml doesn't provide one.
+# used as a fallback for `attribution` when the manifest doesn't provide one.
 SOURCE_METADATA_PARSED_DIR = DERIVED_TEXTURES_DIR / "source-metadata" / "parsed"
 # Per-body cloud source directories. Earth's is date-partitioned (3h cadence
 # from the earth_clouds downloader); other bodies are single static images
@@ -43,22 +40,6 @@ CLOUDS_STATIC_META: dict[str, tuple[str, str]] = {
         "Opaque orange haze layer from the NASA 3D Resources Titan map.",
     ),
 }
-
-
-def iter_extra_asset_yamls() -> Iterator[Path]:
-    """Yield per-asset download-metadata.yaml paths for non-surface textures.
-
-    Picks up:
-    * depth-1 bodyless assets (e.g. ``star-map/download-metadata.yaml``);
-    * depth-2 per-body assets (e.g. ``night/earth/download-metadata.yaml``,
-      ``bathymetry/earth/...``).
-
-    The yaml at the SOURCES_TEXTURES_DIR root (the main bodies manifest for
-    ``surfaces/``) is depth-0 and isn't matched. Special-cased trees
-    (``clouds/``, ``rings/``) use their own metadata filenames.
-    """
-    yield from SOURCES_TEXTURES_DIR.glob("*/download-metadata.yaml")
-    yield from SOURCES_TEXTURES_DIR.glob("*/*/download-metadata.yaml")
 
 
 # Suffix appended to a body id to name its processed cloud bundle directory.

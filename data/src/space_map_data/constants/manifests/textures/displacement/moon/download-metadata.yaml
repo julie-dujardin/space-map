@@ -1,0 +1,19 @@
+# Manifest for the manually downloaded LRO LOLA height map (NASA SVS CGI Moon
+# Kit). Like the GEBCO bathymetry and Black Marble night-lights, this isn't
+# fetched by the texture_sources downloader; TextureProcessor merges every
+# */*/download-metadata.yaml into the main bodies list at startup, stamping
+# `_source_dir` so the file resolves from this dir.
+#
+# `ldem_64.tif`: SVS float variant, value already in km (no GDAL tags), so
+# `height_unit: km` stops the loader treating it as metres.
+bodies:
+- body: naif-301
+  body_name: moon
+  source: https://svs.gsfc.nasa.gov/4720/#media_group_322785
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA's Scientific Visualization Studio. Elevation: Lunar Orbiter Laser Altimeter (LOLA), LRO. Reference sphere radius 1737.4 km."
+  description: "Lunar topography displacement sibling — drives the renderer's vertex displacement at true physical scale."
+  file: ldem_64.tif
+  type: cylindrical_displacement
+  height_unit: km

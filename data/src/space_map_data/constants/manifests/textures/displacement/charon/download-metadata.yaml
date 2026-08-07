@@ -1,0 +1,13 @@
+# USGS New Horizons global DEM, 300 m/px. int16 metres, NODATA auto-read, no
+# overrides. Full-global equirect, default alignment (tiepoint-confirmed). Only
+# the encounter hemisphere is mapped — nodata floored to the lowest terrain.
+bodies:
+- body: naif-901
+  body_name: charon
+  source: https://astrogeology.usgs.gov/search/map/charon_new_horizons_lorri_mvic_global_dem_300m
+  organisation: USGS
+  license: Public domain
+  attribution: "NASA/JHUAPL/SwRI/USGS — Charon global DEM (300 m/px) from New Horizons LORRI/MVIC stereo. Reference sphere radius 606 km."
+  description: "Charon topography displacement sibling — drives the renderer's vertex displacement at true physical scale."
+  file: Charon_NewHorizons_Global_DEM_300m_Jul2017_16bit.tif
+  type: cylindrical_displacement

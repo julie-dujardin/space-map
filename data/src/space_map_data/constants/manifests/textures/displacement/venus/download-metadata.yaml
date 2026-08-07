@@ -1,0 +1,15 @@
+# USGS Magellan global topography (GTDR), 4641 m/px, int16. Elevation in metres
+# vs the 6051 km datum (max 11687 m ≈ Maxwell Montes), metres default,
+# GDAL_NODATA -32768 auto-read (poles/radar gaps). Simple-cylindrical, tiepoint
+# left edge at -pi*R (0° at centre) -- same frame as the live USGS C3-MDIR Venus
+# surface texture, so default alignment (no lon_at_left_deg).
+bodies:
+- body: naif-299
+  body_name: venus
+  source: https://astrogeology.usgs.gov/search/map/venus_magellan_global_topography_4641m
+  organisation: USGS
+  license: Public domain
+  attribution: "NASA/USGS — Magellan Global Topography Data Record (GTDR), 4641 m/px. Elevation relative to the 6051 km datum sphere."
+  description: "Venus topography displacement sibling — drives the renderer's vertex displacement at true physical scale."
+  file: Venus_Magellan_Topography_Global_4641m_v02.tif
+  type: cylindrical_displacement

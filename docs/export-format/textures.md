@@ -72,7 +72,7 @@ Monthly (`type: cylindrical_monthly`):
 
 - `source` — the page URL the texture was obtained from.
 - `organisation` — short canonical label used for deduplicated UI attribution (e.g. `"NASA"`, `"USGS"`, `"ESA/DLR/FU Berlin"`, `"The Planetary Society"`, `"Björn Jónsson"`).
-- `attribution` — optional long-form credit string. Populated from `download-metadata.yaml` where provided; for NASA/USGS-hosted textures this is expected to be auto-filled from the source page at ingest time. Omitted entirely when unavailable.
+- `attribution` — optional long-form credit string. Populated from the texture manifests in `data/src/space_map_data/constants/manifests/textures/` where provided; for NASA/USGS-hosted textures this is expected to be auto-filled from the source page at ingest time. Omitted entirely when unavailable.
 - `frames` — only on `cylindrical_monthly`; the number of monthly composites (always 12 today). Mirrored into the `systems/{bary}.json` texture block.
 
 Cloud overlay (`type: clouds_overlay`): one bundle per host body covering every snapshot the downloader has on disk. The `id` carries the `_clouds` suffix and the frontend composes URLs as `/v1/textures/{clouds.id}/{tier}_{frame}.webp`. Per-frame `size_bytes` / `source_file` / `exports` records are intentionally omitted — the snapshot count grows over time (one per ~3 h) and the tier set is identical across frames, so a flat `tiers` + `frames` pair is the useful summary.

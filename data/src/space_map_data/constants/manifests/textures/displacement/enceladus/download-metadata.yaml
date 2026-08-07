@@ -1,0 +1,20 @@
+# Schenk & McKinnon (2024) global Enceladus DEM (Cassini ISS), 200 m/px.
+# float32 stores elevation in km relative to a 256.2 km sphere (no GDAL tags),
+# so `height_unit: km` stops the loader treating values as metres. The float
+# nodata sentinel (-3.4e38) is caught by the loader's threshold guard.
+# File tiepoint puts the left edge at -805 km = -pi*R (east-positive), 0° at
+# centre, but the live Schenk LPI colour map puts 0° at the left edge, so
+# lon_at_left_deg:0 rolls the DEM 180° into the colour frame -- without it the
+# topography sits half a world off.
+bodies:
+- body: naif-602
+  body_name: enceladus
+  source: https://astrogeology.usgs.gov/search/map/enceladus-cassini-global-dem-200m-schenk
+  organisation: USGS
+  license: Public domain
+  attribution: "NASA/JPL-Caltech/SSI/LPI/USGS — Schenk & McKinnon (2024) global topographic map of Enceladus (Cassini ISS)."
+  description: "Enceladus topography displacement sibling — drives the renderer's vertex displacement at true physical scale."
+  file: Enceladus_Cassini_DEM_global_200m_schenk2024.tif
+  type: cylindrical_displacement
+  height_unit: km
+  lon_at_left_deg: 0

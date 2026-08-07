@@ -1,13 +1,13 @@
 """Scrape per-texture source metadata from USGS / NASA pages.
 
-Iterates the per-body entries in `textures/download-metadata.yaml`, fetches the
-`source:` page for each, parses the structured fields the site publishes, and
-writes one JSON per entry to `textures/source_metadata/{file_stem}.json`.
+Iterates the per-body entries in the texture manifests
+(`constants/manifests/textures/`), fetches the `source:` page for each, parses
+the structured fields the site publishes, and writes one JSON per entry to
+`textures/source_metadata/{file_stem}.json`.
 
 The goal is troubleshooting-friendly provenance, not something the export
 pipeline consumes directly. A human (or a follow-up auto-fill step) then copies
-the relevant bits — a compact `attribution:` line — back into
-`download-metadata.yaml`.
+the relevant bits — a compact `attribution:` line — back into the manifest.
 
 Supported sites:
 - USGS Astrogeology Science Center (`astrogeology.usgs.gov/search/map/...`)
@@ -37,17 +37,15 @@ from typing import cast
 from urllib.parse import urlparse
 
 import httpx
-import yaml
 from bs4 import BeautifulSoup, Tag
 
+from space_map_data.constants.manifests.textures import MANIFESTS_DIR, load_entries
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.utils.paths import DERIVED_TEXTURES_DIR, SOURCES_TEXTURES_DIR
 
 logger = logging.getLogger(__name__)
 
-TEXTURES_DIR = SOURCES_TEXTURES_DIR
-DOWNLOAD_METADATA_YAML = TEXTURES_DIR / "download-metadata.yaml"
 SOURCE_METADATA_DIR = DERIVED_TEXTURES_DIR / "source-metadata"
 HTML_CACHE_DIR = SOURCE_METADATA_DIR / "html"
 PARSED_DIR = SOURCE_METADATA_DIR / "parsed"
@@ -612,37 +610,6 @@ class TextureSourcesDownloader(Downloader):
         HTML_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         PARSED_DIR.mkdir(parents=True, exist_ok=True)
 
-    def _load_entries(self) -> list[dict]:
-        """Collect entries from the main yaml plus every per-asset yaml.
-
-        Mirrors TextureProcessor's startup merge so manually-staged textures
-        (e.g. ``star-map/``, ``night/earth/``) get the same source-metadata
-        treatment.
-        """
-        if not DOWNLOAD_METADATA_YAML.exists():
-            raise FileNotFoundError(
-                f"download-metadata.yaml not found at {DOWNLOAD_METADATA_YAML}"
-            )
-        entries: list[dict] = list(
-            yaml.safe_load(DOWNLOAD_METADATA_YAML.read_text()).get("bodies", [])
-        )
-        # Non-surface assets at depth 1 (bodyless, e.g. star-map/) or depth 2
-        # (per-body, e.g. night/earth/) carry their own yaml.
-        extra_yamls = sorted(
-            list(TEXTURES_DIR.glob("*/download-metadata.yaml"))
-            + list(TEXTURES_DIR.glob("*/*/download-metadata.yaml"))
-        )
-        for sub_yaml in extra_yamls:
-            data = yaml.safe_load(sub_yaml.read_text()) or {}
-            entries.extend(data.get("bodies") or [])
-        dropped = sum(1 for e in entries if not isinstance(e, dict))
-        if dropped:
-            logger.warning(
-                "Dropping %d empty/invalid body entries from texture metadata", dropped
-            )
-            entries = [e for e in entries if isinstance(e, dict)]
-        return entries
-
     def _fetch_text(self, url: str, cache_path: Path, *, force: bool) -> str:
         if cache_path.exists() and not force:
             return cache_path.read_text(encoding="utf-8")
@@ -661,7 +628,7 @@ class TextureSourcesDownloader(Downloader):
         force: bool = False,
         **kwargs: object,
     ) -> None:
-        entries = self._load_entries()
+        entries = load_entries(SOURCES_TEXTURES_DIR)
         if limit is not None:
             entries = entries[:limit]
 
@@ -709,7 +676,7 @@ class TextureSourcesDownloader(Downloader):
             errors,
         )
         self._save_metadata(
-            url=str(DOWNLOAD_METADATA_YAML),
+            url=str(MANIFESTS_DIR),
             record_count=wrote,
             complete=True,
             parser_sites=sorted(_ALL_SITES),

@@ -1,0 +1,26 @@
+# White et al. (2014) global stereo DEM of Io, ISIS2 cube (big-endian float32,
+# 1 km/px). Values are elevation in km over the triaxial reference ellipsoid,
+# so this rides the body's base shape like the other elevation DEMs (not
+# absolute_radius). ISIS special-pixel nulls fall to the loader's threshold
+# guard; ~54% of the surface by area carries data, so `nodata_fill_km: 0` rests
+# the unmapped remainder at the datum rather than sinking it into the deepest
+# basin.
+# The label is west-positive, but its samples run westernmost-first, so column
+# order is already east-positive with 0 deg E at the left edge — no W->E flip,
+# same alignment as the live io_rgb_cyl colour map. Verified against the IAU
+# gazetteer: named montes average +2.0 km as read, -0.1 km if mirrored.
+bodies:
+- body: naif-501
+  body_name: io
+  source: https://agupubs.onlinelibrary.wiley.com/doi/10.1002/2013JE004591
+  organisation: AGU / USGS
+  # LICENSE REVIEW: no license set — the published DEM is © AGU (all rights
+  # reserved); the underlying Voyager/Galileo imagery is NASA public domain but
+  # this derived product isn't confirmed PD-released. Needs owner confirmation.
+  attribution: "White, Schenk, Nimmo & Hoogenboom (2014), global stereo topographic map of Io (Voyager/Galileo). NASA/JPL."
+  description: "Io topography displacement sibling — drives the renderer's vertex displacement at true physical scale."
+  file: IoDEM.cub
+  type: cylindrical_displacement
+  height_unit: km
+  lon_at_left_deg: 0
+  nodata_fill_km: 0.0

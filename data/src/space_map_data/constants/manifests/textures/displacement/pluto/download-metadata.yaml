@@ -1,0 +1,20 @@
+# USGS New Horizons global DEM, 300 m/px. int16 elevation in metres (from km,
+# truncated), NODATA=-32768 auto-read, metres default. Full-global equirect,
+# 0°E at the left edge like the PIA11707 colour map (PDS label: lon 0-360,
+# CenterLongitude 180; the geotiff tiepoint is offset from that 180° centre, so
+# it does NOT put -180° at the left). lon_at_left_deg: 0 on both entries keeps
+# DEM and colour co-registered. Latitude needs no correction: full -90..90
+# north-up, feature latitudes verified against IAU nomenclature (Burney,
+# Sputnik Planitia, Piccard Mons). The shared wavy no-data edge south of ~-38°
+# is real coverage loss (southern winter darkness), not a shift.
+bodies:
+- body: naif-999
+  body_name: pluto
+  source: https://astrogeology.usgs.gov/search/map/pluto_new_horizons_lorri_mvic_global_dem_300m
+  organisation: USGS
+  license: Public domain
+  attribution: "NASA/JHUAPL/SwRI/USGS — Pluto global DEM (300 m/px) from New Horizons LORRI/MVIC stereo. Reference sphere radius 1188.3 km."
+  description: "Pluto topography displacement sibling — drives the renderer's vertex displacement at true physical scale."
+  file: Pluto_NewHorizons_Global_DEM_300m_Jul2017_16bit.tif
+  type: cylindrical_displacement
+  lon_at_left_deg: 0

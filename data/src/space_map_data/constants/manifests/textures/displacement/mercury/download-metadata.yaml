@@ -1,0 +1,15 @@
+# USGS MESSENGER global DEM, 665 m/px. GDAL SCALE/NODATA auto-read (no overrides;
+# metres default). Full-global equirect, 0-360 as the catalog says: the tiepoint's
+# X=-180° is relative to a 180° center meridian (GeoKey 3088), so the left edge is
+# lon 0° and lon_at_left_deg:0 rolls it 180° into the renderer's frame.
+bodies:
+- body: naif-199
+  body_name: mercury
+  source: https://astrogeology.usgs.gov/search/map/mercury_messenger_global_dem_665m
+  organisation: USGS
+  license: Public domain
+  attribution: "NASA/USGS — MESSENGER global DEM (665 m/px), derived from MDIS stereo and limb imaging. Reference sphere radius 2439.4 km."
+  description: "Mercury topography displacement sibling — drives the renderer's vertex displacement at true physical scale."
+  file: Mercury_Messenger_USGS_DEM_Global_665m_v2.tif
+  type: cylindrical_displacement
+  lon_at_left_deg: 0

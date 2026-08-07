@@ -1,0 +1,14 @@
+# Manifest for the manually downloaded NASA SVS "Deep Star Maps 2020"
+# celestial-sphere star map (svs.gsfc.nasa.gov/4851). Equirectangular,
+# centered at 0h RA with RA increasing leftward; compiled from Hipparcos-2,
+# Tycho-2, and Gaia DR2. The .exr source is too large to fetch through the
+# auto-downloader and isn't tied to a NAIF body, so it lives here.
+bodies:
+- body: stars
+  body_name: stars
+  source: https://svs.gsfc.nasa.gov/4851/
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA's Goddard Space Flight Center Scientific Visualization Studio — Deep Star Maps 2020, Ernie Wright (USRA). Source catalogs: Hipparcos-2, Tycho-2, Gaia DR2 (ESA/Gaia/DPAC)."
+  file: starmap_2020_64k.exr
+  type: cubemap_skybox

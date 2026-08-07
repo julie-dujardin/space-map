@@ -1,0 +1,14 @@
+# Manifest for the manually downloaded NASA Black Marble 2016 (Suomi NPP/VIIRS)
+# night-lights mosaic. Like the GEBCO bathymetry, this isn't fetched by the
+# texture_sources downloader; TextureProcessor merges every
+# misc/*/download-metadata.yaml into the main bodies list at startup.
+bodies:
+- body: naif-399
+  body_name: earth
+  source: https://science.nasa.gov/earth/earth-observatory/earth-at-night/maps/
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA Earth Observatory — Black Marble 2016 (Suomi NPP/VIIRS day-night band composite)."
+  description: "Earth night-lights emissive sibling — sampled by the renderer on the unlit side of the body."
+  file: BlackMarble_2016_3km_geo.tif
+  type: cylindrical_night_lights

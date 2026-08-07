@@ -1,0 +1,670 @@
+# `organisation` is the compact chip label in the attribution bar, where credits
+# dedupe by exact string — so it names the umbrella body (NASA, ESA) rather than
+# the specific node or collaboration. `attribution` carries the full credit and
+# is what /credits and the popover render.
+bodies:
+- body: naif-199
+  body_name: mercury
+  source: https://astrogeology.usgs.gov/search/map/mercury_messenger_mdis_global_basemap_bdr_166m#open
+  organisation: USGS
+  license: Public domain
+  file: Mercury_MESSENGER_MDIS_Basemap_BDR_Mosaic_Global_166m.tif
+  type: cylindrical
+  skip: true
+- body: naif-199
+  body_name: mercury
+  source: https://astrogeology.usgs.gov/search/map/mercury_messenger_mdis_basemap_loi_global_mosaic_166m
+  organisation: USGS
+  license: Public domain
+  file: Mercury_MESSENGER_MDIS_Basemap_LOI_Mosaic_Global_166m.tif
+  type: cylindrical
+
+- body: naif-299
+  body_name: venus
+  source: https://stevealbers.net/albers/sos/sos.html#VENUS
+  organisation: Steve Albers
+  license: Personal, non-commercial use only
+  attribution: "Processed by Steve Albers from Magellan radar mosaics (NASA, compiled by Emily Lakdawalla / The Planetary Society) overlaid on a global map by Calvin Hamilton."
+  file: venus4_rgb_cyl_www.tif
+  type: cylindrical
+- body: naif-299
+  body_name: venus
+  source: https://astrogeology.usgs.gov/search/map/venus_magellan_global_c3_mdir_synthetic_color_mosaic_4641m#open
+  organisation: USGS
+  license: Public domain
+  file: Venus_Magellan_C3-MDIR_Colorized_Global_Mosaic_4641m.tif
+  type: cylindrical
+  skip: true
+  # lower coverage:
+  # https://www.jpl.nasa.gov/images/pia00256-venus-simple-cylindrical-map-of-surface-eastern-half/
+  # https://www.jpl.nasa.gov/images/pia00255-venus-simple-cylindrical-map-of-surface-western-half/
+
+- body: naif-399
+  body_name: earth
+  source: https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA Earth Observatory — Blue Marble: Next Generation monthly composites (2004)."
+  description: See https://science.nasa.gov/earth/earth-observatory/collections/blue-marble/
+  file: "world.2004{month:02d}.3x21600x10800_geo.tif"
+  type: cylindrical_monthly
+  months: 12
+- body: naif-399
+  body_name: earth
+  source: https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/
+  organisation: NASA
+  license: Public domain
+  file: world.200406.3x21600x21600.B1_geo.tif
+  type: cylindrical_tile
+  skip: true
+- body: naif-301
+  body_name: moon
+  source: https://svs.gsfc.nasa.gov/4720/#media_group_379232
+  organisation: NASA
+  license: Public domain
+  file: moon-lroc_color_16bit_srgb.tif
+  type: cylindrical
+  skip: true
+- body: naif-301
+  body_name: moon
+  source: https://svs.gsfc.nasa.gov/4720#media_group_322783
+  organisation: NASA
+  license: Public domain
+  file: lroc_color_poles.tif
+  type: cylindrical
+# Moon LRO LOLA height map lives in its own asset dir (displacement/moon/),
+# like night/ and bathymetry/.
+
+# TODO: https://pds-geosciences.wustl.edu/missions/mgs/megdr.html
+- body: naif-499
+  body_name: mars
+  source: https://hrscteam.dlr.de/public/data/globalcolor.php
+  organisation: ESA
+  license: CC BY-SA 3.0 IGO
+  attribution: "ESA/DLR/FU Berlin. Michael et al., A global colour mosaic of Mars from high altitude observations (arXiv:2307.14238). DOI: 10.17169/refubium-40624."
+  file: mars-globalmosaic.rgb.tif
+  type: cylindrical
+  skip: true
+- body: naif-499
+  body_name: mars
+  source: https://astrogeology.usgs.gov/search/map/mars_viking_colorized_global_mosaic_232m#open
+  organisation: USGS
+  license: Public domain
+  file: Mars_Viking_MDIM21_ClrMosaic_global_232m.tif
+  type: cylindrical
+  skip: true
+- body: naif-499
+  body_name: mars
+  source: https://astrogeology.usgs.gov/search/map/mars_viking_global_color_mosaic_925m#open
+  organisation: USGS
+  license: Public domain
+  file: Mars_Viking_ClrMosaic_global_925m.tif
+  type: cylindrical
+- body: naif-401
+  body_name: phobos
+  source: https://astrogeology.usgs.gov/search/map/phobos_viking_global_mosaic_5m#open
+  organisation: USGS
+  license: Public domain
+  file: Phobos_Viking_Mosaic_40ppd_DLRcontrol.tif
+  type: cylindrical
+  west_positive: true  # IAU Phobos uses west-positive planetographic longitude
+# ALTERNATIVE for naif-401 (skip:true). Stooke "Cornell control" mosaic, 14400x7200, 40ppd: rebuilds
+# the Viking base and adds the best MGS/Mars Express/MRO HiRISE imagery, notably west of Stickney.
+# Recommendation: KEEP the USGS map above — it is the official, cleanly-controlled GeoTIFF and the
+# existing west_positive setup is verified. The Stooke version has newer imagery in spots but is greyscale.
+# To switch: set skip:true on the USGS entry and remove skip below.
+- body: naif-401
+  body_name: phobos
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/m1phobos/
+  organisation: NASA
+  license: Public domain
+  attribution: "Global photomosaic of Phobos by Philip J. Stooke (Cornell control), compiled from Viking Orbiter, Mars Global Surveyor, Mars Express and MRO imagery (NASA/JPL/ESA). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: phobos_cyl_cor_control.jpg
+  type: cylindrical
+  skip: true
+  west_positive: true  # IAU Phobos is W+; Stooke map is 0deg-at-centre. TODO: verify against nomenclature.
+# SUPERSEDED by the Stooke Viking+MRO mosaic below (more surface detail). Kept as a fallback.
+- body: naif-402
+  body_name: deimos
+  source: https://github.com/nasa/NASA-3D-Resources/tree/master/Images%20and%20Textures/Mars%20-%20Deimos
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA 3D Resources — Deimos global map."
+  file: deimos-nasa3d.tif
+  type: cylindrical
+  skip: true
+  # TODO: NASA 3D Resources texture; longitude convention undocumented. Needs visual verification against IAU nomenclature.
+- body: naif-402
+  body_name: deimos
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/m2deimos/
+  organisation: NASA
+  license: Public domain
+  attribution: "Global photomosaic of Deimos by Philip J. Stooke from Viking, Mariner 9 and MRO HiRISE imagery (NASA/JPL). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: deimos_cyl_viking_mro.jpg
+  type: cylindrical
+  west_positive: true  # IAU Deimos is W+; Stooke map is 0deg-at-centre. TODO: verify against nomenclature.
+
+- body: naif-2000001
+  body_name: ceres
+  source: https://stevealbers.net/albers/sos/sos.html#CERES
+  organisation: Steve Albers
+  license: Personal, non-commercial use only
+  attribution: "Processed by Steve Albers by reprojecting Dawn spacecraft imagery (NASA/JPL-Caltech/UCLA/MPS/DLR/IDA) onto a lower-resolution base map."
+  file: ceres_rgb_cyl.png
+  type: cylindrical
+  lon_at_left_deg: 0  # 180° east shift (Albers Ceres convention)
+- body: naif-2000001
+  body_name: ceres
+  source: https://astrogeology.usgs.gov/search/map/ceres_dawn_fc_global_mosaic_140m#open
+  organisation: USGS
+  license: Public domain
+  file: Ceres_Dawn_FC_DLR_global_20ppd_Oct2015.tif
+  type: cylindrical
+  lon_at_left_deg: 0  # 180° vs the Albers map it replaces (user-verified)
+  skip: true
+- body: spkid-20000004
+  body_name: vesta
+  source: https://astrogeology.usgs.gov/search/map/vesta_dawn_fc_hamo_global_mosaic_60m#open
+  organisation: USGS
+  license: Public domain
+  file: Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif
+  type: cylindrical
+- body: spkid-20025143
+  body_name: itokawa
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/25143itokawa/
+  organisation: NASA
+  license: Public domain
+  attribution: "Global mosaic map of Itokawa by Philip J. Stooke from Hayabusa AMICA imagery (JAXA). Stooke Small Bodies Maps V3.0, NASA PDS Small Bodies Node (PSI)."
+  file: new_itokawa_mosaic.jpg
+  type: cylindrical
+  # TODO: Stooke mosaic; longitude convention undocumented. Needs visual verification against IAU nomenclature.
+- body: spkid-20101955
+  body_name: Bennu
+  source: https://astrogeology.usgs.gov/search/map/bennu_osiris_rex_ocams_global_pan_mosaic_5cm#open
+  organisation: USGS
+  license: Public domain
+  file: Bennu_global_FB34_FB56_ShapeV28_GndControl_MinnaertPhase30_PAN_8bit.tif
+  type: cylindrical
+  lon_at_left_deg: 0  # USGS Bennu bbox is 0/360 instead of -180/+180
+- body: spkid-20162173
+  body_name: ryugu
+  source: https://www.deviantart.com/askaniy/art/Ryugu-True-Color-Texture-Map-4K-1007073666
+  organisation: Askaniy
+  license: CC BY 3.0
+  attribution: "Ryugu true-colour texture map (4K) by Askaniy Anpilogov, from Hayabusa2 ONC imagery (JAXA)."
+  file: ryugu_true_color_texture_map__4k__by_askaniy_dgnl30i.png
+  type: cylindrical
+  # Simple cylindrical, planetocentric, centre longitude 0° (0° at centre — default framing)
+- body: spkid-20162173
+  body_name: ryugu
+  source: https://jlpeda.jaxa.jp/en/product/archive/detail_02/
+  organisation: JAXA
+  # LICENSE REVIEW: no license set — JAXA/JLPEDA terms are attribution +
+  # non-commercial-without-permission and disallow modification (we reproject);
+  # not CC BY. Needs a call on non-commercial use before a license is asserted.
+  attribution: "Ryugu global mosaic from Hayabusa2 ONC imagery (JAXA, University of Tokyo, and collaborators). Hosted by the JAXA Lunar and Planetary Exploration Data Archive (JLPEDA)."
+  file: hyb2_onc_Global_02_l3dm_v06.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # JAXA mosaic is 180deg-rotated; verified via Otohime Saxum (274degE boulder)
+  skip: true  # superseded by Askaniy Anpilogov CC BY 3.0 map (avoids JAXA licence concern)
+
+# --- Stooke Small Bodies Maps V3.0 (NASA PDS Small Bodies Node, PSI) ---
+# Greyscale simple-cylindrical (equirectangular, 2:1) global maps. IAU-compliant longitudes (V3.0
+# relabelling), displayed east-positive. lon_at_left_deg:0 where the map puts 0deg at the left edge
+# (180deg at centre); omitted (default -180deg at left) where 0deg is at the centre.
+- body: spkid-20000243
+  body_name: ida
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/243ida/
+  organisation: NASA
+  license: Public domain
+  attribution: "Global photomosaic of 243 Ida by Philip J. Stooke and Maxim Nyrtsov (Univ. of Western Ontario) from Galileo imagery (NASA/JPL), on P. Thomas's shape model. Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: ida_cylindrical_rev_mosaic.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # Stooke Ida: 0deg at left edge, increases east
+- body: spkid-20000951
+  body_name: gaspra
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/951gaspra/
+  organisation: NASA
+  license: Public domain
+  attribution: "Global photomosaic of 951 Gaspra by Philip J. Stooke (Univ. of Western Ontario) from Galileo imagery (NASA/JPL), control by P. Thomas. Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: gabestmo.jpg
+  type: cylindrical
+  # TODO: 20ppd global mosaic; 0deg likely at centre. Needs visual verification against IAU nomenclature.
+- body: spkid-20000253
+  body_name: mathilde
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/253mathilde/
+  organisation: NASA
+  license: Public domain
+  attribution: "Global photomosaic of 253 Mathilde by Philip J. Stooke and J. Pfau (Univ. of Western Ontario) from NEAR imagery (NASA/JPL), control by P. Thomas. Coverage limited to the NEAR-imaged hemisphere. Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: matcyl1.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # 180deg-rotated; verified: shift lands IAU craters on the imaged hemisphere
+- body: spkid-20000433
+  body_name: eros
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/433eros/
+  organisation: NASA
+  license: Public domain
+  attribution: "Global photomosaic of 433 Eros by Philip J. Stooke from NEAR MSI orbital imagery (NASA/JPL; base DIM mosaic by Robinson et al.). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: eros_cyl_near.jpg
+  type: cylindrical
+  skip: True # Just looks bad. It adds noise, and not much else.
+  lon_at_left_deg: 0  # Stooke Eros: 0deg east at left edge, verified against Psyche/Himeros placement
+- body: spkid-20002867
+  body_name: steins
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/2867steins/
+  organisation: NASA
+  license: Public domain
+  attribution: "Global photomosaic of 2867 Steins by Philip J. Stooke from Rosetta OSIRIS imagery (ESA; control after Leyrat et al. 2010). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: steins_cylindrical_mosaic.jpg
+  type: cylindrical
+  # TODO: 10ppd mosaic; 0deg at centre per Stooke notes. Needs visual verification against IAU nomenclature.
+- body: spkid-1000107
+  body_name: wild2
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/81pwild2/
+  organisation: NASA
+  license: Public domain
+  attribution: "Northern-hemisphere photomosaic of comet 81P/Wild 2 by Philip J. Stooke from Stardust imagery (NASA/JPL; geometry after Duxbury et al. 2004). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: wild2_cyl_stardust.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # Stooke Wild 2: 0deg at left edge, 180deg at centre, increases east
+  # NOTE: only the Stardust-imaged northern hemisphere is mapped; southern half is blank.
+- body: spkid-1000005
+  body_name: borrelly
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/19pborrelly1/
+  organisation: NASA
+  license: Public domain
+  attribution: "Map of comet 19P/Borrelly by Philip J. Stooke from Deep Space 1 imagery (NASA/JPL; coordinate system after Howington-Kraus et al. 2002). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: borrelly_cylindrical_map.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # Stooke Borrelly: 0deg at left edge, increases east
+  # NOTE: tentative coordinate system; only the DS1-imaged hemisphere is constrained.
+- body: spkid-1000041
+  body_name: hartley2
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/103phartley2/
+  organisation: NASA
+  license: Public domain
+  attribution: "Global mosaic of comet 103P/Hartley 2 by Philip J. Stooke from EPOXI/Deep Impact imagery (NASA/JPL; control after Thomas et al. 2013). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: hartley_cyl_mosaic.jpg
+  type: cylindrical
+  # TODO: 10ppd mosaic; 0deg at centre per Stooke notes. Needs visual verification against IAU nomenclature.
+
+- body: naif-599
+  body_name: jupiter
+  source: https://www.planetary.org/space-images/merged-cassini-and-juno
+  organisation: The Planetary Society
+  license: Free use with attribution
+  attribution: "Jupiter equirectangular map by Björn Jónsson, merging Cassini ISS and JunoCam imagery. Credits: NASA/JPL-Caltech/SSI/SwRI/MSSS/ASI/INAF/JIRAM/Björn Jónsson. Hosted by The Planetary Society."
+  file: jupiter_map_css_plus_juno_bj.png
+  type: cylindrical
+  lon_at_left_deg: 0  # BJJ map is east-positive (reprojected for display), 0° at left edge
+- body: naif-599
+  body_name: jupiter
+  source: https://science.nasa.gov/photojournal/cassinis-best-maps-of-jupiter-cylindrical-map/
+  organisation: NASA
+  license: Public domain
+  file: jupiter_PIA07782.tif
+  type: cylindrical
+  skip: true
+- body: naif-501
+  body_name: io
+  source: https://stevealbers.net/albers/sos/sos.html#IO
+  organisation: Steve Albers
+  license: Personal, non-commercial use only
+  attribution: "Processed by Steve Albers from Voyager and Galileo imagery (NASA/JPL), combining mosaics from Celestia developer Laika and the USGS global Io map."
+  file: io_rgb_cyl.tif
+  type: cylindrical
+  lon_at_left_deg: 0  # Albers SOS map is east-positive (reprojected for display), 0° at left edge
+- body: naif-501
+  body_name: io
+  source: https://astrogeology.usgs.gov/search/map/io_galileo_ssi_global_color_merge_mosaic_1km#open
+  organisation: USGS
+  license: Public domain
+  file: Io_Galileo_SSI_Global_Mosaic_ClrMerge_1km.tif
+  type: cylindrical
+  lon_at_left_deg: 0  # 180° vs the Albers map it replaces (user-verified)
+  skip: true
+- body: naif-502
+  body_name: europa
+  source: https://www.planetary.org/articles/0218-mapping-europa
+  organisation: The Planetary Society
+  license: Free use with attribution
+  attribution: "Europa global map by Björn Jónsson, mosaicked from 190 Galileo and 14 Voyager 2 images. Credits: NASA/JPL-Caltech/Björn Jónsson. Hosted by The Planetary Society."
+  file: 20150218_europa_global_map_20000x10000.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # BJJ map is east-positive (reprojected for display), 0° at left edge
+- body: naif-503
+  body_name: ganymede
+  source: https://astrogeology.usgs.gov/search/map/ganymede_voyager_galileo_ssi_color_global_mosaic_1_4km#open
+  organisation: USGS
+  license: Public domain
+  file: Ganymede_Voyager_GalileoSSI_Global_ClrMosaic_1435m.tif
+  skip: true
+- body: naif-503
+  body_name: ganymede
+  source: https://bjj.mmedia.is/data/ganymede/index.html
+  organisation: Björn Jónsson
+  license: Free use with attribution
+  attribution: "Ganymede global map by Björn Jónsson, from Voyager and Galileo imagery (NASA/JPL)."
+  file: ganymede-bjj.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # BJJ map is east-positive (reprojected for display), 0° at left edge
+  skip: true
+- body: naif-503
+  body_name: ganymede
+  source: https://stevealbers.net/albers/sos/sos.html#GANYMEDE
+  organisation: Steve Albers
+  license: Personal, non-commercial use only
+  attribution: "Processed by Steve Albers — modified version of a Voyager/Galileo map by Björn Jónsson, with localised blends from the USGS Ganymede map. Source imagery: NASA/JPL."
+  file: ganymede_4k.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # Albers SOS map is east-positive (reprojected for display), 0° at left edge
+- body: naif-504
+  body_name: callisto
+  source: https://bjj.mmedia.is/data/callisto/index.html
+  organisation: Björn Jónsson
+  license: Free use with attribution
+  attribution: "Callisto global map by Björn Jónsson (2000), reprojected from 78 Voyager and Galileo images (NASA/JPL)."
+  file: callisto.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # BJJ map is east-positive (reprojected for display), 0° at left edge
+- body: naif-505
+  body_name: amalthea
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/j5amalthea/
+  organisation: NASA
+  license: Public domain
+  attribution: "Shaded-relief map of Amalthea by Philip J. Stooke from Voyager imagery (NASA/JPL). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: amalcyl.jpg
+  type: cylindrical
+  # TODO: shaded-relief drawing (no photomosaic exists); 0deg at centre. Needs visual verification against IAU nomenclature.
+
+- body: naif-699
+  body_name: saturn
+  source: https://bjj.mmedia.is/data/saturn/index.html
+  organisation: Björn Jónsson
+  license: Free use with attribution
+  attribution: "Saturn global map by Björn Jónsson, combining 56 Cassini images of the southern hemisphere (Sept 2004) with a Voyager 2 northern-hemisphere map. Source imagery: NASA/JPL/Space Science Institute."
+  file: saturn-voyager2-mmedia-is.jpg
+  type: cylindrical
+  # TODO: from voyager, check for more recent stuff
+- body: naif-606
+  body_name: titan
+  source: https://data.caltech.edu/records/8q9an-yt176
+  organisation: Caltech
+  # LICENSE REVIEW: BSD-3-Clause is what the CaltechDATA record declares, but
+  # that's likely a repository default for a raster map — verify with authors.
+  license: BSD-3-Clause
+  attribution: "Seignovert, Le Mouélic, Brown, Karkoschka, Pasek, Sotin, Turtle — Titan's global map combining VIMS and ISS mosaics (Caltech, 2019). doi:10.22002/D1.1173."
+  file: Titan_VIMS-ISS.tif
+  type: cylindrical
+- body: naif-608
+  body_name: iapetus
+  source: https://www.lpi.usra.edu/icy_moons/saturn/iapetus/
+  organisation: LPI
+  license: Public domain
+  attribution: "Global map of Iapetus produced by Dr. Paul Schenk (Lunar and Planetary Institute, Houston TX). Image data from the Imaging Science Subsystem (ISS) on the Cassini orbiter (NASA/JPL)."
+  file: Iapetus-ismap-cyl-KH.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # Schenk LPI map: 0° at left edge (east-positive)
+  description: https://www.lpi.usra.edu/icy_moons/, https://www.jpl.nasa.gov/images/pia18436-color-maps-of-iapetus-2014/
+- body: naif-605
+  body_name: rhea
+  source: https://www.lpi.usra.edu/icy_moons/saturn/rhea/
+  organisation: LPI
+  license: Public domain
+  attribution: "Global map of Rhea produced by Dr. Paul Schenk (Lunar and Planetary Institute, Houston TX). Image data from the Imaging Science Subsystem (ISS) on the Cassini orbiter (NASA/JPL)."
+  file: Rhea-rsmap-cyl-KH.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # Schenk LPI map: 0° at left edge (east-positive)
+  description: https://www.lpi.usra.edu/icy_moons/, https://www.jpl.nasa.gov/images/pia18438-color-maps-of-rhea-2014/
+- body: naif-603
+  body_name: tethys
+  source: https://www.lpi.usra.edu/icy_moons/saturn/tethys/
+  organisation: LPI
+  license: Public domain
+  attribution: "Global map of Tethys produced by Dr. Paul Schenk (Lunar and Planetary Institute, Houston TX). Image data from the Imaging Science Subsystem (ISS) on the Cassini orbiter (NASA/JPL)."
+  file: tethys-tsmap-cyl-KH.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # Schenk LPI map: 0° at left edge (east-positive)
+  description: https://www.lpi.usra.edu/icy_moons/, https://www.jpl.nasa.gov/images/pia18439-color-maps-of-tethys-2014/
+- body: naif-602
+  body_name: enceladus
+  source: https://www.lpi.usra.edu/icy_moons/saturn/enceladus/
+  organisation: LPI
+  license: Public domain
+  attribution: "Global map of Enceladus produced by Dr. Paul Schenk (Lunar and Planetary Institute, Houston TX). Image data from the Imaging Science Subsystem (ISS) on the Cassini orbiter (NASA/JPL)."
+  file: Enceladus-esmap-cyl-KH.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # Schenk LPI map: 0° at left edge (east-positive)
+  description: https://www.lpi.usra.edu/icy_moons/, https://www.jpl.nasa.gov/images/pia18435-color-maps-of-enceladus-2014/
+  skip: true
+- body: naif-602
+  body_name: enceladus
+  source: https://stevealbers.net/albers/sos/sos.html#ENCELADUS
+  organisation: Steve Albers
+  license: Personal, non-commercial use only
+  attribution: "Processed by Steve Albers from Cassini ISS imagery (NASA/JPL-Caltech/SSI)."
+  file: enceladus_rgb_cyl_www.png
+  type: cylindrical
+  lon_at_left_deg: 0  # Albers SOS map is east-positive (reprojected for display), 0° at left edge
+- body: naif-601
+  body_name: mimas
+  source: https://www.lpi.usra.edu/icy_moons/saturn/mimas/
+  organisation: LPI
+  license: Public domain
+  attribution: "Global map of Mimas produced by Dr. Paul Schenk (Lunar and Planetary Institute, Houston TX). Image data from the Imaging Science Subsystem (ISS) on the Cassini orbiter (NASA/JPL)."
+  file: Mimas-msmap-cyl-KH.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # Schenk LPI map: 0° at left edge (east-positive); verified via Herschel at ~248°E
+  description: https://www.lpi.usra.edu/icy_moons/, https://www.jpl.nasa.gov/images/pia18437-color-maps-of-mimas-2014/
+- body: naif-604
+  body_name: dione
+  source: https://www.lpi.usra.edu/icy_moons/saturn/dione/
+  organisation: LPI
+  license: Public domain
+  attribution: "Global map of Dione produced by Dr. Paul Schenk (Lunar and Planetary Institute, Houston TX). Image data from the Imaging Science Subsystem (ISS) on the Cassini orbiter (NASA/JPL)."
+  file: dione-dsmap-cyl-KH.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # Schenk LPI map: 0° at left edge (east-positive)
+  description: https://www.lpi.usra.edu/icy_moons/, https://www.jpl.nasa.gov/images/pia18434-color-maps-of-dione-2014/
+- body: naif-609
+  body_name: phoebe
+  source: https://science.nasa.gov/photojournal/map-of-phoebe-december-2005/
+  organisation: NASA
+  license: Public domain
+  file: phoebe-PIA07775.tif
+  type: cylindrical
+  west_positive: true  # IAU Saturnian satellites: W+ planetographic; PIA centre = 0°
+- body: naif-607
+  body_name: hyperion
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/s7hyperion/
+  organisation: NASA
+  license: Public domain
+  attribution: "Shaded-relief map of Hyperion by Philip J. Stooke from Voyager and Cassini imagery (NASA/JPL). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: hyrelcyl.jpg
+  type: cylindrical
+  # TODO: low-res (800x400) shaded relief; 0deg at centre. Needs visual verification against IAU nomenclature.
+- body: naif-611
+  body_name: epimetheus
+  source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/s11epi/
+  organisation: NASA
+  license: Public domain
+  attribution: "Global photomosaic of Epimetheus by Philip J. Stooke from Voyager and Cassini imagery (NASA/JPL). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
+  file: epimos.jpg
+  type: cylindrical
+  # TODO: 10ppd mosaic; 0deg at centre. Needs visual verification against IAU nomenclature.
+
+- body: naif-799
+  body_name: uranus
+  source: https://www.deviantart.com/askaniy/art/Uranus-Texture-Map-763551816
+  organisation: Askaniy
+  license: CC BY-NC-SA 3.0
+  attribution: "Uranus texture map by Askaniy Anpilogov."
+  file: uranus_texture_map_by_askaniy_dcmlkco.png
+  type: cylindrical
+  # Featureless disc — longitude origin is moot.
+- body: naif-799
+  body_name: uranus
+  source: https://www.deviantart.com/fargetanik/art/Uranus-True-Color-Texture-Map-678396520
+  organisation: Fargetanik
+  attribution: "Uranus true-colour texture by Fargetanik, built from Hubble data (STScI, Nov 2014; 467/547/658 nm filters) with the northern-hemisphere gap filled using Voyager 2 imagery."
+  file: uranus_true_color_texture_map_by_fargetanik_db7we3s.png
+  type: cylindrical
+  skip: true  # superseded by Askaniy Anpilogov map (licence unchanged)
+- body: naif-701
+  body_name: ariel
+  source: https://science.nasa.gov/3d-resources/uranus-ariel/
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA 3D Resources — Ariel global map, from Voyager 2 imagery (NASA/JPL)."
+  file: ariel-nasa3d.tif
+  type: cylindrical
+  lon_at_left_deg: 0  # NASA 3D map is 180° rotated
+  skip: true
+- body: naif-701
+  body_name: ariel
+  source: https://stevealbers.net/albers/sos/sos.html#ARIEL
+  organisation: Steve Albers
+  license: Personal, non-commercial use only
+  attribution: "Processed by Steve Albers, overlaying reprojected Voyager images by Ted Stryk on the USGS Voyager base map. Source imagery: NASA/JPL (Voyager 2)."
+  file: ariel_rgb_cyl_www.tif
+  type: cylindrical
+- body: naif-702
+  body_name: umbriel
+  source: http://www.unmannedspaceflight.com/index.php?act=Attach&type=post&id=4701
+  organisation: unmannedspaceflight.com
+  license: Public domain
+  attribution: "Global map of Umbriel by Philip J. Stooke from Voyager 2 imagery (NASA/JPL). Hosted on unmannedspaceflight.com."
+  file: umbriel-umcylmos.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # 180° east shift; verified against IAU nomenclature
+- body: naif-703
+  body_name: titania
+  source: https://science.nasa.gov/3d-resources/uranus-titania/
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA 3D Resources — Titania global map, from Voyager 2 imagery (NASA/JPL)."
+  file: titania-nasa3d.tif
+  type: cylindrical
+  skip: true
+- body: naif-703
+  body_name: titania
+  source: https://stevealbers.net/albers/sos/sos.html#TITANIA
+  organisation: Steve Albers
+  license: Personal, non-commercial use only
+  attribution: "Processed by Steve Albers by combining three Voyager images processed by Ted Stryk, registered against the USGS Voyager map. Source imagery: NASA/JPL (Voyager 2)."
+  file: titania_rgb_cyl_www.jpg
+  type: cylindrical
+- body: naif-704
+  body_name: oberon
+  source: https://science.nasa.gov/3d-resources/uranus-oberon/
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA 3D Resources — Oberon global map, from Voyager 2 imagery (NASA/JPL)."
+  file: oberon-nasa3d.tif
+  type: cylindrical
+  skip: true
+- body: naif-704
+  body_name: oberon
+  source: https://stevealbers.net/albers/sos/sos.html#OBERON
+  organisation: Steve Albers
+  license: Personal, non-commercial use only
+  attribution: "Processed by Steve Albers by overlaying Voyager images processed by Ted Stryk onto the USGS Voyager base map. Source imagery: NASA/JPL (Voyager 2)."
+  file: oberon_rgb_cyl_www.tif
+  type: cylindrical
+- body: naif-705
+  body_name: miranda
+  source: https://www.johnstonsarchive.net/spaceart/cylmaps.html
+  organisation: Johnston's Archive
+  # LICENSE REVIEW: no license set — Johnston's Archive terms are all-rights-
+  # reserved (permission required for reuse); his colourisation is copyrighted
+  # even though the JPL/Voyager base is NASA public domain. Needs permission or
+  # a PD replacement.
+  attribution: "Miranda map by W. Robert Johnston — colourised from a black-and-white JPL map based on Voyager 2 imagery (NASA/JPL)."
+  file: mirandamap.jpg
+  type: cylindrical
+  # Also see https://space.jpl.nasa.gov/tmaps/uranus.html
+- body: naif-715
+  body_name: puck
+  source: https://www.deviantart.com/askaniy/art/Puck-Texture-Map-767284858
+  organisation: Askaniy
+  license: CC BY 3.0
+  attribution: "Puck map by Askaniy Anpilogov, from Voyager 2 imagery (NASA/JPL)."
+  file: puck_texture_map_by_askaniy_dcotksa.png
+  type: cylindrical
+  # TODO: centre longitude undocumented — verify after ingest
+
+- body: naif-899
+  body_name: neptune
+  source: https://bjj.mmedia.is/data/neptune/index.html
+  organisation: Björn Jónsson
+  license: Free use with attribution
+  attribution: "Neptune global map by Björn Jónsson, reprojected from 27 Voyager 2 images (August 1989, orange/green/blue filters). Source imagery: NASA/JPL."
+  file: neptune-voyager2-mmedia-is.jpg
+  type: cylindrical
+  lon_at_left_deg: 0  # BJJ convention: 0° at left edge (direction is moot — no fixed features)
+- body: naif-801
+  body_name: triton
+  source: https://www.deviantart.com/askaniy/art/Triton-Texture-Map-14K-761940736
+  organisation: Askaniy
+  license: CC BY 3.0
+  attribution: "Triton global map (14K) by Askaniy Anpilogov, from Voyager 2 imagery (NASA/JPL)."
+  file: triton_texture_map__14k__by_askaniy_dcln18g.png
+  type: cylindrical
+- body: naif-801
+  body_name: triton
+  source: https://stevealbers.net/albers/sos/sos.html#TRITON
+  organisation: Steve Albers
+  license: Personal, non-commercial use only
+  attribution: "Processed by Steve Albers by merging a JPL Voyager 2 mosaic with a Triton map by William Johnston and A. Tayfun Oner. Source imagery: NASA/JPL (Voyager 2)."
+  file: triton_rgb_cyl_www.png
+  type: cylindrical
+  skip: true
+- body: naif-801
+  body_name: triton
+  source: https://astrogeology.usgs.gov/search/map/triton_voyager_2_global_color_mosaic_600m
+  organisation: USGS
+  license: Public domain
+  file: Triton_Voyager2_ClrMosaic_GlobalFill_600m.tif
+  type: cylindrical
+  skip: true
+
+- body: naif-999
+  body_name: pluto
+  source: https://science.nasa.gov/photojournal/pluto-color-map/
+  organisation: NASA
+  license: Public domain
+  file: PIA11707.tif
+  type: cylindrical
+  lon_at_left_deg: 0  # 180° east shift; lon+lat verified against IAU nomenclature (Sputnik Planitia, Burney). Same frame as the Pluto DEM.
+- body: naif-999
+  body_name: pluto
+  source: https://stevealbers.net/albers/sos/sos.html#PLUTO
+  organisation: Steve Albers
+  license: Personal, non-commercial use only
+  file: pluto_rgb_cyl_16k.png
+  type: cylindrical
+  skip: true
+- body: naif-901
+  body_name: charon
+  source: https://web.archive.org/web/20250324085012/https://www.iau.org/public/images/detail/iau1803c/
+  organisation: NASA
+  license: Public domain
+  attribution: "Map projection of Charon from New Horizons imagery. Credit: NASA/Johns Hopkins University Applied Physics Laboratory/Southwest Research Institute. Published by the IAU."
+  file: charon-iau1803c.tif
+  type: cylindrical
+- body: naif-902
+  body_name: nix
+  source: https://www.deviantart.com/askaniy/art/Nix-False-Color-Map-926588947
+  organisation: Askaniy
+  license: CC BY 3.0
+  attribution: "Nix false-colour map by Askaniy Anpilogov, from New Horizons imagery (NASA/JHUAPL/SwRI)."
+  file: nix_false_color_map_by_askaniy_dfbo0lv.png
+  type: cylindrical
+- body: naif-903
+  body_name: hydra
+  source: https://www.deviantart.com/askaniy/art/Hydra-False-Color-Map-926623163
+  organisation: Askaniy
+  license: CC BY 3.0
+  attribution: "Hydra false-colour map by Askaniy Anpilogov, from New Horizons imagery (NASA/JHUAPL/SwRI)."
+  file: hydra_false_color_map_by_askaniy_dfbor0b.png
+  type: cylindrical

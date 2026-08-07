@@ -1,0 +1,10 @@
+bodies:
+- body: naif-606
+  body_name: titan
+  source: https://www.deviantart.com/askaniy/art/Titan-Specular-Map-11K-1065047484
+  organisation: Askaniy
+  license: CC BY 3.0
+  attribution: "Titan specular map (11K) by Askaniy, marking the hydrocarbon seas."
+  file: titan_specular_map__11k__by_askaniy_dhm3nwc.png
+  type: cylindrical_specular
+  premade: true  # ready-made map, not a bathymetry mask

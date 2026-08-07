@@ -1,0 +1,16 @@
+# USGS/DLR Dawn HAMO global DTM (Claudia frame), 48 px/deg. float32 stores
+# radius-from-centre in metres (no GDAL tags); nodata float sentinel handled by
+# the loader's threshold guard. absolute_radius: the renderer draws Vesta as a
+# sphere + displacement (skips triaxial) so the DTM carries the full shape.
+# Default alignment, co-registered with the Dawn HAMO colour map.
+bodies:
+- body: spkid-20000004
+  body_name: vesta
+  source: https://astrogeology.usgs.gov/search/map/vesta_dawn_fc_hamo_global_dtm_93m
+  organisation: USGS
+  license: Public domain
+  attribution: "NASA/JPL-Caltech/UCLA/MPS/DLR/IDA — Dawn HAMO global DTM of Vesta (Claudia Double Prime frame)."
+  description: "Vesta shape/topography displacement sibling — carries the full radial shape; rendered on a sphere."
+  file: Vesta_Dawn_HAMO_DTM_DLR_Global_48ppd.tif
+  type: cylindrical_displacement
+  absolute_radius: true

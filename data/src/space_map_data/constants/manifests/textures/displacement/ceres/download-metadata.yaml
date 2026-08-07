@@ -1,0 +1,18 @@
+# USGS/DLR Dawn FC HAMO global DTM, 60 px/deg. int16 with GDAL OFFSET=470000
+# (→ radius-from-centre in metres) auto-read; nodata -32768. absolute_radius:
+# the renderer draws Ceres as a sphere + displacement (skips triaxial) so the
+# DTM carries the full shape. File is -180° east+ (0° at centre), but the live
+# Albers colour map puts 0° at the left edge, so lon_at_left_deg:0 rolls the DTM
+# 180° into the colour frame -- without it the topography sits half a world off.
+bodies:
+- body: naif-2000001
+  body_name: ceres
+  source: https://astrogeology.usgs.gov/search/map/ceres_dawn_fc2_hamo_global_dtm_137m
+  organisation: USGS
+  license: Public domain
+  attribution: "NASA/JPL-Caltech/UCLA/MPS/DLR/IDA — Dawn FC HAMO global DTM of Ceres. Reference sphere radius 470 km."
+  description: "Ceres shape/topography displacement sibling — carries the full radial shape; rendered on a sphere."
+  file: Ceres_Dawn_FC_HAMO_DTM_DLR_Global_60ppd_Oct2016.tif
+  type: cylindrical_displacement
+  lon_at_left_deg: 0
+  absolute_radius: true
