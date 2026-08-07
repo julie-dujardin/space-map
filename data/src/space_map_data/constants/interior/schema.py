@@ -1,11 +1,12 @@
 """Types and vocabularies for the solid-body interior facts.
 
-Two levels live in one structure. Every layer carries a **material** split —
+Three levels live in one structure. Every layer carries a **material** split —
 the coarse vocabulary below, comparable across a metal core and a comet-like
 ice shell — because that is what rolls up into a single whole-body bar. A
 layer may *also* carry a detailed oxide or mineral composition where the
-literature gives one; nothing consumes it yet, but it is the same curation
-pass, so it is collected now.
+literature gives one, and a **rock** name where the literature has agreed on
+one, which is the level a reader already thinks in: the useful thing to know
+about the ocean floor is that it is basalt.
 
 The roll-up is deliberately a mass balance over layers rather than an
 elemental one: a reader reads "two-thirds rock, one-third water", and water
@@ -152,6 +153,25 @@ PHASES = frozenset(
     }
 )
 
+# `Layer.rock` values — the name a petrologist gives the layer, where one
+# exists. "Solid rock" is the same phrase on Earth's continents, its ocean
+# floor, the lunar highlands and Vesta, and those four are not the same rock;
+# the coarse `silicate` material cannot say so and an oxide table says it only
+# to a reader who can read one.
+#
+# The vocabulary stays this short on purpose. Each entry is a name a source
+# applies to a *whole layer* — not the most abundant rock in it, and not the
+# rock of the part of it anyone has sampled. Where the literature offers two
+# names and no verdict the field goes unset, which is why Mercury's crust has
+# none: its lavas are read as komatiites, as norites and as boninites, by
+# three sets of authors who all had the same MESSENGER data.
+BASALT = "basalt"
+ANDESITE = "andesite"
+ANORTHOSITE = "anorthosite"
+PERIDOTITE = "peridotite"
+
+ROCKS = frozenset({BASALT, ANDESITE, ANORTHOSITE, PERIDOTITE})
+
 # `Detail.unit` values — what the detailed composition is expressed in, named
 # <what>_<measure>. Each layer takes the one its own source publishes: rock
 # comes as oxides by weight, a core as elements by weight, a sea as the
@@ -241,6 +261,12 @@ class Layer(NamedTuple):
     # and cannot tell which ice is at the bottom of it.
     phase: str | None = None
     phase_source: str | None = None
+    # One of ROCKS. `rock_source` is nearly always set, because the name is
+    # petrology and the geometry is geophysics: Mars's crust is 47 km thick
+    # because InSight watched a quake bounce off its base, and it is basalt
+    # because a gamma-ray spectrometer and a rover agreed on the chemistry.
+    rock: str | None = None
+    rock_source: str | None = None
     note: str | None = None
     # True where the mass fraction is arithmetic on the source's radii and
     # densities rather than a number the source quotes. Ships through to the

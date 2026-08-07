@@ -9,6 +9,9 @@ from space_map_data.constants.interior.schema import (
     LAYER_ROLES,
     MATERIALS,
     NOTES,
+    PHASES,
+    ROCKS,
+    SILICATE,
     STATES,
     STRUCTURES,
 )
@@ -33,6 +36,10 @@ def _source_keys() -> set[str]:
                 keys.add(layer.density_source)
             if layer.state_source:
                 keys.add(layer.state_source)
+            if layer.phase_source:
+                keys.add(layer.phase_source)
+            if layer.rock_source:
+                keys.add(layer.rock_source)
             keys |= {c.source for c in layer.composition}
             keys |= set(layer.temperature_sources)
             if layer.detail:
@@ -127,8 +134,21 @@ class TestBodies:
             assert layer.role in LAYER_ROLES
             assert layer.note is None or layer.note in NOTES
             assert layer.state is None or layer.state in STATES
+            assert layer.phase is None or layer.phase in PHASES
+            assert layer.rock is None or layer.rock in ROCKS
             assert sum(c.fraction for c in layer.composition) == pytest.approx(1.0)
             assert all(c.material in MATERIALS for c in layer.composition)
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_a_rock_name_sits_on_rock(self, object_id: str):
+        """The vocabulary is igneous petrology, so it can only describe a layer
+        the roll-up already calls silicate — an ice shell named `basalt` would
+        pass every other check in this file."""
+        for layer in INTERIOR_FACTS[object_id].layers:
+            if layer.rock is None:
+                continue
+            assert [c.material for c in layer.composition] == [SILICATE]
+            assert layer.state == "solid"
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_published_widths_bracket_the_shipped_value(self, object_id: str):

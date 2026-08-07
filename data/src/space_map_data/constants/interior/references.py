@@ -128,14 +128,23 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "https://doi.org/10.1017/CBO9780511575358",
         "Bulk oxide compositions of the Martian, lunar highland and "
         "terrestrial continental crusts, and the continental crust's "
-        "thickness, area and share of Earth's mass",
+        "thickness, area and share of Earth's mass; the andesitic, "
+        "anorthositic and basaltic rock types of the terrestrial, lunar "
+        "and Venusian crusts",
         "rocky crust chemistry",
     ),
     "white_klein_2014": InteriorReference(
         "White & Klein 2014 (Treatise on Geochemistry 4.13)",
         "https://doi.org/10.1016/B978-0-08-095975-7.00315-6",
-        "Thickness and bulk oxide composition of Earth's oceanic crust",
+        "Thickness, bulk oxide composition and basalt-over-gabbro structure "
+        "of Earth's oceanic crust",
         "oceanic crust chemistry",
+    ),
+    "mcsween_2009": InteriorReference(
+        "McSween, Taylor & Wyatt 2009 (Science 324)",
+        "https://doi.org/10.1126/science.1165871",
+        "Tholeiitic basalt as the rock type of the Martian crust",
+        "Mars crust rock type",
     ),
     "carlson_raskin_1984": InteriorReference(
         "Carlson & Raskin 1984 (Nature 311)",

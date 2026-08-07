@@ -18,6 +18,9 @@ is what the panel draws around it.
 """
 
 from space_map_data.constants.interior.schema import (
+    ANDESITE,
+    ANORTHOSITE,
+    BASALT,
     BodyInterior,
     COMPOUND_VOLUME,
     COMPOUND_WEIGHT,
@@ -30,6 +33,7 @@ from space_map_data.constants.interior.schema import (
     Layer,
     METAL,
     OXIDE_WEIGHT,
+    PERIDOTITE,
     SILICATE,
     VOLATILE,
     WATER,
@@ -68,6 +72,12 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
         structure="differentiated",
         structure_source="hauck_2013",
         layers=(
+            # No `rock`, and it is the clearest case for why that field can be
+            # empty. The same MESSENGER chemistry has been read as komatiite
+            # (Nittler 2011, on the Mg content alone), as norite
+            # (Stockstill-Cahill 2012) and as boninite (Vander Kaaden &
+            # McCubbin 2016), and the review that collects all three declines
+            # to pick. Naming one would be crediting an argument, not a fact.
             Layer(
                 role="crust",
                 mass_fraction=0.022,
@@ -169,6 +179,14 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=6051.8,
                 derived=True,
                 state="solid",
+                # Seven landers, all of them on the plains, all of them
+                # basaltic — Venera 8's alkali-rich site and the Vega 2
+                # gamma-ray K/U/Th among them. It is a thin basis for a global
+                # claim and it is the only one anyone has: nothing has landed
+                # on Ishtar Terra, and reading it as a continent is an analogy
+                # rather than a measurement.
+                rock=BASALT,
+                rock_source="taylor_mclennan_2009",
             ),
             Layer(
                 role="mantle",
@@ -288,6 +306,13 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     source="taylor_mclennan_2009",
                 ),
                 state="solid",
+                # Andesite, not granite — the same chapter's "andesite model",
+                # and the reason it is worth stating. Granodiorite is the top
+                # 10 km, which is all anyone walks on and all that weathers
+                # into the sediment record; average the whole 41 km with the
+                # europium-rich lower crust included and it comes out at
+                # 57% SiO₂, a subduction-zone andesite.
+                rock=ANDESITE,
             ),
             # The ocean floor: everything the continents leave, which is
             # 4π(6371 km)² − 2.10e8 km² = 3.00e8 km², or 58.8% of the globe.
@@ -338,6 +363,12 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     source="white_klein_2014",
                 ),
                 state="solid",
+                # Basalt names the composition, which is the layer's fact; the
+                # texture varies down it and is not. Only the top 1-3 km ever
+                # erupted as lava — the gabbro of seismic layer 3 is the bulk
+                # of the 6.5 km — but gabbro is basalt that cooled slowly, and
+                # the bulk-crust table above is one melt either way.
+                rock=BASALT,
             ),
             Layer(
                 role="mantle",
@@ -363,6 +394,14 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     source="mcdonough_1995",
                 ),
                 state="solid",
+                # Pyrolite is a peridotite by construction — a basalt put back
+                # into the residue it was extracted from — so the name is the
+                # oxide table above restated. It holds for the whole 2850 km
+                # even though the minerals do not: olivine becomes wadsleyite
+                # at 410 km and bridgmanite at 660, and none of that changes
+                # what the rock is made of.
+                rock=PERIDOTITE,
+                rock_source="mcdonough_1995",
                 # The Moho, and the only end of the mantle anyone measures
                 # directly. Eight Canadian Shield provinces spanning Archean to
                 # Paleozoic, all modelled at a 40 km Moho — which is the
@@ -514,6 +553,14 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     source="taylor_mclennan_2009",
                 ),
                 state="solid",
+                # Tholeiitic basalt, and the finding is how little else there
+                # is: the siliceous and calc-alkaline rocks that a wet,
+                # recycling planet makes are absent, so one lava type stands
+                # for a crust that has been accumulating for four billion
+                # years. What andesite the orbiters first mapped turned out to
+                # be weathered basalt.
+                rock=BASALT,
+                rock_source="mcsween_2009",
             ),
             Layer(
                 role="mantle",
@@ -540,6 +587,12 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     source="taylor_2013",
                 ),
                 state="solid",
+                # Peridotite, and the same one the oxide table is: Taylor
+                # solves for bulk silicate Mars by melting a peridotite until
+                # it yields the basalt above, so the rock name and the
+                # chemistry are two readings of one calculation.
+                rock=PERIDOTITE,
+                rock_source="taylor_2013",
             ),
             # Molten rock, not metal: iron-rich silicate at 4.05 ± 0.05 g/cm³,
             # the leftover of a magma ocean that sank and stayed liquid because
@@ -653,6 +706,13 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     source="taylor_mclennan_2009",
                 ),
                 state="solid",
+                # Ferroan anorthosite, at least 80% of the highland crust and
+                # the reason the Moon is bright: nearly pure plagioclase, which
+                # floated on a magma ocean instead of sinking through it. The
+                # maria are basalt and are the exception — a few percent of
+                # the surface, a fraction of a percent of the crust's mass.
+                rock=ANORTHOSITE,
+                rock_source="taylor_mclennan_2009",
             ),
             Layer(
                 role="mantle",
@@ -1256,6 +1316,11 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=261.3,
                 derived=True,
                 state="solid",
+                # The one crust in this file that was named from meteorites
+                # before a spacecraft arrived: the eucrites are basalts, and
+                # Dawn confirmed the surface they came from. Vesta is why a
+                # 500 km asteroid gets a rock name at all.
+                rock=BASALT,
             ),
             Layer(
                 role="mantle",
@@ -1266,6 +1331,11 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 derived=True,
                 note="from_moment_of_inertia",
                 state="solid",
+                # Olivine and orthopyroxene, which is a peridotite, and the
+                # only one here that nobody has seen: Rheasilvia should have
+                # dug into it and the ejecta are not olivine-rich, which is
+                # part of why the crust above is modelled as thick as it is.
+                rock=PERIDOTITE,
             ),
             Layer(
                 role="core",
