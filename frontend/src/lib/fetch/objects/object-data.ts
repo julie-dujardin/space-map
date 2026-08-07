@@ -169,6 +169,9 @@ export interface NotableMemberEntry {
 	/** A `v1/textures/<id>/` surface map exists. Explicit `false` lets the
 	 *  lineup skip the fetch; absent (pre-flag bundle) means probe as before. */
 	texture?: boolean;
+	/** Mass of the member's *rings*, not the member — the Ring Systems page
+	 *  charts its eight against each other. Ringed bodies only. */
+	ring_mass?: RingMass;
 	thumbnail?: PickedThumbnail;
 }
 
@@ -276,6 +279,9 @@ export interface GlobalObjectData {
 	ring_features?: Record<string, RingFeature>;
 	/** The tables and papers the catalogue was read off — credited under the tab. */
 	ring_sources?: Array<{ title: string; url: string; organisation: string }>;
+	/** System-wide figures for the Rings tab's stat cards. Not to be confused
+	 *  with the *localized* `ring_system`, which is the "Rings of X" article. */
+	ring_stats?: RingStats;
 	/** Pictures of the ring system — of the rings, not of the planet wearing
 	 *  them. Selected from the "Rings of X" article; the first opens the tab.
 	 *  Absent for the bodies whose rings no article illustrates. */
@@ -746,6 +752,34 @@ export interface LocalizedObjectData {
  *  inside one; `region` marks the B ring's unnamed structural subdivisions and
  *  `dust` the diffuse bands that carry no formal name. */
 export type RingFeatureKind = 'ring' | 'division' | 'gap' | 'ringlet' | 'region' | 'arc' | 'dust';
+
+/** Ring-system mass in kilograms, with the hedges its source published.
+ *  Measured for Saturn alone; everything else is an order of magnitude. */
+export interface RingMass {
+	low_kg: number;
+	/** A published range. Never set together with `uncertainty_kg`. */
+	high_kg?: number;
+	approximate?: true;
+	/** `low_kg` bounds the mass from above. */
+	upper_limit?: true;
+	uncertainty_kg?: number;
+}
+
+/** Vertical extent of the main rings, in metres — the dimension the Rings
+ *  tab's radial chart has no axis for. Two bodies have one. */
+export interface RingThickness {
+	low_m: number;
+	high_m?: number;
+	/** Slug of the feature the figure describes, where it is one ring. */
+	feature?: string;
+}
+
+export interface RingStats {
+	/** The observation year, never the paper's — see docs/export-format. */
+	discovery_year?: number;
+	mass?: RingMass;
+	thickness?: RingThickness;
+}
 
 /** Normal optical depth as its source states it — rarely a single number. */
 export interface RingOpticalDepth {

@@ -6,7 +6,7 @@ import time
 from collections import defaultdict
 from itertools import islice
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, NamedTuple
 
 import httpx
 from httpx import Response
@@ -26,13 +26,34 @@ AFTER_REQUEST_DELAY_SECONDS = 1
 BATCH_SIZE = 20
 
 
-def _batched(
-    iterable: list[tuple[str, str]], n: int
-) -> Iterator[list[tuple[str, str]]]:
+class Task(NamedTuple):
+    """One page to fetch. ``follow_redirects`` is set for the curated concept
+    pages only — see :meth:`WikipediaDownloader._fetch_batch`."""
+
+    qid: str
+    title: str
+    follow_redirects: bool
+
+
+def _batched(iterable: list[Task], n: int) -> Iterator[list[Task]]:
     """Yield successive n-sized chunks from a list."""
     it = iter(iterable)
     while batch := list(islice(it, n)):
         yield batch
+
+
+def _is_redirect_stub(path: Path) -> bool:
+    """Whether a stored page is a redirect with nothing on it.
+
+    The API answers a redirect title with the stub itself, extract empty, so
+    such a file is a fetch that has to be redone rather than a page with no
+    intro.
+    """
+    try:
+        page = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    return bool(page.get("redirect")) and not (page.get("extract") or "").strip()
 
 
 class WikipediaDownloader(Downloader):
@@ -119,16 +140,22 @@ class WikipediaDownloader(Downloader):
         self,
         wikidata_dirs: list[Path],
         extra_files: list[Path] | None = None,
-    ) -> dict[str, list[tuple[str, str]]]:
+    ) -> dict[str, list[Task]]:
         """Read Wikidata entity files and extract sitelinks for target languages.
 
         Scans every dir in *wikidata_dirs* plus any *extra_files*, skipping
         already-downloaded summaries and de-duplicating tasks on (qid, lang).
-        Returns dict mapping language code to list of (qid, title) tuples.
+        Returns dict mapping language code to the pages to fetch.
+
+        *extra_files* are the curated concept pages, which resolve redirects and
+        so are re-fetched when what's on disk is a redirect stub from before
+        that was so.
         """
-        by_lang: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        curated = {path.stem for path in extra_files or ()}
+        by_lang: dict[str, list[Task]] = defaultdict(list)
         seen: set[tuple[str, str]] = set()
         skipped = 0
+        refetched: list[str] = []
 
         entity_files = sorted(f for d in wikidata_dirs for f in d.glob("Q*.json"))
         entity_files.extend(extra_files or [])
@@ -146,11 +173,14 @@ class WikipediaDownloader(Downloader):
                 if (qid, lang) in seen:
                     continue
                 seen.add((qid, lang))
-                if (self.out_dir / lang / f"{qid}.json").exists():
-                    skipped += 1
-                    continue
+                stored = self.out_dir / lang / f"{qid}.json"
+                if stored.exists():
+                    if not (qid in curated and _is_redirect_stub(stored)):
+                        skipped += 1
+                        continue
+                    refetched.append(f"{lang}/{qid}")
                 title = sitelinks[wiki_key]["title"]
-                by_lang[lang].append((qid, title))
+                by_lang[lang].append((Task(qid, title, qid in curated)))
 
         total = sum(len(items) for items in by_lang.values())
         logger.info(
@@ -161,6 +191,12 @@ class WikipediaDownloader(Downloader):
             len(entity_files),
             len(wikidata_dirs),
         )
+        if refetched:
+            logger.info(
+                "Re-fetching %d curated page(s) stored as redirect stubs: %s",
+                len(refetched),
+                ", ".join(sorted(refetched)),
+            )
         return by_lang
 
     def _request(self, url: str, **kwargs: object) -> Response:
@@ -177,7 +213,7 @@ class WikipediaDownloader(Downloader):
 
     def _fetch_summaries(
         self,
-        tasks_by_lang: dict[str, list[tuple[str, str]]],
+        tasks_by_lang: dict[str, list[Task]],
         *,
         limit: int | None,
     ) -> None:
@@ -196,36 +232,53 @@ class WikipediaDownloader(Downloader):
                 out_dir = self.out_dir / lang
                 out_dir.mkdir(exist_ok=True)
 
-                for batch in _batched(items, BATCH_SIZE):
-                    self._fetch_batch(lang, batch, out_dir)
-                    pbar.update(len(batch))
-                    time.sleep(AFTER_REQUEST_DELAY_SECONDS)
+                # Redirect resolution is a per-request switch, so the two kinds
+                # of page cannot share a batch.
+                for follow in (False, True):
+                    group = [task for task in items if task.follow_redirects is follow]
+                    for batch in _batched(group, BATCH_SIZE):
+                        self._fetch_batch(lang, batch, out_dir, follow_redirects=follow)
+                        pbar.update(len(batch))
+                        time.sleep(AFTER_REQUEST_DELAY_SECONDS)
 
     def _fetch_batch(
         self,
         lang: str,
-        batch: list[tuple[str, str]],
+        batch: list[Task],
         out_dir: Path,
+        *,
+        follow_redirects: bool,
     ) -> None:
-        """Fetch and save a single batch of pages from the Action API."""
-        title_to_qid = {title: qid for qid, title in batch}
-        titles = "|".join(title for _, title in batch)
+        """Fetch and save a single batch of pages from the Action API.
+
+        Redirects are followed only for the curated concept pages. An object's
+        sitelink usually redirects into a list ("7509 Gamzatov" →
+        "List of minor planets: 7001–8000"), whose lead is about the list and
+        not the object; a concept's redirects to the article that took the
+        subject over (en "Planetary ring" → "Ring system"), which is the page
+        the blurb wants.
+        """
+        params: dict[str, object] = {
+            "action": "query",
+            "prop": "extracts|pageimages|description|info",
+            "inprop": "url",
+            "exintro": True,
+            "explaintext": True,
+            "piprop": "thumbnail|original",
+            "pithumbsize": 300,
+            "titles": "|".join(task.title for task in batch),
+            "format": "json",
+            "formatversion": 2,
+        }
+        # An API boolean is true whenever it is present, whatever its value, so
+        # not following redirects means leaving the parameter out entirely.
+        if follow_redirects:
+            params["redirects"] = True
 
         try:
             response = self._request(
                 f"https://{lang}.wikipedia.org/w/api.php",
-                params={
-                    "action": "query",
-                    "prop": "extracts|pageimages|description|info",
-                    "inprop": "url",
-                    "exintro": True,
-                    "explaintext": True,
-                    "piprop": "thumbnail|original",
-                    "pithumbsize": 300,
-                    "titles": titles,
-                    "format": "json",
-                    "formatversion": 2,
-                },
+                params=params,
             )
             response.raise_for_status()
         except Exception:
@@ -236,30 +289,50 @@ class WikipediaDownloader(Downloader):
             )
             return
 
-        data = response.json()
-        pages = data.get("query", {}).get("pages", [])
+        query = response.json().get("query", {})
+        pages = {page.get("title", ""): page for page in query.get("pages", [])}
+        # Both hops the API may report, walked from the title we asked for:
+        # normalization first, then the redirect it lands on. A redirect to a
+        # *section* is kept apart from one to a whole page.
+        hops = {
+            hop["from"]: (hop["to"], hop.get("tofragment"))
+            for key in ("normalized", "redirects")
+            for hop in query.get(key, [])
+        }
 
-        for page in pages:
-            title = page.get("title", "")
-            qid = title_to_qid.get(title)
-            if qid is None:
-                # Title may have been normalized by the API
-                normalized = {
-                    n["from"]: n["to"]
-                    for n in data.get("query", {}).get("normalized", [])
-                }
-                for orig, norm in normalized.items():
-                    if norm == title and orig in title_to_qid:
-                        qid = title_to_qid[orig]
-                        break
+        for task in batch:
+            title = task.title
+            sectioned = False
+            walked: set[str] = set()
+            while title in hops and title not in walked:
+                walked.add(title)
+                title, fragment = hops[title]
+                sectioned = sectioned or fragment is not None
 
-            if qid is None:
-                logger.debug("Could not map page back to QID: %s", title)
+            # A subject folded into a section of a broader article ("Cassini
+            # Division" → "Rings of Saturn#Cassini Division") leaves the lead
+            # about the parent, so there is nothing here to quote.
+            if sectioned:
+                logger.info(
+                    "Redirects into a section, no summary: %s/%s (%s → %s)",
+                    lang,
+                    task.qid,
+                    task.title,
+                    title,
+                )
                 continue
 
+            page = pages.get(title)
+            if page is None:
+                logger.debug("No page returned for %s/%s (%s)", lang, task.qid, title)
+                continue
             if page.get("missing"):
-                logger.debug("No article: %s/%s (%s)", lang, qid, title)
+                logger.debug("No article: %s/%s (%s)", lang, task.qid, title)
                 continue
+            if not (page.get("extract") or "").strip():
+                logger.debug(
+                    "Empty extract, saving anyway: %s/%s (%s)", lang, task.qid, title
+                )
 
-            out_file = out_dir / f"{qid}.json"
+            out_file = out_dir / f"{task.qid}.json"
             out_file.write_text(json.dumps(page, ensure_ascii=False, indent=2))

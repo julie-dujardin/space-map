@@ -195,3 +195,55 @@ class TestRenderTablesAgree:
             assert span is not None
             assert _within(zone.inner_km, *span), zone.name
             assert _within(zone.outer_km, *span), zone.name
+
+
+class TestSystemFigures:
+    """The Rings tab's stat cards: one discovery, mass and thickness per
+    system, each held to the row data or the source it was read off."""
+
+    @pytest.mark.parametrize("body", BODY_IDS)
+    def test_every_system_states_a_discovery(self, body: str):
+        year = RING_CATALOGS[body].discovery_year
+        assert year is not None, body
+        # Galileo's first sighting through the 2021 Quaoar occultation. A year
+        # outside this is a typo, not a discovery.
+        assert 1610 <= year <= 2030, body
+
+    @pytest.mark.parametrize("body", BODY_IDS)
+    def test_mass_bounds_are_ordered_and_qualified(self, body: str):
+        mass = RING_CATALOGS[body].mass
+        if mass is None:
+            return
+        assert mass.low_kg > 0, body
+        if mass.high_kg is not None:
+            assert mass.high_kg > mass.low_kg, body
+            # A range and a ± say different things about the same number.
+            assert mass.uncertainty_kg is None, body
+        if mass.uncertainty_kg is not None:
+            assert 0 < mass.uncertainty_kg < mass.low_kg, body
+        # An upper bound is not also a range.
+        assert not (mass.upper_limit and mass.high_kg is not None), body
+
+    @pytest.mark.parametrize("body", BODY_IDS)
+    def test_thickness_names_a_real_feature(self, body: str):
+        thickness = RING_CATALOGS[body].thickness
+        if thickness is None:
+            return
+        assert thickness.low_m > 0, body
+        if thickness.high_m is not None:
+            assert thickness.high_m > thickness.low_m, body
+        if thickness.feature is not None:
+            row = _features(body)[thickness.feature]
+            assert row.thickness_km is not None, thickness.feature
+            # The card and the feature row must not drift apart.
+            assert thickness.low_m == pytest.approx(row.thickness_km * 1000), body
+
+    def test_saturn_thickness_brackets_the_measured_zones(self):
+        """The card's 5–20 m is NSSDCA's own column; the per-region figures
+        the strip generator uses come from the same table, so the two move
+        together or the card is quoting a range nothing draws."""
+        thickness = RING_CATALOGS["naif-699"].thickness
+        assert thickness is not None and thickness.high_m is not None
+        zones = [zone.thickness_m for zone in SATURN_MEASURED_THICKNESS]
+        assert thickness.low_m == min(zones)
+        assert thickness.high_m == max(zones)

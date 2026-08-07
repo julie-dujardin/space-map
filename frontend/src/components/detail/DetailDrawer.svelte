@@ -61,6 +61,7 @@
 	import Atmosphere from './sections/Atmosphere.svelte';
 	import Interior from './sections/Interior.svelte';
 	import Rings from './sections/Rings.svelte';
+	import RingStatCards from './sections/RingStatCards.svelte';
 	import Structure from './sections/Structure.svelte';
 	import ObjectStats from './sections/ObjectStats.svelte';
 	import SatCrossRefs from './sections/SatCrossRefs.svelte';
@@ -84,6 +85,7 @@
 	import CategoryChildTiles from './sections/crossref/CategoryChildTiles.svelte';
 	import RingSystemTiles from './sections/crossref/RingSystemTiles.svelte';
 	import PlanetMassChart from './charts/PlanetMassChart.svelte';
+	import RingMassChart from './charts/RingMassChart.svelte';
 	import SolarSystemMassChart from './charts/SolarSystemMassChart.svelte';
 	import ObjectLinks from './sections/ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
@@ -1140,7 +1142,7 @@
 				<Bulk global={data?.global ?? null} />
 				<Atmosphere global={data?.global ?? null} />
 				<Interior global={data?.global ?? null} />
-				<Rings global={data?.global ?? null} localized={data?.localized ?? null} {body} />
+				<Rings global={data?.global ?? null} {body} />
 				<Brightness global={data?.global ?? null} />
 				<Orbital
 					global={data?.global ?? null}
@@ -1164,6 +1166,7 @@
 				{/if}
 				{#if cat.ringSystems && notableMembers && notableMembers.length > 0}
 					<RingSystemTiles members={notableMembers} localizedNames={memberNames} />
+					<RingMassChart members={notableMembers} localizedNames={memberNames} />
 				{/if}
 				{#if cat.planets && notableMembers && notableMembers.length > 0}
 					<PlanetMassChart members={notableMembers} localizedNames={memberNames} />
@@ -1284,6 +1287,9 @@
 {#snippet ringsPanel()}
 	<div class="flex flex-col gap-3 p-1">
 		{#if ringFeatures}
+			<!-- System-wide, so it sits above the chart rather than inside it:
+			     these three do not change as you drill into a ring. -->
+			<RingStatCards stats={data?.global?.ring_stats} />
 			<RingCatalog
 				features={ringFeatures}
 				localized={data?.localized?.ring_features}

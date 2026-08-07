@@ -171,6 +171,21 @@ interface GlobalObjectData {
     url: string;
     organisation: string;
   }>;
+  ring_stats?: {                      // present with `ring_features`: system-wide figures behind the Rings tab's stat cards; each key absent where no source states one
+    discovery_year?: number;         // the *observation* year, not the publication year (see below)
+    mass?: {                          // total mass of the ring system, in kilograms
+      low_kg: number;
+      high_kg?: number;               // set for a published range; mutually exclusive with `uncertainty_kg`
+      approximate?: true;             // source gave a round order of magnitude
+      upper_limit?: true;             // `low_kg` bounds the mass from above
+      uncertainty_kg?: number;        // published ±; Saturn's is the only one
+    };
+    thickness?: {                     // vertical extent of the *main* rings, in metres
+      low_m: number;
+      high_m?: number;                // set where the source gives a range across the main rings
+      feature?: string;               // slug of the feature the figure describes, where it is one ring
+    };
+  };
   ring_images?: ObjectImage[];        // pictures of the ring system, same shape as an `images` entry (see below)
   temperatures?: {                    // absent only when even the estimate can't be computed (no heliocentric distance)
     // Flat rather than grouped by part: a body's readings all plot on one bar,
@@ -406,12 +421,11 @@ interface ObjectImage {
   width?: number;         // source pixel dimensions (omitted for SVG/WebM passthrough)
   height?: number;
   subject?: string | number;  // what it's a picture of, in a pooled gallery: an Object.id or a feature_id
-  title?: string;         // short tile title from the Commons description (see below)
 }
 
 // One pooled shelf in the Images tab, beside the object's own `images`
 interface ImageGallery {
-  key: "atmosphere" | "features" | "moons";  // URL token (`&gal=`); collections also key by member Object.id
+  key: "features" | "moons";  // URL token (`&gal=`); collections also key by member Object.id
   subject?: string;           // set when the whole shelf is about one object (collections) — pooled shelves put it per-image instead
   images: ObjectImage[];
 }
@@ -593,6 +607,30 @@ for the small bodies — trimmed to title and link so the panel can credit what
 it shows without pulling the whole credits bundle. The per-source `contribution`
 sentence stays on the credits page.
 
+`ring_stats` carries the three system-wide figures the Rings tab shows as
+stat cards, each present only where a source states one. **Mass** is measured
+for Saturn alone (Cassini's Grand Finale weighed the rings against the
+planet); everything else is an order-of-magnitude estimate, and Haumea's and
+Quaoar's are scaled from ring area rather than observed — which is what
+`approximate` and `upper_limit` are for. Jupiter's is the dust, as every mass
+read off an optical depth is; estimates that instead count the unseen parent
+bodies shedding it reach ~10¹³ kg. Neptune and Chiron have no mass at all: no
+source gives one even to an order of magnitude.
+
+**`discovery_year` is the year of the observation**, never the paper. The
+small-body rings were announced one to two years after the occultation that
+caught them, and dating half the table by publication would put Quaoar's rings
+(detected 2021, announced 2023) after Haumea's (2017) when the detections ran
+the other way. `method` is the closest thing these systems have to a
+visibility scale: Saturn's rings
+show in any telescope, Uranus' were caught only because a star blinked behind
+them, and Jupiter's took a spacecraft flying past and looking back.
+
+**Thickness** is the main rings', in metres, and exists for two bodies:
+Saturn's 5–20 m (NSSDCA's own column, bracketing the per-region figures the
+strip generator draws with) and Jupiter's main ring at 100 km. It is the one
+dimension the panel's radial chart has no axis for.
+
 `ring_images` are pictures of the *rings*, kept apart from the body's own
 `images` (portraits of the planet): they are selected from the "Rings of X"
 topic item rather than the body's, and the first opens the Rings tab. Same
@@ -602,16 +640,6 @@ of the eight ringed bodies have none, since neither Haumea's nor Quaoar's rings
 have an article in any language; the tab and the collection tile fall back to
 the ring-plane chart. The same selection is pooled onto the `cat-ring-systems`
 page — see `docs/export-format/groups.md`.
-
-`atmosphere` is a *topic* shelf: the pictures from the body's atmosphere
-article, the same one the Structure tab quotes. It is the shelf the mockup's
-"storms & atmosphere" wanted, without a curated list behind it — Jupiter's
-article illustrates with the Great Red Spot and Juno's polar cyclones. SVGs are
-dropped: a vector on Commons is a diagram, and a topic article's diagrams
-restate the cross-section and composition bar the app draws itself. The
-interior articles are selected and cached the same way (`topic_images.json`
-holds both) but not emitted — theirs are cutaway schematics, often lettered in
-a single language. `_TOPICS` in `export/objects/galleries.py` is the switch.
 
 `galleries` are the *pooled* shelves: `features` takes one picture of each of
 the body's notable surface features, `moons` up to two of each notable moon,
@@ -623,20 +651,6 @@ shown under `images` or `ring_images` are not repeated, and IAU locator maps
 are dropped: they are outline drawings, not pictures of the feature. Shelf
 sizes are `FEATURE_GALLERY_LIMIT` / `MOON_GALLERY_LIMIT` in
 `export/objects/galleries.py`.
-
-### Picture titles
-
-`ObjectImage.title` is a tile caption, not the viewer's: the first line of the
-Commons description, and only when it already reads as a name — under 110
-characters, no truncation. Descriptions that run to prose get no title and the
-client falls back to de-slugging the filename, which is what
-`imageLabel(file)` does in `fetch/objects/images.ts`. A title identical to that
-fallback is omitted rather than shipped twice.
-
-The localized bundles carry `image_titles` (`{filename: title}`) for languages
-Commons described the picture in, only where that differs from the base title
-in the global entry — the same shape as the notable-name overrides, and keyed
-by filename so one map covers every shelf on the page.
 
 ## Localized (`objects/{lang}/{bucket}.json.gz`)
 

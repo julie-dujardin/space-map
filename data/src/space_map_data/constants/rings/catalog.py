@@ -65,6 +65,37 @@ class OpticalDepth(NamedTuple):
     upper_limit: bool = False
 
 
+class RingMass(NamedTuple):
+    """Total mass of the ring system, as its source states it. Only Saturn's
+    is measured — everything else is an order-of-magnitude estimate, and two
+    of them are scaled from a ring's area rather than observed at all, so the
+    qualifiers travel with the number the way `OpticalDepth`'s do."""
+
+    low_kg: float
+    # None for a single stated value; set for a published range.
+    high_kg: float | None = None
+    # Source gave a round order of magnitude rather than a figure.
+    approximate: bool = False
+    # Source wrote "<": `low_kg` bounds the mass from above.
+    upper_limit: bool = False
+    # Published ±, where there is one. Saturn's is the only one.
+    uncertainty_kg: float | None = None
+
+
+class RingThickness(NamedTuple):
+    """Vertical extent of the system's *main* rings, in metres — the one
+    dimension the panel's radial chart has no axis for. Systems whose sources
+    tabulate no thickness carry None rather than a guess."""
+
+    low_m: float
+    # None for a single stated value; set where the source gives a range
+    # across the main rings.
+    high_m: float | None = None
+    # Slug of the feature the figure describes, where it is one ring rather
+    # than the main rings as a whole.
+    feature: str | None = None
+
+
 class Render(NamedTuple):
     """Strip-generator tuning for a drawn feature. The row supplies geometry,
     τ and particle regime; fields here pick a value where the row has a range
@@ -175,6 +206,18 @@ class RingCatalog(NamedTuple):
     # span.
     bundles: tuple[RingBundle, ...]
     features: tuple[CatalogFeature, ...]
+    # System-wide figures, for the Rings tab's stat cards. Each is absent
+    # wherever no source states one: Neptune's ring mass cannot be estimated
+    # even to an order of magnitude, and only Saturn and Jupiter have a
+    # tabulated vertical extent.
+    #
+    # The year is the **observation**, not the publication: the small-body
+    # rings were all announced one to two years after the occultation that
+    # caught them, and dating half the table by paper would put Quaoar's rings
+    # after Haumea's when the detections ran the other way.
+    discovery_year: int | None = None
+    mass: RingMass | None = None
+    thickness: RingThickness | None = None
 
 
 def _pds_source(planet: str, url: str, contribution: str) -> RingSource:
@@ -208,6 +251,55 @@ _PDS_FEATURES = (
 )
 
 
+_NSSDCA_SATURN = RingSource(
+    "https://web.archive.org/web/20241206102306/https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html",
+    NASA,
+    NASA_LICENSE,
+    "NSSDCA Saturnian Rings Fact Sheet",
+    "the vertical thickness of the main rings",
+)
+
+
+def _paper(
+    doi: str, work: str, contribution: str, organisation: str = LUCKY_STAR
+) -> RingSource:
+    """A research paper cited for one system-wide figure. Same no-licence rule
+    as `_occultation_source`: these contribute measurements, not assets."""
+    return RingSource(f"https://doi.org/{doi}", organisation, "", work, contribution)
+
+
+# The one measured ring mass in the Solar System: Cassini's Grand Finale orbits
+# passed between Saturn and the D ring, and the rings' pull on the spacecraft
+# separated their mass from the planet's.
+_IESS_2019 = _paper(
+    "10.1126/science.aat2965",
+    "Iess et al. 2019, Measurement and implications of Saturn's gravity field "
+    "and ring mass (Science 364)",
+    "the measured mass of Saturn's rings",
+    NASA,
+)
+
+# Consolidates the mass estimates for every other system in one place. Its own
+# Haumea and Quaoar figures are scaled from ring area rather than observed,
+# which `RingMass.approximate` and `upper_limit` carry through to the panel.
+_SICARDY_2024 = _paper(
+    "10.48550/arXiv.2412.00853",
+    "Sicardy et al. 2024, Origins of rings in the solar system "
+    "(accepted, Phil. Trans. R. Soc. A)",
+    "ring-system mass estimates",
+)
+
+# The discovery narrative for all four giants, with the primary references.
+_OHTSUKI_2025 = _paper(
+    "10.48550/arXiv.2508.11963",
+    "Ohtsuki 2025, Rings around giant planets and smaller bodies",
+    "the discovery history of the giant planets' ring systems",
+    # Not Lucky Star: that collaboration is Sicardy's occultation campaigns,
+    # and this review is a single author outside it.
+    "Kobe University",
+)
+
+
 RING_CATALOGS: dict[str, RingCatalog] = {
     "naif-599": RingCatalog(
         body="naif-599",
@@ -218,6 +310,8 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 _PDS_FEATURES + ", and vertical thickness",
             ),
             _IAU_RINGS,
+            _OHTSUKI_2025,
+            _SICARDY_2024,
         ),
         bundles=(
             RingBundle(
@@ -332,6 +426,17 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 render=(Render(profile="fade_outer"),),
             ),
         ),
+        discovery_year=1979,
+        # Sicardy et al. give a ring-to-planet mass ratio of (0.05-5)e-21,
+        # which against Jupiter's 1.898e27 kg is 9.5e4-9.5e6 kg; rounded to the
+        # decade, since the ratio itself carries one significant figure. It is
+        # the dust, as every ring mass read off an optical depth is — estimates
+        # that instead count the unseen parent bodies shedding it reach ~1e13 kg.
+        mass=RingMass(low_kg=1e5, high_kg=1e7, approximate=True),
+        # The main ring's own extent, not the halo's: the halo is a 10,000 km
+        # thick cloud the main ring feeds, and quoting it as "the thickness"
+        # would describe the faintest part of the system.
+        thickness=RingThickness(low_m=100_000, feature="main-ring"),
     ),
     "naif-699": RingCatalog(
         body="naif-699",
@@ -342,6 +447,9 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 _PDS_FEATURES,
             ),
             _IAU_RINGS,
+            _OHTSUKI_2025,
+            _IESS_2019,
+            _NSSDCA_SATURN,
         ),
         bundles=(
             # The D ring, inside the measured strip's 74,510 km inner edge.
@@ -956,6 +1064,16 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 ),
             ),
         ),
+        discovery_year=1610,
+        # The one ring system whose mass has been measured rather than
+        # estimated: Cassini's final orbits passed between Saturn and the D
+        # ring, separating the rings' pull on the spacecraft from the planet's.
+        mass=RingMass(low_kg=1.54e19, uncertainty_kg=0.49e19),
+        # NSSDCA's "Thickness (m)" column across the main rings: 5 m at the C
+        # ring to 20 m at the A ring. `SATURN_MEASURED_THICKNESS` holds the
+        # per-region figures this brackets, and the tests hold the two to
+        # each other.
+        thickness=RingThickness(low_m=5.0, high_m=20.0),
     ),
     "naif-799": RingCatalog(
         body="naif-799",
@@ -967,6 +1085,8 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 "the narrow rings",
             ),
             _IAU_RINGS,
+            _OHTSUKI_2025,
+            _SICARDY_2024,
         ),
         bundles=(
             # Particles are charcoal-dark (geometric albedo ~0.015-0.018,
@@ -1273,6 +1393,8 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 render=(Render(profile="peak", tint=(0.65, 0.78, 1.00)),),
             ),
         ),
+        discovery_year=1977,
+        mass=RingMass(low_kg=2e16, approximate=True),
     ),
     "naif-899": RingCatalog(
         body="naif-899",
@@ -1283,6 +1405,7 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 _PDS_FEATURES,
             ),
             _IAU_RINGS,
+            _OHTSUKI_2025,
         ),
         bundles=(
             # The system is dust-dominated → slightly reddish tint.
@@ -1471,6 +1594,7 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 ),
             ),
         ),
+        discovery_year=1984,
     ),
     # --- small bodies -----------------------------------------------------
     # No agency publishes a vital-statistics table for these four, so the rows
@@ -1501,6 +1625,7 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 "the discovery, and the C2R width and optical depth still "
                 "quoted for it",
             ),
+            _SICARDY_2024,
         ),
         bundles=(
             # Water ice with tholins, (I/F)_V = 0.07 (Duffard et al. 2014, via
@@ -1569,6 +1694,8 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 render=RENDERED,
             ),
         ),
+        discovery_year=2013,
+        mass=RingMass(low_kg=1e13, approximate=True),
     ),
     "spkid-20136108": RingCatalog(
         body="spkid-20136108",
@@ -1578,6 +1705,7 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 "Ortiz et al. 2017 (Nature 550, 219)",
                 "the ring radius, width, opacity and pole from the 2017 occultation",
             ),
+            _SICARDY_2024,
         ),
         bundles=(
             RingBundle(
@@ -1621,6 +1749,11 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 render=RENDERED,
             ),
         ),
+        discovery_year=2017,
+        # Not observed: Sicardy et al. scale it from Chariklo's by ring area,
+        # the two systems' dense parts being assumed comparable in surface
+        # density.
+        mass=RingMass(low_kg=1e15, approximate=True),
     ),
     "spkid-20050000": RingCatalog(
         body="spkid-20050000",
@@ -1628,8 +1761,8 @@ RING_CATALOGS: dict[str, RingCatalog] = {
             _occultation_source(
                 "10.1038/s41586-022-05629-6",
                 "Morgado et al. 2023 (Nature 614, 239)",
-                "the discovery of Q1R and its azimuthal variation in width and "
-                "optical depth",
+                "the discovery of Q1R, its azimuthal variation in width and "
+                "optical depth, and the ring's mass",
             ),
             _occultation_source(
                 "10.1051/0004-6361/202346365",
@@ -1719,6 +1852,12 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 ),
             ),
         ),
+        discovery_year=2021,
+        # Q1R as a whole, from its own measured optical depth and width rather
+        # than scaled off another system. Sicardy et al. give 2e13 kg, but that
+        # is the dense arc embedded in it — 70 degrees of azimuth, which is the
+        # same figure over a fifth of the circumference.
+        mass=RingMass(low_kg=1e14, approximate=True),
     ),
     "spkid-20002060": RingCatalog(
         body="spkid-20002060",
@@ -1871,6 +2010,7 @@ RING_CATALOGS: dict[str, RingCatalog] = {
                 render=(Render(bundle="outer"),),
             ),
         ),
+        discovery_year=2011,
     ),
 }
 

@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
+	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { buildRows, kindSummary, rootSlugs, type RingRow } from '$lib/rings/catalog';
 	import { ringBarWindow } from '$lib/rings/overview-bar';
-	import { formatKm, formatKmRange } from '$lib/format/distance';
+	import { formatRingMass } from '$lib/rings/stats';
+	import { formatKm } from '$lib/format/distance';
 	import { isModifiedClick, tabHref } from '$lib/state/focus-link';
 	import type { PositionedBody } from '$lib/types/objects';
 	import Section from './kit/Section.svelte';
@@ -14,11 +16,10 @@
 
 	interface Props {
 		global: GlobalObjectData | null;
-		localized: LocalizedObjectData | null;
 		body?: PositionedBody;
 	}
 
-	let { global, localized, body }: Props = $props();
+	let { global, body }: Props = $props();
 
 	const appState = getContext<AppState>('appState');
 
@@ -38,29 +39,10 @@
 		return outer > inner ? { inner, outer } : null;
 	});
 
-	// The system's headline ring, by the one number every catalogue publishes.
-	// Top level only: naming a region of the B ring over the B ring itself would
-	// answer a question nobody asked, and gaps are clearings rather than rings.
-	let densest = $derived.by(() => {
-		let best: RingRow | null = null;
-		let peak = 0;
-		for (const slug of roots) {
-			const row = rows.get(slug)!;
-			if (row.feature.kind === 'gap' || row.feature.kind === 'division') continue;
-			const tau = row.feature.optical_depth;
-			const value = tau?.high ?? tau?.low ?? 0;
-			if (value > peak) {
-				peak = value;
-				best = row;
-			}
-		}
-		return best;
-	});
-	let densestName = $derived(
-		densest ? (localized?.ring_features?.[densest.slug]?.name ?? densest.feature.name) : null
-	);
-
 	let win = $derived(features ? ringBarWindow(features) : null);
+	// The one system-wide figure worth repeating outside the Rings tab: the
+	// span and the named rings are the chart beside it, but the mass is not.
+	let mass = $derived(global?.ring_stats?.mass ? formatRingMass(global.ring_stats.mass) : null);
 
 	let ringsHref = $derived(tabHref(appState, 'rings'));
 	function openRings(e: MouseEvent) {
@@ -93,20 +75,28 @@
 			{/if}
 		{/snippet}
 
-		<Row
-			label={m.rings_extent()}
-			tooltip={m.tooltip_rings_extent()}
-			value={formatKmRange(extent.inner, extent.outer)}
-		/>
 		<Row label={m.rings_width()} value={formatKm(extent.outer - extent.inner)} />
 		<Row label={m.rings_sections()} value={kindSummary(rows, roots)} />
-		{#if densestName}
-			<Row label={m.rings_densest()} value={densestName} />
-		{/if}
-		{#if win?.cut}
-			<dd class="text-muted-foreground col-span-2 -mt-1.5 text-[11px] leading-snug">
-				{m.rings_bar_cut({ radius: formatKm(win.outer) })}
-			</dd>
+		{#if mass}
+			<Row label={m.property_name_mass()}>
+				<!-- The ± hangs off the figure, not the label: it qualifies that
+				     number rather than what the row is about. -->
+				{#if mass.note}
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<span class="cursor-help underline decoration-dotted underline-offset-2" {...props}>
+									{mass.number}
+								</span>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>{mass.note}</Tooltip.Content>
+					</Tooltip.Root>
+					{mass.unit}
+				{:else}
+					{mass.number} {mass.unit}
+				{/if}
+			</Row>
 		{/if}
 	</Section>
 {/if}

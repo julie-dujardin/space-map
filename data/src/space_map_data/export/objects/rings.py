@@ -162,6 +162,57 @@ def ring_features_block(
     return {f.slug: _feature_entry(body_id, f, moon_ids) for f in catalog.features}
 
 
+def ring_mass_block(body_id: str) -> dict | None:
+    """The system's total mass, in the shape both readers of it expect.
+
+    Shared with the Ring Systems collection page, which charts the eight
+    systems against each other and needs the same hedges the body's own stat
+    card carries.
+    """
+    catalog = RING_CATALOGS.get(body_id)
+    if catalog is None or (mass := catalog.mass) is None:
+        return None
+    entry: dict = {"low_kg": mass.low_kg}
+    if mass.high_kg is not None:
+        entry["high_kg"] = mass.high_kg
+    if mass.approximate:
+        entry["approximate"] = True
+    if mass.upper_limit:
+        entry["upper_limit"] = True
+    if mass.uncertainty_kg is not None:
+        entry["uncertainty_kg"] = mass.uncertainty_kg
+    return entry
+
+
+def ring_stats_block(body_id: str) -> dict | None:
+    """System-wide figures behind the Rings tab's stat cards.
+
+    Named `ring_stats` rather than `ring_system`, which the *localized* bundle
+    already uses for the "Rings of X" article.
+
+    One block rather than three fields: they are always read together, and
+    each is absent for the systems no source states one for — Neptune's mass
+    cannot be estimated even to an order of magnitude, and only Saturn and
+    Jupiter have a tabulated vertical extent.
+    """
+    catalog = RING_CATALOGS.get(body_id)
+    if catalog is None:
+        return None
+    block: dict = {}
+    if catalog.discovery_year is not None:
+        block["discovery_year"] = catalog.discovery_year
+    if (mass := ring_mass_block(body_id)) is not None:
+        block["mass"] = mass
+    if (thickness := catalog.thickness) is not None:
+        entry: dict = {"low_m": thickness.low_m}
+        if thickness.high_m is not None:
+            entry["high_m"] = thickness.high_m
+        if thickness.feature:
+            entry["feature"] = thickness.feature
+        block["thickness"] = entry
+    return block or None
+
+
 def ring_images_block(body_id: str) -> list[dict] | None:
     """Pictures of this body's ring system, the first of which opens the tab.
 

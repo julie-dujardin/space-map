@@ -56,6 +56,9 @@ class NotableObject:
         None  # SBDB taxonomic type (SMASS, else Tholen); small bodies only
     )
     color: str | None = None  # physically-derived #rrggbb surface tint; small bodies
+    # Mass of the body's *rings*, not the body: the Ring Systems page charts its
+    # members against each other. Same shape as the object bundle's `ring_stats.mass`.
+    ring_mass: dict | None = None
 
 
 def render_size(
@@ -256,6 +259,8 @@ def notable_entries(
             entry["spec"] = member.spec
         if member.color is not None:
             entry["color"] = member.color
+        if member.ring_mass is not None:
+            entry["ring_mass"] = member.ring_mass
         if member.first_obs:
             entry["first_obs"] = member.first_obs
         if displacement_metadata and (

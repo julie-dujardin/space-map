@@ -28,8 +28,15 @@
 		/** Narrows the target tab's list to one feature type, so a row on an
 		 *  `ft-` page lands on that body's features of that type — not all of them. */
 		featureType?: string;
+		/** Small-caps note beside the title, e.g. that the bars are logarithmic. */
+		hint?: string;
+		/** Bar length as a 0–1 fraction, for values a share of the largest would
+		 *  misdraw — ring masses span fourteen decades and go on a log axis. */
+		fraction?: (entry: CountPerBodyEntry) => number;
+		/** Row figure, where `n` is not what the row should read as. */
+		text?: (entry: CountPerBodyEntry) => string;
 	}
-	let { entries, title, tab, names, featureType }: Props = $props();
+	let { entries, title, tab, names, featureType, hint, fraction, text }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -55,6 +62,10 @@
 	function color(id: string | undefined): string {
 		return (id ? BODY_COLORS[id] : undefined) ?? DEFAULT_BODY_COLOR;
 	}
+
+	// A tally is at most four digits; a quantity brings its unit and a hedge, so
+	// it takes the width it needs and the name column gives way.
+	let columns = $derived(text ? 'minmax(0, 6rem) 1fr auto' : 'minmax(0, 9rem) 1fr 2.5rem');
 </script>
 
 {#snippet row(e: CountPerBodyEntry)}
@@ -62,18 +73,25 @@
 	<div class="bg-muted/30 relative h-[16px] rounded-sm">
 		<div
 			class="absolute top-1/2 start-0 h-[10px] -translate-y-1/2 rounded-sm"
-			style:width="{maxCount > 0 ? (e.n / maxCount) * 100 : 0}%"
+			style:width="{100 * (fraction ? fraction(e) : maxCount > 0 ? e.n / maxCount : 0)}%"
 			style:background-color={color(e.primary_id)}
 		></div>
 	</div>
-	<div class="text-muted-foreground text-end text-sm tabular-nums">{formatNumber(e.n)}</div>
+	<div class="text-muted-foreground text-end text-sm whitespace-nowrap tabular-nums">
+		{text ? text(e) : formatNumber(e.n)}
+	</div>
 {/snippet}
 
 {#if entries.length > 0}
 	<div class="flex flex-col gap-1">
 		<div class="flex items-baseline justify-between gap-2">
 			<h3 class="text-sm font-medium">{title}</h3>
-			<ChartPager {page} {pageCount} onpage={(p) => (page = p)} />
+			<div class="flex items-baseline gap-2">
+				{#if hint}
+					<span class="text-muted-foreground text-[10px] uppercase">{hint}</span>
+				{/if}
+				<ChartPager {page} {pageCount} onpage={(p) => (page = p)} />
+			</div>
 		</div>
 		<div class="border-border/60 border-t"></div>
 		<div class="mt-1 flex flex-col gap-[3px]">
@@ -83,14 +101,14 @@
 						href={focusHref(appState, e.primary_id, label(e), tab, featureType)}
 						onclick={focusClick(focusObject, e.primary_id, label(e), { tab, featureType })}
 						class="hover:bg-muted/40 grid items-center gap-2 rounded-sm px-1 py-px"
-						style="grid-template-columns: minmax(0, 9rem) 1fr 2.5rem"
+						style="grid-template-columns: {columns}"
 					>
 						{@render row(e)}
 					</a>
 				{:else}
 					<div
 						class="grid items-center gap-2 rounded-sm px-1 py-px"
-						style="grid-template-columns: minmax(0, 9rem) 1fr 2.5rem"
+						style="grid-template-columns: {columns}"
 					>
 						{@render row(e)}
 					</div>

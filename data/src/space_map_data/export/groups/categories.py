@@ -8,7 +8,7 @@ lineup, the top moons and the notable probes ride the ``notable_members`` path.
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -44,6 +44,7 @@ from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.small_body import LargestBody, _notable_members
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.notable import NotableObject, render_geometry
+from space_map_data.export.objects.rings import ring_mass_block
 from space_map_data.export.small_body_color import (
     resolve_moon_color,
     resolve_small_body_color,
@@ -487,6 +488,10 @@ def _ring_system_members(
     ``RING_CATALOGS`` holds a table for, and the catalogue already orders them
     the way the page should read — the four giants outward, then the four
     small bodies whose rings are known only from occultations.
+
+    Each member carries its ring mass, the one figure that ranks the systems
+    against each other; the body mass ``_body_member`` attaches is the planet's
+    and says nothing about its rings.
     """
     rows = {
         obj_id: (obj_id, naif_id, qid, name)
@@ -502,7 +507,10 @@ def _ring_system_members(
             ", ".join(missing),
         )
     return [
-        _body_member(*rows[body], radii=radii, gms=gms, orientation=orientation)
+        replace(
+            _body_member(*rows[body], radii=radii, gms=gms, orientation=orientation),
+            ring_mass=ring_mass_block(body),
+        )
         for body in RING_CATALOGS
         if body in rows
     ]

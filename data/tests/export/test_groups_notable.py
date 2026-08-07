@@ -6,8 +6,10 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.rings.catalog import RING_CATALOGS
 from space_map_data.export import notable
 from space_map_data.export.groups.categories import _probe_members
+from space_map_data.export.objects.rings import ring_mass_block, ring_stats_block
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.groups.small_body import (
     NOTABLE_MEMBER_COUNT,
@@ -452,3 +454,46 @@ class TestMemberPoleProvenance:
             session, SBDB.class_ == OrbitClass.MBA, orientation=orientation
         )
         assert member.pole == {"ra": 130.0, "dec": -59.0, "source": "lightcurve"}
+
+
+class TestRingSystemMembers:
+    """The Ring Systems page's members carry their rings' mass."""
+
+    def test_ring_mass_rides_the_member_entry(self, monkeypatch) -> None:
+        monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
+        member = NotableObject(
+            object_id="naif-699",
+            wikidata_qid=None,
+            fallback_name="Saturn",
+            diameter_km=None,
+            first_obs=None,
+            ring_mass={"low_kg": 1.54e19, "uncertainty_kg": 4.9e18},
+        )
+        (entry,) = notable.notable_entries(
+            [member],
+            _StubEntityCache({}),  # type: ignore[arg-type]
+        )
+        assert entry["ring_mass"] == {"low_kg": 1.54e19, "uncertainty_kg": 4.9e18}
+
+    def test_a_body_without_one_omits_the_field(self, monkeypatch) -> None:
+        """Neptune's rings have no published mass, and no empty block either."""
+        monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
+        member = NotableObject(
+            object_id="naif-899",
+            wikidata_qid=None,
+            fallback_name="Neptune",
+            diameter_km=None,
+            first_obs=None,
+        )
+        (entry,) = notable.notable_entries(
+            [member],
+            _StubEntityCache({}),  # type: ignore[arg-type]
+        )
+        assert "ring_mass" not in entry
+
+    def test_the_collection_reads_the_same_figure_as_the_body(self) -> None:
+        """One source for both: the chart on the collection page and the stat
+        card on the body's own Rings tab cannot drift apart."""
+        for body_id in RING_CATALOGS:
+            stats = ring_stats_block(body_id) or {}
+            assert ring_mass_block(body_id) == stats.get("mass")

@@ -63,6 +63,7 @@ interface NotableEntry {
   first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it)
   model?: string;                   // shape-model slug (v1/models/<slug>/); lineup renders the mesh instead of a sphere. shape_model bundles only — spacecraft slugs excluded
   texture?: boolean;                // v1/textures/<id>/ surface map exists; explicit false ⇒ lineup skips the fetch. Absent only on pre-flag bundles (and mission/fragment strips), which the lineup still probes
+  ring_mass?: RingMass;             // mass of the member's *rings*, not the member; `cat-ring-systems` only, and only for the six systems a source puts a figure on. Same shape as the object bundle's `ring_stats.mass` (see objects.md)
   thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
 }
 ```
@@ -178,8 +179,9 @@ interface GlobalGroupData {
   // order; dwarf planets and moons by prominence).
   // On `cat-ring-systems` these are every body the ring catalogue covers, in
   // its curated order (the four giants outward, then the four small bodies);
-  // the page tiles them onto their Rings tabs. They are counted by their own
-  // categories too, so the tally stays out of the `cat-solar-system` total.
+  // the page tiles them onto their Rings tabs and charts their `ring_mass`
+  // against each other. They are counted by their own categories too, so the
+  // tally stays out of the `cat-solar-system` total.
   // On a `feature_type` group (slug `ft-<slug>`) these are surface features
   // (carrying `feature_id` beside their host body `id`), ranked by the
   // feature's own Wikidata sitelink count then diameter.
