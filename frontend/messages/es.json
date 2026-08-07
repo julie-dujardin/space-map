@@ -141,7 +141,7 @@
 	"mass_distribution_title": "Distribución de masa",
 	"mass_distribution_rest": "Todo lo demás",
 	"mass_budget_title": "Distribución de masa (excluyendo el Sol)",
-	"mass_budget_note": "escala log. Fuente:",
+	"source_mass_inventory_role": "inventario de masa del sistema solar",
 	"mass_budget_percentile": "Percentil 16.º–84.º",
 	"mass_reservoir_sun": "Sol",
 	"mass_reservoir_terrestrial": "Planetas terrestres",

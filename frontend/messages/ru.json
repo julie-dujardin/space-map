@@ -141,7 +141,7 @@
 	"mass_distribution_title": "Распределение массы",
 	"mass_distribution_rest": "Всё остальное",
 	"mass_budget_title": "Распределение массы (без Солнца)",
-	"mass_budget_note": "лог. шкала. Источник:",
+	"source_mass_inventory_role": "инвентаризация массы Солнечной системы",
 	"mass_budget_percentile": "16–84-й процентиль",
 	"mass_reservoir_sun": "Солнце",
 	"mass_reservoir_terrestrial": "Планеты земной группы",

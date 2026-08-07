@@ -1194,7 +1194,7 @@
 	"mass_distribution_title": "Mass distribution",
 	"mass_distribution_rest": "Everything else",
 	"mass_budget_title": "Mass distribution (excluding the Sun)",
-	"mass_budget_note": "log scale. Source:",
+	"source_mass_inventory_role": "solar-system mass inventory",
 	"mass_budget_source": "Menichella (2026)",
 	"mass_budget_percentile": "16th–84th percentile",
 	"mass_reservoir_sun": "Sun",

@@ -141,7 +141,7 @@
 	"mass_distribution_title": "质量分布",
 	"mass_distribution_rest": "其余所有",
 	"mass_budget_title": "质量分布（不含太阳）",
-	"mass_budget_note": "对数刻度。来源：",
+	"source_mass_inventory_role": "太阳系质量清单",
 	"mass_budget_percentile": "第16–84百分位",
 	"mass_reservoir_sun": "太阳",
 	"mass_reservoir_terrestrial": "类地行星",

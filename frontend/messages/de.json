@@ -141,7 +141,7 @@
 	"mass_distribution_title": "Massenverteilung",
 	"mass_distribution_rest": "Alles Übrige",
 	"mass_budget_title": "Massenverteilung (ohne Sonne)",
-	"mass_budget_note": "log. Skala. Quelle:",
+	"source_mass_inventory_role": "Massenbilanz des Sonnensystems",
 	"mass_budget_percentile": "16.–84. Perzentil",
 	"mass_reservoir_sun": "Sonne",
 	"mass_reservoir_terrestrial": "Terrestrische Planeten",

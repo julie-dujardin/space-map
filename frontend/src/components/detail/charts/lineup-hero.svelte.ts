@@ -155,13 +155,18 @@ export class LineupHero {
 			return bodies.length === 0 ? null : { bodies, perPage: 8 };
 		});
 
+		// Whichever lineup this page draws: the collection hero, or the Solar
+		// System's row of spheres down in the members tab. Both render real
+		// textures on real radii and owe the same credits.
+		const lineupBodies = $derived(this.hero?.bodies ?? this.solarSystemLineup?.bodies ?? null);
+
 		// Imagery credits narrowed to the on-screen bodies, deduped by author so
 		// the footer lists each source once. Covers both the surface maps and the
 		// shape-model meshes that render some members (a mesh body draped with a
 		// map credits both).
 		this.imagery = $derived.by(() => {
-			const hero = this.hero;
-			if (!hero) return [];
+			const bodies = lineupBodies;
+			if (!bodies) return [];
 			const textures = this.#credits;
 			const models = this.#modelCredits;
 			const out: ImageryCredit[] = [];
@@ -171,7 +176,7 @@ export class LineupHero {
 				seen.add(c.key);
 				out.push(c);
 			};
-			for (const b of hero.bodies) {
+			for (const b of bodies) {
 				const tex = textures?.get(b.id);
 				add(tex && { key: tex.organisation, label: tex.organisation, url: tex.source });
 				add(models.get(b.id));
@@ -183,17 +188,19 @@ export class LineupHero {
 		// diameters are PCK mean radii too); radius fallback ⇒ Wikidata; small-body
 		// diameter/albedo/spectral data ⇒ SBDB.
 		const pckClaim = $derived(this.isMoonLineup || (d.notableMembers() ?? []).some(hasPckGeometry));
-		this.pck = $derived(!!this.hero && pckClaim);
-		this.lightcurvePole = $derived(
-			!!this.hero && (d.notableMembers() ?? []).some(hasLightcurvePole)
-		);
+		const hasLineup = $derived(!!lineupBodies);
+		this.pck = $derived(hasLineup && pckClaim);
+		this.lightcurvePole = $derived(hasLineup && (d.notableMembers() ?? []).some(hasLightcurvePole));
 		this.wikidata = $derived(
-			!!this.hero && (d.notableMembers() ?? []).some((mm) => mm.radius_km != null)
+			hasLineup && (d.notableMembers() ?? []).some((mm) => mm.radius_km != null)
 		);
-		this.sbdb = $derived(!!this.hero && isSmallBodyLineup);
+		this.sbdb = $derived(hasLineup && isSmallBodyLineup);
 
+		// Both lineups that live in the members tab leave the overview footer
+		// with nothing to credit — the spheres they credit are a tab away.
+		const lineupInMembersTab = $derived(this.isMoonLineup || !!this.solarSystemLineup);
 		this.overviewCredits = $derived(
-			this.isMoonLineup
+			lineupInMembersTab
 				? { pck: false, lightcurvePole: false, wikidata: false, sbdb: false, imagery: [] }
 				: {
 						pck: this.pck,
@@ -206,7 +213,7 @@ export class LineupHero {
 
 		// Load surface-imagery credits lazily, once a lineup is actually shown.
 		$effect(() => {
-			if (!this.hero) return;
+			if (!lineupBodies) return;
 			loadTextureCredits().then((c) => (this.#credits = c));
 		});
 
@@ -214,9 +221,9 @@ export class LineupHero {
 		// comes from the model bundle meta (cache-shared with BodyLineup's own
 		// load). Best-effort — a failed meta just omits that author.
 		$effect(() => {
-			const hero = this.hero;
-			if (!hero) return;
-			const models = hero.bodies.filter(lineupDrawsShapeModel);
+			const bodies = lineupBodies;
+			if (!bodies) return;
+			const models = bodies.filter(lineupDrawsShapeModel);
 			if (models.length === 0) return;
 			let cancelled = false;
 			Promise.all(

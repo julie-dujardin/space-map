@@ -141,7 +141,7 @@
 	"mass_distribution_title": "توزيع الكتلة",
 	"mass_distribution_rest": "كل ما تبقّى",
 	"mass_budget_title": "توزيع الكتلة (باستثناء الشمس)",
-	"mass_budget_note": "مقياس لوغاريتمي. المصدر:",
+	"source_mass_inventory_role": "جرد كتلة النظام الشمسي",
 	"mass_budget_percentile": "المئين 16–84",
 	"mass_reservoir_sun": "الشمس",
 	"mass_reservoir_terrestrial": "الكواكب الصخرية",

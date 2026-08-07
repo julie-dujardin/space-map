@@ -176,7 +176,12 @@
 
 	<!-- Log chart -->
 	<div class="flex flex-col gap-1">
-		<h3 class="text-sm font-medium">{m.mass_budget_title()}</h3>
+		<!-- Same title/hint row as CountPerBodyChart: without the note the bars
+		     read as proportions. The inventory's citation is in the page footer. -->
+		<div class="flex items-baseline justify-between gap-2">
+			<h3 class="text-sm font-medium">{m.mass_budget_title()}</h3>
+			<span class="text-muted-foreground text-[10px] uppercase">{m.chart_log_scale()}</span>
+		</div>
 		<div class="border-border/60 border-t"></div>
 		<div class="mt-1 flex flex-col gap-[3px]">
 			{#each MASS_RESERVOIRS as r (r.key)}
@@ -233,15 +238,6 @@
 				</Tooltip.Root>
 			{/each}
 		</div>
-		<p class="text-muted-foreground mt-1 text-[10px] leading-snug">
-			{m.mass_budget_note()}
-			<a
-				href="https://arxiv.org/abs/2603.17561"
-				target="_blank"
-				rel="noopener noreferrer"
-				class="underline">{m.mass_budget_source()}</a
-			>
-		</p>
 	</div>
 </div>
 

@@ -141,7 +141,7 @@
 	"mass_distribution_title": "התפלגות המסה",
 	"mass_distribution_rest": "כל השאר",
 	"mass_budget_title": "התפלגות המסה (ללא השמש)",
-	"mass_budget_note": "סקאלה לוגריתמית. מקור:",
+	"source_mass_inventory_role": "מאזן המסה של מערכת השמש",
 	"mass_budget_percentile": "אחוזון 16–84",
 	"mass_reservoir_sun": "השמש",
 	"mass_reservoir_terrestrial": "כוכבי לכת ארציים",

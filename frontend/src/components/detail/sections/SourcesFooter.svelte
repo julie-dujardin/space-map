@@ -10,7 +10,7 @@
 	import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
 	import type { CitedWork, GlobalObjectData } from '$lib/fetch/objects/object-data';
 
-	interface Source {
+	export interface Source {
 		key: string;
 		label: string;
 		url: string;
@@ -38,9 +38,11 @@
 		wikidata?: boolean;
 		/** Distinct surface-imagery credits for the lineup spheres (deduped by author). */
 		imagery?: Source[];
-		/** Ring tab: the catalogue's own tables (PDS vital statistics, the IAU
-		 *  gazetteer), which the object block carries per body. */
-		rings?: Source[];
+		/** Exact citations the panel earns, already resolved to titles and links:
+		 *  the ring catalogue's own tables, the mass inventory behind the Solar
+		 *  System charts. Everything else on this list is inferred from a field
+		 *  being present. */
+		works?: Source[];
 	}
 
 	let {
@@ -53,7 +55,7 @@
 		sbdb = false,
 		wikidata = false,
 		imagery = [],
-		rings = []
+		works = []
 	}: Props = $props();
 
 	// Per-object metadata has no per-field provenance, so we credit each source
@@ -134,9 +136,11 @@
 		if (orientation) addPole(orientation.source, orientation.reference);
 		if (lightcurvePole) addPole('lightcurve');
 
-		// Ring catalogue tables — an exact citation like the blocks below, and
-		// the whole content of the Rings tab.
-		for (const source of rings) add(source.url, source.label, source.url);
+		// Named works the panel cites outright, like the blocks below rather
+		// than the inferred credits above — their note survives a parenthesised
+		// title (a year, a journal) the same way.
+		for (const source of works)
+			addWork({ title: source.label, url: source.url, note: source.note });
 
 		// Atmospheric facts carry their own per-value citations, so these are
 		// exact rather than inferred like the rest of this list.

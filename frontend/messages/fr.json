@@ -141,7 +141,7 @@
 	"mass_distribution_title": "Répartition des masses",
 	"mass_distribution_rest": "Tout le reste",
 	"mass_budget_title": "Répartition des masses (hors Soleil)",
-	"mass_budget_note": "échelle log. Source :",
+	"source_mass_inventory_role": "inventaire de masse du Système solaire",
 	"mass_budget_percentile": "16e–84e centile",
 	"mass_reservoir_sun": "Soleil",
 	"mass_reservoir_terrestrial": "Planètes telluriques",

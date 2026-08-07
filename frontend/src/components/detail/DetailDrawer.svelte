@@ -78,7 +78,8 @@
 		type ShelfLink
 	} from '$lib/fetch/objects/galleries';
 	import ObjectDescription from './sections/ObjectDescription.svelte';
-	import SourcesFooter from './sections/SourcesFooter.svelte';
+	import SourcesFooter, { type Source as CitedSource } from './sections/SourcesFooter.svelte';
+	import { MASS_INVENTORY_URL } from '$lib/data/solar-system-mass';
 	import Bulk from './sections/Bulk.svelte';
 	import Brightness from './sections/Brightness.svelte';
 	import Atmosphere from './sections/Atmosphere.svelte';
@@ -509,6 +510,13 @@
 	let nomenclatureCredit = $derived(
 		groupDetail?.global?.type === 'feature_type' || groupDetail?.global?.feature_type_count != null
 	);
+	// A small-body collection is SBDB all the way down — named counts, largest
+	// member, median MOID, the discovery timeline. Not the lineup's claim
+	// (`lineup.overviewCredits.sbdb`), which needs three renderable spheres: the
+	// figures are there whether or not the page draws any.
+	let smallBodyGroupCredit = $derived(
+		groupDetail?.global?.applies_to === 'small_body' || cat.smallBody
+	);
 	let membersHeading = $derived(
 		isGroupMode
 			? isSplitCometGroup
@@ -712,15 +720,24 @@
 	let ringCredits = $derived(
 		(data?.global?.ring_sources ?? []).map((s) => ({ key: s.url, label: s.title, url: s.url }))
 	);
-	// Same tables on the Ring Systems collection page, where they back the mass
-	// chart and the tiles rather than one body's catalogue.
-	let groupRingCredits = $derived(
-		(groupDetail?.global?.ring_sources ?? []).map((s) => ({
+	// Works a collection page cites outright: the ring catalogue's tables, where
+	// they back the mass chart and the tiles rather than one body's panel, and
+	// the published inventory both Solar System mass charts are drawn from.
+	let groupWorkCredits = $derived.by<CitedSource[]>(() => {
+		const out: CitedSource[] = (groupDetail?.global?.ring_sources ?? []).map((s) => ({
 			key: s.url,
 			label: s.title,
 			url: s.url
-		}))
-	);
+		}));
+		if (cat.solarSystem)
+			out.push({
+				key: MASS_INVENTORY_URL,
+				label: m.mass_budget_source(),
+				url: MASS_INVENTORY_URL,
+				note: m.source_mass_inventory_role()
+			});
+		return out;
+	});
 	let ringLocalized = $derived(Object.values(data?.localized?.ring_features ?? {}));
 	let ringProseFromWikipedia = $derived(
 		!!data?.localized?.ring_system?.extract || ringLocalized.some((f) => f.extract)
@@ -1401,13 +1418,13 @@
 			<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
 			<SourcesFooter
 				global={data?.global ?? null}
-				rings={groupRingCredits}
+				works={groupWorkCredits}
 				earthSat={earthSatCredit}
 				nomenclature={nomenclatureCredit}
 				wikipediaLicensed={!!data?.localized?.wikipedia?.extract}
 				pck={lineup.overviewCredits.pck}
 				lightcurvePole={lineup.overviewCredits.lightcurvePole}
-				sbdb={lineup.overviewCredits.sbdb}
+				sbdb={lineup.overviewCredits.sbdb || smallBodyGroupCredit}
 				wikidata={lineup.overviewCredits.wikidata}
 				imagery={lineup.overviewCredits.imagery}
 			/>
@@ -1443,11 +1460,14 @@
 				fallback={notableMembers}
 			/>
 		{/if}
-		{#if lineup.isMoonLineup}
+		<!-- Credits for the spheres this tab draws — a planet's moons, or the
+		     Solar System's own row. -->
+		{#if lineup.isMoonLineup || lineup.solarSystemLineup}
 			<SourcesFooter
 				global={null}
 				pck={lineup.pck}
 				lightcurvePole={lineup.lightcurvePole}
+				wikidata={lineup.wikidata}
 				imagery={lineup.imagery}
 			/>
 		{/if}
@@ -1507,7 +1527,7 @@
 			<BodyCategoryTile slug={CAT_RING_SYSTEMS} />
 			<SourcesFooter
 				global={null}
-				rings={ringCredits}
+				works={ringCredits}
 				wikidata={ringNamesLocalized}
 				wikipediaLicensed={ringProseFromWikipedia}
 			/>

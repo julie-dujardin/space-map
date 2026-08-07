@@ -8,7 +8,11 @@ import * as m from '$lib/paraglide/messages.js';
 
 // Solar-system mass inventory: Menichella (2026), Table 3 (Earth masses; lo/hi
 // are the 16th/84th percentiles). Literature estimates, not in the body DB.
-// https://arxiv.org/abs/2603.17561
+
+/** The work behind every figure on both mass charts; the Solar System page's
+ *  credit line cites it beside the sources its bundles carry. */
+export const MASS_INVENTORY_URL = 'https://arxiv.org/abs/2603.17561';
+
 export interface MassReservoir {
 	key: string;
 	label: () => string;

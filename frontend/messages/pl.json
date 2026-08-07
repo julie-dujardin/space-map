@@ -141,7 +141,7 @@
 	"mass_distribution_title": "Rozkład masy",
 	"mass_distribution_rest": "Cała reszta",
 	"mass_budget_title": "Rozkład masy (bez Słońca)",
-	"mass_budget_note": "skala log. Źródło:",
+	"source_mass_inventory_role": "bilans masy Układu Słonecznego",
 	"mass_budget_percentile": "16.–84. percentyl",
 	"mass_reservoir_sun": "Słońce",
 	"mass_reservoir_terrestrial": "Planety skaliste",
