@@ -20,15 +20,52 @@
 		onActivate?: (e: MouseEvent) => void;
 		/** What following it leads to. */
 		activateLabel?: string;
+		/** Makes the title itself lead where `activateHref` does, for sections
+		 *  whose heading names a destination rather than the rows below it. */
+		titleHref?: string;
+		/** A qualifier on the title itself, set right after it — how many things
+		 *  the heading names. Unlike `meta`, which the row's spacing pushes to
+		 *  wherever the title happens to end, this stays attached to the words. */
+		titleMeta?: string;
 	}
 
-	let { title, children, header, footer, meta, activateHref, onActivate, activateLabel }: Props =
-		$props();
+	let {
+		title,
+		children,
+		header,
+		footer,
+		meta,
+		activateHref,
+		onActivate,
+		activateLabel,
+		titleHref,
+		titleMeta
+	}: Props = $props();
 </script>
+
+{#snippet titleCount()}
+	<span class="text-muted-foreground shrink-0 text-xs font-normal tabular-nums">{titleMeta}</span>
+{/snippet}
 
 <div class="flex flex-col gap-1">
 	<div class="flex items-baseline justify-between gap-3">
-		<h3 class="min-w-0 truncate text-sm font-medium">{title}</h3>
+		<h3 class="min-w-0 text-sm font-medium">
+			{#if titleHref}
+				<a
+					href={titleHref}
+					onclick={onActivate}
+					class="flex min-w-0 items-baseline gap-2 hover:underline"
+				>
+					<span class="truncate">{title}</span>
+					{#if titleMeta}{@render titleCount()}{/if}
+				</a>
+			{:else}
+				<span class="flex min-w-0 items-baseline gap-2">
+					<span class="truncate">{title}</span>
+					{#if titleMeta}{@render titleCount()}{/if}
+				</span>
+			{/if}
+		</h3>
 		{#if meta}
 			<span class="text-muted-foreground shrink-0 text-[10px] tabular-nums">{meta}</span>
 		{/if}

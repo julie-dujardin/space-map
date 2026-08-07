@@ -1102,8 +1102,12 @@ def prune_image_bundles() -> None:
 
     The bundle writers only ever add; selection changes (image replaced on
     Wikidata, object dropped, exclusion added) would otherwise leave orphan
-    bundles shipping forever. Referenced = union of the object/feature/group
-    selection caches, canonicalized like the collectors do.
+    bundles shipping forever. Referenced = union of *every* selection cache,
+    canonicalized like the collectors do.
+
+    Every cache, not just the ones a page loads first: a picture reached only
+    from a ring or topic shelf is referenced exactly as much as one on the
+    object's own list, and leaving those out deletes the bundle that same run.
 
     Skipped with a warning when every cache is empty — that means ingest
     hasn't run, not that nothing is referenced.
@@ -1113,6 +1117,8 @@ def prune_image_bundles() -> None:
         _object_images_cache,
         _feature_images_cache,
         _group_images_cache,
+        _ring_images_cache,
+        _topic_images_cache,
     ):
         for entries in cache_loader().values():
             for entry in entries:
@@ -1136,10 +1142,17 @@ def prune_image_bundles() -> None:
 
 def clear_export_cache() -> None:
     """Reset per-export caches. For tests that monkeypatch paths."""
-    global _OBJECT_IMAGES_CACHE, _FEATURE_IMAGES_CACHE, _GROUP_IMAGES_CACHE
+    global \
+        _OBJECT_IMAGES_CACHE, \
+        _FEATURE_IMAGES_CACHE, \
+        _GROUP_IMAGES_CACHE, \
+        _RING_IMAGES_CACHE, \
+        _TOPIC_IMAGES_CACHE
     _OBJECT_IMAGES_CACHE = None
     _FEATURE_IMAGES_CACHE = None
     _GROUP_IMAGES_CACHE = None
+    _RING_IMAGES_CACHE = None
+    _TOPIC_IMAGES_CACHE = None
     with _FILE_LOCKS_GUARD:
         _FILE_LOCKS.clear()
 

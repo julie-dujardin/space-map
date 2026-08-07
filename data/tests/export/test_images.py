@@ -1215,10 +1215,14 @@ class TestEmbeddedMetadata:
 class TestPruneImageBundles:
     """Orphan-bundle pruning against the union of the selection caches."""
 
-    def _seed_caches(self, objects=None, features=None, groups=None):
+    def _seed_caches(
+        self, objects=None, features=None, groups=None, rings=None, topics=None
+    ):
         images_mod._OBJECT_IMAGES_CACHE = objects or {}
         images_mod._FEATURE_IMAGES_CACHE = features or {}
         images_mod._GROUP_IMAGES_CACHE = groups or {}
+        images_mod._RING_IMAGES_CACHE = rings or {}
+        images_mod._TOPIC_IMAGES_CACHE = topics or {}
 
     def _make_bundle(self, layout, name: str) -> Path:
         d = layout["export"] / name
@@ -1238,6 +1242,22 @@ class TestPruneImageBundles:
         )
         images_mod.prune_image_bundles()
         assert kept_obj.exists() and kept_feat.exists() and kept_group.exists()
+        assert not orphan.exists()
+
+    # A shelf the object's own list never mentions still references its
+    # pictures. Leaving these caches out deleted the bundle the writers had
+    # just built, in the same run — the gallery then rendered broken tiles.
+    def test_ring_and_topic_shelves_keep_their_pictures(self, layout):
+        kept_ring = self._make_bundle(layout, "ring.jpg")
+        kept_topic = self._make_bundle(layout, "haze.jpg")
+        orphan = self._make_bundle(layout, "orphan.jpg")
+        self._seed_caches(
+            objects={"o1": [{"file": "obj.jpg", "kind": "photo"}]},
+            rings={"naif-699": [{"file": "ring.jpg", "kind": "photo"}]},
+            topics={"atmosphere:naif-399": [{"file": "haze.jpg", "kind": "photo"}]},
+        )
+        images_mod.prune_image_bundles()
+        assert kept_ring.exists() and kept_topic.exists()
         assert not orphan.exists()
 
     def test_reference_is_canonicalized(self, layout):
