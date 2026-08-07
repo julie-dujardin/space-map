@@ -739,9 +739,10 @@
 	// falls between the tabs instead of padding out the shortest one. h-full and
 	// the raised underline keep the trigger and its indicator inside the list box:
 	// the bar is a scroll container, which clips at its padding box, so shadcn's
-	// default -5px underline would be cut off (! beats the variant's higher
-	// specificity).
-	const TAB_TRIGGER_CLASS = 'px-2 flex-none h-full after:-bottom-1!';
+	// default -5px underline would be cut off. The underline is inset by the
+	// trigger's own padding so it underlines the label rather than the spacing
+	// around it (! beats the variant's higher specificity).
+	const TAB_TRIGGER_CLASS = 'px-2 flex-none h-full after:-bottom-1! after:start-2! after:end-2!';
 
 	let tabPresent = $derived<Record<DrawerTab, boolean>>({
 		overview: true,
@@ -1078,12 +1079,14 @@
 			     overflowing content, which left the last tab flush against the screen
 			     edge and the underline clipped. min-w-max keeps every tab inside the
 			     list box when the bar overflows.
-			     Trigger padding is spacing between tabs, so the outer two drop theirs
-			     and sit flush with the drawer's own edge. -->
+			     Trigger padding is spacing between tabs, so the outer two drop theirs,
+			     and the matching underline inset with it, to sit flush with the
+			     drawer's own edge. -->
 			<Tabs.List
 				variant="line"
 				class={[
-					'w-full min-w-max border-b px-4 [&>*:first-child]:ps-0 [&>*:last-child]:pe-0',
+					'w-full min-w-max border-b px-4',
+					'[&>*:first-child]:ps-0 [&>*:first-child]:after:start-0! [&>*:last-child]:pe-0 [&>*:last-child]:after:end-0!',
 					// Only a full desktop bar spreads; anywhere else the list is wider
 					// than its tabs (w-full slack, or mobile's scroll room), and the
 					// variant's justify-center would float them mid-bar.
