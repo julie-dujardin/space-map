@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
 from space_map_data.export import notable
 from space_map_data.export.groups.categories import _probe_members, _ring_system_stats
-from space_map_data.export.objects.rings import ring_mass_block, ring_stats_block
+from space_map_data.export.objects.rings import (
+    ring_mass_block,
+    ring_sources_block,
+    ring_stats_block,
+)
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.groups.small_body import (
     NOTABLE_MEMBER_COUNT,
@@ -536,6 +540,22 @@ class TestRingSystemStats:
         stats = _ring_system_stats([self._member("naif-799", "Uranus")])
         assert stats.widest_rings is not None
         assert stats.widest_rings["primary_id"] == "naif-799"
+
+    def test_sources_cover_every_listed_system_once(self) -> None:
+        """The page's credit line: every table it reads, each credited once."""
+        members = [self._member(body, body) for body in RING_CATALOGS]
+        stats = _ring_system_stats(members)
+        assert stats.ring_sources is not None
+        urls = [source["url"] for source in stats.ring_sources]
+        assert len(urls) == len(set(urls))
+        assert set(urls) == {
+            source.url for c in RING_CATALOGS.values() for source in c.sources
+        }
+
+    def test_sources_skip_a_system_with_no_member(self) -> None:
+        """A body with no tile contributes no citation either."""
+        stats = _ring_system_stats([self._member("naif-699", "Saturn")])
+        assert stats.ring_sources == ring_sources_block("naif-699")
 
     def test_discovery_year_is_the_earliest_system(self) -> None:
         stats = _ring_system_stats([self._member("naif-699", "Saturn")])

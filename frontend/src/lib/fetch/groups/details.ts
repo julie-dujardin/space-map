@@ -179,6 +179,10 @@ export interface GlobalGroupData {
 	/** Ring Systems: rows in the ring catalogue across every system — the rings
 	 *  the tiles count plus the gaps, ringlets and arcs inside them. */
 	ring_feature_count?: number;
+	/** Ring Systems: the catalogue tables the page's counts, spans and masses
+	 *  come from — its credit line, since it ships none of the per-body bundles
+	 *  that carry them. Same shape as `GlobalObjectData.ring_sources`. */
+	ring_sources?: Array<{ title: string; url: string; organisation: string }>;
 	/** Ring Systems: the system reaching furthest from its host; the card links
 	 *  to its Rings tab. */
 	widest_rings?: {

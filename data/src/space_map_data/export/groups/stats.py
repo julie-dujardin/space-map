@@ -38,6 +38,10 @@ class GroupExtraStats:
     # Ring Systems: the system reaching furthest from its host, as
     # {primary_type, primary_id, name, span_km}; the card links to its Rings tab.
     widest_rings: dict | None = None
+    # Ring Systems: the catalogue tables its counts, spans and masses are read
+    # off, as {title, url, organisation} — the page's own credit line, since it
+    # ships none of the per-body bundles that carry them.
+    ring_sources: list[dict] | None = None
     # Split-comet families: parent perihelion distance, in AU.
     perihelion_au: float | None = None
 

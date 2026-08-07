@@ -19,10 +19,12 @@ article of their own anywhere (see `constants/rings/wikidata.py`).
 """
 
 import logging
+from collections.abc import Iterable
 from functools import cache
 
 from sqlalchemy.orm import Session, aliased
 
+from space_map_data.constants.rings.attribution import RingSource
 from space_map_data.constants.rings.catalog import (
     RING_CATALOGS,
     CatalogFeature,
@@ -223,19 +225,39 @@ def ring_images_block(body_id: str) -> list[dict] | None:
     return collect_ring_images(body_id)
 
 
-def ring_sources_block(body_id: str) -> list[dict] | None:
-    """The works the catalogue draws on, for the Rings tab's credit line.
+def _source_entry(source: RingSource) -> dict:
+    """Titles and links only — the per-source `contribution` is the level of
+    detail the credits page wants, not a footer under a chart."""
+    return {
+        "title": source.work,
+        "url": source.url,
+        "organisation": source.organisation,
+    }
 
-    Titles and links only — the per-source `contribution` is the level of
-    detail the credits page wants, not a footer under a chart.
-    """
+
+def ring_sources_block(body_id: str) -> list[dict] | None:
+    """The works the catalogue draws on, for the Rings tab's credit line."""
     catalog = RING_CATALOGS.get(body_id)
     if catalog is None:
         return None
-    return [
-        {"title": source.work, "url": source.url, "organisation": source.organisation}
-        for source in catalog.sources
-    ]
+    return [_source_entry(source) for source in catalog.sources]
+
+
+def ring_catalog_sources(body_ids: Iterable[str]) -> list[dict]:
+    """The same works across several systems, deduped by URL.
+
+    For the Ring Systems collection page, whose every figure — the tiles' ring
+    counts, the widest span, the mass chart — is read off these tables, and
+    which has no per-body bundle to credit them from.
+    """
+    out: dict[str, dict] = {}
+    for body_id in body_ids:
+        catalog = RING_CATALOGS.get(body_id)
+        if catalog is None:
+            continue
+        for source in catalog.sources:
+            out.setdefault(source.url, _source_entry(source))
+    return list(out.values())
 
 
 def ring_system_localized(

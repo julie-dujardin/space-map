@@ -249,6 +249,11 @@ interface GlobalGroupData {
   // cat-ring-systems — the system reaching furthest from its host, diffuse rows included
   // (Saturn's answer is the Phoebe ring). The card links to that body's Rings tab.
   widest_rings?: { name: string; span_km: number; primary_type: "object"; primary_id: string };
+  // cat-ring-systems — the catalogue tables behind everything on the page (the tiles'
+  // ring counts, the span and discovery cards, the mass chart), deduped by URL across
+  // the systems listed and in catalogue order. Same shape as the per-body
+  // `ring_sources` in objects.md, which this page ships none of.
+  ring_sources?: Array<{ title: string; url: string; organisation: string }>;
 
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)

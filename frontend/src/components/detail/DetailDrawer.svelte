@@ -712,6 +712,15 @@
 	let ringCredits = $derived(
 		(data?.global?.ring_sources ?? []).map((s) => ({ key: s.url, label: s.title, url: s.url }))
 	);
+	// Same tables on the Ring Systems collection page, where they back the mass
+	// chart and the tiles rather than one body's catalogue.
+	let groupRingCredits = $derived(
+		(groupDetail?.global?.ring_sources ?? []).map((s) => ({
+			key: s.url,
+			label: s.title,
+			url: s.url
+		}))
+	);
 	let ringLocalized = $derived(Object.values(data?.localized?.ring_features ?? {}));
 	let ringProseFromWikipedia = $derived(
 		!!data?.localized?.ring_system?.extract || ringLocalized.some((f) => f.extract)
@@ -1389,6 +1398,7 @@
 			<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
 			<SourcesFooter
 				global={data?.global ?? null}
+				rings={groupRingCredits}
 				earthSat={earthSatCredit}
 				nomenclature={nomenclatureCredit}
 				wikipediaLicensed={!!data?.localized?.wikipedia?.extract}

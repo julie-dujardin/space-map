@@ -44,7 +44,7 @@ from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.small_body import LargestBody, _notable_members
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.notable import NotableObject, render_geometry
-from space_map_data.export.objects.rings import ring_mass_block
+from space_map_data.export.objects.rings import ring_catalog_sources, ring_mass_block
 from space_map_data.export.small_body_color import (
     resolve_moon_color,
     resolve_small_body_color,
@@ -517,9 +517,9 @@ def _ring_system_members(
 
 
 def _ring_system_stats(members: list[NotableObject]) -> GroupExtraStats:
-    """The Ring Systems page's stat row.
+    """The Ring Systems page's stat row, plus the catalogue behind the page.
 
-    None of the three restates the page below it: the tiles count each
+    None of the three cards restates the page below it: the tiles count each
     system's top-level rings and the chart plots their masses, but how deep
     the catalogue goes, how far a system reaches and how far back the first
     sighting is are nowhere on it.
@@ -549,6 +549,8 @@ def _ring_system_stats(members: list[NotableObject]) -> GroupExtraStats:
         discovery_year=min(years) if years else None,
         ring_feature_count=sum(len(c.features) for c in RING_CATALOGS.values()),
         widest_rings=widest,
+        # Scoped to the systems the page actually lists, like `widest_rings`.
+        ring_sources=ring_catalog_sources(m.object_id for m in members) or None,
     )
 
 
