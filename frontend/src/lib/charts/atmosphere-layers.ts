@@ -69,18 +69,23 @@ const NOTE: Record<string, () => string> = {
 	frozen_out: m.atmosphere_note_frozen_out,
 	no_detection: m.atmosphere_note_no_detection,
 	plume: m.atmosphere_note_plume,
-	transient_vapour: m.atmosphere_note_transient_vapour,
-	no_surface: m.atmosphere_note_no_surface
+	transient_vapour: m.atmosphere_note_transient_vapour
 };
 
-/** The two notes that only say where the readings are quoted from. The
- *  cross-section draws that: it names its own datum along the ground and again
- *  at the outer end of the interior disc, so beside the chart these are a
- *  caption repeating the picture. */
-const DATUM_NOTES = new Set(['no_surface', 'photosphere']);
+/** `no_surface` has no sentence anywhere: "Cloud-top pressure" already says
+ *  where the figures are quoted, and the interior panel's Differentiation row
+ *  already says the body has no solid surface. Saying it a third time in prose
+ *  was three lines for one fact. */
+const SILENT_NOTES = new Set(['no_surface']);
+
+/** Beside the cross-section, `photosphere` goes too — the chart names its datum
+ *  along the ground and again at the outer edge of the interior disc, so the
+ *  sentence is a caption repeating the picture. It keeps its place next to the
+ *  pressure row, where it defines what a photosphere is. */
+const DATUM_NOTES = new Set(['photosphere']);
 
 export function atmosphereNote(note: string | undefined): string | null {
-	if (!note) return null;
+	if (!note || SILENT_NOTES.has(note)) return null;
 	const fn = NOTE[note];
 	if (!fn) {
 		console.warn(`Missing atmosphere note: ${note}`);

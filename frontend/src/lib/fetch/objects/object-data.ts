@@ -269,6 +269,7 @@ export interface GlobalObjectData {
 	render_quality?: 'high' | 'medium' | 'low';
 	atmosphere?: AtmosphereBlock;
 	interior?: InteriorBlock;
+	activity?: ActivityBlock;
 	/** Ring render bundles, inner → outer, mirroring `rings` in
 	 *  systems/{bary}.json. Carries the four ringed small bodies, which orbit
 	 *  the Sun directly and so appear in no system file. */
@@ -618,6 +619,130 @@ export interface InteriorBlock {
 	layers?: InteriorLayer[];
 	/** Works the numbers come from, deduped per body. */
 	sources?: CitedWork[];
+}
+
+/** What the body is still doing: heat reaching the surface, the tide that
+ *  supplies it, and the field a convecting core makes. 23 bodies.
+ *
+ *  The shape is lopsided on purpose — the categorical fields are complete and
+ *  the numbers are not. Five bodies (Europa, Callisto, Mimas, Dione, Charon)
+ *  carry a status and nothing else, which is the state of the literature and
+ *  not a gap. Lead with the status; treat every measurement as optional. */
+export interface ActivityBlock {
+	volcanism?: Volcanism;
+	/** Rides with `volcanism`, never alone. */
+	tectonics?: Tectonics;
+	tidal?: TidalHeating;
+	/** The Sun and the four giants have this and no other entry. */
+	magnetism?: MagneticField;
+	sources?: CitedWork[];
+}
+
+/** One published number with what its source said about how sure it is. The
+ *  qualifier is usually the finding here, so a bare `value` would misread. */
+export interface Measurement {
+	value: number;
+	/** The published width, not an error bar: Venus's surface age is 250 Ma to
+	 *  1 Ga across crater models. */
+	range?: [number, number];
+	/** A non-detection's bound. Titan's and Venus's magnetic moments have never
+	 *  been anything else. */
+	upper_limit?: true;
+	/** A scaling or extrapolation rather than an observation of this body —
+	 *  Venus's eruption count is Earth's record times a mass ratio, and without
+	 *  this would draw exactly like Earth's own catalogue. */
+	modelled?: true;
+	/** The survey cut-off or database version a count belongs to. English free
+	 *  text, so it shows as-is: "343 hot spots" is a property of the last
+	 *  global map rather than of Io. */
+	as_of?: string;
+}
+
+export type ActivityStatus = 'active' | 'probable' | 'suspected' | 'dormant' | 'extinct' | 'none';
+
+export interface Volcanism {
+	kind: 'silicate' | 'cryo' | 'both' | 'none';
+	/** Five rungs rather than a boolean, because Venus, Mars and Earth are
+	 *  three different claims and a boolean would make them one. */
+	status: ActivityStatus;
+	/** Everything mapped that could erupt; the survey's definition of a centre,
+	 *  not ours. */
+	known_centres?: Measurement;
+	eruptions_per_year?: Measurement;
+	erupted_volume_km3_per_year?: Measurement;
+	/** Jets or plumes, on the bodies where a plume is the only countable thing. */
+	plumes?: Measurement;
+	plume_mass_kg_per_s?: Measurement;
+	/** Heat leaving the body from inside, and the same over its area — Io
+	 *  against Earth is 2× in power and 30× in flux. */
+	endogenic_power_w?: Measurement;
+	heat_flux_w_per_m2?: Measurement;
+	/** Years before present. What separates "extinct" from "dormant", and the
+	 *  number the argument is usually about. */
+	youngest_activity_years?: Measurement;
+	surface_age_years?: Measurement;
+	/** Provenance metadata; nothing renders it yet. */
+	note?: string;
+}
+
+export interface Tectonics {
+	/** Not a ladder — an ice shell cracking over an ocean and a planet
+	 *  shrinking onto its core are different machines, and only one of them
+	 *  recycles a surface. */
+	style:
+		| 'plate_tectonics'
+		| 'stagnant_lid'
+		| 'contractional_lid'
+		| 'mobile_lid'
+		| 'ice_shell_tectonics'
+		| 'impact_dominated'
+		| 'none';
+	status: ActivityStatus;
+	/** How much the planet has shrunk as its core cooled. */
+	radial_contraction_km?: Measurement;
+	note?: string;
+}
+
+export interface TidalHeating {
+	/** Object id of what raises the tide, so a panel can name and link it. */
+	raised_by: string;
+	/** How much of the heat budget the tide is. The honest resolution for most
+	 *  of the list: the rate itself is rarely measured. */
+	role: 'dominant' | 'significant' | 'minor' | 'negligible' | 'past';
+	power_w?: Measurement;
+	flux_w_per_m2?: Measurement;
+	/** Tidal Love number — how much the body deforms; large means soft. */
+	k2?: Measurement;
+	/** Tidal quality factor; small dissipates hard. Io's ~11 is the lowest
+	 *  measured anywhere. */
+	q?: Measurement;
+	/** Object ids of the partners keeping the eccentricity up, without which
+	 *  the tide would switch itself off. */
+	resonance_with?: string[];
+	/** `power_w` and `volcanism.endogenic_power_w` are one measurement rather
+	 *  than two — draw one heat row saying the tide accounts for all of it. */
+	explains_heat_output?: true;
+	note?: string;
+}
+
+export interface MagneticField {
+	/** "induced" is eddy currents in a conductive shell answering the field it
+	 *  sits in — evidence about an ocean, not about a core. */
+	kind: 'dynamo' | 'induced' | 'remanent' | 'none';
+	/** Of the equivalent centred dipole. The one figure that compares across
+	 *  bodies, which is why it is here even where a source publishes only a
+	 *  surface field and this is arithmetic on it. */
+	dipole_moment_a_m2?: Measurement;
+	/** At the surface on the magnetic equator. `range` is the spread over the
+	 *  real surface where the field is far from a dipole. */
+	surface_field_t?: Measurement;
+	/** Between the dipole and rotation axes — what separates Saturn from
+	 *  Uranus, and the hardest thing for dynamo models to make. */
+	dipole_tilt_deg?: Measurement;
+	dipole_offset_radii?: Measurement;
+	/** Years before present, for the bodies carrying only remanence now. */
+	dynamo_ended_years?: Measurement;
+	note?: string;
 }
 
 /** One shell of the cross-section. */

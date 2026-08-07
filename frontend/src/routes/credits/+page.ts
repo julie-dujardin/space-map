@@ -146,6 +146,7 @@ export interface Credits {
 	ring_references?: Reference[];
 	temperature_references?: Reference[];
 	interior_references?: Reference[];
+	activity_references?: Reference[];
 	models?: ModelCatalog[];
 	skybox?: SkyboxCredit;
 }

@@ -151,6 +151,12 @@
 		// chemistry, not a gravity field it never had.
 		for (const source of global?.interior?.sources ?? []) addWork(source);
 
+		// And what the interior is still doing — volcanism, the tide behind it,
+		// and the field. Deduped against the interior's list by url, so Juno's
+		// Love number is credited once for constraining Io's interior and the
+		// tide that heats it.
+		for (const source of global?.activity?.sources ?? []) addWork(source);
+
 		// Where the class itself came from. Ids, not citations — see
 		// `$lib/credits/taxonomy-sources`.
 		for (const id of global?.interior?.taxonomy_sources ?? []) {

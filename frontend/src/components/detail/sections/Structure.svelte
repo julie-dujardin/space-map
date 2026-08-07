@@ -16,6 +16,10 @@
 	 * published at the Moho, at the core-mantle boundary, at the centre, never
 	 * as an average over a shell. Most boundaries have no published number and
 	 * the layer then shows none.
+	 *
+	 * What the interior is still *doing* closes the section, under the layer
+	 * cards: volcanism, the tide that supplies its heat, and the field a
+	 * convecting core makes are all statements about the stack drawn above them.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
@@ -32,6 +36,7 @@
 	import InteriorCrossSection from '../charts/InteriorCrossSection.svelte';
 	import AtmosphereCrossSection from '../charts/AtmosphereCrossSection.svelte';
 	import LayerCard from '../charts/LayerCard.svelte';
+	import Activity from './Activity.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -117,6 +122,8 @@
 	let atmosphereMeta = $derived(
 		atmosphereKm ? m.structure_to_scale({ value: ltrIsolate(formatKm(atmosphereKm)) }) : undefined
 	);
+
+	let activity = $derived(global?.activity);
 </script>
 
 {#if hasChart || hasBar}
@@ -162,6 +169,17 @@
 	/>
 {/snippet}
 
+<!-- Its own `dl` rather than the section's, because it follows the layer cards:
+     the cards are the cutaway's legend and belong directly under it, and rows
+     wedged between the two would read as part of the drawing. -->
+{#snippet activityRows()}
+	{#if activity}
+		<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
+			<Activity {activity} />
+		</dl>
+	{/if}
+{/snippet}
+
 {#if section}
 	<Section title={m.structure_interior()} meta={interiorMeta}>
 		{#snippet header()}
@@ -190,6 +208,17 @@
 					{@render card(row[0])}
 				{/if}
 			{/each}
+			{@render activityRows()}
+		{/snippet}
+	</Section>
+{:else if activity}
+	<!-- Nothing takes this branch today — every body in the activity block has a
+	     layer model, and a constants test holds that. It stands for the one that
+	     does not: a volcanic record with no resolved interior would otherwise
+	     have nowhere on this tab to land. -->
+	<Section title={m.activity()}>
+		{#snippet footer()}
+			{@render activityRows()}
 		{/snippet}
 	</Section>
 {/if}

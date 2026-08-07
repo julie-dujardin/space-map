@@ -349,6 +349,17 @@
 			</section>
 		{/if}
 
+		{#if credits.activity_references?.length}
+			<section>
+				{@render sectionHeader(m.attribution_section_activity())}
+				<ul class="space-y-1">
+					{#each credits.activity_references as ref (ref.url)}
+						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
 		{#if credits.temperature_references?.length}
 			<section>
 				{@render sectionHeader(m.attribution_section_temperatures())}

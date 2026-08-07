@@ -10,6 +10,7 @@
 	import { isModifiedClick, tabHref } from '$lib/state/focus-link';
 	import type { CompositionEntry } from '$lib/charts/composition-bar';
 	import { formatKelvinRange } from '$lib/format/temperature';
+	import { activitySummary, fieldSummary } from '$lib/format/activity';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
 	import CompositionBar from './kit/CompositionBar.svelte';
@@ -60,7 +61,6 @@
 		if (interior.note === 'subsurface_ocean') return m.interior_note_subsurface_ocean();
 		if (interior.estimated) return m.interior_note_taxonomy_estimate();
 		if (interior.structure === 'rubble_pile') return m.interior_note_rubble_pile();
-		if (interior.structure === 'fluid') return m.interior_note_no_solid_surface();
 		return null;
 	});
 	let link = $derived(structureLink(global));
@@ -76,9 +76,17 @@
 	let entries: CompositionEntry[] = $derived(
 		interior?.composition ? materialEntries(interior.composition) : []
 	);
+
+	// Two rows out of four tables, and both categorical, because that is what
+	// the data covers: every body in the activity block has a status and most
+	// have fewer than four measurements. The numbers are the Structure tab's.
+	// The two are orthogonal rather than one row — Jupiter and Callisto have a
+	// field and nothing else, Mimas a tide and nothing else.
+	let activity = $derived(activitySummary(global?.activity));
+	let field = $derived(fieldSummary(global?.activity?.magnetism));
 </script>
 
-{#if interior || coreTemperature}
+{#if interior || coreTemperature || activity || field}
 	<Section
 		title={m.interior()}
 		activateHref={structureHref}
@@ -124,6 +132,12 @@
 			<Row label={m.temperature_of_core()}>
 				<span class="tabular-nums">{coreTemperature}</span>
 			</Row>
+		{/if}
+		{#if activity}
+			<Row label={m.activity()} value={activity} />
+		{/if}
+		{#if field}
+			<Row label={m.activity_magnetic_field()} value={field} />
 		{/if}
 		{#if note}
 			<dd class="text-muted-foreground col-span-2 -mt-1.5 text-[11px] leading-snug">{note}</dd>
