@@ -138,6 +138,59 @@ interface GlobalObjectData {
     sources: Array<{ title: string; url: string; note?: string }>; // works the values are read off, deduped, structure source first
                                     // `note` as above; absent on a hand-authored overlay's own citations, which need not carry one
   };
+  activity?: {                        // what the body is still doing — 23 bodies (see below)
+    // Every number below is a Measurement, never a bare float: in this subject
+    // the qualifier is usually the finding.
+    //   { value, range?: [lo, hi], upper_limit?: true, modelled?: true, as_of?: string }
+    // `range` is the published width, not an error bar. `modelled` marks a
+    // scaling or extrapolation rather than an observation of this body.
+    // `as_of` is the survey cut-off or database version a count belongs to,
+    // English free text — "through mid-2023", "Cassini ISS, 6.5 yr survey".
+    volcanism?: {                     // 15 bodies
+      kind: "silicate" | "cryo" | "both" | "none";
+      status: "active" | "probable" | "suspected" | "dormant" | "extinct" | "none";
+                                      // the interesting field, and the only one every body has. Five rungs because Venus, Mars and Earth are three different claims
+      known_centres?: Measurement;    // everything mapped that could erupt; what counts as a centre is the survey's definition
+      eruptions_per_year?: Measurement;
+      erupted_volume_km3_per_year?: Measurement;
+      plumes?: Measurement;           // jets or plumes observed, on the bodies where a plume is the only countable thing
+      plume_mass_kg_per_s?: Measurement;
+      endogenic_power_w?: Measurement; // total heat leaving the body from inside
+      heat_flux_w_per_m2?: Measurement; // the same over its area — Io against Earth is 2× in power and 30× in flux
+      youngest_activity_years?: Measurement; // age of the youngest dated activity, years before present. What separates "extinct" from "dormant"
+      surface_age_years?: Measurement; // mean crater-retention age, where volcanism did the resurfacing
+      note?: string;                  // "no_eruption_observed", "cerberus_fossae", …; provenance metadata, not rendered yet
+    };
+    tectonics?: {                     // 10 bodies; rides with `volcanism`, never alone
+      style: "plate_tectonics" | "stagnant_lid" | "contractional_lid" | "mobile_lid" | "ice_shell_tectonics" | "impact_dominated" | "none";
+                                      // not a ladder: an ice shell cracking over an ocean and a planet shrinking onto its core are different machines
+      status: string;                 // same six rungs as `volcanism.status`
+      radial_contraction_km?: Measurement; // how much the planet has shrunk as its core cooled — the measure of a contractional lid
+      note?: string;
+    };
+    tidal?: {                         // 11 bodies
+      raised_by: string;              // object id of what raises the tide
+      role: "dominant" | "significant" | "minor" | "negligible" | "past"; // how much of the heat budget it is. The honest resolution for most of the list, since the rate itself is rarely measured
+      power_w?: Measurement;
+      flux_w_per_m2?: Measurement;
+      k2?: Measurement;               // tidal Love number — how much the body deforms. Large means soft
+      q?: Measurement;                // tidal quality factor; small dissipates hard. Io's ~11 is the lowest measured anywhere
+      resonance_with?: string[];      // object ids of the partners keeping the eccentricity up, without which the tide switches itself off
+      explains_heat_output?: true;    // `power_w` and `volcanism.endogenic_power_w` are one measurement, not two — show one row (see below)
+      note?: string;
+    };
+    magnetism?: {                     // 15 bodies, including the Sun and the four giants, which have no other activity entry
+      kind: "dynamo" | "induced" | "remanent" | "none";
+                                      // "induced" is eddy currents in a conductive shell answering the field it sits in — evidence about an ocean, not about a core
+      dipole_moment_a_m2?: Measurement; // of the equivalent centred dipole. The one figure that compares across bodies; arithmetic on the published surface field where a source gives only that
+      surface_field_t?: Measurement;  // at the surface on the magnetic equator. `range` is the spread over the real surface where the field is far from a dipole — Uranus runs 0.1 to 1.1 G depending where you stand
+      dipole_tilt_deg?: Measurement;  // between the dipole and rotation axes. What separates Saturn from Uranus, and the hardest thing for dynamo models to make
+      dipole_offset_radii?: Measurement; // displacement of the equivalent dipole from the body's centre, in body radii
+      dynamo_ended_years?: Measurement; // years before present, for the bodies carrying only remanence now
+      note?: string;
+    };
+    sources: Array<{ title: string; url: string; note?: string }>; // works the values are read off, deduped, volcanic-status source first
+  };
   rings?: RingBlock[];                // ring render bundles, inner → outer — same blocks as `rings` in systems/{bary}.json (see rings.md)
   ring_features?: Record<string, {    // named rings, divisions, gaps, ringlets and arcs — the eight ringed bodies only (see below)
     // Keyed by slug ("cassini-division"), the same key the localized bundle
@@ -563,6 +616,66 @@ megabytes of bundle for two names that never vary. Always `"ssodnet"`, plus
 albedo cut resolved an X into an E or an M. The frontend resolves both from
 `$lib/credits/taxonomy-sources`, and the credits page lists them under object
 metadata rather than in `interior_references`.
+
+### `activity`
+
+Four tables from `data/src/space_map_data/constants/activity/` in one block,
+because they are four views of one question: is there heat left inside, and does
+it reach the surface. Volcanism and tectonics are what the heat builds, tidal
+heating is where it comes from on the small worlds, and a dynamo is the same
+heat leaving a core by convection. Io has all four entries for one reason;
+Callisto has one for the same reason.
+
+**The shape is deliberately lopsided, and a consumer should plan for it.** The
+categorical fields are complete — every body has a volcanic status, a tectonic
+style, a tidal role or a field type — and the numbers are not. Across the 23
+bodies: `surface_field_t` on 11, `dipole_moment_a_m2` on 9, `dipole_tilt_deg`
+on 7, `youngest_activity_years` on 6, `dipole_offset_radii` on 5, and everything
+else on one to three. Earth carries eight measurements, Io seven, Mercury six;
+Europa, Callisto, Mimas, Dione and Charon carry none at all, which is the honest
+state of the literature for them rather than a gap in the transcription. Lead
+with the status and treat every number as optional.
+
+Quantities only Earth can fill are not carried at all — plate count and crustal
+production rate were both dropped for that reason. The block is for comparing
+bodies, and a field with one body in it compares nothing.
+
+Each number is an object rather than a bare float because the qualifier is
+usually the finding. `range` is the width the source published — Venus's surface
+age is 250 Ma to 1 Ga across crater models, not 600 Ma ± an error bar.
+`upper_limit` marks a non-detection's bound, which is all Titan's and Venus's
+magnetic moments have ever been. `modelled` marks a scaling rather than an
+observation of this body: Venus's 120 eruptions a year is Earth's 1980-2021
+record multiplied by a mass ratio, and without the flag it would draw exactly
+like Earth's own catalogue. `as_of` pins a count to the survey that made it —
+"343 hot spots" is a property of the last global map, not of Io.
+
+`explains_heat_output` is the block's one derived field, and it exists to stop
+the same watts being printed twice. On Io and Enceladus the tidal power and the
+endogenic power are one measurement: the observed heat loss *is* taken as the
+production, because on those two the tide dominates everything else by orders of
+magnitude. That identity is the finding, so those bodies should draw one heat
+row saying the tide accounts for all of it, rather than two rows of 105 TW.
+Earth is the counter-case and carries no flag — 3.7 TW of ocean tide against
+47 TW of internal heat is a twelfth of the budget, and the two rows stay apart.
+
+Units are SI throughout, which is not how any of these papers publish: planetary
+magnetism quotes gauss or nT scaled to the body's own radius, and volcanology
+quotes km³ and years. Dipole moments are arithmetic on the published surface
+field and radius, `M = (4π/μ₀)·R³·B_eq`, which adds no assumption and is the
+only form that lets Mercury and Jupiter sit in one column. Ages
+(`youngest_activity_years`, `surface_age_years`, `dynamo_ended_years`) are years
+before present.
+
+`raised_by` and `resonance_with` are object ids, so a panel can name and link
+what raises the tide and what keeps the eccentricity from damping away. Every
+`note` is a key into a vocabulary the frontend holds the sentence for, the same
+contract the interior and atmosphere notes use; nothing renders them yet, and
+they ship as provenance metadata in the meantime.
+
+`sources` is the works behind what the block shows, deduped, the volcanic
+status's first because that is the line a panel opens with. The full
+bibliography is in `credits.json` as `activity_references`.
 
 ### `ring_features`
 

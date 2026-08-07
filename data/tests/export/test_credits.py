@@ -1,5 +1,6 @@
-"""The credits bibliography — one row per work across the four lists."""
+"""The credits bibliography — one row per work across the five lists."""
 
+from space_map_data.constants.activity.references import ACTIVITY_SOURCES
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.rings.references import RING_REFERENCES
 from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
@@ -14,6 +15,7 @@ def _sections() -> dict[str, list[dict]]:
     return {
         "atmosphere": _atmosphere_references(),
         "ring": [r._asdict() for r in RING_REFERENCES],
+        "activity": [r._asdict() for r in ACTIVITY_SOURCES.values()],
         "interior": [r._asdict() for r in INTERIOR_SOURCES.values()],
         "temperature": [r._asdict() for r in TEMPERATURE_SOURCES.values()],
     }

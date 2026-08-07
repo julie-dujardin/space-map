@@ -20,11 +20,13 @@ from space_map_data.constants.activity.schema import (
 )
 from space_map_data.constants.activity.tidal import TIDAL_HEATING
 from space_map_data.constants.activity.volcanism import GEOLOGIC_ACTIVITY
+from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.utils.paths import SOURCES_DIR
 
 ACTIVITY_IDS = sorted(GEOLOGIC_ACTIVITY)
 TIDAL_IDS = sorted(TIDAL_HEATING)
 FIELD_IDS = sorted(MAGNETIC_FIELDS)
+ALL_IDS = sorted(set(ACTIVITY_IDS) | set(TIDAL_IDS) | set(FIELD_IDS))
 
 
 def _measurements(entry: BodyActivity | TidalHeating | MagneticField):
@@ -122,6 +124,21 @@ class TestMeasurements:
 
 class TestCrossTable:
     """The three tables describe the same bodies and have to agree."""
+
+    @pytest.mark.parametrize("object_id", ALL_IDS)
+    def test_a_body_is_spelled_the_way_the_rest_of_the_constants_spell_it(
+        self, object_id: str
+    ):
+        """An id nothing else uses is a body nothing will ever match.
+
+        Vesta is the case: NAIF numbers it 2000004, but the export carries it
+        under its SBDB id, so `naif-2000004` cost it its whole block and did so
+        silently — every citation checked out, every enum was valid, and no
+        object ever asked for it. `interior/bodies.py` covers all 23 of these
+        bodies today; if a future one has activity and no layer model, widen
+        this rather than dropping it.
+        """
+        assert object_id in INTERIOR_FACTS
 
     @pytest.mark.parametrize("object_id", TIDAL_IDS)
     def test_a_tide_names_a_body_that_raises_it(self, object_id: str):

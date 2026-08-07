@@ -125,10 +125,8 @@ class Volcanism(NamedTuple):
     # of a vent that changed shape *and* flows that appeared elsewhere, Europa
     # is `suspected` on four separate techniques that mostly disagree.
     status_sources: tuple[str, ...]
-    # Vents, edifices or thermal sources currently erupting or emitting. What
-    # counts as one differs by body and is the survey's definition, not ours.
-    active_centres: Measurement | None = None
-    # The catalogue behind the count above: everything mapped that could erupt.
+    # Vents, edifices or thermal sources anyone has mapped. What counts as one
+    # differs by body and is the survey's definition, not ours.
     known_centres: Measurement | None = None
     eruptions_per_year: Measurement | None = None
     erupted_volume_km3_per_year: Measurement | None = None
@@ -155,11 +153,6 @@ class Tectonics(NamedTuple):
     style: str
     status: str
     sources: tuple[str, ...]
-    plates: Measurement | None = None
-    # Area of new lithosphere made per year, which on Earth equals the area
-    # destroyed. The one quantity that says a surface is being recycled rather
-    # than merely deformed.
-    crust_production_km2_per_year: Measurement | None = None
     # How much the planet's radius has shrunk as its core cooled, in km. The
     # measure of a contractional lid, read off the shortening in its faults.
     radial_contraction_km: Measurement | None = None
@@ -211,9 +204,6 @@ class MagneticField(NamedTuple):
     # radii. Mercury's 0.2 north and Neptune's 0.48 are both large enough to
     # dominate what the magnetosphere looks like.
     dipole_offset_radii: Measurement | None = None
-    # Distance to the sub-solar magnetopause, in body radii — how far the field
-    # holds the solar wind off.
-    magnetopause_radii: Measurement | None = None
     # When the dynamo stopped, in years before present, for the bodies that
     # carry only remanence now.
     dynamo_ended_years: Measurement | None = None

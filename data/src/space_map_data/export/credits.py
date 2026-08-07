@@ -11,6 +11,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.activity.references import ACTIVITY_SOURCES
 from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.atmosphere.references import (
@@ -193,11 +194,11 @@ def _atmosphere_references() -> list[dict]:
 # bibliography without the NSSDCA fact sheets would read as an omission, while
 # the atmosphere list sheds six of a hundred and twenty-five and still holds
 # every other work behind the same numbers.
-_REFERENCE_SECTIONS = ("ring", "temperature", "interior", "atmosphere")
+_REFERENCE_SECTIONS = ("ring", "temperature", "activity", "interior", "atmosphere")
 
 
 def _merge_references(sections: dict[str, list[dict]]) -> dict[str, list[dict]]:
-    """Collapse the bibliography to one row per work, across all four lists.
+    """Collapse the bibliography to one row per work, across all five lists.
 
     The lists are curated per constants package, so a work that measured two
     things lands in two of them — Huygens' descent gave Titan's surface
@@ -508,6 +509,9 @@ def write_credits(
             "atmosphere": _atmosphere_references(),
             # The works behind the tables the ring profiles are read off.
             "ring": [r._asdict() for r in RING_REFERENCES],
+            # Volcanism, tectonics, tidal heating and planetary magnetism —
+            # what the bodies are still doing rather than what they are.
+            "activity": [_bibliography_row(r) for r in ACTIVITY_SOURCES.values()],
             # The gravity, seismic and meteorite work behind the interior
             # layer models and the taxonomic-class estimates.
             "interior": [_bibliography_row(r) for r in INTERIOR_SOURCES.values()],
@@ -523,6 +527,7 @@ def write_credits(
         "ring_references": references["ring"],
         "temperature_references": references["temperature"],
         "interior_references": references["interior"],
+        "activity_references": references["activity"],
     }
     if models_out:
         payload["models"] = models_out

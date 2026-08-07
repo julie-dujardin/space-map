@@ -47,6 +47,7 @@ interface Credits {
   ring_references: Array<Reference>;        // works behind the ring profiles
   temperature_references: Array<Reference>; // measured temperatures + core estimates
   interior_references: Array<Reference>;    // gravity/seismic/meteorite work behind the interior blocks
+  activity_references: Array<Reference>;    // volcanism, tectonics, tidal heating and planetary magnetism
   models?: Array<{               // 3D-model source catalogs (one entry per catalog with ≥ 1 bundle)
     name: string;                // "NASA-3D-Resources", "ESA SciFleet"
     url: string;                 // user-facing catalog landing page
@@ -84,19 +85,20 @@ unresolved or restrictive enough to need manual review, so absence means
 row per work numbers are actually taken from, English-only like the rest of
 this payload).
 
-`ring_references`, `temperature_references` and `interior_references` are the
-same shape, one per constants package under `data/src/space_map_data/constants/`.
-Each per-body panel credits only the works its own numbers come from; these
-lists are the whole bibliography in one place, for the credits page.
+`ring_references`, `temperature_references`, `activity_references` and
+`interior_references` are the same shape, one per constants package under
+`data/src/space_map_data/constants/`. Each per-body panel credits only the works
+its own numbers come from; these lists are the whole bibliography in one place,
+for the credits page.
 
-The four lists are deduplicated against each other by `url`, shortest list
-first (`ring` → `temperature` → `interior` → `atmosphere`), so a shared work
-stays in the list that would notice losing it. A work cited by two packages —
-Huygens' descent measured Titan's surface pressure and its temperature, the
-NSSDCA sheets back nearly everything — appears once, with the other list's
-`contribution` appended after a semicolon. So a list is not an exhaustive
-index of its topic: to find every work behind one topic, read the
-`contribution` strings across all four.
+The five lists are deduplicated against each other by `url`, shortest list first
+(`ring` → `temperature` → `activity` → `interior` → `atmosphere`), so a shared
+work stays in the list that would notice losing it. A work cited by two packages
+— Huygens' descent measured Titan's surface pressure and its temperature, Juno's
+Love number for Io constrains both its interior and the tide that heats it —
+appears once, with the other list's `contribution` appended after a semicolon.
+So a list is not an exhaustive index of its topic: to find every work behind one
+topic, read the `contribution` strings across all five.
 
 `interior_references` is interior work only. SsODNet and Mahlke, which supply
 and define the spectral classes the estimate route reads, are not shipped

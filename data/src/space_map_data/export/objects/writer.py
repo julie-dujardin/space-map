@@ -39,6 +39,7 @@ from space_map_data.export.objects.celestrak import (
     covered_authoritative_qids,
     merge_operator_qids,
 )
+from space_map_data.export.objects.activity import activity_block
 from space_map_data.export.objects.atmosphere import atmosphere_block
 from space_map_data.export.objects.interior import interior_block
 from space_map_data.export.objects.rings import (
@@ -649,6 +650,12 @@ def _build_global(
     interior = interior_block(obj.id, taxonomy)
     if interior is not None:
         data["interior"] = interior
+
+    # What the interior is still doing about it — volcanism, tectonics, the
+    # tide that supplies the heat, and the field a convecting core makes.
+    activity = activity_block(obj.id)
+    if activity is not None:
+        data["activity"] = activity
 
     # Named rings, gaps and ringlets: what the ring system *is*, next to the
     # render bundles in systems/{bary}.json that say what it looks like.

@@ -93,21 +93,18 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             note="regime_debated",
         ),
     ),
-    # Earth. Every count is the Smithsonian's catalogue rather than a physical
-    # constant, so each carries the version it was read at. Three of them are
+    # Earth. Both counts are the Smithsonian's catalogue rather than physical
+    # constants, so each carries the version it was read at, and both are
     # rederived from the downloaded eruption record by `download/providers/
     # gvp.py` and checked against it by the constants test — 1,196 Holocene
-    # volcanoes and 79.2 eruptions in an average year over 2010-2024. The
-    # fourth, 46 in continuing eruption, is GVP's own live judgement and cannot
-    # be recomputed from a row; about twenty are actually erupting on any given
-    # day. The 47 TW is the whole planet's heat loss, of which volcanism
-    # carries only a fraction — most of it conducts out through the sea floor.
+    # volcanoes and 79.2 eruptions in an average year over 2010-2024. The 47 TW
+    # is the whole planet's heat loss, of which volcanism carries only a
+    # fraction — most of it conducts out through the sea floor.
     "naif-399": BodyActivity(
         volcanism=Volcanism(
             kind=SILICATE,
             status="active",
             status_sources=("gvp_votw",),
-            active_centres=Measurement(46.0, "gvp_votw", as_of="v5.3.4, 2025-12-30"),
             known_centres=Measurement(1196.0, "gvp_votw", as_of="WFS, 2026-08-06"),
             eruptions_per_year=Measurement(
                 79.2, "gvp_votw", as_of="mean 2010-2024, WFS 2026-08-06"
@@ -118,15 +115,11 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             heat_flux_w_per_m2=Measurement(0.08, "nimmo_2025"),
         ),
         # The only body in this file whose surface is destroyed as fast as it
-        # is made. 0.108 m² of new lithosphere per second is 3.4 km² a year,
-        # and the same again subducted; the 52 plates are PB2002's count, 14 of
-        # them large and the rest slivers.
+        # is made.
         tectonics=Tectonics(
             style="plate_tectonics",
             status="active",
             sources=("bird_2003",),
-            plates=Measurement(52.0, "bird_2003"),
-            crust_production_km2_per_year=Measurement(3.41, "bird_2003"),
         ),
     ),
     # Moon. Mare volcanism ended around 1 Ga on the usual reading, but seventy
@@ -181,16 +174,19 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
     # entire heat flow — is not accounted for by any resolved volcano, which is
     # the standing puzzle: either a great many sources below the resolution
     # limit, or heat conducting out through the plains.
+    #
+    # The power and the flux are one measurement of Veeder's, and are the same
+    # numbers `tidal.py` carries: on Io the observed loss is taken as the
+    # production. Neither carries the ±12 TW quoted in later work, which is
+    # Davies's restatement rather than an uncertainty Veeder attached.
     "naif-501": BodyActivity(
         volcanism=Volcanism(
             kind=SILICATE,
             status="active",
             status_sources=("davies_2024",),
             known_centres=Measurement(343.0, "davies_2024", as_of="through mid-2023"),
-            endogenic_power_w=Measurement(
-                1.05e14, "veeder_1994", range=(0.93e14, 1.17e14)
-            ),
-            heat_flux_w_per_m2=Measurement(2.5, "nimmo_2025"),
+            endogenic_power_w=Measurement(1.05e14, "veeder_1994"),
+            heat_flux_w_per_m2=Measurement(2.5, "veeder_1994"),
             note="unresolved_heat",
         ),
     ),
@@ -343,7 +339,7 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
     # Vesta's surface, and they crystallised within the first few million years
     # of the solar system. A magma ocean, a crust, and then nothing for 4.5
     # billion years.
-    "naif-2000004": BodyActivity(
+    "spkid-20000004": BodyActivity(
         volcanism=Volcanism(
             kind=SILICATE,
             status="extinct",
