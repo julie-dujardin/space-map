@@ -96,7 +96,11 @@ manifest:
   axis: recent CelesTrak dailies (one snapshot per downloaded day) and the
   historical Space-Track archive distilled to one snapshot per ISO week (the
   week's Monday is the date label; per satellite the TLE nearest the week
-  midpoint is kept). Part counts vary per date, so the manifest ships
+  midpoint is kept). A week is distilled from the `tleYYYY` zip whose year
+  contains its *midpoint*, not its Monday — the zips are cut a few days before
+  Jan 1, so for a week straddling New Year only the midpoint's zip holds the
+  whole week. The newest archived year keeps its own trailing week, having no
+  successor zip. Part counts vary per date, so the manifest ships
   `parts_by_date` (see Manifest shapes). Path:
   `position/earth/{YYYY-MM-DD}/{part}.bin.gz`. SGP4 accuracy degrades fast
   past the TLE epoch, so each snapshot's header `start_jd`/`end_jd` bounds it

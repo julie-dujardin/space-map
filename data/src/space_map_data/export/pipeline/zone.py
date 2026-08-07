@@ -16,6 +16,7 @@ from space_map_data.export.position import CHUNK_SIZE, write_chunk
 from space_map_data.export.position.elements import sidecar
 from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
 from space_map_data.export.position.elements.spacetrack_source import (
+    ARCHIVE_WEEK_VERSION,
     archive_source_groups,
     archive_zip_fingerprints,
     load_archive_weeks,
@@ -323,6 +324,7 @@ def _archive_group_signature(years: list[int]) -> dict:
     return {
         "format_version": sidecar.FORMAT_VERSION,
         "binary_version": BINARY_VERSION,
+        "week_version": ARCHIVE_WEEK_VERSION,
         "archive_years": years,
         "archive_inputs": archive_zip_fingerprints(years),
     }

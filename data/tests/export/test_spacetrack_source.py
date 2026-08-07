@@ -8,19 +8,21 @@ import pytest
 from space_map_data.export.position.elements import spacetrack_source
 from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
 from space_map_data.export.position.elements.spacetrack_source import (
+    _archive_member,
     _decode_exp,
     _scan_source_norads,
     _source_zips_for,
     _week_of,
     archive_norad_set,
     archive_source_groups,
+    load_archive_weeks,
     parse_tle_pair,
 )
 
 
-def _make_tle_zip(path: Path, lines: list[str]) -> None:
+def _make_tle_zip(path: Path, lines: list[str], member: str = "tle.txt") -> None:
     with zipfile.ZipFile(path, "w") as zf:
-        zf.writestr("tle.txt", "\n".join(lines) + "\n")
+        zf.writestr(member, "\n".join(lines) + "\n")
 
 
 def _parse(line1: str, line2: str) -> tuple[int, float, CelesTrakElements]:
@@ -97,23 +99,118 @@ class TestParseTlePair:
 
 
 class TestWeekOf:
-    """Epoch → (Monday ISO label, week-midpoint JD)."""
+    """Epoch → (Monday ISO label, week-midpoint JD, owner year)."""
 
     def test_monday_label_and_midpoint(self):
         # 2024-01-01 is itself a Monday; an epoch that day labels that week.
         _, epoch_jd, _ = _parse(TestParseTlePair.ISS_L1, TestParseTlePair.ISS_L2)
-        monday, midpoint_jd = _week_of(epoch_jd)
+        monday, midpoint_jd, owner_year = _week_of(epoch_jd)
         assert monday == "2024-01-01"
         # Midpoint is Monday 00:00 UTC + 3.5 days.
         assert midpoint_jd - epoch_jd == pytest.approx(3.5 - 0.01267188, abs=1e-4)
+        assert owner_year == 2024
 
     def test_epoch_late_in_year_buckets_into_prior_iso_week(self):
         # 2023-12-31 falls in the ISO week starting Mon 2023-12-25.
         l1 = "1 00005U 58002B   23365.57064688  .00000316  00000-0  43126-3 0  9991"
         l2 = "2 00005  34.2390 206.9464 1841775  48.1863 326.2040 10.85148002345600"
         _, epoch_jd, _ = _parse(l1, l2)
-        monday, _ = _week_of(epoch_jd)
+        monday, _, owner_year = _week_of(epoch_jd)
         assert monday == "2023-12-25"
+        # Midpoint (Thu 2023-12-28) is still in 2023, so the week is 2023's.
+        assert owner_year == 2023
+
+    def test_boundary_week_is_owned_by_the_midpoint_year(self):
+        # Mon 2012-12-31's week runs into January; its midpoint (Thu 2013-01-03)
+        # decides the owner, so both a Dec-31 and a Jan-3 epoch resolve to 2013.
+        for epoch in ("12366.50000000", "13003.50000000"):
+            _, epoch_jd, _ = _parse(*_pair(5, epoch))
+            monday, _, owner_year = _week_of(epoch_jd)
+            assert monday == "2012-12-31"
+            assert owner_year == 2013
+
+
+class TestArchiveMember:
+    """Pick the TLE text member by shape, never by position in the zip."""
+
+    def test_skips_appledouble_entries(self, tmp_path):
+        zip_path = tmp_path / "tle.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            # Upstream macOS repacks put these ahead of the payload.
+            zf.writestr("__MACOSX/._tle2015.txt", "junk")
+            zf.writestr("tle2015.txt", "\n".join(_pair(5)) + "\n")
+        with zipfile.ZipFile(zip_path) as zf:
+            assert _archive_member(zf, zip_path) == "tle2015.txt"
+
+    def test_finds_nested_member(self, tmp_path):
+        # tle2025.txt.zip stores its payload under data/exports/, not at the root.
+        zip_path = tmp_path / "tle.zip"
+        _make_tle_zip(zip_path, _pair(5), member="data/exports/tle2025.txt")
+        with zipfile.ZipFile(zip_path) as zf:
+            assert _archive_member(zf, zip_path) == "data/exports/tle2025.txt"
+
+    def test_raises_when_no_text_member(self, tmp_path):
+        zip_path = tmp_path / "tle.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("readme.md", "nothing here")
+        with zipfile.ZipFile(zip_path) as zf:
+            with pytest.raises(ValueError, match="No TLE text member"):
+                _archive_member(zf, zip_path)
+
+
+class TestBoundaryWeekOwnership:
+    """A week straddling New Year is built from the zip holding its midpoint.
+
+    Each ``tleYYYY`` zip runs from a few days before Jan 1 through Dec 31, so
+    the midpoint year's zip holds the whole boundary week while the Monday
+    year's holds only its December fragment.
+    """
+
+    def _zip_with_boundary_week(self, tmp_path, monkeypatch):
+        zip_path = tmp_path / "tle.zip"
+        # Mon 2012-12-31's week: a Dec-31 epoch, a Jan-3 epoch nearer the
+        # midpoint, and an unrelated mid-2013 week to prove the year still works.
+        _make_tle_zip(
+            zip_path,
+            _pair(5, "12366.50000000")
+            + _pair(5, "13003.50000000")
+            + _pair(6, "13180.50000000"),
+        )
+        monkeypatch.setattr(spacetrack_source, "year_zips", lambda year: [zip_path])
+        return zip_path
+
+    def test_week_lands_in_the_midpoint_year(self, tmp_path, monkeypatch):
+        self._zip_with_boundary_week(tmp_path, monkeypatch)
+        weeks = load_archive_weeks([2013])
+        assert "2012-12-31" in weeks
+        # The Jan-3 epoch is nearest the Thu-noon midpoint, so it wins.
+        assert weeks["2012-12-31"][5]["epoch_jd"] == pytest.approx(2456296.0, abs=0.1)
+
+    def test_monday_year_does_not_claim_the_week(self, tmp_path, monkeypatch):
+        self._zip_with_boundary_week(tmp_path, monkeypatch)
+        # Owning by Monday would emit a partial "2012-12-31" here, built from
+        # December's fragment alone — exactly the week the fix rebuilds.
+        assert "2012-12-31" not in load_archive_weeks([2012])
+
+    def test_newest_year_keeps_its_own_trailing_week(self, tmp_path, monkeypatch):
+        zip_path = tmp_path / "tle.zip"
+        # Mon 2013-12-30's midpoint (Thu 2014-01-02) is in 2014, but with no
+        # 2014 zip to claim it the week would vanish off the end of the archive.
+        _make_tle_zip(zip_path, _pair(5, "13364.50000000"))
+        monkeypatch.setattr(
+            spacetrack_source,
+            "year_zips",
+            lambda year: [zip_path] if year == 2013 else [],
+        )
+        assert "2013-12-30" in load_archive_weeks([2013])
+        assert _scan_source_norads([zip_path], [2013]) == {5}
+
+    def test_scan_norads_agrees_with_the_distilled_weeks(self, tmp_path, monkeypatch):
+        zip_path = self._zip_with_boundary_week(tmp_path, monkeypatch)
+        # has_position must follow the same ownership rule, or a satellite that
+        # only ships in a boundary week is marked absent from the archive.
+        assert _scan_source_norads([zip_path], [2013]) == {5, 6}
+        assert _scan_source_norads([zip_path], [2012]) == set()
 
 
 # A known-good TLE pair (ISS) with the catalog number + epoch swapped in, so

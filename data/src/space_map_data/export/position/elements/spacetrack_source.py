@@ -38,7 +38,12 @@ ARCHIVE_NORAD_CACHE = DERIVED_POSITION_DIR / "spacetrack" / "archive_norads.json
 # cache keys on zip fingerprints, which don't move when only the code changes,
 # so a stale cache would otherwise survive a logic fix and silently feed the
 # old result. A version mismatch forces a full rescan.
-_NORAD_SCAN_VERSION = 2
+_NORAD_SCAN_VERSION = 3
+
+# Same problem one layer up: the export's per-group archive sidecars key on zip
+# fingerprints, so a change to which TLEs land in which week would be skipped as
+# already-built. Bump to force every archive year to re-distil.
+ARCHIVE_WEEK_VERSION = 2
 
 # The 2004 archive is a full historical dump (every TLE issued through end-2004);
 # no per-year zips exist before it, so every year up to and including 2004 reads
@@ -141,12 +146,16 @@ def _jd_to_datetime(jd: float) -> datetime:
     return datetime.fromtimestamp((jd - _JD_UNIX_EPOCH) * 86400.0, tz=timezone.utc)
 
 
-def _week_of(epoch_jd: float) -> tuple[str, float]:
-    """Return the (Monday ``YYYY-MM-DD``, week-midpoint JD) for an epoch.
+def _week_of(epoch_jd: float) -> tuple[str, float, int]:
+    """Return the (Monday ``YYYY-MM-DD``, week-midpoint JD, owner year) for an epoch.
 
     The Monday label is the snapshot's date directory; the midpoint (Monday
-    00:00 UTC + 3.5d) is the reference instant we select the nearest TLE to,
-    minimising the worst-case SGP4 propagation distance within the week.
+    00:00 UTC + 3.5d, i.e. Thursday noon) is the reference instant we select the
+    nearest TLE to, minimising the worst-case SGP4 propagation distance within
+    the week.
+
+    The owner year is the *midpoint's* calendar year, which is what decides
+    which archive year a week is built from — see :func:`load_archive_weeks`.
     """
     dt = _jd_to_datetime(epoch_jd)
     monday = dt.date() - timedelta(days=dt.weekday())
@@ -154,7 +163,7 @@ def _week_of(epoch_jd: float) -> tuple[str, float]:
         monday.year, monday.month, monday.day, tzinfo=timezone.utc
     )
     monday_jd = monday_midnight.timestamp() / 86400.0 + _JD_UNIX_EPOCH
-    return monday.isoformat(), monday_jd + 3.5
+    return monday.isoformat(), monday_jd + 3.5, (monday + timedelta(days=3)).year
 
 
 def year_zips(year: int) -> list[Path]:
@@ -192,6 +201,19 @@ def archive_source_groups(years: Iterable[int]) -> list[tuple[str, list[int]]]:
     return groups
 
 
+def _claim_sets(years: Iterable[int]) -> tuple[set[int], set[int]]:
+    """``(owned, tail)`` year sets implementing the week-ownership rule.
+
+    ``owned`` is the group's own years: a week whose midpoint falls in one of
+    them is built here. ``tail`` is the subset with no successor zip — the
+    newest archive year, whose late-December week has no later zip to claim it,
+    so it keeps that week from its own December fragment rather than losing it
+    off the end of the archive.
+    """
+    owned = set(years)
+    return owned, {y for y in owned if not _source_zips_for(y + 1)}
+
+
 def _zip_fingerprint(zip_path: Path) -> dict:
     """One archive zip as ``{name, mtime_ns, size}`` for sidecar/zone signatures."""
     st = zip_path.stat()
@@ -223,20 +245,42 @@ def archive_zip_fingerprints(years: Iterable[int]) -> list[dict]:
 def week_zip_fingerprints(date_iso: str) -> list[dict]:
     """Fingerprint the archive zip(s) that can feed the week labelled ``date_iso``.
 
-    A Monday-anchored week spans into the next ISO year at boundaries, so both
-    the Monday's and Sunday's calendar-year zips are included — a change to
-    either invalidates the week's part sidecar.
+    A Monday-anchored week spans into the next calendar year at boundaries.
+    :func:`load_archive_weeks` builds such a week from the midpoint year's zip
+    alone, but both the Monday's and the Sunday's year are fingerprinted: a
+    superset only ever invalidates the week's part sidecar more eagerly than
+    needed, and it stays correct if the archive's cut points ever move.
     """
     monday = datetime.fromisoformat(date_iso).date()
     sunday = monday + timedelta(days=6)
     return _dedup_fingerprints({monday.year, sunday.year})
 
 
+def _archive_member(zf: zipfile.ZipFile, zip_path: Path) -> str:
+    """The TLE text member of an archive zip.
+
+    Upstream repacks vary the layout — macOS AppleDouble entries (``__MACOSX/``,
+    ``._name``) and a nested ``data/exports/`` prefix both occur — so select by
+    extension and size. Taking the first entry would silently read junk, or
+    nothing, for a whole year.
+    """
+    members = [
+        info
+        for info in zf.infolist()
+        if not info.is_dir()
+        and info.filename.endswith(".txt")
+        and not info.filename.rpartition("/")[2].startswith("._")
+    ]
+    if not members:
+        raise ValueError(f"No TLE text member in {zip_path.name}: {zf.namelist()!r}")
+    return max(members, key=lambda info: info.file_size).filename
+
+
 def _iter_zip_tles(zip_path: Path) -> Iterator[tuple[int, float, CelesTrakElements]]:
     """Stream parsed TLE pairs from one archive zip (member not extracted)."""
     parsed = skipped = 0
     with zipfile.ZipFile(zip_path) as zf:
-        member = zf.namelist()[0]
+        member = _archive_member(zf, zip_path)
         with zf.open(member) as raw:
             prev: str | None = None
             for bline in raw:
@@ -253,10 +297,12 @@ def _iter_zip_tles(zip_path: Path) -> Iterator[tuple[int, float, CelesTrakElemen
                         yield pair
                 else:
                     prev = None
-    logger.info(
-        "Parsed %d TLE pairs from %s (%d malformed pairs skipped)",
+    log = logger.warning if parsed == 0 else logger.info
+    log(
+        "Parsed %d TLE pairs from %s member %s (%d malformed pairs skipped)",
         parsed,
         zip_path.name,
+        member,
         skipped,
     )
 
@@ -268,11 +314,20 @@ def load_archive_weeks(
 
     Buckets every TLE by its epoch's ISO week and keeps, per satellite, the one
     whose epoch is nearest the week midpoint. Outer keys sort oldest-first.
-    Bucketing is by epoch (not the zip's filename year), so a zip's year-boundary
-    spillover lands in the correct week.
+
+    A week is owned by the calendar year of its *midpoint*, not of its Monday.
+    The two differ only for a week starting in late December, and the midpoint
+    is what matches how the archive is cut: each ``tleYYYY`` zip runs from a few
+    days before Jan 1 through Dec 31, so the zip holding a boundary week's
+    midpoint also holds the whole week. Owning by Monday instead would build
+    such a week from December's fragment alone and discard its January half —
+    which is the side the midpoint sits on.
+
+    The newest archive year is the exception: nothing succeeds it, so it keeps
+    its own trailing week rather than letting it fall off the end.
     """
     years = list(years)
-    years_set = set(years)
+    owned, tail = _claim_sets(years)
     # Monday → NORAD → (distance-to-midpoint, elements).
     best: dict[str, dict[int, tuple[float, CelesTrakElements]]] = {}
     # Stream each physical zip once. Pre-2004 years all resolve to the 2004
@@ -288,11 +343,11 @@ def load_archive_weeks(
         logger.warning("No archive zips for years %r under %s", years, ARCHIVE_DIR)
     for zip_path in sources:
         for norad, epoch_jd, elements in _iter_zip_tles(zip_path):
-            monday, midpoint_jd = _week_of(epoch_jd)
-            # Drop weeks anchored outside the requested years — a zip's
-            # year-boundary spillover would otherwise emit sparse partial
-            # weeks. They fill in once the adjacent year is included.
-            if int(monday[:4]) not in years_set:
+            monday, midpoint_jd, owner_year = _week_of(epoch_jd)
+            # Drop weeks owned by another year — a zip carries a tail of the
+            # neighbouring years, which would otherwise emit sparse partial
+            # weeks. They fill in once their owning year is included.
+            if owner_year not in owned and int(monday[:4]) not in tail:
                 continue
             dist = abs(epoch_jd - midpoint_jd)
             week = best.setdefault(monday, {})
@@ -320,12 +375,12 @@ def _scan_source_norads(zips: list[Path], out_years: Iterable[int]) -> set[int]:
     week — is correctly excluded. Streams the source once for the whole group,
     so the shared mega-dump isn't re-read per year.
     """
-    out_set = set(out_years)
+    owned, tail = _claim_sets(out_years)
     norads: set[int] = set()
     for zp in zips:
         for norad, epoch_jd, _elements in _iter_zip_tles(zp):
-            monday, _ = _week_of(epoch_jd)
-            if int(monday[:4]) in out_set:
+            monday, _midpoint_jd, owner_year = _week_of(epoch_jd)
+            if owner_year in owned or int(monday[:4]) in tail:
                 norads.add(norad)
     return norads
 
