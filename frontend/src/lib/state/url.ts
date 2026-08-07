@@ -235,11 +235,14 @@ export function applyFocus(
 }
 
 /** Next view when switching drawer tabs. Depth reached inside a tab (member
- *  page, quadrangle, ring drill) belongs to the tab being left, so it clears. */
+ *  page, quadrangle, ring drill, open picture) belongs to the tab being left,
+ *  so it clears. The viewer indexes into a shelf that is about to close, so
+ *  leaving it open would re-point it at whatever shelf leads instead. */
 export function applyTab(current: MapViewState, tab: DrawerTab): MapViewState {
 	return {
 		...current,
 		tab: tab === 'overview' ? null : tab,
+		imageIndex: null,
 		gallery: null,
 		memberPage: null,
 		quad: null,

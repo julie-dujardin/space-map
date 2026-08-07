@@ -121,6 +121,8 @@ export class AppState {
 			groupSlug: null,
 			featureId: null,
 			name: '',
+			imageIndex: null,
+			gallery: null,
 			tab: null,
 			memberPage: null,
 			quad: null,
@@ -143,6 +145,8 @@ export class AppState {
 			type: UrlType.Body,
 			name: bodyName,
 			featureId: null,
+			imageIndex: null,
+			gallery: null,
 			tab: null,
 			memberPage: null,
 			quad: null,
@@ -165,12 +169,17 @@ export class AppState {
 	}
 
 	/** Switch tabs (replaceState — no history spam). Resets the depth reached
-	 *  inside a tab — member page, open gallery — so a manual switch lands at
-	 *  the top, including a switch to the tab already showing. Pass 'overview'
-	 *  to clear. */
+	 *  inside a tab — member page, open gallery, open picture — so a manual
+	 *  switch lands at the top, including a switch to the tab already showing.
+	 *  Pass 'overview' to clear. */
 	setTab(tab: DrawerTab) {
 		const next = tab === 'overview' ? null : tab;
-		if (next === this.view.tab && this.view.memberPage === null && this.view.gallery === null) {
+		if (
+			next === this.view.tab &&
+			this.view.memberPage === null &&
+			this.view.gallery === null &&
+			this.view.imageIndex === null
+		) {
 			return;
 		}
 		this.view = applyTab(this.view, tab);

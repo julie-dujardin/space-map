@@ -66,11 +66,14 @@
 	onDestroy(() => {
 		// destroy() (not close()) so an unmount-mid-viewer (focus change to
 		// another object, navigation away) doesn't leave a hide-animation
-		// playing in detached DOM.
+		// playing in detached DOM. Null the ref first, as the effect's close
+		// path does: destroy() fires 'close', and the handler would answer a
+		// navigation that already happened with a pushState of its own.
 		destroyed = true;
 		if (pswp) {
-			pswp.destroy();
+			const inst = pswp;
 			pswp = null;
+			inst.destroy();
 		}
 	});
 

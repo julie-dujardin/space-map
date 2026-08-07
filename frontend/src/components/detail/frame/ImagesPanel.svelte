@@ -1,8 +1,8 @@
 <script lang="ts">
-	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 	import { imageTitle, type Gallery, type ShelfLink } from '$lib/fetch/objects/galleries';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
 	import { isModifiedClick } from '$lib/state/focus-link';
+	import CrossRefCard from '../sections/crossref/CrossRefCard.svelte';
 	import ImageGallery from './ImageGallery.svelte';
 	import ImageRail from './ImageRail.svelte';
 
@@ -44,14 +44,20 @@
 <div class="flex flex-col gap-4 p-1">
 	{#if open}
 		{#if link}
-			<a
-				href={link.href}
-				onclick={follow}
-				class="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex w-fit items-center gap-1 rounded-sm px-1 text-xs focus-visible:ring-2 focus-visible:outline-none"
-			>
-				{link.label}
-				<ArrowRightIcon class="size-3 rtl:rotate-180" />
-			</a>
+			<!-- Half width, in the drawer's cross-reference language: where this
+			     shelf's subject is covered in full is a sideways step off the
+			     gallery, not a heading over it. -->
+			<div class="grid grid-cols-2">
+				<CrossRefCard
+					href={link.href}
+					onclick={follow}
+					title={link.label}
+					display={link.label}
+					label={link.kind}
+					hero={link.hero}
+					background={link.background}
+				/>
+			</div>
 		{/if}
 		<ImageGallery images={open.images} gallery={open.key} {alt} {label} />
 	{:else}

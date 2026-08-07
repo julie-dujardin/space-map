@@ -26,6 +26,7 @@
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
+	import { pickImageUrl } from '$lib/fetch/objects/images';
 	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import {
 		fetchBodyQuadrangles,
@@ -35,7 +36,8 @@
 	} from '$lib/fetch/nomenclature/quadrangles';
 	import SurfaceHero from './sections/SurfaceHero.svelte';
 	import RingCatalog from './sections/RingCatalog.svelte';
-	import RingHero from './sections/RingHero.svelte';
+	import GalleryHero from './sections/GalleryHero.svelte';
+	import RingStripBar from './charts/RingStripBar.svelte';
 	import FeatureTypeFilter from './sections/FeatureTypeFilter.svelte';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
 	import {
@@ -61,10 +63,12 @@
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImagesPanel from './frame/ImagesPanel.svelte';
 	import {
+		ATMOSPHERE_GALLERY,
 		buildGalleries,
 		findGallery,
 		imageCount,
 		MAIN_GALLERY,
+		RINGS_GALLERY,
 		type Gallery,
 		type ShelfLink
 	} from '$lib/fetch/objects/galleries';
@@ -602,6 +606,12 @@
 			(!!data?.global?.interior?.layers?.length || !!data?.global?.atmosphere?.structure)
 	);
 
+	// The Structure tab's hero: the atmosphere shelf, since what a cross-section
+	// abstracts is exactly what those pictures show — the cloud decks and storms
+	// the profile below is a plot of. The interior has no such picture (its
+	// articles illustrate with the same cutaway the tab already draws).
+	let atmosphereGallery = $derived(findGallery(galleries, ATMOSPHERE_GALLERY));
+
 	// The Surface tab's hero needs a map texture; the IAU chart grid is a bonus
 	// only Mercury, Venus, Mars and the Moon carry.
 	let showSurfaceHero = $derived(
@@ -747,6 +757,34 @@
 		fragments: m.tab_fragments()
 	});
 
+	/** The body the ring-plane backdrop is drawn from — this page's own. */
+	let ringStripId = $derived(body?.data.id);
+
+	/** This page's own portrait, for a tile leading to another of its tabs. */
+	let pageHero = $derived.by(() => {
+		const image = (isGroupMode ? groupDetail?.global : data?.global)?.images?.[0];
+		return image ? pickImageUrl(image, 300) : undefined;
+	});
+
+	// One promise per member, kept because the link resolves afresh on every
+	// camera nudge (its href is built from the live view) and a new promise
+	// restarts the tile's picture.
+	const subjectHeroes = new Map<string, Promise<string | undefined>>();
+
+	/** A member's portrait for its tile. The bundle fetch is cached, and asking
+	 *  for it warms the page the tile leads to. */
+	function subjectHero(id: string): Promise<string | undefined> {
+		let hero = subjectHeroes.get(id);
+		if (!hero) {
+			hero = fetchObjectDetail(id).then((detail) => {
+				const image = detail.global?.images?.[0];
+				return image ? pickImageUrl(image, 300) : undefined;
+			});
+			subjectHeroes.set(id, hero);
+		}
+		return hero;
+	}
+
 	/** A picture's subject — an Object.id, or an IAU feature id on this body —
 	 *  as a link to it. Features are numbered; objects carry a type prefix. */
 	function subjectLink(subject: string | number): ShelfLink | undefined {
@@ -758,6 +796,7 @@
 			const focus = { bodyId, featureId: subject, featureName: name };
 			return {
 				label: name,
+				kind: displayName,
 				href: appState ? serializeUrl(applyFeature(appState.view, focus)) : undefined,
 				open: () => focusFeature?.(bodyId, subject, name)
 			};
@@ -766,6 +805,8 @@
 		// rather than on the object's overview.
 		return {
 			label: name,
+			kind: m.tab_images(),
+			hero: subjectHero(subject),
 			href: focusHref(appState, subject, name, 'images'),
 			open: () => focusObject?.(subject, name, { moveCamera: false, tab: 'images' })
 		};
@@ -775,8 +816,14 @@
 		if (gallery.subjectId) return subjectLink(gallery.subjectId);
 		const tab = SHELF_TABS[gallery.key];
 		if (!tab || !tabPresent[tab]) return undefined;
+		// The ring plane the Ring Systems page draws, rather than a photograph:
+		// every photograph of these rings is already on the shelf underneath.
+		const plane = gallery.key === RINGS_GALLERY && ringStripId ? ringPlaneTile : undefined;
 		return {
 			label: tabLabels[tab] ?? gallery.title,
+			kind: displayName,
+			hero: plane ? undefined : pageHero,
+			background: plane,
 			href: tabHref(appState, tab),
 			open: () => appState.setTab(tab)
 		};
@@ -1091,7 +1138,22 @@
 		<!-- One picture of the system, above the chart that anatomises it. -->
 		{#if ringImages?.length}
 			<div class="px-4 pt-1 pb-3">
-				<RingHero images={ringImages} alt={data?.localized?.ring_system?.name ?? m.tab_rings()} />
+				<GalleryHero
+					images={ringImages}
+					alt={data?.localized?.ring_system?.name ?? m.tab_rings()}
+					gallery={RINGS_GALLERY}
+				/>
+			</div>
+		{/if}
+	{:else if activeTab === 'structure'}
+		<!-- The atmosphere as photographed, above the same atmosphere as a profile. -->
+		{#if atmosphereGallery}
+			<div class="px-4 pt-1 pb-3">
+				<GalleryHero
+					images={atmosphereGallery.images}
+					alt={m.atmosphere()}
+					gallery={ATMOSPHERE_GALLERY}
+				/>
 			</div>
 		{/if}
 	{:else if activeTab === 'members'}
@@ -1112,6 +1174,10 @@
 			</div>
 		{/if}
 	{/if}
+{/snippet}
+
+{#snippet ringPlaneTile()}
+	<RingStripBar bodyId={ringStripId ?? ''} />
 {/snippet}
 
 {#snippet lineupHeroSnippet()}

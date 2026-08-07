@@ -199,6 +199,24 @@ describe('AppState.setTab', () => {
 		expect(replaceStateSpy).not.toHaveBeenCalled();
 	});
 
+	// The "‹ Images" crumb back out of an open shelf: the picture is depth inside
+	// the shelf, so it closes with it rather than re-pointing at another shelf.
+	it('closes an open picture along with its shelf', () => {
+		const s = new AppState({ ...initialView, tab: 'images', gallery: 'rings', imageIndex: 2 });
+		s.setTab('images');
+		expect(s.view.gallery).toBeNull();
+		expect(s.view.imageIndex).toBeNull();
+	});
+
+	// An open viewer is depth the guard has to see, or the link that would close
+	// it does nothing at all and the click has to be repeated.
+	it('is not a no-op when the tab is unchanged but a picture is open', () => {
+		const s = new AppState({ ...initialView, tab: 'images', imageIndex: 0 });
+		s.setTab('images');
+		expect(s.view.imageIndex).toBeNull();
+		expect(replaceStateSpy).toHaveBeenCalledOnce();
+	});
+
 	it('preserves camera and focus', () => {
 		const s = new AppState({ ...initialView, id: 'naif-399', latitude: 12 });
 		s.setTab('members');

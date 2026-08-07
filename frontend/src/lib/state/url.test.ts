@@ -13,7 +13,7 @@ vi.mock('$app/paths', () => ({
 // these tests cover `serializeUrl`, which is pure-ish (only depends on `resolve`).
 vi.mock('$app/state', () => ({ page: { params: {}, url: new URL('http://x/') } }));
 
-import { serializeUrl } from './url';
+import { applyTab, serializeUrl } from './url';
 import type { MapViewState } from './view';
 
 const baseView: MapViewState = {
@@ -227,5 +227,32 @@ describe('serializeUrl', () => {
 		it('omits ring= when the active tab is not rings', () => {
 			expect(serializeUrl({ ...baseView, tab: 'images', ring: 'c-ring' })).not.toContain('ring=');
 		});
+	});
+});
+
+describe('applyTab', () => {
+	it('clears the depth reached inside the tab being left', () => {
+		const next = applyTab(
+			{ ...baseView, tab: 'features', memberPage: 3, quad: 'H-5', featureType: 'AA', ring: 'c' },
+			'members'
+		);
+		expect(next).toMatchObject({
+			tab: 'members',
+			memberPage: null,
+			quad: null,
+			featureType: null,
+			ring: null
+		});
+	});
+
+	// The viewer counts into the open shelf; carried across a tab switch it
+	// silently re-points at whichever shelf leads instead.
+	it('closes an open picture along with its shelf', () => {
+		const next = applyTab(
+			{ ...baseView, tab: 'images', gallery: 'rings', imageIndex: 2 },
+			'images'
+		);
+		expect(next.gallery).toBeNull();
+		expect(next.imageIndex).toBeNull();
 	});
 });

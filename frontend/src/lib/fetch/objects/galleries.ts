@@ -8,6 +8,7 @@
  * renders and the `&gal=` URL indexes into.
  */
 
+import type { Snippet } from 'svelte';
 import * as m from '$lib/paraglide/messages.js';
 import { imageLabel } from './images';
 import type { ImageGalleryData, ObjectImage } from './object-data';
@@ -16,6 +17,8 @@ import type { ImageGalleryData, ObjectImage } from './object-data';
 export const MAIN_GALLERY = 'main';
 /** URL token for the ring-system shelf, linked from the Rings tab. */
 export const RINGS_GALLERY = 'rings';
+/** URL token for the atmosphere shelf, linked from the Structure tab. */
+export const ATMOSPHERE_GALLERY = 'atmosphere';
 
 export interface Gallery {
 	/** Stable URL token: a fixed name, or a member's Object.id. */
@@ -33,10 +36,20 @@ export interface Gallery {
  * gallery components stay unaware of routing.
  */
 export interface ShelfLink {
+	/** Where it lands — what the jump changes. */
 	label: string;
+	/** What the jump keeps: the tab reached on another object's shelf, the
+	 *  object itself on a shelf leading to another of its tabs. */
+	kind: string;
 	/** Absent only when there is no appState to serialize against. */
 	href?: string;
 	open: () => void;
+	/** The destination's own picture, for the tile in the panel. Awaited there;
+	 *  the viewer's caption renders the link as text and ignores it. */
+	hero?: string | Promise<string | undefined>;
+	/** Backdrop drawn instead of any photograph — for a subject whose pictures
+	 *  are the shelf itself, where a portrait would only repeat it. */
+	background?: Snippet;
 }
 
 /**
@@ -63,7 +76,7 @@ export interface GallerySource {
 /** Titles for the shelves the exporter names by kind rather than by subject:
  *  the body's own aspects first, then the shelves about other things. */
 const POOLED_TITLES: Record<string, () => string> = {
-	atmosphere: m.atmosphere,
+	[ATMOSPHERE_GALLERY]: m.atmosphere,
 	interior: m.interior,
 	features: m.features_section,
 	moons: m.moons_section
