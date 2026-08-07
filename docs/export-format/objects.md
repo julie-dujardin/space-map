@@ -119,6 +119,7 @@ interface GlobalObjectData {
       mass_fraction_range?: [number, number]; // the published width, where there is one
       state?: string;                 // "solid" | "liquid" | "partial_melt" | "fluid" | "plasma"; absent where nobody knows
       phase?: string;                 // "ice_i" | "ice_iii" | "ice_v" | "ice_vi" | "ice_vii" — which crystal structure a solid took, where the pressure picks one and the source names it; the high-pressure ice mantles of Ganymede, Callisto and Titan today
+      rock?: string;                  // "basalt" | "andesite" | "anorthosite" | "peridotite" — the name a petrologist gives the whole layer, where the literature has agreed on one; 9 layers on 5 bodies today (Venus, Earth, Mars, Moon, Vesta)
       note?: string;                  // "core_size_disputed", "shell_thickness_modelled", …; provenance metadata, except "continental_crust_only" which renames the layer
       derived?: true;                 // the mass is our arithmetic on the source's radii and densities, not a number it quotes
       diffuse?: true;                 // no boundary to draw: `outer_radius_km` is where it fades out, not where it ends
@@ -579,6 +580,18 @@ and only appears where the pressure picks one and the source names it. "Solid
 water" is true of an icy moon's shell and of the ice mantle 800 km below it, and
 that difference is the whole reason the second layer exists — so a consumer with
 a `phase` should say "ice VI" and drop the state, rather than print both.
+
+`rock` is the third level of composition, above the coarse `material` and the
+`detail` oxide table, and it outranks both for a reader: "solid silicate" is the
+same phrase on Earth's continents, its ocean floor, the lunar highlands and
+Vesta, and those four are not the same rock. Treat it as `phase` is treated —
+where it is present, print it instead of the state-and-material phrase. It is
+absent far more often than not, and the absences are deliberate: Mercury's crust
+has none because the same MESSENGER chemistry is read as komatiite, norite *and*
+boninite by three sets of authors, and the mantles of Mercury, Venus, the Moon
+and Io have none because no source names a rock for them. Cores, ice shells,
+oceans and the giants are outside the vocabulary entirely — `state` and `phase`
+already describe those.
 
 Temperature runs on the boundaries rather than on the shells, because that is
 the form the literature publishes: a geotherm is quoted at the Moho, at 660 km,

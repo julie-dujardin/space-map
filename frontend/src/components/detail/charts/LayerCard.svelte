@@ -12,7 +12,7 @@
 	import type { InteriorBand } from '$lib/charts/interior-cross-section';
 	import type { CompositionEntry } from '$lib/charts/composition-bar';
 	import type { TemperatureBracket } from '$lib/charts/layer-appearance';
-	import { layerName, phaseName, stateName } from '$lib/charts/interior-layers';
+	import { layerName, phaseName, rockName, stateName } from '$lib/charts/interior-layers';
 	import { materialEntries, detailEntries, materialName } from '$lib/charts/interior-materials';
 	import { ucfirst } from '$lib/format/quantities';
 	import { formatPercent } from '$lib/format/quantities';
@@ -57,16 +57,17 @@
 		return [];
 	});
 
-	// What the layer is, in the words the data actually supports: its phase and
-	// its dominant material, then the caveat the source attached. A named
-	// polymorph stands in for both — "ice VI" already says solid water, and
-	// says which of the two solid-water layers this one is.
+	// What the layer is, in the words the data actually supports: the most
+	// specific name it carries, then the depth. A rock or a named polymorph
+	// stands in for the state-and-material phrase rather than joining it —
+	// "basalt" already says solid rock and says which rock, "ice VI" already
+	// says solid water and says which of the two solid-water layers this is.
 	let descriptor = $derived.by(() => {
 		const bits: string[] = [];
 		const material = layer.composition[0];
-		const phase = layer.phase ? phaseName(layer.phase) : null;
-		if (phase) {
-			bits.push(phase);
+		const named = layer.rock ? rockName(layer.rock) : layer.phase ? phaseName(layer.phase) : null;
+		if (named) {
+			bits.push(named);
 		} else if (layer.state && material) {
 			bits.push(`${stateName(layer.state)} ${materialName(material.material)}`);
 		} else if (material) {

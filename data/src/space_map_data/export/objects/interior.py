@@ -36,6 +36,7 @@ from space_map_data.constants.interior.schema import (
     MATERIALS,
     NOTES,
     PHASES,
+    ROCKS,
     STATES,
     STRUCTURES,
     BodyInterior,
@@ -266,6 +267,8 @@ def _layer(object_id: str, layer: Layer) -> dict:
         out["state"] = layer.state
     if layer.phase is not None:
         out["phase"] = layer.phase
+    if layer.rock is not None:
+        out["rock"] = layer.rock
     if layer.note is not None:
         out["note"] = layer.note
     if layer.derived:
@@ -335,6 +338,8 @@ def _layer_source_keys(
             keys.append(layer.state_source)
         if layer.phase_source is not None:
             keys.append(layer.phase_source)
+        if layer.rock_source is not None:
+            keys.append(layer.rock_source)
         keys.extend(layer.temperature_sources)
         in_layer = shown | {c["material"] for c in drawn["composition"]}
         keys.extend(c.source for c in layer.composition if c.material in in_layer)
@@ -449,6 +454,10 @@ def _validate(
             raise ValueError(f"{object_id}: unknown phase {layer.phase}")
         if layer.phase_source is not None and layer.phase is None:
             raise ValueError(f"{object_id}: {layer.role} cites a phase it has not got")
+        if layer.rock is not None and layer.rock not in ROCKS:
+            raise ValueError(f"{object_id}: unknown rock {layer.rock}")
+        if layer.rock_source is not None and layer.rock is None:
+            raise ValueError(f"{object_id}: {layer.role} cites a rock it has not got")
         if layer.detail is not None and layer.detail.unit not in DETAIL_UNITS:
             raise ValueError(f"{object_id}: unknown detail unit {layer.detail.unit}")
         for component in layer.composition:

@@ -1,6 +1,6 @@
 /**
- * Names for the interior cross-section's layers: what a shell is called and
- * what phase it is in.
+ * Names for the interior cross-section's layers: what a shell is called, what
+ * phase it is in, and what rock it is where anyone has named one.
  *
  * The pipeline ships keys and the names live here, the same contract the
  * composition bar's materials use, so the prose stays translatable.
@@ -47,6 +47,13 @@ const ICE_NUMERAL: Record<string, string> = {
 	ice_vii: 'VII'
 };
 
+const ROCK_NAME: Record<string, () => string> = {
+	basalt: m.interior_rock_basalt,
+	andesite: m.interior_rock_andesite,
+	anorthosite: m.interior_rock_anorthosite,
+	peridotite: m.interior_rock_peridotite
+};
+
 /** Notes that name the shell instead of footnoting it: what the numbers are of
  *  is the shell's identity, and Earth's crust card is entirely continental.
  *  Every other layer note is provenance metadata a card already conveys — the
@@ -75,6 +82,17 @@ export function phaseName(phase: string): string | null {
 		return null;
 	}
 	return m.interior_phase_ice({ numeral: ltrIsolate(numeral) });
+}
+
+/** Null for a rock we have no name for, so the caller falls back to the state
+ *  rather than printing a key — the vocabulary grows as the curation does. */
+export function rockName(rock: string): string | null {
+	const fn = ROCK_NAME[rock];
+	if (!fn) {
+		console.warn(`Missing interior rock name: ${rock}`);
+		return null;
+	}
+	return fn();
 }
 
 export function stateName(state: string): string {

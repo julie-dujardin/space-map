@@ -119,6 +119,28 @@ class TestLayers:
         species = [e["species"] for e in crust["detail"]["entries"]]
         assert species[0] == "SiO2"
 
+    def test_a_rock_name_ships_where_the_literature_agrees(self):
+        """Earth's two crusts are the case the field exists for: both are
+        "solid silicate" and neither is the other's rock."""
+        layers = {layer["role"]: layer for layer in block("naif-399")["layers"]}
+        assert layers["crust"]["rock"] == "andesite"
+        assert layers["oceanic_crust"]["rock"] == "basalt"
+
+    def test_a_contested_layer_ships_none(self):
+        """Mercury's crust reads as three different rocks in three papers, and
+        an absent name is the honest one."""
+        crust = next(
+            layer for layer in block("naif-199")["layers"] if layer["role"] == "crust"
+        )
+        assert "rock" not in crust
+
+    def test_a_rock_from_another_paper_is_credited(self):
+        """Mars's crust is 47 km thick because InSight timed a quake and basalt
+        because a gamma-ray spectrometer read its chemistry; the panel names
+        the rock, so it has to name McSween too."""
+        urls = {source["url"] for source in block("naif-499")["sources"]}
+        assert "https://doi.org/10.1126/science.1165871" in urls
+
     def test_a_massless_body_still_has_a_stack(self):
         """The Sun has zone radii but no zone masses, and the cross-section is
         the one thing it can still draw."""

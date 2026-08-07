@@ -771,6 +771,13 @@ export interface InteriorLayer {
 	 *  where the pressure picks one. It supersedes `state`: "solid water" is
 	 *  true of both an ice shell and the ice mantle far below it. */
 	phase?: string;
+	/** "basalt", "andesite", "anorthosite", "peridotite" — the name a
+	 *  petrologist gives the whole layer. It supersedes `state` for the same
+	 *  reason `phase` does: "solid silicate" is true of Earth's continents,
+	 *  its ocean floor and the lunar highlands, which are three rocks. Absent
+	 *  far more often than not, and deliberately so where the literature has
+	 *  not settled on one. */
+	rock?: string;
 	/** "core_size_disputed", "shell_thickness_modelled", … — provenance
 	 *  metadata, except "continental_crust_only" which renames the layer. */
 	note?: string;
