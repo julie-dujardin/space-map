@@ -311,6 +311,7 @@
 	"group_features_per_body": "Features per body",
 	"group_iau_definition": "IAU definition",
 	"group_stat_largest": "Largest",
+	"group_stat_widest": "Widest",
 	"group_stat_pha": "Hazardous",
 	"group_stat_launches": "Launches",
 	"group_stat_success": "Success",

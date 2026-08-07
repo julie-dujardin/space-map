@@ -29,7 +29,15 @@ class GroupExtraStats:
     # Missions: "operating" | "lost" | "ended", from the primary craft.
     mission_status: str | None = None
     # Split-comet families: year the parent comet was first observed.
+    # Ring Systems: the year the earliest system was found (Saturn, 1610).
     discovery_year: int | None = None
+    # Ring Systems: rows in the ring catalogue across every system — the rings
+    # the tiles count plus the gaps, divisions, ringlets, regions and arcs
+    # inside them.
+    ring_feature_count: int | None = None
+    # Ring Systems: the system reaching furthest from its host, as
+    # {primary_type, primary_id, name, span_km}; the card links to its Rings tab.
+    widest_rings: dict | None = None
     # Split-comet families: parent perihelion distance, in AU.
     perihelion_au: float | None = None
 

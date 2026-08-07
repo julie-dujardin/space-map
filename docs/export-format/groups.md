@@ -240,8 +240,15 @@ interface GlobalGroupData {
                                 // cat-debris (distinct fragment sources)
   launch_year?: number;         // mission- (its launch), cat-probes (the first probe launch)
   mission_status?: "operating" | "lost" | "ended";  // mission- — the primary craft's curated status
-  discovery_year?: number;      // comet-family- — earliest first_obs among the fragments
+  discovery_year?: number;      // comet-family- — earliest first_obs among the fragments;
+                                // cat-ring-systems — the year the earliest system was found (1610)
   perihelion_au?: number;       // comet-family- — smallest fragment perihelion (the family's orbit)
+  ring_feature_count?: number;  // cat-ring-systems — rows in the ring catalogue across every
+                                // system: the rings the tiles count plus the gaps, divisions,
+                                // ringlets, regions and arcs inside them
+  // cat-ring-systems — the system reaching furthest from its host, diffuse rows included
+  // (Saturn's answer is the Phoebe ring). The card links to that body's Rings tab.
+  widest_rings?: { name: string; span_km: number; primary_type: "object"; primary_id: string };
 
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)

@@ -6,9 +6,9 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.rings.catalog import RING_CATALOGS
+from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
 from space_map_data.export import notable
-from space_map_data.export.groups.categories import _probe_members
+from space_map_data.export.groups.categories import _probe_members, _ring_system_stats
 from space_map_data.export.objects.rings import ring_mass_block, ring_stats_block
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.groups.small_body import (
@@ -497,3 +497,50 @@ class TestRingSystemMembers:
         for body_id in RING_CATALOGS:
             stats = ring_stats_block(body_id) or {}
             assert ring_mass_block(body_id) == stats.get("mass")
+
+
+class TestRingSystemStats:
+    """The Ring Systems page's three stat cards."""
+
+    def _member(self, object_id: str, name: str) -> NotableObject:
+        return NotableObject(
+            object_id=object_id,
+            wikidata_qid=None,
+            fallback_name=name,
+            diameter_km=None,
+            first_obs=None,
+        )
+
+    def test_counts_every_catalogue_row_not_just_the_rings(self) -> None:
+        """The tiles count top-level rings; this card is what's inside them."""
+        stats = _ring_system_stats([self._member("naif-699", "Saturn")])
+        top_level = sum(
+            1 for c in RING_CATALOGS.values() for f in c.features if not f.parent
+        )
+        every_row = sum(len(c.features) for c in RING_CATALOGS.values())
+        assert stats.ring_feature_count == every_row
+        assert every_row > top_level
+
+    def test_widest_is_the_system_reaching_furthest(self) -> None:
+        members = [self._member(body, body) for body in RING_CATALOGS]
+        stats = _ring_system_stats(members)
+        expected = max(
+            RING_CATALOGS, key=lambda b: catalog_span_km(RING_CATALOGS[b]) or 0
+        )
+        assert stats.widest_rings is not None
+        assert stats.widest_rings["primary_id"] == expected
+        assert stats.widest_rings["span_km"] == catalog_span_km(RING_CATALOGS[expected])
+
+    def test_widest_skips_a_system_with_no_member_to_link(self) -> None:
+        """A body missing from the object table has no tile and no card link."""
+        stats = _ring_system_stats([self._member("naif-799", "Uranus")])
+        assert stats.widest_rings is not None
+        assert stats.widest_rings["primary_id"] == "naif-799"
+
+    def test_discovery_year_is_the_earliest_system(self) -> None:
+        stats = _ring_system_stats([self._member("naif-699", "Saturn")])
+        assert stats.discovery_year == min(
+            c.discovery_year
+            for c in RING_CATALOGS.values()
+            if c.discovery_year is not None
+        )

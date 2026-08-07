@@ -2044,6 +2044,25 @@ def feature_mid(feature: CatalogFeature) -> float | None:
     return None
 
 
+def catalog_span_km(catalog: RingCatalog) -> float | None:
+    """Radial reach of the whole system: innermost edge to outermost.
+
+    Every row counts, diffuse ones included — Saturn's answer is the Phoebe
+    ring twelve million km out, not the rings a telescope shows.
+    """
+    edges: list[float] = []
+    for feature in catalog.features:
+        span = feature_span(feature)
+        if span is not None:
+            edges.extend(span)
+            continue
+        # A feature the source gives only a radius for still bounds the system.
+        mid = feature_mid(feature)
+        if mid is not None:
+            edges.append(mid)
+    return max(edges) - min(edges) if edges else None
+
+
 class RenderedFeature(NamedTuple):
     """A catalogue row resolved to the values the strip generator rasterises.
     Features may overlap radially (Jupiter's gossamer rings nest inside the

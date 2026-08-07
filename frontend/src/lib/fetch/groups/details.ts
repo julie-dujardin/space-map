@@ -173,8 +173,20 @@ export interface GlobalGroupData {
 	launch_year?: number;
 	/** Missions: state of the primary craft. */
 	mission_status?: 'operating' | 'lost' | 'ended';
-	/** Split-comet families: year the parent was first observed. */
+	/** Split-comet families: year the parent was first observed. Ring Systems:
+	 *  the year the earliest system was found. */
 	discovery_year?: number;
+	/** Ring Systems: rows in the ring catalogue across every system — the rings
+	 *  the tiles count plus the gaps, ringlets and arcs inside them. */
+	ring_feature_count?: number;
+	/** Ring Systems: the system reaching furthest from its host; the card links
+	 *  to its Rings tab. */
+	widest_rings?: {
+		name: string;
+		span_km: number;
+		primary_type: 'object';
+		primary_id: string;
+	};
 	/** Split-comet families: parent perihelion distance, in AU. */
 	perihelion_au?: number;
 	/** Same Commons pipeline / bundle layout as ``GlobalObjectData.images``. */

@@ -319,6 +319,7 @@
 	"group_features_per_body": "各天体的地貌数",
 	"group_iau_definition": "IAU 定义",
 	"group_stat_largest": "最大",
+	"group_stat_widest": "跨度最大",
 	"group_stat_pha": "危险",
 	"group_variants": "型号",
 	"group_variants_launches": "发射",

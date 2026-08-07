@@ -27,7 +27,7 @@ from space_map_data.constants.categories import (
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
 )
-from space_map_data.constants.rings.catalog import RING_CATALOGS
+from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_SLUG_PREFIX,
     DEBRIS_CONSTELLATION_SLUGS,
@@ -516,6 +516,42 @@ def _ring_system_members(
     ]
 
 
+def _ring_system_stats(members: list[NotableObject]) -> GroupExtraStats:
+    """The Ring Systems page's stat row.
+
+    None of the three restates the page below it: the tiles count each
+    system's top-level rings and the chart plots their masses, but how deep
+    the catalogue goes, how far a system reaches and how far back the first
+    sighting is are nowhere on it.
+
+    Names come from the members rather than Wikidata, as ``largest_body``
+    does — the card is a link to a body, not a piece of prose.
+    """
+    names = {member.object_id: member.fallback_name for member in members}
+    widest: dict | None = None
+    for body, catalog in RING_CATALOGS.items():
+        span = catalog_span_km(catalog)
+        if span is None or body not in names:
+            continue
+        if widest is None or span > widest["span_km"]:
+            widest = {
+                "primary_type": "object",
+                "primary_id": body,
+                "name": names[body],
+                "span_km": span,
+            }
+    years = [
+        catalog.discovery_year
+        for catalog in RING_CATALOGS.values()
+        if catalog.discovery_year is not None
+    ]
+    return GroupExtraStats(
+        discovery_year=min(years) if years else None,
+        ring_feature_count=sum(len(c.features) for c in RING_CATALOGS.values()),
+        widest_rings=widest,
+    )
+
+
 def _probe_members(
     session: Session,
     radii: dict[int, dict],
@@ -811,6 +847,8 @@ def build_category_data(
             child_group_count=len(earth_orbit.debris_source_counts)
         ),
     }
+    if ring_members:
+        extra_stats[RING_SYSTEMS_SLUG] = _ring_system_stats(ring_members)
     logger.info(
         "Built category data: planets=%d, dwarf planets=%d, moons=%d (%d notable, "
         "%d planet/dwarf hosts), ring systems=%d, asteroid zones=%d, comet "

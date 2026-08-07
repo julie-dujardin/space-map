@@ -11,6 +11,7 @@
 		CAT_MOONS,
 		CAT_PLANETS,
 		CAT_PROBES,
+		CAT_RING_SYSTEMS,
 		CAT_SATELLITES,
 		CAT_SURFACE_FEATURES
 	} from '$lib/fetch/groups/registry';
@@ -24,7 +25,12 @@
 		urlTypeFromId
 	} from '$lib/state/url';
 	import { formatDistance } from '$lib/format/distance';
-	import { formatNumber, formatQuantity } from '$lib/format/quantities';
+	import {
+		formatCompactNumber,
+		formatNumber,
+		formatQuantity,
+		formatUnit
+	} from '$lib/format/quantities';
 
 	interface Props {
 		global: GlobalGroupData | null;
@@ -58,12 +64,12 @@
 		onClick?: (e: MouseEvent) => void;
 	}
 
-	function focusBody(id: string, name: string, e: MouseEvent) {
+	function focusBody(id: string, name: string, e: MouseEvent, tab?: 'rings') {
 		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 		// No focusObject in context — let the href do a full-page navigation.
 		if (!focusObject) return;
 		e.preventDefault();
-		focusObject(id, name);
+		focusObject(id, name, { tab });
 	}
 
 	function openFeature(bodyId: string, featureId: number, name: string, e: MouseEvent) {
@@ -152,6 +158,27 @@
 		};
 	}
 
+	function widestRings(g: GlobalGroupData): Stat | null {
+		const widest = g.widest_rings;
+		if (!widest || !appState) return null;
+		return {
+			label: m.group_stat_widest(),
+			// Compact, because the answer is millions of km wide and a card is a
+			// third of the drawer.
+			value: `${formatCompactNumber(widest.span_km)} ${formatUnit('kilometre', true)}`,
+			tooltip: widest.name,
+			href: serializeUrl(
+				applyFocus(appState.view, {
+					type: urlTypeFromId(widest.primary_id),
+					id: widest.primary_id,
+					name: widest.name,
+					tab: 'rings'
+				})
+			),
+			onClick: (e) => focusBody(widest.primary_id, widest.name, e, 'rings')
+		};
+	}
+
 	function largestFeature(g: GlobalGroupData): Stat | null {
 		const largest = g.largest_feature;
 		if (!largest || !appState) return null;
@@ -215,6 +242,14 @@
 				return [largestBody(g), count(m.group_stat_moons(), g.moon_total)];
 			case CAT_MOONS:
 				return [count(m.group_stat_hosts(), g.host_count), largestBody(g)];
+			// The tiles already count each system's rings and the chart plots
+			// their masses; these three are what neither says.
+			case CAT_RING_SYSTEMS:
+				return [
+					count(m.group_stat_features(), g.ring_feature_count),
+					widestRings(g),
+					year(m.group_stat_discovered(), g.discovery_year)
+				];
 			case CAT_SATELLITES:
 				return [active(g)];
 			case CAT_DEBRIS:
