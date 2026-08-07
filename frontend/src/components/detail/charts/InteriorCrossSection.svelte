@@ -150,6 +150,12 @@
 </script>
 
 <div class="bg-muted/25 border-border/60 rounded-md border p-2">
+	<!-- What the drawing is worth, above it rather than in it: every corner of
+	     the frame belongs to a label that moves with the body's own layers, and
+	     the only one free on Earth is taken on the Sun. -->
+	<div class="text-muted-foreground mb-1 text-end text-[10px] tabular-nums">
+		{m.structure_to_scale_radius({ value: ltrIsolate(formatKm(section.radiusKm)) })}
+	</div>
 	<svg
 		bind:this={svgEl}
 		viewBox="0 0 {W} {H}"

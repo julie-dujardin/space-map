@@ -9,9 +9,6 @@
 		header?: Snippet;
 		/** Full-width content after the rows — for anything that isn't a label/value pair. */
 		footer?: Snippet;
-		/** A qualifier on the whole section, set opposite the title. The
-		 *  cross-sections use it to say what they are drawn to scale against. */
-		meta?: string;
 		/** Where the section continues, if it does. Set opposite the title, the
 		 *  way the member strips carry "See all" — a row of its own under the
 		 *  values read as another datum. */
@@ -24,8 +21,8 @@
 		 *  whose heading names a destination rather than the rows below it. */
 		titleHref?: string;
 		/** A qualifier on the title itself, set right after it — how many things
-		 *  the heading names. Unlike `meta`, which the row's spacing pushes to
-		 *  wherever the title happens to end, this stays attached to the words. */
+		 *  the heading names. Attached to the words rather than set opposite them,
+		 *  so it cannot drift to the far side of a short heading. */
 		titleMeta?: string;
 	}
 
@@ -34,7 +31,6 @@
 		children,
 		header,
 		footer,
-		meta,
 		activateHref,
 		onActivate,
 		activateLabel,
@@ -66,9 +62,6 @@
 				</span>
 			{/if}
 		</h3>
-		{#if meta}
-			<span class="text-muted-foreground shrink-0 text-[10px] tabular-nums">{meta}</span>
-		{/if}
 		{#if activateHref}
 			<!-- The section is named again, silently, after the label: on its own
 			     "See layers" is one of several identical links down the panel to

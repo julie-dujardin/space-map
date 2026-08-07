@@ -17,9 +17,10 @@
 	 * as an average over a shell. Most boundaries have no published number and
 	 * the layer then shows none.
 	 *
-	 * What the interior is still *doing* closes the section, under the layer
-	 * cards: volcanism, the tide that supplies its heat, and the field a
-	 * convecting core makes are all statements about the stack drawn above them.
+	 * Each section reads numbers first, then the drawing they describe: what the
+	 * interior is still *doing* — volcanism, the tide that supplies its heat, the
+	 * field a convecting core makes — states the case the cutaway under it
+	 * illustrates, and the layer cards follow the cutaway as its legend.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
@@ -27,8 +28,6 @@
 	import { atmosphereProfile, drawableTopKm } from '$lib/charts/atmosphere-cross-section';
 	import { atmosphereNoteBesideChart, atmosphereTypeName } from '$lib/charts/atmosphere-layers';
 	import { bandColor, coreBracket, layerSpans, skyRgb } from '$lib/charts/layer-appearance';
-	import { formatKm } from '$lib/format/distance';
-	import { ltrIsolate } from '$lib/format/bidi';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
 	import TopicSummary from './kit/TopicSummary.svelte';
@@ -114,20 +113,11 @@
 	// bar uses to tell one gas from another.
 	let gasColor = $derived(skyRgb(global?.atmosphere?.composition?.species));
 
-	let interiorMeta = $derived(
-		section
-			? m.structure_to_scale_radius({ value: ltrIsolate(formatKm(section.radiusKm)) })
-			: undefined
-	);
-	let atmosphereMeta = $derived(
-		atmosphereKm ? m.structure_to_scale({ value: ltrIsolate(formatKm(atmosphereKm)) }) : undefined
-	);
-
 	let activity = $derived(global?.activity);
 </script>
 
 {#if hasChart || hasBar}
-	<Section title={m.structure_atmosphere()} meta={atmosphereMeta}>
+	<Section title={m.structure_atmosphere()}>
 		<!-- "Atmosphere of X", where this locale has it. The tab is otherwise
 		     charts and numbers end to end, so this is the only place a reader is
 		     told in words what they are looking at, and it opens the section. -->
@@ -169,21 +159,18 @@
 	/>
 {/snippet}
 
-<!-- Its own `dl` rather than the section's, because it follows the layer cards:
-     the cards are the cutaway's legend and belong directly under it, and rows
-     wedged between the two would read as part of the drawing. -->
-{#snippet activityRows()}
-	{#if activity}
-		<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
-			<Activity {activity} />
-		</dl>
-	{/if}
-{/snippet}
-
 {#if section}
-	<Section title={m.structure_interior()} meta={interiorMeta}>
+	<Section title={m.structure_interior()}>
 		{#snippet header()}
 			<TopicSummary page={localized?.interior_page} />
+		{/snippet}
+		<!-- Above the cutaway, on the section's own `dl`: these are numbers about
+		     the whole body, and the drawing is the thing they are about. The layer
+		     cards stay directly under it as its legend. -->
+		{#if activity}
+			<Activity {activity} />
+		{/if}
+		{#snippet footer()}
 			<InteriorCrossSection
 				{section}
 				atmosphereColor={gasColor}
@@ -192,8 +179,6 @@
 				datum={structure?.datum}
 				bind:active
 			/>
-		{/snippet}
-		{#snippet footer()}
 			{#each rows as row, r (row[0].layer.role + r)}
 				{#if row.length > 1}
 					<div
@@ -208,7 +193,6 @@
 					{@render card(row[0])}
 				{/if}
 			{/each}
-			{@render activityRows()}
 		{/snippet}
 	</Section>
 {:else if activity}
@@ -217,8 +201,6 @@
 	     does not: a volcanic record with no resolved interior would otherwise
 	     have nowhere on this tab to land. -->
 	<Section title={m.activity()}>
-		{#snippet footer()}
-			{@render activityRows()}
-		{/snippet}
+		<Activity {activity} />
 	</Section>
 {/if}

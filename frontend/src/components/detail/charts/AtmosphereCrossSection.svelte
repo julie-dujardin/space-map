@@ -269,6 +269,12 @@
 {/snippet}
 
 <div class="bg-muted/25 border-border/60 overflow-hidden rounded-md border p-2">
+	<!-- How high the drawn-to-scale part reaches, above the drawing rather than
+	     in it: the frame is bands edge to edge, so any corner of it is either
+	     inside a layer or on the line of a label that moves with the stack. -->
+	<div class="text-muted-foreground mb-1 text-end text-[10px] tabular-nums">
+		{m.structure_to_scale({ value: km(profile.scaleKm) })}
+	</div>
 	<svg
 		bind:this={svgEl}
 		viewBox="0 0 {W} {H}"
