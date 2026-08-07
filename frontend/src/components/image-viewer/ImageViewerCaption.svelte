@@ -12,19 +12,31 @@
 <script lang="ts">
 	import MinusIcon from '@lucide/svelte/icons/minus';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatIsoDate } from '$lib/format/date';
 	import { safeHttpUrl } from '$lib/utils';
+	import type { ShelfLink } from '$lib/fetch/objects/galleries';
+	import { isModifiedClick } from '$lib/state/focus-link';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
 
 	interface Props {
 		image: ObjectImage | null;
 		attribution: Attribution | null;
+		/** What this picture is of, on a shelf that mixes subjects — the moon in
+		 *  a planet's moons gallery. Absent when the shelf is about one thing. */
+		subject?: ShelfLink | null;
 	}
 
-	let { image, attribution }: Props = $props();
+	let { image, attribution, subject }: Props = $props();
+
+	function followSubject(e: MouseEvent) {
+		if (isModifiedClick(e) || !subject) return;
+		e.preventDefault();
+		subject.open();
+	}
 
 	// External Commons/Wikidata metadata — validate the scheme before it reaches
 	// an href so a `javascript:` URL can't ride in.
@@ -83,15 +95,25 @@
 	});
 </script>
 
-{#if paragraphs.length}
+<!-- Subject and description share one column: on desktop the caption root is a
+     row, so a bare sibling would sit beside the text rather than above it. -->
+{#if subject || paragraphs.length}
 	<div class="pswp-sm-caption-desc-wrap" class:is-expanded={expanded}>
-		<ScrollArea class="pswp-sm-caption-scroll {expanded ? 'is-expanded' : ''}" bind:viewportRef>
-			<div class="pswp-sm-caption-desc">
-				{#each paragraphs as p, i (i)}
-					<p>{p}</p>
-				{/each}
-			</div>
-		</ScrollArea>
+		{#if subject}
+			<a href={subject.href} onclick={followSubject} class="pswp-sm-caption-subject">
+				{subject.label}
+				<ArrowRightIcon class="size-3 shrink-0 rtl:rotate-180" />
+			</a>
+		{/if}
+		{#if paragraphs.length}
+			<ScrollArea class="pswp-sm-caption-scroll {expanded ? 'is-expanded' : ''}" bind:viewportRef>
+				<div class="pswp-sm-caption-desc">
+					{#each paragraphs as p, i (i)}
+						<p>{p}</p>
+					{/each}
+				</div>
+			</ScrollArea>
+		{/if}
 		{#if truncated}
 			<button
 				type="button"

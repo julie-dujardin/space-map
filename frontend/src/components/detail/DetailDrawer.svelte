@@ -45,15 +45,29 @@
 		CAT_SOLAR_SYSTEM
 	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { groupHref, imageHref, tabHref } from '$lib/state/focus-link';
+	import { focusHref, groupHref, imageHref, tabHref } from '$lib/state/focus-link';
 	import type { DrawerTab } from '$lib/state/view';
-	import { type Focusable, focusableFallbackName, focusableKey } from '$lib/state/focusable';
+	import { applyFeature, serializeUrl } from '$lib/state/url';
+	import {
+		type Focusable,
+		focusableFallbackName,
+		focusableKey,
+		type FocusFeature,
+		type FocusObject
+	} from '$lib/state/focusable';
 	import ObjectHeader from './frame/ObjectHeader.svelte';
 	import DrawerTitle from './frame/DrawerTitle.svelte';
 	import { parentCrumb, parentPlanet, type Crumb } from '$lib/state/breadcrumb';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImagesPanel from './frame/ImagesPanel.svelte';
-	import { buildGalleries, findGallery, MAIN_GALLERY } from '$lib/fetch/objects/galleries';
+	import {
+		buildGalleries,
+		findGallery,
+		imageCount,
+		MAIN_GALLERY,
+		type Gallery,
+		type ShelfLink
+	} from '$lib/fetch/objects/galleries';
 	import ObjectDescription from './sections/ObjectDescription.svelte';
 	import SourcesFooter from './sections/SourcesFooter.svelte';
 	import Bulk from './sections/Bulk.svelte';
@@ -158,6 +172,8 @@
 
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState>('appState');
+	const focusObject = getContext<FocusObject | undefined>('focusObject');
+	const focusFeature = getContext<FocusFeature | undefined>('focusFeature');
 	let parentBody = $derived(body ? ctx?.getBody(body.data.parentId) : undefined);
 
 	// Probes carry a=e=i=…=0 in body.data (no osculating elements — their
@@ -560,6 +576,7 @@
 	// falls back to the index, and the viewer to the leading shelf.
 	let activeGallery = $derived(findGallery(galleries, appState?.view.gallery ?? null));
 	let hasImages = $derived(galleries.length > 0);
+	let imageTotal = $derived(imageCount(galleries));
 	let viewerImages = $derived((activeGallery ?? galleries[0])?.images);
 	let viewerIndex = $derived(appState?.view.imageIndex);
 	// Gate the viewer mount on a valid index AND a loaded images list. The
@@ -710,6 +727,60 @@
 		fragments: showFragmentsTab
 	});
 	let tabCount = $derived(Object.values(tabPresent).filter(Boolean).length);
+
+	// Shelves named after an aspect of this object rather than a subject of their
+	// own: the tab that covers the same ground is where the rest of it is.
+	const SHELF_TABS: Record<string, Exclude<DrawerTab, 'overview'>> = {
+		rings: 'rings',
+		atmosphere: 'structure',
+		interior: 'structure',
+		features: 'features',
+		moons: 'members'
+	};
+
+	let tabLabels = $derived<Partial<Record<DrawerTab, string>>>({
+		images: m.tab_images(),
+		features: m.tab_features(),
+		structure: m.tab_structure(),
+		rings: m.tab_rings(),
+		members: membersTabLabel,
+		fragments: m.tab_fragments()
+	});
+
+	/** A picture's subject — an Object.id, or an IAU feature id on this body —
+	 *  as a link to it. Features are numbered; objects carry a type prefix. */
+	function subjectLink(subject: string | number): ShelfLink | undefined {
+		const name = gallerySubjectNames.get(String(subject));
+		if (!name) return undefined;
+		if (typeof subject === 'number') {
+			const bodyId = body?.data.id;
+			if (!bodyId) return undefined;
+			const focus = { bodyId, featureId: subject, featureName: name };
+			return {
+				label: name,
+				href: appState ? serializeUrl(applyFeature(appState.view, focus)) : undefined,
+				open: () => focusFeature?.(bodyId, subject, name)
+			};
+		}
+		// Its own pictures are what this link is about, so it lands on them
+		// rather than on the object's overview.
+		return {
+			label: name,
+			href: focusHref(appState, subject, name, 'images'),
+			open: () => focusObject?.(subject, name, { moveCamera: false, tab: 'images' })
+		};
+	}
+
+	function shelfLink(gallery: Gallery): ShelfLink | undefined {
+		if (gallery.subjectId) return subjectLink(gallery.subjectId);
+		const tab = SHELF_TABS[gallery.key];
+		if (!tab || !tabPresent[tab]) return undefined;
+		return {
+			label: tabLabels[tab] ?? gallery.title,
+			href: tabHref(appState, tab),
+			open: () => appState.setTab(tab)
+		};
+	}
 
 	// What the desktop bar holds before it crowds; past that it hands tabs over,
 	// in this order, to whatever in the overview leads to them — the pill on the
@@ -931,7 +1002,7 @@
 					<Tabs.Trigger value="images" class={TAB_TRIGGER_CLASS}>
 						{m.tab_images()}
 						<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
-							{viewerImages?.length}
+							{imageTotal}
 						</Badge>
 					</Tabs.Trigger>
 				{/if}
@@ -998,6 +1069,7 @@
 					onShowGallery={() => appState.setImage(0, MAIN_GALLERY)}
 					listHref={tabHref(appState, 'images')}
 					onShowList={() => appState.setTab('images')}
+					imageCount={imageTotal}
 				/>
 			</div>
 		{/if}
@@ -1219,6 +1291,7 @@
 		active={activeGallery}
 		alt={displayName}
 		subjectName={(subject) => gallerySubjectNames.get(subject)}
+		{shelfLink}
 		titles={isGroupMode ? groupDetail?.localized?.image_titles : data?.localized?.image_titles}
 	/>
 {/snippet}
@@ -1481,5 +1554,9 @@
      out of the drawer's CSS transform context. PhotoSwipe additionally
      appends its own DOM to document.body. -->
 {#if viewerActive && viewerImages}
-	<ImageViewer images={viewerImages} alt={displayName} />
+	<ImageViewer
+		images={viewerImages}
+		alt={displayName}
+		subjectLink={(image) => (image.subject === undefined ? undefined : subjectLink(image.subject))}
+	/>
 {/if}

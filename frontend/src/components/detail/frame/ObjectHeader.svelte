@@ -21,6 +21,9 @@
 		 *  the Images tab, which the drawer drops from its bar when it runs long. */
 		listHref?: string;
 		onShowList: () => void;
+		/** Pictures on the whole page, across every shelf — not just the object's
+		 *  own, which is all the hero itself draws from. */
+		imageCount?: number;
 		/** Pre-resolved badges shown before any auto-detected ones (groups use this). */
 		leadingBadges?: string[];
 		/** Replaces the hero image when set (e.g. the planets-category lineup). */
@@ -35,6 +38,7 @@
 		onShowGallery,
 		listHref,
 		onShowList,
+		imageCount,
 		leadingBadges,
 		hero
 	}: Props = $props();
@@ -106,7 +110,7 @@
 				<ImagesIcon class="size-3.5 shrink-0" />
 				{m.image_see_all()}
 				<span class="text-muted-foreground">·</span>
-				<span class="tabular-nums">{formatNumber(images?.length ?? 0)}</span>
+				<span class="tabular-nums">{formatNumber(imageCount ?? images?.length ?? 0)}</span>
 			</a>
 		</div>
 	{/if}

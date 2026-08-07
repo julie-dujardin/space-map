@@ -376,7 +376,7 @@ def _make_entry(filename: str, kind: str) -> dict | None:
         "variants": bundle["variants"],
         "attr": _attribution_tier((bundle.get("license") or {}).get("name")),
     }
-    titles = image_titles(bundle.get("description"))
+    titles = image_titles(_image_description(filename))
     _IMAGE_TITLES[filename] = titles
     title = _base_title(titles)
     # Nothing gained by shipping what the client derives from the filename anyway.
@@ -386,6 +386,16 @@ def _make_entry(filename: str, kind: str) -> dict | None:
         entry["width"] = bundle["width"]
         entry["height"] = bundle["height"]
     return entry
+
+
+def _image_description(filename: str) -> str | dict[str, str] | None:
+    """The Commons description a picture's title is cut from.
+
+    Read from the download metadata, not from the export bundle: the bundle's
+    marker carries only what the viewer needs, and adding a field to it would
+    mean a schema bump and a full regeneration of every image on disk.
+    """
+    return _viewer_payload(filename).get("description")
 
 
 def _filename_label(filename: str) -> str:

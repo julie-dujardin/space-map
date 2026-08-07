@@ -11,14 +11,18 @@
 		type ImageMetadata
 	} from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import type { ShelfLink } from '$lib/fetch/objects/galleries';
 	import ImageViewerCaption, { type Attribution } from './ImageViewerCaption.svelte';
 
 	interface Props {
 		images: ObjectImage[];
 		alt: string;
+		/** What the picture on screen is of, when the shelf mixes subjects. The
+		 *  caption is mounted outside the tree, so the link arrives resolved. */
+		subjectLink?: (image: ObjectImage) => ShelfLink | undefined;
 	}
 
-	let { images, alt }: Props = $props();
+	let { images, alt, subjectLink }: Props = $props();
 
 	const appState = getContext<AppState>('appState');
 
@@ -174,9 +178,14 @@
 		root.className = 'pswp-sm-caption-root pswp__hide-on-close';
 
 		// $state proxy so prop mutations propagate into the mounted component.
-		const captionState: { image: ObjectImage | null; attribution: Attribution | null } = $state({
+		const captionState: {
+			image: ObjectImage | null;
+			attribution: Attribution | null;
+			subject: ShelfLink | null;
+		} = $state({
 			image: null,
-			attribution: null
+			attribution: null,
+			subject: null
 		});
 
 		const captionApp = mount(ImageViewerCaption, {
@@ -194,6 +203,7 @@
 			if (!image) return;
 			captionState.image = image;
 			captionState.attribution = null;
+			captionState.subject = subjectLink?.(image) ?? null;
 
 			const token = ++fetchToken;
 			const meta = await getMetadata(image);
@@ -312,6 +322,24 @@
 	}
 	:global(.pswp-space-map .pswp-sm-caption-scroll.is-expanded [data-slot='scroll-area-viewport']) {
 		max-height: 40vh;
+	}
+
+	/* Leads the description column; the 1rem inset matches the text under it.
+	   Vertical spacing comes from the wrapper's gap. */
+	:global(.pswp-space-map .pswp-sm-caption-subject) {
+		align-self: flex-start;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		margin: 0 1rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: rgba(255, 255, 255, 0.85);
+		text-decoration: none;
+	}
+	:global(.pswp-space-map .pswp-sm-caption-subject:hover) {
+		color: #fff;
+		text-decoration: underline;
 	}
 
 	:global(.pswp-space-map .pswp-sm-caption-desc) {

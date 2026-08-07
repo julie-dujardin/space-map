@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildGalleries, findGallery, imageTitle, MAIN_GALLERY, RINGS_GALLERY } from './galleries';
+import {
+	buildGalleries,
+	findGallery,
+	imageCount,
+	imageTitle,
+	MAIN_GALLERY,
+	RINGS_GALLERY
+} from './galleries';
 import type { ObjectImage } from './object-data';
 
 function image(file: string, subject?: string | number): ObjectImage {
@@ -91,6 +98,34 @@ describe('imageTitle', () => {
 	it('lets a picture with both keep its own title', () => {
 		const img = { ...image('a.jpg', 'naif-502'), title: 'Europa transiting Jupiter' };
 		expect(imageTitle(img, undefined, () => 'Europa')).toBe('Europa transiting Jupiter');
+	});
+});
+
+describe('imageCount', () => {
+	it('counts every shelf, not just the first', () => {
+		const galleries = buildGalleries(
+			{
+				images: [image('a.jpg'), image('b.jpg')],
+				ring_images: [image('r.jpg')],
+				galleries: [{ key: 'moons', images: [image('m.jpg', 'naif-502')] }]
+			},
+			'Saturn'
+		);
+		expect(imageCount(galleries)).toBe(4);
+	});
+
+	// The exporter keeps pooled shelves clear of the object's own pictures, but
+	// the ring selection can repeat one — counting it twice overstates the page.
+	it('counts a picture on two shelves once', () => {
+		const galleries = buildGalleries(
+			{ images: [image('a.jpg')], ring_images: [image('a.jpg')] },
+			'Saturn'
+		);
+		expect(imageCount(galleries)).toBe(1);
+	});
+
+	it('is zero for a page with no pictures', () => {
+		expect(imageCount([])).toBe(0);
 	});
 });
 

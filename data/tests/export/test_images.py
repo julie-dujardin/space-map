@@ -1290,6 +1290,61 @@ class TestImageTitles:
         assert images_mod.image_titles({"en": "  "}) == {}
 
 
+class TestRenderedEntryTitles:
+    """Titles as a rendered entry actually carries them.
+
+    The description is read from the download metadata, not from the export
+    bundle: the bundle marker holds only viewer fields, and a title read off it
+    is silently empty for every image whose bundle already exists.
+    """
+
+    @staticmethod
+    def _described(text: str) -> dict:
+        return {
+            "LicenseShortName": {"value": "CC BY-SA 4.0"},
+            "ImageDescription": {"value": text},
+        }
+
+    def test_a_label_shaped_description_reaches_the_entry(self, tmp_path, layout):
+        _stage_download(
+            tmp_path, "spot.png", extmetadata=self._described("The Great Red Spot")
+        )
+        entries = _collect("spot.png")
+        assert entries is not None
+        assert entries[0]["title"] == "The Great Red Spot"
+        assert images_mod._IMAGE_TITLES["spot.png"] == {"en": "The Great Red Spot"}
+
+    # The bundle is cached after the first render; the title has to survive
+    # that path too, which is exactly where it used to disappear.
+    def test_the_title_survives_a_cached_bundle(self, tmp_path, layout):
+        _stage_download(
+            tmp_path, "spot.png", extmetadata=self._described("The Great Red Spot")
+        )
+        _collect("spot.png")
+        images_mod.clear_export_cache()
+        images_mod._IMAGE_TITLES.clear()
+        entries = _collect("spot.png")
+        assert entries is not None
+        assert entries[0]["title"] == "The Great Red Spot"
+
+    def test_prose_leaves_the_entry_titleless(self, tmp_path, layout):
+        prose = "This true color picture was assembled from " + "images " * 20
+        _stage_download(tmp_path, "spot.png", extmetadata=self._described(prose))
+        entries = _collect("spot.png")
+        assert entries is not None and "title" not in entries[0]
+
+    def test_a_description_that_restates_the_filename_is_dropped(
+        self, tmp_path, layout
+    ):
+        _stage_download(
+            tmp_path,
+            "Great_Red_Spot.png",
+            extmetadata=self._described("Great red spot"),
+        )
+        entries = _collect("Great_Red_Spot.png")
+        assert entries is not None and "title" not in entries[0]
+
+
 class TestLocalizedImageTitles:
     """Per-language overrides, keyed by filename like the notable-name maps."""
 

@@ -26,6 +26,33 @@ export interface Gallery {
 	subjectId?: string;
 }
 
+/**
+ * Where a shelf, or a picture inside one, leads: the object it is about, or the
+ * tab on this page that covers the same subject. Resolved by the drawer — only
+ * it knows the host body, which tabs exist, and the localized names — so the
+ * gallery components stay unaware of routing.
+ */
+export interface ShelfLink {
+	label: string;
+	/** Absent only when there is no appState to serialize against. */
+	href?: string;
+	open: () => void;
+}
+
+/**
+ * How many pictures the page holds in total, across every shelf.
+ *
+ * Deduped by filename: the exporter keeps the pooled shelves clear of the
+ * object's own pictures, but the ring selection can repeat one of them.
+ */
+export function imageCount(galleries: Gallery[]): number {
+	const files = new Set<string>();
+	for (const gallery of galleries) {
+		for (const image of gallery.images) files.add(image.file);
+	}
+	return files.size;
+}
+
 /** The bundle fields a gallery list is assembled from — object or group. */
 export interface GallerySource {
 	images?: ObjectImage[];
