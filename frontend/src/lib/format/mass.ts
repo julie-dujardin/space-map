@@ -1,4 +1,10 @@
-import { formatNumber, formatQuantity } from './quantities';
+import {
+	earthRatio,
+	formatNumber,
+	formatQuantity,
+	formatUnit,
+	scientificNotation
+} from './quantities';
 
 // Mirrors the backend mass ladder (export/quantities.py UnitConverter): the
 // astronomical masses it allowlists, then the SI gram prefixes, sorted by factor
@@ -34,4 +40,32 @@ export function formatMassRange(loKg: number, hiKg: number): string {
 	const { unit } = convertMass(hiKg);
 	const kgPer = MASS_UNITS.find((u) => u.unit === unit)!.kg;
 	return `${formatNumber(loKg / kgPer)} – ${formatQuantity({ value: hiKg / kgPer, unit })}`;
+}
+
+/** So a body's mass can be read against the one anyone has a feel for. */
+export const EARTH_MASS_KG = 5.9722e24;
+
+/** Back to kilograms from whatever unit the source published — the export picks
+ *  a unit per body off the same ladder, so neighbours arrive incomparable. */
+export function massKg(q: { value: number; unit: string }): number | null {
+	const u = MASS_UNITS.find((x) => x.unit === q.unit);
+	return u ? q.value * u.kg : null;
+}
+
+/**
+ * Every body on one unit, in the notation the field actually quotes mass in.
+ *
+ * The per-body ladder is right for a chart, where the axis carries the unit,
+ * and wrong for a stat card standing on its own: Earth reads "5.97 Rg" and
+ * Jupiter "318 M⊕", which are three unrelated scales on three neighbouring
+ * pages. Kilograms and an exponent are the same shape for all of them.
+ */
+export function formatMassKg(kg: number): string {
+	return `${scientificNotation(kg, 3)} ${formatUnit('kilogram', true)}`;
+}
+
+/** What that comes to against Earth, which is the only part of a 25-digit
+ *  number anyone can hold. */
+export function massEarthNote(kg: number): string | undefined {
+	return earthRatio(kg / EARTH_MASS_KG) ?? undefined;
 }

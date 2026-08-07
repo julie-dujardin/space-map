@@ -86,6 +86,7 @@
 	import Rings from './sections/Rings.svelte';
 	import RingStatCards from './sections/RingStatCards.svelte';
 	import Structure from './sections/Structure.svelte';
+	import StructureStatCards from './sections/StructureStatCards.svelte';
 	import ObjectStats from './sections/ObjectStats.svelte';
 	import SatCrossRefs from './sections/SatCrossRefs.svelte';
 	import Orbital from './sections/Orbital.svelte';
@@ -1515,6 +1516,10 @@
 
 {#snippet structurePanel()}
 	<div class="flex flex-col gap-5 p-1">
+		<!-- Above both sections rather than inside either: mass belongs to the
+		     interior, pressure to the atmosphere, and the third slot to whichever
+		     of the two this body has anything to say about. -->
+		<StructureStatCards global={data?.global ?? null} />
 		<Structure global={data?.global ?? null} localized={data?.localized ?? null} />
 		<SourcesFooter global={data?.global ?? null} wikipediaLicensed={structureProseFromWikipedia} />
 	</div>

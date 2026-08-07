@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { speciesEntries, formatFormula } from './atmosphere-species';
-import { formatPressure, formatEarthRatio } from '$lib/format/pressure';
+import { formatPressure, formatEarthRatio, EARTH_SEA_LEVEL_PA } from '$lib/format/pressure';
 
 describe('speciesEntries', () => {
 	// Isotopes are the only formulas whose variable name is not just the
@@ -44,10 +44,17 @@ describe('formatFormula', () => {
 });
 
 describe('formatEarthRatio', () => {
+	/** Strip the isolates the RTL-safe formatter wraps the number in. */
+	const plain = (s: string | null) => s?.replace(/[\u2066\u2069]/g, '') ?? null;
+
 	it('reads as a multiple above Earth and a percentage below', () => {
-		expect(formatEarthRatio(9.2e6)).toContain('90.7×');
-		expect(formatEarthRatio(636)).toContain('0.63%');
-		expect(formatEarthRatio(5e-10)).toContain('4.9×10⁻¹³%');
+		expect(plain(formatEarthRatio(9.2e6))).toContain('90.7×');
+		expect(plain(formatEarthRatio(636))).toContain('0.63%');
+		expect(plain(formatEarthRatio(5e-10))).toContain('4.9×10⁻¹³%');
+	});
+
+	it('has nothing to tell Earth about itself', () => {
+		expect(formatEarthRatio(EARTH_SEA_LEVEL_PA)).toBeNull();
 	});
 });
 

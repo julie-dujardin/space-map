@@ -7,7 +7,8 @@
 	import { atmosphereNote, atmosphereTypeName } from '$lib/charts/atmosphere-layers';
 	import { structureLink } from '$lib/charts/structure-link';
 	import { isModifiedClick, tabHref } from '$lib/state/focus-link';
-	import { formatPressure, EARTH_SEA_LEVEL_PA, formatEarthRatio } from '$lib/format/pressure';
+	import { formatPressure, pressureLevelLabel, formatEarthRatio } from '$lib/format/pressure';
+	import { ucfirst } from '$lib/format/quantities';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
@@ -18,15 +19,6 @@
 	}
 
 	let { global }: Props = $props();
-
-	const LEVEL_LABEL: Record<string, () => string> = {
-		surface: m.atmosphere_pressure_surface,
-		sea_level: m.atmosphere_pressure_sea_level,
-		areoid: m.atmosphere_pressure_areoid,
-		cloud_top: m.atmosphere_pressure_cloud_top,
-		one_bar: m.atmosphere_pressure_one_bar,
-		photosphere: m.atmosphere_pressure_photosphere
-	};
 
 	const appState = getContext<AppState>('appState');
 
@@ -45,13 +37,9 @@
 	}
 
 	// Sixteen orders of magnitude of pressure mean nothing on their own; Earth
-	// is the ruler everyone carries. Skipped on Earth, where it would read
+	// is the ruler everyone carries. Null on Earth itself, where it would read
 	// "100% of Earth".
-	let earthRatio = $derived(
-		pressure && Math.abs(pressure.pa - EARTH_SEA_LEVEL_PA) > 1
-			? formatEarthRatio(pressure.pa)
-			: null
-	);
+	let earthRatio = $derived(pressure ? formatEarthRatio(pressure.pa) : null);
 </script>
 
 {#if atmosphere}
@@ -65,7 +53,10 @@
 			<AtmosphereComposition composition={atmosphere.composition} />
 		{/snippet}
 
-		<Row label={m.atmosphere_classification()} value={atmosphereTypeName(atmosphere.type)} />
+		<Row
+			label={m.atmosphere_classification()}
+			value={ucfirst(atmosphereTypeName(atmosphere.type))}
+		/>
 		{#if note}
 			<dd class="text-muted-foreground col-span-2 -mt-1.5 text-[11px] leading-snug">{note}</dd>
 		{/if}
@@ -73,7 +64,7 @@
 			{@const reading = ltrIsolate(
 				`${pressure.qualifier === 'upper_limit' ? '<' : '≈'} ${formatPressure(pressure.pa)}`
 			)}
-			<Row label={LEVEL_LABEL[pressure.level]?.() ?? m.atmosphere_pressure_surface()}>
+			<Row label={pressureLevelLabel(pressure.level)}>
 				{#if earthRatio}
 					<Tooltip.Root>
 						<Tooltip.Trigger>

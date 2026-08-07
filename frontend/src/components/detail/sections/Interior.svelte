@@ -10,6 +10,7 @@
 	import { isModifiedClick, tabHref } from '$lib/state/focus-link';
 	import type { CompositionEntry } from '$lib/charts/composition-bar';
 	import { formatKelvinRange } from '$lib/format/temperature';
+	import { ucfirst } from '$lib/format/quantities';
 	import { activitySummary, fieldSummary } from '$lib/format/activity';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
@@ -100,7 +101,7 @@
 		{#if interior?.structure}
 			<Row
 				label={m.interior_structure()}
-				value={STRUCTURE_LABEL[interior.structure]?.() ?? interior.structure}
+				value={ucfirst(STRUCTURE_LABEL[interior.structure]?.() ?? interior.structure)}
 			/>
 		{/if}
 		{#if interior?.estimated && interior.taxonomy_class}
@@ -125,7 +126,7 @@
 		{#if interior?.analogue}
 			<Row
 				label={m.interior_analogue()}
-				value={ANALOGUE[interior.analogue]?.() ?? interior.analogue}
+				value={ucfirst(ANALOGUE[interior.analogue]?.() ?? interior.analogue)}
 			/>
 		{/if}
 		{#if coreTemperature}

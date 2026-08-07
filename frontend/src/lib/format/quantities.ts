@@ -1,5 +1,6 @@
 import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
+import { ltrIsolate } from './bidi';
 
 export function ucfirst(s: string): string {
 	return s.charAt(0).toUpperCase() + s.slice(1);
@@ -80,4 +81,53 @@ export function formatCurrency(q: { value: number; currency: string }): string {
 		style: 'currency',
 		currency: q.currency
 	}).format(q.value);
+}
+
+/** Locale-formatted to `digits` significant figures, no trailing zeros. */
+export function sigFigures(value: number, digits = 3): string {
+	return new Intl.NumberFormat(getLocale(), { maximumSignificantDigits: digits }).format(value);
+}
+
+const SUPERSCRIPTS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+
+/** "1.7×10⁻⁶" — Intl's own scientific notation renders as "1.7E-6". */
+export function scientificNotation(value: number, digits = 2): string {
+	const exponent = Math.floor(Math.log10(value));
+	const mantissa = value / 10 ** exponent;
+	const superscript = [...String(Math.abs(exponent))].map((d) => SUPERSCRIPTS[Number(d)]).join('');
+	return `${sigFigures(mantissa, digits)}×10${exponent < 0 ? '⁻' : ''}${superscript}`;
+}
+
+/**
+ * How anything reads against Earth's, and the only ruler most of these
+ * quantities have: **a multiple at or above parity, a percentage below it**.
+ *
+ * One rule for every field rather than a choice per call site. Above parity a
+ * percentage stops helping ("9,070% of Earth's" for Venus); below it a bare
+ * fraction is the harder read, and "1.1×10⁻⁵× Earth" puts two multiplication
+ * signs in one string doing different jobs.
+ *
+ * Null at parity — Earth learns nothing from being compared with itself, and
+ * the tolerance is there because it never lands on exactly 1: its own mass is
+ * quoted 5.972×10²⁴ kg against the 5.9722×10²⁴ the ratio divides by, which
+ * printed "1× Earth".
+ */
+export function earthRatioParts(ratio: number): EarthRatio | null {
+	if (Math.abs(ratio - 1) < 5e-3) return null;
+	if (ratio >= 1) return { multiple: ltrIsolate(sigFigures(ratio)) };
+	// Under a hundredth of a percent Intl spells out a row of leading zeros, and
+	// Mercury's exosphere is 5×10⁻¹³ of Earth's pressure.
+	const text = ratio >= 1e-4 ? formatPercent(ratio, 2) : `${scientificNotation(ratio * 100)}%`;
+	return { percent: ltrIsolate(text) };
+}
+
+export type EarthRatio = { multiple: string } | { percent: string };
+
+/** The wording that goes with it — "14× Earth", "0.63% of Earth's". */
+export function earthRatio(ratio: number): string | null {
+	const parts = earthRatioParts(ratio);
+	if (!parts) return null;
+	return 'multiple' in parts
+		? m.earth_times({ value: parts.multiple })
+		: m.earth_percent({ value: parts.percent });
 }

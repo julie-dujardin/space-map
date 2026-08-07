@@ -14,6 +14,7 @@
 	import type { TemperatureBracket } from '$lib/charts/layer-appearance';
 	import { layerName, phaseName, stateName } from '$lib/charts/interior-layers';
 	import { materialEntries, detailEntries, materialName } from '$lib/charts/interior-materials';
+	import { ucfirst } from '$lib/format/quantities';
 	import { formatPercent } from '$lib/format/quantities';
 	import { formatKm, formatKmRange } from '$lib/format/distance';
 	import { formatKelvinRange } from '$lib/format/temperature';
@@ -72,7 +73,10 @@
 			bits.push(materialName(material.material));
 		}
 		bits.push(ltrIsolate(formatKmRange(band.depthFromKm, band.depthToKm)));
-		return bits.join(' · ');
+		// Sentence case: the state and material vocabularies are lowercase so they
+		// can be composed ("solid rock"), and this is where the phrase starts a
+		// line of its own.
+		return ucfirst(bits.join(' · '));
 	});
 
 	let reading = $derived(

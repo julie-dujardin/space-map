@@ -65,7 +65,7 @@
 	// Io and Enceladus publish the same watts as tidal power and as heat
 	// leaving the body, because on those two the observed loss *is* taken as
 	// the production. The exporter resolves that into one flag, so the panel
-	// draws one row and says whose heat it is.
+	// draws one row under the tidal label rather than two identical ones.
 	let heat = $derived(volcanism?.endogenic_power_w ?? tidal?.power_w);
 	let allTidal = $derived(tidal?.explains_heat_output === true);
 
@@ -147,9 +147,12 @@
 {/if}
 
 {#if heat}
+	<!-- Named for what it is where the two are the same number: on Io and
+	     Enceladus the row *is* the tidal heating, so the label says so and there
+	     is nothing left for a tooltip to explain. -->
 	<Row
-		label={m.activity_heat_output()}
-		valueTooltip={allTidal ? m.activity_heat_all_tidal() : qualifier(heat)}
+		label={allTidal ? m.activity_tidal_power() : m.activity_heat_output()}
+		valueTooltip={allTidal ? undefined : qualifier(heat)}
 		value={num(heat, powerParts)}
 	/>
 {/if}

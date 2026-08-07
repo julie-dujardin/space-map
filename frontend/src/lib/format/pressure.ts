@@ -1,10 +1,24 @@
 import * as m from '$lib/paraglide/messages.js';
-import { getLocale } from '$lib/paraglide/runtime.js';
-import { formatUnit } from './quantities';
+import { earthRatio, formatUnit, scientificNotation, sigFigures } from './quantities';
 
 /** NSSDCA mean sea-level pressure — the same figure the Earth panel shows, so
  *  the comparison and the row it is compared against agree. */
 export const EARTH_SEA_LEVEL_PA = 101400;
+
+/** What the figure is quoted at, which is part of the claim: Saturn's is a
+ *  cloud deck and Mars's is a datum surface nobody could stand on. */
+const LEVEL_LABEL: Record<string, () => string> = {
+	surface: m.atmosphere_pressure_surface,
+	sea_level: m.atmosphere_pressure_sea_level,
+	areoid: m.atmosphere_pressure_areoid,
+	cloud_top: m.atmosphere_pressure_cloud_top,
+	one_bar: m.atmosphere_pressure_one_bar,
+	photosphere: m.atmosphere_pressure_photosphere
+};
+
+export function pressureLevelLabel(level: string): string {
+	return (LEVEL_LABEL[level] ?? LEVEL_LABEL.surface)();
+}
 
 /**
  * Atmospheric pressures span sixteen orders of magnitude (Venus 9.2 MPa to
@@ -21,8 +35,8 @@ export function formatPressure(pa: number): string {
 /** The number and its unit apart, so a span can say the unit once. */
 function pressureParts(pa: number): { value: string; unit: string } | null {
 	if (!Number.isFinite(pa) || pa <= 0) return null;
-	if (pa >= 1e3) return { value: sig(pa / 1e5, 3), unit: formatUnit('bar', true) };
-	const value = pa >= 1e-2 ? sig(pa, 3) : scientific(pa);
+	if (pa >= 1e3) return { value: sigFigures(pa / 1e5, 3), unit: formatUnit('bar', true) };
+	const value = pa >= 1e-2 ? sigFigures(pa, 3) : scientificNotation(pa);
 	return { value, unit: formatUnit('pascal', true) };
 }
 
@@ -47,32 +61,8 @@ export function formatPressureSpan(bottomPa: number, topPa: number): string {
 	return `${bottom}${SPAN_SEPARATOR}${b.value} ${b.unit}`;
 }
 
-/**
- * The same pressure against Earth's: a multiple where the body is thicker
- * ("91× Earth's sea-level pressure"), a percentage where it is thinner, since
- * "0.63%" carries more than "0.0063×" and Mercury's 5·10⁻¹³ % carries more
- * than either as a decimal.
- */
-export function formatEarthRatio(pa: number): string {
-	const ratio = pa / EARTH_SEA_LEVEL_PA;
-	if (ratio >= 1) return m.atmosphere_pressure_vs_earth_times({ value: sig(ratio, 3) });
-	const percent = ratio * 100;
-	return m.atmosphere_pressure_vs_earth_percent({
-		value: percent >= 1e-2 ? sig(percent, 2) : scientific(percent)
-	});
-}
-
-/** Locale-formatted, `digits` significant figures, no trailing zeros. */
-function sig(value: number, digits: number): string {
-	return new Intl.NumberFormat(getLocale(), { maximumSignificantDigits: digits }).format(value);
-}
-
-const SUPERSCRIPTS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
-
-/** "5×10⁻¹⁰" — Intl's own scientific notation renders as "5E-10". */
-function scientific(value: number): string {
-	const exponent = Math.floor(Math.log10(value));
-	const mantissa = value / 10 ** exponent;
-	const digits = [...String(Math.abs(exponent))].map((d) => SUPERSCRIPTS[Number(d)]).join('');
-	return `${sig(mantissa, 2)}×10${exponent < 0 ? '⁻' : ''}${digits}`;
+/** This pressure against the one everybody stands in, by the shared rule. Null
+ *  on Earth itself, which is the only body it says nothing about. */
+export function formatEarthRatio(pa: number): string | null {
+	return earthRatio(pa / EARTH_SEA_LEVEL_PA);
 }

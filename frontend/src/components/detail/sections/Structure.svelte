@@ -28,6 +28,7 @@
 	import { atmosphereProfile, drawableTopKm } from '$lib/charts/atmosphere-cross-section';
 	import { atmosphereNoteBesideChart, atmosphereTypeName } from '$lib/charts/atmosphere-layers';
 	import { bandColor, coreBracket, layerSpans, skyRgb } from '$lib/charts/layer-appearance';
+	import { ucfirst } from '$lib/format/quantities';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
 	import TopicSummary from './kit/TopicSummary.svelte';
@@ -71,7 +72,9 @@
 	let hasBar = $derived(hasCompositionBar(composition));
 
 	let note = $derived(atmosphereNoteBesideChart(global?.atmosphere?.note));
-	let type = $derived(global?.atmosphere ? atmosphereTypeName(global.atmosphere.type) : null);
+	let type = $derived(
+		global?.atmosphere ? ucfirst(atmosphereTypeName(global.atmosphere.type)) : null
+	);
 
 	let readings = $derived(global?.temperatures?.readings ?? []);
 

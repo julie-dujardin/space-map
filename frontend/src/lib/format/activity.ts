@@ -20,6 +20,7 @@ import type {
 	Volcanism
 } from '$lib/fetch/objects/object-data';
 import { ltrIsolate } from './bidi';
+import { earthRatio, scientificNotation, sigFigures, ucfirst } from './quantities';
 
 /** A number and its unit apart, so a span can say the unit once. `unit` is
  *  empty for the bare counts. */
@@ -29,11 +30,6 @@ interface Parts {
 }
 
 export type PartsOf = (value: number) => Parts;
-
-/** Locale-formatted, `digits` significant figures, no trailing zeros. */
-function sig(value: number, digits = 3): string {
-	return new Intl.NumberFormat(getLocale(), { maximumSignificantDigits: digits }).format(value);
-}
 
 /**
  * A number with no unit — a count, a Love number, a fraction of a radius.
@@ -47,7 +43,10 @@ const bare: PartsOf = (value) => {
 	if (Number.isInteger(value)) {
 		return { value: new Intl.NumberFormat(getLocale()).format(value), unit: '' };
 	}
-	return { value: Math.abs(value) >= 1e-3 ? sig(value) : scientific(value), unit: '' };
+	return {
+		value: Math.abs(value) >= 1e-3 ? sigFigures(value) : scientificNotation(value),
+		unit: ''
+	};
 };
 
 // Watt and tesla have their symbols here rather than through `formatUnit`,
@@ -58,16 +57,16 @@ const bare: PartsOf = (value) => {
 
 /** Heat leaving a body, from Enceladus's 15.8 GW to Io's 105 TW. */
 export const powerParts: PartsOf = (w) => {
-	if (w >= 1e12) return { value: sig(w / 1e12), unit: m.activity_unit_terawatt() };
-	if (w >= 1e9) return { value: sig(w / 1e9), unit: m.activity_unit_gigawatt() };
-	return { value: sig(w), unit: m.activity_unit_watt() };
+	if (w >= 1e12) return { value: sigFigures(w / 1e12), unit: m.activity_unit_terawatt() };
+	if (w >= 1e9) return { value: sigFigures(w / 1e9), unit: m.activity_unit_gigawatt() };
+	return { value: sigFigures(w), unit: m.activity_unit_watt() };
 };
 
 /** Surface fields run from Titan's 0.78 nT bound to Jupiter's 418 µT. */
 export const fieldParts: PartsOf = (tesla) =>
 	tesla >= 1e-6
-		? { value: sig(tesla * 1e6), unit: m.activity_unit_microtesla() }
-		: { value: sig(tesla * 1e9), unit: m.activity_unit_nanotesla() };
+		? { value: sigFigures(tesla * 1e6), unit: m.activity_unit_microtesla() }
+		: { value: sigFigures(tesla * 1e9), unit: m.activity_unit_nanotesla() };
 
 // Geologists' notation, and the only one that fits a stat cell: "53 ka" against
 // "53 thousand years ago". Not localized because ka/Ma/Ga are symbols rather
@@ -86,23 +85,23 @@ const AGE_UNITS: [number, string][] = [
  * stays in scientific notation at every magnitude rather than picking a prefix.
  */
 export const momentParts: PartsOf = (value) => ({
-	value: scientific(value, 3),
+	value: scientificNotation(value, 3),
 	unit: m.activity_unit_ampere_square_metre()
 });
 
 /** Years before present. */
 export const ageParts: PartsOf = (years) => {
 	for (const [scale, unit] of AGE_UNITS) {
-		if (years >= scale) return { value: sig(years / scale), unit };
+		if (years >= scale) return { value: sigFigures(years / scale), unit };
 	}
-	return { value: sig(years), unit: 'a' };
+	return { value: sigFigures(years), unit: 'a' };
 };
 
 /** The same age in words, for the tooltip that unpacks "3.5 Ga". */
 export function spellAge(years: number): string {
-	if (years >= 1e9) return m.activity_age_billion_years({ value: sig(years / 1e9) });
-	if (years >= 1e6) return m.activity_age_million_years({ value: sig(years / 1e6) });
-	return m.activity_age_thousand_years({ value: sig(years / 1e3) });
+	if (years >= 1e9) return m.activity_age_billion_years({ value: sigFigures(years / 1e9) });
+	if (years >= 1e6) return m.activity_age_million_years({ value: sigFigures(years / 1e6) });
+	return m.activity_age_thousand_years({ value: sigFigures(years / 1e3) });
 }
 
 /**
@@ -115,16 +114,27 @@ export function spellAge(years: number): string {
  * different statements about the same non-detection.
  */
 export function measurement(value: Measurement, parts: PartsOf = bare): string {
-	const head = parts(value.value);
-	const text = join(head);
-	if (value.upper_limit) return `< ${text}`;
-	if (!value.range) return text;
+	const text = headline(value, parts);
+	if (value.upper_limit || !value.range) return text;
 	const [low, high] = value.range.map(parts);
 	const span =
 		low.unit === high.unit
 			? `${low.value}–${high.value}${high.unit ? ` ${high.unit}` : ''}`
 			: `${join(low)} – ${join(high)}`;
 	return `${text} (${span})`;
+}
+
+/**
+ * The same measurement with its width dropped — the stat cards' form.
+ *
+ * A card is one short line, and Jupiter's field is published 320 µT to 2 mT:
+ * the full form wraps to three lines in a card 115 px wide. The width is not
+ * lost, it moves to the tooltip, where the card shows the whole reading exactly
+ * as the row below does. The bound stays, because "<" is what the number *is*.
+ */
+export function headline(value: Measurement, parts: PartsOf = bare): string {
+	const text = join(parts(value.value));
+	return value.upper_limit ? `< ${text}` : text;
 }
 
 function join(parts: Parts): string {
@@ -203,9 +213,15 @@ export function fieldKindLabel(kind: string): string {
  * Earth's fact.
  */
 export function volcanismLabel(volcanism: Volcanism): string {
-	const kind = VOLCANISM_KIND[volcanism.kind]?.() ?? volcanism.kind;
+	const kind = volcanismKindLabel(volcanism.kind);
 	if (volcanism.status === 'active') return kind;
 	return m.activity_qualified({ value: kind, status: statusLabel(volcanism.status) });
+}
+
+/** The bare noun, for where the status is said somewhere else — a stat card
+ *  puts the kind on the label and the rung underneath it. */
+export function volcanismKindLabel(kind: string): string {
+	return VOLCANISM_KIND[kind]?.() ?? kind;
 }
 
 /**
@@ -251,7 +267,10 @@ export function activitySummary(
 	}
 	if (!clauses.length && activity.tidal) clauses.push(m.activity_tidally_heated());
 	if (!clauses.length) return null;
-	return new Intl.ListFormat(getLocale(), { style: 'long', type: 'unit' }).format(clauses);
+	// Sentence case on the joined line, not on each clause: the styles are
+	// lowercased to sit after the volcanism, and a body with tectonics and no
+	// volcanism would otherwise open the row in lower case.
+	return ucfirst(new Intl.ListFormat(getLocale(), { style: 'long', type: 'unit' }).format(clauses));
 }
 
 /**
@@ -264,7 +283,7 @@ export function fieldSummary(magnetism: MagneticField | undefined): string | nul
 	const kind = fieldKindLabel(magnetism.kind);
 	const strength = magnetism.surface_field_t;
 	if (!strength || magnetism.kind === 'none') return kind;
-	return `${kind} · ${ltrIsolate(measurement({ ...strength, range: undefined }, fieldParts))}`;
+	return `${kind} · ${ltrIsolate(headline(strength, fieldParts))}`;
 }
 
 /**
@@ -277,17 +296,8 @@ const EARTH_DIPOLE_MOMENT_A_M2 = 7.69e22;
 const EARTH_SURFACE_FIELD_T = 2.9733e-5;
 
 function vsEarth(value: Measurement, earth: number): string | null {
-	const ratio = value.value / earth;
-	if (ratio === 1) return null;
-	// A multiple above Earth's, a fraction below it. "1.1×10⁻⁵× Earth" has two
-	// multiplication signs doing different jobs, and the reader has to work out
-	// which is which; "1.1×10⁻⁵ of Earth's" has one.
-	const text =
-		ratio >= 1
-			? m.activity_vs_earth({ value: ltrIsolate(sig(ratio)) })
-			: m.activity_fraction_of_earth({
-					value: ltrIsolate(ratio >= 1e-3 ? sig(ratio, 2) : scientific(ratio))
-				});
+	const text = earthRatio(value.value / earth);
+	if (text === null) return null;
 	return value.upper_limit ? `< ${text}` : text;
 }
 
@@ -311,14 +321,4 @@ export function fieldStrengthNote(value: Measurement): string | undefined {
 
 export function dipoleMomentNote(value: Measurement): string | undefined {
 	return earthNote(value, EARTH_DIPOLE_MOMENT_A_M2);
-}
-
-const SUPERSCRIPTS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
-
-/** "1.7×10⁻⁶" — Intl's own scientific notation renders as "1.7E-6". */
-function scientific(value: number, digits = 2): string {
-	const exponent = Math.floor(Math.log10(value));
-	const mantissa = value / 10 ** exponent;
-	const superscript = [...String(Math.abs(exponent))].map((d) => SUPERSCRIPTS[Number(d)]).join('');
-	return `${sig(mantissa, digits)}×10${exponent < 0 ? '⁻' : ''}${superscript}`;
 }

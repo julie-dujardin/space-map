@@ -9,6 +9,7 @@ import {
 	fieldParts,
 	fieldStrengthNote,
 	fieldSummary,
+	headline,
 	measurement,
 	momentParts,
 	powerParts,
@@ -64,6 +65,23 @@ describe('measurement', () => {
 		// Titan's moment is a non-detection. A "<" and a bracket would be two
 		// different statements about the same absence.
 		expect(measurement({ value: 7.8e-10, upper_limit: true }, fieldParts)).toBe('< 0.78 nT');
+	});
+});
+
+describe('headline', () => {
+	it('drops a width the card has no room for', () => {
+		// Jupiter's surface field, published 320 µT to 2 mT. The full form is
+		// three lines in a stat card; the tooltip still carries it.
+		expect(headline({ value: 4.177e-4, range: [3.2e-4, 2e-3] }, fieldParts)).toBe('418 µT');
+	});
+
+	it('keeps the bound, which is what the number is', () => {
+		expect(headline({ value: 7.8e-10, upper_limit: true }, fieldParts)).toBe('< 0.78 nT');
+	});
+
+	it('is the whole reading where there was no width to drop', () => {
+		const value = { value: 1.05e14 };
+		expect(headline(value, powerParts)).toBe(measurement(value, powerParts));
 	});
 });
 
@@ -202,7 +220,7 @@ describe('fieldStrengthNote', () => {
 
 	it('keeps what the source said after the comparison', () => {
 		expect(plain(fieldStrengthNote({ value: 7.18e-7, as_of: 'Galileo' }) ?? null)).toBe(
-			"0.024 of Earth's — Galileo"
+			"2.4% of Earth's — Galileo"
 		);
 	});
 
@@ -231,15 +249,16 @@ describe('dipoleMomentNote', () => {
 		expect(plain(dipoleMomentNote({ value: 1.53e27 }) ?? null)).toBe('19,900× Earth');
 	});
 
-	it('turns a moment below Earth’s into a fraction of it', () => {
-		// "0.0017× Earth" reads as a multiplication; the two × in
+	it('turns a moment below Earth’s into a percentage of it', () => {
+		// Everything under parity reads as a percentage, whatever the quantity —
+		// "0.0017× Earth" reads as a multiplication, and the two × in
 		// "1.7×10⁻⁶× Earth" read as a typo.
-		expect(plain(dipoleMomentNote({ value: 1.31e20 }) ?? null)).toBe("0.0017 of Earth's");
+		expect(plain(dipoleMomentNote({ value: 1.31e20 }) ?? null)).toBe("0.17% of Earth's");
 	});
 
 	it('drops to scientific notation before the decimals run out', () => {
 		expect(plain(dipoleMomentNote({ value: 1.33e17, upper_limit: true }) ?? null)).toContain(
-			"< 1.7×10⁻⁶ of Earth's"
+			"< 1.7×10⁻⁴% of Earth's"
 		);
 	});
 
