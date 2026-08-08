@@ -61,30 +61,17 @@
 			.map(name)
 	);
 
-	// A decade of headroom under the smallest, so its bar is still a bar rather
-	// than the zero-width sliver an exact floor would leave it.
-	let scale = $derived.by(() => {
-		if (!entries.length) return null;
-		const low = Math.floor(Math.log10(Math.min(...entries.map((e) => e.n)))) - 1;
-		const high = Math.ceil(Math.log10(Math.max(...entries.map((e) => e.n))));
-		return { low, span: high - low };
-	});
-
-	function fraction(entry: CountPerBodyEntry): number {
-		if (!scale) return 0;
-		return Math.min(1, Math.max(0, (Math.log10(entry.n) - scale.low) / scale.span));
-	}
+	// Linear: the bar is the value as a share of the largest, which is what a
+	// bar length means to anyone who has not been told otherwise.
 </script>
 
 {#if entries.length > 0}
 	<div class="flex flex-col gap-1">
 		<CountPerBodyChart
 			{entries}
-			{fraction}
 			{title}
 			text={(e) => text(e.n)}
 			tooltip={tooltip ? (e) => tooltip(e.n) : undefined}
-			hint={m.chart_log_scale()}
 			tab="structure"
 		/>
 		{#if note || unmeasured.length > 0}
