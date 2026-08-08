@@ -13,7 +13,9 @@
 		CAT_PROBES,
 		CAT_RING_SYSTEMS,
 		CAT_SATELLITES,
-		CAT_SURFACE_FEATURES
+		CAT_SURFACE_FEATURES,
+		CAT_ATMOSPHERES,
+		CAT_OCEANS
 	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
@@ -25,6 +27,8 @@
 		urlTypeFromId
 	} from '$lib/state/url';
 	import { formatDistance } from '$lib/format/distance';
+	import { EARTH_ID } from '$lib/constants';
+	import { earthOceans } from '../charts/OceanVolumeChart.svelte';
 	import {
 		formatCompactNumber,
 		formatNumber,
@@ -64,7 +68,7 @@
 		onClick?: (e: MouseEvent) => void;
 	}
 
-	function focusBody(id: string, name: string, e: MouseEvent, tab?: 'rings') {
+	function focusBody(id: string, name: string, e: MouseEvent, tab?: 'rings' | 'structure') {
 		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 		// No focusObject in context — let the href do a full-page navigation.
 		if (!focusObject) return;
@@ -179,6 +183,68 @@
 		};
 	}
 
+	/** The body a card points at, with the tab that shows what it is about. */
+	function bodyCard(
+		label: string,
+		value: string,
+		ref: { name: string; primary_id: string } | undefined,
+		tab: 'structure'
+	): Stat | null {
+		if (!ref || !appState) return null;
+		return {
+			label,
+			value,
+			tooltip: ref.name,
+			href: serializeUrl(
+				applyFocus(appState.view, {
+					type: urlTypeFromId(ref.primary_id),
+					id: ref.primary_id,
+					name: ref.name,
+					tab
+				})
+			),
+			onClick: (e) => focusBody(ref.primary_id, ref.name, e, tab)
+		};
+	}
+
+	function tallestAtmosphere(g: GlobalGroupData): Stat | null {
+		const tallest = g.tallest_atmosphere;
+		if (!tallest) return null;
+		return bodyCard(
+			m.group_stat_tallest(),
+			// Not compact: 4,000 km renders as "4K km", and a thousands suffix
+			// beside a unit reads as kelvin.
+			`${formatNumber(tallest.km)} ${formatUnit('kilometre', true)}`,
+			tallest,
+			'structure'
+		);
+	}
+
+	function deepestOcean(g: GlobalGroupData): Stat | null {
+		const deepest = g.deepest_ocean;
+		if (!deepest) return null;
+		return bodyCard(
+			m.group_stat_deepest(),
+			`${formatNumber(deepest.thickness_km)} ${formatUnit('kilometre', true)}`,
+			deepest,
+			'structure'
+		);
+	}
+
+	/** Every ocean on the page added up, against the one anyone has a feel for.
+	 *  Cubic kilometres would be a number nobody can hold; the multiple is the
+	 *  whole finding, and the chart below cannot show it — a log axis has no sum. */
+	function totalWater(g: GlobalGroupData): Stat | null {
+		const total = g.ocean_volume_km3;
+		const earth = g.notable_members?.find((e) => e.id === EARTH_ID)?.ocean?.volume_km3;
+		if (!total || !earth) return null;
+		return {
+			label: m.group_stat_total_water(),
+			value: earthOceans(total / earth),
+			tooltip: m.group_stat_total_water_tooltip()
+		};
+	}
+
 	function largestFeature(g: GlobalGroupData): Stat | null {
 		const largest = g.largest_feature;
 		if (!largest || !appState) return null;
@@ -250,6 +316,10 @@
 					widestRings(g),
 					year(m.group_stat_discovered(), g.discovery_year)
 				];
+			case CAT_ATMOSPHERES:
+				return [count(m.group_stat_types(), g.atmosphere_type_count), tallestAtmosphere(g)];
+			case CAT_OCEANS:
+				return [totalWater(g), deepestOcean(g)];
 			case CAT_SATELLITES:
 				return [active(g)];
 			case CAT_DEBRIS:

@@ -16,6 +16,9 @@
 		primary_type?: 'object';
 		primary_id?: string;
 		n: number;
+		/** The member's own exported tint, for the bodies `BODY_COLORS` has no
+		 *  hand-picked entry for — most moons. */
+		color?: string;
 	}
 
 	interface Props {
@@ -59,8 +62,10 @@
 		return (e.primary_id ? names?.[e.primary_id] : undefined) ?? e.name;
 	}
 
-	function color(id: string | undefined): string {
-		return (id ? BODY_COLORS[id] : undefined) ?? DEFAULT_BODY_COLOR;
+	/** Same order MoonDiscRow uses: the hand-picked UI tint, then whatever the
+	 *  bundle derived for the body, then grey. */
+	function color(e: CountPerBodyEntry): string {
+		return (e.primary_id ? BODY_COLORS[e.primary_id] : undefined) ?? e.color ?? DEFAULT_BODY_COLOR;
 	}
 
 	// A tally is at most four digits; a quantity brings its unit and a hedge, so
@@ -74,7 +79,7 @@
 		<div
 			class="absolute top-1/2 start-0 h-[10px] -translate-y-1/2 rounded-sm"
 			style:width="{100 * (fraction ? fraction(e) : maxCount > 0 ? e.n / maxCount : 0)}%"
-			style:background-color={color(e.primary_id)}
+			style:background-color={color(e)}
 		></div>
 	</div>
 	<div class="text-muted-foreground text-end text-sm whitespace-nowrap tabular-nums">

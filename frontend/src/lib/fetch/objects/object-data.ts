@@ -172,7 +172,34 @@ export interface NotableMemberEntry {
 	/** Mass of the member's *rings*, not the member — the Ring Systems page
 	 *  charts its eight against each other. Ringed bodies only. */
 	ring_mass?: RingMass;
+	/** The Structure & Activity collections: the figure that page ranks its
+	 *  members by, and what its tile draws instead of a photograph. Each is set
+	 *  only on the page it belongs to. */
+	ocean?: MemberOcean;
+	atmosphere_pressure?: AtmospherePressure;
+	/** The layer stack, trimmed to what a tile-sized cutaway draws — geometry,
+	 *  phase, and one material per layer (the colour keys off the dominant one). */
+	cutaway?: InteriorLayer[];
+	limb?: MemberLimb;
 	thumbnail?: PickedThumbnail;
+}
+
+/** The body's ocean, as one row of the cat-oceans chart. Volume is geometry off
+ *  the same radii the cross-section draws, since no one work quotes all eight. */
+export interface MemberOcean {
+	volume_km3: number;
+	thickness_km: number;
+	/** Under something — true on all but Earth's, which is the page's whole point. */
+	subsurface: boolean;
+	mass_fraction?: number;
+}
+
+/** Enough atmosphere for a tile-sized limb: the bands, and what the air is
+ *  mostly made of. `structure` is absent on the bodies with no named
+ *  boundary anywhere — half the members — which draw a graded shell instead. */
+export interface MemberLimb {
+	species?: { formula: string; share: number }[];
+	structure?: AtmosphereStructure;
 }
 
 /** Stable per-entry key: list keying and the localized-name/description maps
@@ -511,18 +538,22 @@ export interface ModelSource {
  *  `v1/atmospheres.json`: those are stated at whichever level the shell is
  *  drawn from, these at the level a reader expects (surface, or the cloud
  *  deck for the giants). */
+/** One published pressure. The level is not decoration: the four giants all
+ *  read 0.1 bar, and that is a cloud top rather than a surface. */
+export interface AtmospherePressure {
+	pa: number;
+	/** Reference level the pressure is quoted at ("surface", "cloud_top", …). */
+	level: string;
+	qualifier?: 'upper_limit' | 'approximate' | 'variable';
+}
+
 export interface AtmosphereBlock {
 	/** Enum from the pipeline, e.g. "exosphere", "gas_giant_envelope". */
 	type: string;
 	/** What sustains or varies this atmosphere ("volcanic", "seasonal_orbit",
 	 *  …) — the frontend holds the sentence, the pipeline only the key. */
 	note?: string;
-	pressure?: {
-		pa: number;
-		/** Reference level the pressure is quoted at ("surface", "cloud_top", …). */
-		level: string;
-		qualifier?: 'upper_limit' | 'approximate' | 'variable';
-	};
+	pressure?: AtmospherePressure;
 	composition?: {
 		/** What the shares are shares OF — thin envelopes only have per-species
 		 *  column or number densities, never a mixing ratio. */

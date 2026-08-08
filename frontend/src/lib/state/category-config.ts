@@ -11,7 +11,9 @@ import {
 	CAT_SATELLITES,
 	CAT_DEBRIS,
 	CAT_PROBES,
-	CAT_RING_SYSTEMS
+	CAT_RING_SYSTEMS,
+	CAT_ATMOSPHERES,
+	CAT_OCEANS
 } from '$lib/fetch/groups/registry';
 import type { Focusable } from '$lib/state/focusable';
 
@@ -38,7 +40,14 @@ export interface CategoryConfig {
 	sphereLineup: boolean;
 	/** Page cross-links its sibling collections. */
 	crossRefs: boolean;
+	/** A Structure & Activity collection, and which property it is about. Its
+	 *  overview lists every member drawn as that property — a cutaway, a limb —
+	 *  rather than photographed, so there is no member strip and no members tab. */
+	property: PropertyKind | null;
 }
+
+/** The Structure & Activity collections, by what their members carry. */
+export type PropertyKind = 'atmospheres' | 'oceans';
 
 const NONE: CategoryConfig = {
 	planets: false,
@@ -50,7 +59,8 @@ const NONE: CategoryConfig = {
 	membersShownInFull: false,
 	smallBody: false,
 	sphereLineup: false,
-	crossRefs: false
+	crossRefs: false,
+	property: null
 };
 
 const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
@@ -68,7 +78,11 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 	[CAT_COMETS]: { smallBody: true, sphereLineup: true, crossRefs: true },
 	[CAT_SATELLITES]: { crossRefs: true },
 	[CAT_DEBRIS]: { crossRefs: true },
-	[CAT_PROBES]: { crossRefs: true }
+	[CAT_PROBES]: { crossRefs: true },
+	// Every member is listed in the overview with its own drawing, so the tab
+	// would repeat the page — the same reason the ring systems have none.
+	[CAT_ATMOSPHERES]: { property: 'atmospheres', membersShownInFull: true },
+	[CAT_OCEANS]: { property: 'oceans', membersShownInFull: true }
 };
 
 // Merged configs, cached per slug so a stable reference comes back each call: a

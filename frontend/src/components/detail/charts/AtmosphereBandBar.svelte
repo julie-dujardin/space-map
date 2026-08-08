@@ -5,17 +5,18 @@
 
 	import { atmosphereProfile } from '$lib/charts/atmosphere-cross-section';
 	import { skyRgb } from '$lib/charts/layer-appearance';
-	import type { AtmosphereBlock } from '$lib/fetch/objects/object-data';
+	import type { AtmosphereStructure } from '$lib/fetch/objects/object-data';
 
 	interface Props {
-		atmosphere: AtmosphereBlock;
+		/** The vertical stack, where anyone has named its boundaries. */
+		structure?: AtmosphereStructure;
+		/** What the air is mostly made of — the sky's colour, nothing else. */
+		species?: { formula: string; share: number }[];
 	}
-	let { atmosphere }: Props = $props();
+	let { structure, species }: Props = $props();
 
-	let bands = $derived(
-		atmosphere.structure ? (atmosphereProfile(atmosphere.structure)?.bands ?? []) : []
-	);
-	let color = $derived(skyRgb(atmosphere.composition?.species));
+	let bands = $derived(structure ? (atmosphereProfile(structure)?.bands ?? []) : []);
+	let color = $derived(skyRgb(species));
 
 	const W = 200;
 	const H = 80;
@@ -47,6 +48,14 @@
 		].join(' ');
 	}
 
+	/** Stand-in stack for a body with no named boundaries: a smooth thinning,
+	 *  drawn over the same height the scaled bodies use. */
+	const FADE = Array.from({ length: 6 }, (_, i) => ({
+		base: i / 6,
+		top: (i + 1) / 6,
+		opacity: 0.62 * (1 - i / 6) ** 1.6
+	}));
+
 	/** The body itself, from its limb down off the bottom of the frame. */
 	const ground = [
 		`M0,${H}`,
@@ -64,6 +73,16 @@
 		{#each bands as band, i (i)}
 			<path d={shell(band.base, band.top)} fill={color} opacity={band.opacity} />
 		{/each}
+		<!-- Half the atmospheres on the collection page have no named boundary
+		     anywhere — the tenuous exospheres, and Mercury's and the Moon's. One
+		     graded shell in the right colour is what can honestly be drawn for
+		     them: it says there is air and what it looks like, and claims no
+		     structure nobody has measured. -->
+		{#if !bands.length}
+			{#each FADE as step, i (i)}
+				<path d={shell(step.base, step.top)} fill={color} opacity={step.opacity} />
+			{/each}
+		{/if}
 		<!-- The body under its air: solid, so the stack sits on something rather
 		     than fading out at the bottom of the frame. -->
 		<path d={ground} fill="#10131c" />

@@ -193,6 +193,30 @@ export interface GlobalGroupData {
 	};
 	/** Split-comet families: parent perihelion distance, in AU. */
 	perihelion_au?: number;
+	/** Atmospheres: kinds of envelope across the members — the `atmosphere.type`
+	 *  vocabulary in use. The chart under it plots pressure, not this. */
+	atmosphere_type_count?: number;
+	/** Atmospheres: the air reaching highest, over the layers the cross-section
+	 *  draws to scale. Thermospheres, exospheres and coronae are excluded — the
+	 *  same three the chart caps — or Earth wins at 10,000 km on a gas too thin
+	 *  to draw. */
+	tallest_atmosphere?: {
+		name: string;
+		km: number;
+		primary_type: 'object';
+		primary_id: string;
+	};
+	/** Oceans: every listed ocean added up, in km³. Reads as a multiple of
+	 *  Earth's, the only comparison that makes the figure mean anything. */
+	ocean_volume_km3?: number;
+	/** Oceans: the thickest one. Not what the chart ranks by — that is volume,
+	 *  which a large cold moon wins on area as much as on depth. */
+	deepest_ocean?: {
+		name: string;
+		thickness_km: number;
+		primary_type: 'object';
+		primary_id: string;
+	};
 	/** Same Commons pipeline / bundle layout as ``GlobalObjectData.images``. */
 	images?: ObjectImage[];
 	/** One shelf per notable member, keyed by its Object.id. */

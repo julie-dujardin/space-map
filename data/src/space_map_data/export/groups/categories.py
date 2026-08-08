@@ -53,8 +53,8 @@ from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.small_body import LargestBody, _notable_members
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.notable import NotableObject, render_geometry
-from space_map_data.export.objects.atmosphere import pressure_block
-from space_map_data.export.objects.interior import ocean_block
+from space_map_data.export.objects.atmosphere import limb_profile, pressure_block
+from space_map_data.export.objects.interior import cutaway_layers, ocean_block
 from space_map_data.export.objects.rings import ring_catalog_sources, ring_mass_block
 from space_map_data.export.small_body_color import (
     resolve_moon_color,
@@ -632,6 +632,7 @@ def _atmosphere_members(
         return replace(
             member,
             atmosphere_pressure=pressure_block(pressure) if pressure else None,
+            limb=limb_profile(body),
         )
 
     return _property_members(
@@ -659,7 +660,7 @@ def _ocean_members(
     ordered = sorted(oceans, key=lambda body: -oceans[body]["volume_km3"])
 
     def attach(member: NotableObject, body: str) -> NotableObject:
-        return replace(member, ocean=oceans[body])
+        return replace(member, ocean=oceans[body], cutaway=cutaway_layers(body))
 
     return _property_members(
         session, ordered, attach, "Oceans", radii, gms, orientation

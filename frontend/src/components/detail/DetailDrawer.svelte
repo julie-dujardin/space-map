@@ -47,7 +47,10 @@
 		fetchGroupIndex,
 		featureTypeSlug,
 		CAT_RING_SYSTEMS,
-		CAT_SOLAR_SYSTEM
+		CAT_SOLAR_SYSTEM,
+		CAT_STRUCTURE_ACTIVITY,
+		CAT_ATMOSPHERES,
+		CAT_OCEANS
 	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { focusHref, groupHref, imageHref, tabHref } from '$lib/state/focus-link';
@@ -111,17 +114,23 @@
 	import RingSystemTiles from './sections/crossref/RingSystemTiles.svelte';
 	import PlanetMassChart from './charts/PlanetMassChart.svelte';
 	import RingMassChart from './charts/RingMassChart.svelte';
+	import PropertyChildTiles from './sections/crossref/PropertyChildTiles.svelte';
+	import PropertyMemberList from './sections/PropertyMemberList.svelte';
+	import OceanVolumeChart, { earthOceans } from './charts/OceanVolumeChart.svelte';
+	import AtmospherePressureChart from './charts/AtmospherePressureChart.svelte';
 	import SolarSystemMassChart from './charts/SolarSystemMassChart.svelte';
 	import ObjectLinks from './sections/ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	import { categoryConfig } from '$lib/state/category-config';
+	import { categoryConfig, type PropertyKind } from '$lib/state/category-config';
 	import { featureTypeLabel } from '$lib/format/feature-type';
 	import { featureDetailToObjectData, groupDetailToObjectData } from '$lib/state/detail-adapters';
 	import { LineupHero } from './charts/lineup-hero.svelte';
 	import { buildLineup, geometryFromMember } from './charts/lineup';
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
+	import { formatPressure } from '$lib/format/pressure';
+	import { EARTH_ID } from '$lib/constants';
 
 	// Module-scope dedupe so the "no name resolved" warning fires at most once
 	// per focusable across the session — survives drawer remounts and effect
@@ -469,6 +478,35 @@
 				? { ...data?.localized?.notable_moon_names, ...data?.localized?.notable_satellite_names }
 				: data?.localized?.notable_moon_names
 	);
+	/** The meta node, whose children are the property collections themselves. */
+	let isStructureActivity = $derived(
+		focusable.kind === 'group' && focusable.slug === CAT_STRUCTURE_ACTIVITY
+	);
+
+	/** Which shell a Structure & Activity page is about, so its members' cutaways
+	 *  draw that one with a floor on its thickness. Atmospheres have no interior
+	 *  layer to lift — their members draw a limb instead. */
+	/** The meta node's children, so its tiles know which drawing each collects. */
+	const PROPERTY_BY_SLUG: Record<string, PropertyKind> = {
+		[CAT_ATMOSPHERES]: 'atmospheres',
+		[CAT_OCEANS]: 'oceans'
+	};
+
+	const PROPERTY_ACCENT: Record<PropertyKind, ReadonlySet<string> | undefined> = {
+		oceans: new Set(['ocean']),
+		atmospheres: undefined
+	};
+
+	/** The reading under each member's name: whatever its page ranks by. */
+	function propertyFigure(member: NotableMemberEntry): string | undefined {
+		if (member.ocean) {
+			const earth = notableMembers?.find((e) => e.id === EARTH_ID)?.ocean?.volume_km3;
+			return earth ? earthOceans(member.ocean.volume_km3 / earth) : undefined;
+		}
+		if (member.atmosphere_pressure) return formatPressure(member.atmosphere_pressure.pa);
+		return undefined;
+	}
+
 	let memberDescriptions = $derived(
 		isGroupMode ? groupDetail?.localized?.notable_member_descriptions : undefined
 	);
@@ -956,6 +994,9 @@
 			!cat.lineup &&
 			!cat.solarSystem &&
 			!cat.ringSystems &&
+			// A property collection lists every member below with its own drawing;
+			// a strip of photographs above it would be the same bodies said worse.
+			!cat.property &&
 			!isSmallBodyZone &&
 			!cat.smallBody
 		) {
@@ -1248,7 +1289,10 @@
 
 {#snippet atmosphereBandTile()}
 	{#if shelfAtmosphere}
-		<AtmosphereBandBar atmosphere={shelfAtmosphere} />
+		<AtmosphereBandBar
+			structure={shelfAtmosphere.structure}
+			species={shelfAtmosphere.composition?.species}
+		/>
 	{/if}
 {/snippet}
 
@@ -1386,6 +1430,19 @@
 					<RingSystemTiles members={notableMembers} localizedNames={memberNames} />
 					<RingMassChart members={notableMembers} localizedNames={memberNames} />
 				{/if}
+				{#if cat.property && notableMembers && notableMembers.length > 0}
+					<PropertyMemberList
+						members={notableMembers}
+						names={memberNames}
+						accent={PROPERTY_ACCENT[cat.property]}
+						figure={propertyFigure}
+					/>
+					{#if cat.property === 'oceans'}
+						<OceanVolumeChart members={notableMembers} localizedNames={memberNames} />
+					{:else if cat.property === 'atmospheres'}
+						<AtmospherePressureChart members={notableMembers} localizedNames={memberNames} />
+					{/if}
+				{/if}
 				{#if cat.planets && notableMembers && notableMembers.length > 0}
 					<PlanetMassChart members={notableMembers} localizedNames={memberNames} />
 				{/if}
@@ -1406,6 +1463,9 @@
 					<!-- Surface Features groups its 57 type chips by landform family. -->
 					{#if featureFamilies}
 						<FeatureTypeFamilies families={featureFamilies} childGroups={visibleChildGroups} />
+					{:else if isStructureActivity}
+						<!-- Chips would name the two collections; tiles show them. -->
+						<PropertyChildTiles childGroups={visibleChildGroups} kinds={PROPERTY_BY_SLUG} />
 					{:else}
 						<ChildGroups childGroups={visibleChildGroups} />
 					{/if}

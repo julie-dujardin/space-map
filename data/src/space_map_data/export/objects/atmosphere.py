@@ -132,6 +132,41 @@ def pressure_block(pressure: Pressure) -> dict:
     return out
 
 
+def limb_profile(object_id: str) -> dict | None:
+    """What a thumbnail-sized limb needs: the bands, and the colour of the sky.
+
+    The collection page draws one per member, so this is the vertical stack
+    stripped of everything a labelled chart would use — temperatures, pressures,
+    spans, notes, citations — plus the species shares, which are here only
+    because the sky's colour is keyed off what the air is mostly made of.
+
+    Ships for a body with a composition and no layer stack too: half the
+    exospheres on the Atmospheres page have no named boundary anywhere, and a
+    graded shell in the right colour still says more than a blank tile.
+    """
+    facts = ATMOSPHERE_FACTS.get(object_id)
+    if facts is None:
+        return None
+    out: dict = {}
+    if len(facts.composition) >= _MIN_SPECIES:
+        total = sum(s.value for s in facts.composition)
+        out["species"] = [
+            {"formula": s.formula, "share": _sig(s.value / total)}
+            for s in sorted(facts.composition, key=lambda s: -s.value)
+        ]
+    structure = ATMOSPHERE_STRUCTURE.get(object_id)
+    if structure is not None:
+        out["structure"] = {
+            "datum": structure.datum,
+            "layers": [
+                {"role": layer.role}
+                | ({"top_km": layer.top_km} if layer.top_km is not None else {})
+                for layer in structure.layers
+            ],
+        }
+    return out or None
+
+
 def _structure(object_id: str, structure: BodyStructure, facts: BodyFacts) -> dict:
     """The vertical stack, lowest layer first.
 

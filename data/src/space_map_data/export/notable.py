@@ -66,6 +66,11 @@ class NotableObject:
     atmosphere_pressure: dict | None = (
         None  # cat-atmospheres; `atmosphere.pressure_block`
     )
+    # What the member's own tile draws instead of a photograph: the body cut
+    # open, or its air seen edge-on. Trimmed to what a 60 px drawing uses —
+    # `interior.cutaway_layers` and `atmosphere.limb_profile`.
+    cutaway: list[dict] | None = None
+    limb: dict | None = None
 
 
 def render_size(
@@ -272,6 +277,10 @@ def notable_entries(
             entry["ocean"] = member.ocean
         if member.atmosphere_pressure is not None:
             entry["atmosphere_pressure"] = member.atmosphere_pressure
+        if member.cutaway is not None:
+            entry["cutaway"] = member.cutaway
+        if member.limb is not None:
+            entry["limb"] = member.limb
         if member.first_obs:
             entry["first_obs"] = member.first_obs
         if displacement_metadata and (

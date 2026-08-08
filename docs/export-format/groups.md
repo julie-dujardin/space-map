@@ -69,6 +69,13 @@ interface NotableEntry {
   // bodies-carrying-a-property, and the property is the chart.
   ocean?: Ocean;                    // `cat-oceans` only; 8 bodies
   atmosphere_pressure?: Pressure;   // `cat-atmospheres` only; 20 of the 24 members. Same shape as the object bundle's `atmosphere.pressure` (see objects.md)
+  // What the member's tile draws instead of a photograph: two photographs of
+  // icy moons are two grey discs, while their cutaways are a 375 km ocean and a
+  // 132 km one. Trimmed to what a 44 px drawing uses — no labels, no scale, no
+  // citations; a reader who wants those is one click from the body's own
+  // Structure tab. ~11 KiB across both pages before gzip.
+  cutaway?: InteriorLayer[];        // `cat-oceans`; the layer stack, geometry + phase + one material each
+  limb?: MemberLimb;                // `cat-atmospheres`; 19 of the 24 members
   thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
 }
 ```
@@ -90,6 +97,30 @@ interface Ocean {
   mass_fraction?: number;           // of the whole body; absent where the source gives geometry but no mass
 }
 ```
+
+```typescript
+// A tile-sized limb. `structure` is absent on the bodies with no named boundary
+// anywhere — the tenuous exospheres, Mercury's and the Moon's, half the page —
+// which draw one graded shell in the right colour instead: it says there is air
+// and what it looks like, and claims no structure nobody has measured.
+interface MemberLimb {
+  // Normalized shares, descending. Here only because the sky's colour is keyed
+  // off what the air is mostly made of.
+  species?: { formula: string; share: number }[];
+  structure?: {
+    datum: "surface" | "one_bar" | "photosphere";
+    // Role and height only — the labelled chart's temperatures, pressures,
+    // spans and notes stay on the object bundle.
+    layers: { role: string; top_km?: number }[];
+  };
+}
+```
+
+An `InteriorLayer` under `cutaway` carries `role`, `outer_radius_km`, and only
+the optional `base_radius_km` / `area_fraction` / `state` / `phase` / `diffuse`
+that are set, plus a one-entry `composition` — the cutaway's colour keys off the
+dominant material alone. Same field names as `interior.layers` in objects.md, so
+one renderer draws both.
 
 ```typescript
 interface GlobalGroupData {

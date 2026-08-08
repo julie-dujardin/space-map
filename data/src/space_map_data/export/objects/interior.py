@@ -297,6 +297,48 @@ def ocean_block(object_id: str) -> dict | None:
     return None
 
 
+# What the frontend's cutaway needs to draw a shell and colour it, and nothing
+# else. `composition` is truncated to its first entry because the colour is
+# keyed off the dominant material alone (`dominant()` in layer-appearance.ts
+# reads `composition[0]`), and the roll-up's own ordering already put it there.
+_CUTAWAY_KEYS = (
+    "role",
+    "outer_radius_km",
+    "base_radius_km",
+    "area_fraction",
+    "state",
+    "phase",
+    "diffuse",
+)
+
+
+def cutaway_layers(object_id: str) -> list[dict] | None:
+    """The layer stack, trimmed to what a thumbnail-sized cutaway draws.
+
+    A collection page draws one of these per member, so the full stack — every
+    composition, every boundary temperature, every citation — would be the
+    object bundles again inside the group bundle. What survives is geometry,
+    phase and one material per layer: a cutaway 60 px across has no labels to
+    hang the rest on, and a reader who wants them is one click from the body's
+    own Structure tab.
+    """
+    facts = INTERIOR_FACTS.get(object_id)
+    if facts is None or not facts.layers:
+        return None
+    out = []
+    for layer in facts.layers:
+        # Falsy, not just None: `diffuse` is a bool, and the object-side layer
+        # omits it when False rather than shipping it on all 89 layers.
+        entry = {k: v for k in _CUTAWAY_KEYS if (v := getattr(layer, k))}
+        if layer.composition:
+            first = max(layer.composition, key=lambda c: c.fraction)
+            entry["composition"] = [
+                {"material": first.material, "share": _sig(first.fraction)}
+            ]
+        out.append(entry)
+    return out
+
+
 def _layer(object_id: str, layer: Layer) -> dict:
     """One layer of the cross-section.
 
