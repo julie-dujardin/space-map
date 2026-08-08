@@ -90,6 +90,9 @@
 		aria-expanded={open}
 		class="hover:bg-muted flex w-full items-center gap-2.5 px-2.5 py-2 text-start"
 	>
+		<!-- The dot and the pin carry which end this is on screen, so the words go
+		     to the accessible name instead of taking a line of their own. -->
+		<span class="sr-only">{role === 'origin' ? m.travel_from() : m.travel_to()}</span>
 		<!-- Both markers sit in the same box so the two fields' text lines up. -->
 		<span class="flex size-3.5 shrink-0 items-center justify-center">
 			{#if role === 'origin'}
@@ -111,13 +114,6 @@
 					</span>
 				{/if}
 			</span>
-			<!-- Closed, the dot and the pin already say which end this is; the word
-			     only earns its line while the box is open and being edited. -->
-			{#if open}
-				<span class="text-muted-foreground block truncate text-xs">
-					{role === 'origin' ? m.travel_from() : m.travel_to()}
-				</span>
-			{/if}
 		</span>
 		<ChevronDownIcon
 			class="text-muted-foreground size-4 shrink-0 transition-transform {open ? 'rotate-180' : ''}"

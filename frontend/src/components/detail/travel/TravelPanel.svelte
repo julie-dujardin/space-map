@@ -28,6 +28,8 @@
 	import { vehicleCatalogue } from '$lib/travel/vehicles';
 	import { vehicleName } from './vehicle-labels';
 	import type { TimeMode } from '$lib/travel/search-window';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import Segmented from './Segmented.svelte';
 	import DateField from './DateField.svelte';
 	import EndpointField from './EndpointField.svelte';
@@ -223,15 +225,16 @@
 		</div>
 
 		<div class="relative col-start-2 row-start-2">
-			<button
-				type="button"
+			<Button
+				variant="outline"
+				size="icon"
 				onclick={swap}
 				disabled={!target}
-				class="border-border/60 bg-background hover:bg-muted text-muted-foreground absolute end-0 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md border disabled:pointer-events-none disabled:opacity-40"
+				class="text-muted-foreground absolute end-0 top-1/2 -translate-y-1/2"
 				aria-label={m.travel_swap()}
 			>
-				<ArrowUpDownIcon class="size-4" />
-			</button>
+				<ArrowUpDownIcon />
+			</Button>
 		</div>
 	</div>
 
@@ -297,25 +300,29 @@
 		</button>
 
 		{#if vehicleOpen}
-			<ul class="border-border/60 flex flex-col rounded-md border p-1">
-				{#each vehicles as vehicle (vehicle.id)}
-					<li>
-						<button
-							type="button"
-							onclick={() => {
-								panel.vehicleId = panel.vehicleId === vehicle.id ? null : vehicle.id;
-								vehicleOpen = false;
-							}}
-							class="hover:bg-muted flex w-full items-center gap-2 rounded-[5px] px-2 py-1.5 text-start text-xs"
-						>
-							<span class="min-w-0 flex-1 truncate">{vehicleName(vehicle)}</span>
-							{#if panel.vehicleId === vehicle.id}
-								<CheckIcon class="size-3.5 shrink-0" />
-							{/if}
-						</button>
-					</li>
-				{/each}
-			</ul>
+			<!-- The catalogue runs to dozens of craft, so it scrolls in place rather
+			     than pushing the routes below it off the panel. -->
+			<ScrollArea class="border-border/60 rounded-md border" viewportClasses="max-h-56">
+				<ul class="flex flex-col p-1">
+					{#each vehicles as vehicle (vehicle.id)}
+						<li>
+							<button
+								type="button"
+								onclick={() => {
+									panel.vehicleId = panel.vehicleId === vehicle.id ? null : vehicle.id;
+									vehicleOpen = false;
+								}}
+								class="hover:bg-muted flex w-full items-center gap-2 rounded-[5px] px-2 py-1.5 text-start text-xs"
+							>
+								<span class="min-w-0 flex-1 truncate">{vehicleName(vehicle)}</span>
+								{#if panel.vehicleId === vehicle.id}
+									<CheckIcon class="size-3.5 shrink-0" />
+								{/if}
+							</button>
+						</li>
+					{/each}
+				</ul>
+			</ScrollArea>
 			{#if vehicles.length === 0}
 				<p class="text-muted-foreground text-[11px]">{m.travel_craft_loading()}</p>
 			{/if}

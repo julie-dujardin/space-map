@@ -177,7 +177,7 @@
 
 		{#if query.trim().length >= MIN_QUERY}
 			{#if visible.length > 0}
-				<ScrollArea class="[&_[data-slot=scroll-area-viewport]]:max-h-56">
+				<ScrollArea viewportClasses="max-h-56">
 					<ul class="flex flex-col">
 						{#each visible as hit (hit.kind === 'feature' ? `f${hit.feature_id}` : hit.id)}
 							<li>
