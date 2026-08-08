@@ -49,9 +49,10 @@ interface Vehicle {
 	// Wikidata item, which supplies the display name in all twelve locales the
 	// same way bodies get theirs.
 	qid?: string;
-	// English name, present only when there is no Wikidata item (two of the
-	// fictional ships). Those carry hand-authored message keys instead. Every
-	// other name comes from `spacecraft/{lang}.json`, below.
+	// English name, present only when there is no Wikidata item: two of the
+	// ships out of novels, and the three archetypes, which are a propulsion
+	// type rather than a craft anyone named. Those carry hand-authored message
+	// keys instead. Every other name comes from `spacecraft/{lang}.json`.
 	name?: string;
 	// Which configuration this entry is, where the name cannot say: the three
 	// Falcon Heavy entries are three curves under one Wikidata item, so the
@@ -203,11 +204,18 @@ information:
 - The two rovers ship no propulsion at all, which is a statement rather than a
   gap: a rover is delivered, and `departs_from: []` says the same thing.
 
-One class of entry does carry figures nobody published: a fictional ship whose
-work describes a drive without numbering it. Those are cited to
-`space_map_fitted` rather than to the author, and every field they touch says
-so, so a reader can tell a chosen number from a quoted one. Faster-than-light
-ships get nothing — a jump is not a trajectory.
+Two classes of entry do carry figures nobody published, and both are
+`kind: 'fictional'` and cited to `space_map_fitted` rather than to any work, so
+a reader can tell a chosen number from a quoted one:
+
+- **Ships out of novels** whose work describes a drive without numbering it.
+  Faster-than-light ships get nothing — a jump is not a trajectory.
+- **Archetypes** — an ion tug, a solar sail, a nuclear thermal stage — which
+  come from no work at all. A propulsion type sized into a plausible vehicle,
+  so a trip can be costed against what a *kind* of ship could do rather than
+  only against the ones that happen to have flown. They carry
+  `status: 'concept'`, since nothing here has flown and nothing here is
+  impossible either.
 
 The export logs each of these at INFO on every run, so a gap that gets filled
 is noticed.

@@ -90,13 +90,12 @@ SPACECRAFT_SOURCES: dict[str, SpacecraftReference] = {
         "thrust",
         "Apollo masses",
     ),
-    "apollo_aoh_1969": SpacecraftReference(
-        "North American Rockwell 1969, Apollo Operations Handbook, Block II "
-        "Spacecraft (SM2A-03-Block II, volume 1)",
-        "https://www.ibiblio.org/apollo/ApolloProjectOnline/Documents/SMA2A-03-BLOCK%20II%20Volume%201%2019691015/aoh-v1-2-04-sps.pdf",
-        "Service propulsion system tank capacities and the gaugeable oxidizer "
-        "and fuel loads, which is what separates the service module's "
-        "propellant from its structure",
+    "apollo_11_mission_report": SpacecraftReference(
+        "NASA 1969, Apollo 11 Mission Report (MSC-00171)",
+        "https://ntrs.nasa.gov/api/citations/19700008096/downloads/19700008096.pdf",
+        "Service propulsion propellant actually loaded for the flight, fuel "
+        "and oxidizer separately, gauged before lift-off — which is what "
+        "separates the service module's propellant from its structure",
         "Apollo SPS propellant",
     ),
     "nasa_ter_dps_1973": SpacecraftReference(
@@ -119,6 +118,14 @@ SPACECRAFT_SOURCES: dict[str, SpacecraftReference] = {
         "Minimum specific impulse of the DST-13/E, the only 27.5 N MMH/MON "
         "thruster in the catalogue and so the one Europa Clipper flies",
         "Clipper thrusters",
+    ),
+    "srinivasan_2025_clipper": SpacecraftReference(
+        "Srinivasan et al. 2025, Europa Clipper Flight System Overview "
+        "(Space Science Reviews 221)",
+        "https://doi.org/10.1007/s11214-025-01139-9",
+        "Europa Clipper's launch mass and propellant capacity, and the "
+        "all-bipropellant MMH/MON-3 system of twenty-four 27.5 N engines",
+        "Clipper spacecraft",
     ),
     "nasa_orion_reference_2022": SpacecraftReference(
         "NASA 2022, Orion Reference Guide",

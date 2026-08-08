@@ -37,12 +37,17 @@ export function findVehicle(id: string | null): Vehicle | null {
 }
 
 /**
- * Hand-authored names for the ships Wikidata has no item for. Everything else
- * is named from its QID, which is the whole reason the catalogue carries one.
+ * Hand-authored names for the vehicles Wikidata has no item for: two ships out
+ * of novels, and the archetypes, which are a propulsion type rather than a
+ * craft anyone named. Everything else is named from its QID, which is the
+ * whole reason the catalogue carries one.
  */
 const NAME_MESSAGES: Record<string, () => string> = {
 	'hail-mary': m.spacecraft_name_hail_mary,
-	hermes: m.spacecraft_name_hermes
+	hermes: m.spacecraft_name_hermes,
+	'ion-tug': m.spacecraft_name_ion_tug,
+	'solar-sail': m.spacecraft_name_solar_sail,
+	'nuclear-thermal-stage': m.spacecraft_name_nuclear_thermal_stage
 };
 
 /**

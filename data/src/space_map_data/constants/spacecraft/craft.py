@@ -143,11 +143,15 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         isp_s=Measured(292.0, "ariane_10n_thruster"),
         object_ids=("probe-88698880",),
     ),
-    # The mission names neither engine nor supplier, so the thruster is
-    # identified from what it does publish: twenty-four at 27.5 N burning
-    # MMH/MON-3 (JPL's own propulsion thermal analysis, NTRS 20180006128,
-    # which credits Moog for the hardware). One catalogue thruster matches.
-    # The figure is that datasheet's *minimum*, so the Δv is a floor.
+    # Dry mass is the flight system overview's 5,892 kg at launch less the
+    # 2,750 kg of propellant the same paper says the tanks hold and were
+    # filled to "nearly".
+    #
+    # The engine is the one inference in the catalogue. No Clipper document
+    # names a thruster model — the paper gets as far as twenty-four at 27.5 N
+    # burning MMH/MON-3, in modules built at Goddard — and exactly one
+    # catalogue thruster is 27.5 N on those propellants. Its quoted figure is
+    # a *minimum* Isp, so the Δv below is a floor twice over.
     Spacecraft(
         id="europa-clipper",
         qid="Q15637513",
@@ -156,8 +160,8 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         status="active",
         departs_from=frozenset({"orbit"}),
         power="solar",
-        dry_mass_kg=Measured(3241, "gcat_satcat"),
-        propellant_mass_kg=Measured(2750, "gcat_satcat"),
+        dry_mass_kg=Measured(3142, "srinivasan_2025_clipper"),
+        propellant_mass_kg=Measured(2750, "srinivasan_2025_clipper"),
         isp_s=Measured(297.0, "moog_biprop_thrusters"),
         object_ids=("probe-119541760",),
     ),
@@ -258,14 +262,13 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
     ),
     # --- crewed ------------------------------------------------------------
     # 12,250 lb of command module and 51,243 lb of service module, so 28,800 kg
-    # off the pad. Neither Apollo document states the service module's dry mass;
-    # what the operations handbook states is the other side of the same
-    # subtraction, 24,389 lb of oxidizer and 15,253 lb of fuel gaugeable in the
-    # SPS tanks. Dry mass below is the launch weight less that load.
+    # off the pad. No Apollo document states the service module's dry mass; the
+    # mission report states the other side of the same subtraction, the SPS
+    # load gauged before lift-off at 15,712 lb of fuel and 25,091 lb of
+    # oxidizer. Dry mass below is the launch weight less that 40,803 lb.
     #
-    # It is a full load rather than Apollo 11's own, which nothing published
-    # breaks out, so the split leans a few hundred kilograms toward propellant
-    # and the Δv comes out around 3.0 km/s against the 2.8 usually quoted.
+    # 3.2 km/s is the capsule flying alone and reads high against the ~2.8 that
+    # gets quoted, which is the stack with a lunar module bolted to the front.
     #
     # Entry speed is Apollo 11's own return: 36,194 ft/s off the free-return
     # trajectory, which is what a lunar-return heat shield has to be built for
@@ -278,8 +281,8 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         status="retired",
         departs_from=frozenset({"orbit"}),
         power="battery",
-        dry_mass_kg=Measured(10819, "apollo_11_press_kit"),
-        propellant_mass_kg=Measured(17981, "apollo_aoh_1969"),
+        dry_mass_kg=Measured(10292, "apollo_11_press_kit"),
+        propellant_mass_kg=Measured(18508, "apollo_11_mission_report"),
         isp_s=Measured(314.0, "gcat_engines"),
         thrust_n=Measured(91190.0, "apollo_11_press_kit"),
         crew=Measured(3, "apollo_11_press_kit"),

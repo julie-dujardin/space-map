@@ -1,9 +1,13 @@
 """Ships that do not exist, described the same way as the ones that do.
 
-They earn their place by breaking the solver in interesting directions. A
-torch drive has no Δv budget worth stating — it has an acceleration it holds
-until it arrives, which is a brachistochrone rather than a transfer orbit, and
-the panel can only say so if the catalogue admits the field exists.
+Two kinds. Ships out of novels, which earn their place by breaking the solver
+in interesting directions — a torch drive has no Δv budget worth stating, it
+has an acceleration it holds until it arrives, which is a brachistochrone
+rather than a transfer orbit, and the panel can only say so if the catalogue
+admits the field exists. And archetypes: a propulsion type sized into a
+plausible vehicle, so a trip can be costed against what a *kind* of ship could
+do rather than against the eleven that happen to have flown. They come from no
+work at all and say so.
 
 Departures are read off the work the same way. Most of these are assembled in
 orbit and never touch a surface — a lighthugger's landings are done by the
@@ -137,5 +141,68 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         departs_from=frozenset({"surface", "orbit"}),
         power="fictional",
         crew=Measured(8, "lucas_1977_star_wars"),
+    ),
+    # --- archetypes --------------------------------------------------------
+    # Not ships from anywhere: a propulsion type sized into a vehicle, so the
+    # panel can answer "what would it take" and not only "who has been". Every
+    # figure is chosen, but chosen off flown hardware rather than out of the
+    # air, and none of them is a stretch of what has already been built.
+    #
+    # `status` is `concept` rather than `fictional`: nothing here has flown,
+    # and nothing here is impossible either.
+    #
+    # All three depart from orbit alone. A stage with a thrust-to-weight under
+    # one is not a thing that leaves a pad, whatever else it can do.
+    #
+    # Fifty kilowatts of Hall thrusters on eight and a half tonnes: the tug is
+    # Psyche's propulsion scaled to something that moves cargo rather than
+    # instruments. Thirty-six kilometres a second, and four hundredths of a
+    # millinewton per kilogram to spend it with — nearly three years of
+    # continuous thrust, which is the whole character of the thing.
+    Spacecraft(
+        id="ion-tug",
+        name="Ion tug",
+        kind="fictional",
+        propulsion="electric",
+        status="concept",
+        departs_from=frozenset({"orbit"}),
+        power="solar",
+        dry_mass_kg=Measured(2500, "space_map_fitted"),
+        propellant_mass_kg=Measured(6000, "space_map_fitted"),
+        isp_s=Measured(3000.0, "space_map_fitted"),
+        thrust_n=Measured(3.5, "space_map_fitted"),
+    ),
+    # The one entry with no propellant at all, which is the point: a sail's Δv
+    # budget is not large, it does not exist. What it has instead is 0.2 mm/s²
+    # at Earth's distance — four times what any sail has actually flown, and
+    # falling off as the inverse square on the way out, so the constant
+    # acceleration below is an honest number in exactly one place.
+    Spacecraft(
+        id="solar-sail",
+        name="Solar sail",
+        kind="fictional",
+        propulsion="solar_sail",
+        status="concept",
+        departs_from=frozenset({"orbit"}),
+        power="solar",
+        accel_m_s2=Measured(0.0002, "space_map_fitted"),
+    ),
+    # The middle the catalogue otherwise skips: hydrogen through a reactor at
+    # twice the specific impulse of anything chemical and a thrust-to-weight
+    # that still lets it burn like a rocket rather than a season. 900 s is
+    # about what NERVA measured on a test stand in 1968; the 55 t stage around
+    # it is sized to a launcher that exists.
+    Spacecraft(
+        id="nuclear-thermal-stage",
+        name="Nuclear thermal stage",
+        kind="fictional",
+        propulsion="nuclear",
+        status="concept",
+        departs_from=frozenset({"orbit"}),
+        power="nuclear",
+        dry_mass_kg=Measured(15000, "space_map_fitted"),
+        propellant_mass_kg=Measured(40000, "space_map_fitted"),
+        isp_s=Measured(900.0, "space_map_fitted"),
+        thrust_n=Measured(250000.0, "space_map_fitted"),
     ),
 )
