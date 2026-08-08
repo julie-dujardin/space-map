@@ -22,7 +22,7 @@
 		CAT_TIDAL_HEATING,
 		CAT_VOLCANISM
 	} from '$lib/fetch/groups/registry';
-	import BodyCategoryTile from './BodyCategoryTile.svelte';
+	import PropertyTile from './PropertyTile.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -54,7 +54,11 @@
 {#if slugs.length > 0}
 	<div class="grid grid-cols-2 gap-2">
 		{#each slugs as slug (slug)}
-			<BodyCategoryTile {slug} class={slugs.length === 1 ? 'col-span-2' : ''} />
+			<!-- The drawings follow the width: four across a tile that spans the
+			     row, two where it is half of one and four 44 px discs would leave
+			     the name nowhere to sit. -->
+			{@const wide = slugs.length === 1}
+			<PropertyTile {slug} shown={wide ? 4 : 2} class={wide ? 'col-span-2' : ''} />
 		{/each}
 	</div>
 {/if}

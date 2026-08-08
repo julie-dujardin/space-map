@@ -48,13 +48,7 @@
 		featureTypeSlug,
 		CAT_RING_SYSTEMS,
 		CAT_SOLAR_SYSTEM,
-		CAT_STRUCTURE_ACTIVITY,
-		CAT_ATMOSPHERES,
-		CAT_OCEANS,
-		CAT_VOLCANISM,
-		CAT_TECTONICS,
-		CAT_MAGNETIC_FIELDS,
-		CAT_TIDAL_HEATING
+		CAT_STRUCTURE_ACTIVITY
 	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { focusHref, groupHref, imageHref, tabHref } from '$lib/state/focus-link';
@@ -118,7 +112,6 @@
 	import RingSystemTiles from './sections/crossref/RingSystemTiles.svelte';
 	import PlanetMassChart from './charts/PlanetMassChart.svelte';
 	import RingMassChart from './charts/RingMassChart.svelte';
-	import PropertyChildTiles from './sections/crossref/PropertyChildTiles.svelte';
 	import PropertyMemberList from './sections/PropertyMemberList.svelte';
 	import OceanVolumeChart, { oceanVolume } from './charts/OceanVolumeChart.svelte';
 	import AtmospherePressureChart from './charts/AtmospherePressureChart.svelte';
@@ -131,7 +124,7 @@
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	import { categoryConfig, PROPERTY_ACCENT, type PropertyKind } from '$lib/state/category-config';
+	import { categoryConfig, PROPERTY_ACCENT } from '$lib/state/category-config';
 	import { featureTypeLabel } from '$lib/format/feature-type';
 	import { featureDetailToObjectData, groupDetailToObjectData } from '$lib/state/detail-adapters';
 	import { LineupHero } from './charts/lineup-hero.svelte';
@@ -500,16 +493,6 @@
 	let isStructureActivity = $derived(
 		focusable.kind === 'group' && focusable.slug === CAT_STRUCTURE_ACTIVITY
 	);
-
-	/** The meta node's children, so its tiles know which drawing each collects. */
-	const PROPERTY_BY_SLUG: Record<string, PropertyKind> = {
-		[CAT_ATMOSPHERES]: 'atmospheres',
-		[CAT_OCEANS]: 'oceans',
-		[CAT_VOLCANISM]: 'volcanism',
-		[CAT_TECTONICS]: 'tectonics',
-		[CAT_MAGNETIC_FIELDS]: 'magnetic-fields',
-		[CAT_TIDAL_HEATING]: 'tidal-heating'
-	};
 
 	/** The reading under each member's name: whatever its page ranks by. */
 	function propertyFigure(member: NotableMemberEntry): string | undefined {
@@ -1540,8 +1523,10 @@
 					{#if featureFamilies}
 						<FeatureTypeFamilies families={featureFamilies} childGroups={visibleChildGroups} />
 					{:else if isStructureActivity}
-						<!-- Chips would name the two collections; tiles show them. -->
-						<PropertyChildTiles childGroups={visibleChildGroups} kinds={PROPERTY_BY_SLUG} />
+						<!-- Chips would name the collections; tiles draw what each holds.
+						     Full width here: every child is a drawn collection, so the
+						     tiles are the page rather than a footer to it. -->
+						<CategoryChildTiles childGroups={visibleChildGroups} wide />
 					{:else}
 						<ChildGroups childGroups={visibleChildGroups} />
 					{/if}
@@ -1691,8 +1676,12 @@
 		<StructureStatCards global={data?.global ?? null} />
 		<Structure global={data?.global ?? null} localized={data?.localized ?? null} />
 		<!-- Where else this body is listed for the same subject; below the
-		     sections it cross-refers, above the works they cite. -->
-		<PropertyCategoryLinks global={data?.global ?? null} />
+		     sections it cross-refers, above the works they cite. A group has no
+		     structure of its own to cross-refer, and on the collection pages the
+		     child tiles already lead everywhere this would. -->
+		{#if focusable.kind === 'body'}
+			<PropertyCategoryLinks global={data?.global ?? null} />
+		{/if}
 		<SourcesFooter global={data?.global ?? null} wikipediaLicensed={structureProseFromWikipedia} />
 	</div>
 {/snippet}
