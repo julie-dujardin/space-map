@@ -12,10 +12,13 @@
 import {
 	canDepartFrom,
 	checkFeasibility,
+	checkManifest,
 	TravelSolver,
 	type ArrivalMode,
 	type DepartureMode,
 	type Feasibility,
+	type Manifest,
+	type ManifestFit,
 	type PorkchopGrid,
 	type Route,
 	type RouteChoice,
@@ -61,6 +64,10 @@ export class TravelPanelState {
 	/** Departure or arrival date behind the non-'now' time modes, as a JD. */
 	pickedJd = $state<number | null>(null);
 	vehicleId = $state<string | null>(null);
+	/** What the trip carries. Costs no solve — mass moves no trajectory — so
+	 *  these sit outside the effect that re-solves. */
+	passengers = $state(0);
+	payloadKg = $state(0);
 	/** Null until a solve lands, then whichever profile the user last chose. */
 	selectedProfile = $state<RouteProfile | null>(null);
 
@@ -122,10 +129,22 @@ export class TravelPanelState {
 		else if (canDepartFrom(vehicle, 'orbit')) this.originMode = 'low-orbit';
 	}
 
-	/** Whether the chosen craft can fly a route; null when none is chosen. */
+	get manifest(): Manifest {
+		return { passengers: this.passengers, payloadKg: this.payloadKg };
+	}
+
+	/** Whether the chosen craft can fly a route loaded as described; null when
+	 *  no craft is chosen. */
 	feasibility(route: Route): Feasibility | null {
 		const vehicle = this.vehicle;
-		return vehicle ? checkFeasibility(vehicle, route) : null;
+		return vehicle ? checkFeasibility(vehicle, route, this.manifest) : null;
+	}
+
+	/** Whether the chosen craft has room for the manifest at all. Route-blind,
+	 *  so it is reported beside the craft rather than on every trajectory. */
+	get manifestFit(): ManifestFit | null {
+		const vehicle = this.vehicle;
+		return vehicle ? checkManifest(vehicle, this.manifest) : null;
 	}
 
 	/** Mark a trip impossible before any solve is attempted. */

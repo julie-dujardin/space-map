@@ -9,7 +9,7 @@
 	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
 	import OrbitIcon from '@lucide/svelte/icons/orbit';
 	import MoveRightIcon from '@lucide/svelte/icons/move-right';
-	import type { LegKind, Route, TravelBody } from '$lib/math/travel';
+	import { dvWithPayloadKms, type LegKind, type Route, type TravelBody } from '$lib/math/travel';
 	import { returnDvKms, signalDelaySeconds } from '$lib/travel/arrival-stats';
 	import { formatDv, formatSignalDelay, formatTripTime } from '$lib/travel/format';
 	import type { TravelPanelState } from '$lib/travel/panel.svelte';
@@ -43,12 +43,14 @@
 	// A launcher's job ends at injection, so it has no Δv of its own left for
 	// arrival — that belongs to whatever it threw. A craft with no published
 	// engine has no Δv to subtract either, which is a different silence: the
-	// row says so rather than showing a figure nobody measured.
+	// row says so rather than showing a figure nobody measured. Cargo is already
+	// off the top, so loading the hold shortens the return this row prices.
 	let remaining = $derived.by(() => {
 		const vehicle = state.vehicle;
 		if (!vehicle || vehicle.kind === 'launcher') return null;
-		if (vehicle.dvKms === undefined) return null;
-		return vehicle.dvKms - route.inSpaceDvKms;
+		const loaded = dvWithPayloadKms(vehicle, state.payloadKg);
+		if (loaded === undefined) return null;
+		return loaded - route.inSpaceDvKms;
 	});
 	let unpublishedDv = $derived(
 		state.vehicle !== null && state.vehicle.kind !== 'launcher' && state.vehicle.dvKms === undefined

@@ -1815,5 +1815,13 @@
 	"travel_list_separator": "، ",
 	"travel_craft_from_ground": "من الأرض",
 	"travel_craft_from_orbit": "من المدار",
-	"travel_craft_carried": "يُنقل كحمولة"
+	"travel_craft_carried": "يُنقل كحمولة",
+	"travel_capacity_unpublished": "عدد الركاب الذي تتّسع له غير منشور.",
+	"travel_cargo": "حمولة",
+	"travel_lifts": "يطلق {value}",
+	"travel_manifest": "ما ستأخذه معك",
+	"travel_over_capacity": "تتّسع لـ {value} على متنها.",
+	"travel_over_hold": "تحمل {value} كحدّ أقصى.",
+	"travel_people": "أشخاص",
+	"travel_seats": "المقاعد على متنها"
 }

@@ -1846,5 +1846,13 @@
 	"travel_list_separator": "、",
 	"travel_craft_from_ground": "地上から",
 	"travel_craft_from_orbit": "軌道から",
-	"travel_craft_carried": "ペイロードとして搭載"
+	"travel_craft_carried": "ペイロードとして搭載",
+	"travel_capacity_unpublished": "搭乗できる人数は公表されていません。",
+	"travel_cargo": "貨物",
+	"travel_lifts": "打ち上げ可能 {value}",
+	"travel_manifest": "積むもの",
+	"travel_over_capacity": "搭乗できるのは {value} 人まで。",
+	"travel_over_hold": "積めるのは {value} まで。",
+	"travel_people": "人数",
+	"travel_seats": "搭乗人数"
 }

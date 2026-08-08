@@ -1631,5 +1631,13 @@
 	"travel_list_separator": ", ",
 	"travel_craft_from_ground": "Depuis le sol",
 	"travel_craft_from_orbit": "Depuis l'orbite",
-	"travel_craft_carried": "Emporté en charge utile"
+	"travel_craft_carried": "Emporté en charge utile",
+	"travel_capacity_unpublished": "Le nombre de personnes à bord n'est pas publié.",
+	"travel_cargo": "Cargaison",
+	"travel_lifts": "Emporte {value}",
+	"travel_manifest": "Ce que vous emportez",
+	"travel_over_capacity": "Place pour {value} à bord.",
+	"travel_over_hold": "Emporte au maximum {value}.",
+	"travel_people": "Personnes",
+	"travel_seats": "Places à bord"
 }

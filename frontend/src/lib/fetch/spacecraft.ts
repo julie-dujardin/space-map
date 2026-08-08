@@ -48,6 +48,8 @@ interface VehicleEntry {
 		cross_check?: string;
 	};
 	crew?: MeasuredEntry;
+	/** Not emitted yet; the panel checks the hold only once it is. */
+	payload_capacity_kg?: MeasuredEntry;
 	endurance_days?: MeasuredEntry;
 	max_entry_speed_kms?: MeasuredEntry;
 	capabilities?: string[];
@@ -107,6 +109,7 @@ function toVehicle(entry: VehicleEntry): Vehicle {
 			crossCheck: entry.c3_curve.cross_check
 		},
 		crew: entry.crew,
+		payloadCapacityKg: entry.payload_capacity_kg,
 		enduranceDays: entry.endurance_days,
 		maxEntrySpeedKms: entry.max_entry_speed_kms,
 		capabilities: entry.capabilities,

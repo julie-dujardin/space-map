@@ -72,6 +72,8 @@ export type {
 	C3Curve,
 	Feasibility,
 	FeasibilityStatus,
+	Manifest,
+	ManifestFit,
 	Measured,
 	PowerSource,
 	PropulsionKind,
@@ -82,6 +84,10 @@ export type {
 export {
 	canDepartFrom,
 	checkFeasibility,
+	checkManifest,
+	crewCapacity,
+	dvWithPayloadKms,
+	EMPTY_MANIFEST,
 	feasibleRoutes,
 	isLowThrust,
 	payloadForC3

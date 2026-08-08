@@ -1846,5 +1846,13 @@
 	"travel_list_separator": "、",
 	"travel_craft_from_ground": "从地面出发",
 	"travel_craft_from_orbit": "从轨道出发",
-	"travel_craft_carried": "作为有效载荷运送"
+	"travel_craft_carried": "作为有效载荷运送",
+	"travel_capacity_unpublished": "未公布可搭载多少人。",
+	"travel_cargo": "货物",
+	"travel_lifts": "可发射 {value}",
+	"travel_manifest": "携带什么",
+	"travel_over_capacity": "最多可搭载 {value} 人。",
+	"travel_over_hold": "最多可携带 {value}。",
+	"travel_people": "人数",
+	"travel_seats": "可搭载人数"
 }

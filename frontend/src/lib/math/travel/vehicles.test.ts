@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
 	canDepartFrom,
 	checkFeasibility,
+	checkManifest,
+	crewCapacity,
+	dvWithPayloadKms,
 	feasibleRoutes,
 	isLowThrust,
 	payloadForC3,
@@ -34,6 +37,16 @@ const CRAFT: Vehicle = {
 	propulsion: 'chemical',
 	status: 'active',
 	dvKms: 4.5
+};
+
+/** Masses and an engine behind the Δv, so cargo can be priced against them:
+ *  320 s through a 4:1 mass ratio is 4.35 km/s empty. */
+const HAULER: Vehicle = {
+	...CRAFT,
+	dryMassKg: { value: 2000, source: 't' },
+	propellantMassKg: { value: 6000, source: 't' },
+	ispS: { value: 320, source: 't' },
+	dvKms: 4.351
 };
 
 const window = nextTransferWindows(EARTH, MARS, J2000, 1)[0];
@@ -210,6 +223,112 @@ describe('checkFeasibility', () => {
 			maxEntrySpeedKms: { value: 0.1, source: 't' }
 		};
 		expect(checkFeasibility(shielded, landing).overEntrySpeedKms).toBeGreaterThan(0.1);
+	});
+});
+
+describe('crewCapacity', () => {
+	it('reads a published figure', () => {
+		expect(crewCapacity({ ...CRAFT, crew: { value: 4, source: 't' } })).toBe(4);
+	});
+
+	it('seats nobody on a vehicle that carries nobody', () => {
+		expect(crewCapacity(CRAFT)).toBe(0);
+		expect(crewCapacity(LAUNCHER)).toBe(0);
+	});
+
+	it('leaves a crewed vehicle unjudged when no source says', () => {
+		expect(crewCapacity({ ...CRAFT, kind: 'crewed' })).toBeNull();
+	});
+});
+
+describe('dvWithPayloadKms', () => {
+	it('leaves an empty hold at the published figure', () => {
+		expect(dvWithPayloadKms(HAULER, 0)).toBe(HAULER.dvKms);
+	});
+
+	it('spends the mass ratio on the cargo', () => {
+		// 320 s through 9 t over 3 t, against 8 over 2 empty.
+		expect(dvWithPayloadKms(HAULER, 1000)).toBeCloseTo(3.448, 3);
+	});
+
+	it('keeps a figure it cannot re-derive rather than going silent', () => {
+		expect(dvWithPayloadKms(CRAFT, 1000)).toBe(CRAFT.dvKms);
+	});
+});
+
+describe('checkManifest', () => {
+	const CAPSULE: Vehicle = { ...CRAFT, kind: 'crewed', crew: { value: 4, source: 't' } };
+
+	it('takes a party that fits', () => {
+		expect(checkManifest(CAPSULE, { passengers: 4, payloadKg: 0 }).status).toBe('ok');
+	});
+
+	it('reports the seats when there are not enough', () => {
+		expect(checkManifest(CAPSULE, { passengers: 5, payloadKg: 0 })).toEqual({
+			status: 'over-capacity',
+			seats: 4
+		});
+	});
+
+	it('refuses people on a craft with no seats at all', () => {
+		expect(checkManifest(CRAFT, { passengers: 1, payloadKg: 0 }).status).toBe('over-capacity');
+	});
+
+	it('declines to judge a crewed craft whose complement is unpublished', () => {
+		const opaque: Vehicle = { ...CRAFT, kind: 'crewed' };
+		expect(checkManifest(opaque, { passengers: 2, payloadKg: 0 }).status).toBe('unknown-capacity');
+	});
+
+	// The pipeline does not state a hold yet; the check is inert until it does
+	// rather than assuming one.
+	it('ignores cargo until a hold is published', () => {
+		expect(checkManifest(CRAFT, { passengers: 0, payloadKg: 9e6 }).status).toBe('ok');
+	});
+
+	it('reports the hold when the cargo is over it', () => {
+		const held: Vehicle = { ...CRAFT, payloadCapacityKg: { value: 800, source: 't' } };
+		expect(checkManifest(held, { passengers: 0, payloadKg: 900 })).toEqual({
+			status: 'over-payload',
+			capacityKg: 800
+		});
+	});
+});
+
+describe('checkFeasibility with a manifest', () => {
+	it('takes the cargo out of the margin', () => {
+		const empty = checkFeasibility(HAULER, marsRoute).marginKms;
+		const laden = checkFeasibility(HAULER, marsRoute, { passengers: 0, payloadKg: 500 }).marginKms;
+		expect(laden).toBeLessThan(empty);
+	});
+
+	it('turns a route the craft could fly empty into one it cannot', () => {
+		expect(checkFeasibility(HAULER, marsRoute).status).toBe('ok');
+		const laden = checkFeasibility(HAULER, marsRoute, { passengers: 0, payloadKg: 1000 });
+		expect(laden.status).toBe('insufficient-dv');
+	});
+
+	// A crewed vehicle's dry mass already carries its seats and consumables, and
+	// no source prices one more passenger.
+	it('does not weigh the passengers', () => {
+		const crewed = checkFeasibility(HAULER, marsRoute, { passengers: 3, payloadKg: 0 });
+		expect(crewed.marginKms).toBe(checkFeasibility(HAULER, marsRoute).marginKms);
+	});
+
+	it('fails a launcher asked to send more than its curve allows', () => {
+		const capacity = payloadForC3(LAUNCHER, marsRoute.c3Km2S2)!;
+		const over = checkFeasibility(LAUNCHER, marsRoute, {
+			passengers: 0,
+			payloadKg: capacity + 1
+		});
+		expect(over.status).toBe('over-payload');
+		// The capacity travels with the verdict — it is the whole answer.
+		expect(over.payloadKg).toBeCloseTo(capacity, 9);
+	});
+
+	it('passes a launcher whose curve covers the cargo', () => {
+		const capacity = payloadForC3(LAUNCHER, marsRoute.c3Km2S2)!;
+		const under = { passengers: 0, payloadKg: capacity - 1 };
+		expect(checkFeasibility(LAUNCHER, marsRoute, under).status).toBe('ok');
 	});
 });
 

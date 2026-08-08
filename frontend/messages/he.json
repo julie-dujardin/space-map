@@ -1725,5 +1725,13 @@
 	"travel_list_separator": ", ",
 	"travel_craft_from_ground": "מהקרקע",
 	"travel_craft_from_orbit": "מהמסלול",
-	"travel_craft_carried": "מובל כמטען"
+	"travel_craft_carried": "מובל כמטען",
+	"travel_capacity_unpublished": "מספר האנשים שהיא נושאת אינו מפורסם.",
+	"travel_cargo": "מטען",
+	"travel_lifts": "משגר {value}",
+	"travel_manifest": "מה לוקחים",
+	"travel_over_capacity": "מקום ל-{value} על הסיפון.",
+	"travel_over_hold": "נושאת עד {value}.",
+	"travel_people": "אנשים",
+	"travel_seats": "מקומות על הסיפון"
 }

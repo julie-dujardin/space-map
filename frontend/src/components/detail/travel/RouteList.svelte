@@ -10,6 +10,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { RouteChoice, RouteProfile } from '$lib/math/travel';
 	import { formatJulianDate } from '$lib/format/date';
+	import { formatQuantity } from '$lib/format/quantities';
 	import type { TravelPanelState } from '$lib/travel/panel.svelte';
 	import { formatTripTime } from '$lib/travel/format';
 	import { departureNote } from './vehicle-labels';
@@ -38,6 +39,13 @@
 		// statement about the craft rather than about this particular route.
 		if (result.status === 'wrong-departure' && state.vehicle) {
 			return departureNote(state.vehicle);
+		}
+		// A launcher's payload is what it can send to *this* energy, so the same
+		// cargo clears one trajectory and not the next.
+		if (result.status === 'over-payload' && result.payloadKg !== undefined) {
+			return m.travel_lifts({
+				value: formatQuantity({ value: result.payloadKg, unit: 'kilogram' }, true)
+			});
 		}
 		return m.travel_not_modelled();
 	}

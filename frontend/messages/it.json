@@ -1599,5 +1599,13 @@
 	"travel_list_separator": ", ",
 	"travel_craft_from_ground": "Da terra",
 	"travel_craft_from_orbit": "Dall'orbita",
-	"travel_craft_carried": "Trasportato come carico utile"
+	"travel_craft_carried": "Trasportato come carico utile",
+	"travel_capacity_unpublished": "Quante persone possa portare non è pubblicato.",
+	"travel_cargo": "Carico",
+	"travel_lifts": "Solleva {value}",
+	"travel_manifest": "Cosa porti con te",
+	"travel_over_capacity": "Posto per {value} a bordo.",
+	"travel_over_hold": "Porta al massimo {value}.",
+	"travel_people": "Persone",
+	"travel_seats": "Posti a bordo"
 }

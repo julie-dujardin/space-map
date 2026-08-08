@@ -1602,5 +1602,13 @@
 	"travel_list_separator": ", ",
 	"travel_craft_from_ground": "Z powierzchni",
 	"travel_craft_from_orbit": "Z orbity",
-	"travel_craft_carried": "Przewożony jako ładunek"
+	"travel_craft_carried": "Przewożony jako ładunek",
+	"travel_capacity_unpublished": "Nie podano, ile osób zabiera.",
+	"travel_cargo": "Ładunek",
+	"travel_lifts": "Wynosi {value}",
+	"travel_manifest": "Co zabierasz",
+	"travel_over_capacity": "Miejsce dla {value} na pokładzie.",
+	"travel_over_hold": "Zabiera najwyżej {value}.",
+	"travel_people": "Osoby",
+	"travel_seats": "Miejsca na pokładzie"
 }

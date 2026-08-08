@@ -1614,5 +1614,13 @@
 	"travel_list_separator": ", ",
 	"travel_craft_from_ground": "Vom Boden",
 	"travel_craft_from_orbit": "Aus dem Orbit",
-	"travel_craft_carried": "Wird als Nutzlast befördert"
+	"travel_craft_carried": "Wird als Nutzlast befördert",
+	"travel_capacity_unpublished": "Wie viele Personen mitfliegen können, ist nicht veröffentlicht.",
+	"travel_cargo": "Fracht",
+	"travel_lifts": "Befördert {value}",
+	"travel_manifest": "Was Sie mitnehmen",
+	"travel_over_capacity": "Platz für {value} an Bord.",
+	"travel_over_hold": "Nimmt höchstens {value} mit.",
+	"travel_people": "Personen",
+	"travel_seats": "Plätze an Bord"
 }

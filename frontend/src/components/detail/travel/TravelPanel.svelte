@@ -13,11 +13,13 @@
 	import RocketIcon from '@lucide/svelte/icons/rocket';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
+	import UsersIcon from '@lucide/svelte/icons/users';
 	import type { BodyData } from '$lib/types/objects';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatJulianDate } from '$lib/format/date';
 	import {
 		canDepartFrom,
+		crewCapacity,
 		hohmannTransferDays,
 		nextTransferWindows,
 		systemArcBounds,
@@ -40,6 +42,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import Segmented from './Segmented.svelte';
 	import DateField from './DateField.svelte';
+	import ManifestField from './ManifestField.svelte';
 	import EndpointField from './EndpointField.svelte';
 	import RouteList from './RouteList.svelte';
 	import RouteDetail from './RouteDetail.svelte';
@@ -357,6 +360,11 @@
 				<ul class="flex flex-col p-1">
 					{#each orderedVehicles as vehicle (vehicle.id)}
 						{@const fits = canDepartFrom(vehicle, panel.departureMode)}
+						<!-- Seats only matter once someone is aboard, so the column appears
+						     with the first passenger rather than reading "0" against every
+						     probe in the catalogue. -->
+						{@const seats = panel.passengers > 0 ? crewCapacity(vehicle) : null}
+						{@const tooSmall = seats !== null && seats < panel.passengers}
 						<li>
 							<button
 								type="button"
@@ -364,7 +372,9 @@
 									panel.selectVehicle(vehicle.id);
 									vehicleOpen = false;
 								}}
-								class="hover:bg-muted flex w-full items-center gap-2 rounded-[5px] px-2 py-1.5 text-start text-xs"
+								class="hover:bg-muted flex w-full items-center gap-2 rounded-[5px] px-2 py-1.5 text-start text-xs {tooSmall
+									? 'opacity-50'
+									: ''}"
 							>
 								<span class="min-w-0 flex-1 truncate {fits ? '' : 'text-muted-foreground'}">
 									{vehicleName(vehicle)}
@@ -374,6 +384,14 @@
 									     can make, which is more useful than a row that does nothing. -->
 									<span class="text-muted-foreground shrink-0 text-[11px]">
 										{departureNote(vehicle)}
+									</span>
+								{/if}
+								{#if seats !== null}
+									<span
+										class="text-muted-foreground flex shrink-0 items-center gap-1 tabular-nums"
+										title={m.travel_seats({ value: seats })}
+									>
+										<UsersIcon class="size-3" />{seats}
 									</span>
 								{/if}
 								{#if panel.vehicleId === vehicle.id}
@@ -388,6 +406,17 @@
 				<p class="text-muted-foreground text-[11px]">{m.travel_craft_loading()}</p>
 			{/if}
 		{/if}
+
+		<!-- Beside the craft rather than inside it: what you are taking is a fact
+		     about the trip, and it stands on its own before one is chosen — it is
+		     what narrows the catalogue down. -->
+		<ManifestField
+			passengers={panel.passengers}
+			payloadKg={panel.payloadKg}
+			fit={panel.manifestFit}
+			onPassengersChange={(value) => (panel.passengers = value)}
+			onPayloadChange={(value) => (panel.payloadKg = value)}
+		/>
 	</div>
 
 	{#if panel.status === 'blocked'}

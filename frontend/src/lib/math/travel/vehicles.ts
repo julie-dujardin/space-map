@@ -78,6 +78,12 @@ export interface Vehicle {
 	/** Everyone aboard: crew plus passengers, which are the same set on
 	 *  every real spacecraft and not on a fictional liner. */
 	crew?: Measured;
+	/**
+	 * Cargo the vehicle can take beyond its own dry mass, kg. Launchers state
+	 * theirs as a curve against C3 instead, since what they can lift depends on
+	 * where it is going.
+	 */
+	payloadCapacityKg?: Measured;
 	enduranceDays?: Measured;
 	maxEntrySpeedKms?: Measured;
 	capabilities?: readonly string[];
@@ -94,6 +100,8 @@ export type FeasibilityStatus =
 	| 'ok'
 	| 'insufficient-dv'
 	| 'over-c3'
+	/** More cargo than the vehicle can send on this trajectory. */
+	| 'over-payload'
 	/** Past the end of a curve whose source stopped early — unknown, not no. */
 	| 'beyond-published'
 	/** Continuous low thrust: impulsive Δv is the wrong yardstick. */
@@ -168,6 +176,84 @@ export function payloadForC3(vehicle: Vehicle, c3: number): number | null {
 	return null; // Past the curve.
 }
 
+/**
+ * What a trip is carrying.
+ *
+ * Mass moves no trajectory — a Δv is a Δv whatever it is spent on — so a
+ * manifest never re-solves anything. It decides what the vehicle can do with
+ * the Δv the route already asks for, and whether it had room in the first place.
+ */
+export interface Manifest {
+	/** People aboard. */
+	passengers: number;
+	/** Cargo, kg, on top of what the vehicle's dry mass already accounts for. */
+	payloadKg: number;
+}
+
+export const EMPTY_MANIFEST: Manifest = { passengers: 0, payloadKg: 0 };
+
+/**
+ * Seats aboard; null when nothing published says.
+ *
+ * Zero is an answer rather than a gap. A probe carries nobody, and a launcher's
+ * passengers ride in whatever it lifts rather than in the launcher, so only the
+ * kinds built around people can have a seat count no source wrote down.
+ */
+export function crewCapacity(vehicle: Vehicle): number | null {
+	if (vehicle.crew) return vehicle.crew.value;
+	return vehicle.kind === 'crewed' || vehicle.kind === 'fictional' ? null : 0;
+}
+
+/** Standard gravity, m/s² — what turns an Isp in seconds into an exhaust speed. */
+const G0_M_S2 = 9.80665;
+
+/**
+ * Δv the vehicle has once the cargo is aboard, km/s.
+ *
+ * The published figure is for the vehicle as flown, so cargo joins the dry mass
+ * and the rocket equation gives back less. A Δv published without the masses
+ * behind it cannot be re-derived and is returned unchanged: overstating it is
+ * the lesser of two wrongs against saying nothing about a vehicle whose
+ * performance is known.
+ *
+ * People are not weighed. A crewed vehicle's dry mass already carries its seats,
+ * suits and consumables, and no source states what one more passenger costs.
+ */
+export function dvWithPayloadKms(vehicle: Vehicle, payloadKg: number): number | undefined {
+	if (payloadKg <= 0 || vehicle.dvKms === undefined) return vehicle.dvKms;
+	const dry = vehicle.dryMassKg?.value;
+	const propellant = vehicle.propellantMassKg?.value;
+	const isp = vehicle.ispS?.value;
+	if (!dry || !propellant || !isp) return vehicle.dvKms;
+	const loaded = dry + payloadKg;
+	return (isp * G0_M_S2 * Math.log((loaded + propellant) / loaded)) / 1000;
+}
+
+export type ManifestFit =
+	| { status: 'ok' }
+	| { status: 'over-capacity'; seats: number }
+	| { status: 'over-payload'; capacityKg: number }
+	/** Carries people, but no source says how many. */
+	| { status: 'unknown-capacity' };
+
+/**
+ * Whether the vehicle has room for the manifest — a question about the vehicle
+ * alone. Seats and hold do not change with the destination, so this is answered
+ * once beside the craft instead of against every route.
+ */
+export function checkManifest(vehicle: Vehicle, manifest: Manifest): ManifestFit {
+	if (manifest.passengers > 0) {
+		const seats = crewCapacity(vehicle);
+		if (seats === null) return { status: 'unknown-capacity' };
+		if (manifest.passengers > seats) return { status: 'over-capacity', seats };
+	}
+	const hold = vehicle.payloadCapacityKg?.value;
+	if (hold !== undefined && manifest.payloadKg > hold) {
+		return { status: 'over-payload', capacityKg: hold };
+	}
+	return { status: 'ok' };
+}
+
 /** Endurance and heat-shield notes, which qualify a pass rather than deny it. */
 function annotate(vehicle: Vehicle, route: Route, result: Feasibility): Feasibility {
 	const endurance = vehicle.enduranceDays?.value;
@@ -182,13 +268,21 @@ function annotate(vehicle: Vehicle, route: Route, result: Feasibility): Feasibil
 }
 
 /**
- * Whether `vehicle` can fly `route`.
+ * Whether `vehicle` can fly `route` with `manifest` aboard.
  *
- * A launcher is judged on whether it can reach the departure energy at all;
- * everything after injection is the spacecraft's problem. Everything else is
- * judged on in-space Δv, since the ascent belongs to whatever launched it.
+ * A launcher is judged on whether it can reach the departure energy at all, and
+ * on whether the cargo fits under its curve there; everything after injection is
+ * the spacecraft's problem. Everything else is judged on in-space Δv, since the
+ * ascent belongs to whatever launched it.
+ *
+ * Room aboard is deliberately not checked here — see `checkManifest`, which
+ * answers it once rather than identically for every route.
  */
-export function checkFeasibility(vehicle: Vehicle, route: Route): Feasibility {
+export function checkFeasibility(
+	vehicle: Vehicle,
+	route: Route,
+	manifest: Manifest = EMPTY_MANIFEST
+): Feasibility {
 	// First, because everything below it is moot: an SLS cannot be lifted out
 	// of the parking orbit it was going to put something into, and a Δv margin
 	// for that trip would be an answer to a question nobody can ask.
@@ -211,17 +305,19 @@ export function checkFeasibility(vehicle: Vehicle, route: Route): Feasibility {
 			const status = vehicle.c3Curve.truncated ? 'beyond-published' : 'over-c3';
 			return { status, marginKms: NaN };
 		}
-		return annotate(vehicle, route, { status: 'ok', marginKms: NaN, payloadKg });
+		const status = manifest.payloadKg > payloadKg ? 'over-payload' : 'ok';
+		return annotate(vehicle, route, { status, marginKms: NaN, payloadKg });
 	}
 
 	if (isLowThrust(vehicle)) {
 		return { status: 'not-modelled', marginKms: NaN };
 	}
-	if (vehicle.dvKms === undefined) {
+	const dvKms = dvWithPayloadKms(vehicle, manifest.payloadKg);
+	if (dvKms === undefined) {
 		return { status: 'unknown', marginKms: NaN };
 	}
 
-	const marginKms = vehicle.dvKms - route.inSpaceDvKms;
+	const marginKms = dvKms - route.inSpaceDvKms;
 	return annotate(vehicle, route, {
 		status: marginKms >= 0 ? 'ok' : 'insufficient-dv',
 		marginKms
@@ -229,6 +325,10 @@ export function checkFeasibility(vehicle: Vehicle, route: Route): Feasibility {
 }
 
 /** Routes this vehicle can fly, cheapest margin last. */
-export function feasibleRoutes(vehicle: Vehicle, routes: Route[]): Route[] {
-	return routes.filter((r) => checkFeasibility(vehicle, r).status === 'ok');
+export function feasibleRoutes(
+	vehicle: Vehicle,
+	routes: Route[],
+	manifest: Manifest = EMPTY_MANIFEST
+): Route[] {
+	return routes.filter((r) => checkFeasibility(vehicle, r, manifest).status === 'ok');
 }

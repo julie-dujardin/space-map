@@ -1,0 +1,85 @@
+<!--
+  What the trip is carrying: people and cargo.
+
+  Neither changes a trajectory, so nothing here re-solves. They decide what the
+  chosen craft can do with the route it was already offered — cargo comes off
+  the Δv through the rocket equation, and both are checked against the room
+  aboard, which is what `fit` reports.
+-->
+<script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
+	import UsersIcon from '@lucide/svelte/icons/users';
+	import PackageIcon from '@lucide/svelte/icons/package';
+	import type { ManifestFit } from '$lib/math/travel';
+	import { formatQuantity, formatUnit } from '$lib/format/quantities';
+
+	interface Props {
+		passengers: number;
+		payloadKg: number;
+		/** Whether the chosen craft has room; null when none is chosen. */
+		fit: ManifestFit | null;
+		onPassengersChange: (value: number) => void;
+		onPayloadChange: (value: number) => void;
+	}
+	let { passengers, payloadKg, fit, onPassengersChange, onPayloadChange }: Props = $props();
+
+	/** An emptied box means nothing aboard, not a broken figure. */
+	function parseAmount(raw: string): number {
+		const value = Number(raw);
+		return Number.isFinite(value) && value > 0 ? value : 0;
+	}
+
+	let note = $derived.by(() => {
+		if (fit === null) return null;
+		if (fit.status === 'over-capacity') return m.travel_over_capacity({ value: fit.seats });
+		if (fit.status === 'unknown-capacity') return m.travel_capacity_unpublished();
+		if (fit.status === 'over-payload') {
+			return m.travel_over_hold({
+				value: formatQuantity({ value: fit.capacityKg, unit: 'kilogram' }, true)
+			});
+		}
+		return null;
+	});
+
+	const FIELD =
+		'border-border/60 bg-background flex min-w-0 flex-1 items-center gap-1.5 rounded-md border px-2 py-1';
+	const INPUT =
+		'text-foreground w-0 min-w-0 flex-1 bg-transparent text-end text-sm tabular-nums outline-none';
+</script>
+
+<div class="flex flex-col gap-1.5">
+	<div class="flex items-center gap-2" role="group" aria-label={m.travel_manifest()}>
+		<label class={FIELD}>
+			<UsersIcon class="text-muted-foreground size-3.5 shrink-0" />
+			<span class="text-muted-foreground shrink-0 text-xs">{m.travel_people()}</span>
+			<input
+				type="number"
+				min="0"
+				step="1"
+				inputmode="numeric"
+				value={passengers}
+				class={INPUT}
+				oninput={(e) => onPassengersChange(Math.floor(parseAmount(e.currentTarget.value)))}
+			/>
+		</label>
+
+		<label class={FIELD}>
+			<PackageIcon class="text-muted-foreground size-3.5 shrink-0" />
+			<span class="text-muted-foreground shrink-0 text-xs">{m.travel_cargo()}</span>
+			<input
+				type="number"
+				min="0"
+				step="100"
+				inputmode="numeric"
+				value={payloadKg}
+				class={INPUT}
+				oninput={(e) => onPayloadChange(parseAmount(e.currentTarget.value))}
+			/>
+			<span class="text-muted-foreground shrink-0 text-[11px]">{formatUnit('kilogram', true)}</span>
+		</label>
+	</div>
+
+	{#if note}
+		<p class="text-muted-foreground text-[11px]">{note}</p>
+	{/if}
+</div>

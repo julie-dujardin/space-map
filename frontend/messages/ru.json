@@ -1843,5 +1843,13 @@
 	"travel_list_separator": ", ",
 	"travel_craft_from_ground": "С поверхности",
 	"travel_craft_from_orbit": "С орбиты",
-	"travel_craft_carried": "Доставляется как груз"
+	"travel_craft_carried": "Доставляется как груз",
+	"travel_capacity_unpublished": "Сколько человек берёт на борт, не опубликовано.",
+	"travel_cargo": "Груз",
+	"travel_lifts": "Выводит {value}",
+	"travel_manifest": "Что вы берёте с собой",
+	"travel_over_capacity": "Место для {value} на борту.",
+	"travel_over_hold": "Берёт не более {value}.",
+	"travel_people": "Люди",
+	"travel_seats": "Мест на борту"
 }
