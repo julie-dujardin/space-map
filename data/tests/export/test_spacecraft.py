@@ -109,8 +109,10 @@ class TestDerivedDeltaV:
 
     def test_absent_where_an_input_is(self, payload):
         by_id = {v["id"]: v for v in payload["vehicles"]}
-        assert "delta_v_kms" not in by_id["rosetta"]
-        assert "delta_v_kms" not in by_id["apollo-csm"]
+        # Masses published, engine not.
+        assert "delta_v_kms" not in by_id["crew-dragon"]
+        # Nothing published at all.
+        assert "delta_v_kms" not in by_id["starship"]
 
     def test_matches_the_rocket_equation(self, payload):
         for vehicle in payload["vehicles"]:

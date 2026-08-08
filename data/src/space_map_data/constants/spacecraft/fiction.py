@@ -13,9 +13,16 @@ so, and are the exception rather than the default.
 
 Citations are the works themselves. What a novel states about its own ship is
 the primary source for that ship, and the alternative is a number from nowhere.
-Where a work never states a figure, the entry does not invent one: the
-Millennium Falcon below is famous for a hyperdrive rating and has no sublight
-acceleration anyone wrote down, so it carries neither.
+
+Where a work describes a drive but gives it no numbers, the entry may carry
+figures fitted to that description — cited to `space_map_fitted`, never to the
+author — so the ship can be judged on the same yardstick as everything else.
+They come out enormous, which is the honest answer and the interesting one.
+Two limits on that. A ship the work says nothing useful about gets nothing:
+the Millennium Falcon is famous for a hyperdrive rating and has no sublight
+acceleration anyone wrote down, so it carries neither. And faster-than-light
+is out of scope entirely — a jump is not a trajectory, and no amount of Δv
+describes one.
 """
 
 from space_map_data.constants.spacecraft.specs import Measured, Spacecraft
@@ -86,9 +93,17 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         accel_m_s2=Measured(_G, "reynolds_2000_revelation_space"),
         crew=Measured(160000, "reynolds_2000_revelation_space"),
     ),
-    # Nuclear, and slow enough to be recognisable: Discovery's Jupiter
-    # transfer is months rather than days, and three of its five crew sleep
-    # through it. The novel gives no acceleration, so it has none here.
+    # Nuclear, and slow enough to be recognisable: Discovery's Jupiter transfer
+    # is months rather than days, and three of its five crew sleep through it.
+    # The novel gives no numbers, so the three below are chosen rather than
+    # quoted, and chosen to stay inside the physics the novel does commit to.
+    #
+    # "Plasma drive" running on liquid hydrogen puts it in gas-core territory,
+    # a few thousand seconds — an order above the solid-core reactors anyone
+    # has built and three orders below a torch. Three quarters of a 1,200 t
+    # ship as propellant is the ratio a vehicle assembled in orbit can carry.
+    # That is 41 km/s, or eighteen Cassinis, and it is what makes a months-long
+    # Jupiter transfer rather than a years-long one.
     Spacecraft(
         id="discovery-one",
         qid="Q3030246",
@@ -97,6 +112,12 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         status="fictional",
         departs_from=frozenset({"orbit"}),
         power="nuclear",
+        dry_mass_kg=Measured(300000, "space_map_fitted"),
+        propellant_mass_kg=Measured(900000, "space_map_fitted"),
+        isp_s=Measured(3000.0, "space_map_fitted"),
+        # 0.04 g, so the departure burn is a day rather than a season. Below
+        # this the impulsive arc the solver draws stops describing the trip.
+        thrust_n=Measured(500000.0, "space_map_fitted"),
         crew=Measured(5, "clarke_1968_2001"),
     ),
     # Present for the same reason a map has a compass rose. Lucasfilm's

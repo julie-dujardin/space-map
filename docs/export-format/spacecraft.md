@@ -195,12 +195,19 @@ information:
   March 5 publish payload to LEO and to GTO and answer escape questions
   privately; interpolating a curve from a mass-to-Mars headline would be an
   invention.
-- Several spacecraft ship no `delta_v_kms`. Rosetta's masses are published and
-  its engine's specific impulse is not; the Apollo service module's dry mass
-  is in neither cited document, so its propellant load cannot be separated
-  from its structure.
+- Crew Dragon ships no `delta_v_kms`. Both its masses are published and no
+  specific impulse for the Draco thruster is, in any document or engine
+  catalogue.
 - Starship ships no performance figures at all. Every mass in circulation for
   it traces to a slide or a remark rather than a document.
+- The two rovers ship no propulsion at all, which is a statement rather than a
+  gap: a rover is delivered, and `departs_from: []` says the same thing.
+
+One class of entry does carry figures nobody published: a fictional ship whose
+work describes a drive without numbering it. Those are cited to
+`space_map_fitted` rather than to the author, and every field they touch says
+so, so a reader can tell a chosen number from a quoted one. Faster-than-light
+ships get nothing — a jump is not a trajectory.
 
 The export logs each of these at INFO on every run, so a gap that gets filled
 is noticed.

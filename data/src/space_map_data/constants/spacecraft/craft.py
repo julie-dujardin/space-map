@@ -11,8 +11,13 @@ can show its working. Two conventions make those inputs comparable:
   same design, the entry describes the design and links both spacecraft.
 
 A figure with no source is not written down. Several entries below are
-therefore incomplete in ways that show: Rosetta's masses are known and its
-specific impulse is not, so it has no derivable Δv, and saying so is the point.
+therefore incomplete in ways that show: nobody publishes an Isp for the Draco
+thruster, so Crew Dragon has masses and no derivable Δv, and saying so is the
+point.
+
+Where an engine is not named by its mission, it is identified by what the
+mission does publish — thrust and propellants — and the identification is
+stated next to the number rather than buried in it.
 """
 
 from space_map_data.constants.spacecraft.specs import Cost, Measured, Spacecraft
@@ -121,9 +126,10 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         thrust_n=Measured(0.24, "nasa_psyche_spacecraft"),
         object_ids=("probe-118050816",),
     ),
-    # Masses known, engine not. Rosetta spent 1,670 kg getting to a comet by
-    # way of three Earth flybys and one of Mars, and the catalogue can say
-    # how much it spent without being able to say how fast it went.
+    # Rosetta had no main engine: 1,670 kg went out through twenty-four 10 N
+    # thrusters over eleven years, three Earth flybys and one of Mars. The
+    # manufacturer's flight-heritage list is what names the mission, and 292 s
+    # reproduces the 2.3 km/s ESA budgeted for the trip.
     Spacecraft(
         id="rosetta",
         qid="Q48572",
@@ -134,8 +140,14 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         power="solar",
         dry_mass_kg=Measured(1295, "gcat_satcat"),
         propellant_mass_kg=Measured(1670, "gcat_satcat"),
+        isp_s=Measured(292.0, "ariane_10n_thruster"),
         object_ids=("probe-88698880",),
     ),
+    # The mission names neither engine nor supplier, so the thruster is
+    # identified from what it does publish: twenty-four at 27.5 N burning
+    # MMH/MON-3 (JPL's own propulsion thermal analysis, NTRS 20180006128,
+    # which credits Moog for the hardware). One catalogue thruster matches.
+    # The figure is that datasheet's *minimum*, so the Δv is a floor.
     Spacecraft(
         id="europa-clipper",
         qid="Q15637513",
@@ -146,8 +158,12 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         power="solar",
         dry_mass_kg=Measured(3241, "gcat_satcat"),
         propellant_mass_kg=Measured(2750, "gcat_satcat"),
+        isp_s=Measured(297.0, "moog_biprop_thrusters"),
         object_ids=("probe-119541760",),
     ),
+    # Twelve MR-111C thrusters, per the manufacturer, which is the same family
+    # New Horizons flies and the same reason both entries take their specific
+    # impulse from the engine catalogue rather than the mission.
     Spacecraft(
         id="parker-solar-probe",
         qid="Q899091",
@@ -158,6 +174,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         power="solar",
         dry_mass_kg=Measured(605, "gcat_satcat"),
         propellant_mass_kg=Measured(80, "gcat_satcat"),
+        isp_s=Measured(229.0, "gcat_engines"),
         object_ids=("probe-110309376",),
     ),
     # Over half its launch mass was propellant, spent on six flybys and an
@@ -214,9 +231,13 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
     ),
     # The only crewed lander ever flown, and the press kit breaks it down to
     # the pound: 9,287 lb of structure against 23,918 lb of propellant across
-    # descent, ascent and attitude control. No Isp is cited for the descent
-    # engine in either source, so the Δv that took two people to the surface
-    # and back is not derivable here.
+    # descent, ascent and attitude control. Three quarters of that load went
+    # through the descent engine, so its specific impulse is the one quoted —
+    # the ascent engine's is within a second of it.
+    #
+    # Understated more than the usual ideal-Δv caveat, because the LM threw
+    # away the descent stage halfway: one stage carrying the whole load is
+    # about a kilometre a second short of what the two actually managed.
     #
     # The only craft in the catalogue to have flown both departures: descent
     # stage down from lunar orbit, ascent stage up off the surface.
@@ -230,17 +251,25 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         power="battery",
         dry_mass_kg=Measured(4213, "apollo_11_press_kit"),
         propellant_mass_kg=Measured(10848, "apollo_11_press_kit"),
+        isp_s=Measured(305.0, "nasa_ter_dps_1973"),
         crew=Measured(2, "apollo_11_press_kit"),
         capabilities=frozenset({"landing"}),
         capability_source="apollo_11_press_kit",
     ),
     # --- crewed ------------------------------------------------------------
-    # 12,250 lb of command module and 51,243 lb of service module. The service
-    # module's dry mass is in neither cited document, so the propellant load
-    # cannot be separated out and the SPS Δv is not derivable — the one figure
-    # this entry most wants. Entry speed is Apollo 11's own return: 36,194 ft/s
-    # off the free-return trajectory, which is what a lunar-return heat shield
-    # has to be built for and is well short of a Mars return.
+    # 12,250 lb of command module and 51,243 lb of service module, so 28,800 kg
+    # off the pad. Neither Apollo document states the service module's dry mass;
+    # what the operations handbook states is the other side of the same
+    # subtraction, 24,389 lb of oxidizer and 15,253 lb of fuel gaugeable in the
+    # SPS tanks. Dry mass below is the launch weight less that load.
+    #
+    # It is a full load rather than Apollo 11's own, which nothing published
+    # breaks out, so the split leans a few hundred kilograms toward propellant
+    # and the Δv comes out around 3.0 km/s against the 2.8 usually quoted.
+    #
+    # Entry speed is Apollo 11's own return: 36,194 ft/s off the free-return
+    # trajectory, which is what a lunar-return heat shield has to be built for
+    # and is well short of a Mars return.
     Spacecraft(
         id="apollo-csm",
         qid="Q680027",
@@ -249,6 +278,8 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         status="retired",
         departs_from=frozenset({"orbit"}),
         power="battery",
+        dry_mass_kg=Measured(10819, "apollo_11_press_kit"),
+        propellant_mass_kg=Measured(17981, "apollo_aoh_1969"),
         isp_s=Measured(314.0, "gcat_engines"),
         thrust_n=Measured(91190.0, "apollo_11_press_kit"),
         crew=Measured(3, "apollo_11_press_kit"),
@@ -281,6 +312,10 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         # the OIG because ESA supplies the second under a barter agreement.
         cost=Cost(1300.0, 2021, "unit", "nasa_oig_2021"),
     ),
+    # Both masses published, no specific impulse anywhere: SpaceX has never
+    # stated one for the Draco, and the engine catalogues that carry its thrust
+    # leave the column empty. So no Δv, on a capsule that has flown people
+    # dozens of times.
     Spacecraft(
         id="crew-dragon",
         qid="Q105095031",

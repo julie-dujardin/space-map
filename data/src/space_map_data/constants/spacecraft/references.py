@@ -90,6 +90,36 @@ SPACECRAFT_SOURCES: dict[str, SpacecraftReference] = {
         "thrust",
         "Apollo masses",
     ),
+    "apollo_aoh_1969": SpacecraftReference(
+        "North American Rockwell 1969, Apollo Operations Handbook, Block II "
+        "Spacecraft (SM2A-03-Block II, volume 1)",
+        "https://www.ibiblio.org/apollo/ApolloProjectOnline/Documents/SMA2A-03-BLOCK%20II%20Volume%201%2019691015/aoh-v1-2-04-sps.pdf",
+        "Service propulsion system tank capacities and the gaugeable oxidizer "
+        "and fuel loads, which is what separates the service module's "
+        "propellant from its structure",
+        "Apollo SPS propellant",
+    ),
+    "nasa_ter_dps_1973": SpacecraftReference(
+        "NASA 1973, Apollo Experience Report: Descent Propulsion System (TN D-7143)",
+        "https://ntrs.nasa.gov/api/citations/19730011150/downloads/19730011150.pdf",
+        "Design specific impulse of the lunar module descent engine at the end "
+        "of its duty cycle",
+        "LM descent engine",
+    ),
+    "ariane_10n_thruster": SpacecraftReference(
+        "ArianeGroup, 10 N Bipropellant Thruster",
+        "https://www.space-propulsion.com/spacecraft-propulsion/bipropellant-thrusters/10-bipropellant-thrusters.html",
+        "Specific impulse of the European 10 N thruster, whose flight-heritage "
+        "list names Rosetta",
+        "Rosetta thrusters",
+    ),
+    "moog_biprop_thrusters": SpacecraftReference(
+        "Moog 2024, Bipropellant Thrusters (form 500-939 0924)",
+        "https://www.moog.com/content/dam/moog/literature/sdg/space/propulsion/moog-bipropellant-thrusters-datasheet.pdf",
+        "Minimum specific impulse of the DST-13/E, the only 27.5 N MMH/MON "
+        "thruster in the catalogue and so the one Europa Clipper flies",
+        "Clipper thrusters",
+    ),
     "nasa_orion_reference_2022": SpacecraftReference(
         "NASA 2022, Orion Reference Guide",
         "https://www.nasa.gov/wp-content/uploads/2023/02/orion-reference-guide-111022.pdf",
@@ -165,5 +195,16 @@ SPACECRAFT_SOURCES: dict[str, SpacecraftReference] = {
         "Discovery One's nuclear plasma drive and its crew of five, three of "
         "them in hibernation",
         "2001: A Space Odyssey",
+    ),
+    # The one source here that is not a work. A ship whose author gave it a
+    # drive and no numbers can either sit unjudged forever or carry figures
+    # somebody chose, and pretending Clarke wrote them would be worse than
+    # either. Kept as its own key so the panel says which it is.
+    "space_map_fitted": SpacecraftReference(
+        "Space Map, fitted to the work",
+        "https://spacemap.co/credits",
+        "Masses and specific impulses no author wrote down, picked so that the "
+        "capability the work does describe falls out of the rocket equation",
+        "fitted to the fiction",
     ),
 }

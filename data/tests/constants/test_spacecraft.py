@@ -87,6 +87,14 @@ class TestSources:
             assert ref.title and ref.url.startswith("https://"), key
             assert ref.contribution, key
 
+    def test_fitted_figures_stay_in_fiction(self):
+        # `space_map_fitted` says "somebody here chose this number". A real
+        # spacecraft reaching for it would be inventing performance, which is
+        # the one thing the catalogue is not allowed to do.
+        for craft in CATALOGUE.values():
+            if "space_map_fitted" in craft.sources():
+                assert craft.kind == "fictional", craft.id
+
 
 class TestLinks:
     """Entries point at things that already exist elsewhere in the map."""
@@ -189,6 +197,19 @@ class TestPerformance:
             ("dawn", 11.0, 15.0),
             # Orion's service module, one lunar-orbit insertion and return.
             ("orion", 1.0, 1.8),
+            # Eleven years of flybys and a comet rendezvous, against the
+            # 2.3 km/s ESA budgeted for the trip.
+            ("rosetta", 2.0, 2.8),
+            # A floor: the thruster datasheet quotes a minimum specific
+            # impulse, so Clipper's real margin can only be better.
+            ("europa-clipper", 1.5, 2.5),
+            # Course correction on a probe that was thrown at the Sun.
+            ("parker-solar-probe", 0.15, 0.45),
+            # Down from lunar orbit and back up, understated because the real
+            # thing dropped a stage in between.
+            ("apollo-lm", 3.0, 4.5),
+            # The SPS on a full load, a little over the 2.8 usually quoted.
+            ("apollo-csm", 2.5, 3.5),
         ],
     )
     def test_derived_delta_v_matches_the_mission(self, craft_id, low_kms, high_kms):
@@ -197,9 +218,10 @@ class TestPerformance:
         assert low_kms <= delta_v <= high_kms, f"{craft_id}: {delta_v:.2f} km/s"
 
     def test_delta_v_is_none_without_all_three_inputs(self):
-        # Rosetta's masses are known and its engine is not, so the panel has
-        # to say so rather than round something plausible.
-        assert delta_v_kms(CATALOGUE["rosetta"]) is None
+        # Crew Dragon's masses are known and its engine is not — nobody has
+        # published a Draco specific impulse — so the panel has to say so
+        # rather than round something plausible.
+        assert delta_v_kms(CATALOGUE["crew-dragon"]) is None
 
     def test_electric_craft_are_recognisably_low_thrust(self):
         for craft in CATALOGUE.values():
