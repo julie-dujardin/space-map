@@ -186,7 +186,9 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
     # against is the one that delivers it, not one it flies.
     Spacecraft(
         id="curiosity",
-        qid="Q48496",
+        # The rover, not the mission that delivered it — Q48496 is the Mars
+        # Science Laboratory, and the mass below is Curiosity's own.
+        qid="Q48485",
         kind="lander",
         propulsion="chemical",
         status="active",

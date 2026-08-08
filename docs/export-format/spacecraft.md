@@ -43,13 +43,24 @@ interface Vehicle {
 	// Which feasibility path applies.
 	kind: 'launcher' | 'probe' | 'crewed' | 'lander' | 'fictional';
 	propulsion: 'chemical' | 'electric' | 'nuclear' | 'solar_sail' | 'fictional';
-	status: 'active' | 'retired' | 'planned' | 'concept' | 'fictional';
+	// `cancelled` is not `retired`: one stopped flying, the other never
+	// started. Both keep whatever performance was published for them.
+	status: 'active' | 'retired' | 'planned' | 'cancelled' | 'concept' | 'fictional';
 	// Wikidata item, which supplies the display name in all twelve locales the
 	// same way bodies get theirs.
 	qid?: string;
 	// English name, present only when there is no Wikidata item (two of the
-	// fictional ships). Those carry hand-authored message keys instead.
+	// fictional ships). Those carry hand-authored message keys instead. Every
+	// other name comes from `spacecraft/{lang}.json`, below.
 	name?: string;
+	// Which configuration this entry is, where the name cannot say: the three
+	// Falcon Heavy entries are three curves under one Wikidata item, so the
+	// label alone would print the same row three times. Slugs, not words —
+	// each is a message key the frontend renders beside the localized name,
+	// and they stay separate so "expendable" can be translated without
+	// dragging the "Star 48" part number through twelve locales.
+	// Currently `expendable`, `reusable`, `star-48`.
+	variant?: string[];
 	// A solar-only craft past the asteroid belt is a real constraint.
 	power?: 'solar' | 'rtg' | 'nuclear' | 'battery' | 'fictional';
 	// Where a trip flown with this vehicle can start, so nothing offers to
@@ -146,6 +157,34 @@ interface Cost {
 	source: string;
 }
 ```
+
+## Names: `v1/spacecraft/{lang}.json`
+
+One bundle per locale, keyed by vehicle id. Split out of `spacecraft.json`
+because the name is the only part of a vehicle that differs per reader —
+twelve locales inside the always-loaded file would cost more than the physics
+in it does.
+
+```typescript
+type SpacecraftNames = Record<
+	string, // vehicle id
+	{
+		// Wikidata's label in this locale, falling back to English where it has
+		// none. Never the slug: a row labelled `atlas-v-551-star-48` is worse
+		// than one labelled in the wrong language.
+		name: string;
+		// Wikidata's one-liner ("heavy-lift orbital launch vehicle made by
+		// SpaceX"). Absent for about a third of entries in most locales.
+		description?: string;
+	}
+>;
+```
+
+Nothing here is hand-translated: the labels are Wikidata's, keyed by the `qid`
+each entry carries. Two entries are absent from every bundle — the Hail Mary
+and the Hermes have no Wikidata item, and the frontend names them from its own
+message keys. Entries sharing an item (Falcon Heavy's three configurations)
+share a name, and are told apart by `variant`.
 
 ## Gaps are deliberate
 

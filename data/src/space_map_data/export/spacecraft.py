@@ -10,6 +10,13 @@ show either. C3 curves named by dataset are read out of the downloaded
 launch-performance files and thinned: a hundred digitised points describe the
 same curve as eight within a few kilograms, and the eight fit in the payload
 budget of a file that loads at boot.
+
+Names live beside it in `v1/spacecraft/<lang>.json`, one bundle per locale, the
+way group pages carry theirs. They are split out because a name is the one part
+of a vehicle that differs per reader — shipping twelve locales of them inside a
+file every reader downloads would cost more than the physics does. Nothing here
+is hand-translated: the labels are Wikidata's, keyed by the QID each entry
+already carries.
 """
 
 import logging
@@ -18,6 +25,7 @@ from pathlib import Path
 
 import orjson
 
+from space_map_data.constants.providers import LANGUAGES
 from space_map_data.constants.spacecraft import (
     CATALOGUE,
     SPACECRAFT_SOURCES,
@@ -25,6 +33,7 @@ from space_map_data.constants.spacecraft import (
     delta_v_kms,
 )
 from space_map_data.constants.spacecraft.specs import C3Curve, Measured
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.utils.paths import EXPORT_DIR, SOURCES_LAUNCH_PERFORMANCE_DIR
 
 logger = logging.getLogger(__name__)
@@ -112,6 +121,12 @@ def _entry(craft: Spacecraft) -> dict:
         entry["qid"] = craft.qid
     if craft.name:
         entry["name"] = craft.name
+    # Which configuration this is, where the name alone cannot say. The
+    # frontend renders these beside the localized name, one message key each —
+    # separate rather than pre-joined, because "expendable" is a word in twelve
+    # languages and "Star 48" is a part number in none of them.
+    if craft.variant:
+        entry["variant"] = list(craft.variant)
     if craft.power:
         entry["power"] = craft.power
 
@@ -153,6 +168,62 @@ def _entry(craft: Spacecraft) -> dict:
     return entry
 
 
+def build_name_bundles(cache: WikidataEntityCache) -> dict[str, dict[str, dict]]:
+    """`{lang: {vehicle id: {name, description?}}}` from the Wikidata labels.
+
+    A locale missing a label falls back to English rather than being left out:
+    this bundle is the only place the picker can read a name from, and a row
+    labelled with its slug is worse than one labelled in the wrong language.
+    Entries with no Wikidata item are absent entirely — the two fictional ships
+    that have none carry hand-authored message keys in the frontend instead.
+    """
+    bundles: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
+    fell_back: dict[str, int] = {}
+    unnamed: list[str] = []
+    for craft in CATALOGUE.values():
+        entity = cache.get_referenced(craft.qid)
+        if entity is None:
+            unnamed.append(craft.id)
+            continue
+        english = entity["labels"].get("en") or craft.name
+        for lang in LANGUAGES:
+            label = entity["labels"].get(lang)
+            name = label or english
+            if not name:
+                continue
+            if label is None and lang != "en":
+                fell_back[lang] = fell_back.get(lang, 0) + 1
+            entry: dict = {"name": name}
+            # Wikidata's one-liner ("American super heavy-lift launch vehicle"),
+            # which is the only sentence about a vehicle nobody has to write.
+            if description := entity["descriptions"].get(lang):
+                entry["description"] = description
+            bundles[lang][craft.id] = entry
+
+    if unnamed:
+        logger.info(
+            "No Wikidata entity for %d vehicles, named by the frontend: %s",
+            len(unnamed),
+            ", ".join(sorted(unnamed)),
+        )
+    for lang, count in sorted(fell_back.items()):
+        logger.info("%s: %d vehicle names fall back to English", lang, count)
+    return bundles
+
+
+def write_name_bundles(out_dir: Path, cache: WikidataEntityCache) -> None:
+    bundles = build_name_bundles(cache)
+    names_dir = out_dir / "spacecraft"
+    names_dir.mkdir(parents=True, exist_ok=True)
+    for lang, bundle in bundles.items():
+        (names_dir / f"{lang}.json").write_bytes(orjson.dumps(bundle))
+    logger.info(
+        "Wrote %d spacecraft name bundles (%d vehicles each)",
+        len(bundles),
+        len(bundles["en"]),
+    )
+
+
 def build_spacecraft() -> dict:
     """Assemble the catalogue plus the citations its source keys point at."""
     vehicles = [_entry(craft) for craft in CATALOGUE.values()]
@@ -163,10 +234,13 @@ def build_spacecraft() -> dict:
     return {"vehicles": vehicles, "sources": sources}
 
 
-def write_spacecraft(out_dir: Path) -> None:
+def write_spacecraft(out_dir: Path, cache: WikidataEntityCache | None = None) -> None:
     t0 = time.monotonic()
     payload = build_spacecraft()
     (out_dir / "spacecraft.json").write_bytes(orjson.dumps(payload))
+    # The full run already has a warm cache; a `--only spacecraft` run builds
+    # one for 33 entities, which is cheap enough not to be worth threading in.
+    write_name_bundles(out_dir, cache or WikidataEntityCache())
 
     with_dv = sum(1 for v in payload["vehicles"] if "delta_v_kms" in v)
     with_curve = sum(1 for v in payload["vehicles"] if "c3_curve" in v)

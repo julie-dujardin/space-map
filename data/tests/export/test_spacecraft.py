@@ -9,7 +9,13 @@ not move the answer.
 import pytest
 
 from space_map_data.constants.spacecraft import CATALOGUE
-from space_map_data.export.spacecraft import _load_curve, _thin, build_spacecraft
+from space_map_data.export.spacecraft import (
+    _load_curve,
+    _thin,
+    build_name_bundles,
+    build_spacecraft,
+)
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.utils.paths import SOURCES_LAUNCH_PERFORMANCE_DIR
 
 
@@ -58,6 +64,37 @@ class TestShape:
 
         for key in keys(payload["vehicles"]):
             assert key in sources, key
+
+
+class TestNames:
+    """Every vehicle can be labelled, and no two rows read alike."""
+
+    @pytest.fixture(scope="class")
+    def bundles(self):
+        return build_name_bundles(WikidataEntityCache())
+
+    def test_every_locale_names_every_vehicle_with_an_item(self, bundles):
+        # The two ships Wikidata has no item for are named by the frontend's
+        # own message keys; everything else is named here, in all twelve.
+        expected = {c.id for c in CATALOGUE.values() if c.qid}
+        for lang, bundle in bundles.items():
+            assert set(bundle) == expected, lang
+            assert all(entry["name"] for entry in bundle.values()), lang
+
+    def test_configurations_of_one_rocket_are_told_apart(self, bundles):
+        # Three Falcon Heavy entries share a QID and therefore a label. What
+        # separates them in the picker is `variant`, so (name, variant) has to
+        # be unique — otherwise the list shows the same row three times.
+        variants = {c.id: c.variant for c in CATALOGUE.values()}
+        for lang, bundle in bundles.items():
+            rows = [(e["name"], variants[craft_id]) for craft_id, e in bundle.items()]
+            assert len(set(rows)) == len(rows), lang
+
+    def test_variants_are_slugs(self):
+        for craft in CATALOGUE.values():
+            for qualifier in craft.variant:
+                assert qualifier == qualifier.lower().strip(), craft.id
+                assert " " not in qualifier, craft.id
 
 
 class TestDerivedDeltaV:

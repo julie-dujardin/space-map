@@ -87,7 +87,11 @@ PROPULSION = frozenset({"chemical", "electric", "nuclear", "solar_sail", "fictio
 
 # `Spacecraft.status`. `concept` is the honest label for anything whose
 # performance figures come from a manufacturer's slide rather than a flight.
-STATUSES = frozenset({"active", "retired", "planned", "concept", "fictional"})
+# `cancelled` is distinct from `retired`: one stopped flying, the other never
+# started, and both keep whatever performance was published for them.
+STATUSES = frozenset(
+    {"active", "retired", "planned", "cancelled", "concept", "fictional"}
+)
 
 # `Spacecraft.power`. A solar-only craft past the asteroid belt is a real
 # constraint and a cheap one to check — Juno needed 60 m² of panel to work at
@@ -144,6 +148,12 @@ class Spacecraft:
     # with no item, and those carry a hand-authored message key instead.
     qid: str | None = None
     name: str | None = None
+    # What distinguishes this entry from the others sharing its Wikidata item.
+    # Three Falcon Heavy configurations are three curves and one QID, so the
+    # label alone would print the same row three times. Slugs rather than
+    # words, and several rather than one joined string: the frontend has to say
+    # "expendable" in twelve languages and "Star 48" in none of them.
+    variant: tuple[str, ...] = ()
 
     # Which departures this vehicle can be offered against, so the panel does
     # not suggest lifting an SLS out of low orbit. Empty is a claim rather than

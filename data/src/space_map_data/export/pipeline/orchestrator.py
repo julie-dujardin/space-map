@@ -1014,7 +1014,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
 
     write_systems_global(out_dir, gms, nut_prec_angles)
     write_atmospheres(out_dir)
-    write_spacecraft(out_dir)
+    write_spacecraft(out_dir, wikidata_entities)
 
     # CelesTrak CSV parsing is deferred: when both earth zooms skip via their
     # zone meta, the ~120 MB of day CSVs are never read. The historical

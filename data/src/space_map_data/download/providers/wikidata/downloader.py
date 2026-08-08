@@ -20,6 +20,7 @@ from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
 from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
+from space_map_data.constants.spacecraft import CATALOGUE as SPACECRAFT_CATALOGUE
 from space_map_data.constants.wikidata_topics import topic_page_qids
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
@@ -193,6 +194,16 @@ class WikidataDownloader(Downloader):
             referenced_dir,
             limit=None,
             fetch_desc="reusable vehicles",
+        )
+        # Travel-catalogue vehicle QIDs, which is where the picker's names come
+        # from. Most are already here as some payload's launch-vehicle claim —
+        # a coupling that would take Falcon Heavy's name with it if the claim
+        # ever moved, so the catalogue seeds its own.
+        self._fetch_entities(
+            {c.qid for c in SPACECRAFT_CATALOGUE.values() if c.qid},
+            referenced_dir,
+            limit=None,
+            fetch_desc="spacecraft catalogue",
         )
         # Topic pages for the detail panels (atmosphere, interior, rings, and
         # the concepts the stat cards name). No object claim reaches them —
