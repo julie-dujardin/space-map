@@ -48,7 +48,7 @@ export const TARGET_MODES: readonly EndpointMode[] = [
 export type TravelStatus = 'idle' | 'solving' | 'ready' | 'empty' | 'blocked';
 
 /** Why no trip can be offered at all, as opposed to no route being found. */
-export type BlockReason = 'unknown-primary' | 'unknown-orbit' | 'no-target';
+export type BlockReason = 'unknown-primary' | 'unknown-orbit' | 'no-target' | 'no-origin';
 
 export class TravelPanelState {
 	originMode = $state<EndpointMode>('surface');

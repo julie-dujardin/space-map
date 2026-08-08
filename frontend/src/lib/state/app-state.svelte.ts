@@ -138,10 +138,10 @@ export class AppState {
 		this.pushNow();
 	}
 
-	/** Open the trip planner, or move one of its ends. Pass `to = null` for the
-	 *  empty form. Pushes: each trip is its own destination, so browser-back
-	 *  returns to the body you set out from. */
-	setNav(from: string | NavEnd, to: string | NavEnd | null = null) {
+	/** Open the trip planner, or move one of its ends. Either end may be null —
+	 *  a trip is described one end at a time. Pushes: each trip is its own
+	 *  destination, so browser-back returns to the body you set out from. */
+	setNav(from: string | NavEnd | null, to: string | NavEnd | null = null) {
 		const next = applyNav(this.view, from, to);
 		if (
 			this.view.type === UrlType.Nav &&

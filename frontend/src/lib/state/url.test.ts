@@ -293,6 +293,13 @@ describe('applyNav', () => {
 		});
 	});
 
+	// A body's own planner opens this way: you are looking at where you want to
+	// end up, and where you would set out from is the question.
+	it('takes a destination with no departure', () => {
+		const next = applyNav(baseView, null, 'naif-499');
+		expect(next).toMatchObject({ id: 'naif-499', navFrom: null, navTo: 'naif-499' });
+	});
+
 	it('tears down the drawer depth of the page it left', () => {
 		const next = applyNav(
 			{ ...baseView, tab: 'images', gallery: 'rings', imageIndex: 2, groupSlug: 'cat-oceans' },
@@ -338,8 +345,24 @@ describe('serializeUrl on a trip', () => {
 		expect(url.startsWith('/nav/naif-399?at=')).toBe(true);
 	});
 
+	// The other way round the slot cannot be dropped, for the same reason: a
+	// marker holds the departure's place so the destination stays second.
+	it('marks the departure slot when there is nowhere to set out from', () => {
+		const url = serializeUrl(applyNav(baseView, null, 'naif-499'));
+		expect(url.startsWith('/nav/-/naif-499?at=')).toBe(true);
+	});
+
 	it('frames the departure when there is nowhere to go yet', () => {
 		expect(applyNav(baseView, 'naif-499').id).toBe('naif-499');
+	});
+
+	// A departure's feature names a place on a body that is no longer an end.
+	it('drops a departure feature when there is no departure', () => {
+		const url = serializeUrl({
+			...applyNav(baseView, null, 'naif-499'),
+			navFromFeature: 14940
+		});
+		expect(url).not.toContain('ff=');
 	});
 
 	// A surface feature rides in the query block, not the path: the trajectory is

@@ -2,10 +2,9 @@
   The object panel's way into the trip planner, in the drawer's button row.
 
   The body whose panel it sits in becomes the destination — the panel answers
-  "how do I get here" — with the departure left at the default. Hidden rather
-  than disabled when no trip is possible (Earth to itself, or a moon of the
-  departure body's own primary): an entry point that always dead-ends is worse
-  than no entry point.
+  "how do I get here" — and the departure defaults to Earth. Hidden rather than
+  disabled when the destination has no orbit to travel along: an entry point
+  that always dead-ends is worse than no entry point.
 -->
 <script lang="ts">
 	import { getContext } from 'svelte';
@@ -31,8 +30,13 @@
 	const ctx = getContext<ContextManager | undefined>('ctx');
 	const appState = getContext<AppState | undefined>('appState');
 
+	// Nobody travels to where they already are, so Earth's own panel opens with
+	// the departure unchosen rather than with no button at all.
+	let departure = $derived(target.id === EARTH_ID ? null : EARTH_ID);
+
 	let plannable = $derived.by(() => {
-		if (!ctx || target.id === EARTH_ID) return false;
+		if (!ctx) return false;
+		if (departure === null) return true;
 		// Whatever bucket a body sits in — majors, a zone, a spacecraft group.
 		// Reading only the majors index used to hide the button on every small body
 		// and probe, which are exactly the ones worth planning a trip to.
@@ -43,7 +47,7 @@
 	});
 
 	let destination = $derived({ id: target.id, featureId });
-	let href = $derived(navHref(appState, EARTH_ID, destination));
+	let href = $derived(navHref(appState, departure, destination));
 </script>
 
 {#if plannable && href}
@@ -56,7 +60,7 @@
 		onclick={(e: MouseEvent) => {
 			if (isModifiedClick(e) || !appState) return;
 			e.preventDefault();
-			appState.setNav(EARTH_ID, destination);
+			appState.setNav(departure, destination);
 		}}
 	>
 		<NavigationIcon />

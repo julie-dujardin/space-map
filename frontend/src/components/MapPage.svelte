@@ -210,7 +210,7 @@
 		const { type, navFrom, navTo, navFromFeature, navToFeature } = appState.view;
 		if (type !== UrlType.Nav) return null;
 		return {
-			from: navFrom ?? EARTH_ID,
+			from: navFrom,
 			to: navTo,
 			fromFeature: navFromFeature,
 			toFeature: navToFeature
@@ -255,6 +255,8 @@
 		// every tick.
 		const at = jdToDate(untrack(() => clock.jd));
 		const ends = [trip.from, trip.to].filter((id) => id !== null);
+		// Neither end chosen — nothing to stream, and nothing to re-frame either.
+		if (ends.length === 0) return;
 		void (async () => {
 			await Promise.all(
 				ends.map((id) =>
@@ -266,7 +268,7 @@
 				)
 			);
 			// With nowhere to go yet, the departure is the subject.
-			const framed = trip.to ?? trip.from;
+			const framed = trip.to ?? ends[0];
 			const body = ctx.getBody(framed);
 			if (!body) return;
 			if (untrack(() => cameraFocus?.data.id) === framed) return;
@@ -444,13 +446,14 @@
 			// names which end and why. Falling back to the default view here would
 			// drop the whole trip out of the URL, so only the camera moves — onto the
 			// other end, which is what the empty form frames anyway.
-			const departure = ctx.getBody(navTrip.from);
-			if (departure) {
+			const fromId = navTrip.from;
+			const departure = fromId === null ? null : ctx.getBody(fromId);
+			if (fromId && departure) {
 				scene?.snapToBody(
-					navTrip.from,
+					fromId,
 					DEFAULT_FRAMING_LAT,
 					DEFAULT_FRAMING_LON,
-					framingDistanceFor(urlTypeFromId(navTrip.from), departure)
+					framingDistanceFor(urlTypeFromId(fromId), departure)
 				);
 			}
 		} else {
@@ -670,8 +673,9 @@
 					isMobile={isMobileViewport}
 					inert={bgInert}
 					onClose={() => {
-						// Closing a trip lands on whichever end is framed.
-						const id = navTrip.to ?? navTrip.from;
+						// Closing a trip lands on whichever end is framed, or on the body
+						// the camera was left with when neither end is chosen.
+						const id = navTrip.to ?? navTrip.from ?? appState.view.id;
 						appState.setFocus({ type: urlTypeFromId(id), id, name: '' });
 						tick().then(() => document.getElementById('main-content')?.focus());
 					}}

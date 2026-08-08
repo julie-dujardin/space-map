@@ -28,9 +28,9 @@
 	import TravelPanel from './TravelPanel.svelte';
 
 	interface Props {
-		/** Departure and destination ids, straight off the route. The destination is
-		 *  null on the empty form. */
-		fromId: string;
+		/** Departure and destination ids, straight off the route. Either is null
+		 *  when that end has not been chosen. */
+		fromId: string | null;
 		toId: string | null;
 		/** IAU feature ids when an end is a named place on its body's surface. */
 		fromFeatureId: number | null;
@@ -85,7 +85,7 @@
 	}
 
 	$effect(() => {
-		const ids = toId === null ? [fromId] : [fromId, toId];
+		const ids = [fromId, toId].filter((id) => id !== null);
 		let cancelled = false;
 		resolving = true;
 		resolveTripBodies(ids, residentBody).then((bodies) => {
@@ -98,7 +98,7 @@
 		};
 	});
 
-	let origin = $derived(tripBodies.get(fromId) ?? null);
+	let origin = $derived(fromId === null ? null : (tripBodies.get(fromId) ?? null));
 	let target = $derived(toId === null ? null : (tripBodies.get(toId) ?? null));
 
 	// Bodies to test the search results against. The scene's own, since only
@@ -176,7 +176,10 @@
 		};
 	}
 
-	$effect(() => loadFeatureName(fromId, fromFeatureId));
+	$effect(() => {
+		if (fromId === null) return;
+		return loadFeatureName(fromId, fromFeatureId);
+	});
 	$effect(() => {
 		if (toId === null) return;
 		return loadFeatureName(toId, toFeatureId);
@@ -211,6 +214,7 @@
 
 	$effect(() => {
 		originDetail = null;
+		if (fromId === null) return;
 		return loadDetail(fromId, (d) => (originDetail = d));
 	});
 	$effect(() => {
@@ -251,18 +255,25 @@
 
 {#snippet body(contentClass: string)}
 	<div class={contentClass}>
-		{#if origin}
+		{#if origin || fromId === null}
 			<TravelPanel
 				{origin}
 				{target}
-				originName={endpointName(origin, fromFeatureId)}
-				targetName={target
-					? endpointName(target, toFeatureId)
-					: // Named but unplaceable: the bundle still knows what it is called, and
-						// a destination that reads as empty would look like nothing was chosen.
-						(targetDetail?.name ?? toId)}
+				originName={fromId === null
+					? null
+					: origin
+						? endpointName(origin, fromFeatureId)
+						: (originDetail?.name ?? fromId)}
+				targetName={toId === null
+					? null
+					: target
+						? endpointName(target, toFeatureId)
+						: // Named but unplaceable: the bundle still knows what it is called, and
+							// a destination that reads as empty would look like nothing was chosen.
+							(targetDetail?.name ?? toId)}
 				originFeatureId={fromFeatureId}
 				targetFeatureId={toFeatureId}
+				originPicked={fromId !== null}
 				targetPicked={toId !== null}
 				{nowJd}
 				{excludeForOrigin}
@@ -276,15 +287,14 @@
 						toId === null ? null : { id: toId, featureId: toFeatureId }
 					)}
 				onTargetChange={(pick: TravelEndpointPick) =>
-					appState?.setNav(
-						{ id: fromId, featureId: fromFeatureId },
-						{ id: pick.bodyId, featureId: pick.featureId }
-					)}
+					appState?.setNav(fromId === null ? null : { id: fromId, featureId: fromFeatureId }, {
+						id: pick.bodyId,
+						featureId: pick.featureId
+					})}
 				onSwap={() =>
-					toId &&
 					appState?.setNav(
-						{ id: toId, featureId: toFeatureId },
-						{ id: fromId, featureId: fromFeatureId }
+						toId === null ? null : { id: toId, featureId: toFeatureId },
+						fromId === null ? null : { id: fromId, featureId: fromFeatureId }
 					)}
 			/>
 		{:else if resolving}

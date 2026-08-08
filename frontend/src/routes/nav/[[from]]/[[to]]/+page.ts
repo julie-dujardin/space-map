@@ -3,9 +3,10 @@ import { browser } from '$app/environment';
 import { minimalSeo } from '$lib/seo/meta';
 import type { PageLoad } from './$types';
 
-/** Mirrors isBodyId in url.ts (not imported: that module pulls in client-only
- *  `$app/state`). */
+/** Mirrors isBodyId and NAV_UNSET in url.ts (not imported: that module pulls in
+ *  client-only `$app/state`). */
 const ID_PREFIXES = ['naif-', 'spkid-', 'norad_satcat-', 'probe-', 'extra-'];
+const NAV_UNSET = '-';
 
 function isBodyId(value: string): boolean {
 	const prefix = ID_PREFIXES.find((p) => value.startsWith(p));
@@ -13,11 +14,13 @@ function isBodyId(value: string): boolean {
 }
 
 export const load: PageLoad = async ({ params, url }) => {
-	// Both ends are optional — bare /nav is the empty form — but a segment that is
-	// present has to name a body, or the renderer is handed an id it can never
-	// resolve.
+	// Either end may be unchosen — as an absent segment or as the unset marker —
+	// but a segment naming one has to name a body, or the renderer is handed an id
+	// it can never resolve.
 	for (const id of [params.from, params.to]) {
-		if (id !== undefined && !isBodyId(id)) error(404, `Unknown body id "${id}"`);
+		if (id !== undefined && id !== NAV_UNSET && !isBodyId(id)) {
+			error(404, `Unknown body id "${id}"`);
+		}
 	}
 
 	if (browser) return { seo: null };

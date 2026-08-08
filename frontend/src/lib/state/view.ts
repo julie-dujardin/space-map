@@ -96,11 +96,11 @@ export interface MapViewState {
 	 *  prefixed id, since a trip can join two different id spaces (a probe to a
 	 *  small body) and the path has no type segment to disambiguate them.
 	 *
-	 *  `navTo` is null on the empty form — bare `/nav` is a planner with nowhere
-	 *  to go yet, the way an empty directions form is. `navFrom` defaults to
-	 *  Earth rather than staying null, so there is always a departure to price
-	 *  against. `id` mirrors the destination when there is one, so the camera
-	 *  frames where you are going. */
+	 *  Either is null when that end has not been chosen, the way either box of a
+	 *  directions form can be empty: bare `/nav` opens from Earth with nowhere to
+	 *  go, and a body's own planner opens with it as the destination. `id`
+	 *  mirrors the destination when there is one, so the camera frames where you
+	 *  are going. */
 	navFrom: string | null;
 	navTo: string | null;
 	/** IAU feature id when an end is a named place on its body's surface —

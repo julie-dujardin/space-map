@@ -46,18 +46,19 @@
 	import PorkchopChart from './PorkchopChart.svelte';
 
 	interface Props {
-		/** Where the trip starts. */
-		origin: BodyData;
-		/** Where it ends; null on the empty form. */
+		/** Where the trip starts; null until one is chosen. */
+		origin: BodyData | null;
+		/** Where it ends; null until one is chosen. */
 		target: BodyData | null;
 		/** Localized labels for the two ends. */
-		originName: string;
+		originName: string | null;
 		targetName: string | null;
 		/** IAU feature id when an end is a named place on its body's surface. */
 		originFeatureId: number | null;
 		targetFeatureId: number | null;
-		/** Whether the URL names a destination at all. Tells the two silences
-		 *  apart: nowhere chosen yet, versus somewhere with no orbit to meet. */
+		/** Whether the URL names each end at all. Tells the two silences apart:
+		 *  nothing chosen yet, versus somewhere with no orbit to meet. */
+		originPicked: boolean;
 		targetPicked: boolean;
 		/** The two ends and their chains up to the Sun, for resolving primaries. */
 		bodiesById: Map<string, BodyData>;
@@ -84,6 +85,7 @@
 		targetName,
 		originFeatureId,
 		targetFeatureId,
+		originPicked,
 		targetPicked,
 		bodiesById,
 		nowJd,
@@ -128,25 +130,30 @@
 	// body's own moon, or between two moons of one planet — and so which orbit
 	// each end is described by and what the arc goes round.
 	let lookup = $derived(lookupIn(bodiesById));
-	let plan = $derived<TransferPlan | null>(target ? transferPlan(origin, target, lookup) : null);
+	let plan = $derived<TransferPlan | null>(
+		origin && target ? transferPlan(origin, target, lookup) : null
+	);
 	let frame = $derived(transferFrame(plan));
 
 	// The kernel's view of each end, rebuilt whenever either body or its detail
 	// changes.
 	let originTravel = $derived<TravelBody | null>(
-		toTravelBody(origin, lookup, originDetail, frame.orbit)
+		origin ? toTravelBody(origin, lookup, originDetail, frame.orbit) : null
 	);
 	let targetTravel = $derived<TravelBody | null>(
 		target ? toTravelBody(target, lookup, targetDetail, frame.orbit) : null
 	);
 
-	// A destination that never resolved is a destination with no orbit, not an
-	// empty form.
+	// An end that never resolved is an end with no orbit, not an empty form. The
+	// destination is asked for first: it is the question the panel exists to
+	// answer, and a departure with nowhere to go prices nothing.
 	let block = $derived<BlockReason | null>(
 		plan === null
-			? targetPicked
-				? 'unknown-orbit'
-				: 'no-target'
+			? !targetPicked
+				? 'no-target'
+				: !originPicked
+					? 'no-origin'
+					: 'unknown-orbit'
 			: plan.kind === 'blocked'
 				? plan.reason
 				: null
@@ -209,6 +216,8 @@
 
 	$effect(() => () => panel.dispose());
 
+	let bothEnds = $derived(originPicked && targetPicked);
+
 	function swap() {
 		// Modes ride along with their end. Only the destination can be a flyby, so
 		// a flyby arrival lands on the nearest departure that means something.
@@ -229,6 +238,7 @@
 			<EndpointField
 				role="origin"
 				bodyName={originName}
+				placeholder={m.travel_choose_origin()}
 				isFeature={panel.originIsFeature}
 				mode={panel.originMode}
 				onModeChange={(mode: EndpointMode) => (panel.originMode = mode)}
@@ -270,7 +280,7 @@
 				variant="outline"
 				size="icon"
 				onclick={swap}
-				disabled={!target}
+				disabled={!bothEnds}
 				class="text-muted-foreground absolute end-0 top-1/2 -translate-y-1/2"
 				aria-label={m.travel_swap()}
 			>
@@ -381,9 +391,11 @@
 	</div>
 
 	{#if panel.status === 'blocked'}
-		<!-- Nowhere to go yet is a prompt, not a failure — no alert icon on it. -->
+		<!-- An end left blank is a prompt, not a failure — no alert icon on it. -->
 		{#if panel.blocked === 'no-target'}
 			<p class="text-muted-foreground text-xs">{m.travel_no_target()}</p>
+		{:else if panel.blocked === 'no-origin'}
+			<p class="text-muted-foreground text-xs">{m.travel_no_origin()}</p>
 		{:else}
 			<p class="text-muted-foreground flex items-start gap-2 text-xs">
 				<CircleAlertIcon class="mt-0.5 size-3.5 shrink-0" />

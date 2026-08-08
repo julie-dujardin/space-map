@@ -243,14 +243,26 @@
 				// out by setFocus the moment the camera lands. Also skip when a
 				// group is focused and the clicked body is a member — clicking
 				// within a group should keep the group view, only the camera moves.
-				// A trip is the same kind of mode, and stricter: whichever end the
-				// camera settles on, the URL is the journey until it is closed.
 				if (!wasInitial && !isNavigatingBack && body && body.data.id !== appState.view.id) {
+					// A trip stays a trip: settling on a body inside one moves where the
+					// trip goes, since that is the question the page is asking.
+					if (appState.view.type === UrlType.Nav) {
+						const { navFrom, navFromFeature } = appState.view;
+						// Where you set out from is not somewhere to go — that click just
+						// moves the camera, as the endpoint search declines to offer it.
+						if (body.data.id !== navFrom) {
+							appState.setNav(
+								navFrom === null ? null : { id: navFrom, featureId: navFromFeature },
+								body.data.id
+							);
+						}
+						return;
+					}
 					const inActiveGroup =
 						appState.view.type === UrlType.Group &&
 						appState.view.groupSlug !== null &&
 						ctx.isMemberOfActiveGroup(body.data.id);
-					if (!inActiveGroup && appState.view.type !== UrlType.Nav) {
+					if (!inActiveGroup) {
 						appState.setFocus({
 							type: urlTypeFromId(body.data.id),
 							id: body.data.id,

@@ -118,29 +118,39 @@ export function groupAnchor(slug: string): { id: string; zoom: number } {
 	return { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM };
 }
 
+/** Path segment for an end of a trip that has not been chosen. The two ends are
+ *  positional, so a destination-only trip needs something in the departure slot
+ *  or `/nav/<x>` would read as a departure. */
+export const NAV_UNSET = '-';
+
 /** Parse current page state → MapViewState, or null */
 export function parseUrl(): MapViewState | null {
 	// /nav has no type segment of its own, and both its ends are optional, so it
 	// is recognised by its route id rather than by which params happen to be set.
 	if (page.route.id?.startsWith('/nav')) {
-		const from = page.params.from;
-		const to = page.params.to;
+		const fromParam = page.params.from;
+		const toParam = page.params.to;
+		const from = fromParam === NAV_UNSET ? undefined : fromParam;
+		const to = toParam === NAV_UNSET ? undefined : toParam;
 		if ((from !== undefined && !isBodyId(from)) || (to !== undefined && !isBodyId(to))) {
 			console.warn(`parseUrl: malformed nav ids (from=${from}, to=${to})`);
 			return null;
 		}
+		// A bare /nav is a blank form, and Earth is where its traffic leaves from;
+		// an unset segment means the departure was cleared on purpose.
+		const navFrom = fromParam === undefined ? EARTH_ID : (from ?? null);
 		return applyAtParam({
 			...DEFAULT_VIEW,
 			type: UrlType.Nav,
 			// The renderer always frames a body; on a trip that's where you're going,
-			// and on the empty form it's where you're setting out from.
-			id: to ?? from ?? EARTH_ID,
+			// and with nowhere to go yet, where you're setting out from.
+			id: to ?? navFrom ?? EARTH_ID,
 			name: '',
-			navFrom: from ?? EARTH_ID,
+			navFrom,
 			navTo: to ?? null,
-			navFromFeature: parseFeatureId(page.url.searchParams.get('ff')),
-			// A feature belongs to the end it was picked at; with no destination
-			// there is no end for one to belong to.
+			// A feature belongs to the end it was picked at; without that end there
+			// is nothing for one to belong to.
+			navFromFeature: navFrom ? parseFeatureId(page.url.searchParams.get('ff')) : null,
 			navToFeature: to ? parseFeatureId(page.url.searchParams.get('tf')) : null
 		});
 	}
@@ -299,24 +309,25 @@ function navEnd(end: string | NavEnd): NavEnd {
  * Next view when opening the trip planner.
  *
  * The destination doubles as the framed body: you are looking at where you are
- * going, the same way a focus view frames its subject. Pass `to = null` for the
- * empty form, which frames the departure instead.
+ * going, the same way a focus view frames its subject. Either end may be null —
+ * a trip is described one end at a time — and the camera falls back to whichever
+ * one is there.
  */
 export function applyNav(
 	current: MapViewState,
-	from: string | NavEnd,
+	from: string | NavEnd | null,
 	to: string | NavEnd | null = null
 ): MapViewState {
-	const departure = navEnd(from);
+	const departure = from === null ? null : navEnd(from);
 	const destination = to === null ? null : navEnd(to);
 	return {
 		...current,
 		type: UrlType.Nav,
-		id: destination?.id ?? departure.id,
+		id: destination?.id ?? departure?.id ?? current.id,
 		name: '',
-		navFrom: departure.id,
+		navFrom: departure?.id ?? null,
 		navTo: destination?.id ?? null,
-		navFromFeature: departure.featureId ?? null,
+		navFromFeature: departure?.featureId ?? null,
 		navToFeature: destination?.featureId ?? null,
 		imageIndex: null,
 		gallery: null,
@@ -472,15 +483,15 @@ export function serializeUrl(state: MapViewState): string {
 			: '';
 
 	if (state.type === UrlType.Nav) {
-		// The departure segment stays even when it is the default, so a
-		// destination-only URL can't exist — `/nav/<x>` would read as a departure.
+		// The departure slot is always written, as an id or as the unset marker:
+		// the ends are positional, so `/nav/<x>` would read as a departure.
 		const path = resolve('/nav/[[from]]/[[to]]', {
-			from: state.navFrom ?? EARTH_ID,
+			from: state.navFrom ?? NAV_UNSET,
 			to: state.navTo ?? undefined
 		});
 		// A trip is described entirely by its two ends; the rest of the query block
 		// belongs to drawer tabs the planner doesn't have.
-		const ff = state.navFromFeature !== null ? `&ff=${state.navFromFeature}` : '';
+		const ff = state.navFrom && state.navFromFeature !== null ? `&ff=${state.navFromFeature}` : '';
 		const tf = state.navTo && state.navToFeature !== null ? `&tf=${state.navToFeature}` : '';
 		return `${path}?at=${at}${ff}${tf}`;
 	}

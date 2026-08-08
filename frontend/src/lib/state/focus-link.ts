@@ -53,10 +53,10 @@ export function groupHref(
 	return appState ? serializeUrl(applyGroup(appState.view, slug, name)) : undefined;
 }
 
-/** The URL for the `/nav` trip planner; `to = null` is the empty form. */
+/** The URL for the `/nav` trip planner; either end may be null. */
 export function navHref(
 	appState: AppState | undefined,
-	from: string | NavEnd,
+	from: string | NavEnd | null,
 	to: string | NavEnd | null = null
 ): string | undefined {
 	return appState ? serializeUrl(applyNav(appState.view, from, to)) : undefined;
