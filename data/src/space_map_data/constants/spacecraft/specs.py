@@ -94,6 +94,13 @@ STATUSES = frozenset({"active", "retired", "planned", "concept", "fictional"})
 # Jupiter, and nothing solar has operated beyond it.
 POWER = frozenset({"solar", "rtg", "nuclear", "battery", "fictional"})
 
+# `Spacecraft.departs_from`. Where a trip flown with this vehicle can start.
+# An SLS leaves from a pad and nowhere else; a capsule is already up there and
+# has no way of getting there itself; a Starship does both. Nothing is cited
+# because nothing is measured — this is what the vehicle is for, and it is the
+# same statement as putting it under `launcher` or `crewed` in the first place.
+DEPARTURES = frozenset({"surface", "orbit"})
+
 # `Spacecraft.capabilities`. What the vehicle can do on arrival, which is what
 # decides whether an arrival mode may even be offered.
 CAPABILITIES = frozenset(
@@ -137,6 +144,11 @@ class Spacecraft:
     # with no item, and those carry a hand-authored message key instead.
     qid: str | None = None
     name: str | None = None
+
+    # Which departures this vehicle can be offered against, so the panel does
+    # not suggest lifting an SLS out of low orbit. Empty is a claim rather than
+    # a gap: a rover starts no trip at all, it is carried.
+    departs_from: frozenset[str] = frozenset()
 
     # --- in-space performance: the rocket equation's inputs --------------
     dry_mass_kg: Measured | None = None

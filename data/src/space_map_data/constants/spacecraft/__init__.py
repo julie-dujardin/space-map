@@ -15,6 +15,7 @@ from space_map_data.constants.spacecraft.references import (
 from space_map_data.constants.spacecraft.specs import (
     CAPABILITIES,
     COST_KINDS,
+    DEPARTURES,
     G0_M_S2,
     KINDS,
     POWER,
@@ -35,6 +36,7 @@ __all__ = [
     "CAPABILITIES",
     "CATALOGUE",
     "COST_KINDS",
+    "DEPARTURES",
     "C3Curve",
     "Cost",
     "FICTIONAL",

@@ -27,6 +27,18 @@ class TestShape:
         assert len(payload["vehicles"]) == len(CATALOGUE)
         assert {v["id"] for v in payload["vehicles"]} == set(CATALOGUE)
 
+    def test_departures_ship_on_every_entry(self, payload):
+        # Including the empty ones. The panel reads an absent field as an old
+        # export and stops filtering; it must never see one from this writer.
+        for vehicle in payload["vehicles"]:
+            assert isinstance(vehicle["departs_from"], list), vehicle["id"]
+            assert set(vehicle["departs_from"]) <= {"surface", "orbit"}, vehicle["id"]
+        by_id = {v["id"]: v for v in payload["vehicles"]}
+        assert by_id["sls-block-1"]["departs_from"] == ["surface"]
+        assert by_id["orion"]["departs_from"] == ["orbit"]
+        assert by_id["starship"]["departs_from"] == ["orbit", "surface"]
+        assert by_id["curiosity"]["departs_from"] == []
+
     def test_every_source_key_resolves(self, payload):
         sources = payload["sources"]
 

@@ -5,6 +5,12 @@ torch drive has no Δv budget worth stating — it has an acceleration it holds
 until it arrives, which is a brachistochrone rather than a transfer orbit, and
 the panel can only say so if the catalogue admits the field exists.
 
+Departures are read off the work the same way. Most of these are assembled in
+orbit and never touch a surface — a lighthugger's landings are done by the
+lighters it carries, and the ship itself has no more business in an atmosphere
+than a shipyard does. The ones that fly off a surface under their own power say
+so, and are the exception rather than the default.
+
 Citations are the works themselves. What a novel states about its own ship is
 the primary source for that ship, and the alternative is a number from nowhere.
 Where a work never states a figure, the entry does not invent one: the
@@ -24,12 +30,15 @@ FICTIONAL: tuple[Spacecraft, ...] = (
     # crew's limit is their own blood pressure rather than their propellant.
     # A third of a gravity is the cruise the Rocinante's crew fly at when
     # nobody is shooting; the ship's ceiling is where the drugs stop working.
+    # A frigate on landing struts: it makes planetfall and lifts off again on
+    # the same drive, which is why it departs from both.
     Spacecraft(
         id="rocinante",
         qid="Q107297632",
         kind="fictional",
         propulsion="fictional",
         status="fictional",
+        departs_from=frozenset({"surface", "orbit"}),
         power="fictional",
         accel_m_s2=Measured(_G / 3.0, "corey_2011_leviathan_wakes"),
         crew=Measured(18, "corey_2011_leviathan_wakes"),
@@ -43,6 +52,7 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         kind="fictional",
         propulsion="fictional",
         status="fictional",
+        departs_from=frozenset({"orbit"}),
         power="fictional",
         accel_m_s2=Measured(1.5 * _G, "weir_2021_project_hail_mary"),
         crew=Measured(3, "weir_2021_project_hail_mary"),
@@ -56,6 +66,7 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         kind="fictional",
         propulsion="fictional",
         status="fictional",
+        departs_from=frozenset({"orbit"}),
         power="nuclear",
         accel_m_s2=Measured(0.002, "weir_2011_the_martian"),
         crew=Measured(6, "weir_2011_the_martian"),
@@ -70,6 +81,7 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         kind="fictional",
         propulsion="fictional",
         status="fictional",
+        departs_from=frozenset({"orbit"}),
         power="fictional",
         accel_m_s2=Measured(_G, "reynolds_2000_revelation_space"),
         crew=Measured(160000, "reynolds_2000_revelation_space"),
@@ -83,6 +95,7 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         kind="fictional",
         propulsion="nuclear",
         status="fictional",
+        departs_from=frozenset({"orbit"}),
         power="nuclear",
         crew=Measured(5, "clarke_1968_2001"),
     ),
@@ -91,13 +104,16 @@ FICTIONAL: tuple[Spacecraft, ...] = (
     # a sublight acceleration or a mass, so the panel will say it cannot judge
     # the trip. Eight is the ship's complement rather than its flight crew:
     # two fly it and six ride, which is the split every reference gives and
-    # roughly what leaves Tatooine in the first film.
+    # roughly what leaves Tatooine in the first film — off a landing pad,
+    # under its own power, which is the one performance claim the films do
+    # make about it.
     Spacecraft(
         id="millennium-falcon",
         qid="Q19901",
         kind="fictional",
         propulsion="fictional",
         status="fictional",
+        departs_from=frozenset({"surface", "orbit"}),
         power="fictional",
         crew=Measured(8, "lucas_1977_star_wars"),
     ),

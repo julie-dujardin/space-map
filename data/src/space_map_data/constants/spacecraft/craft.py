@@ -30,6 +30,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="probe",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"orbit"}),
         power="rtg",
         dry_mass_kg=Measured(716, "gcat_satcat"),
         propellant_mass_kg=Measured(104, "gcat_satcat"),
@@ -46,6 +47,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="probe",
         propulsion="chemical",
         status="retired",
+        departs_from=frozenset({"orbit"}),
         power="rtg",
         dry_mass_kg=Measured(2125, "gcat_satcat"),
         propellant_mass_kg=Measured(3129, "gcat_satcat"),
@@ -59,6 +61,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="probe",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"orbit"}),
         # The furthest solar-powered spacecraft ever flown, and the reason it
         # needed three panels nine metres long.
         power="solar",
@@ -76,6 +79,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="probe",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"orbit"}),
         power="rtg",
         dry_mass_kg=Measured(401, "gcat_satcat"),
         propellant_mass_kg=Measured(77, "gcat_satcat"),
@@ -93,6 +97,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="probe",
         propulsion="electric",
         status="retired",
+        departs_from=frozenset({"orbit"}),
         power="solar",
         dry_mass_kg=Measured(793, "gcat_satcat"),
         propellant_mass_kg=Measured(425, "rayman_2006_dawn"),
@@ -108,6 +113,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="probe",
         propulsion="electric",
         status="active",
+        departs_from=frozenset({"orbit"}),
         power="solar",
         dry_mass_kg=Measured(1662, "nasa_psyche_spacecraft"),
         propellant_mass_kg=Measured(1085, "nasa_psyche_spacecraft"),
@@ -124,6 +130,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="probe",
         propulsion="chemical",
         status="retired",
+        departs_from=frozenset({"orbit"}),
         power="solar",
         dry_mass_kg=Measured(1295, "gcat_satcat"),
         propellant_mass_kg=Measured(1670, "gcat_satcat"),
@@ -135,6 +142,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="probe",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"orbit"}),
         power="solar",
         dry_mass_kg=Measured(3241, "gcat_satcat"),
         propellant_mass_kg=Measured(2750, "gcat_satcat"),
@@ -146,6 +154,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="probe",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"orbit"}),
         power="solar",
         dry_mass_kg=Measured(605, "gcat_satcat"),
         propellant_mass_kg=Measured(80, "gcat_satcat"),
@@ -160,6 +169,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="probe",
         propulsion="chemical",
         status="retired",
+        departs_from=frozenset({"orbit"}),
         power="solar",
         dry_mass_kg=Measured(513, "gcat_satcat"),
         propellant_mass_kg=Measured(595, "gcat_satcat"),
@@ -171,12 +181,16 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
     # The rover is 899 kg of the 3,839 kg that hit the atmosphere; the rest is
     # heat shield, parachute and sky crane, and none of it arrives. A lander
     # entry is about what survives, so the mass below is the rover.
+    #
+    # It departs from nowhere. A rover is cargo — the trip it can be offered
+    # against is the one that delivers it, not one it flies.
     Spacecraft(
         id="curiosity",
         qid="Q48496",
         kind="lander",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset(),
         power="rtg",
         dry_mass_kg=Measured(899, "gcat_satcat"),
         capabilities=frozenset({"entry", "landing"}),
@@ -189,6 +203,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="lander",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset(),
         power="rtg",
         dry_mass_kg=Measured(1025, "gcat_satcat"),
         capabilities=frozenset({"entry", "landing"}),
@@ -200,12 +215,16 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
     # descent, ascent and attitude control. No Isp is cited for the descent
     # engine in either source, so the Δv that took two people to the surface
     # and back is not derivable here.
+    #
+    # The only craft in the catalogue to have flown both departures: descent
+    # stage down from lunar orbit, ascent stage up off the surface.
     Spacecraft(
         id="apollo-lm",
         qid="Q208382",
         kind="lander",
         propulsion="chemical",
         status="retired",
+        departs_from=frozenset({"surface", "orbit"}),
         power="battery",
         dry_mass_kg=Measured(4213, "apollo_11_press_kit"),
         propellant_mass_kg=Measured(10848, "apollo_11_press_kit"),
@@ -226,6 +245,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="crewed",
         propulsion="chemical",
         status="retired",
+        departs_from=frozenset({"orbit"}),
         power="battery",
         isp_s=Measured(314.0, "gcat_engines"),
         thrust_n=Measured(91190.0, "apollo_11_press_kit"),
@@ -244,6 +264,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="crewed",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"orbit"}),
         power="solar",
         dry_mass_kg=Measured(15422, "nasa_orion_reference_2022"),
         propellant_mass_kg=Measured(8618, "nasa_orion_reference_2022"),
@@ -264,6 +285,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="crewed",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"orbit"}),
         power="solar",
         dry_mass_kg=Measured(9500, "gcat_satcat"),
         propellant_mass_kg=Measured(1255, "gcat_satcat"),
@@ -280,6 +302,7 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
         kind="crewed",
         propulsion="chemical",
         status="retired",
+        departs_from=frozenset({"orbit"}),
         power="battery",
         dry_mass_kg=Measured(83869, "gcat_satcat"),
         propellant_mass_kg=Measured(5870, "gcat_satcat"),
@@ -293,11 +316,17 @@ SPACECRAFT: tuple[Spacecraft, ...] = (
     # and specific impulse in circulation for Starship traces to a slide or a
     # remark rather than to a document, and the vehicle has not flown the
     # configuration those figures describe.
+    #
+    # The departures are the exception to that silence, because they are a
+    # statement about the airframe rather than a number: it lands on its
+    # engines and lifts off again, which is the whole design. Leaving Earth it
+    # still needs a booster under it; leaving the Moon it does not.
     Spacecraft(
         id="starship",
         qid="Q62833385",
         kind="crewed",
         propulsion="chemical",
         status="concept",
+        departs_from=frozenset({"surface", "orbit"}),
     ),
 )

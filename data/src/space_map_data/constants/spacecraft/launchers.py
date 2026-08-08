@@ -7,6 +7,10 @@ energy above about C3 = 20, and a Star-48 kick stage does not scale a curve so
 much as replace its top end. Treating those as one vehicle with a footnote
 would make the selector lie in exactly the cases that matter.
 
+Every entry here departs from a pad and nowhere else, and says so per entry
+rather than inheriting it from `kind` — a default that quiet would be exactly
+where a vehicle that also flies off the Moon would hide.
+
 Curves come from two places. NASA's SLS Mission Planner's Guide tabulates its
 own, so those points are written out here. The rest are the digitised NASA
 Launch Services Program curves the launch-performance downloader fetches, named
@@ -72,6 +76,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"surface"}),
         c3_curve=C3Curve(source="girija_2023", dataset="atlas-v401"),
         # What NASA paid to fly Lucy, launch service plus the mission-related
         # costs the award covers. Not a list price — nobody publishes one.
@@ -84,6 +89,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"surface"}),
         c3_curve=C3Curve(source="girija_2023", dataset="atlas-v551"),
         cost=Cost(150.0, 2023, "launch_service", "girija_2023"),
         group_slug="lv-atlas",
@@ -97,6 +103,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"surface"}),
         c3_curve=C3Curve(source="girija_2023", dataset="atlas-v551-star-48"),
         group_slug="lv-atlas",
     ),
@@ -106,6 +113,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="retired",
+        departs_from=frozenset({"surface"}),
         c3_curve=C3Curve(source="girija_2023", dataset="delta-iv-heavy"),
         group_slug="lv-delta",
     ),
@@ -115,6 +123,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="retired",
+        departs_from=frozenset({"surface"}),
         c3_curve=C3Curve(source="girija_2023", dataset="delta-iv-heavy-star-48"),
         group_slug="lv-delta",
     ),
@@ -127,6 +136,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"surface"}),
         c3_curve=C3Curve(source="girija_2023", dataset="falcon-heavy-expendable"),
         cost=Cost(178.0, 2021, "launch_service", "nasa_lsp_clipper_2021"),
         group_slug="lv-falcon",
@@ -137,6 +147,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"surface"}),
         c3_curve=C3Curve(
             source="girija_2023", dataset="falcon-heavy-expendable-star-48"
         ),
@@ -151,6 +162,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"surface"}),
         c3_curve=C3Curve(source="girija_2023", dataset="falcon-heavy-reusable"),
         group_slug="lv-falcon",
     ),
@@ -163,6 +175,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"surface"}),
         c3_curve=C3Curve(
             source="girija_2023",
             dataset="vulcan-vc6",
@@ -177,6 +190,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"surface"}),
         c3_curve=C3Curve(source="girija_2023", dataset="vulcan-vc6-star-48"),
         group_slug="lv-vulcan",
     ),
@@ -189,6 +203,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"surface"}),
         c3_curve=C3Curve(source="sls_mpg_2018", points=_SLS_BLOCK_1_POINTS),
         cost=Cost(2200.0, 2021, "unit", "nasa_oig_2021"),
         group_slug="lv-sls",
@@ -199,6 +214,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="planned",
+        departs_from=frozenset({"surface"}),
         c3_curve=C3Curve(source="sls_mpg_2018", points=_SLS_BLOCK_1B_POINTS),
         group_slug="lv-sls",
     ),
@@ -211,6 +227,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"surface"}),
         group_slug="lv-falcon",
     ),
     Spacecraft(
@@ -219,6 +236,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="retired",
+        departs_from=frozenset({"surface"}),
         group_slug="lv-saturn",
     ),
     Spacecraft(
@@ -227,6 +245,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"surface"}),
         group_slug="lv-new-glenn",
     ),
     Spacecraft(
@@ -235,6 +254,7 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         kind="launcher",
         propulsion="chemical",
         status="active",
+        departs_from=frozenset({"surface"}),
         group_slug="lv-long-march",
     ),
 )

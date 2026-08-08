@@ -104,6 +104,9 @@ def _entry(craft: Spacecraft) -> dict:
         "kind": craft.kind,
         "propulsion": craft.propulsion,
         "status": craft.status,
+        # Always emitted, empty included: a rover departing from nowhere is a
+        # claim the panel has to be able to read, not an absent field.
+        "departs_from": sorted(craft.departs_from),
     }
     if craft.qid:
         entry["qid"] = craft.qid

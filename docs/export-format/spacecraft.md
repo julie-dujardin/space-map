@@ -52,6 +52,12 @@ interface Vehicle {
 	name?: string;
 	// A solar-only craft past the asteroid belt is a real constraint.
 	power?: 'solar' | 'rtg' | 'nuclear' | 'battery' | 'fictional';
+	// Where a trip flown with this vehicle can start, so nothing offers to
+	// lift an SLS out of low orbit. Always present, empty included: `[]` says
+	// the thing is cargo — a rover starts no trip, it is delivered. Both
+	// entries belong to the four vehicles that land and lift off again
+	// (Apollo LM, Starship, and two of the fictional ships).
+	departs_from: ('surface' | 'orbit')[];
 
 	// --- in-space performance -------------------------------------------
 	// `propellant_mass_kg` is the load spent through the engine whose Isp is

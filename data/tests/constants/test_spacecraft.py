@@ -16,6 +16,7 @@ from space_map_data.constants.spacecraft import (
     CAPABILITIES,
     CATALOGUE,
     COST_KINDS,
+    DEPARTURES,
     KINDS,
     POWER,
     PROPULSION,
@@ -40,6 +41,10 @@ class TestVocabularies:
         for craft in CATALOGUE.values():
             assert craft.power is None or craft.power in POWER, craft.id
             assert craft.capabilities <= CAPABILITIES, craft.id
+
+    def test_departures(self):
+        for craft in CATALOGUE.values():
+            assert craft.departs_from <= DEPARTURES, craft.id
 
     def test_cost_kinds(self):
         for craft in CATALOGUE.values():
@@ -108,6 +113,33 @@ class TestLinks:
         for craft in CATALOGUE.values():
             for object_id in craft.object_ids:
                 assert object_id in known, f"{craft.id}: {object_id}"
+
+
+class TestDepartures:
+    """Where a trip can start with each entry.
+
+    The two lists below are spelled out rather than derived: an entry that
+    forgot the field would otherwise read as "cannot depart at all" and quietly
+    vanish from the panel's suggestions for every trip.
+    """
+
+    def test_launchers_leave_from_the_ground_and_nowhere_else(self):
+        for craft in CATALOGUE.values():
+            if craft.kind == "launcher":
+                assert craft.departs_from == frozenset({"surface"}), craft.id
+
+    def test_only_cargo_departs_from_nowhere(self):
+        grounded = {c.id for c in CATALOGUE.values() if not c.departs_from}
+        assert grounded == {"curiosity", "perseverance"}
+
+    def test_both_departures_is_a_short_list(self):
+        both = {c.id for c in CATALOGUE.values() if len(c.departs_from) == 2}
+        assert both == {
+            "apollo-lm",
+            "starship",
+            "rocinante",
+            "millennium-falcon",
+        }
 
 
 class TestPerformance:
