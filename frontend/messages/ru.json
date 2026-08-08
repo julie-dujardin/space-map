@@ -1836,5 +1836,12 @@
 	"unit_symbol_yottagram": "Йг",
 	"unit_symbol_zettagram": "Зг",
 	"spacecraft_name_hail_mary": "Аве Мария",
-	"spacecraft_name_hermes": "Гермес"
+	"spacecraft_name_hermes": "Гермес",
+	"spacecraft_variant_expendable": "одноразовый",
+	"spacecraft_variant_reusable": "многоразовый",
+	"travel_craft_with_variant": "{name} ({variant})",
+	"travel_list_separator": ", ",
+	"travel_craft_from_ground": "С поверхности",
+	"travel_craft_from_orbit": "С орбиты",
+	"travel_craft_carried": "Доставляется как груз"
 }

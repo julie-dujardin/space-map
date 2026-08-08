@@ -8,9 +8,16 @@
  *
  * A failed fetch leaves the catalogue empty, which the panel reads as "no
  * vehicle filter" — the routes still solve.
+ *
+ * Names come from a second, per-locale file rather than from the catalogue
+ * itself: a name is the only part of a vehicle that differs per reader, and
+ * twelve locales of them would cost more than the physics does. The two are
+ * fetched together, and a missing name bundle leaves the picker on its English
+ * fallbacks rather than failing the load.
  */
 
-import type { Vehicle } from '$lib/math/travel';
+import type { DepartureMode, Vehicle } from '$lib/math/travel';
+import { getLocale } from '$lib/paraglide/runtime.js';
 import { DATA_BASE } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
 
@@ -26,6 +33,8 @@ interface VehicleEntry {
 	status: Vehicle['status'];
 	qid?: string;
 	name?: string;
+	variant?: string[];
+	departs_from?: DepartureMode[];
 	power?: Vehicle['power'];
 	dry_mass_kg?: MeasuredEntry;
 	propellant_mass_kg?: MeasuredEntry;
@@ -60,8 +69,15 @@ interface SpacecraftFile {
 	sources: Record<string, SourceCitation>;
 }
 
+/** One vehicle's name in the locale that was fetched, plus Wikidata's one-liner. */
+export interface VehicleNaming {
+	name: string;
+	description?: string;
+}
+
 const vehicles: Vehicle[] = [];
 const citations = new Map<string, SourceCitation>();
+const naming = new Map<string, VehicleNaming>();
 let loadPromise: Promise<void> | null = null;
 
 function toVehicle(entry: VehicleEntry): Vehicle {
@@ -76,6 +92,8 @@ function toVehicle(entry: VehicleEntry): Vehicle {
 		status: entry.status,
 		qid: entry.qid,
 		name: entry.name,
+		variant: entry.variant,
+		departsFrom: entry.departs_from,
 		power: entry.power,
 		dryMassKg: entry.dry_mass_kg,
 		propellantMassKg: entry.propellant_mass_kg,
@@ -104,18 +122,33 @@ function toVehicle(entry: VehicleEntry): Vehicle {
 	};
 }
 
+async function loadCatalogue(): Promise<void> {
+	const r = await fetchWithTimeout(`${DATA_BASE}/v1/spacecraft.json`);
+	if (!r.ok) {
+		console.warn(`spacecraft: fetch failed (${r.status}) — travel panel has no vehicles`);
+		return;
+	}
+	const raw = (await r.json()) as SpacecraftFile;
+	for (const [key, citation] of Object.entries(raw.sources)) citations.set(key, citation);
+	vehicles.push(...raw.vehicles.map(toVehicle));
+}
+
+async function loadNames(lang: string): Promise<void> {
+	const r = await fetchWithTimeout(`${DATA_BASE}/v1/spacecraft/${lang}.json`);
+	if (!r.ok) {
+		// Not fatal: `vehicleName` falls back to the catalogue's English name.
+		console.warn(`spacecraft: no ${lang} name bundle (${r.status}) — falling back to English`);
+		return;
+	}
+	const raw = (await r.json()) as Record<string, VehicleNaming>;
+	for (const [id, entry] of Object.entries(raw)) naming.set(id, entry);
+}
+
 export function loadSpacecraft(): Promise<void> {
 	if (loadPromise) return loadPromise;
-	const p = (async () => {
-		const r = await fetchWithTimeout(`${DATA_BASE}/v1/spacecraft.json`);
-		if (!r.ok) {
-			console.warn(`spacecraft: fetch failed (${r.status}) — travel panel has no vehicles`);
-			return;
-		}
-		const raw = (await r.json()) as SpacecraftFile;
-		for (const [key, citation] of Object.entries(raw.sources)) citations.set(key, citation);
-		vehicles.push(...raw.vehicles.map(toVehicle));
-	})();
+	// In parallel, and the names are allowed to fail on their own: a picker
+	// listing every vehicle by slug still beats one listing none.
+	const p = Promise.all([loadCatalogue(), loadNames(getLocale())]).then(() => undefined);
 	loadPromise = p;
 	return p;
 }
@@ -128,6 +161,11 @@ export function allVehicles(): readonly Vehicle[] {
 export function vehicleById(id: string | null): Vehicle | null {
 	if (!id) return null;
 	return vehicles.find((v) => v.id === id) ?? null;
+}
+
+/** Localized name + Wikidata one-liner, or null for the ships with no item. */
+export function vehicleNaming(id: string): VehicleNaming | null {
+	return naming.get(id) ?? null;
 }
 
 /** The work behind a `source` key on any figure, for the citation line. */

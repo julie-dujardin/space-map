@@ -8,11 +8,19 @@
  * are different answers.
  */
 
+import type { DepartureMode } from './maneuvers';
 import type { Route } from './route';
 
 export type PropulsionKind = 'chemical' | 'electric' | 'nuclear' | 'solar-sail' | 'fictional';
 export type VehicleKind = 'launcher' | 'probe' | 'crewed' | 'lander' | 'fictional';
-export type VehicleStatus = 'active' | 'retired' | 'planned' | 'concept' | 'fictional';
+export type VehicleStatus =
+	| 'active'
+	| 'retired'
+	| 'planned'
+	/** Never flew and now never will, but keeps whatever was published for it. */
+	| 'cancelled'
+	| 'concept'
+	| 'fictional';
 export type PowerSource = 'solar' | 'rtg' | 'nuclear' | 'battery' | 'fictional';
 
 /** One figure and the source key backing it, so the panel can cite what it shows. */
@@ -39,6 +47,18 @@ export interface Vehicle {
 	qid?: string;
 	/** English name, for the few fictional ships with no Wikidata item. */
 	name?: string;
+	/**
+	 * Which configuration this is, where the name cannot say — three Falcon
+	 * Heavy entries share one Wikidata item and one label. Message-key slugs,
+	 * rendered beside the name.
+	 */
+	variant?: readonly string[];
+	/**
+	 * Where a trip with this vehicle can start. Empty means nowhere: a rover is
+	 * cargo, not something a trip is flown with. Undefined means an export
+	 * older than the field, which is not a claim — see `canDepartFrom`.
+	 */
+	departsFrom?: readonly DepartureMode[];
 	power?: PowerSource;
 
 	dryMassKg?: Measured;
@@ -78,6 +98,8 @@ export type FeasibilityStatus =
 	| 'beyond-published'
 	/** Continuous low thrust: impulsive Δv is the wrong yardstick. */
 	| 'not-modelled'
+	/** The trip starts somewhere this vehicle cannot start from. */
+	| 'wrong-departure'
 	/** The vehicle is missing the figure this check needs. */
 	| 'unknown';
 
@@ -105,6 +127,18 @@ export interface Feasibility {
  * three years to deliver, and the arc the solver drew never existed.
  */
 const IMPULSIVE_FLOOR_M_S2 = 1e-4;
+
+/**
+ * Whether a trip starting `mode` can be flown with this vehicle at all.
+ *
+ * Undefined is an export older than the field rather than a claim, so it
+ * passes: silently dropping every vehicle from the picker would be a worse
+ * failure than offering one that cannot lift off. An empty list *is* a claim —
+ * a rover departs from nowhere.
+ */
+export function canDepartFrom(vehicle: Vehicle, mode: DepartureMode): boolean {
+	return vehicle.departsFrom === undefined || vehicle.departsFrom.includes(mode);
+}
 
 /** Whether the vehicle's thrust is too low for the impulsive model to hold. */
 export function isLowThrust(vehicle: Vehicle): boolean {
@@ -155,6 +189,13 @@ function annotate(vehicle: Vehicle, route: Route, result: Feasibility): Feasibil
  * judged on in-space Δv, since the ascent belongs to whatever launched it.
  */
 export function checkFeasibility(vehicle: Vehicle, route: Route): Feasibility {
+	// First, because everything below it is moot: an SLS cannot be lifted out
+	// of the parking orbit it was going to put something into, and a Δv margin
+	// for that trip would be an answer to a question nobody can ask.
+	if (!canDepartFrom(vehicle, route.departureMode)) {
+		return { status: 'wrong-departure', marginKms: NaN };
+	}
+
 	// A torch drive has no Δv budget to check against; it holds an
 	// acceleration until it arrives, which is a different solver entirely.
 	if (vehicle.accelMs2) {

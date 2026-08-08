@@ -1607,5 +1607,12 @@
 	"unit_symbol_hour": "Std.",
 	"unit_symbol_magnitude": "mag",
 	"spacecraft_name_hail_mary": "Hail Mary",
-	"spacecraft_name_hermes": "Hermes"
+	"spacecraft_name_hermes": "Hermes",
+	"spacecraft_variant_expendable": "Einweg",
+	"spacecraft_variant_reusable": "wiederverwendbar",
+	"travel_craft_with_variant": "{name} ({variant})",
+	"travel_list_separator": ", ",
+	"travel_craft_from_ground": "Vom Boden",
+	"travel_craft_from_orbit": "Aus dem Orbit",
+	"travel_craft_carried": "Wird als Nutzlast befördert"
 }

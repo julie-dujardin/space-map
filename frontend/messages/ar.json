@@ -1808,5 +1808,12 @@
 	"unit_symbol_yottagram": "يوغ",
 	"unit_symbol_zettagram": "زتغ",
 	"spacecraft_name_hail_mary": "هيل ماري",
-	"spacecraft_name_hermes": "هيرميس"
+	"spacecraft_name_hermes": "هيرميس",
+	"spacecraft_variant_expendable": "غير قابل لإعادة الاستخدام",
+	"spacecraft_variant_reusable": "قابل لإعادة الاستخدام",
+	"travel_craft_with_variant": "{name} ({variant})",
+	"travel_list_separator": "، ",
+	"travel_craft_from_ground": "من الأرض",
+	"travel_craft_from_orbit": "من المدار",
+	"travel_craft_carried": "يُنقل كحمولة"
 }

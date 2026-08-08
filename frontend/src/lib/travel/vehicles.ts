@@ -10,12 +10,18 @@
  * opens the travel panel needs it.
  */
 
-import { loadSpacecraft, allVehicles, vehicleById, sourceCitation } from '$lib/fetch/spacecraft';
+import {
+	loadSpacecraft,
+	allVehicles,
+	vehicleById,
+	sourceCitation,
+	vehicleNaming
+} from '$lib/fetch/spacecraft';
 import type { Vehicle } from '$lib/math/travel';
 import * as m from '$lib/paraglide/messages.js';
 
-export { sourceCitation };
-export type { SourceCitation } from '$lib/fetch/spacecraft';
+export { sourceCitation, vehicleNaming };
+export type { SourceCitation, VehicleNaming } from '$lib/fetch/spacecraft';
 
 /** Fetch the catalogue if it is not already in memory. Safe to call repeatedly. */
 export function ensureVehicles(): Promise<void> {

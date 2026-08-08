@@ -79,7 +79,13 @@ export type {
 	VehicleKind,
 	VehicleStatus
 } from './vehicles';
-export { checkFeasibility, feasibleRoutes, isLowThrust, payloadForC3 } from './vehicles';
+export {
+	canDepartFrom,
+	checkFeasibility,
+	feasibleRoutes,
+	isLowThrust,
+	payloadForC3
+} from './vehicles';
 
 export type { SolveResult } from './solver-client';
 export { TravelSolver } from './solver-client';

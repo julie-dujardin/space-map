@@ -12,6 +12,7 @@
 	import { formatJulianDate } from '$lib/format/date';
 	import type { TravelPanelState } from '$lib/travel/panel.svelte';
 	import { formatTripTime } from '$lib/travel/format';
+	import { departureNote } from './vehicle-labels';
 
 	interface Props {
 		state: TravelPanelState;
@@ -32,6 +33,11 @@
 		}
 		if (result.status === 'insufficient-dv') {
 			return m.travel_needs_dv({ value: choice.route.inSpaceDvKms.toFixed(1) });
+		}
+		// The craft and the trip disagree about where it starts, which is a
+		// statement about the craft rather than about this particular route.
+		if (result.status === 'wrong-departure' && state.vehicle) {
+			return departureNote(state.vehicle);
 		}
 		return m.travel_not_modelled();
 	}

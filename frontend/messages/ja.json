@@ -1839,5 +1839,12 @@
 	"unit_symbol_magnitude": "等級",
 	"unit_symbol_metre": "米",
 	"spacecraft_name_hail_mary": "ヘイル・メアリー",
-	"spacecraft_name_hermes": "ヘルメス"
+	"spacecraft_name_hermes": "ヘルメス",
+	"spacecraft_variant_expendable": "使い捨て",
+	"spacecraft_variant_reusable": "再使用",
+	"travel_craft_with_variant": "{name}（{variant}）",
+	"travel_list_separator": "、",
+	"travel_craft_from_ground": "地上から",
+	"travel_craft_from_orbit": "軌道から",
+	"travel_craft_carried": "ペイロードとして搭載"
 }

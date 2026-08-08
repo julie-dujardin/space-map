@@ -1624,5 +1624,12 @@
 	"unit_symbol_astronomical_unit": "UA",
 	"unit_symbol_degree_celsius": "℃",
 	"spacecraft_name_hail_mary": "Hail Mary",
-	"spacecraft_name_hermes": "Hermès"
+	"spacecraft_name_hermes": "Hermès",
+	"spacecraft_variant_expendable": "non réutilisable",
+	"spacecraft_variant_reusable": "réutilisable",
+	"travel_craft_with_variant": "{name} ({variant})",
+	"travel_list_separator": ", ",
+	"travel_craft_from_ground": "Depuis le sol",
+	"travel_craft_from_orbit": "Depuis l'orbite",
+	"travel_craft_carried": "Emporté en charge utile"
 }

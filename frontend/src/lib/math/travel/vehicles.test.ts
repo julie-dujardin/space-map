@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+	canDepartFrom,
 	checkFeasibility,
 	feasibleRoutes,
 	isLowThrust,
@@ -38,6 +39,51 @@ const CRAFT: Vehicle = {
 const window = nextTransferWindows(EARTH, MARS, J2000, 1)[0];
 const tof = hohmannTransferDays(EARTH, MARS)!;
 const marsRoute = buildRoute(EARTH, MARS, window, tof)!;
+
+describe('canDepartFrom', () => {
+	const pad: Vehicle = { ...LAUNCHER, departsFrom: ['surface'] };
+	const capsule: Vehicle = { ...CRAFT, departsFrom: ['orbit'] };
+	const both: Vehicle = { ...CRAFT, departsFrom: ['surface', 'orbit'] };
+	const rover: Vehicle = { ...CRAFT, departsFrom: [] };
+
+	it('holds a launcher to the ground and a capsule to orbit', () => {
+		expect(canDepartFrom(pad, 'surface')).toBe(true);
+		expect(canDepartFrom(pad, 'orbit')).toBe(false);
+		expect(canDepartFrom(capsule, 'orbit')).toBe(true);
+		expect(canDepartFrom(capsule, 'surface')).toBe(false);
+	});
+
+	it('lets a craft that lands and lifts off do either', () => {
+		expect(canDepartFrom(both, 'surface')).toBe(true);
+		expect(canDepartFrom(both, 'orbit')).toBe(true);
+	});
+
+	it('reads an empty list as a claim: a rover starts no trip', () => {
+		expect(canDepartFrom(rover, 'surface')).toBe(false);
+		expect(canDepartFrom(rover, 'orbit')).toBe(false);
+	});
+
+	it('reads a missing list as an older export, not as a refusal', () => {
+		// The field is absent from exports predating it. Filtering every vehicle
+		// out of the picker would be a worse failure than offering a bad one.
+		expect(canDepartFrom(CRAFT, 'surface')).toBe(true);
+		expect(canDepartFrom(CRAFT, 'orbit')).toBe(true);
+	});
+
+	it('fails a route before its Δv is even weighed', () => {
+		// A trip this craft could easily afford, from a place it cannot leave.
+		const fromGround = buildRoute(EARTH, MARS, window, tof, { departureMode: 'surface' })!;
+		expect(checkFeasibility(capsule, fromGround).status).toBe('wrong-departure');
+		const fromOrbit = buildRoute(EARTH, MARS, window, tof, { departureMode: 'orbit' })!;
+		expect(checkFeasibility(capsule, fromOrbit).status).toBe('ok');
+	});
+
+	it('outranks the low-thrust verdict, which is about a different question', () => {
+		const ion: Vehicle = { ...CRAFT, propulsion: 'electric', departsFrom: ['orbit'] };
+		const fromGround = buildRoute(EARTH, MARS, window, tof, { departureMode: 'surface' })!;
+		expect(checkFeasibility(ion, fromGround).status).toBe('wrong-departure');
+	});
+});
 
 describe('payloadForC3', () => {
 	it('interpolates between curve points', () => {

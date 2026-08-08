@@ -17,6 +17,7 @@
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatJulianDate } from '$lib/format/date';
 	import {
+		canDepartFrom,
 		hohmannTransferDays,
 		nextTransferWindows,
 		systemArcBounds,
@@ -33,7 +34,7 @@
 	import { TravelPanelState, type BlockReason, type EndpointMode } from '$lib/travel/panel.svelte';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 	import { vehicleCatalogue } from '$lib/travel/vehicles';
-	import { vehicleName } from './vehicle-labels';
+	import { departureNote, vehicleName } from './vehicle-labels';
 	import type { TimeMode } from '$lib/travel/search-window';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -111,6 +112,17 @@
 	// array, which no rune is watching — deriving off a bumped counter looked
 	// equivalent and silently never re-ran.
 	let vehicles = $state<readonly Vehicle[]>([]);
+
+	// Craft that can leave the way this trip does come first. Sorted rather
+	// than filtered: a picker that hides the SLS the moment the origin box says
+	// "low orbit" reads as a missing catalogue, not as a rule.
+	let orderedVehicles = $derived(
+		[...vehicles].sort(
+			(a, b) =>
+				Number(canDepartFrom(b, panel.departureMode)) -
+				Number(canDepartFrom(a, panel.departureMode))
+		)
+	);
 
 	// What kind of transfer this pair needs — across the solar system, out to a
 	// body's own moon, or between two moons of one planet — and so which orbit
@@ -333,17 +345,27 @@
 			     than pushing the routes below it off the panel. -->
 			<ScrollArea class="border-border/60 rounded-md border" viewportClasses="max-h-56">
 				<ul class="flex flex-col p-1">
-					{#each vehicles as vehicle (vehicle.id)}
+					{#each orderedVehicles as vehicle (vehicle.id)}
+						{@const fits = canDepartFrom(vehicle, panel.departureMode)}
 						<li>
 							<button
 								type="button"
 								onclick={() => {
-									panel.vehicleId = panel.vehicleId === vehicle.id ? null : vehicle.id;
+									panel.selectVehicle(vehicle.id);
 									vehicleOpen = false;
 								}}
 								class="hover:bg-muted flex w-full items-center gap-2 rounded-[5px] px-2 py-1.5 text-start text-xs"
 							>
-								<span class="min-w-0 flex-1 truncate">{vehicleName(vehicle)}</span>
+								<span class="min-w-0 flex-1 truncate {fits ? '' : 'text-muted-foreground'}">
+									{vehicleName(vehicle)}
+								</span>
+								{#if !fits}
+									<!-- Still selectable: choosing it moves the departure to one it
+									     can make, which is more useful than a row that does nothing. -->
+									<span class="text-muted-foreground shrink-0 text-[11px]">
+										{departureNote(vehicle)}
+									</span>
+								{/if}
 								{#if panel.vehicleId === vehicle.id}
 									<CheckIcon class="size-3.5 shrink-0" />
 								{/if}

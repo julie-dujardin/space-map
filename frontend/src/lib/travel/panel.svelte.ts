@@ -10,6 +10,7 @@
  */
 
 import {
+	canDepartFrom,
 	checkFeasibility,
 	TravelSolver,
 	type ArrivalMode,
@@ -101,6 +102,24 @@ export class TravelPanelState {
 		if (this.routes.length === 0) return null;
 		const chosen = this.routes.find((r) => r.profile === this.selectedProfile);
 		return (chosen ?? this.routes[0]).route;
+	}
+
+	/**
+	 * Choose a craft, or clear it by choosing it again, and move the departure
+	 * to one the craft can actually make.
+	 *
+	 * Picking an SLS while the origin box says "low orbit" means the box is
+	 * wrong, not the choice: a launcher is the one thing that cannot already be
+	 * up there. Left alone when the origin is a named place on a surface (there
+	 * is only one way to leave one) or when the craft departs from nowhere.
+	 */
+	selectVehicle(id: string | null): void {
+		this.vehicleId = this.vehicleId === id ? null : id;
+		const vehicle = this.vehicle;
+		if (!vehicle || this.originIsFeature) return;
+		if (canDepartFrom(vehicle, this.departureMode)) return;
+		if (canDepartFrom(vehicle, 'surface')) this.originMode = 'surface';
+		else if (canDepartFrom(vehicle, 'orbit')) this.originMode = 'low-orbit';
 	}
 
 	/** Whether the chosen craft can fly a route; null when none is chosen. */
