@@ -1,0 +1,147 @@
+/**
+ * State behind the travel panel: the trip you are describing, and the routes
+ * that come back.
+ *
+ * Solving is an explicit method rather than an effect inside the class — the
+ * component owns the effect, so the reads that should trigger a re-solve are
+ * visible in one place instead of hidden behind an async write that would feed
+ * itself. Superseded solves are dropped by token, so a fast change of
+ * destination cannot be overwritten by the answer to the previous one.
+ */
+
+import {
+	checkFeasibility,
+	TravelSolver,
+	type ArrivalMode,
+	type DepartureMode,
+	type Feasibility,
+	type PorkchopGrid,
+	type Route,
+	type RouteChoice,
+	type RouteProfile,
+	type TravelBody
+} from '$lib/math/travel';
+import { findVehicle, type CatalogueEntry } from './vehicles';
+import { searchWindow, type TimeMode } from './search-window';
+
+export type EndpointMode = 'surface' | 'orbit' | 'flyby';
+
+export type TravelStatus = 'idle' | 'solving' | 'ready' | 'empty' | 'blocked';
+
+/** Why no trip can be offered at all, as opposed to no route being found. */
+export type BlockReason = 'same-primary' | 'unknown-orbit' | 'no-target';
+
+export class TravelPanelState {
+	originMode = $state<EndpointMode>('surface');
+	targetMode = $state<EndpointMode>('orbit');
+	timeMode = $state<TimeMode>('now');
+	/** Departure or arrival date behind the non-'now' time modes, as a JD. */
+	pickedJd = $state<number | null>(null);
+	vehicleId = $state<string | null>(null);
+	/** Null until a solve lands, then whichever profile the user last chose. */
+	selectedProfile = $state<RouteProfile | null>(null);
+
+	routes = $state<RouteChoice[]>([]);
+	grid = $state<PorkchopGrid | null>(null);
+	status = $state<TravelStatus>('idle');
+	blocked = $state<BlockReason | null>(null);
+
+	#solver = new TravelSolver();
+	/** Guards against an older solve landing after a newer one. */
+	#token = 0;
+
+	get vehicle(): CatalogueEntry | null {
+		return findVehicle(this.vehicleId);
+	}
+
+	/** Arrival mode the kernel should price, from what the destination box says. */
+	get arrivalMode(): ArrivalMode {
+		if (this.targetMode === 'flyby') return 'flyby';
+		if (this.targetMode === 'surface') return 'landing';
+		return 'capture';
+	}
+
+	get departureMode(): DepartureMode {
+		return this.originMode === 'surface' ? 'surface' : 'orbit';
+	}
+
+	get selectedRoute(): Route | null {
+		if (this.routes.length === 0) return null;
+		const chosen = this.routes.find((r) => r.profile === this.selectedProfile);
+		return (chosen ?? this.routes[0]).route;
+	}
+
+	/** Whether the chosen craft can fly a route; null when none is chosen. */
+	feasibility(route: Route): Feasibility | null {
+		const vehicle = this.vehicle;
+		return vehicle ? checkFeasibility(vehicle, route) : null;
+	}
+
+	/** Mark a trip impossible before any solve is attempted. */
+	block(reason: BlockReason): void {
+		this.#token++;
+		this.blocked = reason;
+		this.status = 'blocked';
+		this.routes = [];
+		this.grid = null;
+	}
+
+	/**
+	 * Solve the current trip. Safe to call on every input change — the newest
+	 * call wins and the rest are discarded when they land.
+	 */
+	async solve(origin: TravelBody, target: TravelBody, nowJd: number): Promise<void> {
+		const options = searchWindow({
+			origin,
+			target,
+			nowJd,
+			timeMode: this.timeMode,
+			pickedJd: this.pickedJd
+		});
+		if (!options) {
+			this.block('unknown-orbit');
+			return;
+		}
+
+		const token = ++this.#token;
+		this.blocked = null;
+		this.status = 'solving';
+
+		const result = await this.#solver.solve(origin, target, {
+			...options,
+			departureMode: this.departureMode,
+			arrivalMode: this.arrivalMode
+		});
+
+		// A newer solve has already started, or already answered.
+		if (token !== this.#token) return;
+
+		if (!result) {
+			this.status = 'empty';
+			return;
+		}
+
+		let routes = result.routes;
+		// An arrival deadline is a filter on the answer, not on the search: the
+		// grid still has to cover the departures that could meet it.
+		if (this.timeMode === 'arrive' && this.pickedJd != null) {
+			const deadline = this.pickedJd;
+			routes = routes.filter((choice) => choice.route.arriveJd <= deadline);
+		}
+
+		this.routes = routes;
+		this.grid = result.grid;
+		this.status = routes.length > 0 ? 'ready' : 'empty';
+
+		const stillOffered = routes.some((r) => r.profile === this.selectedProfile);
+		if (!stillOffered) {
+			const balanced = routes.find((r) => r.profile === 'balanced');
+			this.selectedProfile = (balanced ?? routes[0])?.profile ?? null;
+		}
+	}
+
+	dispose(): void {
+		this.#token++;
+		this.#solver.dispose();
+	}
+}
