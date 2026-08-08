@@ -66,6 +66,34 @@ describe('separation', () => {
 	});
 });
 
+describe('offered routes', () => {
+	// Polishing a candidate used to step outside the grid on either axis — most
+	// visibly departing before the window opens. The porkchop drawn from that
+	// same grid then had nowhere to mark the route it had just offered.
+	it('keeps every route inside the grid it was drawn from', () => {
+		const bounds = systemArcBounds(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, J2000, J2000 + 27)!;
+		const options = {
+			departFromJd: J2000,
+			departToJd: J2000 + 27,
+			tofMinDays: bounds.fastestDays,
+			tofMaxDays: bounds.slowestDays,
+			departSteps: 60,
+			tofSteps: 60,
+			systemPrimary: 'departure' as const
+		};
+		const grid = computePorkchop(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, options);
+		const routes = selectRoutes(grid, EARTH_BARYCENTRIC, MOON_BARYCENTRIC, options);
+
+		expect(routes.length).toBeGreaterThan(0);
+		for (const { route } of routes) {
+			expect(route.departJd).toBeGreaterThanOrEqual(grid.departJds[0]);
+			expect(route.departJd).toBeLessThanOrEqual(grid.departJds[grid.departSteps - 1]);
+			expect(route.tofDays).toBeGreaterThanOrEqual(grid.tofDays[0]);
+			expect(route.tofDays).toBeLessThanOrEqual(grid.tofDays[grid.tofSteps - 1]);
+		}
+	});
+});
+
 describe('reporting', () => {
 	it('names an unusable primary once, not once per cell', () => {
 		const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});

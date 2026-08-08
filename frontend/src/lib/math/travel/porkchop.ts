@@ -205,12 +205,21 @@ function kneePoint(front: Candidate[]): Candidate {
 	return best;
 }
 
+function clamp(value: number, min: number, max: number): number {
+	return value < min ? min : value > max ? max : value;
+}
+
 /**
  * Polish a grid cell by shrinking a local search around it.
  *
  * The grid's resolution is coarse next to how sharply Δv varies near a window,
  * so the cell minimum can sit a few hundred m/s above the true one. Successive
  * halving costs a few dozen extra solves and removes most of that gap.
+ *
+ * The search stays inside the grid. A candidate on an edge — which the cheapest
+ * route usually is, since a longer cruise keeps getting cheaper — would
+ * otherwise walk off it, leaving a route the porkchop drawn from that same grid
+ * cannot place.
  */
 function refine(
 	departure: TravelBody,
@@ -223,6 +232,11 @@ function refine(
 	if (!seed) return null;
 	let bestRoute: Route = seed;
 
+	const departMin = grid.departJds[0];
+	const departMax = grid.departJds[grid.departSteps - 1];
+	const tofMin = grid.tofDays[0];
+	const tofMax = grid.tofDays[grid.tofSteps - 1];
+
 	let departSpan = grid.departSteps > 1 ? grid.departJds[1] - grid.departJds[0] : 0;
 	let tofSpan = grid.tofSteps > 1 ? grid.tofDays[1] - grid.tofDays[0] : 0;
 
@@ -233,9 +247,9 @@ function refine(
 		for (const dDepart of [-departSpan, 0, departSpan]) {
 			for (const dTof of [-tofSpan, 0, tofSpan]) {
 				if (dDepart === 0 && dTof === 0) continue;
-				const tof = improved.tofDays + dTof;
-				if (tof <= 0) continue;
-				const route = buildRoute(departure, target, improved.departJd + dDepart, tof, options);
+				const departJd = clamp(improved.departJd + dDepart, departMin, departMax);
+				const tof = clamp(improved.tofDays + dTof, tofMin, tofMax);
+				const route = buildRoute(departure, target, departJd, tof, options);
 				if (route && route.totalDvKms < improved.totalDvKms) improved = route;
 			}
 		}

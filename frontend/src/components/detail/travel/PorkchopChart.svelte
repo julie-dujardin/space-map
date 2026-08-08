@@ -58,8 +58,10 @@
 		if (!(departSpan > 0) || !(tofSpan > 0)) return null;
 		const x = (route.departJd - grid.departJds[0]) / departSpan;
 		const y = (route.tofDays - grid.tofDays[0]) / tofSpan;
-		if (x < 0 || x > 1 || y < 0 || y > 1) return null;
-		return { x, y };
+		// Held to the edges rather than dropped: the cheapest route sits on one
+		// often enough that a hair of rounding there would take the mark off the
+		// chart entirely.
+		return { x: Math.min(Math.max(x, 0), 1), y: Math.min(Math.max(y, 0), 1) };
 	});
 
 	let departFrom = $derived(formatJulianDate(grid.departJds[0]));
