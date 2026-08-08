@@ -10,6 +10,7 @@
  */
 
 import {
+	buildRoute,
 	canDepartFrom,
 	checkFeasibility,
 	checkManifest,
@@ -22,6 +23,7 @@ import {
 	type PorkchopGrid,
 	type Route,
 	type RouteChoice,
+	type RouteOptions,
 	type RouteProfile,
 	type TravelBody,
 	type Vehicle
@@ -50,6 +52,15 @@ export const TARGET_MODES: readonly EndpointMode[] = [
 
 export type TravelStatus = 'idle' | 'solving' | 'ready' | 'empty' | 'blocked';
 
+/** What the route list can offer: the solver's three, plus a point read off the
+ *  porkchop by hand. */
+export type RouteOption = RouteProfile | 'custom';
+
+export interface OfferedRoute {
+	profile: RouteOption;
+	route: Route;
+}
+
 /** Why no trip can be offered at all, as opposed to no route being found. */
 export type BlockReason = 'unknown-primary' | 'unknown-orbit' | 'no-target' | 'no-origin';
 
@@ -68,10 +79,12 @@ export class TravelPanelState {
 	 *  these sit outside the effect that re-solves. */
 	passengers = $state(0);
 	payloadKg = $state(0);
-	/** Null until a solve lands, then whichever profile the user last chose. */
-	selectedProfile = $state<RouteProfile | null>(null);
+	/** Null until a solve lands, then whichever route the user last chose. */
+	selectedProfile = $state<RouteOption | null>(null);
 
 	routes = $state<RouteChoice[]>([]);
+	/** A point picked off the porkchop, priced like any solved route. */
+	custom = $state<Route | null>(null);
 	grid = $state<PorkchopGrid | null>(null);
 	status = $state<TravelStatus>('idle');
 	blocked = $state<BlockReason | null>(null);
@@ -79,6 +92,9 @@ export class TravelPanelState {
 	#solver = new TravelSolver();
 	/** Guards against an older solve landing after a newer one. */
 	#token = 0;
+	/** The last solve's inputs, so a hand-picked point is priced the same way the
+	 *  grid it was read off was. */
+	#pricing: { origin: TravelBody; target: TravelBody; options: RouteOptions } | null = null;
 
 	get vehicle(): Vehicle | null {
 		return findVehicle(this.vehicleId);
@@ -105,10 +121,58 @@ export class TravelPanelState {
 		return this.originMode === 'surface' ? 'surface' : 'orbit';
 	}
 
+	/** Everything on offer, the hand-picked route last: it is an addition to the
+	 *  solver's answer rather than one of them. */
+	get offered(): OfferedRoute[] {
+		return this.custom ? [...this.routes, { profile: 'custom', route: this.custom }] : this.routes;
+	}
+
 	get selectedRoute(): Route | null {
-		if (this.routes.length === 0) return null;
-		const chosen = this.routes.find((r) => r.profile === this.selectedProfile);
-		return (chosen ?? this.routes[0]).route;
+		const offered = this.offered;
+		if (offered.length === 0) return null;
+		const chosen = offered.find((r) => r.profile === this.selectedProfile);
+		return (chosen ?? offered[0]).route;
+	}
+
+	/**
+	 * Take a point read off the porkchop as the route to fly.
+	 *
+	 * A point with no arc through it leaves the previous pick standing: the field
+	 * has unsolved cells in it, and clearing the choice because a drag crossed one
+	 * would make the picker fight the user.
+	 */
+	pickCustom(departJd: number, tofDays: number): void {
+		const route = this.#price(departJd, tofDays);
+		if (!route) return;
+		this.custom = route;
+		this.selectedProfile = 'custom';
+	}
+
+	#price(departJd: number, tofDays: number): Route | null {
+		if (!this.#pricing) return null;
+		const { origin, target, options } = this.#pricing;
+		return buildRoute(origin, target, departJd, tofDays, options);
+	}
+
+	/**
+	 * Carry a hand-picked point across a re-solve, re-priced.
+	 *
+	 * Changing a mode or a date is a change to what the same trip costs, so the
+	 * point survives it. Changing an end is a different trip, and a point outside
+	 * the new grid is one the chart can no longer place.
+	 */
+	#repriceCustom(): Route | null {
+		const previous = this.custom;
+		const grid = this.grid;
+		if (!previous || !grid || !this.#pricing) return null;
+		const { origin, target } = this.#pricing;
+		if (previous.departureId !== origin.id || previous.targetId !== target.id) return null;
+		const inGrid =
+			previous.departJd >= grid.departJds[0] &&
+			previous.departJd <= grid.departJds[grid.departSteps - 1] &&
+			previous.tofDays >= grid.tofDays[0] &&
+			previous.tofDays <= grid.tofDays[grid.tofSteps - 1];
+		return inGrid ? this.#price(previous.departJd, previous.tofDays) : null;
 	}
 
 	/**
@@ -154,6 +218,8 @@ export class TravelPanelState {
 		this.status = 'blocked';
 		this.routes = [];
 		this.grid = null;
+		this.custom = null;
+		this.#pricing = null;
 	}
 
 	/**
@@ -191,11 +257,12 @@ export class TravelPanelState {
 		this.blocked = null;
 		this.status = 'solving';
 
-		const result = await this.#solver.solve(origin, target, {
+		const solveOptions = {
 			...options,
 			departureMode: this.departureMode,
 			arrivalMode: this.arrivalMode
-		});
+		};
+		const result = await this.#solver.solve(origin, target, solveOptions);
 
 		// A newer solve has already started, or already answered.
 		if (token !== this.#token) return;
@@ -215,9 +282,11 @@ export class TravelPanelState {
 
 		this.routes = routes;
 		this.grid = result.grid;
+		this.#pricing = { origin, target, options: solveOptions };
+		this.custom = this.#repriceCustom();
 		this.status = routes.length > 0 ? 'ready' : 'empty';
 
-		const stillOffered = routes.some((r) => r.profile === this.selectedProfile);
+		const stillOffered = this.offered.some((r) => r.profile === this.selectedProfile);
 		if (!stillOffered) {
 			const balanced = routes.find((r) => r.profile === 'balanced');
 			this.selectedProfile = (balanced ?? routes[0])?.profile ?? null;

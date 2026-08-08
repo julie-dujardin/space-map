@@ -1903,6 +1903,7 @@
 	"travel_people": "人数",
 	"travel_pick_craft": "选择航天器",
 	"travel_profile_balanced": "均衡",
+	"travel_profile_custom": "自定义",
 	"travel_profile_efficient": "省能",
 	"travel_profile_fast": "最快",
 	"travel_return_needs": "需要 {value} km/s",
@@ -1934,5 +1935,7 @@
 	"travel_when": "何时出发",
 	"travel_window_cheap": "低耗",
 	"travel_window_costly": "高耗",
-	"travel_windows_alt": "按出发日期和巡航时长的总 Δv"
+	"travel_windows_alt": "按出发日期和巡航时长的总 Δv",
+	"travel_windows_pick": "选择发射窗口：点击图面，或用方向键移动标记",
+	"travel_windows_pick_prompt": "在下方图中选择一个点"
 }

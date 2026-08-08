@@ -1903,6 +1903,7 @@
 	"travel_people": "人数",
 	"travel_pick_craft": "宇宙機を選択",
 	"travel_profile_balanced": "バランス",
+	"travel_profile_custom": "カスタム",
 	"travel_profile_efficient": "省エネ",
 	"travel_profile_fast": "最速",
 	"travel_return_needs": "{value} km/s 必要",
@@ -1934,5 +1935,7 @@
 	"travel_when": "いつ出発するか",
 	"travel_window_cheap": "低コスト",
 	"travel_window_costly": "高コスト",
-	"travel_windows_alt": "出発日と巡航期間ごとの合計 Δv"
+	"travel_windows_alt": "出発日と巡航期間ごとの合計 Δv",
+	"travel_windows_pick": "打ち上げウィンドウを選択：図をクリックするか、矢印キーで印を動かします",
+	"travel_windows_pick_prompt": "下の図で点を選んでください"
 }

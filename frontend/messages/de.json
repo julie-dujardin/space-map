@@ -1671,6 +1671,7 @@
 	"travel_people": "Personen",
 	"travel_pick_craft": "Raumfahrzeug wählen",
 	"travel_profile_balanced": "Ausgewogen",
+	"travel_profile_custom": "Benutzerdefiniert",
 	"travel_profile_efficient": "Sparsam",
 	"travel_profile_fast": "Schnell",
 	"travel_return_needs": "benötigt {value} km/s",
@@ -1702,5 +1703,7 @@
 	"travel_when": "Wann reisen",
 	"travel_window_cheap": "günstig",
 	"travel_window_costly": "teuer",
-	"travel_windows_alt": "Gesamt-Delta-v nach Abflugdatum und Reisedauer"
+	"travel_windows_alt": "Gesamt-Delta-v nach Abflugdatum und Reisedauer",
+	"travel_windows_pick": "Startfenster wählen: Klicken Sie ins Feld oder bewegen Sie die Markierung mit den Pfeiltasten",
+	"travel_windows_pick_prompt": "Wählen Sie unten einen Punkt im Feld"
 }

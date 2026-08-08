@@ -2,6 +2,10 @@
   The launch-window field: total Δv over departure date against cruise length,
   with the chosen route marked.
 
+  Given an `onPick` it also becomes the way to fly something the solver did not
+  offer: any point on the field is a departure date and a cruise length, and
+  those are the whole of a trajectory.
+
   Given room to be read rather than glanced at — the shape of a transfer window
   is two axes of structure, and at thumbnail height the cheap basin collapses
   into a stripe. Both axes are labelled at their ends, so a reader can place the
@@ -24,8 +28,11 @@
 		route?: Route | null;
 		height?: number;
 		colormap?: ColormapName;
+		/** Given a departure date and cruise length read off the field. Without it
+		 *  the chart is a picture rather than a control. */
+		onPick?: ((departJd: number, tofDays: number) => void) | null;
 	}
-	let { grid, route = null, height = 190, colormap = 'viridis' }: Props = $props();
+	let { grid, route = null, height = 190, colormap = 'viridis', onPick = null }: Props = $props();
 
 	/** Half the marker dot, ring included — how far it must sit off each edge. */
 	const DOT_RADIUS_PX = 6;
@@ -50,19 +57,81 @@
 		return sample(colormap, 1 - (dv - bounds.min) / bounds.span);
 	}
 
+	// What each axis covers. Null when one has no extent: such a grid still draws,
+	// but nothing can be placed on it or read off it.
+	let spans = $derived.by(() => {
+		if (grid.departSteps < 2 || grid.tofSteps < 2) return null;
+		const depart = grid.departJds[grid.departSteps - 1] - grid.departJds[0];
+		const tof = grid.tofDays[grid.tofSteps - 1] - grid.tofDays[0];
+		return depart > 0 && tof > 0 ? { depart, tof } : null;
+	});
+
 	/** Where the chosen route sits on the field, as fractions of each axis. */
 	let mark = $derived.by(() => {
-		if (!route || grid.departSteps < 2 || grid.tofSteps < 2) return null;
-		const departSpan = grid.departJds[grid.departSteps - 1] - grid.departJds[0];
-		const tofSpan = grid.tofDays[grid.tofSteps - 1] - grid.tofDays[0];
-		if (!(departSpan > 0) || !(tofSpan > 0)) return null;
-		const x = (route.departJd - grid.departJds[0]) / departSpan;
-		const y = (route.tofDays - grid.tofDays[0]) / tofSpan;
+		if (!route || !spans) return null;
 		// Held to the edges rather than dropped: the cheapest route sits on one
 		// often enough that a hair of rounding there would take the mark off the
 		// chart entirely.
-		return { x: Math.min(Math.max(x, 0), 1), y: Math.min(Math.max(y, 0), 1) };
+		return {
+			x: clamp01((route.departJd - grid.departJds[0]) / spans.depart),
+			y: clamp01((route.tofDays - grid.tofDays[0]) / spans.tof)
+		};
 	});
+
+	function clamp(value: number, lo: number, hi: number): number {
+		return value < lo ? lo : value > hi ? hi : value;
+	}
+
+	function clamp01(value: number): number {
+		return clamp(value, 0, 1);
+	}
+
+	let plot = $state<HTMLElement | null>(null);
+	let field = $state<HTMLButtonElement | null>(null);
+	// Set when a press already picked, so the click it turns into does not pick a
+	// second time.
+	let pressPicked = false;
+
+	/** Hand the field the focus, for the empty row in the list that points here. */
+	export function focusField(): void {
+		field?.focus();
+	}
+
+	/** Take the point under a pointer. The mark's own inset is undone here, so the
+	 *  dot lands where the cursor is rather than a few pixels inside it. */
+	function pickAt(clientX: number, clientY: number): void {
+		if (!plot || !spans || !onPick) return;
+		const box = plot.getBoundingClientRect();
+		const fx = clamp01((clientX - box.left - DOT_RADIUS_PX) / (box.width - DOT_RADIUS_PX * 2));
+		const fy = clamp01((clientY - box.top - DOT_RADIUS_PX) / (box.height - DOT_RADIUS_PX * 2));
+		onPick(grid.departJds[0] + fx * spans.depart, grid.tofDays[0] + fy * spans.tof);
+	}
+
+	// The cruise axis runs shortest at the top, so up is the faster arc.
+	const ARROW_STEPS: Record<string, [number, number]> = {
+		ArrowLeft: [-1, 0],
+		ArrowRight: [1, 0],
+		ArrowUp: [0, -1],
+		ArrowDown: [0, 1]
+	};
+
+	/** Walk the mark a cell at a time, so the field can be picked from without a
+	 *  pointer. With nothing marked yet the walk starts at the middle. */
+	function nudge(event: KeyboardEvent): void {
+		const step = ARROW_STEPS[event.key];
+		if (!step || !spans || !onPick) return;
+		event.preventDefault();
+		const departFromJd = grid.departJds[0];
+		const departToJd = grid.departJds[grid.departSteps - 1];
+		const tofMin = grid.tofDays[0];
+		const tofMax = grid.tofDays[grid.tofSteps - 1];
+		const depart = route?.departJd ?? departFromJd + spans.depart / 2;
+		const tof = route?.tofDays ?? tofMin + spans.tof / 2;
+		onPick(
+			clamp(depart + (step[0] * spans.depart) / (grid.departSteps - 1), departFromJd, departToJd),
+			clamp(tof + (step[1] * spans.tof) / (grid.tofSteps - 1), tofMin, tofMax)
+		);
+	}
 
 	let departFrom = $derived(formatJulianDate(grid.departJds[0]));
 	let departTo = $derived(formatJulianDate(grid.departJds[grid.departSteps - 1]));
@@ -83,6 +152,7 @@
 		</div>
 
 		<div
+			bind:this={plot}
 			class="border-border/60 relative min-w-0 flex-1 overflow-hidden rounded-md border"
 			style="height: {height}px"
 		>
@@ -117,6 +187,34 @@
 					style="left: calc({DOT_RADIUS_PX}px + {mark.x} * (100% - {DOT_RADIUS_PX * 2}px));
 						top: calc({DOT_RADIUS_PX}px + {mark.y} * (100% - {DOT_RADIUS_PX * 2}px))"
 				></span>
+			{/if}
+			{#if onPick}
+				<!-- The field is picked on, not just read. A transparent overlay takes
+				     the pointer so the cells stay plain rects, and arrow keys walk the
+				     mark for anyone not using one. -->
+				<button
+					bind:this={field}
+					type="button"
+					class="focus:inset-ring-ring absolute inset-0 cursor-crosshair focus:inset-ring-2 focus:outline-none"
+					aria-label={m.travel_windows_pick()}
+					onpointerdown={(event) => {
+						// A finger keeps its gesture: a swipe here should scroll the panel,
+						// so touch picks on the tap that follows instead.
+						pressPicked = event.pointerType !== 'touch';
+						if (!pressPicked) return;
+						event.currentTarget.setPointerCapture(event.pointerId);
+						pickAt(event.clientX, event.clientY);
+					}}
+					onpointermove={(event) => {
+						if (pressPicked && event.buttons === 1) pickAt(event.clientX, event.clientY);
+					}}
+					onclick={(event) => {
+						// `detail` is 0 for the click a keypress synthesizes, which carries
+						// no coordinates and would read as the top-left corner.
+						if (!pressPicked && event.detail > 0) pickAt(event.clientX, event.clientY);
+					}}
+					onkeydown={nudge}
+				></button>
 			{/if}
 		</div>
 	</div>

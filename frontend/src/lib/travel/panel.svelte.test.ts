@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { EARTH, J2000, MARS } from '$lib/math/travel/test-fixtures';
 import { TravelPanelState } from './panel.svelte';
 
 describe('TravelPanelState arrival mode', () => {
@@ -38,5 +39,59 @@ describe('TravelPanelState departure mode', () => {
 		panel.originMode = 'low-orbit';
 		panel.originIsFeature = true;
 		expect(panel.departureMode).toBe('surface');
+	});
+});
+
+describe('TravelPanelState hand-picked windows', () => {
+	/** The middle of the grid — a point the solver would not have offered. */
+	function centre(panel: TravelPanelState): [number, number] {
+		const grid = panel.grid!;
+		const depart = (grid.departJds[0] + grid.departJds[grid.departSteps - 1]) / 2;
+		const tof = (grid.tofDays[0] + grid.tofDays[grid.tofSteps - 1]) / 2;
+		return [depart, tof];
+	}
+
+	async function solved(): Promise<TravelPanelState> {
+		const panel = new TravelPanelState();
+		await panel.solve(EARTH, MARS, J2000);
+		return panel;
+	}
+
+	it('prices a point read off the field and flies it', async () => {
+		const panel = await solved();
+		const [depart, tof] = centre(panel);
+		panel.pickCustom(depart, tof);
+
+		expect(panel.selectedProfile).toBe('custom');
+		expect(panel.selectedRoute?.departJd).toBeCloseTo(depart, 6);
+		expect(panel.selectedRoute?.tofDays).toBeCloseTo(tof, 6);
+		expect(panel.offered).toHaveLength(panel.routes.length + 1);
+		expect(panel.offered.at(-1)?.profile).toBe('custom');
+	});
+
+	// Changing how the trip is flown is a change to what the same window costs.
+	it('keeps the pick across a re-solve, re-priced', async () => {
+		const panel = await solved();
+		const [depart, tof] = centre(panel);
+		panel.pickCustom(depart, tof);
+		const fromOrbit = panel.custom!.totalDvKms;
+
+		panel.originMode = 'low-orbit';
+		await panel.solve(EARTH, MARS, J2000);
+
+		expect(panel.selectedProfile).toBe('custom');
+		expect(panel.custom?.departJd).toBeCloseTo(depart, 6);
+		// The ascent is gone, so the same arc is cheaper than it was off the ground.
+		expect(panel.custom!.totalDvKms).toBeLessThan(fromOrbit);
+	});
+
+	it('drops the pick when the trip is no longer between the same two bodies', async () => {
+		const panel = await solved();
+		panel.pickCustom(...centre(panel));
+
+		await panel.solve(MARS, EARTH, J2000);
+
+		expect(panel.custom).toBeNull();
+		expect(panel.selectedProfile).not.toBe('custom');
 	});
 });

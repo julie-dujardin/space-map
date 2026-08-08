@@ -1872,6 +1872,7 @@
 	"travel_people": "أشخاص",
 	"travel_pick_craft": "اختر مركبة",
 	"travel_profile_balanced": "متوازن",
+	"travel_profile_custom": "مخصص",
 	"travel_profile_efficient": "اقتصادي",
 	"travel_profile_fast": "سريع",
 	"travel_return_needs": "يتطلب {value} ‎km/s‎",
@@ -1903,5 +1904,7 @@
 	"travel_when": "موعد السفر",
 	"travel_window_cheap": "منخفض التكلفة",
 	"travel_window_costly": "مرتفع التكلفة",
-	"travel_windows_alt": "إجمالي Δv حسب تاريخ المغادرة ومدة الإبحار"
+	"travel_windows_alt": "إجمالي Δv حسب تاريخ المغادرة ومدة الإبحار",
+	"travel_windows_pick": "اختر نافذة إطلاق: انقر على الحقل أو حرّك العلامة بمفاتيح الأسهم",
+	"travel_windows_pick_prompt": "اختر نقطة على الحقل أدناه"
 }

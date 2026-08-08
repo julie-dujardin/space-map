@@ -5,28 +5,35 @@
   A route the chosen craft cannot fly stays visible and goes quiet, with the
   reason in place of its figures — hiding it would leave the panel silently
   short of options.
+
+  A window picked off the porkchop by hand comes last, as an addition to the
+  three the solver offers rather than one of them. Its row is there before it is:
+  an empty fourth option is what makes the field below look like a choice.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import type { RouteChoice, RouteProfile } from '$lib/math/travel';
 	import { formatJulianDate } from '$lib/format/date';
 	import { formatQuantity } from '$lib/format/quantities';
-	import type { TravelPanelState } from '$lib/travel/panel.svelte';
+	import type { OfferedRoute, RouteOption, TravelPanelState } from '$lib/travel/panel.svelte';
 	import { formatTripTime } from '$lib/travel/format';
 	import { departureNote } from './vehicle-labels';
 
 	interface Props {
 		state: TravelPanelState;
+		/** Send the reader to the field they pick a custom window on. Absent leaves
+		 *  the fourth row out — there is nowhere for it to point. */
+		onFocusField?: (() => void) | null;
 	}
-	let { state }: Props = $props();
+	let { state, onFocusField = null }: Props = $props();
 
-	const PROFILE_LABEL: Record<RouteProfile, () => string> = {
+	const PROFILE_LABEL: Record<RouteOption, () => string> = {
 		fast: m.travel_profile_fast,
 		balanced: m.travel_profile_balanced,
-		efficient: m.travel_profile_efficient
+		efficient: m.travel_profile_efficient,
+		custom: m.travel_profile_custom
 	};
 
-	function blockedText(choice: RouteChoice): string | null {
+	function blockedText(choice: OfferedRoute): string | null {
 		const result = state.feasibility(choice.route);
 		if (!result || result.status === 'ok') return null;
 		if (result.status === 'over-c3') {
@@ -52,7 +59,7 @@
 </script>
 
 <ul class="flex flex-col gap-2">
-	{#each state.routes as choice (choice.profile)}
+	{#each state.offered as choice (choice.profile)}
 		{@const blocked = blockedText(choice)}
 		{@const isSelected = choice.profile === state.selectedProfile && !blocked}
 		<li>
@@ -87,4 +94,24 @@
 			</button>
 		</li>
 	{/each}
+
+	{#if onFocusField && state.grid && !state.custom}
+		<!-- The fourth option before it has anything in it: a row rather than
+		     nothing, so the field below reads as a way to choose rather than as a
+		     picture of the three above. -->
+		<li>
+			<button
+				type="button"
+				onclick={onFocusField}
+				class="border-border/60 hover:bg-muted/40 flex w-full items-center gap-3 rounded-md border border-dashed px-3 py-2 text-start transition-colors"
+			>
+				<span class="min-w-0 flex-1">
+					<span class="block text-sm font-medium">{m.travel_profile_custom()}</span>
+					<span class="text-muted-foreground block truncate text-xs">
+						{m.travel_windows_pick_prompt()}
+					</span>
+				</span>
+			</button>
+		</li>
+	{/if}
 </ul>
