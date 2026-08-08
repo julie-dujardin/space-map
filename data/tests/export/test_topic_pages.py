@@ -2,7 +2,8 @@
 
 Runs against the real downloaded summaries — the point of most of these is
 that a row in the table actually resolves to prose on disk, which a mocked
-loader cannot tell us.
+loader cannot tell us. Skipped where the download is absent, since without it
+every lookup resolves to None and the failure says nothing about the code.
 """
 
 import pytest
@@ -17,6 +18,12 @@ from space_map_data.export.objects.topic_pages import (
     atmosphere_page_localized,
     interior_page_localized,
 )
+from space_map_data.utils.paths import SOURCES_METADATA_DIR
+
+needs_summaries = pytest.mark.skipif(
+    not (SOURCES_METADATA_DIR / "wikipedia").is_dir(),
+    reason="Wikipedia summaries not downloaded",
+)
 
 
 def _locales(resolve, body_id: str) -> dict[str, dict]:
@@ -25,6 +32,7 @@ def _locales(resolve, body_id: str) -> dict[str, dict]:
     }
 
 
+@needs_summaries
 class TestShape:
     """What an entry carries."""
 
@@ -62,10 +70,12 @@ class TestShape:
 class TestCoverage:
     """That the tables resolve to something, per body."""
 
+    @needs_summaries
     @pytest.mark.parametrize("body", sorted(INTERIOR_PAGES))
     def test_every_interior_row_reaches_prose_somewhere(self, body: str):
         assert _locales(interior_page_localized, body), body
 
+    @needs_summaries
     @pytest.mark.parametrize("body", sorted(ATMOSPHERE_PAGES))
     def test_every_atmosphere_row_reaches_prose_somewhere(self, body: str):
         assert _locales(atmosphere_page_localized, body), body
