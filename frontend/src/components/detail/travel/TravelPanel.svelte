@@ -222,7 +222,9 @@
 
 	$effect(() => () => panel.dispose());
 
-	let bothEnds = $derived(originPicked && targetPicked);
+	// One end is enough: exchanging it with an empty one turns "going to Mars"
+	// into "leaving Mars", which is how half a trip gets turned round.
+	let anyEnd = $derived(originPicked || targetPicked);
 
 	function swap() {
 		// Modes ride along with their end. Only the destination can be a flyby, so
@@ -286,7 +288,7 @@
 				variant="outline"
 				size="icon"
 				onclick={swap}
-				disabled={!bothEnds}
+				disabled={!anyEnd}
 				class="text-muted-foreground absolute end-0 top-1/2 -translate-y-1/2"
 				aria-label={m.travel_swap()}
 			>
