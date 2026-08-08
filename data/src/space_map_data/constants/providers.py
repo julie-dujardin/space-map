@@ -21,6 +21,7 @@ class PROVIDERS(StrEnum):
     GVP = "gvp"
     TEXTURE_SOURCES = "texture_sources"
     BJJ_RINGS = "bjj_rings"
+    LAUNCH_PERFORMANCE = "launch_performance"
     PSG_ATMOSPHERE = "psg_atmosphere"
     NASA_3D = "nasa_3d"
     ESA_3D = "esa_3d"
