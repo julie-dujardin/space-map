@@ -1,36 +1,35 @@
 import { describe, it, expect } from 'vitest';
-import { formatTripTime } from './format';
+import { formatTripTime, tripDuration } from './format';
 
 /** Days per month the formatter rounds against. */
 const MONTH = 30.44;
+const HOUR = 1 / 24;
+const MINUTE = 1 / 1440;
+
+// Only the unit choice and the carries are ours; spelling them is Intl's job.
+describe('tripDuration', () => {
+	it('picks the two largest units that carry anything', () => {
+		expect(tripDuration(25 * MINUTE)).toEqual({ hours: 0, minutes: 25 });
+		expect(tripDuration(6 * HOUR + 20 * MINUTE)).toEqual({ hours: 6, minutes: 20 });
+		expect(tripDuration(3.5)).toEqual({ days: 3, hours: 12 });
+		expect(tripDuration(MONTH * 6 + 20)).toEqual({ months: 6, days: 20 });
+		expect(tripDuration(MONTH * 45 + 25)).toEqual({ years: 3, months: 9 });
+	});
+
+	// Rounding the smaller unit can reach a full larger one; "3 mo 30 d" is not a
+	// duration anyone writes.
+	it('carries a rounded remainder up the ladder', () => {
+		expect(tripDuration(59.7 * MINUTE)).toEqual({ hours: 1 });
+		expect(tripDuration(23.999 * HOUR)).toEqual({ days: 1 });
+		expect(tripDuration(MONTH * 3 + 30.2)).toEqual({ months: 4 });
+		expect(tripDuration(MONTH * 11 + 30.2)).toEqual({ years: 1 });
+	});
+});
 
 describe('formatTripTime', () => {
-	it('gives bare days under a month', () => {
-		expect(formatTripTime(0)).toBe('0 d');
-		expect(formatTripTime(17)).toBe('17 d');
-	});
-
-	it('gives months and days up to a year', () => {
-		expect(formatTripTime(MONTH * 6 + 20)).toBe('6 mo 20 d');
-		expect(formatTripTime(MONTH * 3)).toBe('3 mo');
-	});
-
-	// Rounding the remainder can reach a full month; "3 mo 30 d" is not a
-	// duration anyone writes.
-	it('carries a rounded remainder into the next month', () => {
-		expect(formatTripTime(MONTH * 3 + 30.2)).toBe('4 mo');
-	});
-
-	it('switches to years past twelve months', () => {
-		expect(formatTripTime(MONTH * 12)).toBe('1 y');
-		expect(formatTripTime(MONTH * 17 + 17)).toBe('1 y 5 mo');
-		expect(formatTripTime(MONTH * 45 + 25)).toBe('3 y 9 mo');
-	});
-
-	// The same carry, one unit up: eleven months and a rounded-up remainder is a
-	// year, not "12 mo".
-	it('carries a full twelfth month into a year', () => {
-		expect(formatTripTime(MONTH * 11 + 30.2)).toBe('1 y');
+	// Every zero field is dropped, so nothing at all would format to nothing.
+	it('names a unit for a trip of no time', () => {
+		expect(formatTripTime(0)).toBe('0m');
 	});
 
 	it('refuses to render a nonsense duration', () => {
