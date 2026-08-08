@@ -9,7 +9,6 @@
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import {
 		localizedName,
-		localizedDescription,
 		fetchGroupCatalog,
 		catalogCount,
 		catalogFacets,
@@ -23,7 +22,7 @@
 		type RangeBound,
 		hasBound
 	} from '$lib/search/client';
-	import { capitalize, optionDomId } from '$lib/search/format';
+	import { capitalize, optionDomId, secondaryText, typeLabel } from '$lib/search/format';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import { announce } from '$lib/a11y/announcer.svelte';
 	import { rangeDef } from '$lib/search/ranges';
@@ -162,23 +161,6 @@
 		((args?: Record<string, unknown>) => string) | undefined
 	>;
 
-	const HELIOCENTRIC_TYPES = new Set([
-		'planet',
-		'dwarf_planet',
-		'comet',
-		'asteroid',
-		'asteroid_inner',
-		'asteroid_main_belt',
-		'asteroid_trojan',
-		'asteroid_centaur',
-		'asteroid_tno'
-	]);
-	const SELF_EXPLANATORY_TYPES = new Set(['star', 'spacecraft', 'undocumented']);
-
-	function typeLabel(type: string): string {
-		const key = type.startsWith('asteroid') ? 'type_asteroid' : `type_${type}`;
-		return messages[key]?.() ?? type.replace(/_/g, ' ');
-	}
 	// Facet values are IAU codes but the names live on each type's `ft-` slug;
 	// the group index (fetched once, cached) is the bridge.
 	let featureTypeSlugByCode = $state<Record<string, string>>({});
@@ -282,25 +264,8 @@
 		if (hit.kind === 'group') return groupName(hit, getLocale());
 		return localizedName(hit, getLocale());
 	}
-	function secondaryText(hit: SearchHit): string {
-		const desc = localizedDescription(hit, getLocale());
-		if (desc) return desc;
-		if (hit.kind === 'feature') {
-			return m.search_secondary_feature_on({
-				type: featureTypeLabel(hit.feature_type),
-				parent: bodyName(hit.body_id)
-			});
-		}
-		if (hit.kind === 'group') return '';
-		if (hit.id.startsWith('norad_satcat-')) {
-			return hit.type === 'debris' ? m.type_earth_debris() : m.type_earth_satellite();
-		}
-		const label = typeLabel(hit.type);
-		if (HELIOCENTRIC_TYPES.has(hit.type) || SELF_EXPLANATORY_TYPES.has(hit.type)) return label;
-		if (hit.parent_id) {
-			return m.search_secondary_orbiting({ type: label, parent: bodyName(hit.parent_id) });
-		}
-		return label;
+	function rowSecondary(hit: SearchHit): string {
+		return secondaryText(hit, { bodyName, featureTypeLabel });
 	}
 
 	// ── filter tree (type-first) ───────────────────────────────────────
@@ -1004,7 +969,7 @@
 			<SearchResults
 				{model}
 				name={rowName}
-				secondary={secondaryText}
+				secondary={rowSecondary}
 				onselect={pick}
 				{highlightedId}
 				onhighlight={(id) => (highlightedId = id)}

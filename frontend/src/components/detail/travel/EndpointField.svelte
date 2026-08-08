@@ -111,9 +111,13 @@
 					</span>
 				{/if}
 			</span>
-			<span class="text-muted-foreground block truncate text-xs">
-				{role === 'origin' ? m.travel_from() : m.travel_to()}
-			</span>
+			<!-- Closed, the dot and the pin already say which end this is; the word
+			     only earns its line while the box is open and being edited. -->
+			{#if open}
+				<span class="text-muted-foreground block truncate text-xs">
+					{role === 'origin' ? m.travel_from() : m.travel_to()}
+				</span>
+			{/if}
 		</span>
 		<ChevronDownIcon
 			class="text-muted-foreground size-4 shrink-0 transition-transform {open ? 'rotate-180' : ''}"

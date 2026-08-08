@@ -7,18 +7,25 @@
   curiosity: it is where a landing actually goes.
 -->
 <script lang="ts">
+	import { getContext, untrack } from 'svelte';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
+	import XIcon from '@lucide/svelte/icons/x';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import {
+		fetchObjectNames,
 		isSearchEnabled,
 		localizedName,
 		searchEndpoints,
 		type FeatureHit,
 		type ObjectHit
 	} from '$lib/search/client';
-	import { objectTypeLabel } from '$lib/format/object-type';
+	import { secondaryText } from '$lib/search/format';
+	import { fetchGroupIndex } from '$lib/fetch/groups/registry';
+	import { featureTypeLabel as featureTypeName } from '$lib/format/feature-type';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 
 	interface Props {
@@ -88,9 +95,46 @@
 		);
 	}
 
-	/** What kind of place a row is, under its name. */
+	// Same second line as the main search: a description when the hit has one,
+	// else what it is and where. Both names it needs arrive as ids, so they are
+	// resolved from the scene first and the catalogue after.
+	const ctx = getContext<ContextManager | undefined>('ctx');
+	let catalogNames = $state(new Map<string, string>());
+	function bodyName(bodyId: string): string {
+		return ctx?.getBody(bodyId)?.data.name ?? catalogNames.get(bodyId) ?? bodyId;
+	}
+	let unnamedBodyIds = $derived(
+		visible
+			.map((h) => (h.kind === 'feature' ? h.body_id : h.parent_id))
+			.filter((id): id is string => !!id && !ctx?.getBody(id) && !catalogNames.has(id))
+	);
+	$effect(() => {
+		const ids = unnamedBodyIds;
+		const locale = getLocale();
+		if (!ids.length) return;
+		untrack(() => fetchObjectNames(ids, locale)).then((named) => {
+			if (!named.size) return;
+			catalogNames = new Map([...catalogNames, ...named]);
+		});
+	});
+
+	// Feature types are indexed by IAU code but named on their `ft-` slug.
+	let featureTypeSlugByCode = $state<Record<string, string>>({});
+	$effect(() => {
+		fetchGroupIndex().then((index) => {
+			const out: Record<string, string> = {};
+			for (const [slug, entry] of Object.entries(index)) {
+				if (entry.code) out[entry.code] = slug;
+			}
+			featureTypeSlugByCode = out;
+		});
+	});
+	function featureTypeLabel(code: string): string {
+		return featureTypeName(featureTypeSlugByCode[code]) ?? code;
+	}
+
 	function sublabel(hit: ObjectHit | FeatureHit): string {
-		return hit.kind === 'feature' ? m.travel_on_surface() : objectTypeLabel(hit.type);
+		return secondaryText(hit, { bodyName, featureTypeLabel });
 	}
 
 	$effect(() => {
@@ -104,39 +148,58 @@
 			class="border-border/60 bg-background flex items-center gap-2 rounded-md border px-2 py-1.5"
 		>
 			<SearchIcon class="text-muted-foreground size-3.5 shrink-0" />
+			<!-- Deliberately not type="search": its native cancel button is drawn far
+			     heavier than the rest of the panel. -->
 			<input
 				bind:this={input}
 				bind:value={query}
-				type="search"
+				type="text"
 				placeholder={m.travel_search_placeholder()}
 				aria-label={m.travel_search_placeholder()}
+				autocomplete="off"
+				spellcheck="false"
 				class="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
 			/>
+			{#if query}
+				<button
+					type="button"
+					onclick={() => {
+						query = '';
+						input?.focus();
+					}}
+					aria-label={m.search_clear_search()}
+					class="text-muted-foreground hover:bg-accent hover:text-foreground shrink-0 rounded-full p-0.5 transition-colors"
+				>
+					<XIcon class="size-3.5" />
+				</button>
+			{/if}
 		</div>
 
 		{#if query.trim().length >= MIN_QUERY}
 			{#if visible.length > 0}
-				<ul class="flex max-h-56 flex-col overflow-y-auto">
-					{#each visible as hit (hit.kind === 'feature' ? `f${hit.feature_id}` : hit.id)}
-						<li>
-							<button
-								type="button"
-								onclick={() => pick(hit)}
-								class="hover:bg-muted flex w-full items-center gap-2 rounded-[5px] px-2 py-1.5 text-start"
-							>
-								{#if hit.kind === 'feature'}
-									<MapPinIcon class="text-muted-foreground size-3.5 shrink-0" />
-								{/if}
-								<span class="min-w-0 flex-1">
-									<span class="block truncate text-xs">{localizedName(hit, getLocale())}</span>
-									<span class="text-muted-foreground block truncate text-[10px]">
-										{sublabel(hit)}
+				<ScrollArea class="[&_[data-slot=scroll-area-viewport]]:max-h-56">
+					<ul class="flex flex-col">
+						{#each visible as hit (hit.kind === 'feature' ? `f${hit.feature_id}` : hit.id)}
+							<li>
+								<button
+									type="button"
+									onclick={() => pick(hit)}
+									class="hover:bg-muted flex w-full items-center gap-2 rounded-[5px] px-2 py-1.5 text-start"
+								>
+									{#if hit.kind === 'feature'}
+										<MapPinIcon class="text-muted-foreground size-3.5 shrink-0" />
+									{/if}
+									<span class="min-w-0 flex-1">
+										<span class="block truncate text-xs">{localizedName(hit, getLocale())}</span>
+										<span class="text-muted-foreground block truncate text-[10px]">
+											{sublabel(hit)}
+										</span>
 									</span>
-								</span>
-							</button>
-						</li>
-					{/each}
-				</ul>
+								</button>
+							</li>
+						{/each}
+					</ul>
+				</ScrollArea>
 			{:else if searching}
 				<p class="text-muted-foreground px-2 text-xs">{m.travel_searching()}</p>
 			{:else}
