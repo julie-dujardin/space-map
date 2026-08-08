@@ -63,6 +63,7 @@
 	} from '$lib/state/focusable';
 	import ObjectHeader from './frame/ObjectHeader.svelte';
 	import DrawerTitle from './frame/DrawerTitle.svelte';
+	import TravelButton from './travel/TravelButton.svelte';
 	import { parentCrumb, parentPlanet, type Crumb } from '$lib/state/breadcrumb';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImagesPanel from './frame/ImagesPanel.svelte';
@@ -1701,6 +1702,11 @@
 				<span class="sr-only">{m.go_to_object()}</span>
 			{/if}
 		</Button>
+	{/if}
+	<!-- "How do I get here" belongs with the object, so it rides the panel's own
+	     button row. Group panels have no body to fly to. -->
+	{#if body}
+		<TravelButton target={body.data} featureId={feature?.featureId ?? null} />
 	{/if}
 	<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
 		<Share2Icon />

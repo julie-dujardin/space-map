@@ -22,8 +22,11 @@
 	interface Props {
 		/** The body whose panel this sits in — the destination. */
 		target: BodyData;
+		/** Set on a surface feature's panel: the trip ends in that named place,
+		 *  which also fixes the arrival to a landing. */
+		featureId?: number | null;
 	}
-	let { target }: Props = $props();
+	let { target, featureId = null }: Props = $props();
 
 	const ctx = getContext<ContextManager | undefined>('ctx');
 	const appState = getContext<AppState | undefined>('appState');
@@ -39,7 +42,8 @@
 		return sameSystemBlock(earth, target, lookup) === null;
 	});
 
-	let href = $derived(navHref(appState, EARTH_ID, target.id));
+	let destination = $derived({ id: target.id, featureId });
+	let href = $derived(navHref(appState, EARTH_ID, destination));
 </script>
 
 {#if plannable && href}
@@ -52,7 +56,7 @@
 		onclick={(e: MouseEvent) => {
 			if (isModifiedClick(e) || !appState) return;
 			e.preventDefault();
-			appState.setNav(EARTH_ID, target.id);
+			appState.setNav(EARTH_ID, destination);
 		}}
 	>
 		<NavigationIcon />
