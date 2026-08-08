@@ -22,7 +22,7 @@
 		type TravelBody,
 		type Vehicle
 	} from '$lib/math/travel';
-	import { sameSystemBlock, toTravelBody } from '$lib/travel/travel-body';
+	import { lookupIn, sameSystemBlock, toTravelBody } from '$lib/travel/travel-body';
 	import { TravelPanelState, type BlockReason, type EndpointMode } from '$lib/travel/panel.svelte';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 	import { vehicleCatalogue } from '$lib/travel/vehicles';
@@ -46,7 +46,10 @@
 		/** IAU feature id when an end is a named place on its body's surface. */
 		originFeatureId: number | null;
 		targetFeatureId: number | null;
-		/** Every loaded body, for resolving primaries and offering origins. */
+		/** Whether the URL names a destination at all. Tells the two silences
+		 *  apart: nowhere chosen yet, versus somewhere with no orbit to meet. */
+		targetPicked: boolean;
+		/** The two ends and their chains up to the Sun, for resolving primaries. */
 		bodiesById: Map<string, BodyData>;
 		/** Now, on the app's clock, as a Julian Date. */
 		nowJd: number;
@@ -71,6 +74,7 @@
 		targetName,
 		originFeatureId,
 		targetFeatureId,
+		targetPicked,
 		bodiesById,
 		nowJd,
 		excludeForOrigin,
@@ -101,13 +105,16 @@
 
 	// The kernel's view of each end, rebuilt whenever either body or its detail
 	// changes.
-	let originTravel = $derived<TravelBody | null>(toTravelBody(origin, bodiesById, originDetail));
+	let lookup = $derived(lookupIn(bodiesById));
+	let originTravel = $derived<TravelBody | null>(toTravelBody(origin, lookup, originDetail));
 	let targetTravel = $derived<TravelBody | null>(
-		target ? toTravelBody(target, bodiesById, targetDetail) : null
+		target ? toTravelBody(target, lookup, targetDetail) : null
 	);
 
+	// A destination that never resolved is a destination with no orbit, not an
+	// empty form.
 	let block = $derived<BlockReason | null>(
-		target ? sameSystemBlock(origin, target, bodiesById) : 'no-target'
+		target ? sameSystemBlock(origin, target, lookup) : targetPicked ? 'unknown-orbit' : 'no-target'
 	);
 
 	let nextWindowJd = $derived.by(() => {

@@ -9,7 +9,7 @@
  */
 
 import type { PorkchopOptions, TravelBody } from '$lib/math/travel';
-import { hohmannTransferDays, synodicPeriodDays } from '$lib/math/travel';
+import { crossingTimeDays, hohmannTransferDays, synodicPeriodDays } from '$lib/math/travel';
 
 export type TimeMode = 'now' | 'depart' | 'arrive';
 
@@ -24,6 +24,13 @@ const MIN_TOF_DAYS = 15;
 /** Cruise bounds as multiples of the Hohmann time — fast arcs to slow ones. */
 const TOF_MIN_FACTOR = 0.35;
 const TOF_MAX_FACTOR = 2.2;
+/**
+ * The same bounds for a chase, where the ideal crossing is not the transfer
+ * anyone would fly: the target is leaving, so what matters is how fast you can
+ * get out there, and the interesting arcs sit far below the Hohmann-like time.
+ */
+const CHASE_TOF_MIN_FACTOR = 0.06;
+const CHASE_TOF_MAX_FACTOR = 1.2;
 
 const DEPART_STEPS = 90;
 const TOF_STEPS = 90;
@@ -46,15 +53,24 @@ export interface WindowRequest {
 export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 	const { origin, target, nowJd, timeMode, pickedJd } = request;
 
-	const hohmann = hohmannTransferDays(origin, target);
+	// An escaping probe has no semi-major axis to scale a cruise against, so the
+	// crossing between the two current distances stands in. The arcs themselves
+	// are still real Lambert solves — only the bounds are approximated.
+	const transfer = hohmannTransferDays(origin, target);
+	const chase = transfer === null;
+	const hohmann = transfer ?? crossingTimeDays(origin, target, nowJd);
 	if (hohmann === null || !(hohmann > 0)) return null;
 
-	const synodic = synodicPeriodDays(origin, target);
+	// A body that isn't going round has no synodic period either, whatever its
+	// mean motion says — nothing about the pair repeats.
+	const synodic = chase ? null : synodicPeriodDays(origin, target);
 	const span = clamp(
 		synodic !== null && Number.isFinite(synodic) ? synodic : MAX_SEARCH_DAYS,
 		MIN_SEARCH_DAYS,
 		MAX_SEARCH_DAYS
 	);
+	const tofMinFactor = chase ? CHASE_TOF_MIN_FACTOR : TOF_MIN_FACTOR;
+	const tofMaxFactor = chase ? CHASE_TOF_MAX_FACTOR : TOF_MAX_FACTOR;
 
 	let departFromJd = nowJd;
 	let departToJd = nowJd + span;
@@ -65,15 +81,15 @@ export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 	} else if (timeMode === 'arrive' && pickedJd != null) {
 		// Everything that could still land by the deadline: the latest useful
 		// departure is the deadline minus the fastest cruise worth flying.
-		departToJd = Math.max(nowJd + 1, pickedJd - hohmann * TOF_MIN_FACTOR);
+		departToJd = Math.max(nowJd + 1, pickedJd - hohmann * tofMinFactor);
 	}
 	if (departToJd <= departFromJd) departToJd = departFromJd + MIN_SEARCH_DAYS;
 
 	return {
 		departFromJd,
 		departToJd,
-		tofMinDays: Math.max(MIN_TOF_DAYS, hohmann * TOF_MIN_FACTOR),
-		tofMaxDays: Math.max(MIN_TOF_DAYS * 2, hohmann * TOF_MAX_FACTOR),
+		tofMinDays: Math.max(MIN_TOF_DAYS, hohmann * tofMinFactor),
+		tofMaxDays: Math.max(MIN_TOF_DAYS * 2, hohmann * tofMaxFactor),
 		departSteps: DEPART_STEPS,
 		tofSteps: TOF_STEPS
 	};

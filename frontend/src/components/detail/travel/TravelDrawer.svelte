@@ -20,7 +20,8 @@
 	import { fetchObjectDetail, type GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
-	import { sameSystemBlock } from '$lib/travel/travel-body';
+	import { lookupIn, sameSystemBlock } from '$lib/travel/travel-body';
+	import { resolveTripBodies } from '$lib/travel/resolve';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 	import DrawerTitle from '../frame/DrawerTitle.svelte';
@@ -63,18 +64,52 @@
 	const ctx = getContext<ContextManager | undefined>('ctx');
 	const appState = getContext<AppState | undefined>('appState');
 
-	// Bodies the panel can reason about. Rebuilt when the loader lands more of
-	// them — an unresolved end shows as a blocked trip rather than an error.
-	let bodiesById = $derived.by((): Map<string, BodyData> => {
+	// The two ends and their chains up to the Sun. Deliberately not derived from
+	// the scene: a trip end is any object in the catalogue, and most of them are
+	// nowhere near what is being drawn. Resolution is keyed on the ids alone —
+	// re-running it as bodies stream in would hand the panel a fresh map on every
+	// bump and re-solve the grid for nothing.
+	let tripBodies = $state(new Map<string, BodyData>());
+	let resolving = $state(true);
+
+	// What the scene already holds, as a row the kernel can use. A probe's chunk
+	// carries sampled positions rather than elements, so its own row is zeroed and
+	// the osculating fit beside it is what describes the orbit; returning null
+	// sends the resolver to the catalogue instead.
+	function residentBody(id: string): BodyData | null {
+		const found = ctx?.getBody(id);
+		if (!found) return null;
+		if (found.data.a > 0) return found.data;
+		const elements = found.orbitElements ?? found.rederiveElements?.(nowJd) ?? null;
+		return elements ? { ...found.data, ...elements } : null;
+	}
+
+	$effect(() => {
+		const ids = toId === null ? [fromId] : [fromId, toId];
+		let cancelled = false;
+		resolving = true;
+		resolveTripBodies(ids, residentBody).then((bodies) => {
+			if (cancelled) return;
+			tripBodies = bodies;
+			resolving = false;
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	let origin = $derived(tripBodies.get(fromId) ?? null);
+	let target = $derived(toId === null ? null : (tripBodies.get(toId) ?? null));
+
+	// Bodies to test the search results against. The scene's own, since only
+	// something already loaded can be compared cheaply — see `excluded` below.
+	let sceneBodies = $derived.by((): Map<string, BodyData> => {
 		void ctx?.bodies.minorBodyVersion;
 		const out = new Map<string, BodyData>();
 		if (!ctx) return out;
 		for (const [id, body] of ctx.bodies.bodiesById) out.set(id, body.data);
 		return out;
 	});
-
-	let origin = $derived(bodiesById.get(fromId) ?? null);
-	let target = $derived(toId === null ? null : (bodiesById.get(toId) ?? null));
 
 	// Localized planet names come from the solar-system category's member map —
 	// one cached fetch for the whole dropdown, instead of a localized object
@@ -97,16 +132,17 @@
 	}
 
 	// Bodies the search must not offer for one end, given what the other end is.
-	// Only the loaded bodies can be tested — the index reaches far past the scene
-	// — so this catches the two cases that actually come up (the same body twice,
-	// and a moon of the other end's own primary) and leaves the rest to the
-	// panel's own blocked state.
+	// Only the loaded bodies can be tested up front — the index reaches far past
+	// the scene — so this catches the two cases that actually come up (the same
+	// body twice, and a moon of the other end's own primary) and leaves the rest
+	// to the panel, which now says why once the pick resolves.
 	function excluded(against: BodyData | null): ReadonlySet<string> {
 		const out = new Set<string>();
 		if (!against) return out;
 		out.add(against.id);
-		for (const b of bodiesById.values()) {
-			if (sameSystemBlock(b, against, bodiesById) !== null) out.add(b.id);
+		const lookup = lookupIn(sceneBodies);
+		for (const b of sceneBodies.values()) {
+			if (sameSystemBlock(b, against, lookup) !== null) out.add(b.id);
 		}
 		return out;
 	}
@@ -220,13 +256,18 @@
 				{origin}
 				{target}
 				originName={endpointName(origin, fromFeatureId)}
-				targetName={target ? endpointName(target, toFeatureId) : null}
+				targetName={target
+					? endpointName(target, toFeatureId)
+					: // Named but unplaceable: the bundle still knows what it is called, and
+						// a destination that reads as empty would look like nothing was chosen.
+						(targetDetail?.name ?? toId)}
 				originFeatureId={fromFeatureId}
 				targetFeatureId={toFeatureId}
-				{bodiesById}
+				targetPicked={toId !== null}
 				{nowJd}
 				{excludeForOrigin}
 				{excludeForTarget}
+				bodiesById={tripBodies}
 				{originDetail}
 				{targetDetail}
 				onOriginChange={(pick: TravelEndpointPick) =>
@@ -246,6 +287,8 @@
 						{ id: fromId, featureId: fromFeatureId }
 					)}
 			/>
+		{:else if resolving}
+			<p class="text-muted-foreground text-xs">{m.travel_locating_ends()}</p>
 		{:else}
 			<p class="text-muted-foreground text-xs">{m.travel_unknown_orbit()}</p>
 		{/if}

@@ -439,6 +439,20 @@
 				// target streamed — snap onto it (no fly, opens already framed).
 				scene?.snapToBody(initialId, latitude, longitude, zoom);
 			}
+		} else if (navTrip) {
+			// A trip end the scene cannot place is the panel's story to tell, and it
+			// names which end and why. Falling back to the default view here would
+			// drop the whole trip out of the URL, so only the camera moves — onto the
+			// other end, which is what the empty form frames anyway.
+			const departure = ctx.getBody(navTrip.from);
+			if (departure) {
+				scene?.snapToBody(
+					navTrip.from,
+					DEFAULT_FRAMING_LAT,
+					DEFAULT_FRAMING_LON,
+					framingDistanceFor(urlTypeFromId(navTrip.from), departure)
+				);
+			}
 		} else {
 			// Persistent (no auto-dismiss): the scene-load main-thread churn can
 			// starve a transient toast so its duration timer expires before it ever

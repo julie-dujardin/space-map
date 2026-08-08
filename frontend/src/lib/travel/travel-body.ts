@@ -27,29 +27,40 @@ export function naifId(objectId: string): number | null {
 }
 
 /** True for the Sun or the solar-system barycentre — the roots of the walk. */
-function isHeliocentricRoot(objectId: string): boolean {
+export function isHeliocentricRoot(objectId: string): boolean {
 	const id = naifId(objectId);
 	return id === SUN_ID || id === SSB_ID;
 }
+
+/**
+ * How the walk finds a parent. A function rather than a map because the bodies
+ * a trip needs come from several places — the scene's own index, and the
+ * catalogue for anything it never loaded.
+ */
+export type BodyLookup = (id: string) => BodyData | null | undefined;
+
+/** The lookup a plain map makes. */
+export function lookupIn(bodiesById: ReadonlyMap<string, BodyData>): BodyLookup {
+	return (id) => bodiesById.get(id);
+}
+
+/** How many links up the chain to follow. Real chains are three or four; the
+ *  cap only guards against a cycle in malformed data. */
+const MAX_HOPS = 8;
 
 /**
  * The ancestor whose orbit is about the Sun.
  *
  * Earth resolves to the Earth-Moon barycentre, Europa to the Jupiter
  * barycentre, an asteroid to itself. Returns null when the chain cannot be
- * walked — a body whose parent is missing from the loaded set has no
- * heliocentric orbit we can name.
+ * walked — a body whose parent the lookup cannot produce has no heliocentric
+ * orbit we can name.
  */
-export function heliocentricAncestor(
-	body: BodyData,
-	bodiesById: Map<string, BodyData>
-): BodyData | null {
+export function heliocentricAncestor(body: BodyData, lookup: BodyLookup): BodyData | null {
 	let current: BodyData = body;
-	// The chain is a handful of links; the cap only guards against a cycle in
-	// malformed data.
-	for (let hop = 0; hop < 8; hop++) {
+	for (let hop = 0; hop < MAX_HOPS; hop++) {
 		if (isHeliocentricRoot(current.parentId)) return current;
-		const parent = bodiesById.get(current.parentId);
+		const parent = lookup(current.parentId);
 		if (!parent) return null;
 		current = parent;
 	}
@@ -91,10 +102,10 @@ function surfacePressureBar(detail: GlobalObjectData | null): number | undefined
  */
 export function toTravelBody(
 	body: BodyData,
-	bodiesById: Map<string, BodyData>,
+	lookup: BodyLookup,
 	detail: GlobalObjectData | null = null
 ): TravelBody | null {
-	const ancestor = heliocentricAncestor(body, bodiesById);
+	const ancestor = heliocentricAncestor(body, lookup);
 	if (!ancestor) return null;
 
 	const radiusKm = Number.isFinite(body.radiusKm) && body.radiusKm > 0 ? body.radiusKm : 1;
@@ -137,11 +148,14 @@ export function toTravelBody(
 export function sameSystemBlock(
 	origin: BodyData,
 	target: BodyData,
-	bodiesById: Map<string, BodyData>
+	lookup: BodyLookup
 ): 'unknown-orbit' | 'same-primary' | null {
-	const a = heliocentricAncestor(origin, bodiesById);
-	const b = heliocentricAncestor(target, bodiesById);
-	if (!a || !b) return 'unknown-orbit';
+	const a = heliocentricAncestor(origin, lookup);
+	const b = heliocentricAncestor(target, lookup);
+	if (!a || !b) {
+		console.debug(`[travel] no heliocentric ancestor for ${(a ? target : origin).id}`);
+		return 'unknown-orbit';
+	}
 	if (a.id === b.id) return 'same-primary';
 	return null;
 }

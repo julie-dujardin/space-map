@@ -30,11 +30,13 @@
 
 	let plannable = $derived.by(() => {
 		if (!ctx || target.id === EARTH_ID) return false;
-		const bodies = new Map<string, BodyData>();
-		for (const [id, b] of ctx.bodies.bodiesById) bodies.set(id, b.data);
-		const earth = bodies.get(EARTH_ID);
+		// Whatever bucket a body sits in — majors, a zone, a spacecraft group.
+		// Reading only the majors index used to hide the button on every small body
+		// and probe, which are exactly the ones worth planning a trip to.
+		const lookup = (id: string) => ctx.getBody(id)?.data;
+		const earth = lookup(EARTH_ID);
 		if (!earth) return false;
-		return sameSystemBlock(earth, target, bodies) === null;
+		return sameSystemBlock(earth, target, lookup) === null;
 	});
 
 	let href = $derived(navHref(appState, EARTH_ID, target.id));

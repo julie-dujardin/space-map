@@ -105,6 +105,28 @@ export const SATURN: TravelBody = {
 	)
 };
 
+/**
+ * An escaping probe — Voyager 2's heliocentric osculating orbit, rounded. It is
+ * hyperbolic, so there is no semi-major axis to scale a transfer against and no
+ * period to align with: the pair never repeats and the trip is a chase.
+ */
+export const ESCAPING_PROBE: TravelBody = {
+	id: 'probe-49000448',
+	mu: 1e-9,
+	muEstimated: true,
+	radiusKm: 0.01,
+	elements: {
+		a: -3.99,
+		e: 6.29,
+		i: 78.8,
+		om: 101.7,
+		w: 130.1,
+		ma: 1000,
+		n: meanMotion(3.99),
+		epoch: J2000
+	}
+};
+
 /** Airless, and the one ascent with a flight-proven Δv to check the model against. */
 export const MOON: TravelBody = {
 	id: 'naif-301',

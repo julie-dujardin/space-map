@@ -243,12 +243,14 @@
 				// out by setFocus the moment the camera lands. Also skip when a
 				// group is focused and the clicked body is a member — clicking
 				// within a group should keep the group view, only the camera moves.
+				// A trip is the same kind of mode, and stricter: whichever end the
+				// camera settles on, the URL is the journey until it is closed.
 				if (!wasInitial && !isNavigatingBack && body && body.data.id !== appState.view.id) {
 					const inActiveGroup =
 						appState.view.type === UrlType.Group &&
 						appState.view.groupSlug !== null &&
 						ctx.isMemberOfActiveGroup(body.data.id);
-					if (!inActiveGroup) {
+					if (!inActiveGroup && appState.view.type !== UrlType.Nav) {
 						appState.setFocus({
 							type: urlTypeFromId(body.data.id),
 							id: body.data.id,

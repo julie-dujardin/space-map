@@ -130,6 +130,10 @@ export class TravelPanelState {
 			pickedJd: this.pickedJd
 		});
 		if (!options) {
+			console.debug(
+				`[travel] no search window for ${origin.id} → ${target.id}: ` +
+					`a=${origin.elements.a}/${target.elements.a}, e=${origin.elements.e}/${target.elements.e}`
+			);
 			this.block('unknown-orbit');
 			return;
 		}

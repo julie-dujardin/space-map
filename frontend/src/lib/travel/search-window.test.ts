@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { EARTH, JUPITER, MARS } from '$lib/math/travel/test-fixtures';
-import { hohmannTransferDays, synodicPeriodDays } from '$lib/math/travel';
+import { EARTH, ESCAPING_PROBE, JUPITER, MARS } from '$lib/math/travel/test-fixtures';
+import { crossingTimeDays, hohmannTransferDays, synodicPeriodDays } from '$lib/math/travel';
 import { searchWindow } from './search-window';
 
 const NOW = 2461000;
@@ -70,6 +70,30 @@ describe('searchWindow', () => {
 			pickedJd: NOW - 100
 		})!;
 		expect(options.departToJd).toBeGreaterThan(options.departFromJd);
+	});
+
+	// An escaping probe used to fall out here: no semi-major axis, no Hohmann
+	// time, no grid, and the panel said the pair had no orbit at all.
+	describe('chasing an unbound target', () => {
+		const chase = { origin: EARTH, target: ESCAPING_PROBE, nowJd: NOW, timeMode: 'now' as const };
+
+		it('still produces a grid', () => {
+			expect(searchWindow(chase)).not.toBeNull();
+		});
+
+		it('opens the cruise bounds well below the crossing time', () => {
+			const options = searchWindow(chase)!;
+			const crossing = crossingTimeDays(EARTH, ESCAPING_PROBE, NOW)!;
+			// The target is leaving, so the arcs worth seeing are the fast ones; a
+			// planetary 0.35 floor would put the whole grid past a century out.
+			expect(options.tofMinDays).toBeLessThan(crossing * 0.1);
+			expect(options.tofMaxDays).toBeGreaterThan(options.tofMinDays);
+		});
+
+		it('searches departures over the cap, having no alignment to wait for', () => {
+			const options = searchWindow(chase)!;
+			expect(options.departToJd - options.departFromJd).toBeCloseTo(3 * 365.25, 0);
+		});
 	});
 
 	it('returns null when a body has no usable orbit', () => {

@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
+	crossingTimeDays,
 	hohmannTransferDays,
 	nextTransferWindows,
 	requiredPhaseAngle,
 	synodicPeriodDays
 } from './windows';
-import { EARTH, J2000, JUPITER, MARS, VENUS } from './test-fixtures';
+import { EARTH, ESCAPING_PROBE, J2000, JUPITER, MARS, VENUS } from './test-fixtures';
 
 // The published synodic periods, transfer times and phase angles are asserted
 // in benchmarks.test.ts; these cover the behaviour around them.
@@ -78,5 +79,24 @@ describe('nextTransferWindows', () => {
 			expect(Math.abs(check[0] - jd)).toBeLessThan(2);
 		}
 		expect(isFinite(phase)).toBe(true);
+	});
+});
+
+describe('crossingTimeDays', () => {
+	const NOW = 2461000;
+
+	it('stands in where a hyperbolic orbit leaves no semi-major axis', () => {
+		expect(hohmannTransferDays(EARTH, ESCAPING_PROBE)).toBeNull();
+		const crossing = crossingTimeDays(EARTH, ESCAPING_PROBE, NOW)!;
+		// Voyager 2 is past 100 AU, so the ideal crossing runs into centuries.
+		expect(crossing / 365.25).toBeGreaterThan(100);
+	});
+
+	it('agrees with the Hohmann time when both orbits are circular enough', () => {
+		// Same quantity from instantaneous radii rather than semi-major axes, so
+		// the two only differ by each orbit's eccentricity.
+		const hohmann = hohmannTransferDays(EARTH, MARS)!;
+		const crossing = crossingTimeDays(EARTH, MARS, NOW)!;
+		expect(Math.abs(crossing - hohmann) / hohmann).toBeLessThan(0.15);
 	});
 });

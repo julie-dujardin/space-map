@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import type { BodyData } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
-import { heliocentricAncestor, naifId, sameSystemBlock, toTravelBody } from './travel-body';
+import {
+	heliocentricAncestor,
+	lookupIn,
+	naifId,
+	sameSystemBlock,
+	toTravelBody
+} from './travel-body';
 
 /** Minimal body row; only the fields the adapter reads are meaningful. */
 function body(id: string, parentId: string, over: Partial<BodyData> = {}): BodyData {
@@ -51,23 +57,24 @@ describe('naifId', () => {
 
 describe('heliocentricAncestor', () => {
 	const bodies = solarSystem();
+	const look = lookupIn(bodies);
 
 	it('resolves Earth to the Earth-Moon barycentre', () => {
-		expect(heliocentricAncestor(bodies.get('naif-399')!, bodies)!.id).toBe('naif-3');
+		expect(heliocentricAncestor(bodies.get('naif-399')!, look)!.id).toBe('naif-3');
 	});
 
 	it('resolves a moon of another planet to that planet barycentre', () => {
-		expect(heliocentricAncestor(bodies.get('naif-502')!, bodies)!.id).toBe('naif-5');
+		expect(heliocentricAncestor(bodies.get('naif-502')!, look)!.id).toBe('naif-5');
 	});
 
 	it('resolves a body already orbiting the Sun to itself', () => {
 		const asteroid = body('spkid-2000004', 'naif-10');
-		expect(heliocentricAncestor(asteroid, new Map())!.id).toBe('spkid-2000004');
+		expect(heliocentricAncestor(asteroid, lookupIn(new Map()))!.id).toBe('spkid-2000004');
 	});
 
 	it('returns null when the chain cannot be walked', () => {
 		const orphan = body('naif-9999', 'naif-8888');
-		expect(heliocentricAncestor(orphan, new Map())).toBeNull();
+		expect(heliocentricAncestor(orphan, lookupIn(new Map()))).toBeNull();
 	});
 
 	it('gives up rather than looping on a cycle', () => {
@@ -75,15 +82,16 @@ describe('heliocentricAncestor', () => {
 			['a', body('a', 'b')],
 			['b', body('b', 'a')]
 		]);
-		expect(heliocentricAncestor(cyclic.get('a')!, cyclic)).toBeNull();
+		expect(heliocentricAncestor(cyclic.get('a')!, lookupIn(cyclic))).toBeNull();
 	});
 });
 
 describe('toTravelBody', () => {
 	const bodies = solarSystem();
+	const look = lookupIn(bodies);
 
 	it('takes elements from the ancestor and size from the body', () => {
-		const earth = toTravelBody(bodies.get('naif-399')!, bodies)!;
+		const earth = toTravelBody(bodies.get('naif-399')!, look)!;
 		expect(earth.radiusKm).toBe(6371);
 		// The Earth-Moon barycentre's heliocentric orbit, not Earth's about it.
 		expect(earth.elements.a).toBeCloseTo(1.00000261, 9);
@@ -91,13 +99,13 @@ describe('toTravelBody', () => {
 
 	it('estimates mu when no measured value is loaded', () => {
 		// systems-global is unloaded in tests, so every body takes the fallback.
-		const earth = toTravelBody(bodies.get('naif-399')!, bodies)!;
+		const earth = toTravelBody(bodies.get('naif-399')!, look)!;
 		expect(earth.muEstimated).toBe(true);
 		expect(earth.mu).toBeGreaterThan(0);
 	});
 
 	function withPressure(level: string, pa = 101325) {
-		return toTravelBody(bodies.get('naif-399')!, bodies, {
+		return toTravelBody(bodies.get('naif-399')!, look, {
 			atmosphere: { type: 'x', pressure: { pa, level } }
 		} as never)!;
 	}
@@ -120,15 +128,18 @@ describe('toTravelBody', () => {
 	});
 
 	it('treats a body with no detail as airless', () => {
-		expect(toTravelBody(bodies.get('naif-399')!, bodies)!.surfacePressureBar).toBeUndefined();
+		expect(toTravelBody(bodies.get('naif-399')!, look)!.surfacePressureBar).toBeUndefined();
 	});
 
 	it('returns null for a body with no reachable heliocentric orbit', () => {
-		expect(toTravelBody(body('naif-9999', 'naif-8888'), new Map())).toBeNull();
+		expect(toTravelBody(body('naif-9999', 'naif-8888'), lookupIn(new Map()))).toBeNull();
 	});
 
 	it('substitutes a positive radius for a missing one', () => {
-		const sized = toTravelBody(body('naif-1234', 'naif-10', { radiusKm: NaN }), new Map())!;
+		const sized = toTravelBody(
+			body('naif-1234', 'naif-10', { radiusKm: NaN }),
+			lookupIn(new Map())
+		)!;
 		expect(sized.radiusKm).toBeGreaterThan(0);
 		expect(Number.isFinite(sized.mu)).toBe(true);
 	});
@@ -136,19 +147,20 @@ describe('toTravelBody', () => {
 
 describe('sameSystemBlock', () => {
 	const bodies = solarSystem();
+	const look = lookupIn(bodies);
 
 	it('allows a transfer between bodies of different primaries', () => {
-		expect(sameSystemBlock(bodies.get('naif-399')!, bodies.get('naif-502')!, bodies)).toBeNull();
+		expect(sameSystemBlock(bodies.get('naif-399')!, bodies.get('naif-502')!, look)).toBeNull();
 	});
 
 	it('blocks Earth to its own Moon, which shares a primary', () => {
-		expect(sameSystemBlock(bodies.get('naif-399')!, bodies.get('naif-301')!, bodies)).toBe(
+		expect(sameSystemBlock(bodies.get('naif-399')!, bodies.get('naif-301')!, look)).toBe(
 			'same-primary'
 		);
 	});
 
 	it('blocks a body whose orbit cannot be resolved', () => {
-		expect(sameSystemBlock(bodies.get('naif-399')!, body('naif-9999', 'naif-8888'), bodies)).toBe(
+		expect(sameSystemBlock(bodies.get('naif-399')!, body('naif-9999', 'naif-8888'), look)).toBe(
 			'unknown-orbit'
 		);
 	});

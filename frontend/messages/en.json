@@ -519,6 +519,7 @@
 	"scene_canvas_label": "Interactive 3D map of the Solar System",
 	"travel_craft_loading": "Loading the catalogue…",
 	"travel_dv_unpublished": "No published engine",
+	"travel_locating_ends": "Looking these up…",
 	"travel_mode_elliptical": "Elliptical",
 	"travel_mode_landing": "Landing",
 	"travel_mode_low_orbit": "Low orbit",

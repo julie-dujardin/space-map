@@ -42,6 +42,33 @@ export function hohmannTransferDays(
 }
 
 /**
+ * Time to cross between where the two bodies are *now*, days.
+ *
+ * The stand-in for the Hohmann time when one end has no semi-major axis to take
+ * one from — an escaping probe, a body on a hyperbolic arc. Half an ellipse
+ * spanning the two current distances is not a transfer anyone would fly, but it
+ * is the right order of magnitude for how long the crossing takes, which is all
+ * the search bounds need from it.
+ */
+export function crossingTimeDays(
+	a: TravelBody,
+	b: TravelBody,
+	jd: number,
+	mu = GM_SUN_KM3_S2
+): number | null {
+	const sA = elementsToState(a.elements, jd, mu);
+	const sB = elementsToState(b.elements, jd, mu);
+	if (!sA || !sB) return null;
+	const aT = (radius(sA.r) + radius(sB.r)) / 2;
+	if (!(aT > 0)) return null;
+	return (Math.PI * Math.sqrt(aT ** 3 / mu)) / SEC_PER_DAY;
+}
+
+function radius(r: readonly [number, number, number]): number {
+	return Math.hypot(r[0], r[1], r[2]);
+}
+
+/**
  * Phase angle the target must lead the departure body by at launch, radians in
  * (−π, π]. Negative means the target trails.
  */

@@ -52,6 +52,7 @@ export type { PorkchopGrid, PorkchopOptions, RouteChoice, RouteProfile } from '.
 export { computePorkchop, selectRoutes } from './porkchop';
 
 export {
+	crossingTimeDays,
 	hohmannTransferDays,
 	nextTransferWindows,
 	requiredPhaseAngle,
