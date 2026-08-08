@@ -1837,5 +1837,7 @@
 	"unit_symbol_degree_celsius": "℃",
 	"unit_symbol_kilometre": "粁",
 	"unit_symbol_magnitude": "等級",
-	"unit_symbol_metre": "米"
+	"unit_symbol_metre": "米",
+	"spacecraft_name_hail_mary": "ヘイル・メアリー",
+	"spacecraft_name_hermes": "ヘルメス"
 }

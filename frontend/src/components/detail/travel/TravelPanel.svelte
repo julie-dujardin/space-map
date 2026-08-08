@@ -16,11 +16,16 @@
 	import type { BodyData } from '$lib/types/objects';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatJulianDate } from '$lib/format/date';
-	import { hohmannTransferDays, nextTransferWindows, type TravelBody } from '$lib/math/travel';
+	import {
+		hohmannTransferDays,
+		nextTransferWindows,
+		type TravelBody,
+		type Vehicle
+	} from '$lib/math/travel';
 	import { sameSystemBlock, toTravelBody } from '$lib/travel/travel-body';
 	import { TravelPanelState, type BlockReason, type EndpointMode } from '$lib/travel/panel.svelte';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
-	import { VEHICLE_CATALOGUE } from '$lib/travel/vehicles';
+	import { vehicleCatalogue } from '$lib/travel/vehicles';
 	import { vehicleName } from './vehicle-labels';
 	import type { TimeMode } from '$lib/travel/search-window';
 	import Segmented from './Segmented.svelte';
@@ -88,6 +93,11 @@
 	});
 
 	let vehicleOpen = $state(false);
+	// The catalogue is fetched, so it arrives after first paint. Held in state
+	// and assigned when it lands: `vehicleCatalogue()` reads a plain module-level
+	// array, which no rune is watching — deriving off a bumped counter looked
+	// equivalent and silently never re-ran.
+	let vehicles = $state<readonly Vehicle[]>([]);
 
 	// The kernel's view of each end, rebuilt whenever either body or its detail
 	// changes.
@@ -259,7 +269,12 @@
 	<div class="flex flex-col gap-2">
 		<button
 			type="button"
-			onclick={() => (vehicleOpen = !vehicleOpen)}
+			onclick={() => {
+				vehicleOpen = !vehicleOpen;
+				// Nothing waits on this — the routes are already solved, and the
+				// list fills in when it lands.
+				if (vehicleOpen) void panel.loadVehicles().then(() => (vehicles = vehicleCatalogue()));
+			}}
 			aria-expanded={vehicleOpen}
 			class="border-border/60 bg-muted/40 hover:bg-muted flex items-center gap-2 rounded-md border px-2.5 py-2 text-start"
 		>
@@ -276,7 +291,7 @@
 
 		{#if vehicleOpen}
 			<ul class="border-border/60 flex flex-col rounded-md border p-1">
-				{#each VEHICLE_CATALOGUE as vehicle (vehicle.id)}
+				{#each vehicles as vehicle (vehicle.id)}
 					<li>
 						<button
 							type="button"
@@ -294,7 +309,9 @@
 					</li>
 				{/each}
 			</ul>
-			<p class="text-muted-foreground text-[11px]">{m.travel_craft_approximate()}</p>
+			{#if vehicles.length === 0}
+				<p class="text-muted-foreground text-[11px]">{m.travel_craft_loading()}</p>
+			{/if}
 		{/if}
 	</div>
 

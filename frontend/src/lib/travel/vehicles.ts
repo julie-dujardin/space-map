@@ -1,66 +1,49 @@
 /**
  * Craft you can filter the trajectories by.
  *
- * IMPORTANT: these figures are approximate, rounded, and not sourced. They are
- * the right order of magnitude and put the vehicles in the right relative
- * order, which is enough to answer "could this thing make that trip" — but they
- * are not published performance data and the UI says so. Replace them with
- * cited values (NASA's Launch Services Program publishes C3/payload curves)
- * before treating any number here as a fact.
+ * The catalogue is fetched rather than declared — `/data/v1/spacecraft.json`,
+ * built from cited constants in the pipeline. Every figure carries its source
+ * key, so a panel showing "Δv 2.80 km/s" can show what that came from and
+ * whether it was derived from a mass and an engine or published outright.
  *
- * A launcher is judged on the launch energy it can reach; a spacecraft on the
- * Δv it carries once it is up there. Nothing here models low thrust, so the
- * electric craft are deliberately absent rather than wrongly rated.
+ * Loaded on demand rather than at boot: the file is small but nobody who never
+ * opens the travel panel needs it.
  */
 
+import { loadSpacecraft, allVehicles, vehicleById, sourceCitation } from '$lib/fetch/spacecraft';
 import type { Vehicle } from '$lib/math/travel';
+import * as m from '$lib/paraglide/messages.js';
 
-export interface CatalogueEntry extends Vehicle {
-	/** Message key suffix for the display name, under `vehicle_*`. */
-	nameKey: string;
+export { sourceCitation };
+export type { SourceCitation } from '$lib/fetch/spacecraft';
+
+/** Fetch the catalogue if it is not already in memory. Safe to call repeatedly. */
+export function ensureVehicles(): Promise<void> {
+	return loadSpacecraft();
 }
 
-export const VEHICLE_CATALOGUE: readonly CatalogueEntry[] = [
-	{
-		id: 'falcon-heavy',
-		nameKey: 'falcon_heavy',
-		kind: 'launcher',
-		propulsion: 'chemical',
-		dvKms: 0,
-		c3Curve: [
-			[0, 15000],
-			[20, 9500],
-			[40, 6000],
-			[60, 3800],
-			[100, 1500]
-		]
-	},
-	{
-		id: 'sls-block-1b',
-		nameKey: 'sls_block_1b',
-		kind: 'launcher',
-		propulsion: 'chemical',
-		dvKms: 0,
-		c3Curve: [
-			[0, 27000],
-			[20, 18000],
-			[40, 12000],
-			[60, 8000],
-			[100, 4000]
-		]
-	},
-	{ id: 'apollo-csm', nameKey: 'apollo_csm', kind: 'crewed', propulsion: 'chemical', dvKms: 2.8 },
-	{
-		id: 'starship',
-		nameKey: 'starship',
-		kind: 'crewed',
-		propulsion: 'chemical',
-		dvKms: 6.9
-	},
-	{ id: 'epstein', nameKey: 'epstein', kind: 'fictional', propulsion: 'fictional', dvKms: 3000 }
-];
+export function vehicleCatalogue(): readonly Vehicle[] {
+	return allVehicles();
+}
 
-export function findVehicle(id: string | null): CatalogueEntry | null {
-	if (!id) return null;
-	return VEHICLE_CATALOGUE.find((v) => v.id === id) ?? null;
+export function findVehicle(id: string | null): Vehicle | null {
+	return vehicleById(id);
+}
+
+/**
+ * Hand-authored names for the ships Wikidata has no item for. Everything else
+ * is named from its QID, which is the whole reason the catalogue carries one.
+ */
+const NAME_MESSAGES: Record<string, () => string> = {
+	'hail-mary': m.spacecraft_name_hail_mary,
+	hermes: m.spacecraft_name_hermes
+};
+
+/**
+ * Localized name, for vehicles that have no Wikidata item to get one from.
+ * Null means "look the QID up" — the caller already has that path for bodies.
+ */
+export function localName(vehicle: Vehicle): string | null {
+	const message = NAME_MESSAGES[vehicle.id];
+	return message ? message() : null;
 }

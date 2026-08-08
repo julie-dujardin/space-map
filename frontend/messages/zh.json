@@ -1837,5 +1837,7 @@
 	"unit_symbol_kilometre": "公里",
 	"unit_symbol_magnitude": "等",
 	"unit_symbol_metre": "米",
-	"unit_symbol_millimetre": "毫米"
+	"unit_symbol_millimetre": "毫米",
+	"spacecraft_name_hail_mary": "万福玛丽亚号",
+	"spacecraft_name_hermes": "赫尔墨斯号"
 }

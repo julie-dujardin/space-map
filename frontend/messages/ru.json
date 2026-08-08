@@ -1834,5 +1834,7 @@
 	"unit_symbol_tonne": "т",
 	"unit_symbol_year": "г.",
 	"unit_symbol_yottagram": "Йг",
-	"unit_symbol_zettagram": "Зг"
+	"unit_symbol_zettagram": "Зг",
+	"spacecraft_name_hail_mary": "Аве Мария",
+	"spacecraft_name_hermes": "Гермес"
 }

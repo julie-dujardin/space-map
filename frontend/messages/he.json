@@ -1716,5 +1716,7 @@
 	"unit_symbol_magnitude": "מגניטודה",
 	"unit_symbol_metre": "מ'",
 	"unit_symbol_millimetre": "מ\"מ",
-	"unit_symbol_square_kilometre": "קמ\"ר"
+	"unit_symbol_square_kilometre": "קמ\"ר",
+	"spacecraft_name_hail_mary": "הייל מרי",
+	"spacecraft_name_hermes": "הרמס"
 }

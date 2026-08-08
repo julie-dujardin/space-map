@@ -1594,5 +1594,7 @@
 	"unit_name_yottagram": "iotagrama",
 	"unit_name_zettagram": "zetagrama",
 	"unit_symbol_astronomical_unit": "UA",
-	"unit_symbol_degree_celsius": "℃"
+	"unit_symbol_degree_celsius": "℃",
+	"spacecraft_name_hail_mary": "Hail Mary",
+	"spacecraft_name_hermes": "Hermes"
 }

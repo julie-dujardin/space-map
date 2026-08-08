@@ -1,46 +1,126 @@
 /**
  * Vehicles a route can be flown with, and whether a given one can fly it.
  *
- * The feasibility model is the deliverable here. The catalogue below is a
- * placeholder with rounded, unsourced figures — it exists so the selector has
- * something to drive, and every entry needs a real citation before it ships.
+ * The catalogue is data now: `/data/v1/spacecraft.json`, built from cited
+ * constants in the pipeline. Nothing here invents a figure, and a vehicle
+ * missing the figure a check needs reports that it cannot judge rather than
+ * guessing — "no published escape performance" and "cannot reach that energy"
+ * are different answers.
  */
 
 import type { Route } from './route';
 
-export type PropulsionKind = 'chemical' | 'electric' | 'nuclear' | 'fictional';
+export type PropulsionKind = 'chemical' | 'electric' | 'nuclear' | 'solar-sail' | 'fictional';
+export type VehicleKind = 'launcher' | 'probe' | 'crewed' | 'lander' | 'fictional';
+export type VehicleStatus = 'active' | 'retired' | 'planned' | 'concept' | 'fictional';
+export type PowerSource = 'solar' | 'rtg' | 'nuclear' | 'battery' | 'fictional';
+
+/** One figure and the source key backing it, so the panel can cite what it shows. */
+export interface Measured {
+	value: number;
+	source: string;
+}
+
+export interface C3Curve {
+	/** Ascending `[C3 km²/s², payload kg]`. */
+	points: ReadonlyArray<readonly [number, number]>;
+	source: string;
+	/** The published range stops before the vehicle does. */
+	truncated: boolean;
+	crossCheck?: string;
+}
 
 export interface Vehicle {
 	id: string;
-	kind: 'launcher' | 'probe' | 'crewed' | 'fictional';
+	kind: VehicleKind;
 	propulsion: PropulsionKind;
-	/** Δv the vehicle can supply once in space, km/s. */
-	dvKms: number;
+	status: VehicleStatus;
+	/** Wikidata item, which is where the localized name comes from. */
+	qid?: string;
+	/** English name, for the few fictional ships with no Wikidata item. */
+	name?: string;
+	power?: PowerSource;
+
+	dryMassKg?: Measured;
+	propellantMassKg?: Measured;
+	ispS?: Measured;
+	thrustN?: Measured;
 	/**
-	 * Payload delivered against launch energy: ascending `[C3 km²/s², kg]`.
-	 * Launchers only — this is what decides whether a departure is liftable.
+	 * Δv the vehicle can supply once in space, km/s, derived from the three
+	 * fields above by the pipeline. Absent when any of them is — several real
+	 * spacecraft have published masses and no published engine.
 	 */
-	c3Curve?: ReadonlyArray<readonly [number, number]>;
-	/**
-	 * Continuous low thrust. Impulsive Δv is the wrong yardstick for these, so
-	 * feasibility is reported as unmodelled rather than guessed.
-	 */
-	lowThrust?: boolean;
+	dvKms?: number;
+
+	/** Launchers only: what decides whether a departure is liftable at all. */
+	c3Curve?: C3Curve;
+
+	/** Everyone aboard: crew plus passengers, which are the same set on
+	 *  every real spacecraft and not on a fictional liner. */
+	crew?: Measured;
+	enduranceDays?: Measured;
+	maxEntrySpeedKms?: Measured;
+	capabilities?: readonly string[];
+
+	/** Constant-acceleration drives: a brachistochrone, not a transfer orbit. */
+	accelMs2?: Measured;
+
+	cost?: { usdMillions: number; year: number; kind: string; source: string };
+	objectIds?: readonly string[];
+	groupSlug?: string;
 }
 
-export type FeasibilityStatus = 'ok' | 'insufficient-dv' | 'over-c3' | 'not-modelled';
+export type FeasibilityStatus =
+	| 'ok'
+	| 'insufficient-dv'
+	| 'over-c3'
+	/** Past the end of a curve whose source stopped early — unknown, not no. */
+	| 'beyond-published'
+	/** Continuous low thrust: impulsive Δv is the wrong yardstick. */
+	| 'not-modelled'
+	/** The vehicle is missing the figure this check needs. */
+	| 'unknown';
 
 export interface Feasibility {
 	status: FeasibilityStatus;
-	/** Δv to spare, km/s. Negative when the route is out of reach. */
+	/** Δv to spare, km/s. Negative when the route is out of reach, NaN when unjudged. */
 	marginKms: number;
 	/** Payload the launcher can send on this trajectory, kg, when known. */
 	payloadKg?: number;
+	/**
+	 * How many times over the trip outlasts the consumables, when both are
+	 * known and it does. A route can be affordable in Δv and still be four
+	 * times the life support.
+	 */
+	enduranceRatio?: number;
+	/** Arrival speed, km/s, when it exceeds what the heat shield is rated for. */
+	overEntrySpeedKms?: number;
+}
+
+/**
+ * Acceleration below which a burn stops being usefully impulsive.
+ *
+ * A Lambert arc assumes the Δv is spent at a point. At 10 µm/s² — Dawn's ion
+ * drive was an order of magnitude under this — a kilometre a second takes
+ * three years to deliver, and the arc the solver drew never existed.
+ */
+const IMPULSIVE_FLOOR_M_S2 = 1e-4;
+
+/** Whether the vehicle's thrust is too low for the impulsive model to hold. */
+export function isLowThrust(vehicle: Vehicle): boolean {
+	const { thrustN, dryMassKg, propellantMassKg } = vehicle;
+	if (thrustN && dryMassKg && propellantMassKg) {
+		const wetKg = dryMassKg.value + propellantMassKg.value;
+		return thrustN.value / wetKg < IMPULSIVE_FLOOR_M_S2;
+	}
+	// No thrust figure: fall back to the propulsion type, which is what the
+	// distinction is a proxy for anyway.
+	return vehicle.propulsion === 'electric' || vehicle.propulsion === 'solar-sail';
 }
 
 /** Linear interpolation along the C3/payload curve; null beyond its end. */
 export function payloadForC3(vehicle: Vehicle, c3: number): number | null {
-	const curve = vehicle.c3Curve;
+	const curve = vehicle.c3Curve?.points;
 	if (!curve || curve.length === 0) return null;
 	if (c3 <= curve[0][0]) return curve[0][1];
 	for (let i = 1; i < curve.length; i++) {
@@ -51,7 +131,20 @@ export function payloadForC3(vehicle: Vehicle, c3: number): number | null {
 			return ma + t * (mb - ma);
 		}
 	}
-	return null; // Past the curve: the vehicle cannot reach this energy.
+	return null; // Past the curve.
+}
+
+/** Endurance and heat-shield notes, which qualify a pass rather than deny it. */
+function annotate(vehicle: Vehicle, route: Route, result: Feasibility): Feasibility {
+	const endurance = vehicle.enduranceDays?.value;
+	if (endurance && route.tofDays > endurance) {
+		result.enduranceRatio = route.tofDays / endurance;
+	}
+	const rated = vehicle.maxEntrySpeedKms?.value;
+	if (rated && route.arrivalMode === 'landing' && route.vInfArrKms > rated) {
+		result.overEntrySpeedKms = route.vInfArrKms;
+	}
+	return result;
 }
 
 /**
@@ -62,62 +155,39 @@ export function payloadForC3(vehicle: Vehicle, c3: number): number | null {
  * judged on in-space Δv, since the ascent belongs to whatever launched it.
  */
 export function checkFeasibility(vehicle: Vehicle, route: Route): Feasibility {
-	if (vehicle.lowThrust) {
+	// A torch drive has no Δv budget to check against; it holds an
+	// acceleration until it arrives, which is a different solver entirely.
+	if (vehicle.accelMs2) {
 		return { status: 'not-modelled', marginKms: NaN };
 	}
 
 	if (vehicle.kind === 'launcher') {
+		if (!vehicle.c3Curve) return { status: 'unknown', marginKms: NaN };
 		const payloadKg = payloadForC3(vehicle, route.c3Km2S2);
 		if (payloadKg === null || payloadKg <= 0) {
-			return { status: 'over-c3', marginKms: NaN };
+			// Off the end of a curve that runs out where the rocket does is a
+			// no; off the end of one the source truncated is a shrug.
+			const status = vehicle.c3Curve.truncated ? 'beyond-published' : 'over-c3';
+			return { status, marginKms: NaN };
 		}
-		return { status: 'ok', marginKms: NaN, payloadKg };
+		return annotate(vehicle, route, { status: 'ok', marginKms: NaN, payloadKg });
+	}
+
+	if (isLowThrust(vehicle)) {
+		return { status: 'not-modelled', marginKms: NaN };
+	}
+	if (vehicle.dvKms === undefined) {
+		return { status: 'unknown', marginKms: NaN };
 	}
 
 	const marginKms = vehicle.dvKms - route.inSpaceDvKms;
-	return { status: marginKms >= 0 ? 'ok' : 'insufficient-dv', marginKms };
+	return annotate(vehicle, route, {
+		status: marginKms >= 0 ? 'ok' : 'insufficient-dv',
+		marginKms
+	});
 }
 
 /** Routes this vehicle can fly, cheapest margin last. */
 export function feasibleRoutes(vehicle: Vehicle, routes: Route[]): Route[] {
 	return routes.filter((r) => checkFeasibility(vehicle, r).status === 'ok');
 }
-
-/**
- * Placeholder catalogue. Figures are rounded order-of-magnitude values chosen to
- * exercise the selector, NOT sourced performance data — replace before shipping.
- */
-export const PLACEHOLDER_VEHICLES: readonly Vehicle[] = [
-	{
-		id: 'falcon-heavy',
-		kind: 'launcher',
-		propulsion: 'chemical',
-		dvKms: 0,
-		c3Curve: [
-			[0, 15000],
-			[20, 9500],
-			[40, 6000],
-			[60, 3800],
-			[100, 1500]
-		]
-	},
-	{
-		id: 'sls-block-1b',
-		kind: 'launcher',
-		propulsion: 'chemical',
-		dvKms: 0,
-		c3Curve: [
-			[0, 27000],
-			[20, 18000],
-			[40, 12000],
-			[60, 8000],
-			[100, 4000]
-		]
-	},
-	{ id: 'apollo-csm', kind: 'crewed', propulsion: 'chemical', dvKms: 2.8 },
-	{ id: 'starship-refuelled', kind: 'crewed', propulsion: 'chemical', dvKms: 6.9 },
-	{ id: 'voyager-class', kind: 'probe', propulsion: 'chemical', dvKms: 0.2 },
-	{ id: 'dawn-class', kind: 'probe', propulsion: 'electric', dvKms: 11, lowThrust: true },
-	{ id: 'epstein-drive', kind: 'fictional', propulsion: 'fictional', dvKms: 3000 },
-	{ id: 'discovery-one', kind: 'fictional', propulsion: 'nuclear', dvKms: 60 }
-];

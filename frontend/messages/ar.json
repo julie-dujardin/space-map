@@ -1806,5 +1806,7 @@
 	"unit_symbol_tonne": "طن",
 	"unit_symbol_year": "‎a‎",
 	"unit_symbol_yottagram": "يوغ",
-	"unit_symbol_zettagram": "زتغ"
+	"unit_symbol_zettagram": "زتغ",
+	"spacecraft_name_hail_mary": "هيل ماري",
+	"spacecraft_name_hermes": "هيرميس"
 }

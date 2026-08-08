@@ -1,22 +1,16 @@
-/** Display names for the craft catalogue. A switch rather than a dynamic key
- *  lookup so a renamed message is a compile error, not a blank label. */
+/**
+ * What a craft is called in the picker.
+ *
+ * The catalogue is data now, so names come with it: `name` is the English label
+ * from the constants, and `localName` covers the handful of fictional ships
+ * Wikidata has no item for. Everything else carries a `qid`, which is the hook
+ * for localized labels once there is a bundle to read them from — until then
+ * the English name is what shows.
+ */
 
-import * as m from '$lib/paraglide/messages.js';
-import type { CatalogueEntry } from '$lib/travel/vehicles';
+import type { Vehicle } from '$lib/math/travel';
+import { localName } from '$lib/travel/vehicles';
 
-export function vehicleName(vehicle: CatalogueEntry): string {
-	switch (vehicle.nameKey) {
-		case 'falcon_heavy':
-			return m.vehicle_falcon_heavy();
-		case 'sls_block_1b':
-			return m.vehicle_sls_block_1b();
-		case 'apollo_csm':
-			return m.vehicle_apollo_csm();
-		case 'starship':
-			return m.vehicle_starship();
-		case 'epstein':
-			return m.vehicle_epstein();
-		default:
-			return vehicle.id;
-	}
+export function vehicleName(vehicle: Vehicle): string {
+	return localName(vehicle) ?? vehicle.name ?? vehicle.id;
 }

@@ -1605,5 +1605,7 @@
 	"unit_symbol_astronomical_unit": "AE",
 	"unit_symbol_degree_celsius": "℃",
 	"unit_symbol_hour": "Std.",
-	"unit_symbol_magnitude": "mag"
+	"unit_symbol_magnitude": "mag",
+	"spacecraft_name_hail_mary": "Hail Mary",
+	"spacecraft_name_hermes": "Hermes"
 }

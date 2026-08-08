@@ -58,8 +58,18 @@ export {
 	synodicPeriodDays
 } from './windows';
 
-export type { Feasibility, FeasibilityStatus, PropulsionKind, Vehicle } from './vehicles';
-export { checkFeasibility, feasibleRoutes, payloadForC3, PLACEHOLDER_VEHICLES } from './vehicles';
+export type {
+	C3Curve,
+	Feasibility,
+	FeasibilityStatus,
+	Measured,
+	PowerSource,
+	PropulsionKind,
+	Vehicle,
+	VehicleKind,
+	VehicleStatus
+} from './vehicles';
+export { checkFeasibility, feasibleRoutes, isLowThrust, payloadForC3 } from './vehicles';
 
 export type { SolveResult } from './solver-client';
 export { TravelSolver } from './solver-client';

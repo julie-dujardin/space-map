@@ -19,9 +19,10 @@ import {
 	type Route,
 	type RouteChoice,
 	type RouteProfile,
-	type TravelBody
+	type TravelBody,
+	type Vehicle
 } from '$lib/math/travel';
-import { findVehicle, type CatalogueEntry } from './vehicles';
+import { ensureVehicles, findVehicle } from './vehicles';
 import { searchWindow, type TimeMode } from './search-window';
 
 /**
@@ -70,8 +71,14 @@ export class TravelPanelState {
 	/** Guards against an older solve landing after a newer one. */
 	#token = 0;
 
-	get vehicle(): CatalogueEntry | null {
+	get vehicle(): Vehicle | null {
 		return findVehicle(this.vehicleId);
+	}
+
+	/** Pull the catalogue in. The panel calls this when it opens; the routes
+	 *  solve without it, so nothing waits on the fetch. */
+	loadVehicles(): Promise<void> {
+		return ensureVehicles();
 	}
 
 	/** Arrival mode the kernel should price, from what the destination box says.

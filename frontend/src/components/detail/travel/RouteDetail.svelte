@@ -41,12 +41,18 @@
 	let delay = $derived(signalDelaySeconds(origin, target, route.arriveJd));
 
 	// A launcher's job ends at injection, so it has no Δv of its own left for
-	// arrival — that belongs to whatever it threw.
+	// arrival — that belongs to whatever it threw. A craft with no published
+	// engine has no Δv to subtract either, which is a different silence: the
+	// row says so rather than showing a figure nobody measured.
 	let remaining = $derived.by(() => {
 		const vehicle = state.vehicle;
 		if (!vehicle || vehicle.kind === 'launcher') return null;
+		if (vehicle.dvKms === undefined) return null;
 		return vehicle.dvKms - route.inSpaceDvKms;
 	});
+	let unpublishedDv = $derived(
+		state.vehicle !== null && state.vehicle.kind !== 'launcher' && state.vehicle.dvKms === undefined
+	);
 	let returnCost = $derived(returnDvKms(target, route));
 </script>
 
@@ -93,6 +99,8 @@
 			<dd class="text-end">
 				{#if remaining != null}
 					<span class="tabular-nums">{formatDv(remaining)}</span>
+				{:else if unpublishedDv}
+					<span class="text-muted-foreground text-xs">{m.travel_dv_unpublished()}</span>
 				{:else if state.vehicle}
 					<span class="text-muted-foreground text-xs">{m.travel_set_by_payload()}</span>
 				{:else}
