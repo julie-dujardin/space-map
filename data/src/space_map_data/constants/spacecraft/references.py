@@ -54,6 +54,14 @@ SPACECRAFT_SOURCES: dict[str, SpacecraftReference] = {
         "1, 1B and 2",
         "SLS escape performance",
     ),
+    "saturn_v_planners_guide_1965": SpacecraftReference(
+        "Douglas Aircraft 1965, Saturn V Payload Planner's Guide (SM-47274)",
+        "https://archive.org/details/SaturnVPayloadPlannersGuide",
+        "Figure IV-7, payload against hyperbolic excess velocity for the "
+        "three-stage Saturn V, which is the only payload-against-energy curve "
+        "published for the vehicle",
+        "Saturn V escape performance",
+    ),
     "ula_vulcan_2023": SpacecraftReference(
         "United Launch Alliance 2023, Vulcan Launch Systems User's Guide",
         "https://www.ulalaunch.com/docs/default-source/rockets/2023_vulcan_user_guide.pdf",

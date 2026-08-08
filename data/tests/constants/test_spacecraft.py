@@ -178,6 +178,16 @@ class TestPerformance:
             assert payloads == sorted(payloads, reverse=True), craft.id
             assert payloads[-1] > 0, craft.id
 
+    def test_saturn_v_curve_lands_where_apollo_did(self):
+        # The Saturn V curve is the one traced off a chart rather than read
+        # from a table, so it is pinned to the flight: Apollo 11 left orbit
+        # with 45,700 kg on top of the S-IVB at a C3 of about -1.8.
+        curve = CATALOGUE["saturn-v"].c3_curve
+        assert curve is not None
+        (below, m_below), (above, m_above) = curve.points[0], curve.points[1]
+        t = (-1.8 - below) / (above - below)
+        assert 44_000 < m_below + t * (m_above - m_below) < 47_000
+
     def test_masses_are_positive(self):
         for craft in CATALOGUE.values():
             for measured in (craft.dry_mass_kg, craft.propellant_mass_kg):

@@ -192,10 +192,12 @@ share a name, and are told apart by `variant`.
 The catalogue omits rather than estimates, and the omissions carry
 information:
 
-- Four launchers ship no `c3_curve`. Falcon 9, Saturn V, New Glenn and Long
-  March 5 publish payload to LEO and to GTO and answer escape questions
-  privately; interpolating a curve from a mass-to-Mars headline would be an
-  invention.
+- Three launchers ship no `c3_curve`. Falcon 9, New Glenn and Long March 5
+  publish payload to LEO and to GTO and nothing above them. Those are points on
+  the curve — LEO is C3 = -61, GTO is C3 = -16 — but fitting a stage to them
+  and extrapolating overshoots the launchers that *do* publish escape
+  performance by 9% at C3 = 0 and by up to 90% at C3 = 40, always high. What is
+  missing is one published point past escape, not the curve.
 - Crew Dragon ships no `delta_v_kms`. Both its masses are published and no
   specific impulse for the Draco thruster is, in any document or engine
   catalogue.

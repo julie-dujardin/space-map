@@ -11,13 +11,12 @@ Every entry here departs from a pad and nowhere else, and says so per entry
 rather than inheriting it from `kind` — a default that quiet would be exactly
 where a vehicle that also flies off the Moon would hide.
 
-Curves come from two places. NASA's SLS Mission Planner's Guide tabulates its
-own, so those points are written out here. The rest are the digitised NASA
-Launch Services Program curves the launch-performance downloader fetches, named
-by dataset id — a hundred points per vehicle belongs in a file, not a module.
-Everything else on this page publishes payload to LEO and to GTO and refers
-escape questions to the manufacturer, which is why several well-known rockets
-below carry no curve at all rather than an invented one.
+Curves come from three places. NASA's SLS Mission Planner's Guide tabulates its
+own and Saturn V's was traced off a chart, so those points are written out
+here. The rest are the digitised NASA Launch Services Program curves the
+launch-performance downloader fetches, named by dataset id — a hundred points
+per vehicle belongs in a file, not a module. Three well-known rockets below
+carry no curve at all, because nobody has published a single point on theirs.
 """
 
 from space_map_data.constants.spacecraft.specs import C3Curve, Cost, Spacecraft
@@ -45,6 +44,41 @@ _SLS_BLOCK_1_POINTS = (
     (120.0, 2000.0),
     (130.0, 1400.0),
     (140.0, 800.0),
+)
+
+# Figure IV-7 of the Saturn V Payload Planner's Guide, "payload vs velocity
+# capability", read off the 90° azimuth curve — due east from the Cape, which
+# is both the standard ascent and the one the guide's own summary quotes when
+# it says the vehicle throws about 98,000 lb to escape.
+#
+# The figure plots payload against V∞ rather than C3, and the guide's legend
+# leader arrows cross the curves over the middle of the range. So it is read at
+# twenty-one clean columns and a rocket-equation curve fitted through them
+# fills the gap; every reading lands inside 3% of the fit, and the fit's free
+# parameters come out at 16.2 t of inert mass and an Isp of 430 s, which are
+# the S-IVB with its instrument unit and the J-2's own 421 s. A curve traced
+# off a scanned 1965 chart reproducing the stage that flew it is the check that
+# the trace is real.
+#
+# Conservative twice over: this is the 1965 vehicle rather than the uprated one
+# that flew from Apollo 8 on, and the curve stops at the last clean reading
+# rather than at the vehicle's true ceiling near C3 = 138.
+_SATURN_V_POINTS = (
+    (-2.0, 45520.0),
+    (0.0, 44180.0),
+    (5.0, 40980.0),
+    (10.0, 38010.0),
+    (20.0, 32680.0),
+    (30.0, 28020.0),
+    (40.0, 23940.0),
+    (50.0, 20350.0),
+    (60.0, 17160.0),
+    (70.0, 14330.0),
+    (80.0, 11810.0),
+    (90.0, 9550.0),
+    (100.0, 7510.0),
+    (110.0, 5680.0),
+    (120.0, 4020.0),
 )
 
 _SLS_BLOCK_1B_POINTS = (
@@ -227,9 +261,34 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         c3_curve=C3Curve(source="sls_mpg_2018", points=_SLS_BLOCK_1B_POINTS),
         group_slug="lv-sls",
     ),
-    # No curve below this line. Each of these publishes payload to LEO and to
-    # GTO and answers escape questions privately, so the catalogue says it does
-    # not know rather than interpolating one from a mass-to-Mars headline.
+    # Apollo's rocket, and the only one here whose curve had to be read off a
+    # chart rather than a table. At trans-lunar injection it gives 45,400 kg
+    # against the 45,700 kg Apollo 11 actually left orbit with, which is the
+    # closest thing to a flight check any curve in this file has.
+    Spacecraft(
+        id="saturn-v",
+        qid="Q54363",
+        kind="launcher",
+        propulsion="chemical",
+        status="retired",
+        departs_from=frozenset({"surface"}),
+        c3_curve=C3Curve(
+            source="saturn_v_planners_guide_1965", points=_SATURN_V_POINTS
+        ),
+        group_slug="lv-saturn",
+    ),
+    # No curve below this line, and the reason is the same for all three: each
+    # publishes payload to LEO and to GTO and nothing above them.
+    #
+    # Those two are points on this curve — a 185 km circular orbit is C3 = -61
+    # and a standard GTO is C3 = -16 — but they are the wrong two. Fitting the
+    # stage to them and extrapolating overshoots the digitised curves of the
+    # vehicles that do publish escape performance by 9% at C3 = 0 and by up to
+    # 90% at C3 = 40, always high, because a headline to LEO is a different
+    # ascent flown for a different customer. Anchor the same fit on two points
+    # that are already past escape and it reproduces those curves to under 1%.
+    # So the missing figure is not the curve, it is one number above C3 = 0,
+    # and none of these three has ever published one.
     Spacecraft(
         id="falcon-9",
         qid="Q249091",
@@ -238,15 +297,6 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         status="active",
         departs_from=frozenset({"surface"}),
         group_slug="lv-falcon",
-    ),
-    Spacecraft(
-        id="saturn-v",
-        qid="Q54363",
-        kind="launcher",
-        propulsion="chemical",
-        status="retired",
-        departs_from=frozenset({"surface"}),
-        group_slug="lv-saturn",
     ),
     Spacecraft(
         id="new-glenn",
