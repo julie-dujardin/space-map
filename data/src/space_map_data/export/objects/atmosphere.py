@@ -23,6 +23,7 @@ from space_map_data.constants.atmosphere.facts import (
     PRESSURE_LEVELS,
     QUALIFIERS,
     BodyFacts,
+    Pressure,
 )
 from space_map_data.constants.atmosphere.references import ATMOSPHERE_FACT_SOURCES
 from space_map_data.constants.atmosphere.structure import (
@@ -76,13 +77,7 @@ def atmosphere_block(object_id: str) -> dict | None:
     sources: list[str] = []
 
     if facts.pressure is not None:
-        pressure: dict = {
-            "pa": facts.pressure.pascals,
-            "level": facts.pressure.level,
-        }
-        if facts.pressure.qualifier is not None:
-            pressure["qualifier"] = facts.pressure.qualifier
-        block["pressure"] = pressure
+        block["pressure"] = pressure_block(facts.pressure)
         sources.append(facts.pressure.source)
 
     if len(facts.composition) >= _MIN_SPECIES:
@@ -120,6 +115,21 @@ def atmosphere_block(object_id: str) -> dict | None:
         source_row(ATMOSPHERE_FACT_SOURCES[key]) for key in _unique(sources)
     ]
     return block
+
+
+def pressure_block(pressure: Pressure) -> dict:
+    """One published pressure, as the bundle carries it.
+
+    Its own function because the Atmospheres collection page charts the same
+    reading the body's own panel prints, and a second formatting of it is a
+    second thing to keep in step. The level rides along because the number is
+    meaningless without it: the four giants all read 0.1 bar, and that is a
+    cloud top rather than a surface.
+    """
+    out: dict = {"pa": pressure.pascals, "level": pressure.level}
+    if pressure.qualifier is not None:
+        out["qualifier"] = pressure.qualifier
+    return out
 
 
 def _structure(object_id: str, structure: BodyStructure, facts: BodyFacts) -> dict:

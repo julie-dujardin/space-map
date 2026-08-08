@@ -16,17 +16,26 @@ from sqlalchemy.orm import Session
 from space_map_data.constants.categories import (
     SURFACE_FEATURES_SLUG,
     ASTEROIDS_SLUG,
+    ATMOSPHERES_SLUG,
     COMET_ORBIT_CLASSES,
     COMETS_SLUG,
     DEBRIS_SLUG,
     DWARF_PLANETS_SLUG,
     MOONS_SLUG,
+    OCEANS_SLUG,
     PLANETS_SLUG,
     PROBES_SLUG,
     RING_SYSTEMS_SLUG,
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
+    STRUCTURE_ACTIVITY_SLUG,
 )
+from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
+from space_map_data.constants.atmosphere.structure import (
+    ATMOSPHERE_STRUCTURE,
+    CAPPED_ROLES,
+)
+from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_SLUG_PREFIX,
@@ -44,6 +53,8 @@ from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.small_body import LargestBody, _notable_members
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.notable import NotableObject, render_geometry
+from space_map_data.export.objects.atmosphere import pressure_block
+from space_map_data.export.objects.interior import ocean_block
 from space_map_data.export.objects.rings import ring_catalog_sources, ring_mass_block
 from space_map_data.export.small_body_color import (
     resolve_moon_color,
@@ -554,6 +565,174 @@ def _ring_system_stats(members: list[NotableObject]) -> GroupExtraStats:
     )
 
 
+def _property_members(
+    session: Session,
+    body_ids: list[str],
+    attach,
+    page: str,
+    radii: dict[int, dict],
+    gms: dict[int, float],
+    orientation: dict[int, dict],
+) -> list[NotableObject]:
+    """Members of a Structure & Activity page: bodies carrying a property.
+
+    The membership is not a query — it is exactly the bodies the constants hold
+    the property for — so ``body_ids`` arrives already in the order the page
+    should read, and ``attach`` hangs the figure the chart ranks by onto each
+    one. A body the constants know and the object table does not is a missing
+    row rather than an empty tile, so it is logged and dropped.
+    """
+    rows = {
+        obj_id: (obj_id, naif_id, qid, name)
+        for obj_id, naif_id, qid, name in session.query(
+            Object.id, Object.naif_id, Object.wikidata_qid, Object.name
+        ).filter(Object.id.in_(sorted(body_ids)))
+    }
+    if missing := [body for body in body_ids if body not in rows]:
+        logger.warning(
+            "%s: %d bodies are not in the object table, no tile for them: %s",
+            page,
+            len(missing),
+            ", ".join(missing),
+        )
+    return [
+        attach(
+            _body_member(*rows[body], radii=radii, gms=gms, orientation=orientation),
+            body,
+        )
+        for body in body_ids
+        if body in rows
+    ]
+
+
+def _atmosphere_members(
+    session: Session,
+    radii: dict[int, dict],
+    gms: dict[int, float],
+    orientation: dict[int, dict],
+) -> list[NotableObject]:
+    """Every body with a measured envelope, thickest first.
+
+    The four with no published pressure — Ceres, Enceladus, Dione and Rhea, all
+    of them exospheres nobody has put a number on — sort last rather than
+    dropping out: they are atmospheres, and the page is the list of them. The
+    chart skips the rows it cannot plot, the way the ring chart skips Neptune.
+    """
+
+    def rank(body: str) -> tuple[int, float, str]:
+        pressure = ATMOSPHERE_FACTS[body].pressure
+        # Leading flag rather than a sentinel pressure: the range spans sixteen
+        # decades and there is no number that reliably sorts under all of it.
+        return (1, 0.0, body) if pressure is None else (0, -pressure.pascals, body)
+
+    ordered = sorted(ATMOSPHERE_FACTS, key=rank)
+
+    def attach(member: NotableObject, body: str) -> NotableObject:
+        pressure = ATMOSPHERE_FACTS[body].pressure
+        return replace(
+            member,
+            atmosphere_pressure=pressure_block(pressure) if pressure else None,
+        )
+
+    return _property_members(
+        session, ordered, attach, "Atmospheres", radii, gms, orientation
+    )
+
+
+def _ocean_members(
+    session: Session,
+    radii: dict[int, dict],
+    gms: dict[int, float],
+    orientation: dict[int, dict],
+) -> list[NotableObject]:
+    """Every body with an ocean, largest first.
+
+    Ranked by volume rather than by depth or by share of the body, because that
+    is the one measure the nine can be compared on — and the one that puts
+    Earth's ocean fifth, behind four moons.
+    """
+    oceans = {
+        body: block
+        for body in INTERIOR_FACTS
+        if (block := ocean_block(body)) is not None
+    }
+    ordered = sorted(oceans, key=lambda body: -oceans[body]["volume_km3"])
+
+    def attach(member: NotableObject, body: str) -> NotableObject:
+        return replace(member, ocean=oceans[body])
+
+    return _property_members(
+        session, ordered, attach, "Oceans", radii, gms, orientation
+    )
+
+
+def _atmosphere_stats(members: list[NotableObject]) -> GroupExtraStats:
+    """The Atmospheres page's stat row.
+
+    Neither card restates the chart under it, which plots pressure: how many
+    kinds of envelope there are is a count of a vocabulary, and how high one
+    reaches is the other axis entirely. There is no third card — nothing else
+    up here is a fact about the whole set rather than about one body.
+
+    Height is measured the way the cross-section draws it, over the layers it
+    puts on a scale. Counting exospheres instead makes Earth the tallest
+    atmosphere in the solar system at 10,000 km, which is true of a gas so thin
+    the chart declines to draw it and false of anything a reader means by air.
+    """
+    names = {member.object_id: member.fallback_name for member in members}
+    tallest: dict | None = None
+    for body, structure in ATMOSPHERE_STRUCTURE.items():
+        if body not in names:
+            continue
+        tops = [
+            layer.top_km
+            for layer in structure.layers
+            if layer.top_km is not None and layer.role not in CAPPED_ROLES
+        ]
+        if not tops:
+            continue
+        if tallest is None or max(tops) > tallest["km"]:
+            tallest = {
+                "primary_type": "object",
+                "primary_id": body,
+                "name": names[body],
+                "km": max(tops),
+            }
+    return GroupExtraStats(
+        atmosphere_type_count=len(
+            {ATMOSPHERE_FACTS[body].atmosphere_type for body in names}
+        ),
+        tallest_atmosphere=tallest,
+    )
+
+
+def _ocean_stats(members: list[NotableObject]) -> GroupExtraStats:
+    """The Oceans page's stat row: how much water there is, and where it is
+    deepest.
+
+    The total is the point of the page — the eight subsurface oceans and Earth's
+    together hold forty times Earth's own — and the chart cannot show it, since
+    a log axis has no sum. Depth is not what the chart ranks by either.
+    """
+    deepest: dict | None = None
+    total = 0.0
+    for member in members:
+        if member.ocean is None:
+            continue
+        total += member.ocean["volume_km3"]
+        if deepest is None or member.ocean["thickness_km"] > deepest["thickness_km"]:
+            deepest = {
+                "primary_type": "object",
+                "primary_id": member.object_id,
+                "name": member.fallback_name,
+                "thickness_km": member.ocean["thickness_km"],
+            }
+    return GroupExtraStats(
+        ocean_volume_km3=total or None,
+        deepest_ocean=deepest,
+    )
+
+
 def _probe_members(
     session: Session,
     radii: dict[int, dict],
@@ -676,6 +855,8 @@ def build_category_data(
         orientation,
     )
     ring_members = _ring_system_members(session, radii, gms, orientation)
+    atmosphere_members = _atmosphere_members(session, radii, gms, orientation)
+    ocean_members = _ocean_members(session, radii, gms, orientation)
     star = _star_member(session, radii, gms, orientation)
     probe_members, probes_total = _probe_members(session, radii, gms, orientation)
     moons = _moon_data(session, planet_elements)
@@ -697,12 +878,17 @@ def build_category_data(
             COMETS_SLUG,
             PROBES_SLUG,
             SURFACE_FEATURES_SLUG,
+            STRUCTURE_ACTIVITY_SLUG,
         ],
         ASTEROIDS_SLUG: asteroids,
         COMETS_SLUG: comets,
         SATELLITES_SLUG: satellites,
         DEBRIS_SLUG: debris_children,
         SURFACE_FEATURES_SLUG: feature_types,
+        # Ring Systems is a page of the same kind and deliberately not a child:
+        # a ring is a swarm in orbit, closer to a moon than to a layer of the
+        # body it goes round.
+        STRUCTURE_ACTIVITY_SLUG: [ATMOSPHERES_SLUG, OCEANS_SLUG],
     }
     # Object totals, not child counts: orbit classes partition their bodies, so
     # summing is exact; flags are subsets, and satellites sum shape classes only.
@@ -743,6 +929,15 @@ def build_category_data(
         PROBES_SLUG: probes_total,
         # Features aren't objects, so this tally stays out of the root total.
         SURFACE_FEATURES_SLUG: sum(feature_type_counts.values()),
+        # Property pages list bodies their own categories already count, so
+        # these tallies stay out of the root total too. The parent counts the
+        # union rather than the sum: every ocean world also has an envelope of
+        # some kind, so summing would count all eight of them twice.
+        ATMOSPHERES_SLUG: len(atmosphere_members),
+        OCEANS_SLUG: len(ocean_members),
+        STRUCTURE_ACTIVITY_SLUG: len(
+            {m.object_id for m in atmosphere_members + ocean_members}
+        ),
     }
 
     # Discovery/launch charts: sum the histograms over the classes that
@@ -794,6 +989,10 @@ def build_category_data(
         notable_members[MOONS_SLUG] = moon_members
     if ring_members:
         notable_members[RING_SYSTEMS_SLUG] = ring_members
+    if atmosphere_members:
+        notable_members[ATMOSPHERES_SLUG] = atmosphere_members
+    if ocean_members:
+        notable_members[OCEANS_SLUG] = ocean_members
     if asteroid_notable:
         notable_members[ASTEROIDS_SLUG] = asteroid_notable
     if comet_notable:
@@ -851,9 +1050,14 @@ def build_category_data(
     }
     if ring_members:
         extra_stats[RING_SYSTEMS_SLUG] = _ring_system_stats(ring_members)
+    if atmosphere_members:
+        extra_stats[ATMOSPHERES_SLUG] = _atmosphere_stats(atmosphere_members)
+    if ocean_members:
+        extra_stats[OCEANS_SLUG] = _ocean_stats(ocean_members)
     logger.info(
         "Built category data: planets=%d, dwarf planets=%d, moons=%d (%d notable, "
-        "%d planet/dwarf hosts), ring systems=%d, asteroid zones=%d, comet "
+        "%d planet/dwarf hosts), ring systems=%d, atmospheres=%d, oceans=%d, "
+        "asteroid zones=%d, comet "
         "families=%d, satellite groups=%d (%d payloads), debris groups=%d "
         "(%d pieces from %d sources), probes=%d",
         len(planet_members),
@@ -862,6 +1066,8 @@ def build_category_data(
         len(moon_members),
         len(moon_counts),
         len(ring_members),
+        len(atmosphere_members),
+        len(ocean_members),
         len(asteroids),
         len(comets),
         len(satellites),

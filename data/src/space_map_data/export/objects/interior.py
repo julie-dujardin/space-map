@@ -24,6 +24,7 @@ seventeen bodies against thirty-one layer models.
 """
 
 import logging
+import math
 
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.interior.references import (
@@ -242,6 +243,58 @@ def _from_layers(
     block["layers"] = layers
     block["sources"] = _sources(_layer_source_keys(facts, composition, layers), refs)
     return block
+
+
+# What a body's ocean is, for the collection page. `sea` is deliberately not in
+# here: Titan has both, 100 km of ice apart, and its seas are liquid methane —
+# adding 7e4 km³ of hydrocarbon to 1.5e10 km³ of water would be a rounding error
+# that is also a category error. The Oceans page names them in prose instead.
+OCEAN_ROLE = "ocean"
+
+
+def ocean_block(object_id: str) -> dict | None:
+    """The body's ocean as one row of the Oceans collection chart, or None.
+
+    Volume is geometry the bundle already ships — the layer's own radii, times
+    its share of the globe where it is a patch rather than a shell — rather than
+    a number anyone published, because no single work quotes all nine. Doing the
+    arithmetic here means the chart and the body's own cross-section are reading
+    the same radii; doing it in the frontend would mean two implementations of
+    the base-radius rule, which is the part that is easy to get wrong.
+    """
+    facts = INTERIOR_FACTS.get(object_id)
+    if facts is None:
+        return None
+    layers = list(facts.layers)
+    for i, layer in enumerate(layers):
+        if layer.role != OCEAN_ROLE or layer.outer_radius_km is None:
+            continue
+        # Same rule the cross-section draws by: a shell ends where the next
+        # layer begins, a patch carries its own floor.
+        base = layer.base_radius_km
+        if base is None:
+            base = layers[i + 1].outer_radius_km if i + 1 < len(layers) else 0.0
+        if base is None or base >= layer.outer_radius_km:
+            logger.warning(
+                "%s: ocean has no floor under %.1f km; no row on the collection "
+                "chart for it",
+                object_id,
+                layer.outer_radius_km,
+            )
+            return None
+        share = layer.area_fraction if layer.area_fraction is not None else 1.0
+        volume = (4 / 3) * math.pi * (layer.outer_radius_km**3 - base**3) * share
+        out: dict = {
+            "volume_km3": _sig(volume),
+            "thickness_km": _sig(layer.outer_radius_km - base),
+            # Under something, i.e. not Earth's. The whole reason the page
+            # exists is that eight of the nine are.
+            "subsurface": i > 0,
+        }
+        if layer.mass_fraction is not None:
+            out["mass_fraction"] = _sig(layer.mass_fraction)
+        return out
+    return None
 
 
 def _layer(object_id: str, layer: Layer) -> dict:

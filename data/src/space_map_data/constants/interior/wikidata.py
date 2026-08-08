@@ -96,7 +96,10 @@ INTERIOR_CONCEPT_PAGES: dict[str, tuple[str, ...]] = {
     "magma_ocean": ("Q12034896",),  # magma ocean — en fr ar es
     "lunar_magma_ocean": ("Q3039909",),  # lunar magma ocean — en fr zh ar es
     "subsurface_ocean": ("Q19595959",),  # planetary oceanography — en ar ru de
-    "ocean_world": ("Q1045138",),  # ocean planet — en fr ja zh ar ru pt de it es pl
+    # Ocean world (Q1045138) was dropped rather than moved: cat-oceans took the
+    # list article (Q139377044) instead, because this item's non-English
+    # articles are about a hypothetical water-covered exoplanet rather than
+    # about the subsurface oceans it is cited for here.
     "ocean_world_list": ("Q139377044",),  # list of ocean worlds — en
     "rubble_pile": ("Q462326",),  # rubble pile — en fr ja ar ru de it es
     "gas_giant": ("Q121750",),  # gas giant — all 12

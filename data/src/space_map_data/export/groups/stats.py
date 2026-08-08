@@ -44,6 +44,22 @@ class GroupExtraStats:
     ring_sources: list[dict] | None = None
     # Split-comet families: parent perihelion distance, in AU.
     perihelion_au: float | None = None
+    # Atmospheres: how many kinds of envelope the members between them are —
+    # the `atmosphere_type` vocabulary in use, from an exosphere to a stellar
+    # atmosphere. The chart below plots pressure, so it says nothing about this.
+    atmosphere_type_count: int | None = None
+    # Atmospheres: the body whose drawn stack reaches highest, as
+    # {primary_type, primary_id, name, km}. Uranus, whose stratosphere is 4,000 km
+    # over a 50 km troposphere.
+    tallest_atmosphere: dict | None = None
+    # Oceans: every ocean on the page added up, in km³. The card reads as a
+    # multiple of Earth's, which is the only figure that makes the number mean
+    # anything — and Earth's is the fifth largest of the nine.
+    ocean_volume_km3: float | None = None
+    # Oceans: the thickest one, as {primary_type, primary_id, name, thickness_km}.
+    # Not what the chart plots — that is volume, which a large cold moon wins on
+    # area as much as on depth.
+    deepest_ocean: dict | None = None
 
     def to_dict(self) -> dict:
         return {k: v for k, v in asdict(self).items() if v is not None}

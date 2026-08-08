@@ -60,6 +60,9 @@ export const CAT_SATELLITES = `${CATEGORY_SLUG_PREFIX}satellites`;
 export const CAT_DEBRIS = `${CATEGORY_SLUG_PREFIX}debris`;
 export const CAT_PROBES = `${CATEGORY_SLUG_PREFIX}probes`;
 export const CAT_SURFACE_FEATURES = `${CATEGORY_SLUG_PREFIX}surface-features`;
+export const CAT_STRUCTURE_ACTIVITY = `${CATEGORY_SLUG_PREFIX}structure-activity`;
+export const CAT_ATMOSPHERES = `${CATEGORY_SLUG_PREFIX}atmospheres`;
+export const CAT_OCEANS = `${CATEGORY_SLUG_PREFIX}oceans`;
 
 /** Plural category headers, not the singular Wikidata label. */
 const CATEGORY_NAME: Record<string, () => string> = {
@@ -73,7 +76,10 @@ const CATEGORY_NAME: Record<string, () => string> = {
 	[CAT_SATELLITES]: m.category_name_satellites,
 	[CAT_DEBRIS]: m.category_name_debris,
 	[CAT_PROBES]: m.category_name_probes,
-	[CAT_SURFACE_FEATURES]: m.category_name_surface_features
+	[CAT_SURFACE_FEATURES]: m.category_name_surface_features,
+	[CAT_STRUCTURE_ACTIVITY]: m.category_name_structure_activity,
+	[CAT_ATMOSPHERES]: m.category_name_atmospheres,
+	[CAT_OCEANS]: m.category_name_oceans
 };
 
 /** Localized display name for a `cat-` slug; the raw slug if unknown. */

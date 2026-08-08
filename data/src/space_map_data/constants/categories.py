@@ -37,6 +37,9 @@ SATELLITES_SLUG = f"{CATEGORY_SLUG_PREFIX}satellites"
 DEBRIS_SLUG = f"{CATEGORY_SLUG_PREFIX}debris"
 PROBES_SLUG = f"{CATEGORY_SLUG_PREFIX}probes"
 SURFACE_FEATURES_SLUG = f"{CATEGORY_SLUG_PREFIX}surface-features"
+STRUCTURE_ACTIVITY_SLUG = f"{CATEGORY_SLUG_PREFIX}structure-activity"
+ATMOSPHERES_SLUG = f"{CATEGORY_SLUG_PREFIX}atmospheres"
+OCEANS_SLUG = f"{CATEGORY_SLUG_PREFIX}oceans"
 
 CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(SOLAR_SYSTEM_SLUG, "Solar System", "Q544"),
@@ -57,6 +60,24 @@ CATEGORIES: tuple[CategorySpec, ...] = (
     # Parent of the ft- feature-type pages; the QID the IAU descriptor terms
     # hang off (`?item wdt:P361 wd:Q1463003`).
     CategorySpec(SURFACE_FEATURES_SLUG, "Surface Features", "Q1463003"),
+    # The third axis of the browse tree. Planets/Moons/Comets say what a body
+    # is and Surface Features what it has; these say what it is made of and
+    # what it is still doing. Members are bodies carrying a property rather
+    # than bodies of a kind, so a moon appears under both.
+    CategorySpec(STRUCTURE_ACTIVITY_SLUG, "Structure & Activity", "Q104499"),
+    # "atmosphere" rather than "extraterrestrial atmosphere" (Q5422261): the
+    # precise term has articles in five of the twelve locales, the generic one
+    # in all twelve, and this page is not about Earth's.
+    CategorySpec(ATMOSPHERES_SLUG, "Atmospheres", "Q8104"),
+    # "List of ocean worlds in the Solar System", English-only, over the much
+    # better-covered "ocean world" (Q1045138, 11 locales). That one is the right
+    # concept name and the wrong subject: only its en and pt articles are about
+    # subsurface oceans, while de/es/fr/it/ja/pl/zh open on a hypothetical
+    # exoplanet entirely covered by water, and its Wikidata description — which
+    # renders above the members — reads "Hypothetical type of planet … in
+    # fiction see Q98807723" over a list of Ganymede and Europa. Eleven locales
+    # with no blurb beats nine with a confidently wrong one.
+    CategorySpec(OCEANS_SLUG, "Oceans", "Q139377044"),
 )
 
 CATEGORY_BY_SLUG: dict[str, CategorySpec] = {c.slug: c for c in CATEGORIES}

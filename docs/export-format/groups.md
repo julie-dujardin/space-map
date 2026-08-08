@@ -64,7 +64,30 @@ interface NotableEntry {
   model?: string;                   // shape-model slug (v1/models/<slug>/); lineup renders the mesh instead of a sphere. shape_model bundles only — spacecraft slugs excluded
   texture?: boolean;                // v1/textures/<id>/ surface map exists; explicit false ⇒ lineup skips the fetch. Absent only on pre-flag bundles (and mission/fragment strips), which the lineup still probes
   ring_mass?: RingMass;             // mass of the member's *rings*, not the member; `cat-ring-systems` only, and only for the six systems a source puts a figure on. Same shape as the object bundle's `ring_stats.mass` (see objects.md)
+  // Structure & Activity pages: the figure that page's chart ranks its members
+  // by. Each is set only on its own page's members — the collections are
+  // bodies-carrying-a-property, and the property is the chart.
+  ocean?: Ocean;                    // `cat-oceans` only; 8 bodies
+  atmosphere_pressure?: Pressure;   // `cat-atmospheres` only; 20 of the 24 members. Same shape as the object bundle's `atmosphere.pressure` (see objects.md)
   thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
+}
+```
+
+```typescript
+// The body's ocean, as one row of the cat-oceans chart. Only the `ocean` layer
+// role qualifies: Titan also has `sea`, 100 km higher and made of liquid
+// methane, and the page names those in prose rather than charting them as water.
+interface Ocean {
+  // Geometry off the same layer radii the Structure tab's cross-section draws
+  // — the layer's own outer radius against its floor (its `base_radius_km`, or
+  // the next layer's top), times `area_fraction` where it is a patch rather
+  // than a shell. Computed here so the chart and the cross-section cannot
+  // disagree, and because nobody publishes all eight.
+  volume_km3: number;
+  thickness_km: number;
+  // Under something — true on all but Earth's, which is the point of the page.
+  subsurface: boolean;
+  mass_fraction?: number;           // of the whole body; absent where the source gives geometry but no mass
 }
 ```
 
@@ -182,6 +205,13 @@ interface GlobalGroupData {
   // the page tiles them onto their Rings tabs and charts their `ring_mass`
   // against each other. They are counted by their own categories too, so the
   // tally stays out of the `cat-solar-system` total.
+  // On `cat-atmospheres` and `cat-oceans` these are every body the constants
+  // hold that property for, ranked by the figure the page charts — pressure
+  // descending (the four exospheres nobody has put a number on sort last and
+  // go unplotted), ocean volume descending. Like the ring systems they are
+  // counted by their own categories too, so the tallies stay out of the
+  // `cat-solar-system` total, and `cat-structure-activity` counts the union of
+  // its children rather than the sum.
   // On a `feature_type` group (slug `ft-<slug>`) these are surface features
   // (carrying `feature_id` beside their host body `id`), ranked by the
   // feature's own Wikidata sitelink count then diameter.
@@ -254,6 +284,21 @@ interface GlobalGroupData {
   // the systems listed and in catalogue order. Same shape as the per-body
   // `ring_sources` in objects.md, which this page ships none of.
   ring_sources?: Array<{ title: string; url: string; organisation: string }>;
+  atmosphere_type_count?: number;   // cat-atmospheres — kinds of envelope across the members
+                                    // (the `atmosphere.type` vocabulary in use, exosphere to
+                                    // stellar atmosphere). The chart below plots pressure.
+  // cat-atmospheres — the atmosphere reaching highest, over the layers the cross-section
+  // draws to scale. Thermospheres, exospheres and coronae are excluded, the same three the
+  // chart caps: counting them makes Earth the tallest at 10,000 km, which is true of a gas
+  // too thin to draw and false of anything a reader means by air.
+  tallest_atmosphere?: { name: string; km: number; primary_type: "object"; primary_id: string };
+  ocean_volume_km3?: number;        // cat-oceans — every listed ocean added up. Reads as a
+                                    // multiple of Earth's, which is the only thing that makes
+                                    // the figure mean anything (it is ~41×, and Earth's own
+                                    // ocean is the fifth largest of the eight)
+  // cat-oceans — the thickest one. Not what the chart ranks by: that is volume, which a
+  // large cold moon wins on area as much as on depth.
+  deepest_ocean?: { name: string; thickness_km: number; primary_type: "object"; primary_id: string };
 
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)

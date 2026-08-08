@@ -41,4 +41,11 @@ describe('parentCrumb: surface features', () => {
 		const crumb = parentCrumb({ kind: 'group', slug: CAT_SURFACE_FEATURES }, undefined, null, null);
 		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-solar-system' });
 	});
+
+	it('climbs from a property collection to Structure & Activity, not the root', () => {
+		for (const slug of ['cat-atmospheres', 'cat-oceans']) {
+			const crumb = parentCrumb({ kind: 'group', slug }, undefined, null, null);
+			expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-structure-activity' });
+		}
+	});
 });

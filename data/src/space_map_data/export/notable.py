@@ -59,6 +59,13 @@ class NotableObject:
     # Mass of the body's *rings*, not the body: the Ring Systems page charts its
     # members against each other. Same shape as the object bundle's `ring_stats.mass`.
     ring_mass: dict | None = None
+    # The one figure each Structure & Activity page ranks its members by, in the
+    # same shape the body's own panel carries it. Set only on that page's members:
+    # every collection here is bodies-with-a-property, and the property is the chart.
+    ocean: dict | None = None  # cat-oceans; `interior.ocean_block`
+    atmosphere_pressure: dict | None = (
+        None  # cat-atmospheres; `atmosphere.pressure_block`
+    )
 
 
 def render_size(
@@ -261,6 +268,10 @@ def notable_entries(
             entry["color"] = member.color
         if member.ring_mass is not None:
             entry["ring_mass"] = member.ring_mass
+        if member.ocean is not None:
+            entry["ocean"] = member.ocean
+        if member.atmosphere_pressure is not None:
+            entry["atmosphere_pressure"] = member.atmosphere_pressure
         if member.first_obs:
             entry["first_obs"] = member.first_obs
         if displacement_metadata and (

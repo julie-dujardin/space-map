@@ -12,9 +12,12 @@ import {
 	categoryLabel,
 	CATEGORY_SLUG_PREFIX,
 	CAT_ASTEROIDS,
+	CAT_ATMOSPHERES,
 	CAT_COMETS,
 	CAT_DEBRIS,
 	CAT_DWARF_PLANETS,
+	CAT_OCEANS,
+	CAT_STRUCTURE_ACTIVITY,
 	CAT_PLANETS,
 	CAT_PROBES,
 	CAT_SATELLITES,
@@ -108,6 +111,11 @@ export function parentCrumb(
 			if (slug === CAT_SATELLITES || slug === CAT_DEBRIS) {
 				const name = ctx?.getBody(EARTH_ID)?.data.name ?? m.earth();
 				return { label: name, target: { kind: 'focus', id: EARTH_ID, name } };
+			}
+			// The property collections hang off Structure & Activity, the way the
+			// ft- pages hang off Surface Features.
+			if (slug === CAT_ATMOSPHERES || slug === CAT_OCEANS) {
+				return categoryCrumb(CAT_STRUCTURE_ACTIVITY);
 			}
 			return categoryCrumb(CAT_SOLAR_SYSTEM);
 		}

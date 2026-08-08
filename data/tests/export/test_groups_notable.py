@@ -6,9 +6,22 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
+from space_map_data.constants.atmosphere.structure import (
+    ATMOSPHERE_STRUCTURE,
+    CAPPED_ROLES,
+)
+from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
 from space_map_data.export import notable
-from space_map_data.export.groups.categories import _probe_members, _ring_system_stats
+from space_map_data.export.groups.categories import (
+    _atmosphere_stats,
+    _ocean_stats,
+    _probe_members,
+    _ring_system_stats,
+)
+from space_map_data.export.objects.atmosphere import atmosphere_block, pressure_block
+from space_map_data.export.objects.interior import ocean_block
 from space_map_data.export.objects.rings import (
     ring_mass_block,
     ring_sources_block,
@@ -564,3 +577,135 @@ class TestRingSystemStats:
             for c in RING_CATALOGS.values()
             if c.discovery_year is not None
         )
+
+
+class TestOceanBlock:
+    """The row the Oceans collection chart ranks a body by."""
+
+    def test_only_water_oceans_qualify(self) -> None:
+        """`sea` is a role of its own: Titan's are liquid methane, and adding
+        7e4 km³ of hydrocarbon to its 1.5e10 km³ of water would be a rounding
+        error that is also a category error."""
+        with_ocean = {body for body in INTERIOR_FACTS if ocean_block(body)}
+        sea_only = {
+            body
+            for body, facts in INTERIOR_FACTS.items()
+            if any(layer.role == "sea" for layer in facts.layers)
+            and not any(layer.role == "ocean" for layer in facts.layers)
+        }
+        assert with_ocean
+        assert not (with_ocean & sea_only)
+
+    def test_volume_reproduces_earths_published_figure(self) -> None:
+        """The geometry closes: Charette & Smith 2010's 1.33238e9 km³, which is
+        where Earth's layer radii and area fraction came from, comes back out
+        of the radii to within 0.4%.
+
+        Not to the published precision, and it cannot be: the layer stack
+        quotes radii to 0.1 km, so a 3.7 km ocean carries 2.7% of rounding
+        before anything else. What the check is for is the arithmetic — a
+        wrong floor or a dropped `area_fraction` is a factor of 11 and 1.4,
+        neither of which fits inside this.
+        """
+        block = ocean_block("naif-399")
+        assert block is not None
+        assert block["volume_km3"] == pytest.approx(1.33238e9, rel=4e-3)
+        assert block["subsurface"] is False
+
+    def test_a_shell_is_floored_by_the_layer_under_it(self) -> None:
+        """Europa's ocean carries no `base_radius_km`, so its floor is the top
+        of the mantle — 74.1 km down, not the whole radius."""
+        block = ocean_block("naif-502")
+        assert block is not None
+        assert block["thickness_km"] == pytest.approx(74.1, abs=0.1)
+        assert block["subsurface"] is True
+
+    def test_no_block_for_a_body_with_no_ocean(self) -> None:
+        assert ocean_block("naif-599") is None
+        assert ocean_block("spkid-99999999") is None
+
+
+class TestStructureActivityStats:
+    """Stat cards on the two property pages."""
+
+    def _member(self, object_id: str, name: str, **extra) -> NotableObject:
+        return NotableObject(
+            object_id=object_id,
+            wikidata_qid=None,
+            fallback_name=name,
+            diameter_km=None,
+            first_obs=None,
+            **extra,
+        )
+
+    def test_ocean_total_is_every_listed_ocean(self) -> None:
+        blocks = {
+            body: block
+            for body in INTERIOR_FACTS
+            if (block := ocean_block(body)) is not None
+        }
+        members = [
+            self._member(body, body, ocean=block) for body, block in blocks.items()
+        ]
+        stats = _ocean_stats(members)
+        assert stats.ocean_volume_km3 == pytest.approx(
+            sum(block["volume_km3"] for block in blocks.values())
+        )
+        # The page's whole claim: they add up to tens of Earth's own, and
+        # Earth's is not even the largest.
+        earth = ocean_block("naif-399")
+        assert earth is not None
+        assert stats.ocean_volume_km3 > 10 * earth["volume_km3"]
+
+    def test_deepest_is_thickness_not_volume(self) -> None:
+        """The chart plots volume, so the card has to rank on something else or
+        it restates the first bar."""
+        thick = self._member(
+            "naif-1", "Thick", ocean={"volume_km3": 1.0, "thickness_km": 500.0}
+        )
+        big = self._member(
+            "naif-2", "Big", ocean={"volume_km3": 1e12, "thickness_km": 10.0}
+        )
+        stats = _ocean_stats([big, thick])
+        assert stats.deepest_ocean is not None
+        assert stats.deepest_ocean["primary_id"] == "naif-1"
+
+    def test_tallest_atmosphere_ignores_the_capped_layers(self) -> None:
+        """Ranking on exosphere tops makes Earth the tallest atmosphere in the
+        solar system, at a density the cross-section refuses to draw."""
+        members = [self._member(body, body) for body in ATMOSPHERE_FACTS]
+        stats = _atmosphere_stats(members)
+        assert stats.tallest_atmosphere is not None
+        assert stats.tallest_atmosphere["primary_id"] != "naif-399"
+        winner = stats.tallest_atmosphere["primary_id"]
+        assert stats.tallest_atmosphere["km"] == max(
+            layer.top_km
+            for layer in ATMOSPHERE_STRUCTURE[winner].layers
+            if layer.top_km is not None and layer.role not in CAPPED_ROLES
+        )
+
+    def test_tallest_atmosphere_needs_a_member_to_link(self) -> None:
+        """A body with no tile on the page can't take the card."""
+        stats = _atmosphere_stats([self._member("naif-799", "Uranus")])
+        assert stats.tallest_atmosphere is not None
+        assert stats.tallest_atmosphere["primary_id"] == "naif-799"
+
+    def test_type_count_is_the_vocabulary_in_use(self) -> None:
+        members = [self._member(body, body) for body in ATMOSPHERE_FACTS]
+        stats = _atmosphere_stats(members)
+        assert stats.atmosphere_type_count == len(
+            {facts.atmosphere_type for facts in ATMOSPHERE_FACTS.values()}
+        )
+
+
+class TestPressureBlockSharing:
+    """The collection chart and the body's own panel read one formatting."""
+
+    def test_body_panel_and_collection_row_agree(self) -> None:
+        for body, facts in ATMOSPHERE_FACTS.items():
+            block = atmosphere_block(body)
+            assert block is not None
+            if facts.pressure is None:
+                assert "pressure" not in block
+            else:
+                assert block["pressure"] == pressure_block(facts.pressure)

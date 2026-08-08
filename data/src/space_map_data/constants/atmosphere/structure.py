@@ -47,6 +47,14 @@ LAYER_ROLES = frozenset(
     }
 )
 
+# The roles nothing draws to scale. A thermosphere or exosphere runs for
+# thousands of km at a density that stopped being air a long way down — Earth's
+# reaches 10,000 km against a 12 km troposphere — and the corona has no top at
+# all, so the cross-section caps the three as fixed bands and puts their real
+# height in the label. Anything ranking bodies by how high their air reaches has
+# to use the same rule, or the answer is a race between exospheres.
+CAPPED_ROLES = frozenset({"thermosphere", "exosphere", "corona"})
+
 # `BodyStructure.datum` values — what altitude 0 means.
 DATUMS = frozenset({"surface", "one_bar", "photosphere"})
 

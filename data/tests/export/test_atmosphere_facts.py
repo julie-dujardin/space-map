@@ -10,17 +10,16 @@ from space_map_data.constants.atmosphere.facts import (
     Pressure,
 )
 from space_map_data.constants.atmosphere.references import ATMOSPHERE_FACT_SOURCES
-from space_map_data.constants.atmosphere.structure import ATMOSPHERE_STRUCTURE
+from space_map_data.constants.atmosphere.structure import (
+    ATMOSPHERE_STRUCTURE,
+    CAPPED_ROLES,
+)
 from space_map_data.export.atmospheres.conditions import render_conditions
 from space_map_data.export.objects.atmosphere import atmosphere_block
 
 BODY_IDS = sorted(ATMOSPHERE_FACTS)
 
-# Too thin to draw to scale against the layers below — Earth's exosphere is
-# 100× its mesosphere and holds none of its mass. The cross-section caps these
-# to a fixed band and puts the real height in the label; the frontend keeps its
-# own copy of this list.
-_CAPPED = frozenset({"thermosphere", "exosphere", "corona"})
+_CAPPED = CAPPED_ROLES
 
 
 class TestPayload:
