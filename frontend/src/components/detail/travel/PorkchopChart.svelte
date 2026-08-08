@@ -86,9 +86,12 @@
 			class="border-border/60 relative min-w-0 flex-1 overflow-hidden rounded-md border"
 			style="height: {height}px"
 		>
+			<!-- crispEdges: a cell is under 3px wide, so antialiased edges let the
+			     panel behind show through every seam as a dark lattice. -->
 			<svg
 				viewBox="0 0 {grid.departSteps} {grid.tofSteps}"
 				preserveAspectRatio="none"
+				shape-rendering="crispEdges"
 				class="block h-full w-full"
 				role="img"
 				aria-label={m.travel_windows_alt()}
