@@ -15,10 +15,12 @@ import {
 	applyGallery,
 	applyGroup,
 	applyImage,
+	applyNav,
 	applyQuad,
 	applyTab,
 	serializeUrl,
-	urlTypeFromId
+	urlTypeFromId,
+	type NavEnd
 } from './url';
 
 /** The focus URL for a body; `undefined` until appState is available. Pass
@@ -49,6 +51,15 @@ export function groupHref(
 	name: string
 ): string | undefined {
 	return appState ? serializeUrl(applyGroup(appState.view, slug, name)) : undefined;
+}
+
+/** The URL for the `/nav` trip planner; `to = null` is the empty form. */
+export function navHref(
+	appState: AppState | undefined,
+	from: string | NavEnd,
+	to: string | NavEnd | null = null
+): string | undefined {
+	return appState ? serializeUrl(applyNav(appState.view, from, to)) : undefined;
 }
 
 /** The URL for the image viewer opened on one image. Pass the gallery key when

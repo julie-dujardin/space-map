@@ -190,6 +190,28 @@ export async function search(
 	return (res.hits ?? []).map((h) => toHit(h as RawHit));
 }
 
+/**
+ * Bodies and surface features only, for the trip planner's endpoint pickers.
+ *
+ * Collections are excluded because you cannot depart from or arrive at one —
+ * ranking them alongside would spend a short result list on rows that can't be
+ * chosen.
+ */
+export async function searchEndpoints(
+	query: string,
+	locale: string,
+	limit: number = 8
+): Promise<(ObjectHit | FeatureHit)[]> {
+	const c = await getClient();
+	if (!c || !query.trim()) return [];
+	const res = await c.index(INDEX).search(query, {
+		limit,
+		locales: [locale],
+		filter: 'kind != "group"'
+	});
+	return (res.hits ?? []).map((h) => toHit(h as RawHit)) as (ObjectHit | FeatureHit)[];
+}
+
 /** A group/moon member — usually an object, but an earth-sat zone also lists
  *  the constellations that call it home, and a feature-type page lists surface
  *  features, so a member can be any catalog kind. */

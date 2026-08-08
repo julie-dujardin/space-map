@@ -96,16 +96,27 @@ describe('toTravelBody', () => {
 		expect(earth.mu).toBeGreaterThan(0);
 	});
 
-	it('reads surface pressure into bar, ignoring non-surface levels', () => {
-		const withSurface = toTravelBody(bodies.get('naif-399')!, bodies, {
-			atmosphere: { type: 'x', pressure: { pa: 101325, level: 'surface' } }
+	function withPressure(level: string, pa = 101325) {
+		return toTravelBody(bodies.get('naif-399')!, bodies, {
+			atmosphere: { type: 'x', pressure: { pa, level } }
 		} as never)!;
-		expect(withSurface.surfacePressureBar).toBeCloseTo(1.01325, 5);
+	}
 
-		const cloudTop = toTravelBody(bodies.get('naif-399')!, bodies, {
-			atmosphere: { type: 'x', pressure: { pa: 101325, level: 'cloud_top' } }
-		} as never)!;
-		expect(cloudTop.surfacePressureBar).toBeUndefined();
+	it('reads surface pressure into bar', () => {
+		expect(withPressure('surface').surfacePressureBar).toBeCloseTo(1.01325, 5);
+	});
+
+	// The exporter quotes the ground under whichever name that body's geodesy
+	// gives it; all three are the surface. Earth's says "sea_level", and reading
+	// only "surface" priced it airless — no drag on ascent, no aerocapture.
+	it('accepts every name the exporter gives the surface datum', () => {
+		expect(withPressure('sea_level').surfacePressureBar).toBeCloseTo(1.01325, 5);
+		expect(withPressure('areoid').surfacePressureBar).toBeCloseTo(1.01325, 5);
+	});
+
+	it('ignores a level with no surface under it', () => {
+		expect(withPressure('cloud_top').surfacePressureBar).toBeUndefined();
+		expect(withPressure('one_bar').surfacePressureBar).toBeUndefined();
 	});
 
 	it('treats a body with no detail as airless', () => {

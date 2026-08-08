@@ -6,14 +6,18 @@ vi.mock('$app/paths', () => ({
 			.replace('[type]', params.type ?? '')
 			.replace('[id]', params.id ?? '')
 			.replace('[featureId]', params.featureId ?? '')
+			.replace('/[[from]]', params.from ? `/${params.from}` : '')
+			.replace('/[[to]]', params.to ? `/${params.to}` : '')
 			.replace('/[[name]]', params.name ? `/${params.name}` : '')
 }));
 
 // `parseUrl` reads `$app/state.page` reactively. We don't exercise it here —
 // these tests cover `serializeUrl`, which is pure-ish (only depends on `resolve`).
-vi.mock('$app/state', () => ({ page: { params: {}, url: new URL('http://x/') } }));
+vi.mock('$app/state', () => ({
+	page: { params: {}, route: { id: null }, url: new URL('http://x/') }
+}));
 
-import { applyTab, serializeUrl } from './url';
+import { applyFocus, applyNav, applyTab, isBodyId, serializeUrl } from './url';
 import type { MapViewState } from './view';
 
 const baseView: MapViewState = {
@@ -33,7 +37,11 @@ const baseView: MapViewState = {
 	memberPage: null,
 	quad: null,
 	featureType: null,
-	ring: null
+	ring: null,
+	navFrom: null,
+	navTo: null,
+	navFromFeature: null,
+	navToFeature: null
 };
 
 describe('serializeUrl', () => {
@@ -254,5 +262,107 @@ describe('applyTab', () => {
 		);
 		expect(next.gallery).toBeNull();
 		expect(next.imageIndex).toBeNull();
+	});
+});
+
+describe('isBodyId', () => {
+	it('accepts every prefix the app addresses a body by', () => {
+		expect(isBodyId('naif-499')).toBe(true);
+		expect(isBodyId('spkid-20134340')).toBe(true);
+		expect(isBodyId('norad_satcat-25544')).toBe(true);
+		expect(isBodyId('probe-7')).toBe(true);
+		expect(isBodyId('extra-1')).toBe(true);
+	});
+
+	it('rejects an unknown prefix or a non-numeric tail', () => {
+		expect(isBodyId('cat-solar-system')).toBe(false);
+		expect(isBodyId('naif-mars')).toBe(false);
+		expect(isBodyId('499')).toBe(false);
+		expect(isBodyId('')).toBe(false);
+	});
+});
+
+describe('applyNav', () => {
+	it('frames the destination and keeps both ends', () => {
+		const next = applyNav(baseView, 'naif-399', 'naif-499');
+		expect(next).toMatchObject({
+			type: 'nav',
+			id: 'naif-499',
+			navFrom: 'naif-399',
+			navTo: 'naif-499'
+		});
+	});
+
+	it('tears down the drawer depth of the page it left', () => {
+		const next = applyNav(
+			{ ...baseView, tab: 'images', gallery: 'rings', imageIndex: 2, groupSlug: 'cat-oceans' },
+			'naif-399',
+			'naif-499'
+		);
+		expect(next).toMatchObject({
+			tab: null,
+			gallery: null,
+			imageIndex: null,
+			groupSlug: null
+		});
+	});
+
+	// Leaving a trip for a body must not leave the trip in the URL, or the nav
+	// branch of serializeUrl keeps winning.
+	it('is cleared by focusing a body', () => {
+		const trip = applyNav(baseView, 'naif-399', 'naif-499');
+		const next = applyFocus(trip, { type: 'b', id: 'naif-599', name: 'Jupiter' });
+		expect(next.navFrom).toBeNull();
+		expect(next.navTo).toBeNull();
+		expect(serializeUrl(next).startsWith('/b/599/Jupiter?at=')).toBe(true);
+	});
+});
+
+describe('serializeUrl on a trip', () => {
+	it('writes /nav/<from>/<to> with the camera block', () => {
+		const url = serializeUrl(applyNav(baseView, 'naif-399', 'naif-499'));
+		expect(url).toBe('/nav/naif-399/naif-499?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.430');
+	});
+
+	// Both ends carry their prefix: a trip can join two id spaces, and the path
+	// has no type segment to tell them apart.
+	it('keeps full prefixed ids across id spaces', () => {
+		const url = serializeUrl(applyNav(baseView, 'probe-7', 'spkid-20134340'));
+		expect(url.startsWith('/nav/probe-7/spkid-20134340?at=')).toBe(true);
+	});
+
+	// The empty form is a real, shareable URL, and the departure segment stays on
+	// it — dropping it would make /nav/<x> ambiguous between the two ends.
+	it('drops only the destination segment when there is no destination', () => {
+		const url = serializeUrl(applyNav(baseView, 'naif-399'));
+		expect(url.startsWith('/nav/naif-399?at=')).toBe(true);
+	});
+
+	it('frames the departure when there is nowhere to go yet', () => {
+		expect(applyNav(baseView, 'naif-499').id).toBe('naif-499');
+	});
+
+	// A surface feature rides in the query block, not the path: the trajectory is
+	// priced against the body, and only the touchdown point is the feature.
+	it('keeps the body in the path when an end is a place on it', () => {
+		const url = serializeUrl(applyNav(baseView, 'naif-399', { id: 'naif-499', featureId: 15057 }));
+		expect(url.startsWith('/nav/naif-399/naif-499?at=')).toBe(true);
+		expect(url).toContain('&tf=15057');
+		expect(url).not.toContain('ff=');
+	});
+
+	it('carries a feature at the departure end too', () => {
+		const url = serializeUrl(applyNav(baseView, { id: 'naif-399', featureId: 14940 }, 'naif-499'));
+		expect(url).toContain('&ff=14940');
+	});
+
+	// The destination's feature belongs to a destination; without one it would
+	// name a place on nothing.
+	it('drops a destination feature when there is no destination', () => {
+		const url = serializeUrl({
+			...applyNav(baseView, 'naif-399'),
+			navToFeature: 15057
+		});
+		expect(url).not.toContain('tf=');
 	});
 });

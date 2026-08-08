@@ -12,7 +12,8 @@ export enum UrlType {
 	Probe = 'p', // probe-
 	Feature = 'f', // IAU nomenclature feature on a body
 	Group = 'g', // /g/<slug>/<name> — constellation / operator / asteroid class / ...
-	Extra = 'u' // /u/<id>/<name> — hand-authored extra object addressed by its id
+	Extra = 'u', // /u/<id>/<name> — hand-authored extra object addressed by its id
+	Nav = 'nav' // /nav/<fromId>/<toId> — trajectory planner between two bodies
 }
 
 /** Type segments valid on the body/group route `/[type]/[id]/[[name]]`; anything
@@ -91,6 +92,23 @@ export interface MapViewState {
 	 *  Deep-linked as `&ring=`. The chart's clustered rows have no slug of
 	 *  their own, so a path ending in one shares as its enclosing feature. */
 	ring: string | null;
+	/** Ends of the trip on `/nav`; null everywhere else. Both carry their full
+	 *  prefixed id, since a trip can join two different id spaces (a probe to a
+	 *  small body) and the path has no type segment to disambiguate them.
+	 *
+	 *  `navTo` is null on the empty form — bare `/nav` is a planner with nowhere
+	 *  to go yet, the way an empty directions form is. `navFrom` defaults to
+	 *  Earth rather than staying null, so there is always a departure to price
+	 *  against. `id` mirrors the destination when there is one, so the camera
+	 *  frames where you are going. */
+	navFrom: string | null;
+	navTo: string | null;
+	/** IAU feature id when an end is a named place on its body's surface —
+	 *  a launch site, a landing site. Deep-linked as `&ff=` / `&tf=`; the body
+	 *  stays in the path because that is what the trajectory is priced against.
+	 *  A feature is always a surface endpoint, so it carries no mode. */
+	navFromFeature: number | null;
+	navToFeature: number | null;
 }
 
 /** Default vantage angle for a body framed with no explicit camera (search, click, group). */
@@ -121,5 +139,9 @@ export const DEFAULT_VIEW: MapViewState = {
 	memberPage: null,
 	quad: null,
 	featureType: null,
-	ring: null
+	ring: null,
+	navFrom: null,
+	navTo: null,
+	navFromFeature: null,
+	navToFeature: null
 };

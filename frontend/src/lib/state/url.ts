@@ -35,6 +35,13 @@ function parseMemberPage(raw: string | null): number | null {
 	return Number.isInteger(n) && n > 1 ? n : null;
 }
 
+/** Parse an `&ff=`/`&tf=` IAU feature id; null for anything that isn't one. */
+function parseFeatureId(raw: string | null): number | null {
+	if (!raw) return null;
+	const n = Number(raw);
+	return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 /** Parse the `&img=` gallery index; null (viewer closed) for anything invalid. */
 function parseImageIndex(raw: string | null): number | null {
 	if (!raw) return null;
@@ -49,6 +56,18 @@ export function urlTypeToIdPrefix(urlType: string): string {
 	if (urlType === UrlType.Probe) return 'probe';
 	if (urlType === UrlType.Extra) return 'extra';
 	return 'naif'; // UrlType.Body
+}
+
+/** Every id prefix the app addresses a body by. */
+const ID_PREFIXES = ['naif-', 'spkid-', 'norad_satcat-', 'probe-', 'extra-'] as const;
+
+/** Whether a string is a well-formed prefixed body id. The nav route takes ids
+ *  straight from the path, so it has to reject junk before the renderer is
+ *  asked to frame it. */
+export function isBodyId(value: string): boolean {
+	const prefix = ID_PREFIXES.find((p) => value.startsWith(p));
+	if (!prefix) return false;
+	return Number.isFinite(Number(value.slice(prefix.length)));
 }
 
 /** Derive URL type segment from a body ID. Use this for URL generation — it's always consistent with the ID. */
@@ -101,6 +120,31 @@ export function groupAnchor(slug: string): { id: string; zoom: number } {
 
 /** Parse current page state → MapViewState, or null */
 export function parseUrl(): MapViewState | null {
+	// /nav has no type segment of its own, and both its ends are optional, so it
+	// is recognised by its route id rather than by which params happen to be set.
+	if (page.route.id?.startsWith('/nav')) {
+		const from = page.params.from;
+		const to = page.params.to;
+		if ((from !== undefined && !isBodyId(from)) || (to !== undefined && !isBodyId(to))) {
+			console.warn(`parseUrl: malformed nav ids (from=${from}, to=${to})`);
+			return null;
+		}
+		return applyAtParam({
+			...DEFAULT_VIEW,
+			type: UrlType.Nav,
+			// The renderer always frames a body; on a trip that's where you're going,
+			// and on the empty form it's where you're setting out from.
+			id: to ?? from ?? EARTH_ID,
+			name: '',
+			navFrom: from ?? EARTH_ID,
+			navTo: to ?? null,
+			navFromFeature: parseFeatureId(page.url.searchParams.get('ff')),
+			// A feature belongs to the end it was picked at; with no destination
+			// there is no end for one to belong to.
+			navToFeature: to ? parseFeatureId(page.url.searchParams.get('tf')) : null
+		});
+	}
+
 	const type = page.params.type;
 	const idStr = page.params.id;
 	if (!type || !idStr) {
@@ -230,6 +274,58 @@ export function applyFocus(
 		memberPage: null,
 		quad: focus.quad ?? null,
 		featureType: focus.featureType ?? null,
+		ring: null,
+		navFrom: null,
+		navTo: null,
+		navFromFeature: null,
+		navToFeature: null
+	};
+}
+
+/** One end of a trip: the body it is priced against, and the named place on it
+ *  when the endpoint is a surface feature. */
+export interface NavEnd {
+	id: string;
+	featureId?: number | null;
+}
+
+/** Accept a bare id where the feature slot doesn't matter, so callers that only
+ *  ever mean a whole body stay readable. */
+function navEnd(end: string | NavEnd): NavEnd {
+	return typeof end === 'string' ? { id: end } : end;
+}
+
+/**
+ * Next view when opening the trip planner.
+ *
+ * The destination doubles as the framed body: you are looking at where you are
+ * going, the same way a focus view frames its subject. Pass `to = null` for the
+ * empty form, which frames the departure instead.
+ */
+export function applyNav(
+	current: MapViewState,
+	from: string | NavEnd,
+	to: string | NavEnd | null = null
+): MapViewState {
+	const departure = navEnd(from);
+	const destination = to === null ? null : navEnd(to);
+	return {
+		...current,
+		type: UrlType.Nav,
+		id: destination?.id ?? departure.id,
+		name: '',
+		navFrom: departure.id,
+		navTo: destination?.id ?? null,
+		navFromFeature: departure.featureId ?? null,
+		navToFeature: destination?.featureId ?? null,
+		imageIndex: null,
+		gallery: null,
+		featureId: null,
+		groupSlug: null,
+		tab: null,
+		memberPage: null,
+		quad: null,
+		featureType: null,
 		ring: null
 	};
 }
@@ -292,7 +388,11 @@ export function applyGroup(current: MapViewState, slug: string, name: string): M
 		memberPage: null,
 		quad: null,
 		featureType: null,
-		ring: null
+		ring: null,
+		navFrom: null,
+		navTo: null,
+		navFromFeature: null,
+		navToFeature: null
 	};
 }
 
@@ -316,7 +416,11 @@ export function applyFeature(
 		memberPage: null,
 		quad: null,
 		featureType: null,
-		ring: null
+		ring: null,
+		navFrom: null,
+		navTo: null,
+		navFromFeature: null,
+		navToFeature: null
 	};
 }
 
@@ -366,6 +470,20 @@ export function serializeUrl(state: MapViewState): string {
 		state.memberPage > 1
 			? `&mp=${state.memberPage}`
 			: '';
+
+	if (state.type === UrlType.Nav) {
+		// The departure segment stays even when it is the default, so a
+		// destination-only URL can't exist — `/nav/<x>` would read as a departure.
+		const path = resolve('/nav/[[from]]/[[to]]', {
+			from: state.navFrom ?? EARTH_ID,
+			to: state.navTo ?? undefined
+		});
+		// A trip is described entirely by its two ends; the rest of the query block
+		// belongs to drawer tabs the planner doesn't have.
+		const ff = state.navFromFeature !== null ? `&ff=${state.navFromFeature}` : '';
+		const tf = state.navTo && state.navToFeature !== null ? `&tf=${state.navToFeature}` : '';
+		return `${path}?at=${at}${ff}${tf}`;
+	}
 
 	if (state.type === UrlType.Group && state.groupSlug !== null) {
 		const path = resolve('/[type]/[id]/[[name]]', {

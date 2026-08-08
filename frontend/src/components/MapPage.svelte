@@ -22,6 +22,11 @@
 	// Lazy-loaded on first focus so its charts (d3-scale/d3-shape/layercake) and
 	// member lists split out of the initial map chunk.
 	let DetailDrawer = $state<typeof import('./detail/DetailDrawer.svelte').default | null>(null);
+	// Same treatment for the trip planner: its Lambert kernel and porkchop chart
+	// only load on /nav.
+	let TravelDrawer = $state<typeof import('./detail/travel/TravelDrawer.svelte').default | null>(
+		null
+	);
 	import MyLocation from './MyLocation.svelte';
 	import ClearPromoted from './ClearPromoted.svelte';
 	import CompassNorthSelector from './CompassNorthSelector.svelte';
@@ -198,8 +203,25 @@
 		return getNorthChoices(cameraFocus, ctx);
 	});
 
+	// The ends of a /nav trip, or null off that route. The destination is null on
+	// the empty form, so presence of the trip — not of both ends — is what decides
+	// which sidebar renders.
+	const navTrip = $derived.by(() => {
+		const { type, navFrom, navTo, navFromFeature, navToFeature } = appState.view;
+		if (type !== UrlType.Nav) return null;
+		return {
+			from: navFrom ?? EARTH_ID,
+			to: navTo,
+			fromFeature: navFromFeature,
+			toFeature: navToFeature
+		};
+	});
+
 	// Group route wins over body focus — camera may be parked on the anchor body.
+	// A trip owns the sidebar outright: the destination is focused, but the panel
+	// beside it is about the journey, not the body.
 	const focusable = $derived.by((): Focusable | null => {
+		if (navTrip) return null;
 		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
 			return { kind: 'group', slug: appState.view.groupSlug };
 		}
@@ -215,10 +237,47 @@
 		}
 	});
 
+	$effect(() => {
+		if (navTrip && !TravelDrawer) {
+			import('./detail/travel/TravelDrawer.svelte').then((mod) => (TravelDrawer = mod.default));
+		}
+	});
+
+	// A trip end that isn't resident (a probe, a small body) has no elements to
+	// transfer from — stream it in the way focusObject would, then frame the
+	// destination. Boot already framed the first one; this is for the swap and for
+	// moving the origin, which change the destination without going through
+	// setFocus.
+	$effect(() => {
+		const trip = navTrip;
+		if (!trip) return;
+		// The clock ticks twice a second; reading it tracked would re-run this on
+		// every tick.
+		const at = jdToDate(untrack(() => clock.jd));
+		const ends = [trip.from, trip.to].filter((id) => id !== null);
+		void (async () => {
+			await Promise.all(
+				ends.map((id) =>
+					ctx.getBody(id)
+						? Promise.resolve()
+						: ctx
+								.ensureBody(id, at)
+								.catch((e) => console.warn(`[map] trip end ${id} could not be streamed in:`, e))
+				)
+			);
+			// With nowhere to go yet, the departure is the subject.
+			const framed = trip.to ?? trip.from;
+			const body = ctx.getBody(framed);
+			if (!body) return;
+			if (untrack(() => cameraFocus?.data.id) === framed) return;
+			scene?.focusOnBody(framed, framingDistanceFor(urlTypeFromId(framed), body));
+		})();
+	});
+
 	// Desktop inset: park chips just past the detail sidebar when open, else the
 	// collapsed 240px search bar. Mobile stacks them below instead.
 	const featuredStart = $derived(
-		focusable ? 'calc(var(--detail-panel) + 1rem)' : 'calc(240px + 2rem)'
+		focusable || navTrip ? 'calc(var(--detail-panel) + 1rem)' : 'calc(240px + 2rem)'
 	);
 
 	$effect(() => {
@@ -587,6 +646,23 @@
 				<SettingsButton />
 				<LayersButton />
 			</div>
+			{#if navTrip && TravelDrawer}
+				<TravelDrawer
+					fromId={navTrip.from}
+					toId={navTrip.to}
+					fromFeatureId={navTrip.fromFeature}
+					toFeatureId={navTrip.toFeature}
+					clockJd={clock.jd}
+					isMobile={isMobileViewport}
+					inert={bgInert}
+					onClose={() => {
+						// Closing a trip lands on whichever end is framed.
+						const id = navTrip.to ?? navTrip.from;
+						appState.setFocus({ type: urlTypeFromId(id), id, name: '' });
+						tick().then(() => document.getElementById('main-content')?.focus());
+					}}
+				/>
+			{/if}
 			{#if focusable && DetailDrawer}
 				<DetailDrawer
 					{focusable}

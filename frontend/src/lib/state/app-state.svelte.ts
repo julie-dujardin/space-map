@@ -6,11 +6,13 @@ import {
 	applyGroup,
 	applyGallery,
 	applyImage,
+	applyNav,
 	applyQuad,
 	applyTab,
 	parseUrl,
 	serializeUrl,
-	urlTypeFromId
+	urlTypeFromId,
+	type NavEnd
 } from './url';
 import { serializeSearchSuffix, type SearchUrlState } from '$lib/search/url';
 
@@ -127,8 +129,30 @@ export class AppState {
 			memberPage: null,
 			quad: null,
 			featureType: null,
-			ring: null
+			ring: null,
+			navFrom: null,
+			navTo: null,
+			navFromFeature: null,
+			navToFeature: null
 		};
+		this.pushNow();
+	}
+
+	/** Open the trip planner, or move one of its ends. Pass `to = null` for the
+	 *  empty form. Pushes: each trip is its own destination, so browser-back
+	 *  returns to the body you set out from. */
+	setNav(from: string | NavEnd, to: string | NavEnd | null = null) {
+		const next = applyNav(this.view, from, to);
+		if (
+			this.view.type === UrlType.Nav &&
+			this.view.navFrom === next.navFrom &&
+			this.view.navTo === next.navTo &&
+			this.view.navFromFeature === next.navFromFeature &&
+			this.view.navToFeature === next.navToFeature
+		) {
+			return;
+		}
+		this.view = next;
 		this.pushNow();
 	}
 

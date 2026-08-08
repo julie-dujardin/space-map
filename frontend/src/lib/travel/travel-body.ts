@@ -56,10 +56,27 @@ export function heliocentricAncestor(
 	return null;
 }
 
+/**
+ * Levels that are a reading at the surface, whatever shape that surface is
+ * given. Mirrors `_DATUM_OF_LEVEL` in the exporter's atmosphere module — Earth
+ * quotes sea level and Mars the areoid, and both are the ground.
+ *
+ * `one_bar` and `cloud_top` are levels inside an envelope with no surface under
+ * them, so they are deliberately absent: the giants price as airless, which
+ * overcharges their capture but never invents a place to land.
+ */
+const SURFACE_LEVELS: ReadonlySet<string> = new Set(['surface', 'sea_level', 'areoid']);
+
 /** Surface pressure in bar, or undefined when the body has no atmosphere. */
 function surfacePressureBar(detail: GlobalObjectData | null): number | undefined {
 	const pressure = detail?.atmosphere?.pressure;
-	if (!pressure || pressure.level !== 'surface') return undefined;
+	if (!pressure) return undefined;
+	if (!SURFACE_LEVELS.has(pressure.level)) {
+		console.debug(
+			`[travel] ${detail?.id}: pressure quoted at "${pressure.level}", not a surface — pricing it airless.`
+		);
+		return undefined;
+	}
 	if (!Number.isFinite(pressure.pa) || pressure.pa <= 0) return undefined;
 	return pressure.pa / 1e5;
 }

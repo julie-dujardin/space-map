@@ -24,7 +24,23 @@ import {
 import { findVehicle, type CatalogueEntry } from './vehicles';
 import { searchWindow, type TimeMode } from './search-window';
 
-export type EndpointMode = 'surface' | 'orbit' | 'flyby';
+/**
+ * How a trip meets a body at one end. These are the kernel's own manoeuvre
+ * cases, not named orbits — "low-orbit" is a circular parking orbit and
+ * "elliptical" the loose capture ellipse a real orbiter enters first.
+ */
+export type EndpointMode = 'surface' | 'low-orbit' | 'elliptical' | 'flyby';
+
+/** Modes each end can be in. Departure has no elliptical case — the injection
+ *  burn is priced from a circular parking orbit — and only a destination can be
+ *  flown past. */
+export const ORIGIN_MODES: readonly EndpointMode[] = ['surface', 'low-orbit'];
+export const TARGET_MODES: readonly EndpointMode[] = [
+	'surface',
+	'low-orbit',
+	'elliptical',
+	'flyby'
+];
 
 export type TravelStatus = 'idle' | 'solving' | 'ready' | 'empty' | 'blocked';
 
@@ -33,7 +49,11 @@ export type BlockReason = 'same-primary' | 'unknown-orbit' | 'no-target';
 
 export class TravelPanelState {
 	originMode = $state<EndpointMode>('surface');
-	targetMode = $state<EndpointMode>('orbit');
+	targetMode = $state<EndpointMode>('low-orbit');
+	/** Set when an end is a named place on a surface — there is only one way to
+	 *  arrive at one, so the mode is fixed and its picker is skipped. */
+	originIsFeature = $state(false);
+	targetIsFeature = $state(false);
 	timeMode = $state<TimeMode>('now');
 	/** Departure or arrival date behind the non-'now' time modes, as a JD. */
 	pickedJd = $state<number | null>(null);
@@ -54,14 +74,18 @@ export class TravelPanelState {
 		return findVehicle(this.vehicleId);
 	}
 
-	/** Arrival mode the kernel should price, from what the destination box says. */
+	/** Arrival mode the kernel should price, from what the destination box says.
+	 *  Landing somewhere named is still a landing, whatever the box last held. */
 	get arrivalMode(): ArrivalMode {
+		if (this.targetIsFeature) return 'landing';
 		if (this.targetMode === 'flyby') return 'flyby';
 		if (this.targetMode === 'surface') return 'landing';
-		return 'capture';
+		if (this.targetMode === 'elliptical') return 'capture';
+		return 'low-orbit';
 	}
 
 	get departureMode(): DepartureMode {
+		if (this.originIsFeature) return 'surface';
 		return this.originMode === 'surface' ? 'surface' : 'orbit';
 	}
 
