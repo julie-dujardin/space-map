@@ -43,7 +43,13 @@ describe('parentCrumb: surface features', () => {
 	});
 
 	it('climbs from a property collection to Structure & Activity, not the root', () => {
-		for (const slug of ['cat-atmospheres', 'cat-oceans']) {
+		for (const slug of [
+			'cat-atmospheres',
+			'cat-oceans',
+			'cat-volcanism',
+			'cat-magnetic-fields',
+			'cat-tidal-heating'
+		]) {
 			const crumb = parentCrumb({ kind: 'group', slug }, undefined, null, null);
 			expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-structure-activity' });
 		}

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('$lib/paraglide/runtime.js', () => ({ getLocale: () => 'en-US' }));
 
-import { formatCurrency, formatNumber, ucfirst } from './quantities';
+import { formatCurrency, formatNumber, scientificNotation, ucfirst } from './quantities';
 
 describe('formatNumber', () => {
 	it.each([
@@ -37,6 +37,26 @@ describe('formatCurrency', () => {
 		const result = formatCurrency({ value: 1500, currency: 'USD' });
 		expect(result).toContain('1,500');
 		expect(result).toContain('$');
+	});
+});
+
+describe('scientificNotation', () => {
+	it.each([
+		{ n: 1.7e-6, digits: 2, expected: '1.7×10⁻⁶' },
+		{ n: 2.66e10, digits: 2, expected: '2.7×10¹⁰' },
+		{ n: 5e-10, digits: 2, expected: '5×10⁻¹⁰' }
+	])('scientificNotation($n, $digits) → "$expected"', ({ n, digits, expected }) => {
+		expect(scientificNotation(n, digits)).toBe(expected);
+	});
+
+	// A mantissa that rounds up to 10 belongs in the next decade: Pluto's ocean
+	// printed "10×10⁸ km³" beside Earth's "1.3×10⁹".
+	it.each([
+		{ n: 9.96e8, digits: 2, expected: '1×10⁹' },
+		{ n: 9.999e-4, digits: 2, expected: '1×10⁻³' },
+		{ n: 9.9996e5, digits: 3, expected: '1×10⁶' }
+	])('carries the rounded mantissa: $n → "$expected"', ({ n, digits, expected }) => {
+		expect(scientificNotation(n, digits)).toBe(expected);
 	});
 });
 

@@ -18,6 +18,9 @@ import {
 	CAT_DWARF_PLANETS,
 	CAT_OCEANS,
 	CAT_STRUCTURE_ACTIVITY,
+	CAT_VOLCANISM,
+	CAT_MAGNETIC_FIELDS,
+	CAT_TIDAL_HEATING,
 	CAT_PLANETS,
 	CAT_PROBES,
 	CAT_SATELLITES,
@@ -77,6 +80,16 @@ function classGroup(className: string): Crumb {
 	};
 }
 
+/** The Structure & Activity children, which climb to it rather than to the
+ *  root — the way the ft- pages climb to Surface Features. */
+const PROPERTY_COLLECTIONS: ReadonlySet<string> = new Set([
+	CAT_ATMOSPHERES,
+	CAT_OCEANS,
+	CAT_VOLCANISM,
+	CAT_MAGNETIC_FIELDS,
+	CAT_TIDAL_HEATING
+]);
+
 function categoryCrumb(slug: string): Crumb {
 	const label = categoryLabel(slug);
 	return { label, target: { kind: 'group', slug, name: label } };
@@ -114,7 +127,7 @@ export function parentCrumb(
 			}
 			// The property collections hang off Structure & Activity, the way the
 			// ft- pages hang off Surface Features.
-			if (slug === CAT_ATMOSPHERES || slug === CAT_OCEANS) {
+			if (PROPERTY_COLLECTIONS.has(slug)) {
 				return categoryCrumb(CAT_STRUCTURE_ACTIVITY);
 			}
 			return categoryCrumb(CAT_SOLAR_SYSTEM);

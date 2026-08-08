@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { formatNumber } from '$lib/format/quantities';
 	import ChartPager from './ChartPager.svelte';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
@@ -38,8 +39,11 @@
 		fraction?: (entry: CountPerBodyEntry) => number;
 		/** Row figure, where `n` is not what the row should read as. */
 		text?: (entry: CountPerBodyEntry) => string;
+		/** Hangs off the figure, not the name: a comparison is about the number.
+		 *  Undefined for the rows it says nothing about — Earth against itself. */
+		tooltip?: (entry: CountPerBodyEntry) => string | undefined;
 	}
-	let { entries, title, tab, names, featureType, hint, fraction, text }: Props = $props();
+	let { entries, title, tab, names, featureType, hint, fraction, text, tooltip }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -68,23 +72,49 @@
 		return (e.primary_id ? BODY_COLORS[e.primary_id] : undefined) ?? e.color ?? DEFAULT_BODY_COLOR;
 	}
 
-	// A tally is at most four digits; a quantity brings its unit and a hedge, so
-	// it takes the width it needs and the name column gives way.
-	let columns = $derived(text ? 'minmax(0, 6rem) 1fr auto' : 'minmax(0, 9rem) 1fr 2.5rem');
+	// Sized on the list, not the row: the rows are subgrids of one grid declared
+	// here, so the outer columns measure the widest name and figure across all
+	// of them and the bar track keeps the rest. A per-row `auto` sized to that
+	// row's own text instead, and the Sun's 0.125 bar drew shorter than
+	// Jupiter's 0.1 bar purely because "0.125" is the wider string.
+	//
+	// `fit-content` rather than `minmax(0, …)` on the name: the latter is a
+	// fixed width in practice, since the `1fr` beside it takes the free space
+	// that would otherwise shrink it, so a list of short names left a gap in
+	// front of every bar. The cap is where names start truncating instead.
+	let columns = $derived(text ? 'fit-content(6rem) 1fr auto' : 'fit-content(9rem) 1fr 2.5rem');
 </script>
 
 {#snippet row(e: CountPerBodyEntry)}
+	{@const tip = tooltip?.(e)}
+	{@const figure = text ? text(e) : formatNumber(e.n)}
 	<div class="text-muted-foreground truncate text-sm" title={label(e)}>{label(e)}</div>
-	<div class="bg-muted/30 relative h-[16px] rounded-sm">
+	<div class="bg-muted/60 relative h-[16px] rounded-sm">
 		<div
 			class="absolute top-1/2 start-0 h-[10px] -translate-y-1/2 rounded-sm"
 			style:width="{100 * (fraction ? fraction(e) : maxCount > 0 ? e.n / maxCount : 0)}%"
 			style:background-color={color(e)}
 		></div>
 	</div>
-	<div class="text-muted-foreground text-end text-sm whitespace-nowrap tabular-nums">
-		{text ? text(e) : formatNumber(e.n)}
-	</div>
+	{#if tip}
+		<Tooltip.Root>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<div
+						{...props}
+						class="text-muted-foreground cursor-help text-end text-sm whitespace-nowrap tabular-nums"
+					>
+						{figure}
+					</div>
+				{/snippet}
+			</Tooltip.Trigger>
+			<Tooltip.Content>{tip}</Tooltip.Content>
+		</Tooltip.Root>
+	{:else}
+		<div class="text-muted-foreground text-end text-sm whitespace-nowrap tabular-nums">
+			{figure}
+		</div>
+	{/if}
 {/snippet}
 
 {#if entries.length > 0}
@@ -99,22 +129,20 @@
 			</div>
 		</div>
 		<div class="border-border/60 border-t"></div>
-		<div class="mt-1 flex flex-col gap-[3px]">
+		<!-- One grid for the list, each row a subgrid of it, so the columns line
+		     up across rows and the figure column is sized by the whole set. -->
+		<div class="mt-1 grid gap-x-2 gap-y-[3px]" style="grid-template-columns: {columns}">
 			{#each visible as e (e.primary_id ?? e.name)}
 				{#if appState && e.primary_id}
 					<a
 						href={focusHref(appState, e.primary_id, label(e), tab, featureType)}
 						onclick={focusClick(focusObject, e.primary_id, label(e), { tab, featureType })}
-						class="hover:bg-muted/40 grid items-center gap-2 rounded-sm px-1 py-px"
-						style="grid-template-columns: {columns}"
+						class="hover:bg-muted/40 col-span-3 grid grid-cols-subgrid items-center rounded-sm px-1 py-px"
 					>
 						{@render row(e)}
 					</a>
 				{:else}
-					<div
-						class="grid items-center gap-2 rounded-sm px-1 py-px"
-						style="grid-template-columns: {columns}"
-					>
+					<div class="col-span-3 grid grid-cols-subgrid items-center rounded-sm px-1 py-px">
 						{@render row(e)}
 					</div>
 				{/if}

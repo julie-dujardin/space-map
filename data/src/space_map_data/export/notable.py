@@ -71,6 +71,9 @@ class NotableObject:
     # `interior.cutaway_layers` and `atmosphere.limb_profile`.
     cutaway: list[dict] | None = None
     limb: dict | None = None
+    # The three heat pages share one row — volcanism, tectonics, tidal and
+    # magnetism — because a body is usually on more than one of them.
+    activity: dict | None = None  # `activity.collection_row`
 
 
 def render_size(
@@ -281,6 +284,8 @@ def notable_entries(
             entry["cutaway"] = member.cutaway
         if member.limb is not None:
             entry["limb"] = member.limb
+        if member.activity is not None:
+            entry["activity"] = member.activity
         if member.first_obs:
             entry["first_obs"] = member.first_obs
         if displacement_metadata and (

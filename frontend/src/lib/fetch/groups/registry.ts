@@ -63,6 +63,9 @@ export const CAT_SURFACE_FEATURES = `${CATEGORY_SLUG_PREFIX}surface-features`;
 export const CAT_STRUCTURE_ACTIVITY = `${CATEGORY_SLUG_PREFIX}structure-activity`;
 export const CAT_ATMOSPHERES = `${CATEGORY_SLUG_PREFIX}atmospheres`;
 export const CAT_OCEANS = `${CATEGORY_SLUG_PREFIX}oceans`;
+export const CAT_VOLCANISM = `${CATEGORY_SLUG_PREFIX}volcanism`;
+export const CAT_MAGNETIC_FIELDS = `${CATEGORY_SLUG_PREFIX}magnetic-fields`;
+export const CAT_TIDAL_HEATING = `${CATEGORY_SLUG_PREFIX}tidal-heating`;
 
 /** Plural category headers, not the singular Wikidata label. */
 const CATEGORY_NAME: Record<string, () => string> = {
@@ -79,7 +82,10 @@ const CATEGORY_NAME: Record<string, () => string> = {
 	[CAT_SURFACE_FEATURES]: m.category_name_surface_features,
 	[CAT_STRUCTURE_ACTIVITY]: m.category_name_structure_activity,
 	[CAT_ATMOSPHERES]: m.category_name_atmospheres,
-	[CAT_OCEANS]: m.category_name_oceans
+	[CAT_OCEANS]: m.category_name_oceans,
+	[CAT_VOLCANISM]: m.category_name_volcanism,
+	[CAT_MAGNETIC_FIELDS]: m.category_name_magnetic_fields,
+	[CAT_TIDAL_HEATING]: m.category_name_tidal_heating
 };
 
 /** Localized display name for a `cat-` slug; the raw slug if unknown. */

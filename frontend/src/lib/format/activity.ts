@@ -196,6 +196,27 @@ export function statusLabel(status: string): string {
 	return STATUS[status]?.() ?? status;
 }
 
+/**
+ * What the tide does for this body's heat budget, at the five-rung resolution
+ * its sources commit to.
+ *
+ * The body panel deliberately has no such row — "Minor" with nothing to be
+ * minor against says less than nothing. On the collection page there is
+ * something: ten other bodies on the same list, three of them with a wattage,
+ * and the rung is what orders the eight that have none.
+ */
+const TIDAL_ROLE: Record<string, () => string> = {
+	dominant: m.tidal_role_dominant,
+	significant: m.tidal_role_significant,
+	minor: m.tidal_role_minor,
+	negligible: m.tidal_role_negligible,
+	past: m.tidal_role_past
+};
+
+export function tidalRoleLabel(role: string): string {
+	return TIDAL_ROLE[role]?.() ?? role;
+}
+
 export function tectonicStyleLabel(style: string): string {
 	return TECTONIC_STYLE[style]?.() ?? style;
 }
@@ -212,7 +233,9 @@ export function fieldKindLabel(kind: string): string {
  * whether the noun applies, and dropping it would turn Venus's case into
  * Earth's fact.
  */
-export function volcanismLabel(volcanism: Volcanism): string {
+/** Takes only what it reads, so a collection row — which carries the kind and
+ *  the status but none of the measurements — can use it too. */
+export function volcanismLabel(volcanism: Pick<Volcanism, 'kind' | 'status'>): string {
 	const kind = volcanismKindLabel(volcanism.kind);
 	if (volcanism.status === 'active') return kind;
 	return m.activity_qualified({ value: kind, status: statusLabel(volcanism.status) });

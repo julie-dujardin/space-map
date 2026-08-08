@@ -40,6 +40,9 @@ SURFACE_FEATURES_SLUG = f"{CATEGORY_SLUG_PREFIX}surface-features"
 STRUCTURE_ACTIVITY_SLUG = f"{CATEGORY_SLUG_PREFIX}structure-activity"
 ATMOSPHERES_SLUG = f"{CATEGORY_SLUG_PREFIX}atmospheres"
 OCEANS_SLUG = f"{CATEGORY_SLUG_PREFIX}oceans"
+VOLCANISM_SLUG = f"{CATEGORY_SLUG_PREFIX}volcanism"
+MAGNETIC_FIELDS_SLUG = f"{CATEGORY_SLUG_PREFIX}magnetic-fields"
+TIDAL_HEATING_SLUG = f"{CATEGORY_SLUG_PREFIX}tidal-heating"
 
 CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(SOLAR_SYSTEM_SLUG, "Solar System", "Q544"),
@@ -69,15 +72,24 @@ CATEGORIES: tuple[CategorySpec, ...] = (
     # precise term has articles in five of the twelve locales, the generic one
     # in all twelve, and this page is not about Earth's.
     CategorySpec(ATMOSPHERES_SLUG, "Atmospheres", "Q8104"),
-    # "List of ocean worlds in the Solar System", English-only, over the much
-    # better-covered "ocean world" (Q1045138, 11 locales). That one is the right
-    # concept name and the wrong subject: only its en and pt articles are about
-    # subsurface oceans, while de/es/fr/it/ja/pl/zh open on a hypothetical
-    # exoplanet entirely covered by water, and its Wikidata description — which
-    # renders above the members — reads "Hypothetical type of planet … in
-    # fiction see Q98807723" over a list of Ganymede and Europa. Eleven locales
-    # with no blurb beats nine with a confidently wrong one.
-    CategorySpec(OCEANS_SLUG, "Oceans", "Q139377044"),
+    # "Extraterrestrial liquid water" — a topic article in six of the twelve
+    # locales, and the only candidate whose subject is the water itself. The two
+    # obvious alternatives both put wrong prose in the header, which takes the
+    # Wikidata description ahead of any Wikipedia lede: "ocean world"
+    # (Q1045138) covers 11 locales but 9 of them open on a hypothetical
+    # water-covered exoplanet, and "List of ocean worlds in the Solar System"
+    # (Q139377044) is a Wikimedia list item, so every locale reads "Wikimedia
+    # list article" over Europa and Enceladus.
+    CategorySpec(OCEANS_SLUG, "Oceans", "Q1319471"),
+    # Volcanism rather than a page per mechanism: the members are as often
+    # cryovolcanic as silicate, and the tectonics ride along because on every
+    # body here they are the same heat leaving by another route.
+    CategorySpec(VOLCANISM_SLUG, "Volcanism & Tectonics", "Q505748"),
+    # "magnetosphere" over "planetary magnetic field" (Q4274059): the precise
+    # term has articles in French and Russian only, this one in all twelve, and
+    # what the page lists is bodies whose field is detectable from outside.
+    CategorySpec(MAGNETIC_FIELDS_SLUG, "Magnetic Fields", "Q6915"),
+    CategorySpec(TIDAL_HEATING_SLUG, "Tidal Heating", "Q7800788"),
 )
 
 CATEGORY_BY_SLUG: dict[str, CategorySpec] = {c.slug: c for c in CATEGORIES}

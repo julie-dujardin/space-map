@@ -50,7 +50,10 @@
 		CAT_SOLAR_SYSTEM,
 		CAT_STRUCTURE_ACTIVITY,
 		CAT_ATMOSPHERES,
-		CAT_OCEANS
+		CAT_OCEANS,
+		CAT_VOLCANISM,
+		CAT_MAGNETIC_FIELDS,
+		CAT_TIDAL_HEATING
 	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { focusHref, groupHref, imageHref, tabHref } from '$lib/state/focus-link';
@@ -116,21 +119,31 @@
 	import RingMassChart from './charts/RingMassChart.svelte';
 	import PropertyChildTiles from './sections/crossref/PropertyChildTiles.svelte';
 	import PropertyMemberList from './sections/PropertyMemberList.svelte';
-	import OceanVolumeChart, { earthOceans } from './charts/OceanVolumeChart.svelte';
+	import OceanVolumeChart, { oceanVolume } from './charts/OceanVolumeChart.svelte';
 	import AtmospherePressureChart from './charts/AtmospherePressureChart.svelte';
+	import ValuePerBodyChart from './charts/ValuePerBodyChart.svelte';
+	import VolcanismStatusChart from './charts/VolcanismStatusChart.svelte';
 	import SolarSystemMassChart from './charts/SolarSystemMassChart.svelte';
 	import ObjectLinks from './sections/ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	import { categoryConfig, type PropertyKind } from '$lib/state/category-config';
+	import { categoryConfig, PROPERTY_ACCENT, type PropertyKind } from '$lib/state/category-config';
 	import { featureTypeLabel } from '$lib/format/feature-type';
 	import { featureDetailToObjectData, groupDetailToObjectData } from '$lib/state/detail-adapters';
 	import { LineupHero } from './charts/lineup-hero.svelte';
 	import { buildLineup, geometryFromMember } from './charts/lineup';
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 	import { formatPressure } from '$lib/format/pressure';
-	import { EARTH_ID } from '$lib/constants';
+	import {
+		fieldKindLabel,
+		fieldParts,
+		powerParts,
+		tidalRoleLabel,
+		volcanismLabel
+	} from '$lib/format/activity';
+	import { ucfirst } from '$lib/format/quantities';
+	import type { MemberActivity } from '$lib/fetch/objects/object-data';
 
 	// Module-scope dedupe so the "no name resolved" warning fires at most once
 	// per focusable across the session — survives drawer remounts and effect
@@ -483,28 +496,50 @@
 		focusable.kind === 'group' && focusable.slug === CAT_STRUCTURE_ACTIVITY
 	);
 
-	/** Which shell a Structure & Activity page is about, so its members' cutaways
-	 *  draw that one with a floor on its thickness. Atmospheres have no interior
-	 *  layer to lift — their members draw a limb instead. */
 	/** The meta node's children, so its tiles know which drawing each collects. */
 	const PROPERTY_BY_SLUG: Record<string, PropertyKind> = {
 		[CAT_ATMOSPHERES]: 'atmospheres',
-		[CAT_OCEANS]: 'oceans'
-	};
-
-	const PROPERTY_ACCENT: Record<PropertyKind, ReadonlySet<string> | undefined> = {
-		oceans: new Set(['ocean']),
-		atmospheres: undefined
+		[CAT_OCEANS]: 'oceans',
+		[CAT_VOLCANISM]: 'volcanism',
+		[CAT_MAGNETIC_FIELDS]: 'magnetic-fields',
+		[CAT_TIDAL_HEATING]: 'tidal-heating'
 	};
 
 	/** The reading under each member's name: whatever its page ranks by. */
 	function propertyFigure(member: NotableMemberEntry): string | undefined {
-		if (member.ocean) {
-			const earth = notableMembers?.find((e) => e.id === EARTH_ID)?.ocean?.volume_km3;
-			return earth ? earthOceans(member.ocean.volume_km3 / earth) : undefined;
-		}
+		if (member.ocean) return oceanVolume(member.ocean.volume_km3);
 		if (member.atmosphere_pressure) return formatPressure(member.atmosphere_pressure.pa);
-		return undefined;
+		const activity = member.activity;
+		if (!activity) return undefined;
+		switch (cat.property) {
+			case 'volcanism':
+				return activity.volcanism ? ucfirst(volcanismLabel(activity.volcanism)) : undefined;
+			case 'magnetic-fields':
+				return magnetism(activity.magnetism);
+			case 'tidal-heating':
+				return tide(activity.tidal);
+			default:
+				return undefined;
+		}
+	}
+
+	/** The field a reader could stand on the body and measure, or — where nobody
+	 *  has — what kind of field it is at all. */
+	function magnetism(field: MemberActivity['magnetism']): string | undefined {
+		if (!field) return undefined;
+		if (field.surface_field_t == null) return ucfirst(fieldKindLabel(field.kind));
+		const reading = fieldParts(field.surface_field_t);
+		const text = `${reading.value} ${reading.unit}`;
+		return field.surface_field_t_upper_limit ? `< ${text}` : text;
+	}
+
+	/** The wattage where it is published, and what the tide is for that body
+	 *  where it is not — which is what its sources do commit to. */
+	function tide(tidal: MemberActivity['tidal']): string | undefined {
+		if (!tidal) return undefined;
+		if (tidal.power_w == null) return ucfirst(tidalRoleLabel(tidal.role));
+		const reading = powerParts(tidal.power_w);
+		return `${reading.value} ${reading.unit}`;
 	}
 
 	let memberDescriptions = $derived(
@@ -1441,6 +1476,27 @@
 						<OceanVolumeChart members={notableMembers} localizedNames={memberNames} />
 					{:else if cat.property === 'atmospheres'}
 						<AtmospherePressureChart members={notableMembers} localizedNames={memberNames} />
+					{:else if cat.property === 'volcanism'}
+						<VolcanismStatusChart members={notableMembers} localizedNames={memberNames} />
+					{:else if cat.property === 'magnetic-fields'}
+						<ValuePerBodyChart
+							members={notableMembers}
+							localizedNames={memberNames}
+							title={m.group_magnetic_field_title()}
+							value={(e) =>
+								e.activity?.magnetism?.surface_field_t_upper_limit
+									? undefined
+									: e.activity?.magnetism?.surface_field_t}
+							text={(v) => `${fieldParts(v).value} ${fieldParts(v).unit}`}
+						/>
+					{:else if cat.property === 'tidal-heating'}
+						<ValuePerBodyChart
+							members={notableMembers}
+							localizedNames={memberNames}
+							title={m.group_tidal_power_title()}
+							value={(e) => e.activity?.tidal?.power_w}
+							text={(v) => `${powerParts(v).value} ${powerParts(v).unit}`}
+						/>
 					{/if}
 				{/if}
 				{#if cat.planets && notableMembers && notableMembers.length > 0}

@@ -15,7 +15,10 @@
 		CAT_SATELLITES,
 		CAT_SURFACE_FEATURES,
 		CAT_ATMOSPHERES,
-		CAT_OCEANS
+		CAT_OCEANS,
+		CAT_VOLCANISM,
+		CAT_MAGNETIC_FIELDS,
+		CAT_TIDAL_HEATING
 	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
@@ -28,7 +31,8 @@
 	} from '$lib/state/url';
 	import { formatDistance } from '$lib/format/distance';
 	import { EARTH_ID } from '$lib/constants';
-	import { earthOceans } from '../charts/OceanVolumeChart.svelte';
+	import { earthOceans, oceanVolume } from '../charts/OceanVolumeChart.svelte';
+	import { fieldParts, powerParts } from '$lib/format/activity';
 	import {
 		formatCompactNumber,
 		formatNumber,
@@ -231,18 +235,63 @@
 		);
 	}
 
-	/** Every ocean on the page added up, against the one anyone has a feel for.
-	 *  Cubic kilometres would be a number nobody can hold; the multiple is the
-	 *  whole finding, and the chart below cannot show it — a log axis has no sum. */
+	/** Every ocean on the page added up — the one figure the chart below cannot
+	 *  show, since a log axis has no sum. The multiple of Earth's is the finding,
+	 *  but it is a comparison, so it hangs off the value as a tooltip. */
 	function totalWater(g: GlobalGroupData): Stat | null {
 		const total = g.ocean_volume_km3;
 		const earth = g.notable_members?.find((e) => e.id === EARTH_ID)?.ocean?.volume_km3;
-		if (!total || !earth) return null;
+		if (!total) return null;
 		return {
 			label: m.group_stat_total_water(),
-			value: earthOceans(total / earth),
-			tooltip: m.group_stat_total_water_tooltip()
+			value: oceanVolume(total),
+			tooltip: earth ? (earthOceans(total / earth) ?? undefined) : undefined
 		};
+	}
+
+	/** Caught in the act. The tooltip names them: four is few enough that a
+	 *  reader wants to know which, and the number alone invites the question. */
+	function eruptingNow(g: GlobalGroupData): Stat | null {
+		const erupting = g.erupting_now;
+		if (!erupting?.length) return null;
+		return {
+			label: m.group_stat_erupting(),
+			value: formatNumber(erupting.length),
+			tooltip: erupting.join(', '),
+			dot: 'bg-emerald-400'
+		};
+	}
+
+	function hottestBody(g: GlobalGroupData): Stat | null {
+		const hottest = g.hottest_body;
+		if (!hottest) return null;
+		const heat = powerParts(hottest.watts);
+		return bodyCard(m.group_stat_hottest(), `${heat.value} ${heat.unit}`, hottest, 'structure');
+	}
+
+	function strongestField(g: GlobalGroupData): Stat | null {
+		const strongest = g.strongest_field;
+		if (!strongest) return null;
+		const field = fieldParts(strongest.tesla);
+		return bodyCard(
+			m.group_stat_strongest(),
+			`${field.value} ${field.unit}`,
+			strongest,
+			'structure'
+		);
+	}
+
+	function mostTiltedField(g: GlobalGroupData): Stat | null {
+		const tilted = g.most_tilted_field;
+		if (!tilted) return null;
+		return bodyCard(
+			m.group_stat_most_tilted(),
+			// The degree sign directly, as every other angle in the drawer does —
+			// the generated `unit_*` labels have no plain degree row.
+			`${formatNumber(tilted.degrees)}°`,
+			tilted,
+			'structure'
+		);
 	}
 
 	function largestFeature(g: GlobalGroupData): Stat | null {
@@ -320,6 +369,16 @@
 				return [count(m.group_stat_types(), g.atmosphere_type_count), tallestAtmosphere(g)];
 			case CAT_OCEANS:
 				return [totalWater(g), deepestOcean(g)];
+			case CAT_VOLCANISM:
+				return [eruptingNow(g), hottestBody(g), count(m.group_stat_vents(), g.known_centres)];
+			case CAT_MAGNETIC_FIELDS:
+				return [
+					count(m.group_stat_dynamos(), g.dynamo_count),
+					strongestField(g),
+					mostTiltedField(g)
+				];
+			case CAT_TIDAL_HEATING:
+				return [hottestBody(g), count(m.group_stat_tide_driven(), g.tide_dominant_count)];
 			case CAT_SATELLITES:
 				return [active(g)];
 			case CAT_DEBRIS:

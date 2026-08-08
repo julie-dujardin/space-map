@@ -17,7 +17,7 @@
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
-	import type { PropertyKind } from '$lib/state/category-config';
+	import { PROPERTY_ACCENT, type PropertyKind } from '$lib/state/category-config';
 	import * as m from '$lib/paraglide/messages.js';
 	import AtmosphereBandBar from '../../charts/AtmosphereBandBar.svelte';
 	import BodyCutaway from '../../charts/BodyCutaway.svelte';
@@ -30,13 +30,8 @@
 	}
 	let { childGroups, kinds }: Props = $props();
 
-	/** How many members fit across a half-width tile before they are grit. */
+	/** How many members fit in the tile's right half before they are grit. */
 	const SHOWN = 4;
-
-	const ACCENT: Record<PropertyKind, ReadonlySet<string> | undefined> = {
-		oceans: new Set(['ocean']),
-		atmospheres: undefined
-	};
 
 	let tiles = $derived(childGroups.filter((c) => c.primary_id));
 
@@ -55,29 +50,33 @@
 
 {#snippet drawings(slug: string, kind: PropertyKind)}
 	{#await members(slug) then shown}
-		<div class="flex size-full items-center justify-center gap-1 bg-[#05070e] px-2">
-			{#each shown as member (member.id)}
-				<div class="size-9 shrink-0 overflow-hidden rounded-full">
-					{#if member.cutaway?.length}
-						<BodyCutaway
-							layers={member.cutaway}
-							color={tint(member)}
-							accent={ACCENT[kind]}
-							id="tile-{slug}-{member.id}"
-							class="size-full"
-						/>
-					{:else if member.limb}
-						<AtmosphereBandBar structure={member.limb.structure} species={member.limb.species} />
-					{/if}
-				</div>
-			{/each}
+		<!-- The drawings keep to the right half: the name sits bottom-left over
+		     the same tile, and a full-width row would be read through it. -->
+		<div class="flex size-full items-center bg-[#05070e]">
+			<div class="ms-auto flex w-3/5 items-center justify-end gap-1.5 overflow-hidden pe-3">
+				{#each shown as member (member.id)}
+					<div class="size-11 shrink-0 overflow-hidden rounded-full">
+						{#if member.cutaway?.length}
+							<BodyCutaway
+								layers={member.cutaway}
+								color={tint(member)}
+								accent={PROPERTY_ACCENT[kind]}
+								id="tile-{slug}-{member.id}"
+								class="size-full"
+							/>
+						{:else if member.limb}
+							<AtmosphereBandBar structure={member.limb.structure} species={member.limb.species} />
+						{/if}
+					</div>
+				{/each}
+			</div>
 		</div>
 	{/await}
 {/snippet}
 
 {#if tiles.length > 0}
-	<div class="grid grid-cols-2 gap-2">
-		{#each tiles as c, i (c.primary_id)}
+	<div class="grid gap-2">
+		{#each tiles as c (c.primary_id)}
 			{@const slug = c.primary_id ?? ''}
 			{@const kind = kinds[slug]}
 			<!-- Declared in the loop so it closes over this child's slug and kind:
@@ -90,7 +89,6 @@
 				name={categoryLabel(slug)}
 				label="{formatCompactNumber(c.n)} {m.group_stat_members()}"
 				background={kind ? backdrop : undefined}
-				class={i === tiles.length - 1 && tiles.length % 2 === 1 ? 'col-span-2' : ''}
 			/>
 		{/each}
 	</div>

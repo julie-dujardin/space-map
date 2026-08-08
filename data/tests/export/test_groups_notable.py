@@ -11,15 +11,22 @@ from space_map_data.constants.atmosphere.structure import (
     ATMOSPHERE_STRUCTURE,
     CAPPED_ROLES,
 )
+from space_map_data.constants.activity.magnetism import MAGNETIC_FIELDS
+from space_map_data.constants.activity.tidal import TIDAL_HEATING
+from space_map_data.constants.activity.volcanism import GEOLOGIC_ACTIVITY
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
 from space_map_data.export import notable
 from space_map_data.export.groups.categories import (
     _atmosphere_stats,
+    _magnetic_stats,
     _ocean_stats,
+    _tidal_stats,
+    _volcanism_stats,
     _probe_members,
     _ring_system_stats,
 )
+from space_map_data.export.objects.activity import collection_row
 from space_map_data.export.objects.atmosphere import atmosphere_block, pressure_block
 from space_map_data.export.objects.interior import ocean_block
 from space_map_data.export.objects.rings import (
@@ -709,3 +716,123 @@ class TestPressureBlockSharing:
                 assert "pressure" not in block
             else:
                 assert block["pressure"] == pressure_block(facts.pressure)
+
+
+class TestActivityCollectionRow:
+    """The trimmed row the three heat pages share."""
+
+    def test_covers_every_body_any_activity_table_holds(self) -> None:
+        bodies = set(GEOLOGIC_ACTIVITY) | set(MAGNETIC_FIELDS) | set(TIDAL_HEATING)
+        assert bodies
+        assert all(collection_row(body) is not None for body in bodies)
+        assert collection_row("spkid-99999999") is None
+
+    def test_carries_headline_values_not_measurements(self) -> None:
+        """A collection row has no room to state a published width, and the
+        body's own panel already does."""
+        row = collection_row("naif-501")
+        assert row is not None
+        assert row["volcanism"]["endogenic_power_w"] == pytest.approx(1.05e14)
+        assert row["tidal"]["power_w"] == pytest.approx(1.05e14)
+
+    def test_a_bound_is_flagged_rather_than_dropped(self) -> None:
+        """Titan's field is how tightly nobody found one. The value ships so the
+        row can print "< 0.78 nT"; the flag stops the chart plotting it."""
+        row = collection_row("naif-606")
+        assert row is not None
+        assert row["magnetism"]["surface_field_t"] == pytest.approx(7.8e-10)
+
+
+class TestMagneticMembership:
+    """Which bodies the Magnetic Fields page lists at all."""
+
+    def test_only_bodies_with_a_surface_field(self) -> None:
+        """A member with no figure printed the kind of field instead, so the
+        page led with "None detected" on a page about fields."""
+        measured = {b for b, f in MAGNETIC_FIELDS.items() if f.surface_field_t}
+        dropped = set(MAGNETIC_FIELDS) - measured
+        # Venus's only figure is an upper bound on its dipole; the three Jovian
+        # moons carry a field induced in them, of no published strength.
+        assert dropped == {"naif-299", "naif-501", "naif-502", "naif-504"}
+
+    def test_a_published_bound_still_counts(self) -> None:
+        """Titan's 0.78 nT is a real result — the row prints "< 0.78 nT"."""
+        field = MAGNETIC_FIELDS["naif-606"].surface_field_t
+        assert field is not None and field.upper_limit
+
+
+class TestHeatPageStats:
+    """Stat cards on volcanism, magnetic fields and tidal heating."""
+
+    def _members(self, table, builder) -> list[NotableObject]:
+        return [
+            NotableObject(
+                object_id=body,
+                wikidata_qid=None,
+                fallback_name=body,
+                diameter_km=None,
+                first_obs=None,
+                activity=collection_row(body),
+            )
+            for body in table
+        ]
+
+    def test_erupting_now_names_them(self) -> None:
+        """The card's tooltip is the list: four is few enough that the number
+        alone invites the question."""
+        stats = _volcanism_stats(self._members(GEOLOGIC_ACTIVITY, None))
+        active = {
+            body
+            for body, activity in GEOLOGIC_ACTIVITY.items()
+            if activity.volcanism.status == "active"
+        }
+        assert stats.erupting_now is not None
+        assert set(stats.erupting_now) == active
+        assert stats.erupting_now == sorted(stats.erupting_now)
+
+    def test_vents_sum_every_survey(self) -> None:
+        stats = _volcanism_stats(self._members(GEOLOGIC_ACTIVITY, None))
+        assert stats.known_centres == sum(
+            int(a.volcanism.known_centres.value)
+            for a in GEOLOGIC_ACTIVITY.values()
+            if a.volcanism.known_centres is not None
+        )
+
+    def test_strongest_field_ignores_a_non_detection(self) -> None:
+        """A bound is not a measurement, and this is the one card where that
+        distinction would be invisible."""
+        titan = NotableObject(
+            object_id="naif-606",
+            wikidata_qid=None,
+            fallback_name="Titan",
+            diameter_km=None,
+            first_obs=None,
+            activity={
+                "magnetism": {
+                    "kind": "none",
+                    "surface_field_t": 1.0,
+                    "surface_field_t_upper_limit": True,
+                }
+            },
+        )
+        assert _magnetic_stats([titan]).strongest_field is None
+
+    def test_strongest_and_most_tilted_are_different_bodies(self) -> None:
+        stats = _magnetic_stats(self._members(MAGNETIC_FIELDS, None))
+        assert stats.strongest_field is not None
+        assert stats.most_tilted_field is not None
+        assert stats.dynamo_count == sum(
+            1 for f in MAGNETIC_FIELDS.values() if f.kind == "dynamo"
+        )
+        # Jupiter's field is the strongest and Uranus's the most askew; a bug
+        # that read one field for both would collapse them onto one body.
+        assert (
+            stats.strongest_field["primary_id"] != stats.most_tilted_field["primary_id"]
+        )
+
+    def test_tidal_hottest_is_the_published_wattage(self) -> None:
+        stats = _tidal_stats(self._members(TIDAL_HEATING, None))
+        assert stats.hottest_body is not None
+        assert stats.hottest_body["watts"] == max(
+            t.power_w.value for t in TIDAL_HEATING.values() if t.power_w is not None
+        )

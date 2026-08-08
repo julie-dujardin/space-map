@@ -181,6 +181,9 @@ export interface NotableMemberEntry {
 	 *  phase, and one material per layer (the colour keys off the dominant one). */
 	cutaway?: InteriorLayer[];
 	limb?: MemberLimb;
+	/** The three heat pages share one row: a body is usually on more than one
+	 *  of them, and the three tables are three views of one question. */
+	activity?: MemberActivity;
 	thumbnail?: PickedThumbnail;
 }
 
@@ -192,6 +195,29 @@ export interface MemberOcean {
 	/** Under something — true on all but Earth's, which is the page's whole point. */
 	subsurface: boolean;
 	mass_fraction?: number;
+}
+
+/** Headline values only — the widths, qualifiers and citations that ride on
+ *  the object bundle's `activity` have no room in a collection row. */
+export interface MemberActivity {
+	volcanism?: {
+		kind: Volcanism['kind'];
+		status: ActivityStatus;
+		endogenic_power_w?: number;
+		youngest_activity_years?: number;
+		known_centres?: number;
+	};
+	tectonics?: { style: string; status: ActivityStatus };
+	tidal?: { role: string; raised_by: string; power_w?: number };
+	magnetism?: {
+		kind: MagneticField['kind'];
+		surface_field_t?: number;
+		dipole_moment_a_m2?: number;
+		dipole_tilt_deg?: number;
+		/** A non-detection's bound rather than a measurement; never plotted. */
+		surface_field_t_upper_limit?: true;
+		dipole_moment_a_m2_upper_limit?: true;
+	};
 }
 
 /** Enough atmosphere for a tile-sized limb: the bands, and what the air is

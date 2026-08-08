@@ -68,14 +68,15 @@ interface NotableEntry {
   // by. Each is set only on its own page's members — the collections are
   // bodies-carrying-a-property, and the property is the chart.
   ocean?: Ocean;                    // `cat-oceans` only; 8 bodies
-  atmosphere_pressure?: Pressure;   // `cat-atmospheres` only; 20 of the 24 members. Same shape as the object bundle's `atmosphere.pressure` (see objects.md)
+  atmosphere_pressure?: Pressure;   // `cat-atmospheres` only; on all 20 members — a published pressure is what makes a body one. Same shape as the object bundle's `atmosphere.pressure` (see objects.md)
   // What the member's tile draws instead of a photograph: two photographs of
   // icy moons are two grey discs, while their cutaways are a 375 km ocean and a
   // 132 km one. Trimmed to what a 44 px drawing uses — no labels, no scale, no
   // citations; a reader who wants those is one click from the body's own
   // Structure tab. ~11 KiB across both pages before gzip.
-  cutaway?: InteriorLayer[];        // `cat-oceans`; the layer stack, geometry + phase + one material each
-  limb?: MemberLimb;                // `cat-atmospheres`; 19 of the 24 members
+  cutaway?: InteriorLayer[];        // `cat-oceans` + the three heat pages; the layer stack, geometry + phase + one material each
+  limb?: MemberLimb;                // `cat-atmospheres`; 17 of the 20 members
+  activity?: MemberActivity;        // `cat-volcanism` / `cat-magnetic-fields` / `cat-tidal-heating`
   thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
 }
 ```
@@ -112,6 +113,38 @@ interface MemberLimb {
     // Role and height only — the labelled chart's temperatures, pressures,
     // spans and notes stay on the object bundle.
     layers: { role: string; top_km?: number }[];
+  };
+}
+```
+
+```typescript
+// One row shared by the three heat pages, because a body is usually on more
+// than one of them and the three constants tables are three views of one
+// question — is there heat left inside, and does it reach the surface.
+// Headline values only: the published widths, qualifiers and citations that
+// ride on the object bundle's `activity` have no room in a collection row.
+interface MemberActivity {
+  volcanism?: {
+    kind: "silicate" | "cryo" | "both" | "none";
+    status: "active" | "probable" | "suspected" | "dormant" | "extinct" | "none";
+    endogenic_power_w?: number;       // 2 of 15 members
+    youngest_activity_years?: number; // 6 of 15
+    known_centres?: number;           // 3 of 15
+  };
+  tectonics?: { style: string; status: string };
+  tidal?: { role: string; raised_by: string; power_w?: number };  // power on 3 of 11
+  magnetism?: {
+    kind: "dynamo" | "induced" | "remanent" | "none";
+    // A surface field is what makes a body a member of `cat-magnetic-fields`,
+    // so it is on all 11 of them. Venus and the three Jovian moons with induced
+    // fields have none published and are not listed.
+    surface_field_t?: number;         // 11 of 11 members
+    dipole_moment_a_m2?: number;      // 8 of 11
+    dipole_tilt_deg?: number;         // 7 of 11
+    // A non-detection's bound rather than a measurement — Titan's field is how
+    // tightly nobody found one. Never plotted; the row prints it as "< x".
+    surface_field_t_upper_limit?: true;
+    dipole_moment_a_m2_upper_limit?: true;
   };
 }
 ```
@@ -236,13 +269,18 @@ interface GlobalGroupData {
   // the page tiles them onto their Rings tabs and charts their `ring_mass`
   // against each other. They are counted by their own categories too, so the
   // tally stays out of the `cat-solar-system` total.
-  // On `cat-atmospheres` and `cat-oceans` these are every body the constants
-  // hold that property for, ranked by the figure the page charts — pressure
-  // descending (the four exospheres nobody has put a number on sort last and
-  // go unplotted), ocean volume descending. Like the ring systems they are
-  // counted by their own categories too, so the tallies stay out of the
-  // `cat-solar-system` total, and `cat-structure-activity` counts the union of
-  // its children rather than the sum.
+  // On the Structure & Activity children these are the bodies the constants
+  // hold a *figure* for, ranked by the one the page charts: pressure
+  // descending, ocean volume descending, surface field descending. A body the
+  // property is known of but unmeasured is not a member — it would print
+  // "Unknown" or the kind of field where every other row has a number. That
+  // drops the four exospheres from `cat-atmospheres` (24 → 20) and Venus plus
+  // the three induced-field Jovian moons from `cat-magnetic-fields` (15 → 11).
+  // `cat-volcanism` and `cat-tidal-heating` keep every body: their rows fall
+  // back to a status rung and a role, which are what their sources commit to.
+  // Like the ring systems they are counted by their own categories too, so the
+  // tallies stay out of the `cat-solar-system` total, and
+  // `cat-structure-activity` counts the union of its children rather than the sum.
   // On a `feature_type` group (slug `ft-<slug>`) these are surface features
   // (carrying `feature_id` beside their host body `id`), ranked by the
   // feature's own Wikidata sitelink count then diameter.
@@ -330,6 +368,26 @@ interface GlobalGroupData {
   // cat-oceans — the thickest one. Not what the chart ranks by: that is volume, which a
   // large cold moon wins on area as much as on depth.
   deepest_ocean?: { name: string; thickness_km: number; primary_type: "object"; primary_id: string };
+  erupting_now?: string[];          // cat-volcanism — the bodies caught in the act, by name.
+                                    // A list rather than a count: four is few enough that a
+                                    // reader wants to know which, and the card names them in
+                                    // its tooltip.
+  known_centres?: number;           // cat-volcanism — vents, edifices and thermal sources
+                                    // anyone has mapped, summed over the members. What counts
+                                    // as one is each survey's definition, not ours.
+  // cat-volcanism and cat-tidal-heating — the body losing the most heat. Io on both, for one
+  // reason: on Io the tidal power and the endogenic power are one measurement.
+  hottest_body?: { name: string; watts: number; primary_type: "object"; primary_id: string };
+  dynamo_count?: number;            // cat-magnetic-fields — members generating a field now,
+                                    // as opposed to induced, remanent or absent
+  // cat-magnetic-fields — strongest surface field. Non-detection bounds are excluded: Titan's
+  // 0.78 nT is the tightness of a null result, and this is the one card where that would be
+  // invisible.
+  strongest_field?: { name: string; tesla: number; primary_type: "object"; primary_id: string };
+  // cat-magnetic-fields — the dipole furthest off its rotation axis. Uranus, at 59°.
+  most_tilted_field?: { name: string; degrees: number; primary_type: "object"; primary_id: string };
+  tide_dominant_count?: number;     // cat-tidal-heating — members whose heat budget the tide
+                                    // *is*, rather than contributes to
 
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)

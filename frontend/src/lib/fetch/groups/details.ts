@@ -211,16 +211,34 @@ export interface GlobalGroupData {
 	ocean_volume_km3?: number;
 	/** Oceans: the thickest one. Not what the chart ranks by — that is volume,
 	 *  which a large cold moon wins on area as much as on depth. */
-	deepest_ocean?: {
-		name: string;
-		thickness_km: number;
-		primary_type: 'object';
-		primary_id: string;
-	};
+	deepest_ocean?: BodyRef & { thickness_km: number };
+	/** Volcanism: the bodies caught in the act, by name. A list because four is
+	 *  few enough that a reader wants to know which. */
+	erupting_now?: string[];
+	/** Volcanism / Tidal heating: the body losing the most heat. Io on both. */
+	hottest_body?: BodyRef & { watts: number };
+	/** Volcanism: vents, edifices and thermal sources anyone has mapped. */
+	known_centres?: number;
+	/** Magnetic fields: members generating one now, rather than induced,
+	 *  remanent or absent. */
+	dynamo_count?: number;
+	/** Magnetic fields: strongest surface field. Non-detection bounds excluded. */
+	strongest_field?: BodyRef & { tesla: number };
+	/** Magnetic fields: the dipole furthest off its rotation axis — Uranus, 59°. */
+	most_tilted_field?: BodyRef & { degrees: number };
+	/** Tidal heating: members whose heat budget the tide *is*. */
+	tide_dominant_count?: number;
 	/** Same Commons pipeline / bundle layout as ``GlobalObjectData.images``. */
 	images?: ObjectImage[];
 	/** One shelf per notable member, keyed by its Object.id. */
 	galleries?: ImageGalleryData[];
+}
+
+/** A stat card that points at one body. */
+interface BodyRef {
+	name: string;
+	primary_type: 'object';
+	primary_id: string;
 }
 
 export interface ChildGroupEntry extends EntityRef {

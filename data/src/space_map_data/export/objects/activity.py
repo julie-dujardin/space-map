@@ -88,6 +88,57 @@ def activity_block(object_id: str) -> dict | None:
     return block
 
 
+def collection_row(object_id: str) -> dict | None:
+    """What a Structure & Activity page ranks and labels a member by.
+
+    One function rather than three because the three pages partition one
+    subject — is there heat left inside, and does it reach the surface — and a
+    body is usually on more than one of them. Trimmed to the headline value of
+    each measurement: the widths, the qualifiers and the citations are the
+    body's own panel's job, and a collection row has no room to state them.
+    """
+    geology = GEOLOGIC_ACTIVITY.get(object_id)
+    tidal = TIDAL_HEATING.get(object_id)
+    field = MAGNETIC_FIELDS.get(object_id)
+    if geology is None and tidal is None and field is None:
+        return None
+
+    out: dict = {}
+    if geology is not None:
+        volcanism: dict = {
+            "kind": geology.volcanism.kind,
+            "status": geology.volcanism.status,
+        }
+        for name in ("endogenic_power_w", "youngest_activity_years", "known_centres"):
+            measurement = getattr(geology.volcanism, name)
+            if measurement is not None:
+                volcanism[name] = measurement.value
+        out["volcanism"] = volcanism
+        if geology.tectonics is not None:
+            out["tectonics"] = {
+                "style": geology.tectonics.style,
+                "status": geology.tectonics.status,
+            }
+    if tidal is not None:
+        row: dict = {"role": tidal.role, "raised_by": tidal.raised_by}
+        if tidal.power_w is not None:
+            row["power_w"] = tidal.power_w.value
+        out["tidal"] = row
+    if field is not None:
+        magnetism: dict = {"kind": field.kind}
+        for name in ("surface_field_t", "dipole_moment_a_m2", "dipole_tilt_deg"):
+            measurement = getattr(field, name)
+            if measurement is not None:
+                magnetism[name] = measurement.value
+                # Titan's field is the tightness of a non-detection, not a
+                # measurement; a bar drawn from it would be the page's most
+                # confident claim about its least certain number.
+                if measurement.upper_limit:
+                    magnetism[f"{name}_upper_limit"] = True
+        out["magnetism"] = magnetism
+    return out
+
+
 def _volcanism(geology: BodyActivity) -> tuple[dict, list[str]]:
     facts = geology.volcanism
     out: dict = {"kind": facts.kind, "status": facts.status}

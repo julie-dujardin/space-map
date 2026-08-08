@@ -60,6 +60,28 @@ class GroupExtraStats:
     # Not what the chart plots — that is volume, which a large cold moon wins on
     # area as much as on depth.
     deepest_ocean: dict | None = None
+    # Volcanism: the bodies caught in the act, by name. A list rather than a
+    # count because four is few enough that a reader wants to know which, and
+    # the card puts them in its tooltip.
+    erupting_now: list[str] | None = None
+    # Volcanism / Tidal heating: the body losing the most heat, as
+    # {primary_type, primary_id, name, watts}. Io on both, for one reason.
+    hottest_body: dict | None = None
+    # Volcanism: vents, edifices and thermal sources anyone has mapped, summed
+    # over the members. What counts as one is each survey's definition.
+    known_centres: int | None = None
+    # Magnetic fields: members generating one now, as opposed to induced,
+    # remanent, or absent.
+    dynamo_count: int | None = None
+    # Magnetic fields: strongest surface field, as {..., tesla}. Non-detection
+    # bounds are excluded — Titan's 0.78 nT is how tightly nobody found one.
+    strongest_field: dict | None = None
+    # Magnetic fields: the dipole furthest off its rotation axis, as
+    # {..., degrees}. Uranus, at 59°.
+    most_tilted_field: dict | None = None
+    # Tidal heating: members whose heat budget the tide is, rather than
+    # contributes to.
+    tide_dominant_count: int | None = None
 
     def to_dict(self) -> dict:
         return {k: v for k, v in asdict(self).items() if v is not None}

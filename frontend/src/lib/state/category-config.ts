@@ -13,7 +13,10 @@ import {
 	CAT_PROBES,
 	CAT_RING_SYSTEMS,
 	CAT_ATMOSPHERES,
-	CAT_OCEANS
+	CAT_OCEANS,
+	CAT_VOLCANISM,
+	CAT_MAGNETIC_FIELDS,
+	CAT_TIDAL_HEATING
 } from '$lib/fetch/groups/registry';
 import type { Focusable } from '$lib/state/focusable';
 
@@ -47,7 +50,12 @@ export interface CategoryConfig {
 }
 
 /** The Structure & Activity collections, by what their members carry. */
-export type PropertyKind = 'atmospheres' | 'oceans';
+export type PropertyKind =
+	| 'atmospheres'
+	| 'oceans'
+	| 'volcanism'
+	| 'magnetic-fields'
+	| 'tidal-heating';
 
 const NONE: CategoryConfig = {
 	planets: false,
@@ -82,7 +90,10 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 	// Every member is listed in the overview with its own drawing, so the tab
 	// would repeat the page — the same reason the ring systems have none.
 	[CAT_ATMOSPHERES]: { property: 'atmospheres', membersShownInFull: true },
-	[CAT_OCEANS]: { property: 'oceans', membersShownInFull: true }
+	[CAT_OCEANS]: { property: 'oceans', membersShownInFull: true },
+	[CAT_VOLCANISM]: { property: 'volcanism', membersShownInFull: true },
+	[CAT_MAGNETIC_FIELDS]: { property: 'magnetic-fields', membersShownInFull: true },
+	[CAT_TIDAL_HEATING]: { property: 'tidal-heating', membersShownInFull: true }
 };
 
 // Merged configs, cached per slug so a stable reference comes back each call: a
@@ -92,6 +103,22 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 const CONFIG_BY_SLUG = new Map<string, CategoryConfig>(
 	Object.entries(BY_SLUG).map(([slug, cfg]) => [slug, { ...NONE, ...cfg }])
 );
+
+/**
+ * The interior shell each property page is about, drawn with a floor on its
+ * thickness so a thin one still reads at tile size.
+ *
+ * Where each page's subject happens: the melt comes out of the mantle, the
+ * dynamo runs in the core, and the tide is dissipated in the soft middle.
+ * Atmospheres have no interior layer to lift — their members draw a limb.
+ */
+export const PROPERTY_ACCENT: Record<PropertyKind, ReadonlySet<string> | undefined> = {
+	atmospheres: undefined,
+	oceans: new Set(['ocean']),
+	volcanism: new Set(['mantle', 'asthenosphere', 'magma_ocean']),
+	'magnetic-fields': new Set(['core', 'outer_core', 'inner_core', 'metallic_hydrogen']),
+	'tidal-heating': new Set(['mantle', 'ocean'])
+};
 
 export function categoryConfig(focusable: Focusable): CategoryConfig {
 	if (focusable.kind !== 'group') return NONE;

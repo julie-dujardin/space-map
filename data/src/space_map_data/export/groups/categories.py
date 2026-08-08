@@ -29,12 +29,18 @@ from space_map_data.constants.categories import (
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
     STRUCTURE_ACTIVITY_SLUG,
+    VOLCANISM_SLUG,
+    MAGNETIC_FIELDS_SLUG,
+    TIDAL_HEATING_SLUG,
 )
 from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
 from space_map_data.constants.atmosphere.structure import (
     ATMOSPHERE_STRUCTURE,
     CAPPED_ROLES,
 )
+from space_map_data.constants.activity.magnetism import MAGNETIC_FIELDS
+from space_map_data.constants.activity.tidal import TIDAL_HEATING
+from space_map_data.constants.activity.volcanism import GEOLOGIC_ACTIVITY
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
 from space_map_data.constants.earth_sats.constellations import (
@@ -53,6 +59,7 @@ from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.small_body import LargestBody, _notable_members
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.notable import NotableObject, render_geometry
+from space_map_data.export.objects.activity import collection_row
 from space_map_data.export.objects.atmosphere import limb_profile, pressure_block
 from space_map_data.export.objects.interior import cutaway_layers, ocean_block
 from space_map_data.export.objects.rings import ring_catalog_sources, ring_mass_block
@@ -613,25 +620,29 @@ def _atmosphere_members(
 ) -> list[NotableObject]:
     """Every body with a measured envelope, thickest first.
 
-    The four with no published pressure — Ceres, Enceladus, Dione and Rhea, all
-    of them exospheres nobody has put a number on — sort last rather than
-    dropping out: they are atmospheres, and the page is the list of them. The
-    chart skips the rows it cannot plot, the way the ring chart skips Neptune.
+    A published pressure is what makes a body a member. The four without —
+    Ceres, Enceladus, Dione and Rhea, all exospheres nobody has put a number on
+    — printed "Unknown" where every other row has a figure, which is a row that
+    tells a reader nothing about the thing the page ranks by.
     """
+    measured = {
+        body: facts.pressure
+        for body, facts in ATMOSPHERE_FACTS.items()
+        if facts.pressure is not None
+    }
+    logger.info(
+        "Atmospheres: %d of %d bodies carry a pressure; dropped %s",
+        len(measured),
+        len(ATMOSPHERE_FACTS),
+        ", ".join(sorted(set(ATMOSPHERE_FACTS) - set(measured))) or "none",
+    )
 
-    def rank(body: str) -> tuple[int, float, str]:
-        pressure = ATMOSPHERE_FACTS[body].pressure
-        # Leading flag rather than a sentinel pressure: the range spans sixteen
-        # decades and there is no number that reliably sorts under all of it.
-        return (1, 0.0, body) if pressure is None else (0, -pressure.pascals, body)
-
-    ordered = sorted(ATMOSPHERE_FACTS, key=rank)
+    ordered = sorted(measured, key=lambda body: (-measured[body].pascals, body))
 
     def attach(member: NotableObject, body: str) -> NotableObject:
-        pressure = ATMOSPHERE_FACTS[body].pressure
         return replace(
             member,
-            atmosphere_pressure=pressure_block(pressure) if pressure else None,
+            atmosphere_pressure=pressure_block(measured[body]),
             limb=limb_profile(body),
         )
 
@@ -732,6 +743,206 @@ def _ocean_stats(members: list[NotableObject]) -> GroupExtraStats:
         ocean_volume_km3=total or None,
         deepest_ocean=deepest,
     )
+
+
+def _activity_members(
+    session: Session,
+    table: dict,
+    rank,
+    page: str,
+    radii: dict[int, dict],
+    gms: dict[int, float],
+    orientation: dict[int, dict],
+) -> list[NotableObject]:
+    """Members of one of the three heat pages, ordered by what its chart plots.
+
+    All three read one `collection_row`, because a body is usually on more than
+    one of them and the three tables are three views of the same question. The
+    cutaway rides along on every one: what these pages are about happens
+    inside, so the drawing is the body cut open rather than photographed.
+    """
+
+    def attach(member: NotableObject, body: str) -> NotableObject:
+        return replace(
+            member, activity=collection_row(body), cutaway=cutaway_layers(body)
+        )
+
+    return _property_members(
+        session, sorted(table, key=rank), attach, page, radii, gms, orientation
+    )
+
+
+def _measured_first(value: float | None, body: str) -> tuple[int, float, str]:
+    """Sort key: the bodies with a figure first and largest, then the rest.
+
+    A leading flag rather than a sentinel, because these quantities span ten
+    decades and there is no number that reliably sorts under all of them.
+    """
+    return (1, 0.0, body) if value is None else (0, -value, body)
+
+
+def _volcanism_members(session, radii, gms, orientation) -> list[NotableObject]:
+    """Every body with a geologic record, most recently active first.
+
+    Ordered by the status ladder rather than by a number: two of the fifteen
+    have a heat output and three a vent count, so any numeric ranking would be
+    a list of four bodies followed by eleven blanks. What separates them is
+    whether anyone has caught them at it.
+    """
+    rungs = {"active": 0, "probable": 1, "suspected": 2, "dormant": 3, "extinct": 4}
+    return _activity_members(
+        session,
+        GEOLOGIC_ACTIVITY,
+        lambda body: (rungs.get(GEOLOGIC_ACTIVITY[body].volcanism.status, 9), body),
+        "Volcanism",
+        radii,
+        gms,
+        orientation,
+    )
+
+
+def _magnetic_members(session, radii, gms, orientation) -> list[NotableObject]:
+    """Every body anyone has measured a field on, strongest first.
+
+    Surface field rather than dipole moment: eleven of the fifteen have one
+    against nine, and it is the figure a reader can stand on the body and
+    picture. The moment stays in the row for the comparison across bodies.
+
+    Having one is also what makes a body a member. The four without — Venus,
+    whose only figure is an upper bound on its dipole, and Io, Europa and
+    Callisto, whose fields are induced in them by Jupiter and have no published
+    strength — printed the kind of field instead of a number, so the page led
+    with "None detected" on a page about fields. Titan stays: its 0.78 nT is a
+    published bound, which the row prints as "< 0.78 nT" and draws no bar for.
+    """
+    measured = {
+        body: field
+        for body, field in MAGNETIC_FIELDS.items()
+        if field.surface_field_t is not None
+    }
+    logger.info(
+        "Magnetic fields: %d of %d bodies carry a surface field; dropped %s",
+        len(measured),
+        len(MAGNETIC_FIELDS),
+        ", ".join(sorted(set(MAGNETIC_FIELDS) - set(measured))) or "none",
+    )
+
+    def rank(body: str) -> tuple[int, float, str]:
+        field = measured[body].surface_field_t
+        return _measured_first(field.value if field else None, body)
+
+    return _activity_members(
+        session, measured, rank, "Magnetic fields", radii, gms, orientation
+    )
+
+
+def _tidal_members(session, radii, gms, orientation) -> list[NotableObject]:
+    """Every body a tide is raised on, hardest-worked first.
+
+    Three of the eleven have a wattage. The other eight are ordered by the role
+    the tide plays in their heat budget, which is what their sources do commit
+    to, and they carry no bar.
+    """
+    roles = {"dominant": 0, "significant": 1, "minor": 2, "negligible": 3, "past": 4}
+
+    def rank(body: str) -> tuple[int, float, str]:
+        power = TIDAL_HEATING[body].power_w
+        if power is not None:
+            return (0, -power.value, body)
+        return (1, float(roles.get(TIDAL_HEATING[body].role, 9)), body)
+
+    return _activity_members(
+        session, TIDAL_HEATING, rank, "Tidal heating", radii, gms, orientation
+    )
+
+
+def _volcanism_stats(members: list[NotableObject]) -> GroupExtraStats:
+    """Erupting now, the hottest, and every vent anyone has mapped.
+
+    None of the three is the chart below, which counts the members on each rung
+    of the status ladder. The erupting card names its four in the tooltip: the
+    number is small enough that a reader will want to know which.
+    """
+    erupting = [
+        member.fallback_name
+        for member in members
+        if (member.activity or {}).get("volcanism", {}).get("status") == "active"
+    ]
+    hottest: dict | None = None
+    centres = 0
+    for member in members:
+        volcanism = (member.activity or {}).get("volcanism", {})
+        centres += int(volcanism.get("known_centres") or 0)
+        power = volcanism.get("endogenic_power_w")
+        if power is not None and (hottest is None or power > hottest["watts"]):
+            hottest = {
+                "primary_type": "object",
+                "primary_id": member.object_id,
+                "name": member.fallback_name,
+                "watts": power,
+            }
+    return GroupExtraStats(
+        erupting_now=sorted(erupting) or None,
+        hottest_body=hottest,
+        known_centres=centres or None,
+    )
+
+
+def _magnetic_stats(members: list[NotableObject]) -> GroupExtraStats:
+    """How many generate a field now, and the two extremes of the ones that do.
+
+    The tilt card is the page's best free fact: Uranus's dipole is 59° off its
+    rotation axis, which is the thing about its magnetosphere.
+    """
+    dynamos = 0
+    strongest: dict | None = None
+    tilted: dict | None = None
+    for member in members:
+        magnetism = (member.activity or {}).get("magnetism", {})
+        if magnetism.get("kind") == "dynamo":
+            dynamos += 1
+        ref = {
+            "primary_type": "object",
+            "primary_id": member.object_id,
+            "name": member.fallback_name,
+        }
+        field = magnetism.get("surface_field_t")
+        # A non-detection's bound is not a measurement, and the strongest-field
+        # card is the one place that distinction would be invisible.
+        if (
+            field is not None
+            and not magnetism.get("surface_field_t_upper_limit")
+            and (strongest is None or field > strongest["tesla"])
+        ):
+            strongest = ref | {"tesla": field}
+        tilt = magnetism.get("dipole_tilt_deg")
+        if tilt is not None and (tilted is None or tilt > tilted["degrees"]):
+            tilted = ref | {"degrees": tilt}
+    return GroupExtraStats(
+        dynamo_count=dynamos or None,
+        strongest_field=strongest,
+        most_tilted_field=tilted,
+    )
+
+
+def _tidal_stats(members: list[NotableObject]) -> GroupExtraStats:
+    """The hardest-worked tide, and how many bodies the tide is the whole story
+    for. Two cards: nothing else here is a fact about the set."""
+    strongest: dict | None = None
+    dominant = 0
+    for member in members:
+        tidal = (member.activity or {}).get("tidal", {})
+        if tidal.get("role") == "dominant":
+            dominant += 1
+        power = tidal.get("power_w")
+        if power is not None and (strongest is None or power > strongest["watts"]):
+            strongest = {
+                "primary_type": "object",
+                "primary_id": member.object_id,
+                "name": member.fallback_name,
+                "watts": power,
+            }
+    return GroupExtraStats(hottest_body=strongest, tide_dominant_count=dominant or None)
 
 
 def _probe_members(
@@ -858,6 +1069,9 @@ def build_category_data(
     ring_members = _ring_system_members(session, radii, gms, orientation)
     atmosphere_members = _atmosphere_members(session, radii, gms, orientation)
     ocean_members = _ocean_members(session, radii, gms, orientation)
+    volcanism_members = _volcanism_members(session, radii, gms, orientation)
+    magnetic_members = _magnetic_members(session, radii, gms, orientation)
+    tidal_members = _tidal_members(session, radii, gms, orientation)
     star = _star_member(session, radii, gms, orientation)
     probe_members, probes_total = _probe_members(session, radii, gms, orientation)
     moons = _moon_data(session, planet_elements)
@@ -877,9 +1091,11 @@ def build_category_data(
             RING_SYSTEMS_SLUG,
             ASTEROIDS_SLUG,
             COMETS_SLUG,
-            PROBES_SLUG,
+            # The two browse nodes pair off, and Probes — the only child that is
+            # not a kind of thing in the sky — takes the odd row on its own.
             SURFACE_FEATURES_SLUG,
             STRUCTURE_ACTIVITY_SLUG,
+            PROBES_SLUG,
         ],
         ASTEROIDS_SLUG: asteroids,
         COMETS_SLUG: comets,
@@ -889,7 +1105,13 @@ def build_category_data(
         # Ring Systems is a page of the same kind and deliberately not a child:
         # a ring is a swarm in orbit, closer to a moon than to a layer of the
         # body it goes round.
-        STRUCTURE_ACTIVITY_SLUG: [ATMOSPHERES_SLUG, OCEANS_SLUG],
+        STRUCTURE_ACTIVITY_SLUG: [
+            ATMOSPHERES_SLUG,
+            OCEANS_SLUG,
+            VOLCANISM_SLUG,
+            MAGNETIC_FIELDS_SLUG,
+            TIDAL_HEATING_SLUG,
+        ],
     }
     # Object totals, not child counts: orbit classes partition their bodies, so
     # summing is exact; flags are subsets, and satellites sum shape classes only.
@@ -936,8 +1158,21 @@ def build_category_data(
         # some kind, so summing would count all eight of them twice.
         ATMOSPHERES_SLUG: len(atmosphere_members),
         OCEANS_SLUG: len(ocean_members),
+        VOLCANISM_SLUG: len(volcanism_members),
+        MAGNETIC_FIELDS_SLUG: len(magnetic_members),
+        TIDAL_HEATING_SLUG: len(tidal_members),
         STRUCTURE_ACTIVITY_SLUG: len(
-            {m.object_id for m in atmosphere_members + ocean_members}
+            {
+                member.object_id
+                for page in (
+                    atmosphere_members,
+                    ocean_members,
+                    volcanism_members,
+                    magnetic_members,
+                    tidal_members,
+                )
+                for member in page
+            }
         ),
     }
 
@@ -994,6 +1229,12 @@ def build_category_data(
         notable_members[ATMOSPHERES_SLUG] = atmosphere_members
     if ocean_members:
         notable_members[OCEANS_SLUG] = ocean_members
+    if volcanism_members:
+        notable_members[VOLCANISM_SLUG] = volcanism_members
+    if magnetic_members:
+        notable_members[MAGNETIC_FIELDS_SLUG] = magnetic_members
+    if tidal_members:
+        notable_members[TIDAL_HEATING_SLUG] = tidal_members
     if asteroid_notable:
         notable_members[ASTEROIDS_SLUG] = asteroid_notable
     if comet_notable:
@@ -1055,9 +1296,16 @@ def build_category_data(
         extra_stats[ATMOSPHERES_SLUG] = _atmosphere_stats(atmosphere_members)
     if ocean_members:
         extra_stats[OCEANS_SLUG] = _ocean_stats(ocean_members)
+    if volcanism_members:
+        extra_stats[VOLCANISM_SLUG] = _volcanism_stats(volcanism_members)
+    if magnetic_members:
+        extra_stats[MAGNETIC_FIELDS_SLUG] = _magnetic_stats(magnetic_members)
+    if tidal_members:
+        extra_stats[TIDAL_HEATING_SLUG] = _tidal_stats(tidal_members)
     logger.info(
         "Built category data: planets=%d, dwarf planets=%d, moons=%d (%d notable, "
         "%d planet/dwarf hosts), ring systems=%d, atmospheres=%d, oceans=%d, "
+        "volcanism=%d, magnetic=%d, tidal=%d, "
         "asteroid zones=%d, comet "
         "families=%d, satellite groups=%d (%d payloads), debris groups=%d "
         "(%d pieces from %d sources), probes=%d",
@@ -1069,6 +1317,9 @@ def build_category_data(
         len(ring_members),
         len(atmosphere_members),
         len(ocean_members),
+        len(volcanism_members),
+        len(magnetic_members),
+        len(tidal_members),
         len(asteroids),
         len(comets),
         len(satellites),

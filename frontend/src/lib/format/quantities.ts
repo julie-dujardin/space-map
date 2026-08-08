@@ -92,7 +92,10 @@ const SUPERSCRIPTS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
 
 /** "1.7×10⁻⁶" — Intl's own scientific notation renders as "1.7E-6". */
 export function scientificNotation(value: number, digits = 2): string {
-	const exponent = Math.floor(Math.log10(value));
+	let exponent = Math.floor(Math.log10(Math.abs(value)));
+	// Rounding the mantissa carries: Pluto's 9.96×10⁸ km³ of water at two
+	// figures is "10×10⁸", the right number written the wrong way.
+	if (Math.abs(Number((value / 10 ** exponent).toPrecision(digits))) >= 10) exponent += 1;
 	const mantissa = value / 10 ** exponent;
 	const superscript = [...String(Math.abs(exponent))].map((d) => SUPERSCRIPTS[Number(d)]).join('');
 	return `${sigFigures(mantissa, digits)}×10${exponent < 0 ? '⁻' : ''}${superscript}`;
