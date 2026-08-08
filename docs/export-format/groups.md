@@ -76,7 +76,7 @@ interface NotableEntry {
   // Structure tab. ~11 KiB across both pages before gzip.
   cutaway?: InteriorLayer[];        // `cat-oceans` + the three heat pages; the layer stack, geometry + phase + one material each
   limb?: MemberLimb;                // `cat-atmospheres`; 17 of the 20 members
-  activity?: MemberActivity;        // `cat-volcanism` / `cat-magnetic-fields` / `cat-tidal-heating`
+  activity?: MemberActivity;        // `cat-volcanism` / `cat-tectonics` / `cat-magnetic-fields` / `cat-tidal-heating`
   thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
 }
 ```
@@ -131,6 +131,9 @@ interface MemberActivity {
     youngest_activity_years?: number; // 6 of 15
     known_centres?: number;           // 3 of 15
   };
+  // `cat-tectonics` ranks on these two: 10 of volcanism's 15 members have a
+  // published style, and the page lists only those. There is no number
+  // anywhere in tectonics — a style and a status is the whole record.
   tectonics?: { style: string; status: string };
   tidal?: { role: string; raised_by: string; power_w?: number };  // power on 3 of 11
   magnetism?: {
@@ -278,6 +281,10 @@ interface GlobalGroupData {
   // the three induced-field Jovian moons from `cat-magnetic-fields` (15 → 11).
   // `cat-volcanism` and `cat-tidal-heating` keep every body: their rows fall
   // back to a status rung and a role, which are what their sources commit to.
+  // `cat-tectonics` is the sixth child, split out of Volcanism & Tectonics
+  // because the two were not the same size — volcanism is 15 bodies and five
+  // fields, tectonics 10 and two, so tectonics had been a suffix on the other's
+  // rows. It ranks by status rung then style, so the five ice shells sit together.
   // Like the ring systems they are counted by their own categories too, so the
   // tallies stay out of the `cat-solar-system` total, and
   // `cat-structure-activity` counts the union of its children rather than the sum.
@@ -378,6 +385,10 @@ interface GlobalGroupData {
   // cat-volcanism and cat-tidal-heating — the body losing the most heat. Io on both, for one
   // reason: on Io the tidal power and the endogenic power are one measurement.
   hottest_body?: { name: string; watts: number; primary_type: "object"; primary_id: string };
+  tectonic_style_count?: number;    // cat-tectonics — how many ways a crust behaves across the
+                                    // members: five, with Earth alone in plate tectonics
+  tectonic_active_count?: number;   // cat-tectonics — members whose crust is moving now, rather
+                                    // than probably or once
   dynamo_count?: number;            // cat-magnetic-fields — members generating a field now,
                                     // as opposed to induced, remanent or absent
   // cat-magnetic-fields — strongest surface field. Non-detection bounds are excluded: Titan's

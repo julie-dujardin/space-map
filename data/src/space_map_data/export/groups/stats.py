@@ -70,6 +70,11 @@ class GroupExtraStats:
     # Volcanism: vents, edifices and thermal sources anyone has mapped, summed
     # over the members. What counts as one is each survey's definition.
     known_centres: int | None = None
+    # Tectonics: how many ways a crust behaves across the members — five, with
+    # Earth alone in one of them. Not the chart, which is the tally per style.
+    tectonic_style_count: int | None = None
+    # Tectonics: members whose crust is moving now rather than probably or once.
+    tectonic_active_count: int | None = None
     # Magnetic fields: members generating one now, as opposed to induced,
     # remanent, or absent.
     dynamo_count: int | None = None

@@ -64,6 +64,7 @@ export const CAT_STRUCTURE_ACTIVITY = `${CATEGORY_SLUG_PREFIX}structure-activity
 export const CAT_ATMOSPHERES = `${CATEGORY_SLUG_PREFIX}atmospheres`;
 export const CAT_OCEANS = `${CATEGORY_SLUG_PREFIX}oceans`;
 export const CAT_VOLCANISM = `${CATEGORY_SLUG_PREFIX}volcanism`;
+export const CAT_TECTONICS = `${CATEGORY_SLUG_PREFIX}tectonics`;
 export const CAT_MAGNETIC_FIELDS = `${CATEGORY_SLUG_PREFIX}magnetic-fields`;
 export const CAT_TIDAL_HEATING = `${CATEGORY_SLUG_PREFIX}tidal-heating`;
 
@@ -84,6 +85,7 @@ const CATEGORY_NAME: Record<string, () => string> = {
 	[CAT_ATMOSPHERES]: m.category_name_atmospheres,
 	[CAT_OCEANS]: m.category_name_oceans,
 	[CAT_VOLCANISM]: m.category_name_volcanism,
+	[CAT_TECTONICS]: m.category_name_tectonics,
 	[CAT_MAGNETIC_FIELDS]: m.category_name_magnetic_fields,
 	[CAT_TIDAL_HEATING]: m.category_name_tidal_heating
 };

@@ -30,6 +30,7 @@ from space_map_data.constants.categories import (
     SOLAR_SYSTEM_SLUG,
     STRUCTURE_ACTIVITY_SLUG,
     VOLCANISM_SLUG,
+    TECTONICS_SLUG,
     MAGNETIC_FIELDS_SLUG,
     TIDAL_HEATING_SLUG,
 )
@@ -781,6 +782,9 @@ def _measured_first(value: float | None, body: str) -> tuple[int, float, str]:
     return (1, 0.0, body) if value is None else (0, -value, body)
 
 
+RUNGS = {"active": 0, "probable": 1, "suspected": 2, "dormant": 3, "extinct": 4}
+
+
 def _volcanism_members(session, radii, gms, orientation) -> list[NotableObject]:
     """Every body with a geologic record, most recently active first.
 
@@ -789,12 +793,46 @@ def _volcanism_members(session, radii, gms, orientation) -> list[NotableObject]:
     a list of four bodies followed by eleven blanks. What separates them is
     whether anyone has caught them at it.
     """
-    rungs = {"active": 0, "probable": 1, "suspected": 2, "dormant": 3, "extinct": 4}
+    rungs = RUNGS
     return _activity_members(
         session,
         GEOLOGIC_ACTIVITY,
         lambda body: (rungs.get(GEOLOGIC_ACTIVITY[body].volcanism.status, 9), body),
         "Volcanism",
+        radii,
+        gms,
+        orientation,
+    )
+
+
+def _tectonics_members(session, radii, gms, orientation) -> list[NotableObject]:
+    """Every body whose crust anyone has read a tectonic history off.
+
+    Ten of volcanism's fifteen: the rest have a volcanic record and no
+    published tectonic style. Ordered by the same status ladder, then by style
+    so the five ice shells sit together — this page is read across styles more
+    than down them.
+    """
+    tectonic = {
+        body: facts.tectonics
+        for body, facts in GEOLOGIC_ACTIVITY.items()
+        if facts.tectonics is not None
+    }
+    logger.info(
+        "Tectonics: %d of %d bodies carry a style; without one: %s",
+        len(tectonic),
+        len(GEOLOGIC_ACTIVITY),
+        ", ".join(sorted(set(GEOLOGIC_ACTIVITY) - set(tectonic))) or "none",
+    )
+    return _activity_members(
+        session,
+        tectonic,
+        lambda body: (
+            RUNGS.get(tectonic[body].status, 9),
+            tectonic[body].style,
+            body,
+        ),
+        "Tectonics",
         radii,
         gms,
         orientation,
@@ -885,6 +923,27 @@ def _volcanism_stats(members: list[NotableObject]) -> GroupExtraStats:
         erupting_now=sorted(erupting) or None,
         hottest_body=hottest,
         known_centres=centres or None,
+    )
+
+
+def _tectonics_stats(members: list[NotableObject]) -> GroupExtraStats:
+    """How many kinds of crust there are, and how many are still moving.
+
+    Neither restates the chart, which is the tally per style. The count of
+    styles is the page's finding — five ways a crust can behave across ten
+    bodies, with Earth alone in one of them.
+    """
+    styles = set()
+    moving = 0
+    for member in members:
+        tectonics = (member.activity or {}).get("tectonics", {})
+        if tectonics.get("style"):
+            styles.add(tectonics["style"])
+        if tectonics.get("status") == "active":
+            moving += 1
+    return GroupExtraStats(
+        tectonic_style_count=len(styles) or None,
+        tectonic_active_count=moving or None,
     )
 
 
@@ -1070,6 +1129,7 @@ def build_category_data(
     atmosphere_members = _atmosphere_members(session, radii, gms, orientation)
     ocean_members = _ocean_members(session, radii, gms, orientation)
     volcanism_members = _volcanism_members(session, radii, gms, orientation)
+    tectonics_members = _tectonics_members(session, radii, gms, orientation)
     magnetic_members = _magnetic_members(session, radii, gms, orientation)
     tidal_members = _tidal_members(session, radii, gms, orientation)
     star = _star_member(session, radii, gms, orientation)
@@ -1109,6 +1169,7 @@ def build_category_data(
             ATMOSPHERES_SLUG,
             OCEANS_SLUG,
             VOLCANISM_SLUG,
+            TECTONICS_SLUG,
             MAGNETIC_FIELDS_SLUG,
             TIDAL_HEATING_SLUG,
         ],
@@ -1159,6 +1220,7 @@ def build_category_data(
         ATMOSPHERES_SLUG: len(atmosphere_members),
         OCEANS_SLUG: len(ocean_members),
         VOLCANISM_SLUG: len(volcanism_members),
+        TECTONICS_SLUG: len(tectonics_members),
         MAGNETIC_FIELDS_SLUG: len(magnetic_members),
         TIDAL_HEATING_SLUG: len(tidal_members),
         STRUCTURE_ACTIVITY_SLUG: len(
@@ -1168,6 +1230,7 @@ def build_category_data(
                     atmosphere_members,
                     ocean_members,
                     volcanism_members,
+                    tectonics_members,
                     magnetic_members,
                     tidal_members,
                 )
@@ -1231,6 +1294,8 @@ def build_category_data(
         notable_members[OCEANS_SLUG] = ocean_members
     if volcanism_members:
         notable_members[VOLCANISM_SLUG] = volcanism_members
+    if tectonics_members:
+        notable_members[TECTONICS_SLUG] = tectonics_members
     if magnetic_members:
         notable_members[MAGNETIC_FIELDS_SLUG] = magnetic_members
     if tidal_members:
@@ -1298,6 +1363,8 @@ def build_category_data(
         extra_stats[OCEANS_SLUG] = _ocean_stats(ocean_members)
     if volcanism_members:
         extra_stats[VOLCANISM_SLUG] = _volcanism_stats(volcanism_members)
+    if tectonics_members:
+        extra_stats[TECTONICS_SLUG] = _tectonics_stats(tectonics_members)
     if magnetic_members:
         extra_stats[MAGNETIC_FIELDS_SLUG] = _magnetic_stats(magnetic_members)
     if tidal_members:
@@ -1305,7 +1372,7 @@ def build_category_data(
     logger.info(
         "Built category data: planets=%d, dwarf planets=%d, moons=%d (%d notable, "
         "%d planet/dwarf hosts), ring systems=%d, atmospheres=%d, oceans=%d, "
-        "volcanism=%d, magnetic=%d, tidal=%d, "
+        "volcanism=%d, tectonics=%d, magnetic=%d, tidal=%d, "
         "asteroid zones=%d, comet "
         "families=%d, satellite groups=%d (%d payloads), debris groups=%d "
         "(%d pieces from %d sources), probes=%d",
@@ -1318,6 +1385,7 @@ def build_category_data(
         len(atmosphere_members),
         len(ocean_members),
         len(volcanism_members),
+        len(tectonics_members),
         len(magnetic_members),
         len(tidal_members),
         len(asteroids),

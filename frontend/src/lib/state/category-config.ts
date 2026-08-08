@@ -15,6 +15,7 @@ import {
 	CAT_ATMOSPHERES,
 	CAT_OCEANS,
 	CAT_VOLCANISM,
+	CAT_TECTONICS,
 	CAT_MAGNETIC_FIELDS,
 	CAT_TIDAL_HEATING
 } from '$lib/fetch/groups/registry';
@@ -54,6 +55,7 @@ export type PropertyKind =
 	| 'atmospheres'
 	| 'oceans'
 	| 'volcanism'
+	| 'tectonics'
 	| 'magnetic-fields'
 	| 'tidal-heating';
 
@@ -92,6 +94,7 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 	[CAT_ATMOSPHERES]: { property: 'atmospheres', membersShownInFull: true },
 	[CAT_OCEANS]: { property: 'oceans', membersShownInFull: true },
 	[CAT_VOLCANISM]: { property: 'volcanism', membersShownInFull: true },
+	[CAT_TECTONICS]: { property: 'tectonics', membersShownInFull: true },
 	[CAT_MAGNETIC_FIELDS]: { property: 'magnetic-fields', membersShownInFull: true },
 	[CAT_TIDAL_HEATING]: { property: 'tidal-heating', membersShownInFull: true }
 };
@@ -116,6 +119,8 @@ export const PROPERTY_ACCENT: Record<PropertyKind, ReadonlySet<string> | undefin
 	atmospheres: undefined,
 	oceans: new Set(['ocean']),
 	volcanism: new Set(['mantle', 'asthenosphere', 'magma_ocean']),
+	// Tectonics happens in the outer solid shell, whether that is rock or ice.
+	tectonics: new Set(['crust', 'oceanic_crust', 'ice_shell']),
 	'magnetic-fields': new Set(['core', 'outer_core', 'inner_core', 'metallic_hydrogen']),
 	'tidal-heating': new Set(['mantle', 'ocean'])
 };

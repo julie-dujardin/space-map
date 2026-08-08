@@ -20,26 +20,23 @@
 
 	interface Props {
 		members: NotableMemberEntry[];
-		localizedNames?: Record<string, string>;
 	}
-	let { members, localizedNames }: Props = $props();
+	let { members }: Props = $props();
 
 	/** Best-evidenced first, which is also how the members are ordered. */
 	const RUNGS = ['active', 'probable', 'suspected', 'dormant', 'extinct', 'none'];
 
 	let entries = $derived.by<CountPerBodyEntry[]>(() => {
-		const tally = new Map<string, string[]>();
+		const tally = new Map<string, number>();
 		for (const member of members) {
 			const status = member.activity?.volcanism?.status;
-			if (!status) continue;
-			const name = localizedNames?.[member.id ?? ''] ?? member.name;
-			tally.set(status, [...(tally.get(status) ?? []), name]);
+			if (status) tally.set(status, (tally.get(status) ?? 0) + 1);
 		}
 		return RUNGS.filter((rung) => tally.has(rung)).map((rung) => ({
 			// The vocabulary is authored lowercase so it can sit inside
 			// "Volcanism (probable)"; standing alone as a row it takes a capital.
 			name: ucfirst(statusLabel(rung)),
-			n: tally.get(rung)!.length
+			n: tally.get(rung)!
 		}));
 	});
 </script>

@@ -17,6 +17,7 @@
 		CAT_ATMOSPHERES,
 		CAT_OCEANS,
 		CAT_VOLCANISM,
+		CAT_TECTONICS,
 		CAT_MAGNETIC_FIELDS,
 		CAT_TIDAL_HEATING
 	} from '$lib/fetch/groups/registry';
@@ -371,6 +372,11 @@
 				return [totalWater(g), deepestOcean(g)];
 			case CAT_VOLCANISM:
 				return [eruptingNow(g), hottestBody(g), count(m.group_stat_vents(), g.known_centres)];
+			case CAT_TECTONICS:
+				return [
+					count(m.group_stat_styles(), g.tectonic_style_count),
+					count(m.group_stat_moving(), g.tectonic_active_count)
+				];
 			case CAT_MAGNETIC_FIELDS:
 				return [
 					count(m.group_stat_dynamos(), g.dynamo_count),

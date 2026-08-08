@@ -52,6 +52,7 @@
 		CAT_ATMOSPHERES,
 		CAT_OCEANS,
 		CAT_VOLCANISM,
+		CAT_TECTONICS,
 		CAT_MAGNETIC_FIELDS,
 		CAT_TIDAL_HEATING
 	} from '$lib/fetch/groups/registry';
@@ -122,6 +123,8 @@
 	import OceanVolumeChart, { oceanVolume } from './charts/OceanVolumeChart.svelte';
 	import AtmospherePressureChart from './charts/AtmospherePressureChart.svelte';
 	import ValuePerBodyChart from './charts/ValuePerBodyChart.svelte';
+	import PropertyCategoryLinks from './sections/crossref/PropertyCategoryLinks.svelte';
+	import TectonicStyleChart from './charts/TectonicStyleChart.svelte';
 	import VolcanismStatusChart from './charts/VolcanismStatusChart.svelte';
 	import SolarSystemMassChart from './charts/SolarSystemMassChart.svelte';
 	import ObjectLinks from './sections/ObjectLinks.svelte';
@@ -139,6 +142,8 @@
 		fieldKindLabel,
 		fieldParts,
 		powerParts,
+		statusLabel,
+		tectonicStyleLabel,
 		tidalRoleLabel,
 		volcanismLabel
 	} from '$lib/format/activity';
@@ -501,6 +506,7 @@
 		[CAT_ATMOSPHERES]: 'atmospheres',
 		[CAT_OCEANS]: 'oceans',
 		[CAT_VOLCANISM]: 'volcanism',
+		[CAT_TECTONICS]: 'tectonics',
 		[CAT_MAGNETIC_FIELDS]: 'magnetic-fields',
 		[CAT_TIDAL_HEATING]: 'tidal-heating'
 	};
@@ -514,6 +520,8 @@
 		switch (cat.property) {
 			case 'volcanism':
 				return activity.volcanism ? ucfirst(volcanismLabel(activity.volcanism)) : undefined;
+			case 'tectonics':
+				return tectonics(activity.tectonics);
 			case 'magnetic-fields':
 				return magnetism(activity.magnetism);
 			case 'tidal-heating':
@@ -531,6 +539,16 @@
 		const reading = fieldParts(field.surface_field_t);
 		const text = `${reading.value} ${reading.unit}`;
 		return field.surface_field_t_upper_limit ? `< ${text}` : text;
+	}
+
+	/** How the crust behaves, qualified where nobody has watched it do so —
+	 *  the same rule volcanism's rows follow, since six of the ten are
+	 *  "probable" and dropping that would make them read as observed. */
+	function tectonics(style: MemberActivity['tectonics']): string | undefined {
+		if (!style) return undefined;
+		const label = ucfirst(tectonicStyleLabel(style.style));
+		if (style.status === 'active') return label;
+		return m.activity_qualified({ value: label, status: statusLabel(style.status) });
 	}
 
 	/** The wattage where it is published, and what the tide is for that body
@@ -1477,7 +1495,9 @@
 					{:else if cat.property === 'atmospheres'}
 						<AtmospherePressureChart members={notableMembers} localizedNames={memberNames} />
 					{:else if cat.property === 'volcanism'}
-						<VolcanismStatusChart members={notableMembers} localizedNames={memberNames} />
+						<VolcanismStatusChart members={notableMembers} />
+					{:else if cat.property === 'tectonics'}
+						<TectonicStyleChart members={notableMembers} />
 					{:else if cat.property === 'magnetic-fields'}
 						<ValuePerBodyChart
 							members={notableMembers}
@@ -1670,6 +1690,9 @@
 		     of the two this body has anything to say about. -->
 		<StructureStatCards global={data?.global ?? null} />
 		<Structure global={data?.global ?? null} localized={data?.localized ?? null} />
+		<!-- Where else this body is listed for the same subject; below the
+		     sections it cross-refers, above the works they cite. -->
+		<PropertyCategoryLinks global={data?.global ?? null} />
 		<SourcesFooter global={data?.global ?? null} wikipediaLicensed={structureProseFromWikipedia} />
 	</div>
 {/snippet}

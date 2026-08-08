@@ -219,6 +219,11 @@ export interface GlobalGroupData {
 	hottest_body?: BodyRef & { watts: number };
 	/** Volcanism: vents, edifices and thermal sources anyone has mapped. */
 	known_centres?: number;
+	/** Tectonics: how many ways a crust behaves across the members — five,
+	 *  with Earth alone in one of them. */
+	tectonic_style_count?: number;
+	/** Tectonics: members whose crust is moving now, not probably or once. */
+	tectonic_active_count?: number;
 	/** Magnetic fields: members generating one now, rather than induced,
 	 *  remanent or absent. */
 	dynamo_count?: number;

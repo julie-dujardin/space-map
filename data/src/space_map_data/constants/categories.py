@@ -41,6 +41,7 @@ STRUCTURE_ACTIVITY_SLUG = f"{CATEGORY_SLUG_PREFIX}structure-activity"
 ATMOSPHERES_SLUG = f"{CATEGORY_SLUG_PREFIX}atmospheres"
 OCEANS_SLUG = f"{CATEGORY_SLUG_PREFIX}oceans"
 VOLCANISM_SLUG = f"{CATEGORY_SLUG_PREFIX}volcanism"
+TECTONICS_SLUG = f"{CATEGORY_SLUG_PREFIX}tectonics"
 MAGNETIC_FIELDS_SLUG = f"{CATEGORY_SLUG_PREFIX}magnetic-fields"
 TIDAL_HEATING_SLUG = f"{CATEGORY_SLUG_PREFIX}tidal-heating"
 
@@ -81,10 +82,17 @@ CATEGORIES: tuple[CategorySpec, ...] = (
     # (Q139377044) is a Wikimedia list item, so every locale reads "Wikimedia
     # list article" over Europa and Enceladus.
     CategorySpec(OCEANS_SLUG, "Oceans", "Q1319471"),
-    # Volcanism rather than a page per mechanism: the members are as often
-    # cryovolcanic as silicate, and the tectonics ride along because on every
-    # body here they are the same heat leaving by another route.
-    CategorySpec(VOLCANISM_SLUG, "Volcanism & Tectonics", "Q505748"),
+    # One page per mechanism, because the two are not the same size: volcanism
+    # is on fifteen bodies with five fields, tectonics on ten with two. Sharing
+    # a page made tectonics a suffix on volcanism's rows.
+    CategorySpec(VOLCANISM_SLUG, "Volcanism", "Q505748"),
+    # "Tectonics" (Q193343) has articles in only four of the twelve locales, and
+    # is still the right item: its lede is the one that says "the field of
+    # planetary tectonics extends the concept to other planets and moons". The
+    # better-covered "tectonics" (Q78125729, ten locales) is a trap — its
+    # English sitelink is *Plate tectonics theory*, and Earth is the only body
+    # on this page with plate tectonics.
+    CategorySpec(TECTONICS_SLUG, "Tectonics", "Q193343"),
     # "magnetosphere" over "planetary magnetic field" (Q4274059): the precise
     # term has articles in French and Russian only, this one in all twelve, and
     # what the page lists is bodies whose field is detectable from outside.
