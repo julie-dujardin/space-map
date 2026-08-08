@@ -2286,10 +2286,5 @@
 	"travel_when": "When to travel",
 	"travel_window_cheap": "cheap",
 	"travel_window_costly": "costly",
-	"travel_windows_alt": "Total delta-v by departure date and cruise length",
-	"vehicle_apollo_csm": "Apollo CSM",
-	"vehicle_epstein": "Epstein drive",
-	"vehicle_falcon_heavy": "Falcon Heavy",
-	"vehicle_sls_block_1b": "SLS Block 1B",
-	"vehicle_starship": "Starship (refuelled)"
+	"travel_windows_alt": "Total delta-v by departure date and cruise length"
 }
