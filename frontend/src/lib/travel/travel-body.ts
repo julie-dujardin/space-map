@@ -13,7 +13,7 @@
 import type { BodyData } from '$lib/types/objects';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
-import { estimateMu, type TravelBody } from '$lib/math/travel';
+import { estimateMu, muFromElements, type TravelBody } from '$lib/math/travel';
 
 /** NAIF ids at or below this are the Sun and the planetary barycentres. */
 const SUN_ID = 10;
@@ -145,14 +145,42 @@ export function toTravelBody(
  * Two bodies in different systems are connected by an arc about the Sun. Two in
  * the same one are not: Earth to its own Moon shares a heliocentric orbit, so
  * there is no arc between them there, and the transfer belongs about the body
- * they both go round instead. That case only works when one end *is* that body —
- * moon to sibling moon would need a leg about a primary that is neither end, and
- * the kernel has no departure to price for it.
+ * they both go round instead.
+ *
+ * Which of the two remaining kinds that is depends on where the ends sit. When
+ * one end *is* the body at the centre, there is no escape to price at that end
+ * and the trip is a transfer ellipse from its parking orbit. When neither is —
+ * Io to Europa — the pair are siblings about a third body, and that is an
+ * ordinary two-orbit transfer again, just about a planet rather than the Sun.
  */
 export type TransferPlan =
 	| { kind: 'heliocentric' }
 	| { kind: 'system'; primary: 'origin' | 'target' }
-	| { kind: 'blocked'; reason: 'unknown-orbit' | 'same-primary' };
+	| { kind: 'sibling'; centreId: string; centralMu: number }
+	| { kind: 'blocked'; reason: 'unknown-orbit' | 'unknown-primary' };
+
+/**
+ * How the kernel is pointed at a pair: which orbit describes each end, which end
+ * the arc goes round when one of them does, and μ of whatever it goes round.
+ */
+export interface TransferFrame {
+	orbit: OrbitChoice;
+	systemPrimary?: 'departure' | 'target';
+	/** μ of the body the transfer orbits, km³/s². Absent means the Sun's. */
+	centralMu?: number;
+}
+
+const HELIOCENTRIC_FRAME: TransferFrame = { orbit: 'heliocentric' };
+
+/** The frame a plan implies. Blocked plans never reach a solve, so they take the
+ *  heliocentric default rather than a case of their own. */
+export function transferFrame(plan: TransferPlan | null): TransferFrame {
+	if (plan?.kind === 'system') {
+		return { orbit: 'own', systemPrimary: plan.primary === 'origin' ? 'departure' : 'target' };
+	}
+	if (plan?.kind === 'sibling') return { orbit: 'own', centralMu: plan.centralMu };
+	return HELIOCENTRIC_FRAME;
+}
 
 /**
  * The body at the centre of a planetary barycentre, by the NAIF numbering the
@@ -198,14 +226,46 @@ export function transferPlan(origin: BodyData, target: BodyData, lookup: BodyLoo
 	}
 	if (from[from.length - 1].id !== to[to.length - 1].id) return { kind: 'heliocentric' };
 
-	// One system. The transfer is about whichever end the other one orbits —
-	// directly, as a satellite of it, or through the barycentre they share.
+	// One system. The transfer is about the nearest body both ends go round —
+	// either one of them, or, when they meet at a barycentre, the planet inside it.
 	const shared = new Set(to.map((b) => b.id));
 	const meeting = from.find((b) => shared.has(b.id));
-	if (!meeting) return { kind: 'blocked', reason: 'same-primary' };
+	if (!meeting) return { kind: 'blocked', reason: 'unknown-primary' };
 	const centre =
-		meeting.id === origin.id || meeting.id === target.id ? meeting.id : primaryBodyOf(meeting.id);
+		meeting.id === origin.id || meeting.id === target.id
+			? meeting.id
+			: (primaryBodyOf(meeting.id) ?? meeting.id);
 	if (centre === origin.id) return { kind: 'system', primary: 'origin' };
 	if (centre === target.id) return { kind: 'system', primary: 'target' };
-	return { kind: 'blocked', reason: 'same-primary' };
+
+	// Siblings. Both ends orbit the centre, so their own elements already share a
+	// frame and the only thing the kernel is missing is the mass at its focus.
+	const centralMu = centralMuFor(centre, origin);
+	if (!(centralMu > 0)) {
+		reportUnknownCentre(centre);
+		return { kind: 'blocked', reason: 'unknown-primary' };
+	}
+	return { kind: 'sibling', centreId: centre, centralMu };
+}
+
+/**
+ * μ of the body a sibling pair both go round, km³/s².
+ *
+ * The measured GM when the export ships one — a barycentre resolves to a planet,
+ * and every planet has one — and otherwise Kepler's third law on a satellite's
+ * own orbit, which covers a moon of an asteroid.
+ */
+function centralMuFor(centreId: string, satellite: BodyData): number {
+	const id = naifId(centreId);
+	const measured = id === null ? undefined : getGmKm3s2(id);
+	return measured && measured > 0 ? measured : muFromElements(satellite);
+}
+
+/** Centres already reported, on the same footing as `reportedUnwalkable`. */
+const reportedCentres = new Set<string>();
+
+function reportUnknownCentre(centreId: string): void {
+	if (reportedCentres.has(centreId)) return;
+	reportedCentres.add(centreId);
+	console.debug(`[travel] no mass for ${centreId} — cannot solve about it.`);
 }

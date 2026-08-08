@@ -24,6 +24,7 @@ import {
 } from '$lib/math/travel';
 import { ensureVehicles, findVehicle } from './vehicles';
 import { searchWindow, type TimeMode } from './search-window';
+import type { TransferFrame } from './travel-body';
 
 /**
  * How a trip meets a body at one end. These are the kernel's own manoeuvre
@@ -46,7 +47,7 @@ export const TARGET_MODES: readonly EndpointMode[] = [
 export type TravelStatus = 'idle' | 'solving' | 'ready' | 'empty' | 'blocked';
 
 /** Why no trip can be offered at all, as opposed to no route being found. */
-export type BlockReason = 'same-primary' | 'unknown-orbit' | 'no-target';
+export type BlockReason = 'unknown-primary' | 'unknown-orbit' | 'no-target';
 
 export class TravelPanelState {
 	originMode = $state<EndpointMode>('surface');
@@ -121,14 +122,14 @@ export class TravelPanelState {
 	 * Solve the current trip. Safe to call on every input change — the newest
 	 * call wins and the rest are discarded when they land.
 	 *
-	 * `systemPrimary` names the end the transfer orbits when both are in one
-	 * system — Earth for a trip to its Moon. Absent means an arc about the Sun.
+	 * `frame` says what the transfer goes round: nothing for an arc about the Sun,
+	 * an end for a trip to that body's own moon, a μ for two moons of one planet.
 	 */
 	async solve(
 		origin: TravelBody,
 		target: TravelBody,
 		nowJd: number,
-		systemPrimary?: 'departure' | 'target'
+		frame: TransferFrame = { orbit: 'heliocentric' }
 	): Promise<void> {
 		const options = searchWindow({
 			origin,
@@ -136,7 +137,8 @@ export class TravelPanelState {
 			nowJd,
 			timeMode: this.timeMode,
 			pickedJd: this.pickedJd,
-			systemPrimary
+			systemPrimary: frame.systemPrimary,
+			centralMu: frame.centralMu
 		});
 		if (!options) {
 			console.debug(

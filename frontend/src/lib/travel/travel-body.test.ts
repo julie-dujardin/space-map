@@ -30,11 +30,13 @@ function solarSystem() {
 		body('naif-10', 'naif-0'),
 		body('naif-3', 'naif-10', { a: 1.00000261, n: 0.9856076 }),
 		body('naif-399', 'naif-3', { a: 3.0e-5, radiusKm: 6371 }),
-		body('naif-301', 'naif-3', { a: 2.57e-3, radiusKm: 1737.4 }),
+		body('naif-301', 'naif-3', { a: 2.57e-3, n: 13.1764, radiusKm: 1737.4 }),
 		body('naif-5', 'naif-10', { a: 5.202887, n: 0.0830912 }),
-		body('naif-599', 'naif-5', { a: 0, radiusKm: 69911 }),
-		body('naif-502', 'naif-5', { a: 4.485e-3, radiusKm: 1560.8 }),
-		body('naif-503', 'naif-5', { a: 7.155e-3, radiusKm: 2631.2 })
+		// Jupiter's own row is all zeroes in the export: its position comes from
+		// sampled ephemeris, and it sits inside the barycentre either way.
+		body('naif-599', 'naif-5', { a: 0, n: 0, radiusKm: 69911 }),
+		body('naif-502', 'naif-5', { a: 4.4858e-3, n: 101.3747, radiusKm: 1560.8 }),
+		body('naif-503', 'naif-5', { a: 7.1551e-3, n: 50.3176, radiusKm: 2631.2 })
 	];
 	return new Map(rows.map((r) => [r.id, r]));
 }
@@ -164,12 +166,34 @@ describe('transferPlan', () => {
 		expect(plan('naif-502', 'naif-599')).toEqual({ kind: 'system', primary: 'target' });
 	});
 
-	// Neither end is the body the arc would go round, so there is no departure to
-	// price — that trip needs a leg the kernel does not build.
-	it('blocks one moon to another of the same planet', () => {
-		expect(plan('naif-502', 'naif-503')).toEqual({
+	// Neither end is the body the arc goes round, so it is an ordinary two-orbit
+	// transfer again — about Jupiter rather than about the Sun.
+	it('sends one moon to another of the same planet round their planet', () => {
+		expect(plan('naif-502', 'naif-503')).toMatchObject({
+			kind: 'sibling',
+			centreId: 'naif-599'
+		});
+	});
+
+	// systems-global is unloaded in tests, so the mass comes from Kepler's third
+	// law on Europa's own orbit — which is exactly the fallback's job.
+	it('recovers the planet mass from a moon it never looked up', () => {
+		const solved = plan('naif-502', 'naif-503');
+		const mu = solved.kind === 'sibling' ? solved.centralMu : NaN;
+		// Jupiter's GM, 1.26687e8 km³/s², to within a tenth of a percent.
+		expect(mu / 1.26687e8).toBeCloseTo(1, 3);
+	});
+
+	it('blocks a pair whose shared centre has no mass to be found', () => {
+		const rows = [
+			body('rock', 'naif-10'),
+			body('rock-a', 'rock', { n: 0 }),
+			body('rock-b', 'rock', { n: 0 })
+		];
+		const rocks = new Map(rows.map((r) => [r.id, r]));
+		expect(transferPlan(rocks.get('rock-a')!, rocks.get('rock-b')!, lookupIn(rocks))).toEqual({
 			kind: 'blocked',
-			reason: 'same-primary'
+			reason: 'unknown-primary'
 		});
 	});
 

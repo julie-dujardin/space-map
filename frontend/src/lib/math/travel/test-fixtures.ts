@@ -166,6 +166,52 @@ export const MOON_BARYCENTRIC: TravelBody = {
 	parentId: 'naif-3'
 };
 
+/**
+ * Two Galilean moons as the export describes them — jovicentric elements about
+ * the Jupiter barycentre, at a 2026 epoch.
+ *
+ * Neither is the body the transfer goes round, so this is the sibling case: an
+ * ordinary two-orbit transfer whose central mass is Jupiter's rather than the
+ * Sun's, and whose whole timescale is days instead of months.
+ */
+const JOVIAN_EPOCH = 2461240.5;
+
+export const IO: TravelBody = {
+	id: 'naif-501',
+	mu: 5959.916,
+	muEstimated: false,
+	radiusKm: 1821.6,
+	elements: {
+		a: 0.002821095942063092,
+		e: 0.004467848063025687,
+		i: 2.22252894564728,
+		om: 338.46326060018174,
+		w: 104.32837716252135,
+		ma: 62.73808142330633,
+		n: 203.2505150524944,
+		epoch: JOVIAN_EPOCH
+	},
+	parentId: 'naif-5'
+};
+
+export const EUROPA: TravelBody = {
+	id: 'naif-502',
+	mu: 3202.739,
+	muEstimated: false,
+	radiusKm: 1560.8,
+	elements: {
+		a: 0.004485783212056366,
+		e: 0.009414402373766022,
+		i: 2.096511880154911,
+		om: 326.08339255065107,
+		w: 291.8086773897665,
+		ma: 33.446435806735714,
+		n: 101.36803252565768,
+		epoch: JOVIAN_EPOCH
+	},
+	parentId: 'naif-5'
+};
+
 /** Airless, and the one ascent with a flight-proven Δv to check the model against. */
 export const MOON: TravelBody = {
 	id: 'naif-301',

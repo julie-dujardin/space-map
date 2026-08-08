@@ -26,8 +26,8 @@
 	import {
 		lookupIn,
 		toTravelBody,
+		transferFrame,
 		transferPlan,
-		type OrbitChoice,
 		type TransferPlan
 	} from '$lib/travel/travel-body';
 	import { TravelPanelState, type BlockReason, type EndpointMode } from '$lib/travel/panel.svelte';
@@ -112,20 +112,20 @@
 	// equivalent and silently never re-ran.
 	let vehicles = $state<readonly Vehicle[]>([]);
 
-	// What kind of transfer this pair needs — across the solar system, or inside
-	// one system — and so which orbit each end is described by.
+	// What kind of transfer this pair needs — across the solar system, out to a
+	// body's own moon, or between two moons of one planet — and so which orbit
+	// each end is described by and what the arc goes round.
 	let lookup = $derived(lookupIn(bodiesById));
 	let plan = $derived<TransferPlan | null>(target ? transferPlan(origin, target, lookup) : null);
-	let orbit = $derived<OrbitChoice>(plan?.kind === 'system' ? 'own' : 'heliocentric');
-	let systemPrimary = $derived<'departure' | 'target' | undefined>(
-		plan?.kind === 'system' ? (plan.primary === 'origin' ? 'departure' : 'target') : undefined
-	);
+	let frame = $derived(transferFrame(plan));
 
 	// The kernel's view of each end, rebuilt whenever either body or its detail
 	// changes.
-	let originTravel = $derived<TravelBody | null>(toTravelBody(origin, lookup, originDetail, orbit));
+	let originTravel = $derived<TravelBody | null>(
+		toTravelBody(origin, lookup, originDetail, frame.orbit)
+	);
 	let targetTravel = $derived<TravelBody | null>(
-		target ? toTravelBody(target, lookup, targetDetail, orbit) : null
+		target ? toTravelBody(target, lookup, targetDetail, frame.orbit) : null
 	);
 
 	// A destination that never resolved is a destination with no orbit, not an
@@ -140,12 +140,12 @@
 				: null
 	);
 
-	// Nothing inside one system waits for an alignment: the satellite comes round
+	// A trip out to a body's own moon waits for nothing: the satellite comes round
 	// every orbit, so every departure date is a window and naming one would be
-	// noise.
+	// noise. Two moons of one planet do have alignments, just fast ones.
 	let nextWindowJd = $derived.by(() => {
-		if (!originTravel || !targetTravel || block || systemPrimary) return null;
-		const windows = nextTransferWindows(originTravel, targetTravel, nowJd, 1);
+		if (!originTravel || !targetTravel || block || frame.systemPrimary) return null;
+		const windows = nextTransferWindows(originTravel, targetTravel, nowJd, 1, frame.centralMu);
 		return windows.length > 0 ? windows[0] : null;
 	});
 
@@ -159,13 +159,13 @@
 	// transfer out — the earliest date the trip could plausibly be held to.
 	function defaultPickedJd(mode: TimeMode): number {
 		if (mode !== 'arrive' || !originTravel || !targetTravel) return nowJd;
-		const slowest = systemPrimary
+		const slowest = frame.systemPrimary
 			? (systemArcBounds(
-					systemPrimary === 'departure' ? originTravel : targetTravel,
-					systemPrimary === 'departure' ? targetTravel : originTravel,
+					frame.systemPrimary === 'departure' ? originTravel : targetTravel,
+					frame.systemPrimary === 'departure' ? targetTravel : originTravel,
 					nowJd
 				)?.slowestDays ?? null)
-			: hohmannTransferDays(originTravel, targetTravel);
+			: hohmannTransferDays(originTravel, targetTravel, frame.centralMu);
 		return nowJd + (slowest ?? 0);
 	}
 
@@ -192,7 +192,7 @@
 			panel.block('unknown-orbit');
 			return;
 		}
-		void panel.solve(from, to, nowJd, systemPrimary);
+		void panel.solve(from, to, nowJd, frame);
 	});
 
 	$effect(() => () => panel.dispose());
@@ -366,7 +366,9 @@
 			<p class="text-muted-foreground flex items-start gap-2 text-xs">
 				<CircleAlertIcon class="mt-0.5 size-3.5 shrink-0" />
 				<span>
-					{panel.blocked === 'same-primary' ? m.travel_same_primary() : m.travel_unknown_orbit()}
+					{panel.blocked === 'unknown-primary'
+						? m.travel_unknown_primary()
+						: m.travel_unknown_orbit()}
 				</span>
 			</p>
 		{/if}

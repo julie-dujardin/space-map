@@ -24,7 +24,7 @@ export type { Vec3 } from './vec3';
 export { add, cross, dot, norm, normalize, scale, sub } from './vec3';
 
 export type { TravelBody } from './body';
-export { estimateMu, escapeSpeed, sphereOfInfluenceKm } from './body';
+export { estimateMu, escapeSpeed, muFromElements, sphereOfInfluenceKm } from './body';
 
 export type { StateVector } from './state';
 export { elementsToState, eclipticToScene } from './state';

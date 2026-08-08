@@ -20,12 +20,21 @@ export type TimeMode = 'now' | 'depart' | 'arrive';
 
 /** Beyond this the grid is too coarse to resolve a window; slow pairs get capped. */
 const MAX_SEARCH_DAYS = 3 * 365.25;
+/**
+ * How short the departure axis may get.
+ *
+ * Every floor below is capped by the pair's own transfer time as well, because a
+ * bare day count is a solar-system assumption: Io to Europa is a 1.3-day crossing
+ * with a 3.5-day synodic period, and a flat 60-day floor would grid seventeen of
+ * them at once and resolve none.
+ */
 const MIN_SEARCH_DAYS = 60;
 
-/** How far either side of a chosen departure date to look. */
+/** How far either side of a chosen departure date to look, and at most what share
+ *  of the whole span. */
 const DEPART_AT_SLACK_DAYS = 45;
+const DEPART_AT_SLACK_FRACTION = 0.5;
 
-const MIN_TOF_DAYS = 15;
 /** Cruise bounds as multiples of the Hohmann time — fast arcs to slow ones. */
 const TOF_MIN_FACTOR = 0.35;
 const TOF_MAX_FACTOR = 2.2;
@@ -50,6 +59,9 @@ export interface WindowRequest {
 	pickedJd?: number | null;
 	/** Set when the trip stays inside one system — see `RouteOptions`. */
 	systemPrimary?: 'departure' | 'target';
+	/** μ of the body the transfer orbits, km³/s². Absent means the Sun's — set for
+	 *  a pair of moons, where the arc goes round their planet instead. */
+	centralMu?: number;
 }
 
 /**
@@ -89,15 +101,15 @@ function systemWindow(request: WindowRequest): PorkchopOptions | null {
  * The returned options go straight to `computePorkchop`.
  */
 export function searchWindow(request: WindowRequest): PorkchopOptions | null {
-	const { origin, target, nowJd, timeMode, pickedJd } = request;
+	const { origin, target, nowJd, timeMode, pickedJd, centralMu } = request;
 	if (request.systemPrimary) return systemWindow(request);
 
 	// An escaping probe has no semi-major axis to scale a cruise against, so the
 	// crossing between the two current distances stands in. The arcs themselves
 	// are still real Lambert solves — only the bounds are approximated.
-	const transfer = hohmannTransferDays(origin, target);
+	const transfer = hohmannTransferDays(origin, target, centralMu);
 	const chase = transfer === null;
-	const hohmann = transfer ?? crossingTimeDays(origin, target, nowJd);
+	const hohmann = transfer ?? crossingTimeDays(origin, target, nowJd, centralMu);
 	if (hohmann === null || !(hohmann > 0)) return null;
 
 	// A body that isn't going round has no synodic period either, whatever its
@@ -105,7 +117,7 @@ export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 	const synodic = chase ? null : synodicPeriodDays(origin, target);
 	const span = clamp(
 		synodic !== null && Number.isFinite(synodic) ? synodic : MAX_SEARCH_DAYS,
-		MIN_SEARCH_DAYS,
+		Math.min(MIN_SEARCH_DAYS, hohmann),
 		MAX_SEARCH_DAYS
 	);
 	const tofMinFactor = chase ? CHASE_TOF_MIN_FACTOR : TOF_MIN_FACTOR;
@@ -115,22 +127,25 @@ export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 	let departToJd = nowJd + span;
 	if (timeMode === 'depart' && pickedJd != null) {
 		// Centre on the date, but never search departures already in the past.
-		departFromJd = Math.max(nowJd, pickedJd - DEPART_AT_SLACK_DAYS);
-		departToJd = pickedJd + DEPART_AT_SLACK_DAYS;
+		const slack = Math.min(DEPART_AT_SLACK_DAYS, span * DEPART_AT_SLACK_FRACTION);
+		departFromJd = Math.max(nowJd, pickedJd - slack);
+		departToJd = pickedJd + slack;
 	} else if (timeMode === 'arrive' && pickedJd != null) {
 		// Everything that could still land by the deadline: the latest useful
 		// departure is the deadline minus the fastest cruise worth flying.
-		departToJd = Math.max(nowJd + 1, pickedJd - hohmann * tofMinFactor);
+		departToJd = pickedJd - hohmann * tofMinFactor;
 	}
-	if (departToJd <= departFromJd) departToJd = departFromJd + MIN_SEARCH_DAYS;
+	// A deadline already past leaves nothing to search; fall back to the open span.
+	if (departToJd <= departFromJd) departToJd = departFromJd + span;
 
 	return {
 		departFromJd,
 		departToJd,
-		tofMinDays: Math.max(MIN_TOF_DAYS, hohmann * tofMinFactor),
-		tofMaxDays: Math.max(MIN_TOF_DAYS * 2, hohmann * tofMaxFactor),
+		tofMinDays: hohmann * tofMinFactor,
+		tofMaxDays: hohmann * tofMaxFactor,
 		departSteps: DEPART_STEPS,
-		tofSteps: TOF_STEPS
+		tofSteps: TOF_STEPS,
+		centralMu
 	};
 }
 

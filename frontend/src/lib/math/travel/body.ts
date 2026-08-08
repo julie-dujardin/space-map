@@ -5,7 +5,8 @@
  */
 
 import type { OrbitalElements } from '$lib/types/objects';
-import { ASSUMED_DENSITY_KG_M3, G_KM3_KG_S2 } from './constants';
+import { AU_KM } from '$lib/math/units';
+import { ASSUMED_DENSITY_KG_M3, G_KM3_KG_S2, SEC_PER_DAY } from './constants';
 
 export interface TravelBody {
 	/** Prefixed object id, e.g. "naif-499". */
@@ -37,6 +38,20 @@ export interface TravelBody {
 export function estimateMu(radiusKm: number, densityKgM3 = ASSUMED_DENSITY_KG_M3): number {
 	const volumeKm3 = (4 / 3) * Math.PI * radiusKm ** 3;
 	return G_KM3_KG_S2 * densityKgM3 * 1e9 * volumeKm3;
+}
+
+/**
+ * μ of whatever a body goes round, km³/s², from Kepler's third law.
+ *
+ * A satellite's own period and distance name the mass at the focus, so a pair of
+ * moons can price a transfer about their planet without anyone having to look the
+ * planet up. Agrees with a measured GM to about the seven digits the packed mean
+ * motion carries, since that is what it was fitted against.
+ */
+export function muFromElements(el: OrbitalElements): number {
+	const nRadPerSec = (el.n * (Math.PI / 180)) / SEC_PER_DAY;
+	const aKm = el.a * AU_KM;
+	return nRadPerSec * nRadPerSec * aKm ** 3;
 }
 
 /** Surface escape velocity, km/s. */
