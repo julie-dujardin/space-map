@@ -1,5 +1,6 @@
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import httpx
@@ -10,15 +11,69 @@ from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
 
-# Jonathan McDowell's GCAT orbital launch log — one row per payload, with
-# launch vehicle, pad, site and flight/booster serial. https://planet4589.org/space/gcat/
-LAUNCHLOG_URL = "https://planet4589.org/space/gcat/tsv/derived/launchlog.tsv"
-EXPECTED_HEADER = "#Launch_Tag\t"
+GCAT_BASE = "https://planet4589.org/space/gcat/tsv"
 
-# GCAT launch-vehicle table — family lineage + physical specs per LV name.
-# Joins to launchlog.lv_type; supplies launch-vehicle group pages.
-LV_URL = "https://planet4589.org/space/gcat/tsv/tables/lv.tsv"
-LV_EXPECTED_HEADER = "#LV_Name\t"
+
+@dataclass(frozen=True)
+class GCATTable:
+    """One GCAT TSV. ``header`` is checked so a redesigned column set fails the
+    download rather than reaching the parsers as silently different data."""
+
+    filename: str
+    path: str
+    header: str
+    description: str
+
+
+# Jonathan McDowell's GCAT. https://planet4589.org/space/gcat/
+#
+# The launch log and lv.tsv drive the launch-vehicle group pages. The four
+# tables below back the spacecraft catalogue instead: GCAT is the only
+# compilation that states launch mass, dry mass, thrust and Isp for most flown
+# hardware in one place and with one set of unit conventions, which is what a Δv
+# derived from the rocket equation needs — a launch mass from a press kit and a
+# dry mass from an encyclopedia will not subtract to a propellant load.
+TABLES: tuple[GCATTable, ...] = (
+    GCATTable(
+        "launchlog.tsv",
+        "derived/launchlog.tsv",
+        "#Launch_Tag\t",
+        "orbital launch log",
+    ),
+    GCATTable(
+        "lv.tsv",
+        "tables/lv.tsv",
+        "#LV_Name\t",
+        "launch-vehicle table",
+    ),
+    GCATTable(
+        "lvs.tsv",
+        "tables/lvs.tsv",
+        "#LV_Name\t",
+        "launch-vehicle stage stacks",
+    ),
+    GCATTable(
+        "stages.tsv",
+        "tables/stages.tsv",
+        "#Stage_Name\t",
+        "stage masses",
+    ),
+    GCATTable(
+        "engines.tsv",
+        "tables/engines.tsv",
+        "#Name\t",
+        "engine thrust & Isp",
+    ),
+    # Launch and dry mass per catalogued object. `Mass - DryMass` is the
+    # propellant the spacecraft flew with, which no other source states
+    # directly.
+    GCATTable(
+        "satcat.tsv",
+        "cat/satcat.tsv",
+        "#JCAT\t",
+        "satellite catalogue",
+    ),
+)
 
 
 class GCATDownloader(Downloader):
@@ -30,61 +85,49 @@ class GCATDownloader(Downloader):
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
     def is_complete(self, limit: int | None) -> bool:
-        # Refetched every UTC day; skip only if today is already done.
+        # Refetched every UTC day; skip only if today is already done. A table
+        # added since the last run also forces a refetch, so the new file
+        # appears without waiting for tomorrow.
         if not self.metadata_file.exists():
             return False
         meta = json.loads(self.metadata_file.read_text())
-        today = datetime.now(timezone.utc).date().isoformat()
-        return meta.get("day") == today
+        if meta.get("day") != datetime.now(timezone.utc).date().isoformat():
+            return False
+        return all((self.out_dir / table.filename).exists() for table in TABLES)
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        logger.info("Downloading GCAT launch log...")
-        response = self.client.get(LAUNCHLOG_URL)
-        if response.status_code in (403, 404):
-            raise DownloadError(
-                f"HTTP {response.status_code} fetching launchlog — stopping (do not retry)"
-            )
-        response.raise_for_status()
-
-        body = response.text
-        if not body.startswith(EXPECTED_HEADER):
-            raise DownloadError(f"Unexpected launchlog response: {body[:80]!r}")
-
-        out_file = self.out_dir / "launchlog.tsv"
-        out_file.write_text(body)
-        # Two comment lines (header + "# Updated ...") precede the data rows.
-        record_count = body.count("\n") - 2
-        logger.info("Saved %s launchlog rows -> %s", f"{record_count:,}", out_file.name)
-
-        lv_record_count = self._download_lv()
+        counts = {table.filename: self._download_table(table) for table in TABLES}
 
         today = datetime.now(timezone.utc).date()
         self._save_metadata(
-            LAUNCHLOG_URL,
-            record_count,
+            f"{GCAT_BASE}/",
+            counts["launchlog.tsv"],
             complete=True,
             day=today.isoformat(),
-            lv_source_url=LV_URL,
-            lv_record_count=lv_record_count,
+            table_record_counts=counts,
         )
 
-    def _download_lv(self) -> int:
-        logger.info("Downloading GCAT launch-vehicle table...")
-        response = self.client.get(LV_URL)
+    def _download_table(self, table: GCATTable) -> int:
+        logger.info("Downloading GCAT %s...", table.description)
+        url = f"{GCAT_BASE}/{table.path}"
+        response = self.client.get(url)
         if response.status_code in (403, 404):
             raise DownloadError(
-                f"HTTP {response.status_code} fetching lv.tsv — stopping (do not retry)"
+                f"HTTP {response.status_code} fetching {table.filename} — stopping (do not retry)"
             )
         response.raise_for_status()
 
         body = response.text
-        if not body.startswith(LV_EXPECTED_HEADER):
-            raise DownloadError(f"Unexpected lv.tsv response: {body[:80]!r}")
+        if not body.startswith(table.header):
+            raise DownloadError(f"Unexpected {table.filename} response: {body[:80]!r}")
 
-        out_file = self.out_dir / "lv.tsv"
-        out_file.write_text(body)
-        record_count = body.count("\n") - 2  # header + "# Updated ..." precede the data
+        (self.out_dir / table.filename).write_text(body)
+        # Two comment lines (header + "# Updated ...") precede the data rows.
+        record_count = body.count("\n") - 2
         logger.info(
-            "Saved %s launch-vehicle rows -> %s", f"{record_count:,}", out_file.name
+            "Saved %s %s rows -> %s",
+            f"{record_count:,}",
+            table.description,
+            table.filename,
         )
         return record_count

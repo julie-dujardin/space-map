@@ -9,6 +9,7 @@ from space_map_data.export.atmospheres import export_atmospheres_only
 from space_map_data.export.groups import export_groups_only
 from space_map_data.export.nomenclature.quadrangles import export_quadrangles_only
 from space_map_data.export.pipeline.orchestrator import export
+from space_map_data.export.spacecraft import export_spacecraft_only
 from space_map_data.utils.db import engine_scope
 from space_map_data.utils.paths import DATA_DIR
 
@@ -19,7 +20,7 @@ def cli():
     )
     parser.add_argument(
         "--only",
-        choices=("groups", "quadrangles", "atmospheres"),
+        choices=("groups", "quadrangles", "atmospheres", "spacecraft"),
         default=None,
         help="Run only the named tier (additive — leaves other outputs untouched)",
     )
@@ -31,6 +32,9 @@ def cli():
     if args.only == "atmospheres":
         # Pure constants + derivation — no DB.
         export_atmospheres_only()
+        return
+    if args.only == "spacecraft":
+        export_spacecraft_only()
         return
     with engine_scope() as engine:
         if args.only == "groups":

@@ -39,6 +39,9 @@ from space_map_data.download.providers.metadata.texture_sources import (
     TextureSourcesDownloader,
 )
 from space_map_data.download.providers.bjj_rings import BJJRingsDownloader
+from space_map_data.download.providers.launch_performance import (
+    LaunchPerformanceDownloader,
+)
 from space_map_data.download.providers.psg import PSGAtmosphereDownloader
 from space_map_data.download.providers.gvp import GVPDownloader
 from space_map_data.download.providers.three_d.nasa import NASA3DResourcesDownloader
@@ -69,6 +72,7 @@ PROVIDERS_CLASSES = [
     IAUNomenclatureDownloader,
     TextureSourcesDownloader,
     BJJRingsDownloader,
+    LaunchPerformanceDownloader,
     PSGAtmosphereDownloader,
     GVPDownloader,
     NASA3DResourcesDownloader,

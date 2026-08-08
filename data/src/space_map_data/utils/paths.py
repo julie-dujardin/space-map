@@ -28,6 +28,9 @@ SOURCES_MODELS_SPACECRAFT_DIR = SOURCES_MODELS_DIR / "spacecraft"
 SOURCES_MODELS_BODIES_DIR = SOURCES_MODELS_DIR / "bodies"
 SOURCES_METADATA_DIR = SOURCES_DIR / "metadata"
 SOURCES_ATMOSPHERE_DIR = SOURCES_DIR / "atmosphere"
+# Launch-vehicle escape performance: payload-vs-C3 curves, one file per
+# vehicle configuration.
+SOURCES_LAUNCH_PERFORMANCE_DIR = SOURCES_DIR / "launch-performance"
 
 # Hand-authored supplemental overlays the automated providers can't discover
 # (mirrors sources/models/spacecraft/manual + Commons manual-extra.json). See

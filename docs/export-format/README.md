@@ -57,6 +57,7 @@ v1/
   systems/global.json                             (not gzipped) always-loaded: per-body GMs + IAU nutation angles
   systems/{barycenter_id}.json                    per-system body metadata, loaded on system entry
   atmospheres.json                                (not gzipped) always-loaded: per-body scattering params + shared aerosol phase LUTs
+  spacecraft.json                                 (not gzipped) always-loaded: launch-vehicle C3 curves + spacecraft Δv primitives
 ```
 
 ## Sections
@@ -81,6 +82,7 @@ v1/
 | [models.md](models.md) | 3D spacecraft/satellite glTF bundles and metadata. |
 | [systems.md](systems.md) | `systems/global.json` lookups + per-system `systems/{barycenter_id}.json`. |
 | [atmospheres.md](atmospheres.md) | `atmospheres.json` per-body scattering parameters + aerosol phase LUTs. |
+| [spacecraft.md](spacecraft.md) | `spacecraft.json` vehicle catalogue: launcher C3 curves, spacecraft mass/Isp/thrust, crew, cost. |
 | [credits.md](credits.md) | `credits.json` aggregated attribution manifest. |
 | [sitemap.md](sitemap.md) | `seo/sitemap.xml` notable-object + group URL set and its selection rule. |
 | [consuming.md](consuming.md) | End-to-end consumer walkthrough. |

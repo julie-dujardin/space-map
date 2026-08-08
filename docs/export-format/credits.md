@@ -44,6 +44,7 @@ interface Credits {
     url: string;                 // DOI or stable publisher/archive link
     contribution: string;        // one-liner: what the pipeline takes from it
   }>;
+  spacecraft_references: Array<Reference>;  // launch performance, spacecraft masses & engines, plus the novels behind the fictional entries
   ring_references: Array<Reference>;        // works behind the ring profiles
   temperature_references: Array<Reference>; // measured temperatures + core estimates
   interior_references: Array<Reference>;    // gravity/seismic/meteorite work behind the interior blocks
@@ -85,14 +86,16 @@ unresolved or restrictive enough to need manual review, so absence means
 row per work numbers are actually taken from, English-only like the rest of
 this payload).
 
-`ring_references`, `temperature_references`, `activity_references` and
-`interior_references` are the same shape, one per constants package under
+`spacecraft_references`, `ring_references`, `temperature_references`,
+`activity_references` and `interior_references` are the same shape, one per
+constants package under
 `data/src/space_map_data/constants/`. Each per-body panel credits only the works
 its own numbers come from; these lists are the whole bibliography in one place,
 for the credits page.
 
-The five lists are deduplicated against each other by `url`, shortest list first
-(`ring` → `temperature` → `activity` → `interior` → `atmosphere`), so a shared
+The six lists are deduplicated against each other by `url`, shortest list first
+(`spacecraft` → `ring` → `temperature` → `activity` → `interior` →
+`atmosphere`), so a shared
 work stays in the list that would notice losing it. A work cited by two packages
 — Huygens' descent measured Titan's surface pressure and its temperature, Juno's
 Love number for Io constrains both its interior and the tide that heats it —

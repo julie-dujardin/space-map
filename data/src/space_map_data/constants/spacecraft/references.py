@@ -151,12 +151,12 @@ SPACECRAFT_SOURCES: dict[str, SpacecraftReference] = {
         "Revelation Space",
     ),
     # Lucasfilm's own databank entry for the Falcon publishes one number, its
-    # length, so the crew below is what the film shows: a pilot and a
-    # co-pilot, which is how the ship is flown throughout.
+    # length. The film is what backs the two who fly it; the six they carry
+    # are the capacity every reference work repeats and none of them sources.
     "lucas_1977_star_wars": SpacecraftReference(
         "Lucas 1977, Star Wars: Episode IV – A New Hope",
         "https://www.wikidata.org/wiki/Q17738",
-        "The Millennium Falcon's flight crew of two",
+        "The Millennium Falcon's complement of two crew and six passengers",
         "Star Wars",
     ),
     "clarke_1968_2001": SpacecraftReference(

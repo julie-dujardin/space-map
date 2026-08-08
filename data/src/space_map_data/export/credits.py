@@ -21,6 +21,7 @@ from space_map_data.constants.atmosphere.references import (
 from space_map_data.constants.rings.attribution import RingSource
 from space_map_data.constants.rings.catalog import RING_CATALOGS
 from space_map_data.constants.rings.references import RING_REFERENCES
+from space_map_data.constants.spacecraft import SPACECRAFT_SOURCES
 from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
 from space_map_data.export.objects.sources import Reference
 from space_map_data.export.systems import texture_attribution
@@ -194,7 +195,14 @@ def _atmosphere_references() -> list[dict]:
 # bibliography without the NSSDCA fact sheets would read as an omission, while
 # the atmosphere list sheds six of a hundred and twenty-five and still holds
 # every other work behind the same numbers.
-_REFERENCE_SECTIONS = ("ring", "temperature", "activity", "interior", "atmosphere")
+_REFERENCE_SECTIONS = (
+    "spacecraft",
+    "ring",
+    "temperature",
+    "activity",
+    "interior",
+    "atmosphere",
+)
 
 
 def _merge_references(sections: dict[str, list[dict]]) -> dict[str, list[dict]]:
@@ -508,6 +516,9 @@ def write_credits(
             # constants/atmosphere/references.py.
             "atmosphere": _atmosphere_references(),
             # The works behind the tables the ring profiles are read off.
+            # Launch performance, spacecraft masses and engine figures —
+            # plus the novels the fictional entries are read out of.
+            "spacecraft": [_bibliography_row(r) for r in SPACECRAFT_SOURCES.values()],
             "ring": [r._asdict() for r in RING_REFERENCES],
             # Volcanism, tectonics, tidal heating and planetary magnetism —
             # what the bodies are still doing rather than what they are.
@@ -524,6 +535,7 @@ def write_credits(
         "systems": systems_out,
         "ephemeris_archives": EPHEMERIS_ARCHIVES,
         "atmosphere_references": references["atmosphere"],
+        "spacecraft_references": references["spacecraft"],
         "ring_references": references["ring"],
         "temperature_references": references["temperature"],
         "interior_references": references["interior"],

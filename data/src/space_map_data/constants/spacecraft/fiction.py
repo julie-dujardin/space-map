@@ -89,10 +89,9 @@ FICTIONAL: tuple[Spacecraft, ...] = (
     # Present for the same reason a map has a compass rose. Lucasfilm's
     # databank publishes the ship's length and nothing else, and no film gives
     # a sublight acceleration or a mass, so the panel will say it cannot judge
-    # the trip. The two below are the flight crew the films show flying it;
-    # what the ship can carry on top of them is in reference books rather than
-    # in anything citable, so it is not counted here — this is the one entry
-    # whose complement is a floor rather than a capacity.
+    # the trip. Eight is the ship's complement rather than its flight crew:
+    # two fly it and six ride, which is the split every reference gives and
+    # roughly what leaves Tatooine in the first film.
     Spacecraft(
         id="millennium-falcon",
         qid="Q19901",
