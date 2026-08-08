@@ -54,11 +54,23 @@ export function ascentDv(body: TravelBody): number {
 }
 
 /**
+ * Speed at periapsis on the arc that leaves with excess speed `vInfKms`.
+ *
+ * Everything either burn is priced from: a departure pays the difference between
+ * this and the parking orbit's own speed, an arrival pays the difference between
+ * this and whatever bound orbit it is dropping into. Stating it once is what
+ * lets an escape and a transfer inside one system share the rest of the model.
+ */
+export function periapsisSpeed(mu: number, rPeriKm: number, vInfKms: number): number {
+	return Math.sqrt(vInfKms * vInfKms + (2 * mu) / rPeriKm);
+}
+
+/**
  * Δv to leave a circular parking orbit on a hyperbola with excess speed
  * `vInfKms`. The Oberth effect is why this is so much less than `vInf` itself.
  */
 export function injectionDv(mu: number, rParkKm: number, vInfKms: number): number {
-	return Math.sqrt(vInfKms * vInfKms + (2 * mu) / rParkKm) - circularSpeed(mu, rParkKm);
+	return periapsisSpeed(mu, rParkKm, vInfKms) - circularSpeed(mu, rParkKm);
 }
 
 /**
@@ -67,9 +79,12 @@ export function injectionDv(mu: number, rParkKm: number, vInfKms: number): numbe
  * capture; a loose ellipse is far cheaper and is what real orbiters do first.
  */
 export function captureDv(mu: number, rPeriKm: number, rApoKm: number, vInfKms: number): number {
-	const vHyp = Math.sqrt(vInfKms * vInfKms + (2 * mu) / rPeriKm);
-	const vBound = Math.sqrt((2 * mu) / rPeriKm - (2 * mu) / (rPeriKm + rApoKm));
-	return Math.max(0, vHyp - vBound);
+	return Math.max(0, periapsisSpeed(mu, rPeriKm, vInfKms) - boundSpeed(mu, rPeriKm, rApoKm));
+}
+
+/** Speed at periapsis of a bound orbit between the two radii, km/s. */
+function boundSpeed(mu: number, rPeriKm: number, rApoKm: number): number {
+	return Math.sqrt((2 * mu) / rPeriKm - (2 * mu) / (rPeriKm + rApoKm));
 }
 
 export type ArrivalMode = 'flyby' | 'capture' | 'low-orbit' | 'landing';
@@ -92,13 +107,29 @@ export interface ArrivalCost {
  * Mercury is not.
  */
 export function arrivalCost(body: TravelBody, vInfKms: number, mode: ArrivalMode): ArrivalCost {
+	return arrivalCostFromSpeed(body, periapsisSpeed(body.mu, parkingRadiusKm(body), vInfKms), mode);
+}
+
+/**
+ * The same arrival priced from the speed the approach actually carries at
+ * periapsis, rather than from a hyperbolic excess.
+ *
+ * Coming back down to the body you launched from — Moon to Earth — you are still
+ * bound to it, so there is no excess speed to quote and the burn is just how much
+ * faster the transfer is going than the orbit you want to be in.
+ */
+export function arrivalCostFromSpeed(
+	body: TravelBody,
+	vPeriKms: number,
+	mode: ArrivalMode
+): ArrivalCost {
 	if (mode === 'flyby') return { captureKms: 0, descentKms: 0, aerobraked: false };
 
 	const rPeri = parkingRadiusKm(body);
 	const aero = hasUsableAtmosphere(body);
 	const rApo = mode === 'capture' ? CAPTURE_APOAPSIS_RADII * body.radiusKm : rPeri;
 
-	let capture = captureDv(body.mu, rPeri, rApo, vInfKms);
+	let capture = Math.max(0, vPeriKms - boundSpeed(body.mu, rPeri, rApo));
 	if (aero) capture *= 1 - AEROCAPTURE_SAVING_FRACTION;
 
 	if (mode !== 'landing') return { captureKms: capture, descentKms: 0, aerobraked: aero };

@@ -57,14 +57,8 @@ const MAX_HOPS = 8;
  * orbit we can name.
  */
 export function heliocentricAncestor(body: BodyData, lookup: BodyLookup): BodyData | null {
-	let current: BodyData = body;
-	for (let hop = 0; hop < MAX_HOPS; hop++) {
-		if (isHeliocentricRoot(current.parentId)) return current;
-		const parent = lookup(current.parentId);
-		if (!parent) return null;
-		current = parent;
-	}
-	return null;
+	const chain = ancestry(body, lookup);
+	return chain ? chain[chain.length - 1] : null;
 }
 
 /**
@@ -93,19 +87,27 @@ function surfacePressureBar(detail: GlobalObjectData | null): number | undefined
 }
 
 /**
+ * Which orbit describes the body in the frame its trip is solved in: the one
+ * about the Sun, or its own about whatever it goes round. A trip across the
+ * solar system needs the first; a trip inside one system needs the second.
+ */
+export type OrbitChoice = 'heliocentric' | 'own';
+
+/**
  * Build the kernel's view of `body`.
  *
  * `detail` is optional — without it the body is treated as airless, which only
  * changes whether the arrival gets an aerocapture discount.
  *
- * Returns null when the body has no heliocentric orbit to transfer along.
+ * Returns null when the body has no orbit of the requested kind.
  */
 export function toTravelBody(
 	body: BodyData,
 	lookup: BodyLookup,
-	detail: GlobalObjectData | null = null
+	detail: GlobalObjectData | null = null,
+	orbit: OrbitChoice = 'heliocentric'
 ): TravelBody | null {
-	const ancestor = heliocentricAncestor(body, lookup);
+	const ancestor = orbit === 'own' ? body : heliocentricAncestor(body, lookup);
 	if (!ancestor) return null;
 
 	const radiusKm = Number.isFinite(body.radiusKm) && body.radiusKm > 0 ? body.radiusKm : 1;
@@ -138,24 +140,72 @@ export function toTravelBody(
 }
 
 /**
- * Why these two bodies cannot be connected by a single heliocentric transfer,
- * or null when they can.
+ * What kind of transfer a pair of bodies needs, or why it cannot have one.
  *
- * Sharing a heliocentric ancestor is the real blocker: Earth to its own Moon is
- * one orbit to itself, which has no transfer arc at all. That trip needs a leg
- * about the shared primary, which the kernel does not yet solve.
+ * Two bodies in different systems are connected by an arc about the Sun. Two in
+ * the same one are not: Earth to its own Moon shares a heliocentric orbit, so
+ * there is no arc between them there, and the transfer belongs about the body
+ * they both go round instead. That case only works when one end *is* that body —
+ * moon to sibling moon would need a leg about a primary that is neither end, and
+ * the kernel has no departure to price for it.
  */
-export function sameSystemBlock(
-	origin: BodyData,
-	target: BodyData,
-	lookup: BodyLookup
-): 'unknown-orbit' | 'same-primary' | null {
-	const a = heliocentricAncestor(origin, lookup);
-	const b = heliocentricAncestor(target, lookup);
-	if (!a || !b) {
-		console.debug(`[travel] no heliocentric ancestor for ${(a ? target : origin).id}`);
-		return 'unknown-orbit';
+export type TransferPlan =
+	| { kind: 'heliocentric' }
+	| { kind: 'system'; primary: 'origin' | 'target' }
+	| { kind: 'blocked'; reason: 'unknown-orbit' | 'same-primary' };
+
+/**
+ * The body at the centre of a planetary barycentre, by the NAIF numbering the
+ * export uses throughout: barycentre `naif-N` holds planet `naif-N99`. Null for
+ * anything that is not one of the nine.
+ */
+function primaryBodyOf(barycentreId: string): string | null {
+	const id = naifId(barycentreId);
+	if (id === null || id < 1 || id > 9) return null;
+	return `naif-${id}99`;
+}
+
+/** The body and every ancestor up to its heliocentric orbit, nearest first. */
+function ancestry(body: BodyData, lookup: BodyLookup): BodyData[] | null {
+	const chain: BodyData[] = [];
+	let current = body;
+	for (let hop = 0; hop < MAX_HOPS; hop++) {
+		chain.push(current);
+		if (isHeliocentricRoot(current.parentId)) return chain;
+		const parent = lookup(current.parentId);
+		if (!parent) return null;
+		current = parent;
 	}
-	if (a.id === b.id) return 'same-primary';
 	return null;
+}
+
+/** Bodies already reported. The search exclusions ask about every body in the
+ *  scene on every render, and the answer does not change between them. */
+const reportedUnwalkable = new Set<string>();
+
+function reportUnwalkableChain(id: string): void {
+	if (reportedUnwalkable.has(id)) return;
+	reportedUnwalkable.add(id);
+	console.debug(`[travel] no heliocentric ancestor for ${id}`);
+}
+
+export function transferPlan(origin: BodyData, target: BodyData, lookup: BodyLookup): TransferPlan {
+	const from = ancestry(origin, lookup);
+	const to = ancestry(target, lookup);
+	if (!from || !to) {
+		reportUnwalkableChain((from ? target : origin).id);
+		return { kind: 'blocked', reason: 'unknown-orbit' };
+	}
+	if (from[from.length - 1].id !== to[to.length - 1].id) return { kind: 'heliocentric' };
+
+	// One system. The transfer is about whichever end the other one orbits —
+	// directly, as a satellite of it, or through the barycentre they share.
+	const shared = new Set(to.map((b) => b.id));
+	const meeting = from.find((b) => shared.has(b.id));
+	if (!meeting) return { kind: 'blocked', reason: 'same-primary' };
+	const centre =
+		meeting.id === origin.id || meeting.id === target.id ? meeting.id : primaryBodyOf(meeting.id);
+	if (centre === origin.id) return { kind: 'system', primary: 'origin' };
+	if (centre === target.id) return { kind: 'system', primary: 'target' };
+	return { kind: 'blocked', reason: 'same-primary' };
 }

@@ -1,13 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { BodyData } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
-import {
-	heliocentricAncestor,
-	lookupIn,
-	naifId,
-	sameSystemBlock,
-	toTravelBody
-} from './travel-body';
+import { heliocentricAncestor, lookupIn, naifId, toTravelBody, transferPlan } from './travel-body';
 
 /** Minimal body row; only the fields the adapter reads are meaningful. */
 function body(id: string, parentId: string, over: Partial<BodyData> = {}): BodyData {
@@ -30,7 +24,7 @@ function body(id: string, parentId: string, over: Partial<BodyData> = {}): BodyD
 	} as BodyData;
 }
 
-/** Sun, Earth-Moon barycentre, Earth, Moon, Jupiter barycentre, Europa. */
+/** Sun, the two barycentres, and the bodies around them. */
 function solarSystem() {
 	const rows = [
 		body('naif-10', 'naif-0'),
@@ -38,7 +32,9 @@ function solarSystem() {
 		body('naif-399', 'naif-3', { a: 3.0e-5, radiusKm: 6371 }),
 		body('naif-301', 'naif-3', { a: 2.57e-3, radiusKm: 1737.4 }),
 		body('naif-5', 'naif-10', { a: 5.202887, n: 0.0830912 }),
-		body('naif-502', 'naif-5', { a: 4.485e-3, radiusKm: 1560.8 })
+		body('naif-599', 'naif-5', { a: 0, radiusKm: 69911 }),
+		body('naif-502', 'naif-5', { a: 4.485e-3, radiusKm: 1560.8 }),
+		body('naif-503', 'naif-5', { a: 7.155e-3, radiusKm: 2631.2 })
 	];
 	return new Map(rows.map((r) => [r.id, r]));
 }
@@ -145,23 +141,42 @@ describe('toTravelBody', () => {
 	});
 });
 
-describe('sameSystemBlock', () => {
+describe('transferPlan', () => {
 	const bodies = solarSystem();
 	const look = lookupIn(bodies);
+	const plan = (from: string, to: string) => transferPlan(bodies.get(from)!, bodies.get(to)!, look);
 
-	it('allows a transfer between bodies of different primaries', () => {
-		expect(sameSystemBlock(bodies.get('naif-399')!, bodies.get('naif-502')!, look)).toBeNull();
+	it('sends bodies of different primaries round the Sun', () => {
+		expect(plan('naif-399', 'naif-502')).toEqual({ kind: 'heliocentric' });
 	});
 
-	it('blocks Earth to its own Moon, which shares a primary', () => {
-		expect(sameSystemBlock(bodies.get('naif-399')!, bodies.get('naif-301')!, look)).toBe(
-			'same-primary'
-		);
+	// Earth and its Moon share one heliocentric orbit, so there is no arc between
+	// them out there; the transfer belongs about Earth, which is one of the ends.
+	it('solves Earth to its own Moon about Earth', () => {
+		expect(plan('naif-399', 'naif-301')).toEqual({ kind: 'system', primary: 'origin' });
+	});
+
+	it('solves the way back about Earth too', () => {
+		expect(plan('naif-301', 'naif-399')).toEqual({ kind: 'system', primary: 'target' });
+	});
+
+	it('reads a planet as the centre of its own barycentre', () => {
+		expect(plan('naif-502', 'naif-599')).toEqual({ kind: 'system', primary: 'target' });
+	});
+
+	// Neither end is the body the arc would go round, so there is no departure to
+	// price — that trip needs a leg the kernel does not build.
+	it('blocks one moon to another of the same planet', () => {
+		expect(plan('naif-502', 'naif-503')).toEqual({
+			kind: 'blocked',
+			reason: 'same-primary'
+		});
 	});
 
 	it('blocks a body whose orbit cannot be resolved', () => {
-		expect(sameSystemBlock(bodies.get('naif-399')!, body('naif-9999', 'naif-8888'), look)).toBe(
-			'unknown-orbit'
-		);
+		expect(transferPlan(bodies.get('naif-399')!, body('naif-9999', 'naif-8888'), look)).toEqual({
+			kind: 'blocked',
+			reason: 'unknown-orbit'
+		});
 	});
 });

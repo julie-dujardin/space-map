@@ -17,7 +17,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { EARTH_ID } from '$lib/constants';
 	import { isModifiedClick, navHref } from '$lib/state/focus-link';
-	import { sameSystemBlock } from '$lib/travel/travel-body';
+	import { transferPlan } from '$lib/travel/travel-body';
 
 	interface Props {
 		/** The body whose panel this sits in — the destination. */
@@ -39,7 +39,7 @@
 		const lookup = (id: string) => ctx.getBody(id)?.data;
 		const earth = lookup(EARTH_ID);
 		if (!earth) return false;
-		return sameSystemBlock(earth, target, lookup) === null;
+		return transferPlan(earth, target, lookup).kind !== 'blocked';
 	});
 
 	let destination = $derived({ id: target.id, featureId });

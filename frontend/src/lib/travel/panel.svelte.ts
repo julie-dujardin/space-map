@@ -120,14 +120,23 @@ export class TravelPanelState {
 	/**
 	 * Solve the current trip. Safe to call on every input change — the newest
 	 * call wins and the rest are discarded when they land.
+	 *
+	 * `systemPrimary` names the end the transfer orbits when both are in one
+	 * system — Earth for a trip to its Moon. Absent means an arc about the Sun.
 	 */
-	async solve(origin: TravelBody, target: TravelBody, nowJd: number): Promise<void> {
+	async solve(
+		origin: TravelBody,
+		target: TravelBody,
+		nowJd: number,
+		systemPrimary?: 'departure' | 'target'
+	): Promise<void> {
 		const options = searchWindow({
 			origin,
 			target,
 			nowJd,
 			timeMode: this.timeMode,
-			pickedJd: this.pickedJd
+			pickedJd: this.pickedJd,
+			systemPrimary
 		});
 		if (!options) {
 			console.debug(

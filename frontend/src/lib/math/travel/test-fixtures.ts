@@ -127,6 +127,45 @@ export const ESCAPING_PROBE: TravelBody = {
 	}
 };
 
+/**
+ * Earth and its Moon the way the export describes them: both referred to the
+ * barycentre they share, half a turn apart, with the barycentre 4,674 km from
+ * Earth's centre — most of the way out to a parking orbit, which is why a lunar
+ * transfer has to difference the two rather than use either alone.
+ *
+ * Circular, so the separation holds at the semi-major axis of the real pair and
+ * the Apollo figures the route is checked against are the textbook ones.
+ */
+const MOON_SEMI_MAJOR_KM = 384748;
+const MOON_MU = 4902.8;
+const EARTH_MU = 398600.4418;
+const EARTH_BARYCENTRIC_KM = (MOON_SEMI_MAJOR_KM * MOON_MU) / (EARTH_MU + MOON_MU);
+/** Sidereal month, deg/day — the pair's shared mean motion. */
+const LUNAR_MEAN_MOTION = 13.176358;
+
+function barycentric(aKm: number, ma: number): OrbitalElements {
+	return { a: aKm / AU_KM, e: 0, i: 0, om: 0, w: 0, ma, n: LUNAR_MEAN_MOTION, epoch: J2000 };
+}
+
+export const EARTH_BARYCENTRIC: TravelBody = {
+	id: 'naif-399',
+	mu: EARTH_MU,
+	muEstimated: false,
+	radiusKm: 6371.0,
+	surfacePressureBar: 1.013,
+	elements: barycentric(EARTH_BARYCENTRIC_KM, 180),
+	parentId: 'naif-3'
+};
+
+export const MOON_BARYCENTRIC: TravelBody = {
+	id: 'naif-301',
+	mu: MOON_MU,
+	muEstimated: false,
+	radiusKm: 1737.4,
+	elements: barycentric(MOON_SEMI_MAJOR_KM - EARTH_BARYCENTRIC_KM, 0),
+	parentId: 'naif-3'
+};
+
 /** Airless, and the one ascent with a flight-proven Δv to check the model against. */
 export const MOON: TravelBody = {
 	id: 'naif-301',

@@ -19,10 +19,17 @@
 	import {
 		hohmannTransferDays,
 		nextTransferWindows,
+		systemArcBounds,
 		type TravelBody,
 		type Vehicle
 	} from '$lib/math/travel';
-	import { lookupIn, sameSystemBlock, toTravelBody } from '$lib/travel/travel-body';
+	import {
+		lookupIn,
+		toTravelBody,
+		transferPlan,
+		type OrbitChoice,
+		type TransferPlan
+	} from '$lib/travel/travel-body';
 	import { TravelPanelState, type BlockReason, type EndpointMode } from '$lib/travel/panel.svelte';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 	import { vehicleCatalogue } from '$lib/travel/vehicles';
@@ -105,22 +112,39 @@
 	// equivalent and silently never re-ran.
 	let vehicles = $state<readonly Vehicle[]>([]);
 
+	// What kind of transfer this pair needs — across the solar system, or inside
+	// one system — and so which orbit each end is described by.
+	let lookup = $derived(lookupIn(bodiesById));
+	let plan = $derived<TransferPlan | null>(target ? transferPlan(origin, target, lookup) : null);
+	let orbit = $derived<OrbitChoice>(plan?.kind === 'system' ? 'own' : 'heliocentric');
+	let systemPrimary = $derived<'departure' | 'target' | undefined>(
+		plan?.kind === 'system' ? (plan.primary === 'origin' ? 'departure' : 'target') : undefined
+	);
+
 	// The kernel's view of each end, rebuilt whenever either body or its detail
 	// changes.
-	let lookup = $derived(lookupIn(bodiesById));
-	let originTravel = $derived<TravelBody | null>(toTravelBody(origin, lookup, originDetail));
+	let originTravel = $derived<TravelBody | null>(toTravelBody(origin, lookup, originDetail, orbit));
 	let targetTravel = $derived<TravelBody | null>(
-		target ? toTravelBody(target, lookup, targetDetail) : null
+		target ? toTravelBody(target, lookup, targetDetail, orbit) : null
 	);
 
 	// A destination that never resolved is a destination with no orbit, not an
 	// empty form.
 	let block = $derived<BlockReason | null>(
-		target ? sameSystemBlock(origin, target, lookup) : targetPicked ? 'unknown-orbit' : 'no-target'
+		plan === null
+			? targetPicked
+				? 'unknown-orbit'
+				: 'no-target'
+			: plan.kind === 'blocked'
+				? plan.reason
+				: null
 	);
 
+	// Nothing inside one system waits for an alignment: the satellite comes round
+	// every orbit, so every departure date is a window and naming one would be
+	// noise.
 	let nextWindowJd = $derived.by(() => {
-		if (!originTravel || !targetTravel || block) return null;
+		if (!originTravel || !targetTravel || block || systemPrimary) return null;
 		const windows = nextTransferWindows(originTravel, targetTravel, nowJd, 1);
 		return windows.length > 0 ? windows[0] : null;
 	});
@@ -131,13 +155,18 @@
 		{ value: 'arrive', label: m.travel_time_arrive() }
 	];
 
-	// A deadline in the present admits nothing, so "arrive by" opens one Hohmann
-	// time out — the earliest date the trip could plausibly be held to.
+	// A deadline in the present admits nothing, so "arrive by" opens one slowest
+	// transfer out — the earliest date the trip could plausibly be held to.
 	function defaultPickedJd(mode: TimeMode): number {
-		if (mode !== 'arrive') return nowJd;
-		const hohmann =
-			originTravel && targetTravel ? hohmannTransferDays(originTravel, targetTravel) : null;
-		return nowJd + (hohmann ?? 0);
+		if (mode !== 'arrive' || !originTravel || !targetTravel) return nowJd;
+		const slowest = systemPrimary
+			? (systemArcBounds(
+					systemPrimary === 'departure' ? originTravel : targetTravel,
+					systemPrimary === 'departure' ? targetTravel : originTravel,
+					nowJd
+				)?.slowestDays ?? null)
+			: hohmannTransferDays(originTravel, targetTravel);
+		return nowJd + (slowest ?? 0);
 	}
 
 	// One effect owns re-solving, so every input that should trigger one is
@@ -163,7 +192,7 @@
 			panel.block('unknown-orbit');
 			return;
 		}
-		void panel.solve(from, to, nowJd);
+		void panel.solve(from, to, nowJd, systemPrimary);
 	});
 
 	$effect(() => () => panel.dispose());

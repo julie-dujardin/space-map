@@ -9,7 +9,12 @@
  */
 
 import type { PorkchopOptions, TravelBody } from '$lib/math/travel';
-import { crossingTimeDays, hohmannTransferDays, synodicPeriodDays } from '$lib/math/travel';
+import {
+	crossingTimeDays,
+	hohmannTransferDays,
+	synodicPeriodDays,
+	systemArcBounds
+} from '$lib/math/travel';
 
 export type TimeMode = 'now' | 'depart' | 'arrive';
 
@@ -43,6 +48,39 @@ export interface WindowRequest {
 	timeMode: TimeMode;
 	/** The date behind 'depart' and 'arrive'; ignored under 'now'. */
 	pickedJd?: number | null;
+	/** Set when the trip stays inside one system — see `RouteOptions`. */
+	systemPrimary?: 'departure' | 'target';
+}
+
+/**
+ * The grid the fastest and slowest arcs of a same-system transfer both fit in.
+ *
+ * Nothing here waits for a window: the geometry repeats every time the satellite
+ * comes round, and the only thing a departure date changes is how far out it is
+ * by then. So the departure axis spans one of its orbits and the cruise axis
+ * spans the family.
+ */
+function systemWindow(request: WindowRequest): PorkchopOptions | null {
+	const { origin, target, nowJd, systemPrimary } = request;
+	const outbound = systemPrimary === 'departure';
+	const primary = outbound ? origin : target;
+	const satellite = outbound ? target : origin;
+	const orbitDays = satellite.elements.n > 0 ? 360 / satellite.elements.n : MAX_SEARCH_DAYS;
+	const departToJd = nowJd + clamp(orbitDays, MIN_SEARCH_DAYS / 4, MAX_SEARCH_DAYS);
+	// One orbit of the satellite covers every distance it reaches, so bounds taken
+	// across the window bracket every arc the grid can contain.
+	const bounds = systemArcBounds(primary, satellite, nowJd, departToJd);
+	if (!bounds || !(bounds.slowestDays > 0)) return null;
+
+	return {
+		departFromJd: nowJd,
+		departToJd,
+		tofMinDays: bounds.fastestDays,
+		tofMaxDays: bounds.slowestDays,
+		departSteps: DEPART_STEPS,
+		tofSteps: TOF_STEPS,
+		systemPrimary
+	};
 }
 
 /**
@@ -52,6 +90,7 @@ export interface WindowRequest {
  */
 export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 	const { origin, target, nowJd, timeMode, pickedJd } = request;
+	if (request.systemPrimary) return systemWindow(request);
 
 	// An escaping probe has no semi-major axis to scale a cruise against, so the
 	// crossing between the two current distances stands in. The arcs themselves

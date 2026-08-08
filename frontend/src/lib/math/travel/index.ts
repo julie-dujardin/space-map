@@ -51,6 +51,15 @@ export { buildRoute } from './route';
 export type { PorkchopGrid, PorkchopOptions, RouteChoice, RouteProfile } from './porkchop';
 export { computePorkchop, selectRoutes } from './porkchop';
 
+export type { RadialArc, SystemArcBounds } from './system-transfer';
+export {
+	hohmannArcDays,
+	relativeState,
+	separationKm,
+	solveRadialArc,
+	systemArcBounds
+} from './system-transfer';
+
 export {
 	crossingTimeDays,
 	hohmannTransferDays,

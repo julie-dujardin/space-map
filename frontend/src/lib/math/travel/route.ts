@@ -12,13 +12,19 @@ import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { solveLambert } from './lambert';
 import {
 	arrivalCost,
+	arrivalCostFromSpeed,
+	ascentDv,
 	characteristicEnergy,
+	circularSpeed,
 	departureCost,
+	injectionDv,
+	parkingRadiusKm,
 	type ArrivalMode,
 	type DepartureMode
 } from './maneuvers';
 import { elementsToState } from './state';
-import { norm, sub } from './vec3';
+import { relativeState, solveRadialArc } from './system-transfer';
+import { cross, dot, norm, sub } from './vec3';
 
 export type LegKind = 'ascent' | 'injection' | 'cruise' | 'capture' | 'descent';
 
@@ -58,6 +64,13 @@ export interface RouteOptions {
 	centralMu?: number;
 	/** Solve the transfer clockwise about the frame's +Z axis. */
 	retrograde?: boolean;
+	/**
+	 * Set when the trip stays inside one system: the named end is the body the
+	 * transfer orbits, and the other end is a satellite of it. There is no
+	 * heliocentric arc between them and no escape at the primary's end, so the
+	 * route is built from a transfer ellipse instead of a Lambert solve.
+	 */
+	systemPrimary?: 'departure' | 'target';
 }
 
 /**
@@ -80,10 +93,18 @@ export function buildRoute(
 		departureMode = 'surface',
 		arrivalMode = 'capture',
 		centralMu = GM_SUN_KM3_S2,
-		retrograde = false
+		retrograde = false,
+		systemPrimary
 	} = options;
 
 	if (!(tofDays > 0)) return null;
+	if (systemPrimary) {
+		return buildSystemRoute(departure, target, departJd, tofDays, {
+			departureMode,
+			arrivalMode,
+			outbound: systemPrimary === 'departure'
+		});
+	}
 
 	const arriveJd = departJd + tofDays;
 	const from = elementsToState(departure.elements, departJd, centralMu);
@@ -125,6 +146,100 @@ export function buildRoute(
 		c3Km2S2: characteristicEnergy(vInfDep),
 		vInfDepKms: vInfDep,
 		vInfArrKms: vInfArr,
+		departureMode,
+		arrivalMode
+	};
+}
+
+interface SystemRouteOptions {
+	departureMode: DepartureMode;
+	arrivalMode: ArrivalMode;
+	/** True when leaving the primary for its satellite, false coming back. */
+	outbound: boolean;
+}
+
+/**
+ * Build a route between a body and one of its own satellites.
+ *
+ * Both directions are the same arc read in opposite senses, so both are priced
+ * the same way: at the primary's end the craft is bound to it either way and
+ * pays the difference between the transfer's speed and the parking orbit's; at
+ * the satellite's end it crosses a sphere of influence, which is the ordinary
+ * interplanetary arrival and departure.
+ */
+function buildSystemRoute(
+	departure: TravelBody,
+	target: TravelBody,
+	departJd: number,
+	tofDays: number,
+	options: SystemRouteOptions
+): Route | null {
+	const { departureMode, arrivalMode, outbound } = options;
+	const primary = outbound ? departure : target;
+	const satellite = outbound ? target : departure;
+	const arriveJd = departJd + tofDays;
+
+	// The satellite's distance is read at the end of the trip it is at: the far
+	// end of an outbound arc, the near end of the way back.
+	const state = relativeState(satellite, primary, outbound ? arriveJd : departJd);
+	if (!state) return null;
+
+	const rFar = norm(state.r);
+	const rNear = parkingRadiusKm(primary);
+	const arc = solveRadialArc(primary.mu, rNear, rFar, tofDays);
+	if (!arc) return null;
+
+	// The satellite's own motion, split the same way as the arc's: how fast it is
+	// climbing, and how fast it is going round.
+	const satRadial = dot(state.r, state.v) / rFar;
+	const satTangential = norm(cross(state.r, state.v)) / rFar;
+	const vInf = Math.hypot(arc.vFarRadialKms - satRadial, arc.vFarTangentialKms - satTangential);
+	if (!isFinite(vInf)) return null;
+
+	// At the primary the craft never leaves, so the burn is measured against the
+	// parking orbit rather than against an escape.
+	const primaryBurn = arc.vNearKms - circularSpeed(primary.mu, rNear);
+
+	const legs: RouteLeg[] = [];
+	let ascentKms = 0;
+	if (departureMode === 'surface') {
+		ascentKms = ascentDv(departure);
+		legs.push({ kind: 'ascent', dvKms: ascentKms, days: 0 });
+	}
+	legs.push({
+		kind: 'injection',
+		dvKms: outbound ? primaryBurn : injectionDv(satellite.mu, parkingRadiusKm(satellite), vInf),
+		days: 0
+	});
+	legs.push({ kind: 'cruise', dvKms: 0, days: tofDays });
+
+	const arr = outbound
+		? arrivalCost(satellite, vInf, arrivalMode)
+		: arrivalCostFromSpeed(primary, arc.vNearKms, arrivalMode);
+	if (arrivalMode !== 'flyby') {
+		legs.push({ kind: 'capture', dvKms: arr.captureKms, days: 0, aerobraked: arr.aerobraked });
+	}
+	if (arr.descentKms > 0) {
+		legs.push({ kind: 'descent', dvKms: arr.descentKms, days: 0, aerobraked: arr.aerobraked });
+	}
+
+	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
+	if (!isFinite(totalDvKms)) return null;
+
+	return {
+		departureId: departure.id,
+		targetId: target.id,
+		departJd,
+		arriveJd,
+		tofDays,
+		legs,
+		totalDvKms,
+		inSpaceDvKms: totalDvKms - ascentKms,
+		// The arc stays bound to the primary, so its C3 is negative — which is what
+		// a launch to the Moon is quoted at, and what separates it from an escape.
+		c3Km2S2: outbound ? -primary.mu * arc.inverseAKm : characteristicEnergy(vInf),
+		vInfDepKms: outbound ? 0 : vInf,
+		vInfArrKms: outbound ? vInf : 0,
 		departureMode,
 		arrivalMode
 	};

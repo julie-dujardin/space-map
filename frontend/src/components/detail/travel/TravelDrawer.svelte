@@ -20,7 +20,7 @@
 	import { fetchObjectDetail, type GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
-	import { lookupIn, sameSystemBlock } from '$lib/travel/travel-body';
+	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
 	import { resolveTripBodies } from '$lib/travel/resolve';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
@@ -142,7 +142,7 @@
 		out.add(against.id);
 		const lookup = lookupIn(sceneBodies);
 		for (const b of sceneBodies.values()) {
-			if (sameSystemBlock(b, against, lookup) !== null) out.add(b.id);
+			if (transferPlan(b, against, lookup).kind === 'blocked') out.add(b.id);
 		}
 		return out;
 	}

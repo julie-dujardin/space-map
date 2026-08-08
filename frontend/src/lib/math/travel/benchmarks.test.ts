@@ -22,7 +22,20 @@ import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { solveLambert } from './lambert';
 import { ascentDv, circularSpeed, injectionDv, parkingRadiusKm } from './maneuvers';
 import { computePorkchop } from './porkchop';
-import { EARTH, J2000, JUPITER, MARS, MOON, SATURN, VENUS } from './test-fixtures';
+import { buildRoute } from './route';
+import { systemArcBounds } from './system-transfer';
+import type { ArrivalMode } from './maneuvers';
+import {
+	EARTH,
+	EARTH_BARYCENTRIC,
+	J2000,
+	JUPITER,
+	MARS,
+	MOON,
+	MOON_BARYCENTRIC,
+	SATURN,
+	VENUS
+} from './test-fixtures';
 import {
 	hohmannTransferDays,
 	nextTransferWindows,
@@ -88,12 +101,72 @@ function lambertHohmannDepartureDv(r1: number, r2: number, sweepDeg = 179.5): nu
 	return Math.abs(norm(arc.v1) - circularSpeed(GM_SUN_KM3_S2, r1));
 }
 
+/**
+ * The slowest lunar arc — the half-ellipse from a parking orbit out to the
+ * Moon. Every Apollo figure below is quoted against a transfer close to it.
+ */
+function lunarRoute(arrivalMode: ArrivalMode) {
+	const bounds = systemArcBounds(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, J2000);
+	if (!bounds) throw new Error('no lunar arc bounds');
+	const route = buildRoute(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, J2000, bounds.slowestDays, {
+		departureMode: 'surface',
+		arrivalMode,
+		systemPrimary: 'departure'
+	});
+	if (!route) throw new Error('no lunar route');
+	return route;
+}
+
+function lunarLegDv(kind: string, arrivalMode: ArrivalMode): number {
+	return lunarRoute(arrivalMode).legs.find((leg) => leg.kind === kind)?.dvKms ?? NaN;
+}
+
 const EARTH_ORBIT_KM = EARTH.elements.a * AU_KM;
 const MARS_ORBIT_KM = MARS.elements.a * AU_KM;
 const VENUS_ORBIT_KM = VENUS.elements.a * AU_KM;
 const JUPITER_ORBIT_KM = JUPITER.elements.a * AU_KM;
 
 const BENCHMARKS: Benchmark[] = [
+	{
+		quantity: 'trans-lunar injection from low Earth orbit',
+		source: 'Apollo trans-lunar injection burns, 3.05-3.15 km/s',
+		expected: 3.1,
+		unit: 'km/s',
+		tolerance: 0.03,
+		compute: () => lunarLegDv('injection', 'low-orbit')
+	},
+	{
+		quantity: 'lunar orbit insertion',
+		source: 'Apollo LOI, ~0.8-0.9 km/s',
+		expected: 0.82,
+		unit: 'km/s',
+		tolerance: 0.05,
+		compute: () => lunarLegDv('capture', 'low-orbit')
+	},
+	{
+		quantity: 'Hohmann time from low Earth orbit to the Moon',
+		source: 'textbook trans-lunar coast, ~5 days',
+		expected: 4.98,
+		unit: 'days',
+		tolerance: 0.02,
+		compute: () => lunarRoute('low-orbit').tofDays
+	},
+	{
+		quantity: 'Earth surface to the lunar surface',
+		source: 'standard delta-v budget, ~15.2 km/s',
+		expected: 15.2,
+		unit: 'km/s',
+		tolerance: 0.03,
+		compute: () => lunarRoute('landing').totalDvKms
+	},
+	{
+		quantity: 'trans-lunar launch energy',
+		source: 'lunar C3, about -2 km2/s2 — bound to Earth, unlike an escape',
+		expected: -2.04,
+		unit: 'km2/s2',
+		tolerance: 0.03,
+		compute: () => lunarRoute('low-orbit').c3Km2S2
+	},
 	{
 		quantity: "Earth's mean orbital speed",
 		source: 'NASA Earth fact sheet',
