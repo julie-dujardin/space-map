@@ -29,19 +29,28 @@ export interface StateVector {
 }
 
 /**
- * Rotate an in-plane (perifocal) vector to ecliptic J2000.
+ * The rotation from the orbit plane to ecliptic J2000, as its six non-trivial
+ * terms.
+ *
+ * Built once and applied to both the position and the velocity. They share an
+ * orbit, so they share this — and it is six trigonometric calls, which is most
+ * of what turning a set of elements into a state costs. The porkchop and the
+ * swing-by search each do that tens of thousands of times.
  *
  * Mirrors the rotation inside `orbitalToThreeJS` but stops at the ecliptic —
  * the scene's axis remap belongs to rendering, not physics.
  */
-function perifocalToEcliptic(
-	px: number,
-	py: number,
-	w: number,
-	i: number,
-	om: number,
-	equatorial: boolean
-): Vec3 {
+interface PlaneRotation {
+	m11: number;
+	m12: number;
+	m21: number;
+	m22: number;
+	m31: number;
+	m32: number;
+	equatorial: boolean;
+}
+
+function planeRotation(w: number, i: number, om: number, equatorial: boolean): PlaneRotation {
 	const cosW = Math.cos(w * DEG2RAD);
 	const sinW = Math.sin(w * DEG2RAD);
 	const cosI = Math.cos(i * DEG2RAD);
@@ -49,11 +58,24 @@ function perifocalToEcliptic(
 	const cosOm = Math.cos(om * DEG2RAD);
 	const sinOm = Math.sin(om * DEG2RAD);
 
-	const x = (cosOm * cosW - sinOm * sinW * cosI) * px + (-cosOm * sinW - sinOm * cosW * cosI) * py;
-	let y = (sinOm * cosW + cosOm * sinW * cosI) * px + (-sinOm * sinW + cosOm * cosW * cosI) * py;
-	let z = sinW * sinI * px + cosW * sinI * py;
+	return {
+		m11: cosOm * cosW - sinOm * sinW * cosI,
+		m12: -cosOm * sinW - sinOm * cosW * cosI,
+		m21: sinOm * cosW + cosOm * sinW * cosI,
+		m22: -sinOm * sinW + cosOm * cosW * cosI,
+		m31: sinW * sinI,
+		m32: cosW * sinI,
+		equatorial
+	};
+}
 
-	if (equatorial) {
+/** Rotate an in-plane (perifocal) vector to ecliptic J2000. */
+function perifocalToEcliptic(px: number, py: number, rot: PlaneRotation): Vec3 {
+	const x = rot.m11 * px + rot.m12 * py;
+	let y = rot.m21 * px + rot.m22 * py;
+	let z = rot.m31 * px + rot.m32 * py;
+
+	if (rot.equatorial) {
 		// TLE-sourced elements are referenced to Earth's mean equator; rotate about
 		// the shared vernal-equinox axis so they share a frame with everything else.
 		const yEcl = y * COS_EPS + z * SIN_EPS;
@@ -157,8 +179,9 @@ function buildState(
 	const sinNu = Math.sin(nu);
 	const h = Math.sqrt(mu / pKm);
 
-	const r = perifocalToEcliptic(rKm * cosNu, rKm * sinNu, w, i, om, equatorial);
-	const v = perifocalToEcliptic(-h * sinNu, h * (e + cosNu), w, i, om, equatorial);
+	const rot = planeRotation(w, i, om, equatorial);
+	const r = perifocalToEcliptic(rKm * cosNu, rKm * sinNu, rot);
+	const v = perifocalToEcliptic(-h * sinNu, h * (e + cosNu), rot);
 
 	if (!isFinite(r[0] + r[1] + r[2]) || !isFinite(v[0] + v[1] + v[2])) return null;
 	return { r, v, mu };

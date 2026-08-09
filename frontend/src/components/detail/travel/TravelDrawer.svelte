@@ -25,6 +25,7 @@
 	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
 	import { DEFAULT_TRIP } from '$lib/travel/trip';
 	import { resolveTripBodies } from '$lib/travel/resolve';
+	import { ASSIST_BODY_IDS } from '$lib/travel/assist-bodies';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 	import DrawerTitle from '../frame/DrawerTitle.svelte';
@@ -106,10 +107,19 @@
 	}
 
 	$effect(() => {
-		const ids = [fromId, toId].filter((id) => id !== null);
+		// The swing-by candidates ride along with the trip's own ends. They are the
+		// planets, so the scene almost always has them already, and the resolver
+		// caches for the session — asking for them costs a walk, not a fetch.
+		const ids = [...[fromId, toId].filter((id) => id !== null), ...ASSIST_BODY_IDS];
 		let cancelled = false;
 		resolving = true;
-		resolveTripBodies(ids, residentBody).then((bodies) => {
+		// Untracked: `residentBody` runs synchronously inside the resolver and reads
+		// the scene, which moves. Without this the effect depends on every body it
+		// asked about and re-runs as they do — a fresh map, a fresh solve, forever.
+		// The ids above are the whole dependency, which is what the comment on
+		// `tripBodies` claims and what only held while the ends were the only ones
+		// looked up.
+		untrack(() => resolveTripBodies(ids, residentBody)).then((bodies) => {
 			if (cancelled) return;
 			// An end that resolved once is kept when a later pass cannot find it: the
 			// scene's index is momentarily empty while it rebuilds, and a pass that

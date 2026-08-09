@@ -9,6 +9,9 @@
   A window picked off the porkchop by hand comes last, as an addition to the
   three the solver offers rather than one of them. Its row is there before it is:
   an empty fourth option is what makes the field below look like a choice.
+
+  A swing-by names the body it goes past, since that and its dates are the only
+  things separating it from the routes above.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
@@ -23,19 +26,28 @@
 
 	interface Props {
 		state: TravelPanelState;
+		/** What to call the body a swing-by passes. */
+		nameOf?: (id: string) => string;
 		/** Send the reader to the field they pick a custom window on. Absent leaves
 		 *  the fourth row out — there is nowhere for it to point. */
 		onFocusField?: (() => void) | null;
 	}
-	let { state, onFocusField = null }: Props = $props();
+	let { state, nameOf = (id: string) => id, onFocusField = null }: Props = $props();
 
 	const PROFILE_LABEL: Record<RouteOption, () => string> = {
 		fast: m.travel_profile_fast,
 		balanced: m.travel_profile_balanced,
 		efficient: m.travel_profile_efficient,
 		custom: m.travel_profile_custom,
-		'constant-thrust': m.travel_profile_constant_thrust
+		'constant-thrust': m.travel_profile_constant_thrust,
+		'gravity-assist': m.travel_profile_gravity_assist
 	};
+
+	/** The body a route goes past, named, or null when it goes straight there. */
+	function via(choice: OfferedRoute): string | null {
+		const pass = choice.route.flybys?.[0];
+		return pass ? nameOf(pass.bodyId) : null;
+	}
 
 	interface Blocked {
 		header: string;
@@ -93,6 +105,7 @@
 <ul class="flex flex-col gap-2">
 	{#each state.offered as choice (choice.profile)}
 		{@const blocked = blockedText(choice)}
+		{@const viaName = via(choice)}
 		{@const isSelected = choice.profile === state.selectedProfile && !blocked}
 		<li>
 			<button
@@ -113,6 +126,8 @@
 						{PROFILE_LABEL[choice.profile]()}{#if choice.route.constantThrust}<span
 								class="text-muted-foreground ms-1.5 text-xs font-normal tabular-nums"
 								>{formatAcceleration(choice.route.constantThrust)}</span
+							>{:else if viaName}<span class="text-muted-foreground ms-1.5 text-xs font-normal"
+								>{m.travel_via({ body: viaName })}</span
 							>{/if}
 					</span>
 					<span class="text-muted-foreground block truncate text-xs">
@@ -141,6 +156,17 @@
 			</button>
 		</li>
 	{/each}
+
+	{#if state.assistSearching && !state.offered.some((choice) => choice.profile === 'gravity-assist')}
+		<!-- The hunt takes about a second and lands after everything above it, so a
+		     row that says so is what tells "still looking" from "there isn't one".
+		     It is a note rather than a button: there is nothing to choose yet. -->
+		<li
+			class="border-border/60 text-muted-foreground rounded-md border border-dashed px-3 py-2 text-sm"
+		>
+			{m.travel_assist_searching()}
+		</li>
+	{/if}
 
 	{#if onFocusField && state.grid && !state.custom}
 		<!-- The fourth option before it has anything in it: a row rather than

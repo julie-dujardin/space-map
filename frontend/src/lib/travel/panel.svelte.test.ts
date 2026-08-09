@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { EARTH, J2000, MARS } from '$lib/math/travel/test-fixtures';
-import { buildConstantThrustRoute, type Vehicle } from '$lib/math/travel';
+import { EARTH, J2000, JUPITER, MARS, SATURN } from '$lib/math/travel/test-fixtures';
+import { buildAssistRoute, buildConstantThrustRoute, type Vehicle } from '$lib/math/travel';
 import { TravelPanelState } from './panel.svelte';
 import { DEFAULT_TRIP } from './trip';
 
@@ -320,5 +320,156 @@ describe('TravelPanelState pick off a shared link', () => {
 		expect(panel.custom).toBeNull();
 		expect(panel.trip.pick).toBeNull();
 		expect(panel.selectedProfile).not.toBe('custom');
+	});
+});
+
+describe('TravelPanelState swing-by route', () => {
+	const NOW = 2461080.5;
+
+	/** A solved trip with whatever swing-by the search found standing beside it. */
+	async function withAssist(): Promise<TravelPanelState> {
+		const panel = new TravelPanelState();
+		panel.targetMode = 'low-orbit';
+		await panel.solve(EARTH, SATURN, NOW);
+		await panel.updateAssist(EARTH, SATURN, [JUPITER], NOW);
+		return panel;
+	}
+
+	it('goes past Jupiter for less than the direct routes cost', async () => {
+		const panel = await withAssist();
+		expect(panel.assist?.flybys?.[0].bodyId).toBe(JUPITER.id);
+		const offered = panel.offered.find((choice) => choice.profile === 'gravity-assist');
+		expect(offered).toBeDefined();
+		expect(offered!.route.totalDvKms).toBeLessThan(
+			Math.min(...panel.routes.map((choice) => choice.route.totalDvKms))
+		);
+	});
+
+	// It sits after the three, being an alternative to them rather than one of
+	// them, and before a hand-picked window, which is not the solver's at all.
+	it('follows the solver’s own routes in the list', async () => {
+		const panel = await withAssist();
+		const profiles = panel.offered.map((choice) => choice.profile);
+		expect(profiles.at(-1)).toBe('gravity-assist');
+		expect(profiles.filter((p) => p !== 'gravity-assist')).toEqual(
+			panel.routes.map((choice) => choice.profile)
+		);
+	});
+
+	// Years of extra travel for the same price is not a choice worth offering.
+	it('stays off the list when it only ties', async () => {
+		const panel = await withAssist();
+		panel.assist = { ...panel.assist!, totalDvKms: panel.routes[0].route.totalDvKms };
+		expect(panel.offered.some((choice) => choice.profile === 'gravity-assist')).toBe(false);
+	});
+
+	// Unlike the constant-thrust arc: that is the answer a torch ship was chosen
+	// for, while this lands a second late beside a list someone is already reading.
+	it('never moves the selection on to itself', async () => {
+		const panel = await withAssist();
+		expect(panel.selectedProfile).not.toBe('gravity-assist');
+	});
+
+	it('falls back to a solved route when it is withdrawn', async () => {
+		const panel = await withAssist();
+		panel.selectedProfile = 'gravity-assist';
+		panel.clearAssist();
+		expect(panel.assist).toBeNull();
+		expect(panel.selectedProfile).toBe('balanced');
+	});
+
+	// The hunt takes about a second and starting one stops the last, so a caller
+	// that asked the same question twice a second would never get an answer.
+	it('does not start the same hunt twice', async () => {
+		const panel = await withAssist();
+		const sentinel = { ...panel.assist!, totalDvKms: 999 };
+		panel.assist = sentinel;
+		await panel.updateAssist(EARTH, SATURN, [JUPITER], NOW);
+		expect(panel.assist).toBe(sentinel);
+	});
+
+	it('hunts again once the trip is a different one', async () => {
+		const panel = await withAssist();
+		panel.assist = { ...panel.assist!, totalDvKms: 999 };
+		// A flyby asks for a different arrival, so the answer is a different route.
+		panel.targetMode = 'flyby';
+		await panel.updateAssist(EARTH, SATURN, [JUPITER], NOW);
+		expect(panel.assist!.totalDvKms).not.toBe(999);
+		expect(panel.assist!.arrivalMode).toBe('flyby');
+	});
+
+	// Same shape as the pick and the craft off a shared link: the hunt is the
+	// slowest answer on the panel, and everything landing in front of it used to
+	// drop the trajectory the link was sent with.
+	it('keeps a link’s choice while the hunt is still running', async () => {
+		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'gravity-assist' });
+		await panel.solve(EARTH, SATURN, NOW);
+		expect(panel.trip.profile).toBe('gravity-assist');
+		await panel.updateAssist(EARTH, SATURN, [JUPITER], NOW);
+		expect(panel.selectedProfile).toBe('gravity-assist');
+		expect(panel.selectedRoute?.flybys?.[0].bodyId).toBe(JUPITER.id);
+	});
+
+	// Going the long way round to Mars costs more than going straight there, so
+	// the hunt answers with a route that is never offered — and the link that
+	// asked for one has to let go of it rather than wait forever.
+	it('lets the choice go once the hunt answers with nothing worth offering', async () => {
+		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'gravity-assist' });
+		await panel.solve(EARTH, MARS, NOW);
+		await panel.updateAssist(EARTH, MARS, [JUPITER], NOW);
+		expect(panel.offered.some((choice) => choice.profile === 'gravity-assist')).toBe(false);
+		expect(panel.selectedProfile).toBe('balanced');
+		expect(panel.trip.profile).toBe('balanced');
+	});
+
+	// The hunt is only ever compared against the direct routes, so it has to be
+	// priced the way they are: a swing-by that paid full price for its capture
+	// while they aerocaptured looks like one that saves nothing.
+	it('prices its arrival the way the routes it is judged against are', async () => {
+		const air = { ...SATURN, hasAtmosphere: true };
+		const panel = new TravelPanelState();
+		await panel.solve(EARTH, air, NOW);
+		await panel.updateAssist(EARTH, air, [JUPITER], NOW);
+		expect(panel.assist?.aero).toBe('aerocapture');
+		expect(panel.offered.some((choice) => choice.profile === 'gravity-assist')).toBe(true);
+	});
+
+	// Aerocapture is the default, so this goes the other way: taking the air away
+	// has to cost the swing-by its discount too.
+	it('hunts again when the braking mode changes', async () => {
+		const air = { ...SATURN, hasAtmosphere: true };
+		const panel = new TravelPanelState();
+		await panel.solve(EARTH, air, NOW);
+		await panel.updateAssist(EARTH, air, [JUPITER], NOW);
+		const aerocaptured = panel.assist!.totalDvKms;
+		panel.aero = 'none';
+		await panel.updateAssist(EARTH, air, [JUPITER], NOW);
+		expect(panel.assist!.aero).toBe('none');
+		expect(panel.assist!.totalDvKms).toBeGreaterThan(aerocaptured);
+	});
+
+	// The atmosphere arrives in a detail bundle, after the first hunt has already
+	// answered — and it is worth ten kilometres per second at a giant. Keyed on
+	// ids alone, the airless answer would stand for the rest of the session.
+	it('hunts again once the destination turns out to have air', async () => {
+		const dry = SATURN;
+		const air = { ...SATURN, hasAtmosphere: true };
+		const panel = new TravelPanelState();
+		await panel.solve(EARTH, dry, NOW);
+		await panel.updateAssist(EARTH, dry, [JUPITER], NOW);
+		const airless = panel.assist!.totalDvKms;
+		await panel.solve(EARTH, air, NOW);
+		await panel.updateAssist(EARTH, air, [JUPITER], NOW);
+		expect(panel.assist!.totalDvKms).toBeLessThan(airless);
+		expect(panel.offered.some((choice) => choice.profile === 'gravity-assist')).toBe(true);
+	});
+
+	it('has nothing to offer before a search it can be compared against', () => {
+		const panel = new TravelPanelState();
+		panel.assist = buildAssistRoute(EARTH, JUPITER, SATURN, NOW, 900, 1400, {
+			departureMode: 'orbit'
+		});
+		expect(panel.assist).not.toBeNull();
+		expect(panel.offered).toEqual([]);
 	});
 });

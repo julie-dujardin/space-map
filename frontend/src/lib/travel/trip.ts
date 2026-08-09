@@ -44,16 +44,19 @@ const TIME_MODES: readonly TimeMode[] = ['now', 'depart', 'arrive'];
 
 /**
  * What the route list can offer: the solver's three, a point read off the
- * porkchop by hand, and the arc a drive held all the way flies — which is not a
- * point on the porkchop at all, since every departure date flies the same one.
+ * porkchop by hand, the arc a drive held all the way flies, and a route that
+ * swings past a third body. The last two are not points on the porkchop —
+ * every departure date flies the same arc, and a swing-by departs years outside
+ * the grid — so neither can be named by a `pick=` alone.
  */
-export type RouteOption = RouteProfile | 'custom' | 'constant-thrust';
+export type RouteOption = RouteProfile | 'custom' | 'constant-thrust' | 'gravity-assist';
 const ROUTE_OPTIONS: readonly RouteOption[] = [
 	'fast',
 	'balanced',
 	'efficient',
 	'custom',
-	'constant-thrust'
+	'constant-thrust',
+	'gravity-assist'
 ];
 
 /** A point read off the porkchop: the departure and the cruise it names. Priced

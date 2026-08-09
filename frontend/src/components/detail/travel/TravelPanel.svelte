@@ -40,6 +40,7 @@
 		type TransferPlan
 	} from '$lib/travel/travel-body';
 	import { TravelPanelState, type BlockReason } from '$lib/travel/panel.svelte';
+	import { ASSIST_BODY_IDS } from '$lib/travel/assist-bodies';
 	import {
 		serializeTripSuffix,
 		type EndpointMode,
@@ -104,7 +105,7 @@
 		 *  bottom of the map. */
 		onTimelineChange: (entries: TimelineEntry[] | null) => void;
 		/** What a body passed on the way is called. The two ends name themselves;
-		 *  this is for the ones in between. */
+		 *  this is for the ones in between — the body a swing-by goes past. */
 		resolveBodyName: (bodyId: string) => string;
 	}
 	let {
@@ -234,6 +235,34 @@
 	let aeroValue = $derived(
 		panel.aero === 'aerobraking' && panel.targetMode !== 'low-orbit' ? 'none' : panel.aero
 	);
+	// Candidates for a swing-by. Only a heliocentric trip gets any: inside one
+	// system the transfer already goes round the only body massive enough to bend
+	// it, and there is nothing left to pass on the way.
+	//
+	// No detail bundle is fetched for them — the only thing one would add is an
+	// atmosphere, and nothing lands on a body it swings past.
+	let assistBodies = $derived.by<TravelBody[]>(() => {
+		const bodies = bodiesById;
+		const heliocentric = frame.orbit === 'heliocentric';
+		// Untracked, and load-bearing. A candidate that is on screen is the scene's
+		// own row, and the scene rewrites its elements as the clock runs — so
+		// reading them here would make this list, and the search that depends on it,
+		// a function of the clock. The search takes about a second and a new one
+		// stops the last, so a list that changed twice a second would never finish
+		// one. The map identity is the whole dependency.
+		return untrack(() => {
+			if (!heliocentric) return [];
+			const lookup = lookupIn(bodies);
+			const out: TravelBody[] = [];
+			for (const id of ASSIST_BODY_IDS) {
+				const body = bodies.get(id);
+				if (!body) continue;
+				const travel = toTravelBody(body, lookup);
+				if (travel) out.push(travel);
+			}
+			return out;
+		});
+	});
 
 	// An end that never resolved is an end with no orbit, not an empty form. The
 	// destination is asked for first: it is the question the panel exists to
@@ -320,6 +349,30 @@
 		panel.updateTorch(from, to, nowJd, frame);
 	});
 
+	// And the swing-by hunt is a third, for the same reason again: it sweeps a
+	// decade of departures per candidate body and answers about a second later, so
+	// the three direct routes must not be held up waiting for it. The craft is not
+	// among its inputs — a different ship flies the same trajectory.
+	$effect(() => {
+		const from = originTravel;
+		const to = targetTravel;
+		const vias = assistBodies;
+		const departure = panel.originMode;
+		const arrival = panel.targetMode;
+		// Braking is among them: the hunt is judged against the direct routes, and
+		// they are priced with it.
+		const braking = panel.aero;
+		void departure;
+		void arrival;
+		void braking;
+
+		if (block || !from || !to || vias.length === 0) {
+			panel.clearAssist();
+			return;
+		}
+		void panel.updateAssist(from, to, vias, nowJd, { centralMu: frame.centralMu });
+	});
+
 	$effect(() => () => panel.dispose());
 
 	// What the map is drawing, and what would change it. The solve effect above
@@ -368,10 +421,13 @@
 			const path = buildTrajectoryPath(originTravel, targetTravel, route, {
 				centerId,
 				centralMu: frame.centralMu,
-				systemPrimary: frame.systemPrimary
+				systemPrimary: frame.systemPrimary,
+				// A swing-by route is drawn as two arcs meeting at a body neither end
+				// is, so the geometry needs the same candidates the search had.
+				vias: assistBodies
 			});
 			if (!path) {
-				console.debug(
+				console.warn(
 					`[travel] no drawable path for ${route.departureId} → ${route.targetId} ` +
 						`(depart ${route.departJd}, ${route.tofDays} d)`
 				);
@@ -428,7 +484,12 @@
 	// constant-thrust arc is not a point on it — every departure date flies the
 	// same one — so choosing that arc puts the whole launch-window section away,
 	// the picker for a hand-picked window with it.
-	let windowGrid = $derived(panel.selectedRoute?.constantThrust ? null : panel.grid);
+	// A swing-by is off the field for a different reason than a constant-thrust
+	// arc: it departs years outside the grid's own span, so the point it would be
+	// marked at is not on the picture at all.
+	let windowGrid = $derived(
+		panel.selectedRoute?.constantThrust || panel.selectedRoute?.flybys ? null : panel.grid
+	);
 
 	let anyEnd = $derived(originPicked || targetPicked);
 
@@ -689,7 +750,11 @@
 	{:else if panel.status === 'empty' && panel.offered.length === 0}
 		<p class="text-muted-foreground text-xs">{m.travel_no_routes()}</p>
 	{:else if panel.offered.length > 0}
-		<RouteList state={panel} onFocusField={windowGrid ? () => chart?.focusField() : null} />
+		<RouteList
+			state={panel}
+			nameOf={resolveBodyName}
+			onFocusField={windowGrid ? () => chart?.focusField() : null}
+		/>
 
 		{#if windowGrid}
 			<!-- Sits with the list rather than the detail: it is about which route
@@ -712,6 +777,7 @@
 				origin={originTravel}
 				target={targetTravel}
 				state={panel}
+				nameOf={resolveBodyName}
 			/>
 		{/if}
 	{/if}

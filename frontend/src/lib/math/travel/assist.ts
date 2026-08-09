@@ -28,13 +28,26 @@ import { AU_KM } from '$lib/math/units';
 import type { TravelBody } from './body';
 import { sphereOfInfluenceKm } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
-import { solveFlyby, type FlybyPass } from './flyby';
+import {
+	flybyDvKms,
+	flybyPeriapsisKm,
+	minFlybyRadiusKm,
+	solveFlyby,
+	type FlybyPass
+} from './flyby';
 import { solveLambert } from './lambert';
-import { arrivalCost, characteristicEnergy, departureCost } from './maneuvers';
+import {
+	arrivalCost,
+	characteristicEnergy,
+	departureCost,
+	type AeroAssist,
+	type ArrivalMode,
+	type DepartureMode
+} from './maneuvers';
 import { arrivalLegs, type Route, type RouteLeg, type RouteOptions } from './route';
-import { elementsToState } from './state';
-import { norm, sub } from './vec3';
-import { hohmannTransferDays, nextTransferWindows } from './windows';
+import { elementsToState, type StateVector } from './state';
+import { norm, sub, type Vec3 } from './vec3';
+import { hohmannTransferDays, nextTransferWindows, synodicPeriodDays } from './windows';
 
 /**
  * Build the two-arc route leaving at `departJd`, passing `via` after `tof1Days`
@@ -147,12 +160,122 @@ const DEFAULT_DEPART_STEPS = 48;
 const DEFAULT_TOF_STEPS = 22;
 
 /**
+ * The first arc and everything it decides, so that the sweep over second-leg
+ * lengths does not redo any of it.
+ *
+ * `headKms` is what the trip has already cost by the time the swing-by is
+ * reached — and, because every leg after it is non-negative, a lower bound on
+ * the whole route. That is what lets a hopeless first arc take the entire inner
+ * loop with it.
+ */
+interface Approach {
+	flybyJd: number;
+	midR: Vec3;
+	midV: Vec3;
+	vInfIn: Vec3;
+	vInfInKms: number;
+	vInfDepKms: number;
+	ascentKms: number;
+	headKms: number;
+}
+
+function approach(
+	departure: TravelBody,
+	via: TravelBody,
+	from: StateVector,
+	departJd: number,
+	tof1Days: number,
+	centralMu: number,
+	retrograde: boolean,
+	departureMode: DepartureMode
+): Approach | null {
+	const flybyJd = departJd + tof1Days;
+	const mid = elementsToState(via.elements, flybyJd, centralMu);
+	if (!mid) return null;
+	const arc1 = solveLambert(from.r, mid.r, tof1Days * SEC_PER_DAY, centralMu, retrograde);
+	if (!arc1) return null;
+
+	const vInfDepKms = norm(sub(arc1.v1, from.v));
+	if (!isFinite(vInfDepKms)) return null;
+	const dep = departureCost(departure, vInfDepKms, departureMode);
+	const vInfIn = sub(arc1.v2, mid.v);
+
+	return {
+		flybyJd,
+		midR: mid.r,
+		midV: mid.v,
+		vInfIn,
+		vInfInKms: norm(vInfIn),
+		vInfDepKms,
+		ascentKms: dep.ascentKms,
+		headKms: dep.ascentKms + dep.injectionKms
+	};
+}
+
+/**
+ * Total Δv of the route that leaves `app`'s swing-by and reaches the target in
+ * `tof2Days`, or NaN when there is no such arc.
+ *
+ * A number rather than a route: the sweep only ranks, and building a route per
+ * cell would allocate a dozen objects for every one of the tens of thousands it
+ * looks at. The winner is built once, afterwards.
+ *
+ * `ceiling` is the best total found so far. The arrival is priced before the
+ * swing-by even though it comes after it, because the swing-by is the only part
+ * that iterates and its cost is non-negative — so everything else already
+ * bounds the route, and a cell that is beaten before the pass is priced never
+ * pays for the pass.
+ */
+function tailCostKms(
+	app: Approach,
+	via: TravelBody,
+	target: TravelBody,
+	tof2Days: number,
+	centralMu: number,
+	retrograde: boolean,
+	arrivalMode: ArrivalMode,
+	aero: AeroAssist,
+	soiKm: number,
+	ceiling: number
+): number {
+	const to = elementsToState(target.elements, app.flybyJd + tof2Days, centralMu);
+	if (!to) return NaN;
+	const arc2 = solveLambert(app.midR, to.r, tof2Days * SEC_PER_DAY, centralMu, retrograde);
+	if (!arc2) return NaN;
+
+	const vInfArr = norm(sub(arc2.v2, to.v));
+	if (!isFinite(vInfArr)) return NaN;
+	const arr = arrivalCost(target, vInfArr, arrivalMode, aero);
+	const withoutPass = app.headKms + arr.captureKms + arr.descentKms;
+	if (!(withoutPass < ceiling)) return NaN;
+
+	const vInfOut = sub(arc2.v1, app.midV);
+	const vInfOutKms = norm(vInfOut);
+	if (!(vInfOutKms > 0) || !(app.vInfInKms > 0)) return NaN;
+	const cos =
+		(app.vInfIn[0] * vInfOut[0] + app.vInfIn[1] * vInfOut[1] + app.vInfIn[2] * vInfOut[2]) /
+		(app.vInfInKms * vInfOutKms);
+	const required = Math.acos(Math.max(-1, Math.min(1, cos)));
+	const rPeri = flybyPeriapsisKm(
+		via.mu,
+		minFlybyRadiusKm(via),
+		soiKm,
+		app.vInfInKms,
+		vInfOutKms,
+		required
+	);
+	if (Number.isNaN(rPeri)) return NaN;
+
+	return withoutPass + flybyDvKms(via.mu, rPeri, app.vInfInKms, vInfOutKms);
+}
+
+/**
  * The cheapest route through `via` in the given window, or null when none of the
  * grid solves.
  *
- * The sweep is ordered so the first arc is solved once per departure/first-leg
- * pair rather than once per cell; the inner loop over the second leg is then a
- * single Lambert solve and a swing-by each.
+ * The sweep is ordered so the first arc is solved once per departure and
+ * first-leg pair rather than once per cell, and it ranks on cost alone: the
+ * route object is built once, for whichever cell won.
  */
 export function searchAssist(
 	departure: TravelBody,
@@ -172,23 +295,82 @@ export function searchAssist(
 		tof2Steps = DEFAULT_TOF_STEPS,
 		...routeOptions
 	} = options;
+	const {
+		departureMode = 'surface',
+		arrivalMode = 'capture',
+		centralMu = GM_SUN_KM3_S2,
+		retrograde = false,
+		aero = 'none'
+	} = routeOptions;
 
-	let best: Route | null = null;
 	const departStep = departSteps > 1 ? (departToJd - departFromJd) / (departSteps - 1) : 0;
 	const tof1Step = tof1Steps > 1 ? (tof1MaxDays - tof1MinDays) / (tof1Steps - 1) : 0;
 	const tof2Step = tof2Steps > 1 ? (tof2MaxDays - tof2MinDays) / (tof2Steps - 1) : 0;
 
+	// Past the sphere of influence the pass is not a swing-by at all, so that is
+	// where a periapsis the geometry pushes outward stops being credited.
+	const soiKm = sphereOfInfluenceKm(via, centralMu, via.elements.a * AU_KM);
+
+	let bestDv = Infinity;
+	let bestDepartJd = 0;
+	let bestTof1 = 0;
+	let bestTof2 = 0;
+
 	for (let i = 0; i < departSteps; i++) {
 		const departJd = departFromJd + i * departStep;
+		const from = elementsToState(departure.elements, departJd, centralMu);
+		if (!from) continue;
 		for (let j = 0; j < tof1Steps; j++) {
 			const tof1 = tof1MinDays + j * tof1Step;
+			if (!(tof1 > 0)) continue;
+			const app = approach(
+				departure,
+				via,
+				from,
+				departJd,
+				tof1,
+				centralMu,
+				retrograde,
+				departureMode
+			);
+			// Everything still to come is non-negative, so a first arc that already
+			// costs more than the standing best cannot be rescued by any second one.
+			if (!app || !(app.headKms < bestDv)) continue;
 			for (let k = 0; k < tof2Steps; k++) {
 				const tof2 = tof2MinDays + k * tof2Step;
-				const route = buildAssistRoute(departure, via, target, departJd, tof1, tof2, routeOptions);
-				if (route && (!best || route.totalDvKms < best.totalDvKms)) best = route;
+				if (!(tof2 > 0)) continue;
+				const dv = tailCostKms(
+					app,
+					via,
+					target,
+					tof2,
+					centralMu,
+					retrograde,
+					arrivalMode,
+					aero,
+					soiKm,
+					bestDv
+				);
+				if (dv < bestDv) {
+					bestDv = dv;
+					bestDepartJd = departJd;
+					bestTof1 = tof1;
+					bestTof2 = tof2;
+				}
 			}
 		}
 	}
+	if (!isFinite(bestDv)) return null;
+
+	const best = buildAssistRoute(
+		departure,
+		via,
+		target,
+		bestDepartJd,
+		bestTof1,
+		bestTof2,
+		routeOptions
+	);
 	if (!best) return null;
 
 	return refine(departure, via, target, best, {
@@ -332,7 +514,16 @@ function bestThrough(
 	// to take one from — an escaping probe — cannot be one of the three.
 	if (hop1 === null || hop2 === null || !(hop1 > 0) || !(hop2 > 0)) return null;
 
-	const seeds = nextTransferWindows(departure, via, nowJd, MAX_SEEDS, mu).filter(
+	// Ask for only as many windows as the horizon can hold. The window search
+	// scans a span proportional to the count — sampling both bodies' longitudes
+	// as it goes — so asking for a fixed forty means scanning decades past the
+	// last one that would survive the filter below.
+	const synodic = synodicPeriodDays(departure, via);
+	const wanted =
+		synodic !== null && isFinite(synodic) && synodic > 0
+			? Math.min(MAX_SEEDS, Math.ceil(horizonDays / synodic) + 1)
+			: MAX_SEEDS;
+	const seeds = nextTransferWindows(departure, via, nowJd, wanted, mu).filter(
 		(jd) => jd < nowJd + horizonDays
 	);
 

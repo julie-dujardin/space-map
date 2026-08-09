@@ -21,6 +21,8 @@
 		type TravelBody
 	} from '$lib/math/travel';
 	import { returnDvKms, signalDelaySeconds } from '$lib/travel/arrival-stats';
+	import { formatJulianDate } from '$lib/format/date';
+	import { formatKm } from '$lib/format/distance';
 	import { formatDurationNarrow, SECONDS_PER_DAY } from '$lib/format/duration';
 	import {
 		dvParts,
@@ -39,8 +41,19 @@
 		origin: TravelBody;
 		target: TravelBody;
 		state: TravelPanelState;
+		/** What to call the body a swing-by passes — it is neither end of the trip,
+		 *  so nothing else here knows its name. */
+		nameOf?: (id: string) => string;
 	}
-	let { route, origin, target, state }: Props = $props();
+	let { route, origin, target, state, nameOf = (id: string) => id }: Props = $props();
+
+	/** Under this the pass is free in every sense that matters: metres per second
+	 *  against a budget in kilometres, and the search only stopped there because
+	 *  its last refinement step did. */
+	const FREE_PASS_KMS = 0.02;
+
+	// One pass for now; the solver builds no route with two.
+	let pass = $derived(route.flybys?.[0] ?? null);
 
 	const ICONS: Record<LegKind, typeof RocketIcon> = {
 		ascent: ArrowUpIcon,
@@ -120,6 +133,16 @@
 			state.vehicle.dvKms === undefined
 	);
 	let returnCost = $derived(returnDvKms(target, route));
+
+	// What the detour bought, against the best the direct search found. The saving
+	// is the reason this route is on the list at all, so it is said rather than
+	// left to be worked out from two rows of the ladder.
+	let saving = $derived.by(() => {
+		if (!pass || state.routes.length === 0) return null;
+		const cheapest = Math.min(...state.routes.map((choice) => choice.route.totalDvKms));
+		const saved = cheapest - route.totalDvKms;
+		return saved > 0 ? saved : null;
+	});
 </script>
 
 {#snippet statTile(tile: Tile, props: Record<string, unknown>)}
@@ -164,6 +187,43 @@
 		<div class="border-border/60 border-t"></div>
 		<DeltaVLadder legs={route.legs} />
 	</section>
+
+	{#if pass}
+		<!-- The pass is the whole reason for the route, and none of it shows in the
+		     ladder: an assist that works costs nothing, so the interesting figures
+		     are the geometry rather than the Δv. -->
+		<section class="flex flex-col gap-2">
+			<div class="flex items-baseline justify-between gap-2">
+				<h4 class="min-w-0 truncate text-sm font-medium">
+					{m.travel_flyby_heading()}
+					<span class="text-muted-foreground font-normal"
+						>{m.travel_via({ body: nameOf(pass.bodyId) })}</span
+					>
+				</h4>
+				{#if saving !== null}
+					<span class="text-muted-foreground shrink-0 text-xs tabular-nums">
+						{m.travel_assist_saves({ value: saving.toFixed(1) })}
+					</span>
+				{/if}
+			</div>
+			<div class="border-border/60 border-t"></div>
+			<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+				<dt class="text-muted-foreground">{m.travel_flyby_closest()}</dt>
+				<dd class="text-end tabular-nums">{formatJulianDate(pass.jd)}</dd>
+
+				<dt class="text-muted-foreground">{m.travel_flyby_altitude()}</dt>
+				<dd class="text-end tabular-nums">{formatKm(pass.altitudeKm)}</dd>
+
+				<dt class="text-muted-foreground">{m.travel_flyby_turn()}</dt>
+				<dd class="text-end tabular-nums">
+					{pass.turnDeg.toFixed(0)}°
+					{#if pass.dvKms < FREE_PASS_KMS}
+						<span class="text-muted-foreground ms-1 text-xs">{m.travel_flyby_free()}</span>
+					{/if}
+				</dd>
+			</dl>
+		</section>
+	{/if}
 
 	<!-- What you are left with once you get there — the questions the budget
 	     above cannot answer on its own. -->

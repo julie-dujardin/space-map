@@ -17,6 +17,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { AU_KM } from '$lib/math/units';
+import { findAssistRoute } from './assist';
 import { escapeSpeed, sphereOfInfluenceKm } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { solveFlyby, turnAngleRad } from './flyby';
@@ -468,6 +469,22 @@ describe('grid throughput', () => {
 		const elapsed = performance.now() - started;
 		expect(grid.solvedCount).toBeGreaterThan(1500);
 		expect(elapsed).toBeLessThan(2000);
+	});
+
+	// The same kind of tripwire for the swing-by search, which is the most
+	// expensive thing the planner runs: three candidate bodies over a twenty-year
+	// horizon, ~210 ms observed. It is what a re-solve on the panel costs, so an
+	// order of magnitude lost here is a second of staring at a placeholder.
+	it('hunts a swing-by well inside the panel budget', () => {
+		const started = performance.now();
+		const route = findAssistRoute(EARTH, SATURN, [VENUS, MARS, JUPITER], {
+			nowJd: J2000,
+			departureMode: 'surface',
+			arrivalMode: 'low-orbit'
+		});
+		const elapsed = performance.now() - started;
+		expect(route?.flybys?.[0].bodyId).toBe(JUPITER.id);
+		expect(elapsed).toBeLessThan(5000);
 	});
 });
 

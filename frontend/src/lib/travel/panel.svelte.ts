@@ -44,6 +44,19 @@ import type { TransferFrame } from './travel-body';
 
 export type TravelStatus = 'idle' | 'solving' | 'ready' | 'empty' | 'blocked';
 
+/** What a body's atmosphere is worth to a price, as a key fragment. */
+function air(body: TravelBody): string {
+	return `${body.hasAtmosphere === true ? 1 : 0}/${body.surfacePressureBar ?? ''}`;
+}
+
+/**
+ * How much cheaper a swing-by has to be before it is offered, km/s.
+ *
+ * Roughly what a Mars capture costs, and comfortably above the tens of metres
+ * per second the two searches differ by on a route that is really the same one.
+ */
+const ASSIST_MIN_SAVING_KMS = 0.3;
+
 export interface OfferedRoute {
 	profile: RouteOption;
 	route: Route;
@@ -95,6 +108,18 @@ export class TravelPanelState {
 	 * bisection rather than a grid, so it never goes near the worker.
 	 */
 	torch = $state<Route | null>(null);
+	/**
+	 * The cheapest route that swings past a third body, when one was found.
+	 *
+	 * Held raw rather than filtered: whether it is worth offering is a comparison
+	 * against the direct routes, and those land on their own schedule. `offered`
+	 * makes that call at read time so neither answer has to wait for the other.
+	 */
+	assist = $state<Route | null>(null);
+	/** Whether a hunt is running. It takes about a second — long enough that
+	 *  without saying so, "still looking" and "there isn't one" are the same
+	 *  silence. */
+	assistSearching = $state(false);
 	grid = $state<PorkchopGrid | null>(null);
 	status = $state<TravelStatus>('idle');
 	blocked = $state<BlockReason | null>(null);
@@ -102,6 +127,13 @@ export class TravelPanelState {
 	#solver = new TravelSolver();
 	/** Guards against an older solve landing after a newer one. */
 	#token = 0;
+	/** The same guard for the swing-by hunt, which runs on its own schedule and
+	 *  takes about a second — long enough for two trips to have gone by. */
+	#assistToken = 0;
+	/** What the standing hunt was asked. A hunt costs a second and starting one
+	 *  stops the last, so a caller that asks the same question twice would never
+	 *  get an answer; this is what makes asking again free. */
+	#assistFor: string | null = null;
 	/** Which craft the standing arc was built for, so choosing a new one selects
 	 *  its arc and everything else leaves the selection alone. */
 	#torchFor: string | null = null;
@@ -111,6 +143,11 @@ export class TravelPanelState {
 	/** A pick that arrived before there was a grid to price it against — off a
 	 *  shared link — held until the first solve lands. */
 	#pendingPick = $state<TripPick | null>(null);
+	/** A trajectory a link named that nothing offers yet. Only the swing-by needs
+	 *  this: it is the one option that arrives a second after the routes it is
+	 *  listed beside, so the usual "drop a selection nothing offers" rule would
+	 *  throw it away before the hunt that would have justified it came back. */
+	#pendingProfile = $state<RouteOption | null>(null);
 
 	/** Seeded from the URL, which is where a trip's terms live. */
 	constructor(initial: TripState = DEFAULT_TRIP) {
@@ -145,7 +182,9 @@ export class TravelPanelState {
 			vehicleId: this.vehicleId,
 			passengers: this.passengers,
 			payloadKg: this.payloadKg,
-			profile: this.selectedProfile,
+			// The link's own choice outranks the fallback taken while it is still
+			// being looked for, or the URL loses what it was sent with.
+			profile: this.#pendingProfile ?? this.selectedProfile,
 			pick: this.custom
 				? { departJd: this.custom.departJd, tofDays: this.custom.tofDays }
 				: this.#pendingPick
@@ -164,6 +203,7 @@ export class TravelPanelState {
 		this.passengers = trip.passengers;
 		this.payloadKg = trip.payloadKg;
 		this.selectedProfile = trip.profile;
+		this.#pendingProfile = trip.profile === 'gravity-assist' ? trip.profile : null;
 		this.custom = trip.pick ? this.#priceInGrid(trip.pick.departJd, trip.pick.tofDays) : null;
 		this.#pendingPick = this.custom ? null : trip.pick;
 		// A link naming both a craft and a trajectory has already made the choice
@@ -260,8 +300,26 @@ export class TravelPanelState {
 		const offered: OfferedRoute[] = this.torch
 			? [{ profile: 'constant-thrust', route: this.torch }, ...this.routes]
 			: [...this.routes];
+		const assist = this.#assistWorthOffering();
+		if (assist) offered.push({ profile: 'gravity-assist', route: assist });
 		if (this.custom) offered.push({ profile: 'custom', route: this.custom });
 		return offered;
+	}
+
+	/**
+	 * The swing-by route, if it earns its place.
+	 *
+	 * It is only ever an alternative to going straight there, and it buys its Δv
+	 * with years of extra travel and a departure date well outside the grid. So it
+	 * is shown when it is genuinely cheaper than anything the direct search found
+	 * and left out when it merely ties — an identical price for a decade more
+	 * waiting is not a choice worth putting in front of anyone.
+	 */
+	#assistWorthOffering(): Route | null {
+		const assist = this.assist;
+		if (!assist || this.routes.length === 0) return null;
+		const cheapest = Math.min(...this.routes.map((choice) => choice.route.totalDvKms));
+		return assist.totalDvKms <= cheapest - ASSIST_MIN_SAVING_KMS ? assist : null;
 	}
 
 	get selectedRoute(): Route | null {
@@ -423,6 +481,110 @@ export class TravelPanelState {
 		this.#torchFor = offer ? this.vehicleId : null;
 	}
 
+	/**
+	 * Look for a route that swings past one of `vias`, and hold whatever comes
+	 * back.
+	 *
+	 * Its own method for the same reason `updateTorch` is: it answers to a
+	 * different question than the porkchop and on a different timescale — a second
+	 * or so in the worker, against a grid that lands immediately — so the panel
+	 * shows the direct routes and lets this fill in behind them.
+	 *
+	 * Deliberately never touches `selectedProfile`. The arc a torch ship flies is
+	 * the answer that craft was chosen for; a swing-by is a comparison, and one
+	 * that moved the selection a second after the list had settled would take the
+	 * comparison away from whoever was reading it.
+	 */
+	async updateAssist(
+		origin: TravelBody,
+		target: TravelBody,
+		vias: TravelBody[],
+		nowJd: number,
+		options: RouteOptions = {}
+	): Promise<void> {
+		// Ids and modes rather than the bodies themselves: the elements behind them
+		// are the scene's, and the scene rewrites them as its clock runs. The planner
+		// already reasons from a snapshotted "now", so the same trip asked again is
+		// the same question however far the planets have moved since.
+		//
+		// The exception is the air, which is why it is spelled out here: whether an
+		// end has an atmosphere comes from a detail bundle that lands *after* the
+		// first hunt, and it moves an arrival by ten kilometres per second. Keyed on
+		// ids alone, the answer to "airless Saturn" would stand for the rest of the
+		// session while the routes beside it were priced with the aerocapture.
+		const key = [
+			origin.id,
+			target.id,
+			air(origin),
+			air(target),
+			vias.map((via) => via.id).join(','),
+			nowJd,
+			this.departureMode,
+			this.arrivalMode,
+			this.aero,
+			options.centralMu ?? ''
+		].join('|');
+		if (key === this.#assistFor) return;
+		this.#assistFor = key;
+
+		const token = ++this.#assistToken;
+		this.assistSearching = true;
+		const route = await this.#solver.findAssist(origin, target, vias, {
+			...options,
+			nowJd,
+			departureMode: this.departureMode,
+			arrivalMode: this.arrivalMode,
+			// Load-bearing: the hunt is only ever compared against the direct routes,
+			// so an arrival priced on a different braking mode than theirs is not a
+			// comparison at all — it reads as a swing-by that saves nothing.
+			aero: this.aero
+		});
+		// A newer hunt has replaced this one; it owns the flag now.
+		if (token !== this.#assistToken) return;
+		this.assistSearching = false;
+		this.assist = route;
+		this.#settleSelection(true);
+	}
+
+	/** Drop the swing-by, and anything still looking for one. */
+	clearAssist(): void {
+		this.#assistToken++;
+		this.#assistFor = null;
+		this.assistSearching = false;
+		this.assist = null;
+		if (this.selectedProfile === 'gravity-assist') this.selectedProfile = this.#fallbackProfile();
+	}
+
+	/**
+	 * Settle which trajectory is being read, now that what is offered has changed.
+	 *
+	 * Two things a link can name arrive later than the routes do — the swing-by,
+	 * which is still being hunted, and the constant-thrust arc, which waits on the
+	 * craft catalogue — and neither may be retired by a search that knows nothing
+	 * about it. `huntSettled` is the hunt saying it has answered.
+	 */
+	#settleSelection(huntSettled = false): void {
+		const wanted = this.#pendingProfile;
+		if (wanted) {
+			if (this.offered.some((choice) => choice.profile === wanted)) {
+				this.selectedProfile = wanted;
+				this.#pendingProfile = null;
+			} else if (huntSettled) {
+				// It has had its turn: the link named a trajectory this pair does not
+				// have, and from here it falls back like any other.
+				this.#pendingProfile = null;
+			} else {
+				return;
+			}
+		}
+		// A search says nothing about the constant-thrust arc — that comes off the
+		// craft — so it cannot retire a selection whose craft has yet to land.
+		if (this.selectedProfile === 'constant-thrust' && !this.craftKnown) return;
+		if (!this.offered.some((choice) => choice.profile === this.selectedProfile)) {
+			this.selectedProfile = this.#fallbackProfile();
+		}
+	}
+
 	/** The trajectory to fall back on when the selected one stops being offered. */
 	#fallbackProfile(): RouteOption | null {
 		const balanced = this.routes.find((r) => r.profile === 'balanced');
@@ -438,6 +600,11 @@ export class TravelPanelState {
 		this.grid = null;
 		this.custom = null;
 		this.torch = null;
+		this.assist = null;
+		this.assistSearching = false;
+		this.#assistToken++;
+		this.#assistFor = null;
+		this.#pendingProfile = null;
 		this.#pricing = null;
 	}
 
@@ -506,12 +673,7 @@ export class TravelPanelState {
 		this.custom = this.#repriceCustom() ?? this.#pricePendingPick();
 		this.status = this.offered.length > 0 ? 'ready' : 'empty';
 
-		// A search says nothing about the constant-thrust arc — that comes off the
-		// craft — so it cannot retire a selection whose craft has yet to land.
-		const awaitingTorch = this.selectedProfile === 'constant-thrust' && !this.craftKnown;
-		if (!awaitingTorch && !this.offered.some((r) => r.profile === this.selectedProfile)) {
-			this.selectedProfile = this.#fallbackProfile();
-		}
+		this.#settleSelection();
 	}
 
 	dispose(): void {

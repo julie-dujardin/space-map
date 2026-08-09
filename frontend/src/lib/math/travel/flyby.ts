@@ -77,38 +77,68 @@ export function solveFlyby(
 		(vInfIn[0] * vInfOut[0] + vInfIn[1] * vInfOut[1] + vInfIn[2] * vInfOut[2]) / (vIn * vOut);
 	const required = Math.acos(Math.max(-1, Math.min(1, cos)));
 
-	// Total turn available at radius r: half of it on the way in, half on the way
-	// out, each on its own branch's excess speed. Falls monotonically with r.
-	const available = (r: number): number =>
-		turnAngleRad(body.mu, r, vIn) / 2 + turnAngleRad(body.mu, r, vOut) / 2;
+	const rPeri = flybyPeriapsisKm(body.mu, minFlybyRadiusKm(body), maxRadiusKm, vIn, vOut, required);
+	if (Number.isNaN(rPeri)) return null;
 
-	const rMin = minFlybyRadiusKm(body);
-	if (available(rMin) < required) return null;
-
-	let rPeri: number;
-	if (required <= 0) {
-		// Nothing to turn: the pass exists only to change speed, and there is no
-		// radius the geometry picks. Charge it at the ceiling, where the Oberth
-		// help is least — a burn nowhere near a body is what this really is.
-		rPeri = isFinite(maxRadiusKm) ? maxRadiusKm : rMin;
-	} else if (available(maxRadiusKm) >= required) {
-		rPeri = maxRadiusKm;
-	} else {
-		let lo = rMin;
-		let hi = isFinite(maxRadiusKm) ? maxRadiusKm : rMin * 1e6;
-		for (let i = 0; i < 60; i++) {
-			const mid = (lo + hi) / 2;
-			if (available(mid) >= required) lo = mid;
-			else hi = mid;
-		}
-		rPeri = (lo + hi) / 2;
-	}
-
-	const dvKms = Math.abs(
-		periapsisSpeed(body.mu, rPeri, vOut) - periapsisSpeed(body.mu, rPeri, vIn)
-	);
+	const dvKms = flybyDvKms(body.mu, rPeri, vIn, vOut);
 	if (!isFinite(dvKms)) return null;
 	return { dvKms, periapsisKm: rPeri, turnRad: required };
+}
+
+/** What the pass costs once its radius is known: the speed the geometry could
+ *  not supply, bought at periapsis where it is cheapest. */
+export function flybyDvKms(mu: number, rPeriKm: number, vInKms: number, vOutKms: number): number {
+	return Math.abs(periapsisSpeed(mu, rPeriKm, vOutKms) - periapsisSpeed(mu, rPeriKm, vInKms));
+}
+
+/**
+ * The periapsis that turns `required` radians, km, or NaN when no permitted pass
+ * turns that far.
+ *
+ * Split out of `solveFlyby` and returning a bare number because the search runs
+ * it tens of thousands of times: this is the only part of a candidate route that
+ * iterates, so an object per call would be an object per grid cell.
+ *
+ * The bracket is what keeps the iteration short. Each branch alone has a closed
+ * form — r = (μ/v∞²)·(1/sin(δ/2) − 1) — and the pass turns the average of the
+ * two, so the answer always lies between the two single-branch radii however far
+ * apart the speeds are. Bisecting a bracket that tight lands in a couple of dozen
+ * steps; bisecting the whole plausible range of radii, which spans six orders of
+ * magnitude, needs far more to reach the same place.
+ */
+export function flybyPeriapsisKm(
+	mu: number,
+	rMinKm: number,
+	maxRadiusKm: number,
+	vInKms: number,
+	vOutKms: number,
+	required: number
+): number {
+	// Half the turn on the way in and half on the way out, each on its own
+	// branch's excess speed. Falls monotonically with r.
+	const available = (r: number): number =>
+		turnAngleRad(mu, r, vInKms) / 2 + turnAngleRad(mu, r, vOutKms) / 2;
+
+	if (available(rMinKm) < required) return NaN;
+	// Nothing to turn: the pass exists only to change speed, and no radius is
+	// picked out. Charge it at the ceiling, where the Oberth help is least — a
+	// burn nowhere near a body is what this really is.
+	if (required <= 0) return isFinite(maxRadiusKm) ? maxRadiusKm : rMinKm;
+	if (available(maxRadiusKm) >= required) return maxRadiusKm;
+
+	const shape = 1 / Math.sin(required / 2) - 1;
+	const rIn = (mu / (vInKms * vInKms)) * shape;
+	const rOut = (mu / (vOutKms * vOutKms)) * shape;
+	let lo = Math.max(rMinKm, Math.min(rIn, rOut));
+	let hi = Math.min(maxRadiusKm, Math.max(rIn, rOut));
+	if (!(hi > lo)) return Math.max(rMinKm, Math.min(maxRadiusKm, lo));
+
+	for (let i = 0; i < 30 && hi - lo > lo * 1e-9; i++) {
+		const mid = (lo + hi) / 2;
+		if (available(mid) >= required) lo = mid;
+		else hi = mid;
+	}
+	return (lo + hi) / 2;
 }
 
 /** The excess velocity an arc arriving at `vArc` leaves the body with. */
