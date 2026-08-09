@@ -163,11 +163,6 @@ export function allVehicles(): readonly Vehicle[] {
 	return vehicles;
 }
 
-export function vehicleById(id: string | null): Vehicle | null {
-	if (!id) return null;
-	return vehicles.find((v) => v.id === id) ?? null;
-}
-
 /** Localized name + Wikidata one-liner, or null for the ships with no item. */
 export function vehicleNaming(id: string): VehicleNaming | null {
 	return naming.get(id) ?? null;

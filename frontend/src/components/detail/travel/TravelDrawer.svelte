@@ -21,6 +21,7 @@
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
 	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
+	import { DEFAULT_TRIP } from '$lib/travel/trip';
 	import { resolveTripBodies } from '$lib/travel/resolve';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
@@ -63,6 +64,10 @@
 
 	const ctx = getContext<ContextManager | undefined>('ctx');
 	const appState = getContext<AppState | undefined>('appState');
+
+	// Read off the view rather than taken as a prop: the ends come down from the
+	// page because the scene needs them too, but the terms are the panel's alone.
+	let trip = $derived(appState?.view.trip ?? DEFAULT_TRIP);
 
 	// The two ends and their chains up to the Sun. Deliberately not derived from
 	// the scene: a trip end is any object in the catalogue, and most of them are
@@ -281,6 +286,8 @@
 				bodiesById={tripBodies}
 				{originDetail}
 				{targetDetail}
+				{trip}
+				onTripChange={(next) => appState?.setTrip(next)}
 				onOriginChange={(pick: TravelEndpointPick) =>
 					appState?.setNav(
 						{ id: pick.bodyId, featureId: pick.featureId },

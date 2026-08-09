@@ -14,7 +14,8 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatJulianDate } from '$lib/format/date';
 	import { formatQuantity } from '$lib/format/quantities';
-	import type { OfferedRoute, RouteOption, TravelPanelState } from '$lib/travel/panel.svelte';
+	import type { OfferedRoute, TravelPanelState } from '$lib/travel/panel.svelte';
+	import type { RouteOption } from '$lib/travel/trip';
 	import { formatAcceleration, formatTripTime } from '$lib/travel/format';
 	import { departureNote } from './vehicle-labels';
 

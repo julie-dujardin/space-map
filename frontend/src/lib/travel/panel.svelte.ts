@@ -26,40 +26,22 @@ import {
 	type Route,
 	type RouteChoice,
 	type RouteOptions,
-	type RouteProfile,
 	type TravelBody,
 	type Vehicle
 } from '$lib/math/travel';
-import { ensureVehicles, findVehicle } from './vehicles';
-import { searchWindow, type TimeMode } from './search-window';
+import { ensureVehicles, vehicleCatalogue } from './vehicles';
+import { searchWindow } from './search-window';
+import {
+	DEFAULT_TRIP,
+	type EndpointMode,
+	type RouteOption,
+	type TimeMode,
+	type TripPick,
+	type TripState
+} from './trip';
 import type { TransferFrame } from './travel-body';
 
-/**
- * How a trip meets a body at one end. These are the kernel's own manoeuvre
- * cases, not named orbits — "low-orbit" is a circular parking orbit and
- * "elliptical" the loose capture ellipse a real orbiter enters first.
- */
-export type EndpointMode = 'surface' | 'low-orbit' | 'elliptical' | 'flyby';
-
-/** Modes each end can be in. Departure has no elliptical case — the injection
- *  burn is priced from a circular parking orbit — and only a destination can be
- *  flown past. */
-export const ORIGIN_MODES: readonly EndpointMode[] = ['surface', 'low-orbit'];
-export const TARGET_MODES: readonly EndpointMode[] = [
-	'surface',
-	'low-orbit',
-	'elliptical',
-	'flyby'
-];
-
 export type TravelStatus = 'idle' | 'solving' | 'ready' | 'empty' | 'blocked';
-
-/**
- * What the route list can offer: the solver's three, a point read off the
- * porkchop by hand, and the arc a drive held all the way flies — which is not a
- * point on the porkchop at all, since every departure date flies the same one.
- */
-export type RouteOption = RouteProfile | 'custom' | 'constant-thrust';
 
 export interface OfferedRoute {
 	profile: RouteOption;
@@ -70,22 +52,25 @@ export interface OfferedRoute {
 export type BlockReason = 'unknown-primary' | 'unknown-orbit' | 'no-target' | 'no-origin';
 
 export class TravelPanelState {
-	originMode = $state<EndpointMode>('surface');
-	targetMode = $state<EndpointMode>('low-orbit');
+	originMode = $state<EndpointMode>(DEFAULT_TRIP.originMode);
+	targetMode = $state<EndpointMode>(DEFAULT_TRIP.targetMode);
 	/** Set when an end is a named place on a surface — there is only one way to
-	 *  arrive at one, so the mode is fixed and its picker is skipped. */
+	 *  arrive at one, so the mode is fixed and its picker is skipped. Comes from
+	 *  the path rather than the trip's terms, so it is not part of `trip`. */
 	originIsFeature = $state(false);
 	targetIsFeature = $state(false);
-	timeMode = $state<TimeMode>('now');
+	timeMode = $state<TimeMode>(DEFAULT_TRIP.timeMode);
 	/** Departure or arrival date behind the non-'now' time modes, as a JD. */
-	pickedJd = $state<number | null>(null);
-	vehicleId = $state<string | null>(null);
+	pickedJd = $state<number | null>(DEFAULT_TRIP.pickedJd);
+	vehicleId = $state<string | null>(DEFAULT_TRIP.vehicleId);
+	/** The fetched catalogue; empty until `loadVehicles` lands. */
+	vehicles = $state<readonly Vehicle[]>([]);
 	/** What the trip carries. Costs no solve — mass moves no trajectory — so
 	 *  these sit outside the effect that re-solves. */
-	passengers = $state(0);
-	payloadKg = $state(0);
+	passengers = $state(DEFAULT_TRIP.passengers);
+	payloadKg = $state(DEFAULT_TRIP.payloadKg);
 	/** Null until a solve lands, then whichever route the user last chose. */
-	selectedProfile = $state<RouteOption | null>(null);
+	selectedProfile = $state<RouteOption | null>(DEFAULT_TRIP.profile);
 
 	routes = $state<RouteChoice[]>([]);
 	/** A point picked off the porkchop, priced like any solved route. */
@@ -110,15 +95,69 @@ export class TravelPanelState {
 	/** The last solve's inputs, so a hand-picked point is priced the same way the
 	 *  grid it was read off was. */
 	#pricing: { origin: TravelBody; target: TravelBody; options: RouteOptions } | null = null;
+	/** A pick that arrived before there was a grid to price it against — off a
+	 *  shared link — held until the first solve lands. */
+	#pendingPick = $state<TripPick | null>(null);
 
-	get vehicle(): Vehicle | null {
-		return findVehicle(this.vehicleId);
+	/** Seeded from the URL, which is where a trip's terms live. */
+	constructor(initial: TripState = DEFAULT_TRIP) {
+		this.applyTrip(initial);
 	}
 
-	/** Pull the catalogue in. The panel calls this when it opens; the routes
-	 *  solve without it, so nothing waits on the fetch. */
-	loadVehicles(): Promise<void> {
-		return ensureVehicles();
+	get vehicle(): Vehicle | null {
+		return this.vehicles.find((v) => v.id === this.vehicleId) ?? null;
+	}
+
+	/** The trip as the URL carries it. The hand pick is reported whether or not a
+	 *  solve has priced it, or a link would drop its own pick on the way in. */
+	get trip(): TripState {
+		return {
+			originMode: this.originMode,
+			targetMode: this.targetMode,
+			timeMode: this.timeMode,
+			pickedJd: this.pickedJd,
+			vehicleId: this.vehicleId,
+			passengers: this.passengers,
+			payloadKg: this.payloadKg,
+			profile: this.selectedProfile,
+			pick: this.custom
+				? { departJd: this.custom.departJd, tofDays: this.custom.tofDays }
+				: this.#pendingPick
+		};
+	}
+
+	/** Take a trip's terms as given — a fresh load, or browser-back onto one.
+	 *  Which end is a named place is not among them: that comes from the path. */
+	applyTrip(trip: TripState): void {
+		this.originMode = trip.originMode;
+		this.targetMode = trip.targetMode;
+		this.timeMode = trip.timeMode;
+		this.pickedJd = trip.pickedJd;
+		this.vehicleId = trip.vehicleId;
+		this.passengers = trip.passengers;
+		this.payloadKg = trip.payloadKg;
+		this.selectedProfile = trip.profile;
+		this.custom = trip.pick ? this.#priceInGrid(trip.pick.departJd, trip.pick.tofDays) : null;
+		this.#pendingPick = this.custom ? null : trip.pick;
+		// A link naming both a craft and a trajectory has already made the choice
+		// `updateTorch` makes on the reader's behalf, so the arc has had its turn
+		// at the selection: arriving with a torch ship is not the same as picking
+		// one, and a shared "fast" is a comparison someone meant to send.
+		this.#torchFor = trip.profile !== null ? trip.vehicleId : null;
+	}
+
+	/**
+	 * Pull the catalogue in. Called when the picker opens, and on load when a
+	 * link already names a craft. The routes solve without it, so nothing waits
+	 * on the fetch.
+	 *
+	 * The catalogue is held here rather than read from the module on demand: it
+	 * lands after first paint, and a plain array is nothing a rune watches — a
+	 * `vehicle` read off one would keep answering null long after the fetch.
+	 */
+	async loadVehicles(): Promise<void> {
+		await ensureVehicles();
+		this.vehicles = vehicleCatalogue();
 	}
 
 	/** Arrival mode the kernel should price, from what the destination box says.
@@ -171,6 +210,7 @@ export class TravelPanelState {
 		const route = this.#price(departJd, tofDays);
 		if (!route) return;
 		this.custom = route;
+		this.#pendingPick = null;
 		this.selectedProfile = 'custom';
 	}
 
@@ -178,6 +218,18 @@ export class TravelPanelState {
 		if (!this.#pricing) return null;
 		const { origin, target, options } = this.#pricing;
 		return buildRoute(origin, target, departJd, tofDays, options);
+	}
+
+	/** Price a point only where the chart can still place it. */
+	#priceInGrid(departJd: number, tofDays: number): Route | null {
+		const grid = this.grid;
+		if (!grid) return null;
+		const inGrid =
+			departJd >= grid.departJds[0] &&
+			departJd <= grid.departJds[grid.departSteps - 1] &&
+			tofDays >= grid.tofDays[0] &&
+			tofDays <= grid.tofDays[grid.tofSteps - 1];
+		return inGrid ? this.#price(departJd, tofDays) : null;
 	}
 
 	/**
@@ -189,16 +241,20 @@ export class TravelPanelState {
 	 */
 	#repriceCustom(): Route | null {
 		const previous = this.custom;
-		const grid = this.grid;
-		if (!previous || !grid || !this.#pricing) return null;
+		if (!previous || !this.#pricing) return null;
 		const { origin, target } = this.#pricing;
 		if (previous.departureId !== origin.id || previous.targetId !== target.id) return null;
-		const inGrid =
-			previous.departJd >= grid.departJds[0] &&
-			previous.departJd <= grid.departJds[grid.departSteps - 1] &&
-			previous.tofDays >= grid.tofDays[0] &&
-			previous.tofDays <= grid.tofDays[grid.tofSteps - 1];
-		return inGrid ? this.#price(previous.departJd, previous.tofDays) : null;
+		return this.#priceInGrid(previous.departJd, previous.tofDays);
+	}
+
+	/** Price the pick a shared link arrived with, now that there is a grid. It
+	 *  gets the one attempt: if the trip it named is not in this grid, the link
+	 *  described a window this pair no longer has. */
+	#pricePendingPick(): Route | null {
+		const pending = this.#pendingPick;
+		if (!pending) return null;
+		this.#pendingPick = null;
+		return this.#priceInGrid(pending.departJd, pending.tofDays);
 	}
 
 	/**
@@ -282,10 +338,24 @@ export class TravelPanelState {
 			// too, and re-selecting the arc under a reader comparing it against them
 			// would take the comparison away.
 			this.selectedProfile = 'constant-thrust';
-		} else if (!offer && this.selectedProfile === 'constant-thrust') {
+		} else if (!offer && this.#craftKnown && this.selectedProfile === 'constant-thrust') {
 			this.selectedProfile = this.#fallbackProfile();
 		}
-		this.#torchFor = offer ? this.vehicleId : null;
+		if (this.#craftKnown) this.#torchFor = offer ? this.vehicleId : null;
+	}
+
+	/**
+	 * Whether the chosen craft is settled — nothing chosen, the entry in hand, or
+	 * a catalogue that has landed without it.
+	 *
+	 * The catalogue is fetched, so a link naming a craft is read before it lands,
+	 * and everything about that craft is unanswerable until it does. The arc it
+	 * would fly is the one trajectory that comes off the craft rather than out of
+	 * the search, so a pass taken during the wait must not conclude there is no
+	 * such trajectory: the whole point of the wait is that nobody knows yet.
+	 */
+	get #craftKnown(): boolean {
+		return this.vehicleId === null || this.vehicle !== null || this.vehicles.length > 0;
 	}
 
 	/** The trajectory to fall back on when the selected one stops being offered. */
@@ -367,10 +437,13 @@ export class TravelPanelState {
 		this.routes = routes;
 		this.grid = result.grid;
 		this.#pricing = { origin, target, options: solveOptions };
-		this.custom = this.#repriceCustom();
+		this.custom = this.#repriceCustom() ?? this.#pricePendingPick();
 		this.status = this.offered.length > 0 ? 'ready' : 'empty';
 
-		if (!this.offered.some((r) => r.profile === this.selectedProfile)) {
+		// A search says nothing about the constant-thrust arc — that comes off the
+		// craft — so it cannot retire a selection whose craft has yet to land.
+		const awaitingTorch = this.selectedProfile === 'constant-thrust' && !this.#craftKnown;
+		if (!awaitingTorch && !this.offered.some((r) => r.profile === this.selectedProfile)) {
 			this.selectedProfile = this.#fallbackProfile();
 		}
 	}

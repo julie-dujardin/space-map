@@ -18,6 +18,7 @@ vi.mock('$app/state', () => ({
 }));
 
 import { applyFocus, applyNav, applyTab, isBodyId, serializeUrl } from './url';
+import { DEFAULT_TRIP } from '$lib/travel/trip';
 import type { MapViewState } from './view';
 
 const baseView: MapViewState = {
@@ -41,7 +42,8 @@ const baseView: MapViewState = {
 	navFrom: null,
 	navTo: null,
 	navFromFeature: null,
-	navToFeature: null
+	navToFeature: null,
+	trip: DEFAULT_TRIP
 };
 
 describe('serializeUrl', () => {
@@ -387,5 +389,41 @@ describe('serializeUrl on a trip', () => {
 			navToFeature: 15057
 		});
 		expect(url).not.toContain('tf=');
+	});
+
+	it('carries the terms the trip is flown on', () => {
+		const url = serializeUrl({
+			...applyNav(baseView, 'naif-399', 'naif-499'),
+			trip: { ...DEFAULT_TRIP, targetMode: 'flyby', vehicleId: 'starship', passengers: 6 }
+		});
+		expect(url).toContain('&tm=flyby');
+		expect(url).toContain('&craft=starship');
+		expect(url).toContain('&crew=6');
+	});
+
+	// The terms describe the planner, not the pair — moving an end keeps the same
+	// craft loaded the same way.
+	it('keeps the terms when an end moves', () => {
+		const trip = { ...DEFAULT_TRIP, vehicleId: 'starship', payloadKg: 100 };
+		const moved = applyNav(
+			{ ...applyNav(baseView, 'naif-399', 'naif-499'), trip },
+			'naif-399',
+			'naif-599'
+		);
+		expect(moved.trip).toEqual(trip);
+	});
+
+	// Off /nav there is no trip, and a stale craft would reappear on the next one.
+	it('drops the terms when a body is focused', () => {
+		const trip = { ...DEFAULT_TRIP, vehicleId: 'starship' };
+		const next = applyFocus(
+			{ ...applyNav(baseView, 'naif-399', 'naif-499'), trip },
+			{
+				type: 'b',
+				id: 'naif-599',
+				name: 'Jupiter'
+			}
+		);
+		expect(next.trip).toEqual(DEFAULT_TRIP);
 	});
 });

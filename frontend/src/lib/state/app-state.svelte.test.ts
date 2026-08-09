@@ -17,6 +17,8 @@ vi.mock('$app/paths', () => ({
 		route
 			.replace('[type]', params.type ?? '')
 			.replace('[id]', params.id ?? '')
+			.replace('/[[from]]', params.from ? `/${params.from}` : '')
+			.replace('/[[to]]', params.to ? `/${params.to}` : '')
 			.replace('/[[name]]', params.name ? `/${params.name}` : '')
 }));
 
@@ -25,6 +27,7 @@ vi.mock('$app/paths', () => ({
 vi.mock('$app/state', () => ({ page: { params: {}, url: new URL('http://x/') } }));
 
 import { AppState } from './app-state.svelte';
+import { DEFAULT_TRIP } from '$lib/travel/trip';
 import type { MapViewState } from './view';
 
 const initialView: MapViewState = {
@@ -48,7 +51,8 @@ const initialView: MapViewState = {
 	navFrom: null,
 	navTo: null,
 	navFromFeature: null,
-	navToFeature: null
+	navToFeature: null,
+	trip: DEFAULT_TRIP
 };
 
 beforeEach(() => {
@@ -264,6 +268,33 @@ describe('AppState.syncFromPopState', () => {
 		expect(s.view.id).toBe('naif-399');
 		expect(s.view.imageIndex).toBe(2);
 		expect(pushStateSpy).not.toHaveBeenCalled();
+		expect(replaceStateSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe('AppState.setTrip', () => {
+	function onNav(): AppState {
+		const s = new AppState({ ...initialView });
+		s.setNav('naif-399', 'naif-499');
+		pushStateSpy.mockClear();
+		replaceStateSpy.mockClear();
+		return s;
+	}
+
+	// Refining a trip is the same destination — back should leave the planner,
+	// not undo one field of it.
+	it('replaces rather than pushing', () => {
+		const s = onNav();
+		s.setTrip({ ...DEFAULT_TRIP, targetMode: 'flyby' });
+		expect(pushStateSpy).not.toHaveBeenCalled();
+		expect(replaceStateSpy.mock.calls[0][0]).toContain('&tm=flyby');
+	});
+
+	// The panel's mirroring effect fires on every change it makes, most of which
+	// the URL does not carry.
+	it('ignores a change the URL cannot tell apart', () => {
+		const s = onNav();
+		s.setTrip({ ...DEFAULT_TRIP, pickedJd: 2460000.5 });
 		expect(replaceStateSpy).not.toHaveBeenCalled();
 	});
 });

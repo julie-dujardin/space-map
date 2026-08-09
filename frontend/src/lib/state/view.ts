@@ -1,4 +1,5 @@
 import { EARTH_ID } from '$lib/constants';
+import { DEFAULT_TRIP, type TripState } from '$lib/travel/trip';
 
 /** URL path discriminator. Body types map 1:1 to ID prefix; Feature is a
  *  sub-selection on top of a body and uses a nested route shape
@@ -109,6 +110,10 @@ export interface MapViewState {
 	 *  A feature is always a surface endpoint, so it carries no mode. */
 	navFromFeature: number | null;
 	navToFeature: number | null;
+	/** What the trip asks for beyond its two ends — how it meets each one, when
+	 *  it goes, what flies it, what it carries, which trajectory is being read.
+	 *  Its own codec; see `$lib/travel/trip`. DEFAULT_TRIP off `/nav`. */
+	trip: TripState;
 }
 
 /** Default vantage angle for a body framed with no explicit camera (search, click, group). */
@@ -143,5 +148,6 @@ export const DEFAULT_VIEW: MapViewState = {
 	navFrom: null,
 	navTo: null,
 	navFromFeature: null,
-	navToFeature: null
+	navToFeature: null,
+	trip: DEFAULT_TRIP
 };

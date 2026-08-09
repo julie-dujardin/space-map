@@ -15,8 +15,7 @@ import {
 	synodicPeriodDays,
 	systemArcBounds
 } from '$lib/math/travel';
-
-export type TimeMode = 'now' | 'depart' | 'arrive';
+import type { TimeMode } from './trip';
 
 /** Beyond this the grid is too coarse to resolve a window; slow pairs get capped. */
 const MAX_SEARCH_DAYS = 3 * 365.25;

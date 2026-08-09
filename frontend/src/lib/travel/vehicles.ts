@@ -10,13 +10,7 @@
  * opens the travel panel needs it.
  */
 
-import {
-	loadSpacecraft,
-	allVehicles,
-	vehicleById,
-	sourceCitation,
-	vehicleNaming
-} from '$lib/fetch/spacecraft';
+import { loadSpacecraft, allVehicles, sourceCitation, vehicleNaming } from '$lib/fetch/spacecraft';
 import type { Vehicle } from '$lib/math/travel';
 import * as m from '$lib/paraglide/messages.js';
 
@@ -30,10 +24,6 @@ export function ensureVehicles(): Promise<void> {
 
 export function vehicleCatalogue(): readonly Vehicle[] {
 	return allVehicles();
-}
-
-export function findVehicle(id: string | null): Vehicle | null {
-	return vehicleById(id);
 }
 
 /**

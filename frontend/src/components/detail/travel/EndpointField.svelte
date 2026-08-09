@@ -12,7 +12,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
-	import { ORIGIN_MODES, TARGET_MODES, type EndpointMode } from '$lib/travel/panel.svelte';
+	import { ORIGIN_MODES, TARGET_MODES, type EndpointMode } from '$lib/travel/trip';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 	import Segmented from './Segmented.svelte';
 	import EndpointSearch from './EndpointSearch.svelte';

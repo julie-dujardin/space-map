@@ -11,6 +11,7 @@ import {
 } from '$lib/fetch/groups/registry';
 import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
 import { isLagrangeClass } from '$lib/math/orbit/lagrange';
+import { DEFAULT_TRIP, parseTrip, serializeTripSuffix } from '$lib/travel/trip';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import {
 	DEFAULT_VIEW,
@@ -151,7 +152,8 @@ export function parseUrl(): MapViewState | null {
 			// A feature belongs to the end it was picked at; without that end there
 			// is nothing for one to belong to.
 			navFromFeature: navFrom ? parseFeatureId(page.url.searchParams.get('ff')) : null,
-			navToFeature: to ? parseFeatureId(page.url.searchParams.get('tf')) : null
+			navToFeature: to ? parseFeatureId(page.url.searchParams.get('tf')) : null,
+			trip: parseTrip(page.url.searchParams)
 		});
 	}
 
@@ -288,7 +290,8 @@ export function applyFocus(
 		navFrom: null,
 		navTo: null,
 		navFromFeature: null,
-		navToFeature: null
+		navToFeature: null,
+		trip: DEFAULT_TRIP
 	};
 }
 
@@ -312,6 +315,11 @@ function navEnd(end: string | NavEnd): NavEnd {
  * going, the same way a focus view frames its subject. Either end may be null —
  * a trip is described one end at a time — and the camera falls back to whichever
  * one is there.
+ *
+ * The trip's terms ride through untouched. Moving an end is still the same
+ * planner with the same craft loaded the same way, and what a change of ends
+ * costs the route choice and the hand pick is the panel's to decide — it holds
+ * the grid they are measured against.
  */
 export function applyNav(
 	current: MapViewState,
@@ -403,7 +411,8 @@ export function applyGroup(current: MapViewState, slug: string, name: string): M
 		navFrom: null,
 		navTo: null,
 		navFromFeature: null,
-		navToFeature: null
+		navToFeature: null,
+		trip: DEFAULT_TRIP
 	};
 }
 
@@ -431,7 +440,8 @@ export function applyFeature(
 		navFrom: null,
 		navTo: null,
 		navFromFeature: null,
-		navToFeature: null
+		navToFeature: null,
+		trip: DEFAULT_TRIP
 	};
 }
 
@@ -489,11 +499,11 @@ export function serializeUrl(state: MapViewState): string {
 			from: state.navFrom ?? NAV_UNSET,
 			to: state.navTo ?? undefined
 		});
-		// A trip is described entirely by its two ends; the rest of the query block
-		// belongs to drawer tabs the planner doesn't have.
+		// A trip is described by its two ends and the terms it is flown on; the rest
+		// of the query block belongs to drawer tabs the planner doesn't have.
 		const ff = state.navFrom && state.navFromFeature !== null ? `&ff=${state.navFromFeature}` : '';
 		const tf = state.navTo && state.navToFeature !== null ? `&tf=${state.navToFeature}` : '';
-		return `${path}?at=${at}${ff}${tf}`;
+		return `${path}?at=${at}${ff}${tf}${serializeTripSuffix(state.trip)}`;
 	}
 
 	if (state.type === UrlType.Group && state.groupSlug !== null) {

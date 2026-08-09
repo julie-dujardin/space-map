@@ -1,12 +1,13 @@
 <!--
   The travel panel: describe a trip, get trajectories.
 
-  Both ends live in the URL (`/nav/<from>/<to>`), so a planned trip is a link.
-  Everything below the two endpoint fields — when to go, what to fly, which of
-  the offered trajectories is selected — is session state that resets with the
-  route.
+  The whole trip is a link: its two ends are the path (`/nav/<from>/<to>`) and
+  everything below the endpoint fields — when to go, what to fly, what it
+  carries, which trajectory is being read — is the query. The panel owns the
+  live state and mirrors it out; the URL is how it comes back.
 -->
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import ArrowUpDownIcon from '@lucide/svelte/icons/arrow-up-down';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
@@ -23,8 +24,7 @@
 		hohmannTransferDays,
 		nextTransferWindows,
 		systemArcBounds,
-		type TravelBody,
-		type Vehicle
+		type TravelBody
 	} from '$lib/math/travel';
 	import {
 		lookupIn,
@@ -33,11 +33,15 @@
 		transferPlan,
 		type TransferPlan
 	} from '$lib/travel/travel-body';
-	import { TravelPanelState, type BlockReason, type EndpointMode } from '$lib/travel/panel.svelte';
+	import { TravelPanelState, type BlockReason } from '$lib/travel/panel.svelte';
+	import {
+		serializeTripSuffix,
+		type EndpointMode,
+		type TimeMode,
+		type TripState
+	} from '$lib/travel/trip';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
-	import { vehicleCatalogue } from '$lib/travel/vehicles';
 	import { departureNote, vehicleName } from './vehicle-labels';
-	import type { TimeMode } from '$lib/travel/search-window';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import Segmented from './Segmented.svelte';
@@ -75,11 +79,16 @@
 		 *  atmosphere is read, so a route just prices airless until then. */
 		originDetail?: GlobalObjectData | null;
 		targetDetail?: GlobalObjectData | null;
+		/** The trip's terms as the URL has them — what the panel opens on, and what
+		 *  browser-back restores it to. */
+		trip: TripState;
 		/** Move either end. The URL owns them, so the panel asks. */
 		onOriginChange: (pick: TravelEndpointPick) => void;
 		onTargetChange: (pick: TravelEndpointPick) => void;
 		/** Exchange the two ends. */
 		onSwap: () => void;
+		/** Hand the terms back out after any change, for the URL to mirror. */
+		onTripChange: (trip: TripState) => void;
 	}
 	let {
 		origin,
@@ -96,12 +105,32 @@
 		excludeForTarget,
 		originDetail = null,
 		targetDetail = null,
+		trip,
 		onOriginChange,
 		onTargetChange,
-		onSwap
+		onSwap,
+		onTripChange
 	}: Props = $props();
 
-	const panel = new TravelPanelState();
+	// Seeded once; from here on the two are kept in step by the effects below.
+	const panel = new TravelPanelState(untrack(() => trip));
+
+	// The panel holds the live trip and the URL mirrors it; back/forward is the
+	// one direction that flows the other way. Both sides compare the serialized
+	// form, so a write that changes nothing the URL carries — a date under "leave
+	// now" — cannot come back as a change and start the two echoing.
+	$effect(() => {
+		const next = panel.trip;
+		untrack(() => onTripChange(next));
+	});
+	$effect(() => {
+		const incoming = trip;
+		untrack(() => {
+			if (serializeTripSuffix(incoming) !== serializeTripSuffix(panel.trip)) {
+				panel.applyTrip(incoming);
+			}
+		});
+	});
 	let openField = $state<'origin' | 'target' | null>(null);
 	// The empty fourth route row sends the reader here, so the list needs a handle
 	// on the chart below it.
@@ -115,17 +144,19 @@
 	});
 
 	let vehicleOpen = $state(false);
-	// The catalogue is fetched, so it arrives after first paint. Held in state
-	// and assigned when it lands: `vehicleCatalogue()` reads a plain module-level
-	// array, which no rune is watching — deriving off a bumped counter looked
-	// equivalent and silently never re-ran.
-	let vehicles = $state<readonly Vehicle[]>([]);
+
+	// A link can name a craft, and the picker is where the catalogue would
+	// otherwise be fetched — without this the trip reads as having no craft until
+	// someone opens a list they have no reason to open.
+	$effect(() => {
+		if (panel.vehicleId !== null && panel.vehicles.length === 0) void panel.loadVehicles();
+	});
 
 	// Craft that can leave the way this trip does come first. Sorted rather
 	// than filtered: a picker that hides the SLS the moment the origin box says
 	// "low orbit" reads as a missing catalogue, not as a rule.
 	let orderedVehicles = $derived(
-		[...vehicles].sort(
+		[...panel.vehicles].sort(
 			(a, b) =>
 				Number(canDepartFrom(b, panel.departureMode)) -
 				Number(canDepartFrom(a, panel.departureMode))
@@ -355,7 +386,7 @@
 				vehicleOpen = !vehicleOpen;
 				// Nothing waits on this — the routes are already solved, and the
 				// list fills in when it lands.
-				if (vehicleOpen) void panel.loadVehicles().then(() => (vehicles = vehicleCatalogue()));
+				if (vehicleOpen) void panel.loadVehicles();
 			}}
 			aria-expanded={vehicleOpen}
 			class="border-border/60 bg-muted/40 hover:bg-muted flex items-center gap-2 rounded-md border px-2.5 py-2 text-start"
@@ -420,7 +451,7 @@
 					{/each}
 				</ul>
 			</ScrollArea>
-			{#if vehicles.length === 0}
+			{#if panel.vehicles.length === 0}
 				<p class="text-muted-foreground text-[11px]">{m.travel_craft_loading()}</p>
 			{/if}
 		{/if}

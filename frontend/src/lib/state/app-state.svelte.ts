@@ -15,6 +15,7 @@ import {
 	type NavEnd
 } from './url';
 import { serializeSearchSuffix, type SearchUrlState } from '$lib/search/url';
+import { DEFAULT_TRIP, serializeTripSuffix, type TripState } from '$lib/travel/trip';
 
 // The sim clock ticks ~2×/s, so its URL writes are throttled to at most one per
 // minute (trailing). Everything else writes immediately — camera settles, focus
@@ -133,7 +134,8 @@ export class AppState {
 			navFrom: null,
 			navTo: null,
 			navFromFeature: null,
-			navToFeature: null
+			navToFeature: null,
+			trip: DEFAULT_TRIP
 		};
 		this.pushNow();
 	}
@@ -154,6 +156,21 @@ export class AppState {
 		}
 		this.view = next;
 		this.pushNow();
+	}
+
+	/**
+	 * Mirror the travel panel's terms into the URL, so a planned trip shares and
+	 * reloads as the trip that was planned.
+	 *
+	 * replaceState: refining a trip is the same destination, and browser-back
+	 * should leave the planner rather than undo one field of it. No-op when the
+	 * serialized form is unchanged, so the panel's driving effect can fire on
+	 * every keystroke without spamming history.
+	 */
+	setTrip(trip: TripState) {
+		if (serializeTripSuffix(trip) === serializeTripSuffix(this.view.trip)) return;
+		this.view = { ...this.view, trip };
+		this.replaceNow();
 	}
 
 	/** Open a nomenclature feature on its parent body. */
