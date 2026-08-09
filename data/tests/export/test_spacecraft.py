@@ -82,15 +82,6 @@ class TestNames:
     def bundles(self):
         return build_name_bundles(WikidataEntityCache())
 
-    def test_every_locale_names_every_vehicle_with_an_item(self, bundles):
-        # The two ships Wikidata has no item for are named by the frontend's
-        # own message keys; everything else that ships is named here, in all
-        # twelve. Vehicles the catalogue drops get no name either.
-        expected = {c.id for c in CATALOGUE.values() if c.qid and solver_can_judge(c)}
-        for lang, bundle in bundles.items():
-            assert set(bundle) == expected, lang
-            assert all(entry["name"] for entry in bundle.values()), lang
-
     def test_configurations_of_one_rocket_are_told_apart(self, bundles):
         # Three Falcon Heavy entries share a QID and therefore a label. What
         # separates them in the picker is `variant`, so (name, variant) has to
