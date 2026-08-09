@@ -66,7 +66,11 @@ export type CrumbTarget =
 	| { kind: 'group'; slug: string; name: string }
 	// Stays on this object and only changes tab — what a tab promoted out of the
 	// bar puts in the crumb slot to get back to the object it belongs to.
-	| { kind: 'tab'; tab: DrawerTab };
+	| { kind: 'tab'; tab: DrawerTab }
+	// Stays on this trip and only puts the trajectory being read back on the list
+	// it was chosen from — the planner's own step back, in the slot the object
+	// drawer uses for its parent.
+	| { kind: 'trip' };
 
 export interface Crumb {
 	label: string;

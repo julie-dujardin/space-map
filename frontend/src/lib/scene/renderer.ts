@@ -23,6 +23,7 @@ import {
 	type WebGLRenderer
 } from 'three';
 import type { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
+import type { LabelledPath } from '$lib/travel/labelled-path';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import type { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -91,7 +92,6 @@ import { PointCloudSystem, type CloudViewInfo } from './pointclouds/system';
 import { rebaseTrailLocals, refreshBufferTrail } from './objects/trail/refresh';
 import { setTrailResolution } from './objects/trail/material';
 import { TravelPathOverlay } from './objects/travel/path-overlay';
-import type { TrajectoryPath } from '$lib/math/travel/path';
 // Deep import for the same reason the overlay uses one: the kernel's index also
 // re-exports Lambert, the porkchop and the vehicle catalogue.
 import { eclipticToScene } from '$lib/math/travel/state';
@@ -342,7 +342,7 @@ export class SceneRenderer {
 		this.skyboxAdjuster = new SkyboxAdjuster(this.scene);
 		this.skyDebugMarkers = new SkyDebugMarkers(this.scene);
 		this.haloDebug = new HaloDebugOverlay(this.canvas);
-		this.travelPath = new TravelPathOverlay(this.scene);
+		this.travelPath = new TravelPathOverlay(this.scene, this.canvas);
 		this.travelPath.setLayer(SceneRenderer.MAP_LAYER);
 		this.skyboxAdjuster.set(0, 0, 0);
 		void loadSkybox(this.scene, this.renderer, ctx);
@@ -519,15 +519,22 @@ export class SceneRenderer {
 	}
 
 	/**
-	 * Draw a planned trajectory over the map, or clear it with null.
+	 * Draw the planned trajectory over the map, with `options` — the trajectories
+	 * it is being chosen from — behind it. Both empty clears the map.
 	 *
 	 * The path arrives in its own frame; placing it needs the body it is measured
 	 * from, which is looked up per frame rather than resolved here — the centre
 	 * may still be streaming in when the planner first answers.
 	 */
-	setTravelPath(path: TrajectoryPath | null): void {
-		this.travelPath.set(path);
+	setTravelPath(plan: LabelledPath | null, options: readonly LabelledPath[] = []): void {
+		this.travelPath.set(plan, options);
 		this.refreshTravelPath();
+	}
+
+	/** Light up one of the offered trajectories, or none. Costs no rebuild — the
+	 *  line's colour and width are uniforms. */
+	setTravelHover(id: string | null): void {
+		this.travelPath.setHovered(id);
 	}
 
 	/**
@@ -539,17 +546,31 @@ export class SceneRenderer {
 	 * whatever sits at the origin.
 	 */
 	private refreshTravelPath(): void {
-		if (this.travelPath.isEmpty) return;
+		if (this.travelPath.isEmpty) {
+			this.reserveTravelLabelSpace();
+			return;
+		}
 		const centerId = this.travelPath.centerId;
 		const center = centerId ? this.ctx.getBody(centerId) : null;
 		if (!center) {
 			this.travelPath.setVisible(false);
+			this.reserveTravelLabelSpace();
 			return;
 		}
 		this.travelPath.setVisible(true);
 		this.travelPath.setClock(this.clock.jd);
 		this.travelPath.reposition(center.position, this.focus.focusTruePos);
 		this.travelPath.updateCameraOffset(this.camera.position);
+		this.reserveTravelLabelSpace();
+	}
+
+	/** Hand the label cull the space the trajectory labels are taking. */
+	private reserveTravelLabelSpace(): void {
+		this.travelPath.reserveLabelSpace(
+			this.camera,
+			this.renderer.domElement.clientWidth,
+			this.renderer.domElement.clientHeight
+		);
 	}
 
 	/**
@@ -800,6 +821,11 @@ export class SceneRenderer {
 		// render white. syncToFocus is idempotent (no-op until the barycenter changes).
 		this.systemData.syncToFocus();
 
+		// Ahead of the visibility pass, not after it: the trajectory labels hold
+		// screen space against every other label, and the cull inside that pass is
+		// where the space is handed out.
+		this.refreshTravelPath();
+
 		this.cullFrameCounter = updateBodyVisibility(
 			this.bodyObjects,
 			this.camera,
@@ -826,8 +852,6 @@ export class SceneRenderer {
 		// Catches lines updatePositions skipped (visible=false) that updateBodyVisibility
 		// just flipped on, so they don't render at a stale basis for one frame.
 		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd);
-
-		this.refreshTravelPath();
 
 		updateRingShaders(
 			this.bodyObjects,

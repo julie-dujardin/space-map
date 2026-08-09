@@ -19,7 +19,7 @@
 	import { createAppState } from '$lib/state/app-state.svelte';
 	import { fetchBodyNomenclature, type NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { Focusable, FocusFeature, FocusObject } from '$lib/state/focusable';
-	import type { TrajectoryPath } from '$lib/math/travel';
+	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import type { TimelineEntry, TimelineFocus } from '$lib/travel/timeline';
 	// Lazy-loaded on first focus so its charts (d3-scale/d3-shape/layercake) and
 	// member lists split out of the initial map chunk.
@@ -36,7 +36,10 @@
 	// The chosen trajectory as the planner hands it out: its legs for the timeline,
 	// and its geometry so the timeline can put the camera on the arc itself.
 	let timelineEntries = $state.raw<TimelineEntry[] | null>(null);
-	let travelPath = $state.raw<TrajectoryPath | null>(null);
+	let travelPlan = $state.raw<LabelledPath | null>(null);
+	// The trajectories still being chosen between, drawn behind whatever is chosen
+	// and labelled at both ends so either one can be taken off the map.
+	let travelOptions = $state.raw<readonly LabelledPath[]>([]);
 	import MyLocation from './MyLocation.svelte';
 	import ClearPromoted from './ClearPromoted.svelte';
 	import CompassNorthSelector from './CompassNorthSelector.svelte';
@@ -256,6 +259,19 @@
 			import('./detail/travel/TripTimeline.svelte').then((mod) => (TripTimeline = mod.default));
 		}
 	});
+
+	// The planner hands the plan and the options out separately, and choosing a
+	// trajectory changes both — so the redraw waits for the pair to settle rather
+	// than building the whole overlay twice on one click.
+	let travelDrawQueued = false;
+	function drawTravel(): void {
+		if (travelDrawQueued) return;
+		travelDrawQueued = true;
+		queueMicrotask(() => {
+			travelDrawQueued = false;
+			scene?.setTravelPath(travelPlan, travelOptions);
+		});
+	}
 
 	/** Look at whatever part of the trip the timeline was asked about. Picking a
 	 *  step reads the trip, so it pans rather than flies — same reasoning as
@@ -712,10 +728,15 @@
 					clockJd={clock.jd}
 					isMobile={isMobileViewport}
 					inert={bgInert}
-					onPathChange={(path) => {
-						travelPath = path;
-						scene?.setTravelPath(path);
+					onPathChange={(plan) => {
+						travelPlan = plan;
+						drawTravel();
 					}}
+					onOptionsChange={(options) => {
+						travelOptions = options;
+						drawTravel();
+					}}
+					onHoverChange={(id) => scene?.setTravelHover(id)}
 					onTimelineChange={(entries) => (timelineEntries = entries)}
 					onClose={() => {
 						// Closing a trip lands on whichever end is framed, or on the body
@@ -730,7 +751,7 @@
 				<div inert={bgInert} class="contents">
 					<TripTimeline
 						entries={timelineEntries}
-						path={travelPath}
+						path={travelPlan?.path ?? null}
 						{clock}
 						onFocus={focusTimeline}
 					/>

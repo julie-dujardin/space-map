@@ -1,6 +1,12 @@
 <!--
   The travel panel: describe a trip, get trajectories.
 
+  Two steps. The first describes the trip and lists what could fly it, with all
+  of those trajectories drawn on the map at once. Choosing one replaces the whole
+  form with that trajectory in detail, and the map with that arc and its
+  timeline. `panel.selectedRoute` is which step is showing: a trajectory is being
+  read, or they are still being chosen between.
+
   The whole trip is a link: its two ends are the path (`/nav/<from>/<to>`) and
   everything below the endpoint fields — when to go, what to fly, what it
   carries, which trajectory is being read — is the query. The panel owns the
@@ -27,6 +33,7 @@
 		nextTransferWindows,
 		systemArcBounds,
 		type AeroAssist,
+		type Route,
 		type TrajectoryPath,
 		type TravelBody
 	} from '$lib/math/travel';
@@ -37,6 +44,7 @@
 		transferCenterId,
 		transferFrame,
 		transferPlan,
+		type TransferFrame,
 		type TransferPlan
 	} from '$lib/travel/travel-body';
 	import { TravelPanelState, type BlockReason } from '$lib/travel/panel.svelte';
@@ -49,6 +57,8 @@
 	} from '$lib/travel/trip';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 	import { buildTimeline, type TimelineEntry } from '$lib/travel/timeline';
+	import type { LabelledPath } from '$lib/travel/labelled-path';
+	import { formatAcceleration } from '$lib/travel/format';
 	import { departureNote, vehicleName } from './vehicle-labels';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -60,6 +70,7 @@
 	import RouteList from './RouteList.svelte';
 	import RouteDetail from './RouteDetail.svelte';
 	import PorkchopChart from './PorkchopChart.svelte';
+	import { routeLabel } from './route-labels';
 
 	interface Props {
 		/** Where the trip starts; null until one is chosen. */
@@ -98,9 +109,16 @@
 		onSwap: () => void;
 		/** Hand the terms back out after any change, for the URL to mirror. */
 		onTripChange: (trip: TripState) => void;
-		/** The trajectory being read, as geometry for the map to draw. Null
-		 *  whenever there is nothing to show. */
-		onPathChange: (path: TrajectoryPath | null) => void;
+		/** The trajectory being read, as geometry with a label for each of its ends,
+		 *  for the map to draw. Null whenever there is nothing to show. */
+		onPathChange: (plan: LabelledPath | null) => void;
+		/** Every trajectory still on offer, as geometry with a label for each of its
+		 *  ends — what the map shows while the choice between them is open, and how
+		 *  one is taken off the map. Empty once one has been chosen. */
+		onOptionsChange: (options: readonly LabelledPath[]) => void;
+		/** Which trajectory the reader is pointing at, by whichever end of the link
+		 *  they touched. Null when none. */
+		onHoverChange: (id: string | null) => void;
 		/** The same trajectory as the legs it is made of, for the timeline along the
 		 *  bottom of the map. */
 		onTimelineChange: (entries: TimelineEntry[] | null) => void;
@@ -129,6 +147,8 @@
 		onSwap,
 		onTripChange,
 		onPathChange,
+		onOptionsChange,
+		onHoverChange,
 		onTimelineChange,
 		resolveBodyName
 	}: Props = $props();
@@ -165,6 +185,16 @@
 	});
 
 	let vehicleOpen = $state(false);
+
+	// The trajectory under the pointer, wherever the pointer is: its mark on the
+	// launch-window field, or one of its labels out on the map. Both write here and
+	// both read it back, which is what makes the two pictures one.
+	let hoveredProfile = $state<string | null>(null);
+	$effect(() => {
+		const id = hoveredProfile;
+		untrack(() => onHoverChange(id));
+	});
+	$effect(() => () => onHoverChange(null));
 
 	// A link can name a craft, and the picker is where the catalogue would
 	// otherwise be fetched — without this the trip reads as having no craft until
@@ -383,19 +413,21 @@
 
 	$effect(() => () => panel.dispose());
 
+	// The frame every drawn arc is measured from — which is not the body the
+	// pricing calls the centre, but the one the elements are referenced to.
+	let centerId = $derived(
+		plan && origin && target ? transferCenterId(plan, origin, target, lookup) : null
+	);
+
 	// What the map is drawing, and what would change it. The solve effect above
 	// re-runs several times a second, handing back a fresh (and usually identical)
 	// route object each time; rebuilding a few hundred propagated points off every
 	// one of those would be work nobody asked for. So the geometry is keyed on
 	// what actually shapes it, and only a change in the key rebuilds.
-	let pathKey = $derived.by(() => {
-		const route = panel.selectedRoute;
-		if (!route || !plan || !origin || !target) return null;
-		const centerId = transferCenterId(plan, origin, target, lookup);
-		if (!centerId) return null;
+	function routeKey(route: Route, center: string, transfer: TransferFrame): string {
 		const via = route.flybys?.[0];
 		return [
-			centerId,
+			center,
 			route.departureId,
 			route.targetId,
 			route.departJd,
@@ -405,9 +437,46 @@
 			route.constantThrust ?? '',
 			route.lowThrust?.accelMs2 ?? '',
 			via ? `${via.bodyId}@${via.jd}` : '',
-			frame.systemPrimary ?? '',
-			frame.centralMu ?? ''
+			transfer.systemPrimary ?? '',
+			transfer.centralMu ?? ''
 		].join('|');
+	}
+
+	/** A route as the map takes it: geometry, plus what to write at each end.
+	 *  `onSelect` is what makes it an offer rather than the plan. */
+	function labelled(
+		id: string,
+		route: Route,
+		path: TrajectoryPath,
+		offer?: { onSelect: () => void; onHover: (hovered: boolean) => void }
+	): LabelledPath {
+		return {
+			id,
+			path,
+			departure: { name: originName ?? '', when: formatJulianDate(route.departJd) },
+			arrival: { name: targetName ?? '', when: formatJulianDate(route.arriveJd) },
+			...offer
+		};
+	}
+
+	/** One route as geometry, or null when it cannot be drawn. */
+	function buildPath(route: Route, center: string): TrajectoryPath | null {
+		if (!originTravel || !targetTravel) return null;
+		return buildTrajectoryPath(originTravel, targetTravel, route, {
+			centerId: center,
+			centralMu: frame.centralMu,
+			systemPrimary: frame.systemPrimary,
+			// A swing-by route is drawn as two arcs meeting at a body neither end
+			// is, so the geometry needs the same candidates the search had.
+			vias: assistBodies
+		});
+	}
+
+	let pathKey = $derived.by(() => {
+		const route = panel.selectedRoute;
+		if (!route || !centerId) return null;
+		// The end names are on the labels, and they land after the geometry does.
+		return [originName ?? '', targetName ?? '', routeKey(route, centerId, frame)].join(';');
 	});
 
 	// One effect owns the drawn path, the way one owns the solve. Everything it
@@ -416,32 +485,64 @@
 	$effect(() => {
 		const key = pathKey;
 		untrack(() => {
-			if (key === null) {
-				onPathChange(null);
-				return;
-			}
 			const route = panel.selectedRoute;
-			const centerId =
-				plan && origin && target ? transferCenterId(plan, origin, target, lookup) : null;
-			if (!route || !centerId || !originTravel || !targetTravel) {
+			if (key === null || !route || !centerId) {
 				onPathChange(null);
 				return;
 			}
-			const path = buildTrajectoryPath(originTravel, targetTravel, route, {
-				centerId,
-				centralMu: frame.centralMu,
-				systemPrimary: frame.systemPrimary,
-				// A swing-by route is drawn as two arcs meeting at a body neither end
-				// is, so the geometry needs the same candidates the search had.
-				vias: assistBodies
-			});
+			const path = buildPath(route, centerId);
 			if (!path) {
 				console.warn(
 					`[travel] no drawable path for ${route.departureId} → ${route.targetId} ` +
 						`(depart ${route.departJd}, ${route.tofDays} d)`
 				);
+				onPathChange(null);
+				return;
 			}
-			onPathChange(path);
+			onPathChange(labelled(panel.selectedProfile ?? 'plan', route, path));
+		});
+	});
+
+	// Every other trajectory on offer, which is what the map is for while the list
+	// is up: a trajectory is a shape long before it is a set of figures, and seeing
+	// the five of them at once is how the list gets read. They stay after one is
+	// taken — the scene draws them faint by then — so the plan can be read against
+	// what it beat.
+	//
+	// Keyed like the one above, and separately, so opening a trajectory does not
+	// re-propagate the others and a re-solve that changes nothing rebuilds nothing.
+	let alternatives = $derived(
+		panel.offered.filter((choice) => choice.profile !== panel.selectedProfile)
+	);
+	let optionsKey = $derived.by(() => {
+		if (!centerId) return null;
+		const keys = alternatives.map((choice) => routeKey(choice.route, centerId, frame));
+		// The end names are on the labels, and they land after the geometry does.
+		return keys.length > 0 ? [originName ?? '', targetName ?? '', ...keys].join(';') : null;
+	});
+
+	$effect(() => {
+		const key = optionsKey;
+		untrack(() => {
+			if (key === null || !centerId) {
+				onOptionsChange([]);
+				return;
+			}
+			const options: LabelledPath[] = [];
+			for (const choice of alternatives) {
+				const path = buildPath(choice.route, centerId);
+				// A route that cannot be drawn is still a route: it keeps its row in the
+				// list and simply contributes no line.
+				if (!path) continue;
+				const profile = choice.profile;
+				options.push(
+					labelled(profile, choice.route, path, {
+						onSelect: () => panel.choose(profile),
+						onHover: (hovered) => (hoveredProfile = hovered ? profile : null)
+					})
+				);
+			}
+			onOptionsChange(options);
 		});
 	});
 
@@ -484,30 +585,41 @@
 		});
 	});
 
-	// Leaving the planner takes its trajectory off the map with it.
+	// Leaving the planner takes its trajectories off the map with it.
 	$effect(() => () => onPathChange(null));
+	$effect(() => () => onOptionsChange([]));
 	$effect(() => () => onTimelineChange(null));
 
 	// One end is enough: exchanging it with an empty one turns "going to Mars"
 	// into "leaving Mars", which is how half a trip gets turned round.
-	// The field belongs to the trajectories that are read off it. A
-	// constant-thrust arc is not a point on it — every departure date flies the
-	// same one — so choosing that arc puts the whole launch-window section away,
-	// the picker for a hand-picked window with it.
-	// A swing-by is off the field for a different reason than a constant-thrust
-	// arc: it departs years outside the grid's own span, so the point it would be
-	// marked at is not on the picture at all. A spiral is off it for both reasons
-	// at once — it is no Lambert arc, and its departure is wherever the phase
-	// closes.
-	let windowGrid = $derived(
-		panel.selectedRoute?.constantThrust ||
-			panel.selectedRoute?.lowThrust ||
-			panel.selectedRoute?.flybys
-			? null
-			: panel.grid
-	);
-
 	let anyEnd = $derived(originPicked || targetPicked);
+
+	// Where each trajectory the solver found sits on the launch-window field. Only
+	// those: a swing-by departs years outside the grid's own span and a drive held
+	// all the way is not a point on it at all, so neither has a place to be marked.
+	let windowMarks = $derived([
+		...panel.routes.map((choice) => ({
+			id: choice.profile,
+			departJd: choice.route.departJd,
+			tofDays: choice.route.tofDays,
+			label: routeLabel(choice.profile)
+		})),
+		...(panel.custom
+			? [
+					{
+						id: 'custom',
+						departJd: panel.custom.departJd,
+						tofDays: panel.custom.tofDays,
+						label: routeLabel('custom')
+					}
+				]
+			: [])
+	]);
+
+	// Which of the two steps is showing. A trajectory is chosen or it is not, and
+	// that is the whole of it — there is no third state where the form and the
+	// trajectory are both up.
+	let chosen = $derived(panel.selected);
 
 	function swap() {
 		// Modes ride along with their end. Only the destination can be a flyby, so
@@ -522,279 +634,311 @@
 </script>
 
 <div class="flex flex-col gap-5">
-	<!-- Three rows: origin, connector, destination. The swap sits in the middle
-	     row so it stays between the two boxes however tall either one grows. -->
-	<div class="grid grid-cols-[1fr_2rem] gap-x-2 gap-y-1.5">
-		<div class="col-start-1 row-start-1 min-w-0">
-			<EndpointField
-				role="origin"
-				bodyName={originName}
-				placeholder={m.travel_choose_origin()}
-				isFeature={panel.originIsFeature}
-				mode={panel.originMode}
-				onModeChange={(mode: EndpointMode) => (panel.originMode = mode)}
-				open={openField === 'origin'}
-				onToggle={() => (openField = openField === 'origin' ? null : 'origin')}
-				excludeIds={excludeForOrigin}
-				onPick={(pick) => {
-					onOriginChange(pick);
-					// A feature has already answered "how"; anything else moves on to it.
-					if (pick.featureId !== null) openField = null;
-				}}
-			/>
-		</div>
-
-		<div class="col-start-1 row-start-2">
-			<span class="bg-border ms-[18px] block h-2.5 w-px" aria-hidden="true"></span>
-		</div>
-
-		<div class="col-start-1 row-start-3 min-w-0">
-			<EndpointField
-				role="target"
-				bodyName={targetName}
-				placeholder={m.travel_choose_target()}
-				isFeature={panel.targetIsFeature}
-				mode={panel.targetMode}
-				onModeChange={(mode: EndpointMode) => (panel.targetMode = mode)}
-				open={openField === 'target'}
-				onToggle={() => (openField = openField === 'target' ? null : 'target')}
-				excludeIds={excludeForTarget}
-				onPick={(pick) => {
-					onTargetChange(pick);
-					if (pick.featureId !== null) openField = null;
-				}}
-			/>
-		</div>
-
-		<div class="relative col-start-2 row-start-2">
-			<Button
-				variant="outline"
-				size="icon"
-				onclick={swap}
-				disabled={!anyEnd}
-				class="text-muted-foreground absolute end-0 top-1/2 -translate-y-1/2"
-				aria-label={m.travel_swap()}
-			>
-				<ArrowUpDownIcon />
-			</Button>
-		</div>
-	</div>
-
-	<div class="flex flex-col gap-2">
-		<Segmented
-			options={TIME_MODES}
-			value={panel.timeMode}
-			onchange={(mode: TimeMode) => {
-				panel.timeMode = mode;
-				// Seed the date on the way in, so the mode means something the moment
-				// it is chosen rather than after a second click.
-				if (mode !== 'now' && panel.pickedJd == null) panel.pickedJd = defaultPickedJd(mode);
-			}}
-			ariaLabel={m.travel_when()}
-		/>
-		{#if panel.timeMode !== 'now'}
-			<DateField
-				label={panel.timeMode === 'depart' ? m.travel_depart_on() : m.travel_arrive_by()}
-				jd={panel.pickedJd ?? defaultPickedJd(panel.timeMode)}
-				onChange={(jd) => (panel.pickedJd = jd)}
-			/>
-		{/if}
-		{#if nextWindowJd != null}
-			<div class="flex items-baseline justify-between gap-2 text-xs">
-				<span class="text-muted-foreground min-w-0 truncate">
-					{m.travel_next_window({ date: formatJulianDate(nextWindowJd) })}
-				</span>
-				<button
-					type="button"
-					class="shrink-0 underline underline-offset-2"
-					onclick={() => {
-						panel.timeMode = 'depart';
-						panel.pickedJd = nextWindowJd;
-					}}
-				>
-					{m.travel_use_window()}
-				</button>
-			</div>
-		{/if}
-	</div>
-
-	<div class="flex flex-col gap-2">
-		<button
-			type="button"
-			onclick={() => {
-				vehicleOpen = !vehicleOpen;
-				// Nothing waits on this — the routes are already solved, and the
-				// list fills in when it lands.
-				if (vehicleOpen) void panel.loadVehicles();
-			}}
-			aria-expanded={vehicleOpen}
-			class="border-border/60 bg-muted/40 hover:bg-muted flex items-center gap-2 rounded-md border px-2.5 py-2 text-start"
-		>
-			<RocketIcon class="text-muted-foreground size-4 shrink-0" />
-			<span class="min-w-0 flex-1">
-				<span class="block truncate text-sm {panel.vehicle ? '' : 'text-muted-foreground'}">
-					{panel.vehicle ? vehicleName(panel.vehicle) : m.travel_add_craft()}
-				</span>
-				<!-- The open list says all this on the chosen row already. -->
-				{#if panel.vehicle && !vehicleOpen}
-					<VehicleMeta
-						vehicle={panel.vehicle}
-						route={panel.selectedRoute}
-						manifest={panel.manifest}
-					/>
-				{/if}
-			</span>
-			<ChevronDownIcon
-				class="text-muted-foreground size-4 shrink-0 transition-transform {vehicleOpen
-					? 'rotate-180'
-					: ''}"
-			/>
-		</button>
-
-		{#if vehicleOpen}
-			{#if shownVehicles.length > 0}
-				<!-- The catalogue runs to dozens of craft, so it scrolls in place rather
-				     than pushing the routes below it off the panel. -->
-				<ScrollArea class="border-border/60 rounded-md border" viewportClasses="max-h-56">
-					<ul class="flex flex-col p-1">
-						{#each shownVehicles as vehicle (vehicle.id)}
-							<!-- Only the chosen craft survives the filter without fitting the
-							     departure, so the note reads as "here is why it stopped
-							     working", not as a rule on the list. -->
-							{@const fits = canDepartFrom(vehicle, panel.departureMode)}
-							<!-- Seats only matter once someone is aboard, so the column appears
-							     with the first passenger rather than reading "0" against every
-							     probe in the catalogue. -->
-							{@const seats = panel.passengers > 0 ? crewCapacity(vehicle) : null}
-							{@const tooSmall = seats !== null && seats < panel.passengers}
-							<li>
-								<button
-									type="button"
-									onclick={() => {
-										panel.selectVehicle(vehicle.id);
-										vehicleOpen = false;
-									}}
-									class="hover:bg-muted flex w-full items-start gap-2 rounded-[5px] px-2 py-1.5 text-start text-xs {tooSmall
-										? 'opacity-50'
-										: ''}"
-								>
-									<span class="min-w-0 flex-1">
-										<span class="flex items-center gap-2">
-											<span class="min-w-0 flex-1 truncate {fits ? '' : 'text-muted-foreground'}">
-												{vehicleName(vehicle)}
-											</span>
-											{#if !fits}
-												<span class="text-muted-foreground shrink-0 text-[11px]">
-													{departureNote(vehicle)}
-												</span>
-											{/if}
-											{#if seats !== null}
-												<span
-													class="text-muted-foreground flex shrink-0 items-center gap-1 tabular-nums"
-													title={m.travel_seats({ value: seats })}
-												>
-													<UsersIcon class="size-3" />{seats}
-												</span>
-											{/if}
-											{#if panel.vehicleId === vehicle.id}
-												<CheckIcon class="size-3.5 shrink-0" />
-											{/if}
-										</span>
-										<VehicleMeta {vehicle} route={panel.selectedRoute} manifest={panel.manifest} />
-									</span>
-								</button>
-							</li>
-						{/each}
-					</ul>
-				</ScrollArea>
-			{:else if panel.vehicles.length > 0}
-				<p class="text-muted-foreground text-[11px]">{m.travel_no_craft_for_route()}</p>
-			{:else}
-				<p class="text-muted-foreground text-[11px]">{m.travel_craft_loading()}</p>
+	{#if chosen}
+		{@const pass = chosen.route.flybys?.[0] ?? null}
+		<!-- The trip's terms are a step behind now, and the header above names the
+		     trajectory, so what is left to say is between what and when. The
+		     qualifier rides here rather than on the title: it is what tells one
+		     trajectory from another, and the title is a plain string. -->
+		<div class="flex flex-col gap-0.5">
+			{#if originName && targetName}
+				<p class="truncate text-sm">
+					{originName} → {targetName}{#if chosen.route.constantThrust}<span
+							class="text-muted-foreground ms-1.5 text-xs tabular-nums"
+							>{formatAcceleration(chosen.route.constantThrust)}</span
+						>{:else if pass}<span class="text-muted-foreground ms-1.5 text-xs"
+							>{m.travel_via({ body: resolveBodyName(pass.bodyId) })}</span
+						>{/if}
+				</p>
 			{/if}
-		{/if}
-
-		<!-- Beside the craft rather than inside it: what you are taking is a fact
-		     about the trip, and it stands on its own before one is chosen — it is
-		     what narrows the catalogue down. -->
-		<ManifestField
-			passengers={panel.passengers}
-			payloadKg={panel.payloadKg}
-			fit={panel.manifestFit}
-			onPassengersChange={(value) => (panel.passengers = value)}
-			onPayloadChange={(value) => (panel.payloadKg = value)}
-		/>
-	</div>
-
-	<!-- A term of the trip rather than of the destination: it does not change
-	     where you end up, it changes what getting there costs and how long it
-	     takes. So it sits with the craft and the manifest, next to the list of
-	     trajectories whose figures it moves. -->
-	{#if showAero}
-		<div class="flex flex-col gap-1.5">
-			<span class="text-muted-foreground text-[10px] uppercase">{m.travel_aero_assist()}</span>
-			<Segmented
-				options={aeroChoices}
-				value={aeroValue}
-				onchange={(aero: AeroAssist) => (panel.aero = aero)}
-				ariaLabel={m.travel_aero_assist()}
-			/>
-		</div>
-	{/if}
-
-	{#if panel.status === 'blocked'}
-		<!-- An end left blank is a prompt, not a failure — no alert icon on it. -->
-		{#if panel.blocked === 'no-target'}
-			<p class="text-muted-foreground text-xs">{m.travel_no_target()}</p>
-		{:else if panel.blocked === 'no-origin'}
-			<p class="text-muted-foreground text-xs">{m.travel_no_origin()}</p>
-		{:else}
-			<p class="text-muted-foreground flex items-start gap-2 text-xs">
-				<CircleAlertIcon class="mt-0.5 size-3.5 shrink-0" />
-				<span>
-					{panel.blocked === 'unknown-primary'
-						? m.travel_unknown_primary()
-						: m.travel_unknown_orbit()}
-				</span>
+			<p class="text-muted-foreground text-xs tabular-nums">
+				{formatJulianDate(chosen.route.departJd)} → {formatJulianDate(chosen.route.arriveJd)}
 			</p>
-		{/if}
-		<!-- Counted against everything offered rather than against the search: a
-		     constant-thrust arc needs no grid, so it can be the only answer there
-		     is while the porkchop is still running. -->
-	{:else if panel.status === 'solving' && panel.offered.length === 0}
-		<p class="text-muted-foreground text-xs">{m.travel_solving()}</p>
-	{:else if panel.status === 'empty' && panel.offered.length === 0}
-		<p class="text-muted-foreground text-xs">{m.travel_no_routes()}</p>
-	{:else if panel.offered.length > 0}
-		<RouteList
-			state={panel}
-			nameOf={resolveBodyName}
-			onFocusField={windowGrid ? () => chart?.focusField() : null}
-		/>
+		</div>
 
-		{#if windowGrid}
-			<!-- Sits with the list rather than the detail: it is about which route
-			     to pick, not about the one already picked. -->
-			<section class="flex flex-col gap-2">
-				<h4 class="text-sm font-medium">{m.travel_launch_windows()}</h4>
-				<div class="border-border/60 border-t"></div>
-				<PorkchopChart
-					bind:this={chart}
-					grid={windowGrid}
-					route={panel.selectedRoute}
-					onPick={(departJd, tofDays) => panel.pickCustom(departJd, tofDays)}
-				/>
-			</section>
-		{/if}
-
-		{#if panel.selectedRoute && originTravel && targetTravel}
+		{#if originTravel && targetTravel}
 			<RouteDetail
-				route={panel.selectedRoute}
+				route={chosen.route}
 				origin={originTravel}
 				target={targetTravel}
 				state={panel}
 				nameOf={resolveBodyName}
 			/>
+		{/if}
+	{:else}
+		<!-- Three rows: origin, connector, destination. The swap sits in the middle
+	     row so it stays between the two boxes however tall either one grows. -->
+		<div class="grid grid-cols-[1fr_2rem] gap-x-2 gap-y-1.5">
+			<div class="col-start-1 row-start-1 min-w-0">
+				<EndpointField
+					role="origin"
+					bodyName={originName}
+					placeholder={m.travel_choose_origin()}
+					isFeature={panel.originIsFeature}
+					mode={panel.originMode}
+					onModeChange={(mode: EndpointMode) => (panel.originMode = mode)}
+					open={openField === 'origin'}
+					onToggle={() => (openField = openField === 'origin' ? null : 'origin')}
+					excludeIds={excludeForOrigin}
+					onPick={(pick) => {
+						onOriginChange(pick);
+						// A feature has already answered "how"; anything else moves on to it.
+						if (pick.featureId !== null) openField = null;
+					}}
+				/>
+			</div>
+
+			<div class="col-start-1 row-start-2">
+				<span class="bg-border ms-[18px] block h-2.5 w-px" aria-hidden="true"></span>
+			</div>
+
+			<div class="col-start-1 row-start-3 min-w-0">
+				<EndpointField
+					role="target"
+					bodyName={targetName}
+					placeholder={m.travel_choose_target()}
+					isFeature={panel.targetIsFeature}
+					mode={panel.targetMode}
+					onModeChange={(mode: EndpointMode) => (panel.targetMode = mode)}
+					open={openField === 'target'}
+					onToggle={() => (openField = openField === 'target' ? null : 'target')}
+					excludeIds={excludeForTarget}
+					onPick={(pick) => {
+						onTargetChange(pick);
+						if (pick.featureId !== null) openField = null;
+					}}
+				/>
+			</div>
+
+			<div class="relative col-start-2 row-start-2">
+				<Button
+					variant="outline"
+					size="icon"
+					onclick={swap}
+					disabled={!anyEnd}
+					class="text-muted-foreground absolute end-0 top-1/2 -translate-y-1/2"
+					aria-label={m.travel_swap()}
+				>
+					<ArrowUpDownIcon />
+				</Button>
+			</div>
+		</div>
+
+		<div class="flex flex-col gap-2">
+			<Segmented
+				options={TIME_MODES}
+				value={panel.timeMode}
+				onchange={(mode: TimeMode) => {
+					panel.timeMode = mode;
+					// Seed the date on the way in, so the mode means something the moment
+					// it is chosen rather than after a second click.
+					if (mode !== 'now' && panel.pickedJd == null) panel.pickedJd = defaultPickedJd(mode);
+				}}
+				ariaLabel={m.travel_when()}
+			/>
+			{#if panel.timeMode !== 'now'}
+				<DateField
+					label={panel.timeMode === 'depart' ? m.travel_depart_on() : m.travel_arrive_by()}
+					jd={panel.pickedJd ?? defaultPickedJd(panel.timeMode)}
+					onChange={(jd) => (panel.pickedJd = jd)}
+				/>
+			{/if}
+			{#if nextWindowJd != null}
+				<div class="flex items-baseline justify-between gap-2 text-xs">
+					<span class="text-muted-foreground min-w-0 truncate">
+						{m.travel_next_window({ date: formatJulianDate(nextWindowJd) })}
+					</span>
+					<button
+						type="button"
+						class="shrink-0 underline underline-offset-2"
+						onclick={() => {
+							panel.timeMode = 'depart';
+							panel.pickedJd = nextWindowJd;
+						}}
+					>
+						{m.travel_use_window()}
+					</button>
+				</div>
+			{/if}
+		</div>
+
+		<div class="flex flex-col gap-2">
+			<button
+				type="button"
+				onclick={() => {
+					vehicleOpen = !vehicleOpen;
+					// Nothing waits on this — the routes are already solved, and the
+					// list fills in when it lands.
+					if (vehicleOpen) void panel.loadVehicles();
+				}}
+				aria-expanded={vehicleOpen}
+				class="border-border/60 bg-muted/40 hover:bg-muted flex items-center gap-2 rounded-md border px-2.5 py-2 text-start"
+			>
+				<RocketIcon class="text-muted-foreground size-4 shrink-0" />
+				<span class="min-w-0 flex-1">
+					<span class="block truncate text-sm {panel.vehicle ? '' : 'text-muted-foreground'}">
+						{panel.vehicle ? vehicleName(panel.vehicle) : m.travel_add_craft()}
+					</span>
+					<!-- The open list says all this on the chosen row already. -->
+					{#if panel.vehicle && !vehicleOpen}
+						<VehicleMeta
+							vehicle={panel.vehicle}
+							route={panel.selectedRoute}
+							manifest={panel.manifest}
+						/>
+					{/if}
+				</span>
+				<ChevronDownIcon
+					class="text-muted-foreground size-4 shrink-0 transition-transform {vehicleOpen
+						? 'rotate-180'
+						: ''}"
+				/>
+			</button>
+
+			{#if vehicleOpen}
+				{#if shownVehicles.length > 0}
+					<!-- The catalogue runs to dozens of craft, so it scrolls in place rather
+				     than pushing the routes below it off the panel. -->
+					<ScrollArea class="border-border/60 rounded-md border" viewportClasses="max-h-56">
+						<ul class="flex flex-col p-1">
+							{#each shownVehicles as vehicle (vehicle.id)}
+								<!-- Only the chosen craft survives the filter without fitting the
+							     departure, so the note reads as "here is why it stopped
+							     working", not as a rule on the list. -->
+								{@const fits = canDepartFrom(vehicle, panel.departureMode)}
+								<!-- Seats only matter once someone is aboard, so the column appears
+							     with the first passenger rather than reading "0" against every
+							     probe in the catalogue. -->
+								{@const seats = panel.passengers > 0 ? crewCapacity(vehicle) : null}
+								{@const tooSmall = seats !== null && seats < panel.passengers}
+								<li>
+									<button
+										type="button"
+										onclick={() => {
+											panel.selectVehicle(vehicle.id);
+											vehicleOpen = false;
+										}}
+										class="hover:bg-muted flex w-full items-start gap-2 rounded-[5px] px-2 py-1.5 text-start text-xs {tooSmall
+											? 'opacity-50'
+											: ''}"
+									>
+										<span class="min-w-0 flex-1">
+											<span class="flex items-center gap-2">
+												<span class="min-w-0 flex-1 truncate {fits ? '' : 'text-muted-foreground'}">
+													{vehicleName(vehicle)}
+												</span>
+												{#if !fits}
+													<span class="text-muted-foreground shrink-0 text-[11px]">
+														{departureNote(vehicle)}
+													</span>
+												{/if}
+												{#if seats !== null}
+													<span
+														class="text-muted-foreground flex shrink-0 items-center gap-1 tabular-nums"
+														title={m.travel_seats({ value: seats })}
+													>
+														<UsersIcon class="size-3" />{seats}
+													</span>
+												{/if}
+												{#if panel.vehicleId === vehicle.id}
+													<CheckIcon class="size-3.5 shrink-0" />
+												{/if}
+											</span>
+											<VehicleMeta
+												{vehicle}
+												route={panel.selectedRoute}
+												manifest={panel.manifest}
+											/>
+										</span>
+									</button>
+								</li>
+							{/each}
+						</ul>
+					</ScrollArea>
+				{:else if panel.vehicles.length > 0}
+					<p class="text-muted-foreground text-[11px]">{m.travel_no_craft_for_route()}</p>
+				{:else}
+					<p class="text-muted-foreground text-[11px]">{m.travel_craft_loading()}</p>
+				{/if}
+			{/if}
+
+			<!-- Beside the craft rather than inside it: what you are taking is a fact
+		     about the trip, and it stands on its own before one is chosen — it is
+		     what narrows the catalogue down. -->
+			<ManifestField
+				passengers={panel.passengers}
+				payloadKg={panel.payloadKg}
+				fit={panel.manifestFit}
+				onPassengersChange={(value) => (panel.passengers = value)}
+				onPayloadChange={(value) => (panel.payloadKg = value)}
+			/>
+		</div>
+
+		<!-- A term of the trip rather than of the destination: it does not change
+	     where you end up, it changes what getting there costs and how long it
+	     takes. So it sits with the craft and the manifest, next to the list of
+	     trajectories whose figures it moves. -->
+		{#if showAero}
+			<div class="flex flex-col gap-1.5">
+				<span class="text-muted-foreground text-[10px] uppercase">{m.travel_aero_assist()}</span>
+				<Segmented
+					options={aeroChoices}
+					value={aeroValue}
+					onchange={(aero: AeroAssist) => (panel.aero = aero)}
+					ariaLabel={m.travel_aero_assist()}
+				/>
+			</div>
+		{/if}
+
+		{#if panel.status === 'blocked'}
+			<!-- An end left blank is a prompt, not a failure — no alert icon on it. -->
+			{#if panel.blocked === 'no-target'}
+				<p class="text-muted-foreground text-xs">{m.travel_no_target()}</p>
+			{:else if panel.blocked === 'no-origin'}
+				<p class="text-muted-foreground text-xs">{m.travel_no_origin()}</p>
+			{:else}
+				<p class="text-muted-foreground flex items-start gap-2 text-xs">
+					<CircleAlertIcon class="mt-0.5 size-3.5 shrink-0" />
+					<span>
+						{panel.blocked === 'unknown-primary'
+							? m.travel_unknown_primary()
+							: m.travel_unknown_orbit()}
+					</span>
+				</p>
+			{/if}
+			<!-- Counted against everything offered rather than against the search: a
+		     constant-thrust arc needs no grid, so it can be the only answer there
+		     is while the porkchop is still running. -->
+		{:else if panel.status === 'solving' && panel.offered.length === 0}
+			<p class="text-muted-foreground text-xs">{m.travel_solving()}</p>
+		{:else if panel.status === 'empty' && panel.offered.length === 0}
+			<p class="text-muted-foreground text-xs">{m.travel_no_routes()}</p>
+		{:else if panel.offered.length > 0}
+			<RouteList
+				state={panel}
+				nameOf={resolveBodyName}
+				onFocusField={panel.grid ? () => chart?.focusField() : null}
+			/>
+
+			{#if panel.grid}
+				<!-- The field the list is read off, with the solved routes marked on it:
+			     every point on it is a trajectory nobody offered, and picking one adds
+			     it to the list rather than opening it — a pick is a drag, and every
+			     point crossed on the way would otherwise be opened and closed again. -->
+				<section class="flex flex-col gap-2">
+					<h4 class="text-sm font-medium">{m.travel_launch_windows()}</h4>
+					<div class="border-border/60 border-t"></div>
+					<PorkchopChart
+						bind:this={chart}
+						grid={panel.grid}
+						route={panel.custom}
+						marks={windowMarks}
+						hovered={hoveredProfile}
+						onHover={(id) => (hoveredProfile = id)}
+						onPick={(departJd, tofDays) => panel.pickCustom(departJd, tofDays)}
+					/>
+				</section>
+			{/if}
 		{/if}
 	{/if}
 </div>

@@ -1630,6 +1630,7 @@
 	"travel_aero_none": "Motor",
 	"travel_aerobraked": "Aerofrenado",
 	"travel_aerocaptured": "Aerocaptura",
+	"travel_all_trajectories": "Todas las rutas",
 	"travel_arrival_mode": "Cómo llegar",
 	"travel_arrival_speed": "Velocidad de llegada",
 	"travel_arrive_by": "Llegar antes del",

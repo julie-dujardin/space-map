@@ -20,15 +20,17 @@
 	import { fetchObjectDetail, type GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
-	import type { TrajectoryPath } from '$lib/math/travel';
 	import type { TimelineEntry } from '$lib/travel/timeline';
+	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
 	import { DEFAULT_TRIP } from '$lib/travel/trip';
 	import { resolveTripBodies } from '$lib/travel/resolve';
 	import { ASSIST_BODY_IDS } from '$lib/travel/assist-bodies';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
+	import type { Crumb } from '$lib/state/breadcrumb';
 	import DrawerTitle from '../frame/DrawerTitle.svelte';
+	import { routeLabel } from './route-labels';
 	import TravelPanel from './TravelPanel.svelte';
 
 	interface Props {
@@ -44,9 +46,14 @@
 		isMobile: boolean;
 		inert?: boolean;
 		onClose: () => void;
-		/** The trajectory being read, for the scene to draw; null when there is
-		 *  none. */
-		onPathChange: (path: TrajectoryPath | null) => void;
+		/** The trajectory being read, labelled at both ends, for the scene to draw;
+		 *  null when there is none. */
+		onPathChange: (plan: LabelledPath | null) => void;
+		/** The trajectories still on offer, for the scene to draw behind it; empty
+		 *  once one of them is being read. */
+		onOptionsChange: (options: readonly LabelledPath[]) => void;
+		/** Which trajectory the reader is pointing at; null when none. */
+		onHoverChange: (id: string | null) => void;
 		/** The same trajectory as its legs, for the timeline under the map. */
 		onTimelineChange: (entries: TimelineEntry[] | null) => void;
 	}
@@ -60,6 +67,8 @@
 		inert = false,
 		onClose,
 		onPathChange,
+		onOptionsChange,
+		onHoverChange,
 		onTimelineChange
 	}: Props = $props();
 
@@ -297,14 +306,24 @@
 	$effect(() => loadDetail('origin', fromId, (d) => (originDetail = d)));
 	$effect(() => loadDetail('target', toId, (d) => (targetDetail = d)));
 
-	let crumb = $derived(
-		target
-			? {
-					label: displayName(target),
-					target: { kind: 'focus' as const, id: target.id, name: displayName(target) }
-				}
-			: null
+	// The header carries the panel's step back, rather than the panel growing a
+	// second one under it: reading a trajectory, the crumb returns to the list it
+	// came from; choosing between them, it is the destination as before.
+	//
+	// Which step that is comes off the trip's own terms — a named trajectory is
+	// one being read — so nothing has to be handed up out of the panel.
+	let reading = $derived(trip.profile);
+	let crumb = $derived<Crumb | null>(
+		reading
+			? { label: m.travel_all_trajectories(), target: { kind: 'trip' } }
+			: target
+				? {
+						label: displayName(target),
+						target: { kind: 'focus', id: target.id, name: displayName(target) }
+					}
+				: null
 	);
+	let title = $derived(reading ? routeLabel(reading) : m.travel_title());
 
 	async function handleShare() {
 		try {
@@ -357,6 +376,8 @@
 				{targetDetail}
 				{trip}
 				{onPathChange}
+				{onOptionsChange}
+				{onHoverChange}
 				{onTimelineChange}
 				resolveBodyName={(id) => names[id] ?? ctx?.getBody(id)?.data.name ?? id}
 				onTripChange={(next) => appState?.setTrip(next)}
@@ -396,7 +417,7 @@
 				<div class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
 					<div class="bg-muted-foreground/40 h-1 w-10 rounded-full"></div>
 					<div class="flex w-full items-center justify-between gap-2">
-						<DrawerTitle {crumb} title={m.travel_title()} id="travel-drawer-title" />
+						<DrawerTitle {crumb} {title} id="travel-drawer-title" />
 						<div class="flex items-center gap-1.5">{@render toolbar()}</div>
 					</div>
 				</div>
@@ -417,7 +438,7 @@
 	>
 		<!-- pt aligns the title row with the top-4 featured chips beside it. -->
 		<div class="flex items-center justify-between gap-2 px-4 pt-[18px] pb-2">
-			<DrawerTitle {crumb} title={m.travel_title()} id="travel-drawer-title" />
+			<DrawerTitle {crumb} {title} id="travel-drawer-title" />
 			<div class="flex items-center gap-1.5">{@render toolbar()}</div>
 		</div>
 		<ScrollArea class="min-h-0 flex-1">

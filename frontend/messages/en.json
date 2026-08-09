@@ -2240,6 +2240,7 @@
 	"travel_aero_none": "Engine",
 	"travel_aerobraked": "Aerobraked",
 	"travel_aerocaptured": "Aerocaptured",
+	"travel_all_trajectories": "All trajectories",
 	"travel_arrival_mode": "How to arrive",
 	"travel_arrival_speed": "Arrival speed",
 	"travel_arrive_by": "Arrive by",

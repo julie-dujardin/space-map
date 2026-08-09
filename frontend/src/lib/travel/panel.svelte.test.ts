@@ -59,14 +59,16 @@ describe('TravelPanelState hand-picked windows', () => {
 		return panel;
 	}
 
-	it('prices a point read off the field and flies it', async () => {
+	// Added to what is on offer rather than opened: picking is a drag across the
+	// field, and every point it crosses would otherwise be opened on the way.
+	it('prices a point read off the field and adds it to the list', async () => {
 		const panel = await solved();
 		const [depart, tof] = centre(panel);
 		panel.pickCustom(depart, tof);
 
-		expect(panel.selectedProfile).toBe('custom');
-		expect(panel.selectedRoute?.departJd).toBeCloseTo(depart, 6);
-		expect(panel.selectedRoute?.tofDays).toBeCloseTo(tof, 6);
+		expect(panel.selectedProfile).toBeNull();
+		expect(panel.custom?.departJd).toBeCloseTo(depart, 6);
+		expect(panel.custom?.tofDays).toBeCloseTo(tof, 6);
 		expect(panel.offered).toHaveLength(panel.routes.length + 1);
 		expect(panel.offered.at(-1)?.profile).toBe('custom');
 	});
@@ -81,7 +83,7 @@ describe('TravelPanelState hand-picked windows', () => {
 		panel.originMode = 'low-orbit';
 		await panel.solve(EARTH, MARS, J2000);
 
-		expect(panel.selectedProfile).toBe('custom');
+		expect(panel.offered.at(-1)?.profile).toBe('custom');
 		expect(panel.custom?.departJd).toBeCloseTo(depart, 6);
 		// The ascent is gone, so the same arc is cheaper than it was off the ground.
 		expect(panel.custom!.totalDvKms).toBeLessThan(fromOrbit);
@@ -119,6 +121,9 @@ describe('TravelPanelState constant-thrust arc', () => {
 	it('leads the list, ahead of the solver\u2019s own', () => {
 		const panel = torched();
 		expect(panel.offered.map((choice) => choice.profile)).toEqual(['constant-thrust']);
+		// Being the only trajectory on offer is still not being chosen.
+		expect(panel.selectedRoute).toBeNull();
+		panel.choose('constant-thrust');
 		expect(panel.selectedRoute?.constantThrust).toBe(3.27);
 	});
 
@@ -176,8 +181,8 @@ describe('TravelPanelState constant-thrust arc', () => {
 	});
 
 	// A craft the catalogue has no entry for is a real answer, not a wait: the
-	// arc is never coming, so the selection has to move off it.
-	it('falls back when the catalogue lands without the craft in it', async () => {
+	// arc is never coming, so the trajectory a link named is put back on the list.
+	it('lets the arc go when the catalogue lands without the craft in it', async () => {
 		const panel = new TravelPanelState({
 			...DEFAULT_TRIP,
 			vehicleId: 'no-such-ship',
@@ -189,7 +194,7 @@ describe('TravelPanelState constant-thrust arc', () => {
 		panel.updateTorch(EARTH, MARS, J2000);
 
 		expect(panel.torch).toBeNull();
-		expect(panel.selectedProfile).toBe('balanced');
+		expect(panel.selectedProfile).toBeNull();
 	});
 
 	// The two terms a URL cannot resolve on its own. Both are held as asked for
@@ -216,8 +221,9 @@ describe('TravelPanelState constant-thrust arc', () => {
 		expect(panel.craftKnown).toBe(true);
 	});
 
-	// The picker is the case the arc is meant to take over.
-	it('selects the arc when a craft is chosen rather than restored', async () => {
+	// Choosing a torch ship is not choosing its arc: it can fly the coasting
+	// routes too, and which of them to fly is the step this would skip.
+	it('offers the arc when a craft is chosen without opening it', async () => {
 		const panel = new TravelPanelState();
 		panel.acceptVehicles([ROCINANTE]);
 		await panel.solve(EARTH, MARS, J2000);
@@ -225,7 +231,44 @@ describe('TravelPanelState constant-thrust arc', () => {
 
 		panel.updateTorch(EARTH, MARS, J2000);
 
-		expect(panel.selectedProfile).toBe('constant-thrust');
+		expect(panel.offered[0]?.profile).toBe('constant-thrust');
+		expect(panel.selectedProfile).toBeNull();
+	});
+});
+
+describe('TravelPanelState choosing a trajectory', () => {
+	/** The panel's two steps: nothing chosen is the list, a choice is the detail. */
+	it('chooses nothing on its own when a search lands', async () => {
+		const panel = new TravelPanelState();
+		await panel.solve(EARTH, MARS, J2000);
+
+		expect(panel.offered.length).toBeGreaterThan(0);
+		expect(panel.selectedProfile).toBeNull();
+		expect(panel.selectedRoute).toBeNull();
+		expect(panel.trip.profile).toBeNull();
+	});
+
+	it('reads the one it is given, and goes back to the list on request', async () => {
+		const panel = new TravelPanelState();
+		await panel.solve(EARTH, MARS, J2000);
+
+		panel.choose('efficient');
+		expect(panel.selected?.profile).toBe('efficient');
+		expect(panel.selectedRoute).toBe(
+			panel.routes.find((choice) => choice.profile === 'efficient')?.route
+		);
+
+		panel.clearSelection();
+		expect(panel.selectedRoute).toBeNull();
+	});
+
+	// The trajectory being read is a term of the trip, so a link opens on it.
+	it('carries the choice in the trip and opens on it again', async () => {
+		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'fast' });
+		await panel.solve(EARTH, MARS, J2000);
+
+		expect(panel.trip.profile).toBe('fast');
+		expect(panel.selected?.profile).toBe('fast');
 	});
 });
 
@@ -259,7 +302,10 @@ describe('TravelPanelState spiral', () => {
 	it('leads the list once a craft that cannot burn is chosen', async () => {
 		const panel = await chosen();
 		expect(panel.offered[0].profile).toBe('low-thrust');
-		expect(panel.selectedProfile).toBe('low-thrust');
+		// Leading the list is not being chosen: the drive is what a spiral is a fact
+		// about, but which trajectory to fly is still the reader's to say.
+		expect(panel.selectedProfile).toBeNull();
+		panel.choose('low-thrust');
 		expect(panel.selectedRoute?.lowThrust?.accelMs2).toBeCloseTo(0.092 / 1218, 12);
 	});
 
@@ -277,10 +323,13 @@ describe('TravelPanelState spiral', () => {
 
 	it('withdraws the spiral with the craft', async () => {
 		const panel = await chosen();
+		panel.choose('low-thrust');
 		panel.selectVehicle('dawn');
 		panel.updateSpiral(EARTH, MARS, J2000);
 		expect(panel.spiral).toBeNull();
-		expect(panel.selectedProfile).toBe('balanced');
+		// The trajectory being read is gone, so the reader is back in front of the
+		// ones that are left.
+		expect(panel.selectedProfile).toBeNull();
 	});
 
 	// Same wait for the catalogue as the held arc: a pass taken before it lands
@@ -460,12 +509,12 @@ describe('TravelPanelState swing-by route', () => {
 		expect(panel.selectedProfile).not.toBe('gravity-assist');
 	});
 
-	it('falls back to a solved route when it is withdrawn', async () => {
+	it('goes back to the list when it is withdrawn', async () => {
 		const panel = await withAssist();
-		panel.selectedProfile = 'gravity-assist';
+		panel.choose('gravity-assist');
 		panel.clearAssist();
 		expect(panel.assist).toBeNull();
-		expect(panel.selectedProfile).toBe('balanced');
+		expect(panel.selectedProfile).toBeNull();
 	});
 
 	// The hunt takes about a second and starting one stops the last, so a caller
@@ -508,8 +557,8 @@ describe('TravelPanelState swing-by route', () => {
 		await panel.solve(EARTH, MARS, NOW);
 		await panel.updateAssist(EARTH, MARS, [JUPITER], NOW);
 		expect(panel.offered.some((choice) => choice.profile === 'gravity-assist')).toBe(false);
-		expect(panel.selectedProfile).toBe('balanced');
-		expect(panel.trip.profile).toBe('balanced');
+		expect(panel.selectedProfile).toBeNull();
+		expect(panel.trip.profile).toBeNull();
 	});
 
 	// The hunt is only ever compared against the direct routes, so it has to be

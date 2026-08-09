@@ -131,3 +131,110 @@
 	font-size: 14px;
 	font-weight: 600;
 }
+
+/* Trajectory end labels — created by objects/travel/path-overlay.ts. One per end
+ * of each trajectory the planner is drawing: where it is and when the craft is
+ * there. Built like a body label rather than like a panel — the same halo, the
+ * same type — because it belongs to the scene; the ring is in the colour of the
+ * arc it caps, so it says which trajectory it is for. Pressing one takes that
+ * trajectory, except on the trajectory already being read, which only captions
+ * itself. */
+.scene-path-label {
+	left: 0; /* see .scene-label — CSS2DRenderer's transform breaks in RTL without an explicit inset */
+	display: flex;
+	align-items: center;
+	gap: 8px; /* .scene-label__name's own padding-left */
+	padding: 0;
+	border: 0;
+	background: none;
+	color: #fff;
+	font: inherit;
+	line-height: 1.15;
+	white-space: nowrap;
+	text-align: start;
+	/* .scene-label__name's own shadow, for the same reason: white type has to
+	 * survive a lit limb behind it. */
+	text-shadow:
+		0 0 4px #000,
+		0 0 4px #000;
+	pointer-events: auto;
+	cursor: pointer;
+	user-select: none;
+	touch-action: none; /* prevent browser pinch-zoom; drags are forwarded to the canvas */
+	z-index: 2; /* above body labels: it is the thing being chosen between */
+}
+/* A caption on the trajectory already being read: nothing to press, and every
+ * gesture belongs to the camera behind it. */
+.scene-path-label--static {
+	pointer-events: none;
+	cursor: default;
+}
+
+/* The body halo, sized here rather than inherited — the production rule sizes it
+ * against a 32px label root this label does not have — and pulled back by its
+ * radius so it straddles the point on the arc instead of starting at it. Colours
+ * are written inline, from the arc. */
+.scene-path-label__halo {
+	width: 32px;
+	height: 32px;
+	margin-inline-start: -16px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	transition: transform 0.1s;
+}
+.scene-path-label:hover .scene-path-label__halo {
+	transform: scale(1.15);
+}
+
+.scene-path-label__text {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+.scene-path-label__name {
+	font-size: 14px;
+	font-weight: bold;
+}
+.scene-path-label__when {
+	font-size: 12px;
+	opacity: 0.8;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Lost its slot to a nearer end label: down to the ring, the way a body label
+ * falls back to its halo. Still pressable — the ring is the point on the arc. */
+.scene-path-label--dim .scene-path-label__text {
+	display: none;
+}
+.scene-path-label--dim .scene-path-label__halo {
+	transform: scale(0.55);
+}
+.scene-path-label--dim:hover .scene-path-label__halo {
+	transform: scale(0.75);
+}
+
+/* Pointed at, from here or from its mark on the launch-window field. */
+.scene-path-label--lit {
+	color: #fff;
+}
+.scene-path-label--lit .scene-path-label__halo {
+	transform: scale(1.15);
+}
+.scene-path-label--lit.scene-path-label--dim .scene-path-label__halo {
+	transform: scale(0.75);
+}
+
+/* An alternative's end once a trajectory has been taken: the ring alone, well
+ * under the plan, in the colour of the arc it caps so it still says which line
+ * it belongs to. Pressable — it is the one handle those lines have left. */
+.scene-path-label--faint .scene-path-label__text {
+	display: none;
+}
+.scene-path-label--faint .scene-path-label__halo {
+	transform: scale(0.5);
+	opacity: 0.45;
+}
+.scene-path-label--faint:hover .scene-path-label__halo {
+	transform: scale(0.75);
+	opacity: 1;
+}

@@ -1,6 +1,7 @@
 <!--
   The trajectories as one line each: what it is and when it runs on the left,
-  what it costs on the right.
+  what it costs on the right. Picking one is what opens it — this is the first
+  of the panel's two steps, and every row here is a way into the second.
 
   A route the chosen craft cannot fly stays visible and goes quiet, with the
   reason in place of its figures — hiding it would leave the panel silently
@@ -15,14 +16,15 @@
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import { formatJulianDate } from '$lib/format/date';
 	import { formatQuantity } from '$lib/format/quantities';
 	import type { OfferedRoute, TravelPanelState } from '$lib/travel/panel.svelte';
-	import type { RouteOption } from '$lib/travel/trip';
 	import { formatDurationNarrow } from '$lib/format/duration';
 	import { formatAcceleration, formatDvBrief } from '$lib/travel/format';
 	import { routeDurationDays, type Route } from '$lib/math/travel';
 	import { departureNote } from './vehicle-labels';
+	import { routeLabel } from './route-labels';
 
 	interface Props {
 		state: TravelPanelState;
@@ -33,16 +35,6 @@
 		onFocusField?: (() => void) | null;
 	}
 	let { state, nameOf = (id: string) => id, onFocusField = null }: Props = $props();
-
-	const PROFILE_LABEL: Record<RouteOption, () => string> = {
-		fast: m.travel_profile_fast,
-		balanced: m.travel_profile_balanced,
-		efficient: m.travel_profile_efficient,
-		custom: m.travel_profile_custom,
-		'constant-thrust': m.travel_profile_constant_thrust,
-		'low-thrust': m.travel_profile_low_thrust,
-		'gravity-assist': m.travel_profile_gravity_assist
-	};
 
 	/** How hard a route's drive pushes, on the two kinds flown under power the
 	 *  whole way; null on the ones that coast. */
@@ -117,16 +109,14 @@
 	{#each state.offered as choice (choice.profile)}
 		{@const blocked = blockedText(choice)}
 		{@const viaName = via(choice)}
-		{@const isSelected = choice.profile === state.selectedProfile && !blocked}
 		<li>
 			<button
 				type="button"
-				onclick={() => !blocked && (state.selectedProfile = choice.profile)}
+				onclick={() => !blocked && state.choose(choice.profile)}
 				disabled={!!blocked}
-				aria-current={isSelected}
-				class="flex w-full items-center gap-3 rounded-md border px-3 py-2 text-start transition-colors {isSelected
-					? 'border-foreground/40 bg-muted/60'
-					: 'border-border/60'} {blocked ? 'opacity-50' : 'hover:bg-muted/40'}"
+				class="border-border/60 flex w-full items-center gap-3 rounded-md border px-3 py-2 text-start transition-colors {blocked
+					? 'opacity-50'
+					: 'hover:bg-muted/40'}"
 			>
 				<span class="min-w-0 flex-1">
 					<!-- The acceleration rides on the name because it is what tells one
@@ -134,7 +124,7 @@
 					     whatever the drive, and this is the only thing that does not. On
 					     a spiral it is also the whole explanation of the duration. -->
 					<span class="block text-sm font-medium">
-						{PROFILE_LABEL[choice.profile]()}{#if driveAccel(choice.route) !== null}<span
+						{routeLabel(choice.profile)}{#if driveAccel(choice.route) !== null}<span
 								class="text-muted-foreground ms-1.5 text-xs font-normal tabular-nums"
 								>{formatAcceleration(driveAccel(choice.route) ?? 0)}</span
 							>{:else if viaName}<span class="text-muted-foreground ms-1.5 text-xs font-normal"
@@ -164,6 +154,11 @@
 						</span>
 					{/if}
 				</span>
+				<!-- A row that can be flown leads somewhere; one that cannot has already
+				     said everything it has to say. -->
+				{#if !blocked}
+					<ChevronRightIcon class="text-muted-foreground size-4 shrink-0 rtl:rotate-180" />
+				{/if}
 			</button>
 		</li>
 	{/each}
@@ -190,7 +185,7 @@
 				class="border-border/60 hover:bg-muted/40 flex w-full items-center gap-3 rounded-md border border-dashed px-3 py-2 text-start transition-colors"
 			>
 				<span class="min-w-0 flex-1">
-					<span class="block text-sm font-medium">{m.travel_profile_custom()}</span>
+					<span class="block text-sm font-medium">{routeLabel('custom')}</span>
 					<span class="text-muted-foreground block truncate text-xs">
 						{m.travel_windows_pick_prompt()}
 					</span>

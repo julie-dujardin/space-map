@@ -22,17 +22,45 @@
 	import { gradient, sample, type ColormapName } from '$lib/travel/colormap';
 	import { formatDurationNarrow } from '$lib/format/duration';
 
+	/** A trajectory the field has a point for: where it sits, and what it is
+	 *  called. `id` is what the map knows it by, so hovering one lights the other. */
+	export interface PorkchopMark {
+		id: string;
+		departJd: number;
+		tofDays: number;
+		label: string;
+	}
+
 	interface Props {
 		grid: PorkchopGrid;
-		/** Marked on the field; omitted when nothing is chosen. */
+		/** Where an arrow-key walk starts from — the hand-picked window, when there
+		 *  is one. Not drawn: it is in `marks` like every other trajectory. */
 		route?: Route | null;
+		/** The trajectories on offer, each marked at its own point on the field. */
+		marks?: readonly PorkchopMark[];
+		/** The one being pointed at, from here or from its arc on the map. */
+		hovered?: string | null;
+		/** The pointer came within reach of a mark, or left them all. */
+		onHover?: ((id: string | null) => void) | null;
 		height?: number;
 		colormap?: ColormapName;
 		/** Given a departure date and cruise length read off the field. Without it
 		 *  the chart is a picture rather than a control. */
 		onPick?: ((departJd: number, tofDays: number) => void) | null;
 	}
-	let { grid, route = null, height = 190, colormap = 'viridis', onPick = null }: Props = $props();
+	let {
+		grid,
+		route = null,
+		marks = [],
+		hovered = null,
+		onHover = null,
+		height = 190,
+		colormap = 'viridis',
+		onPick = null
+	}: Props = $props();
+
+	/** How near the pointer has to come to a mark to be pointing at it, px. */
+	const HOVER_REACH_PX = 14;
 
 	/** Half the marker dot, ring included — how far it must sit off each edge. */
 	const DOT_RADIUS_PX = 6;
@@ -66,16 +94,18 @@
 		return depart > 0 && tof > 0 ? { depart, tof } : null;
 	});
 
-	/** Where the chosen route sits on the field, as fractions of each axis. */
-	let mark = $derived.by(() => {
-		if (!route || !spans) return null;
+	/** Where each trajectory sits on the field, as fractions of each axis. */
+	let placed = $derived.by(() => {
+		const at = spans;
+		if (!at) return [];
 		// Held to the edges rather than dropped: the cheapest route sits on one
 		// often enough that a hair of rounding there would take the mark off the
 		// chart entirely.
-		return {
-			x: clamp01((route.departJd - grid.departJds[0]) / spans.depart),
-			y: clamp01((route.tofDays - grid.tofDays[0]) / spans.tof)
-		};
+		return marks.map((point) => ({
+			...point,
+			x: clamp01((point.departJd - grid.departJds[0]) / at.depart),
+			y: clamp01((point.tofDays - grid.tofDays[0]) / at.tof)
+		}));
 	});
 
 	function clamp(value: number, lo: number, hi: number): number {
@@ -105,6 +135,31 @@
 		const fx = clamp01((clientX - box.left - DOT_RADIUS_PX) / (box.width - DOT_RADIUS_PX * 2));
 		const fy = clamp01((clientY - box.top - DOT_RADIUS_PX) / (box.height - DOT_RADIUS_PX * 2));
 		onPick(grid.departJds[0] + fx * spans.depart, grid.tofDays[0] + fy * spans.tof);
+	}
+
+	/**
+	 * Report the mark the pointer is within reach of.
+	 *
+	 * Measured against the pointer rather than left to the marks' own hover: the
+	 * field is a control, and a dot that took the pointer would leave a hole in
+	 * it that cannot be picked.
+	 */
+	function hoverAt(clientX: number, clientY: number): void {
+		if (!plot || !onHover) return;
+		const box = plot.getBoundingClientRect();
+		const inner = { w: box.width - DOT_RADIUS_PX * 2, h: box.height - DOT_RADIUS_PX * 2 };
+		let nearest: string | null = null;
+		let best = HOVER_REACH_PX * HOVER_REACH_PX;
+		for (const point of placed) {
+			const dx = clientX - (box.left + DOT_RADIUS_PX + point.x * inner.w);
+			const dy = clientY - (box.top + DOT_RADIUS_PX + point.y * inner.h);
+			const d2 = dx * dx + dy * dy;
+			if (d2 <= best) {
+				best = d2;
+				nearest = point.id;
+			}
+		}
+		if (nearest !== hovered) onHover(nearest);
 	}
 
 	// The cruise axis runs shortest at the top, so up is the faster arc.
@@ -178,16 +233,32 @@
 					{/each}
 				{/each}
 			</svg>
-			{#if mark}
+			{#each placed as point (point.id)}
+				{@const lit = point.id === hovered}
 				<!-- Ringed in the surface colour so it stays legible on any cell. Inset
 				     by its own radius: the cheapest window often sits on an edge, and the
-				     clipped half-dot there reads as a different mark. -->
+				     clipped half-dot there reads as a different mark. The name only
+				     appears under the pointer — four of them at once would be a legend
+				     laid over the field. -->
 				<span
-					class="ring-background pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white ring-2"
-					style="left: calc({DOT_RADIUS_PX}px + {mark.x} * (100% - {DOT_RADIUS_PX * 2}px));
-						top: calc({DOT_RADIUS_PX}px + {mark.y} * (100% - {DOT_RADIUS_PX * 2}px))"
-				></span>
-			{/if}
+					class="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+					style="left: calc({DOT_RADIUS_PX}px + {point.x} * (100% - {DOT_RADIUS_PX * 2}px));
+						top: calc({DOT_RADIUS_PX}px + {point.y} * (100% - {DOT_RADIUS_PX * 2}px))"
+				>
+					<span
+						class="ring-background block rounded-full bg-white ring-2 transition-[width,height] {lit
+							? 'size-3.5'
+							: 'size-2.5'}"
+					></span>
+					{#if lit}
+						<span
+							class="bg-background/85 text-foreground absolute start-1/2 top-full mt-1 -translate-x-1/2 rounded px-1 py-0.5 text-[10px] whitespace-nowrap"
+						>
+							{point.label}
+						</span>
+					{/if}
+				</span>
+			{/each}
 			{#if onPick}
 				<!-- The field is picked on, not just read. A transparent overlay takes
 				     the pointer so the cells stay plain rects, and arrow keys walk the
@@ -206,8 +277,10 @@
 						pickAt(event.clientX, event.clientY);
 					}}
 					onpointermove={(event) => {
+						hoverAt(event.clientX, event.clientY);
 						if (pressPicked && event.buttons === 1) pickAt(event.clientX, event.clientY);
 					}}
+					onpointerleave={() => onHover?.(null)}
 					onclick={(event) => {
 						// `detail` is 0 for the click a keypress synthesizes, which carries
 						// no coordinates and would read as the top-left corner.

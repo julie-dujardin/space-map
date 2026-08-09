@@ -128,9 +128,10 @@ export function serializeTripSuffix(trip: TripState): string {
 	if (trip.vehicleId) parts.push(`craft=${encodeURIComponent(trip.vehicleId)}`);
 	if (trip.passengers > 0) parts.push(`crew=${Math.floor(trip.passengers)}`);
 	if (trip.payloadKg > 0) parts.push(`cargo=${trim(trip.payloadKg, 3)}`);
-	// A solve lands on 'balanced' when nothing has been chosen, so it reads as the
-	// absence of a choice rather than as one.
-	if (trip.profile !== null && trip.profile !== 'balanced') parts.push(`route=${trip.profile}`);
+	// Every named trajectory is written, 'balanced' included: a route is chosen
+	// rather than settled on, and its absence is what says the trip is still being
+	// chosen between rather than read.
+	if (trip.profile !== null) parts.push(`route=${trip.profile}`);
 	if (trip.pick) parts.push(`pick=${trim(trip.pick.departJd, 5)},${trim(trip.pick.tofDays, 4)}`);
 
 	return parts.length ? `&${parts.join('&')}` : '';

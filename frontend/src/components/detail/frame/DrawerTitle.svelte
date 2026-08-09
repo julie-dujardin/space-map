@@ -33,7 +33,9 @@
 					})
 				: t.kind === 'group'
 					? applyGroup(appState.view, t.slug, t.name)
-					: applyTab(appState.view, t.tab);
+					: t.kind === 'trip'
+						? { ...appState.view, trip: { ...appState.view.trip, profile: null } }
+						: applyTab(appState.view, t.tab);
 		return serializeUrl(next);
 	}
 
@@ -50,6 +52,11 @@
 		} else if (t.kind === 'group') {
 			e.preventDefault();
 			appState.setGroup(t.slug, t.name);
+		} else if (t.kind === 'trip') {
+			e.preventDefault();
+			// The panel mirrors the trip's terms back out of the URL, so dropping the
+			// trajectory here is what puts the list back up.
+			appState.setTrip({ ...appState.view.trip, profile: null });
 		} else {
 			e.preventDefault();
 			appState.setTab(t.tab);

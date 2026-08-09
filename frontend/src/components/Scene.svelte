@@ -11,7 +11,7 @@
 		type PositionedBody
 	} from '$lib/types/objects';
 	import { kmToScene } from '$lib/math/units';
-	import type { TrajectoryPath } from '$lib/math/travel/path';
+	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import { page } from '$app/state';
 	import { sphericalToCartesian } from '$lib/math/spherical';
 	import { parseUrl, urlTypeFromId } from '$lib/state/url';
@@ -158,9 +158,17 @@
 		renderer?.setSelectedFeature(featureId);
 	}
 
-	/** Draw the trip the planner is showing, or clear it with null. */
-	export function setTravelPath(path: TrajectoryPath | null): void {
-		renderer?.setTravelPath(path);
+	/** Draw the trip the planner is showing, and whatever it is being chosen from. */
+	export function setTravelPath(
+		plan: LabelledPath | null,
+		options: readonly LabelledPath[] = []
+	): void {
+		renderer?.setTravelPath(plan, options);
+	}
+
+	/** Pick one of the offered trajectories out of the rest, or none. */
+	export function setTravelHover(id: string | null): void {
+		renderer?.setTravelHover(id);
 	}
 
 	/** Look at a place on that trip, which is usually nowhere near a body. */

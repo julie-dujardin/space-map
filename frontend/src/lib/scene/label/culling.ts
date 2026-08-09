@@ -214,6 +214,17 @@ let _candidatesActive = 0;
 const _accepted: AcceptedRect[] = [];
 let _acceptedActive = 0;
 
+/**
+ * Screen space that is spoken for before any cull runs.
+ *
+ * The trip planner's trajectory labels are the content of the map while a trip
+ * is being chosen between, so they do not compete for their slot: they are
+ * seeded into the accepted set ahead of everything, which makes every body and
+ * feature label give way to them, and are never culled themselves.
+ */
+const _reserved: AcceptedRect[] = [];
+let _reservedActive = 0;
+
 /** Read-only view of the body-label accepted rects from the latest cull. The
  *  nomenclature cull seeds itself with these so feature labels lose to any
  *  body label. `count` is a getter — the underlying pool is mutated in place. */
@@ -257,6 +268,43 @@ function ensureAccepted(idx: number): AcceptedRect {
 	return a;
 }
 
+/**
+ * Hold `count` rects out of every cull this frame. Passing 0 releases them.
+ *
+ * Called before the culls run, from whatever owns labels that outrank the
+ * scene's own — currently only the travel overlay.
+ */
+export function reserveLabelRects(rects: readonly AcceptedRect[], count: number): void {
+	_reservedActive = 0;
+	for (let i = 0; i < count; i++) {
+		const r = rects[i];
+		let a = _reserved[i];
+		if (!a) {
+			a = { left: 0, right: 0, y: 0, h: 0 };
+			_reserved[i] = a;
+		}
+		a.left = r.left;
+		a.right = r.right;
+		a.y = r.y;
+		a.h = r.h;
+		_reservedActive++;
+	}
+}
+
+/** Open an accepted set with the reserved rects already in it, and answer how
+ *  many slots that used. */
+function seedAccepted(): number {
+	for (let i = 0; i < _reservedActive; i++) {
+		const r = _reserved[i];
+		const a = ensureAccepted(i);
+		a.left = r.left;
+		a.right = r.right;
+		a.y = r.y;
+		a.h = r.h;
+	}
+	return _reservedActive;
+}
+
 export function cullOverlappingLabels(
 	bodyObjects: Map<string, BodyObjects>,
 	screenWidth: number,
@@ -269,7 +317,7 @@ export function cullOverlappingLabels(
 	focusTruePos: [number, number, number] = [0, 0, 0]
 ): void {
 	_candidatesActive = 0;
-	_acceptedActive = 0;
+	_acceptedActive = seedAccepted();
 
 	for (const bo of bodyObjects.values()) {
 		const { body, label, labelHalo } = bo;
@@ -428,7 +476,7 @@ export function refreshVisibleBodyLabelRects(
 	camera: PerspectiveCamera,
 	focusTruePos: [number, number, number]
 ): void {
-	_acceptedActive = 0;
+	_acceptedActive = seedAccepted();
 	for (const bo of bodyObjects.values()) {
 		const { body, label } = bo;
 		if (!label?.visible) continue;

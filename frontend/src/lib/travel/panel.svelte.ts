@@ -97,7 +97,14 @@ export class TravelPanelState {
 	 *  these sit outside the effect that re-solves. */
 	passengers = $state(DEFAULT_TRIP.passengers);
 	payloadKg = $state(DEFAULT_TRIP.payloadKg);
-	/** Null until a solve lands, then whichever route the user last chose. */
+	/**
+	 * The trajectory being read, or null while they are still being chosen between.
+	 *
+	 * This is the panel's two steps: nothing selected is the list of what is on
+	 * offer, and a selection is that one trajectory in detail. So nothing here ever
+	 * selects on the reader's behalf — a choice they did not make would put them in
+	 * front of an answer to a question they had not finished asking.
+	 */
 	selectedProfile = $state<RouteOption | null>(DEFAULT_TRIP.profile);
 
 	routes = $state<RouteChoice[]>([]);
@@ -145,11 +152,6 @@ export class TravelPanelState {
 	 *  stops the last, so a caller that asks the same question twice would never
 	 *  get an answer; this is what makes asking again free. */
 	#assistFor: string | null = null;
-	/** Which craft the standing arc was built for, so choosing a new one selects
-	 *  its arc and everything else leaves the selection alone. */
-	#torchFor: string | null = null;
-	/** The same for the spiral, which is chosen on the same terms. */
-	#spiralFor: string | null = null;
 	/** The last solve's inputs, so a hand-picked point is priced the same way the
 	 *  grid it was read off was. */
 	#pricing: { origin: TravelBody; target: TravelBody; options: RouteOptions } | null = null;
@@ -219,12 +221,6 @@ export class TravelPanelState {
 		this.#pendingProfile = trip.profile === 'gravity-assist' ? trip.profile : null;
 		this.custom = trip.pick ? this.#priceInGrid(trip.pick.departJd, trip.pick.tofDays) : null;
 		this.#pendingPick = this.custom ? null : trip.pick;
-		// A link naming both a craft and a trajectory has already made the choice
-		// `updateTorch` makes on the reader's behalf, so the arc has had its turn
-		// at the selection: arriving with a torch ship is not the same as picking
-		// one, and a shared "fast" is a comparison someone meant to send.
-		this.#torchFor = trip.profile !== null ? trip.vehicleId : null;
-		this.#spiralFor = this.#torchFor;
 	}
 
 	/**
@@ -280,7 +276,7 @@ export class TravelPanelState {
 		// for a craft that cannot hold it named a trip that does not exist.
 		if (this.selectedProfile === 'constant-thrust') {
 			if (!vehicle || constantThrustAccelMs2(vehicle) === undefined) {
-				this.selectedProfile = this.#fallbackProfile();
+				this.selectedProfile = null;
 				this.torch = null;
 			}
 		}
@@ -288,7 +284,7 @@ export class TravelPanelState {
 		// for a link naming one beside a craft whose engine does.
 		if (this.selectedProfile === 'low-thrust') {
 			if (!vehicle || lowThrustDrive(vehicle, this.payloadKg) === undefined) {
-				this.selectedProfile = this.#fallbackProfile();
+				this.selectedProfile = null;
 				this.spiral = null;
 			}
 		}
@@ -345,15 +341,31 @@ export class TravelPanelState {
 		return assist.totalDvKms <= cheapest - ASSIST_MIN_SAVING_KMS ? assist : null;
 	}
 
+	/** The trajectory being read, with the name it is listed under. */
+	get selected(): OfferedRoute | null {
+		return this.offered.find((choice) => choice.profile === this.selectedProfile) ?? null;
+	}
+
 	get selectedRoute(): Route | null {
-		const offered = this.offered;
-		if (offered.length === 0) return null;
-		const chosen = offered.find((r) => r.profile === this.selectedProfile);
-		return (chosen ?? offered[0]).route;
+		return this.selected?.route ?? null;
+	}
+
+	/** Read one of the trajectories on offer. */
+	choose(profile: RouteOption): void {
+		this.selectedProfile = profile;
+	}
+
+	/** Go back to the ones on offer, reading none of them. */
+	clearSelection(): void {
+		this.selectedProfile = null;
 	}
 
 	/**
-	 * Take a point read off the porkchop as the route to fly.
+	 * Take a point read off the porkchop as a further trajectory on offer.
+	 *
+	 * It joins the list rather than being read straight away: picking is a drag,
+	 * and every point crossed on the way would otherwise replace the list with the
+	 * detail of a trajectory nobody stopped on.
 	 *
 	 * A point with no arc through it leaves the previous pick standing: the field
 	 * has unsolved cells in it, and clearing the choice because a drag crossed one
@@ -364,7 +376,6 @@ export class TravelPanelState {
 		if (!route) return;
 		this.custom = route;
 		this.#pendingPick = null;
-		this.selectedProfile = 'custom';
 	}
 
 	#price(departJd: number, tofDays: number): Route | null {
@@ -492,16 +503,10 @@ export class TravelPanelState {
 
 		const offer = missesDeadline ? null : arc;
 		this.torch = offer;
-		if (offer && this.#torchFor !== this.vehicleId) {
-			// The arc is the answer a torch ship is chosen for, so it is selected the
-			// moment one is — but only then. These craft can fly the coasting routes
-			// too, and re-selecting the arc under a reader comparing it against them
-			// would take the comparison away.
-			this.selectedProfile = 'constant-thrust';
-		} else if (!offer && this.selectedProfile === 'constant-thrust') {
-			this.selectedProfile = this.#fallbackProfile();
-		}
-		this.#torchFor = offer ? this.vehicleId : null;
+		// The arc leads the list when a craft can hold it, but is never selected on
+		// the reader's behalf: a torch ship can fly the coasting routes too, and
+		// choosing between them is the step this would skip.
+		if (!offer && this.selectedProfile === 'constant-thrust') this.selectedProfile = null;
 	}
 
 	/**
@@ -544,12 +549,9 @@ export class TravelPanelState {
 
 		const offer = missesDeadline ? null : route;
 		this.spiral = offer;
-		if (offer && this.#spiralFor !== this.vehicleId) {
-			this.selectedProfile = 'low-thrust';
-		} else if (!offer && this.selectedProfile === 'low-thrust') {
-			this.selectedProfile = this.#fallbackProfile();
-		}
-		this.#spiralFor = offer ? this.vehicleId : null;
+		// Offered, never opened: an ion craft can be compared against the coasting
+		// routes, and choosing between them is the step an auto-selection skips.
+		if (!offer && this.selectedProfile === 'low-thrust') this.selectedProfile = null;
 	}
 
 	/**
@@ -561,10 +563,9 @@ export class TravelPanelState {
 	 * or so in the worker, against a grid that lands immediately — so the panel
 	 * shows the direct routes and lets this fill in behind them.
 	 *
-	 * Deliberately never touches `selectedProfile`. The arc a torch ship flies is
-	 * the answer that craft was chosen for; a swing-by is a comparison, and one
-	 * that moved the selection a second after the list had settled would take the
-	 * comparison away from whoever was reading it.
+	 * It only ever adds a row to the list. A trajectory that appeared a second late
+	 * and took the reader off the one they had opened would be reading their mind
+	 * about a comparison they had already made.
 	 */
 	async updateAssist(
 		origin: TravelBody,
@@ -623,11 +624,15 @@ export class TravelPanelState {
 		this.#assistFor = null;
 		this.assistSearching = false;
 		this.assist = null;
-		if (this.selectedProfile === 'gravity-assist') this.selectedProfile = this.#fallbackProfile();
+		if (this.selectedProfile === 'gravity-assist') this.selectedProfile = null;
 	}
 
 	/**
 	 * Settle which trajectory is being read, now that what is offered has changed.
+	 *
+	 * Only ever retires a selection — a trajectory that stopped being offered puts
+	 * the reader back in front of the ones that are. Nothing is chosen in its place;
+	 * that is theirs to do.
 	 *
 	 * Two things a link can name arrive later than the routes do — the swing-by,
 	 * which is still being hunted, and the constant-thrust arc, which waits on the
@@ -654,15 +659,12 @@ export class TravelPanelState {
 		const fromCraft =
 			this.selectedProfile === 'constant-thrust' || this.selectedProfile === 'low-thrust';
 		if (fromCraft && !this.craftKnown) return;
-		if (!this.offered.some((choice) => choice.profile === this.selectedProfile)) {
-			this.selectedProfile = this.#fallbackProfile();
+		if (
+			this.selectedProfile !== null &&
+			!this.offered.some((choice) => choice.profile === this.selectedProfile)
+		) {
+			this.selectedProfile = null;
 		}
-	}
-
-	/** The trajectory to fall back on when the selected one stops being offered. */
-	#fallbackProfile(): RouteOption | null {
-		const balanced = this.routes.find((r) => r.profile === 'balanced');
-		return (balanced ?? this.routes[0])?.profile ?? null;
 	}
 
 	/** Mark a trip impossible before any solve is attempted. */

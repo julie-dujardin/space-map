@@ -1864,6 +1864,7 @@
 	"travel_aero_none": "エンジン",
 	"travel_aerobraked": "空力ブレーキ",
 	"travel_aerocaptured": "エアロキャプチャ",
+	"travel_all_trajectories": "すべての経路",
 	"travel_arrival_mode": "到着方法",
 	"travel_arrival_speed": "到着速度",
 	"travel_arrive_by": "到着期限",

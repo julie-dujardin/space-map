@@ -18,10 +18,11 @@ describe('serializeTripSuffix', () => {
 		expect(serializeTripSuffix({ ...DEFAULT_TRIP, targetMode: 'flyby' })).toBe('&tm=flyby');
 	});
 
-	// A solve lands on 'balanced' by itself, so writing it would put a term in
-	// every trip URL that nobody chose.
-	it('leaves out the route a solve picks on its own', () => {
-		expect(serializeTripSuffix({ ...DEFAULT_TRIP, profile: 'balanced' })).toBe('');
+	// Nothing is chosen until someone chooses it, so the term is absent while the
+	// trip is still a list of options and present the moment one is being read.
+	it('writes the route only once one is chosen', () => {
+		expect(serializeTripSuffix({ ...DEFAULT_TRIP, profile: null })).toBe('');
+		expect(serializeTripSuffix({ ...DEFAULT_TRIP, profile: 'balanced' })).toBe('&route=balanced');
 		expect(serializeTripSuffix({ ...DEFAULT_TRIP, profile: 'efficient' })).toBe('&route=efficient');
 	});
 
