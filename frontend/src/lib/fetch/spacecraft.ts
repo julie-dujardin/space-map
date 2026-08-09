@@ -55,6 +55,7 @@ interface VehicleEntry {
 	capabilities?: string[];
 	capability_source?: string;
 	accel_m_s2?: MeasuredEntry;
+	unlimited_dv?: boolean;
 	cost?: { usd_millions: number; year: number; kind: string; source: string };
 	object_ids?: string[];
 	group_slug?: string;
@@ -114,6 +115,7 @@ function toVehicle(entry: VehicleEntry): Vehicle {
 		maxEntrySpeedKms: entry.max_entry_speed_kms,
 		capabilities: entry.capabilities,
 		accelMs2: entry.accel_m_s2,
+		unlimitedDv: entry.unlimited_dv,
 		cost: entry.cost && {
 			usdMillions: entry.cost.usd_millions,
 			year: entry.cost.year,

@@ -41,8 +41,13 @@ export function signalDelaySeconds(
  * the same excess speed the arrival had, which is the right scale but not the
  * true return window's cost. Solving the return properly means a second
  * porkchop, which is a separate trip rather than a statistic.
+ *
+ * A constant-thrust arc has no such window to leave on, and its cost is not in
+ * the escape at all: the way home is the same crossing flown backwards, so it
+ * is quoted as the whole of what the outbound spent between the two wells.
  */
 export function returnDvKms(target: TravelBody, route: Route): number {
+	if (route.constantThrust) return route.inSpaceDvKms;
 	const cost = departureCost(
 		target,
 		route.vInfArrKms,

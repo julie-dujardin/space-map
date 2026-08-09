@@ -195,6 +195,18 @@ class Spacecraft:
     # A torch drive has no Δv budget worth stating; it has an acceleration it
     # holds until it arrives. Brachistochrone, not Hohmann.
     accel_m_s2: Measured | None = None
+    # Propellant is not a constraint the work imposes. Only ever true of
+    # fiction, and it is a reading of the work rather than a figure out of it —
+    # the ships this is set on are the ones whose stories are about where the
+    # crew can go and never about whether they can afford to get there. The
+    # cited work is already on the entry's other figures, so there is nothing
+    # extra to cite.
+    #
+    # It is also what admits a ship to the constant-thrust solver: an arc flown
+    # under power the whole way is spending the entire time, and offering one
+    # to a craft with a real propellant load would be pricing a trip it could
+    # not finish.
+    unlimited_dv: bool = False
 
     cost: Cost | None = None
 

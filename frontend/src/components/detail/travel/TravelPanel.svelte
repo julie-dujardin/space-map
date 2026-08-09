@@ -220,6 +220,19 @@
 		void panel.solve(from, to, nowJd, frame);
 	});
 
+	// The constant-thrust arc is its own effect: it turns on the craft, which the
+	// solve above deliberately ignores — a different ship is not a different
+	// search — and it answers without a worker, so it costs nothing to redo.
+	$effect(() => {
+		const from = originTravel;
+		const to = targetTravel;
+		if (block || !from || !to) {
+			panel.torch = null;
+			return;
+		}
+		panel.updateTorch(from, to, nowJd, frame);
+	});
+
 	$effect(() => () => panel.dispose());
 
 	// One end is enough: exchanging it with an empty one turns "going to Mars"
@@ -440,7 +453,10 @@
 				</span>
 			</p>
 		{/if}
-	{:else if panel.status === 'solving' && panel.routes.length === 0}
+		<!-- Counted against everything offered rather than against the search: a
+		     constant-thrust arc needs no grid, so it can be the only answer there
+		     is while the porkchop is still running. -->
+	{:else if panel.status === 'solving' && panel.offered.length === 0}
 		<p class="text-muted-foreground text-xs">{m.travel_solving()}</p>
 	{:else if panel.status === 'empty' && panel.offered.length === 0}
 		<p class="text-muted-foreground text-xs">{m.travel_no_routes()}</p>
@@ -449,14 +465,18 @@
 
 		{#if panel.grid}
 			<!-- Sits with the list rather than the detail: it is about which route
-			     to pick, not about the one already picked. -->
+			     to pick, not about the one already picked.
+
+			     A constant-thrust arc is left unmarked rather than pinned to the
+			     nearest edge: it is not a point on this field, and every departure
+			     date on the axis flies it identically. -->
 			<section class="flex flex-col gap-2">
 				<h4 class="text-sm font-medium">{m.travel_launch_windows()}</h4>
 				<div class="border-border/60 border-t"></div>
 				<PorkchopChart
 					bind:this={chart}
 					grid={panel.grid}
-					route={panel.selectedRoute}
+					route={panel.selectedRoute?.constantThrust ? null : panel.selectedRoute}
 					onPick={(departJd, tofDays) => panel.pickCustom(departJd, tofDays)}
 				/>
 			</section>

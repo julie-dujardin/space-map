@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EARTH, J2000, MARS } from '$lib/math/travel/test-fixtures';
+import { buildConstantThrustRoute } from '$lib/math/travel';
 import { TravelPanelState } from './panel.svelte';
 
 describe('TravelPanelState arrival mode', () => {
@@ -93,5 +94,29 @@ describe('TravelPanelState hand-picked windows', () => {
 
 		expect(panel.custom).toBeNull();
 		expect(panel.selectedProfile).not.toBe('custom');
+	});
+});
+
+describe('TravelPanelState constant-thrust arc', () => {
+	function torched(): TravelPanelState {
+		const panel = new TravelPanelState();
+		panel.torch = buildConstantThrustRoute(EARTH, MARS, J2000, 3.27, { departureMode: 'orbit' });
+		return panel;
+	}
+
+	// It leads rather than trails the way a hand-picked window does: the only
+	// craft it is offered for cannot fly any of the others.
+	it('leads the list, ahead of the solver\u2019s own', () => {
+		const panel = torched();
+		expect(panel.offered.map((choice) => choice.profile)).toEqual(['constant-thrust']);
+		expect(panel.selectedRoute?.constantThrust).toBe(3.27);
+	});
+
+	it('offers nothing once the arc is withdrawn and no search has landed', () => {
+		const panel = torched();
+		panel.selectedProfile = 'constant-thrust';
+		panel.torch = null;
+		expect(panel.offered).toEqual([]);
+		expect(panel.selectedRoute).toBeNull();
 	});
 });

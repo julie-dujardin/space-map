@@ -90,6 +90,13 @@ export interface Vehicle {
 
 	/** Constant-acceleration drives: a brachistochrone, not a transfer orbit. */
 	accelMs2?: Measured;
+	/**
+	 * Propellant is not a constraint the work imposes. Only ever set on fiction,
+	 * and it is what lets a ship with no stated Δv be judged against a route at
+	 * all — as well as what admits it to the constant-thrust solver, which is a
+	 * separate claim from having an acceleration. See `constantThrustAccelMs2`.
+	 */
+	unlimitedDv?: boolean;
 
 	cost?: { usdMillions: number; year: number; kind: string; source: string };
 	objectIds?: readonly string[];
@@ -146,6 +153,20 @@ const IMPULSIVE_FLOOR_M_S2 = 1e-4;
  */
 export function canDepartFrom(vehicle: Vehicle, mode: DepartureMode): boolean {
 	return vehicle.departsFrom === undefined || vehicle.departsFrom.includes(mode);
+}
+
+/**
+ * The acceleration this craft may be flown a constant-thrust arc at, or
+ * undefined when it may not be.
+ *
+ * Two things have to hold, and the second is the one that is easy to lose. An
+ * arc flown under power the whole way is spending the whole way, so it is only
+ * honest for a craft whose propellant is not a constraint — and an acceleration
+ * on its own does not say that. A solar sail publishes one and cannot hold it:
+ * the figure is true at one distance and falls off as the inverse square.
+ */
+export function constantThrustAccelMs2(vehicle: Vehicle): number | undefined {
+	return vehicle.unlimitedDv ? vehicle.accelMs2?.value : undefined;
 }
 
 /** Whether the vehicle's thrust is too low for the impulsive model to hold. */
@@ -290,10 +311,15 @@ export function checkFeasibility(
 		return { status: 'wrong-departure', marginKms: NaN };
 	}
 
-	// A torch drive has no Δv budget to check against; it holds an
-	// acceleration until it arrives, which is a different solver entirely.
-	if (vehicle.accelMs2) {
-		return { status: 'not-modelled', marginKms: NaN };
+	// Both of these are about a craft that is not spending a budget, so they come
+	// before every check that weighs one.
+	if (route.constantThrust) {
+		return constantThrustAccelMs2(vehicle) === undefined
+			? { status: 'not-modelled', marginKms: NaN }
+			: annotate(vehicle, route, { status: 'ok', marginKms: Infinity });
+	}
+	if (vehicle.unlimitedDv) {
+		return annotate(vehicle, route, { status: 'ok', marginKms: Infinity });
 	}
 
 	if (vehicle.kind === 'launcher') {

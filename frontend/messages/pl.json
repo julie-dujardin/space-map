@@ -1693,5 +1693,13 @@
 	"travel_window_costly": "drogo",
 	"travel_windows_alt": "Całkowita delta-v według daty wylotu i czasu przelotu",
 	"travel_windows_pick": "Wybierz okno startowe: kliknij pole lub przesuń znacznik strzałkami",
-	"travel_windows_pick_prompt": "Wybierz punkt na polu poniżej"
+	"travel_windows_pick_prompt": "Wybierz punkt na polu poniżej",
+	"travel_constant_thrust_note": "Napęd utrzymuje {value} przez całą drogę. Nie ma okna startowego: każda data odlotu daje ten sam łuk.",
+	"travel_dv_unlimited": "Bez ograniczeń",
+	"travel_leg_boost": "Przyspieszanie",
+	"travel_leg_brake": "Obrót i hamowanie",
+	"travel_profile_constant_thrust": "Stały ciąg",
+	"travel_top_speed": "Prędkość maksymalna",
+	"travel_unit_g": "{value} g",
+	"travel_burn_at": "{duration} przy {value}"
 }

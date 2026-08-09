@@ -27,6 +27,20 @@ the Millennium Falcon is famous for a hyperdrive rating and has no sublight
 acceleration anyone wrote down, so it carries neither. And faster-than-light
 is out of scope entirely — a jump is not a trajectory, and no amount of Δv
 describes one.
+
+`unlimited_dv` is the one field here that is a reading rather than a figure. It
+says the work does not make propellant a constraint: the story is about where
+the crew go and never about whether they can afford the burn. Without it these
+ships cannot be priced against the ordinary trajectories at all, since a Δv
+budget nobody states cannot be compared to one they need.
+
+It is also what admits a ship to the constant-thrust solver, and that is why it
+is a separate claim from `accel_m_s2` rather than read off it. Discovery One
+and the archetypes are sized well enough to answer for themselves and do not
+get it. Neither does the sail, which has no propellant at all and so has
+unlimited Δv in the only sense that does not help: its acceleration falls off
+as the inverse square, so there is nothing for it to hold all the way, and the
+low-thrust verdict it already gets is the honest one.
 """
 
 from space_map_data.constants.spacecraft.specs import Measured, Spacecraft
@@ -52,6 +66,7 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         departs_from=frozenset({"surface", "orbit"}),
         power="fictional",
         accel_m_s2=Measured(_G / 3.0, "corey_2011_leviathan_wakes"),
+        unlimited_dv=True,
         crew=Measured(18, "corey_2011_leviathan_wakes"),
     ),
     # A drive that eats its own fuel's mass at something close to unit
@@ -66,6 +81,7 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         departs_from=frozenset({"orbit"}),
         power="fictional",
         accel_m_s2=Measured(1.5 * _G, "weir_2021_project_hail_mary"),
+        unlimited_dv=True,
         crew=Measured(3, "weir_2021_project_hail_mary"),
     ),
     # The other end of the same idea: an ion drive that never stops, at an
@@ -80,6 +96,7 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         departs_from=frozenset({"orbit"}),
         power="nuclear",
         accel_m_s2=Measured(0.002, "weir_2011_the_martian"),
+        unlimited_dv=True,
         crew=Measured(6, "weir_2011_the_martian"),
     ),
     # A lighthugger holds one gravity until it is close enough to light speed
@@ -95,6 +112,7 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         departs_from=frozenset({"orbit"}),
         power="fictional",
         accel_m_s2=Measured(_G, "reynolds_2000_revelation_space"),
+        unlimited_dv=True,
         crew=Measured(160000, "reynolds_2000_revelation_space"),
     ),
     # Nuclear, and slow enough to be recognisable: Discovery's Jupiter transfer
@@ -126,8 +144,11 @@ FICTIONAL: tuple[Spacecraft, ...] = (
     ),
     # Present for the same reason a map has a compass rose. Lucasfilm's
     # databank publishes the ship's length and nothing else, and no film gives
-    # a sublight acceleration or a mass, so the panel will say it cannot judge
-    # the trip. Eight is the ship's complement rather than its flight crew:
+    # a sublight acceleration or a mass, so it flies the ordinary trajectories
+    # on the strength of the one thing the films are unambiguous about — that
+    # getting there was never the part that was going to be difficult — and
+    # gets no constant-thrust arc, having no acceleration to hold.
+    # Eight is the ship's complement rather than its flight crew:
     # two fly it and six ride, which is the split every reference gives and
     # roughly what leaves Tatooine in the first film — off a landing pad,
     # under its own power, which is the one performance claim the films do
@@ -140,6 +161,7 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         status="fictional",
         departs_from=frozenset({"surface", "orbit"}),
         power="fictional",
+        unlimited_dv=True,
         crew=Measured(8, "lucas_1977_star_wars"),
     ),
     # --- archetypes --------------------------------------------------------

@@ -26,7 +26,16 @@ import { elementsToState } from './state';
 import { relativeState, solveRadialArc } from './system-transfer';
 import { cross, dot, norm, sub } from './vec3';
 
-export type LegKind = 'ascent' | 'injection' | 'cruise' | 'capture' | 'descent';
+export type LegKind =
+	| 'ascent'
+	| 'injection'
+	| 'cruise'
+	/** The two halves of a constant-thrust arc: everything before the flip, and
+	 *  everything after it. Unlike a cruise these carry Δv as well as time. */
+	| 'boost'
+	| 'brake'
+	| 'capture'
+	| 'descent';
 
 export interface RouteLeg {
 	kind: LegKind;
@@ -55,6 +64,17 @@ export interface Route {
 	vInfArrKms: number;
 	departureMode: DepartureMode;
 	arrivalMode: ArrivalMode;
+	/**
+	 * The acceleration the drive is held at for the whole crossing, m/s², on the
+	 * routes that are flown that way rather than coasted.
+	 *
+	 * The figure and the fact are one field because the fact is never anything
+	 * else: `buildConstantThrustRoute` refuses an acceleration that is not
+	 * positive, so absent means coasted and present means held. These belong to
+	 * no porkchop — there is no window to place one on, so nothing that reasons
+	 * about departure dates should try.
+	 */
+	constantThrust?: number;
 }
 
 export interface RouteOptions {

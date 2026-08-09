@@ -3,6 +3,7 @@ import {
 	canDepartFrom,
 	checkFeasibility,
 	checkManifest,
+	constantThrustAccelMs2,
 	crewCapacity,
 	dvWithPayloadKms,
 	feasibleRoutes,
@@ -11,6 +12,7 @@ import {
 	type Vehicle
 } from './vehicles';
 import { buildRoute } from './route';
+import { buildConstantThrustRoute } from './brachistochrone';
 import { nextTransferWindows, hohmannTransferDays } from './windows';
 import { EARTH, J2000, JUPITER, MARS } from './test-fixtures';
 
@@ -47,6 +49,16 @@ const HAULER: Vehicle = {
 	propellantMassKg: { value: 6000, source: 't' },
 	ispS: { value: 320, source: 't' },
 	dvKms: 4.351
+};
+
+/** An acceleration and no Δv at all, which is how fiction states a torch drive. */
+const TORCH: Vehicle = {
+	id: 'test-torch',
+	kind: 'fictional',
+	propulsion: 'fictional',
+	status: 'fictional',
+	accelMs2: { value: 3.27, source: 't' },
+	unlimitedDv: true
 };
 
 const window = nextTransferWindows(EARTH, MARS, J2000, 1)[0];
@@ -194,15 +206,44 @@ describe('checkFeasibility', () => {
 		expect(checkFeasibility(electric, marsRoute).status).toBe('not-modelled');
 	});
 
-	it('declines to judge a constant-acceleration drive at all', () => {
-		const torch: Vehicle = {
-			id: 'torch',
+	it('lets a craft whose propellant is not a constraint fly the coasting routes', () => {
+		// The whole point of the flag: with no Δv to weigh, nothing is out of reach.
+		const jupiter = buildRoute(EARTH, JUPITER, window, 500)!;
+		expect(checkFeasibility(TORCH, marsRoute).status).toBe('ok');
+		expect(checkFeasibility(TORCH, jupiter).status).toBe('ok');
+	});
+
+	it('passes a constant-acceleration drive on the arc it actually flies', () => {
+		const arc = buildConstantThrustRoute(EARTH, MARS, J2000, 3.27, { departureMode: 'orbit' })!;
+		expect(checkFeasibility(TORCH, arc).status).toBe('ok');
+	});
+
+	it('declines to fly a constant-thrust arc with anything that has no drive to hold', () => {
+		const arc = buildConstantThrustRoute(EARTH, MARS, J2000, 3.27, { departureMode: 'orbit' })!;
+		expect(checkFeasibility({ ...CRAFT, dvKms: 5000 }, arc).status).toBe('not-modelled');
+	});
+
+	// A sail publishes an acceleration it cannot hold: true at one distance and
+	// falling off as the inverse square. Having one is not permission to fly an arc.
+	it('declines an arc to an acceleration whose craft still has a propellant story', () => {
+		const sail: Vehicle = {
+			id: 'test-sail',
 			kind: 'fictional',
-			propulsion: 'fictional',
-			status: 'fictional',
-			accelMs2: { value: 3.27, source: 't' }
+			propulsion: 'solar-sail',
+			status: 'concept',
+			accelMs2: { value: 0.0002, source: 't' }
 		};
-		expect(checkFeasibility(torch, marsRoute).status).toBe('not-modelled');
+		expect(constantThrustAccelMs2(sail)).toBeUndefined();
+		const arc = buildConstantThrustRoute(EARTH, MARS, J2000, 3.27, { departureMode: 'orbit' })!;
+		expect(checkFeasibility(sail, arc).status).toBe('not-modelled');
+	});
+
+	it('still flags a constant-thrust trip that outlasts the consumables', () => {
+		const slow = buildConstantThrustRoute(EARTH, MARS, J2000, 0.002, { departureMode: 'orbit' })!;
+		const crewed: Vehicle = { ...TORCH, enduranceDays: { value: 30, source: 't' } };
+		const result = checkFeasibility(crewed, slow);
+		expect(result.status).toBe('ok');
+		expect(result.enduranceRatio).toBeGreaterThan(1);
 	});
 
 	it('flags a trip that outlasts the consumables without failing it', () => {

@@ -15,7 +15,7 @@
 	import { formatJulianDate } from '$lib/format/date';
 	import { formatQuantity } from '$lib/format/quantities';
 	import type { OfferedRoute, RouteOption, TravelPanelState } from '$lib/travel/panel.svelte';
-	import { formatTripTime } from '$lib/travel/format';
+	import { formatAcceleration, formatTripTime } from '$lib/travel/format';
 	import { departureNote } from './vehicle-labels';
 
 	interface Props {
@@ -30,7 +30,8 @@
 		fast: m.travel_profile_fast,
 		balanced: m.travel_profile_balanced,
 		efficient: m.travel_profile_efficient,
-		custom: m.travel_profile_custom
+		custom: m.travel_profile_custom,
+		'constant-thrust': m.travel_profile_constant_thrust
 	};
 
 	function blockedText(choice: OfferedRoute): string | null {
@@ -73,7 +74,16 @@
 					: 'border-border/60'} {blocked ? 'opacity-50' : 'hover:bg-muted/40'}"
 			>
 				<span class="min-w-0 flex-1">
-					<span class="block text-sm font-medium">{PROFILE_LABEL[choice.profile]()}</span>
+					<!-- The acceleration rides on the name because it is what tells one
+					     constant-thrust arc from another: the dates below say the same
+					     thing whatever the drive, and this is the only thing that does
+					     not. -->
+					<span class="block text-sm font-medium">
+						{PROFILE_LABEL[choice.profile]()}{#if choice.route.constantThrust}<span
+								class="text-muted-foreground ms-1.5 text-xs font-normal tabular-nums"
+								>{formatAcceleration(choice.route.constantThrust)}</span
+							>{/if}
+					</span>
 					<span class="text-muted-foreground block truncate text-xs">
 						{formatJulianDate(choice.route.departJd)} → {formatJulianDate(choice.route.arriveJd)}
 					</span>

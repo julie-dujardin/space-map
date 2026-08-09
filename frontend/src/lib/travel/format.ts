@@ -76,6 +76,31 @@ export function formatDv(kms: number): string {
 	return m.travel_unit_km_s({ value: kms.toFixed(2) });
 }
 
+/** Standard gravity, m/s² — the unit every torch drive in fiction is quoted in. */
+const G0_M_S2 = 9.80665;
+/** Below this a multiple of a gravity is four leading zeros and no meaning. An
+ *  ion drive is a hundredth of this, and reads better in its own unit. */
+const GRAVITIES_FLOOR = 0.01;
+
+/** Two significant figures, which is all any of these are known to. */
+function significant(value: number): string {
+	return Number(value.toPrecision(2)).toString();
+}
+
+/**
+ * The acceleration a drive holds, in the unit that makes it mean something: a
+ * fraction of a gravity for anything you could stand up in, m/s² for the slow
+ * drives where that fraction stops being a number anyone can picture.
+ */
+export function formatAcceleration(accelMs2: number): string {
+	if (!Number.isFinite(accelMs2) || accelMs2 <= 0) return '—';
+	const gravities = accelMs2 / G0_M_S2;
+	if (gravities < GRAVITIES_FLOOR) {
+		return `${significant(accelMs2)} ${m.unit_symbol_metres_per_second_squared()}`;
+	}
+	return m.travel_unit_g({ value: significant(gravities) });
+}
+
 /** One-way light time across a distance in km. */
 export function formatSignalDelay(seconds: number): string {
 	if (!Number.isFinite(seconds) || seconds < 0) return '—';

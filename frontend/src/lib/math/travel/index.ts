@@ -13,6 +13,11 @@
  * and above that, a porkchop sweep over departure date and cruise length that
  * yields the fast / balanced / efficient options to offer.
  *
+ * Beside it sits one arc that is not a transfer orbit at all: a drive held from
+ * departure to arrival, which is what the catalogue's fictional ships fly and
+ * the only thing an acceleration without a Δv budget can be priced as. See
+ * `brachistochrone`.
+ *
  * Scope limits worth knowing: transfers are single patched-conic legs about one
  * primary (no gravity assists, and a moon needs its own leg from its planet),
  * only the zero-revolution Lambert branch is solved, and the manoeuvre model is
@@ -47,6 +52,8 @@ export {
 
 export type { Route, RouteLeg, RouteOptions, LegKind } from './route';
 export { buildRoute } from './route';
+
+export { buildConstantThrustRoute } from './brachistochrone';
 
 export type { PorkchopGrid, PorkchopOptions, RouteChoice, RouteProfile } from './porkchop';
 export { computePorkchop, selectRoutes } from './porkchop';
@@ -84,6 +91,7 @@ export type {
 export {
 	canDepartFrom,
 	checkFeasibility,
+	constantThrustAccelMs2,
 	checkManifest,
 	crewCapacity,
 	dvWithPayloadKms,

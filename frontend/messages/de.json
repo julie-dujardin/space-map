@@ -1705,5 +1705,13 @@
 	"travel_window_costly": "teuer",
 	"travel_windows_alt": "Gesamt-Delta-v nach Abflugdatum und Reisedauer",
 	"travel_windows_pick": "Startfenster wählen: Klicken Sie ins Feld oder bewegen Sie die Markierung mit den Pfeiltasten",
-	"travel_windows_pick_prompt": "Wählen Sie unten einen Punkt im Feld"
+	"travel_windows_pick_prompt": "Wählen Sie unten einen Punkt im Feld",
+	"travel_constant_thrust_note": "Der Antrieb hält auf der ganzen Strecke {value}. Es gibt kein Startfenster: Jedes Abflugdatum fliegt denselben Bogen.",
+	"travel_dv_unlimited": "Keine Beschränkung",
+	"travel_leg_boost": "Beschleunigen",
+	"travel_leg_brake": "Wenden und bremsen",
+	"travel_profile_constant_thrust": "Konstanter Schub",
+	"travel_top_speed": "Höchstgeschwindigkeit",
+	"travel_unit_g": "{value} g",
+	"travel_burn_at": "{duration} bei {value}"
 }

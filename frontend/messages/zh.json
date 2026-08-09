@@ -1937,5 +1937,13 @@
 	"travel_window_costly": "高耗",
 	"travel_windows_alt": "按出发日期和巡航时长的总 Δv",
 	"travel_windows_pick": "选择发射窗口：点击图面，或用方向键移动标记",
-	"travel_windows_pick_prompt": "在下方图中选择一个点"
+	"travel_windows_pick_prompt": "在下方图中选择一个点",
+	"travel_constant_thrust_note": "引擎全程保持 {value} 的加速度。没有发射窗口：任何出发日期飞的都是同一条轨迹。",
+	"travel_dv_unlimited": "不受限制",
+	"travel_leg_boost": "加速",
+	"travel_leg_brake": "调头减速",
+	"travel_profile_constant_thrust": "恒定推力",
+	"travel_top_speed": "最高速度",
+	"travel_unit_g": "{value} g",
+	"travel_burn_at": "以 {value} 持续 {duration}"
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatTripTime, tripDuration } from './format';
+import { formatAcceleration, formatTripTime, tripDuration } from './format';
 
 /** Days per month the formatter rounds against. */
 const MONTH = 30.44;
@@ -23,6 +23,23 @@ describe('tripDuration', () => {
 		expect(tripDuration(23.999 * HOUR)).toEqual({ days: 1 });
 		expect(tripDuration(MONTH * 3 + 30.2)).toEqual({ months: 4 });
 		expect(tripDuration(MONTH * 11 + 30.2)).toEqual({ years: 1 });
+	});
+});
+
+describe('formatAcceleration', () => {
+	it('quotes a drive you could stand up in as a fraction of a gravity', () => {
+		expect(formatAcceleration(9.80665 / 3)).toBe('0.33 g');
+		expect(formatAcceleration(9.80665 * 1.5)).toBe('1.5 g');
+	});
+
+	// A hundredth of a gravity is where the fraction stops saying anything.
+	it('drops to m/s² for a drive you would never feel', () => {
+		expect(formatAcceleration(0.002)).toBe('0.002 m/s²');
+	});
+
+	it('refuses to render an acceleration that is not one', () => {
+		expect(formatAcceleration(0)).toBe('—');
+		expect(formatAcceleration(NaN)).toBe('—');
 	});
 });
 

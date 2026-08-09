@@ -1934,5 +1934,13 @@
 	"travel_window_costly": "дорого",
 	"travel_windows_alt": "Суммарная Δv по дате отправления и длительности перелёта",
 	"travel_windows_pick": "Выберите стартовое окно: щёлкните по полю или перемещайте отметку стрелками",
-	"travel_windows_pick_prompt": "Выберите точку на поле ниже"
+	"travel_windows_pick_prompt": "Выберите точку на поле ниже",
+	"travel_constant_thrust_note": "Двигатель держит {value} на всём пути. Стартового окна нет: любая дата отлёта даёт одну и ту же траекторию.",
+	"travel_dv_unlimited": "Не ограничена",
+	"travel_leg_boost": "Разгон",
+	"travel_leg_brake": "Разворот и торможение",
+	"travel_profile_constant_thrust": "Постоянная тяга",
+	"travel_top_speed": "Максимальная скорость",
+	"travel_unit_g": "{value} g",
+	"travel_burn_at": "{duration} при {value}"
 }

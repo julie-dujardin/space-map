@@ -10,10 +10,12 @@
  */
 
 import {
+	buildConstantThrustRoute,
 	buildRoute,
 	canDepartFrom,
 	checkFeasibility,
 	checkManifest,
+	constantThrustAccelMs2,
 	TravelSolver,
 	type ArrivalMode,
 	type DepartureMode,
@@ -52,9 +54,12 @@ export const TARGET_MODES: readonly EndpointMode[] = [
 
 export type TravelStatus = 'idle' | 'solving' | 'ready' | 'empty' | 'blocked';
 
-/** What the route list can offer: the solver's three, plus a point read off the
- *  porkchop by hand. */
-export type RouteOption = RouteProfile | 'custom';
+/**
+ * What the route list can offer: the solver's three, a point read off the
+ * porkchop by hand, and the arc a drive held all the way flies — which is not a
+ * point on the porkchop at all, since every departure date flies the same one.
+ */
+export type RouteOption = RouteProfile | 'custom' | 'constant-thrust';
 
 export interface OfferedRoute {
 	profile: RouteOption;
@@ -85,6 +90,13 @@ export class TravelPanelState {
 	routes = $state<RouteChoice[]>([]);
 	/** A point picked off the porkchop, priced like any solved route. */
 	custom = $state<Route | null>(null);
+	/**
+	 * The constant-thrust arc, when the chosen craft has an acceleration to hold.
+	 *
+	 * Comes out of the craft rather than out of the search, and costs one
+	 * bisection rather than a grid, so it never goes near the worker.
+	 */
+	torch = $state<Route | null>(null);
 	grid = $state<PorkchopGrid | null>(null);
 	status = $state<TravelStatus>('idle');
 	blocked = $state<BlockReason | null>(null);
@@ -92,6 +104,9 @@ export class TravelPanelState {
 	#solver = new TravelSolver();
 	/** Guards against an older solve landing after a newer one. */
 	#token = 0;
+	/** Which craft the standing arc was built for, so choosing a new one selects
+	 *  its arc and everything else leaves the selection alone. */
+	#torchFor: string | null = null;
 	/** The last solve's inputs, so a hand-picked point is priced the same way the
 	 *  grid it was read off was. */
 	#pricing: { origin: TravelBody; target: TravelBody; options: RouteOptions } | null = null;
@@ -121,10 +136,21 @@ export class TravelPanelState {
 		return this.originMode === 'surface' ? 'surface' : 'orbit';
 	}
 
-	/** Everything on offer, the hand-picked route last: it is an addition to the
-	 *  solver's answer rather than one of them. */
+	/**
+	 * Everything on offer.
+	 *
+	 * The hand-picked route goes last: it is an addition to the solver's answer
+	 * rather than one of them. The constant-thrust arc goes first, because the
+	 * only craft it is ever offered for is one that can fly nothing else, and
+	 * listing it under three trajectories that craft cannot fly would bury the
+	 * only answer.
+	 */
 	get offered(): OfferedRoute[] {
-		return this.custom ? [...this.routes, { profile: 'custom', route: this.custom }] : this.routes;
+		const offered: OfferedRoute[] = this.torch
+			? [{ profile: 'constant-thrust', route: this.torch }, ...this.routes]
+			: [...this.routes];
+		if (this.custom) offered.push({ profile: 'custom', route: this.custom });
+		return offered;
 	}
 
 	get selectedRoute(): Route | null {
@@ -211,6 +237,63 @@ export class TravelPanelState {
 		return vehicle ? checkManifest(vehicle, this.manifest) : null;
 	}
 
+	/**
+	 * Recompute the constant-thrust arc for the craft and the trip as they stand.
+	 *
+	 * Called on its own rather than from `solve`, because the two answer to
+	 * different things: choosing a craft is not a new search, and a new search
+	 * does not change how hard that craft's drive pushes.
+	 *
+	 * Nothing below reads `this.torch` back. This runs inside an effect, and the
+	 * arc is a fresh object every time, so reading it here would make the effect
+	 * depend on a value it had just replaced with an unequal one — which is not a
+	 * slow solve but an endless one.
+	 */
+	updateTorch(
+		origin: TravelBody,
+		target: TravelBody,
+		nowJd: number,
+		frame: TransferFrame = { orbit: 'heliocentric' }
+	): void {
+		const vehicle = this.vehicle;
+		const accelMs2 = vehicle ? constantThrustAccelMs2(vehicle) : undefined;
+		// Every departure date flies the same arc, so the only thing a date says is
+		// when to start counting. A deadline says nothing at all until it is met.
+		const departJd =
+			this.timeMode === 'depart' && this.pickedJd != null ? Math.max(nowJd, this.pickedJd) : nowJd;
+		const arc = accelMs2
+			? buildConstantThrustRoute(origin, target, departJd, accelMs2, {
+					departureMode: this.departureMode,
+					arrivalMode: this.arrivalMode,
+					centralMu: frame.centralMu,
+					systemPrimary: frame.systemPrimary
+				})
+			: null;
+		const missesDeadline =
+			this.timeMode === 'arrive' && this.pickedJd != null && arc !== null
+				? arc.arriveJd > this.pickedJd
+				: false;
+
+		const offer = missesDeadline ? null : arc;
+		this.torch = offer;
+		if (offer && this.#torchFor !== this.vehicleId) {
+			// The arc is the answer a torch ship is chosen for, so it is selected the
+			// moment one is — but only then. These craft can fly the coasting routes
+			// too, and re-selecting the arc under a reader comparing it against them
+			// would take the comparison away.
+			this.selectedProfile = 'constant-thrust';
+		} else if (!offer && this.selectedProfile === 'constant-thrust') {
+			this.selectedProfile = this.#fallbackProfile();
+		}
+		this.#torchFor = offer ? this.vehicleId : null;
+	}
+
+	/** The trajectory to fall back on when the selected one stops being offered. */
+	#fallbackProfile(): RouteOption | null {
+		const balanced = this.routes.find((r) => r.profile === 'balanced');
+		return (balanced ?? this.routes[0])?.profile ?? null;
+	}
+
 	/** Mark a trip impossible before any solve is attempted. */
 	block(reason: BlockReason): void {
 		this.#token++;
@@ -219,6 +302,7 @@ export class TravelPanelState {
 		this.routes = [];
 		this.grid = null;
 		this.custom = null;
+		this.torch = null;
 		this.#pricing = null;
 	}
 
@@ -284,12 +368,10 @@ export class TravelPanelState {
 		this.grid = result.grid;
 		this.#pricing = { origin, target, options: solveOptions };
 		this.custom = this.#repriceCustom();
-		this.status = routes.length > 0 ? 'ready' : 'empty';
+		this.status = this.offered.length > 0 ? 'ready' : 'empty';
 
-		const stillOffered = this.offered.some((r) => r.profile === this.selectedProfile);
-		if (!stillOffered) {
-			const balanced = routes.find((r) => r.profile === 'balanced');
-			this.selectedProfile = (balanced ?? routes[0])?.profile ?? null;
+		if (!this.offered.some((r) => r.profile === this.selectedProfile)) {
+			this.selectedProfile = this.#fallbackProfile();
 		}
 	}
 

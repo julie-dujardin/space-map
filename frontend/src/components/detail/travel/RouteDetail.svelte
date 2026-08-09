@@ -9,9 +9,16 @@
 	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
 	import OrbitIcon from '@lucide/svelte/icons/orbit';
 	import MoveRightIcon from '@lucide/svelte/icons/move-right';
+	import ChevronsRightIcon from '@lucide/svelte/icons/chevrons-right';
+	import ChevronsLeftIcon from '@lucide/svelte/icons/chevrons-left';
 	import { dvWithPayloadKms, type LegKind, type Route, type TravelBody } from '$lib/math/travel';
 	import { returnDvKms, signalDelaySeconds } from '$lib/travel/arrival-stats';
-	import { formatDv, formatSignalDelay, formatTripTime } from '$lib/travel/format';
+	import {
+		formatAcceleration,
+		formatDv,
+		formatSignalDelay,
+		formatTripTime
+	} from '$lib/travel/format';
 	import type { TravelPanelState } from '$lib/travel/panel.svelte';
 	import DeltaVLadder from './DeltaVLadder.svelte';
 	import { legLabel } from './leg-labels';
@@ -28,14 +35,24 @@
 		ascent: ArrowUpIcon,
 		injection: RocketIcon,
 		cruise: MoveRightIcon,
+		boost: ChevronsRightIcon,
+		brake: ChevronsLeftIcon,
 		capture: OrbitIcon,
 		descent: ArrowDownIcon
 	};
 
+	// Speed at the flip, which is what the accelerating half of the arc bought.
+	let topSpeedKms = $derived(route.legs.find((leg) => leg.kind === 'boost')?.dvKms ?? 0);
+
+	// Launch energy is the third figure for an arc that is thrown; a drive held
+	// all the way leaves at exactly escape speed and C3 zero says nothing about
+	// it. How fast it ends up going does.
 	let tiles = $derived([
 		{ label: m.travel_trip_time(), value: formatTripTime(route.tofDays), unit: '' },
 		{ label: m.travel_total_dv(), value: route.totalDvKms.toFixed(1), unit: m.travel_km_s() },
-		{ label: m.travel_launch_c3(), value: route.c3Km2S2.toFixed(1), unit: m.travel_km2_s2() }
+		route.constantThrust
+			? { label: m.travel_top_speed(), value: topSpeedKms.toFixed(0), unit: m.travel_km_s() }
+			: { label: m.travel_launch_c3(), value: route.c3Km2S2.toFixed(1), unit: m.travel_km2_s2() }
 	]);
 
 	let delay = $derived(signalDelaySeconds(origin, target, route.arriveJd));
@@ -48,17 +65,32 @@
 	let remaining = $derived.by(() => {
 		const vehicle = state.vehicle;
 		if (!vehicle || vehicle.kind === 'launcher') return null;
+		if (vehicle.unlimitedDv) return Infinity;
 		const loaded = dvWithPayloadKms(vehicle, state.payloadKg);
 		if (loaded === undefined) return null;
 		return loaded - route.inSpaceDvKms;
 	});
+	// A craft whose propellant the work never made a constraint has nothing left
+	// over to report and nothing missing either, so it is answered before the
+	// silence about an unpublished engine — which would otherwise be a strange
+	// thing to say about a torch drive, whose engine is the only published thing.
+	let unlimitedDv = $derived(state.vehicle?.unlimitedDv === true);
 	let unpublishedDv = $derived(
-		state.vehicle !== null && state.vehicle.kind !== 'launcher' && state.vehicle.dvKms === undefined
+		!unlimitedDv &&
+			state.vehicle !== null &&
+			state.vehicle.kind !== 'launcher' &&
+			state.vehicle.dvKms === undefined
 	);
 	let returnCost = $derived(returnDvKms(target, route));
 </script>
 
 <div class="flex flex-col gap-4">
+	{#if route.constantThrust}
+		<p class="text-muted-foreground text-xs">
+			{m.travel_constant_thrust_note({ value: formatAcceleration(route.constantThrust) })}
+		</p>
+	{/if}
+
 	<div class="grid auto-cols-fr grid-flow-col gap-2">
 		{#each tiles as tile (tile.label)}
 			<div class="border-border/60 bg-muted/40 flex flex-col gap-1 rounded-md border p-2.5">
@@ -99,7 +131,9 @@
 
 			<dt class="text-muted-foreground">{m.travel_dv_remaining()}</dt>
 			<dd class="text-end">
-				{#if remaining != null}
+				{#if unlimitedDv}
+					<span class="text-sm">{m.travel_dv_unlimited()}</span>
+				{:else if remaining != null}
 					<span class="tabular-nums">{formatDv(remaining)}</span>
 				{:else if unpublishedDv}
 					<span class="text-muted-foreground text-xs">{m.travel_dv_unpublished()}</span>
@@ -152,6 +186,20 @@
 								{leg.dvKms > 0 ? formatDv(leg.dvKms) : formatTripTime(leg.days)}
 							</span>
 						</div>
+						<!-- A burn costs Δv, a coast costs time, and a leg under thrust
+						     costs both — the figure above is the Δv, so the duration is
+						     said here rather than lost, with the acceleration that was
+						     held for it. -->
+						{#if leg.dvKms > 0 && leg.days > 0}
+							<span class="text-muted-foreground text-xs">
+								{route.constantThrust
+									? m.travel_burn_at({
+											duration: formatTripTime(leg.days),
+											value: formatAcceleration(route.constantThrust)
+										})
+									: formatTripTime(leg.days)}
+							</span>
+						{/if}
 						{#if leg.aerobraked}
 							<span class="text-muted-foreground text-xs">{m.travel_aerobraked()}</span>
 						{/if}

@@ -129,6 +129,11 @@ def _entry(craft: Spacecraft) -> dict:
         entry["variant"] = list(craft.variant)
     if craft.power:
         entry["power"] = craft.power
+    # Only ever set on fiction, and only where the work makes propellant a
+    # non-issue. Emitted only when true: absent is the ordinary case and does
+    # not need saying on ninety entries.
+    if craft.unlimited_dv:
+        entry["unlimited_dv"] = True
 
     for key, measured in (
         ("dry_mass_kg", craft.dry_mass_kg),
@@ -260,8 +265,9 @@ def write_spacecraft(out_dir: Path, cache: WikidataEntityCache | None = None) ->
         elif (
             vehicle["kind"] != "launcher"
             and "delta_v_kms" not in vehicle
-            # A torch drive has no Δv to be missing.
-            and "accel_m_s2" not in vehicle
+            # A ship whose work never made propellant a constraint has no Δv
+            # to be missing.
+            and not vehicle.get("unlimited_dv")
         ):
             missing = [
                 field

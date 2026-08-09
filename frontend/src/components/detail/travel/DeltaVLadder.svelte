@@ -56,11 +56,18 @@
 		--leg-capture: #1baf7a;
 		--leg-descent: #eda100;
 		--leg-cruise: transparent;
+		/* One drive, one hue: the two halves of a constant-thrust arc are the same
+		   burn flipped over, and they sit side by side and dominate the bar. Told
+		   apart by lightness, which survives every kind of colour blindness. */
+		--leg-boost: #5a3fb8;
+		--leg-brake: #a893e8;
 	}
 	:global(.dark) .travel-ladder {
 		--leg-ascent: #3987e5;
 		--leg-injection: #d95926;
 		--leg-capture: #199e70;
 		--leg-descent: #c98500;
+		--leg-boost: #7d63d9;
+		--leg-brake: #bbaaee;
 	}
 </style>

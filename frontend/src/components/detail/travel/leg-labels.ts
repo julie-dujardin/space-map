@@ -12,6 +12,10 @@ export function legLabel(kind: LegKind): string {
 			return m.travel_leg_injection();
 		case 'cruise':
 			return m.travel_leg_cruise();
+		case 'boost':
+			return m.travel_leg_boost();
+		case 'brake':
+			return m.travel_leg_brake();
 		case 'capture':
 			return m.travel_leg_capture();
 		case 'descent':
