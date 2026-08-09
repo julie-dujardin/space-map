@@ -20,7 +20,7 @@
 	import type { PorkchopGrid, Route } from '$lib/math/travel';
 	import { formatJulianDate } from '$lib/format/date';
 	import { gradient, sample, type ColormapName } from '$lib/travel/colormap';
-	import { formatTripTime } from '$lib/travel/format';
+	import { formatDurationNarrow } from '$lib/format/duration';
 
 	interface Props {
 		grid: PorkchopGrid;
@@ -135,8 +135,8 @@
 
 	let departFrom = $derived(formatJulianDate(grid.departJds[0]));
 	let departTo = $derived(formatJulianDate(grid.departJds[grid.departSteps - 1]));
-	let tofShort = $derived(formatTripTime(grid.tofDays[0]));
-	let tofLong = $derived(formatTripTime(grid.tofDays[grid.tofSteps - 1]));
+	let tofShort = $derived(formatDurationNarrow(grid.tofDays[0]));
+	let tofLong = $derived(formatDurationNarrow(grid.tofDays[grid.tofSteps - 1]));
 </script>
 
 <figure class="flex flex-col gap-1.5">

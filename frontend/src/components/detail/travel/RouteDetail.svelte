@@ -14,13 +14,12 @@
 	import WavesIcon from '@lucide/svelte/icons/waves';
 	import { dvWithPayloadKms, type LegKind, type Route, type TravelBody } from '$lib/math/travel';
 	import { returnDvKms, signalDelaySeconds } from '$lib/travel/arrival-stats';
+	import { formatDurationNarrow, SECONDS_PER_DAY } from '$lib/format/duration';
 	import {
 		dvParts,
 		formatAcceleration,
 		formatDv,
-		formatSignalDelay,
 		formatSpeed,
-		formatTripTime,
 		lightPercent
 	} from '$lib/travel/format';
 	import type { TravelPanelState } from '$lib/travel/panel.svelte';
@@ -73,7 +72,7 @@
 			: { label: m.travel_top_speed(), value: topSpeedKms.toFixed(0), unit: m.travel_km_s() }
 	);
 	let tiles = $derived<Tile[]>([
-		{ label: m.travel_trip_time(), value: formatTripTime(route.tofDays), unit: '' },
+		{ label: m.travel_trip_time(), value: formatDurationNarrow(route.tofDays), unit: '' },
 		{ label: m.travel_total_dv(), ...dvParts(route.totalDvKms) },
 		route.constantThrust
 			? topSpeedTile
@@ -172,7 +171,7 @@
 
 			<dt class="text-muted-foreground">{m.travel_signal_delay()}</dt>
 			<dd class="text-end tabular-nums">
-				{delay == null ? '—' : formatSignalDelay(delay)}
+				{delay == null ? '—' : formatDurationNarrow(delay / SECONDS_PER_DAY)}
 			</dd>
 
 			<dt class="text-muted-foreground">{m.travel_dv_remaining()}</dt>
@@ -229,7 +228,7 @@
 						<div class="flex items-baseline justify-between gap-2">
 							<span class="truncate text-sm">{legLabel(leg.kind)}</span>
 							<span class="shrink-0 text-sm tabular-nums">
-								{leg.dvKms > 0 ? formatDv(leg.dvKms) : formatTripTime(leg.days)}
+								{leg.dvKms > 0 ? formatDv(leg.dvKms) : formatDurationNarrow(leg.days)}
 							</span>
 						</div>
 						<!-- A burn costs Δv, a coast costs time, and a leg under thrust
@@ -240,10 +239,10 @@
 							<span class="text-muted-foreground text-xs">
 								{route.constantThrust
 									? m.travel_burn_at({
-											duration: formatTripTime(leg.days),
+											duration: formatDurationNarrow(leg.days),
 											value: formatAcceleration(route.constantThrust)
 										})
-									: formatTripTime(leg.days)}
+									: formatDurationNarrow(leg.days)}
 							</span>
 						{/if}
 						{#if leg.aerobraked}

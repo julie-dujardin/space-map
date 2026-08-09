@@ -16,7 +16,8 @@
 	import { formatQuantity } from '$lib/format/quantities';
 	import type { OfferedRoute, TravelPanelState } from '$lib/travel/panel.svelte';
 	import type { RouteOption } from '$lib/travel/trip';
-	import { formatAcceleration, formatDvBrief, formatTripTime } from '$lib/travel/format';
+	import { formatDurationNarrow } from '$lib/format/duration';
+	import { formatAcceleration, formatDvBrief } from '$lib/travel/format';
 	import { departureNote } from './vehicle-labels';
 
 	interface Props {
@@ -120,7 +121,7 @@
 						>
 					{:else}
 						<span class="block text-sm font-semibold tabular-nums">
-							{formatTripTime(choice.route.tofDays)}
+							{formatDurationNarrow(choice.route.tofDays)}
 						</span>
 						<span class="text-muted-foreground block text-xs tabular-nums">
 							{formatDvBrief(choice.route.totalDvKms)}
