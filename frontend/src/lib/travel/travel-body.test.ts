@@ -126,6 +126,19 @@ describe('toTravelBody', () => {
 		expect(withPressure('one_bar').surfacePressureBar).toBeUndefined();
 	});
 
+	// Having no ground is not having no air. A giant is the best thing in the
+	// system to brake against and the worst to quote a surface for, so the two
+	// questions are answered separately.
+	it('still reports an atmosphere where there is no surface to read it at', () => {
+		expect(withPressure('cloud_top').hasAtmosphere).toBe(true);
+		expect(withPressure('one_bar').hasAtmosphere).toBe(true);
+		expect(withPressure('surface').hasAtmosphere).toBe(true);
+	});
+
+	it('says nothing about the air of a body whose detail never loaded', () => {
+		expect(toTravelBody(bodies.get('naif-399')!, look)!.hasAtmosphere).toBeUndefined();
+	});
+
 	it('treats a body with no detail as airless', () => {
 		expect(toTravelBody(bodies.get('naif-399')!, look)!.surfacePressureBar).toBeUndefined();
 	});

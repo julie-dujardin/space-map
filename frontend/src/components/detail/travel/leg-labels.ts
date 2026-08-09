@@ -20,6 +20,8 @@ export function legLabel(kind: LegKind): string {
 			return m.travel_leg_assist();
 		case 'capture':
 			return m.travel_leg_capture();
+		case 'aerobrake':
+			return m.travel_leg_aerobrake();
 		case 'descent':
 			return m.travel_leg_descent();
 	}

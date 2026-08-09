@@ -21,7 +21,13 @@ import { escapeSpeed, sphereOfInfluenceKm } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { solveFlyby, turnAngleRad } from './flyby';
 import { solveLambert } from './lambert';
-import { ascentDv, circularSpeed, injectionDv, parkingRadiusKm } from './maneuvers';
+import {
+	ascentDv,
+	circularSpeed,
+	injectionDv,
+	parkingRadiusKm,
+	periapsisRaiseDv
+} from './maneuvers';
 import { computePorkchop } from './porkchop';
 import { buildRoute } from './route';
 import { systemArcBounds } from './system-transfer';
@@ -319,6 +325,24 @@ const BENCHMARKS: Benchmark[] = [
 		tolerance: 0.05,
 		compute: () => ascentDv(MARS)
 	},
+	{
+		quantity: 'Mars aerocapture periapsis raise, into 200 x 2000 km',
+		// Aerocapture design reference missions, arXiv 2308.10384 Table 2, which
+		// gives 33 m/s for exactly this orbit.
+		source: 'Aerocapture DRM set (2023)',
+		expected: 0.033,
+		unit: 'km/s',
+		// Two-body geometry once the pass altitude is fixed, and the pass altitude
+		// is a single constant standing in for an entry interface — this is the
+		// tightest tolerance that assumption earns.
+		tolerance: 0.05,
+		compute: () =>
+			periapsisRaiseDv(MARS.mu, MARS.radiusKm + 50, MARS.radiusKm + 200, MARS.radiusKm + 2000)
+	},
+	// Aerobraking is deliberately not in this table. The four flown Mars campaigns
+	// removed 1.0-1.2 km/s over 77 to 290 active days, and how hard a campaign is
+	// flown spreads the rate four-fold — wider than the 5% every row here is held
+	// to. Its range is asserted in maneuvers.test.ts, where a range belongs.
 	{
 		quantity: 'Earth-Mars Hohmann departure Δv (heliocentric)',
 		source: 'Closed-form Hohmann, via our Lambert solver',

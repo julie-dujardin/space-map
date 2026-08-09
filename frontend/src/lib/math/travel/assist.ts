@@ -31,7 +31,7 @@ import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { solveFlyby, type FlybyPass } from './flyby';
 import { solveLambert } from './lambert';
 import { arrivalCost, characteristicEnergy, departureCost } from './maneuvers';
-import type { Route, RouteLeg, RouteOptions } from './route';
+import { arrivalLegs, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState } from './state';
 import { norm, sub } from './vec3';
 import { hohmannTransferDays, nextTransferWindows } from './windows';
@@ -56,7 +56,8 @@ export function buildAssistRoute(
 		departureMode = 'surface',
 		arrivalMode = 'capture',
 		centralMu = GM_SUN_KM3_S2,
-		retrograde = false
+		retrograde = false,
+		aero = 'none'
 	} = options;
 	if (!(tof1Days > 0) || !(tof2Days > 0)) return null;
 
@@ -86,7 +87,7 @@ export function buildAssistRoute(
 	if (!pass) return null;
 
 	const dep = departureCost(departure, vInfDep, departureMode);
-	const arr = arrivalCost(target, vInfArr, arrivalMode);
+	const arr = arrivalCost(target, vInfArr, arrivalMode, aero);
 
 	const legs: RouteLeg[] = [];
 	if (dep.ascentKms > 0) legs.push({ kind: 'ascent', dvKms: dep.ascentKms, days: 0 });
@@ -94,12 +95,7 @@ export function buildAssistRoute(
 	legs.push({ kind: 'cruise', dvKms: 0, days: tof1Days });
 	legs.push({ kind: 'assist', dvKms: pass.dvKms, days: 0 });
 	legs.push({ kind: 'cruise', dvKms: 0, days: tof2Days });
-	if (arrivalMode !== 'flyby') {
-		legs.push({ kind: 'capture', dvKms: arr.captureKms, days: 0, aerobraked: arr.aerobraked });
-	}
-	if (arr.descentKms > 0) {
-		legs.push({ kind: 'descent', dvKms: arr.descentKms, days: 0, aerobraked: arr.aerobraked });
-	}
+	legs.push(...arrivalLegs(arr, arrivalMode));
 
 	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
 	if (!isFinite(totalDvKms)) return null;
@@ -128,6 +124,8 @@ export function buildAssistRoute(
 		vInfArrKms: vInfArr,
 		departureMode,
 		arrivalMode,
+		aero,
+		entrySpeedKms: arr.entrySpeedKms,
 		flybys: [flyby]
 	};
 }

@@ -11,7 +11,7 @@
  */
 
 import { dateToJD, jdToDate } from '$lib/format/date';
-import type { RouteProfile } from '$lib/math/travel';
+import type { AeroAssist, RouteProfile } from '$lib/math/travel';
 
 /**
  * How a trip meets a body at one end. These are the kernel's own manoeuvre
@@ -30,6 +30,13 @@ export const TARGET_MODES: readonly EndpointMode[] = [
 	'elliptical',
 	'flyby'
 ];
+
+/**
+ * What to ask of the destination's atmosphere. Only ever offered where there is
+ * one; the term is kept while the destination changes so that going back to a
+ * body with air restores the trip that was being planned.
+ */
+const AERO_ASSISTS: readonly AeroAssist[] = ['none', 'aerocapture', 'aerobraking'];
 
 /** When the trip goes: on the app's own clock, or held to a date at one end. */
 export type TimeMode = 'now' | 'depart' | 'arrive';
@@ -59,6 +66,7 @@ export interface TripPick {
 export interface TripState {
 	originMode: EndpointMode;
 	targetMode: EndpointMode;
+	aero: AeroAssist;
 	timeMode: TimeMode;
 	/** The date behind the two non-'now' modes, as a JD; null under 'now', which
 	 *  searches from the clock. */
@@ -74,6 +82,9 @@ export interface TripState {
 export const DEFAULT_TRIP: TripState = {
 	originMode: 'surface',
 	targetMode: 'low-orbit',
+	// Somewhere with air is somewhere you use the air: arriving at Mars on the
+	// engine alone is the unusual choice, and the one worth having to make.
+	aero: 'aerocapture',
 	timeMode: 'now',
 	pickedJd: null,
 	vehicleId: null,
@@ -98,6 +109,7 @@ export function serializeTripSuffix(trip: TripState): string {
 
 	if (trip.originMode !== DEFAULT_TRIP.originMode) parts.push(`fm=${trip.originMode}`);
 	if (trip.targetMode !== DEFAULT_TRIP.targetMode) parts.push(`tm=${trip.targetMode}`);
+	if (trip.aero !== DEFAULT_TRIP.aero) parts.push(`aero=${trip.aero}`);
 	// The date is what the mode means; a mode without one searches the same span
 	// "now" does, so it is not a choice worth carrying.
 	if (trip.timeMode !== 'now' && trip.pickedJd !== null) {
@@ -160,9 +172,11 @@ function parsePick(raw: string | null): TripPick | null {
  *  is still a trip. */
 export function parseTrip(params: URLSearchParams): TripState {
 	const profile = params.get('route') as RouteOption | null;
+	const aero = params.get('aero') as AeroAssist | null;
 	return {
 		originMode: parseMode(params.get('fm'), ORIGIN_MODES, DEFAULT_TRIP.originMode),
 		targetMode: parseMode(params.get('tm'), TARGET_MODES, DEFAULT_TRIP.targetMode),
+		aero: aero !== null && AERO_ASSISTS.includes(aero) ? aero : DEFAULT_TRIP.aero,
 		...parseWhen(params.get('when')),
 		vehicleId: params.get('craft') || null,
 		passengers: Math.floor(parseAmount(params.get('crew'))),

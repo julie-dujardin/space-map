@@ -26,10 +26,12 @@
 		hohmannTransferDays,
 		nextTransferWindows,
 		systemArcBounds,
+		type AeroAssist,
 		type TrajectoryPath,
 		type TravelBody
 	} from '$lib/math/travel';
 	import {
+		hasAtmosphere,
 		lookupIn,
 		toTravelBody,
 		transferCenterId,
@@ -196,6 +198,34 @@
 		target ? toTravelBody(target, lookup, targetDetail, frame.orbit) : null
 	);
 
+	// A flyby never slows down, so there is nothing for an atmosphere to do. A
+	// destination with none of its own ignores the request anyway, and offering it
+	// would be asking a question with one answer.
+	// Asked of the destination's own detail bundle rather than of `targetTravel`.
+	// That is rebuilt from the scene's body index, which churns and briefly
+	// resolves to nothing — and a control that vanishes and comes back between a
+	// press and its release swallows the click that was on it.
+	let targetHasAir = $derived(hasAtmosphere(targetDetail) === true);
+	let isLanding = $derived(panel.targetIsFeature || panel.targetMode === 'surface');
+	let showAero = $derived(targetHasAir && panel.targetMode !== 'flyby');
+	// Aerobraking walks a loose orbit down into a tight one, so it is only on
+	// offer when a tight one is what was asked for.
+	let aeroChoices = $derived([
+		{ value: 'none' as const, label: m.travel_aero_none() },
+		{
+			value: 'aerocapture' as const,
+			label: isLanding ? m.travel_aero_direct_entry() : m.travel_aero_aerocapture()
+		},
+		...(panel.targetMode === 'low-orbit'
+			? [{ value: 'aerobraking' as const, label: m.travel_aero_aerobraking() }]
+			: [])
+	]);
+	// A trip that was aerobraking and is now landing is not braking on the way in
+	// at all until it says so again.
+	let aeroValue = $derived(
+		panel.aero === 'aerobraking' && panel.targetMode !== 'low-orbit' ? 'none' : panel.aero
+	);
+
 	// An end that never resolved is an end with no orbit, not an empty form. The
 	// destination is asked for first: it is the question the panel exists to
 	// answer, and a departure with nowhere to go prices nothing.
@@ -250,10 +280,12 @@
 		const picked = panel.pickedJd;
 		const departure = panel.originMode;
 		const arrival = panel.targetMode;
+		const aero = panel.aero;
 		void mode;
 		void picked;
 		void departure;
 		void arrival;
+		void aero;
 
 		if (blocking) {
 			panel.block(blocking);
@@ -568,6 +600,22 @@
 			onPayloadChange={(value) => (panel.payloadKg = value)}
 		/>
 	</div>
+
+	<!-- A term of the trip rather than of the destination: it does not change
+	     where you end up, it changes what getting there costs and how long it
+	     takes. So it sits with the craft and the manifest, next to the list of
+	     trajectories whose figures it moves. -->
+	{#if showAero}
+		<div class="flex flex-col gap-1.5">
+			<span class="text-muted-foreground text-[10px] uppercase">{m.travel_aero_assist()}</span>
+			<Segmented
+				options={aeroChoices}
+				value={aeroValue}
+				onchange={(aero: AeroAssist) => (panel.aero = aero)}
+				ariaLabel={m.travel_aero_assist()}
+			/>
+		</div>
+	{/if}
 
 	{#if panel.status === 'blocked'}
 		<!-- An end left blank is a prompt, not a failure — no alert icon on it. -->

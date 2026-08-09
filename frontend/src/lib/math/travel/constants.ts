@@ -36,13 +36,40 @@ export const ASCENT_DRAG_LOSS_KMS_PER_BAR = 0.15;
 export const ASCENT_DRAG_LOSS_CAP_KMS = 1.2;
 
 /**
- * Fraction of the capture burn an atmosphere can absorb via aerocapture. Not a
- * measured number — a stand-in for "thick enough to brake against", deliberately
- * conservative against the ~0 propellant an ideal aerocapture would use.
+ * Altitude of the periapsis an atmospheric pass is flown at, km.
+ *
+ * One value for every body, which is the model's weakest atmospheric
+ * assumption: a real entry interface sits where the density does, so it is
+ * ~50 km at Mars but several hundred at Titan and the giants. Calibrated at
+ * Mars, where it reproduces the published post-pass burn; at a body with a
+ * deeper atmosphere it puts periapsis too low and understates that burn.
  */
-export const AEROCAPTURE_SAVING_FRACTION = 0.9;
+export const AERO_PASS_ALTITUDE_KM = 50;
 
-/** Surface pressure (bar) above which aerocapture and parachute EDL are credited. */
+/**
+ * Δv allowed for corridor control and apoapsis trim after an aerocapture pass,
+ * km/s, on top of the periapsis raise the model derives.
+ *
+ * Aerocapture studies budget 33 m/s (Mars, elliptical) to ~200 m/s (Mars, 500 km
+ * circular, 3σ) for the whole post-pass clean-up, most of the spread being
+ * correction of where the pass actually left the craft rather than the raise
+ * itself. This is the middle of that.
+ */
+export const AEROCAPTURE_TRIM_KMS = 0.05;
+
+/**
+ * Δv drag removes per day of an aerobraking campaign, km/s.
+ *
+ * Fitted to the four flown Mars campaigns, which span 3.6–14 m/s per day:
+ * MGS 1220 m/s over 290 active days, Odyssey 1080 over 77, MRO 1200 over 148,
+ * TGO 1000 over 276. The spread is the spacecraft's ballistic coefficient and
+ * how hard the campaign was flown — neither of which this model knows — so a
+ * duration it reports is the right number of months, not the right number of
+ * days. Nothing calibrates it away from Mars.
+ */
+export const AEROBRAKING_RATE_KMS_PER_DAY = 0.008;
+
+/** Surface pressure (bar) above which aero assist and parachute EDL are credited. */
 export const AEROCAPTURE_MIN_PRESSURE_BAR = 0.005;
 
 /**

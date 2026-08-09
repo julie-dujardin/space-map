@@ -17,6 +17,7 @@ import {
 	checkManifest,
 	constantThrustAccelMs2,
 	TravelSolver,
+	type AeroAssist,
 	type ArrivalMode,
 	type DepartureMode,
 	type Feasibility,
@@ -54,6 +55,10 @@ export type BlockReason = 'unknown-primary' | 'unknown-orbit' | 'no-target' | 'n
 export class TravelPanelState {
 	originMode = $state<EndpointMode>(DEFAULT_TRIP.originMode);
 	targetMode = $state<EndpointMode>(DEFAULT_TRIP.targetMode);
+	/** What to ask of the destination's atmosphere. Held whatever the destination
+	 *  is — the kernel ignores it where there is no atmosphere — so that moving
+	 *  the trip to an airless body and back does not lose the choice. */
+	aero = $state<AeroAssist>(DEFAULT_TRIP.aero);
 	/** Set when an end is a named place on a surface — there is only one way to
 	 *  arrive at one, so the mode is fixed and its picker is skipped. Comes from
 	 *  the path rather than the trip's terms, so it is not part of `trip`. */
@@ -65,6 +70,14 @@ export class TravelPanelState {
 	vehicleId = $state<string | null>(DEFAULT_TRIP.vehicleId);
 	/** The fetched catalogue; empty until `loadVehicles` lands. */
 	vehicles = $state<readonly Vehicle[]>([]);
+	/**
+	 * Whether the catalogue has settled, successfully or not.
+	 *
+	 * Empty means two different things before and after the fetch — "nothing
+	 * loaded yet" and "nothing to load" — and every inference about the chosen
+	 * craft is wrong in the first case. This is what tells them apart.
+	 */
+	vehiclesReady = $state(false);
 	/** What the trip carries. Costs no solve — mass moves no trajectory — so
 	 *  these sit outside the effect that re-solves. */
 	passengers = $state(DEFAULT_TRIP.passengers);
@@ -108,12 +121,25 @@ export class TravelPanelState {
 		return this.vehicles.find((v) => v.id === this.vehicleId) ?? null;
 	}
 
+	/**
+	 * Whether the chosen craft is settled enough to reason about.
+	 *
+	 * A trip naming no craft is settled the moment it loads. One that names a
+	 * craft is not settled until the catalogue is in, and anything concluding
+	 * "this craft cannot do X" before then is answering about a craft it has not
+	 * seen. Every such inference is gated on this.
+	 */
+	get craftKnown(): boolean {
+		return this.vehicleId === null || this.vehiclesReady;
+	}
+
 	/** The trip as the URL carries it. The hand pick is reported whether or not a
 	 *  solve has priced it, or a link would drop its own pick on the way in. */
 	get trip(): TripState {
 		return {
 			originMode: this.originMode,
 			targetMode: this.targetMode,
+			aero: this.aero,
 			timeMode: this.timeMode,
 			pickedJd: this.pickedJd,
 			vehicleId: this.vehicleId,
@@ -131,6 +157,7 @@ export class TravelPanelState {
 	applyTrip(trip: TripState): void {
 		this.originMode = trip.originMode;
 		this.targetMode = trip.targetMode;
+		this.aero = trip.aero;
 		this.timeMode = trip.timeMode;
 		this.pickedJd = trip.pickedJd;
 		this.vehicleId = trip.vehicleId;
@@ -156,8 +183,53 @@ export class TravelPanelState {
 	 * `vehicle` read off one would keep answering null long after the fetch.
 	 */
 	async loadVehicles(): Promise<void> {
-		await ensureVehicles();
-		this.vehicles = vehicleCatalogue();
+		try {
+			await ensureVehicles();
+			this.acceptVehicles(vehicleCatalogue());
+		} catch (e) {
+			// A catalogue that will never arrive is still an answer. Leaving it
+			// unsettled would hold every craft-dependent decision open for the rest
+			// of the session, waiting for something that is not coming.
+			console.warn('[travel] no spacecraft catalogue, judging no craft:', e);
+			this.acceptVehicles([]);
+		}
+	}
+
+	/**
+	 * Take the catalogue and settle everything that was waiting on it.
+	 *
+	 * The terms of a trip cannot all be applied when the URL is read: two of them
+	 * name things only this can resolve. So they are held as asked for, and
+	 * answered here.
+	 */
+	acceptVehicles(list: readonly Vehicle[]): void {
+		this.vehicles = list;
+		this.vehiclesReady = true;
+		this.#reconcileCraft();
+	}
+
+	/**
+	 * Check what the URL asked for against the catalogue that has now landed.
+	 *
+	 * This is the whole reason the trip's terms cannot simply be applied once at
+	 * load: two of them name things only the catalogue can resolve. A link is a
+	 * request, and a request for a craft nobody ships, or for an arc that craft
+	 * cannot fly, has to be answered rather than carried around.
+	 */
+	#reconcileCraft(): void {
+		if (this.vehicleId !== null && this.vehicle === null) {
+			console.debug(`[travel] no craft "${this.vehicleId}" in the catalogue — dropping it.`);
+			this.vehicleId = null;
+		}
+		const vehicle = this.vehicle;
+		// An arc held all the way is a claim about the drive, so a link naming one
+		// for a craft that cannot hold it named a trip that does not exist.
+		if (this.selectedProfile === 'constant-thrust') {
+			if (!vehicle || constantThrustAccelMs2(vehicle) === undefined) {
+				this.selectedProfile = this.#fallbackProfile();
+				this.torch = null;
+			}
+		}
 	}
 
 	/** Arrival mode the kernel should price, from what the destination box says.
@@ -311,6 +383,12 @@ export class TravelPanelState {
 		nowJd: number,
 		frame: TransferFrame = { orbit: 'heliocentric' }
 	): void {
+		// The arc is entirely a fact about the craft, so there is nothing to say
+		// about it until the catalogue naming that craft is in. A pass taken during
+		// the wait would find no craft, conclude there is no arc, and take a shared
+		// link's own trajectory away from it.
+		if (!this.craftKnown) return;
+
 		const vehicle = this.vehicle;
 		const accelMs2 = vehicle ? constantThrustAccelMs2(vehicle) : undefined;
 		// Every departure date flies the same arc, so the only thing a date says is
@@ -321,6 +399,7 @@ export class TravelPanelState {
 			? buildConstantThrustRoute(origin, target, departJd, accelMs2, {
 					departureMode: this.departureMode,
 					arrivalMode: this.arrivalMode,
+					aero: this.aero,
 					centralMu: frame.centralMu,
 					systemPrimary: frame.systemPrimary
 				})
@@ -338,24 +417,10 @@ export class TravelPanelState {
 			// too, and re-selecting the arc under a reader comparing it against them
 			// would take the comparison away.
 			this.selectedProfile = 'constant-thrust';
-		} else if (!offer && this.#craftKnown && this.selectedProfile === 'constant-thrust') {
+		} else if (!offer && this.selectedProfile === 'constant-thrust') {
 			this.selectedProfile = this.#fallbackProfile();
 		}
-		if (this.#craftKnown) this.#torchFor = offer ? this.vehicleId : null;
-	}
-
-	/**
-	 * Whether the chosen craft is settled — nothing chosen, the entry in hand, or
-	 * a catalogue that has landed without it.
-	 *
-	 * The catalogue is fetched, so a link naming a craft is read before it lands,
-	 * and everything about that craft is unanswerable until it does. The arc it
-	 * would fly is the one trajectory that comes off the craft rather than out of
-	 * the search, so a pass taken during the wait must not conclude there is no
-	 * such trajectory: the whole point of the wait is that nobody knows yet.
-	 */
-	get #craftKnown(): boolean {
-		return this.vehicleId === null || this.vehicle !== null || this.vehicles.length > 0;
+		this.#torchFor = offer ? this.vehicleId : null;
 	}
 
 	/** The trajectory to fall back on when the selected one stops being offered. */
@@ -414,7 +479,8 @@ export class TravelPanelState {
 		const solveOptions = {
 			...options,
 			departureMode: this.departureMode,
-			arrivalMode: this.arrivalMode
+			arrivalMode: this.arrivalMode,
+			aero: this.aero
 		};
 		const result = await this.#solver.solve(origin, target, solveOptions);
 
@@ -442,7 +508,7 @@ export class TravelPanelState {
 
 		// A search says nothing about the constant-thrust arc — that comes off the
 		// craft — so it cannot retire a selection whose craft has yet to land.
-		const awaitingTorch = this.selectedProfile === 'constant-thrust' && !this.#craftKnown;
+		const awaitingTorch = this.selectedProfile === 'constant-thrust' && !this.craftKnown;
 		if (!awaitingTorch && !this.offered.some((r) => r.profile === this.selectedProfile)) {
 			this.selectedProfile = this.#fallbackProfile();
 		}

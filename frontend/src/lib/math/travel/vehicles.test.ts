@@ -33,23 +33,24 @@ const LAUNCHER: Vehicle = {
 	}
 };
 
-/** Enough Δv for a Mars transfer (~4.1 km/s in space), nowhere near Jupiter. */
+/** Enough Δv for a Mars transfer captured on the engine (~5.9 km/s in space),
+ *  nowhere near Jupiter. */
 const CRAFT: Vehicle = {
 	id: 'test-craft',
 	kind: 'probe',
 	propulsion: 'chemical',
 	status: 'active',
-	dvKms: 4.5
+	dvKms: 6.5
 };
 
 /** Masses and an engine behind the Δv, so cargo can be priced against them:
- *  320 s through a 4:1 mass ratio is 4.35 km/s empty. */
+ *  480 s through a 4:1 mass ratio is 6.53 km/s empty. */
 const HAULER: Vehicle = {
 	...CRAFT,
 	dryMassKg: { value: 2000, source: 't' },
 	propellantMassKg: { value: 6000, source: 't' },
-	ispS: { value: 320, source: 't' },
-	dvKms: 4.351
+	ispS: { value: 480, source: 't' },
+	dvKms: 6.526
 };
 
 /** An acceleration and no Δv at all, which is how fiction states a torch drive. */
@@ -259,12 +260,35 @@ describe('checkFeasibility', () => {
 	});
 
 	it('flags an arrival faster than the heat shield is rated for', () => {
-		const landing = buildRoute(EARTH, MARS, window, tof, { arrivalMode: 'landing' })!;
+		const landing = buildRoute(EARTH, MARS, window, tof, {
+			arrivalMode: 'landing',
+			aero: 'aerocapture'
+		})!;
 		const shielded: Vehicle = {
 			...CRAFT,
 			maxEntrySpeedKms: { value: 0.1, source: 't' }
 		};
 		expect(checkFeasibility(shielded, landing).overEntrySpeedKms).toBeGreaterThan(0.1);
+	});
+
+	it('has no entry to rate when the arrival never touches an atmosphere', () => {
+		// A rating is about surviving air, so a propulsive landing on the same body
+		// is not a slower entry — it is no entry at all.
+		const powered = buildRoute(EARTH, MARS, window, tof, { arrivalMode: 'landing' })!;
+		const shielded: Vehicle = { ...CRAFT, maxEntrySpeedKms: { value: 0.1, source: 't' } };
+		expect(checkFeasibility(shielded, powered).overEntrySpeedKms).toBeUndefined();
+	});
+
+	it('refuses an atmospheric arrival to a craft that lists no way through one', () => {
+		const aero = buildRoute(EARTH, MARS, window, tof, { aero: 'aerocapture' })!;
+		const orbiter: Vehicle = { ...CRAFT, capabilities: ['sample_return'] };
+		expect(checkFeasibility(orbiter, aero).status).toBe('no-aeroshell');
+		// Silence is not a refusal, and neither is a craft that carries a shield.
+		expect(checkFeasibility(CRAFT, aero).status).toBe('ok');
+		expect(checkFeasibility({ ...CRAFT, capabilities: ['entry'] }, aero).status).toBe('ok');
+		// The same craft is fine anywhere it is not asked to fly through anything.
+		const propulsive = buildRoute(EARTH, MARS, window, tof)!;
+		expect(checkFeasibility(orbiter, propulsive).status).toBe('ok');
 	});
 });
 
@@ -289,8 +313,8 @@ describe('dvWithPayloadKms', () => {
 	});
 
 	it('spends the mass ratio on the cargo', () => {
-		// 320 s through 9 t over 3 t, against 8 over 2 empty.
-		expect(dvWithPayloadKms(HAULER, 1000)).toBeCloseTo(3.448, 3);
+		// 480 s through 9 t over 3 t, against 8 over 2 empty.
+		expect(dvWithPayloadKms(HAULER, 1000)).toBeCloseTo(5.171, 3);
 	});
 
 	it('keeps a figure it cannot re-derive rather than going silent', () => {

@@ -147,7 +147,7 @@ describe('TravelPanelState constant-thrust arc', () => {
 		panel.updateTorch(EARTH, MARS, J2000);
 		expect(panel.torch).toBeNull();
 
-		panel.vehicles = [ROCINANTE];
+		panel.acceptVehicles([ROCINANTE]);
 		panel.updateTorch(EARTH, MARS, J2000);
 
 		expect(panel.torch).not.toBeNull();
@@ -168,7 +168,7 @@ describe('TravelPanelState constant-thrust arc', () => {
 		panel.updateTorch(EARTH, MARS, J2000);
 		expect(panel.selectedProfile).toBe('constant-thrust');
 
-		panel.vehicles = [ROCINANTE];
+		panel.acceptVehicles([ROCINANTE]);
 		panel.updateTorch(EARTH, MARS, J2000);
 
 		expect(panel.torch).not.toBeNull();
@@ -184,7 +184,7 @@ describe('TravelPanelState constant-thrust arc', () => {
 			profile: 'constant-thrust'
 		});
 		await panel.solve(EARTH, MARS, J2000);
-		panel.vehicles = [ROCINANTE];
+		panel.acceptVehicles([ROCINANTE]);
 
 		panel.updateTorch(EARTH, MARS, J2000);
 
@@ -192,10 +192,34 @@ describe('TravelPanelState constant-thrust arc', () => {
 		expect(panel.selectedProfile).toBe('balanced');
 	});
 
+	// The two terms a URL cannot resolve on its own. Both are held as asked for
+	// until the catalogue lands, and answered against it when it does.
+	it('drops a craft the catalogue turns out not to have', async () => {
+		const panel = new TravelPanelState({ ...DEFAULT_TRIP, vehicleId: 'no-such-ship' });
+		await panel.solve(EARTH, MARS, J2000);
+		// Still asked for while nobody can say otherwise — the link is not wrong yet.
+		expect(panel.vehicleId).toBe('no-such-ship');
+		expect(panel.craftKnown).toBe(false);
+
+		panel.acceptVehicles([ROCINANTE]);
+
+		expect(panel.vehicleId).toBeNull();
+		expect(panel.craftKnown).toBe(true);
+	});
+
+	// A catalogue that never arrives has to settle too, or every question about
+	// the craft stays open for the rest of the session.
+	it('settles on an empty catalogue rather than waiting forever', () => {
+		const panel = new TravelPanelState({ ...DEFAULT_TRIP, vehicleId: 'rocinante' });
+		expect(panel.craftKnown).toBe(false);
+		panel.acceptVehicles([]);
+		expect(panel.craftKnown).toBe(true);
+	});
+
 	// The picker is the case the arc is meant to take over.
 	it('selects the arc when a craft is chosen rather than restored', async () => {
 		const panel = new TravelPanelState();
-		panel.vehicles = [ROCINANTE];
+		panel.acceptVehicles([ROCINANTE]);
 		await panel.solve(EARTH, MARS, J2000);
 		panel.selectVehicle('rocinante');
 

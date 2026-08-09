@@ -6,6 +6,7 @@ import {
 	circularSpeed,
 	departureCost,
 	injectionDv,
+	periapsisSpeed,
 	parkingRadiusKm
 } from './maneuvers';
 import { EARTH, JUPITER, MARS, MOON } from './test-fixtures';
@@ -54,17 +55,59 @@ describe('arrivalCost', () => {
 		expect(cost.descentKms).toBe(0);
 	});
 
-	it('discounts capture at Mars for its atmosphere', () => {
-		expect(arrivalCost(MARS, 2.65, 'capture').aerobraked).toBe(true);
-		expect(arrivalCost(MOON, 2.65, 'capture').aerobraked).toBe(false);
+	it('uses the atmosphere only where there is one and only when asked', () => {
+		expect(arrivalCost(MARS, 2.65, 'capture').aerobraked).toBe(false);
+		expect(arrivalCost(MARS, 2.65, 'capture', 'aerocapture').aerobraked).toBe(true);
+		// Asking is not the same as receiving, which is what lets the request stand
+		// while the destination changes.
+		expect(arrivalCost(MOON, 2.65, 'capture', 'aerocapture').aerobraked).toBe(false);
 	});
 
 	it('makes landing on an airless body cost a full powered descent', () => {
 		const moon = arrivalCost(MOON, 1.0, 'landing');
 		expect(moon.descentKms).toBeGreaterThan(1.5);
-		const mars = arrivalCost(MARS, 2.65, 'landing');
-		// Mars descends on a heat shield and parachutes, so only touchdown is propulsive.
-		expect(mars.descentKms).toBeLessThan(moon.descentKms);
+		// Mars descends on a heat shield and parachutes, so only touchdown is
+		// propulsive — but only for a craft that brought one.
+		expect(arrivalCost(MARS, 2.65, 'landing', 'aerocapture').descentKms).toBeLessThan(
+			moon.descentKms
+		);
+		expect(arrivalCost(MARS, 2.65, 'landing').descentKms).toBeGreaterThan(1.5);
+	});
+
+	it('prices an aerocapture as the burn that lifts periapsis back out', () => {
+		const propulsive = arrivalCost(MARS, 2.65, 'low-orbit');
+		const aero = arrivalCost(MARS, 2.65, 'low-orbit', 'aerocapture');
+		// Real studies budget tens of m/s post-pass against a burn of km/s.
+		expect(aero.captureKms).toBeLessThan(0.2);
+		expect(aero.captureKms).toBeLessThan(propulsive.captureKms / 10);
+		expect(aero.absorbedKms).toBeGreaterThan(1);
+		// One pass, so there is nothing to wait for.
+		expect(aero.aerobrakeDays).toBe(0);
+		// The pass is flown below the parking orbit, so it is met faster than it.
+		expect(aero.entrySpeedKms!).toBeGreaterThan(
+			periapsisSpeed(MARS.mu, parkingRadiusKm(MARS), 2.65)
+		);
+	});
+
+	it('prices aerobraking as an insertion burn plus months of passes', () => {
+		const braked = arrivalCost(MARS, 2.65, 'low-orbit', 'aerobraking');
+		const aero = arrivalCost(MARS, 2.65, 'low-orbit', 'aerocapture');
+
+		// The engine still does the capture, so this is nowhere near a single pass.
+		expect(braked.captureKms).toBeGreaterThan(aero.captureKms * 5);
+		// ...but it is still cheaper than circularizing on the engine.
+		expect(braked.captureKms).toBeLessThan(arrivalCost(MARS, 2.65, 'low-orbit').captureKms);
+		// The four flown Mars campaigns removed 1.0-1.2 km/s over 2-10 months.
+		expect(braked.absorbedKms).toBeGreaterThan(0.8);
+		expect(braked.absorbedKms).toBeLessThan(1.6);
+		expect(braked.aerobrakeDays).toBeGreaterThan(60);
+		expect(braked.aerobrakeDays).toBeLessThan(300);
+	});
+
+	it('has nothing for aerobraking to do when the target is the capture ellipse', () => {
+		const braked = arrivalCost(MARS, 2.65, 'capture', 'aerobraking');
+		expect(braked.aerobrakeDays).toBe(0);
+		expect(braked.captureKms).toBeCloseTo(arrivalCost(MARS, 2.65, 'capture').captureKms, 9);
 	});
 
 	it('orders the modes by cost', () => {

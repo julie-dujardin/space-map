@@ -20,6 +20,8 @@ import {
 	departureCost,
 	injectionDv,
 	parkingRadiusKm,
+	type AeroAssist,
+	type ArrivalCost,
 	type ArrivalMode,
 	type DepartureMode
 } from './maneuvers';
@@ -39,6 +41,9 @@ export type LegKind =
 	 *  the whole point; the Δv is what the geometry could not supply. */
 	| 'assist'
 	| 'capture'
+	/** Months of passes through the target's atmosphere, walking the orbit down.
+	 *  The only leg that costs time without a burn or a crossing to show for it. */
+	| 'aerobrake'
 	| 'descent';
 
 export interface RouteLeg {
@@ -68,6 +73,12 @@ export interface Route {
 	vInfArrKms: number;
 	departureMode: DepartureMode;
 	arrivalMode: ArrivalMode;
+	/** What was asked of the target's atmosphere. Reported as asked even where
+	 *  the body had none to give, so the route says what trip it answers. */
+	aero: AeroAssist;
+	/** Fastest the craft meets that atmosphere at, km/s — what a heat shield is
+	 *  rated against. Absent when it never does. */
+	entrySpeedKms?: number;
 	/**
 	 * The acceleration the drive is held at for the whole crossing, m/s², on the
 	 * routes that are flown that way rather than coasted.
@@ -91,6 +102,8 @@ export interface Route {
 export interface RouteOptions {
 	departureMode?: DepartureMode;
 	arrivalMode?: ArrivalMode;
+	/** What to ask of the target's atmosphere. Defaults to using none of it. */
+	aero?: AeroAssist;
 	/** μ of the body both endpoints orbit, km³/s². Defaults to the Sun. */
 	centralMu?: number;
 	/** Solve the transfer clockwise about the frame's +Z axis. */
@@ -102,6 +115,39 @@ export interface RouteOptions {
 	 * route is built from a transfer ellipse instead of a Lambert solve.
 	 */
 	systemPrimary?: 'departure' | 'target';
+}
+
+/**
+ * The legs an arrival adds, in the order they are flown.
+ *
+ * Shared by all three builders because the arrival is the one part of a route
+ * that does not care how the craft got there — a Lambert arc, a transfer
+ * ellipse and a held drive all hand over the same speed at the same place.
+ *
+ * A burn nobody makes is not a step: a direct entry never enters an orbit, so
+ * it has no insertion to list.
+ */
+export function arrivalLegs(cost: ArrivalCost, mode: ArrivalMode): RouteLeg[] {
+	const legs: RouteLeg[] = [];
+	if (mode !== 'flyby' && cost.captureKms > 0) {
+		legs.push({ kind: 'capture', dvKms: cost.captureKms, days: 0, aerobraked: cost.aerobraked });
+	}
+	if (cost.aerobrakeDays > 0) {
+		legs.push({ kind: 'aerobrake', dvKms: 0, days: cost.aerobrakeDays, aerobraked: true });
+	}
+	if (cost.descentKms > 0) {
+		legs.push({ kind: 'descent', dvKms: cost.descentKms, days: 0, aerobraked: cost.aerobraked });
+	}
+	return legs;
+}
+
+/**
+ * Everything the trip takes end to end, days — the crossing plus any campaign
+ * flown after it. Every leg's duration, which is the cruise alone on the routes
+ * that have nothing after arrival.
+ */
+export function routeDurationDays(route: Route): number {
+	return route.legs.reduce((sum, leg) => sum + leg.days, 0);
 }
 
 /**
@@ -123,6 +169,7 @@ export function buildRoute(
 	const {
 		departureMode = 'surface',
 		arrivalMode = 'capture',
+		aero = 'none',
 		centralMu = GM_SUN_KM3_S2,
 		retrograde = false,
 		systemPrimary
@@ -133,6 +180,7 @@ export function buildRoute(
 		return buildSystemRoute(departure, target, departJd, tofDays, {
 			departureMode,
 			arrivalMode,
+			aero,
 			outbound: systemPrimary === 'departure'
 		});
 	}
@@ -150,18 +198,13 @@ export function buildRoute(
 	if (!isFinite(vInfDep) || !isFinite(vInfArr)) return null;
 
 	const dep = departureCost(departure, vInfDep, departureMode);
-	const arr = arrivalCost(target, vInfArr, arrivalMode);
+	const arr = arrivalCost(target, vInfArr, arrivalMode, aero);
 
 	const legs: RouteLeg[] = [];
 	if (dep.ascentKms > 0) legs.push({ kind: 'ascent', dvKms: dep.ascentKms, days: 0 });
 	legs.push({ kind: 'injection', dvKms: dep.injectionKms, days: 0 });
 	legs.push({ kind: 'cruise', dvKms: 0, days: tofDays });
-	if (arrivalMode !== 'flyby') {
-		legs.push({ kind: 'capture', dvKms: arr.captureKms, days: 0, aerobraked: arr.aerobraked });
-	}
-	if (arr.descentKms > 0) {
-		legs.push({ kind: 'descent', dvKms: arr.descentKms, days: 0, aerobraked: arr.aerobraked });
-	}
+	legs.push(...arrivalLegs(arr, arrivalMode));
 
 	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
 
@@ -178,13 +221,16 @@ export function buildRoute(
 		vInfDepKms: vInfDep,
 		vInfArrKms: vInfArr,
 		departureMode,
-		arrivalMode
+		arrivalMode,
+		aero,
+		entrySpeedKms: arr.entrySpeedKms
 	};
 }
 
 interface SystemRouteOptions {
 	departureMode: DepartureMode;
 	arrivalMode: ArrivalMode;
+	aero: AeroAssist;
 	/** True when leaving the primary for its satellite, false coming back. */
 	outbound: boolean;
 }
@@ -205,7 +251,7 @@ function buildSystemRoute(
 	tofDays: number,
 	options: SystemRouteOptions
 ): Route | null {
-	const { departureMode, arrivalMode, outbound } = options;
+	const { departureMode, arrivalMode, aero, outbound } = options;
 	const primary = outbound ? departure : target;
 	const satellite = outbound ? target : departure;
 	const arriveJd = departJd + tofDays;
@@ -245,14 +291,9 @@ function buildSystemRoute(
 	legs.push({ kind: 'cruise', dvKms: 0, days: tofDays });
 
 	const arr = outbound
-		? arrivalCost(satellite, vInf, arrivalMode)
-		: arrivalCostFromSpeed(primary, arc.vNearKms, arrivalMode);
-	if (arrivalMode !== 'flyby') {
-		legs.push({ kind: 'capture', dvKms: arr.captureKms, days: 0, aerobraked: arr.aerobraked });
-	}
-	if (arr.descentKms > 0) {
-		legs.push({ kind: 'descent', dvKms: arr.descentKms, days: 0, aerobraked: arr.aerobraked });
-	}
+		? arrivalCost(satellite, vInf, arrivalMode, aero)
+		: arrivalCostFromSpeed(primary, arc.vNearKms, arrivalMode, aero);
+	legs.push(...arrivalLegs(arr, arrivalMode));
 
 	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
 	if (!isFinite(totalDvKms)) return null;
@@ -272,6 +313,8 @@ function buildSystemRoute(
 		vInfDepKms: outbound ? 0 : vInf,
 		vInfArrKms: outbound ? vInf : 0,
 		departureMode,
-		arrivalMode
+		arrivalMode,
+		aero,
+		entrySpeedKms: arr.entrySpeedKms
 	};
 }

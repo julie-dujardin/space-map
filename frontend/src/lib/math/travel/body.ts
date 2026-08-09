@@ -20,10 +20,19 @@ export interface TravelBody {
 	/** Elements placing the body about its primary. */
 	elements: OrbitalElements;
 	/**
-	 * Surface pressure in bar. Absent means airless for our purposes — the
-	 * model only cares whether there is enough atmosphere to brake against.
+	 * Surface pressure in bar. Absent means there is no reading at a surface —
+	 * either because the body is airless, or because it has no surface for one to
+	 * be taken at. What ascent and landing are priced against.
 	 */
 	surfacePressureBar?: number;
+	/**
+	 * True when there is an envelope to fly a braking pass through, whether or
+	 * not anything can stand under it. Separate from the pressure above because
+	 * the giants are the best aerocapture targets in the literature and the worst
+	 * places to quote a surface: a pressure at their cloud tops is not a surface
+	 * reading, but it is still an atmosphere.
+	 */
+	hasAtmosphere?: boolean;
 	/** Primary this body orbits; absent for heliocentric bodies. */
 	parentId?: string;
 }

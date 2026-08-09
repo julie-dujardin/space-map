@@ -18,6 +18,7 @@
 	import type { RouteOption } from '$lib/travel/trip';
 	import { formatDurationNarrow } from '$lib/format/duration';
 	import { formatAcceleration, formatDvBrief } from '$lib/travel/format';
+	import { routeDurationDays } from '$lib/math/travel';
 	import { departureNote } from './vehicle-labels';
 
 	interface Props {
@@ -59,6 +60,11 @@
 		// statement about the craft rather than about this particular route.
 		if (result.status === 'wrong-departure' && state.vehicle) {
 			return out(departureNote(state.vehicle));
+		}
+		// Also about the craft rather than the route: it is being asked to fly
+		// through an atmosphere with nothing published that it could do it behind.
+		if (result.status === 'no-aeroshell') {
+			return out(m.travel_no_aeroshell());
 		}
 		// A launcher's payload is what it can send to *this* energy, so the same
 		// cargo clears one trajectory and not the next.
@@ -120,8 +126,12 @@
 							>{blocked.detail}</span
 						>
 					{:else}
+						<!-- Everything the trip takes, not just the crossing. A route that
+						     arrives sooner and then spends five months aerobraking into the
+						     orbit that was asked for is not the faster route, and this is
+						     the column that decision is made in. -->
 						<span class="block text-sm font-semibold tabular-nums">
-							{formatDurationNarrow(choice.route.tofDays)}
+							{formatDurationNarrow(routeDurationDays(choice.route))}
 						</span>
 						<span class="text-muted-foreground block text-xs tabular-nums">
 							{formatDvBrief(choice.route.totalDvKms)}

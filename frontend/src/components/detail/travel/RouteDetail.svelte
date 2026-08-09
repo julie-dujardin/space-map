@@ -8,11 +8,18 @@
 	import ArrowUpIcon from '@lucide/svelte/icons/arrow-up';
 	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
 	import OrbitIcon from '@lucide/svelte/icons/orbit';
+	import WindIcon from '@lucide/svelte/icons/wind';
 	import MoveRightIcon from '@lucide/svelte/icons/move-right';
 	import ChevronsRightIcon from '@lucide/svelte/icons/chevrons-right';
 	import ChevronsLeftIcon from '@lucide/svelte/icons/chevrons-left';
 	import WavesIcon from '@lucide/svelte/icons/waves';
-	import { dvWithPayloadKms, type LegKind, type Route, type TravelBody } from '$lib/math/travel';
+	import {
+		dvWithPayloadKms,
+		routeDurationDays,
+		type LegKind,
+		type Route,
+		type TravelBody
+	} from '$lib/math/travel';
 	import { returnDvKms, signalDelaySeconds } from '$lib/travel/arrival-stats';
 	import { formatDurationNarrow, SECONDS_PER_DAY } from '$lib/format/duration';
 	import {
@@ -43,6 +50,7 @@
 		brake: ChevronsLeftIcon,
 		assist: WavesIcon,
 		capture: OrbitIcon,
+		aerobrake: WindIcon,
 		descent: ArrowDownIcon
 	};
 
@@ -72,7 +80,13 @@
 			: { label: m.travel_top_speed(), value: topSpeedKms.toFixed(0), unit: m.travel_km_s() }
 	);
 	let tiles = $derived<Tile[]>([
-		{ label: m.travel_trip_time(), value: formatDurationNarrow(route.tofDays), unit: '' },
+		// The whole trip, not just the transfer: a route that arrives sooner and
+		// then aerobrakes for five months is not the faster one.
+		{
+			label: m.travel_trip_time(),
+			value: formatDurationNarrow(routeDurationDays(route)),
+			unit: ''
+		},
 		{ label: m.travel_total_dv(), ...dvParts(route.totalDvKms) },
 		route.constantThrust
 			? topSpeedTile
@@ -169,6 +183,13 @@
 				{/if}
 			</dd>
 
+			<!-- What the heat shield sees, which is the arrival speed plus everything
+			     the body's own gravity adds on the way down to the pass. -->
+			{#if route.entrySpeedKms !== undefined}
+				<dt class="text-muted-foreground">{m.travel_entry_speed()}</dt>
+				<dd class="text-end tabular-nums">{formatDv(route.entrySpeedKms)}</dd>
+			{/if}
+
 			<dt class="text-muted-foreground">{m.travel_signal_delay()}</dt>
 			<dd class="text-end tabular-nums">
 				{delay == null ? '—' : formatDurationNarrow(delay / SECONDS_PER_DAY)}
@@ -245,8 +266,15 @@
 									: formatDurationNarrow(leg.days)}
 							</span>
 						{/if}
-						{#if leg.aerobraked}
-							<span class="text-muted-foreground text-xs">{m.travel_aerobraked()}</span>
+						<!-- The campaign's own step already says what it is; the note
+						     belongs on the burns the air made smaller, and it names which
+						     of the two manoeuvres made them smaller. -->
+						{#if leg.kind === 'aerobrake'}
+							<span class="text-muted-foreground text-xs">{m.travel_aero_campaign()}</span>
+						{:else if leg.aerobraked}
+							<span class="text-muted-foreground text-xs">
+								{route.aero === 'aerocapture' ? m.travel_aerocaptured() : m.travel_aerobraked()}
+							</span>
 						{/if}
 					</div>
 				</li>

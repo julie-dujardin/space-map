@@ -67,23 +67,38 @@ export function heliocentricAncestor(body: BodyData, lookup: BodyLookup): BodyDa
  * quotes sea level and Mars the areoid, and both are the ground.
  *
  * `one_bar` and `cloud_top` are levels inside an envelope with no surface under
- * them, so they are deliberately absent: the giants price as airless, which
- * overcharges their capture but never invents a place to land.
+ * them, so they are deliberately absent: the giants have no ground to ascend
+ * from or land on, whatever their pressure is quoted at. What they do have is an
+ * atmosphere, which `hasAtmosphere` carries separately.
  */
 const SURFACE_LEVELS: ReadonlySet<string> = new Set(['surface', 'sea_level', 'areoid']);
 
-/** Surface pressure in bar, or undefined when the body has no atmosphere. */
+/** Surface pressure in bar, or undefined when there is no reading at a surface. */
 function surfacePressureBar(detail: GlobalObjectData | null): number | undefined {
 	const pressure = detail?.atmosphere?.pressure;
 	if (!pressure) return undefined;
 	if (!SURFACE_LEVELS.has(pressure.level)) {
 		console.debug(
-			`[travel] ${detail?.id}: pressure quoted at "${pressure.level}", not a surface — pricing it airless.`
+			`[travel] ${detail?.id}: pressure quoted at "${pressure.level}", not a surface — no ground to ascend from or land on.`
 		);
 		return undefined;
 	}
 	if (!Number.isFinite(pressure.pa) || pressure.pa <= 0) return undefined;
 	return pressure.pa / 1e5;
+}
+
+/**
+ * Whether there is an envelope to fly a braking pass through.
+ *
+ * A pressure at any level says there is, which is the point of asking
+ * separately: Neptune's reading is at one bar with nothing underneath it, and
+ * Neptune is where the aerocapture literature actually wants to go. A body whose
+ * detail never loaded reports nothing rather than no.
+ */
+export function hasAtmosphere(detail: GlobalObjectData | null): boolean | undefined {
+	const pressure = detail?.atmosphere?.pressure;
+	if (!pressure) return undefined;
+	return Number.isFinite(pressure.pa) && pressure.pa > 0;
 }
 
 /**
@@ -139,6 +154,7 @@ export function toTravelBody(
 			equatorial: ancestor.equatorial
 		},
 		surfacePressureBar: surfacePressureBar(detail),
+		hasAtmosphere: hasAtmosphere(detail),
 		parentId: body.parentId
 	};
 }

@@ -24,7 +24,7 @@
 import type { TravelBody } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { arrivalCost, departureCost } from './maneuvers';
-import type { Route, RouteLeg, RouteOptions } from './route';
+import { arrivalLegs, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState, type StateVector } from './state';
 import { relativeState } from './system-transfer';
 import { add, norm, normalize, scale, sub, type Vec3 } from './vec3';
@@ -131,6 +131,7 @@ export function buildConstantThrustRoute(
 	const {
 		departureMode = 'surface',
 		arrivalMode = 'capture',
+		aero = 'none',
 		centralMu = GM_SUN_KM3_S2,
 		systemPrimary
 	} = options;
@@ -179,19 +180,14 @@ export function buildConstantThrustRoute(
 	// Both wells are cleared at zero excess speed: the crossing does not start
 	// until the ship is out of one and is over once it is falling into the other.
 	const dep = departureCost(departure, 0, departureMode);
-	const arr = arrivalCost(target, vInfArrKms, arrivalMode);
+	const arr = arrivalCost(target, vInfArrKms, arrivalMode, aero);
 
 	const legs: RouteLeg[] = [];
 	if (dep.ascentKms > 0) legs.push({ kind: 'ascent', dvKms: dep.ascentKms, days: 0 });
 	legs.push({ kind: 'injection', dvKms: dep.injectionKms, days: 0 });
 	legs.push({ kind: 'boost', dvKms: peakSpeedKms, days: tofDays / (flips ? 2 : 1) });
 	if (flips) legs.push({ kind: 'brake', dvKms: peakSpeedKms, days: tofDays / 2 });
-	if (arrivalMode !== 'flyby') {
-		legs.push({ kind: 'capture', dvKms: arr.captureKms, days: 0, aerobraked: arr.aerobraked });
-	}
-	if (arr.descentKms > 0) {
-		legs.push({ kind: 'descent', dvKms: arr.descentKms, days: 0, aerobraked: arr.aerobraked });
-	}
+	legs.push(...arrivalLegs(arr, arrivalMode));
 
 	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
 	if (!isFinite(totalDvKms)) return null;
@@ -211,6 +207,8 @@ export function buildConstantThrustRoute(
 		vInfArrKms,
 		departureMode,
 		arrivalMode,
+		aero,
+		entrySpeedKms: arr.entrySpeedKms,
 		constantThrust: accelMs2
 	};
 }

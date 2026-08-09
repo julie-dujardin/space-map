@@ -10,8 +10,10 @@
 
 import type { TravelBody } from './body';
 import {
+	AEROBRAKING_RATE_KMS_PER_DAY,
 	AEROCAPTURE_MIN_PRESSURE_BAR,
-	AEROCAPTURE_SAVING_FRACTION,
+	AEROCAPTURE_TRIM_KMS,
+	AERO_PASS_ALTITUDE_KM,
 	ASCENT_DRAG_LOSS_CAP_KMS,
 	ASCENT_DRAG_LOSS_KMS_PER_BAR,
 	ASCENT_GRAVITY_LOSS_FRACTION,
@@ -30,9 +32,26 @@ export function parkingRadiusKm(body: TravelBody): number {
 	return body.radiusKm + PARKING_ALTITUDE_KM;
 }
 
-/** True when the atmosphere is thick enough to brake or land against. */
+/** True when the atmosphere is thick enough to land or ascend through. */
 export function hasUsableAtmosphere(body: TravelBody): boolean {
 	return (body.surfacePressureBar ?? 0) >= AEROCAPTURE_MIN_PRESSURE_BAR;
+}
+
+/**
+ * True when there is an envelope to fly a braking pass through.
+ *
+ * Wider than the test above, and deliberately: a gas giant has no surface for a
+ * pressure to be read at, which makes it airless to everything that prices a
+ * landing and still leaves it the thickest atmosphere in the system to brake
+ * against.
+ */
+export function canAeroBrake(body: TravelBody): boolean {
+	return body.hasAtmosphere === true || hasUsableAtmosphere(body);
+}
+
+/** Radius the atmospheric pass is flown at, km. */
+export function aeroPassRadiusKm(body: TravelBody): number {
+	return body.radiusKm + AERO_PASS_ALTITUDE_KM;
 }
 
 /**
@@ -87,27 +106,93 @@ function boundSpeed(mu: number, rPeriKm: number, rApoKm: number): number {
 	return Math.sqrt((2 * mu) / rPeriKm - (2 * mu) / (rPeriKm + rApoKm));
 }
 
+/**
+ * Speed at `rKm` on the arc that is doing `vKms` at `rFromKm`, km/s.
+ *
+ * Straight from conservation of energy, which is what lets it carry an arrival
+ * down to the depth its atmospheric pass is flown at without caring whether the
+ * arc is bound: a capture ellipse and a hyperbola both keep ε = v²/2 − μ/r.
+ */
+export function speedAtRadius(mu: number, vKms: number, rFromKm: number, rKm: number): number {
+	return Math.sqrt(Math.max(0, vKms * vKms + 2 * mu * (1 / rKm - 1 / rFromKm)));
+}
+
+/**
+ * Δv to move periapsis between two radii, spent at the apoapsis they share,
+ * km/s. Both ends of an atmospheric arrival are this burn: the one that drops
+ * periapsis into the air, and the one that lifts it back out.
+ */
+export function periapsisRaiseDv(
+	mu: number,
+	rFromKm: number,
+	rToKm: number,
+	rApoKm: number
+): number {
+	return Math.abs(apoapsisSpeed(mu, rToKm, rApoKm) - apoapsisSpeed(mu, rFromKm, rApoKm));
+}
+
+/** Speed at apoapsis of a bound orbit between the two radii, km/s. */
+function apoapsisSpeed(mu: number, rPeriKm: number, rApoKm: number): number {
+	return Math.sqrt(Math.max(0, (2 * mu) / rApoKm - (2 * mu) / (rPeriKm + rApoKm)));
+}
+
 export type ArrivalMode = 'flyby' | 'capture' | 'low-orbit' | 'landing';
 
+/**
+ * Whether the atmosphere is used on arrival, and how.
+ *
+ * The two are a different trade, not two strengths of one. Aerocapture is a
+ * single pass that does the whole insertion at once and has never been flown;
+ * aerobraking captures on the engine and then spends months letting drag walk
+ * the orbit down, which is what every Mars orbiter since Global Surveyor did.
+ */
+export type AeroAssist = 'none' | 'aerocapture' | 'aerobraking';
+
 export interface ArrivalCost {
-	/** Δv to reach the bound orbit, km/s. Zero for a flyby. */
+	/** Δv to reach the bound orbit, km/s. Zero for a flyby, and for the direct
+	 *  entry that lands straight off the approach without ever being in one. */
 	captureKms: number;
 	/** Δv from that orbit down to the surface, km/s. Zero unless landing. */
 	descentKms: number;
 	/** True when an atmosphere absorbed part of the arrival. */
 	aerobraked: boolean;
+	/** Δv drag removed instead of the engine, km/s. */
+	absorbedKms: number;
+	/** How long it took to remove it, days. Zero for a single pass. */
+	aerobrakeDays: number;
+	/** Fastest the craft meets the atmosphere at, km/s; absent when it never does. */
+	entrySpeedKms?: number;
 }
+
+/** Nothing happens on arrival: a flyby, and the base every other case starts from. */
+const NO_ARRIVAL_COST: ArrivalCost = {
+	captureKms: 0,
+	descentKms: 0,
+	aerobraked: false,
+	absorbedKms: 0,
+	aerobrakeDays: 0
+};
 
 /**
  * Δv to arrive at `body` in the requested way, given the hyperbolic excess
- * speed the transfer delivers.
+ * speed the transfer delivers, and whether the atmosphere is asked to help.
  *
- * An atmosphere discounts capture, and replaces most of a powered descent with
- * a heat shield and parachutes — which is why Titan is cheap to land on and
- * Mercury is not.
+ * `aero` is a request, not a description: a body with nothing to fly through
+ * ignores it, which is what makes it safe to leave set while the destination
+ * changes.
  */
-export function arrivalCost(body: TravelBody, vInfKms: number, mode: ArrivalMode): ArrivalCost {
-	return arrivalCostFromSpeed(body, periapsisSpeed(body.mu, parkingRadiusKm(body), vInfKms), mode);
+export function arrivalCost(
+	body: TravelBody,
+	vInfKms: number,
+	mode: ArrivalMode,
+	aero: AeroAssist = 'none'
+): ArrivalCost {
+	return arrivalCostFromSpeed(
+		body,
+		periapsisSpeed(body.mu, parkingRadiusKm(body), vInfKms),
+		mode,
+		aero
+	);
 }
 
 /**
@@ -121,27 +206,101 @@ export function arrivalCost(body: TravelBody, vInfKms: number, mode: ArrivalMode
 export function arrivalCostFromSpeed(
 	body: TravelBody,
 	vPeriKms: number,
-	mode: ArrivalMode
+	mode: ArrivalMode,
+	aero: AeroAssist = 'none'
 ): ArrivalCost {
-	if (mode === 'flyby') return { captureKms: 0, descentKms: 0, aerobraked: false };
+	if (mode === 'flyby') return NO_ARRIVAL_COST;
 
+	const { mu } = body;
 	const rPeri = parkingRadiusKm(body);
-	const aero = hasUsableAtmosphere(body);
 	const rApo = mode === 'capture' ? CAPTURE_APOAPSIS_RADII * body.radiusKm : rPeri;
+	const assisted = aero !== 'none' && canAeroBrake(body);
 
-	let capture = Math.max(0, vPeriKms - boundSpeed(body.mu, rPeri, rApo));
-	if (aero) capture *= 1 - AEROCAPTURE_SAVING_FRACTION;
+	// An atmosphere is the whole descent. Without one, landing is the ascent run
+	// backwards, and that is true whether or not the arrival used the air.
+	const descent =
+		mode !== 'landing'
+			? 0
+			: assisted
+				? POWERED_TOUCHDOWN_KMS
+				: circularSpeed(mu, rPeri) +
+					ASCENT_GRAVITY_LOSS_FRACTION * circularSpeed(mu, body.radiusKm);
 
-	if (mode !== 'landing') return { captureKms: capture, descentKms: 0, aerobraked: aero };
+	if (!assisted) {
+		return {
+			...NO_ARRIVAL_COST,
+			captureKms: Math.max(0, vPeriKms - boundSpeed(mu, rPeri, rApo)),
+			descentKms: descent
+		};
+	}
 
-	// Landing on an airless body is ascent run backwards; with an atmosphere the
-	// entry system does the work and only touchdown is propulsive.
-	const descent = aero
-		? POWERED_TOUCHDOWN_KMS
-		: circularSpeed(body.mu, rPeri) +
-			ASCENT_GRAVITY_LOSS_FRACTION * circularSpeed(body.mu, body.radiusKm);
+	const rEntry = aeroPassRadiusKm(body);
+	// Below the pass altitude there is no arrival to model: the approach is
+	// already inside the atmosphere, or the body is smaller than the allowance.
+	if (!(rEntry < rPeri)) {
+		return {
+			...NO_ARRIVAL_COST,
+			captureKms: Math.max(0, vPeriKms - boundSpeed(mu, rPeri, rApo)),
+			descentKms: descent
+		};
+	}
 
-	return { captureKms: capture, descentKms: descent, aerobraked: aero };
+	const vEntry = speedAtRadius(mu, vPeriKms, rPeri, rEntry);
+
+	if (aero === 'aerocapture') {
+		// Landing off the approach never enters an orbit at all — the pass that
+		// would have captured the craft puts it on the ground instead. Viking and
+		// every Mars lander since arrived this way.
+		if (mode === 'landing') {
+			return {
+				captureKms: 0,
+				descentKms: descent,
+				aerobraked: true,
+				absorbedKms: vEntry,
+				aerobrakeDays: 0,
+				entrySpeedKms: vEntry
+			};
+		}
+		// One pass leaves the craft on an ellipse whose periapsis is still in the
+		// air; all it then owes is lifting that periapsis back out at apoapsis.
+		return {
+			captureKms: periapsisRaiseDv(mu, rEntry, rPeri, rApo) + AEROCAPTURE_TRIM_KMS,
+			descentKms: descent,
+			aerobraked: true,
+			absorbedKms: Math.max(0, vEntry - boundSpeed(mu, rEntry, rApo)),
+			aerobrakeDays: 0,
+			entrySpeedKms: vEntry
+		};
+	}
+
+	// Aerobraking: capture on the engine into the loosest ellipse that is still
+	// bound, drop periapsis into the air, let drag walk apoapsis down to the
+	// orbit that was asked for, and lift periapsis back out at the end.
+	const rApoLoose = CAPTURE_APOAPSIS_RADII * body.radiusKm;
+	// Asking to aerobrake into the ellipse the engine captures into anyway is
+	// asking for a campaign with nothing to do, so it is priced as the burn alone.
+	if (!(rApoLoose > rApo)) {
+		return {
+			...NO_ARRIVAL_COST,
+			captureKms: Math.max(0, vPeriKms - boundSpeed(mu, rPeri, rApo)),
+			descentKms: descent
+		};
+	}
+	const insertion = Math.max(0, vPeriKms - boundSpeed(mu, rPeri, rApoLoose));
+	const walkIn = periapsisRaiseDv(mu, rPeri, rEntry, rApoLoose);
+	const walkOut = periapsisRaiseDv(mu, rEntry, rPeri, rApo);
+	// What drag has to remove: the difference the pass makes at the depth it is
+	// flown at, between the orbit it starts on and the one it ends on.
+	const absorbed = Math.max(0, boundSpeed(mu, rEntry, rApoLoose) - boundSpeed(mu, rEntry, rApo));
+
+	return {
+		captureKms: insertion + walkIn + walkOut,
+		descentKms: descent,
+		aerobraked: true,
+		absorbedKms: absorbed,
+		aerobrakeDays: absorbed / AEROBRAKING_RATE_KMS_PER_DAY,
+		entrySpeedKms: speedAtRadius(mu, boundSpeed(mu, rPeri, rApoLoose), rPeri, rEntry)
+	};
 }
 
 export type DepartureMode = 'surface' | 'orbit';

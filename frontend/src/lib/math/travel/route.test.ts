@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRoute } from './route';
+import { buildRoute, routeDurationDays } from './route';
 import { computePorkchop, selectRoutes } from './porkchop';
 import { nextTransferWindows, hohmannTransferDays } from './windows';
 import { EARTH, J2000, JUPITER, MARS, MOON, PARABOLIC_COMET } from './test-fixtures';
@@ -15,12 +15,51 @@ describe('buildRoute', () => {
 		// Departure energy for a Mars transfer sits around C3 = 8-20 km²/s².
 		expect(route.c3Km2S2).toBeGreaterThan(6);
 		expect(route.c3Km2S2).toBeLessThan(25);
-		// Trans-Mars injection from low Earth orbit is ~3.6 km/s.
-		expect(route.inSpaceDvKms).toBeGreaterThan(3.2);
-		expect(route.inSpaceDvKms).toBeLessThan(5.0);
+		// Trans-Mars injection from low Earth orbit is ~3.6 km/s, and an orbit
+		// insertion burnt on the engine is another 1-2 on top.
+		expect(route.inSpaceDvKms).toBeGreaterThan(4.5);
+		expect(route.inSpaceDvKms).toBeLessThan(7.0);
 		// Ground to Mars orbit, all in.
-		expect(route.totalDvKms).toBeGreaterThan(12);
-		expect(route.totalDvKms).toBeLessThan(15.5);
+		expect(route.totalDvKms).toBeGreaterThan(13);
+		expect(route.totalDvKms).toBeLessThan(17);
+	});
+
+	it('leaves the atmosphere out of it unless asked', () => {
+		const propulsive = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF)!;
+		const aero = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { aero: 'aerocapture' })!;
+		expect(propulsive.entrySpeedKms).toBeUndefined();
+		expect(aero.inSpaceDvKms).toBeLessThan(propulsive.inSpaceDvKms);
+	});
+
+	it('trades the insertion burn for months when aerobraking', () => {
+		const options = { arrivalMode: 'low-orbit' } as const;
+		const propulsive = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, options)!;
+		const braked = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			...options,
+			aero: 'aerobraking'
+		})!;
+
+		// The engine still captures; what drag saves is the circularization after.
+		expect(braked.inSpaceDvKms).toBeLessThan(propulsive.inSpaceDvKms - 1);
+		// Every flown Mars campaign ran between two and ten months.
+		const campaign = braked.legs.find((l) => l.kind === 'aerobrake')!;
+		expect(campaign.dvKms).toBe(0);
+		expect(campaign.days).toBeGreaterThan(60);
+		expect(campaign.days).toBeLessThan(300);
+		// The crossing is unchanged — the campaign happens after arrival.
+		expect(routeDurationDays(braked)).toBeCloseTo(braked.tofDays + campaign.days, 9);
+	});
+
+	it('lands straight off the approach when the atmosphere can be flown', () => {
+		const options = { arrivalMode: 'landing' } as const;
+		const direct = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			...options,
+			aero: 'aerocapture'
+		})!;
+		// Viking and every Mars lander since entered from the arrival hyperbola
+		// without ever being in orbit, so there is no insertion to pay for.
+		expect(direct.legs.map((l) => l.kind)).not.toContain('capture');
+		expect(direct.entrySpeedKms).toBeGreaterThan(direct.vInfArrKms);
 	});
 
 	it('lays the journey out as legs that sum to the total', () => {

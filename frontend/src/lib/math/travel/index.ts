@@ -46,21 +46,25 @@ export { elementsToState, eclipticToScene } from './state';
 export type { LambertArc } from './lambert';
 export { solveLambert } from './lambert';
 
-export type { ArrivalMode, ArrivalCost, DepartureMode } from './maneuvers';
+export type { AeroAssist, ArrivalMode, ArrivalCost, DepartureMode } from './maneuvers';
 export {
+	aeroPassRadiusKm,
 	arrivalCost,
 	ascentDv,
+	canAeroBrake,
 	captureDv,
 	characteristicEnergy,
 	circularSpeed,
 	departureCost,
 	hasUsableAtmosphere,
 	injectionDv,
-	parkingRadiusKm
+	parkingRadiusKm,
+	periapsisRaiseDv,
+	speedAtRadius
 } from './maneuvers';
 
 export type { Route, RouteLeg, RouteOptions, LegKind } from './route';
-export { buildRoute } from './route';
+export { arrivalLegs, buildRoute, routeDurationDays } from './route';
 
 export { propagateState } from './propagate';
 
@@ -116,6 +120,7 @@ export type {
 	VehicleStatus
 } from './vehicles';
 export {
+	canAeroAssist,
 	canDepartFrom,
 	checkFeasibility,
 	constantThrustAccelMs2,

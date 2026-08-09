@@ -31,6 +31,13 @@ describe('serializeTripSuffix', () => {
 		expect(serializeTripSuffix({ ...DEFAULT_TRIP, timeMode: 'depart', pickedJd: null })).toBe('');
 	});
 
+	// Somewhere with air uses the air by default, so only turning that down is a
+	// choice worth carrying in a link.
+	it('writes the aero term only when it is not the default', () => {
+		expect(serializeTripSuffix({ ...DEFAULT_TRIP, aero: 'aerocapture' })).toBe('');
+		expect(serializeTripSuffix({ ...DEFAULT_TRIP, aero: 'none' })).toBe('&aero=none');
+	});
+
 	it('leaves out a date the mode does not use', () => {
 		expect(serializeTripSuffix({ ...DEFAULT_TRIP, timeMode: 'now', pickedJd: DEPART_JD })).toBe('');
 	});
@@ -41,6 +48,7 @@ describe('trip URL round trip', () => {
 		const trip: TripState = {
 			originMode: 'low-orbit',
 			targetMode: 'elliptical',
+			aero: 'aerobraking',
 			timeMode: 'arrive',
 			pickedJd: DEPART_JD,
 			vehicleId: 'nuclear-thermal-stage',

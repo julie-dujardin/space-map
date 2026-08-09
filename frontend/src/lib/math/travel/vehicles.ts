@@ -9,7 +9,7 @@
  */
 
 import type { DepartureMode } from './maneuvers';
-import type { Route } from './route';
+import { routeDurationDays, type Route } from './route';
 
 export type PropulsionKind = 'chemical' | 'electric' | 'nuclear' | 'solar-sail' | 'fictional';
 export type VehicleKind = 'launcher' | 'probe' | 'crewed' | 'lander' | 'fictional';
@@ -115,6 +115,9 @@ export type FeasibilityStatus =
 	| 'not-modelled'
 	/** The trip starts somewhere this vehicle cannot start from. */
 	| 'wrong-departure'
+	/** The arrival flies through an atmosphere and the vehicle has nothing to
+	 *  fly through one with. */
+	| 'no-aeroshell'
 	/** The vehicle is missing the figure this check needs. */
 	| 'unknown';
 
@@ -153,6 +156,25 @@ const IMPULSIVE_FLOOR_M_S2 = 1e-4;
  */
 export function canDepartFrom(vehicle: Vehicle, mode: DepartureMode): boolean {
 	return vehicle.departsFrom === undefined || vehicle.departsFrom.includes(mode);
+}
+
+/** Capabilities that imply something to fly an atmospheric pass behind. Entry
+ *  is included because a heat shield rated to reach the ground is rated to
+ *  survive a pass that does not. */
+const AEROSHELL_CAPABILITIES = ['aerocapture', 'aerobraking', 'entry'];
+
+/**
+ * Whether the vehicle can fly a braking pass at all.
+ *
+ * Silence is not a refusal, on the same footing as `canDepartFrom`: the field is
+ * set on a handful of the catalogue, and reading its absence as "no heat shield"
+ * would deny aerocapture to almost every craft on no evidence. A vehicle that
+ * lists what it can do and does not list one of these is the only real no.
+ */
+export function canAeroAssist(vehicle: Vehicle): boolean {
+	const listed = vehicle.capabilities;
+	if (listed === undefined || listed.length === 0) return true;
+	return listed.some((c) => AEROSHELL_CAPABILITIES.includes(c));
 }
 
 /**
@@ -302,12 +324,18 @@ export function checkManifest(vehicle: Vehicle, manifest: Manifest): ManifestFit
 /** Endurance and heat-shield notes, which qualify a pass rather than deny it. */
 function annotate(vehicle: Vehicle, route: Route, result: Feasibility): Feasibility {
 	const endurance = vehicle.enduranceDays?.value;
-	if (endurance && route.tofDays > endurance) {
-		result.enduranceRatio = route.tofDays / endurance;
+	// Life support has to last the aerobraking too — the crew is still aboard for
+	// the months the orbit takes to come down.
+	const durationDays = routeDurationDays(route);
+	if (endurance && durationDays > endurance) {
+		result.enduranceRatio = durationDays / endurance;
 	}
+	// A rating is against the speed the craft meets the air at, which is what the
+	// route reports and is well above the excess speed it arrived with. A route
+	// that never touches an atmosphere has no entry to be rated for.
 	const rated = vehicle.maxEntrySpeedKms?.value;
-	if (rated && route.arrivalMode === 'landing' && route.vInfArrKms > rated) {
-		result.overEntrySpeedKms = route.vInfArrKms;
+	if (rated && route.entrySpeedKms !== undefined && route.entrySpeedKms > rated) {
+		result.overEntrySpeedKms = route.entrySpeedKms;
 	}
 	return result;
 }
@@ -333,6 +361,14 @@ export function checkFeasibility(
 	// for that trip would be an answer to a question nobody can ask.
 	if (!canDepartFrom(vehicle, route.departureMode)) {
 		return { status: 'wrong-departure', marginKms: NaN };
+	}
+
+	// Also a question about the hardware rather than the budget, and also moot
+	// once answered: no Δv margin makes a craft with no heat shield survive a
+	// pass. `entrySpeedKms` is what says the route actually flies one — asking for
+	// aerocapture at an airless body is not a claim about the craft.
+	if (route.entrySpeedKms !== undefined && !canAeroAssist(vehicle)) {
+		return { status: 'no-aeroshell', marginKms: NaN };
 	}
 
 	// Both of these are about a craft that is not spending a budget, so they come
