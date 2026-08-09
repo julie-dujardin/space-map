@@ -9,6 +9,7 @@
 
 import type { TravelBody } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
+import type { FlybyPass } from './flyby';
 import { solveLambert } from './lambert';
 import {
 	arrivalCost,
@@ -34,6 +35,9 @@ export type LegKind =
 	 *  everything after it. Unlike a cruise these carry Δv as well as time. */
 	| 'boost'
 	| 'brake'
+	/** A swing-by past a third body. Free when the geometry allows it, which is
+	 *  the whole point; the Δv is what the geometry could not supply. */
+	| 'assist'
 	| 'capture'
 	| 'descent';
 
@@ -75,6 +79,13 @@ export interface Route {
 	 * about departure dates should try.
 	 */
 	constantThrust?: number;
+	/**
+	 * The swing-bys flown on the way, in order. Absent on a direct transfer.
+	 *
+	 * A route with these has more than one cruise leg, so nothing may assume the
+	 * legs are unique by kind.
+	 */
+	flybys?: FlybyPass[];
 }
 
 export interface RouteOptions {

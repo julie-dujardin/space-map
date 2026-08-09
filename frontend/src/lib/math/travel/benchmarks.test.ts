@@ -19,6 +19,7 @@ import { describe, it, expect } from 'vitest';
 import { AU_KM } from '$lib/math/units';
 import { escapeSpeed, sphereOfInfluenceKm } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
+import { solveFlyby, turnAngleRad } from './flyby';
 import { solveLambert } from './lambert';
 import { ascentDv, circularSpeed, injectionDv, parkingRadiusKm } from './maneuvers';
 import { computePorkchop } from './porkchop';
@@ -42,7 +43,7 @@ import {
 	requiredPhaseAngle,
 	synodicPeriodDays
 } from './windows';
-import { norm } from './vec3';
+import { norm, sub } from './vec3';
 
 interface Benchmark {
 	quantity: string;
@@ -206,6 +207,14 @@ const BENCHMARKS: Benchmark[] = [
 		unit: 'km',
 		tolerance: 0.01,
 		compute: () => sphereOfInfluenceKm(EARTH, GM_SUN_KM3_S2, EARTH_ORBIT_KM)
+	},
+	{
+		quantity: "Jupiter's sphere of influence",
+		source: 'Standard astrodynamics tables',
+		expected: 48.2e6,
+		unit: 'km',
+		tolerance: 0.01,
+		compute: () => sphereOfInfluenceKm(JUPITER, GM_SUN_KM3_S2, JUPITER_ORBIT_KM)
 	},
 	{
 		quantity: 'Earth-Mars synodic period',
@@ -387,6 +396,32 @@ describe('Lambert against closed-form Hohmann', () => {
 		for (const sweep of [30, 90, 150, 175, 179.9]) {
 			const solved = lambertHohmannDepartureDv(EARTH_ORBIT_KM, MARS_ORBIT_KM, sweep);
 			expect(Math.abs(solved - analytic) / analytic).toBeLessThan(1e-9);
+		}
+	});
+});
+
+describe('swing-by against the closed form', () => {
+	/**
+	 * A free pass turns the excess velocity without changing its length, so the
+	 * velocity it hands back to the heliocentric frame differs by a chord:
+	 * |Δv| = 2·v∞·sin(δ/2). The implementation never writes that down — it solves
+	 * a periapsis radius by bisection and differences two periapsis speeds — so
+	 * the identity is an outside check on both halves at once.
+	 */
+	it('changes heliocentric velocity by the chord the turn subtends', () => {
+		for (const vInf of [4, 6, 9]) {
+			for (const rPeri of [200_000, 500_000, 2_000_000]) {
+				const turn = turnAngleRad(JUPITER.mu, rPeri, vInf);
+				const before: [number, number, number] = [vInf, 0, 0];
+				const after: [number, number, number] = [vInf * Math.cos(turn), vInf * Math.sin(turn), 0];
+
+				// The pass that joins these two is the one we started from, and it is free.
+				const pass = solveFlyby(JUPITER, before, after)!;
+				expect(pass.periapsisKm / rPeri).toBeCloseTo(1, 6);
+				expect(pass.dvKms).toBeCloseTo(0, 9);
+
+				expect(norm(sub(after, before))).toBeCloseTo(2 * vInf * Math.sin(turn / 2), 9);
+			}
 		}
 	});
 });

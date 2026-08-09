@@ -1913,6 +1913,7 @@
 	"travel_dv_unlimited": "غير محدودة",
 	"travel_leg_boost": "تسارع",
 	"travel_leg_brake": "الدوران والكبح",
+	"travel_leg_assist": "مناورة الجاذبية",
 	"travel_profile_constant_thrust": "دفع ثابت",
 	"travel_top_speed": "السرعة القصوى",
 	"travel_unit_g": "{value} g",

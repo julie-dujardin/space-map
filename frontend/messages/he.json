@@ -1823,6 +1823,7 @@
 	"travel_dv_unlimited": "ללא מגבלה",
 	"travel_leg_boost": "האצה",
 	"travel_leg_brake": "היפוך ובלימה",
+	"travel_leg_assist": "סיוע כבידתי",
 	"travel_profile_constant_thrust": "דחף קבוע",
 	"travel_top_speed": "מהירות מרבית",
 	"travel_unit_g": "{value} g",

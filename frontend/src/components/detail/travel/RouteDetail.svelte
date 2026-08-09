@@ -11,6 +11,7 @@
 	import MoveRightIcon from '@lucide/svelte/icons/move-right';
 	import ChevronsRightIcon from '@lucide/svelte/icons/chevrons-right';
 	import ChevronsLeftIcon from '@lucide/svelte/icons/chevrons-left';
+	import WavesIcon from '@lucide/svelte/icons/waves';
 	import { dvWithPayloadKms, type LegKind, type Route, type TravelBody } from '$lib/math/travel';
 	import { returnDvKms, signalDelaySeconds } from '$lib/travel/arrival-stats';
 	import {
@@ -37,6 +38,7 @@
 		cruise: MoveRightIcon,
 		boost: ChevronsRightIcon,
 		brake: ChevronsLeftIcon,
+		assist: WavesIcon,
 		capture: OrbitIcon,
 		descent: ArrowDownIcon
 	};
@@ -160,7 +162,7 @@
 		<h4 class="text-sm font-medium">{m.travel_steps()}</h4>
 		<div class="border-border/60 border-t"></div>
 		<ol class="flex flex-col">
-			{#each route.legs as leg, i (leg.kind)}
+			{#each route.legs as leg, i (i)}
 				{@const Icon = ICONS[leg.kind]}
 				<li class="flex gap-3">
 					<div class="flex flex-col items-center">

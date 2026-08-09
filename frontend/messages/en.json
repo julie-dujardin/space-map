@@ -2238,6 +2238,7 @@
 	"travel_launch_c3": "Launch energy",
 	"travel_launch_windows": "Launch windows",
 	"travel_leg_ascent": "Launch to low orbit",
+	"travel_leg_assist": "Gravity assist",
 	"travel_leg_boost": "Boost",
 	"travel_leg_brake": "Flip and brake",
 	"travel_leg_capture": "Orbit insertion",

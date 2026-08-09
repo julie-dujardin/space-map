@@ -1712,6 +1712,7 @@
 	"travel_dv_unlimited": "Keine Beschränkung",
 	"travel_leg_boost": "Beschleunigen",
 	"travel_leg_brake": "Wenden und bremsen",
+	"travel_leg_assist": "Swing-by",
 	"travel_profile_constant_thrust": "Konstanter Schub",
 	"travel_top_speed": "Höchstgeschwindigkeit",
 	"travel_unit_g": "{value} g",

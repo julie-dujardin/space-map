@@ -1944,6 +1944,7 @@
 	"travel_dv_unlimited": "不受限制",
 	"travel_leg_boost": "加速",
 	"travel_leg_brake": "调头减速",
+	"travel_leg_assist": "引力弹弓",
 	"travel_profile_constant_thrust": "恒定推力",
 	"travel_top_speed": "最高速度",
 	"travel_unit_g": "{value} g",

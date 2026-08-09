@@ -1941,6 +1941,7 @@
 	"travel_dv_unlimited": "Не ограничена",
 	"travel_leg_boost": "Разгон",
 	"travel_leg_brake": "Разворот и торможение",
+	"travel_leg_assist": "Гравитационный манёвр",
 	"travel_profile_constant_thrust": "Постоянная тяга",
 	"travel_top_speed": "Максимальная скорость",
 	"travel_unit_g": "{value} g",

@@ -51,6 +51,14 @@ export const AEROCAPTURE_MIN_PRESSURE_BAR = 0.005;
  */
 export const POWERED_TOUCHDOWN_KMS = 0.3;
 
+/**
+ * Closest a swing-by may pass, km above the mean radius. Real missions pick this
+ * per body — Galileo grazed Venus at 16,000 km and Io at 900 — so one figure is
+ * a floor rather than a plan, chosen well clear of every atmosphere the model
+ * would otherwise fly through.
+ */
+export const FLYBY_MIN_ALTITUDE_KM = 300;
+
 /** Bulk density assumed when a small body has no mass, kg/m³ — rubble-pile typical. */
 export const ASSUMED_DENSITY_KG_M3 = 2000;
 

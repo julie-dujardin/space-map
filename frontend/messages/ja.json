@@ -1944,6 +1944,7 @@
 	"travel_dv_unlimited": "制約なし",
 	"travel_leg_boost": "加速",
 	"travel_leg_brake": "反転して減速",
+	"travel_leg_assist": "スイングバイ",
 	"travel_profile_constant_thrust": "定加速航行",
 	"travel_top_speed": "最高速度",
 	"travel_unit_g": "{value} G",

@@ -1701,6 +1701,7 @@
 	"travel_dv_unlimited": "Sem limite",
 	"travel_leg_boost": "Aceleração",
 	"travel_leg_brake": "Inversão e travagem",
+	"travel_leg_assist": "Assistência gravitacional",
 	"travel_profile_constant_thrust": "Impulso constante",
 	"travel_top_speed": "Velocidade máxima",
 	"travel_unit_g": "{value} g",

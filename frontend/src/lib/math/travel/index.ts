@@ -18,11 +18,15 @@
  * the only thing an acceleration without a Δv budget can be priced as. See
  * `brachistochrone`.
  *
- * Scope limits worth knowing: transfers are single patched-conic legs about one
- * primary (no gravity assists, and a moon needs its own leg from its planet),
- * only the zero-revolution Lambert branch is solved, and the manoeuvre model is
- * a set of published loss factors rather than an optimiser. See the constants
- * module for every approximation by name.
+ * Beside both sits a third shape: two arcs patched by a swing-by past a third
+ * body, searched over a horizon of years rather than one synodic period. See
+ * `assist`.
+ *
+ * Scope limits worth knowing: transfers are patched-conic legs about one primary
+ * (a moon needs its own leg from its planet), a swing-by route carries exactly
+ * one pass, only the zero-revolution Lambert branch is solved, and the manoeuvre
+ * model is a set of published loss factors rather than an optimiser. See the
+ * constants module for every approximation by name.
  */
 
 export type { Vec3 } from './vec3';
@@ -54,6 +58,12 @@ export type { Route, RouteLeg, RouteOptions, LegKind } from './route';
 export { buildRoute } from './route';
 
 export { buildConstantThrustRoute } from './brachistochrone';
+
+export type { FlybyPass } from './flyby';
+export { minFlybyRadiusKm, solveFlyby, turnAngleRad } from './flyby';
+
+export type { AssistOptions, AssistSearchOptions } from './assist';
+export { buildAssistRoute, findAssistRoute, searchAssist } from './assist';
 
 export type { PorkchopGrid, PorkchopOptions, RouteChoice, RouteProfile } from './porkchop';
 export { computePorkchop, selectRoutes } from './porkchop';
