@@ -18,9 +18,12 @@
 		formatAcceleration,
 		formatDv,
 		formatSignalDelay,
-		formatTripTime
+		formatSpeed,
+		formatTripTime,
+		lightPercent
 	} from '$lib/travel/format';
 	import type { TravelPanelState } from '$lib/travel/panel.svelte';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import DeltaVLadder from './DeltaVLadder.svelte';
 	import { legLabel } from './leg-labels';
 
@@ -45,15 +48,34 @@
 
 	// Speed at the flip, which is what the accelerating half of the arc bought.
 	let topSpeedKms = $derived(route.legs.find((leg) => leg.kind === 'boost')?.dvKms ?? 0);
+	let topSpeedPercentC = $derived(lightPercent(topSpeedKms));
 
 	// Launch energy is the third figure for an arc that is thrown; a drive held
 	// all the way leaves at exactly escape speed and C3 zero says nothing about
 	// it. How fast it ends up going does.
-	let tiles = $derived([
+	interface Tile {
+		label: string;
+		value: string;
+		unit: string;
+		/** Spells out a unit too terse to stand alone, like "% c". */
+		tooltip?: string;
+	}
+
+	let topSpeedTile = $derived<Tile>(
+		topSpeedPercentC !== null
+			? {
+					label: m.travel_top_speed(),
+					value: topSpeedPercentC,
+					unit: m.travel_percent_c(),
+					tooltip: m.travel_percent_c_name()
+				}
+			: { label: m.travel_top_speed(), value: topSpeedKms.toFixed(0), unit: m.travel_km_s() }
+	);
+	let tiles = $derived<Tile[]>([
 		{ label: m.travel_trip_time(), value: formatTripTime(route.tofDays), unit: '' },
 		{ label: m.travel_total_dv(), value: route.totalDvKms.toFixed(1), unit: m.travel_km_s() },
 		route.constantThrust
-			? { label: m.travel_top_speed(), value: topSpeedKms.toFixed(0), unit: m.travel_km_s() }
+			? topSpeedTile
 			: { label: m.travel_launch_c3(), value: route.c3Km2S2.toFixed(1), unit: m.travel_km2_s2() }
 	]);
 
@@ -86,17 +108,35 @@
 	let returnCost = $derived(returnDvKms(target, route));
 </script>
 
+{#snippet statTile(tile: Tile, props: Record<string, unknown>)}
+	<div
+		class="border-border/60 bg-muted/40 flex flex-col gap-1 rounded-md border p-2.5 {tile.tooltip
+			? 'cursor-help'
+			: ''}"
+		{...props}
+	>
+		<div class="text-muted-foreground text-[10px] uppercase">{tile.label}</div>
+		<div class="text-lg leading-tight font-semibold tabular-nums">
+			{tile.value}{#if tile.unit}<span class="text-muted-foreground ml-1 text-[10px] font-normal"
+					>{tile.unit}</span
+				>{/if}
+		</div>
+	</div>
+{/snippet}
+
 <div class="flex flex-col gap-4">
 	<div class="grid auto-cols-fr grid-flow-col gap-2">
 		{#each tiles as tile (tile.label)}
-			<div class="border-border/60 bg-muted/40 flex flex-col gap-1 rounded-md border p-2.5">
-				<div class="text-muted-foreground text-[10px] uppercase">{tile.label}</div>
-				<div class="text-lg leading-tight font-semibold tabular-nums">
-					{tile.value}{#if tile.unit}<span
-							class="text-muted-foreground ml-1 text-[10px] font-normal">{tile.unit}</span
-						>{/if}
-				</div>
-			</div>
+			{#if tile.tooltip}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}{@render statTile(tile, props)}{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>{tile.tooltip}</Tooltip.Content>
+				</Tooltip.Root>
+			{:else}
+				{@render statTile(tile, {})}
+			{/if}
 		{/each}
 	</div>
 
@@ -118,7 +158,16 @@
 		<div class="border-border/60 border-t"></div>
 		<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
 			<dt class="text-muted-foreground">{m.travel_arrival_speed()}</dt>
-			<dd class="text-end tabular-nums">{formatDv(route.vInfArrKms)}</dd>
+			<dd class="text-end tabular-nums">
+				{#if lightPercent(route.vInfArrKms) !== null}
+					<Tooltip.Root>
+						<Tooltip.Trigger class="cursor-help">{formatSpeed(route.vInfArrKms)}</Tooltip.Trigger>
+						<Tooltip.Content>{m.travel_percent_c_name()}</Tooltip.Content>
+					</Tooltip.Root>
+				{:else}
+					{formatSpeed(route.vInfArrKms)}
+				{/if}
+			</dd>
 
 			<dt class="text-muted-foreground">{m.travel_signal_delay()}</dt>
 			<dd class="text-end tabular-nums">

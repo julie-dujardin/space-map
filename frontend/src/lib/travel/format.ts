@@ -101,6 +101,24 @@ export function formatAcceleration(accelMs2: number): string {
 	return m.travel_unit_g({ value: significant(gravities) });
 }
 
+const LIGHT_SPEED_KMS = 299792.458;
+/** Below a hundredth of c the fraction is noise; above it, km/s is the noise —
+ *  nobody can place 6,500 km/s, and "2.2% c" is the same fact placed. */
+const LIGHT_FRACTION_FLOOR = 0.01;
+
+/** The speed as a percentage of c once it is at least 1% of it, else null. */
+export function lightPercent(kms: number): string | null {
+	if (!Number.isFinite(kms)) return null;
+	const fraction = kms / LIGHT_SPEED_KMS;
+	return fraction >= LIGHT_FRACTION_FLOOR ? significant(fraction * 100) : null;
+}
+
+/** A speed a craft is actually doing: km/s until it is a real fraction of c. */
+export function formatSpeed(kms: number): string {
+	const percent = lightPercent(kms);
+	return percent !== null ? m.travel_unit_percent_c({ value: percent }) : formatDv(kms);
+}
+
 /** One-way light time across a distance in km. */
 export function formatSignalDelay(seconds: number): string {
 	if (!Number.isFinite(seconds) || seconds < 0) return '—';

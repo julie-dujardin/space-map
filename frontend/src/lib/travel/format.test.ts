@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { formatAcceleration, formatTripTime, tripDuration } from './format';
+import {
+	formatAcceleration,
+	formatSpeed,
+	formatTripTime,
+	lightPercent,
+	tripDuration
+} from './format';
 
 /** Days per month the formatter rounds against. */
 const MONTH = 30.44;
@@ -40,6 +46,28 @@ describe('formatAcceleration', () => {
 	it('refuses to render an acceleration that is not one', () => {
 		expect(formatAcceleration(0)).toBe('—');
 		expect(formatAcceleration(NaN)).toBe('—');
+	});
+});
+
+describe('formatSpeed', () => {
+	it('stays in km/s below a hundredth of c', () => {
+		expect(formatSpeed(993)).toBe('993.00 km/s');
+		expect(lightPercent(993)).toBeNull();
+	});
+
+	it('flips to a percentage of c from 1% up', () => {
+		expect(formatSpeed(2997.92458)).toBe('1% c');
+		expect(formatSpeed(6500)).toBe('2.2% c');
+	});
+
+	// Newtonian arithmetic on a fictional drive can pass c; the figure is the
+	// model's honest output, so it is shown rather than capped.
+	it('does not cap a superluminal figure', () => {
+		expect(formatSpeed(449688.687)).toBe('150% c');
+	});
+
+	it('refuses to render a nonsense speed', () => {
+		expect(formatSpeed(NaN)).toBe('—');
 	});
 });
 
