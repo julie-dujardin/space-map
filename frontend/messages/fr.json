@@ -1726,7 +1726,6 @@
 	"travel_windows_alt": "Delta-v total selon la date de départ et la durée de croisière",
 	"travel_windows_pick": "Choisir une fenêtre de lancement : cliquez sur le champ ou déplacez le repère avec les touches fléchées",
 	"travel_windows_pick_prompt": "Choisissez un point sur le champ ci-dessous",
-	"travel_constant_thrust_note": "La poussée est maintenue à {value} sur tout le trajet. Il n’y a pas de fenêtre de tir : chaque date de départ suit le même arc.",
 	"travel_dv_unlimited": "Sans limite",
 	"travel_leg_boost": "Accélération",
 	"travel_leg_brake": "Retournement et freinage",

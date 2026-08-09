@@ -85,12 +85,6 @@
 </script>
 
 <div class="flex flex-col gap-4">
-	{#if route.constantThrust}
-		<p class="text-muted-foreground text-xs">
-			{m.travel_constant_thrust_note({ value: formatAcceleration(route.constantThrust) })}
-		</p>
-	{/if}
-
 	<div class="grid auto-cols-fr grid-flow-col gap-2">
 		{#each tiles as tile (tile.label)}
 			<div class="border-border/60 bg-muted/40 flex flex-col gap-1 rounded-md border p-2.5">

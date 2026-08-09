@@ -1910,7 +1910,6 @@
 	"travel_windows_alt": "إجمالي Δv حسب تاريخ المغادرة ومدة الإبحار",
 	"travel_windows_pick": "اختر نافذة إطلاق: انقر على الحقل أو حرّك العلامة بمفاتيح الأسهم",
 	"travel_windows_pick_prompt": "اختر نقطة على الحقل أدناه",
-	"travel_constant_thrust_note": "يظل الدفع عند {value} طوال الرحلة. لا توجد نافذة إطلاق: كل تاريخ مغادرة يسلك المسار نفسه.",
 	"travel_dv_unlimited": "غير محدودة",
 	"travel_leg_boost": "تسارع",
 	"travel_leg_brake": "الدوران والكبح",

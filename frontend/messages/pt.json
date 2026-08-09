@@ -1698,7 +1698,6 @@
 	"travel_windows_alt": "Delta-v total por data de partida e duração do cruzeiro",
 	"travel_windows_pick": "Escolha uma janela de lançamento: clique no campo ou mova a marca com as setas",
 	"travel_windows_pick_prompt": "Escolha um ponto no campo abaixo",
-	"travel_constant_thrust_note": "A propulsão mantém-se a {value} durante todo o percurso. Não há janela de lançamento: qualquer data de partida percorre o mesmo arco.",
 	"travel_dv_unlimited": "Sem limite",
 	"travel_leg_boost": "Aceleração",
 	"travel_leg_brake": "Inversão e travagem",

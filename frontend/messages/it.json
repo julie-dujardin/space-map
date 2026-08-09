@@ -1694,7 +1694,6 @@
 	"travel_windows_alt": "Delta-v totale per data di partenza e durata della crociera",
 	"travel_windows_pick": "Scegli una finestra di lancio: fai clic sul campo o sposta il segno con le frecce",
 	"travel_windows_pick_prompt": "Scegli un punto sul campo qui sotto",
-	"travel_constant_thrust_note": "La spinta resta a {value} per tutto il tragitto. Non c’è una finestra di lancio: ogni data di partenza percorre lo stesso arco.",
 	"travel_dv_unlimited": "Senza limite",
 	"travel_leg_boost": "Accelerazione",
 	"travel_leg_brake": "Inversione e frenata",

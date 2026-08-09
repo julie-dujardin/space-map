@@ -1707,7 +1707,6 @@
 	"travel_windows_alt": "Delta-v total por fecha de salida y duración del crucero",
 	"travel_windows_pick": "Elige una ventana de lanzamiento: haz clic en el campo o mueve la marca con las flechas",
 	"travel_windows_pick_prompt": "Elige un punto en el campo de abajo",
-	"travel_constant_thrust_note": "El motor se mantiene a {value} durante todo el trayecto. No hay ventana de lanzamiento: cualquier fecha de salida recorre el mismo arco.",
 	"travel_dv_unlimited": "Sin límite",
 	"travel_leg_boost": "Aceleración",
 	"travel_leg_brake": "Giro y frenado",

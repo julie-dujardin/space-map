@@ -2224,7 +2224,6 @@
 	"travel_cargo": "Cargo",
 	"travel_choose_origin": "Choose a starting point",
 	"travel_choose_target": "Choose a destination",
-	"travel_constant_thrust_note": "The drive is held at {value} the whole way. There is no launch window: every departure date flies the same arc.",
 	"travel_craft_approximate": "Performance figures are approximate.",
 	"travel_depart_on": "Depart on",
 	"travel_departure_axis": "Departure date",

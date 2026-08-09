@@ -1820,7 +1820,6 @@
 	"travel_windows_alt": "Δv כולל לפי תאריך יציאה ומשך שיוט",
 	"travel_windows_pick": "בחרו חלון שיגור: לחצו על השדה או הזיזו את הסימן עם מקשי החיצים",
 	"travel_windows_pick_prompt": "בחרו נקודה בשדה שלמטה",
-	"travel_constant_thrust_note": "המנוע מוחזק על {value} לאורך כל הדרך. אין חלון שיגור: כל תאריך יציאה טס באותו מסלול.",
 	"travel_dv_unlimited": "ללא מגבלה",
 	"travel_leg_boost": "האצה",
 	"travel_leg_brake": "היפוך ובלימה",

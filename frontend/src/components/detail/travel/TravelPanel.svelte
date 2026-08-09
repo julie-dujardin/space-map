@@ -268,6 +268,12 @@
 
 	// One end is enough: exchanging it with an empty one turns "going to Mars"
 	// into "leaving Mars", which is how half a trip gets turned round.
+	// The field belongs to the trajectories that are read off it. A
+	// constant-thrust arc is not a point on it — every departure date flies the
+	// same one — so choosing that arc puts the whole launch-window section away,
+	// the picker for a hand-picked window with it.
+	let windowGrid = $derived(panel.selectedRoute?.constantThrust ? null : panel.grid);
+
 	let anyEnd = $derived(originPicked || targetPicked);
 
 	function swap() {
@@ -492,22 +498,18 @@
 	{:else if panel.status === 'empty' && panel.offered.length === 0}
 		<p class="text-muted-foreground text-xs">{m.travel_no_routes()}</p>
 	{:else if panel.offered.length > 0}
-		<RouteList state={panel} onFocusField={() => chart?.focusField()} />
+		<RouteList state={panel} onFocusField={windowGrid ? () => chart?.focusField() : null} />
 
-		{#if panel.grid}
+		{#if windowGrid}
 			<!-- Sits with the list rather than the detail: it is about which route
-			     to pick, not about the one already picked.
-
-			     A constant-thrust arc is left unmarked rather than pinned to the
-			     nearest edge: it is not a point on this field, and every departure
-			     date on the axis flies it identically. -->
+			     to pick, not about the one already picked. -->
 			<section class="flex flex-col gap-2">
 				<h4 class="text-sm font-medium">{m.travel_launch_windows()}</h4>
 				<div class="border-border/60 border-t"></div>
 				<PorkchopChart
 					bind:this={chart}
-					grid={panel.grid}
-					route={panel.selectedRoute?.constantThrust ? null : panel.selectedRoute}
+					grid={windowGrid}
+					route={panel.selectedRoute}
 					onPick={(departJd, tofDays) => panel.pickCustom(departJd, tofDays)}
 				/>
 			</section>

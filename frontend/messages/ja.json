@@ -1941,7 +1941,6 @@
 	"travel_windows_alt": "出発日と巡航期間ごとの合計 Δv",
 	"travel_windows_pick": "打ち上げウィンドウを選択：図をクリックするか、矢印キーで印を動かします",
 	"travel_windows_pick_prompt": "下の図で点を選んでください",
-	"travel_constant_thrust_note": "推進は全行程で {value} を保ちます。打ち上げウィンドウはなく、どの出発日でも同じ軌道を飛びます。",
 	"travel_dv_unlimited": "制約なし",
 	"travel_leg_boost": "加速",
 	"travel_leg_brake": "反転して減速",
