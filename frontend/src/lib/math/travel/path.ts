@@ -49,6 +49,15 @@ export interface PathArc {
 	kind: PathArcKind;
 	/** Positions in the transfer frame, km, in flight order. */
 	points: Vec3[];
+	/**
+	 * When each of `points` is passed, JD. Same length, and increasing.
+	 *
+	 * Carried rather than inferred from the index, because only a coasting arc is
+	 * sampled evenly in time: a held drive is sampled evenly along its line, and a
+	 * system transfer evenly in true anomaly. Anything asking *where the craft is
+	 * now* has to read these rather than count samples.
+	 */
+	jds: number[];
 	startJd: number;
 	endJd: number;
 }
@@ -65,6 +74,71 @@ export interface TrajectoryPath {
 	 * without this the path reads as missing.
 	 */
 	meeting: { bodyId: string; jd: number; r: Vec3 };
+}
+
+/** Somewhere on the drawn trajectory to look at, and how far back to look from. */
+export interface PathViewpoint {
+	/** Position in the transfer frame, km. */
+	r: Vec3;
+	/** A distance that frames what this point belongs to, km. */
+	rangeKm: number;
+}
+
+/** How much of the arc's own length to stand back by. Enough that the leg reads
+ *  as a curve rather than as the straight bit of it under the camera. */
+const VIEW_RANGE_FRACTION = 0.6;
+/** Nothing is framed closer than this, so a burn at one point still has a view. */
+const MIN_VIEW_RANGE_KM = 1e4;
+
+/**
+ * Where to point the camera for the stretch of trip between `startJd` and
+ * `endJd`.
+ *
+ * An instant (the two the same) lands on the stop or arc end it names; a stretch
+ * lands in the middle of the arc that covers it, which is the one place the
+ * whole of it is in view.
+ *
+ * Deliberately not "where the craft is at a given moment": the samples run even
+ * in time on a coasting arc but even in true anomaly on a system transfer, and
+ * the camera wants a place on the line rather than a claim about the craft.
+ */
+export function pathViewpoint(
+	path: TrajectoryPath,
+	startJd: number,
+	endJd: number
+): PathViewpoint | null {
+	if (path.arcs.length === 0) return null;
+
+	const chord = (arc: PathArc): number =>
+		Math.max(MIN_VIEW_RANGE_KM, norm(sub(arc.points[arc.points.length - 1], arc.points[0])));
+
+	// A stretch: the arc that runs alongside it, or failing an exact match the one
+	// its middle falls inside.
+	if (endJd > startJd) {
+		const middle = (startJd + endJd) / 2;
+		const arc =
+			path.arcs.find((a) => a.startJd <= startJd + 1e-6 && a.endJd >= endJd - 1e-6) ??
+			path.arcs.find((a) => a.startJd <= middle && a.endJd >= middle);
+		if (!arc) return null;
+		return {
+			r: arc.points[Math.floor(arc.points.length / 2)],
+			rangeKm: chord(arc) * VIEW_RANGE_FRACTION
+		};
+	}
+
+	// An instant: a stop names one exactly, and every stop is an arc end.
+	const stop = path.stops.find((s) => Math.abs(s.jd - startJd) < 1e-6);
+	const nearest = path.arcs.reduce((best, arc) =>
+		Math.abs(arc.startJd - startJd) < Math.abs(best.startJd - startJd) ? arc : best
+	);
+	const r =
+		stop?.r ??
+		(Math.abs(nearest.startJd - startJd) <= Math.abs(nearest.endJd - startJd)
+			? nearest.points[0]
+			: nearest.points[nearest.points.length - 1]);
+	// Closer in than a whole leg: a burn happens at a place, and the arc either
+	// side of it is what gives that place a shape.
+	return { r, rangeKm: chord(nearest) * VIEW_RANGE_FRACTION * 0.25 };
 }
 
 export interface PathOptions extends RouteOptions {
@@ -115,6 +189,13 @@ function sampleConic(
 	return points;
 }
 
+/** `count` dates spread evenly over `days` from `startJd`. */
+function evenJds(startJd: number, days: number, count: number): number[] {
+	const jds: number[] = [];
+	for (let i = 0; i < count; i++) jds.push(startJd + (days * i) / (count - 1));
+	return jds;
+}
+
 /** The Lambert arc between two bodies, sampled. */
 function lambertArc(
 	from: { r: Vec3; v: Vec3 },
@@ -129,7 +210,14 @@ function lambertArc(
 	if (!arc) return null;
 	const points = sampleConic(from.r, arc.v1, days, mu, samples, to.r);
 	if (!points) return null;
-	return { kind: 'cruise', points, startJd, endJd: startJd + days };
+	// `sampleConic` propagates in equal time steps, so the dates are even too.
+	return {
+		kind: 'cruise',
+		points,
+		jds: evenJds(startJd, days, points.length),
+		startJd,
+		endJd: startJd + days
+	};
 }
 
 /**
@@ -257,24 +345,56 @@ function straightCrossing(
 	const midJd = route.departJd + route.tofDays / 2;
 	const half = Math.max(2, Math.round(samples / 2));
 
-	const line = (fromT: number, toT: number, count: number): Vec3[] => {
+	/**
+	 * A stretch of the line, sampled evenly along it.
+	 *
+	 * Evenly along it is *not* evenly in time: a drive covers ground as ½at², so
+	 * the craft crawls at the start of a burn and is fastest at the end of one.
+	 * `timeFraction` turns a sample's place on the line into the fraction of the
+	 * stretch's time it is reached at, which is what the dates are built from.
+	 */
+	const line = (
+		fromT: number,
+		toT: number,
+		count: number,
+		fromJd: number,
+		toJd: number,
+		timeFraction: (along: number) => number
+	): { points: Vec3[]; jds: number[] } => {
 		const points: Vec3[] = [];
+		const jds: number[] = [];
 		for (let i = 0; i < count; i++) {
-			const t = fromT + ((toT - fromT) * i) / (count - 1);
-			points.push(add(start, scale(span, t)));
+			const along = i / (count - 1);
+			points.push(add(start, scale(span, fromT + (toT - fromT) * along)));
+			jds.push(fromJd + (toJd - fromJd) * timeFraction(along));
 		}
-		return points;
+		return { points, jds };
 	};
+
+	// Accelerating from rest, distance goes as the square of the time — so the
+	// time is the square root of the distance. Braking is the same run backwards.
+	const accelerating = (along: number) => Math.sqrt(along);
+	const braking = (along: number) => 1 - Math.sqrt(Math.max(0, 1 - along));
 
 	const arcs: PathArc[] = flips
 		? [
-				{ kind: 'boost', points: line(0, 0.5, half), startJd: route.departJd, endJd: midJd },
-				{ kind: 'brake', points: line(0.5, 1, half), startJd: midJd, endJd: route.arriveJd }
+				{
+					kind: 'boost',
+					...line(0, 0.5, half, route.departJd, midJd, accelerating),
+					startJd: route.departJd,
+					endJd: midJd
+				},
+				{
+					kind: 'brake',
+					...line(0.5, 1, half, midJd, route.arriveJd, braking),
+					startJd: midJd,
+					endJd: route.arriveJd
+				}
 			]
 		: [
 				{
 					kind: 'boost',
-					points: line(0, 1, samples),
+					...line(0, 1, samples, route.departJd, route.arriveJd, accelerating),
 					startJd: route.departJd,
 					endJd: route.arriveJd
 				}
@@ -398,18 +518,35 @@ function systemPath(
 	const inPlane = normalize(cross(normal, periapsis));
 
 	const points: Vec3[] = [];
+	// Time from periapsis to each sample, so the dates can be recovered from an
+	// arc that is sampled evenly in angle rather than evenly in time. Kepler's
+	// equation, in whatever unit the ratio below cancels out.
+	const sincePeriapsis: number[] = [];
 	for (let i = 0; i < samples; i++) {
 		const nu = (nuFar * i) / (samples - 1);
 		const radius = p / (1 + e * Math.cos(nu));
 		if (!isFinite(radius) || radius <= 0) return null;
 		points.push(scale(add(scale(periapsis, Math.cos(nu)), scale(inPlane, Math.sin(nu))), radius));
+		const anomaly =
+			2 * Math.atan2(Math.sqrt(1 - e) * Math.sin(nu / 2), Math.sqrt(1 + e) * Math.cos(nu / 2));
+		sincePeriapsis.push(anomaly - e * Math.sin(anomaly));
 	}
-	// Read the same arc in the other direction on the way home.
+
+	// Scaled to the flight time the arc was solved for rather than to a period
+	// derived here, so the ends land exactly on the two dates the route names.
+	const sweep = sincePeriapsis[samples - 1];
+	const elapsed = sincePeriapsis.map((mean) =>
+		sweep > 0 && isFinite(sweep) ? (route.tofDays * mean) / sweep : 0
+	);
+	const jds = outbound
+		? elapsed.map((days) => route.departJd + days)
+		: // Read the same arc backwards on the way home: the far end is left first.
+			elapsed.map((days) => route.arriveJd - days).reverse();
 	if (!outbound) points.reverse();
 
 	return {
 		centerId,
-		arcs: [{ kind: 'cruise', points, startJd: route.departJd, endJd: route.arriveJd }],
+		arcs: [{ kind: 'cruise', points, jds, startJd: route.departJd, endJd: route.arriveJd }],
 		stops: [departureStop, arrivalStop],
 		meeting
 	};

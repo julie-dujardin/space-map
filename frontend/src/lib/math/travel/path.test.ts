@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildTrajectoryPath } from './path';
+import { buildTrajectoryPath, pathViewpoint } from './path';
+import { craftPositionAt } from './path-sample';
 import { buildRoute } from './route';
 import { buildAssistRoute } from './assist';
 import { buildConstantThrustRoute } from './brachistochrone';
@@ -181,5 +182,155 @@ describe('buildTrajectoryPath', () => {
 		expect(norm(homePoints[0])).toBeGreaterThan(300_000);
 		expect(norm(homePoints[homePoints.length - 1])).toBeLessThan(10_000);
 		expect(out.arcs[0].points).toHaveLength(homePoints.length);
+	});
+});
+
+describe('arc dates', () => {
+	/** Every arc of `path` has a date per sample, increasing, spanning the arc. */
+	function checkDates(path: ReturnType<typeof buildTrajectoryPath>) {
+		for (const arc of path!.arcs) {
+			expect(arc.jds).toHaveLength(arc.points.length);
+			expect(arc.jds[0]).toBeCloseTo(arc.startJd, 6);
+			expect(arc.jds[arc.jds.length - 1]).toBeCloseTo(arc.endJd, 6);
+			for (let i = 1; i < arc.jds.length; i++) {
+				expect(arc.jds[i]).toBeGreaterThan(arc.jds[i - 1]);
+			}
+		}
+	}
+
+	it('dates a coasting transfer', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF)!;
+		checkDates(buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN }));
+	});
+
+	it('dates both halves of a held drive', () => {
+		const route = buildConstantThrustRoute(EARTH, MARS, J2000, 0.1)!;
+		checkDates(buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN }));
+	});
+
+	it('dates a system transfer, which is sampled in angle rather than in time', () => {
+		const route = buildRoute(EARTH, MOON, J2000, 5, { systemPrimary: 'departure' })!;
+		const path = buildTrajectoryPath(EARTH, MOON, route, {
+			centerId: EARTH.id,
+			systemPrimary: 'departure'
+		});
+		checkDates(path);
+
+		// Climbing away from periapsis it is fastest at the start, so by half the
+		// time it is past half the samples. Even spacing would put it at exactly
+		// half, which is the bug these dates exist to avoid.
+		const arc = path!.arcs[0];
+		const half = (arc.startJd + arc.endJd) / 2;
+		const reached = arc.jds.filter((jd) => jd <= half).length;
+		expect(reached).toBeGreaterThan(arc.jds.length * 0.5);
+	});
+});
+
+describe('craftPositionAt', () => {
+	const ROUTE = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF)!;
+	const PATH = buildTrajectoryPath(EARTH, MARS, ROUTE, { centerId: SUN })!;
+
+	it('starts on the departure and ends on the arrival', () => {
+		expect(relative(craftPositionAt(PATH, ROUTE.departJd)!, PATH.stops[0].r)).toBeLessThan(1e-9);
+		expect(relative(craftPositionAt(PATH, ROUTE.arriveJd)!, PATH.stops[1].r)).toBeLessThan(1e-9);
+	});
+
+	it('has no craft to place before it leaves or after it lands', () => {
+		expect(craftPositionAt(PATH, ROUTE.departJd - 1)).toBeNull();
+		expect(craftPositionAt(PATH, ROUTE.arriveJd + 1)).toBeNull();
+	});
+
+	it('moves along the arc, and only forwards', () => {
+		let previous = craftPositionAt(PATH, ROUTE.departJd)!;
+		let travelled = 0;
+		for (let i = 1; i <= 40; i++) {
+			const at = craftPositionAt(PATH, ROUTE.departJd + (ROUTE.tofDays * i) / 40)!;
+			expect(at).not.toBeNull();
+			travelled += norm(sub(at, previous));
+			previous = at;
+		}
+		// It got there the long way round, not by sitting still.
+		expect(travelled).toBeGreaterThan(norm(sub(PATH.stops[1].r, PATH.stops[0].r)));
+	});
+
+	it('follows the clock on a held drive, not the ruler', () => {
+		// Distance under constant thrust goes as ½at², so a quarter of the way
+		// through the trip is an eighth of the way along the line — reading the
+		// samples by index would put it at a quarter.
+		const route = buildConstantThrustRoute(EARTH, MARS, J2000, 0.1)!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+		const start = path.stops[0].r;
+		const end = path.stops[1].r;
+		const total = norm(sub(end, start));
+		const quarter = craftPositionAt(path, route.departJd + route.tofDays / 4)!;
+		expect(norm(sub(quarter, start)) / total).toBeCloseTo(0.125, 2);
+		// And the flip really is halfway along, as the pricing assumes.
+		const flip = craftPositionAt(path, route.departJd + route.tofDays / 2)!;
+		expect(norm(sub(flip, start)) / total).toBeCloseTo(0.5, 2);
+	});
+
+	it('hands a swing-by crossing to the arc it is on', () => {
+		const path = buildTrajectoryPath(EARTH, JUPITER, ASSIST_ROUTE, {
+			centerId: SUN,
+			vias: [VENUS]
+		})!;
+		const flyby = ASSIST_ROUTE.flybys![0];
+		const at = craftPositionAt(path, flyby.jd)!;
+		// Both arcs meet there, so either answer is the same place.
+		expect(relative(at, path.arcs[1].points[0])).toBeLessThan(1e-9);
+	});
+});
+
+describe('pathViewpoint', () => {
+	const ROUTE = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF)!;
+	const PATH = buildTrajectoryPath(EARTH, MARS, ROUTE, { centerId: SUN })!;
+
+	/** Distance from `point` to the nearest sample of any arc, km. */
+	function offArc(point: Vec3): number {
+		let best = Infinity;
+		for (const arc of PATH.arcs) {
+			for (const sample of arc.points) best = Math.min(best, norm(sub(point, sample)));
+		}
+		return best;
+	}
+
+	it('lands a stretch in the middle of the arc that covers it', () => {
+		const view = pathViewpoint(PATH, ROUTE.departJd, ROUTE.arriveJd)!;
+		expect(view).not.toBeNull();
+		expect(offArc(view.r)).toBe(0);
+		// Actually in the middle, not at either end where the bodies are.
+		const arc = PATH.arcs[0];
+		expect(norm(sub(view.r, arc.points[0]))).toBeGreaterThan(1e7);
+		expect(norm(sub(view.r, arc.points[arc.points.length - 1]))).toBeGreaterThan(1e7);
+	});
+
+	it('lands an instant on the stop it names', () => {
+		for (const stop of PATH.stops) {
+			const view = pathViewpoint(PATH, stop.jd, stop.jd)!;
+			expect(view.r).toEqual(stop.r);
+		}
+	});
+
+	it('stands back further for a whole leg than for a burn on it', () => {
+		const leg = pathViewpoint(PATH, ROUTE.departJd, ROUTE.arriveJd)!;
+		const burn = pathViewpoint(PATH, ROUTE.departJd, ROUTE.departJd)!;
+		expect(leg.rangeKm).toBeGreaterThan(burn.rangeKm);
+		expect(burn.rangeKm).toBeGreaterThan(0);
+	});
+
+	it('picks the arc a swing-by leg belongs to, not the other one', () => {
+		const path = buildTrajectoryPath(EARTH, JUPITER, ASSIST_ROUTE, {
+			centerId: SUN,
+			vias: [VENUS]
+		})!;
+		const flyby = ASSIST_ROUTE.flybys![0];
+		const first = pathViewpoint(path, ASSIST_ROUTE.departJd, flyby.jd)!;
+		const second = pathViewpoint(path, flyby.jd, ASSIST_ROUTE.arriveJd)!;
+		expect(first.r).toEqual(path.arcs[0].points[Math.floor(path.arcs[0].points.length / 2)]);
+		expect(second.r).toEqual(path.arcs[1].points[Math.floor(path.arcs[1].points.length / 2)]);
+	});
+
+	it('has nowhere to point on a path with no arcs', () => {
+		expect(pathViewpoint({ ...PATH, arcs: [] }, ROUTE.departJd, ROUTE.arriveJd)).toBeNull();
 	});
 });

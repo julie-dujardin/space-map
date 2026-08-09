@@ -92,6 +92,9 @@ import { rebaseTrailLocals, refreshBufferTrail } from './objects/trail/refresh';
 import { setTrailResolution } from './objects/trail/material';
 import { TravelPathOverlay } from './objects/travel/path-overlay';
 import type { TrajectoryPath } from '$lib/math/travel/path';
+// Deep import for the same reason the overlay uses one: the kernel's index also
+// re-exports Lambert, the porkchop and the vehicle catalogue.
+import { eclipticToScene } from '$lib/math/travel/state';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { updatePositions, refreshDeferredTrails } from './position/update-positions';
 import { PositionDiagnostics } from './position/diagnostics';
@@ -206,6 +209,9 @@ export class SceneRenderer {
 	private skyDebugMarkers!: SkyDebugMarkers;
 	private haloDebug!: HaloDebugOverlay;
 	private travelPath!: TravelPathOverlay;
+	/** A place on the drawn trajectory the camera is parked on, held in the
+	 *  transfer frame's own terms so it can be re-derived as that frame moves. */
+	private travelFocus: { centerId: string; local: Vec3 } | null = null;
 
 	private readonly focus: FocusState = {
 		focusTruePos: [0, 0, 0],
@@ -541,8 +547,88 @@ export class SceneRenderer {
 			return;
 		}
 		this.travelPath.setVisible(true);
+		this.travelPath.setClock(this.clock.jd);
 		this.travelPath.reposition(center.position, this.focus.focusTruePos);
 		this.travelPath.updateCameraOffset(this.camera.position);
+	}
+
+	/**
+	 * Look at a place on the drawn trajectory — a spot mid-cruise belongs to no
+	 * body, so there is nothing to focus in the ordinary way.
+	 *
+	 * `rKm` is in the transfer frame, the same one the path is drawn in.
+	 */
+	focusOnPathPoint(
+		centerId: string,
+		rKm: readonly [number, number, number],
+		rangeKm: number
+	): void {
+		const center = this.ctx.getBody(centerId);
+		if (!center) return;
+		const [x, y, z] = eclipticToScene(rKm);
+		this.travelFocus = { centerId, local: [x, y, z] };
+		const world = this.travelFocusWorld(center.position);
+		if (!world) return;
+		this.focusController.focusOnPoint(world, kmToScene(rangeKm));
+	}
+
+	/**
+	 * Move an existing trajectory focus onto another point without re-flying to
+	 * it — for following the craft along the arc while the clock is dragged.
+	 *
+	 * `refreshTravelFocus` re-derives the world position every frame, so moving
+	 * the point is the whole move: the camera keeps its distance and orientation
+	 * and slides along. A first call with nothing focused there yet flies in.
+	 */
+	trackPathPoint(centerId: string, rKm: readonly [number, number, number], rangeKm: number): void {
+		if (!this.travelFocus || this.travelFocus.centerId !== centerId) {
+			this.focusOnPathPoint(centerId, rKm, rangeKm);
+			return;
+		}
+		const [x, y, z] = eclipticToScene(rKm);
+		this.travelFocus.local = [x, y, z];
+	}
+
+	private travelFocusWorld(centerPos: Vec3): Vec3 | null {
+		const target = this.travelFocus;
+		if (!target) return null;
+		return [
+			centerPos[0] + target.local[0],
+			centerPos[1] + target.local[1],
+			centerPos[2] + target.local[2]
+		];
+	}
+
+	/**
+	 * Keep a trajectory focus on its point as the frame it is measured in moves.
+	 *
+	 * `updatePositions` does this for a focused body, and a point focus has none —
+	 * that is the whole reason it exists. Without this a trip inside one system
+	 * would slide off its own arc at the primary's orbital speed.
+	 */
+	private refreshTravelFocus(): void {
+		if (!this.travelFocus) return;
+		// Focusing anything at all takes the camera back: a point focus only lives
+		// while nothing else owns the focus.
+		if (this.focusController.current) {
+			this.travelFocus = null;
+			return;
+		}
+		const center = this.ctx.getBody(this.travelFocus.centerId);
+		if (!center) return;
+		const world = this.travelFocusWorld(center.position);
+		if (!world) return;
+		const f = this.focus;
+		f.focusTargetWorld = world;
+		const camOffset = f.camTargetOffset;
+		if (camOffset && f.camTargetWorld) {
+			f.camTargetWorld = [
+				world[0] + camOffset[0],
+				world[1] + camOffset[1],
+				world[2] + camOffset[2]
+			];
+		}
+		if (performance.now() - f.focusStartTime >= f.focusDurationMs) f.focusTruePos = [...world];
 	}
 
 	/** Assign all current trails to MAP_LAYER so they can be hidden together by immersive mode. */
@@ -646,6 +732,9 @@ export class SceneRenderer {
 		// Gate body updates on jd actually changing — skips work while paused.
 		this.clock.tick(performance.now());
 		this.applyJdUpdate(true);
+		// After the bodies move, before the focus animation reads its target: the
+		// point is measured off a body that has just been advanced.
+		this.refreshTravelFocus();
 
 		const controlsSettled = stepFocusAnimation(
 			this.focus,

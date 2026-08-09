@@ -163,6 +163,24 @@
 		renderer?.setTravelPath(path);
 	}
 
+	/** Look at a place on that trip, which is usually nowhere near a body. */
+	export function focusOnPathPoint(
+		centerId: string,
+		rKm: readonly [number, number, number],
+		rangeKm: number
+	): void {
+		renderer?.focusOnPathPoint(centerId, rKm, rangeKm);
+	}
+
+	/** Follow a place along the trip without re-framing — for a dragged clock. */
+	export function trackPathPoint(
+		centerId: string,
+		rKm: readonly [number, number, number],
+		rangeKm: number
+	): void {
+		renderer?.trackPathPoint(centerId, rKm, rangeKm);
+	}
+
 	function isLive(): boolean {
 		// Within ~1 day of wall clock and playing at 1× → URL omits the time.
 		return clock.timeScale === 1 && Math.abs(clock.jd - dateToJD(new Date())) < 1;

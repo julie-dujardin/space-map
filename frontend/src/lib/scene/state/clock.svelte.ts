@@ -99,6 +99,20 @@ export class SimClock {
 		this.lastRealMs = performance.now();
 	}
 
+	/**
+	 * Move the clock the way playback does — continuously, one frame's worth at a
+	 * time — rather than by jumping to a date.
+	 *
+	 * Deliberately not {@link seeked}: that flag says "the clock landed somewhere
+	 * else", which is what lets the renderer re-anchor a focus that has no data at
+	 * the new time. Setting it every frame of a sweep would fire that on the way
+	 * past, dragging the camera off whatever is being followed.
+	 */
+	sweepTo(jd: number): void {
+		this.jd = jd;
+		this.lastRealMs = performance.now();
+	}
+
 	pause(): void {
 		if (this.timeScale !== 0) this.prevScale = this.timeScale;
 		this.timeScale = 0;

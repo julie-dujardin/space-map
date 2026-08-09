@@ -47,6 +47,7 @@
 		type TripState
 	} from '$lib/travel/trip';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
+	import { buildTimeline, type TimelineEntry } from '$lib/travel/timeline';
 	import { departureNote, vehicleName } from './vehicle-labels';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -99,6 +100,12 @@
 		/** The trajectory being read, as geometry for the map to draw. Null
 		 *  whenever there is nothing to show. */
 		onPathChange: (path: TrajectoryPath | null) => void;
+		/** The same trajectory as the legs it is made of, for the timeline along the
+		 *  bottom of the map. */
+		onTimelineChange: (entries: TimelineEntry[] | null) => void;
+		/** What a body passed on the way is called. The two ends name themselves;
+		 *  this is for the ones in between. */
+		resolveBodyName: (bodyId: string) => string;
 	}
 	let {
 		origin,
@@ -120,7 +127,9 @@
 		onTargetChange,
 		onSwap,
 		onTripChange,
-		onPathChange
+		onPathChange,
+		onTimelineChange,
+		resolveBodyName
 	}: Props = $props();
 
 	// Seeded once; from here on the two are kept in step by the effects below.
@@ -371,8 +380,47 @@
 		});
 	});
 
+	// The trip as its legs rather than as geometry. Keyed the same way and for the
+	// same reason, but separately: a trajectory whose arc cannot be rebuilt still
+	// has dates, and a timeline is the one part of it that can always be shown.
+	let timelineKey = $derived.by(() => {
+		const route = panel.selectedRoute;
+		if (!route) return null;
+		return [
+			route.departureId,
+			route.targetId,
+			route.departJd,
+			route.arriveJd,
+			route.departureMode,
+			route.arrivalMode,
+			route.constantThrust ?? '',
+			(route.flybys ?? []).map((flyby) => `${flyby.bodyId}@${flyby.jd}`).join(','),
+			originName ?? '',
+			targetName ?? ''
+		].join('|');
+	});
+
+	$effect(() => {
+		const key = timelineKey;
+		untrack(() => {
+			const route = panel.selectedRoute;
+			if (key === null || !route) {
+				onTimelineChange(null);
+				return;
+			}
+			onTimelineChange(
+				buildTimeline(route, (bodyId) => {
+					if (bodyId === origin?.id && originName) return originName;
+					if (bodyId === target?.id && targetName) return targetName;
+					return resolveBodyName(bodyId);
+				})
+			);
+		});
+	});
+
 	// Leaving the planner takes its trajectory off the map with it.
 	$effect(() => () => onPathChange(null));
+	$effect(() => () => onTimelineChange(null));
 
 	// One end is enough: exchanging it with an empty one turns "going to Mars"
 	// into "leaving Mars", which is how half a trip gets turned round.

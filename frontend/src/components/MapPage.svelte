@@ -19,6 +19,8 @@
 	import { createAppState } from '$lib/state/app-state.svelte';
 	import { fetchBodyNomenclature, type NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { Focusable, FocusFeature, FocusObject } from '$lib/state/focusable';
+	import type { TrajectoryPath } from '$lib/math/travel';
+	import type { TimelineEntry, TimelineFocus } from '$lib/travel/timeline';
 	// Lazy-loaded on first focus so its charts (d3-scale/d3-shape/layercake) and
 	// member lists split out of the initial map chunk.
 	let DetailDrawer = $state<typeof import('./detail/DetailDrawer.svelte').default | null>(null);
@@ -27,6 +29,14 @@
 	let TravelDrawer = $state<typeof import('./detail/travel/TravelDrawer.svelte').default | null>(
 		null
 	);
+	// The trip's own bottom bar, loaded with it rather than with the map.
+	let TripTimeline = $state<typeof import('./detail/travel/TripTimeline.svelte').default | null>(
+		null
+	);
+	// The chosen trajectory as the planner hands it out: its legs for the timeline,
+	// and its geometry so the timeline can put the camera on the arc itself.
+	let timelineEntries = $state.raw<TimelineEntry[] | null>(null);
+	let travelPath = $state.raw<TrajectoryPath | null>(null);
 	import MyLocation from './MyLocation.svelte';
 	import ClearPromoted from './ClearPromoted.svelte';
 	import CompassNorthSelector from './CompassNorthSelector.svelte';
@@ -242,7 +252,33 @@
 		if (isNav && !TravelDrawer) {
 			import('./detail/travel/TravelDrawer.svelte').then((mod) => (TravelDrawer = mod.default));
 		}
+		if (isNav && !TripTimeline) {
+			import('./detail/travel/TripTimeline.svelte').then((mod) => (TripTimeline = mod.default));
+		}
 	});
+
+	/** Look at whatever part of the trip the timeline was asked about. */
+	function focusTimeline(target: TimelineFocus): void {
+		if (target.kind === 'body') focusCameraOn(target.bodyId);
+		else if (target.track) scene?.trackPathPoint(target.centerId, target.r, target.rangeKm);
+		else scene?.focusOnPathPoint(target.centerId, target.r, target.rangeKm);
+	}
+
+	// Look at a body without touching the URL. On /nav the trip owns the URL, so
+	// the ordinary focus path would close the planner to look at one of its own
+	// waypoints.
+	function focusCameraOn(id: string): void {
+		void (async () => {
+			if (!ctx.getBody(id)) {
+				await ctx
+					.ensureBody(id, jdToDate(clock.jd))
+					.catch((e) => console.warn(`[map] timeline stop ${id} could not be streamed in:`, e));
+			}
+			const body = ctx.getBody(id);
+			if (!body) return;
+			scene?.focusOnBody(id, framingDistanceFor(urlTypeFromId(id), body));
+		})();
+	}
 
 	// A trip end that isn't resident (a probe, a small body) has no elements to
 	// transfer from — stream it in the way focusObject would, then frame the
@@ -673,7 +709,11 @@
 					clockJd={clock.jd}
 					isMobile={isMobileViewport}
 					inert={bgInert}
-					onPathChange={(path) => scene?.setTravelPath(path)}
+					onPathChange={(path) => {
+						travelPath = path;
+						scene?.setTravelPath(path);
+					}}
+					onTimelineChange={(entries) => (timelineEntries = entries)}
 					onClose={() => {
 						// Closing a trip lands on whichever end is framed, or on the body
 						// the camera was left with when neither end is chosen.
@@ -682,6 +722,16 @@
 						tick().then(() => document.getElementById('main-content')?.focus());
 					}}
 				/>
+			{/if}
+			{#if isNav && TripTimeline && timelineEntries && timelineEntries.length > 1}
+				<div inert={bgInert} class="contents">
+					<TripTimeline
+						entries={timelineEntries}
+						path={travelPath}
+						{clock}
+						onFocus={focusTimeline}
+					/>
+				</div>
 			{/if}
 			{#if focusable && DetailDrawer}
 				<DetailDrawer

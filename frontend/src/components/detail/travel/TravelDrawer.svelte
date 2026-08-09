@@ -21,6 +21,7 @@
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
 	import type { TrajectoryPath } from '$lib/math/travel';
+	import type { TimelineEntry } from '$lib/travel/timeline';
 	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
 	import { DEFAULT_TRIP } from '$lib/travel/trip';
 	import { resolveTripBodies } from '$lib/travel/resolve';
@@ -45,6 +46,8 @@
 		/** The trajectory being read, for the scene to draw; null when there is
 		 *  none. */
 		onPathChange: (path: TrajectoryPath | null) => void;
+		/** The same trajectory as its legs, for the timeline under the map. */
+		onTimelineChange: (entries: TimelineEntry[] | null) => void;
 	}
 	let {
 		fromId,
@@ -55,16 +58,24 @@
 		isMobile,
 		inert = false,
 		onClose,
-		onPathChange
+		onPathChange,
+		onTimelineChange
 	}: Props = $props();
 
 	// The planner reasons from a "now" captured when the trip opens, not from the
 	// live clock: the clock ticks twice a second and each tick would re-solve a
 	// whole porkchop grid. Choosing a different date is what "depart at" is for.
-	let nowJd = $derived.by(() => {
-		void fromId;
-		void toId;
-		return untrack(() => clockJd);
+	//
+	// Reading the clock under `untrack` is not enough on its own. The ends are
+	// read off the app's view object, which is *replaced* on every clock tick, so
+	// anything that touches them is marked stale twice a second and re-samples the
+	// clock when it next runs. The key is what stops that: a string that only
+	// changes when the ends do, and a derived that compares by value.
+	let endsKey = $derived(`${fromId}|${toId}`);
+	let nowJd = $state(untrack(() => clockJd));
+	$effect(() => {
+		void endsKey;
+		untrack(() => (nowJd = clockJd));
 	});
 
 	const ctx = getContext<ContextManager | undefined>('ctx');
@@ -336,6 +347,8 @@
 				{targetDetail}
 				{trip}
 				{onPathChange}
+				{onTimelineChange}
+				resolveBodyName={(id) => names[id] ?? ctx?.getBody(id)?.data.name ?? id}
 				onTripChange={(next) => appState?.setTrip(next)}
 				onOriginChange={(pick: TravelEndpointPick) =>
 					appState?.setNav(

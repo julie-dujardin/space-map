@@ -26,20 +26,14 @@ import {
 // Deep imports, not the kernel's index: the renderer holds this overlay from the
 // first frame, and the index re-exports Lambert, the porkchop and the vehicle
 // catalogue — a chunk only `/nav` should ever pull in.
-import type { PathArcKind, TrajectoryPath } from '$lib/math/travel/path';
+import type { TrajectoryPath } from '$lib/math/travel/path';
+import { craftPositionAt } from '$lib/math/travel/path-sample';
 import { eclipticToScene } from '$lib/math/travel/state';
 import { buildFatLineFromThin, writeFatTrailVertices } from '$lib/scene/objects/trail/geometry';
 import type { Vec3 } from '$lib/scene/animation/math';
-
-/**
- * How each stretch of the trip is drawn. A coast is the plan itself; a drive
- * held all the way is a different kind of flying and reads warm to say so.
- */
-const ARC_COLORS: Record<PathArcKind, string> = {
-	cruise: '#7fdbff',
-	boost: '#ffb454',
-	brake: '#ff8c69'
-};
+// A coast is the plan itself; a drive held all the way is a different kind of
+// flying and reads warm to say so. Shared with the timeline under the map.
+import { ARC_COLORS } from '$lib/travel/arc-colors';
 
 /** Wide enough to read against a trail crossing it, not so wide it hides one. */
 const LINE_WIDTH = 3;
@@ -56,6 +50,9 @@ const LINE_BRIGHTNESS = 1;
 /** Screen size of the markers, in the units an unattenuated sprite scales by. */
 const STOP_SIZE = 0.018;
 const MEETING_SIZE = 0.045;
+/** The craft is the one marker that moves, so it is the one that reads first. */
+const CRAFT_SIZE = 0.026;
+const CRAFT_COLOR = '#ffffff';
 
 /** Drawn after trails so the plan sits on top of the orbits it crosses. */
 const PATH_RENDER_ORDER = 4;
@@ -126,6 +123,8 @@ export class TravelPathOverlay {
 	private readonly group = new Group();
 	private arcs: DrawnArc[] = [];
 	private markers: DrawnMarker[] = [];
+	/** Where the craft is right now; hidden whenever it is not in flight. */
+	private craft: DrawnMarker | null = null;
 	private path: TrajectoryPath | null = null;
 	private layer: number | null = null;
 	private readonly offset = new Vector3();
@@ -213,7 +212,27 @@ export class TravelPathOverlay {
 		}
 		for (const marker of this.markers) this.group.add(marker.sprite);
 
+		// Added last so it draws over the burn it is sitting on when the two meet.
+		this.craft = { sprite: makeSprite(dotTexture(CRAFT_COLOR), CRAFT_SIZE), local: [0, 0, 0] };
+		this.craft.sprite.visible = false;
+		this.group.add(this.craft.sprite);
+
 		if (this.layer !== null) this.setLayer(this.layer);
+	}
+
+	/**
+	 * Put the craft marker where the clock says the craft is.
+	 *
+	 * Call before {@link reposition}, which is what actually places it. Outside
+	 * the trip the marker goes away rather than parking on an end — the craft has
+	 * not left, or is no longer flying.
+	 */
+	setClock(jd: number): void {
+		const craft = this.craft;
+		if (!craft || !this.path) return;
+		const position = craftPositionAt(this.path, jd);
+		craft.sprite.visible = position !== null;
+		if (position) craft.local = eclipticToScene(position) as Vec3;
 	}
 
 	/**
@@ -241,6 +260,10 @@ export class TravelPathOverlay {
 		for (const marker of this.markers) {
 			marker.sprite.position.set(marker.local[0] + dx, marker.local[1] + dy, marker.local[2] + dz);
 		}
+		if (this.craft) {
+			const { sprite, local } = this.craft;
+			sprite.position.set(local[0] + dx, local[1] + dy, local[2] + dz);
+		}
 	}
 
 	/**
@@ -266,7 +289,7 @@ export class TravelPathOverlay {
 			arc.line.geometry.dispose();
 			(arc.line.material as ShaderMaterial).dispose();
 		}
-		for (const marker of this.markers) {
+		for (const marker of [...this.markers, ...(this.craft ? [this.craft] : [])]) {
 			this.group.remove(marker.sprite);
 			const material = marker.sprite.material as SpriteMaterial;
 			material.map?.dispose();
@@ -274,6 +297,7 @@ export class TravelPathOverlay {
 		}
 		this.arcs = [];
 		this.markers = [];
+		this.craft = null;
 		this.path = null;
 	}
 
