@@ -257,11 +257,14 @@
 		}
 	});
 
-	/** Look at whatever part of the trip the timeline was asked about. */
+	/** Look at whatever part of the trip the timeline was asked about. Picking a
+	 *  step reads the trip, so it pans rather than flies — same reasoning as
+	 *  retargeting an end, and doubly so under autoplay, which steps on its own.
+	 *  A dragged clock keeps its range: that one still has to arrive from cold. */
 	function focusTimeline(target: TimelineFocus): void {
 		if (target.kind === 'body') focusCameraOn(target.bodyId);
 		else if (target.track) scene?.trackPathPoint(target.centerId, target.r, target.rangeKm);
-		else scene?.focusOnPathPoint(target.centerId, target.r, target.rangeKm);
+		else scene?.focusOnPathPoint(target.centerId, target.r);
 	}
 
 	// Look at a body without touching the URL. On /nav the trip owns the URL, so
@@ -274,14 +277,12 @@
 					.ensureBody(id, jdToDate(clock.jd))
 					.catch((e) => console.warn(`[map] timeline stop ${id} could not be streamed in:`, e));
 			}
-			const body = ctx.getBody(id);
-			if (!body) return;
-			scene?.focusOnBody(id, framingDistanceFor(urlTypeFromId(id), body));
+			scene?.focusOnBody(id);
 		})();
 	}
 
 	// A trip end that isn't resident (a probe, a small body) has no elements to
-	// transfer from — stream it in the way focusObject would, then frame the
+	// transfer from — stream it in the way focusObject would, then look at the
 	// destination. Boot already framed the first one; this is for the swap and for
 	// moving the origin, which change the destination without going through
 	// setFocus.
@@ -306,10 +307,12 @@
 			);
 			// With nowhere to go yet, the departure is the subject.
 			const framed = to ?? ends[0];
-			const body = ctx.getBody(framed);
-			if (!body) return;
 			if (untrack(() => cameraFocus?.data.id) === framed) return;
-			scene?.focusOnBody(framed, framingDistanceFor(urlTypeFromId(framed), body));
+			// Pan, don't fly: retargeting a trip is picking a place on a map, not
+			// visiting it, and an approach fly would throw away the vantage the user
+			// built to read the trajectory from. Omitting the zoom holds the camera
+			// where it is and only swings the pivot onto the new end.
+			scene?.focusOnBody(framed);
 		})();
 	});
 

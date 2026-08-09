@@ -167,7 +167,7 @@
 	export function focusOnPathPoint(
 		centerId: string,
 		rKm: readonly [number, number, number],
-		rangeKm: number
+		rangeKm?: number
 	): void {
 		renderer?.focusOnPathPoint(centerId, rKm, rangeKm);
 	}

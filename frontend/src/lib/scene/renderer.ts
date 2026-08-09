@@ -556,12 +556,13 @@ export class SceneRenderer {
 	 * Look at a place on the drawn trajectory — a spot mid-cruise belongs to no
 	 * body, so there is nothing to focus in the ordinary way.
 	 *
-	 * `rKm` is in the transfer frame, the same one the path is drawn in.
+	 * `rKm` is in the transfer frame, the same one the path is drawn in. Without
+	 * `rangeKm` the camera only re-aims, holding the vantage it is already at.
 	 */
 	focusOnPathPoint(
 		centerId: string,
 		rKm: readonly [number, number, number],
-		rangeKm: number
+		rangeKm?: number
 	): void {
 		const center = this.ctx.getBody(centerId);
 		if (!center) return;
@@ -569,7 +570,10 @@ export class SceneRenderer {
 		this.travelFocus = { centerId, local: [x, y, z] };
 		const world = this.travelFocusWorld(center.position);
 		if (!world) return;
-		this.focusController.focusOnPoint(world, kmToScene(rangeKm));
+		this.focusController.focusOnPoint(
+			world,
+			rangeKm === undefined ? undefined : kmToScene(rangeKm)
+		);
 	}
 
 	/**

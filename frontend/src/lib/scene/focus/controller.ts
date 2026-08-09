@@ -170,25 +170,31 @@ export class FocusController {
 	 * Point the camera at a place rather than at a body — a spot on a drawn
 	 * trajectory, which nothing occupies.
 	 *
+	 * Omitting `distance` keeps the camera where it is and only swings the pivot
+	 * onto the point, the way an unzoomed `focusOnBody` does.
+	 *
 	 * Clears the focused body, because `updatePositions` re-pins the focus origin
 	 * to it every frame and would otherwise drag the camera straight back off the
 	 * point. Nothing else keeps the target fresh either, so a caller whose point
 	 * moves has to re-drive it (see `SceneRenderer.refreshTravelFocus`).
 	 */
-	focusOnPoint(position: Vec3, distance: number): void {
+	focusOnPoint(position: Vec3, distance?: number): void {
 		const { focus, camera, callbacks } = this.deps;
 		const camWorld = this.cameraTruePos();
-		// Arrive from where the camera already is, so the move reads as a glide
-		// across the map rather than a cut to somewhere new.
-		const dir = this._tmpV3
-			.set(position[0] - camWorld[0], position[1] - camWorld[1], position[2] - camWorld[2])
-			.normalize()
-			.negate();
-		const camPos: Vec3 = [
-			position[0] + dir.x * distance,
-			position[1] + dir.y * distance,
-			position[2] + dir.z * distance
-		];
+		let camPos: Vec3 | undefined;
+		if (distance !== undefined) {
+			// Arrive from where the camera already is, so the move reads as a glide
+			// across the map rather than a cut to somewhere new.
+			const dir = this._tmpV3
+				.set(position[0] - camWorld[0], position[1] - camWorld[1], position[2] - camWorld[2])
+				.normalize()
+				.negate();
+			camPos = [
+				position[0] + dir.x * distance,
+				position[1] + dir.y * distance,
+				position[2] + dir.z * distance
+			];
+		}
 		this.focusedBody = undefined;
 		prepareFocusTarget(
 			focus,
@@ -198,7 +204,7 @@ export class FocusController {
 			camPos,
 			getSettings().resolvedReducedMotion
 		);
-		const spherical = cartesianToSpherical(camPos, position, undefined);
+		const spherical = cartesianToSpherical(camPos ?? camWorld, position, undefined);
 		callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);
 	}
 
