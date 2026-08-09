@@ -8,6 +8,7 @@
 -->
 <script lang="ts">
 	import type { RouteLeg } from '$lib/math/travel';
+	import { formatDv } from '$lib/travel/format';
 	import { legLabel } from './leg-labels';
 
 	interface Props {
@@ -41,7 +42,7 @@
 					style="background: var(--leg-{leg.kind})"
 				></span>
 				<dt class="text-muted-foreground min-w-0 truncate">{legLabel(leg.kind)}</dt>
-				<dd class="tabular-nums">{leg.dvKms.toFixed(2)}</dd>
+				<dd class="tabular-nums">{formatDv(leg.dvKms)}</dd>
 			{/each}
 		</dl>
 	{/if}

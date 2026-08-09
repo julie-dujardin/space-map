@@ -70,10 +70,34 @@ export function formatTripTime(days: number): string {
 	return say(tripDuration(days));
 }
 
+/** A torch drive's budget runs to six figures of km/s, which fits nowhere it
+ *  is printed; from here the unit climbs to Mm/s. */
+const MEGAMETRE_FLOOR_KMS = 10_000;
+
+/** Three significant figures for the climbed unit — 62.5, 125, 1250. */
+function megametres(kms: number): string {
+	return Number((kms / 1000).toPrecision(3)).toString();
+}
+
 /** Δv with two decimals — the precision the estimates actually carry. */
 export function formatDv(kms: number): string {
 	if (!Number.isFinite(kms)) return '—';
+	if (kms >= MEGAMETRE_FLOOR_KMS) return m.travel_unit_mm_s({ value: megametres(kms) });
 	return m.travel_unit_km_s({ value: kms.toFixed(2) });
+}
+
+/** The route row's tighter form: one decimal, same unit climb. */
+export function formatDvBrief(kms: number): string {
+	if (!Number.isFinite(kms)) return '—';
+	if (kms >= MEGAMETRE_FLOOR_KMS) return m.travel_unit_mm_s({ value: megametres(kms) });
+	return m.travel_unit_km_s({ value: kms.toFixed(1) });
+}
+
+/** Figure and unit split apart, for the stat tile that sets its own type. */
+export function dvParts(kms: number): { value: string; unit: string } {
+	if (!Number.isFinite(kms)) return { value: '—', unit: '' };
+	if (kms >= MEGAMETRE_FLOOR_KMS) return { value: megametres(kms), unit: m.travel_mm_s() };
+	return { value: kms.toFixed(1), unit: m.travel_km_s() };
 }
 
 /** Standard gravity, m/s² — the unit every torch drive in fiction is quoted in. */

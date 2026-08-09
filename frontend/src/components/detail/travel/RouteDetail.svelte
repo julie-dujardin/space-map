@@ -15,6 +15,7 @@
 	import { dvWithPayloadKms, type LegKind, type Route, type TravelBody } from '$lib/math/travel';
 	import { returnDvKms, signalDelaySeconds } from '$lib/travel/arrival-stats';
 	import {
+		dvParts,
 		formatAcceleration,
 		formatDv,
 		formatSignalDelay,
@@ -73,7 +74,7 @@
 	);
 	let tiles = $derived<Tile[]>([
 		{ label: m.travel_trip_time(), value: formatTripTime(route.tofDays), unit: '' },
-		{ label: m.travel_total_dv(), value: route.totalDvKms.toFixed(1), unit: m.travel_km_s() },
+		{ label: m.travel_total_dv(), ...dvParts(route.totalDvKms) },
 		route.constantThrust
 			? topSpeedTile
 			: { label: m.travel_launch_c3(), value: route.c3Km2S2.toFixed(1), unit: m.travel_km2_s2() }

@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
+	dvParts,
 	formatAcceleration,
+	formatDv,
+	formatDvBrief,
 	formatSpeed,
 	formatTripTime,
 	lightPercent,
@@ -46,6 +49,20 @@ describe('formatAcceleration', () => {
 	it('refuses to render an acceleration that is not one', () => {
 		expect(formatAcceleration(0)).toBe('—');
 		expect(formatAcceleration(NaN)).toBe('—');
+	});
+});
+
+describe('formatDv', () => {
+	it('stays in km/s below ten thousand of them', () => {
+		expect(formatDv(9999.99)).toBe('9999.99 km/s');
+		expect(formatDvBrief(7586.04)).toBe('7586.0 km/s');
+		expect(dvParts(7586.04)).toEqual({ value: '7586.0', unit: 'km/s' });
+	});
+
+	it('climbs to Mm/s where six figures of km/s would not fit', () => {
+		expect(formatDv(62500)).toBe('62.5 Mm/s');
+		expect(formatDvBrief(125_000)).toBe('125 Mm/s');
+		expect(dvParts(1_250_000)).toEqual({ value: '1250', unit: 'Mm/s' });
 	});
 });
 
