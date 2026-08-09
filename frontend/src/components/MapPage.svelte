@@ -203,25 +203,26 @@
 		return getNorthChoices(cameraFocus, ctx);
 	});
 
-	// The ends of a /nav trip, or null off that route. The destination is null on
-	// the empty form, so presence of the trip — not of both ends — is what decides
-	// which sidebar renders.
-	const navTrip = $derived.by(() => {
-		const { type, navFrom, navTo, navFromFeature, navToFeature } = appState.view;
-		if (type !== UrlType.Nav) return null;
-		return {
-			from: navFrom,
-			to: navTo,
-			fromFeature: navFromFeature,
-			toFeature: navToFeature
-		};
-	});
+	// The ends of a /nav trip, one derived per end rather than one object holding
+	// all four. The clock writes the date into `view` twice a second, so anything
+	// derived from `view` recomputes at that rate — and a derived that builds an
+	// object hands every consumer a fresh identity each time, waking their effects
+	// and rebuilding the panel under the user's finger. Primitives compare equal,
+	// so the recomputation stops here.
+	//
+	// `isNav` — not the presence of both ends — is what decides which sidebar
+	// renders: the destination is null on the empty form.
+	const isNav = $derived(appState.view.type === UrlType.Nav);
+	const navFrom = $derived(isNav ? appState.view.navFrom : null);
+	const navTo = $derived(isNav ? appState.view.navTo : null);
+	const navFromFeature = $derived(isNav ? appState.view.navFromFeature : null);
+	const navToFeature = $derived(isNav ? appState.view.navToFeature : null);
 
 	// Group route wins over body focus — camera may be parked on the anchor body.
 	// A trip owns the sidebar outright: the destination is focused, but the panel
 	// beside it is about the journey, not the body.
 	const focusable = $derived.by((): Focusable | null => {
-		if (navTrip) return null;
+		if (isNav) return null;
 		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
 			return { kind: 'group', slug: appState.view.groupSlug };
 		}
@@ -238,7 +239,7 @@
 	});
 
 	$effect(() => {
-		if (navTrip && !TravelDrawer) {
+		if (isNav && !TravelDrawer) {
 			import('./detail/travel/TravelDrawer.svelte').then((mod) => (TravelDrawer = mod.default));
 		}
 	});
@@ -249,12 +250,12 @@
 	// moving the origin, which change the destination without going through
 	// setFocus.
 	$effect(() => {
-		const trip = navTrip;
-		if (!trip) return;
+		if (!isNav) return;
+		const to = navTo;
 		// The clock ticks twice a second; reading it tracked would re-run this on
 		// every tick.
 		const at = jdToDate(untrack(() => clock.jd));
-		const ends = [trip.from, trip.to].filter((id) => id !== null);
+		const ends = [navFrom, to].filter((id) => id !== null);
 		// Neither end chosen — nothing to stream, and nothing to re-frame either.
 		if (ends.length === 0) return;
 		void (async () => {
@@ -268,7 +269,7 @@
 				)
 			);
 			// With nowhere to go yet, the departure is the subject.
-			const framed = trip.to ?? ends[0];
+			const framed = to ?? ends[0];
 			const body = ctx.getBody(framed);
 			if (!body) return;
 			if (untrack(() => cameraFocus?.data.id) === framed) return;
@@ -279,7 +280,7 @@
 	// Desktop inset: park chips just past the detail sidebar when open, else the
 	// collapsed 240px search bar. Mobile stacks them below instead.
 	const featuredStart = $derived(
-		focusable || navTrip ? 'calc(var(--detail-panel) + 1rem)' : 'calc(240px + 2rem)'
+		focusable || isNav ? 'calc(var(--detail-panel) + 1rem)' : 'calc(240px + 2rem)'
 	);
 
 	$effect(() => {
@@ -441,12 +442,12 @@
 				// target streamed — snap onto it (no fly, opens already framed).
 				scene?.snapToBody(initialId, latitude, longitude, zoom);
 			}
-		} else if (navTrip) {
+		} else if (isNav) {
 			// A trip end the scene cannot place is the panel's story to tell, and it
 			// names which end and why. Falling back to the default view here would
 			// drop the whole trip out of the URL, so only the camera moves — onto the
 			// other end, which is what the empty form frames anyway.
-			const fromId = navTrip.from;
+			const fromId = navFrom;
 			const departure = fromId === null ? null : ctx.getBody(fromId);
 			if (fromId && departure) {
 				scene?.snapToBody(
@@ -663,12 +664,12 @@
 				<SettingsButton />
 				<LayersButton />
 			</div>
-			{#if navTrip && TravelDrawer}
+			{#if isNav && TravelDrawer}
 				<TravelDrawer
-					fromId={navTrip.from}
-					toId={navTrip.to}
-					fromFeatureId={navTrip.fromFeature}
-					toFeatureId={navTrip.toFeature}
+					fromId={navFrom}
+					toId={navTo}
+					fromFeatureId={navFromFeature}
+					toFeatureId={navToFeature}
 					clockJd={clock.jd}
 					isMobile={isMobileViewport}
 					inert={bgInert}
@@ -676,7 +677,7 @@
 					onClose={() => {
 						// Closing a trip lands on whichever end is framed, or on the body
 						// the camera was left with when neither end is chosen.
-						const id = navTrip.to ?? navTrip.from ?? appState.view.id;
+						const id = navTo ?? navFrom ?? appState.view.id;
 						appState.setFocus({ type: urlTypeFromId(id), id, name: '' });
 						tick().then(() => document.getElementById('main-content')?.focus());
 					}}

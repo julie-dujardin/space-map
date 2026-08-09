@@ -100,6 +100,13 @@
 		resolving = true;
 		resolveTripBodies(ids, residentBody).then((bodies) => {
 			if (cancelled) return;
+			// An end that resolved once is kept when a later pass cannot find it: the
+			// scene's index is momentarily empty while it rebuilds, and a pass that
+			// lands in that window would otherwise drop a body the trip is built on
+			// and take the whole panel down with it.
+			for (const [id, body] of tripBodies) {
+				if (ids.includes(id) && !bodies.has(id)) bodies.set(id, body);
+			}
 			tripBodies = bodies;
 			resolving = false;
 		});
@@ -110,6 +117,20 @@
 
 	let origin = $derived(fromId === null ? null : (tripBodies.get(fromId) ?? null));
 	let target = $derived(toId === null ? null : (tripBodies.get(toId) ?? null));
+
+	/**
+	 * Whether the panel has ever had an origin to show.
+	 *
+	 * Once it has, it stays mounted whatever happens to the lookup afterwards. It
+	 * owns state that cannot be rebuilt from anywhere — which endpoint box is
+	 * open, the solved grid, a hand-picked trajectory — and unmounting it silently
+	 * throws all of that away, including a click still in progress over it. It
+	 * says why it is stuck better than this branch can anyway.
+	 */
+	let resolvedOnce = $state(false);
+	$effect(() => {
+		if (origin || fromId === null) resolvedOnce = true;
+	});
 
 	// Bodies to test the search results against. The scene's own, since only
 	// something already loaded can be compared cheaply — see `excluded` below.
@@ -207,31 +228,53 @@
 	let originDetail = $state<GlobalObjectData | null>(null);
 	let targetDetail = $state<GlobalObjectData | null>(null);
 
-	function loadDetail(id: string, set: (d: GlobalObjectData | null) => void) {
-		let cancelled = false;
+	/**
+	 * Which end each bundle was fetched for, and the guard that drops a superseded
+	 * fetch. Plain variables rather than state: they are read inside the effects
+	 * below to decide whether there is anything to do, and a reactive read there
+	 * would make each effect depend on its own writes.
+	 */
+	let loadedFor = {
+		origin: undefined as string | null | undefined,
+		target: undefined as string | null | undefined
+	};
+	let detailToken = { origin: 0, target: 0 };
+
+	/**
+	 * Fetch the detail bundle for one end, unless that end is already the one it
+	 * was fetched for.
+	 *
+	 * The early return is what keeps a re-run from clearing a good bundle: anything
+	 * rendered on the strength of having one would flicker out and back, and a
+	 * control that disappears between a press and its release swallows the click
+	 * that was on it.
+	 *
+	 * Superseded fetches are dropped by token rather than cancelled on teardown,
+	 * so a re-run for an unrelated reason cannot abandon a load in flight.
+	 */
+	function loadDetail(
+		end: 'origin' | 'target',
+		id: string | null,
+		set: (d: GlobalObjectData | null) => void
+	): void {
+		if (loadedFor[end] === id) return;
+		loadedFor[end] = id;
+		set(null);
+		if (id === null) return;
+
+		const token = ++detailToken[end];
 		fetchObjectDetail(id, false)
 			.then((d) => {
-				if (!cancelled) set(d.global);
+				if (token === detailToken[end]) set(d.global);
 			})
 			.catch((e) => {
 				console.warn(`[travel] no detail bundle for ${id}, pricing it airless:`, e);
-				if (!cancelled) set(null);
+				if (token === detailToken[end]) set(null);
 			});
-		return () => {
-			cancelled = true;
-		};
 	}
 
-	$effect(() => {
-		originDetail = null;
-		if (fromId === null) return;
-		return loadDetail(fromId, (d) => (originDetail = d));
-	});
-	$effect(() => {
-		targetDetail = null;
-		if (toId === null) return;
-		return loadDetail(toId, (d) => (targetDetail = d));
-	});
+	$effect(() => loadDetail('origin', fromId, (d) => (originDetail = d)));
+	$effect(() => loadDetail('target', toId, (d) => (targetDetail = d)));
 
 	let crumb = $derived(
 		target
@@ -265,7 +308,7 @@
 
 {#snippet body(contentClass: string)}
 	<div class={contentClass}>
-		{#if origin || fromId === null}
+		{#if origin || fromId === null || resolvedOnce}
 			<TravelPanel
 				{origin}
 				{target}
