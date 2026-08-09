@@ -31,6 +31,7 @@ from space_map_data.constants.spacecraft import (
     SPACECRAFT_SOURCES,
     Spacecraft,
     delta_v_kms,
+    solver_can_judge,
 )
 from space_map_data.constants.spacecraft.specs import C3Curve, Measured
 from space_map_data.export.wikidata import WikidataEntityCache
@@ -186,6 +187,10 @@ def build_name_bundles(cache: WikidataEntityCache) -> dict[str, dict[str, dict]]
     fell_back: dict[str, int] = {}
     unnamed: list[str] = []
     for craft in CATALOGUE.values():
+        # Same cut as the catalogue itself, already logged there: a vehicle
+        # that does not ship needs no name.
+        if not solver_can_judge(craft):
+            continue
         entity = cache.get_referenced(craft.qid)
         if entity is None:
             unnamed.append(craft.id)
@@ -230,8 +235,20 @@ def write_name_bundles(out_dir: Path, cache: WikidataEntityCache) -> None:
 
 
 def build_spacecraft() -> dict:
-    """Assemble the catalogue plus the citations its source keys point at."""
-    vehicles = [_entry(craft) for craft in CATALOGUE.values()]
+    """Assemble the catalogue plus the citations its source keys point at.
+
+    Entries the solver could never judge — a launcher without a curve, a craft
+    without Δv, acceleration or an unlimited drive — are not exported at all.
+    A picker row whose every answer is "no published figure" tells the reader
+    nothing a missing row does not; the constants keep the entry so the figure
+    has somewhere to land when one turns up.
+    """
+    vehicles = []
+    for craft in CATALOGUE.values():
+        if not solver_can_judge(craft):
+            logger.info("%s: not exported, nothing the solver could judge", craft.id)
+            continue
+        vehicles.append(_entry(craft))
     sources = {
         key: {"title": ref.title, "url": ref.url, "note": ref.note}
         for key, ref in SPACECRAFT_SOURCES.items()
@@ -257,16 +274,14 @@ def write_spacecraft(out_dir: Path, cache: WikidataEntityCache | None = None) ->
         with_curve,
         time.monotonic() - t0,
     )
-    # The gaps are the interesting part of this file, so they are logged
-    # rather than left to be noticed.
+    # The gaps that survive the export filter are cargo: judged by their empty
+    # `departs_from`, shipped without a Δv, and still worth a line so a figure
+    # that turns up for one is noticed.
     for vehicle in payload["vehicles"]:
-        if vehicle["kind"] == "launcher" and "c3_curve" not in vehicle:
-            logger.info("%s: no published escape performance", vehicle["id"])
-        elif (
+        if (
             vehicle["kind"] != "launcher"
             and "delta_v_kms" not in vehicle
-            # A ship whose work never made propellant a constraint has no Δv
-            # to be missing.
+            and "accel_m_s2" not in vehicle
             and not vehicle.get("unlimited_dv")
         ):
             missing = [
@@ -274,8 +289,7 @@ def write_spacecraft(out_dir: Path, cache: WikidataEntityCache | None = None) ->
                 for field in ("dry_mass_kg", "propellant_mass_kg", "isp_s")
                 if field not in vehicle
             ]
-            if missing:
-                logger.info("%s: no Δv, missing %s", vehicle["id"], ", ".join(missing))
+            logger.info("%s: no Δv, missing %s", vehicle["id"], ", ".join(missing))
 
 
 def export_spacecraft_only() -> None:

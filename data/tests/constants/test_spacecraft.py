@@ -188,6 +188,16 @@ class TestPerformance:
         t = (-1.8 - below) / (above - below)
         assert 44_000 < m_below + t * (m_above - m_below) < 47_000
 
+    def test_falcon_9_curve_carries_the_advertised_figure(self):
+        # The Falcon 9 curve is rebuilt around one published number — the
+        # website's 4,020 kg to Mars, taken at C3 = 10 — so that number must
+        # sit on it exactly, and the curve must admit it stops before the
+        # vehicle does.
+        curve = CATALOGUE["falcon-9-expendable"].c3_curve
+        assert curve is not None
+        assert (10.0, 4020.0) in curve.points
+        assert curve.truncated
+
     def test_masses_are_positive(self):
         for craft in CATALOGUE.values():
             for measured in (craft.dry_mass_kg, craft.propellant_mass_kg):

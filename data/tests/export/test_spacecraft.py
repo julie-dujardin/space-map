@@ -8,7 +8,7 @@ not move the answer.
 
 import pytest
 
-from space_map_data.constants.spacecraft import CATALOGUE
+from space_map_data.constants.spacecraft import CATALOGUE, solver_can_judge
 from space_map_data.export.spacecraft import (
     _load_curve,
     _thin,
@@ -29,9 +29,18 @@ def payload():
 class TestShape:
     """Every entry is complete enough to render."""
 
-    def test_one_entry_per_catalogue_vehicle(self, payload):
-        assert len(payload["vehicles"]) == len(CATALOGUE)
-        assert {v["id"] for v in payload["vehicles"]} == set(CATALOGUE)
+    def test_only_judgeable_vehicles_ship(self, payload):
+        # The export drops what the solver could never answer for, and the
+        # drop list is pinned: a new entry landing on it should be a decision,
+        # not a side effect of a missing figure.
+        exported = {v["id"] for v in payload["vehicles"]}
+        assert exported == {c.id for c in CATALOGUE.values() if solver_can_judge(c)}
+        assert set(CATALOGUE) - exported == {
+            "new-glenn",
+            "long-march-5",
+            "crew-dragon",
+            "starship",
+        }
 
     def test_departures_ship_on_every_entry(self, payload):
         # Including the empty ones. The panel reads an absent field as an old
@@ -42,7 +51,7 @@ class TestShape:
         by_id = {v["id"]: v for v in payload["vehicles"]}
         assert by_id["sls-block-1"]["departs_from"] == ["surface"]
         assert by_id["orion"]["departs_from"] == ["orbit"]
-        assert by_id["starship"]["departs_from"] == ["orbit", "surface"]
+        assert by_id["apollo-lm"]["departs_from"] == ["orbit", "surface"]
         assert by_id["curiosity"]["departs_from"] == []
 
     def test_every_source_key_resolves(self, payload):
@@ -75,8 +84,9 @@ class TestNames:
 
     def test_every_locale_names_every_vehicle_with_an_item(self, bundles):
         # The two ships Wikidata has no item for are named by the frontend's
-        # own message keys; everything else is named here, in all twelve.
-        expected = {c.id for c in CATALOGUE.values() if c.qid}
+        # own message keys; everything else that ships is named here, in all
+        # twelve. Vehicles the catalogue drops get no name either.
+        expected = {c.id for c in CATALOGUE.values() if c.qid and solver_can_judge(c)}
         for lang, bundle in bundles.items():
             assert set(bundle) == expected, lang
             assert all(entry["name"] for entry in bundle.values()), lang
@@ -108,11 +118,12 @@ class TestDerivedDeltaV:
                 assert field in vehicle, f"{vehicle['id']}: {field}"
 
     def test_absent_where_an_input_is(self, payload):
+        # The flyable craft missing a Δv input are dropped before this file is
+        # written, so the case only survives on cargo: a rover's dry mass is
+        # published and nothing else about it is.
         by_id = {v["id"]: v for v in payload["vehicles"]}
-        # Masses published, engine not.
-        assert "delta_v_kms" not in by_id["crew-dragon"]
-        # Nothing published at all.
-        assert "delta_v_kms" not in by_id["starship"]
+        assert "dry_mass_kg" in by_id["curiosity"]
+        assert "delta_v_kms" not in by_id["curiosity"]
 
     def test_matches_the_rocket_equation(self, payload):
         for vehicle in payload["vehicles"]:

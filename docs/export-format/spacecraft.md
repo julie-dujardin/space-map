@@ -189,22 +189,37 @@ share a name, and are told apart by `variant`.
 
 ## Gaps are deliberate
 
-The catalogue omits rather than estimates, and the omissions carry
-information:
+The catalogue omits rather than estimates, and it goes one step further: a
+vehicle the solver could never judge — a launcher without a curve, a craft
+without Δv, an acceleration or an unlimited drive — is **not exported at
+all**. Every route against such an entry would answer "no published figure",
+and a row of shrugs tells the reader nothing a missing row does not. The
+constants keep those entries with whatever *is* published, so the figure has
+somewhere to land when one turns up, and the export logs each drop. Not
+exported today:
 
-- Three launchers ship no `c3_curve`. Falcon 9, New Glenn and Long March 5
-  publish payload to LEO and to GTO and nothing above them. Those are points on
-  the curve — LEO is C3 = -61, GTO is C3 = -16 — but fitting a stage to them
-  and extrapolating overshoots the launchers that *do* publish escape
-  performance by 9% at C3 = 0 and by up to 90% at C3 = 40, always high. What is
-  missing is one published point past escape, not the curve.
-- Crew Dragon ships no `delta_v_kms`. Both its masses are published and no
-  specific impulse for the Draco thruster is, in any document or engine
-  catalogue.
-- Starship ships no performance figures at all. Every mass in circulation for
-  it traces to a slide or a remark rather than a document.
-- The two rovers ship no propulsion at all, which is a statement rather than a
-  gap: a rover is delivered, and `departs_from: []` says the same thing.
+- **New Glenn and Long March 5** publish payload to LEO and to GTO and
+  nothing above them. Those are points on the curve — LEO is C3 = -61, GTO is
+  C3 = -16 — but fitting a stage to them and extrapolating overshoots the
+  launchers that *do* publish escape performance by 9% at C3 = 0 and by up to
+  90% at C3 = 40, always high. What is missing is one published point past
+  escape, not the curve. Falcon 9 escaped this gap because its website
+  advertises a Mars payload — one point past escape — and a stage anchored
+  there reproduces the site's GTO figure to 1.4%, so its (truncated) curve is
+  that fit. It is the vendor's advertised accounting: the same page's Falcon
+  Heavy figures run about a third above the NASA-certified curve, and the
+  source entry says so.
+- **Crew Dragon**: both masses are published and no specific impulse for the
+  Draco thruster is, in any document or engine catalogue, so no Δv can be
+  derived.
+- **Starship** has no performance figures at all. Every mass in circulation
+  for it traces to a slide or a remark rather than a document.
+
+Gaps that do ship, because the entry is judgeable without the figure:
+
+- The two rovers carry no propulsion and no Δv, which is a statement rather
+  than a gap: a rover is delivered, and `departs_from: []` says the same
+  thing.
 
 Two classes of entry do carry figures nobody published, and both are
 `kind: 'fictional'` and cited to `space_map_fitted` rather than to any work, so

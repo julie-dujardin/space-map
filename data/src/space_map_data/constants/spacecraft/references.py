@@ -62,6 +62,16 @@ SPACECRAFT_SOURCES: dict[str, SpacecraftReference] = {
         "published for the vehicle",
         "Saturn V escape performance",
     ),
+    "spacex_vehicle_pages_2026": SpacecraftReference(
+        "SpaceX 2026, Falcon 9 vehicle page",
+        "https://web.archive.org/web/20260808171200/https://www.spacex.com/vehicles/falcon-9",
+        "Advertised payload to LEO, GTO and Mars for the fully expended "
+        "Falcon 9 — the Mars figure is the only number past escape SpaceX "
+        "publishes, and the anchor the curve is rebuilt from. Advertised "
+        "accounting, not NASA-certified: the same page's Falcon Heavy "
+        "figures run about a third above the certified curve",
+        "Falcon 9 performance",
+    ),
     "ula_vulcan_2023": SpacecraftReference(
         "United Launch Alliance 2023, Vulcan Launch Systems User's Guide",
         "https://www.ulalaunch.com/docs/default-source/rockets/2023_vulcan_user_guide.pdf",

@@ -246,6 +246,29 @@ class Spacecraft:
         return frozenset(keys)
 
 
+def solver_can_judge(craft: Spacecraft) -> bool:
+    """Whether the travel solver could ever answer for this vehicle.
+
+    A launcher is judged on its curve, everything else on Δv, a constant
+    acceleration or an unlimited drive. An entry with none of those can only
+    ever answer "no published figure", on every route, forever — the export
+    drops it rather than shipping a row of shrugs, and the constants keep the
+    entry so the figure has somewhere to land when one is published.
+
+    Cargo is not a gap: a rover with an empty `departs_from` is answered with
+    "you don't fly this", which is a judgement.
+    """
+    if craft.kind == "launcher":
+        return craft.c3_curve is not None
+    if not craft.departs_from:
+        return True
+    return (
+        craft.unlimited_dv
+        or craft.accel_m_s2 is not None
+        or delta_v_kms(craft) is not None
+    )
+
+
 def delta_v_kms(craft: Spacecraft) -> float | None:
     """Ideal Δv from the rocket equation, or None if a term is missing.
 

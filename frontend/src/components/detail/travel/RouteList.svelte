@@ -34,28 +34,51 @@
 		'constant-thrust': m.travel_profile_constant_thrust
 	};
 
-	function blockedText(choice: OfferedRoute): string | null {
+	interface Blocked {
+		header: string;
+		detail: string;
+	}
+
+	function blockedText(choice: OfferedRoute): Blocked | null {
 		const result = state.feasibility(choice.route);
 		if (!result || result.status === 'ok') return null;
+		const out = (detail: string) => ({ header: m.travel_out_of_reach(), detail });
+		// "Out of reach" is a claim about the vehicle; these three are refusals
+		// to judge it — a missing figure, a curve whose source stopped early, a
+		// drive the impulsive model cannot price — and say so instead.
+		const unjudged = (detail: string) => ({ header: m.travel_unjudged(), detail });
 		if (result.status === 'over-c3') {
-			return m.travel_needs_c3({ value: choice.route.c3Km2S2.toFixed(0) });
+			return out(m.travel_needs_c3({ value: choice.route.c3Km2S2.toFixed(0) }));
 		}
 		if (result.status === 'insufficient-dv') {
-			return m.travel_needs_dv({ value: choice.route.inSpaceDvKms.toFixed(1) });
+			return out(m.travel_needs_dv({ value: choice.route.inSpaceDvKms.toFixed(1) }));
 		}
 		// The craft and the trip disagree about where it starts, which is a
 		// statement about the craft rather than about this particular route.
 		if (result.status === 'wrong-departure' && state.vehicle) {
-			return departureNote(state.vehicle);
+			return out(departureNote(state.vehicle));
 		}
 		// A launcher's payload is what it can send to *this* energy, so the same
 		// cargo clears one trajectory and not the next.
 		if (result.status === 'over-payload' && result.payloadKg !== undefined) {
-			return m.travel_lifts({
-				value: formatQuantity({ value: result.payloadKg, unit: 'kilogram' }, true)
-			});
+			return out(
+				m.travel_lifts({
+					value: formatQuantity({ value: result.payloadKg, unit: 'kilogram' }, true)
+				})
+			);
 		}
-		return m.travel_not_modelled();
+		if (result.status === 'unknown') {
+			return unjudged(m.travel_no_published_figure());
+		}
+		if (result.status === 'beyond-published') {
+			const end = state.vehicle?.c3Curve?.points.at(-1)?.[0];
+			return unjudged(
+				end === undefined
+					? m.travel_no_published_figure()
+					: m.travel_past_published({ value: end.toFixed(0) })
+			);
+		}
+		return unjudged(m.travel_not_modelled());
 	}
 </script>
 
@@ -90,8 +113,10 @@
 				</span>
 				<span class="shrink-0 text-end">
 					{#if blocked}
-						<span class="text-muted-foreground block text-xs">{m.travel_out_of_reach()}</span>
-						<span class="text-muted-foreground block text-[11px] tabular-nums">{blocked}</span>
+						<span class="text-muted-foreground block text-xs">{blocked.header}</span>
+						<span class="text-muted-foreground block text-[11px] tabular-nums"
+							>{blocked.detail}</span
+						>
 					{:else}
 						<span class="block text-sm font-semibold tabular-nums">
 							{formatTripTime(choice.route.tofDays)}

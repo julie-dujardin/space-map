@@ -81,6 +81,35 @@ _SATURN_V_POINTS = (
     (120.0, 4020.0),
 )
 
+# The one curve here that was rebuilt rather than read. SpaceX's documents
+# publish no escape performance for Falcon 9, but the website advertises
+# "payload to Mars: 4,020 kg" — one point past escape, which is all the
+# rocket-equation model needs. Anchor a stage there (taken as C3 = 10, with
+# effective Isp and inert mass fitted from the Falcon Heavy expendable curve —
+# the second stage is the same hardware) and it reproduces the site's own GTO
+# figure to 1.4%: the three advertised numbers are one curve, and this is it.
+#
+# Two honest limits. The points stop at C3 = 45 because rebuilding a sibling's
+# known curve the same way (Atlas V 401 → 551, shared Centaur) holds to 5% out
+# to there and falls apart past it. And the whole curve is on SpaceX's
+# advertised accounting: for Falcon Heavy that accounting sits about a third
+# above the NASA-certified curve at Mars energies — Europa Clipper's 6,065 kg
+# at C3 = 41.7 hugs the certified curve, not the website's — so against the
+# girija_2023 vehicles this curve reads optimistic, and says so in its source.
+_FALCON_9_POINTS = (
+    (-2.0, 5720.0),
+    (0.0, 5410.0),
+    (5.0, 4680.0),
+    (10.0, 4020.0),
+    (15.0, 3410.0),
+    (20.0, 2850.0),
+    (25.0, 2340.0),
+    (30.0, 1860.0),
+    (35.0, 1430.0),
+    (40.0, 1020.0),
+    (45.0, 650.0),
+)
+
 _SLS_BLOCK_1B_POINTS = (
     (-20.0, 50600.0),
     (-10.0, 43300.0),
@@ -277,7 +306,24 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
         ),
         group_slug="lv-saturn",
     ),
-    # No curve below this line, and the reason is the same for all three: each
+    # Fully expended, which is the configuration the website's figures are
+    # for. The curve is the rebuilt one — see _FALCON_9_POINTS.
+    Spacecraft(
+        id="falcon-9-expendable",
+        qid="Q249091",
+        kind="launcher",
+        variant=("expendable",),
+        propulsion="chemical",
+        status="active",
+        departs_from=frozenset({"surface"}),
+        c3_curve=C3Curve(
+            source="spacex_vehicle_pages_2026",
+            points=_FALCON_9_POINTS,
+            truncated=True,
+        ),
+        group_slug="lv-falcon",
+    ),
+    # No curve below this line, and the reason is the same for both: each
     # publishes payload to LEO and to GTO and nothing above them.
     #
     # Those two are points on this curve — a 185 km circular orbit is C3 = -61
@@ -285,19 +331,12 @@ LAUNCHERS: tuple[Spacecraft, ...] = (
     # stage to them and extrapolating overshoots the digitised curves of the
     # vehicles that do publish escape performance by 9% at C3 = 0 and by up to
     # 90% at C3 = 40, always high, because a headline to LEO is a different
-    # ascent flown for a different customer. Anchor the same fit on two points
-    # that are already past escape and it reproduces those curves to under 1%.
-    # So the missing figure is not the curve, it is one number above C3 = 0,
-    # and none of these three has ever published one.
-    Spacecraft(
-        id="falcon-9",
-        qid="Q249091",
-        kind="launcher",
-        propulsion="chemical",
-        status="active",
-        departs_from=frozenset({"surface"}),
-        group_slug="lv-falcon",
-    ),
+    # ascent flown for a different customer. Anchor the same fit on a point
+    # that is already past escape and it reproduces those curves to a few
+    # percent — which is how Falcon 9 above got its curve, and neither of
+    # these two has ever published a number past escape anywhere. Until one
+    # appears the export drops them: every route would answer "no published
+    # figure", and the entries stay here so the number has somewhere to land.
     Spacecraft(
         id="new-glenn",
         qid="Q26869616",

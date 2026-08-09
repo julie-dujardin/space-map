@@ -26,6 +26,7 @@ from space_map_data.constants.spacecraft.specs import (
     Measured,
     Spacecraft,
     delta_v_kms,
+    solver_can_judge,
 )
 
 CATALOGUE: dict[str, Spacecraft] = {
@@ -52,4 +53,5 @@ __all__ = [
     "Spacecraft",
     "SpacecraftReference",
     "delta_v_kms",
+    "solver_can_judge",
 ]
