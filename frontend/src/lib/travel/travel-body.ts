@@ -187,6 +187,32 @@ export function transferFrame(plan: TransferPlan | null): TransferFrame {
 }
 
 /**
+ * The body a transfer's positions are measured from, for anything that has to
+ * place them in the scene. Null when the plan has no frame at all.
+ *
+ * This is the frame the *elements* are in, which is not always the body the
+ * pricing calls its centre. A heliocentric arc is solved against the Sun's μ but
+ * every ancestor's elements are referenced to the solar-system barycentre, and
+ * the two are the better part of a million km apart — far enough to throw a
+ * drawn trajectory clear of the planets it joins. Two moons of one planet are
+ * the same story at the barycentre inside it.
+ */
+export function transferCenterId(
+	plan: TransferPlan,
+	origin: BodyData,
+	target: BodyData,
+	lookup: BodyLookup
+): string | null {
+	if (plan.kind === 'blocked') return null;
+	// One end is the centre, and `relativeState` differences the other against
+	// it, so the positions come out about the body itself.
+	if (plan.kind === 'system') return plan.primary === 'origin' ? origin.id : target.id;
+	// Siblings keep their own elements, which are about the parent they share.
+	if (plan.kind === 'sibling') return origin.parentId;
+	return heliocentricAncestor(origin, lookup)?.parentId ?? null;
+}
+
+/**
  * The body at the centre of a planetary barycentre, by the NAIF numbering the
  * export uses throughout: barycentre `naif-N` holds planet `naif-N99`. Null for
  * anything that is not one of the nine.

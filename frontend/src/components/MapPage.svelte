@@ -672,6 +672,7 @@
 					clockJd={clock.jd}
 					isMobile={isMobileViewport}
 					inert={bgInert}
+					onPathChange={(path) => scene?.setTravelPath(path)}
 					onClose={() => {
 						// Closing a trip lands on whichever end is framed, or on the body
 						// the camera was left with when neither end is chosen.

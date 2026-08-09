@@ -152,6 +152,31 @@ export const PARABOLIC_COMET: TravelBody = {
 };
 
 /**
+ * A second parabolic comet, the Comet of 1472, so a trip can be solved between
+ * two of them. Long past perihelion and a thousand AU out, which is what makes
+ * the pair interesting: the arc joining two receding comets is a hyperbola, not
+ * the ellipse every ordinary transfer is.
+ */
+export const PARABOLIC_COMET_FAR: TravelBody = {
+	id: 'spkid-1000639',
+	mu: 1e-9,
+	muEstimated: true,
+	radiusKm: 1,
+	elements: {
+		a: 0,
+		e: 1,
+		i: 170.866,
+		om: 292.873,
+		w: 245.728,
+		ma: 0,
+		n: 0,
+		epoch: 2258765.939,
+		q: 0.48589,
+		tp: 2258765.939
+	}
+};
+
+/**
  * Earth and its Moon the way the export describes them: both referred to the
  * barycentre they share, half a turn apart, with the barycentre 4,674 km from
  * Earth's centre — most of the way out to a parking orbit, which is why a lunar

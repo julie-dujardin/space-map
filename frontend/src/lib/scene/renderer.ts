@@ -90,6 +90,8 @@ import { collectDebugStats, type DebugStats } from './debug/stats';
 import { PointCloudSystem, type CloudViewInfo } from './pointclouds/system';
 import { rebaseTrailLocals, refreshBufferTrail } from './objects/trail/refresh';
 import { setTrailResolution } from './objects/trail/material';
+import { TravelPathOverlay } from './objects/travel/path-overlay';
+import type { TrajectoryPath } from '$lib/math/travel/path';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { updatePositions, refreshDeferredTrails } from './position/update-positions';
 import { PositionDiagnostics } from './position/diagnostics';
@@ -203,6 +205,7 @@ export class SceneRenderer {
 	private skyboxAdjuster!: SkyboxAdjuster;
 	private skyDebugMarkers!: SkyDebugMarkers;
 	private haloDebug!: HaloDebugOverlay;
+	private travelPath!: TravelPathOverlay;
 
 	private readonly focus: FocusState = {
 		focusTruePos: [0, 0, 0],
@@ -333,6 +336,8 @@ export class SceneRenderer {
 		this.skyboxAdjuster = new SkyboxAdjuster(this.scene);
 		this.skyDebugMarkers = new SkyDebugMarkers(this.scene);
 		this.haloDebug = new HaloDebugOverlay(this.canvas);
+		this.travelPath = new TravelPathOverlay(this.scene);
+		this.travelPath.setLayer(SceneRenderer.MAP_LAYER);
 		this.skyboxAdjuster.set(0, 0, 0);
 		void loadSkybox(this.scene, this.renderer, ctx);
 
@@ -505,6 +510,39 @@ export class SceneRenderer {
 			buildTrails(this.bodyObjects, this.scene, basis, this.clock.jd);
 			this.assignMapLayerToTrails();
 		});
+	}
+
+	/**
+	 * Draw a planned trajectory over the map, or clear it with null.
+	 *
+	 * The path arrives in its own frame; placing it needs the body it is measured
+	 * from, which is looked up per frame rather than resolved here — the centre
+	 * may still be streaming in when the planner first answers.
+	 */
+	setTravelPath(path: TrajectoryPath | null): void {
+		this.travelPath.set(path);
+		this.refreshTravelPath();
+	}
+
+	/**
+	 * Place the drawn path against this frame's positions.
+	 *
+	 * Both ends of the sum move: the centre body runs along its own orbit as the
+	 * clock ticks, and the basis follows the focus. Hidden rather than dropped
+	 * when the centre is not resident — the alternative is drawing the arc at
+	 * whatever sits at the origin.
+	 */
+	private refreshTravelPath(): void {
+		if (this.travelPath.isEmpty) return;
+		const centerId = this.travelPath.centerId;
+		const center = centerId ? this.ctx.getBody(centerId) : null;
+		if (!center) {
+			this.travelPath.setVisible(false);
+			return;
+		}
+		this.travelPath.setVisible(true);
+		this.travelPath.reposition(center.position, this.focus.focusTruePos);
+		this.travelPath.updateCameraOffset(this.camera.position);
 	}
 
 	/** Assign all current trails to MAP_LAYER so they can be hidden together by immersive mode. */
@@ -695,6 +733,8 @@ export class SceneRenderer {
 		// Catches lines updatePositions skipped (visible=false) that updateBodyVisibility
 		// just flipped on, so they don't render at a stale basis for one frame.
 		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd);
+
+		this.refreshTravelPath();
 
 		updateRingShaders(
 			this.bodyObjects,
@@ -1648,6 +1688,7 @@ export class SceneRenderer {
 		this.controls.removeEventListener('end', this.onControlsEnd);
 		this.controls.dispose();
 		this.haloDebug.dispose();
+		this.travelPath.dispose();
 		// Worker pool + cloud buffers — the biggest per-navigation leak.
 		this.pointClouds.dispose();
 		// renderer.dispose() frees only its own caches, not our geometries/

@@ -146,7 +146,8 @@ export function buildThinLineFromArrays(
 	return line;
 }
 
-/** Wrap pre-computed thin arrays into a fat-line `Mesh`. */
+/** Wrap pre-computed thin arrays into a fat-line `Mesh`. `brightness` defaults
+ *  to the shade orbit trails are drawn at; see {@link makeFatTrailMaterial}. */
 export function buildFatLineFromThin(
 	capacity: number,
 	posArr: Float32Array,
@@ -154,11 +155,12 @@ export function buildFatLineFromThin(
 	fullAlphas: Float32Array,
 	total: number,
 	color: string,
-	lineWidth: number
+	lineWidth: number,
+	brightness?: number
 ): Mesh {
 	const geometry = makeFatTrailGeometry(capacity);
 	writeFatTrailVertices(geometry, posArr, trailAlphas, fullAlphas, total);
-	const mesh = new Mesh(geometry, makeFatTrailMaterial(color, lineWidth));
+	const mesh = new Mesh(geometry, makeFatTrailMaterial(color, lineWidth, brightness));
 	mesh.renderOrder = TRAIL_RENDER_ORDER;
 	return mesh;
 }

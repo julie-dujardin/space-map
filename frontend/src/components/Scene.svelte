@@ -11,6 +11,7 @@
 		type PositionedBody
 	} from '$lib/types/objects';
 	import { kmToScene } from '$lib/math/units';
+	import type { TrajectoryPath } from '$lib/math/travel/path';
 	import { page } from '$app/state';
 	import { sphericalToCartesian } from '$lib/math/spherical';
 	import { parseUrl, urlTypeFromId } from '$lib/state/url';
@@ -155,6 +156,11 @@
 
 	export function setSelectedFeature(featureId: number | null): void {
 		renderer?.setSelectedFeature(featureId);
+	}
+
+	/** Draw the trip the planner is showing, or clear it with null. */
+	export function setTravelPath(path: TrajectoryPath | null): void {
+		renderer?.setTravelPath(path);
 	}
 
 	function isLive(): boolean {

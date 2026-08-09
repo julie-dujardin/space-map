@@ -1,9 +1,13 @@
 import { Color, DoubleSide, ShaderMaterial, Vector2, Vector3 } from 'three';
 
 // Trails read directly as the body's halo colour under ACES; scale down so
-// they render as a darker shade rather than matching the halo.
-function overlayColor(color: string): Color {
-	return new Color(color).multiplyScalar(0.5);
+// they render as a darker shade rather than matching the halo. Lines that are
+// not a body's orbit — a planned trajectory — pass their own scale: they are
+// what the reader is looking at, and a shade of the furniture is not that.
+const TRAIL_DIM = 0.5;
+
+function overlayColor(color: string, scale: number): Color {
+	return new Color(color).multiplyScalar(scale);
 }
 
 // Shared between every fat trail material so resize() updates them all in
@@ -16,13 +20,13 @@ export function setTrailResolution(width: number, height: number): void {
 	TRAIL_RESOLUTION.set(width, height);
 }
 
-export function makeTrailMaterial(color: string): ShaderMaterial {
+export function makeTrailMaterial(color: string, brightness = TRAIL_DIM): ShaderMaterial {
 	return new ShaderMaterial({
 		transparent: true,
 		// Transparent line must not write depth, or it culls clouds/point clouds behind it.
 		depthWrite: false,
 		uniforms: {
-			uColor: { value: overlayColor(color) },
+			uColor: { value: overlayColor(color, brightness) },
 			uCenterOffset: { value: new Vector3() },
 			uAlphaMultiplier: { value: 1.0 },
 			uAlphaMin: { value: 0.0 },
@@ -66,14 +70,18 @@ export function makeTrailMaterial(color: string): ShaderMaterial {
  * carries the segment's other endpoint so the shader can compute screen-space
  * direction without an extra draw call.
  */
-export function makeFatTrailMaterial(color: string, lineWidth: number): ShaderMaterial {
+export function makeFatTrailMaterial(
+	color: string,
+	lineWidth: number,
+	brightness = TRAIL_DIM
+): ShaderMaterial {
 	return new ShaderMaterial({
 		transparent: true,
 		// Transparent line must not write depth, or it culls clouds/point clouds behind it.
 		depthWrite: false,
 		side: DoubleSide,
 		uniforms: {
-			uColor: { value: overlayColor(color) },
+			uColor: { value: overlayColor(color, brightness) },
 			uCenterOffset: { value: new Vector3() },
 			uAlphaMultiplier: { value: 1.0 },
 			uAlphaMin: { value: 0.0 },

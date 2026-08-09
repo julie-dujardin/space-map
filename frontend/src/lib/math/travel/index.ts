@@ -22,6 +22,11 @@
  * body, searched over a horizon of years rather than one synodic period. See
  * `assist`.
  *
+ * A route says what a trip costs, not where it goes. Drawing one needs the
+ * second thing, so `path` re-derives the arcs from the same inputs the route was
+ * priced from and walks them with `propagate` — the geometry and the ladder
+ * therefore cannot disagree, because neither is stored.
+ *
  * Scope limits worth knowing: transfers are patched-conic legs about one primary
  * (a moon needs its own leg from its planet), a swing-by route carries exactly
  * one pass, only the zero-revolution Lambert branch is solved, and the manoeuvre
@@ -56,6 +61,18 @@ export {
 
 export type { Route, RouteLeg, RouteOptions, LegKind } from './route';
 export { buildRoute } from './route';
+
+export { propagateState } from './propagate';
+
+export type {
+	PathArc,
+	PathArcKind,
+	PathOptions,
+	PathStop,
+	PathStopKind,
+	TrajectoryPath
+} from './path';
+export { buildTrajectoryPath } from './path';
 
 export { buildConstantThrustRoute } from './brachistochrone';
 

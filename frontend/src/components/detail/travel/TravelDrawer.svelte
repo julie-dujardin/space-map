@@ -20,6 +20,7 @@
 	import { fetchObjectDetail, type GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
+	import type { TrajectoryPath } from '$lib/math/travel';
 	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
 	import { DEFAULT_TRIP } from '$lib/travel/trip';
 	import { resolveTripBodies } from '$lib/travel/resolve';
@@ -41,6 +42,9 @@
 		isMobile: boolean;
 		inert?: boolean;
 		onClose: () => void;
+		/** The trajectory being read, for the scene to draw; null when there is
+		 *  none. */
+		onPathChange: (path: TrajectoryPath | null) => void;
 	}
 	let {
 		fromId,
@@ -50,7 +54,8 @@
 		clockJd,
 		isMobile,
 		inert = false,
-		onClose
+		onClose,
+		onPathChange
 	}: Props = $props();
 
 	// The planner reasons from a "now" captured when the trip opens, not from the
@@ -287,6 +292,7 @@
 				{originDetail}
 				{targetDetail}
 				{trip}
+				{onPathChange}
 				onTripChange={(next) => appState?.setTrip(next)}
 				onOriginChange={(pick: TravelEndpointPick) =>
 					appState?.setNav(

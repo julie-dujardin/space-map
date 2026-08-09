@@ -19,17 +19,20 @@
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatJulianDate } from '$lib/format/date';
 	import {
+		buildTrajectoryPath,
 		canDepartFrom,
 		checkFeasibility,
 		crewCapacity,
 		hohmannTransferDays,
 		nextTransferWindows,
 		systemArcBounds,
+		type TrajectoryPath,
 		type TravelBody
 	} from '$lib/math/travel';
 	import {
 		lookupIn,
 		toTravelBody,
+		transferCenterId,
 		transferFrame,
 		transferPlan,
 		type TransferPlan
@@ -91,6 +94,9 @@
 		onSwap: () => void;
 		/** Hand the terms back out after any change, for the URL to mirror. */
 		onTripChange: (trip: TripState) => void;
+		/** The trajectory being read, as geometry for the map to draw. Null
+		 *  whenever there is nothing to show. */
+		onPathChange: (path: TrajectoryPath | null) => void;
 	}
 	let {
 		origin,
@@ -111,7 +117,8 @@
 		onOriginChange,
 		onTargetChange,
 		onSwap,
-		onTripChange
+		onTripChange,
+		onPathChange
 	}: Props = $props();
 
 	// Seeded once; from here on the two are kept in step by the effects below.
@@ -273,6 +280,67 @@
 	});
 
 	$effect(() => () => panel.dispose());
+
+	// What the map is drawing, and what would change it. The solve effect above
+	// re-runs several times a second, handing back a fresh (and usually identical)
+	// route object each time; rebuilding a few hundred propagated points off every
+	// one of those would be work nobody asked for. So the geometry is keyed on
+	// what actually shapes it, and only a change in the key rebuilds.
+	let pathKey = $derived.by(() => {
+		const route = panel.selectedRoute;
+		if (!route || !plan || !origin || !target) return null;
+		const centerId = transferCenterId(plan, origin, target, lookup);
+		if (!centerId) return null;
+		const via = route.flybys?.[0];
+		return [
+			centerId,
+			route.departureId,
+			route.targetId,
+			route.departJd,
+			route.tofDays,
+			route.departureMode,
+			route.arrivalMode,
+			route.constantThrust ?? '',
+			via ? `${via.bodyId}@${via.jd}` : '',
+			frame.systemPrimary ?? '',
+			frame.centralMu ?? ''
+		].join('|');
+	});
+
+	// One effect owns the drawn path, the way one owns the solve. Everything it
+	// reads beyond the key is untracked, so a route object replaced with an equal
+	// one cannot get the geometry rebuilt behind the key's back.
+	$effect(() => {
+		const key = pathKey;
+		untrack(() => {
+			if (key === null) {
+				onPathChange(null);
+				return;
+			}
+			const route = panel.selectedRoute;
+			const centerId =
+				plan && origin && target ? transferCenterId(plan, origin, target, lookup) : null;
+			if (!route || !centerId || !originTravel || !targetTravel) {
+				onPathChange(null);
+				return;
+			}
+			const path = buildTrajectoryPath(originTravel, targetTravel, route, {
+				centerId,
+				centralMu: frame.centralMu,
+				systemPrimary: frame.systemPrimary
+			});
+			if (!path) {
+				console.debug(
+					`[travel] no drawable path for ${route.departureId} → ${route.targetId} ` +
+						`(depart ${route.departJd}, ${route.tofDays} d)`
+				);
+			}
+			onPathChange(path);
+		});
+	});
+
+	// Leaving the planner takes its trajectory off the map with it.
+	$effect(() => () => onPathChange(null));
 
 	// One end is enough: exchanging it with an empty one turns "going to Mars"
 	// into "leaving Mars", which is how half a trip gets turned round.
