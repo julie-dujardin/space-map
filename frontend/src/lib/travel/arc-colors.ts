@@ -7,7 +7,13 @@ import type { LegKind } from '$lib/math/travel';
 export const ARC_COLORS: Record<PathArcKind, string> = {
 	cruise: '#7fdbff',
 	boost: '#ffb454',
-	brake: '#ff8c69'
+	brake: '#ff8c69',
+	spiral: '#c9a0ff',
+	// The same drive, a shade darker: these two stretches are the crossing's own
+	// spiral wound round a body, drawn along the body's path because that is
+	// where the craft is.
+	'spiral-out': '#9b7fd4',
+	'spiral-in': '#9b7fd4'
 };
 
 /**
@@ -17,6 +23,11 @@ export const ARC_COLORS: Record<PathArcKind, string> = {
  * because it is the one leg that costs time instead of propellant.
  */
 export const PHASE_COLORS: Partial<Record<LegKind, string>> = {
-	...ARC_COLORS,
+	cruise: ARC_COLORS.cruise,
+	boost: ARC_COLORS.boost,
+	brake: ARC_COLORS.brake,
+	'powered-cruise': ARC_COLORS.spiral,
+	'spiral-out': ARC_COLORS['spiral-out'],
+	'spiral-in': ARC_COLORS['spiral-in'],
 	aerobrake: '#8fd9a8'
 };

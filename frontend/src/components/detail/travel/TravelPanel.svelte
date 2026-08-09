@@ -338,17 +338,23 @@
 		void panel.solve(from, to, nowJd, frame);
 	});
 
-	// The constant-thrust arc is its own effect: it turns on the craft, which the
-	// solve above deliberately ignores — a different ship is not a different
-	// search — and it answers without a worker, so it costs nothing to redo.
+	// The two trajectories that come off the craft are their own effect: they turn
+	// on the ship, which the solve above deliberately ignores — a different ship is
+	// not a different search — and they answer without a worker, so they cost
+	// nothing to redo. The cargo is read for the spiral alone, which is the one
+	// trajectory a loaded hold makes slower as well as dearer.
 	$effect(() => {
 		const from = originTravel;
 		const to = targetTravel;
+		const payloadKg = panel.payloadKg;
+		void payloadKg;
 		if (block || !from || !to) {
 			panel.torch = null;
+			panel.spiral = null;
 			return;
 		}
 		panel.updateTorch(from, to, nowJd, frame);
+		panel.updateSpiral(from, to, nowJd, frame);
 	});
 
 	// And the swing-by hunt is a third, for the same reason again: it sweeps a
@@ -397,6 +403,7 @@
 			route.departureMode,
 			route.arrivalMode,
 			route.constantThrust ?? '',
+			route.lowThrust?.accelMs2 ?? '',
 			via ? `${via.bodyId}@${via.jd}` : '',
 			frame.systemPrimary ?? '',
 			frame.centralMu ?? ''
@@ -452,6 +459,7 @@
 			route.departureMode,
 			route.arrivalMode,
 			route.constantThrust ?? '',
+			route.lowThrust?.accelMs2 ?? '',
 			(route.flybys ?? []).map((flyby) => `${flyby.bodyId}@${flyby.jd}`).join(','),
 			originName ?? '',
 			targetName ?? ''
@@ -488,9 +496,15 @@
 	// the picker for a hand-picked window with it.
 	// A swing-by is off the field for a different reason than a constant-thrust
 	// arc: it departs years outside the grid's own span, so the point it would be
-	// marked at is not on the picture at all.
+	// marked at is not on the picture at all. A spiral is off it for both reasons
+	// at once — it is no Lambert arc, and its departure is wherever the phase
+	// closes.
 	let windowGrid = $derived(
-		panel.selectedRoute?.constantThrust || panel.selectedRoute?.flybys ? null : panel.grid
+		panel.selectedRoute?.constantThrust ||
+			panel.selectedRoute?.lowThrust ||
+			panel.selectedRoute?.flybys
+			? null
+			: panel.grid
 	);
 
 	let anyEnd = $derived(originPicked || targetPicked);

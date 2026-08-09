@@ -229,6 +229,96 @@ describe('TravelPanelState constant-thrust arc', () => {
 	});
 });
 
+describe('TravelPanelState spiral', () => {
+	/** Dawn: the drive the impulsive routes exist to be refused by. */
+	const DAWN = {
+		id: 'dawn',
+		kind: 'probe',
+		propulsion: 'electric',
+		status: 'retired',
+		departsFrom: ['orbit'],
+		dryMassKg: { value: 793, source: 'test' },
+		propellantMassKg: { value: 425, source: 'test' },
+		ispS: { value: 3100, source: 'test' },
+		thrustN: { value: 0.092, source: 'test' },
+		// Derived in the pipeline from the three above, and carried in the export.
+		dvKms: 3100 * 9.80665 * Math.log(1218 / 793) * 1e-3
+	} as unknown as Vehicle;
+
+	async function chosen(): Promise<TravelPanelState> {
+		const panel = new TravelPanelState({ ...DEFAULT_TRIP, originMode: 'low-orbit' });
+		panel.acceptVehicles([DAWN]);
+		await panel.solve(EARTH, MARS, J2000);
+		panel.selectVehicle('dawn');
+		panel.updateSpiral(EARTH, MARS, J2000);
+		return panel;
+	}
+
+	// The whole point of the row: the craft that can fly none of the three above
+	// it has one of its own, and it is the one selected.
+	it('leads the list once a craft that cannot burn is chosen', async () => {
+		const panel = await chosen();
+		expect(panel.offered[0].profile).toBe('low-thrust');
+		expect(panel.selectedProfile).toBe('low-thrust');
+		expect(panel.selectedRoute?.lowThrust?.accelMs2).toBeCloseTo(0.092 / 1218, 12);
+	});
+
+	// The refusal that started all this stays a refusal on the routes it is about,
+	// and stops being one on the route that is about this drive.
+	it('judges the spiral on Δv where the Lambert arcs cannot be judged at all', async () => {
+		const panel = await chosen();
+		const spiral = panel.offered.find((choice) => choice.profile === 'low-thrust')!;
+		const fast = panel.offered.find((choice) => choice.profile === 'fast')!;
+		expect(panel.feasibility(fast.route)?.status).toBe('not-modelled');
+		// Out of reach rather than unjudged: escaping low Earth orbit on the drive
+		// alone costs more than Dawn ever carried, and that is an answer.
+		expect(panel.feasibility(spiral.route)?.status).toBe('insufficient-dv');
+	});
+
+	it('withdraws the spiral with the craft', async () => {
+		const panel = await chosen();
+		panel.selectVehicle('dawn');
+		panel.updateSpiral(EARTH, MARS, J2000);
+		expect(panel.spiral).toBeNull();
+		expect(panel.selectedProfile).toBe('balanced');
+	});
+
+	// Same wait for the catalogue as the held arc: a pass taken before it lands
+	// must not read as "this craft flies no spiral" and drop the link's own choice.
+	it('keeps a spiral a trip arrived selecting, across the wait for the catalogue', async () => {
+		const panel = new TravelPanelState({
+			...DEFAULT_TRIP,
+			originMode: 'low-orbit',
+			vehicleId: 'dawn',
+			profile: 'low-thrust'
+		});
+		await panel.solve(EARTH, MARS, J2000);
+		panel.updateSpiral(EARTH, MARS, J2000);
+		expect(panel.selectedProfile).toBe('low-thrust');
+
+		panel.acceptVehicles([DAWN]);
+		panel.updateSpiral(EARTH, MARS, J2000);
+
+		expect(panel.spiral).not.toBeNull();
+		expect(panel.selectedProfile).toBe('low-thrust');
+	});
+
+	// Nothing at 76 µm/s² leaves a pad, so the trip that starts on one has no
+	// spiral to offer and the list is the solver's own again.
+	it('offers none from a surface', async () => {
+		const panel = new TravelPanelState({ ...DEFAULT_TRIP, originMode: 'surface' });
+		panel.acceptVehicles([DAWN]);
+		await panel.solve(EARTH, MARS, J2000);
+		panel.selectVehicle('dawn');
+		// Choosing it moved the origin off the ground, since Dawn departs from
+		// orbit; the trip that insists is the one with no spiral to offer.
+		expect(panel.originMode).toBe('low-orbit');
+		panel.originMode = 'surface';
+		panel.updateSpiral(EARTH, MARS, J2000);
+		expect(panel.spiral).toBeNull();
+	});
+});
+
 describe('TravelPanelState trip terms', () => {
 	it('opens on the terms it was handed', () => {
 		const trip = {

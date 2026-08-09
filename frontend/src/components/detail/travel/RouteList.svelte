@@ -21,7 +21,7 @@
 	import type { RouteOption } from '$lib/travel/trip';
 	import { formatDurationNarrow } from '$lib/format/duration';
 	import { formatAcceleration, formatDvBrief } from '$lib/travel/format';
-	import { routeDurationDays } from '$lib/math/travel';
+	import { routeDurationDays, type Route } from '$lib/math/travel';
 	import { departureNote } from './vehicle-labels';
 
 	interface Props {
@@ -40,8 +40,15 @@
 		efficient: m.travel_profile_efficient,
 		custom: m.travel_profile_custom,
 		'constant-thrust': m.travel_profile_constant_thrust,
+		'low-thrust': m.travel_profile_low_thrust,
 		'gravity-assist': m.travel_profile_gravity_assist
 	};
+
+	/** How hard a route's drive pushes, on the two kinds flown under power the
+	 *  whole way; null on the ones that coast. */
+	function driveAccel(route: Route): number | null {
+		return route.constantThrust ?? route.lowThrust?.accelMs2 ?? null;
+	}
 
 	/** The body a route goes past, named, or null when it goes straight there. */
 	function via(choice: OfferedRoute): string | null {
@@ -98,7 +105,11 @@
 					: m.travel_past_published({ value: end.toFixed(0) })
 			);
 		}
-		return unjudged(m.travel_not_modelled());
+		// The last one left: a drive that cannot make an impulsive burn, faced with
+		// a trajectory built out of two of them. It has a row of its own further up
+		// the list, so this says which fact is in the way rather than only that one
+		// is.
+		return unjudged(m.travel_thrust_too_low());
 	}
 </script>
 
@@ -119,13 +130,13 @@
 			>
 				<span class="min-w-0 flex-1">
 					<!-- The acceleration rides on the name because it is what tells one
-					     constant-thrust arc from another: the dates below say the same
-					     thing whatever the drive, and this is the only thing that does
-					     not. -->
+					     powered route from another: the dates below say the same thing
+					     whatever the drive, and this is the only thing that does not. On
+					     a spiral it is also the whole explanation of the duration. -->
 					<span class="block text-sm font-medium">
-						{PROFILE_LABEL[choice.profile]()}{#if choice.route.constantThrust}<span
+						{PROFILE_LABEL[choice.profile]()}{#if driveAccel(choice.route) !== null}<span
 								class="text-muted-foreground ms-1.5 text-xs font-normal tabular-nums"
-								>{formatAcceleration(choice.route.constantThrust)}</span
+								>{formatAcceleration(driveAccel(choice.route) ?? 0)}</span
 							>{:else if viaName}<span class="text-muted-foreground ms-1.5 text-xs font-normal"
 								>{m.travel_via({ body: viaName })}</span
 							>{/if}

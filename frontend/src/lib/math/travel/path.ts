@@ -16,9 +16,10 @@
 import type { TravelBody } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { solveLambert } from './lambert';
+import { rebuildSpiral } from './low-thrust';
 import { parkingRadiusKm } from './maneuvers';
 import { propagateState } from './propagate';
-import type { Route, RouteOptions } from './route';
+import { routeDurationDays, type Route, type RouteOptions } from './route';
 import { elementsToState } from './state';
 import { relativeState, solveRadialArc } from './system-transfer';
 import { add, cross, dot, norm, normalize, scale, sub, type Vec3 } from './vec3';
@@ -41,9 +42,17 @@ export interface PathStop {
 	dvKms: number;
 }
 
-/** How a stretch of the trip is flown. A cruise coasts; the other two are the
- *  halves of a drive held from one end to the other. */
-export type PathArcKind = 'cruise' | 'boost' | 'brake';
+/**
+ * How a stretch of the trip is flown.
+ *
+ * A cruise coasts, the next two are the halves of a drive held from one end to
+ * the other, and the last three are what a drive too weak to burn does: the
+ * crossing, and the months of revolutions round a body at each end of it. Those
+ * two are drawn as the body's own path, because at the scale a transfer is drawn
+ * at, that is exactly where the craft is — the spiral itself is thousands of
+ * loops inside a dot.
+ */
+export type PathArcKind = 'cruise' | 'boost' | 'brake' | 'spiral' | 'spiral-out' | 'spiral-in';
 
 export interface PathArc {
 	kind: PathArcKind;
@@ -113,12 +122,15 @@ export function pathViewpoint(
 		Math.max(MIN_VIEW_RANGE_KM, norm(sub(arc.points[arc.points.length - 1], arc.points[0])));
 
 	// A stretch: the arc that runs alongside it, or failing an exact match the one
-	// its middle falls inside.
+	// its middle falls inside. The two spiral ends are skipped — they are a body's
+	// own path, so framing the swath of orbit they cover would point the camera
+	// anywhere but at the body the craft is going round.
 	if (endJd > startJd) {
 		const middle = (startJd + endJd) / 2;
+		const crossings = path.arcs.filter((a) => a.kind !== 'spiral-out' && a.kind !== 'spiral-in');
 		const arc =
-			path.arcs.find((a) => a.startJd <= startJd + 1e-6 && a.endJd >= endJd - 1e-6) ??
-			path.arcs.find((a) => a.startJd <= middle && a.endJd >= middle);
+			crossings.find((a) => a.startJd <= startJd + 1e-6 && a.endJd >= endJd - 1e-6) ??
+			crossings.find((a) => a.startJd <= middle && a.endJd >= middle);
 		if (!arc) return null;
 		return {
 			r: arc.points[Math.floor(arc.points.length / 2)],
@@ -242,6 +254,13 @@ export function buildTrajectoryPath(
 		samples = DEFAULT_SAMPLES
 	} = options;
 
+	if (route.lowThrust) {
+		// A spiral inside one system is thousands of revolutions deep, which is a
+		// shape rather than a line: there is nothing to draw between the two ends
+		// that would not be a lie about how many times round it went.
+		if (systemPrimary) return null;
+		return spiralPath(departure, target, route, centerId, centralMu);
+	}
 	if (systemPrimary) {
 		return systemPath(departure, target, route, centerId, systemPrimary, samples);
 	}
@@ -324,6 +343,177 @@ function heldDrivePath(
 	const to = elementsToState(target.elements, route.arriveJd, centralMu);
 	if (!from || !to) return null;
 	return straightCrossing(from.r, to.r, route, centerId, departure.id, target.id, samples);
+}
+
+/** Points along a drawn spiral, and the most revolutions worth drawing. Past a
+ *  few dozen loops there are not enough points left per revolution for the line
+ *  to be one, and the honest picture is none. */
+const SPIRAL_DRAW_STEPS = 1024;
+const SPIRAL_MAX_REVOLUTIONS = 40;
+
+/** Points along a stretch spent going round a body: enough to read as its orbit
+ *  rather than as a chord across it. */
+const RIDING_SAMPLES = 64;
+
+/**
+ * The stretch of trip spent at `body` between two dates, as the body's own path.
+ *
+ * Null when there is no stretch to draw. A spiral that takes an afternoon is a
+ * point, and a flyby has no arrival spiral at all.
+ */
+function ridingWith(
+	body: TravelBody,
+	fromJd: number,
+	toJd: number,
+	centralMu: number,
+	kind: PathArcKind
+): PathArc | null {
+	if (!(toJd > fromJd)) return null;
+	const points: Vec3[] = [];
+	const jds: number[] = [];
+	for (let i = 0; i < RIDING_SAMPLES; i++) {
+		const jd = fromJd + ((toJd - fromJd) * i) / (RIDING_SAMPLES - 1);
+		const state = elementsToState(body.elements, jd, centralMu);
+		if (!state) return null;
+		points.push(state.r);
+		jds.push(jd);
+	}
+	return { kind, points, jds, startJd: fromJd, endJd: toJd };
+}
+
+/** Rotate `v` about the unit axis `n` by `angle`, Rodrigues. */
+function rotateAbout(v: Vec3, n: Vec3, angle: number): Vec3 {
+	const cos = Math.cos(angle);
+	const sin = Math.sin(angle);
+	return add(add(scale(v, cos), scale(cross(n, v), sin)), scale(n, dot(n, v) * (1 - cos)));
+}
+
+/** Angle from `a` to `b` about `n`, radians in [0, 2π). */
+function angleAbout(a: Vec3, b: Vec3, n: Vec3): number {
+	const angle = Math.atan2(dot(cross(a, b), n), dot(a, b));
+	return angle < 0 ? angle + Math.PI * 2 : angle;
+}
+
+/**
+ * The crossing of a spiral route: the orbit slowly opening out from one body's
+ * to the other's, over however many revolutions that takes.
+ *
+ * The radii and the angle come from the same transfer the route was priced with,
+ * rebuilt rather than carried. What is imposed on top is the two ends: the model
+ * matches circular orbits, and the bodies are on eccentric inclined ones, so the
+ * drawn arc is stretched onto where they actually are — a correction of a few
+ * percent, spread along the arc, against a picture that would otherwise miss the
+ * planet it is a trip to.
+ *
+ * The two end spirals are drawn as the body's own path over the months they
+ * take. They happen inside a sphere of influence, which at this scale is a dot —
+ * but they are a third of the trip, and leaving them out stopped the craft dead
+ * at the encounter while the clock ran on for another year.
+ */
+function spiralPath(
+	departure: TravelBody,
+	target: TravelBody,
+	route: Route,
+	centerId: string,
+	centralMu: number
+): TrajectoryPath | null {
+	const rebuilt = rebuildSpiral(
+		departure,
+		target,
+		route,
+		{ arrivalMode: route.arrivalMode, centralMu },
+		SPIRAL_DRAW_STEPS
+	);
+	if (!rebuilt) return null;
+	const { transfer, startJd } = rebuilt;
+
+	const revolutions = transfer.sweepRad / (Math.PI * 2);
+	if (!(revolutions <= SPIRAL_MAX_REVOLUTIONS)) return null;
+
+	const from = elementsToState(departure.elements, startJd, centralMu);
+	const to = elementsToState(target.elements, route.arriveJd, centralMu);
+	if (!from || !to) return null;
+
+	const u0 = normalize(from.r);
+	const u1 = normalize(to.r);
+	const normal = normalize(cross(from.r, from.v));
+	if (!(norm(u0) > 0) || !(norm(u1) > 0) || !(norm(normal) > 0)) return null;
+
+	// The revolutions come from the model; which point of the last one the target
+	// is at comes from the target. They agree to within a fraction of a turn —
+	// that is what the departure date was solved for — so the drawn sweep is the
+	// modelled one rounded onto the arrival.
+	const closing = angleAbout(u0, u1, normal);
+	const turns = Math.max(0, Math.round((transfer.sweepRad - closing) / (Math.PI * 2)));
+	const sweep = closing + turns * Math.PI * 2;
+	if (!(sweep > 0)) return null;
+
+	// What is left over once the planar sweep has run: the two orbits are not in
+	// the same plane, so the arc is turned out of the departure's as it goes.
+	const planarEnd = rotateAbout(u0, normal, sweep);
+	const tilt = Math.acos(Math.max(-1, Math.min(1, dot(planarEnd, u1))));
+	const tiltAxis = normalize(cross(planarEnd, u1));
+
+	const startRadius = norm(from.r);
+	const endRadius = norm(to.r);
+	const modelStart = transfer.radiiKm[0];
+	const modelEnd = transfer.radiiKm[transfer.radiiKm.length - 1];
+	if (!(modelStart > 0) || !(modelEnd > 0)) return null;
+
+	const points: Vec3[] = [];
+	const jds: number[] = [];
+	const count = transfer.radiiKm.length;
+	for (let i = 0; i < count; i++) {
+		// Along the arc by angle, which is what both corrections are spread over.
+		const along =
+			transfer.sweepRad > 0 ? transfer.sweptRad[i] / transfer.sweepRad : i / (count - 1);
+		let direction = rotateAbout(u0, normal, sweep * along);
+		if (tilt > 0 && norm(tiltAxis) > 0) {
+			direction = rotateAbout(direction, tiltAxis, tilt * along);
+		}
+		const stretch = (startRadius / modelStart) * (1 - along) + (endRadius / modelEnd) * along;
+		points.push(scale(direction, transfer.radiiKm[i] * stretch));
+		jds.push(startJd + transfer.elapsedDays[i]);
+	}
+	if (points.length < 2) return null;
+
+	// Climbing out of one well and dropping into the other: the craft is going
+	// round a body, and the body is going round the Sun, so what a heliocentric
+	// picture can show of it is the body's own path over those months.
+	const arcs: PathArc[] = [];
+	const climb = ridingWith(departure, route.departJd, startJd, centralMu, 'spiral-out');
+	if (climb) arcs.push(climb);
+	arcs.push({ kind: 'spiral', points, jds, startJd, endJd: route.arriveJd });
+	const drop = ridingWith(
+		target,
+		route.arriveJd,
+		route.departJd + routeDurationDays(route),
+		centralMu,
+		'spiral-in'
+	);
+	if (drop) arcs.push(drop);
+
+	return {
+		centerId,
+		arcs,
+		stops: [
+			{
+				kind: 'departure',
+				jd: route.departJd,
+				r: arcs[0].points[0],
+				bodyId: departure.id,
+				dvKms: dvOf(route, ['spiral-out'])
+			},
+			{
+				kind: 'arrival',
+				jd: route.arriveJd,
+				r: to.r,
+				bodyId: target.id,
+				dvKms: dvOf(route, ['spiral-in', 'descent'])
+			}
+		],
+		meeting: { bodyId: target.id, jd: route.arriveJd, r: to.r }
+	};
 }
 
 /** The two halves of a held drive between two fixed points. */

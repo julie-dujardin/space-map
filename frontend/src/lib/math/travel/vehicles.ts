@@ -8,6 +8,7 @@
  * are different answers.
  */
 
+import type { LowThrustDrive } from './low-thrust';
 import type { DepartureMode } from './maneuvers';
 import { routeDurationDays, type Route } from './route';
 
@@ -140,9 +141,10 @@ export interface Feasibility {
 /**
  * Acceleration below which a burn stops being usefully impulsive.
  *
- * A Lambert arc assumes the Δv is spent at a point. At 10 µm/s² — Dawn's ion
- * drive was an order of magnitude under this — a kilometre a second takes
- * three years to deliver, and the arc the solver drew never existed.
+ * A Lambert arc assumes the Δv is spent at a point. At 100 µm/s² a kilometre a
+ * second takes four months to deliver, and the arc the solver drew never
+ * existed. Dawn's ion drive managed 76, Psyche's Hall thrusters 87, so the
+ * distinction this draws is the one the hardware actually falls on.
  */
 const IMPULSIVE_FLOOR_M_S2 = 1e-4;
 
@@ -189,6 +191,32 @@ export function canAeroAssist(vehicle: Vehicle): boolean {
  */
 export function constantThrustAccelMs2(vehicle: Vehicle): number | undefined {
 	return vehicle.unlimitedDv ? vehicle.accelMs2?.value : undefined;
+}
+
+/**
+ * The drive a spiral route is flown with, or undefined when the craft flies none.
+ *
+ * Wider than `isLowThrust` on purpose: a spiral is what any electric drive flies,
+ * whichever side of the impulsive floor it happens to land on, and a stage that
+ * takes a month over a burn is worth pricing both ways. What it does need is the
+ * hardware — thrust and the masses behind it — since a Δv alone says nothing
+ * about how long it takes to spend.
+ *
+ * Cargo joins the dry mass, so a loaded ship accelerates more slowly and takes
+ * longer over the same trip. That is the one place a manifest reaches into a
+ * trajectory rather than merely being carried along it.
+ */
+export function lowThrustDrive(vehicle: Vehicle, payloadKg = 0): LowThrustDrive | undefined {
+	if (vehicle.propulsion !== 'electric' && !isLowThrust(vehicle)) return undefined;
+	const dry = vehicle.dryMassKg?.value;
+	const propellant = vehicle.propellantMassKg?.value;
+	const isp = vehicle.ispS?.value;
+	const thrust = vehicle.thrustN?.value;
+	if (!dry || !propellant || !isp || !thrust) return undefined;
+	return {
+		accelMs2: thrust / (dry + propellant + payloadKg),
+		veKms: (isp * G0_M_S2) / 1000
+	};
 }
 
 /** Whether the vehicle's thrust is too low for the impulsive model to hold. */
@@ -286,7 +314,10 @@ export function dvWithPayloadKms(vehicle: Vehicle, payloadKg: number): number | 
 export function maxPayloadKgForRoute(vehicle: Vehicle, route: Route): number | null {
 	if (route.constantThrust || vehicle.unlimitedDv) return null;
 	if (vehicle.kind === 'launcher') return payloadForC3(vehicle, route.c3Km2S2);
-	if (isLowThrust(vehicle)) return null;
+	// A spiral spends its Δv through the same rocket equation as a burn — slowly,
+	// which changes the trip but not the arithmetic — so cargo trades against it
+	// the same way. Only a route the impulsive model cannot judge takes no answer.
+	if (!route.lowThrust && isLowThrust(vehicle)) return null;
 	const dry = vehicle.dryMassKg?.value;
 	const propellant = vehicle.propellantMassKg?.value;
 	const isp = vehicle.ispS?.value;
@@ -395,9 +426,25 @@ export function checkFeasibility(
 		return annotate(vehicle, route, { status, marginKms: NaN, payloadKg });
 	}
 
+	// A spiral is judged on Δv like anything else — it is the craft's own budget,
+	// spent over years instead of at two instants. What it needs first is the
+	// hardware the spiral was built from, since a route flown by a drive this
+	// craft has not published is not a route about this craft.
+	if (route.lowThrust) {
+		return lowThrustDrive(vehicle, manifest.payloadKg) === undefined
+			? { status: 'unknown', marginKms: NaN }
+			: dvMargin(vehicle, route, manifest);
+	}
+
 	if (isLowThrust(vehicle)) {
 		return { status: 'not-modelled', marginKms: NaN };
 	}
+	return dvMargin(vehicle, route, manifest);
+}
+
+/** What is left of the craft's budget after the route, and whether it went
+ *  negative. The last word on every craft that spends propellant. */
+function dvMargin(vehicle: Vehicle, route: Route, manifest: Manifest): Feasibility {
 	const dvKms = dvWithPayloadKms(vehicle, manifest.payloadKg);
 	if (dvKms === undefined) {
 		return { status: 'unknown', marginKms: NaN };

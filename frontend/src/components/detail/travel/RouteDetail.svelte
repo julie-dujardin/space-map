@@ -13,6 +13,8 @@
 	import ChevronsRightIcon from '@lucide/svelte/icons/chevrons-right';
 	import ChevronsLeftIcon from '@lucide/svelte/icons/chevrons-left';
 	import WavesIcon from '@lucide/svelte/icons/waves';
+	import TornadoIcon from '@lucide/svelte/icons/tornado';
+	import ShellIcon from '@lucide/svelte/icons/shell';
 	import {
 		dvWithPayloadKms,
 		routeDurationDays,
@@ -25,6 +27,7 @@
 	import { formatKm } from '$lib/format/distance';
 	import { formatDurationNarrow, SECONDS_PER_DAY } from '$lib/format/duration';
 	import {
+		accelerationParts,
 		dvParts,
 		formatAcceleration,
 		formatDv,
@@ -62,6 +65,9 @@
 		boost: ChevronsRightIcon,
 		brake: ChevronsLeftIcon,
 		assist: WavesIcon,
+		'powered-cruise': ShellIcon,
+		'spiral-out': TornadoIcon,
+		'spiral-in': TornadoIcon,
 		capture: OrbitIcon,
 		aerobrake: WindIcon,
 		descent: ArrowDownIcon
@@ -103,7 +109,12 @@
 		{ label: m.travel_total_dv(), ...dvParts(route.totalDvKms) },
 		route.constantThrust
 			? topSpeedTile
-			: { label: m.travel_launch_c3(), value: route.c3Km2S2.toFixed(1), unit: m.travel_km2_s2() }
+			: route.lowThrust
+				? // A spiral is thrown by nothing, so it has no launch energy either —
+					// and what it does have is the figure the whole trip follows from:
+					// years of crossing because the drive pushes at this.
+					{ label: m.travel_drive_accel(), ...accelerationParts(route.lowThrust.accelMs2) }
+				: { label: m.travel_launch_c3(), value: route.c3Km2S2.toFixed(1), unit: m.travel_km2_s2() }
 	]);
 
 	let delay = $derived(signalDelaySeconds(origin, target, route.arriveJd));
@@ -113,10 +124,16 @@
 	// engine has no Δv to subtract either, which is a different silence: the
 	// row says so rather than showing a figure nobody measured. Cargo is already
 	// off the top, so loading the hold shortens the return this row prices.
+	//
+	// And a craft the route cannot be judged against gets no figure at all: an
+	// ion drive's budget minus a Lambert arc's is a subtraction of two things
+	// that are not the same quantity, whatever the list above has already said.
 	let remaining = $derived.by(() => {
 		const vehicle = state.vehicle;
 		if (!vehicle || vehicle.kind === 'launcher') return null;
 		if (vehicle.unlimitedDv) return Infinity;
+		const judged = state.feasibility(route)?.status;
+		if (judged === 'not-modelled' || judged === 'unknown') return null;
 		const loaded = dvWithPayloadKms(vehicle, state.payloadKg);
 		if (loaded === undefined) return null;
 		return loaded - route.inSpaceDvKms;

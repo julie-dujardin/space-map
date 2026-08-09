@@ -58,9 +58,12 @@ export function buildTimeline(route: Route, nameFor: (bodyId: string) => string)
 		// it is months of passes through the destination's own atmosphere.
 		const flyby = leg.kind === 'assist' ? flybys.shift() : undefined;
 		const bodyId =
-			leg.kind === 'ascent' || leg.kind === 'injection'
+			leg.kind === 'ascent' || leg.kind === 'injection' || leg.kind === 'spiral-out'
 				? route.departureId
-				: leg.kind === 'capture' || leg.kind === 'aerobrake' || leg.kind === 'descent'
+				: leg.kind === 'capture' ||
+					  leg.kind === 'aerobrake' ||
+					  leg.kind === 'descent' ||
+					  leg.kind === 'spiral-in'
 					? route.targetId
 					: (flyby?.bodyId ?? null);
 

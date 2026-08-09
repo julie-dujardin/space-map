@@ -11,11 +11,13 @@
 
 import {
 	buildConstantThrustRoute,
+	buildLowThrustRoute,
 	buildRoute,
 	canDepartFrom,
 	checkFeasibility,
 	checkManifest,
 	constantThrustAccelMs2,
+	lowThrustDrive,
 	TravelSolver,
 	type AeroAssist,
 	type ArrivalMode,
@@ -109,6 +111,15 @@ export class TravelPanelState {
 	 */
 	torch = $state<Route | null>(null);
 	/**
+	 * The spiral, when the chosen craft is one that cannot burn.
+	 *
+	 * Comes off the craft the way the arc above does, and for the same reason:
+	 * the trajectory an ion drive flies is a fact about the drive, not an option
+	 * the porkchop offers. Unlike the arc it does have a departure date to find —
+	 * the phase still has to close — but that is a bisection rather than a grid.
+	 */
+	spiral = $state<Route | null>(null);
+	/**
 	 * The cheapest route that swings past a third body, when one was found.
 	 *
 	 * Held raw rather than filtered: whether it is worth offering is a comparison
@@ -137,6 +148,8 @@ export class TravelPanelState {
 	/** Which craft the standing arc was built for, so choosing a new one selects
 	 *  its arc and everything else leaves the selection alone. */
 	#torchFor: string | null = null;
+	/** The same for the spiral, which is chosen on the same terms. */
+	#spiralFor: string | null = null;
 	/** The last solve's inputs, so a hand-picked point is priced the same way the
 	 *  grid it was read off was. */
 	#pricing: { origin: TravelBody; target: TravelBody; options: RouteOptions } | null = null;
@@ -211,6 +224,7 @@ export class TravelPanelState {
 		// at the selection: arriving with a torch ship is not the same as picking
 		// one, and a shared "fast" is a comparison someone meant to send.
 		this.#torchFor = trip.profile !== null ? trip.vehicleId : null;
+		this.#spiralFor = this.#torchFor;
 	}
 
 	/**
@@ -270,6 +284,14 @@ export class TravelPanelState {
 				this.torch = null;
 			}
 		}
+		// And a spiral is a claim about a drive that cannot burn, so the same holds
+		// for a link naming one beside a craft whose engine does.
+		if (this.selectedProfile === 'low-thrust') {
+			if (!vehicle || lowThrustDrive(vehicle, this.payloadKg) === undefined) {
+				this.selectedProfile = this.#fallbackProfile();
+				this.spiral = null;
+			}
+		}
 	}
 
 	/** Arrival mode the kernel should price, from what the destination box says.
@@ -291,15 +313,16 @@ export class TravelPanelState {
 	 * Everything on offer.
 	 *
 	 * The hand-picked route goes last: it is an addition to the solver's answer
-	 * rather than one of them. The constant-thrust arc goes first, because the
-	 * only craft it is ever offered for is one that can fly nothing else, and
-	 * listing it under three trajectories that craft cannot fly would bury the
-	 * only answer.
+	 * rather than one of them. Whatever the craft's own drive flies goes first,
+	 * because the craft it is offered for usually cannot fly the rest, and
+	 * listing the one real answer under three trajectories that craft has to
+	 * refuse would bury it.
 	 */
 	get offered(): OfferedRoute[] {
-		const offered: OfferedRoute[] = this.torch
-			? [{ profile: 'constant-thrust', route: this.torch }, ...this.routes]
-			: [...this.routes];
+		const craftArc: OfferedRoute[] = [];
+		if (this.torch) craftArc.push({ profile: 'constant-thrust', route: this.torch });
+		if (this.spiral) craftArc.push({ profile: 'low-thrust', route: this.spiral });
+		const offered: OfferedRoute[] = [...craftArc, ...this.routes];
 		const assist = this.#assistWorthOffering();
 		if (assist) offered.push({ profile: 'gravity-assist', route: assist });
 		if (this.custom) offered.push({ profile: 'custom', route: this.custom });
@@ -482,6 +505,54 @@ export class TravelPanelState {
 	}
 
 	/**
+	 * Recompute the spiral for the craft and the trip as they stand.
+	 *
+	 * A sibling of `updateTorch` in every structural way — it comes off the craft
+	 * rather than the search, it costs a bisection rather than a grid, and it
+	 * never reads its own answer back. What differs is the date: a spiral does
+	 * have to wait for the phase to close, so the date asked for is the earliest
+	 * it may leave rather than the date it leaves.
+	 *
+	 * The manifest is an input here and nowhere else. Cargo makes a spiral slower
+	 * as well as shorter of Δv, because the drive is pushing it too.
+	 */
+	updateSpiral(
+		origin: TravelBody,
+		target: TravelBody,
+		nowJd: number,
+		frame: TransferFrame = { orbit: 'heliocentric' }
+	): void {
+		if (!this.craftKnown) return;
+
+		const vehicle = this.vehicle;
+		const drive = vehicle ? lowThrustDrive(vehicle, this.payloadKg) : undefined;
+		const earliestJd =
+			this.timeMode === 'depart' && this.pickedJd != null ? Math.max(nowJd, this.pickedJd) : nowJd;
+		const route = drive
+			? buildLowThrustRoute(origin, target, earliestJd, drive, {
+					departureMode: this.departureMode,
+					arrivalMode: this.arrivalMode,
+					aero: this.aero,
+					centralMu: frame.centralMu,
+					systemPrimary: frame.systemPrimary
+				})
+			: null;
+		const missesDeadline =
+			this.timeMode === 'arrive' && this.pickedJd != null && route !== null
+				? route.arriveJd > this.pickedJd
+				: false;
+
+		const offer = missesDeadline ? null : route;
+		this.spiral = offer;
+		if (offer && this.#spiralFor !== this.vehicleId) {
+			this.selectedProfile = 'low-thrust';
+		} else if (!offer && this.selectedProfile === 'low-thrust') {
+			this.selectedProfile = this.#fallbackProfile();
+		}
+		this.#spiralFor = offer ? this.vehicleId : null;
+	}
+
+	/**
 	 * Look for a route that swings past one of `vias`, and hold whatever comes
 	 * back.
 	 *
@@ -577,9 +648,12 @@ export class TravelPanelState {
 				return;
 			}
 		}
-		// A search says nothing about the constant-thrust arc — that comes off the
-		// craft — so it cannot retire a selection whose craft has yet to land.
-		if (this.selectedProfile === 'constant-thrust' && !this.craftKnown) return;
+		// A search says nothing about the two trajectories that come off the craft
+		// rather than the grid, so it cannot retire a selection whose craft has yet
+		// to land.
+		const fromCraft =
+			this.selectedProfile === 'constant-thrust' || this.selectedProfile === 'low-thrust';
+		if (fromCraft && !this.craftKnown) return;
 		if (!this.offered.some((choice) => choice.profile === this.selectedProfile)) {
 			this.selectedProfile = this.#fallbackProfile();
 		}
@@ -600,6 +674,7 @@ export class TravelPanelState {
 		this.grid = null;
 		this.custom = null;
 		this.torch = null;
+		this.spiral = null;
 		this.assist = null;
 		this.assistSearching = false;
 		this.#assistToken++;

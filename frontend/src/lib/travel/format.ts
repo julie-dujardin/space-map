@@ -41,6 +41,9 @@ const G0_M_S2 = 9.80665;
 /** Below this a multiple of a gravity is four leading zeros and no meaning. An
  *  ion drive is a hundredth of this, and reads better in its own unit. */
 const GRAVITIES_FLOOR = 0.01;
+/** And below this so is m/s². An ion drive's own unit is the millionth: Dawn
+ *  held 76 of them, which is a figure, where 0.000076 is a place to count zeros. */
+const METRES_FLOOR_MS2 = 1e-3;
 
 /** Two significant figures, which is all any of these are known to. */
 function significant(value: number): string {
@@ -48,17 +51,26 @@ function significant(value: number): string {
 }
 
 /**
- * The acceleration a drive holds, in the unit that makes it mean something: a
- * fraction of a gravity for anything you could stand up in, m/s² for the slow
- * drives where that fraction stops being a number anyone can picture.
+ * The acceleration a drive holds, split from its unit for the tile that sets its
+ * own type. Three units, each covering the drives the other two cannot say
+ * anything legible about.
  */
-export function formatAcceleration(accelMs2: number): string {
-	if (!Number.isFinite(accelMs2) || accelMs2 <= 0) return '—';
+export function accelerationParts(accelMs2: number): { value: string; unit: string } {
+	if (!Number.isFinite(accelMs2) || accelMs2 <= 0) return { value: '—', unit: '' };
 	const gravities = accelMs2 / G0_M_S2;
-	if (gravities < GRAVITIES_FLOOR) {
-		return `${significant(accelMs2)} ${m.unit_symbol_metres_per_second_squared()}`;
+	if (gravities >= GRAVITIES_FLOOR) {
+		return { value: significant(gravities), unit: m.travel_g() };
 	}
-	return m.travel_unit_g({ value: significant(gravities) });
+	if (accelMs2 >= METRES_FLOOR_MS2) {
+		return { value: significant(accelMs2), unit: m.unit_symbol_metres_per_second_squared() };
+	}
+	return { value: significant(accelMs2 * 1e6), unit: m.travel_um_s2() };
+}
+
+/** The same figure as one string, for the places that run it into a line. */
+export function formatAcceleration(accelMs2: number): string {
+	const { value, unit } = accelerationParts(accelMs2);
+	return unit ? `${value} ${unit}` : value;
 }
 
 const LIGHT_SPEED_KMS = 299792.458;

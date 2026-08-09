@@ -16,6 +16,12 @@ export function legLabel(kind: LegKind): string {
 			return m.travel_leg_boost();
 		case 'brake':
 			return m.travel_leg_brake();
+		case 'powered-cruise':
+			return m.travel_leg_powered_cruise();
+		case 'spiral-out':
+			return m.travel_leg_spiral_out();
+		case 'spiral-in':
+			return m.travel_leg_spiral_in();
 		case 'assist':
 			return m.travel_leg_assist();
 		case 'capture':

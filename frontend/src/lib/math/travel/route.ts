@@ -37,6 +37,13 @@ export type LegKind =
 	 *  everything after it. Unlike a cruise these carry Δv as well as time. */
 	| 'boost'
 	| 'brake'
+	/** The crossing under a drive too weak to burn: months of thrust reshaping the
+	 *  orbit rather than a coast between two impulses. */
+	| 'powered-cruise'
+	/** Climbing out of one well and dropping into the other, both of them a spiral
+	 *  of revolutions rather than a burn. */
+	| 'spiral-out'
+	| 'spiral-in'
 	/** A swing-by past a third body. Free when the geometry allows it, which is
 	 *  the whole point; the Δv is what the geometry could not supply. */
 	| 'assist'
@@ -90,6 +97,16 @@ export interface Route {
 	 * about departure dates should try.
 	 */
 	constantThrust?: number;
+	/**
+	 * The drive a spiral route was flown by, when it is one.
+	 *
+	 * Present exactly when the route came out of `buildLowThrustRoute`, and it is
+	 * what tells everything downstream that the impulsive yardstick does not
+	 * apply here: no launch window on the porkchop, no excess speed at either
+	 * end, and a Δv that is spent over years rather than at two instants. The
+	 * two figures are what the shape can be rebuilt from — see `rebuildSpiral`.
+	 */
+	lowThrust?: { accelMs2: number; veKms: number };
 	/**
 	 * The swing-bys flown on the way, in order. Absent on a direct transfer.
 	 *

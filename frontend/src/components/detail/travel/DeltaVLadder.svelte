@@ -62,6 +62,12 @@
 		   apart by lightness, which survives every kind of colour blindness. */
 		--leg-boost: #5a3fb8;
 		--leg-brake: #a893e8;
+		/* And the same again for a spiral, whose three stretches are one drive held
+		   through all of them: the crossing between two wells, and a climb out of
+		   each. */
+		--leg-powered-cruise: #6f4fd0;
+		--leg-spiral-out: #4a3a91;
+		--leg-spiral-in: #a893e8;
 	}
 	:global(.dark) .travel-ladder {
 		--leg-ascent: #3987e5;
@@ -70,5 +76,8 @@
 		--leg-descent: #c98500;
 		--leg-boost: #7d63d9;
 		--leg-brake: #bbaaee;
+		--leg-powered-cruise: #8f78e0;
+		--leg-spiral-out: #6350b5;
+		--leg-spiral-in: #bbaaee;
 	}
 </style>

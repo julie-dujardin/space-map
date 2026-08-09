@@ -44,10 +44,12 @@ export function signalDelaySeconds(
  *
  * A constant-thrust arc has no such window to leave on, and its cost is not in
  * the escape at all: the way home is the same crossing flown backwards, so it
- * is quoted as the whole of what the outbound spent between the two wells.
+ * is quoted as the whole of what the outbound spent between the two wells. A
+ * spiral is quoted the same way and for the same reason — its escape is a
+ * spiral too, and pricing one as an impulsive burn would halve it.
  */
 export function returnDvKms(target: TravelBody, route: Route): number {
-	if (route.constantThrust) return route.inSpaceDvKms;
+	if (route.constantThrust || route.lowThrust) return route.inSpaceDvKms;
 	const cost = departureCost(
 		target,
 		route.vInfArrKms,

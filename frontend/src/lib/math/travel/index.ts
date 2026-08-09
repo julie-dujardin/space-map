@@ -22,6 +22,11 @@
  * body, searched over a horizon of years rather than one synodic period. See
  * `assist`.
  *
+ * And a fourth for the drives that cannot burn at all: an ion engine spirals out
+ * of one well, reshapes its orbit under months of thrust, and spirals down into
+ * the other. No Lambert arc, no launch energy, and a Δv that buys a different
+ * trip than the same figure spent at an instant. See `low-thrust`.
+ *
  * A route says what a trip costs, not where it goes. Drawing one needs the
  * second thing, so `path` re-derives the arcs from the same inputs the route was
  * priced from and walks them with `propagate` — the geometry and the ladder
@@ -80,6 +85,16 @@ export { buildTrajectoryPath } from './path';
 
 export { buildConstantThrustRoute } from './brachistochrone';
 
+export type { LowThrustDrive, SpiralTransfer } from './low-thrust';
+export {
+	buildLowThrustRoute,
+	driveAfter,
+	edelbaumDvKms,
+	rebuildSpiral,
+	spiralDays,
+	spiralTransfer
+} from './low-thrust';
+
 export type { FlybyPass } from './flyby';
 export { minFlybyRadiusKm, solveFlyby, turnAngleRad } from './flyby';
 
@@ -130,6 +145,7 @@ export {
 	EMPTY_MANIFEST,
 	feasibleRoutes,
 	isLowThrust,
+	lowThrustDrive,
 	maxPayloadKgForRoute,
 	payloadForC3
 } from './vehicles';

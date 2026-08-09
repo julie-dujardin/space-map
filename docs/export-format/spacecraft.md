@@ -81,7 +81,9 @@ interface Vehicle {
 	isp_s?: Measured;
 	// Total thrust of that propulsion. Over wet mass it gives the
 	// acceleration, which is what decides whether an impulsive burn is a fair
-	// model at all — Dawn's 92 mN on 1.2 t is not.
+	// model at all — Dawn's 92 mN on 1.2 t is not. Where it is not, the
+	// planner flies the craft a spiral instead of a transfer orbit, and this
+	// with the masses and the Isp is what that model is built from.
 	thrust_n?: Measured;
 	// Isp·g₀·ln(m₀/m_f), km/s. Ideal: no gravity or finite-burn losses, whole
 	// load through one engine. Present only when all three inputs are.
