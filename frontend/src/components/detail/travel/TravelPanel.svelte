@@ -218,17 +218,19 @@
 	let targetHasAir = $derived(hasAtmosphere(targetDetail) === true);
 	let isLanding = $derived(panel.targetIsFeature || panel.targetMode === 'surface');
 	let showAero = $derived(targetHasAir && panel.targetMode !== 'flyby');
-	// Aerobraking walks a loose orbit down into a tight one, so it is only on
-	// offer when a tight one is what was asked for.
+	// Ordered by how much of the arrival is still flown on the engine: all of it,
+	// then the capture burn only, then none of it. Aerobraking walks a loose orbit
+	// down into a tight one, so it is only on offer when a tight one is what was
+	// asked for.
 	let aeroChoices = $derived([
 		{ value: 'none' as const, label: m.travel_aero_none() },
+		...(panel.targetMode === 'low-orbit'
+			? [{ value: 'aerobraking' as const, label: m.travel_aero_aerobraking() }]
+			: []),
 		{
 			value: 'aerocapture' as const,
 			label: isLanding ? m.travel_aero_direct_entry() : m.travel_aero_aerocapture()
-		},
-		...(panel.targetMode === 'low-orbit'
-			? [{ value: 'aerobraking' as const, label: m.travel_aero_aerobraking() }]
-			: [])
+		}
 	]);
 	// A trip that was aerobraking and is now landing is not braking on the way in
 	// at all until it says so again.
