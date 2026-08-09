@@ -8,6 +8,7 @@ import {
 	dvWithPayloadKms,
 	feasibleRoutes,
 	isLowThrust,
+	maxPayloadKgForRoute,
 	payloadForC3,
 	type Vehicle
 } from './vehicles';
@@ -294,6 +295,46 @@ describe('dvWithPayloadKms', () => {
 
 	it('keeps a figure it cannot re-derive rather than going silent', () => {
 		expect(dvWithPayloadKms(CRAFT, 1000)).toBe(CRAFT.dvKms);
+	});
+});
+
+describe('maxPayloadKgForRoute', () => {
+	it('reads a launcher off its curve at the route energy', () => {
+		expect(maxPayloadKgForRoute(LAUNCHER, marsRoute)).toBe(
+			payloadForC3(LAUNCHER, marsRoute.c3Km2S2)
+		);
+	});
+
+	it('inverts the rocket equation: at the answer, the Δv just meets the route', () => {
+		const payload = maxPayloadKgForRoute(HAULER, marsRoute)!;
+		expect(payload).toBeGreaterThan(0);
+		expect(dvWithPayloadKms(HAULER, payload)).toBeCloseTo(marsRoute.inSpaceDvKms, 6);
+	});
+
+	it('answers null when the craft cannot fly the route even empty', () => {
+		const jupiterWindow = nextTransferWindows(EARTH, JUPITER, J2000, 1)[0];
+		const jupiterTof = hohmannTransferDays(EARTH, JUPITER)!;
+		const route = buildRoute(EARTH, JUPITER, jupiterWindow, jupiterTof)!;
+		expect(maxPayloadKgForRoute(HAULER, route)).toBeNull();
+	});
+
+	it('answers null without the masses to invert', () => {
+		expect(maxPayloadKgForRoute(CRAFT, marsRoute)).toBeNull();
+	});
+
+	it('refuses to price a drive the impulsive model cannot judge', () => {
+		const ion: Vehicle = {
+			...HAULER,
+			propulsion: 'electric',
+			thrustN: { value: 0.09, source: 't' }
+		};
+		expect(maxPayloadKgForRoute(ion, marsRoute)).toBeNull();
+	});
+
+	it('says nothing about an unlimited drive or a constant-thrust arc', () => {
+		expect(maxPayloadKgForRoute(TORCH, marsRoute)).toBeNull();
+		const arc = buildConstantThrustRoute(EARTH, MARS, J2000, 3.27)!;
+		expect(maxPayloadKgForRoute(HAULER, arc)).toBeNull();
 	});
 });
 

@@ -12,8 +12,21 @@
  * ours to translate.
  */
 
-import { canDepartFrom, type Vehicle } from '$lib/math/travel';
+import {
+	canDepartFrom,
+	checkFeasibility,
+	constantThrustAccelMs2,
+	dvWithPayloadKms,
+	maxPayloadKgForRoute,
+	type Manifest,
+	type PropulsionKind,
+	type Route,
+	type Vehicle,
+	type VehicleStatus
+} from '$lib/math/travel';
 import { localName, vehicleNaming } from '$lib/travel/vehicles';
+import { formatAcceleration, formatDv } from '$lib/travel/format';
+import { formatQuantity } from '$lib/format/quantities';
 import * as m from '$lib/paraglide/messages.js';
 
 const VARIANT_MESSAGES: Record<string, () => string> = {
@@ -57,4 +70,71 @@ export function departureNote(vehicle: Vehicle): string {
 /** Wikidata's one-liner, for the row beneath the name. Absent for many. */
 export function vehicleDescription(vehicle: Vehicle): string | null {
 	return vehicleNaming(vehicle.id)?.description ?? null;
+}
+
+/** Partial on purpose: the catalogue is fetched, so a cached or future export
+ *  can carry kinds this build has no words for — a blank beats a crash. */
+const PROPULSION_MESSAGES: Partial<Record<PropulsionKind, () => string>> = {
+	chemical: m.spacecraft_propulsion_chemical,
+	electric: m.spacecraft_propulsion_electric,
+	nuclear: m.spacecraft_propulsion_nuclear,
+	'solar-sail': m.spacecraft_propulsion_solar_sail,
+	fictional: m.spacecraft_propulsion_fictional
+};
+
+/** Active is the reader's default assumption, so only the departures from it
+ *  get said. */
+const STATUS_MESSAGES: Partial<Record<VehicleStatus, () => string>> = {
+	retired: m.spacecraft_status_retired,
+	planned: m.spacecraft_status_planned,
+	cancelled: m.spacecraft_status_cancelled,
+	concept: m.spacecraft_status_concept,
+	fictional: m.spacecraft_status_fictional
+};
+
+/**
+ * The stat line under a craft: what it can do, then what it is.
+ *
+ * Against a route, the Δv becomes the margin left after flying it — the raw
+ * figure answers "how much", the margin answers the question the reader is
+ * actually in the picker with. Craft whose propellant is no constraint show
+ * their acceleration instead: their Δv is "yes", and the drive is the number
+ * that tells two of them apart. A fictional craft says so once, not once per
+ * field.
+ */
+export function vehicleStatsParts(
+	vehicle: Vehicle,
+	route: Route | null,
+	manifest: Manifest
+): string[] {
+	const parts: string[] = [];
+
+	if (vehicle.unlimitedDv) {
+		const accel = constantThrustAccelMs2(vehicle) ?? vehicle.accelMs2?.value;
+		parts.push(accel !== undefined ? formatAcceleration(accel) : m.travel_dv_unlimited());
+	} else {
+		const margin = route ? checkFeasibility(vehicle, route, manifest).marginKms : NaN;
+		const dv = dvWithPayloadKms(vehicle, manifest.payloadKg);
+		if (Number.isFinite(margin)) {
+			parts.push(m.travel_dv_margin({ value: formatDv(margin) }));
+		} else if (dv !== undefined) {
+			// A route the impulsive model cannot judge this craft against still
+			// leaves the craft's own budget worth saying.
+			parts.push(m.travel_stat_dv({ value: formatDv(dv) }));
+		}
+	}
+
+	if (route) {
+		const payloadKg = maxPayloadKgForRoute(vehicle, route);
+		if (payloadKg !== null) {
+			const value = formatQuantity({ value: Math.round(payloadKg), unit: 'kilogram' }, true);
+			parts.push(m.travel_carries({ value }));
+		}
+	}
+
+	const badges = [PROPULSION_MESSAGES[vehicle.propulsion]?.(), STATUS_MESSAGES[vehicle.status]?.()];
+	for (const badge of badges) {
+		if (badge && !parts.includes(badge)) parts.push(badge);
+	}
+	return parts;
 }

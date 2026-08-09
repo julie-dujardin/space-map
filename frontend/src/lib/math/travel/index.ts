@@ -108,6 +108,7 @@ export {
 	EMPTY_MANIFEST,
 	feasibleRoutes,
 	isLowThrust,
+	maxPayloadKgForRoute,
 	payloadForC3
 } from './vehicles';
 

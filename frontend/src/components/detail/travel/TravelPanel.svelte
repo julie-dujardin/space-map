@@ -20,6 +20,7 @@
 	import { formatJulianDate } from '$lib/format/date';
 	import {
 		canDepartFrom,
+		checkFeasibility,
 		crewCapacity,
 		hohmannTransferDays,
 		nextTransferWindows,
@@ -45,6 +46,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import Segmented from './Segmented.svelte';
+	import VehicleMeta from './VehicleMeta.svelte';
 	import DateField from './DateField.svelte';
 	import ManifestField from './ManifestField.svelte';
 	import EndpointField from './EndpointField.svelte';
@@ -152,16 +154,22 @@
 		if (panel.vehicleId !== null && panel.vehicles.length === 0) void panel.loadVehicles();
 	});
 
-	// Craft that can leave the way this trip does come first. Sorted rather
-	// than filtered: a picker that hides the SLS the moment the origin box says
-	// "low orbit" reads as a missing catalogue, not as a rule.
-	let orderedVehicles = $derived(
-		[...panel.vehicles].sort(
-			(a, b) =>
-				Number(canDepartFrom(b, panel.departureMode)) -
-				Number(canDepartFrom(a, panel.departureMode))
-		)
-	);
+	// Only craft the trip could actually be flown with: able to leave the way it
+	// does, and — once a trajectory is being read — not priced out of it on Δv
+	// or endurance. A refusal to judge is not a no, so the unjudgeable stay. The
+	// chosen craft stays whatever it can do: hiding a selection would read as
+	// losing it.
+	let shownVehicles = $derived.by(() => {
+		const route = panel.selectedRoute;
+		return panel.vehicles.filter((vehicle) => {
+			if (vehicle.id === panel.vehicleId) return true;
+			if (!canDepartFrom(vehicle, panel.departureMode)) return false;
+			if (!route) return true;
+			const fit = checkFeasibility(vehicle, route, panel.manifest);
+			if (fit.status === 'insufficient-dv' || fit.status === 'over-c3') return false;
+			return fit.enduranceRatio === undefined;
+		});
+	});
 
 	// What kind of transfer this pair needs — across the solar system, out to a
 	// body's own moon, or between two moons of one planet — and so which orbit
@@ -398,8 +406,18 @@
 			class="border-border/60 bg-muted/40 hover:bg-muted flex items-center gap-2 rounded-md border px-2.5 py-2 text-start"
 		>
 			<RocketIcon class="text-muted-foreground size-4 shrink-0" />
-			<span class="flex-1 truncate text-sm {panel.vehicle ? '' : 'text-muted-foreground'}">
-				{panel.vehicle ? vehicleName(panel.vehicle) : m.travel_add_craft()}
+			<span class="min-w-0 flex-1">
+				<span class="block truncate text-sm {panel.vehicle ? '' : 'text-muted-foreground'}">
+					{panel.vehicle ? vehicleName(panel.vehicle) : m.travel_add_craft()}
+				</span>
+				<!-- The open list says all this on the chosen row already. -->
+				{#if panel.vehicle && !vehicleOpen}
+					<VehicleMeta
+						vehicle={panel.vehicle}
+						route={panel.selectedRoute}
+						manifest={panel.manifest}
+					/>
+				{/if}
 			</span>
 			<ChevronDownIcon
 				class="text-muted-foreground size-4 shrink-0 transition-transform {vehicleOpen
@@ -409,55 +427,64 @@
 		</button>
 
 		{#if vehicleOpen}
-			<!-- The catalogue runs to dozens of craft, so it scrolls in place rather
-			     than pushing the routes below it off the panel. -->
-			<ScrollArea class="border-border/60 rounded-md border" viewportClasses="max-h-56">
-				<ul class="flex flex-col p-1">
-					{#each orderedVehicles as vehicle (vehicle.id)}
-						{@const fits = canDepartFrom(vehicle, panel.departureMode)}
-						<!-- Seats only matter once someone is aboard, so the column appears
-						     with the first passenger rather than reading "0" against every
-						     probe in the catalogue. -->
-						{@const seats = panel.passengers > 0 ? crewCapacity(vehicle) : null}
-						{@const tooSmall = seats !== null && seats < panel.passengers}
-						<li>
-							<button
-								type="button"
-								onclick={() => {
-									panel.selectVehicle(vehicle.id);
-									vehicleOpen = false;
-								}}
-								class="hover:bg-muted flex w-full items-center gap-2 rounded-[5px] px-2 py-1.5 text-start text-xs {tooSmall
-									? 'opacity-50'
-									: ''}"
-							>
-								<span class="min-w-0 flex-1 truncate {fits ? '' : 'text-muted-foreground'}">
-									{vehicleName(vehicle)}
-								</span>
-								{#if !fits}
-									<!-- Still selectable: choosing it moves the departure to one it
-									     can make, which is more useful than a row that does nothing. -->
-									<span class="text-muted-foreground shrink-0 text-[11px]">
-										{departureNote(vehicle)}
+			{#if shownVehicles.length > 0}
+				<!-- The catalogue runs to dozens of craft, so it scrolls in place rather
+				     than pushing the routes below it off the panel. -->
+				<ScrollArea class="border-border/60 rounded-md border" viewportClasses="max-h-56">
+					<ul class="flex flex-col p-1">
+						{#each shownVehicles as vehicle (vehicle.id)}
+							<!-- Only the chosen craft survives the filter without fitting the
+							     departure, so the note reads as "here is why it stopped
+							     working", not as a rule on the list. -->
+							{@const fits = canDepartFrom(vehicle, panel.departureMode)}
+							<!-- Seats only matter once someone is aboard, so the column appears
+							     with the first passenger rather than reading "0" against every
+							     probe in the catalogue. -->
+							{@const seats = panel.passengers > 0 ? crewCapacity(vehicle) : null}
+							{@const tooSmall = seats !== null && seats < panel.passengers}
+							<li>
+								<button
+									type="button"
+									onclick={() => {
+										panel.selectVehicle(vehicle.id);
+										vehicleOpen = false;
+									}}
+									class="hover:bg-muted flex w-full items-start gap-2 rounded-[5px] px-2 py-1.5 text-start text-xs {tooSmall
+										? 'opacity-50'
+										: ''}"
+								>
+									<span class="min-w-0 flex-1">
+										<span class="flex items-center gap-2">
+											<span class="min-w-0 flex-1 truncate {fits ? '' : 'text-muted-foreground'}">
+												{vehicleName(vehicle)}
+											</span>
+											{#if !fits}
+												<span class="text-muted-foreground shrink-0 text-[11px]">
+													{departureNote(vehicle)}
+												</span>
+											{/if}
+											{#if seats !== null}
+												<span
+													class="text-muted-foreground flex shrink-0 items-center gap-1 tabular-nums"
+													title={m.travel_seats({ value: seats })}
+												>
+													<UsersIcon class="size-3" />{seats}
+												</span>
+											{/if}
+											{#if panel.vehicleId === vehicle.id}
+												<CheckIcon class="size-3.5 shrink-0" />
+											{/if}
+										</span>
+										<VehicleMeta {vehicle} route={panel.selectedRoute} manifest={panel.manifest} />
 									</span>
-								{/if}
-								{#if seats !== null}
-									<span
-										class="text-muted-foreground flex shrink-0 items-center gap-1 tabular-nums"
-										title={m.travel_seats({ value: seats })}
-									>
-										<UsersIcon class="size-3" />{seats}
-									</span>
-								{/if}
-								{#if panel.vehicleId === vehicle.id}
-									<CheckIcon class="size-3.5 shrink-0" />
-								{/if}
-							</button>
-						</li>
-					{/each}
-				</ul>
-			</ScrollArea>
-			{#if panel.vehicles.length === 0}
+								</button>
+							</li>
+						{/each}
+					</ul>
+				</ScrollArea>
+			{:else if panel.vehicles.length > 0}
+				<p class="text-muted-foreground text-[11px]">{m.travel_no_craft_for_route()}</p>
+			{:else}
 				<p class="text-muted-foreground text-[11px]">{m.travel_craft_loading()}</p>
 			{/if}
 		{/if}

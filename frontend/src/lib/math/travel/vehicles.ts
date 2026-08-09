@@ -250,6 +250,30 @@ export function dvWithPayloadKms(vehicle: Vehicle, payloadKg: number): number | 
 	return (isp * G0_M_S2 * Math.log((loaded + propellant) / loaded)) / 1000;
 }
 
+/**
+ * The heaviest cargo the vehicle could take on this route, kg.
+ *
+ * A launcher reads it off its curve at the route's energy; anything else gets
+ * the rocket equation solved backwards for the payload at which its Δv just
+ * meets the route's. Null when nothing published can answer — and for craft
+ * whose propellant is no constraint, where the route imposes no limit to state.
+ * A constant-thrust arc is priced at a fixed acceleration, which extra mass
+ * would not hold, so it takes no answer either — and a drive too weak for the
+ * impulsive model gets the same refusal to judge as `checkFeasibility` gives it.
+ */
+export function maxPayloadKgForRoute(vehicle: Vehicle, route: Route): number | null {
+	if (route.constantThrust || vehicle.unlimitedDv) return null;
+	if (vehicle.kind === 'launcher') return payloadForC3(vehicle, route.c3Km2S2);
+	if (isLowThrust(vehicle)) return null;
+	const dry = vehicle.dryMassKg?.value;
+	const propellant = vehicle.propellantMassKg?.value;
+	const isp = vehicle.ispS?.value;
+	if (!dry || !propellant || !isp || !(route.inSpaceDvKms > 0)) return null;
+	const ratio = Math.exp((route.inSpaceDvKms * 1000) / (isp * G0_M_S2));
+	const loaded = propellant / (ratio - 1);
+	return loaded > dry ? loaded - dry : null;
+}
+
 export type ManifestFit =
 	| { status: 'ok' }
 	| { status: 'over-capacity'; seats: number }
