@@ -128,6 +128,30 @@ export const ESCAPING_PROBE: TravelBody = {
 };
 
 /**
+ * A parabolic comet — the Great Comet of 1264, as SBDB has it and as the export
+ * ships it. Most of the comet catalogue looks like this: e fixed at 1, and q/tp
+ * in place of the a/ma/n an elliptical fit would carry.
+ */
+export const PARABOLIC_COMET: TravelBody = {
+	id: 'spkid-1000616',
+	mu: 1e-9,
+	muEstimated: true,
+	radiusKm: 1,
+	elements: {
+		a: 0,
+		e: 1,
+		i: 16.4,
+		om: 151.04,
+		w: 159.71,
+		ma: 0,
+		n: 0,
+		epoch: 2182934.79,
+		q: 0.8249,
+		tp: 2182934.79
+	}
+};
+
+/**
  * Earth and its Moon the way the export describes them: both referred to the
  * barycentre they share, half a turn apart, with the barycentre 4,674 km from
  * Earth's centre — most of the way out to a parking orbit, which is why a lunar

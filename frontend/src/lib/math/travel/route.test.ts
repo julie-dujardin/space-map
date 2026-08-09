@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildRoute } from './route';
 import { computePorkchop, selectRoutes } from './porkchop';
 import { nextTransferWindows, hohmannTransferDays } from './windows';
-import { EARTH, J2000, JUPITER, MARS, MOON } from './test-fixtures';
+import { EARTH, J2000, JUPITER, MARS, MOON, PARABOLIC_COMET } from './test-fixtures';
 
 const MARS_WINDOW = nextTransferWindows(EARTH, MARS, J2000, 1)[0];
 const MARS_TOF = hohmannTransferDays(EARTH, MARS)!;
@@ -29,6 +29,15 @@ describe('buildRoute', () => {
 		const summed = route.legs.reduce((s, l) => s + l.dvKms, 0);
 		expect(summed).toBeCloseTo(route.totalDvKms, 9);
 		expect(route.legs.reduce((s, l) => s + l.days, 0)).toBeCloseTo(route.tofDays, 9);
+	});
+
+	it('prices an arc to a parabolic comet', () => {
+		// C/1264 N1 is seven centuries past perihelion and hundreds of AU out, so
+		// the cruise is measured in centuries — absurd, but the honest answer.
+		const route = buildRoute(EARTH, PARABOLIC_COMET, J2000 + 9000, 200 * 365.25)!;
+		expect(route).not.toBeNull();
+		expect(route.totalDvKms).toBeGreaterThan(0);
+		expect(isFinite(route.c3Km2S2)).toBe(true);
 	});
 
 	it('adds a descent leg only when landing', () => {

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { EARTH, ESCAPING_PROBE, JUPITER, MARS } from '$lib/math/travel/test-fixtures';
+import {
+	EARTH,
+	ESCAPING_PROBE,
+	JUPITER,
+	MARS,
+	PARABOLIC_COMET
+} from '$lib/math/travel/test-fixtures';
 import { crossingTimeDays, hohmannTransferDays, synodicPeriodDays } from '$lib/math/travel';
 import { searchWindow } from './search-window';
 
@@ -93,6 +99,16 @@ describe('searchWindow', () => {
 		it('searches departures over the cap, having no alignment to wait for', () => {
 			const options = searchWindow(chase)!;
 			expect(options.departToJd - options.departFromJd).toBeCloseTo(3 * 365.25, 0);
+		});
+
+		// Most of the comet catalogue is fitted as a parabola, which reaches the
+		// same chase path from the other side: a and n are zero rather than
+		// unbound, and the geometry comes from q and tp instead.
+		it('takes the same path for a parabolic comet', () => {
+			const options = searchWindow({ ...chase, target: PARABOLIC_COMET })!;
+			const crossing = crossingTimeDays(EARTH, PARABOLIC_COMET, NOW)!;
+			expect(options.tofMinDays).toBeLessThan(crossing * 0.1);
+			expect(options.tofMaxDays).toBeGreaterThan(options.tofMinDays);
 		});
 	});
 

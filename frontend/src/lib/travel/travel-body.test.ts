@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { BodyData } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
+import { elementsToState } from '$lib/math/travel';
 import { heliocentricAncestor, lookupIn, naifId, toTravelBody, transferPlan } from './travel-body';
 
 /** Minimal body row; only the fields the adapter reads are meaningful. */
@@ -131,6 +132,24 @@ describe('toTravelBody', () => {
 
 	it('returns null for a body with no reachable heliocentric orbit', () => {
 		expect(toTravelBody(body('naif-9999', 'naif-8888'), lookupIn(new Map()))).toBeNull();
+	});
+
+	// Dropping these left a parabolic comet with a=0/n=0 and nothing to replace
+	// them, so it propagated to nothing and the panel called it orbitless.
+	it('carries the perihelion pair a parabolic orbit is described by', () => {
+		const comet = body('spkid-1000616', 'naif-10', {
+			a: 0,
+			e: 1,
+			n: 0,
+			ma: 0,
+			q: 0.8249,
+			tp: 2182934.79,
+			epoch: 2182934.79
+		});
+		const travel = toTravelBody(comet, lookupIn(new Map()))!;
+		expect(travel.elements.q).toBe(0.8249);
+		expect(travel.elements.tp).toBe(2182934.79);
+		expect(elementsToState(travel.elements, 2461000)).not.toBeNull();
 	});
 
 	it('substitutes a positive radius for a missing one', () => {

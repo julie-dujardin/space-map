@@ -132,6 +132,10 @@ export function toTravelBody(
 			epoch: ancestor.epoch,
 			omDot: ancestor.omDot,
 			wDot: ancestor.wDot,
+			// A parabolic comet carries these instead of a/ma/n; without them the
+			// propagator has nothing to work from and the body cannot be a trip end.
+			q: ancestor.q,
+			tp: ancestor.tp,
 			equatorial: ancestor.equatorial
 		},
 		surfacePressureBar: surfacePressureBar(detail),
