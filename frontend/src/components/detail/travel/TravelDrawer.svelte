@@ -23,6 +23,7 @@
 	import type { TimelineEntry } from '$lib/travel/timeline';
 	import type { Hazard } from '$lib/travel/hazards';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
+	import type { TrajectoryFrame } from '$lib/math/travel';
 	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
 	import { DEFAULT_TRIP } from '$lib/travel/trip';
 	import { resolveTripBodies } from '$lib/travel/resolve';
@@ -45,6 +46,9 @@
 		/** The app's clock, as a Julian Date. Live — see `nowJd` below. */
 		clockJd: number;
 		isMobile: boolean;
+		/** Which frame the map draws the trip's ends in — the map's own control
+		 *  owns it; this only carries it through to the solve. */
+		viewFrame: TrajectoryFrame;
 		inert?: boolean;
 		onClose: () => void;
 		/** How much of the viewport the mobile sheet covers, so the map's floating
@@ -70,6 +74,7 @@
 		toFeatureId,
 		clockJd,
 		isMobile,
+		viewFrame,
 		inert = false,
 		onClose,
 		onSheetResize,
@@ -465,6 +470,7 @@
 				{originDetail}
 				{targetDetail}
 				{trip}
+				{viewFrame}
 				{onPathChange}
 				{onOptionsChange}
 				{onHoverChange}

@@ -10,7 +10,9 @@
  *
  * Everything here is in the transfer frame: km, ecliptic J2000, centred on
  * whatever the arc goes round. `centerId` names that body so the renderer can
- * hang the path off its live position rather than guessing at an origin.
+ * hang the path off its live position rather than guessing at an origin. The
+ * one exception is an end drawn planet-frame, which says so with its own
+ * `anchorId` — see {@link TrajectoryFrame}.
  */
 
 import { AU_KM } from '$lib/math/units';
@@ -74,18 +76,45 @@ export interface PathArc {
 }
 
 /**
+ * Which frame the ends of a trip are drawn in.
+ *
+ * A choice, not a setting, and the one thing about a trajectory that cannot be
+ * had both ways. Between the sphere of influence and periapsis the craft is on
+ * two curves at once: a hyperbola about the body, and a stretch of worldline
+ * about the Sun. They differ by the body's own motion, which over the day and a
+ * half a Mars capture takes is three million kilometres — further than the
+ * sphere of influence is wide.
+ *
+ * - `interplanetary` measures everything from the crossing's own centre. The
+ *   passage is the worldline, so it carries on from the crossing exactly; the
+ *   orbit at the end is not a closed ring in this frame and is drawn as the
+ *   trochoid it really is.
+ * - `planetary` measures each end from its own body, held still. The passage is
+ *   the bare hyperbola and the orbit closes — but the crossing outside cannot
+ *   follow, and is left to fade out before the two would visibly disagree.
+ */
+export type TrajectoryFrame = 'interplanetary' | 'planetary';
+
+/**
  * An end of a trip, drawn round the body it happens at: the orbit the craft is
  * in there, and the passage between that orbit and the crossing.
  *
  * Only the ends that are an orbit: a launch from the ground and a landing on it
- * are not, and neither is a flyby. It sits where the body will be on the date
- * that end of the trip happens, like everything else here — the same place the
- * arc meets it.
+ * are not, and neither is a flyby.
  */
 export interface EndOrbitPath {
 	at: 'departure' | 'arrival';
 	bodyId: string;
-	/** The closed orbit, in the transfer frame, km. */
+	/**
+	 * What `points` and `approach` are measured from — the path's own centre when
+	 * the ends are drawn `interplanetary`, this end's `bodyId` when `planetary`.
+	 *
+	 * The difference is not a translation the renderer could apply itself: a
+	 * planet-frame end is anchored to where the body is *now* and holds still
+	 * round it, where an interplanetary one sits frozen at the encounter.
+	 */
+	anchorId: string;
+	/** The orbit, closed or trochoid by frame, km. */
 	points: Vec3[];
 	/**
 	 * The escape or capture between the sphere of influence and the orbit's
@@ -99,6 +128,14 @@ export interface EndOrbitPath {
 	 */
 	approach: Vec3[];
 	/**
+	 * When each of `approach` is passed, JD. Same length, and increasing.
+	 *
+	 * The passage is sampled in time but not evenly in it — the steps crowd at
+	 * periapsis — so, as with an arc's own dates, anything asking where the craft
+	 * is has to read these rather than count samples.
+	 */
+	jds: number[];
+	/**
 	 * The stretch of the crossing this passage replaces, as a half-open range of
 	 * sample indices into the arc that meets this body. Whoever draws the
 	 * crossing draws only `[trimFrom, trimTo)` and lets `approach` finish it —
@@ -107,7 +144,11 @@ export interface EndOrbitPath {
 	 */
 	trimFrom: number;
 	trimTo: number;
-	/** The body's centre in the same frame, km — what both go round. */
+	/**
+	 * The body's centre in the *transfer* frame, km — where the encounter happens,
+	 * whichever frame the end itself is drawn in. Planet-frame that is no longer
+	 * where the drawn orbit sits, which is round the body wherever it is now.
+	 */
 	center: Vec3;
 	/**
 	 * The date the craft is at this end's periapsis, which is the date `center`
@@ -120,13 +161,17 @@ export interface EndOrbitPath {
 	periJd: number;
 	/** The orbit's widest radius, km. What says whether it is worth drawing at
 	 *  all: at system scale a parking orbit is well inside the dot the planet is
-	 *  drawn as. */
+	 *  drawn as. The orbit's own size, not the drawn line's — a trochoid is
+	 *  smeared over millions of km and is still the same small orbit. */
 	radiusKm: number;
 }
 
 export interface TrajectoryPath {
-	/** The body every position here is measured from. */
+	/** The body every position here is measured from, bar an end that says
+	 *  otherwise with its own `anchorId`. */
 	centerId: string;
+	/** Which frame the ends are drawn in. The crossing is always the centre's. */
+	frame: TrajectoryFrame;
 	arcs: PathArc[];
 	stops: PathStop[];
 	/** The orbits at either end, where those ends are orbits. */
@@ -138,25 +183,6 @@ export interface TrajectoryPath {
 	 * without this the path reads as missing.
 	 */
 	meeting: { bodyId: string; jd: number; r: Vec3 };
-}
-
-/**
- * The half-open range of `path.arcs[index]` that is the crossing proper.
- *
- * An end with a passage down to its orbit hands the last of its arc over: past
- * `trimTo` the conic runs on to the body's *centre*, which is not where the
- * craft goes and is only there because a two-body solve has to end somewhere.
- * Anything reading the arc — drawing along it, or measuring off it — wants this
- * window rather than the whole of it, or it ends up asking what the trip is like
- * at nought kilometres from the Sun.
- */
-export function crossingWindow(path: TrajectoryPath, index: number): { from: number; to: number } {
-	const count = path.arcs[index].points.length;
-	const at = (end: 'departure' | 'arrival') => path.endOrbits.find((orbit) => orbit.at === end);
-	return {
-		from: index === 0 ? (at('departure')?.trimFrom ?? 0) : 0,
-		to: index === path.arcs.length - 1 ? (at('arrival')?.trimTo ?? count) : count
-	};
 }
 
 /** Somewhere on the drawn trajectory to look at, and how far back to look from. */
@@ -237,6 +263,9 @@ export interface PathOptions extends RouteOptions {
 	/** Points per arc. The default draws a smooth ellipse at any zoom the map
 	 *  reaches; a caller sampling for something other than a line may want fewer. */
 	samples?: number;
+	/** Which frame to draw the ends in. Defaults to `interplanetary`, which is the
+	 *  frame the crossing itself is in and the only one that joins onto it. */
+	frame?: TrajectoryFrame;
 }
 
 const DEFAULT_SAMPLES = 180;
@@ -308,7 +337,7 @@ function lambertArc(
 
 /** A trajectory before the orbits at its ends are hung off it — what each of the
  *  builders below answers with. */
-type PathGeometry = Omit<TrajectoryPath, 'endOrbits'>;
+type PathGeometry = Omit<TrajectoryPath, 'endOrbits' | 'frame'>;
 
 /**
  * Rebuild the geometry of `route`.
@@ -325,15 +354,17 @@ export function buildTrajectoryPath(
 ): TrajectoryPath | null {
 	const path = buildCrossing(departure, target, route, options);
 	if (!path) return null;
+	const frame = options.frame ?? 'interplanetary';
 	const endOrbits = endOrbitPaths(departure, target, route, options, path);
 	// An arrival passage re-dates the encounter and the meeting follows it —
 	// left behind, it would mark a spot the body has already left and the ring
 	// would circle nothing. The stops stay priced: they are where the arcs end,
 	// which is where the scrubbed craft ends up.
 	const arrival = endOrbits.find((end) => end.at === 'arrival' && end.approach.length > 0);
-	if (!arrival) return { ...path, endOrbits };
+	if (!arrival) return { ...path, frame, endOrbits };
 	return {
 		...path,
+		frame,
 		meeting: { ...path.meeting, jd: arrival.periJd, r: arrival.center },
 		endOrbits
 	};
@@ -465,7 +496,7 @@ function endOrbitPaths(
 	const last = path.arcs[path.arcs.length - 1];
 	if (!centers || !first || !last) return [];
 
-	const { centralMu = GM_SUN_KM3_S2, systemPrimary } = options;
+	const { centralMu = GM_SUN_KM3_S2, systemPrimary, frame = 'interplanetary' } = options;
 	// What each end body goes round, which is what its sphere of influence is
 	// measured against: the primary itself inside one system, the Sun elsewhere.
 	const primaryMu = systemPrimary
@@ -485,7 +516,9 @@ function endOrbitPaths(
 				arc: first,
 				periJd: route.departJd,
 				approach: approaches.from,
-				primaryMu
+				primaryMu,
+				frame,
+				centerId: path.centerId
 			})
 		);
 	}
@@ -500,7 +533,9 @@ function endOrbitPaths(
 				arc: last,
 				periJd: route.arriveJd,
 				approach: approaches.to,
-				primaryMu
+				primaryMu,
+				frame,
+				centerId: path.centerId
 			})
 		);
 	}
@@ -682,8 +717,10 @@ function endOrbitPath(end: {
 	periJd: number;
 	approach?: EndApproach;
 	primaryMu: number;
+	frame: TrajectoryFrame;
+	centerId: string;
 }): EndOrbitPath {
-	const { at, body, center, orbit, arc, periJd, approach, primaryMu } = end;
+	const { at, body, center, orbit, arc, periJd, approach, primaryMu, frame, centerId } = end;
 	const outward = at === 'departure';
 	const count = arc.points.length;
 	// The two samples this end meets the body at, in flight order.
@@ -704,26 +741,99 @@ function endOrbitPath(end: {
 				primaryMu,
 				center,
 				arc,
-				endJd: periJd
+				endJd: periJd,
+				frame
 			})
 		: null;
 	const normal = passage?.normal ?? arcNormal;
 	const periapsis = passage?.periapsis ?? approachSide(arcNormal, a, b);
-	// A passage re-dates its end, and the ring goes round the body where the
-	// body then is; without one the priced date stands.
+	// A passage re-dates its end, and the encounter is where the body then is;
+	// without one the priced date stands.
 	const ringCenter = passage?.center ?? center;
+	const endPeriJd = passage?.periJd ?? periJd;
+
+	// Planet-frame the body is the origin and holds still, so everything drawn
+	// here is measured straight off it; otherwise it all hangs where the encounter
+	// puts the body, which is somewhere along the crossing.
+	const planetFrame = frame === 'planetary';
+	const origin: Vec3 = planetFrame ? [0, 0, 0] : ringCenter;
 
 	return {
 		at,
 		bodyId: body.id,
-		points: closedOrbit(ringCenter, orbit, normal, periapsis),
-		approach: passage ? passage.points.map((point) => add(ringCenter, point)) : [],
+		anchorId: planetFrame ? body.id : centerId,
+		points: orbitRing({
+			origin,
+			orbit,
+			normal,
+			periapsis,
+			mu: body.mu,
+			periJd: endPeriJd,
+			// A closed ring is only a closed ring in the body's own frame. Elsewhere
+			// it needs the body's motion to be drawn as what it is, and an end with no
+			// passage has no way to ask for it — that one closes and says so by
+			// nothing more than being small.
+			bodyAt: planetFrame ? undefined : approach?.bodyAt,
+			center: ringCenter,
+			outward
+		}),
+		approach: passage ? passage.points.map((point) => add(origin, point)) : [],
+		jds: passage?.jds ?? [],
 		trimFrom: passage && outward ? passage.cut : 0,
 		trimTo: passage && !outward ? passage.cut + 1 : count,
 		center: ringCenter,
-		periJd: passage?.periJd ?? periJd,
+		periJd: endPeriJd,
 		radiusKm: orbit.rApoKm
 	};
+}
+
+/**
+ * The orbit at an end of a trip, as the frame it is drawn in has it.
+ *
+ * A parking orbit closes only in the frame of the body it goes round. Drawn from
+ * anywhere else it is a trochoid: Mars covers five million kilometres in the two
+ * days a capture orbit takes, so what there is to draw is one revolution smeared
+ * along that motion — a shallow scallop, nothing like a ring, and the plainest
+ * statement the map can make about why the two frames are worth telling apart.
+ *
+ * Closed when the frame is the body's own, or when there is no way to ask where
+ * the body was: `bodyAt` comes off the passage, and an end without one is not
+ * drawn at body scale anyway.
+ */
+function orbitRing(ring: {
+	origin: Vec3;
+	orbit: EndOrbit;
+	normal: Vec3;
+	periapsis: Vec3;
+	mu: number;
+	periJd: number;
+	bodyAt?: (jd: number) => Vec3 | null;
+	center: Vec3;
+	outward: boolean;
+}): Vec3[] {
+	const { origin, orbit, normal, periapsis, mu, periJd, bodyAt, center, outward } = ring;
+	const closed = closedOrbit(origin, orbit, normal, periapsis);
+	const semiMajor = (orbit.rPeriKm + orbit.rApoKm) / 2;
+	if (!bodyAt || !(mu > 0) || !(semiMajor > 0)) return closed;
+
+	const e = (orbit.rApoKm - orbit.rPeriKm) / (orbit.rApoKm + orbit.rPeriKm);
+	const periodDays = (2 * Math.PI * Math.sqrt(semiMajor ** 3 / mu)) / SEC_PER_DAY;
+
+	const smeared: Vec3[] = [];
+	for (let i = 0; i <= RING_SAMPLES; i++) {
+		const nu = (Math.PI * 2 * i) / RING_SAMPLES;
+		// Kepler's equation, to put a date on each point of the ring. A departure is
+		// in this orbit *before* it leaves, so its revolution runs up to periapsis
+		// rather than away from it.
+		const anomaly =
+			2 * Math.atan2(Math.sqrt(1 - e) * Math.sin(nu / 2), Math.sqrt(1 + e) * Math.cos(nu / 2));
+		const mean = anomaly - e * Math.sin(anomaly);
+		const days = (periodDays * mean) / (Math.PI * 2) - (outward ? periodDays : 0);
+		const moved = bodyAt(periJd + days);
+		if (!moved) return closed;
+		smeared.push(add(closed[i], sub(moved, center)));
+	}
+	return smeared;
 }
 
 /** Index of the last date at or before `jd`, or -1 when there is none. */
@@ -782,20 +892,20 @@ function closedOrbit(center: Vec3, orbit: EndOrbit, normal: Vec3, periapsis: Vec
  * corrected meeting; a departure keeps its date, since its periapsis is the
  * injection burn the route priced.
  *
- * **The two frames are blended across it, and that is the point.** A hyperbola
- * about the body is only the trajectory to someone standing on the body; the
- * crossing outside is drawn about the Sun, and the two differ by the body's own
- * motion — 24 km/s at Mars against a 9 km/s arrival. Drawn one after the other
- * they read as the trip turning a corner in deep space. So every sample carries
- * the body's true displacement between it and periapsis, weighted from all of it
- * where the crossing hands over down to none of it at periapsis: out there the
- * drawn line is the patched-conic worldline itself; at periapsis it is the
- * hyperbola, tangent to the orbit it turns into, round a body the map holds
- * still. In between it trades one for the other, which no single frame could.
+ * **The frame decides what this curve even is.** A hyperbola about the body is
+ * only the trajectory to someone standing on the body; the crossing outside is
+ * drawn about the Sun, and the two differ by the body's own motion — 24 km/s at
+ * Mars against a 9 km/s arrival, three million kilometres over the day and a
+ * half the fall takes. `interplanetary` carries all of that, so what is returned
+ * is the patched-conic worldline and it carries on from the crossing exactly;
+ * `planetary` carries none of it, so what is returned is the bare hyperbola,
+ * measured off a body the map holds still. Nothing in between: a curve that
+ * traded one for the other along its length is neither, and reads as the trip
+ * turning a corner in deep space.
  *
  * The handover is put on a sample of the crossing rather than on a radius, and
- * whatever the conic misses by there is carried under the same weight, so the
- * two lines meet at a point they share exactly and part company gradually.
+ * interplanetary the conic's own error there is carried too, so the two lines
+ * meet at a point they share exactly.
  *
  * Null where there is no passage to draw — a body with no μ to speak of, an
  * excess speed of zero, or a crossing too short to give one up.
@@ -810,15 +920,19 @@ function hyperbolicPassage(end: {
 	center: Vec3;
 	arc: PathArc;
 	endJd: number;
+	frame: TrajectoryFrame;
 }): {
+	/** Measured from the body, in flight order — the caller puts them wherever
+	 *  that body is in the frame it is drawing. */
 	points: Vec3[];
+	jds: number[];
 	periapsis: Vec3;
 	normal: Vec3;
 	cut: number;
 	center: Vec3;
 	periJd: number;
 } | null {
-	const { body, approach, rPeriKm, arcNormal, at, primaryMu, arc, endJd } = end;
+	const { body, approach, rPeriKm, arcNormal, at, primaryMu, arc, endJd, frame } = end;
 	const { vInf, bodyAt } = approach;
 	const speed = norm(vInf);
 	if (!(speed > 0) || !(body.mu > 0) || !(rPeriKm > 0)) return null;
@@ -877,23 +991,42 @@ function hyperbolicPassage(end: {
 	};
 	const joinCarried = carried(joinDays);
 	if (!joinCarried) return null;
-	// What the conic misses the crossing by where the two meet, carried under the
-	// same weight as the body's motion — so the join is exact and nothing of it
-	// is left by the time the passage reaches its orbit.
+	// What the patched conic misses the crossing by where the two meet — two
+	// models of the same trip, agreeing to within a solver's tolerance rather than
+	// exactly. Worked off along the way down so the join is seamless and the low
+	// point is still the periapsis the burn was priced at.
 	const miss = sub(sub(arc.points[cut], center), add(sample(joinDays), joinCarried));
+	const solar = frame === 'interplanetary';
 
 	const points: Vec3[] = [];
+	const jds: number[] = [];
 	for (let i = 0; i < PASSAGE_SAMPLES; i++) {
 		const along = i / (PASSAGE_SAMPLES - 1);
 		const fraction = outward ? along : 1 - along;
 		const days = joinDays * fraction * fraction;
 		const point = sample(days);
+		jds.push(periJd + days);
+		// Planet-frame there is nothing to join onto — the crossing is in another
+		// frame and has been let go of by here — so the conic stands as it is.
+		if (!solar) {
+			points.push(point);
+			continue;
+		}
 		const moved = carried(days);
 		if (!moved) return null;
-		const weight = frameBlend((norm(point) - rPeriKm) / (outer - rPeriKm));
-		points.push(add(point, scale(add(moved, miss), weight)));
+		const seam = seamBlend((norm(point) - rPeriKm) / (outer - rPeriKm));
+		points.push(add(point, add(moved, scale(miss, seam))));
 	}
-	return { points, periapsis, normal, cut, center, periJd };
+	return { points, jds, periapsis, normal, cut, center, periJd };
+}
+
+/** How much of the two models' disagreement a point of the passage still
+ *  carries: all of it where the crossing hands over, none by periapsis. Flat at
+ *  both ends, so the line meets the orbit and the crossing along a tangent
+ *  rather than at an angle. */
+function seamBlend(x: number): number {
+	const t = Math.max(0, Math.min(1, x));
+	return t * t * (3 - 2 * t);
 }
 
 /**
@@ -963,15 +1096,6 @@ function hyperbolicTrueAnomaly(e: number, m: number): number {
 		if (Math.abs(step) < 1e-12) break;
 	}
 	return 2 * Math.atan(Math.sqrt((e + 1) / (e - 1)) * Math.tanh(H / 2));
-}
-
-/** How much of the other frame a point of the passage carries: none at
- *  periapsis, all of it where the crossing hands over. Flat at both ends, so the
- *  line meets the orbit and the crossing along a tangent rather than at an
- *  angle. */
-function frameBlend(x: number): number {
-	const t = Math.max(0, Math.min(1, x));
-	return t * t * (3 - 2 * t);
 }
 
 /** How far out a passage is drawn: to the edge of the body's sphere of

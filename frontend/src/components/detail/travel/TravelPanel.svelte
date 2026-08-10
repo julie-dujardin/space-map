@@ -31,6 +31,7 @@
 		transferScale,
 		type AeroAssist,
 		type Route,
+		type TrajectoryFrame,
 		type TrajectoryPath,
 		type TravelBody
 	} from '$lib/math/travel';
@@ -112,6 +113,17 @@
 		/** The trip's terms as the URL has them — what the panel opens on, and what
 		 *  browser-back restores it to. */
 		trip: TripState;
+		/**
+		 * Which frame the trip's ends are drawn in. The map's control owns it: it
+		 * changes the picture rather than the trip, so it belongs with the rest of
+		 * the map's chrome and not among the figures.
+		 *
+		 * Only the plan is drawn in it. An alternative is a shape rather than an
+		 * itinerary and gets none of the body-scale detail the choice is about, and
+		 * the hazard scan reads distances from the Sun — the one frame they mean
+		 * anything in.
+		 */
+		viewFrame: TrajectoryFrame;
 		/** Move either end. The URL owns them, so the panel asks. */
 		onOriginChange: (pick: TravelEndpointPick) => void;
 		onTargetChange: (pick: TravelEndpointPick) => void;
@@ -156,6 +168,7 @@
 		originDetail = null,
 		targetDetail = null,
 		trip,
+		viewFrame,
 		onOriginChange,
 		onTargetChange,
 		onSwap,
@@ -552,12 +565,17 @@
 	}
 
 	/** One route as geometry, or null when it cannot be drawn. */
-	function buildPath(route: Route, center: string): TrajectoryPath | null {
+	function buildPath(
+		route: Route,
+		center: string,
+		pathFrame: TrajectoryFrame = 'interplanetary'
+	): TrajectoryPath | null {
 		if (!originTravel || !targetTravel) return null;
 		return buildTrajectoryPath(originTravel, targetTravel, route, {
 			centerId: center,
 			centralMu: frame.centralMu,
 			systemPrimary: frame.systemPrimary,
+			frame: pathFrame,
 			// A swing-by route is drawn as two arcs meeting at a body neither end
 			// is, so the geometry needs the same candidates the search had.
 			vias: assistBodies
@@ -568,7 +586,9 @@
 		const route = panel.selectedRoute;
 		if (!route || !centerId) return null;
 		// The end names are on the labels, and they land after the geometry does.
-		return [originName ?? '', targetName ?? '', routeKey(route, centerId, frame)].join(';');
+		return [originName ?? '', targetName ?? '', viewFrame, routeKey(route, centerId, frame)].join(
+			';'
+		);
 	});
 
 	// One effect owns the drawn path, the way one owns the solve. Everything it
@@ -582,7 +602,7 @@
 				onPathChange(null);
 				return;
 			}
-			const path = buildPath(route, centerId);
+			const path = buildPath(route, centerId, viewFrame);
 			if (!path) {
 				console.warn(
 					`[travel] no drawable path for ${route.departureId} → ${route.targetId} ` +

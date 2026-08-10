@@ -86,9 +86,10 @@ export type {
 	PathOptions,
 	PathStop,
 	PathStopKind,
+	TrajectoryFrame,
 	TrajectoryPath
 } from './path';
-export { buildTrajectoryPath, crossingWindow } from './path';
+export { buildTrajectoryPath } from './path';
 
 export type { ConstantThrustOptions } from './brachistochrone';
 export { buildConstantThrustRoute } from './brachistochrone';

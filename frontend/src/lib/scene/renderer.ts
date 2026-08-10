@@ -564,7 +564,10 @@ export class SceneRenderer {
 		}
 		this.travelPath.setVisible(true);
 		this.travelPath.setClock(this.clock.jd);
-		this.travelPath.reposition(center.position, this.focus.focusTruePos);
+		this.travelPath.reposition(center.position, this.focus.focusTruePos, (id) => {
+			// Planet-frame ends hang off the live body, which may not be streamed in.
+			return this.ctx.getBody(id)?.position ?? null;
+		});
 		this.travelPath.updateCameraOffset(this.camera.position);
 		this.reserveTravelLabelSpace();
 	}

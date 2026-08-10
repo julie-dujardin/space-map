@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildTrajectoryPath, pathViewpoint, type EndOrbitPath } from './path';
+import {
+	buildTrajectoryPath,
+	pathViewpoint,
+	type EndOrbitPath,
+	type TrajectoryFrame
+} from './path';
 import { craftPositionAt } from './path-sample';
 import { buildRoute } from './route';
 import { buildAssistRoute } from './assist';
@@ -226,10 +231,18 @@ describe('buildTrajectoryPath', () => {
 });
 
 describe('end orbits', () => {
+	/** Where an end's own lines are measured from: the body itself planet-frame,
+	 *  the encounter along the crossing otherwise. */
+	function originOf(end: EndOrbitPath): Vec3 {
+		return end.anchorId === end.bodyId ? [0, 0, 0] : end.center;
+	}
+
 	/** Every point of `ring` is the distance from its centre a bound orbit between
-	 *  the two radii would be, and it closes. */
+	 *  the two radii would be, and it closes. Only ever true planet-frame: seen
+	 *  from anywhere else a parking orbit does not close at all. */
 	function checkRing(ring: EndOrbitPath, rPeriKm: number, rApoKm: number) {
-		const radii = ring.points.map((point) => norm(sub(point, ring.center)));
+		const origin = originOf(ring);
+		const radii = ring.points.map((point) => norm(sub(point, origin)));
 		expect(Math.min(...radii)).toBeCloseTo(rPeriKm, 3);
 		expect(Math.max(...radii)).toBeCloseTo(rApoKm, 3);
 		expect(ring.radiusKm).toBeCloseTo(rApoKm, 3);
@@ -243,12 +256,18 @@ describe('end orbits', () => {
 		return end.at === 'arrival' ? end.approach[end.approach.length - 1] : end.approach[0];
 	}
 
-	it('rings both ends of a trip flown orbit to orbit', () => {
+	/** Earth to Mars, orbit to orbit, drawn in `frame`. The two ends are the whole
+	 *  subject here and every one of them needs the same route. */
+	function orbitToOrbit(frame: TrajectoryFrame = 'interplanetary') {
 		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
 			departureMode: 'orbit',
 			arrivalMode: 'low-orbit'
 		})!;
-		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+		return buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN, frame })!;
+	}
+
+	it('rings both ends of a trip flown orbit to orbit', () => {
+		const path = orbitToOrbit('planetary');
 		expect(path.endOrbits.map((orbit) => orbit.at)).toEqual(['departure', 'arrival']);
 
 		const [departure, arrival] = path.endOrbits;
@@ -256,6 +275,31 @@ describe('end orbits', () => {
 		expect(arrival.bodyId).toBe(MARS.id);
 		checkRing(departure, parkingRadiusKm(EARTH), parkingRadiusKm(EARTH));
 		checkRing(arrival, parkingRadiusKm(MARS), parkingRadiusKm(MARS));
+	});
+
+	it('names the frame each end is drawn in, so nothing has to guess', () => {
+		for (const end of orbitToOrbit('interplanetary').endOrbits) {
+			expect(end.anchorId).toBe(SUN);
+		}
+		for (const end of orbitToOrbit('planetary').endOrbits) {
+			expect(end.anchorId).toBe(end.bodyId);
+			// Measured off the body, so the body is the origin rather than a place
+			// somewhere out along the crossing.
+			expect(norm(end.points[0])).toBeLessThan(end.radiusKm * 1.001);
+		}
+	});
+
+	it('draws the orbit as the trochoid it is once the frame is not the body\u2019s', () => {
+		const [, arrival] = orbitToOrbit('interplanetary').endOrbits;
+		const radii = arrival.points.map((point) => norm(sub(point, arrival.center)));
+		// Mars covers millions of km in the time a parking orbit takes, so one
+		// revolution of it is a streak along that motion rather than a ring.
+		expect(Math.max(...radii)).toBeGreaterThan(arrival.radiusKm * 10);
+		expect(norm(sub(arrival.points[0], arrival.points[arrival.points.length - 1]))).toBeGreaterThan(
+			arrival.radiusKm
+		);
+		// And is still the same small orbit, which is what says whether to draw it.
+		expect(arrival.radiusKm).toBeCloseTo(parkingRadiusKm(MARS), 3);
 	});
 
 	it('goes round where the bodies are on their own dates, which is where the arc meets them', () => {
@@ -270,11 +314,9 @@ describe('end orbits', () => {
 	});
 
 	it('turns the crossing into the orbit through one shared periapsis', () => {
-		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
-			departureMode: 'orbit',
-			arrivalMode: 'low-orbit'
-		})!;
-		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+		// Planet-frame, where both curves are the bare conics the burn was priced
+		// between and the tangency is exact rather than nearly so.
+		const path = orbitToOrbit('planetary');
 
 		for (const end of path.endOrbits) {
 			const rPeri = parkingRadiusKm(end.at === 'departure' ? EARTH : MARS);
@@ -282,7 +324,7 @@ describe('end orbits', () => {
 			// flight order: out from the burn on the way up, down to it on the way in.
 			expect(end.approach.length).toBeGreaterThan(2);
 			const periapsis = periapsisOf(end);
-			expect(norm(sub(periapsis, end.center))).toBeCloseTo(rPeri, 3);
+			expect(norm(sub(periapsis, originOf(end)))).toBeCloseTo(rPeri, 3);
 
 			// The orbit's own low point is that same place — it is drawn from
 			// periapsis, so its first vertex is where the passage ends.
@@ -395,28 +437,60 @@ describe('end orbits', () => {
 		expect(departure.trimTo).toBe(path.arcs[0].points.length);
 	});
 
-	it('sheds the body\u2019s own motion on the way down, and is the bare conic at periapsis', () => {
-		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
-			departureMode: 'orbit',
-			arrivalMode: 'low-orbit'
-		})!;
-		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+	it('carries the body\u2019s own motion, so the passage is the worldline', () => {
+		const path = orbitToOrbit('interplanetary');
 
 		for (const end of path.endOrbits) {
 			const body = end.at === 'departure' ? EARTH : MARS;
 			const radii = end.approach.map((point) => norm(sub(point, end.center)));
-			// Nothing of the other frame is left at the low point: it is exactly the
-			// periapsis the burn was priced at.
-			expect(Math.min(...radii)).toBeCloseTo(parkingRadiusKm(body), 6);
-			// And all of it out where the crossing hands over, which is why that end
-			// is further out than the sphere of influence rather than on it.
+			// The low point is still exactly the periapsis the burn was priced at:
+			// the body has not moved from where `center` puts it at that instant, and
+			// the two models' disagreement has been worked off by then.
+			expect(norm(sub(periapsisOf(end), end.center))).toBeCloseTo(parkingRadiusKm(body), 6);
+			// Out at the other end it carries all of the body's motion, which is why
+			// that end is further out than the sphere of influence rather than on it.
 			expect(Math.max(...radii)).toBeGreaterThan(soiOf(body, GM_SUN_KM3_S2));
+		}
+	});
+
+	it('is the bare conic planet-frame, one way down and nothing carried', () => {
+		const path = orbitToOrbit('planetary');
+
+		for (const end of path.endOrbits) {
+			const body = end.at === 'departure' ? EARTH : MARS;
+			const radii = end.approach.map((point) => norm(sub(point, originOf(end))));
+			expect(Math.min(...radii)).toBeCloseTo(parkingRadiusKm(body), 6);
+			// It reaches the sphere of influence and stops there. Not exactly on it —
+			// the handover is put on a sample of the crossing, so the conic runs to
+			// that sample's date — but nothing carries it beyond, which is the whole
+			// difference from the same passage drawn interplanetary.
+			expect(Math.max(...radii)).toBeLessThan(soiOf(body, GM_SUN_KM3_S2) * 2);
 			// One way down: the passage never turns back on itself.
 			for (let i = 1; i < radii.length; i++) {
 				const climbing = end.at === 'departure';
 				expect(climbing ? radii[i] > radii[i - 1] : radii[i] < radii[i - 1]).toBe(true);
 			}
 		}
+	});
+
+	it('dates the passage, in flight order', () => {
+		const path = orbitToOrbit('interplanetary');
+		const [departure, arrival] = path.endOrbits;
+
+		for (const end of path.endOrbits) {
+			expect(end.jds).toHaveLength(end.approach.length);
+			for (let i = 1; i < end.jds.length; i++) expect(end.jds[i]).toBeGreaterThan(end.jds[i - 1]);
+		}
+		// Each one picks up exactly where the crossing it replaces left off, and ends
+		// at its own periapsis — the dates the drawn line is read by.
+		expect(departure.jds[0]).toBe(departure.periJd);
+		expect(departure.jds[departure.jds.length - 1]).toBeCloseTo(
+			path.arcs[0].jds[departure.trimFrom],
+			9
+		);
+		const last = path.arcs[path.arcs.length - 1];
+		expect(arrival.jds[0]).toBeCloseTo(last.jds[arrival.trimTo - 1], 9);
+		expect(arrival.jds[arrival.jds.length - 1]).toBe(arrival.periJd);
 	});
 
 	it('has no passage to draw where nothing is flown on a conic', () => {
@@ -433,7 +507,7 @@ describe('end orbits', () => {
 
 	it('draws the loose ellipse a capture leaves the craft in', () => {
 		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { arrivalMode: 'capture' })!;
-		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN, frame: 'planetary' })!;
 		// A launch from the ground is not an orbit, so only the far end gets a ring.
 		expect(path.endOrbits.map((orbit) => orbit.at)).toEqual(['arrival']);
 		checkRing(
@@ -460,7 +534,8 @@ describe('end orbits', () => {
 		})!;
 		const path = buildTrajectoryPath(EARTH, MOON, route, {
 			centerId: EARTH.id,
-			systemPrimary: 'departure'
+			systemPrimary: 'departure',
+			frame: 'planetary'
 		})!;
 		const [departure, arrival] = path.endOrbits;
 		expect(norm(departure.center)).toBe(0);
@@ -469,27 +544,31 @@ describe('end orbits', () => {
 		checkRing(arrival, parkingRadiusKm(MOON), parkingRadiusKm(MOON));
 	});
 
-	it('lays the orbit in one plane, and lets the passage leave it', () => {
-		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
-			departureMode: 'orbit',
-			arrivalMode: 'low-orbit'
-		})!;
-		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
-		for (const end of path.endOrbits) {
+	it('lays the orbit and its passage in one plane, planet-frame', () => {
+		for (const end of orbitToOrbit('planetary').endOrbits) {
+			const origin = originOf(end);
 			const quarter = end.points[Math.floor(end.points.length / 4)];
-			const normal = normalize(cross(sub(end.points[0], end.center), sub(quarter, end.center)));
-			// The orbit is a conic and nothing else, out of plane by nothing at
-			// whatever distance — measured against each point's own, since an ellipse
-			// is a good deal wider in one direction than the other.
-			for (const point of end.points) {
-				const from = sub(point, end.center);
+			const normal = normalize(cross(sub(end.points[0], origin), sub(quarter, origin)));
+			// Both are a conic and nothing else, out of plane by nothing at whatever
+			// distance — measured against each point's own, since an ellipse is a good
+			// deal wider in one direction than the other.
+			for (const point of [...end.points, ...end.approach]) {
+				const from = sub(point, origin);
 				expect(Math.abs(dot(from, normal)) / norm(from)).toBeLessThan(1e-9);
 			}
-			// The passage starts in that plane and works its way out of it, because
-			// the body's own motion is not in it. Which is the whole trick, so it is
-			// worth pinning: in the plane at the low point, out of it at the far end.
-			const outOfPlane = (point: Vec3) => Math.abs(dot(sub(point, end.center), normal));
+		}
+	});
+
+	it('lets the passage leave that plane once it carries the body\u2019s motion', () => {
+		for (const end of orbitToOrbit('interplanetary').endOrbits) {
+			// The orbit's plane, read off the passage instead: the drawn ring is a
+			// trochoid in this frame and no longer has one of its own.
 			const low = end.at === 'departure' ? end.approach[0] : end.approach[end.approach.length - 1];
+			const next = end.at === 'departure' ? end.approach[1] : end.approach[end.approach.length - 2];
+			const normal = normalize(cross(sub(low, end.center), sub(next, end.center)));
+			// In the plane at the low point, out of it at the far end — because the
+			// body's own motion is not in it, and out there that is most of the line.
+			const outOfPlane = (point: Vec3) => Math.abs(dot(sub(point, end.center), normal));
 			const far = end.at === 'departure' ? end.approach[end.approach.length - 1] : end.approach[0];
 			expect(outOfPlane(low)).toBeLessThan(1);
 			expect(outOfPlane(far)).toBeGreaterThan(1000);
@@ -542,9 +621,31 @@ describe('craftPositionAt', () => {
 	const ROUTE = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF)!;
 	const PATH = buildTrajectoryPath(EARTH, MARS, ROUTE, { centerId: SUN })!;
 
-	it('starts on the departure and ends on the arrival', () => {
-		expect(relative(craftPositionAt(PATH, ROUTE.departJd)!, PATH.stops[0].r)).toBeLessThan(1e-9);
-		expect(relative(craftPositionAt(PATH, ROUTE.arriveJd)!, PATH.stops[1].r)).toBeLessThan(1e-9);
+	it('starts on the departure and ends in the orbit it was sold', () => {
+		expect(relative(craftPositionAt(PATH, ROUTE.departJd)!.r, PATH.stops[0].r)).toBeLessThan(1e-9);
+		// Not on the arrival stop: that is the crossing reaching Mars' centre, a
+		// place the craft never goes. It ends at the periapsis the insertion burn is
+		// made at, which is where the drawn passage ends too.
+		const arrival = PATH.endOrbits.find((end) => end.at === 'arrival')!;
+		const last = arrival.approach[arrival.approach.length - 1];
+		expect(relative(craftPositionAt(PATH, ROUTE.arriveJd)!.r, last)).toBeLessThan(1e-9);
+	});
+
+	it('rides the drawn passage rather than the arc it replaces', () => {
+		const arrival = PATH.endOrbits.find((end) => end.at === 'arrival')!;
+		const arc = PATH.arcs[PATH.arcs.length - 1];
+		const handover = arc.jds[arrival.trimTo - 1];
+		// Read off the untrimmed conic the craft closes on the body's centre in a
+		// straight line while the drawn line curves away; every sample has to sit on
+		// what is actually drawn instead.
+		for (let i = 0; i <= 8; i++) {
+			const jd = handover + ((arrival.periJd - handover) * i) / 8;
+			const at = craftPositionAt(PATH, jd)!.r;
+			let gap = Infinity;
+			for (const point of arrival.approach) gap = Math.min(gap, norm(sub(at, point)));
+			// Within a sample step of the line, which is all a polyline can promise.
+			expect(gap).toBeLessThan(arrival.radiusKm);
+		}
 	});
 
 	it('has no craft to place before it leaves or after it lands', () => {
@@ -553,10 +654,10 @@ describe('craftPositionAt', () => {
 	});
 
 	it('moves along the arc, and only forwards', () => {
-		let previous = craftPositionAt(PATH, ROUTE.departJd)!;
+		let previous = craftPositionAt(PATH, ROUTE.departJd)!.r;
 		let travelled = 0;
 		for (let i = 1; i <= 40; i++) {
-			const at = craftPositionAt(PATH, ROUTE.departJd + (ROUTE.tofDays * i) / 40)!;
+			const at = craftPositionAt(PATH, ROUTE.departJd + (ROUTE.tofDays * i) / 40)!.r;
 			expect(at).not.toBeNull();
 			travelled += norm(sub(at, previous));
 			previous = at;
@@ -576,13 +677,13 @@ describe('craftPositionAt', () => {
 		const start = path.stops[0].r;
 		const end = path.stops[1].r;
 		const total = norm(sub(end, start));
-		const quarter = craftPositionAt(path, route.departJd + route.tofDays / 4)!;
+		const quarter = craftPositionAt(path, route.departJd + route.tofDays / 4)!.r;
 		const alongAtQuarter = norm(sub(quarter, start)) / total;
 		expect(alongAtQuarter).toBeGreaterThan(0.05);
 		expect(alongAtQuarter).toBeLessThan(0.2);
 		// And the flip is still near the middle of the crossing, as the pricing
 		// assumes — both burns are the same length.
-		const flip = craftPositionAt(path, route.departJd + route.tofDays / 2)!;
+		const flip = craftPositionAt(path, route.departJd + route.tofDays / 2)!.r;
 		expect(norm(sub(flip, start)) / total).toBeCloseTo(0.5, 1);
 	});
 
@@ -592,7 +693,7 @@ describe('craftPositionAt', () => {
 			vias: [VENUS]
 		})!;
 		const flyby = ASSIST_ROUTE.flybys![0];
-		const at = craftPositionAt(path, flyby.jd)!;
+		const at = craftPositionAt(path, flyby.jd)!.r;
 		// Both arcs meet there, so either answer is the same place.
 		expect(relative(at, path.arcs[1].points[0])).toBeLessThan(1e-9);
 	});

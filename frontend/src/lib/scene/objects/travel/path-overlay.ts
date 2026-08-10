@@ -39,12 +39,14 @@ import { HALO_RADIUS_PX } from '$lib/scene/types';
 import '$lib/scene/label/label.css';
 // Deep imports, not the kernel's index: the renderer holds this overlay from the
 // first frame, and the index re-exports Lambert, the porkchop and the vehicle
-// catalogue — a chunk only `/nav` should ever pull in.
-import { crossingWindow, type PathArc, type TrajectoryPath } from '$lib/math/travel/path';
+// catalogue — a chunk only `/nav` should ever pull in. `path.ts` is types only
+// for the same reason; everything read off a built path lives in `path-sample`.
+import type { EndOrbitPath, PathArc, TrajectoryPath } from '$lib/math/travel/path';
 import type { Vec3 as TravelVec3 } from '$lib/math/travel/vec3';
 import type { PathEndLabel, LabelledPath } from '$lib/travel/labelled-path';
-import { craftPositionAt } from '$lib/math/travel/path-sample';
+import { craftPositionAt, crossingWindow } from '$lib/math/travel/path-sample';
 import { eclipticToScene } from '$lib/math/travel/state';
+import { kmToScene } from '$lib/math/units';
 import { buildFatLineFromThin, writeFatTrailVertices } from '$lib/scene/objects/trail/geometry';
 import type { Vec3 } from '$lib/scene/animation/math';
 // A coast is the plan itself; a drive held all the way is a different kind of
@@ -132,6 +134,10 @@ const SEVERITY_ORDER: HazardSeverity[] = ['notice', 'caution', 'severe'];
 
 /** The warning marker's screen size, between a burn dot and the meeting ring. */
 const HAZARD_MARKER_SIZE = 0.03;
+
+/** How much of a crossing is given up to the fade at an end it cannot follow.
+ *  Long enough to read as the line letting go rather than as it being cut. */
+const FADE_FRACTION = 0.2;
 
 /** A filled dot, for the points on the trip where something is spent. */
 function dotTexture(color: string): CanvasTexture {
@@ -231,11 +237,14 @@ interface DrawnArc {
 	line: Mesh;
 	/** The trajectory it belongs to, so hovering one can pick out its own arcs. */
 	owner: string | null;
+	/** What its vertices are measured from, when that is not the path's own
+	 *  centre: a planet-frame end hangs off its body wherever the body is now. */
+	anchorId: string | null;
 	/** What it is drawn in when nothing is hovering it. */
 	color: string;
 	brightness: number;
 	width: number;
-	/** Scene units, relative to the path's centre body. */
+	/** Scene units, relative to whatever `anchorId` names. */
 	local: Float64Array;
 	/** Scratch the rebase writes into before the fat geometry is expanded. */
 	positions: Float32Array;
@@ -252,24 +261,28 @@ interface DrawnArc {
  */
 interface DrawnRing {
 	arc: DrawnArc;
-	/** Scene units, relative to the path's centre body — the same frame the arcs
-	 *  are held in. */
+	/** The body's centre in scene units, in the arc's own frame. */
 	local: Vec3;
+	/** The orbit's own size, not the drawn line's — in the interplanetary frame
+	 *  the line is smeared over millions of km and is still that same orbit. */
 	radius: number;
 	/** Where that centre is this frame, from the last {@link TravelPathOverlay.reposition}. */
 	readonly world: Vector3;
 }
 
-/** A marker and where it sits, in scene units relative to the centre body. */
+/** A marker and where it sits, in scene units relative to {@link anchorId} — or
+ *  to the path's centre body when that is null. */
 interface DrawnMarker {
 	sprite: Sprite;
 	local: Vec3;
+	anchorId: string | null;
 }
 
 /** A label on one end of an option, and where it sits, same units. */
 interface DrawnLabel {
 	object: CSS2DObject;
 	local: Vec3;
+	anchorId: string | null;
 	/** The trajectory it names — see DrawnArc.owner. */
 	owner: string | null;
 	/** Measured once the element is laid out; 0 until then. */
@@ -492,10 +505,11 @@ export class TravelPathOverlay {
 			// was never rebuilt has nowhere to go at all: no point, no marker.
 			const at = craftPositionAt(path, hazard.startJd);
 			if (!at) continue;
-			const local = eclipticToScene(at) as Vec3;
+			const local = eclipticToScene(at.r) as Vec3;
+			const anchorId = at.centerId === path.centerId ? null : at.centerId;
 			const sprite = makeSprite(warningTexture(color), HAZARD_MARKER_SIZE);
 			this.group.add(sprite);
-			this.markers.push({ sprite, local });
+			this.markers.push({ sprite, local, anchorId });
 
 			const element = document.createElement('div');
 			element.className = 'scene-hazard-label';
@@ -512,6 +526,7 @@ export class TravelPathOverlay {
 			this.labels.push({
 				object,
 				local,
+				anchorId,
 				owner: null,
 				width: 0,
 				height: 0,
@@ -550,8 +565,10 @@ export class TravelPathOverlay {
 		this.arcs.push({
 			line,
 			// No owner: a band belongs to the plan, which is not something the hover
-			// link picks out.
+			// link picks out. A band only ever lies on the crossing, which is the
+			// centre's whichever frame the ends are drawn in.
 			owner: null,
+			anchorId: null,
 			color,
 			brightness: HAZARD_BRIGHTNESS,
 			width: HAZARD_LINE_WIDTH,
@@ -579,7 +596,8 @@ export class TravelPathOverlay {
 		if (meets && !labelled.arrival) {
 			this.markers.push({
 				sprite: makeSprite(ringTexture(ARC_COLORS.cruise), MEETING_SIZE),
-				local: eclipticToScene(path.meeting.r) as Vec3
+				local: eclipticToScene(path.meeting.r) as Vec3,
+				anchorId: null
 			});
 		}
 		for (const stop of path.stops) {
@@ -589,13 +607,18 @@ export class TravelPathOverlay {
 			if (stop.kind === 'departure' && labelled.departure) continue;
 			this.markers.push({
 				sprite: makeSprite(dotTexture(ARC_COLORS.cruise), STOP_SIZE),
-				local: eclipticToScene(stop.r) as Vec3
+				local: eclipticToScene(stop.r) as Vec3,
+				anchorId: null
 			});
 		}
 		for (const marker of this.markers) this.group.add(marker.sprite);
 
 		// Added last so it draws over the burn it is sitting on when the two meet.
-		this.craft = { sprite: makeSprite(dotTexture(CRAFT_COLOR), CRAFT_SIZE), local: [0, 0, 0] };
+		this.craft = {
+			sprite: makeSprite(dotTexture(CRAFT_COLOR), CRAFT_SIZE),
+			local: [0, 0, 0],
+			anchorId: null
+		};
 		this.craft.sprite.visible = false;
 		this.group.add(this.craft.sprite);
 	}
@@ -606,6 +629,8 @@ export class TravelPathOverlay {
 	 * The arrival goes on the *meeting* point — where the destination will be when
 	 * the craft gets there — because that is where the arc actually ends, and a
 	 * date written against where the planet is today would be a different claim.
+	 * Planet-frame there is no such distinction to draw: that end is measured off
+	 * the body, so the label rides it like the orbit round it does.
 	 *
 	 * Each end takes the colour of the arc it caps, so the two differ on a
 	 * trajectory flown differently at each end: a drive held all the way leaves
@@ -619,9 +644,22 @@ export class TravelPathOverlay {
 		const first = path.arcs[0];
 		const last = path.arcs[path.arcs.length - 1];
 		const departure = path.stops.find((stop) => stop.kind === 'departure');
-		const ends: { local: Vec3; end: PathEndLabel; color: string; at: 'departure' | 'arrival' }[] = [
+		// Both marks are a body's own centre, so an end drawn off its body puts its
+		// label at that body rather than at the frozen encounter.
+		const anchorAt = (at: 'departure' | 'arrival', r: TravelVec3) => {
+			const orbit = path.endOrbits.find((end) => end.at === at);
+			const anchorId = orbit ? this.anchorOf(path, orbit) : null;
+			return { anchorId, local: (anchorId === null ? eclipticToScene(r) : [0, 0, 0]) as Vec3 };
+		};
+		const ends: {
+			local: Vec3;
+			anchorId: string | null;
+			end: PathEndLabel;
+			color: string;
+			at: 'departure' | 'arrival';
+		}[] = [
 			{
-				local: eclipticToScene(path.meeting.r) as Vec3,
+				...anchorAt('arrival', path.meeting.r),
 				end: trajectory.arrival,
 				color: ARC_COLORS[last?.kind ?? 'cruise'],
 				at: 'arrival'
@@ -629,14 +667,14 @@ export class TravelPathOverlay {
 		];
 		if (departure) {
 			ends.push({
-				local: eclipticToScene(departure.r) as Vec3,
+				...anchorAt('departure', departure.r),
 				end: trajectory.departure,
 				color: ARC_COLORS[first?.kind ?? 'cruise'],
 				at: 'departure'
 			});
 		}
 		const drawn = { departure: false, arrival: false };
-		for (const { local, end, color, at } of ends) {
+		for (const { local, anchorId, end, color, at } of ends) {
 			if (!end.name) continue;
 			const object = makeEndLabel(end, color, trajectory, this.canvas);
 			if (faint) object.element.classList.add('scene-path-label--faint');
@@ -644,6 +682,7 @@ export class TravelPathOverlay {
 			this.labels.push({
 				object,
 				local,
+				anchorId,
 				owner: onSelect ? trajectory.id : null,
 				width: 0,
 				height: 0,
@@ -700,11 +739,21 @@ export class TravelPathOverlay {
 		owner: string | null = null,
 		patched = false
 	): void {
+		// Planet-frame, the crossing and the end it runs into are in different
+		// frames and no longer meet — the handover sample is a body's own motion
+		// away from where the passage starts. So the crossing is given up before it
+		// gets there rather than drawn to a point it visibly misses.
+		const parts = patched && path.frame === 'planetary';
+		const ends = (at: 'departure' | 'arrival') =>
+			parts && path.endOrbits.some((orbit) => orbit.at === at && orbit.approach.length > 1);
 		path.arcs.forEach((arc, index) => {
 			const { from, to } = patched
 				? crossingWindow(path, index)
 				: { from: 0, to: arc.points.length };
-			this.addLine(arc.points.slice(from, to), ARC_COLORS[arc.kind], width, brightness, owner);
+			this.addLine(arc.points.slice(from, to), ARC_COLORS[arc.kind], width, brightness, owner, {
+				fadeIn: index === 0 && ends('departure'),
+				fadeOut: index === path.arcs.length - 1 && ends('arrival')
+			});
 		});
 	}
 
@@ -720,31 +769,47 @@ export class TravelPathOverlay {
 	 */
 	private addEndOrbits(path: TrajectoryPath): void {
 		for (const orbit of path.endOrbits) {
-			this.addLine(orbit.approach, ARC_COLORS.cruise, LINE_WIDTH, LINE_BRIGHTNESS, null);
-			const ring = this.addLine(orbit.points, ARC_COLORS.cruise, RING_WIDTH, RING_BRIGHTNESS, null);
+			const anchorId = this.anchorOf(path, orbit);
+			this.addLine(orbit.approach, ARC_COLORS.cruise, LINE_WIDTH, LINE_BRIGHTNESS, null, {
+				anchorId
+			});
+			const ring = this.addLine(
+				orbit.points,
+				ARC_COLORS.cruise,
+				RING_WIDTH,
+				RING_BRIGHTNESS,
+				null,
+				{
+					anchorId
+				}
+			);
 			if (!ring) continue;
-			const local = eclipticToScene(orbit.center) as Vec3;
-			// Its size, off the drawn vertices rather than converted again — an ellipse
-			// is widest somewhere other than where it starts.
-			let radius = 0;
-			for (let i = 0; i < ring.count; i++) {
-				const dx = ring.local[i * 3] - local[0];
-				const dy = ring.local[i * 3 + 1] - local[1];
-				const dz = ring.local[i * 3 + 2] - local[2];
-				radius = Math.max(radius, Math.hypot(dx, dy, dz));
-			}
+			// Where the body sits inside the arc's own frame: at the origin when the
+			// arc is measured off it, at the encounter otherwise.
+			const local = (anchorId === null ? eclipticToScene(orbit.center) : [0, 0, 0]) as Vec3;
 			ring.line.visible = false;
-			this.rings.push({ arc: ring, local, radius, world: new Vector3() });
+			this.rings.push({
+				arc: ring,
+				local,
+				radius: kmToScene(orbit.radiusKm),
+				world: new Vector3()
+			});
 		}
 	}
 
-	/** One line of the plan, centre-relative and unplaced. */
+	/** What an end's own lines hang off, or null for the path's centre. */
+	private anchorOf(path: TrajectoryPath, orbit: EndOrbitPath): string | null {
+		return orbit.anchorId === path.centerId ? null : orbit.anchorId;
+	}
+
+	/** One line of the plan, anchor-relative and unplaced. */
 	private addLine(
 		points: readonly TravelVec3[],
 		color: string,
 		width: number,
 		brightness: number,
-		owner: string | null
+		owner: string | null,
+		opts: { anchorId?: string | null; fadeIn?: boolean; fadeOut?: boolean } = {}
 	): DrawnArc | null {
 		const count = points.length;
 		if (count < 2) return null;
@@ -756,9 +821,16 @@ export class TravelPathOverlay {
 			local[i * 3 + 2] = z;
 		}
 		const positions = new Float32Array(count * 3);
-		// A plan is not a trail: it is equally real along its whole length, so
-		// there is no fade from a live head to an old tail.
+		// A plan is not a trail: it is equally real along its whole length, so there
+		// is no fade from a live head to an old tail. The one exception is an end the
+		// crossing has to let go of — see {@link addArcs}.
 		const alphas = new Float32Array(count).fill(1);
+		const taper = Math.max(1, Math.round(count * FADE_FRACTION));
+		for (let i = 0; i < taper; i++) {
+			const along = (i + 1) / (taper + 1);
+			if (opts.fadeIn) alphas[i] = along;
+			if (opts.fadeOut) alphas[count - 1 - i] = along;
+		}
 		const line = buildFatLineFromThin(
 			count,
 			positions,
@@ -775,6 +847,7 @@ export class TravelPathOverlay {
 		const arc: DrawnArc = {
 			line,
 			owner,
+			anchorId: opts.anchorId ?? null,
 			color,
 			brightness,
 			width,
@@ -797,9 +870,13 @@ export class TravelPathOverlay {
 	setClock(jd: number): void {
 		const craft = this.craft;
 		if (!craft || !this.path) return;
-		const position = craftPositionAt(this.path, jd);
-		craft.sprite.visible = position !== null;
-		if (position) craft.local = eclipticToScene(position) as Vec3;
+		const at = craftPositionAt(this.path, jd);
+		craft.sprite.visible = at !== null;
+		if (!at) return;
+		craft.local = eclipticToScene(at.r) as Vec3;
+		// The craft rides whichever frame the stretch it is on is drawn in, which is
+		// the whole point of asking the path rather than the arcs.
+		craft.anchorId = at.centerId === this.path.centerId ? null : at.centerId;
 	}
 
 	/**
@@ -809,33 +886,57 @@ export class TravelPathOverlay {
 	 * the scene is drawn relative to; both are in scene units. Call whenever
 	 * either moves — which is every frame the clock runs, and on every focus
 	 * change.
+	 *
+	 * `bodyScenePos` answers for the ends that are drawn planet-frame, which hang
+	 * off their own body wherever it is now rather than off the transfer's centre.
+	 * An end whose body is not resident keeps the centre's offset: it is drawn in
+	 * the wrong place for a frame or two rather than flickering out of existence.
 	 */
-	reposition(centerScenePos: Vec3, basis: Vec3): void {
+	reposition(centerScenePos: Vec3, basis: Vec3, bodyScenePos: (id: string) => Vec3 | null): void {
 		if (this.center === null) return;
 		const dx = centerScenePos[0] - basis[0];
 		const dy = centerScenePos[1] - basis[1];
 		const dz = centerScenePos[2] - basis[2];
+		// One lookup per body rather than per line: both ends of a trip come through
+		// here every frame, and each owns several.
+		const offsets = new Map<string, Vec3>();
+		const offsetOf = (anchorId: string | null): Vec3 => {
+			if (anchorId === null) return [dx, dy, dz];
+			const known = offsets.get(anchorId);
+			if (known) return known;
+			const at = bodyScenePos(anchorId);
+			const offset: Vec3 = at
+				? [at[0] - basis[0], at[1] - basis[1], at[2] - basis[2]]
+				: [dx, dy, dz];
+			offsets.set(anchorId, offset);
+			return offset;
+		};
 
 		for (const arc of this.arcs) {
+			const [ax, ay, az] = offsetOf(arc.anchorId);
 			for (let i = 0; i < arc.count; i++) {
-				arc.positions[i * 3] = arc.local[i * 3] + dx;
-				arc.positions[i * 3 + 1] = arc.local[i * 3 + 1] + dy;
-				arc.positions[i * 3 + 2] = arc.local[i * 3 + 2] + dz;
+				arc.positions[i * 3] = arc.local[i * 3] + ax;
+				arc.positions[i * 3 + 1] = arc.local[i * 3 + 1] + ay;
+				arc.positions[i * 3 + 2] = arc.local[i * 3 + 2] + az;
 			}
 			writeFatTrailVertices(arc.line.geometry, arc.positions, arc.alphas, arc.alphas, arc.count);
 		}
 		for (const marker of this.markers) {
-			marker.sprite.position.set(marker.local[0] + dx, marker.local[1] + dy, marker.local[2] + dz);
+			const [ax, ay, az] = offsetOf(marker.anchorId);
+			marker.sprite.position.set(marker.local[0] + ax, marker.local[1] + ay, marker.local[2] + az);
 		}
 		for (const label of this.labels) {
-			label.object.position.set(label.local[0] + dx, label.local[1] + dy, label.local[2] + dz);
+			const [ax, ay, az] = offsetOf(label.anchorId);
+			label.object.position.set(label.local[0] + ax, label.local[1] + ay, label.local[2] + az);
 		}
 		if (this.craft) {
-			const { sprite, local } = this.craft;
-			sprite.position.set(local[0] + dx, local[1] + dy, local[2] + dz);
+			const { sprite, local, anchorId } = this.craft;
+			const [ax, ay, az] = offsetOf(anchorId);
+			sprite.position.set(local[0] + ax, local[1] + ay, local[2] + az);
 		}
 		for (const ring of this.rings) {
-			ring.world.set(ring.local[0] + dx, ring.local[1] + dy, ring.local[2] + dz);
+			const [ax, ay, az] = offsetOf(ring.arc.anchorId);
+			ring.world.set(ring.local[0] + ax, ring.local[1] + ay, ring.local[2] + az);
 		}
 	}
 

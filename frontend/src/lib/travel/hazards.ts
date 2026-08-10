@@ -21,7 +21,6 @@
 
 import {
 	buildTrajectoryPath,
-	crossingWindow,
 	elementsToState,
 	norm,
 	sub,
@@ -31,6 +30,7 @@ import {
 	type Vec3,
 	type Vehicle
 } from '$lib/math/travel';
+import { crossingWindow } from '$lib/math/travel/path-sample';
 import { AU_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
 import { sunsAt } from './sunlight';
 

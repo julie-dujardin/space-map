@@ -104,8 +104,10 @@
 		const viewpoint = pathViewpoint(path, jd, jd);
 		onFocus({
 			kind: 'point',
-			centerId: path.centerId,
-			r: craft,
+			// The craft names its own frame: at an end drawn planet-frame it is
+			// measured off that body, and the camera has to follow it there.
+			centerId: craft.centerId,
+			r: craft.r,
 			rangeKm: viewpoint?.rangeKm ?? 0,
 			track: true
 		});

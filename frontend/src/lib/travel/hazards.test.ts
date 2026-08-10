@@ -386,7 +386,7 @@ describe('what the map is handed', () => {
 			// land on the line.
 			const point = craftPositionAt(path, hazard.startJd);
 			expect(point, `${hazard.kind} at ${hazard.startJd}`).not.toBeNull();
-			expect(Number.isFinite(point![0])).toBe(true);
+			expect(Number.isFinite(point!.r[0])).toBe(true);
 		}
 	});
 

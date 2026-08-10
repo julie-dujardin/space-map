@@ -20,6 +20,8 @@
 	import { fetchBodyNomenclature, type NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { Focusable, FocusFeature, FocusObject } from '$lib/state/focusable';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
+	import type { TrajectoryFrame } from '$lib/math/travel';
+	import FramePill from './travel-frame/FramePill.svelte';
 	import type { Hazard } from '$lib/travel/hazards';
 	import type { TimelineEntry, TimelineFocus } from '$lib/travel/timeline';
 	// Lazy-loaded on first focus so its charts (d3-scale/d3-shape/layercake) and
@@ -38,6 +40,19 @@
 	// and its geometry so the timeline can put the camera on the arc itself.
 	let timelineEntries = $state.raw<TimelineEntry[] | null>(null);
 	let travelPlan = $state.raw<LabelledPath | null>(null);
+
+	/**
+	 * Which frame the drawn trip's ends are measured from. The map owns it rather
+	 * than the planner: it changes the picture, not the trip.
+	 *
+	 * Only offered where the two frames would draw different pictures — a trip
+	 * that escapes or captures. One that lands, flies past, or never leaves a
+	 * sphere of influence has no passage for them to disagree about.
+	 */
+	let viewFrame = $state<TrajectoryFrame>('interplanetary');
+	let framesDiffer = $derived(
+		travelPlan?.path.endOrbits.some((end) => end.approach.length > 1) ?? false
+	);
 	// The trajectories still being chosen between, drawn behind whatever is chosen
 	// and labelled at both ends so either one can be taken off the map.
 	let travelOptions = $state.raw<readonly LabelledPath[]>([]);
@@ -731,6 +746,7 @@
 					toFeatureId={navToFeature}
 					clockJd={clock.jd}
 					isMobile={isMobileViewport}
+					{viewFrame}
 					inert={bgInert}
 					onPathChange={(plan) => {
 						travelPlan = plan;
@@ -831,6 +847,18 @@
 					<ClearPromoted count={userPromotedCount} onClear={() => scene?.clearUserPromoted()} />
 				{/if}
 			</div>
+			{#if framesDiffer}
+				<!-- Centred on the window rather than on the map area left over beside
+				     the planner: measured off that, it sits off-centre by half a panel
+				     and slides sideways whenever the panel opens or closes. -->
+				<div
+					inert={bgInert}
+					class="pointer-events-none fixed start-[var(--safe-start)] end-[var(--safe-end)] z-10 flex
+						justify-center top-[calc(var(--safe-top)_+_4.5rem)] md:top-[calc(var(--safe-top)_+_4rem)]"
+				>
+					<FramePill frame={viewFrame} onSelect={(next) => (viewFrame = next)} />
+				</div>
+			{/if}
 			<div
 				inert={bgInert}
 				class="fixed end-[var(--safe-end)] z-10 transition-opacity duration-300 ease-in-out
