@@ -15,13 +15,16 @@
 	import WavesIcon from '@lucide/svelte/icons/waves';
 	import TornadoIcon from '@lucide/svelte/icons/tornado';
 	import ShellIcon from '@lucide/svelte/icons/shell';
+	import CircleDashedIcon from '@lucide/svelte/icons/circle-dashed';
 	import {
+		endArrivalOrbit,
+		endDepartureOrbit,
 		dvWithPayloadKms,
 		routeDurationDays,
-		type LegKind,
 		type Route,
 		type TravelBody
 	} from '$lib/math/travel';
+	import type { TimelineKind } from '$lib/travel/timeline';
 	import { returnDvKms, signalDelaySeconds } from '$lib/travel/arrival-stats';
 	import { formatJulianDate } from '$lib/format/date';
 	import { formatKm } from '$lib/format/distance';
@@ -31,6 +34,7 @@
 		dvParts,
 		formatAcceleration,
 		formatDv,
+		formatEndOrbit,
 		formatSpeed,
 		lightPercent
 	} from '$lib/travel/format';
@@ -58,7 +62,9 @@
 	// One pass for now; the solver builds no route with two.
 	let pass = $derived(route.flybys?.[0] ?? null);
 
-	const ICONS: Record<LegKind, typeof RocketIcon> = {
+	const ICONS: Record<TimelineKind, typeof RocketIcon> = {
+		'start-orbit': CircleDashedIcon,
+		'final-orbit': CircleDashedIcon,
 		ascent: ArrowUpIcon,
 		injection: RocketIcon,
 		cruise: MoveRightIcon,
@@ -154,6 +160,74 @@
 			state.vehicle.dvKms === undefined
 	);
 	let returnCost = $derived(returnDvKms(target, route, state.targetOrbit));
+
+	/** A row of the itinerary: what happens, what it costs, and whatever the
+	 *  figure on the right cannot say on its own. */
+	interface Step {
+		key: string;
+		kind: TimelineKind;
+		/** Δv, a duration, or the height an end orbit is flown at. */
+		figure: string;
+		notes: string[];
+	}
+
+	// The legs, bracketed by the orbits at either end where those ends are orbits.
+	// An orbit is not a leg — nothing is spent and no time passes — but it is where
+	// the trip starts and stops, which the legs alone never say. A launch and a
+	// landing say it themselves, so neither gets one.
+	let steps = $derived.by<Step[]>(() => {
+		const list: Step[] = [];
+		const start = endDepartureOrbit(origin, route.departureMode, route.departureOrbit);
+		if (start) {
+			list.push({
+				key: 'start-orbit',
+				kind: 'start-orbit',
+				figure: formatEndOrbit(start, origin.radiusKm),
+				notes: []
+			});
+		}
+
+		for (const [index, leg] of route.legs.entries()) {
+			const notes: string[] = [];
+			// A burn costs Δv, a coast costs time, and a leg under thrust costs both —
+			// the figure is the Δv, so the duration is said here rather than lost, with
+			// the acceleration that was held for it.
+			if (leg.dvKms > 0 && leg.days > 0) {
+				notes.push(
+					route.constantThrust
+						? m.travel_burn_at({
+								duration: formatDurationNarrow(leg.days),
+								value: formatAcceleration(route.constantThrust)
+							})
+						: formatDurationNarrow(leg.days)
+				);
+			}
+			// The campaign's own step already says what it is; the note belongs on the
+			// burns the air made smaller, and it names which of the two manoeuvres
+			// made them smaller.
+			if (leg.kind === 'aerobrake') notes.push(m.travel_aero_campaign());
+			else if (leg.aerobraked) {
+				notes.push(route.aero === 'aerocapture' ? m.travel_aerocaptured() : m.travel_aerobraked());
+			}
+			list.push({
+				key: `${index}:${leg.kind}`,
+				kind: leg.kind,
+				figure: leg.dvKms > 0 ? formatDv(leg.dvKms) : formatDurationNarrow(leg.days),
+				notes
+			});
+		}
+
+		const final = endArrivalOrbit(target, route.arrivalMode, route.targetOrbit);
+		if (final) {
+			list.push({
+				key: 'final-orbit',
+				kind: 'final-orbit',
+				figure: formatEndOrbit(final, target.radiusKm),
+				notes: []
+			});
+		}
+		return list;
+	});
 
 	// What the detour bought, against the best the direct search found. The saving
 	// is the reason this route is on the list at all, so it is said rather than
@@ -313,8 +387,8 @@
 		<h4 class="text-sm font-medium">{m.travel_steps()}</h4>
 		<div class="border-border/60 border-t"></div>
 		<ol class="flex flex-col">
-			{#each route.legs as leg, i (i)}
-				{@const Icon = ICONS[leg.kind]}
+			{#each steps as step, i (step.key)}
+				{@const Icon = ICONS[step.kind]}
 				<li class="flex gap-3">
 					<div class="flex flex-col items-center">
 						<span
@@ -322,41 +396,18 @@
 						>
 							<Icon class="size-3" />
 						</span>
-						{#if i < route.legs.length - 1}
+						{#if i < steps.length - 1}
 							<span class="bg-border/60 w-px flex-1"></span>
 						{/if}
 					</div>
 					<div class="min-w-0 flex-1 pb-3">
 						<div class="flex items-baseline justify-between gap-2">
-							<span class="truncate text-sm">{legLabel(leg.kind)}</span>
-							<span class="shrink-0 text-sm tabular-nums">
-								{leg.dvKms > 0 ? formatDv(leg.dvKms) : formatDurationNarrow(leg.days)}
-							</span>
+							<span class="truncate text-sm">{legLabel(step.kind)}</span>
+							<span class="shrink-0 text-sm tabular-nums">{step.figure}</span>
 						</div>
-						<!-- A burn costs Δv, a coast costs time, and a leg under thrust
-						     costs both — the figure above is the Δv, so the duration is
-						     said here rather than lost, with the acceleration that was
-						     held for it. -->
-						{#if leg.dvKms > 0 && leg.days > 0}
-							<span class="text-muted-foreground text-xs">
-								{route.constantThrust
-									? m.travel_burn_at({
-											duration: formatDurationNarrow(leg.days),
-											value: formatAcceleration(route.constantThrust)
-										})
-									: formatDurationNarrow(leg.days)}
-							</span>
-						{/if}
-						<!-- The campaign's own step already says what it is; the note
-						     belongs on the burns the air made smaller, and it names which
-						     of the two manoeuvres made them smaller. -->
-						{#if leg.kind === 'aerobrake'}
-							<span class="text-muted-foreground text-xs">{m.travel_aero_campaign()}</span>
-						{:else if leg.aerobraked}
-							<span class="text-muted-foreground text-xs">
-								{route.aero === 'aerocapture' ? m.travel_aerocaptured() : m.travel_aerobraked()}
-							</span>
-						{/if}
+						{#each step.notes as note (note)}
+							<span class="text-muted-foreground text-xs">{note}</span>
+						{/each}
 					</div>
 				</li>
 			{/each}

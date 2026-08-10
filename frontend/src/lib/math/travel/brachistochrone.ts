@@ -419,6 +419,8 @@ export function buildConstantThrustRoute(
 		vInfArrKms,
 		departureMode,
 		arrivalMode,
+		departureOrbit: options.departureOrbit,
+		targetOrbit: options.targetOrbit,
 		aero,
 		entrySpeedKms: arr.entrySpeedKms,
 		constantThrust: accelMs2,

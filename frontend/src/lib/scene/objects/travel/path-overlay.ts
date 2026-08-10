@@ -35,6 +35,7 @@ import '$lib/scene/label/label.css';
 // first frame, and the index re-exports Lambert, the porkchop and the vehicle
 // catalogue — a chunk only `/nav` should ever pull in.
 import type { TrajectoryPath } from '$lib/math/travel/path';
+import type { Vec3 as TravelVec3 } from '$lib/math/travel/vec3';
 import type { PathEndLabel, LabelledPath } from '$lib/travel/labelled-path';
 import { craftPositionAt } from '$lib/math/travel/path-sample';
 import { eclipticToScene } from '$lib/math/travel/state';
@@ -73,6 +74,19 @@ const OPTION_BRIGHTNESS = 0.6;
  */
 const FAINT_WIDTH = 1.5;
 const FAINT_BRIGHTNESS = 0.3;
+
+/**
+ * The orbit at either end of the trip: thin, and only drawn once the camera is
+ * near enough for it to be a ring rather than a speck.
+ *
+ * A parking orbit is a few hundred km over a body the map draws at system scale,
+ * so from anywhere else it is smaller than the dot the planet itself is. The
+ * threshold is a multiple of the orbit's own radius, which is what makes it one
+ * rule for a 200 km orbit round Earth and round a kilometre-wide asteroid.
+ */
+const RING_WIDTH = 1.5;
+const RING_BRIGHTNESS = 0.85;
+const RING_VISIBLE_RADII = 60;
 
 /** Screen size of the markers, in the units an unattenuated sprite scales by. */
 const STOP_SIZE = 0.018;
@@ -144,6 +158,23 @@ interface DrawnArc {
 	positions: Float32Array;
 	alphas: Float32Array;
 	count: number;
+}
+
+/**
+ * An end orbit's line, with what it takes to decide whether it is worth drawing:
+ * where its centre is and how big the ring round it is, both in scene units.
+ *
+ * It belongs to the trajectory like every other line here, so it sits where the
+ * arc meets its body rather than where that body is now.
+ */
+interface DrawnRing {
+	arc: DrawnArc;
+	/** Scene units, relative to the path's centre body — the same frame the arcs
+	 *  are held in. */
+	local: Vec3;
+	radius: number;
+	/** Where that centre is this frame, from the last {@link TravelPathOverlay.reposition}. */
+	readonly world: Vector3;
 }
 
 /** A marker and where it sits, in scene units relative to the centre body. */
@@ -242,6 +273,9 @@ function makeEndLabel(
 export class TravelPathOverlay {
 	private readonly group = new Group();
 	private arcs: DrawnArc[] = [];
+	/** The end orbits, which are among `arcs` too — this is what gates them on how
+	 *  close the camera is. */
+	private rings: DrawnRing[] = [];
 	private markers: DrawnMarker[] = [];
 	/** The ends of the options, named and dated; empty once one is chosen. */
 	private labels: DrawnLabel[] = [];
@@ -330,7 +364,8 @@ export class TravelPathOverlay {
 	 *  it is spent at, and the dot that rides it. */
 	private addPlan(plan: LabelledPath): void {
 		const path = plan.path;
-		this.addArcs(path, LINE_WIDTH, LINE_BRIGHTNESS);
+		this.addArcs(path, LINE_WIDTH, LINE_BRIGHTNESS, null, true);
+		this.addEndOrbits(path);
 		// A labelled end already wears a ring, so it takes the marker's place rather
 		// than sitting inside one.
 		const labelled = this.addEndLabels(plan);
@@ -447,52 +482,111 @@ export class TravelPathOverlay {
 		}
 	}
 
-	/** Lay one trajectory's arcs down, centre-relative and unplaced. */
+	/**
+	 * Lay one trajectory's arcs down, centre-relative and unplaced.
+	 *
+	 * An end with a passage hands the last of its crossing over: the arc stops
+	 * where the craft crosses into the sphere of influence and the passage carries
+	 * on from there, so the samples it replaces are left out here. Only the plan
+	 * is drawn that way — an alternative is a shape and gets none of the
+	 * body-scale detail — so an option keeps its whole arc.
+	 */
 	private addArcs(
 		path: TrajectoryPath,
 		width: number,
 		brightness: number,
-		owner: string | null = null
+		owner: string | null = null,
+		patched = false
 	): void {
-		for (const arc of path.arcs) {
-			const count = arc.points.length;
-			if (count < 2) continue;
-			const local = new Float64Array(count * 3);
-			for (let i = 0; i < count; i++) {
-				const [x, y, z] = eclipticToScene(arc.points[i]);
-				local[i * 3] = x;
-				local[i * 3 + 1] = y;
-				local[i * 3 + 2] = z;
+		const end = (at: 'departure' | 'arrival') =>
+			patched ? path.endOrbits.find((orbit) => orbit.at === at) : undefined;
+		const first = end('departure');
+		const last = end('arrival');
+		path.arcs.forEach((arc, index) => {
+			const from = index === 0 ? (first?.trimFrom ?? 0) : 0;
+			const to =
+				index === path.arcs.length - 1 ? (last?.trimTo ?? arc.points.length) : arc.points.length;
+			this.addLine(arc.points.slice(from, to), ARC_COLORS[arc.kind], width, brightness, owner);
+		});
+	}
+
+	/**
+	 * The orbits the trip starts in and ends in, and the passages down to them.
+	 *
+	 * The passage is a piece of the trip and is drawn at every zoom: it is where
+	 * the crossing stops, so it has to be, and it is drawn in the crossing's own
+	 * frame at that end, so it can be. The orbit is different — it is where the
+	 * trip ends up rather than part of getting there, and it is the one thing here
+	 * at a body's own scale, a few hundred km over a planet the map draws at
+	 * system scale. So it is kept in its own list and waits for the camera.
+	 */
+	private addEndOrbits(path: TrajectoryPath): void {
+		for (const orbit of path.endOrbits) {
+			this.addLine(orbit.approach, ARC_COLORS.cruise, LINE_WIDTH, LINE_BRIGHTNESS, null);
+			const ring = this.addLine(orbit.points, ARC_COLORS.cruise, RING_WIDTH, RING_BRIGHTNESS, null);
+			if (!ring) continue;
+			const local = eclipticToScene(orbit.center) as Vec3;
+			// Its size, off the drawn vertices rather than converted again — an ellipse
+			// is widest somewhere other than where it starts.
+			let radius = 0;
+			for (let i = 0; i < ring.count; i++) {
+				const dx = ring.local[i * 3] - local[0];
+				const dy = ring.local[i * 3 + 1] - local[1];
+				const dz = ring.local[i * 3 + 2] - local[2];
+				radius = Math.max(radius, Math.hypot(dx, dy, dz));
 			}
-			const positions = new Float32Array(count * 3);
-			// A plan is not a trail: it is equally real along its whole length, so
-			// there is no fade from a live head to an old tail.
-			const alphas = new Float32Array(count).fill(1);
-			const line = buildFatLineFromThin(
-				count,
-				positions,
-				alphas,
-				alphas,
-				count,
-				ARC_COLORS[arc.kind],
-				width,
-				brightness
-			);
-			line.frustumCulled = false;
-			line.renderOrder = PATH_RENDER_ORDER;
-			this.group.add(line);
-			this.arcs.push({
-				line,
-				owner,
-				color: ARC_COLORS[arc.kind],
-				brightness,
-				width,
-				local,
-				positions,
-				alphas,
-				count
-			});
+			ring.line.visible = false;
+			this.rings.push({ arc: ring, local, radius, world: new Vector3() });
 		}
+	}
+
+	/** One line of the plan, centre-relative and unplaced. */
+	private addLine(
+		points: readonly TravelVec3[],
+		color: string,
+		width: number,
+		brightness: number,
+		owner: string | null
+	): DrawnArc | null {
+		const count = points.length;
+		if (count < 2) return null;
+		const local = new Float64Array(count * 3);
+		for (let i = 0; i < count; i++) {
+			const [x, y, z] = eclipticToScene(points[i]);
+			local[i * 3] = x;
+			local[i * 3 + 1] = y;
+			local[i * 3 + 2] = z;
+		}
+		const positions = new Float32Array(count * 3);
+		// A plan is not a trail: it is equally real along its whole length, so
+		// there is no fade from a live head to an old tail.
+		const alphas = new Float32Array(count).fill(1);
+		const line = buildFatLineFromThin(
+			count,
+			positions,
+			alphas,
+			alphas,
+			count,
+			color,
+			width,
+			brightness
+		);
+		line.frustumCulled = false;
+		line.renderOrder = PATH_RENDER_ORDER;
+		this.group.add(line);
+		const arc: DrawnArc = {
+			line,
+			owner,
+			color,
+			brightness,
+			width,
+			local,
+			positions,
+			alphas,
+			count
+		};
+		this.arcs.push(arc);
+		return arc;
 	}
 
 	/**
@@ -542,11 +636,17 @@ export class TravelPathOverlay {
 			const { sprite, local } = this.craft;
 			sprite.position.set(local[0] + dx, local[1] + dy, local[2] + dz);
 		}
+		for (const ring of this.rings) {
+			ring.world.set(ring.local[0] + dx, ring.local[1] + dy, ring.local[2] + dz);
+		}
 	}
 
 	/**
 	 * Hand the line shader the camera, which is what its vertices are ultimately
 	 * drawn relative to. Same contract as the trails' own per-frame update.
+	 *
+	 * Also where the end orbits decide whether they are a ring or a speck this
+	 * frame, since the camera is the only thing that answers it.
 	 */
 	updateCameraOffset(cameraPosition: Vector3): void {
 		if (this.arcs.length === 0) return;
@@ -554,6 +654,10 @@ export class TravelPathOverlay {
 		for (const arc of this.arcs) {
 			const material = arc.line.material as ShaderMaterial;
 			material.uniforms.uCenterOffset.value.copy(this.offset);
+		}
+		for (const ring of this.rings) {
+			const distance = ring.world.distanceTo(cameraPosition);
+			ring.arc.line.visible = distance < ring.radius * RING_VISIBLE_RADII;
 		}
 	}
 
@@ -669,6 +773,7 @@ export class TravelPathOverlay {
 			label.object.element.remove();
 		}
 		this.arcs = [];
+		this.rings = [];
 		this.markers = [];
 		this.labels = [];
 		this.craft = null;

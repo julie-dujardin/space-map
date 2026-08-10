@@ -540,6 +540,8 @@ export function buildLowThrustRoute(
 		vInfArrKms: 0,
 		departureMode,
 		arrivalMode,
+		departureOrbit: options.departureOrbit,
+		targetOrbit: options.targetOrbit,
 		aero,
 		lowThrust: { accelMs2: drive.accelMs2, veKms: drive.veKms }
 	};

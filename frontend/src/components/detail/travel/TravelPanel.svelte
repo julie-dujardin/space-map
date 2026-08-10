@@ -665,9 +665,19 @@
 			route.lowThrust?.accelMs2 ?? '',
 			(route.flybys ?? []).map((flyby) => `${flyby.bodyId}@${flyby.jd}`).join(','),
 			originName ?? '',
-			targetName ?? ''
+			targetName ?? '',
+			// The orbits at the two ends are sized off the bodies, which arrive with
+			// a fetched bundle: without this the timeline built before they land
+			// would keep its missing ends for the rest of the trip.
+			timelineBodies ? `${timelineBodies.departure.radiusKm}/${timelineBodies.target.radiusKm}` : ''
 		].join('|');
 	});
+
+	/** The two ends as the kernel knows them, once both are known. What the orbit
+	 *  each end is flown from or into is derived from. */
+	let timelineBodies = $derived(
+		originTravel && targetTravel ? { departure: originTravel, target: targetTravel } : null
+	);
 
 	$effect(() => {
 		const key = timelineKey;
@@ -678,11 +688,15 @@
 				return;
 			}
 			onTimelineChange(
-				buildTimeline(route, (bodyId) => {
-					if (bodyId === origin?.id && originName) return originName;
-					if (bodyId === target?.id && targetName) return targetName;
-					return resolveBodyName(bodyId);
-				})
+				buildTimeline(
+					route,
+					(bodyId) => {
+						if (bodyId === origin?.id && originName) return originName;
+						if (bodyId === target?.id && targetName) return targetName;
+						return resolveBodyName(bodyId);
+					},
+					timelineBodies
+				)
 			);
 		});
 	});

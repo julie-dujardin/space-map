@@ -16,12 +16,25 @@
  */
 
 import { dateToJD, jdToDate } from '$lib/format/date';
-import type { LegKind, Route } from '$lib/math/travel';
+import type { LegKind, Route, TravelBody } from '$lib/math/travel';
+// Deep import, not the kernel's index: this module is on the map's own chunk,
+// and the index carries Lambert, the porkchop and the vehicle catalogue.
+import { endArrivalOrbit, endDepartureOrbit, type EndOrbit } from '$lib/math/travel/maneuvers';
+
+/**
+ * What a step of the trip is.
+ *
+ * The legs of the route, plus the two ends that are not legs at all: an orbit
+ * the trip is flown out of, and the one it is left in. Nothing is spent and no
+ * time passes at either — they are where the trip starts and stops, which the
+ * legs on their own never say.
+ */
+export type TimelineKind = LegKind | 'start-orbit' | 'final-orbit';
 
 export interface TimelineEntry {
 	/** Stable for a given trip, so the list can key on it. */
 	id: string;
-	kind: LegKind;
+	kind: TimelineKind;
 	startJd: number;
 	/** Equal to `startJd` for an event. */
 	endJd: number;
@@ -38,19 +51,56 @@ export interface TimelineEntry {
 	altitudeKm?: number;
 	/** The atmosphere did the braking rather than the engine. */
 	aerobraked?: boolean;
+	/** The orbit an end of the trip is, carried with the radius of the body it
+	 *  goes round so an altitude can be read off it. The two orbit entries only. */
+	orbit?: { shape: EndOrbit; bodyRadiusKm: number };
 }
 
 /**
- * The legs of `route` placed in time, in flight order.
+ * The legs of `route` placed in time, in flight order, bracketed by the orbits
+ * at either end where those ends are orbits.
  *
  * The dates come from accumulating each leg's duration off the departure, which
  * is the same arithmetic the route was priced with — so the last one ends on the
  * arrival date without being told to.
+ *
+ * `bodies` is what the two ends can be derived from; without it the trip is its
+ * legs alone, which is what a timeline built before the bodies land shows.
  */
-export function buildTimeline(route: Route, nameFor: (bodyId: string) => string): TimelineEntry[] {
+export function buildTimeline(
+	route: Route,
+	nameFor: (bodyId: string) => string,
+	bodies?: { departure: TravelBody; target: TravelBody } | null
+): TimelineEntry[] {
 	const entries: TimelineEntry[] = [];
 	const flybys = [...(route.flybys ?? [])];
 	let jd = route.departJd;
+
+	/** An end of the trip: a place rather than something that happens, so it costs
+	 *  nothing and takes no time. */
+	const endEntry = (
+		kind: 'start-orbit' | 'final-orbit',
+		bodyId: string,
+		orbit: EndOrbit,
+		body: TravelBody
+	): TimelineEntry => ({
+		id: kind,
+		kind,
+		startJd: jd,
+		endJd: jd,
+		days: 0,
+		isPhase: false,
+		bodyId,
+		bodyName: nameFor(bodyId),
+		dvKms: 0,
+		orbit: { shape: orbit, bodyRadiusKm: body.radiusKm }
+	});
+
+	const start =
+		bodies && endDepartureOrbit(bodies.departure, route.departureMode, route.departureOrbit);
+	if (bodies && start) {
+		entries.push(endEntry('start-orbit', route.departureId, start, bodies.departure));
+	}
 
 	for (const [index, leg] of route.legs.entries()) {
 		// Which end of the trip a leg happens at. A coast is at neither: that is
@@ -81,6 +131,13 @@ export function buildTimeline(route: Route, nameFor: (bodyId: string) => string)
 			aerobraked: leg.aerobraked
 		});
 		jd += leg.days;
+	}
+
+	// After the last leg rather than on the arrival date: a campaign of
+	// aerobraking passes is months of not being in the orbit yet.
+	const final = bodies && endArrivalOrbit(bodies.target, route.arrivalMode, route.targetOrbit);
+	if (bodies && final) {
+		entries.push(endEntry('final-orbit', route.targetId, final, bodies.target));
 	}
 
 	return entries;

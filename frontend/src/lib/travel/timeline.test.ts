@@ -118,6 +118,77 @@ describe('buildTimeline', () => {
 		expect(boost.endJd).toBeCloseTo(brake.startJd, 9);
 		expect(boost.endJd).toBeCloseTo(route.departJd + route.tofDays / 2, 6);
 	});
+
+	describe('the orbits at either end', () => {
+		const ENDS = { departure: EARTH, target: MARS };
+
+		it('brackets the legs with the orbit the trip leaves and the one it ends in', () => {
+			const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+				departureMode: 'orbit',
+				arrivalMode: 'low-orbit'
+			})!;
+			const entries = buildTimeline(route, idAsName, ENDS);
+			expect(entries[0].kind).toBe('start-orbit');
+			expect(entries[entries.length - 1].kind).toBe('final-orbit');
+			// Neither is anything that happens: nothing is spent and no time passes.
+			for (const entry of [entries[0], entries[entries.length - 1]]) {
+				expect(entry.dvKms).toBe(0);
+				expect(entry.days).toBe(0);
+				expect(entry.isPhase).toBe(false);
+			}
+			expect(entries[0].startJd).toBeCloseTo(route.departJd, 9);
+			expect(entries[0].bodyId).toBe(EARTH.id);
+			expect(entries[entries.length - 1].bodyId).toBe(MARS.id);
+			// The legs in between are untouched.
+			expect(entries.slice(1, -1).map((e) => e.kind)).toEqual(route.legs.map((l) => l.kind));
+		});
+
+		it('leaves a launch and a landing to say so themselves', () => {
+			const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+				departureMode: 'surface',
+				arrivalMode: 'landing'
+			})!;
+			const entries = buildTimeline(route, idAsName, ENDS);
+			expect(entries.map((e) => e.kind)).toEqual(route.legs.map((l) => l.kind));
+		});
+
+		it('waits for the campaign that walks the orbit down before saying it is in one', () => {
+			const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+				arrivalMode: 'low-orbit',
+				aero: 'aerobraking'
+			})!;
+			const entries = buildTimeline(route, idAsName, ENDS);
+			const final = entries[entries.length - 1];
+			expect(final.kind).toBe('final-orbit');
+			expect(final.startJd).toBeGreaterThan(route.arriveJd);
+			expect(final.startJd).toBeCloseTo(entries[entries.length - 2].endJd, 9);
+		});
+
+		it('carries the shape of the orbit and the body it goes round', () => {
+			const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+				departureMode: 'orbit',
+				arrivalMode: 'capture'
+			})!;
+			const entries = buildTimeline(route, idAsName, ENDS);
+			const start = entries[0].orbit!;
+			expect(start.bodyRadiusKm).toBe(EARTH.radiusKm);
+			expect(start.shape.rApoKm).toBe(start.shape.rPeriKm);
+			// The capture ellipse is the loose one an orbiter really enters first.
+			const final = entries[entries.length - 1].orbit!;
+			expect(final.bodyRadiusKm).toBe(MARS.radiusKm);
+			expect(final.shape.rApoKm).toBeGreaterThan(final.shape.rPeriKm * 10);
+		});
+
+		it('has no ends to draw before the bodies are known', () => {
+			const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+				departureMode: 'orbit',
+				arrivalMode: 'low-orbit'
+			})!;
+			expect(buildTimeline(route, idAsName).map((e) => e.kind)).toEqual(
+				route.legs.map((l) => l.kind)
+			);
+		});
+	});
 });
 
 describe('entryIndexAt', () => {

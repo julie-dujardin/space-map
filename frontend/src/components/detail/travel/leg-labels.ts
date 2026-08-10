@@ -1,11 +1,15 @@
-/** Names for the legs of a route, in one place so the ladder and the step list
- *  cannot drift apart. */
+/** Names for the steps of a route, in one place so the ladder, the step list and
+ *  the timeline cannot drift apart. */
 
 import * as m from '$lib/paraglide/messages.js';
-import type { LegKind } from '$lib/math/travel';
+import type { TimelineKind } from '$lib/travel/timeline';
 
-export function legLabel(kind: LegKind): string {
+export function legLabel(kind: TimelineKind): string {
 	switch (kind) {
+		case 'start-orbit':
+			return m.travel_leg_start_orbit();
+		case 'final-orbit':
+			return m.travel_leg_final_orbit();
 		case 'ascent':
 			return m.travel_leg_ascent();
 		case 'injection':

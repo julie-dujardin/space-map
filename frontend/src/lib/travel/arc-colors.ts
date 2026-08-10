@@ -2,7 +2,7 @@
  *  the map and the bar under it cannot say different things about the same leg. */
 
 import type { PathArcKind } from '$lib/math/travel/path';
-import type { LegKind } from '$lib/math/travel';
+import type { TimelineKind } from '$lib/travel/timeline';
 
 export const ARC_COLORS: Record<PathArcKind, string> = {
 	cruise: '#7fdbff',
@@ -22,7 +22,7 @@ export const ARC_COLORS: Record<PathArcKind, string> = {
  * anywhere, so it has a colour here and nothing to colour out there. Green
  * because it is the one leg that costs time instead of propellant.
  */
-export const PHASE_COLORS: Partial<Record<LegKind, string>> = {
+export const PHASE_COLORS: Partial<Record<TimelineKind, string>> = {
 	cruise: ARC_COLORS.cruise,
 	boost: ARC_COLORS.boost,
 	brake: ARC_COLORS.brake,

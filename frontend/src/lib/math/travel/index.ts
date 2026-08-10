@@ -63,6 +63,8 @@ export {
 	characteristicEnergy,
 	circularSpeed,
 	departureCost,
+	endArrivalOrbit,
+	endDepartureOrbit,
 	hasUsableAtmosphere,
 	injectionDv,
 	orbitPeriodHours,

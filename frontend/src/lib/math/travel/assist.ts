@@ -138,6 +138,8 @@ export function buildAssistRoute(
 		vInfArrKms: vInfArr,
 		departureMode,
 		arrivalMode,
+		departureOrbit: options.departureOrbit,
+		targetOrbit: options.targetOrbit,
 		aero,
 		entrySpeedKms: arr.entrySpeedKms,
 		flybys: [flyby]

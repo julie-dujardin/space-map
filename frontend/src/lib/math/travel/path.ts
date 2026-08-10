@@ -13,12 +13,13 @@
  * hang the path off its live position rather than guessing at an origin.
  */
 
-import type { TravelBody } from './body';
+import { AU_KM } from '$lib/math/units';
+import { sphereOfInfluenceKm, type TravelBody } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { sampleHeldDrive, type HeldDriveSample } from './held-drive';
 import { solveLambert } from './lambert';
 import { rebuildSpiral } from './low-thrust';
-import { parkingRadiusKm } from './maneuvers';
+import { endArrivalOrbit, endDepartureOrbit, parkingRadiusKm, type EndOrbit } from './maneuvers';
 import { propagateState } from './propagate';
 import { routeDurationDays, type Route, type RouteOptions } from './route';
 import { elementsToState } from './state';
@@ -72,11 +73,55 @@ export interface PathArc {
 	endJd: number;
 }
 
+/**
+ * An end of a trip, drawn round the body it happens at: the orbit the craft is
+ * in there, and the passage between that orbit and the crossing.
+ *
+ * Only the ends that are an orbit: a launch from the ground and a landing on it
+ * are not, and neither is a flyby. It sits where the body will be on the date
+ * that end of the trip happens, like everything else here — the same place the
+ * arc meets it.
+ */
+export interface EndOrbitPath {
+	at: 'departure' | 'arrival';
+	bodyId: string;
+	/** The closed orbit, in the transfer frame, km. */
+	points: Vec3[];
+	/**
+	 * The escape or capture between the sphere of influence and the orbit's
+	 * periapsis, in flight order and the same frame, carrying on from the last
+	 * sample of the crossing left outside. It shares periapsis with the orbit, so
+	 * the two meet along one tangent.
+	 *
+	 * Empty at an end whose model has no passage to draw: a drive held all the way
+	 * and a spiral arrive under thrust rather than on a conic, and a transfer
+	 * inside one system leaves the primary's parking orbit without ever escaping.
+	 */
+	approach: Vec3[];
+	/**
+	 * The stretch of the crossing this passage replaces, as a half-open range of
+	 * sample indices into the arc that meets this body. Whoever draws the
+	 * crossing draws only `[trimFrom, trimTo)` and lets `approach` finish it —
+	 * left whole, the arc would run to the body's centre and cut through the
+	 * orbit round it. The full range where there is nothing to replace.
+	 */
+	trimFrom: number;
+	trimTo: number;
+	/** The body's centre in the same frame, km — what both go round. */
+	center: Vec3;
+	/** The orbit's widest radius, km. What says whether it is worth drawing at
+	 *  all: at system scale a parking orbit is well inside the dot the planet is
+	 *  drawn as. */
+	radiusKm: number;
+}
+
 export interface TrajectoryPath {
 	/** The body every position here is measured from. */
 	centerId: string;
 	arcs: PathArc[];
 	stops: PathStop[];
+	/** The orbits at either end, where those ends are orbits. */
+	endOrbits: EndOrbitPath[];
 	/**
 	 * Where the destination is at the moment the craft gets there.
 	 *
@@ -233,6 +278,10 @@ function lambertArc(
 	};
 }
 
+/** A trajectory before the orbits at its ends are hung off it — what each of the
+ *  builders below answers with. */
+type PathGeometry = Omit<TrajectoryPath, 'endOrbits'>;
+
 /**
  * Rebuild the geometry of `route`.
  *
@@ -246,6 +295,18 @@ export function buildTrajectoryPath(
 	route: Route,
 	options: PathOptions
 ): TrajectoryPath | null {
+	const path = buildCrossing(departure, target, route, options);
+	if (!path) return null;
+	const endOrbits = endOrbitPaths(departure, target, route, options, path);
+	return { ...path, endOrbits };
+}
+
+function buildCrossing(
+	departure: TravelBody,
+	target: TravelBody,
+	route: Route,
+	options: PathOptions
+): PathGeometry | null {
 	const {
 		centerId,
 		centralMu = GM_SUN_KM3_S2,
@@ -325,6 +386,456 @@ export function buildTrajectoryPath(
 	return { centerId, arcs: [arc], stops: [departureStop, arrivalStop], meeting };
 }
 
+/** Points round an end orbit. Enough that the ring is a curve at the zoom it
+ *  starts being drawn at, which is a body filling a good part of the screen. */
+const RING_SAMPLES = 96;
+/** Points along a passage. Spread evenly in true anomaly, so they crowd where
+ *  the path is bending and thin out where it is already its own asymptote. */
+const PASSAGE_SAMPLES = 160;
+/** How far out a passage is drawn when the sphere of influence cannot be worked
+ *  out, and the most it is ever drawn to. Earth's own sphere is 140 parking
+ *  radii, so this only ever catches the bodies whose orbit is not known. */
+const PASSAGE_MAX_RADII = 200;
+
+/**
+ * The orbits at the ends of a trip, and the passages that join them to the
+ * crossing.
+ *
+ * Both sit where the body is on the date that end of the trip happens, which is
+ * where the arc meets it: at a departure the parking orbit the injection burn is
+ * made from and the escape it leaves on, at an arrival the approach and the
+ * orbit the insertion leaves the craft in.
+ *
+ * Patched conics, drawn the way they are flown. The two radii and the excess
+ * speed are what the pricing fixed; the plane is free, and is taken as near the
+ * plane of the arc as an asymptote allows, so the passage reads as that line
+ * continuing rather than as a hoop stood on edge. Where there is a passage it
+ * also fixes the orbit's low point — the insertion burn is made there, so the
+ * two meet along the same tangent and the trip turns into its orbit rather than
+ * arriving beside one.
+ */
+function endOrbitPaths(
+	departure: TravelBody,
+	target: TravelBody,
+	route: Route,
+	options: PathOptions,
+	path: PathGeometry
+): EndOrbitPath[] {
+	const centers = endCenters(departure, target, route, options);
+	const first = path.arcs[0];
+	const last = path.arcs[path.arcs.length - 1];
+	if (!centers || !first || !last) return [];
+
+	const { centralMu = GM_SUN_KM3_S2, systemPrimary } = options;
+	// What each end body goes round, which is what its sphere of influence is
+	// measured against: the primary itself inside one system, the Sun elsewhere.
+	const primaryMu = systemPrimary
+		? (systemPrimary === 'departure' ? departure : target).mu
+		: centralMu;
+	const approaches = endApproaches(departure, target, route, options);
+
+	const orbits: EndOrbitPath[] = [];
+	const from = endDepartureOrbit(departure, route.departureMode, route.departureOrbit);
+	if (from) {
+		orbits.push(
+			endOrbitPath({
+				at: 'departure',
+				body: departure,
+				center: centers.from,
+				orbit: from,
+				arc: first,
+				periJd: route.departJd,
+				approach: approaches.from,
+				primaryMu
+			})
+		);
+	}
+	const to = endArrivalOrbit(target, route.arrivalMode, route.targetOrbit);
+	if (to) {
+		orbits.push(
+			endOrbitPath({
+				at: 'arrival',
+				body: target,
+				center: centers.to,
+				orbit: to,
+				arc: last,
+				periJd: route.arriveJd,
+				approach: approaches.to,
+				primaryMu
+			})
+		);
+	}
+	return orbits;
+}
+
+/**
+ * How the craft meets each end body: how fast it is going relative to that body
+ * as it crosses the body's sphere of influence, and how fast the body itself is
+ * going. Both in the transfer frame, both re-solved rather than carried, like
+ * the arcs themselves.
+ *
+ * The body's own velocity is not incidental — it is the difference between the
+ * two frames the trip has to be drawn in, and what {@link hyperbolicPassage}
+ * blends across to keep the line whole.
+ *
+ * Absent at an end with no hyperbolic passage to draw, which is more ends than
+ * it sounds: a drive held all the way and a spiral both arrive under thrust
+ * rather than on a conic, and inside one system the craft never escapes the
+ * primary at all — the transfer ellipse leaves its parking orbit at periapsis,
+ * so the ring is already tangent to the arc with nothing in between.
+ */
+interface EndApproach {
+	/** Excess velocity, km/s: the craft's own less the body's. */
+	vInf: Vec3;
+	/** The body's velocity, km/s, in whatever frame the arc is drawn in. */
+	vBody: Vec3;
+}
+
+function endApproaches(
+	departure: TravelBody,
+	target: TravelBody,
+	route: Route,
+	options: PathOptions
+): { from?: EndApproach; to?: EndApproach } {
+	const { centralMu = GM_SUN_KM3_S2, retrograde = false, systemPrimary, vias = [] } = options;
+	if (route.lowThrust || route.constantThrust != null) return {};
+
+	if (systemPrimary) {
+		// Only the way out. Coming home, the model prices the departure off the
+		// excess speed the *outward* leg has at the satellite, which is not the
+		// velocity the drawn arc leaves with — and drawing one shape while pricing
+		// another is the one thing this module refuses to do.
+		if (systemPrimary !== 'departure') return {};
+		const state = relativeState(target, departure, route.arriveJd);
+		if (!state) return {};
+		const arc = solveRadialArc(
+			departure.mu,
+			parkingRadiusKm(departure),
+			norm(state.r),
+			route.tofDays
+		);
+		const normal = cross(state.r, state.v);
+		if (!arc || !(norm(normal) > 0)) return {};
+		// The arc's own velocity where it meets the satellite, put back together
+		// from the two components it was solved in: climbing, and going round.
+		const outward = normalize(state.r);
+		const along = normalize(cross(normal, outward));
+		const vArc = add(scale(outward, arc.vFarRadialKms), scale(along, arc.vFarTangentialKms));
+		return { to: { vInf: sub(vArc, state.v), vBody: state.v } };
+	}
+
+	const from = elementsToState(departure.elements, route.departJd, centralMu);
+	const to = elementsToState(target.elements, route.arriveJd, centralMu);
+	if (!from || !to) return {};
+
+	const flyby = route.flybys?.[0];
+	if (flyby) {
+		const via = vias.find((body) => body.id === flyby.bodyId);
+		const mid = via ? elementsToState(via.elements, flyby.jd, centralMu) : null;
+		if (!mid) return {};
+		const out = solveLambert(
+			from.r,
+			mid.r,
+			(flyby.jd - route.departJd) * SEC_PER_DAY,
+			centralMu,
+			retrograde
+		);
+		const back = solveLambert(
+			mid.r,
+			to.r,
+			(route.arriveJd - flyby.jd) * SEC_PER_DAY,
+			centralMu,
+			retrograde
+		);
+		if (!out || !back) return {};
+		return {
+			from: { vInf: sub(out.v1, from.v), vBody: from.v },
+			to: { vInf: sub(back.v2, to.v), vBody: to.v }
+		};
+	}
+
+	const arc = solveLambert(from.r, to.r, route.tofDays * SEC_PER_DAY, centralMu, retrograde);
+	if (!arc) return {};
+	return {
+		from: { vInf: sub(arc.v1, from.v), vBody: from.v },
+		to: { vInf: sub(arc.v2, to.v), vBody: to.v }
+	};
+}
+
+/** Where each end's body is, in the transfer frame, on the date the trip is
+ *  there. Null when either cannot be placed, which is when nothing is drawn. */
+function endCenters(
+	departure: TravelBody,
+	target: TravelBody,
+	route: Route,
+	options: PathOptions
+): { from: Vec3; to: Vec3 } | null {
+	const { centralMu = GM_SUN_KM3_S2, systemPrimary } = options;
+	// Inside one system the primary *is* the frame, so it sits at the origin and
+	// only the satellite has to be placed.
+	if (systemPrimary) {
+		const outbound = systemPrimary === 'departure';
+		const primary = outbound ? departure : target;
+		const satellite = outbound ? target : departure;
+		const state = relativeState(satellite, primary, outbound ? route.arriveJd : route.departJd);
+		if (!state) return null;
+		const center: Vec3 = [0, 0, 0];
+		return outbound ? { from: center, to: state.r } : { from: state.r, to: center };
+	}
+	const from = elementsToState(departure.elements, route.departJd, centralMu);
+	const to = elementsToState(target.elements, route.arriveJd, centralMu);
+	if (!from || !to) return null;
+	return { from: from.r, to: to.r };
+}
+
+/**
+ * One end of a trip: the orbit, and the passage down to it where there is one.
+ *
+ * The plane and the direction of travel come from the two samples of the
+ * crossing nearest this body, in flight order. Without an approach that is all
+ * there is to go on, and the orbit's low point is put on the side the craft
+ * comes from.
+ *
+ * `arc` is the stretch of crossing that meets this body, and `periJd` the date
+ * the trip is at its low point — the two the crossing's own last step is cut
+ * against, so the passage can take that step's place.
+ */
+function endOrbitPath(end: {
+	at: 'departure' | 'arrival';
+	body: TravelBody;
+	center: Vec3;
+	orbit: EndOrbit;
+	arc: PathArc;
+	periJd: number;
+	approach?: EndApproach;
+	primaryMu: number;
+}): EndOrbitPath {
+	const { at, body, center, orbit, arc, periJd, approach, primaryMu } = end;
+	const outward = at === 'departure';
+	const count = arc.points.length;
+	// The two samples this end meets the body at, in flight order.
+	const a = outward ? arc.points[0] : arc.points[count - 2];
+	const b = outward ? arc.points[1] : arc.points[count - 1];
+	// The ecliptic's own normal for an arc with no plane to read — two samples on
+	// top of each other, or a radial arc seen exactly edge on.
+	const crossed = cross(a, b);
+	const arcNormal = norm(crossed) > 0 ? normalize(crossed) : ([0, 0, 1] as Vec3);
+
+	const passage = approach
+		? hyperbolicPassage({
+				body,
+				approach,
+				rPeriKm: orbit.rPeriKm,
+				arcNormal,
+				at,
+				primaryMu,
+				center,
+				arc,
+				periJd
+			})
+		: null;
+	const normal = passage?.normal ?? arcNormal;
+	const periapsis = passage?.periapsis ?? approachSide(arcNormal, a, b);
+
+	return {
+		at,
+		bodyId: body.id,
+		points: closedOrbit(center, orbit, normal, periapsis),
+		approach: passage ? passage.points.map((point) => add(center, point)) : [],
+		trimFrom: passage && outward ? passage.cut : 0,
+		trimTo: passage && !outward ? passage.cut + 1 : count,
+		center,
+		radiusKm: orbit.rApoKm
+	};
+}
+
+/** Index of the last date at or before `jd`, or -1 when there is none. */
+function lastBefore(jds: readonly number[], jd: number): number {
+	let index = -1;
+	for (let i = 0; i < jds.length; i++) if (jds[i] <= jd) index = i;
+	return index;
+}
+
+/** Index of the first date at or after `jd`, or -1 when there is none. */
+function firstAfter(jds: readonly number[], jd: number): number {
+	for (let i = 0; i < jds.length; i++) if (jds[i] >= jd) return i;
+	return -1;
+}
+
+/** Which way the craft came from, in the plane, for an end with no passage to
+ *  take a low point from. */
+function approachSide(normal: Vec3, a: Vec3, b: Vec3): Vec3 {
+	const back = scale(sub(b, a), -1);
+	const along = sub(back, scale(normal, dot(normal, back)));
+	return norm(along) > 0 ? normalize(along) : perpendicularTo(normal);
+}
+
+/** A bound orbit as a closed ring about `center`, low point along `periapsis`. */
+function closedOrbit(center: Vec3, orbit: EndOrbit, normal: Vec3, periapsis: Vec3): Vec3[] {
+	const inPlane = normalize(cross(normal, periapsis));
+	const semiMajor = (orbit.rPeriKm + orbit.rApoKm) / 2;
+	const e = (orbit.rApoKm - orbit.rPeriKm) / (orbit.rApoKm + orbit.rPeriKm);
+	const p = semiMajor * (1 - e * e);
+
+	const points: Vec3[] = [];
+	for (let i = 0; i <= RING_SAMPLES; i++) {
+		const nu = (Math.PI * 2 * i) / RING_SAMPLES;
+		const radius = p / (1 + e * Math.cos(nu));
+		const direction = add(scale(periapsis, Math.cos(nu)), scale(inPlane, Math.sin(nu)));
+		points.push(add(center, scale(direction, radius)));
+	}
+	return points;
+}
+
+/**
+ * The escape or capture an end of a trip is flown on, in flight order: from the
+ * crossing down to periapsis, or from periapsis back out to it.
+ *
+ * The conic is all derived — eccentricity from the excess speed and the periapsis
+ * the burn is made at, and the angle between periapsis and the asymptote from the
+ * eccentricity. What is chosen rather than derived is the plane: every plane
+ * holding the asymptote is a possible approach, and the one taken is the nearest
+ * of them to the crossing's own.
+ *
+ * **The two frames are blended across it, and that is the point.** A hyperbola
+ * about the body is only the trajectory to someone standing on the body; the
+ * crossing outside is drawn about the Sun, and the two differ by the body's own
+ * velocity — 24 km/s at Mars against a 9 km/s arrival, which puts about a right
+ * angle between them. Drawn one after the other they read as the trip turning a
+ * corner in deep space, which is what a reader reported and what this exists to
+ * answer. So every sample carries the body's own motion over the time between it
+ * and periapsis, weighted from all of it where the crossing hands over down to
+ * none of it at periapsis: out there the passage is the crossing's continuation,
+ * which is what it physically is; at periapsis it is the hyperbola, tangent to
+ * the orbit it turns into. In between it is neither, and no one frame could have
+ * been both.
+ *
+ * The handover is put on a sample of the crossing rather than on a radius, and
+ * whatever the conic misses by there is carried under the same weight, so the
+ * two lines meet at a point they share exactly and part company gradually.
+ *
+ * Null where there is no passage to draw — a body with no μ to speak of, an
+ * excess speed of zero, or a crossing too short to give one up.
+ */
+function hyperbolicPassage(end: {
+	body: TravelBody;
+	approach: EndApproach;
+	rPeriKm: number;
+	arcNormal: Vec3;
+	at: 'departure' | 'arrival';
+	primaryMu: number;
+	center: Vec3;
+	arc: PathArc;
+	periJd: number;
+}): { points: Vec3[]; periapsis: Vec3; normal: Vec3; cut: number } | null {
+	const { body, approach, rPeriKm, arcNormal, at, primaryMu, center, arc, periJd } = end;
+	const { vInf, vBody } = approach;
+	const speed = norm(vInf);
+	if (!(speed > 0) || !(body.mu > 0) || !(rPeriKm > 0)) return null;
+
+	const outward = at === 'departure';
+	const asymptote = normalize(vInf);
+	const off = sub(arcNormal, scale(asymptote, dot(arcNormal, asymptote)));
+	const normal = norm(off) > 0 ? normalize(off) : perpendicularTo(asymptote);
+
+	const e = 1 + (rPeriKm * speed * speed) / body.mu;
+	if (!(e > 1)) return null;
+	const p = rPeriKm * (1 + e);
+	// True anomaly of the asymptote: the craft leaves along it that far after
+	// periapsis, and arrives along it the same angle before.
+	const nuInf = Math.acos(-1 / e);
+	const periapsis = outward
+		? rotateAbout(asymptote, normal, -nuInf)
+		: rotateAbout(scale(asymptote, -1), normal, nuInf);
+	const inPlane = normalize(cross(normal, periapsis));
+
+	const outer = passageRadiusKm(body, primaryMu, rPeriKm);
+	const nuOuter = Math.acos(Math.max(-1, Math.min(1, (p / outer - 1) / e)));
+	if (!(nuOuter > 0)) return null;
+
+	// Where the crossing gives way: its last sample still outside the sphere of
+	// influence. Anything closer in belongs to the body, not to the Sun.
+	const meanMotion = Math.sqrt(body.mu / Math.abs(p / (1 - e * e)) ** 3);
+	const soiDays = (hyperbolicSeconds(e, nuOuter, meanMotion) / SEC_PER_DAY) * (outward ? 1 : -1);
+	const cut = outward
+		? firstAfter(arc.jds, periJd + soiDays)
+		: lastBefore(arc.jds, periJd + soiDays);
+	// One sample either side at least, or there is no line left to draw.
+	if (cut < 1 || cut > arc.points.length - 2) return null;
+
+	// Sampled in time rather than in angle, and squared so the samples crowd at
+	// periapsis where the line bends. Even steps in true anomaly would put a
+	// million kilometres between the first two, out where the passage is really
+	// parameterised by the body's motion rather than by its own.
+	const joinDays = arc.jds[cut] - periJd;
+	const sample = (days: number): Vec3 => {
+		const nu = hyperbolicTrueAnomaly(e, days * SEC_PER_DAY * meanMotion);
+		const radius = p / (1 + e * Math.cos(nu));
+		const direction = add(scale(periapsis, Math.cos(nu)), scale(inPlane, Math.sin(nu)));
+		return scale(direction, radius);
+	};
+	const carried = (days: number): Vec3 => scale(vBody, days * SEC_PER_DAY);
+	// What the conic misses the crossing by where the two meet, carried under the
+	// same weight as the body's motion — so the join is exact and nothing of it
+	// is left by the time the passage reaches its orbit.
+	const miss = sub(sub(arc.points[cut], center), add(sample(joinDays), carried(joinDays)));
+
+	const points: Vec3[] = [];
+	for (let i = 0; i < PASSAGE_SAMPLES; i++) {
+		const along = i / (PASSAGE_SAMPLES - 1);
+		const fraction = outward ? along : 1 - along;
+		const days = joinDays * fraction * fraction;
+		const point = sample(days);
+		const weight = frameBlend((norm(point) - rPeriKm) / (outer - rPeriKm));
+		points.push(add(point, scale(add(carried(days), miss), weight)));
+	}
+	return { points, periapsis, normal, cut };
+}
+
+/** How long after periapsis a hyperbola is at true anomaly `nu`, seconds, signed
+ *  with `nu`. Kepler's equation for e > 1 — the passage has to carry dates to be
+ *  blended against anything at all. */
+function hyperbolicSeconds(e: number, nu: number, meanMotion: number): number {
+	const tanHalf = Math.sqrt((e - 1) / (e + 1)) * Math.tan(nu / 2);
+	const H = 2 * Math.atanh(Math.max(-1 + 1e-15, Math.min(1 - 1e-15, tanHalf)));
+	return (e * Math.sinh(H) - H) / meanMotion;
+}
+
+/** The other way round: true anomaly at mean anomaly `m`, by Newton. */
+function hyperbolicTrueAnomaly(e: number, m: number): number {
+	let H = Math.asinh(m / e) || 0;
+	for (let i = 0; i < 32; i++) {
+		const f = e * Math.sinh(H) - H - m;
+		const step = f / (e * Math.cosh(H) - 1);
+		H -= step;
+		if (Math.abs(step) < 1e-12) break;
+	}
+	return 2 * Math.atan(Math.sqrt((e + 1) / (e - 1)) * Math.tanh(H / 2));
+}
+
+/** How much of the other frame a point of the passage carries: none at
+ *  periapsis, all of it where the crossing hands over. Flat at both ends, so the
+ *  line meets the orbit and the crossing along a tangent rather than at an
+ *  angle. */
+function frameBlend(x: number): number {
+	const t = Math.max(0, Math.min(1, x));
+	return t * t * (3 - 2 * t);
+}
+
+/** How far out a passage is drawn: to the edge of the body's sphere of
+ *  influence, which is where a patched conic stops meaning anything. */
+function passageRadiusKm(body: TravelBody, primaryMu: number, rPeriKm: number): number {
+	const soi = sphereOfInfluenceKm(body, primaryMu, Math.abs(body.elements.a) * AU_KM);
+	const cap = rPeriKm * PASSAGE_MAX_RADII;
+	return Number.isFinite(soi) && soi > rPeriKm ? Math.min(soi, cap) : cap;
+}
+
+/** Any unit vector at right angles to `n`. */
+function perpendicularTo(n: Vec3): Vec3 {
+	const axis: Vec3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+	return normalize(cross(n, axis));
+}
+
 /**
  * A drive held all the way, re-flown.
  *
@@ -344,7 +855,7 @@ function heldDrivePath(
 	centerId: string,
 	centralMu: number,
 	samples: number
-): TrajectoryPath | null {
+): PathGeometry | null {
 	const from = elementsToState(departure.elements, route.departJd, centralMu);
 	const to = elementsToState(target.elements, route.arriveJd, centralMu);
 	if (!from || !to) return null;
@@ -440,7 +951,7 @@ function spiralPath(
 	route: Route,
 	centerId: string,
 	centralMu: number
-): TrajectoryPath | null {
+): PathGeometry | null {
 	const rebuilt = rebuildSpiral(
 		departure,
 		target,
@@ -549,7 +1060,7 @@ function flownCrossing(
 	targetId: string,
 	startR: Vec3,
 	endR: Vec3
-): TrajectoryPath | null {
+): PathGeometry | null {
 	if (samples.length < 2) return null;
 
 	const arcs: PathArc[] = [];
@@ -610,7 +1121,7 @@ function straightCrossing(
 	departureId: string,
 	targetId: string,
 	samples: number
-): TrajectoryPath | null {
+): PathGeometry | null {
 	const span = sub(end, start);
 	if (!(norm(span) > 0)) return null;
 
@@ -754,7 +1265,7 @@ function systemPath(
 	centerId: string,
 	systemPrimary: 'departure' | 'target',
 	samples: number
-): TrajectoryPath | null {
+): PathGeometry | null {
 	const outbound = systemPrimary === 'departure';
 	const primary = outbound ? departure : target;
 	const satellite = outbound ? target : departure;

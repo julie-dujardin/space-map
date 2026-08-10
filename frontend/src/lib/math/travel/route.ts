@@ -80,6 +80,10 @@ export interface Route {
 	vInfArrKms: number;
 	departureMode: DepartureMode;
 	arrivalMode: ArrivalMode;
+	/** The orbit each end was priced at, where one was named. Echoed like `aero`
+	 *  so that drawing a trip does not have to be handed the choices again. */
+	departureOrbit?: EndOrbit;
+	targetOrbit?: EndOrbit;
 	/** What was asked of the target's atmosphere. Reported as asked even where
 	 *  the body had none to give, so the route says what trip it answers. */
 	aero: AeroAssist;
@@ -272,6 +276,8 @@ export function buildRoute(
 		vInfArrKms: vInfArr,
 		departureMode,
 		arrivalMode,
+		departureOrbit,
+		targetOrbit,
 		aero,
 		entrySpeedKms: arr.entrySpeedKms
 	};
@@ -375,6 +381,8 @@ function buildSystemRoute(
 		vInfArrKms: outbound ? vInf : 0,
 		departureMode,
 		arrivalMode,
+		departureOrbit,
+		targetOrbit,
 		aero,
 		entrySpeedKms: arr.entrySpeedKms
 	};

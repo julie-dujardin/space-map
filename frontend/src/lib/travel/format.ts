@@ -4,6 +4,8 @@
  * testable and stated once. Durations live in `$lib/format/duration`.
  */
 
+import { formatKm, formatKmRange } from '$lib/format/distance';
+import type { EndOrbit } from '$lib/math/travel/maneuvers';
 import * as m from '$lib/paraglide/messages.js';
 
 /** A torch drive's budget runs to six figures of km/s, which fits nowhere it
@@ -34,6 +36,22 @@ export function dvParts(kms: number): { value: string; unit: string } {
 	if (!Number.isFinite(kms)) return { value: '—', unit: '' };
 	if (kms >= MEGAMETRE_FLOOR_KMS) return { value: megametres(kms), unit: m.travel_mm_s() };
 	return { value: kms.toFixed(1), unit: m.travel_km_s() };
+}
+
+/**
+ * An end orbit as the height it is flown at: one figure when it is circular, low
+ * point by high point when it is not.
+ *
+ * Height above the surface rather than distance from the centre, which is how
+ * every orbit anyone has flown is quoted, and the only form in which 200 km
+ * means the same thing at Earth and at Mars.
+ */
+export function formatEndOrbit(orbit: EndOrbit, bodyRadiusKm: number): string {
+	const peri = Math.max(0, orbit.rPeriKm - bodyRadiusKm);
+	const apo = Math.max(0, orbit.rApoKm - bodyRadiusKm);
+	// An ellipse is a height that varies, which is what a range says — and says
+	// with the unit written once and the separator the locale's own.
+	return apo > peri ? formatKmRange(peri, apo) : formatKm(peri);
 }
 
 /** Standard gravity, m/s² — the unit every torch drive in fiction is quoted in. */

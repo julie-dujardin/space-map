@@ -235,7 +235,7 @@ export function arrivalCost(
 ): ArrivalCost {
 	// The approach is priced at the periapsis it is flown to, which is the one the
 	// orbit asked for — arriving into a stationary orbit still dips low first.
-	const rPeri = arrivalOrbit(body, mode, orbit).rPeriKm;
+	const rPeri = pricedArrivalOrbit(body, mode, orbit).rPeriKm;
 	return arrivalCostFromSpeed(body, periapsisSpeed(body.mu, rPeri, vInfKms), mode, aero, orbit);
 }
 
@@ -246,7 +246,7 @@ export function arrivalCost(
  * stop in a stationary orbit on the way to the ground — and a flyby ends in no
  * orbit at all, so both ignore the request rather than carrying it.
  */
-function arrivalOrbit(body: TravelBody, mode: ArrivalMode, orbit?: EndOrbit): EndOrbit {
+function pricedArrivalOrbit(body: TravelBody, mode: ArrivalMode, orbit?: EndOrbit): EndOrbit {
 	if (mode === 'landing' || mode === 'flyby') return parkingOrbit(body);
 	if (orbit) return sane(orbit);
 	return mode === 'capture' ? captureOrbit(body) : parkingOrbit(body);
@@ -270,7 +270,7 @@ export function arrivalCostFromSpeed(
 	if (mode === 'flyby') return NO_ARRIVAL_COST;
 
 	const { mu } = body;
-	const { rPeriKm: rPeri, rApoKm: rApo } = arrivalOrbit(body, mode, orbit);
+	const { rPeriKm: rPeri, rApoKm: rApo } = pricedArrivalOrbit(body, mode, orbit);
 	const assisted = aero !== 'none' && canAeroBrake(body);
 
 	// An atmosphere is the whole descent. Without one, landing is the ascent run
@@ -361,6 +361,33 @@ export function arrivalCostFromSpeed(
 }
 
 export type DepartureMode = 'surface' | 'orbit';
+
+/**
+ * The orbit a trip is flown out of, or null when it starts on the ground.
+ *
+ * The pair with {@link endArrivalOrbit}: between them they say which ends of a
+ * trip are somewhere the craft goes round rather than somewhere it stands or
+ * passes, which is what decides whether that end is a step of its own. `orbit`
+ * is the one the trip was priced for, where the reader picked one.
+ */
+export function endDepartureOrbit(
+	body: TravelBody,
+	mode: DepartureMode,
+	orbit?: EndOrbit
+): EndOrbit | null {
+	if (mode !== 'orbit') return null;
+	return orbit ? sane(orbit) : parkingOrbit(body);
+}
+
+/** The orbit a trip ends in, or null for a landing or a flyby — neither does. */
+export function endArrivalOrbit(
+	body: TravelBody,
+	mode: ArrivalMode,
+	orbit?: EndOrbit
+): EndOrbit | null {
+	if (mode === 'flyby' || mode === 'landing') return null;
+	return pricedArrivalOrbit(body, mode, orbit);
+}
 
 /**
  * Δv to get from `body` onto a transfer needing excess speed `vInfKms`,
