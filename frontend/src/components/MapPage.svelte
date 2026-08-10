@@ -745,6 +745,7 @@
 						appState.setFocus({ type: urlTypeFromId(id), id, name: '' });
 						tick().then(() => document.getElementById('main-content')?.focus());
 					}}
+					onSheetResize={(h) => (drawerHeightDvh = h)}
 				/>
 			{/if}
 			{#if isNav && TripTimeline && timelineEntries && timelineEntries.length > 1}

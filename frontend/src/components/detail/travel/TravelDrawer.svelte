@@ -6,7 +6,7 @@
   than a selection inside the app.
 -->
 <script lang="ts">
-	import { getContext, untrack } from 'svelte';
+	import { getContext, onMount, untrack } from 'svelte';
 	import { Drawer as Vaul } from 'vaul-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -46,6 +46,9 @@
 		isMobile: boolean;
 		inert?: boolean;
 		onClose: () => void;
+		/** How much of the viewport the mobile sheet covers, so the map's floating
+		 *  controls can get out of its way. */
+		onSheetResize?: (heightDvh: number) => void;
 		/** The trajectory being read, labelled at both ends, for the scene to draw;
 		 *  null when there is none. */
 		onPathChange: (plan: LabelledPath | null) => void;
@@ -66,6 +69,7 @@
 		isMobile,
 		inert = false,
 		onClose,
+		onSheetResize,
 		onPathChange,
 		onOptionsChange,
 		onHoverChange,
@@ -325,6 +329,88 @@
 	);
 	let title = $derived(reading ? routeLabel(reading) : m.travel_title());
 
+	// Mobile snap points: chrome-only collapsed (measured, so it tracks the real
+	// header), mid, full. Unlike the detail sheet this one opens at the top — a
+	// trip is what the page is for — but it still has to be draggable down, or
+	// the map it is planning a route across is unreachable.
+	const MID_SNAP = 0.4;
+	// Leaves the same sliver of map above the sheet as the detail drawer does.
+	const TOP_GAP_PX = 16;
+
+	let innerH = $state(typeof window === 'undefined' ? 800 : window.innerHeight);
+	let headerEl = $state<HTMLDivElement | null>(null);
+	// Close to the rendered size (icon-lg row + handle + paddings) so the collapsed
+	// snap is sane before the first measurement.
+	let headerHeightPx = $state(68);
+	let collapsedSnap = $derived(`${headerHeightPx}px`);
+	let topSnap = $derived(`${Math.max(1, innerH - TOP_GAP_PX)}px`);
+	let snapPoints = $derived([collapsedSnap, MID_SNAP, topSnap]);
+	let activeSnapPoint = $state<number | string | null>('68px');
+	let isAtTop = $derived(activeSnapPoint === topSnap);
+
+	// Opening the trip opens the sheet all the way. It has to be moved there after
+	// mount rather than started there: vaul opens at its *first* snap point
+	// whatever the bound value says, so a sheet handed the top snap up front just
+	// sits collapsed. Moving it is also what animates it up.
+	onMount(() => {
+		const frame = requestAnimationFrame(() => (activeSnapPoint = topSnap));
+		return () => cancelAnimationFrame(frame);
+	});
+
+	$effect(() => {
+		let prev = window.innerHeight;
+		const update = () => {
+			const next = window.innerHeight;
+			// Re-pin a top-snapped sheet to the new height. Otherwise a viewport resize
+			// (the mobile keyboard) leaves activeSnapPoint on a px string that is no
+			// longer in snapPoints, and vaul silently refuses to re-snap.
+			if (activeSnapPoint === `${Math.max(1, prev - TOP_GAP_PX)}px`) {
+				activeSnapPoint = `${Math.max(1, next - TOP_GAP_PX)}px`;
+			}
+			prev = next;
+			innerH = next;
+		};
+		window.addEventListener('resize', update);
+		return () => window.removeEventListener('resize', update);
+	});
+
+	$effect(() => {
+		const el = headerEl;
+		if (!el) return;
+		const measure = () => {
+			const h = Math.ceil(el.getBoundingClientRect().height);
+			if (h === headerHeightPx) return;
+			// Follow the new height when parked on the collapsed snap, so vaul is not
+			// left on a snap point that no longer exists.
+			const wasCollapsed = activeSnapPoint === collapsedSnap;
+			headerHeightPx = h;
+			if (wasCollapsed) activeSnapPoint = `${h}px`;
+		};
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
+
+	// Report the snap target rather than sampling during the drag: a per-frame
+	// getBoundingClientRect loop thrashes layout and makes the transition jank.
+	$effect(() => {
+		if (!isMobile) return;
+		const s = activeSnapPoint;
+		let dvh = 0;
+		if (typeof s === 'number') {
+			dvh = s * 100;
+		} else if (typeof s === 'string') {
+			const px = parseFloat(s);
+			if (!Number.isNaN(px)) dvh = (px / window.innerHeight) * 100;
+		}
+		onSheetResize?.(dvh);
+	});
+
+	// Hand the viewport back on the way out, however the trip was left — otherwise
+	// the map's controls stay parked above a sheet that is no longer there.
+	$effect(() => () => onSheetResize?.(0));
+
 	async function handleShare() {
 		try {
 			await navigator.clipboard.writeText(window.location.href);
@@ -406,7 +492,14 @@
 {/snippet}
 
 {#if isMobile}
-	<Vaul.Root open={true} shouldScaleBackground={false} dismissible={false} repositionInputs={false}>
+	<Vaul.Root
+		open={true}
+		{snapPoints}
+		bind:activeSnapPoint
+		shouldScaleBackground={false}
+		dismissible={false}
+		repositionInputs={false}
+	>
 		<Vaul.Portal>
 			<Vaul.Content
 				{inert}
@@ -414,7 +507,7 @@
 				aria-labelledby="travel-drawer-title"
 				class="bg-background fixed inset-x-0 bottom-0 z-50 flex h-dvh max-h-dvh flex-col rounded-t-xl border-t shadow-lg outline-none"
 			>
-				<div class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
+				<div bind:this={headerEl} class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
 					<div class="bg-muted-foreground/40 h-1 w-10 rounded-full"></div>
 					<div class="flex w-full items-center justify-between gap-2">
 						<DrawerTitle {crumb} {title} id="travel-drawer-title" />
@@ -422,8 +515,8 @@
 					</div>
 				</div>
 				<div
-					class="min-h-0 flex-1 overflow-y-auto"
-					style="padding-bottom: calc(1rem + var(--safe-bottom));"
+					class="min-h-0 flex-1 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
+					style="padding-bottom: calc(1rem + {TOP_GAP_PX}px + var(--safe-bottom));"
 				>
 					{@render body('px-4 pt-4')}
 				</div>
