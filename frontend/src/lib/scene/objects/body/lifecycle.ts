@@ -226,6 +226,7 @@ export function upgradeBodyMesh(
 ): void {
 	if (bo.mesh !== null) return;
 	const { body, radiusScene } = bo;
+	bo.focusUpgraded = true;
 	const modelBearing = isModelBearing(body);
 	// No measured size → stay halo-only; nothing to build.
 	if (!modelBearing && !(Number.isFinite(body.data.radiusKm) && body.data.radiusKm > 0)) {
@@ -279,6 +280,7 @@ export function downgradeBodyMesh(
 	clickables: Mesh[],
 	meshToBody: Map<Mesh, PositionedBody>
 ): void {
+	bo.focusUpgraded = false;
 	// 3D model lives in the overlay scene — dispose first to release its
 	// textures + geometry before the sphere teardown below.
 	unloadBodyModel(bo);

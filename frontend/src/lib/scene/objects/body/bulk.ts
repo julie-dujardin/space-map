@@ -51,17 +51,20 @@ export function buildTrails(
 		// STAR is the Sun — no trail. Halo-only mesh-upgradable bodies
 		// (asteroids, comets) render as halo + label only by design, so we skip
 		// trail build until focus runs `upgradeBodyMesh` — building it would
-		// burn ~512 Kepler solves per body for nothing. Barycenters and Lagrange
-		// points stay halo-only forever and keep their trails. Probes never get
-		// a sphere mesh (isVirtual in buildMajorBodies), so the mesh check would
-		// trap them forever — they get a trail as soon as they're promoted into
-		// bodyObjects, unless they're minor-promoted (halo-only, label/trail
-		// surface only when focused).
+		// burn ~512 Kepler solves per body for nothing. `focusUpgraded` rather
+		// than `mesh` marks that moment: a body with no measured size stays
+		// meshless however long it is focused, and would never get its trail.
+		// Barycenters and Lagrange points stay halo-only forever and keep their
+		// trails. Probes never get a sphere mesh (isVirtual in
+		// buildMajorBodies), so the mesh check would trap them forever — they
+		// get a trail as soon as they're promoted into bodyObjects, unless
+		// they're minor-promoted (halo-only, label/trail surface only when
+		// focused).
 		if (body.data.objectType === ObjectType.STAR) continue;
 		const isProbe = body.data.orbitalSource === OrbitalSource.SPICE_PROBE;
 		if (isProbe) {
 			if (bo.isMinor && !bo.mesh) continue;
-		} else if (!bo.mesh && isMeshUpgradable(body)) {
+		} else if (!bo.mesh && !bo.focusUpgraded && isMeshUpgradable(body)) {
 			continue;
 		}
 		// Probes whose elements were null at processProbes time (typically

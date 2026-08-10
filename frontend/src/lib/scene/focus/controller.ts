@@ -136,7 +136,9 @@ export class FocusController {
 	 *  first paint, not just the focused body itself. Used by the renderer at
 	 *  scene-build time; subsequent focus changes go through
 	 *  {@link setFocusTarget}, which handles upgrade/downgrade symmetrically.
-	 *  Returns true if any mesh was upgraded so the caller can rebuild trails. */
+	 *  Returns true if any body was newly upgraded so the caller can rebuild
+	 *  trails — including one that stayed meshless for want of a radius, which
+	 *  still earns its trail by being focused. */
 	upgradeMeshTargets(body: PositionedBody): boolean {
 		const { ctx, scene, clickables, meshToBody, bodyObjects } = this.deps;
 		let didUpgrade = false;
@@ -144,9 +146,9 @@ export class FocusController {
 			this.promotion.ensureBodyObjects(t);
 			const tBo = bodyObjects.get(t.data.id);
 			if (!tBo) continue;
-			const hadMesh = tBo.mesh !== null;
+			const wasUpgraded = tBo.focusUpgraded === true;
 			upgradeBodyMesh(tBo, scene, clickables, meshToBody);
-			if (!hadMesh && tBo.mesh !== null) didUpgrade = true;
+			if (!wasUpgraded && tBo.focusUpgraded) didUpgrade = true;
 		}
 		return didUpgrade;
 	}

@@ -163,6 +163,10 @@ export interface BodyObjects {
 	/** Nothing physical to draw — drives the close-range note under the label.
 	 *  `'radius'`: natural body, no measured size. `'model'`: spacecraft, no GLB. */
 	noPhysical?: 'model' | 'radius';
+	/** Focus has run `upgradeBodyMesh` on this body. Trails for halo-only types
+	 *  are deferred until then, and `mesh` alone can't stand in for it: a body
+	 *  with no measured size never gets a sphere, so it would wait forever. */
+	focusUpgraded?: boolean;
 	noteEl?: HTMLElement | null;
 }
 
