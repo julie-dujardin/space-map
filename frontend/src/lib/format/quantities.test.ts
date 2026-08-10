@@ -2,7 +2,13 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('$lib/paraglide/runtime.js', () => ({ getLocale: () => 'en-US' }));
 
-import { formatCurrency, formatNumber, scientificNotation, ucfirst } from './quantities';
+import {
+	formatCompactCurrency,
+	formatCurrency,
+	formatNumber,
+	scientificNotation,
+	ucfirst
+} from './quantities';
 
 describe('formatNumber', () => {
 	it.each([
@@ -37,6 +43,15 @@ describe('formatCurrency', () => {
 		const result = formatCurrency({ value: 1500, currency: 'USD' });
 		expect(result).toContain('1,500');
 		expect(result).toContain('$');
+	});
+});
+
+describe('formatCompactCurrency', () => {
+	it.each([
+		{ value: 178_000_000, expected: '$178M' },
+		{ value: 2_200_000_000, expected: '$2.2B' }
+	])('formatCompactCurrency($value) → "$expected"', ({ value, expected }) => {
+		expect(formatCompactCurrency({ value, currency: 'USD' })).toBe(expected);
 	});
 });
 

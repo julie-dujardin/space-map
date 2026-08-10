@@ -48,7 +48,9 @@
 		hazardValue
 	} from '$lib/travel/hazard-labels';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
+	import CraftSpecs from './CraftSpecs.svelte';
 	import DeltaVLadder from './DeltaVLadder.svelte';
+	import { craftSpecs, craftSpecSources } from './craft-specs';
 	import { legLabel } from './leg-labels';
 	import { HAZARD_ICONS, HAZARD_TEXT } from './hazard-style';
 
@@ -260,6 +262,11 @@
 		return list;
 	});
 
+	// The craft's own figures, and the works behind them — drawn apart, since the
+	// citations belong at the foot of the panel rather than mid-way down it.
+	let specs = $derived(state.vehicle ? craftSpecs(state.vehicle, route) : []);
+	let sources = $derived(craftSpecSources(specs));
+
 	// What the detour bought, against the best the direct search found. The saving
 	// is the reason this route is on the list at all, so it is said rather than
 	// left to be worked out from two rows of the ladder.
@@ -302,6 +309,12 @@
 			{/if}
 		{/each}
 	</div>
+
+	<!-- Above the budget because it is where the budget's figures come from: the
+	     craft was chosen a step back and is off screen by the time this is read. -->
+	{#if state.vehicle}
+		<CraftSpecs vehicle={state.vehicle} {specs} />
+	{/if}
 
 	<section class="flex flex-col gap-2">
 		<div class="flex items-baseline justify-between">
@@ -490,4 +503,24 @@
 			{/each}
 		</ol>
 	</section>
+
+	{#if sources.length > 0}
+		<!-- One per line, each giving up its tail to the ellipsis: the titles run to
+		     a catalogue name and a report number, and run together they read as one
+		     citation with commas in it. Same shape as an object's sources footer. -->
+		<div class="text-muted-foreground text-[11px]/5">
+			<span>{m.travel_spec_sources()}</span>
+			{#each sources as source (source.url)}
+				<div class="flex">
+					<a
+						href={source.url}
+						target="_blank"
+						rel="noopener"
+						title={source.title}
+						class="hover:text-foreground truncate underline">{source.title}</a
+					>
+				</div>
+			{/each}
+		</div>
+	{/if}
 </div>

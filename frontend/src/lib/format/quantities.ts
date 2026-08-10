@@ -83,6 +83,16 @@ export function formatCurrency(q: { value: number; currency: string }): string {
 	}).format(q.value);
 }
 
+/** "$148M" — a price whose last six digits are noise beside what it buys. */
+export function formatCompactCurrency(q: { value: number; currency: string }): string {
+	return new Intl.NumberFormat(getLocale(), {
+		style: 'currency',
+		currency: q.currency,
+		notation: 'compact',
+		maximumSignificantDigits: 3
+	}).format(q.value);
+}
+
 /** Locale-formatted to `digits` significant figures, no trailing zeros. */
 export function sigFigures(value: number, digits = 3): string {
 	return new Intl.NumberFormat(getLocale(), { maximumSignificantDigits: digits }).format(value);
