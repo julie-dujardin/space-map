@@ -165,4 +165,53 @@ describe('TripPlayback', () => {
 		player.step(1);
 		expect(player.playing).toBe(false);
 	});
+
+	// A trip can end on a phase rather than a burn — a flyby ends on the cruise,
+	// a torch route on its braking half, an aerobrake arrival on the campaign —
+	// and that phase's own span is a leg like any other.
+	describe('with a trip that ends on a phase', () => {
+		/** A flyby: two burns and the crossing, with nothing after it. */
+		const FLYBY: TimelineEntry[] = [
+			entry('ascent', BASE, BASE),
+			entry('injection', BASE, BASE),
+			entry('cruise', BASE, BASE + CRUISE_DAYS)
+		];
+		let flyer: TripPlayback;
+
+		beforeEach(() => {
+			flyer = new TripPlayback({
+				clock: clock as unknown as SimClock,
+				entries: () => FLYBY,
+				focus: (e) => focused.push(e.kind)
+			});
+		});
+
+		afterEach(() => {
+			flyer.dispose();
+		});
+
+		it('flies the final phase to its end instead of stopping at its start', () => {
+			flyer.start();
+			run(30_000);
+			expect(flyer.playing).toBe(false);
+			expect(clock.jd).toBe(BASE + CRUISE_DAYS);
+		});
+
+		it('resumes from inside the final phase rather than starting over', () => {
+			clock.jd = BASE + CRUISE_DAYS / 2;
+			flyer.start();
+			// Not yet over: play means finishing this phase, from its start.
+			expect(clock.jd).toBe(BASE);
+			run(30_000);
+			expect(clock.jd).toBe(BASE + CRUISE_DAYS);
+		});
+
+		it('starts again from the top once the whole span is flown', () => {
+			flyer.start();
+			run(30_000);
+			flyer.start();
+			expect(clock.jd).toBe(BASE);
+			expect(flyer.playing).toBe(true);
+		});
+	});
 });

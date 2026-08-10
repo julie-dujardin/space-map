@@ -92,7 +92,8 @@ export class TravelPanelState {
 	targetOrbit = $state.raw<EndOrbit | undefined>(undefined);
 	/** What to ask of the destination's atmosphere. Held whatever the destination
 	 *  is — the kernel ignores it where there is no atmosphere — so that moving
-	 *  the trip to an airless body and back does not lose the choice. */
+	 *  the trip to an airless body and back does not lose the choice. Pricing
+	 *  reads `effectiveAero`, which is this choice as the arrival can honour it. */
 	aero = $state<AeroAssist>(DEFAULT_TRIP.aero);
 	/** Set when an end is a named place on a surface — there is only one way to
 	 *  arrive at one, so the mode is fixed and its picker is skipped. Comes from
@@ -324,6 +325,26 @@ export class TravelPanelState {
 		}
 	}
 
+	/** Whether aerobraking is an arrival this trip can fly: it walks a loose
+	 *  orbit down into a tight one, so only a low-orbit arrival has one to walk.
+	 *  A named place is a landing whatever the picker last held. */
+	get aerobrakingApplies(): boolean {
+		return this.targetMode === 'low-orbit' && !this.targetIsFeature;
+	}
+
+	/**
+	 * The braking the trip is actually priced with.
+	 *
+	 * `aero` is the choice as made, held across destination changes so it is not
+	 * lost to a detour; this is what that choice means for the arrival at hand. A
+	 * trip that was aerobraking and is now landing is not braking on the way in
+	 * at all until it says so again — pricing the raw value would grow a landing
+	 * a months-long campaign the control says is not there.
+	 */
+	get effectiveAero(): AeroAssist {
+		return this.aero === 'aerobraking' && !this.aerobrakingApplies ? 'none' : this.aero;
+	}
+
 	/** Arrival mode the kernel should price, from what the destination box says.
 	 *  Landing somewhere named is still a landing, whatever the box last held. */
 	get arrivalMode(): ArrivalMode {
@@ -421,14 +442,19 @@ export class TravelPanelState {
 		return this.selected?.route ?? null;
 	}
 
-	/** Read one of the trajectories on offer. */
+	/** Read one of the trajectories on offer. A choice made by hand outranks
+	 *  whatever a link is still waiting on — the hunt landing later must not
+	 *  take the reader off it. */
 	choose(profile: RouteOption): void {
 		this.selectedProfile = profile;
+		this.#pendingProfile = null;
 	}
 
-	/** Go back to the ones on offer, reading none of them. */
+	/** Go back to the ones on offer, reading none of them. Stepping back is as
+	 *  much a choice as opening one, so it settles a link's wait too. */
 	clearSelection(): void {
 		this.selectedProfile = null;
+		this.#pendingProfile = null;
 	}
 
 	/**
@@ -545,7 +571,12 @@ export class TravelPanelState {
 	 *  same orbit the routes are priced against, or it would answer about another
 	 *  trip. */
 	#arrivalCampaignDays(target: TravelBody): number {
-		return arrivalCampaignDays(target, this.arrivalMode, this.aero, this.endOrbits.targetOrbit);
+		return arrivalCampaignDays(
+			target,
+			this.arrivalMode,
+			this.effectiveAero,
+			this.endOrbits.targetOrbit
+		);
 	}
 
 	/** The earliest the trip may leave — now, unless a later departure was asked
@@ -590,7 +621,7 @@ export class TravelPanelState {
 					departureMode: this.departureMode,
 					arrivalMode: this.arrivalMode,
 					...this.endOrbits,
-					aero: this.aero,
+					aero: this.effectiveAero,
 					centralMu: frame.centralMu,
 					systemPrimary: frame.systemPrimary,
 					coastFraction: this.coastFraction
@@ -635,7 +666,7 @@ export class TravelPanelState {
 					departureMode: this.departureMode,
 					arrivalMode: this.arrivalMode,
 					...this.endOrbits,
-					aero: this.aero,
+					aero: this.effectiveAero,
 					centralMu: frame.centralMu,
 					systemPrimary: frame.systemPrimary
 				})
@@ -694,7 +725,7 @@ export class TravelPanelState {
 			this.departureMode,
 			this.arrivalMode,
 			this.#orbitKey(),
-			this.aero,
+			this.effectiveAero,
 			options.centralMu ?? ''
 		].join('|');
 		if (key === this.#assistFor) return;
@@ -712,7 +743,7 @@ export class TravelPanelState {
 			// Load-bearing: the hunt is only ever compared against the direct routes,
 			// so an arrival priced on a different braking mode than theirs is not a
 			// comparison at all — it reads as a swing-by that saves nothing.
-			aero: this.aero
+			aero: this.effectiveAero
 		});
 		// A newer hunt has replaced this one; it owns the flag now.
 		if (token !== this.#assistToken) return;
@@ -721,12 +752,15 @@ export class TravelPanelState {
 		this.#settleSelection(true);
 	}
 
-	/** Drop the swing-by, and anything still looking for one. */
+	/** Drop the swing-by, and anything still looking for one. No hunt is coming
+	 *  after this, so a link still waiting on one has its answer: there is none —
+	 *  holding on would report a trajectory this pair can never have, forever. */
 	clearAssist(): void {
 		this.#assistToken++;
 		this.#assistFor = null;
 		this.assistSearching = false;
 		this.assist = null;
+		if (this.#pendingProfile === 'gravity-assist') this.#pendingProfile = null;
 		if (this.selectedProfile === 'gravity-assist') this.selectedProfile = null;
 	}
 
@@ -830,7 +864,7 @@ export class TravelPanelState {
 			departureMode: this.departureMode,
 			arrivalMode: this.arrivalMode,
 			...this.endOrbits,
-			aero: this.aero
+			aero: this.effectiveAero
 		};
 		const result = await this.#solver.solve(origin, target, solveOptions);
 

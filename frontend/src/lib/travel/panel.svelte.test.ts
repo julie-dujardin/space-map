@@ -367,6 +367,22 @@ describe('TravelPanelState arrival deadline', () => {
 			expect(panel.routes).toEqual([]);
 			expect(panel.missedDeadline).toBe(true);
 		});
+
+		// The choice is held while the destination changes, but pricing has to
+		// follow the arrival at hand: a landing with the control reading "none"
+		// must not be grown a months-long campaign the held value describes.
+		it('drops the campaign the moment the arrival stops being a low orbit', async () => {
+			const crossing = 91;
+			const panel = await aerobraked(J2000 + crossing + 20);
+			panel.targetMode = 'surface';
+			expect(panel.effectiveAero).toBe('none');
+			await panel.solve(EARTH, MARS, J2000);
+
+			expect(panel.routes.length).toBeGreaterThan(0);
+			// And back: returning to a low orbit gets the held choice back.
+			panel.targetMode = 'low-orbit';
+			expect(panel.effectiveAero).toBe('aerobraking');
+		});
 	});
 });
 
@@ -657,6 +673,38 @@ describe('TravelPanelState swing-by route', () => {
 		expect(panel.offered.some((choice) => choice.profile === 'gravity-assist')).toBe(false);
 		expect(panel.selectedProfile).toBeNull();
 		expect(panel.trip.profile).toBeNull();
+	});
+
+	// The hunt lands about a second after the routes it is listed beside, which
+	// is long enough for the reader to have picked one of them — and a choice
+	// made by hand outranks the one the link arrived asking for.
+	it('lets a choice made during the hunt stand when the hunt lands', async () => {
+		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'gravity-assist' });
+		await panel.solve(EARTH, SATURN, NOW);
+		panel.choose('fast');
+		await panel.updateAssist(EARTH, SATURN, [JUPITER], NOW);
+		expect(panel.selectedProfile).toBe('fast');
+		expect(panel.trip.profile).toBe('fast');
+	});
+
+	it('lets stepping back to the list settle a link’s wait too', async () => {
+		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'gravity-assist' });
+		await panel.solve(EARTH, SATURN, NOW);
+		panel.clearSelection();
+		expect(panel.trip.profile).toBeNull();
+	});
+
+	// A pair with no candidates never hunts at all — nothing inside one system
+	// does — so a link asking for a swing-by there has its answer the moment the
+	// hunt is cleared, not never. Left pending, the trip would report a
+	// gravity-assist nothing offers for the rest of the session, and the early
+	// return waiting on it would block every later settle.
+	it('lets a link’s choice go when the pair has nothing to hunt', async () => {
+		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'gravity-assist' });
+		await panel.solve(EARTH, MARS, NOW);
+		panel.clearAssist();
+		expect(panel.trip.profile).toBeNull();
+		expect(panel.selectedProfile).toBeNull();
 	});
 
 	// The hunt is only ever compared against the direct routes, so it has to be

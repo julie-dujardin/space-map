@@ -348,7 +348,8 @@
 		if (!route || !body || !choice.orbit) return null;
 		if (role === 'target') {
 			const mode = choice.kind === 'elliptical' ? 'capture' : 'low-orbit';
-			return arrivalCost(body, route.vInfArrKms, mode, panel.aero, choice.orbit).captureKms;
+			return arrivalCost(body, route.vInfArrKms, mode, panel.effectiveAero, choice.orbit)
+				.captureKms;
 		}
 		return departureCost(body, route.vInfDepKms, 'orbit', choice.orbit).injectionKms;
 	}
@@ -369,7 +370,7 @@
 	// asked for.
 	let aeroChoices = $derived([
 		{ value: 'none' as const, label: m.travel_aero_none() },
-		...(panel.targetMode === 'low-orbit'
+		...(panel.aerobrakingApplies
 			? [{ value: 'aerobraking' as const, label: m.travel_aero_aerobraking() }]
 			: []),
 		{
@@ -378,10 +379,9 @@
 		}
 	]);
 	// A trip that was aerobraking and is now landing is not braking on the way in
-	// at all until it says so again.
-	let aeroValue = $derived(
-		panel.aero === 'aerobraking' && panel.targetMode !== 'low-orbit' ? 'none' : panel.aero
-	);
+	// at all until it says so again — and what the control shows is exactly what
+	// the routes are priced with.
+	let aeroValue = $derived(panel.effectiveAero);
 	// Candidates for a swing-by. Only a heliocentric trip gets any: inside one
 	// system the transfer already goes round the only body massive enough to bend
 	// it, and there is nothing left to pass on the way.
@@ -465,7 +465,7 @@
 		const picked = panel.pickedJd;
 		const departure = panel.originMode;
 		const arrival = panel.targetMode;
-		const aero = panel.aero;
+		const aero = panel.effectiveAero;
 		void mode;
 		void picked;
 		void departure;
@@ -514,7 +514,7 @@
 		const arrival = panel.targetMode;
 		// Braking is among them: the hunt is judged against the direct routes, and
 		// they are priced with it.
-		const braking = panel.aero;
+		const braking = panel.effectiveAero;
 		void departure;
 		void arrival;
 		void braking;
@@ -667,7 +667,12 @@
 	// six scans.
 	let hazardsKey = $derived.by(() => {
 		if (!centerId) return null;
-		const keys = panel.offered.map((choice) => routeKey(choice.route, centerId, frame));
+		// The braking mode rides beside the geometry key: it sets the entry speed
+		// the atmospheric hazard is read off, and a re-solve that changes only it
+		// usually moves none of the dates the key carries.
+		const keys = panel.offered.map(
+			(choice) => `${routeKey(choice.route, centerId, frame)}|${choice.route.aero}`
+		);
 		// The frame decides whether a distance from the centre is a distance from
 		// the Sun, which is what half of these are read off.
 		return keys.length > 0 ? [frame.orbit, ...keys].join(';') : null;
@@ -723,6 +728,9 @@
 			route.arriveJd,
 			route.departureMode,
 			route.arrivalMode,
+			// Braking changes the legs — a campaign appears, a capture burn shrinks —
+			// without moving either date above.
+			route.aero,
 			route.constantThrust ?? '',
 			route.lowThrust?.accelMs2 ?? '',
 			(route.flybys ?? []).map((flyby) => `${flyby.bodyId}@${flyby.jd}`).join(','),
@@ -1110,7 +1118,10 @@
 		     is while the porkchop is still running. -->
 		{:else if panel.status === 'solving' && panel.offered.length === 0}
 			<p class="text-muted-foreground text-xs">{m.travel_solving()}</p>
-		{:else if panel.status === 'empty' && panel.offered.length === 0}
+		{:else if panel.status !== 'idle' && panel.offered.length === 0}
+			<!-- On the offer list rather than on `status`: a route can be withdrawn
+			     after a solve answered — a longer coast missing the deadline — and
+			     the panel still has to say so rather than go blank. -->
 			<!-- Which of the two nothings this is: the pair has no transfer at all, or
 			     it has them and they are all too slow for the date asked for. -->
 			<p class="text-muted-foreground text-xs">

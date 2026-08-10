@@ -96,9 +96,13 @@ export class TripPlayback {
 		if (entries.length < 2) return;
 		this.stop();
 		// Resume from where the clock is, unless the trip is already over — then the
-		// button means "watch it again" rather than "do nothing".
+		// button means "watch it again" rather than "do nothing". Over means past
+		// the last entry's whole span: inside the final phase there is still a leg
+		// to fly.
+		const last = entries[entries.length - 1];
 		const at = entryIndexAt(entries, this.host.clock.jd);
-		const from = at >= entries.length - 1 ? 0 : at;
+		const over = at >= entries.length - 1 && !(this.host.clock.jd < last.endJd);
+		const from = over ? 0 : at;
 		this.go(from);
 		this.host.clock.pause();
 		this.playing = true;
@@ -118,28 +122,32 @@ export class TripPlayback {
 
 	private beginLeg(index: number): void {
 		const entries = this.host.entries();
-		const to = entries[index];
 		const from = entries[index - 1];
-		if (!to || !from) {
+		// One past the end is the last leg: the final entry's own span, which the
+		// legs between startJds never cover — without it the trip stops at the
+		// start of its last phase instead of at its arrival.
+		const to = entries[index] ?? null;
+		if (!from || (!to && !(from.endJd > from.startJd))) {
 			this.stop();
 			return;
 		}
 		this.toIndex = index;
 		this.fromJd = from.startJd;
-		this.toJd = to.startJd;
+		this.toJd = to ? to.startJd : from.endJd;
 		this.startedMs = performance.now();
 		const trip = entries[entries.length - 1].endJd - entries[0].startJd;
-		this.durationMs = legSeconds(to.startJd - from.startJd, trip) * 1000;
+		this.durationMs = legSeconds(this.toJd - this.fromJd, trip) * 1000;
 		this.dwellUntilMs = 0;
 	}
 
 	private tick = (): void => {
 		if (!this.playing) return;
 		const entries = this.host.entries();
-		const to = entries[this.toIndex];
+		const final = this.toIndex >= entries.length;
+		const to = entries[final ? entries.length - 1 : this.toIndex];
 		// The route changed under the run — its entries are no longer these ones,
 		// and carrying on would fly a leg of one trip into another.
-		if (!to || to.startJd !== this.toJd) {
+		if (!to || (final ? to.endJd : to.startJd) !== this.toJd) {
 			this.stop();
 			return;
 		}
@@ -152,7 +160,9 @@ export class TripPlayback {
 			this.host.clock.sweepTo(this.fromJd + (this.toJd - this.fromJd) * smoothstep(t));
 			if (t >= 1) {
 				this.host.focus(to);
-				if (this.toIndex >= entries.length - 1) {
+				// Done once the last leg is flown — or once the last entry is reached
+				// with no span of its own left to fly.
+				if (final || (this.toIndex === entries.length - 1 && !(to.endJd > to.startJd))) {
 					this.stop();
 					return;
 				}
