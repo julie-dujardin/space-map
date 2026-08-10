@@ -6,6 +6,7 @@
 import { SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
 import {
 	departureCost,
+	type EndOrbit,
 	elementsToState,
 	norm,
 	sub,
@@ -48,12 +49,15 @@ export function signalDelaySeconds(
  * spiral is quoted the same way and for the same reason — its escape is a
  * spiral too, and pricing one as an impulsive burn would halve it.
  */
-export function returnDvKms(target: TravelBody, route: Route): number {
+export function returnDvKms(target: TravelBody, route: Route, orbit?: EndOrbit): number {
 	if (route.constantThrust || route.lowThrust) return route.inSpaceDvKms;
 	const cost = departureCost(
 		target,
 		route.vInfArrKms,
-		route.arrivalMode === 'landing' ? 'surface' : 'orbit'
+		route.arrivalMode === 'landing' ? 'surface' : 'orbit',
+		// You leave from wherever the arrival left you, so a stationary orbit is
+		// as much a term of the way back as it was of the way out.
+		orbit
 	);
 	return cost.ascentKms + cost.injectionKms;
 }

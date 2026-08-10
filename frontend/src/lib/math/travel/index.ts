@@ -39,6 +39,8 @@
  * constants module for every approximation by name.
  */
 
+export { GM_SUN_KM3_S2, PARKING_ALTITUDE_KM } from './constants';
+
 export type { Vec3 } from './vec3';
 export { add, cross, dot, norm, normalize, scale, sub } from './vec3';
 
@@ -51,7 +53,7 @@ export { elementsToState, eclipticToScene } from './state';
 export type { LambertArc } from './lambert';
 export { solveLambert } from './lambert';
 
-export type { AeroAssist, ArrivalMode, ArrivalCost, DepartureMode } from './maneuvers';
+export type { AeroAssist, ArrivalMode, ArrivalCost, DepartureMode, EndOrbit } from './maneuvers';
 export {
 	aeroPassRadiusKm,
 	arrivalCost,
@@ -63,6 +65,8 @@ export {
 	departureCost,
 	hasUsableAtmosphere,
 	injectionDv,
+	orbitPeriodHours,
+	parkingOrbit,
 	parkingRadiusKm,
 	periapsisRaiseDv,
 	speedAtRadius

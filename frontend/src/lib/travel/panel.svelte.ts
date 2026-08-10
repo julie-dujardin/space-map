@@ -22,6 +22,7 @@ import {
 	type AeroAssist,
 	type ArrivalMode,
 	type DepartureMode,
+	type EndOrbit,
 	type Feasibility,
 	type Manifest,
 	type ManifestFit,
@@ -70,6 +71,23 @@ export type BlockReason = 'unknown-primary' | 'unknown-orbit' | 'no-target' | 'n
 export class TravelPanelState {
 	originMode = $state<EndpointMode>(DEFAULT_TRIP.originMode);
 	targetMode = $state<EndpointMode>(DEFAULT_TRIP.targetMode);
+	originAltKm = $state(DEFAULT_TRIP.originAltKm);
+	targetAltKm = $state(DEFAULT_TRIP.targetAltKm);
+	/**
+	 * The orbit each end is met in, km from the centre.
+	 *
+	 * Set by the component, because which orbits a body can hold takes the body's
+	 * spin and its Hill radius — neither of which the kernel's `TravelBody`
+	 * carries. Absent means the mode names no orbit, and the kernel falls back to
+	 * the parking orbit it always used.
+	 *
+	 * Raw, and load-bearing: these ride into the solver worker inside the route
+	 * options, and a deep `$state` proxy cannot be structured-cloned — the whole
+	 * solve fails with a `DataCloneError`. They are replaced wholesale rather than
+	 * written into, so there is nothing for the proxy to have earned.
+	 */
+	originOrbit = $state.raw<EndOrbit | undefined>(undefined);
+	targetOrbit = $state.raw<EndOrbit | undefined>(undefined);
 	/** What to ask of the destination's atmosphere. Held whatever the destination
 	 *  is — the kernel ignores it where there is no atmosphere — so that moving
 	 *  the trip to an airless body and back does not lose the choice. */
@@ -199,6 +217,8 @@ export class TravelPanelState {
 		return {
 			originMode: this.originMode,
 			targetMode: this.targetMode,
+			originAltKm: this.originAltKm,
+			targetAltKm: this.targetAltKm,
 			aero: this.aero,
 			timeMode: this.timeMode,
 			pickedJd: this.pickedJd,
@@ -220,6 +240,8 @@ export class TravelPanelState {
 	applyTrip(trip: TripState): void {
 		this.originMode = trip.originMode;
 		this.targetMode = trip.targetMode;
+		this.originAltKm = trip.originAltKm;
+		this.targetAltKm = trip.targetAltKm;
 		this.aero = trip.aero;
 		this.timeMode = trip.timeMode;
 		this.pickedJd = trip.pickedJd;
@@ -306,8 +328,29 @@ export class TravelPanelState {
 		if (this.targetIsFeature) return 'landing';
 		if (this.targetMode === 'flyby') return 'flyby';
 		if (this.targetMode === 'surface') return 'landing';
-		if (this.targetMode === 'elliptical') return 'capture';
-		return 'low-orbit';
+		// Which of the two remaining cases is picked no longer sets the orbit —
+		// `targetOrbit` does — but it still decides what an aerobraking campaign
+		// starts from, and a loose ellipse has nothing to walk down.
+		return this.targetMode === 'elliptical' ? 'capture' : 'low-orbit';
+	}
+
+	/** The orbits the kernel should price, as route options. A landing or a flyby
+	 *  names none, and neither does an end whose body has not been measured yet. */
+	get endOrbits(): Pick<RouteOptions, 'departureOrbit' | 'targetOrbit'> {
+		return {
+			departureOrbit: this.departureMode === 'surface' ? undefined : this.originOrbit,
+			targetOrbit:
+				this.arrivalMode === 'landing' || this.arrivalMode === 'flyby'
+					? undefined
+					: this.targetOrbit
+		};
+	}
+
+	/** What the two orbits are worth to a cache key. */
+	#orbitKey(): string {
+		const { departureOrbit: d, targetOrbit: t } = this.endOrbits;
+		const one = (o?: EndOrbit) => (o ? `${Math.round(o.rPeriKm)}/${Math.round(o.rApoKm)}` : '');
+		return `${one(d)}|${one(t)}`;
 	}
 
 	get departureMode(): DepartureMode {
@@ -501,6 +544,7 @@ export class TravelPanelState {
 			? buildConstantThrustRoute(origin, target, departJd, accelMs2, {
 					departureMode: this.departureMode,
 					arrivalMode: this.arrivalMode,
+					...this.endOrbits,
 					aero: this.aero,
 					centralMu: frame.centralMu,
 					systemPrimary: frame.systemPrimary,
@@ -549,6 +593,7 @@ export class TravelPanelState {
 			? buildLowThrustRoute(origin, target, earliestJd, drive, {
 					departureMode: this.departureMode,
 					arrivalMode: this.arrivalMode,
+					...this.endOrbits,
 					aero: this.aero,
 					centralMu: frame.centralMu,
 					systemPrimary: frame.systemPrimary
@@ -605,6 +650,7 @@ export class TravelPanelState {
 			nowJd,
 			this.departureMode,
 			this.arrivalMode,
+			this.#orbitKey(),
 			this.aero,
 			options.centralMu ?? ''
 		].join('|');
@@ -618,6 +664,7 @@ export class TravelPanelState {
 			nowJd,
 			departureMode: this.departureMode,
 			arrivalMode: this.arrivalMode,
+			...this.endOrbits,
 			// Load-bearing: the hunt is only ever compared against the direct routes,
 			// so an arrival priced on a different braking mode than theirs is not a
 			// comparison at all — it reads as a swing-by that saves nothing.
@@ -737,6 +784,7 @@ export class TravelPanelState {
 			...options,
 			departureMode: this.departureMode,
 			arrivalMode: this.arrivalMode,
+			...this.endOrbits,
 			aero: this.aero
 		};
 		const result = await this.#solver.solve(origin, target, solveOptions);

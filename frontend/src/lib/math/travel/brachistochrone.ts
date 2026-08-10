@@ -384,8 +384,8 @@ export function buildConstantThrustRoute(
 
 	// Both wells are cleared at zero excess speed: the crossing does not start
 	// until the ship is out of one and is over once it is falling into the other.
-	const dep = departureCost(departure, 0, departureMode);
-	const arr = arrivalCost(target, vInfArrKms, arrivalMode, aero);
+	const dep = departureCost(departure, 0, departureMode, options.departureOrbit);
+	const arr = arrivalCost(target, vInfArrKms, arrivalMode, aero, options.targetOrbit);
 
 	const burnDays = arc.burnSeconds / SEC_PER_DAY;
 	// What one burn costs: the acceleration times the time it is held, whatever

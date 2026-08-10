@@ -25,13 +25,15 @@
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatJulianDate } from '$lib/format/date';
 	import {
+		arrivalCost,
 		buildTrajectoryPath,
 		canDepartFrom,
 		checkFeasibility,
+		departureCost,
 		crewCapacity,
-		hohmannTransferDays,
 		nextTransferWindows,
 		systemArcBounds,
+		hohmannTransferDays,
 		type AeroAssist,
 		type Route,
 		type TrajectoryPath,
@@ -50,12 +52,20 @@
 	import { TravelPanelState, type BlockReason } from '$lib/travel/panel.svelte';
 	import { ASSIST_BODY_IDS } from '$lib/travel/assist-bodies';
 	import {
+		ORIGIN_MODES,
 		serializeTripSuffix,
 		type EndpointMode,
 		type TimeMode,
 		type TripState
 	} from '$lib/travel/trip';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
+	import {
+		hasGround,
+		maxCustomAltitudeKm,
+		orbitChoices,
+		orbitFacts,
+		type OrbitChoice
+	} from '$lib/travel/orbits';
 	import { buildTimeline, type TimelineEntry } from '$lib/travel/timeline';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import { formatAcceleration } from '$lib/travel/format';
@@ -176,6 +186,16 @@
 		});
 	});
 	let openField = $state<'origin' | 'target' | null>(null);
+
+	/**
+	 * Only one box is open at a time, and the one closing may not be the one that
+	 * just opened: clicking the other box opens it and *then* tells this one it
+	 * closed, so an unguarded assignment shuts the box the click was for.
+	 */
+	function setOpenField(field: 'origin' | 'target', open: boolean) {
+		if (open) openField = field;
+		else if (openField === field) openField = null;
+	}
 	// The empty fourth route row sends the reader here, so the list needs a handle
 	// on the chart below it.
 	let chart = $state<ReturnType<typeof PorkchopChart> | null>(null);
@@ -240,6 +260,94 @@
 	let targetTravel = $derived<TravelBody | null>(
 		target ? toTravelBody(target, lookup, targetDetail, frame.orbit) : null
 	);
+
+	// Only a body with a surface can be landed on or left from the ground.
+	let originHasGround = $derived(originTravel ? hasGround(originTravel) : true);
+	let targetHasGround = $derived(targetTravel ? hasGround(targetTravel) : true);
+
+	// What each body contributes to which orbits it can hold: its spin, from the
+	// detail bundle, and how much room it has, from the orbit it is itself on.
+	let originFacts = $derived(
+		origin && originTravel ? orbitFacts(origin, originTravel, originDetail, lookup) : null
+	);
+	let targetFacts = $derived(
+		target && targetTravel ? orbitFacts(target, targetTravel, targetDetail, lookup) : null
+	);
+	// A named place on a surface has already answered how it is met, so its box
+	// offers nothing — which is what an empty list means to `EndpointField`.
+	let originChoices = $derived<OrbitChoice[]>(
+		originTravel && originFacts && !panel.originIsFeature
+			? orbitChoices(originTravel, originFacts, 'origin', {
+					hasSurface: originHasGround,
+					customAltKm: panel.originAltKm
+				})
+			: []
+	);
+	let targetChoices = $derived<OrbitChoice[]>(
+		targetTravel && targetFacts && !panel.targetIsFeature
+			? orbitChoices(targetTravel, targetFacts, 'target', {
+					hasSurface: targetHasGround,
+					customAltKm: panel.targetAltKm
+				})
+			: []
+	);
+
+	/**
+	 * A mode the body cannot hold is not a mode: a link naming a stationary orbit
+	 * at Venus falls back to the low one rather than labelling a trip it is not
+	 * pricing.
+	 *
+	 * Guarded on the detail bundle having landed, and load-bearing. The spin that
+	 * says whether a stationary orbit exists arrives with that bundle, so during
+	 * the wait *every* named orbit is missing from the list — and an unguarded
+	 * check would read that as "Earth has no geostationary orbit" and quietly
+	 * rewrite a shared link's own mode on the way in.
+	 */
+	$effect(() => {
+		if (!originDetail || !originChoices.length) return;
+		if (!originChoices.some((c) => c.kind === panel.originMode)) panel.originMode = 'low-orbit';
+	});
+	$effect(() => {
+		if (!targetDetail || !targetChoices.length) return;
+		if (!targetChoices.some((c) => c.kind === panel.targetMode)) panel.targetMode = 'low-orbit';
+	});
+
+	// The orbit each end is met in, handed to the panel so every builder prices
+	// the same one. A mode with no orbit of its own — a landing, a flyby — leaves
+	// it unset and the kernel falls back to its parking orbit.
+	$effect(() => {
+		panel.originOrbit = originChoices.find((c) => c.kind === panel.originMode)?.orbit;
+	});
+	$effect(() => {
+		panel.targetOrbit = targetChoices.find((c) => c.kind === panel.targetMode)?.orbit;
+	});
+
+	/**
+	 * What each orbit would cost at this end, on the trajectory being read.
+	 *
+	 * Priced from the excess speed the chosen route arrives with, so the figures
+	 * move with the trajectory rather than standing for a trip nobody picked —
+	 * and there are none at all before the first solve, which is honest: the
+	 * question "how much is a stationary orbit" has no answer without an arc.
+	 */
+	function priceEnd(role: 'origin' | 'target', choice: OrbitChoice): number | null {
+		// Before a trajectory is chosen the balanced one stands in for the trip:
+		// which orbit is cheap depends on how fast the arc is going when it gets
+		// there, and the fast route's excess speed would price every choice as
+		// though the reader had already picked the most expensive way to travel.
+		const route =
+			panel.selectedRoute ??
+			panel.offered.find((o) => o.profile === 'balanced')?.route ??
+			panel.offered[0]?.route ??
+			null;
+		const body = role === 'origin' ? originTravel : targetTravel;
+		if (!route || !body || !choice.orbit) return null;
+		if (role === 'target') {
+			const mode = choice.kind === 'elliptical' ? 'capture' : 'low-orbit';
+			return arrivalCost(body, route.vInfArrKms, mode, panel.aero, choice.orbit).captureKms;
+		}
+		return departureCost(body, route.vInfDepKms, 'orbit', choice.orbit).injectionKms;
+	}
 
 	// A flyby never slows down, so there is nothing for an atmosphere to do. A
 	// destination with none of its own ignores the request anyway, and offering it
@@ -641,13 +749,15 @@
 	});
 
 	function swap() {
-		// Modes ride along with their end. Only the destination can be a flyby, so
-		// a flyby arrival lands on the nearest departure that means something.
+		// Modes ride along with their end, and every departure mode is also an
+		// arrival one — so only the mode coming back needs a fallback, for the
+		// three a departure cannot be: a flyby, a capture ellipse, a transfer orbit.
 		const previousOriginMode = panel.originMode;
-		// Only a destination can be flown past or held in a loose ellipse; both
-		// fall back to the parking orbit a departure actually leaves from.
-		panel.originMode = panel.targetMode === 'surface' ? 'surface' : 'low-orbit';
+		const previousOriginAlt = panel.originAltKm;
+		panel.originMode = ORIGIN_MODES.includes(panel.targetMode) ? panel.targetMode : 'low-orbit';
 		panel.targetMode = previousOriginMode;
+		panel.originAltKm = panel.targetAltKm;
+		panel.targetAltKm = previousOriginAlt;
 		onSwap();
 	}
 </script>
@@ -739,8 +849,15 @@
 					isFeature={panel.originIsFeature}
 					mode={panel.originMode}
 					onModeChange={(mode: EndpointMode) => (panel.originMode = mode)}
+					choices={originChoices}
+					customAltKm={panel.originAltKm}
+					maxAltKm={originTravel && originFacts
+						? maxCustomAltitudeKm(originTravel, originFacts)
+						: 0}
+					onCustomAlt={(km: number) => (panel.originAltKm = km)}
+					priceKms={(choice: OrbitChoice) => priceEnd('origin', choice)}
 					open={openField === 'origin'}
-					onToggle={() => (openField = openField === 'origin' ? null : 'origin')}
+					onOpenChange={(next: boolean) => setOpenField('origin', next)}
 					excludeIds={excludeForOrigin}
 					onPick={(pick) => {
 						onOriginChange(pick);
@@ -762,8 +879,15 @@
 					isFeature={panel.targetIsFeature}
 					mode={panel.targetMode}
 					onModeChange={(mode: EndpointMode) => (panel.targetMode = mode)}
+					choices={targetChoices}
+					customAltKm={panel.targetAltKm}
+					maxAltKm={targetTravel && targetFacts
+						? maxCustomAltitudeKm(targetTravel, targetFacts)
+						: 0}
+					onCustomAlt={(km: number) => (panel.targetAltKm = km)}
+					priceKms={(choice: OrbitChoice) => priceEnd('target', choice)}
 					open={openField === 'target'}
-					onToggle={() => (openField = openField === 'target' ? null : 'target')}
+					onOpenChange={(next: boolean) => setOpenField('target', next)}
 					excludeIds={excludeForTarget}
 					onPick={(pick) => {
 						onTargetChange(pick);

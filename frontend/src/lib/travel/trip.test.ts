@@ -49,6 +49,8 @@ describe('trip URL round trip', () => {
 		const trip: TripState = {
 			originMode: 'low-orbit',
 			targetMode: 'elliptical',
+			originAltKm: DEFAULT_TRIP.originAltKm,
+			targetAltKm: DEFAULT_TRIP.targetAltKm,
 			aero: 'aerobraking',
 			timeMode: 'arrive',
 			pickedJd: DEPART_JD,

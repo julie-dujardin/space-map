@@ -153,7 +153,7 @@
 			state.vehicle.kind !== 'launcher' &&
 			state.vehicle.dvKms === undefined
 	);
-	let returnCost = $derived(returnDvKms(target, route));
+	let returnCost = $derived(returnDvKms(target, route, state.targetOrbit));
 
 	// What the detour bought, against the best the direct search found. The saving
 	// is the reason this route is on the list at all, so it is said rather than

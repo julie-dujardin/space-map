@@ -32,7 +32,13 @@
 import { AU_KM } from '$lib/math/units';
 import type { TravelBody } from './body';
 import { CAPTURE_APOAPSIS_RADII, GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
-import { arrivalCost, circularSpeed, parkingRadiusKm, type ArrivalMode } from './maneuvers';
+import {
+	arrivalCost,
+	circularSpeed,
+	parkingRadiusKm,
+	type ArrivalMode,
+	type EndOrbit
+} from './maneuvers';
 import type { Route, RouteLeg, RouteOptions } from './route';
 import { elementsToState, type StateVector } from './state';
 import { relativeState } from './system-transfer';
@@ -212,8 +218,15 @@ interface SpiralPlan {
 	phased: boolean;
 }
 
-/** Radius the arrival spiral stops at, km — the orbit that was asked for. */
-function arrivalRadiusKm(body: TravelBody, mode: ArrivalMode): number {
+/**
+ * Radius the arrival spiral stops at, km — the orbit that was asked for.
+ *
+ * A spiral is quasi-circular the whole way, so an elliptical orbit is met at its
+ * apoapsis: that is where the climb stops and the shape is someone else's
+ * problem.
+ */
+function arrivalRadiusKm(body: TravelBody, mode: ArrivalMode, orbit?: EndOrbit): number {
+	if (orbit) return orbit.rApoKm;
 	return mode === 'capture' ? CAPTURE_APOAPSIS_RADII * body.radiusKm : parkingRadiusKm(body);
 }
 
@@ -243,9 +256,9 @@ function spiralPlan(
 	target: TravelBody,
 	jd: number,
 	options: Required<Pick<RouteOptions, 'centralMu' | 'arrivalMode'>> &
-		Pick<RouteOptions, 'systemPrimary'>
+		Pick<RouteOptions, 'systemPrimary' | 'departureOrbit' | 'targetOrbit'>
 ): SpiralPlan | null {
-	const { centralMu, arrivalMode, systemPrimary } = options;
+	const { centralMu, arrivalMode, systemPrimary, departureOrbit, targetOrbit } = options;
 
 	// A trip to a body's own moon, or back: the transfer goes round the primary
 	// and never leaves it, so the climb out of the parking orbit *is* the
@@ -257,7 +270,7 @@ function spiralPlan(
 		const state = relativeState(satellite, primary, jd);
 		if (!state) return null;
 		const rSat = norm(state.r);
-		const rPark = parkingRadiusKm(primary);
+		const rPark = (outbound ? departureOrbit : targetOrbit)?.rPeriKm ?? parkingRadiusKm(primary);
 		if (!(rSat > 0) || !(rPark > 0) || !(primary.mu > 0)) return null;
 
 		const vPark = circularSpeed(primary.mu, rPark);
@@ -269,12 +282,14 @@ function spiralPlan(
 			planeChangeRad: 0,
 			// Leaving a satellite means climbing out of it first; leaving a parking
 			// orbit about the primary means the transfer has already started.
-			escapeKms: outbound ? 0 : circularSpeed(satellite.mu, parkingRadiusKm(satellite)),
+			escapeKms: outbound
+				? 0
+				: circularSpeed(satellite.mu, departureOrbit?.rPeriKm ?? parkingRadiusKm(satellite)),
 			// Arriving at the primary, the spiral ends in the orbit that was asked
 			// for and there is nothing further to pay.
 			captureKms:
 				outbound && arrivalMode !== 'flyby'
-					? circularSpeed(satellite.mu, arrivalRadiusKm(satellite, arrivalMode))
+					? circularSpeed(satellite.mu, arrivalRadiusKm(satellite, arrivalMode, targetOrbit))
 					: 0,
 			phased: false
 		};
@@ -295,12 +310,14 @@ function spiralPlan(
 		v0Kms: circularSpeed(centralMu, r0),
 		v1Kms: circularSpeed(centralMu, r1),
 		planeChangeRad: planeChangeRad(from, to),
-		escapeKms: circularSpeed(departure.mu, parkingRadiusKm(departure)),
+		escapeKms: circularSpeed(departure.mu, departureOrbit?.rPeriKm ?? parkingRadiusKm(departure)),
 		// A flyby has nothing to slow down for. The crossing is still charged in
 		// full: the craft has to reach the target's orbit to cross it, and the
 		// cheaper arc that merely passes through is not one this model draws.
 		captureKms:
-			arrivalMode === 'flyby' ? 0 : circularSpeed(target.mu, arrivalRadiusKm(target, arrivalMode)),
+			arrivalMode === 'flyby'
+				? 0
+				: circularSpeed(target.mu, arrivalRadiusKm(target, arrivalMode, targetOrbit)),
 		phased: true
 	};
 }
@@ -456,7 +473,9 @@ export function buildLowThrustRoute(
 	const shape = spiralPlan(departure, target, earliestJd, {
 		centralMu,
 		arrivalMode,
-		systemPrimary
+		systemPrimary,
+		departureOrbit: options.departureOrbit,
+		targetOrbit: options.targetOrbit
 	});
 	if (!shape) return null;
 
@@ -547,7 +566,9 @@ export function rebuildSpiral(
 	const shape = spiralPlan(departure, target, route.departJd, {
 		centralMu,
 		arrivalMode,
-		systemPrimary
+		systemPrimary,
+		departureOrbit: options.departureOrbit,
+		targetOrbit: options.targetOrbit
 	});
 	if (!shape) return null;
 

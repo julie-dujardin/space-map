@@ -14,20 +14,47 @@ import { dateToJD, jdToDate } from '$lib/format/date';
 import type { AeroAssist, RouteProfile } from '$lib/math/travel';
 
 /**
- * How a trip meets a body at one end. These are the kernel's own manoeuvre
- * cases, not named orbits — "low-orbit" is a circular parking orbit and
- * "elliptical" the loose capture ellipse a real orbiter enters first.
+ * How a trip meets a body at one end: the ground, one of the orbits that body
+ * can hold, or a pass with no burn at all.
+ *
+ * Which of the orbits actually exist is a fact about the body and is derived in
+ * `orbits.ts`; this union is only what a link may name. Every value is priced
+ * differently by the kernel — an orbit that costs the same as another would be a
+ * distinction the model cannot back.
  */
-export type EndpointMode = 'surface' | 'low-orbit' | 'elliptical' | 'flyby';
+export type EndpointMode =
+	| 'surface'
+	| 'low-orbit'
+	/** The loose ellipse a capture burn drops into. Named for what it is rather
+	 *  than for the burn, and spelled as it always was so old links still read. */
+	| 'elliptical'
+	| 'semi-sync'
+	| 'stationary'
+	| 'transfer'
+	| 'heo'
+	| 'custom'
+	| 'flyby';
 
-/** Modes each end can be in. Departure has no elliptical case — the injection
- *  burn is priced from a circular parking orbit — and only a destination can be
- *  flown past. */
-export const ORIGIN_MODES: readonly EndpointMode[] = ['surface', 'low-orbit'];
+/** Modes each end can be in. A departure is never a flyby, and never onto a
+ *  transfer orbit or a capture ellipse — both are shapes an arrival leaves you
+ *  in, not ones you set out from. */
+export const ORIGIN_MODES: readonly EndpointMode[] = [
+	'surface',
+	'low-orbit',
+	'semi-sync',
+	'stationary',
+	'heo',
+	'custom'
+];
 export const TARGET_MODES: readonly EndpointMode[] = [
 	'surface',
 	'low-orbit',
 	'elliptical',
+	'semi-sync',
+	'stationary',
+	'transfer',
+	'heo',
+	'custom',
 	'flyby'
 ];
 
@@ -76,6 +103,10 @@ export interface TripPick {
 export interface TripState {
 	originMode: EndpointMode;
 	targetMode: EndpointMode;
+	/** Altitude of the `custom` orbit at each end, km. Carried whatever the mode
+	 *  is, so switching away and back does not lose the altitude that was set. */
+	originAltKm: number;
+	targetAltKm: number;
 	aero: AeroAssist;
 	timeMode: TimeMode;
 	/** The date behind the two non-'now' modes, as a JD; null under 'now', which
@@ -98,9 +129,15 @@ export interface TripState {
 	coastFraction: number;
 }
 
+/** Where a custom orbit starts before it is moved, km. High enough to be
+ *  visibly a choice rather than the parking orbit under another name. */
+export const DEFAULT_CUSTOM_ALT_KM = 1000;
+
 export const DEFAULT_TRIP: TripState = {
 	originMode: 'surface',
 	targetMode: 'low-orbit',
+	originAltKm: DEFAULT_CUSTOM_ALT_KM,
+	targetAltKm: DEFAULT_CUSTOM_ALT_KM,
 	// Somewhere with air is somewhere you use the air: arriving at Mars on the
 	// engine alone is the unusual choice, and the one worth having to make.
 	aero: 'aerocapture',
@@ -129,6 +166,9 @@ export function serializeTripSuffix(trip: TripState): string {
 
 	if (trip.originMode !== DEFAULT_TRIP.originMode) parts.push(`fm=${trip.originMode}`);
 	if (trip.targetMode !== DEFAULT_TRIP.targetMode) parts.push(`tm=${trip.targetMode}`);
+	// Only carried by the mode that means anything by it.
+	if (trip.originMode === 'custom') parts.push(`falt=${trim(trip.originAltKm, 1)}`);
+	if (trip.targetMode === 'custom') parts.push(`talt=${trim(trip.targetAltKm, 1)}`);
 	if (trip.aero !== DEFAULT_TRIP.aero) parts.push(`aero=${trip.aero}`);
 	// The date is what the mode means; a mode without one searches the same span
 	// "now" does, so it is not a choice worth carrying.
@@ -175,6 +215,13 @@ function parseWhen(raw: string | null): Pick<TripState, 'timeMode' | 'pickedJd'>
 	return { timeMode: mode, pickedJd: dateToJD(date) };
 }
 
+/** A custom orbit's altitude. Anything unusable falls back to the default rather
+ *  than to the surface, which is not an orbit. */
+function parseAltitude(raw: string | null): number {
+	const value = Number(raw);
+	return raw !== null && Number.isFinite(value) && value > 0 ? value : DEFAULT_CUSTOM_ALT_KM;
+}
+
 /** A manifest figure. Anything unusable reads as nothing aboard, which is what
  *  an empty form says too. */
 function parseAmount(raw: string | null): number {
@@ -210,6 +257,8 @@ export function parseTrip(params: URLSearchParams): TripState {
 	return {
 		originMode: parseMode(params.get('fm'), ORIGIN_MODES, DEFAULT_TRIP.originMode),
 		targetMode: parseMode(params.get('tm'), TARGET_MODES, DEFAULT_TRIP.targetMode),
+		originAltKm: parseAltitude(params.get('falt')),
+		targetAltKm: parseAltitude(params.get('talt')),
 		aero: aero !== null && AERO_ASSISTS.includes(aero) ? aero : DEFAULT_TRIP.aero,
 		...parseWhen(params.get('when')),
 		vehicleId: params.get('craft') || null,

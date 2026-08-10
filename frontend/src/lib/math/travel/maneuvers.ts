@@ -32,6 +32,37 @@ export function parkingRadiusKm(body: TravelBody): number {
 	return body.radiusKm + PARKING_ALTITUDE_KM;
 }
 
+/**
+ * The bound orbit an end of a trip sits in — periapsis and apoapsis from the
+ * centre, km. Equal radii are circular.
+ *
+ * Which orbit is asked for is a real term of the trip and not a detail: entering
+ * a stationary orbit costs a third of what a low one does, and leaving from one
+ * costs less again. Everything here defaults to the parking orbit when no orbit
+ * is named, which is what every caller used to get.
+ */
+export interface EndOrbit {
+	rPeriKm: number;
+	rApoKm: number;
+}
+
+/** The parking orbit as an `EndOrbit`. */
+export function parkingOrbit(body: TravelBody): EndOrbit {
+	const r = parkingRadiusKm(body);
+	return { rPeriKm: r, rApoKm: r };
+}
+
+/** The loose ellipse a capture burn drops into. */
+export function captureOrbit(body: TravelBody): EndOrbit {
+	return { rPeriKm: parkingRadiusKm(body), rApoKm: CAPTURE_APOAPSIS_RADII * body.radiusKm };
+}
+
+/** An orbit with its apoapsis never below its periapsis, whatever was asked
+ *  for. Guards the vis-viva terms below against a reversed pair. */
+function sane(orbit: EndOrbit): EndOrbit {
+	return { rPeriKm: orbit.rPeriKm, rApoKm: Math.max(orbit.rApoKm, orbit.rPeriKm) };
+}
+
 /** True when the atmosphere is thick enough to land or ascend through. */
 export function hasUsableAtmosphere(body: TravelBody): boolean {
 	return (body.surfacePressureBar ?? 0) >= AEROCAPTURE_MIN_PRESSURE_BAR;
@@ -104,6 +135,20 @@ export function captureDv(mu: number, rPeriKm: number, rApoKm: number, vInfKms: 
 /** Speed at periapsis of a bound orbit between the two radii, km/s. */
 function boundSpeed(mu: number, rPeriKm: number, rApoKm: number): number {
 	return Math.sqrt((2 * mu) / rPeriKm - (2 * mu) / (rPeriKm + rApoKm));
+}
+
+/** Speed at periapsis of a named orbit, km/s — what a departure burn is measured
+ *  against, and what a circular orbit's own speed collapses to. */
+export function orbitPeriapsisSpeed(mu: number, orbit: EndOrbit): number {
+	const { rPeriKm, rApoKm } = sane(orbit);
+	return boundSpeed(mu, rPeriKm, rApoKm);
+}
+
+/** How long one revolution takes, hours. */
+export function orbitPeriodHours(mu: number, orbit: EndOrbit): number {
+	const { rPeriKm, rApoKm } = sane(orbit);
+	const a = (rPeriKm + rApoKm) / 2;
+	return (2 * Math.PI * Math.sqrt(a ** 3 / mu)) / 3600;
 }
 
 /**
@@ -185,14 +230,26 @@ export function arrivalCost(
 	body: TravelBody,
 	vInfKms: number,
 	mode: ArrivalMode,
-	aero: AeroAssist = 'none'
+	aero: AeroAssist = 'none',
+	orbit?: EndOrbit
 ): ArrivalCost {
-	return arrivalCostFromSpeed(
-		body,
-		periapsisSpeed(body.mu, parkingRadiusKm(body), vInfKms),
-		mode,
-		aero
-	);
+	// The approach is priced at the periapsis it is flown to, which is the one the
+	// orbit asked for — arriving into a stationary orbit still dips low first.
+	const rPeri = arrivalOrbit(body, mode, orbit).rPeriKm;
+	return arrivalCostFromSpeed(body, periapsisSpeed(body.mu, rPeri, vInfKms), mode, aero, orbit);
+}
+
+/**
+ * The orbit an arrival ends in.
+ *
+ * A landing passes through the parking orbit whatever was asked for — you do not
+ * stop in a stationary orbit on the way to the ground — and a flyby ends in no
+ * orbit at all, so both ignore the request rather than carrying it.
+ */
+function arrivalOrbit(body: TravelBody, mode: ArrivalMode, orbit?: EndOrbit): EndOrbit {
+	if (mode === 'landing' || mode === 'flyby') return parkingOrbit(body);
+	if (orbit) return sane(orbit);
+	return mode === 'capture' ? captureOrbit(body) : parkingOrbit(body);
 }
 
 /**
@@ -207,13 +264,13 @@ export function arrivalCostFromSpeed(
 	body: TravelBody,
 	vPeriKms: number,
 	mode: ArrivalMode,
-	aero: AeroAssist = 'none'
+	aero: AeroAssist = 'none',
+	orbit?: EndOrbit
 ): ArrivalCost {
 	if (mode === 'flyby') return NO_ARRIVAL_COST;
 
 	const { mu } = body;
-	const rPeri = parkingRadiusKm(body);
-	const rApo = mode === 'capture' ? CAPTURE_APOAPSIS_RADII * body.radiusKm : rPeri;
+	const { rPeriKm: rPeri, rApoKm: rApo } = arrivalOrbit(body, mode, orbit);
 	const assisted = aero !== 'none' && canAeroBrake(body);
 
 	// An atmosphere is the whole descent. Without one, landing is the ascent run
@@ -312,11 +369,21 @@ export type DepartureMode = 'surface' | 'orbit';
 export function departureCost(
 	body: TravelBody,
 	vInfKms: number,
-	mode: DepartureMode
+	mode: DepartureMode,
+	orbit?: EndOrbit
 ): { ascentKms: number; injectionKms: number } {
+	// An ascent goes to the parking orbit and leaves from there: which orbit the
+	// craft would otherwise have been sitting in is not a question a launch asks.
+	const from = mode === 'surface' || !orbit ? parkingOrbit(body) : sane(orbit);
 	return {
 		ascentKms: mode === 'surface' ? ascentDv(body) : 0,
-		injectionKms: injectionDv(body.mu, parkingRadiusKm(body), vInfKms)
+		// Spent at periapsis, where the Oberth effect is largest — and where an
+		// elliptical parking orbit is already moving faster than a circular one, so
+		// leaving from one is cheaper still.
+		injectionKms: Math.max(
+			0,
+			periapsisSpeed(body.mu, from.rPeriKm, vInfKms) - orbitPeriapsisSpeed(body.mu, from)
+		)
 	};
 }
 

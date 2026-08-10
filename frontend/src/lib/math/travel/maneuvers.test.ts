@@ -7,6 +7,7 @@ import {
 	departureCost,
 	injectionDv,
 	periapsisSpeed,
+	parkingOrbit,
 	parkingRadiusKm
 } from './maneuvers';
 import { EARTH, JUPITER, MARS, MOON } from './test-fixtures';
@@ -18,6 +19,64 @@ describe('ascentDv', () => {
 		expect(ascentDv(MOON)).toBeLessThan(ascentDv(MARS));
 		expect(ascentDv(MARS)).toBeLessThan(ascentDv(EARTH));
 		expect(ascentDv(EARTH)).toBeLessThan(ascentDv(JUPITER));
+	});
+});
+
+/** Geostationary, and the loose ellipse a Mars orbiter enters. */
+const GEO = { rPeriKm: 42164, rApoKm: 42164 };
+const MARS_CAPTURE = { rPeriKm: parkingRadiusKm(MARS), rApoKm: 20 * MARS.radiusKm };
+
+describe('an orbit named at either end', () => {
+	// The fact the picker exists to show: a slow arrival is caught more cheaply
+	// high up, because it has less of the well to fall down before the burn.
+	it('is cheaper to enter high than low, at a modest arrival speed', () => {
+		const vInf = 1.5;
+		const high = arrivalCost(EARTH, vInf, 'low-orbit', 'none', GEO).captureKms;
+		const low = arrivalCost(EARTH, vInf, 'low-orbit', 'none', parkingOrbit(EARTH)).captureKms;
+		expect(high).toBeLessThan(low);
+	});
+
+	/**
+	 * Which orbit is cheaper to leave from depends on how hard the trip is, and
+	 * the two answers cross at about 8 km/s of excess speed for Earth. A gentle
+	 * departure is bought more cheaply from high up, where there is less speed to
+	 * make up; a violent one from low down, where the Oberth effect is largest.
+	 * Both are shown to the reader, so both are pinned here.
+	 */
+	it('is cheaper to leave from high for a gentle departure, from low for a violent one', () => {
+		const fromHigh = (vInf: number) => departureCost(EARTH, vInf, 'orbit', GEO).injectionKms;
+		const fromLow = (vInf: number) =>
+			departureCost(EARTH, vInf, 'orbit', parkingOrbit(EARTH)).injectionKms;
+		expect(fromHigh(3)).toBeLessThan(fromLow(3));
+		expect(fromLow(12)).toBeLessThan(fromHigh(12));
+	});
+
+	it('costs less to leave an ellipse than a circle of the same periapsis', () => {
+		const vInf = 3;
+		const ellipse = departureCost(MARS, vInf, 'orbit', MARS_CAPTURE).injectionKms;
+		const circle = departureCost(MARS, vInf, 'orbit', parkingOrbit(MARS)).injectionKms;
+		expect(ellipse).toBeLessThan(circle);
+	});
+
+	// A landing goes through the parking orbit whatever orbit was last asked for,
+	// and a flyby enters none — so neither may be moved by one.
+	it('is ignored by a landing and by a flyby', () => {
+		const named = arrivalCost(MARS, 2.6, 'landing', 'none', GEO);
+		const parked = arrivalCost(MARS, 2.6, 'landing');
+		expect(named.captureKms).toBeCloseTo(parked.captureKms, 9);
+		expect(named.descentKms).toBeCloseTo(parked.descentKms, 9);
+		expect(arrivalCost(MARS, 2.6, 'flyby', 'none', GEO).captureKms).toBe(0);
+	});
+
+	it('reproduces the old cases when no orbit is named', () => {
+		expect(arrivalCost(MARS, 2.6, 'capture').captureKms).toBeCloseTo(
+			arrivalCost(MARS, 2.6, 'capture', 'none', MARS_CAPTURE).captureKms,
+			9
+		);
+		expect(departureCost(EARTH, 3, 'orbit').injectionKms).toBeCloseTo(
+			injectionDv(EARTH.mu, parkingRadiusKm(EARTH), 3),
+			9
+		);
 	});
 });
 

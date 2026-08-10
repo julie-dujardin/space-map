@@ -42,7 +42,8 @@ import {
 	departureCost,
 	type AeroAssist,
 	type ArrivalMode,
-	type DepartureMode
+	type DepartureMode,
+	type EndOrbit
 } from './maneuvers';
 import { arrivalLegs, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState, type StateVector } from './state';
@@ -99,8 +100,8 @@ export function buildAssistRoute(
 	const pass = solveFlyby(via, vInfIn, vInfOut, soi);
 	if (!pass) return null;
 
-	const dep = departureCost(departure, vInfDep, departureMode);
-	const arr = arrivalCost(target, vInfArr, arrivalMode, aero);
+	const dep = departureCost(departure, vInfDep, departureMode, options.departureOrbit);
+	const arr = arrivalCost(target, vInfArr, arrivalMode, aero, options.targetOrbit);
 
 	const legs: RouteLeg[] = [];
 	if (dep.ascentKms > 0) legs.push({ kind: 'ascent', dvKms: dep.ascentKms, days: 0 });
@@ -187,7 +188,8 @@ function approach(
 	tof1Days: number,
 	centralMu: number,
 	retrograde: boolean,
-	departureMode: DepartureMode
+	departureMode: DepartureMode,
+	departureOrbit: EndOrbit | undefined
 ): Approach | null {
 	const flybyJd = departJd + tof1Days;
 	const mid = elementsToState(via.elements, flybyJd, centralMu);
@@ -197,7 +199,7 @@ function approach(
 
 	const vInfDepKms = norm(sub(arc1.v1, from.v));
 	if (!isFinite(vInfDepKms)) return null;
-	const dep = departureCost(departure, vInfDepKms, departureMode);
+	const dep = departureCost(departure, vInfDepKms, departureMode, departureOrbit);
 	const vInfIn = sub(arc1.v2, mid.v);
 
 	return {
@@ -235,6 +237,7 @@ function tailCostKms(
 	retrograde: boolean,
 	arrivalMode: ArrivalMode,
 	aero: AeroAssist,
+	targetOrbit: EndOrbit | undefined,
 	soiKm: number,
 	ceiling: number
 ): number {
@@ -245,7 +248,7 @@ function tailCostKms(
 
 	const vInfArr = norm(sub(arc2.v2, to.v));
 	if (!isFinite(vInfArr)) return NaN;
-	const arr = arrivalCost(target, vInfArr, arrivalMode, aero);
+	const arr = arrivalCost(target, vInfArr, arrivalMode, aero, targetOrbit);
 	const withoutPass = app.headKms + arr.captureKms + arr.descentKms;
 	if (!(withoutPass < ceiling)) return NaN;
 
@@ -331,7 +334,8 @@ export function searchAssist(
 				tof1,
 				centralMu,
 				retrograde,
-				departureMode
+				departureMode,
+				options.departureOrbit
 			);
 			// Everything still to come is non-negative, so a first arc that already
 			// costs more than the standing best cannot be rescued by any second one.
@@ -348,6 +352,7 @@ export function searchAssist(
 					retrograde,
 					arrivalMode,
 					aero,
+					options.targetOrbit,
 					soiKm,
 					bestDv
 				);
@@ -458,7 +463,7 @@ const HORIZON_DAYS = 20 * 365.25;
 const SEED_SLACK_DAYS = 120;
 const SEED_DEPART_STEPS = 11;
 
-/** Each cruise as a multiple of its own Hohmann time. The second leg reaches far
+/** Each cruise as a multiple of its own crossing time. The second leg reaches far
  *  lower than the first: after a strong pass the craft is not on a transfer
  *  orbit any more, and the arc that follows is much faster than Hohmann. */
 const TOF1_FACTORS = [0.4, 1.6];
