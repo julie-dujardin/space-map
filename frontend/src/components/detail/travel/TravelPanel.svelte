@@ -16,11 +16,7 @@
 	import { untrack } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import ArrowUpDownIcon from '@lucide/svelte/icons/arrow-up-down';
-	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
-	import RocketIcon from '@lucide/svelte/icons/rocket';
-	import CheckIcon from '@lucide/svelte/icons/check';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
-	import UsersIcon from '@lucide/svelte/icons/users';
 	import type { BodyData } from '$lib/types/objects';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatJulianDate } from '$lib/format/date';
@@ -30,7 +26,6 @@
 		canDepartFrom,
 		checkFeasibility,
 		departureCost,
-		crewCapacity,
 		nextTransferWindows,
 		systemArcBounds,
 		transferScale,
@@ -69,14 +64,12 @@
 	import { buildTimeline, type TimelineEntry } from '$lib/travel/timeline';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import { formatAcceleration } from '$lib/travel/format';
-	import { departureNote, vehicleName } from './vehicle-labels';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { Slider } from '$lib/components/ui/slider/index.js';
 	import { formatDurationNarrow } from '$lib/format/duration';
 	import { formatPercent } from '$lib/format/quantities';
 	import Segmented from './Segmented.svelte';
-	import VehicleMeta from './VehicleMeta.svelte';
+	import VehicleField from './VehicleField.svelte';
 	import DateField from './DateField.svelte';
 	import ManifestField from './ManifestField.svelte';
 	import EndpointField from './EndpointField.svelte';
@@ -185,14 +178,14 @@
 			}
 		});
 	});
-	let openField = $state<'origin' | 'target' | null>(null);
+	let openField = $state<'origin' | 'target' | 'craft' | null>(null);
 
 	/**
 	 * Only one box is open at a time, and the one closing may not be the one that
 	 * just opened: clicking the other box opens it and *then* tells this one it
 	 * closed, so an unguarded assignment shuts the box the click was for.
 	 */
-	function setOpenField(field: 'origin' | 'target', open: boolean) {
+	function setOpenField(field: 'origin' | 'target' | 'craft', open: boolean) {
 		if (open) openField = field;
 		else if (openField === field) openField = null;
 	}
@@ -206,8 +199,6 @@
 		panel.originIsFeature = originFeatureId !== null;
 		panel.targetIsFeature = targetFeatureId !== null;
 	});
-
-	let vehicleOpen = $state(false);
 
 	// The trajectory under the pointer, wherever the pointer is: its mark on the
 	// launch-window field, or one of its labels out on the map. Both write here and
@@ -949,104 +940,23 @@
 		</div>
 
 		<div class="flex flex-col gap-2">
-			<button
-				type="button"
-				onclick={() => {
-					vehicleOpen = !vehicleOpen;
-					// Nothing waits on this — the routes are already solved, and the
-					// list fills in when it lands.
-					if (vehicleOpen) void panel.loadVehicles();
+			<VehicleField
+				vehicles={shownVehicles}
+				loaded={panel.vehiclesReady}
+				selected={panel.vehicle}
+				route={panel.selectedRoute}
+				manifest={panel.manifest}
+				passengers={panel.passengers}
+				departureMode={panel.departureMode}
+				onSelect={(id) => panel.selectVehicle(id)}
+				open={openField === 'craft'}
+				onOpenChange={(next: boolean) => {
+					setOpenField('craft', next);
+					// Nothing waits on this — the routes are already solved, and the list
+					// fills in when it lands.
+					if (next) void panel.loadVehicles();
 				}}
-				aria-expanded={vehicleOpen}
-				class="border-border/60 bg-muted/40 hover:bg-muted flex items-center gap-2 rounded-md border px-2.5 py-2 text-start"
-			>
-				<RocketIcon class="text-muted-foreground size-4 shrink-0" />
-				<span class="min-w-0 flex-1">
-					<span class="block truncate text-sm {panel.vehicle ? '' : 'text-muted-foreground'}">
-						{panel.vehicle ? vehicleName(panel.vehicle) : m.travel_add_craft()}
-					</span>
-					<!-- The open list says all this on the chosen row already. -->
-					{#if panel.vehicle && !vehicleOpen}
-						<VehicleMeta
-							vehicle={panel.vehicle}
-							route={panel.selectedRoute}
-							manifest={panel.manifest}
-						/>
-					{/if}
-				</span>
-				<ChevronDownIcon
-					class="text-muted-foreground size-4 shrink-0 transition-transform {vehicleOpen
-						? 'rotate-180'
-						: ''}"
-				/>
-			</button>
-
-			{#if vehicleOpen}
-				{#if shownVehicles.length > 0}
-					<!-- The catalogue runs to dozens of craft, so it scrolls in place rather
-				     than pushing the routes below it off the panel. -->
-					<ScrollArea class="border-border/60 rounded-md border" viewportClasses="max-h-56">
-						<ul class="flex flex-col p-1">
-							{#each shownVehicles as vehicle (vehicle.id)}
-								<!-- Only the chosen craft survives the filter without fitting the
-							     departure, so the note reads as "here is why it stopped
-							     working", not as a rule on the list. -->
-								{@const fits = canDepartFrom(vehicle, panel.departureMode)}
-								<!-- Seats only matter once someone is aboard, so the column appears
-							     with the first passenger rather than reading "0" against every
-							     probe in the catalogue. -->
-								{@const seats = panel.passengers > 0 ? crewCapacity(vehicle) : null}
-								{@const tooSmall = seats !== null && seats < panel.passengers}
-								<li>
-									<button
-										type="button"
-										onclick={() => {
-											panel.selectVehicle(vehicle.id);
-											vehicleOpen = false;
-										}}
-										class="hover:bg-muted flex w-full items-start gap-2 rounded-[5px] px-2 py-1.5 text-start text-xs {tooSmall
-											? 'opacity-50'
-											: ''}"
-									>
-										<span class="min-w-0 flex-1">
-											<span class="flex items-center gap-2">
-												<span class="min-w-0 flex-1 truncate {fits ? '' : 'text-muted-foreground'}">
-													{vehicleName(vehicle)}
-												</span>
-												{#if !fits}
-													<span class="text-muted-foreground shrink-0 text-[11px]">
-														{departureNote(vehicle)}
-													</span>
-												{/if}
-												{#if seats !== null}
-													<span
-														class="text-muted-foreground flex shrink-0 items-center gap-1 tabular-nums"
-														title={m.travel_seats({ value: seats })}
-													>
-														<UsersIcon class="size-3" />{seats}
-													</span>
-												{/if}
-												{#if panel.vehicleId === vehicle.id}
-													<CheckIcon class="size-3.5 shrink-0" />
-												{/if}
-											</span>
-											<VehicleMeta
-												{vehicle}
-												route={panel.selectedRoute}
-												manifest={panel.manifest}
-											/>
-										</span>
-									</button>
-								</li>
-							{/each}
-						</ul>
-					</ScrollArea>
-				{:else if panel.vehicles.length > 0}
-					<p class="text-muted-foreground text-[11px]">{m.travel_no_craft_for_route()}</p>
-				{:else}
-					<p class="text-muted-foreground text-[11px]">{m.travel_craft_loading()}</p>
-				{/if}
-			{/if}
+			/>
 
 			<!-- Beside the craft rather than inside it: what you are taking is a fact
 		     about the trip, and it stands on its own before one is chosen — it is
