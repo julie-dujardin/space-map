@@ -12,12 +12,15 @@
 
 import type { BodyData } from '$lib/types/objects';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+import { OrbitalSource } from '$lib/fetch/position/format';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { estimateMu, muFromElements, type TravelBody } from '$lib/math/travel';
 
 /** NAIF ids at or below this are the Sun and the planetary barycentres. */
 const SUN_ID = 10;
 const SSB_ID = 0;
+const SUN_OBJECT_ID = `naif-${SUN_ID}`;
+const SSB_OBJECT_ID = `naif-${SSB_ID}`;
 
 /** Numeric part of a `naif-<n>` id; null for any other prefix. */
 export function naifId(objectId: string): number | null {
@@ -124,6 +127,10 @@ export function toTravelBody(
 ): TravelBody | null {
 	const ancestor = orbit === 'own' ? body : heliocentricAncestor(body, lookup);
 	if (!ancestor) return null;
+	// A trip is solved by propagating these years ahead, so the Sun-centred fit
+	// wins wherever one exists — see `helioElements`. `own` orbits are already
+	// about the body they go round.
+	const source = (orbit === 'own' ? undefined : ancestor.helioElements) ?? ancestor;
 
 	const radiusKm = Number.isFinite(body.radiusKm) && body.radiusKm > 0 ? body.radiusKm : 1;
 	const id = naifId(body.id);
@@ -137,21 +144,21 @@ export function toTravelBody(
 		muEstimated: !(measuredMu && measuredMu > 0),
 		radiusKm,
 		elements: {
-			a: ancestor.a,
-			e: ancestor.e,
-			i: ancestor.i,
-			om: ancestor.om,
-			w: ancestor.w,
-			ma: ancestor.ma,
-			n: ancestor.n,
-			epoch: ancestor.epoch,
-			omDot: ancestor.omDot,
-			wDot: ancestor.wDot,
+			a: source.a,
+			e: source.e,
+			i: source.i,
+			om: source.om,
+			w: source.w,
+			ma: source.ma,
+			n: source.n,
+			epoch: source.epoch,
+			omDot: source.omDot,
+			wDot: source.wDot,
 			// A parabolic comet carries these instead of a/ma/n; without them the
 			// propagator has nothing to work from and the body cannot be a trip end.
-			q: ancestor.q,
-			tp: ancestor.tp,
-			equatorial: ancestor.equatorial
+			q: source.q,
+			tp: source.tp,
+			equatorial: source.equatorial
 		},
 		surfacePressureBar: surfacePressureBar(detail),
 		hasAtmosphere: hasAtmosphere(detail),
@@ -207,11 +214,14 @@ export function transferFrame(plan: TransferPlan | null): TransferFrame {
  * place them in the scene. Null when the plan has no frame at all.
  *
  * This is the frame the *elements* are in, which is not always the body the
- * pricing calls its centre. A heliocentric arc is solved against the Sun's μ but
- * every ancestor's elements are referenced to the solar-system barycentre, and
- * the two are the better part of a million km apart — far enough to throw a
- * drawn trajectory clear of the planets it joins. Two moons of one planet are
- * the same story at the barycentre inside it.
+ * pricing calls its centre — get it wrong and the whole arc lands offset by
+ * however far the two origins are apart, which for the Sun and the barycentre
+ * is the better part of a million km. Two moons of one planet are the same
+ * story at the barycentre inside it.
+ *
+ * A heliocentric arc has two sets of elements and so two frames to agree on.
+ * Asking the origin alone made the answer depend on which way round the trip
+ * was read, and silently drew the other end a barycentre offset away.
  */
 export function transferCenterId(
 	plan: TransferPlan,
@@ -225,7 +235,51 @@ export function transferCenterId(
 	if (plan.kind === 'system') return plan.primary === 'origin' ? origin.id : target.id;
 	// Siblings keep their own elements, which are about the parent they share.
 	if (plan.kind === 'sibling') return origin.parentId;
-	return heliocentricAncestor(origin, lookup)?.parentId ?? null;
+	const from = heliocentricAncestor(origin, lookup);
+	const to = heliocentricAncestor(target, lookup);
+	if (!from || !to) return null;
+	const fromCenter = heliocentricCenterOf(from);
+	const toCenter = heliocentricCenterOf(to);
+	if (fromCenter === toCenter) return fromCenter;
+	// No anchor suits both, because the solve itself already mixed two frames.
+	// Reconciling on the barycentre would be possible — a body with
+	// `helioElements` still carries its SSB fit — and is the worse trade: that
+	// fit is not an orbit at all and walks the body millions of km per year of
+	// propagation, against the ~0.8M km the frame offset costs. So the end that
+	// has a real orbit keeps it, and the anchor follows it to the Sun.
+	reportMixedFrames(from, to);
+	return SUN_OBJECT_ID;
+}
+
+/**
+ * The body a heliocentric orbit's elements are actually measured from.
+ *
+ * Not `parentId`, which says where the body hangs in the scene tree rather than
+ * where its elements were taken: the shipped perturbing asteroids are filed
+ * under the barycentre so the tree matches their Chebyshev ephemeris, yet the
+ * catalogue row the resolver falls back on describes them with SBDB's
+ * Sun-centred orbit. Only the raw Chebyshev fit is genuinely barycentric, and
+ * only until `helioElements` supersedes it — everything else in the catalogue
+ * already goes round the Sun.
+ */
+function heliocentricCenterOf(ancestor: BodyData): string {
+	const barycentricFit =
+		ancestor.parentId === SSB_OBJECT_ID &&
+		ancestor.orbitalSource === OrbitalSource.SPICE &&
+		!ancestor.helioElements;
+	return barycentricFit ? SSB_OBJECT_ID : SUN_OBJECT_ID;
+}
+
+/** Pairs already reported — the solve re-runs several times a second. */
+const reportedMixedFrames = new Set<string>();
+
+function reportMixedFrames(from: BodyData, to: BodyData): void {
+	const key = `${from.id}>${to.id}`;
+	if (reportedMixedFrames.has(key)) return;
+	reportedMixedFrames.add(key);
+	console.debug(
+		`[travel] ${from.id} and ${to.id} carry elements in different frames — solving about the Sun.`
+	);
 }
 
 /**

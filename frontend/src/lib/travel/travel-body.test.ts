@@ -1,8 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import type { BodyData } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
+import { OrbitalSource } from '$lib/fetch/position/format';
 import { elementsToState } from '$lib/math/travel';
-import { heliocentricAncestor, lookupIn, naifId, toTravelBody, transferPlan } from './travel-body';
+import {
+	heliocentricAncestor,
+	lookupIn,
+	naifId,
+	toTravelBody,
+	transferCenterId,
+	transferPlan
+} from './travel-body';
 
 /** Minimal body row; only the fields the adapter reads are meaningful. */
 function body(id: string, parentId: string, over: Partial<BodyData> = {}): BodyData {
@@ -172,6 +180,112 @@ describe('toTravelBody', () => {
 		)!;
 		expect(sized.radiusKm).toBeGreaterThan(0);
 		expect(Number.isFinite(sized.mu)).toBe(true);
+	});
+
+	// The barycentre-referenced fit is only an orbit at the instant it is taken;
+	// propagating it the years a trip lasts walked Mars 50 million km off the
+	// planet the scene drew.
+	it('prefers the Sun-centred fit for a heliocentric orbit', () => {
+		const rows = solarSystem();
+		rows.set(
+			'naif-4',
+			body('naif-4', 'naif-0', {
+				a: 1.511776,
+				n: 0.5302407,
+				helioElements: { ...rows.get('naif-3')!, a: 1.523608, n: 0.5240208 }
+			})
+		);
+		rows.set('naif-499', body('naif-499', 'naif-4', { a: 0, n: 0, radiusKm: 3389.5 }));
+		const mars = toTravelBody(rows.get('naif-499')!, lookupIn(rows))!;
+		expect(mars.elements.a).toBeCloseTo(1.523608, 6);
+		expect(mars.elements.n).toBeCloseTo(0.5240208, 7);
+	});
+
+	// A moon goes round its planet; there is no Sun-centred version of that
+	// orbit to prefer, and reaching for one would price the wrong transfer.
+	it('keeps a body its own elements when the trip stays inside a system', () => {
+		const rows = solarSystem();
+		const io = body('naif-501', 'naif-5', {
+			a: 2.819e-3,
+			n: 203.4889,
+			helioElements: { ...rows.get('naif-5')! }
+		});
+		rows.set('naif-501', io);
+		expect(toTravelBody(io, lookupIn(rows), null, 'own')!.elements.a).toBeCloseTo(2.819e-3, 9);
+	});
+});
+
+describe('transferCenterId', () => {
+	const bodies = solarSystem();
+	const look = lookupIn(bodies);
+	const plan = (origin: string, target: string) =>
+		transferPlan(bodies.get(origin)!, bodies.get(target)!, look);
+
+	it('draws a heliocentric arc from whatever its elements are measured from', () => {
+		const rows = solarSystem();
+		const emb = rows.get('naif-3')!;
+		const jove = rows.get('naif-5')!;
+		const earth = rows.get('naif-399')!;
+		const jupiter = rows.get('naif-599')!;
+		const kind = transferPlan(earth, jupiter, lookupIn(rows));
+
+		// Without a Sun-centred fit the elements are the ancestor's own, about
+		// whatever the export catalogues it against.
+		expect(transferCenterId(kind, earth, jupiter, lookupIn(rows))).toBe('naif-10');
+
+		rows.set('naif-3', { ...emb, parentId: 'naif-0', helioElements: { ...emb } });
+		rows.set('naif-5', { ...jove, parentId: 'naif-0', helioElements: { ...jove } });
+		expect(transferCenterId(kind, earth, jupiter, lookupIn(rows))).toBe('naif-10');
+
+		// The Chebyshev fit before the Sun-centred one is taken: both ends really
+		// are measured from the barycentre.
+		rows.set('naif-3', { ...emb, parentId: 'naif-0', orbitalSource: OrbitalSource.SPICE });
+		rows.set('naif-5', { ...jove, parentId: 'naif-0', orbitalSource: OrbitalSource.SPICE });
+		expect(transferCenterId(kind, earth, jupiter, lookupIn(rows))).toBe('naif-0');
+	});
+
+	// The shipped perturbing asteroids hang under the barycentre so the scene
+	// tree matches their Chebyshev ephemeris, but the catalogue row the resolver
+	// falls back on describes them with SBDB's Sun-centred orbit. Reading the
+	// frame off `parentId` put the whole arc a barycentre offset away.
+	it('reads an SBDB orbit as Sun-centred however the body is filed', () => {
+		const rows = solarSystem();
+		const vesta = body('spkid-20000004', 'naif-0', {
+			a: 2.3617,
+			n: 0.2716,
+			orbitalSource: OrbitalSource.SBDB
+		});
+		rows.set(vesta.id, vesta);
+		const earth = rows.get('naif-399')!;
+		const look = lookupIn(rows);
+		const kind = transferPlan(earth, vesta, look);
+		expect(transferCenterId(kind, earth, vesta, look)).toBe('naif-10');
+		expect(transferCenterId(kind, vesta, earth, look)).toBe('naif-10');
+	});
+
+	// Asking the origin alone made the anchor flip when the trip was read the
+	// other way round, so one end or the other was always drawn adrift.
+	it('anchors on the Sun when the two ends disagree, whichever way round', () => {
+		const rows = solarSystem();
+		const emb = rows.get('naif-3')!;
+		rows.set('naif-3', { ...emb, parentId: 'naif-0', orbitalSource: OrbitalSource.SPICE });
+		const comet = body('spkid-1000616', 'naif-10', {
+			a: 17.834,
+			n: 0.01308,
+			orbitalSource: OrbitalSource.SBDB
+		});
+		rows.set(comet.id, comet);
+		const earth = rows.get('naif-399')!;
+		const look = lookupIn(rows);
+		const kind = transferPlan(earth, comet, look);
+		expect(transferCenterId(kind, earth, comet, look)).toBe('naif-10');
+		expect(transferCenterId(kind, comet, earth, look)).toBe('naif-10');
+	});
+
+	it('centres a system transfer on the body being gone round', () => {
+		const earth = bodies.get('naif-399')!;
+		const moon = bodies.get('naif-301')!;
+		expect(transferCenterId(plan('naif-399', 'naif-301'), earth, moon, look)).toBe('naif-399');
 	});
 });
 

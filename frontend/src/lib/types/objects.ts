@@ -72,6 +72,17 @@ export interface BodyData extends OrbitalElements {
 	 */
 	satrec?: SatRec;
 	/**
+	 * The same orbit taken about the Sun instead of the barycentre, for the
+	 * bodies the ephemeris places against the SSB.
+	 *
+	 * The inherited elements are what the body is *drawn* from, and they are
+	 * fitted to an SSB-relative state — which is not an orbit, so the fit is only
+	 * good for the instant it was taken at. Anything propagating years ahead
+	 * needs these instead. Absent for every body already referenced to the Sun,
+	 * which is most of the catalogue.
+	 */
+	helioElements?: OrbitalElements;
+	/**
 	 * Chunk-level validity window (JD TDB) — inherited from the chunk header.
 	 * Callers must skip propagation (and hide the body) when the current jd
 	 * falls outside `[validityStart, validityEnd]`. `±Infinity` = unbounded

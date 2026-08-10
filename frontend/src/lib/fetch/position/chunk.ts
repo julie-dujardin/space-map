@@ -41,6 +41,10 @@ import { NUM_TRAIL_POINTS } from '$lib/scene/objects/trail/points';
 /** Position-only materialization (moon-host parents) doesn't need names. */
 const NO_LABELS: LabelMap = new Map();
 
+/** NAIF ids of the two heliocentric origins, as the binary carries them. */
+const SSB_NAIF_ID = 0;
+const SUN_NAIF_ID = 10;
+
 /**
  * Osculating Keplerian elements from a chebyshev body's state at `jd`, with
  * the parent's GM. Returns null when the parent has no GM (SPICE coverage
@@ -55,24 +59,49 @@ const NO_LABELS: LabelMap = new Map();
 function chebyshevOsculatingElements(
 	body: ChebyshevBody,
 	parentId: number,
-	jd: number
+	jd: number,
+	origin?: ChebyshevBody
 ): OrbitalElements | null {
 	const gmKm3s2 = getGmKm3s2(parentId);
 	if (!gmKm3s2) return null;
 	const state = chebyshevStateKm(body, jd);
 	if (!state) return null;
+	const from = origin ? chebyshevStateKm(origin, jd) : null;
+	if (origin && !from) return null;
 	const muAuDay2 = gmKm3s2 * KM3_S2_TO_AU3_DAY2;
 	const r: [number, number, number] = [
-		state.position[0] / AU_KM,
-		state.position[1] / AU_KM,
-		state.position[2] / AU_KM
+		(state.position[0] - (from?.position[0] ?? 0)) / AU_KM,
+		(state.position[1] - (from?.position[1] ?? 0)) / AU_KM,
+		(state.position[2] - (from?.position[2] ?? 0)) / AU_KM
 	];
 	const v: [number, number, number] = [
-		state.velocity[0] * KM_DAY_TO_AU_DAY,
-		state.velocity[1] * KM_DAY_TO_AU_DAY,
-		state.velocity[2] * KM_DAY_TO_AU_DAY
+		(state.velocity[0] - (from?.velocity[0] ?? 0)) * KM_DAY_TO_AU_DAY,
+		(state.velocity[1] - (from?.velocity[1] ?? 0)) * KM_DAY_TO_AU_DAY,
+		(state.velocity[2] - (from?.velocity[2] ?? 0)) * KM_DAY_TO_AU_DAY
 	];
 	return stateVectorToElements(r, v, muAuDay2, jd);
+}
+
+/**
+ * The Sun-centred orbit of a body the ephemeris places against the barycentre.
+ *
+ * The elements above are fitted to an SSB-relative state, which is the frame
+ * the body is drawn in but is not an orbit: nothing goes round the barycentre,
+ * and the fit absorbs the Sun's own wobble into the semi-major axis — Venus
+ * comes out 1.5% wide, and the mean motion that follows walks the body tens of
+ * millions of kilometres off over a few years. Harmless for an ellipse redrawn
+ * every frame, ruinous for anything that propagates years ahead, which is what
+ * the trajectory planner does. So heliocentric bodies carry a second fit, taken
+ * against the Sun with the Sun's GM, which tracks the kernel to under half a
+ * million kilometres over five years.
+ */
+function chebyshevHelioElements(
+	body: ChebyshevBody,
+	jd: number,
+	sun: ChebyshevBody | null
+): OrbitalElements | null {
+	if (!sun || body.parentId !== SSB_NAIF_ID || body.naifId === SUN_NAIF_ID) return null;
+	return chebyshevOsculatingElements(body, SUN_NAIF_ID, jd, sun);
 }
 
 /**
@@ -200,6 +229,7 @@ export class ChunkLoader {
 		});
 
 		const cheb = this.cheb;
+		const sun = cheb.body(`naif-${SUN_NAIF_ID}`, jd);
 		for (const { body, startJd, endJd } of all) {
 			const offset = chebyshevPositionScene(body, jd);
 			if (!offset) continue;
@@ -264,6 +294,7 @@ export class ChunkLoader {
 				n: elements?.n ?? 0,
 				epoch: elements?.epoch ?? 0,
 				equatorial: false,
+				helioElements: chebyshevHelioElements(body, jd, sun) ?? undefined,
 				validityStart: startJd,
 				validityEnd: endJd,
 				orbitalSource: OrbitalSource.SPICE,
