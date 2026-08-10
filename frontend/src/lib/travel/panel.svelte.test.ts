@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { EARTH, J2000, JUPITER, MARS, SATURN } from '$lib/math/travel/test-fixtures';
-import { buildAssistRoute, buildConstantThrustRoute, type Vehicle } from '$lib/math/travel';
+import {
+	arrivalCampaignDays,
+	buildAssistRoute,
+	buildConstantThrustRoute,
+	routeEndJd,
+	type Vehicle
+} from '$lib/math/travel';
 import { TravelPanelState } from './panel.svelte';
 import { DEFAULT_TRIP } from './trip';
 
@@ -269,6 +275,98 @@ describe('TravelPanelState choosing a trajectory', () => {
 
 		expect(panel.trip.profile).toBe('fast');
 		expect(panel.selected?.profile).toBe('fast');
+	});
+});
+
+describe('TravelPanelState arrival deadline', () => {
+	async function byJd(deadlineJd: number): Promise<TravelPanelState> {
+		const panel = new TravelPanelState({
+			...DEFAULT_TRIP,
+			timeMode: 'arrive',
+			pickedJd: deadlineJd
+		});
+		await panel.solve(EARTH, MARS, J2000);
+		return panel;
+	}
+
+	it('offers only trajectories that arrive in time', async () => {
+		const deadlineJd = J2000 + 300;
+		const panel = await byJd(deadlineJd);
+
+		expect(panel.status).toBe('ready');
+		expect(panel.routes.length).toBeGreaterThan(1);
+		for (const { route } of panel.routes) expect(route.arriveJd).toBeLessThanOrEqual(deadlineJd);
+	});
+
+	// The deadline moves which routes are searched for rather than deleting the
+	// ones that miss, so the cheap end of the list is a route that arrives in time
+	// and not the absence of one.
+	it('costs less than the trips left standing by filtering the answer', async () => {
+		const deadlineJd = J2000 + 300;
+		const panel = await byJd(deadlineJd);
+		const open = new TravelPanelState();
+		await open.solve(EARTH, MARS, J2000);
+
+		const cheapest = Math.min(...panel.routes.map((choice) => choice.route.totalDvKms));
+		const survivors = open.routes.filter((choice) => choice.route.arriveJd <= deadlineJd);
+		expect(cheapest).toBeLessThan(Math.min(...survivors.map((choice) => choice.route.totalDvKms)));
+	});
+
+	// Two different nothings: this pair has transfers, they are simply all slower
+	// than the date asked for. The panel says so rather than "no route found".
+	it('reports a deadline nothing can meet as its own answer', async () => {
+		const panel = await byJd(J2000 + 50);
+
+		expect(panel.status).toBe('empty');
+		expect(panel.grid!.solvedCount).toBeGreaterThan(0);
+		expect(panel.missedDeadline).toBe(true);
+	});
+
+	it('claims no deadline was missed when none was set', async () => {
+		const panel = new TravelPanelState();
+		await panel.solve(EARTH, MARS, J2000);
+		expect(panel.missedDeadline).toBe(false);
+	});
+
+	// An aerobraking arrival is captured months before it is in the orbit that was
+	// asked for, and nothing else happens while drag walks it down. A deadline the
+	// crossing meets but the campaign runs past is a deadline the trip misses.
+	describe('with a campaign flown after arrival', () => {
+		async function aerobraked(deadlineJd: number): Promise<TravelPanelState> {
+			const panel = new TravelPanelState({
+				...DEFAULT_TRIP,
+				aero: 'aerobraking',
+				timeMode: 'arrive',
+				pickedJd: deadlineJd
+			});
+			panel.targetMode = 'low-orbit';
+			await panel.solve(EARTH, MARS, J2000);
+			return panel;
+		}
+
+		it('counts the campaign against the deadline', async () => {
+			const campaignDays = arrivalCampaignDays(MARS, 'low-orbit', 'aerobraking');
+			expect(campaignDays).toBeGreaterThan(30);
+
+			const deadlineJd = J2000 + 400;
+			const panel = await aerobraked(deadlineJd);
+			for (const { route } of panel.routes) {
+				expect(routeEndJd(route)).toBeLessThanOrEqual(deadlineJd);
+				// And the crossing itself ends a campaign's worth earlier.
+				expect(route.arriveJd).toBeLessThanOrEqual(deadlineJd - campaignDays + 1e-6);
+			}
+			expect(panel.routes.length).toBeGreaterThan(0);
+		});
+
+		// The reported case: a 3-month crossing was offered against a deadline the
+		// 5-month campaign after it could never meet.
+		it('offers nothing when only the crossing fits', async () => {
+			const crossing = 91;
+			const panel = await aerobraked(J2000 + crossing + 20);
+
+			expect(panel.routes).toEqual([]);
+			expect(panel.missedDeadline).toBe(true);
+		});
 	});
 });
 

@@ -1692,6 +1692,7 @@
 	"travel_no_origin": "Wybierz, skąd wyruszasz.",
 	"travel_no_published_figure": "Brak opublikowanych danych",
 	"travel_no_routes": "W tym oknie nie znaleziono trasy.",
+	"travel_no_routes_by_date": "Żadna trasa nie dociera do tej daty.",
 	"travel_no_target": "Wybierz cel, aby zobaczyć, jak tam dotrzeć.",
 	"travel_not_modelled": "Nie modelowane",
 	"travel_on_arrival": "Po przybyciu",

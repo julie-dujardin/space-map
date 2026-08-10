@@ -1815,6 +1815,7 @@
 	"travel_no_origin": "בחרו מהיכן יוצאים.",
 	"travel_no_published_figure": "אין נתון שפורסם",
 	"travel_no_routes": "לא נמצא מסלול בחלון הזה.",
+	"travel_no_routes_by_date": "אין מסלול שמגיע עד התאריך הזה.",
 	"travel_no_target": "בחרו יעד כדי לראות איך מגיעים.",
 	"travel_not_modelled": "לא ממודל",
 	"travel_on_arrival": "בהגעה",

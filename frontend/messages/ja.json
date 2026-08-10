@@ -1936,6 +1936,7 @@
 	"travel_no_origin": "出発地を選んでください。",
 	"travel_no_published_figure": "公表値なし",
 	"travel_no_routes": "このウィンドウでは経路が見つかりません。",
+	"travel_no_routes_by_date": "この日付までに到着する経路はありません。",
 	"travel_no_target": "目的地を選ぶと行き方が表示されます。",
 	"travel_not_modelled": "モデル化なし",
 	"travel_on_arrival": "到着時",

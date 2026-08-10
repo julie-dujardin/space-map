@@ -8,9 +8,10 @@
  */
 
 import type { TravelBody } from './body';
+import { arrivalCampaignDays } from './maneuvers';
 import { buildRoute, type Route, type RouteOptions } from './route';
 
-export interface PorkchopOptions extends RouteOptions {
+export interface PorkchopOptions extends RouteOptions, DeadlineOptions {
 	/** Earliest departure to consider, JD. */
 	departFromJd: number;
 	/** Latest departure to consider, JD. */
@@ -20,6 +21,24 @@ export interface PorkchopOptions extends RouteOptions {
 	tofMaxDays: number;
 	departSteps?: number;
 	tofSteps?: number;
+}
+
+export interface DeadlineOptions {
+	/**
+	 * The date the trip has to be over by, JD. Absent means it has no deadline.
+	 *
+	 * Over, not landed at: an aerobraking arrival is captured months before the
+	 * campaign that follows it has walked the orbit down, and until that is
+	 * finished the trip has not delivered what was asked for. Every search below
+	 * takes those months off the deadline before holding a crossing to it.
+	 *
+	 * It belongs to choosing a route rather than to pricing one, which is why it
+	 * is not a `RouteOption`: every arc a search finds is real and priced the same
+	 * way, and this only says which of them answer the question that was asked. So
+	 * the grid is left whole — it is the field the reader picks off, and blanking
+	 * half of it would hide arcs that moving the date brings back.
+	 */
+	deadlineJd?: number;
 }
 
 export interface PorkchopGrid {
@@ -116,14 +135,22 @@ interface Candidate {
  * when another is both cheaper and sooner. `efficient` and `fast` are its ends;
  * `balanced` is the knee, the point closest to the unreachable corner where
  * both objectives are at their best.
+ *
+ * A deadline is applied here rather than to what comes back, and that is the
+ * whole difference between three routes and one: the cheapest arc in the grid is
+ * almost always the latest one, so filtering afterwards deletes `efficient` and
+ * usually `balanced` and offers nothing in their place. Ruling those cells out
+ * first makes the front the front of what can actually be flown, and its ends
+ * are then the cheapest and quickest trips that arrive in time.
  */
 export function selectRoutes(
 	grid: PorkchopGrid,
 	departure: TravelBody,
 	target: TravelBody,
-	options: RouteOptions = {}
+	options: RouteOptions & DeadlineOptions = {}
 ): RouteChoice[] {
 	const searchStartJd = grid.departJds[0];
+	const latestArriveJd = latestArrival(target, options);
 	const candidates: Candidate[] = [];
 	for (let i = 0; i < grid.departSteps; i++) {
 		for (let j = 0; j < grid.tofSteps; j++) {
@@ -131,6 +158,7 @@ export function selectRoutes(
 			if (!isFinite(dv)) continue;
 			const departJd = grid.departJds[i];
 			const tof = grid.tofDays[j];
+			if (departJd + tof > latestArriveJd) continue;
 			candidates.push({ departJd, tofDays: tof, dv, wait: departJd + tof - searchStartJd });
 		}
 	}
@@ -150,7 +178,7 @@ export function selectRoutes(
 	const chosen: RouteChoice[] = [];
 	const seen = new Set<string>();
 	for (const [profile, candidate] of picks) {
-		const refined = refine(departure, target, candidate, grid, options);
+		const refined = refine(departure, target, candidate, grid, options, latestArriveJd);
 		if (!refined) continue;
 		// Distinct profiles can land on the same cell when the front is short;
 		// offering the same route three times would be noise.
@@ -160,6 +188,19 @@ export function selectRoutes(
 		chosen.push({ profile, route: refined });
 	}
 	return chosen;
+}
+
+/**
+ * The latest a crossing may end and still leave the trip finished in time, JD,
+ * or Infinity when no deadline was set.
+ *
+ * Taken once for the whole search: what a trip owes after arrival is a fact
+ * about how it ends, not about which arc got it there.
+ */
+function latestArrival(target: TravelBody, options: RouteOptions & DeadlineOptions): number {
+	const { deadlineJd, arrivalMode = 'capture', aero = 'none', targetOrbit } = options;
+	if (deadlineJd == null) return Infinity;
+	return deadlineJd - arrivalCampaignDays(target, arrivalMode, aero, targetOrbit);
 }
 
 /** Candidates not dominated on both cost and arrival time. */
@@ -219,14 +260,18 @@ function clamp(value: number, min: number, max: number): number {
  * The search stays inside the grid. A candidate on an edge — which the cheapest
  * route usually is, since a longer cruise keeps getting cheaper — would
  * otherwise walk off it, leaving a route the porkchop drawn from that same grid
- * cannot place.
+ * cannot place. The deadline bounds it for the same reason and more sharply:
+ * cost falls off towards a later arrival, so a polish that only chased Δv would
+ * walk a route chosen for arriving in time straight past the date it was chosen
+ * for.
  */
 function refine(
 	departure: TravelBody,
 	target: TravelBody,
 	candidate: Candidate,
 	grid: PorkchopGrid,
-	options: RouteOptions
+	options: RouteOptions,
+	latestArriveJd: number
 ): Route | null {
 	const seed = buildRoute(departure, target, candidate.departJd, candidate.tofDays, options);
 	if (!seed) return null;
@@ -248,7 +293,10 @@ function refine(
 			for (const dTof of [-tofSpan, 0, tofSpan]) {
 				if (dDepart === 0 && dTof === 0) continue;
 				const departJd = clamp(improved.departJd + dDepart, departMin, departMax);
-				const tof = clamp(improved.tofDays + dTof, tofMin, tofMax);
+				// Too late to make it even at the grid's shortest cruise.
+				const tofCeil = Math.min(tofMax, latestArriveJd - departJd);
+				if (tofCeil < tofMin) continue;
+				const tof = clamp(improved.tofDays + dTof, tofMin, tofCeil);
 				const route = buildRoute(departure, target, departJd, tof, options);
 				if (route && route.totalDvKms < improved.totalDvKms) improved = route;
 			}

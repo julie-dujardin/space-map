@@ -1047,11 +1047,21 @@
 		{:else if panel.status === 'solving' && panel.offered.length === 0}
 			<p class="text-muted-foreground text-xs">{m.travel_solving()}</p>
 		{:else if panel.status === 'empty' && panel.offered.length === 0}
-			<p class="text-muted-foreground text-xs">{m.travel_no_routes()}</p>
+			<!-- Which of the two nothings this is: the pair has no transfer at all, or
+			     it has them and they are all too slow for the date asked for. -->
+			<p class="text-muted-foreground text-xs">
+				{panel.missedDeadline ? m.travel_no_routes_by_date() : m.travel_no_routes()}
+			</p>
 			<!-- A coast long enough to miss the deadline is what took the arc off the
 			     list, so the control that did it has to outlive the list. -->
 			{#if panel.torchMissedDeadline}{@render cruiseTime()}{/if}
 		{:else if panel.offered.length > 0}
+			<!-- Said above the list rather than instead of it: what is left when the
+			     search found nothing in time is a hand-picked point or a craft's own
+			     arc, and neither of them answers for the search. -->
+			{#if panel.missedDeadline}
+				<p class="text-muted-foreground text-xs">{m.travel_no_routes_by_date()}</p>
+			{/if}
 			<!-- The arc is gone, so its tab is too, and the control that took it has
 			     nowhere left to live but over the list. -->
 			{#if panel.torchMissedDeadline}{@render cruiseTime()}{/if}

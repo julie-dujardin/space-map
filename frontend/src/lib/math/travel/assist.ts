@@ -37,6 +37,7 @@ import {
 } from './flyby';
 import { solveLambert } from './lambert';
 import {
+	arrivalCampaignDays,
 	arrivalCost,
 	characteristicEnergy,
 	departureCost,
@@ -45,6 +46,7 @@ import {
 	type DepartureMode,
 	type EndOrbit
 } from './maneuvers';
+import type { DeadlineOptions } from './porkchop';
 import { arrivalLegs, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState, type StateVector } from './state';
 import { norm, sub, type Vec3 } from './vec3';
@@ -149,6 +151,9 @@ export function buildAssistRoute(
 export interface AssistSearchOptions extends RouteOptions {
 	departFromJd: number;
 	departToJd: number;
+	/** Latest the second cruise may end, JD — the trip's deadline with whatever it
+	 *  owes after arrival already taken off. Absent means there is none. */
+	latestArriveJd?: number;
 	/** Bounds on each cruise, days. */
 	tof1MinDays: number;
 	tof1MaxDays: number;
@@ -298,6 +303,7 @@ export function searchAssist(
 		departSteps = DEFAULT_DEPART_STEPS,
 		tof1Steps = DEFAULT_TOF_STEPS,
 		tof2Steps = DEFAULT_TOF_STEPS,
+		latestArriveJd = Infinity,
 		...routeOptions
 	} = options;
 	const {
@@ -328,6 +334,9 @@ export function searchAssist(
 		for (let j = 0; j < tof1Steps; j++) {
 			const tof1 = tof1MinDays + j * tof1Step;
 			if (!(tof1 > 0)) continue;
+			// Both cruises only get longer from here, so a swing-by already past the
+			// deadline takes every remaining pair with it.
+			if (departJd + tof1 > latestArriveJd) break;
 			const app = approach(
 				departure,
 				via,
@@ -345,6 +354,7 @@ export function searchAssist(
 			for (let k = 0; k < tof2Steps; k++) {
 				const tof2 = tof2MinDays + k * tof2Step;
 				if (!(tof2 > 0)) continue;
+				if (app.flybyJd + tof2 > latestArriveJd) break;
 				const dv = tailCostKms(
 					app,
 					via,
@@ -405,6 +415,9 @@ interface RefineContext {
  * window, so the raw grid minimum can sit a kilometre per second above the true
  * one. Neighbours are tried one axis at a time rather than as a full 26-point
  * cube — the extra passes cost less than the extra points.
+ *
+ * The deadline bounds it as the grid bounds it: this chases Δv alone, and a
+ * cheaper neighbour is usually a later one.
  */
 function refine(
 	departure: TravelBody,
@@ -414,6 +427,7 @@ function refine(
 	ctx: RefineContext
 ): Route {
 	const { bounds, routeOptions } = ctx;
+	const latestArriveJd = bounds.latestArriveJd ?? Infinity;
 	let best = seed;
 	let departSpan = ctx.departSpan;
 	let tof1Span = ctx.tof1Span;
@@ -429,13 +443,17 @@ function refine(
 			for (const d1 of [-tof1Span, 0, tof1Span]) {
 				for (const d2 of [-tof2Span, 0, tof2Span]) {
 					if (dDepart === 0 && d1 === 0 && d2 === 0) continue;
+					const departJd = clamp(best.departJd + dDepart, bounds.departFromJd, bounds.departToJd);
+					const next1 = clamp(tof1 + d1, bounds.tof1MinDays, bounds.tof1MaxDays);
+					const next2 = clamp(tof2 + d2, bounds.tof2MinDays, bounds.tof2MaxDays);
+					if (departJd + next1 + next2 > latestArriveJd) continue;
 					const route = buildAssistRoute(
 						departure,
 						via,
 						target,
-						clamp(best.departJd + dDepart, bounds.departFromJd, bounds.departToJd),
-						clamp(tof1 + d1, bounds.tof1MinDays, bounds.tof1MaxDays),
-						clamp(tof2 + d2, bounds.tof2MinDays, bounds.tof2MaxDays),
+						departJd,
+						next1,
+						next2,
 						routeOptions
 					);
 					if (route && route.totalDvKms < best.totalDvKms) best = route;
@@ -471,8 +489,16 @@ const SEED_DEPART_STEPS = 11;
 const TOF1_FACTORS = [0.4, 1.6];
 const TOF2_FACTORS = [0.12, 1.4];
 
-export interface AssistOptions extends RouteOptions {
-	/** Now, on the app's clock — no departure before it is considered. */
+export interface AssistOptions extends RouteOptions, DeadlineOptions {
+	/**
+	 * The earliest departure worth considering, JD — now on the app's clock,
+	 * unless the trip asks to leave later.
+	 *
+	 * A swing-by cannot be centred on a departure date the way the direct grid is:
+	 * the geometry that makes one worth flying comes round on two synodic periods
+	 * at once, so a window either side of a chosen day is almost always empty. So a
+	 * date asked for is a floor here rather than a target.
+	 */
 	nowJd: number;
 	/** How far ahead to look for a window, days. */
 	horizonDays?: number;
@@ -495,12 +521,28 @@ export function findAssistRoute(
 	vias: readonly TravelBody[],
 	options: AssistOptions
 ): Route | null {
-	const { nowJd, horizonDays = HORIZON_DAYS, ...routeOptions } = options;
-	let best: Route | null = null;
+	const { nowJd, horizonDays = HORIZON_DAYS, deadlineJd, ...routeOptions } = options;
+	// The date the crossing has to be over by, which is the trip's deadline less
+	// whatever the arrival still owes after it — months, on an aerobraked one.
+	const latestArriveJd =
+		deadlineJd != null
+			? deadlineJd -
+				arrivalCampaignDays(
+					target,
+					routeOptions.arrivalMode ?? 'capture',
+					routeOptions.aero,
+					routeOptions.targetOrbit
+				)
+			: Infinity;
+	// Nothing past it can be flown, so nothing past it is worth hunting through —
+	// and the hunt is seconds of work per candidate.
+	const horizon = Math.min(horizonDays, latestArriveJd - nowJd);
+	if (!(horizon > 0)) return null;
 
+	let best: Route | null = null;
 	for (const via of vias) {
 		if (via.id === departure.id || via.id === target.id) continue;
-		const route = bestThrough(departure, via, target, nowJd, horizonDays, routeOptions);
+		const route = bestThrough(departure, via, target, nowJd, horizon, latestArriveJd, routeOptions);
 		if (route && (!best || route.totalDvKms < best.totalDvKms)) best = route;
 	}
 	return best;
@@ -512,6 +554,7 @@ function bestThrough(
 	target: TravelBody,
 	nowJd: number,
 	horizonDays: number,
+	latestArriveJd: number,
 	routeOptions: RouteOptions
 ): Route | null {
 	const mu = routeOptions.centralMu ?? GM_SUN_KM3_S2;
@@ -534,17 +577,30 @@ function bestThrough(
 		(jd) => jd < nowJd + horizonDays
 	);
 
+	const tof1MinDays = hop1.days * TOF1_FACTORS[0];
+	const tof2MinDays = hop2.days * TOF2_FACTORS[0];
+
 	let best: Route | null = null;
 	for (const seed of seeds) {
+		const departFromJd = Math.max(nowJd, seed - SEED_SLACK_DAYS);
+		// Neither cruise can outlast what the deadline leaves once the other has
+		// taken its shortest, so the sweep is not spent on pairs nothing could fly.
+		const spare = latestArriveJd - departFromJd;
+		const tof1MaxDays = Math.min(hop1.days * TOF1_FACTORS[1], spare - tof2MinDays);
+		const tof2MaxDays = Math.min(hop2.days * TOF2_FACTORS[1], spare - tof1MinDays);
+		// This window closes before the deadline can be met at all.
+		if (tof1MaxDays < tof1MinDays || tof2MaxDays < tof2MinDays) continue;
+
 		const route = searchAssist(departure, via, target, {
 			...routeOptions,
-			departFromJd: Math.max(nowJd, seed - SEED_SLACK_DAYS),
-			departToJd: seed + SEED_SLACK_DAYS,
-			tof1MinDays: hop1.days * TOF1_FACTORS[0],
-			tof1MaxDays: hop1.days * TOF1_FACTORS[1],
-			tof2MinDays: hop2.days * TOF2_FACTORS[0],
-			tof2MaxDays: hop2.days * TOF2_FACTORS[1],
-			departSteps: SEED_DEPART_STEPS
+			departFromJd,
+			departToJd: Math.min(seed + SEED_SLACK_DAYS, latestArriveJd),
+			tof1MinDays,
+			tof1MaxDays,
+			tof2MinDays,
+			tof2MaxDays,
+			departSteps: SEED_DEPART_STEPS,
+			latestArriveJd
 		});
 		if (route && (!best || route.totalDvKms < best.totalDvKms)) best = route;
 	}

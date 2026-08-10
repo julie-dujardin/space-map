@@ -10,6 +10,7 @@
  */
 
 import {
+	arrivalCampaignDays,
 	buildConstantThrustRoute,
 	buildLowThrustRoute,
 	buildRoute,
@@ -27,6 +28,7 @@ import {
 	type Manifest,
 	type ManifestFit,
 	type PorkchopGrid,
+	routeEndJd,
 	type Route,
 	type RouteChoice,
 	type RouteOptions,
@@ -394,6 +396,22 @@ export class TravelPanelState {
 		return assist.totalDvKms <= cheapest - ASSIST_MIN_SAVING_KMS ? assist : null;
 	}
 
+	/**
+	 * Set when transfers exist but none of them arrive by the date asked for.
+	 *
+	 * Worth telling apart from finding nothing at all: one says the pair cannot be
+	 * flown as described, the other says only that the deadline is too soon — and
+	 * a date is the one term of a trip the reader can move.
+	 */
+	get missedDeadline(): boolean {
+		return (
+			this.timeMode === 'arrive' &&
+			this.pickedJd != null &&
+			this.routes.length === 0 &&
+			(this.grid?.solvedCount ?? 0) > 0
+		);
+	}
+
 	/** The trajectory being read, with the name it is listed under. */
 	get selected(): OfferedRoute | null {
 		return this.offered.find((choice) => choice.profile === this.selectedProfile) ?? null;
@@ -510,6 +528,34 @@ export class TravelPanelState {
 		return vehicle ? checkManifest(vehicle, this.manifest) : null;
 	}
 
+	/** The date the trip has to be over by, or nothing when it sets no deadline.
+	 *  Over rather than landed at — see `DeadlineOptions`. */
+	get deadlineJd(): number | undefined {
+		return this.timeMode === 'arrive' && this.pickedJd != null ? this.pickedJd : undefined;
+	}
+
+	/** Whether `route` is finished by the deadline, campaign and all. True when
+	 *  the trip sets none. */
+	#meetsDeadline(route: Route): boolean {
+		const deadlineJd = this.deadlineJd;
+		return deadlineJd == null || routeEndJd(route) <= deadlineJd;
+	}
+
+	/** Days this trip's arrival still owes once the crossing is over. Read off the
+	 *  same orbit the routes are priced against, or it would answer about another
+	 *  trip. */
+	#arrivalCampaignDays(target: TravelBody): number {
+		return arrivalCampaignDays(target, this.arrivalMode, this.aero, this.endOrbits.targetOrbit);
+	}
+
+	/** The earliest the trip may leave — now, unless a later departure was asked
+	 *  for. A deadline says nothing here: it is a date to be met, not waited for. */
+	#earliestDepartJd(nowJd: number): number {
+		return this.timeMode === 'depart' && this.pickedJd != null
+			? Math.max(nowJd, this.pickedJd)
+			: nowJd;
+	}
+
 	/**
 	 * Recompute the constant-thrust arc for the craft and the trip as they stand.
 	 *
@@ -538,8 +584,7 @@ export class TravelPanelState {
 		const accelMs2 = vehicle ? constantThrustAccelMs2(vehicle) : undefined;
 		// Every departure date flies the same arc, so the only thing a date says is
 		// when to start counting. A deadline says nothing at all until it is met.
-		const departJd =
-			this.timeMode === 'depart' && this.pickedJd != null ? Math.max(nowJd, this.pickedJd) : nowJd;
+		const departJd = this.#earliestDepartJd(nowJd);
 		const arc = accelMs2
 			? buildConstantThrustRoute(origin, target, departJd, accelMs2, {
 					departureMode: this.departureMode,
@@ -551,10 +596,7 @@ export class TravelPanelState {
 					coastFraction: this.coastFraction
 				})
 			: null;
-		const missesDeadline =
-			this.timeMode === 'arrive' && this.pickedJd != null && arc !== null
-				? arc.arriveJd > this.pickedJd
-				: false;
+		const missesDeadline = arc !== null && !this.#meetsDeadline(arc);
 
 		const offer = missesDeadline ? null : arc;
 		this.torch = offer;
@@ -587,8 +629,7 @@ export class TravelPanelState {
 
 		const vehicle = this.vehicle;
 		const drive = vehicle ? lowThrustDrive(vehicle, this.payloadKg) : undefined;
-		const earliestJd =
-			this.timeMode === 'depart' && this.pickedJd != null ? Math.max(nowJd, this.pickedJd) : nowJd;
+		const earliestJd = this.#earliestDepartJd(nowJd);
 		const route = drive
 			? buildLowThrustRoute(origin, target, earliestJd, drive, {
 					departureMode: this.departureMode,
@@ -599,12 +640,7 @@ export class TravelPanelState {
 					systemPrimary: frame.systemPrimary
 				})
 			: null;
-		const missesDeadline =
-			this.timeMode === 'arrive' && this.pickedJd != null && route !== null
-				? route.arriveJd > this.pickedJd
-				: false;
-
-		const offer = missesDeadline ? null : route;
+		const offer = route !== null && this.#meetsDeadline(route) ? route : null;
 		this.spiral = offer;
 		// Offered, never opened: an ion craft can be compared against the coasting
 		// routes, and choosing between them is the step an auto-selection skips.
@@ -641,13 +677,20 @@ export class TravelPanelState {
 		// first hunt, and it moves an arrival by ten kilometres per second. Keyed on
 		// ids alone, the answer to "airless Saturn" would stand for the rest of the
 		// session while the routes beside it were priced with the aerocapture.
+		//
+		// The trip's dates are in here as the hunt reads them rather than as the
+		// panel holds them: a departure date is a floor on the search and a deadline
+		// is a ceiling, and both change which swing-by comes back.
+		const earliestJd = this.#earliestDepartJd(nowJd);
+		const deadlineJd = this.deadlineJd;
 		const key = [
 			origin.id,
 			target.id,
 			air(origin),
 			air(target),
 			vias.map((via) => via.id).join(','),
-			nowJd,
+			earliestJd,
+			deadlineJd ?? '',
 			this.departureMode,
 			this.arrivalMode,
 			this.#orbitKey(),
@@ -661,7 +704,8 @@ export class TravelPanelState {
 		this.assistSearching = true;
 		const route = await this.#solver.findAssist(origin, target, vias, {
 			...options,
-			nowJd,
+			nowJd: earliestJd,
+			deadlineJd,
 			departureMode: this.departureMode,
 			arrivalMode: this.arrivalMode,
 			...this.endOrbits,
@@ -765,7 +809,8 @@ export class TravelPanelState {
 			timeMode: this.timeMode,
 			pickedJd: this.pickedJd,
 			systemPrimary: frame.systemPrimary,
-			centralMu: frame.centralMu
+			centralMu: frame.centralMu,
+			arrivalDays: this.#arrivalCampaignDays(target)
 		});
 		if (!options) {
 			console.debug(
@@ -797,15 +842,7 @@ export class TravelPanelState {
 			return;
 		}
 
-		let routes = result.routes;
-		// An arrival deadline is a filter on the answer, not on the search: the
-		// grid still has to cover the departures that could meet it.
-		if (this.timeMode === 'arrive' && this.pickedJd != null) {
-			const deadline = this.pickedJd;
-			routes = routes.filter((choice) => choice.route.arriveJd <= deadline);
-		}
-
-		this.routes = routes;
+		this.routes = result.routes;
 		this.grid = result.grid;
 		this.#pricing = { origin, target, options: solveOptions };
 		this.custom = this.#repriceCustom() ?? this.#pricePendingPick();

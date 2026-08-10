@@ -51,6 +51,14 @@ export interface WindowRequest {
 	timeMode: TimeMode;
 	/** The date behind 'depart' and 'arrive'; ignored under 'now'. */
 	pickedJd?: number | null;
+	/**
+	 * Days the trip still owes once the crossing is over — an aerobraking
+	 * campaign, where there is one. Shapes the axes only: the deadline itself is
+	 * carried whole and every search takes this off it for itself, so a caller
+	 * that leaves it out gets a grid aimed slightly wide rather than a wrong
+	 * answer.
+	 */
+	arrivalDays?: number;
 	/** Set when the trip stays inside one system — see `RouteOptions`. */
 	systemPrimary?: 'departure' | 'target';
 	/** μ of the body the transfer orbits, km³/s². Absent means the Sun's — set for
@@ -67,12 +75,20 @@ export interface WindowRequest {
  * spans the family.
  */
 function systemWindow(request: WindowRequest): PorkchopOptions | null {
-	const { origin, target, nowJd, systemPrimary } = request;
+	const { origin, target, nowJd, timeMode, pickedJd, systemPrimary, arrivalDays = 0 } = request;
 	const outbound = systemPrimary === 'departure';
 	const primary = outbound ? origin : target;
 	const satellite = outbound ? target : origin;
 	const orbitDays = satellite.elements.n > 0 ? 360 / satellite.elements.n : MAX_SEARCH_DAYS;
-	const departToJd = nowJd + clamp(orbitDays, MIN_SEARCH_DAYS / 4, MAX_SEARCH_DAYS);
+	const deadlineJd = timeMode === 'arrive' && pickedJd != null ? pickedJd : undefined;
+	// Departures past the deadline are wasted rows, but a deadline inside the
+	// crossing is left to answer itself: the whole axis is one orbit of the
+	// satellite, and there is nothing shorter to fall back to.
+	const latestArriveJd = deadlineJd != null ? deadlineJd - arrivalDays : Infinity;
+	const departToJd = Math.min(
+		nowJd + clamp(orbitDays, MIN_SEARCH_DAYS / 4, MAX_SEARCH_DAYS),
+		latestArriveJd > nowJd ? latestArriveJd : Infinity
+	);
 	// One orbit of the satellite covers every distance it reaches, so bounds taken
 	// across the window bracket every arc the grid can contain.
 	const bounds = systemArcBounds(primary, satellite, nowJd, departToJd);
@@ -85,7 +101,8 @@ function systemWindow(request: WindowRequest): PorkchopOptions | null {
 		tofMaxDays: bounds.slowestDays,
 		departSteps: DEPART_STEPS,
 		tofSteps: TOF_STEPS,
-		systemPrimary
+		systemPrimary,
+		deadlineJd
 	};
 }
 
@@ -95,7 +112,7 @@ function systemWindow(request: WindowRequest): PorkchopOptions | null {
  * The returned options go straight to `computePorkchop`.
  */
 export function searchWindow(request: WindowRequest): PorkchopOptions | null {
-	const { origin, target, nowJd, timeMode, pickedJd, centralMu } = request;
+	const { origin, target, nowJd, timeMode, pickedJd, centralMu, arrivalDays = 0 } = request;
 	if (request.systemPrimary) return systemWindow(request);
 
 	// The Hohmann time where both orbits are round enough for it, and the crossing
@@ -116,29 +133,44 @@ export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 	const tofMinFactor = chase ? CHASE_TOF_MIN_FACTOR : TOF_MIN_FACTOR;
 	const tofMaxFactor = chase ? CHASE_TOF_MAX_FACTOR : TOF_MAX_FACTOR;
 
+	const tofMinDays = crossing * tofMinFactor;
+	let tofMaxDays = crossing * tofMaxFactor;
 	let departFromJd = nowJd;
 	let departToJd = nowJd + span;
+	let deadlineJd: number | undefined;
 	if (timeMode === 'depart' && pickedJd != null) {
 		// Centre on the date, but never search departures already in the past.
 		const slack = Math.min(DEPART_AT_SLACK_DAYS, span * DEPART_AT_SLACK_FRACTION);
 		departFromJd = Math.max(nowJd, pickedJd - slack);
 		departToJd = pickedJd + slack;
 	} else if (timeMode === 'arrive' && pickedJd != null) {
-		// Everything that could still land by the deadline: the latest useful
-		// departure is the deadline minus the fastest cruise worth flying.
-		departToJd = pickedJd - crossing * tofMinFactor;
+		deadlineJd = pickedJd;
+		// Point the grid at what could still land in time: the latest useful
+		// departure is the deadline minus the fastest cruise worth flying, and a
+		// cruise outlasting the deadline is a row of cells nothing can use. Both
+		// only apply while they leave a grid to search — a deadline too close for
+		// the pair is answered by finding nothing, not by searching nothing.
+		const latestArriveJd = pickedJd - arrivalDays;
+		const latestDepartJd = latestArriveJd - tofMinDays;
+		const longestTofDays = latestArriveJd - departFromJd;
+		if (latestDepartJd > departFromJd && longestTofDays > tofMinDays) {
+			departToJd = latestDepartJd;
+			tofMaxDays = Math.min(tofMaxDays, longestTofDays);
+		}
 	}
-	// A deadline already past leaves nothing to search; fall back to the open span.
+	// A departure date already past leaves nothing to search; fall back to the
+	// open span.
 	if (departToJd <= departFromJd) departToJd = departFromJd + span;
 
 	return {
 		departFromJd,
 		departToJd,
-		tofMinDays: crossing * tofMinFactor,
-		tofMaxDays: crossing * tofMaxFactor,
+		tofMinDays,
+		tofMaxDays,
 		departSteps: DEPART_STEPS,
 		tofSteps: TOF_STEPS,
-		centralMu
+		centralMu,
+		deadlineJd
 	};
 }
 

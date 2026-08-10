@@ -68,6 +68,34 @@ describe('searchWindow', () => {
 		expect(options.departToJd + options.tofMinDays).toBeLessThanOrEqual(deadline + 1e-6);
 	});
 
+	it('grids no cruise that outlasts the deadline', () => {
+		const deadline = NOW + 400;
+		const options = searchWindow({
+			origin: EARTH,
+			target: MARS,
+			nowJd: NOW,
+			timeMode: 'arrive',
+			pickedJd: deadline
+		})!;
+		expect(options.deadlineJd).toBe(deadline);
+		expect(options.departFromJd + options.tofMaxDays).toBeLessThanOrEqual(deadline + 1e-6);
+	});
+
+	// Shaping the axes to an impossible deadline would leave nothing to search,
+	// and "no route arrives in time" has to be found rather than assumed.
+	it('keeps the open bounds when the deadline is too soon to shape them', () => {
+		const options = searchWindow({
+			origin: EARTH,
+			target: MARS,
+			nowJd: NOW,
+			timeMode: 'arrive',
+			pickedJd: NOW + 5
+		})!;
+		const open = searchWindow({ origin: EARTH, target: MARS, nowJd: NOW, timeMode: 'now' })!;
+		expect(options.tofMaxDays).toBe(open.tofMaxDays);
+		expect(options.deadlineJd).toBe(NOW + 5);
+	});
+
 	it('always yields a non-empty departure range', () => {
 		const options = searchWindow({
 			origin: EARTH,

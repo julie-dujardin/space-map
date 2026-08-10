@@ -1693,6 +1693,7 @@
 	"travel_no_origin": "Escolha o ponto de partida.",
 	"travel_no_published_figure": "Sem número publicado",
 	"travel_no_routes": "Nenhuma rota nesta janela.",
+	"travel_no_routes_by_date": "Nenhuma trajetória chega até esta data.",
 	"travel_no_target": "Escolha um destino para ver como lá chegar.",
 	"travel_not_modelled": "Não modelado",
 	"travel_on_arrival": "À chegada",

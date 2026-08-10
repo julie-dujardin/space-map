@@ -217,3 +217,47 @@ describe('selectRoutes', () => {
 		expect(selectRoutes(empty, EARTH, MARS)).toEqual([]);
 	});
 });
+
+describe('selectRoutes under an arrival deadline', () => {
+	const options = {
+		departFromJd: MARS_WINDOW - 90,
+		departToJd: MARS_WINDOW + 90,
+		tofMinDays: 100,
+		tofMaxDays: 450,
+		departSteps: 50,
+		tofSteps: 50
+	};
+	const grid = computePorkchop(EARTH, MARS, options);
+	// Tight enough to rule out the cheap corner of the field, which is where the
+	// unconstrained efficient route lives.
+	const deadlineJd = MARS_WINDOW + 150;
+	const routes = selectRoutes(grid, EARTH, MARS, { ...options, deadlineJd });
+
+	it('offers only routes that arrive in time', () => {
+		expect(routes.length).toBeGreaterThan(0);
+		for (const { route } of routes) expect(route.arriveJd).toBeLessThanOrEqual(deadlineJd);
+	});
+
+	// The bug this replaced: the three profiles were picked off the whole field
+	// and the late ones then dropped, so a deadline cost you the choice rather
+	// than moving it.
+	it('re-picks inside the deadline rather than dropping what misses it', () => {
+		const dropped = selectRoutes(grid, EARTH, MARS).filter(
+			(choice) => choice.route.arriveJd <= deadlineJd
+		);
+		expect(routes.length).toBeGreaterThan(dropped.length);
+		const cheapest = Math.min(...routes.map((r) => r.route.totalDvKms));
+		const wasCheapest = Math.min(...dropped.map((r) => r.route.totalDvKms));
+		expect(cheapest).toBeLessThan(wasCheapest);
+	});
+
+	// The polish chases Δv alone, and cost falls off towards a later arrival.
+	it('keeps the refinement inside the deadline', () => {
+		const efficient = routes.find((r) => r.profile === 'efficient')!;
+		expect(efficient.route.arriveJd).toBeLessThanOrEqual(deadlineJd);
+	});
+
+	it('offers nothing when no cell arrives in time', () => {
+		expect(selectRoutes(grid, EARTH, MARS, { ...options, deadlineJd: MARS_WINDOW })).toEqual([]);
+	});
+});

@@ -57,6 +57,7 @@ export type { AeroAssist, ArrivalMode, ArrivalCost, DepartureMode, EndOrbit } fr
 export {
 	aeroPassRadiusKm,
 	arrivalCost,
+	arrivalCampaignDays,
 	ascentDv,
 	canAeroBrake,
 	captureDv,
@@ -75,7 +76,7 @@ export {
 } from './maneuvers';
 
 export type { Route, RouteLeg, RouteOptions, LegKind } from './route';
-export { arrivalLegs, buildRoute, routeDurationDays } from './route';
+export { arrivalLegs, buildRoute, routeDurationDays, routeEndJd } from './route';
 
 export { propagateState } from './propagate';
 

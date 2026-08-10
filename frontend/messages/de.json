@@ -1704,6 +1704,7 @@
 	"travel_no_origin": "Wählen Sie, wo die Reise beginnt.",
 	"travel_no_published_figure": "Keine veröffentlichte Zahl",
 	"travel_no_routes": "In diesem Fenster keine Route gefunden.",
+	"travel_no_routes_by_date": "Keine Route trifft bis zu diesem Datum ein.",
 	"travel_no_target": "Wählen Sie ein Ziel, um den Weg dorthin zu sehen.",
 	"travel_not_modelled": "Nicht modelliert",
 	"travel_on_arrival": "Bei der Ankunft",

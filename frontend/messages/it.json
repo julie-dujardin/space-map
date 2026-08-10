@@ -1689,6 +1689,7 @@
 	"travel_no_origin": "Scegli da dove parti.",
 	"travel_no_published_figure": "Nessun dato pubblicato",
 	"travel_no_routes": "Nessuna rotta in questa finestra.",
+	"travel_no_routes_by_date": "Nessuna traiettoria arriva entro questa data.",
 	"travel_no_target": "Scegli una destinazione per vedere come arrivarci.",
 	"travel_not_modelled": "Non modellato",
 	"travel_on_arrival": "All'arrivo",

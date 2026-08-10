@@ -201,6 +201,18 @@ export function routeDurationDays(route: Route): number {
 }
 
 /**
+ * When the trip is over, JD.
+ *
+ * Not `arriveJd`, which is where the crossing ends: an aerobraking arrival is
+ * captured on that date and then spends months walking the orbit down, with
+ * nothing else happening until it is done. Anything asking whether a trip fits
+ * inside a date has to ask about this one.
+ */
+export function routeEndJd(route: Route): number {
+	return route.departJd + routeDurationDays(route);
+}
+
+/**
  * Build the route departing at `departJd` and arriving `tofDays` later.
  *
  * Both bodies must be referenced to the same primary — this is a single

@@ -360,6 +360,26 @@ export function arrivalCostFromSpeed(
 	};
 }
 
+/**
+ * Days the arrival still owes once the crossing is over — the aerobraking
+ * campaign, where there is one, and nothing on any other arrival.
+ *
+ * Worth having on its own because it is the same figure for every arc that ends
+ * the same way: what drag has to remove is the gap between two bound orbits at
+ * the pass altitude, and neither of them remembers how fast the craft came in.
+ * So a search can take it once and hold a whole grid to the same deadline
+ * without pricing an arrival per cell — which is why the speed below is a
+ * placeholder rather than a real approach.
+ */
+export function arrivalCampaignDays(
+	body: TravelBody,
+	mode: ArrivalMode,
+	aero: AeroAssist = 'none',
+	orbit?: EndOrbit
+): number {
+	return arrivalCostFromSpeed(body, 0, mode, aero, orbit).aerobrakeDays;
+}
+
 export type DepartureMode = 'surface' | 'orbit';
 
 /**

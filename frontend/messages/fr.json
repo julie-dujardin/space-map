@@ -1721,6 +1721,7 @@
 	"travel_no_origin": "Choisissez votre point de départ.",
 	"travel_no_published_figure": "Aucun chiffre publié",
 	"travel_no_routes": "Aucune trajectoire dans cette fenêtre.",
+	"travel_no_routes_by_date": "Aucune trajectoire n'arrive avant cette date.",
 	"travel_no_target": "Choisissez une destination pour voir comment y aller.",
 	"travel_not_modelled": "Non modélisé",
 	"travel_on_arrival": "À l'arrivée",

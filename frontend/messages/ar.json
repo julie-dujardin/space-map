@@ -1905,6 +1905,7 @@
 	"travel_no_origin": "اختر نقطة انطلاقك.",
 	"travel_no_published_figure": "لا يوجد رقم منشور",
 	"travel_no_routes": "لا مسار في هذه النافذة.",
+	"travel_no_routes_by_date": "لا توجد مسارات تصل قبل هذا التاريخ.",
 	"travel_no_target": "اختر وجهة لترى كيف تصل إليها.",
 	"travel_not_modelled": "غير ممثَّل",
 	"travel_on_arrival": "عند الوصول",

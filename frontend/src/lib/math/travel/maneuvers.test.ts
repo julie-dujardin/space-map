@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+	arrivalCampaignDays,
 	arrivalCost,
 	ascentDv,
 	captureDv,
@@ -167,6 +168,26 @@ describe('arrivalCost', () => {
 		const braked = arrivalCost(MARS, 2.65, 'capture', 'aerobraking');
 		expect(braked.aerobrakeDays).toBe(0);
 		expect(braked.captureKms).toBeCloseTo(arrivalCost(MARS, 2.65, 'capture').captureKms, 9);
+	});
+
+	// What a search relies on to hold a whole grid to one deadline: the campaign
+	// is a fact about the arrival, so an arc that comes in twice as fast still
+	// spends the same months walking the orbit down.
+	it('takes the same campaign however fast the approach is', () => {
+		const days = arrivalCampaignDays(MARS, 'low-orbit', 'aerobraking');
+		expect(days).toBeGreaterThan(60);
+		for (const vInf of [0.5, 2.65, 9]) {
+			expect(arrivalCost(MARS, vInf, 'low-orbit', 'aerobraking').aerobrakeDays).toBeCloseTo(
+				days,
+				9
+			);
+		}
+	});
+
+	it('has no campaign where the arrival flies no passes', () => {
+		expect(arrivalCampaignDays(MARS, 'low-orbit', 'aerocapture')).toBe(0);
+		expect(arrivalCampaignDays(MARS, 'low-orbit')).toBe(0);
+		expect(arrivalCampaignDays(MOON, 'low-orbit', 'aerobraking')).toBe(0);
 	});
 
 	it('orders the modes by cost', () => {

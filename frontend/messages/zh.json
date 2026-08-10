@@ -1936,6 +1936,7 @@
 	"travel_no_origin": "请选择出发地。",
 	"travel_no_published_figure": "无公开数据",
 	"travel_no_routes": "此窗口内未找到路线。",
+	"travel_no_routes_by_date": "没有能在该日期前抵达的路线。",
 	"travel_no_target": "选择目的地即可查看怎么去。",
 	"travel_not_modelled": "未建模",
 	"travel_on_arrival": "抵达时",

@@ -155,4 +155,39 @@ describe('findAssistRoute', () => {
 			})
 		).toBeNull();
 	});
+
+	// The hunt used to be the one search a deadline never reached: it ranks on Δv
+	// over twenty years, so it answered a trip to Saturn by 2030 with a departure
+	// in 2041 and the panel listed it beside routes chosen to arrive in time.
+	describe('under an arrival deadline', () => {
+		it('arrives by it', () => {
+			const deadlineJd = NOW + 12 * 365.25;
+			const assist = findAssistRoute(EARTH, SATURN, [JUPITER], {
+				nowJd: NOW,
+				deadlineJd,
+				departureMode: 'orbit'
+			});
+			expect(assist).not.toBeNull();
+			expect(assist!.arriveJd).toBeLessThanOrEqual(deadlineJd);
+		});
+
+		it('gives up rather than overshooting when nothing fits', () => {
+			expect(
+				findAssistRoute(EARTH, SATURN, [JUPITER], {
+					nowJd: NOW,
+					deadlineJd: NOW + 200,
+					departureMode: 'orbit'
+				})
+			).toBeNull();
+		});
+
+		it('takes a departure date as a floor to leave after', () => {
+			const earliestJd = NOW + 4 * 365.25;
+			const assist = findAssistRoute(EARTH, SATURN, [JUPITER], {
+				nowJd: earliestJd,
+				departureMode: 'orbit'
+			})!;
+			expect(assist.departJd).toBeGreaterThanOrEqual(earliestJd);
+		});
+	});
 });
