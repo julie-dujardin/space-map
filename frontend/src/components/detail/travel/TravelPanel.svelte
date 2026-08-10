@@ -61,6 +61,7 @@
 		orbitFacts,
 		type OrbitChoice
 	} from '$lib/travel/orbits';
+	import { activeFamily, familyOf, routeTabs, type RouteFamily } from '$lib/travel/route-families';
 	import { buildTimeline, type TimelineEntry } from '$lib/travel/timeline';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import { formatAcceleration } from '$lib/travel/format';
@@ -74,6 +75,7 @@
 	import ManifestField from './ManifestField.svelte';
 	import EndpointField from './EndpointField.svelte';
 	import RouteList from './RouteList.svelte';
+	import RouteTabs from './RouteTabs.svelte';
 	import RouteDetail from './RouteDetail.svelte';
 	import PorkchopChart from './PorkchopChart.svelte';
 	import { routeLabel } from './route-labels';
@@ -737,19 +739,32 @@
 	// trajectory are both up.
 	let chosen = $derived(panel.selected);
 
-	// What the arc has instead of a launch window: how long the drive is off in
-	// the middle of it. Read beside the trajectory it belongs to, and again over
-	// the list when a coast has pushed the arc past the deadline — that is the one
-	// term that can take it off the list, so it has to stay reachable to be undone.
-	let torchSelected = $derived(chosen?.route.constantThrust != null);
-	let coastDays = $derived(
-		torchSelected ? (chosen?.route.legs.find((leg) => leg.kind === 'cruise')?.days ?? 0) : 0
-	);
+	// Which family of trajectory is being read. Kept here rather than in the list,
+	// which goes away whenever one is opened: stepping back should land on the tab
+	// it was left on.
+	let wantedFamily = $state<RouteFamily | null>(null);
+	let tabs = $derived(routeTabs(panel.offered, panel.assistSearching));
+	let family = $derived(activeFamily(tabs, wantedFamily));
+
+	// Opening a trajectory says which tab the reader is in as surely as picking
+	// one does — including a link that opened straight onto a swing-by, which
+	// otherwise steps back to a tab it was never on.
+	$effect(() => {
+		const profile = chosen?.profile;
+		if (profile) untrack(() => (wantedFamily = familyOf(profile)));
+	});
+
+	// What the arc has instead of a launch window: how long the drive is off in the
+	// middle of it. Read off the offered arc rather than off a selection, because
+	// the control sits in the list beside it — and it survives the arc, since a
+	// coast is the one term that can take it off the list and it has to stay
+	// reachable to be undone.
+	let coastDays = $derived(panel.torch?.legs.find((leg) => leg.kind === 'cruise')?.days ?? 0);
 	// Against the crossing rather than the whole trip: the two burns and the coast
 	// tile it exactly, so the share is what the slider divides. A trip whose
 	// arrival is months of aerobraking would read as almost no coast at all.
 	let coastShare = $derived.by(() => {
-		const crossing = chosen?.route.tofDays ?? 0;
+		const crossing = panel.torch?.tofDays ?? 0;
 		return crossing > 0 ? coastDays / crossing : 0;
 	});
 
@@ -770,15 +785,18 @@
 <!--
   What the constant-thrust arc has instead of a launch window, and the same kind
   of choice: the one thing left to pick once the drive has fixed everything else.
-  Rendered in two places, because a coast can be what took every route off the
-  list and it has to outlive the list to be undone.
+  So it sits where the hand-picked window sits — last in its own tab, dashed, as
+  the custom option under the arc it moves. It outlives that arc, because a coast
+  long enough to miss the deadline is what takes it off the list.
 -->
 {#snippet cruiseTime()}
-	<section class="flex flex-col gap-2">
+	<section class="border-border/60 flex flex-col gap-2 rounded-md border border-dashed px-3 py-2">
 		<div class="flex items-baseline justify-between gap-2">
 			<h4 class="text-sm font-medium">{m.travel_cruise_time()}</h4>
 			<span class="shrink-0 text-xs tabular-nums">
-				{#if !torchSelected}
+				<!-- With no arc to measure, a coast has no duration and no share of one —
+				     and "flat out" would be a claim about a slider that is not there. -->
+				{#if !panel.torch}
 					<span class="text-muted-foreground">—</span>
 				{:else if coastDays > 0}
 					<!-- The share is what the slider sets and what compares across trips;
@@ -790,7 +808,6 @@
 				{/if}
 			</span>
 		</div>
-		<div class="border-border/60 border-t"></div>
 		<Slider
 			type="single"
 			value={panel.coastFraction}
@@ -804,6 +821,18 @@
 			<p class="text-muted-foreground text-[11px]">{m.travel_cruise_missed()}</p>
 		{/if}
 	</section>
+{/snippet}
+
+<!-- The active family's rows, and the one control that belongs to a family
+     rather than to a trajectory. -->
+{#snippet trajectories()}
+	<RouteList
+		state={panel}
+		{family}
+		nameOf={resolveBodyName}
+		onFocusField={panel.grid ? () => chart?.focusField() : null}
+	/>
+	{#if family === 'constant-thrust'}{@render cruiseTime()}{/if}
 {/snippet}
 
 <div class="flex flex-col gap-5">
@@ -828,10 +857,6 @@
 				{formatJulianDate(chosen.route.departJd)} → {formatJulianDate(chosen.route.arriveJd)}
 			</p>
 		</div>
-
-		<!-- Above the detail rather than inside it: everything below is what this
-		     trajectory costs, and this is the one term still open to change. -->
-		{#if torchSelected}{@render cruiseTime()}{/if}
 
 		{#if originTravel && targetTravel}
 			<RouteDetail
@@ -1027,14 +1052,24 @@
 			     list, so the control that did it has to outlive the list. -->
 			{#if panel.torchMissedDeadline}{@render cruiseTime()}{/if}
 		{:else if panel.offered.length > 0}
+			<!-- The arc is gone, so its tab is too, and the control that took it has
+			     nowhere left to live but over the list. -->
 			{#if panel.torchMissedDeadline}{@render cruiseTime()}{/if}
-			<RouteList
-				state={panel}
-				nameOf={resolveBodyName}
-				onFocusField={panel.grid ? () => chart?.focusField() : null}
-			/>
+			<!-- One family of trajectory is on offer often enough — a chemical craft
+			     with no swing-by to be had — that a single tab would be a control
+			     with nothing to choose. -->
+			{#if tabs.length > 1}
+				<RouteTabs {tabs} active={family} onSelect={(next) => (wantedFamily = next)}>
+					{@render trajectories()}
+				</RouteTabs>
+			{:else}
+				<div class="flex flex-col gap-2">{@render trajectories()}</div>
+			{/if}
 
-			{#if panel.grid}
+			<!-- The field belongs to the family read off it: the marks on it are the
+			     solver's windows, and there is no point on it that is a spiral or an
+			     arc held under thrust. -->
+			{#if panel.grid && family === 'transfer'}
 				<!-- The field the list is read off, with the solved routes marked on it:
 			     every point on it is a trajectory nobody offered, and picking one adds
 			     it to the list rather than opening it — a pick is a drag, and every

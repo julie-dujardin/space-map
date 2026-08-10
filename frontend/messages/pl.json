@@ -1708,6 +1708,8 @@
 	"travel_profile_balanced": "Zrównoważona",
 	"travel_profile_custom": "Własna",
 	"travel_profile_efficient": "Oszczędna",
+	"travel_family_transfer": "Okno transferowe",
+	"travel_trajectories": "Trajektorie",
 	"travel_profile_fast": "Szybka",
 	"travel_profile_low_thrust": "Spirala",
 	"travel_return_needs": "wymaga {value} km/s",

@@ -1705,6 +1705,8 @@
 	"travel_profile_balanced": "Equilibrata",
 	"travel_profile_custom": "Personalizzata",
 	"travel_profile_efficient": "Economica",
+	"travel_family_transfer": "Finestra di trasferimento",
+	"travel_trajectories": "Traiettorie",
 	"travel_profile_fast": "Veloce",
 	"travel_profile_low_thrust": "Spirale",
 	"travel_return_needs": "richiede {value} km/s",

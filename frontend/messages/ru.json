@@ -1949,6 +1949,8 @@
 	"travel_profile_balanced": "Сбалансированный",
 	"travel_profile_custom": "Пользовательский",
 	"travel_profile_efficient": "Экономичный",
+	"travel_family_transfer": "Окно перелёта",
+	"travel_trajectories": "Траектории",
 	"travel_profile_fast": "Быстрый",
 	"travel_profile_low_thrust": "Спираль",
 	"travel_return_needs": "нужно {value} км/с",

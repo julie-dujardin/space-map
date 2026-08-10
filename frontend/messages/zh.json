@@ -1952,6 +1952,8 @@
 	"travel_profile_balanced": "均衡",
 	"travel_profile_custom": "自定义",
 	"travel_profile_efficient": "省能",
+	"travel_family_transfer": "转移窗口",
+	"travel_trajectories": "飞行轨迹",
 	"travel_profile_fast": "最快",
 	"travel_profile_low_thrust": "螺旋轨道",
 	"travel_return_needs": "需要 {value} km/s",

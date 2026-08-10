@@ -1720,6 +1720,8 @@
 	"travel_profile_balanced": "Ausgewogen",
 	"travel_profile_custom": "Benutzerdefiniert",
 	"travel_profile_efficient": "Sparsam",
+	"travel_family_transfer": "Transferfenster",
+	"travel_trajectories": "Flugbahnen",
 	"travel_profile_fast": "Schnell",
 	"travel_profile_low_thrust": "Spirale",
 	"travel_return_needs": "benötigt {value} km/s",

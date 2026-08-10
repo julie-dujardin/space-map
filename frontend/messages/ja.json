@@ -1952,6 +1952,8 @@
 	"travel_profile_balanced": "バランス",
 	"travel_profile_custom": "カスタム",
 	"travel_profile_efficient": "省エネ",
+	"travel_family_transfer": "遷移ウィンドウ",
+	"travel_trajectories": "飛行経路",
 	"travel_profile_fast": "最速",
 	"travel_profile_low_thrust": "スパイラル",
 	"travel_return_needs": "{value} km/s 必要",

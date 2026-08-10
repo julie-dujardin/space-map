@@ -1921,6 +1921,8 @@
 	"travel_profile_balanced": "متوازن",
 	"travel_profile_custom": "مخصص",
 	"travel_profile_efficient": "اقتصادي",
+	"travel_family_transfer": "نافذة الانتقال",
+	"travel_trajectories": "المسارات",
 	"travel_profile_fast": "سريع",
 	"travel_profile_low_thrust": "لولبي",
 	"travel_return_needs": "يتطلب {value} ‎km/s‎",

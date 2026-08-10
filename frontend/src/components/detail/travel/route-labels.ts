@@ -2,6 +2,7 @@
  *  trajectory read off it cannot drift apart. */
 
 import * as m from '$lib/paraglide/messages.js';
+import type { RouteFamily } from '$lib/travel/route-families';
 import type { RouteOption } from '$lib/travel/trip';
 
 export function routeLabel(profile: RouteOption): string {
@@ -20,5 +21,20 @@ export function routeLabel(profile: RouteOption): string {
 			return m.travel_profile_low_thrust();
 		case 'gravity-assist':
 			return m.travel_profile_gravity_assist();
+	}
+}
+
+/** A family's tab. Three of them hold a single trajectory, so they are named
+ *  the same as it — a tab and a row disagreeing would read as two things. */
+export function familyLabel(family: RouteFamily): string {
+	switch (family) {
+		case 'transfer':
+			return m.travel_family_transfer();
+		case 'gravity-assist':
+			return m.travel_profile_gravity_assist();
+		case 'constant-thrust':
+			return m.travel_profile_constant_thrust();
+		case 'low-thrust':
+			return m.travel_profile_low_thrust();
 	}
 }

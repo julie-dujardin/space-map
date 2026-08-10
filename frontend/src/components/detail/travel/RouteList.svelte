@@ -1,7 +1,7 @@
 <!--
-  The trajectories as one line each: what it is and when it runs on the left,
-  what it costs on the right. Picking one is what opens it — this is the first
-  of the panel's two steps, and every row here is a way into the second.
+  One family of trajectory as one line each: what it is and when it runs on the
+  left, what it costs on the right. Picking one is what opens it — this is the
+  first of the panel's two steps, and every row here is a way into the second.
 
   A route the chosen craft cannot fly stays visible and goes quiet, with the
   reason in place of its figures — hiding it would leave the panel silently
@@ -23,18 +23,23 @@
 	import { formatDurationNarrow } from '$lib/format/duration';
 	import { formatAcceleration, formatDvBrief } from '$lib/travel/format';
 	import { routeDurationDays, type Route } from '$lib/math/travel';
+	import { routesIn, type RouteFamily } from '$lib/travel/route-families';
 	import { departureNote } from './vehicle-labels';
 	import { routeLabel } from './route-labels';
 
 	interface Props {
 		state: TravelPanelState;
+		/** Which family is being read; the tabs above choose it. */
+		family: RouteFamily | null;
 		/** What to call the body a swing-by passes. */
 		nameOf?: (id: string) => string;
 		/** Send the reader to the field they pick a custom window on. Absent leaves
 		 *  the fourth row out — there is nowhere for it to point. */
 		onFocusField?: (() => void) | null;
 	}
-	let { state, nameOf = (id: string) => id, onFocusField = null }: Props = $props();
+	let { state, family, nameOf = (id: string) => id, onFocusField = null }: Props = $props();
+
+	let shown = $derived(routesIn(state.offered, family));
 
 	/** How hard a route's drive pushes, on the two kinds flown under power the
 	 *  whole way; null on the ones that coast. */
@@ -106,7 +111,7 @@
 </script>
 
 <ul class="flex flex-col gap-2">
-	{#each state.offered as choice (choice.profile)}
+	{#each shown as choice (choice.profile)}
 		{@const blocked = blockedText(choice)}
 		{@const viaName = via(choice)}
 		<li>
@@ -163,18 +168,7 @@
 		</li>
 	{/each}
 
-	{#if state.assistSearching && !state.offered.some((choice) => choice.profile === 'gravity-assist')}
-		<!-- The hunt takes about a second and lands after everything above it, so a
-		     row that says so is what tells "still looking" from "there isn't one".
-		     It is a note rather than a button: there is nothing to choose yet. -->
-		<li
-			class="border-border/60 text-muted-foreground rounded-md border border-dashed px-3 py-2 text-sm"
-		>
-			{m.travel_assist_searching()}
-		</li>
-	{/if}
-
-	{#if onFocusField && state.grid && !state.custom}
+	{#if family === 'transfer' && onFocusField && state.grid && !state.custom}
 		<!-- The fourth option before it has anything in it: a row rather than
 		     nothing, so the field below reads as a way to choose rather than as a
 		     picture of the three above. -->

@@ -2330,6 +2330,8 @@
 	"travel_profile_constant_thrust": "Constant thrust",
 	"travel_profile_custom": "Custom",
 	"travel_profile_efficient": "Efficient",
+	"travel_family_transfer": "Transfer window",
+	"travel_trajectories": "Trajectories",
 	"travel_profile_fast": "Fast",
 	"travel_return_needs": "needs {value} km/s",
 	"travel_return_one_way": "One way",
