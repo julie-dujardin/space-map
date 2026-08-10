@@ -41,7 +41,6 @@
 		transferCenterId,
 		transferFrame,
 		transferPlan,
-		type TransferFrame,
 		type TransferPlan
 	} from '$lib/travel/travel-body';
 	import { TravelPanelState, type BlockReason } from '$lib/travel/panel.svelte';
@@ -81,6 +80,7 @@
 	import RouteDetail from './RouteDetail.svelte';
 	import PorkchopChart from './PorkchopChart.svelte';
 	import { routeLabel } from './route-labels';
+	import { hazardKey, routeKey, timelineKey } from './route-keys';
 
 	interface Props {
 		/** Where the trip starts; null until one is chosen. */
@@ -534,29 +534,6 @@
 		plan && origin && target ? transferCenterId(plan, origin, target, lookup) : null
 	);
 
-	// What the map is drawing, and what would change it. The solve effect above
-	// re-runs several times a second, handing back a fresh (and usually identical)
-	// route object each time; rebuilding a few hundred propagated points off every
-	// one of those would be work nobody asked for. So the geometry is keyed on
-	// what actually shapes it, and only a change in the key rebuilds.
-	function routeKey(route: Route, center: string, transfer: TransferFrame): string {
-		const via = route.flybys?.[0];
-		return [
-			center,
-			route.departureId,
-			route.targetId,
-			route.departJd,
-			route.tofDays,
-			route.departureMode,
-			route.arrivalMode,
-			route.constantThrust ?? '',
-			route.lowThrust?.accelMs2 ?? '',
-			via ? `${via.bodyId}@${via.jd}` : '',
-			transfer.systemPrimary ?? '',
-			transfer.centralMu ?? ''
-		].join('|');
-	}
-
 	/** A route as the map takes it: geometry, plus what to write at each end.
 	 *  `onSelect` is what makes it an offer rather than the plan. */
 	function labelled(
@@ -667,12 +644,7 @@
 	// six scans.
 	let hazardsKey = $derived.by(() => {
 		if (!centerId) return null;
-		// The braking mode rides beside the geometry key: it sets the entry speed
-		// the atmospheric hazard is read off, and a re-solve that changes only it
-		// usually moves none of the dates the key carries.
-		const keys = panel.offered.map(
-			(choice) => `${routeKey(choice.route, centerId, frame)}|${choice.route.aero}`
-		);
+		const keys = panel.offered.map((choice) => hazardKey(choice.route, centerId, frame));
 		// The frame decides whether a distance from the centre is a distance from
 		// the Sun, which is what half of these are read off.
 		return keys.length > 0 ? [frame.orbit, ...keys].join(';') : null;
@@ -718,29 +690,10 @@
 	// The trip as its legs rather than as geometry. Keyed the same way and for the
 	// same reason, but separately: a trajectory whose arc cannot be rebuilt still
 	// has dates, and a timeline is the one part of it that can always be shown.
-	let timelineKey = $derived.by(() => {
+	let selectedTimelineKey = $derived.by(() => {
 		const route = panel.selectedRoute;
 		if (!route) return null;
-		return [
-			route.departureId,
-			route.targetId,
-			route.departJd,
-			route.arriveJd,
-			route.departureMode,
-			route.arrivalMode,
-			// Braking changes the legs — a campaign appears, a capture burn shrinks —
-			// without moving either date above.
-			route.aero,
-			route.constantThrust ?? '',
-			route.lowThrust?.accelMs2 ?? '',
-			(route.flybys ?? []).map((flyby) => `${flyby.bodyId}@${flyby.jd}`).join(','),
-			originName ?? '',
-			targetName ?? '',
-			// The orbits at the two ends are sized off the bodies, which arrive with
-			// a fetched bundle: without this the timeline built before they land
-			// would keep its missing ends for the rest of the trip.
-			timelineBodies ? `${timelineBodies.departure.radiusKm}/${timelineBodies.target.radiusKm}` : ''
-		].join('|');
+		return timelineKey(route, originName, targetName, timelineBodies);
 	});
 
 	/** The two ends as the kernel knows them, once both are known. What the orbit
@@ -750,7 +703,7 @@
 	);
 
 	$effect(() => {
-		const key = timelineKey;
+		const key = selectedTimelineKey;
 		untrack(() => {
 			const route = panel.selectedRoute;
 			if (key === null || !route) {
