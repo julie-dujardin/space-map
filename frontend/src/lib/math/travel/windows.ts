@@ -12,6 +12,7 @@ import { AU_KM } from '$lib/math/units';
 import type { TravelBody } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { elementsToState } from './state';
+import { dot } from './vec3';
 
 const TWO_PI = Math.PI * 2;
 
@@ -37,18 +38,18 @@ export function hohmannTransferDays(
 	const rA = a.elements.a * AU_KM;
 	const rB = b.elements.a * AU_KM;
 	if (!(rA > 0) || !(rB > 0)) return null;
-	const aT = (rA + rB) / 2;
-	return (Math.PI * Math.sqrt(aT ** 3 / mu)) / SEC_PER_DAY;
+	return halfEllipseDays((rA + rB) / 2, mu);
 }
 
 /**
  * Time to cross between where the two bodies are *now*, days.
  *
- * The stand-in for the Hohmann time when one end has no semi-major axis to take
- * one from — an escaping probe, a body on a hyperbolic arc. Half an ellipse
- * spanning the two current distances is not a transfer anyone would fly, but it
- * is the right order of magnitude for how long the crossing takes, which is all
- * the search bounds need from it.
+ * The stand-in for the Hohmann time when the semi-major axes cannot supply one —
+ * an escaping probe has none at all, and an eccentric orbit has one that is
+ * nowhere near where the body is. Half an ellipse spanning the two current
+ * distances is not a transfer anyone would fly, but it is the right order of
+ * magnitude for how long the crossing takes, which is all the search bounds need
+ * from it.
  */
 export function crossingTimeDays(
 	a: TravelBody,
@@ -61,7 +62,78 @@ export function crossingTimeDays(
 	if (!sA || !sB) return null;
 	const aT = (radius(sA.r) + radius(sB.r)) / 2;
 	if (!(aT > 0)) return null;
-	return (Math.PI * Math.sqrt(aT ** 3 / mu)) / SEC_PER_DAY;
+	return halfEllipseDays(aT, mu);
+}
+
+/**
+ * How far a body's distance may sit from its semi-major axis before the axis
+ * stops standing in for it.
+ */
+const AXIS_TOLERANCE = 0.25;
+/**
+ * The share of its own distance a target may cover while the crossing is under
+ * way before it counts as leaving rather than waiting.
+ */
+const CHASE_TRAVEL_FRACTION = 0.5;
+
+export interface TransferScale {
+	/** How long a crossing between the two bodies takes, days. */
+	days: number;
+	/**
+	 * True when the target moves an appreciable part of its own distance during
+	 * that crossing, so no departure date is a window and the arcs worth flying
+	 * are the fast ones.
+	 */
+	chase: boolean;
+}
+
+/**
+ * The timescale a transfer between two bodies is measured against, and whether
+ * the target has to be chased rather than met.
+ *
+ * The Hohmann time reads a body's distance off its semi-major axis, which only
+ * holds while the orbit is round: C/2021 P2 has a = 2474 AU and sits at 10 AU,
+ * so a cruise scaled off it was gridded against a 21,000-year half-orbit and
+ * every route on offer came back a geological age long. Where the axis and the
+ * distance disagree the distance wins, and a target crossing much of that
+ * distance meanwhile is one to chase.
+ *
+ * Returns null when either body's orbit will not yield a position.
+ */
+export function transferScale(
+	a: TravelBody,
+	b: TravelBody,
+	jd: number,
+	mu = GM_SUN_KM3_S2
+): TransferScale | null {
+	const sA = elementsToState(a.elements, jd, mu);
+	const sB = elementsToState(b.elements, jd, mu);
+	if (!sA || !sB) return null;
+	const rA = radius(sA.r);
+	const rB = radius(sB.r);
+	if (!(rA > 0) || !(rB > 0)) return null;
+
+	const ideal = hohmannTransferDays(a, b, mu);
+	const round = describesDistance(a, rA) && describesDistance(b, rB);
+	const days = ideal !== null && round ? ideal : halfEllipseDays((rA + rB) / 2, mu);
+	if (!(days > 0)) return null;
+
+	// How fast the gap the arc has to close is opening or closing, km/s.
+	const radialKms = Math.abs(dot(sB.r, sB.v)) / rB;
+	return {
+		days,
+		chase: ideal === null || radialKms * days * SEC_PER_DAY > CHASE_TRAVEL_FRACTION * rB
+	};
+}
+
+/** True when a body's semi-major axis stands in for where it actually is. */
+function describesDistance(body: TravelBody, rKm: number): boolean {
+	const axisKm = body.elements.a * AU_KM;
+	return axisKm > 0 && Math.abs(axisKm - rKm) <= AXIS_TOLERANCE * axisKm;
+}
+
+function halfEllipseDays(aKm: number, mu: number): number {
+	return (Math.PI * Math.sqrt(aKm ** 3 / mu)) / SEC_PER_DAY;
 }
 
 function radius(r: readonly [number, number, number]): number {
@@ -103,7 +175,9 @@ function wrapPi(angle: number): number {
  *
  * These are the centres of the launch windows, not their edges — a porkchop
  * around one of these dates is what gives the usable spread. Returns fewer than
- * `count` entries if the search horizon runs out first.
+ * `count` entries if the search horizon runs out first, and none at all for a
+ * target that is being chased: a comet on its way out is somewhere else every
+ * year, so an alignment it will never repeat is not a date to wait for.
  */
 export function nextTransferWindows(
 	a: TravelBody,
@@ -112,6 +186,8 @@ export function nextTransferWindows(
 	count = 3,
 	mu = GM_SUN_KM3_S2
 ): number[] {
+	const scale = transferScale(a, b, fromJd, mu);
+	if (!scale || scale.chase) return [];
 	const phase = requiredPhaseAngle(a, b, mu);
 	const synodic = synodicPeriodDays(a, b);
 	if (phase === null || synodic === null || !isFinite(synodic)) return [];

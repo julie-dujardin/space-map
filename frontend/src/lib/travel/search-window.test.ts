@@ -3,6 +3,7 @@ import {
 	EARTH,
 	ESCAPING_PROBE,
 	JUPITER,
+	LONG_PERIOD_COMET,
 	MARS,
 	PARABOLIC_COMET
 } from '$lib/math/travel/test-fixtures';
@@ -109,6 +110,15 @@ describe('searchWindow', () => {
 			const crossing = crossingTimeDays(EARTH, PARABOLIC_COMET, NOW)!;
 			expect(options.tofMinDays).toBeLessThan(crossing * 0.1);
 			expect(options.tofMaxDays).toBeGreaterThan(options.tofMinDays);
+		});
+
+		// The rest of it is fitted as an ellipse with a semi-major axis in the
+		// thousands of AU. That is a closed orbit on paper, so the grid took its
+		// Hohmann time and offered nothing under seven thousand years.
+		it('grids the crossing, not the 123,000-year orbit, for a long-period comet', () => {
+			const options = searchWindow({ ...chase, target: LONG_PERIOD_COMET })!;
+			expect(options.tofMaxDays / 365.25).toBeLessThan(20);
+			expect(options.tofMinDays).toBeGreaterThan(0);
 		});
 	});
 

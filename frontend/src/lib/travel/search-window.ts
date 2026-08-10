@@ -4,17 +4,12 @@
  * A porkchop only shows what you point it at, so the bounds matter as much as
  * the solver: too narrow and the cheap window falls outside the grid, too wide
  * and every cell is coarse. Both are derived from the pair's own orbits — one
- * synodic period always contains a window, and the Hohmann time sets the scale
- * of a sensible cruise.
+ * synodic period always contains a window, and the time it takes to cross
+ * between them sets the scale of a sensible cruise.
  */
 
 import type { PorkchopOptions, TravelBody } from '$lib/math/travel';
-import {
-	crossingTimeDays,
-	hohmannTransferDays,
-	synodicPeriodDays,
-	systemArcBounds
-} from '$lib/math/travel';
+import { synodicPeriodDays, systemArcBounds, transferScale } from '$lib/math/travel';
 import type { TimeMode } from './trip';
 
 /** Beyond this the grid is too coarse to resolve a window; slow pairs get capped. */
@@ -34,7 +29,7 @@ const MIN_SEARCH_DAYS = 60;
 const DEPART_AT_SLACK_DAYS = 45;
 const DEPART_AT_SLACK_FRACTION = 0.5;
 
-/** Cruise bounds as multiples of the Hohmann time — fast arcs to slow ones. */
+/** Cruise bounds as multiples of the crossing time — fast arcs to slow ones. */
 const TOF_MIN_FACTOR = 0.35;
 const TOF_MAX_FACTOR = 2.2;
 /**
@@ -103,20 +98,19 @@ export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 	const { origin, target, nowJd, timeMode, pickedJd, centralMu } = request;
 	if (request.systemPrimary) return systemWindow(request);
 
-	// An escaping probe has no semi-major axis to scale a cruise against, so the
-	// crossing between the two current distances stands in. The arcs themselves
+	// The Hohmann time where both orbits are round enough for it, and the crossing
+	// between the two current distances where they are not. The arcs themselves
 	// are still real Lambert solves — only the bounds are approximated.
-	const transfer = hohmannTransferDays(origin, target, centralMu);
-	const chase = transfer === null;
-	const hohmann = transfer ?? crossingTimeDays(origin, target, nowJd, centralMu);
-	if (hohmann === null || !(hohmann > 0)) return null;
+	const scale = transferScale(origin, target, nowJd, centralMu);
+	if (scale === null) return null;
+	const { days: crossing, chase } = scale;
 
-	// A body that isn't going round has no synodic period either, whatever its
+	// A target that is leaving has no synodic period worth the name, whatever its
 	// mean motion says — nothing about the pair repeats.
 	const synodic = chase ? null : synodicPeriodDays(origin, target);
 	const span = clamp(
 		synodic !== null && Number.isFinite(synodic) ? synodic : MAX_SEARCH_DAYS,
-		Math.min(MIN_SEARCH_DAYS, hohmann),
+		Math.min(MIN_SEARCH_DAYS, crossing),
 		MAX_SEARCH_DAYS
 	);
 	const tofMinFactor = chase ? CHASE_TOF_MIN_FACTOR : TOF_MIN_FACTOR;
@@ -132,7 +126,7 @@ export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 	} else if (timeMode === 'arrive' && pickedJd != null) {
 		// Everything that could still land by the deadline: the latest useful
 		// departure is the deadline minus the fastest cruise worth flying.
-		departToJd = pickedJd - hohmann * tofMinFactor;
+		departToJd = pickedJd - crossing * tofMinFactor;
 	}
 	// A deadline already past leaves nothing to search; fall back to the open span.
 	if (departToJd <= departFromJd) departToJd = departFromJd + span;
@@ -140,8 +134,8 @@ export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 	return {
 		departFromJd,
 		departToJd,
-		tofMinDays: hohmann * tofMinFactor,
-		tofMaxDays: hohmann * tofMaxFactor,
+		tofMinDays: crossing * tofMinFactor,
+		tofMaxDays: crossing * tofMaxFactor,
 		departSteps: DEPART_STEPS,
 		tofSteps: TOF_STEPS,
 		centralMu

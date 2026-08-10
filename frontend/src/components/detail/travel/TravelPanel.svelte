@@ -33,7 +33,7 @@
 		crewCapacity,
 		nextTransferWindows,
 		systemArcBounds,
-		hohmannTransferDays,
+		transferScale,
 		type AeroAssist,
 		type Route,
 		type TrajectoryPath,
@@ -447,7 +447,7 @@
 					frame.systemPrimary === 'departure' ? targetTravel : originTravel,
 					nowJd
 				)?.slowestDays ?? null)
-			: hohmannTransferDays(originTravel, targetTravel, frame.centralMu);
+			: (transferScale(originTravel, targetTravel, nowJd, frame.centralMu)?.days ?? null);
 		return nowJd + (slowest ?? 0);
 	}
 

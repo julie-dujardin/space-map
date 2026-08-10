@@ -118,12 +118,14 @@ export {
 	systemArcBounds
 } from './system-transfer';
 
+export type { TransferScale } from './windows';
 export {
 	crossingTimeDays,
 	hohmannTransferDays,
 	nextTransferWindows,
 	requiredPhaseAngle,
-	synodicPeriodDays
+	synodicPeriodDays,
+	transferScale
 } from './windows';
 
 export type {

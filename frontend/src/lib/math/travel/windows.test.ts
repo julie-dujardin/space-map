@@ -4,9 +4,18 @@ import {
 	hohmannTransferDays,
 	nextTransferWindows,
 	requiredPhaseAngle,
-	synodicPeriodDays
+	synodicPeriodDays,
+	transferScale
 } from './windows';
-import { EARTH, ESCAPING_PROBE, J2000, JUPITER, MARS, VENUS } from './test-fixtures';
+import {
+	EARTH,
+	ESCAPING_PROBE,
+	J2000,
+	JUPITER,
+	LONG_PERIOD_COMET,
+	MARS,
+	VENUS
+} from './test-fixtures';
 
 // The published synodic periods, transfer times and phase angles are asserted
 // in benchmarks.test.ts; these cover the behaviour around them.
@@ -69,6 +78,10 @@ describe('nextTransferWindows', () => {
 		expect(windows[0] - J2000).toBeLessThan(synodicPeriodDays(EARTH, MARS)!);
 	});
 
+	it('has no window to offer for a target that is leaving', () => {
+		expect(nextTransferWindows(EARTH, LONG_PERIOD_COMET, 2461263, 1)).toEqual([]);
+	});
+
 	it('puts the phase angle back where it was asked for', () => {
 		const windows = nextTransferWindows(EARTH, MARS, J2000, 2);
 		const phase = requiredPhaseAngle(EARTH, MARS)!;
@@ -98,5 +111,35 @@ describe('crossingTimeDays', () => {
 		const hohmann = hohmannTransferDays(EARTH, MARS)!;
 		const crossing = crossingTimeDays(EARTH, MARS, NOW)!;
 		expect(Math.abs(crossing - hohmann) / hohmann).toBeLessThan(0.15);
+	});
+});
+
+describe('transferScale', () => {
+	const NOW = 2461263;
+
+	it('keeps the Hohmann time for a pair of round orbits', () => {
+		const scale = transferScale(EARTH, MARS, NOW)!;
+		expect(scale.days).toBeCloseTo(hohmannTransferDays(EARTH, MARS)!, 6);
+		expect(scale.chase).toBe(false);
+	});
+
+	// The comet's semi-major axis is 2474 AU while the comet itself is 10 AU out,
+	// so scaling the cruise off it offered nothing under seven thousand years.
+	it('reads an eccentric target off its distance, not its semi-major axis', () => {
+		const scale = transferScale(EARTH, LONG_PERIOD_COMET, NOW)!;
+		expect(hohmannTransferDays(EARTH, LONG_PERIOD_COMET)! / 365.25).toBeGreaterThan(20000);
+		expect(scale.days / 365.25).toBeLessThan(10);
+		expect(scale.days).toBeCloseTo(crossingTimeDays(EARTH, LONG_PERIOD_COMET, NOW)!, 6);
+	});
+
+	it('calls a receding comet a chase, and a planet not', () => {
+		expect(transferScale(EARTH, LONG_PERIOD_COMET, NOW)!.chase).toBe(true);
+		expect(transferScale(EARTH, JUPITER, NOW)!.chase).toBe(false);
+		expect(transferScale(EARTH, ESCAPING_PROBE, NOW)!.chase).toBe(true);
+	});
+
+	it('has nothing for an orbit that yields no position', () => {
+		const broken = { ...MARS, elements: { ...MARS.elements, a: NaN } };
+		expect(transferScale(EARTH, broken, NOW)).toBeNull();
 	});
 });

@@ -152,6 +152,29 @@ export const PARABOLIC_COMET: TravelBody = {
 };
 
 /**
+ * A long-period comet fitted as an ellipse — C/2021 P2 (PANSTARRS), as the
+ * export ships it. Its semi-major axis is 2474 AU and its period 123,000 years,
+ * but three years past perihelion it is only 10 AU out: a body whose own orbit
+ * says nothing about where it is or how long it takes to reach.
+ */
+export const LONG_PERIOD_COMET: TravelBody = {
+	id: 'spkid-1003799',
+	mu: 1e-9,
+	muEstimated: true,
+	radiusKm: 1,
+	elements: {
+		a: 2474.0834,
+		e: 0.9979511,
+		i: 150.0635,
+		om: 32.0793,
+		w: 76.6873,
+		ma: 7.4638e-5,
+		n: 8.009079e-6,
+		epoch: 2459976.5
+	}
+};
+
+/**
  * A second parabolic comet, the Comet of 1472, so a trip can be solved between
  * two of them. Long past perihelion and a thousand AU out, which is what makes
  * the pair interesting: the arc joining two receding comets is a hyperbola, not

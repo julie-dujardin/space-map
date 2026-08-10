@@ -48,7 +48,7 @@ import {
 import { arrivalLegs, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState, type StateVector } from './state';
 import { norm, sub, type Vec3 } from './vec3';
-import { hohmannTransferDays, nextTransferWindows, synodicPeriodDays } from './windows';
+import { nextTransferWindows, synodicPeriodDays, transferScale } from './windows';
 
 /**
  * Build the two-arc route leaving at `departJd`, passing `via` after `tof1Days`
@@ -513,11 +513,11 @@ function bestThrough(
 	routeOptions: RouteOptions
 ): Route | null {
 	const mu = routeOptions.centralMu ?? GM_SUN_KM3_S2;
-	const hop1 = hohmannTransferDays(departure, via, mu);
-	const hop2 = hohmannTransferDays(via, target, mu);
-	// Both legs are scaled against a Hohmann time. A body with no semi-major axis
-	// to take one from — an escaping probe — cannot be one of the three.
-	if (hop1 === null || hop2 === null || !(hop1 > 0) || !(hop2 > 0)) return null;
+	// Both legs are scaled against the crossing they have to make, which for an
+	// eccentric target is nothing like the Hohmann time its semi-major axis says.
+	const hop1 = transferScale(departure, via, nowJd, mu);
+	const hop2 = transferScale(via, target, nowJd, mu);
+	if (hop1 === null || hop2 === null) return null;
 
 	// Ask for only as many windows as the horizon can hold. The window search
 	// scans a span proportional to the count — sampling both bodies' longitudes
@@ -538,10 +538,10 @@ function bestThrough(
 			...routeOptions,
 			departFromJd: Math.max(nowJd, seed - SEED_SLACK_DAYS),
 			departToJd: seed + SEED_SLACK_DAYS,
-			tof1MinDays: hop1 * TOF1_FACTORS[0],
-			tof1MaxDays: hop1 * TOF1_FACTORS[1],
-			tof2MinDays: hop2 * TOF2_FACTORS[0],
-			tof2MaxDays: hop2 * TOF2_FACTORS[1],
+			tof1MinDays: hop1.days * TOF1_FACTORS[0],
+			tof1MaxDays: hop1.days * TOF1_FACTORS[1],
+			tof2MinDays: hop2.days * TOF2_FACTORS[0],
+			tof2MaxDays: hop2.days * TOF2_FACTORS[1],
 			departSteps: SEED_DEPART_STEPS
 		});
 		if (route && (!best || route.totalDvKms < best.totalDvKms)) best = route;

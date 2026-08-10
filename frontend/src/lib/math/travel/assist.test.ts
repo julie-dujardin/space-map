@@ -122,13 +122,20 @@ describe('findAssistRoute', () => {
 		expect(findAssistRoute(EARTH, SATURN, [EARTH, SATURN], { nowJd: NOW })).toBeNull();
 	});
 
-	it('has no window to seed on for a body that never comes round', () => {
+	it('has no window to seed on when the swing-by body never comes round', () => {
 		expect(
 			findAssistRoute(EARTH, SATURN, [ESCAPING_PROBE], { nowJd: NOW, departureMode: 'orbit' })
 		).toBeNull();
-		expect(
-			findAssistRoute(EARTH, ESCAPING_PROBE, [JUPITER], { nowJd: NOW, departureMode: 'orbit' })
-		).toBeNull();
+	});
+
+	// The seeds come from the departure and the swing-by body, both of which come
+	// round; where the target goes afterwards only sets the second leg's scale.
+	it('still swings by for a target that never comes round', () => {
+		const assist = findAssistRoute(EARTH, ESCAPING_PROBE, [JUPITER], {
+			nowJd: NOW,
+			departureMode: 'orbit'
+		});
+		expect(assist?.flybys?.[0]?.bodyId).toBe(JUPITER.id);
 	});
 
 	it('never departs before now, however far ahead it looks', () => {
