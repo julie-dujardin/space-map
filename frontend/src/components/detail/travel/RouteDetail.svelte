@@ -39,9 +39,18 @@
 		lightPercent
 	} from '$lib/travel/format';
 	import type { TravelPanelState } from '$lib/travel/panel.svelte';
+	import { adjustForVehicle, type Hazard } from '$lib/travel/hazards';
+	import {
+		hazardCampaign,
+		hazardCraftNote,
+		hazardDetail,
+		hazardName,
+		hazardValue
+	} from '$lib/travel/hazard-labels';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import DeltaVLadder from './DeltaVLadder.svelte';
 	import { legLabel } from './leg-labels';
+	import { HAZARD_ICONS, HAZARD_TEXT } from './hazard-style';
 
 	interface Props {
 		route: Route;
@@ -51,8 +60,30 @@
 		/** What to call the body a swing-by passes — it is neither end of the trip,
 		 *  so nothing else here knows its name. */
 		nameOf?: (id: string) => string;
+		/** What the trip's own origin is called. Passed rather than looked up
+		 *  through `nameOf`, which only knows the bodies *between* the two ends —
+		 *  asking it for one of them hands back the raw id. */
+		originName?: string | null;
+		/** What this trajectory puts the craft through. */
+		hazards?: readonly Hazard[];
 	}
-	let { route, origin, target, state, nameOf = (id: string) => id }: Props = $props();
+	let {
+		route,
+		origin,
+		target,
+		state,
+		nameOf = (id: string) => id,
+		originName = null,
+		hazards = []
+	}: Props = $props();
+
+	// The craft only ever qualifies a hazard here, never in the list: a row there
+	// is a statement about where the trip goes, and should not change because a
+	// craft was picked — least of all in the window before a linked one is fetched.
+	let shownHazards = $derived(adjustForVehicle(hazards, state.vehicle, route));
+	// The id is the last resort rather than the first: it is at least unambiguous,
+	// where a blank would leave a sentence with a hole in it.
+	let originLabel = $derived(originName ?? nameOf(route.departureId));
 
 	/** Under this the pass is free in every sense that matters: metres per second
 	 *  against a budget in kilometres, and the search only stopped there because
@@ -317,6 +348,52 @@
 					{/if}
 				</dd>
 			</dl>
+		</section>
+	{/if}
+
+	{#if shownHazards.length > 0}
+		<!-- What the trajectory puts the craft through, which is the half of the
+		     choice the Δv ladder above cannot show: two routes for the same budget
+		     can be very different trips. -->
+		<section class="flex flex-col gap-2">
+			<h4 class="text-sm font-medium">{m.travel_hazards()}</h4>
+			<div class="border-border/60 border-t"></div>
+			<ul class="flex flex-col gap-3">
+				{#each shownHazards as hazard (hazard.kind)}
+					{@const Icon = HAZARD_ICONS[hazard.kind]}
+					{@const campaign = hazardCampaign(hazard)}
+					{@const craftNote = hazardCraftNote(hazard)}
+					<li class="flex gap-3">
+						<Icon
+							class="mt-0.5 size-4 shrink-0 {HAZARD_TEXT[hazard.severity]}"
+							aria-hidden="true"
+						/>
+						<div class="min-w-0 flex-1">
+							<div class="flex items-baseline justify-between gap-2">
+								<span class="truncate text-sm">{hazardName(hazard.kind)}</span>
+								<span class="shrink-0 text-sm tabular-nums">{hazardValue(hazard)}</span>
+							</div>
+							<!-- When it happens, said the way the rest of the panel says a date:
+							     a stretch gets both ends, a moment gets the one it is. How bad it
+							     is comes off the icon's colour rather than a word for it. -->
+							<div class="text-muted-foreground text-xs tabular-nums">
+								{#if hazard.endJd > hazard.startJd}
+									{formatJulianDate(hazard.startJd)} → {formatJulianDate(hazard.endJd)}
+								{:else}
+									{formatJulianDate(hazard.startJd)}
+								{/if}
+							</div>
+							<p class="text-muted-foreground mt-1 text-xs">
+								{hazardDetail(hazard, originLabel)}
+								{#if campaign}{campaign}{/if}
+							</p>
+							{#if craftNote}
+								<p class="text-muted-foreground mt-1 text-xs">{craftNote}</p>
+							{/if}
+						</div>
+					</li>
+				{/each}
+			</ul>
 		</section>
 	{/if}
 

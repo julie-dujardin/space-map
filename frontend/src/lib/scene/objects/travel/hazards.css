@@ -1,0 +1,23 @@
+/* The chip beside a hazard's marker on the trajectory — created by
+ * path-overlay.ts. Same type and shadow as a body's name (.scene-label__name),
+ * so it reads as one more thing labelled in the scene rather than as a panel
+ * floating over it; the colour is the hazard's own and is set inline. */
+
+.scene-hazard-label {
+	position: relative;
+	/* CSS2DRenderer positions absolutely and transforms; without an explicit
+	 * inset that breaks inside an RTL container. */
+	left: 0;
+	/* Clear of the marker it names, which is a triangle about 20px across. */
+	margin-inline-start: 16px;
+	white-space: nowrap;
+	font-size: 12px;
+	font-weight: bold;
+	/* Nothing here is pressable: the arc and its markers take no pointer events
+	 * either, and a chip that swallowed a drag would fight the camera. */
+	pointer-events: none;
+	user-select: none;
+	text-shadow:
+		0 0 4px #000,
+		0 0 4px #000;
+}

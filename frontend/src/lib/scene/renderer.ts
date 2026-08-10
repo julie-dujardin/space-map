@@ -24,6 +24,7 @@ import {
 } from 'three';
 import type { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import type { LabelledPath } from '$lib/travel/labelled-path';
+import type { Hazard } from '$lib/travel/hazards';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import type { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -526,8 +527,12 @@ export class SceneRenderer {
 	 * from, which is looked up per frame rather than resolved here — the centre
 	 * may still be streaming in when the planner first answers.
 	 */
-	setTravelPath(plan: LabelledPath | null, options: readonly LabelledPath[] = []): void {
-		this.travelPath.set(plan, options);
+	setTravelPath(
+		plan: LabelledPath | null,
+		options: readonly LabelledPath[] = [],
+		hazards: readonly Hazard[] = []
+	): void {
+		this.travelPath.set(plan, options, hazards);
 		this.refreshTravelPath();
 	}
 

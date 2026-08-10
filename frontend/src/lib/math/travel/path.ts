@@ -140,6 +140,25 @@ export interface TrajectoryPath {
 	meeting: { bodyId: string; jd: number; r: Vec3 };
 }
 
+/**
+ * The half-open range of `path.arcs[index]` that is the crossing proper.
+ *
+ * An end with a passage down to its orbit hands the last of its arc over: past
+ * `trimTo` the conic runs on to the body's *centre*, which is not where the
+ * craft goes and is only there because a two-body solve has to end somewhere.
+ * Anything reading the arc — drawing along it, or measuring off it — wants this
+ * window rather than the whole of it, or it ends up asking what the trip is like
+ * at nought kilometres from the Sun.
+ */
+export function crossingWindow(path: TrajectoryPath, index: number): { from: number; to: number } {
+	const count = path.arcs[index].points.length;
+	const at = (end: 'departure' | 'arrival') => path.endOrbits.find((orbit) => orbit.at === end);
+	return {
+		from: index === 0 ? (at('departure')?.trimFrom ?? 0) : 0,
+		to: index === path.arcs.length - 1 ? (at('arrival')?.trimTo ?? count) : count
+	};
+}
+
 /** Somewhere on the drawn trajectory to look at, and how far back to look from. */
 export interface PathViewpoint {
 	/** Position in the transfer frame, km. */

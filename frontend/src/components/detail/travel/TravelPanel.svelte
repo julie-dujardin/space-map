@@ -50,6 +50,7 @@
 		ORIGIN_MODES,
 		serializeTripSuffix,
 		type EndpointMode,
+		type RouteOption,
 		type TimeMode,
 		type TripState
 	} from '$lib/travel/trip';
@@ -63,6 +64,7 @@
 	} from '$lib/travel/orbits';
 	import { activeFamily, familyOf, routeTabs, type RouteFamily } from '$lib/travel/route-families';
 	import { buildTimeline, type TimelineEntry } from '$lib/travel/timeline';
+	import { routeHazards, type Hazard } from '$lib/travel/hazards';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import { formatAcceleration } from '$lib/travel/format';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -130,6 +132,10 @@
 		/** The same trajectory as the legs it is made of, for the timeline along the
 		 *  bottom of the map. */
 		onTimelineChange: (entries: TimelineEntry[] | null) => void;
+		/** What the trajectory being read puts the craft through, for the map to band
+		 *  its arc with. Trajectory only — the craft's own reading of them stays in
+		 *  the detail. */
+		onHazardsChange: (hazards: readonly Hazard[]) => void;
 		/** What a body passed on the way is called. The two ends name themselves;
 		 *  this is for the ones in between — the body a swing-by goes past. */
 		resolveBodyName: (bodyId: string) => string;
@@ -158,11 +164,16 @@
 		onOptionsChange,
 		onHoverChange,
 		onTimelineChange,
+		onHazardsChange,
 		resolveBodyName
 	}: Props = $props();
 
 	// Seeded once; from here on the two are kept in step by the effects below.
 	const panel = new TravelPanelState(untrack(() => trip));
+
+	/** One empty list, shared. A fresh `[]` per read would make every consumer of
+	 *  "no hazards" look like a change and re-run on the clock. */
+	const NO_HAZARDS: readonly Hazard[] = [];
 
 	// The panel holds the live trip and the URL mirrors it; back/forward is the
 	// one direction that flows the other way. Both sides compare the serialized
@@ -650,6 +661,55 @@
 		});
 	});
 
+	// What every trajectory on offer puts the craft through — the list needs all of
+	// them, not just the one being read. Keyed like the two above, and separately:
+	// nothing here depends on the end names, so a late-landing label must not cost
+	// six scans.
+	let hazardsKey = $derived.by(() => {
+		if (!centerId) return null;
+		const keys = panel.offered.map((choice) => routeKey(choice.route, centerId, frame));
+		// The frame decides whether a distance from the centre is a distance from
+		// the Sun, which is what half of these are read off.
+		return keys.length > 0 ? [frame.orbit, ...keys].join(';') : null;
+	});
+
+	let hazardsByProfile = $state.raw<ReadonlyMap<RouteOption, Hazard[]>>(new Map());
+
+	$effect(() => {
+		const key = hazardsKey;
+		untrack(() => {
+			if (key === null || !centerId || !originTravel || !targetTravel) {
+				hazardsByProfile = new Map();
+				return;
+			}
+			const context = {
+				centerId,
+				centralMu: frame.centralMu,
+				systemPrimary: frame.systemPrimary,
+				// A swing-by route is two arcs meeting at a body neither end is, so the
+				// scan needs the same candidates the search had to rebuild the second.
+				vias: assistBodies
+			};
+			const next = new Map<RouteOption, Hazard[]>();
+			for (const choice of panel.offered) {
+				next.set(choice.profile, routeHazards(originTravel, targetTravel, choice.route, context));
+			}
+			hazardsByProfile = next;
+		});
+	});
+
+	// The chosen trajectory's own. Null profile is the list still being read, which
+	// is a map with nothing to mark on it.
+	let selectedHazards = $derived.by(() => {
+		const profile = panel.selectedProfile;
+		if (profile === null) return NO_HAZARDS;
+		return hazardsByProfile.get(profile) ?? NO_HAZARDS;
+	});
+
+	$effect(() => {
+		onHazardsChange(selectedHazards);
+	});
+
 	// The trip as its legs rather than as geometry. Keyed the same way and for the
 	// same reason, but separately: a trajectory whose arc cannot be rebuilt still
 	// has dates, and a timeline is the one part of it that can always be shown.
@@ -707,6 +767,7 @@
 	$effect(() => () => onPathChange(null));
 	$effect(() => () => onOptionsChange([]));
 	$effect(() => () => onTimelineChange(null));
+	$effect(() => () => onHazardsChange(NO_HAZARDS));
 
 	// One end is enough: exchanging it with an empty one turns "going to Mars"
 	// into "leaving Mars", which is how half a trip gets turned round.
@@ -831,6 +892,7 @@
 		{family}
 		nameOf={resolveBodyName}
 		onFocusField={panel.grid ? () => chart?.focusField() : null}
+		hazardsFor={(profile) => hazardsByProfile.get(profile) ?? NO_HAZARDS}
 	/>
 	{#if family === 'constant-thrust'}{@render cruiseTime()}{/if}
 {/snippet}
@@ -865,6 +927,8 @@
 				target={targetTravel}
 				state={panel}
 				nameOf={resolveBodyName}
+				{originName}
+				hazards={selectedHazards}
 			/>
 		{/if}
 	{:else}

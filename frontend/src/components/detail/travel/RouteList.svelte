@@ -13,6 +13,11 @@
 
   A swing-by names the body it goes past, since that and its dates are the only
   things separating it from the routes above.
+
+  A third line carries what the trajectory puts the craft through, which is the
+  other half of what separates two routes that cost the same. It says nothing
+  about the chosen craft — that belongs in the detail, where there is room to
+  say why.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
@@ -24,8 +29,12 @@
 	import { formatAcceleration, formatDvBrief } from '$lib/travel/format';
 	import { routeDurationDays, type Route } from '$lib/math/travel';
 	import { routesIn, type RouteFamily } from '$lib/travel/route-families';
+	import type { RouteOption } from '$lib/travel/trip';
+	import type { Hazard } from '$lib/travel/hazards';
+	import { hazardChip } from '$lib/travel/hazard-labels';
 	import { departureNote } from './vehicle-labels';
 	import { routeLabel } from './route-labels';
+	import { HAZARD_ICONS, HAZARD_TEXT } from './hazard-style';
 
 	interface Props {
 		state: TravelPanelState;
@@ -36,10 +45,23 @@
 		/** Send the reader to the field they pick a custom window on. Absent leaves
 		 *  the fourth row out — there is nowhere for it to point. */
 		onFocusField?: (() => void) | null;
+		/** What each trajectory puts the craft through. Empty until the scan lands,
+		 *  which is a row without a third line rather than a row that is wrong. */
+		hazardsFor?: (profile: RouteOption) => readonly Hazard[];
 	}
-	let { state, family, nameOf = (id: string) => id, onFocusField = null }: Props = $props();
+	let {
+		state,
+		family,
+		nameOf = (id: string) => id,
+		onFocusField = null,
+		hazardsFor = () => []
+	}: Props = $props();
 
 	let shown = $derived(routesIn(state.offered, family));
+
+	/** As many chips as fit a narrow row; the rest are counted. Sorted worst-first
+	 *  already, so what is dropped is always the mildest. */
+	const CHIP_LIMIT = 3;
 
 	/** How hard a route's drive pushes, on the two kinds flown under power the
 	 *  whole way; null on the ones that coast. */
@@ -114,6 +136,7 @@
 	{#each shown as choice (choice.profile)}
 		{@const blocked = blockedText(choice)}
 		{@const viaName = via(choice)}
+		{@const hazards = hazardsFor(choice.profile)}
 		<li>
 			<button
 				type="button"
@@ -139,6 +162,27 @@
 					<span class="text-muted-foreground block truncate text-xs">
 						{formatJulianDate(choice.route.departJd)} → {formatJulianDate(choice.route.arriveJd)}
 					</span>
+					{#if hazards.length > 0}
+						<!-- One line, never wrapped: the row is a choice, and a third line
+						     that can grow to four would push the next trajectory off the
+						     screen. What does not fit is counted instead. -->
+						<span
+							class="mt-0.5 flex items-center gap-2 overflow-hidden text-[11px] whitespace-nowrap"
+						>
+							{#each hazards.slice(0, CHIP_LIMIT) as hazard (hazard.kind)}
+								{@const Icon = HAZARD_ICONS[hazard.kind]}
+								<span class="flex items-center gap-1 {HAZARD_TEXT[hazard.severity]}">
+									<Icon class="size-3 shrink-0" aria-hidden="true" />
+									{hazardChip(hazard)}
+								</span>
+							{/each}
+							{#if hazards.length > CHIP_LIMIT}
+								<span class="text-muted-foreground"
+									>{m.travel_hazard_more({ count: hazards.length - CHIP_LIMIT })}</span
+								>
+							{/if}
+						</span>
+					{/if}
 				</span>
 				<span class="shrink-0 text-end">
 					{#if blocked}

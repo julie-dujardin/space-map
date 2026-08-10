@@ -21,6 +21,7 @@
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
 	import type { TimelineEntry } from '$lib/travel/timeline';
+	import type { Hazard } from '$lib/travel/hazards';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
 	import { DEFAULT_TRIP } from '$lib/travel/trip';
@@ -59,6 +60,8 @@
 		onHoverChange: (id: string | null) => void;
 		/** The same trajectory as its legs, for the timeline under the map. */
 		onTimelineChange: (entries: TimelineEntry[] | null) => void;
+		/** What that trajectory puts the craft through, for the map to band it with. */
+		onHazardsChange: (hazards: readonly Hazard[]) => void;
 	}
 	let {
 		fromId,
@@ -73,7 +76,8 @@
 		onPathChange,
 		onOptionsChange,
 		onHoverChange,
-		onTimelineChange
+		onTimelineChange,
+		onHazardsChange
 	}: Props = $props();
 
 	// The planner reasons from a "now" captured when the trip opens, not from the
@@ -465,6 +469,7 @@
 				{onOptionsChange}
 				{onHoverChange}
 				{onTimelineChange}
+				{onHazardsChange}
 				resolveBodyName={(id) => names[id] ?? ctx?.getBody(id)?.data.name ?? id}
 				onTripChange={(next) => appState?.setTrip(next)}
 				onOriginChange={(pick: TravelEndpointPick) =>

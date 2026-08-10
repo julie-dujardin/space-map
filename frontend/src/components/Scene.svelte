@@ -12,6 +12,7 @@
 	} from '$lib/types/objects';
 	import { kmToScene } from '$lib/math/units';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
+	import type { Hazard } from '$lib/travel/hazards';
 	import { page } from '$app/state';
 	import { sphericalToCartesian } from '$lib/math/spherical';
 	import { parseUrl, urlTypeFromId } from '$lib/state/url';
@@ -161,9 +162,10 @@
 	/** Draw the trip the planner is showing, and whatever it is being chosen from. */
 	export function setTravelPath(
 		plan: LabelledPath | null,
-		options: readonly LabelledPath[] = []
+		options: readonly LabelledPath[] = [],
+		hazards: readonly Hazard[] = []
 	): void {
-		renderer?.setTravelPath(plan, options);
+		renderer?.setTravelPath(plan, options, hazards);
 	}
 
 	/** Pick one of the offered trajectories out of the rest, or none. */

@@ -41,6 +41,21 @@ function planetElements(
 	};
 }
 
+export const MERCURY: TravelBody = {
+	id: 'naif-199',
+	mu: 22031.86,
+	muEstimated: false,
+	radiusKm: 2439.7,
+	elements: planetElements(
+		0.38709927,
+		0.20563593,
+		7.00497902,
+		252.2503235,
+		77.45779628,
+		48.33076593
+	)
+};
+
 export const EARTH: TravelBody = {
 	id: 'naif-399',
 	mu: 398600.4418,

@@ -11,6 +11,12 @@
  * The markers are sprites rather than geometry: a burn is a point on the trip,
  * not an object with a size, so it should stay the same size on screen whether
  * the camera is at Earth or at Neptune.
+ *
+ * Hazards ride on the same machinery. A hazard carries dates and never
+ * positions, so the stretch it covers is cut out of the drawn arcs by date and
+ * its marker is placed by asking where the craft is on that date — the panel and
+ * the map therefore cannot disagree about where one starts, because only one of
+ * them decides.
  */
 
 import {
@@ -34,7 +40,7 @@ import '$lib/scene/label/label.css';
 // Deep imports, not the kernel's index: the renderer holds this overlay from the
 // first frame, and the index re-exports Lambert, the porkchop and the vehicle
 // catalogue — a chunk only `/nav` should ever pull in.
-import type { TrajectoryPath } from '$lib/math/travel/path';
+import { crossingWindow, type PathArc, type TrajectoryPath } from '$lib/math/travel/path';
 import type { Vec3 as TravelVec3 } from '$lib/math/travel/vec3';
 import type { PathEndLabel, LabelledPath } from '$lib/travel/labelled-path';
 import { craftPositionAt } from '$lib/math/travel/path-sample';
@@ -44,6 +50,12 @@ import type { Vec3 } from '$lib/scene/animation/math';
 // A coast is the plan itself; a drive held all the way is a different kind of
 // flying and reads warm to say so. Shared with the timeline under the map.
 import { ARC_COLORS } from '$lib/travel/arc-colors';
+import { HAZARD_COLORS } from '$lib/travel/hazard-colors';
+// Type only: `hazards.ts` reaches the trajectory kernel, and this module is held
+// by the renderer from the first frame.
+import type { Hazard, HazardSeverity } from '$lib/travel/hazards';
+import { hazardChip } from '$lib/travel/hazard-labels';
+import './hazards.css';
 
 /** Wide enough to read against a trail crossing it, not so wide it hides one. */
 const LINE_WIDTH = 3;
@@ -98,6 +110,29 @@ const CRAFT_COLOR = '#ffffff';
 /** Drawn after trails so the plan sits on top of the orbits it crosses. */
 const PATH_RENDER_ORDER = 4;
 
+/**
+ * A hazard is a wide band laid *under* the plan rather than a repaint of it: the
+ * arc's own colours already say how each stretch is flown, and losing that to
+ * say something else about the same line would be a poor trade. Wide enough to
+ * show either side of the line it sits behind.
+ */
+const HAZARD_LINE_WIDTH = 9;
+/** Full strength. These are the one thing on the map asking to be noticed. */
+const HAZARD_BRIGHTNESS = 1;
+/** Under the plan, over the trails. Worse hazards draw over milder ones, so a
+ *  stretch that is several at once takes the colour of the worst of them. */
+const HAZARD_RENDER_ORDER: Record<HazardSeverity, number> = {
+	notice: PATH_RENDER_ORDER - 3,
+	caution: PATH_RENDER_ORDER - 2,
+	severe: PATH_RENDER_ORDER - 1
+};
+/** Order to build in, so the worst is added last and wins a depth-free tie
+ *  against a band of the same tier belonging to another hazard. */
+const SEVERITY_ORDER: HazardSeverity[] = ['notice', 'caution', 'severe'];
+
+/** The warning marker's screen size, between a burn dot and the meeting ring. */
+const HAZARD_MARKER_SIZE = 0.03;
+
 /** A filled dot, for the points on the trip where something is spent. */
 function dotTexture(color: string): CanvasTexture {
 	const size = 64;
@@ -127,6 +162,54 @@ function ringTexture(color: string): CanvasTexture {
 	ctx.strokeStyle = color;
 	ctx.stroke();
 	return new CanvasTexture(canvas);
+}
+
+/**
+ * A hazard's own marker: a filled triangle, the one shape on this overlay that
+ * is neither a dot nor a ring.
+ */
+function warningTexture(color: string): CanvasTexture {
+	const size = 64;
+	const canvas = document.createElement('canvas');
+	canvas.width = canvas.height = size;
+	const ctx = canvas.getContext('2d')!;
+	const inset = 8;
+	ctx.beginPath();
+	ctx.moveTo(size / 2, inset);
+	ctx.lineTo(size - inset, size - inset);
+	ctx.lineTo(inset, size - inset);
+	ctx.closePath();
+	ctx.fillStyle = color;
+	ctx.fill();
+	// The same dark rim the dots carry, for the same reason: a bright limb behind.
+	ctx.lineWidth = 6;
+	ctx.lineJoin = 'round';
+	ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+	ctx.stroke();
+	return new CanvasTexture(canvas);
+}
+
+/**
+ * The samples of `arc` that fall between two dates, inside the window the arc is
+ * drawn over.
+ *
+ * The arc's own vertices rather than a re-derived sub-arc: the band has to sit
+ * exactly on the line it is calling out, and re-solving a stretch at a different
+ * sampling would leave it visibly beside it on a tight curve. Fewer than two and
+ * there is no band to draw — a hazard shorter than the gap between samples is a
+ * marker and a chip, which is all a moment ever gets anyway.
+ */
+function spanPoints(
+	arc: PathArc,
+	startJd: number,
+	endJd: number,
+	window: { from: number; to: number }
+): TravelVec3[] {
+	const points: TravelVec3[] = [];
+	for (let i = window.from; i < window.to; i++) {
+		if (arc.jds[i] >= startJd && arc.jds[i] <= endJd) points.push(arc.points[i]);
+	}
+	return points;
 }
 
 function makeSprite(texture: CanvasTexture, scale: number): Sprite {
@@ -336,7 +419,11 @@ export class TravelPathOverlay {
 	 * The vertices land centre-relative; nothing is placed until `reposition`
 	 * says where the centre body currently is.
 	 */
-	set(plan: LabelledPath | null, options: readonly LabelledPath[] = []): void {
+	set(
+		plan: LabelledPath | null,
+		options: readonly LabelledPath[] = [],
+		hazards: readonly Hazard[] = []
+	): void {
 		this.clear();
 		this.path = plan?.path ?? null;
 		this.center = plan?.path.centerId ?? options[0]?.path.centerId ?? null;
@@ -353,11 +440,126 @@ export class TravelPathOverlay {
 			);
 			this.addEndLabels(option, chosen);
 		}
-		if (plan) this.addPlan(plan);
+		if (plan) {
+			this.addPlan(plan);
+			// After the plan, so its markers are already in the group and this only
+			// adds its own. Hazards belong to the trajectory being read: an
+			// alternative is a shape rather than an itinerary, and half a dozen sets
+			// of warnings would bury the one being decided about.
+			this.addHazards(plan.path, hazards);
+		}
 		// A rebuild throws away the styling, and the pointer has not moved.
 		this.applyHover();
 
 		if (this.layer !== null) this.setLayer(this.layer);
+	}
+
+	/**
+	 * Lay each hazard's stretch under the plan, and mark where it starts.
+	 *
+	 * A hazard names dates, never places — so the stretch is cut out of the drawn
+	 * arcs by date and the marker is placed by asking where the craft is on that
+	 * date.
+	 *
+	 * Every one of them is named. An earlier cut labelled only the worse two
+	 * levels to keep the line from being crowded, which stopped making sense once
+	 * the two hazards that are *most* about a particular place — a conjunction is
+	 * a fortnight, a perihelion a few weeks — were also the mildest. They start at
+	 * different points on the arc by construction, so crowding is a coincidence
+	 * rather than the rule.
+	 */
+	private addHazards(path: TrajectoryPath, hazards: readonly Hazard[]): void {
+		const ordered = [...hazards].sort(
+			(a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)
+		);
+
+		for (const hazard of ordered) {
+			const color = HAZARD_COLORS[hazard.severity];
+			// Painted tier by tier, so the arc reddens into the worst of it. A hazard
+			// with no bands is one that holds for the whole crossing rather than for
+			// a part of it, and says so by giving the map nothing to draw.
+			for (const band of hazard.bands) {
+				path.arcs.forEach((arc, index) => {
+					this.addBand(
+						spanPoints(arc, band.startJd, band.endJd, crossingWindow(path, index)),
+						HAZARD_COLORS[band.severity],
+						HAZARD_RENDER_ORDER[band.severity]
+					);
+				});
+			}
+
+			// An arrival hazard can start where the arc ends, and one whose geometry
+			// was never rebuilt has nowhere to go at all: no point, no marker.
+			const at = craftPositionAt(path, hazard.startJd);
+			if (!at) continue;
+			const local = eclipticToScene(at) as Vec3;
+			const sprite = makeSprite(warningTexture(color), HAZARD_MARKER_SIZE);
+			this.group.add(sprite);
+			this.markers.push({ sprite, local });
+
+			const element = document.createElement('div');
+			element.className = 'scene-hazard-label';
+			element.style.color = color;
+			element.textContent = hazardChip(hazard);
+			const object = new CSS2DObject(element);
+			// Anchored on the point with the text running off to its side, the way an
+			// end label is.
+			object.center.set(0, 0.5);
+			this.group.add(object);
+			// `faint` keeps it out of the end labels' cull, and a null owner out of
+			// the hover styling: a chip is neither a candidate for screen space nor
+			// part of the link with the launch-window field.
+			this.labels.push({
+				object,
+				local,
+				owner: null,
+				width: 0,
+				height: 0,
+				dimmed: false,
+				faint: true
+			});
+		}
+	}
+
+	/** One coloured band along a stretch of a drawn arc, under the line it names. */
+	private addBand(points: readonly TravelVec3[], color: string, renderOrder: number): void {
+		const count = points.length;
+		if (count < 2) return;
+		const local = new Float64Array(count * 3);
+		for (let i = 0; i < count; i++) {
+			const [x, y, z] = eclipticToScene(points[i]);
+			local[i * 3] = x;
+			local[i * 3 + 1] = y;
+			local[i * 3 + 2] = z;
+		}
+		const positions = new Float32Array(count * 3);
+		const alphas = new Float32Array(count).fill(1);
+		const line = buildFatLineFromThin(
+			count,
+			positions,
+			alphas,
+			alphas,
+			count,
+			color,
+			HAZARD_LINE_WIDTH,
+			HAZARD_BRIGHTNESS
+		);
+		line.frustumCulled = false;
+		line.renderOrder = renderOrder;
+		this.group.add(line);
+		this.arcs.push({
+			line,
+			// No owner: a band belongs to the plan, which is not something the hover
+			// link picks out.
+			owner: null,
+			color,
+			brightness: HAZARD_BRIGHTNESS,
+			width: HAZARD_LINE_WIDTH,
+			local,
+			positions,
+			alphas,
+			count
+		});
 	}
 
 	/** The chosen trajectory: its arcs at full strength, its ends named, the points
@@ -498,14 +700,10 @@ export class TravelPathOverlay {
 		owner: string | null = null,
 		patched = false
 	): void {
-		const end = (at: 'departure' | 'arrival') =>
-			patched ? path.endOrbits.find((orbit) => orbit.at === at) : undefined;
-		const first = end('departure');
-		const last = end('arrival');
 		path.arcs.forEach((arc, index) => {
-			const from = index === 0 ? (first?.trimFrom ?? 0) : 0;
-			const to =
-				index === path.arcs.length - 1 ? (last?.trimTo ?? arc.points.length) : arc.points.length;
+			const { from, to } = patched
+				? crossingWindow(path, index)
+				: { from: 0, to: arc.points.length };
 			this.addLine(arc.points.slice(from, to), ARC_COLORS[arc.kind], width, brightness, owner);
 		});
 	}
