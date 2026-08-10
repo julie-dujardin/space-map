@@ -1770,5 +1770,8 @@
 	"travel_profile_constant_thrust": "Konstanter Schub",
 	"travel_top_speed": "Höchstgeschwindigkeit",
 	"travel_unit_g": "{value} g",
-	"travel_burn_at": "{duration} bei {value}"
+	"travel_burn_at": "{duration} bei {value}",
+	"travel_cruise_time": "Reiseflugdauer",
+	"travel_cruise_flat_out": "Volle Fahrt",
+	"travel_cruise_missed": "So sanft erreicht keine Überfahrt den Termin."
 }

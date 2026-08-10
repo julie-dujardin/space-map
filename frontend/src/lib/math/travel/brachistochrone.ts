@@ -4,36 +4,47 @@
  * A torch ship does not transfer between orbits. It points at where the
  * destination will be, burns until halfway, flips, and burns the rest of the way
  * down — a brachistochrone, whose only parameter is how hard the drive pushes.
- * Nothing about it is a launch window: every departure date flies the same arc,
- * which is exactly what makes these ships feel like ships.
+ * Nothing about it is a launch window: every departure date flies much the same
+ * arc, which is exactly what makes these ships feel like ships.
  *
- * Distance and duration are tangled, since the destination moves while you cross
- * to it, so the arrival is solved for rather than assumed.
+ * Burning all the way is the fastest crossing, not the only one. Cutting the
+ * drive between the two burns and coasting buys the same distance for less Δv,
+ * and a longer trip — the trade every real mission makes, and the one a torch
+ * ship gets to decline. `coastFraction` is where on that trade the arc sits.
  *
- * Two approximations, both deliberate. Gravity is left out of the crossing
- * itself: at the accelerations this exists for, the Sun's pull over the arc is a
- * rounding error against the drive's own, and the two wells that do matter are
- * priced at the ends by the same manoeuvre model every other route uses. And the
- * arc is rest-to-rest in the frame it is flown in, so the ship arrives still
- * carrying the difference between the two bodies' orbital velocities and pays an
- * ordinary capture for it — invisible to a torch that spent a thousand km/s
- * getting there, and most of the budget for a drive slow enough to be
- * recognisable.
+ * **Gravity is in the crossing**, not left at its ends. The arc is integrated
+ * under the primary's pull from the moment the ship is out of one well to the
+ * moment it is falling into the other; see `held-drive`, which owns the flying
+ * and the steering. What remains here is the pricing: the two wells at the ends,
+ * the legs, and the coast the caller asked for.
+ *
+ * The straight line this used to assume survives as the *seed* the real solve
+ * starts from. It is a good guess for a drive that dwarfs the Sun and a poor one
+ * otherwise, which is why the solve can refuse: a ship that cannot outpush its
+ * primary has no brachistochrone to fly, and gets no arc rather than a plausible
+ * number. Both wells are still cleared at zero excess speed, so the ship enters
+ * the crossing co-moving with the body it left — which is what makes starting
+ * the integration there the same statement as pricing the well at v∞ = 0.
  */
 
 import type { TravelBody } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
+import {
+	solveHeldDrive,
+	type Ephemeris,
+	type HeldDriveArc,
+	type HeldDriveProblem
+} from './held-drive';
 import { arrivalCost, departureCost } from './maneuvers';
 import { arrivalLegs, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState, type StateVector } from './state';
 import { relativeState } from './system-transfer';
-import { add, norm, normalize, scale, sub, type Vec3 } from './vec3';
+import { add, norm, normalize, scale, sub } from './vec3';
+
+export type { HeldDriveArc, HeldDriveProblem };
 
 /** The primary of a same-system trip, which sits at the centre of its own frame. */
 const AT_REST: StateVector = { r: [0, 0, 0], v: [0, 0, 0], mu: 0 };
-
-/** Where each end of the trip is, in whatever frame the crossing is flown in. */
-type Ephemeris = (jd: number) => StateVector | null;
 
 function frameEnds(
 	departure: TravelBody,
@@ -54,13 +65,30 @@ function frameEnds(
 }
 
 /**
- * How far the burn reaches in `seconds`, as a multiple of `a·t²`.
+ * How long a coast the slider's far end asks for, as a multiple of the crossing
+ * flown flat out.
  *
- * A quarter for the ordinary flip — half the time spent stopping covers half as
- * much ground — and a half when there is nothing to stop for.
+ * There is no longer a modelling limit to respect — the coast is a conic walked
+ * in closed form, so it is exact however long it runs — and the real limit is
+ * geometric: past some length the ship can no longer be pushed back onto the
+ * target and the solve stops closing. This is a span wide enough to reach that
+ * for most pairs, and the arc simply stops being offered beyond it.
  */
-const REACH_WITH_FLIP = 1 / 4;
-const REACH_STRAIGHT_THROUGH = 1 / 2;
+const COAST_SPAN = 6;
+
+/**
+ * How much of the crossing the primary may bend a coast out of, on the trips
+ * that are still flown as a straight line.
+ *
+ * Only a trip inside one system is: its frame is centred on the body being left
+ * or arrived at, which sits at the origin, and an integration started there
+ * would begin at the centre of the planet. That well is already priced at the
+ * end it belongs to — the crossing does not start until the ship is out of it —
+ * so what is left is a gap the drive crosses far above the primary, where the
+ * old assumption holds. The coast still has to be capped, because that part of
+ * the model has not changed.
+ */
+const COAST_DRIFT_BUDGET = 0.05;
 
 /**
  * Steps the bracket search takes, and how far past the still-target estimate it
@@ -75,15 +103,18 @@ const BRACKET_SPAN = 32;
 const BISECTION_STEPS = 40;
 
 /**
- * The first duration at which the burn reaches its destination, in seconds.
+ * The shortest burn that reaches the destination *ignoring gravity*, in seconds.
  *
  * `shortfall` is negative while the arc falls short and positive once it
- * overshoots, so the crossing is its first root. Scanned rather than iterated to
- * a fixed point: the destination's own motion feeds back into the answer hard
+ * overshoots, so the burn is its first root. Scanned rather than iterated to a
+ * fixed point: the destination's own motion feeds back into the answer hard
  * enough that the obvious iteration diverges for any drive slow enough to let it
  * move — which is exactly the interesting case.
+ *
+ * This is the seed, not the answer. What it is good for is being close, and it
+ * is closest where gravity matters least.
  */
-function crossingSeconds(
+function seedBurnSeconds(
 	shortfall: (seconds: number) => number | null,
 	guess: number
 ): number | null {
@@ -114,26 +145,40 @@ function crossingSeconds(
 	return hi;
 }
 
+export interface ConstantThrustOptions extends RouteOptions {
+	/**
+	 * Where between the two crossings the arc sits: 0 flies it flat out, 1 coasts
+	 * for as long as the geometry still closes. Anything in between is that share
+	 * of the longest coast on offer.
+	 */
+	coastFraction?: number;
+}
+
+/** Everything the caller needs to re-fly a solved arc, for drawing it. */
+export interface HeldDriveGeometry {
+	problem: HeldDriveProblem;
+	arc: HeldDriveArc;
+}
+
 /**
- * Build the constant-thrust arc leaving at `departJd` under `accelMs2`.
+ * Solve the arc itself, with no pricing attached — the crossing between the two
+ * wells, under gravity.
  *
- * Returns null when either end cannot be placed, or when the destination
- * outruns the drive — a metre per second squared does not catch an interstellar
- * comet.
+ * Exported for the tests, which have to be able to ask whether the trajectory
+ * actually lands on the target rather than take the route's word for it.
  */
-export function buildConstantThrustRoute(
+export function solveConstantThrustArc(
 	departure: TravelBody,
 	target: TravelBody,
 	departJd: number,
 	accelMs2: number,
-	options: RouteOptions = {}
-): Route | null {
+	options: ConstantThrustOptions = {}
+): HeldDriveGeometry | null {
 	const {
-		departureMode = 'surface',
 		arrivalMode = 'capture',
-		aero = 'none',
 		centralMu = GM_SUN_KM3_S2,
-		systemPrimary
+		systemPrimary,
+		coastFraction = 0
 	} = options;
 
 	const accelKmS2 = accelMs2 / 1000;
@@ -150,31 +195,191 @@ export function buildConstantThrustRoute(
 	// Nothing to slow down for at a flyby, so the drive never flips: the ship
 	// crosses on one burn and keeps everything it built up.
 	const flips = arrivalMode !== 'flyby';
-	const reach = flips ? REACH_WITH_FLIP : REACH_STRAIGHT_THROUGH;
+	const burns = flips ? 2 : 1;
 
-	const shortfall = (seconds: number): number | null => {
-		const end = to(departJd + seconds / SEC_PER_DAY);
-		if (!end) return null;
-		return reach * accelKmS2 * seconds * seconds - norm(sub(end.r, start.r));
+	// μ of whatever the crossing goes round. Under a system primary that body is
+	// the frame's own centre and sits at the origin, so the pull it exerts is the
+	// one the arc is flown against.
+	const mu =
+		systemPrimary === 'departure'
+			? departure.mu
+			: systemPrimary === 'target'
+				? target.mu
+				: centralMu;
+
+	/**
+	 * The straight-line burn length for a given coast, which is what the real
+	 * solve starts from. Under a burn of `b` either side of a coast of `c` the
+	 * ship covers `a·b·(burns·b/2 + c)` and takes `burns·b + c` doing it.
+	 */
+	const seedFor = (coastSeconds: number): number | null => {
+		const shortfall = (burn: number): number | null => {
+			const end = to(departJd + (burns * burn + coastSeconds) / SEC_PER_DAY);
+			if (!end) return null;
+			return accelKmS2 * burn * ((burns * burn) / 2 + coastSeconds) - norm(sub(end.r, start.r));
+		};
+		const guess =
+			(Math.sqrt(coastSeconds * coastSeconds + (2 * burns * separation) / accelKmS2) -
+				coastSeconds) /
+			burns;
+		return seedBurnSeconds(shortfall, guess);
 	};
 
-	const seconds = crossingSeconds(shortfall, Math.sqrt(separation / (reach * accelKmS2)));
-	if (seconds === null || !(seconds > 0)) return null;
+	if (systemPrimary) {
+		return straightLineArc({
+			start,
+			to,
+			departJd,
+			accelKmS2,
+			flips,
+			burns,
+			mu,
+			separation,
+			coastFraction,
+			seedFor
+		});
+	}
 
-	const tofDays = seconds / SEC_PER_DAY;
-	const arriveJd = departJd + tofDays;
-	const end = to(arriveJd);
+	/** The whole problem for one coast length, solved. */
+	const attempt = (coastSeconds: number): HeldDriveGeometry | null => {
+		const seed = seedFor(coastSeconds);
+		if (seed === null || !(seed > 0)) return null;
+		const problem: HeldDriveProblem = {
+			start,
+			target: to,
+			departJd,
+			accelKmS2,
+			coastSeconds,
+			flips,
+			mu,
+			seedBurnSeconds: seed
+		};
+		const arc = solveHeldDrive(problem);
+		return arc ? { problem, arc } : null;
+	};
+
+	const flatOutSeed = seedFor(0);
+	if (flatOutSeed === null || !(flatOutSeed > 0)) return null;
+
+	const wanted = Math.min(Math.max(coastFraction, 0), 1);
+	// The flat-out crossing sets the scale the coast is measured in, so the slider
+	// means the same thing whatever the pair and the drive. Taken off the seed
+	// rather than off a solved arc: it is only a reference duration, and solving
+	// for it would double the cost of every answer to fix a digit nobody reads.
+	const asked = wanted * COAST_SPAN * burns * flatOutSeed;
+	if (!(asked > 0)) return attempt(0);
+
+	// A coast the geometry cannot absorb is shortened rather than refused: the
+	// slider's far end saturates at the longest crossing that still closes rather
+	// than taking the arc away.
+	for (let coastSeconds = asked; coastSeconds > 1; coastSeconds /= 2) {
+		const solved = attempt(coastSeconds);
+		if (solved) return solved;
+	}
+	return attempt(0);
+}
+
+/**
+ * The old straight-line crossing, kept for trips inside one system.
+ *
+ * Nothing here is integrated: the ship runs down the chord, and the coast is
+ * capped where the primary would have bent it out of that line by
+ * `COAST_DRIFT_BUDGET` of the distance crossed. The arc it returns wears the
+ * same shape as a flown one so the pricing below does not have to know which it
+ * got, but its `thrustDir` is simply the chord and nothing should re-fly it.
+ */
+function straightLineArc(args: {
+	start: StateVector;
+	to: Ephemeris;
+	departJd: number;
+	accelKmS2: number;
+	flips: boolean;
+	burns: number;
+	mu: number;
+	separation: number;
+	coastFraction: number;
+	seedFor: (coastSeconds: number) => number | null;
+}): HeldDriveGeometry | null {
+	const { start, to, departJd, accelKmS2, flips, burns, mu, coastFraction, seedFor } = args;
+
+	const flatOutBurn = seedFor(0);
+	if (flatOutBurn === null || !(flatOutBurn > 0)) return null;
+	const flatOutEnd = to(departJd + (burns * flatOutBurn) / SEC_PER_DAY);
+	if (!flatOutEnd) return null;
+
+	// How deep in the well the crossing runs, as the two ends' own depths. The
+	// midpoint of the line would answer the same for most trips and answer zero
+	// for a line that passes over the primary.
+	const depthKm = (norm(start.r) + norm(flatOutEnd.r)) / 2;
+	const pullKmS2 = depthKm > 0 ? mu / (depthKm * depthKm) : Infinity;
+	const crossedKm = norm(sub(flatOutEnd.r, start.r));
+	const limit = pullKmS2 > 0 ? Math.sqrt((2 * COAST_DRIFT_BUDGET * crossedKm) / pullKmS2) : 0;
+	const coastSeconds = isFinite(limit) ? Math.min(Math.max(coastFraction, 0), 1) * limit : 0;
+
+	const burnSeconds = coastSeconds > 0 ? seedFor(coastSeconds) : flatOutBurn;
+	if (burnSeconds === null || !(burnSeconds > 0)) return null;
+
+	const totalSeconds = burns * burnSeconds + coastSeconds;
+	const end = to(departJd + totalSeconds / SEC_PER_DAY);
 	if (!end) return null;
 
-	// Everything the drive spends between the two wells, and the speed it is
-	// doing when it stops spending it.
-	const cruiseDvKms = accelKmS2 * seconds;
-	const peakSpeedKms = flips ? cruiseDvKms / 2 : cruiseDvKms;
+	const chord = normalize(sub(end.r, start.r));
+	const peakSpeedKms = accelKmS2 * burnSeconds;
+	// Rest-to-rest, so a flipping arc arrives carrying only what it set out with;
+	// a flyby arrives carrying that plus everything the one burn built.
+	const arrivalVelocity = flips ? start.v : add(start.v, scale(chord, peakSpeedKms));
 
-	const arrivalVelocity: Vec3 = flips
-		? start.v
-		: add(start.v, scale(normalize(sub(end.r, start.r)), cruiseDvKms));
-	const vInfArrKms = norm(sub(arrivalVelocity, end.v));
+	return {
+		problem: {
+			start,
+			target: to,
+			departJd,
+			accelKmS2,
+			coastSeconds,
+			flips,
+			mu,
+			seedBurnSeconds: burnSeconds
+		},
+		arc: {
+			burnSeconds,
+			coastSeconds,
+			totalSeconds,
+			flips,
+			thrustDir: chord,
+			arrivalVelocity,
+			peakSpeedKms
+		}
+	};
+}
+
+/**
+ * Build the constant-thrust arc leaving at `departJd` under `accelMs2`.
+ *
+ * Returns null when either end cannot be placed, or when the drive cannot fly
+ * the crossing at all — a metre per second squared does not catch an
+ * interstellar comet, and does not beat the Sun either.
+ */
+export function buildConstantThrustRoute(
+	departure: TravelBody,
+	target: TravelBody,
+	departJd: number,
+	accelMs2: number,
+	options: ConstantThrustOptions = {}
+): Route | null {
+	const { departureMode = 'surface', arrivalMode = 'capture', aero = 'none' } = options;
+
+	const solved = solveConstantThrustArc(departure, target, departJd, accelMs2, options);
+	if (!solved) return null;
+	const { problem, arc } = solved;
+
+	const tofDays = arc.totalSeconds / SEC_PER_DAY;
+	const arriveJd = departJd + tofDays;
+	const end = problem.target(arriveJd);
+	if (!end) return null;
+
+	// What the ship is doing relative to the destination when it gets there, which
+	// the integration answers rather than the model asserting it.
+	const vInfArrKms = norm(sub(arc.arrivalVelocity, end.v));
 	if (!isFinite(vInfArrKms)) return null;
 
 	// Both wells are cleared at zero excess speed: the crossing does not start
@@ -182,11 +387,18 @@ export function buildConstantThrustRoute(
 	const dep = departureCost(departure, 0, departureMode);
 	const arr = arrivalCost(target, vInfArrKms, arrivalMode, aero);
 
+	const burnDays = arc.burnSeconds / SEC_PER_DAY;
+	// What one burn costs: the acceleration times the time it is held, whatever
+	// gravity did to the speed that bought.
+	const burnDvKms = problem.accelKmS2 * arc.burnSeconds;
 	const legs: RouteLeg[] = [];
 	if (dep.ascentKms > 0) legs.push({ kind: 'ascent', dvKms: dep.ascentKms, days: 0 });
 	legs.push({ kind: 'injection', dvKms: dep.injectionKms, days: 0 });
-	legs.push({ kind: 'boost', dvKms: peakSpeedKms, days: tofDays / (flips ? 2 : 1) });
-	if (flips) legs.push({ kind: 'brake', dvKms: peakSpeedKms, days: tofDays / 2 });
+	legs.push({ kind: 'boost', dvKms: burnDvKms, days: burnDays });
+	if (arc.coastSeconds > 0) {
+		legs.push({ kind: 'cruise', dvKms: 0, days: arc.coastSeconds / SEC_PER_DAY });
+	}
+	if (arc.flips) legs.push({ kind: 'brake', dvKms: burnDvKms, days: burnDays });
 	legs.push(...arrivalLegs(arr, arrivalMode));
 
 	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
@@ -209,6 +421,11 @@ export function buildConstantThrustRoute(
 		arrivalMode,
 		aero,
 		entrySpeedKms: arr.entrySpeedKms,
-		constantThrust: accelMs2
+		constantThrust: accelMs2,
+		peakSpeedKms: arc.peakSpeedKms,
+		// Recorded as it was applied, not as it was asked for, so that two routes
+		// built from requests the clamp made identical are identical.
+		coastFraction: Math.min(Math.max(options.coastFraction ?? 0, 0), 1),
+		thrustDir: arc.thrustDir
 	};
 }

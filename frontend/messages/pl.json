@@ -1758,5 +1758,8 @@
 	"travel_profile_constant_thrust": "Stały ciąg",
 	"travel_top_speed": "Prędkość maksymalna",
 	"travel_unit_g": "{value} g",
-	"travel_burn_at": "{duration} przy {value}"
+	"travel_burn_at": "{duration} przy {value}",
+	"travel_cruise_time": "Czas przelotu",
+	"travel_cruise_flat_out": "Pełna moc",
+	"travel_cruise_missed": "Żaden tak łagodny przelot nie zdąży na termin."
 }

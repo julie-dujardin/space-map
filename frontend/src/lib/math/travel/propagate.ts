@@ -176,17 +176,23 @@ function universalAnomaly(
 }
 
 /**
- * Where a body at `r`/`v` is `dtSec` later on the same two-body arc, km.
+ * Where a body at `r`/`v` is `dtSec` later on the same two-body arc, and how
+ * fast it is going when it gets there. Km and km/s.
  *
  * `dtSec` may be negative, which walks the arc backwards. Returns null when the
  * state is degenerate or the iteration diverges — a caller drawing a path
  * should drop the sample rather than draw a NaN.
  */
-export function propagateState(r: Vec3, v: Vec3, dtSec: number, mu: number): Vec3 | null {
+export function propagateFull(
+	r: Vec3,
+	v: Vec3,
+	dtSec: number,
+	mu: number
+): { r: Vec3; v: Vec3 } | null {
 	if (!(mu > 0)) return null;
 	const r0 = norm(r);
 	if (!(r0 > 0)) return null;
-	if (dtSec === 0) return r;
+	if (dtSec === 0) return { r, v };
 
 	const v2 = dot(v, v);
 	const vr0 = dot(r, v) / r0;
@@ -196,12 +202,27 @@ export function propagateState(r: Vec3, v: Vec3, dtSec: number, mu: number): Vec
 	if (chi === null) return null;
 
 	const z = alpha * chi * chi;
-	// Lagrange coefficients: the new position is a combination of the old
-	// position and velocity, so no frame or element set is ever built.
+	// Lagrange coefficients: the new state is a combination of the old position
+	// and velocity, so no frame or element set is ever built.
 	const f = 1 - (chi * chi * stumpffC(z)) / r0;
 	const g = dtSec - (chi * chi * chi * stumpffS(z)) / Math.sqrt(mu);
 	if (!isFinite(f) || !isFinite(g)) return null;
 
-	const out = add(scale(r, f), scale(v, g));
-	return isFinite(out[0] + out[1] + out[2]) ? out : null;
+	const rNext = add(scale(r, f), scale(v, g));
+	const rNextNorm = norm(rNext);
+	if (!isFinite(rNextNorm) || !(rNextNorm > 0)) return null;
+
+	// The rates of the same two coefficients, which need the new radius — so the
+	// velocity cannot be had without the position first.
+	const fDot = (Math.sqrt(mu) / (r0 * rNextNorm)) * (z * stumpffS(z) - 1) * chi;
+	const gDot = 1 - (chi * chi * stumpffC(z)) / rNextNorm;
+	if (!isFinite(fDot) || !isFinite(gDot)) return null;
+
+	const vNext = add(scale(r, fDot), scale(v, gDot));
+	return isFinite(vNext[0] + vNext[1] + vNext[2]) ? { r: rNext, v: vNext } : null;
+}
+
+/** Where a body at `r`/`v` is `dtSec` later on the same two-body arc, km. */
+export function propagateState(r: Vec3, v: Vec3, dtSec: number, mu: number): Vec3 | null {
+	return propagateFull(r, v, dtSec, mu)?.r ?? null;
 }

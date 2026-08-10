@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { propagateState } from './propagate';
+import { propagateFull, propagateState } from './propagate';
 import { elementsToState } from './state';
 import { solveLambert } from './lambert';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
-import { norm, sub, type Vec3 } from './vec3';
+import { dot, norm, sub, type Vec3 } from './vec3';
 import { EARTH, J2000, MARS } from './test-fixtures';
 
 const EARTH_YEAR_SEC = 365.256363 * SEC_PER_DAY;
@@ -87,5 +87,36 @@ describe('propagateState', () => {
 	it('returns the position it was given for no elapsed time', () => {
 		const state = elementsToState(EARTH.elements, J2000, GM_SUN_KM3_S2)!;
 		expect(propagateState(state.r, state.v, 0, GM_SUN_KM3_S2)).toEqual(state.r);
+	});
+
+	describe('propagateFull', () => {
+		const state = elementsToState(EARTH.elements, J2000, GM_SUN_KM3_S2)!;
+
+		// The velocity is what a coasting craft hands to whatever burns next, so it
+		// has to be the arc's own and not a difference quotient off two positions.
+		it('conserves energy over a long walk', () => {
+			const energy = (r: Vec3, v: Vec3) => dot(v, v) / 2 - GM_SUN_KM3_S2 / norm(r);
+			const after = propagateFull(state.r, state.v, 250 * SEC_PER_DAY, GM_SUN_KM3_S2)!;
+			expect(after).not.toBeNull();
+			const before = energy(state.r, state.v);
+			expect(Math.abs((energy(after.r, after.v) - before) / before)).toBeLessThan(1e-10);
+		});
+
+		it('walks back to where it started', () => {
+			const out = propagateFull(state.r, state.v, 120 * SEC_PER_DAY, GM_SUN_KM3_S2)!;
+			const back = propagateFull(out.r, out.v, -120 * SEC_PER_DAY, GM_SUN_KM3_S2)!;
+			expect(norm(sub(back.r, state.r)) / norm(state.r)).toBeLessThan(1e-10);
+			expect(norm(sub(back.v, state.v)) / norm(state.v)).toBeLessThan(1e-10);
+		});
+
+		it('agrees with the ephemeris it was seeded from', () => {
+			const days = 90;
+			const walked = propagateFull(state.r, state.v, days * SEC_PER_DAY, GM_SUN_KM3_S2)!;
+			const direct = elementsToState(EARTH.elements, J2000 + days, GM_SUN_KM3_S2)!;
+			// Mean elements are not a Kepler propagation of themselves, so this is a
+			// sanity bound rather than an identity.
+			expect(norm(sub(walked.r, direct.r)) / norm(direct.r)).toBeLessThan(1e-3);
+			expect(norm(sub(walked.v, direct.v)) / norm(direct.v)).toBeLessThan(1e-3);
+		});
 	});
 });

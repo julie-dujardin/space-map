@@ -62,6 +62,9 @@
 	import { departureNote, vehicleName } from './vehicle-labels';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import { Slider } from '$lib/components/ui/slider/index.js';
+	import { formatDurationNarrow } from '$lib/format/duration';
+	import { formatPercent } from '$lib/format/quantities';
 	import Segmented from './Segmented.svelte';
 	import VehicleMeta from './VehicleMeta.svelte';
 	import DateField from './DateField.svelte';
@@ -621,6 +624,22 @@
 	// trajectory are both up.
 	let chosen = $derived(panel.selected);
 
+	// What the arc has instead of a launch window: how long the drive is off in
+	// the middle of it. Read beside the trajectory it belongs to, and again over
+	// the list when a coast has pushed the arc past the deadline — that is the one
+	// term that can take it off the list, so it has to stay reachable to be undone.
+	let torchSelected = $derived(chosen?.route.constantThrust != null);
+	let coastDays = $derived(
+		torchSelected ? (chosen?.route.legs.find((leg) => leg.kind === 'cruise')?.days ?? 0) : 0
+	);
+	// Against the crossing rather than the whole trip: the two burns and the coast
+	// tile it exactly, so the share is what the slider divides. A trip whose
+	// arrival is months of aerobraking would read as almost no coast at all.
+	let coastShare = $derived.by(() => {
+		const crossing = chosen?.route.tofDays ?? 0;
+		return crossing > 0 ? coastDays / crossing : 0;
+	});
+
 	function swap() {
 		// Modes ride along with their end. Only the destination can be a flyby, so
 		// a flyby arrival lands on the nearest departure that means something.
@@ -632,6 +651,45 @@
 		onSwap();
 	}
 </script>
+
+<!--
+  What the constant-thrust arc has instead of a launch window, and the same kind
+  of choice: the one thing left to pick once the drive has fixed everything else.
+  Rendered in two places, because a coast can be what took every route off the
+  list and it has to outlive the list to be undone.
+-->
+{#snippet cruiseTime()}
+	<section class="flex flex-col gap-2">
+		<div class="flex items-baseline justify-between gap-2">
+			<h4 class="text-sm font-medium">{m.travel_cruise_time()}</h4>
+			<span class="shrink-0 text-xs tabular-nums">
+				{#if !torchSelected}
+					<span class="text-muted-foreground">—</span>
+				{:else if coastDays > 0}
+					<!-- The share is what the slider sets and what compares across trips;
+					     the duration is what it means for this one. -->
+					{formatPercent(coastShare)}
+					<span class="text-muted-foreground ms-1">{formatDurationNarrow(coastDays)}</span>
+				{:else}
+					<span class="text-muted-foreground">{m.travel_cruise_flat_out()}</span>
+				{/if}
+			</span>
+		</div>
+		<div class="border-border/60 border-t"></div>
+		<Slider
+			type="single"
+			value={panel.coastFraction}
+			onValueChange={(value: number) => (panel.coastFraction = value)}
+			min={0}
+			max={1}
+			step={0.01}
+			aria-label={m.travel_cruise_time()}
+		/>
+		{#if panel.torchMissedDeadline}
+			<p class="text-muted-foreground text-[11px]">{m.travel_cruise_missed()}</p>
+		{/if}
+	</section>
+{/snippet}
 
 <div class="flex flex-col gap-5">
 	{#if chosen}
@@ -655,6 +713,10 @@
 				{formatJulianDate(chosen.route.departJd)} → {formatJulianDate(chosen.route.arriveJd)}
 			</p>
 		</div>
+
+		<!-- Above the detail rather than inside it: everything below is what this
+		     trajectory costs, and this is the one term still open to change. -->
+		{#if torchSelected}{@render cruiseTime()}{/if}
 
 		{#if originTravel && targetTravel}
 			<RouteDetail
@@ -913,7 +975,11 @@
 			<p class="text-muted-foreground text-xs">{m.travel_solving()}</p>
 		{:else if panel.status === 'empty' && panel.offered.length === 0}
 			<p class="text-muted-foreground text-xs">{m.travel_no_routes()}</p>
+			<!-- A coast long enough to miss the deadline is what took the arc off the
+			     list, so the control that did it has to outlive the list. -->
+			{#if panel.torchMissedDeadline}{@render cruiseTime()}{/if}
 		{:else if panel.offered.length > 0}
+			{#if panel.torchMissedDeadline}{@render cruiseTime()}{/if}
 			<RouteList
 				state={panel}
 				nameOf={resolveBodyName}

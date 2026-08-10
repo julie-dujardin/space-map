@@ -106,6 +106,10 @@ export class TravelPanelState {
 	 * front of an answer to a question they had not finished asking.
 	 */
 	selectedProfile = $state<RouteOption | null>(DEFAULT_TRIP.profile);
+	/** How much of the coast on offer the constant-thrust arc takes, 0 to 1. Kept
+	 *  whatever the trip is, like the aero assist: a reader who chose to cross
+	 *  gently has not changed their mind by changing destination. */
+	coastFraction = $state(DEFAULT_TRIP.coastFraction);
 
 	routes = $state<RouteChoice[]>([]);
 	/** A point picked off the porkchop, priced like any solved route. */
@@ -117,6 +121,10 @@ export class TravelPanelState {
 	 * bisection rather than a grid, so it never goes near the worker.
 	 */
 	torch = $state<Route | null>(null);
+	/** Set when there is an arc and it lands after the deadline. The arc is not
+	 *  offered, but the coast is the one term that can cause this and the reader
+	 *  needs it back to undo. */
+	torchMissedDeadline = $state(false);
 	/**
 	 * The spiral, when the chosen craft is one that cannot burn.
 	 *
@@ -202,7 +210,8 @@ export class TravelPanelState {
 			profile: this.#pendingProfile ?? this.selectedProfile,
 			pick: this.custom
 				? { departJd: this.custom.departJd, tofDays: this.custom.tofDays }
-				: this.#pendingPick
+				: this.#pendingPick,
+			coastFraction: this.coastFraction
 		};
 	}
 
@@ -219,6 +228,7 @@ export class TravelPanelState {
 		this.payloadKg = trip.payloadKg;
 		this.selectedProfile = trip.profile;
 		this.#pendingProfile = trip.profile === 'gravity-assist' ? trip.profile : null;
+		this.coastFraction = trip.coastFraction;
 		this.custom = trip.pick ? this.#priceInGrid(trip.pick.departJd, trip.pick.tofDays) : null;
 		this.#pendingPick = this.custom ? null : trip.pick;
 	}
@@ -493,7 +503,8 @@ export class TravelPanelState {
 					arrivalMode: this.arrivalMode,
 					aero: this.aero,
 					centralMu: frame.centralMu,
-					systemPrimary: frame.systemPrimary
+					systemPrimary: frame.systemPrimary,
+					coastFraction: this.coastFraction
 				})
 			: null;
 		const missesDeadline =
@@ -503,6 +514,7 @@ export class TravelPanelState {
 
 		const offer = missesDeadline ? null : arc;
 		this.torch = offer;
+		this.torchMissedDeadline = missesDeadline;
 		// The arc leads the list when a craft can hold it, but is never selected on
 		// the reader's behalf: a torch ship can fly the coasting routes too, and
 		// choosing between them is the step this would skip.
@@ -676,6 +688,7 @@ export class TravelPanelState {
 		this.grid = null;
 		this.custom = null;
 		this.torch = null;
+		this.torchMissedDeadline = false;
 		this.spiral = null;
 		this.assist = null;
 		this.assistSearching = false;

@@ -56,7 +56,8 @@ describe('trip URL round trip', () => {
 			passengers: 4,
 			payloadKg: 12500,
 			profile: 'custom',
-			pick: { departJd: 2463000.25, tofDays: 214.5 }
+			pick: { departJd: 2463000.25, tofDays: 214.5 },
+			coastFraction: 0.4
 		};
 		expect(reparse(trip)).toEqual(trip);
 	});

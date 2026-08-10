@@ -1759,5 +1759,8 @@
 	"travel_profile_constant_thrust": "Impulso constante",
 	"travel_top_speed": "Velocidade máxima",
 	"travel_unit_g": "{value} g",
-	"travel_burn_at": "{duration} a {value}"
+	"travel_burn_at": "{duration} a {value}",
+	"travel_cruise_time": "Tempo de cruzeiro",
+	"travel_cruise_flat_out": "A plena potência",
+	"travel_cruise_missed": "Nenhuma travessia tão suave chega dentro do prazo."
 }

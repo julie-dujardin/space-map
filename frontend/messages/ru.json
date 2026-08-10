@@ -1999,5 +1999,8 @@
 	"travel_profile_constant_thrust": "Постоянная тяга",
 	"travel_top_speed": "Максимальная скорость",
 	"travel_unit_g": "{value} g",
-	"travel_burn_at": "{duration} при {value}"
+	"travel_burn_at": "{duration} при {value}",
+	"travel_cruise_time": "Пассивный полёт",
+	"travel_cruise_flat_out": "Полная тяга",
+	"travel_cruise_missed": "Ни один настолько плавный перелёт не успевает к сроку."
 }

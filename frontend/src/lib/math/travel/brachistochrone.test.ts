@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildConstantThrustRoute } from './brachistochrone';
-import { SEC_PER_DAY } from './constants';
+import { buildConstantThrustRoute, solveConstantThrustArc } from './brachistochrone';
+import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
+import { heldDriveMissKm } from './held-drive';
 import { elementsToState } from './state';
-import { norm, sub } from './vec3';
+import { dot, norm, normalize, sub } from './vec3';
 import { EARTH, J2000, MARS, MOON } from './test-fixtures';
 
 /** A third of a gravity, the cruise every torch ship in fiction is flown at. */
@@ -44,17 +45,40 @@ describe('buildConstantThrustRoute', () => {
 		expect(burn[0].dvKms).toBeCloseTo(burn[1].dvKms, 9);
 	});
 
-	it('arrives where the destination will be, not where it is', () => {
+	// The whole point of integrating rather than assuming: the arc has to end up
+	// where the destination is, not merely be timed as though it would.
+	it('actually arrives, flown under the primary it crossed', () => {
+		const solved = solveConstantThrustArc(EARTH, MARS, J2000, THIRD_G, {
+			departureMode: 'orbit'
+		})!;
+		const chord = norm(
+			sub(
+				elementsToState(MARS.elements, J2000 + solved.arc.totalSeconds / SEC_PER_DAY)!.r,
+				elementsToState(EARTH.elements, J2000)!.r
+			)
+		);
+		// Kilometres out of hundreds of millions.
+		expect(heldDriveMissKm(solved.problem, solved.arc)!).toBeLessThan(chord * 1e-8);
+		// And Mars moved far enough over the crossing that where it started is the
+		// wrong answer.
 		const route = buildConstantThrustRoute(EARTH, MARS, J2000, THIRD_G, {
 			departureMode: 'orbit'
 		})!;
-		const seconds = route.tofDays * SEC_PER_DAY;
-		const covered = ((THIRD_G / 1000) * seconds * seconds) / 4;
-		const from = elementsToState(EARTH.elements, route.departJd)!;
-		const to = elementsToState(MARS.elements, route.arriveJd)!;
-		expect(covered).toBeCloseTo(norm(sub(to.r, from.r)), 3);
-		// Mars has moved far enough over the crossing to matter.
-		expect(covered).not.toBeCloseTo(separationKm(J2000), 3);
+		expect(chord).not.toBeCloseTo(separationKm(J2000), 3);
+		expect(route.tofDays).toBeCloseTo(solved.arc.totalSeconds / SEC_PER_DAY, 9);
+	});
+
+	// A straight line is what the seed assumes, not what the answer is.
+	it('does not fly the chord it was seeded from', () => {
+		const solved = solveConstantThrustArc(EARTH, MARS, J2000, THIRD_G, {
+			departureMode: 'orbit'
+		})!;
+		const from = elementsToState(EARTH.elements, J2000)!;
+		const to = elementsToState(MARS.elements, J2000 + solved.arc.totalSeconds / SEC_PER_DAY)!;
+		const chord = normalize(sub(to.r, from.r));
+		// The drive leans off the chord to answer for the Earth's own motion and
+		// the Sun's pull, so pointing straight down it would miss.
+		expect(dot(solved.arc.thrustDir, chord)).toBeLessThan(0.9999);
 	});
 
 	it('takes four times as long for a quarter of the acceleration', () => {
@@ -142,5 +166,154 @@ describe('buildConstantThrustRoute', () => {
 	it('refuses an acceleration that is not one', () => {
 		expect(buildConstantThrustRoute(EARTH, MARS, J2000, 0)).toBeNull();
 		expect(buildConstantThrustRoute(EARTH, MARS, J2000, -1)).toBeNull();
+	});
+
+	/** 2026-08-10, with Earth and Mars near conjunction and 1.9 AU apart. */
+	const CONJUNCTION_JD = 2461262.5;
+
+	// The Sun pulls about 0.0059 m/s² at 1 AU, three times what an ion drive
+	// holds, so whether such a ship can cross at all is a question about the
+	// geometry rather than about the drive. Where it cannot, there is no arc — a
+	// plausible-looking number would be worse than none, and those craft want a
+	// spiral, which is a different route.
+	it('refuses a crossing the drive cannot close', () => {
+		expect(
+			buildConstantThrustRoute(EARTH, MARS, CONJUNCTION_JD, ION, { departureMode: 'orbit' })
+		).toBeNull();
+		// The same drive at a geometry it can manage is still offered one, and a
+		// drive that outpushes the Sun is never in doubt.
+		expect(
+			buildConstantThrustRoute(EARTH, MARS, J2000, ION, { departureMode: 'orbit' })
+		).not.toBeNull();
+		expect(
+			buildConstantThrustRoute(EARTH, MARS, CONJUNCTION_JD, THIRD_G, { departureMode: 'orbit' })
+		).not.toBeNull();
+	});
+});
+
+describe('coasting between the burns', () => {
+	const flatOut = () =>
+		buildConstantThrustRoute(EARTH, MARS, J2000, THIRD_G, { departureMode: 'orbit' })!;
+	const coasting = (coastFraction: number) =>
+		buildConstantThrustRoute(EARTH, MARS, J2000, THIRD_G, {
+			departureMode: 'orbit',
+			coastFraction
+		})!;
+
+	it('flies the flat-out arc when nothing is asked of it', () => {
+		expect(coasting(0)).toEqual(flatOut());
+		expect(flatOut().legs.some((leg) => leg.kind === 'cruise')).toBe(false);
+	});
+
+	it('buys a longer crossing with less Δv', () => {
+		const fast = flatOut();
+		const gentle = coasting(1);
+		expect(gentle.tofDays).toBeGreaterThan(fast.tofDays);
+		expect(gentle.totalDvKms).toBeLessThan(fast.totalDvKms);
+	});
+
+	it('cuts the drive for exactly the coast it lays out', () => {
+		const route = coasting(0.6);
+		expect(route.legs.map((leg) => leg.kind)).toEqual([
+			'injection',
+			'boost',
+			'cruise',
+			'brake',
+			'capture'
+		]);
+		const [boost, cruise, brake] = route.legs.slice(1, 4);
+		// Both burns are the same length, and Δv is the acceleration times the time
+		// it is actually held — which is now the trip minus the coast.
+		expect(boost.days).toBeCloseTo(brake.days, 9);
+		expect(cruise.dvKms).toBe(0);
+		expect(boost.dvKms + brake.dvKms).toBeCloseTo(
+			(THIRD_G / 1000) * (boost.days + brake.days) * SEC_PER_DAY,
+			6
+		);
+		expect(route.legs.reduce((sum, leg) => sum + leg.days, 0)).toBeCloseTo(route.tofDays, 9);
+	});
+
+	it('still arrives, however long the drive is off', () => {
+		for (const fraction of [0.25, 0.5, 1]) {
+			const solved = solveConstantThrustArc(EARTH, MARS, J2000, THIRD_G, {
+				departureMode: 'orbit',
+				coastFraction: fraction
+			})!;
+			expect(solved.arc.coastSeconds).toBeGreaterThan(0);
+			expect(heldDriveMissKm(solved.problem, solved.arc)!).toBeLessThan(1e3);
+		}
+	});
+
+	// The straight-line model handed back the same closing speed whatever the
+	// coast — the two bodies' orbital velocities differenced, and nothing else,
+	// because a rest-to-rest chord has no other answer to give. A flown arc has
+	// been falling the whole way, so what it turns up carrying depends on how long
+	// it fell. Which way is geometry, not a rule: at this date the long coast
+	// arrives faster, at a conjunction it arrives slower.
+	it('arrives carrying what it actually picked up, not the orbital difference', () => {
+		const naive = norm(
+			sub(
+				elementsToState(MARS.elements, coasting(1).arriveJd)!.v,
+				elementsToState(EARTH.elements, J2000)!.v
+			)
+		);
+		const speeds = [0, 0.5, 1].map((fraction) => coasting(fraction).vInfArrKms);
+		expect(new Set(speeds.map((s) => s.toFixed(3))).size).toBe(3);
+		expect(Math.abs(speeds[2] - naive)).toBeGreaterThan(1);
+	});
+
+	it('coasts a flyby too, and arrives that much slower for it', () => {
+		const past = buildConstantThrustRoute(EARTH, MARS, J2000, THIRD_G, {
+			departureMode: 'orbit',
+			arrivalMode: 'flyby',
+			coastFraction: 1
+		})!;
+		expect(past.legs.some((leg) => leg.kind === 'brake')).toBe(false);
+		expect(past.legs.some((leg) => leg.kind === 'cruise')).toBe(true);
+		const straight = buildConstantThrustRoute(EARTH, MARS, J2000, THIRD_G, {
+			departureMode: 'orbit',
+			arrivalMode: 'flyby'
+		})!;
+		expect(past.vInfArrKms).toBeLessThan(straight.vInfArrKms);
+	});
+
+	it('asks no more of the coast than the model can describe', () => {
+		// Past the far end of the slider is the far end of the slider, and short of
+		// its near end is the arc a drive held all the way flies.
+		expect(coasting(4)).toEqual(coasting(1));
+		expect(coasting(-1)).toEqual(flatOut());
+	});
+
+	// The frame's centre is the planet, not the Sun, so the cap has to be taken
+	// against the planet's own pull or it comes out four orders of magnitude wrong.
+	it('measures the cap against whatever the crossing goes round', () => {
+		const route = buildConstantThrustRoute(EARTH, MOON, J2000, THIRD_G, {
+			departureMode: 'orbit',
+			systemPrimary: 'departure',
+			coastFraction: 1
+		})!;
+		const cruise = route.legs.find((leg) => leg.kind === 'cruise')!;
+		// Hours, on a crossing that takes hours. Earth's pull at lunar distance is
+		// a thousandth of the Sun's at 1 AU, which would have allowed weeks.
+		expect(cruise.days).toBeGreaterThan(0.2);
+		expect(cruise.days).toBeLessThan(2);
+	});
+
+	// No drift budget to respect any more: the coast is a conic walked in closed
+	// form, so a long one is exact rather than merely tolerable. What used to be
+	// capped near a month now runs past it and still lands on the target.
+	it('coasts past what a straight line could have described', () => {
+		const solved = solveConstantThrustArc(EARTH, MARS, J2000, THIRD_G, {
+			departureMode: 'orbit',
+			coastFraction: 1
+		})!;
+		const end = solved.problem.target(J2000 + solved.arc.totalSeconds / SEC_PER_DAY)!;
+		const depthKm = (norm(solved.problem.start.r) + norm(end.r)) / 2;
+		const crossedKm = norm(sub(end.r, solved.problem.start.r));
+		// What the straight-line model would have allowed: a coast whose free-fall
+		// drift stayed a twentieth of the crossing.
+		const oldCapSeconds = Math.sqrt((2 * 0.05 * crossedKm) / (GM_SUN_KM3_S2 / (depthKm * depthKm)));
+		expect(solved.arc.coastSeconds).toBeGreaterThan(oldCapSeconds);
+		expect(heldDriveMissKm(solved.problem, solved.arc)!).toBeLessThan(1e3);
 	});
 });

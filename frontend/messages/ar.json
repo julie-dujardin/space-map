@@ -1971,5 +1971,8 @@
 	"travel_profile_constant_thrust": "دفع ثابت",
 	"travel_top_speed": "السرعة القصوى",
 	"travel_unit_g": "{value} g",
-	"travel_burn_at": "{duration} عند {value}"
+	"travel_burn_at": "{duration} عند {value}",
+	"travel_cruise_time": "زمن الإبحار",
+	"travel_cruise_flat_out": "بأقصى دفع",
+	"travel_cruise_missed": "لا يصل أي عبور بهذا الهدوء قبل الموعد النهائي."
 }

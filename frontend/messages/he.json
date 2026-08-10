@@ -1881,5 +1881,8 @@
 	"travel_profile_constant_thrust": "דחף קבוע",
 	"travel_top_speed": "מהירות מרבית",
 	"travel_unit_g": "{value} g",
-	"travel_burn_at": "{duration} ב־{value}"
+	"travel_burn_at": "{duration} ב־{value}",
+	"travel_cruise_time": "זמן שיוט",
+	"travel_cruise_flat_out": "בהספק מלא",
+	"travel_cruise_missed": "אף מעבר עדין כל כך אינו מגיע עד המועד."
 }

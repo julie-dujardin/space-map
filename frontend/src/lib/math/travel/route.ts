@@ -108,6 +108,31 @@ export interface Route {
 	 */
 	lowThrust?: { accelMs2: number; veKms: number };
 	/**
+	 * Fastest the craft is going anywhere on the crossing, km/s in the frame it is
+	 * flown in. Constant-thrust routes only.
+	 *
+	 * Carried rather than read off the boost leg, which holds the Δv the drive
+	 * spent and not the speed that bought: once gravity is in the crossing the two
+	 * differ by everything the primary did and by the departure body's own motion.
+	 */
+	peakSpeedKms?: number;
+	/**
+	 * Where between flying flat out and coasting as long as the geometry allows
+	 * this arc was asked to sit, 0 to 1. Constant-thrust routes only.
+	 */
+	coastFraction?: number;
+	/**
+	 * Unit vector the drive pointed along while boosting, in the transfer frame.
+	 * Constant-thrust routes only; braking is exactly against it.
+	 *
+	 * The one thing about the crossing that a shooting solve found rather than
+	 * derived, so it is the one thing drawing the arc cannot work out for itself.
+	 * Three numbers spare the map a second Newton solve — and, more to the point,
+	 * guarantee the line drawn is the arc that was priced rather than whichever
+	 * root a re-solve happens to land on.
+	 */
+	thrustDir?: readonly [number, number, number];
+	/**
 	 * The swing-bys flown on the way, in order. Absent on a direct transfer.
 	 *
 	 * A route with these has more than one cruise leg, so nothing may assume the

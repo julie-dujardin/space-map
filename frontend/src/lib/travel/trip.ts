@@ -87,6 +87,15 @@ export interface TripState {
 	/** Which of the offered trajectories is being read; null before a solve. */
 	profile: RouteOption | null;
 	pick: TripPick | null;
+	/**
+	 * Where the constant-thrust arc sits between crossing flat out (0) and
+	 * coasting for as long as the model stands up (1).
+	 *
+	 * A share rather than a duration: how long a coast is on offer is a fact about
+	 * the pair and the drive, so a link carrying days would mean something else
+	 * for the trip it was opened on.
+	 */
+	coastFraction: number;
 }
 
 export const DEFAULT_TRIP: TripState = {
@@ -101,7 +110,8 @@ export const DEFAULT_TRIP: TripState = {
 	passengers: 0,
 	payloadKg: 0,
 	profile: null,
-	pick: null
+	pick: null,
+	coastFraction: 0
 };
 
 /** Trailing zeros carry no meaning and make a shared trip harder to read. */
@@ -133,6 +143,10 @@ export function serializeTripSuffix(trip: TripState): string {
 	// chosen between rather than read.
 	if (trip.profile !== null) parts.push(`route=${trip.profile}`);
 	if (trip.pick) parts.push(`pick=${trim(trip.pick.departJd, 5)},${trim(trip.pick.tofDays, 4)}`);
+	// Only ever means anything alongside a constant-thrust arc, but it is carried
+	// whenever it has been moved: the craft that flies one is in the link too, and
+	// dropping the coast would hand back the flat-out crossing instead.
+	if (trip.coastFraction > 0) parts.push(`coast=${trim(trip.coastFraction, 3)}`);
 
 	return parts.length ? `&${parts.join('&')}` : '';
 }
@@ -178,6 +192,15 @@ function parsePick(raw: string | null): TripPick | null {
 	return { departJd, tofDays };
 }
 
+/** A share of the coast on offer. Anything outside it is clamped rather than
+ *  dropped: a link asking for more coast than the model has is asking for all
+ *  of it. */
+function parseFraction(raw: string | null): number {
+	const value = Number(raw);
+	if (raw === null || !Number.isFinite(value)) return 0;
+	return Math.min(Math.max(value, 0), 1);
+}
+
 /** Read a trip's terms out of a URL's query params. Unknown values fall back to
  *  their default rather than failing the load — a trip with one stale term in it
  *  is still a trip. */
@@ -193,6 +216,7 @@ export function parseTrip(params: URLSearchParams): TripState {
 		passengers: Math.floor(parseAmount(params.get('crew'))),
 		payloadKg: parseAmount(params.get('cargo')),
 		profile: profile !== null && ROUTE_OPTIONS.includes(profile) ? profile : null,
-		pick: parsePick(params.get('pick'))
+		pick: parsePick(params.get('pick')),
+		coastFraction: parseFraction(params.get('coast'))
 	};
 }

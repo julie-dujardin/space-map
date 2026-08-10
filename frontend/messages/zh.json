@@ -2002,5 +2002,8 @@
 	"travel_profile_constant_thrust": "恒定推力",
 	"travel_top_speed": "最高速度",
 	"travel_unit_g": "{value} g",
-	"travel_burn_at": "以 {value} 持续 {duration}"
+	"travel_burn_at": "以 {value} 持续 {duration}",
+	"travel_cruise_time": "巡航时间",
+	"travel_cruise_flat_out": "全力推进",
+	"travel_cruise_missed": "如此平缓的航程无法在期限前抵达。"
 }

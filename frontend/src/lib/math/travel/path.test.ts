@@ -99,7 +99,7 @@ describe('buildTrajectoryPath', () => {
 		expect(buildTrajectoryPath(EARTH, JUPITER, ASSIST_ROUTE, { centerId: SUN })).toBeNull();
 	});
 
-	it('flies a held drive straight, flipping at the halfway point', () => {
+	it('draws the arc the drive actually flew, which is not the chord', () => {
 		const route = buildConstantThrustRoute(EARTH, MARS, J2000, 0.1)!;
 		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
 		expect(path.arcs.map((a) => a.kind)).toEqual(['boost', 'brake']);
@@ -107,12 +107,39 @@ describe('buildTrajectoryPath', () => {
 		const start = path.arcs[0].points[0];
 		const end = path.arcs[1].points[path.arcs[1].points.length - 1];
 		const flip = path.arcs[0].points[path.arcs[0].points.length - 1];
-		// Half the crossing is behind it at the flip, and the line is straight, so
-		// every sample sits on the chord.
-		expect(norm(sub(flip, start))).toBeCloseTo(norm(sub(end, flip)), 3);
-		for (const point of path.arcs[0].points) {
-			expect(norm(sub(point, start)) + norm(sub(end, point))).toBeCloseTo(norm(sub(end, start)), 3);
-		}
+		// The two stretches share the state they meet at.
+		expect(relative(flip, path.arcs[1].points[0])).toBeLessThan(1e-9);
+		// And the path bows off the chord, because the Sun bent it. A point on the
+		// chord satisfies |p−start| + |end−p| = |end−start|; these do not.
+		const chord = norm(sub(end, start));
+		const bow = Math.max(
+			...path.arcs.flatMap((arc) =>
+				arc.points.map((p) => norm(sub(p, start)) + norm(sub(end, p)) - chord)
+			)
+		);
+		expect(bow).toBeGreaterThan(chord * 1e-4);
+	});
+
+	it('draws the coast as its own stretch, curving under the Sun', () => {
+		const route = buildConstantThrustRoute(EARTH, MARS, J2000, 0.1, { coastFraction: 1 })!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+		expect(path.arcs.map((a) => a.kind)).toEqual(['boost', 'cruise', 'brake']);
+
+		const [boost, cruise, brake] = path.arcs;
+		expect(relative(boost.points[boost.points.length - 1], cruise.points[0])).toBeLessThan(1e-9);
+		expect(relative(cruise.points[cruise.points.length - 1], brake.points[0])).toBeLessThan(1e-9);
+		expect(cruise.jds[0]).toBeCloseTo(boost.endJd, 9);
+		expect(brake.endJd).toBeCloseTo(route.arriveJd, 9);
+
+		// The coast is a conic, not a chord: its own midpoint sits off the line
+		// joining its ends, by kilometres you could see on the map.
+		const from = cruise.points[0];
+		const to = cruise.points[cruise.points.length - 1];
+		const span = norm(sub(to, from));
+		const mid = cruise.points[Math.floor(cruise.points.length / 2)];
+		expect(norm(sub(mid, from)) + norm(sub(to, mid)) - span).toBeGreaterThan(span * 1e-4);
+		// Sampled finely enough to draw that curve rather than imply it.
+		expect(cruise.points.length).toBeGreaterThan(8);
 	});
 
 	it('keeps a flyby crossing on one arc, since nothing slows it down', () => {
@@ -255,18 +282,23 @@ describe('craftPositionAt', () => {
 
 	it('follows the clock on a held drive, not the ruler', () => {
 		// Distance under constant thrust goes as ½at², so a quarter of the way
-		// through the trip is an eighth of the way along the line — reading the
-		// samples by index would put it at a quarter.
+		// through the trip is about an eighth of the way along — reading the samples
+		// by index would put it at a quarter. Loose bounds because the arc is flown
+		// under the Sun rather than ruled straight, so the fractions are no longer
+		// exactly the textbook ones.
 		const route = buildConstantThrustRoute(EARTH, MARS, J2000, 0.1)!;
 		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
 		const start = path.stops[0].r;
 		const end = path.stops[1].r;
 		const total = norm(sub(end, start));
 		const quarter = craftPositionAt(path, route.departJd + route.tofDays / 4)!;
-		expect(norm(sub(quarter, start)) / total).toBeCloseTo(0.125, 2);
-		// And the flip really is halfway along, as the pricing assumes.
+		const alongAtQuarter = norm(sub(quarter, start)) / total;
+		expect(alongAtQuarter).toBeGreaterThan(0.05);
+		expect(alongAtQuarter).toBeLessThan(0.2);
+		// And the flip is still near the middle of the crossing, as the pricing
+		// assumes — both burns are the same length.
 		const flip = craftPositionAt(path, route.departJd + route.tofDays / 2)!;
-		expect(norm(sub(flip, start)) / total).toBeCloseTo(0.5, 2);
+		expect(norm(sub(flip, start)) / total).toBeCloseTo(0.5, 1);
 	});
 
 	it('hands a swing-by crossing to the arc it is on', () => {

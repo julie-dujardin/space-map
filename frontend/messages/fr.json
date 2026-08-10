@@ -1787,5 +1787,8 @@
 	"travel_profile_constant_thrust": "Poussée constante",
 	"travel_top_speed": "Vitesse maximale",
 	"travel_unit_g": "{value} g",
-	"travel_burn_at": "{duration} à {value}"
+	"travel_burn_at": "{duration} à {value}",
+	"travel_cruise_time": "Durée de croisière",
+	"travel_cruise_flat_out": "Plein régime",
+	"travel_cruise_missed": "Aucune traversée aussi douce n'arrive avant l'échéance."
 }

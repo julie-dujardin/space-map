@@ -73,8 +73,12 @@
 		descent: ArrowDownIcon
 	};
 
-	// Speed at the flip, which is what the accelerating half of the arc bought.
-	let topSpeedKms = $derived(route.legs.find((leg) => leg.kind === 'boost')?.dvKms ?? 0);
+	// Fastest the craft goes, which the arc reports rather than the ladder: once
+	// gravity is in the crossing the Δv a burn spent is no longer the speed it
+	// bought. Falls back to the burn for a route solved before that was true.
+	let topSpeedKms = $derived(
+		route.peakSpeedKms ?? route.legs.find((leg) => leg.kind === 'boost')?.dvKms ?? 0
+	);
 	let topSpeedPercentC = $derived(lightPercent(topSpeedKms));
 
 	// Launch energy is the third figure for an arc that is thrown; a drive held

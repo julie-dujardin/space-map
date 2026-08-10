@@ -83,6 +83,7 @@ export type {
 } from './path';
 export { buildTrajectoryPath } from './path';
 
+export type { ConstantThrustOptions } from './brachistochrone';
 export { buildConstantThrustRoute } from './brachistochrone';
 
 export type { LowThrustDrive, SpiralTransfer } from './low-thrust';

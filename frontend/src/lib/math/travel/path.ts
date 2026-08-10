@@ -15,6 +15,7 @@
 
 import type { TravelBody } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
+import { sampleHeldDrive, type HeldDriveSample } from './held-drive';
 import { solveLambert } from './lambert';
 import { rebuildSpiral } from './low-thrust';
 import { parkingRadiusKm } from './maneuvers';
@@ -325,11 +326,16 @@ export function buildTrajectoryPath(
 }
 
 /**
- * A drive held all the way: a straight line in the frame it is flown in.
+ * A drive held all the way, re-flown.
  *
- * The route was solved on exactly that assumption — the crossing is timed from
- * the distance to where the destination will be — so the flip falls at the
- * halfway point of the line rather than of the clock.
+ * The crossing is integrated under the primary's pull, so the only way to draw
+ * the line it took is to fly it again. The route carries the one thing that
+ * cannot be re-derived — where the drive pointed — so this is a single forward
+ * pass rather than a second shooting solve, and the arc drawn is exactly the arc
+ * that was priced.
+ *
+ * Falls back to the chord for a route with no direction on it, which is one
+ * built before this module answered in curves.
  */
 function heldDrivePath(
 	departure: TravelBody,
@@ -342,7 +348,25 @@ function heldDrivePath(
 	const from = elementsToState(departure.elements, route.departJd, centralMu);
 	const to = elementsToState(target.elements, route.arriveJd, centralMu);
 	if (!from || !to) return null;
-	return straightCrossing(from.r, to.r, route, centerId, departure.id, target.id, samples);
+
+	const burnDays = route.legs.find((leg) => leg.kind === 'boost')?.days;
+	if (!route.thrustDir || route.constantThrust == null || burnDays === undefined) {
+		return straightCrossing(from.r, to.r, route, centerId, departure.id, target.id, samples);
+	}
+
+	const points = sampleHeldDrive(
+		from,
+		{
+			burnSeconds: burnDays * SEC_PER_DAY,
+			coastSeconds: (route.legs.find((leg) => leg.kind === 'cruise')?.days ?? 0) * SEC_PER_DAY,
+			flips: route.legs.some((leg) => leg.kind === 'brake'),
+			thrustDir: [route.thrustDir[0], route.thrustDir[1], route.thrustDir[2]]
+		},
+		route.constantThrust / 1000,
+		centralMu,
+		Math.max(2, Math.round(samples / 2))
+	);
+	return flownCrossing(points, route, centerId, departure.id, target.id, from.r, to.r);
 }
 
 /** Points along a drawn spiral, and the most revolutions worth drawing. Past a
@@ -516,7 +540,68 @@ function spiralPath(
 	};
 }
 
-/** The two halves of a held drive between two fixed points. */
+/** The sampled arc, cut into one drawable stretch per phase. */
+function flownCrossing(
+	samples: HeldDriveSample[],
+	route: Route,
+	centerId: string,
+	departureId: string,
+	targetId: string,
+	startR: Vec3,
+	endR: Vec3
+): TrajectoryPath | null {
+	if (samples.length < 2) return null;
+
+	const arcs: PathArc[] = [];
+	let run: HeldDriveSample[] = [samples[0]];
+	const flush = () => {
+		if (run.length < 2) return;
+		arcs.push({
+			kind: run[0].kind,
+			points: run.map((sample) => sample.r),
+			jds: run.map((sample) => route.departJd + sample.elapsed / SEC_PER_DAY),
+			startJd: route.departJd + run[0].elapsed / SEC_PER_DAY,
+			endJd: route.departJd + run[run.length - 1].elapsed / SEC_PER_DAY
+		});
+	};
+	for (const sample of samples.slice(1)) {
+		if (sample.kind !== run[run.length - 1].kind) {
+			run.push({ ...sample, kind: run[run.length - 1].kind });
+			flush();
+			// The stretches share the state they meet at, so the next one opens on
+			// the point the last one closed at.
+			run = [{ ...sample }];
+			continue;
+		}
+		run.push(sample);
+	}
+	flush();
+	if (arcs.length === 0) return null;
+
+	return {
+		centerId,
+		arcs,
+		stops: [
+			{
+				kind: 'departure',
+				jd: route.departJd,
+				r: startR,
+				bodyId: departureId,
+				dvKms: dvOf(route, ['ascent', 'injection'])
+			},
+			{
+				kind: 'arrival',
+				jd: route.arriveJd,
+				r: endR,
+				bodyId: targetId,
+				dvKms: dvOf(route, ['capture', 'descent'])
+			}
+		],
+		meeting: { bodyId: targetId, jd: route.arriveJd, r: endR }
+	};
+}
+
+/** The stretches of a held drive between two fixed points. */
 function straightCrossing(
 	start: Vec3,
 	end: Vec3,
@@ -530,9 +615,11 @@ function straightCrossing(
 	if (!(norm(span) > 0)) return null;
 
 	// Nothing to slow down for at a flyby, so the drive never flips and the
-	// crossing is one arc.
+	// crossing is one arc. A coast between the burns is the other thing that
+	// changes the shape of one, and both are read back off the legs.
 	const flips = route.legs.some((leg) => leg.kind === 'brake');
-	const midJd = route.departJd + route.tofDays / 2;
+	const boostDays = route.legs.find((leg) => leg.kind === 'boost')?.days ?? route.tofDays;
+	const coastDays = route.legs.find((leg) => leg.kind === 'cruise')?.days ?? 0;
 	const half = Math.max(2, Math.round(samples / 2));
 
 	/**
@@ -562,33 +649,71 @@ function straightCrossing(
 	};
 
 	// Accelerating from rest, distance goes as the square of the time — so the
-	// time is the square root of the distance. Braking is the same run backwards.
+	// time is the square root of the distance. Braking is the same run backwards,
+	// and a coast is the one stretch that is even in both.
 	const accelerating = (along: number) => Math.sqrt(along);
 	const braking = (along: number) => 1 - Math.sqrt(Math.max(0, 1 - along));
+	const even = (along: number) => along;
 
-	const arcs: PathArc[] = flips
-		? [
-				{
-					kind: 'boost',
-					...line(0, 0.5, half, route.departJd, midJd, accelerating),
-					startJd: route.departJd,
-					endJd: midJd
-				},
-				{
-					kind: 'brake',
-					...line(0.5, 1, half, midJd, route.arriveJd, braking),
-					startJd: midJd,
-					endJd: route.arriveJd
-				}
-			]
-		: [
-				{
-					kind: 'boost',
-					...line(0, 1, samples, route.departJd, route.arriveJd, accelerating),
-					startJd: route.departJd,
-					endJd: route.arriveJd
-				}
-			];
+	// Ground each stretch covers, in whatever units `boostDays` is in: ½at² under
+	// thrust and vt while coasting. Only their shares of the total matter, so the
+	// acceleration cancels and never has to be known here.
+	const stretches: {
+		kind: PathArcKind;
+		reach: number;
+		days: number;
+		count: number;
+		timeFraction: (along: number) => number;
+	}[] = [
+		{
+			kind: 'boost',
+			reach: (boostDays * boostDays) / 2,
+			days: boostDays,
+			count: flips ? half : samples,
+			timeFraction: accelerating
+		}
+	];
+	// Even in both space and time, so two points describe it exactly.
+	if (coastDays > 0) {
+		stretches.push({
+			kind: 'cruise',
+			reach: boostDays * coastDays,
+			days: coastDays,
+			count: 2,
+			timeFraction: even
+		});
+	}
+	if (flips) {
+		stretches.push({
+			kind: 'brake',
+			reach: (boostDays * boostDays) / 2,
+			days: boostDays,
+			count: half,
+			timeFraction: braking
+		});
+	}
+
+	const reached = stretches.reduce((sum, stretch) => sum + stretch.reach, 0);
+	if (!(reached > 0)) return null;
+
+	const arcs: PathArc[] = [];
+	let along = 0;
+	let jd = route.departJd;
+	for (const [index, stretch] of stretches.entries()) {
+		// The last stretch is pinned to the far end rather than accumulated onto
+		// it, so rounding cannot leave the arc short of the body it arrives at.
+		const last = index === stretches.length - 1;
+		const toT = last ? 1 : along + stretch.reach / reached;
+		const endJd = last ? route.arriveJd : jd + stretch.days;
+		arcs.push({
+			kind: stretch.kind,
+			...line(along, toT, stretch.count, jd, endJd, stretch.timeFraction),
+			startJd: jd,
+			endJd
+		});
+		along = toT;
+		jd = endJd;
+	}
 
 	return {
 		centerId,

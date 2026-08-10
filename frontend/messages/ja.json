@@ -2002,5 +2002,8 @@
 	"travel_profile_constant_thrust": "定加速航行",
 	"travel_top_speed": "最高速度",
 	"travel_unit_g": "{value} G",
-	"travel_burn_at": "{value} で {duration}"
+	"travel_burn_at": "{value} で {duration}",
+	"travel_cruise_time": "巡航時間",
+	"travel_cruise_flat_out": "全力航行",
+	"travel_cruise_missed": "これほど緩やかな航程では期限に間に合いません。"
 }

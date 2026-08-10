@@ -1755,5 +1755,8 @@
 	"travel_profile_constant_thrust": "Spinta costante",
 	"travel_top_speed": "Velocità massima",
 	"travel_unit_g": "{value} g",
-	"travel_burn_at": "{duration} a {value}"
+	"travel_burn_at": "{duration} a {value}",
+	"travel_cruise_time": "Tempo di crociera",
+	"travel_cruise_flat_out": "A piena spinta",
+	"travel_cruise_missed": "Nessuna traversata così dolce arriva entro la scadenza."
 }
