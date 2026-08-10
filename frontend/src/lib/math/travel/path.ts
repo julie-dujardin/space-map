@@ -109,6 +109,15 @@ export interface EndOrbitPath {
 	trimTo: number;
 	/** The body's centre in the same frame, km — what both go round. */
 	center: Vec3;
+	/**
+	 * The date the craft is at this end's periapsis, which is the date `center`
+	 * places the body at. At a departure this is the injection burn, so it is the
+	 * route's own date; at an arrival it is solved — the crossing was priced to
+	 * the body's centre, a place the craft never goes, and the real periapsis
+	 * comes hours earlier, with the body a sphere-of-influence's width away from
+	 * where the pricing left it.
+	 */
+	periJd: number;
 	/** The orbit's widest radius, km. What says whether it is worth drawing at
 	 *  all: at system scale a parking orbit is well inside the dot the planet is
 	 *  drawn as. */
@@ -298,7 +307,17 @@ export function buildTrajectoryPath(
 	const path = buildCrossing(departure, target, route, options);
 	if (!path) return null;
 	const endOrbits = endOrbitPaths(departure, target, route, options, path);
-	return { ...path, endOrbits };
+	// An arrival passage re-dates the encounter and the meeting follows it —
+	// left behind, it would mark a spot the body has already left and the ring
+	// would circle nothing. The stops stay priced: they are where the arcs end,
+	// which is where the scrubbed craft ends up.
+	const arrival = endOrbits.find((end) => end.at === 'arrival' && end.approach.length > 0);
+	if (!arrival) return { ...path, endOrbits };
+	return {
+		...path,
+		meeting: { ...path.meeting, jd: arrival.periJd, r: arrival.center },
+		endOrbits
+	};
 }
 
 function buildCrossing(
@@ -401,10 +420,11 @@ const PASSAGE_MAX_RADII = 200;
  * The orbits at the ends of a trip, and the passages that join them to the
  * crossing.
  *
- * Both sit where the body is on the date that end of the trip happens, which is
- * where the arc meets it: at a departure the parking orbit the injection burn is
- * made from and the escape it leaves on, at an arrival the approach and the
- * orbit the insertion leaves the craft in.
+ * Both sit where the body is on the date the craft is at that end's periapsis:
+ * at a departure the parking orbit the injection burn is made from and the
+ * escape it leaves on, at an arrival the approach and the orbit the insertion
+ * leaves the craft in. A departure's date is the route's own; an arrival's is
+ * solved by the passage, which knows where the crossing really left off.
  *
  * Patched conics, drawn the way they are flown. The two radii and the excess
  * speed are what the pricing fixed; the plane is free, and is taken as near the
@@ -469,14 +489,14 @@ function endOrbitPaths(
 }
 
 /**
- * How the craft meets each end body: how fast it is going relative to that body
- * as it crosses the body's sphere of influence, and how fast the body itself is
- * going. Both in the transfer frame, both re-solved rather than carried, like
- * the arcs themselves.
+ * How the craft meets each end body, re-solved rather than carried, like the
+ * arcs themselves.
  *
- * The body's own velocity is not incidental — it is the difference between the
- * two frames the trip has to be drawn in, and what {@link hyperbolicPassage}
- * blends across to keep the line whole.
+ * The body comes as a function of time rather than a frozen state because the
+ * passage needs it as one twice over: {@link soiCrossingJd} chases it to find
+ * where the crossing really enters its sphere of influence, and
+ * {@link hyperbolicPassage} carries its true displacement so the drawn line is
+ * the patched-conic worldline, not a straight-line stand-in for it.
  *
  * Absent at an end with no hyperbolic passage to draw, which is more ends than
  * it sounds: a drive held all the way and a spiral both arrive under thrust
@@ -487,8 +507,13 @@ function endOrbitPaths(
 interface EndApproach {
 	/** Excess velocity, km/s: the craft's own less the body's. */
 	vInf: Vec3;
-	/** The body's velocity, km/s, in whatever frame the arc is drawn in. */
-	vBody: Vec3;
+	/** The body's position at `jd` in the transfer frame, km. */
+	bodyAt: (jd: number) => Vec3 | null;
+	/** The craft's state on the crossing conic at this end's priced date — what
+	 *  the sphere-of-influence crossing is solved against. */
+	craft: { r: Vec3; v: Vec3; jd: number };
+	/** The μ the crossing conic is flown under. */
+	crossingMu: number;
 }
 
 function endApproaches(
@@ -521,12 +546,21 @@ function endApproaches(
 		const outward = normalize(state.r);
 		const along = normalize(cross(normal, outward));
 		const vArc = add(scale(outward, arc.vFarRadialKms), scale(along, arc.vFarTangentialKms));
-		return { to: { vInf: sub(vArc, state.v), vBody: state.v } };
+		return {
+			to: {
+				vInf: sub(vArc, state.v),
+				bodyAt: (jd) => relativeState(target, departure, jd)?.r ?? null,
+				craft: { r: state.r, v: vArc, jd: route.arriveJd },
+				crossingMu: departure.mu
+			}
+		};
 	}
 
 	const from = elementsToState(departure.elements, route.departJd, centralMu);
 	const to = elementsToState(target.elements, route.arriveJd, centralMu);
 	if (!from || !to) return {};
+	const departureAt = (jd: number) => elementsToState(departure.elements, jd, centralMu)?.r ?? null;
+	const targetAt = (jd: number) => elementsToState(target.elements, jd, centralMu)?.r ?? null;
 
 	const flyby = route.flybys?.[0];
 	if (flyby) {
@@ -549,16 +583,36 @@ function endApproaches(
 		);
 		if (!out || !back) return {};
 		return {
-			from: { vInf: sub(out.v1, from.v), vBody: from.v },
-			to: { vInf: sub(back.v2, to.v), vBody: to.v }
+			from: {
+				vInf: sub(out.v1, from.v),
+				bodyAt: departureAt,
+				craft: { r: from.r, v: out.v1, jd: route.departJd },
+				crossingMu: centralMu
+			},
+			to: {
+				vInf: sub(back.v2, to.v),
+				bodyAt: targetAt,
+				craft: { r: to.r, v: back.v2, jd: route.arriveJd },
+				crossingMu: centralMu
+			}
 		};
 	}
 
 	const arc = solveLambert(from.r, to.r, route.tofDays * SEC_PER_DAY, centralMu, retrograde);
 	if (!arc) return {};
 	return {
-		from: { vInf: sub(arc.v1, from.v), vBody: from.v },
-		to: { vInf: sub(arc.v2, to.v), vBody: to.v }
+		from: {
+			vInf: sub(arc.v1, from.v),
+			bodyAt: departureAt,
+			craft: { r: from.r, v: arc.v1, jd: route.departJd },
+			crossingMu: centralMu
+		},
+		to: {
+			vInf: sub(arc.v2, to.v),
+			bodyAt: targetAt,
+			craft: { r: to.r, v: arc.v2, jd: route.arriveJd },
+			crossingMu: centralMu
+		}
 	};
 }
 
@@ -596,9 +650,9 @@ function endCenters(
  * there is to go on, and the orbit's low point is put on the side the craft
  * comes from.
  *
- * `arc` is the stretch of crossing that meets this body, and `periJd` the date
- * the trip is at its low point — the two the crossing's own last step is cut
- * against, so the passage can take that step's place.
+ * `arc` is the stretch of crossing that meets this body, and `periJd` the
+ * route's date for this end — the passage may re-date its low point from there,
+ * and the crossing's own last step is cut against whichever date stands.
  */
 function endOrbitPath(end: {
 	at: 'departure' | 'arrival';
@@ -631,20 +685,24 @@ function endOrbitPath(end: {
 				primaryMu,
 				center,
 				arc,
-				periJd
+				endJd: periJd
 			})
 		: null;
 	const normal = passage?.normal ?? arcNormal;
 	const periapsis = passage?.periapsis ?? approachSide(arcNormal, a, b);
+	// A passage re-dates its end, and the ring goes round the body where the
+	// body then is; without one the priced date stands.
+	const ringCenter = passage?.center ?? center;
 
 	return {
 		at,
 		bodyId: body.id,
-		points: closedOrbit(center, orbit, normal, periapsis),
-		approach: passage ? passage.points.map((point) => add(center, point)) : [],
+		points: closedOrbit(ringCenter, orbit, normal, periapsis),
+		approach: passage ? passage.points.map((point) => add(ringCenter, point)) : [],
 		trimFrom: passage && outward ? passage.cut : 0,
 		trimTo: passage && !outward ? passage.cut + 1 : count,
-		center,
+		center: ringCenter,
+		periJd: passage?.periJd ?? periJd,
 		radiusKm: orbit.rApoKm
 	};
 }
@@ -697,18 +755,24 @@ function closedOrbit(center: Vec3, orbit: EndOrbit, normal: Vec3, periapsis: Vec
  * holding the asymptote is a possible approach, and the one taken is the nearest
  * of them to the crossing's own.
  *
+ * Its dates are its own rather than the route's. The route prices an arrival as
+ * the crossing reaching the body's centre, a place the craft never goes: really
+ * it leaves the crossing where that crosses the moving sphere of influence, and
+ * is at periapsis a hyperbolic fall later — hours before the priced date, with
+ * the body somewhere else by then. `periJd` and `center` answer with that
+ * corrected meeting; a departure keeps its date, since its periapsis is the
+ * injection burn the route priced.
+ *
  * **The two frames are blended across it, and that is the point.** A hyperbola
  * about the body is only the trajectory to someone standing on the body; the
  * crossing outside is drawn about the Sun, and the two differ by the body's own
- * velocity — 24 km/s at Mars against a 9 km/s arrival, which puts about a right
- * angle between them. Drawn one after the other they read as the trip turning a
- * corner in deep space, which is what a reader reported and what this exists to
- * answer. So every sample carries the body's own motion over the time between it
- * and periapsis, weighted from all of it where the crossing hands over down to
- * none of it at periapsis: out there the passage is the crossing's continuation,
- * which is what it physically is; at periapsis it is the hyperbola, tangent to
- * the orbit it turns into. In between it is neither, and no one frame could have
- * been both.
+ * motion — 24 km/s at Mars against a 9 km/s arrival. Drawn one after the other
+ * they read as the trip turning a corner in deep space. So every sample carries
+ * the body's true displacement between it and periapsis, weighted from all of it
+ * where the crossing hands over down to none of it at periapsis: out there the
+ * drawn line is the patched-conic worldline itself; at periapsis it is the
+ * hyperbola, tangent to the orbit it turns into, round a body the map holds
+ * still. In between it trades one for the other, which no single frame could.
  *
  * The handover is put on a sample of the crossing rather than on a radius, and
  * whatever the conic misses by there is carried under the same weight, so the
@@ -726,10 +790,17 @@ function hyperbolicPassage(end: {
 	primaryMu: number;
 	center: Vec3;
 	arc: PathArc;
+	endJd: number;
+}): {
+	points: Vec3[];
+	periapsis: Vec3;
+	normal: Vec3;
+	cut: number;
+	center: Vec3;
 	periJd: number;
-}): { points: Vec3[]; periapsis: Vec3; normal: Vec3; cut: number } | null {
-	const { body, approach, rPeriKm, arcNormal, at, primaryMu, center, arc, periJd } = end;
-	const { vInf, vBody } = approach;
+} | null {
+	const { body, approach, rPeriKm, arcNormal, at, primaryMu, arc, endJd } = end;
+	const { vInf, bodyAt } = approach;
 	const speed = norm(vInf);
 	if (!(speed > 0) || !(body.mu > 0) || !(rPeriKm > 0)) return null;
 
@@ -753,13 +824,20 @@ function hyperbolicPassage(end: {
 	const nuOuter = Math.acos(Math.max(-1, Math.min(1, (p / outer - 1) / e)));
 	if (!(nuOuter > 0)) return null;
 
-	// Where the crossing gives way: its last sample still outside the sphere of
-	// influence. Anything closer in belongs to the body, not to the Sun.
+	// The fall between the sphere of influence and periapsis, and where the
+	// crossing really crosses the sphere — chased against the moving body, with
+	// the hyperbola's own clock as the stand-in when the chase fails.
 	const meanMotion = Math.sqrt(body.mu / Math.abs(p / (1 - e * e)) ** 3);
-	const soiDays = (hyperbolicSeconds(e, nuOuter, meanMotion) / SEC_PER_DAY) * (outward ? 1 : -1);
-	const cut = outward
-		? firstAfter(arc.jds, periJd + soiDays)
-		: lastBefore(arc.jds, periJd + soiDays);
+	const fallDays = hyperbolicSeconds(e, nuOuter, meanMotion) / SEC_PER_DAY;
+	const crossJd =
+		soiCrossingJd(approach, outer, outward) ?? endJd + (outward ? fallDays : -fallDays);
+	const periJd = outward ? endJd : crossJd + fallDays;
+	const center = bodyAt(periJd);
+	if (!center) return null;
+
+	// Where the crossing gives way: its last sample still outside the sphere.
+	// Anything closer in belongs to the body, not to whatever the crossing rounds.
+	const cut = outward ? firstAfter(arc.jds, crossJd) : lastBefore(arc.jds, crossJd);
 	// One sample either side at least, or there is no line left to draw.
 	if (cut < 1 || cut > arc.points.length - 2) return null;
 
@@ -774,11 +852,16 @@ function hyperbolicPassage(end: {
 		const direction = add(scale(periapsis, Math.cos(nu)), scale(inPlane, Math.sin(nu)));
 		return scale(direction, radius);
 	};
-	const carried = (days: number): Vec3 => scale(vBody, days * SEC_PER_DAY);
+	const carried = (days: number): Vec3 | null => {
+		const moved = bodyAt(periJd + days);
+		return moved ? sub(moved, center) : null;
+	};
+	const joinCarried = carried(joinDays);
+	if (!joinCarried) return null;
 	// What the conic misses the crossing by where the two meet, carried under the
 	// same weight as the body's motion — so the join is exact and nothing of it
 	// is left by the time the passage reaches its orbit.
-	const miss = sub(sub(arc.points[cut], center), add(sample(joinDays), carried(joinDays)));
+	const miss = sub(sub(arc.points[cut], center), add(sample(joinDays), joinCarried));
 
 	const points: Vec3[] = [];
 	for (let i = 0; i < PASSAGE_SAMPLES; i++) {
@@ -786,10 +869,60 @@ function hyperbolicPassage(end: {
 		const fraction = outward ? along : 1 - along;
 		const days = joinDays * fraction * fraction;
 		const point = sample(days);
+		const moved = carried(days);
+		if (!moved) return null;
 		const weight = frameBlend((norm(point) - rPeriKm) / (outer - rPeriKm));
-		points.push(add(point, scale(add(carried(days), miss), weight)));
+		points.push(add(point, scale(add(moved, miss), weight)));
 	}
-	return { points, periapsis, normal, cut };
+	return { points, periapsis, normal, cut, center, periJd };
+}
+
+/**
+ * When the crossing crosses the body's sphere of influence, as a date.
+ *
+ * Solved against the moving body rather than read off the hyperbola's clock:
+ * the two curves are `soiKm` apart somewhere the priced dates never name, since
+ * the crossing was solved to the body's centre and the body does not wait
+ * there. Walked out from that centre-meeting — the one date the two are
+ * certainly inside the sphere — then bisected.
+ *
+ * Null when the walk never leaves the sphere, or either curve cannot be
+ * evaluated; the caller falls back to the hyperbola's own clock.
+ */
+function soiCrossingJd(approach: EndApproach, soiKm: number, outward: boolean): number | null {
+	const { vInf, bodyAt, craft, crossingMu } = approach;
+	const speed = norm(vInf);
+	if (!(speed > 0) || !(soiKm > 0)) return null;
+
+	const separation = (jd: number): number | null => {
+		const r = propagateState(craft.r, craft.v, (jd - craft.jd) * SEC_PER_DAY, crossingMu);
+		const body = bodyAt(jd);
+		return r && body ? norm(sub(r, body)) - soiKm : null;
+	};
+
+	const direction = outward ? 1 : -1;
+	let step = soiKm / speed / SEC_PER_DAY / 2;
+	let inside = craft.jd;
+	let outside: number | null = null;
+	for (let i = 0; i < 12 && outside === null; i++) {
+		const jd = craft.jd + direction * step;
+		const apart = separation(jd);
+		if (apart === null) return null;
+		if (apart >= 0) outside = jd;
+		else inside = jd;
+		step *= 2;
+	}
+	if (outside === null) return null;
+
+	let edge = outside;
+	for (let i = 0; i < 48; i++) {
+		const mid = (inside + edge) / 2;
+		const apart = separation(mid);
+		if (apart === null) return null;
+		if (apart >= 0) edge = mid;
+		else inside = mid;
+	}
+	return (inside + edge) / 2;
 }
 
 /** How long after periapsis a hyperbola is at true anomaly `nu`, seconds, signed

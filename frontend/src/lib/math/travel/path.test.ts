@@ -69,10 +69,13 @@ describe('buildTrajectoryPath', () => {
 		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF)!;
 		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
 		const marsNow = elementsToState(MARS.elements, route.departJd, GM_SUN_KM3_S2)!;
-		const marsThen = elementsToState(MARS.elements, route.arriveJd, GM_SUN_KM3_S2)!;
 
-		expect(path.meeting.jd).toBe(route.arriveJd);
+		// The date is the arrival's, corrected by the passage: the craft is at
+		// periapsis hours before the crossing would have reached the centre.
+		expect(path.meeting.jd).toBeLessThanOrEqual(route.arriveJd);
+		expect(path.meeting.jd).toBeGreaterThan(route.arriveJd - 1);
 		expect(path.meeting.bodyId).toBe(MARS.id);
+		const marsThen = elementsToState(MARS.elements, path.meeting.jd, GM_SUN_KM3_S2)!;
 		expect(relative(path.meeting.r, marsThen.r)).toBeLessThan(1e-9);
 		// Mars covers most of a radian over a transfer, so the two are nowhere
 		// near each other — which is the whole reason to draw the meeting.
@@ -330,6 +333,49 @@ describe('end orbits', () => {
 		expect(dot(out, way(departure.approach[last - 1], departure.approach[last]))).toBeGreaterThan(
 			0.99
 		);
+	});
+
+	it('hands over where the crossing crosses the moving sphere of influence', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			departureMode: 'orbit',
+			arrivalMode: 'low-orbit'
+		})!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+		const arc = path.arcs[0];
+		const [departure, arrival] = path.endOrbits;
+
+		// The last sample kept on each side is still outside the sphere measured
+		// against the body on that sample's own date — not against where the body
+		// ends up — and the first sample dropped is inside it.
+		const spheres = (body: typeof EARTH, index: number) => {
+			const state = elementsToState(body.elements, arc.jds[index], GM_SUN_KM3_S2)!;
+			return norm(sub(arc.points[index], state.r)) / soiOf(body, GM_SUN_KM3_S2);
+		};
+		expect(spheres(EARTH, departure.trimFrom)).toBeGreaterThanOrEqual(1);
+		expect(spheres(EARTH, departure.trimFrom - 1)).toBeLessThan(1);
+		expect(spheres(MARS, arrival.trimTo - 1)).toBeGreaterThanOrEqual(1);
+		expect(spheres(MARS, arrival.trimTo)).toBeLessThan(1);
+	});
+
+	it('dates the arrival at the true periapsis, not the priced centre-meeting', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			departureMode: 'orbit',
+			arrivalMode: 'low-orbit'
+		})!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+		const [departure, arrival] = path.endOrbits;
+
+		// The injection burn is the departure, so its date is the route's own.
+		expect(departure.periJd).toBe(route.departJd);
+		// The capture comes earlier than priced: the crossing is left at the
+		// sphere of influence, and the fall from there beats its own last stretch
+		// to the centre by hours — hours the body spends moving on.
+		expect(arrival.periJd).toBeLessThan(route.arriveJd);
+		expect(arrival.periJd).toBeGreaterThan(route.arriveJd - 1);
+		expect(path.meeting.jd).toBe(arrival.periJd);
+		// And the shifted meeting is a real place on Mars' orbit, not an offset.
+		const mars = elementsToState(MARS.elements, arrival.periJd, GM_SUN_KM3_S2)!;
+		expect(relative(arrival.center, mars.r)).toBeLessThan(1e-9);
 	});
 
 	it('leaves the crossing whole where the passage would be a step or less', () => {
