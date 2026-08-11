@@ -185,19 +185,11 @@ export interface TrajectoryPath {
 	meeting: { bodyId: string; jd: number; r: Vec3 };
 }
 
-/** Somewhere on the drawn trajectory to look at, and how far back to look from. */
+/** Somewhere on the drawn trajectory to look at. */
 export interface PathViewpoint {
 	/** Position in the transfer frame, km. */
 	r: Vec3;
-	/** A distance that frames what this point belongs to, km. */
-	rangeKm: number;
 }
-
-/** How much of the arc's own length to stand back by. Enough that the leg reads
- *  as a curve rather than as the straight bit of it under the camera. */
-const VIEW_RANGE_FRACTION = 0.6;
-/** Nothing is framed closer than this, so a burn at one point still has a view. */
-const MIN_VIEW_RANGE_KM = 1e4;
 
 /**
  * Where to point the camera for the stretch of trip between `startJd` and
@@ -218,9 +210,6 @@ export function pathViewpoint(
 ): PathViewpoint | null {
 	if (path.arcs.length === 0) return null;
 
-	const chord = (arc: PathArc): number =>
-		Math.max(MIN_VIEW_RANGE_KM, norm(sub(arc.points[arc.points.length - 1], arc.points[0])));
-
 	// A stretch: the arc that runs alongside it, or failing an exact match the one
 	// its middle falls inside. The two spiral ends are skipped — they are a body's
 	// own path, so framing the swath of orbit they cover would point the camera
@@ -232,10 +221,7 @@ export function pathViewpoint(
 			crossings.find((a) => a.startJd <= startJd + 1e-6 && a.endJd >= endJd - 1e-6) ??
 			crossings.find((a) => a.startJd <= middle && a.endJd >= middle);
 		if (!arc) return null;
-		return {
-			r: arc.points[Math.floor(arc.points.length / 2)],
-			rangeKm: chord(arc) * VIEW_RANGE_FRACTION
-		};
+		return { r: arc.points[Math.floor(arc.points.length / 2)] };
 	}
 
 	// An instant: a stop names one exactly, and every stop is an arc end.
@@ -248,9 +234,7 @@ export function pathViewpoint(
 		(Math.abs(nearest.startJd - startJd) <= Math.abs(nearest.endJd - startJd)
 			? nearest.points[0]
 			: nearest.points[nearest.points.length - 1]);
-	// Closer in than a whole leg: a burn happens at a place, and the arc either
-	// side of it is what gives that place a shape.
-	return { r, rangeKm: chord(nearest) * VIEW_RANGE_FRACTION * 0.25 };
+	return { r };
 }
 
 export interface PathOptions extends RouteOptions {
@@ -898,14 +882,16 @@ function closedOrbit(center: Vec3, orbit: EndOrbit, normal: Vec3, periapsis: Vec
  * Mars against a 9 km/s arrival, three million kilometres over the day and a
  * half the fall takes. `interplanetary` carries all of that, so what is returned
  * is the patched-conic worldline and it carries on from the crossing exactly;
- * `planetary` carries none of it, so what is returned is the bare hyperbola,
+ * `planetary` carries none of it, so what is returned is the hyperbola alone,
  * measured off a body the map holds still. Nothing in between: a curve that
  * traded one for the other along its length is neither, and reads as the trip
  * turning a corner in deep space.
  *
- * The handover is put on a sample of the crossing rather than on a radius, and
- * interplanetary the conic's own error there is carried too, so the two lines
- * meet at a point they share exactly.
+ * That motion is the *only* difference between the two, so that a frame change
+ * moves the picture and never the craft. The handover is put on a sample of the
+ * crossing rather than on a radius, and the conic's own error there is worked
+ * off along the fall in both — it is the two solvers disagreeing about where the
+ * craft is, which is not a thing either frame gets its own answer to.
  *
  * Null where there is no passage to draw — a body with no μ to speak of, an
  * excess speed of zero, or a crossing too short to give one up.
@@ -1006,16 +992,17 @@ function hyperbolicPassage(end: {
 		const days = joinDays * fraction * fraction;
 		const point = sample(days);
 		jds.push(periJd + days);
-		// Planet-frame there is nothing to join onto — the crossing is in another
-		// frame and has been let go of by here — so the conic stands as it is.
+		const seam = seamBlend((norm(point) - rPeriKm) / (outer - rPeriKm));
+		const corrected = add(point, scale(miss, seam));
+		// Planet-frame the body's motion is what is being left out, and that is all
+		// of it: the correction stays, or the craft would move on a frame change.
 		if (!solar) {
-			points.push(point);
+			points.push(corrected);
 			continue;
 		}
 		const moved = carried(days);
 		if (!moved) return null;
-		const seam = seamBlend((norm(point) - rPeriKm) / (outer - rPeriKm));
-		points.push(add(point, add(moved, scale(miss, seam))));
+		points.push(add(corrected, moved));
 	}
 	return { points, jds, periapsis, normal, cut, center, periJd };
 }

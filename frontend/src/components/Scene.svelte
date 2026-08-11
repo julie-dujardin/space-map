@@ -174,21 +174,13 @@
 	}
 
 	/** Look at a place on that trip, which is usually nowhere near a body. */
-	export function focusOnPathPoint(
-		centerId: string,
-		rKm: readonly [number, number, number],
-		rangeKm?: number
-	): void {
-		renderer?.focusOnPathPoint(centerId, rKm, rangeKm);
+	export function focusOnPathPoint(centerId: string, rKm: readonly [number, number, number]): void {
+		renderer?.focusOnPathPoint(centerId, rKm);
 	}
 
 	/** Follow a place along the trip without re-framing — for a dragged clock. */
-	export function trackPathPoint(
-		centerId: string,
-		rKm: readonly [number, number, number],
-		rangeKm: number
-	): void {
-		renderer?.trackPathPoint(centerId, rKm, rangeKm);
+	export function trackPathPoint(centerId: string, rKm: readonly [number, number, number]): void {
+		renderer?.trackPathPoint(centerId, rKm);
 	}
 
 	function isLive(): boolean {

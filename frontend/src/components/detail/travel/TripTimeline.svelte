@@ -48,12 +48,7 @@
 	function focusEntry(entry: TimelineEntry): void {
 		const viewpoint = path ? pathViewpoint(path, entry.startJd, entry.endJd) : null;
 		if (viewpoint && path) {
-			onFocus({
-				kind: 'point',
-				centerId: path.centerId,
-				r: viewpoint.r,
-				rangeKm: viewpoint.rangeKm
-			});
+			onFocus({ kind: 'point', centerId: path.centerId, r: viewpoint.r });
 		} else if (entry.bodyId) {
 			onFocus({ kind: 'body', bodyId: entry.bodyId });
 		}
@@ -99,16 +94,12 @@
 		if (!path) return;
 		const craft = craftPositionAt(path, jd);
 		if (!craft) return;
-		// Range only matters for the first one, which has to fly in from wherever
-		// the camera was; after that the point is followed where it stands.
-		const viewpoint = pathViewpoint(path, jd, jd);
 		onFocus({
 			kind: 'point',
 			// The craft names its own frame: at an end drawn planet-frame it is
 			// measured off that body, and the camera has to follow it there.
 			centerId: craft.centerId,
 			r: craft.r,
-			rangeKm: viewpoint?.rangeKm ?? 0,
 			track: true
 		});
 	}

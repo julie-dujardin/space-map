@@ -292,13 +292,14 @@
 		});
 	}
 
-	/** Look at whatever part of the trip the timeline was asked about. Picking a
-	 *  step reads the trip, so it pans rather than flies — same reasoning as
-	 *  retargeting an end, and doubly so under autoplay, which steps on its own.
-	 *  A dragged clock keeps its range: that one still has to arrive from cold. */
+	/** Look at whatever part of the trip the timeline was asked about. Nothing here
+	 *  closes on what it looks at: reading a trip is picking places on a map from
+	 *  the vantage you built to read it from, and an approach throws that away —
+	 *  same reasoning as retargeting an end, and doubly so under autoplay, which
+	 *  steps on its own. A tracked point moves now; the rest swings over. */
 	function focusTimeline(target: TimelineFocus): void {
 		if (target.kind === 'body') focusCameraOn(target.bodyId);
-		else if (target.track) scene?.trackPathPoint(target.centerId, target.r, target.rangeKm);
+		else if (target.track) scene?.trackPathPoint(target.centerId, target.r);
 		else scene?.focusOnPathPoint(target.centerId, target.r);
 	}
 

@@ -585,24 +585,19 @@ export class SceneRenderer {
 	 * Look at a place on the drawn trajectory — a spot mid-cruise belongs to no
 	 * body, so there is nothing to focus in the ordinary way.
 	 *
-	 * `rKm` is in the transfer frame, the same one the path is drawn in. Without
-	 * `rangeKm` the camera only re-aims, holding the vantage it is already at.
+	 * `rKm` is in the transfer frame, the same one the path is drawn in. The
+	 * camera only re-aims, holding the vantage it is already at: a trip is read
+	 * from a distance the reader chose, and closing on each place it names would
+	 * take that away every time the timeline is touched.
 	 */
-	focusOnPathPoint(
-		centerId: string,
-		rKm: readonly [number, number, number],
-		rangeKm?: number
-	): void {
+	focusOnPathPoint(centerId: string, rKm: readonly [number, number, number]): void {
 		const center = this.ctx.getBody(centerId);
 		if (!center) return;
 		const [x, y, z] = eclipticToScene(rKm);
 		this.travelFocus = { centerId, local: [x, y, z] };
 		const world = this.travelFocusWorld(center.position);
 		if (!world) return;
-		this.focusController.focusOnPoint(
-			world,
-			rangeKm === undefined ? undefined : kmToScene(rangeKm)
-		);
+		this.focusController.focusOnPoint(world);
 	}
 
 	/**
@@ -611,15 +606,19 @@ export class SceneRenderer {
 	 *
 	 * `refreshTravelFocus` re-derives the world position every frame, so moving
 	 * the point is the whole move: the camera keeps its distance and orientation
-	 * and slides along. A first call with nothing focused there yet flies in.
+	 * and slides along. The centre changes under it partway down each end, where
+	 * the craft leaves the crossing for a passage measured off the body — that is
+	 * a change of what the point is measured from and not of where it is, so it
+	 * re-anchors just as quietly. A first call with nothing focused there yet
+	 * swings the pivot over, holding the vantage.
 	 */
-	trackPathPoint(centerId: string, rKm: readonly [number, number, number], rangeKm: number): void {
-		if (!this.travelFocus || this.travelFocus.centerId !== centerId) {
-			this.focusOnPathPoint(centerId, rKm, rangeKm);
+	trackPathPoint(centerId: string, rKm: readonly [number, number, number]): void {
+		if (!this.travelFocus) {
+			this.focusOnPathPoint(centerId, rKm);
 			return;
 		}
 		const [x, y, z] = eclipticToScene(rKm);
-		this.travelFocus.local = [x, y, z];
+		this.travelFocus = { centerId, local: [x, y, z] };
 	}
 
 	private travelFocusWorld(centerPos: Vec3): Vec3 | null {

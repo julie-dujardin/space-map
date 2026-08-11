@@ -16,7 +16,7 @@ import * as travelConstants from './constants';
 import { AU_KM } from '$lib/math/units';
 import { sphereOfInfluenceKm } from './body';
 import { parkingRadiusKm } from './maneuvers';
-import { cross, dot, norm, normalize, sub, type Vec3 } from './vec3';
+import { add, cross, dot, norm, normalize, sub, type Vec3 } from './vec3';
 import {
 	EARTH,
 	J2000,
@@ -453,6 +453,29 @@ describe('end orbits', () => {
 		}
 	});
 
+	it('puts the craft in the same place in both frames, since it is the same craft', () => {
+		const solar = orbitToOrbit('interplanetary');
+		const planet = orbitToOrbit('planetary');
+
+		// A frame is what positions are measured from, so the two answers differ by
+		// exactly the body's motion and by nothing else. Anything more and switching
+		// the frame would jump the marker — and with it a camera following it.
+		for (const end of planet.endOrbits) {
+			const body = end.bodyId === EARTH.id ? EARTH : MARS;
+			for (let i = 0; i < end.jds.length; i++) {
+				const jd = end.jds[i];
+				const here = elementsToState(body.elements, jd, GM_SUN_KM3_S2)!.r;
+				const fromBody = craftPositionAt(planet, jd)!;
+				expect(fromBody.centerId).toBe(body.id);
+				const fromSun = craftPositionAt(solar, jd)!;
+				expect(fromSun.centerId).toBe(SUN);
+				// A kilometre or so apart: the two polylines chord the same curve, and
+				// the one carrying the body's motion takes longer steps to do it.
+				expect(norm(sub(add(here, fromBody.r), fromSun.r))).toBeLessThan(10);
+			}
+		}
+	});
+
 	it('is the bare conic planet-frame, one way down and nothing carried', () => {
 		const path = orbitToOrbit('planetary');
 
@@ -549,12 +572,16 @@ describe('end orbits', () => {
 			const origin = originOf(end);
 			const quarter = end.points[Math.floor(end.points.length / 4)];
 			const normal = normalize(cross(sub(end.points[0], origin), sub(quarter, origin)));
-			// Both are a conic and nothing else, out of plane by nothing at whatever
-			// distance — measured against each point's own, since an ellipse is a good
-			// deal wider in one direction than the other.
-			for (const point of [...end.points, ...end.approach]) {
+			// The orbit is a conic and nothing else. The passage is that too, plus the
+			// kilometres the two solvers disagree by where it meets the crossing — so
+			// it leaves the plane by a few km on a curve a million km long, and by
+			// nothing that would read as a second plane.
+			for (const point of end.points) {
 				const from = sub(point, origin);
 				expect(Math.abs(dot(from, normal)) / norm(from)).toBeLessThan(1e-9);
+			}
+			for (const point of end.approach) {
+				expect(Math.abs(dot(sub(point, origin), normal))).toBeLessThan(end.radiusKm * 0.01);
 			}
 		}
 	});
@@ -727,13 +754,6 @@ describe('pathViewpoint', () => {
 			const view = pathViewpoint(PATH, stop.jd, stop.jd)!;
 			expect(view.r).toEqual(stop.r);
 		}
-	});
-
-	it('stands back further for a whole leg than for a burn on it', () => {
-		const leg = pathViewpoint(PATH, ROUTE.departJd, ROUTE.arriveJd)!;
-		const burn = pathViewpoint(PATH, ROUTE.departJd, ROUTE.departJd)!;
-		expect(leg.rangeKm).toBeGreaterThan(burn.rangeKm);
-		expect(burn.rangeKm).toBeGreaterThan(0);
 	});
 
 	it('picks the arc a swing-by leg belongs to, not the other one', () => {

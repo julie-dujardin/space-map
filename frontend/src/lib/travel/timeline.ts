@@ -155,10 +155,9 @@ export type TimelineFocus =
 			kind: 'point';
 			centerId: string;
 			r: readonly [number, number, number];
-			rangeKm: number;
-			/** Follow the point where the camera already is instead of flying to it —
-			 *  a dragged clock moves it every frame, and re-framing on each would be
-			 *  an animation restarting sixty times a second. */
+			/** Move the point now rather than swinging the pivot onto it: a dragged
+			 *  clock moves it every frame, and a swing per frame is an animation
+			 *  restarting sixty times a second. */
 			track?: boolean;
 	  }
 	| { kind: 'body'; bodyId: string };
