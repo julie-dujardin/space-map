@@ -104,6 +104,25 @@ export {
 	spiralTransfer
 } from './low-thrust';
 
+export {
+	BELT_MODEL_UNCERTAINTY_FACTOR,
+	BELT_SHIELDING_FLOOR,
+	CANCER_RISK_PER_SV,
+	DEFAULT_SHIELDING_G_CM2,
+	LETHAL_DOSE_GY,
+	MODELLED_BELT_IDS,
+	beltPassDoseGy,
+	beltShieldingFactor,
+	cancerRiskFraction,
+	decimalYearOf,
+	gcrDoseRateSvPerDay,
+	jovianBeltRateGyPerDay,
+	lethalDoseFraction,
+	openSkyFraction,
+	radialFactor,
+	solarCycleFactor
+} from './radiation';
+
 export type { FlybyPass } from './flyby';
 export { minFlybyRadiusKm, solveFlyby, turnAngleRad } from './flyby';
 

@@ -6,6 +6,8 @@ import SolarPanelIcon from '@lucide/svelte/icons/solar-panel';
 import EclipseIcon from '@lucide/svelte/icons/eclipse';
 import RadioTowerIcon from '@lucide/svelte/icons/radio-tower';
 import ShieldIcon from '@lucide/svelte/icons/shield';
+import RadiationIcon from '@lucide/svelte/icons/radiation';
+import OrbitIcon from '@lucide/svelte/icons/orbit';
 import type { HazardKind, HazardSeverity } from '$lib/travel/hazards';
 
 export const HAZARD_ICONS: Record<HazardKind, typeof FlameIcon> = {
@@ -16,7 +18,12 @@ export const HAZARD_ICONS: Record<HazardKind, typeof FlameIcon> = {
 	conjunction: EclipseIcon,
 	'signal-lag': RadioTowerIcon,
 	// The hazard is the entry; what answers it is the shield.
-	aeroassist: ShieldIcon
+	aeroassist: ShieldIcon,
+	radiation: RadiationIcon,
+	// The belt rather than the particles: what makes a crossing avoidable is that
+	// it is a ring around a planet you chose to pass, which the trefoil does not
+	// say and would anyway repeat the row above it.
+	'belt-crossing': OrbitIcon
 };
 
 /**

@@ -38,6 +38,37 @@ export function dvParts(kms: number): { value: string; unit: string } {
 	return { value: kms.toFixed(1), unit: m.travel_km_s() };
 }
 
+/** Two significant figures. Nothing about a dose is known to more — the cosmic
+ *  ray model is good to a few percent and the belt one to a factor of four. */
+function doseFigure(value: number): string {
+	return Number(value.toPrecision(2)).toString();
+}
+
+/**
+ * A dose equivalent, in whichever sievert keeps it readable.
+ *
+ * The span is enormous and unavoidable: a week in low Earth orbit is a few mSv
+ * and a slow crossing to Saturn is several Sv, so no single unit serves both.
+ */
+export function formatSievert(sv: number): string {
+	if (!Number.isFinite(sv)) return '—';
+	if (sv >= 1) return m.travel_unit_sv({ value: doseFigure(sv) });
+	if (sv >= 1e-3) return m.travel_unit_msv({ value: doseFigure(sv * 1e3) });
+	return m.travel_unit_usv({ value: doseFigure(sv * 1e6) });
+}
+
+/**
+ * An absorbed dose, in grays.
+ *
+ * Only belts produce these, and they produce them in quantities that need the
+ * kilogray — Pioneer 10 took 4.5 of them going past Jupiter.
+ */
+export function formatGray(gy: number): string {
+	if (!Number.isFinite(gy)) return '—';
+	if (gy >= 1000) return m.travel_unit_kgy({ value: doseFigure(gy / 1000) });
+	return m.travel_unit_gy({ value: doseFigure(gy) });
+}
+
 /**
  * An end orbit as the height it is flown at: one figure when it is circular, low
  * point by high point when it is not.

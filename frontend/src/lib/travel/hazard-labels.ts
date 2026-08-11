@@ -11,10 +11,19 @@
 import * as m from '$lib/paraglide/messages.js';
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatDurationNarrow, SECONDS_PER_DAY } from '$lib/format/duration';
+import { formatPercent } from '$lib/format/quantities';
 import { formatKelvin } from '$lib/format/temperature';
+// The leaf module rather than the kernel's barrel: this file is pulled in by the
+// map, and `$lib/math/travel` would drag Lambert and the propagator onto the
+// first frame. `radiation` imports nothing heavier than two constants.
+import {
+	BELT_MODEL_UNCERTAINTY_FACTOR,
+	cancerRiskFraction,
+	lethalDoseFraction
+} from '$lib/math/travel/radiation';
 import type { AdjustedHazard, Hazard, HazardKind } from './hazards';
 import { equilibriumTempK } from './sunlight';
-import { formatDv, formatDvBrief } from './format';
+import { formatDv, formatDvBrief, formatGray, formatSievert } from './format';
 
 export function hazardName(kind: HazardKind): string {
 	switch (kind) {
@@ -28,6 +37,10 @@ export function hazardName(kind: HazardKind): string {
 			return m.travel_hazard_lag();
 		case 'aeroassist':
 			return m.travel_hazard_aero();
+		case 'radiation':
+			return m.travel_hazard_radiation();
+		case 'belt-crossing':
+			return m.travel_hazard_belt();
 	}
 }
 
@@ -74,6 +87,10 @@ export function hazardChip(hazard: Hazard): string {
 			return m.travel_hazard_lag_chip({ value: lag(hazard.peak) });
 		case 'aeroassist':
 			return m.travel_hazard_aero_chip({ value: formatDvBrief(hazard.peak) });
+		case 'radiation':
+			return formatSievert(hazard.peak);
+		case 'belt-crossing':
+			return hazard.unpriced ? m.travel_hazard_belt_unpriced_chip() : formatGray(hazard.peak);
 	}
 }
 
@@ -90,6 +107,10 @@ export function hazardValue(hazard: Hazard): string {
 			return m.travel_hazard_lag_value({ value: lag(hazard.peak) });
 		case 'aeroassist':
 			return formatDv(hazard.peak);
+		case 'radiation':
+			return formatSievert(hazard.peak);
+		case 'belt-crossing':
+			return hazard.unpriced ? m.travel_hazard_belt_unpriced_value() : formatGray(hazard.peak);
 	}
 }
 
@@ -98,8 +119,10 @@ export function hazardValue(hazard: Hazard): string {
  *
  * `originName` is only read by the conjunction, which is the one hazard defined
  * against the place the trip left rather than against the trip itself.
+ * `bodyName` is only read by a belt crossing, which is the one defined against
+ * a body the trip merely passes.
  */
-export function hazardDetail(hazard: Hazard, originName: string): string {
+export function hazardDetail(hazard: Hazard, originName: string, bodyName = ''): string {
 	switch (hazard.kind) {
 		case 'solar-heat':
 			return m.travel_hazard_heat_detail({
@@ -122,6 +145,30 @@ export function hazardDetail(hazard: Hazard, originName: string): string {
 			});
 		case 'aeroassist':
 			return m.travel_hazard_aero_detail({ value: formatDv(hazard.peak) });
+		case 'radiation':
+			// The rate as well as the total, because the two say different things:
+			// a sievert collected over nine years to Neptune is a different problem
+			// from the same sievert collected in eight months to Mars. And the note
+			// about shielding, which is the counter-intuitive part — the reference
+			// dose already carries a spacecraft's aluminium, and the lunar surface
+			// check says that is worth under 10%.
+			return m.travel_hazard_radiation_detail({
+				value: ltrIsolate(formatSievert(hazard.rateAtPeak ?? 0)),
+				risk: ltrIsolate(formatPercent(cancerRiskFraction(hazard.peak)))
+			});
+		case 'belt-crossing':
+			return hazard.unpriced
+				? m.travel_hazard_belt_unpriced_detail({ body: bodyName })
+				: m.travel_hazard_belt_detail({
+						body: bodyName,
+						value: ltrIsolate(formatPercent(lethalDoseFraction(hazard.peak))),
+						low: ltrIsolate(
+							formatPercent(lethalDoseFraction(hazard.peak) / BELT_MODEL_UNCERTAINTY_FACTOR)
+						),
+						high: ltrIsolate(
+							formatPercent(lethalDoseFraction(hazard.peak) * BELT_MODEL_UNCERTAINTY_FACTOR)
+						)
+					});
 	}
 }
 

@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import {
+	beltPassDoseGy,
 	buildRoute,
 	buildTrajectoryPath,
+	DEFAULT_SHIELDING_G_CM2,
 	type Route,
 	type TravelBody,
 	type Vehicle
 } from '$lib/math/travel';
 import { craftPositionAt } from '$lib/math/travel/path-sample';
 import { hohmannTransferDays, nextTransferWindows } from '$lib/math/travel/windows';
+import { findAssistRoute } from '$lib/math/travel/assist';
 import {
 	EARTH,
 	J2000,
@@ -429,5 +432,125 @@ describe('a trajectory whose geometry cannot be rebuilt', () => {
 describe('AU bookkeeping', () => {
 	it('measures against the same AU the rest of the app does', () => {
 		expect(AU_KM).toBeCloseTo(1.495978707e8, 0);
+	});
+});
+
+describe('radiation', () => {
+	it('costs a crossing to Mars something in the range Guo measured', () => {
+		const hazards = routeHazards(EARTH, MARS, transfer(EARTH, MARS), HELIOCENTRIC);
+		const dose = of(hazards, 'radiation')!;
+		expect(dose).toBeDefined();
+		// One way, so roughly half of the 0.65-1.59 Sv Guo puts a round trip at.
+		expect(dose.peak).toBeGreaterThan(0.15);
+		expect(dose.peak).toBeLessThan(0.6);
+	});
+
+	it('carries the rate as well as the total, because the two differ', () => {
+		const hazards = routeHazards(EARTH, MARS, transfer(EARTH, MARS), HELIOCENTRIC);
+		const dose = of(hazards, 'radiation')!;
+		// Free space at 1 au is about 1.2 mSv/day over a cycle.
+		expect(dose.rateAtPeak).toBeGreaterThan(5e-4);
+		expect(dose.rateAtPeak).toBeLessThan(5e-3);
+	});
+
+	it('charges a longer crossing more than a shorter one', () => {
+		const toMars = of(routeHazards(EARTH, MARS, transfer(EARTH, MARS), HELIOCENTRIC), 'radiation')!;
+		const toSaturn = of(
+			routeHazards(EARTH, SATURN, transfer(EARTH, SATURN), HELIOCENTRIC),
+			'radiation'
+		)!;
+		expect(toSaturn.peak).toBeGreaterThan(toMars.peak);
+	});
+
+	it('says nothing rather than something false inside a planet system', () => {
+		// A planetocentric radius is not an AU, and reading it as one would put
+		// the craft a thousand times too close to the Sun.
+		const route = buildRoute(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, J2000, 4, {
+			systemPrimary: 'departure'
+		})!;
+		const hazards = routeHazards(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, route, {
+			centerId: EARTH_BARYCENTRIC.id,
+			systemPrimary: 'departure'
+		});
+		expect(of(hazards, 'radiation')).toBeUndefined();
+	});
+
+	it('is not banded, because the rate barely varies along a crossing', () => {
+		const hazards = routeHazards(EARTH, MARS, transfer(EARTH, MARS), HELIOCENTRIC);
+		expect(of(hazards, 'radiation')!.bands).toHaveLength(0);
+	});
+});
+
+describe('belt crossings', () => {
+	const toSaturnViaJupiter = () =>
+		findAssistRoute(EARTH, SATURN, [JUPITER], { nowJd: J2000, departureMode: 'orbit' })!;
+
+	it('prices the swing-by the solver actually picks, which is a distant one', () => {
+		// Worth pinning because it is the opposite of the intuition. The free
+		// pass past Jupiter is solved for the turn it needs and lands around 14
+		// planetary radii, well outside the belt peak, so it costs a fraction of
+		// a gray rather than the hundreds a close pass would.
+		const route = toSaturnViaJupiter();
+		const belt = of(
+			routeHazards(EARTH, SATURN, route, { ...HELIOCENTRIC, vias: [JUPITER] }),
+			'belt-crossing'
+		)!;
+		expect(belt).toBeDefined();
+		expect(belt.bodyId).toBe(JUPITER.id);
+		expect(route.flybys![0].altitudeKm / JUPITER.radiusKm).toBeGreaterThan(5);
+		expect(belt.peak).toBeGreaterThan(0.1);
+		expect(belt.peak).toBeLessThan(4);
+	});
+
+	it('would charge a close pass three orders of magnitude more', () => {
+		// The case the model exists for, and the reason a Δv ladder is not
+		// enough to choose a trajectory by: these two passes cost the same fuel.
+		const distant = beltPassDoseGy(
+			14 * JUPITER.radiusKm,
+			5.6,
+			DEFAULT_SHIELDING_G_CM2,
+			JUPITER.radiusKm,
+			JUPITER.mu
+		);
+		const close = beltPassDoseGy(
+			2 * JUPITER.radiusKm,
+			5.6,
+			DEFAULT_SHIELDING_G_CM2,
+			JUPITER.radiusKm,
+			JUPITER.mu
+		);
+		expect(close / distant).toBeGreaterThan(100);
+		// Half of unaided survival is around 4 Gy.
+		expect(close).toBeGreaterThan(100);
+	});
+
+	it('puts the pass at the moment it happens, not across the trip', () => {
+		const route = toSaturnViaJupiter();
+		const belt = of(
+			routeHazards(EARTH, SATURN, route, { ...HELIOCENTRIC, vias: [JUPITER] }),
+			'belt-crossing'
+		)!;
+		expect(belt.startJd).toBe(route.flybys![0].jd);
+		expect(belt.endJd).toBe(belt.startJd);
+	});
+
+	it('says a belt was crossed and declines to price it where nobody has', () => {
+		// Saturn has belts and no published dose on terms a body absorbs.
+		const route = findAssistRoute(EARTH, JUPITER, [SATURN], {
+			nowJd: J2000,
+			departureMode: 'orbit'
+		});
+		if (!route?.flybys?.length) return;
+		const belt = of(
+			routeHazards(EARTH, JUPITER, route, { ...HELIOCENTRIC, vias: [SATURN] }),
+			'belt-crossing'
+		)!;
+		expect(belt.unpriced).toBe(true);
+		expect(belt.peak).toBe(0);
+	});
+
+	it('leaves a route with no swing-by alone', () => {
+		const hazards = routeHazards(EARTH, MARS, transfer(EARTH, MARS), HELIOCENTRIC);
+		expect(of(hazards, 'belt-crossing')).toBeUndefined();
 	});
 });

@@ -20,8 +20,14 @@
  */
 
 import {
+	beltPassDoseGy,
 	buildTrajectoryPath,
+	CANCER_RISK_PER_SV,
+	DEFAULT_SHIELDING_G_CM2,
 	elementsToState,
+	gcrDoseRateSvPerDay,
+	LETHAL_DOSE_GY,
+	MODELLED_BELT_IDS,
 	norm,
 	sub,
 	travelConstants,
@@ -44,7 +50,11 @@ export type HazardKind =
 	/** Far enough that nothing can be flown, only sent instructions and waited on. */
 	| 'signal-lag'
 	/** The arrival is flown through air, which takes hardware built for it. */
-	| 'aeroassist';
+	| 'aeroassist'
+	/** Cosmic rays, accumulated over the whole crossing. */
+	| 'radiation'
+	/** A swing-by flown through a planet's trapped-particle belts. */
+	| 'belt-crossing';
 
 export type HazardSeverity = 'notice' | 'caution' | 'severe';
 
@@ -74,6 +84,21 @@ export interface Hazard {
 	peak: number;
 	/** Distance from the Sun at the peak, AU. Only on the kinds that are about one. */
 	auAtPeak?: number;
+	/**
+	 * The rate behind an accumulated figure, in the kind's unit per day. Only on
+	 * `radiation`, whose `peak` is a trip integral rather than a moment: without
+	 * this there is no way to say whether a sievert was collected in a fortnight
+	 * or over nine years.
+	 */
+	rateAtPeak?: number;
+	/**
+	 * The hazard is real and its size is not known — a belt nobody has published
+	 * a dose profile for. Distinct from a `peak` of zero, which would be a claim
+	 * that crossing it is free.
+	 */
+	unpriced?: boolean;
+	/** The body a moment happens at. Only on the kinds that pick one out. */
+	bodyId?: string;
 	/**
 	 * The stretch broken into the tiers actually in force along it, in flight
 	 * order — what the map paints the arc with. Empty when there is nothing to
@@ -182,6 +207,59 @@ const LAG_SECONDS: Thresholds = { notice: 300, caution: 1800 };
  */
 const ENTRY_KMS: Thresholds = { notice: 0, caution: 8, severe: 13 };
 
+/**
+ * Cosmic ray dose over the whole trip, sieverts.
+ *
+ * Absolute, not a fraction of anybody's career limit. Those are policy — they
+ * differ between agencies, they have moved twice in twenty years, and quoting a
+ * percentage of one turns a physical quantity into an administrative one.
+ *
+ * The upper two tiers are placed on added lifetime cancer risk instead, at
+ * ICRP's nominal 4.1% per Sv, and written as the risk rather than the dose so
+ * that moving the coefficient moves them with it. A quarter and a half.
+ *
+ * Those are deliberately high, and the effect is that almost every trip anyone
+ * would fly sits in the mildest tier: a Mars round trip is 1.59 Sv at worst,
+ * which is under 7%. The tiers are for the trips that are actually a problem —
+ * a decade in the outer system reaches a quarter, and nothing crewed has ever
+ * been proposed that reaches a half.
+ *
+ * None of this is about dying of the trip. A sievert collected over ten years
+ * produces no radiation sickness at all, which is the whole reason this is a
+ * different quantity from a belt pass.
+ */
+const TRIP_DOSE_SV: Thresholds = {
+	notice: 0.1,
+	caution: 0.25 / CANCER_RISK_PER_SV,
+	severe: 0.5 / CANCER_RISK_PER_SV
+};
+
+/**
+ * Absorbed dose of one belt pass, grays.
+ *
+ * A different quantity from the one above and deliberately not summed with it:
+ * these are the tiers of acute injury, not of lifetime risk.
+ *
+ * Both upper tiers are fractions of `LETHAL_DOSE_GY` rather than doses written
+ * out, because the row quotes the figure as a percentage of exactly that: red
+ * begins at one whole lethal dose and amber at half of one, so the colour and
+ * the number on screen say the same thing. The mildest tier is well under any
+ * symptom threshold and exists so that a small pass still gets a line — "4% of
+ * a lethal dose" is worth saying.
+ *
+ * Severity is read off the central estimate, like every other hazard here. The
+ * band the row prints beside it is wide enough near the top tier to cross it,
+ * which is the model's honest state and not something to resolve by escalating.
+ *
+ * Judged on the dose behind the assumed hull, which is what a crew would take.
+ * Unshielded is about a hundred times worse.
+ */
+const BELT_PASS_GY: Thresholds = {
+	notice: 0.1,
+	caution: 0.5 * LETHAL_DOSE_GY,
+	severe: LETHAL_DOSE_GY
+};
+
 /** Which way a kind gets worse: with a rising figure, or with a falling one. */
 type Direction = 'rising' | 'falling';
 
@@ -219,6 +297,8 @@ interface Sample {
 	sepDeg: number;
 	/** One-way light time back to the origin, seconds. */
 	lagSec: number;
+	/** Cosmic ray dose equivalent rate in free space here, Sv/day. */
+	doseSvPerDay: number;
 }
 
 /** Sunlight is one quantity read two ways, so both distance hazards scan the
@@ -378,8 +458,14 @@ export function routeHazards(
 	const entry = aeroHazard(route);
 	if (entry) hazards.push(entry);
 
+	// Independent of the frame: a swing-by is priced from its own periapsis and
+	// speed, not from the trajectory the scan walks.
+	hazards.push(...beltHazards(route, context.vias ?? []));
+
 	if (aboutTheSun(context)) {
 		const samples = scan(departure, target, route, context);
+		const dose = radiationHazard(samples);
+		if (dose) hazards.push(dose);
 		const found = [
 			fromSpan('solar-heat', spanOf(samples, sunsOf, HEAT_SUNS, 'rising'), HEAT_SUNS, 'rising', {
 				withAu: true
@@ -538,8 +624,127 @@ function sampleAt(
 		au,
 		suns: sunsAt(au),
 		sepDeg: Math.acos(Math.min(1, Math.max(-1, cosine))) * RAD_TO_DEG,
-		lagSec: separationKm / SPEED_OF_LIGHT_KM_S
+		lagSec: separationKm / SPEED_OF_LIGHT_KM_S,
+		doseSvPerDay: gcrDoseRateSvPerDay(jd, au)
 	};
+}
+
+/**
+ * Cosmic rays over the whole crossing, integrated along the samples.
+ *
+ * Trapezoid, because the rate varies smoothly and slowly — it is a percent per
+ * tenth of an AU and a factor of 2.4 across eleven years, so the two-day
+ * sampling the conjunction test needs is far finer than this term wants.
+ *
+ * The craft is taken to be in free space for all of it. That understates a trip
+ * that spends time low over a body, which blocks half the sky, and overstates
+ * nothing — so the cruise figure is an upper bound on its own terms, and the
+ * ends of the trip are where it is loosest.
+ */
+function cruiseDose(samples: readonly Sample[]): {
+	sv: number;
+	peakRate: number;
+	peakJd: number;
+} {
+	let sv = 0;
+	let peakRate = 0;
+	let peakJd = samples.length > 0 ? samples[0].jd : 0;
+	for (let i = 0; i < samples.length; i++) {
+		if (samples[i].doseSvPerDay > peakRate) {
+			peakRate = samples[i].doseSvPerDay;
+			peakJd = samples[i].jd;
+		}
+		if (i === 0) continue;
+		const days = samples[i].jd - samples[i - 1].jd;
+		sv += ((samples[i].doseSvPerDay + samples[i - 1].doseSvPerDay) / 2) * days;
+	}
+	return { sv, peakRate, peakJd };
+}
+
+/**
+ * Bodies with belts worth naming a pass through. Wider than the set that has a
+ * dose profile, which is the point: passing Saturn is worth a line saying the
+ * cost is unknown, and passing Mars is not worth a line at all.
+ */
+const BELTED_BODY_IDS: ReadonlySet<string> = new Set([
+	'naif-599',
+	'naif-699',
+	'naif-799',
+	'naif-899',
+	'naif-399'
+]);
+
+/**
+ * The cosmic ray total as a hazard, from an already-walked trajectory.
+ *
+ * The figure is the whole trip's dose in sieverts rather than a rate at a
+ * moment, which makes this the one kind whose `peak` is an integral. It is not
+ * banded: the rate varies by a few percent across an inner-system crossing, so
+ * painting the arc with it would claim a structure that is not there.
+ */
+function radiationHazard(samples: readonly Sample[]): Hazard | null {
+	if (samples.length < 2) return null;
+	const { sv, peakRate, peakJd } = cruiseDose(samples);
+	const severity = severityFor(sv, TRIP_DOSE_SV, 'rising');
+	if (!severity) return null;
+	return {
+		kind: 'radiation',
+		severity,
+		startJd: samples[0].jd,
+		endJd: samples[samples.length - 1].jd,
+		peakJd,
+		peak: sv,
+		rateAtPeak: peakRate,
+		bands: []
+	};
+}
+
+/**
+ * Each swing-by through a belt, as its own moment.
+ *
+ * One per pass rather than a total, because they happen in different places to
+ * different degrees and a summed figure would hide which one was the problem.
+ */
+function beltHazards(route: Route, vias: readonly TravelBody[]): Hazard[] {
+	const hazards: Hazard[] = [];
+	for (const pass of route.flybys ?? []) {
+		if (!BELTED_BODY_IDS.has(pass.bodyId)) continue;
+		const body = vias.find((candidate) => candidate.id === pass.bodyId);
+		const moment = { startJd: pass.jd, endJd: pass.jd, peakJd: pass.jd, bands: [] };
+
+		if (!body || !MODELLED_BELT_IDS.has(pass.bodyId)) {
+			// Known to be a belt and not known how bad. Reported at the middle
+			// tier: calling it mild would be a claim, and calling it severe would
+			// be the same claim in the other direction.
+			hazards.push({
+				kind: 'belt-crossing',
+				severity: 'caution',
+				peak: 0,
+				unpriced: true,
+				bodyId: pass.bodyId,
+				...moment
+			});
+			continue;
+		}
+
+		const gy = beltPassDoseGy(
+			body.radiusKm + pass.altitudeKm,
+			(pass.vInfInKms + pass.vInfOutKms) / 2,
+			DEFAULT_SHIELDING_G_CM2,
+			body.radiusKm,
+			body.mu
+		);
+		const severity = severityFor(gy, BELT_PASS_GY, 'rising');
+		if (!severity) continue;
+		hazards.push({
+			kind: 'belt-crossing',
+			severity,
+			peak: gy,
+			bodyId: pass.bodyId,
+			...moment
+		});
+	}
+	return hazards;
 }
 
 /** Why a hazard reads differently once a craft is chosen. */

@@ -397,7 +397,7 @@
 								{/if}
 							</div>
 							<p class="text-muted-foreground mt-1 text-xs">
-								{hazardDetail(hazard, originLabel)}
+								{hazardDetail(hazard, originLabel, hazard.bodyId ? nameOf(hazard.bodyId) : '')}
 								{#if campaign}{campaign}{/if}
 							</p>
 							{#if craftNote}
