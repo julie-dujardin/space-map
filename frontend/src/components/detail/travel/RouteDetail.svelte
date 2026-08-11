@@ -297,7 +297,7 @@
 	>
 		<div class="text-muted-foreground text-[10px] uppercase">{tile.label}</div>
 		<div class="text-lg leading-tight font-semibold tabular-nums">
-			{tile.value}{#if tile.unit}<span class="text-muted-foreground ml-1 text-[10px] font-normal"
+			{tile.value}{#if tile.unit}<span class="text-muted-foreground ms-1 text-[10px] font-normal"
 					>{tile.unit}</span
 				>{/if}
 		</div>
@@ -523,7 +523,7 @@
 		<!-- One per line, each giving up its tail to the ellipsis: the titles run to
 		     a catalogue name and a report number, and run together they read as one
 		     citation with commas in it. Same shape as an object's sources footer. -->
-		<div class="text-muted-foreground text-[11px]/5">
+		<div class="text-muted-foreground text-xs/5">
 			<span>{m.travel_spec_sources()}</span>
 			{#each sources as source (source.url)}
 				<div class="flex">

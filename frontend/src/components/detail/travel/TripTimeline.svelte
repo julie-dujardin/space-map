@@ -181,7 +181,7 @@
 			<span class="text-muted-foreground font-normal">· {m.travel_timeline()}</span>
 		</h2>
 		<div class="flex shrink-0 items-center gap-1">
-			<span class="text-muted-foreground me-1 font-mono text-xs tabular-nums">
+			<span class="text-muted-foreground me-1 text-xs tabular-nums">
 				{formatJulianDate(clock.jd)}
 			</span>
 			<button
@@ -257,7 +257,6 @@
 				type="button"
 				bind:this={trackEl}
 				role="slider"
-				tabindex="0"
 				aria-label={m.travel_timeline_scrub()}
 				aria-valuemin={0}
 				aria-valuemax={Math.round(spanDays)}

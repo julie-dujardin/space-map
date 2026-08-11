@@ -350,11 +350,12 @@
 	let headerEl = $state<HTMLDivElement | null>(null);
 	// Close to the rendered size (icon-lg row + handle + paddings) so the collapsed
 	// snap is sane before the first measurement.
-	let headerHeightPx = $state(68);
+	const HEADER_GUESS_PX = 68;
+	let headerHeightPx = $state(HEADER_GUESS_PX);
 	let collapsedSnap = $derived(`${headerHeightPx}px`);
 	let topSnap = $derived(`${Math.max(1, innerH - TOP_GAP_PX)}px`);
 	let snapPoints = $derived([collapsedSnap, MID_SNAP, topSnap]);
-	let activeSnapPoint = $state<number | string | null>('68px');
+	let activeSnapPoint = $state<number | string | null>(`${HEADER_GUESS_PX}px`);
 	let isAtTop = $derived(activeSnapPoint === topSnap);
 
 	// Opening the trip opens the sheet all the way. It has to be moved there after

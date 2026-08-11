@@ -169,7 +169,11 @@
 		<ChevronDownIcon class="text-muted-foreground size-4 shrink-0" />
 	</Popover.Trigger>
 
-	<Popover.Content align="start" sideOffset={6} class="w-[20rem] gap-0 p-2">
+	<Popover.Content
+		align="start"
+		sideOffset={6}
+		class="w-[20rem] max-w-[calc(100vw-2rem)] gap-0 p-2"
+	>
 		{#if step === 'where' || !showMode}
 			<EndpointSearch
 				label={role === 'origin' ? m.travel_from() : m.travel_to()}
@@ -185,7 +189,7 @@
 					onclick={() => (step = 'how')}
 					class="border-border/60 text-muted-foreground hover:text-foreground mt-2 flex w-full items-center gap-2 border-t pt-2 text-start text-[11px]"
 				>
-					<span class="shrink-0 uppercase">
+					<span class="shrink-0 text-[10px] tracking-wide uppercase">
 						{role === 'origin' ? m.travel_departure_mode() : m.travel_arrival_mode()}
 					</span>
 					<span class="text-foreground truncate">{modeLabel}</span>
@@ -202,7 +206,7 @@
 					<ChevronLeftIcon class="size-3.5 shrink-0" />
 					<span class="truncate">{bodyName}</span>
 				</button>
-				<span class="text-muted-foreground ms-auto shrink-0 text-[10px] uppercase">
+				<span class="text-muted-foreground ms-auto shrink-0 text-[10px] tracking-wide uppercase">
 					{role === 'origin' ? m.travel_departure_mode() : m.travel_arrival_mode()}
 				</span>
 			</div>
@@ -240,7 +244,7 @@
 											class="text-muted-foreground flex w-full items-baseline gap-1.5 text-[10px]"
 										>
 											<span class="truncate">{detailOf(choice)}</span>
-											<span class="opacity-60">·</span>
+											<span>·</span>
 											<span class="shrink-0">{formatDuration(choice.periodHours / 24)}</span>
 										</span>
 									{/if}

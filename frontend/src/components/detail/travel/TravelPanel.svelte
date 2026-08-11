@@ -861,7 +861,7 @@
 			aria-label={m.travel_cruise_time()}
 		/>
 		{#if panel.torchMissedDeadline}
-			<p class="text-muted-foreground text-[11px]">{m.travel_cruise_missed()}</p>
+			<p class="text-muted-foreground text-xs">{m.travel_cruise_missed()}</p>
 		{/if}
 	</section>
 {/snippet}
@@ -954,6 +954,8 @@
 			</div>
 
 			<div class="col-start-1 row-start-2">
+				<!-- 18px puts the stub under the endpoint markers' centre: the boxes'
+				     px-2.5 plus half their size-3.5 marker cell. -->
 				<span class="bg-border ms-[18px] block h-2.5 w-px" aria-hidden="true"></span>
 			</div>
 

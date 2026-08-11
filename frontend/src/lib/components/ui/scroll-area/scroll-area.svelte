@@ -1,10 +1,15 @@
 <script lang="ts">
 	import { ScrollArea as ScrollAreaPrimitive } from 'bits-ui';
+	import { getLocale, getTextDirection } from '$lib/paraglide/runtime.js';
 	import { Scrollbar } from './index.js';
 	import { cn, type WithoutChild } from '$lib/utils.js';
 
 	let {
 		ref = $bindable(null),
+		// bits-ui defaults the root to dir="ltr", which resets the computed
+		// direction for everything inside — an RTL locale's flex order and
+		// logical properties silently un-mirror in every scroll area.
+		dir = getTextDirection(getLocale()),
 		viewportRef = $bindable(null),
 		class: className,
 		orientation = 'vertical',
@@ -26,6 +31,7 @@
 
 <ScrollAreaPrimitive.Root
 	bind:ref
+	{dir}
 	data-slot="scroll-area"
 	class={cn('relative', className)}
 	{...restProps}

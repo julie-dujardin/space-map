@@ -23,10 +23,10 @@
 </script>
 
 <div class="travel-ladder flex flex-col gap-2">
-	<div class="flex h-2.5 w-full gap-[2px] overflow-hidden">
+	<div class="flex h-2.5 w-full gap-0.5 overflow-hidden">
 		{#each burns as leg (leg.kind)}
 			<div
-				class="h-full first:rounded-s-[4px] last:rounded-e-[4px]"
+				class="h-full first:rounded-s-sm last:rounded-e-sm"
 				style="width: {total > 0
 					? (leg.dvKms / total) * 100
 					: 0}%; background: var(--leg-{leg.kind})"

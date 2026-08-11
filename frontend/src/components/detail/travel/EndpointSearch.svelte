@@ -26,6 +26,7 @@
 	import { featureTypeLabel as featureTypeName } from '$lib/format/feature-type';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import { isCoarsePointer } from '$lib/device';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 
 	interface Props {
@@ -146,8 +147,10 @@
 		return secondaryText(hit, { bodyName, featureTypeLabel });
 	}
 
+	// Autofocus is a desktop gesture — on touch it throws the keyboard over the
+	// popover that just opened.
 	$effect(() => {
-		input?.focus();
+		if (!isCoarsePointer()) input?.focus();
 	});
 
 	// The list is walked from the input, combobox-style, so the results are not
@@ -219,7 +222,9 @@
 
 		{#if query.trim().length >= MIN_QUERY}
 			{#if visible.length > 0}
-				<ScrollArea viewportClasses="max-h-56">
+				<!-- Tall enough for all SHOW_LIMIT rows: a list this short scrolling is
+				     a scrollbar for nothing. -->
+				<ScrollArea viewportClasses="max-h-72">
 					<ul id={listboxId} role="listbox" class="flex flex-col">
 						{#each visible as hit, index (hit.kind === 'feature' ? `f${hit.feature_id}` : hit.id)}
 							<li role="presentation">
@@ -230,7 +235,7 @@
 									aria-selected={index === activeIndex}
 									tabindex="-1"
 									onclick={() => pick(hit)}
-									class="hover:bg-muted flex w-full items-center gap-2 rounded-[5px] px-2 py-1.5 text-start {index ===
+									class="hover:bg-muted flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start {index ===
 									activeIndex
 										? 'bg-muted'
 										: ''}"
@@ -243,7 +248,7 @@
 									{/if}
 									<span class="min-w-0 flex-1">
 										<span class="block truncate text-xs">{localizedName(hit, getLocale())}</span>
-										<span class="text-muted-foreground block truncate text-[10px]">
+										<span class="text-muted-foreground block truncate text-[11px]">
 											{sublabel(hit)}
 										</span>
 									</span>
@@ -257,6 +262,9 @@
 			{:else}
 				<p class="text-muted-foreground px-2 text-xs">{m.travel_search_empty()}</p>
 			{/if}
+		{:else if query.trim().length > 0}
+			<!-- One letter in: silence here reads as a search that found nothing. -->
+			<p class="text-muted-foreground px-2 text-xs">{m.travel_search_more()}</p>
 		{/if}
 	</div>
 {:else}

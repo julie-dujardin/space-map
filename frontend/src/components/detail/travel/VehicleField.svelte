@@ -27,6 +27,7 @@
 		type Vehicle
 	} from '$lib/math/travel';
 	import { departureNote, vehicleDescription, vehicleName } from './vehicle-labels';
+	import { isCoarsePointer } from '$lib/device';
 	import VehicleMeta from './VehicleMeta.svelte';
 
 	interface Props {
@@ -79,8 +80,10 @@
 	$effect(() => {
 		if (!open) query = '';
 	});
+	// Autofocus is a desktop gesture — on touch it throws the keyboard over the
+	// popover that just opened.
 	$effect(() => {
-		if (open) input?.focus();
+		if (open && !isCoarsePointer()) input?.focus();
 	});
 
 	/** Accent-blind, so a French locale's names match an ASCII keyboard. */
@@ -138,11 +141,11 @@
 
 <Popover.Root {open} onOpenChange={(next: boolean) => onOpenChange(next)}>
 	<Popover.Trigger
-		class="border-border/60 bg-muted/40 hover:bg-muted data-[state=open]:bg-background flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-start transition-colors"
+		class="border-border/60 bg-muted/40 hover:bg-muted data-[state=open]:bg-background flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-start transition-colors"
 	>
 		<RocketIcon class="text-muted-foreground size-4 shrink-0" />
 		<span class="min-w-0 flex-1">
-			<span class="block truncate text-sm {selected ? '' : 'text-muted-foreground'}">
+			<span class="block truncate text-sm font-medium {selected ? '' : 'text-muted-foreground'}">
 				{selected ? vehicleName(selected) : m.travel_add_craft()}
 			</span>
 			{#if selected}
@@ -152,7 +155,11 @@
 		<ChevronDownIcon class="text-muted-foreground size-4 shrink-0" />
 	</Popover.Trigger>
 
-	<Popover.Content align="start" sideOffset={6} class="w-[22rem] gap-0 p-2">
+	<Popover.Content
+		align="start"
+		sideOffset={6}
+		class="w-[22rem] max-w-[calc(100vw-2rem)] gap-0 p-2"
+	>
 		<div
 			class="border-border/60 bg-background mb-2 flex items-center gap-2 rounded-md border px-2 py-1.5"
 		>
