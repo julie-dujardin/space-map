@@ -5,8 +5,10 @@
  */
 
 import { formatKm, formatKmRange } from '$lib/format/distance';
+import { sigFigures } from '$lib/format/quantities';
 import type { EndOrbit } from '$lib/math/travel/maneuvers';
 import * as m from '$lib/paraglide/messages.js';
+import { getLocale } from '$lib/paraglide/runtime.js';
 
 /** A torch drive's budget runs to six figures of km/s, which fits nowhere it
  *  is printed; from here the unit climbs to Mm/s. */
@@ -14,28 +16,37 @@ const MEGAMETRE_FLOOR_KMS = 10_000;
 
 /** Three significant figures for the climbed unit — 62.5, 125, 1250. */
 function megametres(kms: number): string {
-	return Number((kms / 1000).toPrecision(3)).toString();
+	return sigFigures(kms / 1000, 3);
+}
+
+/** The locale's own decimals at a stated precision — toFixed would print dot
+ *  decimals into the comma locales. */
+function fixed(value: number, digits: number): string {
+	return value.toLocaleString(getLocale(), {
+		minimumFractionDigits: digits,
+		maximumFractionDigits: digits
+	});
 }
 
 /** Δv with two decimals — the precision the estimates actually carry. */
 export function formatDv(kms: number): string {
 	if (!Number.isFinite(kms)) return '—';
 	if (kms >= MEGAMETRE_FLOOR_KMS) return m.travel_unit_mm_s({ value: megametres(kms) });
-	return m.travel_unit_km_s({ value: kms.toFixed(2) });
+	return m.travel_unit_km_s({ value: fixed(kms, 2) });
 }
 
 /** The route row's tighter form: one decimal, same unit climb. */
 export function formatDvBrief(kms: number): string {
 	if (!Number.isFinite(kms)) return '—';
 	if (kms >= MEGAMETRE_FLOOR_KMS) return m.travel_unit_mm_s({ value: megametres(kms) });
-	return m.travel_unit_km_s({ value: kms.toFixed(1) });
+	return m.travel_unit_km_s({ value: fixed(kms, 1) });
 }
 
 /** Figure and unit split apart, for the stat tile that sets its own type. */
 export function dvParts(kms: number): { value: string; unit: string } {
 	if (!Number.isFinite(kms)) return { value: '—', unit: '' };
 	if (kms >= MEGAMETRE_FLOOR_KMS) return { value: megametres(kms), unit: m.travel_mm_s() };
-	return { value: kms.toFixed(1), unit: m.travel_km_s() };
+	return { value: fixed(kms, 1), unit: m.travel_km_s() };
 }
 
 /** Two significant figures. Nothing about a dose is known to more — the cosmic
@@ -96,7 +107,7 @@ const METRES_FLOOR_MS2 = 1e-3;
 
 /** Two significant figures, which is all any of these are known to. */
 function significant(value: number): string {
-	return Number(value.toPrecision(2)).toString();
+	return sigFigures(value, 2);
 }
 
 /**

@@ -34,10 +34,12 @@
 		dvParts,
 		formatAcceleration,
 		formatDv,
+		formatDvBrief,
 		formatEndOrbit,
 		formatSpeed,
 		lightPercent
 	} from '$lib/travel/format';
+	import { formatNumber } from '$lib/format/quantities';
 	import type { TravelPanelState } from '$lib/travel/panel.svelte';
 	import { adjustForVehicle, type Hazard } from '$lib/travel/hazards';
 	import {
@@ -139,7 +141,7 @@
 					unit: m.travel_percent_c(),
 					tooltip: m.travel_percent_c_name()
 				}
-			: { label: m.travel_top_speed(), value: topSpeedKms.toFixed(0), unit: m.travel_km_s() }
+			: { label: m.travel_top_speed(), value: formatNumber(topSpeedKms), unit: m.travel_km_s() }
 	);
 	let tiles = $derived<Tile[]>([
 		// The whole trip, not just the transfer: a route that arrives sooner and
@@ -157,7 +159,11 @@
 					// and what it does have is the figure the whole trip follows from:
 					// years of crossing because the drive pushes at this.
 					{ label: m.travel_drive_accel(), ...accelerationParts(route.lowThrust.accelMs2) }
-				: { label: m.travel_launch_c3(), value: route.c3Km2S2.toFixed(1), unit: m.travel_km2_s2() }
+				: {
+						label: m.travel_launch_c3(),
+						value: formatNumber(route.c3Km2S2),
+						unit: m.travel_km2_s2()
+					}
 	]);
 
 	let delay = $derived(signalDelaySeconds(origin, target, route.arriveJd));
@@ -341,7 +347,7 @@
 				</h4>
 				{#if saving !== null}
 					<span class="text-muted-foreground shrink-0 text-xs tabular-nums">
-						{m.travel_assist_saves({ value: saving.toFixed(1) })}
+						{m.travel_assist_saves({ value: formatDvBrief(saving) })}
 					</span>
 				{/if}
 			</div>
@@ -355,7 +361,7 @@
 
 				<dt class="text-muted-foreground">{m.travel_flyby_turn()}</dt>
 				<dd class="text-end tabular-nums">
-					{pass.turnDeg.toFixed(0)}°
+					{formatNumber(pass.turnDeg)}°
 					{#if pass.dvKms < FREE_PASS_KMS}
 						<span class="text-muted-foreground ms-1 text-xs">{m.travel_flyby_free()}</span>
 					{/if}
@@ -464,14 +470,14 @@
 			<dd class="text-end">
 				{#if remaining == null}
 					<span class="text-muted-foreground text-xs">
-						{m.travel_return_needs({ value: returnCost.toFixed(1) })}
+						{m.travel_return_needs({ value: formatDvBrief(returnCost) })}
 					</span>
 				{:else if remaining >= returnCost}
 					<span class="text-sm">{m.travel_return_possible()}</span>
 				{:else}
 					<span class="text-sm">{m.travel_return_one_way()}</span>
 					<span class="text-muted-foreground text-xs">
-						{m.travel_return_needs({ value: returnCost.toFixed(1) })}
+						{m.travel_return_needs({ value: formatDvBrief(returnCost) })}
 					</span>
 				{/if}
 			</dd>

@@ -24,7 +24,7 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import MoveRightIcon from '@lucide/svelte/icons/move-right';
 	import { formatJulianDate } from '$lib/format/date';
-	import { formatQuantity } from '$lib/format/quantities';
+	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 	import type { OfferedRoute, TravelPanelState } from '$lib/travel/panel.svelte';
 	import { formatDurationNarrow } from '$lib/format/duration';
 	import { formatAcceleration, formatDvBrief } from '$lib/travel/format';
@@ -90,10 +90,10 @@
 		// drive the impulsive model cannot price — and say so instead.
 		const unjudged = (detail: string) => ({ header: m.travel_unjudged(), detail });
 		if (result.status === 'over-c3') {
-			return out(m.travel_needs_c3({ value: choice.route.c3Km2S2.toFixed(0) }));
+			return out(m.travel_needs_c3({ value: formatNumber(choice.route.c3Km2S2) }));
 		}
 		if (result.status === 'insufficient-dv') {
-			return out(m.travel_needs_dv({ value: choice.route.inSpaceDvKms.toFixed(1) }));
+			return out(m.travel_needs_dv({ value: formatDvBrief(choice.route.inSpaceDvKms) }));
 		}
 		// The craft and the trip disagree about where it starts, which is a
 		// statement about the craft rather than about this particular route.
@@ -122,7 +122,7 @@
 			return unjudged(
 				end === undefined
 					? m.travel_no_published_figure()
-					: m.travel_past_published({ value: end.toFixed(0) })
+					: m.travel_past_published({ value: formatNumber(end) })
 			);
 		}
 		// The last one left: a drive that cannot make an impulsive burn, faced with
