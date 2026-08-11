@@ -100,17 +100,50 @@ describe('buildTrajectoryPath', () => {
 		expect(total).toBeCloseTo(route.totalDvKms, 9);
 	});
 
-	it('breaks a swing-by into two arcs meeting at the body it passes', () => {
+	it('breaks a swing-by into two arcs joined by the pass round the body', () => {
 		const route = ASSIST_ROUTE;
 		const path = buildTrajectoryPath(EARTH, JUPITER, route, { centerId: SUN, vias: [VENUS] })!;
-		expect(path.arcs).toHaveLength(2);
+		expect(path.arcs).toHaveLength(3);
 		expect(path.stops.map((s) => s.kind)).toEqual(['departure', 'assist', 'arrival']);
 
-		const first = path.arcs[0].points;
-		const second = path.arcs[1].points;
-		// The two arcs are the same trajectory, so they share the point they meet at.
-		expect(relative(first[first.length - 1], second[0])).toBeLessThan(1e-9);
-		expect(relative(path.stops[1].r, second[0])).toBeLessThan(1e-9);
+		const [first, pass, second] = path.arcs.map((arc) => arc.points);
+		// One trajectory: each handover is a sample the two stretches share.
+		expect(relative(first[first.length - 1], pass[0])).toBeLessThan(1e-9);
+		expect(relative(pass[pass.length - 1], second[0])).toBeLessThan(1e-9);
+	});
+
+	it('flies the pass the swing-by was priced on, not a corner at the centre', () => {
+		const route = ASSIST_ROUTE;
+		const flyby = route.flybys![0];
+		const path = buildTrajectoryPath(EARTH, JUPITER, route, { centerId: SUN, vias: [VENUS] })!;
+		const pass = path.arcs[1];
+		const soi = soiOf(VENUS, GM_SUN_KM3_S2);
+
+		const venusAt = (jd: number) => elementsToState(VENUS.elements, jd, GM_SUN_KM3_S2)!.r;
+		const radii = pass.points.map((point, i) => norm(sub(point, venusAt(pass.jds[i]))));
+		let low = Infinity;
+		let lowest = 0;
+		for (const [i, radius] of radii.entries()) {
+			if (radius < low) {
+				low = radius;
+				lowest = i;
+			}
+		}
+		// The pass hands over out at the sphere of influence — each end reaches the
+		// arc's own sampling, so "near" is a step of the crossing, not a few km —
+		// and dives from there to the body.
+		expect(radii[0]).toBeGreaterThan(soi / 2);
+		expect(radii[radii.length - 1]).toBeGreaterThan(soi / 2);
+		expect(low).toBeLessThan(soi / 50);
+		// Its low point is the periapsis the route priced the pass at, and the
+		// assist's own stop sits there rather than at the body's centre.
+		expect(low).toBeCloseTo(flyby.altitudeKm + VENUS.radiusKm, -1);
+		expect(relative(path.stops[1].r, pass.points[lowest])).toBeLessThan(1e-6);
+
+		// And its clock runs forward through the priced date.
+		for (let i = 1; i < pass.jds.length; i++) expect(pass.jds[i]).toBeGreaterThan(pass.jds[i - 1]);
+		expect(pass.startJd).toBeLessThan(flyby.jd);
+		expect(pass.endJd).toBeGreaterThan(flyby.jd);
 	});
 
 	it('refuses a swing-by whose via body it was not given', () => {
@@ -721,8 +754,10 @@ describe('craftPositionAt', () => {
 		})!;
 		const flyby = ASSIST_ROUTE.flybys![0];
 		const at = craftPositionAt(path, flyby.jd)!.r;
-		// Both arcs meet there, so either answer is the same place.
-		expect(relative(at, path.arcs[1].points[0])).toBeLessThan(1e-9);
+		// Mid-pass the craft rides the passage arc, well inside the sphere of
+		// influence of the body it is swinging past.
+		const venusAt = elementsToState(VENUS.elements, flyby.jd, GM_SUN_KM3_S2)!.r;
+		expect(norm(sub(at, venusAt))).toBeLessThan(soiOf(VENUS, GM_SUN_KM3_S2));
 	});
 });
 
@@ -765,7 +800,7 @@ describe('pathViewpoint', () => {
 		const first = pathViewpoint(path, ASSIST_ROUTE.departJd, flyby.jd)!;
 		const second = pathViewpoint(path, flyby.jd, ASSIST_ROUTE.arriveJd)!;
 		expect(first.r).toEqual(path.arcs[0].points[Math.floor(path.arcs[0].points.length / 2)]);
-		expect(second.r).toEqual(path.arcs[1].points[Math.floor(path.arcs[1].points.length / 2)]);
+		expect(second.r).toEqual(path.arcs[2].points[Math.floor(path.arcs[2].points.length / 2)]);
 	});
 
 	it('has nowhere to point on a path with no arcs', () => {

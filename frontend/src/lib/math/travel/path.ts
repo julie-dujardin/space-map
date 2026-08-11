@@ -18,6 +18,7 @@
 import { AU_KM } from '$lib/math/units';
 import { sphereOfInfluenceKm, type TravelBody } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
+import { solveFlyby } from './flyby';
 import { sampleHeldDrive, type HeldDriveSample } from './held-drive';
 import { solveLambert } from './lambert';
 import { rebuildSpiral } from './low-thrust';
@@ -295,6 +296,28 @@ function evenJds(startJd: number, days: number, count: number): number[] {
 	return jds;
 }
 
+/** The coast from `r`/`v` to `endpoint`, sampled as an arc. */
+function conicArc(
+	r: Vec3,
+	v: Vec3,
+	endpoint: Vec3,
+	startJd: number,
+	days: number,
+	mu: number,
+	samples: number
+): PathArc | null {
+	const points = sampleConic(r, v, days, mu, samples, endpoint);
+	if (!points) return null;
+	// `sampleConic` propagates in equal time steps, so the dates are even too.
+	return {
+		kind: 'cruise',
+		points,
+		jds: evenJds(startJd, days, points.length),
+		startJd,
+		endJd: startJd + days
+	};
+}
+
 /** The Lambert arc between two bodies, sampled. */
 function lambertArc(
 	from: { r: Vec3; v: Vec3 },
@@ -307,16 +330,14 @@ function lambertArc(
 ): PathArc | null {
 	const arc = solveLambert(from.r, to.r, days * SEC_PER_DAY, mu, retrograde);
 	if (!arc) return null;
-	const points = sampleConic(from.r, arc.v1, days, mu, samples, to.r);
-	if (!points) return null;
-	// `sampleConic` propagates in equal time steps, so the dates are even too.
-	return {
-		kind: 'cruise',
-		points,
-		jds: evenJds(startJd, days, points.length),
-		startJd,
-		endJd: startJd + days
-	};
+	return conicArc(from.r, arc.v1, to.r, startJd, days, mu, samples);
+}
+
+/** The stretch of `arc` from sample `from` up to `to`, half-open. */
+function trimmedArc(arc: PathArc, from: number, to: number): PathArc {
+	const points = arc.points.slice(from, to);
+	const jds = arc.jds.slice(from, to);
+	return { ...arc, points, jds, startJd: jds[0], endJd: jds[jds.length - 1] };
 }
 
 /** A trajectory before the orbits at its ends are hung off it — what each of the
@@ -412,19 +433,53 @@ function buildCrossing(
 
 		const tof1 = flyby.jd - route.departJd;
 		const tof2 = route.arriveJd - flyby.jd;
-		const first = lambertArc(from, mid, route.departJd, tof1, centralMu, retrograde, samples);
-		const second = lambertArc(mid, to, flyby.jd, tof2, centralMu, retrograde, samples);
+		const out = solveLambert(from.r, mid.r, tof1 * SEC_PER_DAY, centralMu, retrograde);
+		const back = solveLambert(mid.r, to.r, tof2 * SEC_PER_DAY, centralMu, retrograde);
+		if (!out || !back) return null;
+		const first = conicArc(from.r, out.v1, mid.r, route.departJd, tof1, centralMu, samples);
+		const second = conicArc(mid.r, back.v1, to.r, flyby.jd, tof2, centralMu, samples);
 		if (!first || !second) return null;
+
+		// The two arcs were solved to the body's centre, a place the craft never
+		// goes: really it flies the hyperbola the pass was priced on. Where that
+		// can be rebuilt it replaces the corner; where it cannot — a pass pushed
+		// out to the sphere's edge, which is a burn rather than a swing-by — the
+		// corner stands as the truer picture.
+		const passage = assistPassage({
+			via,
+			mid,
+			vIn: out.v2,
+			vOut: back.v1,
+			first,
+			second,
+			flybyJd: flyby.jd,
+			centralMu
+		});
+		const arcs = passage
+			? [
+					trimmedArc(first, 0, passage.cutIn + 1),
+					{
+						kind: 'cruise' as const,
+						points: passage.points,
+						jds: passage.jds,
+						startJd: passage.jds[0],
+						endJd: passage.jds[passage.jds.length - 1]
+					},
+					trimmedArc(second, passage.cutOut, second.points.length)
+				]
+			: [first, second];
 
 		return {
 			centerId,
-			arcs: [first, second],
+			arcs,
 			stops: [
 				departureStop,
 				{
 					kind: 'assist',
 					jd: flyby.jd,
-					r: mid.r,
+					// The burn is made at periapsis, so that is where the dot belongs —
+					// the centre is only where the pricing had to put it.
+					r: passage?.peri ?? mid.r,
 					bodyId: via.id,
 					dvKms: flyby.dvKms
 				},
@@ -1014,6 +1069,161 @@ function hyperbolicPassage(end: {
 function seamBlend(x: number): number {
 	const t = Math.max(0, Math.min(1, x));
 	return t * t * (3 - 2 * t);
+}
+
+/** Points along each branch of a swing-by pass. The two share periapsis, so the
+ *  drawn passage is one sample short of twice this. */
+const FLYBY_BRANCH_SAMPLES = 80;
+
+/**
+ * The pass a swing-by is actually flown on, replacing the corner the two arcs
+ * make at the body's centre.
+ *
+ * The same solve the pricing ran fixes everything: the periapsis radius comes
+ * out of `solveFlyby` on the same excess velocities, and each side of the pass
+ * is the hyperbola that excess speed and that periapsis make — two conics, not
+ * one, because a powered pass changes speed at the low point and the burn is
+ * where the craft switches from one to the other. The plane is the one both
+ * excess velocities lie in, which is the plane the turn happens in; the shared
+ * periapsis sits where the incoming branch's own asymptote demands.
+ *
+ * Like an end's passage, the curve is the patched-conic worldline: the body's
+ * displacement is carried along it, each handover is chased to where the arc
+ * really crosses the moving sphere of influence, and what the two models still
+ * miss each other by there is worked off on the way down to periapsis, so the
+ * passage meets both arcs at a sample they share exactly.
+ *
+ * Null when there is no pass to draw — the solve failing, a periapsis at the
+ * sphere's edge (a burn in deep space wearing the name), a turn too small to
+ * pick a plane, or a crossing too short to give up its end. The corner is the
+ * honest fallback there.
+ */
+function assistPassage(pass: {
+	via: TravelBody;
+	/** The via body's state at the priced pass date. */
+	mid: { r: Vec3; v: Vec3 };
+	/** The craft's heliocentric velocity arriving at the body, off the first arc. */
+	vIn: Vec3;
+	/** And leaving it, off the second. */
+	vOut: Vec3;
+	first: PathArc;
+	second: PathArc;
+	flybyJd: number;
+	centralMu: number;
+}): {
+	/** In the transfer frame, in flight order. */
+	points: Vec3[];
+	jds: number[];
+	/** The first arc keeps `[0, cutIn]`, the second `[cutOut, end)`. */
+	cutIn: number;
+	cutOut: number;
+	/** The drawn low point, transfer frame. */
+	peri: Vec3;
+	periJd: number;
+} | null {
+	const { via, mid, vIn, vOut, first, second, flybyJd, centralMu } = pass;
+	const vInfIn = sub(vIn, mid.v);
+	const vInfOut = sub(vOut, mid.v);
+	const soi = sphereOfInfluenceKm(via, centralMu, Math.abs(via.elements.a) * AU_KM);
+	if (!Number.isFinite(soi) || !(soi > 0)) return null;
+
+	const solved = solveFlyby(via, vInfIn, vInfOut, soi);
+	if (!solved || !(solved.periapsisKm < soi * 0.99)) return null;
+	const rPeri = solved.periapsisKm;
+
+	const crossed = cross(vInfIn, vInfOut);
+	if (!(norm(crossed) > 0)) return null;
+	const normal = normalize(crossed);
+
+	const speedIn = norm(vInfIn);
+	const speedOut = norm(vInfOut);
+	const eIn = 1 + (rPeri * speedIn * speedIn) / via.mu;
+	const eOut = 1 + (rPeri * speedOut * speedOut) / via.mu;
+	if (!(eIn > 1) || !(eOut > 1)) return null;
+
+	// Where the low point is: the craft comes in along `vInfIn`, so its position
+	// out on that asymptote is the opposite way, and periapsis is the asymptote's
+	// true anomaly on from there. The outgoing branch then leaves along the other
+	// asymptote by the same geometry — that the two line up is exactly what the
+	// periapsis was solved for.
+	const nuInfIn = Math.acos(-1 / eIn);
+	const periapsis = rotateAbout(normalize(vInfIn), normal, nuInfIn - Math.PI);
+	const inPlane = normalize(cross(normal, periapsis));
+
+	const branch = (e: number) => {
+		const p = rPeri * (1 + e);
+		const meanMotion = Math.sqrt(via.mu / Math.abs(p / (1 - e * e)) ** 3);
+		const nuSoi = Math.acos(Math.max(-1, Math.min(1, (p / soi - 1) / e)));
+		const fallDays = hyperbolicSeconds(e, nuSoi, meanMotion) / SEC_PER_DAY;
+		const sample = (days: number): Vec3 => {
+			const nu = hyperbolicTrueAnomaly(e, days * SEC_PER_DAY * meanMotion);
+			const radius = p / (1 + e * Math.cos(nu));
+			return scale(add(scale(periapsis, Math.cos(nu)), scale(inPlane, Math.sin(nu))), radius);
+		};
+		return { fallDays, sample };
+	};
+	const inward = branch(eIn);
+	const outward = branch(eOut);
+	if (!(inward.fallDays > 0) || !(outward.fallDays > 0)) return null;
+
+	const viaAt = (jd: number) => elementsToState(via.elements, jd, centralMu)?.r ?? null;
+	const chase = (v: Vec3, vInf: Vec3, leaving: boolean) =>
+		soiCrossingJd(
+			{ vInf, bodyAt: viaAt, craft: { r: mid.r, v, jd: flybyJd }, crossingMu: centralMu },
+			soi,
+			leaving
+		);
+	const entryJd = chase(vIn, vInfIn, false) ?? flybyJd - inward.fallDays;
+	const exitJd = chase(vOut, vInfOut, true) ?? flybyJd + outward.fallDays;
+	// One clock for the whole pass, anchored on the entry: periapsis is a fall
+	// after it, and the way out is read off that same low point.
+	const periJd = entryJd + inward.fallDays;
+
+	const cutIn = lastBefore(first.jds, entryJd);
+	const cutOut = firstAfter(second.jds, exitJd);
+	// At least one sample must stay either side, or there is no arc left to join.
+	if (cutIn < 1 || cutOut < 0 || cutOut > second.points.length - 2) return null;
+
+	const center = viaAt(periJd);
+	if (!center) return null;
+	const carried = (days: number): Vec3 | null => {
+		const moved = viaAt(periJd + days);
+		return moved ? sub(moved, center) : null;
+	};
+
+	const joinIn = first.jds[cutIn] - periJd;
+	const joinOut = second.jds[cutOut] - periJd;
+	if (!(joinIn < 0) || !(joinOut > 0)) return null;
+	const carriedIn = carried(joinIn);
+	const carriedOut = carried(joinOut);
+	if (!carriedIn || !carriedOut) return null;
+	// What each conic misses its own arc by at the handover — see the end
+	// passage's seam for why it is worked off along the way down.
+	const missIn = sub(sub(first.points[cutIn], center), add(inward.sample(joinIn), carriedIn));
+	const missOut = sub(sub(second.points[cutOut], center), add(outward.sample(joinOut), carriedOut));
+
+	const points: Vec3[] = [];
+	const jds: number[] = [];
+	const push = (days: number, half: typeof inward, miss: Vec3): boolean => {
+		const point = half.sample(days);
+		const moved = carried(days);
+		if (!moved) return false;
+		const seam = seamBlend((norm(point) - rPeri) / (soi - rPeri));
+		points.push(add(center, add(point, add(moved, scale(miss, seam)))));
+		jds.push(periJd + days);
+		return true;
+	};
+	// Squared along each branch so the samples crowd at periapsis, where the line
+	// bends hardest.
+	for (let i = 0; i < FLYBY_BRANCH_SAMPLES; i++) {
+		const fraction = 1 - i / (FLYBY_BRANCH_SAMPLES - 1);
+		if (!push(joinIn * fraction * fraction, inward, missIn)) return null;
+	}
+	for (let i = 1; i < FLYBY_BRANCH_SAMPLES; i++) {
+		const fraction = i / (FLYBY_BRANCH_SAMPLES - 1);
+		if (!push(joinOut * fraction * fraction, outward, missOut)) return null;
+	}
+	return { points, jds, cutIn, cutOut, peri: add(center, scale(periapsis, rPeri)), periJd };
 }
 
 /**
