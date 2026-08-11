@@ -391,7 +391,12 @@
 							     is comes off the icon's colour rather than a word for it. -->
 							<div class="text-muted-foreground text-xs tabular-nums">
 								{#if hazard.endJd > hazard.startJd}
-									{formatJulianDate(hazard.startJd)} → {formatJulianDate(hazard.endJd)}
+									{formatJulianDate(hazard.startJd)}
+									<MoveRightIcon
+										class="inline size-[1em] align-[-0.125em] rtl:rotate-180"
+										aria-hidden="true"
+									/>
+									{formatJulianDate(hazard.endJd)}
 								{:else}
 									{formatJulianDate(hazard.startJd)}
 								{/if}

@@ -94,7 +94,16 @@
 		return depart > 0 && tof > 0 ? { depart, tof } : null;
 	});
 
-	/** Where each trajectory sits on the field, as fractions of each axis. */
+	// The field mirrors in RTL like the timeline track does, so every fraction
+	// that crosses between data and screen flips with it. Screen-side x is
+	// always physical-from-left; `flip` is the one crossing point.
+	let rtl = $state(false);
+
+	function flip(f: number): number {
+		return rtl ? 1 - f : f;
+	}
+
+	/** Where each trajectory sits on the field, as screen fractions of each axis. */
 	let placed = $derived.by(() => {
 		const at = spans;
 		if (!at) return [];
@@ -103,7 +112,7 @@
 		// chart entirely.
 		return marks.map((point) => ({
 			...point,
-			x: clamp01((point.departJd - grid.departJds[0]) / at.depart),
+			x: flip(clamp01((point.departJd - grid.departJds[0]) / at.depart)),
 			y: clamp01((point.tofDays - grid.tofDays[0]) / at.tof)
 		}));
 	});
@@ -118,6 +127,10 @@
 
 	let plot = $state<HTMLElement | null>(null);
 	let field = $state<HTMLButtonElement | null>(null);
+
+	$effect(() => {
+		if (plot) rtl = getComputedStyle(plot).direction === 'rtl';
+	});
 	// Set when a press already picked, so the click it turns into does not pick a
 	// second time.
 	let pressPicked = false;
@@ -132,7 +145,9 @@
 	function pickAt(clientX: number, clientY: number): void {
 		if (!plot || !spans || !onPick) return;
 		const box = plot.getBoundingClientRect();
-		const fx = clamp01((clientX - box.left - DOT_RADIUS_PX) / (box.width - DOT_RADIUS_PX * 2));
+		const fx = flip(
+			clamp01((clientX - box.left - DOT_RADIUS_PX) / (box.width - DOT_RADIUS_PX * 2))
+		);
 		const fy = clamp01((clientY - box.top - DOT_RADIUS_PX) / (box.height - DOT_RADIUS_PX * 2));
 		onPick(grid.departJds[0] + fx * spans.depart, grid.tofDays[0] + fy * spans.tof);
 	}
@@ -182,8 +197,11 @@
 		const tofMax = grid.tofDays[grid.tofSteps - 1];
 		const depart = route?.departJd ?? departFromJd + spans.depart / 2;
 		const tof = route?.tofDays ?? tofMin + spans.tof / 2;
+		// Left/right are screen directions: on a mirrored field they walk the
+		// dates the other way.
+		const dx = rtl ? -step[0] : step[0];
 		onPick(
-			clamp(depart + (step[0] * spans.depart) / (grid.departSteps - 1), departFromJd, departToJd),
+			clamp(depart + (dx * spans.depart) / (grid.departSteps - 1), departFromJd, departToJd),
 			clamp(tof + (step[1] * spans.tof) / (grid.tofSteps - 1), tofMin, tofMax)
 		);
 	}
@@ -217,7 +235,7 @@
 				viewBox="0 0 {grid.departSteps} {grid.tofSteps}"
 				preserveAspectRatio="none"
 				shape-rendering="crispEdges"
-				class="block h-full w-full"
+				class="block h-full w-full rtl:-scale-x-100"
 				role="img"
 				aria-label={m.travel_windows_alt()}
 			>
@@ -246,13 +264,13 @@
 						top: calc({DOT_RADIUS_PX}px + {point.y} * (100% - {DOT_RADIUS_PX * 2}px))"
 				>
 					<span
-						class="ring-background block rounded-full bg-white ring-2 transition-[width,height] {lit
+						class="ring-background bg-foreground block rounded-full ring-2 transition-[width,height] {lit
 							? 'size-3.5'
 							: 'size-2.5'}"
 					></span>
 					{#if lit}
 						<span
-							class="bg-background/85 text-foreground absolute start-1/2 top-full mt-1 -translate-x-1/2 rounded px-1 py-0.5 text-[10px] whitespace-nowrap"
+							class="bg-background/85 text-foreground absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded px-1 py-0.5 text-[10px] whitespace-nowrap"
 						>
 							{point.label}
 						</span>
@@ -301,7 +319,7 @@
 		<div class="flex items-center justify-end gap-1">
 			<span>{m.travel_window_cheap()}</span>
 			<span
-				class="border-border/60 h-2 w-14 rounded-[2px] border"
+				class="border-border/60 h-2 w-14 rounded-[2px] border rtl:-scale-x-100"
 				style="background: {gradient(colormap, 'left')}"
 			></span>
 			<span>{m.travel_window_costly()}</span>

@@ -8,6 +8,7 @@
 -->
 <script lang="ts">
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
+	import MoveRightIcon from '@lucide/svelte/icons/move-right';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import SquareIcon from '@lucide/svelte/icons/square';
@@ -174,10 +175,9 @@
 >
 	<div class="flex items-center justify-between gap-3">
 		<h2 class="min-w-0 truncate text-sm font-medium">
-			{m.travel_timeline_route({
-				from: entries[0]?.bodyName ?? '',
-				to: entries[entries.length - 1]?.bodyName ?? ''
-			})}
+			{entries[0]?.bodyName ?? ''}
+			<MoveRightIcon class="inline size-[1em] align-[-0.125em] rtl:rotate-180" aria-hidden="true" />
+			{entries[entries.length - 1]?.bodyName ?? ''}
 			<span class="text-muted-foreground font-normal">· {m.travel_timeline()}</span>
 		</h2>
 		<div class="flex shrink-0 items-center gap-1">

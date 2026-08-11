@@ -22,6 +22,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import MoveRightIcon from '@lucide/svelte/icons/move-right';
 	import { formatJulianDate } from '$lib/format/date';
 	import { formatQuantity } from '$lib/format/quantities';
 	import type { OfferedRoute, TravelPanelState } from '$lib/travel/panel.svelte';
@@ -160,7 +161,12 @@
 							>{/if}
 					</span>
 					<span class="text-muted-foreground block truncate text-xs">
-						{formatJulianDate(choice.route.departJd)} → {formatJulianDate(choice.route.arriveJd)}
+						{formatJulianDate(choice.route.departJd)}
+						<MoveRightIcon
+							class="inline size-[1em] align-[-0.125em] rtl:rotate-180"
+							aria-hidden="true"
+						/>
+						{formatJulianDate(choice.route.arriveJd)}
 					</span>
 					{#if hazards.length > 0}
 						<!-- One line, never wrapped: the row is a choice, and a third line

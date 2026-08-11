@@ -17,6 +17,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import ArrowUpDownIcon from '@lucide/svelte/icons/arrow-up-down';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
+	import MoveRightIcon from '@lucide/svelte/icons/move-right';
 	import type { BodyData } from '$lib/types/objects';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatJulianDate } from '$lib/format/date';
@@ -888,7 +889,12 @@
 		<div class="flex flex-col gap-0.5">
 			{#if originName && targetName}
 				<p class="truncate text-sm">
-					{originName} → {targetName}{#if chosen.route.constantThrust}<span
+					{originName}
+					<MoveRightIcon
+						class="inline size-[1em] align-[-0.125em] rtl:rotate-180"
+						aria-hidden="true"
+					/>
+					{targetName}{#if chosen.route.constantThrust}<span
 							class="text-muted-foreground ms-1.5 text-xs tabular-nums"
 							>{formatAcceleration(chosen.route.constantThrust)}</span
 						>{:else if pass}<span class="text-muted-foreground ms-1.5 text-xs"
@@ -897,7 +903,12 @@
 				</p>
 			{/if}
 			<p class="text-muted-foreground text-xs tabular-nums">
-				{formatJulianDate(chosen.route.departJd)} → {formatJulianDate(chosen.route.arriveJd)}
+				{formatJulianDate(chosen.route.departJd)}
+				<MoveRightIcon
+					class="inline size-[1em] align-[-0.125em] rtl:rotate-180"
+					aria-hidden="true"
+				/>
+				{formatJulianDate(chosen.route.arriveJd)}
 			</p>
 		</div>
 
