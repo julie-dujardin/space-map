@@ -13,6 +13,8 @@ import { loadSystemData, unloadSystemTextures } from '$lib/scene/objects/body/sy
 export class SystemDataLoader {
 	private lastBaryId: string | null = null;
 	private readonly pendingUnloads = new Set<string>();
+	/** Systems warmed for the approaching trajectory craft, not yet focused. */
+	private readonly prefetched = new Set<string>();
 
 	constructor(
 		private readonly scene: Scene,
@@ -35,15 +37,44 @@ export class SystemDataLoader {
 			}
 			return;
 		}
-		// Resolve sysId to its barycenter (planet → parent, barycenter → itself).
-		const body = this.ctx.getBody(sysId);
-		const baryId =
-			body?.data.objectType === ObjectType.BARYCENTER ? sysId : (body?.data.parentId ?? sysId);
+		const baryId = this.resolveBaryId(sysId);
 		if (baryId === this.lastBaryId) return;
 		// Drop the new id from pending unloads in case the user re-enters mid-fly.
 		if (this.lastBaryId) this.pendingUnloads.add(this.lastBaryId);
 		this.pendingUnloads.delete(baryId);
+		// A warmed system becoming the focus is no longer the prefetch's to unload.
+		this.prefetched.delete(baryId);
 		this.lastBaryId = baryId;
+		this.load(baryId);
+	}
+
+	/**
+	 * Warm a system the trajectory craft is approaching, ahead of the focus
+	 * flip, so entering it doesn't land on white spheres. Balanced by
+	 * {@link discardPrefetch} once the approach turns away.
+	 */
+	prefetch(sysId: string): void {
+		const baryId = this.resolveBaryId(sysId);
+		if (baryId === this.lastBaryId || this.prefetched.has(baryId)) return;
+		this.prefetched.add(baryId);
+		this.pendingUnloads.delete(baryId);
+		this.load(baryId);
+	}
+
+	/** Queue a warmed-but-never-entered system back for unload. */
+	discardPrefetch(sysId: string): void {
+		const baryId = this.resolveBaryId(sysId);
+		if (!this.prefetched.delete(baryId)) return;
+		if (baryId !== this.lastBaryId) this.pendingUnloads.add(baryId);
+	}
+
+	/** Resolve sysId to its barycenter (planet → parent, barycenter → itself). */
+	private resolveBaryId(sysId: string): string {
+		const body = this.ctx.getBody(sysId);
+		return body?.data.objectType === ObjectType.BARYCENTER ? sysId : (body?.data.parentId ?? sysId);
+	}
+
+	private load(baryId: string): void {
 		loadSystemData(
 			baryId,
 			this.bodyObjects,

@@ -412,6 +412,12 @@ export class TravelPathOverlay {
 		return this.center === null;
 	}
 
+	/** The chosen trajectory, for reading the trip off — null while only
+	 *  alternatives are drawn. */
+	get plan(): TrajectoryPath | null {
+		return this.path;
+	}
+
 	/** Hide the whole plan with the rest of the map furniture in immersive mode. */
 	setLayer(layer: number): void {
 		this.layer = layer;

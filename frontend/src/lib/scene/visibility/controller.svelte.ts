@@ -47,6 +47,9 @@ export class VisibilityController {
 
 	private focusedBodyIdPlain: string = SUN_ID;
 	private focusedSystemIdPlain: string | null = null;
+	/** True while the trajectory scrubber drives the focused system (see
+	 *  {@link setTravelSystem}); cleared by any real focus. */
+	private travelSystemActive = false;
 	private cameraDistThreeJS = 0;
 	private lastRecomputeDist = -1;
 	/** Latest jd from `updateCamera`. Used by probe annotation lookups so
@@ -106,7 +109,9 @@ export class VisibilityController {
 		// Refresh focused-system from the live annotation when focused on a
 		// probe — captured-at-setFocused state would go stale as jd advances
 		// past the flyby window or as chunks settle after an async ensure().
-		this.refreshProbeFocusedSystem();
+		// While the trajectory scrubber owns the focus, the renderer drives the
+		// system instead (setTravelSystem) and any prior probe focus is stale.
+		if (!this.travelSystemActive) this.refreshProbeFocusedSystem();
 		// Probes move between frames, so the hide threshold is recomputed every
 		// frame (iterating direct children of one body is cheap).
 		this.hideThresholdAU = this.computeHideThreshold();
@@ -138,10 +143,11 @@ export class VisibilityController {
 		this.lastRecomputeDist = -1; // force fullMoons recompute against the new system
 	}
 
-	setFocused(body: PositionedBody): void {
-		if (body.data.id === this.focusedBodyIdPlain) return;
-		this.focusedBodyId = body.data.id;
-		this.focusedBodyIdPlain = body.data.id;
+	/**
+	 * The planetary system `body` belongs to (its barycenter's id), or null for
+	 * top-level bodies, which are in no system.
+	 */
+	resolveSystemId(body: PositionedBody): string | null {
 		// A planetary barycenter IS the system root (planets/moons are its children),
 		// but the SSB (naif-0) is top-level, not a system.
 		const isSystemBarycenter =
@@ -151,22 +157,47 @@ export class VisibilityController {
 		const isTopLevel =
 			body.data.objectType === ObjectType.STAR ||
 			(!isSystemBarycenter && isTopLevelParent(body.data.parentId));
-		let sysId: string | null;
-		if (isSystemBarycenter) {
-			sysId = body.data.id;
-		} else if (isTopLevel) {
-			sysId = null;
-		} else {
-			// parentId is either the system barycenter (e.g. Earth's parent is naif-3) or
-			// a system member one level deeper (e.g. an Earth satellite's parent is naif-399,
-			// whose parent is naif-3). Satellites aren't recorded as barycenter children
-			// — too many — so resolve by walking up via bodiesById instead.
-			const parent = this.bodies.bodiesById.get(body.data.parentId);
-			sysId =
-				parent && !isTopLevelParent(parent.data.parentId)
-					? parent.data.parentId
-					: body.data.parentId;
-		}
+		if (isSystemBarycenter) return body.data.id;
+		if (isTopLevel) return null;
+		// parentId is either the system barycenter (e.g. Earth's parent is naif-3) or
+		// a system member one level deeper (e.g. an Earth satellite's parent is naif-399,
+		// whose parent is naif-3). Satellites aren't recorded as barycenter children
+		// — too many — so resolve by walking up via bodiesById instead.
+		const parent = this.bodies.bodiesById.get(body.data.parentId);
+		return parent && !isTopLevelParent(parent.data.parentId)
+			? parent.data.parentId
+			: body.data.parentId;
+	}
+
+	/**
+	 * Name the system the scrubbed trajectory craft is in — or null while it is
+	 * in interplanetary space. The craft is nobody's child, so ordinary focus
+	 * can't resolve its system; the renderer measures it against the trip's
+	 * stops and drives this every frame, the way a flyby probe's annotation
+	 * does. Holds until the next real focus.
+	 */
+	setTravelSystem(sysId: string | null): void {
+		this.travelSystemActive = true;
+		if (sysId === this.focusedSystemIdPlain) return;
+		this.focusedSystemId = sysId;
+		this.focusedSystemIdPlain = sysId;
+		this.hideThresholdAU = this.computeHideThreshold();
+		this.isZoomedIn = this.cameraDistThreeJS / AU_SCALE < this.hideThresholdAU;
+		this.activeSystemId = this.isZoomedIn ? sysId : null;
+		this.lastRecomputeDist = -1; // force fullMoons recompute against the new system
+		this.recomputeFullMoons();
+	}
+
+	clearTravelSystem(): void {
+		this.travelSystemActive = false;
+	}
+
+	setFocused(body: PositionedBody): void {
+		this.travelSystemActive = false;
+		if (body.data.id === this.focusedBodyIdPlain) return;
+		this.focusedBodyId = body.data.id;
+		this.focusedBodyIdPlain = body.data.id;
+		const sysId = this.resolveSystemId(body);
 		this.focusedSystemId = sysId;
 		this.focusedSystemIdPlain = sysId;
 		// Refresh the hide threshold against the new focus before deciding

@@ -177,6 +177,9 @@ export interface TrajectoryPath {
 	stops: PathStop[];
 	/** The orbits at either end, where those ends are orbits. */
 	endOrbits: EndOrbitPath[];
+	/** Sphere-of-influence radius, km, per body the trip calls at. The scene
+	 *  flips in-system by moon orbits, and this is its reach for a moonless end. */
+	soiKm: Record<string, number>;
 	/**
 	 * Where the destination is at the moment the craft gets there.
 	 *
@@ -342,7 +345,7 @@ function trimmedArc(arc: PathArc, from: number, to: number): PathArc {
 
 /** A trajectory before the orbits at its ends are hung off it — what each of the
  *  builders below answers with. */
-type PathGeometry = Omit<TrajectoryPath, 'endOrbits' | 'frame'>;
+type PathGeometry = Omit<TrajectoryPath, 'endOrbits' | 'frame' | 'soiKm'>;
 
 /**
  * Rebuild the geometry of `route`.
@@ -361,17 +364,27 @@ export function buildTrajectoryPath(
 	if (!path) return null;
 	const frame = options.frame ?? 'interplanetary';
 	const endOrbits = endOrbitPaths(departure, target, route, options, path);
+	const soiKm: Record<string, number> = {};
+	for (const body of [departure, target, ...(options.vias ?? [])]) {
+		const soi = sphereOfInfluenceKm(
+			body,
+			options.centralMu ?? GM_SUN_KM3_S2,
+			Math.abs(body.elements.a) * AU_KM
+		);
+		if (Number.isFinite(soi)) soiKm[body.id] = soi;
+	}
 	// An arrival passage re-dates the encounter and the meeting follows it —
 	// left behind, it would mark a spot the body has already left and the ring
 	// would circle nothing. The stops stay priced: they are where the arcs end,
 	// which is where the scrubbed craft ends up.
 	const arrival = endOrbits.find((end) => end.at === 'arrival' && end.approach.length > 0);
-	if (!arrival) return { ...path, frame, endOrbits };
+	if (!arrival) return { ...path, frame, endOrbits, soiKm };
 	return {
 		...path,
 		frame,
 		meeting: { ...path.meeting, jd: arrival.periJd, r: arrival.center },
-		endOrbits
+		endOrbits,
+		soiKm
 	};
 }
 

@@ -40,7 +40,13 @@ import {
 import { makeFeatureBody, seatFeatureBody } from './focus/feature-focus';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import { AU_SCALE, kmToScene } from '$lib/math/units';
+import { AU_KM, AU_SCALE, kmToScene } from '$lib/math/units';
+import { f64dist } from '$lib/scene/animation/math';
+import {
+	TRAVEL_SYSTEM_EXIT_MULTIPLIER,
+	TRAVEL_SYSTEM_PREFETCH_MULTIPLIER,
+	TRAVEL_SYSTEM_SOI_FRACTION
+} from '$lib/scene/visibility/thresholds';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { bootThree, CAMERA_FAR_DEFAULT } from './setup/three-boot';
 import { isReversedDepth } from './setup/depth-mode';
@@ -663,6 +669,48 @@ export class SceneRenderer {
 		if (performance.now() - f.focusStartTime >= f.focusDurationMs) f.focusTruePos = [...world];
 	}
 
+	/**
+	 * While the scrubbed craft owns the camera, its position names the focused
+	 * system: within the outermost resident moon's orbit (a slice of the sphere
+	 * of influence for a moonless end) it is in-system, and texture load and
+	 * declutter follow through the same machinery as a flyby probe. A system
+	 * ahead is warmed before the flip so it doesn't land on white spheres.
+	 */
+	private updateTravelCraftSystem(): void {
+		const target = this.travelFocus;
+		const path = this.travelPath.plan;
+		if (!target || !path) {
+			this.ctx.visibility.clearTravelSystem();
+			return;
+		}
+		const center = this.ctx.getBody(target.centerId);
+		const world = center ? this.travelFocusWorld(center.position) : null;
+		if (!world) return;
+		let inSystem: string | null = null;
+		for (const stop of path.stops) {
+			const body = this.ctx.getBody(stop.bodyId);
+			if (!body) continue;
+			const sysId = this.ctx.visibility.resolveSystemId(body);
+			if (!sysId) continue;
+			const soiKm = path.soiKm[stop.bodyId];
+			const enterAU =
+				this.ctx.bodies.maxMoonA(sysId) ??
+				(soiKm !== undefined ? (soiKm * TRAVEL_SYSTEM_SOI_FRACTION) / AU_KM : null);
+			if (enterAU === null) continue;
+			const distAU = f64dist(world, body.position) / AU_SCALE;
+			// Leave at a slightly larger radius than entered — no flicker riding the edge.
+			const inside = sysId === this.ctx.visibility.focusedSystemId;
+			if (!inSystem && distAU <= enterAU * (inside ? TRAVEL_SYSTEM_EXIT_MULTIPLIER : 1)) {
+				inSystem = sysId;
+			} else if (distAU <= enterAU * TRAVEL_SYSTEM_PREFETCH_MULTIPLIER) {
+				this.systemData.prefetch(sysId);
+			} else {
+				this.systemData.discardPrefetch(sysId);
+			}
+		}
+		this.ctx.visibility.setTravelSystem(inSystem);
+	}
+
 	/** Assign all current trails to MAP_LAYER so they can be hidden together by immersive mode. */
 	private assignMapLayerToTrails(): void {
 		for (const bo of this.bodyObjects.values()) {
@@ -819,6 +867,7 @@ export class SceneRenderer {
 		}
 
 		const { distance } = this.getCameraState();
+		this.updateTravelCraftSystem();
 		this.ctx.visibility.updateCamera(distance, this.clock.jd);
 		this.updateTightFar(distance);
 
