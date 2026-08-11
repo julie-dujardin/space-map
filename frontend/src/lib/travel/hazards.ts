@@ -498,10 +498,25 @@ export function routeHazards(
 	return sortHazards(hazards);
 }
 
-/** Worst first, and within a severity the one met first. */
+/** Declaration order of {@link HazardKind}, so equal-severity hazards line up
+ *  the same way on every route instead of shuffling with their dates. */
+const KIND_RANK: Record<HazardKind, number> = {
+	'solar-heat': 0,
+	'solar-power': 1,
+	conjunction: 2,
+	'signal-lag': 3,
+	aeroassist: 4,
+	radiation: 5,
+	'belt-crossing': 6
+};
+
+/** Worst first, then by kind, then the one met first. */
 export function sortHazards(hazards: Hazard[]): Hazard[] {
 	return hazards.sort(
-		(a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || a.startJd - b.startJd
+		(a, b) =>
+			SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||
+			KIND_RANK[a.kind] - KIND_RANK[b.kind] ||
+			a.startJd - b.startJd
 	);
 }
 
