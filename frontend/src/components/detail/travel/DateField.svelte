@@ -43,7 +43,11 @@
 		<Popover.Trigger
 			class="border-border/60 bg-muted/40 hover:bg-muted flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs tabular-nums"
 		>
-			<CalendarIcon class="text-muted-foreground size-3.5 shrink-0" />
+			<!-- The visible label sits outside the trigger, so it rides in here for
+			     the accessible name — a button announcing only a date says nothing
+			     about which date it is. -->
+			<span class="sr-only">{label}</span>
+			<CalendarIcon class="text-muted-foreground size-3.5 shrink-0" aria-hidden="true" />
 			{formatJulianDate(jd)}
 		</Popover.Trigger>
 		<Popover.Content class="w-auto p-0" align="end" sideOffset={6}>

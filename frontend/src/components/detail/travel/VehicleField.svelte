@@ -62,10 +62,16 @@
 	let input = $state<HTMLInputElement | null>(null);
 	let list = $state<HTMLElement | null>(null);
 
+	const uid = $props.id();
+	const listboxId = `travel-craft-list-${uid}`;
+	function optionId(index: number): string {
+		return `${listboxId}-${index}`;
+	}
+
 	// The catalogue is alphabetical and long, so a craft chosen from the bottom of
 	// it would open the list nowhere near itself.
 	$effect(() => {
-		list?.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest' });
+		list?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
 	});
 
 	// Each opening is its own question: a filter left over from the last one would
@@ -101,6 +107,33 @@
 		onSelect(vehicle.id);
 		onOpenChange(false);
 	}
+
+	// The list is walked from the input, combobox-style, so dozens of craft are
+	// not dozens of tab stops.
+	let activeIndex = $state(-1);
+	$effect(() => {
+		void shown;
+		activeIndex = -1;
+	});
+	$effect(() => {
+		if (activeIndex >= 0) {
+			document.getElementById(optionId(activeIndex))?.scrollIntoView({ block: 'nearest' });
+		}
+	});
+
+	function onKey(e: KeyboardEvent) {
+		if (!shown.length) return;
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			activeIndex = (activeIndex + 1) % shown.length;
+		} else if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			activeIndex = activeIndex <= 0 ? shown.length - 1 : activeIndex - 1;
+		} else if (e.key === 'Enter' && activeIndex >= 0) {
+			e.preventDefault();
+			choose(shown[activeIndex]);
+		}
+	}
 </script>
 
 <Popover.Root {open} onOpenChange={(next: boolean) => onOpenChange(next)}>
@@ -131,7 +164,13 @@
 				bind:value={query}
 				type="text"
 				placeholder={m.travel_search_placeholder()}
-				aria-label={m.travel_search_placeholder()}
+				aria-label={m.travel_add_craft()}
+				role="combobox"
+				aria-expanded={shown.length > 0}
+				aria-controls={listboxId}
+				aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
+				aria-autocomplete="list"
+				onkeydown={onKey}
 				autocomplete="off"
 				spellcheck="false"
 				class="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
@@ -153,8 +192,8 @@
 
 		{#if shown.length > 0}
 			<ScrollArea viewportClasses="max-h-[26rem]">
-				<ul bind:this={list} class="flex flex-col pe-2">
-					{#each shown as vehicle (vehicle.id)}
+				<ul bind:this={list} id={listboxId} role="listbox" class="flex flex-col pe-2">
+					{#each shown as vehicle, index (vehicle.id)}
 						<!-- Only the chosen craft survives the panel's filter without fitting
 						     the departure, so the note reads as "here is why it stopped
 						     working", not as a rule on the list. -->
@@ -162,12 +201,16 @@
 						{@const seats = passengers > 0 ? crewCapacity(vehicle) : null}
 						{@const tooSmall = seats !== null && seats < passengers}
 						{@const active = selected?.id === vehicle.id}
-						<li>
+						<li role="presentation">
 							<button
 								type="button"
+								role="option"
+								id={optionId(index)}
+								aria-selected={active}
+								tabindex="-1"
 								onclick={() => choose(vehicle)}
-								aria-pressed={active}
-								class="hover:bg-muted flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-start text-xs {active
+								class="hover:bg-muted flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-start text-xs {active ||
+								index === activeIndex
 									? 'bg-muted'
 									: ''} {tooSmall ? 'opacity-50' : ''}"
 							>
@@ -188,13 +231,14 @@
 										{#if seats !== null}
 											<span
 												class="text-muted-foreground flex shrink-0 items-center gap-1 tabular-nums"
-												title={m.travel_seats({ value: seats })}
+												title={m.travel_seats()}
 											>
-												<UsersIcon class="size-3" />{seats}
+												<UsersIcon class="size-3.5" aria-hidden="true" />
+												<span class="sr-only">{m.travel_seats()}</span>{seats}
 											</span>
 										{/if}
 										{#if active}
-											<CheckIcon class="size-3.5 shrink-0" />
+											<CheckIcon class="size-3.5 shrink-0" aria-hidden="true" />
 										{/if}
 									</span>
 									<VehicleMeta {vehicle} {route} {manifest} />

@@ -285,8 +285,12 @@
 </script>
 
 {#snippet statTile(tile: Tile, props: Record<string, unknown>)}
-	<div
-		class="border-border/60 bg-muted/40 flex flex-col gap-1 rounded-md border p-2.5 {tile.tooltip
+	<!-- A tile with a tooltip is a real button, so the explanation the tooltip
+	     carries can be reached by focus, not only by pointer. -->
+	<svelte:element
+		this={tile.tooltip ? 'button' : 'div'}
+		type={tile.tooltip ? 'button' : undefined}
+		class="border-border/60 bg-muted/40 flex flex-col gap-1 rounded-md border p-2.5 text-start {tile.tooltip
 			? 'cursor-help'
 			: ''}"
 		{...props}
@@ -297,7 +301,7 @@
 					>{tile.unit}</span
 				>{/if}
 		</div>
-	</div>
+	</svelte:element>
 {/snippet}
 
 <div class="flex flex-col gap-4">
@@ -495,7 +499,7 @@
 						<span
 							class="border-border/60 bg-background text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded-full border"
 						>
-							<Icon class="size-3" />
+							<Icon class="size-3" aria-hidden="true" />
 						</span>
 						{#if i < steps.length - 1}
 							<span class="bg-border/60 w-px flex-1"></span>

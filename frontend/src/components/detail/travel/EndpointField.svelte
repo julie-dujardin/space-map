@@ -171,7 +171,11 @@
 
 	<Popover.Content align="start" sideOffset={6} class="w-[20rem] gap-0 p-2">
 		{#if step === 'where' || !showMode}
-			<EndpointSearch {excludeIds} {onPick} />
+			<EndpointSearch
+				label={role === 'origin' ? m.travel_from() : m.travel_to()}
+				{excludeIds}
+				{onPick}
+			/>
 
 			{#if showMode}
 				<!-- Reopening the box usually means adjusting the orbit rather than
@@ -252,6 +256,7 @@
 											oninput={(e) => onCustomAlt(Number(e.currentTarget.value))}
 											class="accent-primary h-1 flex-1"
 											aria-label={m.travel_orbit_altitude()}
+											aria-valuetext={formatKm(customAltShown)}
 										/>
 										<span
 											class="text-muted-foreground w-20 shrink-0 text-end text-[10px] tabular-nums"

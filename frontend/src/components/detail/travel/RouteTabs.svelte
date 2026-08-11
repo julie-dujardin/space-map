@@ -62,7 +62,8 @@
 					class={TRIGGER_CLASS}
 				>
 					{#if tab.loading}
-						<LoaderCircleIcon class="size-3 shrink-0 animate-spin" />
+						<LoaderCircleIcon class="size-3 shrink-0 animate-spin" aria-hidden="true" />
+						<span class="sr-only">{m.travel_assist_searching()}</span>
 					{/if}
 					{familyLabel(tab.family)}
 				</Tabs.Trigger>

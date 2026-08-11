@@ -7,6 +7,7 @@
  * bundles the repeated pieces: the href for each kind of target, the
  * modified-click test, and the click handler that focuses + flies the camera.
  */
+import type { RouteOption, TripState } from '$lib/travel/trip';
 import type { AppState } from './app-state.svelte';
 import type { FocusObject } from './focusable';
 import type { DrawerTab } from './view';
@@ -60,6 +61,16 @@ export function navHref(
 	to: string | NavEnd | null = null
 ): string | undefined {
 	return appState ? serializeUrl(applyNav(appState.view, from, to)) : undefined;
+}
+
+/** The current view with the trip reading one named trajectory — where a
+ *  route row in the planner leads. */
+export function tripRouteHref(
+	appState: AppState | undefined,
+	trip: TripState,
+	profile: RouteOption
+): string | undefined {
+	return appState ? serializeUrl({ ...appState.view, trip: { ...trip, profile } }) : undefined;
 }
 
 /** The URL for the image viewer opened on one image. Pass the gallery key when

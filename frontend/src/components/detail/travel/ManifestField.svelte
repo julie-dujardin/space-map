@@ -29,14 +29,24 @@
 		return Number.isFinite(value) && value > 0 ? value : 0;
 	}
 
+	// Over-capacity and over-payload mean the trip cannot be flown as loaded, so
+	// they carry the panel's caution colour; the unpublished figure is only a
+	// silence and stays muted.
 	let note = $derived.by(() => {
 		if (fit === null) return null;
-		if (fit.status === 'over-capacity') return m.travel_over_capacity({ value: fit.seats });
-		if (fit.status === 'unknown-capacity') return m.travel_capacity_unpublished();
+		if (fit.status === 'over-capacity') {
+			return { text: m.travel_over_capacity({ value: fit.seats }), warn: true };
+		}
+		if (fit.status === 'unknown-capacity') {
+			return { text: m.travel_capacity_unpublished(), warn: false };
+		}
 		if (fit.status === 'over-payload') {
-			return m.travel_over_hold({
-				value: formatQuantity({ value: fit.capacityKg, unit: 'kilogram' }, true)
-			});
+			return {
+				text: m.travel_over_hold({
+					value: formatQuantity({ value: fit.capacityKg, unit: 'kilogram' }, true)
+				}),
+				warn: true
+			};
 		}
 		return null;
 	});
@@ -80,6 +90,6 @@
 	</div>
 
 	{#if note}
-		<p class="text-muted-foreground text-[11px]">{note}</p>
+		<p class="{note.warn ? 'text-amber-500' : 'text-muted-foreground'} text-[11px]">{note.text}</p>
 	{/if}
 </div>

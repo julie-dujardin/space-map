@@ -1089,7 +1089,7 @@
 				<p class="text-muted-foreground text-xs">{m.travel_no_origin()}</p>
 			{:else}
 				<p class="text-muted-foreground flex items-start gap-2 text-xs">
-					<CircleAlertIcon class="mt-0.5 size-3.5 shrink-0" />
+					<CircleAlertIcon class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
 					<span>
 						{panel.blocked === 'unknown-primary'
 							? m.travel_unknown_primary()

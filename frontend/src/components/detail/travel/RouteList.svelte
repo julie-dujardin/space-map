@@ -21,6 +21,7 @@
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import { getContext } from 'svelte';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import MoveRightIcon from '@lucide/svelte/icons/move-right';
 	import { formatJulianDate } from '$lib/format/date';
@@ -36,6 +37,10 @@
 	import { departureNote } from './vehicle-labels';
 	import { routeLabel } from './route-labels';
 	import { HAZARD_ICONS, HAZARD_TEXT } from './hazard-style';
+	import { isModifiedClick, tripRouteHref } from '$lib/state/focus-link';
+	import type { AppState } from '$lib/state/app-state.svelte';
+
+	const appState = getContext<AppState | undefined>('appState');
 
 	interface Props {
 		state: TravelPanelState;
@@ -139,14 +144,7 @@
 		{@const viaName = via(choice)}
 		{@const hazards = hazardsFor(choice.profile)}
 		<li>
-			<button
-				type="button"
-				onclick={() => !blocked && state.choose(choice.profile)}
-				disabled={!!blocked}
-				class="border-border/60 flex w-full items-center gap-3 rounded-md border px-3 py-2 text-start transition-colors {blocked
-					? 'opacity-50'
-					: 'hover:bg-muted/40'}"
-			>
+			{#snippet rowBody()}
 				<span class="min-w-0 flex-1">
 					<!-- The acceleration rides on the name because it is what tells one
 					     powered route from another: the dates below say the same thing
@@ -212,9 +210,35 @@
 				<!-- A row that can be flown leads somewhere; one that cannot has already
 				     said everything it has to say. -->
 				{#if !blocked}
-					<ChevronRightIcon class="text-muted-foreground size-4 shrink-0 rtl:rotate-180" />
+					<ChevronRightIcon
+						class="text-muted-foreground size-4 shrink-0 rtl:rotate-180"
+						aria-hidden="true"
+					/>
 				{/if}
-			</button>
+			{/snippet}
+			{#if blocked}
+				<button
+					type="button"
+					disabled
+					class="border-border/60 flex w-full items-center gap-3 rounded-md border px-3 py-2 text-start opacity-50 transition-colors"
+				>
+					{@render rowBody()}
+				</button>
+			{:else}
+				<!-- Choosing is a navigation — the trajectory lands in the URL — so the
+				     row is a link; a plain click swaps the step in place instead. -->
+				<a
+					href={tripRouteHref(appState, state.trip, choice.profile)}
+					class="border-border/60 hover:bg-muted/40 flex w-full items-center gap-3 rounded-md border px-3 py-2 text-start transition-colors"
+					onclick={(e) => {
+						if (isModifiedClick(e)) return;
+						e.preventDefault();
+						state.choose(choice.profile);
+					}}
+				>
+					{@render rowBody()}
+				</a>
+			{/if}
 		</li>
 	{/each}
 

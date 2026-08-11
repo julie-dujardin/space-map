@@ -29,12 +29,21 @@
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 
 	interface Props {
+		/** What this search chooses — the input's accessible name, so the two
+		 *  ends' otherwise identical search boxes announce apart. */
+		label: string;
 		/** Bodies this end may not be — the other end, and anything the kernel
 		 *  cannot solve against it. Ids, checked after the query returns. */
 		excludeIds: ReadonlySet<string>;
 		onPick: (pick: TravelEndpointPick) => void;
 	}
-	let { excludeIds, onPick }: Props = $props();
+	let { label, excludeIds, onPick }: Props = $props();
+
+	const uid = $props.id();
+	const listboxId = `travel-endpoint-list-${uid}`;
+	function optionId(index: number): string {
+		return `${listboxId}-${index}`;
+	}
 
 	/** Long enough that a one-letter keystroke doesn't fan out to the index. */
 	const MIN_QUERY = 2;
@@ -140,6 +149,33 @@
 	$effect(() => {
 		input?.focus();
 	});
+
+	// The list is walked from the input, combobox-style, so the results are not
+	// seven extra tab stops between the query and the rest of the panel.
+	let activeIndex = $state(-1);
+	$effect(() => {
+		void visible;
+		activeIndex = -1;
+	});
+	$effect(() => {
+		if (activeIndex >= 0) {
+			document.getElementById(optionId(activeIndex))?.scrollIntoView({ block: 'nearest' });
+		}
+	});
+
+	function onKey(e: KeyboardEvent) {
+		if (!visible.length) return;
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			activeIndex = (activeIndex + 1) % visible.length;
+		} else if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			activeIndex = activeIndex <= 0 ? visible.length - 1 : activeIndex - 1;
+		} else if (e.key === 'Enter' && activeIndex >= 0) {
+			e.preventDefault();
+			pick(visible[activeIndex]);
+		}
+	}
 </script>
 
 {#if isSearchEnabled()}
@@ -155,7 +191,13 @@
 				bind:value={query}
 				type="text"
 				placeholder={m.travel_search_placeholder()}
-				aria-label={m.travel_search_placeholder()}
+				aria-label={label}
+				role="combobox"
+				aria-expanded={visible.length > 0}
+				aria-controls={listboxId}
+				aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
+				aria-autocomplete="list"
+				onkeydown={onKey}
 				autocomplete="off"
 				spellcheck="false"
 				class="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
@@ -178,16 +220,26 @@
 		{#if query.trim().length >= MIN_QUERY}
 			{#if visible.length > 0}
 				<ScrollArea viewportClasses="max-h-56">
-					<ul class="flex flex-col">
-						{#each visible as hit (hit.kind === 'feature' ? `f${hit.feature_id}` : hit.id)}
-							<li>
+					<ul id={listboxId} role="listbox" class="flex flex-col">
+						{#each visible as hit, index (hit.kind === 'feature' ? `f${hit.feature_id}` : hit.id)}
+							<li role="presentation">
 								<button
 									type="button"
+									role="option"
+									id={optionId(index)}
+									aria-selected={index === activeIndex}
+									tabindex="-1"
 									onclick={() => pick(hit)}
-									class="hover:bg-muted flex w-full items-center gap-2 rounded-[5px] px-2 py-1.5 text-start"
+									class="hover:bg-muted flex w-full items-center gap-2 rounded-[5px] px-2 py-1.5 text-start {index ===
+									activeIndex
+										? 'bg-muted'
+										: ''}"
 								>
 									{#if hit.kind === 'feature'}
-										<MapPinIcon class="text-muted-foreground size-3.5 shrink-0" />
+										<MapPinIcon
+											class="text-muted-foreground size-3.5 shrink-0"
+											aria-hidden="true"
+										/>
 									{/if}
 									<span class="min-w-0 flex-1">
 										<span class="block truncate text-xs">{localizedName(hit, getLocale())}</span>
