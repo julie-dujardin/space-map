@@ -43,7 +43,6 @@ import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { AU_KM, AU_SCALE, kmToScene } from '$lib/math/units';
 import { f64dist } from '$lib/scene/animation/math';
 import {
-	TRAVEL_SYSTEM_EXIT_MULTIPLIER,
 	TRAVEL_SYSTEM_PREFETCH_MULTIPLIER,
 	TRAVEL_SYSTEM_SOI_FRACTION
 } from '$lib/scene/visibility/thresholds';
@@ -692,15 +691,14 @@ export class SceneRenderer {
 			if (!body) continue;
 			const sysId = this.ctx.visibility.resolveSystemId(body);
 			if (!sysId) continue;
+			// The same reach the declutter measures the camera against; SOI only
+			// where a system has no satellites to measure one out.
+			const reachAU = this.ctx.visibility.systemReachAU(sysId);
 			const soiKm = path.soiKm[stop.bodyId];
-			const enterAU =
-				this.ctx.bodies.maxMoonA(sysId) ??
-				(soiKm !== undefined ? (soiKm * TRAVEL_SYSTEM_SOI_FRACTION) / AU_KM : null);
-			if (enterAU === null) continue;
+			const enterAU = reachAU > 0 ? reachAU : ((soiKm ?? 0) * TRAVEL_SYSTEM_SOI_FRACTION) / AU_KM;
+			if (!(enterAU > 0)) continue;
 			const distAU = f64dist(world, body.position) / AU_SCALE;
-			// Leave at a slightly larger radius than entered — no flicker riding the edge.
-			const inside = sysId === this.ctx.visibility.focusedSystemId;
-			if (!inSystem && distAU <= enterAU * (inside ? TRAVEL_SYSTEM_EXIT_MULTIPLIER : 1)) {
+			if (!inSystem && distAU <= enterAU) {
 				inSystem = sysId;
 			} else if (distAU <= enterAU * TRAVEL_SYSTEM_PREFETCH_MULTIPLIER) {
 				this.systemData.prefetch(sysId);

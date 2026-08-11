@@ -115,11 +115,11 @@ export class VisibilityController {
 		// Probes move between frames, so the hide threshold is recomputed every
 		// frame (iterating direct children of one body is cheap).
 		this.hideThresholdAU = this.computeHideThreshold();
-		const zoomed = dist / AU_SCALE < this.hideThresholdAU;
-		if (zoomed !== this.isZoomedIn) {
-			this.isZoomedIn = zoomed;
-			this.activeSystemId = this.isZoomedIn ? this.focusedSystemIdPlain : null;
-		}
+		// Derived fresh each frame rather than on zoom edges: the focused system
+		// can change while the zoom does not (flyby probe, scrubbed craft), and
+		// edge-gating would hold the stale system active.
+		this.isZoomedIn = dist / AU_SCALE < this.hideThresholdAU;
+		this.activeSystemId = this.isZoomedIn ? this.focusedSystemIdPlain : null;
 		// Only recompute when distance changes by more than 0.5% — avoids a filter+sort every frame
 		if (Math.abs(dist - this.lastRecomputeDist) > this.lastRecomputeDist * 0.005 + 0.001) {
 			this.lastRecomputeDist = dist;
@@ -175,17 +175,16 @@ export class VisibilityController {
 	 * can't resolve its system; the renderer measures it against the trip's
 	 * stops and drives this every frame, the way a flyby probe's annotation
 	 * does. Holds until the next real focus.
+	 *
+	 * Naming only: whether the solar system actually hides stays with
+	 * `updateCamera`'s zoom gate, same as for any other focus.
 	 */
 	setTravelSystem(sysId: string | null): void {
 		this.travelSystemActive = true;
 		if (sysId === this.focusedSystemIdPlain) return;
 		this.focusedSystemId = sysId;
 		this.focusedSystemIdPlain = sysId;
-		this.hideThresholdAU = this.computeHideThreshold();
-		this.isZoomedIn = this.cameraDistThreeJS / AU_SCALE < this.hideThresholdAU;
-		this.activeSystemId = this.isZoomedIn ? sysId : null;
 		this.lastRecomputeDist = -1; // force fullMoons recompute against the new system
-		this.recomputeFullMoons();
 	}
 
 	clearTravelSystem(): void {
@@ -589,16 +588,22 @@ export class VisibilityController {
 			.forEach((m) => this.fullMoonIds.add(m.data.id));
 	}
 
-	/**
-	 * Camera distance (AU) below which the solar system is decluttered. Walks
-	 * direct children of the focused system root and direct children of the
-	 * focused planet (e.g. naif-399 under naif-3), summing in moons (2×a) and
-	 * spacecraft (instantaneous distance to parent). Returns 0 when no
-	 * satellite qualifies — solar system never hides.
-	 */
+	/** Camera distance (AU) below which the solar system is decluttered.
+	 *  Infinity when no system is focused — nothing to declutter for. */
 	private computeHideThreshold(): number {
 		const sysId = this.focusedSystemIdPlain;
 		if (!sysId) return Infinity;
+		return this.systemReachAU(sysId);
+	}
+
+	/**
+	 * How far `sysId` reaches, AU — the declutter radius, and what the scrubbed
+	 * trajectory craft measures itself against. Walks direct children of the
+	 * system root and direct children of its planet (e.g. naif-399 under
+	 * naif-3), summing in moons (2×a) and spacecraft (instantaneous distance to
+	 * parent). Returns 0 when no satellite qualifies — solar system never hides.
+	 */
+	systemReachAU(sysId: string): number {
 		let max = 0;
 		const visit = (parentId: string, recurse: boolean): void => {
 			const childIds = this.bodies.getChildren(parentId);

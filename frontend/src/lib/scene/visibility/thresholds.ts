@@ -52,19 +52,16 @@ export const MAX_FULL_MOONS = 40;
 export const FOCUS_HIDE_MOON_MULTIPLIER = 2;
 
 /*
- * The scrubbed trajectory craft counts as inside a planetary system once it is
- * within the outermost resident moon's orbit — the SOI it actually hands over
- * at reads as empty space, planets away from any visible system.
+ * The scrubbed trajectory craft counts as inside a planetary system within the
+ * same reach the declutter uses (`systemReachAU`) — the SOI it actually hands
+ * over at reads as empty space, planets away from any visible system.
  */
-/** Reach of a moonless system (Mercury, Venus, small bodies), as a fraction of
- *  its sphere of influence. */
+/** Reach of a system whose satellites can't measure one out (Mercury, Venus,
+ *  small bodies), as a fraction of its sphere of influence. */
 export const TRAVEL_SYSTEM_SOI_FRACTION = 1 / 3;
 /** Warm a system's textures this far out (× the entry radius), so entering it
  *  doesn't land on white spheres. */
 export const TRAVEL_SYSTEM_PREFETCH_MULTIPLIER = 2;
-/** Leave at a slightly larger radius than entered, so a craft riding the
- *  boundary doesn't flicker the solar system in and out. */
-export const TRAVEL_SYSTEM_EXIT_MULTIPLIER = 1.25;
 
 /** Shared ratio→VISIBILITY mapping used by both moon and planet/spacecraft visibility. */
 export function computeVisibilityFromRatio(
