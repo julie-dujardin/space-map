@@ -49,7 +49,7 @@
 	 * that escapes or captures. One that lands, flies past, or never leaves a
 	 * sphere of influence has no passage for them to disagree about.
 	 */
-	let viewFrame = $state<TrajectoryFrame>('interplanetary');
+	let viewFrame = $state<TrajectoryFrame>('planetary');
 	let framesDiffer = $derived(
 		travelPlan?.path.endOrbits.some((end) => end.approach.length > 1) ?? false
 	);
