@@ -15,6 +15,10 @@ from LC39A, Baikonur's 28 km from Gagarin's Start.
 Pad launch counts come from the launchlog, deduped by ``launch_tag``: it has
 one row per payload, and a rideshare would otherwise make a pad look busier
 than it was.
+
+A site or pad carries a ``qid`` only where the curated table names one —
+Wikidata has an entity for a few hundred of GCAT's several thousand places,
+so most rows legitimately have none.
 """
 
 import logging
@@ -129,15 +133,16 @@ def build_launch_site_stats(session: Session) -> dict[str, LaunchSiteStats]:
                 entry.pad_count += 1
                 if pad.latitude is None or pad.longitude is None:
                     continue
-                pads.append(
-                    {
-                        "code": pad.code,
-                        "name": pad.name or pad.short_name or pad.code,
-                        "lat": pad.latitude,
-                        "lon": pad.longitude,
-                        "launches": len(pad_launches.get((ucode, pad.code), ())),
-                    }
-                )
+                pad_entry = {
+                    "code": pad.code,
+                    "name": pad.name or pad.short_name or pad.code,
+                    "lat": pad.latitude,
+                    "lon": pad.longitude,
+                    "launches": len(pad_launches.get((ucode, pad.code), ())),
+                }
+                if pad.wikidata_qid:
+                    pad_entry["qid"] = pad.wikidata_qid
+                pads.append(pad_entry)
             if row is None and not pads:
                 continue
             # Every located pad ships, busiest first — the biggest site has
@@ -147,6 +152,8 @@ def build_launch_site_stats(session: Session) -> dict[str, LaunchSiteStats]:
             site: dict = {"code": ucode, "launches": len(site_launches.get(ucode, ()))}
             if row is not None:
                 site["name"] = row.name or row.short_name or ucode
+                if row.wikidata_qid:
+                    site["qid"] = row.wikidata_qid
                 if row.latitude is not None and row.longitude is not None:
                     site["lat"] = row.latitude
                     site["lon"] = row.longitude

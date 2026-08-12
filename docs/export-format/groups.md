@@ -239,6 +239,9 @@ interface GlobalGroupData {
                                               // the commercial pads), Wallops three, Vandenberg two.
     code: string;                             // GCAT unified site code, e.g. "CC", "KSC"
     name?: string;                            // GCAT full name. Absent if GCAT has no row for the code.
+    qid?: string;                             // Wikidata entity, from the curated constants/earth_sats/gcat_qids.py
+                                              // table — no property carries a GCAT code. Absent for most places:
+                                              // Wikidata has an entity for a few hundred of GCAT's several thousand.
     lat?: number;                             // This place's own point. Absent for the sea and airspace areas
     lon?: number;                             // GCAT declines to place.
     error_deg?: number;                       // GCAT's uncertainty on this point. Still coarse for a big site
@@ -252,6 +255,8 @@ interface GlobalGroupData {
       lon: number;                            // Degrees, east-positive
       launches: number;                       // Distinct launches from this pad. Zero is common and real: GCAT
                                               // names a pad for the site but not per launch for some countries.
+      qid?: string;                           // Wikidata entity, curated. Several GCAT pads can share one where
+                                              // GCAT is the finer catalogue (Wallops' LA2 launchers are one item).
     }[];
   }[];
   pad_count?: number;                         // Pads GCAT lists across the range, including ones it cannot place

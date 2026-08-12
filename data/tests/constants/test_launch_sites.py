@@ -1,5 +1,9 @@
 """Tests for the SATCAT launch-site catalog and its bridge to GCAT."""
 
+from space_map_data.constants.earth_sats.gcat_qids import (
+    GCAT_PAD_QIDS,
+    GCAT_SITE_QIDS,
+)
 from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_BY_CODE,
     LAUNCH_SITE_BY_SLUG,
@@ -64,3 +68,26 @@ class TestGCATBridge:
             assert len(set(spec.gcat_sites)) == len(spec.gcat_sites), (
                 f"{spec.slug} repeats a GCAT code"
             )
+
+
+class TestGCATWikidataQIDs:
+    """The curated GCAT → Wikidata table, which no property can be checked against."""
+
+    def test_qids_are_wikidata_shaped(self):
+        pad_qids = [q for pads in GCAT_PAD_QIDS.values() for q in pads.values()]
+        for qid in [*GCAT_SITE_QIDS.values(), *pad_qids]:
+            assert qid.startswith("Q")
+            assert qid[1:].isdigit()
+
+    def test_a_site_qid_names_one_site(self):
+        # Pads may share a QID where GCAT is the finer catalogue, but two
+        # places holding one entity means one of them is wrong.
+        qids = list(GCAT_SITE_QIDS.values())
+        assert len(set(qids)) == len(qids)
+
+    def test_no_entity_is_both_a_site_and_a_pad(self):
+        # Wikidata files whole cosmodromes and individual pads under the same
+        # classes, so this is the way a range can end up holding one of its
+        # own pads.
+        pad_qids = {q for pads in GCAT_PAD_QIDS.values() for q in pads.values()}
+        assert not pad_qids & set(GCAT_SITE_QIDS.values())

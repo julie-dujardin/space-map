@@ -21,7 +21,7 @@ class LaunchSiteSpec:
     # is where its position and pads come from. The mapping is curated because
     # the two catalogues carve the world up differently: SATCAT names ranges
     # ("Eastern Test Range"), GCAT names places within them, so one SATCAT code
-    # can span several. The first entry anchors the site's own coordinate.
+    # can span several, and each is exported with its own point and pads.
     # Empty for the mobile platforms and air-launch release boxes, which have
     # no fixed position to state.
     gcat_sites: tuple[str, ...] = ()

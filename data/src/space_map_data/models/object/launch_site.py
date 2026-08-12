@@ -5,8 +5,8 @@ tables are what turn those codes into a position. GCAT splits a place into
 phases — a renamed or re-chartered range gets a fresh `code` row — so `ucode`
 is the stable identity across phases and the key to join on. Both tables state
 a positional `error_deg` alongside the coordinate: a site row is one coarse
-point standing for a whole range (Baikonur's is half a degree out), while a
-launch point is the individual pad and is usually good to a few metres.
+point standing for a whole range (Baikonur's sits 28 km from Gagarin's Start),
+while a launch point is the individual pad and is usually good to a few metres.
 """
 
 from sqlalchemy.orm import Mapped, mapped_column
@@ -34,6 +34,9 @@ class LaunchSite(Base):
     error_deg: Mapped[float | None] = mapped_column(default=None)
     parent: Mapped[str | None] = mapped_column(default=None)  # operating org code
     site_group: Mapped[str | None] = mapped_column(default=None)  # GCAT Group
+    # Matched on position and name, not joined: no Wikidata property carries a
+    # GCAT code. Set on the canonical phase row only.
+    wikidata_qid: Mapped[str | None] = mapped_column(default=None, index=True)
 
 
 class LaunchPad(Base):
@@ -59,3 +62,4 @@ class LaunchPad(Base):
     latitude: Mapped[float | None] = mapped_column(default=None)  # deg
     error_deg: Mapped[float | None] = mapped_column(default=None)
     parent: Mapped[str | None] = mapped_column(default=None)
+    wikidata_qid: Mapped[str | None] = mapped_column(default=None, index=True)

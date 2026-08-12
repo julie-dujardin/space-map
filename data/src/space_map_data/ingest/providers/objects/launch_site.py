@@ -12,6 +12,10 @@ from pathlib import Path
 
 from sqlalchemy import delete, insert
 
+from space_map_data.constants.earth_sats.gcat_qids import (
+    GCAT_PAD_QIDS,
+    GCAT_SITE_QIDS,
+)
 from space_map_data.models.object import LaunchPad, LaunchSite
 from space_map_data.utils.db import get_session
 
@@ -143,6 +147,30 @@ class LaunchSiteIngestor:
             self.unparsed_numbers += 1
             return None
 
+    def _attach_qids(self, sites: list[dict], pads: list[dict]) -> None:
+        """Set ``wikidata_qid`` from the curated table, keyed through ucode.
+
+        A site's QID goes on its canonical phase row, the one whose code is
+        the ucode, so a place carries it once rather than once per renaming.
+        """
+        ucode_by_code = {r["code"]: (r["ucode"] or r["code"]) for r in sites}
+        for row in sites:
+            code = row["code"]
+            canonical = code == ucode_by_code[code]
+            row["wikidata_qid"] = GCAT_SITE_QIDS.get(code) if canonical else None
+        for row in pads:
+            ucode = ucode_by_code.get(row["site"], row["site"])
+            row["wikidata_qid"] = GCAT_PAD_QIDS.get(ucode, {}).get(row["code"])
+
+        unknown = GCAT_SITE_QIDS.keys() - set(ucode_by_code.values())
+        if unknown:
+            logger.warning(
+                "%d curated GCAT site QIDs name no site (%s) — GCAT renamed or "
+                "dropped them",
+                len(unknown),
+                ", ".join(sorted(unknown)),
+            )
+
     def _insert(self, model: type, rows: list[dict]) -> None:
         for i in range(0, len(rows), self.BATCH):
             self.session.execute(insert(model), rows[i : i + self.BATCH])
@@ -160,17 +188,21 @@ class LaunchSiteIngestor:
 
         sites = self._parse(self.sites_path, SITE_COLUMNS, _SITE_KEEP, ("code",))
         pads = self._parse(self.pads_path, PAD_COLUMNS, _PAD_KEEP, ("site", "code"))
+        self._attach_qids(sites, pads)
         self._insert(LaunchSite, sites)
         self._insert(LaunchPad, pads)
 
         located = sum(1 for r in sites if r["latitude"] is not None)
         pads_located = sum(1 for r in pads if r["latitude"] is not None)
         logger.info(
-            "Ingested %d launch sites (%d located) and %d pads (%d located)",
+            "Ingested %d launch sites (%d located, %d on Wikidata) and %d pads "
+            "(%d located, %d on Wikidata)",
             len(sites),
             located,
+            sum(1 for r in sites if r["wikidata_qid"]),
             len(pads),
             pads_located,
+            sum(1 for r in pads if r["wikidata_qid"]),
         )
         if self.malformed:
             logger.warning("Skipped %d malformed GCAT site/pad rows", self.malformed)
