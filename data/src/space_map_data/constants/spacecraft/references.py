@@ -221,15 +221,4 @@ SPACECRAFT_SOURCES: dict[str, SpacecraftReference] = {
         "them in hibernation",
         "2001: A Space Odyssey",
     ),
-    # The one source here that is not a work. A ship whose author gave it a
-    # drive and no numbers can either sit unjudged forever or carry figures
-    # somebody chose, and pretending Clarke wrote them would be worse than
-    # either. Kept as its own key so the panel says which it is.
-    "space_map_fitted": SpacecraftReference(
-        "Space Map, fitted to the work",
-        "https://spacemap.co/credits",
-        "Masses and specific impulses no author wrote down, picked so that the "
-        "capability the work does describe falls out of the rocket equation",
-        "fitted to the fiction",
-    ),
 }

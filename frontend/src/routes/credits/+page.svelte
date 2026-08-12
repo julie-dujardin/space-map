@@ -370,5 +370,27 @@
 				</ul>
 			</section>
 		{/if}
+
+		{#if credits.radiation_references?.length}
+			<section>
+				{@render sectionHeader(m.attribution_section_radiation())}
+				<ul class="space-y-1">
+					{#each credits.radiation_references as ref (ref.url)}
+						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
+		{#if credits.spacecraft_references?.length}
+			<section>
+				{@render sectionHeader(m.attribution_section_spacecraft())}
+				<ul class="space-y-1">
+					{#each credits.spacecraft_references as ref (ref.url)}
+						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
 	</div>
 </main>

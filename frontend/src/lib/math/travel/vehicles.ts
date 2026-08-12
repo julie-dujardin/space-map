@@ -24,10 +24,14 @@ export type VehicleStatus =
 	| 'fictional';
 export type PowerSource = 'solar' | 'rtg' | 'nuclear' | 'battery' | 'fictional';
 
-/** One figure and the source key backing it, so the panel can cite what it shows. */
+/**
+ * One figure and the source key backing it, so the panel can cite what it
+ * shows. The key is absent for the fitted fiction, where the figure was chosen
+ * here rather than published — an uncited number, not one credited to us.
+ */
 export interface Measured {
 	value: number;
-	source: string;
+	source?: string;
 }
 
 export interface C3Curve {

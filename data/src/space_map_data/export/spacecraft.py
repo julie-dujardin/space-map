@@ -103,9 +103,14 @@ def _curve_payload(curve: C3Curve) -> dict:
 
 
 def _measured(measured: Measured | None) -> dict | None:
+    """A figure nobody published ships its value with no `source` key, which
+    is what stops the panel citing one."""
     if measured is None:
         return None
-    return {"value": measured.value, "source": measured.source}
+    entry: dict = {"value": measured.value}
+    if measured.source is not None:
+        entry["source"] = measured.source
+    return entry
 
 
 def _entry(craft: Spacecraft) -> dict:

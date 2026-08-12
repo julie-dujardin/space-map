@@ -19,9 +19,10 @@ Citations are the works themselves. What a novel states about its own ship is
 the primary source for that ship, and the alternative is a number from nowhere.
 
 Where a work describes a drive but gives it no numbers, the entry may carry
-figures fitted to that description — cited to `space_map_fitted`, never to the
-author — so the ship can be judged on the same yardstick as everything else.
-They come out enormous, which is the honest answer and the interesting one.
+figures fitted to that description — a `Measured` with no source, never one
+attributed to the author — so the ship can be judged on the same yardstick as
+everything else. They come out enormous, which is the honest answer and the
+interesting one.
 Two limits on that. A ship the work says nothing useful about gets nothing:
 the Millennium Falcon is famous for a hyperdrive rating and has no sublight
 acceleration anyone wrote down, so it carries neither. And faster-than-light
@@ -134,12 +135,12 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         status="fictional",
         departs_from=frozenset({"orbit"}),
         power="nuclear",
-        dry_mass_kg=Measured(300000, "space_map_fitted"),
-        propellant_mass_kg=Measured(900000, "space_map_fitted"),
-        isp_s=Measured(3000.0, "space_map_fitted"),
+        dry_mass_kg=Measured(300000, None),
+        propellant_mass_kg=Measured(900000, None),
+        isp_s=Measured(3000.0, None),
         # 0.04 g, so the departure burn is a day rather than a season. Below
         # this the impulsive arc the solver draws stops describing the trip.
-        thrust_n=Measured(500000.0, "space_map_fitted"),
+        thrust_n=Measured(500000.0, None),
         crew=Measured(5, "clarke_1968_2001"),
     ),
     # Present for the same reason a map has a compass rose. Lucasfilm's
@@ -189,10 +190,10 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         status="concept",
         departs_from=frozenset({"orbit"}),
         power="solar",
-        dry_mass_kg=Measured(2500, "space_map_fitted"),
-        propellant_mass_kg=Measured(6000, "space_map_fitted"),
-        isp_s=Measured(3000.0, "space_map_fitted"),
-        thrust_n=Measured(3.5, "space_map_fitted"),
+        dry_mass_kg=Measured(2500, None),
+        propellant_mass_kg=Measured(6000, None),
+        isp_s=Measured(3000.0, None),
+        thrust_n=Measured(3.5, None),
     ),
     # The one entry with no propellant at all, which is the point: a sail's Δv
     # budget is not large, it does not exist. What it has instead is 0.2 mm/s²
@@ -207,7 +208,7 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         status="concept",
         departs_from=frozenset({"orbit"}),
         power="solar",
-        accel_m_s2=Measured(0.0002, "space_map_fitted"),
+        accel_m_s2=Measured(0.0002, None),
     ),
     # The middle the catalogue otherwise skips: hydrogen through a reactor at
     # twice the specific impulse of anything chemical and a thrust-to-weight
@@ -222,9 +223,9 @@ FICTIONAL: tuple[Spacecraft, ...] = (
         status="concept",
         departs_from=frozenset({"orbit"}),
         power="nuclear",
-        dry_mass_kg=Measured(15000, "space_map_fitted"),
-        propellant_mass_kg=Measured(40000, "space_map_fitted"),
-        isp_s=Measured(900.0, "space_map_fitted"),
-        thrust_n=Measured(250000.0, "space_map_fitted"),
+        dry_mass_kg=Measured(15000, None),
+        propellant_mass_kg=Measured(40000, None),
+        isp_s=Measured(900.0, None),
+        thrust_n=Measured(250000.0, None),
     ),
 )

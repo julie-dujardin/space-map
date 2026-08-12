@@ -1023,6 +1023,8 @@
 	"attribution_section_rings": "行星环",
 	"attribution_section_interiors": "内部结构",
 	"attribution_section_temperatures": "温度",
+	"attribution_section_radiation": "辐射环境",
+	"attribution_section_spacecraft": "航天器与运载火箭",
 	"attribution_section_clouds": "云层覆盖",
 	"attribution_section_night": "夜间灯光",
 	"attribution_section_topography": "地形",

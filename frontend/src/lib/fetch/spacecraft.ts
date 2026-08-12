@@ -3,8 +3,9 @@
  *
  * Built by the pipeline from cited constants (data/src/space_map_data/
  * constants/spacecraft/), replacing the invented table the travel panel used
- * to be driven by. Every figure arrives with the source key behind it, so the
- * panel can show a citation next to a number rather than a number alone.
+ * to be driven by. A figure arrives with the source key behind it, so the panel
+ * can show a citation next to a number rather than a number alone — except for
+ * the fitted fiction, where nobody published one and the figure ships bare.
  *
  * A failed fetch leaves the catalogue empty, which the panel reads as "no
  * vehicle filter" — the routes still solve.
@@ -23,7 +24,7 @@ import { fetchWithTimeout } from './fetch-timeout';
 
 interface MeasuredEntry {
 	value: number;
-	source: string;
+	source?: string;
 }
 
 interface VehicleEntry {

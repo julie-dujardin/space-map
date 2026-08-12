@@ -18,6 +18,7 @@ from space_map_data.constants.atmosphere.references import (
     ATMOSPHERE_FACT_SOURCES,
     ATMOSPHERE_REFERENCES,
 )
+from space_map_data.constants.radiation.references import RADIATION_SOURCES
 from space_map_data.constants.rings.attribution import RingSource
 from space_map_data.constants.rings.catalog import RING_CATALOGS
 from space_map_data.constants.rings.references import RING_REFERENCES
@@ -199,6 +200,7 @@ _REFERENCE_SECTIONS = (
     "spacecraft",
     "ring",
     "temperature",
+    "radiation",
     "activity",
     "interior",
     "atmosphere",
@@ -206,7 +208,7 @@ _REFERENCE_SECTIONS = (
 
 
 def _merge_references(sections: dict[str, list[dict]]) -> dict[str, list[dict]]:
-    """Collapse the bibliography to one row per work, across all five lists.
+    """Collapse the bibliography to one row per work, across every list.
 
     The lists are curated per constants package, so a work that measured two
     things lands in two of them — Huygens' descent gave Titan's surface
@@ -528,6 +530,9 @@ def write_credits(
             "interior": [_bibliography_row(r) for r in INTERIOR_SOURCES.values()],
             # Measured temperatures.
             "temperature": [_bibliography_row(r) for r in TEMPERATURE_SOURCES.values()],
+            # Dose rates, belts, and the two field models the trip planner
+            # integrates along a trajectory.
+            "radiation": [_bibliography_row(r) for r in RADIATION_SOURCES.values()],
         }
     )
 
@@ -540,6 +545,7 @@ def write_credits(
         "temperature_references": references["temperature"],
         "interior_references": references["interior"],
         "activity_references": references["activity"],
+        "radiation_references": references["radiation"],
     }
     if models_out:
         payload["models"] = models_out

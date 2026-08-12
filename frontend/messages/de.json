@@ -1024,6 +1024,8 @@
 	"attribution_section_rings": "Planetenringe",
 	"attribution_section_interiors": "Innerer Aufbau",
 	"attribution_section_temperatures": "Temperaturen",
+	"attribution_section_radiation": "Strahlungsumgebungen",
+	"attribution_section_spacecraft": "Raumfahrzeuge und Trägerraketen",
 	"attribution_section_clouds": "Wolkendecke",
 	"attribution_section_night": "Nachtlichter",
 	"attribution_section_topography": "Topografie",

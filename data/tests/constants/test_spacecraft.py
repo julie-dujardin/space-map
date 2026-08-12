@@ -88,11 +88,11 @@ class TestSources:
             assert ref.contribution, key
 
     def test_fitted_figures_stay_in_fiction(self):
-        # `space_map_fitted` says "somebody here chose this number". A real
-        # spacecraft reaching for it would be inventing performance, which is
-        # the one thing the catalogue is not allowed to do.
+        # A figure with no source is one somebody here chose. A real spacecraft
+        # carrying one would be inventing performance, which is the one thing
+        # the catalogue is not allowed to do.
         for craft in CATALOGUE.values():
-            if "space_map_fitted" in craft.sources():
+            if any(m.source is None for m in craft.figures()):
                 assert craft.kind == "fictional", craft.id
 
 

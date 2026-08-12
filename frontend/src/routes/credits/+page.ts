@@ -147,6 +147,8 @@ export interface Credits {
 	temperature_references?: Reference[];
 	interior_references?: Reference[];
 	activity_references?: Reference[];
+	radiation_references?: Reference[];
+	spacecraft_references?: Reference[];
 	models?: ModelCatalog[];
 	skybox?: SkyboxCredit;
 }

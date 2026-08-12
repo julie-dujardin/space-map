@@ -13,11 +13,12 @@ because the epoch a solar cycle is counted from is an observatory's call.
 
 Two keys need explaining. `garrett_2015` and `garrett_2017` also appear in
 `activity/references.py`, where the same two JPL model reports supply Uranus's
-and Neptune's dipole offsets; the keys match and the contribution sentences
-differ, because what a credits page owes a reader is what the work was used
-*for*. And `roussos_2020` and `roussos_2020_gcr` are two different works by the
-same first author in the same year — the belt structure of the giant planets in
-one, the radial gradient of cosmic rays between 1 and 9.5 au in the other.
+and Neptune's dipole offsets; the keys and URLs match so the credits exporter
+folds them into one row, and only the contribution sentences differ, because
+what a credits page owes a reader is what the work was used *for*. And
+`roussos_2020` and `roussos_2020_gcr` are two different works by the same first
+author in the same year — the belt structure of the giant planets in one, the
+radial gradient of cosmic rays between 1 and 9.5 au in the other.
 """
 
 from typing import NamedTuple
@@ -134,14 +135,14 @@ RADIATION_SOURCES: dict[str, RadiationReference] = {
     ),
     "garrett_2015": RadiationReference(
         "Garrett et al. 2015 (JPL Publication 15-1), Uranus Radiation Model",
-        "https://hdl.handle.net/2014/45753",
+        "https://ntrs.nasa.gov/citations/20160009378",
         "The Voyager 2 fit that establishes Uranus has trapped-particle belts "
         "and where they sit",
         "Uranus belt model",
     ),
     "garrett_2017": RadiationReference(
         "Garrett et al. 2017 (JPL Publication 17-3), Neptune Radiation Model",
-        "https://hdl.handle.net/2014/46765",
+        "https://ntrs.nasa.gov/citations/20170006886",
         "The Voyager 2 fit that establishes Neptune has trapped-particle "
         "belts and where they sit",
         "Neptune belt model",

@@ -1173,6 +1173,8 @@
 	"attribution_section_rings": "Planetary rings",
 	"attribution_section_interiors": "Interiors",
 	"attribution_section_temperatures": "Temperatures",
+	"attribution_section_radiation": "Radiation environments",
+	"attribution_section_spacecraft": "Spacecraft & launch vehicles",
 	"attribution_section_clouds": "Cloud cover",
 	"attribution_section_night": "Night lights",
 	"attribution_section_topography": "Topography",

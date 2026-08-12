@@ -53,6 +53,7 @@
 	import CraftSpecs from './CraftSpecs.svelte';
 	import DeltaVLadder from './DeltaVLadder.svelte';
 	import { craftSpecs, craftSpecSources } from './craft-specs';
+	import { radiationSources } from '$lib/credits/radiation-sources';
 	import { legLabel } from './leg-labels';
 	import { HAZARD_ICONS, HAZARD_TEXT } from './hazard-style';
 
@@ -271,7 +272,9 @@
 	// The craft's own figures, and the works behind them — drawn apart, since the
 	// citations belong at the foot of the panel rather than mid-way down it.
 	let specs = $derived(state.vehicle ? craftSpecs(state.vehicle, route) : []);
-	let sources = $derived(craftSpecSources(specs));
+	// The dose figures are computed here rather than fetched, so their works come
+	// from a module of their own; the craft's come with the catalogue.
+	let sources = $derived([...craftSpecSources(specs), ...radiationSources(shownHazards)]);
 
 	// What the detour bought, against the best the direct search found. The saving
 	// is the reason this route is on the list at all, so it is said rather than

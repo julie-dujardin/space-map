@@ -1,7 +1,8 @@
-"""The credits bibliography — one row per work across the six lists."""
+"""The credits bibliography — one row per work across the seven lists."""
 
 from space_map_data.constants.activity.references import ACTIVITY_SOURCES
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
+from space_map_data.constants.radiation.references import RADIATION_SOURCES
 from space_map_data.constants.rings.references import RING_REFERENCES
 from space_map_data.constants.spacecraft import SPACECRAFT_SOURCES
 from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
@@ -20,6 +21,7 @@ def _sections() -> dict[str, list[dict]]:
         "activity": [r._asdict() for r in ACTIVITY_SOURCES.values()],
         "interior": [r._asdict() for r in INTERIOR_SOURCES.values()],
         "temperature": [r._asdict() for r in TEMPERATURE_SOURCES.values()],
+        "radiation": [r._asdict() for r in RADIATION_SOURCES.values()],
     }
 
 
@@ -54,6 +56,18 @@ class TestMergeReferences:
             r for r in merged["temperature"] if r["title"].startswith("NSSDCA")
         )
         assert "reference conditions" in nssdca["contribution"]
+
+    def test_a_work_cited_by_two_packages_shares_a_url(self):
+        """The Garrett reports are cited for belts and for dipole offsets. The
+        merge is by URL, so the two entries have to link the same copy or the
+        page lists one report twice."""
+        merged = _merge_references(_sections())
+        garrett = [
+            r for rows in merged.values() for r in rows if "Garrett" in r["title"]
+        ]
+        assert len(garrett) == 2
+        assert all("belts" in r["contribution"] for r in garrett)
+        assert all("dipole" in r["contribution"] for r in garrett)
 
     def test_both_contributions_survive(self):
         merged = _merge_references(

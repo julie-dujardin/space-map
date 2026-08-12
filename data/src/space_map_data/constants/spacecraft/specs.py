@@ -25,12 +25,17 @@ G0_M_S2 = 9.80665
 class Measured(NamedTuple):
     """One number and the work it comes from.
 
+    `source` is None for a figure nobody published — the fitted fiction, where
+    the author gave a ship a drive and no numbers. Absent rather than credited
+    to ourselves: a citation line is for other people's work, and a reader who
+    finds no source has been told the truth about the figure.
+
     Integer quantities (crew) are stored as ints; the export emits what it is
     given rather than coercing, so a crew of 3 does not ship as 3.0.
     """
 
     value: float
-    source: str
+    source: str | None
 
 
 class Cost(NamedTuple):
@@ -219,10 +224,10 @@ class Spacecraft:
     # for a capsule class.
     group_slug: str | None = None
 
-    def sources(self) -> frozenset[str]:
-        """Every source key the entry cites, for validation and credits."""
-        keys = {
-            m.source
+    def figures(self) -> tuple[Measured, ...]:
+        """Every published quantity the entry states, sourced or not."""
+        return tuple(
+            m
             for m in (
                 self.dry_mass_kg,
                 self.propellant_mass_kg,
@@ -234,7 +239,11 @@ class Spacecraft:
                 self.accel_m_s2,
             )
             if m is not None
-        }
+        )
+
+    def sources(self) -> frozenset[str]:
+        """Every source key the entry cites, for validation and credits."""
+        keys = {m.source for m in self.figures() if m.source is not None}
         if self.c3_curve is not None:
             keys.add(self.c3_curve.source)
             if self.c3_curve.cross_check is not None:

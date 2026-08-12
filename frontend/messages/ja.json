@@ -1097,6 +1097,8 @@
 	"attribution_section_rings": "惑星の環",
 	"attribution_section_interiors": "内部構造",
 	"attribution_section_temperatures": "温度",
+	"attribution_section_radiation": "放射線環境",
+	"attribution_section_spacecraft": "宇宙機とロケット",
 	"attribution_section_clouds": "雲量",
 	"attribution_section_night": "夜間照明",
 	"attribution_section_topography": "地形",
