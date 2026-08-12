@@ -26,13 +26,21 @@ export interface TravelBody {
 	 */
 	surfacePressureBar?: number;
 	/**
-	 * True when there is an envelope to fly a braking pass through, whether or
-	 * not anything can stand under it. Separate from the pressure above because
-	 * the giants are the best aerocapture targets in the literature and the worst
-	 * places to quote a surface: a pressure at their cloud tops is not a surface
-	 * reading, but it is still an atmosphere.
+	 * True when any envelope at all has been detected, down to Mercury's
+	 * exosphere. Says nothing about whether a pass can be flown through it —
+	 * that is `aeroPressurePa`'s job — but it is how a gas giant is told apart
+	 * from an airless body when neither has a surface pressure.
 	 */
 	hasAtmosphere?: boolean;
+	/**
+	 * Pressure of the envelope at the level `radiusKm` names — the surface, or
+	 * 1 bar on a giant — in Pa. Only set for a measured envelope a pass could be
+	 * flown through, so upper limits and stellar photospheres never carry one.
+	 * What aero eligibility and the pass depth are priced against.
+	 */
+	aeroPressurePa?: number;
+	/** Density scale height of that envelope, km — sets how deep the pass sits. */
+	aeroScaleHeightKm?: number;
 	/** Primary this body orbits; absent for heliocentric bodies. */
 	parentId?: string;
 }

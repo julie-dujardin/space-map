@@ -62,6 +62,8 @@ export const EARTH: TravelBody = {
 	muEstimated: false,
 	radiusKm: 6371.0,
 	surfacePressureBar: 1.013,
+	aeroPressurePa: 101400,
+	aeroScaleHeightKm: 8.4,
 	elements: planetElements(1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0)
 };
 
@@ -71,6 +73,8 @@ export const MARS: TravelBody = {
 	muEstimated: false,
 	radiusKm: 3389.5,
 	surfacePressureBar: 0.00636,
+	aeroPressurePa: 636,
+	aeroScaleHeightKm: 11.0,
 	elements: planetElements(
 		1.52371034,
 		0.0933941,
@@ -87,6 +91,8 @@ export const VENUS: TravelBody = {
 	muEstimated: false,
 	radiusKm: 6051.8,
 	surfacePressureBar: 92,
+	aeroPressurePa: 9200000,
+	aeroScaleHeightKm: 5.4,
 	elements: planetElements(
 		0.72333566,
 		0.00677672,
@@ -102,6 +108,8 @@ export const JUPITER: TravelBody = {
 	mu: 1.26686534e8,
 	muEstimated: false,
 	radiusKm: 69911,
+	aeroPressurePa: 100000,
+	aeroScaleHeightKm: 19.3,
 	elements: planetElements(5.202887, 0.04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909)
 };
 
@@ -110,6 +118,8 @@ export const SATURN: TravelBody = {
 	mu: 3.7931187e7,
 	muEstimated: false,
 	radiusKm: 58232,
+	aeroPressurePa: 100000,
+	aeroScaleHeightKm: 44.1,
 	elements: planetElements(
 		9.53667594,
 		0.05386179,
@@ -240,6 +250,8 @@ export const EARTH_BARYCENTRIC: TravelBody = {
 	muEstimated: false,
 	radiusKm: 6371.0,
 	surfacePressureBar: 1.013,
+	aeroPressurePa: 101400,
+	aeroScaleHeightKm: 8.4,
 	elements: barycentric(EARTH_BARYCENTRIC_KM, 180),
 	parentId: 'naif-3'
 };

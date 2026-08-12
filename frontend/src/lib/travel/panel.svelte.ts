@@ -51,7 +51,7 @@ export type TravelStatus = 'idle' | 'solving' | 'ready' | 'empty' | 'blocked';
 
 /** What a body's atmosphere is worth to a price, as a key fragment. */
 function air(body: TravelBody): string {
-	return `${body.hasAtmosphere === true ? 1 : 0}/${body.surfacePressureBar ?? ''}`;
+	return `${body.aeroPressurePa ?? ''}/${body.aeroScaleHeightKm ?? ''}/${body.surfacePressureBar ?? ''}`;
 }
 
 /**

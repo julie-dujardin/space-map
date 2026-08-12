@@ -36,15 +36,37 @@ export const ASCENT_DRAG_LOSS_KMS_PER_BAR = 0.15;
 export const ASCENT_DRAG_LOSS_CAP_KMS = 1.2;
 
 /**
- * Altitude of the periapsis an atmospheric pass is flown at, km.
- *
- * One value for every body, which is the model's weakest atmospheric
- * assumption: a real entry interface sits where the density does, so it is
- * ~50 km at Mars but several hundred at Titan and the giants. Calibrated at
- * Mars, where it reproduces the published post-pass burn; at a body with a
- * deeper atmosphere it puts periapsis too low and understates that burn.
+ * Altitude of the periapsis an atmospheric pass is flown at when the body
+ * carries no scale height to derive one from, km. Calibrated at Mars, where it
+ * reproduces the published post-pass burn. Doubles as the floor for envelopes
+ * thinner than the target pass pressure — Pluto's whole atmosphere is — where
+ * the derived depth would otherwise sit at or under the ground.
  */
 export const AERO_PASS_ALTITUDE_KM = 50;
+
+/**
+ * Pressure the pass periapsis aims for, Pa. With a body's own scale height this
+ * places the entry interface where its density actually is — ~50 km at Mars but
+ * hundreds of km at Titan and the giants. Calibrated so Mars (636 Pa, 11 km)
+ * lands on the altitude the published post-pass burn was matched at.
+ */
+export const AERO_PASS_PRESSURE_PA = 6.7;
+
+/**
+ * Ceiling on the derived pass altitude, km. Every orbit here is quoted from the
+ * one 200 km parking convention, and a pass has to fit under the orbit it
+ * delivers — so at Titan and the giants this is the parking convention's floor
+ * showing through, not the atmosphere's real top.
+ */
+export const AERO_PASS_ALTITUDE_MAX_KM = 150;
+
+/**
+ * Thinnest envelope a braking pass is credited against — pressure at the datum,
+ * Pa. An order of magnitude under Pluto's ~1 Pa, the thinnest atmosphere with
+ * published aerocapture studies, and three above the thickest exosphere: the
+ * catalogue has nothing in between for the exact value to decide.
+ */
+export const AERO_MIN_PRESSURE_PA = 0.1;
 
 /**
  * Δv allowed for corridor control and apoapsis trim after an aerocapture pass,
@@ -68,9 +90,6 @@ export const AEROCAPTURE_TRIM_KMS = 0.05;
  * days. Nothing calibrates it away from Mars.
  */
 export const AEROBRAKING_RATE_KMS_PER_DAY = 0.008;
-
-/** Surface pressure (bar) above which aero assist and parachute EDL are credited. */
-export const AEROCAPTURE_MIN_PRESSURE_BAR = 0.005;
 
 /**
  * Terminal-descent Δv left after a parachute-assisted landing, km/s. Mars-class

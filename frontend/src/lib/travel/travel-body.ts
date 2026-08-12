@@ -12,6 +12,7 @@
 
 import type { BodyData } from '$lib/types/objects';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+import { getAtmosphereParams } from '$lib/fetch/atmospheres';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { estimateMu, muFromElements, type TravelBody } from '$lib/math/travel';
@@ -91,17 +92,35 @@ function surfacePressureBar(detail: GlobalObjectData | null): number | undefined
 }
 
 /**
- * Whether there is an envelope to fly a braking pass through.
+ * Whether any envelope at all has been detected — Mercury's exosphere counts.
  *
- * A pressure at any level says there is, which is the point of asking
- * separately: Neptune's reading is at one bar with nothing underneath it, and
- * Neptune is where the aerocapture literature actually wants to go. A body whose
- * detail never loaded reports nothing rather than no.
+ * Not the braking-pass question, which `aeroPressurePa` answers from the
+ * measured pressure: this one only marks that an envelope exists, so a gas
+ * giant reading at one bar with nothing underneath can be told apart from an
+ * airless body. A body whose detail never loaded reports nothing rather than no.
  */
 export function hasAtmosphere(detail: GlobalObjectData | null): boolean | undefined {
 	const pressure = detail?.atmosphere?.pressure;
 	if (!pressure) return undefined;
 	return Number.isFinite(pressure.pa) && pressure.pa > 0;
+}
+
+/**
+ * Pressure of the envelope at the level the body's radius names — the surface,
+ * or the 1 bar datum on a giant — in Pa. What a braking pass is judged and
+ * priced against, so it reports nothing at all for readings that are not an
+ * envelope to fly through: an upper limit is a non-detection dressed as a
+ * number (Mercury's is how aerobraking was once offered there), and a stellar
+ * photosphere has no top to skim and come back out of.
+ */
+export function aeroPressurePa(detail: GlobalObjectData | null): number | undefined {
+	const atmosphere = detail?.atmosphere;
+	const pressure = atmosphere?.pressure;
+	if (!pressure || pressure.qualifier === 'upper_limit') return undefined;
+	const structure = atmosphere.structure;
+	if ((structure?.datum ?? pressure.level) === 'photosphere') return undefined;
+	const pa = structure?.datum_pressure_pa ?? pressure.pa;
+	return Number.isFinite(pa) && pa > 0 ? pa : undefined;
 }
 
 /**
@@ -135,6 +154,7 @@ export function toTravelBody(
 	const radiusKm = Number.isFinite(body.radiusKm) && body.radiusKm > 0 ? body.radiusKm : 1;
 	const id = naifId(body.id);
 	const measuredMu = id === null ? undefined : getGmKm3s2(id);
+	const aeroPa = aeroPressurePa(detail);
 
 	return {
 		id: body.id,
@@ -162,6 +182,12 @@ export function toTravelBody(
 		},
 		surfacePressureBar: surfacePressureBar(detail),
 		hasAtmosphere: hasAtmosphere(detail),
+		aeroPressurePa: aeroPa,
+		// The render pipeline's fitted scale height — the one per-body vertical
+		// profile the app ships — so the kernel can put the pass where the density
+		// is instead of at one Mars-calibrated altitude.
+		aeroScaleHeightKm:
+			aeroPa === undefined ? undefined : getAtmosphereParams(body.id)?.rayleighScaleHeightKm,
 		parentId: body.parentId
 	};
 }

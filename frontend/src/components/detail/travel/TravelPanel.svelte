@@ -30,6 +30,7 @@
 		nextTransferWindows,
 		systemArcBounds,
 		transferScale,
+		travelConstants,
 		type AeroAssist,
 		type Route,
 		type TrajectoryFrame,
@@ -37,7 +38,7 @@
 		type TravelBody
 	} from '$lib/math/travel';
 	import {
-		hasAtmosphere,
+		aeroPressurePa,
 		lookupIn,
 		toTravelBody,
 		transferCenterId,
@@ -369,13 +370,16 @@
 	}
 
 	// A flyby never slows down, so there is nothing for an atmosphere to do. A
-	// destination with none of its own ignores the request anyway, and offering it
-	// would be asking a question with one answer.
+	// destination whose envelope the kernel would ignore — too thin, an upper
+	// limit, none at all — must not show the control either, or it is asking a
+	// question with one answer; this is the same gate `canAeroBrake` applies.
 	// Asked of the destination's own detail bundle rather than of `targetTravel`.
 	// That is rebuilt from the scene's body index, which churns and briefly
 	// resolves to nothing — and a control that vanishes and comes back between a
 	// press and its release swallows the click that was on it.
-	let targetHasAir = $derived(hasAtmosphere(targetDetail) === true);
+	let targetHasAir = $derived(
+		(aeroPressurePa(targetDetail) ?? 0) >= travelConstants.AERO_MIN_PRESSURE_PA
+	);
 	let isLanding = $derived(panel.targetIsFeature || panel.targetMode === 'surface');
 	let showAero = $derived(targetHasAir && panel.targetMode !== 'flyby');
 	// Ordered by how much of the arrival is still flown on the engine: all of it,

@@ -147,6 +147,50 @@ describe('toTravelBody', () => {
 		expect(toTravelBody(bodies.get('naif-399')!, look)!.hasAtmosphere).toBeUndefined();
 	});
 
+	function withAtmosphere(atmosphere: unknown) {
+		return toTravelBody(bodies.get('naif-399')!, look, { atmosphere } as never)!;
+	}
+
+	it('carries the quoted pressure as the braking-pass datum', () => {
+		expect(withPressure('surface').aeroPressurePa).toBe(101325);
+		expect(withPressure('cloud_top').aeroPressurePa).toBe(101325);
+	});
+
+	// Mercury ships a 5e-10 Pa upper limit: a non-detection dressed as a number,
+	// and reading it as air offered aerobraking off a body with none.
+	it('reports no envelope for an upper limit', () => {
+		expect(
+			withAtmosphere({
+				type: 'exosphere',
+				pressure: { pa: 5e-10, level: 'surface', qualifier: 'upper_limit' }
+			}).aeroPressurePa
+		).toBeUndefined();
+	});
+
+	// The Sun's 12.5 kPa photosphere is the one envelope with no top to skim and
+	// come back out of.
+	it('reports no envelope at a photosphere', () => {
+		expect(
+			withAtmosphere({
+				type: 'stellar_atmosphere',
+				pressure: { pa: 12500, level: 'photosphere', qualifier: 'approximate' },
+				structure: { datum: 'photosphere', datum_pressure_pa: 12500, layers: [] }
+			}).aeroPressurePa
+		).toBeUndefined();
+	});
+
+	// The giants quote their headline pressure at the cloud tops, but their
+	// radius — and so the pass depth — is measured from the 1 bar datum.
+	it('prefers the structure datum pressure over the headline reading', () => {
+		expect(
+			withAtmosphere({
+				type: 'gas_giant_envelope',
+				pressure: { pa: 10000, level: 'cloud_top' },
+				structure: { datum: 'one_bar', datum_pressure_pa: 100000, layers: [] }
+			}).aeroPressurePa
+		).toBe(100000);
+	});
+
 	it('treats a body with no detail as airless', () => {
 		expect(toTravelBody(bodies.get('naif-399')!, look)!.surfacePressureBar).toBeUndefined();
 	});

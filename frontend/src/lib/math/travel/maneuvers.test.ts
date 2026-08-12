@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+	aeroPassRadiusKm,
 	arrivalCampaignDays,
 	arrivalCost,
 	ascentDv,
@@ -11,7 +12,7 @@ import {
 	parkingOrbit,
 	parkingRadiusKm
 } from './maneuvers';
-import { EARTH, JUPITER, MARS, MOON } from './test-fixtures';
+import { EARTH, JUPITER, MARS, MOON, SATURN, VENUS } from './test-fixtures';
 
 // Whether these figures match Earth, Apollo and Mars ascents is asserted in
 // benchmarks.test.ts, which owns every published number and its tolerance.
@@ -108,6 +109,26 @@ describe('captureDv', () => {
 	});
 });
 
+describe('aeroPassRadiusKm', () => {
+	// Derived from each body's own pressure and scale height: Mars comes out at
+	// the 50 km the published post-pass burn was calibrated at, Venus deeper.
+	it('places the pass where the envelope reaches the target pressure', () => {
+		expect(aeroPassRadiusKm(MARS) - MARS.radiusKm).toBeCloseTo(50, 0);
+		expect(aeroPassRadiusKm(VENUS) - VENUS.radiusKm).toBeCloseTo(76, 0);
+	});
+
+	// Saturn's derived interface sits over 400 km up — higher than the 200 km
+	// parking convention every orbit here is quoted from, so the ceiling wins.
+	it('keeps the pass under the parking convention on the deepest envelopes', () => {
+		expect(aeroPassRadiusKm(SATURN) - SATURN.radiusKm).toBe(150);
+	});
+
+	it('floors at the Mars calibration when the envelope is thinner than the target', () => {
+		const pluto = { ...MOON, aeroPressurePa: 1.15, aeroScaleHeightKm: 24 };
+		expect(aeroPassRadiusKm(pluto) - pluto.radiusKm).toBe(50);
+	});
+});
+
 describe('arrivalCost', () => {
 	it('charges nothing for a flyby', () => {
 		const cost = arrivalCost(MARS, 3.2, 'flyby');
@@ -121,6 +142,17 @@ describe('arrivalCost', () => {
 		// Asking is not the same as receiving, which is what lets the request stand
 		// while the destination changes.
 		expect(arrivalCost(MOON, 2.65, 'capture', 'aerocapture').aerobraked).toBe(false);
+	});
+
+	// Mercury's exosphere and Io's volcanic wisp are measured readings, orders of
+	// magnitude too thin for drag to repay a pass — a detection is not a brake.
+	it('refuses a braking pass through an envelope too thin to matter', () => {
+		const io = { ...MOON, aeroPressurePa: 3.3e-5 };
+		expect(arrivalCost(io, 2.65, 'capture', 'aerocapture').aerobraked).toBe(false);
+		// Pluto's ~1 Pa is the thinnest envelope with published aerocapture
+		// studies, and it stays on the credited side of the line.
+		const pluto = { ...MOON, aeroPressurePa: 1.15 };
+		expect(arrivalCost(pluto, 2.65, 'capture', 'aerocapture').aerobraked).toBe(true);
 	});
 
 	it('makes landing on an airless body cost a full powered descent', () => {

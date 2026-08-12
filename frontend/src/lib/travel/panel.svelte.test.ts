@@ -711,7 +711,7 @@ describe('TravelPanelState swing-by route', () => {
 	// priced the way they are: a swing-by that paid full price for its capture
 	// while they aerocaptured looks like one that saves nothing.
 	it('prices its arrival the way the routes it is judged against are', async () => {
-		const air = { ...SATURN, hasAtmosphere: true };
+		const air = SATURN;
 		const panel = new TravelPanelState();
 		await panel.solve(EARTH, air, NOW);
 		await panel.updateAssist(EARTH, air, [JUPITER], NOW);
@@ -722,7 +722,7 @@ describe('TravelPanelState swing-by route', () => {
 	// Aerocapture is the default, so this goes the other way: taking the air away
 	// has to cost the swing-by its discount too.
 	it('hunts again when the braking mode changes', async () => {
-		const air = { ...SATURN, hasAtmosphere: true };
+		const air = SATURN;
 		const panel = new TravelPanelState();
 		await panel.solve(EARTH, air, NOW);
 		await panel.updateAssist(EARTH, air, [JUPITER], NOW);
@@ -737,8 +737,8 @@ describe('TravelPanelState swing-by route', () => {
 	// answered — and it is worth ten kilometres per second at a giant. Keyed on
 	// ids alone, the airless answer would stand for the rest of the session.
 	it('hunts again once the destination turns out to have air', async () => {
-		const dry = SATURN;
-		const air = { ...SATURN, hasAtmosphere: true };
+		const dry = { ...SATURN, aeroPressurePa: undefined, aeroScaleHeightKm: undefined };
+		const air = SATURN;
 		const panel = new TravelPanelState();
 		await panel.solve(EARTH, dry, NOW);
 		await panel.updateAssist(EARTH, dry, [JUPITER], NOW);

@@ -17,10 +17,16 @@ function priced(options: RouteOptions) {
 	return route!;
 }
 
-const AIR_MARS = { ...MARS, hasAtmosphere: true };
+const AIR_MARS = MARS;
 /** Mars as the kernel sees it before the detail bundle lands: no air fields at
  *  all, so every arrival prices as airless. */
-const UNKNOWN_MARS = { ...MARS, hasAtmosphere: undefined, surfacePressureBar: undefined };
+const UNKNOWN_MARS = {
+	...MARS,
+	hasAtmosphere: undefined,
+	surfacePressureBar: undefined,
+	aeroPressurePa: undefined,
+	aeroScaleHeightKm: undefined
+};
 
 describe('route view keys', () => {
 	// The panel re-solves on every input change and the optimizer often lands on

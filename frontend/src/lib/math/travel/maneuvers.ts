@@ -11,9 +11,11 @@
 import type { TravelBody } from './body';
 import {
 	AEROBRAKING_RATE_KMS_PER_DAY,
-	AEROCAPTURE_MIN_PRESSURE_BAR,
 	AEROCAPTURE_TRIM_KMS,
+	AERO_MIN_PRESSURE_PA,
 	AERO_PASS_ALTITUDE_KM,
+	AERO_PASS_ALTITUDE_MAX_KM,
+	AERO_PASS_PRESSURE_PA,
 	ASCENT_DRAG_LOSS_CAP_KMS,
 	ASCENT_DRAG_LOSS_KMS_PER_BAR,
 	ASCENT_GRAVITY_LOSS_FRACTION,
@@ -63,26 +65,35 @@ function sane(orbit: EndOrbit): EndOrbit {
 	return { rPeriKm: orbit.rPeriKm, rApoKm: Math.max(orbit.rApoKm, orbit.rPeriKm) };
 }
 
-/** True when the atmosphere is thick enough to land or ascend through. */
-export function hasUsableAtmosphere(body: TravelBody): boolean {
-	return (body.surfacePressureBar ?? 0) >= AEROCAPTURE_MIN_PRESSURE_BAR;
-}
-
 /**
- * True when there is an envelope to fly a braking pass through.
+ * True when there is an envelope thick enough to fly a braking pass through.
  *
- * Wider than the test above, and deliberately: a gas giant has no surface for a
- * pressure to be read at, which makes it airless to everything that prices a
- * landing and still leaves it the thickest atmosphere in the system to brake
- * against.
+ * Judged on the measured pressure rather than on whether anything was detected:
+ * Mercury and the icy moons all carry a real reading, orders of magnitude too
+ * thin for drag to ever repay a pass, and offering them aerocapture is offering
+ * fiction. `aeroPressurePa` is quoted at the datum whatever the body's shape,
+ * so a gas giant's 1 bar level qualifies it the way its cloud tops never could.
  */
 export function canAeroBrake(body: TravelBody): boolean {
-	return body.hasAtmosphere === true || hasUsableAtmosphere(body);
+	return (body.aeroPressurePa ?? 0) >= AERO_MIN_PRESSURE_PA;
 }
 
 /** Radius the atmospheric pass is flown at, km. */
 export function aeroPassRadiusKm(body: TravelBody): number {
-	return body.radiusKm + AERO_PASS_ALTITUDE_KM;
+	return body.radiusKm + aeroPassAltitudeKm(body);
+}
+
+/**
+ * How high above the datum the pass sits, km — where the body's own envelope
+ * reaches the target pass pressure, clamped to the band the rest of the model
+ * can hold: no shallower than the Mars-calibrated floor, no higher than fits
+ * under the parking convention.
+ */
+function aeroPassAltitudeKm(body: TravelBody): number {
+	const { aeroPressurePa: pa, aeroScaleHeightKm: h } = body;
+	if (!pa || !h) return AERO_PASS_ALTITUDE_KM;
+	const derived = h * Math.log(pa / AERO_PASS_PRESSURE_PA);
+	return Math.min(Math.max(derived, AERO_PASS_ALTITUDE_KM), AERO_PASS_ALTITUDE_MAX_KM);
 }
 
 /**

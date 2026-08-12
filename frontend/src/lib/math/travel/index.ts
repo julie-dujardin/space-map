@@ -66,7 +66,6 @@ export {
 	departureCost,
 	endArrivalOrbit,
 	endDepartureOrbit,
-	hasUsableAtmosphere,
 	injectionDv,
 	orbitPeriodHours,
 	parkingOrbit,
