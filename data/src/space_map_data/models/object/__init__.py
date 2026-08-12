@@ -3,6 +3,7 @@
 from space_map_data.models.object.base import Base
 from space_map_data.models.object.celestrak import CelesTrak
 from space_map_data.models.object.horizons import Horizons
+from space_map_data.models.object.launch_site import LaunchPad, LaunchSite
 from space_map_data.models.object.launch_vehicle import LaunchVehicle
 from space_map_data.models.object.launchlog import Launchlog
 from space_map_data.models.object.satcat import Satcat
@@ -25,6 +26,8 @@ __all__ = [
     "DWARF_PLANETS",
     "ElementsScale",
     "Horizons",
+    "LaunchPad",
+    "LaunchSite",
     "LaunchVehicle",
     "Launchlog",
     "ModelProvenance",

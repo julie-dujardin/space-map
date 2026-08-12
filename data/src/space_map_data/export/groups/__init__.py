@@ -20,6 +20,7 @@ from space_map_data.constants.categories import (
 from space_map_data.export.groups.bundles import write_group_bundles
 from space_map_data.export.groups.categories import build_category_data
 from space_map_data.export.groups.feature_type import build_feature_type_groups
+from space_map_data.export.groups.launch_site import build_launch_site_stats
 from space_map_data.export.groups.launch_vehicle import build_launch_vehicle_stats
 from space_map_data.export.groups.earth_sat import (
     NOTABLE_MEMBER_COUNT,
@@ -388,6 +389,7 @@ def run_groups_tier(
         )
         split_comets = _split_comet_groups(session, wikidata_entities)
         launch_vehicle_stats = build_launch_vehicle_stats(session)
+        launch_site_stats = build_launch_site_stats(session)
         textured_ids = textured_object_ids(session)
         solar_system_map = build_solar_system_map(
             session,
@@ -493,6 +495,7 @@ def run_groups_tier(
         extra_groups=(*split_comets.groups, *missions.groups),
         extra_group_names=split_comets.names,
         launch_vehicle_stats=launch_vehicle_stats,
+        launch_site_stats=launch_site_stats,
         feature_type_stats=feature_types.stats,
         constellation_orbit_classes=constellation_orbit_classes,
         extra_constellation_counts=category_data.constellation_counts,

@@ -1,0 +1,176 @@
+"""GCAT-derived position and pad list for launch-site (``site-``) group pages.
+
+Two catalogues meet here. Membership and the satellite counts come from
+CelesTrak SATCAT, whose site codes name whole ranges; the position comes from
+GCAT, which names the places inside them. `LaunchSiteSpec.gcat_sites` is the
+curated bridge, and every GCAT phase code (a range keeps getting re-chartered
+and renamed) resolves through `LaunchSite.ucode` before matching.
+
+A SATCAT range is not one place, so the export does not pretend it is: there
+is no range-level coordinate, only the GCAT sites under it, each with its own
+point and its own pads. Any single pin for a range would just be one of those
+sites picked arbitrarily, and a misleading one — Canaveral's point sits 18 km
+from LC39A, Baikonur's 28 km from Gagarin's Start.
+
+Pad launch counts come from the launchlog, deduped by ``launch_tag``: it has
+one row per payload, and a rideshare would otherwise make a pad look busier
+than it was.
+"""
+
+import logging
+from collections import defaultdict
+from dataclasses import dataclass, field
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from space_map_data.constants.earth_sats.launch_sites import (
+    LAUNCH_SITE_SLUG_PREFIX,
+    LAUNCH_SITES,
+)
+from space_map_data.models.object import LaunchPad, LaunchSite, Launchlog
+
+logger = logging.getLogger(__name__)
+
+
+def _certain(code: str | None) -> str | None:
+    """Drop GCAT's trailing "?" — the attribution is uncertain, not the code.
+
+    Counting these against the pad GCAT names is better than counting them
+    nowhere, which is what an unstripped code amounts to.
+    """
+    return code.rstrip("?") if code else None
+
+
+@dataclass
+class LaunchSiteStats:
+    """Per-site GCAT roll-up consumed by the site- group bundle."""
+
+    # The GCAT sites this range covers, busiest first, each with its own point
+    # and its own pads.
+    sites: list[dict] = field(default_factory=list)
+    # Every pad GCAT lists for the range, including the ones it cannot place.
+    pad_count: int = 0
+    launch_count: int = 0
+
+
+def _ucode_index(session: Session) -> tuple[dict[str, str], dict[str, LaunchSite]]:
+    """``{site code: ucode}`` and ``{ucode: canonical row}`` over GCAT sites.
+
+    A place has one row per naming phase; the canonical one is the row whose
+    own code equals the ucode, falling back to the first located row so a place
+    whose canonical row is missing still gets a position.
+    """
+    ucode_by_code: dict[str, str] = {}
+    canonical: dict[str, LaunchSite] = {}
+    for row in session.scalars(select(LaunchSite)):
+        ucode = row.ucode or row.code
+        ucode_by_code[row.code] = ucode
+        current = canonical.get(ucode)
+        if row.code == ucode:
+            canonical[ucode] = row
+        elif current is None and row.latitude is not None:
+            canonical[ucode] = row
+    return ucode_by_code, canonical
+
+
+def build_launch_site_stats(session: Session) -> dict[str, LaunchSiteStats]:
+    """Aggregate GCAT sites/pads into ``{site- group slug: LaunchSiteStats}``."""
+    ucode_by_code, canonical = _ucode_index(session)
+    if not ucode_by_code:
+        logger.warning("No GCAT launch sites in the DB; site- pages get no position")
+        return {}
+
+    # Pads keyed by the ucode of the site they hang off, so a pad recorded
+    # against an older phase code still lands on the right site.
+    pads_by_ucode: dict[str, list[LaunchPad]] = defaultdict(list)
+    for pad in session.scalars(select(LaunchPad)):
+        pads_by_ucode[ucode_by_code.get(pad.site, pad.site)].append(pad)
+
+    # (site ucode, pad code) → distinct launches.
+    pad_launches: dict[tuple[str, str], set[str]] = defaultdict(set)
+    site_launches: dict[str, set[str]] = defaultdict(set)
+    unknown_sites: set[str] = set()
+    for raw_site, raw_pad, tag in session.execute(
+        select(Launchlog.launch_site, Launchlog.launch_pad, Launchlog.launch_tag)
+    ):
+        site_code, pad_code = _certain(raw_site), _certain(raw_pad)
+        if not site_code or not tag:
+            continue
+        ucode = ucode_by_code.get(site_code)
+        if ucode is None:
+            unknown_sites.add(site_code)
+            continue
+        site_launches[ucode].add(tag)
+        if pad_code:
+            pad_launches[(ucode, pad_code)].add(tag)
+    if unknown_sites:
+        logger.warning(
+            "%d launchlog site codes are absent from GCAT sites.tsv (e.g. %s)",
+            len(unknown_sites),
+            ", ".join(sorted(unknown_sites)[:5]),
+        )
+
+    stats: dict[str, LaunchSiteStats] = {}
+    for spec in LAUNCH_SITES:
+        if not spec.gcat_sites:
+            continue
+        # Deduped: two curated codes can be phases of one place, which would
+        # otherwise count its pads twice.
+        ucodes = list(dict.fromkeys(ucode_by_code.get(c, c) for c in spec.gcat_sites))
+        entry = LaunchSiteStats()
+        entry.launch_count = len({t for u in ucodes for t in site_launches.get(u, ())})
+
+        sites: list[dict] = []
+        for ucode in ucodes:
+            row = canonical.get(ucode)
+            pads: list[dict] = []
+            for pad in pads_by_ucode.get(ucode, ()):
+                entry.pad_count += 1
+                if pad.latitude is None or pad.longitude is None:
+                    continue
+                pads.append(
+                    {
+                        "code": pad.code,
+                        "name": pad.name or pad.short_name or pad.code,
+                        "lat": pad.latitude,
+                        "lon": pad.longitude,
+                        "launches": len(pad_launches.get((ucode, pad.code), ())),
+                    }
+                )
+            if row is None and not pads:
+                continue
+            # Every located pad ships, busiest first — the biggest site has
+            # ~120, which costs a few kB, and the disused ones are the
+            # interesting half of a cosmodrome's history.
+            pads.sort(key=lambda p: (-p["launches"], p["code"]))
+            site: dict = {"code": ucode, "launches": len(site_launches.get(ucode, ()))}
+            if row is not None:
+                site["name"] = row.name or row.short_name or ucode
+                if row.latitude is not None and row.longitude is not None:
+                    site["lat"] = row.latitude
+                    site["lon"] = row.longitude
+                    if row.error_deg:
+                        site["error_deg"] = row.error_deg
+            if pads:
+                site["pads"] = pads
+            sites.append(site)
+        sites.sort(key=lambda s: (-s["launches"], s["code"]))
+        entry.sites = sites
+
+        if entry.sites:
+            stats[f"{LAUNCH_SITE_SLUG_PREFIX}{spec.slug}"] = entry
+
+    unplaced = [
+        s.slug
+        for s in LAUNCH_SITES
+        if f"{LAUNCH_SITE_SLUG_PREFIX}{s.slug}" not in stats
+    ]
+    logger.info(
+        "Launch sites: positioned %d of %d (%d unplaced: %s)",
+        len(stats),
+        len(LAUNCH_SITES),
+        len(unplaced),
+        ", ".join(unplaced),
+    )
+    return stats

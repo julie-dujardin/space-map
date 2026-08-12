@@ -46,6 +46,7 @@ from space_map_data.constants.nomenclature.feature_types import (
 )
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.groups.feature_type import FeatureTypeStats
+from space_map_data.export.groups.launch_site import LaunchSiteStats
 from space_map_data.export.groups.launch_vehicle import LaunchVehicleStats
 from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.registry import (
@@ -172,6 +173,7 @@ def _build_global(
     ft_stats: FeatureTypeStats | None,
     extra_stats: GroupExtraStats | None,
     galleries: list[dict] | None,
+    site_stats: LaunchSiteStats | None,
 ) -> dict:
     data: dict = {
         "slug": group.slug,
@@ -269,6 +271,16 @@ def _build_global(
             data["approval_histogram"] = {
                 str(year): n for year, n in ft_stats.approval_histogram.items()
             }
+    # Launch sites: the GCAT places this SATCAT range covers, each with its own
+    # point and pads. There is no range-level coordinate — see the module for
+    # why a single pin for a range would be arbitrary.
+    if site_stats is not None:
+        if site_stats.sites:
+            data["gcat_sites"] = site_stats.sites
+        if site_stats.pad_count:
+            data["pad_count"] = site_stats.pad_count
+        if site_stats.launch_count:
+            data["launch_count"] = site_stats.launch_count
     if discovery_histogram:
         data["discovery_histogram"] = {
             str(year): n for year, n in sorted(discovery_histogram.items())
@@ -809,6 +821,7 @@ def write_group_bundles(
     extra_groups: tuple[Group, ...] = (),
     extra_group_names: dict[str, str] | None = None,
     launch_vehicle_stats: dict[str, LaunchVehicleStats] | None = None,
+    launch_site_stats: dict[str, LaunchSiteStats] | None = None,
     feature_type_stats: dict[str, FeatureTypeStats] | None = None,
     constellation_orbit_classes: dict[str, list[str]] | None = None,
     extra_constellation_counts: dict[str, dict[str, int]] | None = None,
@@ -892,6 +905,7 @@ def write_group_bundles(
             ft_stats,
             (extra_stats or {}).get(group.slug),
             galleries,
+            (launch_site_stats or {}).get(group.slug),
         )
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
         child_counts = (child_counts_by_group or {}).get(group.slug)

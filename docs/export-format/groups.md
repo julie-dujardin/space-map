@@ -200,7 +200,7 @@ interface GlobalGroupData {
   // still catalogued in orbit; active_count / decayed_count keep that view).
   // Launches dedupe by GCAT launch_tag; payloads are the raw per-object rows
   // (many share one launch). Outcome from GCAT Launch_Code char 2 (S/F).
-  launch_count?: number;                      // Distinct launches
+  launch_count?: number;                      // Distinct launches (also emitted on site- groups, see below)
   payload_count?: number;                     // Payload rows across all launches
   success_count?: number;                     // Launches with a success outcome
   failure_count?: number;                     // Launches with a failure outcome
@@ -221,6 +221,41 @@ interface GlobalGroupData {
     first_flight?: string;                    // ISO date of first/last flight
     last_flight?: string;
   }[];
+
+  // Launch-site groups (site-<slug>) only. Position and pads come from GCAT's
+  // sites.tsv / lp.tsv, bridged to the SATCAT site code that drives membership
+  // by a curated map (constants/earth_sats/launch_sites.py `gcat_sites`) — the
+  // two catalogues carve the world up differently, so one SATCAT site can span
+  // several GCAT ones (the Eastern Range covers Canaveral, Kennedy and the
+  // commercial pads alike). Absent for the mobile platforms and air-launch
+  // release boxes, which have no fixed position; a site can also have pads but
+  // no point of its own, so treat the two as independent.
+  // There is deliberately no range-level coordinate. A SATCAT site names a
+  // range, not a place, so any single pin would be one of the GCAT sites below
+  // picked arbitrarily — and a misleading one: Canaveral's point is 18 km from
+  // LC39A, Baikonur's 28 km from Gagarin's Start. Place the sites, or the pads.
+  gcat_sites?: {                              // The GCAT places this SATCAT range covers, busiest first.
+                                              // Usually one; the Eastern Range has three (Canaveral, Kennedy,
+                                              // the commercial pads), Wallops three, Vandenberg two.
+    code: string;                             // GCAT unified site code, e.g. "CC", "KSC"
+    name?: string;                            // GCAT full name. Absent if GCAT has no row for the code.
+    lat?: number;                             // This place's own point. Absent for the sea and airspace areas
+    lon?: number;                             // GCAT declines to place.
+    error_deg?: number;                       // GCAT's uncertainty on this point. Still coarse for a big site
+                                              // (0.05° at Canaveral) — a pad is the precise figure.
+    launches: number;                         // Distinct launchlog launches from this place, deduped by launch_tag.
+                                              // Sums to launch_count across the range.
+    pads?: {                                  // Every pad GCAT gives a position for here, busiest first
+      code: string;                           // GCAT launch-point code, e.g. "LC39A"
+      name: string;                           // GCAT full name, e.g. "Launch Complex 39A, NASA Kennedy Space Center"
+      lat: number;                            // Degrees; pads are typically good to a few metres
+      lon: number;                            // Degrees, east-positive
+      launches: number;                       // Distinct launches from this pad. Zero is common and real: GCAT
+                                              // names a pad for the site but not per launch for some countries.
+    }[];
+  }[];
+  pad_count?: number;                         // Pads GCAT lists across the range, including ones it cannot place
+                                              // (so it can exceed the summed gcat_sites[].pads.length)
 
   // Small-body groups (orbit_class / small_body_flag).
   // Computed from SBDB.first_obs (YYYY-MM-DD or partial YYYY).

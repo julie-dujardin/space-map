@@ -73,6 +73,23 @@ TABLES: tuple[GCATTable, ...] = (
         "#JCAT\t",
         "satellite catalogue",
     ),
+    # Where launches leave from. Both tables carry a position and its stated
+    # uncertainty, which is what lets a site be placed on the globe at all —
+    # the launchlog names sites and pads only by code. `lp.tsv` is the finer
+    # of the two: a site row is one coarse point for a whole range, a launch
+    # point is the individual pad.
+    GCATTable(
+        "sites.tsv",
+        "tables/sites.tsv",
+        "#Site\t",
+        "launch sites",
+    ),
+    GCATTable(
+        "lp.tsv",
+        "tables/lp.tsv",
+        "#Site\t",
+        "launch points (pads)",
+    ),
 )
 
 

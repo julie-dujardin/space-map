@@ -17,6 +17,7 @@ from space_map_data.ingest.providers import (
 from space_map_data.ingest.providers.objects import (
     celestrak,
     jpl_satellite_discovery,
+    launch_site,
     launch_vehicle,
     launchlog,
     probes,
@@ -75,6 +76,9 @@ def ingest_objects(download_dir: Path) -> None:
     # GCAT launch-vehicle table (lv.tsv): family lineage + specs per LV name,
     # the join target for launchlog.lv_type. Independent of Object rows.
     launch_vehicle.ingest(download_dir)
+    # GCAT site tables (sites.tsv, lp.tsv): the coordinates behind the site and
+    # pad codes the launchlog carries. Independent of Object rows.
+    launch_site.ingest(download_dir)
     # GCAT launch log: mirror the table and link each row to an Object by
     # COSPAR (piece == cospar_id). Runs last so every cospar-bearing Object
     # (incl. backfilled norad_satcat-* rows) already exists.
