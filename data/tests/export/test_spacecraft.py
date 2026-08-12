@@ -20,9 +20,13 @@ from space_map_data.utils.paths import SOURCES_LAUNCH_PERFORMANCE_DIR
 
 
 @pytest.fixture(scope="module")
-def payload():
+def curves_downloaded():
     if not SOURCES_LAUNCH_PERFORMANCE_DIR.exists():
         pytest.skip("launch-performance curves not downloaded")
+
+
+@pytest.fixture(scope="module")
+def payload(curves_downloaded):
     return build_spacecraft()
 
 
@@ -153,7 +157,7 @@ class TestCurves:
             assert c3s == sorted(c3s), vehicle["id"]
             assert payloads == sorted(payloads, reverse=True), vehicle["id"]
 
-    def test_thinned_curve_reproduces_every_dropped_point(self):
+    def test_thinned_curve_reproduces_every_dropped_point(self, curves_downloaded):
         # 0.5% of the payload at that energy — below the precision any of the
         # sources quote, and the check that a 100-point curve can ship as 15.
         for dataset in ("atlas-v551", "falcon-heavy-expendable", "vulcan-vc6"):
