@@ -400,6 +400,7 @@ def _build_localized(
     lv_stats: LaunchVehicleStats | None = None,
     constellation_counts: dict[str, int] | None = None,
     ft_stats: FeatureTypeStats | None = None,
+    site_stats: LaunchSiteStats | None = None,
 ) -> dict:
     data: dict = {}
     # Categories carry a hand-set plural name (the Wikidata label is singular
@@ -522,7 +523,33 @@ def _build_localized(
         }
         if reusable_refs:
             data["reusable_vehicle_refs"] = reusable_refs
+    if site_stats is not None and site_stats.sites:
+        pad_refs = _pad_refs(site_stats.sites, lang, wikidata_entities)
+        if pad_refs:
+            data["pad_refs"] = pad_refs
     return data
+
+
+def _pad_refs(
+    sites: list[dict], lang: str, wikidata_entities: WikidataEntityCache
+) -> dict[str, dict]:
+    """Localized Wikipedia ref per pad, keyed by GCAT pad code.
+
+    Keyed by code across the whole range, matching the merged chart: the pad
+    rows keep their GCAT code as the label and use this only for the link,
+    because a Wikipedia title is often the parent complex's and would collapse
+    pads GCAT keeps apart.
+    """
+    out: dict[str, dict] = {}
+    for site in sites:
+        for pad in site.get("pads", ()):
+            qid = pad.get("qid")
+            if not qid or pad["code"] in out:
+                continue
+            ref = resolve_entity_ref(qid, lang, wikidata_entities)
+            if ref and ref.wikipedia:
+                out[pad["code"]] = ref.to_dict()
+    return out
 
 
 def _variant_refs(
@@ -926,6 +953,7 @@ def write_group_bundles(
                 lv_stats,
                 constellation_counts,
                 ft_stats,
+                (launch_site_stats or {}).get(group.slug),
             )
             if members and member_entries:
                 member_names = notable_names(

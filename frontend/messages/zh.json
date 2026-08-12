@@ -393,6 +393,7 @@
 	"group_stat_deepest": "最深",
 	"group_stat_total_water": "总水量",
 	"group_stat_pha": "危险",
+	"group_pads": "发射台",
 	"group_variants": "型号",
 	"group_variants_launches": "发射",
 	"group_variant_payload_leo": "{kg} kg 至 LEO",

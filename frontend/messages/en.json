@@ -459,6 +459,7 @@
 	"group_status_ended": "Ended",
 	"group_stat_of_total": "{n} of {total} ({percent}%)",
 	"tooltip_group_stat_moid": "Median closest distance between a member's orbit and Earth's.",
+	"group_pads": "Launch pads",
 	"group_variants": "Variants",
 	"group_variants_launches": "launches",
 	"group_variant_payload_leo": "{kg} kg to LEO",

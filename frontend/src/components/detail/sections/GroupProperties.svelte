@@ -3,7 +3,7 @@
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
+	import type { GcatPad, GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { formatIsoDate } from '$lib/format/date';
@@ -42,6 +42,75 @@
 	// Top individual reusable vehicles (Shuttle orbiters / Falcon cores) by flights.
 	let reusableVehicles = $derived(global?.reusable_vehicles ?? []);
 	let reusableRefs = $derived(localized?.reusable_vehicle_refs ?? {});
+	// GCAT trails a pad's name with the place it sits in, which the page already
+	// says. How many trailing parts that is varies, so take whatever every pad
+	// of the site shares rather than assume a depth: Canaveral's all end
+	// ", Cape Canaveral", Baikonur's ", GIK-5, Baykonur, Kazakstan". Keeping
+	// only the first part instead would read "LC200/39 · PU39" at Baikonur,
+	// where GCAT leads with the launcher and names the pad second.
+	function padLabels(pads: GcatPad[]): Map<string, string> {
+		const parts = pads.map((p) => p.name.split(',').map((s) => s.trim()));
+		// Majority, not unanimity: Baikonur has one oddly-punctuated row
+		// ("Buran runway, GIK-5 Baykonur") that shares no tail with the other
+		// 120, and requiring agreement would leave the site's name on every row.
+		let shared: string[] = [];
+		for (let depth = 1; ; depth++) {
+			const counts = new Map<string, number>();
+			for (const part of parts) {
+				// A pad never gives up its whole name, so it stops voting once
+				// the tail would consume it.
+				if (part.length <= depth) continue;
+				// Keyed as JSON so a multi-word part ("Cape Canaveral") stays one, and
+				// so no separator byte can end up in the source.
+				const tail = JSON.stringify(part.slice(part.length - depth));
+				counts.set(tail, (counts.get(tail) ?? 0) + 1);
+			}
+			const [best, votes] = [...counts].reduce((top, row) => (row[1] > top[1] ? row : top), [
+				'',
+				0
+			] as [string, number]);
+			if (votes <= pads.length / 2) break;
+			shared = JSON.parse(best);
+		}
+		return new Map(
+			pads.map((p, i) => {
+				const own = parts[i];
+				const trailing = own.slice(own.length - shared.length);
+				const strip =
+					shared.length > 0 &&
+					own.length > shared.length &&
+					trailing.every((s, j) => s === shared[j]);
+				return [p.code, (strip ? own.slice(0, own.length - shared.length) : own).join(', ')];
+			})
+		);
+	}
+
+	// Every pad in the range, busiest first. The GCAT places are merged away:
+	// which of a range's sites a pad belongs to is an accident of how the
+	// catalogue carves the ground up, not something the reader came for.
+	// Summed by code because Plesetsk lists four pads under two of its phases.
+	let pads = $derived.by(() => {
+		const merged = new Map<string, { name: string; n: number; label: string }>();
+		for (const site of global?.gcat_sites ?? []) {
+			// Labels are trimmed per GCAT site, before the merge: each site
+			// trails its own location, so a range spanning several has no
+			// suffix in common.
+			const labels = padLabels(site.pads ?? []);
+			for (const pad of site.pads ?? []) {
+				const seen = merged.get(pad.code);
+				if (seen) seen.n += pad.launches;
+				else
+					merged.set(pad.code, {
+						name: pad.code,
+						n: pad.launches,
+						label: labels.get(pad.code) ?? pad.name
+					});
+			}
+		}
+		return [...merged.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+	});
+	// GCAT pad code → Wikipedia ref; most pads have no article.
+	let padRefs = $derived(localized?.pad_refs ?? {});
 	let discoveryHistogram = $derived(global?.discovery_histogram);
 	// IAU name approvals per year — a ft- page's own, or every type on the
 	// Surface Features meta page.
@@ -229,6 +298,15 @@
 		{name}
 	{/if}
 {/snippet}
+
+<PagedBarList entries={pads} title={m.group_pads()} unit={m.group_variants_launches()}>
+	{#snippet label(p)}
+		<span class="min-w-0 truncate" title={p.label}>
+			{@render wikipediaLabel(p.name, padRefs[p.name])}
+			<span class="text-muted-foreground text-xs">· {p.label}</span>
+		</span>
+	{/snippet}
+</PagedBarList>
 
 <PagedBarList entries={variants} title={m.group_variants()} unit={m.group_variants_launches()}>
 	{#snippet label(v)}

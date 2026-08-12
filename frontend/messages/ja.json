@@ -391,6 +391,7 @@
 	"group_stat_deepest": "最も深い",
 	"group_stat_total_water": "水の総量",
 	"group_stat_pha": "危険",
+	"group_pads": "発射台",
 	"group_variants": "バリエーション",
 	"group_variants_launches": "打ち上げ",
 	"group_variant_payload_leo": "{kg} kg（LEO）",

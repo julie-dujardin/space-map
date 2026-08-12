@@ -39,6 +39,35 @@ export interface LaunchVehicleVariant {
 	diameter_m?: number;
 }
 
+/** One GCAT place inside a SATCAT launch range, with its own point and pads.
+ *  A range is not one place — the Eastern Range spans Canaveral, Kennedy and
+ *  the commercial pads — so there is no range-level coordinate to fall back on. */
+export interface GcatSite {
+	/** GCAT unified site code, e.g. "CC", "KSC". */
+	code: string;
+	name?: string;
+	/** Wikidata entity, where one was matched. */
+	qid?: string;
+	lat?: number;
+	lon?: number;
+	/** GCAT's stated uncertainty on the site point; coarse even at 0.05°. */
+	error_deg?: number;
+	/** Distinct launches from this place; sums to the range's launch_count. */
+	launches: number;
+	pads?: GcatPad[];
+}
+
+export interface GcatPad {
+	/** GCAT launch-point code, e.g. "LC39A" — the chart's row label. */
+	code: string;
+	name: string;
+	lat: number;
+	lon: number;
+	/** Distinct launches from this pad. Zero is common and real. */
+	launches: number;
+	qid?: string;
+}
+
 export interface ReusableVehicle {
 	/** Vehicle id, also the display label (Shuttle orbiter / Falcon core serial). */
 	name: string;
@@ -99,6 +128,10 @@ export interface GlobalGroupData {
 	variants?: LaunchVehicleVariant[];
 	/** Launch-vehicle only: top individual reusable vehicles (orbiters/boosters) by flights. */
 	reusable_vehicles?: ReusableVehicle[];
+	/** Launch-site only: the GCAT places this range covers, busiest first. */
+	gcat_sites?: GcatSite[];
+	/** Launch-site only: pads GCAT lists across the range, including unplaced ones. */
+	pad_count?: number;
 	/** Discoveries per year across SBDB members (orbit_class / NEO / PHA), from `first_obs`. */
 	discovery_histogram?: Record<string, number>;
 	/** Biggest member by diameter; absent when nothing has a measured size.
@@ -276,6 +309,10 @@ export interface LocalizedGroupData {
 	variant_refs?: Record<string, EntityRef>;
 	/** lv- only: reusable-vehicle name → Wikipedia ref (Shuttle orbiters; cores have none). Keyed by `reusable_vehicles[].name`. */
 	reusable_vehicle_refs?: Record<string, EntityRef>;
+	/** site- only: GCAT pad code → Wikipedia ref. The pad chart keeps the GCAT
+	 *  code as its label and uses this only for the link — a Wikipedia title is
+	 *  often the parent complex's, shared by pads GCAT keeps apart. */
+	pad_refs?: Record<string, EntityRef>;
 	/** member Object.id → localized label for notable_members, only where it differs from the global name. */
 	/** Commons filename → localized picture title; covers the collection's own
 	 *  pictures and its member shelves alike. */

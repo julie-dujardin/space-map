@@ -388,6 +388,7 @@
 	"group_stat_deepest": "Le plus profond",
 	"group_stat_total_water": "Eau totale",
 	"group_stat_pha": "Dangereux",
+	"group_pads": "Pas de tir",
 	"group_variants": "Variantes",
 	"group_variants_launches": "lancements",
 	"group_variant_payload_leo": "{kg} kg en LEO",
