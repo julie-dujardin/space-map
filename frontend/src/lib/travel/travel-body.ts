@@ -188,7 +188,8 @@ export function toTravelBody(
 		// is instead of at one Mars-calibrated altitude.
 		aeroScaleHeightKm:
 			aeroPa === undefined ? undefined : getAtmosphereParams(body.id)?.rayleighScaleHeightKm,
-		parentId: body.parentId
+		parentId: body.parentId,
+		borrowedElements: orbit !== 'own' && ancestor.id !== body.id
 	};
 }
 

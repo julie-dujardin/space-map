@@ -70,7 +70,14 @@ export interface TimelineEntry {
 export function buildTimeline(
 	route: Route,
 	nameFor: (bodyId: string) => string,
-	bodies?: { departure: TravelBody; target: TravelBody } | null
+	bodies?: { departure: TravelBody; target: TravelBody } | null,
+	/**
+	 * When the trip is actually on the ground at each surface end, from the drawn
+	 * geometry. The route prices a landing at the crossing's own date, but the
+	 * craft touches down a coast and a fall later — dating the card there is what
+	 * makes picking it show the planet with the site under the line.
+	 */
+	ground?: { liftoffJd?: number; touchdownJd?: number } | null
 ): TimelineEntry[] {
 	const entries: TimelineEntry[] = [];
 	const flybys = [...(route.flybys ?? [])];
@@ -117,11 +124,19 @@ export function buildTimeline(
 					? route.targetId
 					: (flyby?.bodyId ?? null);
 
+		// The ground dates replace the priced ones on the two cards that happen
+		// there; the accumulator stays priced, so nothing after them moves.
+		const at =
+			leg.kind === 'ascent' && ground?.liftoffJd !== undefined
+				? ground.liftoffJd
+				: leg.kind === 'descent' && ground?.touchdownJd !== undefined
+					? ground.touchdownJd
+					: jd;
 		entries.push({
 			id: `${index}:${leg.kind}`,
 			kind: leg.kind,
-			startJd: jd,
-			endJd: jd + leg.days,
+			startJd: at,
+			endJd: at + leg.days,
 			days: leg.days,
 			isPhase: leg.days > 0,
 			bodyId,

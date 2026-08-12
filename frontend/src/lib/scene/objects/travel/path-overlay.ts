@@ -113,6 +113,15 @@ const CRAFT_COLOR = '#ffffff';
 const PATH_RENDER_ORDER = 4;
 
 /**
+ * The ground stretch of a surface end dips inside an atmosphere, whose shell
+ * writes depth from outside — drawn at the plan's own order the shell would
+ * simply erase it. Drawn after the opaque planet but before the shell instead,
+ * so the glow composites over the line and the descent dims into the air
+ * rather than vanishing at its edge.
+ */
+const GROUND_RENDER_ORDER = 1.5;
+
+/**
  * A hazard is a wide band laid *under* the plan rather than a repaint of it: the
  * arc's own colours already say how each stretch is flown, and losing that to
  * say something else about the same line would be a poor trade. Wide enough to
@@ -651,11 +660,18 @@ export class TravelPathOverlay {
 		const last = path.arcs[path.arcs.length - 1];
 		const departure = path.stops.find((stop) => stop.kind === 'departure');
 		// Both marks are a body's own centre, so an end drawn off its body puts its
-		// label at that body rather than at the frozen encounter.
+		// label at that body rather than at the frozen encounter. A surface end is
+		// the exception: its line runs on to the ground, and the label rides the
+		// touchdown or liftoff point — the place the label actually names.
 		const anchorAt = (at: 'departure' | 'arrival', r: TravelVec3) => {
 			const orbit = path.endOrbits.find((end) => end.at === at);
 			const anchorId = orbit ? this.anchorOf(path, orbit) : null;
-			return { anchorId, local: (anchorId === null ? eclipticToScene(r) : [0, 0, 0]) as Vec3 };
+			const ground =
+				orbit && orbit.surfaceJd !== undefined && orbit.approach.length > 0
+					? orbit.approach[at === 'departure' ? 0 : orbit.approach.length - 1]
+					: null;
+			const local = ground ?? (anchorId === null ? r : null);
+			return { anchorId, local: (local ? eclipticToScene(local) : [0, 0, 0]) as Vec3 };
 		};
 		const ends: {
 			local: Vec3;
@@ -776,9 +792,29 @@ export class TravelPathOverlay {
 	private addEndOrbits(path: TrajectoryPath): void {
 		for (const orbit of path.endOrbits) {
 			const anchorId = this.anchorOf(path, orbit);
-			this.addLine(orbit.approach, ARC_COLORS.cruise, LINE_WIDTH, LINE_BRIGHTNESS, null, {
-				anchorId
-			});
+			// The ground stretch goes under the atmosphere's glow; the rest of the
+			// approach keeps the plan's own place above the trails. Split with one
+			// shared sample so the two pieces stay one line.
+			const ground = orbit.ground;
+			if (ground && ground.to > ground.from) {
+				const head = orbit.at === 'departure';
+				const far = head
+					? orbit.approach.slice(Math.max(0, ground.to - 1))
+					: orbit.approach.slice(0, ground.from + 1);
+				this.addLine(far, ARC_COLORS.cruise, LINE_WIDTH, LINE_BRIGHTNESS, null, { anchorId });
+				this.addLine(
+					orbit.approach.slice(ground.from, ground.to),
+					ARC_COLORS.cruise,
+					LINE_WIDTH,
+					LINE_BRIGHTNESS,
+					null,
+					{ anchorId, renderOrder: GROUND_RENDER_ORDER }
+				);
+			} else {
+				this.addLine(orbit.approach, ARC_COLORS.cruise, LINE_WIDTH, LINE_BRIGHTNESS, null, {
+					anchorId
+				});
+			}
 			const ring = this.addLine(
 				orbit.points,
 				ARC_COLORS.cruise,
@@ -815,7 +851,12 @@ export class TravelPathOverlay {
 		width: number,
 		brightness: number,
 		owner: string | null,
-		opts: { anchorId?: string | null; fadeIn?: boolean; fadeOut?: boolean } = {}
+		opts: {
+			anchorId?: string | null;
+			fadeIn?: boolean;
+			fadeOut?: boolean;
+			renderOrder?: number;
+		} = {}
 	): DrawnArc | null {
 		const count = points.length;
 		if (count < 2) return null;
@@ -848,7 +889,7 @@ export class TravelPathOverlay {
 			brightness
 		);
 		line.frustumCulled = false;
-		line.renderOrder = PATH_RENDER_ORDER;
+		line.renderOrder = opts.renderOrder ?? PATH_RENDER_ORDER;
 		this.group.add(line);
 		const arc: DrawnArc = {
 			line,

@@ -61,7 +61,10 @@ export function timelineKey(
 	route: Route,
 	originName: string | null,
 	targetName: string | null,
-	bodies: { departure: TravelBody; target: TravelBody } | null
+	bodies: { departure: TravelBody; target: TravelBody } | null,
+	/** The geometry's ground dates, which land after the legs do and re-date the
+	 *  launch and landing cards when they do. */
+	ground?: { liftoffJd?: number; touchdownJd?: number } | null
 ): string {
 	return [
 		route.departureId,
@@ -84,6 +87,7 @@ export function timelineKey(
 		// The orbits at the two ends are sized off the bodies, which arrive with
 		// a fetched bundle: without this the timeline built before they land
 		// would keep its missing ends for the rest of the trip.
-		bodies ? `${bodies.departure.radiusKm}/${bodies.target.radiusKm}` : ''
+		bodies ? `${bodies.departure.radiusKm}/${bodies.target.radiusKm}` : '',
+		`${ground?.liftoffJd ?? ''}/${ground?.touchdownJd ?? ''}`
 	].join('|');
 }

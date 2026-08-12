@@ -62,7 +62,6 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 	const first = path.arcs[0];
 	const last = path.arcs[path.arcs.length - 1];
 	if (!first || !last) return null;
-	if (jd < first.startJd || jd > last.endJd) return null;
 
 	const passage = (at: 'departure' | 'arrival') => {
 		const end = path.endOrbits.find((orbit) => orbit.at === at);
@@ -70,6 +69,13 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 	};
 	const departure = passage('departure');
 	const arrival = passage('arrival');
+
+	// The ground dates are the trip's real span: liftoff comes hours before the
+	// priced departure and touchdown hours after the priced arrival, and the
+	// craft is in flight for the climb and the descent too.
+	const begin = Math.min(first.startJd, departure?.surfaceJd ?? Infinity);
+	const over = Math.max(last.endJd, arrival?.surfaceJd ?? -Infinity);
+	if (jd < begin || jd > over) return null;
 
 	// The escape, before the crossing it hands over to.
 	if (departure && jd <= departure.jds[departure.jds.length - 1]) {
@@ -81,9 +87,11 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 	// The capture, after it. Its periapsis lands hours before the priced arrival —
 	// the insertion burn is made there, so the last minutes of the trip are spent
 	// in the orbit rather than still falling towards it, and the marker holds.
+	// A landing keeps going: its line runs on to the ground, and the marker rides
+	// it to touchdown.
 	if (arrival && jd >= arrival.jds[0]) {
 		return {
-			r: between(arrival.approach, arrival.jds, Math.min(jd, arrival.periJd)),
+			r: between(arrival.approach, arrival.jds, Math.min(jd, arrival.surfaceJd ?? arrival.periJd)),
 			centerId: arrival.anchorId
 		};
 	}

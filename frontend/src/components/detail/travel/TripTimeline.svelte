@@ -49,7 +49,7 @@
 	function focusEntry(entry: TimelineEntry): void {
 		const viewpoint = path ? pathViewpoint(path, entry.startJd, entry.endJd) : null;
 		if (viewpoint && path) {
-			onFocus({ kind: 'point', centerId: path.centerId, r: viewpoint.r });
+			onFocus({ kind: 'point', centerId: viewpoint.centerId ?? path.centerId, r: viewpoint.r });
 		} else if (entry.bodyId) {
 			onFocus({ kind: 'body', bodyId: entry.bodyId });
 		}

@@ -564,22 +564,89 @@ describe('end orbits', () => {
 	it('draws the loose ellipse a capture leaves the craft in', () => {
 		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { arrivalMode: 'capture' })!;
 		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN, frame: 'planetary' })!;
-		// A launch from the ground is not an orbit, so only the far end gets a ring.
-		expect(path.endOrbits.map((orbit) => orbit.at)).toEqual(['arrival']);
+		// A launch from the ground gets its line but no ring — the trip does not
+		// stay in the parking orbit it climbs through.
+		expect(path.endOrbits.map((orbit) => orbit.at)).toEqual(['departure', 'arrival']);
+		expect(path.endOrbits[0].points).toEqual([]);
 		checkRing(
-			path.endOrbits[0],
+			path.endOrbits[1],
 			parkingRadiusKm(MARS),
 			travelConstants.CAPTURE_APOAPSIS_RADII * MARS.radiusKm
 		);
 	});
 
-	it('has nothing to draw at an end the craft lands on or flies past', () => {
-		const landing = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { arrivalMode: 'landing' })!;
-		const flyby = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { arrivalMode: 'flyby' })!;
-		for (const route of [landing, flyby]) {
-			const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
-			expect(path.endOrbits).toEqual([]);
+	it('runs a landing all the way to the ground', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { arrivalMode: 'landing' })!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN, frame: 'planetary' })!;
+		const arrival = path.endOrbits.find((end) => end.at === 'arrival')!;
+		expect(arrival.points).toEqual([]);
+		// The line falls from the sphere of influence to the site: its far end is
+		// out at the crossing's handover, its last sample on the surface.
+		const last = arrival.approach[arrival.approach.length - 1];
+		expect(norm(last)).toBeCloseTo(MARS.radiusKm, 6);
+		expect(arrival.surfaceJd!).toBeGreaterThan(arrival.periJd);
+		expect(arrival.jds[arrival.jds.length - 1]).toBeCloseTo(arrival.surfaceJd!, 9);
+		for (let i = 1; i < arrival.jds.length; i++) {
+			expect(arrival.jds[i]).toBeGreaterThan(arrival.jds[i - 1]);
 		}
+	});
+
+	it('lands on the site it was given, read at touchdown', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { arrivalMode: 'landing' })!;
+		// A site that circles the equator like a fixed point on the spinning body.
+		const spin = (jd: number): Vec3 => {
+			const angle = (jd - J2000) * 2;
+			return [Math.cos(angle) * MARS.radiusKm, Math.sin(angle) * MARS.radiusKm, 0];
+		};
+		const path = buildTrajectoryPath(EARTH, MARS, route, {
+			centerId: SUN,
+			frame: 'planetary',
+			surfaceSites: { arrival: spin }
+		})!;
+		const arrival = path.endOrbits.find((end) => end.at === 'arrival')!;
+		const last = arrival.approach[arrival.approach.length - 1];
+		expect(relative(last, spin(arrival.surfaceJd!))).toBeLessThan(1e-9);
+	});
+
+	it('climbs off the ground before it leaves', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { departureMode: 'surface' })!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN, frame: 'planetary' })!;
+		const departure = path.endOrbits.find((end) => end.at === 'departure')!;
+		expect(norm(departure.approach[0])).toBeCloseTo(EARTH.radiusKm, 6);
+		expect(departure.surfaceJd!).toBeLessThan(departure.periJd);
+		expect(departure.jds[0]).toBeCloseTo(departure.surfaceJd!, 9);
+		for (let i = 1; i < departure.jds.length; i++) {
+			expect(departure.jds[i]).toBeGreaterThan(departure.jds[i - 1]);
+		}
+	});
+
+	it('anchors a borrowed end to its own body, not to the ancestor it flies as', () => {
+		// A Moon-sized body on Earth's orbit: the crossing is right to start at the
+		// ancestor's position, but the ground and the orbit at that end belong to
+		// the live body, which is nowhere near it.
+		const moon = {
+			...EARTH,
+			id: 'naif-301',
+			radiusKm: 1737.4,
+			mu: 4902.8,
+			borrowedElements: true
+		};
+		const route = buildRoute(moon, MARS, MARS_WINDOW, MARS_TOF, { departureMode: 'surface' })!;
+		const path = buildTrajectoryPath(moon, MARS, route, { centerId: SUN })!;
+		const departure = path.endOrbits.find((end) => end.at === 'departure')!;
+		expect(departure.anchorId).toBe('naif-301');
+		// Body-relative, from the ground up through the body's own escape
+		// hyperbola, with the crossing trimmed where the passage takes over.
+		expect(norm(departure.approach[0])).toBeCloseTo(moon.radiusKm, 6);
+		const tip = departure.approach[departure.approach.length - 1];
+		expect(norm(tip)).toBeGreaterThan(moon.radiusKm * 10);
+		expect(departure.trimFrom).toBeGreaterThan(0);
+	});
+
+	it('has nothing to draw at an end the craft flies past', () => {
+		const flyby = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { arrivalMode: 'flyby' })!;
+		const path = buildTrajectoryPath(EARTH, MARS, flyby, { centerId: SUN })!;
+		expect(path.endOrbits.map((orbit) => orbit.at)).toEqual(['departure']);
 	});
 
 	it('rings the primary at its own centre, where the frame is already anchored', () => {
@@ -682,7 +749,9 @@ describe('craftPositionAt', () => {
 	const PATH = buildTrajectoryPath(EARTH, MARS, ROUTE, { centerId: SUN })!;
 
 	it('starts on the departure and ends in the orbit it was sold', () => {
-		expect(relative(craftPositionAt(PATH, ROUTE.departJd)!.r, PATH.stops[0].r)).toBeLessThan(1e-9);
+		// On the parking orbit the launch climbs through, not at the body's centre.
+		const start = craftPositionAt(PATH, ROUTE.departJd)!.r;
+		expect(norm(sub(start, PATH.stops[0].r))).toBeCloseTo(parkingRadiusKm(EARTH), 0);
 		// Not on the arrival stop: that is the crossing reaching Mars' centre, a
 		// place the craft never goes. It ends at the periapsis the insertion burn is
 		// made at, which is where the drawn passage ends too.
@@ -711,6 +780,15 @@ describe('craftPositionAt', () => {
 	it('has no craft to place before it leaves or after it lands', () => {
 		expect(craftPositionAt(PATH, ROUTE.departJd - 1)).toBeNull();
 		expect(craftPositionAt(PATH, ROUTE.arriveJd + 1)).toBeNull();
+	});
+
+	it('rides the climb from liftoff, hours before the priced departure', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { departureMode: 'surface' })!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+		const departure = path.endOrbits.find((end) => end.at === 'departure')!;
+		const at = craftPositionAt(path, departure.surfaceJd!)!;
+		expect(at.centerId).toBe(departure.anchorId);
+		expect(relative(at.r, departure.approach[0])).toBeLessThan(1e-9);
 	});
 
 	it('moves along the arc, and only forwards', () => {
@@ -805,5 +883,18 @@ describe('pathViewpoint', () => {
 
 	it('has nowhere to point on a path with no arcs', () => {
 		expect(pathViewpoint({ ...PATH, arcs: [] }, ROUTE.departJd, ROUTE.arriveJd)).toBeNull();
+	});
+
+	it('lands a surface end’s instant on the ground, not on the priced stop', () => {
+		// The stop is the body's centre at the priced date — somewhere the live
+		// planet has moved on from by touchdown, and a pivot the camera could
+		// never close on the planet from.
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { arrivalMode: 'landing' })!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+		for (const end of path.endOrbits) {
+			const view = pathViewpoint(path, end.surfaceJd!, end.surfaceJd!)!;
+			const tip = end.approach[end.at === 'departure' ? 0 : end.approach.length - 1];
+			expect(view.r).toEqual(tip);
+		}
 	});
 });

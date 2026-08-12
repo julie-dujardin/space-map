@@ -43,6 +43,13 @@ export interface TravelBody {
 	aeroScaleHeightKm?: number;
 	/** Primary this body orbits; absent for heliocentric bodies. */
 	parentId?: string;
+	/**
+	 * True when `elements` are an ancestor's, standing in for a satellite in a
+	 * heliocentric plan — the Moon flown as "a Moon-sized body on Earth's orbit".
+	 * The crossing is right to use them; anything drawn *at* this body is not,
+	 * since the position they give is the ancestor's, not the body's own.
+	 */
+	borrowedElements?: boolean;
 }
 
 /**

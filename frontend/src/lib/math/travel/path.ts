@@ -22,7 +22,13 @@ import { solveFlyby } from './flyby';
 import { sampleHeldDrive, type HeldDriveSample } from './held-drive';
 import { solveLambert } from './lambert';
 import { rebuildSpiral } from './low-thrust';
-import { endArrivalOrbit, endDepartureOrbit, parkingRadiusKm, type EndOrbit } from './maneuvers';
+import {
+	endArrivalOrbit,
+	endDepartureOrbit,
+	parkingOrbit,
+	parkingRadiusKm,
+	type EndOrbit
+} from './maneuvers';
 import { propagateState } from './propagate';
 import { routeDurationDays, type Route, type RouteOptions } from './route';
 import { elementsToState } from './state';
@@ -100,8 +106,9 @@ export type TrajectoryFrame = 'interplanetary' | 'planetary';
  * An end of a trip, drawn round the body it happens at: the orbit the craft is
  * in there, and the passage between that orbit and the crossing.
  *
- * Only the ends that are an orbit: a launch from the ground and a landing on it
- * are not, and neither is a flyby.
+ * A launch and a landing get one too — the pricing routes both through the
+ * parking orbit, so the drawn line does the same and carries on to the ground.
+ * Only a flyby ends nowhere.
  */
 export interface EndOrbitPath {
 	at: 'departure' | 'arrival';
@@ -122,6 +129,11 @@ export interface EndOrbitPath {
 	 * periapsis, in flight order and the same frame, carrying on from the last
 	 * sample of the crossing left outside. It shares periapsis with the orbit, so
 	 * the two meet along one tangent.
+	 *
+	 * At a surface end it keeps going: the trip is flown through the parking
+	 * orbit, so the ground stretch — coast round to the deorbit point and the
+	 * half-ellipse down to the site, or the same climbed in reverse — is part of
+	 * this line rather than a ring of its own.
 	 *
 	 * Empty at an end whose model has no passage to draw: a drive held all the way
 	 * and a spiral arrive under thrust rather than on a conic, and a transfer
@@ -165,6 +177,16 @@ export interface EndOrbitPath {
 	 *  drawn as. The orbit's own size, not the drawn line's — a trochoid is
 	 *  smeared over millions of km and is still the same small orbit. */
 	radiusKm: number;
+	/** When the craft is on the ground at this end — touchdown, or liftoff. Only
+	 *  at a surface end, whose `approach` runs all the way to it. */
+	surfaceJd?: number;
+	/**
+	 * The stretch of `approach` that is the ground leg — coast and half-ellipse —
+	 * as a half-open index range. The drawer wants the two apart: this stretch
+	 * dips inside an atmosphere, and has to composite under its glow rather than
+	 * be erased by it.
+	 */
+	ground?: { from: number; to: number };
 }
 
 export interface TrajectoryPath {
@@ -191,8 +213,11 @@ export interface TrajectoryPath {
 
 /** Somewhere on the drawn trajectory to look at. */
 export interface PathViewpoint {
-	/** Position in the transfer frame, km. */
+	/** Position, km, measured from `centerId` — the path's own centre unless a
+	 *  planet-frame end anchors the spot to its body instead. */
 	r: Vec3;
+	/** Set when the spot is measured from somewhere other than the path's centre. */
+	centerId?: string;
 }
 
 /**
@@ -228,6 +253,23 @@ export function pathViewpoint(
 		return { r: arc.points[Math.floor(arc.points.length / 2)] };
 	}
 
+	// A surface end owns its instant: the trip starts on the pad and ends on the
+	// ground, and the stop nearby is the body's centre at the *priced* date —
+	// a place the live planet has moved on from by the time the ground is
+	// reached, and a pivot from which it can never be closed on.
+	const ground = path.endOrbits.find(
+		(end) =>
+			end.surfaceJd !== undefined &&
+			Math.abs(end.surfaceJd - startJd) < 1e-6 &&
+			end.approach.length > 0
+	);
+	if (ground) {
+		return {
+			r: ground.approach[ground.at === 'departure' ? 0 : ground.approach.length - 1],
+			centerId: ground.anchorId
+		};
+	}
+
 	// An instant: a stop names one exactly, and every stop is an arc end.
 	const stop = path.stops.find((s) => Math.abs(s.jd - startJd) < 1e-6);
 	const nearest = path.arcs.reduce((best, arc) =>
@@ -254,6 +296,20 @@ export interface PathOptions extends RouteOptions {
 	/** Which frame to draw the ends in. Defaults to `interplanetary`, which is the
 	 *  frame the crossing itself is in and the only one that joins onto it. */
 	frame?: TrajectoryFrame;
+	/**
+	 * Where a surface end touches its body: the site's position measured from the
+	 * body's centre, km, in the transfer frame's axes, at a given date. A
+	 * function of time because the body spins under the trip — the site is read
+	 * at the touchdown or liftoff the geometry works out, not at the priced date.
+	 *
+	 * The kernel stays free of rotation models this way; the caller owns them.
+	 * Without one, a landing still reaches the ground — at the point its own
+	 * plane puts opposite periapsis — it just is not aimed anywhere.
+	 */
+	surfaceSites?: {
+		departure?: (jd: number) => Vec3 | null;
+		arrival?: (jd: number) => Vec3 | null;
+	};
 }
 
 const DEFAULT_SAMPLES = 180;
@@ -557,37 +613,45 @@ function endOrbitPaths(
 	const approaches = endApproaches(departure, target, route, options);
 
 	const orbits: EndOrbitPath[] = [];
+	const sites = options.surfaceSites ?? {};
+	// A launch and a landing pass through the parking orbit — that is what they
+	// are priced against — so a surface end takes that orbit and carries the line
+	// on to the ground.
+	const fromGround = route.departureMode === 'surface';
 	const from = endDepartureOrbit(departure, route.departureMode, route.departureOrbit);
-	if (from) {
+	if (from || fromGround) {
 		orbits.push(
 			endOrbitPath({
 				at: 'departure',
 				body: departure,
 				center: centers.from,
-				orbit: from,
+				orbit: from ?? parkingOrbit(departure),
 				arc: first,
 				periJd: route.departJd,
 				approach: approaches.from,
 				primaryMu,
 				frame,
-				centerId: path.centerId
+				centerId: path.centerId,
+				surface: fromGround ? { siteAt: sites.departure } : undefined
 			})
 		);
 	}
+	const toGround = route.arrivalMode === 'landing';
 	const to = endArrivalOrbit(target, route.arrivalMode, route.targetOrbit);
-	if (to) {
+	if (to || toGround) {
 		orbits.push(
 			endOrbitPath({
 				at: 'arrival',
 				body: target,
 				center: centers.to,
-				orbit: to,
+				orbit: to ?? parkingOrbit(target),
 				arc: last,
 				periJd: route.arriveJd,
 				approach: approaches.to,
 				primaryMu,
 				frame,
-				centerId: path.centerId
+				centerId: path.centerId,
+				surface: toGround ? { siteAt: sites.arrival } : undefined
 			})
 		);
 	}
@@ -771,10 +835,21 @@ function endOrbitPath(end: {
 	primaryMu: number;
 	frame: TrajectoryFrame;
 	centerId: string;
+	/** Present when this end is the ground rather than the orbit — the trip still
+	 *  passes through the orbit, and the drawn line carries on to the site. */
+	surface?: { siteAt?: (jd: number) => Vec3 | null };
 }): EndOrbitPath {
-	const { at, body, center, orbit, arc, periJd, approach, primaryMu, frame, centerId } = end;
+	const { at, body, center, orbit, arc, periJd, approach, primaryMu, frame, centerId, surface } =
+		end;
 	const outward = at === 'departure';
 	const count = arc.points.length;
+	// A satellite in a heliocentric plan flies on borrowed elements, so the
+	// priced centre here is its ancestor's position — nowhere near the body
+	// itself. Everything at this end is drawn off the live body instead, the way
+	// the planet frame draws every end. The passage still belongs to it — the
+	// body's own hyperbola against the crossing's excess speed holds wherever
+	// the body is — so it is drawn too, planet-frame style.
+	const anchored = frame === 'planetary' || body.borrowedElements === true;
 	// The two samples this end meets the body at, in flight order.
 	const a = outward ? arc.points[0] : arc.points[count - 2];
 	const b = outward ? arc.points[1] : arc.points[count - 1];
@@ -783,20 +858,33 @@ function endOrbitPath(end: {
 	const crossed = cross(a, b);
 	const arcNormal = norm(crossed) > 0 ? normalize(crossed) : ([0, 0, 1] as Vec3);
 
-	const passage = approach
-		? hyperbolicPassage({
-				body,
-				approach,
-				rPeriKm: orbit.rPeriKm,
-				arcNormal,
-				at,
-				primaryMu,
-				center,
-				arc,
-				endJd: periJd,
-				frame
-			})
-		: null;
+	const passageOf = (planeHint?: Vec3) =>
+		approach
+			? hyperbolicPassage({
+					body,
+					approach,
+					rPeriKm: orbit.rPeriKm,
+					arcNormal,
+					at,
+					primaryMu,
+					center,
+					arc,
+					endJd: periJd,
+					frame,
+					planeHint
+				})
+			: null;
+	let passage = passageOf();
+	// A landing is aimed somewhere, and the plane is the free choice — so it is
+	// spent on holding the site rather than the crossing's own plane. The site is
+	// read at a rough touchdown; the ground leg re-reads it exactly, and works any
+	// residual off-plane out along the descent.
+	if (surface?.siteAt && passage) {
+		const halfDays =
+			(Math.PI * Math.sqrt(((orbit.rPeriKm + body.radiusKm) / 2) ** 3 / body.mu)) / SEC_PER_DAY;
+		const site = surface.siteAt(passage.periJd + (outward ? -halfDays : halfDays));
+		if (site && norm(site) > 0) passage = passageOf(normalize(site)) ?? passage;
+	}
 	const normal = passage?.normal ?? arcNormal;
 	const periapsis = passage?.periapsis ?? approachSide(arcNormal, a, b);
 	// A passage re-dates its end, and the encounter is where the body then is;
@@ -804,39 +892,298 @@ function endOrbitPath(end: {
 	const ringCenter = passage?.center ?? center;
 	const endPeriJd = passage?.periJd ?? periJd;
 
-	// Planet-frame the body is the origin and holds still, so everything drawn
-	// here is measured straight off it; otherwise it all hangs where the encounter
-	// puts the body, which is somewhere along the crossing.
-	const planetFrame = frame === 'planetary';
-	const origin: Vec3 = planetFrame ? [0, 0, 0] : ringCenter;
+	// An anchored end measures everything straight off its body; otherwise it all
+	// hangs where the encounter puts the body, which is somewhere along the
+	// crossing.
+	const origin: Vec3 = anchored ? [0, 0, 0] : ringCenter;
+
+	const ground = surface
+		? surfaceLeg({
+				outward,
+				body,
+				rParkKm: orbit.rPeriKm,
+				normal,
+				periapsis,
+				periJd: endPeriJd,
+				siteAt: surface.siteAt,
+				bodyAt: anchored ? undefined : approach?.bodyAt,
+				center: ringCenter,
+				includePeriapsis: !passage
+			})
+		: null;
+
+	// The passage and the ground stretch are one line, in flight order: up off the
+	// ground and out, or in and down onto it. Both own their boundary sample when
+	// the coast between them vanishes, so the seam drops whichever date repeats.
+	const approachPoints: Vec3[] = [];
+	const approachJds: number[] = [];
+	let groundKept = 0;
+	const append = (part: { points: Vec3[]; jds: number[] } | null, isGround = false) => {
+		if (!part) return;
+		for (let i = 0; i < part.points.length; i++) {
+			const jd = part.jds[i];
+			if (approachJds.length > 0 && jd <= approachJds[approachJds.length - 1] + 1e-9) continue;
+			approachPoints.push(add(origin, part.points[i]));
+			approachJds.push(jd);
+			if (isGround) groundKept++;
+		}
+	};
+	if (outward) {
+		append(ground, true);
+		append(passage);
+	} else {
+		append(passage);
+		append(ground, true);
+	}
+	const groundRange =
+		ground && groundKept > 0
+			? outward
+				? { from: 0, to: groundKept }
+				: { from: approachPoints.length - groundKept, to: approachPoints.length }
+			: undefined;
+
+	// A surface end with no passage still owns the last of its crossing: left
+	// whole, the arc runs on to the body's centre, straight through the ground
+	// stretch that now finishes the trip. A passage-less borrowed end leaves the
+	// crossing alone instead — the radius would be measured about the ancestor,
+	// and the arc is right to run there.
+	const borrowed = body.borrowedElements === true;
+	const trimFrom =
+		passage && outward
+			? passage.cut
+			: ground && outward && !borrowed
+				? radiusCut(arc, ringCenter, orbit.rPeriKm, outward)
+				: 0;
+	const trimTo =
+		passage && !outward
+			? passage.cut + 1
+			: ground && !outward && !borrowed
+				? radiusCut(arc, ringCenter, orbit.rPeriKm, outward)
+				: count;
 
 	return {
 		at,
 		bodyId: body.id,
-		anchorId: planetFrame ? body.id : centerId,
-		points: orbitRing({
-			origin,
-			orbit,
-			normal,
-			periapsis,
-			mu: body.mu,
-			periJd: endPeriJd,
-			// A closed ring is only a closed ring in the body's own frame. Elsewhere
-			// it needs the body's motion to be drawn as what it is, and an end with no
-			// passage has no way to ask for it — that one closes and says so by
-			// nothing more than being small.
-			bodyAt: planetFrame ? undefined : approach?.bodyAt,
-			center: ringCenter,
-			outward
-		}),
-		approach: passage ? passage.points.map((point) => add(origin, point)) : [],
-		jds: passage?.jds ?? [],
-		trimFrom: passage && outward ? passage.cut : 0,
-		trimTo: passage && !outward ? passage.cut + 1 : count,
+		anchorId: anchored ? body.id : centerId,
+		// A surface end draws no ring of its own: the stretch of orbit the trip
+		// actually rides is part of the line above.
+		points: surface
+			? []
+			: orbitRing({
+					origin,
+					orbit,
+					normal,
+					periapsis,
+					mu: body.mu,
+					periJd: endPeriJd,
+					// A closed ring is only a closed ring in the body's own frame. Elsewhere
+					// it needs the body's motion to be drawn as what it is, and an end with no
+					// passage has no way to ask for it — that one closes and says so by
+					// nothing more than being small.
+					bodyAt: anchored ? undefined : approach?.bodyAt,
+					center: ringCenter,
+					outward
+				}),
+		approach: approachPoints,
+		jds: approachJds,
+		trimFrom,
+		trimTo,
 		center: ringCenter,
 		periJd: endPeriJd,
-		radiusKm: orbit.rApoKm
+		radiusKm: orbit.rApoKm,
+		surfaceJd: ground?.groundJd,
+		ground: groundRange
 	};
+}
+
+/**
+ * Where the crossing gives way to a surface end that has no passage: its last
+ * sample still outside the parking orbit. The two-body solve runs the arc on to
+ * the body's centre, and past the parking radius that stub would cut straight
+ * through the ground leg drawn over it.
+ */
+function radiusCut(arc: PathArc, center: Vec3, rKm: number, outward: boolean): number {
+	const count = arc.points.length;
+	if (outward) {
+		for (let i = 0; i < count; i++) {
+			if (norm(sub(arc.points[i], center)) > rKm) return Math.min(i, count - 2);
+		}
+		return 0;
+	}
+	for (let i = count - 1; i >= 0; i--) {
+		if (norm(sub(arc.points[i], center)) > rKm) return Math.max(i + 1, 2);
+	}
+	return count;
+}
+
+/** Points down a ground leg's half-ellipse. Fewer than a ring: it is half of
+ *  one, and its whole extent is a body's own scale. */
+const DESCENT_SAMPLES = 48;
+
+/**
+ * The ground stretch of a surface end, in flight order and measured from the
+ * body: coast round the parking orbit from periapsis to the deorbit point and
+ * fall down the half-ellipse to the site — or, at a departure, climb off the
+ * site and coast round to the injection burn.
+ *
+ * The two radii are the pricing's (parking orbit, body surface); the rest is a
+ * drawing choice, made the way it is flown: the transfer half-ellipse touches
+ * the ground at the site, tangent at both ends, and the coast is however much
+ * parking orbit lies between it and periapsis. The site is read at the
+ * touchdown or liftoff this geometry itself works out — the body spins under
+ * the trip — so the date is iterated to a fixpoint first. A site off the
+ * orbit's plane is reached by letting the fall bend out of it, all of the bend
+ * out at the ground where it reads as aiming, none at the deorbit point where
+ * the line has an orbit to be tangent to.
+ *
+ * Null when there is no ground under the orbit to draw to — a parking radius
+ * not above the site, or a body with no μ to put dates on the fall.
+ */
+function surfaceLeg(leg: {
+	outward: boolean;
+	body: TravelBody;
+	rParkKm: number;
+	normal: Vec3;
+	periapsis: Vec3;
+	periJd: number;
+	siteAt?: (jd: number) => Vec3 | null;
+	bodyAt?: (jd: number) => Vec3 | null;
+	center: Vec3;
+	/** Whether the leg owns the periapsis sample — a passage already puts one
+	 *  there, and two dates the same would stall anything reading the line. */
+	includePeriapsis: boolean;
+}): { points: Vec3[]; jds: number[]; groundJd: number } | null {
+	const { outward, body, rParkKm, normal, periapsis, periJd, siteAt, bodyAt, center } = leg;
+	const { includePeriapsis } = leg;
+	if (!(body.mu > 0) || !(rParkKm > 0)) return null;
+	const periodDays = (2 * Math.PI) / Math.sqrt(body.mu / rParkKm ** 3) / SEC_PER_DAY;
+
+	// One pass of the geometry for a given site: angles and times, so the ground
+	// date can be iterated before anything is sampled.
+	const shape = (site: Vec3 | null) => {
+		const s = site && norm(site) > 0 ? site : scale(periapsis, -body.radiusKm);
+		const rSite = norm(s);
+		if (!(rParkKm > rSite)) return null;
+		const sHat = scale(s, 1 / rSite);
+		const off = dot(sHat, normal);
+		const inPlane = sub(sHat, scale(normal, off));
+		const flat = norm(inPlane);
+		// A site at the orbit's own pole has no in-plane shadow to steer by; land
+		// opposite periapsis and let the bend carry the whole reach.
+		const sPlane = flat > 1e-9 ? scale(inPlane, 1 / flat) : scale(periapsis, -1);
+		const tilt = flat > 1e-9 ? off / flat : 0;
+		// The half-ellipse spans π, so it leaves the orbit opposite the site.
+		const gate = scale(sPlane, -1);
+		const coast = outward
+			? angleAbout(gate, periapsis, normal)
+			: angleAbout(periapsis, gate, normal);
+		const a = (rParkKm + rSite) / 2;
+		const e = (rParkKm - rSite) / (rParkKm + rSite);
+		const meanMotion = Math.sqrt(body.mu / a ** 3);
+		return {
+			sHat,
+			rSite,
+			sPlane,
+			tilt,
+			gate,
+			coastDays: (coast / (2 * Math.PI)) * periodDays,
+			coast,
+			e,
+			p: a * (1 - e * e),
+			meanMotion,
+			halfDays: Math.PI / meanMotion / SEC_PER_DAY
+		};
+	};
+
+	let geo = shape(siteAt?.(periJd) ?? null);
+	if (!geo) return null;
+	let groundJd = periJd + (outward ? -1 : 1) * (geo.coastDays + geo.halfDays);
+	if (siteAt) {
+		for (let i = 0; i < 3; i++) {
+			const next = shape(siteAt(groundJd));
+			if (!next) return null;
+			geo = next;
+			groundJd = periJd + (outward ? -1 : 1) * (geo.coastDays + geo.halfDays);
+		}
+		// One last read at the settled date, holding the date itself: the ground
+		// sample has to be the site exactly as read at the `groundJd` reported.
+		const settled = shape(siteAt(groundJd));
+		if (!settled) return null;
+		geo = settled;
+	}
+	const { sHat, rSite, sPlane, tilt, gate, coastDays, coast, e, p, meanMotion } = geo;
+
+	// Kepler on the half-ellipse: seconds from its periapsis — the ground — to
+	// true anomaly `nu` in [0, π].
+	const climbSeconds = (nu: number): number => {
+		const E =
+			2 * Math.atan2(Math.sqrt(1 - e) * Math.sin(nu / 2), Math.sqrt(1 + e) * Math.cos(nu / 2));
+		return (E - e * Math.sin(E)) / meanMotion;
+	};
+
+	const points: Vec3[] = [];
+	const jds: number[] = [];
+	const put = (point: Vec3, jd: number) => {
+		// A coast of no angle puts its samples on one date; anything reading the
+		// line needs the dates increasing, so those fold into their neighbour.
+		if (jds.length > 0 && jd <= jds[jds.length - 1] + 1e-9) return;
+		// The same carried motion as the passage and the ring: without it the leg
+		// would hang frozen at the encounter while the body sails on.
+		const moved = bodyAt?.(jd);
+		points.push(moved ? add(point, sub(moved, center)) : point);
+		jds.push(jd);
+	};
+	// The ellipse point `phi` of the way from ground to gate, bending out of the
+	// orbit's plane to reach a site off it — all of the bend at the ground, where
+	// it reads as aiming, none at the gate, where there is an orbit to be tangent
+	// to. The ground sample is the site itself, exactly as read.
+	const ellipsePoint = (phi: number, inPlaneDir: Vec3): Vec3 => {
+		if (phi === 0) return scale(sHat, rSite);
+		const radius = p / (1 + e * Math.cos(phi));
+		const reach = seamBlend(1 - phi / Math.PI) * tilt;
+		return scale(normalize(add(inPlaneDir, scale(normal, reach))), radius);
+	};
+
+	const coastSamples = Math.max(2, Math.ceil((coast / (2 * Math.PI)) * RING_SAMPLES));
+	if (outward) {
+		// Ground first: climb `phi` from 0 at the site towards π at the gate — the
+		// gate itself opens the coast — then round to the injection burn.
+		for (let i = 0; i < DESCENT_SAMPLES; i++) {
+			const phi = (Math.PI * i) / DESCENT_SAMPLES;
+			put(
+				ellipsePoint(phi, rotateAbout(sPlane, normal, phi)),
+				groundJd + climbSeconds(phi) / SEC_PER_DAY
+			);
+		}
+		const top = includePeriapsis ? coastSamples : coastSamples - 1;
+		for (let i = 0; i <= top; i++) {
+			const theta = (coast * i) / coastSamples;
+			// Anchored on periapsis, so the top sample meets the passage on its date.
+			put(
+				scale(rotateAbout(gate, normal, theta), rParkKm),
+				periJd - coastDays + (theta / (2 * Math.PI)) * periodDays
+			);
+		}
+	} else {
+		// Periapsis first: coast forward to the gate, then fall — `phi` runs π at
+		// the gate down to 0 at the site.
+		for (let i = includePeriapsis ? 0 : 1; i <= coastSamples; i++) {
+			const theta = (coast * i) / coastSamples;
+			put(
+				scale(rotateAbout(periapsis, normal, theta), rParkKm),
+				periJd + (theta / (2 * Math.PI)) * periodDays
+			);
+		}
+		for (let i = 1; i <= DESCENT_SAMPLES; i++) {
+			const phi = Math.PI - (Math.PI * i) / DESCENT_SAMPLES;
+			// Anchored on the ground, so the last sample is the site on its date.
+			put(
+				ellipsePoint(phi, rotateAbout(gate, normal, Math.PI - phi)),
+				groundJd - climbSeconds(phi) / SEC_PER_DAY
+			);
+		}
+	}
+	return { points, jds, groundJd };
 }
 
 /**
@@ -975,6 +1322,10 @@ function hyperbolicPassage(end: {
 	arc: PathArc;
 	endJd: number;
 	frame: TrajectoryFrame;
+	/** A direction the plane should hold besides the asymptote — a landing site.
+	 *  The plane is the passage's one free choice, and an end that is aimed
+	 *  somewhere spends it there rather than on the crossing's own plane. */
+	planeHint?: Vec3;
 }): {
 	/** Measured from the body, in flight order — the caller puts them wherever
 	 *  that body is in the frame it is drawing. */
@@ -986,15 +1337,19 @@ function hyperbolicPassage(end: {
 	center: Vec3;
 	periJd: number;
 } | null {
-	const { body, approach, rPeriKm, arcNormal, at, primaryMu, arc, endJd, frame } = end;
+	const { body, approach, rPeriKm, arcNormal, at, primaryMu, arc, endJd, frame, planeHint } = end;
 	const { vInf, bodyAt } = approach;
 	const speed = norm(vInf);
 	if (!(speed > 0) || !(body.mu > 0) || !(rPeriKm > 0)) return null;
 
 	const outward = at === 'departure';
 	const asymptote = normalize(vInf);
-	const off = sub(arcNormal, scale(asymptote, dot(arcNormal, asymptote)));
-	const normal = norm(off) > 0 ? normalize(off) : perpendicularTo(asymptote);
+	const off = planeHint
+		? cross(asymptote, planeHint)
+		: sub(arcNormal, scale(asymptote, dot(arcNormal, asymptote)));
+	let normal = norm(off) > 0 ? normalize(off) : perpendicularTo(asymptote);
+	// Of the two senses the hinted plane allows, keep the crossing's own.
+	if (planeHint && dot(normal, arcNormal) < 0) normal = scale(normal, -1);
 
 	const e = 1 + (rPeriKm * speed * speed) / body.mu;
 	if (!(e > 1)) return null;
@@ -1050,7 +1405,9 @@ function hyperbolicPassage(end: {
 	// exactly. Worked off along the way down so the join is seamless and the low
 	// point is still the periapsis the burn was priced at.
 	const miss = sub(sub(arc.points[cut], center), add(sample(joinDays), joinCarried));
-	const solar = frame === 'interplanetary';
+	// A borrowed end is drawn about its live body, which moves for itself, so it
+	// takes the planet-frame shape rather than the ancestor's carried motion.
+	const solar = frame === 'interplanetary' && body.borrowedElements !== true;
 
 	const points: Vec3[] = [];
 	const jds: number[] = [];

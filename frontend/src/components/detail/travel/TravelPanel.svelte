@@ -57,6 +57,8 @@
 		type TripState
 	} from '$lib/travel/trip';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
+	import { surfaceSiteAt } from '$lib/travel/surface-site';
+	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 	import {
 		hasGround,
 		maxCustomAltitudeKm,
@@ -227,6 +229,61 @@
 		panel.originIsFeature = originFeatureId !== null;
 		panel.targetIsFeature = targetFeatureId !== null;
 	});
+
+	// A feature end's place on its globe, so the drawn trajectory can end on it
+	// rather than at the body. Late like the names: the coordinates come off the
+	// nomenclature fetch, and the geometry key carries their arrival.
+	let originSitePlace = $state<{ lat: number; lon: number } | null>(null);
+	let targetSitePlace = $state<{ lat: number; lon: number } | null>(null);
+	function loadSitePlace(
+		bodyId: string | undefined,
+		featureId: number | null,
+		set: (place: { lat: number; lon: number } | null) => void,
+		still: () => boolean
+	) {
+		set(null);
+		if (!bodyId || featureId === null) return;
+		fetchBodyNomenclature(bodyId)
+			.then((features) => {
+				const found = features.find((f) => f.featureId === featureId);
+				if (found && still()) set({ lat: found.lat, lon: found.lon });
+			})
+			.catch((e) => console.warn(`[travel] could not place feature ${featureId} on ${bodyId}:`, e));
+	}
+	$effect(() => {
+		const bodyId = origin?.id;
+		const featureId = originFeatureId;
+		untrack(() =>
+			loadSitePlace(
+				bodyId,
+				featureId,
+				(place) => (originSitePlace = place),
+				() => origin?.id === bodyId && originFeatureId === featureId
+			)
+		);
+	});
+	$effect(() => {
+		const bodyId = target?.id;
+		const featureId = targetFeatureId;
+		untrack(() =>
+			loadSitePlace(
+				bodyId,
+				featureId,
+				(place) => (targetSitePlace = place),
+				() => target?.id === bodyId && targetFeatureId === featureId
+			)
+		);
+	});
+	let originSite = $derived(
+		origin && originSitePlace
+			? surfaceSiteAt(origin, originDetail, originSitePlace.lat, originSitePlace.lon)
+			: null
+	);
+	let targetSite = $derived(
+		target && targetSitePlace
+			? surfaceSiteAt(target, targetDetail, targetSitePlace.lat, targetSitePlace.lon)
+			: null
+	);
 
 	// The trajectory under the pointer, wherever the pointer is: its mark on the
 	// launch-window field, or one of its labels out on the map. Both write here and
@@ -583,18 +640,35 @@
 			frame: pathFrame,
 			// A swing-by route is drawn as two arcs meeting at a body neither end
 			// is, so the geometry needs the same candidates the search had.
-			vias: assistBodies
+			vias: assistBodies,
+			surfaceSites: {
+				departure: originSite ?? undefined,
+				arrival: targetSite ?? undefined
+			}
 		});
 	}
+
+	// The site coordinates land after the geometry is first drawn, the way the
+	// names land after the labels; their arrival has to re-aim the ground leg.
+	let sitesKey = $derived((originSite ? 'o' : '') + (targetSite ? 't' : ''));
 
 	let pathKey = $derived.by(() => {
 		const route = panel.selectedRoute;
 		if (!route || !centerId) return null;
 		// The end names are on the labels, and they land after the geometry does.
-		return [originName ?? '', targetName ?? '', viewFrame, routeKey(route, centerId, frame)].join(
-			';'
-		);
+		return [
+			originName ?? '',
+			targetName ?? '',
+			viewFrame,
+			sitesKey,
+			routeKey(route, centerId, frame)
+		].join(';');
 	});
+
+	// When the drawn plan is actually on the ground at each end — the timeline's
+	// launch and landing cards take these dates, so picking one shows the planet
+	// with the site under the line.
+	let planGround = $state<{ liftoffJd?: number; touchdownJd?: number } | null>(null);
 
 	// One effect owns the drawn path, the way one owns the solve. Everything it
 	// reads beyond the key is untracked, so a route object replaced with an equal
@@ -604,6 +678,7 @@
 		untrack(() => {
 			const route = panel.selectedRoute;
 			if (key === null || !route || !centerId) {
+				planGround = null;
 				onPathChange(null);
 				return;
 			}
@@ -613,9 +688,14 @@
 					`[travel] no drawable path for ${route.departureId} → ${route.targetId} ` +
 						`(depart ${route.departJd}, ${route.tofDays} d)`
 				);
+				planGround = null;
 				onPathChange(null);
 				return;
 			}
+			planGround = {
+				liftoffJd: path.endOrbits.find((end) => end.at === 'departure')?.surfaceJd,
+				touchdownJd: path.endOrbits.find((end) => end.at === 'arrival')?.surfaceJd
+			};
 			onPathChange(labelled(panel.selectedProfile ?? 'plan', route, path));
 		});
 	});
@@ -635,7 +715,9 @@
 		if (!centerId) return null;
 		const keys = alternatives.map((choice) => routeKey(choice.route, centerId, frame));
 		// The end names are on the labels, and they land after the geometry does.
-		return keys.length > 0 ? [originName ?? '', targetName ?? '', ...keys].join(';') : null;
+		return keys.length > 0
+			? [originName ?? '', targetName ?? '', sitesKey, ...keys].join(';')
+			: null;
 	});
 
 	$effect(() => {
@@ -718,7 +800,7 @@
 	let selectedTimelineKey = $derived.by(() => {
 		const route = panel.selectedRoute;
 		if (!route) return null;
-		return timelineKey(route, originName, targetName, timelineBodies);
+		return timelineKey(route, originName, targetName, timelineBodies, planGround);
 	});
 
 	/** The two ends as the kernel knows them, once both are known. What the orbit
@@ -743,7 +825,8 @@
 						if (bodyId === target?.id && targetName) return targetName;
 						return resolveBodyName(bodyId);
 					},
-					timelineBodies
+					timelineBodies,
+					planGround
 				)
 			);
 		});
