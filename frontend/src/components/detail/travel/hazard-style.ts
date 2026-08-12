@@ -8,7 +8,9 @@ import RadioTowerIcon from '@lucide/svelte/icons/radio-tower';
 import ShieldIcon from '@lucide/svelte/icons/shield';
 import RadiationIcon from '@lucide/svelte/icons/radiation';
 import OrbitIcon from '@lucide/svelte/icons/orbit';
-import type { HazardKind, HazardSeverity } from '$lib/travel/hazards';
+import DnaOffIcon from '@lucide/svelte/icons/dna-off';
+import { lethalDoseFraction } from '$lib/math/travel';
+import type { Hazard, HazardKind, HazardSeverity } from '$lib/travel/hazards';
 
 export const HAZARD_ICONS: Record<HazardKind, typeof FlameIcon> = {
 	'solar-heat': FlameIcon,
@@ -25,6 +27,26 @@ export const HAZARD_ICONS: Record<HazardKind, typeof FlameIcon> = {
 	// say and would anyway repeat the row above it.
 	'belt-crossing': OrbitIcon
 };
+
+/** Past which a belt pass stops being a crossing to survive and becomes a dose
+ *  nothing survives, in lethal doses. */
+const UNSURVIVABLE_BELT_DOSES = 5;
+
+/**
+ * The glyph for one hazard, which is its kind's except where the figure has left
+ * the scale the glyph was chosen for: a pass worth several lethal doses is not an
+ * orbit to plan around, and the broken helix says so.
+ */
+export function hazardIcon(hazard: Hazard): typeof FlameIcon {
+	if (
+		hazard.kind === 'belt-crossing' &&
+		!hazard.unpriced &&
+		lethalDoseFraction(hazard.peak) > UNSURVIVABLE_BELT_DOSES
+	) {
+		return DnaOffIcon; // hehe
+	}
+	return HAZARD_ICONS[hazard.kind];
+}
 
 /**
  * Mid-palette rather than a themed token, and the same shade in both themes:

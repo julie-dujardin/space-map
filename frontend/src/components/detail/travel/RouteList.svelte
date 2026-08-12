@@ -36,7 +36,7 @@
 	import { hazardChip } from '$lib/travel/hazard-labels';
 	import { departureNote } from './vehicle-labels';
 	import { routeLabel } from './route-labels';
-	import { HAZARD_ICONS, HAZARD_TEXT } from './hazard-style';
+	import { hazardIcon, HAZARD_TEXT } from './hazard-style';
 	import { isModifiedClick, tripRouteHref } from '$lib/state/focus-link';
 	import type { AppState } from '$lib/state/app-state.svelte';
 
@@ -174,7 +174,7 @@
 							class="mt-0.5 flex items-center gap-2 overflow-hidden text-[11px] whitespace-nowrap"
 						>
 							{#each hazards.slice(0, CHIP_LIMIT) as hazard (hazard.kind)}
-								{@const Icon = HAZARD_ICONS[hazard.kind]}
+								{@const Icon = hazardIcon(hazard)}
 								<span class="flex items-center gap-1 {HAZARD_TEXT[hazard.severity]}">
 									<Icon class="size-3 shrink-0" aria-hidden="true" />
 									{hazardChip(hazard)}

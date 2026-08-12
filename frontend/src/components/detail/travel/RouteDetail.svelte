@@ -55,7 +55,7 @@
 	import { craftSpecs, craftSpecSources } from './craft-specs';
 	import { radiationSources } from '$lib/credits/radiation-sources';
 	import { legLabel } from './leg-labels';
-	import { HAZARD_ICONS, HAZARD_TEXT } from './hazard-style';
+	import { hazardIcon, HAZARD_TEXT } from './hazard-style';
 
 	interface Props {
 		route: Route;
@@ -386,7 +386,7 @@
 			<div class="border-border/60 border-t"></div>
 			<ul class="flex flex-col gap-3">
 				{#each shownHazards as hazard (hazard.kind)}
-					{@const Icon = HAZARD_ICONS[hazard.kind]}
+					{@const Icon = hazardIcon(hazard)}
 					{@const campaign = hazardCampaign(hazard)}
 					{@const craftNote = hazardCraftNote(hazard)}
 					<li class="flex gap-3">
