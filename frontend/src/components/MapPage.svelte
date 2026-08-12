@@ -17,11 +17,14 @@
 	} from '$lib/state/view';
 	import { EARTH_ID, SUN_ID } from '$lib/constants';
 	import { createAppState } from '$lib/state/app-state.svelte';
+	import { getSettings } from '$lib/state/settings.svelte';
 	import { fetchBodyNomenclature, type NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { Focusable, FocusFeature, FocusObject } from '$lib/state/focusable';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import type { TrajectoryFrame } from '$lib/math/travel';
-	import FramePill from './travel-frame/FramePill.svelte';
+	import SegmentedPill from './map-pill/SegmentedPill.svelte';
+	import { frameOptions } from './travel-frame/frame-options';
+	import { ringBrightnessOptions } from './rings/brightness-options';
 	import type { Hazard } from '$lib/travel/hazards';
 	import type { TimelineEntry, TimelineFocus } from '$lib/travel/timeline';
 	// Lazy-loaded on first focus so its charts (d3-scale/d3-shape/layercake) and
@@ -95,6 +98,7 @@
 
 	const appState = createAppState();
 	setContext('appState', appState);
+	const settings = getSettings();
 
 	// Snap the clock into `id`'s coverage window if `now` is outside it — midpoint,
 	// not the boundary (no sample there). No-op when there's no window.
@@ -180,6 +184,25 @@
 	// `.raw` — see Scene.svelte's `focusedBody` for the rationale (avoids deep
 	// proxying of position/satrec, which the renderer and SGP4 mutate).
 	let selectedBody = $state.raw<PositionedBody | undefined>();
+	/**
+	 * Whether the ring-brightness pill is on screen. The ring catalogue is the one
+	 * place the overexposed rendering is worth offering: that tab reads a system's
+	 * optical depths, and at Jupiter or Uranus the map beside it shows next to
+	 * nothing at the true ones. The trip planner's own pill has the slot.
+	 *
+	 * Both flags are read outright rather than short-circuited, so this tracks
+	 * either one changing.
+	 */
+	let ringPillShown = $derived.by(() => {
+		const rings = !!selectedBody && appState.view.tab === 'rings';
+		const frames = framesDiffer;
+		return rings && !frames;
+	});
+	// Leaving the tab takes the overexposed picture with it: it is not the
+	// physical one, and nothing off this tab explains why the rings are lit.
+	$effect(() => {
+		if (!ringPillShown) settings.setOverexposeRings(false);
+	});
 	// Camera-truth focus: stays set after the drawer closes, since the renderer
 	// is still tracking that body. Drives compass-north choices, which would
 	// otherwise drop to "Solar System only" the moment the drawer is dismissed.
@@ -848,7 +871,7 @@
 					<ClearPromoted count={userPromotedCount} onClear={() => scene?.clearUserPromoted()} />
 				{/if}
 			</div>
-			{#if framesDiffer}
+			{#if framesDiffer || ringPillShown}
 				<!-- Centred on the window rather than on the map area left over beside
 				     the planner: measured off that, it sits off-centre by half a panel
 				     and slides sideways whenever the panel opens or closes. -->
@@ -857,7 +880,23 @@
 					class="pointer-events-none fixed start-[var(--safe-start)] end-[var(--safe-end)] z-10 flex
 						justify-center top-[calc(var(--safe-top)_+_4.5rem)] md:top-[calc(var(--safe-top)_+_4rem)]"
 				>
-					<FramePill frame={viewFrame} onSelect={(next) => (viewFrame = next)} />
+					<!-- One slot, so the two never stack: the planner and a body's ring
+					     catalogue are not open at the same time. -->
+					{#if framesDiffer}
+						<SegmentedPill
+							label={m.travel_frame()}
+							options={frameOptions()}
+							value={viewFrame}
+							onSelect={(next) => (viewFrame = next)}
+						/>
+					{:else}
+						<SegmentedPill
+							label={m.rings_brightness()}
+							options={ringBrightnessOptions()}
+							value={settings.overexposeRings}
+							onSelect={(next) => settings.setOverexposeRings(next)}
+						/>
+					{/if}
 				</div>
 			{/if}
 			<div
