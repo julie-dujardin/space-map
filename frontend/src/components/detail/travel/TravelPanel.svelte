@@ -85,6 +85,7 @@
 	import RouteDetail from './RouteDetail.svelte';
 	import PorkchopChart from './PorkchopChart.svelte';
 	import { routeLabel } from './route-labels';
+	import { endpointModeLabel } from './endpoint-labels';
 	import { hazardKey, routeKey, timelineKey } from './route-keys';
 
 	interface Props {
@@ -387,6 +388,25 @@
 		if (!targetDetail || !targetChoices.length) return;
 		if (!targetChoices.some((c) => c.kind === panel.targetMode)) panel.targetMode = 'low-orbit';
 	});
+
+	/** Null if there was no choice: a named place, or a body with no data. */
+	function endLabel(
+		role: 'origin' | 'target',
+		isFeature: boolean,
+		mode: EndpointMode,
+		choices: OrbitChoice[]
+	): string | null {
+		if (isFeature || choices.length === 0) return null;
+		// Use the priced altitude. A body has a maximum orbit height.
+		const alt = choices.find((c) => c.kind === mode)?.periAltKm ?? null;
+		return endpointModeLabel(mode, role, alt);
+	}
+	let originModeLabel = $derived(
+		endLabel('origin', panel.originIsFeature, panel.originMode, originChoices)
+	);
+	let targetModeLabel = $derived(
+		endLabel('target', panel.targetIsFeature, panel.targetMode, targetChoices)
+	);
 
 	// The orbit each end is met in, handed to the panel so every builder prices
 	// the same one. A mode with no orbit of its own — a landing, a flyby — leaves
@@ -969,19 +989,21 @@
 <div class="flex flex-col gap-5">
 	{#if chosen}
 		{@const pass = chosen.route.flybys?.[0] ?? null}
-		<!-- The trip's terms are a step behind now, and the header above names the
-		     trajectory, so what is left to say is between what and when. The
-		     qualifier rides here rather than on the title: it is what tells one
-		     trajectory from another, and the title is a plain string. -->
+		<!-- The title above names the trajectory. This line gives the two ends, their
+		     modes and the dates. The picker is not on the screen in this step. -->
 		<div class="flex flex-col gap-0.5">
 			{#if originName && targetName}
 				<p class="truncate text-sm">
-					{originName}
+					{originName}{#if originModeLabel}<span class="text-muted-foreground ms-1.5 text-xs"
+							>{originModeLabel}</span
+						>{/if}
 					<MoveRightIcon
 						class="inline size-[1em] align-[-0.125em] rtl:rotate-180"
 						aria-hidden="true"
 					/>
-					{targetName}{#if chosen.route.constantThrust}<span
+					{targetName}{#if targetModeLabel}<span class="text-muted-foreground ms-1.5 text-xs"
+							>{targetModeLabel}</span
+						>{/if}{#if chosen.route.constantThrust}<span
 							class="text-muted-foreground ms-1.5 text-xs tabular-nums"
 							>{formatAcceleration(chosen.route.constantThrust)}</span
 						>{:else if pass}<span class="text-muted-foreground ms-1.5 text-xs"

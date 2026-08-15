@@ -1,15 +1,7 @@
 <!--
-  An endpoint box: closed it summarises where you start or arrive and how; open
-  it is a popover asking those two questions in that order.
-
-  Where comes first, because how you arrive is a question about somewhere — and
-  because the orbits on offer are a fact about the body, so there is nothing to
-  list until one is chosen. Reopening a box that already has a body lands back
-  on the search with a line down to the orbits: changing the destination and
-  changing the orbit are both one gesture from here.
-
-  A surface feature answers both at once. There is no way to reach a named
-  crater except by landing in it, so its box never shows the second step.
+  An endpoint box. Step 1 is the place, step 2 is the mode. The orbits are a
+  property of the body, thus there is no list before you select a body. A surface
+  feature sets the mode, thus its box has no step 2.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
@@ -26,6 +18,7 @@
 	import type { OrbitChoice, OrbitGroup } from '$lib/travel/orbits';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 	import EndpointSearch from './EndpointSearch.svelte';
+	import { endpointModeLabel } from './endpoint-labels';
 
 	interface Props {
 		/** Origins get a hollow dot; destinations get a pin. */
@@ -70,18 +63,6 @@
 		onPick
 	}: Props = $props();
 
-	const MODE_LABELS: Record<EndpointMode, () => string> = {
-		surface: () => (role === 'origin' ? m.travel_mode_surface() : m.travel_mode_landing()),
-		'low-orbit': () => m.travel_mode_low_orbit(),
-		elliptical: () => m.travel_mode_elliptical(),
-		'semi-sync': () => m.travel_mode_semi_sync(),
-		stationary: () => m.travel_mode_stationary(),
-		transfer: () => m.travel_mode_transfer(),
-		heo: () => m.travel_mode_heo(),
-		custom: () => m.travel_mode_custom(),
-		flyby: () => m.travel_mode_flyby()
-	};
-
 	const GROUP_LABELS: Record<OrbitGroup, () => string> = {
 		land: () => m.travel_orbit_group_land(),
 		orbit: () => m.travel_mode_orbit(),
@@ -99,22 +80,12 @@
 
 	let showMode = $derived(bodyName !== null && !isFeature && choices.length > 0);
 	let chosen = $derived(choices.find((c) => c.kind === mode));
-	/**
-	 * The altitude a custom orbit is actually at, km.
-	 *
-	 * Not the number in the trip: a body holds only so much room, and one asking
-	 * for more than that is met at the ceiling. Showing what was asked for would
-	 * put a different altitude on the row than the one being priced.
-	 */
+	/** The priced altitude, in km. A too high request decreases to the maximum. */
 	let customAltShown = $derived(
 		chosen?.kind === 'custom' ? (chosen.periAltKm ?? customAltKm) : customAltKm
 	);
-	// Closed, "custom altitude" says nothing; the altitude itself says all of it.
-	let modeLabel = $derived(
-		mode === 'custom'
-			? m.travel_orbit_at({ altitude: formatKm(customAltShown) })
-			: MODE_LABELS[mode]()
-	);
+	// The closed box shows the height. The words "custom altitude" give no data.
+	let modeLabel = $derived(endpointModeLabel(mode, role, customAltShown));
 
 	// Every orbit the body can hold, all at once: there are at most nine, the
 	// column is tall enough for them, and a fold would hide the one comparison
@@ -231,7 +202,7 @@
 								>
 									<span class="flex w-full items-baseline gap-2">
 										<span class="flex-1 truncate text-xs font-medium">
-											{MODE_LABELS[choice.kind]()}
+											{endpointModeLabel(choice.kind, role)}
 										</span>
 										{#if dv !== null}
 											<span class="text-muted-foreground shrink-0 text-[10px] tabular-nums">
