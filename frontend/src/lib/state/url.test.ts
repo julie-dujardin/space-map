@@ -17,7 +17,15 @@ vi.mock('$app/state', () => ({
 	page: { params: {}, route: { id: null }, url: new URL('http://x/') }
 }));
 
-import { applyFocus, applyNav, applyTab, isBodyId, serializeUrl } from './url';
+import {
+	applyFocus,
+	applyNav,
+	applyTab,
+	formatNavEnd,
+	isBodyId,
+	parseNavEnd,
+	serializeUrl
+} from './url';
 import { DEFAULT_TRIP } from '$lib/travel/trip';
 import type { MapViewState } from './view';
 
@@ -284,6 +292,32 @@ describe('isBodyId', () => {
 	});
 });
 
+describe('parseNavEnd', () => {
+	it('round-trips both shapes of an end', () => {
+		expect(parseNavEnd(formatNavEnd('naif-499', null))).toEqual({
+			bodyId: 'naif-499',
+			featureId: null
+		});
+		expect(parseNavEnd(formatNavEnd('naif-499', 15057))).toEqual({
+			bodyId: 'naif-499',
+			featureId: 15057
+		});
+	});
+
+	// A negative NAIF id already carries a dash, so the split has to key on the
+	// infix rather than on dash counting.
+	it('splits a body id that has dashes of its own', () => {
+		expect(parseNavEnd('naif--164-f-3537')).toEqual({ bodyId: 'naif--164', featureId: 3537 });
+	});
+
+	it('rejects a malformed end', () => {
+		expect(parseNavEnd('naif-499-f-')).toBeNull();
+		expect(parseNavEnd('naif-499-f-crater')).toBeNull();
+		expect(parseNavEnd('naif-499-f-0')).toBeNull();
+		expect(parseNavEnd('cat-surface-features-f-1')).toBeNull();
+	});
+});
+
 describe('applyNav', () => {
 	it('frames the destination and keeps both ends', () => {
 		const next = applyNav(baseView, 'naif-399', 'naif-499');
@@ -364,21 +398,21 @@ describe('serializeUrl on a trip', () => {
 			...applyNav(baseView, null, 'naif-499'),
 			navFromFeature: 14940
 		});
-		expect(url).not.toContain('ff=');
+		expect(url.startsWith('/nav/-/naif-499?at=')).toBe(true);
+		expect(url).not.toContain('14940');
 	});
 
-	// A surface feature rides in the query block, not the path: the trajectory is
-	// priced against the body, and only the touchdown point is the feature.
-	it('keeps the body in the path when an end is a place on it', () => {
+	// The pair is one key, so it stays in one segment: splitting it across the
+	// path and the query left half an end's identity in a query param.
+	it('writes an end that is a place on a body as one segment', () => {
 		const url = serializeUrl(applyNav(baseView, 'naif-399', { id: 'naif-499', featureId: 15057 }));
-		expect(url.startsWith('/nav/naif-399/naif-499?at=')).toBe(true);
-		expect(url).toContain('&tf=15057');
-		expect(url).not.toContain('ff=');
+		expect(url.startsWith('/nav/naif-399/naif-499-f-15057?at=')).toBe(true);
+		expect(url).not.toContain('tf=');
 	});
 
 	it('carries a feature at the departure end too', () => {
 		const url = serializeUrl(applyNav(baseView, { id: 'naif-399', featureId: 14940 }, 'naif-499'));
-		expect(url).toContain('&ff=14940');
+		expect(url.startsWith('/nav/naif-399-f-14940/naif-499?at=')).toBe(true);
 	});
 
 	// The destination's feature belongs to a destination; without one it would
@@ -388,7 +422,8 @@ describe('serializeUrl on a trip', () => {
 			...applyNav(baseView, 'naif-399'),
 			navToFeature: 15057
 		});
-		expect(url).not.toContain('tf=');
+		expect(url.startsWith('/nav/naif-399?at=')).toBe(true);
+		expect(url).not.toContain('15057');
 	});
 
 	it('carries the terms the trip is flown on', () => {

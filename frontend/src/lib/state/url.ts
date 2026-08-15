@@ -36,7 +36,8 @@ function parseMemberPage(raw: string | null): number | null {
 	return Number.isInteger(n) && n > 1 ? n : null;
 }
 
-/** Parse an `&ff=`/`&tf=` IAU feature id; null for anything that isn't one. */
+/** Parse a legacy `&ff=`/`&tf=` IAU feature id; null for anything that isn't
+ *  one. Superseded by the trip end's own id — see formatNavEnd. */
 function parseFeatureId(raw: string | null): number | null {
 	if (!raw) return null;
 	const n = Number(raw);
@@ -69,6 +70,28 @@ export function isBodyId(value: string): boolean {
 	const prefix = ID_PREFIXES.find((p) => value.startsWith(p));
 	if (!prefix) return false;
 	return Number.isFinite(Number(value.slice(prefix.length)));
+}
+
+/** Separator between a body id and the IAU feature refining it, mirroring the
+ *  `/f/` segment of a feature's own page. A body id is `<prefix>-<number>`, so
+ *  it can never contain this. */
+const FEATURE_INFIX = '-f-';
+
+/** A trip end as one path segment: a body id, or a body id refined by a place
+ *  on it. The pair is one key, so it travels as one token rather than half in
+ *  the path and half in the query. */
+export function formatNavEnd(bodyId: string, featureId: number | null): string {
+	return featureId === null ? bodyId : `${bodyId}${FEATURE_INFIX}${featureId}`;
+}
+
+/** Inverse of formatNavEnd; null for anything that isn't a well-formed end. */
+export function parseNavEnd(segment: string): { bodyId: string; featureId: number | null } | null {
+	const cut = segment.indexOf(FEATURE_INFIX);
+	if (cut === -1) return isBodyId(segment) ? { bodyId: segment, featureId: null } : null;
+	const bodyId = segment.slice(0, cut);
+	const featureId = Number(segment.slice(cut + FEATURE_INFIX.length));
+	if (!isBodyId(bodyId) || !Number.isInteger(featureId) || featureId <= 0) return null;
+	return { bodyId, featureId };
 }
 
 /** Derive URL type segment from a body ID. Use this for URL generation — it's always consistent with the ID. */
@@ -131,28 +154,33 @@ export function parseUrl(): MapViewState | null {
 	if (page.route.id?.startsWith('/nav')) {
 		const fromParam = page.params.from;
 		const toParam = page.params.to;
-		const from = fromParam === NAV_UNSET ? undefined : fromParam;
-		const to = toParam === NAV_UNSET ? undefined : toParam;
-		if ((from !== undefined && !isBodyId(from)) || (to !== undefined && !isBodyId(to))) {
-			console.warn(`parseUrl: malformed nav ids (from=${from}, to=${to})`);
+		const fromRaw = fromParam === NAV_UNSET ? undefined : fromParam;
+		const toRaw = toParam === NAV_UNSET ? undefined : toParam;
+		const from = fromRaw === undefined ? undefined : parseNavEnd(fromRaw);
+		const to = toRaw === undefined ? undefined : parseNavEnd(toRaw);
+		if (from === null || to === null) {
+			console.warn(`parseUrl: malformed nav ids (from=${fromRaw}, to=${toRaw})`);
 			return null;
 		}
 		// A bare /nav is a blank form, and Earth is where its traffic leaves from;
 		// an unset segment means the departure was cleared on purpose.
-		const navFrom = fromParam === undefined ? EARTH_ID : (from ?? null);
+		const navFrom = fromParam === undefined ? EARTH_ID : (from?.bodyId ?? null);
 		return applyAtParam({
 			...DEFAULT_VIEW,
 			type: UrlType.Nav,
 			// The renderer always frames a body; on a trip that's where you're going,
 			// and with nowhere to go yet, where you're setting out from.
-			id: to ?? navFrom ?? EARTH_ID,
+			id: to?.bodyId ?? navFrom ?? EARTH_ID,
 			name: '',
 			navFrom,
-			navTo: to ?? null,
+			navTo: to?.bodyId ?? null,
 			// A feature belongs to the end it was picked at; without that end there
-			// is nothing for one to belong to.
-			navFromFeature: navFrom ? parseFeatureId(page.url.searchParams.get('ff')) : null,
-			navToFeature: to ? parseFeatureId(page.url.searchParams.get('tf')) : null,
+			// is nothing for one to belong to. `ff`/`tf` are the superseded spelling,
+			// still read so links shared before the ids merged keep their landing site.
+			navFromFeature: from
+				? (from.featureId ?? parseFeatureId(page.url.searchParams.get('ff')))
+				: null,
+			navToFeature: to ? (to.featureId ?? parseFeatureId(page.url.searchParams.get('tf'))) : null,
 			trip: parseTrip(page.url.searchParams)
 		});
 	}
@@ -496,14 +524,12 @@ export function serializeUrl(state: MapViewState): string {
 		// The departure slot is always written, as an id or as the unset marker:
 		// the ends are positional, so `/nav/<x>` would read as a departure.
 		const path = resolve('/nav/[[from]]/[[to]]', {
-			from: state.navFrom ?? NAV_UNSET,
-			to: state.navTo ?? undefined
+			from: state.navFrom ? formatNavEnd(state.navFrom, state.navFromFeature) : NAV_UNSET,
+			to: state.navTo ? formatNavEnd(state.navTo, state.navToFeature) : undefined
 		});
 		// A trip is described by its two ends and the terms it is flown on; the rest
 		// of the query block belongs to drawer tabs the planner doesn't have.
-		const ff = state.navFrom && state.navFromFeature !== null ? `&ff=${state.navFromFeature}` : '';
-		const tf = state.navTo && state.navToFeature !== null ? `&tf=${state.navToFeature}` : '';
-		return `${path}?at=${at}${ff}${tf}${serializeTripSuffix(state.trip)}`;
+		return `${path}?at=${at}${serializeTripSuffix(state.trip)}`;
 	}
 
 	if (state.type === UrlType.Group && state.groupSlug !== null) {

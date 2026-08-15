@@ -105,8 +105,9 @@ export interface MapViewState {
 	navFrom: string | null;
 	navTo: string | null;
 	/** IAU feature id when an end is a named place on its body's surface —
-	 *  a launch site, a landing site. Deep-linked as `&ff=` / `&tf=`; the body
-	 *  stays in the path because that is what the trajectory is priced against.
+	 *  a launch site, a landing site. Held apart from the body because that is
+	 *  what the trajectory is priced against; the two travel as one path segment
+	 *  (`naif-301-f-3537`, see formatNavEnd) because together they are one end.
 	 *  A feature is always a surface endpoint, so it carries no mode. */
 	navFromFeature: number | null;
 	navToFeature: number | null;
