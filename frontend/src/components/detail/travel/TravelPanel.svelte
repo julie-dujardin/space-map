@@ -72,15 +72,13 @@
 	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import { formatAcceleration } from '$lib/travel/format';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Slider } from '$lib/components/ui/slider/index.js';
-	import { formatDurationNarrow } from '$lib/format/duration';
-	import { formatPercent } from '$lib/format/quantities';
 	import Segmented from './Segmented.svelte';
 	import VehicleField from './VehicleField.svelte';
 	import DateField from './DateField.svelte';
 	import ManifestField from './ManifestField.svelte';
 	import EndpointField from './EndpointField.svelte';
 	import RouteList from './RouteList.svelte';
+	import CruiseBox from './CruiseBox.svelte';
 	import RouteTabs from './RouteTabs.svelte';
 	import RouteDetail from './RouteDetail.svelte';
 	import PorkchopChart from './PorkchopChart.svelte';
@@ -633,12 +631,27 @@
 		void payloadKg;
 		void siteLats;
 		if (block || !from || !to) {
-			panel.torch = null;
+			panel.torchPresets = [];
+			panel.torchCustom = null;
 			panel.spiral = null;
 			return;
 		}
 		panel.updateTorch(from, to, nowJd, frame);
 		panel.updateSpiral(from, to, nowJd, frame);
+	});
+
+	// A fourth effect for the coast alone. It is the one input that moves under a
+	// drag, and a drag must not re-solve the presets on every frame.
+	$effect(() => {
+		const from = originTravel;
+		const to = targetTravel;
+		const coast = panel.coastFraction;
+		void coast;
+		if (block || !from || !to) {
+			panel.torchCustom = null;
+			return;
+		}
+		panel.updateTorchCustom(from, to, nowJd, frame);
 	});
 
 	// And the swing-by hunt is a third, for the same reason again: it sweeps a
@@ -950,20 +963,6 @@
 		if (profile) untrack(() => (wantedFamily = familyOf(profile)));
 	});
 
-	// What the arc has instead of a launch window: how long the drive is off in the
-	// middle of it. Read off the offered arc rather than off a selection, because
-	// the control sits in the list beside it — and it survives the arc, since a
-	// coast is the one term that can take it off the list and it has to stay
-	// reachable to be undone.
-	let coastDays = $derived(panel.torch?.legs.find((leg) => leg.kind === 'cruise')?.days ?? 0);
-	// Against the crossing rather than the whole trip: the two burns and the coast
-	// tile it exactly, so the share is what the slider divides. A trip whose
-	// arrival is months of aerobraking would read as almost no coast at all.
-	let coastShare = $derived.by(() => {
-		const crossing = panel.torch?.tofDays ?? 0;
-		return crossing > 0 ? coastDays / crossing : 0;
-	});
-
 	function swap() {
 		// Modes ride along with their end, and every departure mode is also an
 		// arrival one — so only the mode coming back needs a fallback, for the
@@ -978,47 +977,6 @@
 	}
 </script>
 
-<!--
-  What the constant-thrust arc has instead of a launch window, and the same kind
-  of choice: the one thing left to pick once the drive has fixed everything else.
-  So it sits where the hand-picked window sits — last in its own tab, dashed, as
-  the custom option under the arc it moves. It outlives that arc, because a coast
-  long enough to miss the deadline is what takes it off the list.
--->
-{#snippet cruiseTime()}
-	<section class="border-border/60 flex flex-col gap-2 rounded-md border border-dashed px-3 py-2">
-		<div class="flex items-baseline justify-between gap-2">
-			<h4 class="text-sm font-medium">{m.travel_cruise_time()}</h4>
-			<span class="shrink-0 text-xs tabular-nums">
-				<!-- With no arc to measure, a coast has no duration and no share of one —
-				     and "flat out" would be a claim about a slider that is not there. -->
-				{#if !panel.torch}
-					<span class="text-muted-foreground">—</span>
-				{:else if coastDays > 0}
-					<!-- The share is what the slider sets and what compares across trips;
-					     the duration is what it means for this one. -->
-					{formatPercent(coastShare)}
-					<span class="text-muted-foreground ms-1">{formatDurationNarrow(coastDays)}</span>
-				{:else}
-					<span class="text-muted-foreground">{m.travel_cruise_flat_out()}</span>
-				{/if}
-			</span>
-		</div>
-		<Slider
-			type="single"
-			value={panel.coastFraction}
-			onValueChange={(value: number) => (panel.coastFraction = value)}
-			min={0}
-			max={1}
-			step={0.01}
-			aria-label={m.travel_cruise_time()}
-		/>
-		{#if panel.torchMissedDeadline}
-			<p class="text-muted-foreground text-xs">{m.travel_cruise_missed()}</p>
-		{/if}
-	</section>
-{/snippet}
-
 <!-- The active family's rows, and the one control that belongs to a family
      rather than to a trajectory. -->
 {#snippet trajectories()}
@@ -1029,7 +987,6 @@
 		onFocusField={panel.grid ? () => chart?.focusField() : null}
 		hazardsFor={(profile) => hazardsByProfile.get(profile) ?? NO_HAZARDS}
 	/>
-	{#if family === 'constant-thrust'}{@render cruiseTime()}{/if}
 {/snippet}
 
 <div class="flex flex-col gap-5">
@@ -1270,7 +1227,7 @@
 			</p>
 			<!-- A coast long enough to miss the deadline is what took the arc off the
 			     list, so the control that did it has to outlive the list. -->
-			{#if panel.torchMissedDeadline}{@render cruiseTime()}{/if}
+			{#if panel.torchMissedDeadline}<CruiseBox state={panel} />{/if}
 		{:else if panel.offered.length > 0}
 			<!-- Said above the list rather than instead of it: what is left when the
 			     search found nothing in time is a hand-picked point or a craft's own
@@ -1280,7 +1237,7 @@
 			{/if}
 			<!-- The arc is gone, so its tab is too, and the control that took it has
 			     nowhere left to live but over the list. -->
-			{#if panel.torchMissedDeadline}{@render cruiseTime()}{/if}
+			{#if panel.torchMissedDeadline}<CruiseBox state={panel} />{/if}
 			<!-- One family of trajectory is on offer often enough — a chemical craft
 			     with no swing-by to be had — that a single tab would be a control
 			     with nothing to choose. -->

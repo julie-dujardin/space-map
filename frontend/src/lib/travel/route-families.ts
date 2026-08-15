@@ -14,10 +14,11 @@ import type { RouteOption } from './trip';
 export type RouteFamily = 'transfer' | 'gravity-assist' | 'constant-thrust' | 'low-thrust';
 
 /** The three solver profiles and the hand-picked window are all one family: the
- *  same trajectory, read off the same field, at four points on it. */
+ *  same trajectory, read off the same field, at four points on it. The held arc
+ *  makes a family the same way, at four points on the coast. */
 export function familyOf(profile: RouteOption): RouteFamily {
+	if (profile.startsWith('constant-thrust')) return 'constant-thrust';
 	switch (profile) {
-		case 'constant-thrust':
 		case 'low-thrust':
 		case 'gravity-assist':
 			return profile;

@@ -118,12 +118,12 @@ describe('TravelPanelState constant-thrust arc', () => {
 
 	function torched(): TravelPanelState {
 		const panel = new TravelPanelState();
-		panel.torch = buildConstantThrustRoute(EARTH, MARS, J2000, 3.27, { departureMode: 'orbit' });
+		const route = buildConstantThrustRoute(EARTH, MARS, J2000, 3.27, { departureMode: 'orbit' })!;
+		panel.torchPresets = [{ profile: 'constant-thrust', route }];
 		return panel;
 	}
 
-	// It leads rather than trails the way a hand-picked window does: the only
-	// craft it is offered for cannot fly any of the others.
+	// They lead the list. The craft they are offered for cannot fly the others.
 	it('leads the list, ahead of the solver\u2019s own', () => {
 		const panel = torched();
 		expect(panel.offered.map((choice) => choice.profile)).toEqual(['constant-thrust']);
@@ -136,9 +136,51 @@ describe('TravelPanelState constant-thrust arc', () => {
 	it('offers nothing once the arc is withdrawn and no search has landed', () => {
 		const panel = torched();
 		panel.selectedProfile = 'constant-thrust';
-		panel.torch = null;
+		panel.torchPresets = [];
 		expect(panel.offered).toEqual([]);
 		expect(panel.selectedRoute).toBeNull();
+	});
+
+	// The coast is a trade, offered the way a launch window is. Each named point
+	// is cheaper and slower than the last.
+	it('offers the coast as named points, each cheaper and slower than the last', () => {
+		const panel = new TravelPanelState();
+		panel.acceptVehicles([ROCINANTE]);
+		panel.selectVehicle('rocinante');
+		panel.updateTorch(EARTH, MARS, J2000);
+
+		const arcs = panel.torchPresets;
+		expect(arcs.map((arc) => arc.profile)).toEqual([
+			'constant-thrust',
+			'constant-thrust-balanced',
+			'constant-thrust-efficient'
+		]);
+		for (let i = 1; i < arcs.length; i++) {
+			expect(arcs[i].route.totalDvKms).toBeLessThan(arcs[i - 1].route.totalDvKms);
+			expect(arcs[i].route.tofDays).toBeGreaterThan(arcs[i - 1].route.tofDays);
+		}
+		// The fastest arc has no coast in it at all.
+		expect(arcs[0].route.legs.some((leg) => leg.kind === 'cruise')).toBe(false);
+	});
+
+	// The slider's arc joins the list. It does not replace what the presets say,
+	// even when it lands on one of them.
+	it('adds the slider\u2019s own arc, wherever the slider is', () => {
+		const panel = new TravelPanelState();
+		panel.acceptVehicles([ROCINANTE]);
+		panel.selectVehicle('rocinante');
+		panel.updateTorch(EARTH, MARS, J2000);
+
+		panel.coastFraction = 0.5;
+		panel.updateTorchCustom(EARTH, MARS, J2000);
+		expect(panel.torchCustom?.profile).toBe('constant-thrust-custom');
+		expect(panel.offered.at(3)?.profile).toBe('constant-thrust-custom');
+
+		// On a preset, it is that preset's crossing under another name.
+		panel.coastFraction = 0.25;
+		panel.updateTorchCustom(EARTH, MARS, J2000);
+		const balanced = panel.torchPresets.find((arc) => arc.profile === 'constant-thrust-balanced');
+		expect(panel.torchCustom?.route.tofDays).toBeCloseTo(balanced!.route.tofDays, 6);
 	});
 
 	// Arriving with a torch ship is not the same as picking one: the link already
@@ -156,12 +198,12 @@ describe('TravelPanelState constant-thrust arc', () => {
 		await panel.solve(EARTH, MARS, J2000);
 
 		panel.updateTorch(EARTH, MARS, J2000);
-		expect(panel.torch).toBeNull();
+		expect(panel.torchPresets).toEqual([]);
 
 		panel.acceptVehicles([ROCINANTE]);
 		panel.updateTorch(EARTH, MARS, J2000);
 
-		expect(panel.torch).not.toBeNull();
+		expect(panel.torchPresets.length).toBeGreaterThan(0);
 		expect(panel.selectedProfile).toBe('fast');
 	});
 
@@ -182,7 +224,7 @@ describe('TravelPanelState constant-thrust arc', () => {
 		panel.acceptVehicles([ROCINANTE]);
 		panel.updateTorch(EARTH, MARS, J2000);
 
-		expect(panel.torch).not.toBeNull();
+		expect(panel.torchPresets.length).toBeGreaterThan(0);
 		expect(panel.selectedProfile).toBe('constant-thrust');
 	});
 
@@ -199,7 +241,7 @@ describe('TravelPanelState constant-thrust arc', () => {
 
 		panel.updateTorch(EARTH, MARS, J2000);
 
-		expect(panel.torch).toBeNull();
+		expect(panel.torchPresets).toEqual([]);
 		expect(panel.selectedProfile).toBeNull();
 	});
 

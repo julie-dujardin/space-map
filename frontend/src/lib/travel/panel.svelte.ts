@@ -37,6 +37,7 @@ import {
 } from '$lib/math/travel';
 import { ensureVehicles, vehicleCatalogue } from './vehicles';
 import { searchWindow } from './search-window';
+import { listedTorchArcs, TORCH_PRESETS, type TorchArc } from './torch-arcs';
 import {
 	DEFAULT_TRIP,
 	type EndpointMode,
@@ -187,16 +188,14 @@ export class TravelPanelState {
 	routes = $state<RouteChoice[]>([]);
 	/** A point picked off the porkchop, priced like any solved route. */
 	custom = $state<Route | null>(null);
-	/**
-	 * The constant-thrust arc, when the chosen craft has an acceleration to hold.
-	 *
-	 * Comes out of the craft rather than out of the search, and costs one
-	 * bisection rather than a grid, so it never goes near the worker.
-	 */
-	torch = $state<Route | null>(null);
-	/** Set when there is an arc and it lands after the deadline. The arc is not
-	 *  offered, but the coast is the one term that can cause this and the reader
-	 *  needs it back to undo. */
+	/** The preset constant-thrust arcs, flat out first. They come from the craft,
+	 *  not the search, and cost one shooting solve each. */
+	torchPresets = $state<TorchArc[]>([]);
+	/** The arc the cruise slider asks for. Kept apart from the presets because it
+	 *  is solved on its own. A drag must not cost four solves a frame. */
+	torchCustom = $state<TorchArc | null>(null);
+	/** Set when arcs exist and all of them land after the deadline. None is
+	 *  offered. The reader still needs the slider to undo the coast. */
 	torchMissedDeadline = $state(false);
 	/**
 	 * The spiral, when the chosen craft is one that cannot burn.
@@ -361,10 +360,11 @@ export class TravelPanelState {
 		const vehicle = this.vehicle;
 		// An arc held all the way is a claim about the drive, so a link naming one
 		// for a craft that cannot hold it named a trip that does not exist.
-		if (this.selectedProfile === 'constant-thrust') {
+		if (this.selectedProfile?.startsWith('constant-thrust')) {
 			if (!vehicle || constantThrustAccelMs2(vehicle) === undefined) {
 				this.selectedProfile = null;
-				this.torch = null;
+				this.torchPresets = [];
+				this.torchCustom = null;
 			}
 		}
 		// And a spiral is a claim about a drive that cannot burn, so the same holds
@@ -463,8 +463,9 @@ export class TravelPanelState {
 	 * refuse would bury it.
 	 */
 	get offered(): OfferedRoute[] {
-		const craftArc: OfferedRoute[] = [];
-		if (this.torch) craftArc.push({ profile: 'constant-thrust', route: this.torch });
+		const craftArc: OfferedRoute[] = [...this.torchPresets];
+		// Last among the arcs, like the hand-picked window among the transfers.
+		if (this.torchCustom) craftArc.push(this.torchCustom);
 		if (this.spiral) craftArc.push({ profile: 'low-thrust', route: this.spiral });
 		const offered: OfferedRoute[] = [...craftArc, ...this.routes];
 		const assist = this.#assistWorthOffering();
@@ -659,17 +660,47 @@ export class TravelPanelState {
 			: nowJd;
 	}
 
+	/** One held arc at one point on the coast span. Null when the drive cannot fly
+	 *  that crossing. */
+	#buildTorch(
+		origin: TravelBody,
+		target: TravelBody,
+		accelMs2: number,
+		nowJd: number,
+		frame: TransferFrame,
+		coastFraction: number
+	): Route | null {
+		// Every departure date flies the same arc, so the only thing a date says is
+		// when to start counting. A deadline says nothing at all until it is met.
+		return buildConstantThrustRoute(origin, target, this.#earliestDepartJd(nowJd), accelMs2, {
+			departureMode: this.departureMode,
+			arrivalMode: this.arrivalMode,
+			...this.endTerms,
+			aero: this.effectiveAero,
+			centralMu: frame.centralMu,
+			systemPrimary: frame.systemPrimary,
+			coastFraction
+		});
+	}
+
+	/** The acceleration the craft holds. Zero when there is no arc to be had.
+	 *  Null while the catalogue is still coming: an answer given then would drop
+	 *  the trajectory a shared link named. */
+	#torchAccelMs2(): number | null {
+		if (!this.craftKnown) return null;
+		const vehicle = this.vehicle;
+		return (vehicle ? constantThrustAccelMs2(vehicle) : undefined) ?? 0;
+	}
+
 	/**
-	 * Recompute the constant-thrust arc for the craft and the trip as they stand.
+	 * Recompute the preset arcs for the craft and the trip as they stand.
 	 *
-	 * Called on its own rather than from `solve`, because the two answer to
-	 * different things: choosing a craft is not a new search, and a new search
-	 * does not change how hard that craft's drive pushes.
+	 * Called on its own, not from `solve`. A new craft is not a new search, and a
+	 * new search does not change how hard the drive pushes.
 	 *
-	 * Nothing below reads `this.torch` back. This runs inside an effect, and the
-	 * arc is a fresh object every time, so reading it here would make the effect
-	 * depend on a value it had just replaced with an unequal one — which is not a
-	 * slow solve but an endless one.
+	 * Nothing below reads `this.torchPresets` back. This runs inside an effect and
+	 * builds fresh objects, so a read makes the effect depend on a value it just
+	 * replaced. That loops forever.
 	 */
 	updateTorch(
 		origin: TravelBody,
@@ -677,37 +708,65 @@ export class TravelPanelState {
 		nowJd: number,
 		frame: TransferFrame = { orbit: 'heliocentric' }
 	): void {
-		// The arc is entirely a fact about the craft, so there is nothing to say
-		// about it until the catalogue naming that craft is in. A pass taken during
-		// the wait would find no craft, conclude there is no arc, and take a shared
-		// link's own trajectory away from it.
-		if (!this.craftKnown) return;
+		const accelMs2 = this.#torchAccelMs2();
+		if (accelMs2 === null) return;
 
-		const vehicle = this.vehicle;
-		const accelMs2 = vehicle ? constantThrustAccelMs2(vehicle) : undefined;
-		// Every departure date flies the same arc, so the only thing a date says is
-		// when to start counting. A deadline says nothing at all until it is met.
-		const departJd = this.#earliestDepartJd(nowJd);
-		const arc = accelMs2
-			? buildConstantThrustRoute(origin, target, departJd, accelMs2, {
-					departureMode: this.departureMode,
-					arrivalMode: this.arrivalMode,
-					...this.endTerms,
-					aero: this.effectiveAero,
-					centralMu: frame.centralMu,
-					systemPrimary: frame.systemPrimary,
-					coastFraction: this.coastFraction
-				})
-			: null;
-		const missesDeadline = arc !== null && !this.#meetsDeadline(arc);
+		const found: TorchArc[] = [];
+		if (accelMs2 > 0) {
+			for (const preset of TORCH_PRESETS) {
+				const route = this.#buildTorch(
+					origin,
+					target,
+					accelMs2,
+					nowJd,
+					frame,
+					preset.coastFraction
+				);
+				if (route) found.push({ profile: preset.profile, route });
+			}
+		}
+		const listed = listedTorchArcs(found);
+		const offered = listed.filter((arc) => this.#meetsDeadline(arc.route));
 
-		const offer = missesDeadline ? null : arc;
-		this.torch = offer;
-		this.torchMissedDeadline = missesDeadline;
-		// The arc leads the list when a craft can hold it, but is never selected on
-		// the reader's behalf: a torch ship can fly the coasting routes too, and
-		// choosing between them is the step this would skip.
-		if (!offer && this.selectedProfile === 'constant-thrust') this.selectedProfile = null;
+		this.torchPresets = offered;
+		// Only the coast can put a crossing past a deadline.
+		this.torchMissedDeadline = listed.length > 0 && offered.length === 0;
+		// Never selected for the reader: a torch ship can fly the coasting routes
+		// too. But an arc that is no longer offered must release the panel.
+		const reading = this.selectedProfile;
+		if (
+			reading !== null &&
+			reading !== 'constant-thrust-custom' &&
+			reading.startsWith('constant-thrust') &&
+			!offered.some((arc) => arc.profile === reading)
+		) {
+			this.selectedProfile = null;
+		}
+	}
+
+	/** Recompute the arc the cruise slider asks for. It has its own method and
+	 *  effect because a drag must not re-solve the presets on every frame. */
+	updateTorchCustom(
+		origin: TravelBody,
+		target: TravelBody,
+		nowJd: number,
+		frame: TransferFrame = { orbit: 'heliocentric' }
+	): void {
+		const accelMs2 = this.#torchAccelMs2();
+		if (accelMs2 === null) return;
+
+		// Built wherever the slider is, presets included. A box that goes blank at
+		// both ends of its own travel looks broken.
+		const route =
+			accelMs2 > 0
+				? this.#buildTorch(origin, target, accelMs2, nowJd, frame, this.coastFraction)
+				: null;
+		const offered = route && this.#meetsDeadline(route);
+
+		this.torchCustom = offered ? { profile: 'constant-thrust-custom', route } : null;
+		// A coast past the deadline would leave the reader on a trajectory nothing
+		// offers. The presets drop their own.
+		if (!offered && this.selectedProfile === 'constant-thrust-custom') this.selectedProfile = null;
 	}
 
 	/**
@@ -866,7 +925,7 @@ export class TravelPanelState {
 		// rather than the grid, so it cannot retire a selection whose craft has yet
 		// to land.
 		const fromCraft =
-			this.selectedProfile === 'constant-thrust' || this.selectedProfile === 'low-thrust';
+			this.selectedProfile?.startsWith('constant-thrust') || this.selectedProfile === 'low-thrust';
 		if (fromCraft && !this.craftKnown) return;
 		if (
 			this.selectedProfile !== null &&
@@ -884,7 +943,8 @@ export class TravelPanelState {
 		this.routes = [];
 		this.grid = null;
 		this.custom = null;
-		this.torch = null;
+		this.torchPresets = [];
+		this.torchCustom = null;
 		this.torchMissedDeadline = false;
 		this.spiral = null;
 		this.assist = null;

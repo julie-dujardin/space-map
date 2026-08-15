@@ -71,24 +71,31 @@ const TIME_MODES: readonly TimeMode[] = ['now', 'depart', 'arrive'];
 
 /**
  * What the route list can offer: the solver's three, a point read off the
- * porkchop by hand, the arc a drive held all the way flies, the spiral a drive
+ * porkchop by hand, the arcs a drive held all the way flies, the spiral a drive
  * too weak to burn flies, and a route that swings past a third body. Only the
  * first four are points on the porkchop — every departure date flies the same
  * held arc, a spiral leaves when its phase closes, and a swing-by departs years
- * outside the grid — so none of the last three can be named by a `pick=` alone.
+ * outside the grid — so none of the rest can be named by a `pick=` alone.
+ *
+ * The held arc is four of them. How long the drive is off in the middle is the
+ * same kind of choice a launch window is. `constant-thrust` is the flat-out
+ * crossing. It keeps its old spelling so that old links still read.
  */
-export type RouteOption =
-	| RouteProfile
-	| 'custom'
+export type RouteOption = RouteProfile | 'custom' | TorchOption | 'low-thrust' | 'gravity-assist';
+export type TorchOption =
 	| 'constant-thrust'
-	| 'low-thrust'
-	| 'gravity-assist';
+	| 'constant-thrust-balanced'
+	| 'constant-thrust-efficient'
+	| 'constant-thrust-custom';
 const ROUTE_OPTIONS: readonly RouteOption[] = [
 	'fast',
 	'balanced',
 	'efficient',
 	'custom',
 	'constant-thrust',
+	'constant-thrust-balanced',
+	'constant-thrust-efficient',
+	'constant-thrust-custom',
 	'low-thrust',
 	'gravity-assist'
 ];
@@ -119,8 +126,9 @@ export interface TripState {
 	profile: RouteOption | null;
 	pick: TripPick | null;
 	/**
-	 * Where the constant-thrust arc sits between crossing flat out (0) and
-	 * coasting for as long as the model stands up (1).
+	 * Where the hand-set constant-thrust arc sits between a flat-out crossing (0)
+	 * and the longest coast the model holds (1). The presets sit at fixed points
+	 * on that span and do not read this.
 	 *
 	 * A share rather than a duration: how long a coast is on offer is a fact about
 	 * the pair and the drive, so a link carrying days would mean something else
