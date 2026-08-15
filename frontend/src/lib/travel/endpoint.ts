@@ -3,11 +3,11 @@
  *
  * A trajectory is always priced against a *body* — its mass sets the capture
  * burn, its radius the parking orbit, its atmosphere the aerocapture discount.
- * A surface feature does not change any of that; it only says where on the body
- * you touch down. So an endpoint is a body plus, optionally, a place on it.
+ * A place on that body does not change any of that; it only says where you
+ * touch down. So an endpoint is a body plus, optionally, a site on it.
  *
- * The one thing the feature does decide is the mode: there is no way to arrive
- * at a named crater except by landing in it.
+ * The one thing a site does decide is the mode: there is no way to arrive at a
+ * named crater, or at a lander parked in one, except by landing there.
  */
 
 /** What the endpoint picker hands back when a search result is chosen. */
@@ -21,7 +21,13 @@ export interface TravelEndpointPick {
 	name: string;
 }
 
-/** True when this end is a place on a surface, and so can only be landed on. */
-export function isSurfaceEndpoint(featureId: number | null | undefined): boolean {
-	return featureId != null;
-}
+/**
+ * The place on a body an end sits at, once it is known.
+ *
+ * A feature is named and has to be looked up; a landed probe carries its own
+ * coordinates out of the position stream. Both come down to a spot on a globe,
+ * which is all the trajectory ever wanted.
+ */
+export type EndSite =
+	| { kind: 'feature'; featureId: number }
+	| { kind: 'landed'; latDeg: number; lonDeg: number };

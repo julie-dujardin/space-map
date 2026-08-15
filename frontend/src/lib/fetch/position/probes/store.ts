@@ -31,6 +31,10 @@ import { chunkIndexForJd } from '$lib/fetch/metadata';
 
 const NEIGHBOR_WINDOW = 1;
 
+/** How many off-clock chunks to keep. A trip refines against two or three dates
+ *  and each may pull one chunk per zone, so this holds a whole refinement. */
+const WARMED_CHUNKS = 24;
+
 /** Per-zone params lifted from `metadata.position.zones[zone]` (flat, no
  *  `zooms` wrapper). `fit_center_naif_id` is the body each probe's position
  *  is relative to (10=Sun for interplanetary, 199=Mercury, …); the store
@@ -84,6 +88,9 @@ export class ProbeStore {
 	private readonly zoneParams: Map<string, ProbeZoneParams>;
 	/** `zone → chunkIdx → parsed chunk`. */
 	private readonly chunks = new Map<string, Map<number, FetchedProbes>>();
+	/** Chunks held for dates away from the clock, keyed `zone:chunkIdx` — see
+	 *  {@link warmAt}. */
+	private readonly warmed = new Map<string, FetchedProbes>();
 	/** In-flight `loadChunk` promises keyed by `zone:chunkIdx` — concurrent
 	 *  `ensure()` calls don't kick off duplicate fetches. */
 	private readonly inflight = new Map<string, Promise<void>>();
@@ -148,6 +155,54 @@ export class ProbeStore {
 		};
 	}
 
+	/**
+	 * Load whatever covers `jd` for the trip planner, off to one side.
+	 *
+	 * The window above belongs to the clock: it holds one date and drops the rest,
+	 * so a caller asking where a probe will be when a transfer reaches it — years
+	 * from whatever the clock says — would evict the frame's own chunks to be
+	 * answered, and lose the answer again on the next tick. These are kept apart
+	 * and capped instead, so neither cache can starve the other.
+	 */
+	async warmAt(jd: number): Promise<void> {
+		const jobs: Promise<void>[] = [];
+		for (const [zone, params] of this.zoneParams) {
+			const idx = chunkIndexForJd(params, jd);
+			if (idx < 0 || idx >= params.chunks) continue;
+			if (!isPresent(params.present, idx)) continue;
+			if (this.isResident(zone, idx)) continue;
+			const key = `${zone}:${idx}`;
+			if (this.warmed.has(key)) continue;
+			const existing = this.inflight.get(key);
+			if (existing) {
+				jobs.push(existing);
+				continue;
+			}
+			const job = this.fetchAndWarm(key, zone, idx, params);
+			this.inflight.set(key, job);
+			job.finally(() => this.inflight.delete(key));
+			jobs.push(job);
+		}
+		await Promise.all(jobs);
+	}
+
+	private async fetchAndWarm(
+		key: string,
+		zone: string,
+		chunkIdx: number,
+		params: ProbeZoneParams
+	): Promise<void> {
+		const chunk = await fetchProbes(zone, chunkIdx, params.float64_coeffs);
+		this.warmed.set(key, chunk);
+		// Oldest out: a planner asks about a handful of dates and then stops, and
+		// nothing here is on the render path to miss them.
+		while (this.warmed.size > WARMED_CHUNKS) {
+			const oldest = this.warmed.keys().next().value;
+			if (oldest === undefined) break;
+			this.warmed.delete(oldest);
+		}
+	}
+
 	private isResident(zone: string, chunkIdx: number): boolean {
 		return this.chunks.get(zone)?.has(chunkIdx) ?? false;
 	}
@@ -203,7 +258,7 @@ export class ProbeStore {
 		const preferred = new Set<string>();
 		for (const [zone, params] of this.zoneParams) {
 			const chunkIdx = chunkIndexForJd(params, jd);
-			const chunk = this.chunks.get(zone)?.get(chunkIdx);
+			const chunk = this.chunks.get(zone)?.get(chunkIdx) ?? this.warmed.get(`${zone}:${chunkIdx}`);
 			if (!chunk) continue;
 			const zonePreferred = isPreferred?.(params.fit_center_naif_id) ?? false;
 			for (let i = 0; i < chunk.probes.length; i++) {
@@ -252,7 +307,7 @@ export class ProbeStore {
 		let firstMatch: ProbeLocation | null = null;
 		for (const [zone, params] of this.zoneParams) {
 			const chunkIdx = chunkIndexForJd(params, jd);
-			const chunk = this.chunks.get(zone)?.get(chunkIdx);
+			const chunk = this.chunks.get(zone)?.get(chunkIdx) ?? this.warmed.get(`${zone}:${chunkIdx}`);
 			if (!chunk) continue;
 			for (let i = 0; i < chunk.probes.length; i++) {
 				if (chunk.ids[i] !== objectId) continue;

@@ -70,6 +70,52 @@ export interface OfferedRoute {
 /** Why no trip can be offered at all, as opposed to no route being found. */
 export type BlockReason = 'unknown-primary' | 'unknown-orbit' | 'no-target' | 'no-origin';
 
+/**
+ * A better description of one end at a date the search has landed on, or null
+ * when the one in hand is already good for it.
+ *
+ * Planets keep the same ellipse for centuries; a probe does not. What describes
+ * one is a fit over a window of weeks, and a transfer takes years — so a trip
+ * planned against the fit covering today aims at where a long-expired ellipse
+ * says the probe will be, which is nowhere near where it will. This is how the
+ * search asks again at the dates its own answer names.
+ */
+export type RefineEnd = (role: 'origin' | 'target', jd: number) => Promise<TravelBody | null>;
+
+/**
+ * How many times a search may be re-run against elements read at its own
+ * answer's dates.
+ *
+ * A pass is a whole porkchop, so this is the ceiling on what a correction may
+ * cost. Two converge a crossing that stays inside one fit; the third is for an
+ * answer that moves far enough to land in a different one.
+ */
+const MAX_REFINE_PASSES = 3;
+
+/** How little the dates have to move for a further pass to be answering the
+ *  same question. Well under the day a porkchop cell spans. */
+const REFINE_SETTLED_DAYS = 0.5;
+
+/** When a trip leaves and when it arrives, as the search has it. */
+interface TripDates {
+	departJd: number;
+	arriveJd: number;
+}
+
+/** The dates of the cheapest route on offer, or null when none came back. */
+function cheapestDates(routes: readonly RouteChoice[]): TripDates | null {
+	let best: RouteChoice | null = null;
+	for (const choice of routes) {
+		if (!best || choice.route.totalDvKms < best.route.totalDvKms) best = choice;
+	}
+	return best ? { departJd: best.route.departJd, arriveJd: best.route.arriveJd } : null;
+}
+
+/** The furthest either date moved between two passes, in days. */
+function moved(a: TripDates, b: TripDates): number {
+	return Math.max(Math.abs(a.departJd - b.departJd), Math.abs(a.arriveJd - b.arriveJd));
+}
+
 export class TravelPanelState {
 	originMode = $state<EndpointMode>(DEFAULT_TRIP.originMode);
 	targetMode = $state<EndpointMode>(DEFAULT_TRIP.targetMode);
@@ -95,11 +141,12 @@ export class TravelPanelState {
 	 *  the trip to an airless body and back does not lose the choice. Pricing
 	 *  reads `effectiveAero`, which is this choice as the arrival can honour it. */
 	aero = $state<AeroAssist>(DEFAULT_TRIP.aero);
-	/** Set when an end is a named place on a surface — there is only one way to
-	 *  arrive at one, so the mode is fixed and its picker is skipped. Comes from
-	 *  the path rather than the trip's terms, so it is not part of `trip`. */
-	originIsFeature = $state(false);
-	targetIsFeature = $state(false);
+	/** Set when an end is a place on a surface — a named feature, or a probe
+	 *  parked on one. There is only one way to arrive at a place, so the mode is
+	 *  fixed and its picker is skipped. Comes from what the end resolves to
+	 *  rather than from the trip's terms, so it is not part of `trip`. */
+	originAtSite = $state(false);
+	targetAtSite = $state(false);
 	timeMode = $state<TimeMode>(DEFAULT_TRIP.timeMode);
 	/** Departure or arrival date behind the non-'now' time modes, as a JD. */
 	pickedJd = $state<number | null>(DEFAULT_TRIP.pickedJd);
@@ -327,9 +374,9 @@ export class TravelPanelState {
 
 	/** Whether aerobraking is an arrival this trip can fly: it walks a loose
 	 *  orbit down into a tight one, so only a low-orbit arrival has one to walk.
-	 *  A named place is a landing whatever the picker last held. */
+	 *  A site is a landing whatever the picker last held. */
 	get aerobrakingApplies(): boolean {
-		return this.targetMode === 'low-orbit' && !this.targetIsFeature;
+		return this.targetMode === 'low-orbit' && !this.targetAtSite;
 	}
 
 	/**
@@ -346,9 +393,9 @@ export class TravelPanelState {
 	}
 
 	/** Arrival mode the kernel should price, from what the destination box says.
-	 *  Landing somewhere named is still a landing, whatever the box last held. */
+	 *  Landing on a site is still a landing, whatever the box last held. */
 	get arrivalMode(): ArrivalMode {
-		if (this.targetIsFeature) return 'landing';
+		if (this.targetAtSite) return 'landing';
 		if (this.targetMode === 'flyby') return 'flyby';
 		if (this.targetMode === 'surface') return 'landing';
 		// Which of the two remaining cases is picked no longer sets the orbit —
@@ -377,7 +424,7 @@ export class TravelPanelState {
 	}
 
 	get departureMode(): DepartureMode {
-		if (this.originIsFeature) return 'surface';
+		if (this.originAtSite) return 'surface';
 		return this.originMode === 'surface' ? 'surface' : 'orbit';
 	}
 
@@ -524,13 +571,13 @@ export class TravelPanelState {
 	 *
 	 * Picking an SLS while the origin box says "low orbit" means the box is
 	 * wrong, not the choice: a launcher is the one thing that cannot already be
-	 * up there. Left alone when the origin is a named place on a surface (there
-	 * is only one way to leave one) or when the craft departs from nowhere.
+	 * up there. Left alone when the origin is a place on a surface (there is
+	 * only one way to leave one) or when the craft departs from nowhere.
 	 */
 	selectVehicle(id: string | null): void {
 		this.vehicleId = this.vehicleId === id ? null : id;
 		const vehicle = this.vehicle;
-		if (!vehicle || this.originIsFeature) return;
+		if (!vehicle || this.originAtSite) return;
 		if (canDepartFrom(vehicle, this.departureMode)) return;
 		if (canDepartFrom(vehicle, 'surface')) this.originMode = 'surface';
 		else if (canDepartFrom(vehicle, 'orbit')) this.originMode = 'low-orbit';
@@ -829,13 +876,65 @@ export class TravelPanelState {
 	 *
 	 * `frame` says what the transfer goes round: nothing for an arc about the Sun,
 	 * an end for a trip to that body's own moon, a μ for two moons of one planet.
+	 *
+	 * `refine` is how an end that does not keep still gets answered honestly — see
+	 * {@link RefineEnd}. Each pass is a whole search, so the first answer is on
+	 * screen at the usual speed and the corrections land behind it.
 	 */
 	async solve(
 		origin: TravelBody,
 		target: TravelBody,
 		nowJd: number,
-		frame: TransferFrame = { orbit: 'heliocentric' }
+		frame: TransferFrame = { orbit: 'heliocentric' },
+		refine?: RefineEnd
 	): Promise<void> {
+		const token = ++this.#token;
+		let from = origin;
+		let to = target;
+		let previous: TripDates | null = null;
+		for (let pass = 0; ; pass++) {
+			if (!(await this.#solvePass(from, to, nowJd, frame, token))) return;
+
+			// Where this pass says the craft leaves and arrives. Read off the cheapest
+			// route rather than each of them: the families share a window, and one set
+			// of elements per pass is what keeps this a search rather than a search
+			// per trajectory.
+			const dates = cheapestDates(this.routes);
+			if (!dates) return;
+			// How far a pass moves the dates is how wrong the elements it was given
+			// were. Once that is under a day, another pass answers the same thing.
+			if (previous) {
+				const movedDays = moved(previous, dates);
+				console.debug(
+					`[travel] ${from.id} → ${to.id} re-solved at its own dates: they moved ` +
+						`${movedDays.toFixed(1)} d.`
+				);
+				if (movedDays < REFINE_SETTLED_DAYS) return;
+			}
+			previous = dates;
+			if (!refine || pass >= MAX_REFINE_PASSES) return;
+
+			const [nextFrom, nextTo] = await Promise.all([
+				refine('origin', dates.departJd),
+				refine('target', dates.arriveJd)
+			]);
+			if (token !== this.#token) return;
+			// Neither end has anything better to say about those dates.
+			if (!nextFrom && !nextTo) return;
+			from = nextFrom ?? from;
+			to = nextTo ?? to;
+		}
+	}
+
+	/** One search against the ends as given. False when it did not land — the
+	 *  trip was blocked, the search was superseded, or nothing came back. */
+	async #solvePass(
+		origin: TravelBody,
+		target: TravelBody,
+		nowJd: number,
+		frame: TransferFrame,
+		token: number
+	): Promise<boolean> {
 		const options = searchWindow({
 			origin,
 			target,
@@ -852,10 +951,9 @@ export class TravelPanelState {
 					`a=${origin.elements.a}/${target.elements.a}, e=${origin.elements.e}/${target.elements.e}`
 			);
 			this.block('unknown-orbit');
-			return;
+			return false;
 		}
 
-		const token = ++this.#token;
 		this.blocked = null;
 		this.status = 'solving';
 
@@ -869,11 +967,11 @@ export class TravelPanelState {
 		const result = await this.#solver.solve(origin, target, solveOptions);
 
 		// A newer solve has already started, or already answered.
-		if (token !== this.#token) return;
+		if (token !== this.#token) return false;
 
 		if (!result) {
 			this.status = 'empty';
-			return;
+			return false;
 		}
 
 		this.routes = result.routes;
@@ -883,6 +981,7 @@ export class TravelPanelState {
 		this.status = this.offered.length > 0 ? 'ready' : 'empty';
 
 		this.#settleSelection();
+		return true;
 	}
 
 	dispose(): void {

@@ -28,7 +28,7 @@ describe('TravelPanelState arrival mode', () => {
 	it('lands on a surface feature whatever the picker last held', () => {
 		const panel = new TravelPanelState();
 		panel.targetMode = 'flyby';
-		panel.targetIsFeature = true;
+		panel.targetAtSite = true;
 		expect(panel.arrivalMode).toBe('landing');
 	});
 });
@@ -45,7 +45,7 @@ describe('TravelPanelState departure mode', () => {
 	it('launches from the ground when the departure is a place on one', () => {
 		const panel = new TravelPanelState();
 		panel.originMode = 'low-orbit';
-		panel.originIsFeature = true;
+		panel.originAtSite = true;
 		expect(panel.departureMode).toBe('surface');
 	});
 });
@@ -275,6 +275,61 @@ describe('TravelPanelState choosing a trajectory', () => {
 
 		expect(panel.trip.profile).toBe('fast');
 		expect(panel.selected?.profile).toBe('fast');
+	});
+});
+
+/**
+ * An end that does not keep still is described by elements good only near the
+ * date they were read at. The search answers with dates of its own, and these
+ * are how it goes back and asks about those.
+ */
+describe('TravelPanelState refining a moving end', () => {
+	/** Mars a quarter of a turn along, standing in for an end that was described
+	 *  by the wrong elements the first time round. */
+	const MOVED = { ...MARS, elements: { ...MARS.elements, ma: (MARS.elements.ma + 90) % 360 } };
+
+	it('leaves a trip alone when neither end has anything to add', async () => {
+		const panel = new TravelPanelState();
+		const asked: [string, number][] = [];
+		await panel.solve(EARTH, MARS, J2000, undefined, async (role, jd) => {
+			asked.push([role, jd]);
+			return null;
+		});
+
+		expect(panel.status).toBe('ready');
+		// Each end once, at its own date: the origin as it leaves, the target as
+		// the craft gets there.
+		expect(asked.map(([role]) => role)).toEqual(['origin', 'target']);
+		expect(asked[0][1]).toBeLessThan(asked[1][1]);
+	});
+
+	it('asks each end at the dates the last pass landed on', async () => {
+		const panel = new TravelPanelState();
+		const dates: number[] = [];
+		await panel.solve(EARTH, MARS, J2000, undefined, async (role, jd) => {
+			if (role !== 'target') return null;
+			dates.push(jd);
+			return MOVED;
+		});
+
+		expect(panel.status).toBe('ready');
+		expect(dates.length).toBeGreaterThan(1);
+		// The second pass is asked about the arrival the first one found, which the
+		// moved target has changed.
+		expect(dates[1]).not.toBe(dates[0]);
+	});
+
+	it('stops once a pass stops moving the answer', async () => {
+		const panel = new TravelPanelState();
+		let passes = 0;
+		await panel.solve(EARTH, MARS, J2000, undefined, async (role) => {
+			if (role === 'target') passes++;
+			return MOVED;
+		});
+
+		// However far it is let run, a fixpoint ends it — and nothing here diverges.
+		expect(passes).toBeLessThanOrEqual(4);
+		expect(panel.routes.length).toBeGreaterThan(0);
 	});
 });
 
@@ -508,9 +563,9 @@ describe('TravelPanelState trip terms', () => {
 	// panel can be handed — and taking terms must not clear it.
 	it('leaves the feature flags to the route', () => {
 		const panel = new TravelPanelState();
-		panel.targetIsFeature = true;
+		panel.targetAtSite = true;
 		panel.applyTrip({ ...DEFAULT_TRIP, targetMode: 'flyby' });
-		expect(panel.targetIsFeature).toBe(true);
+		expect(panel.targetAtSite).toBe(true);
 		expect(panel.arrivalMode).toBe('landing');
 	});
 });

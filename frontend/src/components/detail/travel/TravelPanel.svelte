@@ -56,7 +56,7 @@
 		type TimeMode,
 		type TripState
 	} from '$lib/travel/trip';
-	import type { TravelEndpointPick } from '$lib/travel/endpoint';
+	import type { EndSite, TravelEndpointPick } from '$lib/travel/endpoint';
 	import { surfaceSiteAt } from '$lib/travel/surface-site';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 	import {
@@ -96,9 +96,10 @@
 		/** Localized labels for the two ends. */
 		originName: string | null;
 		targetName: string | null;
-		/** IAU feature id when an end is a named place on its body's surface. */
-		originFeatureId: number | null;
-		targetFeatureId: number | null;
+		/** Where on its body an end sits, when it sits somewhere: a named feature,
+		 *  or a probe parked on the surface. */
+		originSite: EndSite | null;
+		targetSite: EndSite | null;
 		/** Whether the URL names each end at all. Tells the two silences apart:
 		 *  nothing chosen yet, versus somewhere with no orbit to meet. */
 		originPicked: boolean;
@@ -156,14 +157,17 @@
 		/** What a body passed on the way is called. The two ends name themselves;
 		 *  this is for the ones in between — the body a swing-by goes past. */
 		resolveBodyName: (bodyId: string) => string;
+		/** An end as it is described at a date the search reached, when the row in
+		 *  hand does not describe it there. See `RefineEnd`. */
+		refineBody?: (id: string, jd: number) => Promise<BodyData | null>;
 	}
 	let {
 		origin,
 		target,
 		originName,
 		targetName,
-		originFeatureId,
-		targetFeatureId,
+		originSite,
+		targetSite,
 		originPicked,
 		targetPicked,
 		bodiesById,
@@ -183,7 +187,8 @@
 		onHoverChange,
 		onTimelineChange,
 		onHazardsChange,
-		resolveBodyName
+		resolveBodyName,
+		refineBody
 	}: Props = $props();
 
 	// Seeded once; from here on the two are kept in step by the effects below.
@@ -224,26 +229,32 @@
 	// on the chart below it.
 	let chart = $state<ReturnType<typeof PorkchopChart> | null>(null);
 
-	// The URL decides whether an end is a place on a surface; the panel state
-	// mirrors it so the mode getters and the field's own rendering agree.
+	// Whether each end is a place rather than a whole body; the panel state mirrors
+	// it so the mode getters and the field's own rendering agree.
 	$effect(() => {
-		panel.originIsFeature = originFeatureId !== null;
-		panel.targetIsFeature = targetFeatureId !== null;
+		panel.originAtSite = originSite !== null;
+		panel.targetAtSite = targetSite !== null;
 	});
 
-	// A feature end's place on its globe, so the drawn trajectory can end on it
-	// rather than at the body. Late like the names: the coordinates come off the
-	// nomenclature fetch, and the geometry key carries their arrival.
+	// Where each end sits on its globe, so the drawn trajectory can reach the spot
+	// rather than the body. A landed probe brings its own coordinates; a feature is
+	// named and has to be looked up, so it arrives late like the names do and the
+	// geometry key carries it.
 	let originSitePlace = $state<{ lat: number; lon: number } | null>(null);
 	let targetSitePlace = $state<{ lat: number; lon: number } | null>(null);
 	function loadSitePlace(
 		bodyId: string | undefined,
-		featureId: number | null,
+		site: EndSite | null,
 		set: (place: { lat: number; lon: number } | null) => void,
 		still: () => boolean
 	) {
 		set(null);
-		if (!bodyId || featureId === null) return;
+		if (!bodyId || !site) return;
+		if (site.kind === 'landed') {
+			set({ lat: site.latDeg, lon: site.lonDeg });
+			return;
+		}
+		const featureId = site.featureId;
 		fetchBodyNomenclature(bodyId)
 			.then((features) => {
 				const found = features.find((f) => f.featureId === featureId);
@@ -253,34 +264,34 @@
 	}
 	$effect(() => {
 		const bodyId = origin?.id;
-		const featureId = originFeatureId;
+		const site = originSite;
 		untrack(() =>
 			loadSitePlace(
 				bodyId,
-				featureId,
+				site,
 				(place) => (originSitePlace = place),
-				() => origin?.id === bodyId && originFeatureId === featureId
+				() => origin?.id === bodyId && originSite === site
 			)
 		);
 	});
 	$effect(() => {
 		const bodyId = target?.id;
-		const featureId = targetFeatureId;
+		const site = targetSite;
 		untrack(() =>
 			loadSitePlace(
 				bodyId,
-				featureId,
+				site,
 				(place) => (targetSitePlace = place),
-				() => target?.id === bodyId && targetFeatureId === featureId
+				() => target?.id === bodyId && targetSite === site
 			)
 		);
 	});
-	let originSite = $derived(
+	let originSiteAt = $derived(
 		origin && originSitePlace
 			? surfaceSiteAt(origin, originDetail, originSitePlace.lat, originSitePlace.lon)
 			: null
 	);
-	let targetSite = $derived(
+	let targetSiteAt = $derived(
 		target && targetSitePlace
 			? surfaceSiteAt(target, targetDetail, targetSitePlace.lat, targetSitePlace.lon)
 			: null
@@ -353,7 +364,7 @@
 	// A named place on a surface has already answered how it is met, so its box
 	// offers nothing — which is what an empty list means to `EndpointField`.
 	let originChoices = $derived<OrbitChoice[]>(
-		originTravel && originFacts && !panel.originIsFeature
+		originTravel && originFacts && !panel.originAtSite
 			? orbitChoices(originTravel, originFacts, 'origin', {
 					hasSurface: originHasGround,
 					customAltKm: panel.originAltKm
@@ -361,7 +372,7 @@
 			: []
 	);
 	let targetChoices = $derived<OrbitChoice[]>(
-		targetTravel && targetFacts && !panel.targetIsFeature
+		targetTravel && targetFacts && !panel.targetAtSite
 			? orbitChoices(targetTravel, targetFacts, 'target', {
 					hasSurface: targetHasGround,
 					customAltKm: panel.targetAltKm
@@ -402,10 +413,10 @@
 		return endpointModeLabel(mode, role, alt);
 	}
 	let originModeLabel = $derived(
-		endLabel('origin', panel.originIsFeature, panel.originMode, originChoices)
+		endLabel('origin', panel.originAtSite, panel.originMode, originChoices)
 	);
 	let targetModeLabel = $derived(
-		endLabel('target', panel.targetIsFeature, panel.targetMode, targetChoices)
+		endLabel('target', panel.targetAtSite, panel.targetMode, targetChoices)
 	);
 
 	// The orbit each end is met in, handed to the panel so every builder prices
@@ -457,7 +468,7 @@
 	let targetHasAir = $derived(
 		(aeroPressurePa(targetDetail) ?? 0) >= travelConstants.AERO_MIN_PRESSURE_PA
 	);
-	let isLanding = $derived(panel.targetIsFeature || panel.targetMode === 'surface');
+	let isLanding = $derived(panel.targetAtSite || panel.targetMode === 'surface');
 	let showAero = $derived(targetHasAir && panel.targetMode !== 'flyby');
 	// Ordered by how much of the arrival is still flown on the engine: all of it,
 	// then the capture burn only, then none of it. Aerobraking walks a loose orbit
@@ -550,6 +561,24 @@
 		return nowJd + (slowest ?? 0);
 	}
 
+	// The kernel's view of an end at one of the dates the search arrived at. The
+	// two ends are read at different dates on purpose: what a transfer needs is
+	// where the origin is when it leaves and where the destination is when it
+	// gets there, and for anything that does not keep still those are described
+	// by different elements.
+	async function refineEnd(role: 'origin' | 'target', jd: number): Promise<TravelBody | null> {
+		const body = role === 'origin' ? origin : target;
+		if (!body || !refineBody) return null;
+		const fresh = await refineBody(body.id, jd);
+		if (!fresh) return null;
+		return toTravelBody(
+			fresh,
+			lookup,
+			role === 'origin' ? originDetail : targetDetail,
+			frame.orbit
+		);
+	}
+
 	// One effect owns re-solving, so every input that should trigger one is
 	// listed here rather than hidden behind an async write elsewhere.
 	$effect(() => {
@@ -575,7 +604,7 @@
 			panel.block('unknown-orbit');
 			return;
 		}
-		void panel.solve(from, to, nowJd, frame);
+		void panel.solve(from, to, nowJd, frame, refineEnd);
 	});
 
 	// The two trajectories that come off the craft are their own effect: they turn
@@ -662,15 +691,15 @@
 			// is, so the geometry needs the same candidates the search had.
 			vias: assistBodies,
 			surfaceSites: {
-				departure: originSite ?? undefined,
-				arrival: targetSite ?? undefined
+				departure: originSiteAt ?? undefined,
+				arrival: targetSiteAt ?? undefined
 			}
 		});
 	}
 
 	// The site coordinates land after the geometry is first drawn, the way the
 	// names land after the labels; their arrival has to re-aim the ground leg.
-	let sitesKey = $derived((originSite ? 'o' : '') + (targetSite ? 't' : ''));
+	let sitesKey = $derived((originSiteAt ? 'o' : '') + (targetSiteAt ? 't' : ''));
 
 	let pathKey = $derived.by(() => {
 		const route = panel.selectedRoute;
@@ -1041,7 +1070,7 @@
 					role="origin"
 					bodyName={originName}
 					placeholder={m.travel_choose_origin()}
-					isFeature={panel.originIsFeature}
+					isFeature={panel.originAtSite}
 					mode={panel.originMode}
 					onModeChange={(mode: EndpointMode) => (panel.originMode = mode)}
 					choices={originChoices}
@@ -1073,7 +1102,7 @@
 					role="target"
 					bodyName={targetName}
 					placeholder={m.travel_choose_target()}
-					isFeature={panel.targetIsFeature}
+					isFeature={panel.targetAtSite}
 					mode={panel.targetMode}
 					onModeChange={(mode: EndpointMode) => (panel.targetMode = mode)}
 					choices={targetChoices}

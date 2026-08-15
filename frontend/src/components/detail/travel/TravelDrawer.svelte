@@ -29,7 +29,8 @@
 	import { resolveTripBodies } from '$lib/travel/resolve';
 	import { ASSIST_BODY_IDS } from '$lib/travel/assist-bodies';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
-	import type { TravelEndpointPick } from '$lib/travel/endpoint';
+	import type { EndSite, TravelEndpointPick } from '$lib/travel/endpoint';
+	import { landedEnd, type LandedEnd } from '$lib/travel/probe-end';
 	import type { Crumb } from '$lib/state/breadcrumb';
 	import DrawerTitle from '../frame/DrawerTitle.svelte';
 	import { routeLabel } from './route-labels';
@@ -128,20 +129,90 @@
 		return elements ? { ...found.data, ...elements } : null;
 	}
 
+	/**
+	 * One end read again at a date the search has reached, when the row in hand
+	 * does not describe it there.
+	 *
+	 * A planet's ellipse is good for centuries. A probe's is a fit over the weeks
+	 * its chunk covers, so a transfer arriving years later is aimed by an ellipse
+	 * that expired long before. Nothing comes back for a probe that goes round
+	 * another primary by then: elements about a different centre are not a
+	 * correction to these, they are a different trip.
+	 */
+	async function refineBody(id: string, jd: number): Promise<BodyData | null> {
+		const found = ctx?.getBody(id);
+		const rederive = found?.rederiveElements;
+		if (!found || !rederive) return null;
+		if (jd >= found.data.validityStart && jd <= found.data.validityEnd) return null;
+
+		const store = ctx?.probeStore;
+		if (store && id.startsWith('probe-')) {
+			await store.warmAt(jd);
+			const there = store.probeWithCenter(id, jd);
+			if (!there) {
+				console.debug(
+					`[travel] ${id} has no fit covering the trip's own dates — keeping the last.`
+				);
+				return null;
+			}
+			const here = store.probeWithCenter(id, nowJd);
+			if (here && here.fitCenterNaifId !== there.fitCenterNaifId) {
+				console.debug(
+					`[travel] ${id} goes round naif-${there.fitCenterNaifId} by then, not this trip.`
+				);
+				return null;
+			}
+		}
+		const elements = rederive(jd);
+		return elements ? { ...found.data, ...elements } : null;
+	}
+
+	/**
+	 * Each end as a probe parked on a surface, when that is what it is.
+	 *
+	 * A landed probe is a place rather than a body: it has no orbit of its own,
+	 * and the trip is flown to the body holding it. So the end is swapped for its
+	 * host here, once, and the probe survives as the site the arc reaches — which
+	 * is exactly what a named crater already does.
+	 */
+	let fromLanded = $state.raw<LandedEnd | null>(null);
+	let toLanded = $state.raw<LandedEnd | null>(null);
+
+	/** Where a probe is parked. Nothing else has a place to be, so nothing else
+	 *  costs a fetch. */
+	async function locateEnd(id: string | null): Promise<LandedEnd | null> {
+		if (id === null || !id.startsWith('probe-')) return null;
+		const store = ctx?.probeStore;
+		if (!store) return null;
+		// The renderer warms this window every frame, so only a cold deep link
+		// waits on a fetch this started.
+		await store.ensure(nowJd).done;
+		return landedEnd(store, id, nowJd);
+	}
+
 	$effect(() => {
-		// The swing-by candidates ride along with the trip's own ends. They are the
-		// planets, so the scene almost always has them already, and the resolver
-		// caches for the session — asking for them costs a walk, not a fetch.
-		const ids = [...[fromId, toId].filter((id) => id !== null), ...ASSIST_BODY_IDS];
+		const ends = [fromId, toId];
 		let cancelled = false;
 		resolving = true;
-		// Untracked: `residentBody` runs synchronously inside the resolver and reads
-		// the scene, which moves. Without this the effect depends on every body it
-		// asked about and re-runs as they do — a fresh map, a fresh solve, forever.
-		// The ids above are the whole dependency, which is what the comment on
-		// `tripBodies` claims and what only held while the ends were the only ones
-		// looked up.
-		untrack(() => resolveTripBodies(ids, residentBody)).then((bodies) => {
+		void (async () => {
+			const [from, to] = await Promise.all(ends.map(locateEnd));
+			if (cancelled) return;
+			fromLanded = from;
+			toLanded = to;
+			// The swing-by candidates ride along with the trip's own ends. They are the
+			// planets, so the scene almost always has them already, and the resolver
+			// caches for the session — asking for them costs a walk, not a fetch.
+			const ids = [
+				...[from?.hostId ?? ends[0], to?.hostId ?? ends[1]].filter((id) => id !== null),
+				...ASSIST_BODY_IDS
+			];
+			// Untracked: `residentBody` runs synchronously inside the resolver and reads
+			// the scene, which moves. Without this the effect depends on every body it
+			// asked about and re-runs as they do — a fresh map, a fresh solve, forever.
+			// The ids above are the whole dependency, which is what the comment on
+			// `tripBodies` claims and what only held while the ends were the only ones
+			// looked up.
+			const bodies = await untrack(() => resolveTripBodies(ids, residentBody));
 			if (cancelled) return;
 			// An end that resolved once is kept when a later pass cannot find it: the
 			// scene's index is momentarily empty while it rebuilds, and a pass that
@@ -152,14 +223,28 @@
 			}
 			tripBodies = bodies;
 			resolving = false;
-		});
+		})();
 		return () => {
 			cancelled = true;
 		};
 	});
 
-	let origin = $derived(fromId === null ? null : (tripBodies.get(fromId) ?? null));
-	let target = $derived(toId === null ? null : (tripBodies.get(toId) ?? null));
+	/** The body each end is priced against: the host when the end is parked on
+	 *  one, else the end itself. */
+	let originId = $derived(fromLanded?.hostId ?? fromId);
+	let targetId = $derived(toLanded?.hostId ?? toId);
+
+	let origin = $derived(originId === null ? null : (tripBodies.get(originId) ?? null));
+	let target = $derived(targetId === null ? null : (tripBodies.get(targetId) ?? null));
+
+	/** Where on its body each end sits, for the panel to aim the ground leg at. */
+	let originSite = $derived<EndSite | null>(siteOf(fromLanded, fromFeatureId));
+	let targetSite = $derived<EndSite | null>(siteOf(toLanded, toFeatureId));
+
+	function siteOf(landed: LandedEnd | null, featureId: number | null): EndSite | null {
+		if (landed) return { kind: 'landed', latDeg: landed.latDeg, lonDeg: landed.lonDeg };
+		return featureId === null ? null : { kind: 'feature', featureId };
+	}
 
 	/**
 	 * Whether the panel has ever had an origin to show.
@@ -259,8 +344,29 @@
 		return loadFeatureName(toId, toFeatureId);
 	});
 
-	/** What an end is called: the named place when there is one, else the body. */
-	function endpointName(body: BodyData, featureId: number | null): string {
+	// A probe parked on a surface is labelled by the probe rather than by the
+	// planet under it: the trip is to Mars 6, which happens to be at Mars.
+	let landedNames = $state<Record<string, string>>({});
+	function loadLandedName(id: string | null, landed: LandedEnd | null) {
+		if (id === null || !landed || landedNames[id]) return;
+		let cancelled = false;
+		fetchObjectDetail(id, false)
+			.then((d) => {
+				const name = d.localized?.name ?? d.global?.name;
+				if (name && !cancelled) landedNames = { ...landedNames, [id]: name };
+			})
+			.catch((e) => console.warn(`[travel] could not name landed probe ${id}:`, e));
+		return () => {
+			cancelled = true;
+		};
+	}
+	$effect(() => loadLandedName(fromId, fromLanded));
+	$effect(() => loadLandedName(toId, toLanded));
+
+	/** What an end is called: the probe or the named place when it is one of
+	 *  those, else the body. */
+	function endpointName(body: BodyData, id: string | null, featureId: number | null): string {
+		if (id !== null && landedNames[id]) return landedNames[id];
 		if (featureId === null) return displayName(body);
 		return featureNames[`${body.id}:${featureId}`] ?? displayName(body);
 	}
@@ -316,8 +422,8 @@
 			});
 	}
 
-	$effect(() => loadDetail('origin', fromId, (d) => (originDetail = d)));
-	$effect(() => loadDetail('target', toId, (d) => (targetDetail = d)));
+	$effect(() => loadDetail('origin', originId, (d) => (originDetail = d)));
+	$effect(() => loadDetail('target', targetId, (d) => (targetDetail = d)));
 
 	// The header carries the panel's step back, rather than the panel growing a
 	// second one under it: reading a trajectory, the crumb returns to the list it
@@ -451,17 +557,18 @@
 				originName={fromId === null
 					? null
 					: origin
-						? endpointName(origin, fromFeatureId)
+						? endpointName(origin, fromId, fromFeatureId)
 						: (originDetail?.name ?? fromId)}
 				targetName={toId === null
 					? null
 					: target
-						? endpointName(target, toFeatureId)
+						? endpointName(target, toId, toFeatureId)
 						: // Named but unplaceable: the bundle still knows what it is called, and
 							// a destination that reads as empty would look like nothing was chosen.
 							(targetDetail?.name ?? toId)}
-				originFeatureId={fromFeatureId}
-				targetFeatureId={toFeatureId}
+				{originSite}
+				{targetSite}
+				{refineBody}
 				originPicked={fromId !== null}
 				targetPicked={toId !== null}
 				{nowJd}
