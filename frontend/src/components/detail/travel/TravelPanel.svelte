@@ -81,8 +81,6 @@
 	import CruiseBox from './CruiseBox.svelte';
 	import RouteTabs from './RouteTabs.svelte';
 	import RouteDetail from './RouteDetail.svelte';
-	import PorkchopChart from './PorkchopChart.svelte';
-	import { routeLabel } from './route-labels';
 	import { endpointModeLabel } from './endpoint-labels';
 	import { hazardKey, routeKey, timelineKey } from './route-keys';
 
@@ -223,10 +221,6 @@
 		if (open) openField = field;
 		else if (openField === field) openField = null;
 	}
-	// The empty fourth route row sends the reader here, so the list needs a handle
-	// on the chart below it.
-	let chart = $state<ReturnType<typeof PorkchopChart> | null>(null);
-
 	// Whether each end is a place rather than a whole body; the panel state mirrors
 	// it so the mode getters and the field's own rendering agree.
 	$effect(() => {
@@ -921,28 +915,6 @@
 	// into "leaving Mars", which is how half a trip gets turned round.
 	let anyEnd = $derived(originPicked || targetPicked);
 
-	// Where each trajectory the solver found sits on the launch-window field. Only
-	// those: a swing-by departs years outside the grid's own span and a drive held
-	// all the way is not a point on it at all, so neither has a place to be marked.
-	let windowMarks = $derived([
-		...panel.routes.map((choice) => ({
-			id: choice.profile,
-			departJd: choice.route.departJd,
-			tofDays: choice.route.tofDays,
-			label: routeLabel(choice.profile)
-		})),
-		...(panel.custom
-			? [
-					{
-						id: 'custom',
-						departJd: panel.custom.departJd,
-						tofDays: panel.custom.tofDays,
-						label: routeLabel('custom')
-					}
-				]
-			: [])
-	]);
-
 	// Which of the two steps is showing. A trajectory is chosen or it is not, and
 	// that is the whole of it — there is no third state where the form and the
 	// trajectory are both up.
@@ -984,8 +956,9 @@
 		state={panel}
 		{family}
 		nameOf={resolveBodyName}
-		onFocusField={panel.grid ? () => chart?.focusField() : null}
 		hazardsFor={(profile) => hazardsByProfile.get(profile) ?? NO_HAZARDS}
+		hovered={hoveredProfile}
+		onHover={(id) => (hoveredProfile = id)}
 	/>
 {/snippet}
 
@@ -1247,29 +1220,6 @@
 				</RouteTabs>
 			{:else}
 				<div class="flex flex-col gap-2">{@render trajectories()}</div>
-			{/if}
-
-			<!-- The field belongs to the family read off it: the marks on it are the
-			     solver's windows, and there is no point on it that is a spiral or an
-			     arc held under thrust. -->
-			{#if panel.grid && family === 'transfer'}
-				<!-- The field the list is read off, with the solved routes marked on it:
-			     every point on it is a trajectory nobody offered, and picking one adds
-			     it to the list rather than opening it — a pick is a drag, and every
-			     point crossed on the way would otherwise be opened and closed again. -->
-				<section class="flex flex-col gap-2">
-					<h4 class="text-sm font-medium">{m.travel_launch_windows()}</h4>
-					<div class="border-border/60 border-t"></div>
-					<PorkchopChart
-						bind:this={chart}
-						grid={panel.grid}
-						route={panel.custom}
-						marks={windowMarks}
-						hovered={hoveredProfile}
-						onHover={(id) => (hoveredProfile = id)}
-						onPick={(departJd, tofDays) => panel.pickCustom(departJd, tofDays)}
-					/>
-				</section>
 			{/if}
 		{/if}
 	{/if}

@@ -19,6 +19,8 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import RouteRowBody from './RouteRowBody.svelte';
 	import { blockedText } from './route-blocked';
+	import { TORCH_PRESETS } from '$lib/travel/torch-arcs';
+	import { routeMark } from './route-tier';
 
 	const appState = getContext<AppState | undefined>('appState');
 
@@ -42,6 +44,10 @@
 
 	let rowClass =
 		'flex w-full items-center gap-3 rounded-md px-3 pt-2 pb-1 text-start transition-colors';
+
+	/** The handle's width, from the slider's own `size-3`. The handle is held
+	 *  inside the bar, so a mark on the same span must be held the same way. */
+	const THUMB_PX = 12;
 </script>
 
 <section class="border-border/60 flex flex-col rounded-md border border-dashed">
@@ -80,15 +86,31 @@
 				{/if}
 			</span>
 		</div>
-		<Slider
-			type="single"
-			value={state.coastFraction}
-			onValueChange={(value: number) => (state.coastFraction = value)}
-			min={0}
-			max={1}
-			step={0.01}
-			aria-label={m.travel_cruise_time()}
-		/>
+		<div class="relative">
+			<!-- Where the named arcs sit on the same span, each in the colour of its
+			     own row. Drawn behind the bar and the handle, so it shows above and
+			     below them and nothing it marks is covered. -->
+			<span class="pointer-events-none absolute inset-0 block" aria-hidden="true">
+				{#each TORCH_PRESETS as preset (preset.profile)}
+					<span
+						class="absolute top-1/2 h-5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full {routeMark(
+							preset.profile
+						)}"
+						style="inset-inline-start: calc({THUMB_PX /
+							2}px + {preset.coastFraction} * (100% - {THUMB_PX}px))"
+					></span>
+				{/each}
+			</span>
+			<Slider
+				type="single"
+				value={state.coastFraction}
+				onValueChange={(value: number) => (state.coastFraction = value)}
+				min={0}
+				max={1}
+				step={0.01}
+				aria-label={m.travel_cruise_time()}
+			/>
+		</div>
 		{#if state.torchMissedDeadline}
 			<p class="text-muted-foreground text-xs">{m.travel_cruise_missed()}</p>
 		{/if}

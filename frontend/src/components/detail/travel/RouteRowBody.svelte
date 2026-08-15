@@ -18,6 +18,7 @@
 	import { hazardChip } from '$lib/travel/hazard-labels';
 	import type { RouteOption } from '$lib/travel/trip';
 	import { routeLabel } from './route-labels';
+	import { routeMark } from './route-tier';
 	import type { Blocked } from './route-blocked';
 	import { hazardIcon, HAZARD_TEXT } from './hazard-style';
 
@@ -31,6 +32,9 @@
 		blocked?: Blocked | null;
 		/** The body it goes past, named, on the one kind that does. */
 		via?: string | null;
+		/** What to say in place of the dates while there is no route: how to get
+		 *  one. */
+		hint?: string | null;
 		/** Keep the chip line's height. A row with no chips stays as tall as one
 		 *  with chips. */
 		reserveHazards?: boolean;
@@ -41,8 +45,12 @@
 		hazards = [],
 		blocked = null,
 		via = null,
+		hint = null,
 		reserveHazards = false
 	}: Props = $props();
+
+	/** The colour this trajectory carries everywhere else in the panel. */
+	let mark = $derived(routeMark(profile));
 
 	/** As many chips as fit a narrow row. They arrive worst first, so the mildest
 	 *  are dropped. */
@@ -55,9 +63,13 @@
 
 <span class="min-w-0 flex-1">
 	<!-- The acceleration goes on the name. It is the only figure that separates
-	     two powered routes, and on a spiral it explains the duration. -->
+	     two powered routes, and on a spiral it explains the duration. The dot
+	     before it repeats the colour this trajectory is marked with. -->
 	<span class="block text-sm font-medium">
-		{routeLabel(profile)}{#if accel !== null}<span
+		{#if mark}<span
+				class="{mark} me-1.5 inline-block size-2 rounded-full align-[0.1em]"
+				aria-hidden="true"
+			></span>{/if}{routeLabel(profile)}{#if accel !== null}<span
 				class="text-muted-foreground ms-1.5 text-xs font-normal tabular-nums"
 				>{formatAcceleration(accel)}</span
 			>{:else if via}<span class="text-muted-foreground ms-1.5 text-xs font-normal"
@@ -69,6 +81,8 @@
 			{formatJulianDate(route.departJd)}
 			<MoveRightIcon class="inline size-[1em] align-[-0.125em] rtl:rotate-180" aria-hidden="true" />
 			{formatJulianDate(route.arriveJd)}
+		{:else if hint}
+			{hint}
 		{:else}
 			&mdash;
 		{/if}

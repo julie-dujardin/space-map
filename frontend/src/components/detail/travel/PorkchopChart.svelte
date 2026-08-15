@@ -29,6 +29,9 @@
 		departJd: number;
 		tofDays: number;
 		label: string;
+		/** The colour its row carries, as a background class. Null takes the plain
+		 *  one, for a window with no name of its own. */
+		mark?: string | null;
 	}
 
 	interface Props {
@@ -264,9 +267,8 @@
 						top: calc({DOT_RADIUS_PX}px + {point.y} * (100% - {DOT_RADIUS_PX * 2}px))"
 				>
 					<span
-						class="ring-background bg-foreground block rounded-full ring-2 transition-[width,height] {lit
-							? 'size-3.5'
-							: 'size-2.5'}"
+						class="ring-background block rounded-full ring-2 transition-[width,height] {point.mark ??
+							'bg-foreground'} {lit ? 'size-3.5' : 'size-2.5'}"
 					></span>
 					{#if lit}
 						<span
