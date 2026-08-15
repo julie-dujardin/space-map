@@ -8,7 +8,8 @@
  * destinations needs. Every approximation is named in the constants module.
  */
 
-import type { TravelBody } from './body';
+import { equatorialTiltDeg, type TravelBody } from './body';
+import type { Vec3 } from './vec3';
 import {
 	AEROBRAKING_RATE_KMS_PER_DAY,
 	AEROCAPTURE_TRIM_KMS,
@@ -97,21 +98,89 @@ function aeroPassAltitudeKm(body: TravelBody): number {
 }
 
 /**
+ * Where a trip meets the ground, and how tilted the plane it has to fly is.
+ *
+ * Absent from a trip that never touches a surface, and absent too from one
+ * that does but has not been told where — the estimates then read as the
+ * eastward equatorial launch they are calibrated on.
+ */
+export interface SurfaceSite {
+	/** Latitude of the pad or the landing site, degrees. */
+	latDeg: number;
+	/**
+	 * How far the arc's asymptote lies out of the body's equator, degrees. The
+	 * plane has to hold it as well as reach the site, so the steeper of the two
+	 * is what the ascent flies. Absent when the plan cannot say, which leaves
+	 * the site alone to set it.
+	 */
+	asymptoteTiltDeg?: number;
+}
+
+/**
+ * One end of a trip as the ascent and descent estimates want it: a latitude,
+ * and the tilt the arc forces on the plane serving it.
+ *
+ * `asymptote` is the excess-velocity vector at that end — a direction the plane
+ * has to hold on top of reaching the site. Null says the arc names none, which
+ * leaves the site's own latitude to set the plane; that is right for a transfer
+ * inside a system, where the arc can always be flown from a node.
+ */
+export function surfaceSite(
+	body: TravelBody,
+	latDeg: number | undefined,
+	asymptote: Vec3 | null
+): SurfaceSite | undefined {
+	if (latDeg === undefined) return undefined;
+	return {
+		latDeg,
+		asymptoteTiltDeg: asymptote ? equatorialTiltDeg(body, asymptote) : undefined
+	};
+}
+
+/**
+ * The surface speed an ascent from `site` does not get to keep, km/s.
+ *
+ * A launch starts with the ground's own velocity, but only the part lying
+ * along the plane it climbs into counts. Writing the launch azimuth in terms
+ * of the inclination collapses that to ω·R·cos(i) — the credit belongs to the
+ * plane flown, and latitude enters only by setting how low the plane can lie.
+ *
+ * What is charged is the shortfall against ω·R rather than the credit itself:
+ * the published ascents {@link ascentDv} is calibrated on are all eastward
+ * near-equatorial launches, which already keep nearly the whole of it. So the
+ * equator costs nothing extra, a polar climb pays the entire surface speed,
+ * and a pad in between pays what its latitude denies it. The same holds in
+ * reverse for a powered landing, which has to cancel the same speed.
+ */
+export function planeTiltPenaltyKms(body: TravelBody, site?: SurfaceSite): number {
+	const omega = Math.abs(body.spinRadPerSec ?? 0);
+	if (!site || !(omega > 0)) return 0;
+	const incDeg = Math.min(
+		90,
+		Math.max(Math.abs(site.latDeg), Math.abs(site.asymptoteTiltDeg ?? 0))
+	);
+	return omega * body.radiusKm * (1 - Math.cos(incDeg * (Math.PI / 180)));
+}
+
+/**
  * Δv from the surface to the parking orbit, km/s.
  *
  * Circular velocity plus gravity/steering losses scaled by surface gravity,
  * plus a drag term for bodies with an atmosphere. The drag term is capped
  * because it is linear in pressure and Venus would otherwise dominate the
  * result on a coefficient that was only ever fitted near 1 bar.
+ *
+ * Where the launch leaves from is known, it pays for the spin it cannot use —
+ * see {@link planeTiltPenaltyKms}.
  */
-export function ascentDv(body: TravelBody): number {
+export function ascentDv(body: TravelBody, site?: SurfaceSite): number {
 	const vCirc = circularSpeed(body.mu, parkingRadiusKm(body));
 	const gravityLoss = ASCENT_GRAVITY_LOSS_FRACTION * circularSpeed(body.mu, body.radiusKm);
 	const drag = Math.min(
 		ASCENT_DRAG_LOSS_CAP_KMS,
 		ASCENT_DRAG_LOSS_KMS_PER_BAR * (body.surfacePressureBar ?? 0)
 	);
-	return vCirc + gravityLoss + drag;
+	return vCirc + gravityLoss + drag + planeTiltPenaltyKms(body, site);
 }
 
 /**
@@ -242,12 +311,20 @@ export function arrivalCost(
 	vInfKms: number,
 	mode: ArrivalMode,
 	aero: AeroAssist = 'none',
-	orbit?: EndOrbit
+	orbit?: EndOrbit,
+	site?: SurfaceSite
 ): ArrivalCost {
 	// The approach is priced at the periapsis it is flown to, which is the one the
 	// orbit asked for — arriving into a stationary orbit still dips low first.
 	const rPeri = pricedArrivalOrbit(body, mode, orbit).rPeriKm;
-	return arrivalCostFromSpeed(body, periapsisSpeed(body.mu, rPeri, vInfKms), mode, aero, orbit);
+	return arrivalCostFromSpeed(
+		body,
+		periapsisSpeed(body.mu, rPeri, vInfKms),
+		mode,
+		aero,
+		orbit,
+		site
+	);
 }
 
 /**
@@ -276,7 +353,8 @@ export function arrivalCostFromSpeed(
 	vPeriKms: number,
 	mode: ArrivalMode,
 	aero: AeroAssist = 'none',
-	orbit?: EndOrbit
+	orbit?: EndOrbit,
+	site?: SurfaceSite
 ): ArrivalCost {
 	if (mode === 'flyby') return NO_ARRIVAL_COST;
 
@@ -285,14 +363,17 @@ export function arrivalCostFromSpeed(
 	const assisted = aero !== 'none' && canAeroBrake(body);
 
 	// An atmosphere is the whole descent. Without one, landing is the ascent run
-	// backwards, and that is true whether or not the arrival used the air.
+	// backwards — the site's spin included, since the ground it is cancelling
+	// speed against is the same moving ground. Under a parachute the air has
+	// already taken that speed, so what is left owes the site nothing.
 	const descent =
 		mode !== 'landing'
 			? 0
 			: assisted
 				? POWERED_TOUCHDOWN_KMS
 				: circularSpeed(mu, rPeri) +
-					ASCENT_GRAVITY_LOSS_FRACTION * circularSpeed(mu, body.radiusKm);
+					ASCENT_GRAVITY_LOSS_FRACTION * circularSpeed(mu, body.radiusKm) +
+					planeTiltPenaltyKms(body, site);
 
 	if (!assisted) {
 		return {
@@ -428,13 +509,14 @@ export function departureCost(
 	body: TravelBody,
 	vInfKms: number,
 	mode: DepartureMode,
-	orbit?: EndOrbit
+	orbit?: EndOrbit,
+	site?: SurfaceSite
 ): { ascentKms: number; injectionKms: number } {
 	// An ascent goes to the parking orbit and leaves from there: which orbit the
 	// craft would otherwise have been sitting in is not a question a launch asks.
 	const from = mode === 'surface' || !orbit ? parkingOrbit(body) : sane(orbit);
 	return {
-		ascentKms: mode === 'surface' ? ascentDv(body) : 0,
+		ascentKms: mode === 'surface' ? ascentDv(body, site) : 0,
 		// Spent at periapsis, where the Oberth effect is largest — and where an
 		// elliptical parking orbit is already moving faster than a circular one, so
 		// leaving from one is cheaper still.

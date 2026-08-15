@@ -10,7 +10,8 @@ import {
 	injectionDv,
 	periapsisSpeed,
 	parkingOrbit,
-	parkingRadiusKm
+	parkingRadiusKm,
+	planeTiltPenaltyKms
 } from './maneuvers';
 import { EARTH, JUPITER, MARS, MOON, SATURN, VENUS } from './test-fixtures';
 
@@ -232,6 +233,88 @@ describe('arrivalCost', () => {
 		expect(total(flyby)).toBeLessThan(total(capture));
 		expect(total(capture)).toBeLessThan(total(low));
 		expect(total(low)).toBeLessThan(total(landing));
+	});
+});
+
+// Real pads, so the spread between them can be read against what launch
+// operators say about their own latitudes.
+const KOUROU_LAT = 5.24;
+const CANAVERAL_LAT = 28.49;
+const BAIKONUR_LAT = 45.96;
+const VOSTOCHNY_LAT = 51.88;
+
+describe('planeTiltPenaltyKms', () => {
+	it('charges nothing at the equator and the whole surface speed at the pole', () => {
+		expect(planeTiltPenaltyKms(EARTH, { latDeg: 0 })).toBeCloseTo(0, 12);
+		// Earth's ground moves at 465 m/s under the equator; a polar launch keeps
+		// none of it.
+		expect(planeTiltPenaltyKms(EARTH, { latDeg: 90 })).toBeCloseTo(0.4646, 3);
+	});
+
+	it('grows with latitude, and is symmetric about the equator', () => {
+		const kourou = planeTiltPenaltyKms(EARTH, { latDeg: KOUROU_LAT });
+		const baikonur = planeTiltPenaltyKms(EARTH, { latDeg: BAIKONUR_LAT });
+		expect(kourou).toBeLessThan(baikonur);
+		// Kourou's whole advantage over Baikonur is about 140 m/s.
+		expect(baikonur - kourou).toBeCloseTo(0.14, 2);
+		expect(planeTiltPenaltyKms(EARTH, { latDeg: -BAIKONUR_LAT })).toBeCloseTo(baikonur, 12);
+	});
+
+	it('takes the steeper of the site and what the arc demands', () => {
+		// An equatorial pad still pays for an arc that leaves out of the equator.
+		const steepArc = planeTiltPenaltyKms(EARTH, { latDeg: 0, asymptoteTiltDeg: 60 });
+		expect(steepArc).toBeCloseTo(planeTiltPenaltyKms(EARTH, { latDeg: 60 }), 12);
+		// And an arc lying flat is no relief to a pad far from the equator.
+		const flatArc = planeTiltPenaltyKms(EARTH, { latDeg: 60, asymptoteTiltDeg: 5 });
+		expect(flatArc).toBeCloseTo(steepArc, 12);
+	});
+
+	it('is nothing at all on a body with no spin to lose, or with no site named', () => {
+		expect(planeTiltPenaltyKms({ ...EARTH, spinRadPerSec: undefined }, { latDeg: 60 })).toBe(0);
+		expect(planeTiltPenaltyKms(EARTH)).toBe(0);
+	});
+
+	it('is worth little on a slowly turning body', () => {
+		// The Moon turns once a month, so where a lander leaves from is worth
+		// metres per second rather than hundreds.
+		expect(planeTiltPenaltyKms(MOON, { latDeg: 90 })).toBeLessThan(0.006);
+	});
+});
+
+describe('ascentDv with a site', () => {
+	it('leaves the calibrated figure alone when no site is named', () => {
+		expect(ascentDv(EARTH, { latDeg: 0 })).toBeCloseTo(ascentDv(EARTH), 12);
+	});
+
+	it('makes a high-latitude pad dearer than an equatorial one', () => {
+		const kourou = ascentDv(EARTH, { latDeg: KOUROU_LAT });
+		const canaveral = ascentDv(EARTH, { latDeg: CANAVERAL_LAT });
+		const vostochny = ascentDv(EARTH, { latDeg: VOSTOCHNY_LAT });
+		expect(kourou).toBeLessThan(canaveral);
+		expect(canaveral).toBeLessThan(vostochny);
+		// Every pad is at least the equatorial figure the constants are fitted to.
+		expect(kourou).toBeGreaterThanOrEqual(ascentDv(EARTH));
+		// And none of them is dear enough to change what class of vehicle it takes.
+		expect(vostochny - kourou).toBeLessThan(0.2);
+	});
+});
+
+describe('landing at a site', () => {
+	it('charges a powered descent the same spin an ascent is charged', () => {
+		const equator = arrivalCost(MOON, 1, 'landing', 'none', undefined, { latDeg: 0 });
+		const pole = arrivalCost(MOON, 1, 'landing', 'none', undefined, { latDeg: 90 });
+		expect(pole.descentKms - equator.descentKms).toBeCloseTo(
+			planeTiltPenaltyKms(MOON, { latDeg: 90 }),
+			12
+		);
+	});
+
+	it('charges an arrival under a parachute nothing for where it comes down', () => {
+		// The air has already taken the speed the ground's own motion would have
+		// been measured against.
+		const equator = arrivalCost(MARS, 2.6, 'landing', 'aerocapture', undefined, { latDeg: 0 });
+		const pole = arrivalCost(MARS, 2.6, 'landing', 'aerocapture', undefined, { latDeg: 90 });
+		expect(pole.descentKms).toBeCloseTo(equator.descentKms, 12);
 	});
 });
 

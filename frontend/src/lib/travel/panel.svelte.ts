@@ -147,6 +147,11 @@ export class TravelPanelState {
 	 *  rather than from the trip's terms, so it is not part of `trip`. */
 	originAtSite = $state(false);
 	targetAtSite = $state(false);
+	/** Latitude of that place, degrees, once it has been looked up — what the
+	 *  ascent or the descent is charged against. Null while it is still coming,
+	 *  which prices the end as the equatorial launch the estimates are fitted on. */
+	originSiteLatDeg = $state<number | null>(null);
+	targetSiteLatDeg = $state<number | null>(null);
 	timeMode = $state<TimeMode>(DEFAULT_TRIP.timeMode);
 	/** Departure or arrival date behind the non-'now' time modes, as a JD. */
 	pickedJd = $state<number | null>(DEFAULT_TRIP.pickedJd);
@@ -404,23 +409,43 @@ export class TravelPanelState {
 		return this.targetMode === 'elliptical' ? 'capture' : 'low-orbit';
 	}
 
-	/** The orbits the kernel should price, as route options. A landing or a flyby
-	 *  names none, and neither does an end whose body has not been measured yet. */
-	get endOrbits(): Pick<RouteOptions, 'departureOrbit' | 'targetOrbit'> {
+	/**
+	 * What each end of the trip is, as route options: the orbit it is met in,
+	 * and the latitude it stands at where it stands on a surface.
+	 *
+	 * A landing or a flyby names no orbit, and neither does an end whose body has
+	 * not been measured yet. A latitude is only worth quoting where the trip
+	 * actually touches the ground — anywhere else the ascent it would price never
+	 * happens.
+	 */
+	get endTerms(): Pick<
+		RouteOptions,
+		'departureOrbit' | 'targetOrbit' | 'departureSiteLatDeg' | 'targetSiteLatDeg'
+	> {
 		return {
 			departureOrbit: this.departureMode === 'surface' ? undefined : this.originOrbit,
 			targetOrbit:
 				this.arrivalMode === 'landing' || this.arrivalMode === 'flyby'
 					? undefined
-					: this.targetOrbit
+					: this.targetOrbit,
+			departureSiteLatDeg:
+				this.departureMode === 'surface' ? (this.originSiteLatDeg ?? undefined) : undefined,
+			targetSiteLatDeg:
+				this.arrivalMode === 'landing' ? (this.targetSiteLatDeg ?? undefined) : undefined
 		};
 	}
 
-	/** What the two orbits are worth to a cache key. */
+	/** What the ends' orbits and sites are worth to a cache key. */
 	#orbitKey(): string {
-		const { departureOrbit: d, targetOrbit: t } = this.endOrbits;
+		const {
+			departureOrbit: d,
+			targetOrbit: t,
+			departureSiteLatDeg,
+			targetSiteLatDeg
+		} = this.endTerms;
 		const one = (o?: EndOrbit) => (o ? `${Math.round(o.rPeriKm)}/${Math.round(o.rApoKm)}` : '');
-		return `${one(d)}|${one(t)}`;
+		const lat = (v?: number) => (v === undefined ? '' : v.toFixed(2));
+		return `${one(d)}|${one(t)}|${lat(departureSiteLatDeg)}|${lat(targetSiteLatDeg)}`;
 	}
 
 	get departureMode(): DepartureMode {
@@ -622,7 +647,7 @@ export class TravelPanelState {
 			target,
 			this.arrivalMode,
 			this.effectiveAero,
-			this.endOrbits.targetOrbit
+			this.endTerms.targetOrbit
 		);
 	}
 
@@ -667,7 +692,7 @@ export class TravelPanelState {
 			? buildConstantThrustRoute(origin, target, departJd, accelMs2, {
 					departureMode: this.departureMode,
 					arrivalMode: this.arrivalMode,
-					...this.endOrbits,
+					...this.endTerms,
 					aero: this.effectiveAero,
 					centralMu: frame.centralMu,
 					systemPrimary: frame.systemPrimary,
@@ -712,7 +737,7 @@ export class TravelPanelState {
 			? buildLowThrustRoute(origin, target, earliestJd, drive, {
 					departureMode: this.departureMode,
 					arrivalMode: this.arrivalMode,
-					...this.endOrbits,
+					...this.endTerms,
 					aero: this.effectiveAero,
 					centralMu: frame.centralMu,
 					systemPrimary: frame.systemPrimary
@@ -786,7 +811,7 @@ export class TravelPanelState {
 			deadlineJd,
 			departureMode: this.departureMode,
 			arrivalMode: this.arrivalMode,
-			...this.endOrbits,
+			...this.endTerms,
 			// Load-bearing: the hunt is only ever compared against the direct routes,
 			// so an arrival priced on a different braking mode than theirs is not a
 			// comparison at all — it reads as a swing-by that saves nothing.
@@ -961,7 +986,7 @@ export class TravelPanelState {
 			...options,
 			departureMode: this.departureMode,
 			arrivalMode: this.arrivalMode,
-			...this.endOrbits,
+			...this.endTerms,
 			aero: this.effectiveAero
 		};
 		const result = await this.#solver.solve(origin, target, solveOptions);

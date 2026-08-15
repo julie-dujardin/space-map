@@ -35,7 +35,7 @@ import {
 	type HeldDriveArc,
 	type HeldDriveProblem
 } from './held-drive';
-import { arrivalCost, departureCost } from './maneuvers';
+import { arrivalCost, departureCost, surfaceSite } from './maneuvers';
 import { arrivalLegs, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState, type StateVector } from './state';
 import { relativeState } from './system-transfer';
@@ -384,8 +384,23 @@ export function buildConstantThrustRoute(
 
 	// Both wells are cleared at zero excess speed: the crossing does not start
 	// until the ship is out of one and is over once it is falling into the other.
-	const dep = departureCost(departure, 0, departureMode, options.departureOrbit);
-	const arr = arrivalCost(target, vInfArrKms, arrivalMode, aero, options.targetOrbit);
+	// A held drive climbs out under thrust rather than on an asymptote, so the
+	// plane it flies is the site's own — nothing further constrains it.
+	const dep = departureCost(
+		departure,
+		0,
+		departureMode,
+		options.departureOrbit,
+		surfaceSite(departure, options.departureSiteLatDeg, null)
+	);
+	const arr = arrivalCost(
+		target,
+		vInfArrKms,
+		arrivalMode,
+		aero,
+		options.targetOrbit,
+		surfaceSite(target, options.targetSiteLatDeg, null)
+	);
 
 	const burnDays = arc.burnSeconds / SEC_PER_DAY;
 	// What one burn costs: the acceleration times the time it is held, whatever

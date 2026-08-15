@@ -64,6 +64,9 @@ export const EARTH: TravelBody = {
 	surfacePressureBar: 1.013,
 	aeroPressurePa: 101400,
 	aeroScaleHeightKm: 8.4,
+	// Sidereal spin, and the pole at the obliquity to the ecliptic.
+	spinRadPerSec: 7.292115e-5,
+	poleEcliptic: [0, 0.397777, 0.917482],
 	elements: planetElements(1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0)
 };
 
@@ -75,6 +78,8 @@ export const MARS: TravelBody = {
 	surfacePressureBar: 0.00636,
 	aeroPressurePa: 636,
 	aeroScaleHeightKm: 11.0,
+	spinRadPerSec: 7.088218e-5,
+	poleEcliptic: [0.446159, -0.055512, 0.893231],
 	elements: planetElements(
 		1.52371034,
 		0.0933941,
@@ -317,6 +322,9 @@ export const MOON: TravelBody = {
 	mu: 4902.8,
 	muEstimated: false,
 	radiusKm: 1737.4,
+	// Locked to its month, and standing all but upright on the ecliptic.
+	spinRadPerSec: 2.661699e-6,
+	poleEcliptic: [-0.000035, -0.000375, 1],
 	elements: {
 		a: 384400 / AU_KM,
 		e: 0.0549,

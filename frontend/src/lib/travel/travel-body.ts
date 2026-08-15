@@ -10,12 +10,43 @@
  * body itself.
  */
 
+import { Vector3 } from 'three';
 import type { BodyData } from '$lib/types/objects';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 import { getAtmosphereParams } from '$lib/fetch/atmospheres';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
+import { bodyQuaternion, type Orientation } from '$lib/math/orientation';
+import { J2000_JD } from '$lib/time/jd';
 import { estimateMu, muFromElements, type TravelBody } from '$lib/math/travel';
+import type { Vec3 } from '$lib/math/travel/vec3';
+
+const DEG2RAD = Math.PI / 180;
+const SEC_PER_DAY = 86400;
+
+/**
+ * How fast the body turns, rad/s, sign dropped — a retrograde spin is still a
+ * free ride, taken the other way round.
+ */
+function spinRadPerSec(orientation: Orientation | undefined): number | undefined {
+	if (!orientation) return undefined;
+	const rate = (Math.abs(orientation.w1) * DEG2RAD) / SEC_PER_DAY;
+	return rate > 0 ? rate : undefined;
+}
+
+/**
+ * The body's north pole as a unit vector in ecliptic J2000 axes.
+ *
+ * Taken from the same quaternion the globe is drawn with, so the equator the
+ * kernel measures a plane against is the one the map shows. Read at J2000: the
+ * pole moves hundredths of a degree per century and all it feeds is a cosine.
+ */
+function poleEcliptic(orientation: Orientation | undefined): Vec3 | undefined {
+	if (!orientation) return undefined;
+	const p = new Vector3(0, 1, 0).applyQuaternion(bodyQuaternion(orientation, J2000_JD));
+	// Scene axes back to ecliptic: the inverse of `eclipticToScene`.
+	return [p.x, -p.z, p.y];
+}
 
 /** NAIF ids at or below this are the Sun and the planetary barycentres. */
 const SUN_ID = 10;
@@ -188,6 +219,8 @@ export function toTravelBody(
 		// is instead of at one Mars-calibrated altitude.
 		aeroScaleHeightKm:
 			aeroPa === undefined ? undefined : getAtmosphereParams(body.id)?.rayleighScaleHeightKm,
+		spinRadPerSec: spinRadPerSec(detail?.orientation),
+		poleEcliptic: poleEcliptic(detail?.orientation),
 		parentId: body.parentId,
 		borrowedElements: orbit !== 'own' && ancestor.id !== body.id
 	};

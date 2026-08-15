@@ -41,6 +41,7 @@ import {
 	arrivalCost,
 	characteristicEnergy,
 	departureCost,
+	surfaceSite,
 	type AeroAssist,
 	type ArrivalMode,
 	type DepartureMode,
@@ -90,10 +91,12 @@ export function buildAssistRoute(
 	const arc2 = solveLambert(mid.r, to.r, tof2Days * SEC_PER_DAY, centralMu, retrograde);
 	if (!arc2) return null;
 
-	const vInfDep = norm(sub(arc1.v1, from.v));
+	const vInfDepVec = sub(arc1.v1, from.v);
+	const vInfArrVec = sub(arc2.v2, to.v);
+	const vInfDep = norm(vInfDepVec);
 	const vInfIn = sub(arc1.v2, mid.v);
 	const vInfOut = sub(arc2.v1, mid.v);
-	const vInfArr = norm(sub(arc2.v2, to.v));
+	const vInfArr = norm(vInfArrVec);
 	if (!isFinite(vInfDep) || !isFinite(vInfArr)) return null;
 
 	// Past the sphere of influence the pass is not a swing-by at all, so that is
@@ -102,8 +105,21 @@ export function buildAssistRoute(
 	const pass = solveFlyby(via, vInfIn, vInfOut, soi);
 	if (!pass) return null;
 
-	const dep = departureCost(departure, vInfDep, departureMode, options.departureOrbit);
-	const arr = arrivalCost(target, vInfArr, arrivalMode, aero, options.targetOrbit);
+	const dep = departureCost(
+		departure,
+		vInfDep,
+		departureMode,
+		options.departureOrbit,
+		surfaceSite(departure, options.departureSiteLatDeg, vInfDepVec)
+	);
+	const arr = arrivalCost(
+		target,
+		vInfArr,
+		arrivalMode,
+		aero,
+		options.targetOrbit,
+		surfaceSite(target, options.targetSiteLatDeg, vInfArrVec)
+	);
 
 	const legs: RouteLeg[] = [];
 	if (dep.ascentKms > 0) legs.push({ kind: 'ascent', dvKms: dep.ascentKms, days: 0 });
@@ -196,7 +212,8 @@ function approach(
 	centralMu: number,
 	retrograde: boolean,
 	departureMode: DepartureMode,
-	departureOrbit: EndOrbit | undefined
+	departureOrbit: EndOrbit | undefined,
+	departureSiteLatDeg: number | undefined
 ): Approach | null {
 	const flybyJd = departJd + tof1Days;
 	const mid = elementsToState(via.elements, flybyJd, centralMu);
@@ -204,9 +221,16 @@ function approach(
 	const arc1 = solveLambert(from.r, mid.r, tof1Days * SEC_PER_DAY, centralMu, retrograde);
 	if (!arc1) return null;
 
-	const vInfDepKms = norm(sub(arc1.v1, from.v));
+	const vInfDepVec = sub(arc1.v1, from.v);
+	const vInfDepKms = norm(vInfDepVec);
 	if (!isFinite(vInfDepKms)) return null;
-	const dep = departureCost(departure, vInfDepKms, departureMode, departureOrbit);
+	const dep = departureCost(
+		departure,
+		vInfDepKms,
+		departureMode,
+		departureOrbit,
+		surfaceSite(departure, departureSiteLatDeg, vInfDepVec)
+	);
 	const vInfIn = sub(arc1.v2, mid.v);
 
 	return {
@@ -245,6 +269,7 @@ function tailCostKms(
 	arrivalMode: ArrivalMode,
 	aero: AeroAssist,
 	targetOrbit: EndOrbit | undefined,
+	targetSiteLatDeg: number | undefined,
 	soiKm: number,
 	ceiling: number
 ): number {
@@ -253,9 +278,17 @@ function tailCostKms(
 	const arc2 = solveLambert(app.midR, to.r, tof2Days * SEC_PER_DAY, centralMu, retrograde);
 	if (!arc2) return NaN;
 
-	const vInfArr = norm(sub(arc2.v2, to.v));
+	const vInfArrVec = sub(arc2.v2, to.v);
+	const vInfArr = norm(vInfArrVec);
 	if (!isFinite(vInfArr)) return NaN;
-	const arr = arrivalCost(target, vInfArr, arrivalMode, aero, targetOrbit);
+	const arr = arrivalCost(
+		target,
+		vInfArr,
+		arrivalMode,
+		aero,
+		targetOrbit,
+		surfaceSite(target, targetSiteLatDeg, vInfArrVec)
+	);
 	const withoutPass = app.headKms + arr.captureKms + arr.descentKms;
 	if (!(withoutPass < ceiling)) return NaN;
 
@@ -346,7 +379,8 @@ export function searchAssist(
 				centralMu,
 				retrograde,
 				departureMode,
-				options.departureOrbit
+				options.departureOrbit,
+				options.departureSiteLatDeg
 			);
 			// Everything still to come is non-negative, so a first arc that already
 			// costs more than the standing best cannot be rescued by any second one.
@@ -365,6 +399,7 @@ export function searchAssist(
 					arrivalMode,
 					aero,
 					options.targetOrbit,
+					options.targetSiteLatDeg,
 					soiKm,
 					bestDv
 				);

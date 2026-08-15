@@ -195,6 +195,39 @@ describe('toTravelBody', () => {
 		expect(toTravelBody(bodies.get('naif-399')!, look)!.surfacePressureBar).toBeUndefined();
 	});
 
+	// Earth's IAU pole is the ICRF pole, so what comes back is the obliquity and
+	// nothing else — which is the one case the conversion can be checked against
+	// by hand.
+	const EARTH_ORIENTATION = {
+		pole_ra_0: 0,
+		pole_ra_1: 0,
+		pole_dec_0: 90,
+		pole_dec_1: 0,
+		w0: 190.147,
+		w1: 360.9856235,
+		w2: 0
+	};
+
+	it('reads the spin and the pole off the orientation', () => {
+		const earth = toTravelBody(bodies.get('naif-399')!, look, {
+			orientation: EARTH_ORIENTATION
+		} as never)!;
+		// One sidereal turn a day.
+		expect(earth.spinRadPerSec).toBeCloseTo(7.292115e-5, 10);
+		// The pole leans away from the ecliptic's own by the obliquity, in the
+		// plane of the solstices.
+		const [x, y, z] = earth.poleEcliptic!;
+		expect(x).toBeCloseTo(0, 9);
+		expect(y).toBeCloseTo(Math.sin((23.4392911 * Math.PI) / 180), 6);
+		expect(z).toBeCloseTo(Math.cos((23.4392911 * Math.PI) / 180), 6);
+	});
+
+	it('leaves both absent for a body that ships no orientation', () => {
+		const earth = toTravelBody(bodies.get('naif-399')!, look)!;
+		expect(earth.spinRadPerSec).toBeUndefined();
+		expect(earth.poleEcliptic).toBeUndefined();
+	});
+
 	it('returns null for a body with no reachable heliocentric orbit', () => {
 		expect(toTravelBody(body('naif-9999', 'naif-8888'), lookupIn(new Map()))).toBeNull();
 	});

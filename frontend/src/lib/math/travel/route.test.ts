@@ -1,11 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { buildRoute, routeDurationDays } from './route';
+import { buildRoute, routeDurationDays, type Route } from './route';
+import { ascentDv } from './maneuvers';
 import { computePorkchop, selectRoutes } from './porkchop';
 import { nextTransferWindows, hohmannTransferDays } from './windows';
 import { EARTH, J2000, JUPITER, MARS, MOON, PARABOLIC_COMET } from './test-fixtures';
 
 const MARS_WINDOW = nextTransferWindows(EARTH, MARS, J2000, 1)[0];
 const MARS_TOF = hohmannTransferDays(EARTH, MARS)!;
+
+/** The launch leg of a route, km/s. */
+function ascentOf(route: Route): number {
+	return route.legs.find((leg) => leg.kind === 'ascent')!.dvKms;
+}
 
 describe('buildRoute', () => {
 	it('prices an Earth-to-Mars orbiter the way a real mission is priced', () => {
@@ -22,6 +28,35 @@ describe('buildRoute', () => {
 		// Ground to Mars orbit, all in.
 		expect(route.totalDvKms).toBeGreaterThan(13);
 		expect(route.totalDvKms).toBeLessThan(17);
+	});
+
+	it('charges a launch for the latitude it leaves from', () => {
+		const equator = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { departureSiteLatDeg: 0 })!;
+		const polar = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { departureSiteLatDeg: 85 })!;
+		const unplaced = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF)!;
+
+		// A trip that never says where it leaves from prices as the equatorial
+		// launch the ascent estimate is fitted on, so nothing published moves.
+		expect(ascentOf(unplaced)).toBeCloseTo(ascentDv(EARTH), 12);
+		expect(ascentOf(polar)).toBeGreaterThan(ascentOf(equator));
+		// Nothing after the launch changes: where it left from is not the arc's
+		// business.
+		expect(polar.inSpaceDvKms).toBeCloseTo(equator.inSpaceDvKms, 12);
+	});
+
+	it('charges an equatorial pad for an arc that leaves out of the equator', () => {
+		// The plane has to hold the asymptote as well as reach the pad, so a pad
+		// on the equator is not thereby free.
+		const flat = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { departureSiteLatDeg: 0 })!;
+		expect(ascentOf(flat)).toBeGreaterThan(ascentDv(EARTH));
+		// A Mars departure leaves near the ecliptic, which is already a score of
+		// degrees out of Earth's equator — real, and still under a tenth of a km/s.
+		expect(ascentOf(flat) - ascentDv(EARTH)).toBeLessThan(0.1);
+		// Without a pole there is no equator to be tilted against, and only the
+		// pad's own latitude is left to charge for.
+		const poleless = { ...EARTH, poleEcliptic: undefined };
+		const blind = buildRoute(poleless, MARS, MARS_WINDOW, MARS_TOF, { departureSiteLatDeg: 0 })!;
+		expect(ascentOf(blind)).toBeCloseTo(ascentDv(EARTH), 12);
 	});
 
 	it('leaves the atmosphere out of it unless asked', () => {

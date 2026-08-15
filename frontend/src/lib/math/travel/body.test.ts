@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { AU_KM } from '$lib/math/units';
-import { estimateMu, escapeSpeed, sphereOfInfluenceKm } from './body';
+import { equatorialTiltDeg, estimateMu, escapeSpeed, sphereOfInfluenceKm } from './body';
 import { GM_SUN_KM3_S2 } from './constants';
 import { EARTH, MARS, MOON } from './test-fixtures';
 
@@ -37,5 +37,30 @@ describe('sphereOfInfluenceKm', () => {
 
 	it('is unbounded without a primary to be dominated by', () => {
 		expect(sphereOfInfluenceKm(EARTH, 0, AU_KM)).toBe(Infinity);
+	});
+});
+
+describe('equatorialTiltDeg', () => {
+	it('measures a direction against the body\u2019s own equator', () => {
+		// Earth's pole leans by the obliquity, so the ecliptic's own north stands
+		// that much short of square in Earth's equator, and Earth's pole is square.
+		expect(equatorialTiltDeg(EARTH, [0, 0, 1])!).toBeCloseTo(90 - 23.44, 1);
+		expect(equatorialTiltDeg(EARTH, EARTH.poleEcliptic!)!).toBeCloseTo(90, 6);
+		// The equinox lies in both equators at once, so it is no tilt at all —
+		// whichever way along it you look.
+		expect(equatorialTiltDeg(EARTH, [1, 0, 0])!).toBeCloseTo(0, 6);
+		expect(equatorialTiltDeg(EARTH, [-1, 0, 0])!).toBeCloseTo(0, 6);
+	});
+
+	it('is unsigned: a southward arc is as steep as a northward one', () => {
+		expect(equatorialTiltDeg(EARTH, [0, 0, -1])!).toBeCloseTo(
+			equatorialTiltDeg(EARTH, [0, 0, 1])!,
+			9
+		);
+	});
+
+	it('cannot say anything without a pole, or about nowhere', () => {
+		expect(equatorialTiltDeg({ ...EARTH, poleEcliptic: undefined }, [0, 0, 1])).toBeUndefined();
+		expect(equatorialTiltDeg(EARTH, [0, 0, 0])).toBeUndefined();
 	});
 });

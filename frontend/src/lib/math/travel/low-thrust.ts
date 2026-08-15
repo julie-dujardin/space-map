@@ -36,6 +36,7 @@ import {
 	arrivalCost,
 	circularSpeed,
 	parkingRadiusKm,
+	surfaceSite,
 	type ArrivalMode,
 	type EndOrbit
 } from './maneuvers';
@@ -517,7 +518,16 @@ export function buildLowThrustRoute(
 	// burn here an ion drive could not fly — `checkFeasibility` is where that is
 	// said, since it is a fact about the craft rather than about the route.
 	if (arrivalMode === 'landing') {
-		const descentKms = arrivalCost(target, 0, 'landing', aero).descentKms;
+		// A spiral hands the descent over in the plane it has been walking round,
+		// so the landing owes only what the site's own latitude denies it.
+		const descentKms = arrivalCost(
+			target,
+			0,
+			'landing',
+			aero,
+			undefined,
+			surfaceSite(target, options.targetSiteLatDeg, null)
+		).descentKms;
 		if (descentKms > 0) legs.push({ kind: 'descent', dvKms: descentKms, days: 0 });
 	}
 

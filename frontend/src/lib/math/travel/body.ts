@@ -7,6 +7,7 @@
 import type { OrbitalElements } from '$lib/types/objects';
 import { AU_KM } from '$lib/math/units';
 import { ASSUMED_DENSITY_KG_M3, G_KM3_KG_S2, SEC_PER_DAY } from './constants';
+import { dot, norm, type Vec3 } from './vec3';
 
 export interface TravelBody {
 	/** Prefixed object id, e.g. "naif-499". */
@@ -41,6 +42,18 @@ export interface TravelBody {
 	aeroPressurePa?: number;
 	/** Density scale height of that envelope, km — sets how deep the pass sits. */
 	aeroScaleHeightKm?: number;
+	/**
+	 * Rotation rate about its own axis, rad/s, sign dropped. What the ground at
+	 * the equator is already moving at, and so what an ascent from it is spared.
+	 */
+	spinRadPerSec?: number;
+	/**
+	 * North pole as a unit vector in ecliptic J2000 axes — the frame the states
+	 * are in. Says how far a departure or approach lies out of the body's own
+	 * equator, which is the lowest a plane reaching it can be. Filled from the
+	 * IAU pole; absent for a body that ships no orientation.
+	 */
+	poleEcliptic?: Vec3;
 	/** Primary this body orbits; absent for heliocentric bodies. */
 	parentId?: string;
 	/**
@@ -81,6 +94,25 @@ export function muFromElements(el: OrbitalElements): number {
 /** Surface escape velocity, km/s. */
 export function escapeSpeed(body: TravelBody): number {
 	return Math.sqrt((2 * body.mu) / body.radiusKm);
+}
+
+/**
+ * How far a direction lies out of the body's equator, degrees, unsigned.
+ *
+ * An orbit can only contain a direction if it is inclined at least this much,
+ * so it is the floor under the plane a departure leaves in or an approach
+ * arrives on. Undefined when the body ships no pole: the plane is then only
+ * bounded by wherever the trip touches the ground.
+ */
+export function equatorialTiltDeg(body: TravelBody, direction: Vec3): number | undefined {
+	const pole = body.poleEcliptic;
+	if (!pole) return undefined;
+	// Both lengths divided out: a pole a rounding short of unit would otherwise
+	// read as degrees of tilt, since the arcsine is at its steepest there.
+	const n = norm(direction) * norm(pole);
+	if (!(n > 0)) return undefined;
+	const sinDec = Math.min(1, Math.max(-1, dot(direction, pole) / n));
+	return Math.abs(Math.asin(sinDec)) * (180 / Math.PI);
 }
 
 /**

@@ -286,6 +286,13 @@
 			)
 		);
 	});
+	// The same coordinates price the trip: where a launch leaves from decides how
+	// much of the body's spin it keeps, and a landing pays the same in reverse.
+	$effect(() => {
+		panel.originSiteLatDeg = originSitePlace?.lat ?? null;
+		panel.targetSiteLatDeg = targetSitePlace?.lat ?? null;
+	});
+
 	let originSiteAt = $derived(
 		origin && originSitePlace
 			? surfaceSiteAt(origin, originDetail, originSitePlace.lat, originSitePlace.lon)
@@ -590,11 +597,17 @@
 		const departure = panel.originMode;
 		const arrival = panel.targetMode;
 		const aero = panel.effectiveAero;
+		// Coordinates land after the trip does — a feature has to be looked up —
+		// and they move the price, so they re-solve like any other term.
+		const originLat = panel.originSiteLatDeg;
+		const targetLat = panel.targetSiteLatDeg;
 		void mode;
 		void picked;
 		void departure;
 		void arrival;
 		void aero;
+		void originLat;
+		void targetLat;
 
 		if (blocking) {
 			panel.block(blocking);
@@ -616,7 +629,9 @@
 		const from = originTravel;
 		const to = targetTravel;
 		const payloadKg = panel.payloadKg;
+		const siteLats = [panel.originSiteLatDeg, panel.targetSiteLatDeg];
 		void payloadKg;
+		void siteLats;
 		if (block || !from || !to) {
 			panel.torch = null;
 			panel.spiral = null;
@@ -639,9 +654,11 @@
 		// Braking is among them: the hunt is judged against the direct routes, and
 		// they are priced with it.
 		const braking = panel.effectiveAero;
+		const siteLats = [panel.originSiteLatDeg, panel.targetSiteLatDeg];
 		void departure;
 		void arrival;
 		void braking;
+		void siteLats;
 
 		if (block || !from || !to || vias.length === 0) {
 			panel.clearAssist();

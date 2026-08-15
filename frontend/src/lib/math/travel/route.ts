@@ -22,6 +22,7 @@ import {
 	type AeroAssist,
 	type ArrivalCost,
 	type ArrivalMode,
+	surfaceSite,
 	type DepartureMode,
 	type EndOrbit
 } from './maneuvers';
@@ -152,6 +153,14 @@ export interface RouteOptions {
 	 *  departure and whatever `arrivalMode` implies on arrival. */
 	departureOrbit?: EndOrbit;
 	targetOrbit?: EndOrbit;
+	/**
+	 * Latitude the trip leaves the ground from and the one it comes back down
+	 * to, degrees, where the end is a place rather than a whole body. Only the
+	 * latitude matters: how far round the body the site has turned changes when
+	 * the launch happens, not what it costs.
+	 */
+	departureSiteLatDeg?: number;
+	targetSiteLatDeg?: number;
 	/** What to ask of the target's atmosphere. Defaults to using none of it. */
 	aero?: AeroAssist;
 	/** μ of the body both endpoints orbit, km³/s². Defaults to the Sun. */
@@ -233,6 +242,8 @@ export function buildRoute(
 		arrivalMode = 'capture',
 		departureOrbit,
 		targetOrbit,
+		departureSiteLatDeg,
+		targetSiteLatDeg,
 		aero = 'none',
 		centralMu = GM_SUN_KM3_S2,
 		retrograde = false,
@@ -246,6 +257,8 @@ export function buildRoute(
 			arrivalMode,
 			departureOrbit,
 			targetOrbit,
+			departureSiteLatDeg,
+			targetSiteLatDeg,
 			aero,
 			outbound: systemPrimary === 'departure'
 		});
@@ -259,12 +272,27 @@ export function buildRoute(
 	const arc = solveLambert(from.r, to.r, tofDays * SEC_PER_DAY, centralMu, retrograde);
 	if (!arc) return null;
 
-	const vInfDep = norm(sub(arc.v1, from.v));
-	const vInfArr = norm(sub(arc.v2, to.v));
+	const vInfDepVec = sub(arc.v1, from.v);
+	const vInfArrVec = sub(arc.v2, to.v);
+	const vInfDep = norm(vInfDepVec);
+	const vInfArr = norm(vInfArrVec);
 	if (!isFinite(vInfDep) || !isFinite(vInfArr)) return null;
 
-	const dep = departureCost(departure, vInfDep, departureMode, departureOrbit);
-	const arr = arrivalCost(target, vInfArr, arrivalMode, aero, targetOrbit);
+	const dep = departureCost(
+		departure,
+		vInfDep,
+		departureMode,
+		departureOrbit,
+		surfaceSite(departure, departureSiteLatDeg, vInfDepVec)
+	);
+	const arr = arrivalCost(
+		target,
+		vInfArr,
+		arrivalMode,
+		aero,
+		targetOrbit,
+		surfaceSite(target, targetSiteLatDeg, vInfArrVec)
+	);
 
 	const legs: RouteLeg[] = [];
 	if (dep.ascentKms > 0) legs.push({ kind: 'ascent', dvKms: dep.ascentKms, days: 0 });
@@ -300,6 +328,8 @@ interface SystemRouteOptions {
 	arrivalMode: ArrivalMode;
 	departureOrbit?: EndOrbit;
 	targetOrbit?: EndOrbit;
+	departureSiteLatDeg?: number;
+	targetSiteLatDeg?: number;
 	aero: AeroAssist;
 	/** True when leaving the primary for its satellite, false coming back. */
 	outbound: boolean;
@@ -321,7 +351,21 @@ function buildSystemRoute(
 	tofDays: number,
 	options: SystemRouteOptions
 ): Route | null {
-	const { departureMode, arrivalMode, departureOrbit, targetOrbit, aero, outbound } = options;
+	const {
+		departureMode,
+		arrivalMode,
+		departureOrbit,
+		targetOrbit,
+		departureSiteLatDeg,
+		targetSiteLatDeg,
+		aero,
+		outbound
+	} = options;
+	// Nothing here escapes, so there is no asymptote to hold: the arc can be
+	// flown from a node of the satellite's orbit, and the site alone says how
+	// steeply the plane has to lie.
+	const departureSite = surfaceSite(departure, departureSiteLatDeg, null);
+	const targetSite = surfaceSite(target, targetSiteLatDeg, null);
 	const primary = outbound ? departure : target;
 	const satellite = outbound ? target : departure;
 	// Which end of the trip the primary is decides which orbit is its own.
@@ -357,21 +401,21 @@ function buildSystemRoute(
 	const legs: RouteLeg[] = [];
 	let ascentKms = 0;
 	if (departureMode === 'surface') {
-		ascentKms = ascentDv(departure);
+		ascentKms = ascentDv(departure, departureSite);
 		legs.push({ kind: 'ascent', dvKms: ascentKms, days: 0 });
 	}
 	legs.push({
 		kind: 'injection',
 		dvKms: outbound
 			? primaryBurn
-			: departureCost(satellite, vInf, departureMode, satelliteOrbit).injectionKms,
+			: departureCost(satellite, vInf, departureMode, satelliteOrbit, departureSite).injectionKms,
 		days: 0
 	});
 	legs.push({ kind: 'cruise', dvKms: 0, days: tofDays });
 
 	const arr = outbound
-		? arrivalCost(satellite, vInf, arrivalMode, aero, satelliteOrbit)
-		: arrivalCostFromSpeed(primary, arc.vNearKms, arrivalMode, aero, primaryOrbit);
+		? arrivalCost(satellite, vInf, arrivalMode, aero, satelliteOrbit, targetSite)
+		: arrivalCostFromSpeed(primary, arc.vNearKms, arrivalMode, aero, primaryOrbit, targetSite);
 	legs.push(...arrivalLegs(arr, arrivalMode));
 
 	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
