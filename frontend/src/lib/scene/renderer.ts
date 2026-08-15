@@ -1432,6 +1432,7 @@ export class SceneRenderer {
 		this.lastSeatConfigKey = seatKey;
 		this.lastProbeVersion = probeVersion;
 		this.ctx.refreshTick(jdToDate(this.clock.jd));
+		this.focusController.promotion.onSimTimeChanged();
 		const result = updatePositions({
 			jd: this.clock.jd,
 			ctx: this.ctx,

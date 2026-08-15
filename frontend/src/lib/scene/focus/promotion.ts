@@ -82,6 +82,11 @@ export class PromotionRegistry {
 	/** Emphasis target: the `small_bodies/<class>` zone for a class filter, null
 	 *  otherwise (no emphasis). */
 	private smallBodyZone: string | null = null;
+	/** jd range the last member count stays valid over. The bounds are the
+	 *  validity edges each side of the counted jd, both exclusive. The empty
+	 *  initial range makes the first sim-time tick count. */
+	private countStableLo = Infinity;
+	private countStableHi = -Infinity;
 
 	constructor(private readonly deps: PromotionDeps) {
 		deps.ctx.bodies.onBodiesAdded((ids) => {
@@ -340,9 +345,16 @@ export class PromotionRegistry {
 		this.deps.pointClouds.setEmphasizedSmallBodyZone(zone, count);
 	}
 
+	/** Recount when the clock leaves the counted range. The valid member count
+	 *  changes with sim time alone. No data event follows that change. */
+	onSimTimeChanged(): void {
+		const jd = this.deps.clock.jd;
+		if (jd > this.countStableLo && jd < this.countStableHi) return;
+		this.reevaluateEarthSatMode();
+	}
+
 	/** Recompute count + mode and reconcile auto-promoted bodies. Runs on filter
-	 *  swap and on every chunk flush — an Earth snapshot rollover arrives as a
-	 *  flush, so this tracks the count across sim time without a separate jd hook.
+	 *  swap, on every chunk flush, and when the clock leaves the counted bracket.
 	 *  Cost is `O(|spacecraftByParent[EARTH_ID]|)`, cheap at the ~500ms flush
 	 *  cadence even for the full modern catalog. */
 	private reevaluateEarthSatMode(): void {
@@ -371,13 +383,27 @@ export class PromotionRegistry {
 
 	/** Count members observable at the current sim jd. Walks the earth-sat
 	 *  bucket, gating each entry on its per-body `validityStart/validityEnd` and
-	 *  (under a group filter) on membership. Null bucket → 0. */
+	 *  (under a group filter) on membership. Null bucket → 0. Also records the
+	 *  validity edges each side of `jd` for {@link onSimTimeChanged}. */
 	private currentMemberCount(bucket: Map<string, PositionedBody> | undefined): number {
+		this.countStableLo = -Infinity;
+		this.countStableHi = Infinity;
 		if (!bucket) return 0;
 		const jd = this.deps.clock.jd;
 		let n = 0;
 		for (const body of bucket.values()) {
 			if (this.groupTargets && !this.groupTargets.has(body.data.id)) continue;
+			const { validityStart, validityEnd } = body.data;
+			if (validityStart <= jd) {
+				if (validityStart > this.countStableLo) this.countStableLo = validityStart;
+			} else if (validityStart < this.countStableHi) {
+				this.countStableHi = validityStart;
+			}
+			if (validityEnd < jd) {
+				if (validityEnd > this.countStableLo) this.countStableLo = validityEnd;
+			} else if (validityEnd < this.countStableHi) {
+				this.countStableHi = validityEnd;
+			}
 			if (isCurrentlyValid(body, jd)) n++;
 		}
 		return n;
