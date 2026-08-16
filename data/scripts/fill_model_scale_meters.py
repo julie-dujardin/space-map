@@ -86,6 +86,7 @@ _MANUAL_SCALES: dict[str, tuple[float, str]] = {
     "high-energy-transient-explorer": (1.0, "body long axis"),
     "hinode-solar-b": (10.0, "solar-array span"),
     "ice-clouds-and-land-elevation-satellite-icesat": (3.2, "solar wing (per-wing)"),
+    "ingenuity-mars-helicopter": (1.2, "rotor span"),
     "jason-1": (9.8, "deployed span (Proteus bus; low confidence)"),
     "landsat-1-2-and-3": (4.0, "solar-paddle span"),
     "landsat-4-and-5": (4.3, "body height"),

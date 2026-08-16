@@ -3,6 +3,7 @@
 import gc
 import json
 import logging
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -44,7 +45,7 @@ def _refresh_cloud_credits(meta_path: Path, download_meta: dict) -> None:
     ``refresh_metadata_from_yaml`` (their metadata shape differs)."""
     try:
         current = json.loads(meta_path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return
     desired = {
         "license": download_meta.get("license"),
@@ -150,7 +151,7 @@ class TextureProcessor:
 
         try:
             existing = json.loads(meta_path.read_text())
-        except (OSError, json.JSONDecodeError):
+        except OSError, json.JSONDecodeError:
             existing = {}
 
         reason = stale_metadata_reason(existing, entry)
@@ -700,6 +701,30 @@ class TextureProcessor:
                 self._process_clouds_static(body_id, src_dir, top_images, force=force)
             else:
                 self._process_clouds_timeseries(body_id, src_dir, force=force)
+        self._prune_stale_clouds()
+
+    def _prune_stale_clouds(self) -> None:
+        """Delete cloud bundles for bodies no longer in ``CLOUD_SOURCES``.
+
+        The export reads the bundles off disk, so dropping a source leaves the
+        overlay shipping until its directory goes.
+        """
+        wanted = {
+            config.clouds_object_id(body_id)
+            for body_id in config.CLOUD_SOURCES.values()
+        }
+        for root in (config.PROCESSED_DIR, mirror_path(config.PROCESSED_DIR)):
+            if not root.exists():
+                continue
+            for bundle in root.iterdir():
+                if not bundle.is_dir() or not bundle.name.endswith(
+                    config.CLOUDS_SUFFIX
+                ):
+                    continue
+                if bundle.name in wanted:
+                    continue
+                log.info("pruning stale cloud bundle: %s", bundle)
+                shutil.rmtree(bundle)
 
     def _process_clouds_timeseries(
         self, body_id: str, src_dir: Path, force: bool = False
@@ -750,7 +775,7 @@ class TextureProcessor:
         if download_meta_path.exists():
             try:
                 download_meta = json.loads(download_meta_path.read_text())
-            except (OSError, json.JSONDecodeError):
+            except OSError, json.JSONDecodeError:
                 log.warning(
                     "failed to read clouds download metadata at %s", download_meta_path
                 )
@@ -758,7 +783,7 @@ class TextureProcessor:
         if not force and meta_path.exists():
             try:
                 existing = json.loads(meta_path.read_text())
-            except (OSError, json.JSONDecodeError):
+            except OSError, json.JSONDecodeError:
                 existing = {}
             if existing.get("frames") == target_frames:
                 log.debug(
@@ -861,7 +886,7 @@ class TextureProcessor:
         if download_meta_path.exists():
             try:
                 download_meta = json.loads(download_meta_path.read_text())
-            except (OSError, json.JSONDecodeError):
+            except OSError, json.JSONDecodeError:
                 log.warning(
                     "failed to read clouds download metadata at %s", download_meta_path
                 )

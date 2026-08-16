@@ -21,10 +21,11 @@ EARTH_CLOUDS_DIR = CLOUDS_DIR / "earth"
 
 # Maps cloud subdirectory name → NAIF body id. Each entry's processed bundle
 # lands at `PROCESSED_DIR / f"{body_id}_clouds"`.
+# Titan is deliberately absent: its haze is drawn by the atmosphere shell, so
+# an opaque overlay on top of it doubles the same layer.
 CLOUD_SOURCES: dict[str, str] = {
     "earth": "naif-399",
     "venus": "naif-299",
-    # "titan": "naif-606",  # skipped
 }
 
 # User-facing organisation + description for static cloud bundles. The
@@ -34,10 +35,6 @@ CLOUDS_STATIC_META: dict[str, tuple[str, str]] = {
     "naif-299": (
         "Björn Jónsson",
         "Ultraviolet cloud map mosaicked from Galileo SSI flyby imagery.",
-    ),
-    "naif-606": (
-        "NASA",
-        "Opaque orange haze layer from the NASA 3D Resources Titan map.",
     ),
 }
 
