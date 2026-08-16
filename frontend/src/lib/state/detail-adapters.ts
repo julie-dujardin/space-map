@@ -46,7 +46,8 @@ export function groupDetailToObjectData(detail: GroupDetailData, slug: string): 
 			id: `group-${slug}`,
 			type: 'group',
 			name,
-			images: detail.global?.images,
+			// A collection has no pictures of its own once its members hold them.
+			images: detail.global?.images ?? detail.global?.galleries?.[0]?.images,
 			cross_refs: detail.global?.wikidata_qid
 				? { wikidata_qid: detail.global.wikidata_qid }
 				: undefined,

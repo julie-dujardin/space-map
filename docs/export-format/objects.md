@@ -481,6 +481,7 @@ interface ObjectImage {
 interface ImageGallery {
   key: "features" | "moons";  // URL token (`&gal=`); collections also key by member Object.id
   subject?: string;           // set when the whole shelf is about one object (collections) — pooled shelves put it per-image instead
+  name?: string;              // the subject's base-language name; collections only, where the shelf subject is usually not a notable member
   images: ObjectImage[];
 }
 // Quantities use best-fit units from Wikidata (e.g. "solar_mass", "kilometre")

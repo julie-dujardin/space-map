@@ -4,6 +4,7 @@
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { pickImageUrl } from '$lib/fetch/objects/images';
+	import { heroImage } from '$lib/fetch/objects/galleries';
 	import CrossRefCard from './CrossRefCard.svelte';
 
 	interface Props {
@@ -27,7 +28,7 @@
 	let hero = $derived.by(async () => {
 		if (background) return undefined;
 		const detail = await fetchGroupDetail(slug);
-		const img = detail.global?.images?.[0];
+		const img = heroImage(detail.global);
 		return img ? pickImageUrl(img, 300) : undefined;
 	});
 	let href = $derived(appState ? serializeUrl(applyGroup(appState.view, slug, name)) : undefined);

@@ -103,6 +103,9 @@ export interface ImageGalleryData {
 	/** Set when the whole gallery is about one object — its shelves link to it.
 	 *  Pooled galleries carry a per-image `subject` instead. */
 	subject?: string;
+	/** The subject's base-language name. Most shelf subjects are not notable
+	 *  members, so the notable list cannot name them. */
+	name?: string;
 	images: ObjectImage[];
 }
 

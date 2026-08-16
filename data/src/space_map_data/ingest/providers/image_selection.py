@@ -21,52 +21,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import orjson
-from sqlalchemy import or_, update
+from sqlalchemy import update
 from tqdm import tqdm
 
 from space_map_data.constants.categories import (
-    ASTEROIDS_SLUG,
-    COMET_ORBIT_CLASSES,
-    COMETS_SLUG,
     DEBRIS_SLUG,
-    DWARF_PLANETS_SLUG,
-    MOONS_SLUG,
-    PLANETS_SLUG,
     PROBES_SLUG,
     RING_SYSTEMS_SLUG,
     SATELLITES_SLUG,
-    SOLAR_SYSTEM_SLUG,
 )
-from space_map_data.constants.countries import COUNTRY_BY_CODE, COUNTRY_SLUG_PREFIX
-from space_map_data.constants.earth_sats.constellations import CONSTELLATION_SLUG_PREFIX
-from space_map_data.constants.earth_sats.launch_sites import (
-    LAUNCH_SITE_BY_CODE,
-    LAUNCH_SITE_SLUG_PREFIX,
-)
-from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_QID
-from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
-from space_map_data.constants.earth_sats.organizations import (
-    ORGANIZATION_SLUG_PREFIX,
-)
+from space_map_data.constants.countries import COUNTRY_SLUG_PREFIX
 from space_map_data.constants.atmosphere.wikidata import ATMOSPHERE_PAGES
 from space_map_data.constants.interior.wikidata import INTERIOR_PAGES
 from space_map_data.constants.rings.wikidata import RING_SYSTEM_PAGES
-from space_map_data.export.groups.earth_sat import (
-    LAGRANGE_ORBIT_CENTERS,
-    primary_orbit_class_slug,
-)
 from space_map_data.export.groups.registry import (
-    CLASS_SLUG_PREFIX,
     GROUPS,
-    SMALL_BODY_FLAG_SLUG_PREFIX,
     GroupCategory,
 )
-from space_map_data.export.groups.small_body import _exported_sbdb_filter
 from space_map_data.export.objects.missions import build_probe_missions
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
-from space_map_data.models.object.sbdb import SBDB
-from space_map_data.models.object.satcat import Satcat
 from space_map_data.utils import image_scoring
 from space_map_data.utils.commons_images import (
     COMMONS_DIR,
@@ -98,12 +72,6 @@ TOPIC_PAGE_TABLES: tuple[tuple[str, dict[str, tuple[str, ...]]], ...] = (
 
 SCHEMA_VERSION = 1
 
-# Member-photo fallback for groups whose own QID yielded no image. Walks
-# member objects in sitelink-rank order, tuned so the gallery always fills.
-GROUP_FALLBACK_TARGET_COUNT = 15
-GROUP_FALLBACK_PER_MEMBER_CAP = 3
-GROUP_FALLBACK_MIN_GALLERY_DIM = 800
-GROUP_FALLBACK_MIN_HERO_DIM = 1600
 # Built things keep cutaways/schematics — often the only illustration a
 # probe has. Everything else drops them, see ``image_exclusion_reason``.
 _SCHEMATIC_OBJECT_TYPES = frozenset(
@@ -113,10 +81,6 @@ _SCHEMATIC_OBJECT_TYPES = frozenset(
 # regardless of contents, so the three whose members are craft are named.
 _SCHEMATIC_GROUP_CATEGORIES = frozenset({GroupCategory.EARTH_SAT, GroupCategory.PROBE})
 _SCHEMATIC_CATEGORY_SLUGS = frozenset({SATELLITES_SLUG, DEBRIS_SLUG, PROBES_SLUG})
-# Mirrors `membership.build_earth_groups_data` so the fallback's member set
-# matches the rows actually shipped per zone.
-_FALLBACK_SAT_TYPE_VALUES = [ObjectType.spacecraft.value, ObjectType.debris.value]
-_FALLBACK_EARTH_OBJECT_ID = "naif-399"
 
 
 def ingest() -> None:
@@ -170,8 +134,9 @@ def ingest() -> None:
     _write_cache(FEATURE_IMAGES_PATH, "features", feature_selections)
     _log_written(FEATURE_IMAGES_PATH, "features", feature_selections, features)
 
-    # Country groups skip this pass: their own Wikidata image is a geographic
-    # locator map, irrelevant here, so they draw only from the member fallback.
+    # Country groups are skipped: their own Wikidata image is a geographic
+    # locator map, irrelevant to a space map. Their Images tab is the member
+    # shelves the export builds, like any other collection's.
     groups = [
         (g.slug, g.wikidata_qid)
         for g in GROUPS
@@ -194,14 +159,6 @@ def ingest() -> None:
         desc="Selecting per-group images",
         unit="group",
         keep_diagrams=craft_groups,
-    )
-    # Picture-less groups fall back to member photos, ranked by sitelinks.
-    _fill_groups_from_members(
-        group_selections,
-        metadata_cache,
-        wikidata_root / "objects",
-        session,
-        craft_groups,
     )
     # One selection, two consumers: each ringed body's own Rings tab, and the
     # collection page that pools them.
@@ -473,348 +430,6 @@ def _fill_ring_systems(
         len(picks),
         len(existing),
     )
-
-
-def _fill_groups_from_members(
-    selections: dict[str, list[dict]],
-    metadata_cache: dict[str, dict | None],
-    wikidata_dir: Path,
-    session,
-    craft_groups: Container[str],
-) -> None:
-    """Augment every group's selection in-place with member-object photos.
-
-    Existing entries keep their slots; member photos append up to
-    :data:`GROUP_FALLBACK_TARGET_COUNT`, ranked by descending sitelink order
-    with at most :data:`GROUP_FALLBACK_PER_MEMBER_CAP` per member. Groups
-    that arrived empty also get a hero photo promoted to index 0.
-    """
-    members_by_slug = _build_group_member_qids(session)
-    sitelink_cache: dict[str, int] = {}
-    metadata_view = _MetadataView(metadata_cache)
-
-    filled_empty = 0
-    augmented = 0
-    skipped_no_members = 0
-    # Static registry groups, plus slugs that only live in the member map
-    # (dynamically-built probe missions).
-    static_slugs = [g.slug for g in GROUPS]
-    extra_slugs = [s for s in members_by_slug if s not in set(static_slugs)]
-    for slug in tqdm(
-        static_slugs + extra_slugs,
-        desc="Augmenting groups with member photos",
-        unit="group",
-    ):
-        qids = members_by_slug.get(slug)
-        if not qids:
-            if not selections.get(slug):
-                skipped_no_members += 1
-            continue
-        existing = list(selections.get(slug) or ())
-        remaining = GROUP_FALLBACK_TARGET_COUNT - len(existing)
-        if remaining <= 0:
-            continue
-        ranked = _rank_members_by_sitelinks(qids, wikidata_dir, sitelink_cache)
-        picks = _pick_fallback_images(
-            ranked,
-            metadata_view,
-            metadata_cache,
-            wikidata_dir,
-            target_count=remaining,
-            exclude_files={e["file"] for e in existing},
-            promote_hero=not existing,
-            drop_diagrams=slug not in craft_groups,
-        )
-        if not picks:
-            continue
-        selections[slug] = existing + picks
-        if existing:
-            augmented += 1
-        else:
-            filled_empty += 1
-
-    logger.info(
-        "Member-photo group fallback: filled %d previously empty groups, "
-        "augmented %d existing ones; %d groups had no qid-bearing members",
-        filled_empty,
-        augmented,
-        skipped_no_members,
-    )
-
-
-def _build_group_member_qids(session) -> dict[str, list[str]]:
-    """Return ``{slug: [member_qid, ...]}`` for every fallback-eligible group.
-
-    Members are bodies with a Wikidata QID; objects without one can't
-    contribute Wikidata-sourced photos and would just bloat the walk.
-    """
-    out: dict[str, list[str]] = {}
-
-    # Small-body groups: orbit class + NEO/PHA flags from SBDB.
-    sb_rows = (
-        session.query(Object.wikidata_qid, SBDB.class_, SBDB.neo, SBDB.pha)
-        .join(Object, Object.id == SBDB.object_id)
-        .filter(*_exported_sbdb_filter())
-        .filter(Object.wikidata_qid.is_not(None))
-        .all()
-    )
-    for qid, cls, neo, pha in sb_rows:
-        out.setdefault(f"{CLASS_SLUG_PREFIX}{cls.name}", []).append(qid)
-        category = COMETS_SLUG if cls in COMET_ORBIT_CLASSES else ASTEROIDS_SLUG
-        out.setdefault(category, []).append(qid)
-        if neo:
-            out.setdefault(f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo", []).append(qid)
-        if pha:
-            out.setdefault(f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha", []).append(qid)
-
-    # Mirrors the filter in `membership.build_earth_groups_data` so the
-    # member set matches the rows actually shipped.
-    earth_rows = (
-        session.query(
-            Object.wikidata_qid,
-            Satcat.constellation_slug,
-            Satcat.operator_qids,
-            Satcat.manufacturer_qids,
-            Satcat.launch_site_code,
-            Satcat.country_codes,
-        )
-        .join(Object.satcat)
-        .filter(
-            Object.spkid.is_(None),
-            Object.object_type.in_(_FALLBACK_SAT_TYPE_VALUES),
-            Object.parent_id == _FALLBACK_EARTH_OBJECT_ID,
-            Object.wikidata_qid.is_not(None),
-        )
-        .all()
-    )
-    for qid, c_slug, op_qids, mfr_qids, site_code, country_codes in earth_rows:
-        out.setdefault(SATELLITES_SLUG, []).append(qid)
-        if c_slug:
-            out.setdefault(f"{CONSTELLATION_SLUG_PREFIX}{c_slug}", []).append(qid)
-        for op_qid in op_qids or ():
-            op = OPERATOR_BY_QID.get(op_qid)
-            if op is not None:
-                out.setdefault(f"{ORGANIZATION_SLUG_PREFIX}{op.slug}", []).append(qid)
-        for m_qid in mfr_qids or ():
-            mfr = MANUFACTURER_BY_QID.get(m_qid)
-            if mfr is not None:
-                out.setdefault(f"{ORGANIZATION_SLUG_PREFIX}{mfr.slug}", []).append(qid)
-        if site_code:
-            site = LAUNCH_SITE_BY_CODE.get(site_code)
-            if site is not None:
-                out.setdefault(f"{LAUNCH_SITE_SLUG_PREFIX}{site.slug}", []).append(qid)
-        for code in country_codes or ():
-            country = COUNTRY_BY_CODE.get(code)
-            if country is not None:
-                out.setdefault(f"{COUNTRY_SLUG_PREFIX}{country.slug}", []).append(qid)
-
-    # Orbit-zone concept QIDs rarely have a usable image, so galleries fill
-    # from member-sat photos. Lagrange sats are Sun-parented, admitted by orbit_center.
-    zone_rows = (
-        session.query(
-            Object.wikidata_qid,
-            Satcat.perigee,
-            Satcat.apogee,
-            Satcat.orbit_center,
-        )
-        .join(Object.satcat)
-        .filter(
-            Object.spkid.is_(None),
-            Object.object_type.in_(_FALLBACK_SAT_TYPE_VALUES),
-            Object.wikidata_qid.is_not(None),
-            or_(
-                Object.parent_id == _FALLBACK_EARTH_OBJECT_ID,
-                Satcat.orbit_center.in_(LAGRANGE_ORBIT_CENTERS),
-            ),
-        )
-        .all()
-    )
-    for qid, perigee, apogee, orbit_center in zone_rows:
-        slug = primary_orbit_class_slug(perigee, apogee, orbit_center)
-        if slug is not None:
-            out.setdefault(slug, []).append(qid)
-
-    # The Wikidata class entities (planet/dwarf-planet/moon) rarely carry a
-    # usable photo, so these pages lean on the member fallback. Solar System
-    # root is a curated Sun+planets hero set, not the whole catalogue.
-    def _typed_qids(*types: ObjectType) -> list[str]:
-        return [
-            qid
-            for (qid,) in session.query(Object.wikidata_qid)
-            .filter(
-                Object.object_type.in_([t.value for t in types]),
-                Object.wikidata_qid.is_not(None),
-            )
-            .all()
-        ]
-
-    planet_qids = _typed_qids(ObjectType.planet)
-    if planet_qids:
-        out[PLANETS_SLUG] = planet_qids
-    dwarf_qids = _typed_qids(ObjectType.dwarf_planet)
-    if dwarf_qids:
-        out[DWARF_PLANETS_SLUG] = dwarf_qids
-    moon_qids = _typed_qids(ObjectType.moon)
-    if moon_qids:
-        out[MOONS_SLUG] = moon_qids
-    solar = _typed_qids(ObjectType.star) + planet_qids
-    if solar:
-        out[SOLAR_SYSTEM_SLUG] = solar
-
-    # Probe missions: primary craft + sibling QIDs, so a mission whose own QID
-    # has no Commons image fills from its craft (e.g. Pioneer Venus Multiprobe).
-    for mission in build_probe_missions():
-        qids = [
-            o.wikidata_qid
-            for o in (mission.primary, *mission.members)
-            if o.wikidata_qid
-        ]
-        if qids:
-            out[mission.slug] = qids
-    return out
-
-
-def _rank_members_by_sitelinks(
-    qids: list[str], wikidata_dir: Path, cache: dict[str, int]
-) -> list[str]:
-    """Return ``qids`` sorted by descending sitelink count, lex QID as tiebreak."""
-    unique: list[str] = []
-    seen: set[str] = set()
-    for qid in qids:
-        if qid in seen:
-            continue
-        seen.add(qid)
-        unique.append(qid)
-    return sorted(
-        unique,
-        key=lambda q: (-_get_sitelink_count(q, wikidata_dir, cache), q),
-    )
-
-
-def _get_sitelink_count(qid: str, wikidata_dir: Path, cache: dict[str, int]) -> int:
-    """Number of Wikipedia sitelinks for ``qid``; 0 when missing or corrupt."""
-    if qid in cache:
-        return cache[qid]
-    path = wikidata_dir / f"{qid}.json"
-    count = 0
-    if path.exists():
-        try:
-            entity = orjson.loads(path.read_bytes())
-        except orjson.JSONDecodeError:
-            logger.warning("Corrupt Wikidata JSON, skipping sitelinks: %s", path)
-        else:
-            sitelinks = entity.get("sitelinks") or {}
-            if isinstance(sitelinks, dict):
-                count = len(sitelinks)
-    cache[qid] = count
-    return count
-
-
-def _pick_fallback_images(
-    ranked_qids: list[str],
-    metadata_view: "_MetadataView",
-    metadata_cache: dict[str, dict | None],
-    wikidata_dir: Path,
-    *,
-    target_count: int = GROUP_FALLBACK_TARGET_COUNT,
-    exclude_files: set[str] | None = None,
-    promote_hero: bool = True,
-    drop_diagrams: bool = False,
-) -> list[dict]:
-    """Pick up to ``target_count`` member photos for one group.
-
-    When ``promote_hero`` is True, the first hero-resolution photo of the
-    highest-sitelink member leads the result; if none qualifies, the
-    gallery leader survives at lower resolution rather than ship nothing.
-    ``exclude_files`` are Commons filenames already chosen elsewhere.
-    """
-    if target_count <= 0:
-        return []
-    photos_cache: dict[str, list[dict]] = {}
-
-    def member_photos(qid: str) -> list[dict]:
-        cached = photos_cache.get(qid)
-        if cached is None:
-            picks = _select_for_qid(
-                qid,
-                metadata_cache,
-                wikidata_dir,
-                aux_pid="P154",
-                aux_kind="logo",
-                drop_diagrams=drop_diagrams,
-            )
-            # Radar shape-model renders count as gallery photos too;
-            # only logos/locators are unwanted.
-            cached = [p for p in picks if p["kind"] in ("photo", "radar")]
-            photos_cache[qid] = cached
-        return cached
-
-    chosen: list[dict] = []
-    used_files: set[str] = set(exclude_files or ())
-    contributed: dict[str, int] = {}
-
-    if promote_hero:
-        # Prepend the first hero-resolution photo so it lands at index 0.
-        # Counts toward the contributing member's allocation so we don't
-        # accidentally let one member supply 4 images (hero + 3 gallery).
-        for qid in ranked_qids:
-            hero = next(
-                (
-                    p
-                    for p in member_photos(qid)
-                    if p["file"] not in used_files
-                    and _resolution_at_least(
-                        metadata_view.get(p["file"]), GROUP_FALLBACK_MIN_HERO_DIM
-                    )
-                ),
-                None,
-            )
-            if hero is not None:
-                chosen.append(hero)
-                used_files.add(hero["file"])
-                contributed[qid] = 1
-                break
-
-    def fill(per_member_cap: int) -> None:
-        for qid in ranked_qids:
-            if len(chosen) >= target_count:
-                return
-            picks_for_member = contributed.get(qid, 0)
-            if picks_for_member >= per_member_cap:
-                continue
-            for pick in member_photos(qid):
-                file = pick["file"]
-                if file in used_files:
-                    continue
-                if not _resolution_at_least(
-                    metadata_view.get(file), GROUP_FALLBACK_MIN_GALLERY_DIM
-                ):
-                    continue
-                chosen.append(pick)
-                used_files.add(file)
-                picks_for_member += 1
-                contributed[qid] = picks_for_member
-                if len(chosen) >= target_count or picks_for_member >= per_member_cap:
-                    break
-
-    fill(GROUP_FALLBACK_PER_MEMBER_CAP)
-    if len(chosen) < target_count:
-        # Drop the per-member cap so prolific contributors backfill the
-        # gallery instead of leaving it half-empty.
-        fill(target_count)
-    return chosen
-
-
-def _resolution_at_least(metadata: dict | None, min_dim: int) -> bool:
-    """True when ``min(width, height) >= min_dim`` in the Commons imageinfo."""
-    if not metadata:
-        return False
-    info = metadata.get("imageinfo") or {}
-    width = info.get("width")
-    height = info.get("height")
-    if not isinstance(width, int) or not isinstance(height, int):
-        return False
-    return min(width, height) >= min_dim
 
 
 class _MetadataView:

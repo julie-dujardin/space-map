@@ -164,6 +164,16 @@ def collect_group_images(slug: str) -> list[dict] | None:
     return _collect_images_from_cache(slug, _group_images_cache)
 
 
+def object_image_count(object_id: str) -> int:
+    """How many pictures an object was selected for, before bundles are built.
+
+    Ranking members of a large collection can't afford ``collect_object_images``
+    per member — that touches the disk once per picture. This reads the
+    selection alone, so it over-counts whatever turns out to have no bundle.
+    """
+    return len(_object_images_cache().get(object_id) or ())
+
+
 def collect_topic_images(object_id: str, topic: str) -> list[dict] | None:
     """Build one topic shelf for a body — its atmosphere or its interior.
 
@@ -1079,6 +1089,7 @@ __all__ = [
     "collect_object_images",
     "collect_feature_images",
     "collect_group_images",
+    "object_image_count",
     "pick_thumbnail",
     "prune_image_bundles",
     "clear_export_cache",

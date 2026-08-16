@@ -17,6 +17,7 @@ import * as m from '$lib/paraglide/messages.js';
 import { DATA_BASE, IMAGES_BASE } from '$lib/fetch/data-base';
 import { extractEmbeddedImageMetadata, smallestRasterVariant } from '$lib/fetch/objects/images';
 import { hashBucket } from '$lib/fetch/metadata';
+import { heroImage } from '$lib/fetch/objects/galleries';
 import { diameterKmFromH } from '$lib/math/h-magnitude';
 import type {
 	GlobalObjectData,
@@ -533,8 +534,9 @@ export async function loadGroupSeo(
 	if (!global && !localized) return null;
 
 	const name = localized?.name || prettifySlug(slug);
+	const lead = heroImage(global);
 	const card = await resolveOgCard(
-		global?.images,
+		lead ? [lead] : undefined,
 		describe(name, localized),
 		origin,
 		meta.versions?.images

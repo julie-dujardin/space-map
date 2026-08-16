@@ -74,6 +74,7 @@
 		buildGalleries,
 		FEATURES_GALLERY,
 		findGallery,
+		heroImage,
 		imageCount,
 		MAIN_GALLERY,
 		MOONS_GALLERY,
@@ -637,6 +638,13 @@
 	// filename, so the names already resolved above are handed down here.
 	let gallerySubjectNames = $derived.by(() => {
 		const names = new Map<string, string>();
+		// Shelf subjects first: a notable member's own entry is the better name
+		// where both exist, so it overwrites this.
+		for (const gallery of (isGroupMode ? groupDetail?.global : data?.global)?.galleries ?? []) {
+			if (gallery.subject && gallery.name) {
+				names.set(gallery.subject, memberNames?.[gallery.subject] ?? gallery.name);
+			}
+		}
 		for (const member of notableMembers ?? []) {
 			if (member.id) names.set(member.id, memberNames?.[member.id] ?? member.name);
 		}
@@ -871,7 +879,7 @@
 
 	/** This page's own portrait, for a tile leading to another of its tabs. */
 	let pageHero = $derived.by(() => {
-		const image = (isGroupMode ? groupDetail?.global : data?.global)?.images?.[0];
+		const image = heroImage(isGroupMode ? groupDetail?.global : data?.global);
 		return image ? pickImageUrl(image, 300) : undefined;
 	});
 

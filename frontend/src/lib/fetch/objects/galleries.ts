@@ -71,6 +71,15 @@ export interface GallerySource {
 	galleries?: ImageGalleryData[];
 }
 
+/**
+ * The one picture that stands for a page — its own first, else the leading
+ * shelf's. A collection owns no pictures of its subject: its members are the
+ * subject, so the first member shelf is what it looks like.
+ */
+export function heroImage(source: GallerySource | null | undefined): ObjectImage | undefined {
+	return source?.images?.[0] ?? source?.galleries?.[0]?.images?.[0];
+}
+
 /** Titles for the shelves the exporter names by kind rather than by subject:
  *  the body's own aspects first, then the shelves about other things. */
 const POOLED_TITLES: Record<string, () => string> = {

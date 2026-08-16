@@ -17,7 +17,10 @@ from space_map_data.constants.categories import (
     PROBES_SLUG,
     SATELLITES_SLUG,
 )
-from space_map_data.export.groups.bundles import write_group_bundles
+from space_map_data.export.groups.bundles import (
+    GallerySubject,
+    write_group_bundles,
+)
 from space_map_data.export.groups.categories import build_category_data
 from space_map_data.export.groups.feature_type import build_feature_type_groups
 from space_map_data.export.groups.launch_site import build_launch_site_stats
@@ -330,6 +333,28 @@ def _split_comet_groups(
     return out
 
 
+def _gallery_subjects(
+    session: Session,
+    wikidata_entities: WikidataEntityCache,
+) -> dict[str, GallerySubject]:
+    """Name every object that has a picture — the pool member shelves draw from.
+
+    Naming the whole pool up front costs one query; the alternative is looking
+    up each shelf's subject as it is built, once per collection it appears in.
+    """
+    rows = (
+        session.query(Object.id, Object.name, Object.wikidata_qid)
+        .filter(Object.image_available.is_(True))
+        .all()
+    )
+    out: dict[str, GallerySubject] = {}
+    for object_id, name, qid in rows:
+        entity = wikidata_entities.get_entity(qid) if qid else None
+        label = entity["labels"].get("en") if entity else None
+        out[object_id] = GallerySubject(label or name, qid)
+    return out
+
+
 def run_groups_tier(
     engine: Engine,
     out_dir: Path,
@@ -354,6 +379,7 @@ def run_groups_tier(
     # Horizons mean elements for the SBDB-less planets (minimap + moons chart).
     planet_elements = load_planet_elements(DOWNLOAD_DIR)
     with Session(engine) as session:
+        gallery_subjects = _gallery_subjects(session, wikidata_entities)
         build = build_earth_groups_data(session)
         small_body_stats = build_small_body_group_stats(
             session, radii, units, wikidata_entities, orientation
@@ -482,6 +508,7 @@ def run_groups_tier(
         extra_largest_bodies=extra_largest_bodies,
         extra_pha_counts=extra_pha_counts,
         extra_stats=extra_stats,
+        gallery_subjects=gallery_subjects,
         extra_named_counts=extra_named_counts,
         extra_notable_members=extra_notable_members,
         extra_moon_counts=category_data.moon_counts,

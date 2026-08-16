@@ -7,7 +7,8 @@ frontend reuses ``hashBucket``.
 import gzip
 import logging
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from typing import NamedTuple
 from pathlib import Path
 
 import orjson
@@ -66,6 +67,7 @@ from space_map_data.export.images import (
     collect_group_images,
     collect_object_images,
     localized_image_titles,
+    object_image_count,
 )
 from space_map_data.export.notable import (
     NotableObject,
@@ -109,36 +111,65 @@ _LAGRANGE_CLASS_SLUGS = frozenset(
 
 
 # A collection's Images tab is one shelf per member. Two rankings feed it: the
-# notable order the rest of the page uses, and the members with the most
-# pictures — mostly the same members, which is the point (nothing notable and
-# nothing well-photographed is missed).
+# notable order the rest of the page uses, and the best-photographed members of
+# the whole collection — notable or not, so a collection none of whose members
+# are notable still gets shelves.
 MEMBER_GALLERY_COUNT = 8
 MEMBER_GALLERY_IMAGES = 8
+# How deep the by-pictures ranking is resolved. It ranks on the raw selection,
+# which over-counts whatever has no bundle, so it reaches past
+# MEMBER_GALLERY_COUNT to cover the members that come back empty.
+MEMBER_GALLERY_CANDIDATES = 24
+
+
+class GallerySubject(NamedTuple):
+    """What a shelf needs to name the member it is about."""
+
+    name: str
+    wikidata_qid: str | None
 
 
 def _member_galleries(
     members: Sequence[NotableObject] | None,
     own_images: list[dict] | None,
+    member_ids: Sequence[str] | None,
+    subjects: dict[str, GallerySubject] | None = None,
 ) -> list[dict] | None:
-    """One image shelf per notable member, keyed and subjected by its id.
+    """One image shelf per member, keyed and subjected by its id.
 
     Group and feature members are skipped — they route elsewhere. Files the
-    group's own gallery already shows are dropped too.
+    group's own gallery already shows are dropped too. Each shelf carries its
+    subject's name: most shelf subjects are not notable members, so the
+    notable list the page already localizes cannot name them.
     """
-    if not members:
-        return None
-    seen = {entry["file"] for entry in own_images or ()}
+    pools: dict[str, list[dict]] = {}
+
+    def pool(object_id: str) -> list[dict]:
+        if object_id not in pools:
+            pools[object_id] = collect_object_images(object_id) or []
+        return pools[object_id]
+
     # Insertion order is the notable ranking.
-    pools = {
-        m.object_id: images
-        for m in members
+    notable = [
+        m.object_id
+        for m in members or ()
         if m.object_id and m.group_slug is None and m.feature_id is None
-        if (images := collect_object_images(m.object_id))
-    }
-    by_pictures = sorted(pools, key=lambda oid: len(pools[oid]), reverse=True)
-    chosen = dict.fromkeys(
-        list(pools)[:MEMBER_GALLERY_COUNT] + by_pictures[:MEMBER_GALLERY_COUNT]
+    ]
+    # Notable members stay in the by-pictures ranking even when the collection
+    # has no membership index of its own — they are the only pool it then has.
+    ranked = sorted(
+        dict.fromkeys((*notable, *(member_ids or ()))),
+        key=object_image_count,
+        reverse=True,
     )
+    chosen = dict.fromkeys(
+        _first_with_pictures(notable, pool, MEMBER_GALLERY_COUNT)
+        + _first_with_pictures(
+            ranked[:MEMBER_GALLERY_CANDIDATES], pool, MEMBER_GALLERY_COUNT
+        )
+    )
+
+    seen = {entry["file"] for entry in own_images or ()}
     galleries = []
     for oid in chosen:
         images = [entry for entry in pools[oid] if entry["file"] not in seen][
@@ -146,8 +177,45 @@ def _member_galleries(
         ]
         if images:
             seen.update(entry["file"] for entry in images)
-            galleries.append({"key": oid, "subject": oid, "images": images})
+            shelf = {"key": oid, "subject": oid, "images": images}
+            if subject := (subjects or {}).get(oid):
+                shelf["name"] = subject.name
+            galleries.append(shelf)
     return galleries or None
+
+
+def _gallery_subject_names(
+    galleries: list[dict] | None,
+    subjects: dict[str, GallerySubject] | None,
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> dict[str, str]:
+    """Per-language shelf-subject labels, only where they differ from the base."""
+    out: dict[str, str] = {}
+    for shelf in galleries or ():
+        subject = (subjects or {}).get(shelf["key"])
+        if not subject or not subject.wikidata_qid:
+            continue
+        entity = wikidata_entities.get_entity(subject.wikidata_qid)
+        label = entity["labels"].get(lang) if entity else None
+        if label and label != subject.name:
+            out[shelf["key"]] = label
+    return out
+
+
+def _first_with_pictures(
+    object_ids: Sequence[str],
+    pool: Callable[[str], list[dict]],
+    limit: int,
+) -> list[str]:
+    """The first ``limit`` ids that resolve to at least one picture."""
+    out: list[str] = []
+    for object_id in object_ids:
+        if len(out) == limit:
+            break
+        if pool(object_id):
+            out.append(object_id)
+    return out
 
 
 def _build_global(
@@ -806,9 +874,16 @@ def _flatten_membership(
 ) -> dict[str, int]:
     """Collapse per-type membership into a single {slug: count} map."""
     return {
-        slug: len(ids)
-        for mem in membership_by_type.values()
-        for slug, ids in mem.items()
+        slug: len(ids) for slug, ids in _flatten_member_ids(membership_by_type).items()
+    }
+
+
+def _flatten_member_ids(
+    membership_by_type: dict[GroupType, dict[str, list[str]]],
+) -> dict[str, list[str]]:
+    """Collapse per-type membership into a single {slug: [object_id]} map."""
+    return {
+        slug: ids for mem in membership_by_type.values() for slug, ids in mem.items()
     }
 
 
@@ -837,6 +912,7 @@ def write_group_bundles(
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
     extra_moon_counts: dict[str, list[dict]] | None = None,
     extra_primary_ids: dict[str, str] | None = None,
+    gallery_subjects: dict[str, GallerySubject] | None = None,
     child_slugs_by_group: dict[str, list[str]] | None = None,
     child_counts_by_group: dict[str, dict[str, int]] | None = None,
     extra_groups: tuple[Group, ...] = (),
@@ -858,6 +934,7 @@ def write_group_bundles(
     registry, with their localized names in ``extra_group_names``.
     """
     member_counts = _flatten_membership(membership_by_type)
+    member_ids = _flatten_member_ids(membership_by_type)
     if extra_member_counts:
         member_counts.update(extra_member_counts)
     satcat_stats = _flatten_stats(stats_by_type)
@@ -898,7 +975,9 @@ def write_group_bundles(
         moon_counts = (extra_moon_counts or {}).get(group.slug)
         lv_stats = (launch_vehicle_stats or {}).get(group.slug)
         ft_stats = (feature_type_stats or {}).get(group.slug)
-        galleries = _member_galleries(members, images)
+        galleries = _member_galleries(
+            members, images, member_ids.get(group.slug), gallery_subjects
+        )
         picture_files = [
             entry["file"]
             for entries in (images or (), *(g["images"] for g in galleries or ()))
@@ -947,12 +1026,16 @@ def write_group_bundles(
                 ft_stats,
                 (launch_site_stats or {}).get(group.slug),
             )
+            member_names = _gallery_subject_names(
+                galleries, gallery_subjects, lang, wikidata_entities
+            )
             if members and member_entries:
-                member_names = notable_names(
-                    members, member_entries, lang, wikidata_entities
+                member_names.update(
+                    notable_names(members, member_entries, lang, wikidata_entities)
                 )
-                if member_names:
-                    lang_data["notable_member_names"] = member_names
+            if member_names:
+                lang_data["notable_member_names"] = member_names
+            if members and member_entries:
                 member_descriptions = notable_descriptions(
                     members, lang, wikidata_entities
                 )

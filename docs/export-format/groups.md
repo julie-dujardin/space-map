@@ -443,15 +443,15 @@ interface GlobalGroupData {
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)
   images?: ObjectImage[];           // Same pipeline / layout as GlobalObjectData.images
-  galleries?: ImageGallery[];       // one shelf per notable member, keyed by its Object.id
+  galleries?: ImageGallery[];       // one shelf per member, keyed by its Object.id
 }
 ```
 
 On `cat-ring-systems` the images are the per-body `ring_images` pooled (see
 `docs/export-format/objects.md`), selected from the "Rings of X" topic items
 (`constants/rings/wikidata.py`) rather than from the group's own Wikidata item
-or its members: the item is the generic "planetary ring" concept, and the member
-fallback would fill a page about rings with portraits of Jupiter and Saturn.
+or its members: the item is the generic "planetary ring" concept, and member
+portraits of Jupiter and Saturn are not a page about rings.
 Saturn's article leads, since the first image is what the collection's tile
 shows. Haumea and Quaoar contribute nothing — neither has a ring article in any
 language.
@@ -459,15 +459,27 @@ language.
 `galleries` gives a collection's Images tab one shelf per member rather than
 one undifferentiated pile: a member's `key` and `subject` are both its
 `Object.id`, so the shelf is named after it and links to its page. Members come
-from two rankings unioned — the top of the notable list, and the members with
-the most pictures — which mostly agree, since `image_available` is already the
-notable list's first sort key; the union is there so nothing notable and
-nothing well-photographed is missed. Files the group's own `images` already
-show are dropped, since a member-fallback group draws that gallery from these
-very members. Counts are `MEMBER_GALLERY_COUNT` (per ranking) and
+from two rankings unioned — the top of the notable list, and the whole
+collection's best-photographed members. The second ranking is what carries a
+collection with no notable list of its own (every country, most
+constellations); ranking it reads the raw selection rather than building each
+member's bundle, so it resolves `MEMBER_GALLERY_CANDIDATES` deep to cover
+members that turn out to have no bundle. Files the group's own `images` already
+show are dropped. Counts are `MEMBER_GALLERY_COUNT` (per ranking) and
 `MEMBER_GALLERY_IMAGES` (per shelf) in `export/groups/bundles.py`. The
 localized bundles carry `image_titles` for both, keyed by filename — see
 `docs/export-format/objects.md`.
+
+Each shelf carries its subject's `name`, and `notable_member_names` in the
+localized bundles carries the per-language override where it differs — the same
+id-keyed map the notable list uses, since a shelf subject is a member too, just
+usually not a notable one.
+
+A collection's `images` are its own Wikidata item's, and many collections have
+none — a country's item is a locator map, and most constellations have no item
+at all. Those pages are their member shelves; the frontend takes the leading
+shelf's first picture wherever it needs one picture to stand for the page
+(tile, header, OG card).
 
 The result is photographs only: cutaway schemes and belt maps are dropped for
 every subject except an individual craft, since they restate what the scene and
