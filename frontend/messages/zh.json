@@ -1385,6 +1385,7 @@
 	"travel_launch_pad": "发射台",
 	"travel_launch_from_here": "规划从这里发射",
 	"travel_open": "去别处",
+	"travel_to_orbit_zone": "规划前往该轨道的行程",
 	"travel_orbit_shape": "哪种轨道",
 	"travel_out_of_reach": "无法抵达",
 	"travel_over_capacity": "最多可搭载 {value} 人。",

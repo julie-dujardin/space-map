@@ -1430,6 +1430,7 @@
 	"travel_launch_pad": "Стартовый комплекс",
 	"travel_launch_from_here": "Спланировать запуск отсюда",
 	"travel_open": "Отправиться куда-нибудь",
+	"travel_to_orbit_zone": "Спланировать полёт на эту орбиту",
 	"travel_orbit_shape": "Какая орбита",
 	"travel_out_of_reach": "Недостижимо",
 	"travel_over_capacity": "Место для {value} на борту.",

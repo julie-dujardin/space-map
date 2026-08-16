@@ -1460,6 +1460,7 @@
 	"travel_launch_pad": "منصة الإطلاق",
 	"travel_launch_from_here": "خطط لإطلاق من هنا",
 	"travel_open": "اذهب إلى مكان ما",
+	"travel_to_orbit_zone": "خطط لرحلة إلى هذا المدار",
 	"travel_orbit_shape": "أي مدار",
 	"travel_out_of_reach": "بعيد المنال",
 	"travel_over_capacity": "تتّسع لـ {value} على متنها.",

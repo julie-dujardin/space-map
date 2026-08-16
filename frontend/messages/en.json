@@ -1511,6 +1511,7 @@
 	"travel_launch_pad": "Launch pad",
 	"travel_launch_from_here": "Plan a launch from here",
 	"travel_open": "Go somewhere",
+	"travel_to_orbit_zone": "Plan a trip to this orbit",
 	"travel_out_of_reach": "Out of reach",
 	"travel_over_capacity": "Room for {value} aboard.",
 	"travel_over_hold": "Carries up to {value}.",

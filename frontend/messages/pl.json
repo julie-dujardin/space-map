@@ -1399,6 +1399,7 @@
 	"travel_launch_pad": "Stanowisko startowe",
 	"travel_launch_from_here": "Zaplanuj start stąd",
 	"travel_open": "Wyrusz gdzieś",
+	"travel_to_orbit_zone": "Zaplanuj podróż na tę orbitę",
 	"travel_orbit_shape": "Która orbita",
 	"travel_out_of_reach": "Poza zasięgiem",
 	"travel_over_capacity": "Miejsce dla {value} na pokładzie.",

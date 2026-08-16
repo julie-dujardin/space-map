@@ -165,11 +165,22 @@ export class AppState {
 	}
 
 	/** Open the trip planner, or move one of its ends. Either end may be null —
-	 *  a trip is described one end at a time. Pushes: each trip is its own
-	 *  destination, so browser-back returns to the body you set out from. */
-	setNav(from: string | NavEnd | null, to: string | NavEnd | null = null) {
-		const next = applyNav(this.view, from, to);
-		if (this.view.type === UrlType.Nav && sameEnds(this.view, next)) return;
+	 *  a trip is described one end at a time. `terms` sets the fields the entry
+	 *  point is about, so a link naming an orbit opens on it. Pushes: each trip
+	 *  is its own destination, so browser-back returns to the body you set out
+	 *  from. */
+	setNav(
+		from: string | NavEnd | null,
+		to: string | NavEnd | null = null,
+		terms?: Partial<TripState>
+	) {
+		const next = applyNav(this.view, from, to, terms);
+		if (
+			this.view.type === UrlType.Nav &&
+			sameEnds(this.view, next) &&
+			serializeTripSuffix(this.view.trip) === serializeTripSuffix(next.trip)
+		)
+			return;
 		this.view = next;
 		this.pushNow();
 	}

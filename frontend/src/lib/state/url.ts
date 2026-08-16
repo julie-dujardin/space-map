@@ -11,7 +11,7 @@ import {
 } from '$lib/fetch/groups/registry';
 import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
 import { isLagrangeClass } from '$lib/math/orbit/lagrange';
-import { DEFAULT_TRIP, parseTrip, serializeTripSuffix } from '$lib/travel/trip';
+import { DEFAULT_TRIP, parseTrip, serializeTripSuffix, type TripState } from '$lib/travel/trip';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { formatNavEnd, isBodyId, NAV_UNSET, parseNavEnd } from './nav-end';
 import {
@@ -359,15 +359,18 @@ export function navEndOf(view: MapViewState, at: 'from' | 'to'): NavEnd | null {
  * a trip is described one end at a time — and the camera falls back to whichever
  * one is there.
  *
- * The trip's terms ride through untouched. Moving an end is still the same
- * planner with the same craft loaded the same way, and what a change of ends
- * costs the route choice and the hand pick is the panel's to decide — it holds
- * the grid they are measured against.
+ * The trip's terms ride through untouched, bar the ones `terms` names. Moving
+ * an end is still the same planner with the same craft loaded the same way, and
+ * what a change of ends costs the route choice and the hand pick is the panel's
+ * to decide — it holds the grid they are measured against. A link that opens
+ * the planner on a named orbit sets that one term, since the orbit is what the
+ * link is for.
  */
 export function applyNav(
 	current: MapViewState,
 	from: string | NavEnd | null,
-	to: string | NavEnd | null = null
+	to: string | NavEnd | null = null,
+	terms?: Partial<TripState>
 ): MapViewState {
 	const departure = from === null ? null : navEnd(from);
 	const destination = to === null ? null : navEnd(to);
@@ -376,6 +379,7 @@ export function applyNav(
 		type: UrlType.Nav,
 		id: destination?.id ?? departure?.id ?? current.id,
 		name: '',
+		trip: terms ? { ...current.trip, ...terms } : current.trip,
 		navFrom: departure?.id ?? null,
 		navTo: destination?.id ?? null,
 		navFromFeature: departure?.featureId ?? null,

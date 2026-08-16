@@ -54,13 +54,15 @@ export function groupHref(
 	return appState ? serializeUrl(applyGroup(appState.view, slug, name)) : undefined;
 }
 
-/** The URL for the `/nav` trip planner; either end may be null. */
+/** The URL for the `/nav` trip planner; either end may be null. `terms` sets
+ *  the trip fields the link is about — the orbit an end is met in, say. */
 export function navHref(
 	appState: AppState | undefined,
 	from: string | NavEnd | null,
-	to: string | NavEnd | null = null
+	to: string | NavEnd | null = null,
+	terms?: Partial<TripState>
 ): string | undefined {
-	return appState ? serializeUrl(applyNav(appState.view, from, to)) : undefined;
+	return appState ? serializeUrl(applyNav(appState.view, from, to, terms)) : undefined;
 }
 
 /** The current view with the trip reading one named trajectory — where a

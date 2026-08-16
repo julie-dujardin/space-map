@@ -65,7 +65,9 @@
 	import DrawerTitle from './frame/DrawerTitle.svelte';
 	import TravelButton from './travel/TravelButton.svelte';
 	import LaunchSiteButton from './travel/LaunchSiteButton.svelte';
+	import OrbitZoneButton from './travel/OrbitZoneButton.svelte';
 	import { isLaunchSiteSlug } from '$lib/travel/launch-pad';
+	import { orbitZoneTarget } from '$lib/travel/orbit-zone-target';
 	import { parentCrumb, parentPlanet, type Crumb } from '$lib/state/breadcrumb';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImagesPanel from './frame/ImagesPanel.svelte';
@@ -200,6 +202,11 @@
 	 *  can leave from. */
 	let launchSiteSlug = $derived(
 		focusable.kind === 'group' && isLaunchSiteSlug(focusable.slug) ? focusable.slug : null
+	);
+	/** The Earth-orbit zone this page is, when the planner holds an orbit in it —
+	 *  somewhere a trip ends rather than leaves from. */
+	let orbitZoneSlug = $derived(
+		focusable.kind === 'group' && orbitZoneTarget(focusable.slug) ? focusable.slug : null
 	);
 	let cat = $derived(categoryConfig(focusable));
 	let groupHeaderBadges = $derived.by(() => {
@@ -1684,11 +1691,14 @@
 	{/if}
 	<!-- "How do I get here" belongs with the object, so it rides the panel's own
 	     button row. Group panels have no body to fly to — except a launch site,
-	     which is a place, and one trips leave from rather than go to. -->
+	     which is a place, and one trips leave from rather than go to, and an
+	     Earth-orbit zone, which is where a trip ends without naming a body. -->
 	{#if body}
 		<TravelButton target={body.data} featureId={feature?.featureId ?? null} />
 	{:else if launchSiteSlug}
 		<LaunchSiteButton slug={launchSiteSlug} />
+	{:else if orbitZoneSlug}
+		<OrbitZoneButton slug={orbitZoneSlug} />
 	{/if}
 	<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
 		<Share2Icon />

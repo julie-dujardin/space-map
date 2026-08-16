@@ -1384,6 +1384,7 @@
 	"travel_launch_pad": "発射台",
 	"travel_launch_from_here": "ここからの打ち上げを計画",
 	"travel_open": "どこかへ行く",
+	"travel_to_orbit_zone": "この軌道への旅を計画",
 	"travel_orbit_shape": "どの軌道",
 	"travel_out_of_reach": "到達不可",
 	"travel_over_capacity": "搭乗できるのは {value} 人まで。",

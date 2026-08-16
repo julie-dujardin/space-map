@@ -1381,6 +1381,7 @@
 	"travel_launch_pad": "Startrampe",
 	"travel_launch_from_here": "Start von hier planen",
 	"travel_open": "Irgendwohin reisen",
+	"travel_to_orbit_zone": "Reise zu dieser Umlaufbahn planen",
 	"travel_orbit_shape": "Welcher Orbit",
 	"travel_out_of_reach": "Außer Reichweite",
 	"travel_over_capacity": "Platz für {value} an Bord.",

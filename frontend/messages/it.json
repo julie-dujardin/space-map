@@ -1383,6 +1383,7 @@
 	"travel_launch_pad": "Rampa di lancio",
 	"travel_launch_from_here": "Pianifica un lancio da qui",
 	"travel_open": "Vai da qualche parte",
+	"travel_to_orbit_zone": "Pianifica un viaggio verso questa orbita",
 	"travel_orbit_shape": "Quale orbita",
 	"travel_out_of_reach": "Fuori portata",
 	"travel_over_capacity": "Posto per {value} a bordo.",
