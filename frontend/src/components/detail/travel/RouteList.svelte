@@ -35,6 +35,10 @@
 		 *  the map. */
 		hovered?: string | null;
 		onHover?: ((id: string | null) => void) | null;
+		/** When the next transfer window opens, for the field that window is read
+		 *  off. Null when the two ends have no alignment to wait for. */
+		nextWindowJd?: number | null;
+		onUseWindow?: ((jd: number) => void) | null;
 	}
 	let {
 		state,
@@ -42,7 +46,9 @@
 		nameOf = (id: string) => id,
 		hazardsFor = () => [],
 		hovered = null,
-		onHover = null
+		onHover = null,
+		nextWindowJd = null,
+		onUseWindow = null
 	}: Props = $props();
 
 	/** A trajectory placed by hand belongs to the box at the end of its family,
@@ -100,7 +106,7 @@
 	{/each}
 
 	{#if family === 'transfer'}
-		<li><WindowBox {state} {hazardsFor} {hovered} {onHover} /></li>
+		<li><WindowBox {state} {hazardsFor} {hovered} {onHover} {nextWindowJd} {onUseWindow} /></li>
 	{/if}
 
 	{#if family === 'constant-thrust'}

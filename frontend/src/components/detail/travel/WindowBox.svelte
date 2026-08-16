@@ -3,12 +3,16 @@
   family and is dashed, like the arc set by the cruise slider. The row keeps
   its height with no window behind it, so the field does not move once one is
   picked; with no window it says where one comes from, and focuses the field.
+
+  When the next alignment opens is named here rather than beside the departure
+  date: only a transfer waits for one.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { getContext } from 'svelte';
 	import type { TravelPanelState } from '$lib/travel/panel.svelte';
 	import type { Hazard } from '$lib/travel/hazards';
+	import { formatJulianDate } from '$lib/format/date';
 	import type { RouteOption } from '$lib/travel/trip';
 	import { isModifiedClick, tripRouteHref } from '$lib/state/focus-link';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -26,9 +30,21 @@
 		hovered?: string | null;
 		onHover?: ((id: string | null) => void) | null;
 		hazardsFor?: (profile: RouteOption) => readonly Hazard[];
+		/** When the next alignment opens, or null when there is none to wait for.
+		 *  It belongs to this field: a window is a transfer's idea, and the other
+		 *  families leave whenever they like. */
+		nextWindowJd?: number | null;
+		onUseWindow?: ((jd: number) => void) | null;
 	}
 	// Renamed on the way in: a local called `state` would read as the rune.
-	let { state: panel, hovered = null, onHover = null, hazardsFor = () => [] }: Props = $props();
+	let {
+		state: panel,
+		hovered = null,
+		onHover = null,
+		hazardsFor = () => [],
+		nextWindowJd = null,
+		onUseWindow = null
+	}: Props = $props();
 
 	const PROFILE: RouteOption = 'custom';
 
@@ -101,7 +117,21 @@
 			</button>
 		{/if}
 		<div class="flex flex-col gap-2 px-3 pt-1 pb-2">
-			<h4 class="text-muted-foreground text-xs">{m.travel_launch_windows()}</h4>
+			<div class="flex items-baseline justify-between gap-2 text-xs">
+				<h4 class="text-muted-foreground min-w-0 truncate">{m.travel_launch_windows()}</h4>
+				{#if nextWindowJd != null}
+					<p class="text-muted-foreground shrink-0">
+						{m.travel_next_window()}
+						<button
+							type="button"
+							class="text-foreground underline underline-offset-2 tabular-nums"
+							onclick={() => onUseWindow?.(nextWindowJd)}
+						>
+							{formatJulianDate(nextWindowJd)}
+						</button>
+					</p>
+				{/if}
+			</div>
 			<!-- Every point on the field is a trajectory nobody offered. Picking one adds
 		     it to the list rather than opening it: a pick is a drag, and every point
 		     crossed on the way would otherwise be opened and closed again. -->

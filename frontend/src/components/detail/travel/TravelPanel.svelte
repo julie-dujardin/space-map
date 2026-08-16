@@ -1021,6 +1021,11 @@
 		hazardsFor={(profile) => hazardsByProfile.get(profile) ?? NO_HAZARDS}
 		hovered={hoveredProfile}
 		onHover={(id) => (hoveredProfile = id)}
+		{nextWindowJd}
+		onUseWindow={(jd: number) => {
+			panel.timeMode = 'depart';
+			panel.pickedJd = jd;
+		}}
 	/>
 {/snippet}
 
@@ -1177,23 +1182,6 @@
 					jd={panel.pickedJd ?? defaultPickedJd(panel.timeMode)}
 					onChange={(jd) => (panel.pickedJd = jd)}
 				/>
-			{/if}
-			{#if nextWindowJd != null}
-				<div class="flex items-baseline justify-between gap-2 text-xs">
-					<span class="text-muted-foreground min-w-0 truncate">
-						{m.travel_next_window({ date: formatJulianDate(nextWindowJd) })}
-					</span>
-					<button
-						type="button"
-						class="shrink-0 underline underline-offset-2"
-						onclick={() => {
-							panel.timeMode = 'depart';
-							panel.pickedJd = nextWindowJd;
-						}}
-					>
-						{m.travel_use_window()}
-					</button>
-				</div>
 			{/if}
 		</div>
 
