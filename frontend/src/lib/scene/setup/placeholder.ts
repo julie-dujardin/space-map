@@ -59,11 +59,9 @@ export async function createPlaceholderBody(
 		// Recurse up the chain so e.g. a moon-of-asteroid can anchor on a
 		// placeholder of its host before the asteroid's real chunk lands. The
 		// recursive call registers the parent's position in `loader.positions`
-		// (via the `loader.positions.set` below) so siblings down the chain
-		// share the same anchor. If the chain can't close — the parent has no
-		// global data or no orbit — hide rather than dump at SSB (the old
-		// fallback placed asteroid moons at the origin, visually orbiting the
-		// Sun-system center instead of their host).
+		// so siblings down the chain share the same anchor. If the chain can't
+		// close, hide rather than anchor at the SSB, which would place the body
+		// at the Sun instead of its actual host.
 		const parentChain = await createPlaceholderBody(data.parentId, date, loader, visited);
 		if (parentChain.length === 0) {
 			console.warn(

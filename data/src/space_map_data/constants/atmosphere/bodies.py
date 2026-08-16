@@ -3,9 +3,8 @@
 The reference level is what the rendered sphere shows, not necessarily the
 surface: terrestrial bodies use the surface, Venus the cloud-top/tropopause
 region its texture depicts, and the giants the ~0.3 bar visible deck (their
-1-bar derivation would white-wash the banding the shell sits above — the
-previous hand-tuned table encoded this as an undocumented ÷3-4 on the 1-bar
-coefficients). Rayleigh coefficients and scale heights are derived from these
+1-bar derivation would white-wash the banding the shell sits above).
+Rayleigh coefficients and scale heights are derived from these
 conditions by export/atmospheres/; nothing here is a scattering coefficient.
 
 NSSDCA fact-sheet values were read from Internet Archive snapshots of the
@@ -35,8 +34,7 @@ class AbsorberBand(NamedTuple):
 
 
 class RenderTuning(NamedTuple):
-    """Artistic knobs — not physical, carried over from the previously shipped
-    hand-tuned look; documented per body where non-obvious."""
+    """Artistic knobs, not physical; documented per body where non-obvious."""
 
     baked_compensation: float
     multi_scatter_gain: float

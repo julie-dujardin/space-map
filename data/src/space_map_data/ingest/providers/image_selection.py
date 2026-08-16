@@ -776,8 +776,8 @@ def _pick_fallback_images(
                 aux_kind="logo",
                 drop_diagrams=drop_diagrams,
             )
-            # Radar shape-model renders count as gallery photos (they were
-            # plain "photo" before tagging); only logos/locators are unwanted.
+            # Radar shape-model renders count as gallery photos too;
+            # only logos/locators are unwanted.
             cached = [p for p in picks if p["kind"] in ("photo", "radar")]
             photos_cache[qid] = cached
         return cached
@@ -927,8 +927,7 @@ def read_object_images() -> dict[str, list[dict]]:
     """Return the cached ``{object_id: [{file, kind}, ...]}`` mapping.
 
     Returns an empty dict if the cache hasn't been generated yet (export
-    runs before ingest; or a fresh checkout). Callers fall back to no
-    images, matching the previous behaviour.
+    runs before ingest; or a fresh checkout).
     """
     return _read_cache(OBJECT_IMAGES_PATH, "objects")
 

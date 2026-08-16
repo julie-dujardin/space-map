@@ -18,8 +18,8 @@
  * and the steering. What remains here is the pricing: the two wells at the ends,
  * the legs, and the coast the caller asked for.
  *
- * The straight line this used to assume survives as the *seed* the real solve
- * starts from. It is a good guess for a drive that dwarfs the Sun and a poor one
+ * The straight-line assumption survives as the *seed* the real solve starts
+ * from. It is a good guess for a drive that dwarfs the Sun and a poor one
  * otherwise, which is why the solve can refuse: a ship that cannot outpush its
  * primary has no brachistochrone to fly, and gets no arc rather than a plausible
  * number. Both wells are still cleared at zero excess speed, so the ship enters

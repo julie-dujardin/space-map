@@ -205,11 +205,9 @@ def _parse_usgs(html: str, url: str) -> dict:
     publisher = pairs.get("Publisher")
     originator = pairs.get("Originators")
     mission = pairs.get("Mission Names")
-    # USGS pages sometimes put the canonical NASA-style credit chain in
-    # "Primary Authors" (e.g. "NASA/JPL-Caltech/UCLA/MPS/DLR/IDA" for Vesta).
-    # When it looks like a credit chain, prefer it verbatim. Otherwise fall
-    # back to a "Courtesy <publisher>. Data: <originator> (<mission>)." line
-    # built from the other structured fields.
+    # "Primary Authors" sometimes already is the canonical credit chain (e.g.
+    # "NASA/JPL-Caltech/UCLA/MPS/DLR/IDA" for Vesta) — prefer it verbatim over
+    # synthesizing one from publisher/originator/mission.
     slash_credit = authors_raw if authors_raw and authors_raw.count("/") >= 2 else None
     if slash_credit:
         attribution = slash_credit
@@ -315,10 +313,9 @@ def _parse_nasa_photojournal(html: str, url: str) -> dict:
 
     meta_desc = _meta(soup, "description")
 
-    # JSON-LD carries page-poster names and dates/keywords. The "author" field
-    # there is the NASA staffer who uploaded the page, NOT the image credit —
-    # we track it as `page_authors` to make that distinction obvious. The real
-    # image credit lives in the "Credits:" label block.
+    # JSON-LD "author" is the NASA staffer who uploaded the page, not the
+    # image credit — kept separately as `page_authors`. The real credit is
+    # in the "Credits:" label block.
     jsonld = _json_ld_objects(soup)
     article = next((o for o in jsonld if o.get("@type") == "NewsArticle"), None)
     page_authors: list[str] = []
@@ -358,7 +355,6 @@ def _parse_nasa_photojournal(html: str, url: str) -> dict:
     description = None
     for idx, ln in enumerate(lines):
         if ln.strip() == "Description":
-            # Accumulate lines until a known next-section anchor.
             collected: list[str] = []
             stop_markers = {
                 "Keep Exploring",

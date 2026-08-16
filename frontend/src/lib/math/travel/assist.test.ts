@@ -156,9 +156,8 @@ describe('findAssistRoute', () => {
 		).toBeNull();
 	});
 
-	// The hunt used to be the one search a deadline never reached: it ranks on Δv
-	// over twenty years, so it answered a trip to Saturn by 2030 with a departure
-	// in 2041 and the panel listed it beside routes chosen to arrive in time.
+	// The hunt ranks on Δv over twenty years, so without a deadline it can answer
+	// with a departure well past one the caller actually needs.
 	describe('under an arrival deadline', () => {
 		it('arrives by it', () => {
 			const deadlineJd = NOW + 12 * 365.25;

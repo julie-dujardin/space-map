@@ -10,7 +10,7 @@
 
 	const ctx = getContext<ContextManager>('ctx');
 
-	// All NASA-produced sources collapse to a single "NASA" chip; ORBIT_ORDER pins display order post-dedup.
+	// NASA-produced sources collapse to a single "NASA" chip; ORBIT_ORDER pins display order post-dedup.
 	const ORBIT_LABELS: Record<Exclude<OrbitalSource, OrbitalSource.UNKNOWN>, () => string> = {
 		[OrbitalSource.HORIZONS]: m.provider_nasa,
 		[OrbitalSource.SBDB]: m.provider_nasa,
@@ -35,8 +35,7 @@
 	const EARTH_SAT_SOURCES = new Set([OrbitalSource.CELESTRAK, OrbitalSource.SPACETRACK]);
 
 	const orbitLabels = $derived.by(() => {
-		// CelesTrak/Space-Track only cover Earth satellites — hide outside the
-		// Earth-Moon system.
+		// CelesTrak/Space-Track only cover Earth satellites.
 		const inEarthSystem = ctx.visibility.isFocusedOnEarthSystem();
 		const seen = new Set<string>();
 		const out: string[] = [];
@@ -51,9 +50,8 @@
 		return out;
 	});
 
-	// Scoped to the focused system + focused body; rings/clouds/topography/models
-	// share the imagery chip here (per-source breakout lives in the popover /
-	// credits page).
+	// Rings/clouds/topography/models share this imagery chip (per-source
+	// breakout lives in the popover / credits page).
 	const textureOrgs = $derived.by(() => {
 		void ctx.credits.textureVersion;
 		void ctx.credits.ringVersion;
@@ -76,8 +74,8 @@
 				}
 			}
 		}
-		// Models are body-scoped only — a probe's model credit doesn't bleed
-		// into the system's other bodies.
+		// Models are body-scoped: a probe's model credit doesn't bleed into
+		// the system's other bodies.
 		const modelCredit = bodyId ? ctx.credits.model.get(bodyId) : undefined;
 		if (modelCredit) orgs.add(modelCredit.organisation);
 		return [...orgs].sort();

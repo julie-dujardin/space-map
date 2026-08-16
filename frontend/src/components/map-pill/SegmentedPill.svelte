@@ -1,10 +1,7 @@
 <!--
-  A labelled segmented pill over the map, both ends always showing.
-
   Map chrome rather than a panel setting, because what it changes is the
-  picture. On its face rather than behind a menu, because it is not a setting
-  you set once: it is which of two pictures you are looking at, and one click is
-  the whole of it.
+  picture. On its face rather than behind a menu, because it is which of two
+  pictures you are looking at, not a setting you set once.
 -->
 <script lang="ts" generics="T">
 	import type { PillOption } from './pill-option';

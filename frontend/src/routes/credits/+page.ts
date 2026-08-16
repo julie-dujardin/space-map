@@ -7,8 +7,8 @@
 
 import { DATA_BASE } from '$lib/fetch/data-base';
 
-// Attribution page — no SEO value and its loader fetches `/data` (which collides
-// with the [type]/[id] route under SSR), so keep it client-rendered as before.
+// No SEO value, and its loader fetches `/data` (which collides with the
+// [type]/[id] route under SSR), so this stays client-rendered.
 export const ssr = false;
 
 export interface TextureCredit {
@@ -23,7 +23,7 @@ export interface TextureCredit {
 }
 
 /**
- * Per-body planetary-ring credit — sibling to {@link TextureCredit} minus
+ * Per-body planetary-ring credit: sibling to {@link TextureCredit} minus
  * the `type` field (ring profiles are radial-only, the array name is the
  * disambiguator).
  */
@@ -38,7 +38,7 @@ export interface RingCredit {
 }
 
 /**
- * Per-body cloud-overlay credit — same shape as {@link RingCredit}; the
+ * Per-body cloud-overlay credit: same shape as {@link RingCredit}; the
  * array name disambiguates it from surface imagery.
  */
 export interface CloudCredit {
@@ -52,7 +52,7 @@ export interface CloudCredit {
 }
 
 /**
- * Per-body night-lights credit — same shape as {@link CloudCredit}; the
+ * Per-body night-lights credit: same shape as {@link CloudCredit}; the
  * array name disambiguates it from surface imagery.
  */
 export interface NightCredit {
@@ -66,7 +66,7 @@ export interface NightCredit {
 }
 
 /**
- * Per-body displacement/topography credit — same shape as {@link NightCredit};
+ * Per-body displacement/topography credit: same shape as {@link NightCredit};
  * the array name disambiguates it from surface imagery.
  */
 export interface DisplacementCredit {
@@ -98,7 +98,7 @@ export interface SystemGroup {
 
 /**
  * Whole-sky cubemap backdrop credit. Sits at the top level alongside `systems`
- * because the skybox has no host body — it's a single global asset.
+ * because the skybox has no host body: it's a single global asset.
  */
 export interface SkyboxCredit {
 	source: string;

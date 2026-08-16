@@ -40,10 +40,6 @@ from space_map_data.probes.zones import Zone
 
 # Bump for fit-internal changes at the same wire format. Wire-format bumps
 # travel via `BINARY_VERSION` in the signature dict — don't bump here for those.
-# v16: landed-mission kernels no longer leak into the generic pool, so a probe
-# sharing a recycled NAIF with a lander (Mariner 10's -76 = MSL) no longer fits
-# against the lander's body. The per-probe signature doesn't capture the generic
-# set, so bump to force re-fit of the affected chunks.
 FIT_VERSION = 16
 
 

@@ -2,12 +2,12 @@
  * A trip between two moons of one planet, end to end: search bounds, grid,
  * offered routes.
  *
- * This is the case the planner used to refuse outright. It is not special
- * geometry — both ends orbit Jupiter the way Earth and Mars orbit the Sun, so it
- * is the same Lambert solve with a different mass at the focus. What it does
- * break is every bound stated in bare days: Io to Europa is a 1.3-day crossing
- * with a 3.5-day synodic period, so a 60-day floor grids seventeen windows at
- * once and a 15-day cruise floor asks for arcs that are ten transfers long.
+ * Not special geometry — both ends orbit Jupiter the way Earth and Mars orbit
+ * the Sun, so it is the same Lambert solve with a different mass at the focus.
+ * What it does break is every bound stated in bare days: Io to Europa is a
+ * 1.3-day crossing with a 3.5-day synodic period, so a 60-day floor grids
+ * seventeen windows at once and a 15-day cruise floor asks for arcs that are
+ * ten transfers long.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -54,8 +54,8 @@ describe('search bounds about a planet', () => {
 		expect(options.departToJd).toBeGreaterThan(picked);
 	});
 
-	// The floors were absolute before, and they still must not move a trip that
-	// really is months long.
+	// The floors capping a short crossing must not move a trip that really is
+	// months long.
 	it('leaves an interplanetary window where it was', () => {
 		const options = searchWindow({ origin: EARTH, target: MARS, nowJd: NOW, timeMode: 'now' })!;
 		expect(options.tofMinDays).toBeGreaterThan(80);

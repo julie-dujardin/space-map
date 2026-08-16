@@ -22,9 +22,9 @@ WORKDIR /app/data
 COPY data/pyproject.toml data/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-# Then add the source and install the project itself. uv installs in editable
-# mode, so paths.py is in /app/data/src/... — DATA_DIR=/app/data,
-# PROJECT_ROOT=/app, DOWNLOAD_DIR=/space-map-downloads (the bind-mount target).
+# uv installs in editable mode, so paths.py resolves under /app/data/src/...
+# — DATA_DIR=/app/data, PROJECT_ROOT=/app, DOWNLOAD_DIR=/space-map-downloads
+# (the bind-mount target).
 COPY data/ ./
 RUN uv sync --frozen --no-dev
 

@@ -52,12 +52,9 @@
 </div>
 
 <style>
-	/* CSS columns + per-tile aspect-ratio is the universal masonry trick:
-	   tiles flow into columns, and `break-inside: avoid` keeps each tile in
-	   one column. Reading order is column-major (top-of-col-1, then bottom-
-	   of-col-1, then top-of-col-2). For a small drawer gallery that's fine.
-	   `grid-template-rows: masonry` is in the spec but not yet shippable in
-	   Chrome (early 2026). */
+	/* Column-based masonry, not `grid-template-rows: masonry` — unsupported in
+	   Chrome (early 2026). Reading order goes column-major, fine for a small
+	   drawer gallery. */
 	.gallery {
 		column-count: 2;
 		column-gap: 0.5rem;

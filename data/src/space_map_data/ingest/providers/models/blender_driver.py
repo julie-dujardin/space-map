@@ -25,14 +25,11 @@ def _clear_scene() -> None:
 
 
 def _patch_fbx_importer() -> None:
-    """Work around a Blender 5.x bug in the bundled FBX importer.
+    """Work around a Blender 5.x bug: FBX import aborts on lights.
 
-    ``io_scene_fbx.import_fbx.blen_read_light`` assigns to
-    ``lamp.cycles.cast_shadow``, an attribute removed in Blender 5.x. Any FBX
-    containing a light fails with ``AttributeError`` and the whole import
-    aborts. We don't care about Cycles render settings (headless glTF export),
-    so wrap ``blen_read_light`` to swallow that one error and let the rest of
-    the import proceed.
+    ``blen_read_light`` assigns to ``lamp.cycles.cast_shadow``, removed in
+    Blender 5.x, raising ``AttributeError``. Cycles settings don't matter for
+    headless glTF export, so swallow that one error and let import proceed.
     """
     try:
         import io_scene_fbx.import_fbx as fbx  # ty: ignore[unresolved-import]  # Blender add-on
@@ -63,10 +60,8 @@ def _import(path: str) -> None:
     elif ext == "3ds":
         bpy.ops.import_scene.max3ds(filepath=path)
     elif ext == "blend":
-        # Open the .blend directly — link the scene's objects into the current
-        # scene rather than loading the whole file (which would replace the
-        # empty factory scene we set up). Append everything from the source
-        # file's first scene.
+        # Link objects into the current scene rather than opening the file,
+        # which would replace the empty factory scene set up above.
         with bpy.data.libraries.load(path, link=False) as (src, dst):
             dst.objects = list(src.objects)
         scene = bpy.context.scene
@@ -78,30 +73,25 @@ def _import(path: str) -> None:
 
 
 def _force_double_sided() -> None:
-    """Mark every material double-sided so glTF won't cull back faces.
+    """Disable backface culling on every material.
 
-    Several source FBX files (e.g. ESA's INTEGRAL) have parts whose
-    face winding points inward — under glTF's default single-sided
-    rendering the visible outside ends up culled and the textured inside
-    bleeds through. Disabling backface culling on every material maps to
-    ``doubleSided: true`` in the exported glTF and renders both sides,
-    sidestepping the per-mesh normal inversion without having to detect
-    which parts are wrong.
+    Some source FBX models (e.g. ESA's INTEGRAL) have inward-facing normals;
+    glTF's default single-sided rendering would cull the visible surface and
+    show the textured inside instead. Forcing doubleSided avoids having to
+    detect which parts have inverted normals.
     """
     for mat in bpy.data.materials:
         mat.use_backface_culling = False
 
 
 def _force_opaque() -> None:
-    """Force every Principled BSDF's Alpha back to 1.0.
+    """Force every Principled BSDF's Alpha to 1.0.
 
-    The Blender FBX importer wires up the Alpha input from each
-    texture's alpha channel even when the source PNGs are opaque RGBA
-    with garbage in A — the exported glTF then carries ``alphaMode:
-    BLEND``, so Three.js renders the whole spacecraft semi-transparent
-    (visible "see-through outside" symptom on ESA's INTEGRAL). None of
-    the catalog models are actually meant to have alpha; forcing alpha
-    back to 1.0 and re-deriving ``alphaMode: OPAQUE`` is the right call.
+    The FBX importer wires Alpha from each texture's alpha channel even when
+    the source PNGs are opaque with garbage in that channel, so the exported
+    glTF ends up ``alphaMode: BLEND`` and Three.js renders the model
+    see-through (seen on ESA's INTEGRAL). None of the catalog models are
+    meant to have alpha.
     """
     for mat in bpy.data.materials:
         if not mat.use_nodes or mat.node_tree is None:
@@ -120,13 +110,11 @@ def _force_opaque() -> None:
 def _export_glb(path: str) -> None:
     """Export the scene as a glb without animations or morph targets.
 
-    The frontend renders all spacecraft models as static meshes, so
-    animation data is dead weight. Disabling it also sidesteps a Blender
-    5.x glTF exporter crash on meshes with animation data but no shape
-    keys (``NoneType`` has no ``key_blocks`` — e.g. NASA's InSight Cruise
-    Lander .blend variants); the operator catches that AttributeError
-    internally and returns ``CANCELLED``, so Python-side try/except can't
-    recover.
+    The frontend renders spacecraft as static meshes, so animation data is
+    dead weight. This also sidesteps a Blender 5.x exporter crash on meshes
+    with animation data but no shape keys (e.g. NASA's InSight Cruise Lander
+    .blend files) — the operator swallows that error and returns
+    ``CANCELLED`` instead of raising, so it can't be caught from Python.
     """
     bpy.ops.export_scene.gltf(
         filepath=path,

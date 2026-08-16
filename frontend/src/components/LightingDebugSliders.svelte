@@ -11,7 +11,7 @@
 	let { getRenderer }: Props = $props();
 	const settings = getSettings();
 
-	// Mirrors of the layer-menu render toggles, so lighting experiments don't
+	// Mirrors the layer-menu render toggles so lighting experiments don't
 	// need round-trips to a separate menu.
 	const SCENE_TOGGLES: { label: string; get: () => boolean; set: (v: boolean) => void }[] = [
 		{ label: 'Clouds', get: () => settings.showClouds, set: (v) => settings.setShowClouds(v) },
@@ -32,14 +32,13 @@
 		}
 	];
 
-	// Global multiplier on every direct-sunlight path (scene lights + shells) —
-	// the scene-wide exposure experiment knob. Lives in the renderer so it
-	// survives panel close/reopen.
+	// Global exposure multiplier on every direct-sunlight path. Lives in the
+	// renderer so it survives panel close/reopen.
 	let sunX = $state(0);
 	let sunSynced = false;
 
 	// Coefficient sliders are log2 multipliers over the shipped params, so one
-	// panel serves every body regardless of absolute magnitudes; gains and the
+	// panel serves every body regardless of absolute magnitude. Gains and the
 	// baked-texture compensation are absolute.
 	let bodyId = $state<string | null>(null);
 	let comp = $state(1);
@@ -128,7 +127,7 @@
 	async function copyJson(): Promise<void> {
 		const p = resolved();
 		if (!p) return;
-		// miePhase is a 384-float offline table — pointless in a param dump.
+		// miePhase is a 384-float offline table, pointless in a param dump.
 		const rest = { ...p, miePhase: undefined };
 		await navigator.clipboard.writeText(JSON.stringify(rest, null, '\t'));
 		copied = true;

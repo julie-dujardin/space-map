@@ -34,13 +34,12 @@
 	}
 
 	// Plain `let` (not $state) so the lifecycle effect tracks only
-	// `imageIndex` — not our own ref mutations.
+	// `imageIndex`, not our own ref mutations.
 	let pswp: PhotoSwipeT | null = null;
-	// Synchronous gates for the async open path: `pswp` is only assigned
-	// after `import('photoswipe')` resolves, so without `opening` a fast
-	// re-entry (double-tap, or a remount mid-import) sees `pswp` still
-	// null and spawns a second instance. `destroyed` cancels an in-flight
-	// open if the component unmounts before the import lands.
+	// `pswp` is only assigned after `import('photoswipe')` resolves, so
+	// without `opening` a fast re-entry (double-tap, remount mid-import)
+	// would spawn a second instance. `destroyed` cancels an in-flight open
+	// if the component unmounts before the import lands.
 	let opening = false;
 	let destroyed = false;
 
@@ -55,20 +54,16 @@
 			pswp = null;
 			inst.close();
 		} else if (idx !== null && pswp && idx !== pswp.currIndex) {
-			// Gallery click (or any external setImage) while the viewer is
-			// already open: slide PhotoSwipe to the requested index. The
-			// `change` listener will fire setImage(idx) back, which is a
-			// no-op since we just set it.
+			// External setImage while already open: slide to the requested
+			// index. The `change` listener fires setImage(idx) back, a no-op.
 			pswp.goTo(idx);
 		}
 	});
 
 	onDestroy(() => {
-		// destroy() (not close()) so an unmount-mid-viewer (focus change to
-		// another object, navigation away) doesn't leave a hide-animation
-		// playing in detached DOM. Null the ref first, as the effect's close
-		// path does: destroy() fires 'close', and the handler would answer a
-		// navigation that already happened with a pushState of its own.
+		// destroy() (not close()) so an unmount-mid-viewer doesn't leave a
+		// hide-animation playing in detached DOM. Null the ref first: destroy()
+		// fires 'close', whose handler would otherwise push a redundant state.
 		destroyed = true;
 		if (pswp) {
 			const inst = pswp;
@@ -94,9 +89,9 @@
 				arrowPrevTitle: m.image_previous(),
 				arrowNextTitle: m.image_next(),
 				errorMsg: m.image_error(),
-				// Desktop reserves the start edge for the object sidebar, on the same
-				// breakpoint the aside uses. Tell PhotoSwipe the inset width so its
-				// image fit math doesn't oversize past the visible viewer area.
+				// Desktop reserves the start edge for the object sidebar; tell
+				// PhotoSwipe the inset width so its image fit math doesn't
+				// oversize past the visible viewer area.
 				getViewportSizeFn: () => ({
 					x: window.matchMedia('(min-width: 768px)').matches
 						? Math.max(0, window.innerWidth - panelWidth())
@@ -113,13 +108,12 @@
 				});
 			});
 
-			// Mirror nav into the URL. setImage uses replaceState while the
-			// viewer is open, so a 10-image gallery doesn't grow history.
+			// setImage uses replaceState while the viewer is open, so paging
+			// through a gallery doesn't grow browser history.
 			inst.on('change', () => {
 				if (pswp) appState.setImage(inst.currIndex);
 			});
 
-			// Esc / close button / vertical-drag / bg-click / our own close().
 			// pswp is already null when we initiated the close ourselves.
 			inst.on('close', () => {
 				if (pswp) {
@@ -136,10 +130,8 @@
 	}
 
 	function toSlideData(image: ObjectImage) {
-		// Build a srcset from whatever variants the bundle emitted, plus the
-		// single largest URL as the canonical `src`. Browser's image picker
-		// chooses the right variant from srcset based on viewport + DPR;
-		// PhotoSwipe just hands the <img> these attributes verbatim.
+		// srcset lets the browser pick the right variant by viewport/DPR;
+		// PhotoSwipe just passes these attributes to the <img> verbatim.
 		const labels = (['s', 'm', 'xl'] as const).filter((l) => image.variants[l]);
 		const dims = { s: 512, m: 1024, xl: 4096 } as const;
 		const srcsetParts = labels
@@ -162,10 +154,8 @@
 
 	// --- caption (Svelte component mounted into PhotoSwipe's DOM) --------------
 
-	// Promise cache so swiping back to a previously-viewed slide doesn't refetch.
-	// Lifetime is tied to the component instance; PhotoSwipe is recreated per
-	// open, so the cache resets between viewer sessions (which is fine — sessions
-	// are short and metadata is small).
+	// PhotoSwipe is recreated per open, so this resets between viewer sessions
+	// (fine: sessions are short and metadata is small).
 	const metadataCache = new Map<string, Promise<ImageMetadata | null>>();
 
 	function getMetadata(image: ObjectImage): Promise<ImageMetadata | null> {
@@ -196,8 +186,8 @@
 			props: captionState
 		});
 
-		// Token bumped per render so a slow metadata fetch from a prior slide
-		// can't overwrite the caption for the slide the user is now on.
+		// Bumped per render so a slow fetch for a prior slide can't overwrite
+		// the caption for the slide the user is now on.
 		let fetchToken = 0;
 
 		async function render() {
@@ -221,16 +211,13 @@
 		inst.on('destroy', () => unmount(captionApp));
 	}
 
-	// --- metadata helpers -------------------------------------------------------
-
 	function extractAttribution(meta: ImageMetadata): Attribution {
 		return {
 			license: meta.license?.name,
 			license_url: meta.license?.url,
 			artist: imageMetadataText(meta.artist),
-			// For descriptions, a multilang fallback to an arbitrary language
-			// would be unreadable, so we only pick the user's own locale. Bare
-			// (unlocalized) strings are always shown if nothing better is available.
+			// A multilang fallback to an arbitrary language would be unreadable,
+			// so only the user's own locale is picked (bare strings still show).
 			description: imageMetadataText(meta.description, true),
 			date: meta.date
 		};
@@ -243,22 +230,16 @@
 		backdrop-filter: blur(10px);
 	}
 
-	/* Vaul/bits-ui Dialog in modal mode sets `pointer-events: none` on a
-	   body-level wrapper to block outside-dialog interaction. PhotoSwipe is
-	   appended to body as a sibling of the drawer and inherits that none
-	   (pointer-events is an inherited property), which makes image-area
-	   touches fall straight through to the canvas. Re-asserting `auto` here
-	   restores hit-testing for every .pswp descendant that doesn't carry an
-	   explicit override of its own. */
+	/* Vaul/bits-ui Dialog sets `pointer-events: none` on a body-level wrapper
+	   to block outside-dialog interaction. PhotoSwipe is a sibling of the
+	   drawer and inherits it, so touches fall through to the canvas.
+	   Re-assert `auto` to restore hit-testing. */
 	:global(.pswp.pswp-space-map) {
 		pointer-events: auto;
 	}
 
-	/* Desktop: leave the sidebar's width clear at the start edge (the gallery
-	   controls live there). PhotoSwipe is body-level and otherwise fullscreen;
-	   we shift the start edge in and drop its `width: 100%` so the end edge
-	   stays at the viewport's right (otherwise the overlay overflows by as
-	   much). */
+	/* Desktop: leave the sidebar's width clear at the start edge. Drop the
+	   default `width: 100%` too, or the overlay overflows past the viewport. */
 	@media (min-width: 768px) {
 		:global(.pswp.pswp-space-map) {
 			inset-inline-start: var(--detail-panel);
@@ -267,8 +248,7 @@
 		}
 	}
 
-	/* Caption container: pinned to the bottom of pswp.element, above slides.
-	   Mobile merges description + credits into one full-width blurred bar;
+	/* Mobile merges description + credits into one full-width blurred bar;
 	   desktop splits them into two pills side-by-side. */
 	:global(.pswp-space-map .pswp-sm-caption-root) {
 		position: absolute;
@@ -314,11 +294,9 @@
 		}
 	}
 
-	/* max-height goes on the viewport (not the ScrollArea root) — the root has
-	   no definite height, so a percentage height on the viewport (size-full)
-	   would resolve to auto and content would spill instead of scrolling. The
-	   viewport already carries `overflow: scroll` from bits-ui, so capping its
-	   max-height directly is what activates the scrollbar. */
+	/* max-height goes on the viewport, not the ScrollArea root: the root has
+	   no definite height, so a percentage height there would resolve to auto
+	   and content would spill instead of scrolling. */
 	:global(.pswp-space-map .pswp-sm-caption-scroll [data-slot='scroll-area-viewport']) {
 		max-height: 3lh;
 		overscroll-behavior: contain;
@@ -327,8 +305,7 @@
 		max-height: 40vh;
 	}
 
-	/* Leads the description column; the 1rem inset matches the text under it.
-	   Vertical spacing comes from the wrapper's gap. */
+	/* The 1rem inset matches the text under it. */
 	:global(.pswp-space-map .pswp-sm-caption-subject) {
 		align-self: flex-start;
 		display: inline-flex;

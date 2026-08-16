@@ -47,9 +47,7 @@ def resolve_mission_object_id(
 def convertible_files(files: list[dict]) -> list[dict]:
     """Return entry files whose ``type`` is in ``CONVERTIBLE_FORMATS``.
 
-    Replaces the old format-priority picker — actual tier picking now
-    happens post-compression, after every candidate has been cached. See
-    ``processor._pick_tiers_from_cached``.
+    Tier picking happens post-compression, once every candidate is cached.
     """
     return [m for m in files if m.get("type") in config.CONVERTIBLE_FORMATS]
 

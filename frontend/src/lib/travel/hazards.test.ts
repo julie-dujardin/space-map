@@ -214,9 +214,8 @@ describe('routeHazards', () => {
 	it('reads a trip whose frame is centred on the Sun, not just a heliocentric one', () => {
 		// Earth → the Sun is a *system* transfer whose primary happens to be the
 		// Sun, and a trip between two comets is a *sibling* one about it. Both
-		// measure from the Sun; neither is what the kernel calls heliocentric, and
-		// asking about the kind of transfer instead of about the centre left a trip
-		// to the Sun with no heat hazard at all.
+		// measure from the Sun; neither is what the kernel calls heliocentric, so
+		// judging by transfer kind rather than by centre would miss both.
 		const inner = bodyAt('test-inner', 0.25);
 		const sibling = routeHazards(EARTH, inner, transfer(EARTH, inner), { centerId: 'naif-0' });
 		expect(of(sibling, 'solar-heat')?.severity).toBe('severe');

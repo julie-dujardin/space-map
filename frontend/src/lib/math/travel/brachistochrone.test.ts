@@ -299,9 +299,8 @@ describe('coasting between the burns', () => {
 		expect(cruise.days).toBeLessThan(2);
 	});
 
-	// No drift budget to respect any more: the coast is a conic walked in closed
-	// form, so a long one is exact rather than merely tolerable. What used to be
-	// capped near a month now runs past it and still lands on the target.
+	// The coast is a conic walked in closed form, so it stays exact for however
+	// long it runs — no drift budget to cap it against.
 	it('coasts past what a straight line could have described', () => {
 		const solved = solveConstantThrustArc(EARTH, MARS, J2000, THIRD_G, {
 			departureMode: 'orbit',

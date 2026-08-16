@@ -148,7 +148,6 @@ def belt_pass_dose_gy(
     if periapsis_km <= 0.0 or v_infinity_kms <= 0.0:
         return 0.0
 
-    # Hyperbola from the excess speed and the periapsis distance.
     semi_major = -mu_km3_s2 / v_infinity_kms**2
     eccentricity = 1.0 - periapsis_km / semi_major
     if eccentricity <= 1.0:

@@ -12,10 +12,10 @@
 	let ryDeg = $state(0);
 	let rzDeg = $state(0);
 	let markersOn = $state(true);
-	// Bumped once the parent's renderer becomes available — used to retrigger
-	// the $effects that depend on `getRenderer()`. Without this, the effects
-	// run once during mount (before the parent's onMount assigns `renderer`)
-	// and never again until the user touches a slider.
+	// Bumped once the parent's renderer becomes available, to retrigger the
+	// $effects that depend on `getRenderer()`. Without it they'd run once
+	// during mount (before the parent assigns `renderer`) and never again
+	// until the user touches a slider.
 	let rendererReady = $state(0);
 
 	function apply(r: SceneRenderer | undefined): void {

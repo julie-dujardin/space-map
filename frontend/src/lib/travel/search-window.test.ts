@@ -107,8 +107,8 @@ describe('searchWindow', () => {
 		expect(options.departToJd).toBeGreaterThan(options.departFromJd);
 	});
 
-	// An escaping probe used to fall out here: no semi-major axis, no Hohmann
-	// time, no grid, and the panel said the pair had no orbit at all.
+	// An escaping probe has no semi-major axis and no Hohmann time, which must
+	// not read as "no grid" — the pair does have an orbit to search.
 	describe('chasing an unbound target', () => {
 		const chase = { origin: EARTH, target: ESCAPING_PROBE, nowJd: NOW, timeMode: 'now' as const };
 

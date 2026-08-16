@@ -3,7 +3,7 @@
  * Uses Newton-Raphson iteration.
  */
 export function solveKepler(M: number, e: number, tolerance = 1e-10, maxIter = 50): number {
-	let E = M; // initial guess
+	let E = M;
 	for (let i = 0; i < maxIter; i++) {
 		const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
 		// Damp the Newton step. For near-parabolic orbits (e ≳ 0.99) with small
@@ -30,7 +30,6 @@ export function solveKeplerHyperbolic(
 	tolerance = 1e-10,
 	maxIter = 50
 ): number {
-	// Initial guess: for small M use M, for large M use sign(M)*ln(2|M|/e)
 	let H = Math.abs(M) < 1 ? M : Math.sign(M) * Math.log((2 * Math.abs(M)) / e);
 	for (let i = 0; i < maxIter; i++) {
 		const sH = Math.sinh(H);
@@ -59,9 +58,7 @@ export function solveBarker(q: number, tp: number, jd: number): { nu: number; r:
 	const dt = jd - tp; // days since perihelion
 	const W = (k * dt) / (Math.sqrt(2) * Math.pow(q, 1.5));
 
-	// Solve W = s + s³/3 where s = tan(ν/2), i.e. 3W = 3s + s³
-	// Use the real cube-root solution (Barker's formula):
-	// s = 2 cot(2 arctan(cbrt(3W)))  — but the direct cubic solution is simpler:
+	// Barker's formula: cubic solution for s = tan(ν/2) solving 3W = 3s + s³.
 	const y = Math.cbrt(3 * W + Math.sqrt(1 + 9 * W * W));
 	const s = y - 1 / y; // tan(ν/2)
 

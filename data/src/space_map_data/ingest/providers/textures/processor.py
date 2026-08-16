@@ -90,7 +90,6 @@ class TextureProcessor:
         """
         w, h = img.size
         capped = min(max(w, h), config.WEBP_MAX)
-        # Sizes to export: all EXPORT_SIZES that fit below the cap, plus the cap itself
         sizes = [s for s in config.EXPORT_SIZES if s < capped]
         sizes.append(capped)
 
@@ -505,8 +504,7 @@ class TextureProcessor:
 
         # Pre-flight: the streaming loader downsamples to ~384 MiB and
         # py360convert's 4K-per-face cubemap working set adds another ~1 GiB;
-        # 2 GiB available is comfortable headroom. (The earlier whole-image
-        # imageio load needed 30+ GiB and would OOM-kill the process.)
+        # 2 GiB available is comfortable headroom.
         SKYBOX_MIN_AVAILABLE_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB
         avail = skybox.mem_available_bytes()
         if avail is not None and avail < SKYBOX_MIN_AVAILABLE_BYTES:

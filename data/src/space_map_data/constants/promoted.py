@@ -11,8 +11,8 @@ combine into the runtime promoted set:
   on first paint (visited targets, hazardous NEOs, famous comets, flagship
   probes).
 
-The frontend used to own this list; it now reads it from the
-``/v1/labels/{lang}.gz`` files (whose keys are exactly the promoted set).
+The frontend reads this list from the ``/v1/labels/{lang}.gz`` files,
+whose keys are exactly the promoted set.
 """
 
 from space_map_data.models.object import ObjectType

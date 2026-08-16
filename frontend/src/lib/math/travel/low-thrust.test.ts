@@ -264,8 +264,8 @@ describe('buildLowThrustRoute', () => {
 		const earthThen = elementsToState(EARTH.elements, path.arcs[0].endJd, GM_SUN_KM3_S2)!;
 		expect(norm(sub(climbEnd, earthThen.r))).toBeLessThan(1);
 
-		// And the craft is somewhere for every day of the trip, which is the whole
-		// point: the marker used to vanish at the encounter.
+		// The craft has to be somewhere for every day of the trip, not just vanish
+		// at the encounter.
 		const lastDay = route.departJd + routeDurationDays(route) - 1;
 		expect(craftPositionAt(path, lastDay)).not.toBeNull();
 		expect(craftPositionAt(path, route.departJd - 1)).toBeNull();

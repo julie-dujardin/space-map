@@ -42,7 +42,7 @@ export function parkingRadiusKm(body: TravelBody): number {
  * Which orbit is asked for is a real term of the trip and not a detail: entering
  * a stationary orbit costs a third of what a low one does, and leaving from one
  * costs less again. Everything here defaults to the parking orbit when no orbit
- * is named, which is what every caller used to get.
+ * is named.
  */
 export interface EndOrbit {
 	rPeriKm: number;

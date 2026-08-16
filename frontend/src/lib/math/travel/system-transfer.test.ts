@@ -67,9 +67,9 @@ describe('separation', () => {
 });
 
 describe('offered routes', () => {
-	// Polishing a candidate used to step outside the grid on either axis — most
-	// visibly departing before the window opens. The porkchop drawn from that
-	// same grid then had nowhere to mark the route it had just offered.
+	// A polished candidate that stepped outside the grid on either axis would
+	// leave the porkchop drawn from that grid with nowhere to mark the route it
+	// just offered.
 	it('keeps every route inside the grid it was drawn from', () => {
 		const bounds = systemArcBounds(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, J2000, J2000 + 27)!;
 		const options = {

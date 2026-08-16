@@ -236,9 +236,8 @@
 						m.source_truecolortools_role()
 					)}
 				</li>
-				<!-- The spectral classes, and the scheme that decides the letter. They
-				     sit here rather than under Interiors: they say what an asteroid is
-				     called, and the composition estimate is downstream of that. -->
+				<!-- Spectral classes sit here, not under Interiors: they say what an
+				     asteroid is called, and the composition estimate is downstream of that. -->
 				{#each Object.entries(TAXONOMY_SOURCES) as [id, source] (id)}
 					<li>{@render link(source.url, source.label(), source.role())}</li>
 				{/each}

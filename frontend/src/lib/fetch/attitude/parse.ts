@@ -43,8 +43,7 @@ export function parseAttitudeChunk(buffer: ArrayBuffer): AttitudeChunk {
 	let cursorSeconds = 0;
 	for (let i = 0; i < n; i++) {
 		const off = HEADER_SIZE + i * KEYFRAME_SIZE;
-		// First keyframe's dt is 0 by construction; accumulate the rest.
-		// float32 dt — integer seconds drifted the accumulated timeline.
+		// First keyframe's dt is 0; float32 dt avoids drift from integer seconds.
 		if (i > 0) cursorSeconds += view.getFloat32(off, true);
 		times[i] = startJd + cursorSeconds / SECONDS_PER_DAY;
 

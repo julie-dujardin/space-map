@@ -264,11 +264,10 @@ class TestWriteFeatureDetailBundles:
 
         assert ns["global"] >= 1
         assert ns["en"] >= 1
-        # Every other lang should report 0 buckets
         for lang in ("ar", "fr", "ja", "ru", "zh"):
             assert ns[lang] == 0
 
-        # Decompose what we wrote: bucket file names match the hashed key
+        # Data is sharded across bucket files; reassemble to compare.
         global_dir = tmp_path / "nomenclature" / "details" / "__global__"
         assert global_dir.exists()
         gathered: dict[str, dict] = {}

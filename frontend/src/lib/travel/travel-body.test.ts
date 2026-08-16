@@ -156,8 +156,8 @@ describe('toTravelBody', () => {
 		expect(withPressure('cloud_top').aeroPressurePa).toBe(101325);
 	});
 
-	// Mercury ships a 5e-10 Pa upper limit: a non-detection dressed as a number,
-	// and reading it as air offered aerobraking off a body with none.
+	// Mercury ships a 5e-10 Pa upper limit — a non-detection dressed as a number,
+	// not an envelope to brake against.
 	it('reports no envelope for an upper limit', () => {
 		expect(
 			withAtmosphere({
@@ -232,8 +232,8 @@ describe('toTravelBody', () => {
 		expect(toTravelBody(body('naif-9999', 'naif-8888'), lookupIn(new Map()))).toBeNull();
 	});
 
-	// Dropping these left a parabolic comet with a=0/n=0 and nothing to replace
-	// them, so it propagated to nothing and the panel called it orbitless.
+	// Without q/tp a parabolic comet is left with only a=0/n=0, which propagates
+	// to nothing and reads as orbitless.
 	it('carries the perihelion pair a parabolic orbit is described by', () => {
 		const comet = body('spkid-1000616', 'naif-10', {
 			a: 0,
@@ -323,8 +323,8 @@ describe('transferCenterId', () => {
 
 	// The shipped perturbing asteroids hang under the barycentre so the scene
 	// tree matches their Chebyshev ephemeris, but the catalogue row the resolver
-	// falls back on describes them with SBDB's Sun-centred orbit. Reading the
-	// frame off `parentId` put the whole arc a barycentre offset away.
+	// falls back on describes them with SBDB's Sun-centred orbit — the frame has
+	// to come from the orbital source, not from `parentId`.
 	it('reads an SBDB orbit as Sun-centred however the body is filed', () => {
 		const rows = solarSystem();
 		const vesta = body('spkid-20000004', 'naif-0', {
@@ -340,8 +340,8 @@ describe('transferCenterId', () => {
 		expect(transferCenterId(kind, vesta, earth, look)).toBe('naif-10');
 	});
 
-	// Asking the origin alone made the anchor flip when the trip was read the
-	// other way round, so one end or the other was always drawn adrift.
+	// Asking the origin alone would flip the anchor depending on which way round
+	// the trip is read, drawing one end or the other adrift.
 	it('anchors on the Sun when the two ends disagree, whichever way round', () => {
 		const rows = solarSystem();
 		const emb = rows.get('naif-3')!;

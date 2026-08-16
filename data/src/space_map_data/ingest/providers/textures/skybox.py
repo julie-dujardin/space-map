@@ -85,8 +85,8 @@ def load_and_tonemap_streaming(src: Path) -> np.ndarray:
             ch = np.frombuffer(raw, dtype=np.float16).reshape(band_out_h * ds, src_w)
             channels.append(ch)
 
-        # Stack and box-average ds×ds blocks. Cast to float32 first so
-        # bright-star half-float values aggregate without saturation bias.
+        # Cast to float32 first so bright-star half-float values aggregate
+        # without saturation bias.
         rgb_src = np.stack(channels, axis=-1).astype(np.float32, copy=False)
         del channels
         band = rgb_src.reshape(band_out_h, ds, out_w, ds, 3).mean(

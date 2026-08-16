@@ -54,8 +54,8 @@ class GroupType(StrEnum):
     SMALL_BODY_FLAG = "small_body_flag"
     EARTH_ORBIT_CLASS = "earth_orbit_class"
     CATEGORY = "category"
-    # Launch vehicles: ROCKET constellations (spent stages in orbit) merged with
-    # GCAT launchlog history. Migrated out of CONSTELLATION; UPPER_STAGE stays.
+    # ROCKET constellations (spent stages in orbit) merged with GCAT launchlog
+    # history.
     LAUNCH_VEHICLE = "launch_vehicle"
     # Synthetic per-family page for a parentless split comet (no intact body in
     # the catalog, e.g. Shoemaker-Levy 9). Built dynamically from the DB, not in

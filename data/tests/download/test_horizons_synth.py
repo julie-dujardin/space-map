@@ -80,9 +80,7 @@ class TestParseHorizonsCsv:
     def test_malformed_lines_skipped(self):
         text = "$$SOE\nnot-a-csv-row\n2460676.5, foo, 1, 2, 3, 4, 5, 6\n$$EOE\n"
         samples = horizons_api._parse_horizons_csv(text)
-        # First row has non-numeric values; second has 8 numeric-looking parts
-        # (but parts[1] is "foo" which we don't parse). Only well-formed rows
-        # pass; expect 1 sample.
+        # The date field (parts[1]) is never parsed, so "foo" there still parses fine.
         assert len(samples) == 1
 
 

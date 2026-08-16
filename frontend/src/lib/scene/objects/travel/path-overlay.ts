@@ -1,22 +1,17 @@
 /**
  * The planned trajectory, drawn on the map, and the ones it was chosen from.
  *
- * Everything here mirrors how trails are drawn, for the same reason: vertices
- * are held centre-relative in Float64 and rebased into Float32 against the
- * focus, so an arc a billion km across still holds together when the camera is
- * metres above a moon. What differs is where the centre comes from — a trail
- * hangs off the body's own parent, a trajectory off whatever the transfer goes
- * round, which the path names.
+ * Vertices are held centre-relative in Float64 and rebased into Float32
+ * against the focus, same as trails, so an arc a billion km across still
+ * holds together metres above a moon. Unlike a trail, the centre is whatever
+ * the transfer goes round, not the body's own parent.
  *
- * The markers are sprites rather than geometry: a burn is a point on the trip,
- * not an object with a size, so it should stay the same size on screen whether
- * the camera is at Earth or at Neptune.
+ * Markers are sprites, not geometry: a burn is a point on the trip, not a
+ * sized object, so it stays the same screen size at Earth or at Neptune.
  *
- * Hazards ride on the same machinery. A hazard carries dates and never
- * positions, so the stretch it covers is cut out of the drawn arcs by date and
- * its marker is placed by asking where the craft is on that date — the panel and
- * the map therefore cannot disagree about where one starts, because only one of
- * them decides.
+ * Hazards carry dates, never positions — the stretch they cover is cut out
+ * of the drawn arcs by date, and the marker is placed by asking where the
+ * craft is on that date, so the panel and the map can't disagree.
  */
 
 import {
@@ -63,40 +58,33 @@ import './hazards.css';
 const LINE_WIDTH = 3;
 
 /**
- * Drawn at full strength, unlike the orbit trails it crosses.
- *
- * A trail is furniture and is dimmed to sit behind the bodies; the plan is the
- * thing being read, and at the same shade it reads as one more orbit among the
- * dozens already on screen.
+ * Full strength, unlike the orbit trails it crosses: a trail is dimmed
+ * furniture, but the plan is the thing being read.
  */
 const LINE_BRIGHTNESS = 1;
 
 /**
- * The trajectories still being chosen between: thinner and dimmer than the one
- * that gets picked, so that picking one reads as it coming forward.
- *
- * Still well above the trails, since half a dozen of them are the whole content
- * of the map while the choice is open.
+ * Trajectories still being chosen between: thinner and dimmer than the picked
+ * one, so picking reads as it coming forward. Still well above the trails,
+ * since half a dozen of these are the whole map content while undecided.
  */
 const OPTION_WIDTH = 2;
 const OPTION_BRIGHTNESS = 0.6;
 
 /**
- * The same trajectories once one of them has been taken: still drawn, so the
- * plan can be read against what it was chosen from, but well under the orbit
- * trails — they are no longer anything to decide about.
+ * Trajectories once one has been taken: still drawn, so the plan can be read
+ * against what it was chosen from, but under the orbit trails — no longer
+ * anything to decide about.
  */
 const FAINT_WIDTH = 1.5;
 const FAINT_BRIGHTNESS = 0.3;
 
 /**
- * The orbit at either end of the trip: thin, and only drawn once the camera is
- * near enough for it to be a ring rather than a speck.
- *
- * A parking orbit is a few hundred km over a body the map draws at system scale,
- * so from anywhere else it is smaller than the dot the planet itself is. The
- * threshold is a multiple of the orbit's own radius, which is what makes it one
- * rule for a 200 km orbit round Earth and round a kilometre-wide asteroid.
+ * The orbit at either end of the trip: thin, drawn only once the camera is
+ * near enough for it to be a ring rather than a speck. A parking orbit a few
+ * hundred km over a body the map draws at system scale is otherwise smaller
+ * than the planet's own dot, so the threshold scales with the orbit's own
+ * radius — one rule for Earth and for a kilometre-wide asteroid.
  */
 const RING_WIDTH = 1.5;
 const RING_BRIGHTNESS = 0.85;
@@ -113,18 +101,16 @@ const CRAFT_COLOR = '#ffffff';
 const PATH_RENDER_ORDER = 4;
 
 /**
- * The ground stretch of a surface end dips inside an atmosphere, whose shell
- * writes depth from outside — drawn at the plan's own order the shell would
- * simply erase it. Drawn after the opaque planet but before the shell instead,
- * so the glow composites over the line and the descent dims into the air
- * rather than vanishing at its edge.
+ * A surface end's ground stretch dips inside an atmosphere, whose shell
+ * writes depth from outside — at the plan's own render order the shell would
+ * erase it. Drawn after the opaque planet but before the shell instead, so
+ * the glow composites over the line rather than the descent vanishing at its edge.
  */
 const GROUND_RENDER_ORDER = 1.5;
 
 /**
- * A hazard is a wide band laid *under* the plan rather than a repaint of it: the
- * arc's own colours already say how each stretch is flown, and losing that to
- * say something else about the same line would be a poor trade. Wide enough to
+ * A hazard is a wide band laid *under* the plan, not a repaint of it — the
+ * arc's own colours already say how each stretch is flown. Wide enough to
  * show either side of the line it sits behind.
  */
 const HAZARD_LINE_WIDTH = 9;
@@ -205,14 +191,11 @@ function warningTexture(color: string): CanvasTexture {
 }
 
 /**
- * The samples of `arc` that fall between two dates, inside the window the arc is
- * drawn over.
- *
- * The arc's own vertices rather than a re-derived sub-arc: the band has to sit
- * exactly on the line it is calling out, and re-solving a stretch at a different
- * sampling would leave it visibly beside it on a tight curve. Fewer than two and
- * there is no band to draw — a hazard shorter than the gap between samples is a
- * marker and a chip, which is all a moment ever gets anyway.
+ * The samples of `arc` that fall between two dates, inside the window the arc
+ * is drawn over. Uses the arc's own vertices rather than a re-derived sub-arc:
+ * re-solving at a different sampling would leave the band visibly beside the
+ * line it's calling out on a tight curve. A hazard shorter than the gap
+ * between samples gets no band, just a marker and a chip.
  */
 function spanPoints(
 	arc: PathArc,
@@ -485,16 +468,11 @@ export class TravelPathOverlay {
 	/**
 	 * Lay each hazard's stretch under the plan, and mark where it starts.
 	 *
-	 * A hazard names dates, never places — so the stretch is cut out of the drawn
-	 * arcs by date and the marker is placed by asking where the craft is on that
-	 * date.
-	 *
-	 * Every one of them is named. An earlier cut labelled only the worse two
-	 * levels to keep the line from being crowded, which stopped making sense once
-	 * the two hazards that are *most* about a particular place — a conjunction is
-	 * a fortnight, a perihelion a few weeks — were also the mildest. They start at
-	 * different points on the arc by construction, so crowding is a coincidence
-	 * rather than the rule.
+	 * A hazard names dates, never places, so the stretch is cut out of the
+	 * drawn arcs by date and the marker placed by asking where the craft is
+	 * on that date. Every hazard is labelled, including mild ones (a
+	 * conjunction, a perihelion) — they start at different points on the
+	 * arc by construction, so crowding is a coincidence, not the rule.
 	 */
 	private addHazards(path: TrajectoryPath, hazards: readonly Hazard[]): void {
 		const ordered = [...hazards].sort(
@@ -641,15 +619,14 @@ export class TravelPathOverlay {
 	/**
 	 * Label a trajectory at both ends, and answer which ends got one.
 	 *
-	 * The arrival goes on the *meeting* point — where the destination will be when
-	 * the craft gets there — because that is where the arc actually ends, and a
-	 * date written against where the planet is today would be a different claim.
-	 * Planet-frame there is no such distinction to draw: that end is measured off
-	 * the body, so the label rides it like the orbit round it does.
+	 * The arrival goes on the *meeting* point — where the destination will be
+	 * when the craft gets there — since that's where the arc actually ends;
+	 * the planet's position today would be a different claim. Planet-frame
+	 * there's no such distinction: that end is measured off the body, so the
+	 * label rides it like the orbit round it does.
 	 *
-	 * Each end takes the colour of the arc it caps, so the two differ on a
-	 * trajectory flown differently at each end: a drive held all the way leaves
-	 * under boost and arrives under braking.
+	 * Each end takes the colour of the arc it caps, so the two differ when a
+	 * trajectory is flown differently at each end (e.g. boost then braking).
 	 */
 	private addEndLabels(
 		trajectory: LabelledPath,
@@ -780,14 +757,13 @@ export class TravelPathOverlay {
 	}
 
 	/**
-	 * The orbits the trip starts in and ends in, and the passages down to them.
+	 * The orbits the trip starts and ends in, and the passages down to them.
 	 *
-	 * The passage is a piece of the trip and is drawn at every zoom: it is where
-	 * the crossing stops, so it has to be, and it is drawn in the crossing's own
-	 * frame at that end, so it can be. The orbit is different — it is where the
-	 * trip ends up rather than part of getting there, and it is the one thing here
-	 * at a body's own scale, a few hundred km over a planet the map draws at
-	 * system scale. So it is kept in its own list and waits for the camera.
+	 * The passage is drawn at every zoom, in the crossing's own frame, since
+	 * it's where the crossing stops. The orbit is different: it's where the
+	 * trip ends up, at a body's own scale (a few hundred km over a planet the
+	 * map draws at system scale) — so it's kept in its own list and waits for
+	 * the camera.
 	 */
 	private addEndOrbits(path: TrajectoryPath): void {
 		for (const orbit of path.endOrbits) {
@@ -929,15 +905,14 @@ export class TravelPathOverlay {
 	/**
 	 * Place the path against the scene as it currently stands.
 	 *
-	 * `centerScenePos` is where the centre body is this frame and `basis` is what
-	 * the scene is drawn relative to; both are in scene units. Call whenever
-	 * either moves — which is every frame the clock runs, and on every focus
-	 * change.
+	 * `centerScenePos` is where the centre body is this frame and `basis` is
+	 * what the scene is drawn relative to, both in scene units. Call on every
+	 * clock tick and every focus change.
 	 *
-	 * `bodyScenePos` answers for the ends that are drawn planet-frame, which hang
-	 * off their own body wherever it is now rather than off the transfer's centre.
-	 * An end whose body is not resident keeps the centre's offset: it is drawn in
-	 * the wrong place for a frame or two rather than flickering out of existence.
+	 * `bodyScenePos` answers for ends drawn planet-frame, which hang off their
+	 * own body rather than the transfer's centre. An end whose body isn't
+	 * resident keeps the centre's offset — drawn briefly in the wrong place
+	 * rather than flickering out of existence.
 	 */
 	reposition(centerScenePos: Vec3, basis: Vec3, bodyScenePos: (id: string) => Vec3 | null): void {
 		if (this.center === null) return;
@@ -1015,19 +990,16 @@ export class TravelPathOverlay {
 	 * Settle the end labels against each other, and claim the screen space the
 	 * survivors take so nothing else is drawn over them.
 	 *
-	 * A trajectory being chosen is what the map is *for* at that moment, so these
-	 * outrank every body and feature label rather than competing with them —
-	 * but not each other. Two of them stacked in the same place is exactly the
-	 * mess the cull exists to prevent, so among themselves the nearest to the
-	 * camera wins and the ones behind it fall back to their ring, the way a body
-	 * label falls back to its halo.
+	 * These outrank every body and feature label (a trajectory being chosen
+	 * is what the map is for), but not each other — the nearest to the camera
+	 * wins and the rest fall back to their ring, the way a body label falls
+	 * back to its halo.
 	 *
-	 * They are projected here rather than measured off the DOM:
-	 * `getBoundingClientRect` on every label every frame is a forced layout, and
-	 * this is the same projection the labels are drawn by.
+	 * Projected here rather than measured off the DOM, since
+	 * `getBoundingClientRect` on every label every frame forces layout.
 	 *
-	 * Call once per frame, before the culls run. With nothing drawn it releases
-	 * the space it was holding.
+	 * Call once per frame, before the culls run. With nothing drawn it
+	 * releases the space it was holding.
 	 */
 	reserveLabelSpace(camera: PerspectiveCamera, screenWidth: number, screenHeight: number): void {
 		if (!this.group.visible || this.labels.length === 0) {

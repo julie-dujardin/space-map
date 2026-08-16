@@ -330,7 +330,6 @@ export function writePositions(
 			xOrb = result.r * Math.cos(result.nu);
 			yOrb = result.r * Math.sin(result.nu);
 		} else {
-			// Keplerian (elliptic or hyperbolic)
 			const ai = a[idx];
 			if (!isFinite(ai) || !isFinite(ei) || !isFinite(ma[idx]) || !isFinite(n[idx])) continue;
 			const dt = jd - epoch[idx];

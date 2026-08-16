@@ -268,9 +268,8 @@ def export_zone(
     2. Re-iterate snapshots (overlays re-apply per snapshot) and write
        elements/labels using the prebuilt flags from the union build.
 
-    Globals built in step 2's interlude reflect the most-recent overlay state
-    of each object — the same data the previous N×-rebuild design landed on
-    after last-write-wins aggregation, but at 1× cost.
+    Globals reflect each object's most-recent overlay state, last-write-wins
+    across snapshots, built in a single pass.
     """
     union_ids: set[str] = set()
     for snap in snapshots.iterate():

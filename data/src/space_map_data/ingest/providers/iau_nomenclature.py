@@ -101,14 +101,12 @@ def _parse_kml(kml_bytes: bytes, target: str) -> list[dict]:
         if name_el is None or name_el.text is None:
             continue
 
-        # Collect SimpleData fields into a dict.
         fields: dict[str, str] = {}
         for sd in pm.iter(f"{KML_NS}SimpleData"):
             field_name = sd.get("name")
             if field_name is not None and sd.text is not None:
                 fields[field_name] = sd.text
 
-        # Extract feature ID from the link URL.
         link = fields.get("link", "")
         if "/Feature/" not in link:
             logger.warning(

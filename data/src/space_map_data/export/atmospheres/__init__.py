@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 # Shell top: where the optical contribution dies. 8 Rayleigh scale heights
 # leaves e^-8 ~ 3e-4 of the column; aerosols fade faster per height but start
-# denser, 6 is enough. Reproduces the previously hand-picked per-body tops.
+# denser, 6 is enough.
 _TOP_RAYLEIGH_SCALE_HEIGHTS = 8.0
 _TOP_MIE_SCALE_HEIGHTS = 6.0
 

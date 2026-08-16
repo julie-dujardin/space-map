@@ -175,7 +175,7 @@ _FLOAT_COLS = {
 _INT_COLS = {"sats", "data_arc", "n_obs_used", "n_del_obs_used", "n_dop_obs_used"}
 _BOOL_COLS = {"neo", "pha", "two_body"}
 _PARTIAL_DATE_COLS = {"first_obs", "last_obs"}  # input can be YYYY-MM-DD or YYYY-??-??
-# "epoch_cal", "tp_cal": could parse to datetime but BCE dates (C/-146 P1: -146-06-28.0000000) cause issues, string is fine
+# epoch_cal/tp_cal stay strings: BCE dates (e.g. -146-06-28.0000000) break datetime parsing
 
 
 SBDB_CLASS_MAP: dict[str, ObjectType] = {
@@ -269,7 +269,6 @@ def _sbdb_dict(row: dict[str, str]) -> dict:
         if col in _FLOAT_COLS:
             d[col] = float_or_none(raw)
 
-            # compute mass from GM
             if col == "GM" and d[col]:
                 d["mass_kg"] = d[col] / G_KM3_PER_KG_S2
         elif col in _INT_COLS:
@@ -403,7 +402,6 @@ class SBDBIngestor:
         self._check_columns()
         self._clear()
 
-        # Slice the spkid space into work items: (db, first spkid, last spkid)
         con = sqlite3.connect(f"file:{self.db_file}?mode=ro", uri=True)
         try:
             spkids = [

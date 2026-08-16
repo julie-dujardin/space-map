@@ -186,9 +186,8 @@ describe('TravelPanelState constant-thrust arc', () => {
 	// Arriving with a torch ship is not the same as picking one: the link already
 	// said which trajectory it meant, and the arc selects itself on the choice.
 	//
-	// The catalogue is fetched, so this runs once with the craft still unresolved
-	// before it runs with the craft in hand — which is the order that actually
-	// broke it, and why the first pass is here rather than assumed away.
+	// The catalogue is fetched, so this must run once with the craft still
+	// unresolved and again once it is in hand.
 	it('leaves a trajectory the trip arrived naming alone', async () => {
 		const panel = new TravelPanelState({
 			...DEFAULT_TRIP,
@@ -621,8 +620,7 @@ describe('TravelPanelState craft off a shared link', () => {
 	} as unknown as Vehicle;
 
 	// The catalogue is fetched, so it lands after the panel has already been
-	// handed the id. Reading it off the module instead left `vehicle` answering
-	// null for good, and the craft looked lost on every shared link.
+	// handed the id.
 	it('resolves the craft once the catalogue lands', () => {
 		const panel = new TravelPanelState({ ...DEFAULT_TRIP, vehicleId: 'europa-clipper' });
 		expect(panel.vehicle).toBeNull();
@@ -749,8 +747,8 @@ describe('TravelPanelState swing-by route', () => {
 	});
 
 	// Same shape as the pick and the craft off a shared link: the hunt is the
-	// slowest answer on the panel, and everything landing in front of it used to
-	// drop the trajectory the link was sent with.
+	// slowest answer on the panel, and nothing landing in front of it may drop
+	// the trajectory the link was sent with.
 	it('keeps a link’s choice while the hunt is still running', async () => {
 		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'gravity-assist' });
 		await panel.solve(EARTH, SATURN, NOW);

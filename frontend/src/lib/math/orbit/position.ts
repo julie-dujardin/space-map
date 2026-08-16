@@ -102,7 +102,6 @@ export function orbitalElementsToPositionJD(
 		return null;
 	}
 
-	// Propagate mean anomaly from epoch to requested date.
 	const dt = jd - epoch; // days since epoch
 	const M = (ma + n * dt) * DEG2RAD;
 	// Secular drift on the node and apsidal angles, shared with the orbit-curve
@@ -149,7 +148,6 @@ export function orbitalElementsToPositionJD(
 		r = a * (1 - e * Math.cosh(H)); // a < 0 → r > 0
 	}
 
-	// Position in orbital plane
 	const xOrb = r * Math.cos(nu);
 	const yOrb = r * Math.sin(nu);
 	if (!isFinite(xOrb) || !isFinite(yOrb)) {

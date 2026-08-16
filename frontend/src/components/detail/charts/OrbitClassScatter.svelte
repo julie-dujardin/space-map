@@ -373,7 +373,6 @@
 				{/if}
 
 				<g clip-path="url(#plot-clip-{uid})">
-					<!-- Zone polygons -->
 					{#each plotZones as z (z.className)}
 						{@const focused = focusedClassNames.has(z.className)}
 						<path
@@ -398,12 +397,10 @@
 						/>
 					{/each}
 
-					<!-- Background dots (non-focused) -->
 					{#each backgroundDots as d (d.s.name + d.s.slug)}
 						<circle cx={d.px} cy={d.py} r={1.4} class="fill-foreground/25 pointer-events-none" />
 					{/each}
 
-					<!-- Focused dots -->
 					{#each focusedDots as d (d.s.name + d.s.slug)}
 						<circle
 							role="img"
@@ -416,7 +413,6 @@
 						/>
 					{/each}
 
-					<!-- PHA dots, always red, drawn on top -->
 					{#each phaDots as d (d.s.name + d.s.slug)}
 						<circle
 							role="img"
@@ -434,7 +430,6 @@
 				     chart edge (AST/COM catch-alls, IEO/ATE/APO bottoms at q=0, …). -->
 				<rect width={innerW} height={innerH} fill="none" class="stroke-border" stroke-width="1" />
 
-				<!-- Axes -->
 				<g transform="translate(0,{innerH})">
 					<line x2={innerW} class="stroke-muted-foreground/60" />
 					{#each xTicks as t (t)}

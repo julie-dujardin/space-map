@@ -159,9 +159,8 @@ class TestBestUnit:
         assert conv.best_unit(100, "temperature") is None
 
     def test_negative_value_picks_by_magnitude(self):
-        # Regression: ``value > 1.1`` would always be false for negatives, so
-        # an elevation of -90 m used to tumble down to the smallest unit
-        # (e.g. attometre × 1e19) instead of staying as -90 m.
+        # ``value > 1.1`` alone would always be false for negatives — the
+        # comparison must use magnitude.
         conv = _build_mass_converter()
         result = conv.best_unit(-5000, "mass")
         assert result is not None

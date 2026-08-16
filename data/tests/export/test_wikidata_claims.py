@@ -26,9 +26,7 @@ from space_map_data.export.objects.wikidata_claims import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Helpers to build realistic Wikidata claim structures
-# ---------------------------------------------------------------------------
+# Helpers to build realistic Wikidata claim structures.
 
 
 def _qty_snak(amount: str, unit: str = "1") -> dict:

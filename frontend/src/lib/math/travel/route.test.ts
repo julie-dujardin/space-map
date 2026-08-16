@@ -273,9 +273,8 @@ describe('selectRoutes under an arrival deadline', () => {
 		for (const { route } of routes) expect(route.arriveJd).toBeLessThanOrEqual(deadlineJd);
 	});
 
-	// The bug this replaced: the three profiles were picked off the whole field
-	// and the late ones then dropped, so a deadline cost you the choice rather
-	// than moving it.
+	// Picking profiles off the whole field and dropping the late ones afterwards
+	// would let a deadline cost you the choice rather than just moving it.
 	it('re-picks inside the deadline rather than dropping what misses it', () => {
 		const dropped = selectRoutes(grid, EARTH, MARS).filter(
 			(choice) => choice.route.arriveJd <= deadlineJd

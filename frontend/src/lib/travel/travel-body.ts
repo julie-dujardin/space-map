@@ -140,9 +140,9 @@ export function hasAtmosphere(detail: GlobalObjectData | null): boolean | undefi
  * Pressure of the envelope at the level the body's radius names — the surface,
  * or the 1 bar datum on a giant — in Pa. What a braking pass is judged and
  * priced against, so it reports nothing at all for readings that are not an
- * envelope to fly through: an upper limit is a non-detection dressed as a
- * number (Mercury's is how aerobraking was once offered there), and a stellar
- * photosphere has no top to skim and come back out of.
+ * envelope to fly through: an upper limit (Mercury's, for instance) is a
+ * non-detection dressed as a number, and a stellar photosphere has no top to
+ * skim and come back out of.
  */
 export function aeroPressurePa(detail: GlobalObjectData | null): number | undefined {
 	const atmosphere = detail?.atmosphere;
@@ -279,9 +279,9 @@ export function transferFrame(plan: TransferPlan | null): TransferFrame {
  * is the better part of a million km. Two moons of one planet are the same
  * story at the barycentre inside it.
  *
- * A heliocentric arc has two sets of elements and so two frames to agree on.
- * Asking the origin alone made the answer depend on which way round the trip
- * was read, and silently drew the other end a barycentre offset away.
+ * A heliocentric arc has two sets of elements and so two frames to agree on —
+ * asking the origin alone would make the answer depend on which way round the
+ * trip is read, and silently draw the other end a barycentre offset away.
  */
 export function transferCenterId(
 	plan: TransferPlan,

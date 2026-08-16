@@ -748,7 +748,6 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec(
         "Bundeswehr", "bundeswehr", "Q56010", constellations=("sar-lupe", "sarah")
     ),
-    # Launch providers for the 2026-06 rocket batch.
     OperatorSpec(
         "Galactic Energy",
         "galactic-energy",

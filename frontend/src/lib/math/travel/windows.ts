@@ -93,9 +93,9 @@ export interface TransferScale {
  *
  * The Hohmann time reads a body's distance off its semi-major axis, which only
  * holds while the orbit is round: C/2021 P2 has a = 2474 AU and sits at 10 AU,
- * so a cruise scaled off it was gridded against a 21,000-year half-orbit and
- * every route on offer came back a geological age long. Where the axis and the
- * distance disagree the distance wins, and a target crossing much of that
+ * so scaling a cruise off the axis would grid it against a 21,000-year
+ * half-orbit and return nothing but geological-age routes. Where the axis and
+ * the distance disagree the distance wins, and a target crossing much of that
  * distance meanwhile is one to chase.
  *
  * Returns null when either body's orbit will not yield a position.

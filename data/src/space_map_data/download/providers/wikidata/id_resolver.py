@@ -26,9 +26,8 @@ from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, SBDB
 from space_map_data.models.object.satcat import Satcat
 
-# Satellite constellations to exclude
-# individual constellation members don't have meaningful Wikidata entries.
-# Only included massive constellations, the smaller constellations in PREFIX_TO_SLUG can have meaningful entries
+# Massive constellations only: individual members lack meaningful Wikidata
+# entries. Smaller constellations (in PREFIX_TO_SLUG) can have real entries.
 CONSTELLATION_PREFIXES = [
     "STARLINK",
     "ONEWEB",
@@ -343,9 +342,7 @@ class WikidataIdResolver:
         """Resolve a single source, appending to CSV after each batch."""
         query_method = getattr(self, query_method_name)
 
-        # Load already-resolved search terms for resumability
         already_resolved = set(self._read_ids_csv(pid).keys())
-        # Also skip IDs previously queried with no match
         already_queried_no_match = self._read_no_match_csv(pid)
         already_known = already_resolved | already_queried_no_match
         if already_known:
@@ -370,7 +367,6 @@ class WikidataIdResolver:
 
                 resolved = self._sparql_resolve(pid, to_resolve)
                 self._append_ids_csv(pid, resolved)
-                # Record IDs that had no match
                 no_match = [id_ for id_ in to_resolve if id_ not in resolved]
                 self._append_no_match_csv(pid, no_match)
                 already_known.update(to_resolve)

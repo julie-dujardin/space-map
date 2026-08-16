@@ -336,8 +336,8 @@ def _classify_flying_subrange(
     skip interplanetary for that span. A 7-day Kepler/Chebyshev fit
     centered on the Sun can't simultaneously capture the planet's
     heliocentric motion and the spacecraft's much faster planet-centered
-    motion; pre-v6 the fit collapsed to "spacecraft ≈ planet" with error
-    ≈ planet-Sun distance (~1 AU).
+    motion, so folding a captured span into interplanetary too would blow
+    up to ≈ planet-Sun distance (~1 AU) error.
     """
     n_sub = e_idx - s_idx + 1
     if n_sub < 1:

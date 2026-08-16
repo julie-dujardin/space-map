@@ -115,13 +115,11 @@
 	</header>
 
 	<div class="px-5 pb-5 flex flex-col gap-5 overflow-y-auto">
-		<!-- DISPLAY -->
 		<section class="flex flex-col gap-4">
 			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 				{m.settings_section_display()}
 			</h3>
 
-			<!-- Language -->
 			<div class="flex flex-col gap-2">
 				<div class="flex items-center justify-between gap-3">
 					<div class="min-w-0">
@@ -164,7 +162,6 @@
 				{/if}
 			</div>
 
-			<!-- Theme -->
 			<div class="flex flex-col gap-2">
 				<div class="flex items-center justify-between gap-3">
 					<div class="min-w-0">
@@ -205,7 +202,6 @@
 				{/if}
 			</div>
 
-			<!-- Reduced motion -->
 			<div class="flex flex-col gap-2">
 				<div class="flex items-center justify-between gap-3">
 					<div class="min-w-0">
@@ -247,13 +243,11 @@
 			</div>
 		</section>
 
-		<!-- TIME -->
 		<section class="flex flex-col gap-4">
 			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 				{m.settings_section_time()}
 			</h3>
 
-			<!-- Date format -->
 			<div class="flex items-center justify-between gap-3">
 				<div class="min-w-0">
 					<div class="text-sm font-medium">{m.settings_dateformat()}</div>
@@ -281,7 +275,6 @@
 				</div>
 			</div>
 
-			<!-- Clock -->
 			<div class="flex flex-col gap-2">
 				<div class="flex items-center justify-between gap-3">
 					<div class="min-w-0">
@@ -337,13 +330,11 @@
 			</div>
 		</section>
 
-		<!-- GRAPHICS -->
 		<section class="flex flex-col gap-4">
 			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 				{m.settings_section_graphics()}
 			</h3>
 
-			<!-- Atmosphere quality -->
 			<div class="flex flex-col gap-2">
 				<div class="flex items-center justify-between gap-3">
 					<div class="min-w-0">
@@ -400,7 +391,6 @@
 			</div>
 		</section>
 
-		<!-- DEVELOPER -->
 		<section class="flex flex-col gap-4">
 			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 				{m.settings_section_developer()}

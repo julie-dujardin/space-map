@@ -297,10 +297,10 @@ def build_fits(
                         assert c.landed_body_id_value is not None
                         assert c.landed_body_id_type is not None
                         if c.static_lat_lng is not None:
-                            # Events-driven landing: no SPICE, lat/lng come from
-                            # the curated events JSON. Phase is implicitly static
-                            # (probes that move on the surface have SPICE coverage
-                            # and use the fit_landed_chunk path).
+                            # Events-driven landing: static lat/lng from the
+                            # curated events JSON, no SPICE. Probes that move
+                            # on the surface have SPICE coverage instead and
+                            # go through fit_landed_chunk.
                             lat, lng = c.static_lat_lng
                             landed_fit = LandedFit(
                                 body_id_value=c.landed_body_id_value,

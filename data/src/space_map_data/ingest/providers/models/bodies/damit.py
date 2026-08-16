@@ -58,12 +58,10 @@ _J2000_JD = 2451545.0
 _H_MAG_CONST_KM = 1329.0
 _ASSUMED_ALBEDO = 0.14
 
-# What actually produced the shape, within the lightcurve tier. DAMIT's
-# `nonconvex` flag separates the two: a convex hull comes from lightcurves
-# alone, while every non-convex solution is an ADAM/KOALA/SAGE-style inversion
-# that needed resolved data too (VLT/SPHERE adaptive optics for most, radar or
-# occultation chords for the rest) — crediting those as lightcurve inversion
-# misstates where the shape came from.
+# DAMIT's `nonconvex` flag distinguishes shape origin: a convex hull comes
+# from lightcurves alone; non-convex solutions (ADAM/KOALA/SAGE) also used
+# resolved data (adaptive optics, radar, or occultation) — crediting those
+# as pure lightcurve inversion would misstate the source.
 _TECHNIQUE_CONVEX = "lightcurve_convex"
 _TECHNIQUE_RESOLVED = "lightcurve_resolved"
 

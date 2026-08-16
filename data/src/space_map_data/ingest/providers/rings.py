@@ -240,9 +240,7 @@ class RingProcessor:
             q = _quantize(arr)
             rows[row] = q if q.ndim == 2 else q[:, None]
 
-        # Per-channel files from the pre-strip format, and strips written to
-        # the body dir before bundles gained their own sub-directory, would
-        # otherwise linger.
+        # Clears leftovers from older layouts (per-channel files, non-bundled strips).
         for stale in (*out_dir.glob("*.webp"), *out_dir.parent.glob("*.webp")):
             if stale.name != STRIP_FILE or stale.parent != out_dir:
                 stale.unlink()
@@ -267,7 +265,6 @@ class RingProcessor:
         out_meta = {
             "id": object_id,
             "bundle": bundle,
-            # Works behind this bundle, each with its own contribution note.
             "sources": meta["sources"],
             "description": meta.get("description"),
             "inner_radius_km": float(meta["inner_radius_km"]),

@@ -32,23 +32,20 @@
 		earthSatellites: 0,
 		smallBodies: 0
 	});
-	// performance.memory is a non-standard Chromium-only field; surface it
-	// when available, hide the row when not.
+	// performance.memory is a non-standard Chromium-only field; hide the row when absent.
 	let jsHeapMB = $state<number | null>(null);
 
-	// Live pointing-spec override for the focused spacecraft model. Each dropdown
-	// defaults to DEFAULT ("keep the body's current value"); all-default = no
-	// override. NONE (secondary only) drops the secondary constraint.
+	// DEFAULT means "keep the body's current value"; all-default = no override.
+	// NONE (secondary only) drops the secondary constraint.
 	const DEFAULT = 'default';
 	const NONE = 'none';
 	const POINTING_AXES: PointingAxis[] = ['+x', '-x', '+y', '-y', '+z', '-z'];
 	const POINTING_TARGETS: PointingTarget[] = ['parent', 'sun', 'velocity'];
 	let pointingSupported = $state(false);
 	let pointingFocusedId = $state<string | undefined>(undefined);
-	// Master toggle: shows the dropdowns and the on-model axis vectors.
 	let overrideMode = $state(false);
-	// The body's natural attitude (config or south-default) — labels the "default
-	// (…)" options and fills any field left on DEFAULT.
+	// The body's natural attitude; labels the "default (…)" options and fills
+	// any field left on DEFAULT.
 	let base = $state<PointingSpec>({ primary: { axis: '-y', target: 'parent' } });
 	let primaryAxisSel = $state<string>(DEFAULT);
 	let primaryTargetSel = $state<string>(DEFAULT);
@@ -73,7 +70,7 @@
 	function applyPointing(): void {
 		const r = getRenderer();
 		if (!r) return;
-		// No field changed → no override; the body keeps its config/default.
+		// No field changed → no override.
 		if (
 			primaryAxisSel === DEFAULT &&
 			primaryTargetSel === DEFAULT &&
@@ -103,9 +100,8 @@
 		r.setFocusedPointing(spec);
 	}
 
-	// Show the model's ±XYZ axis vectors only while the override toggle is on;
-	// clear when toggled off or when the debug menu unmounts. Read both signals
-	// into locals first so `&&` short-circuiting never drops one as a dependency.
+	// Read both signals into locals first: `&&` short-circuiting would drop
+	// one as a reactive dependency.
 	$effect(() => {
 		const supported = pointingSupported;
 		const on = overrideMode;
@@ -114,10 +110,9 @@
 		return () => r?.setPointingAxesVisible(false);
 	});
 
-	// Body-layer toggles rebuild the focused body's render stack. Track only the
-	// four flags; untrack the reapply call — it reads live per-frame scene state
-	// (focus, positions) that would otherwise re-fire this effect every frame and
-	// spin the texture reload. Skip the first run so opening the panel is a no-op.
+	// Untrack the reapply call: it reads live per-frame scene state that would
+	// otherwise re-fire this effect every frame and spin the texture reload.
+	// Skip the first run so opening the panel is a no-op.
 	let layersInit = false;
 	$effect(() => {
 		const _deps = [
@@ -145,8 +140,7 @@
 
 	onMount(() => {
 		let raf = 0;
-		// Poll once per ~250ms — enough to keep the panel responsive without
-		// adding measurable work to the render loop.
+		// ~250ms poll keeps the panel responsive without measurable render cost.
 		let lastPoll = 0;
 		const tick = (now: number) => {
 			raf = requestAnimationFrame(tick);
@@ -163,7 +157,7 @@
 			const fp = r.getFocusedPointing();
 			pointingSupported = !!fp?.supported;
 			if (fp) base = fp.base;
-			// New focus → drop any in-progress override selections back to default.
+			// New focus: drop any in-progress override selections back to default.
 			if (stats.focusedId !== pointingFocusedId) {
 				pointingFocusedId = stats.focusedId;
 				resetSelections();
@@ -177,8 +171,8 @@
 		counts.planets + counts.moons + counts.probes + counts.earthSatellites + counts.smallBodies
 	);
 
-	// Effective atmosphere quality: resolved tier preset + session overrides.
-	// currentAtmosphereConfig reads the settings runes, so this tracks both.
+	// currentAtmosphereConfig reads the settings runes, so this tracks both
+	// the tier preset and session overrides.
 	let atmoTier = $derived(resolveAtmosphereTier(settings.atmosphereQuality));
 	let atmoCfg = $derived(currentAtmosphereConfig());
 </script>

@@ -101,10 +101,8 @@ TEMPERATURE_BODIES: dict[str, tuple[PartTemperature, ...]] = {
             ("nssdca",),
         ),
     ),
-    # The four giants, at the ~0.3 bar visible deck. Jupiter had no
-    # temperature at all before this; the others disagreed about which
-    # pressure level they meant, which put Uranus and Saturn on incomparable
-    # footings. Values mirror constants/atmosphere/bodies.py.
+    # The four giants, at the ~0.3 bar visible deck — the level
+    # constants/atmosphere/bodies.py also uses, so the two stay comparable.
     "naif-599": (PartTemperature("cloud_top", (Reading("mean", 125.0),), ("nssdca",)),),
     "naif-699": (PartTemperature("cloud_top", (Reading("mean", 110.0),), ("nssdca",)),),
     "naif-799": (PartTemperature("cloud_top", (Reading("mean", 58.0),), ("nssdca",)),),

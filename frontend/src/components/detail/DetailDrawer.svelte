@@ -278,8 +278,7 @@
 		data = null;
 		featureDetail = null;
 		groupDetail = null;
-		// A rejected detail fetch used to rethrow into the void, leaving an empty
-		// drawer. Surface it as an alert panel instead; stale loads (key moved on)
+		// Surface a rejected fetch as an alert panel; stale loads (key moved on)
 		// are ignored so an old failure can't overwrite a newer focus.
 		const onError = (err: unknown) => {
 			if (focusableId !== key) return;
@@ -1806,7 +1805,6 @@
 		</Vaul.Portal>
 	</Vaul.Root>
 {:else}
-	<!-- Desktop: side panel -->
 	<aside
 		{inert}
 		aria-labelledby="detail-drawer-title"

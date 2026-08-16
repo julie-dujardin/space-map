@@ -98,13 +98,9 @@ class CommonsDownloader(Downloader):
         if limit is not None:
             discovered = discovered[:limit]
 
-        # Metadata first: it's cheap and tells us the derivative graph. We
-        # transitively follow ``derived_from`` and ``other_versions`` so the
-        # graph covers an image's parents and siblings — different language
-        # wikis pick different hero images, and merging their descriptions
-        # gives the original richer coverage. Globalusage and SDC each get
-        # their own pass (different APIs / pagination needs). Source bytes
-        # only get downloaded after, for the original discovery set.
+        # Metadata first (cheap) so the derivative graph — parents and
+        # siblings across language wikis — is known before spending bandwidth
+        # on source bytes for the original discovery set.
         graph = self._fetch_metadata(discovered)
         self._fetch_globalusage(sorted(graph))
         self._fetch_sdc(sorted(graph))
@@ -394,7 +390,6 @@ class CommonsDownloader(Downloader):
                 new_links.update(meta.get("derived_from") or ())
                 new_links.update(meta.get("other_versions") or ())
 
-            # Advance: drop excluded filenames and anything we've already seen.
             frontier = {
                 f for f in new_links if f and f not in graph and not is_excluded(f)
             }
@@ -493,12 +488,9 @@ class CommonsDownloader(Downloader):
             links.update(other_versions)
 
             image_dir(filename).mkdir(parents=True, exist_ok=True)
-            # Read-merge-write so ``sdc`` and ``globalusage`` from later
-            # steps (each in its own pass) survive a metadata refresh.
-            # ``pageid`` (and the ``M<pageid>`` MediaInfo form) survive
-            # Commons renames where filenames do not; ``sha1`` content-
-            # addresses the file bytes. Wikitext is kept raw so we can
-            # re-parse it later without re-fetching the whole batch.
+            # Read-merge-write: ``sdc``/``globalusage`` from later passes must
+            # survive a metadata refresh. ``pageid`` survives Commons renames
+            # that filenames don't; wikitext is kept raw for re-parsing later.
             existing = read_download_metadata(filename) or {}
             existing.pop("missing", None)  # file is reachable now
             existing.update(
@@ -599,7 +591,6 @@ class CommonsDownloader(Downloader):
             if pages_fetched >= GLOBALUSAGE_MAX_PAGES_PER_BATCH:
                 capped = True
                 break
-            # Carry continuation tokens forward; replace any prior values.
             params = {**params, **cont}
             time.sleep(AFTER_REQUEST_DELAY_SECONDS)
 

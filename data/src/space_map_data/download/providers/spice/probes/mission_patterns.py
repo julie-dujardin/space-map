@@ -19,8 +19,8 @@ post-impact / crash-site debris kernels.
 
 import re
 
-# Conservative per-mission whitelists. Tightened over time as we validate
-# each mission's trajectory extraction.
+# Conservative per-mission whitelists, validated against each mission's
+# trajectory extraction.
 MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     # --- Operational-tree missions ---
     # 2020-reprocessed reconstruction (~156 files, ~2.7 GiB). The PDS3 archive
@@ -72,9 +72,8 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     ),
     "MRO": (r"^mro_cruise\.bsp$", r"^mro_psp\d*\.bsp$"),
     "MER": (r"^mer[12]_cruise.*\.bsp$", r"^mer[12]_edl_rcb_v\d+\.bsp$"),
-    # NAIF's actual M01 (Mars Odyssey) files are split across cruise +
-    # aerobraking + 27+ science extensions; the file `m01_full.bsp` does NOT
-    # exist on NAIF (the previous pattern matched zero files).
+    # Mars Odyssey files are split across cruise + aerobraking + 27+ science
+    # extensions; there is no single `m01_full.bsp`.
     "M01": (
         r"^m01_cruise\.bsp$",
         r"^m01_ab(?:_v\d+)?\.bsp$",
@@ -83,13 +82,10 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^m01_map_rec\.bsp$",
     ),
     # `juice_orbc_<iter>_<start>_<end>_v<N>.bsp` — iteration ID and version
-    # both bump over time; previous `000104..._v01` hardcode would silently
-    # break on the next ESA release.
+    # both bump on every ESA release, so match generically rather than pin them.
     "JUICE": (r"^juice_orbc_\d+_\d+_\d+_v\d+\.bsp$",),
     "LUCY": (r"^lcy_\d+_330\d+_.*sconly_v\d+\.bsp$",),
-    # Latest L-version on NAIF is L025; the previous L030 hardcode matched
-    # zero files. Generalised to match any L-version so future bumps don't
-    # silently break this.
+    # Match any L-version so future NAIF bumps don't need re-pinning.
     "SOLAR-ORBITER": (r"^solo_ANC_soc-orbit_\d+-\d+_L\d+_V\d+_\d+_V\d+\.bsp$",),
     "JWST": (r"^jwst_(?:rec|pred)\.bsp$",),
     # ESA `kernels/mk/hera_plan.tm` is the canonical "use these SPKs" file
@@ -97,9 +93,9 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     # Product, reconstructed flight, launch → ~present) and `hera_flp_*`
     # (Forward-Looking Product, planned trajectory through ~rendezvous).
     # Both increment a 6-digit iteration on every release; MISSION_LATEST_ONLY
-    # keeps just the lex-last of each. The previous `HERA_NomTrajDCP3VCF_v01`
-    # pattern caught a 3-day Didymos sub-phase kernel, too short to fit even
-    # one interplanetary sub-chunk (7d) so HERA never reached the export.
+    # keeps just the lex-last of each. Must resolve to a multi-arc kernel, not
+    # a short sub-phase one — a span under one interplanetary sub-chunk (7d)
+    # never reaches the export.
     "HERA": (
         r"^hera_fcp_\d+_\d+_\d+_v\d+\.bsp$",
         r"^hera_flp_\d+_\d+_\d+_v\d+\.bsp$",
@@ -145,9 +141,8 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^maven_orb_rec\.bsp$",
         r"^maven_orb_rec_\d{6}_\d{6}_v\d+\.bsp$",
     ),
-    # Pre-launch `europaclipper_recon_*` pattern never matched any published
-    # file; real layout is `ref_trj_*_scpse.bsp` (full-mission references)
-    # plus dozens of incremental `trj_*_OD\d+_v\d+.bsp` arc reconstructions.
+    # `ref_trj_*_scpse.bsp` full-mission references; per-arc `trj_*_OD\d+_v\d+.bsp`
+    # reconstructions are not matched here.
     "EUROPACLIPPER": (r"^ref_trj_\d+_\d+_21F31_MEGA_L\d+_A\d+_LP\d+_V\d+_scpse\.bsp$",),
     "MARS2020": (r"^m2020_cruise_od\d+_v\d+\.bsp$",),
     "MSL": (r"^msl_cruise_v\d+\.bsp$",),

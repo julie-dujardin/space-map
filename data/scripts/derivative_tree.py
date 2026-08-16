@@ -87,9 +87,7 @@ def main() -> int:
         components = image_scoring.tree_components(
             direct, _MetadataView(metadata_cache)
         )
-        # Single-image objects don't need a tree dump — the selection is
-        # trivial. Only print when at least one tree has >1 member after
-        # walking the metadata graph.
+        # Skip single-member trees: selection there is trivial.
         components = [c for c in components if _tree_is_multi(c, metadata_cache)]
         if not components:
             continue

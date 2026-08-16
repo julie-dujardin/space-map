@@ -61,7 +61,6 @@ def ingest(download_dir: Path) -> None:
 
     id_to_qids = read_ids_csv(csv_path)
 
-    # Build bidirectional mappings: feature_id ↔ QID
     feat_to_qids: dict[int, set[str]] = defaultdict(set)
     qid_to_feats: dict[str, set[int]] = defaultdict(set)
 

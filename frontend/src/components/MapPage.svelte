@@ -45,10 +45,10 @@
 	let travelPlan = $state.raw<LabelledPath | null>(null);
 
 	/**
-	 * Which frame the drawn trip's ends are measured from. The map owns it rather
-	 * than the planner: it changes the picture, not the trip.
+	 * Which frame the drawn trip's ends are measured from. The map owns it, not
+	 * the planner, because it changes the picture, not the trip.
 	 *
-	 * Only offered where the two frames would draw different pictures — a trip
+	 * Only offered where the two frames would draw different pictures: a trip
 	 * that escapes or captures. One that lands, flies past, or never leaves a
 	 * sphere of influence has no passage for them to disagree about.
 	 */
@@ -100,8 +100,8 @@
 	setContext('appState', appState);
 	const settings = getSettings();
 
-	// Snap the clock into `id`'s coverage window if `now` is outside it — midpoint,
-	// not the boundary (no sample there). No-op when there's no window.
+	// Snap the clock into `id`'s coverage window if `now` is outside it: the
+	// midpoint, not the boundary (no sample there). No-op when there's no window.
 	async function snapClockIntoCoverage(id: string) {
 		const cov = await coverageWindowFor(id);
 		const snap = cov ? snapJdIntoWindow(clock.jd, cov) : null;
@@ -126,7 +126,7 @@
 			const type = urlTypeFromId(id);
 			await snapClockIntoCoverage(id);
 
-			// Stream an out-of-view target in place (probe/sat) — no page reload.
+			// Stream an out-of-view target in place (probe/sat); no page reload.
 			if (!ctx.getBody(id)) await ctx.ensureBody(id, jdToDate(clock.jd));
 
 			appState.setFocus({ type, id, name, tab: opts?.tab, featureType: opts?.featureType });
@@ -181,17 +181,16 @@
 	}
 
 	const clock = new SimClock(dateToJD(appState.view.date));
-	// `.raw` — see Scene.svelte's `focusedBody` for the rationale (avoids deep
-	// proxying of position/satrec, which the renderer and SGP4 mutate).
+	// `.raw`: see Scene.svelte's `focusedBody` (avoids deep proxying of
+	// position/satrec, which the renderer and SGP4 mutate).
 	let selectedBody = $state.raw<PositionedBody | undefined>();
 	/**
-	 * Whether the ring-brightness pill is on screen. The ring catalogue is the one
-	 * place the overexposed rendering is worth offering: that tab reads a system's
-	 * optical depths, and at Jupiter or Uranus the map beside it shows next to
+	 * Whether the ring-brightness pill is on screen. The ring catalogue tab is
+	 * the one place overexposed rendering is worth offering: it reads a
+	 * system's optical depths, and at Jupiter or Uranus the map shows next to
 	 * nothing at the true ones. The trip planner's own pill has the slot.
 	 *
-	 * Both flags are read outright rather than short-circuited, so this tracks
-	 * either one changing.
+	 * Both flags are read outright, not short-circuited, so both are tracked.
 	 */
 	let ringPillShown = $derived.by(() => {
 		const rings = !!selectedBody && appState.view.tab === 'rings';
@@ -203,9 +202,9 @@
 	$effect(() => {
 		if (!ringPillShown) settings.setOverexposeRings(false);
 	});
-	// Camera-truth focus: stays set after the drawer closes, since the renderer
-	// is still tracking that body. Drives compass-north choices, which would
-	// otherwise drop to "Solar System only" the moment the drawer is dismissed.
+	// Camera-truth focus: stays set after the drawer closes since the renderer
+	// keeps tracking that body. Drives compass-north choices, which would
+	// otherwise drop to "Solar System only" the moment the drawer closes.
 	let cameraFocus = $state.raw<PositionedBody | undefined>();
 	let scene = $state<Scene>();
 	let drawerHeightDvh = $state(0);
@@ -227,13 +226,13 @@
 	// Resolved feature record for the currently URL-pinned featureId. Driven by
 	// the effect below; cleared when the URL has no feature or the lookup fails.
 	let activeFeature = $state.raw<NomenclatureFeature | null>(null);
-	// Plain (non-reactive) flag — only the URL-load case snaps the camera so
+	// Plain (non-reactive) flag: only the URL-load case snaps the camera so
 	// the page opens already-framed; in-session picks (search, label clicks,
-	// browser nav) fly. Not a `$state` so toggling it inside the effect
-	// doesn't re-trigger.
+	// browser nav) fly. Not `$state` so toggling it inside the effect doesn't
+	// re-trigger it.
 	let firstFeatureResolve = appState.view.featureId !== null;
 	// URL camera for the feature snap, captured before boot-time camera syncs
-	// overwrite appState.view — restores a shared link's exact framing.
+	// overwrite appState.view, to restore a shared link's exact framing.
 	const initialFeatureView =
 		firstFeatureResolve && appState.view.framed
 			? {
@@ -246,9 +245,8 @@
 	// resolve effect skips re-driving it so the pan isn't restarted a beat later.
 	let panFeatureId: number | null = null;
 	// Orientation version the active feature was framed against. A cross-body
-	// pick frames before the host's system data (PCK orientation) has landed,
-	// which seats the feature in an unrotated body frame — the camera then aims
-	// at the wrong longitude. Bumps here re-frame it once the real pole arrives.
+	// pick frames before the host's PCK orientation lands, seating the feature
+	// in an unrotated frame; bumps here re-frame it once the real pole arrives.
 	let framedOrientationVersion = -1;
 
 	const northChoices = $derived.by(() => {
@@ -257,15 +255,13 @@
 		return getNorthChoices(cameraFocus, ctx);
 	});
 
-	// The ends of a /nav trip, one derived per end rather than one object holding
-	// all four. The clock writes the date into `view` twice a second, so anything
-	// derived from `view` recomputes at that rate — and a derived that builds an
-	// object hands every consumer a fresh identity each time, waking their effects
-	// and rebuilding the panel under the user's finger. Primitives compare equal,
-	// so the recomputation stops here.
+	// One derived per end, not one object holding all four: `view` changes twice
+	// a second as the clock ticks, and an object derived from it would hand
+	// every consumer a fresh identity each tick, waking their effects and
+	// rebuilding the panel under the user's finger. Primitives compare equal.
 	//
-	// `isNav` — not the presence of both ends — is what decides which sidebar
-	// renders: the destination is null on the empty form.
+	// `isNav`, not the presence of both ends, decides which sidebar renders:
+	// the destination is null on the empty form.
 	const isNav = $derived(appState.view.type === UrlType.Nav);
 	const navFrom = $derived(isNav ? appState.view.navFrom : null);
 	const navTo = $derived(isNav ? appState.view.navTo : null);
@@ -274,9 +270,9 @@
 	const navFromPlace = $derived(isNav ? appState.view.navFromPlace : null);
 	const navToPlace = $derived(isNav ? appState.view.navToPlace : null);
 
-	// Group route wins over body focus — camera may be parked on the anchor body.
-	// A trip owns the sidebar outright: the destination is focused, but the panel
-	// beside it is about the journey, not the body.
+	// Group route wins over body focus: the camera may be parked on the anchor
+	// body. A trip owns the sidebar outright: the destination is focused, but
+	// the panel beside it is about the journey, not the body.
 	const focusable = $derived.by((): Focusable | null => {
 		if (isNav) return null;
 		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
@@ -303,10 +299,9 @@
 		}
 	});
 
-	// The planner hands the plan, the options and what the plan puts the craft
-	// through out separately, and choosing a trajectory changes all three — so the
-	// redraw waits for them to settle rather than building the whole overlay three
-	// times on one click.
+	// The planner hands out the plan, its options, and its hazards separately,
+	// and choosing a trajectory changes all three, so the redraw waits for
+	// them to settle rather than building the whole overlay three times.
 	let travelDrawQueued = false;
 	function drawTravel(): void {
 		if (travelDrawQueued) return;
@@ -317,11 +312,10 @@
 		});
 	}
 
-	/** Look at whatever part of the trip the timeline was asked about. Nothing here
-	 *  closes on what it looks at: reading a trip is picking places on a map from
-	 *  the vantage you built to read it from, and an approach throws that away —
-	 *  same reasoning as retargeting an end, and doubly so under autoplay, which
-	 *  steps on its own. A tracked point moves now; the rest swings over. */
+	/** Look at whatever part of the trip the timeline was asked about. Never an
+	 *  approach fly: reading a trip is picking places on a map from the vantage
+	 *  built to read it from, and a fly throws that vantage away, especially
+	 *  under autoplay. A tracked point moves now; the rest swings over. */
 	function focusTimeline(target: TimelineFocus): void {
 		if (target.kind === 'body') focusCameraOn(target.bodyId);
 		else if (target.track) scene?.trackPathPoint(target.centerId, target.r);
@@ -343,8 +337,8 @@
 	}
 
 	// A trip end that isn't resident (a probe, a small body) has no elements to
-	// transfer from — stream it in the way focusObject would, then look at the
-	// destination. Boot already framed the first one; this is for the swap and for
+	// transfer from: stream it in the way focusObject would, then look at the
+	// destination. Boot already framed the first one; this covers the swap and
 	// moving the origin, which change the destination without going through
 	// setFocus.
 	$effect(() => {
@@ -354,7 +348,7 @@
 		// every tick.
 		const at = jdToDate(untrack(() => clock.jd));
 		const ends = [navFrom, to].filter((id) => id !== null);
-		// Neither end chosen — nothing to stream, and nothing to re-frame either.
+		// Neither end chosen: nothing to stream, nothing to re-frame.
 		if (ends.length === 0) return;
 		void (async () => {
 			await Promise.all(
@@ -370,9 +364,8 @@
 			const framed = to ?? ends[0];
 			if (untrack(() => cameraFocus?.data.id) === framed) return;
 			// Pan, don't fly: retargeting a trip is picking a place on a map, not
-			// visiting it, and an approach fly would throw away the vantage the user
-			// built to read the trajectory from. Omitting the zoom holds the camera
-			// where it is and only swings the pivot onto the new end.
+			// visiting it. Omitting the zoom holds the camera where it is and
+			// only swings the pivot onto the new end.
 			scene?.focusOnBody(framed);
 		})();
 	});
@@ -389,7 +382,7 @@
 	});
 
 	// Repopulate selectedBody from ctx when a pinned featureId outlives a
-	// drawer close — same-body picks emit no onFocusChange to do it for us.
+	// drawer close: same-body picks emit no onFocusChange to do it for us.
 	$effect(() => {
 		if (selectedBody) return;
 		if (appState.view.featureId === null) return;
@@ -420,7 +413,7 @@
 			scene?.setSelectedFeature(null);
 			return;
 		}
-		// Same feature already resolved — skip the refetch.
+		// Same feature already resolved: skip the refetch.
 		if (activeFeature?.featureId === fid) return;
 		// Cross-body pick: URL already names the new body but the camera
 		// hasn't landed yet, so selectedBody is stale. Bail and wait for the
@@ -486,7 +479,7 @@
 	});
 
 	onMount(() => {
-		// Runs behind the loading screen, in parallel with the data loads — the
+		// Runs behind the loading screen, in parallel with the data loads: the
 		// screen holds until both settle, so the bench gets an uncontended GPU.
 		scheduleAtmosphereCalibration();
 	});
@@ -496,17 +489,17 @@
 		// Friendly label from the URL slug; captured before the Sun fallback
 		// below overwrites appState.view.name.
 		const initialName = appState.view.name || initialId;
-		// URL camera framing — restored onto the real target once it loads, since
-		// the renderer settles its initial focus (on the parent) while the
-		// target's chunk is still streaming.
+		// URL camera framing, restored onto the real target once it loads: the
+		// renderer settles its initial focus on the parent while the target's
+		// chunk is still streaming.
 		const { latitude, longitude, zoom } = appState.view;
-		// Pre-load the filter so the first earth-zone pass lands filtered —
-		// no flash of full SATCAT before the reload kicks in.
+		// Pre-load the filter so the first earth-zone pass lands filtered: no
+		// flash of full SATCAT before the reload kicks in.
 		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
 			await ctx.applyGroupFilter(appState.view.groupSlug);
 		}
-		// Snap the clock into range first (same path search takes), else an `?at=`
-		// outside coverage would fail to resolve. Then load at that date.
+		// Snap the clock into range first (same path search takes), else an
+		// `?at=` outside coverage would fail to resolve.
 		await snapClockIntoCoverage(initialId);
 		const loadPromise = ctx.load(jdToDate(clock.jd), initialId);
 		loadPromise.catch((e) => console.error('[map] scene load failed:', e));
@@ -522,31 +515,31 @@
 				check();
 			})
 		]);
-		// Error screen already shown — don't also fire the "not found" toast over it.
+		// Error screen already shown: don't also fire the "not found" toast over it.
 		if (ctx.error) return;
 		const initialBody = ctx.getBody(initialId);
 		if (initialBody && appState.view.featureId !== null) {
-			// Feature deep-link: the featureId→activeFeature effect frames the camera
-			// on the feature seat (and loads the host). Skip host framing here — it
-			// runs after that effect and would clobber the feature focus.
+			// Feature deep-link: the featureId→activeFeature effect frames the
+			// camera on the feature seat. Skip host framing here, it runs after
+			// that effect and would clobber the feature focus.
 		} else if (initialBody) {
 			if (initialId === EARTH_ID && !appState.view.framed) {
 				// Home view (`/` redirects here): Earth looking sunward, tilted above the ecliptic.
 				scene?.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
 			} else if (!appState.view.framed) {
-				// No URL camera — frame by the target's size/model, same as search.
+				// No URL camera: frame by the target's size/model, same as search.
 				const distance = framingDistanceFor(appState.view.type, initialBody);
 				scene?.snapToBody(initialId, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON, distance);
 			} else if (cameraFocus?.data.id !== initialId) {
-				// Explicit URL camera, but the renderer settled on the parent while the
-				// target streamed — snap onto it (no fly, opens already framed).
+				// Explicit URL camera, but the renderer settled on the parent while
+				// the target streamed: snap onto it (no fly, opens already framed).
 				scene?.snapToBody(initialId, latitude, longitude, zoom);
 			}
 		} else if (isNav) {
-			// A trip end the scene cannot place is the panel's story to tell, and it
-			// names which end and why. Falling back to the default view here would
-			// drop the whole trip out of the URL, so only the camera moves — onto the
-			// other end, which is what the empty form frames anyway.
+			// A trip end the scene cannot place is the panel's story to tell.
+			// Falling back to the default view would drop the whole trip out of
+			// the URL, so only the camera moves, onto the other end, which is
+			// what the empty form frames anyway.
 			const fromId = navFrom;
 			const departure = fromId === null ? null : ctx.getBody(fromId);
 			if (fromId && departure) {
@@ -578,9 +571,9 @@
 		void ctx.applyGroupFilter(slug);
 	});
 
-	// Opening a mission flies the camera to its primary probe (snapping the clock
-	// into coverage), unless we're already focused on one of its craft — then the
-	// mission page just opens over the current view (member "Mission" card path).
+	// Opening a mission flies the camera to its primary probe (snapping the
+	// clock into coverage), unless already focused on one of its craft, in
+	// which case the mission page just opens over the current view.
 	let missionFlownSlug: string | null = null;
 	$effect(() => {
 		// Read scene/loading synchronously so a direct /g/mission-… load retries
@@ -605,11 +598,11 @@
 			const memberIds = new Set(
 				(detail.global?.notable_members ?? []).map((mm) => mm.id).filter(Boolean)
 			);
-			if (fromId && memberIds.has(fromId)) return; // already on a craft — keep camera
+			if (fromId && memberIds.has(fromId)) return; // already on a craft, keep camera
 			const window = await coverageWindowFor(primary.primary_id);
 			const body = ctx.getBody(primary.primary_id);
-			// EVENTS-DB primaries have no ephemeris (no coverage, never streamed in)
-			// — nothing to fly to. The mission page still opens; camera stays put.
+			// EVENTS-DB primaries have no ephemeris: nothing to fly to. The
+			// mission page still opens; camera stays put.
 			if (!window && !body) return;
 			if (window) {
 				const snap = snapJdIntoWindow(clock.jd, window);
@@ -672,9 +665,8 @@
 			{m.skip_to_content()}
 		</a>
 		<main id="main-content" tabindex="-1" class="relative w-full h-screen outline-none">
-			<!-- The focused object (or app name) is the de-facto page title;
-			     visually-hidden so screen readers get a stable h1 landmark even when
-			     the drawer is closed. -->
+			<!-- Visually-hidden h1 so screen readers get a stable page-title
+			     landmark even when the drawer is closed. -->
 			<h1 class="sr-only">{appState.view.name || m.page_title()}</h1>
 			<!-- display:contents wrapper so mobile's fullscreen search can inert the
 			     scene without adding a layout box. -->
@@ -702,9 +694,8 @@
 							featureId: fid,
 							featureName: f.name
 						});
-						// activeFeature is resolved by the $effect above; here we just kick
-						// the camera so the click feels instant instead of waiting on a
-						// cache hit + microtask round-trip.
+						// The $effect above resolves activeFeature; kick the camera here
+						// so the click feels instant instead of waiting on it.
 						scene?.focusOnFeature(bodyId, fid, lat, lon, d, f.name, 'pan');
 					}}
 					onUserPromotedChange={(count) => (userPromotedCount = count)}
@@ -816,14 +807,14 @@
 					{clock}
 					inert={bgInert}
 					onClose={() => {
-						// One teardown path — no second drawer left under a feature/group close.
+						// One teardown path: no second drawer left under a feature/group close.
 						const anchorId = selectedBody?.data.id ?? appState.view.id;
 						selectedBody = undefined;
 						activeFeature = null;
 						appState.closeDetail(anchorId);
 						drawerHeightDvh = 0;
-						// Closing means "back to the map": land focus on the map region after
-						// the drawer unmounts, else it silently falls to <body> (start of document).
+						// Land focus on the map region after the drawer unmounts, else it
+						// silently falls to <body>.
 						tick().then(() => document.getElementById('main-content')?.focus());
 					}}
 					onMaximize={() => {
@@ -832,11 +823,9 @@
 					}}
 					onMinimize={() => {
 						if (!selectedBody) return;
-						// Pulls the camera back without changing focus — focusOnBody on the
-						// already-focused id just runs the fly-to-camera path. Planets and
-						// dwarf planets nominally orbit their planetary barycenter, but
-						// treat them as sun-orbiters here so the minimize framing is the
-						// whole solar system instead of just the planet's own subsystem.
+						// Planets and dwarf planets nominally orbit their planetary
+						// barycenter, but are treated as sun-orbiters here so the minimize
+						// framing is the whole solar system, not just the subsystem.
 						const { parentId, objectType } = selectedBody.data;
 						const isSunOrbiter =
 							parentId === 'naif-0' ||
@@ -876,9 +865,8 @@
 				{/if}
 			</div>
 			{#if framesDiffer || ringPillShown}
-				<!-- Centred on the window rather than on the map area left over beside
-				     the planner: measured off that, it sits off-centre by half a panel
-				     and slides sideways whenever the panel opens or closes. -->
+				<!-- Centred on the window, not the map area left beside the planner:
+				     measured off that, it would slide sideways as the panel opens/closes. -->
 				<div
 					inert={bgInert}
 					class="pointer-events-none fixed start-[var(--safe-start)] end-[var(--safe-end)] z-10 flex

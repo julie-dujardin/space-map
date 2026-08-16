@@ -149,7 +149,6 @@ def main() -> None:
         releases = _list_releases(client)
         logger.info("Found %d releases", len(releases))
 
-        # Decide what to do for each release.
         plan: list[tuple[Path, str]] = []  # (target_path, asset_url)
         skipped_existing = 0
         skipped_no_asset = 0

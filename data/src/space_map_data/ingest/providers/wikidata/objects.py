@@ -51,7 +51,6 @@ def _build_mappings(
     obj_to_qids: dict[str, set[str]] = defaultdict(set)
     qid_to_objs: dict[str, set[str]] = defaultdict(set)
 
-    # Process property-based CSVs
     matches_dir = ids_dir / "matches"
     for csv_path in matches_dir.glob("P*.csv"):
         pid = csv_path.stem
@@ -62,7 +61,6 @@ def _build_mappings(
         id_to_qids = read_ids_csv(csv_path)
 
         for column, converter in PID_TO_COLUMNS[pid]:
-            # Batch-lookup: convert search terms and find matching objects
             converted: dict = {}  # converted_value → [qids]
             for search_term, qids in id_to_qids.items():
                 if not qids:
@@ -76,7 +74,6 @@ def _build_mappings(
             if not converted:
                 continue
 
-            # Query DB in batches
             keys = list(converted.keys())
             for i in range(0, len(keys), BATCH):
                 batch_keys = keys[i : i + BATCH]
@@ -90,7 +87,6 @@ def _build_mappings(
                         obj_to_qids[obj_id].add(qid)
                         qid_to_objs[qid].add(obj_id)
 
-    # Process name-based CSV
     name_csv = matches_dir / "name.csv"
     if name_csv.exists():
         name_to_qids = read_ids_csv(name_csv)
@@ -156,7 +152,6 @@ def _write_ambiguous(
     - ``multi_qids_per_object.csv``: ``obj_id,qid1 qid2 ...``
       One object matched multiple QIDs — need to pick which one.
     """
-    # QID → multiple objects
     multi_obj_buf = io.StringIO()
     multi_obj_writer = csv.writer(multi_obj_buf)
     multi_obj_count = 0
@@ -165,7 +160,6 @@ def _write_ambiguous(
             multi_obj_writer.writerow([qid, " ".join(sorted(obj_ids))])
             multi_obj_count += 1
 
-    # Object → multiple QIDs
     multi_qid_buf = io.StringIO()
     multi_qid_writer = csv.writer(multi_qid_buf)
     multi_qid_count = 0
@@ -233,7 +227,6 @@ def _build_satcat_mappings(
             if not converted:
                 continue
 
-            # Query Satcat in batches — join via NORAD_CAT_ID
             keys = list(converted.keys())
             for i in range(0, len(keys), BATCH):
                 batch_keys = keys[i : i + BATCH]

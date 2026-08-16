@@ -62,8 +62,7 @@
 
 	const model = new SearchModel();
 	// Hydrate from a shared link / reload: restore query+filters and open the
-	// panel so the results are visible. Ephemeral after this — popstate doesn't
-	// restore it; only a fresh load does.
+	// panel. Ephemeral after this: popstate doesn't restore it, only a fresh load does.
 	const hydrated = enabled ? parseSearchSuffix(page.url.searchParams) : null;
 	if (hydrated) model.applyUrlState(hydrated);
 	let expanded = $state(hydrated !== null);
@@ -99,9 +98,9 @@
 		filterOpen = true;
 	}
 	let groupCatalog = $state<GroupHit[]>([]);
-	// undefined while the first stats call is in flight, then the count, or null
-	// if the catalog index is unreachable (env unset or server down) — null drives
-	// the "catalog unavailable" hint instead of a misleading "0 entries".
+	// undefined while the first stats call is in flight, then the count, or
+	// null if the catalog index is unreachable. Null drives the "catalog
+	// unavailable" hint instead of a misleading "0 entries".
 	let catalogTotal = $state<number | null | undefined>(undefined);
 	let facetUniverse = $state<FacetDistribution>({});
 	let inputEl: HTMLInputElement | undefined = $state();
@@ -143,9 +142,9 @@
 	});
 
 	// Announce the settled result count / "no results" to screen readers (WCAG
-	// 4.1.3). Polite channel, and skipped mid-load, so it speaks the final tally
-	// once typing pauses rather than every intermediate value. The error case is
-	// left to the results panel's role="alert" to avoid a double announcement.
+	// 4.1.3), skipped mid-load so it speaks the final tally, not every
+	// intermediate value. The error case is left to the results panel's
+	// role="alert" to avoid a double announcement.
 	$effect(() => {
 		if (!expanded || model.loading || model.error || !model.hasResults) return;
 		announce(
@@ -155,7 +154,6 @@
 		);
 	});
 
-	// ── label helpers ──────────────────────────────────────────────────
 	const messages = m as unknown as Record<
 		string,
 		((args?: Record<string, unknown>) => string) | undefined
@@ -176,7 +174,7 @@
 	function featureTypeLabel(code: string): string {
 		return featureTypeName(featureTypeSlugByCode[code]) ?? code;
 	}
-	// Landform families for the type drill — same curated grouping the Surface
+	// Landform families for the type drill: same curated grouping the Surface
 	// Features page shows, read from its bundle rather than duplicated here.
 	// Until it lands the drill falls back to one flat list of types.
 	let featureFamilies = $state<FeatureFamily[]>([]);
@@ -186,7 +184,7 @@
 		});
 	});
 	// IAU naming authority split: WGPSN names the planets' moons, WGSBN the
-	// minor planets' (dwarf planets included — Pluto is minor planet 134340).
+	// minor planets' (dwarf planets included: Pluto is minor planet 134340).
 	const MOON_CLASS_NAME = {
 		planetary: m.moon_class_planetary,
 		minor_planet: m.moon_class_minor_planet
@@ -202,16 +200,14 @@
 		human: m.feature_family_human
 	};
 	// Plural category labels for the filter tree (standalone headers, e.g.
-	// "Asteroids", "Launch sites"). The numeric count sits in its own column, so
-	// these are invariant plurals — separate keys, since `type_*`/`group_type_*`
-	// are singular for inline/sentence use. Fall back to the singular if missing.
+	// "Asteroids", "Launch sites"). Separate keys from `type_*`/`group_type_*`,
+	// which are singular for inline/sentence use. Falls back to the singular.
 	function typeLabelPlural(type: string): string {
 		return messages[`search_cat_${type}`]?.() ?? typeLabel(type);
 	}
 	// Body labels for filter leaves/tokens, which only ever hold an id. The
-	// scene knows the bodies it has loaded — rarely a minor planet — so
-	// anything it misses is looked up in the catalog (batched, cached, and
-	// localized, unlike the scene's name).
+	// scene knows the bodies it has loaded, rarely a minor planet, so anything
+	// it misses is looked up in the catalog (batched, cached, localized).
 	let catalogNames = $state(new Map<string, string>());
 	function bodyName(bodyId: string): string {
 		return ctx.getBody(bodyId)?.data.name ?? catalogNames.get(bodyId) ?? bodyId;
@@ -253,7 +249,7 @@
 			const idx = localizedName(g, locale);
 			return idx && idx !== g.slug ? idx : className;
 		}
-		// Feature types own `feature_type_label_<stem>` — no group_name_ twin.
+		// Feature types own `feature_type_label_<stem>`; no group_name_ twin.
 		const featureType = featureTypeName(g.slug);
 		if (featureType) return featureType;
 		const fn = messages[`group_name_${g.slug}`];
@@ -268,11 +264,10 @@
 		return secondaryText(hit, { bodyName, featureTypeLabel });
 	}
 
-	// ── filter tree (type-first) ───────────────────────────────────────
 	// Root nodes are object types (+ surface features, collections); drilling into
 	// a type reveals the sub-filters relevant to it (orbit class, org, …) plus an
 	// "All" toggle and the small-body flags. Selections stay flat: same facet ORs,
-	// different facets AND — the tree only organizes which filters appear where.
+	// different facets AND; the tree only organizes which filters appear where.
 	const ASTEROID_TYPES = [
 		'asteroid',
 		'asteroid_inner',
@@ -351,14 +346,14 @@
 
 		const children: FilterNode[] = [];
 
-		// Numeric range sliders — one drill node, applied across all kinds.
+		// Numeric range sliders: one drill node, applied across all kinds.
 		children.push({
 			id: 'ranges',
 			label: m.search_facet_properties(),
 			ranges: ['diameter', 'magnitude', 'inception']
 		});
 
-		// Moons — All / satellite class, drilling by host body. The class split
+		// Moons: All / satellite class, drilling by host body. The class split
 		// comes from the index (the eight planets vs every minor planet), so it
 		// holds even where the host body itself isn't in the catalog.
 		{
@@ -415,7 +410,7 @@
 			});
 		}
 
-		// Types with no sub-filters — a plain checkbox right at the root level.
+		// Types with no sub-filters: a plain checkbox right at the root level.
 		const rootLeaves: FilterLeaf[] = (['planet', 'dwarf_planet'] as const).map((type) => ({
 			id: `root-${type}`,
 			kind: 'array',
@@ -425,7 +420,7 @@
 			count: sumType([type])
 		}));
 
-		// Asteroids — All / NEO / PHA + SBDB orbit class (asteroid subset).
+		// Asteroids: All / NEO / PHA + SBDB orbit class (asteroid subset).
 		{
 			const cnt = sumType(ASTEROID_TYPES);
 			const cls = groupLeaves(
@@ -444,7 +439,7 @@
 			});
 		}
 
-		// Comets — All / NEO / PHA + orbit class (comet subset) + fragments.
+		// Comets: All / NEO / PHA + orbit class (comet subset) + fragments.
 		{
 			const cnt = sumType(['comet']);
 			const cls = groupLeaves('com-class', orbit.filter(cometClass));
@@ -466,10 +461,10 @@
 			});
 		}
 
-		// Spacecraft — All / Probes / Earth satellites / Debris + org/constellation/…
+		// Spacecraft: All / Probes / Earth satellites / Debris + org/constellation/…
 		// Probes & Earth satellites filter on category membership (object.groups =
 		// cat-probes / cat-satellites); those counts populate once the export tags
-		// objects with their category — until then the leaves read 0.
+		// objects with their category, until then the leaves read 0.
 		{
 			const cnt = sumType(['spacecraft']);
 			const leaves: FilterLeaf[] = [allLeaf('sc-all', ['spacecraft'], cnt)];
@@ -511,7 +506,7 @@
 			});
 		}
 
-		// Surface features — All + the feature types directly (type is the only filter).
+		// Surface features: All + the feature types directly (type is the only filter).
 		{
 			const cnt = kindDist['feature'] ?? 0;
 			const fl = Object.keys(featDist)
@@ -530,7 +525,7 @@
 						count: l.count
 					} satisfies FilterLeaf
 				}));
-			// Which body a feature sits on — its own drill, since a type spans
+			// Which body a feature sits on: its own drill, since a type spans
 			// bodies (craters are everywhere) and a body spans types. Listed
 			// first: "what's on Mars" is the more common way in.
 			const bodies = Object.keys(featBodyDist)
@@ -583,13 +578,13 @@
 						label: m.search_filter_all(),
 						count: cnt
 					},
-					// No families yet (bundle still in flight) — keep the flat list.
+					// No families yet (bundle still in flight): keep the flat list.
 					...(familyNodes.length ? [] : fl.map((e) => e.leaf))
 				]
 			});
 		}
 
-		// Collections — All + the collection types directly (type is the only filter).
+		// Collections: All + the collection types directly (type is the only filter).
 		{
 			const cnt = kindDist['group'] ?? 0;
 			const gl = Object.keys(gtypeDist)
@@ -624,7 +619,7 @@
 			});
 		}
 
-		// Other long-tail types (star, barycenter) — kept reachable, hidden at 0.
+		// Other long-tail types (star, barycenter): kept reachable, hidden at 0.
 		{
 			const others = (['star', 'barycenter'] as const).filter(
 				(t) => (typeDist[t] ?? 0) > 0 || (model.filters.type ?? []).includes(t)
@@ -704,7 +699,6 @@
 		return out;
 	});
 
-	// ── interaction ────────────────────────────────────────────────────
 	function pick(hit: SearchHit) {
 		onSelect(hit);
 		collapse();
@@ -712,7 +706,7 @@
 		inputEl?.blur();
 		// Picking collapses the combobox and blurs the input (focus falls to
 		// <body>); announce the choice so screen-reader users aren't left in
-		// silence while the drawer opens without a focus move.
+		// silence while the drawer opens.
 		announce(m.search_selected_announce({ name: rowName(hit) }));
 	}
 
@@ -780,9 +774,9 @@
 	}
 
 	// Outside-click on the whole panel: collapse an empty/unfiltered panel, else
-	// keep it (sticky once results show — close via minimize/Escape) and just
-	// dismiss any open popover. mousedown (not focusout) so an internal list swap
-	// that drops focus to <body> can't read as "left the panel".
+	// keep it (sticky once results show, close via minimize/Escape) and just
+	// dismiss any open popover. mousedown (not focusout) so an internal list
+	// swap that drops focus to <body> can't read as "left the panel".
 	let wrapperEl: HTMLElement | undefined = $state();
 	$effect(() => {
 		if (!expanded) return;
@@ -810,7 +804,6 @@
 		role="search"
 		bind:this={wrapperEl}
 	>
-		<!-- header chrome: input · controls (count/sort/filter) · applied tokens -->
 		<div class={expanded ? `shrink-0 ${model.hasResults ? 'border-b border-border' : ''}` : ''}>
 			<div
 				class={expanded
@@ -867,7 +860,7 @@
 			</div>
 
 			{#if expanded}
-				<!-- count · sort · filter — kept directly under the fixed-height input
+				<!-- count · sort · filter kept directly under the fixed-height input
 				     (token chips moved below) so the Filter popover opens at a constant
 				     height no matter how many token rows pile up -->
 				<div class="flex items-center gap-2 px-3 pt-2 pb-2">
@@ -964,7 +957,6 @@
 			{/if}
 		</div>
 
-		<!-- results -->
 		{#if expanded && model.hasResults}
 			<SearchResults
 				{model}

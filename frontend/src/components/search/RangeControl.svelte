@@ -88,7 +88,6 @@
 		{/if}
 	</div>
 
-	<!-- dual-thumb slider -->
 	<div class="relative mx-2 h-5">
 		<div
 			bind:this={trackEl}
@@ -120,7 +119,6 @@
 		{/each}
 	</div>
 
-	<!-- exact min/max entry -->
 	<div class="mt-3 flex items-center gap-2">
 		<input
 			type="number"

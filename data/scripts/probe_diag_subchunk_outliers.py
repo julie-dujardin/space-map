@@ -98,7 +98,6 @@ def main() -> int:
     for p in lsk_pck:
         spiceypy.furnsh(str(p))
 
-    # Build NAIF lookup.
     cache = json.loads(PROBE_ID_CACHE.read_text())
     naif_by_pid = {
         int(r["probe_id"]): (int(r["naif_id"]), r["mission"]) for r in cache.values()
@@ -112,7 +111,6 @@ def main() -> int:
             return kernels_from_index(mdir)
         return _glob_kernels(mdir)
 
-    # Scan probe zones.
     probes_root = EXPORT_DIR / "v1" / "position" / "probes"
     outliers: list[dict] = []
     zones = [args.zone] if args.zone else sorted(ZONES_BY_KEY)

@@ -98,7 +98,6 @@ def main() -> int:
         extras = [k for k in all_bsps if k.name not in index_set]
         if not extras:
             continue
-        # Per-extra: which spacecraft NAIFs does it cover?
         for k in extras:
             cov = _spacecraft_coverage(k)
             if not cov:

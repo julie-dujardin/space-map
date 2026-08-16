@@ -30,10 +30,9 @@
 
 	let { hit, name, secondary, thumbnail, id, active, onselect, onhover, metric }: Props = $props();
 
-	// Collection pages (constellations, organizations, orbit classes, …) read as a
-	// navigable group rather than a single object: stacked-card thumbnail, a
-	// member count, and a chevron that signals "opens a page". `hit.kind` is
-	// referenced inline below so the discriminated union narrows member_count.
+	// Collection pages (constellations, organizations, orbit classes, …) read
+	// as a navigable group: stacked-card thumbnail, member count, and a
+	// chevron signalling "opens a page".
 
 	const appState = getContext<AppState | undefined>('appState');
 
@@ -59,8 +58,7 @@
 
 <!-- Combobox pattern: the row is an option, keyboard focus stays on the input
      (tabindex -1 keeps dozens of rows out of the tab order). `role="option"`
-     replaces the link role for assistive tech, which loses nothing — the input
-     is what's being operated — while the href stays there for the pointer. -->
+     replaces the link role for assistive tech; the href stays for the pointer. -->
 <a
 	{href}
 	{id}

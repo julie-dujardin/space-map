@@ -196,8 +196,8 @@ export class ChebyshevStore {
 	 * zones whose chunk for `jd` isn't loaded yet (callers must await
 	 * `ensure(jd).done` to guarantee full coverage). Used by the scene loader
 	 * to construct the major-body list — every Sun/planet/dwarf/perturber/
-	 * whitelisted moon comes through here, since dropping the elements
-	 * ride-along left chebyshev as the only source for these bodies.
+	 * whitelisted moon comes through here; chebyshev is their only position
+	 * source.
 	 */
 	*bodiesAt(jd: number): IterableIterator<BodyWithWindow> {
 		for (const [zone, params] of this.zoneParams) {

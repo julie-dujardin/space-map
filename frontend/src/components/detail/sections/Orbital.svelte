@@ -172,8 +172,8 @@
 	let minorPlanetGroup = $derived(localized?.minor_planet_group);
 
 	let dataArcValue = $derived(sbdb?.data_arc != null ? formatDuration(sbdb.data_arc) : null);
-	// Chebyshev-tracked bodies get osculating Kepler elements computed regularly to display trails
-	// that epoch isn't a real observational epoch, so showing it is misleading.
+	// Chebyshev-tracked bodies get osculating Kepler elements computed regularly to
+	// display trails — that epoch isn't a real observational one, so showing it is misleading.
 	let isChebyshev = $derived(body != null && ctx?.chebStore?.has(body.data.id) === true);
 	let epochJd = $derived(
 		isChebyshev ? null : (orbitElements?.epoch ?? global?.orbit?.epoch_jd ?? null)

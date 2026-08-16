@@ -79,10 +79,8 @@ class SpiceIngestor:
             # non-whitelisted moons.
             "has_position": True,
         }
-        # Kepler elements + SPICE-fitted secular drift rates land on the
-        # Horizons sub-table — SPICE-source rows join there for elements.
-        # Horizons ingest only writes spacecraft + SSB rows now, so for
-        # planets/moons/barycenters this is a fresh insert.
+        # Kepler elements and drift rates live on the Horizons sub-table;
+        # Horizons ingest only covers spacecraft/SSB rows, so this is a fresh insert.
         horizons_upsert = {
             "naif_id": naif_id,
             "object_id": object_pk,
@@ -157,7 +155,6 @@ class SpiceIngestor:
             ).scalar_one_or_none()
             if existing is None:
                 continue
-            # Re-point the SBDB physical-data row's FK, then delete the old Object
             self.session.execute(
                 update(SBDB)
                 .where(SBDB.object_id == old_object_id)

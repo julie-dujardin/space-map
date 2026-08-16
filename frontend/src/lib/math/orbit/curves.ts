@@ -44,10 +44,8 @@ export function orbitalElementsToEllipse(
 	// (matches the clamp in orbitalElementsToPositionJD, keeping curve and body aligned).
 	const e = Math.min(el.e, 1 - 1e-7);
 	// Concentrate samples near perihelion by warping the E sweep: u ∈ [-1,1] uniform,
-	// E = π·sign(u)·|u|^p. p=1 reproduces uniform E; raising p with e packs points
-	// into the visually dominant perihelion arc instead of spreading them across the
-	// apoapsis reach (for e=0.995, a=186 AU the old uniform sweep left almost no
-	// points in the ~1 AU perihelion region where the body actually appears).
+	// E = π·sign(u)·|u|^p. Raising p with e packs points into the perihelion arc,
+	// where the body is visually, instead of spreading them across the apoapsis reach.
 	const p = 1 + 3 * e;
 	const sqrt1me2 = Math.sqrt(1 - e * e);
 	const points: [number, number, number][] = [];
@@ -91,7 +89,6 @@ export function orbitalElementsToHyperbola(
 	const points: [number, number, number][] = [];
 	for (let j = 0; j <= numPoints; j++) {
 		const H = -Hmax + (2 * Hmax * j) / numPoints;
-		// Compute true anomaly and radius directly from H
 		const denom = el.e * Math.cosh(H) - 1;
 		if (Math.abs(denom) < 1e-15) continue; // skip degenerate point
 		const sinNu = (Math.sqrt(el.e * el.e - 1) * Math.sinh(H)) / denom;

@@ -11,9 +11,6 @@ from space_map_data.export.wikidata import WikidataEntityCache
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# P31 QID → quantity type name
-# ---------------------------------------------------------------------------
 _QUANTITY_TYPE_QIDS: dict[str, str] = {
     "Q3647172": "mass",
     "Q1978718": "length",

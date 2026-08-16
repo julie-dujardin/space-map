@@ -21,9 +21,8 @@
 
 	const messages = m as unknown as Record<string, (() => string) | undefined>;
 
-	// Navigation stack: empty = root level; else the drilled-into path. When the
-	// popover is opened to edit a specific chip (`openTo`), start on that child
-	// node; resolved once at mount, matching how drilling pushes node objects.
+	// Navigation stack: empty = root level, else the drilled-into path. Opening
+	// the popover to edit a specific chip (`openTo`) starts on that child node.
 	const opened = untrack(() => (openTo ? root.children?.find((c) => c.id === openTo) : undefined));
 	let path = $state<FilterNode[]>(opened ? [opened] : []);
 	const current = $derived(path.length ? path[path.length - 1] : root);
@@ -56,8 +55,8 @@
 	// (before any tab in) and SRs announce the dialog.
 	onMount(() => dialogEl?.focus());
 
-	// Drilling swaps the whole list, unmounting the button that had focus (which
-	// would otherwise drop focus to <body>); move focus onto the new level's first
+	// Drilling swaps the whole list, unmounting the focused button (which would
+	// otherwise drop focus to <body>); move focus onto the new level's first
 	// control instead.
 	function navigate(next: FilterNode[]) {
 		path = next;
@@ -80,7 +79,6 @@
 	aria-label={m.search_filter()}
 	onkeydown={onKeyDown}
 >
-	<!-- header: back to parent, or the "Add filter" title at root -->
 	<div class="flex items-center gap-1.5 border-b border-border px-2 py-2">
 		{#if !atRoot}
 			<button
@@ -105,7 +103,6 @@
 	</div>
 
 	<div class="no-scrollbar overflow-y-auto p-1.5" bind:this={listEl}>
-		<!-- direct toggle leaves at this level (All / NEO / PHA / Probes …) -->
 		{#each leaves as leaf (leaf.id)}
 			{@const checked = leafChecked(leaf)}
 			<button
@@ -132,7 +129,6 @@
 			</button>
 		{/each}
 
-		<!-- numeric range sliders (Size / Brightness / Date) -->
 		{#each ranges as facet, i (facet)}
 			{@const def = rangeDef(facet)}
 			{#if i > 0 || leaves.length > 0}
@@ -146,12 +142,10 @@
 			/>
 		{/each}
 
-		<!-- a divider between this level's leaves and its drillable sub-groups -->
 		{#if (leaves.length > 0 || ranges.length > 0) && shown.length > 0}
 			<div class="my-1 border-t border-border"></div>
 		{/if}
 
-		<!-- drillable child nodes (type list at root; sub-categories within a type) -->
 		{#each shown as node (node.id)}
 			{@const au = activeUnder(node)}
 			<button

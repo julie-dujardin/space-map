@@ -113,7 +113,6 @@ def _collect_unit_labels(
     if not qids:
         return {}
 
-    # Build {normalized_english_key: (qid, entity)} mapping
     units: dict[str, tuple[str, WikidataEntity]] = {}
     for qid in sorted(qids):
         entity = wikidata_entities.get_referenced(qid)

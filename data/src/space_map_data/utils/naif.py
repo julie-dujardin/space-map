@@ -63,9 +63,9 @@ CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
         "aegaeon",
         "anthe",
         # Uranus (regulars + close-in chaotic inner shepherds + dust-ring family).
-        # The dust-ring shepherds (Bianca..Cupid) were added after the alias
-        # guard flagged them — sub-day periods and SPK type-2 sub-intervals at
-        # the 0.5 d floor make Method C aliasing unrecoverable for them.
+        # The dust-ring shepherds (Bianca..Cupid) have sub-day periods; SPK
+        # type-2 sub-intervals at the 0.5 d floor make Method C aliasing
+        # unrecoverable for them.
         "miranda",
         "ariel",
         "umbriel",
@@ -102,12 +102,10 @@ CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
     }
 )
 
-# Asteroids that get full Chebyshev treatment. Originally the entire content
-# of `sb441-n16.bsp` (16 most massive main-belt perturbers from DE441) — when
-# we swapped to `sb441-n373.bsp` we kept the export scope here so the shipped
-# asteroid list stays curated rather than ballooning to 373 bodies. Ceres is
-# classified as `dwarf_planet` and passes through `_CORE_BODY_TYPES`
-# independently, so it doesn't need a slot here.
+# Asteroids that get full Chebyshev treatment: the 16 most massive main-belt
+# perturbers from DE441, kept curated rather than the full 373-body list the
+# source SPK ships. Ceres is classified as `dwarf_planet` and passes through
+# `_CORE_BODY_TYPES` independently, so it doesn't need a slot here.
 CHEBYSHEV_ASTEROID_WHITELIST: frozenset[int] = frozenset(
     {
         2000002,  # Pallas

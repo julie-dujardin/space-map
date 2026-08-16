@@ -169,14 +169,12 @@ def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
     """Pick unified-name kepler elements from the right sub-table.
 
     Dispatches on ``orbital_source``: spice rows read from the Horizons
-    sub-table (which exposes unified-name properties over its native column
-    names — table name is historical); SBDB rows read from the SBDB sub-table directly;
-    celestrak rows read from the transient ``_daily_kepler`` overlay attached
-    by the Earth-zone overlay (celestrak doesn't persist these). SBDB
-    satellites store ``a`` natively in km (``a_km``); we convert to AU on
-    read so the bundle ships the same units the position writer does.
-    Returns an empty dict when the relevant source isn't available — same
-    behaviour as the previous main-table read.
+    sub-table (exposes unified-name properties over its native column names);
+    SBDB rows read from the SBDB sub-table directly; celestrak rows read from
+    the transient ``_daily_kepler`` overlay (celestrak doesn't persist these).
+    SBDB satellites store ``a`` in km (``a_km``); converted to AU here so the
+    bundle matches the position writer's units. Returns an empty dict when
+    the source isn't available.
     """
     src = obj.orbital_source
     if src == OrbitalSource.celestrak:

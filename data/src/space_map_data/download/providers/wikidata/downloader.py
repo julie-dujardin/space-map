@@ -73,7 +73,6 @@ class WikidataDownloader(Downloader):
 
         resolver = WikidataIdResolver(self.client, session, ids_dir)
 
-        # Resolve and fetch objects (all sources except IAU features)
         object_qids = resolver.resolve(self._OBJECT_ID_TYPES)
         # Probe QIDs are hand-curated in spice/probe_ids.json (no external
         # ID property gets us there via SPARQL), so seed them directly.
@@ -88,7 +87,6 @@ class WikidataDownloader(Downloader):
             object_qids, objects_dir, limit=limit, fetch_desc="objects"
         )
 
-        # Resolve and fetch IAU nomenclature features separately
         nomenclature_qids = resolver.resolve([ID_TYPES.IAU_FEATURE_ID])
         nomenclature_dir = self.out_dir / "nomenclature"
         nomenclature_dir.mkdir(exist_ok=True)

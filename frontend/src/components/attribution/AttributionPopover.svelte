@@ -20,9 +20,7 @@
 		url: string;
 	}
 
-	// Only listed entries whose OrbitalSource is present in `ctx.orbitSources`
-	// are rendered, so the popover matches whatever the minor-body + major
-	// pipeline has actually contributed so far.
+	// Only entries whose source has actually contributed are rendered.
 	const ORBIT_ENTRIES: Array<{ source: OrbitalSource; entry: () => SourceEntry }> = [
 		{
 			source: OrbitalSource.HORIZONS,
@@ -56,8 +54,7 @@
 	const EARTH_SAT_SOURCES = new Set([OrbitalSource.CELESTRAK, OrbitalSource.SPACETRACK]);
 
 	const orbitEntries = $derived.by(() => {
-		// Suppress Earth-sat credits outside the Earth-Moon system, mirroring the
-		// bar's scoping.
+		// Mirrors AttributionBar: suppress Earth-sat credits outside the Earth-Moon system.
 		const inEarthSystem = ctx.visibility.isFocusedOnEarthSystem();
 		return ORBIT_ENTRIES.filter(
 			({ source }) =>
@@ -78,9 +75,7 @@
 	}
 
 	// Merged imagery rows: skybox + per-body texture/cloud/night/ring credits.
-	// When a single body contributes more than one kind (e.g. Earth: surface +
-	// clouds + night, Saturn: surface + rings), each row gets a type qualifier
-	// in parentheses; otherwise the body name alone is enough.
+	// A body contributing more than one kind gets a type qualifier per row.
 	interface ImageryRow {
 		key: string;
 		label: string;
@@ -150,9 +145,8 @@
 		const bodies = [...byBody.keys()].sort((a, b) => bodyName(a).localeCompare(bodyName(b)));
 		for (const bodyId of bodies) {
 			const items = byBody.get(bodyId)!;
-			// One line per kind of imagery, even when several works went into
-			// it (Saturn's rings credit Björn Jónsson and NASA): the popover is
-			// a glance, /credits carries the per-source detail.
+			// One line per kind of imagery even when several works contributed;
+			// the popover is a glance, /credits carries per-source detail.
 			const byType = new Map<string, typeof items>();
 			for (const it of items) {
 				const arr = byType.get(it.typeKey) ?? [];
@@ -177,19 +171,16 @@
 		return rows;
 	});
 
-	// 3D models are body-scoped (only the focused probe's model is in the
-	// scene). The popover shows the focused body's model credit directly.
+	// Models are body-scoped: only the focused probe's model is in the scene.
 	const focusedModel = $derived.by(() => {
 		void ctx.credits.modelVersion;
 		const bodyId = ctx.visibility.focusedBodyId;
 		return bodyId ? ctx.credits.model.get(bodyId) : undefined;
 	});
 
-	// Rotational elements the scene is actually spinning bodies by, deduped
-	// across everything loaded this session. Most bodies run on the PCK, but an
-	// asteroid's pole comes from DAMIT's lightcurve inversion and the ringed
-	// small bodies' from an occultation paper — same mapper the detail sidebar
-	// credits from.
+	// Rotation credits, deduped across the session. Sources vary per body
+	// (PCK, DAMIT lightcurve inversion, occultation papers), same mapper as
+	// the detail sidebar.
 	const rotationRows = $derived.by(() => {
 		void ctx.credits.orientationVersion;
 		const rows = new Map<string, { key: string; label: string; url: string }>();
@@ -204,8 +195,8 @@
 		return ctx.getBody(id)?.data.name ?? id;
 	}
 
-	// How a natural body's shape was derived. The mesh is what the scene draws,
-	// so its provenance is credited here rather than in the detail sidebar.
+	// The mesh is what the scene draws, so its shape provenance is credited
+	// here rather than in the detail sidebar.
 	function provenanceLabel(credit: ModelCredit): string | null {
 		if (credit.provenance === 'radar') return m.model_provenance_radar();
 		if (credit.provenance === 'missions') return m.model_provenance_missions();

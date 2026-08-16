@@ -103,12 +103,8 @@ class TestParseWikitextEdgeCases:
     def test_pipe_inside_wikilink_does_not_split(self):
         wikitext = "{{derived from|File:Foo.jpg|[[:File:Bar.jpg|display text]]}}"
         derived, _ = cw.parse_wikitext(wikitext)
-        # Plain positional arg 1 -> Foo.jpg.
-        # Arg 2 starts with [[ so _clean_filename strips the bracket prefix?
-        # Actually the arg value is the literal "[[:File:Bar.jpg|display text]]"
-        # — _clean_filename only strips ``:`` and ``File:``/``Image:`` prefixes,
-        # so the leading "[[" stays and this arg becomes a junk filename.
-        # We accept the conservative behaviour: only Foo.jpg is recognised.
+        # _clean_filename only strips ``:``/``File:`` prefixes, so arg 2's
+        # leading "[[" survives and it's discarded as junk. Conservative but fine.
         assert "Foo.jpg" in derived
 
     def test_unbalanced_braces_returns_partial(self):

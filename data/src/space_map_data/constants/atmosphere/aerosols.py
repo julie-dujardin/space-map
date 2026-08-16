@@ -176,8 +176,8 @@ AEROSOLS: dict[str, Aerosol] = {
     # ~50 km, measured vertical scattering τ ≈ 0.013-0.018 → β_sca(550) ≈
     # 3.6e-4/km at the top of the range. Blue: blue/red I/F > 2 → ~λ⁻³
     # slope. n = 1.69, k = 0.018 at 607.6 nm (Khare et al. 1984 tholins).
-    # ~5× fainter than the previously shipped hand-tuned column — visibility
-    # leans on the forward phase lobe + physical backlit sun.
+    # Faint column; visibility leans on the forward phase lobe + physical
+    # backlit sun.
     "pluto_tholin": Aerosol(
         phase="pluto_tholin",
         scale_height_km=50.0,

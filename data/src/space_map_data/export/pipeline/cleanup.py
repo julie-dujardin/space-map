@@ -106,10 +106,8 @@ def remove_old_outputs(out_dir: Path, keep_object_outputs: bool = False) -> None
         p = out_dir / "nomenclature" / "details"
         if p.exists():
             shutil.rmtree(p)
-    # The previous schema shipped a per-body `__global__/{body}.json.gz`
-    # marker file alongside positions; the new schema replaces it with
-    # per-language label files. Drop the legacy dir so old artefacts
-    # don't linger on the CDN after an in-place re-export.
+    # Superseded by per-language label files; drop the legacy dir so stale
+    # artefacts don't linger on the CDN after an in-place re-export.
     p = out_dir / "nomenclature" / "__global__"
     if p.exists():
         shutil.rmtree(p)
@@ -118,9 +116,9 @@ def remove_old_outputs(out_dir: Path, keep_object_outputs: bool = False) -> None
         p = out_dir / d
         if p.exists():
             shutil.rmtree(p)
-    # Legacy image layout before the per-filename bundle refactor. Deleting
-    # unconditionally is safe: the new layout writes to ``images/<filename>/``
-    # dirs alongside these (never inside them), so this never hits new output.
+    # Legacy image layout. Deleting unconditionally is safe: the current
+    # layout writes to ``images/<filename>/`` dirs alongside these (never
+    # inside them), so this never hits new output.
     for d in ("images/thumb", "images/full", "images/metadata"):
         p = out_dir / d
         if p.exists():

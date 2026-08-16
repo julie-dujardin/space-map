@@ -4,7 +4,6 @@ Covers every encoding the bodies manifests list: passthrough meshes Blender
 reads directly (obj/ply/stl), gzip wrappers, Gaskell ICQ cube grids, the three
 PDS plate-table dialects, lat/lon/radius grids (either column order), and
 VRML2 IndexedFaceSet.
-Battle-tested on the real archive files.
 """
 
 import gzip

@@ -25,7 +25,6 @@ def _parse_download_links(html: str) -> dict[str, list[str]]:
     bodies: dict[str, list[str]] = {}
     for a in soup.select("a[href$='.zip'], a[href$='.kmz']"):
         url = str(a["href"])
-        # Derive body name from the first path component of the filename.
         filename = url_basename(urlparse(url).path)
         body = filename.split("_nomenclature_")[0]
         bodies.setdefault(body, []).append(url)

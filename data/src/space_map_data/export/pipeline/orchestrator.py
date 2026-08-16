@@ -147,21 +147,20 @@ _SUN_MAJOR_TYPE_VALUES = [t.value for t in _SUN_MAJOR_TYPES]
 _DEFAULT_ZONE_LIMIT = 10_000
 
 # SBDB combos are uncapped (see comment in `_iter_sbdb_zone_snapshots`);
-# MBA-unnamed alone is ~hundreds of thousands of ORM Objects. With an
-# unbounded executor every combo's `.all()` landed in RAM before any worker
-# drained, and the session's identity map pinned them all — that's the 30-40
-# GB blow-up. Cap concurrent zone exports so peak memory ≈ MAX_IN_FLIGHT ×
-# largest-batch size. Big combos are split into row-capped batches
-# (see `_SBDB_BATCH_ROWS`) so no single work item materializes more than the
-# batch cap, keeping this knob about parallelism rather than the memory floor.
+# MBA-unnamed alone is ~hundreds of thousands of ORM Objects, and the
+# session's identity map pins every loaded row in RAM. Cap concurrent zone
+# exports so peak memory ≈ MAX_IN_FLIGHT × largest-batch size. Big combos are
+# split into row-capped batches (see `_SBDB_BATCH_ROWS`) so no single work
+# item materializes more than the batch cap, keeping this knob about
+# parallelism rather than the memory floor.
 _MAX_ZONE_IN_FLIGHT = 8
 
 # Rows per SBDB work item. The giant combos (MBA-unnamed is ~hundreds of
-# thousands of rows) used to materialize in one `.all()` — the multi-GB
-# transient. Streaming a combo in CHUNK_SIZE-aligned batches caps any single
-# work item at this many ORM rows; each batch writes a contiguous part range
-# at its offset so the on-disk output stays identical to a one-shot combo.
-# Must be a multiple of CHUNK_SIZE so batch boundaries land on part boundaries.
+# thousands of rows) would otherwise materialize as one multi-GB `.all()`.
+# Streaming a combo in CHUNK_SIZE-aligned batches caps any single work item
+# at this many ORM rows; each batch writes a contiguous part range at its
+# offset so the on-disk output stays identical to a one-shot combo. Must be a
+# multiple of CHUNK_SIZE so batch boundaries land on part boundaries.
 _SBDB_BATCH_ROWS = 50_000
 assert _SBDB_BATCH_ROWS % CHUNK_SIZE == 0
 
@@ -290,9 +289,7 @@ def _iter_non_sbdb_zone_snapshots(
     #            any SPK kernel either.
     # Major bodies + moons are horizons- or spice-source, so eager-load
     # Object.horizons (kepler elements live there). SBDB-source majors join
-    # sbdb instead. (Deep-space spacecraft used to ride here in a `spacecraft`
-    # zone — they're now in the dedicated probes export with proper SPICE
-    # trajectories.)
+    # sbdb instead.
     major_base = session.query(Object).options(
         joinedload(Object.sbdb), joinedload(Object.horizons)
     )

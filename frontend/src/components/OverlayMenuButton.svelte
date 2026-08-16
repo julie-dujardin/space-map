@@ -32,8 +32,7 @@
 
 {#if isMobile}
 	<!-- bits-ui Dialog gives the fullscreen mobile panel real focus management
-	     (trap on open, restore to trigger on close) and makes the covered app
-	     inert — none of which the hand-rolled overlay did. -->
+	     (trap on open, restore to trigger on close) and makes the covered app inert. -->
 	<Dialog.Root bind:open>
 		<Dialog.Trigger class={buttonClass} {title} aria-label={title}>
 			<Icon class="size-5" />

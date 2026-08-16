@@ -355,11 +355,7 @@ class TestPickFallbackImages:
         )
         for f in ("a.jpg", "b.jpg", "c.jpg", "d.jpg"):
             _stage_metadata(layout, f)
-        # No second member to backfill, so the second pass drops the cap and
-        # the fourth photo gets in. To prove the cap, give it nine candidates.
-        # Easier: assert that with a SECOND high-sitelink member supplying
-        # extras, the first member contributes exactly 3 before the second
-        # starts.
+        # Q2 proves the cap: Q1 must contribute only 3 photos before Q2's appear.
         _stage_wikidata(layout, "Q2", p18=["e.jpg", "f.jpg"], sitelink_count=5)
         for f in ("e.jpg", "f.jpg"):
             _stage_metadata(layout, f)

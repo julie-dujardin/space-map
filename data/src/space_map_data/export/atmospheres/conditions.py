@@ -3,11 +3,9 @@
 `constants/atmosphere/bodies.py` states only what rendering adds. A body's
 composition lives once in `constants/atmosphere/facts.py` and its temperature
 once in `constants/temperature/bodies.py`; this reads the render level off
-those, applying an override only where the render table declares one.
-
-The alternative — restating each number beside its render tuning — is what
-this replaces: thirty copies that a test had to hold together, and did not,
-which is how Saturn's tropopause ended up published at two pressures.
+those, applying an override only where the render table declares one. A
+single source per fact rules out a body's numbers diverging between renderer
+and consumers.
 """
 
 import logging

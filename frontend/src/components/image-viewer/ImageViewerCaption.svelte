@@ -38,8 +38,8 @@
 		subject.open();
 	}
 
-	// External Commons/Wikidata metadata — validate the scheme before it reaches
-	// an href so a `javascript:` URL can't ride in.
+	// Validate the scheme before it reaches an href: a `javascript:` URL from
+	// Commons/Wikidata metadata can't ride in.
 	const safeLicenseUrl = $derived(safeHttpUrl(attribution?.license_url));
 	const safeSourceUrl = $derived(safeHttpUrl(image?.source_url));
 
@@ -59,7 +59,7 @@
 	);
 	const hasExplicitBreaks = $derived((attribution?.description ?? '').includes('\n'));
 
-	// Bare reads below are Svelte deps; ResizeObserver alone wouldn't fire when
+	// Bare reads are Svelte deps: ResizeObserver alone wouldn't fire when
 	// max-height stays constant but paragraphs grow.
 	$effect(() => {
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -82,8 +82,8 @@
 
 	// PhotoSwipe's wheelToZoom listens on the viewer container, so wheel events
 	// bubbling out of the description's scroll viewport get hijacked into zoom.
-	// overscroll-behavior: contain only stops scroll-chaining at the boundary,
-	// not the bubble. Stop propagation while we're inside the scrollable range.
+	// overscroll-behavior: contain stops scroll-chaining but not the bubble,
+	// so stop propagation ourselves while inside the scrollable range.
 	$effect(() => {
 		const el = viewportRef;
 		if (!el) return;
@@ -96,7 +96,7 @@
 </script>
 
 <!-- Subject and description share one column: on desktop the caption root is a
-     row, so a bare sibling would sit beside the text rather than above it. -->
+     row, so a bare sibling would sit beside the text instead of above it. -->
 {#if subject || paragraphs.length}
 	<div class="pswp-sm-caption-desc-wrap" class:is-expanded={expanded}>
 		{#if subject}

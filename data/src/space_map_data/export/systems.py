@@ -655,14 +655,13 @@ def write_system_metadata(
         for child in children:
             child_to_bary[child.id] = bary.id
 
-    # Query all bodies that belong to planetary systems (not just textured ones)
+    # Not just textured bodies — anything that belongs in a planetary system.
     system_bodies = (
         session.query(Object)
         .filter(Object.object_type.in_([t.value for t in _SYSTEM_TYPES]))
         .all()
     )
 
-    # Group by system barycenter
     systems: dict[str, list[Object]] = {}
     for obj in system_bodies:
         if obj.parent_id in bary_ids:
@@ -677,7 +676,6 @@ def write_system_metadata(
         assert sys_id is not None
         systems.setdefault(sys_id, []).append(obj)
 
-    # Write one JSON file per system
     systems_dir = out_dir / "systems"
     systems_dir.mkdir(parents=True, exist_ok=True)
     for sys_id, objs in systems.items():
@@ -685,7 +683,6 @@ def write_system_metadata(
         for obj in objs:
             entry: dict = {}
 
-            # Texture tiers + attribution
             if obj.map_texture_available:
                 meta = texture_metadata.get(obj.id)
                 if meta is not None:
@@ -698,15 +695,14 @@ def write_system_metadata(
                         sys_id,
                     )
 
-            # Orientation data
             if obj.naif_id is not None and obj.naif_id in orientation:
                 entry["orientation"] = orientation[obj.naif_id]
 
-            # Nutation/precession coefficients (paired with global nut_prec_angles.json)
+            # Paired with the global nut_prec_angles.json.
             if obj.naif_id is not None and obj.naif_id in nut_prec:
                 entry["nut_prec"] = nut_prec[obj.naif_id]
 
-            # Triaxial radii (km, along body-fixed X, Y, Z)
+            # km, along body-fixed X, Y, Z.
             if obj.naif_id is not None and obj.naif_id in radii:
                 entry["radii"] = radii[obj.naif_id]
 
