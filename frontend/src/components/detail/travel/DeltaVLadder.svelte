@@ -1,10 +1,8 @@
 <!--
-  The Δv ladder: one stacked bar of the burns a route costs, widths in
-  proportion to Δv. A coast carries no Δv so it never appears — the bar is a
-  budget, not a timeline.
-
-  Segments are separated by a surface gap and each is named with its own figure
-  below, so identity never rests on colour alone.
+  The Δv ladder: a stacked bar of a route's burns, widths proportional to Δv.
+  Coasts carry no Δv so never appear — this is a budget, not a timeline.
+  Segments get a gap and their own labelled figure below, so identity never
+  rests on colour alone.
 -->
 <script lang="ts">
 	import type { RouteLeg } from '$lib/math/travel';
@@ -57,14 +55,12 @@
 		--leg-capture: #1baf7a;
 		--leg-descent: #eda100;
 		--leg-cruise: transparent;
-		/* One drive, one hue: the two halves of a constant-thrust arc are the same
-		   burn flipped over, and they sit side by side and dominate the bar. Told
-		   apart by lightness, which survives every kind of colour blindness. */
+		/* One drive, one hue: boost/brake are the same burn flipped, told apart by
+		   lightness, which survives colour blindness. */
 		--leg-boost: #5a3fb8;
 		--leg-brake: #a893e8;
-		/* And the same again for a spiral, whose three stretches are one drive held
-		   through all of them: the crossing between two wells, and a climb out of
-		   each. */
+		/* Same scheme for a spiral: one drive through all three stretches —
+		   crossing plus a climb out of each well. */
 		--leg-powered-cruise: #6f4fd0;
 		--leg-spiral-out: #4a3a91;
 		--leg-spiral-in: #a893e8;

@@ -1,25 +1,15 @@
 <script lang="ts">
 	/**
-	 * What the interior is still doing, under the cutaway that says what it is.
+	 * One list rather than four tables, since volcanism/tectonics/tidal/
+	 * magnetism are four views of one question — is there heat left inside,
+	 * and does it reach the surface.
 	 *
-	 * One list rather than four, because the four tables behind it are four
-	 * views of one question — is there heat left inside, and does it reach the
-	 * surface. It opens with what the surface does, then reads backward: how
-	 * much heat leaves, what supplies it, and what the core makes of it.
+	 * Most rows are optional; some bodies show only a status with no numbers,
+	 * which is the literature rather than a gap. No headings, so every label
+	 * names its own subject instead.
 	 *
-	 * Nearly every row is optional and most bodies show a handful. Five of the
-	 * twenty-three — Europa, Callisto, Mimas, Dione, Charon — have a status and
-	 * no numbers at all, which is the literature rather than a gap, so the list
-	 * has to read as complete at two rows as it does at twenty.
-	 *
-	 * There are no headings, so every label names its own subject: "Volcanic
-	 * eruptions a year", not "Eruptions a year" under a Volcanism heading. With
-	 * two or three rows per table, headings would outnumber what they organise.
-	 *
-	 * The export carries more than this draws. Heat flux is left out as a
-	 * restatement of heat output, and Io's Love numbers and the orbital
-	 * resonances are in the block and deliberately not rendered — the resonance
-	 * is an orbit fact rather than an interior one.
+	 * Heat flux is left out as a restatement of heat output; Io's Love numbers
+	 * and resonances are orbit facts, not interior ones.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import type { ActivityBlock, Measurement } from '$lib/fetch/objects/object-data';

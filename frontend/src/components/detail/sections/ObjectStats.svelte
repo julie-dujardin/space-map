@@ -52,10 +52,9 @@
 	let isEarthSat = $derived(global?.celestrak?.orbit_center === 'earth');
 
 	// The body a moon's elements are measured from: its parent, with a system
-	// barycenter (`naif-6` for Saturn's moons — no radius, no usable name)
-	// resolved to the dominant planet. Only moons carry parent-relative
-	// elements; planets borrow their barycenter's heliocentric ones, so they
-	// stay on the Sun-relative branch.
+	// barycenter (no radius, no usable name) resolved to the dominant planet.
+	// Planets borrow their barycenter's heliocentric elements, so they stay on
+	// the Sun-relative branch.
 	let primary = $derived.by(() => {
 		if (body?.data.objectType !== ObjectType.MOON) return undefined;
 		const parentId = body.data.parentId;
@@ -143,11 +142,10 @@
 		const wd = global?.wikidata;
 		const radii = global?.radii;
 
-		// Block 1 — a size, in kilometres. Wikidata stores mass in whatever unit
-		// its source used (exagram, zettagram, yottagram), which reads as noise
-		// at a glance, so it only stands in for the dozen small moons that have
-		// no measured size at all. Triaxial bodies average their axes; the
-		// per-axis figures are in the Physical panel.
+		// Block 1 — a size, in kilometres. Wikidata's mass unit varies by source
+		// and reads as noise at a glance, so mass only stands in when no size is
+		// measured at all. Triaxial bodies average their axes; per-axis figures
+		// live in the Physical panel.
 		const diameterKm =
 			sbdb?.diameter ?? (radii ? ((radii.a + radii.b + radii.c) / 3) * 2 : undefined);
 		if (diameterKm != null)

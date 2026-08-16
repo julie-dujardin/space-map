@@ -1,8 +1,7 @@
 <script lang="ts">
-	/** The moon lineup as lit discs: the same bodies at the same relative sizes
-	 *  the sphere lineup draws, with no renderer behind them. The tile is 80 px
-	 *  tall — a WebGL context, its textures and its shape models all buy detail
-	 *  nothing at that size can show. */
+	/** The moon lineup as lit discs, same relative sizes, no renderer behind
+	 *  them. The tile is 80 px tall — a WebGL context, textures and shape models
+	 *  all buy detail nothing at that size can show. */
 
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import type { LineupBody } from './BodyLineup.svelte';

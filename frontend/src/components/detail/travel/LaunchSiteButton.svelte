@@ -1,13 +1,10 @@
 <!--
   A launch site's way into the trip planner.
 
-  The site is the *departure* — it is where things leave from, and a trip to a
-  cosmodrome is not what anyone came to this page to plan — so the destination
-  is left unchosen for the planner's first step to ask about.
-
-  A range is not a place, so the trip leaves from one of its pads: the busiest,
-  named on the box and swappable there. Hidden while the pads are still coming,
-  and for good on a range GCAT can place none of.
+  The site is only the *departure* — a trip to a cosmodrome isn't the plan —
+  so the destination stays unchosen for the next step. A range isn't a place:
+  the trip leaves from its busiest pad, swappable on the box. Hidden while pads
+  are still loading, or for good if GCAT can't place any on this range.
 -->
 <script lang="ts">
 	import { getContext } from 'svelte';

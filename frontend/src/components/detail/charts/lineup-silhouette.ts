@@ -49,13 +49,11 @@ const FS_VERT = /* glsl */ `
 	}
 `;
 
-/** Renders a rim glow that hugs a body's true projected silhouette. A mask pass
- *  captures the mesh coverage from the lineup's own viewpoint, a separable blur
- *  dilates it outward into a rim, and `plane` draws that additively just behind
- *  the body (its disc masks the inner spread via depth). The final draw uses a
- *  built-in MeshBasicMaterial so the tint runs through the same tone-map + sRGB
- *  output the rest of the scene does. Three offscreen passes, but only ever for
- *  the single hovered body. */
+/** Rim glow that hugs a body's true projected silhouette: a mask pass captures
+ *  mesh coverage, a separable blur dilates it into a rim, and `plane` draws it
+ *  additively just behind the body (depth masks the inner spread). Uses a real
+ *  MeshBasicMaterial so the tint gets the scene's tone-map + sRGB output. Three
+ *  offscreen passes, but only for the single hovered body. */
 export class SilhouetteGlow {
 	readonly plane: Mesh;
 
@@ -114,12 +112,10 @@ export class SilhouetteGlow {
 		if (opacity === 0) this.plane.visible = false;
 	}
 
-	/** Capture `source`'s silhouette, blur it into a rim, and point `plane` at the
-	 *  result at depth `z`. `scene` is the live lineup scene; every child but
-	 *  `source` is hidden for the mask pass, then restored. The frame is sized to
-	 *  the body's own bounding sphere (+glowPx) so an elongated asteroid's long
-	 *  axis is never clipped, and the radius is rotation-stable so a spinning body
-	 *  doesn't shimmer the frame. */
+	/** Capture `source`'s silhouette into a rim and point `plane` at it, depth
+	 *  `z`. Frame sizes to the body's bounding sphere (+glowPx) so an elongated
+	 *  asteroid's long axis never clips, and stays rotation-stable so a spinning
+	 *  body doesn't shimmer the frame. */
 	update(
 		renderer: WebGLRenderer,
 		scene: Scene,
@@ -168,10 +164,9 @@ export class SilhouetteGlow {
 		scene.overrideMaterial = null;
 		for (const child of hidden) child.visible = true;
 
-		// Separable blur dilates the silhouette outward by ~glowPx screen px. The
-		// mask camera frames 2·half px across `size` texels, so scale sigma to keep
-		// the rim a constant screen width whatever the body's on-screen size. Gain
-		// is applied once, on the final (vertical) pass.
+		// Separable blur dilates the silhouette by ~glowPx screen px; sigma scales
+		// with px-per-texel so the rim stays constant width on screen. Gain applies
+		// once, on the final (vertical) pass.
 		const sigma = (this.glowPx * size) / (2 * half) / 2.5 || 1;
 		this.blurMat.uniforms.uSigma.value = sigma;
 

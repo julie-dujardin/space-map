@@ -1,16 +1,12 @@
 <script lang="ts">
 	/**
 	 * The body cut open: a quarter disc of nested shells, to scale by radius.
+	 * The quarter opens away from its vertical edge, so that edge doubles as
+	 * the radius axis and the line labels stand beside.
 	 *
-	 * The quarter opens away from its vertical edge, so that edge is both the
-	 * axis radius is measured along and the one the labels stand beside — each
-	 * shell's name ends up level with the shell rather than pointing at it from
-	 * across the disc.
-	 *
-	 * Shells are drawn the colour they would look rather than the colour that
-	 * tells them apart — see `layer-appearance.ts`. The composition bars under
-	 * the chart keep the categorical palette, where telling nine materials apart
-	 * is the whole job.
+	 * Shells are coloured to look right, not to tell apart — see
+	 * `layer-appearance.ts`. The composition bars below use the categorical
+	 * palette instead, since telling materials apart is their whole job.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import {
@@ -72,12 +68,10 @@
 		photosphere: m.structure_disc_photosphere
 	};
 
-	/** The centre of the body, at the foot of the vertical edge. The quarter
-	 *  opens up and to the *left* of it, so the edge the labels stand beside is
-	 *  the one radius is measured along. */
-	// The disc gives up a tenth of its radius to the labels beside it: a layer
-	// name and its temperature have to sit on one line in every locale, and
-	// "Noyau externe · 5 127–5 727 ℃" does not fit beside a disc any wider.
+	/** Centre of the body, at the foot of the vertical edge the quarter opens
+	 *  away from. */
+	// Trades a tenth of its radius for the label gutter: a name and its
+	// temperature need to fit one line, even "Noyau externe · 5 127–5 727 ℃".
 	const CX = 118;
 	const CY = H - 22;
 	const R = 114;
@@ -85,10 +79,9 @@
 	const GUTTER = CX + 9;
 	const LABEL_SPACING = 25;
 
-	// The atmosphere strip rides outside the body, so the body shrinks to leave
-	// room for it rather than overflowing the frame. Titan's is 19% of its
-	// radius; Earth's is 1.3%, a hairline, and drawing it thicker would be a lie
-	// on a chart whose whole claim is that it is to scale.
+	// The body shrinks to leave room for the atmosphere strip outside it,
+	// rather than overflow the frame — Titan's is 19% of its radius, Earth's
+	// a 1.3% hairline, and drawing it thicker would break the to-scale claim.
 	let bodyR = $derived(R / (1 + (section.atmosphere?.height ?? 0)));
 
 	function fill(band: InteriorBand, i: number): string {
@@ -107,14 +100,9 @@
 		return ltrIsolate(formatKmRange(band.depthFromKm, band.depthToKm));
 	}
 
-	/**
-	 * A band's own slice of the vertical edge, which is where its label goes.
-	 *
-	 * The disc opens away from that edge, so radius measured straight up it is
-	 * the same axis the labels are stacked on: the core's label sits by the core
-	 * at the bottom, the crust's by the crust at the top. Anchored at each
-	 * band's midpoint, then slid apart only where two would overlap.
-	 */
+	/** Each band anchors its label at its own midpoint on the radius axis —
+	 *  core near the bottom, crust near the top — then slides apart only where
+	 *  two would overlap. */
 	let rows = $derived.by(() => {
 		const entries: { band: InteriorBand | null; index: number; anchorY: number }[] =
 			section.bands.map((band, i) => ({
@@ -137,10 +125,9 @@
 	let stacked = $state<boolean[]>([]);
 	let svgEl = $state<SVGSVGElement>();
 
-	// An effect rather than a derived, so the text is on the page before it is
-	// measured — see `stackedRows`. Measured on every run so the effect tracks
-	// the rows even while the tab is hidden, but only kept where the chart has
-	// a box to have been measured in.
+	// An effect, not a derived, so the text exists in the DOM before it's
+	// measured (see `stackedRows`). Runs even while hidden, but only applies
+	// where the chart actually has a box to measure.
 	$effect(() =>
 		remeasure(svgEl, () => {
 			const next = stackedRows(rows, nameEls, readingEls, W - 2 - GUTTER);
@@ -164,17 +151,11 @@
 		aria-label={m.structure_interior_chart({ count: section.bands.length })}
 	>
 		<defs>
-			<!-- A diffuse layer has no surface: Jupiter's core is heavy elements
-			     smeared through the envelope, and a crisp edge would draw a
-			     boundary the paper says is not there. It only fades where there
-			     is something above to fade *into* — on Uranus the whole planet is
-			     one diffuse layer, and fading it out at the surface would draw a
-			     body evaporating into the page.
-			     The fade spans the layer's outer half, so the inner half still
-			     carries the layer's own colour. Ramping from a fixed fraction of
-			     the outer radius instead put Jupiter's metallic hydrogen fully
-			     opaque only below its own floor: the shell drew as the envelope's
-			     cream everywhere, whatever colour it was given. -->
+			<!-- Diffuse layers fade rather than cut sharply, since they have no
+			     real boundary — only where something else sits above to fade
+			     into (not on an outermost diffuse layer, e.g. Uranus). The
+			     gradient spans the outer half; anchoring it to a fixed radius
+			     fraction instead left thick layers solid-coloured everywhere. -->
 			{#each section.bands as band, i (band.layer.role + i)}
 				{#if band.layer.diffuse && i > 0}
 					<radialGradient id="diffuse-{i}" gradientUnits="userSpaceOnUse" cx={CX} cy={CY} r={bodyR}>
@@ -200,10 +181,9 @@
 			{/if}
 
 			{#each section.bands as band, i (band.layer.role + i)}
-				<!-- A band sitting on a diffuse one runs all the way to the centre:
-				     the diffuse layer fades into it from above, and stopping it at
-				     the nominal boundary would leave the fade dissolving into the
-				     card and draw the edge the gradient exists to avoid. -->
+				<!-- A band under a diffuse one runs to the centre — stopping at its
+				     nominal boundary would let the fade dissolve into the card,
+				     drawing exactly the crisp edge the gradient exists to avoid. -->
 				{@const over = section.bands[i + 1]?.layer.diffuse === true}
 				{@const fades = band.layer.diffuse && i > 0}
 				<path
@@ -220,11 +200,9 @@
 			{/each}
 		</g>
 
-		<!-- Which end of the edge is which. Both sit clear of the disc, above
-		     its apex and below its centre. The outer end is named after what the
-		     radius is measured to: Jupiter has no surface, and saying it had one
-		     would contradict the atmosphere chart above, which measures its own
-		     heights from the 1 bar level. -->
+		<!-- Outer end is labelled by what the radius is measured to, not
+		     "surface" — Jupiter has none, and the atmosphere chart above
+		     measures its own heights from the 1 bar level. -->
 		<text x={CX - 3} y={CY - R - 6} text-anchor="end" class="fill-muted-foreground text-[9px]">
 			{(DATUM_LABEL[datum] ?? DATUM_LABEL.surface)()}
 		</text>

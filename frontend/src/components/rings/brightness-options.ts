@@ -1,10 +1,8 @@
 /**
- * The two brightnesses a ring system can be rendered at, as the map chrome
- * offers them.
+ * The two brightnesses a ring system can be rendered at.
  *
- * Every bundle is stored normalised with its own intensity scale, so the true
- * one is the stored strip multiplied back down: at Jupiter that is a factor of
- * 5.6e-6, and the rings are correctly all but invisible. Overexposure drops the
+ * Every bundle stores its true intensity scale (e.g. 5.6e-6 at Jupiter), so
+ * realistic rendering is correctly almost invisible. Overexposure drops that
  * scale and shows what the strip holds.
  */
 

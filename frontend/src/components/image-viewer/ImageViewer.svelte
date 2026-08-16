@@ -36,10 +36,9 @@
 	// Plain `let` (not $state) so the lifecycle effect tracks only
 	// `imageIndex`, not our own ref mutations.
 	let pswp: PhotoSwipeT | null = null;
-	// `pswp` is only assigned after `import('photoswipe')` resolves, so
-	// without `opening` a fast re-entry (double-tap, remount mid-import)
-	// would spawn a second instance. `destroyed` cancels an in-flight open
-	// if the component unmounts before the import lands.
+	// `opening` guards against a fast re-entry spawning a second instance
+	// while the `import('photoswipe')` is in flight. `destroyed` cancels that
+	// open if the component unmounts before the import lands.
 	let opening = false;
 	let destroyed = false;
 
@@ -230,10 +229,8 @@
 		backdrop-filter: blur(10px);
 	}
 
-	/* Vaul/bits-ui Dialog sets `pointer-events: none` on a body-level wrapper
-	   to block outside-dialog interaction. PhotoSwipe is a sibling of the
-	   drawer and inherits it, so touches fall through to the canvas.
-	   Re-assert `auto` to restore hit-testing. */
+	/* Vaul/bits-ui Dialog sets pointer-events:none on a body-level wrapper;
+	   PhotoSwipe inherits it as a sibling, so touches fall through. Re-assert auto. */
 	:global(.pswp.pswp-space-map) {
 		pointer-events: auto;
 	}

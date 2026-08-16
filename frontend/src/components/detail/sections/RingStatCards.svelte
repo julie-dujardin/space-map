@@ -1,17 +1,9 @@
 <script lang="ts">
 	/**
 	 * The Rings tab's stat trio: how much of it, how thin, when we found it.
-	 *
-	 * Slot order follows the rest of the app — `ObjectStats` and
-	 * `FeatureStatCards` both lead with physical magnitudes and put the date
-	 * last. Deliberately none of these restates the panel below: the radial
-	 * chart already carries the span in its breadcrumb, every ring's width and
-	 * τ in its rows, and the counts in its child chips. Thickness is the one
-	 * dimension that chart has no axis for; the mass and the date are nowhere
-	 * on it at all.
-	 *
-	 * A body with nothing for a slot leaves it out — Neptune and Chiron have
-	 * only a discovery, and one card is what they show.
+	 * None of these restate the panel below — thickness is the one dimension
+	 * the radial chart has no axis for, and mass/date aren't on it at all. A
+	 * body with nothing for a slot leaves it out.
 	 */
 
 	import * as m from '$lib/paraglide/messages.js';

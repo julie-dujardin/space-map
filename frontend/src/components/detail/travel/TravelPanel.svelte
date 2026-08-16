@@ -2,15 +2,14 @@
   The travel panel: describe a trip, get trajectories.
 
   Two steps. The first describes the trip and lists what could fly it, with all
-  of those trajectories drawn on the map at once. Choosing one replaces the whole
-  form with that trajectory in detail, and the map with that arc and its
-  timeline. `panel.selectedRoute` is which step is showing: a trajectory is being
-  read, or they are still being chosen between.
+  those trajectories drawn on the map at once. Choosing one replaces the form
+  with that trajectory in detail, and the map with that arc and its timeline.
+  `panel.selectedRoute` is which step is showing.
 
   The whole trip is a link: its two ends are the path (`/nav/<from>/<to>`) and
-  everything below the endpoint fields — when to go, what to fly, what it
-  carries, which trajectory is being read — is the query. The panel owns the
-  live state and mirrors it out; the URL is how it comes back.
+  everything else — when to go, what to fly, which trajectory is read — is the
+  query. The panel owns the live state and mirrors it out; the URL is how it
+  comes back.
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
@@ -127,14 +126,10 @@
 		 *  browser-back restores it to. */
 		trip: TripState;
 		/**
-		 * Which frame the trip's ends are drawn in. The map's control owns it: it
-		 * changes the picture rather than the trip, so it belongs with the rest of
-		 * the map's chrome and not among the figures.
-		 *
-		 * Only the plan is drawn in it. An alternative is a shape rather than an
-		 * itinerary and gets none of the body-scale detail the choice is about, and
-		 * the hazard scan reads distances from the Sun — the one frame they mean
-		 * anything in.
+		 * Which frame the trip's ends are drawn in. The map's control owns it — it
+		 * changes the picture, not the trip. Only the plan is drawn in it: an
+		 * alternative is a shape rather than an itinerary, and the hazard scan reads
+		 * distances from the Sun, the one frame they mean anything in.
 		 */
 		viewFrame: TrajectoryFrame;
 		/** Move either end. The URL owns them, so the panel asks. */
@@ -362,16 +357,11 @@
 
 	/**
 	 * Which end a same-system transfer crosses to, when that end is measured
-	 * rather than modelled.
-	 *
-	 * Only that case: everywhere else the elements are the honest description,
-	 * and the whole crossing is not priced on one separation. Inside a system it
-	 * is, so a satellite whose conic about its primary is a fiction — anything
-	 * held at a Lagrange point — has to be read off its own positions instead.
-	 *
-	 * A key rather than the pair itself, because the bodies come off a map that
-	 * is replaced as the catalogue streams in: a fresh object every time would
-	 * re-read a hundred positions for a trip that has not changed.
+	 * rather than modelled — a satellite whose conic about its primary is a
+	 * fiction, like anything held at a Lagrange point, has to be read off its own
+	 * positions. A key rather than the pair itself: the bodies come off a map
+	 * replaced as the catalogue streams in, and a fresh object every time would
+	 * re-read a hundred positions for an unchanged trip.
 	 */
 	let measuredKey = $derived.by(() => {
 		const primary = frame.systemPrimary;
@@ -412,12 +402,10 @@
 		measured(target ? toTravelBody(target, lookup, targetDetail, frame.orbit) : null)
 	);
 
-	// The same two ends as the routes were priced against. A body that does not
-	// keep still is re-described at the trip's own dates, and a route carries the
-	// numbers that description gave it — so anything read back off a route has to
-	// ask the same body. Drawing a system transfer against the ends as they stand
-	// now put the satellite at a distance its own cruise time cannot reach, and
-	// the arc went undrawn.
+	// The same two ends the routes were priced against. A body that does not
+	// keep still is re-described at the trip's own dates, so anything read back
+	// off a route has to ask the same body — drawing against the ends as they
+	// stand now put a system transfer's satellite out of its own cruise reach.
 	let solved = $derived(panel.pricedEnds);
 	let pathOrigin = $derived(solved?.origin ?? originTravel);
 	let pathTarget = $derived(solved?.target ?? targetTravel);
@@ -455,14 +443,12 @@
 
 	/**
 	 * A mode the body cannot hold is not a mode: a link naming a stationary orbit
-	 * at Venus falls back to the low one rather than labelling a trip it is not
-	 * pricing.
+	 * at Venus falls back to the low one rather than pricing a trip it cannot fly.
 	 *
-	 * Guarded on the detail bundle having landed, and load-bearing. The spin that
-	 * says whether a stationary orbit exists arrives with that bundle, so during
-	 * the wait *every* named orbit is missing from the list — and an unguarded
-	 * check would read that as "Earth has no geostationary orbit" and quietly
-	 * rewrite a shared link's own mode on the way in.
+	 * Guarded on the detail bundle having landed. The spin that says whether a
+	 * stationary orbit exists arrives with that bundle, so during the wait every
+	 * named orbit is missing — an unguarded check would read that as "no
+	 * geostationary orbit" and rewrite a shared link's mode on the way in.
 	 */
 	$effect(() => {
 		if (!originDetail || !originChoices.length) return;
@@ -514,11 +500,10 @@
 
 	/**
 	 * What each orbit would cost at this end, on the trajectory being read.
-	 *
-	 * Priced from the excess speed the chosen route arrives with, so the figures
-	 * move with the trajectory rather than standing for a trip nobody picked —
-	 * and there are none at all before the first solve, which is honest: the
-	 * question "how much is a stationary orbit" has no answer without an arc.
+	 * Priced from the chosen route's excess speed, so the figures move with the
+	 * trajectory rather than standing for a trip nobody picked — and there are
+	 * none before the first solve, since "how much is a stationary orbit" has no
+	 * answer without an arc.
 	 */
 	function priceEnd(role: 'origin' | 'target', choice: OrbitChoice): number | null {
 		// Before a trajectory is chosen the balanced one stands in for the trip:
@@ -541,13 +526,11 @@
 	}
 
 	// A flyby never slows down, so there is nothing for an atmosphere to do. A
-	// destination whose envelope the kernel would ignore — too thin, an upper
-	// limit, none at all — must not show the control either, or it is asking a
-	// question with one answer; this is the same gate `canAeroBrake` applies.
-	// Asked of the destination's own detail bundle rather than of `targetTravel`.
-	// That is rebuilt from the scene's body index, which churns and briefly
-	// resolves to nothing — and a control that vanishes and comes back between a
-	// press and its release swallows the click that was on it.
+	// destination whose envelope the kernel would ignore must not show the
+	// control either — the same gate `canAeroBrake` applies. Asked of the detail
+	// bundle rather than `targetTravel`, which is rebuilt from the scene's body
+	// index and briefly resolves to nothing; a control that vanishes and comes
+	// back between a press and its release swallows the click.
 	let targetHasAir = $derived(
 		(aeroPressurePa(targetDetail) ?? 0) >= travelConstants.AERO_MIN_PRESSURE_PA
 	);
@@ -572,20 +555,16 @@
 	// the routes are priced with.
 	let aeroValue = $derived(panel.effectiveAero);
 	// Candidates for a swing-by. Only a heliocentric trip gets any: inside one
-	// system the transfer already goes round the only body massive enough to bend
-	// it, and there is nothing left to pass on the way.
-	//
-	// No detail bundle is fetched for them — the only thing one would add is an
-	// atmosphere, and nothing lands on a body it swings past.
+	// system the transfer already goes round the only body massive enough to
+	// bend it. No detail bundle is fetched for them — the only thing one would
+	// add is an atmosphere, and nothing lands on a body it swings past.
 	let assistBodies = $derived.by<TravelBody[]>(() => {
 		const bodies = bodiesById;
 		const heliocentric = frame.orbit === 'heliocentric';
-		// Untracked, and load-bearing. A candidate that is on screen is the scene's
-		// own row, and the scene rewrites its elements as the clock runs — so
-		// reading them here would make this list, and the search that depends on it,
-		// a function of the clock. The search takes about a second and a new one
-		// stops the last, so a list that changed twice a second would never finish
-		// one. The map identity is the whole dependency.
+		// Untracked, and load-bearing: a candidate on screen is the scene's own row,
+		// rewritten as the clock runs, so reading it here would make the search a
+		// function of the clock — and it takes about a second, so a list that
+		// changed twice a second would never finish one.
 		return untrack(() => {
 			if (!heliocentric) return [];
 			const lookup = lookupIn(bodies);
@@ -695,11 +674,11 @@
 		void panel.solve(from, to, nowJd, frame, refineEnd);
 	});
 
-	// The two trajectories that come off the craft are their own effect: they turn
-	// on the ship, which the solve above deliberately ignores — a different ship is
-	// not a different search — and they answer without a worker, so they cost
-	// nothing to redo. The cargo is read for the spiral alone, which is the one
-	// trajectory a loaded hold makes slower as well as dearer.
+	// The two trajectories that come off the craft are their own effect: they
+	// turn on the ship, which the solve above deliberately ignores, and answer
+	// without a worker so they cost nothing to redo. Cargo is read for the
+	// spiral alone — the one trajectory a loaded hold makes slower as well as
+	// dearer.
 	$effect(() => {
 		const from = pathOrigin;
 		const to = pathTarget;
@@ -902,10 +881,9 @@
 		});
 	});
 
-	// What every trajectory on offer puts the craft through — the list needs all of
-	// them, not just the one being read. Keyed like the two above, and separately:
-	// nothing here depends on the end names, so a late-landing label must not cost
-	// six scans.
+	// What every trajectory on offer puts the craft through, not just the one
+	// being read. Keyed separately from the two above: nothing here depends on
+	// the end names, so a late-landing label must not cost six scans.
 	let hazardsKey = $derived.by(() => {
 		if (!centerId) return null;
 		const keys = panel.offered.map((choice) => hazardKey(choice.route, centerId, frame));

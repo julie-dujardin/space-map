@@ -29,9 +29,9 @@ const UNKNOWN_MARS = {
 };
 
 describe('route view keys', () => {
-	// The panel re-solves on every input change and the optimizer often lands on
-	// the same grid cell, so "the dates moved" cannot be what invalidates a view.
-	// Each view's key must carry everything that view reads off the route.
+	// The panel re-solves on every input change and the optimizer often lands
+	// on the same grid cell, so date movement alone can't invalidate a view —
+	// each key must carry everything its view reads off the route.
 
 	it('rebuilds the drawn end orbits when only their altitude changed', () => {
 		const low = priced({ arrivalMode: 'low-orbit', targetOrbit: { rPeriKm: 3690, rApoKm: 3690 } });
@@ -47,7 +47,7 @@ describe('route view keys', () => {
 	});
 
 	it('rescans hazards when the atmosphere turns out to exist', () => {
-		// The detail bundle lands after the first solve: same trip, same braking
+		// The detail bundle lands after the first solve: same trip and braking
 		// request, but the arrival goes from priced-airless to flown through air.
 		const dry = buildRoute(EARTH, UNKNOWN_MARS, DEPART, TOF, {
 			departureMode: 'orbit',

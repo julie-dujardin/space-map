@@ -224,13 +224,10 @@
 	let bodiesVersion = $state(0);
 	$effect(() => ctx?.bodies.onBodiesAdded(() => bodiesVersion++));
 
-	/** Every moon of the host system with its mean orbital radius, whatever the
-	 *  catalogue does or doesn't say about it.
-	 *
-	 *  Deliberately not the moons the catalogue names: that list is a handful of
-	 *  shepherds and resonance partners, and the chart would silently omit
-	 *  everything else orbiting among the rings — S/2009 S 2 and the rest of
-	 *  Saturn's moonlets. What the radial axis covers is the only filter. */
+	/** Every moon of the host system with its mean orbital radius, regardless of
+	 *  what the catalogue says about it — the catalogue only names a handful of
+	 *  shepherds and resonance partners, and would silently omit everything
+	 *  else orbiting among the rings. The radial axis is the only filter. */
 	let systemMoons = $derived.by(() => {
 		// Read so a later batch of bodies re-runs this.
 		void bodiesVersion;
@@ -306,11 +303,9 @@
 			.sort((a, b) => a[0] - b[0]);
 		if (!bands.length) return { runs: [{ from: lo, to: hi, top: 0 }], scale: 1, height: 1 };
 
-		// The scale that would separate every label, and the scale that fits the
-		// height ceiling. Whichever is smaller wins; clustering absorbs the rest.
-		// The tightest pair of neighbours sets it: whatever separates them
-		// separates everyone. Where that exceeds the height ceiling the slack
-		// below absorbs the difference, and grouping catches what it cannot.
+		// The scale that separates every label, capped by the height ceiling —
+		// whichever is smaller wins. The tightest pair of neighbours sets the
+		// ideal; slack absorbs what's left, and grouping catches what slack can't.
 		const anchors = visible.map((slug) => pos(mid(rows.get(slug)!)));
 		let ideal = 0;
 		for (let i = 0; i < anchors.length - 1; i++) {
@@ -437,11 +432,9 @@
 	/** Device rows a feature gets even when it is thinner than one. */
 	const MIN_MARK = 2;
 
-	/** The strip column as a picture: the rendered ring profiles where a bundle
-	 *  covers the radius, the catalogue's optical depths everywhere else.
-	 *
-	 *  One image rather than a rect per feature so both sources land on the
-	 *  same pixels — a band drawn under a profile would show through it. */
+	/** The strip column as a picture: rendered ring profiles where a bundle
+	 *  covers the radius, catalogue optical depths elsewhere. One image rather
+	 *  than a rect per feature, so both sources land on the same pixels. */
 	let stripImage = $derived.by(() => {
 		if (typeof document === 'undefined') return null;
 		const height = Math.max(1, Math.round(chartHeight * STRIP_OVERSAMPLE));
@@ -510,11 +503,10 @@
 		return canvas.toDataURL();
 	});
 
-	/** The moons the chart can place, one dot each down the left edge **at the
-	 *  moon's own orbit** — never at the feature that names it, since a gap is
-	 *  usually named for the moon whose resonance clears it rather than one
-	 *  inside it. A moon orbiting outside the level's window has nowhere honest
-	 *  to go and is left out; that is the only filter on the column. */
+	/** Moon dots down the left edge, each at the moon's own orbit — never at
+	 *  the feature that names it, since a gap is usually named for the moon
+	 *  whose resonance clears it, not one inside it. A moon outside the
+	 *  window is left out; that's the only filter. */
 	let moonSet = $derived.by(() => {
 		const dots = [];
 		let offChart = 0;
@@ -542,14 +534,10 @@
 			);
 	});
 
-	/** The column as drawn: every dot at its own radius, moving sideways rather
-	 *  than up or down when they collide. A dot's height is the one thing it
-	 *  says — Tethys and its two trojans share an orbit to within a few hundred
-	 *  kilometres, and nudging them apart vertically would draw three different
-	 *  orbits with only the innermost one right.
-	 *
-	 *  Left-most free column wins, so a lone dot after a knot comes back to the
-	 *  first column and the knot itself reads outward in radius order. */
+	/** Dots move sideways, not up/down, when they collide — a dot's height is
+	 *  the one true thing about it, and nudging Tethys's trojans apart
+	 *  vertically would draw three different orbits with only one right.
+	 *  Left-most free column wins, so a knot reads outward in radius order. */
 	let moonDots = $derived.by(() => {
 		// Where each column's last dot ends, plus the clearance the next one owes.
 		const bottoms: number[] = [];
@@ -593,25 +581,16 @@
 		};
 	});
 
-	/** Mean orbital radius of a moon in km: its distance from the planet
-	 *  averaged over one orbit of the ephemeris the scene propagates.
+	/** Mean orbital radius of a moon in km, sampled over one orbit rather than
+	 *  instantaneous or taken from the semi-major axis: an eccentric moon would
+	 *  otherwise wander (a dot should be a place, not a position), and the
+	 *  fitted `a` on close-in moons is off by enough to land Pan outside the
+	 *  gap it clears. Both bodies sample against the same barycentre, so its
+	 *  wobble drops out.
 	 *
-	 *  Averaged rather than instantaneous because an eccentric moon would
-	 *  otherwise wander — Titan by 35,000 km, Phoebe by two million — and a dot
-	 *  that moves with the clock is a position, not a place in the ring system.
-	 *
-	 *  Sampled rather than taken from the semi-major axis because the fitted
-	 *  `a` these moons carry is a mean-element fit against an oblate planet and
-	 *  runs about a thousand kilometres long this close in: nothing at system
-	 *  scale, everything inside the A ring, where it lands Pan outside the gap
-	 *  it clears. Both bodies are sampled against the same barycentre, so the
-	 *  difference is planet-centred and the barycentre's own wobble drops out.
-	 *
-	 *  Moons the Chebyshev export doesn't carry fall to the elements below, and
-	 *  that is not a lesser answer: the scene propagates those moons from the
-	 *  same elements (`update-positions.ts` branches on the same `chebStore.has`),
-	 *  and two-body Kepler holds distance-to-parent well over time. Gate on
-	 *  `has` so those moons skip a sampling loop that cannot succeed. */
+	 *  Moons the Chebyshev export doesn't carry fall to the elements below —
+	 *  not a lesser answer, since the scene propagates them the same way, and
+	 *  Kepler holds distance-to-parent well over time. */
 	function meanRadiusKm(moon: PositionedBody): number | undefined {
 		const store = ctx?.chebStore;
 		const period = moon.data.n ? 360 / Math.abs(moon.data.n) : 0;
@@ -659,11 +638,10 @@
 		return resolveBodyColor(moon.data) || TYPE_COLOR_MOON;
 	}
 
-	/** Dot size from the moon's real radius, logarithmic and clamped: these run
-	 *  from a 300 m moonlet to Titan, so a linear map would draw everything
-	 *  under Enceladus as the same speck. An unmeasured moon draws smallest —
-	 *  every one of them is a recent faint discovery, and a middling dot would
-	 *  put a kilometre-wide moonlet on a par with Pan. */
+	/** Dot size from the moon's radius, logarithmic and clamped — these run from
+	 *  a 300 m moonlet to Titan, so a linear map would draw everything under
+	 *  Enceladus as the same speck. Unmeasured moons draw smallest: each is a
+	 *  recent faint discovery, not a match for Pan. */
 	function moonSize(moon: PositionedBody): number {
 		const km = moon.data.radiusKm;
 		if (!km || km <= 0) return DOT_MIN;
@@ -756,11 +734,9 @@
 	let detail = $derived.by(() => {
 		const slug = drilledRow?.slug;
 		if (!slug) return path.length ? {} : { text: system?.extract, url: system?.url };
-		// Wikipedia where this locale has an article, else the PDS note, which
-		// is English wherever it appears — better than an empty panel. The URL
-		// only rides along with the extract: crediting Wikipedia for a PDS
-		// sentence would be a false attribution, and a locale can have an
-		// article link with no lead text.
+		// Wikipedia where this locale has an article, else the PDS note (English
+		// only, but better than empty). The URL rides only with the extract —
+		// crediting Wikipedia for a PDS sentence would be a false attribution.
 		const article = localized?.[slug];
 		if (article?.extract) return { text: article.extract, url: article.url };
 		return { text: rows.get(slug)?.feature.note, url: undefined };
@@ -768,12 +744,10 @@
 </script>
 
 {#snippet row(name: string, summary: string, width: string | null)}
-	<!-- The width mark keeps its place at the right edge and never shrinks, so a
-	     long name truncates instead of pushing "4,780,000 km" out of the drawer.
-	     The name may not shrink either, since a fraction of a pixel of it is
-	     enough to ellipsise a name that fits; what it gets is a cap. What gives
-	     first is the child-count chip: "C ring" reading as "C …" loses more than
-	     "4 gaps · …" does. -->
+	<!-- The width mark never shrinks, so a long name truncates instead of
+	     pushing it off the drawer. The name gets a cap rather than shrinking,
+	     since a sliver less width ellipsises a name that already fits; the
+	     child-count chip gives way first — "C …" loses more than "4 gaps · …". -->
 	<!-- `dir="auto"` because the chart forces LTR: without it a Hebrew or Arabic
 	     ring name would ellipsise from its own beginning. -->
 	<span
@@ -995,10 +969,9 @@
 					{/each}
 				{/each}
 				<!-- Each row's own extent, bracketed beside the strip: the profile
-				     shows where the material is, not where one named feature ends
-				     and the next begins, and a boundary the eye cannot find is a
-				     row pointing at nothing. Hovering a row — its label or its
-				     stretch of strip — lifts the whole set out. -->
+				     shows where material is, not where one feature ends and the next
+				     begins, so a boundary the eye can't find still needs a bracket.
+				     Hovering a row — its label or its strip — lifts the whole set out. -->
 				{#each placed as item (item.group[0])}
 					{@const key = item.group[0]}
 					{@const on = hovered === key}
@@ -1026,11 +999,9 @@
 						class={on ? 'stroke-foreground/80' : 'stroke-muted-foreground/40'}
 					/>
 				{/each}
-				<!-- Hit areas over the strip. Narrowest last, so where a ringlet
-				     sits inside a ring the pointer lands on the ringlet. A stretch
-				     of strip is the same control as the label beside it: it opens
-				     what it holds. Hidden from assistive tech, since the label is
-				     the same target with a name and a tab stop. -->
+				<!-- Hit areas over the strip, narrowest last, so a ringlet inside a
+				     ring still gets the pointer. Hidden from assistive tech: the label
+				     beside it is the same target, with a name and a tab stop. -->
 				{#each hitAreas as area (area.key)}
 					{@const opens = area.opens}
 					{@const href = opens ? ringHref(opens) : undefined}

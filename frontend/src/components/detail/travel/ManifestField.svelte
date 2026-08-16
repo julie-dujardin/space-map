@@ -1,10 +1,8 @@
 <!--
   What the trip is carrying: people and cargo.
 
-  Neither changes a trajectory, so nothing here re-solves. They decide what the
-  chosen craft can do with the route it was already offered — cargo comes off
-  the Δv through the rocket equation, and both are checked against the room
-  aboard, which is what `fit` reports.
+  Neither changes the trajectory — they only decide what the chosen craft can
+  do with the route already offered, checked against the room `fit` reports.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';

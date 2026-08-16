@@ -155,10 +155,8 @@
 	let loading = $state(false);
 	let searchBacked = $state(false);
 
-	// (Re)seed from the baked list and pull the first search page on source change.
-	// The reset + load run untracked so writes to loading/rows/searchBacked don't
-	// re-trigger this effect (which would loop, hammering Meili) — `sourceKey` is
-	// the only intended trigger.
+	// (Re)seed on source change; the reset+load run untracked so writes to
+	// loading/rows/searchBacked don't loop this effect — only sourceKey should trigger it.
 	$effect(() => {
 		const key = sourceKey;
 		const seed = fallbackRows();
@@ -222,10 +220,9 @@
 
 	let hasMore = $derived(searchBacked && rows.length < Math.min(total, HARD_CAP));
 
-	// Auto-load the next page when the bottom sentinel nears the viewport — clipped
-	// against whatever scroll container (drawer / ScrollArea) wraps the list. Reading
-	// `rows.length` re-observes after each append, so a sentinel that stays in view
-	// keeps pulling pages instead of firing only on the first intersection.
+	// Auto-load when the sentinel nears the viewport, clipped to whatever scroll
+	// container wraps the list. Reads `rows.length` to re-observe after each
+	// append, so a sentinel that stays visible keeps pulling pages.
 	let sentinel = $state<HTMLElement>();
 	$effect(() => {
 		const el = sentinel;

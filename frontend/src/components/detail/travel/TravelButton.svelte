@@ -1,10 +1,8 @@
 <!--
-  The object panel's way into the trip planner, in the drawer's button row.
-
-  The body whose panel it sits in becomes the destination — the panel answers
-  "how do I get here" — and the departure defaults to Earth. Hidden rather than
-  disabled when the destination has no orbit to travel along: an entry point
-  that always dead-ends is worse than no entry point.
+  Entry into the trip planner from the drawer's button row. The panel's body
+  becomes the destination; departure defaults to Earth. Hidden rather than
+  disabled when the destination has no orbit to travel: a dead-end entry
+  point is worse than none.
 -->
 <script lang="ts">
 	import { getContext } from 'svelte';
@@ -37,9 +35,8 @@
 	let plannable = $derived.by(() => {
 		if (!ctx) return false;
 		if (departure === null) return true;
-		// Whatever bucket a body sits in — majors, a zone, a spacecraft group.
-		// Reading only the majors index used to hide the button on every small body
-		// and probe, which are exactly the ones worth planning a trip to.
+		// Any bucket, not just majors — that used to hide the button on every
+		// small body and probe, exactly the ones worth planning a trip to.
 		const lookup = (id: string) => ctx.getBody(id)?.data;
 		const earth = lookup(EARTH_ID);
 		if (!earth) return false;

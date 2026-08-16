@@ -1,14 +1,12 @@
 /**
- * Cache keys for the derived views of a route — the drawn geometry, the hazard
- * scan, the timeline.
+ * Cache keys for the derived views of a route — drawn geometry, hazard scan,
+ * timeline.
  *
- * The solve effect re-runs several times a second and hands back a fresh (and
- * usually identical) route object each time; rebuilding a few hundred
- * propagated points or a six-route hazard scan off every one of those would be
- * work nobody asked for. So each view is keyed on what actually shapes it, and
- * only a change in the key rebuilds. The flip side is the contract these keys
- * carry: anything a view reads off the route MUST be in its key, or a re-solve
- * that changes only that input leaves the view showing the previous trip's.
+ * The solve effect re-runs several times a second with a fresh (often
+ * identical) route object, so each view is keyed on what actually shapes it
+ * and only rebuilds on a change. The contract: anything a view reads off the
+ * route MUST be in its key, or a re-solve can leave it showing the previous
+ * trip's.
  */
 
 import { routeEndJd, type EndOrbit, type Route, type TravelBody } from '$lib/math/travel';
@@ -42,12 +40,10 @@ export function routeKey(route: Route, center: string, transfer: TransferFrame):
 }
 
 /**
- * What the hazard scan reads beyond the geometry: the entry speed the
- * atmospheric hazard is graded on, and the campaign it spans.
- *
- * Both keyed as the priced figures rather than as the request that produced
- * them — the same `aero` prices airless until the detail bundle lands, and a
- * re-solve that only learned about the air moves none of the dates above.
+ * What the hazard scan reads beyond the geometry: entry speed and the
+ * campaign span, keyed as priced figures rather than the request that
+ * produced them — the same `aero` prices airless until the detail bundle
+ * lands, and none of the dates above move when a re-solve only learns of it.
  */
 export function hazardKey(route: Route, center: string, transfer: TransferFrame): string {
 	return [routeKey(route, center, transfer), route.entrySpeedKms ?? '', routeEndJd(route)].join(
@@ -84,9 +80,8 @@ export function timelineKey(
 		(route.flybys ?? []).map((flyby) => `${flyby.bodyId}@${flyby.jd}`).join(','),
 		originName ?? '',
 		targetName ?? '',
-		// The orbits at the two ends are sized off the bodies, which arrive with
-		// a fetched bundle: without this the timeline built before they land
-		// would keep its missing ends for the rest of the trip.
+		// End orbits are sized off the bodies, which arrive with a fetched bundle
+		// — without this, a timeline built before they land keeps missing ends.
 		bodies ? `${bodies.departure.radiusKm}/${bodies.target.radiusKm}` : '',
 		`${ground?.liftoffJd ?? ''}/${ground?.touchdownJd ?? ''}`
 	].join('|');

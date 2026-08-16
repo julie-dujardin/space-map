@@ -1,9 +1,7 @@
 <!--
-  The date behind "depart at" / "arrive by".
-
-  Without it those two modes are indistinguishable from "leave now" — the search
-  window falls back to the same span — so the field appears with the mode and
-  starts on today rather than empty.
+  The date behind "depart at" / "arrive by" — without it those modes are
+  indistinguishable from "leave now", so the field starts on today rather
+  than empty.
 -->
 <script lang="ts">
 	import CalendarIcon from '@lucide/svelte/icons/calendar';
@@ -43,9 +41,8 @@
 		<Popover.Trigger
 			class="border-border/60 bg-muted/40 hover:bg-muted flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs tabular-nums"
 		>
-			<!-- The visible label sits outside the trigger, so it rides in here for
-			     the accessible name — a button announcing only a date says nothing
-			     about which date it is. -->
+			<!-- Visible label sits outside the trigger, so it's repeated here as the
+			     accessible name — a bare date announces nothing about which one. -->
 			<span class="sr-only">{label}</span>
 			<CalendarIcon class="text-muted-foreground size-3.5 shrink-0" aria-hidden="true" />
 			{formatJulianDate(jd)}

@@ -22,9 +22,8 @@ export const HAZARD_ICONS: Record<HazardKind, typeof FlameIcon> = {
 	// The hazard is the entry; what answers it is the shield.
 	aeroassist: ShieldIcon,
 	radiation: RadiationIcon,
-	// The belt rather than the particles: what makes a crossing avoidable is that
-	// it is a ring around a planet you chose to pass, which the trefoil does not
-	// say and would anyway repeat the row above it.
+	// Orbit icon, not the radiation trefoil: a belt is a ring around a planet you
+	// chose to pass, which the trefoil would just repeat from the row above.
 	'belt-crossing': OrbitIcon
 };
 
@@ -32,11 +31,8 @@ export const HAZARD_ICONS: Record<HazardKind, typeof FlameIcon> = {
  *  nothing survives, in lethal doses. */
 const UNSURVIVABLE_BELT_DOSES = 5;
 
-/**
- * The glyph for one hazard, which is its kind's except where the figure has left
- * the scale the glyph was chosen for: a pass worth several lethal doses is not an
- * orbit to plan around, and the broken helix says so.
- */
+/** The glyph for one hazard, except when the dose is off the scale its icon was
+ *  chosen for — several lethal doses is not an orbit to plan around. */
 export function hazardIcon(hazard: Hazard): typeof FlameIcon {
 	if (
 		hazard.kind === 'belt-crossing' &&
@@ -49,11 +45,10 @@ export function hazardIcon(hazard: Hazard): typeof FlameIcon {
 }
 
 /**
- * Mid-palette rather than a themed token, and the same shade in both themes:
- * there is no semantic warning colour in the design system, and these three have
- * to stay distinguishable from each other as well as legible on either ground.
- * The map's own colours live in `$lib/travel/hazard-colors`, which is where the
- * arc and its chip agree; here it is the panel that has to agree with itself.
+ * Mid-palette, not themed tokens: the design system has no semantic warning
+ * colour, and these three must stay distinguishable from each other and legible
+ * on either ground. The map's own colours live in `$lib/travel/hazard-colors`;
+ * here it's the panel agreeing with itself.
  */
 export const HAZARD_TEXT: Record<HazardSeverity, string> = {
 	notice: 'text-sky-500',

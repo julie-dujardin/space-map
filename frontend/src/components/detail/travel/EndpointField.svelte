@@ -1,12 +1,8 @@
 <!--
-  An endpoint box. Step 1 is the place, step 2 is the mode. The orbits are a
-  property of the body, thus there is no list before you select a body. A surface
-  feature sets the mode, thus its box has no step 2.
-
-  A pad is the exception that proves it: it fixes the mode too, but there is a
-  real choice left underneath it, since a launch range holds dozens of them and
-  which one a trip leaves from is nobody's default to make. So its step 2 is the
-  pads rather than the orbits.
+  An endpoint box: step 1 picks the place, step 2 the mode. Orbits depend on
+  the body, so step 2 waits for one; a surface feature fixes the mode, so it
+  skips step 2. A pad also fixes the mode, but a range holds dozens with no
+  default, so its step 2 lists pads instead of orbits.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
@@ -50,13 +46,11 @@
 		/** Bodies this end may not be. */
 		excludeIds: ReadonlySet<string>;
 		onPick: (pick: TravelEndpointPick) => void;
-		/** The pads this end may stand on instead, when it stands on one. Empty
-		 *  for every other kind of end. */
+		/** Pads this end may stand on; empty otherwise. */
 		pads?: readonly LaunchPad[];
 		/** Which of them it stands on now, by GCAT code. */
 		padCode?: string | null;
-		/** What this end says under its name when it stands on the ground — the pad,
-		 *  or the ground and the coordinates. Null for every other kind of end. */
+		/** Line shown under the name when grounded — pad name, or coordinates. Null otherwise. */
 		groundLine?: string | null;
 		onPadPick?: (pad: LaunchPad) => void;
 	}
@@ -97,8 +91,7 @@
 		if (!open) step = 'where';
 	});
 
-	/** Whether the box has a second step at all, and which one. A pad end has no
-	 *  orbits to offer and every other end has no pads. */
+	/** Whether there's a second step, and which: a pad end has no orbits, others have no pads. */
 	let showPads = $derived(pads.length > 1 && onPadPick !== undefined);
 	let showStepTwo = $derived(showPads || (bodyName !== null && !isFeature && choices.length > 0));
 	let chosen = $derived(choices.find((c) => c.kind === mode));
@@ -108,8 +101,7 @@
 	);
 	// The closed box shows the height. The words "custom altitude" give no data.
 	let modeLabel = $derived(endpointModeLabel(mode, role, customAltShown));
-	// Where a pad sits is what tells a range's apart, so a range that is one
-	// place says it once, at the top.
+	// Pad site is what distinguishes a range; a single-place range says it once, up top.
 	let padPlaces = $derived(new Set(pads.map((p) => p.siteName)).size);
 
 	/** What the closed box says under the name, if anything. */
@@ -146,8 +138,7 @@
 	<Popover.Trigger
 		class="border-border/60 bg-muted/40 hover:bg-muted data-[state=open]:bg-background flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-start transition-colors"
 	>
-		<!-- The dot and the pin carry which end this is on screen, so the words go
-		     to the accessible name instead of taking a line of their own. -->
+		<!-- Dot/pin already show which end this is; the words go to the accessible name instead. -->
 		<span class="sr-only">{role === 'origin' ? m.travel_from() : m.travel_to()}</span>
 		<!-- Both markers sit in the same box so the two fields' text lines up. -->
 		<span class="flex size-3.5 shrink-0 items-center justify-center">
@@ -181,8 +172,7 @@
 			/>
 
 			{#if showStepTwo}
-				<!-- Reopening the box usually means adjusting the orbit rather than
-				     moving the trip, so the second step is one line away. -->
+				<!-- Reopening usually means adjusting the orbit, not moving the trip, so step 2 is one line away. -->
 				<button
 					type="button"
 					onclick={() => (step = 'how')}
@@ -221,8 +211,7 @@
 			<ScrollArea viewportClasses="max-h-[26rem]">
 				<div class="flex flex-col gap-2 pe-2">
 					{#if showPads}
-						<!-- Busiest first: a range's best-known pad is the one most of its
-						     launches left from, and the tally is what says so. -->
+						<!-- Busiest first — the launch tally shows a range's best-known pad. -->
 						{#each pads as pad (pad.code)}
 							{@const active = pad.code === padCode}
 							<button

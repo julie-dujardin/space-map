@@ -31,10 +31,8 @@
 
 	const PADDING = { top: 18, right: 4, bottom: 16, left: 4 };
 
-	// Cap bar count so each bar stays visually distinct; long spans bin into
-	// 5/10/25-year buckets via NICE_STEPS. Centuries-wide spans (ancient
-	// comet observations) get century bins, keeping the chart readable
-	// without dropping historical datapoints.
+	// Cap bar count so bars stay distinct; long spans bin into NICE_STEPS
+	// buckets, up to centuries for ancient comet observations.
 	const BAR_TARGET = 40;
 	const NICE_STEPS = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000];
 

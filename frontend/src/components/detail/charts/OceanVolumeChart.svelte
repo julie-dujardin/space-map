@@ -3,25 +3,19 @@
 	import * as m from '$lib/paraglide/messages.js';
 
 	/**
-	 * How much water there is, in the unit it was measured in.
-	 *
-	 * The exponent is a literal because `unit_*` labels are generated from
-	 * Wikidata and there is no cubic-kilometre row — the same reason the tilt
-	 * card writes its own degree sign. Scientific notation rather than a compact
-	 * suffix: these span two decades and "27B km³" is both ambiguous and a
-	 * number nobody holds.
+	 * Water volume, in the unit it was measured in. The exponent is a literal —
+	 * Wikidata has no cubic-kilometre `unit_*` row, same reason the tilt card
+	 * writes its own degree sign. Scientific notation, not a compact suffix:
+	 * these span two decades and "27B km³" is ambiguous and unfamiliar.
 	 */
 	export function oceanVolume(km3: number): string {
 		return `${scientificNotation(km3)} ${formatUnit('kilometre', true)}³`;
 	}
 
 	/**
-	 * The same volume against the only ocean anyone has a feel for, for the
-	 * tooltip the figure hangs off.
-	 *
-	 * Null at parity, so Earth's own row simply has none — it is the ruler here
-	 * rather than the subject, and "1× Earth's ocean" is the one comparison that
-	 * cannot inform anyone.
+	 * Volume against Earth's ocean, for the tooltip. Null at parity — Earth's own
+	 * row gets none, since it's the ruler here, not the subject, and "1×
+	 * Earth's ocean" tells nobody anything.
 	 */
 	export function earthOceans(ratio: number): string | null {
 		const parts = earthRatioParts(ratio);

@@ -45,12 +45,9 @@
 	let travelPlan = $state.raw<LabelledPath | null>(null);
 
 	/**
-	 * Which frame the drawn trip's ends are measured from. The map owns it, not
-	 * the planner, because it changes the picture, not the trip.
-	 *
-	 * Only offered where the two frames would draw different pictures: a trip
-	 * that escapes or captures. One that lands, flies past, or never leaves a
-	 * sphere of influence has no passage for them to disagree about.
+	 * Which frame the drawn trip's ends are measured from. The map owns it
+	 * since it changes the picture, not the trip. Only offered where the two
+	 * frames would actually differ: a trip that escapes or captures.
 	 */
 	let viewFrame = $state<TrajectoryFrame>('planetary');
 	let framesDiffer = $derived(
@@ -185,12 +182,9 @@
 	// position/satrec, which the renderer and SGP4 mutate).
 	let selectedBody = $state.raw<PositionedBody | undefined>();
 	/**
-	 * Whether the ring-brightness pill is on screen. The ring catalogue tab is
-	 * the one place overexposed rendering is worth offering: it reads a
-	 * system's optical depths, and at Jupiter or Uranus the map shows next to
-	 * nothing at the true ones. The trip planner's own pill has the slot.
-	 *
-	 * Both flags are read outright, not short-circuited, so both are tracked.
+	 * Whether the ring-brightness pill is on screen: only on the ring
+	 * catalogue tab, where the true optical depths (e.g. Jupiter, Uranus)
+	 * show next to nothing. Both flags read outright so both stay tracked.
 	 */
 	let ringPillShown = $derived.by(() => {
 		const rings = !!selectedBody && appState.view.tab === 'rings';
@@ -255,12 +249,10 @@
 		return getNorthChoices(cameraFocus, ctx);
 	});
 
-	// One derived per end, not one object holding all four: `view` changes twice
-	// a second as the clock ticks, and an object derived from it would hand
-	// every consumer a fresh identity each tick, waking their effects and
-	// rebuilding the panel under the user's finger. Primitives compare equal.
-	//
-	// `isNav`, not the presence of both ends, decides which sidebar renders:
+	// One derived per end, not one object: `view` ticks twice a second, and an
+	// object derived from it would get a fresh identity each tick, waking every
+	// consumer's effects. Primitives compare equal.
+	// `isNav`, not the presence of both ends, decides which sidebar renders —
 	// the destination is null on the empty form.
 	const isNav = $derived(appState.view.type === UrlType.Nav);
 	const navFrom = $derived(isNav ? appState.view.navFrom : null);
@@ -336,11 +328,9 @@
 		})();
 	}
 
-	// A trip end that isn't resident (a probe, a small body) has no elements to
-	// transfer from: stream it in the way focusObject would, then look at the
-	// destination. Boot already framed the first one; this covers the swap and
-	// moving the origin, which change the destination without going through
-	// setFocus.
+	// A non-resident trip end (probe, small body) has no elements to transfer
+	// from: stream it in like focusObject would, then frame the destination.
+	// Covers swaps and origin changes, which bypass setFocus.
 	$effect(() => {
 		if (!isNav) return;
 		const to = navTo;

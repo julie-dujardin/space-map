@@ -47,10 +47,9 @@
 	const handleTimeChange = (e: Event) => applyTimeToClock(clock, e);
 	let timeValue = $derived(clockTimeValue(clock.jd));
 
-	// Width fixtures cover the variants that change rendered length:
-	// month-abbreviation outliers, meridiem/hour boundaries, and day digit
-	// count. Measured as pixel width (see effect below) since char counting
-	// underestimates RTL/CJK/diacritics.
+	// Fixtures covering the variants that change rendered length: month
+	// abbreviations, meridiem/hour boundaries, day digit count. Measured as
+	// pixel width, not char count, which underestimates RTL/CJK/diacritics.
 	const WIDTH_FIXTURES = [
 		// month-abbreviation outliers
 		new Date(Date.UTC(2026, 8, 30, 23, 59)), // Sep — often longest ("sept.", "syys", "сент.")
@@ -68,9 +67,8 @@
 	const settings = getSettings();
 	let dateLabel = $derived(formatJulianDateTime(clock.jd, TIME_DATE_OPTS));
 
-	// Measure the widest fixture against an off-screen span that mirrors the
-	// label's typography, then pin the label's min-width to it so the bar
-	// doesn't jitter as the clock ticks.
+	// Pins the label's min-width to the widest fixture so the bar doesn't
+	// jitter as the clock ticks.
 	let dateMinPx = $state(0);
 
 	$effect(() => {

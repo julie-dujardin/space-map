@@ -23,10 +23,8 @@ export function routeTier(profile: RouteOption): RouteTier | null {
 	}
 }
 
-/**
- * Mid-palette and the same shade in both themes, like the hazard colours. The
- * three must stay apart from each other and legible on either ground.
- */
+/** Mid-palette, same shade in both themes, like hazard colours — kept apart
+ *  from each other and legible on either ground. */
 export const TIER_MARK: Record<RouteTier, string> = {
 	fast: 'bg-orange-500',
 	balanced: 'bg-emerald-500',
@@ -37,12 +35,9 @@ export const TIER_MARK: Record<RouteTier, string> = {
  *  does not name it. */
 const BY_HAND_MARK = 'bg-foreground';
 
-/**
- * The mark a trajectory carries, as a background class.
- *
- * Null where a family offers one trajectory. A colour there would show a
- * choice that does not exist.
- */
+/** The mark a trajectory carries, as a background class. Null where a family
+ *  offers only one trajectory, since a colour there would show a choice that
+ *  doesn't exist. */
 export function routeMark(profile: RouteOption): string | null {
 	const tier = routeTier(profile);
 	if (tier) return TIER_MARK[tier];

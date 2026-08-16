@@ -94,11 +94,9 @@
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
-	// "Looking from center-north-west" presentation, shared by all bodies, while
-	// keeping each body's REAL axial tilt. VIEW_PITCH tips the top toward us (we
-	// view from the north, so the equator bows downward). Each body is then
-	// rotated so its real obliquity leans the north pole toward the upper-left.
-	// FACE_YAW spins the visible face about the pole.
+	// Shared "north-west" viewing angle for every body, layered on top of each
+	// body's real axial tilt. VIEW_PITCH tips the equator down (viewed from the
+	// north); FACE_YAW spins the visible face about the pole.
 	const DEG2RAD = Math.PI / 180;
 	const ECLIPTIC_RAD = 23.4392911 * DEG2RAD;
 	const VIEW_PITCH = 0.32;
@@ -302,10 +300,9 @@
 	const meshes = new Map<string, Mesh>();
 	const cloudNodes = new Map<string, CloudNode>();
 
-	// Shape-model members: the loaded GLB root replaces the placeholder sphere.
-	// GLB vertices are km, so px-per-km (pr / radiusKm) renders it at the same
-	// true scale as the spheres. A build token discards loads that resolve after
-	// a page flip rebuilt the meshes.
+	// Shape-model members: the loaded GLB root replaces the placeholder sphere,
+	// scaled px-per-km (pr / radiusKm) to match the spheres' true scale. A build
+	// token discards loads that resolve after a page flip rebuilt the meshes.
 	const modelRoots = new Map<string, Object3D>();
 	let buildToken = 0;
 	const displayObject = (id: string): Object3D | undefined => modelRoots.get(id) ?? meshes.get(id);
@@ -355,10 +352,9 @@
 		}
 	}
 
-	/** DEM relief on the lineup's unit sphere (radius 1 = equatorial `radiusKm`),
-	 *  via the same loader the main scene uses. `kmToLocal = 1/radiusKm` maps km to
-	 *  the unit sphere; `absolute_radius` texels are radius-from-centre, so the
-	 *  shared bias drops the unit sphere (−1) and the layout skips oblateness. */
+	/** DEM relief on the lineup's unit sphere (radius 1 = equatorial `radiusKm`).
+	 *  `absolute_radius` texels are radius-from-centre, so the shared bias drops
+	 *  the unit sphere (−1) and the layout skips oblateness for those bodies. */
 	function loadDisplacement(b: LineupBody, material: MeshStandardMaterial, loader: TextureLoader) {
 		if (!b.displacement) return;
 		attachDisplacementMap(material, b.displacement, 'low', loader, 1, 1 / b.radiusKm).then(
@@ -491,10 +487,9 @@
 		layout.forEach((p, i) => {
 			const obj = displayObject(p.id);
 			if (!obj) return;
-			// Smaller bodies (later in `layout`) sit nearer the camera, so they stay
-			// visible on top of the giants they overlap — easier to see and click.
-			// The depth gaps are huge (no 3D intersection seam) but invisible under
-			// the orthographic projection.
+			// Smaller bodies (later in `layout`) sit nearer the camera, so they render
+			// on top of giants they overlap — easier to see and click. Huge depth gaps
+			// avoid any 3D intersection, invisible under the orthographic projection.
 			obj.position.set(p.cx + (bodyShift.get(p.id) ?? 0), HEIGHT - p.cy, -(n - 1 - i) * Z_STEP);
 			const modelRoot = modelRoots.get(p.id);
 			if (modelRoot) {
@@ -613,18 +608,14 @@
 		const i = hoveredId ? layout.findIndex((p) => p.id === hoveredId) : -1;
 		if (i >= 0) {
 			const p = layout[i];
-			// Trace whatever mesh renders the body — model, DEM sphere or a plain
-			// oblate sphere — so the rim gets the true silhouette (lumps, flattened
-			// poles, tilt) for free. Live animated x, not the base column, so the
-			// halo follows a body still easing in.
+			// Traces whatever mesh renders the body, so the rim gets the true
+			// silhouette (lumps, tilt) for free, live at its animated x-position.
 			const disp = displayObject(p.id);
 			if (disp) {
-				// Sit behind the body (ε ≪ Z_STEP), past its z-extent, so its own disc
-				// masks the rim's core while nearer bodies still occlude it. The glow
-				// frames and centres itself on the mesh's own bounds.
+				// Sits just behind the body (ε ≪ Z_STEP) so its own disc masks the
+				// rim's core while nearer bodies still occlude it.
 				const depth = -(layout.length - 1 - i) * Z_STEP;
-				// White when the body has no colour of its own, matching the model's
-				// own white default (not the grey sphere-placeholder tint).
+				// White default when the body has no colour of its own.
 				const tint = p.color ?? BODY_COLORS[p.id] ?? '#ffffff';
 				silhouette.update(renderer, scene, disp, depth - (p.pr + 60), tint, glowOpacity);
 			}
@@ -689,10 +680,9 @@
 		};
 	});
 
-	// Rebuild meshes only when the visible body set changes (incl. page flips).
-	// The post-build render is untracked so this effect doesn't subscribe to
-	// layout/hover/width (reading those in render() would otherwise rebuild — and
-	// reload textures — on hover).
+	// Rebuilds meshes only when the visible set changes. The render is untracked
+	// so this effect doesn't also subscribe to layout/hover/width — reading
+	// those in render() would rebuild (and reload textures) on hover.
 	$effect(() => {
 		void visibleItems;
 		buildMeshes();
@@ -726,15 +716,12 @@
 		<canvas bind:this={canvasEl} class="absolute inset-0 h-full w-full"></canvas>
 
 		{#each layout as p (p.id)}
-			<!-- Per-body hit column; hover is resolved by pickAt (mesh-priority) on
-		     the container. Hover-capable pointers get a real <a> (middle/⌘-click
-		     opens the URL, click focuses the hovered body); touch gets a <button>
-		     so a long-press shows no link callout and a tap focuses directly.
-		     Focus mirrors hover for keyboard nav only. Mouse focus is suppressed
-		     (mousedown preventDefault, plus the :focus-visible gate): the columns
-		     can disagree with pickAt's sphere-priority pick, so a mouse-focused
-		     link would flip the hover on click, and its blur on a later click
-		     would clear a pointer hover. -->
+			<!-- Per-body hit column; hover is resolved by pickAt (mesh-priority), not
+		     these columns. Hover-capable pointers get a real <a> (middle/⌘-click
+		     opens the URL); touch gets a <button> so long-press shows no callout.
+		     Mouse focus is suppressed — these columns can disagree with pickAt's
+		     sphere-priority pick, so a mouse-focused link would flip the hover on
+		     click. Keyboard focus still mirrors hover, unaffected by the guard. -->
 			{#if hoverCapable}
 				<a
 					href={focusHref(appState, p.id, p.name)}

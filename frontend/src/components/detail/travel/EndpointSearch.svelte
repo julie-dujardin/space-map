@@ -1,10 +1,7 @@
 <!--
-  Picking one end of a trip out of the whole catalogue.
-
-  The fixed planet list this replaced could only ever offer the dozen bodies the
-  scene had already loaded. Meili ranks the whole index, so a moon, a comet or a
-  named crater is one query away — and a crater is a real endpoint, not a
-  curiosity: it is where a landing actually goes.
+  Picking one end of a trip from the whole catalogue via Meili, not the dozen
+  bodies the scene has loaded — a moon, comet, or named crater is one query
+  away, and a crater is a real landing endpoint, not a curiosity.
 -->
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
@@ -30,11 +27,9 @@
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 
 	interface Props {
-		/** What this search chooses — the input's accessible name, so the two
-		 *  ends' otherwise identical search boxes announce apart. */
+		/** What this search chooses — accessible name, so the two otherwise-identical boxes announce apart. */
 		label: string;
-		/** Bodies this end may not be — the other end, and anything the kernel
-		 *  cannot solve against it. Ids, checked after the query returns. */
+		/** Bodies this end may not be: the other end, plus anything the kernel can't solve against it. */
 		excludeIds: ReadonlySet<string>;
 		onPick: (pick: TravelEndpointPick) => void;
 	}
@@ -58,8 +53,7 @@
 	let searching = $state(false);
 	let input = $state<HTMLInputElement | null>(null);
 
-	// Newest query wins: results that land after a later keystroke are dropped
-	// rather than flashing over the newer ones.
+	// Newest query wins — stale results are dropped, never flashed over newer ones.
 	let token = 0;
 
 	$effect(() => {
@@ -88,12 +82,10 @@
 		return () => clearTimeout(timer);
 	});
 
-	// A feature is excluded by its host: you cannot fly to a crater on the body
-	// you are leaving from.
+	// A feature is excluded by its host: you can't fly to a crater on the body you're leaving from.
 	let visible = $derived(hits.filter((h) => !excludeIds.has(hostOf(h))).slice(0, SHOW_LIMIT));
 
-	/** The body a hit is priced against: a feature's host, a pad's planet, or
-	 *  the object itself. */
+	/** The body a hit prices against: a feature's host, a pad's planet, or itself. */
 	function hostOf(hit: EndpointHit): string {
 		if (hit.kind === 'feature') return hit.body_id;
 		if (hit.kind === 'pad') return EARTH_ID;
@@ -123,9 +115,7 @@
 		);
 	}
 
-	// Same second line as the main search: a description when the hit has one,
-	// else what it is and where. Both names it needs arrive as ids, so they are
-	// resolved from the scene first and the catalogue after.
+	// Same second line as the main search. Names arrive as ids, resolved from the scene first, catalogue after.
 	const ctx = getContext<ContextManager | undefined>('ctx');
 	let catalogNames = $state(new Map<string, string>());
 	function bodyName(bodyId: string): string {
@@ -165,14 +155,12 @@
 		return secondaryText(hit, { bodyName, featureTypeLabel });
 	}
 
-	// Autofocus is a desktop gesture — on touch it throws the keyboard over the
-	// popover that just opened.
+	// Autofocus is a desktop gesture — on touch it throws the keyboard over the popover that just opened.
 	$effect(() => {
 		if (!isCoarsePointer()) input?.focus();
 	});
 
-	// The list is walked from the input, combobox-style, so the results are not
-	// seven extra tab stops between the query and the rest of the panel.
+	// Combobox-style: walked from the input, not seven extra tab stops before the rest of the panel.
 	let activeIndex = $state(-1);
 	$effect(() => {
 		void visible;
@@ -205,8 +193,7 @@
 			class="border-border/60 bg-background flex items-center gap-2 rounded-md border px-2 py-1.5"
 		>
 			<SearchIcon class="text-muted-foreground size-3.5 shrink-0" />
-			<!-- Deliberately not type="search": its native cancel button is drawn far
-			     heavier than the rest of the panel. -->
+			<!-- Deliberately not type="search": its native cancel button is drawn far heavier than the rest. -->
 			<input
 				bind:this={input}
 				bind:value={query}
@@ -240,8 +227,7 @@
 
 		{#if query.trim().length >= MIN_QUERY}
 			{#if visible.length > 0}
-				<!-- Tall enough for all SHOW_LIMIT rows: a list this short scrolling is
-				     a scrollbar for nothing. -->
+				<!-- Tall enough for all SHOW_LIMIT rows — a scrollbar for nothing shorter. -->
 				<ScrollArea viewportClasses="max-h-72">
 					<ul id={listboxId} role="listbox" class="flex flex-col">
 						{#each visible as hit, index (hit.kind === 'feature' ? `f${hit.feature_id}` : hit.id)}

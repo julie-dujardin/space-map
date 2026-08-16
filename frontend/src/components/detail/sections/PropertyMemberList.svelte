@@ -1,13 +1,10 @@
 <script lang="ts">
 	/**
-	 * The members of a Structure & Activity collection, each drawn as the thing
-	 * the page is about rather than photographed.
-	 *
-	 * A photograph of Ganymede and a photograph of Callisto are two grey discs;
-	 * their cutaways are a 375 km ocean and a 132 km one. So the tile is the
-	 * body's own cross-section or its air seen edge-on — the same drawings the
-	 * Structure tab makes, at tile size — and the row carries the one figure the
-	 * page ranks by.
+	 * Members drawn as the thing the page is about, not photographed — a photo
+	 * of Ganymede and one of Callisto are two grey discs, but their cutaways
+	 * differ. Each tile is the body's own cross-section or its air seen
+	 * edge-on, the same drawing the Structure tab makes at tile size; the row
+	 * carries the one figure the page ranks by.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import { getContext } from 'svelte';

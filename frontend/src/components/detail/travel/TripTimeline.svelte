@@ -1,10 +1,8 @@
 <!--
   The trip along the bottom of the map: every leg of the chosen trajectory, in
-  order, against the clock the scene is drawn at.
-
-  Picking one moves the simulation to it and looks at where it happens. It never
-  moves the *departure* — when the trip leaves is a term of the plan, and the
-  planner owns it; this only moves where you are watching from.
+  order, against the clock the scene is drawn at. Picking one moves the
+  simulation and camera to it, but never the *departure* — when the trip
+  leaves is the planner's term, not this widget's.
 -->
 <script lang="ts">
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
@@ -141,11 +139,9 @@
 
 	/**
 	 * Ticks sit on calendar boundaries, so each says only what its boundary is:
-	 * the bare year on New Year, the month on the first of it.
-	 *
-	 * Formatted straight off Intl rather than through the app's date helpers —
-	 * those answer with a whole date, and a whole date under every tick is
-	 * unreadable at this size.
+	 * the bare year on New Year, the month on the first of it. Formatted
+	 * straight off Intl rather than the app's date helpers, which answer with a
+	 * whole date — unreadable at this size.
 	 */
 	function tickLabel(tick: AxisTick): string {
 		const date = tick.date;

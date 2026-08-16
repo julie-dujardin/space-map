@@ -1,9 +1,8 @@
 <!--
-  The sidebar shell the travel panel lives in on `/nav/<from>/<to>`.
-
-  It mirrors DetailDrawer's frame — Vaul sheet on mobile, fixed aside on desktop
-  — but has no tabs: a trip is one panel, and its two ends are the URL rather
-  than a selection inside the app.
+  The sidebar shell the travel panel lives in on `/nav/<from>/<to>`. Mirrors
+  DetailDrawer's frame — Vaul sheet on mobile, fixed aside on desktop — but
+  has no tabs: a trip is one panel, and its two ends are the URL rather than
+  a selection inside the app.
 -->
 <script lang="ts">
 	import { getContext, onMount, untrack } from 'svelte';
@@ -95,15 +94,11 @@
 		onHazardsChange
 	}: Props = $props();
 
-	// The planner reasons from a "now" captured when the trip opens, not from the
-	// live clock: the clock ticks twice a second and each tick would re-solve a
-	// whole porkchop grid. Choosing a different date is what "depart at" is for.
-	//
-	// Reading the clock under `untrack` is not enough on its own. The ends are
-	// read off the app's view object, which is *replaced* on every clock tick, so
-	// anything that touches them is marked stale twice a second and re-samples the
-	// clock when it next runs. The key is what stops that: a string that only
-	// changes when the ends do, and a derived that compares by value.
+	// The planner reasons from a "now" captured when the trip opens, not the live
+	// clock: it ticks twice a second and each tick would re-solve a whole
+	// porkchop grid. `untrack` alone is not enough — the ends come off the app's
+	// view object, which is replaced every tick, so anything touching them goes
+	// stale just as often. The key changes only when the ends do, breaking that.
 	let endsKey = $derived(`${fromId}|${toId}`);
 	let nowJd = $state(untrack(() => clockJd));
 	$effect(() => {
@@ -118,11 +113,9 @@
 	// page because the scene needs them too, but the terms are the panel's alone.
 	let trip = $derived(appState?.view.trip ?? DEFAULT_TRIP);
 
-	// The two ends and their chains up to the Sun. Deliberately not derived from
-	// the scene: a trip end is any object in the catalogue, and most of them are
-	// nowhere near what is being drawn. Resolution is keyed on the ids alone —
-	// re-running it as bodies stream in would hand the panel a fresh map on every
-	// bump and re-solve the grid for nothing.
+	// The two ends and their chains up to the Sun. Not derived from the scene: a
+	// trip end is any catalogue object, most of them nowhere near what is drawn.
+	// Keyed on the ids alone, so bodies streaming in do not re-solve the grid.
 	let tripBodies = $state(new Map<string, BodyData>());
 	let resolving = $state(true);
 
@@ -142,11 +135,10 @@
 	 * One end read again at a date the search has reached, when the row in hand
 	 * does not describe it there.
 	 *
-	 * A planet's ellipse is good for centuries. A probe's is a fit over the weeks
-	 * its chunk covers, so a transfer arriving years later is aimed by an ellipse
-	 * that expired long before. Nothing comes back for a probe that goes round
-	 * another primary by then: elements about a different centre are not a
-	 * correction to these, they are a different trip.
+	 * A planet's ellipse is good for centuries; a probe's is a fit over the weeks
+	 * its chunk covers, so a transfer arriving years later needs a fresh one.
+	 * Nothing comes back for a probe that goes round another primary by then:
+	 * elements about a different centre are a different trip, not a correction.
 	 */
 	async function refineBody(id: string, jd: number): Promise<BodyData | null> {
 		const found = ctx?.getBody(id);
@@ -185,10 +177,10 @@
 	/**
 	 * Each end as a probe parked on a surface, when that is what it is.
 	 *
-	 * A landed probe is a place rather than a body: it has no orbit of its own,
-	 * and the trip is flown to the body holding it. So the end is swapped for its
-	 * host here, once, and the probe survives as the site the arc reaches — which
-	 * is exactly what a named crater already does.
+	 * A landed probe is a place, not a body: it has no orbit, and the trip flies
+	 * to the body holding it. The end is swapped for its host here, once, and the
+	 * probe survives as the site the arc reaches — the same role a named crater
+	 * already plays.
 	 */
 	let fromLanded = $state.raw<LandedEnd | null>(null);
 	let toLanded = $state.raw<LandedEnd | null>(null);
@@ -214,25 +206,21 @@
 			if (cancelled) return;
 			fromLanded = from;
 			toLanded = to;
-			// The swing-by candidates ride along with the trip's own ends. They are the
-			// planets, so the scene almost always has them already, and the resolver
-			// caches for the session — asking for them costs a walk, not a fetch.
+			// Swing-by candidates ride along with the trip's own ends: they are the
+			// planets, so the scene almost always has them and the resolver caches
+			// for the session — a walk, not a fetch.
 			const ids = [
 				...[from?.hostId ?? ends[0], to?.hostId ?? ends[1]].filter((id) => id !== null),
 				...ASSIST_BODY_IDS
 			];
-			// Untracked: `residentBody` runs synchronously inside the resolver and reads
-			// the scene, which moves. Without this the effect depends on every body it
-			// asked about and re-runs as they do — a fresh map, a fresh solve, forever.
-			// The ids above are the whole dependency, which is what the comment on
-			// `tripBodies` claims and what only held while the ends were the only ones
-			// looked up.
+			// Untracked: `residentBody` reads the scene synchronously, which moves.
+			// Without this the effect depends on every body it looked up and re-runs
+			// forever as they change; the ids above are the whole real dependency.
 			const bodies = await untrack(() => resolveTripBodies(ids, residentBody));
 			if (cancelled) return;
-			// An end that resolved once is kept when a later pass cannot find it: the
-			// scene's index is momentarily empty while it rebuilds, and a pass that
-			// lands in that window would otherwise drop a body the trip is built on
-			// and take the whole panel down with it.
+			// Kept when a later pass cannot find it: the scene's index is momentarily
+			// empty while it rebuilds, and losing a body the trip is built on would
+			// take the whole panel down.
 			for (const [id, body] of tripBodies) {
 				if (ids.includes(id) && !bodies.has(id)) bodies.set(id, body);
 			}
@@ -267,13 +255,11 @@
 	}
 
 	/**
-	 * Whether the panel has ever had an origin to show.
-	 *
-	 * Once it has, it stays mounted whatever happens to the lookup afterwards. It
-	 * owns state that cannot be rebuilt from anywhere — which endpoint box is
-	 * open, the solved grid, a hand-picked trajectory — and unmounting it silently
-	 * throws all of that away, including a click still in progress over it. It
-	 * says why it is stuck better than this branch can anyway.
+	 * Whether the panel has ever had an origin to show. Once it has, it stays
+	 * mounted regardless of what the lookup does afterwards — it owns state that
+	 * cannot be rebuilt (which endpoint box is open, the solved grid, a
+	 * hand-picked trajectory), and unmounting would silently throw all of that
+	 * away, including a click still in progress over it.
 	 */
 	let resolvedOnce = $state(false);
 	$effect(() => {
@@ -310,11 +296,10 @@
 		return names[body.id] ?? body.name ?? body.id;
 	}
 
-	// Bodies the search must not offer for one end, given what the other end is.
-	// Only the loaded bodies can be tested up front — the index reaches far past
-	// the scene — so this catches the two cases that actually come up (the same
-	// body twice, and a moon of the other end's own primary) and leaves the rest
-	// to the panel, which now says why once the pick resolves.
+	// Bodies the search must not offer for one end, given the other. Only loaded
+	// bodies can be tested up front, so this catches the two cases that actually
+	// come up — the same body twice, and a moon of the other end's own primary —
+	// and leaves the rest to the panel, which says why once the pick resolves.
 	function excluded(against: BodyData | null): ReadonlySet<string> {
 		const out = new Set<string>();
 		if (!against) return out;
@@ -464,12 +449,10 @@
 	let originDetail = $state<GlobalObjectData | null>(null);
 	let targetDetail = $state<GlobalObjectData | null>(null);
 
-	/**
-	 * Which end each bundle was fetched for, and the guard that drops a superseded
-	 * fetch. Plain variables rather than state: they are read inside the effects
-	 * below to decide whether there is anything to do, and a reactive read there
-	 * would make each effect depend on its own writes.
-	 */
+	/** Which end each bundle was fetched for, and the guard that drops a
+	 *  superseded fetch. Plain variables, not state: they are read inside the
+	 *  effects below, and a reactive read there would make each depend on its
+	 *  own writes. */
 	let loadedFor = {
 		origin: undefined as string | null | undefined,
 		target: undefined as string | null | undefined
@@ -477,16 +460,12 @@
 	let detailToken = { origin: 0, target: 0 };
 
 	/**
-	 * Fetch the detail bundle for one end, unless that end is already the one it
-	 * was fetched for.
-	 *
-	 * The early return is what keeps a re-run from clearing a good bundle: anything
-	 * rendered on the strength of having one would flicker out and back, and a
-	 * control that disappears between a press and its release swallows the click
-	 * that was on it.
-	 *
-	 * Superseded fetches are dropped by token rather than cancelled on teardown,
-	 * so a re-run for an unrelated reason cannot abandon a load in flight.
+	 * Fetch the detail bundle for one end, unless it is already the one fetched
+	 * for. The early return keeps a re-run from clearing a good bundle: anything
+	 * shown on the strength of having one would flicker, and a control that
+	 * vanishes between a press and its release swallows the click. Superseded
+	 * fetches are dropped by token rather than cancelled on teardown, so an
+	 * unrelated re-run cannot abandon a load in flight.
 	 */
 	function loadDetail(
 		end: 'origin' | 'target',
@@ -513,11 +492,9 @@
 	$effect(() => loadDetail('target', targetId, (d) => (targetDetail = d)));
 
 	// The header carries the panel's step back, rather than the panel growing a
-	// second one under it: reading a trajectory, the crumb returns to the list it
-	// came from; choosing between them, it is the destination as before.
-	//
-	// Which step that is comes off the trip's own terms — a named trajectory is
-	// one being read — so nothing has to be handed up out of the panel.
+	// second one under it: reading a trajectory, the crumb returns to the list;
+	// choosing between them, it is the destination as before. Which step that is
+	// comes off the trip's own terms, so nothing has to be handed up.
 	let reading = $derived(trip.profile);
 	let crumb = $derived<Crumb | null>(
 		reading
@@ -532,9 +509,9 @@
 	let title = $derived(reading ? routeLabel(reading) : m.travel_title());
 
 	// Mobile snap points: chrome-only collapsed (measured, so it tracks the real
-	// header), mid, full. Unlike the detail sheet this one opens at the top — a
-	// trip is what the page is for — but it still has to be draggable down, or
-	// the map it is planning a route across is unreachable.
+	// header), mid, full. Unlike the detail sheet this opens at the top — a trip
+	// is what the page is for — but still has to drag down, or the map it plans
+	// a route across is unreachable.
 	const MID_SNAP = 0.4;
 	// Leaves the same sliver of map above the sheet as the detail drawer does.
 	const TOP_GAP_PX = 16;
@@ -551,10 +528,9 @@
 	let activeSnapPoint = $state<number | string | null>(`${HEADER_GUESS_PX}px`);
 	let isAtTop = $derived(activeSnapPoint === topSnap);
 
-	// Opening the trip opens the sheet all the way. It has to be moved there after
-	// mount rather than started there: vaul opens at its *first* snap point
-	// whatever the bound value says, so a sheet handed the top snap up front just
-	// sits collapsed. Moving it is also what animates it up.
+	// Opening the trip opens the sheet all the way — moved there after mount
+	// rather than started there, since vaul opens at its *first* snap point
+	// regardless of the bound value. Moving it is also what animates it up.
 	onMount(() => {
 		const frame = requestAnimationFrame(() => (activeSnapPoint = topSnap));
 		return () => cancelAnimationFrame(frame);

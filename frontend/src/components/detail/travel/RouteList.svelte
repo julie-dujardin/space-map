@@ -1,18 +1,12 @@
 <!--
-  One family of trajectory as one line each: what it is and when it runs on the
-  left, what it costs on the right. Picking one is what opens it — this is the
-  first of the panel's two steps, and every row here is a way into the second.
+  One family's trajectories, a line each: what and when on the left, cost on
+  the right. Picking a row opens the panel's second step.
 
-  A route the chosen craft cannot fly stays visible and goes quiet, with the
-  reason in place of its figures — hiding it would leave the panel silently
-  short of options.
+  A route the craft cannot fly stays visible and blocked, with the reason in
+  place of its figures, rather than silently disappearing.
 
-  Each family ends with the option placed by hand: a window picked off the
-  porkchop, or an arc set by the cruise slider. Both appear before they hold
-  anything, so the control below them reads as a choice.
-
-  A swing-by names the body it goes past, since that and its dates are the only
-  things separating it from the routes above.
+  The by-hand option (porkchop window or cruise slider) is shown before it
+  holds a trajectory, so the control below still reads as a choice.
 -->
 <script lang="ts">
 	import { getContext } from 'svelte';
@@ -35,8 +29,7 @@
 		family: RouteFamily | null;
 		/** What to call the body a swing-by passes. */
 		nameOf?: (id: string) => string;
-		/** What each trajectory puts the craft through. Empty until the scan lands,
-		 *  which is a row without a third line rather than a row that is wrong. */
+		/** What each trajectory puts the craft through; empty until the scan lands. */
 		hazardsFor?: (profile: RouteOption) => readonly Hazard[];
 		/** The trajectory being pointed at, from the field below or from its arc on
 		 *  the map. */

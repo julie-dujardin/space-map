@@ -1,9 +1,7 @@
 <script lang="ts" module>
-	// Log heliocentric distance (x) × true relative diameter (size), with each
-	// body nudged vertically by its orbital inclination. A "minimap" of the solar
-	// system that doubles as a zone picker — click a body to fly there, click a
-	// belt to open its group. Far scattered bodies (Eris, Sedna) clip off the
-	// right edge into the real map; the Sun is real-scale and clips off the left.
+	// Log heliocentric distance × true relative diameter, nudged vertically by
+	// inclination — a minimap that doubles as a zone picker (click a body to fly,
+	// a belt to open its group). Scattered bodies and the Sun clip off the edges.
 
 	const VIEW_W = 720;
 	const VIEW_H = 240;
@@ -131,12 +129,10 @@
 
 	let bodies = $derived.by<PlacedBody[]>(() => {
 		if (!file) return [];
-		// Inclination magnitude sets the vertical offset; the sign (above vs below
-		// the ecliptic) is chosen greedily to sit farthest from already-placed
-		// bodies, so same-distance / same-inclination pairs (Haumea & Makemake)
-		// split to opposite sides instead of overlapping.
-		// Moons don't belong on the heliocentric axis — they stack on their planet
-		// (see placedMoons); everything else is placed by distance here.
+		// Inclination sets the vertical offset; its sign is chosen greedily to sit
+		// farthest from already-placed bodies, so same-distance pairs (Haumea &
+		// Makemake) split apart instead of overlapping. Moons stack on their
+		// planet (placedMoons) rather than sitting on this heliocentric axis.
 		const ordered = file.objects.filter((o) => o.kind !== 'moon').sort((a, b) => a.a - b.a);
 		const placed: PlacedBody[] = [];
 		for (const o of ordered) {

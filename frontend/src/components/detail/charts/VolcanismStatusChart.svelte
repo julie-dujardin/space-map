@@ -1,15 +1,12 @@
 <script lang="ts">
 	/**
-	 * How many bodies sit on each rung of the volcanic-status ladder.
+	 * How many bodies sit on each rung of the volcanic-status ladder — a count,
+	 * not a quantity, since only 2 of 15 members have a heat output and 3 a
+	 * vent count. What separates them is how well anyone has caught them at it;
+	 * the middle rungs matter because collapsing them turns Venus's argument
+	 * into Earth's fact.
 	 *
-	 * A count rather than a quantity, because the quantities are not there: two
-	 * of the fifteen members have a heat output and three a vent count, so any
-	 * numeric ranking would be four bodies followed by eleven blanks. What
-	 * actually separates them is how well anyone has caught them at it, and the
-	 * middle rungs are the whole reason that vocabulary is not a boolean —
-	 * collapsing them would turn Venus's argument into Earth's fact.
-	 *
-	 * Rows carry no `primary_id`, so they render unlinked: a rung is a set of
+	 * Rows carry no `primary_id` and render unlinked: a rung is a set of
 	 * bodies, not a body.
 	 */
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';

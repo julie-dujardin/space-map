@@ -1,29 +1,16 @@
 <script lang="ts">
 	/**
 	 * The Structure tab's stat block: how much body there is, what it is under,
-	 * and the one thing it is still doing.
+	 * and the one thing it is still doing. A headline, not a summary — the tab
+	 * runs three charts deep, so a card may restate a row below.
 	 *
-	 * The tab runs three screens deep — two charts, a composition bar and a
-	 * table of layer cards — so this is a headline rather than a summary of the
-	 * panel immediately below it, and it may restate a row a reader would
-	 * otherwise have to scroll to.
+	 * The third slot is best-first: watts where measured, then a magnetic
+	 * field, then volcanism — numbers before categories, matching `ObjectStats`,
+	 * so Mercury's and Ganymede's dynamos aren't thrown away for "extinct".
 	 *
-	 * The first two slots are fixed. The third is whatever this body has to show
-	 * for itself, best-first: watts where anyone has measured the heat leaving
-	 * it, then a magnetic field, then volcanism. Numbers before categories, the
-	 * order `ObjectStats` uses — strict volcanism-first would spend Mercury's and
-	 * Ganymede's card on the word "extinct" and throw away the dynamos, which on
-	 * both bodies are the interesting thing.
-	 *
-	 * A `none` field never takes the slot: Titan's 0.78 nT is the tightness of a
-	 * non-detection rather than a field. What kind of field it is — Mars's 2 µT
-	 * is magnetised crust, not a dipole — is the row's job in the section below.
-	 *
-	 * Fewer than three cards is the normal case, not a gap: fifteen of the
-	 * thirty-two bodies have no atmosphere to quote a pressure at, and the ten
-	 * mid-sized icy moons nobody has measured anything else on show mass alone.
-	 * There is deliberately no filler for that slot — a card reading
-	 * "Differentiated" on nine of those ten was tried and cut.
+	 * A `none` field never takes the slot — that's a non-detection, not a
+	 * field. Fewer than three cards is normal, not a gap; filler for the empty
+	 * slot was tried and cut.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';

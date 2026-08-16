@@ -56,10 +56,9 @@
 <!-- Same hover affordance as the overview hero: the picture opens the viewer,
      the pill opens the shelf the rest of them sit on. -->
 <div class="group/hero relative overflow-hidden rounded-md">
-	<!-- Contained rather than cropped: these run from a 2.4:1 Cassini mosaic to
-	     a square JWST frame, and filling the box would cut the subject out of
-	     the tall ones. The black backdrop is the sky the pictures are already
-	     mostly made of, so the letterboxing doesn't read as a gap. -->
+	<!-- Contained rather than cropped: images run from a 2.4:1 Cassini mosaic to
+	     a square JWST frame, and filling the box would cut off the tall ones.
+	     The black backdrop reads as sky, not a gap. -->
 	<a
 		href={imageHref(appState, 0, gallery)}
 		onclick={showViewer}

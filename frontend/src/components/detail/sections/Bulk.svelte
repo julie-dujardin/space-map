@@ -1,13 +1,10 @@
 <script lang="ts">
 	/**
-	 * What the body weighs and how big it is — the facts that describe it as a
-	 * whole rather than at any one place on or inside it.
+	 * Whole-body facts, not point measurements — mass and size.
 	 *
-	 * Density lives here rather than under Interior on purpose: for most of the
-	 * bodies with an interior model it is the *input*, not a conclusion. Rhea,
-	 * Iapetus, Pluto and the Uranian moons have nothing else, which is what
-	 * their `from_bulk_density` note says. Putting it beside the composition
-	 * would state the premise as a result.
+	 * Density lives here rather than under Interior: for many bodies it's the
+	 * model's *input* (see `from_bulk_density`), not a conclusion, so placing
+	 * it beside composition would state the premise as a result.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import { NO_SURFACE_BODY_IDS } from '$lib/constants';
@@ -54,11 +51,10 @@
 		];
 	});
 
-	// Surface area in km², derived from whichever size source the panel uses
-	// for the radius row. Triaxial bodies use Knud Thomsen's approximation
-	// (p=1.6075, ~1% error). Only natural bodies have a meaningful surface — a
-	// spacecraft/debris radius bounds a model, not a sphere. Also hidden for the
-	// Sun and gas/ice giants, whose radius bounds a gas envelope.
+	// Derived from whichever size source feeds the radius row; triaxial bodies
+	// use Knud Thomsen's approximation (p=1.6075, ~1% error). Hidden for
+	// non-natural bodies (radius bounds a model, not a sphere) and for the Sun
+	// and gas/ice giants (radius bounds a gas envelope, not a surface).
 	let surfaceAreaKm2 = $derived.by(() => {
 		if (!isNaturalBodyType(global?.type)) return null;
 		if (global && NO_SURFACE_BODY_IDS.has(global.id)) return null;

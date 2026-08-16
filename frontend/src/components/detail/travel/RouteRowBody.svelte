@@ -1,10 +1,9 @@
 <!--
-  One trajectory on one line: what it is and when it runs on the left, what it
-  costs on the right. The list and the cruise box share it, so that one row
-  cannot start to read differently from the other.
+  One trajectory, one line: what and when on the left, cost on the right.
+  Shared by the list and the cruise box, so rows always match.
 
-  With no route behind it, the row keeps every line and fills them with dashes.
-  This holds the height of the box that carries the slider.
+  With no route yet, every line stays and fills with dashes, so the box
+  holding the slider keeps its height.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
@@ -32,11 +31,9 @@
 		blocked?: Blocked | null;
 		/** The body it goes past, named, on the one kind that does. */
 		via?: string | null;
-		/** What to say in place of the dates while there is no route: how to get
-		 *  one. */
+		/** What to say instead of dates before there is a route: how to get one. */
 		hint?: string | null;
-		/** Keep the chip line's height. A row with no chips stays as tall as one
-		 *  with chips. */
+		/** Keeps the chip line's height even when there are no chips. */
 		reserveHazards?: boolean;
 	}
 	let {
@@ -52,19 +49,17 @@
 	/** The colour this trajectory carries everywhere else in the panel. */
 	let mark = $derived(routeMark(profile));
 
-	/** As many chips as fit a narrow row. They arrive worst first, so the mildest
-	 *  are dropped. */
+	/** Chips arrive worst-first; this is how many fit before the mildest drop. */
 	const CHIP_LIMIT = 3;
 
-	/** How hard a route's drive pushes, on the two kinds flown under power the
-	 *  whole way; null on the ones that coast. */
+	/** Drive strength for the two continuously-powered route kinds; null for
+	 *  coasting ones. */
 	let accel = $derived(route ? (route.constantThrust ?? route.lowThrust?.accelMs2 ?? null) : null);
 </script>
 
 <span class="min-w-0 flex-1">
-	<!-- The acceleration goes on the name. It is the only figure that separates
-	     two powered routes, and on a spiral it explains the duration. The dot
-	     before it repeats the colour this trajectory is marked with. -->
+	<!-- Acceleration sits by the name: it separates two powered routes, and
+	     explains duration on a spiral. The dot repeats the route's colour. -->
 	<span class="block text-sm font-medium">
 		{#if mark}<span
 				class="{mark} me-1.5 inline-block size-2 rounded-full align-[0.1em]"

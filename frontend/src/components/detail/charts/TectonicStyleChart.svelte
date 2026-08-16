@@ -1,15 +1,11 @@
 <script lang="ts">
 	/**
-	 * How many bodies behave each way, for the ten with a published tectonic
-	 * style.
+	 * How many bodies behave each way, among the ten with a published tectonic
+	 * style — no quantity exists, so a tally is the whole record. Grouped by
+	 * style, not status: five are the same ice shell, and Earth alone has plate
+	 * tectonics, a fact nothing else in the app states.
 	 *
-	 * A tally rather than a quantity because tectonics carries no number at all
-	 * — a style and a status is the whole record. Counting by style rather than
-	 * by status is what makes the page worth having: five of the ten are the
-	 * same ice shell, and Earth is alone in plate tectonics, which is the one
-	 * fact about crusts that nothing else in the app says.
-	 *
-	 * Rows carry no `primary_id`, so they render unlinked: a style is a set of
+	 * Rows carry no `primary_id` and render unlinked: a style is a set of
 	 * bodies, not a body.
 	 */
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';

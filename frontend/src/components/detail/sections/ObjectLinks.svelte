@@ -22,10 +22,9 @@
 	let noradCatId = $derived(global?.cross_refs?.norad_cat_id);
 
 	// Catalogue IDs read as links too — each is this object's key in someone
-	// else's dataset. The export's own `<type>-<number>` key and a probe's
-	// synthetic id identify nothing outside this project, so neither is listed;
-	// `sbdb_primary_designation` is a copy of `cross_refs.mpc_designation`.
-	// Name-like designations first, then catalogue numbers in issuer order.
+	// else's dataset. The export's own key, a probe's synthetic id, and the
+	// duplicate `sbdb_primary_designation` are left out. Name-like designations
+	// first, then catalogue numbers in issuer order.
 	let identifiers = $derived.by(() => {
 		const x = global?.cross_refs;
 		const out: Array<{ label: string; value: string }> = [];

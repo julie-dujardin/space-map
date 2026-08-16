@@ -118,15 +118,13 @@
 		renderer?.snapToBodyFacing(id, towardId, elevationDeg, distance);
 	}
 
-	/** Focus a surface feature as a real orbitable body seated on its host. Picks a
-	 *  standoff that frames the feature — small craters pulled in close, ocean-sized
-	 *  ones kept back so they fit — floored so sub-metre features don't collapse to
-	 *  nothing and capped at a few host radii. Distances are scene units.
+	/** Focus a surface feature as a real orbitable body seated on its host.
+	 *  Standoff scales with feature size, floored and capped so it never
+	 *  collapses or overshoots.
 	 *
-	 *  `mode`: `pan` re-aims without moving (a 3D label click); `frame` flies/arcs
-	 *  to the framing (search, sidebar); `snap` places it instantly for URL
-	 *  deep-links (`/<type>/<bodyId>/f/<featureId>/…`), where `view` (the URL's
-	 *  seat-relative `at=`) overrides the diameter-based framing. */
+	 *  `mode`: `pan` re-aims in place (label click); `frame` flies to it
+	 *  (search/sidebar); `snap` places it instantly for URL deep-links, where
+	 *  `view` overrides the diameter-based framing. */
 	export function focusOnFeature(
 		bodyId: string,
 		featureId: number,

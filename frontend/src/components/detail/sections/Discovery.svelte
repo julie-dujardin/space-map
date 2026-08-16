@@ -15,10 +15,9 @@
 
 	let isSpacecraft = $derived(global?.type === 'spacecraft' || global?.type === 'debris');
 
-	// JPL `discovery_year` is authoritative for natural moons (it drives the
-	// render gate). Show a Wikidata date only when its year agrees — that upgrades
-	// the year to day precision; otherwise fall back to the bare JPL year. Bodies
-	// without a JPL year (small bodies, planets) keep the earliest-of-all rule.
+	// JPL `discovery_year` is authoritative for natural moons (drives the render
+	// gate); a Wikidata date is shown only when its year agrees, upgrading to
+	// day precision. Bodies without a JPL year fall back to the earliest date.
 	function pickDiscoveryDate(g: GlobalObjectData | null): string | undefined {
 		const wdDates = g?.wikidata?.discovery_date ?? [];
 		const jplYear = g?.discovery_year;

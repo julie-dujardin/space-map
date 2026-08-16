@@ -92,10 +92,9 @@
 	let landedBodyName = $derived(landedBody?.data.name ?? null);
 
 	let orbit = $derived(orbitElements ?? global?.orbit);
-	// SGP4 when a satrec is available — Kepler from TLE elements drifts visibly
-	// in r and v over hours due to J2/drag, even though the angular drift in
-	// lat/lon is the more obvious symptom. Falls back to Kepler for everything
-	// else (planets, moons, sun-orbiting bodies) where there's no satrec.
+	// SGP4 when a satrec is available, since Kepler from TLE elements drifts
+	// visibly in r and v over hours due to J2/drag. Falls back to Kepler
+	// everywhere else (planets, moons, sun-orbiting bodies).
 	let currentState = $derived.by(() => {
 		if (!orbitElements) return null;
 		if (body?.data.satrec) return sgp4State(body.data.satrec, jd);
@@ -111,14 +110,10 @@
 	let altitudeKm = $derived(
 		showAltitude && currentState && parentBody ? currentState.rKm - parentBody.data.radiusKm : null
 	);
-	// Sub-point: lat/lon on the parent body directly below the orbiter. Uses
-	// SGP4 when the body has a satrec (Earth sats) so J2 nodal regression and
-	// drag are accounted for — pure-Kepler propagation from a TLE drifts in
-	// phase by several degrees per day, which is highly visible in lat/lon
-	// even though it barely shifts the radial altitude. Falls back to Kepler
-	// for everything else, and rotates into the parent's body-fixed frame via
-	// its IAU pole+spin. Hidden when the parent has no orientation metadata
-	// loaded yet.
+	// Sub-point: lat/lon on the parent directly below the orbiter. SGP4 when a
+	// satrec exists, since a TLE's pure-Kepler drift shows up strongly in
+	// lat/lon even though it barely shifts altitude; Kepler otherwise, rotated
+	// into the parent's body-fixed frame via its IAU pole+spin.
 	let orbiterRelPos = $derived.by(() => {
 		if (!showAltitude || !orbitElements) return null;
 		if (body?.data.satrec) return sgp4PositionScene(body.data.satrec, jd);
@@ -206,12 +201,11 @@
 		return src != null ? archiveUrl(ORBIT_SOURCE_ARCHIVE[src]) : null;
 	});
 
-	// Mirrors the renderer's dispatch order at renderer.ts:computePosition —
-	// Chebyshev wins over SGP4 wins over Kepler. The detail panel's altitude /
-	// orbital speed / sub-point are still derived from osculating elements (Kepler)
-	// for Chebyshev-tracked bodies, so this label can disagree with the values
-	// shown above. TODO: wire chebStore into currentState/orbiterRelPos to make
-	// the panel consistent with the scene.
+	// Mirrors the renderer's dispatch order (renderer.ts:computePosition):
+	// Chebyshev > SGP4 > Kepler. Altitude/speed/sub-point above still derive
+	// from osculating Kepler elements for Chebyshev-tracked bodies, so this
+	// label can disagree with those values.
+	// TODO: wire chebStore into currentState/orbiterRelPos for consistency.
 	let propagationMethodLabel = $derived.by(() => {
 		if (!orbit) return null;
 		// Probes dispatch per sub-chunk in the binary; report whichever method

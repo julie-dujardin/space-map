@@ -41,10 +41,9 @@
 		olivine_achondrite: m.interior_analogue_olivine_achondrite
 	};
 
-	// Nobody has measured a planetary core, so this arrives as a low-high
-	// bracket of model spread rather than a value with an error bar. Shown as
-	// the bracket, off the temperature scale that draws the outside of the body
-	// — the two are millions of kelvin apart on the Sun.
+	// Nobody has measured a planetary core, so this is a low-high bracket of
+	// model spread, not a value with an error bar — shown off the temperature
+	// scale that draws the outside of the body (millions of K apart on the Sun).
 	let coreTemperature = $derived.by(() => {
 		const bracket = coreBracket(global?.temperatures?.readings ?? []);
 		return bracket ? formatKelvinRange(bracket.lowK, bracket.highK) : null;
@@ -53,9 +52,8 @@
 	const appState = getContext<AppState>('appState');
 
 	let interior = $derived(global?.interior);
-	// The panel's one caveat line. Only the ocean arrives as a `note` key — the
-	// rest of that vocabulary is provenance metadata — while the others derive
-	// from fields already on show, whose one-word labels ("rubble pile") need a
+	// The panel's one caveat line: only the ocean arrives as a `note` key, the
+	// rest derive from fields already on show whose one-word labels need a
 	// sentence to unpack.
 	let note = $derived.by(() => {
 		if (!interior) return null;
@@ -78,11 +76,9 @@
 		interior?.composition ? materialEntries(interior.composition) : []
 	);
 
-	// Two rows out of four tables, and both categorical, because that is what
-	// the data covers: every body in the activity block has a status and most
-	// have fewer than four measurements. The numbers are the Structure tab's.
-	// The two are orthogonal rather than one row — Jupiter and Callisto have a
-	// field and nothing else, Mimas a tide and nothing else.
+	// Two rows, both categorical, since most bodies here have a status but few
+	// measurements (those live on the Structure tab). Kept orthogonal rather
+	// than merged — Jupiter has a field and no tide, Mimas the reverse.
 	let activity = $derived(activitySummary(global?.activity));
 	let field = $derived(fieldSummary(global?.activity?.magnetism));
 </script>

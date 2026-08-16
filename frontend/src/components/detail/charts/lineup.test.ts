@@ -1,10 +1,6 @@
 /**
- * Tests for `geometryFromMember`'s texture-flag plumbing.
- *
- * The lineup skips its speculative `low.webp` fetch only on an explicit
- * `texture: false`; dropping the field here (e.g. in a refactor that rebuilds
- * the geometry object) would silently revert every untextured member to a
- * guaranteed-404 probe.
+ * Tests `geometryFromMember`'s texture-flag plumbing: dropping the field
+ * would silently revert every untextured member to a guaranteed-404 probe.
  */
 
 import { describe, expect, it } from 'vitest';

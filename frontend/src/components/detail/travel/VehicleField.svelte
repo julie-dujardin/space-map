@@ -1,12 +1,9 @@
 <!--
-  The craft box: closed it names what you are flying, open it is a popover over
-  the catalogue with a search bar.
-
-  Same shape as the endpoint boxes above it, for the same reason — the catalogue
-  runs to dozens of craft and a scrolling list of them was pushing the
-  trajectories off the panel. The search filters what the trip could be flown
-  with, not the whole catalogue: a craft that cannot leave this way is already
-  gone before anything is typed.
+  The craft box: closed it names what you are flying, open it is a popover
+  over the catalogue with a search bar. Same shape as the endpoint boxes above
+  it — the catalogue runs to dozens of craft, and a scrolling list was pushing
+  the trajectories off the panel. The search filters what the trip could be
+  flown with, not the whole catalogue.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';

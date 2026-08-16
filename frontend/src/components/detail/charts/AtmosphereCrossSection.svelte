@@ -1,24 +1,14 @@
 <script lang="ts">
 	/**
-	 * The atmosphere seen edge-on: the body's limb curving across the bottom and
-	 * its named layers stacked above it, to scale by height up to the mesopause
-	 * or whatever plays its part.
+	 * The atmosphere edge-on: the limb across the bottom, named layers stacked
+	 * above it to scale by height up to the mesopause (or its equivalent).
 	 *
-	 * The thermosphere, exosphere and corona are capped to a fixed band each.
-	 * Earth's exosphere reaches ~10,000 km against a 12 km troposphere, so drawn
-	 * to scale the weather layer is a hairline and everything readable is vacuum.
-	 * They hold essentially none of the atmosphere's mass, which is what makes
-	 * that honest rather than convenient; their real height stays in the label.
+	 * Thermosphere/exosphere/corona are capped to a fixed band — Earth's reaches
+	 * ~10,000 km over a 12 km troposphere and holds essentially none of the mass,
+	 * so capping is honest rather than convenient; real height stays in the label.
 	 *
-	 * The limb's centre sits left of the frame so the right half stays clear for
-	 * the labels. Each carries the layer's temperature from bottom to top beside
-	 * the name — the layout the interior cross-section uses, so temperature is in
-	 * the same place on both halves of the tab — and under it the height of its
-	 * top boundary, with the pressure spanning the layer the same way.
-	 *
-	 * Bottom to top rather than one reading, because the data describes every
-	 * layer by its top: Venus's tropopause is 245 K under a 737 K surface, and a
-	 * label saying "troposphere 245 K" contradicts everything else on the body.
+	 * Labelled bottom to top, not as one reading — the data describes each layer
+	 * by its top, and "troposphere 245 K" would contradict Venus's 737 K surface.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import type { AtmosphereBand, AtmosphereProfile } from '$lib/charts/atmosphere-cross-section';
@@ -56,11 +46,9 @@
 	const AIR = 132;
 	const GROUND_Y = H - 18;
 	const CY = GROUND_Y + PLANET_R;
-	/** Where the labels begin. Far enough left that a long layer name and the
-	 *  span it runs over share one line — the Sun's chromosphere reads
-	 *  "4,170 – 19,730 °C", and had 0.5px to spare at the old gutter. Its
-	 *  transition region is wider than any gutter that leaves the limb visible
-	 *  and takes the second line instead. */
+	/** Where labels begin — far left enough that most spans share a line with
+	 *  their name (the Sun's chromosphere: "4,170 – 19,730 °C"); its wider
+	 *  transition region falls back to a second line. */
 	const GUTTER = 106;
 	/** The scrim stays put when the gutter moves: it is placed against the limb
 	 *  it has to fade out, not against the text. */
@@ -127,12 +115,9 @@
 	};
 
 	/**
-	 * What the layer runs between, bottom first.
-	 *
-	 * One end is missing wherever the profile is: Neptune's stratosphere is
-	 * unmeasured above its tropopause, no exosphere ends anywhere, and pressure
-	 * is pinned on far fewer boundaries than temperature — Pluto's whole stack
-	 * has none. Those read as open rather than as a layer sitting at one value.
+	 * What the layer runs between, bottom first. One end may be missing (an
+	 * unmeasured boundary, or no pressure at all on Pluto's stack) — reads as
+	 * open rather than as a layer pinned to one value.
 	 */
 	function span(bottom: number | null, top: number | undefined, format: Format): string | null {
 		if (bottom !== null && top !== undefined) return format.span(bottom, top);
@@ -150,10 +135,8 @@
 	}
 
 	/**
-	 * The hover, which is where each number is said to belong to an end rather
-	 * than to the layer. Stacked the way the layer is: its top first, then the
-	 * width published around that boundary, then the base it stands on. Each end
-	 * reads height, pressure, temperature, in that order.
+	 * The hover: each number belongs to an end, not the layer. Stacked top
+	 * first, then boundary width, then base — each as height, pressure, temperature.
 	 */
 	function tooltip(band: AtmosphereBand): string[] {
 		const lines: string[] = [];
@@ -209,10 +192,8 @@
 	let stacked = $state<boolean[]>([]);
 	let svgEl = $state<SVGSVGElement>();
 
-	// An effect rather than a derived, so the text is on the page before it is
-	// measured — see `stackedRows`. Measured on every run so the effect tracks
-	// the rows even while the tab is hidden, but only kept where the chart has
-	// a box to have been measured in.
+	// Effect not derived, so the text exists in the DOM before `stackedRows`
+	// measures it; kept only where the chart actually has a box to measure.
 	$effect(() =>
 		remeasure(svgEl, () => {
 			const next = stackedRows(rows, nameEls, readingEls, W - 2 - (GUTTER + 4));
@@ -221,15 +202,12 @@
 	);
 </script>
 
-<!-- The leader line and the two text lines, shared so that a row reads the same
-     whether or not it has anything to say on hover. Both spans right-align, one
-     under the other, with the boundary's height under the name: temperature and
-     pressure describe the same two ends of the same layer, and a column of them
-     reads as one pair rather than as two unrelated readings.
+<!-- Shared leader + two text lines so a row reads the same with or without a
+     tooltip. Temperature and pressure right-align in a column as one pair,
+     not two unrelated readings; height sits under the name.
 
-     Where a name and its temperature cannot share a line the temperature takes
-     the second line's right and the pressure falls back beside the height. Only
-     the Sun's names run that long, and none of its boundaries has a pressure. -->
+     Where a name and temperature can't share a line, temperature drops to the
+     second line — only the Sun's names run that long, and it has no pressure. -->
 {#snippet label(row: Row, i: number)}
 	{@const value = temperature(row.band)}
 	{@const air = pressure(row.band)}
@@ -295,10 +273,8 @@
 				<stop offset="1" stop-color="var(--background)" stop-opacity="0.9" />
 			</linearGradient>
 		</defs>
-		<!-- Every boundary gets a line of its own, so a layer too thin to
-		     draw is still visible as the line at its top. Uranus's 50 km
-		     troposphere under a 4,000 km stratosphere is 1% of the chart, and
-		     to scale that is a band a pixel high. -->
+		<!-- Every boundary draws its own line, so a layer too thin to render
+		     (Uranus's 50 km troposphere under a 4,000 km stratosphere) still shows. -->
 		{#each profile.bands as band, i (band.layer.role + i)}
 			<path
 				d={boundaryPath(band.top)}

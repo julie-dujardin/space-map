@@ -1,15 +1,10 @@
 /**
- * What a craft is called in the picker.
- *
- * Three sources, in order: the per-locale name bundle the pipeline builds from
- * Wikidata labels, a hand-authored message key for the two ships Wikidata has
- * no item for, and the catalogue's English name as a last resort. The slug is
- * never shown — a row reading `atlas-v-551-star-48` is worse than one reading
- * a name in the wrong language.
- *
- * Configuration qualifiers are appended rather than baked into the name: three
- * Falcon Heavy entries share one Wikidata label, and what separates them is
- * ours to translate.
+ * What a craft is called in the picker. Three sources, in order: the
+ * per-locale Wikidata name bundle, a hand-authored key for the two ships
+ * Wikidata has no item for, and the catalogue's English name as a last
+ * resort — never the slug, since `atlas-v-551-star-48` is worse than a name
+ * in the wrong language. Configuration qualifiers are appended rather than
+ * baked in, since three Falcon Heavy entries share one Wikidata label.
  */
 
 import {
@@ -55,11 +50,10 @@ export function vehicleName(vehicle: Vehicle): string {
 }
 
 /**
- * Where this craft can start, said in terms of what it *can* do.
- *
- * Used wherever a craft and a departure disagree — the greyed picker row and
- * the route it cannot fly. "Starts from the ground" is a fact about the SLS;
- * "cannot start here" would be a complaint about the user's origin box.
+ * Where this craft can start, said in terms of what it *can* do — used
+ * wherever a craft and a departure disagree. "Starts from the ground" is a
+ * fact about the SLS; "cannot start here" would be a complaint about the
+ * user's origin box.
  */
 export function departureNote(vehicle: Vehicle): string {
 	if (canDepartFrom(vehicle, 'surface')) return m.travel_craft_from_ground();
@@ -128,12 +122,10 @@ export function vehicleBadgeParts(vehicle: Vehicle): string[] {
 /**
  * The stat line under a craft: what it can do, then what it is.
  *
- * Against a route, the Δv becomes the margin left after flying it — the raw
- * figure answers "how much", the margin answers the question the reader is
- * actually in the picker with. Craft whose propellant is no constraint show
- * their acceleration instead: their Δv is "yes", and the drive is the number
- * that tells two of them apart. A fictional craft says so once, not once per
- * field.
+ * Against a route, the Δv becomes the margin left after flying it — the
+ * question the reader is actually in the picker with. Craft whose propellant
+ * is no constraint show acceleration instead: their Δv is "yes", and the
+ * drive is what tells two of them apart.
  */
 export function vehicleStatsParts(
 	vehicle: Vehicle,

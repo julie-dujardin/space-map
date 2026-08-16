@@ -1,7 +1,6 @@
 /** The sphere-lineup hero and its imagery/metadata credits, factored out of
- *  DetailDrawer. Picks which collection page (planets/moons/dwarfs/small-body
- *  zone/planet-moons) gets a lineup, builds it, and tracks the texture credits
- *  the NC-licensed surface maps require. */
+ *  DetailDrawer. Picks which collection page gets a lineup, builds it, and
+ *  tracks the texture credits the NC-licensed surface maps require. */
 
 import { buildLineup, geometryFromMember, renderableCount } from './lineup';
 import { STRIP_CAPACITY } from '../members/MemberStrip.svelte';
@@ -17,10 +16,9 @@ import * as m from '$lib/paraglide/messages.js';
 // diameter; below the floor it falls back to the plain member-strip page.
 const SMALL_BODY_LINEUP_FLOOR = 3;
 
-// A member's pole tilts its sphere, but only a PCK pole is the IAU's to credit:
-// an asteroid lineup runs on poles converted from DAMIT lightcurve inversions.
-// Named rather than inlined — boolean groups inside `$derived` lose their
-// parens through the .svelte.ts transform.
+// Only a PCK pole is the IAU's to credit; an asteroid lineup's poles come from
+// DAMIT lightcurve inversions instead. Named, not inlined — boolean groups
+// inside `$derived` lose their parens through the .svelte.ts transform.
 const hasPckPole = (mm: NotableMemberEntry) => !!mm.pole && !mm.pole.source;
 const hasLightcurvePole = (mm: NotableMemberEntry) => mm.pole?.source === 'lightcurve';
 const hasPckGeometry = (mm: NotableMemberEntry) =>
@@ -84,10 +82,9 @@ export class LineupHero {
 				descriptions: d.memberDescriptions()
 			})
 		);
-		// Opt-in: a page says it wants spheres, rather than getting them by virtue
-		// of having enough renderable members. The ring systems page is why —
-		// eight renderable bodies, and a row of them pictures the planets rather
-		// than the rings the page is about.
+		// Opt-in: a page must ask for spheres rather than getting them from having
+		// enough renderable members — ring systems has eight renderable bodies, but
+		// a row of spheres would picture the planets, not the rings.
 		const isSmallBodyLineup = $derived(
 			d.isGroupMode() &&
 				d.sphereLineup() &&
@@ -160,10 +157,9 @@ export class LineupHero {
 		// textures on real radii and owe the same credits.
 		const lineupBodies = $derived(this.hero?.bodies ?? this.solarSystemLineup?.bodies ?? null);
 
-		// Imagery credits narrowed to the on-screen bodies, deduped by author so
-		// the footer lists each source once. Covers both the surface maps and the
-		// shape-model meshes that render some members (a mesh body draped with a
-		// map credits both).
+		// Imagery credits for the on-screen bodies, deduped by author. Covers both
+		// surface-map textures and shape-model meshes — a mesh draped with a map
+		// credits both.
 		this.imagery = $derived.by(() => {
 			const bodies = lineupBodies;
 			if (!bodies) return [];

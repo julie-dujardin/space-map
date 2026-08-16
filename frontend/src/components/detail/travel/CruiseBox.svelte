@@ -1,10 +1,8 @@
 <!--
-  The arc set by hand, and the slider that sets it. Comes last in the family and
-  is dashed, like the window picked off the porkchop.
-
-  The row keeps its height with no arc behind it, so the slider does not move
-  while you drag it. The box also stays when the arc is gone: a long coast can
-  miss the deadline, and the reader needs the slider back to undo that.
+  The arc set by hand; comes last in the family, dashed like the porkchop
+  window. The row keeps its height even with no arc, so the slider doesn't
+  jump while dragged, and stays visible when a missed deadline clears the arc
+  so the reader can recover.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
@@ -45,15 +43,13 @@
 	let rowClass =
 		'flex w-full items-center gap-3 rounded-md px-3 pt-2 pb-1 text-start transition-colors';
 
-	/** The handle's width, from the slider's own `size-3`. The handle is held
-	 *  inside the bar, so a mark on the same span must be held the same way. */
+	/** Slider handle width, from its own `size-3` — marks on the same span must match it. */
 	const THUMB_PX = 12;
 </script>
 
 <section class="border-border/60 flex flex-col rounded-md border border-dashed">
 	{#if route && !blocked}
-		<!-- The trajectory lands in the URL, so the row is a link. A plain click
-		     swaps the step in place. -->
+		<!-- The trajectory lands in the URL, so the row is a link; a plain click swaps the step in place. -->
 		<a
 			href={tripRouteHref(appState, state.trip, PROFILE)}
 			class="hover:bg-muted/40 {rowClass}"
@@ -75,8 +71,7 @@
 			<h4 class="text-muted-foreground text-xs">{m.travel_cruise_time()}</h4>
 			<span class="shrink-0 text-xs tabular-nums">
 				{#if route}
-					<!-- The share compares across trips. The duration says what it means
-					     for this one, and a flat-out crossing has none. -->
+					<!-- Share compares across trips; duration says what it means for this one. -->
 					{formatPercent(coastShare)}
 					{#if coastDays > 0}
 						<span class="text-muted-foreground ms-1">{formatDurationNarrow(coastDays)}</span>
@@ -87,9 +82,8 @@
 			</span>
 		</div>
 		<div class="relative">
-			<!-- Where the named arcs sit on the same span, each in the colour of its
-			     own row. Drawn behind the bar and the handle, so it shows above and
-			     below them and nothing it marks is covered. -->
+			<!-- Named-arc marks on the same span, coloured per row. Drawn behind the
+			     bar and handle so nothing covers them. -->
 			<span class="pointer-events-none absolute inset-0 block" aria-hidden="true">
 				{#each TORCH_PRESETS as preset (preset.profile)}
 					<span

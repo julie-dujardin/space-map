@@ -1,11 +1,8 @@
 <script lang="ts">
 	/**
-	 * One interior layer in full: what it is, how thick, how deep, how hot, and
-	 * what it is made of.
-	 *
-	 * The bar is the same `CompositionBar` the Overview draws, over the same
-	 * palette — a layer's rock has to be the colour the body's rock is, or the
-	 * two panels are describing different planets.
+	 * One interior layer: what it is, how thick, deep, hot, and made of.
+	 * Uses the same `CompositionBar` and palette as the Overview, so a
+	 * layer's rock is coloured the same in both panels.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import type { InteriorLayer } from '$lib/fetch/objects/object-data';
@@ -57,11 +54,9 @@
 		return [];
 	});
 
-	// What the layer is, in the words the data actually supports: the most
-	// specific name it carries, then the depth. A rock or a named polymorph
-	// stands in for the state-and-material phrase rather than joining it —
-	// "basalt" already says solid rock and says which rock, "ice VI" already
-	// says solid water and says which of the two solid-water layers this is.
+	// Most specific name available, then depth. A rock or named polymorph
+	// stands in for the state+material phrase rather than joining it —
+	// "basalt" already implies solid rock, "ice VI" already implies solid water.
 	let descriptor = $derived.by(() => {
 		const bits: string[] = [];
 		const material = layer.composition[0];
@@ -95,13 +90,10 @@
 		return formatPercent(fraction, 6);
 	}
 
-	/** The share of the body, with its published width where the source gives
-	 *  one — Venus's core is 24% to 57% and a lone 39% reads as a measurement.
-	 *
-	 *  A width narrower than the rounding is dropped rather than printed: the
-	 *  ocean is 0.0228% to 0.0234% of the Earth, which at the two significant
-	 *  digits the rest of the panel uses comes out as "0.023% (0.023%–0.023%)"
-	 *  — a bracket that says only that somebody had one. */
+	/** Share of the body, with its published range where the source gives one
+	 *  — a lone 39% would read as a precise measurement when it's really
+	 *  24–57%. A range narrower than the panel's rounding is dropped rather
+	 *  than shown as a bracket that says only that a range existed. */
 	let mass = $derived.by(() => {
 		if (layer.mass_fraction === undefined) return null;
 		const value = massPercent(layer.mass_fraction);
@@ -112,10 +104,9 @@
 		return m.structure_layer_mass_range({ value, low, high });
 	});
 
-	/** How much of the globe it is under, on the layers that are patches rather
-	 *  than shells. Without it the two crusts read as a stack — 41 km of granite
-	 *  with 6 km of basalt somewhere inside it — instead of as the two halves of
-	 *  a surface that meet at a coastline. */
+	/** Share of the globe the layer covers, for patchy layers rather than
+	 *  full shells — without it, two partial crusts read as a stack instead
+	 *  of two halves of a surface meeting at a coastline. */
 	let coverage = $derived(
 		layer.area_fraction === undefined
 			? null

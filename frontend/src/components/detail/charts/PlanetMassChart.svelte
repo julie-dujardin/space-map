@@ -27,11 +27,8 @@
 		share: number; // fraction of the 8-planet total
 	}
 
-	// Each planet's segment width is its share of the 8-planet total, so the area
-	// encodes the mass repartition — the giants (Jupiter ~71%, Saturn ~21%)
-	// dominate. Mass is the export-supplied `mass_kg` (PCK GM, the same source the
-	// 3D scene uses); the members on this page are exactly the eight planets.
-	// Heaviest → lightest, so the dominant giants lead and the slivers trail.
+	// Segment width is each planet's share of the 8-planet total mass (`mass_kg`,
+	// PCK GM) — Jupiter ~71%, Saturn ~21% dominate. Sorted heaviest-first.
 	let planets = $derived.by<Planet[]>(() => {
 		const raw = members
 			.filter((mm) => mm.id && mm.mass_kg != null)

@@ -63,12 +63,9 @@
 		}
 	}
 
-	// Show the breadcrumb label only when the pill plus a readable slice of the
-	// title fit; otherwise collapse to the chevron. The probe is an always-full
-	// offscreen copy, so the pill's real width is known regardless of what the
-	// visible pill currently shows (no oscillation). The reserved title width is
-	// capped at what the title actually needs, so short titles never force a
-	// collapse — only a narrow row with both long does.
+	// Show the label only when it plus a readable slice of the title fit;
+	// otherwise collapse to the chevron. The offscreen probe is always full
+	// pill width, so measuring it can't oscillate with what's currently shown.
 	let rowEl = $state<HTMLDivElement | null>(null);
 	let titleEl = $state<HTMLHeadingElement | null>(null);
 	let probeEl = $state<HTMLSpanElement | null>(null);

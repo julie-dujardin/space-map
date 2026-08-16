@@ -1,10 +1,8 @@
 <!--
   The window picked by hand, and the field it is picked off. Comes last in the
-  family and is dashed, like the arc set by the cruise slider.
-
-  The row keeps its height with no window behind it, so the field does not move
-  when one is picked. With no window it says where one comes from, and gives the
-  focus to the field.
+  family and is dashed, like the arc set by the cruise slider. The row keeps
+  its height with no window behind it, so the field does not move once one is
+  picked; with no window it says where one comes from, and focuses the field.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';

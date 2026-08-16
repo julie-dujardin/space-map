@@ -65,9 +65,9 @@
 		/** What to call the body a swing-by passes — it is neither end of the trip,
 		 *  so nothing else here knows its name. */
 		nameOf?: (id: string) => string;
-		/** What the trip's own origin is called. Passed rather than looked up
-		 *  through `nameOf`, which only knows the bodies *between* the two ends —
-		 *  asking it for one of them hands back the raw id. */
+		/** What the trip's origin is called, passed rather than looked up through
+		 *  `nameOf` — that only knows bodies *between* the two ends and hands back
+		 *  the raw id for either of them. */
 		originName?: string | null;
 		/** What this trajectory puts the craft through. */
 		hazards?: readonly Hazard[];
@@ -82,17 +82,16 @@
 		hazards = []
 	}: Props = $props();
 
-	// The craft only ever qualifies a hazard here, never in the list: a row there
-	// is a statement about where the trip goes, and should not change because a
-	// craft was picked — least of all in the window before a linked one is fetched.
+	// The craft only qualifies a hazard here, never in the list: a row there
+	// states where the trip goes and shouldn't change because a craft was
+	// picked — least of all before a linked one has even fetched.
 	let shownHazards = $derived(adjustForVehicle(hazards, state.vehicle, route));
 	// The id is the last resort rather than the first: it is at least unambiguous,
 	// where a blank would leave a sentence with a hole in it.
 	let originLabel = $derived(originName ?? nameOf(route.departureId));
 
 	/** Under this the pass is free in every sense that matters: metres per second
-	 *  against a budget in kilometres, and the search only stopped there because
-	 *  its last refinement step did. */
+	 *  against a budget in kilometres. */
 	const FREE_PASS_KMS = 0.02;
 
 	// One pass for now; the solver builds no route with two.
@@ -115,17 +114,16 @@
 		descent: ArrowDownIcon
 	};
 
-	// Fastest the craft goes, which the arc reports rather than the ladder: once
-	// gravity is in the crossing the Δv a burn spent is no longer the speed it
-	// bought. Falls back to the burn for a route solved before that was true.
+	// Fastest the craft goes, reported by the arc rather than the ladder: once
+	// gravity is in the crossing, spent Δv no longer equals bought speed. Falls
+	// back to the burn for a route solved before that was true.
 	let topSpeedKms = $derived(
 		route.peakSpeedKms ?? route.legs.find((leg) => leg.kind === 'boost')?.dvKms ?? 0
 	);
 	let topSpeedPercentC = $derived(lightPercent(topSpeedKms));
 
-	// Launch energy is the third figure for an arc that is thrown; a drive held
-	// all the way leaves at exactly escape speed and C3 zero says nothing about
-	// it. How fast it ends up going does.
+	// Launch energy is the third figure for a thrown arc; a drive held all the
+	// way leaves at exactly escape speed, so C3 zero says nothing — top speed does.
 	interface Tile {
 		label: string;
 		value: string;
@@ -156,9 +154,8 @@
 		route.constantThrust
 			? topSpeedTile
 			: route.lowThrust
-				? // A spiral is thrown by nothing, so it has no launch energy either —
-					// and what it does have is the figure the whole trip follows from:
-					// years of crossing because the drive pushes at this.
+				? // A spiral is thrown by nothing, so it has no launch energy — what
+					// it has instead is the acceleration the whole trip follows from.
 					{ label: m.travel_drive_accel(), ...accelerationParts(route.lowThrust.accelMs2) }
 				: {
 						label: m.travel_launch_c3(),
@@ -169,15 +166,11 @@
 
 	let delay = $derived(signalDelaySeconds(origin, target, route.arriveJd));
 
-	// A launcher's job ends at injection, so it has no Δv of its own left for
-	// arrival — that belongs to whatever it threw. A craft with no published
-	// engine has no Δv to subtract either, which is a different silence: the
-	// row says so rather than showing a figure nobody measured. Cargo is already
-	// off the top, so loading the hold shortens the return this row prices.
-	//
-	// And a craft the route cannot be judged against gets no figure at all: an
-	// ion drive's budget minus a Lambert arc's is a subtraction of two things
-	// that are not the same quantity, whatever the list above has already said.
+	// A launcher's Δv ends at injection — arrival belongs to whatever it threw.
+	// An unpublished engine has no Δv to subtract either, a different silence
+	// from a real zero. A craft the route can't be judged against (an ion
+	// drive's budget against a Lambert arc's) gets no figure at all: the two
+	// aren't the same quantity.
 	let remaining = $derived.by(() => {
 		const vehicle = state.vehicle;
 		if (!vehicle || vehicle.kind === 'launcher') return null;
@@ -188,10 +181,9 @@
 		if (loaded === undefined) return null;
 		return loaded - route.inSpaceDvKms;
 	});
-	// A craft whose propellant the work never made a constraint has nothing left
-	// over to report and nothing missing either, so it is answered before the
-	// silence about an unpublished engine — which would otherwise be a strange
-	// thing to say about a torch drive, whose engine is the only published thing.
+	// A craft whose propellant was never a constraint has nothing to report and
+	// nothing missing either, so it's answered before the unpublished-engine
+	// silence — which would be a strange thing to say about a torch drive.
 	let unlimitedDv = $derived(state.vehicle?.unlimitedDv === true);
 	let unpublishedDv = $derived(
 		!unlimitedDv &&
@@ -211,10 +203,10 @@
 		notes: string[];
 	}
 
-	// The legs, bracketed by the orbits at either end where those ends are orbits.
-	// An orbit is not a leg — nothing is spent and no time passes — but it is where
-	// the trip starts and stops, which the legs alone never say. A launch and a
-	// landing say it themselves, so neither gets one.
+	// The legs, bracketed by the orbits at either end where those ends are orbits
+	// — nothing spent, no time passed, but the legs alone don't say where the
+	// trip starts and stops. A launch or landing already says that itself, so
+	// neither gets one.
 	let steps = $derived.by<Step[]>(() => {
 		const list: Step[] = [];
 		const start = endDepartureOrbit(origin, route.departureMode, route.departureOrbit);
@@ -229,9 +221,8 @@
 
 		for (const [index, leg] of route.legs.entries()) {
 			const notes: string[] = [];
-			// A burn costs Δv, a coast costs time, and a leg under thrust costs both —
-			// the figure is the Δv, so the duration is said here rather than lost, with
-			// the acceleration that was held for it.
+			// A burn costs Δv, a coast costs time, a leg under thrust costs both — so
+			// the duration goes here rather than being lost, with the held acceleration.
 			if (leg.dvKms > 0 && leg.days > 0) {
 				notes.push(
 					route.constantThrust
@@ -242,9 +233,8 @@
 						: formatDurationNarrow(leg.days)
 				);
 			}
-			// The campaign's own step already says what it is; the note belongs on the
-			// burns the air made smaller, and it names which of the two manoeuvres
-			// made them smaller.
+			// The campaign's own step already says what it is; this note belongs on
+			// the burns the air made smaller, naming which manoeuvre did it.
 			if (leg.kind === 'aerobrake') notes.push(m.travel_aero_campaign());
 			else if (leg.aerobraked) {
 				notes.push(route.aero === 'aerocapture' ? m.travel_aerocaptured() : m.travel_aerobraked());
@@ -276,9 +266,9 @@
 	// from a module of their own; the craft's come with the catalogue.
 	let sources = $derived([...craftSpecSources(specs), ...radiationSources(shownHazards)]);
 
-	// What the detour bought, against the best the direct search found. The saving
-	// is the reason this route is on the list at all, so it is said rather than
-	// left to be worked out from two rows of the ladder.
+	// What the detour bought, against the best the direct search found — the
+	// reason this route is listed at all, so it's said rather than left to be
+	// worked out from two ladder rows.
 	let saving = $derived.by(() => {
 		if (!pass || state.routes.length === 0) return null;
 		const cheapest = Math.min(...state.routes.map((choice) => choice.route.totalDvKms));
@@ -341,9 +331,9 @@
 	</section>
 
 	{#if pass}
-		<!-- The pass is the whole reason for the route, and none of it shows in the
-		     ladder: an assist that works costs nothing, so the interesting figures
-		     are the geometry rather than the Δv. -->
+		<!-- The pass is the whole reason for this route, and none of it shows in the
+		     ladder: a working assist costs nothing, so the interesting figures are
+		     the geometry, not the Δv. -->
 		<section class="flex flex-col gap-2">
 			<div class="flex items-baseline justify-between gap-2">
 				<h4 class="min-w-0 truncate text-sm font-medium">
@@ -378,9 +368,9 @@
 	{/if}
 
 	{#if shownHazards.length > 0}
-		<!-- What the trajectory puts the craft through, which is the half of the
-		     choice the Δv ladder above cannot show: two routes for the same budget
-		     can be very different trips. -->
+		<!-- What the trajectory puts the craft through — the half of the choice the
+		     Δv ladder can't show, since two routes at the same budget can be very
+		     different trips. -->
 		<section class="flex flex-col gap-2">
 			<h4 class="text-sm font-medium">{m.travel_hazards()}</h4>
 			<div class="border-border/60 border-t"></div>
@@ -399,9 +389,9 @@
 								<span class="truncate text-sm">{hazardName(hazard.kind)}</span>
 								<span class="shrink-0 text-sm tabular-nums">{hazardValue(hazard)}</span>
 							</div>
-							<!-- When it happens, said the way the rest of the panel says a date:
-							     a stretch gets both ends, a moment gets the one it is. How bad it
-							     is comes off the icon's colour rather than a word for it. -->
+							<!-- Said the way the rest of the panel says a date: a stretch gets
+							     both ends, a moment gets the one it is. Severity comes from the
+							     icon's colour, not a word. -->
 							<div class="text-muted-foreground text-xs tabular-nums">
 								{#if hazard.endJd > hazard.startJd}
 									{formatJulianDate(hazard.startJd)}
@@ -523,9 +513,9 @@
 	</section>
 
 	{#if sources.length > 0}
-		<!-- One per line, each giving up its tail to the ellipsis: the titles run to
-		     a catalogue name and a report number, and run together they read as one
-		     citation with commas in it. Same shape as an object's sources footer. -->
+		<!-- One per line, each giving up its tail to the ellipsis: titles run to a
+		     catalogue name and report number, and together would read as one
+		     citation with commas. Same shape as an object's sources footer. -->
 		<div class="text-muted-foreground text-xs/5">
 			<span>{m.travel_spec_sources()}</span>
 			{#each sources as source (source.url)}

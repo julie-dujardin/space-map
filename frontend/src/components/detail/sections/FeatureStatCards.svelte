@@ -17,11 +17,10 @@
 		tooltip?: string;
 	}
 
-	// How big, how deep or tall, when it was named. Coordinates stay a property
-	// row below: they place the feature, they don't describe it. Wikidata length
-	// is skipped when it only restates the IAU diameter (Valles Marineris:
-	// 3761 km across, 3770 km long), and area entirely — four features have one
-	// and the values are unreliable.
+	// How big, how deep or tall, when it was named — coordinates place the
+	// feature rather than describe it, so they stay a property row below.
+	// Wikidata length is skipped when it only restates the IAU diameter, and
+	// area is skipped entirely: its few values are unreliable.
 	let stats = $derived.by<Stat[]>(() => {
 		const out: Stat[] = [];
 		const diameterM = feature.diameterM;

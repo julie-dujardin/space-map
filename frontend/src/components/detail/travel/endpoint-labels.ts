@@ -31,11 +31,9 @@ export function endpointModeLabel(
 }
 
 /**
- * How an end that stands on the ground is met, for the line under its name —
- * the pad of a launch range, and bare coordinates anywhere else on a globe.
- *
- * A fixed decimal rather than `formatNumber`'s significant digits, which would
- * drop a longitude's decimal past 100 while its latitude kept one.
+ * The ground line under an end's name: a pad name, or bare coordinates.
+ * Fixed decimal rather than `formatNumber`'s significant digits, which would
+ * drop a longitude's decimal past 100 while keeping its latitude's.
  */
 export function groundLabel(
 	role: 'origin' | 'target',

@@ -2,18 +2,11 @@
   The launch-window field: total Δv over departure date against cruise length,
   with the chosen route marked.
 
-  Given an `onPick` it also becomes the way to fly something the solver did not
-  offer: any point on the field is a departure date and a cruise length, and
-  those are the whole of a trajectory.
-
-  Given room to be read rather than glanced at — the shape of a transfer window
-  is two axes of structure, and at thumbnail height the cheap basin collapses
-  into a stripe. Both axes are labelled at their ends, so a reader can place the
-  mark without a full axis apparatus in a 390px column.
-
-  Colour is viridis: a porkchop is a continuous field, and a perceptually
-  uniform map is the one that doesn't invent contour bands where the data is
-  smooth.
+  With `onPick`, any point on the field is a valid trajectory, so the chart
+  becomes a way to fly something the solver didn't offer. Sized for reading,
+  not glancing: at thumbnail height a transfer window's basin collapses into a
+  stripe. Colour is viridis — perceptually uniform, so it invents no contour
+  bands in smooth data.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
@@ -97,9 +90,8 @@
 		return depart > 0 && tof > 0 ? { depart, tof } : null;
 	});
 
-	// The field mirrors in RTL like the timeline track does, so every fraction
-	// that crosses between data and screen flips with it. Screen-side x is
-	// always physical-from-left; `flip` is the one crossing point.
+	// Mirrors in RTL like the timeline track: every fraction crossing between
+	// data and screen must flip with it. `flip` is the one crossing point.
 	let rtl = $state(false);
 
 	function flip(f: number): number {
@@ -110,9 +102,8 @@
 	let placed = $derived.by(() => {
 		const at = spans;
 		if (!at) return [];
-		// Held to the edges rather than dropped: the cheapest route sits on one
-		// often enough that a hair of rounding there would take the mark off the
-		// chart entirely.
+		// Held to the edges rather than dropped: the cheapest route often sits on
+		// one, and a hair of rounding there could push its mark off the chart.
 		return marks.map((point) => ({
 			...point,
 			x: flip(clamp01((point.departJd - grid.departJds[0]) / at.depart)),
@@ -155,13 +146,9 @@
 		onPick(grid.departJds[0] + fx * spans.depart, grid.tofDays[0] + fy * spans.tof);
 	}
 
-	/**
-	 * Report the mark the pointer is within reach of.
-	 *
-	 * Measured against the pointer rather than left to the marks' own hover: the
-	 * field is a control, and a dot that took the pointer would leave a hole in
-	 * it that cannot be picked.
-	 */
+	/** Report the mark the pointer is within reach of. Measured against the
+	 *  pointer, not left to the marks' own hover — a dot that captured the
+	 *  pointer would leave a hole in the field that can't be picked. */
 	function hoverAt(clientX: number, clientY: number): void {
 		if (!plot || !onHover) return;
 		const box = plot.getBoundingClientRect();
@@ -256,11 +243,10 @@
 			</svg>
 			{#each placed as point (point.id)}
 				{@const lit = point.id === hovered}
-				<!-- Ringed in the surface colour so it stays legible on any cell. Inset
-				     by its own radius: the cheapest window often sits on an edge, and the
-				     clipped half-dot there reads as a different mark. The name only
-				     appears under the pointer — four of them at once would be a legend
-				     laid over the field. -->
+				<!-- Ringed in the surface colour for legibility on any cell, inset by
+				     its own radius since an edge mark would otherwise clip. Its label
+				     shows only under the pointer — four at once would be a legend laid
+				     over the field. -->
 				<span
 					class="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
 					style="left: calc({DOT_RADIUS_PX}px + {point.x} * (100% - {DOT_RADIUS_PX * 2}px));
@@ -280,9 +266,9 @@
 				</span>
 			{/each}
 			{#if onPick}
-				<!-- The field is picked on, not just read. A transparent overlay takes
+				<!-- The field is picked on, not just read: a transparent overlay takes
 				     the pointer so the cells stay plain rects, and arrow keys walk the
-				     mark for anyone not using one. -->
+				     mark without one. -->
 				<button
 					bind:this={field}
 					type="button"

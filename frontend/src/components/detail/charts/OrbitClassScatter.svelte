@@ -109,11 +109,9 @@
 	});
 	let range = $derived<'inner' | 'outer'>(userRange ?? autoRange);
 
-	// On focus change, reset to the new class's auto plot/range — unless the
-	// new focus is COM, which has zones on both comet plots: keep the plot it
-	// was clicked from instead of jumping to its default (q-e).
-	// `lastPlot` holds the pre-navigation view; `activePlot` has already
-	// flipped to the new class's default by the time this runs.
+	// On focus change, reset to the new auto plot/range — except COM, which has
+	// zones on both comet plots: keep whatever plot it was clicked from instead
+	// of jumping to q-e. `lastPlot` holds that pre-navigation view.
 	$effect(() => {
 		const cls = classNameFromSlug(focusedSlug);
 		if (cls === 'COM') {

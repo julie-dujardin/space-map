@@ -1,26 +1,19 @@
 <script lang="ts">
 	/**
-	 * The Structure tab: the air first, then the body cut open under it — the
-	 * page reads top-down the way the body stacks.
+	 * The Structure tab: air first, then the body cut open under it, top-down
+	 * like the body stacks. Two charts because the scales can't share — Earth's
+	 * mantle is 2,900 km against 85 km of atmosphere. Giants and the Sun get
+	 * only the first: their outer layer already *is* their atmosphere.
 	 *
-	 * Two charts rather than one because the scales cannot be shared — Earth's
-	 * mantle is 2,900 km against 85 km of drawable atmosphere. The giants and
-	 * the Sun get only the first: their outermost layer already *is* their
-	 * atmosphere, and a strip on top of it would draw the same gas twice.
+	 * The atmosphere section also carries the Overview's composition bar,
+	 * shown even where the vertical stack has nothing to draw.
 	 *
-	 * The atmosphere section also carries the Overview's composition bar, and
-	 * shows for it even where the vertical stack has nothing to draw.
+	 * Temperature attaches per layer, not as one "core temperature" row:
+	 * geotherms are published at boundaries (Moho, core-mantle, centre), never
+	 * averaged over a shell, and most boundaries have no published number.
 	 *
-	 * Temperature is attached per layer rather than shown as one "core
-	 * temperature" row, and comes from the layer's two boundaries: geotherms are
-	 * published at the Moho, at the core-mantle boundary, at the centre, never
-	 * as an average over a shell. Most boundaries have no published number and
-	 * the layer then shows none.
-	 *
-	 * Each section reads numbers first, then the drawing they describe: what the
-	 * interior is still *doing* — volcanism, the tide that supplies its heat, the
-	 * field a convecting core makes — states the case the cutaway under it
-	 * illustrates, and the layer cards follow the cutaway as its legend.
+	 * Each section reads numbers first, then the drawing they describe — the
+	 * layer cards follow the cutaway as its legend.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
@@ -55,11 +48,10 @@
 	let atmosphereKm = $derived(structure ? (drawableTopKm(structure) ?? undefined) : undefined);
 	let section = $derived(crossSection(layers, { atmosphereKm, hasOwnAtmosphere }));
 
-	// Layers that share a depth but not a place are laid out across, not down:
-	// Earth's two crusts meet at a coastline, and one card under the other says
-	// the basalt is buried in the granite. Equal columns rather than columns
-	// sized by area — the cards carry the same weight of numbers either way,
-	// and each says its own share of the surface on its last line.
+	// Layers sharing a depth but not a place lay out across, not down: Earth's
+	// two crusts meet at a coastline, and stacking them would say the basalt is
+	// buried in the granite. Equal columns, not columns sized by area — each
+	// card carries the same weight of numbers either way.
 	let rows = $derived(section ? layerRows(section.bands) : []);
 	let index = $derived(new Map(section?.bands.map((band, i) => [band, i]) ?? []));
 
@@ -127,11 +119,10 @@
 		{#snippet header()}
 			<TopicSummary page={localized?.atmosphere_page} />
 		{/snippet}
-		<!-- What kind of atmosphere this is, then what the drawing cannot show:
-		     that the whole envelope comes and goes. Mars freezes a quarter of its
-		     air onto the winter cap, and the stack below is the half of the year
-		     it is in the air. The interior gets no such line — a layer's caveats
-		     are on its own card under the disc. -->
+		<!-- What kind of atmosphere, then what the drawing can't show: that the
+		     envelope comes and goes (Mars freezes a quarter of its air onto the
+		     winter cap). The interior gets no such line — a layer's caveats live
+		     on its own card instead. -->
 		{#if type}
 			<Row label={m.atmosphere_classification()} value={type} />
 		{/if}

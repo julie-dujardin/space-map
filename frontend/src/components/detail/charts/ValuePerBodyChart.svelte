@@ -1,13 +1,9 @@
 <script lang="ts">
 	/**
-	 * One log-scaled bar per member, for every collection page whose answer is a
-	 * number: pressure, water, field strength, heat.
-	 *
-	 * One component rather than one per page because the shape is identical and
-	 * only the accessors differ — each spans decades, so a share of the largest
-	 * would leave most of the set at zero width, and each has members nobody has
-	 * put a figure on, which are named in a footnote rather than drawn as empty
-	 * rows.
+	 * One bar per member (pressure, water, field strength, heat) — shared across
+	 * pages since only the accessors differ. Each spans decades, so a share of
+	 * the largest would flatten most of the set; unmeasured members go in a
+	 * footnote instead of an empty row.
 	 */
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 	import * as m from '$lib/paraglide/messages.js';

@@ -1,10 +1,7 @@
 <!--
-  What is being flown, read beside the trajectory it is being flown on.
-
-  The craft is chosen a step earlier and is out of sight by the time the budget
-  below is being read, which is where every one of these figures came from: a
-  Δv the ladder spends, an Isp the cargo trades against, a heat shield that
-  decides whether the arrival is survivable.
+  What is being flown, read beside the trajectory it flies on. The craft
+  picker is out of sight by now — Δv, Isp, and heat-shield figures here feed
+  the ladder and arrival checks below.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
@@ -34,8 +31,7 @@
 			{/each}
 		</dl>
 	{:else}
-		<!-- Fiction and the archetypes, which are a drive rather than a craft anyone
-		     built and have nothing published to state. -->
+		<!-- Fiction and archetype drives have nothing published to state. -->
 		<p class="text-muted-foreground text-xs">{m.travel_spec_unpublished()}</p>
 	{/if}
 </section>

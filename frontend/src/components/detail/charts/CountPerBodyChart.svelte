@@ -72,16 +72,12 @@
 		return (e.primary_id ? BODY_COLORS[e.primary_id] : undefined) ?? e.color ?? DEFAULT_BODY_COLOR;
 	}
 
-	// Sized on the list, not the row: the rows are subgrids of one grid declared
-	// here, so the outer columns measure the widest name and figure across all
-	// of them and the bar track keeps the rest. A per-row `auto` sized to that
-	// row's own text instead, and the Sun's 0.125 bar drew shorter than
-	// Jupiter's 0.1 bar purely because "0.125" is the wider string.
-	//
-	// `fit-content` rather than `minmax(0, …)` on the name: the latter is a
-	// fixed width in practice, since the `1fr` beside it takes the free space
-	// that would otherwise shrink it, so a list of short names left a gap in
-	// front of every bar. The cap is where names start truncating instead.
+	// Rows are subgrids of one grid, so columns are sized across the whole
+	// list, not per row — a per-row `auto` let the Sun's 0.125 bar draw
+	// shorter than Jupiter's 0.1 bar, just because "0.125" is the wider string.
+	// `fit-content`, not `minmax(0, …)`, on the name: the latter behaves as a
+	// fixed width since the `1fr` beside it grabs the free space, leaving a gap
+	// in front of short names' bars. The cap is where names start truncating.
 	let columns = $derived(text ? 'fit-content(6rem) 1fr auto' : 'fit-content(9rem) 1fr 2.5rem');
 </script>
 

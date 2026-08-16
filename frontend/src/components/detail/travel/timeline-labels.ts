@@ -8,13 +8,9 @@ import * as m from '$lib/paraglide/messages.js';
 import { formatDv, formatEndOrbit } from '$lib/travel/format';
 import type { TimelineEntry } from '$lib/travel/timeline';
 
-/**
- * Where it happens, what it costs, how long it takes.
- *
- * The figures are isolated LTR — they sit in one string beside words rather than
- * in a column of their own, so in an RTL locale the unit would otherwise swap
- * ends with its number.
- */
+/** Where it happens, what it costs, how long it takes. Figures are isolated
+ *  LTR since they sit inline with words, not in their own column — in RTL
+ *  they'd otherwise swap ends with their unit. */
 export function entryDetail(entry: TimelineEntry): string {
 	const parts: string[] = [];
 	if (entry.bodyName) parts.push(entry.bodyName);

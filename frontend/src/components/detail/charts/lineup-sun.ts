@@ -1,11 +1,10 @@
 import { Color, ShaderMaterial, Vector3 } from 'three';
 
 /**
- * Unlit Sun disc for the lineup: keeps the flat thematic tint but adds
- * Eddington limb darkening (I = 1 - u + u·μ, u ≈ 0.6) so it reads as a sphere
- * without a directional nightside. Under the orthographic camera every view ray
- * is parallel to -Z, so μ collapses to the view-space normal's z component.
- * Goes through the renderer's ACES + sRGB output like the lit bodies.
+ * Unlit Sun disc: adds Eddington limb darkening (I = 1 - u + u·μ, u ≈ 0.6) so
+ * it reads as a sphere without a directional nightside. Orthographic camera
+ * means every view ray is parallel to -Z, so μ is just the view-space normal's
+ * z. Runs through the renderer's ACES + sRGB output like the lit bodies.
  */
 export function makeLineupSunMaterial(colorHex: string): ShaderMaterial {
 	const c = new Color(colorHex);

@@ -1,9 +1,7 @@
 /**
- * The craft's published figures, as rows.
- *
- * A function rather than a component because the two halves are drawn apart:
- * the table sits with the trajectory it explains, and the works behind it go to
- * the foot of the panel with everything else that is cited.
+ * The craft's published figures, as rows. A function, not a component: the
+ * table sits with its trajectory, but the sources it cites go to the panel's
+ * foot with everything else.
  */
 
 import { crewCapacity, maxPayloadKgForRoute, type Route, type Vehicle } from '$lib/math/travel';
@@ -33,10 +31,8 @@ function kilograms(kg: number): string {
 }
 
 /**
- * What the catalogue publishes about this craft, in the order it matters to a
- * trajectory: what it can spend, what it is made of, what it can hold, and what
- * it cost. Anything the route works out from these figures belongs to the
- * sections that do the working out, not here.
+ * Published figures only, ordered by what matters to a trajectory: budget,
+ * build, capacity, cost. Anything the route derives belongs elsewhere.
  */
 export function craftSpecs(vehicle: Vehicle, route: Route): CraftSpec[] {
 	const specs: CraftSpec[] = [];

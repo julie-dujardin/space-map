@@ -25,14 +25,9 @@
 
 <script lang="ts">
 	/**
-	 * A world cut open: the body as the rest of the app draws it, with the near
-	 * half removed down to the Structure tab's own cross-section.
-	 *
-	 * Sized for a tile rather than for the panel, so it carries no labels, no
-	 * scale and no temperatures — the collection page around it names the bodies
-	 * and the body's own Structure tab has the rest. What it does keep is every
-	 * rule the full cutaway draws by, because a tile that disagreed with the
-	 * chart it links to would be worse than no tile.
+	 * A world cut open, at tile size: no labels, scale or temperatures — the
+	 * collection page names the bodies and the Structure tab has the rest. It
+	 * keeps every rule the full cutaway draws by, so the two never disagree.
 	 */
 	import { crossSection, type InteriorBand } from '$lib/charts/interior-cross-section';
 	import { bandColor } from '$lib/charts/layer-appearance';
@@ -53,10 +48,9 @@
 
 	const R = 30;
 	const C = 32;
-	/** Floor on the accented layer's drawn thickness, in viewBox units. Europa's
-	 *  ocean is 4.8% of its radius and rounds away at tile size; below this a
-	 *  band is redrawn as an arc down its own middle, in its own colour, so a
-	 *  thin ocean reads as a slightly thick one rather than as a marker over it. */
+	/** Floor on an accented layer's drawn thickness — Europa's ocean is 4.8% of
+	 *  its radius and rounds away at tile size, so below this it's redrawn as a
+	 *  mid-band arc instead of vanishing. */
 	const MIN_ACCENT = 2.4;
 
 	let bands = $derived(crossSection(layers)?.bands ?? []);

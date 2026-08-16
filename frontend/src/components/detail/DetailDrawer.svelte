@@ -216,10 +216,8 @@
 	const focusFeature = getContext<FocusFeature | undefined>('focusFeature');
 	let parentBody = $derived(body ? ctx?.getBody(body.data.parentId) : undefined);
 
-	// Probes carry a=e=i=…=0 in body.data (no osculating elements — their
-	// positions come from per-sub-chunk dispatch). Feeding those zeros to the
-	// Orbital panel triggers a per-frame non-finite-elements warning, so leave
-	// orbitElements undefined for probes; the panel hides the affected rows.
+	// Probes carry a=e=i=…=0 (no osculating elements); feeding zeros to the
+	// Orbital panel triggers a per-frame non-finite-elements warning, so leave it undefined here.
 	let drawerOrbitElements = $derived(
 		body
 			? (body.orbitElements ??
@@ -326,9 +324,8 @@
 	// real header height — buttons, fonts, locale length all affect it), mid,
 	// full.
 	const MID_SNAP = 0.3;
-	// The open drawer's top edge meets the collapsed search bar's top (it's
-	// pinned at top-4 = 16px), covering it while leaving that same sliver of map
-	// above. A px snap keeps the edge at a fixed inset on any viewport height.
+	// Meets the collapsed search bar's top (pinned at top-4 = 16px), covering it
+	// while leaving that same map sliver above; a px snap keeps the inset fixed.
 	const TOP_GAP_PX = 16;
 
 	let innerH = $state(typeof window === 'undefined' ? 800 : window.innerHeight);
@@ -336,11 +333,8 @@
 		let prev = window.innerHeight;
 		const update = () => {
 			const next = window.innerHeight;
-			// Re-pin a top-snapped drawer to the new height-derived snap. Without
-			// this, a viewport resize (mobile keyboard shrinking innerHeight)
-			// leaves activeSnapPoint on a px string that no longer exists in
-			// snapPoints, and vaul silently refuses to re-snap — the sheet freezes
-			// at a stale offset until reload.
+			// Re-pin a top-snapped drawer to the resized height: otherwise
+			// activeSnapPoint is a stale px string absent from snapPoints, and vaul refuses to re-snap.
 			if (activeSnapPoint === `${Math.max(1, prev - TOP_GAP_PX)}px`) {
 				activeSnapPoint = `${Math.max(1, next - TOP_GAP_PX)}px`;
 			}
@@ -380,10 +374,8 @@
 		return () => ro.disconnect();
 	});
 
-	// Report the snap target to the parent on change. We don't sample during
-	// the drag/animation — a per-frame getBoundingClientRect loop caused layout
-	// thrash that made snap transitions jank on mobile. The parent smooths the
-	// discrete jumps with its own CSS transition on `bottom`.
+	// Report the snap target on change, not during drag/animation — a per-frame
+	// getBoundingClientRect loop caused layout thrash. Parent CSS-transitions `bottom`.
 	$effect(() => {
 		if (!isMobile) return;
 		const s = activeSnapPoint;
@@ -422,11 +414,8 @@
 	let resolvedName = $derived(data?.localized?.name ?? data?.global?.name ?? fallbackName);
 	let displayName = $derived(resolvedName ?? (loading ? m.loading() : focusableKey(focusable)));
 
-	// Once the detail bundle resolves, push the now-known name into the URL
-	// (and via that, the page title). On permanent failure — bundle resolved
-	// without any name — log once per focusable and fall back to its key, so
-	// the user sees *something* identifiable instead of an empty drawer header
-	// (and the console isn't spammed by repeated effect re-runs).
+	// Push the resolved name into the URL/title. On permanent failure, log once
+	// per focusable and fall back to its key so the header isn't left empty.
 	$effect(() => {
 		// A failed load has no name to resolve — the alert panel speaks for it, and
 		// warning "no name resolved" here would just be misleading.
@@ -439,10 +428,8 @@
 		}
 		appState.replaceFocusName(resolvedName ?? key);
 	});
-	// Flip to the minimize button well before the maximize target distance, so
-	// that finishing a maximize fly-to lands the camera comfortably inside the
-	// minimize zone (and floating-point/animation overshoot can't leave it
-	// stuck on the maximize side of an exact threshold).
+	// Flip to minimize well before the maximize target distance, so fly-to
+	// overshoot can't strand the camera on the maximize side of an exact threshold.
 	let isMinimized = $derived(
 		appState && body ? appState.view.zoom <= minCameraDistance(body) * 20 : false
 	);
@@ -471,10 +458,8 @@
 	// Earth folds its artificial satellites into the moons section: the Moon plus
 	// curated featured sats (ISS, Hubble, Starlink), "+N more" → the group page.
 	let satellitesGroup = $derived(isGroupMode ? undefined : data?.global?.satellites_group);
-	// "+N more" must match the count shown on the Satellites group page, which is
-	// the categorized member total (primary orbit classes) — not Earth's raw
-	// satcat tally (`satellite_count` includes debris/uncategorized objects). The
-	// group index `n` is that same baked member count.
+	// "+N more" matches the Satellites group's categorized member total (group
+	// index `n`), not Earth's raw satcat tally, which includes debris.
 	let satelliteGroupCount = $state(0);
 	$effect(() => {
 		const slug = satellitesGroup;
@@ -591,10 +576,8 @@
 	let nomenclatureCredit = $derived(
 		groupDetail?.global?.type === 'feature_type' || groupDetail?.global?.feature_type_count != null
 	);
-	// A small-body collection is SBDB all the way down — named counts, largest
-	// member, median MOID, the discovery timeline. Not the lineup's claim
-	// (`lineup.overviewCredits.sbdb`), which needs three renderable spheres: the
-	// figures are there whether or not the page draws any.
+	// A small-body collection is SBDB all the way down, unlike the lineup's claim
+	// (`overviewCredits.sbdb`) which needs three renderable spheres — figures exist regardless.
 	let smallBodyGroupCredit = $derived(
 		groupDetail?.global?.applies_to === 'small_body' || cat.smallBody
 	);
@@ -650,10 +633,8 @@
 	let hasFeatures = $derived(!!notableFeatures && notableFeatures.length > 0);
 	let showFeaturesTab = $derived(hasFeatures && featureTotal > STRIP_CAPACITY);
 
-	// Pictures come in one shelf per subject: the object's own, its rings, and
-	// the pooled shelves (its features, its moons, or a collection's members).
-	// A pooled picture is labelled by its subject rather than its filename, so
-	// the names the lists above already resolved are handed down.
+	// A pooled gallery picture is labelled by its subject rather than its
+	// filename, so the names already resolved above are handed down here.
 	let gallerySubjectNames = $derived.by(() => {
 		const names = new Map<string, string>();
 		for (const member of notableMembers ?? []) {
@@ -702,10 +683,8 @@
 			(!!data?.global?.interior?.layers?.length || !!data?.global?.atmosphere?.structure)
 	);
 
-	// The Structure tab's hero: the atmosphere shelf, since what a cross-section
-	// abstracts is exactly what those pictures show — the cloud decks and storms
-	// the profile below is a plot of. The interior has no such picture (its
-	// articles illustrate with the same cutaway the tab already draws).
+	// Structure tab's hero is the atmosphere shelf — what the cross-section
+	// plots is exactly what those photos show. Interior has no equivalent picture.
 	let atmosphereGallery = $derived(findGallery(galleries, ATMOSPHERE_GALLERY));
 
 	// The Surface tab's hero needs a map texture; the IAU chart grid is a bonus
@@ -787,10 +766,8 @@
 
 	// Named rings, gaps and ringlets — the eight ringed bodies only.
 	let ringFeatures = $derived(isGroupMode ? undefined : data?.global?.ring_features);
-	// Which object the host's moons hang off, for the chart's moon column: a
-	// planet's are parented on the system barycentre, a minor planet's on the
-	// body itself. Chariklo and friends orbit the Sun, whose children are the
-	// whole small-body catalogue rather than a system.
+	// Host for the chart's moon column: a planet's moons parent on the system
+	// barycentre, a minor planet's on the body itself (never the Sun's whole catalogue).
 	let ringMoonHostId = $derived(
 		parentBody?.data.objectType === ObjectType.BARYCENTER ? parentBody.data.id : body?.data.id
 	);
@@ -833,13 +810,10 @@
 	);
 	let showFragmentsTab = $derived(hasFragments && fragmentTotal > STRIP_CAPACITY);
 
-	// Undo shadcn's flex-1: a tab is as wide as its label, so a full bar's slack
-	// falls between the tabs instead of padding out the shortest one. h-full and
-	// the raised underline keep the trigger and its indicator inside the list box:
-	// the bar is a scroll container, which clips at its padding box, so shadcn's
-	// default -5px underline would be cut off. The underline is inset by the
-	// trigger's own padding so it underlines the label rather than the spacing
-	// around it (! beats the variant's higher specificity).
+	// Undo shadcn's flex-1 so slack falls between tabs, not inside the shortest
+	// one. The bar is a scroll container that clips at its padding box, so the
+	// underline is raised and inset by the trigger's own padding: visible, and
+	// underlining the label rather than the gap around it.
 	const TAB_TRIGGER_CLASS = 'px-2 flex-none h-full after:-bottom-1! after:start-2! after:end-2!';
 
 	let tabPresent = $derived<Record<DrawerTab, boolean>>({
@@ -974,11 +948,8 @@
 		};
 	}
 
-	// What the desktop bar holds before it crowds; past that it hands tabs over,
-	// in this order, to whatever in the overview leads to them — the pill on the
-	// hero image, for Images. A tab with no such way in can't be listed here.
-	// (Coverage varies wildly per object, so this is a per-object budget, not a
-	// fixed set: most objects never reach it and keep every tab in the bar.)
+	// Past this budget, tabs promote to whatever in the overview already leads
+	// to them (the hero pill, for Images) — a tab with no such way in can't be listed.
 	const TAB_BUDGET = 4;
 	const PROMOTABLE: readonly DrawerTab[] = ['images'];
 
@@ -1115,10 +1086,8 @@
 		return tabPresent[tab] && !promotedTabs.has(tab);
 	}
 
-	// What the URL is focused on, in `focusableKey` form. A tile that opens
-	// another body on a specific tab (moon → planet's Moons, feature → host's
-	// Features) rewrites the URL a beat before the renderer hands us the new
-	// focusable; without this the scrub below would wipe the tab in that gap.
+	// URL's focus target, so a tile switching body and tab doesn't get its tab
+	// wiped by the scrub below during the gap before the new focusable arrives.
 	let viewFocusKey = $derived(
 		appState.view.groupSlug
 			? `group-${appState.view.groupSlug}`
@@ -1145,10 +1114,8 @@
 		}
 	});
 
-	// A deep link can land on a tab past the scrollable bar's edge; nudge the
-	// bar until the trigger clears the px-4 edge inset. Instant on the
-	// load-time run, animated on later switches. barTabCount re-runs this when
-	// late-loading data reflows the bar under an unchanged active tab.
+	// Nudge the bar until a deep-linked tab clears the px-4 edge inset — instant
+	// on load, animated after. barTabCount re-runs it when late data reflows the bar.
 	let tabBarEl = $state<HTMLElement | null>(null);
 	let tabBarSettled = false;
 	$effect(() => {
@@ -1175,14 +1142,10 @@
 			bind:this={tabBarEl}
 			class="pt-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 		>
-			<!-- The list, not the scroll wrapper, carries the border and edge padding:
-			     a scroll container's own end padding and border don't travel with
-			     overflowing content, which left the last tab flush against the screen
-			     edge and the underline clipped. min-w-max keeps every tab inside the
-			     list box when the bar overflows.
-			     Trigger padding is spacing between tabs, so the outer two drop theirs,
-			     and the matching underline inset with it, to sit flush with the
-			     drawer's own edge. -->
+			<!-- The list, not the scroll wrapper, carries the border/padding — a scroll
+			     container's own end padding doesn't travel with overflowing content,
+			     which clipped the underline and pushed the last tab flush to the edge.
+			     Outer triggers drop their padding (and its underline inset) to match. -->
 			<Tabs.List
 				variant="line"
 				class={[
@@ -1682,10 +1645,8 @@
 		     of the two this body has anything to say about. -->
 		<StructureStatCards global={data?.global ?? null} />
 		<Structure global={data?.global ?? null} localized={data?.localized ?? null} />
-		<!-- Where else this body is listed for the same subject; below the
-		     sections it cross-refers, above the works they cite. A group has no
-		     structure of its own to cross-refer, and on the collection pages the
-		     child tiles already lead everywhere this would. -->
+		<!-- Cross-refs for this subject; a group has no structure of its own, and
+		     its child tiles already lead everywhere this would. -->
 		{#if focusable.kind === 'body'}
 			<PropertyCategoryLinks global={data?.global ?? null} />
 		{/if}
@@ -1845,10 +1806,8 @@
 	</aside>
 {/if}
 
-<!-- Mounted as a sibling of the drawer/aside, not a descendant: keeps the
-     viewer's lifecycle and pointer events out of Vaul's drag detection and
-     out of the drawer's CSS transform context. PhotoSwipe additionally
-     appends its own DOM to document.body. -->
+<!-- Sibling of the drawer, not a descendant: keeps its pointer events out of
+     Vaul's drag detection and the drawer's transform context. -->
 {#if viewerActive && viewerImages}
 	<ImageViewer
 		images={viewerImages}

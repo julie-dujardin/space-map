@@ -1,12 +1,8 @@
 <script lang="ts">
 	/**
-	 * How much material each ring system holds.
-	 *
-	 * Log bars because the answer spans fourteen decades: Saturn's rings outweigh
-	 * Jupiter's by more than a trillion, and bars drawn as a share of the largest
-	 * would leave every other system at zero width. The figure beside each bar
-	 * carries the hedges its source published, so the bar itself plots the
-	 * headline number alone.
+	 * How much material each ring system holds, on a log scale — the answer
+	 * spans fourteen decades (Saturn outweighs Jupiter by a trillion), so a
+	 * linear share-of-largest bar would leave every other system at zero width.
 	 */
 
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';

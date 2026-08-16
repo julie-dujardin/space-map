@@ -14,11 +14,10 @@ const RENDER_HINTS: Record<string, Pick<LineupGeometry, 'surfaceFrame' | 'cloudS
 	'naif-399': { surfaceFrame: '06', cloudSystem: 'naif-3' } // Earth
 };
 
-/** A member's full lineup geometry from its exported fields: size + oblateness
- *  from PCK `radii`, else SBDB diameter, else Wikidata radius; tilt from the IAU
- *  `pole`; render hints; and the measured tint (`undefined` for curated
- *  BODY_COLORS bodies, which defer to their texture). `null` when sizeless — it
- *  can't be drawn, which doubles as the renderable filter. */
+/** A member's full lineup geometry: size + oblateness from PCK `radii`, else
+ *  SBDB diameter, else Wikidata radius; tilt from the IAU `pole`; render hints;
+ *  tint (`undefined` for curated BODY_COLORS bodies, which defer to texture).
+ *  `null` when sizeless, which doubles as the renderable filter. */
 export function geometryFromMember(m: NotableMemberEntry & { id: string }): LineupGeometry | null {
 	// A surface feature isn't a body — its `id` is the host it sits on, so it
 	// would draw (and key) as a duplicate of that host's sphere.
@@ -61,10 +60,9 @@ export interface LineupLocalization {
 	descriptions?: Record<string, string>;
 }
 
-/** Assemble a lineup's `LineupBody[]` from notable members. `resolve` supplies
- *  each body's geometry (or `null` to drop it — the member filter); localized
- *  name/description overrides are applied by id. Shared by every `*Lineup`
- *  wrapper so they reduce to just their geometry source. */
+/** Assemble a lineup's `LineupBody[]` from notable members: `resolve` supplies
+ *  each body's geometry (`null` drops it), localized name/description apply by
+ *  id. Shared so every `*Lineup` wrapper reduces to just its geometry source. */
 export function buildLineup(
 	members: NotableMemberEntry[],
 	resolve: (m: NotableMemberEntry & { id: string }) => LineupGeometry | null,

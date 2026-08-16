@@ -83,10 +83,8 @@
 	{#if hero}
 		{@render hero()}
 	{:else if imageSrc}
-		<!-- Two destinations on one picture: the image opens the viewer, the pill
-		     opens the list. The pill is hover/focus-only so it stays out of the way
-		     of the picture; `hover:` is media-gated, so touch never reveals it and
-		     the tab bar remains the way in there. -->
+		<!-- Two destinations on one picture: image opens the viewer, pill opens
+		     the list. Pill is hover/focus-only (media-gated), so touch keeps the tab bar as its way in. -->
 		<div class="group/hero relative overflow-hidden rounded-md">
 			<a
 				href={galleryHref}

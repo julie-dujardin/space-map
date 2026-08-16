@@ -16,8 +16,8 @@ export function routeLabel(profile: RouteOption): string {
 		case 'custom':
 		case 'constant-thrust-custom':
 			return m.travel_profile_custom();
-		// The tab says these are held arcs. Each row is named for how much of the
-		// crossing the drive is on for. Only the first one holds it throughout.
+		// Rows are named for how much of the crossing the drive is on for; only
+		// the first one holds it throughout.
 		case 'constant-thrust':
 			return m.travel_profile_constant_thrust();
 		case 'constant-thrust-balanced':
@@ -31,8 +31,8 @@ export function routeLabel(profile: RouteOption): string {
 	}
 }
 
-/** A family's tab. Two families hold one trajectory and take its name. The held
- *  arc takes the name of the curve, because its rows are four points on it. */
+/** A family's tab. Families with one trajectory reuse its name; the held-arc
+ *  family is named for the curve, since its rows are points on it. */
 export function familyLabel(family: RouteFamily): string {
 	switch (family) {
 		case 'transfer':

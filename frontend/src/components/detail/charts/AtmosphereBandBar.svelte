@@ -73,11 +73,8 @@
 		{#each bands as band, i (i)}
 			<path d={shell(band.base, band.top)} fill={color} opacity={band.opacity} />
 		{/each}
-		<!-- Half the atmospheres on the collection page have no named boundary
-		     anywhere — the tenuous exospheres, and Mercury's and the Moon's. One
-		     graded shell in the right colour is what can honestly be drawn for
-		     them: it says there is air and what it looks like, and claims no
-		     structure nobody has measured. -->
+		<!-- No named boundaries (tenuous exospheres, Mercury, the Moon): one graded
+		     shell in the right colour, claiming no structure nobody has measured. -->
 		{#if !bands.length}
 			{#each FADE as step, i (i)}
 				<path d={shell(step.base, step.top)} fill={color} opacity={step.opacity} />
