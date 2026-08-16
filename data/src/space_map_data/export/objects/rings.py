@@ -1,21 +1,16 @@
 """Per-object ring catalogue, denormalized onto a ringed body's bundles.
 
-The render bundles (the body's `rings[]`, in its system file or on its own
-global block) say what the scene draws; this says what the rings *are* — every named ring, division, gap, ringlet,
-region and arc from `constants/rings/catalog.py`, nested by `parent`, with the
-geometry and optical depths their sources publish.
+The `rings[]` render bundle says what the scene draws; this says what the
+rings *are* — every named ring, division, gap, ringlet, region and arc from
+`constants/rings/catalog.py`, nested by `parent`.
 
-Only eight bodies carry it and the largest table is Saturn's forty-odd rows,
-so it rides the object's own bundles rather than earning a lazily-fetched tier
-of its own like surface features do.
+Only eight bodies carry it, and the biggest table is Saturn's forty-odd rows,
+so it rides the object's own bundles rather than a lazily-fetched tier.
 
-Per-feature prose is split the way the bundles are: the English note from the
-PDS table is language-independent and ships in the global block, while the
-localized block carries the Wikipedia extract for locales that have an article.
-Coverage there is thin and lopsided — English Wikipedia folds every ring into
-"Rings of X", so only the Cassini Division has an English article while French
-and Italian have nearly the full set, and the small bodies' rings have no
-article of their own anywhere (see `constants/rings/wikidata.py`).
+PDS notes are language-independent and ship in the global block; Wikipedia
+extracts go in the localized block. Coverage is thin — English Wikipedia
+folds every ring into "Rings of X", so only the Cassini Division has its own
+English article, while French and Italian cover nearly the full set.
 """
 
 import logging
@@ -57,13 +52,10 @@ def _summaries(qid: str):
 def load_ring_moon_ids(session: Session) -> dict[str, str]:
     """Object id per moon named in the catalogue, keyed "{host}/{moon name}".
 
-    Scoped to the moons of the host's own system so the lookup cannot pick up
-    an asteroid that shares a moon's name (4450 Pan vs Saturn's Pan). Which
-    object the moons hang off depends on the host: a planet's satellites are
-    parented on the system barycentre, a minor planet's directly on the body,
-    since it has no barycentre of its own. Only a barycentre parent is
-    followed — the ringed small bodies are parented on the Sun, and searching
-    its children would scan the whole catalogue for a name match.
+    Scoped to the host's own system so the lookup can't match a same-named
+    asteroid (4450 Pan vs Saturn's Pan). Only a barycentre parent is followed
+    to find a planet's moons; small-body hosts are parented on the Sun, whose
+    children aren't searched.
     """
     wanted = {
         (body, moon)
@@ -165,12 +157,8 @@ def ring_features_block(
 
 
 def ring_mass_block(body_id: str) -> dict | None:
-    """The system's total mass, in the shape both readers of it expect.
-
-    Shared with the Ring Systems collection page, which charts the eight
-    systems against each other and needs the same hedges the body's own stat
-    card carries.
-    """
+    """The system's total mass, shared with the Ring Systems collection page
+    so both readers carry the same hedges."""
     catalog = RING_CATALOGS.get(body_id)
     if catalog is None or (mass := catalog.mass) is None:
         return None
@@ -189,13 +177,9 @@ def ring_mass_block(body_id: str) -> dict | None:
 def ring_stats_block(body_id: str) -> dict | None:
     """System-wide figures behind the Rings tab's stat cards.
 
-    Named `ring_stats` rather than `ring_system`, which the *localized* bundle
-    already uses for the "Rings of X" article.
-
-    One block rather than three fields: they are always read together, and
-    each is absent for the systems no source states one for — Neptune's mass
-    cannot be estimated even to an order of magnitude, and only Saturn and
-    Jupiter have a tabulated vertical extent.
+    Named `ring_stats`, not `ring_system` — the localized bundle already uses
+    that for the "Rings of X" article. Fields are absent where no source
+    states them (e.g. Neptune's mass, most systems' vertical extent).
     """
     catalog = RING_CATALOGS.get(body_id)
     if catalog is None:
@@ -218,9 +202,8 @@ def ring_stats_block(body_id: str) -> dict | None:
 def ring_images_block(body_id: str) -> list[dict] | None:
     """Pictures of this body's ring system, the first of which opens the tab.
 
-    Language-independent, so they ride the global block: the subject is the
-    system itself and the credit under it is a name, not prose. Absent for the
-    bodies whose rings no article illustrates.
+    Language-independent, so they ride the global block: the credit under
+    each is a name, not prose.
     """
     return collect_ring_images(body_id)
 
@@ -246,9 +229,8 @@ def ring_sources_block(body_id: str) -> list[dict] | None:
 def ring_catalog_sources(body_ids: Iterable[str]) -> list[dict]:
     """The same works across several systems, deduped by URL.
 
-    For the Ring Systems collection page, whose every figure — the tiles' ring
-    counts, the widest span, the mass chart — is read off these tables, and
-    which has no per-body bundle to credit them from.
+    For the Ring Systems collection page, which reads every figure off these
+    tables but has no per-body bundle to credit them from.
     """
     out: dict[str, dict] = {}
     for body_id in body_ids:
@@ -264,11 +246,8 @@ def ring_system_localized(
     body_id: str, lang: str, wikidata_entities: WikidataEntityCache
 ) -> dict | None:
     """The "Rings of X" article for this locale — the panel's opening blurb.
-
-    Unlike the individual features, all four system articles exist in every
-    language we ship, so this is the one piece of ring prose a reader always
-    gets.
-    """
+    Unlike individual features, all four system articles exist in every
+    language we ship."""
     entry: dict = {}
     for qid in RING_SYSTEM_PAGES.get(body_id, ()):
         entity = wikidata_entities.get_referenced(qid)
@@ -287,9 +266,8 @@ def ring_feature_localized(
 ) -> dict[str, dict]:
     """Localized names, Wikipedia extracts and article links, keyed by slug.
 
-    Returns only what this language actually has: a feature with no entity, or
-    an entity with no article in `lang`, contributes nothing and the panel
-    falls back to the global name and PDS note.
+    Only what this language has; a feature without one falls back to the
+    global name and PDS note.
     """
     catalog = RING_CATALOGS.get(body_id)
     if catalog is None:
@@ -299,9 +277,9 @@ def ring_feature_localized(
         entry: dict = {}
         for qid in feature_qids(body_id, feature.slug):
             entity = wikidata_entities.get_referenced(qid)
-            # English keeps the catalogue name: the Wikidata English labels are
-            # translations of the French and Italian article titles, and would
-            # rename the IAU's "Huygens Gap" to "Huygens Division".
+            # English keeps the catalogue name: Wikidata's English label is a
+            # translation of the French/Italian title, e.g. IAU's "Huygens Gap"
+            # would become "Huygens Division".
             if lang != "en" and entity and (label := entity["labels"].get(lang)):
                 entry.setdefault("name", label)
             if summary := _summaries(qid).get(lang):

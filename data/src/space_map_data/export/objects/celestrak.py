@@ -120,10 +120,9 @@ def _constellation_group_ref(
 ) -> EntityRef | None:
     """EntityRef for a constellation, pointing at /g/<slug> instead of Wikipedia.
 
-    Display name comes from Wikidata when a QID is registered; otherwise the
-    slug stands in. The group page renders the same fallback, so the chip and
-    the destination stay consistent. ROCKET constellations resolve to their
-    lv- launch-vehicle page (a spent stage's "constellation" is its vehicle).
+    Falls back to the slug when no QID is registered, matching the group
+    page's own fallback. ROCKET constellations resolve to their lv-
+    launch-vehicle page instead (a spent stage's "constellation" is its vehicle).
     """
     lv = LAUNCH_VEHICLE_BY_CONSTELLATION.get(slug)
     if lv is not None:
@@ -153,8 +152,8 @@ def _bus_group_ref(
 ) -> EntityRef | None:
     """EntityRef for a satellite bus, pointing at /g/bus-<slug>.
 
-    Display name comes from Wikidata when a QID is registered; otherwise the
-    slug stands in, matching the bus group page's own fallback.
+    Falls back to the slug when no QID is registered, matching the bus group
+    page's own fallback.
     """
     spec = BUS_BY_SLUG.get(slug)
     if spec is None:
@@ -172,8 +171,8 @@ def _bus_group_ref(
 def merge_operator_qids(extracted: dict, sat: Satcat | None) -> None:
     """Merge SATCAT operator_qids into ``extracted["operators"]``, dedup preserving order.
 
-    Mutates ``extracted`` in place so the generic ENTITY_REF_CLAIMS resolver
-    picks up the unified list and resolves each QID only once.
+    Mutates in place so the generic ENTITY_REF_CLAIMS resolver sees the unified
+    list and resolves each QID only once.
     """
     if sat is None or not sat.operator_qids:
         return
@@ -185,9 +184,8 @@ def merge_operator_qids(extracted: dict, sat: Satcat | None) -> None:
 def covered_authoritative_qids(sat: Satcat | None) -> set[str]:
     """QIDs already shown via a SATCAT-derived, group-linked ref.
 
-    Wikidata claims (e.g. P361 part_of) pointing at one of these are
-    redundant — we surface the entity through its own field — so they get
-    dropped at export to avoid a double-render.
+    Wikidata claims pointing at one of these (e.g. P361 part_of) are dropped
+    at export to avoid a double-render.
     """
     if sat is None:
         return set()
@@ -220,8 +218,7 @@ def resolve_operator_refs(
 ) -> list[dict]:
     """Resolve operator QIDs to entity refs, linked to /g/org-<slug>.
 
-    Falls back to the Wikidata label for the visible name. ``active_from`` /
-    ``active_until`` (when set on the OperatorSpec) ride along so the satellite
+    ``active_from``/``active_until`` ride along when set, so the satellite
     detail page can show the operator's tenure window.
     """
     refs = []

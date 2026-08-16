@@ -159,12 +159,9 @@ class TestArchiveMember:
 
 
 class TestBoundaryWeekOwnership:
-    """A week straddling New Year is built from the zip holding its midpoint.
-
-    Each ``tleYYYY`` zip runs from a few days before Jan 1 through Dec 31, so
-    the midpoint year's zip holds the whole boundary week while the Monday
-    year's holds only its December fragment.
-    """
+    """A week straddling New Year is built from the zip holding its midpoint:
+    each ``tleYYYY`` zip runs through Dec 31, so only the midpoint year's zip
+    holds the whole boundary week."""
 
     def _zip_with_boundary_week(self, tmp_path, monkeypatch):
         zip_path = tmp_path / "tle.zip"

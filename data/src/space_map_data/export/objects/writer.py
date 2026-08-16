@@ -1,17 +1,14 @@
 """Build object detail dicts and write them as hash-bucketed JSON files.
 
-Objects are grouped by `hash(id) % N`, with N picked per tier so average
-members-per-bundle hits target K. K is sized so each bundle compresses to
-~200 KiB, which keeps the per-deploy manifest small enough for the
-Cloudflare Workers Assets upload API to process within its gateway
-timeout. Bundle files live at:
+Objects are grouped by `hash(id) % N`, N picked per tier so bundles compress to
+~200 KiB — large enough to keep file count down, small enough for the
+Cloudflare Workers Assets upload API's gateway timeout. Bundle files live at:
 
   objects/__global__/{bucket}.json.gz
   objects/{lang}/{bucket}.json.gz
 
-Each bundle file is a gzipped JSON object keyed by object id. The final N
-values are published in `metadata.json` under `object_bundles` so the
-frontend can reconstruct URLs from an id alone (needed for deep links).
+N is published in `metadata.json` under `object_bundles` so the frontend can
+reconstruct a bundle URL from an id alone (needed for deep links).
 """
 
 import gzip
@@ -99,9 +96,8 @@ _QID_CURRENCY = "Q8142"
 def hash_bucket(obj_id: str, n_buckets: int) -> int:
     """Deterministic bucket from object id. Must mirror the frontend impl.
 
-    Takes the first 4 bytes of sha256(id) as a big-endian uint32, then mods
-    by n_buckets. sha256 is overkill for hash distribution but makes the JS
-    port trivial via SubtleCrypto.
+    First 4 bytes of sha256(id) as a big-endian uint32, mod n_buckets — sha256
+    is overkill but makes the JS port trivial via SubtleCrypto.
     """
     return (
         int.from_bytes(hashlib.sha256(obj_id.encode()).digest()[:4], "big") % n_buckets
@@ -145,10 +141,8 @@ _SGP4_CELESTRAK_FIELDS = (
     "ELEMENT_SET_NO",
     "REV_AT_EPOCH",
 )
-# Only earth-orbiting objects have CelesTrak rows (the earth zone query
-# eager-loads the relationship). Gating access on `parent_id == "naif-399"`
-# avoids a cross-thread lazy load when iterating non-earth-orbiting
-# spacecraft (which have no CelesTrak data).
+# Gate on parent_id rather than reading `obj.celestrak` directly, to avoid a
+# cross-thread lazy load for non-earth-orbiting spacecraft.
 _EARTH_OBJECT_ID = "naif-399"
 
 
@@ -166,15 +160,10 @@ _AU_KM = 149_597_870.7
 
 
 def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
-    """Pick unified-name kepler elements from the right sub-table.
+    """Pick unified-name kepler elements from the right sub-table by ``orbital_source``.
 
-    Dispatches on ``orbital_source``: spice rows read from the Horizons
-    sub-table (exposes unified-name properties over its native column names);
-    SBDB rows read from the SBDB sub-table directly; celestrak rows read from
-    the transient ``_daily_kepler`` overlay (celestrak doesn't persist these).
-    SBDB satellites store ``a`` in km (``a_km``); converted to AU here so the
-    bundle matches the position writer's units. Returns an empty dict when
-    the source isn't available.
+    SBDB satellites store ``a`` in km (``a_km``); converted to AU here to match
+    the position writer's units.
     """
     src = obj.orbital_source
     if src == OrbitalSource.celestrak:
@@ -206,12 +195,9 @@ def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
 class ChunkObjectData:
     """Per-object JSON dicts built for one chunk, ready to be bundled.
 
-    `global_data[obj_id]` is always populated. `localized_data[lang][obj_id]`
-    is only populated when the object has content in that language (absent
-    when the frontend should skip the localized fetch entirely).
-    `has_localized[obj_id]` is True when at least one language has data —
-    the frontend gates its localized-bundle fetch on this single bit (also
-    shipped per-row in the binary chunk).
+    `localized_data[lang][obj_id]` is absent when the frontend should skip
+    that fetch. `has_localized[obj_id]` gates it on a single bit, also shipped
+    per-row in the binary chunk.
     """
 
     __slots__ = ("global_data", "localized_data", "has_localized")
@@ -245,12 +231,7 @@ def build_chunk_object_data(
     ring_moon_ids: dict[str, str],
     ring_metadata: dict[str, list[dict]],
 ) -> ChunkObjectData:
-    """Build per-object global and localized JSON dicts (no I/O).
-
-    `has_localized[obj_id]` is True iff at least one language ended up with
-    a non-empty localized entry. The frontend uses this bit (shipped in the
-    binary chunk) to gate its localized-bundle fetch on click.
-    """
+    """Build per-object global and localized JSON dicts (no I/O)."""
     out = ChunkObjectData()
 
     for obj in objects:
@@ -375,11 +356,10 @@ _TEMPERATURE_READINGS = ("min", "mean", "max")
 def render_quality(obj: Object, radii: dict[int, dict]) -> str | None:
     """Best-available-asset render tier for an object.
 
-    high   — faithful 3D model (spacecraft / mission / radar), a map texture,
-             or a procedural star surface
+    high   — faithful 3D model, map texture, or procedural star surface
     medium — lightcurve-inversion convex hull only
     low    — size only: sphere/ellipsoid from PCK radii or SBDB diameter
-    None   — no physical extent known; renders as halo/point at best
+    None   — no physical extent known; halo/point at best
     """
     has_model = obj.model_name is not None
     if has_model and obj.model_provenance != ModelProvenance.lightcurve:
@@ -407,12 +387,8 @@ def build_model_sources(
 ) -> dict[str, dict]:
     """Map shape-model slug → compact provenance block for the detail drawer.
 
-    Denormalized from the per-slug bundles so the sources section can name the
-    tier (mission/radar/lightcurve) and, where the tier alone would misdescribe
-    the shape, the finer ``technique``; credit its archive; and — for mission
-    shapes — link to the observing spacecraft. Keyed by slug to match
-    the ``model_name`` the object actually references; spacecraft bundles
-    (``kind != shape_model``) are excluded — natural bodies only.
+    Keyed by slug to match ``model_name``; spacecraft bundles are excluded —
+    natural bodies only.
     """
     out: dict[str, dict] = {}
     for slug, meta in model_metadata.items():
@@ -454,8 +430,7 @@ def _wikidata_readings(
 ) -> list[dict]:
     """Flatten Wikidata's temperature claims to kelvin readings.
 
-    Kelvin because the frontend positions readings on a shared scale, and only
-    a ratio scale survives the log segment used for stellar temperatures.
+    Kelvin: a ratio scale, needed for the log segment used for stellar readings.
     """
     result = []
     for entry in extracted.get("temperatures", []):
@@ -534,11 +509,9 @@ def _build_global(
         data["displacement"] = displacement_block(disp_meta)
     if obj.has_rings:
         data["has_rings"] = True
-        # The render bundles ride the object too, not just its system file:
-        # the four ringed small bodies sit directly under the Sun, so no
-        # system file covers them. Emitted for the giants as well rather than
-        # branching on system membership here — both come from the same
-        # loaded metadata, so the two copies cannot disagree.
+        # Also on the object, not just the system file: ringed small bodies have
+        # no system file to carry them. Emitted for giants too, from the same
+        # metadata, so the two copies can't disagree.
         metas = ring_metadata.get(obj.id)
         if metas:
             data["rings"] = [ring_block(m) for m in metas]
@@ -548,17 +521,14 @@ def _build_global(
         data["has_nomenclature"] = True
     if obj.name is not None:
         data["name"] = obj.name
-    # Host name for moons — top-level (not in `orbit`) so position-less
-    # publication-placeholder moonlets carry it too. Lets the frontend
-    # breadcrumb label the parent even when its body isn't resident in the
-    # scene (small-body hosts get culled once focus moves on).
+    # Host name for moons — top-level so position-less moonlets carry it too,
+    # and the breadcrumb can label the parent even after it's culled from scene.
     if obj.object_type == ObjectType.moon and obj.parent_id is not None:
         parent_name = parent_names.get(obj.parent_id)
         if parent_name:
             data["parent_name"] = parent_name
-    # Physically-derived TCT surface colour for moons (mirrors sbdb.py for small
-    # bodies). Drives the flat sphere where no texture loads; absent for moons
-    # TCT hasn't measured.
+    # TCT surface colour for moons (mirrors sbdb.py for small bodies), drives
+    # the flat sphere where no texture loads.
     if obj.object_type == ObjectType.moon:
         color, method = resolve_moon_color(obj.naif_id)
         if color is not None:
@@ -741,10 +711,8 @@ def _build_localized(
 
     if wd:
         labels = wd["labels"]
-        # Match resolve_name's fallback chain (used by the element label file):
-        # target lang → English → omit. Falling back to obj.name is skipped here
-        # since that's already in the global file — a localized `name` is only
-        # meaningful when it's a Wikidata-sourced long form.
+        # target lang → English → omit, matching resolve_name's fallback chain.
+        # No obj.name fallback: that's already in the global file.
         if lang in labels:
             data["name"] = labels[lang]
         elif "en" in labels:

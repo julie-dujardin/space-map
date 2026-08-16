@@ -24,9 +24,8 @@ logger = logging.getLogger(__name__)
 
 
 class CelesTrakElements(TypedDict):
-    """One day's GP/TLE row for a single satellite, in the shape consumed by
-    the export overlay. Keys mirror the Object/CelesTrak attributes they
-    overwrite."""
+    """One day's GP/TLE row for a satellite, keyed to match the Object/CelesTrak
+    attributes they overwrite."""
 
     epoch_jd: float | None
     a: float | None

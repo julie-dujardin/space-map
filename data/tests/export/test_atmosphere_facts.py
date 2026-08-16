@@ -71,10 +71,8 @@ class TestStructure:
         assert tops == sorted(tops)
 
     def test_the_cross_section_has_a_top_to_draw_to(self):
-        """The chart runs to scale up to the highest layer that is not one of
-        the tenuous outer ones, which are capped to a fixed band with their
-        real height in the label. Without that boundary there is no scale to
-        draw the rest against."""
+        """The chart scales to the highest non-capped layer; without that top
+        there's nothing to scale the rest against."""
         for object_id, structure in (
             (i, _block(i)["structure"]) for i in sorted(ATMOSPHERE_STRUCTURE)
         ):
@@ -88,9 +86,8 @@ class TestStructure:
             assert "top_km" in lower[-1], object_id
 
     def test_every_drawn_stack_has_a_base_temperature(self):
-        """The lowest layer's base is the datum, and without a temperature
-        there it reads as sitting at its own top — Venus's troposphere at its
-        245 K tropopause, under a 737 K surface."""
+        """Without a base temperature, the lowest layer reads as sitting at
+        its own top instead of the surface."""
         for object_id in sorted(ATMOSPHERE_STRUCTURE):
             structure = _block(object_id)["structure"]
             if not [x for x in structure["layers"] if x["role"] not in _CAPPED]:
@@ -98,22 +95,21 @@ class TestStructure:
             assert "datum_temperature_k" in structure, object_id
 
     def test_the_base_is_the_bodys_own_surface_reading(self):
-        """Taken from the temperature constants rather than restated here, so
-        the Structure tab and the temperature scale cannot disagree."""
+        """Read from the temperature constants, not restated, so the two
+        cannot disagree."""
         assert _block("naif-299")["structure"]["datum_temperature_k"] == 737.0
         assert _block("naif-10")["structure"]["datum_temperature_k"] == 5772.0
 
     def test_the_base_pressure_is_the_bodys_own_reading(self):
-        """Same chaining as the temperature: read off the flat facts rather
-        than restated, so the stat block and the cross-section agree."""
+        """Same chaining as temperature: read off flat facts, never restated,
+        so the two stay in sync."""
         assert _block("naif-299")["structure"]["datum_pressure_pa"] == 9.2e6
-        # Earth's is quoted at sea level, which is the surface its layers hang
-        # off.
+        # Earth's is quoted at sea level — the surface its layers hang off.
         assert _block("naif-399")["structure"]["datum_pressure_pa"] == 1.014e5
 
     def test_giants_hang_off_one_bar_exactly(self):
-        """Their flat pressure is the cloud deck, a level inside the
-        atmosphere; the datum is 1 bar by definition."""
+        """Their flat pressure is the cloud deck, inside the atmosphere; the
+        datum is 1 bar by definition."""
         for object_id in ("naif-599", "naif-699", "naif-799", "naif-899"):
             assert _block(object_id)["structure"]["datum_pressure_pa"] == 1.0e5
 
@@ -148,8 +144,8 @@ class TestStructure:
 
 
 class TestValues:
-    """Spot checks on numbers that were corrected during the source review, so
-    a future edit cannot quietly revert them."""
+    """Numbers corrected during the source review, guarded against a quiet
+    revert."""
 
     def test_volume_fractions_sum_near_one(self):
         """A mixing ratio that sums well past 1 means a species was quoted at
@@ -187,8 +183,8 @@ class TestValues:
 
 
 class TestAgainstRenderConstants:
-    """The render table no longer restates the facts, so what is left to check
-    is that every override it does declare is earned."""
+    """The render table restates nothing, so what's left to check is that
+    every override it declares is earned."""
 
     def test_the_facts_back_every_rendered_body(self):
         """The render table has no numbers of its own to fall back on."""

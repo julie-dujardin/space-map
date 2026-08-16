@@ -85,11 +85,10 @@ def fit_landed_chunk(
 ) -> LandedFit | None:
     """Sample the probe's landed phase within `[c_start_et, c_end_et]`,
     decimate to (00:00 UTC daily anchors + intra-day samples whose motion
-    crosses 100 m), pack as a `LandedFit`. Mirrors the validation logic in
-    `data/scripts/probe_landed_test.py`.
+    crosses 100 m), pack as a `LandedFit`.
 
-    Returns None if the body has no IAU frame (asteroid/comet — not yet
-    supported) or if every `spkpos` lookup fails in the window."""
+    Returns None if the body has no IAU frame (asteroid/comet, not yet
+    supported) or every `spkpos` lookup fails in the window."""
     frame = _IAU_FRAME.get(body_naif_id)
     if frame is None:
         return None

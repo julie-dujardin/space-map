@@ -38,17 +38,15 @@ _NAIF_ORDINAL = ID_TYPE_ORDINAL[ID_TYPES.NAIF]
 
 
 def _classify_worker_init(kernel_paths: list[str]) -> None:
-    """Per-worker process init: furnish LSK/PCK + generic SPKs.
-
-    Lives for the worker's lifetime so we don't re-furnsh ~40 files on every
-    task. Mission kernels still get furnshed/unloaded per-task because they
-    vary per probe and a slow mission like MEX (282 BSPs) would bloat the
-    per-worker kernel pool otherwise.
+    """Per-worker process init: furnish LSK/PCK + generic SPKs, for the
+    worker's lifetime, so we don't re-furnish ~40 files on every task.
+    Mission kernels still furnish/unload per-task since they vary per probe
+    and a slow mission like MEX (282 BSPs) would bloat the pool otherwise.
 
     LSK is required for SPK Type 10 (SGP4) kernels — e.g. HST's
-    `hst_edited.bsp` — which need leap-second data to convert TLE epochs to
-    ET. Without it, `spkpos(-48, ...)` silently returns NaN and the probe
-    falls out of every zone, ending up incorrectly labelled interplanetary.
+    `hst_edited.bsp` — to convert TLE epochs to ET. Without it,
+    `spkpos(-48, ...)` silently returns NaN and the probe falls out of
+    every zone, mislabelled interplanetary.
     """
     for p in kernel_paths:
         spiceypy.furnsh(p)
@@ -59,18 +57,17 @@ def _classify_worker(
     kernel_paths: list[str],
     naif_id: int,
 ) -> dict:
-    """Per-probe classification done in a worker process.
+    """Per-probe classification in a worker process. Returns a serialisable
+    dict — the main process owns `probe_id_cache` and plan construction.
 
-    Returns a serialisable dict — the main process owns `probe_id_cache` and
-    plan construction. Possible statuses:
+    Statuses:
       * `no_coverage` — no SPK covers this naif_id
       * `ok` — payload includes `inception_et`, flying-phase zone `intervals`
-        (zone_key, start_et, end_et triples), and `landed_phases` (body_naif,
-        start_et, end_et triples). Either list may be empty.
+        (zone_key, start_et, end_et), and `landed_phases` (body_naif,
+        start_et, end_et). Either list may be empty.
 
-    SPICE state per process: generic kernels were furnished in
-    `_classify_worker_init`; mission kernels are furnshed here and unloaded
-    in `finally` so the worker can move to the next mission cleanly.
+    Mission kernels furnish here and unload in `finally`, on top of the
+    generic kernels furnished once in `_classify_worker_init`.
     """
     for k in kernel_paths:
         spiceypy.furnsh(k)
@@ -139,16 +136,15 @@ def classify_pass(
 ) -> tuple[list[ProbePlan], dict[str, dict[int, list[ProbePlan]]]]:
     """Pass 1: per-probe furnish + classify, parallelised across processes.
 
-    SPICE state is per-process, so each worker gets its own kernel pool —
-    no contention with the parent and no GIL bottleneck on the spkpos loop.
-    `probe_id` assignment runs serially in the main process because
-    `probe_registry`/`probe_source_index` are mutated as new probes get
-    registered and the order in which IDs are allocated must match the
-    deterministic `(inception_mjd, naif_id)` policy in `probes.probe_id.assign`.
+    SPICE state is per-process, so each worker gets its own kernel pool with
+    no GIL bottleneck on the spkpos loop. `probe_id` assignment runs
+    serially in the main process, since the registry is mutated as probes
+    are registered and allocation order must match the deterministic
+    `(inception_mjd, naif_id)` policy in `probes.probe_id.assign`.
 
-    Furnsh order per probe: mission first (in worker), then generic SPKs
-    (pre-furnshed via initializer) — so modern planetary ephemerides win
-    over any planetary data bundled inside a mission kernel.
+    Furnish order: mission kernels (in worker) before the pre-furnished
+    generic SPKs, so modern planetary ephemerides win over any bundled
+    inside a mission kernel.
     """
     probes_raw = enumerate_probes()
     n_probes = len(probes_raw)

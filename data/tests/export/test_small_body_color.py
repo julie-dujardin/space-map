@@ -80,8 +80,7 @@ class TestResolveColor:
 
 
 class TestResolveMoonColor:
-    """Moons resolve by NAIF id: a measured TCT spectrum, else a neutral grey
-    scaled by their Horizons geometric albedo. No hue (taxonomy) tier."""
+    """Moons resolve by NAIF id: spectrum, else albedo-scaled grey. No taxonomy tier."""
 
     def test_spectrum_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # A measured spectrum beats the albedo tier even when both exist.

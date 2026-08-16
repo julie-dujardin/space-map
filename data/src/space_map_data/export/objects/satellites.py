@@ -1,10 +1,9 @@
 """Earth's featured satellites, attached to its object bundle.
 
-Earth's artificial satellites aren't moons, so they ride a parallel field:
-``notable_satellites`` (a curated MVP pick — ISS, Hubble, Starlink), plus the
-total tracked-object count and the slug of the Satellites browse page the
-strip's "+N more" tile links to. ISS/Hubble are object rows; Starlink is a
-constellation group, so its entry carries a ``group`` slug instead of an ``id``.
+Artificial satellites aren't moons, so they ride a parallel field:
+``notable_satellites`` (curated pick), tracked-object count, and the
+Satellites page slug for the "+N more" tile. Starlink is a constellation
+group, carrying a ``group`` slug instead of an ``id``.
 """
 
 import logging
@@ -65,10 +64,8 @@ def attach_featured_satellites(
     wikidata_entities: WikidataEntityCache,
 ) -> None:
     """Inject ``notable_satellites`` + ``satellite_count`` + ``satellites_group``
-    into Earth's global bundle (and localized name overrides).
-
-    Mutates ``chunk`` in place (mirrors ``attach_notable_moons``).
-    """
+    into Earth's global bundle (and localized name overrides), mutating
+    ``chunk`` in place."""
     global_data = chunk.global_data.get(EARTH_ID)
     if global_data is None:
         logger.warning("Earth (%s) has no object bundle; skipping satellites", EARTH_ID)

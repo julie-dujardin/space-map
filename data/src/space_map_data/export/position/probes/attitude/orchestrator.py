@@ -1,25 +1,20 @@
 """Walk every mission with a `_attitude_index.json` and run extraction.
 
 Top-level entrypoint the export pipeline calls between `write_probes` and
-`write_object_bundles`. The parent process plans the work: it resolves each
-mission's probes from the registry, cache-checks every probe against its
-`_attitude.meta.json` sidecar, and re-injects cached manifests. Cache misses
-are grouped per mission and fanned out to a `ProcessPoolExecutor` — SPICE
-state is per-process, so each worker furnishes its own mission kernel set
-(LSK + PCK + CK + FK + SCLK), extracts every planned probe, writes chunks +
-sidecar, and returns the manifests for the parent to stuff into
-`global_data[f"probe-{probe_id}"]["attitude"]`.
+`write_object_bundles`. The parent resolves each mission's probes, cache-checks
+each against its `_attitude.meta.json` sidecar, and re-injects cached
+manifests. Cache misses fan out per-mission to a `ProcessPoolExecutor` — SPICE
+state is per-process, so each worker furnishes its own kernel set, extracts,
+writes chunks + sidecar, and returns manifests for the parent to inject.
 
-A probe referenced by several missions (Cassini appears under CASSINI and
-HUYGENS) is claimed by the first mission in sorted order — probes' chunk
-dirs are keyed by probe id, so two missions extracting the same probe
-concurrently would clobber each other.
+A probe referenced by several missions (Cassini under CASSINI and HUYGENS) is
+claimed by the first mission in sorted order, since chunk dirs are keyed by
+probe id and concurrent extraction would clobber them.
 
-Attitude depends only on kernels (CK/FK/SCLK/LSK/PCK) and the wire format,
-never on DB/wikidata — so each probe's `_attitude.meta.json` sidecar lets an
-unchanged probe skip the (expensive) extraction and re-inject its cached
-manifest. Chunks live at `v1/attitude/<probe>/`, outside `position/`, so
-`remove_old_outputs` spares them for the skip to reuse.
+Attitude depends only on kernels and the wire format, never DB/wikidata, so
+the sidecar lets an unchanged probe skip the expensive extraction. Chunks
+live at `v1/attitude/<probe>/`, outside `position/`, so `remove_old_outputs`
+spares them for reuse.
 """
 
 import json
@@ -46,8 +41,8 @@ _KERNELS_ROOT = SOURCES_POSITION_DIR / "spice-kernels"
 _LSK = _KERNELS_ROOT / "lsk" / "naif0012.tls"
 _PCK = _KERNELS_ROOT / "pck" / "pck00011.tpc"
 
-# Bump when the extraction logic or chunk wire format changes so stale per-probe
-# caches re-extract instead of re-shipping outdated keyframes.
+# Bump on an extraction/wire-format change so stale per-probe caches
+# re-extract instead of re-shipping outdated keyframes.
 _ATTITUDE_CACHE_VERSION = 3
 _ATTITUDE_META_NAME = "_attitude.meta.json"
 
@@ -72,9 +67,8 @@ def write_attitude(out_dir: Path, global_data: dict[str, dict]) -> dict[str, dic
     """Extract attitude for every mission with kernels on disk; mutate
     `global_data` to add the manifest entry per probe.
 
-    Returns `{probe_id: result_summary}` for the pipeline manifest. Empty
-    dict if no attitude kernels are present — this lets the pipeline run
-    happily without CK downloads in dev environments.
+    Returns `{probe_id: result_summary}`. Empty dict if no attitude kernels
+    are present, so the pipeline runs fine without CK downloads in dev.
     """
     if not MISSIONS_DIR.exists():
         return {}
@@ -232,9 +226,9 @@ def _apply_result(
 def _extract_mission(
     out_dir_s: str, mission_dir_s: str, index: dict, probe_jobs: list[dict]
 ) -> list[dict]:
-    """Worker-process entrypoint: furnish the mission once, extract every
-    planned probe, write chunks + sidecars. Returns one result dict per probe
-    (`manifest` None for an empty extraction, `error` set on failure)."""
+    """Furnish the mission once, extract every planned probe, write chunks +
+    sidecars. Returns one result dict per probe (`manifest` None for an
+    empty extraction, `error` set on failure)."""
     out_dir = Path(out_dir_s)
     mission_dir = Path(mission_dir_s)
     try:

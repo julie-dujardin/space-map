@@ -127,8 +127,7 @@ def test_parentless_family_reconstructs_name(session: Session) -> None:
 
 
 def test_parentless_numbered_name(session: Session) -> None:
-    # Numbered parentless comet: the suffix rides the name, not the designation
-    # (483P/PANSTARRS-A), so a naive "483P-A" strip would miss it.
+    # Suffix rides the name (483P/PANSTARRS-A), not the designation, so a naive strip would miss it.
     _add(session, 1003464, "483P-A", CometPrefix.P, "483P/PANSTARRS-A")
     _add(session, 1003465, "483P-B", CometPrefix.P, "483P/PANSTARRS-B")
     session.commit()
@@ -140,8 +139,7 @@ def test_parentless_numbered_name(session: Session) -> None:
 
 
 def test_parentless_qid_picks_comet_over_fragment(session: Session) -> None:
-    # Fragment A links to the comet's page, B to a per-fragment item; the
-    # comet-level QID (label without a fragment suffix) wins, and names the page.
+    # A links to the comet's page, B to a per-fragment item; the comet-level QID wins.
     _add(session, 1000366, "2001 A2-A", CometPrefix.C, "C/2001 A2-A (LINEAR)", qid="Qc")
     _add(session, 1000340, "2001 A2-B", CometPrefix.C, "C/2001 A2-B (LINEAR)", qid="Qf")
     session.commit()
@@ -176,8 +174,7 @@ def test_fragment_ranking_prefers_image(session: Session) -> None:
 
 
 def test_member_ids_covers_all_fragments_beyond_display_cap(session: Session) -> None:
-    # member_ids must hold every fragment (drives fragment_of), even past the
-    # display cap — regression for 73P's 53rd piece losing its parent link.
+    # member_ids must hold every fragment past the display cap — 73P's 53rd piece once lost its parent link.
     n = NOTABLE_FRAGMENT_COUNT + 3
     _add(session, 4999, "73P", CometPrefix.P, "73P/SW3", name="73P/SW3")
     for i in range(n):

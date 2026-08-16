@@ -1,10 +1,6 @@
-"""Unit tests for the attitude extraction stack.
-
-Focused on the pieces that don't need furnished kernels — wire format,
-quaternion utilities, keyframe extraction on synthetic streams, baseline
-spin fit. The end-to-end smoke against MRO lives in
-`scripts/probe_orientation_smoke.py` because it needs the cached
-benchmark CK.
+"""Attitude stack unit tests: wire format, quaternions, keyframe extraction,
+baseline spin fit — all synthetic, no kernels needed. The cached-CK
+end-to-end smoke lives in `scripts/probe_orientation_smoke.py`.
 """
 
 import math
@@ -61,8 +57,7 @@ def test_header_rejects_wrong_magic() -> None:
 
 
 def test_keyframe_roundtrip_extreme_values() -> None:
-    # Max-ish int16 components + a sub-second dt — float32 must keep the
-    # fractional spacing that integer seconds dropped.
+    # Max int16 components + sub-second dt: float32 must keep spacing integers drop.
     kf = pack_keyframe(
         dt_seconds=0.125,
         idx=3,
@@ -141,9 +136,8 @@ def test_extract_keyframes_constant_rate_rotation() -> None:
         half = rate * et / 2.0
         quats[i] = [math.cos(half), math.sin(half), 0.0, 0.0]
     kf = extract_keyframes(quats, ets, math.radians(0.1))
-    # SLERP between two points spanning 1000° goes the *short way* — so the
-    # walker has to chunk at least every ~180° to avoid wrap-around. ~6
-    # keyframes is plenty; we accept up to 20 for slack.
+    # SLERP takes the short way, forcing a chunk every ~180° to avoid wrap-around;
+    # 20 leaves slack over the ~6 actually needed.
     assert 2 < len(kf) <= 20
     assert kf[0] == 0 and kf[-1] == n - 1
 
@@ -161,9 +155,8 @@ def test_fit_spin_baseline_matches_synthetic_rate() -> None:
         half = rate_true * et / 2.0
         quats[i] = [math.cos(half), 0.0, 0.0, math.sin(half)]
     bl = fit_spin_baseline(quats, ets, t0=0.0)
-    # Axis can be sign-flipped; rate magnitude must match.
-    # Tolerance reflects central-difference numerical error at this sample
-    # density — central diff is O((dt)²) and we're sampling at 50 Hz.
+    # Axis may be sign-flipped; only rate magnitude must match.
+    # Tolerance reflects O(dt²) central-diff error at this 50 Hz sample rate.
     assert abs(bl.rate_rad_s - rate_true) < 1e-4
     assert np.allclose(np.abs(bl.axis), np.abs(axis_true), atol=1e-4)
     assert np.allclose(bl.anchor, quats[0])
@@ -271,8 +264,8 @@ class TestAttitudeCache:
 
 
 def test_enforce_min_span_drops_slivers() -> None:
-    """Boundaries closer than the min span (to each other or the ends) are
-    dropped so a brief blip can't carve a sliver segment."""
+    """Boundaries closer than the min span collapse, so a brief blip can't
+    carve a sliver segment."""
     from space_map_data.export.position.probes.attitude.segments import (
         SEG_MIN_S,
         _enforce_min_span,

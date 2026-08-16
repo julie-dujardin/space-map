@@ -166,17 +166,15 @@ class TestModelledCore:
         assert len(block["sources"]) > 1
 
     def test_only_a_core_boundary_answers_for_the_core(self):
-        """Titan's innermost published temperature is its ice-ocean interface,
-        250 K a thousand kilometres above the rock. Reported as a core
-        temperature it would be worse than reporting nothing."""
+        """Titan's innermost reading is its ice-ocean interface, 250 K above the
+        rock — reporting it as a core temperature would be worse than nothing."""
         block = temperature_block("naif-606")
         assert block is not None
         assert all(r["part"] != "core" for r in block["readings"])
 
     def test_the_bracket_is_the_deepest_boundary_with_a_number(self):
-        """Mercury's is its core-mantle boundary, which is what its models
-        constrain — the old constant read as a central temperature and was
-        never one."""
+        """Mercury's bracket is its core-mantle boundary — the old constant read
+        as a central temperature but never was one."""
         block = temperature_block("naif-199")
         assert block is not None
         core = [r["k"] for r in block["readings"] if r["part"] == "core"]
@@ -235,19 +233,12 @@ class TestConstantsIntegrity:
 
 
 class TestTheShellReadsTheMeasurement:
-    """The shell no longer keeps its own copy of a body's temperature, so what
-    is left to check is that it resolves to the reading the panel shows and
-    that the two overrides are earned.
-
-    Giants and Venus are read at their cloud top, everything else at its
-    surface.
+    """The shell resolves to the panel's reading; only the two documented
+    overrides diverge. Giants and Venus read at cloud top, others at surface.
     """
 
-    # Overridden because the render needs a different quantity, not a second
-    # opinion on the same one:
-    #   Mars  — the isothermal temperature reproducing NSSDCA's published
-    #           11.1 km scale height, against the sheet's 210 K average.
-    #   Pluto — REX's near-surface air, against the surface-ice mean.
+    # Overridden for a different quantity, not a second opinion: Mars uses its
+    # isothermal scale-height temperature, Pluto REX's near-surface air.
     DIFFERENT_QUANTITY = {"naif-499", "naif-999"}
 
     @pytest.mark.parametrize(

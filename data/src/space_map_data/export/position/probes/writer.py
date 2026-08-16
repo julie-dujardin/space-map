@@ -1,28 +1,21 @@
 """Export probe trajectories as zone-keyed chunk files.
 
-Walks `sources/position/spice-kernels/missions/*/_index.json`, classifies
-each spacecraft's coverage into zone intervals, builds Method-C Kepler or
-Chebyshev fits per sub-chunk via `probes.sizing.size_chunk`, and emits one
-gzipped binary per (zone, chunk_idx) under `position/probes/{zone}/{chunk}.bin.gz`.
+Classifies each spacecraft's coverage into zone intervals, builds Method-C
+Kepler or Chebyshev fits per sub-chunk via `probes.sizing.size_chunk`, and
+emits one gzipped binary per (zone, chunk_idx) aggregating EVERY probe whose
+trajectory intersects it. The frontend loads one zone's chunks at a time,
+dispatching per sub-chunk on the method byte.
 
-One file aggregates EVERY probe whose trajectory intersects that (zone,
-chunk_idx). The frontend loads one zone's chunks at a time (driven by the
-camera focus), and within a chunk dispatches per sub-chunk on the method
-byte to evaluate position(t).
-
-Time-axis alignment: chunks align to a global `start_jd` (1950-01-01) so the
-chunk index for a given JD is `floor((jd - start_jd) / chunk_days)`, matching
-the chebyshev exporter's convention.
-
-Incremental: per-probe fits live in a cache under
-`EXPORT_METADATA_DIR/position/probes/_fits/{probe_id}/{zone}/{chunk_idx}.fit`.
-A change to one probe's kernels only invalidates that probe's fits; the
-chunk sidecar tracks per-probe fit-signature hashes and triggers a repack
-of just the chunks whose probe set changed. See `fit_cache.py` / `sidecar.py`.
+Chunks align to a global `start_jd` (1950-01-01), matching the chebyshev
+exporter's convention. Incremental: per-probe fits are cached, so a change
+to one probe's kernels only invalidates that probe's fits — the chunk
+sidecar tracks per-probe fit-signature hashes and repacks only the chunks
+whose probe set changed (see `fit_cache.py` / `sidecar.py`).
 
 Pipeline split: kernel discovery in `kernels.py`, dataclasses in `plan.py`,
 landed-phase fits in `landed.py`, time math in `time_grid.py`, the passes in
-`classify.py` / `fit.py` / `write.py`. This module is the top-level orchestrator.
+`classify.py` / `fit.py` / `write.py`. This module is the top-level
+orchestrator.
 """
 
 import logging
@@ -73,13 +66,10 @@ def _compute_probe_coverage(
     plans: list[ProbePlan],
     metas_by_probe_id: dict[int, ProbeMeta],
 ) -> dict[str, dict[str, float]]:
-    """Per-probe outermost coverage envelope across every (zone, chunk_idx).
-
-    Union of every `ChunkContribution`'s `(c_start_et, c_end_et)` for the
-    probe; covers both flying and landed contributions and across zones
-    (cruise + captured-orbit). Frontend keys this by `Object.id` so a
-    focused probe's coverage end is one lookup away.
-    """
+    """Per-probe outermost coverage envelope across every (zone, chunk_idx) —
+    union of every `ChunkContribution`'s span, covering flying and landed
+    contributions across zones. Keyed by `Object.id` so a focused probe's
+    coverage end is one lookup away."""
     bounds_by_probe: dict[int, tuple[float, float]] = {}
     for plan in plans:
         for c in plan.contributions:
@@ -116,22 +106,15 @@ def write_probes(
 ) -> tuple[dict[str, dict], dict[str, dict[str, float]]]:
     """Build per-zone, per-chunk binary files for every probe on disk.
 
-    Incremental export with per-probe fit caching:
-      1. Classify each probe (furnish + spkezr) to know which (zone, chunk)
-         pairs it touches. No fitting yet.
-      2. Compute the expected per-(probe, zone, chunk) signatures and pick
-         the stale ones (`stale_fits`).
-      3. Re-furnish each probe whose fits went stale and run the expensive
-         `size_chunk` / `fit_landed_chunk` work for just those entries,
-         saving each `ChunkProbeRecord` to the metadata-dir cache.
-      4. Compute expected chunk signatures from per-probe fit-sig hashes;
-         the chunks whose hashes changed are dirty. Load cached records
-         for each dirty chunk and pack + atomic-write binary + sidecar.
+    Incremental export with per-probe fit caching: (1) classify each probe
+    to know which (zone, chunk) pairs it touches, (2) pick the stale
+    per-(probe, zone, chunk) signatures, (3) re-fit only those and cache the
+    result, (4) recompute chunk signatures from per-probe fit hashes and
+    pack + atomic-write just the dirty chunks.
 
-    Returns `(zone_manifest, probe_coverage)`. `zone_manifest` feeds
-    `build_position_metadata`. `probe_coverage` is `{Object.id: {start_jd,
-    end_jd}}` (union across zones), stamped onto each probe's `__global__`
-    entry by `_inject_probe_coverage` for the frontend coverage-end pause.
+    Returns `(zone_manifest, probe_coverage)`. `probe_coverage` is
+    `{Object.id: {start_jd, end_jd}}`, stamped onto each probe's
+    `__global__` entry for the frontend coverage-end pause.
     """
     if not MISSIONS_DIR.exists():
         logger.info("No probe missions at %s, skipping probe export", MISSIONS_DIR)

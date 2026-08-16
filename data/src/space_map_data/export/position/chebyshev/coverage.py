@@ -17,15 +17,9 @@ logger = logging.getLogger(__name__)
 def chebyshev_coverage(session: Session, download_dir: Path) -> set[str]:
     """Object IDs covered by the chebyshev export.
 
-    Used to filter cheb-covered bodies out of the elements zones so the same
-    body's positions don't ship in two formats. The frontend can derive
-    osculating Kepler elements from chebyshev positions when needed, so a
-    duplicated kepler row is just dead bytes.
-
-    Walks `derived/position/chebyshev/*.npz` and resolves each file's
-    `naif_id` against the DB (with the SPK-ID fallback used by the cheb
-    writer). Returns a set of `Object.id` strings (e.g. `naif-499`,
-    `spkid-20134340`) so callers can filter on the prefixed form.
+    Filters cheb-covered bodies out of the elements zones — the frontend can
+    derive Kepler elements from chebyshev positions, so a duplicate row is
+    just dead bytes.
     """
     cheb_dir = download_dir / "derived" / "position" / "chebyshev"
     if not cheb_dir.exists():

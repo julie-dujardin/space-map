@@ -1,26 +1,19 @@
 """Per-object interior stat block, denormalized onto a body's global bundle.
 
-Three sources feed one shape. A body a mission actually constrained has a layer
-model in `constants/interior/bodies.py`; an asteroid that only has a spectrum
-gets its meteorite analogue's bulk chemistry from `constants/interior/
-taxonomy.py`, and ships flagged as an estimate so the panel can say "estimated
-from its S-type spectrum" rather than "is"; and a body carried by the
-hand-authored overlay brings its layer model with it, as data rather than as a
-constant (`interior_from_mapping`, for objects with no DB row at all).
+Three sources feed one shape: a mission-constrained body has a layer model in
+`constants/interior/bodies.py`; a spectrum-only asteroid gets its meteorite
+analogue's bulk chemistry from `constants/interior/taxonomy.py`, flagged as an
+estimate; a hand-authored overlay body brings its own layer model as data
+(`interior_from_mapping`, for objects with no DB row at all).
 
-Two shapes ship. The whole-body roll-up — one share per material, summed over
-the layers — is what the Overview's single composition chart draws, and it is
-all the estimate route can offer. The layer stack underneath it is what the
-Structure tab's cross-section draws, and only the ~30 bodies with a layer model
-carry it; the 150,000 asteroids on the estimate route have no layers to spend
-bytes on.
+Two shapes ship: a whole-body composition roll-up (all the estimate route can
+offer) and, for the ~30 bodies with a layer model, the layer stack the
+Structure tab draws. The roll-up is a mass balance over layers, not an
+elemental one — water bound in a phyllosilicate counts as water, not as oxygen
+shared among the rocks.
 
-The roll-up is a mass balance over layers, not an elemental one: water bound
-in a phyllosilicate counts as water, not as oxygen shared out among the rocks.
-
-Boundary temperatures ride on the layer stack, on the boundaries rather than
-the shells, and only where somebody has published one — twenty readings across
-seventeen bodies against thirty-one layer models.
+Boundary temperatures ride on the layer stack, on boundaries rather than
+shells, wherever one has been published.
 """
 
 import logging
@@ -66,9 +59,9 @@ def load_taxonomy(
 ) -> dict[str, tuple[str | None, str | None, str | None, float | None]]:
     """Taxonomic class per object, for the estimate route.
 
-    Read once into a plain dict rather than reached through
-    `Object.ssodnet`: the bundle build runs in threads, and a relationship
-    access there would be a lazy load per asteroid.
+    Read once into a plain dict rather than through `Object.ssodnet`: the
+    bundle build runs in threads, and a relationship access there would be a
+    lazy load per asteroid.
     """
     rows = (
         session.query(
@@ -104,15 +97,10 @@ def interior_from_mapping(object_id: str, mapping: dict) -> dict | None:
     """Build the block for a body whose layer model arrives as data, not as a
     constant — the hand-authored overlay in the download dir.
 
-    The mapping is `BodyInterior` in JSON, and takes the same route from there:
-    the same roll-up, the same sliver cut, the same enum and citation checks.
-    What it does not share is `references.py` — a body that is not in the
-    constants has nowhere to put a citation but next to the numbers it backs,
-    so the mapping carries its own `sources` table and layers key into it.
-
-    A malformed one costs the body its panel and nothing else: the overlay is
-    edited by hand and outside the repo, which is not somewhere a typo should
-    be able to take the whole export down with it.
+    Takes the same roll-up/validation route as a constants-backed body, but
+    carries its own `sources` table since it has no entry in `references.py`.
+    A malformed mapping costs only that body's panel: the overlay is
+    hand-edited and outside the repo, so a typo must not take the export down.
     """
     try:
         refs = INTERIOR_SOURCES | _references(mapping.get("sources") or {})
@@ -136,9 +124,8 @@ _BODY_OWN = frozenset({"layers", "sources"})
 
 
 def _references(table: dict) -> dict[str, InteriorReference]:
-    """The mapping's own citations. No `contribution`: that column is the
-    /credits page's, which reads the constants rather than this. A `note` is
-    optional — without one the panel credits the work by title alone."""
+    """The mapping's own citations. No `contribution`: that's the /credits
+    page's column, which reads the constants rather than this."""
     return {
         key: InteriorReference(
             ref["title"],
@@ -166,8 +153,8 @@ _LAYER_OWN = frozenset({"composition", "detail"})
 
 
 def _parse_detail(mapping: dict) -> Detail:
-    """A `[species, fraction]` pair per entry, in the order they are to be
-    drawn — JSON's only ordered container, where the constants use a tuple."""
+    """A `[species, fraction]` pair per entry, drawn in order — JSON's list
+    stands in for the constants' tuple."""
     fields = _named(Detail, mapping)
     return Detail(**fields | {"entries": tuple(tuple(e) for e in fields["entries"])})
 
@@ -175,10 +162,9 @@ def _parse_detail(mapping: dict) -> Detail:
 def _named(cls, mapping: dict) -> dict:
     """Keyword arguments for a schema NamedTuple, from its JSON spelling.
 
-    Read off `_fields` rather than listed here, so a field added to the schema
-    reaches this route without anyone remembering to come back. Tuples arrive
-    as JSON arrays; an unknown key is a typo in a hand-edited file and stops
-    the parse rather than being dropped silently.
+    Read off `_fields` rather than listed here, so a new schema field reaches
+    this route automatically. An unknown key is a typo and stops the parse
+    rather than being dropped silently.
     """
     unknown = set(mapping) - set(cls._fields)
     if unknown:
@@ -245,22 +231,18 @@ def _from_layers(
     return block
 
 
-# What a body's ocean is, for the collection page. `sea` is deliberately not in
-# here: Titan has both, 100 km of ice apart, and its seas are liquid methane —
-# adding 7e4 km³ of hydrocarbon to 1.5e10 km³ of water would be a rounding error
-# that is also a category error. The Oceans page names them in prose instead.
+# `sea` is deliberately excluded: Titan's methane seas and water ocean are
+# different substances, and summing them would be a category error. The
+# Oceans page names them in prose instead.
 OCEAN_ROLE = "ocean"
 
 
 def ocean_block(object_id: str) -> dict | None:
     """The body's ocean as one row of the Oceans collection chart, or None.
 
-    Volume is geometry the bundle already ships — the layer's own radii, times
-    its share of the globe where it is a patch rather than a shell — rather than
-    a number anyone published, because no single work quotes all nine. Doing the
-    arithmetic here means the chart and the body's own cross-section are reading
-    the same radii; doing it in the frontend would mean two implementations of
-    the base-radius rule, which is the part that is easy to get wrong.
+    Volume is computed from the layer's own radii rather than published, since
+    no single work quotes all nine bodies. Done here so the chart and the
+    body's own cross-section read the same radii and the same base-radius rule.
     """
     facts = INTERIOR_FACTS.get(object_id)
     if facts is None:
@@ -297,10 +279,9 @@ def ocean_block(object_id: str) -> dict | None:
     return None
 
 
-# What the frontend's cutaway needs to draw a shell and colour it, and nothing
-# else. `composition` is truncated to its first entry because the colour is
-# keyed off the dominant material alone (`dominant()` in layer-appearance.ts
-# reads `composition[0]`), and the roll-up's own ordering already put it there.
+# What the frontend's cutaway needs to draw a shell and colour it. `composition`
+# is truncated to its first entry since `dominant()` (layer-appearance.ts)
+# colours by the dominant material alone.
 _CUTAWAY_KEYS = (
     "role",
     "outer_radius_km",
@@ -313,14 +294,9 @@ _CUTAWAY_KEYS = (
 
 
 def cutaway_layers(object_id: str) -> list[dict] | None:
-    """The layer stack, trimmed to what a thumbnail-sized cutaway draws.
-
-    A collection page draws one of these per member, so the full stack — every
-    composition, every boundary temperature, every citation — would be the
-    object bundles again inside the group bundle. What survives is geometry,
-    phase and one material per layer: a cutaway 60 px across has no labels to
-    hang the rest on, and a reader who wants them is one click from the body's
-    own Structure tab.
+    """The layer stack, trimmed to what a thumbnail-sized cutaway draws:
+    geometry, phase and one material per layer. A 60 px cutaway has no room
+    for labels; a reader who wants them is one click from the Structure tab.
     """
     facts = INTERIOR_FACTS.get(object_id)
     if facts is None or not facts.layers:
@@ -343,9 +319,8 @@ def _layer(object_id: str, layer: Layer) -> dict:
     """One layer of the cross-section.
 
     Radii are the source's own R, not the body's exported mean radius — the
-    two disagree by a few km on Europa depending on the paper. The frontend
-    normalizes the disc to the outermost layer rather than to the body, so
-    the stack closes at the surface instead of leaving a gap.
+    two can disagree by a few km. The frontend normalizes to the outermost
+    layer, not the body, so the stack closes at the surface.
     """
     out: dict = {"role": layer.role}
     if layer.outer_radius_km is not None:
@@ -411,14 +386,10 @@ def _layer_source_keys(
 ) -> list[str]:
     """The works behind what the panel actually shows.
 
-    The structure line, then every layer — the cross-section draws each one's
-    radius whatever its chemistry — then the chemistry of the materials that
-    survived a sliver cut *somewhere*. A material can miss the whole-body bar
-    and still fill its own layer, which is the case a sulphur-bearing core a
-    percent of the body makes: 20% of the core, 0.2% of the planet.
-
-    Temperature sources ride along wherever a boundary carries one; they are a
-    different paper from the geometry's nearly every time.
+    Structure, then every layer's geometry, then the chemistry of materials
+    that survived the sliver cut in *any* layer — a material can miss the
+    whole-body bar yet still fill its own layer (e.g. a small sulphur core).
+    Temperature sources ride along per boundary, usually a different paper.
     """
     keys: list[str] = []
     if facts.structure_source is not None:
@@ -487,9 +458,8 @@ def _from_taxonomy(
 def _class_credits(scheme: str | None, from_albedo_split: bool) -> list[str]:
     """Who to credit for the spectral class, as ids rather than citations.
 
-    171,000 asteroids take this route, so a title and a url each would be
-    megabytes of bundle for two names the frontend can hold itself. `sources`
-    above stays full citations: it varies per body, these two do not.
+    Bare ids since ~171,000 asteroids take this route — full citations here
+    would be megabytes for two names the frontend can hold itself.
     """
     credits = ["ssodnet"]
     # Mahlke both defines the scheme many of these classes are reported under

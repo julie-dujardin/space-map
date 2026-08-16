@@ -1,11 +1,10 @@
 """Unified position-file binary format.
 
-One magic, one common header, two payload variants. The format byte at offset 6
-dispatches to either the columnar elements layout (Keplerian / Parabolic / SGP4)
-or the per-body Chebyshev segment layout. A single file carries one format —
-mixing was considered and rejected: the frontend can derive osculating elements
-from Chebyshev positions when needed, so duplicating Kepler rows next to
-Chebyshev segments would just bloat the export.
+One magic, one common header, two payload variants. The format byte at offset
+6 dispatches to either the columnar elements layout (Keplerian / Parabolic /
+SGP4) or the per-body Chebyshev segment layout. A single file carries one
+format — mixing was rejected since the frontend can derive Kepler elements
+from Chebyshev positions, so duplicating rows would just bloat the export.
 
 Common header (24 bytes, 8-aligned):
 
@@ -61,10 +60,9 @@ METHOD_UNCOVERABLE = 0
 METHOD_KEPLER_PURE = 1
 METHOD_KEPLER_DRIFT = 2
 METHOD_CHEBYSHEV = 3
-# `METHOD_LANDED` records sit OUTSIDE the sub-chunk grid that 0..3 use — one
-# trailing record per probe per chunk, gated by `PROBE_FLAG_HAS_LANDED_RECORD`
-# in the probe header. Carries its own start/end ET offsets so its lifetime
-# is decoupled from `subchunk_days × n_subchunks`.
+# `METHOD_LANDED` sits OUTSIDE the sub-chunk grid — one trailing record per
+# probe per chunk, gated by `PROBE_FLAG_HAS_LANDED_RECORD`, with its own
+# start/end ET offsets decoupled from `subchunk_days × n_subchunks`.
 METHOD_LANDED = 4
 
 # Probe-header flags (byte 7).
@@ -216,12 +214,12 @@ def pack_probes_header(
 # 18      uint8[2] reserved              (zero pad to 4-aligned)
 #
 # fit_center lets a probe fit against its dominant primary (Moon, Titan,
-# Vesta, …) instead of the zone center. NAIF for moons/planets, SPKID for
-# asteroids — renderer composes `world = fit_center_world + probe_offset`.
+# Vesta, …) instead of the zone center; renderer composes
+# `world = fit_center_world + probe_offset`.
 #
-# `n_system_intervals` tags the interplanetary record with flyby spans ("inside
-# Mars system from ET t0 to t1"), one per planet encounter. Planet-zone records
-# omit it — their system is the zone identity.
+# `n_system_intervals` tags an interplanetary record with flyby spans (one per
+# planet encounter); planet-zone records omit it since their system is the
+# zone identity.
 PROBE_HEADER_SIZE = 20
 _PROBE_HEADER_STRUCT = struct.Struct("<iBBBBHHiBBxx")
 assert _PROBE_HEADER_STRUCT.size == PROBE_HEADER_SIZE
@@ -279,9 +277,8 @@ def pack_system_interval(start_et: float, end_et: float, system_naif_id: int) ->
 #   4  uint32 payload_len   (bytes following this header)
 #   8  ...payload...
 #
-# Chose uint32 over uint16 because the finest-intlen chebyshev sub-chunks
-# can hit ~67 KiB of coefficients (interplanetary 7-day sub-chunk × 0.03-d
-# intlen × float64), which overflows uint16.
+# uint32 not uint16: the finest-intlen chebyshev sub-chunks can hit ~67 KiB
+# of coefficients, which overflows uint16.
 _SUBCHUNK_HEADER_STRUCT = struct.Struct("<BBHI")
 SUBCHUNK_HEADER_SIZE = _SUBCHUNK_HEADER_STRUCT.size  # 8
 
@@ -359,15 +356,11 @@ def align8(size: int) -> int:
 # 28      uint32   sample_count      (0 for static — ref *is* the position)
 # 32      sample_count × LANDED_SAMPLE_STRUCT (16 B each: et_offset_s + lat/lng/alt)
 #
-# Byte 5 used to be the first of three reserved zero bytes; old files
-# decode it as NAIF (=0), preserving previous behaviour without a version
-# bump. Asteroid/comet landings now encode SPKID + the asteroid's
-# SBDB-numbered id so the frontend can look up the body via `spkid-N`.
+# Byte 5 used to be reserved zero; old files decode it as NAIF (=0),
+# preserving previous behaviour without a version bump.
 #
-# Decode: lat° = lat_e7 / 1e7 → ~1.1 cm precision at Earth, 0.7 cm at Mars,
-# well under the 0.1-m target on every body the renderer supports. The
-# reference position uses the same encoding so the decoder never crosses
-# encodings.
+# Decode: lat° = lat_e7 / 1e7 → ~1.1 cm precision at Earth, well under the
+# 0.1-m target on every body the renderer supports.
 LANDED_HEADER_SIZE = 32
 _LANDED_HEADER_STRUCT = struct.Struct("<iBB2sIIiiiI")
 assert _LANDED_HEADER_STRUCT.size == LANDED_HEADER_SIZE
@@ -407,15 +400,10 @@ def pack_landed_payload(
     alt_ref_m: float,
     samples: list[tuple[int, float, float, float]],
 ) -> bytes:
-    """Pack one METHOD_LANDED record.
-
-    `body_id_value` + `body_id_type` together identify the landing body —
-    NAIF for planet/moon (DB row `naif-N`), SPKID for asteroid/comet (DB
-    row `spkid-N`). `samples` is a list of `(et_offset_s_from_chunk_start,
-    lat_deg, lng_deg, alt_m)` tuples; pass an empty list for static phases.
-
-    Quantises to int32 × 1e7 for lat/lng (~1 cm precision globally) and
-    int32 millimetres for altitude.
+    """Pack one METHOD_LANDED record. `body_id_value` + `body_id_type`
+    identify the landing body (NAIF for planet/moon, SPKID for
+    asteroid/comet). `samples` is a list of `(et_offset_s, lat_deg, lng_deg,
+    alt_m)` tuples; pass an empty list for static phases.
     """
     flags = LANDED_FLAG_STATIC if is_static else 0
     header = _LANDED_HEADER_STRUCT.pack(

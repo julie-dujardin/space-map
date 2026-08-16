@@ -1,10 +1,4 @@
-"""Tests for `v1/spacecraft.json`.
-
-The shape checks are cheap; the ones worth having are about the two things the
-export decides rather than copies — that a Δv is never shipped without the
-inputs behind it, and that thinning a hundred-point curve down to a dozen does
-not move the answer.
-"""
+"""Tests for `v1/spacecraft.json`: a Δv never ships without its inputs, and thinning a curve doesn't move the answer."""
 
 import pytest
 
@@ -34,9 +28,7 @@ class TestShape:
     """Every entry is complete enough to render."""
 
     def test_only_judgeable_vehicles_ship(self, payload):
-        # The export drops what the solver could never answer for, and the
-        # drop list is pinned: a new entry landing on it should be a decision,
-        # not a side effect of a missing figure.
+        # Drop list is pinned: a new entry landing on it should be a decision, not an accident.
         exported = {v["id"] for v in payload["vehicles"]}
         assert exported == {c.id for c in CATALOGUE.values() if solver_can_judge(c)}
         assert set(CATALOGUE) - exported == {
@@ -47,8 +39,7 @@ class TestShape:
         }
 
     def test_departures_ship_on_every_entry(self, payload):
-        # Including the empty ones. The panel reads an absent field as an old
-        # export and stops filtering; it must never see one from this writer.
+        # Including empty ones — the panel reads an absent field as an old export and stops filtering.
         for vehicle in payload["vehicles"]:
             assert isinstance(vehicle["departs_from"], list), vehicle["id"]
             assert set(vehicle["departs_from"]) <= {"surface", "orbit"}, vehicle["id"]
@@ -87,9 +78,7 @@ class TestNames:
         return build_name_bundles(WikidataEntityCache())
 
     def test_configurations_of_one_rocket_are_told_apart(self, bundles):
-        # Three Falcon Heavy entries share a QID and therefore a label. What
-        # separates them in the picker is `variant`, so (name, variant) has to
-        # be unique — otherwise the list shows the same row three times.
+        # Falcon Heavy entries share a QID and label; `variant` is what tells them apart in the picker.
         variants = {c.id: c.variant for c in CATALOGUE.values()}
         for lang, bundle in bundles.items():
             rows = [(e["name"], variants[craft_id]) for craft_id, e in bundle.items()]
@@ -113,9 +102,7 @@ class TestDerivedDeltaV:
                 assert field in vehicle, f"{vehicle['id']}: {field}"
 
     def test_absent_where_an_input_is(self, payload):
-        # The flyable craft missing a Δv input are dropped before this file is
-        # written, so the case only survives on cargo: a rover's dry mass is
-        # published and nothing else about it is.
+        # Flyable craft missing a Δv input are dropped before writing; only cargo like a rover survives here.
         by_id = {v["id"]: v for v in payload["vehicles"]}
         assert "dry_mass_kg" in by_id["curiosity"]
         assert "delta_v_kms" not in by_id["curiosity"]
@@ -158,8 +145,7 @@ class TestCurves:
             assert payloads == sorted(payloads, reverse=True), vehicle["id"]
 
     def test_thinned_curve_reproduces_every_dropped_point(self, curves_downloaded):
-        # 0.5% of the payload at that energy — below the precision any of the
-        # sources quote, and the check that a 100-point curve can ship as 15.
+        # Tolerance is 0.5% of payload — below the precision any source quotes.
         for dataset in ("atlas-v551", "falcon-heavy-expendable", "vulcan-vc6"):
             full = _load_curve(dataset)
             thinned = _thin(full)
@@ -177,8 +163,7 @@ class TestCurves:
                 )
 
     def test_digitised_vulcan_agrees_with_ula(self, payload):
-        # ULA's own user's guide: 7,600 kg to C3 = 20 on a VC6S. The digitised
-        # curve is only trustworthy because it reproduces that.
+        # ULA's user's guide: 7,600 kg to C3 = 20 on a VC6S. Digitised curve must reproduce it.
         curve = next(
             v["c3_curve"] for v in payload["vehicles"] if v["id"] == "vulcan-vc6"
         )
@@ -189,8 +174,7 @@ class TestCurves:
         assert at_20 == pytest.approx(7600.0, rel=0.02)
 
     def test_sls_matches_the_mission_planners_guide(self, payload):
-        # Table 4-1: Block 1 delivers 27.2 t through TLI (C3 = -0.99) and
-        # 3.6 t at C3 = 100, which is roughly Jupiter direct.
+        # Table 4-1: Block 1 delivers 27.2 t through TLI (C3 = -0.99), 3.6 t at C3 = 100 (roughly Jupiter direct).
         curve = next(
             v["c3_curve"] for v in payload["vehicles"] if v["id"] == "sls-block-1"
         )

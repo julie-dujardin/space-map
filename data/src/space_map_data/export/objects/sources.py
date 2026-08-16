@@ -1,9 +1,8 @@
 """One cited work, in the shape the object panel's credit line reads.
 
-The per-topic registries are separate tuples that agree on their first four
-fields, so a body's credit line looks the same whichever of them a number came
-from. `contribution` stays behind: it is the credits page's full sentence, where
-a footer under a panel has room for the two or three words in `note`.
+Per-topic registries agree on their first four fields, so credit lines look the
+same regardless of source. `contribution` stays out: that's the credits page's
+full sentence, too long for a panel footer's `note`.
 """
 
 from space_map_data.constants.activity.references import ActivityReference

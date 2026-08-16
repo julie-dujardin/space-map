@@ -43,20 +43,13 @@ _AU_KM = 149_597_870.7
 
 
 def _kepler_attr(o: Object, attr: str, file_source: OrbitalSource) -> float | None:
-    """Read a unified-name kepler element off the right sub-table.
-
-    Kepler elements live on the sub-tables; ``orbital_source`` says which to
-    join. Horizons sub-table exposes unified-name properties (a, e, i, om, w,
-    ma, n, epoch_jd) over its native column names; SBDB columns already match
-    unified except for ``epoch`` (aliased to ``epoch_jd``). CelesTrak and
-    Space-Track rows don't persist elements — the snapshot overlay attaches
-    them as a transient ``_daily_kepler`` dict at export time. SBDBMoon stores ``a`` in
-    km natively (``a_km``); we convert to AU on read so the small_body_moons
-    zone ships system-scale values in the same units as the moons zone.
-
-    Rows with ``orbital_source is None`` inherit the file source — that
-    matches the assertion in :func:`_source_ordinal` (None rows are accepted
-    and treated as the file's declared source).
+    """Read a unified-name kepler element off the right sub-table for
+    ``orbital_source``. CelesTrak/Space-Track rows don't persist elements —
+    the snapshot overlay attaches them as a transient ``_daily_kepler`` dict.
+    SBDBMoon stores ``a`` in km natively; converted to AU here so the
+    small_body_moons zone matches the moons zone's units. Rows with
+    ``orbital_source is None`` inherit the file source, matching
+    :func:`_source_ordinal`.
     """
     src = o.orbital_source or file_source
     if src in (OrbitalSource.celestrak, OrbitalSource.spacetrack):
@@ -88,12 +81,9 @@ def _drift_rate(o: Object, attr: str, file_source: OrbitalSource) -> float | Non
 
 
 def _source_ordinal(objects: list[Object], orbital_source: OrbitalSource) -> int:
-    """Assert that every row's `orbital_source` matches (or is None) and return the ordinal.
-
-    Enforces the one-provider-per-file invariant: if an object disagrees with
-    the declared file source, export fails loud rather than writing a
-    mis-attributed file.
-    """
+    """Assert every row's `orbital_source` matches (or is None) and return the
+    ordinal — enforces one provider per file, failing loud on a mismatch
+    rather than writing a mis-attributed file."""
     for o in objects:
         source = getattr(o, "_source_override", None) or o.orbital_source
         if source is not None and source != orbital_source:
@@ -105,17 +95,12 @@ def _source_ordinal(objects: list[Object], orbital_source: OrbitalSource) -> int
 
 
 def _id_type_ordinal(objects: list[Object]) -> int:
-    """Pick the file's id-type ordinal from the first row and assert uniformity.
-
-    Each (zone, zoom) query in export/common.py is single-typed by construction
-    (the filters select on the id-type-defining column), so the prefix can ride
-    in the file header — frontend rebuilds `<prefix>-<column0>` from this byte.
-    A mixed file would route bundle lookups to the wrong hash bucket on the
-    frontend, so fail loud rather than ship wrong IDs.
-
-    Empty file → MISSING_ID_TYPE; no rows means nothing to reconstruct.
-    Unknown prefix on the first row → MISSING_ID_TYPE (preserves the existing
-    `_parse_numeric_id` warn-and-continue behaviour for ID types we don't ship).
+    """Pick the file's id-type ordinal from the first row and assert
+    uniformity. Each (zone, zoom) query is single-typed by construction, so
+    the prefix can ride in the header — frontend rebuilds `<prefix>-<column0>`
+    from this byte. A mixed file would route bundle lookups to the wrong hash
+    bucket, so fail loud rather than ship wrong IDs. Empty file or unknown
+    first-row prefix → MISSING_ID_TYPE.
     """
     if not objects:
         return MISSING_ID_TYPE
@@ -147,12 +132,9 @@ def _write_keplerian_columns(
     radius_km_overrides: dict[str, float] | None,
     file_source: OrbitalSource,
 ) -> None:
-    """Write columns 0–12 shared by the Keplerian and SGP4 sub-formats.
-
-    The trailing `has_localized` byte (last column of every sub-format) is
-    written by the format-specific function, not here, since it sits past
-    sub-format-specific columns.
-    """
+    """Write columns 0-12 shared by the Keplerian and SGP4 sub-formats. The
+    trailing `has_localized` byte is written by the caller — it sits past the
+    sub-format-specific columns."""
     n = len(objects)
 
     _write_int32(buf, n, [_parse_numeric_id(o) for o in objects])
@@ -200,17 +182,12 @@ def write_elements(
 ) -> None:
     """Write a Keplerian elements file (sub_format=0).
 
-    Columns 0–12 are the shared Keplerian layout. Columns 13–14 (`om_dot`,
-    `w_dot`, float32, deg/day) carry the secular drift rates that SPICE
-    populates for non-whitelisted moons via the Method C mean-element fit.
-    Other sources (Horizons, SBDB) leave them as zero and the frontend's
-    Kepler propagation reduces to plain mean-anomaly drift. Column 15
-    (`has_localized`, uint8 0/1) tells the frontend whether to even attempt
-    a localized object-detail bundle fetch — set when any language has data.
-    Column 16 (`flags`, uint8) packs per-point SBDB bits (NEO, PHA). Column 17
-    (`visible_from_days`, float32) is days from J2000 to when the object came
-    into existence (SBDB discovery here), or NaN when it should always be
-    visible (see `_visible_from_days`).
+    Columns 0-12 are the shared Keplerian layout. Columns 13-14 (`om_dot`,
+    `w_dot`) carry SPICE's secular drift rates for non-whitelisted moons;
+    other sources leave them zero. Column 15 (`has_localized`) gates the
+    frontend's localized-detail fetch. Column 16 (`flags`) packs SBDB NEO/PHA
+    bits. Column 17 (`visible_from_days`) is days from J2000 to SBDB
+    discovery, or NaN when always visible.
 
     `start_jd`/`end_jd` bound the file's validity; ±inf means unbounded.
     Raises ValueError if a required orbital element is None, or if any row's
@@ -257,19 +234,15 @@ def write_sgp4_elements(
 ) -> None:
     """Write an SGP4 elements file (sub_format=2).
 
-    Columns 0–12 match the Keplerian layout; columns 13–17 carry the extra
-    TLE/OMM fields needed by satellite.js `json2satrec`: BSTAR, MEAN_MOTION_DOT,
-    MEAN_MOTION_DDOT (float32), ELEMENT_SET_NO, REV_AT_EPOCH (int32). Column
-    18 (`has_localized`, uint8 0/1) gates localized object-detail fetches.
-    Column 19 (`flags`, uint8) is always zero for SGP4 (no SBDB sub-table)
-    but is emitted for layout uniformity with the Keplerian sub-format.
-    Column 20 (`visible_from_days`, float32) is days from J2000 to the
-    satellite's SATCAT launch date, or NaN when unknown/always-visible.
+    Columns 0-12 match the Keplerian layout; columns 13-17 carry the extra
+    TLE/OMM fields `json2satrec` needs (BSTAR, MEAN_MOTION_DOT/DDOT,
+    ELEMENT_SET_NO, REV_AT_EPOCH). Column 18 gates localized-detail fetches;
+    19 (`flags`) is always zero (no SBDB sub-table) but emitted for layout
+    uniformity; 20 (`visible_from_days`) is days from J2000 to SATCAT launch.
 
-    `start_jd`/`end_jd` bound the file's validity. TLEs lose accuracy fast
-    past their epoch and the SGP4 propagator blows up entirely a year or two
-    out, so callers should pass a tight window (typically ±14 days around the
-    epoch spread).
+    TLEs lose accuracy fast past epoch and SGP4 blows up a year or two out,
+    so callers should pass a tight `start_jd`/`end_jd` window (typically ±14
+    days around the epoch spread).
 
     Raises ValueError when a required SGP4 field is missing on any row, or if
     any row's `orbital_source` disagrees with the file source.
@@ -325,12 +298,9 @@ def write_parabolic_elements(
     """Write a parabolic elements file (sub_format=1).
 
     Columns: id, object_type, parent_id, scale, epoch_jd, q, e, i, om, w, tp,
-    radius_km, has_localized, flags, visible_from_days. `has_localized` (uint8
-    0/1) gates localized object-detail fetches in the frontend; `flags` (uint8)
-    packs per-point SBDB bits (NEO, PHA); `visible_from_days` (float32) is days
-    from J2000 to the SBDB discovery date, NaN when always-visible. `start_jd`/
-    `end_jd` bound the file's validity; ±inf means unbounded. Raises ValueError
-    if a required element
+    radius_km, has_localized, flags, visible_from_days — same trailing-column
+    meanings as `write_elements`. `start_jd`/`end_jd` bound the file's
+    validity; ±inf means unbounded. Raises ValueError if a required element
     (q, tp, e, i, om, w) is missing, or if any row's `orbital_source`
     disagrees with the file source.
     """
@@ -420,12 +390,9 @@ def _parse_numeric_id(obj: Object) -> int:
 
 
 def _parent_numeric_id(obj: Object) -> int:
-    """Extract the numeric portion of the parent's Object.id for col 2.
-
-    The parent id-type is uniform per zone (currently always ``naif`` —
-    a per-zone parent_id_type override is planned). Frontend rebuilds the
-    parent's full Object.id from this column plus the zone's parent id-type.
-    """
+    """Extract the numeric portion of the parent's Object.id for col 2. Parent
+    id-type is uniform per zone (currently always ``naif``); frontend rebuilds
+    the parent's full Object.id from this column plus the zone's id-type."""
     if obj.parent_id is None:
         return MISSING_INT32
     pos = obj.parent_id.rfind("-")
@@ -441,12 +408,9 @@ def _parent_numeric_id(obj: Object) -> int:
 
 
 def _float_value(o: Object, attr: str, file_source: OrbitalSource) -> float:
-    """Get the float64 value for a Keplerian column.
-
-    Reads from the per-source sub-table (or transient daily-overlay for
-    celestrak). Raises ValueError if a required element is missing, unless
-    the orbit quality is known-bad (condition_code 9).
-    """
+    """Get the float64 value for a Keplerian column. Raises ValueError if a
+    required element is missing, unless the orbit quality is known-bad
+    (condition_code 9)."""
     val = _kepler_attr(o, attr, file_source)
     if attr in _REQUIRED_KEPLERIAN and val is None:
         sbdb = o.sbdb if o.spkid is not None else None
@@ -467,13 +431,9 @@ def _required_float(o: Object, attr: str, file_source: OrbitalSource) -> float:
 
 
 def _optional_float(o: Object, attr: str, file_source: OrbitalSource) -> float:
-    """Get an optional secular drift rate (om_dot/w_dot), returning 0.0 when missing.
-
-    SPICE populates these on the Horizons sub-table for non-whitelisted moons;
-    other sources don't fit them. Treating None as zero rather than NaN means
-    the frontend's `angle += rate·dt` step is a no-op for sources that didn't
-    fit them.
-    """
+    """Get an optional secular drift rate (om_dot/w_dot), returning 0.0 when
+    missing so the frontend's `angle += rate·dt` step is a no-op for sources
+    that didn't fit one."""
     val = _drift_rate(o, attr, file_source)
     return val if val is not None else 0.0
 
@@ -490,12 +450,9 @@ def _required_sbdb_float(o: Object, attr: str) -> float:
 
 
 def _required_sgp4_float(o: Object, key: str) -> float:
-    """Required SGP4 float from the transient ``_daily_kepler`` overlay dict.
-
-    The overlay (CelesTrak daily or Space-Track archive) attaches every SGP4
-    field there, so satcat-only Objects with no CelesTrak sub-table row still
-    export. Raises if the overlay didn't run or the field is absent.
-    """
+    """Required SGP4 float from the transient ``_daily_kepler`` overlay dict —
+    lets satcat-only Objects with no CelesTrak sub-table row still export.
+    Raises if the overlay didn't run or the field is absent."""
     daily = getattr(o, "_daily_kepler", None)
     val = daily.get(key) if daily is not None else None
     if val is None:

@@ -2,24 +2,17 @@
 
 Each chunk file `{zone}/{chunk_idx}.bin.gz` has a companion JSON sidecar
 `{chunk_idx}.meta.json` recording the inputs that produced it:
-
-  * `binary_version` — `format.VERSION` mirror; wire-format bumps
-    auto-invalidate every chunk.
-  * `zone_hash` — content hash of fit-affecting zone params.
-  * `probes` — `{probe_id: {"fit": fit_sig_hash, "ord": int, "has_loc":
-    bool}}`. `fit` is a short hash of the per-probe fit signature stored
-    alongside the cached `.fit` payload under
-    `_fits/{probe_id}/{zone}/{chunk_idx}.fit.meta.json`; `ord` and
-    `has_loc` mirror the wire-header bits.
+`binary_version` (wire-format bumps auto-invalidate), `zone_hash`
+(fit-affecting zone params), and `probes` — `{probe_id: {"fit":
+fit_sig_hash, "ord": int, "has_loc": bool}}`.
 
 `FIT_VERSION`, kernel mtimes, candidates_hash, and events_hash live inside
-the per-probe fit signature rather than this chunk sidecar — a change to
-any of them flips the affected probe's `fit` hash. An i18n / type-tag edit
-flips `has_loc` / `ord` without invalidating the cached fit, so the chunk
-repacks from cached trajectory data.
+the per-probe fit signature rather than here — a change to any of them
+flips the affected probe's `fit` hash. An i18n/type-tag edit flips
+`has_loc`/`ord` without invalidating the cached fit, so the chunk repacks
+from cached trajectory data.
 
-Atomic writes: binary then sidecar, each tempfile + rename. A partially-
-completed run leaves the chunk in "regenerate next run" state.
+Atomic writes: binary then sidecar, each tempfile + rename.
 """
 
 import hashlib
@@ -88,14 +81,10 @@ def build_chunk_signature(
     zone: Zone,
     probe_block: dict[str, dict],
 ) -> dict:
-    """Chunk-level signature: zone params + per-probe `{fit, ord, has_loc}`.
-
-    `probe_block` is `{str(probe_id): {"fit": fit_sig_hash, "ord": int,
-    "has_loc": bool}}` — one entry per probe that contributes a
-    `ChunkProbeRecord` to this chunk. `fit` flips when the trajectory must
-    re-fit (kernels, candidates_hash, events_hash, FIT_VERSION, …); the
-    other two flip when only the wire-header bits change (i18n, type tag
-    edit) so the chunk repacks from cached fits without recomputing.
+    """Chunk-level signature: zone params + per-probe `{fit, ord, has_loc}`,
+    one entry per probe contributing a `ChunkProbeRecord`. `fit` flips when
+    the trajectory must re-fit; the other two flip on a wire-header-only
+    change (i18n, type tag), so the chunk repacks from cached fits.
     """
     return {
         "binary_version": BINARY_VERSION,

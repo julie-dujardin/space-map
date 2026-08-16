@@ -1,14 +1,9 @@
 """The "Atmosphere of X" / "Internal structure of X" article, per locale.
 
-One link at the foot of each half of the Structure tab. The tab itself is
-charts and numbers with no prose in it, so this is the only place a reader is
-told in words what they are looking at.
-
-Coverage is lopsided and there is no English fallback, by the same decision the
-ring articles ship under: a reader gets the article in the language they are
-reading in or no link at all. Atmospheres are well covered (17 bodies, 12 of
-them in English); interiors are not (10 bodies, 7 of which exist only in
-Italian) — see the coverage comments in ``constants.{atmosphere,interior}``.
+One link at the foot of each half of the Structure tab, the only prose next to
+its charts. No English fallback, same as the ring articles: a reader gets the
+article in their own language or no link. See coverage comments in
+``constants.{atmosphere,interior}``.
 """
 
 from functools import cache
@@ -27,11 +22,8 @@ def _summaries(qid: str):
 def _page_localized(qids: tuple[str, ...], lang: str) -> dict | None:
     """First article in `qids` that this locale has, as `{extract, url}`.
 
-    Requires an extract rather than just a link. A handful of articles open
-    straight on a section heading and the API's intro extract comes back empty
-    (pt "Estrutura interna da Lua", pt "Coroa solar", ru "Атмосфера Нептуна");
-    the panel renders nothing without prose, so a link-only entry would ship as
-    weight nobody sees.
+    Requires an extract, not just a link — some articles open on a section
+    heading with an empty intro extract, and the panel needs prose to render.
     """
     entry: dict = {}
     for qid in qids:

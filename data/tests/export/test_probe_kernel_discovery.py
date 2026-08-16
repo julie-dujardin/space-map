@@ -1,9 +1,7 @@
 """Extrap kernels must reach the exporter even when absent from the index.
 
-The propagation synthesiser writes `<naif>-extrap.bsp` and records it in the
-mission `_index.json`, but a re-download regenerates that index from the
-downloaded files only — dropping the synthetic entry. Discovery therefore
-falls back to disk presence; these tests pin that down.
+A re-download regenerates `_index.json` from disk only, dropping the
+synthetic `<naif>-extrap.bsp` entry, so discovery falls back to disk presence.
 """
 
 import json
@@ -75,9 +73,9 @@ def test_downloader_drops_extrap_record_when_file_gone(tmp_path: Path) -> None:
 
 
 def test_landed_missions_excluded_from_generic_pool(tmp_path: Path) -> None:
-    """Landed-mission SPKs must not reach the generic pool. They're furnshed
-    last, so a recycled NAIF (MSL's -76 = old Mariner 10) would otherwise win
-    last-loaded-wins and drag the earlier probe onto the lander's body."""
+    """Excluded from the generic pool: furnshed last, a recycled NAIF (MSL's
+    -76 = old Mariner 10) would otherwise win last-loaded-wins and drag the
+    earlier probe onto the lander's body."""
     (tmp_path / "spk").mkdir()
     (tmp_path / "spk" / "de440.bsp").touch()
     (tmp_path / "lsk").mkdir()

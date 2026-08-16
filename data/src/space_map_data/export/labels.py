@@ -3,17 +3,13 @@
 One ``/v1/labels/{lang}.gz`` is emitted per supported language, listing only
 *promoted* bodies — those rendered as individual meshes with labels on first
 paint (planets, dwarf planets, moons, stars, barycenters, Lagrange points,
-plus the curated extras in :mod:`space_map_data.constants.promoted`, plus
-every probe shipped by the high-accuracy probe system).
+curated extras, and every high-accuracy probe).
 
 Format: gzipped UTF-8, one ``{id}\\x1f{name}\\x1f{flags}`` line per object.
-``flags`` is a single-character set; currently the only flag is ``m`` for
-*minor* (rendered as a collapsed halo by default, expands on hover) — set
-for moons whose label fell back to the provisional designation, and for
-probes outside the curated :data:`PROMOTED_EXTRA_IDS` list (every probe still
-ships in the probe export, but only the flagship ones label on first paint).
-The frontend fetches one file at app start (or on locale change) and uses
-its keys as the authoritative promoted set.
+The only flag is ``m`` for *minor* (collapsed halo, expands on hover), set
+for moons with no real name and for probes outside the curated flagship
+list. The frontend fetches one file at app start and uses its keys as the
+authoritative promoted set.
 """
 
 import csv
@@ -41,12 +37,11 @@ def _low_earth_orbit_probe_ids() -> set[str]:
     """Probe IDs whose SATCAT row places them in Earth orbit with apogee
     under GEO+20%. Joined via the registry's cospar_id / norad_cat_id.
 
-    Promoting these clutters first paint with retired GEO comsats (GOES,
-    EchoStar, …) and decayed LEO sats (NEOWISE, GRACE-1, …) that are either
-    redundant with CelesTrak's live SGP4 feed or no longer in any catalog.
-    Probes with no SATCAT row, no apogee field, or a non-Earth orbit center
-    are NOT filtered — that covers escape missions where SATCAT only recorded
-    the parking orbit (e.g. Mars Hope shows ORBIT_CENTER=MA so it survives).
+    Promoting these clutters first paint with retired/decayed satellites
+    that are redundant with CelesTrak's live feed or no longer catalogued.
+    Probes with no SATCAT row, no apogee, or a non-Earth orbit center are NOT
+    filtered — that covers escape missions where SATCAT only recorded the
+    parking orbit.
 
     TODO: drop this heuristic once Earth-sat coverage moves to space-track —
     that catalog ships decayed/graveyard sats with current state vectors, so
@@ -109,11 +104,9 @@ def _is_promoted(
 ) -> bool:
     """A body is promoted if it'd be rendered as an individual mesh on first
     paint. Type/curated/cheb/probe membership is the *intent* check;
-    ``rendered_ids`` is the *capability* check — bodies absent from every
-    position file can't render in 3D, so promoting them just makes the
-    renderer's pending-promotion loop retry an unfindable ``getBody`` every
-    frame. Every probe shipped by the probe export gets promoted (curated
-    extras label normally; the rest ride the ``m`` minor flag).
+    ``rendered_ids`` is the *capability* check — a body absent from every
+    position file can't render in 3D, and promoting it anyway would make the
+    renderer retry an unfindable ``getBody`` every frame.
     """
     if obj_id not in rendered_ids and obj_id not in cheb_covered_ids:
         return False
@@ -131,12 +124,10 @@ def _resolve_label(
     """Return ``(name, flags)`` for one (object, lang) pair.
 
     Name precedence: localized Wikidata label → DB ``name`` → provisional
-    designation → empty string. Flags is ``"m"`` when the chosen name is a
-    moon's provisional designation (no real name in either Wikidata or the
-    DB), or when the object is a probe outside :data:`PROMOTED_EXTRA_IDS` —
-    the frontend renders flagged labels as collapsed halos that expand on
-    hover, so e.g. Saturn's ``naif-65289``/``S2020 S48`` and every non-
-    flagship probe doesn't crowd the map at first paint.
+    designation → empty string. Flags is ``"m"`` (collapsed halo) when the
+    name is a moon's provisional designation, or the object is a non-
+    flagship probe — keeps unnamed moons and minor probes from crowding
+    the map at first paint.
     """
     loc_name = loc.get("name") if loc else None
     db_name = glob.get("name")
@@ -165,19 +156,15 @@ def write_global_labels(
 ) -> None:
     """Write ``/v1/labels/{lang}.gz`` for every supported language.
 
-    Bodies with chebyshev coverage are auto-promoted regardless of type:
-    they're rendered as individual meshes by virtue of their precise
-    ephemerides, so they always belong in the labels set (catches the DE441
-    perturber asteroids that aren't in :data:`PROMOTED_EXTRA_IDS`). Probes
-    follow the same rule — every probe in ``probe_ids`` is promoted; the
-    ones outside :data:`PROMOTED_EXTRA_IDS` carry the ``m`` minor flag so
-    the renderer collapses them to halos by default.
+    Bodies with chebyshev coverage are auto-promoted regardless of type,
+    since precise ephemerides mean they render as individual meshes anyway
+    (catches DE441 perturber asteroids outside :data:`PROMOTED_EXTRA_IDS`).
+    Every probe in ``probe_ids`` is likewise promoted, carrying the ``m``
+    flag unless it's a curated flagship.
 
-    ``rendered_ids`` is the union of object IDs that ship in any elements
-    position file. Bodies present only in object bundles (e.g. orbit-less
-    SBDB satellites added for navigation) are excluded — promoting them
-    would make the frontend's pending-promotion loop retry an unfindable
-    ``getBody`` every frame.
+    ``rendered_ids`` excludes bodies present only in object bundles (e.g.
+    orbit-less SBDB satellites) — promoting those would make the frontend
+    retry an unfindable ``getBody`` every frame.
     """
     missing_extras = sorted(PROMOTED_EXTRA_IDS - all_objects.global_data.keys())
     if missing_extras:

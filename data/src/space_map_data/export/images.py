@@ -1,43 +1,28 @@
 """Per-object image list + thumbnail/metadata generation for export.
 
-Reads source images and their pre-decided license servability from the
-``IMAGES_DIR/<filename>/`` layout, then writes an export-side bundle
-for each servable image::
+Reads source images and their pre-decided license servability from
+``IMAGES_DIR/<filename>/``, then writes an export bundle per servable image::
 
-    EXPORT_DIR/v1/images/<filename>/s.<ext>     # 512px (webp/avif, or verbatim jpg)
+    EXPORT_DIR/v1/images/<filename>/s.<ext>     # 512px
     EXPORT_DIR/v1/images/<filename>/m.<ext>     # 1024px (when source is larger)
     EXPORT_DIR/v1/images/<filename>/xl.<ext>    # 4096px (when source is larger)
-    EXPORT_DIR/v1/images/<filename>/metadata.json.gz   # marker, not deployed
+    EXPORT_DIR/v1/images/<filename>/metadata.json.gz   # completion marker, not deployed
     EXPORT_DIR/v1/images/<filename>/sidecar.json.gz    # only when EXIF can't carry
 
-Size buckets and bucket extensions follow these rules:
-- Passthrough sources (svg, webm) are copied verbatim to ``xl.<ext>``
-  when under the 25 MiB Cloudflare Pages per-file cap. SVG is a vector
-  that scales to any dimension; WebM is forward-compatible (the frontend
-  doesn't render video in ``<img>`` today but the file is available for
-  when it does).
-- Unshippable formats (pdf, stl, djvu) are skipped entirely — nothing
-  useful as a thumbnail and browsers can't render them as images.
-- Animated sources (GIFs with multiple frames) are encoded as animated AVIF
-  at every emitted bucket, preserving frames and timing.
-- Non-animated lossy sources (jpg/jpeg) emit lossy webp for downscaled
-  buckets and are copied verbatim at the resting bucket (re-encoding lossy
-  just degrades further). EXIF-rotated JPEGs are the exception: their pixels
-  are baked upright, so every bucket re-encodes to webp.
-- Non-animated lossless sources (png, etc.) emit lossy webp at every bucket,
-  including the resting bucket — one lossless→lossy re-encode is visually
-  equivalent to encoding from the original and avoids shipping multi-MiB
-  PNGs verbatim.
-- The resting bucket is the first bucket whose target dim is ≥ the source's
-  largest dim. Buckets above it are not emitted (no upscaling).
+SVG/WebM pass through verbatim under the Cloudflare Pages 25 MiB cap; pdf/stl/
+djvu are skipped (unrenderable as images); animated sources re-encode to
+animated AVIF at every bucket; lossy JPEGs stay verbatim at their resting
+bucket (re-encoding would just degrade further) except when EXIF-rotated,
+since their pixels must be baked upright; everything else re-encodes to lossy
+webp even at the resting bucket, since one lossless→lossy step is visually
+equivalent and avoids shipping multi-MiB PNGs verbatim. The resting bucket is
+the smallest one at least as large as the source; nothing above it is emitted.
 
-The frontend-facing metadata (license/artist/description/date/depicts) rides
-inside every raster variant as an EXIF ImageDescription so the deploy doesn't
-spend a Cloudflare Workers-assets file slot per image on a sidecar. Bundles
-that can't embed (SVG/WebM passthrough, oversize payloads, fake-extension
-non-JPEGs) get a deployed ``sidecar.json.gz`` fallback. ``metadata.json.gz``
-keeps the full payload plus the ``variants`` map and doubles as the completion
-marker, but is excluded from deploys via ``.assetsignore``.
+Frontend-facing metadata rides inside every raster variant as an EXIF
+ImageDescription, so the deploy doesn't spend a file slot per image on a
+sidecar; bundles that can't embed (passthrough, oversize, fake-extension)
+get a deployed ``sidecar.json.gz`` fallback instead. ``metadata.json.gz``
+carries the full payload and doubles as the completion marker.
 """
 
 import gzip
@@ -83,18 +68,14 @@ logger = logging.getLogger(__name__)
 
 _EXPORT_IMAGES_DIR = EXPORT_DIR / "v1" / "images"
 
-# Lossy-source formats: stay verbatim at the resting bucket (re-encoding would
-# just degrade further). Anything else we treat as lossless and re-encode to
-# lossy webp, including at the resting bucket — one lossless→lossy step is
-# visually equivalent to encoding from the original source and saves a lot of
-# bytes (e.g. 36 MiB PNGs that fit under the xl bucket used to ship verbatim).
+# Stay verbatim at the resting bucket; everything else re-encodes to lossy
+# webp there too, since a lossless→lossy step is visually equivalent and
+# avoids shipping multi-MiB PNGs verbatim.
 _LOSSY_EXTENSIONS = {".jpg", ".jpeg"}
 
-# Formats served verbatim at the xl label without decoding. SVG is a
-# vector (scales to any dimension). WebM is a video the frontend doesn't
-# render in <img> today but is forward-compatible when video support lands.
-# Size-capped at the Cloudflare Pages per-file limit so oversize sources
-# still get dropped rather than breaking the deploy.
+# Served verbatim at the xl label without decoding. Size-capped at the
+# Cloudflare Pages per-file limit so oversize sources are dropped rather
+# than breaking the deploy.
 _PASSTHROUGH_EXTENSIONS = {".svg", ".webm"}
 _PASSTHROUGH_MAX_BYTES = 25 * 1024 * 1024
 
@@ -112,10 +93,9 @@ _BUCKETS: tuple[tuple[str, int], ...] = (
 _ANIMATED_AVIF_QUALITY = 55
 _ANIMATED_AVIF_SPEED = 6
 
-# Formats where multiple frames mean "animation". PIL exposes is_animated /
-# n_frames for other multi-frame formats too (MPO stereoscopic JPEGs, multi-
-# page TIFFs), but those aren't real animation and trying to iterate their
-# frames can fail with "No data found for frame".
+# Formats where multiple frames mean "animation". Other multi-frame formats
+# (MPO stereoscopic JPEGs, multi-page TIFFs) aren't real animation, and
+# iterating their frames can fail with "No data found for frame".
 _ANIMATED_FORMATS = {"GIF", "WEBP", "PNG"}
 
 # Bump when the variant-emission rules change (new encoder, new bucket sizes,
@@ -125,11 +105,9 @@ _ANIMATED_FORMATS = {"GIF", "WEBP", "PNG"}
 _BUNDLE_SCHEMA = 6
 
 # Embedded-metadata envelope: EXIF ImageDescription =
-# "SPACEMAP-META:v1:<byte-len>:<json>". The JSON is ensure_ascii so byte
-# offsets equal character offsets and the client can byte-scan for the
-# sentinel instead of parsing EXIF. Cap keeps the blob under the JPEG APP1
-# segment limit (65533 bytes incl. the Exif header); oversize payloads fall
-# back to sidecar.json.gz.
+# "SPACEMAP-META:v1:<byte-len>:<json>". ensure_ascii keeps byte offsets equal
+# to character offsets so the client can byte-scan for the sentinel instead
+# of parsing EXIF. Cap keeps the blob under the JPEG APP1 segment limit.
 _META_SENTINEL = "SPACEMAP-META:v1:"
 _EMBED_MAX_BYTES = 60_000
 
@@ -144,10 +122,8 @@ _TIME_PRECISION_YEAR = 9
 # "2012-09-23 16:26:36", "1999". The trailing time (if any) is dropped.
 _DATETIME_ORIGINAL_RE = re.compile(r"^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?")
 
-# Per-filename locks so two chunk-writer threads never race on the same image.
-# Serializes work on a single file (lock held across PIL save + rename) while
-# leaving different files free to parallelize. The lock dict's own mutations
-# are protected by ``_FILE_LOCKS_GUARD``.
+# Per-filename locks so two chunk-writer threads never race on the same
+# image, while different files stay free to parallelize.
 _FILE_LOCKS: dict[str, threading.Lock] = {}
 _FILE_LOCKS_GUARD = threading.Lock()
 
@@ -164,16 +140,9 @@ def _file_lock(filename: str) -> threading.Lock:
 def collect_object_images(object_id: str) -> list[dict] | None:
     """Build the ``images`` array for a single object's global JSON.
 
-    Reads the pre-computed selection from
-    ``OBJECT_IMAGES_PATH`` (written by the
-    ``image_selection`` ingest provider) and turns each entry into an
-    export bundle with thumbnails. Discovery, derivative-tree expansion,
-    and best-of-tree scoring all happen at ingest time — this function
-    just renders.
-
-    Returns ``None`` when the cache has no entries for ``object_id`` (or
-    has not been generated). Excluded-prefix names, missing source bytes,
-    and non-servable licenses are filtered defensively.
+    Renders the pre-computed selection from ``OBJECT_IMAGES_PATH``; discovery
+    and scoring happen at ingest time. Returns ``None`` when the cache has no
+    entries for ``object_id``.
     """
     return _collect_images_from_cache(object_id, _object_images_cache)
 
@@ -391,9 +360,8 @@ def _make_entry(filename: str, kind: str) -> dict | None:
 def _image_description(filename: str) -> str | dict[str, str] | None:
     """The Commons description a picture's title is cut from.
 
-    Read from the download metadata, not from the export bundle: the bundle's
-    marker carries only what the viewer needs, and adding a field to it would
-    mean a schema bump and a full regeneration of every image on disk.
+    Read from the download metadata, not the export bundle: adding a field to
+    the bundle marker would mean a schema bump and a full regeneration.
     """
     return _viewer_payload(filename).get("description")
 
@@ -407,15 +375,9 @@ def _filename_label(filename: str) -> str:
 def _ensure_bundle(filename: str) -> dict:
     """Generate (if missing) and return the export bundle for an image.
 
-    Returns a dict with ``variants`` (``{label: ext}`` of emitted size buckets)
-    and, when the source is a raster format we decoded, ``width`` and ``height``
-    (source pixel dimensions on the longest/shortest axes). Passthrough sources
-    (SVG/WebM) and skipped formats may be missing dimensions.
-
-    ``metadata.json.gz`` doubles as the completion marker: once it exists with
-    a current ``schema`` the bundle is trusted and its embedded ``variants`` /
-    dimensions are returned. Bundles written under an older schema are wiped
-    and regenerated.
+    ``metadata.json.gz`` doubles as the completion marker: once it exists
+    with a current ``schema`` the bundle is trusted as-is. Bundles written
+    under an older schema are wiped and regenerated.
     """
     out_dir = _EXPORT_IMAGES_DIR / filename
     metadata_path = out_dir / "metadata.json.gz"
@@ -466,12 +428,10 @@ def _generate_variants(
 ) -> tuple[dict[str, str], tuple[int, int] | None, bool]:
     """Write s/m/xl output files.
 
-    Returns ``(variants, dims, embedded)``: ``variants`` is the ``{label: ext}``
-    map of emitted buckets; ``dims`` is ``(width, height)`` of the decoded
-    source raster — ``None`` for passthrough/skipped sources where we never
-    opened a raster (clients use them only for aspect ratio); ``embedded``
-    says every emitted variant carries the ``exif`` metadata blob, so the
-    caller knows whether a sidecar fallback is needed.
+    Returns ``(variants, dims, embedded)``. ``dims`` is ``None`` for
+    passthrough/skipped sources where no raster was ever opened; ``embedded``
+    tells the caller whether every variant carries the EXIF blob, or a
+    sidecar fallback is needed.
     """
     src = source_path(filename)
     src_ext = src.suffix.lower()
@@ -660,27 +620,12 @@ def _copy_jpeg_with_exif(src: Path, dst: Path, exif: bytes) -> None:
 def _viewer_payload(filename: str) -> dict:
     """Build the frontend-facing per-image metadata.
 
-    Trimmed to the subset the frontend actually consumes:
-
-    - ``license``: ``{"name", "url"}`` from extmetadata LicenseShortName + LicenseUrl
-    - ``artist``, ``description``: multilang-capable fields, restricted to
-      supported locales (with bare strings passed through unchanged). Both
-      are aggregated across the chosen file's derivative tree — the chosen
-      file's value is the default, and tree members fill in missing entries
-      (per-locale for multilang dicts), so a French derivative's French
-      description survives when the English original lacked one.
-    - ``date``: ISO-truncated creation date (``YYYY-MM-DD`` / ``YYYY-MM`` /
-      ``YYYY``). Prefers SDC P571 ``inception`` (truncated by precision) and
-      falls back to extmetadata ``DateTimeOriginal`` text. Tree-aggregated
-      with chosen-file priority.
-    - ``depicts``: list of Wikidata QIDs from SDC P180. Tree-aggregated only
-      when the chosen file has no depicts of its own — derivatives can have
-      different framing, so we don't merge.
-    - ``source_url``: Commons page URL (constructible client-side, but cheap
-      to include here)
-
-    License stays tied to the chosen file: it describes the bytes we
-    actually serve, so a derivative's license can't substitute.
+    ``artist``/``description`` aggregate across the derivative tree per
+    locale, so e.g. a French derivative's caption fills a gap in the English
+    original. ``date`` and ``depicts`` take the chosen file's value outright
+    if it has one, falling back to the tree only when it doesn't (derivatives
+    can have different framing, so these aren't merged). ``license`` stays
+    tied to the chosen file alone: it describes the bytes actually served.
     """
     base = read_download_metadata(filename) or {}
     base_em = (base.get("imageinfo") or {}).get("extmetadata") or {}
@@ -737,10 +682,8 @@ def _write_marker_metadata(
     variants: dict[str, str],
     dims: tuple[int, int] | None,
 ) -> None:
-    """Write metadata.json.gz: the viewer payload plus the bundle bookkeeping
-    (``schema``, ``variants``, source ``width``/``height``) that makes it the
-    completion/skip marker. Written last so a crash never leaves a marked-but-
-    incomplete bundle."""
+    """Write metadata.json.gz, the completion marker. Written last so a
+    crash never leaves a marked-but-incomplete bundle."""
     full: dict = {"schema": _BUNDLE_SCHEMA, "variants": variants, **payload}
     if dims:
         full["width"], full["height"] = dims
@@ -757,12 +700,8 @@ def _aggregate_tree_metadata(
 ]:
     """Walk the derivative tree once and aggregate the fields we export.
 
-    Returns ``(artist, description, date, depicts)``. Chosen-file values
-    take precedence; tree members reachable via ``derived_from`` /
-    ``other_versions`` provide fallbacks. ``artist`` and ``description``
-    fall back per-locale on multilang dicts; ``date`` and ``depicts`` use
-    whole-value fallback (the chosen file wins outright if it has any
-    value at all). BFS from the chosen file means closer derivatives are
+    Returns ``(artist, description, date, depicts)``, chosen-file values
+    taking precedence. BFS from the chosen file means closer derivatives are
     visited first and win the fallback race over distant ones.
     """
     artist: str | dict[str, str] | None = None
@@ -788,12 +727,11 @@ def _aggregate_tree_metadata(
 
 
 def _extract_date(meta: dict, em: dict) -> str | None:
-    """Best-available creation date for an image, ISO-truncated to known precision.
+    """Best-available creation date, ISO-truncated to known precision.
 
-    Prefers SDC P571 (structured time + precision) so we don't dress up a
-    year-only inception as a fake day. Falls back to extmetadata
-    ``DateTimeOriginal``, which is free-form text but usually starts with a
-    parseable ISO-ish date.
+    Prefers SDC P571 (structured time + precision) over extmetadata's
+    free-form ``DateTimeOriginal``, so a year-only inception isn't dressed
+    up as a fake day.
     """
     for stmt in _sdc_statements(meta, "P571"):
         snak = stmt.get("mainsnak") or {}
@@ -821,14 +759,9 @@ def _extract_date(meta: dict, em: dict) -> str | None:
 
 
 def _truncate_wikibase_time(time_str: str, precision: int) -> str | None:
-    """Truncate a Wikibase time string to its declared precision.
-
-    Wikibase times look like ``+2009-10-05T00:00:00Z`` (negative leading
-    sign for BCE). A day-precision stamp gives ``"2009-10-05"``,
-    month-precision ``"2009-10"``, year-precision ``"2009"``. Anything
-    coarser than year (decade/century/...) we drop — for image creation
-    dates "circa the 2000s" isn't a useful signal.
-    """
+    """Truncate a Wikibase time (``+2009-10-05T00:00:00Z``) to its declared
+    precision. Anything coarser than year is dropped — "circa the 2000s"
+    isn't a useful creation date."""
     if not time_str.startswith(("+", "-")):
         return None
     sign = "" if time_str[0] == "+" else "-"
@@ -903,14 +836,9 @@ def _merge_locale_field(
     base: str | dict[str, str] | None,
     fallback: str | dict[str, str] | None,
 ) -> str | dict[str, str] | None:
-    """Default to ``base``; fill missing dict locales from ``fallback``.
-
-    - ``base`` None → use ``fallback`` outright.
-    - ``base`` is a bare string → keep it (no per-locale info to merge into).
-    - ``base`` is a dict → merge per-locale, base entries winning. A
-      bare-string ``fallback`` against a dict base is ignored (we'd lose
-      the locale tagging if we tried to splat it across all locales).
-    """
+    """Default to ``base``; fill missing dict locales from ``fallback``. A
+    bare-string ``fallback`` against a dict ``base`` is ignored — splatting
+    it across all locales would lose the locale tagging."""
     if base is None:
         return fallback
     if fallback is None or isinstance(base, str):
@@ -922,12 +850,9 @@ def _merge_locale_field(
     return merged
 
 
-# Attribution tiers for the social-card image picker, keyed off the Commons
-# LicenseShortName. NC/ND/fair-use never reach here (dropped at download), so
-# the split is only between what needs no credit, what a text credit satisfies,
-# and copyleft/unknown terms we can't honour inside a card.
-# ``free`` keywords must stay precise: a false positive would serve a
-# credit-requiring image with no credit.
+# Attribution tiers for the social-card image picker. NC/ND/fair-use never
+# reach here (dropped at download). ``free`` keywords must stay precise: a
+# false positive would serve a credit-requiring image with no credit.
 _FREE_LICENSE_KEYWORDS = (
     "cc0",
     "public domain",
@@ -1029,10 +954,8 @@ _IMAGE_TITLES: dict[str, dict[str, str]] = {}
 def image_titles(description: str | dict[str, str] | None) -> dict[str, str]:
     """Per-language tile titles from a Commons description.
 
-    The first line, and only when it is already label-shaped — Commons
-    descriptions run from a name to three paragraphs of restoration notes, and
-    there is no way to cut the long ones that doesn't read as a truncation.
-    A bare (non-multilang) description is filed under the base language.
+    Takes the first line, and only when it's already label-shaped — there's
+    no way to cut a long description that doesn't read as a truncation.
     """
     if not description:
         return {}
@@ -1100,17 +1023,12 @@ def _locale_field(field: dict | None) -> str | dict[str, str] | None:
 def prune_image_bundles() -> None:
     """Delete bundle dirs for images no longer referenced by any selection.
 
-    The bundle writers only ever add; selection changes (image replaced on
-    Wikidata, object dropped, exclusion added) would otherwise leave orphan
-    bundles shipping forever. Referenced = union of *every* selection cache,
-    canonicalized like the collectors do.
-
-    Every cache, not just the ones a page loads first: a picture reached only
-    from a ring or topic shelf is referenced exactly as much as one on the
-    object's own list, and leaving those out deletes the bundle that same run.
-
-    Skipped with a warning when every cache is empty — that means ingest
-    hasn't run, not that nothing is referenced.
+    The bundle writers only ever add, so selection changes (image replaced,
+    object dropped, exclusion added) would otherwise leave orphans forever.
+    "Referenced" is the union of *every* selection cache, not just the ones a
+    page loads first — a ring/topic-only picture is referenced just as much.
+    Skipped with a warning when every cache is empty, since that means
+    ingest hasn't run rather than nothing being referenced.
     """
     keep: set[str] = set()
     for cache_loader in (

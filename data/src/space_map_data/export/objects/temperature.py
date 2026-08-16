@@ -1,15 +1,12 @@
 """Equilibrium temperature for bodies nobody has measured.
 
-Wikidata carries a hand-entered temperature for about sixty small bodies, and
-almost every one of them is this same formula recomputed by an editor — but
-inconsistently: some used the semi-major axis, others perihelion, so two
-comparable objects can land 25 K apart for no physical reason. Computing it
-here instead makes the whole catalogue consistent and covers the other
-million-odd objects, at the cost of being an estimate, which the export marks.
+Wikidata's hand-entered values mix semi-major-axis and perihelion sources, so
+comparable objects can land 25 K apart for no reason. Recomputing here keeps
+the catalogue consistent across the million-odd unmeasured objects, at the
+cost of being an estimate (export marks it as such).
 
-Radiative equilibrium only: no greenhouse, no internal heat, no thermal
-inertia. It is close for airless fast rotators and wrong for Venus, which is
-why measured values (constants/temperature/bodies.py) always win.
+Radiative equilibrium only — no greenhouse, no internal heat, no thermal
+inertia. Wrong for Venus, so measured values always win.
 """
 
 import logging
@@ -33,9 +30,7 @@ CONDITIONS = ("night", "day", "record", "modelled")
 _SOLAR_CONSTANT = 1361.0
 _STEFAN_BOLTZMANN = 5.670374419e-8
 
-# Phase integral for the H-G system at the default G = 0.15 (Bowell et al.
-# 1989), turning the catalogue's geometric albedo into the Bond albedo the
-# energy balance needs.
+# Phase integral, H-G system at default G = 0.15 (Bowell et al. 1989).
 _PHASE_INTEGRAL = 0.39
 
 # Beyond this the "surface" is a cloud deck with its own heat budget, and
@@ -49,9 +44,8 @@ _CORE_ROLES = frozenset({"core", "outer_core", "inner_core"})
 def bond_albedo(geometric_albedo: float | None) -> float:
     """Bond albedo from the catalogue's geometric albedo, 0 when unknown.
 
-    Zero is the right default rather than a survey mean: it is what the
-    published equilibrium temperatures this replaces assumed, and for the dark
-    bodies that dominate the catalogue the correction is under a kelvin.
+    Zero matches what the published temperatures this replaces assumed, and
+    for the dark bodies dominating the catalogue the correction is under 1 K.
     """
     if geometric_albedo is None:
         return 0.0
@@ -66,8 +60,7 @@ def equilibrium_temperature(
 ) -> float | None:
     """Isothermal equilibrium temperature in kelvin at *distance_au*.
 
-    Isothermal (whole-surface reradiation) rather than subsolar, so the result
-    reads as the body's mean rather than its hottest point.
+    Isothermal, not subsolar, so the result reads as a mean, not a hottest point.
     """
     if distance_au <= 0.0:
         logger.warning("Skipping equilibrium temperature: distance %s AU", distance_au)
@@ -76,9 +69,8 @@ def equilibrium_temperature(
     return (flux / (4.0 * _STEFAN_BOLTZMANN)) ** 0.25
 
 
-# Planetary semi-major axes, AU, keyed by the barycentre a moon orbits. A
-# moon's own `a` is measured from its planet and says nothing about how much
-# sunlight it gets; beside the planet's distance its orbit is a rounding error.
+# Planetary semi-major axes, AU, keyed by the barycentre a moon orbits — a
+# moon's own `a` is relative to its planet, not the Sun.
 _BARYCENTRE_DISTANCE_AU = {
     "naif-1": 0.387,
     "naif-2": 0.723,
@@ -100,10 +92,8 @@ def heliocentric_distance_au(
     """Distance to use for a body's insolation, or None if it can't be known."""
     if parent_id is not None and parent_id != _SUN_ID:
         return _BARYCENTRE_DISTANCE_AU.get(parent_id)
-    # Hyperbolic orbits carry a negative semi-major axis — tens of thousands of
-    # comets and recent discoveries. They have no characteristic distance to
-    # equilibrate at, so they simply get no estimate; not an error worth logging
-    # per object.
+    # Hyperbolic orbits (negative a) have no characteristic distance, so no
+    # estimate — not worth logging per object.
     if (
         semi_major_axis is not None
         and math.isfinite(semi_major_axis)
@@ -116,22 +106,15 @@ def heliocentric_distance_au(
 def _core_readings(object_id: str) -> tuple[list[dict], list[dict]]:
     """The hottest the body gets, as a low-high pair, plus its citations.
 
-    Read off the interior model rather than stated here, because the interior
-    is where a temperature is attached to the boundary it belongs to. This is
-    the deepest of those: the centre where a body has one, and otherwise the
-    innermost *core* boundary anybody has put a number on — which for Mercury
-    is the top of its core, not its middle.
+    Deepest available interior temperature: centre if known, else the innermost
+    *core*-role boundary. Core roles only — Titan's ice-ocean interface is its
+    innermost number but 250 K a thousand km above the rock, worse than
+    reporting nothing.
 
-    Core boundaries only. Titan's ice-ocean interface is the innermost number
-    it has and it is 250 K a thousand kilometres above the rock; reported as a
-    core temperature it would be worse than reporting nothing.
-
-    Nobody has measured a planetary core, so this is model output and the
-    bracket is model spread rather than error — hence `condition="modelled"`
-    on both ends. It rides in `readings` like any other part so the export
-    shape stays one list, but it never shares a bar with the outside of the
-    body: the Sun's core runs 15.5 million K against a 5772 K photosphere, and
-    one scale holding both would flatten everything else to a point.
+    Nobody has measured a planetary core, so the bracket is model spread, not
+    error — hence `condition="modelled"`. Rides in `readings` like any other
+    part, but never shares a bar with the outside: the Sun's core is 15.5
+    million K against a 5772 K photosphere.
     """
     facts = INTERIOR_FACTS.get(object_id)
     if facts is None:
@@ -182,12 +165,10 @@ def temperature_block(
 ) -> dict | None:
     """Build the `temperatures` block, or None if the body has no temperature.
 
-    Three sources in descending order of confidence for the *outside* of the
-    body: a cited constant, then whatever Wikidata carries, then the computed
-    estimate. They are not merged — a body gets exactly one origin, because a
-    bar mixing a measured mean with an estimated maximum would be readable as
-    neither. The modelled core rides along with any of them, flagged, because
-    it is drawn somewhere else entirely.
+    Three sources for the *outside* of the body, in descending confidence:
+    cited constant, Wikidata, computed estimate. Not merged — one origin per
+    body, since a mixed measured/estimated bar reads as neither. The modelled
+    core rides along with any of them, flagged, since it's drawn separately.
     """
     core, core_sources = _core_readings(object_id)
 

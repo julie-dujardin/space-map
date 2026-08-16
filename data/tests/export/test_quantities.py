@@ -115,10 +115,8 @@ class FakeCache:  # duck-typed stand-in for WikidataEntityCache
 
 
 def _build_mass_converter() -> UnitConverter:
-    """Build a converter with a small mass ladder: kilogram and gram.
+    """Mass ladder (kg, gram), sorted by factor descending so kg comes first.
 
-    The factors are relative to a shared implicit base (gram→kg, kg→gram).
-    UnitConverter sorts by factor descending, so kg (1000) comes before gram (0.001).
     best_unit picks the first entry where value_in_base / factor > 1.1.
     """
     units = {
@@ -141,8 +139,6 @@ def _build_mass_converter() -> UnitConverter:
 class TestBestUnit:
     def test_picks_largest_above_threshold(self):
         conv = _build_mass_converter()
-        # Ladder: kg(factor=1000) > gram(factor=0.001).
-        # value_in_base=5000 → 5000/1000=5 (>1.1) → picks kilogram.
         result = conv.best_unit(5000, "mass")
         assert result is not None
         assert result["unit"] == "kilogram"
@@ -159,8 +155,7 @@ class TestBestUnit:
         assert conv.best_unit(100, "temperature") is None
 
     def test_negative_value_picks_by_magnitude(self):
-        # ``value > 1.1`` alone would always be false for negatives — the
-        # comparison must use magnitude.
+        # `value > 1.1` alone is always false for negatives; must use magnitude.
         conv = _build_mass_converter()
         result = conv.best_unit(-5000, "mass")
         assert result is not None
@@ -168,8 +163,7 @@ class TestBestUnit:
         assert result["value"] == -5.0
 
     def test_negative_value_threshold_is_magnitude(self):
-        # |value/factor| just above 1.1 should still pick the larger unit
-        # the same as positive values do.
+        # Magnitude just above 1.1 should still pick the larger unit.
         conv = _build_mass_converter()
         result = conv.best_unit(-1200, "mass")
         assert result is not None

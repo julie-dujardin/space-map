@@ -1,10 +1,9 @@
 """Category contents: child-group lists, planet members, and member counts.
 
-Categories (constants/categories.py) are Wikidata-backed browse nodes. Their
-members are child groups — asteroid zones, comet families, satellite classes
-and the largest constellations — or bodies (Planets, Moons, Probes). The child
-slugs and counts feed the localized bundle's ``child_groups`` block; the planet
-lineup, the top moons and the notable probes ride the ``notable_members`` path.
+Categories (constants/categories.py) are Wikidata-backed browse nodes. Members
+are child groups (asteroid zones, comet families, satellite classes, largest
+constellations) or bodies (Planets, Moons, Probes) — the former feed
+``child_groups``, the latter ride ``notable_members``.
 """
 
 import logging
@@ -182,9 +181,8 @@ def _largest_by_radius(
 ) -> LargestBody | None:
     """Biggest body matching ``where``, by mean PCK radius.
 
-    The small-body categories inherit a measured SBDB diameter from their
-    classes; the major bodies have no SBDB row, so their size comes from the
-    same PCK radii the renderer uses. Triaxial bodies average their axes.
+    Major bodies have no SBDB row, so size comes from the same PCK radii the
+    renderer uses; triaxial bodies average their axes.
     """
     best: LargestBody | None = None
     rows = session.query(Object.id, Object.naif_id, Object.name).filter(where).all()
@@ -217,12 +215,10 @@ def _ranked_members(
     gms: dict[int, float],
     orientation: dict[int, dict],
 ) -> list[NotableObject]:
-    """Top ``limit`` bodies for a hero strip: image-bearing first, then most
-    Wikidata-linked (sitelinks as a prominence proxy), id as a stable tiebreak.
-
-    The shared prominence-ranked selector behind every notable strip that isn't
-    a fixed lineup: Moons now, Asteroids next; the Probes page and Solar System
-    root layer their own filter/pin on top. ``where`` is one SQLAlchemy clause.
+    """Top ``limit`` bodies for a hero strip: image-bearing first, then sitelinks
+    (prominence proxy), id as tiebreak. Shared by every notable strip except
+    fixed lineups; the Probes page and Solar System root layer their own
+    filter/pin on top.
     """
     rows = (
         session.query(Object.id, Object.naif_id, Object.wikidata_qid, Object.name)
@@ -282,12 +278,10 @@ def _dwarf_planet_members(
     entities: WikidataEntityCache,
     units: UnitConverter,
 ) -> list[NotableObject]:
-    """The dwarf planets, most-prominent first (image then sitelinks).
-
-    Unlike the eight major planets these carry no static heliocentric order, so
-    they rank by prominence like the moons strip. Their lineup size comes from
-    each body's measured Wikidata diameter (none are in the PCK that feeds the
-    major planets/moons).
+    """The dwarf planets, most-prominent first (image then sitelinks) — unlike
+    the eight majors they have no static heliocentric order. Lineup size comes
+    from each body's Wikidata diameter; none are in the PCK that sizes
+    planets/moons.
     """
     rows = (
         session.query(
@@ -347,14 +341,11 @@ class MoonTallies:
 def _moon_data(session: Session, planet_elements: dict[int, dict]) -> MoonTallies:
     """Total moon count + per-planet/dwarf tallies for the Moons-page bar chart.
 
-    A moon's host is its parent planet/dwarf; parents that are barycenters
-    defer to their planet/dwarf child (mirrors export/objects/moons.py). All
-    eight major planets always get a bar (Mercury/Venus included, at zero);
-    dwarf planets get one only when they host a moon. Asteroid moons still
-    count toward the total but have no chart row. Rows are ordered by
-    heliocentric distance (SBDB.a for dwarfs, the Horizons mean-element table
-    for the SBDB-less major planets/Pluto). Each row is the bundle wire shape:
-    ``{name, primary_type, primary_id, n}``.
+    Barycenter parents defer to their planet/dwarf child. All eight major
+    planets always get a bar (even at zero); dwarf planets only when they host
+    a moon. Asteroid moons count toward the total but get no row. Rows order by
+    heliocentric distance (SBDB.a for dwarfs, Horizons elements for the
+    SBDB-less majors).
     """
     total = (
         session.query(func.count(Object.id))
@@ -501,16 +492,10 @@ def _ring_system_members(
     gms: dict[int, float],
     orientation: dict[int, dict],
 ) -> list[NotableObject]:
-    """Every body the ring catalogue covers, in its curated order.
-
-    Not a query with a ranking: the eight are exactly the bodies
-    ``RING_CATALOGS`` holds a table for, and the catalogue already orders them
-    the way the page should read — the four giants outward, then the four
-    small bodies whose rings are known only from occultations.
-
-    Each member carries its ring mass, the one figure that ranks the systems
-    against each other; the body mass ``_body_member`` attaches is the planet's
-    and says nothing about its rings.
+    """Every body the ring catalogue covers, in its curated order (giants
+    outward, then occultation-only bodies) — not ranked, the catalogue already
+    reads right. Each member carries its ring mass separately; ``_body_member``
+    attaches the planet's mass, not the rings'.
     """
     rows = {
         obj_id: (obj_id, naif_id, qid, name)
@@ -536,15 +521,10 @@ def _ring_system_members(
 
 
 def _ring_system_stats(members: list[NotableObject]) -> GroupExtraStats:
-    """The Ring Systems page's stat row, plus the catalogue behind the page.
-
-    None of the three cards restates the page below it: the tiles count each
-    system's top-level rings and the chart plots their masses, but how deep
-    the catalogue goes, how far a system reaches and how far back the first
-    sighting is are nowhere on it.
-
-    Names come from the members rather than Wikidata, as ``largest_body``
-    does — the card is a link to a body, not a piece of prose.
+    """The Ring Systems page's stat row: catalogue depth, span and discovery
+    year, none of it restated by the tiles/chart below. Names come from the
+    members rather than Wikidata, like ``largest_body`` — the card links to a
+    body, not a piece of prose.
     """
     names = {member.object_id: member.fallback_name for member in members}
     widest: dict | None = None
@@ -582,13 +562,9 @@ def _property_members(
     gms: dict[int, float],
     orientation: dict[int, dict],
 ) -> list[NotableObject]:
-    """Members of a Structure & Activity page: bodies carrying a property.
-
-    The membership is not a query — it is exactly the bodies the constants hold
-    the property for — so ``body_ids`` arrives already in the order the page
-    should read, and ``attach`` hangs the figure the chart ranks by onto each
-    one. A body the constants know and the object table does not is a missing
-    row rather than an empty tile, so it is logged and dropped.
+    """Members of a Structure & Activity page: exactly the bodies the constants
+    hold the property for, already in page order — not a query. A body the
+    constants know but the object table doesn't is logged and dropped.
     """
     rows = {
         obj_id: (obj_id, naif_id, qid, name)
@@ -622,9 +598,8 @@ def _atmosphere_members(
     """Every body with a measured envelope, thickest first.
 
     A published pressure is what makes a body a member. The four without —
-    Ceres, Enceladus, Dione and Rhea, all exospheres nobody has put a number on
-    — printed "Unknown" where every other row has a figure, which is a row that
-    tells a reader nothing about the thing the page ranks by.
+    Ceres, Enceladus, Dione, Rhea — are exospheres nobody has put a number on,
+    and would print "Unknown" on the figure the page ranks by.
     """
     measured = {
         body: facts.pressure
@@ -660,9 +635,8 @@ def _ocean_members(
 ) -> list[NotableObject]:
     """Every body with an ocean, largest first.
 
-    Ranked by volume rather than by depth or by share of the body, because that
-    is the one measure the nine can be compared on — and the one that puts
-    Earth's ocean fifth, behind four moons.
+    Ranked by volume, not depth or share of the body — the one measure the
+    nine can be compared on, and the one that puts Earth's ocean fifth.
     """
     oceans = {
         body: block
@@ -680,17 +654,10 @@ def _ocean_members(
 
 
 def _atmosphere_stats(members: list[NotableObject]) -> GroupExtraStats:
-    """The Atmospheres page's stat row.
-
-    Neither card restates the chart under it, which plots pressure: how many
-    kinds of envelope there are is a count of a vocabulary, and how high one
-    reaches is the other axis entirely. There is no third card — nothing else
-    up here is a fact about the whole set rather than about one body.
-
-    Height is measured the way the cross-section draws it, over the layers it
-    puts on a scale. Counting exospheres instead makes Earth the tallest
-    atmosphere in the solar system at 10,000 km, which is true of a gas so thin
-    the chart declines to draw it and false of anything a reader means by air.
+    """The Atmospheres page's stat row: type count and tallest height, neither
+    restating the pressure chart below. Height uses cross-section layers, not
+    the exosphere — that would make Earth's the tallest atmosphere at
+    10,000 km, a gas too thin to draw.
     """
     names = {member.object_id: member.fallback_name for member in members}
     tallest: dict | None = None
@@ -720,12 +687,9 @@ def _atmosphere_stats(members: list[NotableObject]) -> GroupExtraStats:
 
 
 def _ocean_stats(members: list[NotableObject]) -> GroupExtraStats:
-    """The Oceans page's stat row: how much water there is, and where it is
-    deepest.
-
-    The total is the point of the page — the eight subsurface oceans and Earth's
-    together hold forty times Earth's own — and the chart cannot show it, since
-    a log axis has no sum. Depth is not what the chart ranks by either.
+    """The Oceans page's stat row: total volume and deepest ocean. The total is
+    the point — the nine oceans hold forty times Earth's alone — and a
+    log-axis chart can't show a sum; depth isn't what it ranks by either.
     """
     deepest: dict | None = None
     total = 0.0
@@ -756,11 +720,9 @@ def _activity_members(
     orientation: dict[int, dict],
 ) -> list[NotableObject]:
     """Members of one of the three heat pages, ordered by what its chart plots.
-
-    All three read one `collection_row`, because a body is usually on more than
-    one of them and the three tables are three views of the same question. The
-    cutaway rides along on every one: what these pages are about happens
-    inside, so the drawing is the body cut open rather than photographed.
+    All three read one `collection_row` — a body is usually on more than one —
+    and the cutaway rides along everywhere, since these pages describe what
+    happens inside the body.
     """
 
     def attach(member: NotableObject, body: str) -> NotableObject:
@@ -774,10 +736,10 @@ def _activity_members(
 
 
 def _measured_first(value: float | None, body: str) -> tuple[int, float, str]:
-    """Sort key: the bodies with a figure first and largest, then the rest.
+    """Sort key: bodies with a figure first and largest, then the rest.
 
-    A leading flag rather than a sentinel, because these quantities span ten
-    decades and there is no number that reliably sorts under all of them.
+    A leading flag rather than a sentinel — these quantities span ten decades,
+    so no number reliably sorts under all of them.
     """
     return (1, 0.0, body) if value is None else (0, -value, body)
 
@@ -786,12 +748,9 @@ RUNGS = {"active": 0, "probable": 1, "suspected": 2, "dormant": 3, "extinct": 4}
 
 
 def _volcanism_members(session, radii, gms, orientation) -> list[NotableObject]:
-    """Every body with a geologic record, most recently active first.
-
-    Ordered by the status ladder rather than by a number: two of the fifteen
-    have a heat output and three a vent count, so any numeric ranking would be
-    a list of four bodies followed by eleven blanks. What separates them is
-    whether anyone has caught them at it.
+    """Every body with a geologic record, most recently active first. Ordered
+    by status, not a number: only a few of the fifteen have a heat output or
+    vent count, so what separates them is whether anyone caught them at it.
     """
     rungs = RUNGS
     return _activity_members(
@@ -806,12 +765,10 @@ def _volcanism_members(session, radii, gms, orientation) -> list[NotableObject]:
 
 
 def _tectonics_members(session, radii, gms, orientation) -> list[NotableObject]:
-    """Every body whose crust anyone has read a tectonic history off.
-
-    Ten of volcanism's fifteen: the rest have a volcanic record and no
-    published tectonic style. Ordered by the same status ladder, then by style
-    so the five ice shells sit together — this page is read across styles more
-    than down them.
+    """Every body whose crust anyone has read a tectonic history off (ten of
+    volcanism's fifteen lack one). Ordered by the same status ladder, then
+    style, so the ice shells sit together — read across styles more than down
+    them.
     """
     tectonic = {
         body: facts.tectonics
@@ -840,18 +797,13 @@ def _tectonics_members(session, radii, gms, orientation) -> list[NotableObject]:
 
 
 def _magnetic_members(session, radii, gms, orientation) -> list[NotableObject]:
-    """Every body anyone has measured a field on, strongest first.
-
-    Surface field rather than dipole moment: eleven of the fifteen have one
-    against nine, and it is the figure a reader can stand on the body and
-    picture. The moment stays in the row for the comparison across bodies.
-
-    Having one is also what makes a body a member. The four without — Venus,
-    whose only figure is an upper bound on its dipole, and Io, Europa and
-    Callisto, whose fields are induced in them by Jupiter and have no published
-    strength — printed the kind of field instead of a number, so the page led
-    with "None detected" on a page about fields. Titan stays: its 0.78 nT is a
-    published bound, which the row prints as "< 0.78 nT" and draws no bar for.
+    """Every body anyone has measured a field on, strongest first. Surface
+    field, not dipole moment — the figure a reader can picture standing on the
+    body; moment stays in the row for comparison. Having one is also what
+    makes a body a member: Venus (only an upper bound) and the Jupiter-induced
+    fields on Io/Europa/Callisto are excluded so the page doesn't lead with
+    "None detected". Titan stays; its 0.78 nT bound prints as "< 0.78 nT" with
+    no bar.
     """
     measured = {
         body: field
@@ -877,9 +829,8 @@ def _magnetic_members(session, radii, gms, orientation) -> list[NotableObject]:
 def _tidal_members(session, radii, gms, orientation) -> list[NotableObject]:
     """Every body a tide is raised on, hardest-worked first.
 
-    Three of the eleven have a wattage. The other eight are ordered by the role
-    the tide plays in their heat budget, which is what their sources do commit
-    to, and they carry no bar.
+    Only three of the eleven have a wattage; the rest order by the role the
+    tide plays in their heat budget and carry no bar.
     """
     roles = {"dominant": 0, "significant": 1, "minor": 2, "negligible": 3, "past": 4}
 
@@ -895,11 +846,10 @@ def _tidal_members(session, radii, gms, orientation) -> list[NotableObject]:
 
 
 def _volcanism_stats(members: list[NotableObject]) -> GroupExtraStats:
-    """Erupting now, the hottest, and every vent anyone has mapped.
-
-    None of the three is the chart below, which counts the members on each rung
-    of the status ladder. The erupting card names its four in the tooltip: the
-    number is small enough that a reader will want to know which.
+    """Erupting now, the hottest, and every vent anyone has mapped — none
+    restating the status-rung chart below. The erupting card names its members
+    in the tooltip; the count is small enough a reader will want to know
+    which.
     """
     erupting = [
         member.fallback_name
@@ -929,9 +879,8 @@ def _volcanism_stats(members: list[NotableObject]) -> GroupExtraStats:
 def _tectonics_stats(members: list[NotableObject]) -> GroupExtraStats:
     """How many kinds of crust there are, and how many are still moving.
 
-    Neither restates the chart, which is the tally per style. The count of
-    styles is the page's finding — five ways a crust can behave across ten
-    bodies, with Earth alone in one of them.
+    Neither restates the per-style tally chart. Style count is the page's
+    finding — five ways a crust can behave across ten bodies.
     """
     styles = set()
     moving = 0
@@ -950,8 +899,8 @@ def _tectonics_stats(members: list[NotableObject]) -> GroupExtraStats:
 def _magnetic_stats(members: list[NotableObject]) -> GroupExtraStats:
     """How many generate a field now, and the two extremes of the ones that do.
 
-    The tilt card is the page's best free fact: Uranus's dipole is 59° off its
-    rotation axis, which is the thing about its magnetosphere.
+    The tilt card is the page's best fact: Uranus's dipole is 59° off its
+    rotation axis.
     """
     dynamos = 0
     strongest: dict | None = None
@@ -1012,8 +961,8 @@ def _probe_members(
 ) -> tuple[list[NotableObject], int]:
     """The notable probes (most-linked first) plus the total probe count.
 
-    Probes are SPICE-tracked interplanetary spacecraft (``spice_probe``); Earth
-    satellites are also ``spacecraft``-typed but belong to the Satellites tree.
+    Probes are SPICE-tracked (``spice_probe``); Earth satellites are also
+    ``spacecraft``-typed but belong to the Satellites tree.
     """
     is_probe = Object.orbital_source == OrbitalSource.spice_probe
     total = session.query(func.count(Object.id)).filter(is_probe).scalar() or 0
@@ -1045,15 +994,11 @@ def build_category_data(
 ) -> CategoryData:
     """Assemble category children + planet members + per-category counts.
 
-    ``member_counts`` is the flattened ``{slug: n}`` for all non-category
-    groups; used to drop empty zones and rank constellations.
-    ``feature_type_counts`` is ``{ft- slug: feature count}``; it fills the
-    Surface Features browse node, whose children are the feature-type pages.
-    ``discovery_histograms`` and ``largest_bodies`` are keyed by small-body
-    class slug and rolled up over the orbit classes that partition each
-    category. ``earth_orbit`` supplies the same roll-up for Earth orbiters,
-    already split payload/debris so Satellites and Debris each get their own
-    totals and launch chart.
+    ``member_counts`` drops empty zones and ranks constellations;
+    ``feature_type_counts`` fills Surface Features. ``discovery_histograms``/
+    ``largest_bodies`` roll up over each category's orbit classes;
+    ``earth_orbit`` gives the same roll-up for Earth orbiters, already split
+    payload/debris.
     """
 
     def nonempty(slug: str) -> bool:
@@ -1103,10 +1048,8 @@ def build_category_data(
     # Spent stages (lv-) and breakup clouds (const-) are the two ways an object
     # ends up here, so the Debris page lists both.
     debris_children = debris_clouds + launch_vehicles
-    # The same fleets feed the Satellites page's top-constellations bar chart
-    # (keyed bare for _constellation_refs, which ranks + caps them); the chips
-    # are hidden there in favour of it. Debris ranks by where the fragments came
-    # from, which the scan counted per object rather than per zone.
+    # Same fleets feed the Satellites page's top-constellations bar chart
+    # (keyed bare, so the bundle can rank + cap them); chips are hidden there.
     satellite_constellation_counts = {
         slug.removeprefix(CONSTELLATION_SLUG_PREFIX): member_counts.get(slug, 0)
         for slug in constellations
@@ -1213,10 +1156,9 @@ def build_category_data(
         PROBES_SLUG: probes_total,
         # Features aren't objects, so this tally stays out of the root total.
         SURFACE_FEATURES_SLUG: sum(feature_type_counts.values()),
-        # Property pages list bodies their own categories already count, so
-        # these tallies stay out of the root total too. The parent counts the
-        # union rather than the sum: every ocean world also has an envelope of
-        # some kind, so summing would count all eight of them twice.
+        # Property pages count bodies their own categories already count, so
+        # these stay out of the root total too — which itself unions rather
+        # than sums, since an ocean world always has an envelope too.
         ATMOSPHERES_SLUG: len(atmosphere_members),
         OCEANS_SLUG: len(ocean_members),
         VOLCANISM_SLUG: len(volcanism_members),
@@ -1239,10 +1181,9 @@ def build_category_data(
         ),
     }
 
-    # Discovery/launch charts: sum the histograms over the classes that
-    # partition each category (flags are subsets, so they're excluded; the two
-    # Earth categories sum only the primary shape classes — same partition as
-    # their totals above).
+    # Discovery/launch charts sum histograms over the classes that partition
+    # each category — flags excluded as subsets, Earth categories over the
+    # primary shape classes only, same as the totals above.
     discovery_out: dict[str, dict[int, int]] = {}
     if asteroid_hist := _sum_histograms(asteroid_classes, discovery_histograms):
         discovery_out[ASTEROIDS_SLUG] = asteroid_hist
@@ -1259,10 +1200,9 @@ def build_category_data(
         if hist := _sum_histograms(primary_sat_slugs, per_slug):
             launch_out[cat_slug] = hist
 
-    # Category lineup heroes: the most prominent asteroids / comets across all
-    # their orbit classes. Dwarf planets are excluded from Asteroids (they keep
-    # their own page and still rank inside their orbit-class zone, e.g. Ceres in
-    # the Main Belt); comets have no dwarfs to exclude.
+    # Category lineup heroes: most prominent asteroids/comets across all orbit
+    # classes. Dwarf planets excluded from Asteroids — they keep their own
+    # page but still rank inside their orbit-class zone (e.g. Ceres in Main Belt).
     asteroid_notable = _notable_members(
         session,
         SBDB.class_.not_in(COMET_ORBIT_CLASSES),
@@ -1335,9 +1275,8 @@ def build_category_data(
     pha_total = member_counts.get(f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha", 0)
 
     # How much of the fleet still works, over the primary shape classes (they
-    # partition the population, so summing double-counts nothing). Debris gets
-    # no such card: the handful of fragments SATCAT still calls operational is
-    # a data lag, not a fact about the population.
+    # partition the population). No such card for Debris: the fragments SATCAT
+    # still calls operational are a data lag, not a fact worth showing.
     payloads = earth_orbit.payload_satcat_stats
     satcat_out = {
         SATELLITES_SLUG: GroupSatcatStats(

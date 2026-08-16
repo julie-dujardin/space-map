@@ -43,9 +43,8 @@ class TestBlock:
 
     @pytest.mark.parametrize("body", sorted(RING_CATALOGS))
     def test_parents_resolve_within_the_block(self, body: str):
-        # Keys run inner → outer, which does not put a parent before its
-        # children: Uranus' ζ dust extensions lie inside the ζ ring they
-        # belong to. A consumer groups by `parent`, it cannot walk in order.
+        # Key order is inner→outer, not parent-before-child (Uranus' ζ
+        # extensions sit inside the ζ ring) — a consumer must resolve by `parent`.
         block = ring_features_block(body, {})
         assert block is not None
         for slug, entry in block.items():
@@ -53,12 +52,10 @@ class TestBlock:
 
 
 class TestSystemPages:
-    """The "Rings of X" articles, which supply both the panel's opening blurb
-    and the pictures on the collection page."""
+    """The "Rings of X" articles feeding the panel blurb and collection-page pictures."""
 
     def test_pages_name_ringed_bodies(self):
-        # Two are absent on purpose: neither Haumea nor Quaoar has a ring
-        # article in any language.
+        # Haumea and Quaoar lack a ring article in any language, on purpose.
         assert set(RING_SYSTEM_PAGES) <= set(RING_CATALOGS)
 
     def test_every_giant_has_one(self):

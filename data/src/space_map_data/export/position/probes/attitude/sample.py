@@ -21,15 +21,13 @@ def ck_windows(ck_paths: list[str], instr_id: int) -> list[tuple[float, float]]:
     """Gap-free (start_et, end_et) coverage spans for `instr_id`, TDB, sorted
     and merged where they overlap.
 
-    One entry per real interval, not the file's outer envelope: an envelope's
-    holes cost a thrown `SpiceyError` per in-gap sample downstream — millions
-    for a sparse CK. Files with no coverage for `instr_id` are skipped (a
-    mission mixes bus and instrument-articulation CKs). Merging is
-    overlap-only, so a real gap between intervals is never sampled through.
+    One entry per real interval, not the file's outer envelope — an
+    envelope's holes cost a thrown `SpiceyError` per in-gap sample
+    downstream, millions for a sparse CK.
 
     The coverage cell is allocated once and reset per file: spiceypy cells
-    are ~8 MB and not promptly freed, so a fresh cell per CK accumulated tens
-    of GB on kernel-heavy missions (LUCY ships 2 500 daily CKs).
+    are ~8 MB and not promptly freed, so a fresh cell per CK accumulated
+    tens of GB on kernel-heavy missions (LUCY ships 2 500 daily CKs).
     """
     windows: list[tuple[float, float]] = []
     cover = spiceypy.support_types.SPICEDOUBLE_CELL(_COVER_CELL_SIZE)
@@ -75,11 +73,9 @@ def ck_instrument_ids(ck_paths: list[str]) -> set[int]:
 
 def sample_truth(frame: str, ets: np.ndarray) -> np.ndarray:
     """Sample `pxform("J2000", frame, et)` → quaternion for each `et`.
-
-    Sign-canonicalises against the previous sample so the stream is
-    continuous (adjacent quats differ by < 90°). SPICE's `m2q` flips sign
-    at trace zero crossings, which adaptive keyframes would otherwise
-    have to chase with extra emits.
+    Sign-canonicalised against the previous sample (adjacent quats differ
+    by < 90°) — SPICE's `m2q` flips sign at trace zero crossings, which
+    adaptive keyframes would otherwise chase with extra emits.
     """
     quats = np.empty((ets.size, 4), dtype=np.float64)
     last = np.array([1.0, 0.0, 0.0, 0.0])

@@ -22,18 +22,15 @@ Keyframe (11 bytes, packed back-to-back after the header):
     7       int16     b
     9       int16     c
 
-Reconstruction: at decode time the missing component is recovered as
-`sqrt(max(0, 1 - a² - b² - c²))` with `idx` telling the decoder which
-slot it goes into.
+Reconstruction: the missing component is recovered as
+`sqrt(max(0, 1 - a² - b² - c²))`, with `idx` telling the decoder which slot.
 
-`dt` is float32: dense streams have sub-second keyframe spacing, and an
-integer-second quantum accumulated into multi-minute timeline drift across a
-chunk's keyframes. float32 keeps sub-second precision where spacing is small
-and tolerates the coarse seconds-resolution of long inertial cruises.
+`dt` is float32: an integer-second quantum accumulated multi-minute drift
+across a chunk of sub-second-spaced keyframes.
 
-Spin baseline (when used) is stored in the per-probe manifest in the
-`__global__` object bundle, not in the file — every chunk for a probe
-shares the same baseline, so duplicating it per chunk would waste bytes.
+Spin baseline (when used) lives in the per-probe manifest, not the file —
+every chunk for a probe shares it, so duplicating it per chunk would waste
+bytes.
 """
 
 import struct

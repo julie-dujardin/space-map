@@ -1,16 +1,12 @@
 """Notable moons per host body, attached to the object detail bundle.
 
-A body's moons are its child Objects of type ``moon``. Planets carry their
-moons under their *barycenter* (Jupiter naif-599 → barycenter naif-5 →
-naif-50x), so a barycenter's moons are attached to its planet/dwarf-planet
-host — the body the user actually focuses. Asteroid moons hang directly off
-the asteroid Object, which is its own host.
+Planets carry their moons under their *barycenter*, so those moons are
+attached to the planet/dwarf-planet child instead — the body the user
+actually focuses. Asteroid moons are already their own host.
 
-Ranking mirrors notable group members: image availability, then Wikidata
-sitelinks, then diameter (from SPICE PCK radii — the only diameter source
-common to major moons). Discovery date isn't carried: SPICE major moons have
-none in the DB and SBDB moonlets only encode it in their provisional
-designation, so the moon list shows diameter alone.
+Ranked by image availability, then Wikidata sitelinks, then diameter (PCK
+radii, the only source common to major moons). No discovery date: SPICE
+majors lack it and SBDB moonlets only encode it in a designation string.
 """
 
 import logging
@@ -65,11 +61,8 @@ def _mean_diameter_km(naif_id: int | None, radii: dict[int, dict]) -> float | No
 
 
 def _resolve_host(session: Session, parent_id: str) -> str:
-    """Map a moon's parent to the body that should display it.
-
-    Barycenters defer to their planet/dwarf-planet child; everything else
-    (asteroids) is its own host.
-    """
+    """Map a moon's parent to the body that should display it: a barycenter
+    defers to its planet/dwarf-planet child, everything else is its own host."""
     parent = session.get(Object, parent_id)
     if parent is None:
         return parent_id
@@ -95,9 +88,7 @@ def notable_moons_by_host(
 ) -> dict[str, HostMoons]:
     """Top moons per host body, keyed by the host's Object.id.
 
-    Moons are grouped by ``parent_id``, each parent resolved to its display
-    host. Within a host, ranked by (has image, sitelinks, diameter) with an
-    id tiebreak for deterministic selection across exports.
+    Id tiebreak before ranking keeps selection deterministic across exports.
     """
     rows = (
         session.query(
@@ -191,13 +182,11 @@ def attach_notable_moons(
     model_slugs: dict[str, str] | None = None,
 ) -> None:
     """Inject ``notable_moons`` + ``moon_count`` + ``named_moon_count`` into
-    each host's global bundle.
+    each host's global bundle, mutating ``chunk`` in place.
 
-    Mutates ``chunk`` in place (mirrors ``write_attitude``). Localized moon
-    names are added only where the host already has a localized entry for the
-    language, so the per-row ``has_localized`` bit shipped in the binary chunk
-    stays consistent (it's written during the zone pass and can't be flipped
-    here).
+    Localized names are added only where the host already has a localized
+    entry: the chunk's ``has_localized`` bit is set during the zone pass and
+    can't be flipped here.
     """
     hosts = notable_moons_by_host(session, radii, orientation)
     textured_ids = textured_object_ids(session)

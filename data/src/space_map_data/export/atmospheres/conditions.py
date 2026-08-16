@@ -1,11 +1,8 @@
-"""The level the shell is rendered from, resolved against the published facts.
+"""The level the shell renders from, resolved against the published facts.
 
-`constants/atmosphere/bodies.py` states only what rendering adds. A body's
-composition lives once in `constants/atmosphere/facts.py` and its temperature
-once in `constants/temperature/bodies.py`; this reads the render level off
-those, applying an override only where the render table declares one. A
-single source per fact rules out a body's numbers diverging between renderer
-and consumers.
+Composition and temperature are read from `facts.py` and `temperature/bodies.py`,
+overridden only where the render table declares one — a single source stops a
+body's numbers diverging between renderer and consumers.
 """
 
 import logging
@@ -21,9 +18,8 @@ from space_map_data.constants.temperature.bodies import TEMPERATURE_BODIES
 
 logger = logging.getLogger(__name__)
 
-# The deck a shell is drawn from, in the order it is looked for: a body with a
-# visible cloud top is rendered against it, everything else against its
-# surface. Matches how `facts.py` quotes its pressure.
+# Deck a shell is drawn from: cloud top if visible, else surface.
+# Matches how `facts.py` quotes its pressure.
 _RENDER_PARTS = ("cloud_top", "surface")
 
 
@@ -50,17 +46,14 @@ def render_conditions(object_id: str, body: BodyAtmosphere) -> RenderConditions:
 
 
 def _composition(object_id: str) -> dict[str, float]:
-    """The published mixture, minus what the Rayleigh model cannot see.
+    """The published mixture, minus species `gases.py` has no dispersion fit for.
 
-    A panel lists what was measured — Venus's SO₂, Titan's ⁴⁰Ar, the giants'
-    deuterated hydrogen — and `gases.py` carries dispersion fits for seven
-    gases. The rest are trace at these levels and the derivation renormalises
-    what is left, so dropping them moves the mixture by ~1e-5.
+    Dropped species are trace-level; renormalising the remainder shifts the
+    mixture by ~1e-5.
     """
     facts = _facts(object_id)
-    # Shares of a column or a number density are not mixing ratios, and the
-    # Rayleigh derivation would read them as if they were. No rendered body
-    # is quoted that way today; this is what stops the first one that is.
+    # Column/number-density shares aren't mixing ratios; guards against the
+    # first rendered body quoted that way.
     if facts.composition_unit != VOLUME_FRACTION:
         raise ValueError(
             f"{object_id}: rendering needs volume fractions, "

@@ -1,10 +1,9 @@
-"""Vertical-structure derivations: layered Mie density LUTs (Venus, Titan)
-and the Mars seasonal table.
+"""Vertical-structure derivations: layered Mie density LUTs (Venus, Titan) and the
+Mars seasonal table.
 
-The shader's layered path samples a PROFILE_N-texel density profile over
-[0, top_altitude_km], column-normalised to the exponential's β·H so disc
-opacity matches across tiers; bodies without a profile keep the
-single-exponential fallback on every tier.
+The shader samples a PROFILE_N-texel profile over [0, top_altitude_km],
+column-normalised to the exponential's β·H so disc opacity matches across
+tiers; bodies without a profile keep the single-exponential fallback.
 """
 
 import math
@@ -30,20 +29,18 @@ from space_map_data.export.atmospheres.rayleigh import (
 
 PROFILE_N = 128
 
-# Bodies whose profile reaches above the scale-height-derived shell top; the
-# export raises top_altitude_km to at least this so the LUT can hold the
-# structure (Titan's detached layer sits at ~500 km).
+# Bodies whose profile needs more altitude than the scale-height shell top
+# gives; export raises top_altitude_km to at least this (Titan's layer ~500 km).
 MIN_PROFILE_TOP_KM: dict[str, float] = {"naif-606": 600.0}
 
 
 def _venus_density(h_km: float) -> float:
     """Mie density above the ~70 km cloud deck the texture shows (h = 0).
 
-    Upper haze: H = 4.4 km exponential (Titov et al. 2018). Detached haze
-    layers at 80-85 km absolute (10-15 km above the deck) appear in ~60% of
-    high-resolution profiles — represented as a half-strength bump over the
-    local background. The LCPS decks below the deck datum are not modelled:
-    the rendered deck is already opaque.
+    Upper haze: H = 4.4 km exponential (Titov et al. 2018). Detached layers at
+    80-85 km appear in ~60% of high-resolution profiles, modelled as a
+    half-strength bump. Decks below the datum aren't modelled — the rendered
+    deck is already opaque.
     """
     base = math.exp(-h_km / 4.4)
     detached = 0.029 * math.exp(-(((h_km - 12.5) / 1.5) ** 2) / 2.0)
@@ -53,10 +50,9 @@ def _venus_density(h_km: float) -> float:
 def _titan_density(h_km: float) -> float:
     """Mie density for Titan's haze (h = 0 at the surface).
 
-    Doose et al. 2016 structure: roughly linear optical-depth growth below
-    ~100 km (constant extinction) with a condensate increase under 55 km,
-    then an ~50 km optical-depth scale height above. Detached layer at
-    ~500 km (Cassini epoch, Lavvas et al. 2009 / West et al. 2011) with the
+    Doose et al. 2016 structure: near-linear optical depth below ~100 km with
+    a condensate increase under 55 km, then ~50 km scale height above.
+    Detached layer at ~500 km (Lavvas et al. 2009 / West et al. 2011) with the
     observed gap below it.
     """
     if h_km < 55.0:
@@ -78,13 +74,13 @@ _PROFILE_BUILDERS = {"naif-299": _venus_density, "naif-606": _titan_density}
 
 
 def build_mie_profile(object_id: str, top_km: float) -> list[float] | None:
-    """PROFILE_N Mie densities at equal steps over [0, top_km]; None for
-    single-exponential bodies. Normalised so the profile's vertical column
-    equals the exponential's (β·H is what the cited optical depths anchor) —
-    disc opacity then matches across layered/exponential tiers, and the
-    reference-level density is whatever the shape demands. The last texel is
-    forced to 0 so the shell has no density residue at its silhouette (same
-    fix as the shader's shifted exponentials)."""
+    """PROFILE_N Mie densities over [0, top_km]; None for single-exponential bodies.
+
+    Normalised to the exponential's column (β·H, what the cited optical depths
+    anchor) so disc opacity matches across tiers. Last texel forced to 0 so the
+    shell has no density at its silhouette, matching the shader's shifted
+    exponentials.
+    """
     builder = _PROFILE_BUILDERS.get(object_id)
     if builder is None:
         return None
@@ -98,10 +94,10 @@ def build_mie_profile(object_id: str, top_km: float) -> list[float] | None:
 
 
 def conrath_dust_scale_height_km(nu: float, gas_h_km: float) -> float:
-    """Best-fit exponential scale height (density-weighted mean altitude) of
-    the Conrath 1975 dust profile q(p) = q0·exp(ν·(1 − p0/p)) over an
-    isothermal gas column of scale height `gas_h_km`. ν → 0 recovers
-    well-mixed dust (H_eff → gas H); ν = 0.3 confines it low."""
+    """Density-weighted mean altitude of the Conrath 1975 dust profile
+    q(p) = q0·exp(ν·(1 − p0/p)) over an isothermal gas column of scale height
+    `gas_h_km`. ν → 0 recovers well-mixed dust (H_eff → gas H); ν = 0.3 confines
+    it low."""
     steps = 4000
     z_top = 12.0 * gas_h_km
     dz = z_top / steps
@@ -118,10 +114,11 @@ def conrath_dust_scale_height_km(nu: float, gas_h_km: float) -> float:
 
 
 def mars_seasonal_table() -> dict:
-    """The naif-499 `seasonal` payload: piecewise-linear factors on the L_s
-    grid. τ factors scale the dust column, the Conrath-derived scale height
-    replaces mie_scale_height_km, pressure factors scale the Rayleigh column
-    (normalised to the annual mean so the shipped 636 Pa datum is the mean).
+    """The naif-499 `seasonal` payload: piecewise-linear factors on the L_s grid.
+
+    τ scales the dust column, Conrath-derived scale height replaces
+    mie_scale_height_km, pressure scales the Rayleigh column (normalised to the
+    annual mean so the shipped 636 Pa datum is the mean).
     """
     mars = ATMOSPHERE_BODIES["naif-499"]
     level = render_conditions("naif-499", mars)

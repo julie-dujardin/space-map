@@ -17,8 +17,7 @@ class TestPadLabels:
         ]
 
     def test_takes_a_whole_tail_rather_than_one_part(self):
-        # Baikonur's pads trail three parts, and GCAT leads with the launcher
-        # there — keeping only the first part would read "LC200/39".
+        # Baikonur's pads trail three parts; keeping only the first would read "LC200/39".
         names = [
             "LC200/39, PU39, GIK-5, Baykonur, Kazakstan",
             "LC1/5, PU5, GIK-5, Baykonur, Kazakstan",
@@ -26,9 +25,8 @@ class TestPadLabels:
         assert _pad_labels(names) == ["LC200/39, PU39", "LC1/5, PU5"]
 
     def test_a_row_that_shares_no_tail_keeps_its_name(self):
-        # Baikonur's oddly punctuated Buran row is why the vote is a majority
-        # rather than unanimous: requiring agreement would leave the site's name
-        # on all 120 of the others.
+        # Baikonur's oddly punctuated Buran row is why the vote is majority, not
+        # unanimous — requiring agreement would leave the site's name on all 120 others.
         names = [
             "LC200/39, PU39, GIK-5, Baykonur",
             "LC1/5, PU5, GIK-5, Baykonur",

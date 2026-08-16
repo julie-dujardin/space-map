@@ -1,18 +1,14 @@
 """Split-comet fragments, attached to object detail bundles.
 
 A fragmenting comet (73P/Schwassmann-Wachmann 3, …) appears in SBDB as the
-intact parent plus a ``<pdes>-<letters>`` row per piece. This module groups
-those rows into families and, mirroring ``objects/moons.py``:
+intact parent plus a ``<pdes>-<letters>`` row per piece. Groups those rows
+into families and, mirroring ``objects/moons.py``, attaches a ranked
+``fragments`` list to the parent's bundle and stamps each fragment with
+``fragment_of``.
 
-- attaches a ranked ``fragments`` list + ``fragment_count`` to the intact
-  parent's bundle (the family's home page), and
-- stamps each fragment's bundle with ``fragment_of`` for the "Fragment of
-  <parent>" stat card + breadcrumb.
-
-Parentless families (no intact body in the catalog) carry no parent bundle;
-their ``fragment_of`` points at the synthetic family group page instead, and
-the fragment list is surfaced there (see groups tier). Ranking mirrors notable
-members: image availability, then Wikidata sitelinks, with an id tiebreak.
+Parentless families (no intact body in the catalog) point ``fragment_of`` at
+the synthetic family group page instead, where the fragment list is surfaced.
+Ranking mirrors notable members: image availability, then sitelinks, id tiebreak.
 """
 
 import logging
@@ -74,11 +70,9 @@ def _parent_display_name(
 def _parentless_name(full_name: str | None, parent_pdes: str, suffix: str) -> str:
     """Reconstruct a parent label from a fragment's full name.
 
-    Drops the ``-<suffix>`` where it sits before the parenthetical name or the
-    end of the designation — covers both ``C/1882 R1-A (Great September comet)``
-    → ``C/1882 R1 (Great September comet)`` and the numbered form
-    ``483P/PANSTARRS-A`` → ``483P/PANSTARRS`` (where the suffix rides the name,
-    not the designation). Falls back to the bare designation.
+    Drops the ``-<suffix>`` before the parenthetical name or end of string,
+    e.g. ``C/1882 R1-A (Great September comet)`` → ``C/1882 R1 (...)`` and
+    ``483P/PANSTARRS-A`` → ``483P/PANSTARRS``. Falls back to the bare designation.
     """
     if not full_name:
         return parent_pdes
@@ -104,10 +98,9 @@ def _resolve_parentless_qid(
 ) -> str | None:
     """Comet-level QID among the fragments' own Wikidata links, if unambiguous.
 
-    A parentless comet has no intact body to match, but editors often attach the
-    comet's page to some fragments and a per-fragment item to others. The
-    comet-level QID is the one whose label carries no fragment suffix; return it
-    only when exactly one such QID exists (else there's no single family page).
+    Editors sometimes attach the comet's Wikidata item to one fragment and
+    per-fragment items to others; the comet-level one is whichever label
+    carries no fragment suffix. Returned only when exactly one such QID exists.
     """
     candidates = {r.wikidata_qid for r in frag_rows if r.wikidata_qid}
     comet_level = {
@@ -130,8 +123,7 @@ def build_comet_families(
 ) -> dict[str, CometFamily]:
     """Group comet rows into split-comet families, keyed by parent designation.
 
-    Only families with at least one fragment are returned. Within a family,
-    fragments are ranked (image, sitelinks, id) and capped for display, but
+    Fragments are ranked (image, sitelinks, id) and capped for display, but
     ``total`` reflects the full count.
     """
     rows = (

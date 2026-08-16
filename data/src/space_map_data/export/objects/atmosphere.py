@@ -1,16 +1,13 @@
 """Per-object atmosphere stat block, denormalized onto a body's global bundle.
 
-Turns the cited constants in `constants/atmosphere/facts.py` into what the
-object panel draws: one pressure at one named level, species as shares of the
-listed set, and the works behind them. Shares are computed here rather than in
-the frontend so every client normalizes the same way — and because what they
-are shares *of* differs by body (volume fraction, mass fraction, or a set of
-separately measured densities).
+Turns `constants/atmosphere/facts.py` into one pressure at one named level,
+species as shares of the listed set, and their sources. Shares are computed
+here, not in the frontend, since every client must normalize the same way and
+what they are shares *of* differs by body (volume, mass, or measured density).
 
-`constants/atmosphere/structure.py` adds the vertical axis that pressure sits
-on, for the twelve bodies whose layers anyone has named. It ships under
-`structure` for the Structure tab's cross-section; the Overview reads only the
-flat facts above it.
+`constants/atmosphere/structure.py` adds the vertical axis pressure sits on,
+for the bodies whose layers are named; it ships under `structure` for the
+Structure tab, while the Overview reads only the flat facts.
 """
 
 import logging
@@ -85,10 +82,8 @@ def atmosphere_block(object_id: str) -> dict | None:
         species = []
         for s in sorted(facts.composition, key=lambda s: -s.value):
             entry = {"formula": s.formula, "share": _sig(s.value / total)}
-            # Mercury's helium and the Moon's whole nighttime list are
-            # non-detection limits; a bar that draws them as abundances would
-            # be the most confident thing on the page about the least certain
-            # numbers.
+            # Flag non-detection limits so a bar chart doesn't draw them as
+            # confident abundances.
             if s.upper_limit:
                 entry["limit"] = True
             species.append(entry)
@@ -120,11 +115,9 @@ def atmosphere_block(object_id: str) -> dict | None:
 def pressure_block(pressure: Pressure) -> dict:
     """One published pressure, as the bundle carries it.
 
-    Its own function because the Atmospheres collection page charts the same
-    reading the body's own panel prints, and a second formatting of it is a
-    second thing to keep in step. The level rides along because the number is
-    meaningless without it: the four giants all read 0.1 bar, and that is a
-    cloud top rather than a surface.
+    Shared by the body panel and the Atmospheres collection page so the two
+    never drift apart. The level rides along because the number alone is
+    meaningless: the four giants all read 0.1 bar, at a cloud top not a surface.
     """
     out: dict = {"pa": pressure.pascals, "level": pressure.level}
     if pressure.qualifier is not None:
@@ -135,14 +128,10 @@ def pressure_block(pressure: Pressure) -> dict:
 def limb_profile(object_id: str) -> dict | None:
     """What a thumbnail-sized limb needs: the bands, and the colour of the sky.
 
-    The collection page draws one per member, so this is the vertical stack
-    stripped of everything a labelled chart would use — temperatures, pressures,
-    spans, notes, citations — plus the species shares, which are here only
-    because the sky's colour is keyed off what the air is mostly made of.
-
-    Ships for a body with a composition and no layer stack too: half the
-    exospheres on the Atmospheres page have no named boundary anywhere, and a
-    graded shell in the right colour still says more than a blank tile.
+    Stripped of everything a labelled chart would use — temperatures,
+    pressures, notes, citations — keeping only species shares, since the sky's
+    colour is keyed off composition. Ships even with no layer stack: a graded
+    shell in the right colour beats a blank tile for exosphere-only bodies.
     """
     facts = ATMOSPHERE_FACTS.get(object_id)
     if facts is None:
@@ -171,9 +160,8 @@ def _structure(object_id: str, structure: BodyStructure, facts: BodyFacts) -> di
     """The vertical stack, lowest layer first.
 
     Each layer is described by its top; its base is the layer below's top, and
-    the lowest one's base is `datum`. Every field is optional because a
-    boundary is a turning point in temperature rather than a surface, so a
-    source pins sometimes a height, sometimes a pressure, rarely both.
+    the lowest one's base is `datum`. Fields are optional since a source pins
+    sometimes a height, sometimes a pressure, rarely both.
     """
     out: dict = {"datum": structure.datum}
     if structure.note is not None:
@@ -210,10 +198,8 @@ def _structure(object_id: str, structure: BodyStructure, facts: BodyFacts) -> di
         if layer.note is not None:
             entry["note"] = layer.note
         if layer.composition:
-            # Raw mixing ratios in the body's own unit, not shares of a set:
-            # a layer lists a species only where its abundance differs from
-            # the body's, and Titan's stratospheric methane normalized against
-            # itself would draw as a pure-methane layer.
+            # Raw mixing ratios, not shares of a set: a layer lists a species
+            # only where it differs from the body's bulk composition.
             entry["species"] = [
                 {"formula": s.formula, "value": s.value} for s in layer.composition
             ]
@@ -225,9 +211,8 @@ def _structure(object_id: str, structure: BodyStructure, facts: BodyFacts) -> di
 def layer_temperature(object_id: str, layer: AtmosphereLayer) -> float | None:
     """A boundary's temperature, resolved where it is a published reading.
 
-    Venus's tropopause is its cloud top and the Sun's corona is the corona:
-    the same claim the `temperatures` block ships, so it is read from there
-    rather than restated beside the altitude.
+    Read from the `temperatures` block rather than restated here, so e.g.
+    Venus's tropopause (its cloud top) can't drift from that claim.
     """
     if layer.top_temperature_from is None:
         return layer.top_temperature_k
@@ -244,11 +229,10 @@ def layer_temperature(object_id: str, layer: AtmosphereLayer) -> float | None:
 def _datum_temperature(object_id: str, structure: BodyStructure) -> float | None:
     """The temperature at altitude 0, which is the lowest layer's base.
 
-    Without it that layer has one end and reads as a single value, which is
-    the tropopause rather than the troposphere. On a surface it is the body's
-    own measured temperature — the same reading the `temperatures` block
-    ships, taken from the constants so the two cannot drift — and only the
-    giants, whose datum is the 1 bar level, state one of their own.
+    Without it the lowest layer has only a top and reads as a point (the
+    tropopause) rather than a span (the troposphere). Read from the
+    `temperatures` block on a surface so the two can't drift; only the giants
+    (datum at 1 bar) state their own.
     """
     if structure.datum_temperature_k is not None:
         return structure.datum_temperature_k
@@ -272,11 +256,9 @@ def _datum_pressure(
 ) -> float | None:
     """The pressure at altitude 0, which is the lowest layer's base.
 
-    The mirror of `_datum_temperature`: without it that layer states only the
-    boundary at its top, and Earth's troposphere reads as 226 mb under a 1 bar
-    sky. On a datum the body already quotes a pressure at it is that number,
-    read from the flat facts so the two cannot drift; on the giants the datum
-    *is* one bar, by definition rather than by measurement.
+    Mirrors `_datum_temperature`. Read from the flat facts where the body
+    already quotes a pressure at its datum, so the two can't drift; on the
+    giants the datum *is* one bar by definition.
     """
     if structure.datum == "one_bar":
         return _ONE_BAR_PA

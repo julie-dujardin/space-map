@@ -1,17 +1,14 @@
 """Per-chunk sizing for probe trajectories.
 
 For each (probe, zone, chunk) the pipeline picks one of two formats:
-
-  * Method-C Kepler (cheap): osculating a/e/i + linearly-drifting Ω/ω/M.
-    Constant-size payload regardless of chunk length: 9 float32 = 36 bytes.
-
-  * Chebyshev (accurate): per-sub-interval polynomial coefficients in the
-    same packing as `download/providers/objects/chebyshev.py`. Cost scales
-    with the sub-interval length picked from a sweep — coarsest one that
-    keeps max position error below the zone's accuracy threshold.
+Method-C Kepler (cheap, constant-size: osculating a/e/i + linearly-drifting
+Ω/ω/M), or Chebyshev (accurate: per-sub-interval polynomial coefficients,
+same packing as `download/providers/objects/chebyshev.py`, cost scaling
+with the coarsest sub-interval that keeps max error below the zone's
+accuracy threshold).
 
 The decision is per-chunk so a probe naturally switches methods over time:
-Kepler during cruise / steady orbit, Chebyshev across flybys, EDLs, and
+Kepler during cruise/steady orbit, Chebyshev across flybys, EDLs, and
 maneuver-heavy windows.
 """
 
@@ -29,12 +26,10 @@ logger = logging.getLogger(__name__)
 
 _AU_KM = 149_597_870.7
 
-# Sub-interval sweep, coarsest first. We pick the largest intlen whose max
-# position error stays under the zone threshold. The finest entries
-# (0.01 d ≈ 14 min, 0.003 d ≈ 4 min) exist for high-velocity planetary
-# flybys — Voyager 2 at Neptune periapsis (27 km/s @ 4,950 km) needs short
-# segments because the deflection at periapsis is too sharp for a degree-11
-# polynomial over a longer window.
+# Sub-interval sweep, coarsest first; pick the largest intlen under the
+# zone threshold. The finest entries exist for high-velocity flybys —
+# Voyager 2 at Neptune periapsis (27 km/s @ 4,950 km) needs short segments
+# because the deflection is too sharp for a degree-11 polynomial otherwise.
 INTLEN_SWEEP_DAYS: tuple[float, ...] = (
     30.0,
     10.0,
@@ -66,19 +61,12 @@ def _chebyshev_bytes_per_segment(float64_coeffs: bool) -> int:
 
 
 def _kepler_bytes(method: str, float64_coeffs: bool) -> int:
-    """Per-sub-chunk Kepler payload size.
-
-    Pure = 6 elements (a, e, i, Ω₀, ω₀, M₀) + 1 anchor offset = 7 floats.
-    Drift adds Ω̇/ω̇/Ṁ → 10 total.
-
-    Anchor offset is `t_snap_et - sub_t_start_et` (seconds): the time the
-    snapshot elements were taken at, relative to the sub-chunk's start.
-    Without it the frontend can't tell where the snapshot anchor was, and
-    `conics` propagates from the wrong epoch — which costs millions of km
-    on heliocentric cruise probes.
-
-    Mean motion `n` isn't stored: pure mode propagates M via mu in `conics`;
-    drift mode bakes any J2 correction into the fitted Ṁ.
+    """Per-sub-chunk Kepler payload size. Pure = 6 elements + 1 anchor
+    offset = 7 floats; drift adds Ω̇/ω̇/Ṁ → 10 total. The anchor offset is
+    needed because without it `conics` propagates from the wrong epoch,
+    costing millions of km on heliocentric cruise probes. Mean motion `n`
+    isn't stored: pure mode propagates M via mu in `conics`; drift mode
+    bakes any J2 correction into the fitted Ṁ.
     """
     coeff_bytes = 8 if float64_coeffs else 4
     n_elements = 10 if method == METHOD_KEPLER_DRIFT else 7
@@ -149,20 +137,15 @@ def _fit_method_c(
     """Fit Method-C: snapshot elements at the fit-window midpoint + linear
     drift rates from the rest of the samples.
 
-    Strategy:
-      * Take the osculating elements at the sample closest to the window
-        midpoint as (a, e, i, om₀, w₀, m₀). Snapshot avoids the averaging
-        bias that plagues cruise probes whose `a` drifts across mid-cruise
-        TCMs (one TCM shifts a by ~0.1%, and 0.1% of 1 AU is 180,000 km of
-        position error if you average instead of snapshot).
-      * Linear-fit (om(t), w(t), M(t)) across ALL valid samples to recover
-        secular drift rates Ω̇, ω̇, n. Snapshot anchors position; drift fit
-        captures evolution.
+    Snapshot (rather than average) the osculating elements at the midpoint
+    sample: averaging biases cruise probes whose `a` drifts across
+    mid-cruise TCMs (one TCM shifting `a` by ~0.1% is 180,000 km of error
+    at 1 AU if averaged). Then linear-fit (om, w, M) across all valid
+    samples for secular drift rates Ω̇, ω̇, n.
 
-    Samples that come back hyperbolic (e ≥ 1, e.g. at planet flyby
-    periapsis) are skipped — we fit on the remaining ones. Returns None
-    when fewer than half the samples are usable OR no valid sample exists
-    near the midpoint.
+    Hyperbolic samples (e ≥ 1, e.g. at flyby periapsis) are skipped and
+    fit on the rest. Returns None when fewer than half the samples are
+    usable or none exists near the midpoint.
     """
     valid_ts: list[float] = []
     a_list: list[float] = []
@@ -214,27 +197,18 @@ def _fit_method_c(
         "t_mid": t_snap,
     }
 
-    # --- "Pure" variant: snapshot only, conics propagates M via mu. ---
-    # Best for clean cruise: fit-window TCMs / perturbations don't bias the
-    # propagation, and pure Kepler is the right model when no J2 source
-    # exists (heliocentric).
+    # "Pure" variant: snapshot only, conics propagates M via mu. Best for
+    # clean cruise / heliocentric orbits with no J2 source.
     pure = {**base, "om_dot": 0.0, "w_dot": 0.0, "n_mean_rad_s": 0.0, "mode": "pure"}
 
-    # --- "Drift" variant: linear-fit Ω̇, ω̇, n_mean over the sample window. ---
-    # Best for J2-perturbed orbits — MAVEN-class probes drop from 159 km
-    # worst-day error to 21 km with drift on. We use the *fitted* mean
-    # motion when polyfit is well-behaved (captures the J2 Ṁ correction),
-    # else fall back to the analytic Kepler rate.
-    #
-    # Why the fallback: for short-period orbits (LEO, lunar orbiters) the
-    # M-list wraps several times across the fit window. `np.unwrap`'s
-    # default π threshold can miss wraps when sample spacing approaches
-    # Nyquist, and the polyfit returns a meaningless slope (sometimes
-    # negative). Without a drift variant, the caller is left with `pure`
-    # only — which has no J2 Ω̇/ω̇ and accumulates km/h of along-track
-    # error on Sun-sync orbits. Falling back to `n_kepler = sqrt(mu/a³)`
-    # at least preserves the Keplerian rate; the polyfit-derived Ω̇/ω̇
-    # still capture the dominant J2 nodal/apsidal precession.
+    # "Drift" variant: linear-fit Ω̇, ω̇, n_mean over the sample window. Best
+    # for J2-perturbed orbits (MAVEN-class: 159 km → 21 km worst-day error).
+    # Falls back to the analytic Kepler rate when the fitted mean motion is
+    # implausible — for short-period orbits (LEO, lunar orbiters) the M-list
+    # wraps several times and `np.unwrap` can miss wraps near Nyquist,
+    # returning a meaningless (sometimes negative) polyfit slope. The
+    # fallback preserves the Keplerian rate; the polyfit-derived Ω̇/ω̇ still
+    # capture the dominant J2 nodal/apsidal precession.
     times_rel = valid_ts_arr - t_snap
     om_un = np.unwrap(np.asarray(om_list))
     w_un = np.unwrap(np.asarray(w_list))
@@ -328,13 +302,11 @@ def _fit_chebyshev_subchunk(
     """Refit Chebyshev for one sub-chunk at `intlen_s` and return coefficients
     + max km residual against SPICE truth.
 
-    Returns `(coeffs, max_err_km)` where `coeffs` has shape
-    `(n_segments, 3, CHEBYSHEV_DEGREE + 1)`. Returns None on any SPICE
-    sampling failure (caller treats as uncoverable). Implements the same
-    polynomial fit as `download/providers/objects/chebyshev._sample_body`.
-
-    All segments are fit (vs. the previous lazy-on-eval-point approach) so
-    the resulting coefficient array can be packed into the export binary.
+    Returns `(coeffs, max_err_km)` with `coeffs` shape
+    `(n_segments, 3, CHEBYSHEV_DEGREE + 1)`, or None on any SPICE sampling
+    failure (caller treats as uncoverable). Mirrors
+    `download/providers/objects/chebyshev._sample_body`'s fit, but fits
+    every segment (not lazily) so the array can be packed into the binary.
 
     TODO(discontinuity-aware fitting): old (1970s-era) SPKs have small
     step discontinuities at their internal intlen boundaries — e.g.
@@ -421,38 +393,30 @@ def _fit_sub_chunk(
 ) -> SubChunkFit:
     """Pick Kepler vs Chebyshev for one sub-chunk and capture the fit data.
 
-    Tries both Method-C variants (pure-Kepler-from-snapshot, drift-fitted)
-    and keeps whichever has lower max-err on the sub-chunk. The Chebyshev
-    sweep is reserved for cases where Kepler exceeds the (possibly relaxed)
-    threshold.
-
-    `base_threshold_km` is the zone default. If the probe's orbital period
-    inferred from the fit is below the zone's short-orbit cutoff, the
-    threshold is relaxed to `zone.short_orbit_threshold_km` (~500 km for
-    planetary). Phase-shift visible at deep zoom but invisible at the
-    typical planet-system view.
+    Tries both Method-C variants (pure, drift-fitted) and keeps whichever
+    has lower max-err; falls to the Chebyshev sweep if Kepler exceeds the
+    (possibly relaxed) threshold. `base_threshold_km` is the zone default,
+    relaxed to `zone.short_orbit_threshold_km` when the fitted orbital
+    period is below the zone's short-orbit cutoff — a phase-shift visible
+    at deep zoom but invisible at the typical planet-system view.
     """
     sub_s = sub_t_end - sub_t_start
     sub_mid = 0.5 * (sub_t_start + sub_t_end)
     cheb_bytes_per_seg = _chebyshev_bytes_per_segment(zone.float64_coeffs)
 
-    # Fit window: default ±2 days. Narrow it for short-period orbits — for a
-    # 2-hour lunar orbiter (Chandrayaan-2, Danuri, LRO, LADEE), a wide window
-    # averages over 48 mascon-perturbed orbits and the linear-drift assumption
-    # in Method-C collapses (~2500 km median error, samples dipping below the
-    # lunar surface). Scaling the half-window to ~2 orbital periods preserves
-    # statistical power for the Ω̇/ω̇/Ṁ fit while keeping the linear assumption
-    # locally valid (~150 km median for the same probes, never below surface).
+    # Fit window: default ±2 days, narrowed for short-period orbits — for a
+    # 2-hour lunar orbiter, a wide window averages over dozens of
+    # mascon-perturbed orbits and the linear-drift assumption collapses
+    # (~2500 km median error, dipping below the surface). Scaling the
+    # half-window to ~2 orbital periods keeps ~150 km median error instead.
     default_half_s = max(2.0 * sub_s, 2 * S_PER_DAY)
-    # Estimate the orbital period from multi-sample oscelt over a wide window.
-    # A single oscelt at sub_mid is unreliable for high-e orbits — INTEGRAL's
-    # instantaneous osculating period collapses to ~3 h near perigee even
-    # though the real orbit is multi-day, because small lunar third-body
-    # velocity perturbations push the osculating energy way off. Sampling
-    # broadly (≥1 month for earth-moon) and taking the max period across
-    # samples biases toward apogee-side samples where the osculating elements
-    # are stable. For genuinely short-period orbits every sample agrees on
-    # the period, so the max equals the actual.
+    # Estimate the orbital period from multi-sample oscelt over a wide
+    # window — a single oscelt at sub_mid is unreliable for high-e orbits
+    # (INTEGRAL's instantaneous period collapses to ~3h near perigee for a
+    # real multi-day orbit due to lunar third-body perturbations). Taking
+    # the max period across a broad sample set biases toward the stable
+    # apogee-side samples; for genuinely short-period orbits every sample
+    # agrees anyway.
     prelim_window_s = max(default_half_s, 15 * S_PER_DAY)
     prelim_ets = np.linspace(sub_mid - prelim_window_s, sub_mid + prelim_window_s, 21)
     max_period_s = 0.0
@@ -468,14 +432,10 @@ def _fit_sub_chunk(
             continue
         period_s = 2.0 * math.pi * math.sqrt((rp_p / (1 - ecc_p)) ** 3 / mu)
         max_period_s = max(max_period_s, period_s)
-    # Fit window scales to ~2 orbital periods so the Method-C linear-drift
-    # assumption stays locally valid. Short-period orbits (lunar orbiters,
-    # WISE/LEO) get a narrow window — averaging over many mascon- or J2-
-    # perturbed orbits collapses the fit, and a 6-hour-class window puts
-    # M past the np.unwrap reliability edge (4+ wraps near Nyquist).
-    # Long-period orbits (INTEGRAL, halo) get a wide default window so
-    # the fit samples span a meaningful arc of the orbit rather than just
-    # the near-perigee fast pass.
+    # Scale the fit window to ~2 orbital periods: too wide collapses the
+    # linear-drift fit for short-period orbits (mascon/J2 perturbation, plus
+    # np.unwrap unreliability past 4+ wraps near Nyquist); too narrow misses
+    # the meaningful arc for long-period orbits (INTEGRAL, halo).
     if max_period_s > 0:
         fit_half_s = min(default_half_s, 2.0 * max_period_s)
     else:
@@ -494,13 +454,10 @@ def _fit_sub_chunk(
                 best_v = (v, err)
         if best_v is not None:
             kepler_err = best_v[1]
-            # Use the prelim multi-sample max period for the short-period
-            # decision rather than the fitted snapshot's a_km. For high-e
-            # orbits the snapshot a near perigee collapses to nonsense (e.g.
-            # INTEGRAL: snapshot a=17000 km, fitted period ~6 h, vs real
-            # ~3-day period), and would incorrectly flag as short-period and
-            # force Kepler. The prelim sweeps a wide window so apogee-side
-            # samples reveal the true period.
+            # Prefer the prelim multi-sample max period over the fitted
+            # snapshot's a_km: for high-e orbits the snapshot near perigee
+            # collapses to nonsense (INTEGRAL: a=17000 km, fitted period
+            # ~6h vs real ~3-day), wrongly forcing Kepler as short-period.
             period_s = (
                 max_period_s
                 if max_period_s > 0
@@ -512,12 +469,11 @@ def _fit_sub_chunk(
                 if is_short_period
                 else base_threshold_km
             )
-            # For short-period orbiters (sub-day periods around a planet/moon)
-            # Chebyshev's degree-11 polynomial covers multiple orbital cycles
-            # per segment at any byte budget we can afford. Pin to whichever
-            # Kepler variant has lower residual rather than fall through to a
-            # Chebyshev that will alias and put the probe below the body's
-            # surface — accuracy_threshold is advisory in this regime.
+            # For short-period orbiters, Chebyshev's degree-11 polynomial
+            # spans multiple orbital cycles per segment at any affordable
+            # byte budget and would alias, putting the probe below the
+            # surface — pin to the lower-residual Kepler variant instead;
+            # accuracy_threshold is advisory in this regime.
             if kepler_err <= threshold_km or is_short_period:
                 method = (
                     METHOD_KEPLER_DRIFT
@@ -604,19 +560,14 @@ def size_chunk(
     t_end: float,
     fit_center_naif_id: int | None = None,
 ) -> ChunkSizing:
-    """Slice the streaming chunk into Kepler-width sub-chunks, fit each.
+    """Slice the streaming chunk into Kepler-width sub-chunks, fit each
+    independently, and sum their byte cost.
 
-    Each sub-chunk decides independently between Method-C Kepler (cheap:
-    9 floats = 36 bytes) and Chebyshev (refit-and-pack like
-    `download/providers/objects/chebyshev.py`). The overall chunk's byte
-    cost is the sum of its sub-chunks.
-
-    `fit_center_naif_id` overrides the zone's default fit center for this
-    chunk — e.g. a lunar orbiter in `earth-moon` gets fit around the Moon
-    (301) instead of Earth (399). When None, falls back to
-    `zone.fit_center_naif_id`. The caller decides whether the probe sits
-    inside an alternate primary's Hill sphere; this function just trusts
-    the choice and routes mu + spkezr accordingly.
+    `fit_center_naif_id` overrides the zone's default fit center — e.g. a
+    lunar orbiter in `earth-moon` fits around the Moon (301) instead of
+    Earth (399). Falls back to `zone.fit_center_naif_id` when None; the
+    caller decides whether the probe sits inside an alternate primary's
+    Hill sphere, this function just routes mu + spkezr accordingly.
     """
     center = (
         fit_center_naif_id

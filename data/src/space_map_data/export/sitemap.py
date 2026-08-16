@@ -1,14 +1,9 @@
 """Sitemap generation for the notable-object subset.
 
-Enumerates the objects and groups worth surfacing to search engines — the
-promoted set plus anything with a real Wikidata presence — and writes a single
-``v1/seo/sitemap.xml``. The frontend proxies it on the app host so ``<loc>``
-and the sitemap URL share an origin (no Search Console cross-host step).
-
-Canonical URL = ``/<type>/<id>/<name>`` for objects (name from ``obj.name``,
-the same value the bundles expose and the app puts in the URL), ``/g/<slug>``
-for groups and ``/<type>/<id>/f/<featureId>/<name>`` for surface features.
-Kept in lockstep with ``frontend/src/lib/state/url.ts``.
+Enumerates the promoted set plus anything with a real Wikidata presence, and
+writes a single ``v1/seo/sitemap.xml``. Canonical URL shape mirrors
+``frontend/src/lib/state/url.ts``: ``/<type>/<id>/<name>`` for objects,
+``/g/<slug>`` for groups, ``/<type>/<id>/f/<featureId>/<name>`` for features.
 """
 
 import datetime
@@ -101,9 +96,8 @@ def _feature_paths(
 ) -> list[str]:
     """Canonical paths for surface features at or above the sitelink floor.
 
-    Same notability bar as objects. Most of the 16k gazetteer entries are
-    anonymous craters whose page would be a name and a coordinate; the ones
-    with a real Wikidata presence carry a description worth indexing.
+    Most of the 16k gazetteer entries are anonymous craters with no description
+    worth indexing; the Wikidata-backed ones clear the bar.
     """
     rows = session.execute(
         select(

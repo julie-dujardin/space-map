@@ -1,8 +1,7 @@
 """Tests for `_content_token`, the per-class cache-busting hash.
 
-The versioning scheme rests on one property: the token changes iff a file's
-relative path or bytes change. These pin determinism (so a no-op re-export
-keeps the client's cache) and sensitivity (so any real change busts it).
+The token must change iff a file's path or bytes change: these pin both
+determinism (no-op re-export keeps the cache) and sensitivity (any change busts it).
 """
 
 from pathlib import Path

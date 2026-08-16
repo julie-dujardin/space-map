@@ -1,23 +1,15 @@
 """Per-object activity block — what a body is still doing, denormalized onto
 its global bundle.
 
-Four tables share one block because they are four views of one question: is
-there heat left inside, and does it reach the surface. Volcanism and tectonics
-are what the heat builds, tidal heating is where the heat comes from on the
-small worlds, and a dynamo is the same heat leaving a core by convection.
+Volcanism, tectonics, tidal heating and magnetism are four views of one
+question: is there heat left inside, and does it reach the surface. Fields
+are mostly categorical (status, kind) with numbers as sparse extras — most
+bodies have only a status and a note, so consumers must treat every number
+as optional.
 
-Twenty-three bodies carry one, and the shape is deliberately lopsided: the
-categorical fields are complete and the numbers are not. Every body has a
-volcanic status or a field type; only Earth, Io, Mercury and Enceladus have
-more than four measurements between them, and five bodies — Europa, Callisto,
-Mimas, Dione, Charon — have a status, a note and nothing else. A consumer
-should lead with the status and treat every number as optional.
-
-Each number ships as an object rather than a bare float, because in this
-subject the qualifier is usually the finding: Titan's magnetic moment is only
-ever an upper limit, Venus's eruption rate is Earth's record scaled by mass,
-and a vent count is whatever the last survey resolved rather than a property of
-the body.
+Each number ships as an object rather than a bare float: the qualifier is
+often the finding (an upper limit, a scaled estimate, a survey count) rather
+than the value itself.
 """
 
 import logging
@@ -91,11 +83,9 @@ def activity_block(object_id: str) -> dict | None:
 def collection_row(object_id: str) -> dict | None:
     """What a Structure & Activity page ranks and labels a member by.
 
-    One function rather than three because the three pages partition one
-    subject — is there heat left inside, and does it reach the surface — and a
-    body is usually on more than one of them. Trimmed to the headline value of
-    each measurement: the widths, the qualifiers and the citations are the
-    body's own panel's job, and a collection row has no room to state them.
+    One function covers all three pages since a body is often on more than
+    one. Only the headline value per measurement — ranges, qualifiers and
+    citations stay in the body's own panel.
     """
     geology = GEOLOGIC_ACTIVITY.get(object_id)
     tidal = TIDAL_HEATING.get(object_id)
@@ -130,9 +120,8 @@ def collection_row(object_id: str) -> dict | None:
             measurement = getattr(field, name)
             if measurement is not None:
                 magnetism[name] = measurement.value
-                # Titan's field is the tightness of a non-detection, not a
-                # measurement; a bar drawn from it would be the page's most
-                # confident claim about its least certain number.
+                # Flag non-detections so a bar chart doesn't draw them as
+                # confident measurements.
                 if measurement.upper_limit:
                     magnetism[f"{name}_upper_limit"] = True
         out["magnetism"] = magnetism
@@ -173,12 +162,9 @@ def _tidal(
 ) -> tuple[dict, list[str]]:
     """The tide raised on this body, and whether it accounts for the heat.
 
-    Io and Enceladus quote the same watts twice — the tidal power and the
-    endogenic power are one measurement, because on those two the observed heat
-    loss *is* taken as the production, and that identity is the finding. It is
-    resolved here rather than in a panel: both numbers are in hand at this
-    point, and a consumer comparing floats across two sub-blocks would be
-    re-deriving it every render.
+    On Io and Enceladus the tidal power and endogenic power are the same
+    measurement — observed heat loss is taken as the production. Flagged here
+    rather than left for the panel to re-derive by comparing floats.
     """
     out: dict = {"raised_by": facts.raised_by, "role": facts.role}
     keys = list(facts.role_sources)
@@ -225,9 +211,8 @@ def _magnetism(facts: MagneticField) -> tuple[dict, list[str]]:
 def _measurement(measurement: Measurement) -> dict:
     """One published number with what its source said about how sure it is.
 
-    `source` stays behind: the block credits its works once, in `sources`, the
-    way the interior and atmosphere blocks do. Per-value keys would be a third
-    of the bytes for a provenance nothing renders per row.
+    `source` stays out of it: works are credited once in `sources`, as in the
+    interior and atmosphere blocks.
     """
     out: dict = {"value": measurement.value}
     if measurement.range is not None:
@@ -242,8 +227,8 @@ def _measurement(measurement: Measurement) -> dict:
 
 
 def _sources(keys: list[str]) -> list[dict]:
-    """Dedupe, first occurrence wins — the work behind the volcanic status
-    leads, which is the line the panel opens with."""
+    """Dedupe, first occurrence wins — the volcanic status source leads,
+    matching the panel's opening line."""
     out = []
     for key in dict.fromkeys(keys):
         ref: ActivityReference | None = ACTIVITY_SOURCES.get(key)

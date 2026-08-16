@@ -32,13 +32,7 @@ SGP4_VALIDITY_SLACK_DAYS = 14.0
 
 
 def _earth_day_dir(date_iso: str) -> Path:
-    """Map a snapshot's `YYYY-MM-DD` label to its CelesTrak day-dir on disk.
-
-    The downloader stores each day at
-    `sources/position/celestrak/{YYYY}/{MM}/{DD}/` (zero-padded month/day).
-    The sidecar fingerprints the CSVs in that dir to decide whether to
-    re-encode a part.
-    """
+    """Map a snapshot's `YYYY-MM-DD` label to its CelesTrak day-dir on disk."""
     year, month, day = date_iso.split("-")
     return SOURCES_POSITION_DIR / "celestrak" / year / month / day
 
@@ -46,10 +40,8 @@ def _earth_day_dir(date_iso: str) -> Path:
 def _sgp4_validity_window(objects: list[Object]) -> tuple[float, float]:
     """Derive [start_jd, end_jd] for an SGP4 file from the epoch spread.
 
-    Earth satellites are celestrak-source — kepler elements (including
-    epoch_jd) are attached as a transient ``_daily_kepler`` dict by the
-    overlay. Falls back to unbounded when no object carries an epoch
-    (shouldn't happen for valid TLEs but keeps behaviour defined).
+    Reads epoch_jd from the transient ``_daily_kepler`` overlay dict. Falls
+    back to unbounded when no object carries an epoch.
     """
     epochs: list[float] = []
     for o in objects:
@@ -80,21 +72,14 @@ def write_chunk(
 ) -> int:
     """Write the position file for one (zone, zoom, part[, time]) chunk.
 
-    `has_localized` is keyed by object id (built once per zone by
-    :func:`build_chunk_object_data`); each row's bit goes into the binary's
-    last column so the frontend can skip detail-bundle fetches for objects
-    with no Wikidata at all.
-
-    `orbital_source` is stamped in the file header; writer raises if any row
-    disagrees. The file's id-type is also stamped in the header so the
-    frontend can rebuild full `<prefix>-<numeric>` IDs from binary column 0.
-    `time` is the per-snapshot directory between zoom and part — ISO date
-    (Earth) or a numeric chunk index (time-chunked moons).
-    `validity_start_jd`/`validity_end_jd` go into the binary header so
-    consumers know when the file's elements are accurate. Earth zone
-    overrides them with the SGP4-specific epoch-spread window (those need a
-    tighter bound than 6 months); moons keep the chunk's [start, end].
-    Returns the size of the binary file in bytes.
+    `has_localized` bits go into the binary's last column so the frontend can
+    skip detail-bundle fetches for objects with no Wikidata. `orbital_source`
+    is stamped in the header; the writer raises if any row disagrees. `time`
+    is the per-snapshot directory between zoom and part — ISO date (Earth) or
+    a numeric chunk index (time-chunked moons). `validity_start_jd`/`end_jd`
+    bound the file's accuracy; Earth overrides them with the SGP4 epoch-spread
+    window, moons keep the chunk's [start, end]. Returns the file size in
+    bytes.
     """
     chunk_dir = position_zone_dir(out_dir, zone, zoom)
     if time is not None:
@@ -121,11 +106,9 @@ def write_chunk(
                 r = None
             if r is not None:
                 radius_km_overrides[obj.id] = r
-    # SGP4 (Earth satellites) needs a tight validity window — the propagator
-    # blows up past ~a year from epoch and spammy warnings are not useful.
-    # Kepler/parabolic orbits are mathematical solutions with no hard cutoff,
-    # so they default to whatever the caller passed (unbounded for static
-    # zones, the time-chunk's [start, end] for time-chunked moons).
+    # SGP4 needs a tight validity window — the propagator blows up past ~a
+    # year from epoch. Kepler/parabolic orbits have no hard cutoff, so they
+    # keep whatever the caller passed.
     start_jd = validity_start_jd
     end_jd = validity_end_jd
     sidecar_path: Path | None = None
@@ -135,11 +118,8 @@ def write_chunk(
     elif zone == "earth":
         write_fn = write_sgp4_elements
         start_jd, end_jd = _sgp4_validity_window(objects)
-        # Earth parts come from inputs the downloader writes once and never
-        # edits — per-day CelesTrak CSVs for recent dates, the Space-Track year
-        # zips for historical weeks. If the source fingerprints + encoding
-        # version match an existing binary's sidecar, the part contents are
-        # determined entirely by those inputs — skip the encode + gzip.
+        # Earth part contents are fully determined by its source inputs
+        # (immutable once downloaded) — skip the encode + gzip on a match.
         assert time is not None, "earth zone snapshots must carry a date label"
         day_dir = _earth_day_dir(time)
         if day_dir.exists():

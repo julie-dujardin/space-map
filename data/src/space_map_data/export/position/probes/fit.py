@@ -2,24 +2,20 @@
 
 Two sub-passes:
 
-  * ``stale_fits`` + ``build_fits`` — per-probe granularity. For each
-    (probe, zone, chunk) contribution we compute a per-probe signature
-    that captures only THIS probe's inputs (its kernels, plus the zone /
-    candidates / events hashes the probe actually depends on). If the
-    cache under ``EXPORT_METADATA_DIR/position/probes/_fits/...`` matches,
-    the expensive ``size_chunk`` / ``fit_landed_chunk`` work is skipped.
-    Otherwise we re-furnish and re-fit, then save the resulting
-    ``ChunkProbeRecord`` to cache.
+  * ``stale_fits`` + ``build_fits`` — per-probe granularity. Each (probe,
+    zone, chunk) contribution gets a signature over just that probe's
+    inputs (kernels + the zone/candidates/events hashes it depends on). A
+    cache match skips the expensive ``size_chunk``/``fit_landed_chunk``
+    work; a miss re-furnishes, re-fits, and saves the result.
 
   * ``decide_dirty_chunks`` + ``collect_for_repack`` — chunk granularity.
-    The chunk sidecar records each contributing probe's fit-signature
-    hash; if the on-disk sidecar matches the recomputed one the binary
-    doesn't need rebuilding. Otherwise we load every contributing probe's
-    cached fit and hand them to the write pass.
+    The chunk sidecar records each contributing probe's fit-signature hash;
+    a mismatch means loading every contributing probe's cached fit for the
+    write pass.
 
-This split decouples "a single probe's inputs changed" from "this chunk's
-binary needs rewriting": a kernel edit on Voyager 2 only re-fits Voyager 2,
-even when its interplanetary chunks are shared with Voyager 1, Pioneer, etc.
+This split decouples "a probe's inputs changed" from "this chunk needs
+rewriting": a kernel edit on Voyager 2 only re-fits Voyager 2, even when its
+interplanetary chunks are shared with Voyager 1, Pioneer, etc.
 """
 
 import logging
@@ -73,13 +69,11 @@ def expected_fit_sigs(
     candidates_hash_by_zone: dict[str, str],
 ) -> dict[tuple[int, str, int], dict]:
     """Build the expected per-(probe, zone, chunk) signature for every
-    contribution in `plans`. Flying / landed presence drives whether
-    candidates_hash / events_hash fold in — see `fit_cache.build_fit_signature`.
+    contribution in `plans` — see `fit_cache.build_fit_signature`.
 
-    When multiple plans share a probe_id (e.g. Cassini classified across
-    two mission dirs), the kernel list folded into the signature is the
-    union of all plans' kernels — matching the union that `build_fits`
-    will actually furnish to produce the merged record.
+    When multiple plans share a probe_id (Cassini classified across two
+    mission dirs), the kernel list folded in is the union of all plans'
+    kernels, matching what `build_fits` will actually furnish.
     """
     events_hash = sidecar.events_files_hash()
     kernels_by_probe: dict[int, list[Path]] = defaultdict(list)
@@ -137,42 +131,29 @@ def build_fits(
 ) -> None:
     """Re-fit every stale (probe, zone, chunk) and save to the cache.
 
-    Plans are grouped by `probe_id` so multiple plans for the same probe
-    (different missions / kernel sets resolved to the same probe registry
-    entry; e.g. Cassini with naif=-82 from two mission dirs) MERGE into one
-    `ChunkProbeRecord` per (zone, chunk): each plan furnishes its own
-    kernels, fits its own contributions, and appends to a `by_chunk` dict
-    that persists across all of the probe's plans. The merged record is
-    then written to cache once — preventing the second plan from
-    overwriting the first's data with an empty record.
+    Plans are grouped by `probe_id`: multiple plans for the same probe
+    (e.g. Cassini naif=-82 classified across two mission dirs) MERGE into
+    one `ChunkProbeRecord` per (zone, chunk) via a `by_chunk` dict shared
+    across the probe's plans, written once so a later plan can't overwrite
+    an earlier one's data with an empty record.
 
-    Fit-center detection runs per (probe, chunk). `fit_center_naif_by_key`
-    caches the chosen center per `(zone_key, chunk_idx)`, persisting across
-    plans for the same probe so one probe header encodes one center.
+    Fit-center detection runs per (probe, chunk); `fit_center_naif_by_key`
+    caches the chosen center per key so one probe header encodes one center.
+    "First wins" is correct because a probe's dominant primary doesn't
+    switch within a single streaming chunk (chunks are sized below typical
+    Hill-traversal timescales) — so pinning the center at the earliest
+    sub-window covering a split-coverage chunk (e.g. New Horizons'
+    Sep-2007→Dec-2014 gap) is safe. Landed contributions don't consult the
+    cache; their fit center is implicit in the landing body.
 
-    Why "first wins" is correct here: a probe can have multiple flying
-    contributions to the same chunk when its SPK coverage is split across
-    intervals with a gap (e.g. New Horizons' Sep-2007 → Dec-2014 hole could
-    produce two flying intervals that each touch the same chunk on the
-    boundary). ``classify.py`` appends contributions per-interval in time
-    order, so "first" is the earliest sub-window — pinning the center there
-    is fine because a probe's dominant primary inside a single streaming
-    chunk doesn't switch (chunks are sized below typical Hill-traversal
-    timescales). Landed contributions don't consult the cache; their fit
-    center is implicit in the landing body.
-
-    Per-plan flying dedupe: when a probe has multiple plans (registry
-    `kernel_sources` listing more than one mission — e.g. INTEGRAL's real
-    SPK + HORIZONS-SYNTH backfill, Cassini in CASSINI + HUYGENS), each
-    plan's coverage often overlaps the others'. Without dedupe both plans
-    fit the same (zone, chunk) and ``rec.flying.extend`` packs **double**
-    the sub-chunks (verified: INTEGRAL earth-moon chunks had 120/60
-    sub-chunks). The writer's grid padder then assigns those duplicates
-    adjacent slots, so the decoder reads each duplicate's payload at the
-    wrong time — yields catastrophic errors. The first plan to fit a
-    (zone, chunk) claims it; subsequent plans skip flying contributions
-    for that key. Intra-plan gap contributions still accumulate because
-    they come from the same plan.
+    Per-plan flying dedupe: a probe with multiple plans (INTEGRAL's real SPK
+    + HORIZONS-SYNTH backfill, Cassini in CASSINI + HUYGENS) often has
+    overlapping plan coverage. Without dedupe, both plans fit the same
+    (zone, chunk) and `rec.flying.extend` doubles the sub-chunks — the
+    writer's grid padder then puts the decoder out of sync with catastrophic
+    errors (verified on INTEGRAL earth-moon chunks). The first plan to fit a
+    (zone, chunk) claims it; later plans skip flying contributions there.
+    Intra-plan gap contributions still accumulate.
 
     TODO(source-priority-for-glitchy-kernels): the multi-source probes
     can still ship bad data on specific chunks when their primary SPK
@@ -208,16 +189,11 @@ def build_fits(
         stale_keys = stale_by_probe[probe_id]
         by_chunk: dict[tuple[str, int], ChunkProbeRecord] = {}
         fit_center_naif_by_key: dict[tuple[str, int], int] = {}
-        # Per-key plan ownership: the first plan to fit a (zone, chunk)
-        # claims it. Subsequent plans for the same probe skip flying
-        # contributions to that key (see class docstring on multi-source
-        # dedupe). Intra-plan gap contributions still accumulate.
+        # First plan to fit a (zone, chunk) claims it — see build_fits
+        # docstring on multi-source dedupe.
         flying_owner_by_key: dict[tuple[str, int], int] = {}
-        # Track which plans actually contributed flying data to each
-        # (zone, chunk), so system_intervals can be drawn only from
-        # plans that had coverage there (using ALL plans' intervals
-        # would graft phantom system tags from plan B onto chunks only
-        # covered by plan A).
+        # Plans that actually contributed flying data per (zone, chunk), so
+        # system_intervals draws only from plans with real coverage there.
         contributing_plans: dict[tuple[str, int], list[ProbePlan]] = defaultdict(list)
 
         for plan in plans_for_probe:
@@ -297,10 +273,9 @@ def build_fits(
                         assert c.landed_body_id_value is not None
                         assert c.landed_body_id_type is not None
                         if c.static_lat_lng is not None:
-                            # Events-driven landing: static lat/lng from the
-                            # curated events JSON, no SPICE. Probes that move
-                            # on the surface have SPICE coverage instead and
-                            # go through fit_landed_chunk.
+                            # Events-driven landing: static lat/lng, no SPICE.
+                            # Probes that move on the surface have SPICE
+                            # coverage instead, via fit_landed_chunk.
                             lat, lng = c.static_lat_lng
                             landed_fit = LandedFit(
                                 body_id_value=c.landed_body_id_value,
@@ -387,15 +362,13 @@ def decide_dirty_chunks(
     out_dir: Path,
 ) -> dict[str, dict[int, dict]]:
     """For each planned chunk, compute its expected chunk signature from the
-    per-probe fit signatures + header bits, and compare against the on-disk sidecar.
+    per-probe fit signatures + header bits, and compare against the on-disk
+    sidecar.
 
-    Per-probe block in the chunk sig carries `{fit, ord, has_loc}`:
-      * `fit` — short hash of the per-probe fit signature (kernels, candidates,
-        events, zone, fit_version). Flips when the trajectory itself must
-        change.
-      * `ord` / `has_loc` — wire-header bits (`object_type_ordinal`,
-        `has_localized`). Flip when an i18n / type-tag change should repack
-        the chunk binary without re-fitting the trajectory.
+    Per-probe block carries `{fit, ord, has_loc}`: `fit` is a short hash of
+    the per-probe fit signature, flipping when the trajectory must change;
+    `ord`/`has_loc` are wire-header bits that flip on an i18n/type-tag
+    change, repacking the binary without re-fitting.
     """
     probes_dir = out_dir / "position" / "probes"
     dirty: dict[str, dict[int, dict]] = defaultdict(dict)
@@ -430,10 +403,9 @@ def collect_for_repack(
     """Load cached fits for every (probe, chunk) in a dirty chunk.
 
     `chunk_index[zone][chunk]` appends the same `ProbePlan` once per
-    contribution (classify.py:239,269), so a probe with multiple flying or
-    landed contributions to the same chunk appears multiple times — dedupe
-    on probe_id so we only emit one record per (probe, chunk) (the cached
-    `.fit` already merges all of that probe's contributions for the chunk).
+    contribution, so a probe with multiple contributions to the same chunk
+    appears multiple times — dedupe on probe_id, since the cached `.fit`
+    already merges all of that probe's contributions.
     """
     by_zone_chunk: dict[str, dict[int, list[ChunkProbeRecord]]] = defaultdict(
         lambda: defaultdict(list)

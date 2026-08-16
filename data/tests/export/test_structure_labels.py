@@ -1,14 +1,11 @@
 """Every vocabulary value the Structure tab draws has a label to draw it with.
 
-The pipeline ships keys and the frontend ships the sentences, which means a new
-layer role or note added here shows up in the panel as a raw `shell_thickness_
-modelled` until somebody writes twelve translations for it. Nothing else catches
-that: the constants tests only check the value is in its own vocabulary, and the
-frontend has no way to know which values are actually in use.
+Nothing else catches a missing one: constants tests only check that a value
+is in its own vocabulary, and the frontend can't know which are in use — a
+gap surfaces only as a raw key like `shell_thickness_modelled` in the panel.
 
-Only English is asserted. The other eleven locales fall back to it rather than
-to the key, so a missing translation degrades to readable English; a missing key
-degrades to nothing at all.
+Only English is asserted: the other locales fall back to it, so a missing
+translation still reads, while a missing key reads as nothing.
 """
 
 from space_map_data.constants.atmosphere.structure import ATMOSPHERE_STRUCTURE
@@ -19,8 +16,8 @@ MESSAGES = PROJECT_ROOT / "frontend" / "messages" / "en.json"
 
 
 def _in_use() -> dict[str, set[str]]:
-    """Every value any body actually carries, by the message prefix that names
-    it. Not the whole vocabulary — an unused role needs no label yet."""
+    """Values actually used, by message prefix — not the whole vocabulary; an
+    unused role needs no label yet."""
     used: dict[str, set[str]] = {
         "interior_layer": set(),
         "interior_state": set(),

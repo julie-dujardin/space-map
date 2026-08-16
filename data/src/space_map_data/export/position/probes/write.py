@@ -63,9 +63,8 @@ def _pack_kepler_payload(
       drift: a_km, e, i_rad, om0, w0, m0, om_dot, w_dot, n_mean_rad_s, t_anchor_offset_s
 
     `t_anchor_offset_s = t_snap_et - sub_t_start_et` lets the consumer
-    reconstruct the snapshot epoch (which is *not* the sub-chunk start —
-    the fitter anchors at the closest valid sample to the sub-chunk
-    midpoint, drifting by up to ~half a fit-window from the start).
+    recover the snapshot epoch, which is not the sub-chunk start — the
+    fitter anchors near the sub-chunk midpoint.
     """
     t_anchor_offset_s = elts["t_mid"] - sub_t_start_et
     base = [
@@ -131,11 +130,11 @@ def _pad_flying_grid(
     sub_s: float,
 ) -> tuple[int, list[SubChunkFit]] | None:
     """Sort `flying` by ET and insert `METHOD_UNCOVERABLE` records into
-    grid gaps so the binary packs as a contiguous run on the sub-chunk
-    grid. Required for probes whose multiple disjoint SPK intervals
-    contribute to the same chunk — without padding the second interval's
-    sub-chunks decode at off-by-one grid positions and break the Kepler
-    anchor offset. Returns `(first_offset, padded)` or None if empty."""
+    grid gaps so the binary packs as a contiguous run. Required when
+    disjoint SPK intervals contribute to the same chunk — without padding,
+    the second interval's sub-chunks decode at off-by-one grid positions
+    and break the Kepler anchor offset. Returns `(first_offset, padded)`
+    or None if empty."""
     if not flying:
         return None
     sorted_flying = sorted(flying, key=lambda f: f.t_start_et)

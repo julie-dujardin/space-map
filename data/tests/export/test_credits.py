@@ -58,9 +58,8 @@ class TestMergeReferences:
         assert "reference conditions" in nssdca["contribution"]
 
     def test_a_work_cited_by_two_packages_shares_a_url(self):
-        """The Garrett reports are cited for belts and for dipole offsets. The
-        merge is by URL, so the two entries have to link the same copy or the
-        page lists one report twice."""
+        """The merge is by URL: the Garrett reports must link the same copy or the
+        page lists one twice."""
         merged = _merge_references(_sections())
         garrett = [
             r for rows in merged.values() for r in rows if "Garrett" in r["title"]

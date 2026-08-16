@@ -169,8 +169,7 @@ class TestNotableMembers:
         assert member.spec == "S"
 
     def test_pole_from_orientation_for_pck_dwarf(self, session: Session) -> None:
-        # A PCK dwarf in its orbit-class zone (Ceres in MBA) gets the same tilt
-        # it has on the dwarf-planet page.
+        # A PCK dwarf (Ceres in MBA) gets the same tilt as on its dwarf-planet page.
         _add_member(session, 2000001, naif_id=2000001)
         orientation = {2000001: {"pole_ra_0": 291.418, "pole_dec_0": 66.764}}
         (member,) = _notable_members(
@@ -376,8 +375,8 @@ class TestNotableEntries:
         assert entry["spec"] == "V"
 
     def test_texture_flag_explicit_true_false(self, monkeypatch) -> None:
-        # Explicit false (not omission) so the frontend can tell "no texture"
-        # from a pre-flag bundle; omitted entirely when no set is supplied.
+        # Explicit false (not omission) distinguishes "no texture" from a
+        # pre-flag bundle; omitted when no set is supplied.
         monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
         cache = _StubEntityCache({})
         members = [_obj("spkid-1", None, "Ceres"), _obj("spkid-2", None, "Pallas")]
@@ -405,8 +404,8 @@ class TestNotableEntries:
         assert names == {"spkid-1": "Церера"}
 
     def test_group_member_routes_to_group_page(self, monkeypatch) -> None:
-        # A constellation listed in its orbit zone resolves a group entry (no
-        # object id), with a thumbnail from the group's images.
+        # A constellation resolves to a group entry (no object id), thumbnail
+        # from the group's images.
         monkeypatch.setattr(
             notable,
             "collect_group_images",
@@ -590,9 +589,8 @@ class TestOceanBlock:
     """The row the Oceans collection chart ranks a body by."""
 
     def test_only_water_oceans_qualify(self) -> None:
-        """`sea` is a role of its own: Titan's are liquid methane, and adding
-        7e4 km³ of hydrocarbon to its 1.5e10 km³ of water would be a rounding
-        error that is also a category error."""
+        """`sea` is its own role: Titan's are liquid methane, not water — mixing
+        them into the water total would be a category error, not a rounding one."""
         with_ocean = {body for body in INTERIOR_FACTS if ocean_block(body)}
         sea_only = {
             body
@@ -604,16 +602,8 @@ class TestOceanBlock:
         assert not (with_ocean & sea_only)
 
     def test_volume_reproduces_earths_published_figure(self) -> None:
-        """The geometry closes: Charette & Smith 2010's 1.33238e9 km³, which is
-        where Earth's layer radii and area fraction came from, comes back out
-        of the radii to within 0.4%.
-
-        Not to the published precision, and it cannot be: the layer stack
-        quotes radii to 0.1 km, so a 3.7 km ocean carries 2.7% of rounding
-        before anything else. What the check is for is the arithmetic — a
-        wrong floor or a dropped `area_fraction` is a factor of 11 and 1.4,
-        neither of which fits inside this.
-        """
+        """Charette & Smith 2010's 1.33238e9 km³ — source of Earth's layer radii —
+        comes back out to within 0.4%, not tighter since radii round to 0.1 km."""
         block = ocean_block("naif-399")
         assert block is not None
         assert block["volume_km3"] == pytest.approx(1.33238e9, rel=4e-3)
@@ -658,15 +648,13 @@ class TestStructureActivityStats:
         assert stats.ocean_volume_km3 == pytest.approx(
             sum(block["volume_km3"] for block in blocks.values())
         )
-        # The page's whole claim: they add up to tens of Earth's own, and
-        # Earth's is not even the largest.
+        # They add up to tens of Earth's own, and Earth's isn't even the largest.
         earth = ocean_block("naif-399")
         assert earth is not None
         assert stats.ocean_volume_km3 > 10 * earth["volume_km3"]
 
     def test_deepest_is_thickness_not_volume(self) -> None:
-        """The chart plots volume, so the card has to rank on something else or
-        it restates the first bar."""
+        """The chart already plots volume, so the card ranks on something else."""
         thick = self._member(
             "naif-1", "Thick", ocean={"volume_km3": 1.0, "thickness_km": 500.0}
         )
@@ -728,8 +716,8 @@ class TestActivityCollectionRow:
         assert collection_row("spkid-99999999") is None
 
     def test_carries_headline_values_not_measurements(self) -> None:
-        """A collection row has no room to state a published width, and the
-        body's own panel already does."""
+        """A collection row has no room for a published width — the body's own
+        panel already has that."""
         row = collection_row("naif-501")
         assert row is not None
         assert row["volcanism"]["endogenic_power_w"] == pytest.approx(1.05e14)
@@ -778,8 +766,8 @@ class TestHeatPageStats:
         ]
 
     def test_erupting_now_names_them(self) -> None:
-        """The card's tooltip is the list: four is few enough that the number
-        alone invites the question."""
+        """The card's tooltip is the list — four is few enough to invite the
+        question."""
         stats = _volcanism_stats(self._members(GEOLOGIC_ACTIVITY, None))
         active = {
             body
@@ -799,8 +787,8 @@ class TestHeatPageStats:
         )
 
     def test_strongest_field_ignores_a_non_detection(self) -> None:
-        """A bound is not a measurement, and this is the one card where that
-        distinction would be invisible."""
+        """A bound isn't a measurement — the one card where that distinction
+        would vanish."""
         titan = NotableObject(
             object_id="naif-606",
             wikidata_qid=None,
@@ -824,8 +812,8 @@ class TestHeatPageStats:
         assert stats.dynamo_count == sum(
             1 for f in MAGNETIC_FIELDS.values() if f.kind == "dynamo"
         )
-        # Jupiter's field is the strongest and Uranus's the most askew; a bug
-        # that read one field for both would collapse them onto one body.
+        # Jupiter's field is strongest, Uranus's the most askew — a bug reading
+        # one for both would collapse them onto one body.
         assert (
             stats.strongest_field["primary_id"] != stats.most_tilted_field["primary_id"]
         )

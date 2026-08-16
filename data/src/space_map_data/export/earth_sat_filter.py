@@ -7,11 +7,8 @@ from space_map_data.models.object import Object
 def is_docked(obj: Object) -> bool:
     """True if ``obj``'s SATCAT row marks it docked to another object.
 
-    Docked craft (SATCAT ``ORBIT_CENTER`` = a NORAD id → ``OrbitCenter.DOCKED``,
-    or ``ORBIT_TYPE`` = ``DOC`` → ``OrbitType.DOCKED``) have no independent orbit.
-    They stay in the object bundles / search / groups but are dropped from the
-    rendered position chunks, so the scene never draws a marker on top of the
-    host they're docked to.
+    Docked craft have no independent orbit, so they're dropped from position
+    chunks (but kept in bundles/search/groups) to avoid a marker on the host.
     """
     sat = obj.satcat
     return sat is not None and (

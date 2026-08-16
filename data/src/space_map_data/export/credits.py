@@ -37,15 +37,9 @@ _TOP_LEVEL_NAIF_IDS = {0, 10}
 
 
 def _body_name(obj: Object) -> str:
-    """Canonical English-ish display name for a textured body.
-
-    Uses the DB's primary `name` column (clean canonical form for planets,
-    moons, and named minor bodies) with MPC / provisional designations as
-    fallbacks so asteroids without a name still render as something readable
-    rather than the opaque object ID. Localised names will come later —
-    tracked in context-manager.svelte.ts callers; for now the credits page
-    ships English-only.
-    """
+    """Canonical English-ish display name, falling back to MPC/provisional
+    designations so an unnamed asteroid reads as something better than its
+    opaque object ID. The credits page is English-only for now."""
     return obj.name or obj.mpc_designation or obj.provisional_designation or obj.id
 
 
@@ -54,17 +48,11 @@ def _load_system_lookup(
 ) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, int]]:
     """Build the mappings needed to group a textured body under a system.
 
-    Returns:
-      * `bary_by_id` — `{bary_obj_id: bary_obj_id}` (e.g. `"naif-3" → "naif-3"`).
-        Identity map; lookups use `obj.parent_id in bary_by_id`.
-      * `child_to_bary` — `{child_obj_id: bary_obj_id}` for direct children
-        of a barycenter, so a body parented on Earth (`naif-399`) routes to
-        the Earth–Moon barycenter (`naif-3`).
-      * `system_name_by_id` — `{bary_obj_id: display_name}` using the primary
-        planet's name (e.g. `"naif-3" → "Earth"`) rather than the cluttered
-        `"Earth-Moon Barycenter"` DB label.
-      * `system_order_by_id` — `{bary_obj_id: bary_naif_id}` so the output
-        can render Mercury → Pluto by natural ordinal.
+    Returns `(bary_by_id, child_to_bary, system_name_by_id, system_order_by_id)`:
+    an identity map of barycenter ids, a child→barycenter routing map (so
+    Earth satellites route to the Earth–Moon barycenter), display names keyed
+    off the primary planet rather than the DB's "X Barycenter" label, and
+    NAIF order for Mercury→Pluto sorting.
     """
     top_level_ids = [f"naif-{n}" for n in _TOP_LEVEL_NAIF_IDS]
     barycenters = (
@@ -117,12 +105,10 @@ def _resolve_system_id(
     bary_by_id: dict[str, str],
     child_to_bary: dict[str, str],
 ) -> str | None:
-    """Return the barycenter ID that textually owns *obj*, or None for standalones.
+    """The barycenter ID that owns *obj*, or None for standalones.
 
-    Mirrors the containment rules used by `write_system_metadata`: a body
-    parented directly on a barycenter, parented on one of its children (e.g.
-    an Earth satellite routing up to Earth-Moon), or being a barycenter
-    itself, all count as "inside" that system.
+    Mirrors `write_system_metadata`'s containment rules: parented directly on
+    a barycenter, parented on one of its children, or being one itself.
     """
     if obj.parent_id in bary_by_id:
         return bary_by_id[obj.parent_id]
@@ -191,11 +177,9 @@ def _atmosphere_references() -> list[dict]:
     return out
 
 
-# Shortest list first, which is also most-specific first. A shared work stays
-# in the list that would notice losing it: the twelve-entry temperature
-# bibliography without the NSSDCA fact sheets would read as an omission, while
-# the atmosphere list sheds six of a hundred and twenty-five and still holds
-# every other work behind the same numbers.
+# Shortest list first: a shared work stays in whichever list would most
+# notice losing it, so a small bibliography isn't stripped of an entry a
+# larger one can spare.
 _REFERENCE_SECTIONS = (
     "spacecraft",
     "ring",
@@ -210,11 +194,9 @@ _REFERENCE_SECTIONS = (
 def _merge_references(sections: dict[str, list[dict]]) -> dict[str, list[dict]]:
     """Collapse the bibliography to one row per work, across every list.
 
-    The lists are curated per constants package, so a work that measured two
-    things lands in two of them — Huygens' descent gave Titan's surface
-    pressure and its temperature in one fall, and the NSSDCA sheets back
-    nearly everything. The page is a bibliography rather than a per-topic
-    index, so each work appears once, carrying every contribution it makes.
+    A work cited in two constants packages (e.g. Huygens' descent, for both
+    Titan's pressure and temperature) appears once here, carrying every
+    contribution — the page is a bibliography, not a per-topic index.
     """
     kept: dict[str, dict] = {}
     out: dict[str, list[dict]] = {}
@@ -244,15 +226,10 @@ def _merge_references(sections: dict[str, list[dict]]) -> dict[str, list[dict]]:
 def _build_models_credits(model_metadata: dict[str, dict]) -> list[dict]:
     """Emit one entry per 3D-model source catalog that has at least one bundle.
 
-    Per-body model lists aren't worth the noise on the credits page — the
-    catalog license (NASA's Image Use, ESA's SciFleet terms) is what
-    matters. Each bundle's per-tier ``exports.{tier}.catalog`` is the
-    catalog name when the file came from one in ``MODEL_CATALOGS`` (two
-    tiers may originate in different catalogs for merged-manifest
-    entries); the union across all tiers contributes to the aggregate.
-    One-off sources (NASA Science resource pages, Google rehosts, …)
-    omit ``catalog`` entirely and credit through ``credit.name`` on the
-    bundle's own metadata.json instead of rolling up here.
+    Per-body model lists aren't worth the noise on the credits page — only the
+    catalog license matters. One-off sources (NASA resource pages, Google
+    rehosts, …) omit ``catalog`` and credit via the bundle's own metadata.json
+    instead of rolling up here.
     """
     matched: set[str] = set()
     for meta in model_metadata.values():
@@ -290,11 +267,9 @@ def _catalog_source(source: RingSource) -> dict:
 def _merge_ring_sources(body_id: str, name: str, metas: list[dict]) -> list[dict]:
     """Collapse a body's ring bundles into one credit row per cited work.
 
-    A body's bundles routinely cite the same work for different things —
-    Saturn's D-ring, main-ring and outer bundles all draw on the NSSDCA fact
-    sheet — so rows are merged by (url, organisation) and their contributions
-    joined, rather than deduped down to whichever bundle happened to come
-    first.
+    A body's bundles routinely cite the same work for different things (e.g.
+    Saturn's D-ring, main-ring and outer bundles all draw on one fact sheet),
+    so rows are merged by (url, organisation) with contributions joined.
     """
     merged: dict[tuple[str, str], dict] = {}
     contributions: dict[tuple[str, str], list[str]] = {}
@@ -342,20 +317,13 @@ def write_credits(
 ) -> None:
     """Emit `v1/credits.json` summarising every credit-worthy data source.
 
-    Groups credit-worthy bodies by their host planetary system (Earth,
-    Jupiter, …) so the frontend can render sections instead of a flat
-    alphabetical list. A final null-id group collects standalones (sun-
-    orbiting asteroids and dwarf planets like Bennu or Ceres) that don't
-    belong to a system. Each system bucket carries sibling `textures`,
-    `rings`, `clouds`, and `night` arrays — all optional; only populated
-    arrays are emitted. The whole-sky cubemap skybox is a one-off backdrop
-    with no host body, so it rides at the top level alongside `systems`.
-
-    `displacement` (topography/DEM sibling bundles) is grouped the same way.
+    Groups bodies by host planetary system so the frontend renders sections
+    instead of a flat list; a final null-id group collects standalones
+    (sun-orbiting asteroids and dwarf planets). The skybox has no host body,
+    so it rides at the top level alongside `systems`.
     """
-    # Model metadata is keyed by slug, not object_id — those keys aren't
-    # Object.id values and would just produce empty rows on the DB lookup
-    # below, so they're excluded from the body_ids set.
+    # Model metadata is keyed by slug, not object_id, so it's excluded from
+    # the body_ids set (it would just produce empty rows on the DB lookup).
     body_ids = (
         set(texture_metadata)
         | set(ring_metadata)
@@ -513,25 +481,12 @@ def write_credits(
     # per-body panels credit only the works their own numbers come from.
     references = _merge_references(
         {
-            # Literature behind the derived scattering parameters, plus the
-            # works the per-body atmospheric facts are read off — both live in
-            # constants/atmosphere/references.py.
             "atmosphere": _atmosphere_references(),
-            # The works behind the tables the ring profiles are read off.
-            # Launch performance, spacecraft masses and engine figures —
-            # plus the novels the fictional entries are read out of.
             "spacecraft": [_bibliography_row(r) for r in SPACECRAFT_SOURCES.values()],
             "ring": [r._asdict() for r in RING_REFERENCES],
-            # Volcanism, tectonics, tidal heating and planetary magnetism —
-            # what the bodies are still doing rather than what they are.
             "activity": [_bibliography_row(r) for r in ACTIVITY_SOURCES.values()],
-            # The gravity, seismic and meteorite work behind the interior
-            # layer models and the taxonomic-class estimates.
             "interior": [_bibliography_row(r) for r in INTERIOR_SOURCES.values()],
-            # Measured temperatures.
             "temperature": [_bibliography_row(r) for r in TEMPERATURE_SOURCES.values()],
-            # Dose rates, belts, and the two field models the trip planner
-            # integrates along a trajectory.
             "radiation": [_bibliography_row(r) for r in RADIATION_SOURCES.values()],
         }
     )

@@ -1,17 +1,13 @@
 """Classify events-driven landed phases into ProbePlans.
 
-The SPICE classify pass (``classify.py``) walks mission kernel trees and
-derives landed phases from body-fixed motion. This module covers the
-complement: probes whose only registry source is ``EVENTS-DB`` and whose
-landings live in ``sources/position/probe-events/*.json``. No SPICE,
-no parallelism — pure JSON-to-plans.
+Covers the complement of the SPICE classify pass (``classify.py``): probes
+whose only registry source is ``EVENTS-DB``, landings from
+``sources/position/probe-events/*.json``. No SPICE, no parallelism.
 
-Routing:
-  * Planet/moon NAIF target → ``zone_for_landed_body`` (mars/earth-moon/
-    saturn/…); the planet zone owns the chunk file.
-  * Asteroid/comet SPKID target → ``interplanetary`` zone, ``system_naif=0``
-    (SSB). The frontend's `renderLandedProbe` parents the probe to the
-    body's row at render time using lat/lng + the body's IAU pole.
+Routing: planet/moon NAIF → ``zone_for_landed_body`` (the planet zone owns
+the chunk file). Asteroid/comet SPKID → ``interplanetary`` zone,
+``system_naif=0`` (SSB) — the frontend parents the probe to the body's row
+at render time using lat/lng + the body's IAU pole.
 """
 
 import logging
@@ -44,15 +40,10 @@ def classify_events_phases(
     """Build events-only ProbePlans. Returns the same shape as
     ``classify_pass`` so the orchestrator can merge them.
 
-    One ``ProbePlan`` per probe_id (regardless of how many phases that probe
-    has). Phases on the same body extend the same plan's contribution list.
-    Probes already represented in the plans from ``classify_pass`` (because
-    they have SPK coverage too) are NOT touched here — the SPICE pipeline
-    owns them.
-
-    `probe_registry` lets us read the canonical NAIF (we don't store it on
-    the LandingPhase). `metas_by_probe_id` gates emission: a phase whose
-    probe has no Object row is dropped + logged (run the ingest pass first).
+    One ``ProbePlan`` per probe_id. Probes already represented in
+    ``classify_pass`` plans (SPK coverage too) are NOT touched — the SPICE
+    pipeline owns them. `metas_by_probe_id` gates emission: a phase whose
+    probe has no Object row is dropped + logged.
     """
     by_pid: dict[int, ProbePlan] = {}
     chunk_index: dict[str, dict[int, list[ProbePlan]]] = defaultdict(

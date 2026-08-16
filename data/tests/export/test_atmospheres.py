@@ -40,14 +40,9 @@ def payload():
 
 
 class TestGasCrossSections:
-    """Derived per-gas cross sections vs laboratory measurements.
-
-    Measured references: Sneep & Ubachs 2005 (JQSRT 92, 293; CRDS at
-    532.2 nm), He et al. 2021 (ACP 21, 14927; broadband cavity-enhanced),
-    Dalgarno & Williams 1962 (ApJ 136, 690; ab initio H2, the standard
-    source in planetary radiative transfer). Tolerances reflect each
-    measurement's error bar.
-    """
+    """Derived per-gas cross sections vs laboratory measurements (Sneep & Ubachs
+    2005, He et al. 2021, Dalgarno & Williams 1962 for H2). Tolerances reflect
+    each measurement's error bar."""
 
     MEASURED_CM2 = [
         ("N2", 532.2e-9, 5.10e-27, 0.05),  # ±0.24e-27 → ~5%
@@ -70,8 +65,7 @@ class TestGasCrossSections:
         angstrom = wl_nm * 10.0
         dw_cm2 = 8.14e-13 / angstrom**4 + 1.28e-6 / angstrom**6 + 1.61 / angstrom**8
         calc_cm2 = rayleigh_cross_section("H2", wl_nm * 1e-9) * 1e4
-        # ~3.5% offset between Peck & Huang refractivity and the ab initio
-        # values; H2's unmodelled ~2% King correction sits inside this too.
+        # Covers the Peck & Huang vs. ab initio offset and H2's unmodelled King term.
         assert calc_cm2 == pytest.approx(dw_cm2, rel=0.05)
 
 
@@ -100,10 +94,8 @@ class TestMixtures:
         assert beta == pytest.approx(n_ref * sigma_cm2 * 1e-4, rel=0.01)
 
     def test_air_beta_vs_bruneton_folklore(self):
-        # Bruneton's widely-copied Earth betas (5.802, 13.558, 33.1)e-6 are
-        # 1.24062e-6·λ⁻⁴[µm] — rounded n = 1.0003, no depolarisation — and sit
-        # ~15-18% above the measurement-anchored derivation. Pin the offset so
-        # a regression toward either extreme is caught.
+        # Bruneton's widely-copied betas use rounded n and no depolarisation,
+        # so they sit ~15-18% above ours; pin the offset to catch regressions.
         for wl, bruneton in (
             (680e-9, 5.802e-6),
             (550e-9, 13.558e-6),
@@ -122,8 +114,7 @@ class TestMixtures:
         assert h == pytest.approx(8.4, abs=0.1)
 
     def test_air_refractivity(self):
-        # Standard air at 15 °C / 101.325 kPa: n − 1 ≈ 2.78e-4 at 550 nm
-        # (Edlén/Ciddor family).
+        # Standard air, 550 nm: n − 1 ≈ 2.78e-4 (Edlén/Ciddor family).
         assert mixture_refractivity(_AIR, _AIR_P, _AIR_T, 550e-9) == pytest.approx(
             2.78e-4, rel=0.01
         )
@@ -132,12 +123,9 @@ class TestMixtures:
 class TestBodies:
     """Per-body derivations vs published scale heights / mean molar masses."""
 
-    # NSSDCA planetary fact sheets (2024-2025 revisions), surface / 1-bar
-    # check values. Our derivation uses the *render* reference level, so each
-    # row re-evaluates at the fact sheet's own conditions (T, effective g) —
-    # only the composition comes from our constants. Jupiter's tolerance is
-    # wider because NSSDCA's He row (10.2%, Voyager-era) predates the Galileo
-    # probe's 13.59% our constants adopt.
+    # NSSDCA fact-sheet check values, re-evaluated at each sheet's own T/g
+    # (only composition comes from our constants). Jupiter's tolerance is
+    # wider: NSSDCA's He row is Voyager-era, ours adopts Galileo's 13.59%.
     NSSDCA = [
         # (body, T_k, g_eff, published_H_km, published_M_g_mol, rel_tol)
         ("naif-499", 214.0, 3.73, 11.0, 43.49, 0.03),  # Mars datum
@@ -156,21 +144,15 @@ class TestBodies:
         assert scale_height_km(molar, t_k, g) == pytest.approx(h_km, rel=tol)
 
     def test_titan_scale_height_at_huygens_conditions(self):
-        # No NSSDCA atmosphere block exists for Titan; check the derived
-        # surface scale height against HASI/GCMS numbers directly:
-        # kT/(mg) at 93.65 K (Fulchignoni et al. 2005) with the GCMS mean
-        # molar mass (~27.3, N2 + 5.65% CH4) ≈ 21 km.
+        # No NSSDCA block for Titan; check against HASI/GCMS (Fulchignoni et al. 2005).
         level = render_conditions("naif-606", ATMOSPHERE_BODIES["naif-606"])
         molar = mean_molar_mass_g_mol(level.composition)
         assert molar == pytest.approx(27.3, rel=0.01)
         assert scale_height_km(molar, 93.65, 1.35) == pytest.approx(21.1, rel=0.02)
 
     def test_earth_ozone_band_vs_bruneton(self, payload):
-        # Bruneton's reference implementation carries peak ozone absorption
-        # (0.650, 1.881, 0.085)e-3/km for the same 300 DU tent. His values
-        # are CIE-band-averaged; ours are Serdyuchenko/Gorshelev point
-        # samples at 680/550/440 nm, so agreement is ~±15% (worst in blue,
-        # where the Chappuis edge is steep).
+        # Bruneton's values are CIE-band-averaged; ours are point samples, so
+        # they agree only to ~±15% (worst in blue, where Chappuis is steep).
         entry = payload["bodies"]["naif-399"]
         for ours, bruneton in zip(
             entry["absorption_per_km"], (0.650e-3, 1.881e-3, 0.085e-3)
@@ -278,15 +260,13 @@ class TestPayload:
             assert profile[0] > 0
             assert profile[-1] == 0.0
             assert all(0 <= v <= 2.0 for v in profile), object_id
-            # Column-preserving normalisation: the LUT's ∫ρ dh must equal the
-            # exponential's β·H column, so disc opacity matches across tiers.
+            # LUT integral must equal the exponential's β·H column, so opacity matches.
             dh = entry["top_altitude_km"] / (PROFILE_N - 1)
             column = sum(profile) * dh - 0.5 * dh * profile[0]
             assert column == pytest.approx(entry["mie_scale_height_km"], rel=0.02)
 
     def test_titan_profile_holds_detached_layer(self, payload):
-        # The shell top must reach the ~500 km Cassini-era detached layer, and
-        # the LUT must show it as a local maximum over its surroundings.
+        # Shell top must reach the ~500 km Cassini-era layer as a local maximum.
         entry = payload["bodies"]["naif-606"]
         top = entry["top_altitude_km"]
         assert top >= 550
@@ -303,8 +283,7 @@ class TestPayload:
         assert seasonal["ls_deg"][0] == 0.0
         for key in ("dust_tau_factor", "dust_scale_height_km", "pressure_factor"):
             assert len(seasonal[key]) == n
-        # Clear-season baseline is the shipped look (factor 1); the dusty
-        # season stays inside the cited non-storm range (τ ≤ ~0.45).
+        # Clear season is the shipped baseline; dusty stays non-storm (τ ≤ ~0.45).
         assert min(seasonal["dust_tau_factor"]) == pytest.approx(1.0)
         assert max(seasonal["dust_tau_factor"]) <= 3.0
         # Pressure factors are normalised to the annual mean (the datum).

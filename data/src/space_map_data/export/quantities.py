@@ -165,10 +165,8 @@ class UnitConverter:
     def convert_temperature(self, value: float, unit_qid: str) -> dict | None:
         """Normalize a temperature to canonical kelvin, or None if unit unknown.
 
-        Kept off the P2370 ladders because temperature conversions are affine
-        (offset), not multiplicative. Emitting a single canonical unit lets the
-        frontend display every body's temperature in one scale regardless of
-        the source unit.
+        Kept off the P2370 ladders since temperature conversion is affine, not
+        multiplicative.
         """
         conv = _TEMPERATURE_TO_KELVIN.get(unit_qid)
         if conv is None:

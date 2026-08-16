@@ -1,8 +1,7 @@
 """Per-group bundle files: __global__ + per-locale, hash-bucketed by slug.
 
-Same bucketing scheme as object bundles (sha256 first-4-bytes-be % N) so
-the frontend reuses ``hashBucket``. Bucket counts ship in metadata.json
-under ``group_bundles`` for slug→bundle resolution.
+Same bucketing scheme as object bundles (sha256 first-4-bytes-be % N) so the
+frontend reuses ``hashBucket``.
 """
 
 import gzip
@@ -123,10 +122,8 @@ def _member_galleries(
 ) -> list[dict] | None:
     """One image shelf per notable member, keyed and subjected by its id.
 
-    Group and feature members are skipped: they route elsewhere and their
-    pictures aren't the collection's to pool. Files the group's own gallery
-    already shows are dropped, since a member-fallback group draws that gallery
-    from these very members.
+    Group and feature members are skipped — they route elsewhere. Files the
+    group's own gallery already shows are dropped too.
     """
     if not members:
         return None
@@ -331,9 +328,8 @@ def _build_global(
 def _group_entity(group: Group, wikidata_entities: WikidataEntityCache):
     """The group's own Wikidata entity.
 
-    Feature types are preloaded in their own tier for the nomenclature popover,
-    so a ft- page renders even before the group-QID download pass has seeded
-    ``referenced/``.
+    Feature types are preloaded separately for the nomenclature popover, so a
+    ft- page renders before the group-QID download pass has seeded ``referenced/``.
     """
     if group.type is GroupType.FEATURE_TYPE:
         wd = wikidata_entities.get_feature_type(group.wikidata_qid)
@@ -350,9 +346,8 @@ def _prettify_slug(slug: str, prefix: str) -> str:
 def _fallback_group_name(group: Group) -> str | None:
     """Display name for a QID-less group, from the static constants.
 
-    Orbit classes (frontend `orbit_class_*` i18n) and countries (browser-
-    localized from the ISO code) are intentionally left nameless here — the
-    frontend resolves them — so this returns None for those types.
+    Orbit classes and countries are left nameless here — the frontend resolves
+    those from i18n / the ISO code — so this returns None for those types.
     """
     if group.type is GroupType.CONSTELLATION:
         spec = CONSTELLATION_BY_SLUG.get(
@@ -535,8 +530,7 @@ def _pad_refs(
 ) -> dict[str, dict]:
     """Localized Wikipedia ref per pad, keyed by GCAT pad code.
 
-    Keyed by code across the whole range, matching the merged chart: the pad
-    rows keep their GCAT code as the label and use this only for the link,
+    Used only for the link — pad rows keep their GCAT code as the label,
     because a Wikipedia title is often the parent complex's and would collapse
     pads GCAT keeps apart.
     """
@@ -858,12 +852,10 @@ def write_group_bundles(
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
-    The ``extra_*`` dicts carry per-slug stats for group types that ship no
-    membership inverted index (orbit classes, small-body flags).
-    ``extra_groups`` are DB-derived groups (split-comet families) appended to
-    the static registry; ``extra_group_names`` gives their localized display
-    name (they carry no Wikidata label of their own). Returns
-    ``{global: N, lang: N, ...}`` for publication in metadata.json.
+    The ``extra_*`` dicts carry per-slug stats for group types with no
+    membership inverted index (orbit classes, small-body flags). ``extra_groups``
+    are DB-derived groups (split-comet families) appended to the static
+    registry, with their localized names in ``extra_group_names``.
     """
     member_counts = _flatten_membership(membership_by_type)
     if extra_member_counts:

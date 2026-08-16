@@ -313,8 +313,7 @@ class TestTimeClaims:
         assert "Multiple time values for launch_date on Q1" in caplog.text
 
     def test_single_time_inception_picks_earliest(self):
-        # Predecessor founding (1884) + restructuring (1991) — the older
-        # date wins so the group page shows the longer history.
+        # Oldest date wins, so the group page shows its full history.
         claims = {
             "P571": [
                 _stmt(_time_snak("+1884-00-00T00:00:00Z", precision=9)),
@@ -841,7 +840,6 @@ class TestExtractClaims:
             ]
         }
         result = extract_claims(claims, "Q3134")
-        # Only the most precise should remain
         assert result["discovery_date"] == ["+1801-03-28T00:00:00Z"]
 
     def test_discovery_date_uses_p4241_refine_date(self):
@@ -1090,7 +1088,7 @@ class TestExtractClaims:
 
     def test_skips_falsy_values(self):
         """Empty lists/None values should not appear in result."""
-        claims = {"P856": []}  # no statements
+        claims = {"P856": []}
         result = extract_claims(claims, "Q2")
         assert "website" not in result
 

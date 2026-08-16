@@ -1,26 +1,18 @@
 """Resolve a small body's representative sRGB surface colour.
 
 Reads ``constants/small_body_colors.json`` (generated offline by
-``scripts/generate_small_body_colors.py`` from TrueColorTools — see that file
-for provenance). Physically-derived colours replace the old frontend taxonomy
-heuristic. Each colour carries the *method* it was derived by, so the export can
-credit it. Priority, most→least specific:
+``scripts/generate_small_body_colors.py`` from TrueColorTools). Each colour
+carries the *method* it was derived by, most→least specific:
 
-  spectrum    per-body colour from a measured reflectance spectrum (final hex)
-  photometry  per-body colour from SBDB B-V/U-B colour indices (final hex)
+  spectrum    measured reflectance spectrum (final hex)
+  photometry  SBDB B-V/U-B colour indices (final hex)
   taxonomy    per-class chroma (Bus-DeMeo) scaled by the body's geometric albedo
-  albedo      neutral chroma scaled by the body's geometric albedo (no hue)
+  albedo      neutral chroma scaled by geometric albedo (no hue)
   None        no colour — caller omits the field; the frontend keeps its tint
 
-The first three run through TrueColorTools' colour engine. taxonomy/albedo take
-brightness from the body's own measured albedo, so a dark P-type and a bright
-E-type sharing a featureless X spectrum still read correctly.
-
 Moons resolve separately via ``resolve_moon_color`` (NAIF-keyed): a measured TCT
-spectrum if there is one, else a neutral grey scaled by the moon's JPL Horizons
-geometric albedo (``constants/moon_albedos.json``) so an unmeasured dark P-type
-and a bright icy moon still read apart by brightness. Moons carry no SBDB
-taxonomy, so there is no hue (taxonomy) tier for them.
+spectrum, else a neutral grey scaled by Horizons albedo (``moon_albedos.json``).
+Moons carry no SBDB taxonomy, so they have no hue tier.
 """
 
 import json
@@ -142,11 +134,8 @@ def _moon_albedos() -> dict[str, float]:
 
 
 def resolve_moon_color(naif_id: int | None) -> tuple[str | None, str | None]:
-    """``(#rrggbb, method)`` for a moon, keyed by NAIF id, or ``(None, None)``.
-    Priority: a measured TrueColorTools colour (``spectrum``), else a neutral grey
-    scaled by the moon's Horizons geometric albedo (``albedo``). Moons carry no
-    SBDB taxonomy, so there is no hue fallback — a moon with neither keeps the
-    frontend's generic moon tint."""
+    """``(#rrggbb, method)`` for a moon, keyed by NAIF id, or ``(None, None)`` if
+    neither a measured colour nor a Horizons albedo exists."""
     if naif_id is not None:
         by_naif = _table().get("by_naif", {})
         if hexcol := by_naif.get("spectrum", {}).get(str(naif_id)):

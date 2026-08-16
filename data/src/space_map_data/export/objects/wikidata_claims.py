@@ -26,12 +26,9 @@ logger = logging.getLogger(__name__)
 class EntityRef:
     """A resolved Wikidata reference, optionally pointing at a map focus target.
 
-    ``primary_*`` + ``secondary_*`` form an extensible path-like locator:
-    body alone → just primary (e.g. ``primary=(naif, 499)``); feature on a
-    body → primary names the body, secondary refines (e.g.
-    ``secondary=(feature, 12345)``). When ``primary_id`` is set the
-    ``wikipedia`` field is omitted on serialization — the frontend opens
-    the target's drawer instead.
+    ``primary_*``/``secondary_*`` locate a body, or a feature on one. When
+    ``primary_id`` is set, ``wikipedia`` is omitted on serialization — the
+    frontend opens the target's drawer instead.
     """
 
     name: str
@@ -71,15 +68,9 @@ class FocusTarget:
 class FocusResolver:
     """Resolve referenced QIDs to map focus targets (body or feature).
 
-    ``located_on_physical_feature`` is same-body by construction in IAU
-    nomenclature; ``location`` is most often the parent body but may
-    occasionally name a sub-feature. The resolver tries feature (same
-    body) first, then any body, to honor the "most precise wins" rule.
-
-    The display name comes from canonical project data (IAU feature name
-    or Object.name) — not the referenced Wikidata entity — so resolution
-    works even when the parent's Wikidata payload only lives in
-    ``nomenclature/`` (not ``referenced/``), which is the common case.
+    Tries feature (same body) first, then any body — "most precise wins".
+    Display name comes from canonical project data, not the referenced
+    Wikidata entity, so it works even without a ``referenced/`` payload.
     """
 
     def __init__(
@@ -263,13 +254,11 @@ def extract_claims(
     entity_ref_claims: tuple[EntityRefClaim, ...] = ENTITY_REF_CLAIMS,
     route_temperature: bool = True,
 ) -> dict:
-    """Extract target properties from raw Wikidata claims.
+    """Extract target properties from raw Wikidata claims into a flat dict.
 
-    Returns a flat dict with parsed values (not the raw claim structure).
-    Pass alternative ``global_claims``/``entity_ref_claims`` tuples to drive
-    extraction for a different entity class (e.g. IAU nomenclature features).
-    ``route_temperature`` controls the object-specific P2076 nature-of-value
-    routing — features have no temperature claims to disambiguate.
+    Pass alternative claim tuples for other entity classes (e.g. features).
+    ``route_temperature`` disables P2076 routing for features, which have
+    no temperature claims to disambiguate.
     """
     result: dict = {}
 
@@ -303,10 +292,9 @@ def _route_temperatures(claims: dict, qid: str, result: dict) -> list[dict]:
     """Group P2076 into one entry per body part, each with min/mean/max.
 
     The Sun carries three unrelated readings (core, photosphere, corona) under
-    one property, so a single scalar would silently pick one; keeping them
-    apart lets each be shown on its own scale. ``result`` is consumed for the
-    P7422/P6591 record extremes, which are surface readings under their own
-    properties and take priority over any P2076 min/max.
+    one property; keeping them apart lets each show on its own scale.
+    ``result`` supplies the P7422/P6591 record extremes, which take priority
+    over any P2076 min/max.
     """
     grouped: dict[tuple[str, str], list[dict]] = {}
     for stmt in undeprecated_statements(claims, "P2076"):
@@ -345,9 +333,8 @@ def _route_temperatures(claims: dict, qid: str, result: dict) -> list[dict]:
 def drop_covered_qids(extracted: dict, covered: set[str], obj_id: str) -> None:
     """Strip QIDs already shown via an authoritative field from Wikidata claims.
 
-    Cross-refs by QID so a derived ref (e.g. a SATCAT constellation linked to a
-    group page) isn't duplicated by the matching Wikidata claim (e.g. P361
-    part_of). Mutates ``extracted``; claims we don't otherwise cover are kept.
+    Cross-refs by QID so e.g. a SATCAT constellation isn't duplicated by the
+    matching P361 claim. Mutates ``extracted`` in place.
     """
     if not covered:
         return
@@ -377,13 +364,9 @@ def resolve_entity_ref(
 ) -> EntityRef | None:
     """Resolve a QID to an ``EntityRef`` using downloaded entity data.
 
-    When a ``focus_resolver`` is provided and the QID maps to a known map
-    target, the ref carries primary/secondary focus fields and the wiki
-    link is dropped — the frontend opens the target's drawer instead, and
-    that drawer already exposes the wiki link. Callers gate by claim key
-    (e.g. only ``located_on_*`` and ``location`` should be focus-resolved,
-    not ``named_after``). Focus targets get their display name from
-    canonical project data, so they don't require ``referenced/`` payload.
+    When the QID maps to a known map target, the ref carries focus fields
+    and drops the wiki link — the target's drawer already exposes it.
+    Callers gate this by claim key (e.g. ``location`` but not ``named_after``).
     """
     focus = None
     if focus_resolver is not None and focus_body_id is not None:
@@ -434,11 +417,7 @@ def attach_launch_vehicle_group_link(ref: EntityRef, qid: str) -> None:
 
 
 def _shortest_ref_name(label: str, lang: str, wd: WikidataEntity) -> str | None:
-    """Return the shortest available short name for a referenced entity, or None.
-
-    Checks P1813 (short name) claims and aliases for the given language,
-    and returns the shortest candidate that is shorter than the label.
-    """
+    """Shortest of the P1813 short-name claims or aliases, if shorter than *label*."""
     candidates: list[str] = []
 
     # P1813 — official short name
@@ -625,11 +604,7 @@ def _has_nasa_ref_url(stmt: dict) -> bool:
 
 
 def _claim_values(claims: dict, prop: str):
-    """Yield raw ``datavalue.value`` entries for a given property.
-
-    Skips deprecated statements.  If any statement has rank ``preferred``,
-    only those are yielded.
-    """
+    """Yield raw ``datavalue.value`` entries for a property (preferred rank wins)."""
     for stmt in active_statements(claims, prop):
         val = _stmt_value(stmt)
         if val is not None:
@@ -652,12 +627,7 @@ def _stmt_time(stmt: dict) -> tuple[int, str] | None:
 def _refined_time(
     stmt: dict, wikidata_entities: WikidataEntityCache | None
 ) -> tuple[int, str] | None:
-    """Resolve a statement's P4241 (refine date) qualifier to a more precise time.
-
-    P4241 points to an event entity that may carry a more precise timestamp on
-    P585 (point in time) or P619 (date of spacecraft launch). Returns
-    (precision, time) of the more precise time, or None.
-    """
+    """Resolve a P4241 (refine date) qualifier to a more precise (precision, time)."""
     if wikidata_entities is None:
         return None
     refine_qid = _qualifier_qid(stmt, "P4241")
@@ -692,12 +662,7 @@ def _stmt_times(
 def _all_times(
     claims: dict, prop: str, wikidata_entities: WikidataEntityCache | None = None
 ) -> list[str]:
-    """Extract all time values, dropping less precise duplicates.
-
-    Uses the Wikidata ``precision`` field (9 = year, 10 = month, 11 = day, …).
-    When values at different precisions coexist, only the most precise are kept.
-    Applies P4241 (refine date) qualifier resolution when a cache is provided.
-    """
+    """All time values, keeping only the most precise when precisions differ."""
     entries = _stmt_times(claims, prop, wikidata_entities)
     if len(entries) <= 1:
         return [t for _, t in entries]
@@ -713,8 +678,7 @@ def _single_time(
 ) -> str | None:
     """Extract the single time value from a claim as an ISO date string.
 
-    Times sort lexicographically (ISO format with leading sign + zero-padded
-    year), so ``min(vals)`` gives the earliest moment.
+    ISO strings sort lexicographically, so ``min(vals)`` is the earliest.
     """
     vals = list(dict.fromkeys(_all_times(claims, prop, wikidata_entities)))
     if len(vals) > 1:
@@ -730,11 +694,7 @@ def _single_time(
 def _launch_date(
     claims: dict, wikidata_entities: WikidataEntityCache | None
 ) -> str | None:
-    """Extract the launch date (P619), picking the earliest when multiple.
-
-    Each statement's P4241 (refine date) qualifier is resolved before picking,
-    so the chosen value uses the more precise time when available.
-    """
+    """Extract the launch date (P619), picking the earliest when multiple."""
     entries = _stmt_times(claims, "P619", wikidata_entities)
     if not entries:
         return None
@@ -759,7 +719,7 @@ def _parse_quantity(dv: dict) -> dict | float | None:
 def _qty_pairs(
     stmts: list[dict], *, needs_unit: bool = True
 ) -> list[tuple[dict, dict | float]]:
-    """Parse statements into (statement, parsed-value) pairs, filtering by unit requirement."""
+    """Parse statements into (statement, value) pairs, filtered by unit requirement."""
     pairs: list[tuple[dict, dict | float]] = []
     for stmt in stmts:
         dv = _stmt_value(stmt)
@@ -784,11 +744,8 @@ def _resolve_quantity(
     *,
     qid: str,
 ) -> dict | float | None:
-    """Disambiguate a list of (statement, parsed-value) pairs into a single value.
-
-    Applies deduplication, qualifier-based preference, trusted-source preference,
-    and per-entity overrides (_PICK_FIRST, _AVERAGE, _DISCARD).
-    """
+    """Disambiguate (statement, value) pairs into one value: dedupe, qualifier
+    preference, trusted source, then per-entity overrides."""
     if len(pairs) <= 1:
         return pairs[0][1] if pairs else None
 
@@ -876,13 +833,8 @@ def _resolve_quantity(
 def _drop_component_mass(
     pairs: list[tuple[dict, dict | float]],
 ) -> list[tuple[dict, dict | float]]:
-    """Drop mass statements describing a sub-component rather than the whole object.
-
-    A P518/P1013/P3831 qualifier naming a payload/cargo/consumable part, or a
-    P1012 ("including") qualifier folding in a separate body such as a rocket
-    stage, means the value is not the object's own mass. Only filters when more
-    than one statement is present, so single-valued masses are untouched.
-    """
+    """Drop mass statements naming a sub-component (payload, stage, ...) rather
+    than the whole object. Only filters when more than one statement is present."""
     if len(pairs) <= 1:
         return pairs
     kept: list[tuple[dict, dict | float]] = []
@@ -907,11 +859,7 @@ def _single_quantity(
     needs_unit: bool,
     qid: str,
 ) -> dict | float | None:
-    """Extract the single quantity value from a claim.
-
-    Returns plain float for dimensionless quantities, or {"value": float, "unit": "Q..."}.
-    Entries lacking units are ignored when *needs_unit* is True.
-    """
+    """Extract the single quantity value: plain float, or {"value", "unit"}."""
     pairs = _qty_pairs(active_statements(claims, prop), needs_unit=needs_unit)
     if prop == "P2067":
         pairs = _drop_component_mass(pairs)
@@ -919,12 +867,8 @@ def _single_quantity(
 
 
 def _single_entity_qid(claims: dict, prop: str, qid: str) -> str | None:
-    """Extract the single entity QID from a claim.
-
-    When candidates conflict, prefer one cited via P248 (stated in) over values
-    merely imported from a Wikimedia project — e.g. a generic rocket family
-    scraped from Wikipedia loses to the specific variant from a catalog source.
-    """
+    """Extract the single entity QID, preferring one cited via P248 over a
+    value merely imported from a Wikimedia project."""
     vals: list[str] = []
     sourced: list[str] = []
     for stmt in active_statements(claims, prop):

@@ -1,12 +1,10 @@
 """Parse the Space-Track historical TLE archive into weekly elements.
 
 The archive (one zip per year under ``sources/position/spacetrack/archive``,
-2004 split into 8 parts) holds every TLE ever issued. We distil it into one
-snapshot per ISO week: for each (week, satellite) we keep the TLE whose epoch
-sits nearest the week's midpoint. Output mirrors :mod:`celestrak_source` so the
-Earth-zone overlay/writer consume both identically — values copy the raw TLE
-fields verbatim, matching CelesTrak's GP/OMM CSV (which the frontend's
-``json2satrec`` expects unconverted).
+2004 split into 8 parts) holds every TLE ever issued. Distilled into one
+snapshot per ISO week: for each (week, satellite), the TLE whose epoch sits
+nearest the week's midpoint. Output mirrors :mod:`celestrak_source` so the
+Earth-zone overlay/writer consume both identically.
 """
 
 import json
@@ -24,30 +22,26 @@ logger = logging.getLogger(__name__)
 
 ARCHIVE_DIR = SOURCES_POSITION_DIR / "spacetrack" / "archive"
 
-# Years distilled into weekly Earth snapshots. Reaches back to the dawn of the
-# catalogue: the 2004 zip is a full historical dump (every TLE issued through
-# end-2004), so pre-2004 years source from it — see _source_zips_for.
+# Years distilled into weekly Earth snapshots — back to the dawn of the
+# catalogue, since the 2004 zip is a full historical dump (see _source_zips_for).
 ARCHIVE_YEARS: tuple[int, ...] = tuple(range(1959, 2026))
 
 # Per-year cache of "which NORADs ship in the archive weeks", keyed on each
-# year's zip fingerprint. Lets Earth-sat ingest set has_position from archive
-# coverage without re-streaming the ~12 GB archive every run.
+# year's zip fingerprint. Lets Earth-sat ingest set has_position without
+# re-streaming the ~12 GB archive every run.
 ARCHIVE_NORAD_CACHE = DERIVED_POSITION_DIR / "spacetrack" / "archive_norads.json"
 
-# Bump whenever the scan logic changes what counts as "in the archive": the
-# cache keys on zip fingerprints, which don't move when only the code changes,
-# so a stale cache would otherwise survive a logic fix and silently feed the
-# old result. A version mismatch forces a full rescan.
+# Bump on a scan-logic change: the cache keys on zip fingerprints, which don't
+# move when only code changes, so a stale cache would otherwise survive.
 _NORAD_SCAN_VERSION = 3
 
-# Same problem one layer up: the export's per-group archive sidecars key on zip
-# fingerprints, so a change to which TLEs land in which week would be skipped as
-# already-built. Bump to force every archive year to re-distil.
+# Same problem one layer up — bump to force every archive year to re-distil
+# when which TLEs land in which week changes.
 ARCHIVE_WEEK_VERSION = 2
 
-# The 2004 archive is a full historical dump (every TLE issued through end-2004);
-# no per-year zips exist before it, so every year up to and including 2004 reads
-# its 8 parts. Each later tleYYYY is a yearly increment feeding only its year.
+# The 2004 archive is a full historical dump; no per-year zips exist before
+# it, so every year up to 2004 reads its 8 parts. Later tleYYYY zips are
+# yearly increments feeding only their own year.
 _MEGA_DUMP_YEAR = 2004
 
 # Standard TLE pivot: 2-digit years 00-56 are 21st century, 57-99 are 20th.
@@ -58,11 +52,8 @@ _JD_UNIX_EPOCH = 2440587.5
 
 
 def _decode_exp(field: str) -> float | None:
-    """Decode a TLE assumed-decimal exponential field (BSTAR, n-ddot).
-
-    ``±MMMMM±E`` → ``±0.MMMMM × 10^±E``. ``" 13035-3"`` → 1.3035e-4;
-    ``" 00000-0"`` → 0.0. Returns None for a blank field.
-    """
+    """Decode a TLE assumed-decimal exponential field (BSTAR, n-ddot):
+    ``±MMMMM±E`` → ``±0.MMMMM × 10^±E``. Returns None for a blank field."""
     s = field.strip()
     if not s:
         return None
@@ -94,12 +85,9 @@ def parse_tle_pair(
 ) -> tuple[int, float, CelesTrakElements] | None:
     """Parse a TLE line pair into ``(norad, epoch_jd, elements)``.
 
-    Fixed-column slicing per the TLE spec — robust to the archive's trailing
-    ``\\`` continuation and explicit ``+`` signs since both fall outside the
-    read columns. ``epoch_jd`` is returned separately for week selection.
-    Propagation-critical fields parse from well-separated columns; the integer
-    metadata (element set, rev) is best-effort and never feeds SGP4. Returns
-    None when either line is malformed.
+    Fixed-column slicing per the TLE spec, robust to the archive's trailing
+    ``\\`` continuation and explicit ``+`` signs (both fall outside read
+    columns). Returns None when either line is malformed.
     """
     if len(line1) < 63 or len(line2) < 63 or line1[0] != "1" or line2[0] != "2":
         return None
@@ -149,13 +137,9 @@ def _jd_to_datetime(jd: float) -> datetime:
 def _week_of(epoch_jd: float) -> tuple[str, float, int]:
     """Return the (Monday ``YYYY-MM-DD``, week-midpoint JD, owner year) for an epoch.
 
-    The Monday label is the snapshot's date directory; the midpoint (Monday
-    00:00 UTC + 3.5d, i.e. Thursday noon) is the reference instant we select the
-    nearest TLE to, minimising the worst-case SGP4 propagation distance within
-    the week.
-
-    The owner year is the *midpoint's* calendar year, which is what decides
-    which archive year a week is built from — see :func:`load_archive_weeks`.
+    The midpoint (Thursday noon) is the reference instant we pick the nearest
+    TLE to, minimising worst-case SGP4 propagation distance. The owner year is
+    the midpoint's calendar year — see :func:`load_archive_weeks`.
     """
     dt = _jd_to_datetime(epoch_jd)
     monday = dt.date() - timedelta(days=dt.weekday())
@@ -176,21 +160,17 @@ def year_zips(year: int) -> list[Path]:
 
 
 def _source_zips_for(year: int) -> list[Path]:
-    """Physical archive zip(s) whose epochs cover output ``year``.
-
-    Pre-2004 history has no zip of its own — it lives in the 2004 mega-dump —
-    so every year ≤ 2004 resolves to those 8 parts.
+    """Physical archive zip(s) whose epochs cover output ``year``. Pre-2004
+    history lives in the 2004 mega-dump, so every year ≤ 2004 resolves there.
     """
     return year_zips(_MEGA_DUMP_YEAR if year <= _MEGA_DUMP_YEAR else year)
 
 
 def archive_source_groups(years: Iterable[int]) -> list[tuple[str, list[int]]]:
-    """Partition ``years`` into ``(label, years)`` groups by shared physical source.
-
-    Every year ≤ 2004 reads the one mega-dump, so they collapse into a single
-    group (label ``"2004"``) parsed in one streaming pass instead of re-reading
-    the ~2 GB dump per year; each later year stands alone. The label doubles as
-    the sidecar/cache key for that source.
+    """Partition ``years`` into ``(label, years)`` groups by shared physical
+    source. Years ≤ 2004 collapse into one ``"2004"`` group parsed in a single
+    streaming pass instead of re-reading the ~2 GB dump per year; later years
+    stand alone. The label doubles as the sidecar/cache key.
     """
     years = sorted(set(years))
     groups: list[tuple[str, list[int]]] = []
@@ -204,11 +184,9 @@ def archive_source_groups(years: Iterable[int]) -> list[tuple[str, list[int]]]:
 def _claim_sets(years: Iterable[int]) -> tuple[set[int], set[int]]:
     """``(owned, tail)`` year sets implementing the week-ownership rule.
 
-    ``owned`` is the group's own years: a week whose midpoint falls in one of
-    them is built here. ``tail`` is the subset with no successor zip — the
-    newest archive year, whose late-December week has no later zip to claim it,
-    so it keeps that week from its own December fragment rather than losing it
-    off the end of the archive.
+    ``owned``: a week whose midpoint falls in one of these years is built
+    here. ``tail``: years with no successor zip, so their trailing December
+    week is kept from their own fragment instead of lost off the archive end.
     """
     owned = set(years)
     return owned, {y for y in owned if not _source_zips_for(y + 1)}
@@ -222,10 +200,8 @@ def _zip_fingerprint(zip_path: Path) -> dict:
 
 def _dedup_fingerprints(years: Iterable[int]) -> list[dict]:
     """Fingerprint each distinct source zip feeding ``years``, sorted by name.
-
-    Pre-2004 years all resolve to the shared mega-dump, so de-dup by name —
-    otherwise the 8 parts would repeat once per year.
-    """
+    De-duped by name so pre-2004 years sharing the mega-dump don't repeat its
+    8 parts once per year."""
     by_name: dict[str, dict] = {}
     for year in years:
         for z in _source_zips_for(year):
@@ -234,22 +210,17 @@ def _dedup_fingerprints(years: Iterable[int]) -> list[dict]:
 
 
 def archive_zip_fingerprints(years: Iterable[int]) -> list[dict]:
-    """Fingerprint every distinct archive zip feeding ``years`` (sorted by name).
-
-    Folded into the Earth zone signature so adding/refreshing an archive year
-    invalidates the zone's coarse skip gate.
-    """
+    """Fingerprint every distinct archive zip feeding ``years``. Folded into
+    the Earth zone signature so refreshing an archive year invalidates the
+    zone's coarse skip gate."""
     return _dedup_fingerprints(years)
 
 
 def week_zip_fingerprints(date_iso: str) -> list[dict]:
-    """Fingerprint the archive zip(s) that can feed the week labelled ``date_iso``.
-
-    A Monday-anchored week spans into the next calendar year at boundaries.
-    :func:`load_archive_weeks` builds such a week from the midpoint year's zip
-    alone, but both the Monday's and the Sunday's year are fingerprinted: a
-    superset only ever invalidates the week's part sidecar more eagerly than
-    needed, and it stays correct if the archive's cut points ever move.
+    """Fingerprint the archive zip(s) that can feed the week labelled
+    ``date_iso``. Both Monday's and Sunday's year are fingerprinted, even
+    though the week is built from the midpoint year's zip alone — a superset
+    only over-invalidates, and stays correct if archive cut points move.
     """
     monday = datetime.fromisoformat(date_iso).date()
     sunday = monday + timedelta(days=6)
@@ -257,13 +228,10 @@ def week_zip_fingerprints(date_iso: str) -> list[dict]:
 
 
 def _archive_member(zf: zipfile.ZipFile, zip_path: Path) -> str:
-    """The TLE text member of an archive zip.
-
-    Upstream repacks vary the layout — macOS AppleDouble entries (``__MACOSX/``,
-    ``._name``) and a nested ``data/exports/`` prefix both occur — so select by
-    extension and size. Taking the first entry would silently read junk, or
-    nothing, for a whole year.
-    """
+    """The TLE text member of an archive zip. Upstream repacks vary the layout
+    (macOS AppleDouble entries, a nested ``data/exports/`` prefix), so select
+    by extension and size rather than taking the first entry, which would
+    silently read junk for a whole year."""
     members = [
         info
         for info in zf.infolist()
@@ -312,26 +280,18 @@ def load_archive_weeks(
 ) -> dict[str, dict[int, CelesTrakElements]]:
     """Distil the given archive years into ``{Monday ISO date: {NORAD: elements}}``.
 
-    Buckets every TLE by its epoch's ISO week and keeps, per satellite, the one
-    whose epoch is nearest the week midpoint. Outer keys sort oldest-first.
-
-    A week is owned by the calendar year of its *midpoint*, not of its Monday.
-    The two differ only for a week starting in late December, and the midpoint
-    is what matches how the archive is cut: each ``tleYYYY`` zip runs from a few
-    days before Jan 1 through Dec 31, so the zip holding a boundary week's
-    midpoint also holds the whole week. Owning by Monday instead would build
-    such a week from December's fragment alone and discard its January half —
-    which is the side the midpoint sits on.
-
-    The newest archive year is the exception: nothing succeeds it, so it keeps
-    its own trailing week rather than letting it fall off the end.
+    Keeps, per satellite per week, the TLE nearest the week midpoint. A week
+    is owned by the calendar year of its *midpoint*, not its Monday — this
+    matches how each ``tleYYYY`` zip is cut (a few days before Jan 1 through
+    Dec 31), so a boundary week's zip holds the whole week rather than just
+    its December fragment. The newest archive year is the exception: nothing
+    succeeds it, so it keeps its own trailing week.
     """
     years = list(years)
     owned, tail = _claim_sets(years)
     # Monday → NORAD → (distance-to-midpoint, elements).
     best: dict[str, dict[int, tuple[float, CelesTrakElements]]] = {}
-    # Stream each physical zip once. Pre-2004 years all resolve to the 2004
-    # mega-dump, so dedup by path — otherwise it would be re-read per year.
+    # Dedup by path so the shared 2004 mega-dump isn't re-read per year.
     seen: set[Path] = set()
     sources: list[Path] = []
     for year in years:
@@ -367,13 +327,10 @@ def load_archive_weeks(
 
 
 def _scan_source_norads(zips: list[Path], out_years: Iterable[int]) -> set[int]:
-    """NORADs whose distilled week lands in ``out_years``, scanning ``zips`` once.
-
-    Bucketing by epoch week (not raw epoch) and filtering to ``out_years``
-    matches exactly what :func:`load_archive_weeks` ships, so a satellite that
-    decayed before the window — old-epoch TLEs in the dump but no in-window
-    week — is correctly excluded. Streams the source once for the whole group,
-    so the shared mega-dump isn't re-read per year.
+    """NORADs whose distilled week lands in ``out_years``, scanning ``zips``
+    once. Buckets by epoch week (not raw epoch) to match
+    :func:`load_archive_weeks` exactly, so a satellite that decayed before
+    the window is correctly excluded.
     """
     owned, tail = _claim_sets(out_years)
     norads: set[int] = set()
@@ -386,10 +343,8 @@ def _scan_source_norads(zips: list[Path], out_years: Iterable[int]) -> set[int]:
 
 
 def _load_norad_cache() -> dict:
-    """Load the per-year cache, or {} if absent/unreadable/stale.
-
-    A version mismatch returns {} so every year rescans — the fingerprints
-    can't catch a scan-logic change on their own.
+    """Load the per-year cache, or {} if absent/unreadable/stale. A version
+    mismatch returns {} — fingerprints alone can't catch a scan-logic change.
     """
     if not ARCHIVE_NORAD_CACHE.exists():
         return {}
@@ -419,12 +374,9 @@ def _write_norad_cache(cache: dict) -> None:
 def archive_norad_set(years: Iterable[int]) -> set[int]:
     """Union of every NORAD present in the archive across ``years``.
 
-    Results cache per source group to :data:`ARCHIVE_NORAD_CACHE`, keyed on the
-    group's zip fingerprint(s) and year span; a group re-scans only when its zip
-    or requested years change. The first build streams the whole ~12 GB archive
-    once (minutes); steady state reads the small JSON cache. Used by Earth-sat
-    ingest to set ``has_position`` on decayed sats that ship only in historical
-    weeks, not the current catalogue.
+    Cached per source group, keyed on zip fingerprint + year span, so a group
+    only re-scans when its inputs change. Used by Earth-sat ingest to set
+    ``has_position`` on decayed sats that ship only in historical weeks.
     """
     cache = _load_norad_cache()
     result: set[int] = set()

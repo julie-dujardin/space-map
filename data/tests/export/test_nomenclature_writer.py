@@ -77,13 +77,7 @@ class TestBuildPositions:
 
 
 class _StubWikidata(WikidataEntityCache):
-    """Minimal :class:`WikidataEntityCache` stand-in for label building.
-
-    Carries a ``{qid: {lang: label}}`` map so tests pin exactly which
-    Wikidata labels are visible without spinning up the on-disk cache.
-    Bypasses the parent ``__init__`` (which walks a metadata dir) since
-    :func:`_build_labels` only touches ``get_feature_entity``.
-    """
+    """Fake :class:`WikidataEntityCache` backed by a `{qid: {lang: label}}` map, skipping the on-disk init."""
 
     def __init__(self, labels_by_qid: dict[str, dict[str, str]] | None = None) -> None:
         self._labels_by_qid = labels_by_qid or {}
@@ -230,8 +224,7 @@ class TestBucketKey:
         assert feature_bucket_key("naif-301", 42) == "naif-301:42"
 
     def test_hash_bucket_deterministic(self):
-        # The frontend reproduces this from the URL — the bucket math must
-        # be stable across runs.
+        # Frontend reproduces this from the URL, so it must be stable across runs.
         for n in (1, 8, 50, 200):
             assert hash_bucket("naif-301:1234", n) == hash_bucket("naif-301:1234", n)
 
@@ -242,8 +235,7 @@ class TestBucketKey:
                 assert 0 <= bucket < n
 
     def test_features_distribute(self):
-        # Hash dispersion across bodies & feature ids should be near-uniform —
-        # not a perfect chi-squared but at least uses many buckets.
+        # Dispersion should be near-uniform: not chi-squared exact, but many buckets used.
         n = 50
         used = {
             hash_bucket(feature_bucket_key(f"naif-{body}", fid), n)

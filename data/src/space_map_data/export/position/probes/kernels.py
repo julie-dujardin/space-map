@@ -46,13 +46,10 @@ _PREDICT_TOKENS: frozenset[str] = frozenset(
 def kernel_precedence(name: str) -> int:
     """Lower = furnshed first (loses), higher = furnshed last (wins).
 
-    Three tiers: 0 predict / forward-looking, 1 default, 2 reconstruction.
-    Used to break SPICE last-loaded-wins ties in favor of the higher-quality
-    kernel when two kernels cover the same ET — e.g. GAIA's `gaia_rec_*`
-    (weekly reconstruction) wins over `gaia_flp_*` (long-arc flight predict),
-    HERA's `_fcp_` (Flight Control Product) wins over `_flp_` (Forward-Looking
-    Planned), JUNO's `juno_rec_orbit` wins over `juno_pred_orbit` and the
-    `spk_ref_*` long-arc reference.
+    Three tiers: 0 predict/forward-looking, 1 default, 2 reconstruction.
+    Breaks SPICE last-loaded-wins ties in favor of the higher-quality kernel
+    when two cover the same ET — e.g. GAIA's `gaia_rec_*` over `gaia_flp_*`,
+    JUNO's `juno_rec_orbit` over `juno_pred_orbit`.
     """
     tokens = re.split(r"[_.\-]", name.lower())
     if any(t in _RECON_TOKENS for t in tokens):
@@ -63,22 +60,15 @@ def kernel_precedence(name: str) -> int:
 
 
 def kernels_from_index(mdir: Path) -> list[Path]:
-    """Return mission kernels from `_index.json`'s `files` list, filtered
-    and sorted ready to furnish.
+    """Return mission kernels from `_index.json`'s `files` list, filtered and
+    sorted ready to furnish.
 
-    Steps:
-      1. Read names from `_index.json` (NOT a directory glob — that would
-         pick up `MEX/ORMM_*` monthlies and similar files the downloader
-         intentionally excludes).
-      2. Re-apply the current `MISSION_INCLUDE` pattern (so tightening it
-         takes effect without re-download — e.g. dropping ENVISION planning
-         scenario variants).
-      3. Drop stationary kernels (post-mission ephemerides parked at impact
-         site / surface that span decades at fixed coords).
-      4. Sort by `(kernel_precedence, name)` — predict-class kernels
-         furnshed first so reconstruction wins under SPICE's
-         last-loaded-wins. Within a tier, alphabetical (preserves
-         lex-last = latest version semantics).
+    Reads names from `_index.json` rather than a directory glob (which would
+    pick up excluded files like `MEX/ORMM_*` monthlies), re-applies the
+    current `MISSION_INCLUDE` pattern so tightening it takes effect without
+    re-download, drops stationary kernels, and sorts by
+    `(kernel_precedence, name)` so reconstruction wins under SPICE's
+    last-loaded-wins.
 
     Shared between the writer's classify/fit passes and the benchmark, so
     both sides see identical truth.
@@ -148,19 +138,15 @@ def collect_generic_kernels(
 ) -> tuple[list[Path], list[Path]]:
     """Collect generic kernels under `kernels/`, splitting them by role.
 
-    Returns `(lsk_pck_paths, generic_spk_paths)`:
-      * LSK (.tls) / PCK (.tpc) — leapseconds and physical constants. No SPK
-        precedence implications; load once at outer scope.
-      * Generic SPKs (.bsp under `spk/`) — planetary ephemerides (de440,
-        sat441, …). Must be furnshed AFTER mission kernels so they win for
-        shared targets (Saturn 699, Saturn-barycenter 6, etc.). Mission
-        kernels like p11-a.bsp embed their own 1970s-era planetary data,
-        which would otherwise contaminate the fit.
+    Returns `(lsk_pck_paths, generic_spk_paths)`. Generic SPKs (planetary
+    ephemerides) must furnish AFTER mission kernels so they win for shared
+    targets — mission kernels like p11-a.bsp embed their own 1970s-era
+    planetary data that would otherwise contaminate the fit.
 
     `missions/`, `landed-missions/`, and `probes/` subtrees are excluded
-    (handled per-probe). Landed kernels especially must NOT leak in: they're
-    furnshed last here, so a recycled NAIF (MSL's -76 = old Mariner 10) would
-    win last-loaded-wins and drag the earlier probe onto the lander's body.
+    (handled per-probe): landed kernels especially must not leak in here,
+    since a recycled NAIF (MSL's -76 = old Mariner 10) would win
+    last-loaded-wins and drag the earlier probe onto the lander's body.
     """
     skip_dirs = {"missions", "landed-missions", "probes"}
     lsk_pck: list[Path] = []
@@ -181,10 +167,9 @@ def collect_generic_kernels(
 def enumerate_probes() -> list[tuple[Path, list[Path], int]]:
     """Return `[(mission_dir, kernels, naif_id)]` for every spacecraft NAIF.
 
-    Includes every negative target from trajectory + landed indexes (NAIF
-    reserves negatives for spacecraft), minus the simulation/debris set from
-    major_bodies.txt and the landing-site/instrument sub-NAIFs filtered by
-    `is_spacecraft_naif` — the same exclusions ingest applies, so the export
+    Includes every negative target from trajectory + landed indexes, minus
+    the simulation/debris set and landing-site/instrument sub-NAIFs filtered
+    by `is_spacecraft_naif` — the same exclusions ingest applies, so export
     never assigns probe_ids for which ingest created no Object row.
     """
     out: list[tuple[Path, list[Path], int]] = []

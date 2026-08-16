@@ -1,15 +1,8 @@
 """Tests for the unified position manifest dispatch in `build_position_metadata`.
 
-Three input shapes (static / chunk-indexed / date-segmented) drive three
-output shapes plus the chebyshev-only `chunked` shape folded in from the
-chebyshev manifest fragment. Dispatch is on `SnapshotResult.chunk_days`
-(and on whether `time` is None), not on label format — these tests pin
-that contract so a future refactor can't silently regress to label-format
-heuristics.
-
-Multi-zoom zones (`major`, `small_bodies/{class}`) nest shapes under a `zooms`
-map; structurally single-zoom zones (everything else) emit the shape at zone
-level with no wrapper. These tests pin which zones flatten.
+Shape dispatch is on `SnapshotResult.chunk_days` and whether `time` is None,
+never on label format. Multi-zoom zones (`major`, `small_bodies/{class}`)
+nest shapes under a `zooms` map; other zones flatten to zone level.
 """
 
 import pytest
@@ -207,9 +200,7 @@ class TestDateSegmentedShape:
         }
 
     def test_allows_uneven_parts_per_date(self):
-        # Date-segmented zones (earth) carry per-date part counts — historical
-        # weekly snapshots hold the full decayed catalog (more parts) while
-        # recent dailies are smaller. parts is the max bound.
+        # Older weekly snapshots hold more parts than recent dailies; parts is the max.
         zoom = _zoom(
             _result(time="2024-01-01", num_parts=3),
             _result(time="2026-04-23", num_parts=2),

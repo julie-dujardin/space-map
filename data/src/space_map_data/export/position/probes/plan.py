@@ -40,23 +40,16 @@ class ProbeMeta:
 
 @dataclass(frozen=True)
 class ChunkContribution:
-    """One probe's contribution to one (zone, chunk_idx): the time slice
-    it covers.
+    """One probe's contribution to one (zone, chunk_idx): the time slice it
+    covers.
 
-    `kind="flying"` contributions go through `size_chunk` (Kepler/Chebyshev
-    sub-chunks, sub-chunk-grid-aligned).
-
-    `kind="landed"` contributions carry the landing body's id; the fit pass
-    packs them as a single trailing `METHOD_LANDED` record. Landed
-    contributions don't snap to the sub-chunk grid — they cover the literal
-    phase-within-chunk window.
-
-    Two flavours of landed contribution:
-      * SPICE-driven: `static_lat_lng=None`; fit pass samples body-fixed
-        position via `fit_landed_chunk` (existing Moon/Mars/etc. probes).
-      * Events-driven: `static_lat_lng=(lat, lng)`; fit pass synthesises a
-        static `LandedFit` directly with no SPICE call (events-only probes
-        like Apollo descent stages, Veneras, Mars Pathfinder, …).
+    `kind="flying"` goes through `size_chunk` (sub-chunk-grid-aligned).
+    `kind="landed"` carries the landing body's id; the fit pass packs it as a
+    trailing `METHOD_LANDED` record covering the literal phase-within-chunk
+    window (not grid-aligned). Two flavours: SPICE-driven
+    (`static_lat_lng=None`, sampled via `fit_landed_chunk`) and
+    events-driven (`static_lat_lng=(lat, lng)`, synthesised with no SPICE
+    call, for events-only probes like Apollo descent stages).
     """
 
     zone_key: str

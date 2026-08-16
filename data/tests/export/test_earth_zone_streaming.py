@@ -70,9 +70,8 @@ class TestSkipBeforeParse:
         return calls
 
     def _base(self):
-        # SimpleNamespace stands in for Object: the overlay/metadata are stubbed,
-        # but it must accept the transient `_source_override` the writer reads
-        # and expose the `satcat` relationship the docked-craft filter reads.
+        # Stands in for Object: must accept `_source_override` and expose
+        # `satcat` for the docked-craft filter.
         return [SimpleNamespace(satcat=None)]
 
     def test_dirty_year_parsed_once(self, tmp_path, monkeypatch):
@@ -108,14 +107,13 @@ class TestSkipBeforeParse:
 
 
 class TestGlobalOrbitOverlay:
-    """The per-object global bundle's orbit block is built from the transient
-    `_daily_kepler`, so the most recent daily must be overlaid onto the base
-    *before* metadata is built — without it Earth sats ship with no orbit block
-    and URL navigation hides them (redirecting to the Sun)."""
+    """The overlay must land on the base before metadata is built, or Earth
+    sats ship with no orbit block and URL navigation hides them (redirects
+    to the Sun)."""
 
     def _patch(self, monkeypatch, captured):
-        # Spy on the metadata build to record what `_daily_kepler` each object
-        # carries at build time; the overlay itself runs for real.
+        # Spy on the metadata build to record each object's `_daily_kepler`
+        # at build time; the overlay itself runs for real.
         def fake_build(objs, ctx):
             captured.extend(getattr(o, "_daily_kepler", None) for o in objs)
             return ChunkObjectData()

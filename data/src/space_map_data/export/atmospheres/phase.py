@@ -1,15 +1,12 @@
 """Per-channel aerosol phase-function LUTs.
 
-Spherical particles go through Mie theory integrated over a log-normal size
-distribution; irregular particles (Mars dust, Titan fractal aggregates) use
-published double-Henyey-Greenstein fits — sphere-based Mie theory cannot
-represent them.
+Spherical particles use Mie theory over a log-normal size distribution;
+irregular particles (Mars dust, Titan aggregates) use double-Henyey-Greenstein
+fits instead, since sphere-based Mie theory can't represent them.
 
-LUT layout matches the frontend contract (frontend .../surface/atmosphere.ts):
-3 blocks of PHASE_N floats (R, G, B), sampled at theta = pi * (i/(N-1))^2 — a
-quadratic warp concentrating samples on the forward peak — each channel
-normalised so the phase function integrates to 1 over the sphere. One LUT is
-built per PHASE_MODELS entry; bodies referencing the same key share it.
+Layout matches the frontend contract (surface/atmosphere.ts): 3 blocks of
+PHASE_N floats (R,G,B), sampled at theta = pi*(i/(N-1))^2 to concentrate
+samples on the forward peak, each normalised to integrate to 1 over the sphere.
 """
 
 import math
@@ -43,9 +40,8 @@ def _finish(phase: np.ndarray) -> tuple[list[float], float]:
 def _mie_phase(mode: LogNormalMie, wavelength_um: float) -> np.ndarray:
     import miepython
 
-    # Log-normal with sigma from the effective variance; radii sampled +-3
-    # sigma in log space, weighted by n(r) * Qsca * r^2 (scattering-efficiency
-    # weighting makes the average what a photon actually meets).
+    # sigma from log-normal effective variance; radii sampled +-3 sigma in log
+    # space, weighted by n(r)*Qsca*r^2 so the average matches what a photon meets.
     sigma = math.sqrt(math.log(1.0 + mode.effective_variance))
     log_rg = math.log(mode.effective_radius_um)
     radii = np.exp(np.linspace(log_rg - 3 * sigma, log_rg + 3 * sigma, 41))
@@ -82,8 +78,7 @@ def build_phase_lut(
 ) -> tuple[list[float], dict[str, float]]:
     """Build one 3*PHASE_N LUT (R,G,B blocks) for an aerosol.
 
-    Returns (flat_lut, asymmetry_g_per_channel) — g is reported for the
-    reference checks, not shipped.
+    Returns (flat_lut, asymmetry_g) — g is for reference checks only, not shipped.
     """
     lut: list[float] = []
     asymmetry: dict[str, float] = {}

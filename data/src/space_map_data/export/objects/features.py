@@ -1,9 +1,8 @@
 """Notable surface features per body, attached to the object detail bundle.
 
-Feeds the body's Features tab: a count for the tab badge plus the top features
-to show before (or without) the search backend. Ranking is the same prominence
-order the ``ft-`` type pages use, so a feature sits at the same place in both
-lists.
+Feeds the body's Features tab: a count plus top features to show before (or
+without) the search backend, ranked the same way as the ``ft-`` type pages
+so a feature sits consistently in both.
 """
 
 import logging
@@ -29,8 +28,7 @@ def attach_notable_features(
     """Inject ``feature_count`` + ``notable_features`` into each body's bundle.
 
     Mutates ``chunk`` in place (mirrors ``attach_notable_moons``), reusing the
-    per-body feature lists the nomenclature tier already built — the same
-    renderable set the map labels and the ft- pages count.
+    per-body feature lists the nomenclature tier already built.
     """
     attached = 0
     missing: list[str] = []

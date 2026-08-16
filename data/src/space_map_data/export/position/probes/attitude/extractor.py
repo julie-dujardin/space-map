@@ -1,20 +1,13 @@
 """Per-probe orchestrator: kernel → segments → samples → keyframes → files.
 
-This is the function the pipeline calls once per probe. SPICE must be
-furnished by the caller before invocation (lsk + pck + per-mission ck +
-fk + sclk); we keep furnishing out of this module so the caller can batch
-multiple probes against the same generic kernels without re-furnishing.
+Furnishing SPICE is left to the caller, so it can batch multiple probes
+against the same generic kernels without re-furnishing. The mission is first
+partitioned into rate-stable spin spans (`segments.py`): a non-spinner is one
+raw span; a spinner (Juno) is one span per phase with its own baseline, so
+the adaptive sampler always keyframes a slow residual.
 
-The mission is first partitioned into rate-stable spin spans (`segments.py`):
-a non-spinner is one raw span; a spinner (Juno) is one span per phase, each
-with its own baseline so the adaptive sampler always keyframes a slow residual.
-Each span is sampled and keyframed independently, and its chunks carry the
-index of the baseline to recompose against.
-
-Output:
-  * `chunks/<chunk_idx>.bin.gz` written under `out_dir/`
-  * A dict for merging into the probe's `__global__` bundle under `"attitude"`
-    (see `manifest_entry`).
+Output: `chunks/<chunk_idx>.bin.gz` under `out_dir/`, plus a dict for the
+probe's `__global__` bundle under `"attitude"` (see `manifest_entry`).
 """
 
 import logging
@@ -33,24 +26,21 @@ from .writer import ChunkFile, write_chunks
 
 logger = logging.getLogger(__name__)
 
-# Adaptive SLERP error budget. The sweep validated 0.1° as the right
-# default — visually imperceptible at planet scale, near-optimal file counts.
+# Adaptive SLERP error budget. 0.1° validated as visually imperceptible at
+# planet scale with near-optimal file counts.
 DEFAULT_EPS_DEG = 0.1
-# Apply a spin baseline only when the turn between seed samples would alias the
-# sampler. Below that, raw motion samples fine and an inverse spin only adds
-# curvature; above it, a fast spinner must be baselined per phase.
+# Apply a spin baseline only when the turn between seed samples would alias
+# the sampler — below that, raw motion samples fine.
 ALIAS_ANGLE_RAD = math.radians(90.0)
-# Cap the span handed to one `adaptive_sample` call. Its per-sample Python
+# Cap the span handed to one `adaptive_sample` call: its per-sample Python
 # lists are ~200 B/sample, so an unbounded window (some CKs cover decades in
-# one interval) at worst-case refinement density would eat GBs. Tiling only
-# adds a couple of keyframes per boundary.
+# one interval) at worst-case refinement density would eat GBs.
 TILE_S = 4 * 86400.0
-# Some CKs claim implausibly wide interval coverage (HUYGENS' fictional-SCLK
-# CK reports one 45-year window for ~4 h of real descent data), and every
-# in-gap sample costs a thrown SpiceyError ~30× a valid lookup — seed-scanning
-# the claimed span would take hours. Windows longer than the threshold are
-# probed at step resolution and shrunk to the runs that actually resolve,
-# padded one step each side so data between probes survives.
+# Some CKs claim implausibly wide interval coverage (HUYGENS reports one
+# 45-year window for ~4 h of real descent data), and every in-gap sample
+# costs a thrown SpiceyError ~30x a valid lookup. Windows longer than the
+# threshold are probed at step resolution and shrunk to the runs that
+# actually resolve.
 VALIDATE_SPAN_S = 10 * 86400.0
 VALIDATE_STEP_S = 3600.0
 
@@ -84,21 +74,19 @@ def extract_attitude(
     """Extract attitude for one probe and write its chunk files.
 
     Caller furnishes kernels. `bus_instr_id` is the CK instrument ID
-    (typically `naif_id × 1000`) for the spacecraft bus frame; `frame_name`
-    is the FK-registered name resolvable by `pxform("J2000", frame_name, et)`.
-    Coverage is the union of `ck_paths`, partitioned into spin spans, then
-    sampled adaptively and keyframed span-by-span to bound memory over decades.
+    (typically `naif_id × 1000`); `frame_name` is FK-registered and
+    resolvable by `pxform("J2000", frame_name, et)`. Coverage is the union
+    of `ck_paths`, partitioned into spin spans, then sampled adaptively and
+    keyframed span-by-span to bound memory over decades.
 
     No coverage for `bus_instr_id` returns an empty result (n_keyframes=0) —
-    it's a property of the kernel set (e.g. an impactor with no bus CK), so
     the caller caches it like any other empty extraction.
     """
     windows = ck_windows(ck_paths, bus_instr_id)
     if not windows:
         # Some missions' bus frame is a switch frame whose CK segments carry a
-        # sub-instrument ID, not `naif*1000` (Hera's HERA_SPACECRAFT delegates
-        # to -91002). The curated globs are bus-only, so whatever instruments
-        # the files actually carry are the bus stream — union their coverage.
+        # sub-instrument ID, not `naif*1000` (Hera delegates to -91002) — union
+        # whatever instruments the (bus-only) curated files actually carry.
         actual = sorted(ck_instrument_ids(ck_paths) - {bus_instr_id})
         if actual:
             logger.info(
@@ -136,10 +124,8 @@ def extract_attitude(
         seg_streams.append((ets, quats))
 
     if n_gaps:
-        # CK gaps are normal for busy orbiters (MRO, Cassini); one line per probe
-        # — per-file logging spammed thousands of identical warnings. The count
-        # includes discarded refinement probes, so it's a gap-probe tally, not a
-        # ratio of emitted samples.
+        # CK gaps are normal for busy orbiters; one line per probe instead of
+        # per-file to avoid spamming thousands of identical warnings.
         logger.warning(
             "attitude: %s — %d gap probe(s) hit CK coverage holes (repeated last good)",
             frame_name,
@@ -149,7 +135,7 @@ def extract_attitude(
     files = write_chunks(out_dir, seg_streams)
     # Coverage from emitted keyframes, not the CK-claimed window — kernels can
     # claim years with no resolvable data (Spitzer claims 2000, first keyframe
-    # 2005) and the frontend treats this span as "attitude available".
+    # 2005), and the frontend treats this span as "attitude available".
     return ExtractionResult(
         n_keyframes=sum(len(ets) for ets, _ in seg_streams),
         files=files,
@@ -211,14 +197,11 @@ def _keyframe_segment(
 ) -> tuple[np.ndarray, np.ndarray, int, int]:
     """Adaptive-sample + keyframe one span → `(ets, quats, n_samples, n_gaps)`.
 
-    The span's baseline residual is the stream we keyframe (raw when None). Each
-    CK window is clipped to the span, then tiled to `TILE_S` so one call's
-    sample stream stays bounded; `last_et` keeps the span's keyframes
+    Each CK window is clipped to the span, then tiled to `TILE_S` so one
+    call's sample stream stays bounded; `last_et` keeps keyframes
     time-ascending and drops the duplicate sample at each tile boundary. The
-    span's endpoints are sampled, so the boundary attitude is emitted in both
-    adjacent spans' frames — the decoder never SLERPs across the baseline
-    switch. Kept keyframes are copied out per tile (fancy indexing) so no
-    tile's full sample array outlives its iteration.
+    span's endpoints are sampled in both adjacent spans' frames, so the
+    decoder never SLERPs across the baseline switch.
     """
     transform = seg.baseline.residual if seg.baseline else None
     ets_parts: list[np.ndarray] = []
@@ -284,8 +267,8 @@ def manifest_entry(result: ExtractionResult, *, frame_name: str) -> dict:
                      "baseline_index"?}, ...]
         }
 
-    `baselines` is null for a non-spinner (keyframes are raw J2000→body). For a
-    spinner each file's `baseline_index` selects the active span to recompose.
+    `baselines` is null for a non-spinner. For a spinner, each file's
+    `baseline_index` selects the active span to recompose against.
     """
     spinning = any(seg.baseline is not None for seg in result.segments)
     baselines = [_baseline_json(seg) for seg in result.segments] if spinning else None

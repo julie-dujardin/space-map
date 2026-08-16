@@ -1,14 +1,8 @@
 """Export Chebyshev polynomial ephemeris as chunked position files.
 
-Reads per-body `.npz` files produced by the SPICE download step and emits one
-gzipped position file per (zone, time-chunk) at `position/{zone}/{chunk}.bin.gz`
-(the multi-zoom `major` zone keeps a `/0/` segment). The binary's per-body
-header carries `id_type` + `obj_id_value` so the frontend can rebuild the full
-`<prefix>-<numeric>` Object ID — Pluto and the perturber asteroids ride as
-`spkid-…` even though their SPICE naif_id is the planetary ID.
-
-The chebyshev payload always sits at zoom 0 — the most accurate tier for the
-most important bodies.
+Reads per-body `.npz` files from the SPICE download step and emits one gzipped
+position file per (zone, time-chunk). Pluto and the perturber asteroids ride
+under `spkid-…` even though their SPICE naif_id is the planetary ID.
 """
 
 import gzip
@@ -47,10 +41,9 @@ from space_map_data.utils.time import DAYS_PER_YEAR, year_to_jd
 
 logger = logging.getLogger(__name__)
 
-# Zone routing: core bodies + asteroids go to flat `major` / `major_asteroids`
-# zones at a coarse chunk cadence (planets + sun barely move over years).
-# Whitelisted moons get one `moons/<parent>` zone per parent at a per-parent
-# chunk cadence (`CHEBYSHEV_PARENT_CHUNK_YEARS`).
+# Core bodies + asteroids: flat `major`/`major_asteroids` zones, coarse chunk
+# cadence. Whitelisted moons: one `moons/<parent>` zone per parent, at
+# `CHEBYSHEV_PARENT_CHUNK_YEARS` cadence.
 _ASTEROID_TYPES = frozenset(
     {
         ObjectType.asteroid,
@@ -73,11 +66,9 @@ _PARENT_NAMES = {
     9: "pluto",
 }
 
-# Zones where float32 coefficients lose visible precision because the body's
-# absolute distance from its parent is large. The Sun-orbiter zones sit at
-# ~1e9–6e9 km from SSB, which is right at float32's 7-digit limit and produces
-# hundreds of km of quantization error. Moon zones are parent-relative and stay
-# well below the float32 limit, so they keep the cheaper dtype.
+# Sun-orbiter zones sit at ~1e9-6e9 km from SSB — float32's 7-digit limit
+# produces hundreds of km of quantization error there. Moon zones are
+# parent-relative and stay well below the limit, so they keep float32.
 _FLOAT64_ZONES = frozenset({"major", "major_asteroids"})
 
 
@@ -112,15 +103,9 @@ def _object_for_naif_id(session: Session, naif_id: int) -> Object | None:
 
 
 def should_export(obj: Object, naif_id: int) -> bool:
-    """Defense-in-depth gate against stale `.npz` files in the cheb dir.
-
-    The download-time `_should_extract` (download/.../chebyshev.py) is the
-    primary filter — it controls which bodies get sampled in the first place
-    — but stale files from before a whitelist tightening can linger in the
-    cheb dir until the next download run cleans them up. Mirroring the
-    asteroid whitelist here means the export reflects the current whitelist
-    constant immediately, regardless of download dir state.
-    """
+    """Defense-in-depth gate against stale `.npz` files left by a whitelist
+    tightening — mirrors the download-time filter so export reflects the
+    current whitelist immediately, regardless of disk state."""
     if (
         obj.object_type in _ASTEROID_TYPES
         and naif_id not in CHEBYSHEV_ASTEROID_WHITELIST
@@ -163,13 +148,10 @@ def _moon_parent_id(zone: str) -> int | None:
 
 
 def _obj_id_parts(obj: Object) -> tuple[int, int]:
-    """Return `(id_type_ordinal, obj_id_value)` for one chebyshev body.
-
-    Pulled from `Object.id` (`<prefix>-<numeric>`) rather than the SPICE naif_id
-    so Pluto/perturber-asteroid bodies retain their `spkid-…` form across the
-    binary. Logs and falls back to sentinels rather than raising — chebyshev
-    files aggregate many bodies and one bad ID shouldn't take down the export.
-    """
+    """Return `(id_type_ordinal, obj_id_value)` from `Object.id`, not the SPICE
+    naif_id, so Pluto/perturber-asteroid bodies keep their `spkid-…` form.
+    Falls back to sentinels rather than raising — one bad ID shouldn't sink
+    the whole export."""
     pos = obj.id.find("-")
     if pos == -1:
         logger.warning("chebyshev: %s has no separator in object ID", obj.id)
@@ -198,11 +180,8 @@ def _write_chunk_file(
     ],
     float64_coeffs: bool,
 ) -> int:
-    """Write one chunk file at `position/{zone}[/0]/{chunk_idx}.bin.gz` — the
-    zoom segment only for the multi-zoom ``major`` zone.
-
-    Returns bytes written for the bin file.
-    """
+    """Write one chunk file at `position/{zone}[/0]/{chunk_idx}.bin.gz`. Returns
+    bytes written."""
     chunk_dir = position_zone_dir(out_dir, zone, 0)
     chunk_dir.mkdir(parents=True, exist_ok=True)
 
@@ -269,22 +248,15 @@ def write_chebyshev(
     radii: dict[int, dict],
     has_localized: dict[str, bool],
 ) -> dict[str, dict]:
-    """Write Chebyshev exports. Returns a per-zone manifest fragment.
-
-    Reads per-body .npz files in `download_dir/spice/chebyshev/`, links each to
-    its DB Object, partitions by zone (major / major_asteroids / moons/<parent>)
-    and time chunk, and emits one position file per (zone, chunk_idx) at zoom 0.
-    The full Object ID (e.g. `naif-499`, `spkid-20134340`) is encoded inside
-    the binary's per-body header. `has_localized` (built once during the export
-    pass, keyed by Object.id) drops one bit per body into the body header so
-    the frontend can skip detail-bundle fetches for objects with no Wikidata.
+    """Write Chebyshev exports, partitioned by zone and time chunk.
 
     Chunk parameters come from the SPICE download metadata so the export
-    matches exactly what was extracted.
+    matches exactly what was extracted. `has_localized` drops a bit per body
+    into the header so the frontend can skip detail-bundle fetches for
+    objects with no Wikidata.
 
-    Returns a dict mapping zone → `{chunks, chunk_days, start_jd, end_jd}`.
-    The caller folds these per-zone into the unified position manifest with
-    `shape="chunked"`. Returns `{}` when there's nothing to export.
+    Returns `{zone: {chunks, chunk_days, start_jd, end_jd}}`, or `{}` when
+    there's nothing to export.
     """
     cheb_dir = download_dir / "derived" / "position" / "chebyshev"
     if not cheb_dir.exists():

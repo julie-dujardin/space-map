@@ -1,12 +1,8 @@
-"""Write `v1/atmospheres.json` — per-body scattering parameters for the
-frontend's atmosphere shells, derived from the cited constants in
-`constants/atmosphere/` (gas optics, reference-level conditions, aerosol
-microphysics) rather than hand-tuned frontend tables.
+"""Writes `v1/atmospheres.json` — per-body scattering parameters for the frontend's
+atmosphere shells, derived from cited constants rather than hand-tuned tables.
 
-Always-loaded like `systems/global.json`: the frontend fetches it once at boot
-and builds a shell for every body present. Distinct aerosol phase LUTs are
-shared via the `phases` table (bodies with the same aerosol assumption point at
-one entry).
+Always-loaded at boot like `systems/global.json`. Aerosol phase LUTs are shared
+via the `phases` table across bodies with the same aerosol assumption.
 """
 
 import logging
@@ -43,9 +39,8 @@ from space_map_data.utils.paths import EXPORT_DIR
 
 logger = logging.getLogger(__name__)
 
-# Shell top: where the optical contribution dies. 8 Rayleigh scale heights
-# leaves e^-8 ~ 3e-4 of the column; aerosols fade faster per height but start
-# denser, 6 is enough.
+# Shell top: where optical contribution dies out. 8 Rayleigh scale heights
+# leaves e^-8 ~ 3e-4 of the column; aerosols fade faster but start denser, so 6 suffices.
 _TOP_RAYLEIGH_SCALE_HEIGHTS = 8.0
 _TOP_MIE_SCALE_HEIGHTS = 6.0
 
@@ -138,8 +133,7 @@ def build_atmospheres() -> dict:
 
 
 def _sig(value: float, digits: int = 4) -> float:
-    """Round to `digits` significant figures — payload hygiene, the shader
-    doesn't care past that."""
+    """Round to `digits` significant figures — the shader doesn't need more."""
     if value == 0:
         return 0.0
     return float(f"{value:.{digits}g}")

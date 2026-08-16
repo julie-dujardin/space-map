@@ -1,10 +1,8 @@
-"""Merge hand-authored manual objects into the regular object bundles.
+"""Merge hand-authored manual objects (utils/manual_overlay.py) into the object bundles.
 
-The manual overlay (utils/manual_overlay.py) defines objects that have no DB row
-or position chunk. We fold them straight into ``global_data``/``localized_data``
-so they hash-bucket into the normal ``v1/objects`` bundles — from there detail,
-the placeholder/scene path, and the search index treat them like any other
-object. Their ``extra-<n>`` id prefix is what routes them to ``/u/<n>``.
+They have no DB row or position chunk, so we fold them into ``global_data``/
+``localized_data`` directly, hash-bucketed like any other object. The
+``extra-<n>`` id prefix routes them to ``/u/<n>``.
 """
 
 import logging
@@ -28,12 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 def _global(entry: dict, name: str) -> dict:
-    """Language-independent bundle entry (mirrors export/objects/writer._build_global).
-
-    An entry may carry an `interior` mapping, which takes the same route to the
-    same shape the constants do — the Overview's composition bar and the
-    Structure tab's cross-section both read it without knowing the difference.
-    """
+    """Language-independent bundle entry (mirrors export/objects/writer._build_global)."""
     e = entry.get("elements") or {}
     data: dict = {"id": entry["id"], "type": "spacecraft", "name": name}
     if entry.get("model_slug"):

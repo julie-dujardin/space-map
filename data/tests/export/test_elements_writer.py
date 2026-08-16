@@ -120,8 +120,7 @@ class TestWriteElements:
         assert row_count == 2
         assert source == SOURCE_ORDINAL[OrbitalSource.spice]
         assert id_type == ID_TYPE_ORDINAL[ID_TYPES.NAIF]
-        # Keplerian defaults to unbounded validity — the orbit is mathematical
-        # and stays valid for any jd.
+        # Keplerian orbits are mathematical, so validity defaults to unbounded.
         assert start_jd == UNBOUNDED_START_JD
         assert end_jd == UNBOUNDED_END_JD
 
@@ -211,10 +210,8 @@ class TestWriteElements:
 
 
 class TestWriteSgp4Elements:
-    """The SGP4 writer reads every field from the ``_daily_kepler`` overlay,
-    so satcat-only Objects (no CelesTrak sub-table row) export the same as
-    actively-tracked ones — the historical archive's whole catalog, not just
-    still-tracked sats."""
+    """The SGP4 writer reads every field from ``_daily_kepler``, so satcat-only
+    Objects export the same as actively-tracked ones."""
 
     def _sgp4_object(self, **extra) -> Object:
         daily = {
@@ -265,9 +262,7 @@ class TestWriteSgp4Elements:
             )
 
     def test_source_override_stamps_spacetrack(self, tmp_path):
-        # Historical archive weeks set a transient `_source_override` so the file
-        # header carries Space-Track provenance even though the Objects are
-        # CelesTrak/satcat-sourced in the DB.
+        # `_source_override` stamps Space-Track provenance on a CelesTrak-sourced row.
         obj = self._sgp4_object()
         obj._source_override = OrbitalSource.spacetrack  # type: ignore[attr-defined]
         out = tmp_path / "spacetrack.bin.gz"
@@ -277,9 +272,7 @@ class TestWriteSgp4Elements:
         assert source == SOURCE_ORDINAL[OrbitalSource.spacetrack]
 
     def test_spacetrack_file_source_reads_overlay(self, tmp_path):
-        # Satcat-only rows have orbital_source=None, so under a Space-Track file
-        # source `src` resolves to spacetrack — the Kepler columns must still
-        # read the TLE elements off the `_daily_kepler` overlay, not blow up.
+        # orbital_source=None must still read TLE elements off the overlay, not blow up.
         obj = self._sgp4_object()
         obj.orbital_source = None
         out = tmp_path / "spacetrack.bin.gz"
@@ -305,8 +298,6 @@ class TestWriteSgp4Elements:
         out = tmp_path / "sgp4_launch.bin.gz"
         write_sgp4_elements([obj], out, OrbitalSource.celestrak, has_localized={})
         raw = gzip.decompress(out.read_bytes())
-        # 1 row: shared 0-3 (32) + epoch (8) + a..n+radius (8 × 8 = 64)
-        # + SGP4 extras (5 × 8 = 40) + has_localized (8) + flags (8).
         offset = HEADER_SIZE + 32 + 8 + 64 + 40 + 8 + 8
         (d0,) = struct.unpack_from("<f", raw, offset)
         dj = date_to_julian(date(1998, 11, 20))
@@ -354,15 +345,7 @@ class TestWriteSgp4Elements:
         write_elements([obj], out, OrbitalSource.spice, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
-        # radius_km is column 12 (last float32 column)
-        # Compute offset: header + 13 columns of data for 1 row
-        # col0: int32(1) + pad to 8 = 8
-        # col1: uint8(1) + pad to 8 = 8
-        # col2: int32(1) + pad to 8 = 8
-        # col3: uint8(1) + pad to 8 = 8
-        # col4: epoch_jd float64(1) = 8
-        # cols 5-11: 7 x float32(1) + pad to 8 = 7 x 8 = 56
-        offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8 + 56  # start of col 12
+        offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8 + 56  # column 12, radius_km
         (radius,) = struct.unpack_from("<f", raw, offset)
         assert radius == 16.5  # 33.0 / 2
 
@@ -394,9 +377,7 @@ class TestWriteSgp4Elements:
             om_dot=1.5,
             w_dot=-0.25,
         )
-        # A row that doesn't populate the rates (e.g. a planet from SPICE
-        # without a fitted secular model) must serialize as zero, not NaN —
-        # that keeps the frontend's `om += om_dot·dt` step a no-op.
+        # Unfitted rates serialize as zero, not NaN, keeping `om += om_dot·dt` a no-op.
         planet = make_object(
             id="naif-399",
             naif_id=399,
@@ -407,10 +388,7 @@ class TestWriteSgp4Elements:
         write_elements([moon, planet], out, OrbitalSource.spice, has_localized={})
         raw = gzip.decompress(out.read_bytes())
 
-        # Layout for 2 rows: cols 0-3 (8 bytes each, with padding) = 32, col 4
-        # epoch_jd float64 = 16, cols 5-12 (8 float32 cols × 8 bytes) = 64.
-        # om_dot (col 13) starts at HEADER_SIZE + 32 + 16 + 64 = HEADER_SIZE + 112.
-        om_dot_offset = HEADER_SIZE + 32 + 16 + 64
+        om_dot_offset = HEADER_SIZE + 32 + 16 + 64  # column 13, 2 rows
         w_dot_offset = om_dot_offset + 8
         om_dot_vals = struct.unpack_from("<2f", raw, om_dot_offset)
         w_dot_vals = struct.unpack_from("<2f", raw, w_dot_offset)
@@ -437,10 +415,7 @@ class TestWriteSgp4Elements:
             [a, b], out, OrbitalSource.spice, has_localized={"naif-399": True}
         )
         raw = gzip.decompress(out.read_bytes())
-
-        # Same Keplerian layout as the secular-drift test plus om_dot/w_dot
-        # (cols 13–14, 8 bytes each for 2 rows). has_localized is column 15.
-        offset = HEADER_SIZE + 32 + 16 + 64 + 8 + 8
+        offset = HEADER_SIZE + 32 + 16 + 64 + 8 + 8  # column 15, has_localized
         flags = struct.unpack_from("<2B", raw, offset)
         assert flags == (1, 0)
 
@@ -497,12 +472,7 @@ class TestWriteSgp4Elements:
             [pha, neo_only, plain], out, OrbitalSource.sbdb, has_localized={}
         )
         raw = gzip.decompress(out.read_bytes())
-
-        # 3 rows. Per-column padded sizes: int32 cols = 16, uint8 cols = 8,
-        # float32 cols = 16, float64 cols = 24. Layout: shared cols 0-3
-        # (16+8+16+8 = 48), col 4 epoch_jd f64 (24), cols 5-12 (8 f32 cols × 16
-        # = 128), cols 13-14 (2 × 16 = 32), col 15 has_localized (8).
-        offset = HEADER_SIZE + 48 + 24 + 128 + 32 + 8
+        offset = HEADER_SIZE + 48 + 24 + 128 + 32 + 8  # column 16, flags; 3 rows
         flags = struct.unpack_from("<3B", raw, offset)
         assert flags == (0x03, 0x01, 0x00)
 
@@ -537,11 +507,7 @@ class TestWriteSgp4Elements:
         out = tmp_path / "disc.bin.gz"
         write_elements([discovered, no_date], out, OrbitalSource.sbdb, has_localized={})
         raw = gzip.decompress(out.read_bytes())
-
-        # 2 rows. shared cols 0-3 (8 each) = 32, epoch f64 = 16, cols 5-12
-        # (8 f32 × 8) = 64, om_dot/w_dot (2 × 8) = 16, has_localized (8),
-        # flags (8). visible_from_days (col 17) follows.
-        offset = HEADER_SIZE + 32 + 16 + 64 + 16 + 8 + 8
+        offset = HEADER_SIZE + 32 + 16 + 64 + 16 + 8 + 8  # column 17, visible_from_days
         d0, d1 = struct.unpack_from("<2f", raw, offset)
         # 2001-01-01 is 365.5 days after J2000 (2000-01-01 12:00 TT).
         assert d0 == pytest.approx(365.5, abs=0.5)
@@ -573,8 +539,6 @@ class TestWriteSgp4Elements:
         out = tmp_path / "disc_year.bin.gz"
         write_elements([obj], out, OrbitalSource.sbdb, has_localized={})
         raw = gzip.decompress(out.read_bytes())
-        # 1 row: shared (32) + epoch (8) + cols 5-12 (8 × 8 = 64) + om/w (16)
-        # + has_localized (8) + flags (8).
         offset = HEADER_SIZE + 32 + 8 + 64 + 16 + 8 + 8
         (d0,) = struct.unpack_from("<f", raw, offset)
         # 1801-01-01 sits ~72683 days before J2000.
@@ -651,8 +615,7 @@ def _make_parabolic_object(id: str = "spkid-1000001", **overrides) -> Object:
         object_id=id,
         class_=OrbitClass.PAR,
         epoch=overrides.pop("sbdb_epoch", 2460000.5),
-        # a/ma/n are meaningless for parabolic comets; e=1.0 by definition.
-        # i/om/w are required by the writer — pick benign placeholders.
+        # a/ma/n are meaningless here; e=1.0 by definition; i/om/w are placeholders.
         e=1.0,
         i=10.0,
         om=20.0,
@@ -706,17 +669,7 @@ class TestWriteParabolicElements:
         write_parabolic_elements([obj], out, OrbitalSource.sbdb, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
-        # Parabolic layout for 1 row:
-        # col0: int32(1) + pad = 8
-        # col1: uint8(1) + pad = 8
-        # col2: int32(1) + pad = 8
-        # col3: uint8(1) + pad = 8
-        # col4: epoch_jd float64 = 8
-        # col5: q float32(1) + pad = 8
-        # col6-9: e,i,om,w float32(1) + pad = 4 x 8 = 32
-        # col10: tp float64 = 8
-        # col11: radius_km float32(1) + pad = 8
-        q_offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8  # after shared + epoch_jd
+        q_offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8  # column 5, q
         (q,) = struct.unpack_from("<f", raw, q_offset)
         assert abs(q - 2.3) < 1e-6
 

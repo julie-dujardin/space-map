@@ -2,15 +2,13 @@
 
 Stores one fitted `ChunkProbeRecord` per (probe_id, zone, chunk_idx) under
 ``EXPORT_METADATA_DIR/position/probes/_fits/{probe_id}/{zone}/{chunk_idx}.fit``
-with a sibling `.fit.meta.json` signature. The fit pass reads the cache and
-only re-fits when the per-probe signature doesn't match — so a kernel edit
-on one probe no longer forces re-fits of the unchanged probes that happen
-to share its chunks.
+with a sibling `.fit.meta.json` signature. Re-fits only on a signature
+mismatch, so a kernel edit on one probe doesn't force re-fits of unchanged
+probes sharing its chunks.
 
-Pickle is used for the binary because the payload is internal (never shipped
-to clients) and the dataclasses + numpy arrays serialize cleanly. Any schema
-change to `ChunkProbeRecord`, `SubChunkFit`, or `LandedFit` must bump
-`INTERMEDIATE_VERSION`.
+Pickle is used since the payload never ships to clients and the dataclasses
++ numpy arrays serialize cleanly. Any schema change to `ChunkProbeRecord`,
+`SubChunkFit`, or `LandedFit` must bump `INTERMEDIATE_VERSION`.
 """
 
 import hashlib
@@ -55,19 +53,14 @@ def build_fit_signature(
     has_landed: bool,
 ) -> dict:
     """Per-probe signature for the cached `ChunkProbeRecord` — captures only
-    inputs that affect the FIT (trajectory data), not the wire-header bits.
+    inputs that affect the fit (trajectory data), not the wire-header bits.
 
-    `candidates_hash` only folds in when the probe has a flying contribution
-    (fit-center detection only runs for those). `events_hash` only when the
-    probe has a landed contribution. This keeps invalidation tight: a Mercury
-    events JSON edit doesn't re-fit Voyager's interplanetary fits, and a
-    candidates-list edit for a zone with no flying-only probes doesn't
-    re-fit pure landed probes that share its chunks.
-
-    `object_type_ordinal` / `has_localized` are deliberately NOT in this
-    signature — they live in `sidecar.build_chunk_signature`'s per-probe
-    block so an i18n change repacks the chunk binary (cheap) without
-    re-fitting the trajectory.
+    `candidates_hash`/`events_hash` only fold in when the probe has a
+    flying/landed contribution respectively, keeping invalidation tight (a
+    Mercury events edit doesn't re-fit Voyager's interplanetary fits).
+    `object_type_ordinal`/`has_localized` are deliberately excluded — they
+    live in `sidecar.build_chunk_signature` so an i18n change repacks the
+    chunk binary without re-fitting the trajectory.
     """
     entries = sorted(
         (_kernel_entry(k, download_dir) for k in kernels),
@@ -103,11 +96,9 @@ def read_sig(probe_id: int, zone_key: str, chunk_idx: int) -> dict | None:
 
 
 def is_cached(probe_id: int, zone_key: str, chunk_idx: int, expected_sig: dict) -> bool:
-    """True iff the on-disk signature matches `expected_sig`. The `.fit`
-    binary may or may not exist alongside it — sig-only entries mark
-    "tried (probe, chunk), produced no record" so the next export can
-    skip re-trying. `load` returns None in that case.
-    """
+    """True iff the on-disk signature matches `expected_sig`. A sig-only
+    entry (no `.fit` binary) marks "tried, produced no record" so the next
+    export skips re-trying; `load` returns None in that case."""
     return read_sig(probe_id, zone_key, chunk_idx) == expected_sig
 
 
@@ -129,10 +120,8 @@ def save(
     """Write `.fit` (pickled record) + `.fit.meta.json` (signature).
 
     `record=None` means the probe tried this (zone, chunk) but produced no
-    output (every flying sub-chunk uncoverable, landed fit failed, …). We
-    still save the signature so the next export skips re-trying; any prior
-    `.fit` file is removed so a future signature match doesn't accidentally
-    revive stale data.
+    output — the signature still saves so the next export skips re-trying,
+    and any prior `.fit` is removed so a future match can't revive stale data.
     """
     fp = fit_path(probe_id, zone_key, chunk_idx)
     if record is None:
@@ -150,14 +139,9 @@ def save(
 
 def prune_orphans(expected_keys: set[tuple[int, str, int]]) -> None:
     """Walk `_fits/` and delete entries (or whole probe / zone subtrees) not
-    in `expected_keys = {(probe_id, zone_key, chunk_idx), ...}`.
-
-    A probe disappears from `expected_keys` when it's no longer in the
-    classified plans (mission kernel removed, probe demoted, …). A chunk
-    disappears when the probe's coverage shifted off it. Either way the
-    stale `.fit` would otherwise accumulate forever and the next chunk
-    repack would still pull it via `collect_for_repack` if the probe ever
-    re-touched the chunk.
+    in `expected_keys = {(probe_id, zone_key, chunk_idx), ...}` — otherwise a
+    stale `.fit` accumulates forever and could resurface via
+    `collect_for_repack` if the probe ever re-touched the chunk.
     """
     if not FITS_ROOT.exists():
         return

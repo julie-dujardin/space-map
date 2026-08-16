@@ -27,22 +27,14 @@ logger = logging.getLogger(__name__)
 
 _TOP_LEVEL_NAIF_IDS = {0, 10}  # SSB and Sun
 
-# Bodies whose texture directory name ends with this carry a cloud-overlay
-# bundle rather than a regular surface texture. The host body id is the
-# directory name minus this suffix.
+# Sibling texture-bundle dirs, named `<host id><suffix>`, holding overlays for
+# the host body rather than its own surface texture.
 _CLOUDS_SUFFIX = "_clouds"
-# Sibling bundle holding a specular/roughness map for the host body
-# (e.g. naif-399_specular carries Earth's ocean mask).
-_SPECULAR_SUFFIX = "_specular"
-# Sibling bundle holding an emissive night-lights map for the host body
-# (e.g. naif-399_night carries NASA Black Marble for Earth).
-_NIGHT_SUFFIX = "_night"
-# Sibling bundle holding a displacement/height map for the host body
-# (e.g. naif-301_displacement carries the Moon's LRO LOLA topography).
-_DISPLACEMENT_SUFFIX = "_displacement"
-# Top-level celestial-sphere texture directory — `textures/stars/`. Holds the
-# cubemap-skybox bundle the renderer drops behind the whole scene as
-# `scene.background`. Not tied to any NAIF body.
+_SPECULAR_SUFFIX = "_specular"  # e.g. Earth's ocean mask
+_NIGHT_SUFFIX = "_night"  # e.g. NASA Black Marble
+_DISPLACEMENT_SUFFIX = "_displacement"  # e.g. the Moon's LRO LOLA topography
+# `textures/stars/`: the cubemap skybox bundle behind the whole scene, not tied
+# to any NAIF body.
 _SKYBOX_DIR = "stars"
 
 # Object types that belong in planetary systems
@@ -75,15 +67,9 @@ def _read_orientation_csv(csv_path: Path, source: str) -> dict[int, dict]:
 
 
 def load_orientation(download_dir: Path) -> dict[int, dict]:
-    """Load orientation polynomials: SPICE PCK merged with DAMIT lightcurve
-    spin and the occultation-derived poles of the ringed small bodies.
-
-    Returns {naif_id: {pole_ra_0, …, w2, source[, reference]}}. PCK orientation
-    wins where both exist — DAMIT convex spin only fills asteroids the
-    generic/mission PCKs don't cover, and the occultation poles only the four
-    ringed ones neither reaches. Every record names its own ``source``: the
-    three sets are indistinguishable once merged, and the frontend credits the
-    pole to whoever actually published it.
+    """Orientation polynomials: SPICE PCK merged with DAMIT lightcurve spin and
+    occultation-derived poles of the ringed small bodies. PCK wins where both
+    exist; each record names its own ``source`` so the frontend credits it right.
     """
     tables = download_dir / "derived" / "position" / "tables"
     csv_path = tables / "orientation.csv"
@@ -161,13 +147,9 @@ def texture_attribution(meta: dict) -> dict:
 
 
 def _tiers_from_meta(meta: dict) -> list[str]:
-    """Return the sorted tier names available for a textured body.
-
-    Single-frame metadata stores ``exports = {tier: rec}``; monthly metadata
-    stores ``exports = {frame: {tier: rec}}``; cloud-overlay metadata skips
-    per-frame export records entirely and lists tiers explicitly. We expose
-    the per-tier enumeration in any case so the frontend's URL builder
-    doesn't have to care about the layout.
+    """Sorted tier names for a textured body, normalized across the three
+    metadata layouts (single-frame, monthly, cloud-overlay) so the frontend's
+    URL builder doesn't have to care which one it's reading.
     """
     if meta.get("type") == "clouds_overlay":
         return sorted(meta.get("tiers") or [])
@@ -179,15 +161,11 @@ def _tiers_from_meta(meta: dict) -> list[str]:
 
 
 def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
-    """Load all per-body surface texture metadata.json files from the export tree.
+    """{object_id: metadata_dict} for surface textures; sibling overlay bundles
+    are filtered out (use the dedicated loaders for those).
 
-    Returns {object_id: metadata_dict}. Sibling bundles whose directory ends
-    in ``_clouds``, ``_specular`` or ``_night`` are filtered out; use the
-    dedicated loaders for those.
-
-    Body ids come from the data dir (``out_dir/textures``) but metadata.json
-    is read from the mirror dir; ingest writes the texture's webp variants
-    and its metadata.json to those two paths separately.
+    Body ids come from ``out_dir/textures``, but metadata.json is read from
+    the mirror dir — ingest writes those two paths separately.
     """
     textures_dir = out_dir / "textures"
     result: dict[str, dict] = {}
@@ -206,13 +184,9 @@ def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
 
 
 def load_clouds_metadata(out_dir: Path) -> dict[str, dict]:
-    """Load per-body cloud-overlay metadata.json files from the export tree.
-
-    Returns {host_object_id: metadata_dict} — the directory's ``_clouds``
-    suffix is stripped so callers can look up by the surface body's id
-    (e.g. ``naif-399`` for Earth's clouds at ``textures/naif-399_clouds/``).
-    The full export id (``naif-399_clouds``) is preserved in the metadata's
-    own ``id`` field for URL composition.
+    """{host_object_id: metadata_dict} for cloud overlays, keyed by the surface
+    body's id (``_clouds`` suffix stripped). The full export id stays in the
+    metadata's own ``id`` field for URL composition.
     """
     textures_dir = out_dir / "textures"
     result: dict[str, dict] = {}
@@ -230,14 +204,9 @@ def load_clouds_metadata(out_dir: Path) -> dict[str, dict]:
 
 
 def clouds_block(meta: dict) -> dict:
-    """Build the per-body ``clouds`` block emitted into systems/{bary}.json
-    and the global object detail file.
+    """Per-body ``clouds`` block for systems/{bary}.json and object detail.
 
-    Carries everything the renderer needs to fetch and credit a cloud
-    overlay: the export's own id (its directory, parallel to the surface
-    texture), the tier list, the available snapshot frame ids, and
-    attribution fields. The frontend composes URLs as
-    ``/v1/textures/{clouds.id}/{tier}_{frame}.webp``.
+    URLs: ``/v1/textures/{clouds.id}/{tier}_{frame}.webp``.
     """
     block: dict = {
         "id": meta["id"],
@@ -257,12 +226,8 @@ def clouds_block(meta: dict) -> dict:
 
 
 def load_specular_metadata(out_dir: Path) -> dict[str, dict]:
-    """Load per-body specular-map metadata.json files from the export tree.
-
-    Returns {host_object_id: metadata_dict} keyed by the surface body's id
-    (e.g. ``naif-399`` for ``textures/naif-399_specular/``). The full export
-    id is preserved in the metadata's own ``id`` field for URL composition.
-    """
+    """{host_object_id: metadata_dict} for specular maps, keyed by the surface
+    body's id (``_specular`` suffix stripped)."""
     textures_dir = out_dir / "textures"
     result: dict[str, dict] = {}
     if not textures_dir.exists():
@@ -279,12 +244,9 @@ def load_specular_metadata(out_dir: Path) -> dict[str, dict]:
 
 
 def specular_block(meta: dict) -> dict:
-    """Build the per-body ``specular`` block emitted into systems/{bary}.json.
+    """Per-body ``specular`` block for systems/{bary}.json.
 
-    Carries the export's own id (sibling directory of the surface texture),
-    the available tier list, and attribution. The frontend composes URLs as
-    ``/v1/textures/{specular.id}/{tier}.webp`` — single-frame, no per-frame
-    suffix.
+    URLs: ``/v1/textures/{specular.id}/{tier}.webp`` (single-frame).
     """
     block: dict = {
         "id": meta["id"],
@@ -303,12 +265,8 @@ def specular_block(meta: dict) -> dict:
 
 
 def load_night_metadata(out_dir: Path) -> dict[str, dict]:
-    """Load per-body night-lights metadata.json files from the export tree.
-
-    Returns {host_object_id: metadata_dict} keyed by the surface body's id
-    (e.g. ``naif-399`` for ``textures/naif-399_night/``). The full export
-    id is preserved in the metadata's own ``id`` field for URL composition.
-    """
+    """{host_object_id: metadata_dict} for night-lights maps, keyed by the
+    surface body's id (``_night`` suffix stripped)."""
     textures_dir = out_dir / "textures"
     result: dict[str, dict] = {}
     if not textures_dir.exists():
@@ -325,12 +283,9 @@ def load_night_metadata(out_dir: Path) -> dict[str, dict]:
 
 
 def night_block(meta: dict) -> dict:
-    """Build the per-body ``night`` block emitted into systems/{bary}.json.
+    """Per-body ``night`` block for systems/{bary}.json.
 
-    Carries the export's own id (sibling directory of the surface texture),
-    the available tier list, and attribution. The frontend composes URLs as
-    ``/v1/textures/{night.id}/{tier}.webp`` — single-frame, no per-frame
-    suffix.
+    URLs: ``/v1/textures/{night.id}/{tier}.webp`` (single-frame).
     """
     block: dict = {
         "id": meta["id"],
@@ -349,12 +304,8 @@ def night_block(meta: dict) -> dict:
 
 
 def load_displacement_metadata(out_dir: Path) -> dict[str, dict]:
-    """Load per-body displacement-map metadata.json files from the export tree.
-
-    Returns {host_object_id: metadata_dict} keyed by the surface body's id
-    (e.g. ``naif-301`` for ``textures/naif-301_displacement/``). The full
-    export id is preserved in the metadata's own ``id`` field for URL composition.
-    """
+    """{host_object_id: metadata_dict} for displacement maps, keyed by the
+    surface body's id (``_displacement`` suffix stripped)."""
     textures_dir = out_dir / "textures"
     result: dict[str, dict] = {}
     if not textures_dir.exists():
@@ -396,12 +347,7 @@ def displacement_block(meta: dict) -> dict:
 
 
 def load_skybox_metadata(out_dir: Path) -> dict | None:
-    """Load the cubemap-skybox bundle metadata.json from the export tree.
-
-    Returns the parsed metadata dict, or None when no skybox bundle has been
-    ingested. The renderer drops a single skybox behind the whole scene; if
-    multiple skyboxes ever ship, this returns the one at ``textures/stars/``.
-    """
+    """The cubemap-skybox metadata dict, or None if no bundle is ingested."""
     meta_file = mirror_path(out_dir / "textures" / _SKYBOX_DIR / "metadata.json")
     if not meta_file.exists():
         return None
@@ -409,12 +355,9 @@ def load_skybox_metadata(out_dir: Path) -> dict | None:
 
 
 def skybox_block(meta: dict) -> dict:
-    """Build the top-level ``skybox`` block embedded in v1/metadata.json.
+    """Top-level ``skybox`` block for v1/metadata.json.
 
-    Carries only what the frontend needs to fetch faces and credit the
-    bundle: id, face/tier shape, encoding, sky frame, and attribution.
-    The renderer composes URLs as ``/v1/textures/{skybox.id}/{tier}_{face}.webp``
-    where face ∈ ``faces`` and tier ∈ ``tiers``.
+    URLs: ``/v1/textures/{skybox.id}/{tier}_{face}.webp``.
     """
     block: dict = {
         "id": meta["id"],
@@ -467,12 +410,9 @@ def load_ring_metadata(out_dir: Path) -> dict[str, list[dict]]:
 
 
 def load_model_metadata(out_dir: Path) -> dict[str, dict]:
-    """Load all per-slug 3D-model metadata.json files from the export tree.
-
-    Returns ``{slug: metadata_dict}``. Unlike the texture/ring/clouds
-    loaders, the model metadata.json lives in ``EXPORT_DIR`` itself
-    (publicly served — clients fetch it to get the source catalog, tier
-    stats, and mission list); no mirror_path indirection.
+    """{slug: metadata_dict} for 3D models. Unlike texture/ring/clouds metadata,
+    this lives in ``EXPORT_DIR`` itself (publicly served), not behind
+    ``mirror_path``.
     """
     models_dir = out_dir / "models"
     result: dict[str, dict] = {}
@@ -489,14 +429,8 @@ def load_model_metadata(out_dir: Path) -> dict[str, dict]:
 
 
 def ring_block(meta: dict) -> dict:
-    """Build one entry of the per-body `rings` array emitted into
-    systems/{bary}.json and the global object detail.
-
-    Carries the geometry constants the renderer needs (inner/outer radius,
-    sample count, intensity scale, color space) plus credit fields and the
-    strip file + channel→row map; the frontend fetches
-    ``/v1/rings/{body_id}/{strip}`` once per bundle and splits the rows into
-    textures. ``strip`` is bundle-relative so that URL needs no other part.
+    """One entry of the per-body `rings` array for systems/{bary}.json and object
+    detail. Fetched as ``/v1/rings/{body_id}/{strip}``.
     """
     bundle = meta.get("bundle", "primary")
     block = {
@@ -587,14 +521,9 @@ def write_systems_global(
 ) -> None:
     """Write the always-loaded `systems/global.json` lookup file.
 
-    Holds context-independent data the frontend needs upfront regardless of
-    which planetary system the user is viewing:
-
-    - `gm`: full per-body GM table (km^3/s^2). Used by chebyshev trail-buffer
-      sizing to estimate orbital periods via Kepler's third law for any
-      parent NAIF id encountered.
-    - `nut_prec_angles`: NUT_PREC_ANGLES coefficients per planetary-system
-      owner. Paired with per-body `nut_prec` arrays in the per-system files.
+    Holds data the frontend needs regardless of which system it's viewing:
+    `gm` (full GM table, for chebyshev trail-buffer period estimates) and
+    `nut_prec_angles` (paired with per-body `nut_prec` in the per-system files).
     """
     if not gms and not nut_prec_angles:
         return
@@ -706,8 +635,7 @@ def write_system_metadata(
             if obj.naif_id is not None and obj.naif_id in radii:
                 entry["radii"] = radii[obj.naif_id]
 
-            # Ring profile bundles, inner → outer (only on bodies whose
-            # ingest produced at least one).
+            # Ring profile bundles, inner → outer.
             if obj.has_rings:
                 metas = ring_metadata.get(obj.id)
                 if metas:
@@ -719,25 +647,18 @@ def write_system_metadata(
                         sys_id,
                     )
 
-            # Cloud overlay (separate texture bundle parallel to the surface).
             clouds_meta = clouds_metadata.get(obj.id)
             if clouds_meta is not None:
                 entry["clouds"] = clouds_block(clouds_meta)
 
-            # Specular/roughness map (separate single-frame bundle parallel
-            # to the surface; e.g. naif-399 → Earth's ocean mask).
             spec_meta = specular_metadata.get(obj.id)
             if spec_meta is not None:
                 entry["specular"] = specular_block(spec_meta)
 
-            # Night-lights emissive map (separate single-frame bundle
-            # parallel to the surface; e.g. naif-399 → NASA Black Marble).
             night_meta = night_metadata.get(obj.id)
             if night_meta is not None:
                 entry["night"] = night_block(night_meta)
 
-            # Displacement/height map (separate single-frame bundle parallel
-            # to the surface; e.g. naif-301 → the Moon's LRO LOLA topography).
             disp_meta = displacement_metadata.get(obj.id)
             if disp_meta is not None:
                 entry["displacement"] = displacement_block(disp_meta)

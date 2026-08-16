@@ -1,15 +1,14 @@
 """Split a spinner's mission into rate-stable spans, one baseline each.
 
-A single constant spin baseline only cancels the spin while rate and axis hold.
-Juno steps between 1 and 2 RPM across mission phases, so a mission-wide baseline
-leaves a fast residual (the rate error) wherever the phase differs from the one
-it was fit on — millions of keyframes. We instead measure the local spin across
-the mission, cut at the phase transitions, and fit one `SpinBaseline` per span.
+A constant spin baseline only cancels the spin while rate and axis hold.
+Juno steps between 1 and 2 RPM across mission phases, so a mission-wide
+baseline leaves a fast residual wherever the phase differs from the fit —
+millions of keyframes. Instead: measure the local spin, cut at phase
+transitions, fit one `SpinBaseline` per span.
 
-A non-spinner (slow slewing orbiter) returns a single span with no baseline —
-its raw motion already samples fine, and an inverse spin would only add
-curvature. The spinner test is the same alias gate the extractor used: a turn
-wider than the alias angle per seed step aliases the adaptive sampler.
+A non-spinner returns a single span with no baseline — raw motion already
+samples fine, and an inverse spin would only add curvature. The spinner test
+is the same alias gate the extractor uses.
 """
 
 import logging
@@ -60,11 +59,10 @@ class SpinSegment:
 def plan_segments(
     frame: str, t0: float, t1: float, *, alias_angle: float, seed_dt: float
 ) -> list[SpinSegment]:
-    """Partition `[t0, t1]` into rate-stable spans, fitting a baseline per span.
-
-    Returns a single raw (baseline-free) span for a non-spinner. For a spinner,
-    returns one span per spin phase, each carrying a `SpinBaseline` fit from a
-    short dense window at the span's start.
+    """Partition `[t0, t1]` into rate-stable spans, fitting a baseline per
+    span. Returns a single raw span for a non-spinner; one span per spin
+    phase for a spinner, each with a `SpinBaseline` fit from a short dense
+    window at its start.
     """
     ets, omegas = _spin_timeline(frame, t0, t1)
     speeds = [float(np.linalg.norm(o)) for o in omegas if o is not None]

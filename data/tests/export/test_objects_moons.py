@@ -19,8 +19,7 @@ RADII = {
     501: {"a": 1829.4, "b": 1819.3, "c": 1815.7},  # Io
     502: {"a": 1562.6, "b": 1560.3, "c": 1559.5},  # Europa
 }
-# IAU pole keyed by naif_id, as load_orientation returns. Io only — Europa has
-# none, exercising the untilted path.
+# IAU pole keyed by naif_id. Io only, so Europa exercises the untilted path.
 ORIENTATION = {501: {"pole_ra_0": 268.05, "pole_dec_0": 64.50}}
 
 
@@ -100,8 +99,7 @@ class TestNotableMoonsByHost:
         assert [m.object_id for m in host.moons] == ["naif-502", "naif-501"]
         assert host.moons[0].fallback_name == "Europa"
         assert host.moons[0].diameter_km == pytest.approx(3121.6, abs=0.5)
-        # Triaxial radii ride along for the lineup's true shape; Europa has no
-        # orientation record, so its pole stays None (untilted).
+        # No orientation record for Europa, so its pole stays None (untilted).
         assert host.moons[0].radii == RADII[502]
         assert host.moons[0].pole is None
         io = host.moons[1]

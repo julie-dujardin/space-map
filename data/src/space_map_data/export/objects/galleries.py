@@ -1,16 +1,11 @@
 """Extra image galleries attached to an object's global bundle.
 
-A page shows one gallery per *subject*: the body itself (``images``), its rings
-(``ring_images``), and the galleries built here — its atmosphere, its insides,
-its named surface features and its moons. Each is a separate shelf in the Images
-tab rather than one undifferentiated pile, so a picture of Ganymede is filed
-under Ganymede instead of sitting between two portraits of Jupiter.
-
-The topic shelves come from the articles the Structure tab already cites. The
-pooled shelves are drawn from the notable lists the tiers above ranked, so a
-picture leads its gallery for the same reason its subject leads the list, and
-the subject id rides on every entry: it labels the tile and links out of the
-viewer.
+A page shows one shelf per *subject* in the Images tab — atmosphere, moons,
+features — rather than one undifferentiated pile, so a picture of Ganymede is
+filed under Ganymede instead of between two portraits of Jupiter. Topic
+shelves come from articles the Structure tab already cites; pooled shelves
+draw on the notable lists the tiers above ranked, and each entry carries its
+subject id to label the tile and link out of the viewer.
 """
 
 import logging
@@ -39,11 +34,8 @@ MOON_PER_SUBJECT_CAP = 2
 # Locator maps are IAU outline drawings, not pictures of the feature.
 _GALLERY_KINDS = frozenset({"photo", "radar"})
 
-# Shelves about one aspect of the body, ahead of the ones about other bodies.
 # Interior is deliberately absent: its articles illustrate with cutaway
-# schematics (often lettered in one language), which is what the Structure tab
-# already draws. Its selection is cached all the same — adding it back is this
-# tuple.
+# schematics the Structure tab already draws itself.
 _TOPICS = ("atmosphere",)
 
 # Vectors on Commons are diagrams, never photographs, and a topic article's
@@ -118,9 +110,9 @@ def _attach_titles(
 ) -> None:
     """Fold these shelves' picture titles into the object's localized bundles.
 
-    The writer only knows about the object's own and its ring pictures, so the
-    pooled ones are added here. Never onto a language with no entry of its own:
-    the ``has_localized`` bit is already baked into the binary chunk.
+    The writer only knows about the object's own and ring pictures, so the
+    pooled ones are added here. Skips languages with no entry of their own,
+    since the ``has_localized`` bit is already baked into the binary chunk.
     """
     files = [entry["file"] for gallery in galleries for entry in gallery["images"]]
     for lang in LANGUAGES:
@@ -146,10 +138,8 @@ def _pool(
 ) -> list[dict]:
     """Interleave each subject's pictures into one shelf, best subject first.
 
-    Walks the subjects in rank order taking one picture each, then goes round
-    again, so a shelf that fills up still spans the system instead of stopping
-    inside the first moon's gallery. ``seen`` grows as pictures are taken, both
-    across subjects here and against the galleries one shelf up.
+    Takes one picture per subject per round, so a shelf that fills up still
+    spans the system instead of stopping inside the first moon's gallery.
     """
     out: list[dict] = []
     for _ in range(per_subject):

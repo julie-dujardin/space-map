@@ -4,16 +4,12 @@ Per-molecule cross section (King-corrected Lorentz-Lorenz form):
 
     sigma(lambda) = 24 pi^3 / (lambda^4 N_fit^2) * ((n^2-1)/(n^2+2))^2 * F_king
 
-where n is the refractive index at the dispersion fit's own number density
-N_fit — sigma is density-independent because (n-1) scales with N. A mixture's
-volume coefficient is the number-fraction-weighted sum of per-gas cross
-sections times the total number density at the rendered reference level:
+sigma is density-independent since (n-1) scales with N. Mixture coefficient:
 
     beta(lambda) = N_ref * sum_i f_i * sigma_i(lambda)
 
-(weighting cross sections, not refractivities: independent scatterers add by
-intensity, and squaring a mixed refractivity misweights strong trace
-scatterers like CO2 in air).
+Weighted by cross section, not refractivity — squaring a mixed refractivity
+would misweight strong trace scatterers like CO2 in air.
 """
 
 import math
@@ -50,8 +46,8 @@ def rayleigh_beta_per_m(
 ) -> float:
     """Volume scattering coefficient (1/m) for a gas mixture at (P, T).
 
-    `composition` maps gas name -> number (volume) fraction; fractions are
-    renormalised so a truncated composition list doesn't underestimate beta.
+    Fractions are renormalised so a truncated composition list doesn't
+    underestimate beta.
     """
     total = sum(composition.values())
     sigma = sum(

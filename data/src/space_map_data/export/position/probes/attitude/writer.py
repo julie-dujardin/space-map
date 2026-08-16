@@ -1,18 +1,13 @@
 """Pack keyframes into gzipped chunk files and produce the per-probe manifest.
 
-One probe → many ~200 KB `.bin.gz` files under
-`v1/attitude/<probe-id>/<N>.bin.gz`, plus a manifest entry merged into
-the probe's `__global__` object bundle.
+One probe → many `.bin.gz` files under `v1/attitude/<probe-id>/<N>.bin.gz`,
+plus a manifest entry for the probe's `__global__` object bundle. The chunker
+walks keyframes serially, starting a new file when the raw byte budget would
+overflow `TARGET_RAW_BYTES` — working from a raw target keeps the pack loop
+allocation-free; gzip applies once per chunk at close.
 
-The chunker walks keyframes serially, accumulates raw bytes, and starts a
-new file when the running raw budget would overflow `TARGET_RAW_BYTES`.
-Working from a raw target instead of a compressed one keeps the pack
-loop allocation-free; gzip is applied once per chunk at close time, and
-the resulting compressed file sizes land in the 100 – 250 KB band for
-attitude streams we benchmarked.
-
-File writes are atomic via `.part` rename so a crashed export leaves the
-old chunk in place — the next run repacks whichever chunks changed.
+Writes are atomic via `.part` rename so a crashed export leaves the old
+chunk in place.
 """
 
 import gzip
@@ -52,12 +47,10 @@ class ChunkFile:
 
 
 def _smallest_three(q: np.ndarray) -> tuple[int, int, int, int]:
-    """Pack one quaternion as (idx_dropped, a, b, c) int16-quantised.
-
-    The largest |component| is dropped and reconstructed at decode time
-    via `sqrt(1 - a² - b² - c²)`. Sign is canonicalised so the dropped
-    component is positive — that way the reconstruction has a unique
-    answer (no ± ambiguity from the sqrt).
+    """Pack one quaternion as (idx_dropped, a, b, c) int16-quantised. The
+    largest |component| is dropped and reconstructed via
+    `sqrt(1 - a² - b² - c²)`; sign is canonicalised so it's positive,
+    avoiding ± ambiguity from the sqrt.
     """
     idx = int(np.argmax(np.abs(q)))
     if q[idx] < 0:
@@ -82,8 +75,8 @@ def write_chunks(
     """Write `<N>.bin.gz` files into `out_dir`, return per-file metadata.
 
     `segments` is one `(ets, quats)` keyframe stream per spin span, in span
-    order — chunks are numbered globally but never straddle a span, and each
-    carries the span's index as `baseline_index`. Replaces any existing
+    order — chunks are numbered globally but never straddle a span, each
+    carrying the span's index as `baseline_index`. Replaces any existing
     `*.bin.gz` so stale chunks can't outlive a content change.
     """
     out_dir.mkdir(parents=True, exist_ok=True)

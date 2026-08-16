@@ -30,11 +30,9 @@ class NotableObject:
     """One statically-picked notable member: an object, a moon, a group, or a
     surface feature.
 
-    A group member (e.g. a constellation listed in its orbit zone) sets
-    ``group_slug`` and routes to ``/g/<slug>`` instead of focusing an object —
-    ``object_id`` is empty for it. A feature member (on a ``ft-`` page) sets
-    ``feature_id`` and keeps its host body in ``object_id``, routing to
-    ``/b/<body>/f/<feature_id>``. ``wikidata_qid`` still drives localized labels.
+    A group member sets ``group_slug`` and routes to ``/g/<slug>`` (``object_id``
+    empty). A feature member sets ``feature_id``, keeps its host body in
+    ``object_id``, and routes to ``/b/<body>/f/<feature_id>``.
     """
 
     object_id: str  # full Object.id — both the routing/focus id and image-cache key
@@ -47,33 +45,26 @@ class NotableObject:
     sitelinks_count: int | None = None  # Wikidata prominence, for cross-member ranking
     mass_kg: float | None = None  # from PCK GM; major bodies only
     radii: dict | None = None  # triaxial PCK radii {a, b, c} km; major bodies only
-    radius_km: float | None = (
-        None  # scalar render radius (Wikidata P2120) when no radii/diameter
-    )
+    radius_km: float | None = None  # Wikidata P2120 fallback when no radii/diameter
     pole: dict | None = None  # IAU J2000 pole {ra, dec} deg, for the lineup's true tilt
     albedo: float | None = None  # SBDB geometric albedo; small bodies only
     spec: str | None = (
         None  # SBDB taxonomic type (SMASS, else Tholen); small bodies only
     )
     color: str | None = None  # physically-derived #rrggbb surface tint; small bodies
-    # Mass of the body's *rings*, not the body: the Ring Systems page charts its
-    # members against each other. Same shape as the object bundle's `ring_stats.mass`.
-    ring_mass: dict | None = None
-    # The one figure each Structure & Activity page ranks its members by, in the
-    # same shape the body's own panel carries it. Set only on that page's members:
-    # every collection here is bodies-with-a-property, and the property is the chart.
+    ring_mass: dict | None = None  # ring mass for Ring Systems chart; `ring_stats.mass`
+    # Structure & Activity page members are ranked by this one figure, same shape
+    # as the body's own panel.
     ocean: dict | None = None  # cat-oceans; `interior.ocean_block`
     atmosphere_pressure: dict | None = (
         None  # cat-atmospheres; `atmosphere.pressure_block`
     )
-    # What the member's own tile draws instead of a photograph: the body cut
-    # open, or its air seen edge-on. Trimmed to what a 60 px drawing uses —
-    # `interior.cutaway_layers` and `atmosphere.limb_profile`.
-    cutaway: list[dict] | None = None
-    limb: dict | None = None
-    # The three heat pages share one row — volcanism, tectonics, tidal and
-    # magnetism — because a body is usually on more than one of them.
-    activity: dict | None = None  # `activity.collection_row`
+    # Tile art in place of a photo: cutaway or limb profile, trimmed to 60 px scale.
+    cutaway: list[dict] | None = None  # `interior.cutaway_layers`
+    limb: dict | None = None  # `atmosphere.limb_profile`
+    activity: dict | None = (
+        None  # `activity.collection_row`; shared by the 3 heat pages
+    )
 
 
 def render_size(
@@ -83,13 +74,10 @@ def render_size(
     units: UnitConverter | None,
     wikidata_entities: WikidataEntityCache | None,
 ) -> tuple[dict | None, float | None]:
-    """The body's render size for the lineup, mirroring the position pipeline.
+    """Render size for the lineup, mirroring the position pipeline.
 
-    Returns ``(triaxial_radii, scalar_radius_km)``. PCK triaxial radii (the
-    chebyshev render shape) take precedence; otherwise the Wikidata radius
-    (P2120) is the elements-pipeline override used for bodies with no SBDB
-    diameter (most trans-Neptunian dwarfs). SBDB diameter is carried separately.
-    ``units``/``wikidata_entities`` may be ``None`` (skips the Wikidata path).
+    PCK triaxial radii take precedence; else the Wikidata radius (P2120), used
+    for bodies with no SBDB diameter (most trans-Neptunian dwarfs).
     """
     if naif_id is not None and (pck := radii.get(naif_id)) is not None:
         return pck, None
@@ -103,12 +91,10 @@ def render_size(
 def pole_from_orientation(
     orientation: dict[int, dict], naif_id: int | None
 ) -> dict | None:
-    """The body's IAU J2000 pole {ra, dec} (deg), if known.
+    """The body's IAU J2000 pole {ra, dec} (deg), for the lineup hero's axial tilt.
 
-    Gives the lineup hero its true axial tilt. The orientation table is a merge
-    of three sets (see ``load_orientation``), so the pole carries the ``source``
-    of whichever published it — a small-body lineup tilts its members on DAMIT
-    poles and must not credit them to the PCK.
+    Carries ``source`` since ``orientation`` merges three sets — a DAMIT pole
+    must not get credited to the PCK.
     """
     if naif_id is None or naif_id not in orientation:
         return None
@@ -135,13 +121,9 @@ def render_geometry(
     wikidata_entities: WikidataEntityCache | None = None,
     orientation: dict[int, dict] | None = None,
 ) -> RenderGeometry:
-    """The lineup render geometry for a body — size + tilt — as one bundle.
-
-    The single source every member builder uses, so a body sizes *and* tilts
-    identically wherever it appears (e.g. Pluto on the dwarf-planet page and in
-    its trans-Neptunian orbit-class zone). ``units``/``wikidata_entities`` enable
-    the Wikidata-radius fallback; ``orientation`` enables the pole — omit either
-    to skip that source.
+    """Lineup render geometry (size + tilt) as one bundle, so a body renders the
+    same wherever it appears. Omit ``units``/``wikidata_entities`` or
+    ``orientation`` to skip that source.
     """
     triaxial, radius_km = render_size(naif_id, qid, radii, units, wikidata_entities)
     return RenderGeometry(
@@ -191,9 +173,8 @@ _PROVENANCE_RANK = {"missions": 0, "radar": 1, "lightcurve": 2}
 def shape_model_slugs(model_metadata: dict[str, dict]) -> dict[str, str]:
     """Best shape-model bundle slug per object id.
 
-    Spacecraft bundles share ``model_metadata`` but must not leak into body
-    lineups, so gate on ``kind == "shape_model"``. Equal-provenance ties break
-    to the newest DAMIT model, matching the ingest's preferred-model policy.
+    Gated on ``kind == "shape_model"`` so spacecraft bundles don't leak into body
+    lineups. Ties break to the newest DAMIT model.
     """
     best: dict[str, tuple] = {}
     for slug, meta in model_metadata.items():
@@ -218,15 +199,8 @@ def notable_entries(
 ) -> list[dict]:
     """Denormalized records for a global bundle.
 
-    Name is the English Wikidata label when available (matching the object
-    bundles' global name), else the DB fallback. Thumbnail reuses the
-    search-card picker over the object's export images. ``displacement_metadata``
-    (when supplied) lets a member carry its DEM block so the lineup renders the
-    same relief as the main map. ``model_slugs`` ({object_id: slug}, shape-model
-    only) lets a member load its shape mesh instead of a sphere. ``textured_ids``
-    (when supplied) stamps ``texture`` true/false on every object entry —
-    explicit false (not omission) so the frontend can tell "no texture" from a
-    pre-flag bundle it should still probe.
+    ``textured_ids``, when supplied, stamps ``texture`` true/false explicitly so
+    the frontend can tell "no texture" from a pre-flag bundle it should still probe.
     """
     out: list[dict] = []
     for member in members:

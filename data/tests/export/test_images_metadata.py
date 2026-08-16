@@ -26,8 +26,7 @@ class TestStripHtml:
         assert _strip_html("a<br>b") == "a\nb"
 
     def test_collapses_whitespace_within_markup(self) -> None:
-        # Collapse runs only when there's markup to strip; plain strings are
-        # left byte-for-byte so we never mangle a legitimate value.
+        # Collapses only when there's markup to strip; plain strings stay byte-for-byte.
         assert _strip_html("a   \t <b>b</b>") == "a b"
         assert _strip_html("a   \t b") == "a   \t b"
 

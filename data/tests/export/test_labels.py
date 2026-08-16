@@ -78,11 +78,8 @@ class TestWriteGlobalLabels:
 
     def test_empty_name_when_neither_localized_nor_global_has_one(self, tmp_path):
         all_objs = ChunkObjectData()
-        # Curated extra with no Wikidata and no DB name (e.g. a probe whose
-        # ingest hasn't seen a Wikidata entity yet). The empty-name line still
-        # ships because the id needs to appear in the keys for the frontend's
-        # auto-promote set; downstream name coalescing turns the empty value
-        # into a null and the drawer walks its fallback chain (loading → id).
+        # The id must still appear for the frontend's auto-promote set; empty
+        # coalesces to null, and the drawer falls back to loading → id.
         all_objs.global_data["probe-49065984"] = {"type": ObjectType.spacecraft}
 
         write_global_labels(
@@ -92,9 +89,8 @@ class TestWriteGlobalLabels:
         assert _parse(tmp_path / "labels" / "en.gz") == {"probe-49065984": ""}
 
     def test_chebyshev_covered_bodies_are_auto_promoted(self, tmp_path):
-        """DE441 perturber asteroids ride in chebyshev but aren't in
-        PROMOTED_EXTRA_IDS; they're rendered as individual meshes anyway, so
-        they belong in the labels set."""
+        """DE441 perturber asteroids aren't in PROMOTED_EXTRA_IDS but render as
+        individual meshes, so they need labels too."""
         all_objs = ChunkObjectData()
         all_objs.global_data["spkid-20000052"] = {
             "type": ObjectType.asteroid_main_belt,
@@ -112,10 +108,9 @@ class TestWriteGlobalLabels:
         assert _parse(tmp_path / "labels" / "en.gz") == {"spkid-20000052": "52 Europa"}
 
     def test_falls_back_to_provisional_designation(self, tmp_path):
-        """SPICE-only minor moons (e.g. naif-551) have no Wikidata and no DB
-        ``name``, but they do carry a provisional designation. Use that as the
-        last fallback so the promoted entry shows something meaningful, and
-        flag the line as minor so the frontend renders it as a collapsed halo."""
+        """SPICE-only minor moons have no Wikidata name but do carry a
+        provisional designation — the last fallback, flagged minor so the
+        frontend collapses its halo."""
         all_objs = ChunkObjectData()
         all_objs.global_data["naif-551"] = {
             "type": ObjectType.moon,
@@ -151,8 +146,7 @@ class TestWriteGlobalLabels:
             "type": ObjectType.moon,
             "provisional_designation": "S2020 S48",
         }
-        # Moon whose DB name was filled from the designation by SPICE bodc2n →
-        # still effectively designation-only, so it should also be flagged.
+        # Name filled from the designation by SPICE bodc2n — still designation-only, flag it too.
         all_objs.global_data["naif-55533"] = {
             "type": ObjectType.moon,
             "name": "S2010 J5",
@@ -177,17 +171,16 @@ class TestWriteGlobalLabels:
         }
 
     def test_all_probes_are_promoted_with_minor_flag_outside_extras(self, tmp_path):
-        """Every probe rides in the labels file so the high-accuracy probe
-        system can render it. Curated extras (``PROMOTED_EXTRA_IDS``) label
-        normally; the rest get the ``m`` flag for collapsed-halo rendering."""
+        """Every probe ships in labels for the high-accuracy render system.
+        Curated extras label normally; the rest get the ``m`` flag for
+        collapsed-halo rendering."""
         all_objs = ChunkObjectData()
         # Curated extra — Voyager 1 is in PROMOTED_EXTRA_IDS
         all_objs.global_data["probe-49065984"] = {
             "type": ObjectType.spacecraft,
             "name": "VOYAGER 1 (-31)",
         }
-        # Non-curated probe (not in PROMOTED_EXTRA_IDS) — should still ship,
-        # marked minor so the frontend collapses its halo by default
+        # Non-curated probe — still ships, marked minor for the collapsed-halo default
         all_objs.global_data["probe-99999999"] = {
             "type": ObjectType.spacecraft,
             "name": "GENERIC (-99)",

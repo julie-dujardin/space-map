@@ -36,27 +36,24 @@ class TestRollUp:
 
     @pytest.mark.parametrize("object_id", sorted(INTERIOR_FACTS))
     def test_shares_descend(self, object_id: str):
-        """The bar reads most to least abundant, and the frontend trusts the
-        order rather than re-sorting."""
+        """The frontend trusts share order rather than re-sorting it."""
         composition = block(object_id).get("composition", [])
         shares = [c["share"] for c in composition]
         assert shares == sorted(shares, reverse=True)
 
     def test_layers_collapse_onto_one_material(self):
-        """The Moon has four layers over two materials; the bar has two bars,
-        not four."""
+        """Four layers, two materials: the bar has two bars, not four."""
         composition = block("naif-301")["composition"]
         assert [c["material"] for c in composition] == ["silicate", "metal"]
 
     def test_slivers_are_dropped(self):
-        """Tethys is 0.06% rock, which draws as an invisible segment with a
-        legend entry of its own."""
+        """Tethys is 0.06% rock — an invisible segment with its own legend entry."""
         composition = block("naif-603")["composition"]
         assert [c["material"] for c in composition] == ["water"]
 
     def test_body_without_layer_masses_still_ships(self):
-        """The Sun has zone radii and compositions but no masses. It keeps its
-        structure and its sources; only the bar goes."""
+        """The Sun has zone radii but no masses: structure and sources ship,
+        only the bar drops."""
         result = block("naif-10")
         assert "composition" not in result
         assert result["structure"] == "fluid"
@@ -68,8 +65,8 @@ class TestLayers:
 
     @pytest.mark.parametrize("object_id", sorted(INTERIOR_FACTS))
     def test_radii_descend(self, object_id: str):
-        """Layers ship outermost first and the disc is drawn by walking them
-        inwards; one out of order would nest a core outside its mantle."""
+        """Layers ship outermost first; one out of order would nest a core
+        outside its mantle."""
         radii = [
             layer["outer_radius_km"]
             for layer in block(object_id)["layers"]
@@ -79,21 +76,21 @@ class TestLayers:
 
     @pytest.mark.parametrize("object_id", sorted(INTERIOR_FACTS))
     def test_every_layer_can_be_drawn(self, object_id: str):
-        """A layer with no outer radius has no band to occupy, and the ones
-        below it would silently slide outwards to fill the gap."""
+        """A layer with no outer radius has no band; the ones below it would
+        silently slide outward to fill the gap."""
         for layer in block(object_id)["layers"]:
             assert "outer_radius_km" in layer, layer["role"]
 
     def test_a_layer_carries_its_own_composition(self):
-        """Europa's ocean is water where the body is mostly rock; the per-layer
-        bars are what make that visible."""
+        """Europa's ocean is water though the body is mostly rock — only
+        per-layer bars show that."""
         layers = {layer["role"]: layer for layer in block("naif-502")["layers"]}
         assert [c["material"] for c in layers["ocean"]["composition"]] == ["water"]
         assert [c["material"] for c in layers["core"]["composition"]] == ["metal"]
 
     def test_published_widths_ride_along(self):
-        """Europa's core is anywhere from 6.8% to 11.9% of the moon, and a
-        single number would read as a measurement."""
+        """A range ships instead of a point estimate, which would misread as
+        a precise measurement."""
         core = next(
             layer for layer in block("naif-502")["layers"] if layer["role"] == "core"
         )
@@ -101,8 +98,8 @@ class TestLayers:
         assert core["note"] == "core_size_disputed"
 
     def test_a_diffuse_layer_says_so(self):
-        """Jupiter's core is heavy elements smeared through the envelope, so
-        its radius is where it fades out rather than where it ends."""
+        """A diffuse core fades into the envelope rather than ending sharply,
+        so its radius is where it fades out."""
         core = next(
             layer for layer in block("naif-599")["layers"] if layer["role"] == "core"
         )
@@ -120,8 +117,8 @@ class TestLayers:
         assert species[0] == "SiO2"
 
     def test_a_rock_name_ships_where_the_literature_agrees(self):
-        """Earth's two crusts are the case the field exists for: both are
-        "solid silicate" and neither is the other's rock."""
+        """Earth's two crusts are why the field exists: chemically the same,
+        but not the same rock."""
         layers = {layer["role"]: layer for layer in block("naif-399")["layers"]}
         assert layers["crust"]["rock"] == "andesite"
         assert layers["oceanic_crust"]["rock"] == "basalt"
@@ -135,9 +132,8 @@ class TestLayers:
         assert "rock" not in crust
 
     def test_a_rock_from_another_paper_is_credited(self):
-        """Mars's crust is 47 km thick because InSight timed a quake and basalt
-        because a gamma-ray spectrometer read its chemistry; the panel names
-        the rock, so it has to name McSween too."""
+        """Thickness and chemistry come from different papers; naming the rock
+        means crediting both."""
         urls = {source["url"] for source in block("naif-499")["sources"]}
         assert "https://doi.org/10.1126/science.1165871" in urls
 
@@ -213,8 +209,7 @@ class TestRoutes:
         assert result["estimated"] is True
         assert result["analogue"] == "ordinary_chondrite"
         assert result["taxonomy_class"] == "S"
-        # The scheme rides along because a letter means different things under
-        # Tholen and Bus-DeMeo.
+        # The scheme rides along: a letter means different things under Tholen vs Bus-DeMeo.
         assert result["taxonomy_scheme"] == "Bus-DeMeo"
 
     def test_estimate_never_claims_a_structure(self):
@@ -267,9 +262,8 @@ class TestSources:
         assert "taxonomy_sources" not in block("naif-503")
 
     def test_a_dropped_material_drops_its_citation(self, monkeypatch):
-        """Credit follows the bar. No real body relies on this — every sliver
-        we cut is cited elsewhere on the same body — but the panel must not
-        credit a work for a segment it never drew."""
+        """Credit follows what's drawn — a dropped sliver must not still cite
+        its source."""
         monkeypatch.setitem(
             INTERIOR_FACTS,
             "test-1",
@@ -324,8 +318,8 @@ def mapped(**overrides) -> dict | None:
 
 
 class TestFromMapping:
-    """A layer model that arrives as data rather than as a constant, for the
-    objects that have no database row to key one off."""
+    """A layer model built from data rather than a database row, for objects
+    that have none."""
 
     def test_it_reaches_the_same_shape(self):
         result = mapped()

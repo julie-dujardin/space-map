@@ -1,16 +1,11 @@
 """Adaptive geodesic sampling of a CK attitude window.
 
-Replaces uniform oversampling. A fixed cadence either aliases fast motion
-(a slew or spin between samples is missed) or wastes millions of samples on
-geodesic cruise. Instead we seed a coarse grid, then recursively subdivide
-any segment whose interior truth deviates from the SLERP of its endpoints by
-more than the error budget — probing several interior points so a maneuver
-shorter than the seed gap can't slip through on a lucky midpoint.
-
-Output is a faithful (non-aliased) sample stream in *stream space*: raw
-J2000->body, or the spin-baseline residual when `transform` is given. A
-separate `extract_keyframes` pass then decimates the geodesic runs the seed
-grid leaves behind.
+A fixed cadence either aliases fast motion or wastes samples on geodesic
+cruise. Instead: seed a coarse grid, then recursively subdivide any segment
+whose interior truth deviates from the SLERP of its endpoints past the error
+budget, probing several interior points so a brief maneuver can't slip
+through on a lucky midpoint. Output is raw J2000->body, or the spin-baseline
+residual when `transform` is given; `extract_keyframes` decimates it later.
 """
 
 from collections.abc import Callable
@@ -20,10 +15,9 @@ import spiceypy
 
 from .quaternion import angle_between, slerp
 
-# Coarse seed cadence (s). Fine enough to keep an un-baselined spinner under
-# half a turn per segment (so refinement can't alias), coarse enough that
-# cruise costs few pxform calls. Fast spinners are removed by the baseline
-# first, so their residual is slow and this cadence is safe.
+# Coarse seed cadence (s): fine enough to keep an un-baselined spinner under
+# half a turn per segment, coarse enough to keep cruise cheap. Fast spinners
+# are baseline-subtracted first, so their residual is slow and this is safe.
 SEED_DT_S = 300.0
 # Refinement floor — stop subdividing below this even if still out of budget.
 MIN_DT_S = 1.0

@@ -1,11 +1,8 @@
-"""Absorber-band coefficients (ozone on Earth) from column density + cross
-sections.
+"""Absorber-band coefficients (ozone on Earth) from column density and cross sections.
 
-The shader models the absorber as a linear tent: density rises from 0 at
-`center - width` to a peak at `center` and back to 0 at `center + width`. A
-tent of peak number density n integrates to a column of n * width, so the peak
-density that reproduces a measured column N is n = N / width, and the peak
-volume absorption coefficient is beta(lambda) = n * sigma(lambda).
+Density is a linear tent of half-width `width_km` peaking at `center_km`; a tent
+of peak density n integrates to n*width, so n = N/width reproduces column N, and
+beta(lambda) = n * sigma(lambda).
 """
 
 from space_map_data.constants.atmosphere.bodies import AbsorberBand

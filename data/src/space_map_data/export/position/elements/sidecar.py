@@ -1,27 +1,17 @@
 """Sidecar metadata for incremental elements-zone exports.
 
-Each part file under an incremental elements zone has a companion JSON sidecar
-`{part}.meta.json` recording the inputs that produced it. Two zone families
-share the format:
-
-  * `earth/{zoom}/{date}/{part}.bin.gz` — see :func:`build_earth_part_signature`.
-    Fingerprints the CelesTrak CSVs in the per-day download dir.
-  * `small_bodies/{class}/{zoom}/{part}.bin.gz` — see :func:`build_sbdb_part_signature`.
-    Fingerprints the SBDB snapshot metadata (downloaded_at + record_count). A
-    new full SBDB pull replaces every row at once, so every part shares the
-    same signature within an export, and a re-download invalidates all parts.
-
-Both shapes carry `format_version` so a writer/encoding change invalidates
-every part regardless of source freshness.
+Each part file has a companion `{part}.meta.json` recording the inputs that
+produced it, so an unchanged part can skip re-encoding. `earth/...` parts
+fingerprint the per-day CelesTrak CSVs; `small_bodies/...` parts fingerprint
+the SBDB snapshot metadata (one signature per export — a full pull replaces
+every row at once). Both carry `format_version` so an encoding change
+invalidates every part regardless of source freshness.
 
 Most per-object DB state (object_type, parent, scale, radius overrides) is
-intentionally NOT fingerprinted — those fields ride into the binary but are
-also republished by the `/objects` bundles every run; we treat that as the
-canonical refresh path and accept that DB-only edits won't invalidate
-already-written position parts. The `has_localized` gate byte is the lone
-exception (see :func:`has_localized_digest`): it decides whether the frontend
-fetches the localized bundle at all, so a stale byte hides the refreshed
-`/objects` data instead of being healed by it.
+NOT fingerprinted — it's republished by `/objects` every run, treated as the
+canonical refresh path. `has_localized` is the exception: it gates whether
+the frontend even fetches the localized bundle, so a stale byte would hide
+data `/objects` already refreshed.
 """
 
 import hashlib
@@ -38,11 +28,9 @@ from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
 )
 
 
-# Bump when the elements encoding OR row-membership rules change in a way the
-# binary VERSION bump doesn't already capture (e.g. column reordering at the
-# same VERSION, or the earth overlay starting to keep satcat-only objects).
-# Otherwise rely on BINARY_VERSION going into the signature — any wire-format
-# bump (probe header growth, new fields) invalidates every elements part too.
+# Bump for an encoding/row-membership change the binary VERSION bump doesn't
+# already cover. BINARY_VERSION is also in the signature, so any wire-format
+# bump invalidates every elements part too.
 FORMAT_VERSION = 2
 
 
@@ -54,12 +42,8 @@ def _file_entry(path: Path, day_dir: Path) -> dict:
 
 
 def _day_dir_inputs(day_dir: Path) -> list[dict]:
-    """Fingerprint every CelesTrak CSV in `day_dir` that feeds the export.
-
-    Mirrors `celestrak_source._load_day`: `gp-active.csv` at the root, then
-    every `groups/*.csv`. Sorted by relative name so the list is stable
-    across runs regardless of filesystem iteration order.
-    """
+    """Fingerprint every CelesTrak CSV in `day_dir`, mirroring
+    `celestrak_source._load_day`'s file set. Sorted for stable ordering."""
     entries: list[dict] = []
     gp_active = day_dir / "gp-active.csv"
     if gp_active.exists():
@@ -75,22 +59,18 @@ def _day_dir_inputs(day_dir: Path) -> list[dict]:
 def has_localized_digest(object_ids: list[str], has_localized: dict[str, bool]) -> str:
     """Digest of the part's `has_localized` gate bits, in binary row order.
 
-    Folded into both part signatures so a body gaining/losing localized data
-    (e.g. a freshly matched QID) re-encodes its part. Other DB-derived columns
-    skip this on purpose — they refresh via `/objects` — but this byte gates
-    that very fetch, so it must invalidate the binary itself.
+    Folded into both signatures so a body gaining/losing localized data
+    re-encodes its part — unlike other DB-derived columns, this byte gates
+    the `/objects` fetch itself, so it must invalidate the binary.
     """
     bits = bytes(1 if has_localized.get(oid) else 0 for oid in object_ids)
     return hashlib.sha256(bits).hexdigest()[:16]
 
 
 def build_earth_part_signature(day_dir: Path) -> dict:
-    """Compute the expected sidecar contents for one Earth (zoom, date, part).
-
-    Every part within a date shares the same signature — the CSV inputs
-    drive the orbital elements for every satellite that day. The signature
-    only needs to differ across dates, which `day_dir` accomplishes.
-    """
+    """Expected sidecar contents for one Earth (zoom, date, part). Every part
+    within a date shares this signature — the CSV inputs drive that day's
+    elements for every satellite."""
     return {
         "format_version": FORMAT_VERSION,
         "binary_version": BINARY_VERSION,
@@ -99,13 +79,9 @@ def build_earth_part_signature(day_dir: Path) -> dict:
 
 
 def build_earth_archive_part_signature(date_iso: str) -> dict:
-    """Sidecar contents for one historical (archive-sourced) Earth week.
-
-    Historical weeks are distilled from the Space-Track year zips, not the
-    CelesTrak day CSVs, so they fingerprint the zip(s) feeding the week instead
-    of a day-dir. The zips are immutable once downloaded; a re-download (new
-    mtime/size) invalidates the week.
-    """
+    """Sidecar contents for one historical Earth week, distilled from the
+    Space-Track year zips rather than CelesTrak day CSVs — fingerprints the
+    zip(s) feeding the week instead of a day-dir."""
     from space_map_data.export.position.elements.spacetrack_source import (
         week_zip_fingerprints,
     )
@@ -118,19 +94,13 @@ def build_earth_archive_part_signature(date_iso: str) -> dict:
 
 
 def build_sbdb_part_signature(download_dir: Path) -> dict:
-    """Compute the expected sidecar contents for one small_bodies/* part.
+    """Expected sidecar contents for one small_bodies/* part.
 
-    The unit of cacheability is the whole SBDB mirror: every
-    small_bodies/* part across all zones shares the same signature, and
-    any mirror change invalidates every part at once (same model as a
-    kernel update for probes).
-
-    Reads `sbdb/metadata.json`; the incremental downloader bumps its
-    `downloaded_at` only when a sync actually changed rows, so no-op
-    syncs don't invalidate parts. `record_count` + `complete` are
-    included so a sidecar from a partial mirror (`complete: false`)
-    doesn't get conflated with a later complete one that happened to
-    land at the same timestamp.
+    The unit of cacheability is the whole SBDB mirror — every part shares
+    this signature, and any mirror change invalidates all of them at once.
+    `downloaded_at` only bumps on an actual row change, so no-op syncs don't
+    invalidate parts; `complete` keeps a partial-mirror sidecar from being
+    conflated with a later complete one at the same timestamp.
     """
     meta_path = download_dir / "sources" / "position" / "sbdb" / "metadata.json"
     meta = json.loads(meta_path.read_text())

@@ -37,12 +37,9 @@ def load_json_dir(directory: Path, glob: str = "Q*.json") -> Iterator[tuple[str,
 
 
 class WikidataEntityCache:
-    """On-demand Wikidata entity loader.
-
-    Units are preloaded eagerly (143 files). Entities and referenced entries
-    are loaded from disk on first access and memoized — claim resolution asks
-    for the same referenced QIDs once per object per language, so uncached
-    re-reads dominated export profiles.
+    """On-demand Wikidata entity loader. Units are preloaded eagerly; entities
+    and referenced entries are loaded on first access and memoized, since
+    uncached re-reads used to dominate export profiles.
     """
 
     def __init__(self) -> None:

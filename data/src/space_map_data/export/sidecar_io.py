@@ -1,9 +1,8 @@
 """Atomic write + read helpers shared by per-zone export sidecars.
 
-A sidecar is a small JSON file living next to a binary chunk that records
-what inputs produced that chunk, so the next export can skip work whose
-inputs haven't changed. The zone-specific signature shape lives in each
-zone's `sidecar.py` (probes, elements/earth); the IO primitives are here.
+A sidecar is a small JSON file recording what inputs produced a chunk, so the
+next export can skip unchanged work. Zone-specific signature shapes live in
+each zone's `sidecar.py`; the IO primitives are here.
 """
 
 import json
@@ -20,14 +19,9 @@ logger = logging.getLogger(__name__)
 def mirror_path(path: Path) -> Path:
     """Map an EXPORT_DIR path to its EXPORT_METADATA_DIR counterpart.
 
-    Build-only sidecar metadata (incremental sidecars, texture/ring
-    metadata.json) is written under EXPORT_METADATA_DIR with the same
-    relative layout so EXPORT_DIR can be deployed to Cloudflare Pages
-    (20k-file cap) without the sidecars eating the budget.
-
-    Paths outside EXPORT_DIR (e.g. pytest tmp_path) pass through
-    unchanged — callers writing data and metadata to a test fixture
-    end up colocated, matching pre-split behaviour.
+    Build-only metadata is kept out of EXPORT_DIR so it doesn't eat into
+    Cloudflare Pages' 20k-file cap. Paths outside EXPORT_DIR pass through
+    unchanged, so test fixtures stay colocated.
     """
     try:
         rel = path.relative_to(EXPORT_DIR)
@@ -39,12 +33,8 @@ def mirror_path(path: Path) -> Path:
 def write_atomic(path: Path, content: bytes) -> None:
     """Tempfile + rename in the destination dir — crash-safe.
 
-    `tempfile.mkstemp` creates the temp file with mode 0o600 (owner-only) for
-    security, and `os.replace` preserves that mode — so without an explicit
-    chmod the published binaries would be unreadable to anyone except the
-    export user, manifesting as nginx/CDN 403s on otherwise-existing files.
-    Force 0o644 to match what a plain `open(..., 'wb')` under the typical
-    0o022 umask produces.
+    `mkstemp` creates the temp file 0o600, and `os.replace` preserves that mode,
+    so we chmod 0o644 or the published binaries 403 for anyone but the export user.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)

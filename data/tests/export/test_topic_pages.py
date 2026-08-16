@@ -1,9 +1,7 @@
 """The Structure tab's two Wikipedia blurbs.
 
-Runs against the real downloaded summaries — the point of most of these is
-that a row in the table actually resolves to prose on disk, which a mocked
-loader cannot tell us. Skipped where the download is absent, since without it
-every lookup resolves to None and the failure says nothing about the code.
+Runs against real downloaded summaries, since a mocked loader can't prove a
+row resolves to prose on disk. Skipped when the download is absent.
 """
 
 import pytest
@@ -55,9 +53,8 @@ class TestShape:
         assert page["url"] == "https://en.wikipedia.org/wiki/Atmosphere_of_Mars"
 
     def test_link_only_entries_are_dropped(self):
-        # pt "Estrutura interna da Lua" exists and opens on a section heading,
-        # so its intro extract comes back empty. The panel renders nothing
-        # without prose, so the entry must not ship.
+        # pt's "Estrutura interna da Lua" opens on a section heading, so its
+        # intro extract is empty — no prose, so the entry must not ship.
         assert interior_page_localized("naif-301", "pt") is None
 
     def test_url_comes_from_the_article_the_extract_came_from(self):
