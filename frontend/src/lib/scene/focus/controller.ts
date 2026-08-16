@@ -49,20 +49,14 @@ export interface FocusDeps {
 	assignMapLayerToTrails: () => void;
 }
 
-/**
- * Owns the focused body, focus/fly animation parameters, and the URL-derived
- * initial-view replay. Delegates promote/teardown to {@link PromotionRegistry}
- * (created here so the two share lifecycle).
- */
+/** Owns the focused body, focus/fly animation parameters, and the URL-derived
+ *  initial-view replay. Delegates promote/teardown to {@link PromotionRegistry}. */
 export class FocusController {
 	readonly promotion: PromotionRegistry;
 	private focusedBody: PositionedBody | undefined;
 	private readonly _tmpV3 = new Vector3();
-	/**
-	 * Initial lat/lon/zoom stashed until the focused body's orientation has
-	 * loaded, at which point we re-place the camera in body-fixed coords.
-	 * Cleared once applied or once the user moves the camera.
-	 */
+	/** Initial lat/lon/zoom stashed until orientation loads and the camera can be
+	 *  re-placed in body-fixed coords. Cleared once applied or once moved. */
 	private pendingInitialView: { latitude: number; longitude: number; zoom: number } | null = null;
 
 	constructor(
@@ -104,14 +98,9 @@ export class FocusController {
 		this.pendingInitialView = null;
 	}
 
-	/** Quaternion framing the camera's lat/lon around `body` (or the focused body) —
-	 *  undefined for scene-frame (world) framing.
-	 *
-	 *  Spacecraft/probes are deliberately excluded: their mesh spins with attitude,
-	 *  often fast (Juno), so a body-fixed lat/lon would tie the shared view to the
-	 *  rotation rate. They frame in world coordinates; the attitude stays a purely
-	 *  visual spin on top. Only natural bodies, whose slow IAU spin gives lat/lon
-	 *  real geographic meaning, are body-fixed. */
+	/** Quaternion for lat/lon framing around `body`; undefined for scene-frame.
+	 *  Excludes spacecraft/probes — fast attitude spin (e.g. Juno) would tie
+	 *  the view to rotation. */
 	focusedBodyQuat(body?: PositionedBody): [number, number, number, number] | undefined {
 		const b = body ?? this.focusedBody;
 		if (!b || isModelBearing(b)) return undefined;
@@ -131,14 +120,8 @@ export class FocusController {
 		];
 	}
 
-	/** Initial-focus mesh upgrade: walks {@link upgradeTargets} so the focused
-	 *  body AND (for moons-of-asteroids) the parent host get a sphere mesh on
-	 *  first paint, not just the focused body itself. Used by the renderer at
-	 *  scene-build time; subsequent focus changes go through
-	 *  {@link setFocusTarget}, which handles upgrade/downgrade symmetrically.
-	 *  Returns true if any body was newly upgraded so the caller can rebuild
-	 *  trails — including one that stayed meshless for want of a radius, which
-	 *  still earns its trail by being focused. */
+	/** Initial-focus mesh upgrade via {@link upgradeTargets}, for first paint
+	 *  before {@link setFocusTarget} takes over. Returns true if trails need rebuilding. */
 	upgradeMeshTargets(body: PositionedBody): boolean {
 		const { ctx, scene, clickables, meshToBody, bodyObjects } = this.deps;
 		let didUpgrade = false;
@@ -153,9 +136,8 @@ export class FocusController {
 		return didUpgrade;
 	}
 
-	/** Pan the camera to frame `body` without changing the focused/selected body.
-	 *  Used to re-center on the parent when the focus goes out of range, keeping
-	 *  the focus (and its "no data" toast) on the original body. */
+	/** Pan to frame `body` without changing the focused body — used to re-center on
+	 *  the parent when focus goes out of range, keeping the "no data" toast on the original. */
 	panCameraToBody(body: PositionedBody): void {
 		const { focus, camera } = this.deps;
 		prepareFocusTarget(
@@ -168,25 +150,15 @@ export class FocusController {
 		);
 	}
 
-	/**
-	 * Point the camera at a place rather than at a body — a spot on a drawn
-	 * trajectory, which nothing occupies.
-	 *
-	 * Omitting `distance` keeps the camera where it is and only swings the pivot
-	 * onto the point, the way an unzoomed `focusOnBody` does.
-	 *
-	 * Clears the focused body, because `updatePositions` re-pins the focus origin
-	 * to it every frame and would otherwise drag the camera straight back off the
-	 * point. Nothing else keeps the target fresh either, so a caller whose point
-	 * moves has to re-drive it (see `SceneRenderer.refreshTravelFocus`).
-	 */
+	/** Point the camera at a place, not a body (e.g. a spot on a drawn trajectory).
+	 *  Clears the focused body — otherwise `updatePositions` re-pins the origin
+	 *  to it every frame; a moving point needs the caller to re-drive it. */
 	focusOnPoint(position: Vec3, distance?: number): void {
 		const { focus, camera, callbacks } = this.deps;
 		const camWorld = this.cameraTruePos();
 		let camPos: Vec3 | undefined;
 		if (distance !== undefined) {
-			// Arrive from where the camera already is, so the move reads as a glide
-			// across the map rather than a cut to somewhere new.
+			// Arrive from the camera's current direction, so it reads as a glide not a cut.
 			const dir = this._tmpV3
 				.set(position[0] - camWorld[0], position[1] - camWorld[1], position[2] - camWorld[2])
 				.normalize()
@@ -243,26 +215,17 @@ export class FocusController {
 			loadTexture,
 			assignMapLayerToTrails
 		} = this.deps;
-		// A synthetic surface-feature body renders nothing of its own — the host
-		// (loaded below via its nomenclature id) draws the terrain the camera
-		// orbits. Skip the halo/label allocation a real body would get.
+		// Surface-feature bodies render nothing themselves — the host draws the
+		// terrain. Skip halo/label allocation.
 		if (!isSurfaceFeature(body)) this.promotion.ensureBodyObjects(body);
 
-		// Halo-only-with-mesh-on-focus: asteroids/comets/probes build their
-		// sphere mesh (and a/c their trail) only while focused; reverting
-		// to halo-only on un-focus keeps the unfocused scene cheap. Asteroid
-		// moons extend the upgrade set to their parent so the parent stays
-		// visible (mesh + trail) while the user orbits the moon. minDistance
-		// below reads the focused body's mesh radius, so do the swap first.
+		// Unfocused bodies stay halo-only for cost; minDistance below reads the
+		// focused body's mesh radius, so swap focus first.
 		const prev = this.focusedBody;
-		// Labels live on the landing body, not the probe — only dispose when
-		// the effective nomenclature body actually changes.
+		// Labels live on the landing body, not the probe — dispose only when it changes.
 		const prevNomBodyId = nomenclatureBodyId(prev, bodyObjects);
 		const newNomBodyId = nomenclatureBodyId(body, bodyObjects);
-		// The overlay model belongs to the focused object's own body — except a
-		// surface feature defers to its host. Unload the prev model only when the
-		// model body actually changes, so focusing a feature on a model-bearing host
-		// keeps the model up (else the hidden sphere leaves nothing to render).
+		// A surface feature defers its model to its host; unload only when that changes.
 		const prevModelId =
 			prev && (isSurfaceFeature(prev) ? prev.featureAnchor!.hostId : prev.data.id);
 		const newModelId = isSurfaceFeature(body) ? body.featureAnchor!.hostId : body.data.id;
@@ -294,19 +257,17 @@ export class FocusController {
 			}
 		}
 		if (didUpgrade) {
-			// Mesh-upgradable bodies had no trail as halo-only; this picks them
-			// up now that `bo.mesh` is set.
+			// Halo-only bodies had no trail; build now that `bo.mesh` is set.
 			buildTrails(bodyObjects, scene, pointClouds.basis(), clock.jd);
 			assignMapLayerToTrails();
 		}
 
 		this.focusedBody = body;
-		// Focusing anything but a feature retires the synthetic feature body so
-		// getBody stops resolving a stale id.
+		// Retire the synthetic feature body so getBody stops resolving a stale id.
 		if (!isSurfaceFeature(body)) ctx.bodies.focusFeature = null;
 		controls.minDistance = minCameraDistance(body);
-		// System/attribution follow the host for a surface feature (a crater has no
-		// ephemeris of its own); the camera still orbits the feature body.
+		// System/attribution follow the host (a crater has no ephemeris); camera
+		// still orbits the feature body.
 		const featureHost = isSurfaceFeature(body)
 			? ctx.getBody(body.featureAnchor!.hostId)
 			: undefined;
@@ -314,8 +275,7 @@ export class FocusController {
 		callbacks.onFocusChange(body);
 		// The feature body has no detail bundle of its own; its host loads below.
 		if (!isSurfaceFeature(body)) loadTexture(body);
-		// Landed probe / surface feature: also load the host so its nomenclature
-		// (and terrain) attaches.
+		// Landed probe / surface feature: also load the host for its nomenclature/terrain.
 		if (newNomBodyId && newNomBodyId !== body.data.id) {
 			const landingBody = ctx.getBody(newNomBodyId);
 			if (landingBody) loadTexture(landingBody);
@@ -329,8 +289,7 @@ export class FocusController {
 			camPos,
 			getSettings().resolvedReducedMotion
 		);
-		// Focus moved on/off a user-promoted body — re-emit so the clear button
-		// (which excludes the focused body) stays in sync.
+		// Re-emit: the clear button excludes the focused body, so it must stay in sync.
 		this.promotion.emitUserPromotedCount();
 	}
 
@@ -342,10 +301,8 @@ export class FocusController {
 		const { ctx, clock, focus, camera, callbacks, pointClouds } = this.deps;
 		const body = ctx.getBody(id);
 		if (!body) return 0;
-		// Point-cloud bodies (asteroids/comets/spacecraft) materialize with a
-		// frozen [0,0,0] position; setFocusTarget refreshes it, but the camera
-		// destination below is computed first — refresh now so we frame the body
-		// rather than the SSB. Majors/moons in bodiesById advance per-frame.
+		// Point-cloud bodies materialize frozen at [0,0,0]; refresh before computing
+		// the camera destination below, or we'd frame the SSB instead of the body.
 		if (!ctx.bodies.bodiesById.has(id)) refreshMinorBodyPosition(body, clock.jd, ctx);
 		let camPos: Vec3 | undefined;
 		if (zoom !== undefined) {
@@ -375,19 +332,14 @@ export class FocusController {
 				];
 			}
 		}
-		// Emit the target camera position before any focus/fly dispatch so that
-		// AppState's camera fields are fresh when onFocusChange fires inside
-		// setFocusTarget and setFocus captures the intended destination.
+		// Emit before dispatch so AppState's camera fields are fresh when
+		// onFocusChange fires inside setFocusTarget.
 		const emitFrom = camPos ?? this.cameraTruePos();
 		const spherical = cartesianToSpherical(emitFrom, body.position, this.focusedBodyQuat(body));
 		callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);
 		if (zoom !== undefined && camPos) {
-			// In-object re-framing (arc-orbit) is only correct when the camera is
-			// actually orbiting this body right now — `focusedBody` is set eagerly at
-			// fly-start and can be stale (e.g. a still-animating fly, or a second
-			// feature-pick landing mid-flight), so gate on the focus origin being
-			// coincident with the body. Otherwise fall through to the approach fly so
-			// the camera glides in instead of teleporting onto the body.
+			// Re-framing needs the camera actually orbiting this body — `focusedBody` is
+			// set eagerly and can be stale, so gate on origin coincidence instead.
 			const orbitingThisBody =
 				this.focusedBody?.data.id === id &&
 				f64dist(focus.focusTruePos, body.position) < minCameraDistance(body);
@@ -416,12 +368,8 @@ export class FocusController {
 		return focus.focusDurationMs;
 	}
 
-	/**
-	 * Instantly focus a now-resident body and frame it per the URL — no approach
-	 * fly. Used at load when the target's element chunk arrives after the initial
-	 * render has already settled the camera on the placeholder parent (Earth):
-	 * the user should land directly on the target, not watch a fly in from Earth.
-	 */
+	/** Instantly focus a now-resident body per the URL, no approach fly — for a
+	 *  late-arriving chunk landing after the camera settled on the placeholder parent. */
 	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
 		const body = this.deps.ctx.getBody(id);
 		if (!body) return;
@@ -429,9 +377,9 @@ export class FocusController {
 		this.snapToBodyFrame(latitude, longitude, zoom);
 	}
 
-	/** Snap focus onto a body, framed looking toward `towardId` (e.g. the Sun),
-	 *  `elevationDeg` above the ecliptic. Placed in the scene frame, not body-fixed,
-	 *  so the pending replay is cleared. Used for the home/bare-Earth landing view. */
+	/** Snap focus onto a body, framed toward `towardId` (e.g. the Sun) at
+	 *  `elevationDeg` above the ecliptic. Scene-frame, not body-fixed — clears
+	 *  the pending replay. Used for the home/bare-Earth landing view. */
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {
 		const { ctx, camera, controls, callbacks } = this.deps;
 		const body = ctx.getBody(id);
@@ -465,51 +413,40 @@ export class FocusController {
 		pointClouds.rebuildBasis();
 	}
 
-	/** Snap the camera to a body-fixed lat/lon/zoom without any fly animation.
-	 *  Used for URL-load deep links where the user expects the page to open
-	 *  already framed on the target. Applies immediately with the current quat
-	 *  (identity if not loaded yet — fine for asteroids whose mesh is identity-
-	 *  oriented, matches where feature labels are placed). For bodies whose
-	 *  orientation arrives async, also queues a replay so the framing snaps to
-	 *  the right angle once the real quat lands. */
+	/** Snap the camera to a body-fixed lat/lon/zoom for URL deep links, no fly.
+	 *  Uses the current quat (identity if not loaded); queues a replay to
+	 *  correct the angle once orientation lands. */
 	snapToBodyFrame(latitude: number, longitude: number, zoom: number): void {
 		const body = this.focusedBody;
 		if (!body) return;
 		const { camera, controls, callbacks } = this.deps;
-		// Spacecraft frame in world coords (undefined quat, see focusedBodyQuat);
-		// natural bodies are body-fixed, falling back to identity until orientation
-		// loads — then the pending replay corrects the angle.
+		// Spacecraft use world coords (see focusedBodyQuat); natural bodies are
+		// body-fixed, falling back to identity until orientation loads.
 		const bodyFixed = !isModelBearing(body);
 		const quat = bodyFixed ? (this.focusedBodyQuat(body) ?? [0, 0, 0, 1]) : undefined;
 		const camOffset = sphericalToCartesian([0, 0, 0], latitude, longitude, zoom, quat);
 		camera.position.set(camOffset[0], camOffset[1], camOffset[2]);
 		controls.update();
-		// Read back via cartesianToSpherical so the URL writeback matches the
-		// canonical (-180, 180] longitude the fly-settle path produces — feature
-		// lon is stored in 0..360 and would otherwise leak straight to the URL.
+		// Read back via cartesianToSpherical to canonicalize to (-180, 180] — feature
+		// lon is stored 0..360 and would otherwise leak straight to the URL.
 		const settled = cartesianToSpherical(camOffset, [0, 0, 0], quat);
 		callbacks.onCameraPosition?.(settled.latitude, settled.longitude, settled.distance);
 		const isIdentity =
 			bodyFixed && quat![0] === 0 && quat![1] === 0 && quat![2] === 0 && quat![3] === 1;
 		if (isIdentity) {
-			// Replaces whatever the URL's at= had queued — the feature framing
-			// is more specific than the URL's body-level at=.
+			// Overrides any queued URL at= — feature framing is more specific.
 			this.pendingInitialView = { latitude, longitude, zoom };
 		}
 	}
 
-	/**
-	 * Re-place the camera using the URL's body-fixed lat/lon once the focused
-	 * body's orientation has loaded. The initial placement in the ctor runs
-	 * before orientation fetches, so it falls back to scene-frame; this
-	 * corrects for that.
-	 */
+	/** Re-place the camera at the URL's body-fixed lat/lon once orientation has
+	 *  loaded — the ctor's initial placement runs before that fetch and falls
+	 *  back to scene-frame. */
 	reapplyInitialViewIfPending(): void {
 		const pending = this.pendingInitialView;
 		if (!pending) return;
 		const quat = this.focusedBodyQuat();
-		// Identity quat → body has no orientation data (e.g. asteroids) — keep
-		// the initial scene-frame placement.
+		// Identity quat → no orientation data (e.g. asteroids); keep scene-frame placement.
 		if (!quat || (quat[0] === 0 && quat[1] === 0 && quat[2] === 0 && quat[3] === 1)) {
 			this.pendingInitialView = null;
 			return;
@@ -527,15 +464,12 @@ export class FocusController {
 	}
 }
 
-/** Bodies whose mesh should be upgraded while `focus` is the focused body.
- *  Always includes the focus itself if it's mesh-upgradable; for asteroid moons
- *  also includes the parent asteroid, so the parent stays as a sphere + trail
- *  instead of dropping back to a label-only halo. */
+/** Bodies whose mesh should be upgraded while `focus` is focused: the focus
+ *  itself, plus (for asteroid moons) the parent, so it stays a sphere + trail. */
 function upgradeTargets(focus: PositionedBody | undefined, ctx: ContextManager): PositionedBody[] {
 	if (!focus) return [];
-	// A focused surface feature renders no mesh itself; its host must carry one so
-	// the camera has terrain to orbit (majors already do — this catches halo-only
-	// hosts like small moons/asteroids that bear nomenclature).
+	// A surface feature renders no mesh; its host must so the camera has terrain
+	// to orbit (catches halo-only hosts like small moons/asteroids).
 	if (isSurfaceFeature(focus)) {
 		const host = ctx.getBody(focus.featureAnchor!.hostId);
 		return host && isMeshUpgradable(host) ? [host] : [];

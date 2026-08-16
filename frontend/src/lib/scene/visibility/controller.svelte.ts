@@ -55,13 +55,9 @@ export class VisibilityController {
 	/** Latest jd from `updateCamera`. Used by probe annotation lookups so
 	 *  per-body callers don't have to thread jd through. */
 	private currentJd = 0;
-	/**
-	 * Camera distance (AU) below which the solar system hides so the focused
-	 * planetary system stands out. Computed from the focused body's satellites:
-	 * 2×a for moons, instantaneous distance-to-parent for spacecraft (probes in
-	 * eccentric orbits don't carry a stable a). Zero when the focused body has
-	 * no qualifying satellites — solar system never hides in that case.
-	 */
+	/** Camera distance (AU) below which the solar system hides so the focused
+	 *  planetary system stands out. From the focused body's satellites: 2×a for
+	 *  moons, instantaneous distance-to-parent for spacecraft. Zero = never hides. */
 	private hideThresholdAU = 0;
 	// Cached scaled thresholds — recomputed in updateViewport() on canvas resize.
 	private scaledPlanetary = PLANETARY_DISTANCE_RATIO_THRESHOLDS;
@@ -170,14 +166,10 @@ export class VisibilityController {
 	}
 
 	/**
-	 * Name the system the scrubbed trajectory craft is in — or null while it is
-	 * in interplanetary space. The craft is nobody's child, so ordinary focus
-	 * can't resolve its system; the renderer measures it against the trip's
-	 * stops and drives this every frame, the way a flyby probe's annotation
-	 * does. Holds until the next real focus.
-	 *
-	 * Naming only: whether the solar system actually hides stays with
-	 * `updateCamera`'s zoom gate, same as for any other focus.
+	 * Names the system the scrubbed trajectory craft is in, or null in
+	 * interplanetary space. The craft is nobody's child, so the renderer drives
+	 * this every frame from the trip's stops, like a flyby probe's annotation.
+	 * Holds until the next real focus; the zoom-hide gate is unaffected.
 	 */
 	setTravelSystem(sysId: string | null): void {
 		this.travelSystemActive = true;
@@ -209,13 +201,10 @@ export class VisibilityController {
 	}
 
 	/** Ratio-based visibility for a moon, gated on the focused system — the
-	 *  distance ratio alone can't gate: camera-to-focus distance says nothing
-	 *  about proximity to the parent, so an ungated moon pops in whenever the
-	 *  camera zooms close to anything. An asteroid's "system" is the asteroid
-	 *  itself: focusing one of its moons resolves focusedSystemId to it, but
-	 *  focusing the asteroid leaves focusedSystemId null (top-level parent),
-	 *  so match focusedBodyId too. Asteroid moons also skip the crowding cap
-	 *  (sparse per parent). */
+	 *  distance ratio alone says nothing about proximity to the parent, so an
+	 *  ungated moon pops in whenever the camera zooms close to anything.
+	 *  Focusing the asteroid itself leaves focusedSystemId null, so also match
+	 *  focusedBodyId. Asteroid moons skip the crowding cap (sparse per parent). */
 	getMoonVisibility(moon: PositionedBody): VISIBILITY {
 		const cached = this.moonVisibilityCache.get(moon.data.id);
 		if (cached !== undefined) return cached;
@@ -253,14 +242,10 @@ export class VisibilityController {
 		return vis;
 	}
 
-	/**
-	 * Distance-ratio based visibility for non-moon, non-star bodies.
-	 * Probes get moon-style ratio gating using instantaneous distance-to-parent
-	 * as their characteristic length (no stable osculating `a`). Other planet-
-	 * orbiting bodies (promoted Earth sats etc.) get moon-style ratio gating
-	 * against their planet-relative `a`. Sun-orbiting asteroids/comets/planets
-	 * use the solar-orbit semi-major axis ratio.
-	 */
+	/** Distance-ratio based visibility for non-moon, non-star bodies. Probes and
+	 *  other planet-orbiters get moon-style ratio gating (against distance-to-
+	 *  parent, or planet-relative `a`); sun-orbiting bodies use the solar-orbit
+	 *  semi-major axis ratio. */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
 		// Check SPICE_PROBE before isSystemBody — Mars-zone probes carry parentId=naif-499,
 		// which would otherwise satisfy isSystemBody and short-circuit to FULL.
@@ -329,12 +314,10 @@ export class VisibilityController {
 		return tier === VISIBILITY.CLOSE ? VISIBILITY.FULL : tier;
 	}
 
-	/** Probe visibility splits on whether the probe is captured. Flyby/cruise
-	 *  (heliocentric fit present) → sun-orbiting style: ratio against distance to
-	 *  the Sun with `scaledSystem` thresholds and no focused-system gate, so a
-	 *  flyby stays visible in the solar view while transiting a planet's Hill
-	 *  sphere. Captured (no heliocentric fit) → moon style: focused-system gate +
-	 *  ratio against distance-to-parent (a stand-in for the missing osculating `a`). */
+	/** Probe visibility splits on whether it's captured. Flyby/cruise (heliocentric
+	 *  fit present) → sun-orbiting style, visible in the solar view even mid Hill-
+	 *  sphere transit. Captured (no fit) → moon style: focused-system gate + ratio
+	 *  against distance-to-parent. */
 	private getProbeVisibility(body: PositionedBody): VISIBILITY {
 		const ps = this.getProbeStore();
 		const inSysNaif = ps ? ps.containingSystemAt(body.data.id, this.currentJd) : null;
@@ -437,14 +420,10 @@ export class VisibilityController {
 		return this.bodies.getChildren(sysId)?.has(groupParentId) ?? false;
 	}
 
-	/**
-	 * Whether an asteroid zone's point-cloud should be visible.
-	 * Compares camera distance (AU) to the zone's semi-major axis range.
-	 * Zones without a defined range (parabolic, unclassified) are always visible.
-	 * A `class` small-body filter hides non-matching `small_bodies/<class>`
-	 * zones at render time; a `flag` filter (NEO/PHA) leaves every zone visible
-	 * and lets the orbit worker mask non-matching points via `requiredFlags`.
-	 */
+	/** Whether an asteroid zone's point-cloud is visible: camera distance vs. the
+	 *  zone's `a` range (undefined range = always visible). A `class` filter
+	 *  hides non-matching zones here; a `flag` filter (NEO/PHA) leaves every
+	 *  zone visible and masks points via `requiredFlags` in the worker instead. */
 	isAsteroidGroupVisible(zone: string): boolean {
 		if (this.activeSystemId) return false;
 		const filter = this.getSmallBodyFilter();
@@ -596,13 +575,10 @@ export class VisibilityController {
 		return this.systemReachAU(sysId);
 	}
 
-	/**
-	 * How far `sysId` reaches, AU — the declutter radius, and what the scrubbed
-	 * trajectory craft measures itself against. Walks direct children of the
-	 * system root and direct children of its planet (e.g. naif-399 under
-	 * naif-3), summing in moons (2×a) and spacecraft (instantaneous distance to
-	 * parent). Returns 0 when no satellite qualifies — solar system never hides.
-	 */
+	/** How far `sysId` reaches, AU — the declutter radius, and what the scrubbed
+	 *  trajectory craft measures itself against. Walks children of the system
+	 *  root and of its planet, taking moons (2×a) and spacecraft (distance to
+	 *  parent). 0 when no satellite qualifies. */
 	systemReachAU(sysId: string): number {
 		let max = 0;
 		const visit = (parentId: string, recurse: boolean): void => {

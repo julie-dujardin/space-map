@@ -23,21 +23,17 @@ import {
 
 /**
  * Measures what atmosphere quality tiers actually cost on this device by
- * rendering the real shell shader and timing it with a forced GPU sync, so
- * tier selection can start from data instead of coarse device signals plus
- * reactive downgrades. Self-contained (no network assets) so it can run
- * against a hidden canvas during the app's initial data loads.
+ * rendering the real shell shader with a forced GPU sync, so tier selection
+ * starts from data instead of device-signal heuristics. Self-contained, so it
+ * can run against a hidden canvas during the app's initial data loads.
  *
- * Two scenarios per tier: 'limb' (camera outside, shell disc overflowing the
- * viewport) and 'sky' (camera near the ground inside the shell — the BackSide
- * path, where the march covers every pixel). A tier's cost is its worse
- * scenario, usually sky.
+ * Two scenarios per tier: 'limb' (camera outside, disc overflowing the
+ * viewport) and 'sky' (camera inside the shell, BackSide path, march covers
+ * every pixel) — a tier's cost is its worse scenario, usually sky.
  *
- * Two drivers share the render harness:
- * - {@link runAtmosphereBenchmark} sweeps every tier cheap → costly, limb pass
- *   then sky pass (the visible debug run holds one viewpoint per pass).
- * - {@link runAdaptiveAtmosphereBenchmark} measures only the tiers that decide
- *   the pick against a frame budget — what boot calibration wants.
+ * {@link runAtmosphereBenchmark} sweeps every tier for the debug page.
+ * {@link runAdaptiveAtmosphereBenchmark} measures only the tiers that decide
+ * the pick against a budget, for boot calibration.
  */
 
 const EARTH_RADIUS_KM = 6371;

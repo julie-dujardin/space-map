@@ -4,12 +4,9 @@ import { dateToJD, formatJulianDate } from '$lib/format/date';
 import type { DateCoverage } from '$lib/fetch/metadata';
 
 /**
- * One group's out-of-range accumulation for a single frame. `count === 0`
- * means every member of the group has data at the current jd.
- *
- * `earliestStart` / `latestEnd` are taken across out-of-range members only,
- * so after comparing against `jd` we can report the group's data boundary
- * on the side the user crossed.
+ * One group's out-of-range accumulation for a frame. `count === 0` means
+ * every member has data at the current jd. `earliestStart`/`latestEnd` cover
+ * out-of-range members only, so we can report which side the user crossed.
  */
 export interface OutOfRangeGroup {
 	count: number;
@@ -64,11 +61,7 @@ function satelliteLine(cov: DateCoverage): string | null {
 	}
 }
 
-/**
- * Sync a single sticky toast to the current out-of-range state. Fires once on
- * transition, updates in place when the contents change, and dismisses when
- * everything is back in range. Called every frame; cheap no-op when stable.
- */
+/** Sync a sticky toast to the out-of-range state each frame; cheap no-op when stable. */
 export function updateOutOfRangeToast(state: OutOfRangeState): void {
 	const lines: string[] = [];
 

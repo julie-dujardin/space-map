@@ -79,10 +79,8 @@ export function updateTextureLOD(
 			if (target) loadBodyTextureTier(bo, target, desiredFrame, textureLoader);
 		}
 
-		// Displacement rides its own altitude ladder: the close-zoom terrain
-		// window can only refine into detail the loaded DEM actually carries.
-		// Tier rank is capped by maxTextureSize — DataTextures aren't resized by
-		// three, so a 16k upload on an 8k-limit GPU would just error out.
+		// Tier rank capped by maxTextureSize: DataTextures aren't resized by three,
+		// so a 16k upload on an 8k-limit GPU would error out.
 		const dispTiers = bo.displacementMeta?.tiers;
 		if (bo.displacementMap && dispTiers?.length && !bo.displacementLoading) {
 			const maxTex = renderer.capabilities.maxTextureSize;

@@ -1,15 +1,13 @@
 /**
- * Progress model for the "Loading data" bar (phase 1 boot, before first paint).
- *
- * Milestones raise a monotonic floor as each real load stage finishes; boot
- * bytes streamed through `fetchWithTimeout` fill the gap toward the next floor,
- * so the bar tracks real download activity rather than a timer. Fill is capped
- * short of the floor (GAP_FILL_CAP) so a milestone always moves the bar, and it
+ * Progress model for the "Loading data" bar. Milestones raise a monotonic
+ * floor as each load stage finishes; streamed boot bytes fill the gap toward
+ * the next floor, so the bar tracks real download activity, not a timer. Fill
+ * is capped short of the floor so a milestone always moves the bar, and it
  * never regresses when a later fetch enlarges the announced total mid-gap.
  */
 
-/** Cumulative fraction per stage — a rough cold-cache wall-clock share, so the
- *  ephemeris chunks (planets + probes) own the widest band. */
+/** Cumulative fraction per stage — rough cold-cache wall-clock share, widest
+ *  band for ephemeris (planets + probes). */
 const MILESTONES = {
 	metadata: 0.12,
 	ephemeris: 0.55,
@@ -25,7 +23,7 @@ const GAP_FILL_CAP = 0.9;
 class LoadProgress {
 	#floor = 0;
 	#nextTarget: number = MILESTONES.metadata;
-	// Compressed bytes since the last milestone (reset each gap).
+	// Bytes since the last milestone; reset each gap.
 	#loaded = 0;
 	#total = 0;
 	#active = false;

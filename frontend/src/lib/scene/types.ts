@@ -144,12 +144,9 @@ export interface BodyObjects {
 	/** True iff the probe's landed record covers the current jd. Drives the
 	 *  spacecraft halo glyph swap (flying → landed octagon). */
 	isLanded?: boolean;
-	/** Written by the throttled body cull (true = name span shown, false =
-	 *  dimmed). `refreshVisibleBodyLabelRects` reads it to skip dimmed labels
-	 *  when seeding the per-frame body-rect pool the nomenclature cull
-	 *  consumes — otherwise the full text-width rect of a dimmed label would
-	 *  over-cull features against an effectively invisible body. Undefined
-	 *  before the first cull → treated as maximized. */
+	/** Written by the throttled body cull. Lets the nomenclature cull skip
+	 *  dimmed labels' rects, so it doesn't over-cull features against a
+	 *  near-invisible body. Undefined before the first cull → treated as maximized. */
 	labelMaximized?: boolean;
 	/** Loaded GLTF root for spacecraft 3D models; null when not focused or no model bundle. */
 	model: Object3D | null;
@@ -176,10 +173,8 @@ export interface Callbacks {
 	/** Number of user-promoted bodies that can be cleared (excludes the focused
 	 *  body — clearing it would leave the camera pointed at a torn-down mesh). */
 	onUserPromotedChange?(count: number): void;
-	/** Click on a nomenclature surface-feature label. bodyId is the parent
-	 *  (prefixed, e.g. "naif-301"); featureId is the IAU id; lat/lon/diameterM
-	 *  come from the feature record so the caller can fly the camera without
-	 *  another lookup. */
+	/** Click on a nomenclature surface-feature label; carries lat/lon/diameterM
+	 *  so the caller can fly the camera without another lookup. */
 	onFeatureSelect?(
 		bodyId: string,
 		featureId: number,

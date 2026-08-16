@@ -1,11 +1,5 @@
-/*
- * Visibility options:
- * CLOSE: too close to show everything, revert to point cloud.
- * FULL: show halos and trails.
- * CAPPED: In range for FULL but rejected by the crowding cap — point cloud by default, minimized halo when hideCappedMoonLabels=true.
- * FAR: point cloud.
- * HIDE: hide entirely.
- */
+/** CLOSE: too close, revert to point cloud. FULL: halos + trails. CAPPED: in
+ *  range for FULL but rejected by the crowding cap. FAR: point cloud. HIDE: hidden. */
 export enum VISIBILITY {
 	CLOSE = 1,
 	FULL = 2,
@@ -14,11 +8,8 @@ export enum VISIBILITY {
 	HIDE = 5
 }
 
-/*
- * Distance ratio thresholds for visibility levels.
- * Ratio is (camera distance to focused body / moon semi-major axis), both in AU.
- * These were tuned for a 27" 1440p monitor; FULL and FAR are scaled at runtime by screenScaleFactor.
- */
+/** Distance ratio thresholds (camera distance / moon semi-major axis, both AU).
+ *  Tuned for a 27" 1440p monitor; FULL/FAR scaled at runtime by screenScaleFactor. */
 /** Viewport height (CSS px) the distance-ratio thresholds were tuned for. */
 export const REFERENCE_VIEWPORT_HEIGHT = 1503;
 
@@ -42,20 +33,14 @@ export const FOCUSED_FULL_MULTIPLIER_SUN_ORBITING = 50;
 /** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
 export const MAX_FULL_MOONS = 40;
 
-/**
- * Moon semi-major axes are multiplied by this when contributing to the
- * focus hide threshold, matching the convention that the threshold reflects
- * a satellite's full orbital extent (≈ 2a for circular moons; raw distance
- * for eccentric probes). Higher value = solar system stays visible longer
- * after zooming into a planet (bigger overlap).
- */
+/** Moon semi-major axes are multiplied by this for the focus hide threshold,
+ *  matching the convention that it reflects full orbital extent (≈2a for
+ *  circular moons). Higher = solar system stays visible longer when zoomed in. */
 export const FOCUS_HIDE_MOON_MULTIPLIER = 2;
 
-/*
- * The scrubbed trajectory craft counts as inside a planetary system within the
- * same reach the declutter uses (`systemReachAU`) — the SOI it actually hands
- * over at reads as empty space, planets away from any visible system.
- */
+// The scrubbed trajectory craft counts as inside a system within the same
+// reach the declutter uses (`systemReachAU`), or its actual SOI reads as
+// empty space, planets away from any visible system.
 /** Reach of a system whose satellites can't measure one out (Mercury, Venus,
  *  small bodies), as a fraction of its sphere of influence. */
 export const TRAVEL_SYSTEM_SOI_FRACTION = 1 / 3;

@@ -18,14 +18,10 @@ const _tmpProj = new Vector3();
 const LH = 22;
 
 /**
- * A body large enough on screen to hide labels behind it. The occluding region
- * is the body's tangent cone — the exact silhouette in every regime, including
- * when the limb crosses the camera plane (which the old screen-ellipse model
- * couldn't represent) and when the body is an oblate ellipsoid. The test runs in
- * the space where the body is a unit sphere: the scaled principal axes gᵢ = eᵢ/aᵢ
- * map a label's camera-space view ray d there (sphere = identity·1/r), and c' =
- * (c·eᵢ/aᵢ) is the normalized center with K = |c'|² − 1. isScreenOccluded
- * rebuilds d from the label's screen point (no per-call projection).
+ * A body large enough to hide labels behind it, tested via its tangent cone —
+ * exact even when the limb crosses the camera plane or the body is an oblate
+ * ellipsoid. Precomputed in the space where the body is a unit sphere so
+ * {@link isScreenOccluded} rebuilds the label's view ray without reprojecting.
  */
 export type ScreenOccluder = {
 	cx0: number;
@@ -92,10 +88,9 @@ export function restoreLabel(
 
 /**
  * Applies label visibility for a body, handling the close-in case where the
- * rendered sphere is large enough to replace the halo indicator.
- * Returns true if the label transitioned hidden→visible this call, so the
- * caller can force a cull this frame (otherwise it renders un-culled — all
- * labels maximized — until the throttled cull catches up, a 1–2 frame flash).
+ * rendered sphere is large enough to replace the halo indicator. Returns true
+ * on hidden→visible transitions so the caller can force an immediate cull
+ * instead of a 1–2 frame flash of un-culled labels.
  */
 export function applyLabelDisplay(
 	bo: BodyObjects,
@@ -167,15 +162,10 @@ export function isScreenOccluded(
 		const root = p * occ.cpx + q * occ.cpy + s * occ.cpz;
 		if (root <= 0) continue; // ray points to the far side of the body
 		if (root * root <= occ.K * (p * p + q * q + s * s)) continue; // outside the silhouette cone
-		// Depth: within the silhouette the label is hidden only when it sits on the
-		// body's FAR cap — its outward radial faces away from the camera. This is the
-		// same perspective-horizon test the surface-feature labels use, and because it
-		// keys off the label's OWN distance it stays exact whether the label rides
-		// above or below the occluder's mean radius. A centre-distance gate wrongly
-		// leaked far-side labels nearer than a filling planet's centre; a mean-radius
-		// near-surface gate wrongly hid near-side labels below it. In camera space
-		// (camera at the origin) the visible-cap test C·(P−C) > 0 with P = dist·d̂
-		// reduces to C·d̂ > dist, so hide when C·d ≤ dist·|d|.
+		// Within the silhouette, hide only if the label is on the body's FAR cap.
+		// Keys off the label's own distance (not the occluder's mean radius) so it
+		// stays exact regardless of relief. Camera-space visible-cap test
+		// C·(P−C) > 0 with P = dist·d̂ reduces to hide when C·d ≤ dist·|d|.
 		const cd = u * occ.ccx + v * occ.ccy + w * occ.ccz;
 		if (cd <= dist * Math.hypot(u, v, w)) return true;
 	}
@@ -214,14 +204,9 @@ let _candidatesActive = 0;
 const _accepted: AcceptedRect[] = [];
 let _acceptedActive = 0;
 
-/**
- * Screen space that is spoken for before any cull runs.
- *
- * The trip planner's trajectory labels are the content of the map while a trip
- * is being chosen between, so they do not compete for their slot: they are
- * seeded into the accepted set ahead of everything, which makes every body and
- * feature label give way to them, and are never culled themselves.
- */
+/** Screen space spoken for before any cull runs — the trip planner's
+ *  trajectory labels are the map's content while a trip is being chosen, so
+ *  they're seeded into the accepted set ahead of everything and never culled. */
 const _reserved: AcceptedRect[] = [];
 let _reservedActive = 0;
 
@@ -268,12 +253,8 @@ function ensureAccepted(idx: number): AcceptedRect {
 	return a;
 }
 
-/**
- * Hold `count` rects out of every cull this frame. Passing 0 releases them.
- *
- * Called before the culls run, from whatever owns labels that outrank the
- * scene's own — currently only the travel overlay.
- */
+/** Hold `count` rects out of every cull this frame; 0 releases them. Called
+ *  before the culls run, by whatever owns labels that outrank the scene's own. */
 export function reserveLabelRects(rects: readonly AcceptedRect[], count: number): void {
 	_reservedActive = 0;
 	for (let i = 0; i < count; i++) {
@@ -460,14 +441,11 @@ export function cullOverlappingLabels(
 }
 
 /**
- * Refresh `_accepted` with fresh-projected rects of every currently visible,
- * maximized body label. Runs every frame (the body cull above is throttled
- * to every 3rd) so the nomenclature cull sees up-to-date body rects — without
- * this, feature labels flicker for a few frames at the transition moment as
- * a body label slides over them, because the throttled accepted rects are
- * 0–2 frames stale and the feature overlap test "steps" between cull frames.
- * Dimmed and minor labels are excluded — their visual footprint is the small
- * halo, not the full text rect.
+ * Refresh `_accepted` with fresh-projected rects of every visible, maximized
+ * body label, every frame — the body cull above is throttled to every 3rd, so
+ * without this the nomenclature cull sees stale rects and feature labels
+ * flicker as a body label slides over them. Dimmed/minor labels are excluded:
+ * their footprint is the small halo, not the full text rect.
  */
 export function refreshVisibleBodyLabelRects(
 	bodyObjects: Map<string, BodyObjects>,

@@ -8,12 +8,9 @@ import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
 
 vi.mock('$lib/fetch/position/labels', () => ({ fetchLabels: () => Promise.resolve(new Map()) }));
 
-/**
- * Earth-sat cloud emphasis ramps off the count of members valid at the sim
- * time. That count changes with the clock alone. A scrub across a snapshot's
- * validity window loads no data. The registry must recount on sim-time
- * changes, not only on chunk flushes and rollovers.
- */
+// Earth-sat emphasis ramps off members valid at sim time; scrubbing across a
+// snapshot's validity window loads no data, so the registry must recount on
+// sim-time changes alone, not only on chunk flushes and rollovers.
 
 /** Snapshot validity window: the whole Earth zone shares the file header's bounds. */
 const WINDOW_START = 2461217.6;

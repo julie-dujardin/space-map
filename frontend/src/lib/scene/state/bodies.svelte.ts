@@ -7,80 +7,62 @@ export function isTopLevelParent(parentId: string): boolean {
 	return parentId === SSB_ID || parentId === SUN_ID;
 }
 
-/** Planetary barycenters (`naif-1`…`naif-9`) carry no name/rotational frame of
- *  their own; their dominant planet is `naif-{X}99` by SPICE convention. Returns
- *  that planet's id, or null when `id` isn't such a barycenter. */
+/** Barycenter → dominant planet id (`naif-{X}` → `naif-{X}99`, SPICE convention),
+ *  or null if `id` isn't a barycenter. Barycenters carry no name/frame of their own. */
 export function dominantPlanetId(id: string): string | null {
 	const m = /^naif-([1-9])$/.exec(id);
 	return m ? `naif-${m[1]}99` : null;
 }
 
-/** The physical body a focused object could realistically clip into: its direct
- *  parent (planet for an orbiter/moon, or the moon a spacecraft orbits), resolved
- *  from barycenter to dominant planet. Undefined for Sun/SSB orbiters, whose
- *  parent is too far to reach. */
+/** The physical body a focused object could clip into: its direct parent,
+ *  resolved to dominant planet. Undefined for Sun/SSB orbiters — too far to reach. */
 export function collisionParentId(parentId: string): string | undefined {
 	if (isTopLevelParent(parentId)) return undefined;
 	return dominantPlanetId(parentId) ?? parentId;
 }
 
-/**
- * The scene's body store. Owns every loaded `PositionedBody` plus the
- * parent/child graph used to answer system-membership questions. Visibility
- * decisions and per-frame loops read from here; loaders (initial chunk fetch
- * + hot-reload) write through here.
- */
+/** The scene's body store: every loaded `PositionedBody` plus the parent/child
+ *  graph. Loaders write through it; visibility and per-frame loops read from it. */
 export class BodyIndex {
-	/** All major-tier bodies (chebyshev majors, kepler majors, moons, URL-loaded
-	 *  placeholders, standalones). Keyed by object id. */
+	/** All major-tier bodies, keyed by object id. */
 	readonly bodiesById = new Map<string, PositionedBody>();
 
-	/** Promoted-for-render subset of `bodiesById`. Barycenters, Lagrange points,
-	 *  and SPICE-probe entries are excluded — the renderer's hot loops walk
-	 *  this so the long tail of probes stays out of per-frame iteration. */
+	/** Promoted-for-render subset of `bodiesById`, excluding barycenters,
+	 *  Lagrange points, and SPICE probes — keeps the renderer's hot loops small. */
 	majorBodies: PositionedBody[] = [];
 
-	/** Per-zone asteroid buckets. Each {@link MinorBucket} holds the zone's
-	 *  parsed element columns and materializes a `PositionedBody` on demand
-	 *  (`get`/`values`) — the ~1.3M dots render straight off the worker SoA and
-	 *  never allocate an object. `small_body_moons` ride here too, as loose
-	 *  entries (they need main-thread parent resolution + auto-promotion). */
+	/** Per-zone asteroid buckets. Each {@link MinorBucket} materializes a
+	 *  `PositionedBody` on demand so ~1.3M dots render off the worker SoA
+	 *  without allocating objects. `small_body_moons` ride here too. */
 	asteroidBodiesByZone = new Map<string, MinorBucket>();
 
-	/** Per-parent spacecraft buckets — inner Map keyed by object id. Earth sats
-	 *  / debris stay on the AoS path (small count, plus the time-segmented
-	 *  hot-reload + group-filter machinery in ZoneRefresher), so this is a plain
-	 *  per-id Map, not a {@link MinorBucket}. Outer key is the parent id. */
+	/** Per-parent spacecraft buckets. Earth sats/debris stay on this AoS path
+	 *  (small count, plus ZoneRefresher's hot-reload/group-filter machinery)
+	 *  rather than a {@link MinorBucket}. */
 	spacecraftByParent = new Map<string, Map<string, PositionedBody>>();
 
 	/** The one synthetic surface-feature body currently focused, if any. Kept off
-	 *  `bodiesById`/`majorBodies` (it isn't propagated — the renderer re-seats it
-	 *  each frame), but resolvable via {@link getBody} so the focus + north-ref
-	 *  paths can look it up by id. */
+	 *  `bodiesById`/`majorBodies` — the renderer re-seats it each frame — but
+	 *  resolvable via {@link getBody}. */
 	focusFeature: PositionedBody | null = null;
 
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
 	dirtyAsteroidZones = new Set<string>();
 	dirtySpacecraftGroups = new Set<string>();
 
-	/** True while the phase-2 minor-chunk stream is in flight. Point-cloud
-	 *  rebuilds throttle full-zone repacks while this is set (see
-	 *  {@link PointCloudSystem.rebuildMinor}); the final flush clears it so
-	 *  every still-dirty zone gets its full pack. */
+	/** True while the phase-2 minor-chunk stream is in flight, throttling
+	 *  point-cloud full-zone repacks ({@link PointCloudSystem.rebuildMinor}). */
 	minorStreaming = false;
 
 	/** Incremented on each minor-body data flush; read by Scene.svelte to trigger point cloud rebuilds. */
 	minorBodyVersion = $state(0);
 
-	/** Bumped by the renderer after `loadSystemData` lands a system's metadata
-	 *  (which is what attaches `orientation` to PositionedBody). Lets reactive
-	 *  consumers — currently the compass-north choice list — recompute as
-	 *  pole data arrives, since orientation is a property mutation on the
-	 *  existing `$state.raw` body and wouldn't otherwise re-trigger derived. */
+	/** Bumped when `loadSystemData` attaches `orientation` to a body, so reactive
+	 *  consumers (compass-north list) re-derive — a `$state.raw` mutation
+	 *  wouldn't otherwise retrigger. */
 	orientationVersion = $state(0);
 
-	/** Parent → children index (object ids only). Built incrementally as
-	 *  bodies are added; used to answer system-membership questions in O(1). */
+	/** Parent → children index (object ids only), for O(1) system-membership checks. */
 	private readonly childrenByParent = new Map<string, Set<string>>();
 
 	/** Max semi-major axis (AU) of moons per parent body id. Used to size the
@@ -91,28 +73,22 @@ export class BodyIndex {
 	 *  matching without per-frame zone scans. */
 	private readonly addListeners = new Set<(ids: readonly string[]) => void>();
 
-	/** Subscribe to bulk additions across any bucket (bodiesById, zone buckets,
-	 *  spacecraft buckets). The callback fires with the freshly-added ids only;
-	 *  updates to existing entries are not announced. */
+	/** Subscribe to bulk additions across any bucket. Fires with freshly-added
+	 *  ids only; updates to existing entries aren't announced. */
 	onBodiesAdded(cb: (ids: readonly string[]) => void): () => void {
 		this.addListeners.add(cb);
 		return () => this.addListeners.delete(cb);
 	}
 
-	/** Fire `onBodiesAdded` listeners. Called by `addBodies` for bodiesById
-	 *  insertions, and directly by loaders that mutate the zone buckets
-	 *  (scene-load flush, zone-refresher merges). */
+	/** Fire `onBodiesAdded` listeners; also called directly by loaders that
+	 *  mutate zone buckets outside `addBodies`. */
 	notifyBodiesAdded(ids: readonly string[]): void {
 		if (ids.length === 0 || this.addListeners.size === 0) return;
 		for (const cb of this.addListeners) cb(ids);
 	}
 
-	/**
-	 * Look up any body by ID. Pass `zone` (parent id for spacecraft groups,
-	 * OrbitClass name for asteroid zones) when you already know the bucket —
-	 * skips the linear scan. Without a hint: bodiesById → spacecraftByParent →
-	 * asteroidBodiesByZone.
-	 */
+	/** Look up any body by ID. Pass `zone` to skip the linear bucket scan when
+	 *  it's already known. */
 	getBody(id: string, zone?: string): PositionedBody | undefined {
 		const major = this.bodiesById.get(id);
 		if (major) return major;
@@ -133,9 +109,9 @@ export class BodyIndex {
 		return undefined;
 	}
 
-	/** Register a batch of bodies. Updates `bodiesById`, the parent/child
-	 *  index, and the per-parent moon-max-a tracker. Orbit-source attribution
-	 *  is the caller's responsibility (see CreditsStore.recordOrbitSources). */
+	/** Register a batch of bodies: updates `bodiesById`, the parent/child index,
+	 *  and the moon-max-a tracker. Orbit-source attribution is the caller's job
+	 *  (see CreditsStore.recordOrbitSources). */
 	addBodies(bodies: PositionedBody[]): void {
 		const addedIds: string[] = [];
 		for (const b of bodies) {
@@ -158,10 +134,8 @@ export class BodyIndex {
 		return this.childrenByParent.get(parentId);
 	}
 
-	/** Zone holding an asteroid/comet body (e.g. `small_bodies/MBA`,
-	 *  `small_body_moons`, `earth`), or undefined for non-belt bodies. Linear
-	 *  scan across zone buckets — fine for the promoted-body cardinality the
-	 *  visibility loop and promotion bookkeeping run on. */
+	/** Zone holding an asteroid/comet body, or undefined for non-belt bodies.
+	 *  Linear scan — fine at promoted-body cardinality. */
 	findAsteroidZone(id: string): string | undefined {
 		for (const [zone, byId] of this.asteroidBodiesByZone) {
 			if (byId.has(id)) return zone;
@@ -174,26 +148,20 @@ export class BodyIndex {
 		return this.moonMaxAByParent.get(parentId);
 	}
 
-	/** Max orbital semi-major axis (AU) of moons in a system, with a safe
-	 *  floor for systems with no moons. Used to size the shadow camera frustum. */
+	/** Max moon semi-major axis (AU) in a system, floored for moonless systems.
+	 *  Sizes the shadow camera frustum. */
 	getSystemExtent(sysId: string): number {
 		return this.moonMaxAByParent.get(sysId) ?? 0.01;
 	}
 
-	/**
-	 * Whether a body orbits within a planetary system (not directly around SSB/Sun).
-	 * True for moons, planet-orbiting spacecraft, etc.
-	 */
+	/** True if a body orbits within a planetary system, not directly around SSB/Sun. */
 	isSystemBody(body: PositionedBody): boolean {
 		if (isTopLevelParent(body.data.parentId)) return false;
 		const parent = this.bodiesById.get(body.data.parentId);
 		return parent?.data.objectType !== ObjectType.BARYCENTER;
 	}
 
-	/**
-	 * True if the given parentId belongs to a system.
-	 * Handles two levels: parentId === barycenter, or parentId is a direct child of the barycenter.
-	 */
+	/** True if `parentId` belongs to `sysId` — the barycenter itself or a direct child. */
 	isInSystem(parentId: string, sysId: string | null): boolean {
 		if (!sysId) return false;
 		if (parentId === sysId) return true;
@@ -228,9 +196,7 @@ export class BodyIndex {
 			if (zone === 'earth') continue;
 			smallBodies += bucket.size;
 		}
-		// Standalone asteroids/comets that arrived through bodiesById (URL-loaded
-		// placeholders or major chunks) — fold them into the small-body count so
-		// e.g. Bennu shows up.
+		// Fold in standalones that arrived through bodiesById (e.g. Bennu).
 		for (const b of this.bodiesById.values()) {
 			if (isAsteroid(b.data.objectType) || b.data.objectType === ObjectType.COMET) smallBodies++;
 		}

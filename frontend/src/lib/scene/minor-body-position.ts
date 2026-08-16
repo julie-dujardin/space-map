@@ -5,18 +5,13 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { SSB_ID } from '$lib/constants';
 
 /**
- * Recompute `body.position` in place from its orbital elements at `jd`.
- * Point-cloud bodies (asteroids, spacecraft) aren't in `ctx.bodiesById`, so
- * the per-frame `updatePositions` loop skips them — their visible dots are
- * advanced on the GPU by the orbit pool, and the CPU copy stays frozen at
- * load. Call this at pick / promotion time so `body.position` matches the
- * rendered dot.
+ * Recompute `body.position` in place. Point-cloud bodies advance on the GPU
+ * and their CPU copy stays frozen at load, so call this at pick/promotion
+ * time to sync it to the rendered dot.
  *
- * SGP4-backed bodies go through the same propagator used to build their orbit
- * curve — otherwise a Kepler fallback here would produce a position a few km
- * off the SGP4 curve endpoint, which `buildOrbitTrailPoints` then reads as
- * "body is in the middle of the curve", sizing the vertex buffer too small
- * and freezing the trail on subsequent refreshes.
+ * SGP4-backed bodies use the same propagator as their orbit curve — a Kepler
+ * fallback would drift a few km off the curve endpoint, which
+ * `buildOrbitTrailPoints` misreads as mid-curve and freezes the trail.
  */
 export function refreshMinorBodyPosition(
 	body: PositionedBody,
@@ -26,19 +21,16 @@ export function refreshMinorBodyPosition(
 	const d = body.data;
 	const isParabolic = d.q != null;
 	if (d.a === 0 && !isParabolic && !d.satrec) return; // coincides with parent — nothing to propagate
-	// Skip when jd is outside the chunk's validity window — same gate the
-	// per-frame renderer uses; prevents SGP4 divergence warnings at pick time.
-	if (jd < d.validityStart || jd > d.validityEnd) return;
+	if (jd < d.validityStart || jd > d.validityEnd) return; // outside chunk validity — avoid SGP4 divergence
 	const offset = d.satrec
 		? sgp4PositionScene(d.satrec, jd)
 		: isParabolic
 			? parabolicToPositionJD(d, jd)
 			: orbitalElementsToPositionJD(d, jd);
 	if (!offset) return;
-	// Only the SSB is the scene origin. Any other parent — the Sun included, it
-	// wobbles ~1e6 km around the barycenter — must be loaded to position against;
-	// hide rather than anchor at the origin, which would place an asteroid-moon
-	// at the Sun. Mirrors the per-frame renderer in update-positions.
+	// Only the SSB is the scene origin — the Sun wobbles ~1e6 km around the
+	// barycenter. Any other parent must be loaded; hide rather than anchor at
+	// the origin. Mirrors update-positions.
 	let parentPos: readonly [number, number, number];
 	if (d.parentId === SSB_ID) {
 		parentPos = [0, 0, 0];

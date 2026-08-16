@@ -49,26 +49,17 @@ export function minCameraDistance(body: PositionedBody): number {
 }
 
 /**
- * Push the camera out to `body`'s surface (+ clearance) if it has penetrated the
- * body — used to stop the camera tunnelling into the focused object's parent
- * (e.g. Earth while focused on the ISS). `camera.position` is in focus-relative
- * render space, so `body`'s center is offset by the focus origin. No-op for
- * bodies with no real radius (barycenters). Mutates `camera.position`.
+ * Pushes the camera off `body`'s surface (+ clearance) if it penetrated —
+ * stops tunnelling into the focused object's parent (e.g. Earth while
+ * focused on the ISS). Mutates `camera.position`; no-op for zero-radius bodies.
  *
- * For an orbiter the wall is never placed farther from the parent's center than
- * the focused object itself: a very-low orbiter can ride below the clearance
- * line, so a fixed radius+clearance wall would fence the camera off from the very
- * thing it's focused on. Capping at the focus's own radial distance keeps it
- * reachable while still blocking the sub-surface volume.
+ * For an orbiter, the wall never exceeds the focused object's own distance,
+ * so a very-low orbiter's clearance doesn't fence the camera off from it.
  *
- * For a `landed` probe the floor is the rendered terrain itself, and the
- * guarded shape is the near-plane rectangle, not just the eye: the rectangle
- * extends ±tan(fov/2)·near (×aspect) around the view axis, and terrain crossing
- * it is near-clipped into a see-through hole even with the eye above ground.
- * Each of the eye + four corners is checked against the terrain radial along
- * its own direction (+ keep-away) and the camera is lifted radially by the
- * worst deficit. Until the terrain data resolves, a shell at the probe's own
- * radial distance stands in.
+ * For a `landed` probe, the floor is rendered terrain and the guarded shape
+ * is the near-plane rectangle, not just the eye — terrain crossing it still
+ * near-clips into a see-through hole. Each corner is checked against its own
+ * terrain radial, and the camera lifted by the worst deficit.
  */
 export function clampCameraOutsideBody(
 	camera: PerspectiveCamera,

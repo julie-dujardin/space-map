@@ -1,9 +1,5 @@
-/**
- * Distance-aware durations so camera animations feel like constant speed rather
- * than constant time. A 90° rotation should take roughly twice as long as a 45°
- * one; a fly across the system should take longer than a hop between sister
- * moons — but log-scaled and clamped so 1000× the distance isn't 1000× the time.
- */
+/** Distance-aware durations so camera animations feel like constant speed, not
+ *  constant time — log-scaled and clamped so 1000× the distance isn't 1000× the time. */
 
 export interface AngularPacing {
 	/** Duration at `refAngleRad`; smaller/larger angles scale linearly. */

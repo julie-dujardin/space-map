@@ -37,13 +37,10 @@ import {
 	STAR_POINT_SIZE_PX
 } from '../objects/sun';
 
-/**
- * Screen radius (px) at which the photosphere mesh hands off to the star
- * point: the mesh's projected disc and the point sprite cover the same area
- * here, so the two render contributions can be matched in HDR for a smooth
- * bloom transition. See `STAR_POINT_HANDOFF_INTENSITY` for the brightness
- * side of the handoff.
- */
+/** Screen radius (px) at which the photosphere mesh hands off to the star
+ *  point: mesh disc and point sprite cover the same area here, so the render
+ *  contributions match in HDR for a smooth bloom transition. See
+ *  `STAR_POINT_HANDOFF_INTENSITY` for the brightness side. */
 const STAR_POINT_HANDOFF_R = STAR_POINT_SIZE_PX / 2;
 
 /** Orbit-centre distance (from focus) past which a trail counts as
@@ -131,11 +128,9 @@ export function updateBodyVisibility(
 	];
 
 	// Pre-pass: offset each body's label to its silhouette-disc center on
-	// screen, not the projected body center (which is tens of pixels off-disc
-	// for close off-axis bodies — LEO sat seeing Earth, moon seeing Saturn).
-	// Sphere: silhouette-ellipse center under perspective = body_NDC · β where
-	// β = Bz²/(Bz²−r²); local-frame offset is ((β−1)·Bx, (β−1)·By, 0). Oblate
-	// bodies use the exact ellipsoid silhouette center (see ellipsoidAnchorOffset).
+	// screen, not the projected body center — off by tens of px for close
+	// off-axis bodies (LEO sat seeing Earth). Sphere case uses β = Bz²/(Bz²−r²);
+	// oblate bodies use the exact ellipsoid center (see ellipsoidAnchorOffset).
 	const fp = focusTruePos;
 	const cameraInverse = camera.matrixWorldInverse;
 	for (const bo of bodyObjects.values()) {
@@ -247,13 +242,10 @@ export function updateBodyVisibility(
 		const modelSpheres = bo.model?.userData.occluderSpheres as OccluderSphere[] | undefined;
 		if (bo.model && modelSpheres?.length) {
 			// Focused body rendered as an overlay model: occlude with the sphere
-			// chain fitted at load — a single bounding ellipsoid lets labels peek
-			// through bent/elongated shapes. Centers live in the model's rotation
-			// frame; the model sits at the overlay root, so its local quaternion
-			// is its world attitude and `model.position` is the recentring shift.
-			// No body-level bails: up close the camera is routinely inside the
-			// bounding sphere or past the body center while lobes still occlude,
-			// so each sphere gates itself.
+			// chain fitted at load, so labels can peek through bent/elongated
+			// shapes instead of one bounding ellipsoid. No body-level bail: up
+			// close the camera is routinely inside the bounding sphere while
+			// lobes still occlude, so each sphere gates itself.
 			const s = modelUnitScene(bo);
 			const mp = bo.model.position;
 			for (const sphere of modelSpheres) {
@@ -371,14 +363,10 @@ export function updateBodyVisibility(
 		// type-aware gates even when sizeless and meshless — else they'd skip the
 		// moon-label cap and show every halo unbounded.
 		if (bo.mesh === null && !isMajorBody(body.data.objectType)) {
-			// Halo-only minor bodies fall into two categories with different gates:
-			// - Barycenters / Lagrange points: navigational aids, always visible
-			//   once built (with a barycenter-primary overlap check so SSB/Sun
-			//   and Pluto-BC/Pluto don't stack).
-			// - Auto-promoted asteroids/comets/probes (label+halo entries with
-			//   no mesh): apply the same distance-ratio threshold + active-system
-			//   gate as the mesh path, so they fade out when zooming into a
-			//   planet system (matching the point-cloud behavior they replace).
+			// Barycenters/Lagrange points: navigational aids, always visible once
+			// built (overlap check so SSB/Sun and Pluto-BC/Pluto don't stack).
+			// Auto-promoted asteroids/comets/probes: same distance-ratio + active-
+			// system gate as the mesh path, so they fade with the point clouds they replace.
 			const ot = body.data.objectType;
 			if (ot === ObjectType.BARYCENTER || ot === ObjectType.LAGRANGE_POINT) {
 				let visible = true;
@@ -428,15 +416,11 @@ export function updateBodyVisibility(
 			showLabel = false;
 		}
 
-		// Star extras: the point sprite takes over once the mesh disc has
-		// shrunk to the point's own on-screen area (`screenR < SIZE/2`), so
-		// the two cover the same number of pixels at the handoff and the
-		// alpha-blended overlap can be matched in HDR. Beyond the handoff
-		// the point's `uIntensity` falls as the squared ratio of the current
-		// to handoff screen radius — equivalent to the physical 1/d²
-		// apparent-flux law since `screenR ∝ 1/d`. The floor keeps the dot
-		// visible at LDR (no bloom) once the apparent flux drops below the
-		// bloom threshold — roughly the look of the Sun from Pluto's orbit.
+		// Star extras: the point sprite takes over once the mesh disc shrinks to
+		// the point's own on-screen area, matching HDR contributions at the
+		// handoff. Beyond it `uIntensity` falls as the squared screen-radius
+		// ratio — equivalent to 1/d² apparent flux since screenR ∝ 1/d. The
+		// floor keeps the dot visible at LDR once flux drops below bloom threshold.
 		if (bo.starPoint) {
 			const screenR = (bo.radiusScene / dist) * projScale;
 			const subPixel = screenR < STAR_POINT_HANDOFF_R;

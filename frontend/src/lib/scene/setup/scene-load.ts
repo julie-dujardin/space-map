@@ -43,23 +43,18 @@ interface MinorChunkArg {
 }
 
 /**
- * Parts are uniform random shards (hash-bucketed by `Object.random_int`), so the
- * first N parts of a zoom bucket are a representative sample of the whole zone.
- * Unnamed (zoom-1) parts past this cap are split into a deferred wave that runs
- * only after the eager wave finishes, so the point cloud reaches a visually
- * representative density before the long tail competes for bandwidth. Only the
- * main belt (MBA, 133 zoom-1 parts) exceeds this today; every other zone is
- * smaller and stays fully eager.
+ * Parts are hash-bucketed shards, so the first N parts of a zoom bucket are a
+ * representative sample. Unnamed (zoom-1) parts past this cap defer until the
+ * eager wave finishes, so density lands before the long tail competes for
+ * bandwidth. Only the main belt (133 zoom-1 parts) exceeds this today.
  */
 const EAGER_ZOOM1_PARTS = 13;
 
 /**
- * Build the phase-2 chunk-fetch plan, split into an eager wave (named bodies,
- * plus a representative sample of unnamed bodies) and a deferred wave (the
- * unnamed long tail). No `ChunkLoader.prefetch` warming: firing every part up
- * front floods the connection and starves the phase-1 critical path on
- * bandwidth-bound links — the awaited `loader.process` calls fetch on demand.
- * Skips `major`/`moons` (phase 1), probe zones (ProbeStore), chebyshev.
+ * Phase-2 chunk-fetch plan: eager wave (named + a representative sample of
+ * unnamed) plus a deferred wave (the unnamed long tail). No prefetch warming
+ * — firing every part up front would starve the phase-1 critical path on
+ * bandwidth-bound links. Skips `major`/`moons` (phase 1), probe zones, chebyshev.
  */
 function planMinorChunks(
 	metadata: Metadata,
@@ -120,12 +115,9 @@ async function buildProbeStore(metadata: Metadata, jd: number): Promise<ProbeSto
 }
 
 /**
- * Phase 1 majors, loaded in dependency order: chebyshev first (Sun + planets +
- * perturbers + whitelisted moons) so its positions are in `loader.positions`
- * before kepler-fallback dwarves try to resolve their parents; then
- * `major/1` (Horizons no-SPK), `major/2` (SBDB-only dwarves), `moons`
- * (non-whitelisted, Method-C secular).
- * Zoom 0 is reserved for chebyshev so per-zoom shape stays single-payload.
+ * Phase 1 majors, in dependency order: chebyshev first (Sun/planets/perturbers/
+ * whitelisted moons) so `loader.positions` is populated before kepler-fallback
+ * dwarves resolve their parents; then `major/1`, `major/2`, `moons`.
  */
 async function loadMajorBodies(
 	ctx: ContextManager,
@@ -166,43 +158,31 @@ async function loadMajorBodies(
 }
 
 /**
- * Boot the scene's data layer: fetch metadata, build the ephemeris stores
- * (Chebyshev + probes), load the major-body chunk, route placeholders, then
- * stream the minor-body chunks in the background flushing periodically into
- * `ctx.bodies`. Writes through the manager's sub-stores; sets `loading=false`
- * once phase 1 (majors visible) completes.
+ * Boot the scene's data layer, two-phase so first paint lands before tens of
+ * thousands of asteroids do. Phase 1 (awaited): ephemeris stores + major/moon
+ * chunks — once in `bodies.majorBodies`, the renderer can build the scene, and
+ * `loading` flips false. Phase 2 (background): minor-body chunks, flushed into
+ * `ctx.bodies` every 500ms so point clouds grow while the page stays interactive.
  *
- * Two-phase to get first paint up before tens of thousands of asteroids land:
- *  - Phase 1 (awaited): Chebyshev + probe stores + major/moon chunks. Once
- *    these are in `bodies.majorBodies`, the renderer can build the scene.
- *  - Phase 2 (background): minor-body element chunks (asteroids, spacecraft
- *    groups). Flushes every 500ms so the point clouds grow visibly while the
- *    rest of the page is interactive.
- *
- * Caller (ContextManager.load) is responsible for resetting `loading` on
- * thrown errors — this function only sets it to false on the success path.
+ * Caller resets `loading` on a thrown error — this only clears it on success.
  */
 export async function loadScene(ctx: ContextManager, date: Date, targetId?: string): Promise<void> {
-	// Tiny one-shot fetch — IAU nutation/precession angles for body rotation
-	// + per-body GMs used by chebyshev trail-buffer sizing. Fire-and-forget;
-	// rotation falls back to the first-order model and trail buffers stay
-	// uninitialized until it lands.
+	// IAU nutation/precession angles + per-body GMs. Fire-and-forget; rotation
+	// falls back to the first-order model until it lands.
 	performance.mark('sm-load-start');
 	loadProgress.reset();
 	void loadSystemsGlobal().catch((e) =>
 		console.warn('scene-load: systems-global (GMs/nutation) failed to load:', e)
 	);
-	// Awaited before majors land (below): the scattering shells are built
-	// synchronously with each body mesh, so the params must already be in the
-	// registry. Parallel with metadata/ephemeris, so effectively free.
+	// Awaited before majors land — scattering shells build synchronously with
+	// each body mesh, so params must already be in the registry.
 	const atmospheresPromise = loadAtmospheres().catch((e) =>
 		console.warn('scene-load: atmospheres failed to load — rendering without shells:', e)
 	);
 	const jd = dateToJD(date);
 	const metadataPromise = fetchMetadata();
 
-	// Moons prefetch is owned by ZoneRefresher (chunk-indexed branch); it
-	// warms `[idx-1, idx, idx+1]` at construction. The flat-zone case (no
+	// ZoneRefresher owns chunk-indexed moons prefetch; the flat-zone case (no
 	// chunk index) is handled here as a one-shot HTTP warm.
 	metadataPromise.then((metadata) => {
 		const moons = metadata.position.zones.moons;
@@ -213,21 +193,17 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		}
 	});
 
-	// Skybox is the page background — start fetching+decoding the low tier as
-	// soon as the tier list is known, rather than waiting for renderer init.
+	// Start fetching+decoding the skybox low tier as soon as the tier list is
+	// known, rather than waiting for renderer init.
 	metadataPromise.then((metadata) => {
 		if (metadata.skybox) prefetchSkyboxTiers(metadata.skybox);
 	});
 
 	const minorChunkArgsPromise = metadataPromise.then((metadata) => planMinorChunks(metadata, date));
 
-	// Chebyshev must be ready before we process major/moons — the zones it
-	// covers (Sun/planets/dwarves at major, perturbers at major_asteroids,
-	// whitelisted moons at moons/<parent>) supply the only positions for
-	// those bodies. No fallback: if the export carries chebyshev zones, we
-	// wait. Probes lag chebyshev — fit-center body positions must be in
-	// loader.positions before processProbes runs, and those come from the
-	// chebyshev pass above.
+	// Chebyshev must be ready before major/moons — it supplies the only
+	// positions for the bodies it covers, no fallback. Probes lag chebyshev
+	// too: fit-center positions must be in `loader.positions` first.
 	const chebPromise = metadataPromise.then(async (metadata) => {
 		const params = chebyshevZoneParams(metadata);
 		if (params.size === 0) return null;
@@ -250,13 +226,12 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	ctx.bodies.addBodies(major);
 	ctx.credits.recordOrbitSources(major);
 
-	// Labels resolve once on app start; awaited here so each MinorBucket can
-	// materialize names/flags on demand without re-awaiting per chunk.
+	// Awaited once so each MinorBucket can materialize names/flags on demand
+	// without re-awaiting per chunk.
 	const labels = await fetchLabels();
 	loadProgress.reach('labels');
 
-	// Asteroid buckets live directly on ctx.bodies; chunks are added in place and
-	// the outer Map is re-wrapped on flush so reactive observers see a new ref.
+	// Chunks add in place; the outer Map is re-wrapped on flush for reactivity.
 	const asteroidBucket = (zone: string): MinorBucket => {
 		let b = ctx.bodies.asteroidBodiesByZone.get(zone);
 		if (!b) ctx.bodies.asteroidBodiesByZone.set(zone, (b = new MinorBucket(labels)));
@@ -269,18 +244,15 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		return b;
 	};
 
-	// Placeholders for URL-loaded spacecraft targets: when the real chunk lands
-	// the entry's data/position are mutated in place so the renderer's held
-	// BodyObject ref stays valid. (Asteroid placeholders live in MinorBucket.)
+	// URL-loaded spacecraft placeholders: mutated in place when the real chunk
+	// lands so the renderer's held BodyObject ref stays valid.
 	const placeholderById = new Map<string, PositionedBody>();
-	// Ids added to a bucket since the last flush — drained at flush time to feed
-	// `BodyIndex.notifyBodiesAdded` so the promotion registry picks up curated
-	// asteroids/spacecraft without polling.
+	// Ids added since the last flush, drained into `notifyBodiesAdded` so the
+	// promotion registry picks up new bodies without polling.
 	const addedSinceFlush = new Set<string>();
 
 	const flush = () => {
-		// Re-wrap the outer Maps so the reference changes for reactive observers
-		// — the inner MinorBucket refs stay stable (mutated in place by addChunk).
+		// Re-wrap for reactivity — inner MinorBucket refs stay stable.
 		ctx.bodies.asteroidBodiesByZone = new Map(ctx.bodies.asteroidBodiesByZone);
 		ctx.bodies.spacecraftByParent = new Map(ctx.bodies.spacecraftByParent);
 		ctx.bodies.minorBodyVersion++;
@@ -290,32 +262,21 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		}
 	};
 
-	// If the target body wasn't in majors/moons, resolve it from the global
-	// object file and route it into the same per-zone store its chunk will
-	// land in — keeps a single source of truth and lets phase 2 reconcile
-	// in place when the chunk arrives.
+	// If the target wasn't in majors/moons, route it into the same per-zone
+	// store its real chunk will land in, so phase 2 reconciles it in place.
 	if (targetId && !ctx.getBody(targetId)) {
-		// Returns the chain ancestors→target when the target's parent isn't
-		// yet in `loader.positions` (e.g. moon-of-asteroid URL load before
-		// phase 2). Each ancestor needs the same routing pass so it shows up
-		// immediately instead of being invisible until its own chunk lands.
-		// All entries go through the same per-type routing — asteroid-moons
-		// are steered into `small_body_moons` so they match the regular
-		// chunk-load path (PromotionRegistry's asteroid-moon auto-promote
-		// picks them up and the parent asteroid along with them).
+		// Ancestor placeholders (target's parent not yet in `loader.positions`)
+		// get the same routing pass so they show up immediately too.
 		const placeholders = await createPlaceholderBody(targetId, date, loader);
 		for (let i = 0; i < placeholders.length; i++) {
 			const { body, zone } = placeholders[i];
 			if (ctx.getBody(body.data.id)) continue;
 			const type = body.data.objectType;
 			const parentEntry = i > 0 ? placeholders[i - 1] : null;
-			// Moons whose parent is an asteroid live in the
-			// `small_body_moons` zone in the regular chunk-load path. Steer
-			// the placeholder there too so it's reconciled in place when the
-			// real chunk arrives AND so it ends up in `bodyObjects` via the
-			// asteroid-moon auto-promote — NOT in `bodiesById`, where the
-			// per-frame moon `inSystem` filter (intended for major moons)
-			// would freeze it whenever focus moves off the moon.
+			// Asteroid-moon placeholders steer into `small_body_moons` so they
+			// reconcile via the auto-promote path into `bodyObjects` — not
+			// `bodiesById`, where the moon `inSystem` filter would freeze them
+			// once focus moves off.
 			const resolvedZone =
 				type === ObjectType.MOON && parentEntry && isAsteroid(parentEntry.body.data.objectType)
 					? 'small_body_moons'
@@ -340,14 +301,10 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		if (placeholders.length > 0) flush();
 	}
 
-	// Probes ride bodiesById (so getBody / URL focus / placeholder routing
-	// works) but are excluded from `majorBodies` so `buildScene` doesn't
-	// build a sphere + trail for each on first paint. The hot
-	// per-frame iteration loops (visibility, sphere LOD, texture LOD,
-	// ring shaders) walk `bodyObjects` which only contains promoted
-	// entries — keeping the long tail of probes out of that set keeps
-	// the loops short. On focus, `ensureBodyObjects` builds the full
-	// visual representation.
+	// Probes ride bodiesById (for getBody/URL-focus/routing) but stay out of
+	// `majorBodies` so `buildScene` skips a sphere+trail per probe, and out of
+	// `bodyObjects` (hot per-frame loops) until `ensureBodyObjects` builds
+	// them on focus.
 	ctx.bodies.majorBodies = major.filter(
 		(b) =>
 			b.data.objectType !== ObjectType.BARYCENTER &&
@@ -358,18 +315,15 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	ctx.loading = false;
 	performance.mark('sm-majors-done');
 
-	// Phase 2: minors — load in background, flush to reactive state periodically.
-	// minorChunkArgsPromise has been running in parallel.
+	// Phase 2: minors, loaded in background, flushed to reactive state periodically.
 	const { eager: minorChunkArgs, deferred: deferredChunkArgs } = await minorChunkArgsPromise;
 
-	// `small_body_moons` parents (asteroid hosts) live in `small_bodies/*`
-	// zones, not in chebyshev — without seeding, the asteroid pass would not
-	// retain their positions and the moons would skip on the parent lookup.
-	// Seed first, then process parent zones, then process moons.
+	// `small_body_moons` parents (asteroid hosts) live in `small_bodies/*`, not
+	// chebyshev — seed their positions first, or the moons skip on parent lookup.
 	const moonArgs = minorChunkArgs.filter((a) => a.zone === 'small_body_moons');
 	const otherArgs = minorChunkArgs.filter((a) => a.zone !== 'small_body_moons');
-	// Phase 1 already rendered, so a seed failure must only cost the asteroid-moons
-	// it feeds — not reject loadScene and swap the live scene for the error screen.
+	// Phase 1 already rendered, so a seed failure costs only the moons it
+	// feeds, not the whole scene.
 	for (const arg of moonArgs) {
 		try {
 			await loader.seedNeededParents(arg.zone, arg.zoom, arg.part, arg.time, arg.parentIdType);
@@ -381,10 +335,9 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	ctx.bodies.minorStreaming = true;
 	const intervalId = setInterval(flush, 500);
 
-	// Columnar ingest for the asteroid bulk (small_bodies/*): the parsed element
-	// columns go straight into a MinorBucket — no per-row PositionedBody, no
-	// throwaway main-thread Kepler solve. The few bodies that become objects
-	// (promotion / picking / detail) materialize on demand from these columns.
+	// Columnar ingest for the asteroid bulk: parsed columns go straight into a
+	// MinorBucket, no per-row PositionedBody or throwaway Kepler solve. Bodies
+	// that get promoted materialize on demand from these columns.
 	const handleColumnChunk = (zone: string, cols: ElementColumns, parentIdType: string) => {
 		ctx.credits.recordOrbitSource(cols.source);
 		if (cols.rowCount === 0) return;
@@ -393,9 +346,8 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		ctx.bodies.dirtyAsteroidZones.add(zone);
 	};
 
-	// Earth sats / debris stay on the AoS path (small count + time-segmented
-	// hot-reload + group-filter machinery). Mirrors the original per-id Map
-	// merge, including URL-placeholder reconciliation.
+	// Earth sats/debris stay on the AoS path (small count, time-segmented
+	// hot-reload, group filters), with URL-placeholder reconciliation.
 	const handleChunk = (zone: string, chunk: PositionedBody[]) => {
 		ctx.credits.recordOrbitSources(chunk);
 		const isEarth = zone === 'earth';
@@ -422,10 +374,9 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		}
 	};
 
-	// `small_body_moons` keep the AoS path: they're a tiny set whose positions
-	// resolve against their parent asteroid (seeded above) on the main thread,
-	// and the asteroid-moon auto-promote consumes the resolved bodies. Routed
-	// into the bucket as loose entries so `getBody`/promotion still find them.
+	// `small_body_moons` keep the AoS path: a tiny set resolved against their
+	// seeded parent asteroid, routed as loose bucket entries so
+	// `getBody`/promotion still find them.
 	const handleMoonChunk = (zone: string, chunk: PositionedBody[]) => {
 		ctx.credits.recordOrbitSources(chunk);
 		const bucket = asteroidBucket(zone);
@@ -440,9 +391,8 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	const asteroidOtherArgs = otherArgs.filter((a) => a.zone.startsWith('small_bodies/'));
 	const spacecraftArgs = otherArgs.filter((a) => !a.zone.startsWith('small_bodies/'));
 
-	// Per-chunk catch so one flaky part doesn't reject the wave — that would skip
-	// ZoneRefresher construction below and kill hot-reload for the session. Record
-	// the zone so the refresher can retry it (time-segmented zones only, below).
+	// Per-chunk catch so one flaky part doesn't reject the wave and kill
+	// hot-reload for the session; record the zone so the refresher retries it.
 	const failedZones = new Set<string>();
 	const onChunkFail = (zone: string, part: number) => (e: unknown) => {
 		failedZones.add(zone);
@@ -464,9 +414,8 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 					.catch(onChunkFail(zone, part))
 			)
 		]);
-		// Moons last: by now their parent asteroids have populated
-		// `loader.positions` via the seeded `neededParentIds` set, so
-		// `process()` can resolve them instead of skipping.
+		// Moons last: their parent asteroids have populated `loader.positions`
+		// by now, via the seed above, so `process()` can resolve them.
 		await Promise.all(
 			moonArgs.map(({ zone, zoom, part, time, parentIdType }) =>
 				loader
@@ -480,19 +429,15 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		ctx.bodies.minorStreaming = false;
 		flush();
 		performance.mark('sm-minors-done');
-		// Release the eager-minors gate (full-res skybox waits on it) even if
-		// the eager wave threw — a partial point cloud shouldn't block the
-		// background upgrade.
+		// Release the eager-minors gate (full-res skybox waits on it) even on
+		// a thrown wave — a partial point cloud shouldn't block the upgrade.
 		markEagerMinorsDone();
 	}
 
-	// Deferred wave: the unnamed long tail (main-belt zoom-1 parts past the
-	// eager sample). Same ingest path, started only after the eager wave so it
-	// never delays the visually-representative point cloud or the majors.
-	// The tail is ~120 belt parts (100 MB+ of typed arrays) of purely additive
-	// density — skip it entirely on memory-constrained/data-saver clients, where
-	// it's the single largest OOM contributor. The eager sample already renders
-	// a representative belt.
+	// Deferred wave: the unnamed main-belt long tail (~120 parts, 100 MB+ of
+	// typed arrays), started after the eager wave so it never delays the
+	// representative point cloud. Skipped on memory-constrained clients — it's
+	// the single largest OOM contributor and purely additive density.
 	if (deferredChunkArgs.length > 0 && isLowEndDevice()) {
 		console.info(
 			`Low-end device: skipping ${deferredChunkArgs.length} deferred minor-belt parts to conserve memory`
@@ -517,13 +462,12 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		}
 	}
 
-	// Hot-reload driver: metadataPromise already resolved (chebPromise awaited it).
 	// Guarded so a construction hiccup leaves the live scene intact (hot-reload
-	// just stays off) instead of rejecting into the error screen.
+	// stays off) instead of rejecting into the error screen.
 	try {
 		ctx.refresher = new ZoneRefresher(ctx, await metadataPromise, loader, date);
-		// A failed boot part left its snapshot partial, but the refresher won't
-		// reload until a rollover — re-fire the affected zones to recover.
+		// A failed boot part left its snapshot partial — re-fire the zone to
+		// recover, since the refresher won't reload until a rollover.
 		for (const zone of failedZones) ctx.refresher.invalidateZone(zone);
 	} catch (e) {
 		console.error('scene-load: ZoneRefresher init failed; hot-reload disabled:', e);

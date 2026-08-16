@@ -10,21 +10,16 @@ import type { ChunkLoader } from '$lib/fetch/position/chunk';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 
 /**
- * Create placeholder PositionedBodies from the __global__ object file. When
- * the target's parent isn't yet in `loader.positions` (e.g. URL-loading a
- * moon-of-asteroid before phase 2 lands the host asteroid's chunk), recurses
- * up the chain — each ancestor placeholder is added to the returned list AND
- * registered in `loader.positions` so the target can anchor on a real point
- * rather than the SSB. Returns an empty array when the chain can't close
- * (missing global data, missing orbit, cycle), in which case the body is
- * silently hidden until its real chunk lands. The last entry is always the
- * target; earlier entries (if any) are ancestors the caller should also
- * route.
+ * Placeholder PositionedBodies from the __global__ object file. If the
+ * target's parent isn't yet in `loader.positions` (e.g. a moon-of-asteroid
+ * URL-loaded before its host's chunk), recurses up the chain so the target
+ * anchors on a real point instead of the SSB — ancestors are appended to the
+ * result too. Empty array when the chain can't close (missing data, cycle):
+ * the body stays hidden until its real chunk lands. Last entry is the target.
  *
- * Each entry's `zone` is the SBDB-class zone id (e.g. `"APO"`) used for
- * routing — null when the body has no SBDB record (moons, majors), in which
- * case the caller falls back to `parentId`-based routing (spacecraft/debris)
- * or `bodiesById` (majors / moons).
+ * Each entry's `zone` is the SBDB-class id (e.g. `"APO"`); null when the body
+ * has no SBDB record, in which case the caller falls back to `parentId`-based
+ * routing or `bodiesById`.
  */
 export async function createPlaceholderBody(
 	targetId: string,
@@ -56,12 +51,9 @@ export async function createPlaceholderBody(
 	const ancestors: Array<{ body: PositionedBody; zone: string | null }> = [];
 	let parentPos = loader.positions.get(data.parentId);
 	if (!parentPos) {
-		// Recurse up the chain so e.g. a moon-of-asteroid can anchor on a
-		// placeholder of its host before the asteroid's real chunk lands. The
-		// recursive call registers the parent's position in `loader.positions`
-		// so siblings down the chain share the same anchor. If the chain can't
-		// close, hide rather than anchor at the SSB, which would place the body
-		// at the Sun instead of its actual host.
+		// Recurse so e.g. a moon-of-asteroid can anchor on a placeholder of its
+		// host, registering the parent's position for siblings to share. Hide
+		// rather than fall back to SSB, which would place the body at the Sun.
 		const parentChain = await createPlaceholderBody(data.parentId, date, loader, visited);
 		if (parentChain.length === 0) {
 			console.warn(
@@ -96,12 +88,8 @@ export async function createPlaceholderBody(
 	return ancestors;
 }
 
-/**
- * Stream a single target into the running scene if absent — the in-session
- * equivalent of {@link loadScene}'s URL-target placeholder pass (no reload).
- * Routes by type like loadScene; earth-sat placeholders reconcile on the next
- * zone-refresher swap, probes keep theirs and draw from probeStore.
- */
+/** Stream a single target into the running scene if absent — the in-session
+ *  equivalent of {@link loadScene}'s URL-target placeholder pass (no reload). */
 export async function ensureTargetStreamed(
 	ctx: ContextManager,
 	targetId: string,

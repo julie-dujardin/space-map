@@ -1,15 +1,9 @@
 /**
- * Maps a GPU pick-pass's decoded pick-id back to a body id.
+ * Maps a GPU pick-pass's decoded pick-id back to a body id. Each worker group
+ * gets a contiguous pick-id range `[base, base + len)`; row `r` gets `base + r`.
  *
- * Each worker group is assigned a contiguous pick-id range `[base, base + len)`
- * at wire time; row `r` of the group gets pick-id `base + r`, which the worker
- * writes into the compact pick-id buffer (see {@link writePositions}). The
- * renderer reads a pick-id off the framebuffer and calls {@link resolve} to get
- * the body id.
- *
- * Pick-ids are a monotonic bump counter (never reused within a session) so a
- * stale framebuffer read after a repack resolves to nothing rather than the
- * wrong body. The 32-bit space is ample for a session; a page reload resets it.
+ * Ids are a monotonic bump counter, never reused within a session, so a stale
+ * framebuffer read after a repack resolves to nothing rather than the wrong body.
  */
 export class PickRegistry {
 	#next = 1; // 0 is reserved for "no hit" (cleared framebuffer)

@@ -19,20 +19,12 @@ export interface FocusState {
 	focusTargetWorld: Vec3;
 	camOriginWorld: Vec3 | null;
 	camTargetWorld: Vec3 | null;
-	/**
-	 * Offset of `camTargetWorld` relative to the focused body's position. When set,
-	 * the renderer refreshes `camTargetWorld = body.position + camTargetOffset` every
-	 * frame so the fly target tracks a moving body. Null when the camera target is
-	 * world-fixed (e.g. focus-rotation without a fly).
-	 */
+	/** Body-relative offset so the renderer can refresh `camTargetWorld` each frame
+	 *  to track a moving body. Null when the target is world-fixed. */
 	camTargetOffset: Vec3 | null;
-	/**
-	 * Body-relative offset of `camOriginWorld`, mirroring {@link camTargetOffset}.
-	 * Set for arc-orbit re-frames so the arc's start point tracks the moving body
-	 * each frame — without it the arc center (the body) drifts away from a fixed
-	 * world origin at high sim speed, ballooning the radius and swinging the camera
-	 * out and back. Null when the origin is world-fixed (approach flies from afar).
-	 */
+	/** Mirrors {@link camTargetOffset} for the arc's start point — without it the
+	 *  arc center drifts from the body at high sim speed, ballooning the radius.
+	 *  Null when the origin is world-fixed (approach flies from afar). */
 	camOriginOffset: Vec3 | null;
 	flyQ0: Quaternion | null;
 	orbitFly: boolean;

@@ -13,18 +13,15 @@ import type { BodyObjects } from '$lib/scene/types';
 
 const DEG2RAD = Math.PI / 180;
 
-/** Focus-body id for a feature seat. Never serialised (synthetic), so a plain
- *  composite is fine; it just has to be stable and distinct from real ids. */
+/** Focus-body id for a feature seat — synthetic, never serialised, just
+ *  needs to be stable and distinct from real ids. */
 function featureBodyId(hostId: string, featureId: number): string {
 	return `feature:${hostId}:${featureId}`;
 }
 
-/**
- * Synthesise the orbitable focus body for a surface feature. Orbital elements
- * are inert — the seat is recomputed each frame by {@link seatFeatureBody}, not
- * propagated. Carries no mesh/halo/trail of its own; the host renders the
- * terrain the camera orbits and its label marks the spot.
- */
+/** Synthesise the orbitable focus body for a surface feature. Orbital elements
+ *  are inert — {@link seatFeatureBody} recomputes the seat each frame, not
+ *  propagation. Carries no mesh/halo/trail; the host renders the terrain. */
 export function makeFeatureBody(anchor: FeatureAnchor, name: string | null): PositionedBody {
 	const data: BodyData = {
 		id: featureBodyId(anchor.hostId, anchor.featureId),
@@ -58,8 +55,8 @@ const SEAT_GLIDE_SNAP_SQ = kmToScene(0.001) ** 2;
 interface SeatGlide {
 	/** Body-fixed part (scene units). */
 	fixed: Vector3;
-	/** World-frame addend: mirrors the overlay's un-rotated `-centerOffset`
-	 *  recentre, so it must not spin with the body. Zero off the model path. */
+	/** World-frame addend (mirrors overlay recentre); must not spin with the
+	 *  body. Zero off the model path. */
 	addend: Vector3;
 	t: number;
 }
@@ -75,18 +72,12 @@ function glideVec(current: Vector3, target: Vector3, k: number): void {
 	else current.lerp(target, k);
 }
 
-/**
- * Re-seat the feature body on the host's rendered surface for `jd`. Targets
- * the feature's placed label (already ray-cast/terrain-lifted) so the camera
- * centres on exactly what's labelled — rebuilt from the label's constant local
- * offset and the host's fresh position/orientation, never `getWorldPosition`,
- * whose matrices lag a frame and swing the seat by host-velocity × dt. Falls
- * back to {@link renderedSeatAt} (the landed-probe/camera-floor sampler) until
- * the label attaches, and to the mean-radius sphere before that. Source
- * upgrades glide in the body frame instead of snapping, keeping host spin and
- * orbital motion full-rate. Also refreshes `orbitCenter` so the zenith north
- * reference tracks the host.
- */
+/** Re-seat the feature body on the host's rendered surface for `jd`, targeting
+ *  the feature's placed label so the camera centres on exactly what's labelled.
+ *  Rebuilt from the label's local offset plus fresh host position/orientation,
+ *  never `getWorldPosition` (its matrices lag a frame). Falls back to
+ *  {@link renderedSeatAt}, then the mean-radius sphere, before the label attaches.
+ *  Source upgrades glide rather than snap, keeping host motion full-rate. */
 export function seatFeatureBody(
 	fb: PositionedBody,
 	host: PositionedBody,
@@ -95,6 +86,7 @@ export function seatFeatureBody(
 ): void {
 	const anchor = fb.featureAnchor!;
 	const hostPos = host.position;
+	// Keeps zenith-north tracking the host.
 	if (fb.orbitCenter) {
 		fb.orbitCenter[0] = hostPos[0];
 		fb.orbitCenter[1] = hostPos[1];

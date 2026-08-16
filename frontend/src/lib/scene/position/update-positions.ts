@@ -184,13 +184,10 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			return;
 		}
 		// Probes re-resolve their fit center below (cruise → captured orbit can
-		// flip parentId), so let the probe branch handle parent lookup; for
-		// everything else, the parent must be in the per-frame positionMap. A
-		// miss means the parent isn't tracked this frame (e.g. URL-loaded a
-		// moon-of-asteroid before the host's chunk lands, or the host lives in
-		// `asteroidBodiesByZone` which the frame loop doesn't pre-seed). Hide
-		// rather than fall back to SSB — anchoring at the origin places
-		// asteroid-moons at the Sun.
+		// flip parentId); everyone else needs the parent already in positionMap.
+		// A miss means it isn't tracked this frame (e.g. an unloaded chunk, or a
+		// host in `asteroidBodiesByZone`, not pre-seeded). Hide rather than fall
+		// back to SSB — the origin would place asteroid-moons at the Sun.
 		let parentPos: Vec3;
 		if (isProbe) {
 			parentPos = positionMap.get(d.parentId) ?? ([0, 0, 0] as Vec3);

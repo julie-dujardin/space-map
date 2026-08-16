@@ -9,11 +9,9 @@ import {
 import type { Vec3 } from '../animation/math';
 
 /**
- * Debug overlay for the per-body silhouette "virtual halo" the visibility pass
- * uses for label placement + occlusion. Draws the exact projected silhouette for
- * every on-screen mesh (even hidden-label ones), so name-drift and bad occlusion
- * become visible. Oblate bodies draw as their true (flattened) silhouette, the
- * same ellipsoid the occlusion test uses.
+ * Debug overlay drawing each body's exact projected silhouette (the "virtual
+ * halo" the visibility pass uses for label placement/occlusion), including
+ * hidden-label meshes, to surface name-drift and bad occlusion.
  *
  *  cyan — label shown · yellow — dimmed · red — hidden
  *  orange — occluder silhouette · green — focused · red link — buried label
@@ -82,10 +80,8 @@ export class HaloDebugOverlay {
 		const halfW = screenW * 0.5;
 		const halfH = screenH * 0.5;
 
-		// Pass 1: project every mesh into screen-space, mirroring updateBodyVisibility.
-		// Not gated on group.visible (nor is the real occluder set) so a culled-but-
-		// large mesh still shows as an occluder. Each item carries the same screen
-		// occluder the production cone test consumes — sphere or oblate ellipsoid.
+		// Pass 1: project every mesh, mirroring updateBodyVisibility. Not gated on
+		// group.visible, so a culled-but-large mesh still shows as an occluder.
 		let n = 0;
 		for (const bo of bodyObjects.values()) {
 			const { label, group, radiusScene: r } = bo;
@@ -156,8 +152,7 @@ export class HaloDebugOverlay {
 			const bMinor = degenerate ? 0 : (r * projScale) / Math.sqrt(denom);
 			const isOcc = degenerate || bMinor >= HALO_RADIUS_PX;
 
-			// Raw projected body center + the actual label anchor (set by the
-			// visibility pass in label.position — its silhouette-center offset).
+			// Raw projected center + label anchor (visibility pass's silhouette offset).
 			this.tmp.set(bx - fx, by - fy, bz - fz).project(camera);
 			it.cx = (this.tmp.x * 0.5 + 0.5) * screenW;
 			it.cy = (-this.tmp.y * 0.5 + 0.5) * screenH;
@@ -182,8 +177,8 @@ export class HaloDebugOverlay {
 			it.occludedBy = -1;
 		}
 
-		// Pass 2: occlusion — find a closer occluder burying each label, for the
-		// link. Reuses the production cone test verbatim via a 1-element array.
+		// Pass 2: find a closer occluder burying each label, via the production
+		// cone test (1-element array).
 		for (let i = 0; i < n; i++) {
 			const it = this.items[i];
 			for (let j = 0; j < n; j++) {
@@ -269,12 +264,10 @@ export class HaloDebugOverlay {
 	}
 
 	/**
-	 * Stroke a body's exact projected silhouette. The limb is the circle on the
-	 * unit sphere (normalized space, where the ellipsoid is a sphere) facing the
-	 * camera; mapping it back through the principal axes Σ aᵢ yᵢ eᵢ gives the true
-	 * camera-space silhouette curve, which collapses to a circle for spheres.
-	 * Manual w-divide so points behind the camera drop cleanly. Returns false if
-	 * the camera is inside the body.
+	 * Strokes the exact silhouette: the limb circle in normalized (sphere) space,
+	 * mapped back through the principal axes Σ aᵢ yᵢ eᵢ to the true camera-space
+	 * curve (a circle for spheres). Manual w-divide drops behind-camera points.
+	 * Returns false if the camera is inside the body.
 	 */
 	private strokeLimb(
 		g: CanvasRenderingContext2D,

@@ -8,17 +8,12 @@ import { VISIBILITY } from './thresholds';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 
 /**
- * New Horizons / Pluto flyby visibility.
+ * New Horizons / Pluto flyby visibility. Pluto scores on the sun-orbiting
+ * branch against its barycenter's ~39.6 AU `a`, which reaches CLOSE while its
+ * disc is still sub-pixel — this gate must stay at FULL and leave the
+ * halo→mesh handoff to the pixel cull, or Pluto disappears mid-approach.
  *
- * Pluto's parent is the Pluto-Charon barycenter, so `getPlanetVisibility` scores
- * it on the sun-orbiting branch against the barycenter's ~39.6 AU `a` (its moons
- * score against their ~1e-4 AU orbits). That ratio reaches CLOSE while Pluto's
- * disc is still sub-pixel, so this gate must stay at FULL and leave the
- * halo→mesh handoff to the pixel cull — otherwise the halo drops with no visible
- * mesh and Pluto disappears mid-approach while its moons render.
- *
- * `a` values, radii, viewport (954px) and `hideThresholdAU` (≈8.716e-4) come
- * from a live `debugBody(...)` capture, so these enums match the running app.
+ * Constants below come from a live `debugBody(...)` capture, matching the running app.
  */
 
 const FLYBY_JD = 2457217.99; // 2015-07-14 ~11:49 UTC, closest approach

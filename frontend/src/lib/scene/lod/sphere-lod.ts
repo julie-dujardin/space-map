@@ -29,8 +29,7 @@ function desiredSphereSegments(
 			break;
 		}
 	}
-	// Hysteresis: only step *down* if we've fallen well below the current
-	// tier's up-threshold. Up-steps are immediate.
+	// Only step down once well below the current tier's threshold; up-steps are immediate.
 	if (target < current) {
 		const currentTier = SPHERE_LOD_TIERS.find((t) => t.segs === current);
 		if (currentTier && screenR >= currentTier.up * 0.85) return current;
@@ -50,8 +49,7 @@ export function updateSphereLOD(
 	const screenH = renderer.domElement.clientHeight;
 	const projScale = screenH / (2 * Math.tan(fovRad / 2));
 	const activeSystem = ctx.visibility.activeSystemId;
-	// Terrain-window host, already resolved by the caller (a focused landed probe
-	// or surface feature defers to its host body).
+	// Resolved by the caller: a landed probe or surface feature defers to its host body.
 	const terrainId = focusedId;
 
 	for (const bo of bodyObjects.values()) {

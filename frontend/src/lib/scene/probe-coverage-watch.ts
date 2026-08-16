@@ -1,16 +1,8 @@
 /**
- * Pauses the sim clock at the focused probe's coverage edges. Each frame
- * `sync` arms {@link SimClock.setBoundaryStops} with the focused probe's
- * `(start_jd, end_jd)`, lazily fetched from its `__global__` bundle entry
- * (`GlobalObjectData.coverage`) and cached; tick clamps jd to the nearest
- * edge in the time-step direction and pauses. A toast fires on hit and
- * auto-dismisses when jd moves back inside coverage or focus changes.
- *
- * Why this matters: heliocentric/hyperbolic probes propagate beyond their
- * SPICE data (writer-side, since `e2fbf2bb`), so `(start_jd, end_jd)` is
- * "everything the writer could produce" — past these edges the probe truly
- * has no position. Stopping there tells the user they hit a data wall, not
- * a fit boundary.
+ * Pauses the sim clock at the focused probe's coverage edges, with a toast on
+ * hit. Heliocentric/hyperbolic probes propagate beyond their SPICE data, so
+ * `(start_jd, end_jd)` is a hard data wall, not a fit boundary — worth
+ * stopping at rather than silently extrapolating.
  */
 
 import { toast } from 'svelte-sonner';
@@ -24,18 +16,10 @@ import type { SimClock } from '$lib/scene/state/clock.svelte';
 const TOAST_ID_PREFIX = 'coverage-pause:';
 
 /** Pull the stop inward by this much (JD days, ≈86 ms) so the snap lands
- *  inside the probe's last sub-chunk instead of on its half-open `[start, end)`
- *  upper bound. Without this, `findSubChunkIndex(et === subEndEt[last])`
- *  returns -1 and the probe disappears at the exact pause frame — the snap
- *  pause + invisible probe is the bug the user reported. The offset is tiny
- *  relative to any sub-chunk (≥0.5 day for planet zones, 7 days interplanetary),
- *  so the displayed `formatJulianDate(hitJd)` rounds to the same calendar
- *  second as the actual edge.
- *
- *  Anti-rebound falls out of `SimClock.tick`'s strict `this.jd < forwardJd`
- *  check: after the snap, `jd === forwardJd_armed`, so the next tick (after
- *  the user hits Play) fails the strict-less-than guard and advances past.
- */
+ *  inside the probe's last sub-chunk, not on its half-open upper bound —
+ *  otherwise `findSubChunkIndex` misses and the probe vanishes at the pause
+ *  frame. Also what lets `SimClock.tick`'s strict `<` guard advance past the
+ *  stop on the next Play instead of re-triggering it. */
 const STOP_INSET_JD = 1e-6;
 
 /** A probe's `data.name` is `string | null` (rare); fall back to the bare id
@@ -56,9 +40,8 @@ export class ProbeCoverageWatch {
 
 	constructor(private readonly clock: SimClock) {}
 
-	/** Coverage for `probeId`, fetched-and-cached from its global bundle on
-	 *  first ask (usually a cache hit — the drawer loaded it). Until it
-	 *  resolves `sync` finds nothing and stays disarmed. */
+	/** Coverage for `probeId`, fetched-and-cached on first ask. Until it
+	 *  resolves, `sync` finds nothing and stays disarmed. */
 	private coverageFor(probeId: string): ProbeCoverage | undefined {
 		const cached = this.coverage.get(probeId);
 		if (cached !== undefined) return cached ?? undefined;

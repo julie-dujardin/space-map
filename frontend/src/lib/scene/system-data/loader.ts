@@ -5,11 +5,9 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { loadSystemData, unloadSystemTextures } from '$lib/scene/objects/body/system';
 
-/**
- * Tracks which system's textures + orientation are resident, plus a
- * deferred-unload queue so a focus-fly that reverses mid-way doesn't thrash
- * the GPU. Caller drains via {@link drainPendingUnloads} once the fly settles.
- */
+/** Tracks which system's textures + orientation are resident, plus a
+ *  deferred-unload queue so a reversing focus-fly doesn't thrash the GPU.
+ *  Caller drains via {@link drainPendingUnloads} once the fly settles. */
 export class SystemDataLoader {
 	private lastBaryId: string | null = null;
 	private readonly pendingUnloads = new Set<string>();
@@ -39,20 +37,17 @@ export class SystemDataLoader {
 		}
 		const baryId = this.resolveBaryId(sysId);
 		if (baryId === this.lastBaryId) return;
-		// Drop the new id from pending unloads in case the user re-enters mid-fly.
+		// Drop it from pending unloads in case the user re-enters mid-fly.
 		if (this.lastBaryId) this.pendingUnloads.add(this.lastBaryId);
 		this.pendingUnloads.delete(baryId);
-		// A warmed system becoming the focus is no longer the prefetch's to unload.
+		// Now the focus, not the prefetch's, to unload.
 		this.prefetched.delete(baryId);
 		this.lastBaryId = baryId;
 		this.load(baryId);
 	}
 
-	/**
-	 * Warm a system the trajectory craft is approaching, ahead of the focus
-	 * flip, so entering it doesn't land on white spheres. Balanced by
-	 * {@link discardPrefetch} once the approach turns away.
-	 */
+	/** Warm a system the trajectory craft is approaching so entering it doesn't
+	 *  land on white spheres. Balanced by {@link discardPrefetch}. */
 	prefetch(sysId: string): void {
 		const baryId = this.resolveBaryId(sysId);
 		if (baryId === this.lastBaryId || this.prefetched.has(baryId)) return;

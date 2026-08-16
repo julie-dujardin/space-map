@@ -59,10 +59,8 @@ function addLabelNameSpan(
 }
 
 /** Update (or lazily create) the name span on an existing label. Used when a
- *  click-promoted minor body's localized name resolves a few hundred ms after
- *  the mesh + halo are rendered — we don't want to wait on Wikidata before
- *  showing the body, so the span is filled in once the bundle arrives. No-op
- *  when the label was created with `variant: 'none'` (e.g. debris). */
+ *  minor body's localized name resolves after the mesh renders (we don't wait
+ *  on Wikidata to show the body). No-op for `variant: 'none'`. */
 export function setLabelName(
 	label: CSS2DObject,
 	name: string,
@@ -97,19 +95,10 @@ export function getLabelVariant(body: PositionedBody): LabelVariant {
 }
 
 /**
- * Creates a CSS2DObject label for a major body.
- *
- * Root element (el): an `<a href>` so the whole label (halo + name) is a real
- * middle/⌘-clickable link screen readers announce; tabindex=-1 keeps the many
- * on-screen labels out of the tab order (search is the keyboard-equivalent
- * path). Left-click is intercepted to focus in-app instead of navigating. Fixed
- * indicator size, no transition — CSS2DRenderer writes its `transform` every
- * frame to position it in screen space.
- *
- * halo: holds the visual ring/hexagon + transition for hover scale,
- * so it never fights with CSS2DRenderer's positioning transform.
- *
- * Name text: absolutely positioned to the right of the halo.
+ * Creates a CSS2DObject label for a major body. Root is an `<a href>` so the
+ * whole label is a real middle/⌘-clickable link screen readers announce;
+ * tabindex=-1 keeps labels out of tab order (search is the keyboard path).
+ * Left-click is intercepted to focus in-app instead of navigating.
  */
 export function createLabel(
 	color: string,

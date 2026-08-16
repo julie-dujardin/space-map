@@ -1,8 +1,5 @@
-/**
- * Warn-once-per-(channel, id) for transient position-update failures. Without
- * this the console floods at 60 fps. Probes can clear on recovery so they
- * re-warn after a future drop.
- */
+/** Warn-once-per-(channel, id) for transient failures — otherwise the
+ *  console floods at 60 fps. Probes clear on recovery, so a later drop re-warns. */
 type Channel = 'cheb-null' | 'probe-unavailable' | 'non-finite' | 'missing-parent';
 
 export class PositionDiagnostics {

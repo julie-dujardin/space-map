@@ -13,11 +13,9 @@ import { loadBodyLabel } from '$lib/scene/objects/body/textures';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
 
-/** Sparse-cloud emphasis: `half` (<50 members) renders each as a halo-only minor
- *  body, `full` (<20) the full sphere + trail, `none` plain dots. Counts bodies
- *  observable at sim jd, not total membership, so a young group or the
- *  early-space-age Earth-sat zone starts `full` and ramps down. Targets the
- *  focused `/g/<slug>` group under a filter, else the whole Earth-sat cloud. */
+/** Sparse-cloud emphasis: `half` (<50 members) renders halo-only, `full` (<20)
+ *  full sphere + trail, `none` plain dots. Counts bodies observable at sim jd,
+ *  not total membership, so a young group starts `full` and ramps down. */
 export type GroupPromotionMode = 'none' | 'half' | 'full';
 
 const GROUP_HALF_PROMOTE_THRESHOLD = 50;
@@ -58,12 +56,10 @@ export interface PromotionDeps {
 }
 
 /**
- * Tracks the "default-important" set (curated body ids that auto-promote from
- * point-cloud dots to full meshes on load), the "user-promoted" set
- * (click/URL-promoted bodies that can be reverted in one shot), and the
- * "auto-promoted" set (Earth sats built by the sparse-cloud emphasis, torn down
- * as the count grows past threshold or the filter changes). Owns the
- * promote/teardown lifecycle for all three.
+ * Owns promote/teardown for three sets: "default" (curated ids that auto-promote
+ * on load), "user-promoted" (click/URL-promoted, revertable in one shot), and
+ * "auto-promoted" (Earth sats from sparse-cloud emphasis, torn down as count or
+ * filter changes).
  */
 export class PromotionRegistry {
 	/** Curated ids waiting for their body to arrive — promoted directly when
@@ -82,9 +78,8 @@ export class PromotionRegistry {
 	/** Emphasis target: the `small_bodies/<class>` zone for a class filter, null
 	 *  otherwise (no emphasis). */
 	private smallBodyZone: string | null = null;
-	/** jd range the last member count stays valid over. The bounds are the
-	 *  validity edges each side of the counted jd, both exclusive. The empty
-	 *  initial range makes the first sim-time tick count. */
+	/** jd range (exclusive) the last member count stays valid over. Empty
+	 *  initially, so the first sim-time tick always counts. */
 	private countStableLo = Infinity;
 	private countStableHi = -Infinity;
 
@@ -108,8 +103,7 @@ export class PromotionRegistry {
 		deps.ctx.onSmallBodyFilterChange((f) => this.applySmallBodyFilter(f));
 		this.applySmallBodyFilter(deps.ctx.smallBodyFilter);
 		// Curated set = labels-file keys ∪ MINOR_PROMOTED_IDS. Fire-and-forget:
-		// until labels resolve a few hundred ms later, defaults is empty so the
-		// notification handler matches nothing.
+		// defaults is empty until labels resolve, so no notifications match yet.
 		void fetchLabels().then((labels) => {
 			const alreadyLoaded: PositionedBody[] = [];
 			const add = (id: string) => {
@@ -140,18 +134,14 @@ export class PromotionRegistry {
 		});
 	}
 
-	/** Moons whose parent is an asteroid land in `asteroidBodiesByZone` (point-cloud
-	 *  bucket), not `bodiesById`, so the curated/labels-driven promotion path skips
-	 *  them — they'd only get halos/trails after the user clicked. Auto-promote on
-	 *  arrival so they show by default. Sparse in the catalog (handful of bodies).
-	 *  Also promotes the parent asteroid when it's been pre-routed to `bodiesById`
-	 *  (URL-loaded moon-of-asteroid: scene-load adds the host as a placeholder so
-	 *  the moon's per-frame parent lookup resolves) — without this the host would
-	 *  stay invisible while its moon renders. */
+	/** Asteroid moons land in the `asteroidBodiesByZone` point-cloud bucket, so the
+	 *  curated/labels promotion path skips them; auto-promote on arrival so they
+	 *  show by default. Also promotes the parent asteroid if it was pre-routed to
+	 *  `bodiesById` as a placeholder, else the host stays invisible while its
+	 *  moon renders. */
 	private autoPromoteAsteroidMoons(ids: readonly string[]): void {
-		// Only the `small_body_moons` bucket can match — look ids up there
-		// directly. The previous per-id `ctx.getBody` fallback scanned every
-		// zone bucket and dominated flush time during chunk streaming.
+		// Only `small_body_moons` can match — a per-id `ctx.getBody` fallback would
+		// scan every zone bucket and dominate flush time during chunk streaming.
 		const moonBucket = this.deps.ctx.bodies.asteroidBodiesByZone.get('small_body_moons');
 		if (!moonBucket || moonBucket.size === 0) return;
 		const matched: PositionedBody[] = [];
@@ -161,10 +151,8 @@ export class PromotionRegistry {
 			if (!body || body.data.objectType !== ObjectType.MOON) continue;
 			const parent = this.deps.ctx.getBody(body.data.parentId);
 			if (!parent || !isAsteroid(parent.data.objectType)) continue;
-			// Parent first so it lands earlier in the `bodyObjects` insertion
-			// order — the per-frame loop iterates in insertion order, so the
-			// moon's parent lookup hits a freshly-computed position rather
-			// than the previous frame's value.
+			// Parent first: the per-frame loop iterates insertion order, so the
+			// moon's parent lookup hits a fresh position, not last frame's.
 			if (!this.deps.bodyObjects.has(parent.data.id) && !seenParents.has(parent.data.id)) {
 				seenParents.add(parent.data.id);
 				matched.push(parent);
@@ -174,11 +162,9 @@ export class PromotionRegistry {
 		this.buildBatch(matched);
 	}
 
-	/** Scan existing asteroid-moon buckets and promote any moon (+ parent)
-	 *  already present at registry construction time. The `onBodiesAdded` hook
-	 *  catches future arrivals, but URL-loaded placeholders are added in
-	 *  `loadScene` *before* this registry exists, so the live hook misses
-	 *  them. */
+	/** Promote asteroid moons already present at construction — `loadScene` adds
+	 *  URL-loaded placeholders before this registry exists, so `onBodiesAdded`
+	 *  misses them. */
 	private promoteExistingAsteroidMoons(): void {
 		const moonBucket = this.deps.ctx.bodies.asteroidBodiesByZone.get('small_body_moons');
 		if (!moonBucket || moonBucket.size === 0) return;
@@ -198,10 +184,9 @@ export class PromotionRegistry {
 		this.buildBatch(matched);
 	}
 
-	/** Barycenters and Lagrange points share the labels file with promoted
-	 *  bodies (their names are needed for URL navigation), but they aren't
-	 *  rendered by default — except those listed in MINOR_PROMOTED_IDS, which
-	 *  render as collapsed halos so the user sees the SSB / Pluto-Charon offset. */
+	/** Barycenters/Lagrange points share the labels file (needed for URL nav) but
+	 *  aren't rendered by default, except MINOR_PROMOTED_IDS ones, which render
+	 *  as collapsed halos (SSB, Pluto-Charon offset). */
 	private shouldAutoPromote(body: PositionedBody, id: string): boolean {
 		if (
 			body.data.objectType !== ObjectType.BARYCENTER &&
@@ -234,16 +219,12 @@ export class PromotionRegistry {
 		const { bodyObjects, ctx, clock, scene, clickables, meshToBody, circleTexture, renderer } =
 			this.deps;
 		if (bodyObjects.has(body.data.id)) return false;
-		// Point-cloud bodies aren't touched by updatePositions — their CPU
-		// position is frozen at load. Refresh before building so the mesh,
-		// halo, and trail spawn at the current jd instead of jumping
-		// on the next tick.
+		// Point-cloud position is frozen at load; refresh so the mesh/halo/trail
+		// spawn at the current jd instead of jumping next tick.
 		refreshMinorBodyPosition(body, clock.jd, ctx);
-		// Minor bodies from chunks lack orbitElements; populate from data so
-		// trails can be built. Skip probes: their `body.data` carries
-		// a=e=…=0 (positions come from per-sub-chunk dispatch), and assigning
-		// those zeros to `orbitElements` defeats the SPICE_PROBE guard in
-		// DetailDrawer — currentStateFromElements would warn every frame.
+		// Minor bodies from chunks lack orbitElements; populate so trails can build.
+		// Skip probes: their data is all-zero (state comes from sub-chunk dispatch),
+		// and zeroed orbitElements would defeat DetailDrawer's SPICE_PROBE guard.
 		if (!body.orbitElements && body.data.orbitalSource !== OrbitalSource.SPICE_PROBE) {
 			body.orbitElements = body.data;
 			const parent = bodyObjects.get(body.data.parentId);
@@ -285,10 +266,8 @@ export class PromotionRegistry {
 		return true;
 	}
 
-	/** Global post-processing shared by all bodies built in a batch — trail
-	 *  setup, layer/position resync, point-cloud rebuild. Walks every
-	 *  bodyObject, so calling once per batch instead of once per body keeps
-	 *  bulk promotions (curated asteroids landing in a single chunk) cheap. */
+	/** Shared post-processing for a batch — walks every bodyObject, so calling
+	 *  once per batch instead of per body keeps bulk promotions cheap. */
 	private finalizeBuilds(): void {
 		buildTrails(
 			this.deps.bodyObjects,
@@ -322,12 +301,10 @@ export class PromotionRegistry {
 		this.reevaluateEarthSatMode();
 	}
 
-	/** Only a `class` filter drives the size/brightness emphasis: it hides every
-	 *  other zone (see {@link VisibilityController.isAsteroidGroupVisible}), so the
-	 *  ramp's count matches what's on screen. A `flag` filter (NEO/PHA) leaves the
-	 *  whole field visible — its `requiredFlags` worker mask isn't wired up — so
-	 *  emphasizing would embiggen every asteroid against a count it doesn't match.
-	 *  Re-enable for flags once that mask actually narrows the clouds. */
+	/** Only `class` filters drive size/brightness emphasis — they hide every other
+	 *  zone, so the ramp's count matches the screen. A `flag` filter (NEO/PHA)
+	 *  leaves the whole field visible, so emphasizing would embiggen bodies
+	 *  against a count that doesn't match; re-enable once its mask narrows clouds. */
 	private applySmallBodyFilter(f: SmallBodyFilter | null): void {
 		this.smallBodyZone = f?.kind === 'class' ? `small_bodies/${f.className}` : null;
 		this.refreshSmallBodyEmphasis();
@@ -354,9 +331,7 @@ export class PromotionRegistry {
 	}
 
 	/** Recompute count + mode and reconcile auto-promoted bodies. Runs on filter
-	 *  swap, on every chunk flush, and when the clock leaves the counted bracket.
-	 *  Cost is `O(|spacecraftByParent[EARTH_ID]|)`, cheap at the ~500ms flush
-	 *  cadence even for the full modern catalog. */
+	 *  swap, chunk flush, and clock leaving the counted bracket. */
 	private reevaluateEarthSatMode(): void {
 		const bucket = this.deps.ctx.bodies.spacecraftByParent.get(EARTH_ID);
 		const count = this.currentMemberCount(bucket);
@@ -381,10 +356,8 @@ export class PromotionRegistry {
 		this.buildBatch(matched, halfIds, true);
 	}
 
-	/** Count members observable at the current sim jd. Walks the earth-sat
-	 *  bucket, gating each entry on its per-body `validityStart/validityEnd` and
-	 *  (under a group filter) on membership. Null bucket → 0. Also records the
-	 *  validity edges each side of `jd` for {@link onSimTimeChanged}. */
+	/** Count members observable at the current sim jd, gated by validity and (under
+	 *  a filter) membership. Also records validity edges for {@link onSimTimeChanged}. */
 	private currentMemberCount(bucket: Map<string, PositionedBody> | undefined): number {
 		this.countStableLo = -Infinity;
 		this.countStableHi = Infinity;
@@ -410,9 +383,8 @@ export class PromotionRegistry {
 	}
 
 	/** Tear down auto-promoted bodies that no longer belong: dropped from the
-	 *  group filter, validity expired, or `forceAll` (mode flip / filter change).
-	 *  Skips the focused body — ripping its mesh out mid-frame breaks the focus
-	 *  pipeline. */
+	 *  filter, validity expired, or `forceAll`. Skips the focused body — ripping
+	 *  its mesh out mid-frame breaks the focus pipeline. */
 	private teardownAutoPromoted(forceAll: boolean): void {
 		if (this.autoPromoted.size === 0) return;
 		const focusedId = this.deps.getFocusedId();
@@ -439,11 +411,9 @@ export class PromotionRegistry {
 		this.emitUserPromotedCount();
 	}
 
-	/** Reverse a batch of promotions: remove their scene objects, dispose GPU
-	 *  resources, and mark the parent point-cloud dirty so the dots reappear.
-	 *  Caller is responsible for skipping the focused body and updating its own
-	 *  bookkeeping (passed in as `tracker` so each entry is dropped together
-	 *  with its scene objects). */
+	/** Reverse a batch of promotions: remove scene objects, dispose GPU resources,
+	 *  mark the parent point-cloud dirty. Caller skips the focused body; `tracker`
+	 *  drops bookkeeping alongside the scene objects. */
 	private tearDownBodies(ids: string[], tracker: Set<string>): void {
 		if (ids.length === 0) return;
 		const { bodyObjects, ctx, scene, clickables, meshToBody, pointClouds } = this.deps;
@@ -493,10 +463,8 @@ export class PromotionRegistry {
 		}
 	}
 
-	/**
-	 * Emit the clearable user-promoted count. The focused body is excluded —
-	 * clearing it would leave the camera pointed at a torn-down mesh.
-	 */
+	/** Emit the clearable user-promoted count — the focused body is excluded,
+	 *  since clearing it would leave the camera pointed at a torn-down mesh. */
 	emitUserPromotedCount(): void {
 		if (!this.deps.onUserPromotedChange) return;
 		const focusedId = this.deps.getFocusedId();

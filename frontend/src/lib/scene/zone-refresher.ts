@@ -1,20 +1,14 @@
 /**
- * Hot-reload driver for time-sliced zones. Two slicings:
- *   - time-segmented (`earth` SGP4 sats): one chunk set per ISO date snapshot.
- *   - chunk-indexed (`moons` Method-C secular elements): one chunk set per
- *     `chunk_days` window from `start_jd`.
+ * Hot-reload driver for time-sliced zones. Time-segmented (`earth` SGP4 sats,
+ * one chunk set per ISO date) reconciles by parentId bucket in
+ * `spacecraftByParent` and only HTTP-prefetches neighbor days (SGP4 degrades
+ * gracefully past TLE epoch, so a full preload isn't worth hundreds of MB).
+ * Chunk-indexed (`moons` Method-C, one set per `chunk_days` window) mutates
+ * `bodiesById` in place and fully preloads `[idx-1, idx+1]`, since stale
+ * secular drift sends moons to nonsense after one chunk.
  *
- * Reconciliation: time-segmented buckets by parentId in `spacecraftByParent`
- * (membership flips across snapshots); chunk-indexed mutates `bodiesById` in
- * place (stable membership, only elements change).
- *
- * Pre-loading is asymmetric: chunk-indexed full-preloads parsed PositionedBody[][]
- * for `[idx-1, idx+1]` because stale Method-C secular drift sends moons to
- * nonsense after one chunk; time-segmented only HTTP-prefetches `[prev-day, next-day]`
- * (full preload would cost hundreds of MB) since SGP4 degrades gracefully past TLE epoch.
- *
- * Concurrency: per-zone single-flight. Time-segmented zones additionally
- * rate-limit load starts to `MIN_LOAD_INTERVAL_MS` against fast clock drag.
+ * Concurrency: per-zone single-flight; time-segmented also rate-limits load
+ * starts to `MIN_LOAD_INTERVAL_MS` against fast clock drag.
  */
 
 import { ObjectType, type PositionedBody } from '$lib/types/objects';

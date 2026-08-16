@@ -606,14 +606,11 @@ export class PointCloudSystem {
 	}
 
 	/**
-	 * Columnar (asteroid) geometry resize: match an existing group's geometry to
-	 * a new body `count`. Same-capacity rebuilds leave the position attribute
-	 * alone so the next worker result updates it in place (and keep the current
-	 * draw range so the cloud doesn't blink). On a size change, swap in a fresh
-	 * position array, copying the stable prefix (a body keeps its subgroup slot
-	 * across rebuilds — ids are append-only and hash-stable) so the visible dots
-	 * survive until the next tick repopulates the buffer. `colors`, when given
-	 * (unused for asteroids), is the freshly-built per-vertex color array.
+	 * Columnar (asteroid) geometry resize to a new body `count`. Same-capacity
+	 * rebuilds leave the position attribute alone (next worker result updates
+	 * it in place). On a size change, swaps in a fresh array, copying the
+	 * stable prefix (ids are append-only and hash-stable) so visible dots
+	 * survive until the next tick repopulates the buffer.
 	 */
 	private resizeGeometryToCount(
 		geometry: BufferGeometry,

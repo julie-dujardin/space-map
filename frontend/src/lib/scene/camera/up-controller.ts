@@ -5,10 +5,9 @@ import { angularDuration, UP_PACING } from '$lib/scene/animation/pacing';
 import { SCENE_UP, bodyNorthVector, galacticNorthVector, GALACTIC_REF_ID } from './north-reference';
 
 /**
- * Drives `camera.up` from a north reference (ecliptic Y / galactic / body
- * pole / probe model up), slerping across switches so the scene doesn't snap.
- * Also re-pokes `OrbitControls`'s cached up→Y quat — without that, dragging
- * after a switch rotates around the wrong axis.
+ * Drives `camera.up` from a north reference, slerping across switches so the
+ * scene doesn't snap. Also re-pokes `OrbitControls`'s cached up→Y quat —
+ * without that, dragging after a switch rotates around the wrong axis.
  */
 export class CameraUpController {
 	private refId: string | null = null;
@@ -46,8 +45,8 @@ export class CameraUpController {
 		} else {
 			const refBody = this.refId ? this.ctx.getBody(this.refId) : undefined;
 			if (refBody) {
-				// A surface feature has no orientation and carries the host centre in
-				// `orbitCenter` — the landed-probe path then yields the local zenith.
+				// Feature has no orientation; `orbitCenter` (host centre) makes the
+				// landed path yield local zenith.
 				const landed = !!refBody.featureAnchor || this.isLanded(refBody.data.id);
 				bodyNorthVector(refBody, jd, this.targetVec, landed);
 			} else {

@@ -9,11 +9,8 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { BodyObjects } from '$lib/scene/types';
 import type { Vec3 } from '$lib/scene/animation/math';
 
-/**
- * Last resolved seat per probe, held across frames where the surface data is
- * momentarily unavailable (height rows / radii still loading) so the probe
- * doesn't pop back onto the mean-radius sphere.
- */
+/** Last resolved seat per probe, held across frames where surface data is
+ *  still loading, so the probe doesn't pop onto the mean-radius sphere. */
 const lastSeat = new Map<
 	string,
 	{ pointKm: [number, number, number]; normal: [number, number, number] }
@@ -22,19 +19,13 @@ const lastSeat = new Map<
 const _upScene = new Vector3();
 
 /**
- * Place a landed probe on its landing body's rendered surface at the record's
- * lat/lng. The seat is recomputed synchronously every pass from the mesh's
- * live state (current grid + currently bound height map) via
- * {@link renderedSeatAt} — the same sampler the camera's terrain floor uses,
- * so the model and the camera can never disagree on where the ground is.
- * The record's altitude is unused (coarse height maps make it float/sink).
+ * Seats a landed probe on the rendered surface via {@link renderedSeatAt} —
+ * the same sampler the camera's terrain floor uses, so they never disagree.
+ * The record's altitude is ignored (coarse height maps make it float/sink).
  *
- * Returns null when the landing body isn't loaded or lacks orientation data
- * (caller hides the probe for the frame). `up` is the seat facet's normal in
- * scene frame (the probe stands on the slope, not the radial); null until the
- * surface data resolves. Scratch-backed — consume within the frame. Mutates
- * `d.parentId` so the downstream trail geometry and trail-anchor writes follow
- * the new parent.
+ * Null when the body isn't loaded or lacks orientation data. `up` is the seat
+ * normal in scene frame, null until surface data resolves. Scratch-backed —
+ * consume within the frame. Mutates `d.parentId` so trail geometry follows.
  */
 export function renderLandedProbe(
 	d: BodyData,

@@ -4,18 +4,14 @@ import { effectiveRadiusKm } from '$lib/types/objects';
 import type { BodyObjects } from '$lib/scene/types';
 
 /**
- * Zoom-dependent terrain LOD for displacement-mapped bodies. Below a threshold
- * altitude the focused body's uniform sphere is swapped for a single watertight
- * lat/lon grid: coarse globally, densified inside a window around the camera's
- * sub-surface point — sized to the visible horizon cap, down to one cell per
- * DEM texel when fully zoomed in (e.g. onto a landed probe). One non-uniform
- * grid instead of an overlay patch: no seams, no z-fighting, and raycasting /
- * probe seating keep working off `mesh.geometry`.
+ * Zoom-dependent terrain LOD: swaps the focused body's uniform sphere for a
+ * non-uniform lat/lon grid, densified to DEM-texel resolution around the
+ * camera's sub-surface point. One grid (not an overlay patch) avoids seams
+ * and z-fighting, and keeps raycasting/probe seating on `mesh.geometry`.
  */
 export interface TerrainWindowState {
-	/** Grid row angles (θ from the +Y pole, ascending 0..π) and column angles
-	 *  (φ ascending 0..2π, seam duplicated) — the probe-seating interpolation
-	 *  reads these to land on the exact rendered triangle. */
+	/** Row angles θ (0..π from +Y pole); column angles φ (0..2π, seam duplicated).
+	 *  Probe seating interpolates against these to land on the exact triangle. */
 	thetas: Float64Array;
 	phis: Float64Array;
 	centerTheta: number;
@@ -40,9 +36,8 @@ const ENTER_ALT = 0.25;
 const EXIT_ALT = 0.32;
 /** Rebuild when the sub-camera point drifts this fraction of the window. */
 const RECENTER_FRAC = 0.35;
-/** Rebuild rate cap. Fast time-speeds spin the body under the camera, so the
- *  body-fixed sub-point can cross the drift threshold every frame — unthrottled
- *  that's a fresh ~100k-vertex grid per frame, gigabytes/min of GC churn. */
+/** Rebuild rate cap — unthrottled, fast time-speeds can cross the drift
+ *  threshold every frame: gigabytes/min of GC churn from fresh grids. */
 const REBUILD_MIN_MS = 300;
 /** Window reach past the horizon: covers peaks visible from beyond it. */
 const MARGIN = 1.25;
@@ -55,12 +50,10 @@ const _inv = new Matrix4();
 const _camLocal = new Vector3();
 
 /**
- * Union of the coarse grid and step-aligned fine points inside `intervals`,
- * ascending over [0, max]. Coarse points strictly inside a fine interval are
- * dropped so cell widths stay clean; endpoints always survive. Fine points sit
- * at absolute multiples of `step`, so a recentered rebuild at the same level
- * reproduces identical vertices (no swimming, and probe-seat caching stays
- * valid across pans).
+ * Merges the coarse grid with step-aligned fine points inside `intervals`.
+ * Fine points sit at absolute multiples of `step`, so a recentered rebuild
+ * at the same level reproduces identical vertices — no swimming, and
+ * probe-seat caching stays valid across pans.
  */
 function mergeAxis(max: number, intervals: [number, number][], step: number): Float64Array {
 	const inFine = (p: number) => intervals.some(([lo, hi]) => p > lo + 1e-9 && p < hi - 1e-9);
@@ -88,9 +81,8 @@ function mergeAxis(max: number, intervals: [number, number][], step: number): Fl
 	return Float64Array.from(out);
 }
 
-/** Non-uniform lat/lon sphere grid mirroring `SphereGeometry`'s parametrization
- *  (positions, UVs, winding, pole handling), so displacement/self-shadow and
- *  the landed-probe triangle interpolation carry over unchanged. */
+/** Non-uniform lat/lon grid mirroring `SphereGeometry`'s parametrization, so
+ *  displacement/self-shadow and probe-triangle interpolation carry over unchanged. */
 function buildGridGeometry(
 	radius: number,
 	thetas: Float64Array,
@@ -160,9 +152,8 @@ function exitWindow(bo: BodyObjects): void {
 }
 
 /**
- * Own the focused terrain body's geometry while the camera is close. Returns
- * true when window mode is active (the uniform sphere-LOD swap must skip the
- * body). `eligible` false tears the window down.
+ * Owns the focused terrain body's geometry while the camera is close.
+ * Returns true when window mode is active (sphere-LOD must skip the body).
  */
 export function updateTerrainWindow(
 	bo: BodyObjects,
@@ -180,16 +171,14 @@ export function updateTerrainWindow(
 		return false;
 	}
 
-	// Camera in geometry space (mesh-local: body-fixed, pre-triaxial-scale),
-	// where the grid is a sphere of the base radius.
+	// Camera in mesh-local space (body-fixed, pre-triaxial-scale) — the grid is a sphere of the base radius.
 	mesh.updateMatrixWorld();
 	_inv.copy(mesh.matrixWorld).invert();
 	_camLocal.copy(camera.position).applyMatrix4(_inv);
 	const geomRadius = kmToScene(effectiveRadiusKm(bo.body.data));
 	const dist = _camLocal.length();
-	// Altitude over the *mean* radius can go negative on low-lying terrain
-	// (Elysium/Gale sit km below it) — floor it instead of bailing, else the
-	// window tears down right at a landed probe's ground level.
+	// Altitude over the mean radius can go negative on low terrain (Elysium/Gale
+	// sit below it) — floored, not bailed, else the window dies at ground level.
 	const alt = Math.max(dist / geomRadius - 1, 1e-6);
 	if (alt > (bo.terrainWindow ? EXIT_ALT : ENTER_ALT)) {
 		if (bo.terrainWindow)
@@ -207,8 +196,7 @@ export function updateTerrainWindow(
 	let stepLevel = Math.max(0, Math.ceil(rawLevel - 1e-9));
 
 	const w = bo.terrainWindow;
-	// Level hysteresis: hovering at a power-of-two boundary must not flip-flop
-	// rebuilds. Slightly over-shooting the current level only shaves the margin.
+	// Hysteresis: avoid flip-flopping rebuilds at a power-of-two boundary.
 	if (
 		w &&
 		w.texWidth === texWidth &&
@@ -240,10 +228,8 @@ export function updateTerrainWindow(
 	const thetaHi = Math.min(Math.PI, centerTheta + angRadius);
 	const thetas = mergeAxis(Math.PI, [[thetaLo, thetaHi]], step);
 
-	// Longitude half-width grows by 1/sin(lat) so ground coverage holds at the
-	// window's latitude; the sin floor keeps polar windows from wrapping the
-	// full 2π at fine density. The column step re-quantizes against the budget
-	// (near poles equirect columns oversample the ground anyway).
+	// Half-width grows by 1/sin(lat) to hold ground coverage at latitude; the sin
+	// floor bounds polar windows, and the column step re-quantizes against the budget.
 	const halfWidth = Math.min(Math.PI, angRadius / Math.max(Math.sin(centerTheta), SIN_FLOOR));
 	const phiLevel = Math.max(
 		stepLevel,

@@ -2,12 +2,8 @@ import { dateToJD } from '$lib/format/date';
 
 const MS_PER_DAY = 86_400_000;
 
-/**
- * Optional boundary stops consulted only inside `tick()`. Forward stop fires
- * when `tick` would advance `jd` past `forwardJd` while `timeScale > 0`;
- * backward symmetric. `setJD` deliberately bypasses these — slider scrubs
- * cross freely.
- */
+/** Optional boundary stops consulted only inside `tick()`. `setJD` bypasses
+ *  them — slider scrubs cross freely. */
 interface BoundaryStops {
 	forwardJd: number | null;
 	backwardJd: number | null;
@@ -22,8 +18,8 @@ export class SimClock {
 	jd = $state(0);
 	timeScale = $state(1);
 	direction = $state<1 | -1>(1);
-	/** Set by {@link setJD} (a discontinuous seek, not a play tick); the renderer
-	 *  reads and clears it to distinguish a deliberate date jump from playback. */
+	/** Set by {@link setJD}; the renderer reads and clears it to tell a deliberate
+	 *  date jump from playback. */
 	seeked = false;
 	private lastRealMs = 0;
 	private prevScale = 1;
@@ -34,9 +30,7 @@ export class SimClock {
 		this.lastRealMs = performance.now();
 	}
 
-	/** Advance jd based on real elapsed time since last tick. When boundary
-	 *  stops are armed, clamp the new jd to the nearest stop in the time-step
-	 *  direction and pause. */
+	/** Advance jd by real elapsed time. Clamps to an armed boundary stop and pauses. */
 	tick(nowMs: number): void {
 		const dt = nowMs - this.lastRealMs;
 		this.lastRealMs = nowMs;
@@ -70,9 +64,7 @@ export class SimClock {
 		this.jd = proposed;
 	}
 
-	/** Arm or replace the boundary stops consulted by {@link tick}. Pass `null`
-	 *  for either side to disable that direction; pass `null` to the whole
-	 *  setter to clear both. */
+	/** Arm or replace the boundary stops consulted by {@link tick}; `null` clears. */
 	setBoundaryStops(stops: BoundaryStops | null): void {
 		this.stops = stops;
 	}
@@ -99,15 +91,9 @@ export class SimClock {
 		this.lastRealMs = performance.now();
 	}
 
-	/**
-	 * Move the clock the way playback does — continuously, one frame's worth at a
-	 * time — rather than by jumping to a date.
-	 *
-	 * Deliberately not {@link seeked}: that flag says "the clock landed somewhere
-	 * else", which is what lets the renderer re-anchor a focus that has no data at
-	 * the new time. Setting it every frame of a sweep would fire that on the way
-	 * past, dragging the camera off whatever is being followed.
-	 */
+	/** Move the clock like playback, one frame at a time, rather than jumping.
+	 *  Deliberately doesn't set {@link seeked} — that flag re-anchors the focus,
+	 *  and firing it every sweep frame would drag the camera off its target. */
 	sweepTo(jd: number): void {
 		this.jd = jd;
 		this.lastRealMs = performance.now();

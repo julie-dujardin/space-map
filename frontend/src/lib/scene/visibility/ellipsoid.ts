@@ -1,13 +1,9 @@
 import { Quaternion, Vector3, type Matrix4 } from 'three';
 import type { ScreenOccluder } from '../label/culling';
 
-/**
- * Oblate-body silhouette math. A triaxial body is an ellipsoid, not a sphere;
- * normalizing it to a unit sphere with the affine map A = R·diag(a) turns the
- * label-occlusion and anchor problems back into the sphere case we already
- * solve. Both the screen occluder and the label anchor are derived from the
- * body's camera-space principal axes + semi-axes here.
- */
+/** Oblate-body silhouette math. Normalizing a triaxial body to a unit sphere
+ *  (A = R·diag(a)) turns label-occlusion and anchor placement back into the
+ *  sphere case, derived here from the body's camera-space axes + semi-axes. */
 
 const _e0 = new Vector3();
 const _e1 = new Vector3();
@@ -16,12 +12,9 @@ const _axes: [Vector3, Vector3, Vector3] = [_e0, _e1, _e2];
 
 export type EllipsoidAxes = { e: [Vector3, Vector3, Vector3]; a: [number, number, number] };
 
-/**
- * Camera-space principal axes (unit) + semi-axes (scene units) of a body whose
- * mesh carries SPICE triaxial radii. The returned vectors alias module scratch —
- * consume them before the next call. `a` is the mesh-local x/y/z semi-axis order
- * ({@link BodyObjects.semiAxesScene}), matching `e`.
- */
+/** Camera-space principal axes (unit) + semi-axes (scene units) of a body with
+ *  SPICE triaxial radii. Returned vectors alias module scratch — consume
+ *  before the next call. */
 export function ellipsoidCameraAxes(
 	meshWorldQuat: Quaternion,
 	view: Matrix4,
@@ -112,13 +105,10 @@ export function setEllipsoidOccluder(
 	occ.ccz = camZ;
 }
 
-/**
- * Camera-space xy offset placing a label at the body's projected silhouette
- * center. The tangent cone T(X) = g·(XᵀMX) − (pᵀX)² (M = Σ aᵢ⁻²eᵢeᵢᵀ, p = Mc,
- * g = cᵀMc − 1) cuts the image plane z = −f in a conic; its center is the
- * silhouette center, back-projected to the body's depth. Reduces exactly to the
- * sphere β-offset when the axes are equal. Returns into `out` (ox, oy).
- */
+/** Camera-space xy offset placing a label at the body's projected silhouette
+ *  center: the tangent cone cuts the image plane in a conic whose center is
+ *  back-projected to the body's depth. Reduces to the sphere β-offset when
+ *  the axes are equal. Writes into `out` (ox, oy). */
 export function ellipsoidAnchorOffset(
 	camX: number,
 	camY: number,

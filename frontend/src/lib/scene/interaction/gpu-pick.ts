@@ -11,16 +11,13 @@ import {
 } from 'three';
 
 /**
- * GPU picking for the asteroid/spacecraft clouds (~1.3M dots). Each cloud
- * carries a per-point `pickColor` attribute (the worker's compact `pickBase +
- * row` id as RGBA bytes); we render a small framebuffer box around the cursor
- * with a pass-through material, read it back, and return the nearest lit
- * pixel's id — exact and off the main thread, where re-solving that many orbits
- * per click would stutter.
+ * GPU picking for the asteroid/spacecraft clouds (~1.3M dots): render a small
+ * framebuffer box around the cursor with each dot's pick-id as its color, read
+ * it back, return the nearest lit pixel's id. Exact and off the main thread,
+ * where re-solving that many orbits per click would stutter.
  *
- * Planet occlusion isn't handled in the pass (no meshes in it); the caller
- * rejects any candidate hidden behind a mesh on its own ray, so the nearest
- * *visible* dot wins.
+ * No meshes in the pass, so no planet occlusion — the caller rejects any
+ * candidate hidden behind a mesh on its own ray.
  */
 export interface PickCandidate {
 	/** Decoded global pick-id; resolve via {@link PickRegistry}. */

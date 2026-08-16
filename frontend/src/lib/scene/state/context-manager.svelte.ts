@@ -36,23 +36,16 @@ const EARTH_TYPES_BY_CATEGORY: Record<string, ReadonlySet<ObjectType>> = {
 	[CAT_DEBRIS]: new Set([ObjectType.DEBRIS])
 };
 
-/**
- * Top-level state holder for the rendered scene. Composes four sub-stores —
- * bodies, credits, visibility, plus the loading/error reactive pair — and
- * holds the loader-lifetime handles (chebStore, probeStore, refresher) that
- * {@link loadScene} populates during `load()`.
- */
+/** Top-level state holder for the rendered scene: composes the bodies/credits/
+ *  visibility sub-stores plus the loader-lifetime handles {@link loadScene}
+ *  populates during `load()`. */
 export class ContextManager {
-	/** Body store: every loaded `PositionedBody`, parent/child graph, dirty
-	 *  zone markers, and version counters for reactive consumers. */
 	bodies = new BodyIndex();
 
-	/** Attribution state: per-body imagery credits, skybox credit, orbit-source set. */
 	credits = new CreditsStore();
 
-	/** Focus state + per-frame visibility decisions. Reads body topology from
-	 *  {@link BodyIndex}; the rendering side in `visibility/update.ts` reads
-	 *  VISIBILITY values from here and applies them to Three.js objects. */
+	/** Focus state + per-frame visibility decisions, read by `visibility/update.ts`
+	 *  to apply VISIBILITY values to Three.js objects. */
 	visibility = new VisibilityController(
 		this.bodies,
 		() => this.probeStore,
@@ -63,8 +56,7 @@ export class ContextManager {
 	loading = $state(true);
 	error = $state<string | null>(null);
 
-	/** Set by MapPage; fired when data looks stale mid-session (redeploy rotated
-	 *  the `?v=` tokens, or the refresher keeps failing) so it can prompt a reload. */
+	/** Set by MapPage; fired when data looks stale mid-session so it can prompt a reload. */
 	onDataStale: (() => void) | null = null;
 
 	constructor() {
@@ -74,57 +66,43 @@ export class ContextManager {
 		}
 	}
 
-	/**
-	 * Chebyshev polynomial ephemeris for SPICE-sourced major bodies. Null until
-	 * the metadata.json fetch in {@link loadScene} resolves; stays null if the
-	 * export ships no chebyshev block.
-	 */
+	/** Chebyshev ephemeris for SPICE-sourced major bodies. Null until metadata
+	 *  resolves in {@link loadScene}, or if the export ships no chebyshev block. */
 	chebStore: ChebyshevStore | null = null;
-	/**
-	 * Per-zone probe sub-chunks (Kepler-pure / Kepler-drift / Chebyshev). Null
-	 * until metadata resolves; stays null when the export ships no probe
-	 * zones. The renderer's per-frame update path consults it for any body
-	 * whose `orbitalSource === SPICE_PROBE`.
-	 */
+	/** Per-zone probe sub-chunks, consulted per-frame for bodies with
+	 *  `orbitalSource === SPICE_PROBE`. Null until metadata resolves. */
 	probeStore: ProbeStore | null = null;
 
-	/** Hot-reload driver for time-segmented (Earth SGP4 sats) and chunk-indexed
-	 *  (moons Method-C secular elements) zones. Set at the end of {@link loadScene}
-	 *  once the loader and metadata are available. */
+	/** Hot-reload driver for time-segmented and chunk-indexed zones. Set at the
+	 *  end of {@link loadScene}. */
 	refresher: ZoneRefresher | null = null;
 
-	/** Renderer-set: true when `id` is promoted to a mesh body. The zone-refresher
-	 *  keeps such spacecraft across a snapshot swap — their `PositionedBody` is
-	 *  shared with the mesh, so dropping the bucket entry would orphan it. */
+	/** Renderer-set: true when `id` is promoted to a mesh body. Keeps the
+	 *  zone-refresher from dropping the bucket entry a mesh still shares. */
 	hasMeshBody: ((id: string) => boolean) | null = null;
 
-	/** Intersect earth-zone chunks with this set before adding bodies so
-	 *  /g/<slug> pages render only group members. */
+	/** Intersect earth-zone chunks with this set so /g/<slug> pages render
+	 *  only group members. */
 	earthSatFilter: Set<string> | null = null;
 	private earthSatFilterSlug: string | null = null;
-	/** Keep only these object types in the earth zone. The Satellites and Debris
-	 *  category pages partition the same population by type, which the per-point
-	 *  `objectType` already carries — no membership fetch needed. */
+	/** Keep only these object types in the earth zone (Satellites/Debris pages
+	 *  partition by the per-point `objectType`, no membership fetch needed). */
 	earthTypeFilter: ReadonlySet<ObjectType> | null = null;
-	/** Active small-body filter (class or flag) when /g/<slug> is for a small-
-	 *  body group; null otherwise. Read by `VisibilityController` for both the
-	 *  per-zone hide and the per-tick flag mask. */
+	/** Active small-body filter for a /g/<slug> group; null otherwise. Read by
+	 *  `VisibilityController` for the per-zone hide and per-tick flag mask. */
 	smallBodyFilter: SmallBodyFilter | null = null;
-	/** Member object-ids of the active mission group (primary probe + siblings);
-	 *  null off a mission page. Lets the focus guard keep the mission view sticky
-	 *  when the camera lands on the primary probe. */
+	/** Member ids of the active mission group; lets the focus guard keep the
+	 *  mission view sticky when the camera lands on the primary probe. */
 	private missionMemberIds: Set<string> | null = null;
 	private currentGroupSlug: string | null = null;
-	/** Notified after `earthSatFilter` is set (post-fetch). Used by the
-	 *  promotion registry + pointclouds to ramp emphasis and bulk-promote
+	/** Notified after `earthSatFilter` is set. Ramps emphasis / bulk-promotes
 	 *  members when the count is small. */
 	private readonly groupFilterListeners = new Set<(filter: ReadonlySet<string> | null) => void>();
-	/** Notified after `smallBodyFilter` changes (cheap — no fetch). Used to
-	 *  drive the focused-zone point-cloud emphasis (class kind only). */
+	/** Notified after `smallBodyFilter` changes; drives focused-zone point-cloud emphasis. */
 	private readonly smallBodyFilterListeners = new Set<(f: SmallBodyFilter | null) => void>();
-	/** Notified after an Earth-sat snapshot rollover. Emphasis ramps off the
-	 *  currently-valid count, which shifts even when membership is unchanged — so
-	 *  it can't ride `onBodiesAdded` (that short-circuits on an empty id list). */
+	/** Notified after an Earth-sat snapshot rollover — emphasis ramps off the
+	 *  valid count, which shifts independent of membership, so it can't ride
+	 *  `onBodiesAdded`. */
 	private readonly earthSatRolloverListeners = new Set<() => void>();
 
 	/** Subscribe to filter changes. The callback fires on each `applyGroupFilter`
@@ -157,11 +135,8 @@ export class ContextManager {
 		return this.bodies.getBody(id, zone);
 	}
 
-	/** True when an /g/<slug> view is active and the given body belongs to it.
-	 *  Used by Scene.svelte's click handler to keep the group view sticky when
-	 *  the user clicks a member — the camera moves, the URL stays. Earth-sat
-	 *  members live in `earthSatFilter`; small-body class members match by
-	 *  zone path; small-body flag members match by per-body `flags` bits. */
+	/** True when an /g/<slug> view is active and the body belongs to it — keeps
+	 *  the group view sticky when a member is clicked. */
 	isMemberOfActiveGroup(bodyId: string): boolean {
 		if (this.missionMemberIds?.has(bodyId) === true) return true;
 		if (this.earthSatFilter?.has(bodyId) === true) return true;
@@ -189,17 +164,15 @@ export class ContextManager {
 			await loadScene(this, date, targetId);
 		} catch (e) {
 			this.loading = false;
-			// Surface it so MapPage's error screen renders — else a total failure
-			// (CDN down, metadata 404) falls through to a black scene + wrong toast.
+			// Surface it so MapPage's error screen renders instead of a black scene.
 			this.error = e instanceof Error ? e.message : String(e);
 			console.error('[scene-load]', e);
 			throw e;
 		}
 	}
 
-	/** Per-frame hook called by the renderer when sim jd advances. Drives
-	 *  hot-reload of time-segmented zones (Earth SGP4 sats) and chunk-indexed
-	 *  zones (moons Method-C-fit elements expire each chunk). */
+	/** Per-frame hook, called when sim jd advances, driving hot-reload of
+	 *  time-segmented and chunk-indexed zones. */
 	refreshTick(date: Date): void {
 		this.refresher?.tick(date);
 	}
@@ -210,22 +183,17 @@ export class ContextManager {
 		await this.refresher?.ensureBody(targetId, date);
 	}
 
-	/** Install or remove the active group filter. Branches on the slug's
-	 *  ``applies_to`` (resolved from the group index). Safe to call before
-	 *  {@link load} — the first chunk pass picks the filter up.
-	 *
-	 *  Small-body filter is a render-time mask read by
-	 *  {@link VisibilityController.isAsteroidGroupVisible}, so toggling it just
-	 *  updates the field — the per-frame visibility pass picks it up. Earth-sat
-	 *  filter is applied at chunk-fetch time, so changes trigger a zone
-	 *  invalidation + refetch. */
+	/** Install or remove the active group filter, branching on the slug's
+	 *  `applies_to`. Safe to call before {@link load}. Small-body filter is a
+	 *  render-time mask ({@link VisibilityController.isAsteroidGroupVisible});
+	 *  Earth-sat filter is applied at chunk-fetch time, so changes trigger a
+	 *  zone invalidation + refetch. */
 	async applyGroupFilter(slug: string | null): Promise<void> {
 		if (slug === this.currentGroupSlug) return;
 		this.currentGroupSlug = slug;
 
-		// Mission groups carry no scene filter — their members are probes, not a
-		// streamed point layer — but the focus guard needs the member ids so the
-		// camera can fly to the primary probe without dropping the mission view.
+		// Mission members are probes, not a streamed layer — no scene filter — but
+		// the focus guard needs their ids to keep the mission view on a fly-to.
 		if (slug?.startsWith(MISSION_SLUG_PREFIX)) {
 			const detail = await fetchGroupDetail(slug);
 			if (slug !== this.currentGroupSlug) return;
@@ -240,9 +208,8 @@ export class ContextManager {
 		if (slug !== this.currentGroupSlug) return;
 
 		const nextSmallBody = this.resolveSmallBodyFilter(slug, entry?.applies_to, entry?.n);
-		// L1/L2 members are TLE earth-sats SGP4 can't place at an L-point, so
-		// filtering the earth zone to them just empties the scene — don't hide
-		// anything on these zones until live geometric membership lands.
+		// SGP4 can't place TLE sats at an L-point, so filtering would just empty
+		// the scene — leave Lagrange zones unfiltered until membership is geometric.
 		const isLagrange =
 			slug != null &&
 			slug.startsWith(CLASS_SLUG_PREFIX) &&
@@ -272,10 +239,9 @@ export class ContextManager {
 		this.refresher?.invalidateZone('earth');
 	}
 
-	/** The Asteroids/Comets category pages hide the opposite bucket's zones, like
-	 *  a class page hides every other class. Other small-body slugs map to a
-	 *  class or flag filter; everything else (earth-orbit classes, other
-	 *  categories) is left unfiltered. */
+	/** Asteroids/Comets pages hide the opposite bucket, like a class page hides
+	 *  other classes. Other small-body slugs map to a class or flag filter;
+	 *  everything else is unfiltered. */
 	private resolveSmallBodyFilter(
 		slug: string | null,
 		appliesTo: GroupCategory | undefined,

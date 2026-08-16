@@ -8,10 +8,9 @@ import { isModelBearing } from '$lib/scene/objects/body/model';
 import { SSB_ID } from '$lib/constants';
 
 /**
- * A camera "north" reference. `id === null` → solar-system (ecliptic Y);
- * `id === GALACTIC_REF_ID` → galactic pole; else `id` is a body id with `name`
- * its label. `probe` = spacecraft model-up; `feature` = surface feature (local
- * vertical).
+ * Camera "north" reference. `id === null` → ecliptic Y; `GALACTIC_REF_ID` →
+ * galactic pole; else a body id (`name` its label). `probe`/`feature` pick
+ * model-up or local vertical instead of the IAU pole.
  */
 export interface NorthChoice {
 	id: string | null;
@@ -27,9 +26,8 @@ export const GALACTIC_REF_ID = 'galactic';
 export const SCENE_UP = new Vector3(0, 1, 0);
 
 /**
- * Galactic north pole in the scene frame. IAU 1958 pole at J2000
- * (α = 192.85948°, δ = 27.12825°), converted the same way as every body's IAU
- * pole (`equatorialToThreeJS`) so the references stay mutually consistent.
+ * Galactic north pole (IAU 1958 J2000, α=192.85948° δ=27.12825°) in the scene
+ * frame, converted the same way as body IAU poles for consistency.
  */
 const GALACTIC_NORTH_SCENE: Vector3 = (() => {
 	const DEG2RAD = Math.PI / 180;
@@ -56,11 +54,9 @@ export function galacticNorthVector(out?: Vector3): Vector3 {
 }
 
 /**
- * Unit "north" for a body in the scene frame: IAU pole at `jd` when oriented;
- * local zenith for a landed probe or focused surface feature (no orientation —
- * `position` is the seat, `orbitCenter` the host centre); else a flying probe's
- * static model-up (base frame only — attitude would tumble the camera on
- * spinners). Falls back to scene Y on a stale id.
+ * Unit "north" for a body: IAU pole at `jd` when oriented; local zenith when
+ * landed or a focused feature; else a probe's static model-up (base frame
+ * only — attitude would tumble the camera on spinners). Falls back to scene Y.
  */
 export function bodyNorthVector(
 	body: PositionedBody,
@@ -88,16 +84,11 @@ export function bodyNorthVector(
 }
 
 /**
- * Focused → ancestors (via `parentId`, up to the SSB), collecting every
- * orientation-bearing body, plus solar-system as the always-present fallback.
- * Caller hides the selector when length ≤ 1.
- *
- * A focused probe is its own ref (static model-up). A focused surface feature
- * reports its host upward (see Scene.svelte), so `focused` is the host; the
- * feature is pulled from `ctx.bodies` and appended innermost (local vertical).
- *
- * Barycenters (`naif-1`…`naif-9`) carry no frame, so the dominant planet
- * (`naif-{X}99`) stands in — e.g. Moon → EMB surfaces Earth.
+ * Walks `focused` to the SSB via `parentId`, collecting orientation-bearing
+ * ancestors plus solar-system as the always-present fallback (caller hides
+ * the selector when length ≤ 1). A focused probe is its own ref; a focused
+ * feature (reported via its host, see Scene.svelte) is appended innermost.
+ * Barycenters carry no frame, so the dominant planet stands in.
  */
 export function getNorthChoices(
 	focused: PositionedBody | undefined,

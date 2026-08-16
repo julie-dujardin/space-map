@@ -28,12 +28,9 @@ interface PointHit {
 	screenDist: number;
 }
 
-/**
- * Pointer-down/up handlers that distinguish a click from a drag and pick the
- * topmost body under the cursor. Moons and meshes resolve on the CPU; the
- * asteroid/spacecraft clouds (~1.3M dots) resolve on the GPU via {@link GpuPickPass}.
- * Stateless across instances — `attach` returns a cleanup function.
- */
+/** Pointer-down/up handlers that distinguish a click from a drag and pick the
+ *  topmost body under the cursor. Moons and meshes resolve on the CPU; the
+ *  asteroid/spacecraft clouds resolve on the GPU via {@link GpuPickPass}. */
 export class PointerInteraction {
 	private readonly downPos = new Vector2();
 	private readonly pointer = new Vector2();

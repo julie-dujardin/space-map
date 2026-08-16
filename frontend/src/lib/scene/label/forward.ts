@@ -1,12 +1,8 @@
 /**
  * Re-dispatch wheel/pointer gestures from a CSS2D overlay element onto the
  * canvas so OrbitControls keeps working when the user grabs a label.
- *
- * Wheel events fire on the label first; OrbitControls only listens on the
- * canvas, so without forwarding the user can't zoom while hovering a label.
- * Pointerdown is deferred: it forwards only once the gesture moves past
- * `DRAG_THRESHOLD_PX`, so a tap-and-release on the label still fires its own
- * click handler.
+ * Pointerdown only forwards once the gesture passes `DRAG_THRESHOLD_PX`, so a
+ * tap-and-release still fires the label's own click handler.
  */
 
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';

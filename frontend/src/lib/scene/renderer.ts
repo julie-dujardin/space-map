@@ -524,14 +524,9 @@ export class SceneRenderer {
 		});
 	}
 
-	/**
-	 * Draw the planned trajectory over the map, with `options` — the trajectories
-	 * it is being chosen from — behind it. Both empty clears the map.
-	 *
-	 * The path arrives in its own frame; placing it needs the body it is measured
-	 * from, which is looked up per frame rather than resolved here — the centre
-	 * may still be streaming in when the planner first answers.
-	 */
+	/** Draw the planned trajectory over the map, with `options` behind it (both
+	 *  empty clears the map). The path's centre body is looked up per frame
+	 *  rather than resolved here, since it may still be streaming in. */
 	setTravelPath(
 		plan: LabelledPath | null,
 		options: readonly LabelledPath[] = [],
@@ -547,14 +542,9 @@ export class SceneRenderer {
 		this.travelPath.setHovered(id);
 	}
 
-	/**
-	 * Place the drawn path against this frame's positions.
-	 *
-	 * Both ends of the sum move: the centre body runs along its own orbit as the
-	 * clock ticks, and the basis follows the focus. Hidden rather than dropped
-	 * when the centre is not resident — the alternative is drawing the arc at
-	 * whatever sits at the origin.
-	 */
+	/** Place the drawn path against this frame's positions — the centre body
+	 *  runs along its own orbit and the basis follows the focus. Hidden rather
+	 *  than dropped when the centre isn't resident, to avoid drawing at the origin. */
 	private refreshTravelPath(): void {
 		if (this.travelPath.isEmpty) {
 			this.reserveTravelLabelSpace();
@@ -586,15 +576,9 @@ export class SceneRenderer {
 		);
 	}
 
-	/**
-	 * Look at a place on the drawn trajectory — a spot mid-cruise belongs to no
-	 * body, so there is nothing to focus in the ordinary way.
-	 *
-	 * `rKm` is in the transfer frame, the same one the path is drawn in. The
-	 * camera only re-aims, holding the vantage it is already at: a trip is read
-	 * from a distance the reader chose, and closing on each place it names would
-	 * take that away every time the timeline is touched.
-	 */
+	/** Look at a place on the drawn trajectory (transfer frame, same as the path)
+	 *  — mid-cruise belongs to no body. Only re-aims, holding the vantage the
+	 *  reader already chose rather than closing in on every timeline touch. */
 	focusOnPathPoint(centerId: string, rKm: readonly [number, number, number]): void {
 		const center = this.ctx.getBody(centerId);
 		if (!center) return;
@@ -606,16 +590,11 @@ export class SceneRenderer {
 	}
 
 	/**
-	 * Move an existing trajectory focus onto another point without re-flying to
-	 * it — for following the craft along the arc while the clock is dragged.
-	 *
-	 * `refreshTravelFocus` re-derives the world position every frame, so moving
-	 * the point is the whole move: the camera keeps its distance and orientation
-	 * and slides along. The centre changes under it partway down each end, where
-	 * the craft leaves the crossing for a passage measured off the body — that is
-	 * a change of what the point is measured from and not of where it is, so it
-	 * re-anchors just as quietly. A first call with nothing focused there yet
-	 * swings the pivot over, holding the vantage.
+	 * Move an existing trajectory focus onto another point without re-flying —
+	 * for following the craft along the arc as the clock is dragged.
+	 * `refreshTravelFocus` re-derives the world position every frame, so the
+	 * camera keeps its distance/orientation and slides along. First call with
+	 * nothing focused yet swings the pivot over instead.
 	 */
 	trackPathPoint(centerId: string, rKm: readonly [number, number, number]): void {
 		if (!this.travelFocus) {
@@ -636,13 +615,9 @@ export class SceneRenderer {
 		];
 	}
 
-	/**
-	 * Keep a trajectory focus on its point as the frame it is measured in moves.
-	 *
-	 * `updatePositions` does this for a focused body, and a point focus has none —
-	 * that is the whole reason it exists. Without this a trip inside one system
-	 * would slide off its own arc at the primary's orbital speed.
-	 */
+	/** Keep a trajectory focus on its point as the frame it's measured in moves
+	 *  — `updatePositions` does this for a focused body, but a point focus has
+	 *  none, so without this a trip inside a system slides off its own arc. */
 	private refreshTravelFocus(): void {
 		if (!this.travelFocus) return;
 		// Focusing anything at all takes the camera back: a point focus only lives
@@ -1035,13 +1010,10 @@ export class SceneRenderer {
 
 	/**
 	 * Pull the far plane in when zoomed into a subsystem. Log-depth precision
-	 * scales as 1/log2(far+1) — near is irrelevant — so collapsing far from the
-	 * ~0.5 ly default sharply cuts z-fighting in close-up terrain. Bodies
-	 * outside the active system are hidden while zoomed in and mustn't hold the
-	 * plane out. Normally the Sun dominates far; in the tight-far regime it
-	 * drops out too (updateSunProxy stands in) and the system-extent term keeps
-	 * sibling-moon orbit trails inside the plane — a body position alone says
-	 * nothing about its trail's far side.
+	 * scales as 1/log2(far+1), so collapsing far from the ~0.5 ly default
+	 * sharply cuts z-fighting in close-up terrain. Bodies outside the active
+	 * system are hidden and mustn't hold the plane out; the Sun (excluded in
+	 * tight-far, see updateSunProxy) and system-extent otherwise dominate.
 	 */
 	private updateDepthFar(): void {
 		if (isReversedDepth()) return;
@@ -1093,17 +1065,12 @@ export class SceneRenderer {
 
 	/**
 	 * Stand-in Sun for the tight-far regime: re-seat the Sun's visuals at
-	 * SUN_PROXY_FAR_FRACTION × far along the true direction, scaled by the same
+	 * SUN_PROXY_FAR_FRACTION × far along the true direction, scaled the same
 	 * factor — angular size and surface brightness are distance-invariant, so
-	 * disc, corona, and bloom render pixel-identical. Lighting and the
-	 * eclipse/atmosphere/shadow uniforms read the true `body.position` and are
-	 * unaffected (the PointLight rides along at zero intensity in subsystems).
-	 * Must run after updateDepthFar (this frame's far) and after
-	 * repositionBodies (so this write wins).
-	 *
-	 * `refraction` (camera inside a shell) rotates the camera→Sun direction by
-	 * the atmospheric lift before the proxy re-seat — visuals only, lighting
-	 * keeps the true direction.
+	 * disc/corona/bloom render pixel-identical. Lighting reads the true
+	 * `body.position`, unaffected. Must run after updateDepthFar and after
+	 * repositionBodies (so this write wins). `refraction` rotates the visual
+	 * direction by the atmospheric lift; lighting keeps the true direction.
 	 */
 	private updateSunProxy(refraction: { angleRad: number; up: Vector3 } | null): void {
 		const sunBo = this.bodyObjects.get(SUN_ID);
@@ -1249,9 +1216,6 @@ export class SceneRenderer {
 		this.renderer.autoClear = true;
 	}
 
-	/** View geometry for the point clouds' subpixel solve gate. Camera position is
-	 *  already focus-relative (controls target is the origin); pxPerRad converts an
-	 *  angular size at the camera into CSS pixels from the vertical FOV + height. */
 	/** CSS pixels per radian of angular size at the camera. */
 	private pxPerRad(): number {
 		const height = this.renderer.domElement.clientHeight || 1;
@@ -1477,18 +1441,12 @@ export class SceneRenderer {
 	}
 
 	/**
-	 * Focus a surface feature as a real orbitable body seated on its host. `mode`:
-	 *  - `pan`: keep the camera put and re-aim onto the seat (a label click — the
-	 *    feature is already on screen, so no camera move is wanted).
-	 *  - `frame`: move to a `zoom`-scene-unit standoff along the local zenith. When
-	 *    already on this host (parent or a sibling feature focused) it arcs around
-	 *    at constant radius so the path can't cut a chord through the body;
-	 *    arriving from a different object it flies in.
-	 *  - `snap`: settle at that framing instantly, for URL deep-links. `view`
-	 *    (the URL's `at=`, seat-relative) overrides the zenith standoff so a
-	 *    shared link restores the exact camera.
-	 * The camera then orbits/zooms the seat like any body; `updatePositions`
-	 * re-seats it each frame. Returns the animation duration (ms).
+	 * Focus a surface feature as a real orbitable body seated on its host.
+	 * `mode`: `pan` re-aims in place (label click, feature already on screen);
+	 * `frame` moves to a `zoom`-unit standoff, arcing if already on this host
+	 * or flying in otherwise; `snap` settles instantly for URL deep-links,
+	 * with `view` overriding the standoff to restore an exact shared camera.
+	 * `updatePositions` re-seats the seat each frame. Returns duration (ms).
 	 */
 	focusOnFeature(
 		anchor: FeatureAnchor,

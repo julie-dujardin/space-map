@@ -26,22 +26,17 @@ function cellIndex(arr: Float64Array, x: number): number {
 	return lo;
 }
 
-/**
- * Body-fixed unit direction for a planetographic lat/lon, IAU convention:
- * +X = prime meridian, +Y = north pole, −Z = east. Shared by every surface
- * seat (labels, landed probes, focused features) so they land on one point.
- */
+/** Body-fixed unit direction for a lat/lon, IAU convention: +X = prime
+ *  meridian, +Y = north pole, −Z = east. Shared by every surface seat so
+ *  they agree on one point. */
 export function bodyFixedUnit(latRad: number, lonRad: number): [number, number, number] {
 	const cosLat = Math.cos(latRad);
 	return [cosLat * Math.cos(lonRad), Math.sin(latRad), -cosLat * Math.sin(lonRad)];
 }
 
-/**
- * Displaced ellipsoid point (km) the mesh draws at `latRad`/`lonRad`: the unit
- * normal scaled by the per-axis semi-axes (a,c,b on local x,y,z — see
- * `applyRadiiToMesh`), grown radially by the displacement. Mirrors the vertex
- * shader exactly, so a corner here is the rendered vertex position.
- */
+/** Displaced ellipsoid point (km): unit normal scaled by per-axis semi-axes
+ *  (a,c,b on local x,y,z — see `applyRadiiToMesh`), grown radially by the
+ *  displacement. Mirrors the vertex shader exactly. */
 function displacedPoint(
 	latRad: number,
 	lonRad: number,
@@ -158,11 +153,9 @@ export function triangleNormalKm(
 	return [n[0] * s, n[1] * s, n[2] * s];
 }
 
-/**
- * Single-channel height rows for synchronous per-frame sampling. Tier-swapped
- * maps are `DataTexture`s whose rows already live CPU-side (v=0 = south first);
- * the initial low tier is an image texture, read back once per body (~2 MB).
- */
+/** Single-channel height rows for synchronous per-frame sampling. Tier-swapped
+ *  maps are `DataTexture`s, rows already CPU-side (v=0=south); the initial low
+ *  tier is an image texture, read back once per body (~2 MB). */
 interface HeightField {
 	data: Uint8Array | Uint8ClampedArray;
 	width: number;
@@ -236,12 +229,10 @@ function sampleHeightTexel(hf: HeightField, latRad: number, lonRad: number): num
 }
 
 /**
- * Displacement (km, relative to the base sphere) the mesh adds at each point,
- * from the same cached height rows the seat and camera-floor samplers read —
- * one readback per body, shared. Prefers the currently bound tier's CPU-side
- * rows; awaits the shared low-tier readback otherwise (`meta` is passed in so
- * callers can sample before the GPU texture attaches). Null when the height
- * map failed to load.
+ * Displacement (km) at each point, from the same cached height rows the seat
+ * and camera-floor samplers read — one readback per body, shared. Prefers the
+ * bound tier's CPU-side rows, else awaits the shared low-tier readback (`meta`
+ * lets callers sample before the GPU texture attaches). Null if load failed.
  */
 export async function displacementsKmAt(
 	bo: BodyObjects | undefined,
@@ -293,13 +284,10 @@ function gridForBody(bo: BodyObjects | undefined): SurfaceGrid {
 		: { kind: 'uniform', segs: bo?.currentSegments ?? 128 };
 }
 
-/**
- * The rendered grid cell bracketing (lat, lon): the four displaced vertex
- * positions (km) the GPU rasterizes this frame — current grid, current height
- * map — plus the in-cell fractions. Null while the height rows or radii are
- * still loading. Both the landed-probe seat and the camera terrain floor
- * derive from this one sampler, so they can never disagree on the surface.
- */
+/** Rendered grid cell bracketing (lat, lon): the four displaced vertex
+ *  positions (km) the GPU rasterizes this frame, plus in-cell fractions. Null
+ *  while height rows/radii are loading. Shared by the landed-probe seat and
+ *  camera terrain floor so they never disagree. */
 function renderedCell(
 	bo: BodyObjects | undefined,
 	bodyId: string,
@@ -354,13 +342,11 @@ export function renderedSeatAt(
 }
 
 /**
- * Distance (km) from the body centre to the rendered surface along `dir`
- * (unit, body-fixed Three-coords) — a ray/plane intersection with the triangle
- * the mesh rasterizes there, sampling the height map the GPU currently
- * displaces with. Exact where a radius-at-(lat,lon) comparison would be metres
- * off on oblate bodies (the ellipsoid's normal parametrization drifts from the
- * ray). Null while the height rows or radii are still loading, or when the ray
- * runs parallel to the facet — callers fall back to a spherical shell.
+ * Distance (km) from body centre to the rendered surface along `dir` (unit,
+ * body-fixed) — a ray/plane intersection with the facet the GPU rasterizes
+ * there. Exact where radius-at-(lat,lon) would be metres off on oblate bodies
+ * (the ellipsoid normal drifts from the ray). Null while data is loading, or
+ * when the ray runs parallel to the facet — caller falls back to a sphere.
  */
 export function renderedSurfaceRadialKm(
 	bo: BodyObjects | undefined,
