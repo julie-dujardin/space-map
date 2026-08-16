@@ -3,7 +3,8 @@
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	import type { GcatPad, GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
+	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
+	import { padLabels } from '$lib/travel/launch-pad';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { formatIsoDate } from '$lib/format/date';
@@ -42,49 +43,6 @@
 	// Top individual reusable vehicles (Shuttle orbiters / Falcon cores) by flights.
 	let reusableVehicles = $derived(global?.reusable_vehicles ?? []);
 	let reusableRefs = $derived(localized?.reusable_vehicle_refs ?? {});
-	// GCAT trails a pad's name with the place it sits in, which the page already
-	// says. How many trailing parts that is varies, so take whatever every pad
-	// of the site shares rather than assume a depth: Canaveral's all end
-	// ", Cape Canaveral", Baikonur's ", GIK-5, Baykonur, Kazakstan". Keeping
-	// only the first part instead would read "LC200/39 · PU39" at Baikonur,
-	// where GCAT leads with the launcher and names the pad second.
-	function padLabels(pads: GcatPad[]): Map<string, string> {
-		const parts = pads.map((p) => p.name.split(',').map((s) => s.trim()));
-		// Majority, not unanimity: Baikonur has one oddly-punctuated row
-		// ("Buran runway, GIK-5 Baykonur") that shares no tail with the other
-		// 120, and requiring agreement would leave the site's name on every row.
-		let shared: string[] = [];
-		for (let depth = 1; ; depth++) {
-			const counts = new Map<string, number>();
-			for (const part of parts) {
-				// A pad never gives up its whole name, so it stops voting once
-				// the tail would consume it.
-				if (part.length <= depth) continue;
-				// Keyed as JSON so a multi-word part ("Cape Canaveral") stays one, and
-				// so no separator byte can end up in the source.
-				const tail = JSON.stringify(part.slice(part.length - depth));
-				counts.set(tail, (counts.get(tail) ?? 0) + 1);
-			}
-			const [best, votes] = [...counts].reduce((top, row) => (row[1] > top[1] ? row : top), [
-				'',
-				0
-			] as [string, number]);
-			if (votes <= pads.length / 2) break;
-			shared = JSON.parse(best);
-		}
-		return new Map(
-			pads.map((p, i) => {
-				const own = parts[i];
-				const trailing = own.slice(own.length - shared.length);
-				const strip =
-					shared.length > 0 &&
-					own.length > shared.length &&
-					trailing.every((s, j) => s === shared[j]);
-				return [p.code, (strip ? own.slice(0, own.length - shared.length) : own).join(', ')];
-			})
-		);
-	}
-
 	// Every pad in the range, busiest first. The GCAT places are merged away:
 	// which of a range's sites a pad belongs to is an accident of how the
 	// catalogue carves the ground up, not something the reader came for.

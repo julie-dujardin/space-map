@@ -51,6 +51,8 @@ const baseView: MapViewState = {
 	navTo: null,
 	navFromFeature: null,
 	navToFeature: null,
+	navFromPlace: null,
+	navToPlace: null,
 	trip: DEFAULT_TRIP
 };
 
@@ -293,21 +295,45 @@ describe('isBodyId', () => {
 });
 
 describe('parseNavEnd', () => {
-	it('round-trips both shapes of an end', () => {
+	it('round-trips every shape of an end', () => {
 		expect(parseNavEnd(formatNavEnd('naif-499', null))).toEqual({
 			bodyId: 'naif-499',
-			featureId: null
+			featureId: null,
+			place: null
 		});
 		expect(parseNavEnd(formatNavEnd('naif-499', 15057))).toEqual({
 			bodyId: 'naif-499',
-			featureId: 15057
+			featureId: 15057,
+			place: null
 		});
+		// A pad: no id anywhere names it, so the coordinates are the end. The
+		// collection they came from rides the query, not this token.
+		const pad = { latDeg: 51.88449, lonDeg: 128.33383, siteSlug: 'site-vostochny' };
+		expect(parseNavEnd(formatNavEnd('naif-399', null, pad))).toEqual({
+			bodyId: 'naif-399',
+			featureId: null,
+			place: { latDeg: 51.88449, lonDeg: 128.33383 }
+		});
+	});
+
+	it('keeps a point to about a metre and no further', () => {
+		expect(formatNavEnd('naif-399', null, { latDeg: 28.6083892, lonDeg: -80.6041482 })).toBe(
+			'naif-399-at-28.60839,-80.60415'
+		);
+		// Trailing zeros are noise on a coordinate, not precision.
+		expect(formatNavEnd('naif-399', null, { latDeg: 5.2, lonDeg: -52.75 })).toBe(
+			'naif-399-at-5.2,-52.75'
+		);
 	});
 
 	// A negative NAIF id already carries a dash, so the split has to key on the
 	// infix rather than on dash counting.
 	it('splits a body id that has dashes of its own', () => {
-		expect(parseNavEnd('naif--164-f-3537')).toEqual({ bodyId: 'naif--164', featureId: 3537 });
+		expect(parseNavEnd('naif--164-f-3537')).toEqual({
+			bodyId: 'naif--164',
+			featureId: 3537,
+			place: null
+		});
 	});
 
 	it('rejects a malformed end', () => {
@@ -315,6 +341,15 @@ describe('parseNavEnd', () => {
 		expect(parseNavEnd('naif-499-f-crater')).toBeNull();
 		expect(parseNavEnd('naif-499-f-0')).toBeNull();
 		expect(parseNavEnd('cat-surface-features-f-1')).toBeNull();
+	});
+
+	it('rejects a point that is not one, or is not on a globe', () => {
+		expect(parseNavEnd('naif-399-at-')).toBeNull();
+		expect(parseNavEnd('naif-399-at-51.88')).toBeNull();
+		expect(parseNavEnd('naif-399-at-north,east')).toBeNull();
+		expect(parseNavEnd('naif-399-at-51.88,128.33,0')).toBeNull();
+		// Nothing sits at 91 degrees of latitude.
+		expect(parseNavEnd('naif-399-at-91,0')).toBeNull();
 	});
 });
 

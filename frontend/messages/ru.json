@@ -1425,6 +1425,8 @@
 	"travel_no_target": "Выберите пункт назначения, чтобы увидеть путь.",
 	"travel_not_modelled": "Не моделируется",
 	"travel_on_arrival": "По прибытии",
+	"travel_launch_pad": "Стартовый комплекс",
+	"travel_launch_from_here": "Спланировать запуск отсюда",
 	"travel_open": "Отправиться куда-нибудь",
 	"travel_orbit_shape": "Какая орбита",
 	"travel_out_of_reach": "Недостижимо",

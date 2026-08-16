@@ -271,6 +271,8 @@
 	const navTo = $derived(isNav ? appState.view.navTo : null);
 	const navFromFeature = $derived(isNav ? appState.view.navFromFeature : null);
 	const navToFeature = $derived(isNav ? appState.view.navToFeature : null);
+	const navFromPlace = $derived(isNav ? appState.view.navFromPlace : null);
+	const navToPlace = $derived(isNav ? appState.view.navToPlace : null);
 
 	// Group route wins over body focus — camera may be parked on the anchor body.
 	// A trip owns the sidebar outright: the destination is focused, but the panel
@@ -768,6 +770,8 @@
 					toId={navTo}
 					fromFeatureId={navFromFeature}
 					toFeatureId={navToFeature}
+					fromPlace={navFromPlace}
+					toPlace={navToPlace}
 					clockJd={clock.jd}
 					isMobile={isMobileViewport}
 					{viewFrame}

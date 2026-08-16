@@ -1,7 +1,9 @@
 /** The mode names. The picker and the trajectory use this file. */
 
 import * as m from '$lib/paraglide/messages.js';
+import { getLocale } from '$lib/paraglide/runtime.js';
 import { formatKm } from '$lib/format/distance';
+import type { LaunchPad } from '$lib/travel/launch-pad';
 import type { EndpointMode } from '$lib/travel/trip';
 
 const LABELS: Record<EndpointMode, () => string> = {
@@ -26,4 +28,23 @@ export function endpointModeLabel(
 		return role === 'origin' ? m.travel_mode_surface() : m.travel_mode_landing();
 	if (mode === 'custom' && altKm !== null) return m.travel_orbit_at({ altitude: formatKm(altKm) });
 	return LABELS[mode]();
+}
+
+/**
+ * How an end that stands on the ground is met, for the line under its name —
+ * the pad of a launch range, and bare coordinates anywhere else on a globe.
+ *
+ * A fixed decimal rather than `formatNumber`'s significant digits, which would
+ * drop a longitude's decimal past 100 while its latitude kept one.
+ */
+export function groundLabel(
+	role: 'origin' | 'target',
+	pad: LaunchPad | null,
+	place: { lat: number; lon: number } | null
+): string | null {
+	if (pad) return pad.name;
+	if (!place) return null;
+	const deg = (v: number) =>
+		`${v.toLocaleString(getLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}°`;
+	return `${endpointModeLabel('surface', role)} · ${deg(place.lat)}, ${deg(place.lon)}`;
 }

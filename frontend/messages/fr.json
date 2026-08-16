@@ -1383,6 +1383,8 @@
 	"travel_no_target": "Choisissez une destination pour voir comment y aller.",
 	"travel_not_modelled": "Non modélisé",
 	"travel_on_arrival": "À l'arrivée",
+	"travel_launch_pad": "Pas de tir",
+	"travel_launch_from_here": "Planifier un lancement d'ici",
 	"travel_open": "Aller quelque part",
 	"travel_orbit_shape": "Quelle orbite",
 	"travel_out_of_reach": "Hors de portée",

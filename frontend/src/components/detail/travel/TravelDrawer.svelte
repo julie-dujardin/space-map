@@ -30,6 +30,9 @@
 	import { ASSIST_BODY_IDS } from '$lib/travel/assist-bodies';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 	import type { EndSite, TravelEndpointPick } from '$lib/travel/endpoint';
+	import { fetchLaunchPads, padAt, type LaunchPad } from '$lib/travel/launch-pad';
+	import type { NavPlace } from '$lib/state/view';
+	import { navEndOf, type NavEnd } from '$lib/state/url';
 	import { landedEnd, type LandedEnd } from '$lib/travel/probe-end';
 	import type { Crumb } from '$lib/state/breadcrumb';
 	import DrawerTitle from '../frame/DrawerTitle.svelte';
@@ -44,6 +47,9 @@
 		/** IAU feature ids when an end is a named place on its body's surface. */
 		fromFeatureId: number | null;
 		toFeatureId: number | null;
+		/** Bare coordinates when an end is a place nothing names — a launch pad. */
+		fromPlace: NavPlace | null;
+		toPlace: NavPlace | null;
 		/** The app's clock, as a Julian Date. Live — see `nowJd` below. */
 		clockJd: number;
 		isMobile: boolean;
@@ -73,6 +79,8 @@
 		toId,
 		fromFeatureId,
 		toFeatureId,
+		fromPlace,
+		toPlace,
 		clockJd,
 		isMobile,
 		viewFrame,
@@ -238,11 +246,16 @@
 	let target = $derived(targetId === null ? null : (tripBodies.get(targetId) ?? null));
 
 	/** Where on its body each end sits, for the panel to aim the ground leg at. */
-	let originSite = $derived<EndSite | null>(siteOf(fromLanded, fromFeatureId));
-	let targetSite = $derived<EndSite | null>(siteOf(toLanded, toFeatureId));
+	let originSite = $derived<EndSite | null>(siteOf(fromLanded, fromFeatureId, fromPlace));
+	let targetSite = $derived<EndSite | null>(siteOf(toLanded, toFeatureId, toPlace));
 
-	function siteOf(landed: LandedEnd | null, featureId: number | null): EndSite | null {
-		if (landed) return { kind: 'landed', latDeg: landed.latDeg, lonDeg: landed.lonDeg };
+	function siteOf(
+		landed: LandedEnd | null,
+		featureId: number | null,
+		place: NavPlace | null
+	): EndSite | null {
+		if (landed) return { kind: 'point', latDeg: landed.latDeg, lonDeg: landed.lonDeg };
+		if (place) return { kind: 'point', latDeg: place.latDeg, lonDeg: place.lonDeg };
 		return featureId === null ? null : { kind: 'feature', featureId };
 	}
 
@@ -363,10 +376,70 @@
 	$effect(() => loadLandedName(fromId, fromLanded));
 	$effect(() => loadLandedName(toId, toLanded));
 
-	/** What an end is called: the probe or the named place when it is one of
-	 *  those, else the body. */
-	function endpointName(body: BodyData, id: string | null, featureId: number | null): string {
+	/** A point carries no name of its own, so its collection is asked for one.
+	 *  The trip flies either way — the coordinates are the whole end — so a
+	 *  collection that will not load costs the label and nothing else. */
+	let padsBySlug = $state<Record<string, LaunchPad[]>>({});
+	function loadPads(place: NavPlace | null) {
+		const slug = place?.siteSlug;
+		if (!slug || padsBySlug[slug]) return;
+		let cancelled = false;
+		void fetchLaunchPads(slug).then((pads) => {
+			if (!cancelled) padsBySlug = { ...padsBySlug, [slug]: pads };
+		});
+		return () => {
+			cancelled = true;
+		};
+	}
+	$effect(() => loadPads(fromPlace));
+	$effect(() => loadPads(toPlace));
+
+	function padsFor(place: NavPlace | null): LaunchPad[] {
+		return (place?.siteSlug && padsBySlug[place.siteSlug]) || [];
+	}
+	let originPads = $derived(padsFor(fromPlace));
+	let targetPads = $derived(padsFor(toPlace));
+	let originPad = $derived(
+		fromPlace ? padAt(originPads, fromPlace.latDeg, fromPlace.lonDeg) : null
+	);
+	let targetPad = $derived(toPlace ? padAt(targetPads, toPlace.latDeg, toPlace.lonDeg) : null);
+
+	/** Put one end somewhere else and leave the other exactly as it stands —
+	 *  read back off the view, since an end is more than its body. */
+	function moveNav(end: NavEnd | null, at: 'from' | 'to') {
+		if (!appState) return;
+		const other = navEndOf(appState.view, at === 'from' ? 'to' : 'from');
+		appState.setNav(at === 'from' ? end : other, at === 'from' ? other : end);
+	}
+
+	/** The same end moved to another pad: same body, same collection, new point. */
+	function padEnd(id: string | null, place: NavPlace | null, pad: LaunchPad): NavEnd | null {
+		if (id === null) return null;
+		return {
+			id,
+			featureId: null,
+			place: { latDeg: pad.latDeg, lonDeg: pad.lonDeg, siteSlug: place?.siteSlug ?? null }
+		};
+	}
+
+	/** What the picker chose, as an end. */
+	function pickedEnd(pick: TravelEndpointPick): NavEnd {
+		return { id: pick.bodyId, featureId: pick.featureId, place: pick.place ?? null };
+	}
+
+	/** What an end is called: the probe, the named place or the pad when it is one
+	 *  of those, else the body. */
+	function endpointName(
+		body: BodyData,
+		id: string | null,
+		featureId: number | null,
+		place: NavPlace | null,
+		pad: LaunchPad | null
+	): string {
 		if (id !== null && landedNames[id]) return landedNames[id];
+		// The place is the subject; what it holds goes on the line under it.
+		if (pad) return pad.siteName;
+		if (place) return displayName(body);
 		if (featureId === null) return displayName(body);
 		return featureNames[`${body.id}:${featureId}`] ?? displayName(body);
 	}
@@ -557,17 +630,23 @@
 				originName={fromId === null
 					? null
 					: origin
-						? endpointName(origin, fromId, fromFeatureId)
+						? endpointName(origin, fromId, fromFeatureId, fromPlace, originPad)
 						: (originDetail?.name ?? fromId)}
 				targetName={toId === null
 					? null
 					: target
-						? endpointName(target, toId, toFeatureId)
+						? endpointName(target, toId, toFeatureId, toPlace, targetPad)
 						: // Named but unplaceable: the bundle still knows what it is called, and
 							// a destination that reads as empty would look like nothing was chosen.
 							(targetDetail?.name ?? toId)}
 				{originSite}
 				{targetSite}
+				{originPads}
+				{targetPads}
+				originPadCode={originPad?.code ?? null}
+				targetPadCode={targetPad?.code ?? null}
+				onOriginPadPick={(pad: LaunchPad) => moveNav(padEnd(fromId, fromPlace, pad), 'from')}
+				onTargetPadPick={(pad: LaunchPad) => moveNav(padEnd(toId, toPlace, pad), 'to')}
 				{refineBody}
 				originPicked={fromId !== null}
 				targetPicked={toId !== null}
@@ -586,21 +665,12 @@
 				{onHazardsChange}
 				resolveBodyName={(id) => names[id] ?? ctx?.getBody(id)?.data.name ?? id}
 				onTripChange={(next) => appState?.setTrip(next)}
-				onOriginChange={(pick: TravelEndpointPick) =>
-					appState?.setNav(
-						{ id: pick.bodyId, featureId: pick.featureId },
-						toId === null ? null : { id: toId, featureId: toFeatureId }
-					)}
-				onTargetChange={(pick: TravelEndpointPick) =>
-					appState?.setNav(fromId === null ? null : { id: fromId, featureId: fromFeatureId }, {
-						id: pick.bodyId,
-						featureId: pick.featureId
-					})}
-				onSwap={() =>
-					appState?.setNav(
-						toId === null ? null : { id: toId, featureId: toFeatureId },
-						fromId === null ? null : { id: fromId, featureId: fromFeatureId }
-					)}
+				onOriginChange={(pick: TravelEndpointPick) => moveNav(pickedEnd(pick), 'from')}
+				onTargetChange={(pick: TravelEndpointPick) => moveNav(pickedEnd(pick), 'to')}
+				onSwap={() => {
+					if (!appState) return;
+					appState.setNav(navEndOf(appState.view, 'to'), navEndOf(appState.view, 'from'));
+				}}
 			/>
 		{:else if resolving}
 			<p class="text-muted-foreground text-xs">{m.travel_locating_ends()}</p>

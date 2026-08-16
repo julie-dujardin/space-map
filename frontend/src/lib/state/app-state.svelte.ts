@@ -1,5 +1,5 @@
 import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
-import { DEFAULT_VIEW, UrlType, type DrawerTab, type MapViewState } from './view';
+import { DEFAULT_VIEW, UrlType, type DrawerTab, type MapViewState, type NavPlace } from './view';
 import {
 	applyFeature,
 	applyFocus,
@@ -34,6 +34,21 @@ const DATE_THROTTLE_MS = 60_000;
  * setImage uses pushState only when opening/closing the viewer; within-viewer
  * navigation uses replaceState so 10-image galleries don't pollute history.
  */
+/** Whether two views describe the same pair of ends. A body and a feature are
+ *  not the whole of one: moving between two pads of a launch range changes
+ *  neither, and is still a different trip. */
+function sameEnds(a: MapViewState, b: MapViewState): boolean {
+	const place = (p: NavPlace | null) => (p ? `${p.latDeg},${p.lonDeg}` : '');
+	return (
+		a.navFrom === b.navFrom &&
+		a.navTo === b.navTo &&
+		a.navFromFeature === b.navFromFeature &&
+		a.navToFeature === b.navToFeature &&
+		place(a.navFromPlace) === place(b.navFromPlace) &&
+		place(a.navToPlace) === place(b.navToPlace)
+	);
+}
+
 export class AppState {
 	view = $state<MapViewState>(DEFAULT_VIEW);
 
@@ -135,6 +150,8 @@ export class AppState {
 			navTo: null,
 			navFromFeature: null,
 			navToFeature: null,
+			navFromPlace: null,
+			navToPlace: null,
 			trip: DEFAULT_TRIP
 		};
 		this.pushNow();
@@ -145,15 +162,7 @@ export class AppState {
 	 *  destination, so browser-back returns to the body you set out from. */
 	setNav(from: string | NavEnd | null, to: string | NavEnd | null = null) {
 		const next = applyNav(this.view, from, to);
-		if (
-			this.view.type === UrlType.Nav &&
-			this.view.navFrom === next.navFrom &&
-			this.view.navTo === next.navTo &&
-			this.view.navFromFeature === next.navFromFeature &&
-			this.view.navToFeature === next.navToFeature
-		) {
-			return;
-		}
+		if (this.view.type === UrlType.Nav && sameEnds(this.view, next)) return;
 		this.view = next;
 		this.pushNow();
 	}

@@ -1379,6 +1379,8 @@
 	"travel_no_target": "目的地を選ぶと行き方が表示されます。",
 	"travel_not_modelled": "モデル化なし",
 	"travel_on_arrival": "到着時",
+	"travel_launch_pad": "発射台",
+	"travel_launch_from_here": "ここからの打ち上げを計画",
 	"travel_open": "どこかへ行く",
 	"travel_orbit_shape": "どの軌道",
 	"travel_out_of_reach": "到達不可",

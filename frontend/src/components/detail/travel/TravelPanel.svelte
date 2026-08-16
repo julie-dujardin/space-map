@@ -57,6 +57,7 @@
 		type TripState
 	} from '$lib/travel/trip';
 	import type { EndSite, TravelEndpointPick } from '$lib/travel/endpoint';
+	import type { LaunchPad } from '$lib/travel/launch-pad';
 	import { surfaceSiteAt } from '$lib/travel/surface-site';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 	import {
@@ -81,7 +82,7 @@
 	import CruiseBox from './CruiseBox.svelte';
 	import RouteTabs from './RouteTabs.svelte';
 	import RouteDetail from './RouteDetail.svelte';
-	import { endpointModeLabel } from './endpoint-labels';
+	import { endpointModeLabel, groundLabel } from './endpoint-labels';
 	import { hazardKey, routeKey, timelineKey } from './route-keys';
 
 	interface Props {
@@ -96,6 +97,15 @@
 		 *  or a probe parked on the surface. */
 		originSite: EndSite | null;
 		targetSite: EndSite | null;
+		/** The pads an end standing on a launch range could stand on instead,
+		 *  busiest first, and which one it stands on now. Empty for every other
+		 *  kind of end. */
+		originPads?: readonly LaunchPad[];
+		targetPads?: readonly LaunchPad[];
+		originPadCode?: string | null;
+		targetPadCode?: string | null;
+		onOriginPadPick?: (pad: LaunchPad) => void;
+		onTargetPadPick?: (pad: LaunchPad) => void;
 		/** Whether the URL names each end at all. Tells the two silences apart:
 		 *  nothing chosen yet, versus somewhere with no orbit to meet. */
 		originPicked: boolean;
@@ -164,6 +174,12 @@
 		targetName,
 		originSite,
 		targetSite,
+		originPads = [],
+		targetPads = [],
+		originPadCode = null,
+		targetPadCode = null,
+		onOriginPadPick,
+		onTargetPadPick,
 		originPicked,
 		targetPicked,
 		bodiesById,
@@ -229,9 +245,9 @@
 	});
 
 	// Where each end sits on its globe, so the drawn trajectory can reach the spot
-	// rather than the body. A landed probe brings its own coordinates; a feature is
-	// named and has to be looked up, so it arrives late like the names do and the
-	// geometry key carries it.
+	// rather than the body. A probe or a pad brings its own coordinates; a feature
+	// is named and has to be looked up, so it arrives late like the names do and
+	// the geometry key carries it.
 	let originSitePlace = $state<{ lat: number; lon: number } | null>(null);
 	let targetSitePlace = $state<{ lat: number; lon: number } | null>(null);
 	function loadSitePlace(
@@ -242,7 +258,7 @@
 	) {
 		set(null);
 		if (!bodyId || !site) return;
-		if (site.kind === 'landed') {
+		if (site.kind === 'point') {
 			set({ lat: site.latDeg, lon: site.lonDeg });
 			return;
 		}
@@ -399,6 +415,13 @@
 		if (!targetChoices.some((c) => c.kind === panel.targetMode)) panel.targetMode = 'low-orbit';
 	});
 
+	/** Which pad each end stands on, when it stands on one — the row the box
+	 *  shows as pressed, and the line under the body's name. */
+	let originPad = $derived(originPads.find((p) => p.code === originPadCode) ?? null);
+	let targetPad = $derived(targetPads.find((p) => p.code === targetPadCode) ?? null);
+	let originGroundLine = $derived(groundLabel('origin', originPad, originSitePlace));
+	let targetGroundLine = $derived(groundLabel('target', targetPad, targetSitePlace));
+
 	/** Null if there was no choice: a named place, or a body with no data. */
 	function endLabel(
 		role: 'origin' | 'target',
@@ -406,6 +429,9 @@
 		mode: EndpointMode,
 		choices: OrbitChoice[]
 	): string | null {
+		// A place answered "how" by being where it is. The trajectory line names
+		// the place and stops there — which pad of a range, or which corner of a
+		// crater, is the picker's business and would treble the line's height.
 		if (isFeature || choices.length === 0) return null;
 		// Use the priced altitude. A body has a maximum orbit height.
 		const alt = choices.find((c) => c.kind === mode)?.periAltKm ?? null;
@@ -969,22 +995,28 @@
 		     modes and the dates. The picker is not on the screen in this step. -->
 		<div class="flex flex-col gap-0.5">
 			{#if originName && targetName}
-				<p class="truncate text-sm">
-					{originName}{#if originModeLabel}<span class="text-muted-foreground ms-1.5 text-xs"
-							>{originModeLabel}</span
-						>{/if}
-					<MoveRightIcon
-						class="inline size-[1em] align-[-0.125em] rtl:rotate-180"
-						aria-hidden="true"
-					/>
-					{targetName}{#if targetModeLabel}<span class="text-muted-foreground ms-1.5 text-xs"
-							>{targetModeLabel}</span
-						>{/if}{#if chosen.route.constantThrust}<span
-							class="text-muted-foreground ms-1.5 text-xs tabular-nums"
-							>{formatAcceleration(chosen.route.constantThrust)}</span
-						>{:else if pass}<span class="text-muted-foreground ms-1.5 text-xs"
-							>{m.travel_via({ body: resolveBodyName(pass.bodyId) })}</span
-						>{/if}
+				<!-- Each end is one block: a line too long for the drawer breaks
+				     between them rather than mid-name, and both ends named in full
+				     beats one of them cut off. -->
+				<p class="text-sm">
+					<span class="inline-block"
+						>{originName}{#if originModeLabel}<span class="text-muted-foreground ms-1.5 text-xs"
+								>{originModeLabel}</span
+							>{/if}</span
+					>
+					<span class="inline-block"
+						><MoveRightIcon
+							class="inline size-[1em] align-[-0.125em] rtl:rotate-180"
+							aria-hidden="true"
+						/>&nbsp;{targetName}{#if targetModeLabel}<span
+								class="text-muted-foreground ms-1.5 text-xs">{targetModeLabel}</span
+							>{/if}{#if chosen.route.constantThrust}<span
+								class="text-muted-foreground ms-1.5 text-xs tabular-nums"
+								>{formatAcceleration(chosen.route.constantThrust)}</span
+							>{:else if pass}<span class="text-muted-foreground ms-1.5 text-xs"
+								>{m.travel_via({ body: resolveBodyName(pass.bodyId) })}</span
+							>{/if}</span
+					>
 				</p>
 			{/if}
 			<p class="text-muted-foreground text-xs tabular-nums">
@@ -1030,6 +1062,10 @@
 					open={openField === 'origin'}
 					onOpenChange={(next: boolean) => setOpenField('origin', next)}
 					excludeIds={excludeForOrigin}
+					pads={originPads}
+					padCode={originPadCode}
+					groundLine={originGroundLine}
+					onPadPick={onOriginPadPick}
 					onPick={(pick) => {
 						onOriginChange(pick);
 						// A feature has already answered "how"; anything else moves on to it.
@@ -1062,6 +1098,10 @@
 					open={openField === 'target'}
 					onOpenChange={(next: boolean) => setOpenField('target', next)}
 					excludeIds={excludeForTarget}
+					pads={targetPads}
+					padCode={targetPadCode}
+					groundLine={targetGroundLine}
+					onPadPick={onTargetPadPick}
 					onPick={(pick) => {
 						onTargetChange(pick);
 						if (pick.featureId !== null) openField = null;

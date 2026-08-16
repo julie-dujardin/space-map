@@ -15,7 +15,7 @@
 	import type { Hazard } from '$lib/travel/hazards';
 	import { page } from '$app/state';
 	import { sphericalToCartesian } from '$lib/math/spherical';
-	import { parseUrl, urlTypeFromId } from '$lib/state/url';
+	import { navEndOf, parseUrl, urlTypeFromId } from '$lib/state/url';
 	import { UrlType } from '$lib/state/view';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { dateToJD, jdToDate } from '$lib/format/date';
@@ -273,14 +273,10 @@
 					// A trip stays a trip: settling on a body inside one moves where the
 					// trip goes, since that is the question the page is asking.
 					if (appState.view.type === UrlType.Nav) {
-						const { navFrom, navFromFeature } = appState.view;
 						// Where you set out from is not somewhere to go — that click just
 						// moves the camera, as the endpoint search declines to offer it.
-						if (body.data.id !== navFrom) {
-							appState.setNav(
-								navFrom === null ? null : { id: navFrom, featureId: navFromFeature },
-								body.data.id
-							);
+						if (body.data.id !== appState.view.navFrom) {
+							appState.setNav(navEndOf(appState.view, 'from'), body.data.id);
 						}
 						return;
 					}

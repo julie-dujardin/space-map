@@ -13,14 +13,20 @@ import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
 import { isLagrangeClass } from '$lib/math/orbit/lagrange';
 import { DEFAULT_TRIP, parseTrip, serializeTripSuffix } from '$lib/travel/trip';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
+import { formatNavEnd, isBodyId, NAV_UNSET, parseNavEnd } from './nav-end';
 import {
 	DEFAULT_VIEW,
 	DRAWER_TABS,
 	SUN_VIEW_ZOOM,
 	UrlType,
 	type DrawerTab,
-	type MapViewState
+	type MapViewState,
+	type NavPlace
 } from './view';
+
+// The grammar of a trip end lives apart so the route's own guard, which runs
+// where `$app/state` does not, can share it.
+export { formatNavEnd, isBodyId, NAV_UNSET, parseNavEnd };
 
 /** Tabs that serialize a `&tab=` block; overview is the null default. */
 const DEEP_LINK_TABS: readonly string[] = DRAWER_TABS.filter((t) => t !== 'overview');
@@ -58,40 +64,6 @@ export function urlTypeToIdPrefix(urlType: string): string {
 	if (urlType === UrlType.Probe) return 'probe';
 	if (urlType === UrlType.Extra) return 'extra';
 	return 'naif'; // UrlType.Body
-}
-
-/** Every id prefix the app addresses a body by. */
-const ID_PREFIXES = ['naif-', 'spkid-', 'norad_satcat-', 'probe-', 'extra-'] as const;
-
-/** Whether a string is a well-formed prefixed body id. The nav route takes ids
- *  straight from the path, so it has to reject junk before the renderer is
- *  asked to frame it. */
-export function isBodyId(value: string): boolean {
-	const prefix = ID_PREFIXES.find((p) => value.startsWith(p));
-	if (!prefix) return false;
-	return Number.isFinite(Number(value.slice(prefix.length)));
-}
-
-/** Separator between a body id and the IAU feature refining it, mirroring the
- *  `/f/` segment of a feature's own page. A body id is `<prefix>-<number>`, so
- *  it can never contain this. */
-const FEATURE_INFIX = '-f-';
-
-/** A trip end as one path segment: a body id, or a body id refined by a place
- *  on it. The pair is one key, so it travels as one token rather than half in
- *  the path and half in the query. */
-export function formatNavEnd(bodyId: string, featureId: number | null): string {
-	return featureId === null ? bodyId : `${bodyId}${FEATURE_INFIX}${featureId}`;
-}
-
-/** Inverse of formatNavEnd; null for anything that isn't a well-formed end. */
-export function parseNavEnd(segment: string): { bodyId: string; featureId: number | null } | null {
-	const cut = segment.indexOf(FEATURE_INFIX);
-	if (cut === -1) return isBodyId(segment) ? { bodyId: segment, featureId: null } : null;
-	const bodyId = segment.slice(0, cut);
-	const featureId = Number(segment.slice(cut + FEATURE_INFIX.length));
-	if (!isBodyId(bodyId) || !Number.isInteger(featureId) || featureId <= 0) return null;
-	return { bodyId, featureId };
 }
 
 /** Derive URL type segment from a body ID. Use this for URL generation — it's always consistent with the ID. */
@@ -142,10 +114,17 @@ export function groupAnchor(slug: string): { id: string; zoom: number } {
 	return { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM };
 }
 
-/** Path segment for an end of a trip that has not been chosen. The two ends are
- *  positional, so a destination-only trip needs something in the departure slot
- *  or `/nav/<x>` would read as a departure. */
-export const NAV_UNSET = '-';
+/** The `&fs=`/`&ts=` block naming where a point was picked from, or nothing. */
+function slugParam(key: 'fs' | 'ts', place: NavPlace | null): string {
+	return place?.siteSlug ? `&${key}=${encodeURIComponent(place.siteSlug)}` : '';
+}
+
+/** A parsed point with its collection attached, or null when there is no point
+ *  for one to belong to. */
+function withSlug(place: NavPlace | null | undefined, slug: string | null): NavPlace | null {
+	if (!place) return null;
+	return slug ? { ...place, siteSlug: slug } : place;
+}
 
 /** Parse current page state → MapViewState, or null */
 export function parseUrl(): MapViewState | null {
@@ -181,6 +160,10 @@ export function parseUrl(): MapViewState | null {
 				? (from.featureId ?? parseFeatureId(page.url.searchParams.get('ff')))
 				: null,
 			navToFeature: to ? (to.featureId ?? parseFeatureId(page.url.searchParams.get('tf'))) : null,
+			// Where the point came from rides the query: the coordinates are the
+			// end, and this only names them.
+			navFromPlace: withSlug(from?.place, page.url.searchParams.get('fs')),
+			navToPlace: withSlug(to?.place, page.url.searchParams.get('ts')),
 			trip: parseTrip(page.url.searchParams)
 		});
 	}
@@ -323,17 +306,35 @@ export function applyFocus(
 	};
 }
 
-/** One end of a trip: the body it is priced against, and the named place on it
- *  when the endpoint is a surface feature. */
+/** One end of a trip: the body it is priced against, and the place on it when
+ *  the endpoint is somewhere on the surface — a named feature, or a point. */
 export interface NavEnd {
 	id: string;
 	featureId?: number | null;
+	place?: NavPlace | null;
 }
 
 /** Accept a bare id where the feature slot doesn't matter, so callers that only
  *  ever mean a whole body stay readable. */
 function navEnd(end: string | NavEnd): NavEnd {
 	return typeof end === 'string' ? { id: end } : end;
+}
+
+/**
+ * One end of the trip on screen, whole.
+ *
+ * An end is more than the body it is priced against: rebuilt from its id and
+ * its feature it silently loses the point a launch pad *is*. Anything that
+ * keeps one end while moving the other reads it from here.
+ */
+export function navEndOf(view: MapViewState, at: 'from' | 'to'): NavEnd | null {
+	const id = at === 'from' ? view.navFrom : view.navTo;
+	if (id === null) return null;
+	return {
+		id,
+		featureId: at === 'from' ? view.navFromFeature : view.navToFeature,
+		place: at === 'from' ? view.navFromPlace : view.navToPlace
+	};
 }
 
 /**
@@ -365,6 +366,8 @@ export function applyNav(
 		navTo: destination?.id ?? null,
 		navFromFeature: departure?.featureId ?? null,
 		navToFeature: destination?.featureId ?? null,
+		navFromPlace: departure?.place ?? null,
+		navToPlace: destination?.place ?? null,
 		imageIndex: null,
 		gallery: null,
 		featureId: null,
@@ -524,12 +527,15 @@ export function serializeUrl(state: MapViewState): string {
 		// The departure slot is always written, as an id or as the unset marker:
 		// the ends are positional, so `/nav/<x>` would read as a departure.
 		const path = resolve('/nav/[[from]]/[[to]]', {
-			from: state.navFrom ? formatNavEnd(state.navFrom, state.navFromFeature) : NAV_UNSET,
-			to: state.navTo ? formatNavEnd(state.navTo, state.navToFeature) : undefined
+			from: state.navFrom
+				? formatNavEnd(state.navFrom, state.navFromFeature, state.navFromPlace)
+				: NAV_UNSET,
+			to: state.navTo ? formatNavEnd(state.navTo, state.navToFeature, state.navToPlace) : undefined
 		});
+		const sites = slugParam('fs', state.navFromPlace) + slugParam('ts', state.navToPlace);
 		// A trip is described by its two ends and the terms it is flown on; the rest
 		// of the query block belongs to drawer tabs the planner doesn't have.
-		return `${path}?at=${at}${serializeTripSuffix(state.trip)}`;
+		return `${path}?at=${at}${sites}${serializeTripSuffix(state.trip)}`;
 	}
 
 	if (state.type === UrlType.Group && state.groupSlug !== null) {

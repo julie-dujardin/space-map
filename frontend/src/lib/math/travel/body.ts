@@ -107,8 +107,8 @@ export function escapeSpeed(body: TravelBody): number {
 export function equatorialTiltDeg(body: TravelBody, direction: Vec3): number | undefined {
 	const pole = body.poleEcliptic;
 	if (!pole) return undefined;
-	// Both lengths divided out: a pole a rounding short of unit would otherwise
-	// read as degrees of tilt, since the arcsine is at its steepest there.
+	// Both lengths divided out: the arcsine is steepest here, so a pole a
+	// rounding short of unit would read as whole degrees of tilt.
 	const n = norm(direction) * norm(pole);
 	if (!(n > 0)) return undefined;
 	const sinDec = Math.min(1, Math.max(-1, dot(direction, pole) / n));

@@ -27,6 +27,7 @@ vi.mock('$app/paths', () => ({
 vi.mock('$app/state', () => ({ page: { params: {}, url: new URL('http://x/') } }));
 
 import { AppState } from './app-state.svelte';
+import { navEndOf } from './url';
 import { DEFAULT_TRIP } from '$lib/travel/trip';
 import type { MapViewState } from './view';
 
@@ -52,6 +53,8 @@ const initialView: MapViewState = {
 	navTo: null,
 	navFromFeature: null,
 	navToFeature: null,
+	navFromPlace: null,
+	navToPlace: null,
 	trip: DEFAULT_TRIP
 };
 
@@ -269,6 +272,52 @@ describe('AppState.syncFromPopState', () => {
 		expect(s.view.imageIndex).toBe(2);
 		expect(pushStateSpy).not.toHaveBeenCalled();
 		expect(replaceStateSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe('AppState.setNav', () => {
+	const PAD = { latDeg: 28.562, lonDeg: -80.5772, siteSlug: 'site-cape-canaveral' };
+
+	/** A trip that has left a launch pad and gone nowhere yet. */
+	function fromPad(): AppState {
+		const s = new AppState({ ...initialView });
+		s.setNav({ id: 'naif-399', featureId: null, place: PAD }, null);
+		pushStateSpy.mockClear();
+		return s;
+	}
+
+	it('keeps the pad the trip leaves from when a destination is chosen', () => {
+		const s = fromPad();
+		// What the map does on a click, and the panel on a search result: move one
+		// end, hand back the other as it stands.
+		s.setNav(navEndOf(s.view, 'from'), 'probe-115347456');
+		expect(s.view.navFromPlace).toEqual(PAD);
+		expect(s.view.navTo).toBe('probe-115347456');
+	});
+
+	it('carries the pad through a swap', () => {
+		const s = fromPad();
+		s.setNav(navEndOf(s.view, 'from'), 'naif-499');
+		s.setNav(navEndOf(s.view, 'to'), navEndOf(s.view, 'from'));
+		expect(s.view.navFrom).toBe('naif-499');
+		expect(s.view.navToPlace).toEqual(PAD);
+		expect(s.view.navFromPlace).toBeNull();
+	});
+
+	// Two pads of one range are the same body and the same feature — nothing but
+	// the point tells them apart, so a comparison that ignores it does nothing.
+	it('moves between two pads of one range', () => {
+		const s = fromPad();
+		const other = { latDeg: 28.6084, lonDeg: -80.6041, siteSlug: 'site-cape-canaveral' };
+		s.setNav({ id: 'naif-399', featureId: null, place: other }, null);
+		expect(s.view.navFromPlace).toEqual(other);
+		expect(pushStateSpy).toHaveBeenCalled();
+	});
+
+	it('still ignores a call that changes nothing', () => {
+		const s = fromPad();
+		s.setNav({ id: 'naif-399', featureId: null, place: { ...PAD } }, null);
+		expect(pushStateSpy).not.toHaveBeenCalled();
 	});
 });
 

@@ -64,6 +64,8 @@
 	import ObjectHeader from './frame/ObjectHeader.svelte';
 	import DrawerTitle from './frame/DrawerTitle.svelte';
 	import TravelButton from './travel/TravelButton.svelte';
+	import LaunchSiteButton from './travel/LaunchSiteButton.svelte';
+	import { isLaunchSiteSlug } from '$lib/travel/launch-pad';
 	import { parentCrumb, parentPlanet, type Crumb } from '$lib/state/breadcrumb';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImagesPanel from './frame/ImagesPanel.svelte';
@@ -193,6 +195,11 @@
 		});
 	});
 	let isGroupMode = $derived(focusable.kind === 'group');
+	/** The launch range this page is, when it is one — its pads are places a trip
+	 *  can leave from. */
+	let launchSiteSlug = $derived(
+		focusable.kind === 'group' && isLaunchSiteSlug(focusable.slug) ? focusable.slug : null
+	);
 	let cat = $derived(categoryConfig(focusable));
 	let groupHeaderBadges = $derived.by(() => {
 		const g = groupDetail?.global;
@@ -1704,9 +1711,12 @@
 		</Button>
 	{/if}
 	<!-- "How do I get here" belongs with the object, so it rides the panel's own
-	     button row. Group panels have no body to fly to. -->
+	     button row. Group panels have no body to fly to — except a launch site,
+	     which is a place, and one trips leave from rather than go to. -->
 	{#if body}
 		<TravelButton target={body.data} featureId={feature?.featureId ?? null} />
+	{:else if launchSiteSlug}
+		<LaunchSiteButton slug={launchSiteSlug} />
 	{/if}
 	<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
 		<Share2Icon />

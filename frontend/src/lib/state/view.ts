@@ -111,10 +111,29 @@ export interface MapViewState {
 	 *  A feature is always a surface endpoint, so it carries no mode. */
 	navFromFeature: number | null;
 	navToFeature: number | null;
+	/** Where an end stands when it stands on a bare point rather than on
+	 *  something named — a launch pad, which no gazetteer lists. Coordinates are
+	 *  the whole of it; `siteSlug` only says which collection they were taken
+	 *  from, for naming them and for offering the pads beside them. */
+	navFromPlace: NavPlace | null;
+	navToPlace: NavPlace | null;
 	/** What the trip asks for beyond its two ends — how it meets each one, when
 	 *  it goes, what flies it, what it carries, which trajectory is being read.
 	 *  Its own codec; see `$lib/travel/trip`. DEFAULT_TRIP off `/nav`. */
 	trip: TripState;
+}
+
+/** A point on a body's surface, as a trip end names one. */
+export interface NavPlace {
+	latDeg: number;
+	lonDeg: number;
+	/**
+	 * The launch-site collection the point was taken from, when it was taken
+	 * from one. Provenance rather than identity: the coordinates alone fly the
+	 * trip, and this only says which page's pads to name them from and to offer
+	 * as the ones next door. An unreadable slug costs the label, nothing else.
+	 */
+	siteSlug?: string | null;
 }
 
 /** Default vantage angle for a body framed with no explicit camera (search, click, group). */
@@ -150,5 +169,7 @@ export const DEFAULT_VIEW: MapViewState = {
 	navTo: null,
 	navFromFeature: null,
 	navToFeature: null,
+	navFromPlace: null,
+	navToPlace: null,
 	trip: DEFAULT_TRIP
 };

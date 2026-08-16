@@ -1506,6 +1506,8 @@
 	"travel_no_target": "Pick a destination to see how to get there.",
 	"travel_not_modelled": "Not modelled",
 	"travel_on_arrival": "On arrival",
+	"travel_launch_pad": "Launch pad",
+	"travel_launch_from_here": "Plan a launch from here",
 	"travel_open": "Go somewhere",
 	"travel_out_of_reach": "Out of reach",
 	"travel_over_capacity": "Room for {value} aboard.",

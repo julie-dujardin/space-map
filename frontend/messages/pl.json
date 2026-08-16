@@ -1394,6 +1394,8 @@
 	"travel_no_target": "Wybierz cel, aby zobaczyć, jak tam dotrzeć.",
 	"travel_not_modelled": "Nie modelowane",
 	"travel_on_arrival": "Po przybyciu",
+	"travel_launch_pad": "Stanowisko startowe",
+	"travel_launch_from_here": "Zaplanuj start stąd",
 	"travel_open": "Wyrusz gdzieś",
 	"travel_orbit_shape": "Która orbita",
 	"travel_out_of_reach": "Poza zasięgiem",

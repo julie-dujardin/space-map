@@ -10,6 +10,8 @@
  * named crater, or at a lander parked in one, except by landing there.
  */
 
+import type { NavPlace } from '$lib/state/view';
+
 /** What the endpoint picker hands back when a search result is chosen. */
 export interface TravelEndpointPick {
 	/** The body the trajectory is solved against. A feature's host, or the
@@ -17,6 +19,8 @@ export interface TravelEndpointPick {
 	bodyId: string;
 	/** IAU feature id when the pick was a named place on a surface. */
 	featureId: number | null;
+	/** Coordinates when the pick was a place nothing names — a launch pad. */
+	place?: NavPlace | null;
 	/** Localized label, so the field can show it before any bundle is fetched. */
 	name: string;
 }
@@ -25,9 +29,10 @@ export interface TravelEndpointPick {
  * The place on a body an end sits at, once it is known.
  *
  * A feature is named and has to be looked up; a landed probe carries its own
- * coordinates out of the position stream. Both come down to a spot on a globe,
- * which is all the trajectory ever wanted.
+ * coordinates out of the position stream, and a launch pad has nothing but
+ * coordinates to be. All of them come down to a spot on a globe, which is all
+ * the trajectory ever wanted.
  */
 export type EndSite =
 	| { kind: 'feature'; featureId: number }
-	| { kind: 'landed'; latDeg: number; lonDeg: number };
+	| { kind: 'point'; latDeg: number; lonDeg: number };

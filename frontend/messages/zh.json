@@ -1380,6 +1380,8 @@
 	"travel_no_target": "选择目的地即可查看怎么去。",
 	"travel_not_modelled": "未建模",
 	"travel_on_arrival": "抵达时",
+	"travel_launch_pad": "发射台",
+	"travel_launch_from_here": "规划从这里发射",
 	"travel_open": "去别处",
 	"travel_orbit_shape": "哪种轨道",
 	"travel_out_of_reach": "无法抵达",

@@ -117,13 +117,11 @@ export interface SurfaceSite {
 }
 
 /**
- * One end of a trip as the ascent and descent estimates want it: a latitude,
- * and the tilt the arc forces on the plane serving it.
+ * One end of a trip as the ascent and descent estimates want it.
  *
- * `asymptote` is the excess-velocity vector at that end — a direction the plane
- * has to hold on top of reaching the site. Null says the arc names none, which
- * leaves the site's own latitude to set the plane; that is right for a transfer
- * inside a system, where the arc can always be flown from a node.
+ * `asymptote` is the excess-velocity vector there — a direction the plane has
+ * to hold as well as reach the site. Null leaves the latitude alone to set the
+ * plane, which is right inside a system, where an arc can be flown from a node.
  */
 export function surfaceSite(
 	body: TravelBody,
@@ -148,9 +146,7 @@ export function surfaceSite(
  * What is charged is the shortfall against ω·R rather than the credit itself:
  * the published ascents {@link ascentDv} is calibrated on are all eastward
  * near-equatorial launches, which already keep nearly the whole of it. So the
- * equator costs nothing extra, a polar climb pays the entire surface speed,
- * and a pad in between pays what its latitude denies it. The same holds in
- * reverse for a powered landing, which has to cancel the same speed.
+ * equator costs nothing extra and a polar climb pays the entire surface speed.
  */
 export function planeTiltPenaltyKms(body: TravelBody, site?: SurfaceSite): number {
 	const omega = Math.abs(body.spinRadPerSec ?? 0);
@@ -363,9 +359,8 @@ export function arrivalCostFromSpeed(
 	const assisted = aero !== 'none' && canAeroBrake(body);
 
 	// An atmosphere is the whole descent. Without one, landing is the ascent run
-	// backwards — the site's spin included, since the ground it is cancelling
-	// speed against is the same moving ground. Under a parachute the air has
-	// already taken that speed, so what is left owes the site nothing.
+	// backwards, spin and all — it cancels speed against the same moving ground.
+	// Under a parachute the air has already taken it.
 	const descent =
 		mode !== 'landing'
 			? 0
