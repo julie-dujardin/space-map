@@ -119,16 +119,20 @@
 		};
 	});
 
-	// Mission first, then the first single-valued constellation / operator /
-	// manufacturer (arrays count only when there's exactly one clear primary).
+	// What the craft belongs to: its mission, else the constellation it flies in.
 	let affiliationRef = $derived.by<CrossRef | null>(() => {
 		const mission = global?.mission ?? global?.part_of_mission;
 		if (mission) return { label: m.mission(), display: mission.name, ref: fragmentRef(mission) };
 		const con = localized?.constellation;
 		if (con) return { label: m.group_type_constellation(), display: con.name, ref: con };
-		const ops = localized?.operators;
-		if (ops?.length === 1)
-			return { label: m.property_name_operators({ count: 1 }), display: ops[0].name, ref: ops[0] };
+		return null;
+	});
+
+	// What it is built on: the bus already names its own manufacturer, so the
+	// two never both earn a tile. Arrays count only with one clear primary.
+	let platformRef = $derived.by<CrossRef | null>(() => {
+		const bus = localized?.bus;
+		if (bus) return { label: m.group_type_bus(), display: bus.name, ref: bus };
 		const man = localized?.manufacturer;
 		if (man?.length === 1)
 			return {
@@ -139,22 +143,53 @@
 		return null;
 	});
 
-	// Launch: launch vehicle when present, otherwise the launch site.
-	let launchRef = $derived.by<CrossRef | null>(() => {
+	let launchVehicleRef = $derived.by<CrossRef | null>(() => {
 		const lv = localized?.launch_vehicle;
-		if (lv) return { label: m.launch_vehicle(), display: lv.name, ref: lv };
-		const site = localized?.launch_site;
-		if (site && site.length > 0)
-			return { label: m.launch_site(), display: site[0].name, ref: site[0] };
-		return null;
+		return lv ? { label: m.launch_vehicle(), display: lv.name, ref: lv } : null;
 	});
 
-	// Cap at two image tiles; take the first available in priority order.
-	let cards = $derived(
-		[orbitClassRef ?? lagrangeRef, affiliationRef, launchRef]
-			.filter((c): c is CrossRef => c != null)
-			.slice(0, 2)
-	);
+	let launchSiteRef = $derived.by<CrossRef | null>(() => {
+		const site = localized?.launch_site;
+		if (!site?.length) return null;
+		return { label: m.launch_site(), display: site[0].name, ref: site[0] };
+	});
+
+	let operatorRef = $derived.by<CrossRef | null>(() => {
+		const ops = localized?.operators;
+		if (ops?.length !== 1) return null;
+		return { label: m.property_name_operators({ count: 1 }), display: ops[0].name, ref: ops[0] };
+	});
+
+	/** Matching on destination catches an operator that also built the craft;
+	 *  matching on text catches Spire Global the constellation next to Spire
+	 *  Global the operator, which reads as a duplicate whatever it links to. */
+	function refKeys(c: CrossRef): string[] {
+		return c.ref.primary_id ? [c.ref.primary_id, c.ref.name] : [c.ref.name];
+	}
+
+	function tileKey(c: CrossRef): string {
+		return c.ref.primary_id ?? c.ref.name;
+	}
+
+	// The grid is 2 wide, so a third tile would leave a hole: fill both rows or
+	// only the first. Order is priority order — the dropped tiles are the last.
+	let cards = $derived.by(() => {
+		const seen = new Set<string>();
+		const available: CrossRef[] = [];
+		for (const c of [
+			orbitClassRef ?? lagrangeRef,
+			affiliationRef,
+			platformRef,
+			launchVehicleRef,
+			launchSiteRef,
+			operatorRef
+		]) {
+			if (c == null || refKeys(c).some((k) => seen.has(k))) continue;
+			for (const k of refKeys(c)) seen.add(k);
+			available.push(c);
+		}
+		return available.slice(0, available.length >= 4 ? 4 : available.length >= 2 ? 2 : 1);
+	});
 
 	// Each linked group's lead image, fetched lazily (bundles are cached, so this
 	// also prefetches the tile's destination page).
@@ -181,7 +216,7 @@
 
 {#if tiles.length > 0}
 	<div class="grid grid-cols-2 gap-2">
-		{#each tiles as t (t.card.label)}
+		{#each tiles as t (tileKey(t.card))}
 			<CrossRefCard
 				href={href(t.card.ref)}
 				onclick={(e) => open(e, t.card.ref)}
