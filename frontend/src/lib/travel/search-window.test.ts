@@ -5,6 +5,7 @@ import {
 	JUPITER,
 	LONG_PERIOD_COMET,
 	MARS,
+	MOON,
 	PARABOLIC_COMET
 } from '$lib/math/travel/test-fixtures';
 import { crossingTimeDays, hohmannTransferDays, synodicPeriodDays } from '$lib/math/travel';
@@ -32,7 +33,7 @@ describe('searchWindow', () => {
 		expect(options.departToJd - options.departFromJd).toBeLessThanOrEqual(3 * 365.25 + 1);
 	});
 
-	it('centres on a chosen departure date', () => {
+	it('starts at a chosen departure date and searches forward from it', () => {
 		const picked = NOW + 500;
 		const options = searchWindow({
 			origin: EARTH,
@@ -41,18 +42,24 @@ describe('searchWindow', () => {
 			timeMode: 'depart',
 			pickedJd: picked
 		})!;
-		expect((options.departFromJd + options.departToJd) / 2).toBeCloseTo(picked, 6);
+		const synodic = synodicPeriodDays(EARTH, MARS)!;
+		expect(options.departFromJd).toBe(picked);
+		expect(options.departToJd - options.departFromJd).toBeCloseTo(synodic, 0);
 	});
 
-	it('never searches departures already in the past', () => {
+	// The clock is a place to stand, not a floor: a reader who has wound it
+	// forward and then asks about a launch behind it is asking about that launch.
+	it('searches from a departure date behind the clock', () => {
+		const picked = NOW - 500;
 		const options = searchWindow({
 			origin: EARTH,
 			target: MARS,
 			nowJd: NOW,
 			timeMode: 'depart',
-			pickedJd: NOW + 5
+			pickedJd: picked
 		})!;
-		expect(options.departFromJd).toBeGreaterThanOrEqual(NOW);
+		expect(options.departFromJd).toBe(picked);
+		expect(options.departToJd).toBeGreaterThan(picked);
 	});
 
 	it('stops departures early enough to meet an arrival deadline', () => {
@@ -148,6 +155,22 @@ describe('searchWindow', () => {
 			expect(options.tofMaxDays / 365.25).toBeLessThan(20);
 			expect(options.tofMinDays).toBeGreaterThan(0);
 		});
+	});
+
+	// Having no window to wait for doesn't make the date nothing to wait for:
+	// it's a floor here as much as it is between planets.
+	it('starts an in-system search at a chosen departure date too', () => {
+		const picked = NOW + 200;
+		const options = searchWindow({
+			origin: EARTH,
+			target: MOON,
+			nowJd: NOW,
+			timeMode: 'depart',
+			pickedJd: picked,
+			systemPrimary: 'departure'
+		})!;
+		expect(options.departFromJd).toBe(picked);
+		expect(options.departToJd).toBeGreaterThan(picked);
 	});
 
 	it('returns null when a body has no usable orbit', () => {

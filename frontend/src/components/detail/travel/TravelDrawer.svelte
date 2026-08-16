@@ -52,6 +52,8 @@
 		toPlace: NavPlace | null;
 		/** The app's clock, as a Julian Date. Live — see `nowJd` below. */
 		clockJd: number;
+		/** The same clock once it comes to rest — see {@link SimClock.settledJd}. */
+		clockSettledJd: number;
 		isMobile: boolean;
 		/** Which frame the map draws the trip's ends in — the map's own control
 		 *  owns it; this only carries it through to the solve. */
@@ -82,6 +84,7 @@
 		fromPlace,
 		toPlace,
 		clockJd,
+		clockSettledJd,
 		isMobile,
 		viewFrame,
 		inert = false,
@@ -94,15 +97,21 @@
 		onHazardsChange
 	}: Props = $props();
 
-	// The planner reasons from a "now" captured when the trip opens, not the live
-	// clock: it ticks twice a second and each tick would re-solve a whole
-	// porkchop grid. `untrack` alone is not enough — the ends come off the app's
-	// view object, which is replaced every tick, so anything touching them goes
-	// stale just as often. The key changes only when the ends do, breaking that.
+	// The planner reasons from a captured "now" rather than the live clock, which
+	// moves every frame while the sim plays and would re-solve a whole porkchop
+	// grid each time. `untrack` alone is not enough — the ends come off the app's
+	// view object, which is replaced just as often, so anything touching them
+	// goes stale too. The two keys below change only when the answer would.
+	//
+	// A trip left at yesterday's "now" is a wrong answer rather than a stale one,
+	// so the capture follows the clock wherever it comes to rest, and follows the
+	// ends the moment they change: a destination picked mid-playback deserves the
+	// date on screen, not the one the reader last stopped on.
 	let endsKey = $derived(`${fromId}|${toId}`);
 	let nowJd = $state(untrack(() => clockJd));
 	$effect(() => {
 		void endsKey;
+		void clockSettledJd;
 		untrack(() => (nowJd = clockJd));
 	});
 

@@ -36,7 +36,7 @@ import {
 	type Vehicle
 } from '$lib/math/travel';
 import { ensureVehicles, vehicleCatalogue } from './vehicles';
-import { searchWindow } from './search-window';
+import { earliestDepartJd, searchWindow } from './search-window';
 import { listedTorchArcs, TORCH_PRESETS, type TorchArc } from './torch-arcs';
 import {
 	DEFAULT_TRIP,
@@ -621,13 +621,8 @@ export class TravelPanelState {
 		);
 	}
 
-	/** The earliest the trip may leave — now, unless a later departure was
-	 *  asked for. A deadline says nothing here: it's a date to be met, not
-	 *  waited for. */
 	#earliestDepartJd(nowJd: number): number {
-		return this.timeMode === 'depart' && this.pickedJd != null
-			? Math.max(nowJd, this.pickedJd)
-			: nowJd;
+		return earliestDepartJd(this.timeMode, this.pickedJd, nowJd);
 	}
 
 	/** One held arc at one point on the coast span. Null when the drive can't

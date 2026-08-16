@@ -499,8 +499,8 @@ const TOF2_FACTORS = [0.12, 1.4];
 
 export interface AssistOptions extends RouteOptions, DeadlineOptions {
 	/**
-	 * The earliest departure worth considering, JD — now on the app's clock,
-	 * unless the trip asks to leave later. A swing-by can't be centred on a
+	 * The earliest departure worth considering, JD — the date the trip asks to
+	 * leave on, else now on the app's clock. A swing-by can't be centred on a
 	 * departure date like the direct grid can: the geometry lines up on two
 	 * synodic periods at once, so a window near a chosen day is usually empty.
 	 * A date asked for is a floor here, not a target.

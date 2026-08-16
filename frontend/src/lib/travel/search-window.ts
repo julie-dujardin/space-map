@@ -24,11 +24,6 @@ const MAX_SEARCH_DAYS = 3 * 365.25;
  */
 const MIN_SEARCH_DAYS = 60;
 
-/** How far either side of a chosen departure date to look, and at most what share
- *  of the whole span. */
-const DEPART_AT_SLACK_DAYS = 45;
-const DEPART_AT_SLACK_FRACTION = 0.5;
-
 /** Cruise bounds as multiples of the crossing time — fast arcs to slow ones. */
 const TOF_MIN_FACTOR = 0.35;
 const TOF_MAX_FACTOR = 2.2;
@@ -42,13 +37,33 @@ const CHASE_TOF_MAX_FACTOR = 1.2;
 const DEPART_STEPS = 90;
 const TOF_STEPS = 90;
 
+/**
+ * The earliest departure worth searching — the chosen date where there is one,
+ * else now.
+ *
+ * A chosen departure is the earliest one, not a target to sit either side of:
+ * the search runs forward from it exactly as it does from now, so the mode is
+ * the same question asked from another day. Taken as given whichever side of
+ * the clock it falls, the clock being where the reader is standing rather than
+ * a wall the trip has to start behind. A deadline says nothing here: it's a
+ * date to be met, not waited for.
+ */
+export function earliestDepartJd(
+	timeMode: TimeMode,
+	pickedJd: number | null | undefined,
+	nowJd: number
+): number {
+	return timeMode === 'depart' && pickedJd != null ? pickedJd : nowJd;
+}
+
 export interface WindowRequest {
 	origin: TravelBody;
 	target: TravelBody;
 	/** Now, on the app's clock. */
 	nowJd: number;
 	timeMode: TimeMode;
-	/** The date behind 'depart' and 'arrive'; ignored under 'now'. */
+	/** The date behind 'depart' and 'arrive'; ignored under 'now'. It floors the
+	 *  departures under 'depart' and caps the arrivals under 'arrive'. */
 	pickedJd?: number | null;
 	/** Days the trip still owes once the crossing is over — an aerobraking
 	 *  campaign, where there is one. Shapes the axes only: the deadline itself
@@ -77,21 +92,22 @@ function systemWindow(request: WindowRequest): PorkchopOptions | null {
 	const satellite = outbound ? target : origin;
 	const orbitDays = satellite.elements.n > 0 ? 360 / satellite.elements.n : MAX_SEARCH_DAYS;
 	const deadlineJd = timeMode === 'arrive' && pickedJd != null ? pickedJd : undefined;
+	const departFromJd = earliestDepartJd(timeMode, pickedJd, nowJd);
 	// Departures past the deadline are wasted rows, but a deadline inside the
 	// crossing is left to answer itself — the whole axis is one orbit of the
 	// satellite, and there's nothing shorter to fall back to.
 	const latestArriveJd = deadlineJd != null ? deadlineJd - arrivalDays : Infinity;
 	const departToJd = Math.min(
-		nowJd + clamp(orbitDays, MIN_SEARCH_DAYS / 4, MAX_SEARCH_DAYS),
-		latestArriveJd > nowJd ? latestArriveJd : Infinity
+		departFromJd + clamp(orbitDays, MIN_SEARCH_DAYS / 4, MAX_SEARCH_DAYS),
+		latestArriveJd > departFromJd ? latestArriveJd : Infinity
 	);
 	// One orbit of the satellite covers every distance it reaches, so bounds
 	// taken across the window bracket every arc the grid can contain.
-	const bounds = systemArcBounds(primary, satellite, nowJd, departToJd);
+	const bounds = systemArcBounds(primary, satellite, departFromJd, departToJd);
 	if (!bounds || !(bounds.slowestDays > 0)) return null;
 
 	return {
-		departFromJd: nowJd,
+		departFromJd,
 		departToJd,
 		tofMinDays: bounds.fastestDays,
 		tofMaxDays: bounds.slowestDays,
@@ -131,15 +147,10 @@ export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 
 	const tofMinDays = crossing * tofMinFactor;
 	let tofMaxDays = crossing * tofMaxFactor;
-	let departFromJd = nowJd;
-	let departToJd = nowJd + span;
+	const departFromJd = earliestDepartJd(timeMode, pickedJd, nowJd);
+	let departToJd = departFromJd + span;
 	let deadlineJd: number | undefined;
-	if (timeMode === 'depart' && pickedJd != null) {
-		// Centre on the date, but never search departures already in the past.
-		const slack = Math.min(DEPART_AT_SLACK_DAYS, span * DEPART_AT_SLACK_FRACTION);
-		departFromJd = Math.max(nowJd, pickedJd - slack);
-		departToJd = pickedJd + slack;
-	} else if (timeMode === 'arrive' && pickedJd != null) {
+	if (timeMode === 'arrive' && pickedJd != null) {
 		deadlineJd = pickedJd;
 		// Point the grid at what could still land in time: the latest useful
 		// departure is the deadline minus the fastest cruise worth flying, and a

@@ -811,6 +811,7 @@
 					fromPlace={navFromPlace}
 					toPlace={navToPlace}
 					clockJd={clock.jd}
+					clockSettledJd={clock.settledJd}
 					isMobile={isMobileViewport}
 					{viewFrame}
 					inert={bgInert}

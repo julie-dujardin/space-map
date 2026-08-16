@@ -2,6 +2,9 @@ import { dateToJD } from '$lib/format/date';
 
 const MS_PER_DAY = 86_400_000;
 
+/** How long a scrub has to hold still to count as come to rest. */
+const SETTLE_MS = 400;
+
 /** Optional boundary stops consulted only inside `tick()`. `setJD` bypasses
  *  them — slider scrubs cross freely. */
 interface BoundaryStops {
@@ -24,12 +27,18 @@ export class SimClock {
 	/** Bumped by {@link jumpTo} only — a one-off jump the URL should reflect at
 	 *  once. Scrubs stay on {@link setJD} so a drag doesn't spam history. */
 	jumps = $state(0);
+	/** The date for readers that can't afford a per-frame one — a whole porkchop
+	 *  grid, say. Playback leaves it behind and it catches up once the clock comes
+	 *  to rest, at once on a jump or a pause since those are the reader's own doing. */
+	settledJd = $state(0);
 	private lastRealMs = 0;
 	private prevScale = 1;
 	private stops: BoundaryStops | null = null;
+	private settleTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(initialJd: number) {
 		this.jd = initialJd;
+		this.settledJd = initialJd;
 		this.lastRealMs = performance.now();
 	}
 
@@ -92,6 +101,7 @@ export class SimClock {
 		this.jd = jd;
 		this.seeked = true;
 		this.lastRealMs = performance.now();
+		this.settleAfterPause();
 	}
 
 	/** Seek, and mark it as a discrete jump so listeners can react to the one
@@ -99,6 +109,23 @@ export class SimClock {
 	jumpTo(jd: number): void {
 		this.setJD(jd);
 		this.jumps++;
+		this.settle();
+	}
+
+	/** Rest the settled date on where the clock stands now. */
+	private settle(): void {
+		if (this.settleTimer !== null) clearTimeout(this.settleTimer);
+		this.settleTimer = null;
+		this.settledJd = this.jd;
+	}
+
+	/** The same, once a drag holds still. A clock still playing is left alone: it
+	 *  never comes to rest, and the pause that ends it settles it anyway. */
+	private settleAfterPause(): void {
+		if (this.settleTimer !== null) clearTimeout(this.settleTimer);
+		this.settleTimer = null;
+		if (this.playing) return;
+		this.settleTimer = setTimeout(() => this.settle(), SETTLE_MS);
 	}
 
 	/** Move the clock like playback, one frame at a time, rather than jumping.
@@ -112,6 +139,7 @@ export class SimClock {
 	pause(): void {
 		if (this.timeScale !== 0) this.prevScale = this.timeScale;
 		this.timeScale = 0;
+		this.settle();
 	}
 
 	play(): void {
