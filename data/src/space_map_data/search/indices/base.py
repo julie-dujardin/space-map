@@ -1,13 +1,14 @@
 """Search-index base + shared primary-key helpers.
 
 The catalog is a single Meili index of heterogeneous documents discriminated
-by ``kind`` ("object" | "feature" | "group"). Primary keys mirror the frontend
+by ``kind`` ("object" | "feature" | "group" | "pad"). Primary keys mirror the frontend
 URL scheme (lib/state/url.ts) so they're globally unique across kinds by
 construction:
 
     object   <letter>-<id>          b-399 / s-123 / e-7 / p-x
     feature  <letter>-<id>-f-<fid>  b-499-f-1234
     group    g-<slug>               g-starlink
+    pad      g-<slug>-p-<code>      g-site-cape-canaveral-p-LC39A
 
 The natural per-kind identifier (object id, feature body_id+feature_id, group
 slug) also rides on the document's nested key, so the frontend can route a hit
@@ -46,6 +47,16 @@ def feature_pk(body_id: str, feature_id: int) -> str:
 def group_pk(slug: str) -> str:
     """Primary key for a group (``starlink`` → ``g-starlink``)."""
     return f"g-{slug}"
+
+
+def pad_pk(site_slug: str, code: str) -> str:
+    """Primary key for a launch pad, under the collection that holds it.
+
+    A pad has no page and no id of its own; the code is unique within its site
+    and Meili keys accept nothing but word characters and dashes.
+    """
+    safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in code)
+    return f"{group_pk(site_slug)}-p-{safe}"
 
 
 @dataclass(frozen=True)

@@ -4,7 +4,6 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
-	import { padLabels } from '$lib/travel/launch-pad';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { formatIsoDate } from '$lib/format/date';
@@ -50,10 +49,6 @@
 	let pads = $derived.by(() => {
 		const merged = new Map<string, { name: string; n: number; label: string }>();
 		for (const site of global?.gcat_sites ?? []) {
-			// Labels are trimmed per GCAT site, before the merge: each site
-			// trails its own location, so a range spanning several has no
-			// suffix in common.
-			const labels = padLabels(site.pads ?? []);
 			for (const pad of site.pads ?? []) {
 				const seen = merged.get(pad.code);
 				if (seen) seen.n += pad.launches;
@@ -61,7 +56,7 @@
 					merged.set(pad.code, {
 						name: pad.code,
 						n: pad.launches,
-						label: labels.get(pad.code) ?? pad.name
+						label: pad.label ?? pad.name
 					});
 			}
 		}

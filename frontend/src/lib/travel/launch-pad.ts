@@ -12,7 +12,7 @@
  */
 
 import { fetchGroupDetail } from '$lib/fetch/groups/details';
-import type { GcatPad, GcatSite } from '$lib/fetch/groups/details';
+import type { GcatSite } from '$lib/fetch/groups/details';
 
 /** Slug prefix of the launch-site collections. */
 export const LAUNCH_SITE_SLUG_PREFIX = 'site-';
@@ -21,7 +21,8 @@ export const LAUNCH_SITE_SLUG_PREFIX = 'site-';
 export interface LaunchPad {
 	/** GCAT launch-point code, e.g. "LC39A" — unique within its site. */
 	code: string;
-	/** The pad's own name, as GCAT gives it. */
+	/** What to call it: the trimmed label the export ships, since GCAT's own
+	 *  name repeats the place on every pad of a site. */
 	name: string;
 	latDeg: number;
 	lonDeg: number;
@@ -30,53 +31,6 @@ export interface LaunchPad {
 	launches: number;
 	/** The GCAT place the pad belongs to — Canaveral rather than the range. */
 	siteName: string;
-}
-
-/**
- * A pad's name with the place it sits in trimmed off its tail.
- *
- * GCAT trails every pad's name with where it is, which whatever is showing it
- * already says. How many trailing parts that is varies, so take whatever every
- * pad of the site shares rather than assume a depth: Canaveral's all end
- * ", Cape Canaveral", Baikonur's ", GIK-5, Baykonur, Kazakstan". Keeping only
- * the first part instead would read "LC200/39 · PU39" at Baikonur, where GCAT
- * leads with the launcher and names the pad second.
- */
-export function padLabels(pads: readonly GcatPad[]): Map<string, string> {
-	const parts = pads.map((p) => p.name.split(',').map((s) => s.trim()));
-	// Majority, not unanimity: Baikonur has one oddly-punctuated row
-	// ("Buran runway, GIK-5 Baykonur") that shares no tail with the other
-	// 120, and requiring agreement would leave the site's name on every row.
-	let shared: string[] = [];
-	for (let depth = 1; ; depth++) {
-		const counts = new Map<string, number>();
-		for (const part of parts) {
-			// A pad never gives up its whole name, so it stops voting once
-			// the tail would consume it.
-			if (part.length <= depth) continue;
-			// Keyed as JSON so a multi-word part ("Cape Canaveral") stays one, and
-			// so no separator byte can end up in the source.
-			const tail = JSON.stringify(part.slice(part.length - depth));
-			counts.set(tail, (counts.get(tail) ?? 0) + 1);
-		}
-		const [best, votes] = [...counts].reduce((top, row) => (row[1] > top[1] ? row : top), [
-			'',
-			0
-		] as [string, number]);
-		if (votes <= pads.length / 2) break;
-		shared = JSON.parse(best);
-	}
-	return new Map(
-		pads.map((p, i) => {
-			const own = parts[i];
-			const trailing = own.slice(own.length - shared.length);
-			const strip =
-				shared.length > 0 &&
-				own.length > shared.length &&
-				trailing.every((s, j) => s === shared[j]);
-			return [p.code, (strip ? own.slice(0, own.length - shared.length) : own).join(', ')];
-		})
-	);
 }
 
 export function isLaunchSiteSlug(slug: string | null | undefined): boolean {
@@ -93,14 +47,11 @@ export function isLaunchSiteSlug(slug: string | null | undefined): boolean {
 export function padsOf(sites: readonly GcatSite[] | undefined): LaunchPad[] {
 	const pads: LaunchPad[] = [];
 	for (const site of sites ?? []) {
-		// Trimmed per site, before they are pooled: each site trails its own
-		// location, so a range spanning several has no tail in common.
-		const labels = padLabels(site.pads ?? []);
 		for (const pad of site.pads ?? []) {
 			if (!isFinite(pad.lat) || !isFinite(pad.lon)) continue;
 			pads.push({
 				code: pad.code,
-				name: labels.get(pad.code) || pad.name || pad.code,
+				name: pad.label || pad.name || pad.code,
 				latDeg: pad.lat,
 				lonDeg: pad.lon,
 				launches: pad.launches,
@@ -142,16 +93,20 @@ const SAME_PAD_DEG = 0.01;
 /**
  * Which of these pads a point stands on, or null when it stands on none.
  *
- * The coordinates are the trip's own — a shared link carries nothing else — so
- * naming the end means finding them again in the collection they came from.
- * Matching on distance rather than on an exact equality survives the rounding
- * the URL puts them through.
+ * By code where the link names one, and by distance where it does not — the
+ * coordinates are all an older link carries, and matching them on distance
+ * survives the rounding the URL puts them through.
  */
 export function padAt(
 	pads: readonly LaunchPad[],
 	latDeg: number,
-	lonDeg: number
+	lonDeg: number,
+	code?: string | null
 ): LaunchPad | null {
+	if (code) {
+		const named = pads.find((p) => p.code === code);
+		if (named) return named;
+	}
 	let best: LaunchPad | null = null;
 	let bestGap = SAME_PAD_DEG;
 	for (const pad of pads) {

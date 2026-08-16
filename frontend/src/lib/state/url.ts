@@ -114,16 +114,22 @@ export function groupAnchor(slug: string): { id: string; zoom: number } {
 	return { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM };
 }
 
-/** The `&fs=`/`&ts=` block naming where a point was picked from, or nothing. */
-function slugParam(key: 'fs' | 'ts', place: NavPlace | null): string {
-	return place?.siteSlug ? `&${key}=${encodeURIComponent(place.siteSlug)}` : '';
+/** The `&fs=`/`&fp=` block saying where a point was picked from, or nothing. */
+function placeParams(role: 'f' | 't', place: NavPlace | null): string {
+	if (!place?.siteSlug) return '';
+	const pad = place.padCode ? `&${role}p=${encodeURIComponent(place.padCode)}` : '';
+	return `&${role}s=${encodeURIComponent(place.siteSlug)}${pad}`;
 }
 
 /** A parsed point with its collection attached, or null when there is no point
  *  for one to belong to. */
-function withSlug(place: NavPlace | null | undefined, slug: string | null): NavPlace | null {
+function withSlug(
+	place: NavPlace | null | undefined,
+	slug: string | null,
+	pad: string | null
+): NavPlace | null {
 	if (!place) return null;
-	return slug ? { ...place, siteSlug: slug } : place;
+	return slug ? { ...place, siteSlug: slug, padCode: pad } : place;
 }
 
 /** Parse current page state → MapViewState, or null */
@@ -162,8 +168,16 @@ export function parseUrl(): MapViewState | null {
 			navToFeature: to ? (to.featureId ?? parseFeatureId(page.url.searchParams.get('tf'))) : null,
 			// Where the point came from rides the query: the coordinates are the
 			// end, and this only names them.
-			navFromPlace: withSlug(from?.place, page.url.searchParams.get('fs')),
-			navToPlace: withSlug(to?.place, page.url.searchParams.get('ts')),
+			navFromPlace: withSlug(
+				from?.place,
+				page.url.searchParams.get('fs'),
+				page.url.searchParams.get('fp')
+			),
+			navToPlace: withSlug(
+				to?.place,
+				page.url.searchParams.get('ts'),
+				page.url.searchParams.get('tp')
+			),
 			trip: parseTrip(page.url.searchParams)
 		});
 	}
@@ -532,7 +546,7 @@ export function serializeUrl(state: MapViewState): string {
 				: NAV_UNSET,
 			to: state.navTo ? formatNavEnd(state.navTo, state.navToFeature, state.navToPlace) : undefined
 		});
-		const sites = slugParam('fs', state.navFromPlace) + slugParam('ts', state.navToPlace);
+		const sites = placeParams('f', state.navFromPlace) + placeParams('t', state.navToPlace);
 		// A trip is described by its two ends and the terms it is flown on; the rest
 		// of the query block belongs to drawer tabs the planner doesn't have.
 		return `${path}?at=${at}${sites}${serializeTripSuffix(state.trip)}`;

@@ -65,6 +65,8 @@ export function secondaryText(hit: SearchHit, resolve: HitLabelResolvers): strin
 		});
 	}
 	if (hit.kind === 'group') return '';
+	// A pad says where it is; its own name is only ever a complex number.
+	if (hit.kind === 'pad') return hit.site_name;
 	if (hit.id.startsWith('norad_satcat-')) {
 		return hit.type === 'debris' ? m.type_earth_debris() : m.type_earth_satellite();
 	}

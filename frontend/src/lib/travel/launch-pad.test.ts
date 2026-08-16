@@ -10,7 +10,14 @@ const EASTERN_RANGE: GcatSite[] = [
 		name: 'Cape Canaveral',
 		launches: 700,
 		pads: [
-			{ code: 'LC40', name: 'Cape Canaveral SLC-40', lat: 28.5619, lon: -80.5772, launches: 300 },
+			{
+				code: 'LC40',
+				name: 'Space Launch Complex 40, Cape Canaveral',
+				label: 'Space Launch Complex 40',
+				lat: 28.5619,
+				lon: -80.5772,
+				launches: 300
+			},
 			{ code: 'LC41', name: 'Cape Canaveral SLC-41', lat: 28.5833, lon: -80.5831, launches: 100 }
 		]
 	},
@@ -35,6 +42,12 @@ describe('padsOf', () => {
 
 	it('drops a pad nobody can place — a trip cannot leave from nowhere', () => {
 		expect(padsOf(EASTERN_RANGE).some((p) => p.code === 'X')).toBe(false);
+	});
+
+	it('calls a pad by the label the export trimmed, where there is one', () => {
+		const pads = padsOf(EASTERN_RANGE);
+		expect(pads.find((p) => p.code === 'LC40')?.name).toBe('Space Launch Complex 40');
+		expect(pads.find((p) => p.code === 'LC41')?.name).toBe('Cape Canaveral SLC-41');
 	});
 
 	it('keeps the place a pad belongs to, not the range', () => {
@@ -64,6 +77,12 @@ describe('padAt', () => {
 	it('finds the pad a shared link came back with', () => {
 		// What the URL carries: the same point, rounded to five places.
 		expect(padAt(pads, 28.6084, -80.60415)?.code).toBe('LC39A');
+	});
+
+	it('takes the code the link names over the point it carries', () => {
+		expect(padAt(pads, 28.5619, -80.5772, 'LC39A')?.code).toBe('LC39A');
+		// A code from another collection names nothing here, so the point decides.
+		expect(padAt(pads, 28.5619, -80.5772, 'PU1S')?.code).toBe('LC40');
 	});
 
 	it('tells two pads a kilometre apart from each other', () => {

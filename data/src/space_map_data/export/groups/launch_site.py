@@ -22,7 +22,7 @@ so most rows legitimately have none.
 """
 
 import logging
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -35,6 +35,47 @@ from space_map_data.constants.earth_sats.launch_sites import (
 from space_map_data.models.object import LaunchPad, LaunchSite, Launchlog
 
 logger = logging.getLogger(__name__)
+
+
+def _pad_labels(names: list[str]) -> list[str]:
+    """Pad names with the place they sit in trimmed off the tail.
+
+    GCAT trails every pad's name with where it is, which the page holding it
+    already says. How many trailing parts that is varies — Canaveral's all end
+    ", Cape Canaveral", Baikonur's ", GIK-5, Baykonur, Kazakstan" — so take
+    whatever most of the site's pads share rather than assume a depth. Keeping
+    only the first part instead would read "PU39" at Baikonur, where GCAT leads
+    with the launcher and names the pad second.
+
+    Majority, not unanimity: Baikonur has one oddly punctuated row ("Buran
+    runway, GIK-5 Baykonur") that shares no tail with the other 120, and
+    requiring agreement would leave the site's name on every row.
+    """
+    parts = [[piece.strip() for piece in name.split(",")] for name in names]
+    shared: tuple[str, ...] = ()
+    for depth in range(1, 1 + max((len(p) for p in parts), default=0)):
+        counts: Counter[tuple[str, ...]] = Counter(
+            # A pad never gives up its whole name, so it stops voting once the
+            # tail would consume it.
+            tuple(p[len(p) - depth :])
+            for p in parts
+            if len(p) > depth
+        )
+        if not counts:
+            break
+        tail, votes = counts.most_common(1)[0]
+        if votes <= len(names) / 2:
+            break
+        shared = tail
+    out = []
+    for own in parts:
+        strip = (
+            shared
+            and len(own) > len(shared)
+            and tuple(own[len(own) - len(shared) :]) == shared
+        )
+        out.append(", ".join(own[: len(own) - len(shared)] if strip else own))
+    return out
 
 
 def _certain(code: str | None) -> str | None:
@@ -148,6 +189,12 @@ def build_launch_site_stats(session: Session) -> dict[str, LaunchSiteStats]:
             # Every located pad ships, busiest first — the biggest site has
             # ~120, which costs a few kB, and the disused ones are the
             # interesting half of a cosmodrome's history.
+            # The label a reader sees: trimmed per site, before the sites are
+            # pooled, since each trails its own location and a range spanning
+            # several has no tail in common.
+            for pad_entry, label in zip(pads, _pad_labels([p["name"] for p in pads])):
+                if label and label != pad_entry["name"]:
+                    pad_entry["label"] = label
             pads.sort(key=lambda p: (-p["launches"], p["code"]))
             site: dict = {"code": ucode, "launches": len(site_launches.get(ucode, ()))}
             if row is not None:

@@ -400,9 +400,11 @@
 	let originPads = $derived(padsFor(fromPlace));
 	let targetPads = $derived(padsFor(toPlace));
 	let originPad = $derived(
-		fromPlace ? padAt(originPads, fromPlace.latDeg, fromPlace.lonDeg) : null
+		fromPlace ? padAt(originPads, fromPlace.latDeg, fromPlace.lonDeg, fromPlace.padCode) : null
 	);
-	let targetPad = $derived(toPlace ? padAt(targetPads, toPlace.latDeg, toPlace.lonDeg) : null);
+	let targetPad = $derived(
+		toPlace ? padAt(targetPads, toPlace.latDeg, toPlace.lonDeg, toPlace.padCode) : null
+	);
 
 	/** Put one end somewhere else and leave the other exactly as it stands —
 	 *  read back off the view, since an end is more than its body. */
@@ -418,7 +420,12 @@
 		return {
 			id,
 			featureId: null,
-			place: { latDeg: pad.latDeg, lonDeg: pad.lonDeg, siteSlug: place?.siteSlug ?? null }
+			place: {
+				latDeg: pad.latDeg,
+				lonDeg: pad.lonDeg,
+				siteSlug: place?.siteSlug ?? null,
+				padCode: pad.code
+			}
 		};
 	}
 

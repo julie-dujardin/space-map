@@ -128,12 +128,15 @@ export interface NavPlace {
 	latDeg: number;
 	lonDeg: number;
 	/**
-	 * The launch-site collection the point was taken from, when it was taken
-	 * from one. Provenance rather than identity: the coordinates alone fly the
-	 * trip, and this only says which page's pads to name them from and to offer
-	 * as the ones next door. An unreadable slug costs the label, nothing else.
+	 * The launch-site collection the point was taken from, and which of its pads
+	 * it is, when it was taken from one.
+	 *
+	 * Provenance rather than identity: the coordinates alone fly the trip, and
+	 * these only say which page's pads to name them from and to offer as the
+	 * ones next door. Losing them costs the label, nothing else.
 	 */
 	siteSlug?: string | null;
+	padCode?: string | null;
 }
 
 /** Default vantage angle for a body framed with no explicit camera (search, click, group). */

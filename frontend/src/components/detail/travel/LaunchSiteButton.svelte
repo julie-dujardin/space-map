@@ -43,7 +43,7 @@
 			? {
 					id: EARTH_ID,
 					featureId: null,
-					place: { latDeg: pad.latDeg, lonDeg: pad.lonDeg, siteSlug: slug }
+					place: { latDeg: pad.latDeg, lonDeg: pad.lonDeg, siteSlug: slug, padCode: pad.code }
 				}
 			: null
 	);

@@ -733,6 +733,12 @@
 							openGroup(hit.slug, name);
 							return;
 						}
+						// A pad has no page of its own — the range holding it is what
+						// there is to read, and the planner is where a pad is a place.
+						if (hit.kind === 'pad') {
+							openGroup(hit.site_slug, hit.site_name);
+							return;
+						}
 						focusObject(hit.id, name);
 					}}
 				/>

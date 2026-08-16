@@ -1,7 +1,8 @@
 """Unified catalog search index.
 
 A single Meili index over every searchable entity — objects, surface features,
-and group/collection pages — discriminated by the root ``kind`` field. Shared
+group/collection pages and launch pads — discriminated by the root ``kind``
+field. Shared
 fields (name, descriptions, thumbnail, diameter_km, sitelinks_count) live at the
 document root; per-kind fields nest under ``object`` / ``feature`` / ``group``
 (see base.py for the primary-key scheme).
@@ -22,6 +23,7 @@ from .base import Index
 from .features import build_feature_documents
 from .groups import build_group_documents
 from .objects import build_object_documents
+from .pads import build_pad_documents
 
 
 def _catalog_settings() -> dict[str, Any]:
@@ -30,12 +32,12 @@ def _catalog_settings() -> dict[str, Any]:
     description_fields = [f"description_{lang}" for lang in LANGUAGES]
     return {
         # Order matters — earlier attributes outrank later ones via the
-        # "attribute" rule: name > aliases/designations > description, with the
-        # group slug last as a URL-form fallback ("starlink").
+        # "attribute" rule: name > aliases/designations/pad codes > description,
+        # with the group slug last as a URL-form fallback ("starlink").
         "searchableAttributes": (
             name_fields
             + alias_fields
-            + ["object.designations"]
+            + ["object.designations", "pad.code"]
             + description_fields
             + ["group.slug"]
         ),
@@ -62,6 +64,7 @@ def _catalog_settings() -> dict[str, Any]:
             "feature.type",
             "feature.named",
             "feature.quad",
+            "pad.site_slug",
             "diameter_km",
         ],
         "sortableAttributes": [
@@ -71,6 +74,7 @@ def _catalog_settings() -> dict[str, Any]:
             "object.magnitude",
             "object.inception",
             "group.member_count",
+            "pad.launches",
         ],
         "localizedAttributes": [
             {
@@ -106,6 +110,7 @@ class CatalogIndex(Index):
             build_object_documents(export_dir),
             build_feature_documents(export_dir),
             build_group_documents(export_dir),
+            build_pad_documents(export_dir),
         )
 
 

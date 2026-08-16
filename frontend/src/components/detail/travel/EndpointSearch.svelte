@@ -18,14 +18,14 @@
 		isSearchEnabled,
 		localizedName,
 		searchEndpoints,
-		type FeatureHit,
-		type ObjectHit
+		type EndpointHit
 	} from '$lib/search/client';
 	import { secondaryText } from '$lib/search/format';
 	import { fetchGroupIndex } from '$lib/fetch/groups/registry';
 	import { featureTypeLabel as featureTypeName } from '$lib/format/feature-type';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import { EARTH_ID } from '$lib/constants';
 	import { isCoarsePointer } from '$lib/device';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 
@@ -54,7 +54,7 @@
 	const SHOW_LIMIT = 7;
 
 	let query = $state('');
-	let hits = $state<(ObjectHit | FeatureHit)[]>([]);
+	let hits = $state<EndpointHit[]>([]);
 	let searching = $state(false);
 	let input = $state<HTMLInputElement | null>(null);
 
@@ -90,14 +90,32 @@
 
 	// A feature is excluded by its host: you cannot fly to a crater on the body
 	// you are leaving from.
-	let visible = $derived(
-		hits
-			.filter((h) => !excludeIds.has(h.kind === 'feature' ? h.body_id : h.id))
-			.slice(0, SHOW_LIMIT)
-	);
+	let visible = $derived(hits.filter((h) => !excludeIds.has(hostOf(h))).slice(0, SHOW_LIMIT));
 
-	function pick(hit: ObjectHit | FeatureHit) {
+	/** The body a hit is priced against: a feature's host, a pad's planet, or
+	 *  the object itself. */
+	function hostOf(hit: EndpointHit): string {
+		if (hit.kind === 'feature') return hit.body_id;
+		if (hit.kind === 'pad') return EARTH_ID;
+		return hit.id;
+	}
+
+	function pick(hit: EndpointHit) {
 		const name = localizedName(hit, getLocale());
+		if (hit.kind === 'pad') {
+			onPick({
+				bodyId: EARTH_ID,
+				featureId: null,
+				place: {
+					latDeg: hit.lat,
+					lonDeg: hit.lon,
+					siteSlug: hit.site_slug,
+					padCode: hit.code
+				},
+				name
+			});
+			return;
+		}
 		onPick(
 			hit.kind === 'feature'
 				? { bodyId: hit.body_id, featureId: hit.feature_id, name }
@@ -115,7 +133,7 @@
 	}
 	let unnamedBodyIds = $derived(
 		visible
-			.map((h) => (h.kind === 'feature' ? h.body_id : h.parent_id))
+			.map((h) => (h.kind === 'feature' ? h.body_id : h.kind === 'pad' ? null : h.parent_id))
 			.filter((id): id is string => !!id && !ctx?.getBody(id) && !catalogNames.has(id))
 	);
 	$effect(() => {
@@ -143,7 +161,7 @@
 		return featureTypeName(featureTypeSlugByCode[code]) ?? code;
 	}
 
-	function sublabel(hit: ObjectHit | FeatureHit): string {
+	function sublabel(hit: EndpointHit): string {
 		return secondaryText(hit, { bodyName, featureTypeLabel });
 	}
 

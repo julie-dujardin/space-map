@@ -101,7 +101,38 @@ export interface GroupHit {
 	thumbnail?: SearchThumbnail;
 }
 
-export type SearchHit = FeatureHit | ObjectHit | GroupHit;
+/**
+ * A launch pad. Indexed to be departed from rather than to be read about, so
+ * the hit carries where it is and which collection page it belongs to, and
+ * nothing else — there is no pad page to send a reader to.
+ */
+export interface PadHit {
+	kind: 'pad';
+	id: string;
+	/** GCAT launch-point code, unique within its site. */
+	code: string;
+	/** The pad's own name, with the place it sits in trimmed off. */
+	name: string;
+	/** The `site-` collection holding it, and what that place is called. */
+	site_slug: string;
+	site_name: string;
+	lat: number;
+	lon: number;
+	/** Distinct launches flown from it. Zero is common and real. */
+	launches: number;
+	description_en?: string;
+	description_fr?: string;
+	description_ja?: string;
+	description_zh?: string;
+	description_ar?: string;
+	description_ru?: string;
+	thumbnail?: SearchThumbnail;
+}
+
+export type SearchHit = FeatureHit | ObjectHit | GroupHit | PadHit;
+
+/** What a trip can start or end at — everything but a collection. */
+export type EndpointHit = ObjectHit | FeatureHit | PadHit;
 
 // The Meilisearch SDK (~40 kB gzip) is dynamically imported so it splits out of
 // the main map chunk — it only loads once the user actually searches.
@@ -170,9 +201,15 @@ function toGroupHit(d: RawHit): GroupHit {
 	} as GroupHit;
 }
 
+function toPadHit(d: RawHit): PadHit {
+	const p = (d.pad ?? {}) as RawHit;
+	return { ...d, ...p, kind: 'pad', id: String(d.id) } as PadHit;
+}
+
 function toHit(d: RawHit): SearchHit {
 	if (d.kind === 'group') return toGroupHit(d);
 	if (d.kind === 'feature') return toFeatureHit(d);
+	if (d.kind === 'pad') return toPadHit(d);
 	return toObjectHit(d);
 }
 
@@ -191,17 +228,17 @@ export async function search(
 }
 
 /**
- * Bodies and surface features only, for the trip planner's endpoint pickers.
+ * Everywhere a trip can start or end, for the planner's endpoint pickers.
  *
  * Collections are excluded because you cannot depart from or arrive at one —
  * ranking them alongside would spend a short result list on rows that can't be
- * chosen.
+ * chosen. Pads stay: leaving from one is the whole reason they are indexed.
  */
 export async function searchEndpoints(
 	query: string,
 	locale: string,
 	limit: number = 8
-): Promise<(ObjectHit | FeatureHit)[]> {
+): Promise<EndpointHit[]> {
 	const c = await getClient();
 	if (!c || !query.trim()) return [];
 	const res = await c.index(INDEX).search(query, {
@@ -209,7 +246,7 @@ export async function searchEndpoints(
 		locales: [locale],
 		filter: 'kind != "group"'
 	});
-	return (res.hits ?? []).map((h) => toHit(h as RawHit)) as (ObjectHit | FeatureHit)[];
+	return (res.hits ?? []).map((h) => toHit(h as RawHit)) as EndpointHit[];
 }
 
 /** A group/moon member — usually an object, but an earth-sat zone also lists
@@ -249,7 +286,11 @@ async function searchMemberPage(
 		limit,
 		locales: [locale]
 	});
-	const hits = (res.hits ?? []).map((h) => toHit(h as RawHit));
+	// A pad belongs to no group's member list — it is part of a site page rather
+	// than listed by one — so anything that comes back is a mis-tag, not a row.
+	const hits = (res.hits ?? [])
+		.map((h) => toHit(h as RawHit))
+		.filter((h): h is MemberHit => h.kind !== 'pad');
 	return { hits, estimatedTotalHits: res.estimatedTotalHits ?? hits.length };
 }
 

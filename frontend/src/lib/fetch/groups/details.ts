@@ -61,6 +61,9 @@ export interface GcatPad {
 	/** GCAT launch-point code, e.g. "LC39A" — the chart's row label. */
 	code: string;
 	name: string;
+	/** The name with the place it sits in trimmed off its tail, where that
+	 *  leaves anything — the page holding it already says where it is. */
+	label?: string;
 	lat: number;
 	lon: number;
 	/** Distinct launches from this pad. Zero is common and real. */
