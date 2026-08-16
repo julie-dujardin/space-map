@@ -1065,6 +1065,7 @@
 	"source_celestrak_role": "Satellitenkatalog",
 	"source_jonathan_space_report_role": "Start- & Objektgeschichte",
 	"source_truecolortools_role": "Farben kleiner Körper",
+	"source_surface_colour_role": "Oberflächenfarbe",
 	"source_ssodnet_role": "taxonomische Klassen von Asteroiden",
 	"source_mahlke_role": "Taxonomie aus Spektren & Albedo",
 	"source_sbdb_role": "Größen, Albedos & Spektraltypen",

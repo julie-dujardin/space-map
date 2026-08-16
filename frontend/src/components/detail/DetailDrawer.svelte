@@ -1595,6 +1595,10 @@
 				onHoverFeature={(id) => (hoveredFeatureId = id)}
 			/>
 		{/if}
+		<!-- The gazetteer behind every name and diameter listed here, and — when a
+		     quadrangle is selected — the licence for its extract, which is a
+		     different article from the one the overview tab covers. -->
+		<SourcesFooter global={null} nomenclature wikipediaLicensed={!!quadText?.extract} />
 	</div>
 {/snippet}
 

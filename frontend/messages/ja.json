@@ -1051,6 +1051,7 @@
 	"tooltip_albedo": "表面が反射する太陽光の割合",
 	"tooltip_surface_colour": "TrueColorTools で計算した近似的な実際の色",
 	"source_truecolortools_role": "小天体の色",
+	"source_surface_colour_role": "表面の色",
 	"source_ssodnet_role": "小惑星の分類クラス",
 	"source_mahlke_role": "スペクトルとアルベドによる分類",
 	"source_sbdb_role": "サイズ・アルベド・スペクトル型",

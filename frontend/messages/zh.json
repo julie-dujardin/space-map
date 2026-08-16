@@ -977,6 +977,7 @@
 	"tooltip_albedo": "表面反射太阳光的比例",
 	"tooltip_surface_colour": "由 TrueColorTools 计算的近似真实颜色",
 	"source_truecolortools_role": "小天体颜色",
+	"source_surface_colour_role": "表面颜色",
 	"source_ssodnet_role": "小行星分类类别",
 	"source_mahlke_role": "基于光谱与反照率的分类",
 	"source_sbdb_role": "尺寸、反照率与光谱型",

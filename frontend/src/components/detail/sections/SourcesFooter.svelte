@@ -100,9 +100,10 @@
 				`https://www.wikidata.org/wiki/${qid}`,
 				m.source_wikidata_role()
 			);
-		// Lineup radius fallback (Wikidata P2120) — credit Wikidata even on a page
-		// whose own group has no QID. Deduped against the QID link above by key.
-		else if (wikidata)
+		// Wikidata values on a page carrying no QID of its own: the lineup's radius
+		// fallback (P2120), and the spacecraft whose figures were ingested from an
+		// item the bundle never named. Deduped against the QID link above by key.
+		else if (wikidata || global?.wikidata)
 			add(
 				'wikidata',
 				m.source_wikidata_name(),
@@ -119,6 +120,27 @@
 				m.source_sbdb_role()
 			);
 		if (pck) addPck();
+
+		// The surface-colour swatch, whichever tier produced it — a measured
+		// spectrum, colour indices, a taxonomic chroma or a bare albedo grey all
+		// come out of the same TrueColorTools run.
+		if (global?.color || global?.sbdb?.color)
+			add(
+				'truecolortools',
+				m.source_truecolortools_name(),
+				'https://github.com/Askaniy/TrueColorTools',
+				m.source_surface_colour_role()
+			);
+
+		// A moon's discovery year is JPL's, not Wikidata's — the table is what the
+		// date is taken from, and for most moons no Wikidata item confirms it.
+		if (global?.discovery_year != null)
+			add(
+				'jpl-satellite-discovery',
+				m.source_jpl_satellite_discovery_name(),
+				'https://ssd.jpl.nasa.gov/sats/discovery.html',
+				m.source_jpl_satellite_discovery_role()
+			);
 
 		const mpc = global?.cross_refs?.mpc_designation;
 		if (mpc)

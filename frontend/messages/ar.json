@@ -1038,6 +1038,7 @@
 	"tooltip_albedo": "نسبة ضوء الشمس المنعكس من السطح",
 	"tooltip_surface_colour": "لون حقيقي تقريبي محسوب باستخدام TrueColorTools",
 	"source_truecolortools_role": "ألوان الأجرام الصغيرة",
+	"source_surface_colour_role": "لون السطح",
 	"source_ssodnet_role": "الفئات التصنيفية للكويكبات",
 	"source_mahlke_role": "تصنيف بالأطياف والبياض",
 	"source_sbdb_role": "الأحجام والبياض والأنواع الطيفية",

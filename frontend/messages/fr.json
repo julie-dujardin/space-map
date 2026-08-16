@@ -1048,6 +1048,7 @@
 	"tooltip_albedo": "Fraction de la lumière solaire réfléchie par la surface",
 	"tooltip_surface_colour": "Couleur réelle approximative calculée avec TrueColorTools",
 	"source_truecolortools_role": "couleurs des petits corps",
+	"source_surface_colour_role": "couleur de surface",
 	"source_ssodnet_role": "classes taxonomiques d'astéroïdes",
 	"source_mahlke_role": "taxonomie par spectres et albédo",
 	"source_sbdb_role": "tailles, albédos et types spectraux",

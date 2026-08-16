@@ -1222,6 +1222,7 @@
 	"source_jonathan_space_report_role": "launch & object history",
 	"source_truecolortools_name": "TrueColorTools",
 	"source_truecolortools_role": "small-body colours",
+	"source_surface_colour_role": "surface colour",
 	"source_ssodnet_name": "SsODNet",
 	"source_ssodnet_role": "asteroid taxonomic classes",
 	"source_mahlke_name": "Mahlke et al. 2022",

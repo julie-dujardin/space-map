@@ -1013,6 +1013,7 @@
 	"tooltip_albedo": "Доля отражённого солнечного света",
 	"tooltip_surface_colour": "Приблизительный истинный цвет, вычисленный с помощью TrueColorTools",
 	"source_truecolortools_role": "цвета малых тел",
+	"source_surface_colour_role": "цвет поверхности",
 	"source_ssodnet_role": "таксономические классы астероидов",
 	"source_mahlke_role": "таксономия по спектрам и альбедо",
 	"source_sbdb_role": "размеры, альбедо и спектральные типы",

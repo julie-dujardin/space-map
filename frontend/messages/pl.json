@@ -1079,6 +1079,7 @@
 	"source_celestrak_role": "katalog satelitów",
 	"source_jonathan_space_report_role": "historia startów i obiektów",
 	"source_truecolortools_role": "kolory małych ciał",
+	"source_surface_colour_role": "kolor powierzchni",
 	"source_ssodnet_role": "klasy taksonomiczne planetoid",
 	"source_mahlke_role": "taksonomia z widm i albeda",
 	"source_sbdb_role": "rozmiary, albeda i typy widmowe",
