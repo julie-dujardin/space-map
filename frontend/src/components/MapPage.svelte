@@ -67,6 +67,7 @@
 	import MobileTimeControls from './time/MobileTimeControls.svelte';
 	import SettingsButton from './settings/SettingsButton.svelte';
 	import LayersButton from './layers/LayersButton.svelte';
+	import SearchIcon from '@lucide/svelte/icons/search';
 	import SearchBar from './search/SearchBar.svelte';
 	import FeaturedBar from './search/FeaturedBar.svelte';
 	import { isSearchEnabled, localizedName } from '$lib/search/client';
@@ -203,6 +204,7 @@
 	let scene = $state<Scene>();
 	let drawerHeightDvh = $state(0);
 	let searchExpanded = $state(false);
+	let searchBar = $state<SearchBar>();
 	// The search overlay is fullscreen-modal on mobile but a non-modal side panel
 	// on desktop, so only mobile inerts the background behind it.
 	let isMobileViewport = $state(false);
@@ -360,11 +362,41 @@
 		})();
 	});
 
-	// Desktop inset: park chips just past the detail sidebar when open, else the
-	// collapsed 240px search bar. Mobile stacks them below instead.
+	// Desktop inset: park chips just past the detail sidebar (and the search
+	// button beside it) when open, else the collapsed 240px search bar. Mobile
+	// stacks them below instead.
 	const featuredStart = $derived(
-		focusable || isNav ? 'calc(var(--detail-panel) + 1rem)' : 'calc(240px + 2rem)'
+		focusable || isNav ? 'calc(var(--detail-panel) + 3.5rem)' : 'calc(240px + 2rem)'
 	);
+
+	// The sidebar covers the search bar on desktop, so a button beside it stands
+	// in for the collapsed pill: close the sidebar, open search in its place.
+	const sidebarOpen = $derived(Boolean(focusable) || isNav);
+	function openSearchBesideSidebar() {
+		if (isNav) closeTravel(false);
+		else closeDetail(false);
+		searchBar?.open();
+	}
+
+	// `refocusMain` off when the caller takes focus itself; otherwise focus
+	// silently falls to <body> once the drawer unmounts.
+	function closeDetail(refocusMain = true) {
+		// One teardown path: no second drawer left under a feature/group close.
+		const anchorId = selectedBody?.data.id ?? appState.view.id;
+		selectedBody = undefined;
+		activeFeature = null;
+		appState.closeDetail(anchorId);
+		drawerHeightDvh = 0;
+		if (refocusMain) tick().then(() => document.getElementById('main-content')?.focus());
+	}
+
+	function closeTravel(refocusMain = true) {
+		// Closing a trip lands on whichever end is framed, or on the body the
+		// camera was left with when neither end is chosen.
+		const id = navTo ?? navFrom ?? appState.view.id;
+		appState.setFocus({ type: urlTypeFromId(id), id, name: '' });
+		if (refocusMain) tick().then(() => document.getElementById('main-content')?.focus());
+	}
 
 	$effect(() => {
 		if (northRefId === null) return;
@@ -698,6 +730,7 @@
 					: 'z-10'}"
 			>
 				<SearchBar
+					bind:this={searchBar}
 					onExpandedChange={(v) => (searchExpanded = v)}
 					onSelect={async (hit) => {
 						const name = localizedName(hit, getLocale());
@@ -733,6 +766,24 @@
 					}}
 				/>
 			</div>
+			{#if searchEnabled && !searchExpanded && sidebarOpen}
+				<!-- Desktop only: on mobile the sidebar is a sheet that leaves the
+				     search bar in the clear. h-10 box with the chip strip's own bottom
+				     padding, so the circle lands on the chips' centre line. -->
+				<button
+					type="button"
+					class="pointer-events-auto fixed top-[calc(var(--safe-top)_+_1rem)] z-10 hidden h-10 items-center pb-1 md:flex md:start-[calc(var(--detail-panel)_+_1rem)]"
+					title={m.search_placeholder()}
+					aria-label={m.search_placeholder()}
+					onclick={openSearchBesideSidebar}
+				>
+					<span
+						class="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-popover/90 text-muted-foreground shadow-lg backdrop-blur-md transition-colors hover:bg-accent hover:text-foreground"
+					>
+						<SearchIcon class="size-4" />
+					</span>
+				</button>
+			{/if}
 			{#if searchEnabled && !searchExpanded}
 				<!-- Chips beside whatever's shown (sidebar/search bar); mobile stacks below. -->
 				<div
@@ -777,13 +828,7 @@
 						travelHazards = hazards;
 						drawTravel();
 					}}
-					onClose={() => {
-						// Closing a trip lands on whichever end is framed, or on the body
-						// the camera was left with when neither end is chosen.
-						const id = navTo ?? navFrom ?? appState.view.id;
-						appState.setFocus({ type: urlTypeFromId(id), id, name: '' });
-						tick().then(() => document.getElementById('main-content')?.focus());
-					}}
+					onClose={() => closeTravel()}
 					onSheetResize={(h) => (drawerHeightDvh = h)}
 				/>
 			{/if}
@@ -802,17 +847,7 @@
 					{focusable}
 					{clock}
 					inert={bgInert}
-					onClose={() => {
-						// One teardown path: no second drawer left under a feature/group close.
-						const anchorId = selectedBody?.data.id ?? appState.view.id;
-						selectedBody = undefined;
-						activeFeature = null;
-						appState.closeDetail(anchorId);
-						drawerHeightDvh = 0;
-						// Land focus on the map region after the drawer unmounts, else it
-						// silently falls to <body>.
-						tick().then(() => document.getElementById('main-content')?.focus());
-					}}
+					onClose={() => closeDetail()}
 					onMaximize={() => {
 						if (!selectedBody) return;
 						scene?.focusOnBody(selectedBody.data.id, minCameraDistance(selectedBody) * 5);

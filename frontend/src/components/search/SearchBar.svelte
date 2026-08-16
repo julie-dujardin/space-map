@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, untrack } from 'svelte';
+	import { getContext, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -737,6 +737,13 @@
 	function collapse() {
 		expanded = false;
 		filterOpen = false;
+	}
+
+	// Opened from outside (the button beside an open sidebar): focusing the input
+	// is what expands the panel, same as a click on the collapsed pill.
+	export function open() {
+		expanded = true;
+		tick().then(() => inputEl?.focus());
 	}
 
 	// Close the filter popover on an outside click. focusout can't be used: a
