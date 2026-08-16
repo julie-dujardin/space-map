@@ -1,9 +1,7 @@
 /**
- * SGP4 propagation for Earth satellites via satellite.js.
- *
- * Replaces the plain Kepler mean-motion step for TLE-sourced objects so the
- * rendered position includes J2 nodal/apsidal drift, atmospheric drag (B*),
- * and the short-period TEME oscillations.
+ * SGP4 propagation for Earth satellites via satellite.js — replaces the plain
+ * Kepler mean-motion step for TLE-sourced objects so the position includes
+ * J2 nodal/apsidal drift, atmospheric drag (B*), and short-period TEME oscillations.
  */
 
 import { json2satrec, sgp4, type SatRec, SatRecError, type OMMJsonObject } from 'satellite.js';
@@ -101,9 +99,9 @@ export function sgp4PositionTEME(satrec: SatRec, jd: number): [number, number, n
 }
 
 /**
- * Convert a TEME-frame position (km) to Three.js scene coordinates. Applies the
- * same obliquity rotation as orbitalToThreeJS's equatorial branch so SGP4 output
- * lands in the ecliptic frame the rest of the scene uses.
+ * TEME-frame position (km) → Three.js scene coordinates. Same obliquity
+ * rotation as orbitalToThreeJS's equatorial branch, so SGP4 output lands in
+ * the ecliptic frame the rest of the scene uses.
  */
 export function temeKmToThreeJS(x: number, y: number, z: number): [number, number, number] {
 	const scale = AU_SCALE / AU_KM;
@@ -130,10 +128,9 @@ export function sgp4PositionScene(satrec: SatRec, jd: number): [number, number, 
 }
 
 /**
- * Propagate to `jd` and return the radial distance (km from parent) and orbital
- * speed (km/s). Mirrors `currentStateFromElements` so satellite-specific code
- * paths can swap in SGP4-accurate values for altitude/speed displays. Frame
- * choice doesn't matter here since both magnitudes are rotation-invariant.
+ * Propagate to `jd`, returning radial distance (km) and speed (km/s). Mirrors
+ * `currentStateFromElements` so satellite paths can swap in SGP4-accurate
+ * values for altitude/speed displays; frame doesn't matter since both are rotation-invariant.
  */
 export function sgp4State(satrec: SatRec, jd: number): { rKm: number; vKms: number } | null {
 	const tsinceMin = (jd - satrec.jdsatepoch) * 1440;

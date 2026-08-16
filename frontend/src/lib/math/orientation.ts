@@ -38,10 +38,8 @@ export interface Orientation {
  *   W += Σ pm[i]  · sin(θ_i(T))
  * with θ_i(T) = angles[2i] + angles[2i+1]·T (degrees, deg/century).
  *
- * `angles` is shared across all bodies in a planetary system (SPICE convention)
- * and arrives via /data/v1/systems/global.json (in the `nut_prec_angles` field),
- * indexed by owner naif_id (`naif_id // 100` for moons/planets, `naif_id`
- * itself when < 100).
+ * `angles` is shared per system (SPICE convention), from global.json's
+ * `nut_prec_angles`, keyed by owner naif_id (`naif_id // 100` for moons).
  */
 export interface NutPrec {
 	ra: number[];
@@ -51,10 +49,9 @@ export interface NutPrec {
 }
 
 /**
- * Rotate an equatorial J2000 unit vector into the three.js scene frame
- * (ecliptic X→scene X, ecliptic north Z→scene Y, ecliptic Y→scene −Z).
- * The Y→−Z flip keeps the mapping a proper rotation (det +1) so chiral
- * quantities like spin axes survive intact.
+ * Equatorial J2000 unit vector → three.js scene frame (ecliptic X→scene X,
+ * north Z→scene Y, Y→scene −Z). The Y→−Z flip keeps it a proper rotation
+ * (det +1) so chiral quantities like spin axes survive intact.
  */
 function equatorialToThreeJS(xEq: number, yEq: number, zEq: number): Vector3 {
 	const xEcl = xEq;
@@ -64,16 +61,10 @@ function equatorialToThreeJS(xEq: number, yEq: number, zEq: number): Vector3 {
 }
 
 /**
- * Build the body-fixed quaternion (axial tilt + spin) for a body at the given
- * Julian date, in Three.js scene coordinates.
- *
- * The result orients the body so that its local +Y axis is the body's north
- * pole and its local +X axis is the IAU ascending node Q (intersection of the
- * body's equator with the ICRF equator where the body equator crosses
- * south→north). The prime meridian (local +X after the spin) is at angle W
- * from Q along the equator, following the IAU convention. This matches the
- * longitude system used by USGS / Blue Marble equirectangular maps (u=0 at
- * longitude ±180°, longitude increasing east through u=0.5 at longitude 0°).
+ * Body-fixed quaternion (axial tilt + spin) at a Julian date, scene frame.
+ * Local +Y is the body's north pole; local +X is the IAU ascending node Q,
+ * rotated by W (prime meridian) along the equator per IAU convention — this
+ * matches the USGS/Blue Marble equirectangular texture convention.
  */
 export function bodyQuaternion(
 	orientation: Orientation,
@@ -168,10 +159,10 @@ export interface PointingConstraint {
 }
 
 /**
- * Per-spacecraft pointing spec (export `pointing`, hand-edited in
- * spacecraft-orientation.yaml). The `primary` body axis is aimed exactly at its
- * target direction; the optional `secondary` axis rolls the model to point as
- * close as possible at its target. Primary-only leaves roll free.
+ * Per-spacecraft pointing spec (`pointing`, hand-edited in
+ * spacecraft-orientation.yaml). `primary` axis aims exactly at its target;
+ * optional `secondary` rolls as close as possible to its own. Primary-only
+ * leaves roll free.
  */
 export interface PointingSpec {
 	primary: PointingConstraint;
@@ -197,11 +188,9 @@ const AXIS_VECTORS: Record<PointingAxis, Vector3> = {
 };
 
 /**
- * Base model→body rotation from a model bundle's `frame_map` (`{model axis:
- * body axis}`, 1–2 pairs). One pair gives the minimal rotation (roll free —
- * fine for spinners); two perpendicular pairs pin the full frame, the third
- * axis following right-handedness. Returns null (with a warning) on a
- * malformed map so a bad manifest degrades to the unrotated model.
+ * Model→body rotation from a `frame_map` (1–2 axis pairs). One pair gives a
+ * minimal roll-free rotation; two perpendicular pairs pin the full frame.
+ * Returns null on a malformed map so a bad manifest degrades to unrotated.
  */
 export function frameMapQuaternion(map: Record<string, string>): Quaternion | null {
 	const pairs: [Vector3, Vector3][] = [];
@@ -268,11 +257,9 @@ function resolveTarget(target: PointingTarget, ctx: PointingContext, out: Vector
 }
 
 /**
- * Two-vector attitude: aim `spec.primary.axis` exactly at its target, then roll
- * `spec.secondary.axis` as close as possible at its target. Degenerates to a
- * single-vector aim (roll free) when there's no secondary, the secondary target
- * is unavailable this frame, or the two directions are parallel. No-op when the
- * primary target can't be resolved.
+ * Two-vector attitude: primary axis aims exactly at its target, secondary
+ * rolls as close as possible to its own. Falls back to primary-only (roll
+ * free) when secondary is unavailable or parallel to primary.
  */
 export function applyPointing(obj: Object3D, spec: PointingSpec, ctx: PointingContext): void {
 	if (!resolveTarget(spec.primary.target, ctx, _pWorld)) return;

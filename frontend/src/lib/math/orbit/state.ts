@@ -10,12 +10,9 @@ const GAUSS_K = 0.01720209895;
 const AU_PER_DAY_TO_KM_PER_SEC = AU_KM / SEC_PER_DAY;
 
 /**
- * Current orbital radius (km from parent) and speed (km/s) derived from elements
- * via vis-viva. For elliptical/hyperbolic orbits GM is recovered from Kepler's
- * third law (GM = n² a³) using the supplied mean motion. For parabolic orbits
- * (e ≈ 1, no a) the heliocentric GM is assumed (GAUSS_K²).
- *
- * Returns null when required elements are non-finite.
+ * Orbital radius (km) and speed (km/s) via vis-viva. GM comes from Kepler's
+ * third law (GM = n² a³) for elliptical/hyperbolic orbits, or the assumed
+ * heliocentric GAUSS_K² for parabolic (e ≈ 1, no a). Null on non-finite elements.
  */
 export function currentStateFromElements(
 	el: OrbitalElements,
@@ -80,13 +77,11 @@ export function currentStateFromElements(
 	return { rKm, vKms: Math.sqrt(vSq) };
 }
 
-// Below this threshold we treat e or sin(i) as zero and pin the otherwise-
-// undefined Ω/ω to 0 (collapsing the degenerate degree of freedom). The choice
-// is generous: state-vector noise from a Float32 Chebyshev fit can produce
-// e ~ 1e-7 even for a textbook circular orbit, and using a tighter threshold
-// makes Ω/ω jitter wildly between frames as the noise-level eccentricity
-// vector rotates. The drawn ellipse is symmetric in those degrees of freedom
-// so pinning is visually invisible.
+// Below this, treat e or sin(i) as zero and pin the undefined Ω/ω to 0.
+// Generous on purpose: Float32 Chebyshev-fit noise can give e ~ 1e-7 even for
+// a circular orbit, and a tighter threshold makes Ω/ω jitter between frames
+// as the noise-level eccentricity vector rotates. Pinning is visually
+// invisible since the drawn ellipse is symmetric in these degrees of freedom.
 const SMALL_E = 1e-9;
 const SMALL_SIN_I = 1e-9;
 
@@ -95,29 +90,20 @@ function clamp(x: number, lo: number, hi: number): number {
 }
 
 /**
- * Osculating Keplerian elements from a parent-relative state vector.
+ * Osculating Keplerian elements from a parent-relative state vector. `r`
+ * (AU) is in the frame whose z-axis is the orbit's reference normal —
+ * ECLIPJ2000 for chebyshev callers, so elements come back `equatorial: false`.
+ * `v` is AU/day, `muAuDay2` is AU³/day², `jd` becomes both epoch and the mean
+ * anomaly's reference time.
  *
- * Inputs:
- *   r — position (AU) in the reference frame whose z-axis is the orbit's
- *       reference normal. For chebyshev callers that's ECLIPJ2000 (z = north
- *       ecliptic pole), so the returned elements have `equatorial: false`.
- *   v — velocity (AU/day) in the same frame.
- *   muAuDay2 — gravitational parameter (AU³/day²) of the central body.
- *   jd — epoch the state was sampled at; used as the elements' epoch and as
- *        the time at which mean anomaly is evaluated.
+ * Null for parabolic-ish states (1/a ≈ 0; chebyshev bodies orbit stably, so
+ * this is purely defensive). Hyperbolic states (a < 0, e > 1) get negative
+ * `a` per JPL convention.
  *
- * Returns null for parabolic-ish states (1/a ≈ 0) — chebyshev bodies orbit
- * stably so this branch is purely defensive. Hyperbolic states (a < 0, e > 1)
- * are handled and produce hyperbolic elements with negative `a` per JPL
- * convention.
- *
- * Degenerate-orbit handling:
- *   e ≈ 0      → ω pinned to 0; ν becomes argument of latitude (or true
- *                longitude if also equatorial), still consistent with the
- *                downstream Kepler propagator.
- *   sin(i) ≈ 0 → Ω pinned to 0; ω becomes longitude of perihelion. Retrograde
- *                equatorial orbits (h_z < 0) get the longitude reflected so
- *                the propagated direction matches the input v.
+ * Degenerate cases: e ≈ 0 pins ω to 0 (ν becomes argument of latitude, or
+ * true longitude if also equatorial); sin(i) ≈ 0 pins Ω to 0 (ω becomes
+ * longitude of perihelion, reflected for retrograde equatorial orbits so
+ * propagation matches the input v).
  */
 export function stateVectorToElements(
 	r: [number, number, number],

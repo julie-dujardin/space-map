@@ -1,19 +1,15 @@
 /**
- * The radial window the Overview's ring bar draws: the body's centre out to the
- * far edge of its rings, so the emptiness between planet and rings is part of
- * the picture rather than cropped away.
- *
- * The Rings tab breaks its axis where a void would waste the chart. A bar this
- * short has no room to mark a break and no axis to read one off, so it stops
- * instead — the tab's own chart is where the full extent is readable.
+ * Radial window the Overview's ring bar draws: body centre to the far edge of
+ * its rings, so the empty gap between them is part of the picture, not cropped.
+ * Unlike the Rings tab's chart, this bar is too short to mark an axis break, so
+ * it stops instead of trying to represent the full extent.
  */
 
 import type { RingFeature } from '$lib/fetch/objects/object-data';
 import { span } from './catalog';
 
 export interface RingBarWindow {
-	/** Inner and outer edge of the ring material drawn, km from the body's
-	 *  centre. The bar runs from 0 to `outer` plus a fixed margin. */
+	/** Inner/outer edge of the ring material drawn, km from the body's centre. */
 	inner: number;
 	outer: number;
 }
@@ -39,9 +35,8 @@ export function ringBarWindow(features: Record<string, RingFeature>): RingBarWin
 	const [inner] = material[0];
 	let outer = material[0][1];
 	for (const [from, to] of material.slice(1)) {
-		// Stop where the empty stretch ahead is wider than everything drawn so
-		// far: Saturn's Phoebe ring sits twelve million km out, and reaching it
-		// would leave the rings anyone recognises inside the first 4% of the bar.
+		// Stop once the gap ahead exceeds everything drawn so far — else outliers
+		// like Saturn's Phoebe ring (12M km out) squeeze the visible rings tiny.
 		if (from - outer > outer) break;
 		outer = to;
 	}

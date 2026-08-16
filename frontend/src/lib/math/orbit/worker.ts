@@ -2,20 +2,17 @@
 import { writePositions, type OrbitColumns } from './soa';
 
 /*
- * Orbit worker: owns a subset of point-cloud groups and, each frame, solves
- * Kepler/Barker for every body in every owned group. Driven by messages from
+ * Orbit worker: owns a subset of point-cloud groups and each frame solves
+ * Kepler/Barker for every owned body, driven by messages from
  * OrbitWorkerPool on the main thread.
  *
- * Lifecycle:
- *   - 'rewireDelta' adds/replaces individual groups by id and optionally
- *     removes others (one zone got a fresh chunk, one body got promoted),
- *     so we don't re-pack every group on every change.
- *   - 'tick' asks for fresh positions at a jd, with per-group parent position
- *     and a shared basis. Main sends one free Float32Array per group
- *     (transferred); worker writes into it and transfers it back with a count.
+ * 'rewireDelta' adds/replaces/removes groups by id without re-packing others.
+ * 'tick' asks for fresh positions at a jd + per-group parent + shared basis;
+ * main sends one free Float32Array per group (transferred), worker writes
+ * and transfers it back with a count.
  *
- * All number arrays are Float64 internally to preserve precision; only the
- * output position buffer is Float32 (matches the Three.js BufferAttribute).
+ * Number arrays are Float64 internally for precision; only the output
+ * position buffer is Float32 (matches the Three.js BufferAttribute).
  */
 
 const groups = new Map<string, OrbitColumns>();

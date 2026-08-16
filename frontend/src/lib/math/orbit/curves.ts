@@ -43,9 +43,8 @@ export function orbitalElementsToEllipse(
 	// Clamp e just below 1 so 1-e² stays positive for near-parabolic bound orbits
 	// (matches the clamp in orbitalElementsToPositionJD, keeping curve and body aligned).
 	const e = Math.min(el.e, 1 - 1e-7);
-	// Concentrate samples near perihelion by warping the E sweep: u ∈ [-1,1] uniform,
-	// E = π·sign(u)·|u|^p. Raising p with e packs points into the perihelion arc,
-	// where the body is visually, instead of spreading them across the apoapsis reach.
+	// Warp uniform u ∈ [-1,1] to E = π·sign(u)·|u|^p so samples concentrate near
+	// perihelion (raising p with e), where the body visually sits, not the apoapsis.
 	const p = 1 + 3 * e;
 	const sqrt1me2 = Math.sqrt(1 - e * e);
 	const points: [number, number, number][] = [];
@@ -68,13 +67,9 @@ export function orbitalElementsToEllipse(
 }
 
 /**
- * Generate points along a hyperbolic trajectory for rendering trails.
- * Returns an open curve (not closed) in Three.js coordinates.
- *
- * Computes positions directly from the hyperbolic anomaly H, avoiding the
- * round-trip through mean anomaly and Newton-Raphson that can produce NaN.
- *
- * The curve extends to a maximum distance of `rMaxAU` from the focus.
+ * Open hyperbolic-trajectory polyline, Three.js coordinates, out to `rMaxAU`
+ * from the focus. Computed directly from hyperbolic anomaly H, avoiding the
+ * mean-anomaly/Newton-Raphson round-trip that can produce NaN.
  */
 export function orbitalElementsToHyperbola(
 	el: OrbitalElements,
@@ -108,16 +103,9 @@ export interface OrbitCurve {
 }
 
 /**
- * Sample SGP4 across the orbital period ending at `jdEnd` to build a polyline
- * that reflects the same J2/drag perturbations as the live-propagated dot.
- *
- * The curve spans `[jdEnd - T, jdEnd]` — i.e. the past one orbital period — so
- * `curve[N]` is the satellite's current position and `curve[0]` is where it
- * was one period ago. `buildTrailPoints` then walks backwards from the body's
- * position through the curve to render the orbit.
- *
- * Open, not closed: a sliding window never rejoins `curve[0]` to `curve[N]`, so
- * closing it draws a stray segment across the gap.
+ * SGP4-sampled polyline over the period ending at `jdEnd`, so it carries the
+ * same J2/drag perturbations as the live-propagated dot. Open: a sliding
+ * window's ends never meet, and closing it draws a stray segment.
  */
 export function sgp4Curve(
 	satrec: SatRec,
@@ -141,9 +129,8 @@ export function sgp4Curve(
  * or hyperbola based on eccentricity.
  */
 export function orbitalElementsToCurve(el: OrbitalElements, numPoints = 512): OrbitCurve {
-	// Bound orbits (a > 0 per JPL convention) always render as ellipses, even when
-	// e is rounded to 1.0 in float32. This keeps the curve aligned with the body
-	// position, which goes through the elliptic Kepler branch with the same eClamped.
+	// Bound orbits (a > 0, JPL convention) always render as ellipses, even if e
+	// rounds to 1.0 in float32 — matches the body's elliptic Kepler branch.
 	const bound = isFinite(el.a) && el.a > 0;
 	if (!bound && el.q != null) {
 		return { points: orbitalElementsToParabola(el, numPoints), isOpen: true };

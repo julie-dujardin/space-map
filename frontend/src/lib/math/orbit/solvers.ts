@@ -6,12 +6,10 @@ export function solveKepler(M: number, e: number, tolerance = 1e-10, maxIter = 5
 	let E = M;
 	for (let i = 0; i < maxIter; i++) {
 		const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
-		// Damp the Newton step. For near-parabolic orbits (e ≳ 0.99) with small
-		// M, f'(E) = 1 - e·cos(E) is near zero and unclamped Newton-Raphson
-		// shoots past the solution and can oscillate chaotically — stopping at
-		// different E each frame causes visible position flicker (e.g. Hale-Bopp).
-		// Clamping each step to ≤1 rad preserves quadratic convergence where
-		// it's well-behaved and forces monotone progress elsewhere.
+		// Damp the Newton step: near-parabolic orbits (e ≳ 0.99) with small M
+		// have f'(E) = 1 - e·cos(E) ≈ 0, so unclamped steps oscillate chaotically
+		// and flicker frame to frame (e.g. Hale-Bopp). Clamping to ≤1 rad keeps
+		// quadratic convergence where well-behaved, monotone progress elsewhere.
 		const clamped = Math.max(-1, Math.min(1, dE));
 		E -= clamped;
 		if (Math.abs(dE) < tolerance) break;
@@ -43,15 +41,10 @@ export function solveKeplerHyperbolic(
 }
 
 /**
- * Solve Barker's equation for parabolic orbits (e = 1).
- *
- * Given perihelion distance q [AU] and time of perihelion tp [JD],
- * returns [trueAnomaly, radius] at the given Julian date, or null
- * if the computation fails.
- *
- * Uses the standard cubic form:  W = tan(ν/2)/2 + tan³(ν/2)/6
- * where W = sqrt(GM_sun / (2 q³)) · (t − tp),
- * with GM_sun in AU³/day² = k² (k = 0.01720209895 rad/day, Gaussian gravitational constant).
+ * Barker's equation for parabolic orbits (e = 1): q [AU], tp [JD] → true
+ * anomaly and radius at `jd`, or null on failure.
+ * Cubic form W = tan(ν/2)/2 + tan³(ν/2)/6, W = sqrt(GM_sun/(2q³))·(t−tp),
+ * GM_sun = k² in AU³/day² (k = 0.01720209895, Gaussian gravitational constant).
  */
 export function solveBarker(q: number, tp: number, jd: number): { nu: number; r: number } | null {
 	const k = 0.01720209895; // Gaussian gravitational constant [AU^(3/2) / day]

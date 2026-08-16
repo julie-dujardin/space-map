@@ -5,21 +5,15 @@ import { packBodiesSliced, columnsTransferList, type OrbitColumns } from './soa'
 
 /*
  * OrbitWorkerPool — offloads per-frame Kepler solves for asteroid zone and
- * spacecraft point clouds to a fixed-size worker pool.
+ * spacecraft point clouds to a fixed-size worker pool (see {@link './worker.ts'}).
  *
- * Protocol (see {@link './worker.ts'}):
- *   - rewireOne / unwireOne: ship one group's SoA element columns to its
- *     assigned worker, or drop a group. Called per-zone whenever the
- *     ContextManager dirty markers say a group's bodies or skip-set changed.
- *   - tick: per frame, sends the current jd, basis, and each group's parent
- *     position; the worker writes basis-relative Float32 positions into a
- *     pre-allocated back-buffer and transfers it back. On result the buffer
- *     becomes the new front (bound to geometry); old front becomes the new
- *     back. The caller rebinds the geometry attribute to the new front via
- *     the {@link setResultHandler} callback.
+ * rewireOne/unwireOne ship or drop a group's SoA columns on its assigned
+ * worker when ContextManager dirty markers fire. tick sends jd/basis/parent
+ * per group; each worker writes into a pre-allocated back-buffer, which
+ * becomes the new front (bound to geometry) on return via {@link setResultHandler}.
  *
- * Double-buffering: each group holds one back-buffer; while the worker is
- * processing, back is null and the group is skipped on that frame's tick.
+ * Double-buffered: while a group's worker is busy, back is null and that
+ * group is skipped on the frame's tick.
  */
 
 interface GroupState {
@@ -141,16 +135,14 @@ export class OrbitWorkerPool {
 
 	/**
 	 * Add or replace one group's SoA element columns. Empty bodies → unwire.
-	 * Async: the pack yields to the event loop every few ms (main belt is >1M
-	 * rows), so callers must not rewire the same id concurrently — the
-	 * point-cloud system serializes rebuild passes for this reason.
+	 * Async: the pack yields every few ms (main belt is >1M rows), so callers
+	 * must not rewire the same id concurrently — the point-cloud system
+	 * serializes rebuild passes for this reason.
 	 *
-	 * We do NOT allocate a fresh back when one is in flight: doing so would
-	 * let a new tick dispatch before the old one returns, and the old
-	 * result would then be paired with the new dispatch's pendingBasis /
-	 * pendingParent in onMessage — placing the cloud at a wrong location.
-	 * Letting back stay null defers the next dispatch until the in-flight
-	 * tick lands naturally.
+	 * Never allocates a fresh back while one is in flight: that would let a new
+	 * tick dispatch before the old result returns and get paired with the wrong
+	 * pendingBasis/pendingParent, misplacing the cloud. Leaving back null defers
+	 * dispatch until the in-flight tick lands.
 	 */
 	async rewireOne(
 		id: string,
@@ -172,10 +164,9 @@ export class OrbitWorkerPool {
 	}
 
 	/**
-	 * Wire a group whose `OrbitColumns` are already built (the columnar minor
-	 * path — {@link MinorBucket.buildWorkerGroups} fills the SoA directly from
-	 * the binary, no `PositionedBody[]` round-trip). Same buffer/double-buffer
-	 * bookkeeping as {@link rewireOne}, minus the pack.
+	 * Wire a group whose `OrbitColumns` are already built (columnar minor path —
+	 * {@link MinorBucket.buildWorkerGroups} fills SoA directly from the binary,
+	 * skipping the `PositionedBody[]` round-trip). Same bookkeeping as {@link rewireOne}, minus the pack.
 	 */
 	rewireOneCols(id: string, cols: OrbitColumns, workerHint: number): void {
 		if (this.workers.length === 0) return;
@@ -214,9 +205,8 @@ export class OrbitWorkerPool {
 			}
 		}
 
-		// If a tick is in flight (prev.back === null), preserve its pending
-		// dispatch state so the returning result is paired with the basis /
-		// parent it was actually computed under — see comment above re: back.
+		// If a tick is in flight, preserve pending dispatch state so the result
+		// pairs with the basis/parent it was actually computed under.
 		const inFlight = !!prev && prev.back === null;
 		this.groups.set(id, {
 			workerIdx,
@@ -252,10 +242,9 @@ export class OrbitWorkerPool {
 		});
 	}
 
-	/** Per-frame dispatch. Skips groups with no free back-buffer (worker still on
-	 *  last tick — they catch up next frame) and groups absent from `parents` (the
-	 *  caller omits hidden clouds). `requiredFlags` (0 = no mask) is the NEO/PHA
-	 *  filter applied to groups with `applyFlagFilter`. */
+	/** Per-frame dispatch. Skips groups with no free back-buffer (still on last
+	 *  tick; catch up next frame) or absent from `parents` (hidden clouds).
+	 *  `requiredFlags` (0 = none) is the NEO/PHA filter for `applyFlagFilter` groups. */
 	tick(jd: number, basis: Vec3, parents: Map<string, Vec3>, requiredFlags: number = 0): void {
 		const perWorker: {
 			id: string;

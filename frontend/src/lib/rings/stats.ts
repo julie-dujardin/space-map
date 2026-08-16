@@ -9,28 +9,26 @@ import { formatNumber, formatUnit } from '$lib/format/quantities';
 
 /** Mass with the hedges its source published.
  *
- * Symbols rather than unit names ("15.4 Zg"): a third of the drawer is not
- * wide enough for "15.4 zettagrams". The note carries the published ± and
- * nothing else — every other hedge is already in the value.
+ * Symbols not unit names ("15.4 Zg"): the drawer isn't wide enough for
+ * "zettagrams". `note` carries only the published ± — every other hedge is
+ * already in the value.
  */
 export function formatRingMass(mass: RingMass): {
-	/** The figure and its qualifier, without the unit — the Overview hangs the
-	 *  ± off this alone, since the unit is not what the ± is about. */
+	/** Figure + qualifier, no unit — the Overview hangs the ± off this alone. */
 	number: string;
 	unit: string;
 	note?: string;
 } {
-	// The upper bound picks the unit and the lower end is expressed in it: a
-	// range whose ends chose their own units is two quantities, not one.
+	// Upper bound picks the unit; lower end is expressed in it, so a range
+	// isn't two quantities with two units.
 	const reference = mass.high_kg ?? mass.low_kg;
 	const scaled = convertMass(reference);
 	const perKg = reference / scaled.value;
 	const unit = formatUnit(scaled.unit, true);
 	const inUnit = (kg: number) => formatNumber(kg / perKg);
 
-	// Same grammar as `formatOpticalDepth`, the other hedged number in the
-	// panel: a bound reads "< x", a range needs no hedge of its own, and a
-	// single figure the source rounded to the decade carries "≈".
+	// Same grammar as formatOpticalDepth: "< x" for a bound, "≈ x" for a
+	// rounded single figure, a bare range needs no hedge.
 	const low = inUnit(mass.low_kg);
 	const number = mass.upper_limit
 		? `< ${low}`

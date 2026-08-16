@@ -1,20 +1,16 @@
 /**
- * Positions a body's temperature on a scale shared by every body, so a reading
- * is legible as "cold/warm/hot for the solar system" and not just a number.
- *
- * Two regimes rather than one axis: planets and stars are four orders of
- * magnitude apart, and warping a single axis to fit both would flatten the
- * whole planetary range into a sliver. All maths is in kelvin — °C goes
- * negative, which the stellar log segment cannot take.
+ * Positions a body's temperature on a scale shared by every body, so a
+ * reading reads as "cold/warm/hot for the solar system", not just a number.
+ * Two regimes, not one axis: planets and stars span four orders of
+ * magnitude, and one axis would flatten the planetary range to a sliver.
+ * Kelvin throughout — °C goes negative, which the stellar log segment can't.
  */
 
 export type TemperatureRegime = 'planetary' | 'stellar';
 
-/**
- * Absolute zero to a round ceiling above Venus (737 K), the hottest surface we
- * carry. Fixed rather than data-derived so the axis doesn't shift under a
- * Wikidata refresh, and so nothing sits exactly on an end.
- */
+/** Absolute zero to a round ceiling above Venus (737 K, hottest surface we
+ *  carry). Fixed, not data-derived, so the axis doesn't shift under a
+ *  Wikidata refresh and nothing sits exactly on an end. */
 const PLANETARY_DOMAIN: readonly [number, number] = [0, 1000];
 
 /** Five decades, log: M-dwarf photospheres through the hottest stellar cores. */
@@ -34,11 +30,9 @@ const PLANETARY_STOPS: readonly (readonly [number, string])[] = [
 	[1000, '#b91c1c']
 ];
 
-/**
- * Blackbody colour (Planck → CIE 1931 → sRGB, normalised to constant
- * brightness). Saturates to blue-white past ~40 kK, which is the real
- * behaviour: hotter emitters do not look any bluer to the eye.
- */
+/** Blackbody colour (Planck → CIE 1931 → sRGB, normalised to constant
+ *  brightness). Saturates to blue-white past ~40 kK — real behaviour;
+ *  hotter emitters don't look any bluer to the eye. */
 const STELLAR_STOPS: readonly (readonly [number, string])[] = [
 	[1000, '#ff2f00'],
 	[1500, '#ff6a00'],

@@ -1,14 +1,11 @@
 /**
  * The rendered rings' own radial profiles, read back for the Rings tab chart.
  *
- * The scene loads `v1/rings/{body}/{bundle}/strip.webp` — one row per channel
- * across the annulus — to texture the ring mesh; the bundle list comes off the
- * body's own global block, which carries it for system and standalone bodies
- * alike. The chart draws the same
- * strips, so the panel shows the rings as they look rather than as flat
- * optical-depth bands. Only radii a bundle covers get a profile; the chart
- * falls back to the catalogue's optical depths elsewhere (Saturn's Phoebe ring
- * is catalogued and never drawn).
+ * Reuses the scene's `v1/rings/{body}/{bundle}/strip.webp` textures (one row
+ * per channel across the annulus) so the chart shows the rings as they look,
+ * not as flat optical-depth bands. Only radii a bundle covers get a profile;
+ * elsewhere the chart falls back to the catalogue (e.g. Saturn's Phoebe ring,
+ * catalogued but never rendered).
  */
 
 import { versionedUrl } from '$lib/fetch/data-base';
@@ -19,8 +16,7 @@ export interface RingStripProfile {
 	outer: number;
 	/** Normal optical depth per sample, inner → outer. */
 	tau: Float32Array;
-	/** sRGB tint per sample (3 bytes each), normalised so the bundle's
-	 *  brightest sample reads at full brightness. */
+	/** sRGB tint per sample (3 bytes each), normalised to the bundle's brightest sample. */
 	rgb: Uint8ClampedArray;
 }
 
@@ -32,8 +28,8 @@ interface StripMeta {
 	strip_rows: Record<string, number>;
 }
 
-/** Decoded profiles per body id — a Saturn strip is 13,177 samples wide and
- *  the panel is opened and closed far more often than the body changes. */
+/** Decoded profiles per body id — a Saturn strip is 13,177 samples wide, and
+ *  the panel opens/closes far more often than the body changes. */
 const cache = new Map<string, Promise<RingStripProfile[]>>();
 
 function luminance(r: number, g: number, b: number): number {
@@ -74,19 +70,17 @@ async function decode(bodyId: string, meta: StripMeta): Promise<RingStripProfile
 	for (let i = 0; i < n; i++) {
 		const t = (rows.transparency * n + i) * 4;
 		const b = (back * n + i) * 4;
-		// Stored transparency is exp(-tau) normalised to the bundle's own range;
-		// undo the normalisation to recover the physical optical depth, which is
-		// what the chart's ramp and the catalogue's numbers both speak in.
+		// Stored transparency is exp(-tau) normalised to the bundle's range; undo
+		// it to recover physical τ, the unit the chart and catalogue both use.
 		const opacity = Math.min(1, (1 - pixels[t] / 255) * scale);
 		tau[i] = opacity >= 1 ? Infinity : -Math.log(1 - opacity);
 		brightness[i] = luminance(pixels[b], pixels[b + 1], pixels[b + 2]) / 255;
 		if (brightness[i] > peak) peak = brightness[i];
 	}
-	// Brightness relative to the bundle's own brightest sample, lifted off the
-	// floor: Uranus' ε ring outshines the dust sheet beside it by two orders of
-	// magnitude, and a chart that reproduced that would draw the sheet as empty
-	// space. The opacity the chart pairs this with still carries how
-	// substantial the material is.
+	// Brightness relative to the bundle's brightest sample, lifted off a floor —
+	// Uranus' ε ring outshines its dust sheet by two orders of magnitude, and a
+	// literal reproduction would draw the sheet as empty. Opacity still carries
+	// how substantial the material is.
 	const FLOOR = 0.35;
 	for (let i = 0; i < n; i++) {
 		const c = (rows.color * n + i) * 4;
@@ -105,13 +99,12 @@ async function decode(bodyId: string, meta: StripMeta): Promise<RingStripProfile
 }
 
 async function load(bodyId: string): Promise<RingStripProfile[]> {
-	// The body's own bundles, not its system file's: the ringed small bodies
-	// belong to no system, and the panel has already fetched this detail to
-	// render at all, so it costs nothing here.
+	// The body's own bundles, not its system file's — ringed small bodies
+	// belong to no system, and the detail fetch is free here (already needed to render).
 	const detail = await fetchObjectDetail(bodyId, false);
 	const bundles = (detail.global?.rings ?? []) as StripMeta[];
-	// A ringed body with no render bundles is the export being stale, not a
-	// body without rings — the catalogue is what put the panel on screen.
+	// No render bundles means a stale export, not a ringless body — the
+	// catalogue is what put the panel on screen.
 	if (!bundles.length) console.warn(`Ring strips for ${bodyId}: no ring bundles on the object`);
 	const profiles: RingStripProfile[] = [];
 	for (const bundle of bundles) {
@@ -119,19 +112,17 @@ async function load(bodyId: string): Promise<RingStripProfile[]> {
 			const profile = await decode(bodyId, bundle);
 			if (profile) profiles.push(profile);
 		} catch (err) {
-			// The chart's optical-depth bands cover this radius range anyway, so
-			// a missing strip costs detail, not correctness.
+			// Optical-depth bands cover this range anyway — missing detail, not correctness.
 			console.warn(`Ring strip ${bodyId}/${bundle.strip} unavailable:`, err);
 		}
 	}
 	return profiles;
 }
 
-/** The profile across a radius interval, since one chart pixel can swallow
- *  hundreds of samples. The densest sample wins rather than the mean: Uranus'
- *  ε ring is a dozen samples of τ ≈ 1 among a hundred of dust, and an average
- *  would erase the ring the row points at. Null where no bundle covers the
- *  interval — the caller falls back to the catalogue's optical depths. */
+/** Profile across a radius interval (one chart pixel can swallow hundreds of
+ *  samples). Densest sample wins, not the mean — averaging would erase a
+ *  narrow ring like Uranus' ε (a dozen τ≈1 samples among a hundred of dust).
+ *  Null where no bundle covers the interval. */
 export function sampleProfiles(
 	profiles: readonly RingStripProfile[],
 	lo: number,
@@ -150,8 +141,7 @@ export function sampleProfiles(
 		if (last < first || first >= n || last < 0) continue;
 		covered = true;
 		for (let i = Math.max(0, first); i <= Math.min(n - 1, last); i++) {
-			// An opaque sample has infinite τ; clamp it to something the opacity
-			// ramp can compare, well past the densest ring anyone has measured.
+			// Clamp opaque (τ=∞) samples to a comparable value past the densest measured ring.
 			const sample = Number.isFinite(profile.tau[i]) ? profile.tau[i] : 10;
 			if (sample <= tau) continue;
 			tau = sample;

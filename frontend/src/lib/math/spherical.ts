@@ -25,9 +25,9 @@ function applyQuat(
 }
 
 /**
- * Camera-relative-to-target → spherical degrees.
- * When `bodyQuat` is given, lat/lon are body-fixed (lat=0, lon=0 ↔ prime meridian
- * on the equator, lon increases east). When omitted, they're scene-frame (Y-up).
+ * Camera-relative-to-target → spherical degrees. With `bodyQuat`, lat/lon
+ * are body-fixed (0,0 = prime meridian on equator, east positive);
+ * otherwise scene-frame (Y-up).
  */
 export function cartesianToSpherical(
 	cam: [number, number, number],
@@ -82,9 +82,9 @@ export function sphericalToCartesian(
 }
 
 /**
- * Scene-frame camera offset (from the render origin) placing the camera on the far
- * side of `focus` from `toward`, lifted `elevationDeg` above the ecliptic (+Y) — so
- * looking at `focus` also looks toward `toward`. Falls back to +Z when coincident.
+ * Scene-frame camera offset placing the camera on the far side of `focus`
+ * from `toward`, lifted `elevationDeg` above the ecliptic (+Y) — so looking
+ * at `focus` also looks toward `toward`. Falls back to +Z when coincident.
  */
 export function offsetFacing(
 	focus: [number, number, number],

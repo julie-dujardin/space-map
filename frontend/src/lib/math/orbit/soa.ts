@@ -17,17 +17,16 @@ export const KIND_PARABOLIC = 2;
 export const KIND_SGP4 = 3;
 
 /**
- * SoA view of one point-cloud group, packed for a worker to solve in a tight loop.
+ * SoA view of one point-cloud group, packed for a worker's tight solve loop.
  *
  * `kind[i]` selects the solver per body:
  *   0 = skip (promoted, a≈0 degenerate, etc.)
- *   1 = Keplerian: uses a, e, i, om, w, ma, n, epoch
- *   2 = Parabolic: uses e, i, om, w, epoch, q, tp
- *   3 = SGP4: uses satrec[i] (plain JS array, structured-cloned across the
- *       worker boundary since SatRec is pure data and not transferable)
+ *   1 = Keplerian: a, e, i, om, w, ma, n, epoch
+ *   2 = Parabolic: e, i, om, w, epoch, q, tp
+ *   3 = SGP4: satrec[i] (structured-cloned; SatRec is plain data, not transferable)
  *
- * Arrays are length `count`. Use Float64 throughout — preserves precision for TNO
- * epochs and near-parabolic eccentricities; output positions are the only Float32.
+ * Arrays are length `count`, Float64 throughout — precision for TNO epochs and
+ * near-parabolic e; output positions are the only Float32.
  */
 export interface OrbitColumns {
 	count: number;
@@ -72,12 +71,10 @@ export interface OrbitColumns {
 }
 
 /**
- * Pack AoS PositionedBody list into SoA columns for worker consumption.
- * Bodies whose IDs are in `skip` (e.g. promoted to full meshes) are tagged
- * KIND_SKIP. Degenerate Keplerian entries (a=0 with no q/tp) are also skipped.
- * Returns columns sized to bodies.length; order matches `bodies` exactly so
- * main-thread callers can map back by index. `applyFlagFilter` opts the group
- * into the per-tick NEO/PHA mask (leave false for Earth sats / probes).
+ * Pack an AoS PositionedBody list into SoA columns for worker consumption.
+ * IDs in `skip` and degenerate Keplerian entries (a=0, no q/tp) get KIND_SKIP.
+ * Columns are sized and ordered to match `bodies` for index-based mapping;
+ * `applyFlagFilter` opts the group into the per-tick NEO/PHA mask.
  */
 /** Pack one body into row `idx` of `cols`. Returns false for KIND_SKIP rows
  *  (skipped / degenerate) so callers can exclude them from validity widening. */
@@ -218,17 +215,11 @@ export function allocColumns(count: number): OrbitColumns {
 }
 
 /**
- * Write basis-relative Float32 positions for every body in `cols` into `out`.
- * Positions are computed as (parent + offset − basis), all in AU_SCALE scene units.
- * Output layout: `[x0, y0, z0, x1, y1, z1, ...]`. Skipped bodies and bodies with
- * non-finite offsets get (NaN, NaN, NaN) — caller should track `writtenCount`
- * and use `setDrawRange` rather than relying on the raw buffer length.
- *
- * Returns the number of valid (non-skipped, finite) bodies written to contiguous
- * slots at the *start* of `out`. This mirrors the current
- * {@link writeMinorPointCloud} behaviour where skipped bodies don't occupy a
- * slot — later bodies slide down — and callers use setDrawRange to render only
- * the packed prefix.
+ * Write basis-relative Float32 positions (parent + offset − basis, AU_SCALE
+ * units) for every body in `cols` into `out`, packed contiguously at the
+ * *start* — skipped/non-finite bodies are dropped, not zero-filled, mirroring
+ * {@link writeMinorPointCloud}. Returns the count written; callers must use
+ * `setDrawRange` with it rather than the raw buffer length.
  */
 export function writePositions(
 	cols: OrbitColumns,
@@ -245,9 +236,8 @@ export function writePositions(
 	outIds: Uint8Array | null = null,
 	requiredFlags: number = 0
 ): number {
-	// Bail on the whole group when jd sits outside the chunk's validity window
-	// — avoids a full SGP4 sweep that would error on every row and flood the
-	// console. Returning 0 hides the cloud via setDrawRange.
+	// Bail when jd is outside the chunk's validity window — avoids a full SGP4
+	// sweep that would error every row and flood the console; 0 hides via setDrawRange.
 	if (jd < cols.validityStart || jd > cols.validityEnd) return 0;
 	const {
 		count,
@@ -270,9 +260,8 @@ export function writePositions(
 	const filterActive = requiredFlags !== 0 && cols.applyFlagFilter;
 	const pickBase = cols.pickBase;
 	const capacity = (out.length / 3) | 0;
-	// Hide bodies that don't exist yet at this jd (undiscovered / not launched).
-	// visibleFromDays is days from J2000; NaN (no gating) makes the compare
-	// false, so those rows always render.
+	// Hide bodies not yet existing at this jd (undiscovered/not launched).
+	// visibleFromDays is days from J2000; NaN never gates, so those rows always render.
 	const jdDays = jd - J2000_JD;
 	let writeIdx = 0;
 

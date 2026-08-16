@@ -1,28 +1,22 @@
 /**
  * Hash-bucket point-cloud bodies into subgroups so {@link OrbitWorkerPool}
- * can spread one zone's per-frame Kepler solves across all workers instead of
- * pinning the whole zone to one worker.
- *
+ * spreads one zone's per-frame Kepler solves across all workers, not just one.
  * Splitting only pays off above a minimum bodies-per-bucket — below that the
- * per-Points GPU upload (one `bufferSubData` per worker result) costs more
- * than the parallel-solve savings. Small groups stay as a single bucket
- * routed to a name-hashed worker so they still distribute evenly across the
- * pool without inflating the Points count.
+ * per-Points GPU upload costs more than the parallel-solve saves, so small
+ * groups stay a single bucket on a name-hashed worker.
  */
 
 import type { PositionedBody } from '$lib/types/objects';
 import { yieldToMain } from '$lib/yield';
 
 /**
- * Minimum bodies per bucket for the split path to be worth its overhead.
- * Below `workerCount * MIN_BODIES_PER_BUCKET` total bodies, the group stays
- * unsplit (1 bucket on 1 name-hashed worker).
+ * Minimum bodies per bucket for splitting to be worth its overhead. Below
+ * `workerCount * MIN_BODIES_PER_BUCKET`, the group stays unsplit (1 bucket,
+ * 1 name-hashed worker).
  *
- * Profiled at 100/200/500/1000/2000 on K=8: 500 is the U-curve sweet spot.
- * Lower (100-200) inflates per-Points GPU upload work on the main thread
- * (rAF median ~2-3 ms vs 0.9 ms at 500); higher (1000-2000) lets medium
- * zones go single-worker and worker spread climbs (~4% at 2000 vs ~1.7% at
- * 500).
+ * Profiled at 100/200/500/1000/2000 on K=8: 500 is the U-curve sweet spot —
+ * lower inflates GPU upload (rAF ~2-3ms vs 0.9ms), higher pushes medium
+ * zones single-worker and worsens spread (~4% vs ~1.7%).
  */
 export const MIN_BODIES_PER_BUCKET = 600;
 
@@ -47,15 +41,14 @@ function partitionByHash(bodies: PositionedBody[], k: number): PositionedBody[][
 export interface GroupPartition {
 	/** Either 1 bucket (small group, no split) or `workerCount` buckets (split). */
 	buckets: PositionedBody[][];
-	/** Subgroup i should be wired with workerHint `(baseWorker + i) % workerCount`,
-	 *  so small unsplit groups distribute across the pool by name hash and big
-	 *  split groups span all K workers starting from `baseWorker`. */
+	/** Subgroup i wires to workerHint `(baseWorker + i) % workerCount` — unsplit
+	 *  groups spread by name hash; split groups span all K workers from `baseWorker`. */
 	baseWorker: number;
 }
 
-/** Partition a zone/parent group's bodies for the worker pool. Caller is
- *  responsible for iterating `workerCount` subgroup slots (not `buckets.length`)
- *  so stale subgroups get unwired when a group crosses the split threshold. */
+/** Partition a zone/parent group's bodies for the worker pool. Caller must
+ *  iterate `workerCount` slots, not `buckets.length`, so stale subgroups
+ *  unwire when a group crosses the split threshold. */
 export function partitionForWorkers(
 	name: string,
 	bodies: PositionedBody[],

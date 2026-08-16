@@ -9,12 +9,9 @@ const SIN_EPS = Math.sin(EARTH_OBLIQUITY_DEG * DEG2RAD);
 
 /**
  * Rotate orbital-plane position (xOrb, yOrb) to Three.js coordinates.
- * Shared by position computation and curve generators.
- *
- * When `equatorial` is true, i/om/w are interpreted in Earth's mean equator
- * of J2000 (TEME, as used by TLEs) and the result is rotated by the obliquity
- * onto the ecliptic — otherwise Earth-orbit satellites would align to the
- * ecliptic's poles instead of Earth's.
+ * When `equatorial`, i/om/w are Earth mean-equator-of-J2000 (TEME, as in
+ * TLEs) and get rotated by the obliquity onto the ecliptic — otherwise
+ * Earth satellites would align to the ecliptic's poles, not Earth's.
  */
 export function orbitalToThreeJS(
 	xOrb: number,
@@ -55,13 +52,10 @@ export function orbitalToThreeJS(
 }
 
 /**
- * Return a copy of `el` with `om`/`w` advanced to `jd` using the secular
- * drift rates. When the rates are absent or zero the input is returned as-is.
- *
- * Mirrors the propagation `orbitalElementsToPositionJD` does internally so
- * curve generators (which draw a static ellipse) can render the *current*
- * orbit plane rather than the chunk midpoint's. Curves built this way still
- * go stale as `jd` advances — callers must re-invoke when drift accumulates.
+ * Copy of `el` with `om`/`w` advanced to `jd` via secular drift rates
+ * (input returned as-is if rates are absent/zero). Mirrors what
+ * `orbitalElementsToPositionJD` does internally, so curve generators can
+ * render the *current* orbit plane — re-invoke as `jd` advances or it goes stale.
  */
 export function propagateOrbitAngles(el: OrbitalElements, jd: number): OrbitalElements {
 	const { omDot, wDot, om, w, epoch } = el;
@@ -75,13 +69,9 @@ export function propagateOrbitAngles(el: OrbitalElements, jd: number): OrbitalEl
 }
 
 /**
- * Convert orbital elements to Cartesian position [x, y, z] in Three.js coordinates.
- *
- * Input: elements with angles in degrees, semi-major axis in AU.
- * Output: scaled Three.js coordinates where ecliptic plane = XZ plane, Y = up (north ecliptic pole).
- *
- * Supports elliptical (e < 1) and hyperbolic (e >= 1) orbits.
- * For hyperbolic orbits, a is negative (JPL convention).
+ * Orbital elements (angles in degrees, a in AU) → Three.js position, ecliptic
+ * plane = XZ, Y = north ecliptic pole. Elliptical (e < 1) or hyperbolic
+ * (e ≥ 1, a negative per JPL convention).
  */
 export function orbitalElementsToPosition(
 	el: OrbitalElements,
@@ -109,21 +99,18 @@ export function orbitalElementsToPositionJD(
 	// fit; other sources leave them undefined and the helper is a no-op.
 	const { om: omPropagated, w: wPropagated } = propagateOrbitAngles(el, jd);
 
-	// Truly parabolic comets (e ≈ 1, unbound) come through parabolicToPositionJD
-	// with explicit q/tp and bypass this function. Bound orbits with e rounded
-	// to 1 in float32 (e.g. the SPICE Sun: a=0.003 AU, e≈1−7e−10) go through
-	// the elliptic branch below with eClamped — stable for all M and gives a
-	// bounded r. Barker must not run on bound orbits: it assumes r → ∞ away
-	// from perihelion, producing multi-AU flickers each time the body
-	// (e.g. the Sun) crosses the near-perihelion band in mean anomaly.
+	// Parabolic comets (e≈1, unbound) bypass this via parabolicToPositionJD's
+	// q/tp. Bound orbits with e rounded to 1 in float32 (e.g. SPICE Sun:
+	// a=0.003 AU, e≈1−7e−10) use the elliptic branch below with eClamped,
+	// stable and bounded for all M. Barker must not run on bound orbits — it
+	// assumes r→∞ away from perihelion, causing multi-AU flickers there.
 
 	let nu: number;
 	let r: number;
 
 	if (e < 1 || a > 0) {
-		// Elliptical orbit (or e rounded-to-1 on a closed orbit per JPL convention).
-		// Clamp e just below 1 so 1-e² stays positive and the solver doesn't divide
-		// by zero at perihelion. Away from perihelion this is numerically harmless.
+		// Elliptical (or e rounded-to-1 on a closed orbit, JPL convention). Clamp e
+		// just below 1 so 1-e² stays positive and the solver avoids /0 at perihelion.
 		const eClamped = Math.min(e, 1 - 1e-7);
 		const E = solveKepler(M, eClamped);
 		const sinNu = (Math.sqrt(1 - eClamped * eClamped) * Math.sin(E)) / (1 - eClamped * Math.cos(E));

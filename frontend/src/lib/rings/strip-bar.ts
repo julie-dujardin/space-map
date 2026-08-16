@@ -1,27 +1,24 @@
 /**
- * The ring plane as a picture: the same rendered profiles the Rings tab charts,
- * laid out along the horizontal and stripped of the axis, the labels and the
- * scale breaks. It backs the tiles on the Ring Systems page for the bodies no
- * photograph of the rings exists for.
+ * The ring plane as a picture: the Rings tab's rendered profiles, laid out
+ * horizontally with no axis, labels, or scale breaks. Backs the tiles on the
+ * Ring Systems page for bodies with no photograph.
  *
- * The scale is linear and unbroken, unlike the panel's: a bar with nothing to
- * read the axis off would state a radius ratio it does not have. What that
- * costs is Saturn's main rings taking a sixth of the bar and the E ring the
- * rest, which is the shape of the system.
+ * Scale is linear and unbroken, unlike the panel's — a bar with no axis to
+ * read can't imply a ratio it doesn't show. Cost: Saturn's main rings take a
+ * sixth of the bar, the E ring the rest.
  */
 
 import type { RingFeature } from '$lib/fetch/objects/object-data';
 import { opacity, span, tauOpacity } from './catalog';
 import { sampleProfiles, type RingStripProfile } from './strip';
 
-/** Samples across the bar. The tile stretches it to whatever width it has, so
- *  this is resolution rather than layout — a little above the widest tile. */
+/** Sample resolution, not layout — the tile stretches this to its own width.
+ *  A little above the widest tile. */
 const WIDTH = 256;
-/** Samples a named feature keeps even where the profile averages it away:
- *  Uranus' ε ring is 58 km of a 65,000 km bar and would otherwise vanish. */
+/** Minimum pixels a named feature keeps so it can't vanish into averaging:
+ *  Uranus' ε ring is 58 km of a 65,000 km bar. */
 const MIN_MARK = 3;
-/** Untinted material — a catalogued band no bundle draws has no colour of its
- *  own. Matches the panel's strip. */
+/** Untinted fallback for catalogued bands no bundle draws. Matches the panel's strip. */
 const PALE: readonly [number, number, number] = [241, 245, 249];
 
 interface Band {
@@ -31,9 +28,8 @@ interface Band {
 }
 
 /** Radial window the bar covers: what the render bundles actually draw, not
- *  what the catalogue lists. Saturn's Phoebe ring sits twelve million km out
- *  and nothing renders it, so including it would squeeze every visible ring
- *  into the first percent of the bar. */
+ *  the full catalogue — else outliers like Saturn's Phoebe ring (12M km out,
+ *  never rendered) squeeze every visible ring into the first percent. */
 function extent(
 	profiles: readonly RingStripProfile[],
 	bands: readonly Band[]
@@ -48,8 +44,7 @@ function extent(
 }
 
 /** A 1-pixel-tall PNG of the body's rings, inner edge at the left, or null
- *  when nothing is known to draw. The caller stretches it over the tile, or
- *  over the stretch of a wider chart `window` names. */
+ *  if nothing is known to draw. `window`, if given, overrides the drawn extent. */
 export function paintRingBar(
 	profiles: readonly RingStripProfile[],
 	features: Record<string, RingFeature> | undefined,
@@ -81,10 +76,9 @@ export function paintRingBar(
 		let [red, green, blue] = PALE;
 		let alpha = sample ? tauOpacity(sample.tau) : 0;
 		if (alpha > 0) [red, green, blue] = sample!.rgb;
-		// A bundle whose eight bits quantise its faintest material away says as
-		// little as no bundle at all: Uranus' ν and µ rings sit four decades under
-		// the ε ring its strip is scaled for and come back empty. The catalogue
-		// has a number for them.
+		// 8-bit quantisation loses faint material entirely (Uranus' ν and µ rings
+		// sit 4 decades under the ε ring the strip is scaled for) — fall back to
+		// the catalogue's number.
 		if (!alpha) {
 			const mid = (lo + hi) / 2;
 			for (const band of bands) if (mid >= band.inner && mid <= band.outer) alpha = band.alpha;
@@ -94,9 +88,8 @@ export function paintRingBar(
 		image.data[x * 4 + 2] = blue;
 		image.data[x * 4 + 3] = Math.round(alpha * 255);
 	}
-	// Every named feature keeps a mark of its own, at the catalogue's optical
-	// depth — the box filter above averages a narrow ring into the empty space
-	// around it, which is most of what the small bodies have.
+	// Every named feature keeps a mark at the catalogue's optical depth — the
+	// box filter above averages narrow rings into the empty space around them.
 	for (const band of bands) {
 		const from = (band.inner - min) / perPixel;
 		const to = (band.outer - min) / perPixel;
@@ -106,7 +99,7 @@ export function paintRingBar(
 		for (let x = first; x < first + MIN_MARK; x++) {
 			const at = x * 4;
 			if (image.data[at + 3] >= alpha) continue;
-			// Only a pixel the profile never reached needs a colour of its own.
+			// Only recolour pixels the profile never touched.
 			if (!image.data[at + 3]) [image.data[at], image.data[at + 1], image.data[at + 2]] = PALE;
 			image.data[at + 3] = alpha;
 		}

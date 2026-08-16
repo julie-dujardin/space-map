@@ -5,8 +5,7 @@ import * as m from '$lib/paraglide/messages.js';
 export interface RingRow {
 	slug: string;
 	feature: RingFeature;
-	/** Radial extent in km. Equal bounds for the features published as a bare
-	 *  radius (the co-orbital rings, whose "width" nobody has measured). */
+	/** Radial extent in km; equal bounds where only a radius is published. */
 	inner: number;
 	outer: number;
 	children: string[];
@@ -27,8 +26,7 @@ export function buildRows(features: Record<string, RingFeature>): Map<string, Ri
 		rows.set(slug, { slug, feature, inner, outer, children: [] });
 	}
 	for (const row of rows.values()) {
-		// A parent that isn't in the map would orphan the row out of the tree
-		// entirely, so treat it as a root rather than dropping it.
+		// Missing parent → treat as a root rather than dropping the row.
 		const parent = row.feature.parent ? rows.get(row.feature.parent) : undefined;
 		if (parent) parent.children.push(row.slug);
 	}
@@ -55,8 +53,7 @@ const KIND_COUNTS: Record<RingFeatureKind, (i: { count: number }) => string> = {
 	dust: m.rings_count_dust
 };
 
-/** "4 gaps · 4 ringlets" — a set of features by kind rather than a bare total,
- *  since a gap and a ringlet inside it are different things. */
+/** "4 gaps · 4 ringlets" — by kind, not a bare total, since a gap and the ringlet inside it are different things. */
 export function kindSummary(rows: Map<string, RingRow>, slugs: string[]): string {
 	const counts = new Map<RingFeatureKind, number>();
 	for (const slug of slugs) {
@@ -70,12 +67,9 @@ export function childSummary(rows: Map<string, RingRow>, slug: string): string {
 	return kindSummary(rows, rows.get(slug)?.children ?? []);
 }
 
-/** Optical depth mapped to 0–1 opacity across eight decades.
- *
- * Logarithmic because the range is: Saturn's B ring is τ ≈ 5 and the
- * Janus/Epimetheus ring τ ≈ 1e-7, so a linear ramp would draw everything but
- * the main rings as empty black. Shared with the rendered ring strips, so a
- * measured profile and a catalogued number read at the same darkness. */
+/** τ mapped to 0–1 opacity, log-scaled since τ spans ~8 decades (Saturn's B
+ *  ring ≈5, Janus/Epimetheus ≈1e-7) — linear would leave all but the main
+ *  rings black. Shared with the rendered strips so both read the same darkness. */
 export function tauOpacity(tau: number): number {
 	if (!(tau > 0)) return 0;
 	const decades = (Math.log10(tau) + 8) / 9;
@@ -106,10 +100,8 @@ export function formatOpticalDepth(tau: NonNullable<RingFeature['optical_depth']
 	const digits = (v: number) => {
 		if (v === 0) return '0';
 		if (v >= 0.01 && v < 10000) return String(v);
-		// Gaps and dust bands live at τ ~1e-7; an exponent renders as a real
-		// superscript rather than the "1e-7" the platform formatter emits. Two
-		// significant figures, because the sources publish them — Uranus' ν ring
-		// is 5.6e-6, and one figure would restate it as 6e-6.
+		// Superscript exponent, not "1e-7": gaps and dust live at τ ~1e-7. Two
+		// sig figs, as sources publish them (Uranus' ν ring is 5.6e-6, not 6e-6).
 		const [mantissa, exponent] = v.toExponential(1).split('e');
 		const value = mantissa.replace(/\.0$/, '');
 		return `${value}\u00d710${[...exponent].map((c) => SUPERSCRIPT[c] ?? c).join('')}`;
