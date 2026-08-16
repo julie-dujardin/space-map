@@ -233,8 +233,9 @@ export class TravelPanelState {
 	 *  get an answer; this is what makes asking again free. */
 	#assistFor: string | null = null;
 	/** The last solve's inputs, so a hand-picked point is priced the same way the
-	 *  grid it was read off was. */
-	#pricing: { origin: TravelBody; target: TravelBody; options: RouteOptions } | null = null;
+	 *  grid it was read off was. Reactive because the ends in it are also the ones
+	 *  the trajectory is drawn from — see {@link pricedEnds}. */
+	#pricing = $state<{ origin: TravelBody; target: TravelBody; options: RouteOptions } | null>(null);
 	/** A pick that arrived before there was a grid to price it against — off a
 	 *  shared link — held until the first solve lands. */
 	#pendingPick = $state<TripPick | null>(null);
@@ -264,6 +265,26 @@ export class TravelPanelState {
 	get craftKnown(): boolean {
 		return this.vehicleId === null || this.vehiclesReady;
 	}
+
+	/**
+	 * The two ends the standing routes were priced against, which for anything
+	 * that does not keep still are not the ends the caller handed in: a refined
+	 * pass describes each of them at the trip's own dates.
+	 *
+	 * Null until a solve lands. Everything drawn from a route has to come off
+	 * these — geometry rebuilt from another description of the same body is a
+	 * picture of a different trip, and where the two disagree far enough there is
+	 * no arc to draw at all.
+	 */
+	get pricedEnds(): { origin: TravelBody; target: TravelBody } | null {
+		const pricing = this.#pricing;
+		return pricing ? { origin: pricing.origin, target: pricing.target } : null;
+	}
+
+	/** How many times {@link pricedEnds} has been replaced. A refined pass can
+	 *  re-describe an end without moving a single date, so a caller keyed on what
+	 *  a route says has no other way to notice. */
+	pricedRevision = $state(0);
 
 	/** The trip as the URL carries it. The hand pick is reported whether or not a
 	 *  solve has priced it, or a link would drop its own pick on the way in. */
@@ -953,6 +974,7 @@ export class TravelPanelState {
 		this.#assistFor = null;
 		this.#pendingProfile = null;
 		this.#pricing = null;
+		this.pricedRevision++;
 	}
 
 	/**
@@ -1062,6 +1084,7 @@ export class TravelPanelState {
 		this.routes = result.routes;
 		this.grid = result.grid;
 		this.#pricing = { origin, target, options: solveOptions };
+		this.pricedRevision++;
 		this.custom = this.#repriceCustom() ?? this.#pricePendingPick();
 		this.status = this.offered.length > 0 ? 'ready' : 'empty';
 

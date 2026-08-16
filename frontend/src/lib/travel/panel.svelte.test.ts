@@ -4,7 +4,9 @@ import {
 	arrivalCampaignDays,
 	buildAssistRoute,
 	buildConstantThrustRoute,
+	buildTrajectoryPath,
 	routeEndJd,
+	type TravelBody,
 	type Vehicle
 } from '$lib/math/travel';
 import { TravelPanelState } from './panel.svelte';
@@ -371,6 +373,99 @@ describe('TravelPanelState refining a moving end', () => {
 		// However far it is let run, a fixpoint ends it — and nothing here diverges.
 		expect(passes).toBeLessThanOrEqual(4);
 		expect(panel.routes.length).toBeGreaterThan(0);
+	});
+
+	it('reports the ends the routes were priced against', async () => {
+		const panel = new TravelPanelState();
+		await panel.solve(EARTH, MARS, J2000, undefined, async (role) =>
+			role === 'target' ? MOVED : null
+		);
+
+		expect(panel.pricedEnds?.origin).toBe(EARTH);
+		expect(panel.pricedEnds?.target).toBe(MOVED);
+	});
+});
+
+/**
+ * Anything read back off a route — the arc on the map above all — has to ask the
+ * same two bodies the route was priced against, and for a moving end those are
+ * not the ones the caller handed in.
+ *
+ * The case that broke it is a trip to a satellite on a fitted conic that swings
+ * wide: the family of arcs from a parking orbit out to it runs only as slow as
+ * the half-ellipse touching both radii, so where the two descriptions disagree
+ * about the distance, the cruise time one of them priced falls outside the
+ * family the other can draw. Two of three trajectories vanished from the map.
+ */
+describe('TravelPanelState drawing what it priced', () => {
+	const EARTH_KM_PER_AU = 149597870.7;
+
+	/** A satellite of Earth out where a fitted conic is only ever a local
+	 *  description — Webb's is this eccentric, and swings between 0.6 and 1.5
+	 *  million km. */
+	function halo(maDeg: number): TravelBody {
+		return {
+			id: 'probe-webb',
+			mu: 0,
+			muEstimated: true,
+			radiusKm: 0.01,
+			elements: {
+				a: 1061700 / EARTH_KM_PER_AU,
+				e: 0.4506,
+				i: 19.07,
+				om: 284.21,
+				w: 167.67,
+				ma: maDeg,
+				n: 2.857149,
+				epoch: J2000
+			},
+			parentId: 'naif-399'
+		};
+	}
+
+	/** Half a turn apart, so the two put the crossing's far end at opposite ends
+	 *  of the orbit. */
+	const STALE = halo(230.95);
+	const REFINED = halo(50.95);
+	const FRAME = { orbit: 'own', systemPrimary: 'departure' } as const;
+
+	async function solvedToHalo(): Promise<TravelPanelState> {
+		const panel = new TravelPanelState();
+		panel.targetMode = 'low-orbit';
+		await panel.solve(EARTH, STALE, J2000, FRAME, async (role) =>
+			role === 'target' ? REFINED : null
+		);
+		return panel;
+	}
+
+	it('draws every trajectory it offers', async () => {
+		const panel = await solvedToHalo();
+		const ends = panel.pricedEnds;
+
+		expect(panel.offered.length).toBeGreaterThan(1);
+		expect(ends?.target).toBe(REFINED);
+		for (const choice of panel.offered) {
+			const path = buildTrajectoryPath(ends!.origin, ends!.target, choice.route, {
+				centerId: EARTH.id,
+				systemPrimary: FRAME.systemPrimary
+			});
+			expect(path, `${choice.profile} has no arc`).not.toBeNull();
+		}
+	});
+
+	// What the fix is for: drawn from the end as it was handed in, the same routes
+	// name cruise times no arc out to it can take.
+	it('loses trajectories when drawn from the end it did not price', async () => {
+		const panel = await solvedToHalo();
+		const undrawable = panel.offered.filter(
+			(choice) =>
+				buildTrajectoryPath(EARTH, STALE, choice.route, {
+					centerId: EARTH.id,
+					systemPrimary: FRAME.systemPrimary
+				}) === null
+		);
+
+		expect(undrawable.length).toBeGreaterThan(0);
 	});
 });
 

@@ -9,6 +9,28 @@ import { AU_KM } from '$lib/math/units';
 import { ASSUMED_DENSITY_KG_M3, G_KM3_KG_S2, SEC_PER_DAY } from './constants';
 import { dot, norm, type Vec3 } from './vec3';
 
+/**
+ * Where a body really is, for the ones no conic about their primary describes.
+ *
+ * An osculating fit is a local truth. For something held at a Lagrange point it
+ * is barely a week's worth: Webb's fit about Earth reads as a 126-day ellipse
+ * swinging between 0.6 and 1.5 million km, when Webb never leaves L2. A trip
+ * priced against it climbs to a distance the body was never at, and the arc
+ * drawn from it wanders off round the primary.
+ *
+ * So these are measured positions instead — ascending dates, measured from
+ * `centerId`, ecliptic J2000, km and km/s. Plain arrays, because a solve runs
+ * in a worker and takes its bodies by copy.
+ */
+export interface EphemerisSamples {
+	/** The body the positions are measured from. */
+	centerId: string;
+	/** Sample dates, ascending. */
+	jds: number[];
+	r: Vec3[];
+	v: Vec3[];
+}
+
 export interface TravelBody {
 	/** Prefixed object id, e.g. "naif-499". */
 	id: string;
@@ -56,6 +78,9 @@ export interface TravelBody {
 	poleEcliptic?: Vec3;
 	/** Primary this body orbits; absent for heliocentric bodies. */
 	parentId?: string;
+	/** Measured positions about the primary, where the elements cannot be
+	 *  trusted over a trip's length. See {@link EphemerisSamples}. */
+	samples?: EphemerisSamples;
 	/**
 	 * True when `elements` place a centre the body is nowhere near — the Moon
 	 * flown as "a Moon-sized body on Earth's orbit". The crossing is right to use

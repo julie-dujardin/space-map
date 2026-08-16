@@ -44,7 +44,7 @@ export { GM_SUN_KM3_S2, PARKING_ALTITUDE_KM } from './constants';
 export type { Vec3 } from './vec3';
 export { add, cross, dot, norm, normalize, scale, sub } from './vec3';
 
-export type { TravelBody } from './body';
+export type { EphemerisSamples, TravelBody } from './body';
 export { estimateMu, escapeSpeed, muFromElements, sphereOfInfluenceKm } from './body';
 
 export type { StateVector } from './state';

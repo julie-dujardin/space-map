@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { AU_KM } from '$lib/math/units';
+import { SEC_PER_DAY } from './constants';
 import { EARTH_BARYCENTRIC, MOON_BARYCENTRIC, J2000 } from './test-fixtures';
 import type { TravelBody } from './body';
 import { computePorkchop, selectRoutes } from './porkchop';
@@ -63,6 +64,78 @@ describe('separation', () => {
 		const gap = separationKm(MOON_BARYCENTRIC, degenerate, J2000)!;
 		// The Moon's own orbit about the barycentre, with nothing subtracted.
 		expect(gap).toBeCloseTo(MOON_BARYCENTRIC.elements.a * AU_KM, 3);
+	});
+});
+
+/**
+ * A body held at a Lagrange point has no conic about its primary: Webb's fit
+ * reads as a 126-day ellipse swinging between 0.6 and 1.5 million km, while
+ * Webb stays out at L2. Since a same-system crossing is priced entirely on that
+ * one distance, the separation has to be measured rather than propagated.
+ */
+describe('measured separation', () => {
+	/** Holding 1.45 million km out and swinging round with the Earth, which is
+	 *  what L2 looks like from here over a couple of months. */
+	const HELD_KM = 1447500;
+	const HELD_SPEED_KMS = 0.2;
+	const STEP_DAYS = 2;
+
+	function held(count: number) {
+		const rate = (HELD_SPEED_KMS / HELD_KM) * SEC_PER_DAY;
+		const jds: number[] = [];
+		const r: [number, number, number][] = [];
+		const v: [number, number, number][] = [];
+		for (let i = 0; i < count; i++) {
+			const angle = rate * STEP_DAYS * i;
+			jds.push(J2000 + STEP_DAYS * i);
+			r.push([HELD_KM * Math.cos(angle), HELD_KM * Math.sin(angle), 0]);
+			v.push([-HELD_SPEED_KMS * Math.sin(angle), HELD_SPEED_KMS * Math.cos(angle), 0]);
+		}
+		return { centerId: EARTH_BARYCENTRIC.id, jds, r, v };
+	}
+
+	const HELD: TravelBody = {
+		...MOON_BARYCENTRIC,
+		id: 'probe-webb',
+		// A fit that has it falling back towards Earth, which it never does.
+		elements: { ...MOON_BARYCENTRIC.elements, a: 1061700 / AU_KM, e: 0.4506, ma: 231 },
+		parentId: EARTH_BARYCENTRIC.id,
+		samples: held(3)
+	};
+
+	it('reads the gap off the samples, not off the elements', () => {
+		expect(separationKm(HELD, EARTH_BARYCENTRIC, J2000 + 1)).toBeCloseTo(HELD_KM, 0);
+	});
+
+	// The elements would have it at 700,000 km by then — half way in.
+	it('is not fooled by an expired fit part way through', () => {
+		const propagated = separationKm({ ...HELD, samples: undefined }, EARTH_BARYCENTRIC, J2000 + 4);
+		expect(propagated).toBeLessThan(HELD_KM * 0.9);
+		expect(separationKm(HELD, EARTH_BARYCENTRIC, J2000 + 4)).toBeCloseTo(HELD_KM, 0);
+	});
+
+	// Not a fallback to the elements: they are the fiction these replaced, and
+	// reaching for them past the last date is how the far end lands half a
+	// million km from the body. No answer means no trip is offered there.
+	it('refuses beyond the last sample rather than propagating', () => {
+		expect(separationKm(HELD, EARTH_BARYCENTRIC, J2000 + 10)).toBeNull();
+	});
+
+	// Samples about one body say nothing about the gap to another.
+	it('ignores samples measured from somewhere else', () => {
+		const elsewhere: TravelBody = {
+			...HELD,
+			samples: { ...HELD.samples!, centerId: 'naif-599' }
+		};
+		expect(separationKm(elsewhere, EARTH_BARYCENTRIC, J2000 + 1)).not.toBeCloseTo(HELD_KM, 0);
+	});
+
+	// The whole point: the family the grid is built from, and every arc in it,
+	// now runs to where the body is rather than to where the fit says.
+	it('bounds the transfer family on the measured gap', () => {
+		const bounds = systemArcBounds(EARTH_BARYCENTRIC, HELD, J2000, J2000 + 4)!;
+		const rNear = parkingRadiusKm(EARTH_BARYCENTRIC);
+		expect(bounds.slowestDays).toBeCloseTo(hohmannArcDays(EARTH_BARYCENTRIC.mu, rNear, HELD_KM), 6);
 	});
 });
 

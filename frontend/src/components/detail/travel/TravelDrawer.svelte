@@ -23,7 +23,7 @@
 	import type { TimelineEntry } from '$lib/travel/timeline';
 	import type { Hazard } from '$lib/travel/hazards';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
-	import type { TrajectoryFrame } from '$lib/math/travel';
+	import type { EphemerisSamples, TrajectoryFrame } from '$lib/math/travel';
 	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
 	import { DEFAULT_TRIP } from '$lib/travel/trip';
 	import { resolveTripBodies } from '$lib/travel/resolve';
@@ -34,6 +34,7 @@
 	import type { NavPlace } from '$lib/state/view';
 	import { navEndOf, type NavEnd } from '$lib/state/url';
 	import { landedEnd, type LandedEnd } from '$lib/travel/probe-end';
+	import { probeSamples } from '$lib/travel/probe-samples';
 	import type { Crumb } from '$lib/state/breadcrumb';
 	import DrawerTitle from '../frame/DrawerTitle.svelte';
 	import { routeLabel } from './route-labels';
@@ -173,6 +174,12 @@
 		}
 		const elements = rederive(jd);
 		return elements ? { ...found.data, ...elements } : null;
+	}
+
+	/** Where a probe really is over the dates a trip can reach, for the ends whose
+	 *  conic about their primary is not one. See {@link probeSamples}. */
+	function sampleEnd(id: string, centerId: string): Promise<EphemerisSamples | null> {
+		return probeSamples(ctx?.probeStore, id, centerId, nowJd);
 	}
 
 	/**
@@ -655,6 +662,7 @@
 				onOriginPadPick={(pad: LaunchPad) => moveNav(padEnd(fromId, fromPlace, pad), 'from')}
 				onTargetPadPick={(pad: LaunchPad) => moveNav(padEnd(toId, toPlace, pad), 'to')}
 				{refineBody}
+				{sampleEnd}
 				originPicked={fromId !== null}
 				targetPicked={toId !== null}
 				{nowJd}

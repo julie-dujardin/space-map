@@ -184,8 +184,69 @@ function reportNoCompanionOrbit(primary: TravelBody, satellite: TravelBody): voi
 	);
 }
 
+/** Whether this pair's gap is measured rather than propagated. Where it is, the
+ *  measurement is the only answer — see {@link sampledState}. */
+function isMeasured(satellite: TravelBody, primary: TravelBody): boolean {
+	const samples = satellite.samples;
+	return samples !== undefined && samples.centerId === primary.id && samples.jds.length > 1;
+}
+
+/**
+ * The satellite where it was measured, or null outside the dates that were.
+ *
+ * Null rather than a fallback: a body carrying these is one whose conic is a
+ * fiction, so past the last sample there is no answer to give and a search
+ * simply stops offering trips it cannot describe. Reaching for the elements
+ * there is how the far end ends up half a million km from the body.
+ *
+ * Cubic Hermite, so the sampled velocities shape the curve between dates rather
+ * than only being read at them; a chord across a two-day gap would sag by a
+ * hundred kilometres, which is nothing here, but the plane and the satellite's
+ * own motion are read off this too and those want the tangent right.
+ */
+function sampledState(satellite: TravelBody, primary: TravelBody, jd: number): StateVector | null {
+	const samples = satellite.samples;
+	if (!samples) return null;
+	const { jds, r, v } = samples;
+	const last = jds.length - 1;
+	if (jd < jds[0] || jd > jds[last]) return null;
+
+	let lo = 0;
+	let hi = last;
+	while (hi - lo > 1) {
+		const mid = (lo + hi) >> 1;
+		if (jds[mid] <= jd) lo = mid;
+		else hi = mid;
+	}
+	const span = jds[hi] - jds[lo];
+	if (!(span > 0)) return { r: r[lo], v: v[lo], mu: primary.mu };
+
+	// Hermite on the interval, with the velocities scaled into its own parameter.
+	const t = (jd - jds[lo]) / span;
+	const secs = span * SEC_PER_DAY;
+	const h00 = 2 * t ** 3 - 3 * t ** 2 + 1;
+	const h10 = t ** 3 - 2 * t ** 2 + t;
+	const h01 = -2 * t ** 3 + 3 * t ** 2;
+	const h11 = t ** 3 - t ** 2;
+	const at = (i: number): number =>
+		h00 * r[lo][i] + h10 * secs * v[lo][i] + h01 * r[hi][i] + h11 * secs * v[hi][i];
+	return {
+		r: [at(0), at(1), at(2)],
+		v: [
+			v[lo][0] + (v[hi][0] - v[lo][0]) * t,
+			v[lo][1] + (v[hi][1] - v[lo][1]) * t,
+			v[lo][2] + (v[hi][2] - v[lo][2]) * t
+		],
+		mu: primary.mu
+	};
+}
+
 /**
  * The satellite's position and velocity relative to its primary.
+ *
+ * Measured positions answer on their own where they exist: nothing below can
+ * describe a body that is not on a conic about its primary at all, so past the
+ * dates that were measured the answer is that there is none.
  *
  * Elements about a shared barycentre describe how each end moves about *it*, so
  * the separation is the difference between the two — which matters for the Moon,
@@ -199,6 +260,7 @@ export function relativeState(
 	primary: TravelBody,
 	jd: number
 ): StateVector | null {
+	if (isMeasured(satellite, primary)) return sampledState(satellite, primary, jd);
 	const s = elementsToState(satellite.elements, jd);
 	if (!s) return null;
 	if (satellite.parentId !== primary.parentId) return s;

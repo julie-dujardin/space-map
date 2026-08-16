@@ -32,6 +32,7 @@
 		transferScale,
 		travelConstants,
 		type AeroAssist,
+		type EphemerisSamples,
 		type Route,
 		type TrajectoryFrame,
 		type TrajectoryPath,
@@ -166,6 +167,9 @@
 		/** An end as it is described at a date the search reached, when the row in
 		 *  hand does not describe it there. See `RefineEnd`. */
 		refineBody?: (id: string, jd: number) => Promise<BodyData | null>;
+		/** Where an end really is over the dates a trip can reach, for the ends no
+		 *  conic about their primary describes. See `EphemerisSamples`. */
+		sampleEnd?: (id: string, centerId: string) => Promise<EphemerisSamples | null>;
 	}
 	let {
 		origin,
@@ -200,7 +204,8 @@
 		onTimelineChange,
 		onHazardsChange,
 		resolveBodyName,
-		refineBody
+		refineBody,
+		sampleEnd
 	}: Props = $props();
 
 	// Seeded once; from here on the two are kept in step by the effects below.
@@ -355,14 +360,67 @@
 	);
 	let frame = $derived(transferFrame(plan));
 
+	/**
+	 * Which end a same-system transfer crosses to, when that end is measured
+	 * rather than modelled.
+	 *
+	 * Only that case: everywhere else the elements are the honest description,
+	 * and the whole crossing is not priced on one separation. Inside a system it
+	 * is, so a satellite whose conic about its primary is a fiction — anything
+	 * held at a Lagrange point — has to be read off its own positions instead.
+	 *
+	 * A key rather than the pair itself, because the bodies come off a map that
+	 * is replaced as the catalogue streams in: a fresh object every time would
+	 * re-read a hundred positions for a trip that has not changed.
+	 */
+	let measuredKey = $derived.by(() => {
+		const primary = frame.systemPrimary;
+		if (!primary) return null;
+		const satellite = primary === 'departure' ? target : origin;
+		const centre = primary === 'departure' ? origin : target;
+		if (!satellite?.id.startsWith('probe-') || !centre) return null;
+		return `${satellite.id}|${centre.id}`;
+	});
+
+	// Landing after the first solve, the way the names and the site coordinates
+	// do: the search runs against the elements and re-runs once these are in.
+	let samples = $state.raw<{ forId: string; samples: EphemerisSamples } | null>(null);
+	$effect(() => {
+		const key = measuredKey;
+		let stale = false;
+		samples = null;
+		if (key === null || !sampleEnd) return;
+		const [id, centerId] = key.split('|');
+		void sampleEnd(id, centerId).then((found) => {
+			if (!stale && found) samples = { forId: id, samples: found };
+		});
+		return () => (stale = true);
+	});
+
+	/** The measured positions, once they are for the body being asked about. */
+	function measured(body: TravelBody | null): TravelBody | null {
+		if (!body || samples?.forId !== body.id) return body;
+		return { ...body, samples: samples.samples };
+	}
+
 	// The kernel's view of each end, rebuilt whenever either body or its detail
 	// changes.
 	let originTravel = $derived<TravelBody | null>(
-		origin ? toTravelBody(origin, lookup, originDetail, frame.orbit) : null
+		measured(origin ? toTravelBody(origin, lookup, originDetail, frame.orbit) : null)
 	);
 	let targetTravel = $derived<TravelBody | null>(
-		target ? toTravelBody(target, lookup, targetDetail, frame.orbit) : null
+		measured(target ? toTravelBody(target, lookup, targetDetail, frame.orbit) : null)
 	);
+
+	// The same two ends as the routes were priced against. A body that does not
+	// keep still is re-described at the trip's own dates, and a route carries the
+	// numbers that description gave it — so anything read back off a route has to
+	// ask the same body. Drawing a system transfer against the ends as they stand
+	// now put the satellite at a distance its own cruise time cannot reach, and
+	// the arc went undrawn.
+	let solved = $derived(panel.pricedEnds);
+	let pathOrigin = $derived(solved?.origin ?? originTravel);
+	let pathTarget = $derived(solved?.target ?? targetTravel);
 
 	// Only a body with a surface can be landed on or left from the ground.
 	let originHasGround = $derived(originTravel ? hasGround(originTravel) : true);
@@ -596,11 +654,10 @@
 		if (!body || !refineBody) return null;
 		const fresh = await refineBody(body.id, jd);
 		if (!fresh) return null;
-		return toTravelBody(
-			fresh,
-			lookup,
-			role === 'origin' ? originDetail : targetDetail,
-			frame.orbit
+		// Measured positions outrank any re-description of the elements, and the
+		// pass they are handed to prices the whole crossing against them.
+		return measured(
+			toTravelBody(fresh, lookup, role === 'origin' ? originDetail : targetDetail, frame.orbit)
 		);
 	}
 
@@ -644,8 +701,8 @@
 	// nothing to redo. The cargo is read for the spiral alone, which is the one
 	// trajectory a loaded hold makes slower as well as dearer.
 	$effect(() => {
-		const from = originTravel;
-		const to = targetTravel;
+		const from = pathOrigin;
+		const to = pathTarget;
 		const payloadKg = panel.payloadKg;
 		const siteLats = [panel.originSiteLatDeg, panel.targetSiteLatDeg];
 		void payloadKg;
@@ -663,8 +720,8 @@
 	// A fourth effect for the coast alone. It is the one input that moves under a
 	// drag, and a drag must not re-solve the presets on every frame.
 	$effect(() => {
-		const from = originTravel;
-		const to = targetTravel;
+		const from = pathOrigin;
+		const to = pathTarget;
 		const coast = panel.coastFraction;
 		void coast;
 		if (block || !from || !to) {
@@ -679,8 +736,8 @@
 	// the three direct routes must not be held up waiting for it. The craft is not
 	// among its inputs — a different ship flies the same trajectory.
 	$effect(() => {
-		const from = originTravel;
-		const to = targetTravel;
+		const from = pathOrigin;
+		const to = pathTarget;
 		const vias = assistBodies;
 		const departure = panel.originMode;
 		const arrival = panel.targetMode;
@@ -731,8 +788,8 @@
 		center: string,
 		pathFrame: TrajectoryFrame = 'interplanetary'
 	): TrajectoryPath | null {
-		if (!originTravel || !targetTravel) return null;
-		return buildTrajectoryPath(originTravel, targetTravel, route, {
+		if (!pathOrigin || !pathTarget) return null;
+		return buildTrajectoryPath(pathOrigin, pathTarget, route, {
 			centerId: center,
 			centralMu: frame.centralMu,
 			systemPrimary: frame.systemPrimary,
@@ -760,6 +817,7 @@
 			targetName ?? '',
 			viewFrame,
 			sitesKey,
+			panel.pricedRevision,
 			routeKey(route, centerId, frame)
 		].join(';');
 	});
@@ -815,7 +873,7 @@
 		const keys = alternatives.map((choice) => routeKey(choice.route, centerId, frame));
 		// The end names are on the labels, and they land after the geometry does.
 		return keys.length > 0
-			? [originName ?? '', targetName ?? '', sitesKey, ...keys].join(';')
+			? [originName ?? '', targetName ?? '', sitesKey, panel.pricedRevision, ...keys].join(';')
 			: null;
 	});
 
@@ -853,7 +911,7 @@
 		const keys = panel.offered.map((choice) => hazardKey(choice.route, centerId, frame));
 		// The frame decides whether a distance from the centre is a distance from
 		// the Sun, which is what half of these are read off.
-		return keys.length > 0 ? [frame.orbit, ...keys].join(';') : null;
+		return keys.length > 0 ? [frame.orbit, panel.pricedRevision, ...keys].join(';') : null;
 	});
 
 	let hazardsByProfile = $state.raw<ReadonlyMap<RouteOption, Hazard[]>>(new Map());
@@ -861,7 +919,7 @@
 	$effect(() => {
 		const key = hazardsKey;
 		untrack(() => {
-			if (key === null || !centerId || !originTravel || !targetTravel) {
+			if (key === null || !centerId || !pathOrigin || !pathTarget) {
 				hazardsByProfile = new Map();
 				return;
 			}
@@ -875,7 +933,7 @@
 			};
 			const next = new Map<RouteOption, Hazard[]>();
 			for (const choice of panel.offered) {
-				next.set(choice.profile, routeHazards(originTravel, targetTravel, choice.route, context));
+				next.set(choice.profile, routeHazards(pathOrigin, pathTarget, choice.route, context));
 			}
 			hazardsByProfile = next;
 		});
@@ -905,7 +963,7 @@
 	/** The two ends as the kernel knows them, once both are known. What the orbit
 	 *  each end is flown from or into is derived from. */
 	let timelineBodies = $derived(
-		originTravel && targetTravel ? { departure: originTravel, target: targetTravel } : null
+		pathOrigin && pathTarget ? { departure: pathOrigin, target: pathTarget } : null
 	);
 
 	$effect(() => {
