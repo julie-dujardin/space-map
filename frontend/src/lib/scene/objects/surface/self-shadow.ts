@@ -1,19 +1,15 @@
 /**
  * In-shader terrain self-shadowing + relief shading for displacement-mapped
- * bodies. The vertex `displacementMap` already gives true silhouette and
- * parallax; this adds the two things displacement alone can't:
+ * bodies, adding what vertex displacement alone can't:
  *
- *  1. Lit relief — the geometric sphere normal is replaced by the height
- *     field's gradient normal, so shading follows craters instead of treating
- *     the surface as smooth (a normal map we never have to bake).
- *  2. Self-cast shadows — a per-fragment march of the height texture toward the
- *     Sun: if terrain along the light ray rises above the line of sight, the
- *     fragment is occluded. Detail is bounded by texture resolution, not the
- *     coarse mesh tessellation, which is why this beats a geometry shadow map
- *     at planet scale.
+ *  1. Lit relief — geometric normal replaced by the height field's gradient
+ *     normal, so shading follows craters (a normal map we never bake).
+ *  2. Self-cast shadows — per-fragment march of the height texture toward the
+ *     Sun. Detail is bounded by texture resolution, not mesh tessellation,
+ *     beating a geometry shadow map at planet scale.
  *
- * The `onBeforeCompile` is chained so it stacks with the eclipse/ring-shadow
- * modifiers; the shadow scales direct light only, like the eclipse path.
+ * Chained onto `onBeforeCompile` to stack with eclipse/ring-shadow; scales
+ * direct light only, like the eclipse path.
  */
 
 import { type MeshStandardMaterial, type Texture, Vector2 } from 'three';
@@ -28,22 +24,18 @@ const NORMAL_STRENGTH = 1.0;
  *  (per-texel step ≈ scale_km/256, worst on big-relief bodies like Vesta). */
 const GRADIENT_STENCIL = 2.0;
 /** Max relief slope (rise/run): caps quantisation spikes and stops near-terminator
- *  normals tilting sunward (the back-side leak). atan(1.5) ≈ 56°, above real terrain. */
+ *  normals tilting sunward. atan(1.5) ≈ 56°, above real terrain. */
 const SLOPE_CLAMP = 1.5;
-/** Shadow ray length, in scene units, as a multiple of the peak relief height
- *  (`uScale`). Longer resolves grazing-terminator shadows but costs taps. */
+/** Shadow ray length (scene units, × peak relief height). Longer resolves grazing-terminator shadows but costs taps. */
 const SHADOW_REACH = 4.0;
-/** Penetration (scene units, relative to peak relief) at which a fragment is
- *  fully shadowed — softens the umbra edge. */
+/** Penetration depth at which a fragment is fully shadowed — softens the umbra edge. */
 const SHADOW_SOFT = 0.04;
-/** Macro-terminator gate window (geometric N·L): direct light is full above LIT,
- *  zero below DARK. Suppresses the relief-normal back-side leak on the night side. */
+/** Macro-terminator gate (geometric N·L): full light above LIT, none below
+ *  DARK. Suppresses the relief-normal back-side leak on the night side. */
 const TERMINATOR_GATE_LIT = 0.02;
 const TERMINATOR_GATE_DARK = -0.08;
-/** Grazing-angle fade for the self-shadow march (geometric N·L). Below this the
- *  march goes fully horizontal and flags every away-facing slope as occluded,
- *  printing a hard shadow stripe along the terminator; fade it out there and let
- *  the relief-normal Lambert darken that zone softly instead. */
+/** Below this N·L the march goes near-horizontal and flags every away-facing
+ *  slope as occluded, banding the terminator; fade it out and let Lambert darken that zone instead. */
 const MARCH_GRAZE_FADE = 0.18;
 
 export interface SelfShadowUniforms {
@@ -54,11 +46,7 @@ export interface SelfShadowUniforms {
 	uSelfTexel: { value: Vector2 };
 }
 
-/**
- * Attach the self-shadow + relief path. Call once the displacement texture is
- * known; pass it here so the fragment march samples the same height field the
- * vertex stage displaces by. `scaleScene` = `kmToScene(dispMeta.scale_km)`.
- */
+/** Attach the self-shadow + relief path, once the displacement texture is known, so the fragment march samples the same height field the vertex stage displaces by. */
 export function attachSelfShadowToBody(
 	material: MeshStandardMaterial,
 	heightMap: Texture,
@@ -67,10 +55,8 @@ export function attachSelfShadowToBody(
 	const tex = heightMap.image as { width?: number; height?: number } | undefined;
 	const texel = new Vector2(1 / (tex?.width ?? 4096), 1 / (tex?.height ?? 2048));
 
-	// Idempotent: a system reload re-attaches on the persistent material, so
-	// update the existing uniforms in place rather than chaining a second
-	// onBeforeCompile — re-injecting every declaration is a "redefinition"
-	// compile error (and the race made it intermittent).
+	// Idempotent: update existing uniforms in place rather than chaining a
+	// second onBeforeCompile — re-injecting declarations is a "redefinition" error.
 	const existing = material.userData.selfShadow as SelfShadowUniforms | undefined;
 	if (existing) {
 		existing.uSelfHeightMap.value = heightMap;
@@ -90,8 +76,7 @@ export function attachSelfShadowToBody(
 	const prev = material.onBeforeCompile;
 	material.onBeforeCompile = (shader, renderer) => {
 		prev?.(shader, renderer);
-		// Unique name: the eclipse shader (chained before us) already declares
-		// `uSunDir`; reusing it would be a duplicate uniform → compile error.
+		// Unique name: the chained eclipse shader already declares uSunDir.
 		Object.assign(shader.uniforms, uniforms, { uSelfSunDir: sun });
 
 		shader.vertexShader = shader.vertexShader
@@ -110,8 +95,8 @@ export function attachSelfShadowToBody(
 				`#include <beginnormal_vertex>
 				vSelfWorldNormal = normalize(mat3(modelMatrix) * objectNormal);
 				vSelfUv = uv;
-					// Analytic equirect tangent basis from the base sphere — smooth per
-					// fragment, so the relief normal no longer inherits the mesh facets.
+					// Analytic equirect tangent basis: smooth per fragment, so the
+					// relief normal doesn't inherit mesh facets.
 					vec3 nObj = normalize(position);
 					vec3 ec = cross(vec3(0.0, 1.0, 0.0), nObj);
 					float cl = length(ec);
@@ -142,20 +127,18 @@ export function attachSelfShadowToBody(
 					return texture2D(uSelfHeightMap, uv).r * uSelfScale;
 				}
 
-					// Analytic equirect frame (Tu=∂pos/∂u east, Tv=∂pos/∂v south) from the base
-					// sphere. Screen-derivative tangents were piecewise-constant per triangle
-					// and tiled the relief normal with mesh facets (diagonal terminator bands).
-					// |Tu| = 2πR·cos(lat), |Tv| = πR keeps the true equirect metric.
+					// Analytic equirect frame (Tu=∂pos/∂u east, Tv=∂pos/∂v south). Screen-
+					// derivative tangents were piecewise-constant per triangle, tiling the
+					// relief normal with mesh facets. |Tu|=2πR·cos(lat), |Tv|=πR is the true metric.
 					void selfTangents(out vec3 Tu, out vec3 Tv) {
 						float R = vSelfRadiusW;
 						Tu = vSelfEastW * (6.2831853 * R * vSelfCosLat);
 						Tv = -vSelfNorthW * (3.14159265 * R);
 					}`
 			)
-			// Replace the geometric normal with the relief gradient normal. Every
-			// normalize/divide is guarded: a degenerate frame (poles, where |Tu|→0)
-			// falls back to the geometric normal rather than emitting a NaN that
-			// renders the body transparent.
+			// Replace geometric normal with the relief gradient normal. Every
+			// normalize/divide is guarded: a degenerate frame (poles, |Tu|→0)
+			// falls back to the geometric normal instead of a body-transparent NaN.
 			.replace(
 				'#include <normal_fragment_maps>',
 				`#include <normal_fragment_maps>
@@ -166,10 +149,9 @@ export function attachSelfShadowToBody(
 					float lenTv = length(Tv);
 					vec3 Nw = normalize(vSelfWorldNormal);
 					if (uSelfScale > 0.0 && lenTu > 1e-12 && lenTv > 1e-12) {
-						// Wider-than-one-texel stencil averages out 8-bit terracing. Floored
-						// at the low tier's texel so an altitude-upgraded height map keeps
-						// the same physical smoothing width — at 16k the raw texel stencil
-						// is quantisation noise that flattens the relief.
+						// Wider-than-one-texel stencil averages out 8-bit terracing, floored
+						// at the low tier's texel so a higher-res map keeps the same
+						// physical smoothing width instead of flattening the relief.
 						vec2 d = max(uSelfTexel, vec2(1.0 / 2048.0, 1.0 / 1024.0)) * ${GRADIENT_STENCIL.toFixed(3)};
 						float hu = selfHeight(vSelfUv + vec2(d.x, 0.0))
 							- selfHeight(vSelfUv - vec2(d.x, 0.0));
@@ -178,8 +160,7 @@ export function attachSelfShadowToBody(
 						// Slope = Δheight / Δworld-distance along each axis.
 						float su = ${NORMAL_STRENGTH.toFixed(3)} * hu / (2.0 * d.x * lenTu);
 						float sv = ${NORMAL_STRENGTH.toFixed(3)} * hv / (2.0 * d.y * lenTv);
-						// |Tu|/|Tv| = 2·cos(lat): fade relief toward the equirect poles,
-						// where |Tu|→0 makes the east-west slope blow up into a starburst.
+						// |Tu|/|Tv|=2·cos(lat): fade relief at the poles, where |Tu|→0 blows up east-west slope into a starburst.
 						float poleFade = smoothstep(0.0, 0.12, lenTu / (2.0 * lenTv));
 						su = clamp(su * poleFade, -${SLOPE_CLAMP.toFixed(3)}, ${SLOPE_CLAMP.toFixed(3)});
 						sv = clamp(sv * poleFade, -${SLOPE_CLAMP.toFixed(3)}, ${SLOPE_CLAMP.toFixed(3)});
@@ -200,17 +181,16 @@ export function attachSelfShadowToBody(
 					vec3 Nw = normalize(vSelfWorldNormal);
 					vec3 L = normalize(uSelfSunDir);
 					float gN = dot(L, Nw);
-					// Macro-terminator gate on the GEOMETRIC normal: the relief normal
-					// can tilt sunward past the terminator and light the night side
-					// (back-side leak). Fading direct light by the geometric N·L keeps
-					// the night dark regardless.
+					// Gate on the GEOMETRIC normal: the relief normal can tilt sunward
+					// past the terminator and light the night side. Fading direct light
+					// by geometric N·L keeps the night dark regardless.
 					float shadow = smoothstep(${TERMINATOR_GATE_DARK.toFixed(3)}, ${TERMINATOR_GATE_LIT.toFixed(3)}, gN);
 					vec3 Tu, Tv;
 					selfTangents(Tu, Tv);
 					float lenTu = length(Tu);
 					float lenTv = length(Tv);
-					// Local crater self-shadow, lit hemisphere only (the macro gate owns
-					// the night side, which the short march can't see the curvature of).
+					// Local crater self-shadow, lit hemisphere only — the macro gate owns
+					// the night side; the short march can't see that curvature.
 					if (shadow > 0.0 && uSelfScale > 0.0 && lenTu > 1e-12 && lenTv > 1e-12 && gN > 0.0) {
 						float lu = dot(L, Tu / lenTu);
 						float lv = dot(L, Tv / lenTv);

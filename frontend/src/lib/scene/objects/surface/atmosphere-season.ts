@@ -1,9 +1,7 @@
 /**
- * Mars seasonal atmosphere: solar longitude L_s from the simulation clock
- * (Allison & McEwen 2000's series, good to ~0.05°) drives the exported
- * climatology table — dust column, Conrath-derived dust scale height and the
- * CO₂ condensation pressure cycle. The derivation is a cheap param rewrite;
- * the shader is untouched, so the cycle runs on every quality tier.
+ * Mars seasonal atmosphere: solar longitude L_s (Allison & McEwen 2000, ~0.05°)
+ * drives the exported climatology table — dust column, dust scale height,
+ * CO₂ condensation pressure. A cheap param rewrite, so it runs on every tier.
  */
 
 import type { AtmosphereParams } from './atmosphere';
@@ -44,11 +42,9 @@ function sampleSeason(lsGrid: readonly number[], values: readonly number[], lsDe
 }
 
 /**
- * Base params rewritten for the season at `lsDeg`. The table carries column
- * (τ) factors, so the dust β is scaled by τ_factor · H_base/H_season to keep
- * τ = β·H exact under the seasonal scale-height change; pressure scales the
- * Rayleigh β alone (isothermal column, H unchanged). Returns `base` untouched
- * when it has no seasonal table.
+ * Base params rewritten for the season at `lsDeg`. Dust β scales by
+ * τ_factor · H_base/H_season to keep τ = β·H exact under the scale-height
+ * change; pressure scales Rayleigh β alone (isothermal, H unchanged).
  */
 export function seasonalAtmosphereParams(base: AtmosphereParams, lsDeg: number): AtmosphereParams {
 	const s = base.seasonal;

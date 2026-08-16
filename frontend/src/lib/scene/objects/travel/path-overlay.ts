@@ -1,17 +1,16 @@
 /**
  * The planned trajectory, drawn on the map, and the ones it was chosen from.
  *
- * Vertices are held centre-relative in Float64 and rebased into Float32
- * against the focus, same as trails, so an arc a billion km across still
- * holds together metres above a moon. Unlike a trail, the centre is whatever
- * the transfer goes round, not the body's own parent.
+ * Vertices are centre-relative Float64, rebased into Float32 against the
+ * focus like trails, but centred on whatever the transfer goes round rather
+ * than the body's own parent.
  *
- * Markers are sprites, not geometry: a burn is a point on the trip, not a
- * sized object, so it stays the same screen size at Earth or at Neptune.
+ * Markers are sprites, not geometry, so a burn stays the same screen size at
+ * Earth or at Neptune.
  *
- * Hazards carry dates, never positions — the stretch they cover is cut out
- * of the drawn arcs by date, and the marker is placed by asking where the
- * craft is on that date, so the panel and the map can't disagree.
+ * Hazards carry dates, never positions: the covered stretch is cut from the
+ * arcs by date, and markers are placed from where the craft is on that date,
+ * so the panel and the map can't disagree.
  */
 
 import {
@@ -32,10 +31,10 @@ import { reserveLabelRects, type AcceptedRect } from '$lib/scene/label/culling';
 import { ndcZVisible } from '$lib/scene/setup/depth-mode';
 import { HALO_RADIUS_PX } from '$lib/scene/types';
 import '$lib/scene/label/label.css';
-// Deep imports, not the kernel's index: the renderer holds this overlay from the
-// first frame, and the index re-exports Lambert, the porkchop and the vehicle
-// catalogue — a chunk only `/nav` should ever pull in. `path.ts` is types only
-// for the same reason; everything read off a built path lives in `path-sample`.
+// Deep imports, not the kernel's index: the index re-exports Lambert, the
+// porkchop and the vehicle catalogue — a chunk only `/nav` should pull in,
+// and this overlay is held by the renderer from the first frame. `path.ts`
+// is types-only for the same reason; built-path reads live in `path-sample`.
 import type { EndOrbitPath, PathArc, TrajectoryPath } from '$lib/math/travel/path';
 import type { Vec3 as TravelVec3 } from '$lib/math/travel/vec3';
 import type { PathEndLabel, LabelledPath } from '$lib/travel/labelled-path';
@@ -80,11 +79,9 @@ const FAINT_WIDTH = 1.5;
 const FAINT_BRIGHTNESS = 0.3;
 
 /**
- * The orbit at either end of the trip: thin, drawn only once the camera is
- * near enough for it to be a ring rather than a speck. A parking orbit a few
- * hundred km over a body the map draws at system scale is otherwise smaller
- * than the planet's own dot, so the threshold scales with the orbit's own
- * radius — one rule for Earth and for a kilometre-wide asteroid.
+ * The orbit at either end: thin, drawn only once near enough to read as a
+ * ring rather than a speck. Threshold scales with the orbit's own radius —
+ * a parking orbit is otherwise smaller than the planet's dot at system scale.
  */
 const RING_WIDTH = 1.5;
 const RING_BRIGHTNESS = 0.85;
@@ -110,8 +107,7 @@ const GROUND_RENDER_ORDER = 1.5;
 
 /**
  * A hazard is a wide band laid *under* the plan, not a repaint of it — the
- * arc's own colours already say how each stretch is flown. Wide enough to
- * show either side of the line it sits behind.
+ * arc's own colours already say how each stretch is flown.
  */
 const HAZARD_LINE_WIDTH = 9;
 /** Full strength. These are the one thing on the map asking to be noticed. */
@@ -191,11 +187,10 @@ function warningTexture(color: string): CanvasTexture {
 }
 
 /**
- * The samples of `arc` that fall between two dates, inside the window the arc
- * is drawn over. Uses the arc's own vertices rather than a re-derived sub-arc:
- * re-solving at a different sampling would leave the band visibly beside the
- * line it's calling out on a tight curve. A hazard shorter than the gap
- * between samples gets no band, just a marker and a chip.
+ * Samples of `arc` between two dates, within the drawn window. Uses the
+ * arc's own vertices rather than a re-derived sub-arc — re-solving at a
+ * different sampling would leave the band visibly beside the line on a tight
+ * curve. A hazard shorter than the sample gap gets no band, just a marker.
  */
 function spanPoints(
 	arc: PathArc,
@@ -245,11 +240,9 @@ interface DrawnArc {
 }
 
 /**
- * An end orbit's line, with what it takes to decide whether it is worth drawing:
- * where its centre is and how big the ring round it is, both in scene units.
- *
- * It belongs to the trajectory like every other line here, so it sits where the
- * arc meets its body rather than where that body is now.
+ * An end orbit's line, plus what decides whether it's worth drawing: centre
+ * and radius, in scene units. Belongs to the trajectory like any other line
+ * here, so it sits where the arc meets its body, not where the body is now.
  */
 interface DrawnRing {
 	arc: DrawnArc;
@@ -289,14 +282,13 @@ interface DrawnLabel {
 }
 
 /**
- * The label an end of a trajectory wears: the halo every body in the app wears,
- * in the colour of the arc it caps, with the place and the date beside it.
+ * The label an end of a trajectory wears: the halo every body wears, in the
+ * colour of the arc it caps, with place and date beside it.
  *
- * Given an `onSelect` it is a button that takes the trajectory, matching the row
- * it stands for in the panel's list, and gestures are forwarded to the canvas so
- * grabbing one still drags the camera — the same treatment the body and feature
- * labels get. Without one it is a caption on the trajectory already being read,
- * and lets every gesture through untouched.
+ * With `onSelect` it's a button that takes the trajectory, and gestures
+ * forward to the canvas so grabbing it still drags the camera — same
+ * treatment as body/feature labels. Without one it's just a caption, and
+ * lets every gesture through.
  */
 function makeEndLabel(
 	end: PathEndLabel,
@@ -417,18 +409,15 @@ export class TravelPathOverlay {
 	}
 
 	/**
-	 * Draw `path` as the plan and `options` as the trajectories it was chosen
-	 * from, replacing whatever was drawn before. Both may be empty; that clears it.
+	 * Draw `path` as the plan and `options` as what it was chosen from,
+	 * replacing whatever was drawn before; both may be empty to clear it.
 	 *
-	 * Only the plan gets markers and a craft — an alternative is a shape, not an
-	 * itinerary, and half a dozen sets of burn dots would bury the one being read.
-	 * And the alternatives carry their names only while the choice is open: once
-	 * one is taken they drop to a faint line with a ring at each end, still
-	 * pressable, which is what the plan is read against rather than a set of
-	 * captions competing with it.
+	 * Only the plan gets markers and a craft — an alternative is a shape, not
+	 * an itinerary, and a half-dozen burn-dot sets would bury the one being
+	 * read. Alternatives keep their labels only while the choice is open; once
+	 * one is taken they drop to a faint ringed line, read against the plan.
 	 *
-	 * The vertices land centre-relative; nothing is placed until `reposition`
-	 * says where the centre body currently is.
+	 * Vertices land centre-relative; `reposition` places them.
 	 */
 	set(
 		plan: LabelledPath | null,
@@ -468,11 +457,10 @@ export class TravelPathOverlay {
 	/**
 	 * Lay each hazard's stretch under the plan, and mark where it starts.
 	 *
-	 * A hazard names dates, never places, so the stretch is cut out of the
-	 * drawn arcs by date and the marker placed by asking where the craft is
-	 * on that date. Every hazard is labelled, including mild ones (a
-	 * conjunction, a perihelion) — they start at different points on the
-	 * arc by construction, so crowding is a coincidence, not the rule.
+	 * Hazards name dates, never places: the stretch is cut from the arcs by
+	 * date, and the marker placed from where the craft is on that date. Every
+	 * hazard is labelled, even mild ones — they start at different arc points
+	 * by construction, so crowding is a coincidence, not the rule.
 	 */
 	private addHazards(path: TrajectoryPath, hazards: readonly Hazard[]): void {
 		const ordered = [...hazards].sort(
@@ -619,11 +607,10 @@ export class TravelPathOverlay {
 	/**
 	 * Label a trajectory at both ends, and answer which ends got one.
 	 *
-	 * The arrival goes on the *meeting* point — where the destination will be
-	 * when the craft gets there — since that's where the arc actually ends;
-	 * the planet's position today would be a different claim. Planet-frame
-	 * there's no such distinction: that end is measured off the body, so the
-	 * label rides it like the orbit round it does.
+	 * Arrival labels the *meeting* point — where the destination will be when
+	 * the craft gets there, not its position today. Planet-frame there's no
+	 * such distinction: that end is measured off the body, so the label rides
+	 * it like the orbit does.
 	 *
 	 * Each end takes the colour of the arc it caps, so the two differ when a
 	 * trajectory is flown differently at each end (e.g. boost then braking).
@@ -636,10 +623,9 @@ export class TravelPathOverlay {
 		const first = path.arcs[0];
 		const last = path.arcs[path.arcs.length - 1];
 		const departure = path.stops.find((stop) => stop.kind === 'departure');
-		// Both marks are a body's own centre, so an end drawn off its body puts its
-		// label at that body rather than at the frozen encounter. A surface end is
-		// the exception: its line runs on to the ground, and the label rides the
-		// touchdown or liftoff point — the place the label actually names.
+		// An end drawn off its body puts its label at the body, not the frozen
+		// encounter — except a surface end, whose label rides the touchdown or
+		// liftoff point instead.
 		const anchorAt = (at: 'departure' | 'arrival', r: TravelVec3) => {
 			const orbit = path.endOrbits.find((end) => end.at === at);
 			const anchorId = orbit ? this.anchorOf(path, orbit) : null;
@@ -694,11 +680,10 @@ export class TravelPathOverlay {
 	}
 
 	/**
-	 * Pick one trajectory out of the rest, or none.
-	 *
-	 * The other half of the link with the launch-window field: pointing at a mark
-	 * there lights the arc out here, and pointing at a label out here lights the
-	 * mark. Nothing is rebuilt — the line's colour and width are uniforms.
+	 * Pick one trajectory out of the rest, or none — the other half of the
+	 * link with the launch-window field, where pointing at a mark there lights
+	 * the arc here and vice versa. Nothing is rebuilt; colour and width are
+	 * uniforms.
 	 */
 	setHovered(id: string | null): void {
 		if (this.hovered === id) return;
@@ -725,11 +710,10 @@ export class TravelPathOverlay {
 	/**
 	 * Lay one trajectory's arcs down, centre-relative and unplaced.
 	 *
-	 * An end with a passage hands the last of its crossing over: the arc stops
-	 * where the craft crosses into the sphere of influence and the passage carries
-	 * on from there, so the samples it replaces are left out here. Only the plan
-	 * is drawn that way — an alternative is a shape and gets none of the
-	 * body-scale detail — so an option keeps its whole arc.
+	 * An end with a passage hands its last stretch over: the arc stops at the
+	 * SOI crossing and the passage continues, so those samples are left out
+	 * here. Only the plan is patched this way — an option is a shape, not a
+	 * body-scale detail, and keeps its whole arc.
 	 */
 	private addArcs(
 		path: TrajectoryPath,
@@ -739,9 +723,8 @@ export class TravelPathOverlay {
 		patched = false
 	): void {
 		// Planet-frame, the crossing and the end it runs into are in different
-		// frames and no longer meet — the handover sample is a body's own motion
-		// away from where the passage starts. So the crossing is given up before it
-		// gets there rather than drawn to a point it visibly misses.
+		// frames and no longer meet — the crossing is given up before the
+		// handover point rather than drawn to a spot it visibly misses.
 		const parts = patched && path.frame === 'planetary';
 		const ends = (at: 'departure' | 'arrival') =>
 			parts && path.endOrbits.some((orbit) => orbit.at === at && orbit.approach.length > 1);
@@ -759,11 +742,9 @@ export class TravelPathOverlay {
 	/**
 	 * The orbits the trip starts and ends in, and the passages down to them.
 	 *
-	 * The passage is drawn at every zoom, in the crossing's own frame, since
-	 * it's where the crossing stops. The orbit is different: it's where the
-	 * trip ends up, at a body's own scale (a few hundred km over a planet the
-	 * map draws at system scale) — so it's kept in its own list and waits for
-	 * the camera.
+	 * The passage draws at every zoom, in the crossing's frame — it's where
+	 * the crossing stops. The orbit is body-scale (a few hundred km over a
+	 * planet drawn system-scale), so it waits in its own list for the camera.
 	 */
 	private addEndOrbits(path: TrajectoryPath): void {
 		for (const orbit of path.endOrbits) {
@@ -886,9 +867,9 @@ export class TravelPathOverlay {
 	/**
 	 * Put the craft marker where the clock says the craft is.
 	 *
-	 * Call before {@link reposition}, which is what actually places it. Outside
-	 * the trip the marker goes away rather than parking on an end — the craft has
-	 * not left, or is no longer flying.
+	 * Call before {@link reposition}, which places it. Outside the trip the
+	 * marker goes away rather than parking on an end — the craft hasn't left,
+	 * or is no longer flying.
 	 */
 	setClock(jd: number): void {
 		const craft = this.craft;
@@ -903,16 +884,14 @@ export class TravelPathOverlay {
 	}
 
 	/**
-	 * Place the path against the scene as it currently stands.
-	 *
-	 * `centerScenePos` is where the centre body is this frame and `basis` is
-	 * what the scene is drawn relative to, both in scene units. Call on every
+	 * Place the path against the scene as it currently stands. Call on every
 	 * clock tick and every focus change.
 	 *
-	 * `bodyScenePos` answers for ends drawn planet-frame, which hang off their
-	 * own body rather than the transfer's centre. An end whose body isn't
-	 * resident keeps the centre's offset — drawn briefly in the wrong place
-	 * rather than flickering out of existence.
+	 * `centerScenePos` is the centre body's position this frame; `basis` is
+	 * what the scene is drawn relative to, both in scene units. `bodyScenePos`
+	 * answers for planet-frame ends, which hang off their own body rather than
+	 * the transfer's centre — one whose body isn't resident keeps the centre's
+	 * offset, drawn briefly wrong rather than flickering out.
 	 */
 	reposition(centerScenePos: Vec3, basis: Vec3, bodyScenePos: (id: string) => Vec3 | null): void {
 		if (this.center === null) return;
@@ -963,11 +942,9 @@ export class TravelPathOverlay {
 	}
 
 	/**
-	 * Hand the line shader the camera, which is what its vertices are ultimately
-	 * drawn relative to. Same contract as the trails' own per-frame update.
-	 *
-	 * Also where the end orbits decide whether they are a ring or a speck this
-	 * frame, since the camera is the only thing that answers it.
+	 * Hand the line shader the camera the vertices are ultimately drawn
+	 * relative to — same contract as trails' per-frame update. Also where end
+	 * orbits decide ring-vs-speck this frame, since only the camera answers it.
 	 */
 	updateCameraOffset(cameraPosition: Vector3): void {
 		if (this.arcs.length === 0) return;
@@ -987,19 +964,16 @@ export class TravelPathOverlay {
 	}
 
 	/**
-	 * Settle the end labels against each other, and claim the screen space the
-	 * survivors take so nothing else is drawn over them.
+	 * Settle the end labels against each other and claim the screen space the
+	 * survivors take, so nothing else draws over them. Call once per frame,
+	 * before the culls run; with nothing drawn it releases its held space.
 	 *
-	 * These outrank every body and feature label (a trajectory being chosen
-	 * is what the map is for), but not each other — the nearest to the camera
-	 * wins and the rest fall back to their ring, the way a body label falls
-	 * back to its halo.
+	 * These outrank every body/feature label (a trajectory being chosen is
+	 * what the map is for), but not each other — nearest to the camera wins,
+	 * the rest fall back to their ring like a body label falls back to its halo.
 	 *
-	 * Projected here rather than measured off the DOM, since
-	 * `getBoundingClientRect` on every label every frame forces layout.
-	 *
-	 * Call once per frame, before the culls run. With nothing drawn it
-	 * releases the space it was holding.
+	 * Projected here rather than measured off the DOM: `getBoundingClientRect`
+	 * on every label every frame forces layout.
 	 */
 	reserveLabelSpace(camera: PerspectiveCamera, screenWidth: number, screenHeight: number): void {
 		if (!this.group.visible || this.labels.length === 0) {
@@ -1015,10 +989,9 @@ export class TravelPathOverlay {
 			// anything, so it neither claims space nor competes for it.
 			if (label.faint) continue;
 			const element = label.object.element;
-			// Zero until the CSS2D renderer has put the element in the document; a
-			// cached zero would hold no space for the rest of the session. Only ever
-			// measured while the label has its text, so a dimmed one keeps the width
-			// it will have again when it wins.
+			// Zero until CSS2D puts the element in the document — a cached zero
+			// would hold no space for the rest of the session. Measured only while
+			// the label has text, so a dimmed one keeps the width it regains on win.
 			if (!label.width && !label.dimmed) {
 				label.width = element.offsetWidth;
 				label.height = element.offsetHeight;

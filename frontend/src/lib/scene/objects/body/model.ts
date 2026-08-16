@@ -28,11 +28,9 @@ import { applyShapeModelMaterial, makeShapeModelMaterial, setShapeModelMap } fro
 import { shapeModelSkipReason } from './shape-model-policy';
 import { applyBodyOrientation } from './orientation-apply';
 
-/** Body types whose placeholder sphere is meaningless and should be hidden
- *  the moment a load starts (rather than waiting for the detail fetch to
- *  confirm `model_name`). Probes carry their own catalog; spacecraft/debris
- *  belong to the same family. Planets and moons never enter this branch, so
- *  their sphere doesn't flicker during focus. */
+/** Types whose placeholder sphere is meaningless and hidden the moment a load
+ *  starts, before the detail fetch confirms `model_name`. Planets and moons
+ *  never enter this branch, so their sphere doesn't flicker during focus. */
 export function isModelBearing(body: PositionedBody): boolean {
 	const t = body.data.objectType;
 	return (
@@ -42,14 +40,11 @@ export function isModelBearing(body: PositionedBody): boolean {
 	);
 }
 
-/** Subset of `metadata.json` (per-model public bundle) the scene needs: the
- *  high-tier credit block (the GLB we fetched) and, when set, `scale_meters`
- *  — the real length of the model's longest dimension, used to size the mesh
- *  against scene units. The exporter writes more fields per tier
- *  (size/sha/stats/catalog/…) that we ignore. */
+/** Subset of `metadata.json` the scene needs: the high-tier credit block and,
+ *  when set, `scale_meters` — the model's real longest dimension, for sizing
+ *  the mesh against scene units. Other exporter fields are ignored. */
 export interface ModelBundleMeta {
-	/** `shape_model` for natural bodies; absent/other for spacecraft. Both
-	 *  render in the unit-radius overlay scene. */
+	/** `shape_model` for natural bodies; absent/other for spacecraft. */
 	kind?: string;
 	/** Available GLB tiers; DAMIT bundles ship `high` only. */
 	tiers?: string[];
@@ -63,9 +58,8 @@ export interface ModelBundleMeta {
 		};
 	};
 	scale_meters?: number;
-	/** Model axis → spacecraft-body axis (1–2 pairs, manifest-set). Corrects
-	 *  models authored in a different convention (usually Y-up) than the CK/
-	 *  pointing body frame, e.g. `{"+y": "+z"}` for a Z-axis spinner. */
+	/** Model axis → spacecraft-body axis (1–2 pairs), correcting models authored
+	 *  in a different convention (usually Y-up) than the CK/pointing frame. */
 	frame_map?: Record<string, string>;
 	/** Natural-body top-level credit + km bounds (shape-model bundles). */
 	credit?: { name: string; url: string; license?: string };
@@ -75,8 +69,7 @@ export interface ModelBundleMeta {
 	};
 }
 
-/** Shared meshopt-decoder-registered loader; every model fetch (focused body
- *  overlay, natural-body mesh, lineup meshes) reuses this one decoder path. */
+/** Shared meshopt-decoder-registered loader, reused by every model fetch. */
 export const modelLoader = new GLTFLoader();
 modelLoader.setMeshoptDecoder(MeshoptDecoder);
 const _loader = modelLoader;
@@ -91,8 +84,7 @@ export function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
 	return p;
 }
 
-/** Credit to display for a shape-model bundle: the natural-body top-level
- *  credit when set, else the high-tier GLB credit. */
+/** Credit for a shape-model bundle: top-level credit if set, else the high-tier GLB's. */
 export function shapeModelCredit(meta: ModelBundleMeta): {
 	name: string;
 	url: string;
@@ -112,10 +104,9 @@ export function modelUnitScene(bo: BodyObjects): number {
 
 /**
  * Fetch and attach the body's 3D model into the overlay scene at unit-radius
- * scale, hiding the placeholder sphere. No-op when the body has no `model_name`.
- * Concurrent calls share one in-flight load: callers chain settle-time work
- * (nomenclature attach reads `bo.model` to pick sphere vs model placement), so
- * a second call must resolve when the load finishes, not immediately.
+ * scale, hiding the placeholder sphere. No-op when the body has no
+ * `model_name`. Concurrent calls share one in-flight load, since callers chain
+ * settle-time work (e.g. nomenclature reading `bo.model`) off its resolution.
  */
 export function loadBodyModel(
 	bo: BodyObjects,
@@ -124,8 +115,8 @@ export function loadBodyModel(
 ): Promise<void> {
 	if (bo.model) return Promise.resolve();
 	if (bo.modelLoadPromise) return bo.modelLoadPromise;
-	// Natural bodies with a shape-model bundle share the overlay path — extreme
-	// zoom corrupts in-scene meshes, so both live in the unit-radius overlay.
+	// Shape-model bundles share the overlay path too — extreme zoom corrupts
+	// in-scene meshes, so both live at unit-radius.
 	const p = (
 		isModelBearing(bo.body)
 			? loadSpacecraftModel(bo, modelScene, ctx)
@@ -150,8 +141,8 @@ async function loadSpacecraftModel(
 		// Hand-edited pointing spec drives the focused model's attitude; the
 		// per-frame loop reads it off the body (default: south-toward-parent).
 		bo.body.pointing = detail.global?.pointing;
-		// CK-refit attitude stream supersedes pointing over its window. Chunks
-		// load lazily per playhead time, so the track is built without I/O here.
+		// CK-refit attitude supersedes pointing over its window; chunks load
+		// lazily per playhead time, so building the track needs no I/O here.
 		const attitudeManifest = detail.global?.attitude;
 		if (attitudeManifest && (bo.modelLoadEpoch ?? 0) === epoch) {
 			const probeId = bo.body.data.id.replace(/^probe-/, '');
@@ -165,20 +156,19 @@ async function loadSpacecraftModel(
 		}
 		// Cancelled by a focus change mid-fetch; don't stack a stale overlay.
 		if ((bo.modelLoadEpoch ?? 0) !== epoch) return;
-		// Swap halo → spinner so the model can snap in cleanly. The halo's loading
-		// state is owned exclusively here; per-frame culling must not touch it.
+		// Swap halo → spinner so the model can snap in cleanly. Loading state is
+		// owned exclusively here; per-frame culling must not touch it.
 		if (bo.mesh) bo.mesh.visible = false;
 		setHaloLoading(bo, true);
-		// Bundle metadata fires alongside the GLB; both must land before the
-		// mount — frame_map has to be baked in before fitToUnitRadius.
+		// Metadata fires alongside the GLB; frame_map must land before fitToUnitRadius.
 		const metaPromise = fetchBundleMeta(slug);
 		const gltf = await _loader.loadAsync(versionedUrl(`/v1/models/${slug}/high.glb`, 'models'));
 		let meta: ModelBundleMeta | null = null;
 		try {
 			meta = await metaPromise;
 		} catch (e) {
-			// Metadata is a nice-to-have (credit/scale/frame_map); a missing or
-			// corrupt metadata.json shouldn't tear down the loaded model.
+			// Metadata is a nice-to-have; missing/corrupt metadata.json shouldn't
+			// tear down the loaded model.
 			console.warn(`Failed to load model metadata for ${slug}:`, e);
 		}
 		if ((bo.modelLoadEpoch ?? 0) !== epoch || !bo.mesh) {
@@ -195,8 +185,8 @@ async function loadSpacecraftModel(
 		bo.modelName = slug;
 		setHaloLoading(bo, false);
 		if (meta) {
-			// True-size the body from the model's longest dimension so the overlay
-			// (sized off radiusScene) renders to scale against the solar system.
+			// True-size from the model's longest dimension, so the overlay (sized
+			// off radiusScene) renders to scale against the solar system.
 			if (meta.scale_meters) {
 				bo.body.data.radiusKm = meta.scale_meters / 2000; // half the longest dim, km
 				bo.radiusScene = kmToScene(effectiveRadiusKm(bo.body.data));
@@ -216,10 +206,9 @@ async function loadSpacecraftModel(
 
 /**
  * Load a natural body's shape-model mesh into the unit-radius overlay scene,
- * hiding the sphere (and its displacement/self-shadow stack). Normalised like a
- * spacecraft model so `renderModelOverlay` reproduces its on-screen size;
- * oriented per frame by the same IAU rotation the sphere would get. No-op when
- * the body has no `model_name` or the bundle isn't a shape model.
+ * hiding the sphere. Normalised like a spacecraft model so `renderModelOverlay`
+ * reproduces its on-screen size, oriented by the same IAU rotation the sphere
+ * gets. No-op with no `model_name` or a non-shape-model bundle.
  */
 async function loadNaturalBodyModel(
 	bo: BodyObjects,
@@ -233,8 +222,8 @@ async function loadNaturalBodyModel(
 		const detail = await fetchObjectDetail(bo.body.data.id, false);
 		const slug = detail.global?.model_name;
 		if (!slug) return; // most bodies: sphere stays visible
-		// Same gate the sources footer credits off; a DEM sphere wins here, and
-		// loadBodyTexture attaches the displacement to it.
+		// Same gate the sources footer credits off; a DEM sphere wins here and
+		// gets the displacement from loadBodyTexture.
 		const skip = shapeModelSkipReason(detail.global);
 		if (skip) {
 			console.info(
@@ -242,8 +231,8 @@ async function loadNaturalBodyModel(
 			);
 			return;
 		}
-		// Model load can win the race against loadBodyTexture; make sure the spin
-		// axis is on the body so the per-frame orientation pass finds it.
+		// Model load can win the race against loadBodyTexture; make sure the
+		// spin axis is on the body so per-frame orientation finds it.
 		if (detail.global?.orientation && !bo.body.orientation) {
 			applyBodyOrientation(bo, detail.global.orientation, ctx);
 		}
@@ -272,8 +261,8 @@ async function loadNaturalBodyModel(
 			root,
 			makeShapeModelMaterial(bo.body.data.color ?? bodyMeshColor(bo.body.data))
 		);
-		// The sphere path owns texture loading/LOD; mirror whatever it has now
-		// (swapBodyTexture keeps later tier upgrades in sync).
+		// Sphere path owns texture loading/LOD; mirror it now (swapBodyTexture
+		// keeps later tier upgrades in sync).
 		const sphereMap = bo.mesh ? (bo.mesh.material as MeshStandardMaterial).map : null;
 		if (sphereMap)
 			setShapeModelMap(root, sphereMap, bodyMeshColor(bo.body.data), bo.body.data.color);
@@ -282,13 +271,12 @@ async function loadNaturalBodyModel(
 		bo.model = root;
 		bo.modelName = slug;
 		if (bo.mesh) bo.mesh.visible = false;
-		// Size the overlay against the real half-extent (matches sphere radiusScene
-		// role): model radius 1 ↔ max_extent_km/2, keeping true-to-scale framing.
+		// Size the overlay against the real half-extent, matching radiusScene's
+		// role: model radius 1 ↔ max_extent_km/2.
 		if (meta.true_scale) {
 			bo.radiusScene = kmToScene(meta.true_scale.max_extent_km / 2);
-			// Bodies whose chunk shipped no radius: the model's calibrated scale is
-			// a real size, so backfill it (camera floor, LOD, framing) and drop the
-			// no-size state — the halo must yield to the mesh, not sit on it.
+			// Backfill radiusKm from the model's calibrated scale when the chunk
+			// shipped none, and drop no-size state — the halo yields to the mesh.
 			const radiusKnown = Number.isFinite(bo.body.data.radiusKm) && bo.body.data.radiusKm > 0;
 			if (!radiusKnown) bo.body.data.radiusKm = meta.true_scale.max_extent_km / 2;
 			if (bo.noPhysical) {
@@ -318,14 +306,12 @@ async function loadNaturalBodyModel(
 	}
 }
 
-/**
- * Dispose the loaded model and restore the placeholder sphere. Bumps the
- * load epoch so any concurrent `loadBodyModel` for `bo` aborts.
- */
+/** Dispose the loaded model and restore the placeholder sphere. Bumps the
+ *  load epoch so any concurrent `loadBodyModel` for `bo` aborts. */
 export function unloadBodyModel(bo: BodyObjects): void {
 	bo.modelLoadEpoch = (bo.modelLoadEpoch ?? 0) + 1;
-	// The epoch bump aborts the in-flight load; drop its shared promise so the
-	// next loadBodyModel starts fresh instead of latching onto the aborted one.
+	// Epoch bump aborts the in-flight load; drop its shared promise so the next
+	// loadBodyModel starts fresh instead of latching onto the aborted one.
 	bo.modelLoadPromise = undefined;
 	setHaloLoading(bo, false);
 	// Model-bearing types revert to their dot, never the sphere.
@@ -345,10 +331,9 @@ export function unloadBodyModel(bo: BodyObjects): void {
 	if (bo.mesh && restoreSphere) bo.mesh.visible = true;
 }
 
-/** Create or remove the body's loading spinner. It's a plain DOM element
- *  pinned to the viewport (see `.scene-label__loader` CSS) — outside the
- *  scene graph entirely so it doesn't drift with the focused body's
- *  per-frame world-position updates. Per-frame culling toggles `display`. */
+/** Create or remove the body's loading spinner: a plain DOM element pinned to
+ *  the viewport (`.scene-label__loader`), outside the scene graph so it
+ *  doesn't drift with per-frame position updates. Culling toggles `display`. */
 function setHaloLoading(bo: BodyObjects, loading: boolean): void {
 	if (loading) {
 		if (bo.loadingEl) return;
@@ -363,12 +348,9 @@ function setHaloLoading(bo: BodyObjects, loading: boolean): void {
 	}
 }
 
-/**
- * Bake the bundle's model→body base rotation (`frame_map`) into a wrapper
- * group, so the per-frame attitude/pointing code keeps writing body-frame
- * quaternions on the returned root. A null rotation returns the scene
- * untouched.
- */
+/** Bake the bundle's model→body base rotation (`frame_map`) into a wrapper
+ *  group, so per-frame attitude/pointing code keeps writing body-frame
+ *  quaternions on the returned root. Null rotation returns the scene untouched. */
 function withBaseFrame(scene: Object3D, q: Quaternion | null): Object3D {
 	if (!q) return scene;
 	const wrapper = new Group();
@@ -378,16 +360,14 @@ function withBaseFrame(scene: Object3D, q: Quaternion | null): Object3D {
 }
 
 /**
- * Uniformly scale + translate `root` so its bbox max-dim becomes 2 (i.e.
- * inscribed in a unit-radius sphere) and its bbox center sits at origin.
- * Run before adding to the overlay scene. The overlay camera then orbits
- * a unit-radius target — no need to coordinate scale with the focused
- * body's tiny scene-space radius.
+ * Uniformly scale + translate `root` so its bbox max-dim becomes 2 (inscribed
+ * in a unit-radius sphere), bbox center at origin. Run before adding to the
+ * overlay scene, whose camera then orbits a unit-radius target regardless of
+ * the focused body's tiny scene-space radius.
  *
- * Records `centerOffset`/`feetOffset` (scaled units) in `userData`: the overlay
- * seats a landed probe on its feet, not bbox-centred (which buries half of it).
- * `occluderSpheres` feeds the label-occlusion pass so CSS2D labels behind the
- * rendered model get hidden.
+ * Records `centerOffset`/`feetOffset` in `userData` — the overlay seats a
+ * landed probe on its feet, not bbox-centred. `occluderSpheres` feeds the
+ * label-occlusion pass so CSS2D labels behind the model get hidden.
  */
 function fitToUnitRadius(root: Object3D): void {
 	root.updateMatrixWorld(true);
@@ -405,16 +385,16 @@ function fitToUnitRadius(root: Object3D): void {
 	root.userData.occluderSpheres = buildOccluderSpheres(root, size, k);
 }
 
-/** A model-hugging occluder blob: `center` is in the root's rotation frame
- *  (post-fit units, excludes the recentring `root.position`), `r` its radius. */
+/** A model-hugging occluder blob: `center` is post-fit units in the root's
+ *  rotation frame (excludes recentring `root.position`), `r` its radius. */
 export interface OccluderSphere {
 	center: Vector3;
 	r: number;
 }
 
-/** Slices along the model's longest bbox axis. Enough to hug a bent/elongated
- *  body (one bounding ellipsoid lets labels peek through e.g. Eros's lobes)
- *  while staying a trivial per-frame cost in the occluder pass. */
+/** Slices along the model's longest bbox axis — enough to hug a bent/elongated
+ *  body (a single bounding ellipsoid lets labels peek through Eros's lobes),
+ *  at trivial per-frame cost. */
 const OCCLUDER_SLICES = 8;
 /** Cap on vertices sampled for occluder fitting; scan meshes can be huge. */
 const OCCLUDER_SAMPLE_TARGET = 4096;
@@ -422,10 +402,9 @@ const OCCLUDER_SAMPLE_TARGET = 4096;
 /**
  * Fit a chain of spheres to the model for label occlusion: vertices bucketed
  * into slices along the longest bbox axis, one bounding sphere per slice. The
- * union hugs bent/elongated shapes far better than any single sphere/ellipsoid,
- * while each sphere reuses the tangent-cone occluder math unchanged.
- * Centers are stored relative to `root.position` so the per-frame pass can
- * rotate them with the model: world = root.position + quat · center.
+ * union hugs bent/elongated shapes far better than a single sphere/ellipsoid.
+ * Centers are relative to `root.position` so the per-frame pass can rotate
+ * them with the model: world = root.position + quat · center.
  */
 function buildOccluderSpheres(root: Object3D, size: Vector3, k: number): OccluderSphere[] {
 	root.updateMatrixWorld(true);
@@ -460,7 +439,7 @@ function buildOccluderSpheres(root: Object3D, size: Vector3, k: number): Occlude
 
 	const spheres: OccluderSphere[] = [];
 	for (const bucket of buckets) {
-		if (bucket.length < 3) continue; // degenerate sliver — neighbours cover it
+		if (bucket.length < 3) continue; // sliver — neighbours cover it
 		const center = new Vector3();
 		for (const p of bucket) center.add(p);
 		center.divideScalar(bucket.length);
@@ -474,8 +453,7 @@ function buildOccluderSpheres(root: Object3D, size: Vector3, k: number): Occlude
 /** Ray-cast start distance — safely beyond a unit-normalised model's bounding
  *  sphere (≤ √3) plus its recentring offset. */
 const MODEL_CAST_DIST = 4;
-/** Floor for the cast radius: pathological geometry (surface beyond the local
- *  origin along the cast line) must not flip a point to the far side. */
+/** Cast-radius floor, so pathological geometry can't flip a point to the far side. */
 const MODEL_MIN_RADIUS = 0.05;
 
 const _castBodyDir = new Vector3();
@@ -485,13 +463,11 @@ const _castInvQuat = new Quaternion();
 const _caster = new Raycaster();
 
 /**
- * Surface distance (model units, from the model's local origin) along the
- * body-fixed lat/lon direction, by ray-casting the overlay mesh from outside —
- * the outermost hit, so concave terrain can't swallow the result. The
- * direction is rotated into the model's current attitude rather than resetting
- * its quaternion (hit distances are rotation-invariant). `outNormal`, when
- * given, receives the hit's body-fixed surface normal. Returns null on a miss
- * (scan holes).
+ * Surface distance (model units, from local origin) along a body-fixed lat/lon
+ * direction, by ray-casting the overlay mesh from outside — outermost hit, so
+ * concave terrain can't swallow the result. Direction rotates into the model's
+ * current attitude (hit distances are rotation-invariant). `outNormal`, if
+ * given, receives the hit's body-fixed surface normal. Null on a miss (scan holes).
  */
 export function castModelRadius(
 	model: Object3D,

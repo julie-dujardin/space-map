@@ -22,12 +22,9 @@ function excludePromoted(
 	return out;
 }
 
-/**
- * Per-body trail width in pixels. Planets get a chunky 4px line so they
- * read at a glance against the busier minor-body field; named moons (those
- * with a colour entry in {@link BODY_COLORS}) get 3px to stand out from the
- * mass of unnamed satellites without overwhelming the planet they orbit.
- */
+/** Per-body trail width in pixels: 4px for planets to read against the busy
+ *  minor-body field, 3px for named moons (a {@link BODY_COLORS} entry) to
+ *  stand out from unnamed satellites, 1px otherwise. */
 function trailWidthFor(body: PositionedBody): number {
 	if (body.data.objectType === ObjectType.PLANET) return 4;
 	if (
@@ -48,14 +45,13 @@ export function buildTrails(
 	for (const [, bo] of bodyObjects) {
 		if (bo.trail !== null) continue;
 		const { body } = bo;
-		// STAR (the Sun) has no trail. Halo-only mesh-upgradable bodies
-		// (asteroids, comets) defer trail build until focus upgrades the mesh —
-		// doing it eagerly would burn ~512 Kepler solves per body for nothing.
-		// `focusUpgraded`, not `mesh`, tracks that: a body with no measured size
-		// stays meshless however long it's focused. Barycenters/Lagrange points
-		// are halo-only forever but still get trails. Probes never get a sphere
-		// mesh, so they trail as soon as they're promoted — unless
-		// minor-promoted, which stays halo-only until focused.
+		// STAR (the Sun) has no trail. Mesh-upgradable halo-only bodies (asteroids,
+		// comets) defer trail build until focus upgrades the mesh — eager build
+		// would burn ~512 Kepler solves per body for nothing. `focusUpgraded`, not
+		// `mesh`, gates that, since a body with no measured size stays meshless
+		// regardless. Barycenters/Lagrange points are halo-only forever but still
+		// trail. Probes never get a sphere, so they trail as soon as promoted,
+		// unless minor-promoted (halo-only until focused).
 		if (body.data.objectType === ObjectType.STAR) continue;
 		const isProbe = body.data.orbitalSource === OrbitalSource.SPICE_PROBE;
 		if (isProbe) {
@@ -63,19 +59,15 @@ export function buildTrails(
 		} else if (!bo.mesh && !bo.focusUpgraded && isMeshUpgradable(body)) {
 			continue;
 		}
-		// Probes whose elements were null at processProbes time (typically
-		// because systems-global GMs hadn't landed yet) carry a rederive
-		// callback — retry it now so the trail self-heals on the next
-		// buildTrails pass once GMs are populated. Without this the
-		// per-frame refresh path is unreachable: refreshTrail
-		// only runs when `bo.trail` exists.
+		// Probes with null elements at processProbes time (GMs not yet landed)
+		// carry a rederive callback — retry it here so the trail self-heals once
+		// GMs populate. Needed because refreshTrail only runs once `bo.trail` exists.
 		if (!body.orbitElements && body.rederiveElements && jd !== undefined) {
 			const fresh = body.rederiveElements(jd);
 			if (fresh) body.orbitElements = fresh;
 		}
-		// Skip bodies with no trail source. Trail-buffer-backed probes
-		// have no `orbitElements` (the buffer takes over the trail entirely),
-		// so they take this branch via the buffer instead.
+		// Skip bodies with no trail source. Buffer-backed probes have no
+		// `orbitElements` — the buffer takes over the trail entirely.
 		if (!body.orbitElements && !body.trailBuffer) continue;
 		const color = resolveBodyColor(body.data);
 		const line = makeTrail(body, color, basisPos, jd, trailWidthFor(body));
@@ -100,9 +92,9 @@ export function buildPointClouds(
 	const spacecraftPoints = new Map<string, Points>();
 	const moonPoints = new Map<string, Points>();
 
-	// Asteroid point clouds: each zone hash-partitioned via partitionForWorkers
-	// — big zones split into K=workerCount subgroups (`${zone}#${i}`) so each
-	// rides its own worker, small zones stay single-bucket on one worker.
+	// Each zone hash-partitioned via partitionForWorkers: big zones split into
+	// K=workerCount subgroups (`${zone}#${i}`) riding separate workers, small
+	// zones stay a single bucket.
 	const asteroidSize = asteroidPointSize();
 	for (const [zone, byId] of ctx.bodies.asteroidBodiesByZone) {
 		const filtered = excludePromoted(byId.values(), promotedIds);
@@ -120,9 +112,8 @@ export function buildPointClouds(
 		}
 	}
 
-	// Spacecraft point clouds: same hash-partition as asteroids. Per-vertex
-	// colors so DEBRIS + SPACECRAFT mixing under one parentId doesn't paint the
-	// whole sub-cloud from bodies[0]'s type.
+	// Same hash-partition as asteroids. Per-vertex colors so DEBRIS + SPACECRAFT
+	// mixed under one parentId don't all paint as bodies[0]'s type.
 	for (const [groupParentId, byId] of ctx.bodies.spacecraftByParent.entries()) {
 		const filtered = excludePromoted(byId.values(), promotedIds);
 		if (filtered.length === 0) continue;
@@ -153,10 +144,9 @@ export function buildPointClouds(
 	for (const [parentId, moons] of moonsByParent) {
 		const pts = makePointCloud(moons, circleTexture, resolveBodyColor(moons[0].data), basisPos);
 		const mat = pts.material as PointsMaterial;
-		// Render moon dots in the opaque pass with alpha-tested cutout. Lets the
-		// body mesh occlude its own dot cleanly via depth test once the camera
-		// is close enough that the mesh fills the sprite footprint — without
-		// this, the transparent-pass dot punches through the mesh at center.
+		// Opaque pass + alpha-tested cutout: lets the depth test occlude the dot
+		// behind its own mesh once close enough to fill the sprite footprint —
+		// the transparent pass would punch through at center.
 		mat.transparent = false;
 		mat.alphaTest = 0.5;
 		mat.depthTest = true;

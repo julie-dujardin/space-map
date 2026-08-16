@@ -1,14 +1,13 @@
 /**
- * Celestial-sphere skybox (`scene.background`). Cube faces sourced from the
- * NASA SVS Deep Star Maps 2020 EXR (equatorial-frame equirectangular,
- * converted via py360convert). Tier auto-selects from `renderer.capabilities.maxTextureSize`.
+ * Celestial-sphere skybox (`scene.background`). Cube faces from the NASA SVS
+ * Deep Star Maps 2020 EXR (equatorial equirectangular, via py360convert),
+ * tier auto-selected from `renderer.capabilities.maxTextureSize`.
  *
- * Frame alignment: the SVS map is in J2000 equatorial coords; the renderer's
- * world frame is J2000 ecliptic. The analytical rotation that maps equinox to
- * scene +X and NCP to scene (0, cos ε, −sin ε) lands 180° away from what the
- * EXR actually delivers — root cause unresolved. Empirical correction is a
- * 180° post-rotation about scene-frame RA=18h, verified against Polaris,
- * Sirius, and the Magellanic Clouds.
+ * The SVS map is J2000 equatorial; the scene is J2000 ecliptic. The
+ * analytical equinox/NCP rotation lands 180° off what the EXR delivers —
+ * root cause unresolved. Corrected empirically with a 180° post-rotation
+ * about scene-frame RA=18h, verified against Polaris, Sirius, and the
+ * Magellanic Clouds.
  */
 import {
 	CubeTexture,
@@ -28,28 +27,19 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 const DEG2RAD = Math.PI / 180;
 const OBLIQUITY_RAD = EARTH_OBLIQUITY_DEG * DEG2RAD;
 
-/**
- * Composed analytical + empirical rotation reduces to
- * `Rₓ(−π/2) · Rᵧ(π/2 − ε) · R_z(−π/2)` — see file header for the empirical part.
- */
+/** Composed analytical + empirical rotation: `Rₓ(−π/2) · Rᵧ(π/2 − ε) · R_z(−π/2)`. */
 export const SKYBOX_BASE_ROTATION = new Quaternion()
 	.setFromAxisAngle(new Vector3(0, 0, 1), -Math.PI / 2)
 	.premultiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2 - OBLIQUITY_RAD))
 	.premultiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -Math.PI / 2));
 
-/**
- * Three.js' `CubeTextureLoader` expects URLs in this order: positive-X,
- * negative-X, positive-Y, negative-Y, positive-Z, negative-Z. The exporter
- * names files with these exact suffixes (`{tier}_{face}.webp`), so the URL
- * builder just maps over this list.
- */
+/** Face order Three.js' `CubeTextureLoader` expects: +X −X +Y −Y +Z −Z.
+ *  Matches the exporter's `{tier}_{face}.webp` naming. */
 const FACE_ORDER = ['px', 'nx', 'py', 'ny', 'pz', 'nz'] as const;
 
 /**
- * Pick the largest tier whose per-face edge length is ≤ `maxTextureSize`.
- * Falls back to the smallest tier when even that exceeds the cap (so we
- * still attempt a load on very constrained devices instead of going blank).
- * Returns null only when the bundle declares no tiers.
+ * Largest tier whose per-face edge is ≤ `maxTextureSize`, falling back to the
+ * smallest tier rather than going blank on very constrained devices.
  */
 function pickTier(meta: SkyboxMetadata, maxTextureSize: number): string | null {
 	if (meta.tiers.length === 0) return null;
@@ -67,11 +57,10 @@ function faceUrl(id: string, tier: string, face: string): string {
 }
 
 /**
- * Fetch + decode one tier's six faces as ImageBitmaps. Bitmap upload skips the
- * CPU-side convert that `texSubImage2D(HTMLImageElement)` pays (~1s main-thread
- * stall for the 4k tier), and decode happens off-thread in `createImageBitmap`.
- * `imageOrientation: 'none'` matches the `<img>` path's flipY=false upload, so
- * the empirically-calibrated SKYBOX_BASE_ROTATION stays valid.
+ * Fetch + decode one tier's six faces as ImageBitmaps, off-thread via
+ * `createImageBitmap` — avoids the ~1s main-thread stall `texSubImage2D`
+ * pays converting the 4k tier. `imageOrientation: 'none'` matches the
+ * `<img>` path's flipY=false upload, keeping SKYBOX_BASE_ROTATION valid.
  */
 async function loadTierBitmaps(id: string, tier: string): Promise<ImageBitmap[]> {
 	return Promise.all(
@@ -112,10 +101,9 @@ function pickLowTier(meta: SkyboxMetadata): string | null {
 }
 
 /**
- * Start fetching+decoding the low skybox tier as soon as metadata is known,
- * without waiting for the renderer. Low tier only: the full tier is an order of
- * magnitude larger and waits for the eager-minors gate so it doesn't crowd the
- * critical path (see {@link loadFromMeta}).
+ * Start fetching the low skybox tier as soon as metadata is known, without
+ * waiting for the renderer. Low only: the full tier is an order of magnitude
+ * larger and waits behind the eager-minors gate (see {@link loadFromMeta}).
  */
 export function prefetchSkyboxTiers(meta: SkyboxMetadata): void {
 	const low = pickLowTier(meta);
@@ -135,18 +123,15 @@ async function loadFromMeta(
 		console.warn(`Skybox ${meta.id}: no tiers declared`);
 		return;
 	}
-	// `scene.backgroundRotation` is owned by the renderer (see
-	// `SceneRenderer.setSkyboxAdjust`), so we don't write it here to avoid
-	// clobbering a user adjustment that may have raced ahead of this async
-	// load. The renderer seeds the rotation synchronously at scene-init time.
+	// `scene.backgroundRotation` is owned by the renderer (SceneRenderer.
+	// setSkyboxAdjust), which seeds it synchronously at init — writing it here
+	// would risk clobbering a user adjustment that raced ahead of this load.
 	const lowTier = pickLowTier(meta);
-	// Holder object: the low cube is assigned from an async race the TS
-	// control-flow analysis can't narrow through a plain `let`.
+	// Holder: TS can't narrow an async-race assignment through a plain `let`.
 	const lowRef: { cube: CubeTexture | null } = { cube: null };
 	let fullInstalled = false;
 	if (lowTier && lowTier !== tier) {
-		// Don't gate the full tier behind the low tier: install low only if it
-		// wins the race, so a preloaded/cached full tier goes straight up.
+		// Install low only if it wins the race, so a cached full tier goes straight up.
 		void tierBitmaps(meta.id, lowTier)
 			.then((bitmaps) => {
 				if (fullInstalled) return;
@@ -156,17 +141,14 @@ async function loadFromMeta(
 			})
 			.catch(() => {});
 	}
-	// Full tier is large (≈11MB) — hold it until the eager minor wave has the
-	// bandwidth it needs. Bounded by a timeout so a stalled/failed load can't
-	// strand the background on the low tier forever.
+	// Full tier is large (≈11MB) — hold it until the eager minor wave has its
+	// bandwidth, bounded by a timeout so a stalled load doesn't strand us on low.
 	await Promise.race([
 		eagerMinorsDone,
 		new Promise<void>((resolve) => setTimeout(resolve, FULL_TIER_GATE_TIMEOUT_MS))
 	]);
 	const full = makeCube(await tierBitmaps(meta.id, tier));
-	// Upload during idle time rather than mid-frame: initTexture pushes the
-	// six faces to the GPU now, so the first render that samples the cube
-	// doesn't absorb the upload cost.
+	// Upload during idle time so the first sampling render doesn't absorb the cost.
 	await new Promise<void>((resolve) =>
 		'requestIdleCallback' in window
 			? requestIdleCallback(() => resolve(), { timeout: 2000 })
@@ -180,14 +162,10 @@ async function loadFromMeta(
 }
 
 /**
- * Fetch the top-level metadata (memoized; shares the chunk-prefetcher's
- * promise), pick a tier, and install the cubemap-skybox bundle as
- * `scene.background`. When a ContextManager is given (the debug tuner passes
- * none), also publishes the bundle's credit fields onto `ctx.credits.skybox`
- * for the in-map attribution popover.
- * Fire-and-forget from the renderer init path — errors (including a missing
- * skybox block) are swallowed with a console warning so the scene falls back
- * to its default black background instead of breaking.
+ * Fetch metadata, pick a tier, and install the cubemap skybox as
+ * `scene.background`. Publishes credit fields onto `ctx.credits.skybox` when
+ * given. Fire-and-forget from renderer init — errors are swallowed with a
+ * warning so the scene falls back to black instead of breaking.
  */
 export async function loadSkybox(
 	scene: Scene,

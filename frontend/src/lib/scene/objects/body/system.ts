@@ -69,43 +69,25 @@ interface SystemBodyMeta {
 	nut_prec?: { ra: number[]; dec: number[]; pm: number[] };
 	/** SPICE PCK triaxial radii (km) along body-fixed X, Y, Z (Z = spin axis). */
 	radii?: { a: number; b: number; c: number };
-	/**
-	 * Planetary ring bundles, inner → outer — present only on bodies whose
-	 * ingest produced at least one. Saturn has three (D ring, measured main
-	 * rings, tenuous outer rings) because they differ by six orders of
-	 * magnitude in opacity and cannot share one 8-bit strip. The renderer
-	 * fetches each as `/v1/rings/{body_id}/{strip}`.
-	 */
+	/** Ring bundles, inner → outer. Split per opacity range (Saturn has
+	 *  three) since one 8-bit strip can't span six orders of magnitude. */
 	rings?: RingMeta[];
-	/**
-	 * Cloud-overlay bundle — present only on bodies whose ingest produced one
-	 * (Earth today). The renderer composes per-tier URLs as
-	 * `/v1/textures/{clouds.id}/{tier}.webp` (id ends in `_clouds`).
-	 */
+	/** Cloud-overlay bundle (Earth today). URLs: `/v1/textures/{clouds.id}/{tier}.webp`. */
 	clouds?: CloudMeta;
-	/**
-	 * Specular/roughness-map sibling bundle — present only on bodies whose
-	 * ingest produced one (Earth today). Single-frame; the renderer composes
-	 * URLs as `/v1/textures/{specular.id}/{tier}.webp` (id ends in `_specular`).
-	 */
+	/** Specular/roughness sibling bundle (Earth today), single-frame.
+	 *  URLs: `/v1/textures/{specular.id}/{tier}.webp`. */
 	specular?: SpecularMeta;
-	/**
-	 * Night-lights emissive sibling bundle — present only on bodies whose
-	 * ingest produced one (Earth today). Single-frame; the renderer composes
-	 * URLs as `/v1/textures/{night.id}/{tier}.webp` (id ends in `_night`).
-	 */
+	/** Night-lights emissive sibling bundle (Earth today), single-frame.
+	 *  URLs: `/v1/textures/{night.id}/{tier}.webp`. */
 	night?: NightMeta;
-	/**
-	 * Displacement/height sibling bundle (the Moon, planet DEMs). Single-frame;
-	 * URLs `/v1/textures/{displacement.id}/{tier}.webp` (id ends `_displacement`).
-	 */
+	/** Displacement/height sibling bundle (the Moon, planet DEMs), single-frame.
+	 *  URLs: `/v1/textures/{displacement.id}/{tier}.webp`. */
 	displacement?: DisplacementMeta;
 }
 
 /**
- * Fetch system metadata (textures + orientation + rings) and apply to all
- * bodies in that system. The metadata file is keyed by barycenter ID
- * (e.g. naif-3, naif-5).
+ * Fetch and apply system metadata (textures, orientation, rings) to every
+ * body in the system, keyed by barycenter ID (naif-3, naif-5, …).
  */
 export async function loadSystemData(
 	barycenterId: string,
@@ -146,8 +128,7 @@ export async function loadSystemData(
 		if (bodyMeta.orientation) {
 			applyBodyOrientation(bo, bodyMeta.orientation, ctx, barycenterId);
 
-			// Resolve per-body nutation/precession by joining coefficients with the
-			// system-shared angles (one IAU table per planetary system).
+			// Join per-body nut/prec coefficients with the system-shared IAU angles.
 			if (bodyMeta.nut_prec) {
 				const naifMatch = bodyId.match(/^naif-(-?\d+)$/);
 				const naifId = naifMatch ? parseInt(naifMatch[1], 10) : null;
@@ -160,11 +141,9 @@ export async function loadSystemData(
 			applyOrientation(bo.mesh, bodyMeta.orientation, currentJd, bo.body.nutPrec);
 		}
 
-		// Apply triaxial flattening. applyOrientation puts the body's pole on
-		// local +Y and the ascending node on local +X, so SPICE (X, Y, Z)
-		// maps to mesh local (X, Z, Y). Skipped for absolute-radius displacement
-		// bodies (Vesta, Ceres) — their DEM carries the full shape on a sphere,
-		// so the ellipsoid would double-count it.
+		// Triaxial flattening: SPICE (X, Y, Z) maps to mesh local (X, Z, Y) per
+		// applyOrientation's basis. Skipped when a DEM already carries the full
+		// shape (Vesta, Ceres) to avoid double-counting it.
 		if (
 			bodyMeta.radii &&
 			bo.radiusScene > 0 &&
@@ -174,10 +153,8 @@ export async function loadSystemData(
 			applyRadiiToMesh(bo, bodyMeta.radii);
 		}
 
-		// Record available tiers and load the base `low` tier if no texture is
-		// loaded yet. Higher tiers are loaded on-demand by the per-frame LOD
-		// update based on screen size. Skip if a tier is already loaded to avoid
-		// downgrading (e.g. high → low → re-upgrade) on repeated system visits.
+		// Load the base tier once; per-frame LOD upgrades from there. Skip if
+		// already loaded so repeat visits don't downgrade high → low.
 		if (bodyMeta.tiers?.length) {
 			bo.availableTiers = bodyMeta.tiers;
 			bo.availableFrames = bodyMeta.texture?.frames;
@@ -187,10 +164,8 @@ export async function loadSystemData(
 			}
 		}
 
-		// Specular/roughness sibling — patches the body's material so ocean
-		// pixels lower roughness while land keeps the base value. Idempotent
-		// on the hook side; we still gate the texture load on `bo.specularMap`
-		// to avoid refetching on every system reload.
+		// Specular sibling: lowers roughness on ocean pixels. Gated on
+		// `bo.specularMap` so reloads don't refetch.
 		if (bodyMeta.specular && !bo.specularMap && bo.mesh) {
 			const specMeta = bodyMeta.specular;
 			const material = bo.mesh.material as MeshStandardMaterial;
@@ -207,10 +182,8 @@ export async function loadSystemData(
 			);
 		}
 
-		// Night-lights emissive sibling — patches the body's material so the
-		// unlit hemisphere glows with city lights. Same idempotent pattern
-		// as the specular branch; the shader hook reuses the eclipse-shadow
-		// scene uniforms for the sun direction.
+		// Night-lights sibling: city-light glow on the unlit hemisphere.
+		// Reuses the eclipse-shadow uniforms for sun direction.
 		if (bodyMeta.night && !bo.emissiveMap && bo.mesh) {
 			const nightMeta = bodyMeta.night;
 			if (ctx) {
@@ -237,11 +210,9 @@ export async function loadSystemData(
 			);
 		}
 
-		// Displacement/height sibling — drives vertex displacement at true scale.
-		// On the material, so sphere-LOD geometry swaps show more relief on zoom.
-		// The DEM (multi-MB maps + self-shadow march) is the heaviest per-body
-		// asset, so low-end/data-saver clients keep the flat sphere — mirrors
-		// the standalone branch in textures.ts.
+		// Displacement sibling drives true-scale vertex relief. The DEM is the
+		// heaviest per-body asset, so low-end clients keep the flat sphere
+		// (mirrors the standalone branch in textures.ts).
 		if (bodyMeta.displacement && !bo.displacementMap && bo.mesh && isLowEndDevice()) {
 			console.info(`Low-end device: skipping DEM relief for ${bodyId}`);
 		} else if (bodyMeta.displacement && !bo.displacementMap && bo.mesh) {
@@ -277,8 +248,7 @@ export async function loadSystemData(
 			);
 		}
 
-		// Cloud overlay — second sphere parented to the body's mesh, lit by the
-		// same scene lights. Idempotent: re-entering with `bo.clouds` set skips.
+		// Cloud overlay: second sphere parented to the body's mesh. Idempotent via `bo.clouds`.
 		if (bodyMeta.clouds && !bo.clouds && bo.mesh) {
 			if (ctx) {
 				ctx.credits.registerCloud({
@@ -295,8 +265,7 @@ export async function loadSystemData(
 			const parentMesh = bo.mesh;
 			const initialFrame = cloudFrameForJd(currentJd, cloudMeta.frames);
 			if (!initialFrame) {
-				// No snapshots exported for this body yet — skip the load
-				// entirely so the renderer doesn't park a frameless node.
+				// No exported snapshot yet — skip rather than park a frameless node.
 				continue;
 			}
 			promises.push(
@@ -310,9 +279,8 @@ export async function loadSystemData(
 						parentMesh.remove(node.mesh);
 						return;
 					}
-					// Cloud sits at the same center as the body, so the eclipse
-					// self-skip uniform can be shared — that also avoids a second
-					// per-frame write in the renderer.
+					// Cloud shares the body's center, so it reuses the eclipse
+					// self-skip uniform instead of a second per-frame write.
 					if (bo.eclipseShadow) {
 						attachEclipseShadowToBody(node.material, bo.eclipseShadow);
 						if (bo.atmosphere) {
@@ -354,11 +322,9 @@ export async function loadSystemData(
 }
 
 /**
- * Drop GPU textures (and ring nodes) for every body that belongs to
- * `barycenterId`. Geometry, materials, and meshes stay in place so the bodies
- * still render — only textures are released. Counterpart to
- * {@link loadSystemData}; called when the user navigates away from a system
- * so unfocused systems don't keep their high-tier textures pinned on the GPU.
+ * Release GPU textures (and rings) for every body in `barycenterId`, keeping
+ * geometry/mesh intact. Counterpart to {@link loadSystemData}, called on
+ * leaving a system so it stops pinning high-tier textures on the GPU.
  */
 export function unloadSystemTextures(
 	barycenterId: string,
@@ -384,8 +350,7 @@ export function unloadSystemTextures(
 			detachSelfShadow(bo.selfShadow);
 			bo.selfShadow = null;
 		}
-		// A lingering terrain window is ~100k vertices; a hidden body would keep
-		// it until the next visit, so drop back to the out-of-system sphere here.
+		// A terrain window is ~100k vertices; drop back to the plain sphere on unload.
 		if (bo.terrainWindow && bo.mesh) {
 			bo.terrainWindow = null;
 			const radius = kmToScene(effectiveRadiusKm(bo.body.data));

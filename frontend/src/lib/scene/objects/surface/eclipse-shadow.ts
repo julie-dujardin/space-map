@@ -1,18 +1,14 @@
 /**
  * Analytical sun-disc occlusion: each {@link MeshStandardMaterial} body
- * computes how much of the Sun's disc is blocked by neighbouring bodies and
- * dims direct sunlight by that fraction. With the Sun treated as a finite
- * disc (rather than a directional light), partial obscuration produces a
- * real penumbra, the umbra core falls out as 100% obscuration, and annular
- * eclipses appear automatically when the occluder's angular size is smaller
- * than the Sun's.
+ * computes how much of the Sun's disc neighbouring bodies block and dims
+ * direct sunlight by that fraction. Treating the Sun as a finite disc gives a
+ * real penumbra, a 100%-obscured umbra core, and annular eclipses for free
+ * when the occluder's angular size is smaller than the Sun's.
  *
- * Replaces the directional shadow map for body-on-body shadows: it runs
- * per-pixel so there's no blockiness, no resolution dropout when zooming
- * close to the receiver, and the same code generalises across every
- * geometry the engine cares about — solar eclipses on Earth, lunar
- * eclipses on the Moon, mutual transits between Galilean moons, etc. The
- * Saturn-on-rings shadow uses a sibling oblate-spheroid ray-march in
+ * Replaces the directional shadow map for body-on-body shadows: per-pixel,
+ * so no blockiness or resolution dropout on close zoom, and one formula
+ * covers solar/lunar eclipses and mutual moon transits alike. The
+ * Saturn-on-rings shadow instead uses the oblate-spheroid ray-march in
  * `rings.ts`; this is the spherical-occluder version for solid bodies.
  */
 
@@ -29,12 +25,11 @@ export const MAX_OCCLUDERS = 32;
  * Scene-wide eclipse uniforms — one instance shared by every body's fragment
  * shader, mutated in place each frame.
  *
- * `uSunDir`/`uSunAngularRadius` instead of `uSunPos`/`uSunRadius`: in scene
- * units the Sun sits ~1 AU away while a receiver fragment is at most a
- * body-radius from focus origin, so float32 quantises `uSunPos - vWorldPos`
- * into stripes. CPU-normalising once in float64 keeps the direction smooth
- * across the whole body, and the per-fragment `dSun` variation (~1e-5) is far
- * below the Sun's angular size, so `asin(R_sun / dSun)` is also precomputed.
+ * `uSunDir`/`uSunAngularRadius` instead of `uSunPos`/`uSunRadius`: the Sun is
+ * ~1 AU away while receivers sit near the focus origin, so float32 would
+ * quantise `uSunPos - vWorldPos` into stripes. CPU-normalising once in
+ * float64 keeps the direction smooth; per-fragment `dSun` variation is far
+ * below the Sun's angular size, so `asin(R_sun / dSun)` is precomputed too.
  */
 export interface EclipseSceneUniforms {
 	/** Unit vector from the focus origin toward the Sun. */
@@ -66,17 +61,15 @@ const SHARED: EclipseSceneUniforms = {
  * three.js `<common>` (PI).
  *
  * Two regimes:
- *  (1) Comparable angular sizes (e.g. solar eclipse on Earth: aSun ≈ aMoon):
- *      the standard two-circle intersection (lens-area) formula. Numerically
- *      stable here because no term dominates by orders of magnitude.
- *  (2) Occluder much larger than the Sun (e.g. ISS in LEO sees Earth at
- *      aOc ≈ 1.2 rad against aSun ≈ 0.005 rad): the lens formula's
- *      b²·acos((c-x)/b) and c·y terms are each O(b·aSun) but cancel to
- *      O(aSun²), amplifying float32 noise in sep by b/aSun (the blocky LEO
- *      shading). The occluder limb is locally straight at sun-disc scale
- *      (relative error O((aSun/sin(aOc))²) ≈ 1e-5 when aOc > 10·aSun), so use
- *      the chord approximation: covered fraction = Sun-disc area on one side
- *      of a chord at signed distance (aOc − sep).
+ *  (1) Comparable angular sizes (e.g. Earth eclipse, aSun ≈ aMoon): the
+ *      standard two-circle lens-area formula — stable since no term
+ *      dominates by orders of magnitude.
+ *  (2) Occluder much larger than the Sun (e.g. LEO satellite under Earth):
+ *      the lens formula's terms nearly cancel there, amplifying float32
+ *      noise into blocky shading. The occluder limb is locally straight at
+ *      sun-disc scale for aOc > 10·aSun, so use a chord approximation
+ *      instead: covered fraction = Sun-disc area on one side of a chord at
+ *      signed distance (aOc − sep).
  */
 export const ECLIPSE_FACTOR_GLSL = `
 	#define ECLIPSE_MAX_OCCLUDERS ${MAX_OCCLUDERS}
@@ -147,16 +140,12 @@ export interface EclipseSelfUniforms {
 
 /**
  * CPU port of {@link ECLIPSE_FACTOR_GLSL}. Reads the same `SHARED` uniforms
- * the shader does, so call after `updateEclipseUniforms`.
+ * the shader does, so call after `updateEclipseUniforms`. Used for the
+ * spacecraft 3D-model overlay, which lives in a parallel scene the
+ * per-fragment shader can't reach — a single ray from the body's center
+ * suffices since the penumbra is uniform at spacecraft scale.
  *
- * Used for the spacecraft 3D-model overlay: the model lives in a parallel
- * scene with its own coordinates, so the per-fragment shader path can't run
- * on it. A single ray from the focused body's center is sufficient — at
- * spacecraft scale the penumbra is uniform across the model.
- *
- * Any change to the GLSL formula below MUST be mirrored here, and the
- * vitest cases in `eclipse-shadow.test.ts` are the contract that keeps the
- * two in sync.
+ * Any change to the GLSL formula MUST be mirrored here; `eclipse-shadow.test.ts` is the contract.
  */
 export function evaluateEclipseFactor(receiverPos: Vector3, selfPos: Vector3): number {
 	const aSun = SHARED.uSunAngularRadius.value;
@@ -215,16 +204,12 @@ export function evaluateEclipseFactor(receiverPos: Vector3, selfPos: Vector3): n
  * Inject the analytical sun-disc occlusion path into a
  * {@link MeshStandardMaterial}. Chains the existing `onBeforeCompile` so
  * other shader modifiers (e.g. `attachRingShadowToPlanet`) can stack on
- * top — Saturn ends up running both this and the ring-cast factor.
+ * top — Saturn runs both this and the ring-cast factor.
  *
- * The shader edits land after `<lights_fragment_end>`, so they scale only
- * the resolved direct light contribution. Indirect (ambient/env) light is
- * left alone — the umbra stays softly lit by ambient light, matching real
- * eclipses where the lunar/Earth umbra never goes pitch black.
- *
- * `selfUniforms` lets a sibling material (e.g. the cloud overlay above a
- * body's surface) reuse the body's self-position so its self-occlusion
- * skip targets the same center the renderer updates each frame.
+ * Edits land after `<lights_fragment_end>`, scaling only direct light —
+ * ambient/env light is untouched, so the umbra stays softly lit like a real
+ * eclipse. `selfUniforms` lets a sibling material (e.g. a cloud overlay)
+ * reuse the body's self-position for its own self-occlusion skip.
  */
 export function attachEclipseShadowToBody(
 	material: MeshStandardMaterial,

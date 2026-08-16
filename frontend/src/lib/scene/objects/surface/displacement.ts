@@ -14,12 +14,9 @@ import { attachSelfShadowToBody } from './self-shadow';
 import type { BodyObjects } from '$lib/scene/types';
 
 /**
- * Per-body displacement metadata from `systems/{bary}.json` (see
- * `export/systems.py::displacement_block`). `scale_km`/`bias_km` map each texel
- * to a value: `km = bias_km + scale_km * texel`. When `absolute_radius`, that
- * value is radius-from-centre (not elevation), so the caller renders the body
- * as a sphere + displacement and subtracts its own radius — see
- * {@link attachDisplacementMap}.
+ * Per-body displacement metadata. `scale_km`/`bias_km` map each texel to
+ * `km = bias_km + scale_km * texel`. When `absolute_radius`, that value is
+ * radius-from-centre, not elevation — see {@link attachDisplacementMap}.
  */
 export interface DisplacementMeta {
 	id: string;
@@ -36,18 +33,15 @@ export interface DisplacementMeta {
 }
 
 /**
- * Load a body's height map onto a `MeshStandardMaterial` as a displacement map
- * at true scale, shared by the main scene and the lineup. Scale/bias land in the
- * base sphere's own units via `kmToLocal` (scene units per km for the main scene;
- * the lineup renders on a unit sphere = `radiusKm`, so it passes `1/radiusKm`),
- * so the per-frame sphere-LOD geometry swap displaces correctly at every
- * tessellation level. `NoColorSpace`: it's linear height data, not colour.
+ * Load a body's height map as a displacement map at true scale, shared by the
+ * main scene and the lineup. Scale/bias land in the base sphere's own units
+ * via `kmToLocal` (scene units/km, or `1/radiusKm` for the lineup's unit
+ * sphere), so LOD geometry swaps displace correctly at every tessellation
+ * level. `NoColorSpace`: linear height data, not colour.
  *
- * For `absolute_radius` grids the values are radius-from-centre, so the bias is
- * offset by `−sphereRadius`: the displaced surface lands at the true radius
- * regardless of the base sphere's size (these bodies skip triaxial flattening,
- * letting the DEM carry the whole shape). Returns the texture for later disposal,
- * or `null` on fetch failure.
+ * For `absolute_radius` grids the bias is offset by `−sphereRadius` so the
+ * displaced surface lands at the true radius regardless of base sphere size
+ * (these bodies skip triaxial flattening; the DEM carries the whole shape).
  */
 export async function attachDisplacementMap(
 	material: MeshStandardMaterial,
@@ -96,10 +90,9 @@ export async function fetchHeightBitmap(url: string): Promise<ImageBitmap | null
  *  would exceed browser canvas-area caps (and block the main thread in one go). */
 const STRIP_PX = 4_000_000;
 
-/** R-channel rows `[y0..y1]` (top-down), read in full-width strips with a
- *  yield between them so large tiers don't freeze the frame loop. Hidden tabs
- *  skip the yields: there's no frame to protect, and background timer
- *  throttling would stretch a 16k decode to tens of minutes. */
+/** R-channel rows `[y0..y1]`, read in strips with a yield between so large
+ *  tiers don't freeze the frame loop. Hidden tabs skip yields: no frame to
+ *  protect, and timer throttling would stretch a 16k decode to tens of minutes. */
 export async function readHeightRows(
 	bitmap: ImageBitmap,
 	y0: number,
@@ -125,10 +118,10 @@ export async function readHeightRows(
 }
 
 /**
- * Swap the body's displacement map to another tier, re-pointing the self-shadow
- * march at the same texture. Uploaded as single-channel R8 (a 16k RGBA upload
- * with mips would be ~700 MB of VRAM; R8 without mips is ~134 MB — and the
- * displacement/self-shadow shaders only ever read `.r`/`.x`).
+ * Swap the body's displacement map to another tier, re-pointing the
+ * self-shadow march at the same texture. Uploaded as single-channel R8: a 16k
+ * RGBA upload with mips would be ~700 MB VRAM vs ~134 MB, and the shaders
+ * only read `.r`/`.x`.
  */
 export async function swapDisplacementTier(bo: BodyObjects, tier: string): Promise<void> {
 	const meta = bo.displacementMeta;
@@ -176,10 +169,9 @@ export async function swapDisplacementTier(bo: BodyObjects, tier: string): Promi
 }
 
 /**
- * Bilinear texel (0..1) of a single-channel height map at fractional texel
- * coords `(fx, fy)`, matching the GPU's sampling: wrap S, clamp T, 8-bit
- * levels. `data` may be a row window — pass its height and re-base `fy`; the
- * window's ±1-row bilinear margin keeps the clamp equivalent to the full map's.
+ * Bilinear texel of a single-channel height map at `(fx, fy)`, matching the
+ * GPU's sampling: wrap S, clamp T. `data` may be a row window with its own
+ * height and re-based `fy`; a ±1-row margin keeps clamping equivalent to the full map.
  */
 export function bilinearHeightTexel(
 	data: Uint8Array | Uint8ClampedArray,

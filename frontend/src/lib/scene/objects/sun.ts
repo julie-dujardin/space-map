@@ -21,16 +21,14 @@ import {
 } from './surface/sun-transmittance';
 
 /**
- * Photosphere → star-point bloom handoff constants. Tuned together so the
- * star-point's per-pixel HDR at handoff matches the mesh's disc-averaged HDR:
+ * Photosphere → star-point bloom handoff constants, tuned together so the
+ * star-point's per-pixel HDR matches the mesh's disc-averaged HDR:
  *   uIntensity · STAR_POINT_TEXEL_ALPHA = SUN_HDR_MULTIPLIER · LIMB_DISC_AVG
- *
- * LIMB_DISC_AVG: the I(μ) = μ^α limb law disc-averages to 2/(α+2), ≈ 0.8 at
- * the luminance-weighted α (identical to the classical Eddington average, so
- * the handoff is insensitive to whether the exported α has arrived).
- * STAR_POINT_TEXEL_ALPHA = 0.3 is the circle-texture fill alpha (`makeCircleTexture`).
- * STAR_POINT_FLOOR_INTENSITY sits just above the bloom threshold so faint stars
- * still get a halo rather than reading as a hard LDR speck.
+ * LIMB_DISC_AVG ≈ 0.8: the I(μ) = μ^α limb law disc-averages to 2/(α+2) at the
+ * luminance-weighted α, matching the classical Eddington average (handoff is
+ * insensitive to whether the exported α has arrived). STAR_POINT_TEXEL_ALPHA
+ * is the circle-texture fill alpha. STAR_POINT_FLOOR_INTENSITY sits just
+ * above the bloom threshold so faint stars still get a halo, not a hard speck.
  */
 export const SUN_HDR_MULTIPLIER = 6;
 const LIMB_DISC_AVG = 0.8;
@@ -56,9 +54,8 @@ function makeGlowTexture(color: string, size = 256): CanvasTexture {
 	const ctx = canvas.getContext('2d')!;
 	const half = size / 2;
 	const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
-	// Fade the alpha but keep the same RGB so canvas's sRGB interpolation never
-	// produces a dark intermediate — a fade to `rgba(0,0,0,0)` reads as a black
-	// ring through the bloom transition.
+	// Fade alpha only, keep RGB fixed: fading to rgba(0,0,0,0) would interpolate
+	// through a dark intermediate and read as a black ring under bloom.
 	gradient.addColorStop(0, withAlpha(color, 1));
 	gradient.addColorStop(0.15, withAlpha(color, 1));
 	gradient.addColorStop(0.4, withAlpha(color, 0.3));
@@ -80,30 +77,26 @@ function withAlpha(rgbColor: string, alpha: number): string {
 }
 
 /**
- * Photosphere centre colour: blackbody-to-sRGB for the Sun's effective
- * temperature (5778 K). Overrides the body's `BODY_COLORS` tint (which is the
- * saturated yellow used by the halo / corona / starPoint) because the actual
- * disc, lit by HDR + bloom + ACES, reads physically as warm white.
+ * Photosphere centre colour: blackbody-to-sRGB at 5778 K. Overrides the
+ * body's saturated-yellow `BODY_COLORS` tint (used by halo/corona/starPoint),
+ * since the disc under HDR + bloom + ACES reads physically as warm white.
  */
 const PHOTOSPHERE_CENTRE_COLOR = '#fff5eb';
 
 /**
- * Limb tint: ≈ 4700 K blackbody-to-sRGB, matching the photospheric limb's
- * effective temperature (cooler upper photosphere sampled at grazing angles).
- * Confined to a thin rim by the `smoothstep` ramp in the fragment shader — a
- * linear mix on μ would pull most of the disc warm because μ stays high
- * across the projected area and only collapses at the silhouette.
+ * Limb tint: ≈4700 K blackbody-to-sRGB, the cooler upper photosphere sampled
+ * at grazing angles. Confined to a thin rim by the fragment shader's
+ * `smoothstep` — a linear mix on μ would warm most of the disc, since μ
+ * stays high until it collapses near the silhouette.
  */
 const PHOTOSPHERE_LIMB_COLOR = '#ffd9a8';
 
 /**
- * Photosphere material for a star sphere. Per-channel power-law limb
- * darkening I(μ) = μ^α(λ) (Hestroffer & Magnan 1998) — α rises toward the
- * blue, so the rim physically warms — plus the artistic thin-rim tint below.
- * α ships in atmospheres.json ({@link setStarLimbAlpha}); until it lands, a
- * neutral α = 0.5 matches the classical Eddington falloff. Output is HDR (×6)
- * so the bloom + ACES tone-map pipeline saturates the centre to white and
- * bleeds light outward.
+ * Photosphere material. Per-channel power-law limb darkening I(μ) = μ^α(λ)
+ * (Hestroffer & Magnan 1998) — α rises toward blue, physically warming the
+ * rim — plus the artistic thin-rim tint below. α ships in atmospheres.json
+ * ({@link setStarLimbAlpha}); neutral α = 0.5 until it lands. Output is HDR
+ * (×6) so bloom + ACES saturate the centre to white and bleed light outward.
  */
 export function makeStarSurfaceMaterial(): ShaderMaterial {
 	const centre = new Color(PHOTOSPHERE_CENTRE_COLOR);
@@ -113,9 +106,9 @@ export function makeStarSurfaceMaterial(): ShaderMaterial {
 			uCentreColor: { value: new Vector3(centre.r, centre.g, centre.b) },
 			uLimbColor: { value: new Vector3(limb.r, limb.g, limb.b) },
 			uLimbAlpha: { value: new Vector3(0.5, 0.5, 0.5) },
-			// Per-fragment atmospheric chroma, aimed at a nearby shell each frame
-			// by updateAtmosphereShaders — from orbit the disc outsizes the
-			// atmosphere band, so a single colour can't work.
+			// Per-fragment atmospheric chroma, aimed at a nearby shell each frame by
+			// updateAtmosphereShaders — a single colour can't work since the disc
+			// outsizes the atmosphere band from orbit.
 			...makeViewTintUniforms()
 		},
 		vertexShader: `
@@ -146,19 +139,14 @@ export function makeStarSurfaceMaterial(): ShaderMaterial {
 			void main() {
 				#include <logdepthbuf_fragment>
 				float mu = max(dot(normalize(vNormalView), normalize(vViewDir)), 0.0);
-				// Hestroffer & Magnan power law, per channel — the steeper blue
-				// exponent is what physically warms the rim.
+				// Hestroffer & Magnan power law, per channel — steeper blue exponent warms the rim.
 				vec3 darkening = pow(vec3(max(mu, 1e-4)), uLimbAlpha);
-				// Confine the warm tint to a thin rim. A linear mix on mu would
-				// pull most of the disc warm because mu = sqrt(1 - r²/R²) stays
-				// high across the projected disc and only collapses near the
-				// silhouette; the smoothstep keeps the rest cleanly at uCentreColor.
+				// Confine warmth to a thin rim: mu stays high across most of the disc
+				// and only collapses near the silhouette, so a linear mix would warm too much.
 				float warm = 1.0 - smoothstep(0.0, 0.35, mu);
 				vec3 tint = mix(uCentreColor, uLimbColor, warm);
-				// HDR over-bright multiplier. The pipeline blooms anything past
-				// 1.0 and tone-maps via ACES, so the disc centre saturates to
-				// white with a soft halo of bleeding light — same look a camera
-				// gets when pointed at the Sun, rather than a flat cream ball.
+				// HDR over-bright: anything past 1.0 blooms and tone-maps via ACES,
+				// saturating the centre to white with bleeding light, like a camera on the Sun.
 				vec3 hdr = tint * darkening * ${SUN_HDR_MULTIPLIER.toFixed(1)};
 				gl_FragColor = vec4(atmoViewTint(vWorldPos) * hdr, 1.0);
 			}
@@ -187,12 +175,10 @@ function makeStarGlow(radius: number, color: string): Sprite {
 }
 
 /**
- * Single fixed-size dot, visible when the star's mesh is sub-pixel. Uses a
- * custom shader (not `PointsMaterial`) so its output can exceed 1.0 in linear
- * space and feed the bloom pass — without that, the dot is clamped to LDR and
- * the sun's bloom would vanish the instant the mesh drops below one pixel.
- * `uIntensity` is driven per-frame from `screenR²` (visibility/update.ts),
- * giving an inverse-square apparent-brightness fall-off with distance.
+ * Fixed-size dot for when the star's mesh is sub-pixel. Custom shader (not
+ * `PointsMaterial`) so output can exceed 1.0 and feed bloom — otherwise the
+ * sun's bloom vanishes the instant the mesh drops below one pixel.
+ * `uIntensity` is driven per-frame from `screenR²` for inverse-square falloff.
  */
 function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
 	const geometry = new BufferGeometry();
@@ -238,10 +224,9 @@ function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
 }
 
 /**
- * Build every scene-side object a star contributes beyond its photosphere mesh:
- * the heliocentric PointLight, the additive corona sprite, and the sub-pixel
- * fallback point. All three are added to `scene` and returned so the caller can
- * track them on its BodyObjects record (for visibility / focus / cleanup paths).
+ * Every scene-side object a star contributes beyond its photosphere mesh:
+ * heliocentric PointLight, additive corona sprite, sub-pixel fallback point.
+ * Added to `scene` and returned so the caller can track them on BodyObjects.
  */
 export function buildStarExtras(
 	scene: Scene,
@@ -258,11 +243,8 @@ export function buildStarExtras(
 	return { light, corona, starPoint };
 }
 
-/**
- * Colour the corona and star point by `AtmosphereFrameState.sunTint` — a
- * single colour suffices for soft glows; the disc shades per fragment via
- * VIEW_TINT_GLSL. Chroma only: the shell's alpha owns the dimming.
- */
+/** Colour the corona and star point by `AtmosphereFrameState.sunTint`. Chroma
+ *  only — the shell's alpha owns dimming; the disc shades via VIEW_TINT_GLSL. */
 export function applyStarTint(
 	corona: Sprite | null,
 	starPoint: Points | null,

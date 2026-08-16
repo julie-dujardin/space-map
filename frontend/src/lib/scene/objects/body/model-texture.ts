@@ -3,16 +3,14 @@ import { tintBaseColor } from './texture-tint';
 
 /**
  * Equirectangular `map` sampling for shape-model meshes, which ship no texture
- * coordinates. The GLB's body-fixed frame (glTF +Y = north pole, +X = prime
- * meridian, -Z = east) matches the frame the textured sphere renders, so
- * projecting the fragment's direction onto lat/lon samples the same surface
- * map correctly: u = lon/2π + 0.5 with the prime meridian at u = 0.5, as
- * SphereGeometry UVs place it.
+ * coordinates. GLB's body-fixed frame (glTF +Y = north, +X = prime meridian,
+ * -Z = east) matches the textured sphere's, so projecting the fragment
+ * direction onto lat/lon (u = lon/2π + 0.5, matching SphereGeometry's UVs)
+ * samples the same map correctly.
  *
- * Sampling happens per fragment (not baked per vertex) so triangles crossing
- * the ±180° meridian don't smear; the wrap's derivative discontinuity is
- * handled by sampling with gradients from whichever of two half-offset
- * longitude parameterisations is locally continuous.
+ * Per-fragment, not baked per vertex, so triangles crossing the ±180° meridian
+ * don't smear; samples with gradients from whichever of two half-offset
+ * longitude parameterisations is locally continuous, to dodge the wrap seam.
  */
 const EQUIRECT_MAP_FRAGMENT = /* glsl */ `
 #ifdef USE_MAP
@@ -45,10 +43,9 @@ export function makeShapeModelMaterial(color: string | number): MeshStandardMate
 		shader.fragmentShader = shader.fragmentShader
 			.replace('#include <common>', '#include <common>\nvarying vec3 vBodyDir;')
 			.replace('#include <map_fragment>', EQUIRECT_MAP_FRAGMENT)
-			// No IBL fill: the sphere path gets none, so the mesh nightside must
-			// match it. The overlay's env map is there for metallic spacecraft, not
-			// matte bodies. Stubbed in-shader because for a scene-level environment
-			// the renderer forces the envMapIntensity uniform to
+			// No IBL fill, matching the sphere path's nightside — the overlay's env
+			// map is for metallic spacecraft, not matte bodies. Stubbed in-shader
+			// because a scene-level environment forces envMapIntensity from
 			// scene.environmentIntensity, ignoring the material's own opt-out.
 			.replace(
 				'#include <envmap_physical_pars_fragment>',
@@ -74,11 +71,10 @@ export function applyShapeModelMaterial(root: Object3D, material: MeshStandardMa
 }
 
 /**
- * Point the model's materials at `map` (already colour-space-tagged by the
- * sphere path — the Texture object is shared, not copied, so texture-tier
- * upgrades propagate by re-calling this). `null` reverts to `fallbackColor`.
- * With a map, the base colour is `tintBaseColor` — a grayscale map is coloured
- * by `tintHex` (the body's measured surface colour), a coloured one stays as-is.
+ * Point the model's materials at `map` (colour-space-tagged by the sphere
+ * path; shared not copied, so texture-tier upgrades propagate by re-calling
+ * this). `null` reverts to `fallbackColor`. Base colour follows
+ * `tintBaseColor`: a grayscale map is tinted by `tintHex`, a coloured one stays as-is.
  */
 export function setShapeModelMap(
 	root: Object3D,
@@ -96,12 +92,9 @@ export function setShapeModelMap(
 }
 
 /**
- * Apply a surface `map` to a single sphere material — the sphere-side counterpart
- * of {@link setShapeModelMap}, shared by the focused-body scene and the lineup so
- * identical bodies colour identically. Tags sRGB, disposes any prior map, and
- * sets the base colour by the same grayscale-tint rule: a monochrome map is
- * coloured by `tintHex` (the body's measured surface hue), a coloured one keeps a
- * white base.
+ * Sphere-side counterpart of {@link setShapeModelMap}, shared by the focused
+ * scene and the lineup so identical bodies colour identically. Tags sRGB,
+ * disposes any prior map, and applies the same grayscale-tint rule as above.
  */
 export function setSurfaceMap(
 	material: MeshStandardMaterial,

@@ -9,28 +9,23 @@ import { writeBufferVerticesWithLiveHead } from './builder';
 
 // Re-render the precessing-elements curve when accumulated drift on Ω or ω
 // exceeds this many degrees. At 0.01° the chord offset stays sub-body-radius
-// even for the closest Saturn moons, well below typical screen pixel scale.
-// Verified manually: 0.1 results in visible flickery offset from moons to their trails.
+// even for the closest Saturn moons, well under screen pixel scale.
 const TRAIL_CURVE_REFRESH_DEG = 0.01;
 
-// Re-snapshot chebyshev-derived osculating elements after sim jd has advanced
-// by this fraction of the orbit's period. Bounds the body-on-curve drift that
-// accumulates when the static snapshot ages — Earth's Moon (period ~28 d)
-// re-derives every ~0.28 d of sim time, Pluto every ~2.5 yr.
+// Re-snapshot chebyshev-derived osculating elements after sim jd advances
+// this fraction of the orbit's period — bounds drift as the snapshot ages
+// (Earth's Moon re-derives every ~0.28 d of sim time, Pluto every ~2.5 yr).
 const CHEB_ELEMENTS_REFRESH_PERIOD_FRACTION = 1 / 100;
-// Hard cap on the re-derive cadence so long-period bodies still refresh in
-// reasonable sim time. Mostly matters for probe trails: a Voyager-style cruise
-// modeled as a heliocentric Kepler-pure sub-chunk has period ~years, and the
-// curve needs to rebuild within hours of crossing into a Chebyshev sub-chunk
-// at a planetary flyby — not months. Benign for existing bodies (Pluto's 2.5 yr
-// gate becomes 1 d; Earth's Moon's 0.28 d gate is already tighter).
+// Hard cap on re-derive cadence for long-period bodies: a Voyager-style
+// heliocentric cruise has a period of years, but must rebuild within hours
+// of entering a Chebyshev sub-chunk at a flyby. Benign elsewhere — Pluto's
+// gate becomes 1 d, the Moon's 0.28 d gate is already tighter.
 const MAX_REDERIVE_DAYS = 1.0;
 
 /**
  * Rewrite a buffer-backed trail's vertex buffer from its current contents.
- * Called from {@link refreshTrail} per jd tick and from focus-change paths.
- * Unlike the Kepler/SGP4 path, there's no cached vertex list to rebase — the
- * ring buffer is the source of truth, so we just re-read it with the new basis.
+ * Unlike the Kepler/SGP4 path there's no cached vertex list to rebase — the
+ * ring buffer is the source of truth, so this just re-reads it with the new basis.
  */
 export function refreshBufferTrail(
 	body: PositionedBody,
@@ -46,10 +41,9 @@ export function refreshBufferTrail(
 }
 
 /**
- * Rewrite a trail's vertex buffer from cached orbit-local positions and
- * a fresh basis offset, without any curve recompute. Used by the focus-change
- * path, which needs every line rebased before the first render against the new
- * basis but does not advance jd.
+ * Rewrite a trail's vertex buffer from cached orbit-local positions and a
+ * fresh basis offset, without a curve recompute — used by the focus-change
+ * path, which rebases every line before the next render without advancing jd.
  */
 export function rebaseTrailLocals(
 	line: Line | Mesh,
@@ -74,12 +68,11 @@ export function rebaseTrailLocals(
 
 /**
  * Re-anchor a trail at the body's current position. Must run after the body
- * (and its `orbitCenter`) have been updated this frame.
+ * (and its `orbitCenter`) update this frame.
  *
- * For SGP4-backed bodies, the underlying curve is regenerated each call using
- * `jd` so the trail always represents the past orbital period up to the sim
- * clock — a static construction-time curve would drift out of sync under time
- * playback (and go stale entirely under drag/J2 secular effects).
+ * SGP4-backed curves regenerate each call using `jd` so the trail tracks the
+ * sim clock — a construction-time curve would drift under time playback and
+ * go stale under drag/J2 secular effects.
  */
 export function refreshTrail(
 	body: PositionedBody,
@@ -87,10 +80,9 @@ export function refreshTrail(
 	basisPos: [number, number, number],
 	jd: number
 ): void {
-	// Trail-buffer path: buffer holds live past-position samples maintained by
-	// `updatePositions`; just copy them into the vertex buffer shifted by
-	// (orbitCenter − basis). No curve cache to fall back on, so this branch
-	// must run before the early-return on missing `sourceCurve`.
+	// Trail-buffer path: copy `updatePositions`'s live samples into the vertex
+	// buffer, shifted by (orbitCenter − basis). Must run before the early-return
+	// on missing `sourceCurve` — there's no curve cache to fall back on.
 	const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
 	if (trailBuffer) {
 		refreshBufferTrail(body, line, trailBuffer, basisPos);
@@ -111,11 +103,10 @@ export function refreshTrail(
 		curve = sgp4Curve(body.data.satrec, jd, body.data.n / 360, NUM_TRAIL_POINTS);
 		line.userData.sourceCurve = curve;
 	} else if (body.orbitElements) {
-		// Chebyshev-derived osculating elements: re-snapshot periodically so
-		// the static ellipse stays aligned with the body's actual chebyshev
-		// path. Mutates `body.orbitElements` in place so other PositionedBodies
-		// sharing the ref (e.g. a planet borrowing its barycenter's elements)
-		// see the update too.
+		// Chebyshev-derived elements: re-snapshot periodically so the static
+		// ellipse stays aligned with the body's real path. Mutates
+		// `body.orbitElements` in place so sharers of the ref (e.g. a planet
+		// borrowing its barycenter's elements) see the update too.
 		if (body.rederiveElements) {
 			const elementsJd = (line.userData.elementsJd as number | undefined) ?? jd;
 			const n = body.orbitElements.n;
@@ -127,9 +118,9 @@ export function refreshTrail(
 			);
 			if (dt > refreshThreshold) {
 				const fresh = body.rederiveElements(jd);
-				// Null fresh = jd out of chebyshev coverage; the body's
-				// out-of-range toast already surfaces that, so we silently
-				// keep the stale snapshot rather than warn-spamming per frame.
+				// Null fresh = jd out of chebyshev coverage; the out-of-range
+				// toast already surfaces that, so keep the stale snapshot
+				// silently rather than warn-spam per frame.
 				if (fresh) {
 					Object.assign(body.orbitElements, fresh);
 					curve = orbitalElementsToCurve(body.orbitElements, NUM_TRAIL_POINTS).points;
@@ -139,12 +130,10 @@ export function refreshTrail(
 				}
 			}
 		}
-		// Method-C-fit moons carry secular Ω/ω drift; the curve was built with
-		// angles current at construction time but goes stale as `jd` advances.
-		// Regenerate when the predicted angular drift since the last build
-		// exceeds TRAIL_CURVE_REFRESH_DEG — gated to avoid per-frame work for
-		// slow precessors where drift takes years to accumulate. No-op for
-		// chebyshev-derived elements since those don't carry omDot/wDot.
+		// Method-C-fit moons carry secular Ω/ω drift, so the curve's build-time
+		// angles go stale as `jd` advances. Regenerate once predicted drift
+		// exceeds TRAIL_CURVE_REFRESH_DEG — gated to skip slow precessors most
+		// frames. No-op for chebyshev elements, which carry no omDot/wDot.
 		const omDot = body.orbitElements.omDot ?? 0;
 		const wDot = body.orbitElements.wDot ?? 0;
 		const maxRate = Math.max(Math.abs(omDot), Math.abs(wDot));
@@ -159,10 +148,9 @@ export function refreshTrail(
 		}
 	}
 
-	// Memoization gate: when curve, anchor, orbit-center, and basis are all
-	// unchanged since the last commit, the vertex buffer is still correct.
-	// Skip nearest-point search + buffer rewrite — meaningful during paused
-	// camera drags where everything is static but rAF still fires.
+	// Memoization gate: skip the nearest-point search + buffer rewrite when
+	// curve, anchor, center, and basis are all unchanged — meaningful during
+	// paused camera drags where rAF still fires but nothing moved.
 	const anchor = body.trailAnchor ?? body.position;
 	const ud = line.userData;
 	const curveChanged = curve !== ud.lastCurveRef;
@@ -176,9 +164,8 @@ export function refreshTrail(
 	const validPoints = buildTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
 	if (validPoints.length < 2) return;
 
-	// Clamp to working-array capacity rather than silently skipping — dropping
-	// a frame from a too-small buffer would freeze the trail permanently when
-	// the SGP4 window grows past its construction-time size.
+	// Clamp to working-array capacity rather than skip the frame — skipping
+	// would freeze the trail when the SGP4 window outgrows its construction size.
 	const { posArr, trailArr, fullArr, capacity } = getTrailWorkingArrays(line);
 	const bx = cx - basisPos[0],
 		by = cy - basisPos[1],

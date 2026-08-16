@@ -1,19 +1,13 @@
 /**
  * Ring annulus disc, albedo sampled from 1-D radial profiles shipped per body
- * as a single N×5 `v1/rings/{id}/strip.webp` (one row per channel: color,
- * backscattered, forwardscattered, unlitside, transparency=1−opacity). The
- * strip is split into separate 1-row textures after decode so per-channel
- * trilinear/anisotropic filtering can't bleed rows into each other.
- *
- * Channel values are stored normalised; × `intensity_scale` recovers physical
- * brightness/opacity (1 for Saturn's measured data, ~1e-6..0.7 for the
- * synthetic tenuous systems). The overexpose-rings layer toggle renders the
- * stored values unscaled instead, lifting each system to its full dynamic
- * range.
+ * as a single N×5 `v1/rings/{id}/strip.webp` (color, backscattered,
+ * forwardscattered, unlitside, transparency=1−opacity). Split into separate
+ * 1-row textures after decode so per-channel filtering can't bleed rows
+ * together. Channel values are normalised; × `intensity_scale` recovers
+ * physical brightness/opacity — the overexpose-rings toggle skips that scale.
  *
  * Mesh is a scene-level sibling of the body (not a child) so the planet's
- * triaxial-flattening scale doesn't distort the circular profile. The renderer
- * tracks position/orientation and writes per-frame `uSunDir`.
+ * triaxial flattening doesn't distort the circular profile.
  *
  * Refs: Björn Jónsson https://bjj.mmedia.is/data/s_rings/index.html (channel
  * meanings, color calibrated against backscatter only, warm-white unlit hint);
@@ -53,9 +47,9 @@ export type RingChannel =
 type StripRows = Record<RingChannel, number> & { thickness?: number };
 type StripTextures = Record<RingChannel, Texture> & { thickness?: Texture };
 
-/** One work behind a bundle. Bundles mix sources — Saturn's measured strips
- *  are Björn Jónsson's photometry with NSSDCA vertical extents — so each
- *  states what it contributed rather than the bundle claiming one origin. */
+/** One contributor to a bundle — bundles mix sources (e.g. Saturn mixes
+ *  Björn Jónsson's photometry with NSSDCA vertical extents), so each states
+ *  what it contributed rather than the bundle claiming one origin. */
 export interface RingSource {
 	source: string;
 	organisation: string;
@@ -85,41 +79,29 @@ export interface RingMeta {
 export interface RingNode {
 	mesh: Mesh;
 	material: ShaderMaterial;
-	/** The sheet stack for a vertically thick bundle, so the renderer can vary
-	 *  `count` with apparent thickness; null when the bundle renders flat. */
+	/** Sheet stack for a vertically thick bundle; null when the bundle renders flat. */
 	layers: InstancedMesh | null;
 	/** Full vertical extent of the stack in scene units (0 = flat). */
 	thicknessScene: number;
-	/** Transparency profile texture — shared with the planet's ray-march
-	 *  ring-shadow path so we don't load it twice. */
+	/** Shared with the planet's ring-shadow ray-march so it isn't loaded twice. */
 	transparency: Texture;
-	/** Physical multiplier for the stored channel values. The renderer writes
-	 *  it (or 1 when the overexpose-rings toggle is on) into the material and
-	 *  ring-shadow uniforms each frame. */
+	/** Physical multiplier for stored channel values (1 when overexpose-rings is on). */
 	intensityScale: number;
-	/** Inner ring radius in scene units. Used by the planet's ring-shadow
-	 *  ray-march to clip intersections to the actual annulus. */
+	/** Inner ring radius in scene units, for the planet's ray-march clipping. */
 	innerScene: number;
-	/** Outer ring radius in scene units. Used by the ray-march clipping. */
+	/** Outer ring radius in scene units, for the ray-march clipping. */
 	outerScene: number;
-	/** Live per-frame uniforms on the planet material's ring-shadow path —
-	 *  null until {@link attachRingShadowToPlanet} runs. The renderer mutates
-	 *  the contained Vector3 values in place each frame. */
+	/** Planet material's ring-shadow uniforms; null until {@link attachRingShadowToPlanet} runs. */
 	planetShadow: PlanetRingShadowUniforms | null;
-	/** Live per-frame uniforms on the ring material's planet-shadow
-	 *  ray-march. The radii are set once by the caller of `loadRingNode`
-	 *  (which knows the planet's oblate-spheroid extent); the renderer
-	 *  mutates the Vector3 values in place each frame. */
+	/** Ring material's planet-shadow uniforms; radii set once by `loadRingNode`'s caller. */
 	planetShadowOnRing: PlanetShadowOnRingUniforms;
 }
 
 /**
- * Per-frame uniforms driving the planet-shadow ray-march inside the ring's
- * own ShaderMaterial. The ring fragment shader traces from each fragment
- * toward the sun and tests against the planet's oblate spheroid, so the
- * shadow stays crisp per-pixel instead of relying on the directional shadow
- * map (which stair-steps the planet terminator across the rings when the
- * camera is zoomed close).
+ * Per-frame uniforms for the planet-shadow ray-march inside the ring's own
+ * ShaderMaterial: traces each fragment toward the sun against the planet's
+ * oblate spheroid, keeping the shadow crisp per-pixel instead of relying on
+ * the directional shadow map (which stair-steps at close zoom).
  */
 export interface PlanetShadowOnRingUniforms {
 	/** World-space (focus-relative) position of the planet's center. */
@@ -136,39 +118,29 @@ const RING_ANGULAR_SEGMENTS = 256;
 // Radial tessellation for thickness-displaced rings (vertex-sampled profile).
 const RING_RADIAL_SEGMENTS = 96;
 // Upper bound on the vertical sheet stack. The renderer picks the live count
-// from how far the stack spreads *on screen*, which inverts the cost the
-// helpful way: face-on the sheets project onto each other and one suffices,
-// and the counts that approach this bound only happen edge-on, where the ring
-// covers a thin band. Sheets are a discrete stand-in for a volume, so they
-// separate into visible lines once they land more than a pixel apart — this
-// is the ceiling on how fine that approximation can get.
+// from on-screen spread — face-on one sheet suffices, edge-on needs the most —
+// and above this, discrete sheets separate into visible lines more than a
+// pixel apart.
 export const RING_THICKNESS_LAYERS_MAX = 48;
 
 /**
- * Peak opacity below which a bundle cannot change any pixel, so the renderer
- * skips drawing it unless the overexpose toggle is on.
- *
- * A ring affects the frame two ways. What it *adds* goes as intensity² (the
- * albedo and the alpha both carry the scale), but what it *hides* of the
- * background goes as intensity alone — so occlusion is what sets this floor.
- * A quarter of an 8-bit code value against a fully white backdrop is already
- * generous: the bundles this culls (Jupiter's τ~5e-6 rings, Saturn's outer
- * tenuous system) sit two to three orders of magnitude under it, while the
- * faintest bundle that survives — Neptune's, at 0.0031 — clears it 3×.
+ * Peak opacity below which a bundle can't change any pixel, so the renderer
+ * skips it unless the overexpose toggle is on. Occlusion (intensity alone)
+ * sets the floor rather than additive brightness (intensity²), since it's
+ * the more visible effect. A quarter of an 8-bit code value against white is
+ * generous headroom: culled bundles (Jupiter's τ~5e-6 rings, Saturn's outer
+ * tenuous system) sit orders of magnitude under it; the faintest survivor
+ * (Neptune's, 0.0031) clears it 3×.
  */
 export const RING_MIN_VISIBLE_ALPHA = 0.25 / 255;
 
 /**
  * Fetch the body's N×5 strip and split each channel row into its own 2-tall
- * CanvasTexture. Split-after-decode (not one multi-row texture): mipmap
- * levels of a row-per-channel texture would average adjacent rows, bleeding
- * channels into each other under trilinear minification.
- *
- * Per-channel canvases (not TextureLoader): (a) works around an Android-Chrome
- * bug that gives all-zero samples for 1-px-tall VP8L WebPs, (b) lets us
- * downscale past GL MAX_TEXTURE_SIZE (Saturn's profile is ~13177 px; Adreno
- * 5xx caps at 4096 and silently uploads incomplete textures). The doubled row
- * lets mipmap generation succeed; the shader samples at v = 0.5.
+ * CanvasTexture. Split-after-decode avoids mipmapping averaging adjacent rows
+ * into each other. Per-channel canvases (not TextureLoader) work around an
+ * Android-Chrome bug that zeroes 1-px-tall VP8L WebPs, and let us downscale
+ * past GL MAX_TEXTURE_SIZE (Saturn's strip is ~13177px; Adreno 5xx caps at
+ * 4096). The doubled row lets mipmap generation succeed.
  */
 async function loadStripTextures(
 	url: string,
@@ -200,16 +172,12 @@ async function loadStripTextures(
 		ctx.drawImage(bitmap, 0, row, bitmap.width, 1, 0, 1, targetWidth, 1);
 
 		const tex = new CanvasTexture(canvas);
-		// Color is a perceptual albedo tint (sRGB); the scalar profiles are
-		// linear (packed uint8 luminance, not gamma-encoded).
+		// Color is a perceptual albedo tint (sRGB); scalar profiles are linear.
 		if (channel === 'color') tex.colorSpace = SRGBColorSpace;
-		// 1×N radial profile: at distance many radial samples fall in one
-		// pixel and a single nearest/linear tap aliases into sparkle, while at
-		// grazing angles the U-gradient across the screen is far higher than
-		// the V-gradient (V is constant) — exactly the case anisotropic
-		// filtering is designed for. Trilinear + max anisotropy addresses
-		// both. Three.js silently clamps anisotropy to whatever the GPU
-		// advertises, so 16 is safe without poking the renderer.
+		// 1×N radial profile at grazing angles: many samples per pixel plus a
+		// screen-space U-gradient far steeper than V — exactly what trilinear
+		// + anisotropic filtering is for. Three.js clamps anisotropy to the
+		// GPU's max, so 16 is safe unconditionally.
 		tex.minFilter = LinearMipmapLinearFilter;
 		tex.magFilter = LinearFilter;
 		tex.generateMipmaps = true;
@@ -230,12 +198,10 @@ const VERTEX_SHADER = `
 	uniform float uInnerScene;
 	uniform float uOuterScene;
 
-	// Sheet index within the vertical stack, and how many of them are being
-	// drawn this frame. Deriving the offset from the live count (rather than
-	// baking it into the attribute) keeps the sheets evenly spread across the
-	// full extent at every LOD level. A plain (non-instanced) mesh leaves the
-	// attribute unbound, which GL defines as 0, so with uLayerCount 1 it lands
-	// on the midplane.
+	// Sheet index and live count in the vertical stack; deriving the offset
+	// from the live count keeps sheets evenly spread at every LOD. A plain
+	// (non-instanced) mesh leaves this unbound (GL defines 0), landing on
+	// the midplane when uLayerCount is 1.
 	attribute float aLayerIndex;
 	uniform float uLayerCount;
 
@@ -248,8 +214,7 @@ const VERTEX_SHADER = `
 		if (uThicknessScene > 0.0) {
 			float t = clamp(
 				(length(position.xz) - uInnerScene) / (uOuterScene - uInnerScene), 0.0, 1.0);
-			// Cell centres: 1 sheet sits at the midplane, N spread symmetrically.
-			float layer = (aLayerIndex + 0.5) / uLayerCount - 0.5;
+			float layer = (aLayerIndex + 0.5) / uLayerCount - 0.5; // cell centres, midplane-symmetric
 			displaced.y += layer * texture2D(uThickness, vec2(t, 0.5)).r * uThicknessScene;
 		}
 		vLocalPos = displaced;
@@ -262,41 +227,21 @@ const VERTEX_SHADER = `
 `;
 
 /**
- * Phase-angle-aware fragment shader. Three sample sources per ring strip,
- * picked by ring-plane side and phase angle per BJJ's documentation:
+ * Phase-angle-aware fragment shader, per BJJ's documentation. Lit side
+ * (observer and sun on the same side of the ring plane) blends
+ * `backscattered` (low phase, color-tinted) toward `forwardscattered` (high
+ * phase, warm-white) with phase angle. Unlit side (opposite sides) uses
+ * `unlitside` directly — that profile already *is* the transmitted
+ * appearance, no phase blend. The Cassini-derived `color` profile is
+ * calibrated against backscatter only, so it tints just that branch; forward
+ * and unlit use a fixed warm-white tint.
  *
- *  - **Lit side** (observer and sun on the same side of the ring plane):
- *    blend between `backscattered` (low phase, color-tinted) and
- *    `forwardscattered` (high phase, warm-white tint) based on phase angle.
- *    Per BJJ, backscattered is "the appearance at phase angle 0°" and
- *    forwardscattered was "captured at phase angle 139°"; the blend lets
- *    the rings dim and shift toward forward as the camera moves to the
- *    far-azimuth side of the sun.
- *  - **Unlit side** (observer and sun on opposite sides of the ring plane):
- *    use the `unlitside` profile — this *is* the forward / transmitted
- *    appearance for opposite-side viewing per BJJ ("how well sunlight
- *    filters through the rings"). No phase blend on this side.
+ * Transparency convention: profile value 1 = empty space, 0 = opaque, so
+ * alpha = `1 - profile`.
  *
- * The Cassini-derived `color` profile is calibrated against backscatter
- * only, so it's applied only to the backscattered branch; the forward and
- * unlit branches use a fixed warm-white tint per BJJ's recommendation.
- *
- * Geometry: side is decided by `dot(uSunDir, N) > 0` where N is the outward
- * normal of the face being viewed (gl_FrontFacing-flipped). Phase angle α
- * uses `cos α = dot(sunDir, viewDir)` against the auto-injected
- * `cameraPosition`.
- *
- * Radial sampling: vertices are pre-rotated so the ring sits in the local XZ
- * plane; the radial coordinate is `length(localPos.xz)`, normalised to
- * [0, 1] across [inner, outer] and used as the U on each 1×N profile.
- *
- * Transparency convention follows BJJ: profile value = 1 → empty space
- * (transparent), 0 → opaque ring material. Alpha is therefore `1 - profile`.
- *
- * Planet shadow: from each fragment we trace toward the sun and test
- * intersection with the planet's oblate spheroid. Per-pixel analytic test —
- * no shadow-map resolution to worry about, so the terminator stays crisp
- * at any zoom and there's no blocky stair-stepping on the ring strips.
+ * Planet shadow is a per-pixel analytic ray trace against the planet's
+ * oblate spheroid, avoiding shadow-map resolution limits (stair-stepping) at
+ * any zoom.
  */
 const FRAGMENT_SHADER = `
 	#include <common>
@@ -332,23 +277,17 @@ const FRAGMENT_SHADER = `
 	varying vec3 vWorldNormal;
 
 	// Per BJJ: the Cassini-derived color profile only fits backscattered
-	// light. For the unlit / forward branches we tint by a near-white
-	// constant — slightly warm for the diffuse unlit transmission, since
-	// that's what BJJ recommends.
+	// light. Unlit/forward branches get a fixed near-white tint per BJJ.
 	const vec3 UNLIT_TINT = vec3(1.0, 0.97075, 0.952);
 
-	// Slight red bias on top of the color profile for the forward-scatter
-	// branch, matching BJJ's "becoming slightly redder" observation as
-	// phase angle climbs.
+	// Red bias on the forward-scatter branch, per BJJ's "becoming slightly
+	// redder" observation as phase angle climbs.
 	const vec3 FORWARD_TINT_BIAS = vec3(1.02, 0.99, 0.97);
 
-	// Saturn's shadow on the rings: ray-march from the fragment toward the
-	// sun against the planet's oblate spheroid. Working in the pole-aligned
-	// frame, apply the affine warp (eq⁻¹, pol⁻¹, eq⁻¹) so the spheroid
-	// becomes a unit sphere, then test the scaled ray against it. Edge width
-	// is the larger of a 1-texel fwidth feather (screen stability) and the
-	// physical penumbra: the sun's angular radius times the distance from
-	// the fragment to the occluding limb.
+	// Ray-march from the fragment toward the sun against the planet's oblate
+	// spheroid: warp into the pole-aligned frame so the spheroid becomes a
+	// unit sphere, then test the scaled ray. Edge width is the larger of a
+	// 1-texel fwidth feather and the physical penumbra.
 	float planetShadow() {
 		if (uPlanetEquatorialScene <= 0.0) return 1.0;
 		vec3 originRel = vWorldPos - uPlanetCenter;
@@ -362,12 +301,10 @@ const FRAGMENT_SHADER = `
 		vec3 dScaled = dirRadial * invEq + uPlanetPoleDir * (dirAxial * invPol);
 		float a = dot(dScaled, dScaled);
 		float b = dot(oScaled, dScaled);
-		// b > 0 → closest approach is behind the fragment along the sun ray,
-		// so the planet can't occlude the sun from here.
+		// b > 0: closest approach is behind the fragment, so no occlusion.
 		if (b > 0.0) return 1.0;
 		float closest = sqrt(max(dot(oScaled, oScaled) - b * b / a, 0.0));
-		// Distance to the closest-approach point in unit-sphere units: the
-		// penumbra grows linearly with it (umbra shrinks correspondingly).
+		// Penumbra grows linearly with distance to the closest-approach point.
 		float penumbra = uSunAngularRadius * (-b) / sqrt(a);
 		float w = max(fwidth(closest), max(penumbra, 1e-5));
 		return smoothstep(1.0 - w, 1.0 + w, closest);
@@ -376,45 +313,30 @@ const FRAGMENT_SHADER = `
 	void main() {
 		float radius = length(vLocalPos.xz);
 		float t = (radius - uInnerScene) / (uOuterScene - uInnerScene);
-		// Outside the annulus envelope: discard so anti-aliased edges don't
-		// pick up clamped boundary samples.
+		// Outside the annulus: discard so anti-aliased edges don't pick up
+		// clamped boundary samples.
 		if (t < 0.0 || t > 1.0) discard;
 
 		vec2 uv = vec2(clamp(t, 0.0, 1.0), 0.5);
 
-		// gl_FrontFacing: outward face of the annulus (vertices wound CCW from
-		// +Y). Flip the world normal on the back face so the lit test compares
-		// against the outward direction of *this* face.
+		// Flip the world normal on the back face so lit-test compares against
+		// the outward direction of the face actually being viewed.
 		vec3 N = gl_FrontFacing ? vWorldNormal : -vWorldNormal;
 
-		// Lit if the sun is on the same side of the ring plane as this face.
 		bool lit = dot(uSunDir, N) > 0.0;
 
-		// cosAlpha = cos(phase angle). +1 = sun aligned with view (low phase),
-		// -1 = sun directly opposite view (high phase). cameraPosition is
-		// auto-injected by three.js.
+		// cosAlpha = cos(phase angle): +1 low phase, -1 high phase.
 		vec3 viewDir = normalize(cameraPosition - vWorldPos);
 		float cosAlpha = dot(uSunDir, viewDir);
 
 		vec3 finalAlbedo;
 		if (lit) {
-			// Sun and observer on the same side of the ring plane. Blend
-			// backscatter → forward scatter with phase angle. smoothstep
-			// across the full [-1, 1] cosAlpha range gives a sigmoidal
-			// transition centered on edge-on viewing (α = 90°) — at α = 139°
-			// (BJJ's reference forward image), wForward ≈ 0.87, mostly
-			// forward. Pure backscatter at α = 0°, pure forward at α → 180°
-			// (which lit-side viewing can approach when the sun grazes the
-			// ring plane and the camera sits on the far azimuthal side).
-			//
-			// Both branches share the Cassini-derived color profile: BJJ
-			// notes it's photometrically calibrated against backscatter only,
-			// but forward-scattered Cassini imagery (e.g. "In Saturn's
-			// Shadow") clearly keeps the ring's tan/gold hue with a slight
-			// red shift, so dropping color entirely (pure grayscale) is
-			// visibly wrong. Using the same tint plus a small red bias on
-			// the forward branch matches BJJ's "becoming slightly redder"
-			// description while preserving the radial color variation.
+			// Blend backscatter → forward scatter with phase angle; smoothstep
+			// over [-1, 1] centers the transition on edge-on viewing (α = 90°).
+			// Both branches share the Cassini color profile (calibrated for
+			// backscatter only) plus a small red bias on the forward branch,
+			// since dropping color entirely visibly loses the ring's tan/gold
+			// hue seen in forward-scattered Cassini imagery.
 			vec3 colorTint = texture2D(uColor, uv).rgb;
 			vec3 forwardTint = colorTint * FORWARD_TINT_BIAS;
 			vec3 back = texture2D(uBackscattered, uv).rgb * colorTint;
@@ -422,22 +344,16 @@ const FRAGMENT_SHADER = `
 			float wForward = 1.0 - smoothstep(-1.0, 1.0, cosAlpha);
 			finalAlbedo = mix(back, forward, wForward);
 		} else {
-			// Sun and observer on opposite sides of the ring plane. BJJ's
-			// unlitside profile *is* the transmitted-light appearance for
-			// this geometry and doesn't get a separate phase-angle blend —
-			// dense regions read dark, transparent regions glow brighter as
-			// sunlight filters through.
+			// unlitside already is the transmitted-light appearance; no
+			// phase-angle blend needed.
 			finalAlbedo = texture2D(uUnlitside, uv).rgb * UNLIT_TINT;
 		}
-		// BJJ transparency: 1.0 = empty space, 0.0 = opaque material.
+		// Transparency convention: 1.0 = empty space, 0.0 = opaque.
 		float alpha = clamp((1.0 - texture2D(uTransparency, uv).r) * uIntensityScale, 0.0, 1.0);
-		// Split opacity across the vertical layer instances so the composited
-		// stack reproduces the strip's alpha (coincident layers included).
+		// Split opacity across layer instances so the composited stack
+		// reproduces the strip's alpha.
 		alpha = 1.0 - pow(1.0 - alpha, uLayerAlphaExp);
 
-		// Planet shadow modulates both branches: the lit-side reflection
-		// from blocked direct sunlight, and the unlit-side transmission
-		// (sunlight filters through the rings only where the sun is unblocked).
 		float shadow = planetShadow();
 
 		gl_FragColor = vec4(finalAlbedo * uIntensityScale * shadow * uLightScale, alpha);
@@ -446,10 +362,9 @@ const FRAGMENT_SHADER = `
 `;
 
 /**
- * Per-frame uniforms driving the ring-shadow ray-march inside the planet's
- * MeshStandardMaterial — see {@link attachRingShadowToPlanet}. The renderer
- * updates each Vector3 in place each frame; the texture and radii change only
- * when a bundle loads or unloads. One set per material, reused across visits.
+ * Per-frame uniforms for the ring-shadow ray-march inside the planet's
+ * MeshStandardMaterial — see {@link attachRingShadowToPlanet}. One set per
+ * material, reused across visits.
  */
 export interface PlanetRingShadowUniforms {
 	/** Null while no bundle is resident; paired with a zeroed intensity. */
@@ -481,26 +396,17 @@ interface RingShadowCarrier {
 
 /**
  * Attach an analytical ring-shadow ray-march to the planet's standard
- * material. For each lit fragment we trace from the surface toward the sun,
- * intersect the ring plane, sample the transparency profile at the
- * intersection radius, and apply Beer–Lambert (with slant correction for
- * grazing solar elevation) to attenuate the direct light.
+ * material: trace from the lit fragment toward the sun, intersect the ring
+ * plane, and apply Beer–Lambert (slant-corrected) at the sampled radius.
+ * Beats a shadow-map cast for transparent profiles — no rasterization
+ * resolution, partial transparency falls out of `pow(transparency, 1/sinB)`.
  *
- * Beats a shadow-map cast for transparent ring profiles: no rasterization
- * resolution, no dither artifacts, partial transparency comes out for free
- * via `pow(transparency, 1 / sin(elevation))`.
- *
- * The hook and its uniforms are installed once per material and then kept for
- * its lifetime: leaving the system zeroes the intensity (`disable`) and
- * re-entering re-points the same uniform objects at the reloaded bundle.
- * Detaching instead would strip the ray-march but leave the shadow broken on
- * the way back — three.js keys its program cache on
- * `onBeforeCompile.toString()`, so removing and re-adding the hook returns the
- * material to a key it has already compiled under. That path reuses the cached
- * program *without* re-running `onBeforeCompile`, which is the only place the
- * uniforms get wired in, so the surface keeps sampling the previous bundle's
- * dead uniforms while the atmosphere shell (a ShaderMaterial, whose uniform
- * object the renderer reads directly) still shades correctly.
+ * The hook and uniforms are installed once and kept for the material's
+ * lifetime; `disable` zeroes intensity on system exit and re-entry re-points
+ * the same uniforms. Never detach: three.js keys its program cache on
+ * `onBeforeCompile.toString()`, so removing and re-adding the hook reuses the
+ * cached program *without* re-running `onBeforeCompile` — the surface would
+ * keep sampling the dead uniforms from before.
  */
 export function attachRingShadowToPlanet(
 	planetMaterial: MeshStandardMaterial,
@@ -530,9 +436,8 @@ export function attachRingShadowToPlanet(
 		uRingShadowPoleDir: { value: new Vector3(0, 1, 0) },
 		uRingShadowCenter: { value: new Vector3(0, 0, 0) },
 		disable: () => {
-			// The march early-outs on a non-positive intensity, so the stale
-			// radii left behind can't shade anything. Dropping the texture lets
-			// the unload dispose it; a null sampler binds three's empty texture.
+			// March early-outs on non-positive intensity, so stale radii are
+			// harmless. Dropping the texture lets the caller dispose it.
 			uniforms.uRingShadowIntensity.value = 0;
 			uniforms.uRingShadowTransparency.value = null;
 		}
@@ -541,10 +446,8 @@ export function attachRingShadowToPlanet(
 		prev?.(shader, renderer);
 		Object.assign(shader.uniforms, uniforms);
 
-		// Expose the fragment's world-space position to the fragment shader.
-		// MeshStandardMaterial doesn't ship `vWorldPosition` to fragments by
-		// default; we add our own varying so the ray-march can compute the
-		// vector from surface → ring plane.
+		// MeshStandardMaterial doesn't ship world position to fragments by
+		// default; add our own varying for the surface→ring-plane vector.
 		shader.vertexShader = shader.vertexShader
 			.replace('#include <common>', '#include <common>\nvarying vec3 vRingShadowWorldPos;')
 			.replace(
@@ -566,8 +469,7 @@ export function attachRingShadowToPlanet(
 				uniform vec3 uRingShadowCenter;
 				varying vec3 vRingShadowWorldPos;
 
-				// Physical (× intensity) transmittance of the ring profile at u;
-				// outside the annulus is empty space.
+				// Transmittance of the ring profile at u; outside the annulus is empty space.
 				float ringShadowTrans(float u) {
 					if (u < 0.0 || u > 1.0) return 1.0;
 					return 1.0 - clamp(
@@ -577,43 +479,35 @@ export function attachRingShadowToPlanet(
 				}
 
 				float ringShadowFactor() {
-					// Zeroed by the renderer for a bundle too faint to darken
-					// anything, so the march below is skipped outright.
 					if (uRingShadowIntensity <= 0.0) return 1.0;
-					// Ray-plane intersect: starting from the lit surface, march
-					// along the sun direction. The ring plane passes through the
-					// planet's center with normal = pole direction.
+					// Ray-plane intersect: march from the lit surface along the
+					// sun direction; the ring plane passes through the planet's
+					// center with normal = pole direction.
 					float denom = dot(uRingShadowSunDir, uRingShadowPoleDir);
 					if (abs(denom) < 1e-6) return 1.0; // sun grazing the ring plane
 					vec3 rel = vRingShadowWorldPos - uRingShadowCenter;
 					float t = -dot(rel, uRingShadowPoleDir) / denom;
 					if (t < 0.0) return 1.0; // ring is behind the sun from this surface point
 					vec3 hit = rel + t * uRingShadowSunDir;
-					// Radial distance in the ring plane (subtract out-of-plane component).
 					vec3 hitPerp = hit - dot(hit, uRingShadowPoleDir) * uRingShadowPoleDir;
 					float r = length(hitPerp);
-					// Penumbra half-width at the ring plane: the sun's angular
-					// radius times the surface→ring distance. Reject only when
-					// even the penumbra-widened band misses the annulus.
+					// Reject only when the penumbra-widened band misses the annulus.
 					float penumbra = t * uRingShadowSunAngularRadius;
 					if (r < uRingShadowInnerScene - penumbra || r > uRingShadowOuterScene + penumbra)
 						return 1.0;
 					float uSpan = uRingShadowOuterScene - uRingShadowInnerScene;
 					float u = (r - uRingShadowInnerScene) / uSpan;
 					// 5-tap box over the penumbra: averages the profile the sun
-					// disc actually spans, softening shadow edges physically.
+					// disc spans, softening shadow edges physically.
 					float pu = penumbra / uSpan;
 					float trans = (
 						ringShadowTrans(u - pu) + ringShadowTrans(u - 0.5 * pu) +
 						ringShadowTrans(u) +
 						ringShadowTrans(u + 0.5 * pu) + ringShadowTrans(u + pu)
 					) / 5.0;
-					// Beer–Lambert with slant correction: ray traverses 1/sin(B)
-					// times the normal optical depth where B is the sun's
-					// elevation above the ring plane. transparency stored on
-					// disk is exp(-tau_normal), so slant transmittance is
-					// pow(transparency, 1/sin(B)). Clamp sinB to avoid blow-up
-					// when the sun lies almost in the ring plane.
+					// Beer–Lambert, slant-corrected: ray traverses 1/sin(B) times
+					// normal optical depth (B = sun elevation above ring plane).
+					// Clamp sinB to avoid blow-up near grazing incidence.
 					float sinB = abs(denom);
 					return pow(max(trans, 1e-4), 1.0 / max(sinB, 0.02));
 				}`
@@ -655,8 +549,7 @@ export async function loadRingNode(
 	}
 
 	// Vertically thick rings (Jupiter's halo torus) render as a stack of
-	// instanced sheets, each displaced by the per-radius thickness profile;
-	// the fragment shader splits opacity across the stack. Flat bundles stay
+	// instanced sheets displaced by the thickness profile; flat bundles stay
 	// a single sheet.
 	const thicknessScene =
 		meta.thickness_scale_km && textures.thickness ? kmToScene(meta.thickness_scale_km) : 0;
@@ -696,18 +589,15 @@ export async function loadRingNode(
 		side: DoubleSide
 	});
 
-	// RingGeometry lies in the XY plane with normals +Z; rotate to XZ plane
-	// (normals +Y) so applyOrientation's pole-to-+Y mapping puts the ring on
-	// the equator with no extra fixup.
+	// RingGeometry lies in the XY plane with normals +Z; rotate to XZ (normals
+	// +Y) so applyOrientation's pole-to-+Y mapping needs no extra fixup.
 	//
 	// The polygon is inscribed in the annulus: mid-chord, the outer boundary
-	// dips inside the true circle by outer·(1 − cos(π/N)) — enough to
-	// periodically clip rings narrower than that sagitta (Neptune's 15 km
-	// Adams ring rendered as dotted arcs). Circumscribe the outer edge
-	// instead; the fragment shader's t > 1 discard trims back to the exact
-	// circle. The inner chords already dip inward, covered by the t < 0
-	// discard. Radial segments only matter when the vertex shader samples
-	// the thickness profile.
+	// dips inside the true circle by outer·(1 − cos(π/N)), enough to clip
+	// rings narrower than that sagitta (Neptune's 15km Adams ring rendered as
+	// dotted arcs). Circumscribe the outer edge instead; the shader's t > 1
+	// discard trims back to the exact circle. Inner chords are already
+	// covered by the t < 0 discard.
 	const sagittaPad = 1 / Math.cos(Math.PI / RING_ANGULAR_SEGMENTS);
 	const geometry = new RingGeometry(
 		innerScene,
@@ -733,16 +623,13 @@ export async function loadRingNode(
 		mesh = new Mesh(geometry, material);
 	}
 	mesh.frustumCulled = false; // repositioned by the renderer each frame
-	// After the opaque planet AND the atmosphere shell (renderOrder 2): the shell
-	// writes depth from outside, so foreground rings depth-test in front of the
-	// glow and the dense inner ring composites over it instead of the glow
-	// bleeding through. Ties with trails/points (also 3) resolve by distance.
+	// After the planet and atmosphere shell (renderOrder 2), so foreground
+	// rings depth-test in front of the glow instead of it bleeding through.
 	mesh.renderOrder = 3;
 	mesh.userData.isRingMesh = true;
-	// Both shadow directions are handled by per-pixel analytical ray-marches —
-	// ring → planet inside the planet's own MeshStandardMaterial (see
-	// `attachRingShadowToPlanet`), planet → ring inside this material's
-	// fragment shader. Neither needs the directional shadow map.
+	// Both shadow directions are per-pixel analytical ray-marches (ring→planet
+	// in `attachRingShadowToPlanet`, planet→ring in this material's fragment
+	// shader) — neither needs the directional shadow map.
 
 	const planetShadowOnRing: PlanetShadowOnRingUniforms = {
 		uPlanetCenter: material.uniforms.uPlanetCenter as { value: Vector3 },

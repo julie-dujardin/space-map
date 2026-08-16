@@ -1,10 +1,9 @@
 import { isLowEndDevice } from '$lib/device';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 
-/** Bodies whose shape model should render even though a DEM exists. By default
- *  a displacement map wins (textured relief sphere beats an untextured mesh —
- *  e.g. Dawn's Ceres/Vesta vs their convex lightcurve blobs); list exceptions
- *  here case by case. */
+/** Bodies whose shape model should render despite a DEM. By default the DEM's
+ *  textured relief beats an untextured mesh (Ceres/Vesta vs lightcurve blobs);
+ *  list exceptions here. */
 export const PREFER_MODEL_OVER_DEM = new Set<string>([]);
 
 /** Why a body's shape-model bundle isn't the thing on screen. */
@@ -17,9 +16,8 @@ export function shapeModelSkipReason(
 	global: GlobalObjectData | null | undefined
 ): ShapeModelSkip | null {
 	if (!global?.model_name) return 'no-bundle';
-	// Rough (non-faithful) meshes barely beat the ellipsoid they replace, so
-	// low-end/data-saver clients keep the textured sphere. `render_quality`
-	// marks the faithful mission/DEM models as 'high'.
+	// Rough meshes barely beat the ellipsoid; low-end clients keep the sphere.
+	// `render_quality: 'high'` marks the faithful mission/DEM models.
 	if (isLowEndDevice() && global.render_quality !== 'high') return 'low-end-device';
 	if (global.displacement && !PREFER_MODEL_OVER_DEM.has(global.id)) return 'dem-preferred';
 	return null;

@@ -1,9 +1,8 @@
 /**
- * Debug overlay: a sparse set of well-known sky positions rendered as
- * always-visible labels at a large radius, used for visual cross-checking the
- * skybox rotation. The marker positions go through the same equatorial→scene
- * transform as every body's IAU pole, so if a marker lines up with the
- * cubemap feature, the cubemap rotation matches the ecliptic frame.
+ * Debug overlay: well-known sky positions as always-visible labels at a large
+ * radius, for visually cross-checking skybox rotation. Uses the same
+ * equatorial→scene transform as every body's IAU pole, so a marker lining up
+ * with its cubemap feature confirms the rotation matches the ecliptic frame.
  */
 import {
 	BufferGeometry,
@@ -37,10 +36,7 @@ interface SkyLandmark {
 	color: string;
 }
 
-/**
- * Hand-picked landmarks: galactic anchor points, celestial poles, and the
- * equinoxes for an absolute reference. Values are J2000.
- */
+/** Hand-picked landmarks (galactic anchors, celestial poles, equinoxes), J2000. */
 const LANDMARKS: SkyLandmark[] = [
 	{
 		id: 'galactic-center',
@@ -81,9 +77,9 @@ const LANDMARKS: SkyLandmark[] = [
 ];
 
 /**
- * Convert (RA, Dec) in J2000 equatorial coordinates to the Three.js scene
- * frame, identical to `equatorialToThreeJS` in `lib/math/orientation.ts` (kept
- * inlined here to avoid leaking a private helper).
+ * (RA, Dec) J2000 equatorial → Three.js scene frame. Identical to
+ * `equatorialToThreeJS` in `lib/math/orientation.ts`, inlined here to avoid
+ * leaking a private helper.
  */
 function eqToScene(raDeg: number, decDeg: number, out: Vector3): Vector3 {
 	const ra = raDeg * DEG2RAD;
@@ -99,10 +95,9 @@ function eqToScene(raDeg: number, decDeg: number, out: Vector3): Vector3 {
 }
 
 /**
- * A "+" reticle (SVG) plus a label, used as the CSS2D element for each
- * landmark. The reticle is centered on the projected world point (CSS2DRenderer
- * applies `translate(-50%,-50%)` from `center.x/y = 0.5,0.5`); the label sits
- * to the right so it doesn't occlude the aim point itself.
+ * A "+" reticle (SVG) plus a label, as the CSS2D element for each landmark.
+ * The reticle centers on the projected point; the label sits to the right so
+ * it doesn't occlude the aim point.
  */
 function buildLabelElement(landmark: SkyLandmark): HTMLDivElement {
 	const wrap = document.createElement('div');
@@ -123,8 +118,8 @@ function buildLabelElement(landmark: SkyLandmark): HTMLDivElement {
 	reticle.setAttribute('width', String(size));
 	reticle.setAttribute('height', String(size));
 	reticle.setAttribute('viewBox', `${-half} ${-half} ${size} ${size}`);
-	// Shift the reticle left by half its width so the anchor (which we pin at
-	// center.x = 0 via the CSS2DObject) lands on its center, not its left edge.
+	// Shift left by half width so the CSS2DObject anchor (center.x = 0) lands
+	// on the reticle's center, not its left edge.
 	reticle.style.cssText = `flex:0 0 auto;filter:drop-shadow(0 0 2px #000);margin-inline-start:-${half}px`;
 	const c = landmark.color;
 	reticle.innerHTML = `
@@ -145,10 +140,7 @@ function buildLabelElement(landmark: SkyLandmark): HTMLDivElement {
 	return wrap;
 }
 
-/**
- * Galactic North Pole direction (RA, Dec, J2000) — IAU 1958 refreshed to J2000.
- * Defines the rotation between galactic and equatorial frames.
- */
+/** Galactic North Pole (RA, Dec, J2000) — defines galactic↔equatorial rotation. */
 const GAL_NP_RA = 192.85948;
 const GAL_NP_DEC = 27.12825;
 /** RA, Dec of the galactic center (l=0, b=0) — Sgr A* region. */
@@ -156,9 +148,8 @@ const GAL_CENTER_RA = 266.40499;
 const GAL_CENTER_DEC = -28.93617;
 
 /**
- * Build a `LineLoop` tracing one great circle on the celestial sphere given
- * two orthonormal axes in scene coordinates: the "0°" direction (longitude
- * origin) and the pole. Points are sampled at every `360 / segments` degrees.
+ * A `LineLoop` tracing one great circle, given the "0°" longitude-origin axis
+ * and the pole axis in scene coordinates.
  */
 function buildGreatCircle(
 	zeroAxis: Vector3,
@@ -188,10 +179,8 @@ function buildGreatCircle(
 }
 
 /**
- * Galactic plane (b=0) great circle drawn at the marker radius. Uses the
- * standard galactic-frame basis: longitude origin = galactic center direction,
- * pole = galactic NP. Slightly inset radius so the line doesn't z-fight with
- * marker dots.
+ * Galactic plane (b=0) great circle at the marker radius. Inset slightly so
+ * it doesn't z-fight with the marker dots.
  */
 function buildGalacticPlane(): LineLoop {
 	const zero = new Vector3();
@@ -224,10 +213,9 @@ function buildCelestialEquator(): LineLoop {
 }
 
 /**
- * Create a Group of CSS2D markers + great-circle reference lines for the
- * galactic, ecliptic, and celestial-equator planes. All positioned at
- * `SKY_MARKER_RADIUS` away from the origin. Group starts hidden; caller
- * toggles `group.visible` to gate behind the debug flag.
+ * A Group of CSS2D landmark markers + great-circle reference lines (galactic,
+ * ecliptic, celestial-equator), all at `SKY_MARKER_RADIUS`. Starts hidden;
+ * caller toggles `group.visible` behind the debug flag.
  */
 export function createSkyDebugMarkers(): Group {
 	const group = new Group();
@@ -237,9 +225,7 @@ export function createSkyDebugMarkers(): Group {
 	for (const landmark of LANDMARKS) {
 		eqToScene(landmark.raDeg, landmark.decDeg, dir).multiplyScalar(SKY_MARKER_RADIUS);
 		const css = new CSS2DObject(buildLabelElement(landmark));
-		// Anchor on the reticle's center (left edge of the flex wrap, since the
-		// reticle has a negative margin pulling it to overlap that point).
-		css.center.set(0, 0.5);
+		css.center.set(0, 0.5); // anchor on the reticle's center
 		css.position.copy(dir);
 		group.add(css);
 	}
@@ -249,10 +235,7 @@ export function createSkyDebugMarkers(): Group {
 	return group;
 }
 
-/**
- * Remove every CSS2D label element from the DOM and free geometry/material
- * resources before detaching the group.
- */
+/** Remove every CSS2D label from the DOM, free geometry/material, and detach the group. */
 export function disposeSkyDebugMarkers(group: Group): void {
 	group.traverse((obj: Object3D) => {
 		if (obj instanceof CSS2DObject) obj.element.remove();

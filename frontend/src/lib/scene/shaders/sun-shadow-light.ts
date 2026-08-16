@@ -12,14 +12,10 @@ import {
 
 const LIGHT_DIST = 10;
 
-/**
- * Swap between the solar-system `PointLight` and the sub-system shadow-casting
- * `DirectionalLight`, sizing the shadow camera tightly to the current view
- * distance. No ring floor — rings ray-march their own planet shadow.
- * `realistic` scales sunlight by inverse-square distance from the Sun — the
- * PointLight via physical decay, the DirectionalLight via the focus distance.
- * `sunScale` is the debug lighting-tuner multiplier on all direct sunlight.
- */
+/** Swap between the solar-system `PointLight` and the sub-system shadow-casting
+ *  `DirectionalLight`, sizing the shadow camera to the current view distance.
+ *  No ring floor — rings ray-march their own planet shadow. `realistic` scales
+ *  sunlight by inverse-square solar distance. */
 export function updateSunShadowLight(
 	bodyObjects: Map<string, BodyObjects>,
 	focusTruePos: Vec3,

@@ -4,15 +4,13 @@
  * Drives the REAL buffer-maintenance code (`TrailBuffer`,
  * `deriveProbeTrailParams`, `backfillTrailFromSampler`, `extendProbeTrailBuffer`)
  * through the same per-frame branch `updatePositions` runs, against a Kepler
- * ground-truth trajectory (`orbitalElementsToPositionJD` — exactly what a
- * kepler-fit probe sub-chunk evaluates). Reports, per object and per app time
- * scale, how far the rendered polyline drifts from the true orbit and what it
- * costs (sampler evals/frame).
+ * ground truth (`orbitalElementsToPositionJD`). Reports how far the rendered
+ * polyline drifts from the true orbit and its cost (sampler evals/frame), per
+ * object and app time scale.
  *
  * Models the FOCUSED probe's path, which reseeds a full osculating period each
- * frame once `dt/frame > span` (see the `reseed` branch / eval spike for tight
- * orbits). Unfocused probes skip that reseed for a one-append fallback
- * (`updatePositions`), so the eval/frame column is the per-focused-probe cost.
+ * frame once `dt/frame > span` — unfocused probes fall back to a one-append
+ * update instead, so the eval/frame column is the per-focused-probe cost.
  *
  * Not a pass/fail test — run with:
  *   npx vitest run src/lib/scene/objects/trail/trail-accuracy.repro.test.ts
@@ -59,8 +57,8 @@ interface TestOrbit {
 	bodyRadiusKm: number;
 }
 
-// Representative captured orbits spanning tight-fast to wide-slow. Angles are
-// arbitrary — only the geometry (a, e, period) drives sampling error.
+// Spans tight-fast to wide-slow. Angles are arbitrary — only the geometry
+// (a, e, period) drives sampling error.
 const ORBITS: TestOrbit[] = [
 	{ label: 'MRO @ Mars', aKm: 3631, e: 0.006, periodDays: 0.0778, bodyRadiusKm: 3389 },
 	{ label: 'LRO @ Moon', aKm: 1837, e: 0.0013, periodDays: 0.0805, bodyRadiusKm: 1737 },
@@ -102,8 +100,8 @@ function counting(s: Sampler): { sample: Sampler; count: () => number } {
 
 /**
  * One frame of the exact maintenance branch from update-positions.ts. Returns
- * the branch taken. Elements are stable here, so param re-derivation on reseed
- * is a no-op (we keep the buffer's configured values).
+ * the branch taken. Elements are stable here, so reseed's param re-derivation
+ * is a no-op.
  */
 function maintainFrame(
 	buf: TrailBuffer,
@@ -139,8 +137,7 @@ function maintainFrame(
 
 /**
  * Rendered polyline = live head at the true current position, then buffer
- * samples newest→oldest (mirrors writeBufferVerticesWithLiveHead). Returns the
- * vertices and their jds (live head jd = current frame jd).
+ * samples newest→oldest (mirrors writeBufferVerticesWithLiveHead).
  */
 function renderPolyline(buf: TrailBuffer, truth: Sampler, jd: number): Vec3[] {
 	const out = new Float32Array((buf.capacity + 1) * 3);
@@ -154,15 +151,14 @@ function renderPolyline(buf: TrailBuffer, truth: Sampler, jd: number): Vec3[] {
 
 /**
  * Max facet (chord) error of the rendered polyline vs the true orbit, plus the
- * first-facet length (live head → newest sample = the "spike"). Because we lack
- * per-vertex jds from the buffer, we measure each segment's deviation by its
- * arc: find the true-orbit point nearest each segment midpoint via a dense
- * scan, then the perpendicular gap. Reported in km.
+ * first-facet length (live head → newest sample = the "spike"). Lacking
+ * per-vertex jds, each segment's deviation is the perpendicular gap to the
+ * nearest true-orbit point to its midpoint, found by dense scan. In km.
  */
 function polylineError(verts: Vec3[], truthDense: Vec3[]): { maxChordKm: number; spikeKm: number } {
 	let maxChord = 0;
-	// Only the near-body portion is visible when focused; the apoapsis tail of a
-	// highly eccentric orbit is off-screen. Cap the scan for cost and relevance.
+	// Only the near-body portion is visible when focused — the apoapsis tail of
+	// an eccentric orbit is off-screen. Cap the scan for cost and relevance.
 	const scanTo = Math.min(verts.length - 1, 48);
 	for (let i = 0; i < scanTo; i++) {
 		const a = verts[i];

@@ -40,10 +40,9 @@ export function disposeMaterial(mat: Material | Material[]): void {
 }
 
 const STAR_SPHERE_SEGMENTS = 96;
-/** Initial mesh detail. Deliberately the sphere-LOD floor: at build time the
- *  camera is rarely close to any body, and `updateSphereLOD` up-steps the
- *  geometry on the first frame a body covers real screen space. Building ~200
- *  bodies at 64 segments cost ~150ms+ of the startup scene build. */
+/** Initial mesh detail — deliberately the sphere-LOD floor. `updateSphereLOD`
+ *  up-steps geometry once a body covers real screen space; building all ~200
+ *  bodies at 64 segments cost 150ms+ of startup. */
 const BODY_SPHERE_SEGMENTS = 24;
 
 export function buildMajorBodies(
@@ -56,16 +55,15 @@ export function buildMajorBodies(
 	rendererElement: HTMLCanvasElement,
 	handleFocus: (body: PositionedBody) => void,
 	onHoverChange?: (id: string, hovered: boolean) => void,
-	/** Force halo-only + minor treatment for these ids regardless of object type.
-	 *  Used by group half-promotion so otherwise-meshy SPACECRAFT entries render
-	 *  as a collapsed halo + on-hover label, no trail. */
+	/** Force halo-only + minor treatment for these ids, so group half-promotion
+	 *  can collapse otherwise-meshy SPACECRAFT entries to halo + on-hover label, no trail. */
 	halfPromoteIds?: ReadonlySet<string>
 ): void {
 	for (const body of bodies) {
 		const id = body.data.id;
 		const isHalfPromoted = halfPromoteIds?.has(id) ?? false;
-		// Halo-only types render as label + halo without a sphere mesh; trails are
-		// built separately. Per-frame loops skip entries with mesh === null.
+		// Halo-only types render as label + halo, no sphere; per-frame loops
+		// skip entries with mesh === null. Trails are built separately.
 		const t = body.data.objectType;
 		const isVirtual =
 			isHalfPromoted ||
@@ -77,8 +75,8 @@ export function buildMajorBodies(
 		const color = resolveBodyColor(body.data);
 		const radius = kmToScene(effectiveRadiusKm(body.data));
 		const isStar = t === ObjectType.STAR;
-		// No measured size → draw the halo only, no fallback sphere (model-bearing
-		// types use the overlay, so their unknown radius is expected).
+		// No measured size → halo only, no fallback sphere (model-bearing types
+		// use the overlay instead, so an unknown radius there is expected).
 		const modelBearing = isModelBearing(body);
 		const radiusKnown = Number.isFinite(body.data.radiusKm) && body.data.radiusKm > 0;
 		const noPhysical: 'model' | 'radius' | undefined =
@@ -102,8 +100,8 @@ export function buildMajorBodies(
 
 			const segments = isStar ? STAR_SPHERE_SEGMENTS : BODY_SPHERE_SEGMENTS;
 			const geometry = new SphereGeometry(radius, segments, segments);
-			// The sphere shows the per-body export colour or neutral white; `color`
-			// (per-type) is kept for the star glow + halos, so the UI stays type-level.
+			// Sphere uses the per-body export colour or neutral white; `color`
+			// (per-type) stays for star glow + halos, so the UI reads as type-level.
 			const material = isStar
 				? makeStarSurfaceMaterial()
 				: new MeshStandardMaterial({ color: bodyMeshColor(body.data) });
@@ -200,10 +198,9 @@ export function buildMajorBodies(
 }
 
 /**
- * True for body types that auto-promote to a halo+label entry but should swap
- * to a full sphere mesh once focused (and drop back to halo-only on un-focus).
- * Barycenters and Lagrange points are halo-only too, but have no physical body
- * so they never upgrade.
+ * True for types that auto-promote to halo+label but swap to a full sphere on
+ * focus (and back on un-focus). Barycenters/Lagrange points are halo-only too
+ * but have no physical body, so they never upgrade.
  */
 export function isMeshUpgradable(body: PositionedBody): boolean {
 	const t = body.data.objectType;
@@ -215,8 +212,7 @@ export function isMeshUpgradable(body: PositionedBody): boolean {
 /**
  * Add the sphere mesh (+ atmosphere, eclipse shadow, clickable registration) to
  * an existing halo-only {@link BodyObjects} entry. No-op if a mesh already
- * exists. Caller re-runs `buildTrails` to pick up the trail for non-probe types
- * whose halo-only state had no trail.
+ * exists. Caller re-runs `buildTrails` for non-probe types that had no trail.
  */
 export function upgradeBodyMesh(
 	bo: BodyObjects,
@@ -233,8 +229,8 @@ export function upgradeBodyMesh(
 		bo.noPhysical = 'radius';
 		return;
 	}
-	// Per-body export colour when known, else neutral white for small bodies/moons
-	// (the per-type tint is UI-only — point clouds/halos/trails keep it).
+	// Per-body export colour, else neutral white — the per-type tint stays
+	// UI-only, on point clouds/halos/trails.
 	const color = bodyMeshColor(body.data);
 	const segments = BODY_SPHERE_SEGMENTS;
 	const geometry = new SphereGeometry(radiusScene, segments, segments);
@@ -270,9 +266,8 @@ export function upgradeBodyMesh(
 
 /**
  * Reverse of {@link upgradeBodyMesh}: dispose the sphere mesh, atmosphere, and
- * eclipse shadow; for non-probe types also dispose the trail so the body
- * reverts to a labelled halo only. Probes keep their trail (their halo-only
- * mode is "halo + trail, no mesh").
+ * eclipse shadow, reverting to a labelled halo. Non-probe types also lose their
+ * trail; probes keep theirs (halo-only mode is "halo + trail, no mesh").
  */
 export function downgradeBodyMesh(
 	bo: BodyObjects,
@@ -286,8 +281,8 @@ export function downgradeBodyMesh(
 	unloadBodyModel(bo);
 	const mesh = bo.mesh;
 	if (mesh) {
-		// Displacement state — the material dispose below doesn't release
-		// textures, and a high-tier DataTexture pins its full CPU-side buffer.
+		// Material dispose below doesn't release textures, and a high-tier
+		// DataTexture pins its full CPU-side buffer.
 		if (bo.displacementMap) {
 			bo.displacementMap.dispose();
 			bo.displacementMap = null;
@@ -308,10 +303,8 @@ export function downgradeBodyMesh(
 		bo.currentSegments = undefined;
 		bo.eclipseShadow = null;
 		bo.sunTint = undefined;
-		// The new mesh on re-upgrade starts with identity scale, so the
-		// triaxial scale needs to be re-applied. (`bo.radiusScene` keeps its
-		// bumped value — the next sphere is built at that size, and the
-		// radii application below produces the right (a, b, c) regardless.)
+		// Re-upgrade builds a fresh identity-scale mesh, so triaxial scale must
+		// be reapplied; `bo.radiusScene` keeps its bumped value for that.
 		bo.radiiApplied = false;
 		bo.semiAxesScene = undefined;
 	}

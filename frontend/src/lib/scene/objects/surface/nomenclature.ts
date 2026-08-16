@@ -1,25 +1,20 @@
 /**
  * IAU planetary nomenclature labels — surface labels for craters, mons, etc.
  *
- * Labels are CSS2DObjects parented to the body's mesh, so they inherit
- * `applyOrientation`'s spin and `applyRadiiToMesh`'s triaxial scale. Local
- * coordinates use the orientation basis (pole on +Y, prime meridian on +X,
- * planetographic longitude increasing east).
+ * Labels are CSS2DObjects parented to the body's mesh, inheriting
+ * `applyOrientation`'s spin and `applyRadiiToMesh`'s triaxial scale (pole on
+ * +Y, prime meridian on +X, longitude increasing east). Shape-model bodies
+ * parent to `bo.nomenclatureAnchor` instead — an identity-scale group with
+ * the model's IAU orientation — with positions from ray-casting the model,
+ * mapped to scene units via `modelUnitScene`.
  *
- * Shape-model bodies (hidden sphere, model in the unit-scale overlay scene)
- * parent labels to `bo.nomenclatureAnchor` instead — an identity-scale group
- * that gets the same IAU orientation as the model. Surface positions come from
- * ray-casting the model, mapped to main-scene units via `modelUnitScene`
- * (under that scale the overlay projects exactly like the main scene).
- *
- * Each label is shown only when its on-screen diameter falls in the
- * `[MIN_FEATURE_PX, MAX_FEATURE_FRACTION · viewport]` band; survivors are
- * passed through a greedy AABB collision cull, iterated in priority order
- * (largest effective diameter first — fixed at attach so the per-frame loop
- * is sort-free). Non-circular feature types (linear features, valleys,
- * ridges, lineae) are dropped client-side until the planned vector dataset
- * can render their actual geometry. Zero-diameter records (mostly Mars
- * albedo features) fall back to {@link DEFAULT_FEATURE_DIAMETER_M}.
+ * A label shows only when its on-screen diameter falls in the
+ * `[MIN_FEATURE_PX, MAX_FEATURE_FRACTION · viewport]` band; survivors go
+ * through a greedy AABB collision cull in priority order (largest diameter
+ * first, fixed at attach so the per-frame loop is sort-free). Non-circular
+ * feature types are dropped client-side until a vector dataset can render
+ * their real geometry. Zero-diameter records fall back to
+ * {@link DEFAULT_FEATURE_DIAMETER_M}.
  */
 
 import { Group, Quaternion, Vector3, type Camera, type Object3D, type SphereGeometry } from 'three';
@@ -241,11 +236,10 @@ const MODEL_CAST_CHUNK = 8;
 const _castNormal = new Vector3();
 
 /**
- * Per-feature surface radius (model units) and body-fixed surface normal from
- * ray-casting the overlay mesh (see `castModelRadius`). Misses (scan holes)
- * fall back to the bbox-ellipsoid radius and normal. Normals feed the
- * per-frame local-horizon test — the sphere-cap check alone lets labels just
- * past the limb of an irregular body leak through.
+ * Per-feature surface radius (model units) and body-fixed normal from
+ * ray-casting the overlay mesh. Misses (scan holes) fall back to the
+ * bbox-ellipsoid radius/normal. Normals feed the per-frame local-horizon
+ * test, since the sphere-cap check alone lets near-limb labels leak through.
  */
 async function sampleModelSurface(
 	model: Object3D,
@@ -330,21 +324,17 @@ const MODEL_HORIZON_MARGIN = 0.12;
 
 /**
  * Per-frame visibility for feature labels. A label survives when its body is
- * focused and projects to at least {@link MIN_BODY_SCREEN_RADIUS_PX}, the
- * label is on the front hemisphere, sits inside {@link LABEL_DISC_FRACTION}
- * of the projected disc, and its on-screen diameter falls in the
- * `[MIN_FEATURE_PX, MAX_FEATURE_FRACTION · min(screenW, screenH)]` band.
+ * focused and projects to at least {@link MIN_BODY_SCREEN_RADIUS_PX}, sits on
+ * the front hemisphere within {@link LABEL_DISC_FRACTION} of the disc, and
+ * its on-screen diameter falls in the `[MIN_FEATURE_PX, MAX_FEATURE_FRACTION
+ * · min(screenW, screenH)]` band.
  *
- * The URL-selected feature (`bo.nomenclatureActiveIndex`) is exempted from
- * the per-feature size / disc-fraction checks so a tiny or near-limb selected
- * feature is still shown — but the hemisphere check still applies so the
- * label doesn't bleed through the planet from the far side.
+ * The URL-selected feature is exempted from the size/disc-fraction checks
+ * (but not the hemisphere check, so it can't bleed through the far side).
+ * Non-active labels hide when the cloud overlay is visible.
  *
- * When the body's cloud overlay is visible, non-active labels are hidden so
- * they don't read through the clouds; the active feature still survives.
- *
- * Survivors get their screen-space center written to `bo.nomenclatureSX/SY`
- * for the collision pass; hidden labels get `NaN` so the cull skips them.
+ * Survivors write their screen-space center to `bo.nomenclatureSX/SY` for the
+ * collision pass; hidden labels get `NaN`.
  */
 export function updateNomenclatureVisibility(
 	bo: BodyObjects,
@@ -389,10 +379,9 @@ export function updateNomenclatureVisibility(
 	const cdz = _camWorld.z - _bodyWorld.z;
 
 	_bodyNdc.copy(_bodyWorld).project(camera);
-	// `screenR` from the caller is R/D · f (small-angle). The true projected
-	// disc radius is R·f / √(D² − R²) = screenR / √(1 − (R/D)²) — equal to
-	// screenR when D ≫ R, but visibly larger as the camera closes in.
-	// Without this correction the limb labels get clipped on zoom-in.
+	// screenR from the caller is small-angle; the true disc radius is
+	// screenR / √(1 − (R/D)²), noticeably larger as the camera closes in —
+	// without this, limb labels get clipped on zoom-in.
 	const distSq = cdx * cdx + cdy * cdy + cdz * cdz;
 	const rSq = bo.radiusScene * bo.radiusScene;
 	const trueDiscR = screenR / Math.sqrt(Math.max(1 - rSq / distSq, 1e-6));
@@ -420,12 +409,10 @@ export function updateNomenclatureVisibility(
 		const lx = _labelWorld.x - _bodyWorld.x;
 		const ly = _labelWorld.y - _bodyWorld.y;
 		const lz = _labelWorld.z - _bodyWorld.z;
-		// Perspective horizon reject: P is on the visible cap iff its outward
-		// normal faces camera, (K − P) · (P − C) > 0, i.e. K'·L > L·L. Strictly
-		// tighter than the `> 0` hemisphere check, which would let points just
-		// behind the perspective limb leak through and project into the disc.
-		// Applies to the active feature too — otherwise its DOM label bleeds
-		// through the planet from the far side (CSS2D doesn't depth-test).
+		// Perspective horizon reject, stricter than a plain hemisphere check
+		// (which lets points just behind the perspective limb leak through).
+		// Applies to the active feature too — CSS2D doesn't depth-test, so its
+		// label would otherwise bleed through the planet from the far side.
 		const dot = lx * cdx + ly * cdy + lz * cdz;
 		const lenSqL = lx * lx + ly * ly + lz * lz;
 		if (dot <= lenSqL) {
@@ -434,11 +421,10 @@ export function updateNomenclatureVisibility(
 			syA[i] = NaN;
 			continue;
 		}
-		// Local-horizon reject (shape models): the cap test above treats each
-		// label as sitting on its own sphere, letting labels just past the limb
-		// of an irregular body leak through. Require the actual terrain normal
-		// to face the camera above a grazing margin. Applies to the active
-		// feature too, same as the cap test.
+		// Local-horizon reject (shape models): the cap test treats each label
+		// as sitting on its own sphere, letting labels near an irregular body's
+		// limb leak through. Require the actual terrain normal to face the
+		// camera above a grazing margin.
 		if (normals) {
 			_normalWorld
 				.set(normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2])
@@ -470,10 +456,9 @@ export function updateNomenclatureVisibility(
 	}
 }
 
-// AABB pool for the collision cull. Module-level — only one focused body's
-// labels go through here per frame, so a single pool is fine. `h` carries the
-// rect's vertical extent so mixed body-label (22px) and feature-label (16px)
-// rects can be checked for box overlap rather than a single fixed threshold.
+// AABB pool for the collision cull. Module-level: only one focused body's
+// labels go through here per frame. `h` carries vertical extent so mixed
+// body-label (22px) and feature-label (16px) rects overlap-check correctly.
 type Rect = { left: number; right: number; y: number; h: number };
 const _acceptedNom: Rect[] = [];
 
@@ -536,15 +521,12 @@ function tryAcceptNomenclature(
 }
 
 /**
- * Greedy AABB collision cull for the focused body's feature labels. Labels
- * are iterated in pre-sorted priority order (largest effective diameter
- * first); each accepts unless its box overlaps an already-accepted box, in
- * which case it's hidden for the frame. The active feature (if any) is
- * accepted first and force-accepted so it always survives and others defer
- * to it. The accepted pool is pre-seeded with the body-label cull's accepted
- * rects so feature labels lose to any body label. Text widths are measured
- * lazily on the first frame the label is in DOM (first measure may return 0;
- * we retry next frame with a 60px fallback).
+ * Greedy AABB collision cull for the focused body's feature labels, in
+ * pre-sorted priority order (largest diameter first); each accepts unless it
+ * overlaps an already-accepted box. The active feature is force-accepted
+ * first so others defer to it. Pre-seeded with the body-label cull's rects
+ * so feature labels lose to any body label. Text widths are measured lazily
+ * once the label is in DOM, with a 60px fallback until then.
  */
 export function cullOverlappingNomenclatureLabels(bo: BodyObjects): void {
 	const labels = bo.nomenclatureLabels;

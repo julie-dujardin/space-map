@@ -29,12 +29,9 @@ export function tierRank(tier: string | undefined): number {
 }
 
 /**
- * Highest tier in `available` whose rank is ≤ `maxRank`. Returns undefined
- * when no tier ≤ `maxRank` is exported. Shared by the per-frame texture LOD
- * pass for both surface and cloud bundles: the surface caller uses it to
- * step from the current tier up to the screen-size target; the cloud caller
- * uses it to clamp the surface's current tier down to whatever the cloud
- * bundle actually ships (which may stop short of `high`).
+ * Highest tier in `available` whose rank is ≤ `maxRank`, or undefined if none
+ * qualify. Shared by the LOD pass: surface stepping up to the screen-size
+ * target, or cloud clamping down to whatever tiers its bundle ships.
  */
 export function highestAvailableTier(maxRank: number, available: string[]): TierName | undefined {
 	for (let r = maxRank; r >= 0; r--) {
@@ -45,10 +42,8 @@ export function highestAvailableTier(maxRank: number, available: string[]): Tier
 }
 
 /**
- * URL for a body's texture at a given tier/frame. Single-frame bodies use
- * `{tier}.webp`; monthly bodies append a 1-based zero-padded frame suffix
- * (`{tier}_NN.webp`, `NN` = 01..frames). Mirrors the export-tree convention
- * documented in docs/export-format/textures.md.
+ * URL for a body's texture at a given tier/frame: `{tier}.webp`, or
+ * `{tier}_NN.webp` for monthly bodies (see docs/export-format/textures.md).
  */
 function textureUrlFor(id: string, tier: string, frame: number | undefined): string {
 	if (frame === undefined) return versionedUrl(`/v1/textures/${id}/${tier}.webp`, 'textures');
@@ -59,10 +54,8 @@ function textureUrlFor(id: string, tier: string, frame: number | undefined): str
 }
 
 /**
- * Resolve which frame of a multi-frame texture should be shown for `jd`. The
- * only case we support today is 12 — one tile per calendar month — so the
- * answer is just the UTC month. Returns undefined when the body has no frame
- * dimension (single-frame texture).
+ * Which frame of a multi-frame texture to show for `jd`. Only 12 (monthly)
+ * is supported today, so the answer is just the UTC month.
  */
 export function textureFrameForJd(jd: number, frames: number | undefined): number | undefined {
 	if (!frames || frames < 2) return undefined;
@@ -70,11 +63,7 @@ export function textureFrameForJd(jd: number, frames: number | undefined): numbe
 	return 1;
 }
 
-/**
- * Load a texture tier/frame and swap it onto the body's material, disposing
- * the prior map. Sets `textureLoading` while in flight and `textureTier` /
- * `textureFrame` on success.
- */
+/** Load a texture tier/frame and swap it onto the body's material, disposing the prior map. */
 async function swapBodyTexture(
 	bo: BodyObjects,
 	tier: string,
@@ -109,16 +98,11 @@ async function swapBodyTexture(
 }
 
 /**
- * Apply SPICE PCK triaxial radii to a body's mesh as a non-uniform scale.
- *
- * The mesh starts as a uniform `SphereGeometry(radiusScene)`; this scales
- * it into an ellipsoid with semi-axes (a, b, c) km. The applyOrientation
- * basis (pole on local +Y, ascending node on local +X) means SPICE (X, Y, Z)
- * maps to mesh local (X, Z, Y), so X→a, Y→c, Z→b. After scaling, the scalar
- * `radiusScene` is bumped to the rendered ellipsoid's largest extent so
- * halo / label / LOD / occlusion screen-size checks match what the user sees.
- *
- * Marks `bo.radiiApplied` so callers don't re-scale the same mesh.
+ * Scale the mesh's uniform sphere into an ellipsoid with semi-axes (a, b, c)
+ * km. The applyOrientation basis maps SPICE (X, Y, Z) to mesh local (X, Z, Y),
+ * so X→a, Y→c, Z→b. `radiusScene` is bumped to the largest extent so
+ * halo/label/LOD/occlusion checks match what's rendered. Marks
+ * `bo.radiiApplied` so callers don't re-scale the same mesh.
  */
 export function applyRadiiToMesh(
 	bo: BodyObjects,
@@ -131,9 +115,8 @@ export function applyRadiiToMesh(
 	bo.radiusScene = kmToScene(Math.max(a, b, c));
 	// Mesh-local x/y/z semi-axes (matches the scale order) for ellipsoid occlusion.
 	bo.semiAxesScene = [kmToScene(a), kmToScene(c), kmToScene(b)];
-	// Reshape the scattering shell to the same ellipsoid, and re-normalise the
-	// sun-transmittance patches — their baked mean-radius β/heights would put
-	// the equatorial surface many scale heights off the datum.
+	// Reshape the scattering shell to match, and re-normalise sun-transmittance —
+	// their baked mean-radius heights would put the equator off the datum otherwise.
 	if (bo.atmosphere) {
 		const eqKm = Math.max(a, b);
 		syncAtmosphereEllipsoid(bo.atmosphere, eqKm, c, kmToScene(eqKm));
@@ -145,17 +128,11 @@ export function applyRadiiToMesh(
 }
 
 /**
- * Initial low-tier texture load, used when focusing a body that may not be
- * part of a pre-declared system (the system-metadata path handles the rest).
- * Also forwards the texture attribution to `ctx` so the bar/popover can
- * credit standalone bodies (e.g. Bennu, Ceres) the same way it credits bodies
- * registered via loadSystemData.
- *
- * For non-system bodies this is also where orientation, triaxial radii and
- * ring bundles from the global JSON get applied (loadSystemData handles system
- * bodies via the per-system metadata file). Per-frame orientation
- * re-application happens in the renderer's main loop based on
- * `bo.body.orientation`.
+ * Initial low-tier texture load for standalone bodies (not part of a
+ * pre-declared system — loadSystemData covers those). Also applies
+ * orientation, triaxial radii, and ring bundles from the global JSON, and
+ * forwards texture attribution to `ctx` so standalones (Bennu, Ceres) get
+ * credited the same as system bodies.
  */
 export async function loadBodyTexture(
 	bo: BodyObjects,
@@ -167,18 +144,17 @@ export async function loadBodyTexture(
 ): Promise<void> {
 	if (bo.textureTier || bo.textureLoading) return;
 	// Texture/orientation/radii live in `detail.global`; the localized bundle
-	// would only carry the display name, which this path doesn't read.
+	// only carries the display name.
 	const detail = await fetchObjectDetail(bo.body.data.id, false);
 	if (!detail.global) return;
 
-	// Apply orientation and triaxial radii from the global JSON. These run
-	// before the map-texture early-return below so bodies without a surface
+	// Runs before the map-texture early-return so bodies without a surface
 	// map (most asteroids) still get their ellipsoid shape and spin axis.
 	if (detail.global.orientation && !bo.body.orientation) {
 		applyBodyOrientation(bo, detail.global.orientation, ctx);
 	}
 	// Absolute-radius DEM bodies (Vesta/Ceres) skip triaxial — the displacement
-	// carries the full shape, so the ellipsoid would double-count it.
+	// already carries the full shape.
 	if (
 		detail.global.radii &&
 		bo.radiusScene > 0 &&
@@ -188,9 +164,8 @@ export async function loadBodyTexture(
 		applyRadiiToMesh(bo, detail.global.radii);
 	}
 
-	// Ring annuli for the ringed small bodies. Before the map-texture
-	// early-return below, because none of the four has a surface map — they
-	// would never reach it.
+	// Ring annuli for the ringed small bodies — before the texture early-return,
+	// since none of the four has a surface map.
 	if (detail.global.rings?.length) {
 		await Promise.allSettled(
 			attachRingBundles(
@@ -206,11 +181,10 @@ export async function loadBodyTexture(
 		);
 	}
 
-	// Physically-derived per-body surface colour for small bodies. Applied here
-	// (not at chunk-parse time) since it rides the global bundle fetched on focus.
-	// The untextured sphere adopts it; the point cloud / label keep their per-type
-	// tint via resolveBodyColor.
-	// Small bodies carry it under `sbdb`, moons top-level (no sbdb block).
+	// Physically-derived surface colour, applied here since it rides the global
+	// bundle fetched on focus. The untextured sphere adopts it; point cloud/label
+	// keep their per-type tint via resolveBodyColor. Small bodies carry it under
+	// `sbdb`, moons top-level.
 	const surfaceColor = detail.global.sbdb?.color ?? detail.global.color;
 	if (surfaceColor) {
 		bo.body.data.color = surfaceColor;
@@ -221,9 +195,8 @@ export async function loadBodyTexture(
 
 	if (!detail.global.map_texture_available) return;
 	if (ctx && detail.global.texture) {
-		// Standalones aren't tied to a planetary system barycenter; key the
-		// credit on the body itself so the bar/popover can match it against
-		// the focused body id.
+		// Standalones aren't tied to a system barycenter; key the credit on the
+		// body itself so it matches the focused body id.
 		const bodyId = bo.body.data.id;
 		ctx.credits.registerTexture({
 			bodyId,
@@ -235,11 +208,9 @@ export async function loadBodyTexture(
 			description: detail.global.texture.description
 		});
 	}
-	// DEM sibling — standalone bodies (Vesta/Ceres) load it here since they
-	// never hit the per-system path. Same shape as `system.ts`'s branch.
-	// Debug: displacement off → the sphere keeps its shape without the relief.
-	// Low-end/data-saver clients keep the flat textured sphere: the DEM relief
-	// (multi-MB displacement + normal maps) is the heaviest per-body asset.
+	// DEM sibling — standalones load it here since they skip the per-system
+	// path (same shape as system.ts's branch). Low-end clients keep the flat
+	// textured sphere: the DEM relief is the heaviest per-body asset.
 	if (detail.global.displacement && !bo.displacementMap && bo.mesh && isLowEndDevice()) {
 		console.info(`Low-end device: skipping DEM relief for ${bo.body.data.id}`);
 	} else if (
@@ -287,20 +258,13 @@ export async function loadBodyTexture(
 }
 
 /**
- * Resolve and apply the localized display name on a click-promoted body's
- * label. Bodies that show up in the global labels file (planets, moons, the
- * curated extras) already carry their name through `body.data.name` from
- * chunk parse time; this fills in the rest by lazily fetching the same
- * detail bundle the drawer uses, so e.g. clicking a random asteroid swaps
- * its label from blank → Wikidata name a few hundred ms later.
- *
- * No-op when the body already has a name, or when the label was created
- * with `variant: 'none'` (debris, etc.).
+ * Fill in a click-promoted body's label name by lazily fetching its detail
+ * bundle — e.g. a random asteroid swaps blank → Wikidata name a bit later.
+ * No-op if already named, or labeled with `variant: 'none'` (debris, etc.).
  */
 export async function loadBodyLabel(bo: BodyObjects): Promise<void> {
 	if (!bo.label) return;
 	const data = bo.body.data;
-	// Already named at chunk parse time (in the global labels file) — nothing to resolve.
 	if (data.name) return;
 	const detail = await fetchObjectDetail(data.id, data.hasLocalized);
 	const resolved = detail.localized?.name ?? detail.global?.name;
@@ -313,11 +277,7 @@ export async function loadBodyLabel(bo: BodyObjects): Promise<void> {
 	setLabelName(bo.label, resolved, variant, isLarge);
 }
 
-/**
- * Drop a body's loaded texture and revert its material to its base tint. The
- * material/geometry/mesh stay so the body keeps rendering as a flat-shaded
- * sphere; only the GPU texture is released. No-op if nothing is loaded.
- */
+/** Drop a body's loaded texture, reverting its material to base tint. No-op if nothing is loaded. */
 export function unloadBodyTexture(bo: BodyObjects): void {
 	if (!bo.mesh) return;
 	// Invalidate any in-flight swap so it won't re-attach after we tear down.
@@ -340,11 +300,8 @@ export function unloadBodyTexture(bo: BodyObjects): void {
 	bo.textureTier = undefined;
 }
 
-/**
- * Load a specific texture tier (and monthly frame, if applicable) for a body
- * and swap it onto its material. No-op if the exact (tier, frame) pair is
- * already loaded, the tier is unavailable, or another load is in flight.
- */
+/** Load a specific texture tier/frame onto a body's material. No-op if already
+ *  loaded, the tier is unavailable, or another load is in flight. */
 export async function loadBodyTextureTier(
 	bo: BodyObjects,
 	tier: string,

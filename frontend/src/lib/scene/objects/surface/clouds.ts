@@ -1,11 +1,7 @@
 /**
- * Cloud-overlay layer parented to a body's mesh. A second sphere, slightly
- * larger than the surface, drawn with a transparent MeshStandardMaterial
- * whose `map` carries the cloud RGBA (alpha = cloud mask). Lit by the same
- * scene lights as the planet, so terminator + dayside shading come for free.
- *
- * Texture tiers mirror the surface tiers (low/medium/high) and are upgraded
- * alongside the surface by the renderer's per-frame LOD pass.
+ * Cloud-overlay layer parented to a body's mesh: a slightly larger sphere with
+ * a transparent MeshStandardMaterial whose `map` carries cloud RGBA (alpha =
+ * mask). Lit by the same scene lights, so terminator/dayside shading is free.
  */
 import { Mesh, MeshStandardMaterial, SphereGeometry, SRGBColorSpace, Texture } from 'three';
 
@@ -39,20 +35,10 @@ export interface CloudNode {
 	lastSwapMs?: number;
 }
 
-/**
- * Offset above the surface (multiplicative on the parent's flattened scale).
- * Small enough to be visually indistinguishable; large enough to avoid the
- * coplanar-fragment depth-equality glitch on some GPUs.
- */
+/** Offset above the surface (multiplicative on parent scale): small enough to be invisible, large enough to avoid coplanar depth-fighting. */
 export const CLOUD_RADIUS_OFFSET = 1.002;
 
-/**
- * Minimum wall-clock interval between cloud-texture swaps. At high time-warp
- * `cloudFrameForJd` would otherwise pick a new 3h snapshot every render, and
- * each swap costs a fetch + WebP decode + GPU upload even when the file is
- * HTTP-cached. Clouds are visual noise at fast speed, so capping the swap
- * rate is invisible.
- */
+/** Min interval between cloud-texture swaps. At high time-warp, a new 3h snapshot every render would cost fetch+decode+upload each frame. */
 const CLOUD_SWAP_MIN_INTERVAL_MS = 1000;
 
 function cloudTextureUrl(id: string, tier: string, frame: string): string {
@@ -60,12 +46,9 @@ function cloudTextureUrl(id: string, tier: string, frame: string): string {
 }
 
 /**
- * Decode the WebP off the main thread via `createImageBitmap` so the 3D loop
- * doesn't stall while a snapshot loads. `TextureLoader` would route through
- * `<img>` + a same-thread decode that visibly froze the renderer at high
- * time-warp when frames swap often. Pre-flipping the bitmap (`imageOrientation:
- * 'flipY'`) lets us set `texture.flipY = false` and skip the UNPACK_FLIP_Y
- * copy at upload time.
+ * Decode off-thread via `createImageBitmap`; `TextureLoader`'s `<img>` decode
+ * visibly froze the renderer at high time-warp. Pre-flipping the bitmap lets
+ * `texture.flipY = false` skip the UNPACK_FLIP_Y copy at upload.
  */
 async function fetchCloudTexture(id: string, tier: string, frame: string): Promise<Texture | null> {
 	try {
@@ -96,16 +79,10 @@ function frameIdToMs(frameId: string): number {
 }
 
 /**
- * Pick a snapshot for `jd`. `frames` is assumed pre-sorted ascending (export
- * guarantees this); returns undefined when no snapshots are available.
- *
- * In range: closest snapshot by absolute wall-clock distance. Outside the
- * dataset's range we fall back to the same hour-of-day (rounded to the
- * exported 3h cadence) on the most-recent date (if jd is past the last
- * snapshot) or the oldest date (if it's before the first). It's not perfect
- * — clouds aren't periodic — but it keeps the diurnal character roughly
- * right instead of pinning the entire scene to whatever frame happens to
- * sit at the data boundary.
+ * Pick a snapshot for `jd` (`frames` pre-sorted ascending). In range: closest
+ * by wall-clock distance. Outside range: same hour-of-day on the nearest
+ * boundary date — not periodic, but keeps diurnal character instead of
+ * pinning the scene to whatever frame sits at the data boundary.
  */
 export function cloudFrameForJd(jd: number, frames: string[]): string | undefined {
 	if (frames.length === 0) return undefined;
@@ -114,9 +91,8 @@ export function cloudFrameForJd(jd: number, frames: string[]): string | undefine
 	const lastMs = frameIdToMs(frames[frames.length - 1]);
 
 	if (target >= firstMs && target <= lastMs) {
-		// Binary search for the first frame at or after target — comparing
-		// strings is sufficient because YYYYMMDDHH sorts identically to its
-		// wall time.
+		// Binary search for first frame at or after target; string compare works
+		// because YYYYMMDDHH sorts identically to wall time.
 		let lo = 0;
 		let hi = frames.length;
 		while (lo < hi) {
@@ -131,9 +107,8 @@ export function cloudFrameForJd(jd: number, frames: string[]): string | undefine
 		return target - frameIdToMs(before) <= frameIdToMs(after) - target ? before : after;
 	}
 
-	// Outside the dataset — pick the slot matching the sim hour-of-day. The
-	// `% 24` handles the wrap when sim hour rounds up past 21 (e.g. 23 → 24
-	// → slot 00, which is closer than 21).
+	// Outside the dataset — match the sim hour-of-day. `% 24` handles the wrap
+	// when the sim hour rounds up past 21 (23 → 24 → slot 00).
 	const simHour = jdToDate(jd).getUTCHours();
 	const slotHour = (Math.round(simHour / 3) * 3) % 24;
 	const slotHourStr = String(slotHour).padStart(2, '0');
@@ -147,10 +122,8 @@ export function cloudFrameForJd(jd: number, frames: string[]): string | undefine
 
 /**
  * Build the cloud sphere as a child of `parentMesh`, load its `low`-tier
- * snapshot for `frame`, and return the node. The cloud mesh inherits
- * `parentMesh`'s scale (triaxial flattening) and quaternion (IAU orientation +
- * spin), so it tracks the planet for free. Returns null if there are no
- * frames in the bundle or the texture load fails.
+ * snapshot for `frame`. Inherits the parent's scale/quaternion so it tracks
+ * the planet for free. Returns null on load failure.
  */
 export async function loadCloudNode(
 	parentMesh: Mesh,

@@ -3,10 +3,8 @@ import { Vector3 } from 'three';
 import { evaluateEclipseFactor, getEclipseSceneUniforms } from './eclipse-shadow';
 
 /**
- * Contract tests for the CPU port of the GLSL `eclipseFactor()` in
- * `eclipse-shadow.ts`. The fragment shader and `evaluateEclipseFactor` must
- * agree on these values — any change to one path requires updating the
- * other and verifying these cases still pass.
+ * Contract tests for the CPU port of the GLSL `eclipseFactor()`. The shader
+ * and `evaluateEclipseFactor` must agree on these values.
  */
 
 function resetUniforms(): void {

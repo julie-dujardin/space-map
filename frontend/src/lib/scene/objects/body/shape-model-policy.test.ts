@@ -1,7 +1,6 @@
 /**
- * The scene and the sources footer must agree on whether a shape model is on
- * screen: Ceres keeps its Dawn DEM sphere, so crediting DAMIT there credits a
- * mesh nothing ever loaded.
+ * Scene and credits footer must agree what's on screen: Ceres keeps its Dawn
+ * DEM sphere, so crediting DAMIT there would credit an unloaded mesh.
  */
 
 import { describe, expect, it, vi } from 'vitest';

@@ -2,11 +2,9 @@ import { isCoarsePointer, isLowEndDevice } from '$lib/device';
 import { getSettings } from '$lib/state/settings.svelte';
 
 /**
- * Quality knobs for the atmosphere shells. The ray march costs
- * primarySteps × (lightSteps + per-sample shadow work) per fragment over the
- * planet's whole screen footprint, which desktop GPUs shrug off and phones
- * don't — tiers keep one shader with compile-time defines instead of forking
- * cheap/fancy implementations.
+ * Quality knobs for the atmosphere shells. Ray march cost is
+ * primarySteps × (lightSteps + shadow work) per fragment, over the planet's
+ * whole footprint — tiers pick compile-time defines instead of forking shaders.
  */
 export interface AtmosphereQualityConfig {
 	/** View-ray march samples. */
@@ -17,25 +15,17 @@ export interface AtmosphereQualityConfig {
 	eclipseShadows: boolean;
 	/** March the ring-shadow profile through the air column. */
 	ringShadows: boolean;
-	/** Render the sky from inside a shell (BackSide flip + the full-scene
-	 *  opaque-depth prepass + skybox dimming). Off = the shell simply vanishes
-	 *  once entered, and the prepass is never paid. */
+	/** Sky rendered from inside a shell (BackSide flip + opaque-depth prepass + skybox dimming). Off = shell vanishes once entered. */
 	insideView: boolean;
-	/** Sun-transmittance tints (sunset surface light, disc chroma, corona).
-	 *  Uniform-gated, but the surface march covers full-screen landed terrain
-	 *  — off on low tiers, which keep the untinted sun. */
+	/** Sun-transmittance tints (sunset light, disc chroma, corona). Off on low tiers: surface march covers full-screen landed terrain. */
 	sunTint: boolean;
-	/** Piecewise Mie density profiles (Venus decks, Titan's detached haze):
-	 *  two LUT taps per march sample instead of one exp — high/ultra. */
+	/** Piecewise Mie density profiles (Venus decks, Titan haze): two LUT taps per sample instead of one exp — high/ultra. */
 	layeredDensity: boolean;
-	/** Ground-bounce boost on the multiple-scatter ambient. Uniform-gated and
-	 *  reuses already-marched densities — free, on everywhere. */
+	/** Ground-bounce boost on multiple-scatter ambient. Reuses already-marched densities — free, on everywhere. */
 	groundAlbedo: boolean;
-	/** Mars seasonal dust/pressure cycle from the simulation clock. CPU-only
-	 *  param derivation, on everywhere. */
+	/** Mars seasonal dust/pressure cycle. CPU-only, on everywhere. */
 	seasonal: boolean;
-	/** Refraction lift of the Sun's visuals seen from inside a shell.
-	 *  CPU-only, on everywhere. */
+	/** Refraction lift of the Sun seen from inside a shell. CPU-only, on everywhere. */
 	refraction: boolean;
 }
 
@@ -45,9 +35,8 @@ export type AtmosphereQualityTier = 'auto' | ResolvedAtmosphereTier;
 /** Step-down ladder for the perf governor, worst → best. */
 const TIER_ORDER: ResolvedAtmosphereTier[] = ['low', 'medium', 'high', 'ultra'];
 
-// March budget is the main lever so stepping down degrades smoothly; sunTint
-// is the exception — its surface march lands on exactly the devices the low
-// tiers target.
+// March budget is the main degrade lever; sunTint is the exception, since
+// its surface march targets exactly the devices the low tiers are for.
 export const ATMOSPHERE_QUALITY_PRESETS: Record<ResolvedAtmosphereTier, AtmosphereQualityConfig> = {
 	low: {
 		primarySteps: 6,
@@ -109,19 +98,13 @@ export interface AtmosphereCalibration {
 	worstMs: Partial<Record<ResolvedAtmosphereTier, number>>;
 }
 
-/** First guess from coarse device signals — phones/tablets start at medium,
- *  desktops at ultra, and the Chromium-only low-end probe steps either down one. */
+/** First guess from device signals: phones/tablets start medium, desktops ultra, the low-end probe steps either down one. */
 export function heuristicAtmosphereTier(): ResolvedAtmosphereTier {
 	if (isCoarsePointer()) return isLowEndDevice() ? 'low' : 'medium';
 	return isLowEndDevice() ? 'high' : 'ultra';
 }
 
-/**
- * Resolve 'auto': a tier the perf governor settled on wins (later, real-scene
- * evidence — and each fresh calibration clears it); then the boot benchmark's
- * measured tier; the device-signal guess covers the first load, before any
- * calibration has completed.
- */
+/** Resolve 'auto': perf-governor tier wins (cleared each fresh calibration), else boot-benchmark tier, else the device-signal guess. */
 export function resolveAtmosphereTier(tier: AtmosphereQualityTier): ResolvedAtmosphereTier {
 	if (tier !== 'auto') return tier;
 	const s = getSettings();
@@ -137,17 +120,14 @@ export function currentAtmosphereConfig(): AtmosphereQualityConfig {
 	};
 }
 
-/** Identity key for change detection — shells rebuild their program when the
- *  key they were compiled with stops matching. `sunTint`, `groundAlbedo`,
- *  `seasonal` and `refraction` are uniform/CPU-gated, so they stay out. */
+/** Identity key: shells rebuild their program when it stops matching. Uniform/CPU-gated fields (sunTint, groundAlbedo, seasonal, refraction) stay out. */
 export function atmosphereConfigKey(c: AtmosphereQualityConfig): string {
 	return `${c.primarySteps}|${c.lightSteps}|${+c.eclipseShadows}|${+c.ringShadows}|${+c.insideView}|${+c.layeredDensity}`;
 }
 
-// Perf governor state. FPS is an EMA (~0.5 s time constant) so one dropped
-// frame can't trip it; the low-FPS clock only runs while a shell actually
-// covers a meaningful part of the view, so unrelated jank (chunk loads, big
-// point clouds) doesn't get blamed on the atmosphere.
+// Perf governor state. FPS is an EMA (~0.5s) so one dropped frame can't trip
+// it; the low-FPS clock only runs while a shell is prominent, so unrelated
+// jank isn't blamed on the atmosphere.
 const LOW_FPS = 30;
 const OK_FPS = 45;
 const SUSTAIN_MS = 3000;
@@ -161,11 +141,9 @@ let lastConfigKey = '';
 
 /**
  * Feed one frame to the perf governor. In auto mode, ≥{@link SUSTAIN_MS} of
- * sustained sub-{@link LOW_FPS} frames with a shell prominent steps the learned
- * tier down one and persists it ({@link resolveAtmosphereTier} then starts
- * there on every future load). Down only — recovering from an unlucky
- * downgrade is a manual tier pick. Any config change (tier step, debug
- * override) re-arms a grace period so compile hitches don't count.
+ * sustained sub-{@link LOW_FPS} frames with a shell prominent steps the tier
+ * down one and persists it. Down only — recovering is a manual tier pick.
+ * Any config change re-arms a grace period so compile hitches don't count.
  */
 export function recordAtmospherePerf(dtMs: number, shellProminent: boolean): void {
 	const s = getSettings();

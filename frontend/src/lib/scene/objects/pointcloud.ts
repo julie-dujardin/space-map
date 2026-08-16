@@ -11,12 +11,9 @@ import type { PositionedBody } from '$lib/types/objects';
 
 const F32_MAX = 3.4028235e38;
 
-// Render after the planet's transparent overlays (clouds=1, atmosphere=2):
-// clouds write no depth, so points drawn earlier would get painted over by the
-// cloud sphere's dark-side fragments — satellites geometrically in front of
-// Earth visibly dim under the cloud layer. The atmosphere shell DOES write
-// depth when seen from outside, which is what sorts dots behind the limb glow
-// under it while dots in front stay on top.
+// Render after clouds (order 1) and atmosphere (order 2): clouds write no
+// depth, so earlier points would get painted over by dark-side fragments.
+// The atmosphere shell does write depth, so it still sorts dots correctly.
 const POINT_CLOUD_RENDER_ORDER = 3;
 
 // Point-cloud dots read directly as the body's halo colour under ACES; scale
@@ -39,12 +36,9 @@ export function makeCircleTexture(): CanvasTexture {
 	return new CanvasTexture(canvas);
 }
 
-/**
- * Screen-space point size for the asteroid clouds. Smaller on phones so the
- * 1.3M-asteroid main belt doesn't visually swamp the planets at typical
- * mobile viewport scales. 768px matches the breakpoint used elsewhere
- * (DetailDrawer, SettingsButton).
- */
+/** Screen-space point size for asteroid clouds. Smaller on phones so the
+ *  1.3M-asteroid main belt doesn't swamp the planets. 768px matches the
+ *  breakpoint used elsewhere (DetailDrawer, SettingsButton). */
 export function asteroidPointSize(): number {
 	if (typeof window === 'undefined') return 3;
 	return window.matchMedia('(max-width: 768px)').matches ? 2 : 3;
@@ -111,13 +105,10 @@ export function makePointCloud(
 }
 
 /**
- * Build a Points object whose position attribute is backed by a caller-owned
- * Float32Array. The same array is kept for the Points' lifetime — callers
- * mutate it in place and set `position.needsUpdate = true` so Three.js reuses
- * the same WebGL VBO (`bufferSubData`) instead of allocating a fresh one.
- *
- * `drawCount` controls the initial draw range; the caller updates it via
- * geometry.setDrawRange() when a worker returns a different valid count.
+ * Points object backed by a caller-owned Float32Array kept for its lifetime:
+ * callers mutate it in place and set `position.needsUpdate = true` so
+ * Three.js reuses the same VBO (`bufferSubData`) instead of a fresh one.
+ * `drawCount` sets the initial draw range; update via geometry.setDrawRange().
  */
 export function makePointCloudFromBuffer(
 	positions: Float32Array,

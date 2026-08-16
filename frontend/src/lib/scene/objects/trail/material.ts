@@ -1,18 +1,16 @@
 import { Color, DoubleSide, ShaderMaterial, Vector2, Vector3 } from 'three';
 
-// Trails read directly as the body's halo colour under ACES; scale down so
-// they render as a darker shade rather than matching the halo. Lines that are
-// not a body's orbit — a planned trajectory — pass their own scale: they are
-// what the reader is looking at, and a shade of the furniture is not that.
+// Trails read as the body's halo colour under ACES; scale down so they're a
+// darker shade, not a match. Planned trajectories pass their own scale — they
+// are what's being read, not furniture.
 const TRAIL_DIM = 0.5;
 
 function overlayColor(color: string, scale: number): Color {
 	return new Color(color).multiplyScalar(scale);
 }
 
-// Shared between every fat trail material so resize() updates them all in
-// one place. Mutating this Vector2 propagates to every material that holds it
-// as a uniform value (Three.js compares by reference, not by snapshot).
+// Shared by every fat trail material so resize() updates them all at once;
+// Three.js compares uniforms by reference, not snapshot.
 const TRAIL_RESOLUTION = new Vector2(1, 1);
 
 /** Update the screen resolution used by fat trails for screen-space line expansion. */
@@ -62,13 +60,10 @@ export function makeTrailMaterial(color: string, brightness = TRAIL_DIM): Shader
 }
 
 /**
- * Fat-line shader: same precision/alpha logic as {@link makeTrailMaterial},
- * but expands each segment to a screen-space quad of width `uLineWidth` pixels.
- *
- * Geometry is indexed triangles built by `makeFatTrailGeometry` in ./geometry:
- * each logical point is duplicated into a (-1, +1) side pair, and `nextPosition`
- * carries the segment's other endpoint so the shader can compute screen-space
- * direction without an extra draw call.
+ * Fat-line shader: same alpha logic as {@link makeTrailMaterial}, but expands
+ * each segment to a screen-space quad of width `uLineWidth` pixels. Reads the
+ * (-1,+1) side pairs and `nextPosition` from `makeFatTrailGeometry` to compute
+ * screen-space direction without an extra draw call.
  */
 export function makeFatTrailMaterial(
 	color: string,

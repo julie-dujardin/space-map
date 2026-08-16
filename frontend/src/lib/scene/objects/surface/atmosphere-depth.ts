@@ -12,12 +12,10 @@ import type { BodyObjects } from '$lib/scene/types';
 import { isReversedDepth } from '$lib/scene/setup/depth-mode';
 
 /**
- * Opaque-depth prepass feeding the atmosphere shells. When the camera is inside
- * a shell it renders with depthTest off (so the sky draws from inside), which
- * would otherwise paint the far-hemisphere haze over foreground terrain. This
- * renders the scene's depth into a texture the shell shader samples to stop its
- * march at real terrain instead of the analytic datum. Gated by the renderer to
- * the inside-a-shell case, so the extra scene pass is only paid at surface zoom.
+ * Opaque-depth prepass for the atmosphere shells. Inside a shell, depthTest is
+ * off so the sky draws from inside — without this, the far-hemisphere haze
+ * would paint over foreground terrain. The shell shader samples this texture
+ * to stop its march at real terrain instead of the analytic datum.
  */
 export class AtmosphereDepthPass {
 	#target: WebGLRenderTarget;
@@ -34,11 +32,7 @@ export class AtmosphereDepthPass {
 		this.#target = makeTarget(width, height);
 	}
 
-	/**
-	 * Render opaque scene depth and bind it (plus the camera basis the shader
-	 * decodes it against) onto every atmosphere material. Atmosphere shells are
-	 * hidden during the pass so they don't occlude themselves.
-	 */
+	/** Render opaque scene depth and bind it onto every atmosphere material. Shells hide during the pass so they don't occlude themselves. */
 	run(
 		renderer: WebGLRenderer,
 		scene: Scene,
@@ -82,11 +76,8 @@ export class AtmosphereDepthPass {
 }
 
 function makeTarget(width: number, height: number): WebGLRenderTarget {
-	// The colour attachment is unused — only depthTexture is read — but a target
-	// still needs one. FloatType keeps full precision: both decodes (reversed-Z
-	// hyperbolic, log-depth exponential) magnify small value differences, so a
-	// low-bit depth texture quantises the terrain distance into visible bands
-	// (and jitters per frame).
+	// FloatType: both depth decodes (reversed-Z hyperbolic, log-depth exponential)
+	// magnify small value differences, so lower precision bands and jitters terrain distance.
 	const target = new WebGLRenderTarget(width, height);
 	target.depthTexture = new DepthTexture(width, height, FloatType);
 	return target;

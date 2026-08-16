@@ -4,11 +4,7 @@ import { versionedUrl } from '$lib/fetch/data-base';
 import { getEclipseSceneUniforms } from './eclipse-shadow';
 import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
 
-/**
- * Per-body night-lights metadata block from `systems/{bary}.json`. Mirrors
- * `export/systems.py::night_block` — single-frame emissive sibling of the
- * surface texture, served from `{night.id}/{tier}.webp`.
- */
+/** Per-body night-lights metadata: single-frame emissive sibling of the surface texture, served from `{night.id}/{tier}.webp`. */
 export interface NightMeta {
 	id: string;
 	tiers: string[];
@@ -20,20 +16,13 @@ export interface NightMeta {
 	description?: string;
 }
 
-/**
- * Brightness multiplier on the unlit-side emissive contribution. The
- * Black Marble composite is already pretty bright; trim it down so cities
- * don't read as a second illuminated hemisphere.
- */
+/** Brightness multiplier on unlit-side emissive: Black Marble is bright enough that cities would read as a second lit hemisphere at 1.0. */
 const NIGHT_INTENSITY = 0.2;
 /**
- * Soft cutoff (in `dot(outward, sunDir)`) around the terminator. Negative
- * dot is the unlit side; positive is the lit side. The band is biased
- * heavily onto the lit side so emission has nearly reached full strength
- * by the time `cos θ` Lambert falloff has driven the diffuse contribution
- * to zero (around `dotNL ≈ 0`). Without that bias the diffuse term goes
- * dark before the emissive term lights up, leaving a black wedge at the
- * terminator.
+ * Soft cutoff (`dot(outward, sunDir)`, negative = unlit) around the
+ * terminator, biased onto the lit side so emission reaches full strength by
+ * the time Lambert falloff kills the diffuse term — otherwise a black wedge
+ * appears between them.
  */
 const TERMINATOR_LOW = -0.125;
 const TERMINATOR_HIGH = 0.1;
@@ -43,18 +32,11 @@ const NIGHT_HOOK = Symbol('night-lights-hook');
 type PatchedMaterial = MeshStandardMaterial & { [NIGHT_HOOK]?: true };
 
 /**
- * Load a body's night-lights map and attach it to a `MeshStandardMaterial`
- * as an emissive map, gated by a shader patch that multiplies the emissive
- * contribution by an unlit-side factor (1 on the night side, 0 on the day
- * side, with a smoothstep around the terminator).
- *
- * Reuses the eclipse-shadow scene uniforms for `uSunDir`; that means
- * `attachEclipseShadowToBody` should run on the same material first (true
- * for every system body today). Idempotent: the hook is installed at most
- * once per material; subsequent calls swap `emissiveMap` in place.
- *
- * Returns the loaded texture (caller stores it on the body for later
- * disposal), or `null` on fetch failure.
+ * Load a body's night-lights map as an emissive map, gated by a shader patch
+ * that multiplies emissive by an unlit-side factor (1 night, 0 day, smoothstep
+ * at the terminator). Reuses eclipse-shadow's `uSunDir`, so
+ * `attachEclipseShadowToBody` should run first. Idempotent: the hook installs
+ * once per material; later calls just swap `emissiveMap`.
  */
 export async function attachNightLights(
 	material: MeshStandardMaterial,
@@ -75,9 +57,7 @@ export async function attachNightLights(
 	texture.colorSpace = SRGBColorSpace;
 
 	material.emissiveMap = texture;
-	// `totalEmissiveRadiance` starts from `material.emissive` and is then
-	// multiplied by the sampled emissive map, so white pushes through the
-	// raw texture colour unchanged.
+	// White so totalEmissiveRadiance passes the raw texture colour unchanged.
 	material.emissive = new Color(0xffffff);
 
 	const patched = material as PatchedMaterial;
@@ -87,17 +67,12 @@ export async function attachNightLights(
 		const prev = material.onBeforeCompile;
 		material.onBeforeCompile = (shader, renderer) => {
 			prev?.(shader, renderer);
-			// Pin the shared uSunDir reference — eclipse-shadow does the same
-			// for its uniforms, so chaining keeps a single source of truth
-			// for the sun direction.
+			// Shared uSunDir reference keeps a single source of truth for the sun direction.
 			shader.uniforms.uSunDir = sunUniforms.uSunDir;
 			shader.uniforms.uNightIntensity = { value: NIGHT_INTENSITY };
 
-			// World-space radial direction at the surface point. On the unit
-			// sphere `position` is the outward direction; `mat3(modelMatrix)`
-			// carries the rotation + (non-uniform) scale into world space.
-			// Normalising in the fragment shader keeps the direction smooth
-			// across triaxial bodies.
+			// World-space outward direction: unit-sphere `position` is already
+			// outward; mat3(modelMatrix) carries rotation + scale to world space.
 			shader.vertexShader = shader.vertexShader
 				.replace('#include <common>', '#include <common>\nvarying vec3 vNightOutwardWorld;')
 				.replace(
@@ -108,9 +83,7 @@ export async function attachNightLights(
 			shader.fragmentShader = shader.fragmentShader
 				.replace(
 					'#include <common>',
-					// `uSunDir` is declared by the eclipse-shadow hook we
-					// chain after; redeclaring would fail shader compilation
-					// with "'uSunDir' : redefinition".
+					// uSunDir is declared by the chained eclipse-shadow hook; redeclaring fails compilation.
 					`#include <common>
 					uniform float uNightIntensity;
 					varying vec3 vNightOutwardWorld;`
@@ -119,10 +92,7 @@ export async function attachNightLights(
 					'#include <emissivemap_fragment>',
 					`#include <emissivemap_fragment>
 					#ifdef USE_EMISSIVEMAP
-						// Modulate by the unlit-side factor: 1 on the night
-						// side, 0 on the day side. Without USE_EMISSIVEMAP the
-						// chunk above is a no-op and emission stays at zero,
-						// so we don't need to gate the lit-side fall-off too.
+						// Modulate by unlit-side factor: 1 night, 0 day.
 						vec3 nightOutward = normalize(vNightOutwardWorld);
 						float nightDot = dot(nightOutward, uSunDir);
 						float nightFactor = 1.0 - smoothstep(${TERMINATOR_LOW.toFixed(2)}, ${TERMINATOR_HIGH.toFixed(2)}, nightDot);
@@ -137,10 +107,9 @@ export async function attachNightLights(
 }
 
 /**
- * Release the loaded night-lights texture and unset the material's emissive
- * map. The shader hook stays in place — it's gated on `USE_EMISSIVEMAP`,
- * which three.js drops from the recompiled defines when `emissiveMap` is
- * null, so the patched chunk becomes a no-op until the next attach.
+ * Release the night-lights texture and unset the emissive map. The shader
+ * hook stays: gated on `USE_EMISSIVEMAP`, which three.js drops once
+ * `emissiveMap` is null, so the patched chunk becomes a no-op.
  */
 export function disposeNightLightsFromMaterial(material: MeshStandardMaterial): void {
 	if (!material.emissiveMap) return;

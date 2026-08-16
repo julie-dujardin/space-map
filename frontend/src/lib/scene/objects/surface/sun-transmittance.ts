@@ -1,19 +1,17 @@
 /**
  * Per-channel sun-transmittance tints the scattering shell can't provide: its
- * premultiplied alpha is a luminance scalar, so it dims what lies behind but
- * never colours it, and it can't touch the light striking a surface.
+ * premultiplied alpha is a luminance scalar, so it dims but never colours,
+ * and never touches light striking a surface.
  *
  * - Surface patch: direct light × sun→fragment transmittance (sunset light).
- * - {@link VIEW_TINT_GLSL}: camera→fragment chroma for the sun disc —
- *   per-fragment, because from orbit the disc outsizes the atmosphere band
- *   and only the sliver behind it may redden.
+ * - {@link VIEW_TINT_GLSL}: camera→fragment chroma for the sun disc,
+ *   per-fragment since from orbit the disc outsizes the atmosphere band.
  * - {@link sunPathTransmittance}: CPU ratio for corona/star point.
  *
  * Tints are T/lum(T) ratios, so the shell's alpha keeps sole ownership of
- * dimming. Same columns as the shell, in its squashed space where the oblate
- * ellipsoid is the unit sphere — on gas giants the polar dip is hundreds of
- * scale heights, so a spherical march reads mid-latitudes as deep underground
- * and blacks out most of the disc.
+ * dimming. Same squashed space as the shell (oblate ellipsoid = unit sphere):
+ * on gas giants the polar dip is hundreds of scale heights, so a spherical
+ * march would read mid-latitudes as deep underground.
  */
 
 import { type Material, type MeshStandardMaterial, Vector3 } from 'three';
@@ -21,8 +19,7 @@ import { type AtmosphereNode, type AtmosphereParams, TERRAIN_DIP_KM } from './at
 import { type EclipseSelfUniforms, getEclipseSceneUniforms } from './eclipse-shadow';
 import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
 
-/** Kept well under the shell's LIGHT_STEPS — the surface patch runs over
- *  full-screen landed terrain. */
+/** Kept under the shell's LIGHT_STEPS — the surface patch runs over full-screen landed terrain. */
 const FRAGMENT_STEPS = 6;
 const CPU_STEPS = 16;
 
@@ -123,12 +120,10 @@ const SUN_TINT_GLSL = `
 `;
 
 /**
- * Chroma (T/lum(T)) of the air on the camera→`worldPos` ray, multiplied into
- * the fragment colour. The shell over the same pixel dims by the luminance of
- * its own marched transmittance, so the product is true per-channel
- * filtering; rays missing the shell stay neutral, confining the reddening to
- * the band when the disc outsizes it. No baked offset — sky paths carry no
- * texture. Uniforms: {@link ViewTintUniforms}; `cameraPosition` is three's.
+ * Chroma (T/lum(T)) of the air on the camera→`worldPos` ray. The shell over
+ * the same pixel dims by its own marched transmittance's luminance, so the
+ * product is true per-channel filtering; rays missing the shell stay neutral.
+ * No baked offset — sky paths carry no texture. Uniforms: {@link ViewTintUniforms}.
  */
 export const VIEW_TINT_GLSL = `
 	${PARAM_DECLS}
@@ -269,19 +264,14 @@ export function bindViewTint(
 }
 
 /**
- * Filter resolved direct light (diffuse + specular) by the sun→fragment
- * transmittance. Requires `attachEclipseShadowToBody` on the material first —
- * reuses its `vEclipseWorldPos` varying and value refs. Indirect light stays
- * untouched, same rationale as the eclipse patch. Returns the handle for the
- * tuner's live re-syncs; production params are fixed per body.
+ * Filter resolved direct light by the sun→fragment transmittance. Requires
+ * `attachEclipseShadowToBody` first — reuses its `vEclipseWorldPos` varying.
+ * Indirect light stays untouched, like the eclipse patch.
  *
- * `shell` shares the body's shell uniforms for the oblateness squash — its
- * per-frame spin-axis sync and SPICE-radii stretch propagate here through the
- * shared value refs. Omitted (the tuner's spheres): identity squash.
- *
- * `meshRadiusRatio` is the host mesh's nominal radius over the planet radius
- * (1 for the surface, the cloud offset for the cloud layer) — the march start
- * snaps to that analytic sphere, so tessellation never shows in the tint.
+ * `shell`, when given, shares the body's shell uniforms so per-frame
+ * spin-axis/stretch updates propagate to the squash; omitted means identity
+ * squash. `meshRadiusRatio` (host mesh radius / planet radius) snaps the
+ * march start to the analytic sphere so tessellation never shows in the tint.
  */
 export function attachSunTransmittanceToBody(
 	material: MeshStandardMaterial,

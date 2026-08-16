@@ -1,18 +1,13 @@
 import { Color, type Texture } from 'three';
 
 /**
- * Base material colour that turns a *grayscale* surface map into local albedo
- * over the body's measured surface hue: a black-and-white asteroid/moon texture
- * carries the spatial detail, `data.color` (physically-derived, see
- * export/small_body_color.py) carries the hue. A raw multiply would double-count
- * brightness (the tint already bakes in albedo, so does the map's mean), so the
- * tint is reduced to pure chromaticity (luminance 1) — multiplying it preserves
- * each texel's brightness while colouring it. A neutral-grey tint (the Moon,
- * unclassified bodies) collapses to white, leaving the map untouched.
- *
- * Already-coloured maps (Mimas) and untinted bodies return white → plain map.
- * The result is memoised on the Texture so the sphere and shape-model paths,
- * which share one Texture object, analyse the pixels once.
+ * Base colour that turns a *grayscale* surface map into local albedo over the
+ * body's measured hue (`data.color`, from export/small_body_color.py): the
+ * texture carries spatial detail, the tint carries chroma. Reduced to pure
+ * chromaticity (luminance 1) so multiplying preserves each texel's brightness
+ * instead of double-counting it. Already-coloured maps (Mimas) and neutral
+ * tints (the Moon) collapse to white → plain map. Memoised on the Texture, so
+ * the sphere and shape-model paths (sharing one Texture) analyse pixels once.
  */
 export function tintBaseColor(texture: Texture, tintHex?: string): Color {
 	const cache = texture.userData as { tintBase?: Color; tintKey?: string };
@@ -27,10 +22,9 @@ export function tintBaseColor(texture: Texture, tintHex?: string): Color {
 /** Sample grid for the grayscale test — tiny; we only need mean chroma. */
 const SAMPLE_W = 32;
 const SAMPLE_H = 16;
-/** Mean sRGB chroma (max−min channel) above which the map is treated as
- *  colour and left as-is. Measured: grayscale shape-model maps (Eros, Bennu,
- *  Phobos, …) read ≤0.0003; the faintest genuinely-coloured map (the Moon)
- *  reads ~0.033, icy moons ~0.05. This sits in the wide gap between them. */
+/** Mean sRGB chroma above which a map is treated as coloured and left as-is.
+ *  Grayscale maps (Eros, Bennu, Phobos) read ≤0.0003; the faintest coloured
+ *  map (the Moon) reads ~0.033 — this sits in the gap between them. */
 const GRAY_CHROMA_THRESHOLD = 0.01;
 /** Below this linear luminance the tint is effectively black; its chromaticity
  *  is numerically unstable, so leave the map untinted. */
@@ -51,8 +45,7 @@ function computeTintBase(texture: Texture, tintHex?: string): Color {
 }
 
 /** Mean per-pixel chroma (max−min of RGB, 0..1) of a downscaled copy of the
- *  texture, or null if the image can't be read (not decoded yet, or a tainted
- *  cross-origin canvas — then we conservatively skip tinting). */
+ *  texture, or null if unreadable (undecoded, or a tainted canvas). */
 function meanChroma(texture: Texture): number | null {
 	const img = texture.image as CanvasImageSource & { width?: number; height?: number };
 	if (!img || !img.width || !img.height) return null;

@@ -9,20 +9,16 @@ import {
 import { makeFatTrailMaterial, makeTrailMaterial } from './material';
 import { writeTrailAlphas } from './points';
 
-// Match point clouds (see POINT_CLOUD_RENDER_ORDER): render after the planet's
-// transparent overlays (clouds=1, atmosphere=2). All are transparent +
-// depthWrite=false, so without an explicit order the cloud sphere's dark-side
-// fragments paint over trails in front of Earth, dimming them under the clouds.
+// Render after the planet's transparent overlays (clouds=1, atmosphere=2; see
+// POINT_CLOUD_RENDER_ORDER) — all depthWrite=false, so without an explicit
+// order the cloud sphere's dark side paints over trails, dimming them.
 const TRAIL_RENDER_ORDER = 3;
 
 /**
- * Build the indexed triangle geometry backing a fat trail. Vertices come
- * in side pairs (one shifted to `-1`, one to `+1` perpendicular to the segment
- * in screen space); the index buffer is pre-filled with `(capacity - 1)` quads.
- *
- * Refresh paths populate the per-vertex arrays via {@link writeFatTrailVertices}
- * and call `geometry.setDrawRange(0, 6 * (n - 1))` to control how many quads
- * render.
+ * Indexed triangle geometry for a fat trail: vertices come in `(-1, +1)`
+ * side pairs perpendicular to the segment in screen space, with the index
+ * buffer pre-filled for `(capacity - 1)` quads. Refresh paths fill the
+ * per-vertex arrays via {@link writeFatTrailVertices}.
  */
 export function makeFatTrailGeometry(capacity: number): BufferGeometry {
 	const vertCount = 2 * capacity;
@@ -61,10 +57,9 @@ export function makeFatTrailGeometry(capacity: number): BufferGeometry {
 }
 
 /**
- * Populate a fat trail's vertex arrays from `n` logical points + alpha
- * ramps. Each point is duplicated into a (-1, +1) side pair; `nextPosition`
- * for the last point falls back to itself so the shader's degenerate-segment
- * branch picks a stable perpendicular.
+ * Populate a fat trail's vertex arrays from `n` points + alpha ramps, each
+ * duplicated into a (-1, +1) side pair. The last point's `nextPosition`
+ * falls back to itself so the shader's degenerate-segment branch stays stable.
  */
 export function writeFatTrailVertices(
 	geometry: BufferGeometry,
@@ -166,11 +161,9 @@ export function buildFatLineFromThin(
 }
 
 /**
- * Working arrays for the per-frame trail refresh. For thin `Line` objects this
- * is the live geometry attribute backing storage; for fat `Mesh` objects it is
- * the userData scratch that {@link writeFatTrailVertices} later expands into
- * the duplicated/indexed geometry. `capacity` is logical points (the fat
- * geometry has 2× that many vertices, but the writer accepts logical counts).
+ * Working arrays for per-frame trail refresh: live geometry attributes for
+ * thin `Line`s, userData scratch for fat `Mesh`es (later expanded by
+ * {@link writeFatTrailVertices}). `capacity` is logical points, not vertices.
  */
 export function getTrailWorkingArrays(line: Line | Mesh): {
 	posArr: Float32Array;
@@ -197,11 +190,9 @@ export function getTrailWorkingArrays(line: Line | Mesh): {
 }
 
 /**
- * Finish a trail refresh: compute alpha ramps, then either expand into the
- * fat-line geometry or mark the thin-line attrs dirty and set the draw range.
- * `n < 2` collapses the line to draw nothing. Both refresh paths (chebyshev
- * buffer, Kepler/SGP4 curve) populate `posArr` with their own logic and call
- * this to commit the frame's geometry update.
+ * Finish a trail refresh: compute alpha ramps, then expand into fat-line
+ * geometry or mark thin-line attrs dirty. `n < 2` draws nothing. Both refresh
+ * paths (chebyshev buffer, Kepler/SGP4 curve) call this after filling `posArr`.
  */
 export function commitTrail(
 	line: Line | Mesh,

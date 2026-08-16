@@ -39,13 +39,9 @@ function tentColumnAboveKm(hKm: number, centerKm: number, widthKm: number): numb
 	return (centerKm + widthKm - hKm) ** 2 / (2 * widthKm);
 }
 
-/**
- * Zenith transmittance of the atmosphere above altitude `hKm`: the physical
- * fraction of starlight the overhead column lets through. Per-channel Beer-
- * Lambert over the exponential Rayleigh/Mie columns (∫β·e^(−h/H) above h =
- * β·H·e^(−h/H)) and the absorber tent, collapsed to a scalar with photopic
- * luminance weights since `scene.backgroundIntensity` is not chromatic.
- */
+/** Zenith transmittance above altitude `hKm`: per-channel Beer-Lambert over
+ *  the exponential Rayleigh/Mie columns and the absorber tent, collapsed to a
+ *  scalar with photopic weights since `backgroundIntensity` isn't chromatic. */
 function zenithTransmittance(p: AtmosphereParams, hKm: number): number {
 	const h = Math.max(hKm, 0);
 	const rayleigh = p.rayleighScaleHeightKm * Math.exp(-h / p.rayleighScaleHeightKm);
@@ -78,12 +74,9 @@ const TWILIGHT_SIN_SPAN = 0.3;
  *  strength — much thinner columns keep a space-like sky. */
 const EXPOSURE_COMP_TAU_SAT = 0.05;
 
-/**
- * Skybox factor for a camera under `hKm`-altitude air: physical zenith
- * extinction × the exposure compensation above, the latter faded in with the
- * overhead optical depth (so it is continuous at the shell edge) and steered
- * between its night/day floors by the sun's elevation at the camera.
- */
+/** Skybox factor under `hKm`-altitude air: zenith extinction × exposure
+ *  compensation, faded in with overhead optical depth and steered between
+ *  night/day floors by the sun's elevation at the camera. */
 export function skyboxDimFactor(p: AtmosphereParams, hKm: number, sinSunElev: number): number {
 	const t = zenithTransmittance(p, hKm);
 	const thickness = Math.min(1, -Math.log(Math.max(t, 1e-3)) / EXPOSURE_COMP_TAU_SAT);
@@ -114,13 +107,9 @@ export interface AtmosphereFrameState {
 	sunRefraction: { angleRad: number; up: Vector3 } | null;
 }
 
-/**
- * Refraction lift of the Sun at true elevation `e` (radians) under a
- * `refractivity`-strength atmosphere: n−1 times an airmass-like factor that
- * saturates at √(πR/2H) on the horizon (exponential-atmosphere limit — Earth:
- * 2.77e-4 × 35.4 ≈ 34′) and decays over the horizon-dip scale √(2H/R) once
- * the Sun is geometrically below it.
- */
+/** Refraction lift of the Sun at true elevation `e` under a
+ *  `refractivity`-strength atmosphere: n−1 times an airmass-like factor,
+ *  saturating at the horizon and decaying once the Sun is geometrically below it. */
 export function refractionLiftRad(
 	n1: number,
 	e: number,
@@ -145,13 +134,10 @@ const refractionUp = new Vector3();
 
 /**
  * Fill a shell's private occluder uniforms from the scene-wide set, keeping
- * only bodies whose shadow cone could touch the shell: sunward of it, and
- * within (shell + occluder + penumbra-growth) of the shell's sun axis. The
- * scene list is every loaded body (~32), and the shell evaluates its loop per
- * march sample — unculled, that tax dwarfed the march itself on views with no
- * shadow anywhere near. Conservative test: kept occluders render identically,
- * culled ones could never have contributed. Requires updateEclipseUniforms to
- * have run this frame.
+ * only bodies whose shadow cone could touch the shell. The shell evaluates
+ * this loop per march sample, so an uncapped scan dwarfed the march itself.
+ * Conservative: kept occluders render identically, culled ones couldn't have
+ * contributed. Requires `updateEclipseUniforms` to have run this frame.
  */
 function cullShellOccluders(
 	uniforms: Record<string, { value: unknown }>,
@@ -182,16 +168,11 @@ function cullShellOccluders(
 }
 
 /**
- * Refresh per-frame shell state: `uSunDir`, the body's spin axis (world-space
- * pole for the shader's oblateness squash), and the material side — the shell
- * flips to BackSide when the camera enters it, so the sky keeps rendering from
- * inside the atmosphere. `realistic` scales the tuned sun intensity by the
- * body's inverse-square distance from the Sun (bodies flagged
- * `realisticSunAlways` get that scaling in every mode); `sunScale` is the
- * debug lighting-tuner multiplier shared with the scene's sun lights.
- * `quality` is the effective tier config — shells compiled against a different
- * config recompile here, and `insideView: false` keeps every shell an
- * outside-only FrontSide mesh (never inside → the depth prepass never runs).
+ * Refresh per-frame shell state: sun direction, spin axis, and material side
+ * — flips to BackSide when the camera enters the shell so the sky keeps
+ * rendering from inside. `realistic` scales sun intensity by inverse-square
+ * solar distance (or always, for `realisticSunAlways` bodies). `quality.insideView:
+ * false` keeps every shell outside-only, so the depth prepass never runs.
  */
 export function updateAtmosphereShaders(
 	bodyObjects: Map<string, BodyObjects>,

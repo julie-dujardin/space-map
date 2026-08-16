@@ -5,10 +5,8 @@ import type { BodyObjects } from '../../types';
 type Orientation = NonNullable<GlobalObjectData['orientation']>;
 
 /**
- * Adopt a body's rotational elements, from wherever they arrived — the system
- * file, the object bundle, or the shape-model path that races it. The single
- * place the scene takes an orientation, so the attribution popover can credit
- * whoever published it without each caller remembering to.
+ * Single place the scene adopts a body's orientation, whichever path found it
+ * first — so the credit popover always has a source to point to.
  */
 export function applyBodyOrientation(
 	bo: BodyObjects,

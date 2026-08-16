@@ -18,16 +18,10 @@ const SHEETS_PER_PX = 2;
 
 const tmp = new Vector3();
 
-/**
- * How the nearest part of a ring annulus sits relative to the camera:
- * `dist` in scene units, and `sinToPole` — the sine of the angle between the
- * line of sight and the ring's pole, which is how much of the sheet stack's
- * vertical extent lands across the screen rather than end-on.
- *
- * Both come off the closest point of the annulus, not its centre: from just
- * above Saturn's B ring the centre is 100,000 km away and squarely face-on,
- * while the material under the camera is metres away and edge-on.
- */
+/** How the nearest part of a ring annulus sits relative to the camera: `dist`
+ *  in scene units, `sinToPole` = how edge-on the sheet stack reads onscreen.
+ *  Measured from the annulus's closest point, not its centre — from just
+ *  above Saturn's B ring the centre is face-on but the material underfoot is edge-on. */
 function annulusView(
 	camPos: Vector3,
 	center: Vector3,
@@ -47,13 +41,11 @@ function annulusView(
 }
 
 /**
- * Refresh per-frame ring + planet-ring-shadow uniforms (sun dir, planet center,
- * pole) for every bundle of every ringed body. `realistic` scales the pre-lit
- * ring albedo by inverse-square distance from the Sun, since scene lights never
- * touch the ring ShaderMaterial. `overexpose` renders the stored (peak-
- * normalised) channel values unscaled instead of × intensity_scale, lifting
- * faint systems to full visibility. `pxPerRad` converts an angular size at the
- * camera into CSS pixels, for the sheet-stack LOD.
+ * Refresh per-frame ring + planet-ring-shadow uniforms for every bundle of
+ * every ringed body. `realistic` scales pre-lit albedo by inverse-square solar
+ * distance (scene lights never touch the ring ShaderMaterial). `overexpose`
+ * renders peak-normalised channel values unscaled, lifting faint systems to
+ * full visibility. `pxPerRad` drives the sheet-stack LOD.
  */
 export function updateRingShaders(
 	bodyObjects: Map<string, BodyObjects>,

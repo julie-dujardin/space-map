@@ -7,12 +7,9 @@ import { SUN_ID } from '$lib/constants';
 // Reused across frames; trimmed to active prefix each call.
 const _candidatesScratch: BodyObjects[] = [];
 
-/**
- * Refresh per-frame eclipse uniforms (sun, occluders, self-pos). Occluders
- * need a measured `radiusKm` (fallback radii would cast wrong-sized shadows);
- * stars excluded since the Sun *is* the light. On overflow keeps the largest
- * {@link MAX_OCCLUDERS} by scene radius.
- */
+/** Refresh per-frame eclipse uniforms (sun, occluders, self-pos). Occluders
+ *  need a measured `radiusKm`; stars excluded since the Sun *is* the light.
+ *  On overflow keeps the largest {@link MAX_OCCLUDERS} by scene radius. */
 export function updateEclipseUniforms(
 	bodyObjects: Map<string, BodyObjects>,
 	focusTruePos: Vec3

@@ -1,36 +1,28 @@
 /**
  * Per-body atmospheric-scattering shell. Sphere drawn just outside the planet;
  * the fragment shader ray-marches single-scattered sunlight (Rayleigh + Mie +
- * one absorber band) and composites premultiplied over the scene: in-scatter
- * adds, and alpha = 1 − view-path transmittance attenuates what lies behind, so
- * optically thick decks (Titan, Venus) read opaque down to the ground while
- * thin columns only tint. Coordinates run in planet-radius-normalised units to
- * keep float32 well-conditioned — Earth's 8 km scale height in scene units is
- * mush.
+ * one absorber band) and composites premultiplied over the scene, so optically
+ * thick decks (Titan, Venus) read opaque down to the ground while thin columns
+ * only tint. Coordinates are planet-radius-normalised to keep float32
+ * well-conditioned — Earth's 8km scale height in scene units is mush.
  *
- * Recipe follows Maxime Heckel's "On rendering realistic-looking skies, sunsets,
- * and planets" (which distills Bruneton/Hillaire); brute-force per-fragment
- * march is fine because the shell only ever covers the planet's screen footprint.
- * Aerosols scatter and absorb per RGB channel, with phase functions tabulated
- * by the data pipeline from Mie theory per body — that spectral asymmetry, not
- * the Rayleigh column, is what makes Mars butterscotch, Titan orange and Venus
- * sulfur-pale.
+ * Recipe follows Maxime Heckel's "On rendering realistic-looking skies,
+ * sunsets, and planets" (distilling Bruneton/Hillaire); a brute-force
+ * per-fragment march is fine since the shell only ever covers the planet's
+ * screen footprint. Aerosol phase functions are tabulated per body from Mie
+ * theory — that spectral asymmetry, not the Rayleigh column, is what makes
+ * Mars butterscotch, Titan orange and Venus sulfur-pale.
  *
- * Per-body parameters arrive via `$lib/fetch/atmospheres` (exported
- * `atmospheres.json`, derived from cited constants in
- * data/src/space_map_data/constants/atmosphere/); this module only defines the
- * parameter shape and the shader that consumes it.
+ * Per-body parameters arrive via `$lib/fetch/atmospheres`; this module only
+ * defines the parameter shape and the shader that consumes it.
  *
- * Oblate bodies: the mesh stays a sphere sized to the equatorial radius (it is
- * only a coverage primitive), and the shader ray-marches in a "squashed" space
- * where the ellipsoid is a unit sphere (`uSpinAxis`/`uStretch`). Constant-
- * density surfaces become similar ellipsoids, compressing polar scale heights
- * by up to 1/uStretch — invisible next to a proper geopotential model.
+ * Oblate bodies: the mesh stays a sphere sized to the equatorial radius (a
+ * coverage primitive only), and the shader marches in a "squashed" space
+ * where the ellipsoid is a unit sphere (`uSpinAxis`/`uStretch`).
  *
  * The material flips FrontSide/BackSide as the camera crosses the shell
  * boundary ({@link updateAtmosphereShaders}) so the sky still renders from
- * inside. Fragments over terrain are then depth-rejected, so in-atmosphere
- * views get the sky above the horizon but no aerial perspective on the ground.
+ * inside, with terrain fragments depth-rejected.
  */
 
 import {
@@ -59,24 +51,18 @@ import { ECLIPSE_FACTOR_GLSL, getEclipseSceneUniforms, MAX_OCCLUDERS } from './e
 import type { PlanetRingShadowUniforms } from './rings';
 
 /** Rendered terrain can dip this far below the analytic ellipsoid (Gale crater
- *  sits at −4.5 km); the shell keeps marching (and glowing) down to it.
- *
- * Only applied with the camera inside the shell, where a camera below the datum
- * would otherwise have its horizon rays blocked at t≈0. From outside, sinking
- * the floor makes every disc ray integrate a slab of surface-density air under
- * the ground — 6 km against Earth's 1.2 km aerosol scale height is 6× the real
- * column, and it defeats the baked-texture compensation (which can only cancel
- * one vertical column out of the inflated total). */
+ *  sits at −4.5 km); the shell keeps marching down to it. Only applied with
+ *  the camera inside the shell — from outside it would make every disc ray
+ *  integrate an inflated slab of surface-density air under the ground and
+ *  defeat the baked-texture compensation. */
 export const TERRAIN_DIP_KM = 6;
 
-/** Outside view: after the opaque planet and clouds (renderOrder 1) so the
- *  glow composites over the surface, but before the rings (renderOrder 3) —
- *  the shell writes depth from outside, so foreground rings occlude the glow. */
+/** Outside view: after the opaque planet/clouds (1), before rings (3) — the
+ *  shell writes depth from outside, so foreground rings occlude the glow. */
 export const ATMOSPHERE_RENDER_ORDER = 2;
-/** Inside view: the sky is the frame's backdrop and depth test is off, so it
- *  must draw after every scene-level transparent — rings, other bodies'
- *  shells, point clouds, trails (all ≤ 3) — and composite them away behind
- *  its 1−transmittance alpha. Debug overlays (999+) stay on top. */
+/** Inside view: depth test is off since the sky is the backdrop, so it must
+ *  draw after every scene-level transparent (≤ 3) to composite them away
+ *  behind its alpha. Debug overlays (999+) stay on top. */
 export const ATMOSPHERE_INSIDE_RENDER_ORDER = 10;
 
 // Placeholder for the ring-shadow sampler while a body has no rings — the
@@ -166,14 +152,12 @@ export interface AtmosphereParams {
 	/** Half-width of the absorber tent, km — density falls linearly to 0 at
 	 *  `absorptionCenterKm ± absorptionWidthKm`. */
 	absorptionWidthKm: number;
-	/** 0..1: fraction of a vertical atmospheric column assumed already baked
-	 *  into the surface texture (satellite mosaics and cloud-deck photos are
-	 *  shot through the air above them). Surface-hitting rays render only the
-	 *  slant excess over that column, so the disc keeps the texture's own tint
-	 *  and the shell contributes where the texture can't — limb and terminator.
-	 *  0 for bodies whose texture is NOT the photographed appearance: Titan's
-	 *  map is the haze-hidden surface, Venus's the cloud deck itself — there the
-	 *  shell must stay opaque over the disc. */
+	/** 0..1: fraction of a vertical air column already baked into the surface
+	 *  texture (satellite photos are shot through the air above them).
+	 *  Surface-hitting rays render only the slant excess over that column, so
+	 *  the disc keeps the texture's tint and the shell adds only limb/terminator.
+	 *  0 for bodies whose texture isn't the photographed appearance (Titan's
+	 *  haze-hidden surface, Venus's cloud deck) — there the shell stays opaque. */
 	bakedCompensation: number;
 	/** Gain on the isotropic multiple-scattering ambient term. Single scatter
 	 *  alone goes black wherever the direct sun path is extinguished — for
@@ -196,10 +180,9 @@ export interface AtmosphereParams {
 	/** Bond-ish albedo of what the shell sits above (surface or cloud deck) —
 	 *  boosts the multiple-scatter ambient near the ground. */
 	groundAlbedo?: number;
-	/** Layered Mie density LUT: densities at equal altitude steps over
-	 *  [0, topAltitudeKm], 0 at the top, column-normalised to match the
-	 *  exponential's β·H. Sampled by the ATMO_LAYERED shader path
-	 *  (high/ultra); other tiers and profile-less bodies keep the single
+	/** Layered Mie density LUT over [0, topAltitudeKm], 0 at the top,
+	 *  column-normalised to match the exponential's β·H. Sampled by the
+	 *  ATMO_LAYERED shader path (high/ultra); other tiers keep the single
 	 *  exponential. */
 	mieProfile?: readonly number[];
 	/** Mars-style seasonal cycle (interpolated per frame from L_s). Lives on
@@ -694,15 +677,11 @@ function setRadiusUniforms(
 }
 
 /**
- * Build the atmosphere shell for a body. `planetRadiusScene` / `planetRadiusKm`
- * are the body's surface radius in scene units and kilometres respectively; the
- * shell sphere is `planetRadiusScene · (1 + topAltitudeKm / planetRadiusKm)`.
- *
- * The mesh carries no position of its own — the renderer keeps it at the
- * planet's focus-relative centre via the body's `extraObjects` list, and pushes
- * the body→Sun direction onto `material.uniforms.uSunDir` each frame. Bodies
- * start spherical; `syncAtmosphereEllipsoid` reshapes the shell when SPICE
- * triaxial radii are applied to the planet mesh.
+ * Build the atmosphere shell for a body; the shell sphere is
+ * `planetRadiusScene · (1 + topAltitudeKm / planetRadiusKm)`. The mesh carries
+ * no position of its own — the renderer keeps it at the planet's centre via
+ * `extraObjects` and pushes body→Sun direction each frame. Bodies start
+ * spherical; `syncAtmosphereEllipsoid` reshapes the shell for SPICE triaxial radii.
  */
 export function buildAtmosphereNode(
 	params: AtmosphereParams,

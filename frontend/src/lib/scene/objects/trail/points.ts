@@ -12,13 +12,12 @@ export function buildTrailPoints(
 	cz: number
 ): [number, number, number][] {
 	// sgp4Curve returns [] when every sample fails (e.g. decayed satellite);
-	// callers gate on validPoints.length < 2 and draw nothing in that case.
+	// callers draw nothing when validPoints.length < 2.
 	if (curve.length === 0) return [];
 
-	// Anchor at `trailAnchor` when set — borrowed-barycenter bodies need the
-	// trail's bright end to sit on the barycenter the curve actually traces,
-	// not on the body's own offset position (which would kink the line into
-	// the curve). Falls back to `body.position` for everyone else.
+	// Anchor at `trailAnchor` when set: borrowed-barycenter bodies need the
+	// bright end on the barycenter the curve traces, not the body's own offset
+	// position (which would kink the line). Falls back to `body.position`.
 	const anchor = body.trailAnchor ?? body.position;
 	const bodyLocal: [number, number, number] = [anchor[0] - cx, anchor[1] - cy, anchor[2] - cz];
 
@@ -66,14 +65,12 @@ export function buildTrailPoints(
 }
 
 /**
- * Fill `fullArr` with the full-orbit alpha ramp (fades along the whole curve)
- * and `trailArr` with the partial-trail ramp (fade from the body over ~1/3 of
- * the orbit). For non-trail bodies the trail ramp is a copy of the full ramp.
+ * Fill `fullArr` with the full-orbit fade and `trailArr` with the partial
+ * fade (~1/3 of the orbit from the body); non-trail bodies copy the full ramp.
  *
- * `isOpenCurve` controls only the full-ramp endpoint: open curves (SGP4 sliding
- * window, chebyshev time-ordered buffer) fade to 0 since the oldest sample is
- * the tail tip; closed curves (Kepler ellipse) fade to a non-zero floor so the
- * loop seam doesn't pop. The partial-trail ramp is the same shape regardless.
+ * `isOpenCurve` sets only the full ramp's floor: open curves (SGP4 window,
+ * chebyshev buffer) fade to 0 since the oldest sample is the tail tip; closed
+ * curves (Kepler ellipse) fade to a non-zero floor so the loop seam doesn't pop.
  */
 export function writeTrailAlphas(
 	fullArr: Float32Array,

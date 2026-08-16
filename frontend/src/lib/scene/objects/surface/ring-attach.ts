@@ -1,11 +1,8 @@
 /**
- * Build a body's ring annuli and wire the two shadow directions.
- *
- * Shared because ring bundles reach the renderer by two routes. The giants
- * get theirs from their system's metadata file, loaded for every body in the
- * system at once; the four ringed small bodies belong to no system, so theirs
- * ride their own global JSON and arrive when that body is focused. What
- * happens after the bundles are in hand is identical, and lives here.
+ * Build a body's ring annuli and wire the two shadow directions. Shared
+ * because bundles reach the renderer two ways — giants via their system's
+ * metadata file, ringed small bodies via their own global JSON on focus —
+ * but what happens once a bundle is in hand is identical.
  */
 import type { Material, MeshStandardMaterial, Scene } from 'three';
 import { kmToScene } from '$lib/math/units';
@@ -36,11 +33,9 @@ export function attachRingBundles(
 	// which is what makes re-entering a system (or re-focusing a body) free.
 	if (!rings.length || bo.rings.length) return [];
 
-	// Only the densest bundle casts a shadow worth ray-marching, and the
-	// shader marches one annulus: Saturn's main rings reach τ~5 while its D
-	// and E rings are τ~1e-3 and τ~5e-6, which would darken nothing.
-	// intensity_scale is each bundle's peak physical opacity, so it ranks them
-	// directly.
+	// The shader marches one annulus, so only the densest bundle casts a
+	// shadow: Saturn's main rings reach τ~5 vs D/E rings' τ~1e-3/1e-6.
+	// intensity_scale is each bundle's peak opacity, ranking them directly.
 	const shadowCaster = rings.reduce((best, meta) =>
 		meta.intensity_scale > best.intensity_scale ? meta : best
 	);
