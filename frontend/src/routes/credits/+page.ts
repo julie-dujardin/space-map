@@ -1,8 +1,6 @@
 /**
- * Credits page data loader. Fetches the single aggregated `credits.json` and
- * hands it to the component; no Three.js / ContextManager imports here on
- * purpose — this route is deliberately isolated from the 3D map so it works
- * as a plain static page (crawlable, shareable).
+ * Credits page data loader. No Three.js / ContextManager imports on purpose —
+ * this route stays a plain static page (crawlable, shareable), independent of the 3D map.
  */
 
 import { DATA_BASE } from '$lib/fetch/data-base';
@@ -22,11 +20,7 @@ export interface TextureCredit {
 	description?: string;
 }
 
-/**
- * Per-body planetary-ring credit: sibling to {@link TextureCredit} minus
- * the `type` field (ring profiles are radial-only, the array name is the
- * disambiguator).
- */
+/** Per-body ring credit; same shape as {@link TextureCredit} minus `type` (ring profiles are radial-only). */
 export interface RingCredit {
 	body_id: string;
 	name: string;
@@ -37,10 +31,7 @@ export interface RingCredit {
 	description?: string;
 }
 
-/**
- * Per-body cloud-overlay credit: same shape as {@link RingCredit}; the
- * array name disambiguates it from surface imagery.
- */
+/** Per-body cloud-overlay credit; array name disambiguates it from surface imagery. */
 export interface CloudCredit {
 	body_id: string;
 	name: string;
@@ -51,10 +42,7 @@ export interface CloudCredit {
 	description?: string;
 }
 
-/**
- * Per-body night-lights credit: same shape as {@link CloudCredit}; the
- * array name disambiguates it from surface imagery.
- */
+/** Per-body night-lights credit; array name disambiguates it from surface imagery. */
 export interface NightCredit {
 	body_id: string;
 	name: string;
@@ -65,10 +53,7 @@ export interface NightCredit {
 	description?: string;
 }
 
-/**
- * Per-body displacement/topography credit: same shape as {@link NightCredit};
- * the array name disambiguates it from surface imagery.
- */
+/** Per-body displacement/topography credit; array name disambiguates it from surface imagery. */
 export interface DisplacementCredit {
 	body_id: string;
 	name: string;
@@ -81,10 +66,7 @@ export interface DisplacementCredit {
 
 /**
  * Credit-worthy bodies grouped by planetary system. `id`/`name` are null for
- * the standalone bucket (sun-orbiting bodies like Bennu or Ceres that don't
- * belong to any planetary system). `textures`, `rings`, `clouds`, `night`,
- * and `displacement` are all optional; a system bucket lands here as soon as
- * it has at least one.
+ * the standalone bucket (bodies with no planetary system, e.g. Bennu, Ceres).
  */
 export interface SystemGroup {
 	id: string | null;
@@ -96,10 +78,7 @@ export interface SystemGroup {
 	displacement?: DisplacementCredit[];
 }
 
-/**
- * Whole-sky cubemap backdrop credit. Sits at the top level alongside `systems`
- * because the skybox has no host body: it's a single global asset.
- */
+/** Whole-sky cubemap backdrop credit; sits alongside `systems` since it has no host body. */
 export interface SkyboxCredit {
 	source: string;
 	organisation: string;
@@ -116,10 +95,8 @@ export interface EphemerisArchive {
 }
 
 /**
- * One row in the 3D-models section — a catalog name + its landing page.
- * Per-spacecraft model credits aren't shipped (the catalog license covers
- * every model from that source); this is the catalog roll-up emitted by
- * the exporter only when at least one ingested model came from it.
+ * One row in the 3D-models section: a catalog name + landing page.
+ * Per-spacecraft credits aren't shipped — the catalog license covers every model from that source.
  */
 export interface ModelCatalog {
 	name: string;
@@ -127,12 +104,7 @@ export interface ModelCatalog {
 	license?: string;
 }
 
-/**
- * One literature source behind a hand-curated constant — an atmosphere, a
- * ring, a temperature, an interior model (see the `references.py` beside each
- * in data/src/space_map_data/constants/). English-only like the rest of the
- * credits payload.
- */
+/** One literature source behind a hand-curated constant (see `references.py` beside each in data/src/space_map_data/constants/). */
 export interface Reference {
 	title: string;
 	url: string;

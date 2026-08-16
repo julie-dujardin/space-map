@@ -1,8 +1,6 @@
 <!--
-  Dev tool: previews Open Graph / social-card output for a representative sample
-  of pages. Fetches each page's rendered HTML live (same-origin, client-side),
-  parses its og:* meta, and renders a link-preview mockup. Each card links to
-  the real page.
+  Dev tool: previews Open Graph / social-card output for a sample of pages by
+  fetching each page's rendered HTML client-side and parsing its og:* meta.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';

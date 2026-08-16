@@ -13,9 +13,8 @@
 	let { data }: Props = $props();
 	const credits = $derived(data.credits);
 
-	// Merged imagery: one section grouped by system, one row per body+type.
-	// A type qualifier is only added when a body contributes more than one kind
-	// (e.g. Earth: surface + clouds + night), mirroring the attribution popover.
+	// Merged imagery: one section per system, one row per body+type. A type
+	// qualifier only appears when a body contributes more than one kind.
 	type ImageryTypeKey = 'surface' | 'clouds' | 'night' | 'topography' | 'rings';
 
 	interface ImageryRow {
@@ -93,9 +92,8 @@
 				const multi = items.length > 1;
 				for (const [i, it] of items.entries()) {
 					rows.push({
-						// Body + type is not unique: one body can credit several
-						// distinct sources for the same kind of imagery (Saturn's
-						// ring bundles come from different surveys).
+						// Body + type isn't unique: one body can credit several sources
+						// for the same imagery kind (e.g. Saturn's ring bundles).
 						key: `${it.body_id}-${it.typeKey}-${i}`,
 						name: it.name,
 						qualifier: multi ? typeLabel(it.typeKey) : undefined,

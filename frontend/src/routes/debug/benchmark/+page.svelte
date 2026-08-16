@@ -1,10 +1,8 @@
 <!--
-  Dev tool: runs the atmosphere benchmark in a visible frame — for eyeballing
+  Dev tool: runs the atmosphere benchmark in a visible frame, for eyeballing
   timing stability and tier spread on a device. Page-local: never writes the
-  stored calibration. "full" measures every tier (no target cutoff);
-  "adaptive" replays what boot calibration does (ladder walk from the
-  heuristic guess against the target budget). Numbers are shell-only at
-  near-full-canvas coverage — no composer/bloom, no rest-of-scene.
+  stored calibration. "full" measures every tier; "adaptive" replays boot
+  calibration's ladder walk against the target budget.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -85,8 +83,7 @@
 		}
 		renderer.setPixelRatio(cappedPixelRatio());
 		renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
-		// The shell's HDR rolloff is tuned against ACES — match it so the visible
-		// frame reads correctly (tone mapping doesn't change the measured cost).
+		// Match production's ACES tone mapping for a correct read; it doesn't affect measured cost.
 		renderer.toneMapping = ACESFilmicToneMapping;
 		gpu = gpuLabel(renderer);
 		window.addEventListener('resize', resize);
@@ -186,8 +183,7 @@
 
 		<p class="note">
 			Shell-only cost; production adds the rest of the scene + bloom, so real frame rates land below
-			the ≈fps column. The pick holds the target in each tier's worse view (usually sky — the
-			in-atmosphere march covers every pixel).
+			the ≈fps column.
 		</p>
 	</div>
 </div>

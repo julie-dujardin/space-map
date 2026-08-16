@@ -1,9 +1,7 @@
 <!--
   Dev tool: isolates one planet + its atmospheric-scattering shell in a bare
   scene (same ACES + bloom compositing as production) so every AtmosphereParams
-  knob can be tuned live, the camera flown to any altitude, and the Sun swept
-  around the body. Pick a body, drag the sliders, "shipped" resets to the
-  baked-in baseline, "copy JSON" dumps the tuned params.
+  knob can be tuned live against a flyable camera and Sun.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -78,8 +76,7 @@
 		name: string;
 		/** Equatorial radius, km — the shader normalises coefficients against it. */
 		radiusKm: number;
-		/** Mean heliocentric distance, AU — drives the inverse-square sun scaling
-		 *  used for realisticSunAlways bodies (and the realistic toggle). */
+		/** Mean heliocentric distance, AU — drives inverse-square sun scaling. */
 		au: number;
 	}
 
@@ -113,9 +110,8 @@
 	// HDR white so the Sun disc crosses the composer's bloom threshold, matching
 	// the production Sun.
 	const SUN_DISC_BRIGHTNESS = 4;
-	// Sun disc placement: far enough that camera altitude barely shifts its
-	// apparent size; the disc is then scaled to the Sun's true angular size
-	// (Sun radius / heliocentric distance) for the focused body.
+	// Sun disc placed far enough that altitude barely shifts its apparent size;
+	// scaled to the Sun's true angular size for the focused body.
 	const SUN_DIST = 800;
 	const SUN_RADIUS_KM = 695_700;
 	// Never let the disc fall below this on-screen diameter (px) — a sub-pixel
@@ -129,9 +125,8 @@
 	let realistic = $state(false);
 	let sunScaleX = $state(0); // log2 global multiplier on shell + surface sunlight
 
-	// The camera sits on the view sphere: altitude above the surface (in body
-	// radii) plus a longitude/latitude. Mouse drag and wheel drive the same
-	// values the sliders bind.
+	// The camera sits on the view sphere: altitude (body radii) plus a
+	// longitude/latitude. Mouse drag and wheel drive the same sliders bind to.
 	let altRadii = $state(DEFAULT_ALT_RADII);
 	let camLon = $state(DEFAULT_LON);
 	let camLat = $state(DEFAULT_LAT);
@@ -161,9 +156,8 @@
 	let mieHX = $state(0);
 	let copied = $state(false);
 
-	// Quality: page-local (never writes the app settings) so the bench can A/B
-	// tiers freely. Starts at what the app would resolve on this device; knob
-	// edits are overrides on the selected tier's preset.
+	// Quality: page-local (never writes the app settings) so tiers can be A/B'd
+	// freely, starting from what the app would resolve on this device.
 	const QUALITY_TIERS: ResolvedAtmosphereTier[] = ['low', 'medium', 'high', 'ultra'];
 	const initTier = resolveAtmosphereTier(getSettings().atmosphereQuality);
 	let qTier = $state<ResolvedAtmosphereTier>(initTier);
@@ -312,9 +306,8 @@
 		return [tintT.x / lum, tintT.y / lum, tintT.z / lum];
 	});
 
-	// Inert stand-in: template $deriveds evaluate during mount, before the
-	// onMount loadAtmospheres() has populated the registry — real params land
-	// before `ready` gates any visible use.
+	// Inert stand-in: template $deriveds evaluate before onMount's
+	// loadAtmospheres() populates the registry; `ready` gates any visible use.
 	const PENDING_PARAMS: AtmosphereParams = {
 		topAltitudeKm: 1,
 		rayleighScatterPerKm: [0, 0, 0],
@@ -410,9 +403,8 @@
 			.normalize();
 	}
 
-	// Where the camera sits: altitude/longitude/latitude place it on the view
-	// sphere. Aiming is separate (free mouse-look), so repositioning keeps
-	// whatever the camera is currently pointed at.
+	// Altitude/longitude/latitude place the camera on the view sphere; aiming
+	// is separate (free mouse-look), so repositioning keeps its current look.
 	function setPosition(): void {
 		const latR = camLat * DEG;
 		const lonR = camLon * DEG;
@@ -423,9 +415,8 @@
 		camera.updateProjectionMatrix();
 	}
 
-	// Free-look: the mouse aims the camera itself (yaw about world up, then
-	// pitch), NOT the app's orbit-the-body drag. Lets you sit on the ground and
-	// look up at the sky.
+	// Free-look: the mouse aims the camera itself (yaw then pitch), not the
+	// app's orbit-the-body drag — lets you sit on the ground and look up.
 	function applyLook(): void {
 		camera.rotation.set(lookPitch * DEG, lookYaw * DEG, 0);
 	}
@@ -529,8 +520,7 @@
 	}
 
 	// Serialize the full tunable state into a query string. Multipliers are
-	// per-body (relative to the shipped baseline), so they restore correctly
-	// against whichever body `b` selects.
+	// per-body (relative to shipped), so they restore against whichever body `b` selects.
 	function serializeSearch(): string {
 		const r = (n: number) => String(Number(n.toFixed(4)));
 		const p = new URLSearchParams();
@@ -570,9 +560,8 @@
 		return p.toString();
 	}
 
-	// Apply the URL-captured state after the first body has built (so it
-	// overrides the shipped/reset defaults). `b` is applied earlier, before the
-	// build.
+	// Apply the URL-captured state after the first body has built, so it
+	// overrides the shipped/reset defaults. `b` is applied earlier, pre-build.
 	function applyInitialState(): void {
 		const p = initialParams;
 		const num = (k: string, cur: number) => (p.has(k) ? Number(p.get(k)) : cur);
@@ -661,9 +650,8 @@
 	function buildBody(): void {
 		disposePlanet();
 		currentBody = BODIES.find((b) => b.id === bodyId) ?? BODIES[1];
-		// Always-realistic bodies start with inverse-square on (their shipped
-		// look); the URL's `real` param overrides this on initial load since
-		// applyInitialState runs after.
+		// Always-realistic bodies start with inverse-square on; the URL's `real`
+		// param can still override it, since applyInitialState runs after.
 		realistic = shipped().realisticSunAlways ?? false;
 		syncFromShipped();
 
@@ -743,12 +731,9 @@
 		pointLight.position.copy(sd).multiplyScalar(50);
 		pointLight.intensity = SUN_LIGHT_INTENSITY * sunScale;
 
-		// Visible Sun disc at its true apparent size, floored to SUN_MIN_PX so a
-		// far-out sun never drops below the rasteriser. Brightness tracks the
-		// sun-light bar and the realistic toggle only. Blooms once it's HDR-white.
-		// The rendered direction carries the in-atmosphere refraction lift
-		// (production: updateSunProxy) — Earth ground view lifts a horizon sun
-		// by ~34′, about one disc diameter.
+		// Sun disc at true apparent size, floored to SUN_MIN_PX so far-out suns
+		// don't vanish below the rasteriser. Direction carries the in-atmosphere
+		// refraction lift (production: updateSunProxy).
 		refrSd.copy(sd);
 		if (qRefraction) {
 			const p = resolved();
@@ -780,14 +765,12 @@
 		if (atmoNode && planetMesh) {
 			const u = atmoNode.material.uniforms;
 			(u.uSunDir.value as Vector3).copy(sd);
-			// Unlike production, the checkbox alone decides inverse-square here —
-			// always-realistic bodies (Pluto/Triton) default it ON in buildBody,
-			// but the tuner must be able to inspect the flat-sun look too.
+			// Unlike production, the checkbox alone decides inverse-square here, so
+			// always-realistic bodies (Pluto/Triton) can still be inspected flat-sun.
 			const shellFactor = sunScale * (realistic ? invSq : 1);
 			u.uSunIntensity.value = atmoNode.params.sunIntensity * shellFactor;
 			// Flip to BackSide once the camera enters the shell so the sky still
-			// renders from inside; drop depth writes there too (mirrors production,
-			// including insideView-off tiers where the shell vanishes when entered).
+			// renders from inside; drop depth writes there too, mirroring production.
 			const shellR = atmoNode.geometryRadiusScene * atmoNode.mesh.scale.x;
 			const inside = qInside && camera.position.lengthSq() < shellR * shellR;
 			atmoNode.material.side = inside ? BackSide : FrontSide;
@@ -803,9 +786,8 @@
 		composer.render();
 	}
 
-	// Keep the URL in sync with the tunable state (debounced so a drag doesn't
-	// spam history). Gated by `ready` so it can't clobber the incoming URL before
-	// it's applied.
+	// Keep the URL in sync with the tunable state, debounced so a drag doesn't
+	// spam history; gated by `ready` so it can't clobber the incoming URL.
 	let urlTimer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
 		const search = serializeSearch();

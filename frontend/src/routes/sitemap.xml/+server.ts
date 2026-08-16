@@ -2,8 +2,7 @@ import type { RequestHandler } from './$types';
 import { DATA_BASE } from '$lib/fetch/data-base';
 
 // Serve the export-built sitemap from the app origin so every <loc> host matches
-// the sitemap's own — no Search Console cross-host verification needed. The file
-// lands on the data CDN with each export; until then this 502s.
+// the sitemap's own, avoiding Search Console cross-host verification.
 export const prerender = false;
 
 export const GET: RequestHandler = async ({ fetch }) => {
