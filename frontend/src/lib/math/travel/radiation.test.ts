@@ -7,7 +7,12 @@ import {
 	cancerRiskFraction,
 	lethalDoseFraction,
 	beltPassDoseGy,
+	beltAttenuation,
+	beltRateGyPerDay,
 	beltShieldingFactor,
+	JPL_SHELL_G_CM2,
+	type BeltProfile,
+	BELT_PROFILES,
 	decimalYearOf,
 	gcrDoseRateSvPerDay,
 	jovianBeltRateGyPerDay,
@@ -26,12 +31,14 @@ import {
  * these numbers are what would catch the mirror drifting out of step.
  */
 const JUPITER_RADIUS_KM = 71492;
+const JUPITER = BELT_PROFILES['naif-599'];
 const JUPITER_MU = 1.26686534e8;
 const PIONEER_SHIELDING_G_CM2 = 0.3 * 2.7;
 const PIONEER_V_INFINITY_KMS = 9.5;
 
 const pioneerPass = (altitudeKm: number) =>
 	beltPassDoseGy(
+		JUPITER,
 		altitudeKm + JUPITER_RADIUS_KM,
 		PIONEER_V_INFINITY_KMS,
 		PIONEER_SHIELDING_G_CM2,
@@ -96,14 +103,14 @@ describe('open sky', () => {
 
 describe('belt shielding', () => {
 	it('reproduces the two decades the source figure spans', () => {
-		expect(beltShieldingFactor(0.11)).toBe(1);
-		expect(beltShieldingFactor(2.7)).toBeCloseTo(0.01, 3);
+		expect(beltAttenuation(0.11)).toBe(1);
+		expect(beltAttenuation(2.7)).toBeCloseTo(0.01, 3);
 	});
 
 	it('floors rather than extrapolating to a vault', () => {
 		// The bare exponential returns 1e-11 here, which would read as a Jupiter
 		// pass being survivable behind a thick enough wall.
-		expect(beltShieldingFactor(20)).toBe(BELT_SHIELDING_FLOOR);
+		expect(beltAttenuation(20)).toBe(BELT_SHIELDING_FLOOR);
 	});
 });
 
@@ -133,21 +140,37 @@ describe('a pass through Jupiter', () => {
 	});
 
 	it('makes speed the thing that buys a pass down', () => {
-		const slow = beltPassDoseGy(3 * JUPITER_RADIUS_KM, 5, 0.11, JUPITER_RADIUS_KM, JUPITER_MU);
-		const fast = beltPassDoseGy(3 * JUPITER_RADIUS_KM, 20, 0.11, JUPITER_RADIUS_KM, JUPITER_MU);
+		const slow = beltPassDoseGy(
+			JUPITER,
+			3 * JUPITER_RADIUS_KM,
+			5,
+			0.11,
+			JUPITER_RADIUS_KM,
+			JUPITER_MU
+		);
+		const fast = beltPassDoseGy(
+			JUPITER,
+			3 * JUPITER_RADIUS_KM,
+			20,
+			0.11,
+			JUPITER_RADIUS_KM,
+			JUPITER_MU
+		);
 		expect(fast).toBeLessThan(slow);
 	});
 
 	it('costs nothing when there is no pass', () => {
-		expect(beltPassDoseGy(0, 9.5, 0.11, JUPITER_RADIUS_KM, JUPITER_MU)).toBe(0);
-		expect(beltPassDoseGy(3 * JUPITER_RADIUS_KM, 0, 0.11, JUPITER_RADIUS_KM, JUPITER_MU)).toBe(0);
+		expect(beltPassDoseGy(JUPITER, 0, 9.5, 0.11, JUPITER_RADIUS_KM, JUPITER_MU)).toBe(0);
+		expect(
+			beltPassDoseGy(JUPITER, 3 * JUPITER_RADIUS_KM, 0, 0.11, JUPITER_RADIUS_KM, JUPITER_MU)
+		).toBe(0);
 	});
 
 	it('is lethal by orders of magnitude behind a crewed hull', () => {
 		// The finding the anchors were published for. 4 Gy is roughly half of
 		// unaided survival; this is the number the planner exists to surface.
 		expect(
-			beltPassDoseGy(2 * JUPITER_RADIUS_KM, 9.5, 10, JUPITER_RADIUS_KM, JUPITER_MU)
+			beltPassDoseGy(JUPITER, 2 * JUPITER_RADIUS_KM, 9.5, 10, JUPITER_RADIUS_KM, JUPITER_MU)
 		).toBeGreaterThan(4);
 	});
 });
@@ -190,5 +213,47 @@ describe('what it does to a person', () => {
 		// be the mistake the two units exist to prevent.
 		expect(cancerRiskFraction(1)).toBeLessThan(0.1);
 		expect(lethalDoseFraction(1)).toBeGreaterThan(0.2);
+	});
+});
+
+describe('the other belts', () => {
+	/**
+	 * Saturn's and Neptune's profiles are read off JPL's published curves, so
+	 * these pin the reading rather than any physics — and, like the Jupiter
+	 * numbers above, they are what catches the mirror drifting from
+	 * `constants/radiation/belt_field.py`.
+	 */
+	const JUPITER_PROFILE = BELT_PROFILES['naif-599'];
+	const SATURN = BELT_PROFILES['naif-699'];
+	const NEPTUNE = BELT_PROFILES['naif-899'];
+
+	const at = (profile: BeltProfile, lShell: number) =>
+		beltRateGyPerDay(profile, lShell) * beltShieldingFactor(JPL_SHELL_G_CM2, profile.shieldingGCm2);
+
+	it('passes through its own samples', () => {
+		for (const profile of Object.values(BELT_PROFILES)) {
+			for (const [lShell, rate] of profile.samples) {
+				expect(beltRateGyPerDay(profile, lShell)).toBeCloseTo(rate, 10);
+			}
+		}
+	});
+
+	it('peaks Neptune at L = 7 and lets it fall away inside that', () => {
+		// The one profile whose inner branch was measured. Held flat, as
+		// Jupiter's is, a close pass would read a hundred times worse.
+		expect(beltRateGyPerDay(NEPTUNE, 7)).toBeGreaterThan(beltRateGyPerDay(NEPTUNE, 9));
+		expect(beltRateGyPerDay(NEPTUNE, 2.2)).toBeLessThan(beltRateGyPerDay(NEPTUNE, 7));
+		expect(beltRateGyPerDay(NEPTUNE, 1.5)).toBeLessThan(beltRateGyPerDay(NEPTUNE, 2.2));
+	});
+
+	it('holds Saturn flat inside the innermost distance anyone drew', () => {
+		expect(beltRateGyPerDay(SATURN, 1.5)).toBe(beltRateGyPerDay(SATURN, 2.55));
+	});
+
+	it('leaves both far gentler than Jupiter, and Neptune gentlest', () => {
+		// At matched shielding, since the three are not quoted behind the same
+		// aluminium — comparing them raw would flatter Saturn threefold.
+		expect(at(JUPITER_PROFILE, 7)).toBeGreaterThan(100 * at(SATURN, 7));
+		expect(at(SATURN, 7)).toBeGreaterThan(at(NEPTUNE, 7));
 	});
 });

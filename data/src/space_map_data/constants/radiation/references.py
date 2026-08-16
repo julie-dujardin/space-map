@@ -144,8 +144,24 @@ RADIATION_SOURCES: dict[str, RadiationReference] = {
         "Garrett et al. 2017 (JPL Publication 17-3), Neptune Radiation Model",
         "https://ntrs.nasa.gov/citations/20170006886",
         "The Voyager 2 fit that establishes Neptune has trapped-particle "
-        "belts and where they sit",
+        "belts and where they sit, and the dose rate against L-shell that lets "
+        "a pass through them be priced",
         "Neptune belt model",
+    ),
+    "garrett_2005": RadiationReference(
+        "Garrett, Ratliff & Evans 2005 (JPL Publication 05-9), Saturn Radiation Model",
+        "https://ntrs.nasa.gov/citations/20060008606",
+        "Saturn's belt dose against distance, drawn on the same axes as "
+        "Jupiter's so the two can be compared at matched shielding",
+        "Saturn belt model",
+    ),
+    "ganushkina_2011": RadiationReference(
+        "Ganushkina et al. 2011 (JGR Space Physics 116)",
+        "https://doi.org/10.1029/2010JA016376",
+        "Where Earth's two belts begin and end, measured from Cluster and "
+        "Double Star rather than quoted — including how far the outer one "
+        "moves in during a storm",
+        "Earth belt extents",
     ),
     # --- the field model ----------------------------------------------------
     "miller_1976": RadiationReference(

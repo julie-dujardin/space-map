@@ -101,11 +101,25 @@ const BELT_SHIELDING_LENGTH_G_CM2 = (2.7 - BELT_REFERENCE_SHIELDING_G_CM2) / (2 
  */
 export const BELT_SHIELDING_FLOOR = 1e-2;
 
-export function beltShieldingFactor(shieldingGCm2: number): number {
+/** Surviving fraction behind `shieldingGCm2`, against the 0.11 reference. */
+export function beltAttenuation(shieldingGCm2: number): number {
 	const past = shieldingGCm2 - BELT_REFERENCE_SHIELDING_G_CM2;
 	if (past <= 0) return 1;
 	return Math.max(BELT_SHIELDING_FLOOR, Math.exp(-past / BELT_SHIELDING_LENGTH_G_CM2));
 }
+
+/**
+ * Dose behind `shieldingGCm2`, relative to what a profile was quoted at. The
+ * profiles don't share a reference — Jupiter's comes off a figure drawn at
+ * 0.11 g/cm², Saturn's and Neptune's off JPL curves at 100 mils of aluminium —
+ * so converting between them is the ratio of two points on one curve.
+ */
+export function beltShieldingFactor(shieldingGCm2: number, referenceGCm2: number): number {
+	return beltAttenuation(shieldingGCm2) / beltAttenuation(referenceGCm2);
+}
+
+/** 100 mils of aluminium, the thickness JPL's engineering models are drawn at. */
+export const JPL_SHELL_G_CM2 = 2.54 * 0.1 * 2.7;
 
 /** Where Jupiter's MeV electrons maximise, in planetary radii. */
 const JOVIAN_PEAK_L = 3.0;
@@ -123,15 +137,95 @@ const JOVIAN_PEAK_GY_PER_DAY = 2.414e5;
  * reading, so a pass inside L = 3 is an upper bound.
  */
 export function jovianBeltRateGyPerDay(lShell: number): number {
-	if (lShell <= 0) return 0;
-	if (lShell <= JOVIAN_PEAK_L) return JOVIAN_PEAK_GY_PER_DAY;
-	return JOVIAN_PEAK_GY_PER_DAY * (lShell / JOVIAN_PEAK_L) ** -JOVIAN_OUTER_SLOPE;
+	return beltRateGyPerDay(BELT_PROFILES['naif-599'], lShell);
 }
 
-/** Bodies whose belts have a dose profile. Jupiter is the only one anyone has
- *  published a body-absorbed dose for; the rest report a crossing and no
- *  figure, which is a better answer than a fabricated one. */
-export const MODELLED_BELT_IDS: ReadonlySet<string> = new Set(['naif-599']);
+/**
+ * How hard a planet's belt hits, against distance from its centre.
+ *
+ * `samples` are [planetary radii, Gy/day] ascending, interpolated log-log
+ * because both axes span decades; outside the last, a power law of index
+ * `outerSlope` (or the slope the last two samples already imply). Inside the
+ * first, `flatInside` holds the rate — true only where nothing measured that
+ * branch, which makes a close pass an upper bound rather than an estimate.
+ */
+export interface BeltProfile {
+	samples: readonly (readonly [number, number])[];
+	shieldingGCm2: number;
+	outerSlope?: number;
+	flatInside?: boolean;
+}
+
+/**
+ * Mirrored from `constants/radiation/belt_field.py`, where each is sourced.
+ * Jupiter is fitted with flown anchors behind it; Saturn and Neptune are read
+ * off JPL's engineering models, so the shape is theirs. Uranus has no
+ * published profile at all and stays absent rather than borrowing Neptune's.
+ */
+export const BELT_PROFILES: Readonly<Record<string, BeltProfile>> = {
+	'naif-599': {
+		samples: [[JOVIAN_PEAK_L, JOVIAN_PEAK_GY_PER_DAY]],
+		outerSlope: JOVIAN_OUTER_SLOPE,
+		shieldingGCm2: BELT_REFERENCE_SHIELDING_G_CM2,
+		flatInside: true
+	},
+	'naif-699': {
+		samples: [
+			[2.55, 42.9],
+			[5.95, 2.86],
+			[9.47, 2.14e-3]
+		],
+		shieldingGCm2: JPL_SHELL_G_CM2,
+		flatInside: true
+	},
+	'naif-899': {
+		samples: [
+			[2.2, 1.296e-3],
+			[3.7, 3.456e-2],
+			[5.0, 8.64e-3],
+			[7.0, 0.1382],
+			[9.0, 2.592e-2],
+			[12.0, 1.728e-3],
+			[18.0, 5.18e-5],
+			[27.0, 7.78e-7]
+		],
+		shieldingGCm2: JPL_SHELL_G_CM2,
+		flatInside: false
+	}
+};
+
+/** Absorbed dose rate at `lShell`, behind the profile's own shielding. */
+export function beltRateGyPerDay(profile: BeltProfile, lShell: number): number {
+	if (lShell <= 0) return 0;
+	const samples = profile.samples;
+	const [firstL, firstRate] = samples[0];
+	if (lShell <= firstL) {
+		if (profile.flatInside || samples.length < 2) return firstRate;
+		// Continue the innermost segment's slope rather than inventing a shape.
+		const [secondL, secondRate] = samples[1];
+		const index = Math.log(secondRate / firstRate) / Math.log(secondL / firstL);
+		return firstRate * (lShell / firstL) ** index;
+	}
+	for (let step = 1; step < samples.length; step++) {
+		const [lowL, lowRate] = samples[step - 1];
+		const [highL, highRate] = samples[step];
+		if (lShell <= highL) {
+			const index = Math.log(highRate / lowRate) / Math.log(highL / lowL);
+			return lowRate * (lShell / lowL) ** index;
+		}
+	}
+	const [lastL, lastRate] = samples[samples.length - 1];
+	let slope = profile.outerSlope;
+	if (slope === undefined) {
+		const [previousL, previousRate] = samples[samples.length - 2];
+		slope = -Math.log(lastRate / previousRate) / Math.log(lastL / previousL);
+	}
+	return lastRate * (lShell / lastL) ** -slope;
+}
+
+/** Bodies whose belts have a dose profile. Uranus and Earth report a crossing
+ *  and no figure, which is a better answer than a fabricated one. */
+export const MODELLED_BELT_IDS: ReadonlySet<string> = new Set(Object.keys(BELT_PROFILES));
 
 const PASS_STEPS = 512;
 
@@ -147,6 +241,7 @@ const PASS_STEPS = 512;
  * four, the larger of the model's two known biases.
  */
 export function beltPassDoseGy(
+	profile: BeltProfile,
 	periapsisKm: number,
 	vInfinityKms: number,
 	shieldingGCm2: number,
@@ -178,11 +273,11 @@ export function beltPassDoseGy(
 		const nu = -nuLimit + (2 * nuLimit * step) / PASS_STEPS;
 		const radius = semiLatus / (1 + eccentricity * Math.cos(nu));
 		const now = timeAt(nu);
-		total += (jovianBeltRateGyPerDay(radius / radiusKm) * (now - previous)) / SEC_PER_DAY;
+		total += (beltRateGyPerDay(profile, radius / radiusKm) * (now - previous)) / SEC_PER_DAY;
 		previous = now;
 	}
 
-	return total * beltShieldingFactor(shieldingGCm2);
+	return total * beltShieldingFactor(shieldingGCm2, profile.shieldingGCm2);
 }
 
 /**

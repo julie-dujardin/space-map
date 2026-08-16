@@ -92,12 +92,16 @@ export {
 
 export {
 	BELT_MODEL_UNCERTAINTY_FACTOR,
+	BELT_PROFILES,
 	BELT_SHIELDING_FLOOR,
 	CANCER_RISK_PER_SV,
 	DEFAULT_SHIELDING_G_CM2,
+	JPL_SHELL_G_CM2,
 	LETHAL_DOSE_GY,
 	MODELLED_BELT_IDS,
+	beltAttenuation,
 	beltPassDoseGy,
+	beltRateGyPerDay,
 	beltShieldingFactor,
 	cancerRiskFraction,
 	decimalYearOf,

@@ -16,6 +16,7 @@
  */
 
 import {
+	BELT_PROFILES,
 	beltPassDoseGy,
 	buildTrajectoryPath,
 	CANCER_RISK_PER_SV,
@@ -685,6 +686,7 @@ function beltHazards(route: Route, vias: readonly TravelBody[]): Hazard[] {
 		}
 
 		const gy = beltPassDoseGy(
+			BELT_PROFILES[pass.bodyId],
 			body.radiusKm + pass.altitudeKm,
 			(pass.vInfInKms + pass.vInfOutKms) / 2,
 			DEFAULT_SHIELDING_G_CM2,

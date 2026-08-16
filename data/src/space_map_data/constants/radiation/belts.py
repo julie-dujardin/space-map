@@ -1,11 +1,16 @@
 """Trapped-particle regions, as geometry a trajectory can be crossed against.
 
-Four bodies here rather than the seven with fields, because a dynamo is not
+Six bodies here rather than the seven with fields, because a dynamo is not
 enough: a belt also needs a trapping region big enough to hold a drift orbit,
 and nothing to sweep it clean. Mercury's magnetosphere is too small to manage
-the first except intermittently. Ganymede's sits inside Jupiter's and is a
-shield rather than a trap. Uranus and Neptune have belts that one Voyager pass
-each was not enough to bound.
+the first except intermittently, and it is here anyway because a part-time belt
+is still a finding. Ganymede's sits inside Jupiter's and is a shield rather than
+a trap, which is why it is the one absentee.
+
+The entries are not equally well known. Jupiter's and Saturn's come from years
+of orbiting; Uranus's and Neptune's from one Voyager 2 pass each, fitted into
+JPL engineering models afterwards, which is enough to bound them but not enough
+to survey them.
 
 Extents are L-shells — distance in planetary radii where the field line
 crosses the magnetic equator — because that is the coordinate the whole
@@ -31,18 +36,30 @@ TRAPPED_BELTS: dict[str, TrappedBelt] = {
         sources=("wang_2026",),
         note="intermittent",
     ),
-    # Earth. The extents are not carried yet — see the note in the data run —
-    # but the crossing is, and it is the more useful of the two here: Apollo
-    # 11's Van Allen dosimeter read 0.11 rad of skin dose across the whole
-    # mission, both transits included. Half of that, for one outbound
-    # crossing, is the arithmetic below and the reason it is marked modelled.
+    # Earth. The extents are the outer belt's, because that is what a departure
+    # crosses last and what sets where the region ends: Cluster and Double Star
+    # put its inner edge at L = 3-5 and its outer edge anywhere from 4.5 to 9,
+    # the most variable boundary in the system — a storm can pull it in to
+    # L = 4 within hours. The inner belt sits below the slot at L = 2.5-3, and
+    # the slot itself is 1 to 1.5 Earth radii thick and widens when the solar
+    # wind is quiet.
+    #
+    # No inner edge. Cluster's perigee was L = 2 and it never went under it, so
+    # where the inner belt stops against the atmosphere is not in that dataset
+    # and is not quoted here from anywhere else.
+    #
+    # The crossing is the more useful number of the two: Apollo 11's Van Allen
+    # dosimeter read 0.11 rad of skin dose across the whole mission, both
+    # transits included. Half of that, for one outbound crossing, is the
+    # arithmetic below and the reason it is marked modelled.
     #
     # A tenth of a mSv is nothing against a cruise, and that is the point. A
     # chemical departure clears the belts in hours and the dose does not
     # matter; a low-thrust spiral takes weeks to climb through the same
     # region and it dominates everything else the trip does.
     "naif-399": TrappedBelt(
-        sources=("apollo_11_report",),
+        sources=("apollo_11_report", "ganushkina_2011"),
+        outer_radii=Measurement(6.0, "ganushkina_2011", range=(4.5, 9.0)),
         crossing_dose_sv=Measurement(5.5e-4, "apollo_11_report", modelled=True),
         note="fast_crossing_is_cheap",
     ),
@@ -72,5 +89,31 @@ TRAPPED_BELTS: dict[str, TrappedBelt] = {
         outer_radii=Measurement(4.9, "roussos_2020"),
         peak_radii=Measurement(2.5, "roussos_2020"),
         note="swept_by_rings_and_moons",
+    ),
+    # Uranus. One Voyager 2 pass is the whole record, and UMOD is a fit to it
+    # rather than a survey. The peak is not resolved — the report says outright
+    # that the absence of data inside 4 R_U is not an absence of radiation — so
+    # only the outer extent is carried, the distance beyond which its authors
+    # say a spacecraft is safe.
+    #
+    # The number that pass does give is a whole-crossing dose: about 100 rad(Si)
+    # behind 100 mils of aluminium for Voyager 2's entire flyby, closest
+    # approach 107,000 km from the centre. That is 1 Gy, against the 4,500 Gy
+    # Pioneer 10 took at Jupiter. It is not carried as a field because the only
+    # crossing figure this schema holds is a dose equivalent, and rad(Si)
+    # absorbed behind aluminium is not one.
+    "naif-799": TrappedBelt(
+        sources=("garrett_2015",),
+        outer_radii=Measurement(8.0, "garrett_2015"),
+        note="one_flyby_only",
+    ),
+    # Neptune. The same single pass, but NMOD resolves what UMOD could not: a
+    # dose rate against L with two peaks, the outer and larger at L = 7, and a
+    # dip between them near L = 5. `belt_field.py` carries the whole curve.
+    "naif-899": TrappedBelt(
+        sources=("garrett_2017",),
+        outer_radii=Measurement(9.0, "garrett_2017", range=(8.0, 10.0)),
+        peak_radii=Measurement(7.0, "garrett_2017"),
+        note="one_flyby_only",
     ),
 }

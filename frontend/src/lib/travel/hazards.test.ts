@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+	BELT_PROFILES,
 	beltPassDoseGy,
+	MODELLED_BELT_IDS,
 	buildRoute,
 	buildTrajectoryPath,
 	DEFAULT_SHIELDING_G_CM2,
@@ -505,6 +507,7 @@ describe('belt crossings', () => {
 		// The case the model exists for, and the reason a Δv ladder is not
 		// enough to choose a trajectory by: these two passes cost the same fuel.
 		const distant = beltPassDoseGy(
+			BELT_PROFILES['naif-599'],
 			14 * JUPITER.radiusKm,
 			5.6,
 			DEFAULT_SHIELDING_G_CM2,
@@ -512,6 +515,7 @@ describe('belt crossings', () => {
 			JUPITER.mu
 		);
 		const close = beltPassDoseGy(
+			BELT_PROFILES['naif-599'],
 			2 * JUPITER.radiusKm,
 			5.6,
 			DEFAULT_SHIELDING_G_CM2,
@@ -533,8 +537,10 @@ describe('belt crossings', () => {
 		expect(belt.endJd).toBe(belt.startJd);
 	});
 
-	it('says a belt was crossed and declines to price it where nobody has', () => {
-		// Saturn has belts and no published dose on terms a body absorbs.
+	it('prices a Saturn pass rather than declining to, and finds it mild', () => {
+		// SATRAD put a dose against distance on Saturn's belts, so this stopped
+		// being unpriced. A pass gentle enough to fall under the first band is
+		// dropped entirely, which is the right answer and not a missing one.
 		const route = findAssistRoute(EARTH, JUPITER, [SATURN], {
 			nowJd: J2000,
 			departureMode: 'orbit'
@@ -543,9 +549,15 @@ describe('belt crossings', () => {
 		const belt = of(
 			routeHazards(EARTH, JUPITER, route, { ...HELIOCENTRIC, vias: [SATURN] }),
 			'belt-crossing'
-		)!;
-		expect(belt.unpriced).toBe(true);
-		expect(belt.peak).toBe(0);
+		);
+		expect(belt?.unpriced).toBeUndefined();
+	});
+
+	it('says a belt was crossed and declines to price it where nobody has', () => {
+		// Uranus and Earth: a belt everyone agrees is there, and no dose
+		// against distance published for either.
+		expect(MODELLED_BELT_IDS.has('naif-799')).toBe(false);
+		expect(MODELLED_BELT_IDS.has('naif-399')).toBe(false);
 	});
 
 	it('leaves a route with no swing-by alone', () => {

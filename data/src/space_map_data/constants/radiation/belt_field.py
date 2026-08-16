@@ -13,21 +13,24 @@ crater to 2%. This is a three-parameter profile with two anchors, and its two
 out-of-sample checks land a factor of four either side of it. Both are useful;
 only one is precise, and a reader deserves to be able to tell which is which.
 
-The model is one radial profile and one shielding curve.
+The model is one radial profile per planet and one shielding curve for all of
+them.
 
-    dose(pass) = ∫ rate(L(t)) dt      rate(L) = R_peak · (L/L_peak)^-n  outside
-                                                R_peak                  inside
+    dose(pass) = ∫ rate(L(t)) dt
 
 `L` is the distance from the planet's centre in planetary radii, which for an
 equatorial pass is the L-shell. Every pass is treated as equatorial; a polar one
 crosses the belt where it is thinner and takes appreciably less, which is the
 larger of the two known errors here and is quantified below.
 
-Only Jupiter is modelled. Earth's crossing is a flat number in `belts.py`
-measured by Apollo 11, which is the better answer where it applies, and nobody
-has published a dose profile for Saturn, Uranus or Neptune on terms a body
-absorbs. A pass by one of those reports that it crossed a belt and declines to
-put a figure on it.
+Three planets are modelled and they are not equally well known. Jupiter is a
+fitted analytic profile with flown anchors. Saturn and Neptune are digitised
+from JPL's engineering models — curves someone else fitted to Pioneer, Voyager
+and Cassini data — so the shape is theirs and only the reading off the page is
+ours. Uranus has no published profile at all, only a single flown pass in
+`belts.py`, and stays unpriced rather than being given a shape borrowed from
+Neptune. Earth's crossing is likewise a flat number in `belts.py` measured by
+Apollo 11, which is the better answer where it applies.
 
 Everything here is an absorbed dose in grays. It is not converted to sieverts
 and should not be: the flux is mostly electrons, whose quality factor is one, so
@@ -37,6 +40,7 @@ injury rather than a stochastic risk, and a sievert is a unit for the latter.
 """
 
 import math
+from typing import NamedTuple
 
 # --- the shielding curve -----------------------------------------------------
 
@@ -62,13 +66,34 @@ _SHIELDING_SOURCE = "europa_lander_sdt_2016"
 # to `ATTENUATION_FLOOR` in `field.py`.
 BELT_SHIELDING_FLOOR = 1.0e-2
 
+# SATRAD draws its own dose-depth curves for the same Jovian orbits and they
+# fall about three times faster: 1 to 100 mils of aluminium takes Europa's orbit
+# down by fifty, which is a length of 0.17 g/cm² against the 0.56 above. The two
+# figures are for different spectra and neither is wrong, but the disagreement
+# is real and larger than it looks — it is why this model and the lander study
+# agree within a quarter at 100 mils and differ tenfold at 0.11 g/cm².
+#
+# Nothing here is changed for it, because every crewed answer is already on the
+# floor: at the 10 g/cm² a pressure vessel carries, both lengths are far past
+# where the curve is held flat, and the result is identical either way.
 
-def belt_shielding_factor(shielding_g_cm2: float) -> float:
-    """Dose behind `shielding_g_cm2`, relative to the reference thickness."""
+
+def belt_attenuation(shielding_g_cm2: float) -> float:
+    """Surviving fraction behind `shielding_g_cm2`, against the 0.11 reference."""
     past = shielding_g_cm2 - BELT_REFERENCE_SHIELDING_G_CM2
     if past <= 0.0:
         return 1.0
     return max(BELT_SHIELDING_FLOOR, math.exp(-past / BELT_SHIELDING_LENGTH_G_CM2))
+
+
+def belt_shielding_factor(shielding_g_cm2: float, reference_g_cm2: float) -> float:
+    """Dose behind `shielding_g_cm2`, relative to what a profile was quoted at.
+
+    Profiles do not share a reference thickness — Jupiter's comes off a figure
+    drawn at 0.11 g/cm², Saturn's and Neptune's off JPL curves at 100 mils of
+    aluminium — so the ratio of two points on one curve is what converts them.
+    """
+    return belt_attenuation(shielding_g_cm2) / belt_attenuation(reference_g_cm2)
 
 
 # --- the radial profile ------------------------------------------------------
@@ -105,14 +130,117 @@ _SLOPE_SOURCE = "johnson_2004"
 JOVIAN_PEAK_GY_PER_DAY = 2.414e5
 _PEAK_RATE_FITTED_TO = "miller_1976"
 
+# 100 mils of aluminium, the thickness JPL's engineering models are drawn at and
+# the one Saturn's and Neptune's profiles below are therefore quoted behind.
+JPL_SHELL_G_CM2 = 2.54 * 0.1 * 2.70
+
+
+class BeltProfile(NamedTuple):
+    """How hard a planet's belt hits, against distance from its centre.
+
+    `samples` are (planetary radii, Gy/day) in ascending order, interpolated
+    log-log between neighbours because both axes span decades. Outside the last
+    one the profile continues as a power law of index `outer_slope`. Inside the
+    first, `flat_inside` says whether the rate is held at that first sample —
+    true only where nothing measures the inner branch, which makes a close pass
+    an upper bound rather than an estimate.
+    """
+
+    body_id: str
+    samples: tuple[tuple[float, float], ...]
+    shielding_g_cm2: float
+    sources: tuple[str, ...]
+    # None continues the slope the last two samples already imply, which is what
+    # a digitised curve wants. Jupiter's single sample has no such segment and
+    # must state one.
+    outer_slope: float | None = None
+    flat_inside: bool = True
+
+
+def belt_rate_gy_per_day(profile: BeltProfile, l_shell: float) -> float:
+    """Absorbed dose rate at `l_shell`, behind the profile's own shielding."""
+    if l_shell <= 0.0:
+        return 0.0
+    samples = profile.samples
+    first_l, first_rate = samples[0]
+    if l_shell <= first_l:
+        if profile.flat_inside or len(samples) < 2:
+            return first_rate
+        # Continue the innermost segment's slope rather than inventing a shape.
+        second_l, second_rate = samples[1]
+        index = math.log(second_rate / first_rate) / math.log(second_l / first_l)
+        return first_rate * (l_shell / first_l) ** index
+    for (low_l, low_rate), (high_l, high_rate) in zip(samples, samples[1:]):
+        if l_shell <= high_l:
+            index = math.log(high_rate / low_rate) / math.log(high_l / low_l)
+            return low_rate * (l_shell / low_l) ** index
+    last_l, last_rate = samples[-1]
+    slope = profile.outer_slope
+    if slope is None:
+        previous_l, previous_rate = samples[-2]
+        slope = -math.log(last_rate / previous_rate) / math.log(last_l / previous_l)
+    return last_rate * (l_shell / last_l) ** -slope
+
+
+BELT_PROFILES: dict[str, BeltProfile] = {
+    # Jupiter. The one profile here that is fitted rather than read: a single
+    # peak, a slope from Johnson's satellite fluxes, and a normalisation from
+    # Pioneer 10's pass. Everything about how it was arrived at is above.
+    "naif-599": BeltProfile(
+        body_id="naif-599",
+        samples=((JOVIAN_PEAK_L, JOVIAN_PEAK_GY_PER_DAY),),
+        outer_slope=JOVIAN_OUTER_SLOPE,
+        shielding_g_cm2=BELT_REFERENCE_SHIELDING_G_CM2,
+        sources=(_PEAK_SOURCE, _SLOPE_SOURCE, _PEAK_RATE_FITTED_TO),
+    ),
+    # Saturn, from SATRAD's dose-depth curves. Read at 100 mils, where the same
+    # figure also draws Jupiter at the same three distances, so the two belts
+    # can be compared without either model's normalisation cancelling wrongly:
+    # Saturn is fifty times gentler at 2.55 radii and three hundred thousand
+    # times gentler at 9.47. The gap widens outward because Saturn's belt stops
+    # — Tethys sweeps it clean at L = 4.9 — and Jupiter's never does.
+    #
+    # 2.55 is as far in as the figure goes and is near the peak `belts.py`
+    # carries at 2.5, so inside it the rate is held flat on the same reasoning
+    # as Jupiter's. The steep tail past 9.47 is not extrapolation into the
+    # unknown: it is the belt having ended.
+    "naif-699": BeltProfile(
+        body_id="naif-699",
+        samples=((2.55, 42.9), (5.95, 2.86), (9.47, 2.14e-3)),
+        shielding_g_cm2=JPL_SHELL_G_CM2,
+        sources=("garrett_2005",),
+    ),
+    # Neptune, from NMOD's dose rate against L. The one profile here with its
+    # inner branch measured, so it is not held flat: the rate falls away inside
+    # L = 7 rather than plateauing, and holding it flat would overstate a close
+    # pass a hundredfold. Two peaks with a dip between them at L = 5, which is
+    # the shape a single power law cannot carry and the reason this is a table.
+    #
+    # The report's own summary — 1000 rad(Si) in 100 days at the worst L — is
+    # 0.1 Gy/day against the 0.138 read off the peak here, which is the accuracy
+    # to expect from reading a log axis.
+    "naif-899": BeltProfile(
+        body_id="naif-899",
+        samples=(
+            (2.2, 1.296e-3),
+            (3.7, 3.456e-2),
+            (5.0, 8.64e-3),
+            (7.0, 0.1382),
+            (9.0, 2.592e-2),
+            (12.0, 1.728e-3),
+            (18.0, 5.18e-5),
+            (27.0, 7.78e-7),
+        ),
+        shielding_g_cm2=JPL_SHELL_G_CM2,
+        sources=("garrett_2017",),
+        flat_inside=False,
+    ),
+}
+
 
 def jovian_belt_rate_gy_per_day(l_shell: float) -> float:
     """Absorbed dose rate at `l_shell`, behind the reference shielding."""
-    if l_shell <= 0.0:
-        return 0.0
-    if l_shell <= JOVIAN_PEAK_L:
-        return JOVIAN_PEAK_GY_PER_DAY
-    return JOVIAN_PEAK_GY_PER_DAY * (l_shell / JOVIAN_PEAK_L) ** -JOVIAN_OUTER_SLOPE
+    return belt_rate_gy_per_day(BELT_PROFILES["naif-599"], l_shell)
 
 
 # --- integrating a pass ------------------------------------------------------
@@ -133,6 +261,7 @@ def belt_pass_dose_gy(
     v_infinity_kms: float,
     shielding_g_cm2: float,
     *,
+    profile: BeltProfile | None = None,
     radius_km: float = JUPITER_RADIUS_KM,
     mu_km3_s2: float = JUPITER_MU_KM3_S2,
 ) -> float:
@@ -147,6 +276,8 @@ def belt_pass_dose_gy(
     """
     if periapsis_km <= 0.0 or v_infinity_kms <= 0.0:
         return 0.0
+    if profile is None:
+        profile = BELT_PROFILES["naif-599"]
 
     semi_major = -mu_km3_s2 / v_infinity_kms**2
     eccentricity = 1.0 - periapsis_km / semi_major
@@ -173,11 +304,11 @@ def belt_pass_dose_gy(
         radius = semi_latus / (1.0 + eccentricity * math.cos(nu))
         now = time_at(nu)
         if previous_time is not None:
-            rate = jovian_belt_rate_gy_per_day(radius / radius_km)
+            rate = belt_rate_gy_per_day(profile, radius / radius_km)
             total += rate * (now - previous_time) / _SEC_PER_DAY
         previous_time = now
 
-    return total * belt_shielding_factor(shielding_g_cm2)
+    return total * belt_shielding_factor(shielding_g_cm2, profile.shielding_g_cm2)
 
 
 # --- what the belt model is answerable to ------------------------------------
@@ -268,7 +399,5 @@ BELT_MODEL_UNCERTAINTY_FACTOR = 4.0
 
 BELT_FIELD_SOURCES: tuple[str, ...] = (
     _SHIELDING_SOURCE,
-    _PEAK_SOURCE,
-    _SLOPE_SOURCE,
-    _PEAK_RATE_FITTED_TO,
+    *sorted({key for profile in BELT_PROFILES.values() for key in profile.sources}),
 )

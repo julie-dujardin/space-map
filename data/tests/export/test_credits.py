@@ -64,9 +64,14 @@ class TestMergeReferences:
         garrett = [
             r for rows in merged.values() for r in rows if "Garrett" in r["title"]
         ]
-        assert len(garrett) == 2
-        assert all("belts" in r["contribution"] for r in garrett)
-        assert all("dipole" in r["contribution"] for r in garrett)
+        shared = [r for r in garrett if "dipole" in r["contribution"]]
+        assert len(shared) == 2
+        assert all("belts" in r["contribution"] for r in shared)
+        # The Saturn model is radiation's alone, so it has nothing to merge with
+        # and must still appear exactly once.
+        solo = [r for r in garrett if "Saturn" in r["title"]]
+        assert len(solo) == 1
+        assert "dipole" not in solo[0]["contribution"]
 
     def test_both_contributions_survive(self):
         merged = _merge_references(

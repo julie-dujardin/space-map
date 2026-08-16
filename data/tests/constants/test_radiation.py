@@ -17,8 +17,12 @@ from space_map_data.constants.radiation.belt_field import (
     JUPITER_RADIUS_KM,
     PIONEER_SHIELDING_G_CM2,
     PIONEER_V_INFINITY_KMS,
+    BELT_PROFILES,
+    belt_attenuation,
+    belt_rate_gy_per_day,
     belt_pass_dose_gy,
     belt_shielding_factor,
+    JPL_SHELL_G_CM2,
     jovian_belt_rate_gy_per_day,
 )
 from space_map_data.constants.radiation.belts import TRAPPED_BELTS
@@ -393,22 +397,30 @@ class TestBeltShielding:
     floor is the interesting part: without it a crew vault reads as immunity."""
 
     def test_the_reference_thickness_is_unity(self):
-        assert belt_shielding_factor(0.11) == pytest.approx(1.0)
+        assert belt_attenuation(0.11) == pytest.approx(1.0)
 
     def test_thinner_than_the_reference_is_not_amplified(self):
-        assert belt_shielding_factor(0.0) == pytest.approx(1.0)
+        assert belt_attenuation(0.0) == pytest.approx(1.0)
 
     def test_the_source_figures_two_decades_are_reproduced(self):
-        assert belt_shielding_factor(2.7) == pytest.approx(0.01, rel=0.02)
+        assert belt_attenuation(2.7) == pytest.approx(0.01, rel=0.02)
 
     def test_a_crew_vault_lands_on_the_floor_rather_than_at_zero(self):
         """20 g/cm² through the bare exponential is 1e-11, which would read as
         a Jupiter pass being survivable behind a thick enough wall."""
-        assert belt_shielding_factor(20.0) == BELT_SHIELDING_FLOOR
+        assert belt_attenuation(20.0) == BELT_SHIELDING_FLOOR
 
     @pytest.mark.parametrize("thickness", [0.11, 1.0, 2.7, 5.0, 50.0])
     def test_the_factor_never_leaves_its_bounds(self, thickness: float):
-        assert BELT_SHIELDING_FLOOR <= belt_shielding_factor(thickness) <= 1.0
+        assert BELT_SHIELDING_FLOOR <= belt_attenuation(thickness) <= 1.0
+
+    def test_a_profile_quoted_behind_thicker_aluminium_is_rescaled_to_it(self):
+        """The JPL models are drawn at 100 mils, so their own reference has to
+        read as unity or Saturn and Neptune come out three times too low."""
+        assert belt_shielding_factor(JPL_SHELL_G_CM2, JPL_SHELL_G_CM2) == pytest.approx(
+            1.0
+        )
+        assert belt_shielding_factor(0.11, JPL_SHELL_G_CM2) > 1.0
 
 
 class TestBeltProfile:
@@ -435,6 +447,81 @@ class TestBeltProfile:
         three orders of magnitude."""
         ratio = jovian_belt_rate_gy_per_day(9.4) / jovian_belt_rate_gy_per_day(26.3)
         assert ratio == pytest.approx(250.0, rel=0.01)
+
+
+def _rate_at_jpl_shell(profile, l_shell: float) -> float:
+    """One profile's rate behind 100 mils, whatever it was quoted behind."""
+    return belt_rate_gy_per_day(profile, l_shell) * belt_shielding_factor(
+        JPL_SHELL_G_CM2, profile.shielding_g_cm2
+    )
+
+
+class TestOtherBeltProfiles:
+    """Saturn and Neptune are read off published curves rather than fitted, so
+    what these pin is the reading, not a physical claim."""
+
+    @pytest.mark.parametrize("body_id", sorted(BELT_PROFILES))
+    def test_a_profile_returns_its_own_samples(self, body_id: str):
+        """Log-log interpolation that does not pass through its knots would
+        put every rate somewhere nobody published."""
+        profile = BELT_PROFILES[body_id]
+        for l_shell, rate in profile.samples:
+            assert belt_rate_gy_per_day(profile, l_shell) == pytest.approx(rate)
+
+    @pytest.mark.parametrize("body_id", sorted(BELT_PROFILES))
+    def test_every_profile_names_a_belt_the_table_carries(self, body_id: str):
+        assert body_id in TRAPPED_BELTS
+
+    def test_neptunes_peak_is_where_its_table_entry_says(self):
+        peak = TRAPPED_BELTS["naif-899"].peak_radii
+        assert peak is not None
+        profile = BELT_PROFILES["naif-899"]
+        rates = {
+            radii: belt_rate_gy_per_day(profile, radii) for radii, _ in profile.samples
+        }
+        assert max(rates, key=lambda radii: rates[radii]) == peak.value
+
+    def test_neptune_falls_away_inside_its_peak_rather_than_plateauing(self):
+        """The one profile here whose inner branch was measured. Holding it
+        flat, as Jupiter's is, would overstate a close pass a hundredfold."""
+        profile = BELT_PROFILES["naif-899"]
+        assert profile.flat_inside is False
+        assert belt_rate_gy_per_day(profile, 2.2) < belt_rate_gy_per_day(profile, 7.0)
+        assert belt_rate_gy_per_day(profile, 1.5) < belt_rate_gy_per_day(profile, 2.2)
+
+    def test_saturn_is_gentler_than_jupiter_and_the_gap_widens_outward(self):
+        """SATRAD draws both planets on one figure at these three distances,
+        which is the only place the two belts are directly comparable. Rates
+        have to be brought to a common thickness first — the profiles do not
+        share a reference — and the widening is the physics: Saturn's belt ends
+        at Tethys and Jupiter's does not."""
+        gaps = [
+            _rate_at_jpl_shell(BELT_PROFILES["naif-599"], radii)
+            / _rate_at_jpl_shell(BELT_PROFILES["naif-699"], radii)
+            for radii in (5.95, 9.47)
+        ]
+        assert all(gap > 50.0 for gap in gaps)
+        assert gaps == sorted(gaps)
+
+    def test_the_widening_cannot_be_checked_inside_jupiters_peak(self):
+        """SATRAD has Jupiter still climbing at 2.55 radii; this model holds it
+        flat inside L = 3 because nothing measured that branch. So the gap it
+        reports there is an artefact of that choice, and the comparison above
+        deliberately starts outside it."""
+        jupiter = BELT_PROFILES["naif-599"]
+        assert jupiter.flat_inside
+        assert belt_rate_gy_per_day(jupiter, 2.55) == belt_rate_gy_per_day(
+            jupiter, JOVIAN_PEAK_L
+        )
+
+    def test_satrad_reads_jupiters_own_belt_three_times_gentler_than_this_model(self):
+        """The third out-of-sample check on the Jovian profile, and the only
+        one from a model rather than a flown dosimeter. It lands the same side
+        as Pioneer 11 and about as far out, which is what the stated factor of
+        four is for. A pin on a known bias, not a passing grade."""
+        satrad_at_ios_orbit_gy_per_day = 5.0e5 / 7.0 / 100.0
+        ours = _rate_at_jpl_shell(BELT_PROFILES["naif-599"], 5.95)
+        assert ours / satrad_at_ios_orbit_gy_per_day == pytest.approx(3.1, rel=0.2)
 
 
 class TestBeltPasses:
