@@ -143,22 +143,20 @@ export interface Feasibility {
 }
 
 /**
- * Acceleration below which a burn stops being usefully impulsive.
- *
- * A Lambert arc assumes the Δv is spent at a point. At 100 µm/s² a kilometre a
- * second takes four months to deliver, and the arc the solver drew never
- * existed. Dawn's ion drive managed 76, Psyche's Hall thrusters 87, so the
- * distinction this draws is the one the hardware actually falls on.
+ * Acceleration below which a burn stops being usefully impulsive. A Lambert
+ * arc assumes the Δv is spent at a point; at 100 µm/s² a km/s takes four
+ * months to deliver, and the solver's arc never existed. Dawn's ion drive
+ * managed 76 µm/s², Psyche's Hall thrusters 87 — this is the line the
+ * hardware actually falls on.
  */
 const IMPULSIVE_FLOOR_M_S2 = 1e-4;
 
 /**
  * Whether a trip starting `mode` can be flown with this vehicle at all.
- *
- * Undefined is an export older than the field rather than a claim, so it
- * passes: silently dropping every vehicle from the picker would be a worse
- * failure than offering one that cannot lift off. An empty list *is* a claim —
- * a rover departs from nowhere.
+ * Undefined is an export older than the field, not a claim, so it passes —
+ * silently dropping every vehicle from the picker would be worse than
+ * offering one that can't lift off. An empty list *is* a claim: a rover
+ * departs from nowhere.
  */
 export function canDepartFrom(vehicle: Vehicle, mode: DepartureMode): boolean {
 	return vehicle.departsFrom === undefined || vehicle.departsFrom.includes(mode);
@@ -170,12 +168,11 @@ export function canDepartFrom(vehicle: Vehicle, mode: DepartureMode): boolean {
 const AEROSHELL_CAPABILITIES = ['aerocapture', 'aerobraking', 'entry'];
 
 /**
- * Whether the vehicle can fly a braking pass at all.
- *
- * Silence is not a refusal, on the same footing as `canDepartFrom`: the field is
- * set on a handful of the catalogue, and reading its absence as "no heat shield"
- * would deny aerocapture to almost every craft on no evidence. A vehicle that
- * lists what it can do and does not list one of these is the only real no.
+ * Whether the vehicle can fly a braking pass at all. Silence is not a
+ * refusal, same footing as `canDepartFrom`: the field is set on a handful of
+ * the catalogue, and reading its absence as "no heat shield" would deny
+ * aerocapture to almost every craft on no evidence. A vehicle that lists its
+ * capabilities and omits all of these is the only real no.
  */
 export function canAeroAssist(vehicle: Vehicle): boolean {
 	const listed = vehicle.capabilities;
@@ -184,31 +181,28 @@ export function canAeroAssist(vehicle: Vehicle): boolean {
 }
 
 /**
- * The acceleration this craft may be flown a constant-thrust arc at, or
- * undefined when it may not be.
- *
- * Two things have to hold, and the second is the one that is easy to lose. An
- * arc flown under power the whole way is spending the whole way, so it is only
- * honest for a craft whose propellant is not a constraint — and an acceleration
- * on its own does not say that. A solar sail publishes one and cannot hold it:
- * the figure is true at one distance and falls off as the inverse square.
+ * The acceleration this craft may fly a constant-thrust arc at, or undefined
+ * when it may not. Two things must hold, and the second is easy to lose: an
+ * arc under power the whole way is spending the whole way, so it's only
+ * honest for a craft whose propellant isn't a constraint — an acceleration
+ * figure alone doesn't say that. A solar sail publishes one it can't hold,
+ * true at one distance and falling off as the inverse square.
  */
 export function constantThrustAccelMs2(vehicle: Vehicle): number | undefined {
 	return vehicle.unlimitedDv ? vehicle.accelMs2?.value : undefined;
 }
 
 /**
- * The drive a spiral route is flown with, or undefined when the craft flies none.
+ * The drive a spiral route is flown with, or undefined when the craft flies
+ * none. Wider than `isLowThrust` on purpose: a spiral is what any electric
+ * drive flies, whichever side of the impulsive floor it lands on, and a stage
+ * taking a month over a burn is worth pricing both ways. Needs the hardware —
+ * thrust and the masses behind it — since a Δv alone says nothing about how
+ * long it takes to spend.
  *
- * Wider than `isLowThrust` on purpose: a spiral is what any electric drive flies,
- * whichever side of the impulsive floor it happens to land on, and a stage that
- * takes a month over a burn is worth pricing both ways. What it does need is the
- * hardware — thrust and the masses behind it — since a Δv alone says nothing
- * about how long it takes to spend.
- *
- * Cargo joins the dry mass, so a loaded ship accelerates more slowly and takes
- * longer over the same trip. That is the one place a manifest reaches into a
- * trajectory rather than merely being carried along it.
+ * Cargo joins the dry mass, so a loaded ship accelerates more slowly over the
+ * same trip — the one place a manifest reaches into a trajectory rather than
+ * just riding along it.
  */
 export function lowThrustDrive(vehicle: Vehicle, payloadKg = 0): LowThrustDrive | undefined {
 	if (vehicle.propulsion !== 'electric' && !isLowThrust(vehicle)) return undefined;
@@ -252,11 +246,10 @@ export function payloadForC3(vehicle: Vehicle, c3: number): number | null {
 }
 
 /**
- * What a trip is carrying.
- *
- * Mass moves no trajectory — a Δv is a Δv whatever it is spent on — so a
- * manifest never re-solves anything. It decides what the vehicle can do with
- * the Δv the route already asks for, and whether it had room in the first place.
+ * What a trip is carrying. Mass moves no trajectory — a Δv is a Δv whatever
+ * it's spent on — so a manifest never re-solves anything. It decides what the
+ * vehicle can do with the Δv the route already asks for, and whether it had
+ * room in the first place.
  */
 export interface Manifest {
 	/** People aboard. */
@@ -268,11 +261,10 @@ export interface Manifest {
 export const EMPTY_MANIFEST: Manifest = { passengers: 0, payloadKg: 0 };
 
 /**
- * Seats aboard; null when nothing published says.
- *
- * Zero is an answer rather than a gap. A probe carries nobody, and a launcher's
- * passengers ride in whatever it lifts rather than in the launcher, so only the
- * kinds built around people can have a seat count no source wrote down.
+ * Seats aboard; null when nothing published says. Zero is an answer, not a
+ * gap: a probe carries nobody, and a launcher's passengers ride in whatever
+ * it lifts rather than the launcher itself — only the kinds built around
+ * people can have a seat count no source wrote down.
  */
 export function crewCapacity(vehicle: Vehicle): number | null {
 	if (vehicle.crew) return vehicle.crew.value;
@@ -283,16 +275,13 @@ export function crewCapacity(vehicle: Vehicle): number | null {
 const G0_M_S2 = 9.80665;
 
 /**
- * Δv the vehicle has once the cargo is aboard, km/s.
- *
- * The published figure is for the vehicle as flown, so cargo joins the dry mass
- * and the rocket equation gives back less. A Δv published without the masses
- * behind it cannot be re-derived and is returned unchanged: overstating it is
- * the lesser of two wrongs against saying nothing about a vehicle whose
- * performance is known.
- *
- * People are not weighed. A crewed vehicle's dry mass already carries its seats,
- * suits and consumables, and no source states what one more passenger costs.
+ * Δv the vehicle has once the cargo is aboard, km/s. The published figure is
+ * for the vehicle as flown, so cargo joins the dry mass and the rocket
+ * equation gives back less. A Δv published without the masses behind it can't
+ * be re-derived and is returned unchanged — overstating it is the lesser
+ * wrong against saying nothing about a vehicle with known performance.
+ * People aren't weighed: a crewed vehicle's dry mass already carries its
+ * seats, suits and consumables, and no source states one more passenger's cost.
  */
 export function dvWithPayloadKms(vehicle: Vehicle, payloadKg: number): number | undefined {
 	if (payloadKg <= 0 || vehicle.dvKms === undefined) return vehicle.dvKms;
@@ -305,15 +294,13 @@ export function dvWithPayloadKms(vehicle: Vehicle, payloadKg: number): number | 
 }
 
 /**
- * The heaviest cargo the vehicle could take on this route, kg.
- *
- * A launcher reads it off its curve at the route's energy; anything else gets
- * the rocket equation solved backwards for the payload at which its Δv just
- * meets the route's. Null when nothing published can answer — and for craft
- * whose propellant is no constraint, where the route imposes no limit to state.
- * A constant-thrust arc is priced at a fixed acceleration, which extra mass
- * would not hold, so it takes no answer either — and a drive too weak for the
- * impulsive model gets the same refusal to judge as `checkFeasibility` gives it.
+ * The heaviest cargo the vehicle could take on this route, kg. A launcher
+ * reads it off its curve at the route's energy; anything else gets the
+ * rocket equation solved backwards for the payload at which its Δv just
+ * meets the route's. Null when nothing published can answer, for craft whose
+ * propellant is no constraint (no limit to state), for a constant-thrust arc
+ * (fixed acceleration extra mass wouldn't hold), and for a drive too weak for
+ * the impulsive model — the same refusal `checkFeasibility` gives it.
  */
 export function maxPayloadKgForRoute(vehicle: Vehicle, route: Route): number | null {
 	if (route.constantThrust || vehicle.unlimitedDv) return null;
@@ -339,9 +326,9 @@ export type ManifestFit =
 	| { status: 'unknown-capacity' };
 
 /**
- * Whether the vehicle has room for the manifest — a question about the vehicle
- * alone. Seats and hold do not change with the destination, so this is answered
- * once beside the craft instead of against every route.
+ * Whether the vehicle has room for the manifest — a question about the
+ * vehicle alone. Seats and hold don't change with the destination, so this is
+ * answered once beside the craft instead of against every route.
  */
 export function checkManifest(vehicle: Vehicle, manifest: Manifest): ManifestFit {
 	if (manifest.passengers > 0) {
@@ -376,15 +363,12 @@ function annotate(vehicle: Vehicle, route: Route, result: Feasibility): Feasibil
 }
 
 /**
- * Whether `vehicle` can fly `route` with `manifest` aboard.
- *
- * A launcher is judged on whether it can reach the departure energy at all, and
- * on whether the cargo fits under its curve there; everything after injection is
- * the spacecraft's problem. Everything else is judged on in-space Δv, since the
- * ascent belongs to whatever launched it.
- *
- * Room aboard is deliberately not checked here — see `checkManifest`, which
- * answers it once rather than identically for every route.
+ * Whether `vehicle` can fly `route` with `manifest` aboard. A launcher is
+ * judged on whether it reaches the departure energy at all and whether cargo
+ * fits under its curve there; everything after injection is the spacecraft's
+ * problem. Everything else is judged on in-space Δv, since ascent belongs to
+ * whatever launched it. Room aboard is deliberately not checked here — see
+ * `checkManifest`, which answers it once rather than per route.
  */
 export function checkFeasibility(
 	vehicle: Vehicle,

@@ -2,10 +2,10 @@
  * Choosing which departures and cruise lengths to search.
  *
  * A porkchop only shows what you point it at, so the bounds matter as much as
- * the solver: too narrow and the cheap window falls outside the grid, too wide
- * and every cell is coarse. Both are derived from the pair's own orbits — one
- * synodic period always contains a window, and the time it takes to cross
- * between them sets the scale of a sensible cruise.
+ * the solver — too narrow and the cheap window falls outside the grid, too
+ * wide and every cell is coarse. Both are derived from the pair's own orbits:
+ * one synodic period always contains a window, and the crossing time between
+ * them sets the scale of a sensible cruise.
  */
 
 import type { PorkchopOptions, TravelBody } from '$lib/math/travel';
@@ -17,10 +17,10 @@ const MAX_SEARCH_DAYS = 3 * 365.25;
 /**
  * How short the departure axis may get.
  *
- * Every floor below is capped by the pair's own transfer time as well, because a
- * bare day count is a solar-system assumption: Io to Europa is a 1.3-day crossing
- * with a 3.5-day synodic period, and a flat 60-day floor would grid seventeen of
- * them at once and resolve none.
+ * Every floor below is capped by the pair's own transfer time too, because a
+ * bare day count is a solar-system assumption: Io to Europa is a 1.3-day
+ * crossing with a 3.5-day synodic period, and a flat 60-day floor would grid
+ * seventeen of them at once and resolve none.
  */
 const MIN_SEARCH_DAYS = 60;
 
@@ -32,11 +32,10 @@ const DEPART_AT_SLACK_FRACTION = 0.5;
 /** Cruise bounds as multiples of the crossing time — fast arcs to slow ones. */
 const TOF_MIN_FACTOR = 0.35;
 const TOF_MAX_FACTOR = 2.2;
-/**
- * The same bounds for a chase, where the ideal crossing is not the transfer
- * anyone would fly: the target is leaving, so what matters is how fast you can
- * get out there, and the interesting arcs sit far below the Hohmann-like time.
- */
+/** The same bounds for a chase, where the ideal crossing isn't the transfer
+ *  anyone would fly: the target is leaving, so what matters is how fast you
+ *  can get out there, and the interesting arcs sit far below the Hohmann-like
+ *  time. */
 const CHASE_TOF_MIN_FACTOR = 0.06;
 const CHASE_TOF_MAX_FACTOR = 1.2;
 
@@ -51,13 +50,10 @@ export interface WindowRequest {
 	timeMode: TimeMode;
 	/** The date behind 'depart' and 'arrive'; ignored under 'now'. */
 	pickedJd?: number | null;
-	/**
-	 * Days the trip still owes once the crossing is over — an aerobraking
-	 * campaign, where there is one. Shapes the axes only: the deadline itself is
-	 * carried whole and every search takes this off it for itself, so a caller
-	 * that leaves it out gets a grid aimed slightly wide rather than a wrong
-	 * answer.
-	 */
+	/** Days the trip still owes once the crossing is over — an aerobraking
+	 *  campaign, where there is one. Shapes the axes only: the deadline itself
+	 *  is carried whole, so a caller that leaves this out gets a grid aimed
+	 *  slightly wide rather than a wrong answer. */
 	arrivalDays?: number;
 	/** Set when the trip stays inside one system — see `RouteOptions`. */
 	systemPrimary?: 'departure' | 'target';
@@ -69,8 +65,8 @@ export interface WindowRequest {
 /**
  * The grid the fastest and slowest arcs of a same-system transfer both fit in.
  *
- * Nothing here waits for a window: the geometry repeats every time the satellite
- * comes round, and the only thing a departure date changes is how far out it is
+ * Nothing here waits for a window: the geometry repeats every time the
+ * satellite comes round, and a departure date only changes how far out it is
  * by then. So the departure axis spans one of its orbits and the cruise axis
  * spans the family.
  */
@@ -82,15 +78,15 @@ function systemWindow(request: WindowRequest): PorkchopOptions | null {
 	const orbitDays = satellite.elements.n > 0 ? 360 / satellite.elements.n : MAX_SEARCH_DAYS;
 	const deadlineJd = timeMode === 'arrive' && pickedJd != null ? pickedJd : undefined;
 	// Departures past the deadline are wasted rows, but a deadline inside the
-	// crossing is left to answer itself: the whole axis is one orbit of the
-	// satellite, and there is nothing shorter to fall back to.
+	// crossing is left to answer itself — the whole axis is one orbit of the
+	// satellite, and there's nothing shorter to fall back to.
 	const latestArriveJd = deadlineJd != null ? deadlineJd - arrivalDays : Infinity;
 	const departToJd = Math.min(
 		nowJd + clamp(orbitDays, MIN_SEARCH_DAYS / 4, MAX_SEARCH_DAYS),
 		latestArriveJd > nowJd ? latestArriveJd : Infinity
 	);
-	// One orbit of the satellite covers every distance it reaches, so bounds taken
-	// across the window bracket every arc the grid can contain.
+	// One orbit of the satellite covers every distance it reaches, so bounds
+	// taken across the window bracket every arc the grid can contain.
 	const bounds = systemArcBounds(primary, satellite, nowJd, departToJd);
 	if (!bounds || !(bounds.slowestDays > 0)) return null;
 
@@ -115,15 +111,15 @@ export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 	const { origin, target, nowJd, timeMode, pickedJd, centralMu, arrivalDays = 0 } = request;
 	if (request.systemPrimary) return systemWindow(request);
 
-	// The Hohmann time where both orbits are round enough for it, and the crossing
-	// between the two current distances where they are not. The arcs themselves
-	// are still real Lambert solves — only the bounds are approximated.
+	// The Hohmann time where both orbits are round enough for it, else the
+	// crossing between the two current distances. The arcs themselves are still
+	// real Lambert solves — only the bounds are approximated.
 	const scale = transferScale(origin, target, nowJd, centralMu);
 	if (scale === null) return null;
 	const { days: crossing, chase } = scale;
 
-	// A target that is leaving has no synodic period worth the name, whatever its
-	// mean motion says — nothing about the pair repeats.
+	// A leaving target has no synodic period worth the name, whatever its mean
+	// motion says — nothing about the pair repeats.
 	const synodic = chase ? null : synodicPeriodDays(origin, target);
 	const span = clamp(
 		synodic !== null && Number.isFinite(synodic) ? synodic : MAX_SEARCH_DAYS,
@@ -147,9 +143,9 @@ export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 		deadlineJd = pickedJd;
 		// Point the grid at what could still land in time: the latest useful
 		// departure is the deadline minus the fastest cruise worth flying, and a
-		// cruise outlasting the deadline is a row of cells nothing can use. Both
-		// only apply while they leave a grid to search — a deadline too close for
-		// the pair is answered by finding nothing, not by searching nothing.
+		// cruise outlasting the deadline is a row nothing can use. Both apply only
+		// while they leave a grid to search — a deadline too close for the pair is
+		// answered by finding nothing, not by searching nothing.
 		const latestArriveJd = pickedJd - arrivalDays;
 		const latestDepartJd = latestArriveJd - tofMinDays;
 		const longestTofDays = latestArriveJd - departFromJd;
@@ -158,7 +154,7 @@ export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 			tofMaxDays = Math.min(tofMaxDays, longestTofDays);
 		}
 	}
-	// A departure date already past leaves nothing to search; fall back to the
+	// A departure date already past leaves nothing to search — fall back to the
 	// open span.
 	if (departToJd <= departFromJd) departToJd = departFromJd + span;
 

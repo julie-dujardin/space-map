@@ -1,24 +1,17 @@
 /**
- * Reading a drawn path at a moment in time.
- *
- * Kept apart from `path.ts`, which builds them: the renderer holds the overlay
- * from the first frame and needs this, while the builder pulls in Lambert, the
- * porkchop and the vehicle catalogue. Everything here works off the sampled arcs
- * alone, so the only import is the vector helpers.
+ * Reads a drawn path at a moment in time. Split from `path.ts` (which builds
+ * paths) because the renderer needs this from the first frame, before the
+ * builder's Lambert/porkchop/vehicle-catalogue imports are needed.
  */
 
 import type { TrajectoryPath } from './path';
 import { add, scale, sub, type Vec3 } from './vec3';
 
 /**
- * The half-open range of `path.arcs[index]` that is the crossing proper.
- *
- * An end with a passage down to its orbit hands the last of its arc over: past
- * `trimTo` the conic runs on to the body's *centre*, which is not where the
- * craft goes and is only there because a two-body solve has to end somewhere.
- * Anything reading the arc — drawing along it, or measuring off it — wants this
- * window rather than the whole of it, or it ends up asking what the trip is like
- * at nought kilometres from the Sun.
+ * The half-open range of `path.arcs[index]` that is the crossing proper. Past
+ * `trimTo` the conic runs on to the body's centre — an artifact of the
+ * two-body solve, not somewhere the craft goes — so anything drawing or
+ * measuring the arc wants this window, not the whole of it.
  */
 export function crossingWindow(path: TrajectoryPath, index: number): { from: number; to: number } {
 	const count = path.arcs[index].points.length;
@@ -30,12 +23,9 @@ export function crossingWindow(path: TrajectoryPath, index: number): { from: num
 }
 
 /**
- * Where the craft is, and what that is measured from.
- *
- * The frame is carried rather than assumed because the trip does not have one
- * frame: a planet-frame end is drawn about its own body, so a point on it means
- * nothing until it is put back against that body. Everywhere else this is the
- * path's own centre.
+ * Where the craft is, and what that is measured from — carried rather than
+ * assumed because a planet-frame end is drawn about its own body, not the
+ * path's centre.
  */
 export interface CraftAt {
 	/** Position, km, measured from `centerId`. */
@@ -44,19 +34,12 @@ export interface CraftAt {
 }
 
 /**
- * Where the craft is at `jd`.
- *
- * Null before it leaves and after it arrives — there is no craft in flight then,
- * and pinning the marker to an end would claim otherwise.
- *
- * Follows what is *drawn*, which is not the arcs alone: an end with a passage
- * takes the last stretch of its crossing over, and past the handover the arc's
- * own samples run on to the body's centre — a place the craft never goes. Read
- * off those, the marker leaves the line it is supposed to be riding and closes
- * on the planet in a straight line while the drawn trip curves away from it.
- *
- * Interpolated between samples by their own dates rather than by counting them:
- * only a coasting arc is sampled evenly in time (see {@link PathArc.jds}).
+ * Where the craft is at `jd`, or null before departure / after arrival.
+ * Follows what is drawn, not the raw arcs: a passage end's approach segment
+ * overrides its arc's tail past the handover, since those samples run on to
+ * the body's centre — the marker would otherwise cut a straight line to the
+ * planet instead of riding the curve. Interpolated by sample date, not index,
+ * since only a coasting arc is sampled evenly in time ({@link PathArc.jds}).
  */
 export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | null {
 	const first = path.arcs[0];
@@ -70,9 +53,8 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 	const departure = passage('departure');
 	const arrival = passage('arrival');
 
-	// The ground dates are the trip's real span: liftoff comes hours before the
-	// priced departure and touchdown hours after the priced arrival, and the
-	// craft is in flight for the climb and the descent too.
+	// Ground dates are the real span: liftoff/touchdown are hours before/after
+	// the priced departure/arrival, and the craft is in flight for both.
 	const begin = Math.min(first.startJd, departure?.surfaceJd ?? Infinity);
 	const over = Math.max(last.endJd, arrival?.surfaceJd ?? -Infinity);
 	if (jd < begin || jd > over) return null;
@@ -84,11 +66,8 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 			centerId: departure.anchorId
 		};
 	}
-	// The capture, after it. Its periapsis lands hours before the priced arrival —
-	// the insertion burn is made there, so the last minutes of the trip are spent
-	// in the orbit rather than still falling towards it, and the marker holds.
-	// A landing keeps going: its line runs on to the ground, and the marker rides
-	// it to touchdown.
+	// The capture, after it. Periapsis lands before the priced arrival (the
+	// insertion burn happens there), and a landing's line runs on to the ground.
 	if (arrival && jd >= arrival.jds[0]) {
 		return {
 			r: between(arrival.approach, arrival.jds, Math.min(jd, arrival.surfaceJd ?? arrival.periJd)),

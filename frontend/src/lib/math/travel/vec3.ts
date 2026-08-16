@@ -1,5 +1,4 @@
-/** Minimal 3-vector helpers for trajectory math. Tuples match the convention
- * used by the orbit/position code so states can flow between the two. */
+/** 3-vector helpers for trajectory math; tuples match the orbit/position code's convention. */
 
 export type Vec3 = readonly [number, number, number];
 

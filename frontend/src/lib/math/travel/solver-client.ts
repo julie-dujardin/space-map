@@ -1,20 +1,17 @@
 /**
- * Main-thread handle on the travel workers.
+ * Main-thread handle on the travel workers. Only the newest request of each
+ * kind matters — the UI asks again whenever destination, vehicle or arrival
+ * mode changes — so earlier ones resolve to null rather than race to
+ * overwrite the display; callers can ignore a null and keep what they had.
  *
- * Only the newest request of each kind matters — the UI asks again whenever the
- * destination, vehicle or arrival mode changes — so earlier ones resolve to null
- * rather than racing to overwrite the display. Callers can ignore a null and
- * keep whatever they were showing.
- *
- * The two kinds get a worker each, and this is the load-bearing part: a worker
- * runs its messages one after another, and a swing-by hunt takes seconds where a
- * grid takes milliseconds. Sharing one would put every re-solve behind whatever
- * hunt happened to be running and leave the panel reading "finding routes" for
- * as long as it took.
+ * The two kinds get a worker each: a worker runs its messages one after
+ * another, and a swing-by hunt takes seconds where a grid takes
+ * milliseconds. Sharing one would put every re-solve behind whatever hunt was
+ * running and leave the panel reading "finding routes" for as long as that took.
  *
  * A superseded hunt is killed rather than waited out, for the same reason: it
- * has seconds of work left that nothing will ever read, and the request that
- * replaced it would queue behind all of it.
+ * has seconds of work left nothing will ever read, and the replacement
+ * request would queue behind all of it.
  */
 
 import type { TravelBody } from './body';

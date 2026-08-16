@@ -1,13 +1,10 @@
 /**
- * One end of a trip.
+ * One end of a trip: a body plus, optionally, a site on it.
  *
- * A trajectory is always priced against a *body* — its mass sets the capture
- * burn, its radius the parking orbit, its atmosphere the aerocapture discount.
- * A place on that body does not change any of that; it only says where you
- * touch down. So an endpoint is a body plus, optionally, a site on it.
- *
- * The one thing a site does decide is the mode: there is no way to arrive at a
- * named crater, or at a lander parked in one, except by landing there.
+ * A trajectory is priced against the *body* — mass sets the capture burn,
+ * radius the parking orbit, atmosphere the aerocapture discount — and a site
+ * only says where you touch down. The one thing a site does decide is the
+ * mode: there is no way to arrive at a named crater except by landing there.
  */
 
 import type { NavPlace } from '$lib/state/view';
@@ -25,14 +22,8 @@ export interface TravelEndpointPick {
 	name: string;
 }
 
-/**
- * The place on a body an end sits at, once it is known.
- *
- * A feature is named and has to be looked up; a landed probe carries its own
- * coordinates out of the position stream, and a launch pad has nothing but
- * coordinates to be. All of them come down to a spot on a globe, which is all
- * the trajectory ever wanted.
- */
+/** The place on a body an end sits at, once it is known — a named feature to
+ *  look up, or bare coordinates, either way a spot on a globe. */
 export type EndSite =
 	| { kind: 'feature'; featureId: number }
 	| { kind: 'point'; latDeg: number; lonDeg: number };

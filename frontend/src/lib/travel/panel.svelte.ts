@@ -3,10 +3,10 @@
  * that come back.
  *
  * Solving is an explicit method rather than an effect inside the class — the
- * component owns the effect, so the reads that should trigger a re-solve are
- * visible in one place instead of hidden behind an async write that would feed
- * itself. Superseded solves are dropped by token, so a fast change of
- * destination cannot be overwritten by the answer to the previous one.
+ * component owns the effect, so the reads that should trigger a re-solve stay
+ * visible in one place instead of hidden behind a self-feeding async write.
+ * Superseded solves are dropped by token, so a fast destination change can't
+ * be overwritten by the answer to the previous one.
  */
 
 import {
@@ -55,12 +55,9 @@ function air(body: TravelBody): string {
 	return `${body.aeroPressurePa ?? ''}/${body.aeroScaleHeightKm ?? ''}/${body.surfacePressureBar ?? ''}`;
 }
 
-/**
- * How much cheaper a swing-by has to be before it is offered, km/s.
- *
- * Roughly what a Mars capture costs, and comfortably above the tens of metres
- * per second the two searches differ by on a route that is really the same one.
- */
+/** How much cheaper a swing-by has to be before it's offered, km/s. Roughly
+ *  what a Mars capture costs, comfortably above the tens of m/s two searches
+ *  differ by on a route that's really the same one. */
 const ASSIST_MIN_SAVING_KMS = 0.3;
 
 export interface OfferedRoute {
@@ -75,22 +72,18 @@ export type BlockReason = 'unknown-primary' | 'unknown-orbit' | 'no-target' | 'n
  * A better description of one end at a date the search has landed on, or null
  * when the one in hand is already good for it.
  *
- * Planets keep the same ellipse for centuries; a probe does not. What describes
+ * Planets keep the same ellipse for centuries; a probe doesn't. What describes
  * one is a fit over a window of weeks, and a transfer takes years — so a trip
- * planned against the fit covering today aims at where a long-expired ellipse
- * says the probe will be, which is nowhere near where it will. This is how the
- * search asks again at the dates its own answer names.
+ * planned against today's fit aims at where a long-expired ellipse says the
+ * probe will be, nowhere near where it will. This is how the search asks
+ * again at the dates its own answer names.
  */
 export type RefineEnd = (role: 'origin' | 'target', jd: number) => Promise<TravelBody | null>;
 
-/**
- * How many times a search may be re-run against elements read at its own
- * answer's dates.
- *
- * A pass is a whole porkchop, so this is the ceiling on what a correction may
- * cost. Two converge a crossing that stays inside one fit; the third is for an
- * answer that moves far enough to land in a different one.
- */
+/** How many times a search may be re-run against elements read at its own
+ *  answer's dates. A pass is a whole porkchop, the ceiling on what a
+ *  correction may cost. Two converge a crossing inside one fit; the third is
+ *  for an answer moving far enough to land in a different one. */
 const MAX_REFINE_PASSES = 3;
 
 /** How little the dates have to move for a further pass to be answering the
@@ -125,15 +118,14 @@ export class TravelPanelState {
 	/**
 	 * The orbit each end is met in, km from the centre.
 	 *
-	 * Set by the component, because which orbits a body can hold takes the body's
-	 * spin and its Hill radius — neither of which the kernel's `TravelBody`
-	 * carries. Absent means the mode names no orbit, and the kernel falls back to
-	 * the parking orbit it always used.
+	 * Set by the component: which orbits a body can hold takes its spin and Hill
+	 * radius, neither of which the kernel's `TravelBody` carries. Absent means
+	 * the mode names no orbit, and the kernel falls back to the parking orbit.
 	 *
 	 * Raw, and load-bearing: these ride into the solver worker inside the route
-	 * options, and a deep `$state` proxy cannot be structured-cloned — the whole
-	 * solve fails with a `DataCloneError`. They are replaced wholesale rather than
-	 * written into, so there is nothing for the proxy to have earned.
+	 * options, and a deep `$state` proxy can't be structured-cloned — the solve
+	 * would fail with a `DataCloneError`. Replaced wholesale rather than written
+	 * into, so there's nothing for the proxy to have earned.
 	 */
 	originOrbit = $state.raw<EndOrbit | undefined>(undefined);
 	targetOrbit = $state.raw<EndOrbit | undefined>(undefined);
@@ -159,26 +151,18 @@ export class TravelPanelState {
 	vehicleId = $state<string | null>(DEFAULT_TRIP.vehicleId);
 	/** The fetched catalogue; empty until `loadVehicles` lands. */
 	vehicles = $state<readonly Vehicle[]>([]);
-	/**
-	 * Whether the catalogue has settled, successfully or not.
-	 *
-	 * Empty means two different things before and after the fetch — "nothing
-	 * loaded yet" and "nothing to load" — and every inference about the chosen
-	 * craft is wrong in the first case. This is what tells them apart.
-	 */
+	/** Whether the catalogue has settled, successfully or not. Empty means two
+	 *  different things before and after the fetch — "nothing loaded yet" and
+	 *  "nothing to load" — and this is what tells them apart. */
 	vehiclesReady = $state(false);
 	/** What the trip carries. Costs no solve — mass moves no trajectory — so
 	 *  these sit outside the effect that re-solves. */
 	passengers = $state(DEFAULT_TRIP.passengers);
 	payloadKg = $state(DEFAULT_TRIP.payloadKg);
-	/**
-	 * The trajectory being read, or null while they are still being chosen between.
-	 *
-	 * This is the panel's two steps: nothing selected is the list of what is on
-	 * offer, and a selection is that one trajectory in detail. So nothing here ever
-	 * selects on the reader's behalf — a choice they did not make would put them in
-	 * front of an answer to a question they had not finished asking.
-	 */
+	/** The trajectory being read, or null while they're still being chosen
+	 *  between — the panel's two steps. Nothing here ever selects on the
+	 *  reader's behalf: a choice they didn't make would put them in front of an
+	 *  answer to a question they hadn't finished asking. */
 	selectedProfile = $state<RouteOption | null>(DEFAULT_TRIP.profile);
 	/** How much of the coast on offer the constant-thrust arc takes, 0 to 1. Kept
 	 *  whatever the trip is, like the aero assist: a reader who chose to cross
@@ -188,8 +172,8 @@ export class TravelPanelState {
 	routes = $state<RouteChoice[]>([]);
 	/** A point picked off the porkchop, priced like any solved route. */
 	custom = $state<Route | null>(null);
-	/** The preset constant-thrust arcs, flat out first. They come from the craft,
-	 *  not the search, and cost one shooting solve each. */
+	/** The preset constant-thrust arcs, flat out first. From the craft, not the
+	 *  search, and cost one shooting solve each. */
 	torchPresets = $state<TorchArc[]>([]);
 	/** The arc the cruise slider asks for. Kept apart from the presets because it
 	 *  is solved on its own. A drag must not cost four solves a frame. */
@@ -197,24 +181,18 @@ export class TravelPanelState {
 	/** Set when arcs exist and all of them land after the deadline. None is
 	 *  offered. The reader still needs the slider to undo the coast. */
 	torchMissedDeadline = $state(false);
-	/**
-	 * The spiral, when the chosen craft is one that cannot burn.
-	 *
-	 * Comes off the craft the way the arc above does, and for the same reason:
-	 * the trajectory an ion drive flies is a fact about the drive, not an option
-	 * the porkchop offers. Unlike the arc it does have a departure date to find —
-	 * the phase still has to close — but that is a bisection rather than a grid.
-	 */
+	/** The spiral, when the chosen craft can't burn. Comes off the craft like
+	 *  the arc above, and for the same reason: the trajectory an ion drive flies
+	 *  is a fact about the drive, not an option the porkchop offers. Unlike the
+	 *  arc it does have a departure date to find — the phase has to close — but
+	 *  that's a bisection rather than a grid. */
 	spiral = $state<Route | null>(null);
-	/**
-	 * The cheapest route that swings past a third body, when one was found.
-	 *
-	 * Held raw rather than filtered: whether it is worth offering is a comparison
-	 * against the direct routes, and those land on their own schedule. `offered`
-	 * makes that call at read time so neither answer has to wait for the other.
-	 */
+	/** The cheapest route that swings past a third body, when one was found.
+	 *  Held raw rather than filtered: whether it's worth offering is a
+	 *  comparison against the direct routes, which land on their own schedule.
+	 *  `offered` makes that call at read time so neither has to wait. */
 	assist = $state<Route | null>(null);
-	/** Whether a hunt is running. It takes about a second — long enough that
+	/** Whether a hunt is running. Takes about a second — long enough that
 	 *  without saying so, "still looking" and "there isn't one" are the same
 	 *  silence. */
 	assistSearching = $state(false);
@@ -229,20 +207,19 @@ export class TravelPanelState {
 	 *  takes about a second — long enough for two trips to have gone by. */
 	#assistToken = 0;
 	/** What the standing hunt was asked. A hunt costs a second and starting one
-	 *  stops the last, so a caller that asks the same question twice would never
-	 *  get an answer; this is what makes asking again free. */
+	 *  stops the last, so this is what makes asking the same question twice free. */
 	#assistFor: string | null = null;
-	/** The last solve's inputs, so a hand-picked point is priced the same way the
-	 *  grid it was read off was. Reactive because the ends in it are also the ones
-	 *  the trajectory is drawn from — see {@link pricedEnds}. */
+	/** The last solve's inputs, so a hand-picked point is priced the same way
+	 *  the grid it was read off was. Reactive because the ends in it are also
+	 *  what the trajectory is drawn from — see {@link pricedEnds}. */
 	#pricing = $state<{ origin: TravelBody; target: TravelBody; options: RouteOptions } | null>(null);
 	/** A pick that arrived before there was a grid to price it against — off a
 	 *  shared link — held until the first solve lands. */
 	#pendingPick = $state<TripPick | null>(null);
-	/** A trajectory a link named that nothing offers yet. Only the swing-by needs
-	 *  this: it is the one option that arrives a second after the routes it is
-	 *  listed beside, so the usual "drop a selection nothing offers" rule would
-	 *  throw it away before the hunt that would have justified it came back. */
+	/** A trajectory a link named that nothing offers yet. Only the swing-by
+	 *  needs this: it arrives a second after the routes it's listed beside, so
+	 *  the usual "drop a selection nothing offers" rule would throw it away
+	 *  before the hunt that would have justified it came back. */
 	#pendingProfile = $state<RouteOption | null>(null);
 
 	/** Seeded from the URL, which is where a trip's terms live. */
@@ -254,36 +231,29 @@ export class TravelPanelState {
 		return this.vehicles.find((v) => v.id === this.vehicleId) ?? null;
 	}
 
-	/**
-	 * Whether the chosen craft is settled enough to reason about.
-	 *
-	 * A trip naming no craft is settled the moment it loads. One that names a
-	 * craft is not settled until the catalogue is in, and anything concluding
-	 * "this craft cannot do X" before then is answering about a craft it has not
-	 * seen. Every such inference is gated on this.
-	 */
+	/** Whether the chosen craft is settled enough to reason about. A trip naming
+	 *  no craft is settled the moment it loads; one that does isn't settled
+	 *  until the catalogue is in, and anything concluding "this craft can't do
+	 *  X" before then is answering about a craft it hasn't seen. Every such
+	 *  inference is gated on this. */
 	get craftKnown(): boolean {
 		return this.vehicleId === null || this.vehiclesReady;
 	}
 
-	/**
-	 * The two ends the standing routes were priced against, which for anything
-	 * that does not keep still are not the ends the caller handed in: a refined
-	 * pass describes each of them at the trip's own dates.
-	 *
-	 * Null until a solve lands. Everything drawn from a route has to come off
-	 * these — geometry rebuilt from another description of the same body is a
-	 * picture of a different trip, and where the two disagree far enough there is
-	 * no arc to draw at all.
-	 */
+	/** The two ends the standing routes were priced against, which for anything
+	 *  that doesn't keep still aren't the ends the caller handed in: a refined
+	 *  pass describes each at the trip's own dates. Null until a solve lands.
+	 *  Everything drawn from a route has to come off these — geometry rebuilt
+	 *  from another description of the same body is a picture of a different
+	 *  trip. */
 	get pricedEnds(): { origin: TravelBody; target: TravelBody } | null {
 		const pricing = this.#pricing;
 		return pricing ? { origin: pricing.origin, target: pricing.target } : null;
 	}
 
 	/** How many times {@link pricedEnds} has been replaced. A refined pass can
-	 *  re-describe an end without moving a single date, so a caller keyed on what
-	 *  a route says has no other way to notice. */
+	 *  re-describe an end without moving a single date, so a caller keyed on
+	 *  what a route says has no other way to notice. */
 	pricedRevision = $state(0);
 
 	/** The trip as the URL carries it. The hand pick is reported whether or not a
@@ -311,7 +281,7 @@ export class TravelPanelState {
 	}
 
 	/** Take a trip's terms as given — a fresh load, or browser-back onto one.
-	 *  Which end is a named place is not among them: that comes from the path. */
+	 *  Which end is a named place isn't among them: that comes from the path. */
 	applyTrip(trip: TripState): void {
 		this.originMode = trip.originMode;
 		this.targetMode = trip.targetMode;
@@ -335,9 +305,9 @@ export class TravelPanelState {
 	 * link already names a craft. The routes solve without it, so nothing waits
 	 * on the fetch.
 	 *
-	 * The catalogue is held here rather than read from the module on demand: it
-	 * lands after first paint, and a plain array is nothing a rune watches — a
-	 * `vehicle` read off one would keep answering null long after the fetch.
+	 * Held here rather than read from the module on demand: it lands after
+	 * first paint, and a plain array is nothing a rune watches — a `vehicle`
+	 * read off one would keep answering null long after the fetch.
 	 */
 	async loadVehicles(): Promise<void> {
 		try {
@@ -345,42 +315,34 @@ export class TravelPanelState {
 			this.acceptVehicles(vehicleCatalogue());
 		} catch (e) {
 			// A catalogue that will never arrive is still an answer. Leaving it
-			// unsettled would hold every craft-dependent decision open for the rest
-			// of the session, waiting for something that is not coming.
+			// unsettled would hold every craft-dependent decision open for the
+			// rest of the session, waiting for something that isn't coming.
 			console.warn('[travel] no spacecraft catalogue, judging no craft:', e);
 			this.acceptVehicles([]);
 		}
 	}
 
-	/**
-	 * Take the catalogue and settle everything that was waiting on it.
-	 *
-	 * The terms of a trip cannot all be applied when the URL is read: two of them
-	 * name things only this can resolve. So they are held as asked for, and
-	 * answered here.
-	 */
+	/** Take the catalogue and settle everything that was waiting on it. Two of a
+	 *  trip's terms can't be applied when the URL is read, since only the
+	 *  catalogue can resolve them, so they're held as asked for and answered
+	 *  here. */
 	acceptVehicles(list: readonly Vehicle[]): void {
 		this.vehicles = list;
 		this.vehiclesReady = true;
 		this.#reconcileCraft();
 	}
 
-	/**
-	 * Check what the URL asked for against the catalogue that has now landed.
-	 *
-	 * This is the whole reason the trip's terms cannot simply be applied once at
-	 * load: two of them name things only the catalogue can resolve. A link is a
-	 * request, and a request for a craft nobody ships, or for an arc that craft
-	 * cannot fly, has to be answered rather than carried around.
-	 */
+	/** Check what the URL asked for against the catalogue that has now landed.
+	 *  A link is a request, and a request for a craft nobody ships, or for an
+	 *  arc that craft can't fly, has to be answered rather than carried around. */
 	#reconcileCraft(): void {
 		if (this.vehicleId !== null && this.vehicle === null) {
 			console.debug(`[travel] no craft "${this.vehicleId}" in the catalogue — dropping it.`);
 			this.vehicleId = null;
 		}
 		const vehicle = this.vehicle;
-		// An arc held all the way is a claim about the drive, so a link naming one
-		// for a craft that cannot hold it named a trip that does not exist.
+		// An arc held all the way is a claim about the drive, so a link naming
+		// one for a craft that can't hold it named a trip that doesn't exist.
 		if (this.selectedProfile?.startsWith('constant-thrust')) {
 			if (!vehicle || constantThrustAccelMs2(vehicle) === undefined) {
 				this.selectedProfile = null;
@@ -388,8 +350,8 @@ export class TravelPanelState {
 				this.torchCustom = null;
 			}
 		}
-		// And a spiral is a claim about a drive that cannot burn, so the same holds
-		// for a link naming one beside a craft whose engine does.
+		// And a spiral is a claim about a drive that can't burn, so the same
+		// holds for a link naming one beside a craft whose engine does.
 		if (this.selectedProfile === 'low-thrust') {
 			if (!vehicle || lowThrustDrive(vehicle, this.payloadKg) === undefined) {
 				this.selectedProfile = null;
@@ -399,21 +361,18 @@ export class TravelPanelState {
 	}
 
 	/** Whether aerobraking is an arrival this trip can fly: it walks a loose
-	 *  orbit down into a tight one, so only a low-orbit arrival has one to walk.
-	 *  A site is a landing whatever the picker last held. */
+	 *  orbit into a tight one, so only a low-orbit arrival has one to walk. A
+	 *  site is a landing whatever the picker last held. */
 	get aerobrakingApplies(): boolean {
 		return this.targetMode === 'low-orbit' && !this.targetAtSite;
 	}
 
-	/**
-	 * The braking the trip is actually priced with.
-	 *
-	 * `aero` is the choice as made, held across destination changes so it is not
-	 * lost to a detour; this is what that choice means for the arrival at hand. A
-	 * trip that was aerobraking and is now landing is not braking on the way in
-	 * at all until it says so again — pricing the raw value would grow a landing
-	 * a months-long campaign the control says is not there.
-	 */
+	/** The braking the trip is actually priced with. `aero` is the choice as
+	 *  made, held across destination changes so it isn't lost to a detour; this
+	 *  is what that choice means for the arrival at hand. A trip that was
+	 *  aerobraking and is now landing isn't braking at all until it says so
+	 *  again — pricing the raw value would grow a landing a months-long
+	 *  campaign the control says isn't there. */
 	get effectiveAero(): AeroAssist {
 		return this.aero === 'aerobraking' && !this.aerobrakingApplies ? 'none' : this.aero;
 	}
@@ -424,21 +383,17 @@ export class TravelPanelState {
 		if (this.targetAtSite) return 'landing';
 		if (this.targetMode === 'flyby') return 'flyby';
 		if (this.targetMode === 'surface') return 'landing';
-		// Which of the two remaining cases is picked no longer sets the orbit —
-		// `targetOrbit` does — but it still decides what an aerobraking campaign
-		// starts from, and a loose ellipse has nothing to walk down.
+		// The remaining case no longer sets the orbit — `targetOrbit` does — but
+		// still decides what an aerobraking campaign starts from, and a loose
+		// ellipse has nothing to walk down.
 		return this.targetMode === 'elliptical' ? 'capture' : 'low-orbit';
 	}
 
-	/**
-	 * What each end of the trip is, as route options: the orbit it is met in,
-	 * and the latitude it stands at where it stands on a surface.
-	 *
-	 * A landing or a flyby names no orbit, and neither does an end whose body has
-	 * not been measured yet. A latitude is only worth quoting where the trip
-	 * actually touches the ground — anywhere else the ascent it would price never
-	 * happens.
-	 */
+	/** What each end of the trip is, as route options: the orbit it's met in,
+	 *  and the latitude it stands at where it stands on a surface. A landing or
+	 *  flyby names no orbit, nor does an end whose body hasn't been measured
+	 *  yet. A latitude is only worth quoting where the trip actually touches
+	 *  the ground — anywhere else the ascent it would price never happens. */
 	get endTerms(): Pick<
 		RouteOptions,
 		'departureOrbit' | 'targetOrbit' | 'departureSiteLatDeg' | 'targetSiteLatDeg'
@@ -477,11 +432,10 @@ export class TravelPanelState {
 	/**
 	 * Everything on offer.
 	 *
-	 * The hand-picked route goes last: it is an addition to the solver's answer
+	 * The hand-picked route goes last: it's an addition to the solver's answer
 	 * rather than one of them. Whatever the craft's own drive flies goes first,
-	 * because the craft it is offered for usually cannot fly the rest, and
-	 * listing the one real answer under three trajectories that craft has to
-	 * refuse would bury it.
+	 * because that craft usually can't fly the rest, and listing the one real
+	 * answer under three trajectories it has to refuse would bury it.
 	 */
 	get offered(): OfferedRoute[] {
 		const craftArc: OfferedRoute[] = [...this.torchPresets];
@@ -498,11 +452,11 @@ export class TravelPanelState {
 	/**
 	 * The swing-by route, if it earns its place.
 	 *
-	 * It is only ever an alternative to going straight there, and it buys its Δv
-	 * with years of extra travel and a departure date well outside the grid. So it
-	 * is shown when it is genuinely cheaper than anything the direct search found
-	 * and left out when it merely ties — an identical price for a decade more
-	 * waiting is not a choice worth putting in front of anyone.
+	 * Only ever an alternative to going straight there, buying its Δv with
+	 * years of extra travel and a departure date well outside the grid. Shown
+	 * when genuinely cheaper than the direct search's best, left out when it
+	 * merely ties — an identical price for a decade more waiting isn't a
+	 * choice worth putting in front of anyone.
 	 */
 	#assistWorthOffering(): Route | null {
 		const assist = this.assist;
@@ -511,13 +465,10 @@ export class TravelPanelState {
 		return assist.totalDvKms <= cheapest - ASSIST_MIN_SAVING_KMS ? assist : null;
 	}
 
-	/**
-	 * Set when transfers exist but none of them arrive by the date asked for.
-	 *
-	 * Worth telling apart from finding nothing at all: one says the pair cannot be
-	 * flown as described, the other says only that the deadline is too soon — and
-	 * a date is the one term of a trip the reader can move.
-	 */
+	/** Set when transfers exist but none arrive by the date asked for. Worth
+	 *  telling apart from finding nothing at all: one says the pair can't be
+	 *  flown as described, the other only that the deadline is too soon — and
+	 *  a date is the one term of a trip the reader can move. */
 	get missedDeadline(): boolean {
 		return (
 			this.timeMode === 'arrive' &&
@@ -538,7 +489,7 @@ export class TravelPanelState {
 
 	/** Read one of the trajectories on offer. A choice made by hand outranks
 	 *  whatever a link is still waiting on — the hunt landing later must not
-	 *  take the reader off it. */
+	 *  move the reader off it. */
 	choose(profile: RouteOption): void {
 		this.selectedProfile = profile;
 		this.#pendingProfile = null;
@@ -554,13 +505,13 @@ export class TravelPanelState {
 	/**
 	 * Take a point read off the porkchop as a further trajectory on offer.
 	 *
-	 * It joins the list rather than being read straight away: picking is a drag,
-	 * and every point crossed on the way would otherwise replace the list with the
-	 * detail of a trajectory nobody stopped on.
+	 * It joins the list rather than being read straight away: picking is a
+	 * drag, and every point crossed on the way would otherwise replace the
+	 * list with the detail of a trajectory nobody stopped on.
 	 *
-	 * A point with no arc through it leaves the previous pick standing: the field
-	 * has unsolved cells in it, and clearing the choice because a drag crossed one
-	 * would make the picker fight the user.
+	 * A point with no arc through it leaves the previous pick standing: the
+	 * field has unsolved cells, and clearing the choice because a drag crossed
+	 * one would make the picker fight the user.
 	 */
 	pickCustom(departJd: number, tofDays: number): void {
 		const route = this.#price(departJd, tofDays);
@@ -587,13 +538,10 @@ export class TravelPanelState {
 		return inGrid ? this.#price(departJd, tofDays) : null;
 	}
 
-	/**
-	 * Carry a hand-picked point across a re-solve, re-priced.
-	 *
-	 * Changing a mode or a date is a change to what the same trip costs, so the
-	 * point survives it. Changing an end is a different trip, and a point outside
-	 * the new grid is one the chart can no longer place.
-	 */
+	/** Carry a hand-picked point across a re-solve, re-priced. Changing a mode
+	 *  or date changes what the same trip costs, so the point survives it.
+	 *  Changing an end is a different trip, and a point outside the new grid is
+	 *  one the chart can no longer place. */
 	#repriceCustom(): Route | null {
 		const previous = this.custom;
 		if (!previous || !this.#pricing) return null;
@@ -603,7 +551,7 @@ export class TravelPanelState {
 	}
 
 	/** Price the pick a shared link arrived with, now that there is a grid. It
-	 *  gets the one attempt: if the trip it named is not in this grid, the link
+	 *  gets one attempt: if the trip it named isn't in this grid, the link
 	 *  described a window this pair no longer has. */
 	#pricePendingPick(): Route | null {
 		const pending = this.#pendingPick;
@@ -617,9 +565,9 @@ export class TravelPanelState {
 	 * to one the craft can actually make.
 	 *
 	 * Picking an SLS while the origin box says "low orbit" means the box is
-	 * wrong, not the choice: a launcher is the one thing that cannot already be
-	 * up there. Left alone when the origin is a place on a surface (there is
-	 * only one way to leave one) or when the craft departs from nowhere.
+	 * wrong, not the choice: a launcher is the one thing that can't already be
+	 * up there. Left alone when the origin is a place on a surface (only one
+	 * way to leave one) or when the craft departs from nowhere.
 	 */
 	selectVehicle(id: string | null): void {
 		this.vehicleId = this.vehicleId === id ? null : id;
@@ -634,7 +582,7 @@ export class TravelPanelState {
 		return { passengers: this.passengers, payloadKg: this.payloadKg };
 	}
 
-	/** Whether the chosen craft can fly a route loaded as described; null when
+	/** Whether the chosen craft can fly a route loaded as described. Null when
 	 *  no craft is chosen. */
 	feasibility(route: Route): Feasibility | null {
 		const vehicle = this.vehicle;
@@ -661,9 +609,9 @@ export class TravelPanelState {
 		return deadlineJd == null || routeEndJd(route) <= deadlineJd;
 	}
 
-	/** Days this trip's arrival still owes once the crossing is over. Read off the
-	 *  same orbit the routes are priced against, or it would answer about another
-	 *  trip. */
+	/** Days this trip's arrival still owes once the crossing is over. Read off
+	 *  the same orbit the routes are priced against, or it would answer about
+	 *  another trip. */
 	#arrivalCampaignDays(target: TravelBody): number {
 		return arrivalCampaignDays(
 			target,
@@ -673,16 +621,17 @@ export class TravelPanelState {
 		);
 	}
 
-	/** The earliest the trip may leave — now, unless a later departure was asked
-	 *  for. A deadline says nothing here: it is a date to be met, not waited for. */
+	/** The earliest the trip may leave — now, unless a later departure was
+	 *  asked for. A deadline says nothing here: it's a date to be met, not
+	 *  waited for. */
 	#earliestDepartJd(nowJd: number): number {
 		return this.timeMode === 'depart' && this.pickedJd != null
 			? Math.max(nowJd, this.pickedJd)
 			: nowJd;
 	}
 
-	/** One held arc at one point on the coast span. Null when the drive cannot fly
-	 *  that crossing. */
+	/** One held arc at one point on the coast span. Null when the drive can't
+	 *  fly that crossing. */
 	#buildTorch(
 		origin: TravelBody,
 		target: TravelBody,
@@ -691,8 +640,8 @@ export class TravelPanelState {
 		frame: TransferFrame,
 		coastFraction: number
 	): Route | null {
-		// Every departure date flies the same arc, so the only thing a date says is
-		// when to start counting. A deadline says nothing at all until it is met.
+		// Every departure date flies the same arc, so a date only says when to
+		// start counting. A deadline says nothing at all until it is met.
 		return buildConstantThrustRoute(origin, target, this.#earliestDepartJd(nowJd), accelMs2, {
 			departureMode: this.departureMode,
 			arrivalMode: this.arrivalMode,
@@ -704,9 +653,9 @@ export class TravelPanelState {
 		});
 	}
 
-	/** The acceleration the craft holds. Zero when there is no arc to be had.
-	 *  Null while the catalogue is still coming: an answer given then would drop
-	 *  the trajectory a shared link named. */
+	/** The acceleration the craft holds. Zero when there's no arc to be had.
+	 *  Null while the catalogue is still coming: an answer given then would
+	 *  drop the trajectory a shared link named. */
 	#torchAccelMs2(): number | null {
 		if (!this.craftKnown) return null;
 		const vehicle = this.vehicle;
@@ -716,12 +665,12 @@ export class TravelPanelState {
 	/**
 	 * Recompute the preset arcs for the craft and the trip as they stand.
 	 *
-	 * Called on its own, not from `solve`. A new craft is not a new search, and a
-	 * new search does not change how hard the drive pushes.
+	 * Called on its own, not from `solve`: a new craft isn't a new search, and
+	 * a new search doesn't change how hard the drive pushes.
 	 *
-	 * Nothing below reads `this.torchPresets` back. This runs inside an effect and
-	 * builds fresh objects, so a read makes the effect depend on a value it just
-	 * replaced. That loops forever.
+	 * Nothing below reads `this.torchPresets` back. This runs inside an effect
+	 * and builds fresh objects, so a read would make the effect depend on a
+	 * value it just replaced — looping forever.
 	 */
 	updateTorch(
 		origin: TravelBody,
@@ -752,8 +701,8 @@ export class TravelPanelState {
 		this.torchPresets = offered;
 		// Only the coast can put a crossing past a deadline.
 		this.torchMissedDeadline = listed.length > 0 && offered.length === 0;
-		// Never selected for the reader: a torch ship can fly the coasting routes
-		// too. But an arc that is no longer offered must release the panel.
+		// Never selected for the reader: a torch ship can fly the coasting
+		// routes too. But an arc no longer offered must release the panel.
 		const reading = this.selectedProfile;
 		if (
 			reading !== null &&
@@ -765,8 +714,8 @@ export class TravelPanelState {
 		}
 	}
 
-	/** Recompute the arc the cruise slider asks for. It has its own method and
-	 *  effect because a drag must not re-solve the presets on every frame. */
+	/** Recompute the arc the cruise slider asks for. Its own method and effect
+	 *  because a drag must not re-solve the presets on every frame. */
 	updateTorchCustom(
 		origin: TravelBody,
 		target: TravelBody,
@@ -776,8 +725,8 @@ export class TravelPanelState {
 		const accelMs2 = this.#torchAccelMs2();
 		if (accelMs2 === null) return;
 
-		// Built wherever the slider is, presets included. A box that goes blank at
-		// both ends of its own travel looks broken.
+		// Built wherever the slider is, presets included: a box that goes blank
+		// at both ends of its own travel looks broken.
 		const route =
 			accelMs2 > 0
 				? this.#buildTorch(origin, target, accelMs2, nowJd, frame, this.coastFraction)
@@ -785,22 +734,22 @@ export class TravelPanelState {
 		const offered = route && this.#meetsDeadline(route);
 
 		this.torchCustom = offered ? { profile: 'constant-thrust-custom', route } : null;
-		// A coast past the deadline would leave the reader on a trajectory nothing
-		// offers. The presets drop their own.
+		// A coast past the deadline would leave the reader on a trajectory
+		// nothing offers. The presets drop their own.
 		if (!offered && this.selectedProfile === 'constant-thrust-custom') this.selectedProfile = null;
 	}
 
 	/**
 	 * Recompute the spiral for the craft and the trip as they stand.
 	 *
-	 * A sibling of `updateTorch` in every structural way — it comes off the craft
-	 * rather than the search, it costs a bisection rather than a grid, and it
-	 * never reads its own answer back. What differs is the date: a spiral does
-	 * have to wait for the phase to close, so the date asked for is the earliest
-	 * it may leave rather than the date it leaves.
+	 * A sibling of `updateTorch` in every structural way — off the craft rather
+	 * than the search, a bisection rather than a grid, never reading its own
+	 * answer back. What differs is the date: a spiral has to wait for the phase
+	 * to close, so it's asked for the earliest it may leave rather than the
+	 * date it leaves.
 	 *
-	 * The manifest is an input here and nowhere else. Cargo makes a spiral slower
-	 * as well as shorter of Δv, because the drive is pushing it too.
+	 * The manifest is an input here and nowhere else: cargo makes a spiral
+	 * slower as well as shorter of Δv, since the drive is pushing it too.
 	 */
 	updateSpiral(
 		origin: TravelBody,
@@ -825,8 +774,9 @@ export class TravelPanelState {
 			: null;
 		const offer = route !== null && this.#meetsDeadline(route) ? route : null;
 		this.spiral = offer;
-		// Offered, never opened: an ion craft can be compared against the coasting
-		// routes, and choosing between them is the step an auto-selection skips.
+		// Offered, never opened: an ion craft can be compared against the
+		// coasting routes, and choosing between them is a step no auto-selection
+		// should skip.
 		if (!offer && this.selectedProfile === 'low-thrust') this.selectedProfile = null;
 	}
 
@@ -834,14 +784,14 @@ export class TravelPanelState {
 	 * Look for a route that swings past one of `vias`, and hold whatever comes
 	 * back.
 	 *
-	 * Its own method for the same reason `updateTorch` is: it answers to a
-	 * different question than the porkchop and on a different timescale — a second
-	 * or so in the worker, against a grid that lands immediately — so the panel
-	 * shows the direct routes and lets this fill in behind them.
+	 * Its own method for the same reason `updateTorch` is: it answers a
+	 * different question than the porkchop, on a different timescale — a
+	 * second or so in the worker, against a grid that lands immediately — so
+	 * the panel shows the direct routes and lets this fill in behind them.
 	 *
-	 * It only ever adds a row to the list. A trajectory that appeared a second late
-	 * and took the reader off the one they had opened would be reading their mind
-	 * about a comparison they had already made.
+	 * It only ever adds a row to the list. A trajectory appearing a second late
+	 * and taking the reader off the one they'd opened would be reading their
+	 * mind about a comparison they'd already made.
 	 */
 	async updateAssist(
 		origin: TravelBody,
@@ -850,20 +800,20 @@ export class TravelPanelState {
 		nowJd: number,
 		options: RouteOptions = {}
 	): Promise<void> {
-		// Ids and modes rather than the bodies themselves: the elements behind them
-		// are the scene's, and the scene rewrites them as its clock runs. The planner
-		// already reasons from a snapshotted "now", so the same trip asked again is
-		// the same question however far the planets have moved since.
+		// Ids and modes rather than the bodies themselves: their elements belong
+		// to the scene, which rewrites them as its clock runs, while the planner
+		// reasons from a snapshotted "now" — the same trip asked again is the
+		// same question however far the planets have moved since.
 		//
-		// The exception is the air, which is why it is spelled out here: whether an
-		// end has an atmosphere comes from a detail bundle that lands *after* the
-		// first hunt, and it moves an arrival by ten kilometres per second. Keyed on
-		// ids alone, the answer to "airless Saturn" would stand for the rest of the
-		// session while the routes beside it were priced with the aerocapture.
+		// The exception is the air: whether an end has an atmosphere comes from
+		// a detail bundle that lands *after* the first hunt, and it moves an
+		// arrival by ten km/s. Keyed on ids alone, "airless Saturn" would stand
+		// for the rest of the session while the routes beside it priced the
+		// aerocapture.
 		//
-		// The trip's dates are in here as the hunt reads them rather than as the
-		// panel holds them: a departure date is a floor on the search and a deadline
-		// is a ceiling, and both change which swing-by comes back.
+		// The trip's dates are in here as the hunt reads them, not as the panel
+		// holds them: a departure date floors the search and a deadline caps
+		// it, and both change which swing-by comes back.
 		const earliestJd = this.#earliestDepartJd(nowJd);
 		const deadlineJd = this.deadlineJd;
 		const key = [
@@ -892,8 +842,8 @@ export class TravelPanelState {
 			departureMode: this.departureMode,
 			arrivalMode: this.arrivalMode,
 			...this.endTerms,
-			// Load-bearing: the hunt is only ever compared against the direct routes,
-			// so an arrival priced on a different braking mode than theirs is not a
+			// Load-bearing: the hunt is only ever compared against the direct
+			// routes, so an arrival priced on a different braking mode isn't a
 			// comparison at all — it reads as a swing-by that saves nothing.
 			aero: this.effectiveAero
 		});
@@ -905,8 +855,8 @@ export class TravelPanelState {
 	}
 
 	/** Drop the swing-by, and anything still looking for one. No hunt is coming
-	 *  after this, so a link still waiting on one has its answer: there is none —
-	 *  holding on would report a trajectory this pair can never have, forever. */
+	 *  after this, so a link still waiting on one has its answer: there is
+	 *  none — holding on would report a trajectory this pair can never have. */
 	clearAssist(): void {
 		this.#assistToken++;
 		this.#assistFor = null;
@@ -917,16 +867,17 @@ export class TravelPanelState {
 	}
 
 	/**
-	 * Settle which trajectory is being read, now that what is offered has changed.
+	 * Settle which trajectory is being read, now that what is offered has
+	 * changed.
 	 *
-	 * Only ever retires a selection — a trajectory that stopped being offered puts
-	 * the reader back in front of the ones that are. Nothing is chosen in its place;
-	 * that is theirs to do.
+	 * Only ever retires a selection — a trajectory that stopped being offered
+	 * puts the reader back in front of the ones that are. Nothing is chosen in
+	 * its place; that's theirs to do.
 	 *
-	 * Two things a link can name arrive later than the routes do — the swing-by,
-	 * which is still being hunted, and the constant-thrust arc, which waits on the
-	 * craft catalogue — and neither may be retired by a search that knows nothing
-	 * about it. `huntSettled` is the hunt saying it has answered.
+	 * Two things a link can name arrive later than the routes do — the
+	 * swing-by, still being hunted, and the constant-thrust arc, waiting on
+	 * the craft catalogue — and neither may be retired by a search that knows
+	 * nothing about it. `huntSettled` is the hunt saying it has answered.
 	 */
 	#settleSelection(huntSettled = false): void {
 		const wanted = this.#pendingProfile;
@@ -935,16 +886,16 @@ export class TravelPanelState {
 				this.selectedProfile = wanted;
 				this.#pendingProfile = null;
 			} else if (huntSettled) {
-				// It has had its turn: the link named a trajectory this pair does not
-				// have, and from here it falls back like any other.
+				// It has had its turn: the link named a trajectory this pair
+				// doesn't have, and from here it falls back like any other.
 				this.#pendingProfile = null;
 			} else {
 				return;
 			}
 		}
-		// A search says nothing about the two trajectories that come off the craft
-		// rather than the grid, so it cannot retire a selection whose craft has yet
-		// to land.
+		// A search says nothing about the two trajectories that come off the
+		// craft rather than the grid, so it can't retire a selection whose craft
+		// hasn't landed yet.
 		const fromCraft =
 			this.selectedProfile?.startsWith('constant-thrust') || this.selectedProfile === 'low-thrust';
 		if (fromCraft && !this.craftKnown) return;
@@ -981,12 +932,13 @@ export class TravelPanelState {
 	 * Solve the current trip. Safe to call on every input change — the newest
 	 * call wins and the rest are discarded when they land.
 	 *
-	 * `frame` says what the transfer goes round: nothing for an arc about the Sun,
-	 * an end for a trip to that body's own moon, a μ for two moons of one planet.
+	 * `frame` says what the transfer goes round: nothing for an arc about the
+	 * Sun, an end for a trip to that body's own moon, a μ for two moons of one
+	 * planet.
 	 *
-	 * `refine` is how an end that does not keep still gets answered honestly — see
-	 * {@link RefineEnd}. Each pass is a whole search, so the first answer is on
-	 * screen at the usual speed and the corrections land behind it.
+	 * `refine` is how an end that doesn't keep still gets answered honestly —
+	 * see {@link RefineEnd}. Each pass is a whole search, so the first answer
+	 * is on screen at the usual speed and the corrections land behind it.
 	 */
 	async solve(
 		origin: TravelBody,
@@ -1002,14 +954,14 @@ export class TravelPanelState {
 		for (let pass = 0; ; pass++) {
 			if (!(await this.#solvePass(from, to, nowJd, frame, token))) return;
 
-			// Where this pass says the craft leaves and arrives. Read off the cheapest
-			// route rather than each of them: the families share a window, and one set
-			// of elements per pass is what keeps this a search rather than a search
-			// per trajectory.
+			// Where this pass says the craft leaves and arrives. Read off the
+			// cheapest route rather than each of them: the families share a
+			// window, and one set of elements per pass is what keeps this a
+			// search rather than a search per trajectory.
 			const dates = cheapestDates(this.routes);
 			if (!dates) return;
-			// How far a pass moves the dates is how wrong the elements it was given
-			// were. Once that is under a day, another pass answers the same thing.
+			// How far a pass moves the dates is how wrong its given elements
+			// were. Once that's under a day, another pass answers the same thing.
 			if (previous) {
 				const movedDays = moved(previous, dates);
 				console.debug(
@@ -1033,7 +985,7 @@ export class TravelPanelState {
 		}
 	}
 
-	/** One search against the ends as given. False when it did not land — the
+	/** One search against the ends as given. False when it didn't land — the
 	 *  trip was blocked, the search was superseded, or nothing came back. */
 	async #solvePass(
 		origin: TravelBody,

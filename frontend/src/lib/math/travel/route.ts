@@ -1,10 +1,8 @@
 /**
- * A route is an ordered list of legs, each with a Δv price and a duration.
- *
- * The same structure serves three purposes: it is the itinerary the map draws,
- * it is the stacked Δv ladder, and its total is what a vehicle's capability is
- * checked against. Keeping them one object is what stops the ladder and the
- * trajectory from ever disagreeing.
+ * A route is an ordered list of legs, each with a Δv price and a duration. One
+ * object serves three purposes — the map's itinerary, the stacked Δv ladder,
+ * and the total a vehicle's capability is checked against — which is what
+ * stops them from ever disagreeing.
  */
 
 import type { TravelBody } from './body';
@@ -92,33 +90,26 @@ export interface Route {
 	 *  rated against. Absent when it never does. */
 	entrySpeedKms?: number;
 	/**
-	 * The acceleration the drive is held at for the whole crossing, m/s², on the
-	 * routes that are flown that way rather than coasted.
-	 *
-	 * The figure and the fact are one field because the fact is never anything
-	 * else: `buildConstantThrustRoute` refuses an acceleration that is not
-	 * positive, so absent means coasted and present means held. These belong to
-	 * no porkchop — there is no window to place one on, so nothing that reasons
-	 * about departure dates should try.
+	 * The acceleration the drive is held at for the whole crossing, m/s², on
+	 * routes flown that way rather than coasted. `buildConstantThrustRoute`
+	 * refuses a non-positive acceleration, so absent means coasted and present
+	 * means held. Belongs to no porkchop — there's no window to place one on.
 	 */
 	constantThrust?: number;
 	/**
-	 * The drive a spiral route was flown by, when it is one.
-	 *
-	 * Present exactly when the route came out of `buildLowThrustRoute`, and it is
-	 * what tells everything downstream that the impulsive yardstick does not
-	 * apply here: no launch window on the porkchop, no excess speed at either
-	 * end, and a Δv that is spent over years rather than at two instants. The
-	 * two figures are what the shape can be rebuilt from — see `rebuildSpiral`.
+	 * The drive a spiral route was flown by, when it is one. Present exactly
+	 * when the route came from `buildLowThrustRoute`: it tells everything
+	 * downstream the impulsive yardstick doesn't apply — no launch window, no
+	 * excess speed at either end, Δv spent over years not instants. These two
+	 * figures are what the shape rebuilds from — see `rebuildSpiral`.
 	 */
 	lowThrust?: { accelMs2: number; veKms: number };
 	/**
-	 * Fastest the craft is going anywhere on the crossing, km/s in the frame it is
-	 * flown in. Constant-thrust routes only.
-	 *
-	 * Carried rather than read off the boost leg, which holds the Δv the drive
-	 * spent and not the speed that bought: once gravity is in the crossing the two
-	 * differ by everything the primary did and by the departure body's own motion.
+	 * Fastest the craft goes anywhere on the crossing, km/s in the frame it's
+	 * flown in. Constant-thrust routes only. Carried rather than read off the
+	 * boost leg, which holds Δv spent, not speed bought — once gravity is in
+	 * the crossing the two differ by the primary's pull and the departure
+	 * body's own motion.
 	 */
 	peakSpeedKms?: number;
 	/**
@@ -127,21 +118,18 @@ export interface Route {
 	 */
 	coastFraction?: number;
 	/**
-	 * Unit vector the drive pointed along while boosting, in the transfer frame.
-	 * Constant-thrust routes only; braking is exactly against it.
-	 *
-	 * The one thing about the crossing that a shooting solve found rather than
-	 * derived, so it is the one thing drawing the arc cannot work out for itself.
-	 * Three numbers spare the map a second Newton solve — and, more to the point,
-	 * guarantee the line drawn is the arc that was priced rather than whichever
-	 * root a re-solve happens to land on.
+	 * Unit vector the drive pointed along while boosting, in the transfer
+	 * frame. Constant-thrust routes only; braking is exactly against it. The
+	 * one thing a shooting solve found rather than derived, so drawing the arc
+	 * can't work it out — these three numbers spare a second Newton solve and
+	 * guarantee the line drawn is the arc that was priced, not a re-solve's
+	 * arbitrary root.
 	 */
 	thrustDir?: readonly [number, number, number];
 	/**
-	 * The swing-bys flown on the way, in order. Absent on a direct transfer.
-	 *
-	 * A route with these has more than one cruise leg, so nothing may assume the
-	 * legs are unique by kind.
+	 * The swing-bys flown on the way, in order. Absent on a direct transfer. A
+	 * route with these has more than one cruise leg, so legs aren't unique by
+	 * kind.
 	 */
 	flybys?: FlybyPass[];
 }
@@ -177,14 +165,11 @@ export interface RouteOptions {
 }
 
 /**
- * The legs an arrival adds, in the order they are flown.
- *
- * Shared by all three builders because the arrival is the one part of a route
- * that does not care how the craft got there — a Lambert arc, a transfer
- * ellipse and a held drive all hand over the same speed at the same place.
- *
- * A burn nobody makes is not a step: a direct entry never enters an orbit, so
- * it has no insertion to list.
+ * The legs an arrival adds, in the order they are flown. Shared by all three
+ * builders because the arrival doesn't care how the craft got there — a
+ * Lambert arc, a transfer ellipse and a held drive all hand over the same
+ * speed at the same place. A burn nobody makes is not a step: a direct entry
+ * never enters an orbit, so it has no insertion to list.
  */
 export function arrivalLegs(cost: ArrivalCost, mode: ArrivalMode): RouteLeg[] {
 	const legs: RouteLeg[] = [];
@@ -210,25 +195,20 @@ export function routeDurationDays(route: Route): number {
 }
 
 /**
- * When the trip is over, JD.
- *
- * Not `arriveJd`, which is where the crossing ends: an aerobraking arrival is
- * captured on that date and then spends months walking the orbit down, with
- * nothing else happening until it is done. Anything asking whether a trip fits
- * inside a date has to ask about this one.
+ * When the trip is over, JD. Not `arriveJd`, where the crossing ends: an
+ * aerobraking arrival is captured on that date and spends months walking the
+ * orbit down before anything else happens. Anything asking whether a trip fits
+ * a date must ask about this one instead.
  */
 export function routeEndJd(route: Route): number {
 	return route.departJd + routeDurationDays(route);
 }
 
 /**
- * Build the route departing at `departJd` and arriving `tofDays` later.
- *
- * Both bodies must be referenced to the same primary — this is a single
- * patched-conic leg, so a moon of another planet needs its own leg from that
- * planet rather than a direct solve.
- *
- * Returns null when no transfer arc exists for that pair of dates.
+ * Build the route departing at `departJd` and arriving `tofDays` later. Both
+ * bodies must be referenced to the same primary — a single patched-conic leg,
+ * so a moon of another planet needs its own leg from that planet rather than a
+ * direct solve. Returns null when no transfer arc exists for those dates.
  */
 export function buildRoute(
 	departure: TravelBody,
@@ -336,13 +316,11 @@ interface SystemRouteOptions {
 }
 
 /**
- * Build a route between a body and one of its own satellites.
- *
- * Both directions are the same arc read in opposite senses, so both are priced
- * the same way: at the primary's end the craft is bound to it either way and
- * pays the difference between the transfer's speed and the parking orbit's; at
- * the satellite's end it crosses a sphere of influence, which is the ordinary
- * interplanetary arrival and departure.
+ * Build a route between a body and one of its own satellites. Both directions
+ * are the same arc read in opposite senses, priced the same way: at the
+ * primary's end the craft is bound to it either way and pays the difference
+ * against the parking orbit's speed; at the satellite's end it crosses a
+ * sphere of influence, the ordinary interplanetary arrival and departure.
  */
 function buildSystemRoute(
 	departure: TravelBody,

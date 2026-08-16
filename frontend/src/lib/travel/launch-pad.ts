@@ -2,13 +2,13 @@
  * Launch pads as places a trip can leave from.
  *
  * A `site-` collection is a whole range rather than a place — the Eastern Range
- * spans Canaveral, Kennedy and the commercial pads, and its export carries no
- * range-level point on purpose. What it does carry is every GCAT place under it
- * with its own pads, each good to metres. So a trip leaving "from Baikonur"
- * really leaves from one of its pads, and this is where that one is chosen.
+ * spans Canaveral, Kennedy and the commercial pads, deliberately with no
+ * range-level point of its own — but it carries every GCAT place under it with
+ * its own pads, each good to metres. So a trip "from Baikonur" really leaves
+ * from one of its pads, chosen here.
  *
- * Nothing here is an identity. A pad is a latitude and a longitude, and the
- * collection is only how they were found — see `NavPlace`.
+ * Nothing here is an identity: a pad is a latitude and a longitude, and the
+ * collection is only how it was found — see `NavPlace`.
  */
 
 import { fetchGroupDetail } from '$lib/fetch/groups/details';
@@ -37,13 +37,9 @@ export function isLaunchSiteSlug(slug: string | null | undefined): boolean {
 	return !!slug && slug.startsWith(LAUNCH_SITE_SLUG_PREFIX);
 }
 
-/**
- * Every placed pad in a range, busiest first.
- *
- * Pads with no position are left out rather than shown unplaceable: a trip
- * cannot leave from somewhere nobody knows the location of. Ties break on the
- * code so the order is stable across reloads.
- */
+/** Every placed pad in a range, busiest first. Pads with no position are left
+ *  out — a trip cannot leave from somewhere nobody knows the location of. Ties
+ *  break on the code so the order is stable across reloads. */
 export function padsOf(sites: readonly GcatSite[] | undefined): LaunchPad[] {
 	const pads: LaunchPad[] = [];
 	for (const site of sites ?? []) {
@@ -74,14 +70,9 @@ export async function fetchLaunchPads(slug: string): Promise<LaunchPad[]> {
 	}
 }
 
-/**
- * The pad a trip should leave from by default: the busiest one.
- *
- * Which pad a reader meant is not a question the collection can answer, and
- * every alternative is arbitrary in a way this one is not — the busiest pad is
- * the one the place is known for. It is named on screen and swappable, so the
- * choice is offered rather than made behind their back.
- */
+/** The pad a trip should leave from by default: the busiest one, since every
+ *  other choice is arbitrary in a way this isn't — the pad the place is known
+ *  for. Named on screen and swappable, so the choice is offered, not hidden. */
 export function busiestPad(pads: readonly LaunchPad[]): LaunchPad | null {
 	return pads[0] ?? null;
 }
@@ -90,13 +81,9 @@ export function busiestPad(pads: readonly LaunchPad[]): LaunchPad | null {
  *  kilometre, which no two pads in GCAT are closer than. */
 const SAME_PAD_DEG = 0.01;
 
-/**
- * Which of these pads a point stands on, or null when it stands on none.
- *
- * By code where the link names one, and by distance where it does not — the
- * coordinates are all an older link carries, and matching them on distance
- * survives the rounding the URL puts them through.
- */
+/** Which of these pads a point stands on, or null for none. By code where the
+ *  link names one, else by distance — an older link carries only coordinates,
+ *  and matching on distance survives the rounding the URL puts them through. */
 export function padAt(
 	pads: readonly LaunchPad[],
 	latDeg: number,

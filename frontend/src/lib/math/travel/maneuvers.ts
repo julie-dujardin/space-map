@@ -37,11 +37,9 @@ export function parkingRadiusKm(body: TravelBody): number {
 
 /**
  * The bound orbit an end of a trip sits in — periapsis and apoapsis from the
- * centre, km. Equal radii are circular.
- *
- * Which orbit is asked for is a real term of the trip and not a detail: entering
- * a stationary orbit costs a third of what a low one does, and leaving from one
- * costs less again. Everything here defaults to the parking orbit when no orbit
+ * centre, km. Equal radii are circular. Which orbit is asked for is a real term
+ * of the trip, not a detail: a stationary orbit costs a third of a low one to
+ * enter, and less again to leave from. Defaults to the parking orbit when none
  * is named.
  */
 export interface EndOrbit {
@@ -68,12 +66,11 @@ function sane(orbit: EndOrbit): EndOrbit {
 
 /**
  * True when there is an envelope thick enough to fly a braking pass through.
- *
- * Judged on the measured pressure rather than on whether anything was detected:
- * Mercury and the icy moons all carry a real reading, orders of magnitude too
- * thin for drag to ever repay a pass, and offering them aerocapture is offering
- * fiction. `aeroPressurePa` is quoted at the datum whatever the body's shape,
- * so a gas giant's 1 bar level qualifies it the way its cloud tops never could.
+ * Judged on the measured pressure, not whether anything was detected: Mercury
+ * and the icy moons have a real reading, orders of magnitude too thin for drag
+ * to repay a pass, so offering them aerocapture would be fiction. Quoted at the
+ * datum whatever the body's shape, so a gas giant's 1 bar level qualifies it
+ * the way its cloud tops never could.
  */
 export function canAeroBrake(body: TravelBody): boolean {
 	return (body.aeroPressurePa ?? 0) >= AERO_MIN_PRESSURE_PA;
@@ -86,9 +83,8 @@ export function aeroPassRadiusKm(body: TravelBody): number {
 
 /**
  * How high above the datum the pass sits, km — where the body's own envelope
- * reaches the target pass pressure, clamped to the band the rest of the model
- * can hold: no shallower than the Mars-calibrated floor, no higher than fits
- * under the parking convention.
+ * reaches the target pass pressure, clamped between the Mars-calibrated floor
+ * and what fits under the parking convention.
  */
 function aeroPassAltitudeKm(body: TravelBody): number {
 	const { aeroPressurePa: pa, aeroScaleHeightKm: h } = body;
@@ -99,29 +95,27 @@ function aeroPassAltitudeKm(body: TravelBody): number {
 
 /**
  * Where a trip meets the ground, and how tilted the plane it has to fly is.
- *
- * Absent from a trip that never touches a surface, and absent too from one
- * that does but has not been told where — the estimates then read as the
- * eastward equatorial launch they are calibrated on.
+ * Absent from a trip that never touches a surface, or one that does but has no
+ * known site — those read as the eastward equatorial launch the estimates are
+ * calibrated on.
  */
 export interface SurfaceSite {
 	/** Latitude of the pad or the landing site, degrees. */
 	latDeg: number;
 	/**
 	 * How far the arc's asymptote lies out of the body's equator, degrees. The
-	 * plane has to hold it as well as reach the site, so the steeper of the two
-	 * is what the ascent flies. Absent when the plan cannot say, which leaves
-	 * the site alone to set it.
+	 * plane must hold it as well as reach the site, so the steeper of the two is
+	 * what the ascent flies. Absent when the plan can't say, leaving latitude
+	 * alone to set it.
 	 */
 	asymptoteTiltDeg?: number;
 }
 
 /**
- * One end of a trip as the ascent and descent estimates want it.
- *
- * `asymptote` is the excess-velocity vector there — a direction the plane has
- * to hold as well as reach the site. Null leaves the latitude alone to set the
- * plane, which is right inside a system, where an arc can be flown from a node.
+ * One end of a trip as the ascent and descent estimates want it. `asymptote` is
+ * the excess-velocity vector there — a direction the plane must hold as well as
+ * reach the site. Null leaves latitude alone to set the plane, right for inside
+ * a system, where an arc can be flown from a node.
  */
 export function surfaceSite(
 	body: TravelBody,
@@ -136,17 +130,15 @@ export function surfaceSite(
 }
 
 /**
- * The surface speed an ascent from `site` does not get to keep, km/s.
+ * The surface speed an ascent from `site` does not get to keep, km/s. A launch
+ * starts with the ground's own velocity, but only the part along the plane it
+ * climbs into counts; writing the azimuth in terms of inclination collapses
+ * that to ω·R·cos(i) — latitude only sets how low the plane can lie.
  *
- * A launch starts with the ground's own velocity, but only the part lying
- * along the plane it climbs into counts. Writing the launch azimuth in terms
- * of the inclination collapses that to ω·R·cos(i) — the credit belongs to the
- * plane flown, and latitude enters only by setting how low the plane can lie.
- *
- * What is charged is the shortfall against ω·R rather than the credit itself:
- * the published ascents {@link ascentDv} is calibrated on are all eastward
- * near-equatorial launches, which already keep nearly the whole of it. So the
- * equator costs nothing extra and a polar climb pays the entire surface speed.
+ * Charges the shortfall against ω·R, not the credit: the ascents
+ * {@link ascentDv} is calibrated on are eastward near-equatorial launches that
+ * already keep nearly all of it, so the equator costs nothing extra and a
+ * polar climb pays the full surface speed.
  */
 export function planeTiltPenaltyKms(body: TravelBody, site?: SurfaceSite): number {
 	const omega = Math.abs(body.spinRadPerSec ?? 0);
@@ -159,15 +151,12 @@ export function planeTiltPenaltyKms(body: TravelBody, site?: SurfaceSite): numbe
 }
 
 /**
- * Δv from the surface to the parking orbit, km/s.
- *
- * Circular velocity plus gravity/steering losses scaled by surface gravity,
- * plus a drag term for bodies with an atmosphere. The drag term is capped
- * because it is linear in pressure and Venus would otherwise dominate the
- * result on a coefficient that was only ever fitted near 1 bar.
- *
- * Where the launch leaves from is known, it pays for the spin it cannot use —
- * see {@link planeTiltPenaltyKms}.
+ * Δv from the surface to the parking orbit, km/s. Circular velocity plus
+ * gravity/steering losses scaled by surface gravity, plus a drag term for
+ * bodies with an atmosphere, capped because it's linear in pressure and Venus
+ * would otherwise dominate on a coefficient only ever fitted near 1 bar. Where
+ * the launch site is known, it also pays for the spin it can't use — see
+ * {@link planeTiltPenaltyKms}.
  */
 export function ascentDv(body: TravelBody, site?: SurfaceSite): number {
 	const vCirc = circularSpeed(body.mu, parkingRadiusKm(body));
@@ -181,11 +170,10 @@ export function ascentDv(body: TravelBody, site?: SurfaceSite): number {
 
 /**
  * Speed at periapsis on the arc that leaves with excess speed `vInfKms`.
- *
- * Everything either burn is priced from: a departure pays the difference between
- * this and the parking orbit's own speed, an arrival pays the difference between
- * this and whatever bound orbit it is dropping into. Stating it once is what
- * lets an escape and a transfer inside one system share the rest of the model.
+ * Everything either burn is priced from: a departure pays the difference
+ * against the parking orbit's own speed, an arrival against whatever bound
+ * orbit it's dropping into — letting an escape and an in-system transfer share
+ * the rest of the model.
  */
 export function periapsisSpeed(mu: number, rPeriKm: number, vInfKms: number): number {
 	return Math.sqrt(vInfKms * vInfKms + (2 * mu) / rPeriKm);
@@ -228,11 +216,10 @@ export function orbitPeriodHours(mu: number, orbit: EndOrbit): number {
 }
 
 /**
- * Speed at `rKm` on the arc that is doing `vKms` at `rFromKm`, km/s.
- *
- * Straight from conservation of energy, which is what lets it carry an arrival
- * down to the depth its atmospheric pass is flown at without caring whether the
- * arc is bound: a capture ellipse and a hyperbola both keep ε = v²/2 − μ/r.
+ * Speed at `rKm` on the arc that is doing `vKms` at `rFromKm`, km/s. Straight
+ * from conservation of energy, so it carries an arrival down to its
+ * atmospheric pass depth without caring whether the arc is bound: a capture
+ * ellipse and a hyperbola both keep ε = v²/2 − μ/r.
  */
 export function speedAtRadius(mu: number, vKms: number, rFromKm: number, rKm: number): number {
 	return Math.sqrt(Math.max(0, vKms * vKms + 2 * mu * (1 / rKm - 1 / rFromKm)));
@@ -260,12 +247,11 @@ function apoapsisSpeed(mu: number, rPeriKm: number, rApoKm: number): number {
 export type ArrivalMode = 'flyby' | 'capture' | 'low-orbit' | 'landing';
 
 /**
- * Whether the atmosphere is used on arrival, and how.
- *
- * The two are a different trade, not two strengths of one. Aerocapture is a
- * single pass that does the whole insertion at once and has never been flown;
- * aerobraking captures on the engine and then spends months letting drag walk
- * the orbit down, which is what every Mars orbiter since Global Surveyor did.
+ * Whether the atmosphere is used on arrival, and how — a different trade, not
+ * two strengths of one. Aerocapture is a single pass doing the whole insertion
+ * at once and has never been flown; aerobraking captures on the engine and
+ * spends months letting drag walk the orbit down, as every Mars orbiter since
+ * Global Surveyor has done.
  */
 export type AeroAssist = 'none' | 'aerocapture' | 'aerobraking';
 
@@ -296,11 +282,9 @@ const NO_ARRIVAL_COST: ArrivalCost = {
 
 /**
  * Δv to arrive at `body` in the requested way, given the hyperbolic excess
- * speed the transfer delivers, and whether the atmosphere is asked to help.
- *
- * `aero` is a request, not a description: a body with nothing to fly through
- * ignores it, which is what makes it safe to leave set while the destination
- * changes.
+ * speed the transfer delivers and whether the atmosphere is asked to help.
+ * `aero` is a request, not a description — a body with nothing to fly through
+ * ignores it, so it's safe to leave set while the destination changes.
  */
 export function arrivalCost(
 	body: TravelBody,
@@ -324,11 +308,9 @@ export function arrivalCost(
 }
 
 /**
- * The orbit an arrival ends in.
- *
- * A landing passes through the parking orbit whatever was asked for — you do not
- * stop in a stationary orbit on the way to the ground — and a flyby ends in no
- * orbit at all, so both ignore the request rather than carrying it.
+ * The orbit an arrival ends in. A landing passes through the parking orbit
+ * whatever was asked for — you don't stop in a stationary orbit on the way
+ * down — and a flyby ends in no orbit at all, so both ignore the request.
  */
 function pricedArrivalOrbit(body: TravelBody, mode: ArrivalMode, orbit?: EndOrbit): EndOrbit {
 	if (mode === 'landing' || mode === 'flyby') return parkingOrbit(body);
@@ -338,11 +320,10 @@ function pricedArrivalOrbit(body: TravelBody, mode: ArrivalMode, orbit?: EndOrbi
 
 /**
  * The same arrival priced from the speed the approach actually carries at
- * periapsis, rather than from a hyperbolic excess.
- *
- * Coming back down to the body you launched from — Moon to Earth — you are still
- * bound to it, so there is no excess speed to quote and the burn is just how much
- * faster the transfer is going than the orbit you want to be in.
+ * periapsis, rather than from a hyperbolic excess. Coming back down to the body
+ * you launched from — Moon to Earth — you're still bound to it, so there's no
+ * excess speed to quote; the burn is just how much faster the transfer is
+ * going than the target orbit.
  */
 export function arrivalCostFromSpeed(
 	body: TravelBody,
@@ -449,14 +430,12 @@ export function arrivalCostFromSpeed(
 
 /**
  * Days the arrival still owes once the crossing is over — the aerobraking
- * campaign, where there is one, and nothing on any other arrival.
- *
- * Worth having on its own because it is the same figure for every arc that ends
- * the same way: what drag has to remove is the gap between two bound orbits at
- * the pass altitude, and neither of them remembers how fast the craft came in.
- * So a search can take it once and hold a whole grid to the same deadline
- * without pricing an arrival per cell — which is why the speed below is a
- * placeholder rather than a real approach.
+ * campaign, where there is one, and nothing otherwise. Worth having on its own
+ * because it's the same figure for every arc that ends the same way: what drag
+ * removes is the gap between two bound orbits at the pass altitude, which
+ * doesn't remember the approach speed. So a search can compute it once and
+ * hold a whole grid to the same deadline without pricing an arrival per cell —
+ * hence the placeholder speed below.
  */
 export function arrivalCampaignDays(
 	body: TravelBody,
@@ -471,11 +450,9 @@ export type DepartureMode = 'surface' | 'orbit';
 
 /**
  * The orbit a trip is flown out of, or null when it starts on the ground.
- *
- * The pair with {@link endArrivalOrbit}: between them they say which ends of a
- * trip are somewhere the craft goes round rather than somewhere it stands or
- * passes, which is what decides whether that end is a step of its own. `orbit`
- * is the one the trip was priced for, where the reader picked one.
+ * Pairs with {@link endArrivalOrbit}: together they say which trip ends are
+ * somewhere the craft orbits rather than stands or passes through, deciding
+ * whether that end is a step of its own.
  */
 export function endDepartureOrbit(
 	body: TravelBody,

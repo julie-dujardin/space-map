@@ -1,12 +1,11 @@
 /**
  * A probe's measured positions about its primary, as the kernel takes them.
  *
- * An osculating fit describes a probe for about as long as it was fitted over,
- * which is fine for a cruise across the solar system and useless inside one
- * system: a trip there is priced entirely on how far apart the two ends are,
- * and a body held at a Lagrange point has no conic about its primary at all.
- * Webb's reads as a 126-day ellipse swinging between 0.6 and 1.5 million km,
- * so a search against it offers arcs to distances Webb is never at.
+ * An osculating fit describes a probe for about as long as it was fitted over
+ * — fine for a solar-system cruise, useless inside one system, where a body
+ * held at a Lagrange point has no conic about its primary at all. Webb's fit
+ * reads as a 126-day ellipse swinging between 0.6 and 1.5 million km, so a
+ * search against it offers arcs to distances Webb is never at.
  *
  * So the separation is measured rather than modelled, off the same position
  * stream the renderer draws the probe with. See `EphemerisSamples`.
@@ -21,14 +20,14 @@ import { SECONDS_PER_DAY } from '$lib/time/jd';
 /**
  * How far ahead to measure, and how finely.
  *
- * The span covers any grid a same-system search can build: its departure axis
- * is one turn of the satellite and the slowest arc across a primary's sphere is
- * weeks on top of that. Taken as a flat number rather than derived from the
- * bounds, because the bounds are what these are for.
+ * The span covers any grid a same-system search can build — one turn of the
+ * satellite for the departure axis, plus weeks for the slowest arc across a
+ * primary's sphere — taken flat rather than derived from the bounds, since the
+ * bounds are what these are for.
  *
- * Two days is far tighter than the curve needs — the interpolation is cubic and
- * carries the sampled velocities — but a couple of hundred positions costs
- * nothing to read or to copy into the solver.
+ * Two days is tighter than the curve needs (cubic interpolation, sampled
+ * velocities), but a couple hundred positions costs nothing to read or copy
+ * into the solver.
  */
 const SPAN_DAYS = 400;
 const STEP_DAYS = 2;
@@ -43,8 +42,8 @@ const WARM_STEP_DAYS = 60;
  *
  * Null unless the whole thing can be answered: not a probe, no stream, or the
  * probe goes round something else. A short series is returned where coverage
- * runs out — the kernel falls back to the elements beyond its last date, which
- * is the same answer it would have given without any of this.
+ * runs out — the kernel falls back to the elements past the last date, the
+ * same answer it would give without any of this.
  */
 export async function probeSamples(
 	store: ProbeStore | null | undefined,
@@ -68,16 +67,15 @@ export async function probeSamples(
 	const v: [number, number, number][] = [];
 	for (let jd = fromJd; jd <= toJd; jd += STEP_DAYS) {
 		let located = store.probeWithCenter(id, jd);
-		// The store keeps a fixed number of off-clock chunks, so one warmed at the
-		// top of this can have been dropped by the time the loop reaches it. Ask
-		// again for the date itself before believing the coverage has run out.
+		// The store keeps a fixed number of off-clock chunks, so one warmed above
+		// can have been dropped by the time the loop reaches it — ask again before
+		// believing coverage has run out.
 		if (!located) {
 			await store.warmAt(jd);
 			located = store.probeWithCenter(id, jd);
 		}
-		// Coverage ending is where the series ends — the kernel offers no trip past
-		// its last date, which is the honest answer. So is a probe that goes round
-		// something else by then: that is not this trip.
+		// Coverage ending is where the series ends, the honest answer. So is a
+		// probe that goes round something else by then: that is not this trip.
 		if (!located || located.fitCenterNaifId !== centerNaifId) break;
 		const state = probeStateKm(located.probe, jd, mu);
 		if (!state) break;

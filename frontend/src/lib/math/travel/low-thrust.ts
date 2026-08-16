@@ -1,32 +1,31 @@
 /**
  * What a drive that pushes for months at a time flies instead of a transfer
- * orbit.
+ * orbit. An ion engine can't make the burns a Lambert arc is built from — a
+ * km/s takes Dawn's four months, so there's no instant for an impulse and no
+ * coast between two of them. What it flies is a spiral: out of the well it
+ * starts in, round the Sun while the orbit slowly reshapes, and down into the
+ * well at the far end.
  *
- * An ion engine cannot make the burns a Lambert arc is built from: a kilometre
- * per second takes Dawn's four months, so there is no instant for an impulse to
- * happen at and no coast between two of them. What it flies is a spiral — out of
- * the well it starts in, round the Sun while the orbit is slowly reshaped, and
- * down into the well at the far end.
+ * The model is Edelbaum's: thrust held continuously, keeping the orbit
+ * circular while its size and plane change together. Cost is then a triangle
+ * of velocities, duration the rocket equation run at constant thrust — the
+ * standard first cut at a low-thrust transfer, and a lower bound on both
+ * figures, since a real trajectory buys phasing with coast arcs this doesn't
+ * charge for and loses a little to a spiral that's never quite circular.
  *
- * The model is Edelbaum's: a thrust held continuously, keeping the orbit
- * circular while its size and plane change together. The cost is then a triangle
- * of velocities and the duration is the rocket equation run at constant thrust.
- * It is the standard first cut at a low-thrust transfer, and it is a lower bound
- * on both figures — a real trajectory buys its phasing with coast arcs this does
- * not charge for, and loses a little to a spiral that is never quite circular.
+ * Three consequences a route here can't be read without:
  *
- * Three things fall out of it that a route here cannot be read without:
- *
- * - Escaping is expensive. Spiralling out of a circular orbit costs the whole of
- *   that orbit's speed — 7.7 km/s from low Earth orbit against the 3.2 an
- *   impulsive burn pays for the same escape. It is why Dawn was thrown onto an
- *   escape trajectory by a Delta II rather than spiralling off one itself.
- * - Arriving costs nothing at the top. The transfer ends matched to the target's
- *   orbit, so there is no hyperbola to capture from and no atmosphere worth
- *   entering: the arrival is the escape run backwards, another spiral.
- * - The phase still has to close. The crossing takes as long as it takes, so the
- *   trip leaves on the date that puts the target where the spiral ends, exactly
- *   as a chemical mission waits for its window.
+ * - Escaping is expensive. Spiralling out of a circular orbit costs the whole
+ *   of that orbit's speed — 7.7 km/s from LEO against the 3.2 an impulsive
+ *   burn pays for the same escape. Why Dawn was thrown onto its escape
+ *   trajectory by a Delta II rather than spiralling off one itself.
+ * - Arriving costs nothing at the top. The transfer ends matched to the
+ *   target's orbit, so there's no hyperbola to capture from and no
+ *   atmosphere worth entering — arrival is the escape run backwards, another
+ *   spiral.
+ * - The phase still has to close. The crossing takes as long as it takes, so
+ *   the trip leaves on the date that puts the target where the spiral ends,
+ *   just as a chemical mission waits for its window.
  */
 
 import { AU_KM } from '$lib/math/units';
@@ -48,13 +47,11 @@ import { cross, dot, norm, normalize, type Vec3 } from './vec3';
 const TWO_PI = Math.PI * 2;
 
 /**
- * A drive, as the spiral model needs it: how hard it pushes to begin with, and
- * how fast that changes.
- *
- * The acceleration is the one at the start of the trip and rises all the way
- * through it as propellant leaves — which is not a detail, since these trips
- * spend most of their mass. Exhaust speed is what sets the rate, so the pair of
- * them is the whole time law.
+ * A drive, as the spiral model needs it: how hard it pushes to begin with,
+ * and how fast that changes. The acceleration is the one at trip start and
+ * rises throughout as propellant leaves — not a detail, since these trips
+ * spend most of their mass. Exhaust speed sets the rate, so the pair is the
+ * whole time law.
  */
 export interface LowThrustDrive {
 	/** Acceleration at the start of the trip, m/s². */
@@ -64,12 +61,11 @@ export interface LowThrustDrive {
 }
 
 /**
- * Δv of an Edelbaum transfer between two circular orbits, km/s.
- *
- * The plane change is the expensive part and the reason this is not just the
- * difference of the two speeds: turning the velocity is paid for at the speed
- * the orbit is going, so the optimum spends most of it out at the slow end. The
- * quarter-turn inside the cosine is what that optimum works out to.
+ * Δv of an Edelbaum transfer between two circular orbits, km/s. The plane
+ * change is the expensive part and why this isn't just the difference of the
+ * two speeds: turning the velocity is paid for at the speed the orbit is
+ * going, so the optimum spends most of it at the slow end — the quarter-turn
+ * inside the cosine is what that optimum works out to.
  */
 export function edelbaumDvKms(v0Kms: number, v1Kms: number, planeChangeRad: number): number {
 	const wedge = (Math.PI / 2) * planeChangeRad;
@@ -96,14 +92,12 @@ export function driveAfter(drive: LowThrustDrive, dvKms: number): LowThrustDrive
 const TRANSFER_STEPS = 256;
 
 /**
- * The heliocentric half of the trip: what it costs, how long it takes, and the
- * shape it takes it in.
- *
- * The samples are here because the drawn arc and the priced route have to be the
- * same spiral. They run from the start of the transfer to its end, and the angle
- * is what makes the trip land on the destination rather than merely on its
- * orbit — a spiral crosses two revolutions to get from Earth to Mars, and where
- * it comes out the far side is the whole of the phasing problem.
+ * The heliocentric half of the trip: what it costs, how long it takes, and
+ * the shape it takes. Samples are here because the drawn arc and priced
+ * route must be the same spiral. They run from transfer start to end, and
+ * the angle is what makes the trip land on the destination rather than
+ * merely on its orbit — a spiral crosses two revolutions from Earth to Mars,
+ * and where it comes out the far side is the whole phasing problem.
  */
 export interface SpiralTransfer {
 	dvKms: number;
@@ -119,18 +113,17 @@ export interface SpiralTransfer {
 }
 
 /**
- * Build the transfer between two circular orbits under `drive`.
+ * Build the transfer between two circular orbits under `drive`. The velocity
+ * follows a straight line in velocity space (thrust holds one direction
+ * relative to the orbit), so speed at any point is the third side of a
+ * triangle, and the radius is whatever circular orbit goes that fast. The
+ * angle comes from integrating orbital rate against Δv spent, which is where
+ * the revolutions come from: a slow drive at Earth's distance goes round
+ * twice on its way out.
  *
- * The velocity follows a straight line in velocity space — the thrust holds one
- * direction relative to the orbit — so the speed at any point is the third side
- * of a triangle, and the radius is whatever circular orbit is going that fast.
- * The angle comes out of integrating the orbital rate against the Δv spent,
- * which is where the revolutions come from: a slow drive at Earth's distance
- * goes round twice on its way out.
- *
- * Returns null when the drive or either orbit is unusable, and for a transfer
- * that has to pass through zero speed — that is an escape, not a crossing, and
- * `spiralDays` prices it without needing a shape.
+ * Returns null when the drive or either orbit is unusable, and for a
+ * transfer passing through zero speed — that's an escape, not a crossing,
+ * and `spiralDays` prices it without needing a shape.
  */
 export function spiralTransfer(
 	v0Kms: number,
@@ -197,10 +190,9 @@ export function spiralTransfer(
 
 /**
  * The three burns a spiral trip is made of, before any of them is timed.
- *
- * Which of them exist depends on what the trip goes round: an interplanetary
- * crossing climbs out of one well and down into another, while a trip to a body's
- * own moon never leaves the primary and so has only the climb.
+ * Which exist depends on what the trip goes round: an interplanetary
+ * crossing climbs out of one well and down into another, while a trip to a
+ * body's own moon never leaves the primary and so has only the climb.
  */
 interface SpiralPlan {
 	/** μ the transfer itself goes round, km³/s². */
@@ -220,11 +212,10 @@ interface SpiralPlan {
 }
 
 /**
- * Radius the arrival spiral stops at, km — the orbit that was asked for.
- *
- * A spiral is quasi-circular the whole way, so an elliptical orbit is met at its
- * apoapsis: that is where the climb stops and the shape is someone else's
- * problem.
+ * Radius the arrival spiral stops at, km — the orbit that was asked for. A
+ * spiral is quasi-circular the whole way, so an elliptical orbit is met at
+ * its apoapsis: that's where the climb stops and the shape becomes someone
+ * else's problem.
  */
 function arrivalRadiusKm(body: TravelBody, mode: ArrivalMode, orbit?: EndOrbit): number {
 	if (orbit) return orbit.rApoKm;
@@ -354,12 +345,11 @@ function wrapPi(angle: number): number {
 }
 
 /**
- * The longest wait this will offer, days.
- *
- * Phasing repeats on the synodic period of the two orbits, so two bodies with
- * nearly the same year can be out of position for a human lifetime. Past this
- * there is no route worth showing: the answer stops being "leave in 2043" and
- * starts being "not with this drive".
+ * The longest wait this will offer, days. Phasing repeats on the synodic
+ * period of the two orbits, so two bodies with nearly the same year can be
+ * out of position for a human lifetime. Past this there's no route worth
+ * showing: the answer stops being "leave in 2043" and starts being "not with
+ * this drive".
  */
 const MAX_PHASE_WAIT_DAYS = 50 * 365.25;
 /** Samples per synodic period while looking for the alignment, then bisection. */
@@ -367,13 +357,12 @@ const PHASE_SCAN_STEPS = 360;
 const PHASE_BISECTION_STEPS = 40;
 
 /**
- * The first date on or after `earliestJd` whose spiral ends where the target is.
- *
- * The transfer's shape is fixed by the two orbits and the drive, so its swept
- * angle is a constant and the only free variable is when to start. That makes
- * this the same search a Hohmann window is: one alignment per synodic period,
- * found by watching the angle between where the spiral comes out and where the
- * destination has got to.
+ * The first date on or after `earliestJd` whose spiral ends where the target
+ * is. The transfer's shape is fixed by the two orbits and the drive, so its
+ * swept angle is constant and the only free variable is when to start —
+ * making this the same search as a Hohmann window: one alignment per
+ * synodic period, found by watching the angle between where the spiral comes
+ * out and where the destination has got to.
  */
 function phasedDeparture(
 	departure: TravelBody,
@@ -440,12 +429,10 @@ function phasedDeparture(
 }
 
 /**
- * Build the spiral trip leaving on or after `earliestJd`.
- *
- * Returns null when the drive cannot fly this trip at all — off a surface, which
- * nothing with a thrust-to-weight of a thousandth leaves; between orbits too
- * alike for the phase to ever close; or where either end has no orbit to be
- * matched to.
+ * Build the spiral trip leaving on or after `earliestJd`. Returns null when
+ * the drive can't fly this trip at all — off a surface, which nothing with a
+ * thrust-to-weight of a thousandth leaves; between orbits too alike for the
+ * phase to ever close; or where either end has no orbit to be matched to.
  */
 export function buildLowThrustRoute(
 	departure: TravelBody,
@@ -558,11 +545,9 @@ export function buildLowThrustRoute(
 }
 
 /**
- * The crossing of a spiral route, rebuilt.
- *
- * Same inputs, same builder, so the arc the map draws is the one the ladder
- * charged for — nothing has to be carried across from the solve or kept in step
- * by hand.
+ * The crossing of a spiral route, rebuilt. Same inputs, same builder, so the
+ * arc the map draws is the one the ladder charged for — nothing carried
+ * across from the solve or kept in step by hand.
  */
 export function rebuildSpiral(
 	departure: TravelBody,

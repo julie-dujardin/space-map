@@ -2,17 +2,16 @@
  * A trip as the stretches and moments it is made of.
  *
  * The route already lists its own steps in order, and the Δv ladder reads off
- * that same list — so the timeline is built from the legs rather than from a
- * second idea of what happens on a trip. Nothing here needs the drawn geometry,
- * so a trajectory whose arc cannot be rebuilt still has a timeline.
+ * that same list — so the timeline is built from the legs rather than a second
+ * idea of what happens on a trip. Nothing here needs the drawn geometry, so a
+ * trajectory whose arc can't be rebuilt still has a timeline.
  *
- * A leg that takes time is a **phase** and a leg that happens at an instant is
- * an **event**; `days` is what tells them apart, and the two are drawn
- * differently because they are different things — one is a stretch of the bar,
- * the other a point on it.
+ * A leg that takes time is a **phase**, one at an instant is an **event**;
+ * `days` is what tells them apart, drawn differently because they're
+ * different things — one a stretch of the bar, the other a point on it.
  *
- * Labels live in the component: everything here is structure, so it can be
- * tested without a locale.
+ * Labels live in the component: everything here is structure, testable
+ * without a locale.
  */
 
 import { dateToJD, jdToDate } from '$lib/format/date';
@@ -21,14 +20,10 @@ import type { LegKind, Route, TravelBody } from '$lib/math/travel';
 // and the index carries Lambert, the porkchop and the vehicle catalogue.
 import { endArrivalOrbit, endDepartureOrbit, type EndOrbit } from '$lib/math/travel/maneuvers';
 
-/**
- * What a step of the trip is.
- *
- * The legs of the route, plus the two ends that are not legs at all: an orbit
- * the trip is flown out of, and the one it is left in. Nothing is spent and no
- * time passes at either — they are where the trip starts and stops, which the
- * legs on their own never say.
- */
+/** What a step of the trip is: the legs of the route, plus the two ends that
+ *  aren't legs at all — the orbit flown out of, and the one left in. Nothing
+ *  is spent and no time passes at either; they're where the trip starts and
+ *  stops, which the legs alone never say. */
 export type TimelineKind = LegKind | 'start-orbit' | 'final-orbit';
 
 export interface TimelineEntry {
@@ -60,30 +55,28 @@ export interface TimelineEntry {
  * The legs of `route` placed in time, in flight order, bracketed by the orbits
  * at either end where those ends are orbits.
  *
- * The dates come from accumulating each leg's duration off the departure, which
- * is the same arithmetic the route was priced with — so the last one ends on the
+ * Dates come from accumulating each leg's duration off the departure — the
+ * same arithmetic the route was priced with — so the last one ends on the
  * arrival date without being told to.
  *
- * `bodies` is what the two ends can be derived from; without it the trip is its
- * legs alone, which is what a timeline built before the bodies land shows.
+ * `bodies` is what the two ends are derived from; without it the trip is its
+ * legs alone, what a timeline built before the bodies land shows.
  */
 export function buildTimeline(
 	route: Route,
 	nameFor: (bodyId: string) => string,
 	bodies?: { departure: TravelBody; target: TravelBody } | null,
-	/**
-	 * When the trip is actually on the ground at each surface end, from the drawn
-	 * geometry. The route prices a landing at the crossing's own date, but the
-	 * craft touches down a coast and a fall later — dating the card there is what
-	 * makes picking it show the planet with the site under the line.
-	 */
+	/** When the trip is actually on the ground at each surface end, from the
+	 *  drawn geometry. The route prices a landing at the crossing's own date, but
+	 *  the craft touches down a coast and a fall later — dating the card there is
+	 *  what makes picking it show the planet with the site under the line. */
 	ground?: { liftoffJd?: number; touchdownJd?: number } | null
 ): TimelineEntry[] {
 	const entries: TimelineEntry[] = [];
 	const flybys = [...(route.flybys ?? [])];
 	let jd = route.departJd;
 
-	/** An end of the trip: a place rather than something that happens, so it costs
+	/** An end of the trip: a place, not something that happens, so it costs
 	 *  nothing and takes no time. */
 	const endEntry = (
 		kind: 'start-orbit' | 'final-orbit',
@@ -110,9 +103,9 @@ export function buildTimeline(
 	}
 
 	for (const [index, leg] of route.legs.entries()) {
-		// Which end of the trip a leg happens at. A coast is at neither: that is
-		// the whole of what a cruise is. Aerobraking counts as the arrival end —
-		// it is months of passes through the destination's own atmosphere.
+		// Which end of the trip a leg happens at. A coast is at neither — that's
+		// the whole of what a cruise is. Aerobraking counts as the arrival end:
+		// months of passes through the destination's own atmosphere.
 		const flyby = leg.kind === 'assist' ? flybys.shift() : undefined;
 		const bodyId =
 			leg.kind === 'ascent' || leg.kind === 'injection' || leg.kind === 'spiral-out'
@@ -148,8 +141,8 @@ export function buildTimeline(
 		jd += leg.days;
 	}
 
-	// After the last leg rather than on the arrival date: a campaign of
-	// aerobraking passes is months of not being in the orbit yet.
+	// After the last leg, not the arrival date: an aerobraking campaign is
+	// months of not being in the orbit yet.
 	const final = bodies && endArrivalOrbit(bodies.target, route.arrivalMode, route.targetOrbit);
 	if (bodies && final) {
 		entries.push(endEntry('final-orbit', route.targetId, final, bodies.target));
@@ -158,13 +151,9 @@ export function buildTimeline(
 	return entries;
 }
 
-/**
- * Where to look when an entry is picked.
- *
- * A place on the drawn arc wherever there is one — the whole point of a
- * trajectory is the line, and half the legs happen nowhere near a body. The
- * body is the fallback for a route whose geometry could not be rebuilt.
- */
+/** Where to look when an entry is picked: a place on the drawn arc wherever
+ *  there is one, since half the legs happen nowhere near a body. The body is
+ *  the fallback for a route whose geometry couldn't be rebuilt. */
 export type TimelineFocus =
 	| {
 			kind: 'point';
@@ -177,13 +166,9 @@ export type TimelineFocus =
 	  }
 	| { kind: 'body'; bodyId: string };
 
-/**
- * Which entry the clock is on: the last one it has reached.
- *
- * Before the trip starts that is still the first — the timeline is a place on a
- * trip, and "not left yet" is the launch's own state rather than a thing of its
- * own to draw.
- */
+/** Which entry the clock is on: the last one it has reached. Before the trip
+ *  starts that is still the first — "not left yet" is the launch's own state,
+ *  not a thing of its own to draw. */
 export function entryIndexAt(entries: readonly TimelineEntry[], jd: number): number {
 	if (entries.length === 0) return -1;
 	let index = 0;
@@ -197,13 +182,9 @@ export type TickUnit = 'year' | 'month' | 'day' | 'hour';
 
 export interface AxisTick {
 	jd: number;
-	/**
-	 * The boundary the tick sits on, as a calendar date.
-	 *
-	 * Carried rather than derived back from `jd`: a Date through a Julian Date and
-	 * out again can land a millisecond short, and a millisecond short of New Year
-	 * is labelled with the wrong year.
-	 */
+	/** The boundary the tick sits on, as a calendar date. Carried rather than
+	 *  derived back from `jd`: a Date round-tripped through a Julian Date can land
+	 *  a millisecond short, and that's enough to mislabel the year. */
 	date: Date;
 	unit: TickUnit;
 }
@@ -223,7 +204,7 @@ function stepFor(ladder: readonly number[], span: number, maxTicks: number): num
 		if (span / step <= maxTicks) return step;
 	}
 	// Past the end of the ladder — a trip measured in millennia. Keep decupling
-	// the coarsest step rather than returning one that would draw hundreds.
+	// the coarsest step rather than drawing hundreds of ticks.
 	let step = ladder[ladder.length - 1];
 	while (span / step > maxTicks) step *= 10;
 	return step;
@@ -248,10 +229,10 @@ function atMonth(year: number, month: number): Date {
 /**
  * Dates to label the axis with, between `startJd` and `endJd`.
  *
- * Aligned to local calendar boundaries rather than to even fractions of the
- * span: the labels are read as dates, and a "2035" that does not sit on New
- * Year is worse than no tick. Local, not UTC, because that is the clock the
- * labels are formatted against.
+ * Aligned to local calendar boundaries rather than even fractions of the
+ * span: the labels are read as dates, and a "2035" not sitting on New Year is
+ * worse than no tick. Local, not UTC, since that's the clock they're
+ * formatted against.
  */
 export function axisTicks(startJd: number, endJd: number, maxTicks = 6): AxisTick[] {
 	const spanDays = endJd - startJd;
@@ -265,9 +246,9 @@ export function axisTicks(startJd: number, endJd: number, maxTicks = 6): AxisTic
 		if (jd >= startJd && jd <= endJd) ticks.push({ jd, date, unit });
 	};
 
-	// Pick the unit off the spacing the ticks would want, not off the span: at six
-	// ticks a 150-day trip wants a step of 25 days, which is a month rather than a
-	// clumsy multiple of a day.
+	// Pick the unit off the spacing the ticks would want, not off the span: at
+	// six ticks a 150-day trip wants a 25-day step, which is a month rather than
+	// a clumsy multiple of a day.
 	const stepDays = spanDays / maxTicks;
 	if (stepDays >= DAYS_PER_MONTH * 11) {
 		const step = stepFor(YEAR_STEPS, spanDays / DAYS_PER_YEAR, maxTicks);
@@ -279,7 +260,7 @@ export function axisTicks(startJd: number, endJd: number, maxTicks = 6): AxisTic
 		}
 	} else if (stepDays >= 25) {
 		const step = stepFor(MONTH_STEPS, spanDays / DAYS_PER_MONTH, maxTicks);
-		// Count months from year zero so the alignment does not restart each year.
+		// Count months from year zero so alignment doesn't restart each year.
 		const startIndex = start.getFullYear() * 12 + start.getMonth();
 		for (let index = Math.ceil(startIndex / step) * step; ; index += step) {
 			const date = atMonth(Math.floor(index / 12), index % 12);

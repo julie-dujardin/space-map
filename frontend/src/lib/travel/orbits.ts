@@ -3,14 +3,13 @@
  *
  * Derived from the body rather than listed per planet: a stationary orbit
  * exists where the synchronous radius clears the ground and still sits inside
- * the region the body holds, and that one rule drops it for Venus (whose day is
- * longer than the space it controls) and for every tidally locked moon at once
- * — synchronous works out at 3^(1/3) = 1.44 Hill radii for all of them.
+ * the region the body holds. That one rule drops it for Venus (day longer than
+ * the space it controls) and for every tidally locked moon at once —
+ * synchronous works out at 3^(1/3) = 1.44 Hill radii for all of them.
  *
- * Only orbits the kernel prices differently are offered. A polar or
- * sun-synchronous orbit is a real choice about inclination and costs the same
- * as any other circular orbit at that altitude here, so offering one would be
- * claiming a distinction the model does not have.
+ * Only orbits the kernel prices differently are offered: a polar or
+ * sun-synchronous orbit costs the same as any other circular orbit at that
+ * altitude here, so offering one would claim a distinction the model lacks.
  */
 
 import type { BodyData } from '$lib/types/objects';
@@ -51,10 +50,10 @@ export interface OrbitFacts {
 /**
  * Rotation and Hill radius for a body.
  *
- * The spin comes from the IAU prime-meridian rate the orientation bundle
- * already carries; the Hill radius from the orbit the body is actually on — its
- * own about its planet for a moon, its heliocentric one for a planet, since a
- * planet's orbit about its barycentre says nothing about what it holds.
+ * Spin comes from the IAU prime-meridian rate the orientation bundle already
+ * carries; Hill radius from the orbit the body is actually on — its own about
+ * its planet for a moon, its heliocentric one for a planet, since a planet's
+ * orbit about its barycentre says nothing about what it holds.
  */
 export function orbitFacts(
 	body: BodyData,
@@ -71,14 +70,12 @@ export function orbitFacts(
 }
 
 /**
- * What a body's Hill sphere is measured against: the Sun, or the NAIF id of the
- * body it goes round.
- *
- * A barycentre is never the answer, and it is where both cases live. The planet
- * *of* a barycentre — 399 in 3 — only wobbles about it, and is really in orbit
- * about the Sun; a moon in the same barycentre — 301 in 3 — is held by the
- * planet inside it. Reading "parent is a barycentre" as "this is a planet" gives
- * the Moon a heliocentric Hill radius twenty times too big, and with it a
+ * What a body's Hill sphere is measured against: the Sun, or the NAIF id of
+ * the body it goes round. A barycentre is never the answer: the planet *of*
+ * one — 399 in 3 — only wobbles about it and is really in orbit about the Sun,
+ * while a moon in the same barycentre — 301 in 3 — is held by the planet
+ * inside it. Reading "parent is a barycentre" as "this is a planet" gives the
+ * Moon a heliocentric Hill radius twenty times too big, and with it a
  * stationary orbit it cannot hold.
  */
 export function hillPrimaryOf(body: BodyData): 'sun' | number | null {
@@ -95,8 +92,8 @@ function hillRadiusKm(body: BodyData, travel: TravelBody, lookup: BodyLookup): n
 	const primary = hillPrimaryOf(body);
 	if (primary === null) return undefined;
 	const primaryMu = primary === 'sun' ? GM_SUN_KM3_S2 : getGmKm3s2(primary);
-	// About the Sun it is the heliocentric orbit that matters, not the wobble;
-	// about a planet it is the body's own.
+	// About the Sun it's the heliocentric orbit, not the wobble; about a planet
+	// it's the body's own.
 	const orbit = primary === 'sun' ? (heliocentricAncestor(body, lookup) ?? body) : body;
 	const aKm = orbit.a * AU_KM;
 	if (!primaryMu || !(primaryMu > 0) || !(aKm > 0) || !(travel.mu > 0)) return undefined;
@@ -110,9 +107,9 @@ function hillRadiusKm(body: BodyData, travel: TravelBody, lookup: BodyLookup): n
  *
  * A gas giant is the one case that has to be told apart: it has the thickest
  * atmosphere in the system and no surface under it, which the export says by
- * quoting its pressure at a level that is not a datum — so the envelope is
- * known and the surface pressure is not. A body whose detail has not loaded
- * claims ground, which is what every rocky body turns out to have.
+ * quoting its pressure at a level that isn't a datum — envelope known, surface
+ * pressure not. A body whose detail hasn't loaded claims ground, which is what
+ * every rocky body turns out to have.
  */
 export function hasGround(travel: TravelBody): boolean {
 	return !(travel.hasAtmosphere === true && travel.surfacePressureBar === undefined);
@@ -140,11 +137,10 @@ export function synchronousRadiusKm(mu: number, rotationHours: number): number {
 /**
  * Altitude a low orbit sits at, km.
  *
- * The kernel's one parking altitude keeps the big bodies comparable, and every
- * published Δv it is calibrated against assumes it — so it stands wherever the
- * body has the room. A small body does not: 200 km above a kilometre-wide
- * asteroid is outside the region it holds, which is no kind of low orbit. There
- * the altitude comes off the ceiling instead.
+ * The kernel's one parking altitude keeps the big bodies comparable and every
+ * published Δv is calibrated against it, so it stands wherever the body has
+ * the room. A small body doesn't: 200 km above a kilometre-wide asteroid is
+ * outside the region it holds, so the altitude comes off the ceiling instead.
  */
 export function lowOrbitAltitudeKm(travel: TravelBody, facts: OrbitFacts): number {
 	const ceiling = maxRadiusKm(facts) - travel.radiusKm;
@@ -161,9 +157,9 @@ function maxRadiusKm(facts: OrbitFacts): number {
 /**
  * Every way this end can be met, in the order they are offered.
  *
- * `role` decides two things: only a destination can be flown past or arrived at
- * on a transfer orbit, and only a departure can be from the ground of a body
- * with no ground — which is why `hasSurface` is asked rather than assumed.
+ * `role` decides two things: only a destination can be flown past or arrived
+ * at on a transfer orbit, and only a departure can be from a body with no
+ * ground — which is why `hasSurface` is asked rather than assumed.
  */
 export function orbitChoices(
 	travel: TravelBody,
@@ -224,9 +220,9 @@ export function orbitChoices(
  * Highest altitude a custom orbit may be put at, km — a third of the Hill
  * radius, or a hundred body radii where that is unknown.
  *
- * Deliberately not floored at the parking orbit: a small body can hold less than
- * 200 km of room, and a slider that ran past what `orbitChoices` will clamp to
- * would show one altitude while pricing another.
+ * Deliberately not floored at the parking orbit: a small body can hold less
+ * than 200 km of room, and a slider past what `orbitChoices` clamps to would
+ * show one altitude while pricing another.
  */
 export function maxCustomAltitudeKm(travel: TravelBody, facts: OrbitFacts): number {
 	const cap = facts.hillKm ? maxRadiusKm(facts) : travel.radiusKm * 100;

@@ -9,19 +9,14 @@ export const ARC_COLORS: Record<PathArcKind, string> = {
 	boost: '#ffb454',
 	brake: '#ff8c69',
 	spiral: '#c9a0ff',
-	// The same drive, a shade darker: these two stretches are the crossing's own
-	// spiral wound round a body, drawn along the body's path because that is
-	// where the craft is.
+	// A shade darker: the crossing's own spiral wound round a body.
 	'spiral-out': '#9b7fd4',
 	'spiral-in': '#9b7fd4'
 };
 
-/**
- * The same colours on the timeline's bar, plus the one stretch of a trip the map
- * draws no arc for: aerobraking walks the orbit down over months without going
- * anywhere, so it has a colour here and nothing to colour out there. Green
- * because it is the one leg that costs time instead of propellant.
- */
+/** The same colours on the timeline's bar, plus aerobraking, which walks the
+ *  orbit down without going anywhere and so has no arc to draw. Green because
+ *  it is the one leg that costs time instead of propellant. */
 export const PHASE_COLORS: Partial<Record<TimelineKind, string>> = {
 	cruise: ARC_COLORS.cruise,
 	boost: ARC_COLORS.boost,

@@ -1,30 +1,27 @@
 /**
- * The arc a drive that never stops flies.
+ * The arc a drive that never stops flies. A torch ship doesn't transfer
+ * between orbits — it points at where the destination will be, burns until
+ * halfway, flips, and burns the rest of the way down: a brachistochrone, whose
+ * only parameter is how hard the drive pushes. No launch window: every
+ * departure date flies much the same arc, which is what makes these ships
+ * feel like ships.
  *
- * A torch ship does not transfer between orbits. It points at where the
- * destination will be, burns until halfway, flips, and burns the rest of the way
- * down — a brachistochrone, whose only parameter is how hard the drive pushes.
- * Nothing about it is a launch window: every departure date flies much the same
- * arc, which is exactly what makes these ships feel like ships.
+ * Burning all the way is fastest, not the only option. Cutting the drive
+ * between the two burns and coasting buys the same distance for less Δv and a
+ * longer trip — the trade real missions make, and the one a torch ship gets to
+ * decline. `coastFraction` is where on that trade the arc sits.
  *
- * Burning all the way is the fastest crossing, not the only one. Cutting the
- * drive between the two burns and coasting buys the same distance for less Δv,
- * and a longer trip — the trade every real mission makes, and the one a torch
- * ship gets to decline. `coastFraction` is where on that trade the arc sits.
- *
- * **Gravity is in the crossing**, not left at its ends. The arc is integrated
- * under the primary's pull from the moment the ship is out of one well to the
- * moment it is falling into the other; see `held-drive`, which owns the flying
- * and the steering. What remains here is the pricing: the two wells at the ends,
- * the legs, and the coast the caller asked for.
+ * **Gravity is in the crossing**, not left at its ends: the arc is integrated
+ * under the primary's pull from leaving one well to falling into the other;
+ * see `held-drive`, which owns the flying and steering. What remains here is
+ * pricing — the two wells, the legs, and the requested coast.
  *
  * The straight-line assumption survives as the *seed* the real solve starts
- * from. It is a good guess for a drive that dwarfs the Sun and a poor one
- * otherwise, which is why the solve can refuse: a ship that cannot outpush its
- * primary has no brachistochrone to fly, and gets no arc rather than a plausible
- * number. Both wells are still cleared at zero excess speed, so the ship enters
- * the crossing co-moving with the body it left — which is what makes starting
- * the integration there the same statement as pricing the well at v∞ = 0.
+ * from — good for a drive that dwarfs the Sun, poor otherwise, which is why
+ * the solve can refuse: a ship that can't outpush its primary gets no arc
+ * rather than a plausible number. Both wells clear at zero excess speed, so
+ * starting the integration there is the same statement as pricing the well at
+ * v∞ = 0.
  */
 
 import type { TravelBody } from './body';
@@ -65,36 +62,29 @@ function frameEnds(
 }
 
 /**
- * How long a coast the slider's far end asks for, as a multiple of the crossing
- * flown flat out.
- *
- * There is no longer a modelling limit to respect — the coast is a conic walked
- * in closed form, so it is exact however long it runs — and the real limit is
- * geometric: past some length the ship can no longer be pushed back onto the
- * target and the solve stops closing. This is a span wide enough to reach that
- * for most pairs, and the arc simply stops being offered beyond it.
+ * How long a coast the slider's far end asks for, as a multiple of the
+ * crossing flown flat out. No modelling limit applies — the coast is a conic
+ * walked in closed form, exact however long it runs — so the real limit is
+ * geometric: past some length the ship can't be pushed back onto the target
+ * and the solve stops closing. Wide enough to reach that for most pairs; the
+ * arc just stops being offered beyond it.
  */
 const COAST_SPAN = 6;
 
 /**
- * How much of the crossing the primary may bend a coast out of, on the trips
- * that are still flown as a straight line.
- *
- * Only a trip inside one system is: its frame is centred on the body being left
- * or arrived at, which sits at the origin, and an integration started there
- * would begin at the centre of the planet. That well is already priced at the
- * end it belongs to — the crossing does not start until the ship is out of it —
- * so what is left is a gap the drive crosses far above the primary, where the
- * old assumption holds. The coast still has to be capped, because that part of
- * the model has not changed.
+ * How much of the crossing the primary may bend a coast out of, for trips
+ * still flown as a straight line — only trips inside one system, whose frame
+ * is centred on the body being left or arrived at. That well is already
+ * priced at its own end, so what's left is a gap crossed far above the
+ * primary where the straight-line assumption holds; the coast still needs a
+ * cap since that part of the model hasn't changed.
  */
 const COAST_DRIFT_BUDGET = 0.05;
 
 /**
- * Steps the bracket search takes, and how far past the still-target estimate it
- * keeps looking. A destination that runs away faster than the drive closes has
- * no arc at all, and the search has to be able to say so rather than climb
- * forever.
+ * Steps the bracket search takes, and how far past the still-target estimate
+ * it keeps looking. A destination outrunning the drive has no arc at all, and
+ * the search must say so rather than climb forever.
  */
 const BRACKET_STEPS = 64;
 const BRACKET_SPAN = 32;
@@ -103,16 +93,13 @@ const BRACKET_SPAN = 32;
 const BISECTION_STEPS = 40;
 
 /**
- * The shortest burn that reaches the destination *ignoring gravity*, in seconds.
- *
- * `shortfall` is negative while the arc falls short and positive once it
- * overshoots, so the burn is its first root. Scanned rather than iterated to a
- * fixed point: the destination's own motion feeds back into the answer hard
- * enough that the obvious iteration diverges for any drive slow enough to let it
- * move — which is exactly the interesting case.
- *
- * This is the seed, not the answer. What it is good for is being close, and it
- * is closest where gravity matters least.
+ * The shortest burn that reaches the destination *ignoring gravity*, in
+ * seconds. `shortfall` is negative while the arc falls short and positive
+ * once it overshoots, so the burn is its first root. Scanned rather than
+ * iterated to a fixed point: the destination's own motion feeds back hard
+ * enough that the obvious iteration diverges for any drive slow enough to let
+ * it move — exactly the interesting case. This is the seed, not the answer,
+ * and is closest where gravity matters least.
  */
 function seedBurnSeconds(
 	shortfall: (seconds: number) => number | null,
@@ -161,11 +148,9 @@ export interface HeldDriveGeometry {
 }
 
 /**
- * Solve the arc itself, with no pricing attached — the crossing between the two
- * wells, under gravity.
- *
- * Exported for the tests, which have to be able to ask whether the trajectory
- * actually lands on the target rather than take the route's word for it.
+ * Solve the arc itself, with no pricing attached — the crossing between the
+ * two wells, under gravity. Exported for tests, which need to check the
+ * trajectory actually lands on the target rather than take the route's word.
  */
 export function solveConstantThrustArc(
 	departure: TravelBody,
@@ -280,13 +265,12 @@ export function solveConstantThrustArc(
 }
 
 /**
- * The old straight-line crossing, kept for trips inside one system.
- *
- * Nothing here is integrated: the ship runs down the chord, and the coast is
- * capped where the primary would have bent it out of that line by
- * `COAST_DRIFT_BUDGET` of the distance crossed. The arc it returns wears the
- * same shape as a flown one so the pricing below does not have to know which it
- * got, but its `thrustDir` is simply the chord and nothing should re-fly it.
+ * The old straight-line crossing, kept for trips inside one system. Nothing
+ * here is integrated: the ship runs down the chord, and the coast is capped
+ * where the primary would bend it out of that line by `COAST_DRIFT_BUDGET` of
+ * the distance crossed. The returned arc wears the same shape as a flown one
+ * so pricing doesn't need to know which it got, but `thrustDir` is just the
+ * chord — nothing should re-fly it.
  */
 function straightLineArc(args: {
 	start: StateVector;
@@ -354,10 +338,9 @@ function straightLineArc(args: {
 
 /**
  * Build the constant-thrust arc leaving at `departJd` under `accelMs2`.
- *
- * Returns null when either end cannot be placed, or when the drive cannot fly
- * the crossing at all — a metre per second squared does not catch an
- * interstellar comet, and does not beat the Sun either.
+ * Returns null when either end can't be placed, or the drive can't fly the
+ * crossing at all — a metre per second squared won't catch an interstellar
+ * comet, and won't beat the Sun either.
  */
 export function buildConstantThrustRoute(
 	departure: TravelBody,

@@ -1,11 +1,10 @@
 /**
  * How a hazard is written down.
  *
- * Shared by the row of trajectories, the detail below it and the chip on the
- * map, so the same hazard reads the same way wherever it turns up. Deliberately
- * separate from `hazards.ts`, which knows nothing about a locale — and it only
- * ever imports the hazard *types*, so the map can pull this in without dragging
- * the trajectory kernel onto the first frame.
+ * Shared by the row of trajectories, the detail below it and the map's chip,
+ * so the same hazard reads the same way wherever it turns up. Kept separate
+ * from `hazards.ts`, which knows nothing about a locale, and imports only the
+ * hazard *types* from it so the map isn't dragged into the trajectory kernel.
  */
 
 import * as m from '$lib/paraglide/messages.js';
@@ -13,9 +12,8 @@ import { ltrIsolate } from '$lib/format/bidi';
 import { formatDurationNarrow, SECONDS_PER_DAY } from '$lib/format/duration';
 import { formatPercent } from '$lib/format/quantities';
 import { formatKelvin } from '$lib/format/temperature';
-// The leaf module rather than the kernel's barrel: this file is pulled in by the
-// map, and `$lib/math/travel` would drag Lambert and the propagator onto the
-// first frame. `radiation` imports nothing heavier than two constants.
+// Leaf import, not the kernel's barrel — this file is on the map's own chunk,
+// and `$lib/math/travel` would drag Lambert and the propagator onto it.
 import {
 	BELT_MODEL_UNCERTAINTY_FACTOR,
 	cancerRiskFraction,
@@ -56,13 +54,8 @@ function percent(fraction: number): string {
 	return value >= 10 ? Math.round(value).toString() : significant(value);
 }
 
-/**
- * A lag rounded to the minute once it is minutes.
- *
- * The seconds are false precision — the geometry moves further than that in an
- * hour — and "49m 56s" reads as a measurement rather than as the scale of the
- * problem, which is the only thing being said.
- */
+/** A lag rounded to the minute once it is minutes — the seconds are false
+ *  precision, and "49m 56s" reads as a measurement rather than a scale. */
 function lag(seconds: number): string {
 	return formatDurationNarrow(roundLag(seconds) / SECONDS_PER_DAY);
 }
@@ -114,14 +107,9 @@ export function hazardValue(hazard: Hazard): string {
 	}
 }
 
-/**
- * What it means for the craft, in a sentence.
- *
- * `originName` is only read by the conjunction, which is the one hazard defined
- * against the place the trip left rather than against the trip itself.
- * `bodyName` is only read by a belt crossing, which is the one defined against
- * a body the trip merely passes.
- */
+/** What it means for the craft, in a sentence. `originName` is read only by
+ *  the conjunction, defined against the place the trip left; `bodyName` only
+ *  by a belt crossing, defined against a body the trip merely passes. */
 export function hazardDetail(hazard: Hazard, originName: string, bodyName = ''): string {
 	switch (hazard.kind) {
 		case 'solar-heat':
@@ -137,8 +125,7 @@ export function hazardDetail(hazard: Hazard, originName: string, bodyName = ''):
 		case 'conjunction':
 			return m.travel_hazard_conjunction_detail({ origin: originName });
 		case 'signal-lag':
-			// The round trip, not the one-way figure beside it: how long it takes to
-			// hear back is the whole of what this row adds. Doubled *after* rounding,
+			// Round trip, not the one-way figure beside it. Doubled after rounding,
 			// so it cannot read as an odd multiple of the figure above it.
 			return m.travel_hazard_lag_detail({
 				value: ltrIsolate(formatDurationNarrow((roundLag(hazard.peak) * 2) / SECONDS_PER_DAY))
@@ -146,12 +133,10 @@ export function hazardDetail(hazard: Hazard, originName: string, bodyName = ''):
 		case 'aeroassist':
 			return m.travel_hazard_aero_detail({ value: formatDv(hazard.peak) });
 		case 'radiation':
-			// The rate as well as the total, because the two say different things:
-			// a sievert collected over nine years to Neptune is a different problem
-			// from the same sievert collected in eight months to Mars. And the note
-			// about shielding, which is the counter-intuitive part — the reference
-			// dose already carries a spacecraft's aluminium, and the lunar surface
-			// check says that is worth under 10%.
+			// Rate as well as total: a sievert over nine years to Neptune is a
+			// different problem from the same sievert in eight months to Mars. The
+			// reference dose already carries a spacecraft's aluminium — the lunar
+			// surface check says that is worth under 10%.
 			return m.travel_hazard_radiation_detail({
 				value: ltrIsolate(formatSievert(hazard.rateAtPeak ?? 0)),
 				risk: ltrIsolate(formatPercent(cancerRiskFraction(hazard.peak)))

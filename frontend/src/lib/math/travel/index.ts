@@ -1,42 +1,29 @@
 /**
- * Trajectory compute layer for the "go somewhere" feature.
+ * Trajectory compute layer for the "go somewhere" feature. Pure: takes bodies
+ * and dates, returns routes, no reach into fetch or scene layers.
  *
- * Everything here is pure: it takes bodies and dates and returns routes, with
- * no reach into the fetch or scene layers. The UI supplies `TravelBody` records
- * built from whatever data it already has.
- *
- * The pipeline is:
+ * Main pipeline:
  *
  *   elements → state vectors → Lambert arc → v∞ at each end
  *            → departure/arrival manoeuvre costs → a route of priced legs
  *
- * and above that, a porkchop sweep over departure date and cruise length that
- * yields the fast / balanced / efficient options to offer.
+ * topped by a porkchop sweep over departure date and cruise length, yielding
+ * fast / balanced / efficient options. Three more route shapes beside it: a
+ * held drive from departure to arrival for fictional ships without a Δv budget
+ * (`brachistochrone`); two Lambert arcs patched by a third-body swing-by,
+ * searched over years rather than one synodic period (`assist`); and, for
+ * drives that can't burn at all, an ion-engine spiral out of one well and down
+ * into the other, no Lambert arc or launch energy involved (`low-thrust`).
  *
- * Beside it sits one arc that is not a transfer orbit at all: a drive held from
- * departure to arrival, which is what the catalogue's fictional ships fly and
- * the only thing an acceleration without a Δv budget can be priced as. See
- * `brachistochrone`.
+ * A route says what a trip costs, not where it goes — `path` re-derives the
+ * arcs from the same inputs the route was priced from and walks them with
+ * `propagate`, so geometry and ladder can't disagree because neither is stored.
  *
- * Beside both sits a third shape: two arcs patched by a swing-by past a third
- * body, searched over a horizon of years rather than one synodic period. See
- * `assist`.
- *
- * And a fourth for the drives that cannot burn at all: an ion engine spirals out
- * of one well, reshapes its orbit under months of thrust, and spirals down into
- * the other. No Lambert arc, no launch energy, and a Δv that buys a different
- * trip than the same figure spent at an instant. See `low-thrust`.
- *
- * A route says what a trip costs, not where it goes. Drawing one needs the
- * second thing, so `path` re-derives the arcs from the same inputs the route was
- * priced from and walks them with `propagate` — the geometry and the ladder
- * therefore cannot disagree, because neither is stored.
- *
- * Scope limits worth knowing: transfers are patched-conic legs about one primary
- * (a moon needs its own leg from its planet), a swing-by route carries exactly
- * one pass, only the zero-revolution Lambert branch is solved, and the manoeuvre
- * model is a set of published loss factors rather than an optimiser. See the
- * constants module for every approximation by name.
+ * Scope limits: transfers are patched-conic legs about one primary (a moon
+ * needs its own leg from its planet), a swing-by route carries exactly one
+ * pass, only the zero-revolution Lambert branch is solved, and the manoeuvre
+ * model is published loss factors rather than an optimiser. See the constants
+ * module for every approximation by name.
  */
 
 export { GM_SUN_KM3_S2, PARKING_ALTITUDE_KM } from './constants';

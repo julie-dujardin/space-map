@@ -30,15 +30,11 @@ export interface StateVector {
 
 /**
  * The rotation from the orbit plane to ecliptic J2000, as its six non-trivial
- * terms.
- *
- * Built once and applied to both the position and the velocity. They share an
- * orbit, so they share this — and it is six trigonometric calls, which is most
- * of what turning a set of elements into a state costs. The porkchop and the
- * swing-by search each do that tens of thousands of times.
- *
- * Mirrors the rotation inside `orbitalToThreeJS` but stops at the ecliptic —
- * the scene's axis remap belongs to rendering, not physics.
+ * terms. Built once and applied to both position and velocity, since they
+ * share an orbit — this is six trig calls, most of what turning elements into
+ * a state costs, done tens of thousands of times by the porkchop and
+ * swing-by search. Mirrors the rotation inside `orbitalToThreeJS` but stops
+ * at the ecliptic; the scene's axis remap belongs to rendering, not physics.
  */
 interface PlaneRotation {
 	m11: number;
@@ -95,16 +91,13 @@ export function eclipticToScene(r: Vec3): Vec3 {
 
 /**
  * Position and velocity at `jd`, in the parent-centred ecliptic J2000 frame.
- *
  * `muKm3S2` should be supplied whenever a trustworthy value exists (the SPICE
- * PCK GMs the export ships). Without it μ is recovered from Kepler's third law
- * using the packed mean motion, which is float32 in the binary and so carries
- * roughly seven digits — fine for a Δv estimate, not for ephemeris work.
- *
- * Mean anomaly is always propagated with the packed mean motion rather than one
- * re-derived from μ, so positions here agree with what the renderer draws.
- *
- * Returns null when the elements are unusable.
+ * PCK GMs the export ships); without it μ is recovered from Kepler's third
+ * law using the packed mean motion, float32 in the binary and so good to
+ * roughly seven digits — fine for a Δv estimate, not ephemeris work. Mean
+ * anomaly is always propagated with the packed mean motion rather than one
+ * re-derived from μ, so positions agree with what the renderer draws. Returns
+ * null when the elements are unusable.
  */
 export function elementsToState(
 	el: OrbitalElements,

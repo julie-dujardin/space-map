@@ -1,15 +1,15 @@
 /**
  * Finding the bodies a trip is made of.
  *
- * The scene only holds what it is drawing, and it holds it in several places —
- * majors in one index, small bodies in per-zone buckets, spacecraft under their
- * parent. A trip end is any object in the catalogue, so resolving one cannot go
- * through the scene alone: what the scene has is used as-is, and everything else
- * is read from its global bundle, which describes every object whether or not it
- * is on screen.
+ * The scene only holds what it's drawing, split across several places —
+ * majors in one index, small bodies in per-zone buckets, spacecraft under
+ * their parent. A trip end can be any object in the catalogue, so resolving
+ * one can't go through the scene alone: what it has is used as-is, and
+ * everything else is read from the global bundle, which describes every
+ * object whether or not it's on screen.
  *
- * The walk goes up to the heliocentric orbit, since that is the orbit a transfer
- * is flown between — so a moon of an asteroid pulls in the asteroid too.
+ * The walk goes up to the heliocentric orbit, since that's what a transfer is
+ * flown between — so a moon of an asteroid pulls in the asteroid too.
  */
 
 import type { BodyData } from '$lib/types/objects';
@@ -47,8 +47,8 @@ function fromBundle(id: string): Promise<BodyData | null> {
  * whatever orbits the Sun.
  *
  * `resident` is asked first so a body already in the scene keeps the elements
- * being drawn. An end whose chain cannot be closed is simply absent from the
- * result, which the panel reads as a trip it cannot price.
+ * being drawn. An end whose chain can't be closed is simply absent from the
+ * result, which the panel reads as a trip it can't price.
  */
 export async function resolveTripBodies(
 	ids: readonly string[],

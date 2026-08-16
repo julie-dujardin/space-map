@@ -2,10 +2,10 @@
  * The trajectories on offer, grouped by how the trip is flown.
  *
  * Four kinds of answer end up in one list — a window off the porkchop, a
- * swing-by, an arc held under thrust, a spiral out — and they are not read
+ * swing-by, an arc held under thrust, a spiral out — and they aren't read
  * against each other: a spiral's four years and a Hohmann's nine months answer
- * different questions. Tabbing them keeps each family's rows next to the ones
- * they are actually alternatives to.
+ * different questions. Tabbing keeps each family's rows next to the ones
+ * they're actually alternatives to.
  */
 
 import type { OfferedRoute } from './panel.svelte';
@@ -36,9 +36,9 @@ export interface RouteTab {
 /**
  * Which tabs to show, in the order their first route comes back in.
  *
- * The swing-by hunt lands about a second after everything else, and a tab that
- * appears late moves the ones beside it. So it holds its place while it runs
- * rather than being added when it lands — the reader is told there may be one
+ * The swing-by hunt lands about a second after everything else, and a tab
+ * appearing late would move the ones beside it. So it holds its place while
+ * running rather than being added on landing — the reader is told one may be
  * coming instead of watching the row of tabs jump.
  */
 export function routeTabs(offered: readonly OfferedRoute[], assistSearching: boolean): RouteTab[] {
@@ -62,10 +62,8 @@ export function routesIn(
 
 /**
  * The tab actually showing: the one asked for while it still holds anything,
- * else the first that does.
- *
- * Only ever retires a choice, so a swing-by landing under a reader who is
- * reading the spiral does not take them somewhere they did not ask to be.
+ * else the first that does. Only ever retires a choice, so a swing-by landing
+ * under a reader who is reading the spiral doesn't move them.
  */
 export function activeFamily(
 	tabs: readonly RouteTab[],

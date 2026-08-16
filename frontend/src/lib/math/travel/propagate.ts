@@ -1,15 +1,14 @@
 /**
- * Walking a state vector along its own conic.
+ * Walking a state vector along its own conic. Lambert answers where an arc
+ * starts and ends; drawing one needs every point between — the
+ * universal-variable form of Kepler's equation, one equation covering
+ * ellipse, parabola and hyperbola, since a transfer arc is whatever the dates
+ * make it (a fast one crosses e = 1 without warning; two receding comets are
+ * joined by a hyperbola).
  *
- * Lambert answers where an arc starts and ends; drawing one needs every point
- * between. That is the universal-variable form of Kepler's equation: one
- * equation covering ellipse, parabola and hyperbola, which matters here because
- * a transfer arc is whatever the dates make it — a fast one crosses e = 1
- * without warning, and two receding comets are joined by a hyperbola.
- *
- * Only the *starting guess* branches on which conic it is, and only because a
- * shared one is not good enough to converge from. Everything after it is the one
- * equation, and a bisection fallback makes the solve total.
+ * Only the *starting guess* branches on which conic it is, because a shared
+ * one isn't good enough to converge from; everything after is the one
+ * equation, with a bisection fallback that makes the solve total.
  *
  * Curtis §3.7 with Vallado's starters, in km and seconds.
  */
@@ -60,12 +59,11 @@ const PARABOLIC_EPS = 1e-6;
 const BRACKET_STEPS = 200;
 
 /**
- * A first guess at χ, per conic.
- *
- * The regimes genuinely need different starters. The elliptic form fed a
- * strongly hyperbolic arc lands an order of magnitude out, and since the
- * hyperbolic Stumpff functions grow like sinh, Newton then steps into a region
- * where the derivative is astronomically large and never comes back.
+ * A first guess at χ, per conic. The regimes genuinely need different
+ * starters: the elliptic form fed a strongly hyperbolic arc lands an order of
+ * magnitude out, and since the hyperbolic Stumpff functions grow like sinh,
+ * Newton then steps into a region where the derivative is astronomically
+ * large and never comes back.
  */
 function startingAnomaly(
 	r0: number,
@@ -94,17 +92,16 @@ function startingAnomaly(
 }
 
 /**
- * The universal anomaly χ reached after `dtSec`, or null if it cannot be found.
+ * The universal anomaly χ reached after `dtSec`, or null if it can't be
+ * found. `alpha` is 1/a — positive on an ellipse, negative on a hyperbola,
+ * zero on a parabola — letting one equation serve all three.
  *
- * `alpha` is 1/a — positive on an ellipse, negative on a hyperbola, zero on a
- * parabola — and is what lets one equation serve all three.
- *
- * Newton first, then bisection when it wanders. The fallback is not a
- * consolation prize: dF/dχ is the orbital radius, which is positive everywhere,
- * so F is strictly increasing and its root is unique and always bracketable.
- * That is what makes this total over every conic, which matters because a
- * transfer arc is whatever the dates make it — the arc between two long-period
- * comets is a hyperbola of a = −9 AU, and nothing upstream warns of it.
+ * Newton first, then bisection when it wanders. The fallback isn't a
+ * consolation prize: dF/dχ is the orbital radius, positive everywhere, so F
+ * is strictly increasing and its root is unique and always bracketable —
+ * which makes this total over every conic, needed because a transfer arc
+ * between two long-period comets can be a hyperbola of a = −9 AU with nothing
+ * upstream warning of it.
  */
 function universalAnomaly(
 	r0: number,
@@ -177,11 +174,10 @@ function universalAnomaly(
 
 /**
  * Where a body at `r`/`v` is `dtSec` later on the same two-body arc, and how
- * fast it is going when it gets there. Km and km/s.
- *
- * `dtSec` may be negative, which walks the arc backwards. Returns null when the
- * state is degenerate or the iteration diverges — a caller drawing a path
- * should drop the sample rather than draw a NaN.
+ * fast it's going then, km and km/s. `dtSec` may be negative, walking the arc
+ * backwards. Returns null when the state is degenerate or the iteration
+ * diverges — a caller drawing a path should drop the sample rather than draw
+ * a NaN.
  */
 export function propagateFull(
 	r: Vec3,

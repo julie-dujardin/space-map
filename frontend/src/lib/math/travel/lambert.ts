@@ -1,14 +1,13 @@
 /**
  * Lambert's problem — the two-body arc joining two positions in a given time.
- *
- * Izzo's 2014 formulation, the same one pykep and poliastro use. It reduces the
- * problem to a single scalar `x` and converges in a handful of Householder
- * steps with no bracketing, which is what makes a porkchop grid of tens of
- * thousands of solves cheap enough to run per-interaction.
+ * Izzo's 2014 formulation, the same one pykep and poliastro use: reduces the
+ * problem to a single scalar `x`, converging in a handful of Householder
+ * steps with no bracketing — cheap enough to run a porkchop grid of tens of
+ * thousands of solves per interaction.
  *
  * Only the zero-revolution branch is implemented. Multi-revolution transfers
- * exist for long times of flight and can beat the direct arc; callers that grid
- * out multi-year windows should treat the result as an upper bound on cost.
+ * exist for long times of flight and can beat the direct arc; callers gridding
+ * multi-year windows should treat the result as an upper bound on cost.
  */
 
 import type { Vec3 } from './vec3';
@@ -25,16 +24,13 @@ const HOUSEHOLDER_TOL = 1e-11;
 const HOUSEHOLDER_MAX_ITER = 15;
 
 /**
- * Solve for the arc from `r1` to `r2` in `tofSec`.
- *
- * Positions are in km in any consistent inertial frame; `mu` in km³/s².
- * `retrograde` picks the transfer that runs clockwise about the frame's +Z
- * axis — for heliocentric transfers in ecliptic J2000 the default (prograde) is
- * what you want, since the planets all orbit that way.
- *
- * Returns null for degenerate geometry: coincident or antipodal endpoints
- * (where the transfer plane is undefined), non-positive time of flight, or a
- * non-converged solve.
+ * Solve for the arc from `r1` to `r2` in `tofSec`. Positions are in km in any
+ * consistent inertial frame; `mu` in km³/s². `retrograde` picks the transfer
+ * running clockwise about the frame's +Z axis — for heliocentric transfers in
+ * ecliptic J2000 the default (prograde) is right, since the planets all orbit
+ * that way. Returns null for degenerate geometry (coincident or antipodal
+ * endpoints, where the transfer plane is undefined), non-positive time of
+ * flight, or a non-converged solve.
  */
 export function solveLambert(
 	r1: Vec3,
@@ -165,12 +161,11 @@ function solveForX(T: number, lambda: number): number | null {
 }
 
 /**
- * Non-dimensional time of flight for a given `x`.
- *
- * Three expressions cover the domain: a Battin series next to the parabolic
- * point x = 1, Lagrange's closed form just outside it, and Lancaster's form
- * elsewhere. The switch exists because each loses precision where the others
- * hold — near x = 1 the Lancaster denominator (x² − 1) vanishes.
+ * Non-dimensional time of flight for a given `x`. Three expressions cover the
+ * domain: a Battin series next to the parabolic point x = 1, Lagrange's
+ * closed form just outside it, and Lancaster's form elsewhere — the switch
+ * exists because each loses precision where the others hold, e.g. near x = 1
+ * the Lancaster denominator (x² − 1) vanishes.
  */
 function timeOfFlight(x: number, lambda: number): number {
 	const BATTIN = 0.01;

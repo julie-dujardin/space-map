@@ -1,9 +1,9 @@
 /**
  * Where a surface feature is, as the trajectory kernel wants it.
  *
- * The kernel draws a landing all the way to its site, but stays free of
- * rotation models — it takes the site as a function of time and this module is
- * that function: IAU pole + spin off the body's detail bundle, the same maths
+ * The kernel draws a landing all the way to its site but stays free of
+ * rotation models: it takes the site as a function of time, and this module is
+ * that function — IAU pole + spin off the body's detail bundle, the same maths
  * that orients the rendered globe, so the arc ends on the feature's label
  * rather than near it.
  */
@@ -19,11 +19,9 @@ import type { Vec3 } from '$lib/math/travel/vec3';
 
 const DEG2RAD = Math.PI / 180;
 
-/**
- * The site's position from the body's centre, km, in ecliptic J2000 axes, at a
- * given date. Null when the body ships no spin model — the kernel then lands at
- * the point its own geometry prefers, which still reaches the ground.
- */
+/** The site's position from the body's centre, km, in ecliptic J2000 axes, at a
+ *  given date. Null when the body ships no spin model — the kernel then lands
+ *  at the point its own geometry prefers, which still reaches the ground. */
 export function surfaceSiteAt(
 	body: BodyData,
 	detail: GlobalObjectData | null | undefined,

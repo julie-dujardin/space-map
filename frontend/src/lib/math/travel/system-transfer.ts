@@ -1,23 +1,21 @@
 /**
- * Transfers that stay inside one system — Earth to its Moon, a planet to one of
- * its satellites.
+ * Transfers that stay inside one system — Earth to its Moon, a planet to one
+ * of its satellites. The interplanetary solver can't answer these: it
+ * connects two orbits about a distant primary, but here one end *is* the
+ * primary — no heliocentric arc between them, no hyperbolic escape at
+ * departure since you never leave. Instead there's an ellipse with periapsis
+ * at the parking orbit and its far end at the satellite's distance — the
+ * lunar-transfer geometry.
  *
- * The interplanetary solver cannot answer these. It connects two orbits about a
- * distant primary, and here one end *is* the primary: there is no heliocentric
- * arc between them, and no hyperbolic escape at the departure, because you never
- * leave. What there is instead is an ellipse with its periapsis at the parking
- * orbit and its far end out at the satellite's distance — the lunar-transfer
- * geometry.
- *
- * The departure point around the primary is free, since you choose when in the
- * parking orbit to burn. That is what makes the arc solvable from a time of
- * flight alone: one ellipse in the family reaches the satellite's distance in
- * exactly that time, and the family runs from the Hohmann half-ellipse (slowest,
+ * The departure point around the primary is free, since you choose when in
+ * the parking orbit to burn. That's what makes the arc solvable from a time
+ * of flight alone: one ellipse in the family reaches the satellite's distance
+ * in exactly that time, running from the Hohmann half-ellipse (slowest,
  * cheapest) up to a nearly parabolic arc (fastest).
  *
  * Coplanar throughout. The plane change between a parking orbit and the
- * satellite's orbit is a launch-azimuth question, and pricing it needs a launch
- * site rather than a body.
+ * satellite's orbit is a launch-azimuth question, pricing which needs a
+ * launch site rather than a body.
  */
 
 import type { TravelBody } from './body';
@@ -64,13 +62,11 @@ function hohmannInverseA(rNearKm: number, rFarKm: number): number {
 }
 
 /**
- * The slowest and cheapest arc: the half-ellipse tangent to both radii, in days.
- * Every other arc in the family is faster and costs more.
- *
- * Read through `arcDays` rather than from the closed form, so that a grid built
- * to end here asks for a time this family can still answer: near half a turn the
- * arc-cosine loses enough precision that the two disagree by more than the
- * bracket's own slack.
+ * The slowest and cheapest arc: the half-ellipse tangent to both radii, in
+ * days. Every other arc in the family is faster and costs more. Read through
+ * `arcDays` rather than the closed form, so a grid built to end here asks for
+ * a time this family can still answer: near half a turn the arc-cosine loses
+ * enough precision that the two disagree by more than the bracket's own slack.
  */
 export function hohmannArcDays(mu: number, rNearKm: number, rFarKm: number): number {
 	const inverseA = hohmannInverseA(rNearKm, rFarKm);
@@ -79,11 +75,10 @@ export function hohmannArcDays(mu: number, rNearKm: number, rFarKm: number): num
 }
 
 /**
- * The fastest arc worth offering, in days.
- *
- * The family's limit is parabolic — infinite semi-major axis, and a departure
- * burn that leaves the system rather than crossing it. This stops short of that,
- * far enough out that the remaining arcs all cost more than anyone would pay.
+ * The fastest arc worth offering, in days. The family's limit is parabolic —
+ * infinite semi-major axis, a departure burn that leaves the system rather
+ * than crossing it. This stops short of that, far enough out that the
+ * remaining arcs all cost more than anyone would pay.
  */
 const FASTEST_A_MULTIPLE = 60;
 
@@ -97,11 +92,10 @@ const SOLVE_STEPS = 60;
 
 /**
  * The arc from a parking orbit at `rNearKm` out to `rFarKm` that takes
- * `tofDays`, or null when no arc in the family does.
- *
- * Slower than the Hohmann time is unreachable here by construction: that arc is
- * already the slowest that touches both radii, and anything longer would have to
- * arrive after apoapsis, on its way back down.
+ * `tofDays`, or null when no arc in the family does. Slower than the Hohmann
+ * time is unreachable by construction: that arc is already the slowest that
+ * touches both radii, and anything longer would arrive after apoapsis, on its
+ * way back down.
  */
 export function solveRadialArc(
 	mu: number,
@@ -155,13 +149,12 @@ export function solveRadialArc(
 
 /**
  * Whether the primary's elements describe it going round the barycentre they
- * share, rather than something else.
- *
- * Two bodies about a common barycentre keep step: one period, opposite sides.
- * An element set that says otherwise is not describing that motion — a planet's
- * row can hold a degenerate fit, since its position comes from sampled ephemeris
- * and the elements are only carried alongside — and differencing it would move
- * the primary by thousands of km an hour.
+ * share, rather than something else. Two bodies about a common barycentre
+ * keep step: one period, opposite sides. An element set that says otherwise
+ * isn't describing that motion — a planet's row can hold a degenerate fit,
+ * since its position comes from sampled ephemeris and the elements are only
+ * carried alongside — and differencing it would move the primary by
+ * thousands of km an hour.
  */
 function orbitsInLockstep(primary: TravelBody, satellite: TravelBody): boolean {
 	const ratio = primary.elements.n / satellite.elements.n;
@@ -193,16 +186,15 @@ function isMeasured(satellite: TravelBody, primary: TravelBody): boolean {
 
 /**
  * The satellite where it was measured, or null outside the dates that were.
- *
- * Null rather than a fallback: a body carrying these is one whose conic is a
- * fiction, so past the last sample there is no answer to give and a search
- * simply stops offering trips it cannot describe. Reaching for the elements
+ * Null rather than a fallback: a body carrying these has a conic that's a
+ * fiction, so past the last sample there's no answer to give, and a search
+ * simply stops offering trips it can't describe. Reaching for the elements
  * there is how the far end ends up half a million km from the body.
  *
- * Cubic Hermite, so the sampled velocities shape the curve between dates rather
+ * Cubic Hermite, so sampled velocities shape the curve between dates rather
  * than only being read at them; a chord across a two-day gap would sag by a
- * hundred kilometres, which is nothing here, but the plane and the satellite's
- * own motion are read off this too and those want the tangent right.
+ * hundred kilometres — nothing here, but the plane and the satellite's own
+ * motion are also read off this and want the tangent right.
  */
 function sampledState(satellite: TravelBody, primary: TravelBody, jd: number): StateVector | null {
 	const samples = satellite.samples;
@@ -242,18 +234,17 @@ function sampledState(satellite: TravelBody, primary: TravelBody, jd: number): S
 }
 
 /**
- * The satellite's position and velocity relative to its primary.
+ * The satellite's position and velocity relative to its primary. Measured
+ * positions answer on their own where they exist: nothing below can describe
+ * a body that's not on a conic about its primary at all, so past the
+ * measured dates the answer is that there is none.
  *
- * Measured positions answer on their own where they exist: nothing below can
- * describe a body that is not on a conic about its primary at all, so past the
- * dates that were measured the answer is that there is none.
- *
- * Elements about a shared barycentre describe how each end moves about *it*, so
- * the separation is the difference between the two — which matters for the Moon,
- * whose barycentre sits 4,600 km from Earth's centre, most of the way out to a
- * parking orbit. Where the primary's own orbit is unusable or absent — the
- * giants, whose barycentre is inside them — it sits at the centre instead, which
- * costs at most that offset.
+ * Elements about a shared barycentre describe how each end moves about *it*,
+ * so separation is the difference between the two — matters for the Moon,
+ * whose barycentre sits 4,600 km from Earth's centre, most of the way to a
+ * parking orbit. Where the primary's own orbit is unusable or absent (the
+ * giants, whose barycentre is inside them) it sits at the centre instead,
+ * costing at most that offset.
  */
 export function relativeState(
 	satellite: TravelBody,
@@ -293,13 +284,12 @@ export interface SystemArcBounds {
 const BOUNDS_SAMPLES = 13;
 
 /**
- * How long a crossing can take, over a window of dates.
- *
- * The gap is not fixed — the Moon swings between 356,000 and 407,000 km — so the
- * family's own limits move with it, and a grid built from one date's limits
- * would ask for arcs that do not exist on another. Sampling the window and
- * taking the widest bounds leaves the grid covering every arc that solves
- * anywhere in it, and empty where one does not.
+ * How long a crossing can take, over a window of dates. The gap isn't fixed —
+ * the Moon swings between 356,000 and 407,000 km — so the family's own
+ * limits move with it, and a grid built from one date's limits would ask for
+ * arcs that don't exist on another. Sampling the window and taking the
+ * widest bounds covers every arc that solves anywhere in it, empty where one
+ * doesn't.
  */
 export function systemArcBounds(
 	primary: TravelBody,

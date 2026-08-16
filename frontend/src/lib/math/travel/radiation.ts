@@ -1,32 +1,29 @@
 /**
- * How much ionizing radiation a trajectory delivers.
- *
- * Two models that do not resemble each other, because the subject does not.
+ * How much ionizing radiation a trajectory delivers. Two models that don't
+ * resemble each other, because the subject doesn't.
  *
  * Cosmic rays are everywhere and nearly constant, so a cruise dose is a rate
- * times a duration and the only interesting parts are how the rate climbs with
- * distance from the Sun and how it swings — inversely — with the solar cycle.
- * That model is fitted at Earth and in cruise and then reproduces the lunar
- * surface to 7% and Gale crater to 2% without having been shown either.
+ * times a duration; the only interesting parts are how the rate climbs with
+ * distance from the Sun and swings inversely with the solar cycle. Fitted at
+ * Earth and in cruise, this model then reproduces the lunar surface to 7% and
+ * Gale crater to 2% without having been shown either.
  *
- * Trapped particles are nowhere except around four planets, where they are
- * five orders of magnitude worse than anything else in this file. A swing-by
- * past Jupiter is the case that forces them in: it is a manoeuvre the planner
- * will propose unprompted because it is cheap, and its cost is not Δv. That
- * model is a three-parameter profile with two anchors and is good to a factor
- * of about four, which is enough, because the answer it returns for any close
- * pass is "some thousands of grays" and the conclusion does not move.
+ * Trapped particles exist only around four planets, five orders of magnitude
+ * worse than anything else here. A Jupiter swing-by forces them in — cheap,
+ * so the planner proposes it unprompted, and its cost isn't Δv. This model is
+ * a three-parameter profile with two anchors, good to about a factor of four,
+ * which is enough: any close pass answers "some thousands of grays" and the
+ * conclusion doesn't move.
  *
- * Both are mirrored from `constants/radiation/{field,belt_field}.py`, which is
- * where they are fitted and where the flown measurements they answer to are
- * checked against them. Nothing here is fitted; these are the results. Keep the
- * two in step by hand — the numbers are few and they change when a paper does,
- * not when code does.
+ * Both are mirrored from `constants/radiation/{field,belt_field}.py`, where
+ * they're fitted and checked against flown measurements. Nothing here is
+ * fitted; these are the results. Keep the two in step by hand — the numbers
+ * are few and change when a paper does, not when code does.
  *
- * Solar particle events are in neither. Their fluence distribution is lognormal,
- * so an expected value is a bad summary of the hazard, and folding one into a
- * rate would bury the thing that actually matters: the chance of catching an
- * August 1972 while you are out there.
+ * Solar particle events are in neither. Their fluence distribution is
+ * lognormal, so an expected value is a bad summary of the hazard, and folding
+ * one into a rate would bury what actually matters: the chance of catching an
+ * August 1972 while out there.
  */
 
 import { DAYS_PER_YEAR, J2000_JD } from '$lib/time/jd';
@@ -71,11 +68,9 @@ export function radialFactor(rAu: number): number {
 
 /**
  * Fraction of the sky a body of `bodyRadiusKm` leaves open, seen from
- * `distanceKm` from its centre.
- *
- * Exact for an isotropic flux and the one term here with nothing fitted in it.
- * Standing on the surface gives a half and infinity gives one, which is what
- * makes surface, low orbit and free space one formula rather than three cases.
+ * `distanceKm` from its centre. Exact for isotropic flux, and the one term
+ * here with nothing fitted. Standing on the surface gives a half, infinity
+ * gives one — so surface, low orbit and free space are one formula, not three.
  */
 export function openSkyFraction(bodyRadiusKm: number, distanceKm: number): number {
 	if (distanceKm <= bodyRadiusKm) return 0.5;
@@ -97,13 +92,12 @@ const BELT_SHIELDING_LENGTH_G_CM2 = (2.7 - BELT_REFERENCE_SHIELDING_G_CM2) / (2 
 
 /**
  * Past the end of the source curve the exponential is bad extrapolation — at
- * 20 g/cm² it returns 1e-11 — because the electrons stop and their
- * bremsstrahlung does not. Held at the two decades the figure actually spans.
- *
- * The practical consequence is that this model cannot tell a 5 g/cm² hull from
- * a 20 g/cm² storm shelter: everything a crew flies behind is on the floor. A
- * belt dose quoted for a crewed ship is therefore an upper bound, and it is
- * still lethal, which is why the distinction has not been worth chasing.
+ * 20 g/cm² it returns 1e-11 — because the electrons stop but their
+ * bremsstrahlung doesn't. Held at the two decades the figure actually spans.
+ * Consequence: this model can't tell a 5 g/cm² hull from a 20 g/cm² storm
+ * shelter — everything a crew flies behind is on the floor. A belt dose for a
+ * crewed ship is therefore an upper bound, and it's still lethal, which is
+ * why the distinction hasn't been worth chasing.
  */
 export const BELT_SHIELDING_FLOOR = 1e-2;
 
@@ -122,13 +116,11 @@ const JOVIAN_OUTER_SLOPE = 5.3666;
 const JOVIAN_PEAK_GY_PER_DAY = 2.414e5;
 
 /**
- * Absorbed dose rate at `lShell` planetary radii, Gy/day, behind the reference
- * shielding.
- *
- * Flat inside the peak rather than extrapolated inward: the only measurement in
- * there is Pioneer 11's, and it was a polar pass, so it cannot separate a
- * radial decline from a latitude one. Flat is the conservative reading, and a
- * pass inside L = 3 is an upper bound.
+ * Absorbed dose rate at `lShell` planetary radii, Gy/day, behind the
+ * reference shielding. Flat inside the peak rather than extrapolated inward:
+ * the only measurement there is Pioneer 11's, a polar pass that can't
+ * separate a radial decline from a latitude one. Flat is the conservative
+ * reading, so a pass inside L = 3 is an upper bound.
  */
 export function jovianBeltRateGyPerDay(lShell: number): number {
 	if (lShell <= 0) return 0;
@@ -144,17 +136,15 @@ export const MODELLED_BELT_IDS: ReadonlySet<string> = new Set(['naif-599']);
 const PASS_STEPS = 512;
 
 /**
- * Absorbed dose of one hyperbolic pass, grays.
- *
- * Integrated over true anomaly with the time from Kepler's equation, so the
- * weighting is by how long the pass spends at each distance rather than how far
- * it travels there. That is the whole physics of the thing: Pioneer 11 went
- * three times closer to Jupiter than Pioneer 10 and took a quarter of the dose,
- * because it was moving at 47 km/s.
+ * Absorbed dose of one hyperbolic pass, grays. Integrated over true anomaly
+ * with time from Kepler's equation, so weighting is by how long the pass
+ * spends at each distance, not how far it travels there — the whole physics
+ * of it: Pioneer 11 went three times closer to Jupiter than Pioneer 10 and
+ * took a quarter of the dose, moving at 47 km/s.
  *
  * Every pass is treated as equatorial. A polar one crosses where the trapped
- * population is thinner — Pioneer 11's was, and this over-predicts it by about
- * four, which is the larger of the model's two known biases.
+ * population is thinner — Pioneer 11's was, over-predicted here by about
+ * four, the larger of the model's two known biases.
  */
 export function beltPassDoseGy(
 	periapsisKm: number,
@@ -196,28 +186,25 @@ export function beltPassDoseGy(
 }
 
 /**
- * Shielding a crewed pressure vessel is taken to sit behind, g/cm².
- *
- * Nothing in the vehicle catalogue carries a shielding figure, and this is well
- * past the floor above, so the exact value changes no belt answer — it is here
- * to be named rather than assumed silently. Apollo's command module was around
- * 7 and the ISS averages something over 10.
+ * Shielding a crewed pressure vessel is taken to sit behind, g/cm². Nothing
+ * in the vehicle catalogue carries a shielding figure, and this is well past
+ * the floor above, so the exact value changes no belt answer — it's here to
+ * be named rather than assumed silently. Apollo's command module was around
+ * 7; the ISS averages over 10.
  */
 export const DEFAULT_SHIELDING_G_CM2 = 10;
 
 /**
  * How far out the belt model can be, as a multiplying factor either way.
+ * Measured, not assumed: the profile is normalised on one anchor (Pioneer
+ * 10's pass), leaving two checks that land almost symmetrically either side —
+ * Pioneer 11 over-predicted by 3.89, Europa's orbital rate under-predicted by
+ * 3.80.
  *
- * Measured rather than assumed. The profile is normalised on one anchor —
- * Pioneer 10's pass — which leaves two things to check it against, and they
- * land almost symmetrically either side: Pioneer 11 is over-predicted by 3.89
- * and Europa's orbital rate is under-predicted by 3.80.
- *
- * That is the spread of two points and not a confidence interval, and it should
- * not be read as one. The likeliest reason they disagree at all is that the
- * Pioneers' dose was largely protons, which are far more centrally peaked than
- * the electrons Europa's figure is made of, so one radial profile cannot serve
- * both populations.
+ * That's the spread of two points, not a confidence interval, and shouldn't
+ * be read as one. Likeliest reason they disagree: the Pioneers' dose was
+ * largely protons, far more centrally peaked than the electrons Europa's
+ * figure is made of, so one radial profile can't serve both populations.
  */
 export const BELT_MODEL_UNCERTAINTY_FACTOR = 4;
 
@@ -225,17 +212,16 @@ export const BELT_MODEL_UNCERTAINTY_FACTOR = 4;
 
 /**
  * Acute whole-body dose that kills half of those exposed within 60 days, Gy.
+ * The untreated figure, the only one that means anything here: LD50/60 is
+ * about 4.5 Gy with minimal care, over 6 Gy with supportive care, and
+ * supportive care isn't available near Jupiter (CDC's clinician guidance on
+ * acute radiation syndrome).
  *
- * The untreated figure, which is the only one that means anything here: LD50/60
- * is about 4.5 Gy with minimal care and over 6 Gy with supportive care, and
- * supportive care is not available near Jupiter. CDC's clinician guidance on
- * acute radiation syndrome.
- *
- * It is a dose to bone marrow, and the belt figures are doses behind a hull, so
- * the comparison is rough in a knowable direction: Jupiter's belts are
- * electron-dominated and multi-MeV electrons stop in about a centimetre of
- * tissue, so skin dose far exceeds marrow dose and this overstates what the
- * marrow takes. Miller reached "lethal to man" regardless, because even a
+ * It's a dose to bone marrow, and the belt figures are doses behind a hull,
+ * so the comparison is rough in a knowable direction: Jupiter's belts are
+ * electron-dominated, and multi-MeV electrons stop in about a centimetre of
+ * tissue, so skin dose far exceeds marrow dose and this overstates what
+ * marrow takes. Miller reached "lethal to man" regardless — even a
  * hundredfold reduction leaves tens of grays.
  */
 export const LETHAL_DOSE_GY = 4.5;
@@ -246,18 +232,16 @@ export function lethalDoseFraction(gy: number): number {
 }
 
 /**
- * Added lifetime risk of a radiation-induced cancer, per sievert.
+ * Added lifetime risk of a radiation-induced cancer, per sievert. ICRP 103's
+ * detriment-adjusted nominal coefficient for adult workers, 4.1 × 10⁻² per
+ * Sv — the working-age figure rather than the whole-population 5.5, since
+ * nobody flies to Saturn as a child.
  *
- * ICRP 103's detriment-adjusted nominal coefficient for adult workers,
- * 4.1 × 10⁻² per Sv — the working-age figure rather than the whole-population
- * 5.5, because nobody flies to Saturn as a child.
- *
- * Two things it is not. It is a low-LET coefficient derived largely from the
- * atomic bomb survivors, and cosmic rays are heavy ions whose risk is uncertain
- * by a factor of a few even after the quality factor in the sievert. And it is
- * linear, which is an extrapolation above roughly 1 Sv — at the several Sv a
- * long crossing reaches, the figure is an order of magnitude and not a
- * prediction.
+ * Two things it is not: a low-LET coefficient derived largely from atomic
+ * bomb survivors, while cosmic rays are heavy ions whose risk is uncertain by
+ * a factor of a few even after the sievert's quality factor; and linear,
+ * which is extrapolation above roughly 1 Sv — at the several Sv a long
+ * crossing reaches, the figure is an order of magnitude, not a prediction.
  */
 export const CANCER_RISK_PER_SV = 0.041;
 

@@ -25,18 +25,17 @@ export interface PorkchopOptions extends RouteOptions, DeadlineOptions {
 
 export interface DeadlineOptions {
 	/**
-	 * The date the trip has to be over by, JD. Absent means it has no deadline.
+	 * The date the trip has to be over by, JD. Absent means no deadline. Over,
+	 * not landed at: an aerobraking arrival is captured months before the
+	 * campaign that follows has walked the orbit down, and the trip hasn't
+	 * delivered until that's finished — every search below takes those months
+	 * off the deadline before holding a crossing to it.
 	 *
-	 * Over, not landed at: an aerobraking arrival is captured months before the
-	 * campaign that follows it has walked the orbit down, and until that is
-	 * finished the trip has not delivered what was asked for. Every search below
-	 * takes those months off the deadline before holding a crossing to it.
-	 *
-	 * It belongs to choosing a route rather than to pricing one, which is why it
-	 * is not a `RouteOption`: every arc a search finds is real and priced the same
-	 * way, and this only says which of them answer the question that was asked. So
-	 * the grid is left whole — it is the field the reader picks off, and blanking
-	 * half of it would hide arcs that moving the date brings back.
+	 * Belongs to choosing a route, not pricing one, so it's not a
+	 * `RouteOption`: every arc a search finds is real and priced the same way,
+	 * and this only says which answer the question asked. The grid stays
+	 * whole — it's the field the reader picks off, and blanking half of it
+	 * would hide arcs that moving the date brings back.
 	 */
 	deadlineJd?: number;
 }
@@ -125,23 +124,20 @@ interface Candidate {
 }
 
 /**
- * Pick the three routes to offer.
+ * Pick the three routes to offer. The time axis is *arrival* measured from
+ * the start of the search, not cruise length, so waiting two years for a
+ * cheap window counts against that route the way a traveller would count it.
  *
- * The time axis is *arrival* measured from the start of the search, not cruise
- * length, so waiting two years for a cheap window counts against that route the
- * way a traveller would count it.
+ * Candidates are first reduced to the Pareto front — no route offered when
+ * another is both cheaper and sooner. `efficient` and `fast` are its ends;
+ * `balanced` is the knee, closest to the unreachable corner where both
+ * objectives are best.
  *
- * The candidates are first reduced to the Pareto front — no route is offered
- * when another is both cheaper and sooner. `efficient` and `fast` are its ends;
- * `balanced` is the knee, the point closest to the unreachable corner where
- * both objectives are at their best.
- *
- * A deadline is applied here rather than to what comes back, and that is the
- * whole difference between three routes and one: the cheapest arc in the grid is
- * almost always the latest one, so filtering afterwards deletes `efficient` and
- * usually `balanced` and offers nothing in their place. Ruling those cells out
- * first makes the front the front of what can actually be flown, and its ends
- * are then the cheapest and quickest trips that arrive in time.
+ * A deadline is applied here rather than to the result, which is the whole
+ * difference between three routes and one: the cheapest arc is almost always
+ * the latest one, so filtering afterwards deletes `efficient` and usually
+ * `balanced` with nothing to replace them. Ruling those cells out first makes
+ * the front the front of what can actually be flown.
  */
 export function selectRoutes(
 	grid: PorkchopGrid,
@@ -191,11 +187,10 @@ export function selectRoutes(
 }
 
 /**
- * The latest a crossing may end and still leave the trip finished in time, JD,
- * or Infinity when no deadline was set.
- *
- * Taken once for the whole search: what a trip owes after arrival is a fact
- * about how it ends, not about which arc got it there.
+ * The latest a crossing may end and still leave the trip finished in time,
+ * JD, or Infinity when no deadline was set. Taken once for the whole search:
+ * what a trip owes after arrival is a fact about how it ends, not which arc
+ * got it there.
  */
 function latestArrival(target: TravelBody, options: RouteOptions & DeadlineOptions): number {
 	const { deadlineJd, arrivalMode = 'capture', aero = 'none', targetOrbit } = options;
@@ -251,19 +246,17 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * Polish a grid cell by shrinking a local search around it.
+ * Polish a grid cell by shrinking a local search around it. The grid's
+ * resolution is coarse next to how sharply Δv varies near a window, so the
+ * cell minimum can sit a few hundred m/s above the true one; successive
+ * halving removes most of that gap for a few dozen extra solves.
  *
- * The grid's resolution is coarse next to how sharply Δv varies near a window,
- * so the cell minimum can sit a few hundred m/s above the true one. Successive
- * halving costs a few dozen extra solves and removes most of that gap.
- *
- * The search stays inside the grid. A candidate on an edge — which the cheapest
- * route usually is, since a longer cruise keeps getting cheaper — would
- * otherwise walk off it, leaving a route the porkchop drawn from that same grid
- * cannot place. The deadline bounds it for the same reason and more sharply:
- * cost falls off towards a later arrival, so a polish that only chased Δv would
- * walk a route chosen for arriving in time straight past the date it was chosen
- * for.
+ * The search stays inside the grid — a candidate on an edge (usually the
+ * cheapest, since a longer cruise keeps getting cheaper) would otherwise walk
+ * off it, leaving a route the same-grid porkchop can't place. The deadline
+ * bounds it more sharply still: cost falls off towards a later arrival, so an
+ * unbounded polish would walk a route chosen for arriving in time straight
+ * past its own deadline.
  */
 function refine(
 	departure: TravelBody,

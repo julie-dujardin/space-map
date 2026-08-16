@@ -1,11 +1,9 @@
 /**
- * When the next transfer opportunity is.
- *
- * The classic answer is the synodic period, which assumes circular coplanar
- * orbits. Since the app already propagates real positions, the window search
- * here evaluates the actual geometry instead and only borrows the ideal phase
- * angle from Hohmann — so an eccentric target like Mars gets windows that drift
- * and vary in cost the way real ones do.
+ * When the next transfer opportunity is. The classic answer is the synodic
+ * period, which assumes circular coplanar orbits. Since the app already
+ * propagates real positions, this evaluates the actual geometry instead and
+ * only borrows the ideal phase angle from Hohmann — so an eccentric target
+ * like Mars gets windows that drift and vary in cost the way real ones do.
  */
 
 import { AU_KM } from '$lib/math/units';
@@ -42,14 +40,11 @@ export function hohmannTransferDays(
 }
 
 /**
- * Time to cross between where the two bodies are *now*, days.
- *
- * The stand-in for the Hohmann time when the semi-major axes cannot supply one —
- * an escaping probe has none at all, and an eccentric orbit has one that is
- * nowhere near where the body is. Half an ellipse spanning the two current
- * distances is not a transfer anyone would fly, but it is the right order of
- * magnitude for how long the crossing takes, which is all the search bounds need
- * from it.
+ * Time to cross between where the two bodies are *now*, days. Stands in for
+ * the Hohmann time when semi-major axes can't supply one — an escaping probe
+ * has none, an eccentric orbit's is nowhere near where the body is. Half an
+ * ellipse spanning the two current distances is not a transfer anyone would
+ * fly, but is the right order of magnitude for the search bounds.
  */
 export function crossingTimeDays(
 	a: TravelBody,
@@ -88,17 +83,14 @@ export interface TransferScale {
 }
 
 /**
- * The timescale a transfer between two bodies is measured against, and whether
- * the target has to be chased rather than met.
- *
- * The Hohmann time reads a body's distance off its semi-major axis, which only
- * holds while the orbit is round: C/2021 P2 has a = 2474 AU and sits at 10 AU,
- * so scaling a cruise off the axis would grid it against a 21,000-year
- * half-orbit and return nothing but geological-age routes. Where the axis and
- * the distance disagree the distance wins, and a target crossing much of that
- * distance meanwhile is one to chase.
- *
- * Returns null when either body's orbit will not yield a position.
+ * The timescale a transfer between two bodies is measured against, and
+ * whether the target must be chased rather than met. Hohmann time reads a
+ * body's distance off its semi-major axis, which only holds while the orbit
+ * is round: C/2021 P2 has a = 2474 AU but sits at 10 AU, so scaling off the
+ * axis would grid against a 21,000-year half-orbit and return nothing but
+ * geological-age routes. Where axis and distance disagree, distance wins, and
+ * a target crossing much of that distance meanwhile is one to chase. Returns
+ * null when either body's orbit won't yield a position.
  */
 export function transferScale(
 	a: TravelBody,
@@ -170,14 +162,12 @@ function wrapPi(angle: number): number {
 }
 
 /**
- * The next `count` departure dates where the two bodies reach the Hohmann phase
- * angle, searching forward from `fromJd`.
- *
- * These are the centres of the launch windows, not their edges — a porkchop
- * around one of these dates is what gives the usable spread. Returns fewer than
- * `count` entries if the search horizon runs out first, and none at all for a
- * target that is being chased: a comet on its way out is somewhere else every
- * year, so an alignment it will never repeat is not a date to wait for.
+ * The next `count` departure dates where the two bodies reach the Hohmann
+ * phase angle, searching forward from `fromJd`. These are window centres, not
+ * edges — a porkchop around one gives the usable spread. Returns fewer than
+ * `count` if the search horizon runs out, and none for a chased target: a
+ * comet on its way out is somewhere else every year, so an alignment it'll
+ * never repeat isn't a date to wait for.
  */
 export function nextTransferWindows(
 	a: TravelBody,

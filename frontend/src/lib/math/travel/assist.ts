@@ -1,27 +1,18 @@
 /**
  * Routes that go the long way round on purpose: out to a third body, past it,
- * and on to the destination.
+ * and on to the destination — two Lambert arcs patched by a swing-by that turns
+ * the first arc's excess velocity into the second's. Whatever the pass can't
+ * turn or match is paid as a burn at closest approach, so a bad sequence just
+ * prices badly and the search ignores it rather than ruling it out explicitly.
  *
- * The trajectory is two Lambert arcs sharing an endpoint, patched by a swing-by
- * that has to turn the first arc's excess velocity into the second's. Anything
- * it cannot turn or match is paid as a burn at closest approach, so a sequence
- * that does not really work simply prices badly rather than being ruled out —
- * the search then ignores it, which is the same answer arrived at cheaply.
+ * The search sweeps three dates then shrinks locally, like the direct
+ * porkchop's refinement but one dimension larger. Departures are seeded on the
+ * first leg's transfer windows (from `windows`) rather than gridded evenly,
+ * since a useful geometry is weeks wide with years between occurrences.
  *
- * The search is a coarse sweep over three dates followed by a local shrink, the
- * same shape as the direct porkchop's refinement but one dimension larger. What
- * makes it tractable is where the departures are sampled: a useful geometry is
- * weeks wide and the next one is years away, so a grid laid evenly across a
- * decade would step straight over every one of them. Instead the departures are
- * seeded on the *first* leg's transfer windows, which `windows` already finds;
- * whether the third body is also in the right place is what then separates one
- * seed from another.
- *
- * One swing-by only. Two is a different problem — the useful basins are narrow
- * and far apart, so it wants a global optimiser rather than a grid — and it is
- * also where the launch-energy saving lives: the Venus-Venus-Earth run that got
- * Cassini to Jupiter cheaply is out of reach here, so a single pass buys the
- * arrival and not the departure.
+ * One swing-by only — two wants a global optimiser (narrow, far-apart basins)
+ * and is where the launch-energy saving actually lives, so a single pass here
+ * buys the arrival, not the departure.
  */
 
 import { AU_KM } from '$lib/math/units';
@@ -184,13 +175,10 @@ const DEFAULT_DEPART_STEPS = 48;
 const DEFAULT_TOF_STEPS = 22;
 
 /**
- * The first arc and everything it decides, so that the sweep over second-leg
- * lengths does not redo any of it.
- *
- * `headKms` is what the trip has already cost by the time the swing-by is
- * reached — and, because every leg after it is non-negative, a lower bound on
- * the whole route. That is what lets a hopeless first arc take the entire inner
- * loop with it.
+ * The first arc and everything it decides, cached so the sweep over second-leg
+ * lengths never redoes it. `headKms` is the cost already paid by the swing-by —
+ * a lower bound on the whole route since every later leg is non-negative — so a
+ * hopeless first arc can skip the entire inner loop.
  */
 interface Approach {
 	flybyJd: number;
@@ -246,18 +234,14 @@ function approach(
 }
 
 /**
- * Total Δv of the route that leaves `app`'s swing-by and reaches the target in
- * `tof2Days`, or NaN when there is no such arc.
- *
- * A number rather than a route: the sweep only ranks, and building a route per
- * cell would allocate a dozen objects for every one of the tens of thousands it
- * looks at. The winner is built once, afterwards.
+ * Total Δv of the route from `app`'s swing-by reaching the target in
+ * `tof2Days`, or NaN if no such arc exists. Returns a number, not a route —
+ * building a route per cell would allocate for tens of thousands of cells; the
+ * winner is built once, afterwards.
  *
  * `ceiling` is the best total found so far. The arrival is priced before the
- * swing-by even though it comes after it, because the swing-by is the only part
- * that iterates and its cost is non-negative — so everything else already
- * bounds the route, and a cell that is beaten before the pass is priced never
- * pays for the pass.
+ * swing-by (the only iterative, non-negative-cost part), so a cell already
+ * beaten by everything else never pays for pricing the pass.
  */
 function tailCostKms(
 	app: Approach,
@@ -313,12 +297,9 @@ function tailCostKms(
 }
 
 /**
- * The cheapest route through `via` in the given window, or null when none of the
- * grid solves.
- *
- * The sweep is ordered so the first arc is solved once per departure and
- * first-leg pair rather than once per cell, and it ranks on cost alone: the
- * route object is built once, for whichever cell won.
+ * The cheapest route through `via` in the given window, or null if nothing in
+ * the grid solves. The first arc is solved once per departure/first-leg pair
+ * rather than once per cell; the route object is built once, for the winner.
  */
 export function searchAssist(
 	departure: TravelBody,
@@ -443,16 +424,11 @@ interface RefineContext {
 }
 
 /**
- * Shrink a local search around the grid's best cell.
- *
- * Same idea as the direct porkchop's refinement, in three dimensions instead of
- * two: a cell wide enough to sweep is far wider than the basin around a real
- * window, so the raw grid minimum can sit a kilometre per second above the true
- * one. Neighbours are tried one axis at a time rather than as a full 26-point
- * cube — the extra passes cost less than the extra points.
- *
- * The deadline bounds it as the grid bounds it: this chases Δv alone, and a
- * cheaper neighbour is usually a later one.
+ * Shrink a local search around the grid's best cell — the direct porkchop's
+ * refinement in three dimensions instead of two, since a sweepable cell is far
+ * wider than the real window's basin and the raw grid minimum can miss by a
+ * km/s. Neighbours are tried one axis at a time rather than a 26-point cube.
+ * The deadline bounds this the same way it bounds the grid.
  */
 function refine(
 	departure: TravelBody,
@@ -504,13 +480,10 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * How far ahead to look for a swing-by, days.
- *
- * Far further than the direct search, and necessarily so: the alignment that
- * makes an assist worth flying comes round on the two synodic periods at once,
- * and inside one of them there may be none. Twenty years covers eighteen
- * Earth-Jupiter windows, which is enough to find a good one for every pair the
- * planner offers.
+ * How far ahead to look for a swing-by, days. Far further than the direct
+ * search: a good assist alignment comes round on two synodic periods at once,
+ * and may be absent from any single one. Twenty years covers eighteen
+ * Earth-Jupiter windows — enough for every pair the planner offers.
  */
 const HORIZON_DAYS = 20 * 365.25;
 
@@ -527,12 +500,10 @@ const TOF2_FACTORS = [0.12, 1.4];
 export interface AssistOptions extends RouteOptions, DeadlineOptions {
 	/**
 	 * The earliest departure worth considering, JD — now on the app's clock,
-	 * unless the trip asks to leave later.
-	 *
-	 * A swing-by cannot be centred on a departure date the way the direct grid is:
-	 * the geometry that makes one worth flying comes round on two synodic periods
-	 * at once, so a window either side of a chosen day is almost always empty. So a
-	 * date asked for is a floor here rather than a target.
+	 * unless the trip asks to leave later. A swing-by can't be centred on a
+	 * departure date like the direct grid can: the geometry lines up on two
+	 * synodic periods at once, so a window near a chosen day is usually empty.
+	 * A date asked for is a floor here, not a target.
 	 */
 	nowJd: number;
 	/** How far ahead to look for a window, days. */
@@ -540,15 +511,12 @@ export interface AssistOptions extends RouteOptions, DeadlineOptions {
 }
 
 /**
- * The cheapest single-swing-by route to `target`, over every candidate in
- * `vias`, or null when none of them yields one.
- *
- * Costs a few hundred milliseconds per candidate, so this belongs off the main
- * thread and behind the direct answer rather than in front of it.
- *
- * Candidates that are one of the trip's own ends are skipped: leaving a body to
- * swing past it again is a real manoeuvre, but it needs a burn out in deep space
- * to set up, and this model has nowhere to put one.
+ * The cheapest single-swing-by route to `target` over every candidate in
+ * `vias`, or null if none yields one. Costs a few hundred ms per candidate, so
+ * this belongs off the main thread and behind the direct answer. Candidates
+ * that are one of the trip's own ends are skipped: swinging past a body you
+ * just left is a real manoeuvre, but needs a deep-space burn to set up that
+ * this model has nowhere to put.
  */
 export function findAssistRoute(
 	departure: TravelBody,

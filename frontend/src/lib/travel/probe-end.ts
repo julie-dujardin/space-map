@@ -2,14 +2,13 @@
  * A probe that is sitting on something, as a trip end.
  *
  * A landed probe has no orbit to transfer to — it has a place on a body that
- * does. So an end naming one is priced against the body it came down on and
- * flown to the spot it is parked at, which is the end a named crater already
- * is. The spot comes off the position stream the renderer already places the
- * probe with, so the trip lands where the probe is drawn.
+ * does. So an end naming one is priced against that body and flown to the spot
+ * it's parked at, off the same position stream the renderer places the probe
+ * with, so the trip lands where the probe is drawn.
  *
- * Only a phase nothing flies after counts. A probe that lifted off again, or
- * whose capsule was recovered, was in that place for a window rather than
- * being there — and a trip is planned for whenever the reader likes.
+ * Only a phase nothing flies after counts: a probe that lifted off again, or
+ * whose capsule was recovered, was only in that place for a window, and a trip
+ * is planned for whenever the reader likes.
  */
 
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
@@ -23,14 +22,10 @@ export interface LandedEnd {
 	lonDeg: number;
 }
 
-/**
- * The place a probe is parked at, or null when it is not parked — flying, out
- * of the loaded window, or landed only for a while.
- *
- * `jd` places the read rather than dating the answer: the site is body-fixed
- * and the probe is not going anywhere, so the caller can hold what comes back
- * for the whole trip however far out it lands.
- */
+/** The place a probe is parked at, or null when it isn't — flying, out of the
+ *  loaded window, or landed only for a while. `jd` places the read rather than
+ *  dating the answer: the site is body-fixed, so the caller can hold what
+ *  comes back for the whole trip however far out it lands. */
 export function landedEnd(
 	store: ProbeStore | null | undefined,
 	id: string,

@@ -1,17 +1,14 @@
 /**
  * A swing-by: what passing close to a body does to a heliocentric velocity.
+ * Inside the sphere of influence the craft flies a hyperbola that turns its
+ * excess velocity without changing its speed; outside, that rotation is added
+ * to the body's own motion, so the heliocentric velocity changes for free. A
+ * slow pass close to a massive body turns the most.
  *
- * Inside the body's sphere of influence the craft flies a hyperbola, which turns
- * its excess velocity without changing the speed. Back outside, that rotation
- * has been added to the body's own orbital motion, so the heliocentric velocity
- * changed for free. How far it can turn is set by how close the pass gets and
- * how fast the craft is going: slow passes close to a massive body turn a lot.
- *
- * Two arcs meeting at one body will rarely want exactly the same excess speed on
- * both sides, so the model is the powered swing-by — a burn at periapsis makes
- * up whatever the geometry cannot. The unpowered assist is the case where that
- * burn comes out zero, and it falls out of the same solve rather than needing a
- * branch of its own. This is the model ESA's GTOP problems use.
+ * Two arcs meeting at one body rarely want the same excess speed on both
+ * sides, so this models the powered swing-by — a periapsis burn makes up
+ * whatever the geometry can't. Unpowered is just the case where that burn is
+ * zero, falling out of the same solve. This is ESA's GTOP model.
  */
 
 import type { TravelBody } from './body';
@@ -51,17 +48,14 @@ export function minFlybyRadiusKm(body: TravelBody): number {
 }
 
 /**
- * Price the pass that joins an approach to a departure.
+ * Price the pass that joins an approach to a departure. The two excess-velocity
+ * vectors set what the swing-by must do: turn through the angle between them
+ * and make up the leftover speed. Only the periapsis radius is free, so it's
+ * solved for the turn (bisection on a monotone function) and the speed gap is
+ * paid there, where it's cheapest.
  *
- * The two excess-velocity vectors name what the swing-by has to do: turn the
- * approach through the angle between them, and make up the difference in speed.
- * Only the periapsis radius is free, and it fixes both — so it is solved for the
- * turn (bisection on a monotone function) and the leftover speed difference is
- * paid there as a burn, which is where it is cheapest.
- *
- * Returns null when even the lowest permitted pass cannot turn far enough. That
- * is a real answer, not a failure: it is why a slow craft cannot use Mars the
- * way it can use Jupiter.
+ * Returns null when even the lowest permitted pass can't turn far enough — a
+ * real answer, not a failure: why a slow craft can't use Mars like Jupiter.
  */
 export function solveFlyby(
 	body: TravelBody,
@@ -92,19 +86,16 @@ export function flybyDvKms(mu: number, rPeriKm: number, vInKms: number, vOutKms:
 }
 
 /**
- * The periapsis that turns `required` radians, km, or NaN when no permitted pass
- * turns that far.
+ * The periapsis that turns `required` radians, km, or NaN if no permitted pass
+ * turns that far. Split out of `solveFlyby` and returning a bare number since
+ * the search calls it tens of thousands of times — the only iterating part of a
+ * candidate route, so an object per call would mean an object per grid cell.
  *
- * Split out of `solveFlyby` and returning a bare number because the search runs
- * it tens of thousands of times: this is the only part of a candidate route that
- * iterates, so an object per call would be an object per grid cell.
- *
- * The bracket is what keeps the iteration short. Each branch alone has a closed
- * form — r = (μ/v∞²)·(1/sin(δ/2) − 1) — and the pass turns the average of the
- * two, so the answer always lies between the two single-branch radii however far
- * apart the speeds are. Bisecting a bracket that tight lands in a couple of dozen
- * steps; bisecting the whole plausible range of radii, which spans six orders of
- * magnitude, needs far more to reach the same place.
+ * The bracket keeps iteration short: each branch has a closed form,
+ * r = (μ/v∞²)·(1/sin(δ/2) − 1), and the pass turns their average — so the
+ * answer always lies between the two single-branch radii. Bisecting that tight
+ * bracket takes dozens of steps; bisecting the full six-order-of-magnitude
+ * radius range would take far more.
  */
 export function flybyPeriapsisKm(
 	mu: number,

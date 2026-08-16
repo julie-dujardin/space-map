@@ -31,13 +31,10 @@ export const TORCH_PRESETS: readonly TorchPreset[] = [
 /** How much cheaper a longer crossing must be to get a row of its own. */
 const WORTH_LISTING = 0.02;
 
-/**
- * Drop the arcs that are not a choice. Keeps the given coast order.
- *
- * The solver shortens a coast the geometry cannot absorb, so two presets can
- * return one crossing. A weak drive can also make a longer crossing dearer.
- * Both fail the same test.
- */
+/** Drop the arcs that aren't a choice, keeping the given coast order. The
+ *  solver shortens a coast the geometry can't absorb, so two presets can
+ *  return one crossing; a weak drive can also make a longer crossing dearer.
+ *  Both fail the same test. */
 export function listedTorchArcs(arcs: readonly TorchArc[]): TorchArc[] {
 	const kept: TorchArc[] = [];
 	let cheapest = Infinity;

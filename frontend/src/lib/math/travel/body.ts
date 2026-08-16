@@ -11,16 +11,13 @@ import { dot, norm, type Vec3 } from './vec3';
 
 /**
  * Where a body really is, for the ones no conic about their primary describes.
- *
- * An osculating fit is a local truth. For something held at a Lagrange point it
- * is barely a week's worth: Webb's fit about Earth reads as a 126-day ellipse
- * swinging between 0.6 and 1.5 million km, when Webb never leaves L2. A trip
- * priced against it climbs to a distance the body was never at, and the arc
- * drawn from it wanders off round the primary.
+ * An osculating fit is only a local truth: Webb's fit about Earth reads as a
+ * 126-day ellipse swinging 0.6–1.5 million km, though Webb never leaves L2. A
+ * trip priced against it would climb to a distance the body was never at.
  *
  * So these are measured positions instead — ascending dates, measured from
- * `centerId`, ecliptic J2000, km and km/s. Plain arrays, because a solve runs
- * in a worker and takes its bodies by copy.
+ * `centerId`, ecliptic J2000, km and km/s. Plain arrays, since a solve runs in
+ * a worker and takes its bodies by copy.
  */
 export interface EphemerisSamples {
 	/** The body the positions are measured from. */
@@ -43,37 +40,34 @@ export interface TravelBody {
 	/** Elements placing the body about its primary. */
 	elements: OrbitalElements;
 	/**
-	 * Surface pressure in bar. Absent means there is no reading at a surface —
-	 * either because the body is airless, or because it has no surface for one to
-	 * be taken at. What ascent and landing are priced against.
+	 * Surface pressure in bar. Absent means no reading at a surface — either
+	 * airless, or no surface to read at. What ascent and landing are priced
+	 * against.
 	 */
 	surfacePressureBar?: number;
 	/**
-	 * True when any envelope at all has been detected, down to Mercury's
-	 * exosphere. Says nothing about whether a pass can be flown through it —
-	 * that is `aeroPressurePa`'s job — but it is how a gas giant is told apart
-	 * from an airless body when neither has a surface pressure.
+	 * True when any envelope has been detected, down to Mercury's exosphere.
+	 * Says nothing about flyability — that's `aeroPressurePa`'s job — but tells
+	 * a gas giant apart from an airless body when neither has surface pressure.
 	 */
 	hasAtmosphere?: boolean;
 	/**
-	 * Pressure of the envelope at the level `radiusKm` names — the surface, or
-	 * 1 bar on a giant — in Pa. Only set for a measured envelope a pass could be
-	 * flown through, so upper limits and stellar photospheres never carry one.
-	 * What aero eligibility and the pass depth are priced against.
+	 * Pressure of the envelope at the level `radiusKm` names — surface, or 1 bar
+	 * on a giant — in Pa. Only set for a measured envelope a pass could fly
+	 * through, so upper limits and stellar photospheres never carry one. What
+	 * aero eligibility and pass depth are priced against.
 	 */
 	aeroPressurePa?: number;
 	/** Density scale height of that envelope, km — sets how deep the pass sits. */
 	aeroScaleHeightKm?: number;
-	/**
-	 * Rotation rate about its own axis, rad/s, sign dropped. What the ground at
-	 * the equator is already moving at, and so what an ascent from it is spared.
-	 */
+	/** Rotation rate about its own axis, rad/s, sign dropped — what the ground at
+	 *  the equator is already moving at, and so what an ascent is spared. */
 	spinRadPerSec?: number;
 	/**
 	 * North pole as a unit vector in ecliptic J2000 axes — the frame the states
-	 * are in. Says how far a departure or approach lies out of the body's own
-	 * equator, which is the lowest a plane reaching it can be. Filled from the
-	 * IAU pole; absent for a body that ships no orientation.
+	 * are in. Sets how far a departure or approach lies out of the body's
+	 * equator, the lowest a reaching plane can be. From the IAU pole; absent for
+	 * a body with no shipped orientation.
 	 */
 	poleEcliptic?: Vec3;
 	/** Primary this body orbits; absent for heliocentric bodies. */
@@ -83,22 +77,19 @@ export interface TravelBody {
 	samples?: EphemerisSamples;
 	/**
 	 * True when `elements` place a centre the body is nowhere near — the Moon
-	 * flown as "a Moon-sized body on Earth's orbit". The crossing is right to use
-	 * them; anything drawn *at* this body is not, since the position they give is
-	 * the ancestor's.
-	 *
-	 * Not simply "the elements are someone else's": a planet borrows its own
-	 * system barycentre, which for Earth is a point under the surface.
+	 * flown as "a Moon-sized body on Earth's orbit". Fine for a crossing;
+	 * anything drawn *at* this body is wrong, since the elements give the
+	 * ancestor's position. Not simply "someone else's elements": a planet
+	 * borrows its own system barycentre, for Earth a point under the surface.
 	 */
 	borrowedElements?: boolean;
 }
 
 /**
- * GM from a radius and an assumed bulk density — the fallback for the small
- * bodies that make up most of the catalogue, where no mass has been measured.
- * At these scales capture and landing costs are metres per second either way,
- * so the error never moves a route decision; callers surface it as an estimate
- * rather than hiding it.
+ * GM from a radius and an assumed bulk density — fallback for the small bodies
+ * in most of the catalogue, where no mass has been measured. Capture and
+ * landing costs are metres per second either way at these scales, so the error
+ * never moves a route decision; callers surface it as an estimate.
  */
 export function estimateMu(radiusKm: number, densityKgM3 = ASSUMED_DENSITY_KG_M3): number {
 	const volumeKm3 = (4 / 3) * Math.PI * radiusKm ** 3;
@@ -106,12 +97,11 @@ export function estimateMu(radiusKm: number, densityKgM3 = ASSUMED_DENSITY_KG_M3
 }
 
 /**
- * μ of whatever a body goes round, km³/s², from Kepler's third law.
- *
- * A satellite's own period and distance name the mass at the focus, so a pair of
- * moons can price a transfer about their planet without anyone having to look the
- * planet up. Agrees with a measured GM to about the seven digits the packed mean
- * motion carries, since that is what it was fitted against.
+ * μ of whatever a body goes round, km³/s², from Kepler's third law. A
+ * satellite's own period and distance name the mass at the focus, so a pair of
+ * moons can price a transfer about their planet without looking it up. Agrees
+ * with a measured GM to about the seven digits the packed mean motion carries,
+ * since that's what it was fitted against.
  */
 export function muFromElements(el: OrbitalElements): number {
 	const nRadPerSec = (el.n * (Math.PI / 180)) / SEC_PER_DAY;
@@ -125,12 +115,10 @@ export function escapeSpeed(body: TravelBody): number {
 }
 
 /**
- * How far a direction lies out of the body's equator, degrees, unsigned.
- *
- * An orbit can only contain a direction if it is inclined at least this much,
- * so it is the floor under the plane a departure leaves in or an approach
- * arrives on. Undefined when the body ships no pole: the plane is then only
- * bounded by wherever the trip touches the ground.
+ * How far a direction lies out of the body's equator, degrees, unsigned. An
+ * orbit can only contain a direction if inclined at least this much, so it's
+ * the floor under a departure or approach plane. Undefined when the body ships
+ * no pole: the plane is then bounded only by where the trip touches ground.
  */
 export function equatorialTiltDeg(body: TravelBody, direction: Vec3): number | undefined {
 	const pole = body.poleEcliptic;

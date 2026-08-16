@@ -55,12 +55,9 @@ function doseFigure(value: number): string {
 	return Number(value.toPrecision(2)).toString();
 }
 
-/**
- * A dose equivalent, in whichever sievert keeps it readable.
- *
- * The span is enormous and unavoidable: a week in low Earth orbit is a few mSv
- * and a slow crossing to Saturn is several Sv, so no single unit serves both.
- */
+/** A dose equivalent, in whichever sievert keeps it readable — a week in low
+ *  Earth orbit is a few mSv, a slow crossing to Saturn several Sv, so no single
+ *  unit serves both. */
 export function formatSievert(sv: number): string {
 	if (!Number.isFinite(sv)) return '—';
 	if (sv >= 1) return m.travel_unit_sv({ value: doseFigure(sv) });
@@ -68,31 +65,21 @@ export function formatSievert(sv: number): string {
 	return m.travel_unit_usv({ value: doseFigure(sv * 1e6) });
 }
 
-/**
- * An absorbed dose, in grays.
- *
- * Only belts produce these, and they produce them in quantities that need the
- * kilogray — Pioneer 10 took 4.5 of them going past Jupiter.
- */
+/** An absorbed dose, in grays. Only belts produce these, in quantities that
+ *  need the kilogray — Pioneer 10 took 4.5 of them past Jupiter. */
 export function formatGray(gy: number): string {
 	if (!Number.isFinite(gy)) return '—';
 	if (gy >= 1000) return m.travel_unit_kgy({ value: doseFigure(gy / 1000) });
 	return m.travel_unit_gy({ value: doseFigure(gy) });
 }
 
-/**
- * An end orbit as the height it is flown at: one figure when it is circular, low
- * point by high point when it is not.
- *
- * Height above the surface rather than distance from the centre, which is how
- * every orbit anyone has flown is quoted, and the only form in which 200 km
- * means the same thing at Earth and at Mars.
- */
+/** An end orbit as the height it is flown at: one figure when circular, low
+ *  point by high point when not. Height above the surface, not distance from
+ *  the centre — the only form in which 200 km means the same thing at Earth
+ *  and at Mars. */
 export function formatEndOrbit(orbit: EndOrbit, bodyRadiusKm: number): string {
 	const peri = Math.max(0, orbit.rPeriKm - bodyRadiusKm);
 	const apo = Math.max(0, orbit.rApoKm - bodyRadiusKm);
-	// An ellipse is a height that varies, which is what a range says — and says
-	// with the unit written once and the separator the locale's own.
 	return apo > peri ? formatKmRange(peri, apo) : formatKm(peri);
 }
 
@@ -110,11 +97,9 @@ function significant(value: number): string {
 	return sigFigures(value, 2);
 }
 
-/**
- * The acceleration a drive holds, split from its unit for the tile that sets its
- * own type. Three units, each covering the drives the other two cannot say
- * anything legible about.
- */
+/** The acceleration a drive holds, split from its unit for the tile that sets
+ *  its own type. Three units, each covering drives the other two cannot say
+ *  anything legible about. */
 export function accelerationParts(accelMs2: number): { value: string; unit: string } {
 	if (!Number.isFinite(accelMs2) || accelMs2 <= 0) return { value: '—', unit: '' };
 	const gravities = accelMs2 / G0_M_S2;

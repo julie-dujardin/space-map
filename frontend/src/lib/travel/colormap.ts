@@ -1,16 +1,13 @@
 /**
  * Viridis, the perceptually-uniform colormap matplotlib made the default.
  *
- * A porkchop is a continuous scalar field, which is the one case the app's
- * categorical and single-hue ramps are wrong for: equal steps in Δv have to
- * look like equal steps in colour, and a five-step ramp turns a smooth basin
- * into contour bands that aren't in the data. Viridis is monotonic in
- * lightness, so it also survives greyscale printing and every kind of colour
- * blindness — the property a rainbow famously lacks.
+ * A porkchop is a continuous scalar field — the one case the app's categorical
+ * and single-hue ramps are wrong for, since equal steps in Δv need to look like
+ * equal steps in colour. Monotonic in lightness, so it survives greyscale and
+ * colour blindness where a rainbow ramp would not.
  *
- * Sixteen stops sampled off the reference 256-entry table; linear interpolation
- * between them is well under one JND, and the whole thing is 16 lines instead
- * of a 256-row data blob.
+ * Sixteen stops off the reference 256-entry table; linear interpolation between
+ * them is well under one JND.
  */
 
 type Rgb = readonly [number, number, number];

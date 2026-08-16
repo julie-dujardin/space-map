@@ -1,22 +1,18 @@
 /**
  * What a trajectory puts the craft through, as opposed to what it costs.
  *
- * Two routes to the same place for the same Δv can be very different trips: one
- * dips inside Mercury's orbit, one spends a year where an array makes a
- * twenty-fifth of its Earth-orbit output, one passes behind the Sun with the
- * link down, one arrives by hitting an atmosphere at eleven kilometres a second.
- * None of that is visible in a Δv ladder, and all of it is a property of the
- * trajectory rather than of the destination.
+ * Two routes to the same place for the same Δv can be very different trips —
+ * a dip inside Mercury's orbit, a year of starved solar arrays, a link cut by
+ * the Sun, an eleven-km/s entry — none of it visible in a Δv ladder, all of it
+ * a property of the trajectory rather than the destination.
  *
  * **Nothing here carries a position.** A hazard is dates and figures; the map
- * turns a date into a place with `craftPositionAt`. That is what lets one scan
- * feed the row you choose from, the detail you read and the arc on the map
- * without the three ever disagreeing about where a threshold falls.
+ * turns a date into a place with `craftPositionAt`, so one scan feeds the row,
+ * the detail and the arc without the three ever disagreeing.
  *
- * The geometry is re-derived rather than stored, the same rule `path.ts` runs
- * on: the scan rebuilds the trajectory from the inputs the route was priced
- * from, at its own fixed sample count, so a hazard is a deterministic function
- * of the route and never of how finely something else happened to draw it.
+ * The geometry is re-derived rather than stored, like `path.ts`: the scan
+ * rebuilds the trajectory from the route's own inputs at a fixed sample count,
+ * so a hazard is a deterministic function of the route alone.
  */
 
 import {
@@ -76,57 +72,43 @@ export interface Hazard {
 	/** When it is at its worst — the date the figure below was read at, and the
 	 *  point the map hangs its marker off. */
 	peakJd: number;
-	/**
-	 * The figure the severity was read off, in the kind's own unit: multiples of
-	 * Earth-orbit sunlight for heat, the same quantity as a fraction for power,
-	 * degrees for a conjunction, seconds for the lag, km/s for an entry.
-	 */
+	/** The figure the severity was read off, in the kind's own unit: multiples of
+	 *  Earth-orbit sunlight for heat, a fraction for power, degrees for a
+	 *  conjunction, seconds for the lag, km/s for an entry. */
 	peak: number;
 	/** Distance from the Sun at the peak, AU. Only on the kinds that are about one. */
 	auAtPeak?: number;
-	/**
-	 * The rate behind an accumulated figure, in the kind's unit per day. Only on
-	 * `radiation`, whose `peak` is a trip integral rather than a moment: without
-	 * this there is no way to say whether a sievert was collected in a fortnight
-	 * or over nine years.
-	 */
+	/** The rate behind an accumulated figure, per day. Only on `radiation`, whose
+	 *  `peak` is a trip integral — without this there's no way to say whether a
+	 *  sievert was collected in a fortnight or over nine years. */
 	rateAtPeak?: number;
-	/**
-	 * The hazard is real and its size is not known — a belt nobody has published
-	 * a dose profile for. Distinct from a `peak` of zero, which would be a claim
-	 * that crossing it is free.
-	 */
+	/** The hazard is real and its size is unknown — a belt nobody has published a
+	 *  dose profile for. Distinct from a `peak` of zero, which would claim it's free. */
 	unpriced?: boolean;
 	/** The body a moment happens at. Only on the kinds that pick one out. */
 	bodyId?: string;
-	/**
-	 * The stretch broken into the tiers actually in force along it, in flight
-	 * order — what the map paints the arc with. Empty when there is nothing to
-	 * paint, which is how a hazard says it is not about a place.
+	/** The stretch broken into the tiers actually in force along it, in flight
+	 *  order — what the map paints the arc with. Empty means nothing to paint.
 	 *
-	 * Split rather than one band at the worst tier, because a stretch drawn in one
-	 * colour claims the whole of it is as bad as its worst point: a trip inside
-	 * Venus's orbit would read as sunshade country from the moment it crossed,
-	 * when that only becomes true near perihelion.
-	 */
+	 *  Split rather than one band at the worst tier: one colour would claim the
+	 *  whole stretch is as bad as its worst point, reading a trip inside Venus's
+	 *  orbit as sunshade country before perihelion actually makes it so. */
 	bands: readonly HazardBand[];
 }
 
 /**
  * How finely the trajectory is walked, days per sample.
  *
- * Set by the narrowest thing being looked for rather than by the smoothest.
- * A perihelion is quadratic in time and would be found by a dozen samples over
- * any trip; a conjunction is a fortnight somewhere inside a crossing that can
- * run for years, and a scan that steps over it reports no blackout at all. Two
- * days finds one and places its ends about as well as taking the Sun to sit at
- * the barycentre does.
+ * Set by the narrowest thing being looked for: a conjunction is a fortnight
+ * somewhere inside a crossing that can run for years, and a scan that steps
+ * over it reports no blackout at all. Two days finds one, about as precisely
+ * as taking the Sun to sit at the barycentre already limits the answer.
  */
 const HAZARD_SAMPLE_DAYS = 2;
 const MIN_HAZARD_SAMPLES = 64;
-/** A decade-long crossing would otherwise ask for thousands. Past this the
- *  spacing widens again, which is the honest trade: the alternative is making
- *  the panel wait on a scan nobody asked for. */
+/** Past this the spacing widens again rather than asking a decade-long
+ *  crossing for thousands of samples — the panel should not wait on a scan
+ *  nobody asked for. */
 const MAX_HAZARD_SAMPLES = 1024;
 
 /**
@@ -139,14 +121,14 @@ function hazardSamples(route: Route): number {
 }
 
 /**
- * Both distance hazards are really thresholds on a **place**, so they are
- * written as distances and turned into the figure the panel quotes. Putting them
- * the other way round hides what they mean and makes them impossible to check.
+ * Both distance hazards are really thresholds on a **place**, written as
+ * distances and turned into the figure the panel quotes — the other way round
+ * would hide what they mean and make them impossible to check.
  *
- * Going in: Venus's orbit is where thermal design starts; 0.45 AU is where it
- * dominates; 0.30 AU is inside Mercury's perihelion, where MESSENGER and
- * BepiColombo both needed a sunshade rather than a design — the step from "hot"
- * to "a different kind of craft".
+ * Going in: Venus's orbit is where thermal design starts, 0.45 AU is where it
+ * dominates, and 0.30 AU is inside Mercury's perihelion, where MESSENGER and
+ * BepiColombo both needed a sunshade — the step from "hot" to "a different
+ * kind of craft".
  */
 const HEAT_AU = { notice: 0.71, caution: 0.45, severe: 0.3 };
 const HEAT_SUNS: Thresholds = {
@@ -157,15 +139,13 @@ const HEAT_SUNS: Thresholds = {
 
 /**
  * Going out, the tiers are drawn either side of the two orbits solar power has
- * actually been flown to, so neither of them is called a problem.
+ * actually been flown to, so neither is called a problem.
  *
- * 1.38 AU is Mars at perihelion: from there out sunlight is under half of
- * Earth's and arrays are sized for it, which is worth knowing and nothing more —
- * Mars is where solar spacecraft go. 1.67 AU clears Mars's aphelion, so the
- * middle tier starts past its orbit rather than inside it. 5.5 AU clears
- * Jupiter's, where Juno, JUICE and Europa Clipper all fly on panels: enormous
- * ones, which is exactly the middle tier. Only past Jupiter has nothing solar
- * ever gone.
+ * 1.38 AU is Mars at perihelion, where sunlight is under half of Earth's and
+ * arrays are sized for it — Mars is where solar spacecraft go. 1.67 AU clears
+ * Mars's aphelion. 5.5 AU clears Jupiter's, where Juno, JUICE and Europa
+ * Clipper all fly on enormous panels — the middle tier. Only past Jupiter has
+ * nothing solar ever gone.
  */
 const POWER_AU = { notice: 1.38, caution: 1.67, severe: 5.5 };
 const POWER_FRACTION: Thresholds = {
@@ -176,13 +156,12 @@ const POWER_FRACTION: Thresholds = {
 
 /**
  * Sun–origin–craft angle, degrees: how close to the Sun the craft appears from
- * the place it left. Five degrees is where the link starts losing data to solar
- * noise, and inside two JPL stops commanding Mars orbiters altogether.
+ * the place it left. Five degrees is where the link starts losing data to
+ * solar noise, and inside two JPL stops commanding Mars orbiters altogether.
  *
- * One tier and no more, however close it gets. A conjunction is a fortnight of
- * silence on a calendar every mission plans around; it costs no hardware and
- * changes no trajectory, so it is something to know rather than something to
- * answer.
+ * One tier and no more: a conjunction is a fortnight of silence every mission
+ * plans around, costing no hardware and changing no trajectory — something to
+ * know, not something to answer.
  */
 const CONJUNCTION_DEG: Thresholds = { notice: 5 };
 
@@ -190,43 +169,36 @@ const CONJUNCTION_DEG: Thresholds = { notice: 5 };
  * One-way light time, seconds. Five minutes is the end of anything resembling
  * supervision — Mars runs 4 to 24 — and half an hour is Jupiter.
  *
- * It stops there. Past that the lag stops being a matter of degree: nothing is
- * flown from here at any distance, and a craft that copes with an hour copes
- * with four. Both of these are about the link, and the link is never what a
- * different spacecraft would fix.
+ * It stops there: past that a craft that copes with an hour copes with four,
+ * and both tiers are about the link, never something a different spacecraft
+ * would fix.
  */
 const LAG_SECONDS: Thresholds = { notice: 300, caution: 1800 };
 
 /**
- * Speed the craft meets the air at, km/s.
- *
- * Any of it takes a heat shield, so the mildest tier is every atmospheric
- * arrival. Above 8 is a return from another body rather than an entry from
- * orbit — Apollo came back at 11.0 — and above 13 is Galileo's probe territory,
- * which met Jupiter at 47.4 behind a shield that was half the probe's mass.
+ * Speed the craft meets the air at, km/s. Any of it takes a heat shield, so
+ * the mildest tier is every atmospheric arrival. Above 8 is a return from
+ * another body rather than an entry from orbit — Apollo came back at 11.0 —
+ * and above 13 is Galileo's probe territory, which met Jupiter at 47.4 behind
+ * a shield that was half the probe's mass.
  */
 const ENTRY_KMS: Thresholds = { notice: 0, caution: 8, severe: 13 };
 
 /**
  * Cosmic ray dose over the whole trip, sieverts.
  *
- * Absolute, not a fraction of anybody's career limit. Those are policy — they
- * differ between agencies, they have moved twice in twenty years, and quoting a
- * percentage of one turns a physical quantity into an administrative one.
+ * Absolute, not a fraction of anybody's career limit — those are policy, differ
+ * between agencies, and have moved twice in twenty years, so a percentage of
+ * one would turn a physical quantity into an administrative one.
  *
  * The upper two tiers are placed on added lifetime cancer risk instead, at
- * ICRP's nominal 4.1% per Sv, and written as the risk rather than the dose so
- * that moving the coefficient moves them with it. A quarter and a half.
+ * ICRP's nominal 4.1% per Sv — a quarter and a half — so moving the coefficient
+ * moves them with it. Deliberately high: a Mars round trip is 1.59 Sv at worst
+ * (under 7%), and the tiers are for trips that are actually a problem — a
+ * decade outbound reaches a quarter, and nothing crewed proposed reaches a half.
  *
- * Those are deliberately high, and the effect is that almost every trip anyone
- * would fly sits in the mildest tier: a Mars round trip is 1.59 Sv at worst,
- * which is under 7%. The tiers are for the trips that are actually a problem —
- * a decade in the outer system reaches a quarter, and nothing crewed has ever
- * been proposed that reaches a half.
- *
- * None of this is about dying of the trip. A sievert collected over ten years
- * produces no radiation sickness at all, which is the whole reason this is a
- * different quantity from a belt pass.
+ * Not about dying of the trip: a sievert over ten years produces no radiation
+ * sickness at all, which is why this is a different quantity from a belt pass.
  */
 const TRIP_DOSE_SV: Thresholds = {
 	notice: 0.1,
@@ -237,22 +209,17 @@ const TRIP_DOSE_SV: Thresholds = {
 /**
  * Absorbed dose of one belt pass, grays.
  *
- * A different quantity from the one above and deliberately not summed with it:
- * these are the tiers of acute injury, not of lifetime risk.
+ * A different quantity from `TRIP_DOSE_SV` and deliberately not summed with
+ * it: these are tiers of acute injury, not lifetime risk.
  *
  * Both upper tiers are fractions of `LETHAL_DOSE_GY` rather than doses written
- * out, because the row quotes the figure as a percentage of exactly that: red
- * begins at one whole lethal dose and amber at half of one, so the colour and
- * the number on screen say the same thing. The mildest tier is well under any
- * symptom threshold and exists so that a small pass still gets a line — "4% of
- * a lethal dose" is worth saying.
+ * out, because the row quotes the figure as a percentage of exactly that — red
+ * at one whole lethal dose, amber at half — so the colour and the number agree.
+ * The mildest tier is well under any symptom threshold and exists so a small
+ * pass still gets a line: "4% of a lethal dose" is worth saying.
  *
- * Severity is read off the central estimate, like every other hazard here. The
- * band the row prints beside it is wide enough near the top tier to cross it,
- * which is the model's honest state and not something to resolve by escalating.
- *
- * Judged on the dose behind the assumed hull, which is what a crew would take.
- * Unshielded is about a hundred times worse.
+ * Judged on the dose behind the assumed hull, what a crew would actually take
+ * — unshielded is about a hundred times worse.
  */
 const BELT_PASS_GY: Thresholds = {
 	notice: 0.1,
@@ -318,12 +285,10 @@ interface Span {
 /**
  * The worst the trip gets, and the unbroken stretch around it.
  *
- * The stretch is grown out from the peak rather than drawn between the first and
- * last samples that qualify. A trip to Saturn passes through six conjunctions as
- * the Earth laps the Sun under it; bounding them all as one would report a
- * six-year blackout, which is not a thing that happens. One episode, the worst
- * one, is what a reader can do something with. Null when the threshold is never
- * met.
+ * Grown out from the peak rather than bounding the first and last qualifying
+ * samples: a trip to Saturn passes six conjunctions as Earth laps the Sun
+ * under it, and bounding them all as one would report a six-year blackout that
+ * is not a thing that happens. Null when the threshold is never met.
  */
 function spanOf(
 	samples: readonly Sample[],
@@ -372,14 +337,12 @@ function spanOf(
 }
 
 /**
- * Which hazards are a **place** on the trip rather than a fact about the whole
- * of it, and so which get drawn along the arc.
+ * Which hazards are a **place** on the trip, and so get drawn along the arc.
  *
- * The lag and the power both hold for most of a crossing by the time they hold
- * at all — banding them paints the entire trajectory, which says nothing about
- * where anything happens and buries the two that do. They keep their marker,
- * their chip and their row; what they lose is the claim that some part of the
- * trip is worse than the rest, which for those two is not true.
+ * Lag and power both hold for most of a crossing by the time they hold at
+ * all — banding them would paint the entire trajectory and bury the two that
+ * do mark a place. They keep their marker, chip and row; they just don't
+ * claim part of the trip is worse than the rest, which for them isn't true.
  */
 const BANDED: ReadonlySet<HazardKind> = new Set<HazardKind>(['solar-heat', 'conjunction']);
 
@@ -421,18 +384,16 @@ export interface HazardContext {
 }
 
 /**
- * Frames a distance from the centre is a distance from the **Sun** in.
+ * Frames a distance from the centre is a distance from the **Sun** in. The
+ * barycentre is included since it stands in for the Sun to within 0.0055 AU,
+ * nothing against any threshold here.
  *
- * The barycentre is in the list because it stands in for the Sun to within
- * 0.0055 AU, which is nothing against any threshold here.
- *
- * This is a question about the *centre*, not about the kind of transfer, and
- * getting that wrong is what left a trip to the Sun itself with no heat hazard
- * at all: `Earth → Sun` is a **system** transfer whose primary happens to be the
- * Sun, and a trip between two comets is a **sibling** transfer about it. Both
- * measure from the Sun; neither is what the kernel calls heliocentric. Only a
- * trip inside a planet's own system measures from something else, and there the
- * scan says nothing rather than something false.
+ * A question about the *centre*, not about the kind of transfer: `Earth → Sun`
+ * is a **system** transfer whose primary is the Sun, and two comets is a
+ * **sibling** transfer about it — both measure from the Sun, neither is what
+ * the kernel calls heliocentric. Only a trip inside a planet's own system
+ * measures from something else, and there the scan says nothing rather than
+ * something false.
  */
 const SOLAR_CENTERS: ReadonlySet<string> = new Set(['naif-10', 'naif-0']);
 
@@ -443,9 +404,9 @@ function aboutTheSun(context: HazardContext): boolean {
 /**
  * Everything `route` puts the craft through, worst first.
  *
- * The atmospheric arrival is read off the route itself and is reported whatever
- * frame the trip is in; the other four need the shape of the trajectory, and are
- * left out when there is none to rebuild or when it does not go round the Sun.
+ * The atmospheric arrival is read off the route itself and reported in any
+ * frame; the other four need the shape of the trajectory, so they're left out
+ * when there is none to rebuild or when it doesn't go round the Sun.
  */
 export function routeHazards(
 	departure: TravelBody,
@@ -523,11 +484,10 @@ export function sortHazards(hazards: Hazard[]): Hazard[] {
 /**
  * The arrival, when it is flown through air.
  *
- * `entrySpeedKms` is set exactly when the atmosphere was asked to do some of the
- * work, which is the same test the feasibility check uses to decide a craft needs
- * something to fly a pass behind. A propulsive landing through the same air is
- * not one of these: nothing is being asked of the atmosphere, so nothing has to
- * survive it.
+ * `entrySpeedKms` is set exactly when the atmosphere was asked to do some of
+ * the work — the same test the feasibility check uses. A propulsive landing
+ * through the same air is not one of these: nothing is asked of the
+ * atmosphere, so nothing has to survive it.
  */
 function aeroHazard(route: Route): Hazard | null {
 	const entrySpeedKms = route.entrySpeedKms;
@@ -553,14 +513,10 @@ function aeroHazard(route: Route): Hazard | null {
 	};
 }
 
-/**
- * Below this the craft has not really left, and the angle it makes with the Sun
- * is the noise in a difference of two nearly equal vectors rather than a
- * geometry — at the departure sample it is a difference of zero. A hundredth of
- * an AU; nothing is out of contact at that range, so those samples are reported
- * as pointing straight away from the Sun rather than being left out, which would
- * put a hole in the middle of every other hazard's stretch.
- */
+/** Below this the craft has not really left, and the Sun angle is noise in a
+ *  difference of two nearly equal vectors — zero at the departure sample. A
+ *  hundredth of an AU; those samples are reported pointing straight away from
+ *  the Sun rather than left out, which would hole every other hazard's stretch. */
 const CONJUNCTION_FLOOR_KM = 0.01 * AU_KM;
 
 const RAD_TO_DEG = 180 / Math.PI;
@@ -583,9 +539,8 @@ function scan(
 	});
 	if (!path) return [];
 
-	// The trip leaves from the frame's centre when the centre is the origin —
-	// leaving the Sun for somewhere. Its own elements describe a different orbit
-	// then (the Sun's about the barycentre), and differencing against those would
+	// When the centre is the origin, its own elements describe a different orbit
+	// (the Sun's about the barycentre) — differencing against those would
 	// misplace the craft and point the conjunction test at nothing.
 	const originAtCenter = departure.id === context.centerId;
 
@@ -622,9 +577,8 @@ function sampleAt(
 	const toCraft = sub(r, home.r);
 	const separationKm = norm(toCraft);
 
-	// The Sun is taken to sit at the barycentre the elements are referenced to.
-	// It is about 0.8 M km off it, which is roughly 0.3° of conjunction angle at
-	// Earth's distance — a couple of days at either end of a blackout, and not
+	// The Sun is taken to sit at the barycentre the elements are referenced to —
+	// about 0.8M km off, ~0.3° of conjunction angle at Earth's distance, not
 	// worth carrying the Sun's own ephemeris through this module to correct.
 	const toSun = [-home.r[0], -home.r[1], -home.r[2]] as Vec3;
 	const sunKm = norm(toSun);
@@ -647,14 +601,13 @@ function sampleAt(
 /**
  * Cosmic rays over the whole crossing, integrated along the samples.
  *
- * Trapezoid, because the rate varies smoothly and slowly — it is a percent per
- * tenth of an AU and a factor of 2.4 across eleven years, so the two-day
- * sampling the conjunction test needs is far finer than this term wants.
+ * Trapezoid: the rate varies smoothly and slowly (a percent per tenth of an AU,
+ * a factor of 2.4 across eleven years), far coarser than the two-day sampling
+ * needs.
  *
- * The craft is taken to be in free space for all of it. That understates a trip
- * that spends time low over a body, which blocks half the sky, and overstates
- * nothing — so the cruise figure is an upper bound on its own terms, and the
- * ends of the trip are where it is loosest.
+ * The craft is taken to be in free space throughout, which understates a trip
+ * spending time low over a body (blocking half the sky) and overstates
+ * nothing — an upper bound, loosest at the ends of the trip.
  */
 function cruiseDose(samples: readonly Sample[]): {
 	sv: number;
@@ -676,11 +629,9 @@ function cruiseDose(samples: readonly Sample[]): {
 	return { sv, peakRate, peakJd };
 }
 
-/**
- * Bodies with belts worth naming a pass through. Wider than the set that has a
- * dose profile, which is the point: passing Saturn is worth a line saying the
- * cost is unknown, and passing Mars is not worth a line at all.
- */
+/** Bodies with belts worth naming a pass through. Wider than the set with a
+ *  dose profile: passing Saturn is worth a line saying the cost is unknown,
+ *  passing Mars is not worth a line at all. */
 const BELTED_BODY_IDS: ReadonlySet<string> = new Set([
 	'naif-599',
 	'naif-699',
@@ -689,14 +640,10 @@ const BELTED_BODY_IDS: ReadonlySet<string> = new Set([
 	'naif-399'
 ]);
 
-/**
- * The cosmic ray total as a hazard, from an already-walked trajectory.
- *
- * The figure is the whole trip's dose in sieverts rather than a rate at a
- * moment, which makes this the one kind whose `peak` is an integral. It is not
- * banded: the rate varies by a few percent across an inner-system crossing, so
- * painting the arc with it would claim a structure that is not there.
- */
+/** The cosmic ray total as a hazard — the whole trip's dose in sieverts, which
+ *  makes this the one kind whose `peak` is an integral. Not banded: the rate
+ *  varies by a few percent across an inner-system crossing, and painting the
+ *  arc with it would claim a structure that isn't there. */
 function radiationHazard(samples: readonly Sample[]): Hazard | null {
 	if (samples.length < 2) return null;
 	const { sv, peakRate, peakJd } = cruiseDose(samples);
@@ -714,12 +661,8 @@ function radiationHazard(samples: readonly Sample[]): Hazard | null {
 	};
 }
 
-/**
- * Each swing-by through a belt, as its own moment.
- *
- * One per pass rather than a total, because they happen in different places to
- * different degrees and a summed figure would hide which one was the problem.
- */
+/** Each swing-by through a belt, as its own moment — one per pass rather than
+ *  a total, since a summed figure would hide which one was the problem. */
 function beltHazards(route: Route, vias: readonly TravelBody[]): Hazard[] {
 	const hazards: Hazard[] = [];
 	for (const pass of route.flybys ?? []) {
@@ -728,9 +671,8 @@ function beltHazards(route: Route, vias: readonly TravelBody[]): Hazard[] {
 		const moment = { startJd: pass.jd, endJd: pass.jd, peakJd: pass.jd, bands: [] };
 
 		if (!body || !MODELLED_BELT_IDS.has(pass.bodyId)) {
-			// Known to be a belt and not known how bad. Reported at the middle
-			// tier: calling it mild would be a claim, and calling it severe would
-			// be the same claim in the other direction.
+			// Known to be a belt, not known how bad. Reported at the middle tier:
+			// calling it mild or severe would each be an unearned claim.
 			hazards.push({
 				kind: 'belt-crossing',
 				severity: 'caution',
@@ -777,13 +719,10 @@ export interface AdjustedHazard extends Hazard {
 /**
  * The same hazards read against the craft that would fly them.
  *
- * Kept off the list of trajectories on purpose: a row there is a statement about
- * where the trip goes, and it should not change severity because a craft was
- * picked — least of all during the window after a shared link names one and
- * before the catalogue lands, when nothing about it is knowable.
- *
- * Nothing is ever removed. A cruise beyond Jupiter is still a cold, dark cruise
- * with an RTG aboard; what changes is whether it is a problem.
+ * Kept off the list of trajectories on purpose: a row there is a statement
+ * about where the trip goes, and shouldn't change severity because a craft was
+ * picked. Nothing is ever removed — a cruise beyond Jupiter is still a cold,
+ * dark cruise with an RTG aboard; what changes is whether it's a problem.
  */
 export function adjustForVehicle(
 	hazards: readonly Hazard[],

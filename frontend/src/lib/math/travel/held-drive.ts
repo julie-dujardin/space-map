@@ -1,37 +1,33 @@
 /**
  * A drive held under gravity: integrating the arc instead of assuming it away.
- *
  * The straight-line brachistochrone is only honest while the drive dwarfs the
- * primary's pull. It does, for the burns of a torch ship — but not for a coast,
- * where the drive is off and the pull is the only thing shaping the path, and
- * not for a slow drive at all. Measured against a real integration, a crossing
- * that coasted for a month left the line it was drawn on by a tenth of its own
- * length.
+ * primary's pull — true for a torch ship's burns, false during a coast (drive
+ * off, gravity alone shapes the path) and false for a slow drive generally.
+ * Measured against real integration, a crossing that coasted a month missed
+ * its drawn line by a tenth of its own length.
  *
- * So the arc is flown rather than assumed. The ship leaves co-moving with the
- * departure body — which is what clearing the well at zero excess speed leaves
- * it doing, so this agrees with how the two ends are priced — and from there the
- * only forces are the primary's gravity and the drive.
+ * So the arc is flown, not assumed. The ship leaves co-moving with the
+ * departure body — matching how zero excess speed prices the wells — and from
+ * there the only forces are the primary's gravity and the drive.
  *
  * **Steering.** The drive points along one fixed inertial direction while
- * boosting and exactly against it while braking, so its net Δv over a flip is
- * zero. That keeps the model's original premise — the ship arrives still
- * carrying the departure body's motion and pays an ordinary capture for the
- * difference — but now as a *result* of the integration rather than as
- * bookkeeping laid over a straight line. It is not the optimal steering law;
- * it is the one a ship that flips once actually flies.
+ * boosting and exactly against it while braking, so net Δv over a flip is
+ * zero. That keeps the model's premise — arriving still carrying the
+ * departure body's motion, paying an ordinary capture for the difference —
+ * now as a *result* of integration rather than bookkeeping over a straight
+ * line. Not the optimal steering law, but the one a ship that flips once
+ * actually flies.
  *
- * **The solve is square.** Three unknowns — where the drive points, as two
- * offsets from the chord, and how long each burn lasts — against the three
- * components of "be where the target is when you get there". Newton on a
- * numerical Jacobian, seeded from the straight-line answer, which is close
- * enough to converge from for any drive worth offering this to. Arrival
- * *velocity* is not constrained: it falls out, and paying for it is the arrival
- * model's job.
+ * **The solve is square.** Three unknowns — two chord offsets for where the
+ * drive points, and each burn's length — against the three components of "be
+ * where the target is when you get there". Newton on a numerical Jacobian,
+ * seeded from the straight-line answer, close enough to converge for any
+ * drive worth offering this to. Arrival *velocity* isn't constrained; it
+ * falls out, and paying for it is the arrival model's job.
  *
- * A drive too weak to close the geometry gets no arc. That is the honest answer
- * — a ship that cannot outpush the Sun does not fly a brachistochrone, it
- * spirals — and it is why this returns null rather than a plausible number.
+ * A drive too weak to close the geometry gets no arc — a ship that can't
+ * outpush the Sun doesn't fly a brachistochrone, it spirals — so this returns
+ * null rather than a plausible number.
  */
 
 import type { StateVector } from './state';
@@ -63,12 +59,10 @@ export interface HeldDriveArc {
 }
 
 /**
- * Steps each burn is integrated in while solving.
- *
- * The field a burn crosses is smooth and the thrust is constant, so RK4 is far
- * more accurate here than the ephemerides it is aimed at. Two hundred is chosen
- * against halving the step, not against a tolerance: past this the answer stops
- * moving in metres.
+ * Steps each burn is integrated in while solving. The field is smooth and
+ * thrust constant, so RK4 is far more accurate here than the ephemerides it
+ * targets. Two hundred was chosen by halving the step until the answer stopped
+ * moving in metres, not against a tolerance.
  */
 const BURN_STEPS = 200;
 
@@ -85,11 +79,9 @@ const CLOSE_ENOUGH = 1e-9;
 
 /**
  * Fractions of the primary's pull the solve is walked up through when the full
- * problem will not converge from the straight-line seed.
- *
- * Each step's answer seeds the next, so gravity is introduced gradually to a
- * solution that already exists. This is what rescues the slower drives, where
- * the straight line is too poor a guess to start from.
+ * problem won't converge from the straight-line seed. Each step's answer seeds
+ * the next, introducing gravity gradually to a solution that already exists —
+ * rescues slower drives where the straight line is too poor a guess.
  */
 const CONTINUATION = [0.2, 0.4, 0.6, 0.8, 1];
 
@@ -142,9 +134,9 @@ function flyBurn(
 }
 
 /**
- * The whole crossing under one set of parameters, or null where it cannot be
- * flown. `coastSteps` is how finely the coast is walked: one while solving,
- * where only its far end matters, and many when the curve is being drawn.
+ * The whole crossing under one set of parameters, or null if it can't be
+ * flown. `coastSteps` is how finely the coast is walked: one while solving
+ * (only its far end matters), many when drawing the curve.
  */
 function flyArc(
 	start: StateVector,
@@ -258,12 +250,11 @@ export interface HeldDriveProblem {
 const IGNORE: Watcher = () => {};
 
 /**
- * Shoot for the target, or return null if the drive cannot close the geometry.
- *
- * The unknowns are packed as two offsets across the chord and the burn length,
- * because that puts the seed at the origin of the first two and makes the
- * Jacobian well behaved — solving for angles instead would have to care where
- * the chord happens to point.
+ * Shoot for the target, or return null if the drive can't close the geometry.
+ * Unknowns are packed as two offsets across the chord plus the burn length,
+ * putting the seed at the origin of the first two and keeping the Jacobian
+ * well behaved — solving for angles instead would have to care where the
+ * chord points.
  */
 export function solveHeldDrive(problem: HeldDriveProblem): HeldDriveArc | null {
 	const { start, target, departJd, accelKmS2, coastSeconds, flips, mu, seedBurnSeconds } = problem;
@@ -417,11 +408,9 @@ export type HeldDriveShape = Pick<
 >;
 
 /**
- * Replay a solved arc as points to draw.
- *
- * Re-flown rather than stored: an arc is fixed by where its drive pointed and
- * how long it held, so a few hundred points never have to ride along with the
- * route that priced it.
+ * Replay a solved arc as points to draw. Re-flown rather than stored: an arc
+ * is fixed by where its drive pointed and how long it held, so a few hundred
+ * points never ride along with the route that priced it.
  */
 export function sampleHeldDrive(
 	start: StateVector,

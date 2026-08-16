@@ -2,7 +2,7 @@
  * A trajectory as the map draws it: its geometry, and what to write at each end.
  *
  * The two ends are the whole of what tells one trajectory from another on
- * screen — they all leave the same body for the same body, and only the dates
+ * screen — they all leave the same body for the same body and only the dates
  * differ, so where each arc starts and stops *is* the departure and arrival
  * date.
  */

@@ -36,27 +36,25 @@ export const ASCENT_DRAG_LOSS_KMS_PER_BAR = 0.15;
 export const ASCENT_DRAG_LOSS_CAP_KMS = 1.2;
 
 /**
- * Altitude of the periapsis an atmospheric pass is flown at when the body
- * carries no scale height to derive one from, km. Calibrated at Mars, where it
- * reproduces the published post-pass burn. Doubles as the floor for envelopes
- * thinner than the target pass pressure — Pluto's whole atmosphere is — where
- * the derived depth would otherwise sit at or under the ground.
+ * Pass periapsis altitude when a body has no scale height to derive one from, km.
+ * Calibrated at Mars to reproduce the published post-pass burn; also floors
+ * envelopes thinner than the target pressure (e.g. Pluto's whole atmosphere),
+ * where the derived depth would otherwise sit at or below ground.
  */
 export const AERO_PASS_ALTITUDE_KM = 50;
 
 /**
- * Pressure the pass periapsis aims for, Pa. With a body's own scale height this
- * places the entry interface where its density actually is — ~50 km at Mars but
- * hundreds of km at Titan and the giants. Calibrated so Mars (636 Pa, 11 km)
- * lands on the altitude the published post-pass burn was matched at.
+ * Target pressure for the pass periapsis, Pa. With a body's own scale height this
+ * places the entry interface at its real density altitude — ~50 km at Mars,
+ * hundreds at Titan and the giants. Calibrated so Mars (636 Pa, 11 km) matches
+ * the published post-pass burn altitude.
  */
 export const AERO_PASS_PRESSURE_PA = 6.7;
 
 /**
- * Ceiling on the derived pass altitude, km. Every orbit here is quoted from the
- * one 200 km parking convention, and a pass has to fit under the orbit it
- * delivers — so at Titan and the giants this is the parking convention's floor
- * showing through, not the atmosphere's real top.
+ * Ceiling on the derived pass altitude, km. Every orbit is quoted from the
+ * 200 km parking convention and a pass must fit under it — so at Titan and the
+ * giants this is the parking floor showing through, not the atmosphere's real top.
  */
 export const AERO_PASS_ALTITUDE_MAX_KM = 150;
 
@@ -69,25 +67,19 @@ export const AERO_PASS_ALTITUDE_MAX_KM = 150;
 export const AERO_MIN_PRESSURE_PA = 0.1;
 
 /**
- * Δv allowed for corridor control and apoapsis trim after an aerocapture pass,
- * km/s, on top of the periapsis raise the model derives.
- *
- * Aerocapture studies budget 33 m/s (Mars, elliptical) to ~200 m/s (Mars, 500 km
- * circular, 3σ) for the whole post-pass clean-up, most of the spread being
- * correction of where the pass actually left the craft rather than the raise
- * itself. This is the middle of that.
+ * Δv for corridor control and apoapsis trim after an aerocapture pass, km/s, on
+ * top of the derived periapsis raise. Aerocapture studies budget 33 m/s (Mars,
+ * elliptical) to ~200 m/s (Mars, 500 km circular, 3σ) for post-pass clean-up;
+ * this is the middle of that range.
  */
 export const AEROCAPTURE_TRIM_KMS = 0.05;
 
 /**
- * Δv drag removes per day of an aerobraking campaign, km/s.
- *
- * Fitted to the four flown Mars campaigns, which span 3.6–14 m/s per day:
- * MGS 1220 m/s over 290 active days, Odyssey 1080 over 77, MRO 1200 over 148,
- * TGO 1000 over 276. The spread is the spacecraft's ballistic coefficient and
- * how hard the campaign was flown — neither of which this model knows — so a
- * duration it reports is the right number of months, not the right number of
- * days. Nothing calibrates it away from Mars.
+ * Δv drag removes per day of an aerobraking campaign, km/s. Fitted to the four
+ * flown Mars campaigns (3.6–14 m/s/day: MGS 1220/290d, Odyssey 1080/77d,
+ * MRO 1200/148d, TGO 1000/276d) — the spread is ballistic coefficient and how
+ * hard it was flown, neither known here, so a reported duration is right to the
+ * month, not the day. Nothing calibrates it away from Mars.
  */
 export const AEROBRAKING_RATE_KMS_PER_DAY = 0.008;
 
@@ -99,9 +91,9 @@ export const POWERED_TOUCHDOWN_KMS = 0.3;
 
 /**
  * Closest a swing-by may pass, km above the mean radius. Real missions pick this
- * per body — Galileo grazed Venus at 16,000 km and Io at 900 — so one figure is
- * a floor rather than a plan, chosen well clear of every atmosphere the model
- * would otherwise fly through.
+ * per body (Galileo grazed Venus at 16,000 km, Io at 900) — one figure here is a
+ * floor, not a plan, chosen clear of every atmosphere the model would otherwise
+ * fly through.
  */
 export const FLYBY_MIN_ALTITUDE_KM = 300;
 

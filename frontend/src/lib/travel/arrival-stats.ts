@@ -15,13 +15,9 @@ import {
 	type TravelBody
 } from '$lib/math/travel';
 
-/**
- * One-way light time between the two bodies at arrival, in seconds.
- *
- * Uses the real positions on the arrival date, so a slow transfer that lands
- * with the pair on opposite sides of the Sun reports the longer delay it
- * actually has. Returns null when either position is unavailable.
- */
+/** One-way light time between the two bodies at arrival, seconds. Uses the real
+ *  positions on the arrival date, so a slow transfer landing with the pair on
+ *  opposite sides of the Sun reports the longer delay it actually has. */
 export function signalDelaySeconds(
 	origin: TravelBody,
 	target: TravelBody,
@@ -38,16 +34,13 @@ export function signalDelaySeconds(
 /**
  * Δv to start the journey home, km/s.
  *
- * Approximate on purpose: it prices leaving the target on a transfer needing
- * the same excess speed the arrival had, which is the right scale but not the
- * true return window's cost. Solving the return properly means a second
- * porkchop, which is a separate trip rather than a statistic.
+ * Approximate: prices leaving on a transfer needing the same excess speed the
+ * arrival had, which is the right scale but not the true return window's cost
+ * — solving that properly is a second porkchop, a separate trip rather than a
+ * statistic.
  *
- * A constant-thrust arc has no such window to leave on, and its cost is not in
- * the escape at all: the way home is the same crossing flown backwards, so it
- * is quoted as the whole of what the outbound spent between the two wells. A
- * spiral is quoted the same way and for the same reason — its escape is a
- * spiral too, and pricing one as an impulsive burn would halve it.
+ * A constant-thrust or low-thrust arc has no such window: its escape is the
+ * same crossing flown backwards, so it is quoted as the whole outbound spend.
  */
 export function returnDvKms(target: TravelBody, route: Route, orbit?: EndOrbit): number {
 	if (route.constantThrust || route.lowThrust) return route.inSpaceDvKms;
@@ -55,8 +48,7 @@ export function returnDvKms(target: TravelBody, route: Route, orbit?: EndOrbit):
 		target,
 		route.vInfArrKms,
 		route.arrivalMode === 'landing' ? 'surface' : 'orbit',
-		// You leave from wherever the arrival left you, so a stationary orbit is
-		// as much a term of the way back as it was of the way out.
+		// You leave from wherever the arrival left you.
 		orbit
 	);
 	return cost.ascentKms + cost.injectionKms;

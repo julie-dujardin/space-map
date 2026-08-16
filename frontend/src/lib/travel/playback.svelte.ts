@@ -1,16 +1,14 @@
 /**
  * Flying the trip on the simulation clock.
  *
- * The timeline can seek — that is one `setJD` — but watching a trip happen is
- * the point of having one: the destination sweeps round to meet the craft, and
- * a jump from departure to arrival shows the two ends without ever showing that.
- * So playback sweeps the clock leg by leg, pausing at each entry on the way.
+ * The timeline can seek — that's one `setJD` — but watching a trip happen is
+ * the point of having one: a jump from departure to arrival never shows the
+ * destination sweeping round to meet the craft. So playback sweeps the clock
+ * leg by leg, pausing at each entry on the way.
  *
- * It drives the clock a frame at a time rather than by setting a time scale.
- * Both would move the clock, but the scale is the user's — a magnitude, a
- * direction, and a speed to resume at — and a run of playback should give it
- * back untouched. This also keeps the boundary stops free, which the focused
- * probe's coverage window already owns.
+ * It drives the clock a frame at a time rather than by setting a time scale:
+ * the scale is the user's own (magnitude, direction, resume speed), and a run
+ * of playback should hand it back untouched.
  */
 
 import type { SimClock } from '$lib/scene/state/clock.svelte';
@@ -79,8 +77,8 @@ export class TripPlayback {
 		if (entries.length === 0) return;
 		this.stop();
 		const at = entryIndexAt(entries, this.host.clock.jd);
-		// Stepping back from inside a phase means the start of that phase, not the
-		// entry before it — the clock is not on `at`, it is past it.
+		// Stepping back from inside a phase means that phase's start, not the
+		// entry before it — the clock is past `at`, not on it.
 		const onEntry = entries[at].startJd === this.host.clock.jd;
 		const next = delta < 0 && !onEntry ? at : at + delta;
 		this.go(Math.min(entries.length - 1, Math.max(0, next)));
@@ -95,10 +93,9 @@ export class TripPlayback {
 		const entries = this.host.entries();
 		if (entries.length < 2) return;
 		this.stop();
-		// Resume from where the clock is, unless the trip is already over — then the
-		// button means "watch it again" rather than "do nothing". Over means past
-		// the last entry's whole span: inside the final phase there is still a leg
-		// to fly.
+		// Resume from where the clock is, unless the trip is already over — then
+		// the button means "watch it again". Over means past the last entry's
+		// whole span: inside the final phase there is still a leg to fly.
 		const last = entries[entries.length - 1];
 		const at = entryIndexAt(entries, this.host.clock.jd);
 		const over = at >= entries.length - 1 && !(this.host.clock.jd < last.endJd);
@@ -124,8 +121,8 @@ export class TripPlayback {
 		const entries = this.host.entries();
 		const from = entries[index - 1];
 		// One past the end is the last leg: the final entry's own span, which the
-		// legs between startJds never cover — without it the trip stops at the
-		// start of its last phase instead of at its arrival.
+		// legs between startJds never cover — without it the trip would stop at
+		// its last phase's start instead of its arrival.
 		const to = entries[index] ?? null;
 		if (!from || (!to && !(from.endJd > from.startJd))) {
 			this.stop();

@@ -1,19 +1,12 @@
 /// <reference lib="webworker" />
 
 /*
- * Travel worker: solves one porkchop grid per request and picks the routes to
- * offer from it, and — on a separate request — hunts for a swing-by route.
- *
- * A grid is tens of thousands of Lambert solves — fast individually, but enough
- * in aggregate to drop frames if run on the main thread while the user is
- * dragging the map. Requests carry an id so a superseded one can be discarded
- * on arrival rather than cancelled mid-solve; the grids are small and the
- * solves are short, so there is nothing to gain from finer-grained interruption.
- *
- * The swing-by hunt is the same argument an order of magnitude louder: it sweeps
- * a decade of departures against two cruise lengths for every candidate body.
- * It is a separate message rather than part of the solve because it answers a
- * second or so later, and the three direct routes should not wait for it.
+ * Solves a porkchop grid (tens of thousands of Lambert solves) off the main
+ * thread so dragging the map stays smooth, and separately hunts swing-by
+ * routes, which sweep a decade of departures and take much longer — kept as
+ * its own message so the three direct routes don't wait on it. Requests carry
+ * an id so a superseded one is discarded on arrival rather than cancelled
+ * mid-solve.
  */
 
 import type { TravelBody } from './body';
