@@ -75,18 +75,15 @@ def _sample_runs(
 def build_one(naif_id: int, exclude: list[tuple[float, float]] | None = None) -> Path:
     """Assemble cached CSVs into a single multi-segment SPK13.
 
-    Coarse segment first, then refined segments — SPICE evaluates with the
-    last matching segment in the file winning for overlapping epochs, so
-    queries inside a refinement window automatically use the 1h data.
-
+    Coarse segment first, then refined — SPICE's last-matching-segment-wins
+    means overlapping epochs inside a refinement window resolve to 1h data.
     `exclude` carves out ET intervals (agency-SPK coverage) so the synth only
-    claims the complement; raises like an empty build when nothing survives.
+    claims the complement; raises if nothing survives.
 
     Writes to `<spk>.tmp` then atomically replaces `<spk>` so a concurrent
-    reader (e.g. an in-flight `space-map-export` furnshing the same file)
-    keeps its already-open fd on the previous inode and finishes cleanly.
-    Without this the export raced and crashed with SPICE(FILENOTFOUND) when
-    the downloader unlinked an SPK between the export's furnsh and unload.
+    reader (e.g. an in-flight export furnishing the same file) keeps its
+    open fd on the previous inode — without this, export raced and crashed
+    with SPICE(FILENOTFOUND) on unlink between furnsh and unload.
     """
     cache_dir = SYNTH_CACHE_ROOT / str(naif_id)
     meta = orjson.loads((cache_dir / "meta.json").read_bytes())

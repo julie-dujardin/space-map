@@ -145,11 +145,8 @@ class WikipediaDownloader(Downloader):
 
         Scans every dir in *wikidata_dirs* plus any *extra_files*, skipping
         already-downloaded summaries and de-duplicating tasks on (qid, lang).
-        Returns dict mapping language code to the pages to fetch.
-
-        *extra_files* are the curated concept pages, which resolve redirects and
-        so are re-fetched when what's on disk is a redirect stub from before
-        that was so.
+        *extra_files* (curated concept pages) resolve redirects, so a stored
+        redirect stub from before that was true gets re-fetched.
         """
         curated = {path.stem for path in extra_files or ()}
         by_lang: dict[str, list[Task]] = defaultdict(list)
@@ -251,12 +248,11 @@ class WikipediaDownloader(Downloader):
     ) -> None:
         """Fetch and save a single batch of pages from the Action API.
 
-        Redirects are followed only for the curated concept pages. An object's
-        sitelink usually redirects into a list ("7509 Gamzatov" →
-        "List of minor planets: 7001–8000"), whose lead is about the list and
-        not the object; a concept's redirects to the article that took the
-        subject over (en "Planetary ring" → "Ring system"), which is the page
-        the blurb wants.
+        Redirects are followed only for curated concept pages: an object's
+        sitelink usually redirects into an unrelated list ("7509 Gamzatov" →
+        "List of minor planets: 7001-8000"), but a concept's redirect leads
+        to the article that took the subject over (en "Planetary ring" →
+        "Ring system"), which is the page the blurb actually wants.
         """
         params: dict[str, object] = {
             "action": "query",

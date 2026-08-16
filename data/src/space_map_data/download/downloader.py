@@ -18,11 +18,10 @@ class DownloadError(Exception):
 class Downloader(ABC):
     """Base class for all data source downloaders.
 
-    Subclasses MUST set ``self.out_dir`` (and mkdir it) in their ``__init__``.
-    ``out_dir`` is where ``metadata.json`` lives — used by ``is_complete``
-    and ``_save_metadata``; subclasses with multi-rooted output (e.g. SPICE
-    splits raw kernels across one tree and derived tables across another)
-    point ``out_dir`` at whichever root owns metadata.json.
+    Subclasses MUST set ``self.out_dir`` (and mkdir it) in ``__init__`` — it's
+    where ``metadata.json`` lives, used by ``is_complete``/``_save_metadata``.
+    For multi-rooted output (e.g. SPICE splits kernels and derived tables
+    across trees), point it at whichever root owns metadata.json.
     """
 
     name: str

@@ -18,17 +18,15 @@ _GALILEO_ERA_NAIF = {9511010: 2000951, 2431010: 2000243}
 
 
 def extract_orientation() -> list[dict]:
-    """Extract PCK orientation data for all bodies that have it.
+    """Extract PCK orientation data (full IAU rotation polynomial) for all bodies that have it.
 
-    Returns the full IAU rotation polynomial:
       α(T) = pole_ra_0 + pole_ra_1·T   (T in Julian centuries since J2000)
       δ(T) = pole_dec_0 + pole_dec_1·T
       W(d) = w0 + w1·d + w2·d²         (d in days since J2000)
 
     Nutation/precession sums are extracted separately (see `extract_nutation`).
-    Queries the kernel pool for all BODY*_POLE_RA variables rather than
-    iterating a fixed set, so asteroids and comets with orientation data
-    in the PCK are included automatically.
+    Queries the pool for BODY*_POLE_RA rather than a fixed set, so any
+    asteroid/comet with orientation data in the PCK is picked up automatically.
     """
     # Find all body IDs with POLE_RA in the kernel pool. Negative IDs
     # (spacecraft + instruments) are excluded — see `extract_radii` for
@@ -77,10 +75,9 @@ def extract_nutation() -> tuple[
       W += Σ pm[i]  · sin(θ_i(T))
     where θ_i(T) = angles[2i] + angles[2i+1]·T (degrees, deg/century, T = Julian centuries).
 
-    The angles array is defined once per "owner" body — typically the
-    planetary system barycenter (1..9). In pck00011 the owners are
-    BODY{1,3,4,5,6,7,8}_NUT_PREC_ANGLES; bodies derive their owner as
-    `naif_id // 100` (or `naif_id` itself when < 100).
+    The angles array is defined once per "owner" body — typically the planetary
+    system barycenter (1..9); bodies derive their owner as `naif_id // 100`
+    (or `naif_id` itself when < 100).
 
     Returns (coefficients, angles):
       coefficients: {naif_id: {"ra": [...], "dec": [...], "pm": [...]}}
@@ -276,19 +273,16 @@ def extract_gravity_field() -> list[dict]:
 def _canonical_naif(naif_id: int) -> int | None:
     """Normalize numbered-asteroid NAIF IDs to the canonical form used by Object rows.
 
-    Some mission PCKs use non-standard NAIF ID conventions for asteroids:
+    Some mission PCKs use non-standard asteroid NAIF conventions:
 
-    * **Lucy / DART** for the binary primary use `9_<spkid>` (e.g.
-      `BODY920000617_RADII` = Patroclus, `BODY920065803_RADII` = Didymos).
-      Map down to NAIF `2_000_000 + n` (Patroclus → 2000617).
-    * **Lucy** for solo asteroids uses the bare SBDB spkid `20_000_000 + n`
-      (e.g. `BODY20052246_RADII` for Donaldjohanson #52246) — likely an
-      oversight, since Bennu/Ryugu/etc. use the standard NAIF form. Map
-      down to `2_000_000 + n` (Donaldjohanson → 2052246).
-    * **Lucy / DART** for the binary secondary use `1_<spkid>` (e.g.
-      `BODY120000617_RADII` = Menoetius, `BODY120065803_RADII` = Dimorphos).
-      SBDB moon ingest creates Object rows with `naif_id == spkid` in this
-      range, so the value passes through unchanged.
+    * **Lucy / DART** binary primary: `9_<spkid>` (e.g. `BODY920000617_RADII` =
+      Patroclus) → NAIF `2_000_000 + n` (Patroclus → 2000617).
+    * **Lucy** solo asteroids: bare SBDB spkid `20_000_000 + n` (e.g.
+      `BODY20052246_RADII` for Donaldjohanson, likely an oversight since
+      Bennu/Ryugu use the standard form) → `2_000_000 + n`.
+    * **Lucy / DART** binary secondary: `1_<spkid>` (e.g. Dimorphos) — passes
+      through unchanged, since SBDB moon ingest assigns Object.naif_id == spkid
+      in this range.
     """
     # Galileo-era asteroid ids in pck00011 (Gaspra, Ida) predate the SBDB
     # 2_000_000 + number convention; map explicitly so their pole data lands on

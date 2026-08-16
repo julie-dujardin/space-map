@@ -59,10 +59,8 @@ def _existing_extrap_records(mission_dir: Path) -> list[dict]:
 class ProbesDownloader(Downloader):
     """Mirror per-mission spacecraft SPK kernels (NAIF / ESA / NAIF-PDS).
 
-    `out_dir` is forced to live under the SPICE provider tree because the
-    chunk-builder furnishes generic kernels (lsk, pck, planet/satellite SPKs)
-    and probe SPKs together; keeping both under `spice/kernels/` lets the
-    furnish step walk one tree.
+    `out_dir` lives under the SPICE provider tree so the chunk-builder's
+    furnish step can walk generic kernels and probe SPKs as one tree.
     """
 
     name = PROVIDERS.SPICE_PROBES
@@ -85,9 +83,8 @@ class ProbesDownloader(Downloader):
     ) -> None:
         """Fetch every whitelisted SPK for every selected mission.
 
-        `limit` is ignored (it's a record-count cap that doesn't map cleanly
-        to a file-count cap — the natural cap is `max_mib`). `missions`
-        restricts to specific local mission names across all servers.
+        `limit` is ignored — the natural cap is `max_mib`, not a record count.
+        `missions` restricts to specific local mission names across servers.
         """
         selected = set(missions) if missions else None
         sources = discover_all_sources(self.client)

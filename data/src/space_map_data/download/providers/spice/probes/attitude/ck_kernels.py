@@ -1,18 +1,9 @@
 """Mirror per-mission CK + FK + SCLK from NAIF / ESA.
 
-Drives a two-phase attitude download:
-
-  1. `download_attitude_for(client, source)` — pulls one mission's
-     curated kernel set (CK + FK + SCLK). Per-mission contract: returns
-     a `DownloadResult` regardless of outcome so the orchestrator can
-     decide whether to surface failures.
-
-  2. `download_attitude_capped(client, sources, max_total_mib)` — orders
-     the sources by `AttitudePattern.estimated_total_mib`, runs each
-     mission through `download_attitude_for`, and skips remaining
-     missions once cumulative *newly-downloaded* bytes exceed the cap.
-     Files already present on disk (from a previous run) don't count —
-     the cap reflects what we spent on this run's network calls.
+Two phases: `download_attitude_for` pulls one mission's curated kernel set,
+always returning a `DownloadResult` so a failure doesn't abort the batch;
+`download_attitude_capped` runs missions size-ascending and stops once
+cumulative *newly-downloaded* bytes exceed the cap (cached files are free).
 """
 
 import fnmatch
@@ -59,16 +50,12 @@ def download_attitude_for(
 ) -> DownloadResult:
     """Download the curated attitude kernel set for one mission.
 
-    `max_new_bytes` caps newly-fetched CK bytes for the whole mission
-    (shared across craft); once hit, the CK loop stops and we write the
-    index for whatever landed. FK/SCLK are uncapped (KB-MB scale).
-
-    The index carries top-level `frame_name`/`ck_files`/`fk`/`sclk` for the
-    first craft plus a `spacecraft` array (one entry per craft), so a
+    `max_new_bytes` caps newly-fetched CK bytes for the whole mission (shared
+    across craft); once hit, the CK loop stops and writes the index for
+    whatever landed. FK/SCLK are uncapped (KB-MB scale). The index carries
+    top-level fields for the first craft plus a `spacecraft` array, so a
     multi-craft mission round-trips on the single-craft index contract.
-
-    Always returns a result (never raises) so one uncurated or failed
-    mission can't abort the batch.
+    Never raises, so one uncurated or failed mission can't abort the batch.
     """
     patterns = patterns_for(source.mission)
     if not patterns:
@@ -181,10 +168,9 @@ def download_attitude_capped(
     """Run `download_attitude_for` on every source in size-ascending order,
     short-circuiting once cumulative *new* bytes exceed `max_total_mib`.
 
-    Missions without a pattern are skipped entirely (no listing call). The
-    ordering means we tackle GAIA / ORX / SIRTF first and only get to MRO
-    if the cap allows it — so a fresh run does the cheap missions in full
-    instead of running out of budget on the alphabetical-first one.
+    Missions without a pattern are skipped entirely (no listing call). Small
+    missions land first so a fresh run finishes them in full instead of
+    running out of budget on the alphabetically-first one.
     """
     targets: list[tuple[int, MissionSource]] = []
     for source in sources:
@@ -265,14 +251,11 @@ def _download_matching(
 ) -> tuple[list[Path], int, bool]:
     """List `url`, download files matching `glob` into `dest_dir`.
 
-    Returns `(local_paths, bytes_newly_downloaded, truncated)`. `paths`
-    covers both cached and freshly-downloaded files. The byte count only
-    sums the network spend. `truncated=True` means `max_new_bytes` cut us
-    off before we'd processed every match.
-
-    `take_all=True` → download every match (used for CK — every bus file
-    contributes attitude coverage). `take_all=False` → download just the
-    lex-last match (used for FK + SCLK — we want the latest revision).
+    Returns `(local_paths, bytes_newly_downloaded, truncated)`; `truncated`
+    means `max_new_bytes` cut us off before every match was processed.
+    `take_all=True` downloads every match (CK — every bus file contributes
+    coverage); `take_all=False` takes just the lex-last match (FK/SCLK —
+    the latest revision).
     """
     try:
         hrefs = list_naif_dir(client, url)

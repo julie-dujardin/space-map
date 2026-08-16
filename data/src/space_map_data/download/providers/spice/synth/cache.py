@@ -39,8 +39,8 @@ def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dic
       {SYNTH_CACHE_ROOT}/{naif_id}/coarse_{start}_{end}_7d.csv
       {SYNTH_CACHE_ROOT}/{naif_id}/refine_{start}_{end}_1h.csv  (per window)
 
-    Skip rule: if `meta.json` already records the current Horizons `Revised :`
-    date, all subsequent network work is suppressed.
+    Skipped entirely if `meta.json` already records the current Horizons
+    `Revised :` date.
     """
     cache_dir = SYNTH_CACHE_ROOT / str(naif_id)
     cache_dir.mkdir(parents=True, exist_ok=True)

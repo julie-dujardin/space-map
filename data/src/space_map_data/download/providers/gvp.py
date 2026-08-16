@@ -1,27 +1,24 @@
 """Download the Smithsonian Global Volcanism Program's eruption catalogue.
 
 Earth is the one body in ``constants/activity`` whose volcanism is a database
-rather than a literature value, and GVP publishes that database over an
-unauthenticated WFS: every Holocene volcano and every eruption anyone has
-recorded, with start and end dates and an explosivity index. Pulling it means
-the counts in ``constants/activity/volcanism.py`` are checkable against the
-catalogue instead of transcribed off a web page that changes every six weeks.
+rather than a literature value; GVP serves it over an unauthenticated WFS
+(every Holocene volcano and eruption, with dates and explosivity), so the
+counts in ``constants/activity/volcanism.py`` are checkable against it instead
+of transcribed off a page that changes every six weeks.
 
-Everything the constants quote is rederived from the catalogue and lands within
-a percent of GVP's own published summary — 79.2 eruptions a year against 79,
-72.9 volcanoes active a year against 73, 34.7 new eruptions a year against 35,
-9,918 confirmed Holocene eruptions against 9,910. That agreement is what makes
-this worth downloading rather than transcribing: it says the roll-up below
-matches theirs, so the numbers stay right when the database moves.
+The rederived figures land within a percent of GVP's own published summary
+(e.g. 79.2 eruptions/yr against 79, 9,918 confirmed eruptions against 9,910),
+confirming the roll-up matches theirs so numbers stay right as the database
+moves.
 
-One figure is not derivable and stays cited to the summary page: "volcanoes
-with continuing eruptions". Continuing is a judgement about the last three
-months of field reports, not a property of a row — the WFS layer carries a
-closed end date for every recent eruption.
+"Volcanoes with continuing eruptions" is not derivable and stays cited to the
+summary page: continuing is a judgement call on recent field reports, not a
+property of a row — the WFS layer carries a closed end date for every recent
+eruption.
 
-The volcano layer holds 1,196 rows against the ~1,220 the site quotes, the two
-being different cuts of the same table; the derived file records what it
-actually counted so the drift is visible rather than silent.
+The volcano layer holds 1,196 rows against the ~1,220 the site quotes (different
+cuts of the same table); the derived file records what it actually counted so
+the drift is visible rather than silent.
 
 On-disk layout::
 

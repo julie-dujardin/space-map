@@ -128,8 +128,7 @@ def test_unexpected_gp_response_raises(out_dir):
 
 
 def test_completed_year_mondays():
-    # First Monday of 2026 is Jan 5. With today = Jan 20, weeks of Jan 5 and
-    # Jan 12 have fully elapsed (Mon+7 <= today); Jan 19's has not.
+    # Jan 5 and Jan 12's weeks have fully elapsed by Jan 20; Jan 19's has not.
     assert _completed_year_mondays(date(2026, 1, 20)) == [
         date(2026, 1, 5),
         date(2026, 1, 12),

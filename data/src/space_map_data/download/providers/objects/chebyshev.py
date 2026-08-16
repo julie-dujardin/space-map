@@ -1,14 +1,12 @@
 """Extract Chebyshev polynomial ephemeris from SPICE kernels for major bodies.
 
-Ships position-only Chebyshev segments (parent-relative, ECLIPJ2000) covering a
-configurable time range, chunked in later export. Samples positions with
-spiceypy.spkezr and fits via numpy.polynomial.chebyshev — picking each body's
-sub-interval length and polynomial degree from the native SPK segment (read with
-jplephem) so we mirror the source kernel's accuracy/density tradeoff.
+Ships position-only Chebyshev segments (parent-relative, ECLIPJ2000), chunked in
+later export. Samples with spiceypy.spkezr and fits via numpy.polynomial.chebyshev,
+picking sub-interval length and degree from each body's native SPK segment (read
+with jplephem) to mirror the source kernel's accuracy/density tradeoff.
 
-Frame note: we pass "ECLIPJ2000" to spkezr, so the rotation from ICRF → ecliptic
-happens inside SPICE and the coefficients are already in the frame the rest of
-the export uses.
+Passing "ECLIPJ2000" to spkezr does the ICRF → ecliptic rotation inside SPICE, so
+coefficients are already in the frame the rest of the export uses.
 """
 
 import logging
@@ -64,12 +62,8 @@ def _native_params(
 ) -> tuple[float, int] | None:
     """Find (sub-interval length in seconds, polynomial degree) from native SPK.
 
-    jplephem returns segment data with shape `(3, n_records, n_coefficients)`
-    for Type-2 (position-only) and `(6, …)` for Type-3 (position+velocity);
-    `intlen` is in days.
-
     Returns None if no Type-2/3 segment covering the target exists in any
-    loaded kernel. Uses the first match.
+    loaded kernel; uses the first match. `intlen` from jplephem is in days.
     """
     for path in kernel_paths:
         if path.suffix != ".bsp":
@@ -149,21 +143,14 @@ def _sample_body(
     intlen_s: float,
     degree: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Sample state vectors and fit Chebyshev per sub-interval.
+    """Sample state vectors and fit Chebyshev per sub-interval, using
+    Chebyshev-Lobatto nodes so the fit is an exact interpolant of degree
+    `degree` from `degree+1` samples.
 
-    Uses Chebyshev–Lobatto nodes (extrema) so the fit is an exact interpolant
-    of degree `degree` from `degree+1` samples.
-
-    Returns
-    -------
-    start_jds : (n,) float64  — sub-interval start, JD TDB
-    end_jds   : (n,) float64  — sub-interval end, JD TDB
-    coeffs    : (n, 3, degree+1) float64  — Chebyshev coefficients (c0..cN) for
-                                            position in km, ECLIPJ2000,
-                                            parent-relative. The writer
-                                            downcasts to float32 per-zone when
-                                            the zone's float64_coeffs flag is
-                                            off.
+    Returns `(start_jds, end_jds, coeffs)`: sub-interval bounds in JD TDB, and
+    `(n, 3, degree+1)` float64 coefficients for position in km, ECLIPJ2000,
+    parent-relative — downcast to float32 later if the zone's
+    `float64_coeffs` flag is off.
     """
     n_nodes = degree + 1
     k = np.arange(n_nodes)
@@ -210,13 +197,10 @@ def _sample_body(
 def _should_extract(body: MajorBody) -> bool:
     """Decide whether this body is worth shipping Chebyshev for.
 
-    Core body types (star, planets, dwarves, barycenters) are always included
-    — they anchor the hierarchical frame. Moons and asteroids are gated by
-    explicit whitelists: surface-feature moons (Io, Enceladus, Titan, …) and
-    the 15 main-belt perturbers we shipped before swapping to sb441-n373.bsp.
-    Everything else (the other 358 sb441 asteroids, irregular moons, comets,
-    spacecraft) goes through the cheaper mean-elements format exported
-    separately.
+    Core body types anchor the hierarchical frame and are always included.
+    Moons and asteroids are gated by explicit whitelists (surface-feature
+    moons; the 15 main-belt perturbers shipped before sb441-n373.bsp).
+    Everything else falls back to the cheaper mean-elements format.
     """
     if body.naif_id == 0:
         return False  # SSB is the coordinate origin — no orbit to describe
@@ -237,20 +221,12 @@ def extract_chebyshev(
     start_year: int,
     end_year: int,
 ) -> int:
-    """Extract Chebyshev ephemeris for every body in `bodies` that we want to
-    ship.
+    """Extract Chebyshev ephemeris for every body in `bodies` that we want to ship.
 
-    Writes one `.npz` per body under `cheb_dir/{naif_id}.npz`. Bodies whose
-    cached file still matches the requested time range, sampling interval,
-    and degree are skipped; stale files (filtered out, no SPK coverage, or
-    parameter mismatch) are removed at the end so the directory always
-    reflects the current filter policy.
-
-    Returns the number of bodies present in the output directory after the
-    run (newly extracted plus cache hits).
-
-    Caller must have furnished all relevant kernels before invoking; we only
-    read the SPK files here to discover native sub-interval parameters.
+    Writes one `.npz` per body under `cheb_dir/{naif_id}.npz`, skipping bodies whose
+    cache already matches; stale files are removed at the end so the directory always
+    reflects the current filter policy. Caller must have furnished all relevant
+    kernels before invoking. Returns the number of bodies present after the run.
     """
     cheb_dir.mkdir(parents=True, exist_ok=True)
 

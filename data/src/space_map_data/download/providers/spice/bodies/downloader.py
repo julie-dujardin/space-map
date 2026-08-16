@@ -417,11 +417,9 @@ class SpiceDownloader(Downloader):
     ) -> dict:
         """Resolve elements for `body`: Method C fit when applicable, else snapshot.
 
-        For non-whitelisted moons of major planets, tries the secular
-        Keplerian fit first (captures J2/J4 drift) and records the body as a
-        moon-chunk target on success. Falls through to a single-epoch
-        osculating snapshot otherwise. Returns the element dict (zero-row
-        when the geometry is degenerate).
+        For non-whitelisted moons of major planets, tries the secular Keplerian
+        fit first (captures J2/J4 drift), recording it as a moon-chunk target
+        on success; falls through to an osculating snapshot otherwise.
         """
         if (
             body.object_type == ObjectType.moon
@@ -489,13 +487,9 @@ class SpiceDownloader(Downloader):
     ) -> int:
         """Compute time-chunked Method C secular elements for non-whitelisted moons.
 
-        For each (naif_id, parent_id, mu) target, fits a per-chunk linear
-        secular model on a 6-month grid spanning the configured Chebyshev
-        year range. Writes one `.npz` per moon under `moon_chunks/<naif_id>.npz`
-        with arrays `chunk_midpoints_jd` (shape (n_chunks,)) and `elements`
-        (shape (n_chunks, 9)).
-
-        Returns the per-moon chunk count (uniform across all moons).
+        Fits a per-chunk linear secular model on a 6-month grid spanning the
+        configured Chebyshev year range; writes one `.npz` per moon under
+        `moon_chunks/<naif_id>.npz`. Returns the per-moon chunk count.
         """
         cheb_cfg = load_chebyshev_config()
         start_year = int(cheb_cfg["start_year"])

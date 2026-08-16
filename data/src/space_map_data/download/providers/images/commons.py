@@ -120,10 +120,8 @@ class CommonsDownloader(Downloader):
     ) -> tuple[set[str], dict[str, dict]]:
         """Collect image filenames from Wikidata claims and Wikipedia summaries.
 
-        Returns ``(commons_filenames, non_commons)`` where ``non_commons`` maps filename
-        to ``{"url", "repo", "referenced_from": [lang/QID, ...]}``. Objects contribute
-        P18/P154; nomenclature features contribute P18/P242 (locator maps); groups
-        (constellations) contribute P18/P154 from their referenced entities.
+        Returns ``(commons_filenames, non_commons)``; ``non_commons`` maps filename to
+        ``{"url", "repo", "referenced_from": [lang/QID, ...]}``.
         """
         commons: set[str] = set()
         non_commons: dict[str, dict] = {}
@@ -247,11 +245,7 @@ class CommonsDownloader(Downloader):
         return out
 
     def _write_non_commons_skipped(self, non_commons: dict[str, dict]) -> None:
-        """Record locally-hosted images that we're skipping.
-
-        Written to the downloads dir (not export) since the export pipeline doesn't
-        consume them.
-        """
+        """Record locally-hosted images that we're skipping (export doesn't consume them)."""
         if not non_commons:
             return
         out_path = self.out_dir / "non_commons_skipped.json"
@@ -325,24 +319,12 @@ class CommonsDownloader(Downloader):
     def _fetch_metadata(self, filenames: list[str]) -> set[str]:
         """Fetch metadata for ``filenames`` and follow derivative links transitively.
 
-        Bulk-queries ``METADATA_BATCH_SIZE`` filenames at a time with
-        ``iiextmetadatamultilang=1`` so every language variant lands in one
-        file. Writes ``metadata.json`` under each image's dir with the
-        ``license_servable`` flag precomputed.
-
-        After each batch, parsed ``derived_from`` (parents) and
-        ``other_versions`` (siblings/children) join the BFS frontier so we
-        end up with a connected derivative graph — useful for the export
-        step, which can later merge richer descriptions/categories from
-        derivatives back into the original.
-
-        Existing files are skipped unless they pre-date the ``wikitext``
-        field (added together with derivative-of parsing) — those get
-        re-fetched so the schema converges. ``missing: true`` stubs stay
-        skipped: the file is gone upstream.
-
-        Returns the full set of filenames whose metadata is now on disk
-        (initial discovery set ∪ everything we descended into).
+        Parsed ``derived_from``/``other_versions`` links from each batch join the BFS
+        frontier, building a connected derivative graph so export can later merge
+        richer descriptions/categories from derivatives back into the original.
+        Files pre-dating the ``wikitext`` field are re-fetched to converge the schema;
+        ``missing: true`` stubs stay skipped. Returns the full set of filenames now on
+        disk (discovery set plus everything descended into).
         """
         graph: set[str] = set()
         frontier: set[str] = {f for f in filenames if not is_excluded(f)}
@@ -405,14 +387,9 @@ class CommonsDownloader(Downloader):
     def _fetch_metadata_batch(self, filenames: list[str]) -> tuple[int, set[str]]:
         """Fetch one batch of metadata.
 
-        Asks for ``imageinfo`` (license, dimensions, EXIF-derived dates) and
-        ``revisions`` (raw wikitext) in the same call — the API supports both
-        in a single ``query`` action. Wikitext gives us derivative-of and
-        other-versions links that no structured field exposes.
-
-        Returns ``(missing_count, links)`` where ``links`` is the union of
-        ``derived_from`` (parents) and ``other_versions`` (siblings/children)
-        across the batch — feeds the BFS expansion in :meth:`_fetch_metadata`.
+        Wikitext (fetched alongside imageinfo in one ``query`` call) carries
+        derivative-of and other-versions links no structured field exposes.
+        Returns ``(missing_count, links)`` feeding the BFS in :meth:`_fetch_metadata`.
         """
         titles = "|".join(f"File:{f}" for f in filenames)
         try:
@@ -511,11 +488,9 @@ class CommonsDownloader(Downloader):
         return missing, links
 
     def _fetch_globalusage(self, filenames: list[str]) -> None:
-        """Fetch globalusage (cross-wiki page references) per file.
+        """Fetch globalusage (cross-wiki page references) per file, resumable.
 
-        Persists entries under ``metadata["globalusage"]``. Resumable — files
-        with the field already set are skipped. Counts may saturate for very
-        popular files; scoring only uses ``len(entries)`` so that's fine.
+        Counts may saturate for very popular files; scoring only uses ``len(entries)``.
         """
         targets: list[str] = []
         for f in filenames:
@@ -542,8 +517,8 @@ class CommonsDownloader(Downloader):
     def _fetch_globalusage_batch(self, filenames: list[str]) -> None:
         """Paginate ``globalusage`` for one batch and merge into metadata.json.
 
-        Capped at ``GLOBALUSAGE_MAX_PAGES_PER_BATCH``; titles the cursor
-        never reached are retried one at a time.
+        Capped at ``GLOBALUSAGE_MAX_PAGES_PER_BATCH``; titles the cursor never
+        reached are retried one at a time.
         """
         titles = "|".join(f"File:{f}" for f in filenames)
         params: dict[str, object] = {
@@ -620,15 +595,10 @@ class CommonsDownloader(Downloader):
     def _fetch_sdc(self, filenames: list[str]) -> None:
         """Fetch Structured Data on Commons (SDC) for each downloaded file.
 
-        Uses the Wikibase API on the Commons MediaInfo entity ``M<pageid>``
-        to retrieve labels, descriptions, and statements (depicts P180,
-        creator P170, inception P571, copyright status P6216, based on P144,
-        derivative work P4969, ...). The raw entity is merged into the
-        existing ``metadata.json`` so the structured fields complement the
-        wikitext we already saved.
-
-        Files whose ``metadata.json`` already has an ``sdc`` key (success or
-        explicit ``null``) are skipped so the step is resumable.
+        Uses the Wikibase API on the MediaInfo entity ``M<pageid>`` (depicts,
+        creator, inception, copyright status, etc.); merged into the existing
+        ``metadata.json`` alongside the wikitext already saved. Resumable via
+        the ``sdc`` key.
         """
         targets: list[tuple[str, int]] = []
         for filename in filenames:
@@ -703,12 +673,7 @@ class CommonsDownloader(Downloader):
 
 
 def _needs_metadata_refresh(filename: str) -> bool:
-    """True if a file's metadata.json should be (re-)fetched.
-
-    Returns True when the file is absent, corrupt, or pre-dates the
-    ``wikitext`` schema addition. Returns False for ``missing: true`` stubs
-    (image gone upstream) and for entries that already have wikitext.
-    """
+    """True if absent, corrupt, or pre-dating the ``wikitext`` schema addition."""
     path = download_metadata_path(filename)
     if not path.exists():
         return True
@@ -721,11 +686,7 @@ def _needs_metadata_refresh(filename: str) -> bool:
 
 
 def _extract_wikitext(page: dict) -> str | None:
-    """Pluck the main-slot wikitext from a ``query`` API page object.
-
-    Returns ``None`` if revisions/slots/content aren't present (e.g. the file
-    has no current revision, or the API omitted them for any reason).
-    """
+    """Pluck the main-slot wikitext from a ``query`` API page object."""
     revisions = page.get("revisions") or []
     if not revisions:
         return None

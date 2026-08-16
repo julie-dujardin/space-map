@@ -125,15 +125,13 @@ _HILL_CACHE: dict[int, float] | None = None
 def compute_major_body_hill_km() -> dict[int, float]:
     """Compute Hill radii (km) for the proximity-refine check.
 
-    Planet/Moon: r_hill = a × ∛(GM_s / 3 GM_p) where `a` comes from a J2000
-    osculating-element snapshot via SPICE. Caller must furnish LSK + de440
-    before invoking — `cache.py` already does this around _identify_refinement_windows.
+    Planet/Moon: r_hill = a × ∛(GM_s / 3 GM_p), `a` from a J2000 osculating
+    snapshot via SPICE. Caller must furnish LSK + de440 first.
 
-    Sun: synthetic "Hill" = r_trigger / REFINE_HILL_FACTOR where r_trigger is
-    the heliocentric distance at which the per-coarse-step chord equals
-    `_SUN_REFINE_CHORD_TO_R × r` for a circular orbit. With the default 0.5
-    ratio and 7-day cadence this comes out at ~12 Mkm (×5 = 58 Mkm trigger,
-    catching PSP's pre/post-perihelion coarse samples).
+    Sun: synthetic "Hill" = r_trigger / REFINE_HILL_FACTOR, where r_trigger
+    is the heliocentric distance at which the per-coarse-step chord equals
+    `_SUN_REFINE_CHORD_TO_R × r` for a circular orbit — with the defaults
+    this is ~12 Mkm (×5 = 58 Mkm trigger, catching PSP's perihelion passes).
 
     Cached on first call — values are stable across the pipeline run.
     """

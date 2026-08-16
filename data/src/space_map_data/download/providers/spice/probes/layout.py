@@ -1,17 +1,15 @@
 """On-disk layout for probe SPKs.
 
-Probe kernels share the SPICE on-disk tree because the runtime needs both
-generic kernels (lsk/pck/de/satellite ephemerides) and mission-trajectory
-kernels furnished together.
+Probe kernels share the SPICE tree because the runtime furnishes generic
+kernels (lsk/pck/de/satellite ephemerides) and mission-trajectory kernels
+together.
 
-Surface / post-touchdown kernels live in a sibling tree. Two reasons for
-splitting them out: (1) the trajectory exporter explicitly does NOT want
-them — loading a `*_atls_*` next to `*_cruise_*` makes SPICE last-loaded-
-wins paint the cruise NAIF at the surface during EDL, contaminating the
-classify_trace landed-detection signal; (2) the landed exporter wants
-them in isolation so cruise/EDL motion doesn't bleed into the surface
-trace. Each mission lives at the same key in both trees, with its own
-_index.json.
+Surface/post-touchdown kernels live in a sibling tree: mixing `*_atls_*`
+into the same furnish as `*_cruise_*` lets SPICE's last-loaded-wins paint
+the cruise NAIF at the surface during EDL, contaminating landed-detection;
+keeping them apart also stops cruise/EDL motion bleeding into the landed
+exporter's surface trace. Each mission has its own `_index.json` in both
+trees.
 """
 
 from space_map_data.utils.paths import SOURCES_POSITION_DIR

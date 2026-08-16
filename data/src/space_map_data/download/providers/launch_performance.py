@@ -1,21 +1,18 @@
 """Download the launch-vehicle escape-performance curves.
 
 A launcher's interplanetary capability is one curve: payload mass against
-characteristic energy C3. NASA's Launch Services Program publishes it per
-vehicle, but only through an interactive query page that no longer serves
-results, so the curves are taken from Girija's compilation of that site
-(arXiv:2310.05994), released as CSVs alongside the AMAT mission-analysis tool.
+characteristic energy C3. NASA's Launch Services Program query page that
+published it no longer serves results, so curves are taken from Girija's
+compilation of that data (arXiv:2310.05994), released as CSVs with the AMAT
+mission-analysis tool.
 
-Each file is ``C3 km²/s², payload kg`` with no header, ascending in C3 and
-ending where the vehicle runs out of energy. The digitisation is close: at
-C3 = 20 the Vulcan VC6S file reads 7578 kg against the 7600 kg ULA's own
-user's guide states, and the SLS Block 1B file sits inside the min/max band
-of Table 4-1 of the SLS Mission Planner's Guide across the whole range.
+Each file is ``C3 km²/s², payload kg`` with no header, ascending in C3, ending
+where the vehicle runs out of energy. Digitisation checks close against
+primary sources (e.g. Vulcan VC6S: 7578 kg vs. ULA's 7600 kg at C3=20).
 
-The catalogue only cites a handful of these, but the whole set is pulled: the
-kick-stage and reusable variants are the same measurement of the same vehicle
-flown differently, and splitting them across two runs would make the
-comparison the file set exists for impossible.
+The whole set is pulled even though the catalogue only cites a handful: the
+kick-stage and reusable variants are the same vehicle flown differently, and
+splitting them across runs would break the comparison the set exists for.
 """
 
 import logging

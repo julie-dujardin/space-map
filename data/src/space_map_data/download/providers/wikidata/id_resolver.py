@@ -110,13 +110,10 @@ class WikidataIdResolver:
     def resolve(self, id_types: list[ID_TYPES] | None = None) -> set[str]:
         """Resolve ID sources and return all unique QIDs.
 
-        Args:
-            id_types: Which ID types to resolve. ``None`` means all
-                (including name-based fallback). Include ``ID_TYPES.NAME``
-                to enable the name-based search.
-
-        IDs already present in match or no-match CSVs are skipped
-        automatically, so partial runs resume where they left off.
+        `id_types=None` resolves all, including name-based fallback (include
+        `ID_TYPES.NAME` explicitly to enable it otherwise). IDs already in
+        match/no-match CSVs are skipped, so partial runs resume where they
+        left off.
         """
         self._matches_dir.mkdir(parents=True, exist_ok=True)
         self._no_match_dir.mkdir(parents=True, exist_ok=True)

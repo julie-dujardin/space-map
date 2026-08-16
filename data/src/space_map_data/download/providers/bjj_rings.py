@@ -1,22 +1,14 @@
 """Download Bjorn Jonsson's Saturn ring profile data.
 
-Fetches five 1-D radial profiles (13 177 samples each, values in [0, 1])
-spanning 74 510 km – 140 390 km from Saturn's center:
+Five 1-D radial profiles (13 177 samples, values in [0, 1], 74 510-140 390 km
+from Saturn's center): ``backscattered``, ``forwardscattered`` (~139° phase),
+``unlitside``, ``transparency``, and ``color`` (from Cassini imaging).
+Attribution required per https://bjj.mmedia.is/acknow.html, recorded in
+``ring-metadata.yaml``.
 
-- ``backscattered`` — appearance from the sun-lit side
-- ``forwardscattered`` — appearance at high phase angle (≈139°)
-- ``unlitside`` — appearance from the un-lit side (back-lit transmission)
-- ``transparency`` — opacity profile (1 = transparent, 0 = opaque)
-- ``color`` — RGB derived from Cassini imaging
-
-The data are publicly available with attribution per
-https://bjj.mmedia.is/acknow.html. See the ``ring-metadata.yaml``
-written alongside the channel `.txt` files for the canonical
-attribution string.
-
-A sixth ``thickness`` channel is derived locally rather than downloaded: BJJ
-publishes no vertical extent, so it is rasterised from the NSSDCA per-region
-figures in constants/rings/catalog.py and credited separately in the yaml.
+A sixth ``thickness`` channel is derived locally: BJJ publishes no vertical
+extent, so it's rasterised from the NSSDCA per-region figures in
+constants/rings/catalog.py and credited separately in the yaml.
 
 On-disk layout::
 

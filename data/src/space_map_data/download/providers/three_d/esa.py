@@ -74,19 +74,14 @@ def _strip_html(text: str | None) -> str | None:
 def _load_claimed_esa_slugs() -> set[str]:
     """ESA slugs claimed by other manifests — to be skipped on metadata write.
 
-    A slug is "claimed" if its corresponding file (``<slug>.<ext>``) appears
-    in the ``files:`` list of an entry that's NOT itself that slug — meaning
-    another entry has folded those files in.
+    A slug is "claimed" if its file appears in another entry's ``files:``
+    list (that entry folded it in) — checked against both ``merged.yaml``
+    (cross-catalog, e.g. ``cassini`` uses ``cassini_huygens/cassini.fbx``)
+    and existing per-catalog ``metadata.yaml`` (intra-ESA folds, e.g.
+    ``schiaparelli`` folds in ``edm.fbx``, claiming ``edm``).
 
-    Sources:
-    - ``merged.yaml`` — cross-catalog consolidations (e.g. ``cassini`` in
-      merged.yaml uses ``ESA-SciFleet/cassini_huygens/cassini.fbx``).
-    - Existing per-catalog ``metadata.yaml`` files — intra-ESA folds (e.g.
-      ESA ``schiaparelli`` has ``edm.fbx`` folded in, claiming ``edm``).
-
-    Files are still downloaded — they're referenced by path — but the
-    standalone entry doesn't appear in the per-catalog metadata so the
-    slug-uniqueness check on the ingest side doesn't fire.
+    Claimed files are still downloaded (referenced by path), just excluded
+    from the standalone entry so ingest's slug-uniqueness check doesn't fire.
     """
     claimed: set[str] = set()
 
@@ -317,18 +312,12 @@ class ESA3DDownloader(Downloader):
         """Build a metadata entry, preserving hand-edits across rewrites.
 
         Downloader-owned (always refreshed): ``slug``, ``esa_catalog``. The
-        ``files`` list is API-derived but carries over any *foreign-stem*
-        entries from ``existing`` (e.g. ``rosetta`` keeps its folded-in
-        ``rosetta_sc.fbx`` across re-downloads — without that, the fold
-        relationship erodes and the foreign slug pops back as standalone
-        on the next run).
-
-        Defaulted-if-absent but preserved-if-set: ``kind`` (default
-        ``"probe"``), ``wikidata_qid`` (default ``None``), ``missions``
-        (default ``[]``). Everything else (``canonical``, ``notes``, unknown
-        future fields) is carried over verbatim from ``existing``.
-
-        Field order in the output is fixed so diffs stay readable across runs.
+        ``files`` list is API-derived but carries over foreign-stem entries
+        from ``existing`` (e.g. ``rosetta`` keeps its folded-in
+        ``rosetta_sc.fbx``) — otherwise the fold erodes and the foreign slug
+        pops back as standalone next run. ``kind``/``wikidata_qid``/
+        ``missions`` are defaulted if absent but preserved if set; everything
+        else carries over verbatim. Field order is fixed so diffs stay readable.
         """
         existing = existing or {}
         entry: dict = {"slug": slug, "kind": existing.get("kind", "probe")}

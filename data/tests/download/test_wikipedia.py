@@ -119,8 +119,7 @@ class TestRedirectResolution:
         )
 
     def test_two_qids_redirecting_to_one_page_both_get_it(self, tmp_path: Path) -> None:
-        """The API answers with one page; the reply is indexed by title, so a
-        title-to-QID map would have dropped one of them."""
+        """The reply is indexed by title, so a title-to-QID map would drop one."""
         payload = {
             "query": {
                 "redirects": [
@@ -145,9 +144,7 @@ class TestRedirectResolution:
     def test_objects_do_not_ask_the_api_to_follow_redirects(
         self, tmp_path: Path
     ) -> None:
-        """An asteroid's sitelink redirects into a list of minor planets, whose
-        lead is about the list. The parameter is omitted, not sent false: the
-        API reads any value as true."""
+        """The parameter is omitted, not sent false: the API reads any value as true."""
         payload = {"query": {"pages": [_page("7509 Gamzatov")]}}
         downloader, client = _downloader(payload, tmp_path)
 

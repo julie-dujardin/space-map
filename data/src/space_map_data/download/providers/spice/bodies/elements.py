@@ -1,14 +1,12 @@
 """Orbital element math and secular Keplerian fits over SPK coverage.
 
-Non-whitelisted moons (those without full Chebyshev coverage) get a fitted
-secular Keplerian model rather than an osculating snapshot — see
-`fit_moon_mean_elements`. Sampling SPK over ~100 orbital periods and linear-
-fitting Ω(t)/ω(t)/M(t) (unwrapped) automatically captures J2/J4 nodal
-regression and apsidal precession (Phobos ~−160°/yr in equatorial frame, etc.)
-without needing analytic Brouwer formulas. Validated as 3–13× more accurate
-than the snapshot-Kepler baseline for outer irregulars; the close-in chaotic
-shepherds (Pan, Atlas, Mab, …) where the linear secular model fails are
-flagged via fit-residual warnings — those need Chebyshev to be accurate.
+Non-whitelisted moons get a fitted secular Keplerian model rather than an
+osculating snapshot — see `fit_moon_mean_elements`. Sampling SPK over ~100
+orbital periods and linear-fitting Ω(t)/ω(t)/M(t) (unwrapped) captures J2/J4
+nodal regression and apsidal precession without needing analytic Brouwer
+formulas: 3-13x more accurate than the snapshot-Kepler baseline for outer
+irregulars. Close-in chaotic shepherds (Pan, Atlas, Mab, …), where the linear
+model fails, are flagged via fit-residual warnings — those need Chebyshev.
 """
 
 import logging
@@ -154,17 +152,14 @@ def fit_moon_mean_elements(
 ) -> tuple[dict[str, float], float] | None:
     """Sample SPICE over ~100 orbital periods and fit secular Keplerian elements.
 
-    Returns (elements_dict, residual_rms_rad). The dict has the same keys as
-    `state_to_elements` plus `OM_DOT` and `W_DOT` (deg/day). Mean a/e/i are
-    time-averages; (Ω₀, Ω̇), (ω₀, ω̇), (M₀, n_mean) come from a linear fit of
-    each unwrapped angle against time, automatically picking up J2/J4/etc.
-    secular drift without needing analytic formulas. The residual RMS
-    (combined Ω/ω/M fit residual, in radians) flags bodies whose orbit can't
-    be described by linear secular drift — those should be on Chebyshev.
+    Returns (elements_dict, residual_rms_rad); the dict adds `OM_DOT`/`W_DOT`
+    (deg/day) to `state_to_elements`'s keys, from linear fits of each
+    unwrapped angle against time — picking up J2/J4 secular drift without
+    analytic formulas. The residual RMS flags orbits linear drift can't
+    describe (those should be on Chebyshev).
 
-    Returns None when the fit can't be performed (degenerate orbit on any
-    sample, hyperbolic encounter, missing SPK coverage). Caller falls back to
-    a single-epoch osculating snapshot in that case.
+    Returns None when the fit can't be performed (degenerate orbit, hyperbolic
+    encounter, missing SPK coverage); caller falls back to a snapshot.
     """
     period_seed = state_to_elements(
         list(
@@ -269,16 +264,13 @@ def fit_moon_chunked_elements(
 ) -> tuple[np.ndarray, np.ndarray] | None:
     """Compute Method C secular elements for each chunk midpoint.
 
-    Pre-samples SPK once at high density across the full chunk range, then
-    runs a windowed linear fit at each midpoint (window =
-    `_MOON_CHUNK_FIT_HALF_WINDOW_S`). Re-using samples across chunks brings
-    the cost from ~200 spkezr calls per chunk down to ~1000 calls per body
-    total — fast enough for ~400 non-whitelisted moons.
+    Pre-samples SPK once at high density across the full chunk range, then runs
+    a windowed linear fit per midpoint — reusing samples across chunks brings
+    the cost from ~200 spkezr calls/chunk to ~1000 calls/body total.
 
-    Returns (chunk_midpoints_jd, elements_array) where elements_array has
-    shape (n_chunks, 9) with columns
+    Returns (chunk_midpoints_jd, elements_array), shape (n_chunks, 9):
     [a_au, e, i_deg, om_deg, w_deg, ma_deg, n_deg_day, om_dot_deg_day, w_dot_deg_day].
-    Returns None if any pre-sample fails (degenerate orbit, missing coverage).
+    None if any pre-sample fails (degenerate orbit, missing coverage).
     """
     if not chunk_midpoints_jd:
         return None

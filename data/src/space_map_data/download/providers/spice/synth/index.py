@@ -212,21 +212,17 @@ def qid_deduped_synth_naifs(registry: list[dict] | None = None) -> set[int]:
     """NAIF IDs of HORIZONS-SYNTH probes whose QID matches an SPK-backed agency probe.
 
     Resolves cases where Horizons assigns its own NAIF to a spacecraft already
-    served by an agency SPK under a different NAIF — e.g. INTEGRAL (agency
-    -275 / Horizons -198, both Q50021). Horizons' coarse-sampled ephemerides
-    cannot resolve highly elliptical perigee passes and may place the probe
-    below the central body's surface, so the agency SPK always wins when both
-    are present. The filter is consulted at synthesis time (skips re-fetch)
-    AND at export-enumeration time (drops the synth probe from the chunk plan
-    even when `_index.json` still lists it).
+    served by an agency SPK under a different NAIF (e.g. INTEGRAL: agency -275
+    / Horizons -198, both Q50021). Horizons' coarse ephemerides can't resolve
+    highly elliptical perigee passes and may place the probe below the central
+    body's surface, so the agency SPK always wins when both exist. Consulted
+    both at synthesis (skips re-fetch) and export-enumeration (drops the synth
+    from the chunk plan even if `_index.json` still lists it).
 
-    Only agency missions that publish SPK kernels (those with an
-    `<mission>/_index.json` under `missions/`) count as "covered" — metadata-
-    only buckets like EVENTS-DB carry probe-events but no ephemeris, so
-    deduping a synth against them would leave the probe with no trajectory
-    at all (e.g. Tianwen-1 has only the Horizons synth at NAIF -86).
-
-    A registry entry's "mission" is its canonical (first) kernel_source.
+    Only agency missions that publish SPK kernels count as "covered" —
+    metadata-only buckets like EVENTS-DB carry probe-events but no ephemeris,
+    so deduping against them would leave a probe with no trajectory at all
+    (e.g. Tianwen-1 has only the Horizons synth, at NAIF -86).
     """
     from space_map_data.probes.probe_id import load_registry
 
@@ -306,11 +302,10 @@ def agency_naif_coverage(
 
 
 def _write_index(coverage: dict[int, str]) -> None:
-    """Emit a `missions/HORIZONS-SYNTH/_index.json` so the agency ingest walker
-    finds these kernels alongside the rest. Schema matches ProbesDownloader's
-    per-mission index plus per-file `name_horizons` and `revised` carried
-    from the cached meta (used by the future precedence resolver — synth
-    wins over agency only when synth `revised` is newer than agency mtime).
+    """Emit a `missions/HORIZONS-SYNTH/_index.json` so the ingest walker finds
+    these kernels alongside the rest. Matches ProbesDownloader's per-mission
+    index plus per-file `name_horizons`/`revised` (for a future precedence
+    resolver: synth wins over agency only when its `revised` is newer).
     """
     SYNTH_KERNELS_DIR.mkdir(parents=True, exist_ok=True)
     files = []

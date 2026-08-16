@@ -100,9 +100,7 @@ $$EOE
 
 class TestParseChunks:
     def test_dedups_adjacent_overlap(self):
-        # The 2025-Jan-02 sample appears at the end of chunk 1 and start of
-        # chunk 2 (Horizons' inclusive-stop quirk for chunked fetches). The
-        # parser should drop the duplicate.
+        # Horizons repeats the boundary sample across chunks; drop the duplicate.
         samples = horizons_api._parse_chunks(_TWO_CHUNK_CSV)
         assert len(samples) == 3
         # Strictly increasing epochs.
@@ -110,9 +108,8 @@ class TestParseChunks:
         assert ets == sorted(set(ets))
 
 
-# NAIF ID is right-aligned within a 9-char column [0:9]; the real Horizons
-# MB file pads each ID with leading spaces accordingly. Get this wrong (e.g.
-# 7 leading spaces before "-32") and `-32` truncates to `-3`.
+# NAIF ID is right-aligned in a 9-char column; miscounting the padding
+# truncates "-32" to "-3".
 _SAMPLE_MB = """\
    ID#      Name                               Designation  IAU/aliases/other
   -------  ---------------------------------- -----------  -------------------
@@ -203,8 +200,7 @@ class TestFetchObjData:
 class TestDetectWindow:
     """Precise coverage-edge detection from Horizons boundary errors.
 
-    Regression guard for Artemis II: its splashdown falls late on the final
-    coverage day, which the old whole-day ±1d clamp dropped entirely.
+    Guards against Artemis II's splashdown, which a whole-day ±1d clamp used to drop.
     """
 
     _PRIOR = (
@@ -315,8 +311,7 @@ class TestIdentifyRefinementWindows:
         assert len(windows) == 2
 
     def test_windows_clamped_to_coverage(self):
-        # First sample is at coverage start; padding would push the window
-        # boundary one week before — should be clamped.
+        # First sample sits at coverage start; padding must clamp, not underflow.
         samples = self._make_samples(5)
 
         def get_body_pos(_b, et):
@@ -336,13 +331,7 @@ class TestIdentifyRefinementWindows:
 
 
 class TestComputeMajorBodyHillKm:
-    """Cross-check the computed Hill table against published values.
-
-    Reference: NASA fact-sheet Hill radii (in km) — accurate to 1% or so once
-    you allow for the J2000 osculating-element snapshot wobbling slightly from
-    each body's mean orbit. Re-uses the LSK + de440 furnished by the caller
-    via `_furnish_planets`; this test class furnishes them itself.
-    """
+    """Cross-check the computed Hill table against published NASA fact-sheet values."""
 
     @pytest.fixture(autouse=True)
     def _spice(self):
@@ -368,9 +357,8 @@ class TestComputeMajorBodyHillKm:
 
     def test_planet_hill_radii_match_published(self):
         hill = refine.compute_major_body_hill_km()
-        # Published Hill radii (Mkm) from standard references. Moon's
-        # osculating-element snapshot at J2000 wobbles ~7% off the mean orbit
-        # so it gets a looser tolerance than the planets.
+        # Published Hill radii (Mkm). Moon gets a looser tolerance: its J2000
+        # osculating elements wobble ~7% off the mean orbit.
         expected_mkm = {
             199: (0.22, 0.05),
             299: (1.01, 0.05),
@@ -389,9 +377,8 @@ class TestComputeMajorBodyHillKm:
             )
 
     def test_sun_entry_satisfies_alias_condition(self):
-        # Sun "Hill" × REFINE_HILL_FACTOR = r_trigger. At that distance the
-        # chord swept by a circular orbit in one coarse step should equal
-        # _SUN_REFINE_CHORD_TO_R × r_trigger.
+        # r_trigger = Sun "Hill" × REFINE_HILL_FACTOR; the chord swept there in
+        # one coarse step should equal _SUN_REFINE_CHORD_TO_R × r_trigger.
         hill = refine.compute_major_body_hill_km()
         gm_sun = refine._gm_table_km3_s2()[10]
         r_trigger = hill[10] * refine.REFINE_HILL_FACTOR
@@ -404,11 +391,8 @@ class TestComputeMajorBodyHillKm:
         )
 
     def test_sun_entry_catches_psp_perihelion_region(self):
-        # PSP coarse samples around perihelion sit at ~22 Mkm from the Sun
-        # (see horizons-synth/-96/coarse_*.csv). The trigger threshold must
-        # exceed that distance, but not so much that it triggers on every
-        # interplanetary cruise — bound it at ~70 Mkm (otherwise we'd refine
-        # every probe inside Mercury's orbit).
+        # PSP perihelion sits at ~22 Mkm from the Sun; the trigger must clear
+        # that but stay under ~70 Mkm or every cruise inside Mercury's orbit refines.
         hill = refine.compute_major_body_hill_km()
         trigger_mkm = hill[10] * refine.REFINE_HILL_FACTOR / 1e6
         assert 22 < trigger_mkm < 70, (
@@ -448,8 +432,7 @@ class TestQidDedupedSynthNaifs:
         assert index.qid_deduped_synth_naifs(registry) == {-198}
 
     def test_ignores_metadata_only_buckets(self, tmp_path, monkeypatch):
-        # EVENTS-DB has no `missions/EVENTS-DB/` SPK dir, so it must not act
-        # as an agency match — Tianwen-1's only ephemeris is the synth.
+        # EVENTS-DB has no SPK dir, so it must not count as an agency match.
         self._missions_dir_with(tmp_path, ["INTEGRAL"])  # arbitrary; not the match
         monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
         registry = [

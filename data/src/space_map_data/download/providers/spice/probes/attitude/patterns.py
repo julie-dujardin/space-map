@@ -2,26 +2,18 @@
 
 Each entry tells the attitude downloader which files to fetch from a
 mission's NAIF/ESA `kernels/{ck,fk,sclk}/` directory and which frame name
-the resulting kernel set should expose to `pxform`.
+the kernel set exposes to `pxform`. Patterns are `fnmatch` globs: `ck_glob`
+downloads every match (together forming the bus attitude history, furnished
+for union coverage); `fk_glob`/`sclk_glob` take the lexicographically-last
+match (NAIF version-numbered files sort correctly that way).
 
-Patterns are `fnmatch` globs:
+`frame_name` is what's passed to `pxform("J2000", <frame>, et)`. NAIF
+convention is `<MISSION>_SPACECRAFT`, but some missions use their own
+(Cassini's `CASSINI_SC_COORD`, Solar Orbiter's `SOLO_PRF`).
 
-  * `ck_glob` — every matching CK is downloaded; together they form the
-    spacecraft-bus attitude history. The extractor furnishes them all
-    and asks the kernel pool for the union coverage.
-  * `fk_glob` — the spacecraft body FK. We pick the lexicographically
-    last match (NAIF version-numbered FKs sort correctly that way).
-  * `sclk_glob` — the spacecraft clock kernel; same lex-last rule.
-
-`frame_name` is what we hand to `pxform("J2000", <frame>, et)`. NAIF
-convention is `<MISSION>_SPACECRAFT` but older or smaller missions use
-their own names (Cassini's `CASSINI_SC_COORD`, Solar Orbiter's
-`SOLO_PRF`).
-
-`estimated_total_mib` orders the downloader's per-mission pass so small
-missions land first under a global cap. Values are rough — sweep-observed
-sample sizes × estimated file counts. Off by a factor of 2 in either
-direction is fine; the cap check stops us before damage.
+`estimated_total_mib` orders the per-mission pass so small missions land
+first under a global cap; values are rough sweep-observed estimates, off by
+2x is fine since the cap check stops damage regardless.
 
 A mission maps to one `AttitudePattern`, or a list when one upstream dir
 holds several spacecraft (Voyager 1/2, Viking Orbiter 1/2) — each gets its
@@ -59,17 +51,15 @@ class AttitudePattern:
     ck_exclude_glob: str | None = None
 
 
-# Per-mission glob conventions, after sweep observation:
-#
-#   * Reconstructed bus CKs are what we want for shipped attitude — they're
-#     the post-flight true record. Predicted CKs (`*_p`, `*_pred_`, `_pa_`,
-#     `_pb_`) duplicate the same windows with less accuracy.
+# Per-mission glob conventions:
+#   * Reconstructed bus CKs are the post-flight true record and preferred;
+#     predicted CKs (`*_p`, `*_pred_`, `_pa_`, `_pb_`) duplicate the same
+#     windows less accurately.
 #   * Instrument-articulation CKs share the mission's CK dir but carry
-#     non-bus frames (HGA pointing, solar array, camera gimbals). The bus
-#     glob below avoids them by sticking to mission-specific naming.
-#   * For still-flying missions where reconstructed isn't published yet
-#     (Europa Clipper, late JUNO), predicted is the best we can ship; we
-#     accept both rather than skip the mission.
+#     non-bus frames (HGA, solar array, camera gimbals) — avoided by
+#     sticking to mission-specific naming below.
+#   * For still-flying missions with no reconstructed CK yet (Europa
+#     Clipper, late JUNO), predicted is accepted rather than skipping.
 PATTERNS: dict[str, AttitudePattern | list[AttitudePattern]] = {
     "GAIA": AttitudePattern(
         # State-machine reconstructed bus attitude, one file per year.

@@ -29,13 +29,12 @@ logger = logging.getLogger(__name__)
 class HorizonsSyntheticDownloader(Downloader):
     """Synthesize per-spacecraft SPKs from Horizons VECTORS.
 
-    Selection: walk the cached Horizons MB list, drop simulation/debris/
-    stage/booster entries, drop QID-matched agency duplicates, fetch+build
-    the remainder, then drop builds whose ET coverage overlaps an agency
-    claim on the same NAIF (NAIF recycles low-magnitude IDs across eras —
-    e.g. -9 = Mariner 9 (1971) and ESCAPADE-Blue (2025); only same-era
-    collisions are real duplicates). Cache-skip via OBJ_DATA's `Revised :`
-    header makes repeated runs cheap.
+    Walks the cached Horizons MB list, drops simulation/debris/stage/booster
+    entries and QID-matched agency duplicates, fetches+builds the rest, then
+    drops builds whose ET coverage overlaps an agency claim on the same NAIF
+    (NAIF recycles low-magnitude IDs across eras — e.g. -9 = Mariner 9 (1971)
+    and ESCAPADE-Blue (2025); only same-era collisions are real duplicates).
+    Cache-skip via `Revised :` makes repeated runs cheap.
     """
 
     name = PROVIDERS.SPICE_HORIZONS_SYNTH

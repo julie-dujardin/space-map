@@ -1,30 +1,18 @@
 """Scrape per-texture source metadata from USGS / NASA pages.
 
-Iterates the per-body entries in the texture manifests
-(`constants/manifests/textures/`), fetches the `source:` page for each, parses
-the structured fields the site publishes, and writes one JSON per entry to
-`textures/source_metadata/{file_stem}.json`.
+For each entry in the texture manifests (`constants/manifests/textures/`), fetches
+the `source:` page and writes parsed fields to
+`textures/source_metadata/{file_stem}.json` — troubleshooting-friendly provenance,
+not something export consumes directly. A human then copies the relevant bits (a
+compact `attribution:` line) back into the manifest.
 
-The goal is troubleshooting-friendly provenance, not something the export
-pipeline consumes directly. A human (or a follow-up auto-fill step) then copies
-the relevant bits — a compact `attribution:` line — back into the manifest.
+Supported sites: USGS Astrogeology (`<dt>/<dd>` table), NASA Photojournal (labeled
+block + JSON-LD), NASA SVS (via its JSON API at `svs.gsfc.nasa.gov/api/<id>`, not
+scraped), NASA Earth Observatory (prose: meta description + article body).
 
-Supported sites:
-- USGS Astrogeology Science Center (`astrogeology.usgs.gov/search/map/...`)
-  — structured `<dt>/<dd>` table with authors, abstract, credits, mission,
-  instrument, latitude/longitude extent, etc.
-- NASA Photojournal (`science.nasa.gov/photojournal/...`) — labeled block
-  with Credits / Target / Mission / Instrument / Description and JSON-LD.
-- NASA Scientific Visualization Studio (`svs.gsfc.nasa.gov/<id>/...`) —
-  fetched via the studio's JSON API at `svs.gsfc.nasa.gov/api/<id>` (much
-  cleaner than scraping the page) for title, description, credits, dates,
-  funding sources, keywords, and the downloadable media listing.
-- NASA Earth Observatory (`science.nasa.gov/earth/earth-observatory/...`) —
-  loose prose; meta description + main article body.
-
-Other hosts (bjj.mmedia.is, stevealbers.net, deviantart, lpi.usra.edu, etc.)
-are left alone — their `attribution:` has already been hand-curated from the
-page content the user provided.
+Other hosts (bjj.mmedia.is, stevealbers.net, deviantart, lpi.usra.edu, etc.) are
+left alone — their `attribution:` is already hand-curated from page content the
+user provided.
 """
 
 import json
@@ -278,16 +266,10 @@ _NASA_PJ_LABEL_KEYS = {
 
 
 def _parse_label_block(lines: list[str], stop_sections: set[str]) -> dict[str, str]:
-    """Walk a list of text lines and group label-colon-followed-by-value pairs.
+    """Group label-colon-followed-by-value line pairs (Photojournal's `<p>Label:</p><p>Value</p>`).
 
-    The NASA Photojournal body renders each field as:
-        <p>Label:</p><p>Value</p>
-    which flattens to two consecutive lines, label ending in ':'. Each value is
-    treated as a single line.
-
-    `stop_sections` terminates the block *once we've started collecting*, so
-    unrelated headings above the first label (breadcrumbs, navigation bars) are
-    ignored.
+    `stop_sections` only terminates the block once collecting has started, so
+    unrelated headings above the first label (breadcrumbs, nav) are ignored.
     """
     out: dict[str, str] = {}
     started = False
@@ -434,13 +416,8 @@ def _svs_people(entries: object) -> list[str]:
 
 
 def _parse_nasa_svs(data: dict, url: str) -> dict:
-    """Parse a payload from the svs.gsfc.nasa.gov/api/<id> JSON endpoint.
-
-    The API exposes everything the HTML page renders as structured fields:
-    title, description, release/update timestamps, role-keyed credits, mission
-    and funding tags, keywords, and per-media-group download listings. We pull
-    a normalized subset suitable for attribution + provenance display.
-    """
+    """Parse a payload from the svs.gsfc.nasa.gov/api/<id> JSON endpoint into a
+    normalized subset suitable for attribution + provenance display."""
     svs_id = (
         str(data.get("id")) if data.get("id") is not None else _svs_id_from_url(url)
     )
@@ -517,11 +494,7 @@ def _parse_nasa_svs(data: dict, url: str) -> dict:
 
 
 def _parse_nasa_earth_observatory(html: str, url: str) -> dict:
-    """Parse a science.nasa.gov/earth/earth-observatory/<slug>/ page.
-
-    These are prose articles — we pull meta description, main body text, and
-    a conservative default attribution.
-    """
+    """Parse a science.nasa.gov/earth/earth-observatory/<slug>/ page (prose article)."""
     soup = BeautifulSoup(html, "html.parser")
 
     title_tag = soup.find("h1") or soup.find("title")
