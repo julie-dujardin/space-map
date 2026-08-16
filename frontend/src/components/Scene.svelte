@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy, getContext } from 'svelte';
+	import { onMount, onDestroy, getContext, untrack } from 'svelte';
 	import { SceneRenderer } from '$lib/scene/renderer';
 	import { calibrationUi } from '$lib/scene/perf/calibration-state.svelte';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -337,6 +337,18 @@
 			window.removeEventListener('popstate', onPopState);
 		};
 	}
+
+	// A deliberate jump (now button, date picker) shouldn't wait out the poll or
+	// the throttle window — write it through the moment it happens.
+	let seenJumps = 0;
+	$effect(() => {
+		const jumps = clock.jumps;
+		if (jumps === seenJumps) return;
+		seenJumps = jumps;
+		untrack(() => {
+			if (focusedBody) appState.setDate(jdToDate(clock.jd), isLive(), true);
+		});
+	});
 
 	$effect(() => {
 		void ctx.bodies.minorBodyVersion; // reactive dependency — re-runs on each flush

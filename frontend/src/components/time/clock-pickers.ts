@@ -11,7 +11,7 @@ export function applyDateToClock(clock: SimClock, v: DateValue | undefined): voi
 	if (!v) return;
 	const next = jdToDate(clock.jd);
 	next.setFullYear(v.year, v.month - 1, v.day);
-	clock.setJD(dateToJD(next));
+	clock.jumpTo(dateToJD(next));
 }
 
 export function applyTimeToClock(clock: SimClock, e: Event): void {
@@ -19,7 +19,7 @@ export function applyTimeToClock(clock: SimClock, e: Event): void {
 	if (!match) return;
 	const next = jdToDate(clock.jd);
 	next.setHours(Number(match[1]), Number(match[2]), 0, 0);
-	clock.setJD(dateToJD(next));
+	clock.jumpTo(dateToJD(next));
 }
 
 /** "HH:MM" — local time portion of the clock's current jd. */

@@ -26,7 +26,7 @@ vi.mock('$app/paths', () => ({
 // We construct AppState directly, so this only needs to satisfy the import.
 vi.mock('$app/state', () => ({ page: { params: {}, url: new URL('http://x/') } }));
 
-import { AppState } from './app-state.svelte';
+import { AppState, DATE_THROTTLE_MS } from './app-state.svelte';
 import { navEndOf } from './url';
 import { DEFAULT_TRIP } from '$lib/travel/trip';
 import type { MapViewState } from './view';
@@ -113,10 +113,19 @@ describe('AppState.setDate', () => {
 		expect(replaceStateSpy).not.toHaveBeenCalled();
 		// Subsequent ticks within the window don't reschedule or pile up.
 		s.setDate(new Date('2030-06-01T00:00:30Z'), true);
-		vi.advanceTimersByTime(60_000);
+		vi.advanceTimersByTime(DATE_THROTTLE_MS);
 		expect(replaceStateSpy).toHaveBeenCalledOnce();
 		const [, state] = replaceStateSpy.mock.calls[0];
 		expect(state.view.date).toEqual(new Date('2030-06-01T00:00:30Z'));
+	});
+
+	it('flush writes at once and cancels the window in flight', () => {
+		const s = new AppState({ ...initialView });
+		s.setDate(new Date('2030-06-01T00:00:00Z'), true);
+		s.setDate(new Date('2035-01-01T00:00:00Z'), false, true);
+		expect(replaceStateSpy).toHaveBeenCalledOnce();
+		vi.advanceTimersByTime(DATE_THROTTLE_MS);
+		expect(replaceStateSpy).toHaveBeenCalledOnce();
 	});
 });
 
@@ -151,7 +160,7 @@ describe('AppState.setFocus', () => {
 		const s = new AppState({ ...initialView });
 		s.setDate(new Date('2030-06-01T00:00:00Z'), true);
 		s.setFocus({ type: 'b', id: 'naif-399', name: 'Earth' });
-		vi.advanceTimersByTime(60_000);
+		vi.advanceTimersByTime(DATE_THROTTLE_MS);
 		expect(replaceStateSpy).not.toHaveBeenCalled();
 		expect(pushStateSpy).toHaveBeenCalledOnce();
 	});

@@ -17,10 +17,10 @@ import {
 import { serializeSearchSuffix, type SearchUrlState } from '$lib/search/url';
 import { DEFAULT_TRIP, serializeTripSuffix, type TripState } from '$lib/travel/trip';
 
-// The sim clock ticks ~2×/s, so its URL writes are throttled to at most one per
-// minute (trailing). Everything else writes immediately — camera settles, focus
-// changes and search edits are discrete and infrequent.
-const DATE_THROTTLE_MS = 60_000;
+// The sim clock ticks ~2×/s, so its URL writes are throttled (trailing).
+// Everything else writes immediately — camera settles, focus changes and search
+// edits are discrete and infrequent.
+export const DATE_THROTTLE_MS = 2_500;
 
 /**
  * Single source of truth for URL-backed app state. Components call targeted
@@ -96,8 +96,15 @@ export class AppState {
 		this.replaceNow();
 	}
 
-	setDate(date: Date, isNow: boolean) {
+	/** `flush` is for a deliberate one-off jump (now button, date picker): it
+	 *  bypasses the throttle so the URL matches what the user just asked for,
+	 *  instead of landing somewhere inside the window already in flight. */
+	setDate(date: Date, isNow: boolean, flush = false) {
 		this.view = { ...this.view, date, isNow };
+		if (flush) {
+			this.replaceNow();
+			return;
+		}
 		// Throttle: the clock streams updates, so coalesce into one trailing write
 		// per window. An immediate write (camera/focus) meanwhile flushes the
 		// current date and resets the window. Already scheduled → nothing to do.

@@ -21,6 +21,9 @@ export class SimClock {
 	/** Set by {@link setJD}; the renderer reads and clears it to tell a deliberate
 	 *  date jump from playback. */
 	seeked = false;
+	/** Bumped by {@link jumpTo} only — a one-off jump the URL should reflect at
+	 *  once. Scrubs stay on {@link setJD} so a drag doesn't spam history. */
+	jumps = $state(0);
 	private lastRealMs = 0;
 	private prevScale = 1;
 	private stops: BoundaryStops | null = null;
@@ -91,6 +94,13 @@ export class SimClock {
 		this.lastRealMs = performance.now();
 	}
 
+	/** Seek, and mark it as a discrete jump so listeners can react to the one
+	 *  move rather than to a stream of them. */
+	jumpTo(jd: number): void {
+		this.setJD(jd);
+		this.jumps++;
+	}
+
 	/** Move the clock like playback, one frame at a time, rather than jumping.
 	 *  Deliberately doesn't set {@link seeked} — that flag re-anchors the focus,
 	 *  and firing it every sweep frame would drag the camera off its target. */
@@ -112,7 +122,7 @@ export class SimClock {
 	}
 
 	now(): void {
-		this.setJD(dateToJD(new Date()));
+		this.jumpTo(dateToJD(new Date()));
 	}
 
 	get playing(): boolean {
