@@ -158,6 +158,12 @@
 		if (orientation) addPole(orientation.source, orientation.reference);
 		if (lightcurvePole) addPole('lightcurve');
 
+		// The size rows are the PCK's whoever published the pole — a lightcurve
+		// pole says nothing about a body's radii. The occultation four take both
+		// from the one paper, already credited above; bundles predating
+		// `radii_source` are read off the pole, which agrees for all four.
+		if (global?.radii && (global.radii_source ?? orientation?.source) !== 'occultation') addPck();
+
 		// Named works the panel cites outright, like the blocks below rather
 		// than the inferred credits above — their note survives a parenthesised
 		// title (a year, a journal) the same way.

@@ -1188,6 +1188,7 @@
 	"temperature_condition_record_high": "最高纪录",
 	"temperature_estimated": "估算值",
 	"tooltip_temperature_estimated": "该天体尚无实测数据。此值为根据其日心距离和反照率计算的辐射平衡温度。",
+	"tooltip_temperature_wikidata": "已报告的测量值，取自该天体的维基数据项目，而非某篇出版物。",
 	"temperature_of_surface": "表面温度",
 	"temperature_of_photosphere": "光球温度",
 	"temperature_of_corona": "日冕温度",

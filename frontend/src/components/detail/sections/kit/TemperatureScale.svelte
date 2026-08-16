@@ -71,6 +71,9 @@
 	);
 
 	let estimated = $derived(temperatures.origin === 'estimated');
+	// A measured reading with no paper behind it: the value is Wikidata's, and
+	// the bar has to say so where the footer's generic credit cannot.
+	let fromWikidata = $derived(temperatures.provenance === 'wikidata');
 
 	let gradient = $derived(
 		`linear-gradient(to right, ${gradientStops(regime)
@@ -125,6 +128,22 @@
 	});
 </script>
 
+{#snippet provenanceBadge(label: string, tooltip: string)}
+	<Tooltip.Root>
+		<Tooltip.Trigger>
+			{#snippet child({ props })}
+				<span
+					class="text-muted-foreground/80 border-muted-foreground/30 w-fit cursor-help rounded border px-1 text-[0.65rem] uppercase"
+					{...props}
+				>
+					{label}
+				</span>
+			{/snippet}
+		</Tooltip.Trigger>
+		<Tooltip.Content>{tooltip}</Tooltip.Content>
+	</Tooltip.Root>
+{/snippet}
+
 <div class="flex flex-col gap-1.5">
 	<div class="flex items-baseline gap-2">
 		<Tooltip.Root>
@@ -147,22 +166,13 @@
 			</Tooltip.Content>
 		</Tooltip.Root>
 
-		<!-- Nobody has measured most of these bodies; the number is a radiative
-		     equilibrium calculation and has to say so next to itself. -->
+		<!-- Where the number came from, next to the number: nobody has measured
+		     most of these bodies, and of the ones that were, some are reported
+		     by an item rather than a paper. -->
 		{#if estimated}
-			<Tooltip.Root>
-				<Tooltip.Trigger>
-					{#snippet child({ props })}
-						<span
-							class="text-muted-foreground/80 border-muted-foreground/30 w-fit cursor-help rounded border px-1 text-[0.65rem] uppercase"
-							{...props}
-						>
-							{m.temperature_estimated()}
-						</span>
-					{/snippet}
-				</Tooltip.Trigger>
-				<Tooltip.Content>{m.tooltip_temperature_estimated()}</Tooltip.Content>
-			</Tooltip.Root>
+			{@render provenanceBadge(m.temperature_estimated(), m.tooltip_temperature_estimated())}
+		{:else if fromWikidata}
+			{@render provenanceBadge(m.source_wikidata_name(), m.tooltip_temperature_wikidata())}
 		{/if}
 	</div>
 

@@ -1095,6 +1095,7 @@
 	"temperature_condition_record_high": "récord de calor",
 	"temperature_estimated": "estimada",
 	"tooltip_temperature_estimated": "No existe ninguna medida de este cuerpo. El valor es su temperatura de equilibrio radiativo, calculada a partir de su distancia al Sol y de su albedo.",
+	"tooltip_temperature_wikidata": "Una medición registrada, tomada del elemento de Wikidata de este cuerpo y no de una publicación.",
 	"temperature_of_surface": "Temperatura superficial",
 	"temperature_of_photosphere": "Temperatura de la fotosfera",
 	"temperature_of_corona": "Temperatura de la corona",

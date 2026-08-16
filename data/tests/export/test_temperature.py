@@ -108,7 +108,19 @@ class TestTemperatureBlock:
         assert block == {
             "readings": [{"part": "surface", "kind": "mean", "k": 102.0}],
             "origin": "measured",
+            "provenance": "wikidata",
         }
+
+    def test_a_measured_block_never_hides_where_it_came_from(self):
+        """Either a cited work or the item that reported it — never neither."""
+        for object_id, readings in (
+            ("naif-499", None),
+            ("naif-502", [{"part": "surface", "kind": "mean", "k": 102.0}]),
+        ):
+            block = temperature_block(object_id, readings)
+            assert block is not None
+            assert block["origin"] == "measured"
+            assert block.get("sources") or block.get("provenance")
 
     def test_equilibrium_is_the_last_resort_and_says_so(self):
         block = temperature_block("spkid-1", [], 2.7, 0.09)

@@ -1231,6 +1231,7 @@
 	"temperature_condition_record_high": "рекордный максимум",
 	"temperature_estimated": "оценка",
 	"tooltip_temperature_estimated": "Измерений этого тела нет. Значение — его равновесная температура излучения, вычисленная по расстоянию от Солнца и альбедо.",
+	"tooltip_temperature_wikidata": "Приводимое измерение, взятое из элемента Викиданных этого тела, а не из публикации.",
 	"temperature_of_surface": "Температура поверхности",
 	"temperature_of_photosphere": "Температура фотосферы",
 	"temperature_of_corona": "Температура короны",

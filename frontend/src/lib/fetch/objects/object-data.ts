@@ -49,6 +49,9 @@ export interface TemperatureReading {
 export interface Temperatures {
 	readings: TemperatureReading[];
 	origin: 'measured' | 'estimated';
+	/** Set when the readings are Wikidata's rather than a cited work's — there
+	 *  is no paper to list under `sources`, so the bar names the item instead. */
+	provenance?: 'wikidata';
 	sources?: CitedWork[];
 }
 
@@ -405,6 +408,10 @@ export interface GlobalObjectData {
 	 *  When present, this is the shape the 3D scene renders — supersedes the
 	 *  Wikidata radius and SBDB diameter as the authoritative size. */
 	radii?: { a: number; b: number; c: number };
+	/** Which table the radii were read off: the PCK, or the occultation fits of
+	 *  the four ringed small bodies no kernel covers. Decides who the sidebar
+	 *  credits for the size. */
+	radii_source?: 'pck' | 'occultation';
 	sbdb?: {
 		neo?: boolean;
 		pha?: boolean;

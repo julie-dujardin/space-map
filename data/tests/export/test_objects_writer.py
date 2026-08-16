@@ -12,6 +12,7 @@ from space_map_data.export.objects.writer import (
     _pick_attrs,
     build_model_sources,
     hash_bucket,
+    radii_source,
     render_quality,
     write_object_bundles,
 )
@@ -298,3 +299,14 @@ class TestBuildModelSources:
     def test_spacecraft_bundles_are_excluded(self):
         out = build_model_sources({"cassini": {"provenance": "spacecraft"}}, {})
         assert out == {}
+
+
+class TestRadiiSource:
+    """Which table a body's ellipsoid was read off, so the sidebar credits it."""
+
+    def test_kernel_body_is_pck(self):
+        assert radii_source(599) == "pck"
+
+    def test_ringed_small_body_is_its_occultation_fit(self):
+        # Chariklo — no PCK covers it; the chords give pole and limb together.
+        assert radii_source(2010199) == "occultation"

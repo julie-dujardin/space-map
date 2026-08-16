@@ -1095,6 +1095,7 @@
 	"temperature_condition_record_high": "שיא חום",
 	"temperature_estimated": "מוערכת",
 	"tooltip_temperature_estimated": "אין מדידה של הגוף הזה. הערך הוא טמפרטורת שיווי המשקל הקרינתי שלו, המחושבת ממרחקו מהשמש ומהאלבדו שלו.",
+	"tooltip_temperature_wikidata": "מדידה מדווחת, שנלקחה מפריט ויקינתונים של הגוף הזה ולא מפרסום מדעי.",
 	"temperature_of_surface": "טמפרטורת פני השטח",
 	"temperature_of_photosphere": "טמפרטורת הפוטוספירה",
 	"temperature_of_corona": "טמפרטורת הקורונה",

@@ -538,6 +538,7 @@
 	"temperature_condition_record_high": "最高記録",
 	"temperature_estimated": "推定値",
 	"tooltip_temperature_estimated": "この天体の測定値はありません。値は太陽からの距離とアルベドから計算した放射平衡温度です。",
+	"tooltip_temperature_wikidata": "報告された測定値で、論文ではなくこの天体のウィキデータ項目から取得しています。",
 	"temperature_of_surface": "表面温度",
 	"temperature_of_photosphere": "光球温度",
 	"temperature_of_corona": "コロナ温度",

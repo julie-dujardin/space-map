@@ -1109,6 +1109,7 @@
 	"temperature_condition_record_high": "rekord ciepła",
 	"temperature_estimated": "szacowana",
 	"tooltip_temperature_estimated": "Dla tego ciała nie ma pomiaru. Wartość to jego temperatura równowagi radiacyjnej, obliczona z odległości od Słońca i albedo.",
+	"tooltip_temperature_wikidata": "Zgłoszony pomiar, wzięty z elementu Wikidanych tego ciała, a nie z publikacji.",
 	"temperature_of_surface": "Temperatura powierzchni",
 	"temperature_of_photosphere": "Temperatura fotosfery",
 	"temperature_of_corona": "Temperatura korony",

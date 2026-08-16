@@ -187,7 +187,13 @@ def temperature_block(
         }
 
     if wikidata_readings:
-        block = {"readings": _sorted(wikidata_readings + core), "origin": "measured"}
+        # No work to cite — Wikidata's own item is the whole provenance, so the
+        # block names it rather than leaving a measurement uncredited.
+        block = {
+            "readings": _sorted(wikidata_readings + core),
+            "origin": "measured",
+            "provenance": "wikidata",
+        }
         if core_sources:
             block["sources"] = core_sources
         return block

@@ -1255,6 +1255,7 @@
 	"temperature_condition_record_high": "record high",
 	"temperature_estimated": "estimated",
 	"tooltip_temperature_estimated": "No measurement exists for this body. The value is its radiative equilibrium temperature, calculated from its distance from the Sun and its albedo.",
+	"tooltip_temperature_wikidata": "A reported measurement, taken from this body's Wikidata item rather than from a published work.",
 	"temperature_of_surface": "Surface temperature",
 	"temperature_of_photosphere": "Photosphere temperature",
 	"temperature_of_corona": "Corona temperature",

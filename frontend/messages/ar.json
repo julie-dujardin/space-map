@@ -1259,6 +1259,7 @@
 	"temperature_condition_record_high": "أعلى رقم قياسي",
 	"temperature_estimated": "تقديري",
 	"tooltip_temperature_estimated": "لا يوجد قياس لهذا الجرم. القيمة هي درجة حرارة توازنه الإشعاعي، محسوبة من بُعده عن الشمس ومن بياضه.",
+	"tooltip_temperature_wikidata": "قياس منشور مأخوذ من عنصر ويكي بيانات لهذا الجرم لا من بحث منشور.",
 	"temperature_of_surface": "درجة حرارة السطح",
 	"temperature_of_photosphere": "درجة حرارة الغلاف الضوئي",
 	"temperature_of_corona": "درجة حرارة الإكليل",

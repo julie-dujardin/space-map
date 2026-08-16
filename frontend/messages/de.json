@@ -1095,6 +1095,7 @@
 	"temperature_condition_record_high": "Hitzerekord",
 	"temperature_estimated": "geschätzt",
 	"tooltip_temperature_estimated": "Für diesen Körper liegt keine Messung vor. Der Wert ist seine Strahlungsgleichgewichtstemperatur, berechnet aus seinem Sonnenabstand und seiner Albedo.",
+	"tooltip_temperature_wikidata": "Ein berichteter Messwert, übernommen aus dem Wikidata-Objekt dieses Körpers statt aus einer Veröffentlichung.",
 	"temperature_of_surface": "Oberflächentemperatur",
 	"temperature_of_photosphere": "Photosphärentemperatur",
 	"temperature_of_corona": "Koronatemperatur",
