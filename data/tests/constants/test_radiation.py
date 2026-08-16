@@ -1,6 +1,8 @@
 """Radiation facts: vocabulary and citation invariants, and the ordering
 between bodies that any correct version of this table has to preserve."""
 
+import math
+
 import pytest
 
 from space_map_data.constants.activity.schema import Measurement
@@ -32,10 +34,11 @@ from space_map_data.constants.radiation.environments import (
 )
 from space_map_data.constants.radiation.field import (
     ANCHOR_ROLES,
-    ATTENUATION_FLOOR,
     BUILDUP_DEPTH_G_CM2,
     FIELD_SOURCES,
     FLOWN_ANCHORS,
+    MODELLED_CHECKS,
+    MUON_CROSSOVER_G_CM2,
     PREDICTION,
     SOLAR_CYCLE_RATIO,
     SOLAR_CYCLE_YEARS,
@@ -88,6 +91,7 @@ def _source_keys() -> set[str]:
     keys.add(INTERPLANETARY_DOSE.sv_per_day.source)
     keys |= set(FIELD_SOURCES)
     keys |= {a.source for a in FLOWN_ANCHORS.values()}
+    keys |= {c.source for c in MODELLED_CHECKS.values()}
     keys |= set(BELT_FIELD_SOURCES)
     keys |= {a.source for a in BELT_ANCHORS.values()}
     return keys
@@ -271,6 +275,42 @@ class TestFlownData:
         assert sum(a.role == PREDICTION for a in FLOWN_ANCHORS.values()) >= 2
 
 
+class TestModelledChecks:
+    """Past a few hundred g/cm² nobody has flown a dosimeter, so the deep
+    atmospheres are checked against other people's transport codes. Kept
+    separate from the flown anchors because they are not the same kind of
+    evidence and should not read as if they were."""
+
+    @pytest.mark.parametrize("name", sorted(MODELLED_CHECKS))
+    def test_the_model_lands_near_the_published_profile(self, name: str):
+        check = MODELLED_CHECKS[name]
+        predicted = atmospheric_attenuation(check.column_g_cm2)
+        residual = abs(predicted / check.attenuation - 1.0)
+        assert residual <= check.tolerance, (
+            f"{name}: predicted {predicted:.3e}, published "
+            f"{check.attenuation:.3e} ({100 * residual:+.1f}%)"
+        )
+
+    @pytest.mark.parametrize("name", sorted(MODELLED_CHECKS))
+    def test_roles_are_known(self, name: str):
+        assert MODELLED_CHECKS[name].role in ANCHOR_ROLES
+
+    def test_the_cloud_deck_is_never_fitted_to(self):
+        """The muon law is fitted at Venus's surface and the cascade at Earth's,
+        so the deck is the one depth in between that neither was shown."""
+        assert MODELLED_CHECKS["venus_cloud_top"].role == PREDICTION
+        assert MODELLED_CHECKS["venus_lower_cloud"].role == PREDICTION
+
+    def test_titan_is_known_to_be_wrong_and_says_so(self):
+        """A pin on a failure. If the two literatures ever agree this should
+        tighten; if it silently starts passing at 10%, something was fitted to
+        it that should not have been."""
+        check = MODELLED_CHECKS["titan_surface"]
+        assert check.note
+        predicted = atmospheric_attenuation(check.column_g_cm2)
+        assert predicted < check.attenuation / 5.0
+
+
 class TestGeometry:
     """`open_sky_fraction` is the only term with nothing fitted into it, so it
     is the one that has to be exactly right."""
@@ -312,11 +352,25 @@ class TestAtmosphere:
         seen = [atmospheric_attenuation(d) for d in depths]
         assert seen == sorted(seen, reverse=True)
 
-    def test_a_giant_column_reports_the_floor_not_a_fantasy(self):
+    def test_a_giant_column_hands_over_to_the_muon_law(self):
         """Titan's 10,900 g/cm² drives the bare exponential to 1e-29 —
         meaningless, since what gets through that deep is muons under a
-        different law. The floor admits the model has stopped knowing."""
-        assert atmospheric_attenuation(10_900.0) == ATTENUATION_FLOOR
+        different law. The power law past the crossover is that law."""
+        deep = atmospheric_attenuation(10_900.0)
+        assert deep > math.exp(-(10_900.0 - BUILDUP_DEPTH_G_CM2) / 165.1)
+        assert deep < atmospheric_attenuation(MUON_CROSSOVER_G_CM2)
+
+    def test_the_two_regimes_meet_without_a_step(self):
+        """A discontinuity at the crossover would put a body just either side of
+        it on a different curve from its neighbour."""
+        below = atmospheric_attenuation(MUON_CROSSOVER_G_CM2 - 1e-6)
+        above = atmospheric_attenuation(MUON_CROSSOVER_G_CM2 + 1e-6)
+        assert below == pytest.approx(above, rel=1e-6)
+
+    def test_it_stays_monotonic_across_the_crossover(self):
+        columns = [100.0, 1000.0, MUON_CROSSOVER_G_CM2, 5000.0, 1e4, 1e5]
+        seen = [atmospheric_attenuation(column) for column in columns]
+        assert seen == sorted(seen, reverse=True)
 
     def test_column_depth_recovers_earths_thousand_g_per_cm2(self):
         assert column_depth_g_cm2(101_325.0, 9.80665) == pytest.approx(1033.2, rel=1e-3)

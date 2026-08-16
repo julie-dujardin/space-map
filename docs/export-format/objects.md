@@ -691,6 +691,64 @@ they ship as provenance metadata in the meantime.
 status's first because that is the line a panel opens with. The full
 bibliography is in `credits.json` as `activity_references`.
 
+### `radiation`
+
+How much ionizing radiation the place delivers, from
+`data/src/space_map_data/constants/radiation/`. Everything is a dose *rate* —
+a body is somewhere you stay, not something you cross — and everything is a
+dose equivalent in sieverts per day.
+
+`kind` is the block's most useful field and the one with full coverage on the
+bodies that have an entry: `cosmic` (galactic cosmic rays, the floor
+everywhere), `trapped` (a planetary field holding particles in place) or
+`shielded` (enough atmosphere overhead that little of either reaches the
+ground). It names what is in charge of the dose, which is what decides whether
+shielding helps — and it is the field a consumer should branch on, because a
+`trapped` body's dose is deterministic injury delivered in hours where a
+`cosmic` one is stochastic risk accumulated over years.
+
+**Three tiers of number, and they must not be drawn alike.** `surface_dose` and
+`orbit_dose` are published: four measured by an instrument that sat there
+(Earth's ground, low Earth orbit, the lunar surface, Gale crater) and two
+computed by somebody else for a body-sized water target (Europa, Venus's
+surface). Both carry `shielding_g_cm2` where the source states one, and the
+shielding is part of the number rather than context for it — against cosmic
+rays a hull barely matters, against trapped particles it is the whole
+difference, and a figure quoted without it makes those two look alike.
+
+`modelled_surface_dose` is this project's own arithmetic, present only where no
+published figure exists and only where the cosmic-ray field model is
+answerable. It is a cycle *mean*, with `range` being the solar cycle's own
+swing — a factor of 2.4 between a quiet Sun and an active one, which is larger
+than every other uncertainty in the model put together and is why it ships as a
+band. `extrapolated` marks a body beyond 9.5 au, where the radial gradient is a
+straight line continued past the Cassini data that fitted it. The body's size
+never enters: standing on a surface leaves exactly half the sky open whatever
+the radius, so Ceres and Mercury differ only by where they are.
+
+**A body inside a magnetosphere gets no `modelled_surface_dose` at all**, and
+this is the block's most important omission. The cosmic-ray field returns
+about 1 mSv/day for Europa where the published figure is 1,000 Sv/day, so a
+computed number there is a floor rather than an estimate — and a floor drawn
+beside real ones reads as a ranking. Every moon of Jupiter, Saturn, Uranus,
+Neptune and Earth is excluded, along with any body whose `kind` is `trapped`.
+The rule is deliberately blunt: Titan and Iapetus really do orbit outside
+Saturn's belts, and losing their figures costs less than getting one wrong by
+six orders of magnitude.
+
+`belt` appears on the six bodies with trapped-particle regions. Extents
+(`inner_radii`, `peak_radii`, `outer_radii`) are in planetary radii on the
+magnetic equator, which is how this literature reports them, and are frequently
+absent on purpose — Jupiter's belts have no outer edge, they just fade.
+`crossing_dose_sv` is the exception to the rate rule: a dose somebody actually
+flew, which only Earth has.
+
+Every `note` is a key into a vocabulary the frontend holds the sentence for,
+the same contract the interior, atmosphere and activity notes use. `sources` is
+the works behind what the block shows, deduped, the `kind` source first because
+that is the line a panel opens with; the full bibliography is in `credits.json`
+as `radiation_references`.
+
 ### `ring_features`
 
 The catalogue behind the ring panel, from

@@ -1,7 +1,8 @@
 <script lang="ts">
 	/**
-	 * How the body looks and how hot its outside is — everything measured at a
-	 * surface, a cloud deck or a photosphere rather than deep inside.
+	 * What it is like on the outside: how the body looks, how hot it is, and
+	 * how much radiation it delivers — everything measured at a surface, a
+	 * cloud deck or a photosphere rather than deep inside.
 	 *
 	 * The temperature bar drops `core` readings: those are modelled central
 	 * temperatures and belong to Interior, and a scale holding both would be
@@ -11,6 +12,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatNumber } from '$lib/format/quantities';
+	import { cancerRiskPerYear, formatDoseRate, timeToLethalDose } from '$lib/format/radiation';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
 	import TemperatureScale from './kit/TemperatureScale.svelte';
@@ -48,6 +50,33 @@
 		return readings.length ? { ...temperatures, readings } : null;
 	});
 
+	let radiation = $derived(global?.radiation);
+
+	// Published beats computed, and only one of the two is ever present.
+	let dose = $derived(
+		radiation?.surface_dose?.sv_per_day.value ?? radiation?.modelled_surface_dose?.sv_per_day
+	);
+
+	// A rate this large is an acute injury and a percentage of it is unreadable
+	// — Europa's works out at two million percent of a lethal dose per day. The
+	// environment's own `kind` decides which sentence applies, not the size of
+	// the number, because the two are different quantities and not two ends of
+	// one scale.
+	let doseNote = $derived.by(() => {
+		if (dose == null) return undefined;
+		return radiation?.kind === 'trapped'
+			? m.radiation_lethal_in({ duration: timeToLethalDose(dose) })
+			: m.radiation_cancer_risk({ percent: cancerRiskPerYear(dose) });
+	});
+
+	// Where the figure came from, appended to the reading above: a measurement,
+	// somebody's transport code, or ours.
+	let doseProvenance = $derived.by(() => {
+		if (radiation?.modelled_surface_dose) return m.radiation_from_model();
+		if (radiation?.surface_dose?.sv_per_day.modelled) return m.radiation_modelled();
+		return undefined;
+	});
+
 	let hasContent = $derived(
 		sbdb?.albedo ||
 			outsideTemperatures != null ||
@@ -56,12 +85,31 @@
 			wd?.apparent_magnitude != null ||
 			sbdb?.spec_B ||
 			sbdb?.spec_T ||
-			colour
+			colour ||
+			dose != null
 	);
 </script>
 
 {#if hasContent}
-	<Section title={m.brightness_and_temperature()}>
+	<Section title={m.surface()}>
+		{#if dose != null}
+			<Row
+				label={m.radiation()}
+				tooltip={m.tooltip_radiation()}
+				value={formatDoseRate(dose)}
+				valueTooltip={[doseNote, doseProvenance].filter(Boolean).join(' ')}
+			/>
+		{/if}
+		{#if radiation?.orbit_dose}
+			<Row
+				label={m.radiation_in_orbit()}
+				tooltip={m.tooltip_radiation_in_orbit()}
+				value={formatDoseRate(radiation.orbit_dose.sv_per_day.value)}
+				valueTooltip={m.radiation_cancer_risk({
+					percent: cancerRiskPerYear(radiation.orbit_dose.sv_per_day.value)
+				})}
+			/>
+		{/if}
 		{#if sbdb?.albedo}
 			<Row label={m.albedo()} value={formatNumber(sbdb.albedo)} tooltip={m.tooltip_albedo()} />
 		{/if}

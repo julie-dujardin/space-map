@@ -62,8 +62,10 @@ _SHIELDING_SOURCE = "europa_lander_sdt_2016"
 # 20 g/cm² it returns 1e-11, and what actually happens is that the electrons stop
 # and their bremsstrahlung does not, so the curve flattens onto a tail this model
 # knows nothing about. Held at the two decades the source figure actually spans.
-# A result at the floor is an upper bound, and the same caution applies to it as
-# to `ATTENUATION_FLOOR` in `field.py`.
+# A result at the floor is an upper bound rather than an estimate. `field.py`
+# used to carry a floor of its own for the same reason and no longer needs one,
+# because Venus supplied a second regime to hand over to; nothing here has an
+# equivalent, so this stays a floor.
 BELT_SHIELDING_FLOOR = 1.0e-2
 
 # SATRAD draws its own dose-depth curves for the same Jovian orbits and they

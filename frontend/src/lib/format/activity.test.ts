@@ -91,7 +91,7 @@ describe('qualifier', () => {
 	});
 
 	it('flags an extrapolation, which would otherwise read as a count', () => {
-		expect(qualifier({ value: 120, modelled: true })).toContain('measured');
+		expect(qualifier({ value: 120, modelled: true })).toContain('Scaled');
 	});
 
 	it('passes the survey through in the source’s own words', () => {

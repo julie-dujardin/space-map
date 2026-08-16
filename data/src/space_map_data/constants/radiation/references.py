@@ -152,8 +152,9 @@ RADIATION_SOURCES: dict[str, RadiationReference] = {
         "Garrett, Ratliff & Evans 2005 (JPL Publication 05-9), Saturn Radiation Model",
         "https://ntrs.nasa.gov/citations/20060008606",
         "Saturn's belt dose against distance, drawn on the same axes as "
-        "Jupiter's so the two can be compared at matched shielding",
-        "Saturn belt model",
+        "Jupiter's so the two can be compared at matched shielding — which is "
+        "also the only figure that puts a dose on Io's orbit",
+        "Saturn and Jupiter belt doses",
     ),
     "ganushkina_2011": RadiationReference(
         "Ganushkina et al. 2011 (JGR Space Physics 116)",

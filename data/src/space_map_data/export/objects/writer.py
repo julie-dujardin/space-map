@@ -39,6 +39,7 @@ from space_map_data.export.objects.celestrak import (
     merge_operator_qids,
 )
 from space_map_data.export.objects.activity import activity_block
+from space_map_data.export.objects.radiation import radiation_block
 from space_map_data.export.objects.atmosphere import atmosphere_block
 from space_map_data.export.objects.interior import interior_block
 from space_map_data.export.objects.rings import (
@@ -638,6 +639,17 @@ def _build_global(
     activity = activity_block(obj.id)
     if activity is not None:
         data["activity"] = activity
+
+    # How much ionizing radiation the place delivers: published where anyone
+    # has measured or modelled one, and computed from the cosmic ray field
+    # everywhere it can be — which is everywhere outside a magnetosphere.
+    radiation = radiation_block(
+        obj.id,
+        parent_id=obj.parent_id,
+        distance_au=heliocentric_distance_au(orbit.get("a"), obj.parent_id),
+    )
+    if radiation is not None:
+        data["radiation"] = radiation
 
     # Named rings, gaps and ringlets: what the ring system *is*, next to the
     # render bundles in systems/{bary}.json that say what it looks like.

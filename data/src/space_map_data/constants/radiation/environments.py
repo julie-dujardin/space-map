@@ -6,11 +6,14 @@ them or flown through them — deep space, low Earth orbit, the lunar surface
 and Gale crater — and everywhere else the literature measures something else:
 ionizing dose in silicon for spacecraft parts, or absorbed dose in ice at a
 stated depth for buried organics. Neither converts into a human's sievert, so
-the rest of the table carries a `kind` and a note and no number.
+most of the table carries a `kind` and a note and no number.
 
 That is not a gap to be filled by modelling; it is the state of the subject.
-The four numbers that do exist span a factor of three, and the one estimate
-that joins them — Europa's — is six orders of magnitude above all of them.
+The four measured numbers span a factor of three, and the two modelled entries
+that join them are what make the table worth having, because they are the ends:
+Europa six orders of magnitude above everything measured, Venus's surface nine
+below it. Both are here rather than excluded because both were computed for a
+body-sized water target, which is the only thing this table asks of a number.
 """
 
 from space_map_data.constants.activity.schema import Measurement
@@ -60,13 +63,37 @@ RADIATION_ENVIRONMENTS: dict[str, RadiationEnvironment] = {
     ),
     # Venus. Ninety-two bars over your head is about a hundred thousand g/cm²,
     # a hundred times Earth's column and the thickest shield in the solar
-    # system. Herbst's profiles are computed for the cloud deck, 51 to 62 km
-    # up, where the dose is already below a terrestrial airliner's; the
-    # surface is far below that and nobody has bothered to compute it. The
-    # induced magnetosphere contributes nothing — it has no trapping region.
+    # system, and it works: the quietest surface in this table by a factor of
+    # half a million, four hundred thousand times below Earth's own ground.
+    # The induced magnetosphere contributes nothing — it has no trapping
+    # region — so the atmosphere is doing all of it alone.
+    #
+    # Herbst runs the whole column with a water-sphere phantom, which is why
+    # this is here on the same footing as the measured entries rather than as
+    # an ionization rate somebody else would have to convert. It is still a
+    # model, and the value is read off a log axis at the very bottom of his
+    # figure where the curve meets the frame, so the range is a reading
+    # uncertainty rather than his. Below 47 km the quality factor has fallen to
+    # one — nothing but muons is left — so absorbed and equivalent coincide and
+    # no conversion was needed.
+    #
+    # The cloud deck, 51 to 62 km up, is the part of Venus anyone writes about,
+    # and it is a different place: a few µSv/day at 51 km, comparable to a
+    # terrestrial aircrew's, which is what makes the habitable-zone argument.
+    # `field.py` carries those two depths as the checks its atmospheric term is
+    # answerable to.
     "naif-299": RadiationEnvironment(
         kind=SHIELDED,
         kind_sources=("herbst_2020",),
+        surface_dose=DoseRate(
+            Measurement(
+                2.4e-12,
+                "herbst_2020",
+                range=(7.0e-13, 7.0e-12),
+                modelled=True,
+            ),
+            shielding_g_cm2=103800.0,
+        ),
         note="thickest_atmosphere",
     ),
     # Earth. The surface figure is the cosmic-ray component of natural
@@ -141,15 +168,36 @@ RADIATION_ENVIRONMENTS: dict[str, RadiationEnvironment] = {
     ),
     # Io. Deepest inside the belts of the four and the source of most of what
     # is in them — the torus it feeds is what the rest of the magnetosphere is
-    # made of. It is also the one moon whose surface flux cannot be compared
-    # with the others: Johnson's table gives Io 1×10⁹ keV cm⁻² s⁻¹ against
-    # Europa's 5×10¹⁰, but Io's entry counts ions only, where every other
-    # entry counts ions and electrons above 10 keV. Reading that column as a
-    # ranking puts Io fifty times below Europa, which is the opposite of what
-    # every dose estimate says. No number until one exists on equal terms.
+    # made of. Johnson's table cannot rank it: it gives Io 1×10⁹ keV cm⁻² s⁻¹
+    # against Europa's 5×10¹⁰, but Io's entry counts ions only where every
+    # other entry counts ions and electrons above 10 keV, so read as a ranking
+    # it puts Io fifty times below Europa, the opposite of what every dose
+    # estimate says.
+    #
+    # SATRAD is the figure that does compare. It draws a one-week dose against
+    # aluminium thickness for a spacecraft at 5.95 R_J, which is Io's orbit,
+    # and at 100 mils reads about 5×10⁵ rad(Si): 714 Gy/day in orbit, halved
+    # here for the moon blocking the lower half of the sky. Electrons, so the
+    # quality factor is one and this stands as Sv/day, the same conversion
+    # Europa's entry makes.
+    #
+    # Quoted behind the 0.686 g/cm² it was drawn at rather than rescaled to
+    # Europa's 0.11, because the two published shielding curves disagree by
+    # tenfold over exactly that interval. At matched thickness the two moons
+    # come out level, which is the finding: Io is 1.6 times deeper in and no
+    # worse off, because the torus it feeds digs a dent at its own orbit.
     "naif-501": RadiationEnvironment(
         kind=TRAPPED,
         kind_sources=("johnson_2004",),
+        surface_dose=DoseRate(
+            Measurement(
+                3.57e2,
+                "garrett_2005",
+                range=(1.8e2, 7.0e2),
+                modelled=True,
+            ),
+            shielding_g_cm2=0.686,
+        ),
         note="feeds_the_belts",
     ),
     # Europa. The number that makes this table worth having, and the only one

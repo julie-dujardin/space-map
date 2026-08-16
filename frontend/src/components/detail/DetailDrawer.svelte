@@ -88,7 +88,7 @@
 	import SourcesFooter, { type Source as CitedSource } from './sections/SourcesFooter.svelte';
 	import { MASS_INVENTORY_URL } from '$lib/data/solar-system-mass';
 	import Bulk from './sections/Bulk.svelte';
-	import Brightness from './sections/Brightness.svelte';
+	import Surface from './sections/Surface.svelte';
 	import Atmosphere from './sections/Atmosphere.svelte';
 	import Interior from './sections/Interior.svelte';
 	import Rings from './sections/Rings.svelte';
@@ -1424,9 +1424,9 @@
 			{:else if body}
 				<Bulk global={data?.global ?? null} />
 				<Atmosphere global={data?.global ?? null} />
+				<Surface global={data?.global ?? null} />
 				<Interior global={data?.global ?? null} />
 				<Rings global={data?.global ?? null} {body} />
-				<Brightness global={data?.global ?? null} />
 				<Orbital
 					global={data?.global ?? null}
 					localized={data?.localized ?? null}

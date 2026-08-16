@@ -23,6 +23,7 @@
 	import { bandColor, coreBracket, layerSpans, skyRgb } from '$lib/charts/layer-appearance';
 	import { ucfirst } from '$lib/format/quantities';
 	import Section from './kit/Section.svelte';
+	import Surface from './Surface.svelte';
 	import Row from './kit/Row.svelte';
 	import TopicSummary from './kit/TopicSummary.svelte';
 	import AtmosphereComposition, { hasCompositionBar } from './kit/AtmosphereComposition.svelte';
@@ -137,6 +138,12 @@
 		{/snippet}
 	</Section>
 {/if}
+
+<!-- Between the two cross-sections because that is where it sits physically:
+     the air ends, the surface is the reading taken on it, and the interior
+     starts below. Renders itself away on a body with nothing to say, so
+     whether this tab exists at all is still decided upstream. -->
+<Surface {global} />
 
 <!-- Declared out here rather than inside `Section`: a snippet in a component's
      markup is one of its props. -->

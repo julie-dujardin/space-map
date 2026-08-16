@@ -317,6 +317,7 @@ export interface GlobalObjectData {
 	atmosphere?: AtmosphereBlock;
 	interior?: InteriorBlock;
 	activity?: ActivityBlock;
+	radiation?: RadiationBlock;
 	/** Ring render bundles, inner → outer, mirroring `rings` in
 	 *  systems/{bary}.json. Carries the four ringed small bodies, which orbit
 	 *  the Sun directly and so appear in no system file. */
@@ -686,6 +687,45 @@ export interface ActivityBlock {
 	tidal?: TidalHeating;
 	/** The Sun and the four giants have this and no other entry. */
 	magnetism?: MagneticField;
+	sources?: CitedWork[];
+}
+
+/** A dose rate and what was between it and the sky. The shielding is part of
+ *  the number: against cosmic rays a hull barely matters, against trapped
+ *  particles it is the whole difference. */
+export interface DoseRate {
+	sv_per_day: Measurement;
+	shielding_g_cm2?: number;
+}
+
+/** How much ionizing radiation a place delivers, as a rate — a body is
+ *  somewhere you stay, not something you cross. */
+export interface RadiationBlock {
+	/** What supplies most of the dose, and so whether shielding helps.
+	 *  `trapped` is the one that kills in hours rather than decades. */
+	kind?: 'cosmic' | 'trapped' | 'shielded';
+	note?: string;
+	/** Published: measured by an instrument that sat there, or computed by
+	 *  someone else for a body-sized water target. */
+	surface_dose?: DoseRate;
+	orbit_dose?: DoseRate;
+	/** Our own arithmetic, only where nothing is published and only outside a
+	 *  magnetosphere. A solar-cycle mean; `range` is the cycle's own swing. */
+	modelled_surface_dose?: {
+		sv_per_day: number;
+		range: [number, number];
+		modelled: true;
+		/** Past 9.5 au, where the radial gradient outruns the data behind it. */
+		extrapolated?: true;
+	};
+	belt?: {
+		inner_radii?: Measurement;
+		peak_radii?: Measurement;
+		outer_radii?: Measurement;
+		/** The one rate-rule exception: a dose somebody actually flew. */
+		crossing_dose_sv?: Measurement;
+		note?: string;
+	};
 	sources?: CitedWork[];
 }
 

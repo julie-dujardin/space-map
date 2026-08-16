@@ -126,19 +126,43 @@ BUILDUP_DEPTH_G_CM2 = 30.0
 ATMOSPHERIC_LENGTH_G_CM2 = 165.1
 _ATMOSPHERIC_FITTED_TO = "unscear_2008"
 
-# Below this the exponential is extrapolation, not physics. At Titan's
-# 10,900 g/cm² it returns 1e-29, which is not a small number but a meaningless
-# one: what survives a column that deep is ultra-relativistic muons following a
-# range law the cascade exponential knows nothing about. Results at or under
-# the floor are upper bounds and should be shown as "below anything that
-# matters" rather than as a figure.
-ATTENUATION_FLOOR = 1.0e-6
+# Past about one Earth atmosphere the cascade exponential stops being physics.
+# Continued to Venus's surface it returns 1e-273 and to Titan's 1e-29, which are
+# not small numbers but meaningless ones: the hadronic shower is long dead and
+# what is still arriving is ultra-relativistic muons, which lose energy by
+# ionization at a roughly constant rate per g/cm² and so thin out as a power of
+# the depth rather than exponentially.
+#
+# Both constants come from Herbst's Venus profile, the only atmosphere anyone
+# has computed a dose through from the top of it to the ground. Below the deck
+# the profile is a clean power law over two decades of depth, and the crossover
+# is put where his deepest cascade-regime point sits — 51 km, 1,058 g/cm²,
+# where this file's own exponential is right to 4.5% without having been shown
+# it. So the two regimes meet where each is separately checked, and the curve
+# is continuous there by construction.
+#
+# Venus's surface, at 103,800 g/cm², is the deepest column in the solar system.
+# Nothing here ever extrapolates past it, which is why there is no floor any
+# more: `MODELLED_CHECKS` holds the profile this was fitted to and what it
+# still gets wrong.
+MUON_CROSSOVER_G_CM2 = 1058.0
+MUON_DEPTH_INDEX = 3.1505
+_MUON_FITTED_TO = "herbst_2020"
+
+
+def _cascade_attenuation(column_g_cm2: float) -> float:
+    past_buildup = max(0.0, column_g_cm2 - BUILDUP_DEPTH_G_CM2)
+    return math.exp(-past_buildup / ATMOSPHERIC_LENGTH_G_CM2)
 
 
 def atmospheric_attenuation(column_g_cm2: float) -> float:
     """Surviving fraction of the dose equivalent under a mass column."""
-    past_buildup = max(0.0, column_g_cm2 - BUILDUP_DEPTH_G_CM2)
-    return max(ATTENUATION_FLOOR, math.exp(-past_buildup / ATMOSPHERIC_LENGTH_G_CM2))
+    if column_g_cm2 <= MUON_CROSSOVER_G_CM2:
+        return _cascade_attenuation(column_g_cm2)
+    return (
+        _cascade_attenuation(MUON_CROSSOVER_G_CM2)
+        * (column_g_cm2 / MUON_CROSSOVER_G_CM2) ** -MUON_DEPTH_INDEX
+    )
 
 
 # --- what a magnetic field takes out -----------------------------------------
@@ -282,6 +306,7 @@ FIELD_SOURCES: tuple[str, ...] = (
     _GRADIENT_SOURCE,
     _REFERENCE_FITTED_TO,
     _ATMOSPHERIC_FITTED_TO,
+    _MUON_FITTED_TO,
     _CUTOFF_SOURCE,
     _CUTOFF_FITTED_TO,
 )
@@ -369,5 +394,89 @@ FLOWN_ANCHORS: dict[str, FlownAnchor] = {
         epoch_year=2013.0,
         r_au=1.52,
         near=NearBody(radius_km=3389.5, distance_km=3389.5, column_g_cm2=22.0),
+    ),
+}
+
+
+# --- what the deep atmospheres are answerable to -----------------------------
+#
+# Kept apart from `FLOWN_ANCHORS` for the same reason `belt_field.py` is kept
+# apart from this file: these are somebody else's transport code, not somebody's
+# dosimeter, and the two should not look equally solid. Nobody has flown an
+# instrument to the bottom of a thick atmosphere, so past a few hundred g/cm²
+# a model is all there is to check against.
+#
+# Attenuation rather than a dose rate, because both entries are ratios taken
+# *within* the source's own model — its free-space value against its value at
+# depth. That is the only honest way to borrow an atmospheric term from work
+# whose absolute normalisation is not this file's: Herbst's free-space Venus
+# figure runs 1.8 times ours, and comparing rates instead of ratios would smear
+# that difference into a term that has nothing to do with it.
+
+
+class ModelledCheck(NamedTuple):
+    """One published attenuation this file has to land near, and the fraction
+    it is allowed to be out by. `role` reads as in `FlownAnchor`."""
+
+    attenuation: float
+    column_g_cm2: float
+    source: str
+    role: str
+    tolerance: float
+    note: str = ""
+
+
+MODELLED_CHECKS: dict[str, ModelledCheck] = {
+    # Venus's cloud deck, still in the cascade regime and untouched by the muon
+    # fit. Out-of-sample on two counts: a CO₂ atmosphere rather than Earth's,
+    # and no magnetic field at all, so nothing of the cutoff term stands in.
+    "venus_cloud_top": ModelledCheck(
+        attenuation=0.506,
+        column_g_cm2=182.0,
+        source="herbst_2020",
+        role=PREDICTION,
+        tolerance=0.35,
+    ),
+    # Venus at 51 km. Sets `MUON_CROSSOVER_G_CM2` in the sense that the handover
+    # is put here, but not the exponential that reaches it — that was fitted to
+    # Earth's sea level, and landing within 5% of a different planet's dose at a
+    # comparable depth is the strongest single check the atmospheric term has.
+    "venus_lower_cloud": ModelledCheck(
+        attenuation=2.07e-3,
+        column_g_cm2=1058.0,
+        source="herbst_2020",
+        role=PREDICTION,
+        tolerance=0.10,
+    ),
+    # Venus's surface. Fits `MUON_DEPTH_INDEX`, so the residual is zero by
+    # construction; it is here to record the deepest column in the solar system
+    # and to fail loudly if the power law is ever re-pointed.
+    "venus_surface": ModelledCheck(
+        attenuation=1.05e-9,
+        column_g_cm2=103800.0,
+        source="herbst_2020",
+        role=FIT,
+        tolerance=0.05,
+    ),
+    # Titan, and the one the model gets wrong. Gronoff computes ionization
+    # rather than dose, so this is his surface rate converted the standard way —
+    # 0.25 ion pairs cm⁻³ s⁻¹ at 35 eV each, over the surface air density — a
+    # route that reproduces UNSCEAR's Earth sea-level figure to 15% and so is
+    # not the suspect part.
+    #
+    # It lands 17 times above what Venus's power law predicts at the same depth,
+    # and the disagreement will not resolve in the model's favour: Gronoff caps
+    # primaries at 100 GeV, and those are exactly the particles that reach a
+    # surface, so his figure is a floor. Either Venus's index is too steep for a
+    # cold N₂ atmosphere spread over ten times the height, or one of the two
+    # transport codes is wrong at depth. A tolerance wide enough to pass is a
+    # pin on a known failure, not a claim the model works here.
+    "titan_surface": ModelledCheck(
+        attenuation=2.21e-5,
+        column_g_cm2=10850.0,
+        source="gronoff_2011",
+        role=PREDICTION,
+        tolerance=20.0,
+        note="disputed_by_a_factor_of_seventeen",
     ),
 }
