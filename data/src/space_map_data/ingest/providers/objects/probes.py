@@ -62,27 +62,18 @@ def _mission_kernels(mission_dir: Path) -> list[Path]:
 
 
 def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]:
-    """Walk `missions/*/_index.json` and `landed_missions/*/_index.json` and
-    return one record per spacecraft.
+    """One record per spacecraft: `(mission, naif_id, inception_mjd, name_hint?)`.
 
-    Each record carries `(mission, naif_id, inception_mjd, name_hint?)`.
-    `name_hint` (currently emitted by HorizonsSyntheticDownloader as
-    `files[].name_horizons`) lets us name synthesized rows after the actual
-    spacecraft rather than the umbrella mission folder.
-
-    For probes covered in both buckets (MSL has cruise in missions/ and
-    surface in landed_missions/), the union of kernels feeds `inception_et`
-    so the inception MJD picks up the earliest real-data start.
-
-    Landed-only probes (Viking landers, future Soviet/Chinese stuff) get
-    rows from `landed_missions/` alone — the binary export will emit just
-    a trailing METHOD_LANDED record for each chunk they occupy.
-
-    Cross-mission merging: when the registry declares multiple
-    `kernel_sources` for a probe (e.g. Cassini lives in both CASSINI/-82
-    and HUYGENS/-82), kernels from every declared source contribute to the
-    canonical bucket — keyed on the entry's *first* kernel_source. So one
-    probe row gets the union of kernels rather than minting parallel rows.
+    `name_hint` (from HorizonsSyntheticDownloader's `files[].name_horizons`)
+    names synthesized rows after the actual spacecraft, not the umbrella
+    mission folder. Probes covered in both buckets (MSL: cruise in
+    `missions/`, surface in `landed_missions/`) feed the union of kernels to
+    `inception_et`. Landed-only probes (Viking landers, ...) come from
+    `landed_missions/` alone — export emits just a trailing METHOD_LANDED
+    record for them. Cross-mission merging: when the registry declares
+    multiple `kernel_sources` for a probe (e.g. Cassini in both CASSINI/-82
+    and HUYGENS/-82), all declared sources' kernels feed the canonical
+    bucket, keyed on the first — one row, not parallel ones.
     """
     registry = load_registry()
     source_to_canonical: dict[tuple[str, int], tuple[str, int]] = {}

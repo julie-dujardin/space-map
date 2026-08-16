@@ -76,8 +76,7 @@ class TestMeshFormats:
         assert text.count("\nf ") + text.startswith("f ") >= 12
 
     def test_grid_column_order(self, tmp_path):
-        # lat/lon/radius grid: Stooke archives put longitude first, so
-        # lon_first must normalise to the same mesh as the lat-first default.
+        # Stooke archives put longitude first; lon_first must match the lat-first mesh.
         lats, lons = (-90.0, 0.0, 90.0), (0.0, 120.0, 240.0, 360.0)
 
         def rad(lat):  # varies with lat so a column swap is visible
@@ -124,9 +123,8 @@ class TestDamitOrientation:
         assert math.isclose(iau["w1"], 360.0 * 24.0 / 6.0, rel_tol=1e-12)
 
     def test_frontend_reconstructs_prime_meridian(self):
-        # The derived (α,δ,w0,w1), fed through the frontend's body-X formula at
-        # JD0, must reproduce the DAMIT model's prime meridian (independently
-        # built here from the Kaasalainen matrices).
+        # Derived (α,δ,w0,w1) through the frontend's body-X formula must reproduce
+        # DAMIT's prime meridian, built here from the Kaasalainen matrices.
         for lam, beta, period, phi0, jd0 in [
             (35.0, -60.0, 7.3, 210.0, _J2000_JD + 1234.0),
             (200.0, 20.0, 12.0, 15.0, _J2000_JD - 800.0),

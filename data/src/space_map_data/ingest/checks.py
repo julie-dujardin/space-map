@@ -23,32 +23,16 @@ class NamespaceCollisionError(RuntimeError):
 def assert_no_namespace_collision(session: Session) -> None:
     """Probe and norad_satcat namespaces must be disjoint by NORAD + COSPAR.
 
-    A spacecraft lives in exactly one namespace: a probe row (when it has
-    spacecraft-class trajectory data driven by SPICE) or a norad_satcat row
-    (when it's an Earth-orbiting satellite tracked by CelesTrak/SATCAT).
-    Cross-namespace duplication of the same physical object would split
-    its metadata, models, and URL identities — every consumer that joins
-    by NORAD or COSPAR breaks subtly.
+    A spacecraft lives in exactly one namespace; cross-namespace duplication
+    would split its metadata, models, and URL identity for every consumer
+    that joins by NORAD or COSPAR. Checks: no shared NORAD across the two
+    namespaces; no shared COSPAR for a *NORAD-less* probe (COSPAR isn't
+    unique across NORADs, e.g. Apollo 8 spans satcat 3626/3627, so only
+    NORAD-less probes — which rely on COSPAR for identity — count); and the
+    `satcat_norad_cat_id` FK must agree with the denormalized `norad_cat_id`.
 
-    Three checks:
-      1. No NORAD value appears on both a probe-* and a norad_satcat-* row.
-      2. No COSPAR value of a *NORAD-less* probe appears on a norad_satcat-*
-         row (see below — COSPAR is non-unique, so this is narrower than
-         NORAD).
-      3. For every Object with `satcat_norad_cat_id` set, the FK target
-         equals the denormalized `norad_cat_id` (they can't disagree).
-
-    Joint-launch siblings inside the probe namespace (Cassini + Huygens
-    both at NORAD 25008) are NOT a violation — multiple probes legitimately
-    share a NORAD when they separate after launch. The invariant is purely
-    cross-namespace.
-
-    COSPAR (the international designator) is NOT unique across NORADs —
-    Apollo 8's 1968-118B sits on both satcat 3626 and 3627. So a COSPAR
-    overlap is only a real split for a NORAD-less probe: those rely on
-    COSPAR for identity and a same-COSPAR satcat row should have
-    consolidated onto them. A probe that matched by NORAD may share its
-    COSPAR with a distinct-NORAD satcat sibling — benign.
+    Joint-launch siblings sharing a NORAD within the probe namespace (e.g.
+    Cassini + Huygens) are fine — the invariant is cross-namespace only.
     """
     probe_norads = _column_values(
         session, Object.norad_cat_id, prefix="probe-", non_null=True

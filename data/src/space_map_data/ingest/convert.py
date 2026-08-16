@@ -102,12 +102,9 @@ def datetime_or_none(val: str) -> datetime.datetime | None:
 def gcat_date_to_iso(val: str | None) -> str | None:
     """Convert a GCAT "Vague Date" to a partial ISO 8601 string at its precision.
 
-    ``1958 Jul 25`` → ``1958-07-25``; ``2022 Jan 6 2149`` → ``2022-01-06T21:49``;
-    ``1957 Oct 4 1928:34`` → ``1957-10-04T19:28:34``; ``1961`` → ``1961``;
-    ``1961 Apr`` → ``1961-04``. Times are UTC (implied, like satcat's
-    ``launch_date``); the trailing ``?`` uncertainty marker is dropped — the
-    raw string keeps it. Returns None for empty values or forms GCAT doesn't
-    use here (centiday, hour-suffix, BC, century descriptors).
+    E.g. ``1958 Jul 25`` → ``1958-07-25``, ``1961 Apr`` → ``1961-04``. Times
+    are UTC (implied, like satcat's ``launch_date``). Returns None for empty
+    values or forms unused here (centiday, hour-suffix, BC, century).
     """
     if not val or not val.strip():
         return None

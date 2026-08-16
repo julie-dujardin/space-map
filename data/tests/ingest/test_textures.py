@@ -58,8 +58,7 @@ class TestSaveWebpCap:
         assert any("exceeds cap" in r.message for r in caplog.records)
 
     def test_quality_drops_to_fit_cap(self, tmp_path):
-        """A gradient image (compresses well at lower quality) lands under a
-        mid-range cap after one or two quality steps, without resizing."""
+        """A gradient lands under a mid-range cap after one quality step, no resize."""
         img = _make_gradient(1024, 1024)
 
         # Encode at q=80 and MIN_QUALITY to bracket the achievable size range.
@@ -70,8 +69,7 @@ class TestSaveWebpCap:
         q_min = (tmp_path / "probe_min.webp").stat().st_size
         assert q_min < q80  # sanity
 
-        # Cap midway between the two so exactly one quality step should be
-        # enough — the test exercises the "q down, no resize" path.
+        # Midway cap: exactly one quality step should suffice, no resize.
         cap = (q_min + q80) // 2
         rec = save_webp(img, tmp_path / "out.webp", lossless=False, max_bytes=cap)
         assert rec["width"] == 1024  # no resize
@@ -80,17 +78,12 @@ class TestSaveWebpCap:
         assert MIN_QUALITY <= rec["quality"] < 80
 
     def test_shrinks_when_quality_floor_hit(self, tmp_path, caplog, monkeypatch):
-        """Cap too small for any q≥MIN_QUALITY: must downscale.
-
-        Uses a noise image (uncompressible) and a permissive MIN_DIM floor so
-        the test runs fast without actually shrinking below a reasonable size.
-        """
+        """Cap too small for any q≥MIN_QUALITY must downscale."""
         caplog.set_level("INFO")
         monkeypatch.setattr(config, "MIN_DIM_AFTER_SHRINK", 256)
         img = _make_noise(1024, 1024)
 
-        # Probe at MIN_QUALITY — noise compresses poorly, natural floor is
-        # several hundred KiB at 1024px; a 50 KiB cap forces a shrink.
+        # Noise compresses poorly; a fraction of the MIN_QUALITY size forces a shrink.
         img.save(tmp_path / "probe.webp", "webp", quality=MIN_QUALITY)
         min_q_size = (tmp_path / "probe.webp").stat().st_size
         cap = min_q_size // 5
@@ -103,10 +96,8 @@ class TestSaveWebpCap:
         assert any("shrinking" in r.message for r in caplog.records)
 
     def test_gives_up_at_min_dim_but_still_writes_file(self, tmp_path, caplog):
-        """Cap so tight even MIN_DIM_AFTER_SHRINK can't fit: best-effort
-        output stays on disk and an error is logged. Uses a small noise image
-        so the shrink loop terminates quickly (first shrink already undershoots
-        the default MIN_DIM_AFTER_SHRINK=4096)."""
+        """Cap too tight for even MIN_DIM_AFTER_SHRINK: best-effort output
+        stays on disk and an error is logged."""
         caplog.set_level("ERROR")
         img = _make_noise(1024, 1024)  # first shrink → 870 < 4096 floor
         rec = save_webp(img, tmp_path / "out.webp", lossless=False, max_bytes=1)
@@ -152,11 +143,8 @@ class TestAnyExportOverCap:
         assert any_export_over_cap(tmp_path) is False
 
     def test_nested_monthly_exports_detected_over_cap(self, tmp_path):
-        """Monthly metadata nests records one level deeper (frame → tier → rec).
-
-        The recursive walk must spot a single over-cap record anywhere in the
-        tree, otherwise stale monthly bundles never trigger auto-reprocess.
-        """
+        """The recursive walk must spot an over-cap record nested one level
+        deeper (frame → tier → rec), or stale monthly bundles never reprocess."""
         (tmp_path / "metadata.json").write_text(
             json.dumps(
                 {
@@ -206,11 +194,7 @@ class TestExpandEntryFiles:
 
 
 class TestProcessMonthly:
-    """End-to-end ingest of a small synthetic monthly series.
-
-    Uses a tmp DOWNLOAD/EXPORT layout via monkeypatch; bypasses the DB-touching
-    helpers so the test doesn't need a session.
-    """
+    """End-to-end ingest of a small synthetic monthly series, DB writes stubbed out."""
 
     @staticmethod
     def _make_processor(monkeypatch, tmp_path, entry: dict) -> TextureProcessor:
@@ -375,11 +359,8 @@ class TestProcessSingleFrame:
 
 
 class TestProcessClouds:
-    """End-to-end ingest of a synthetic earth_clouds snapshot tree.
-
-    Uses a tmp DOWNLOAD/EXPORT layout via monkeypatch; bypasses the DB-touching
-    helpers so the test doesn't need a session.
-    """
+    """End-to-end ingest of a synthetic earth_clouds snapshot tree, DB writes
+    stubbed out."""
 
     EARTH_BODY_ID = "naif-399"
 

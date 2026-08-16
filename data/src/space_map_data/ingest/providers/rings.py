@@ -1,24 +1,18 @@
 """Convert raw 1-D ring profile text files to a single lossless WebP strip.
 
-Iterates ``DOWNLOAD_DIR/rings/<dir>/ring-metadata.yaml`` for every downloaded
-bundle, parses each channel's text file (one float per line for L channels;
-whitespace-separated R G B per line for the color channel), and writes one
-5×N ``strip.webp`` (one row per channel, order in ``STRIP_ROWS``) plus a
-``metadata.json`` to ``EXPORT_DIR/v1/rings/<object_id>/<bundle>/``. One file
-per bundle keeps it to a single request; the client splits the rows back into
-separate textures after decode, so per-channel filtering is unaffected.
-Mirrors the textures pipeline so the ring metadata block in
-``systems/<bary>.json`` can be assembled by the export step from the on-disk
-``metadata.json``.
+For every ``DOWNLOAD_DIR/rings/<dir>/ring-metadata.yaml``, parses each
+channel's text file and writes one 5×N ``strip.webp`` (rows per
+``STRIP_ROWS``) plus ``metadata.json`` to
+``EXPORT_DIR/v1/rings/<object_id>/<bundle>/``. One file per bundle keeps it
+to a single request; the client splits rows back into textures after decode.
 
-A body may own several radially disjoint bundles — Saturn's measured main
-rings plus the synthetic D ring inside them and tenuous rings outside — each
-with its own sample density and intensity/thickness scale, which is how one
-export holds both a τ~5 B ring and a τ~5e-6 E ring.
+A body may own several radially disjoint bundles — e.g. Saturn's measured
+main rings plus the synthetic D ring and tenuous outer rings — each with its
+own sample density and intensity/thickness scale, so one export holds both a
+τ~5 B ring and a τ~5e-6 E ring.
 
-The DB ``has_rings`` flag on ``Object`` is reset for every run and re-marked
-per body that has a successfully processed ring bundle (same idempotency
-shape as ``map_texture_available``).
+``Object.has_rings`` is reset every run and re-marked per successfully
+processed bundle, same idempotency shape as ``map_texture_available``.
 """
 
 import json

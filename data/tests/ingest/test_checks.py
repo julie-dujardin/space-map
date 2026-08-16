@@ -137,8 +137,8 @@ class TestAssertNoNamespaceCollision:
     def test_raises_on_cospar_overlap_for_norad_less_probe(
         self, session: Session
     ) -> None:
-        # A NORAD-less probe relies on COSPAR for identity; a norad_satcat-*
-        # row sharing that COSPAR should have consolidated onto it.
+        # NORAD-less probe uses COSPAR for identity; a sharing norad_satcat-* row
+        # should have consolidated onto it.
         _add_satcat(session, 99999, "1968-118B")
         _add_probe(
             session,
@@ -155,8 +155,8 @@ class TestAssertNoNamespaceCollision:
     def test_passes_on_shared_cospar_across_distinct_norads(
         self, session: Session
     ) -> None:
-        # COSPAR is non-unique: Apollo 8's 1968-118B is on satcat 3626 (the
-        # probe, matched by NORAD) and 3627, which mints its own row.
+        # COSPAR is non-unique: 1968-118B is on satcat 3626 (matched by NORAD)
+        # and 3627 (its own row).
         _add_satcat(session, 3626, "1968-118B")
         _add_satcat(session, 3627, "1968-118B")
         _add_probe(

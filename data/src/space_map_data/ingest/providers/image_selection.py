@@ -1,21 +1,15 @@
 """Compute the per-object/feature/group best Commons image, cache to disk.
 
-For each QID-linked entity we discover the direct image candidates (P18 ∪
-{aux} ∪ Wikipedia pageimages across LANGUAGES — aux is P154 "logo" for
-objects/groups and P242 "locator" for nomenclature features), group them
-into derivative-tree components via on-disk metadata, and pick the highest-
-scoring file per tree (assessment > pageimage-frequency > globalusage — see
-:mod:`space_map_data.utils.image_scoring`).
+For each QID-linked entity, discover direct image candidates (P18 ∪ {aux} ∪
+Wikipedia pageimages — aux is P154 "logo" for objects/groups and P242
+"locator" for features), group into derivative-tree components via on-disk
+metadata, and pick the highest-scoring file per tree (assessment >
+pageimage-frequency > globalusage, see :mod:`space_map_data.utils.image_scoring`).
 
-The results are cached at:
-
-* ``OBJECT_IMAGES_PATH`` keyed by ``Object.id`` (e.g. ``naif-199``). Drives
-  the ``image_available`` flag on Object rows.
-* ``FEATURE_IMAGES_PATH`` keyed by IAU ``Feature.feature_id`` (stringified).
-* ``GROUP_IMAGES_PATH`` keyed by ``Group.slug``.
-* ``RING_IMAGES_PATH`` keyed by the ringed body's ``Object.id`` — pictures of
-  the ring system rather than of the planet wearing it.
-
+Cached at ``OBJECT_IMAGES_PATH`` (keyed by ``Object.id``, drives
+``image_available``), ``FEATURE_IMAGES_PATH`` (by ``Feature.feature_id``),
+``GROUP_IMAGES_PATH`` (by ``Group.slug``), and ``RING_IMAGES_PATH`` (by the
+ringed body's ``Object.id`` — pictures of the ring system, not the planet).
 Exports read these caches instead of re-walking sources.
 """
 
@@ -104,26 +98,23 @@ TOPIC_PAGE_TABLES: tuple[tuple[str, dict[str, tuple[str, ...]]], ...] = (
 
 SCHEMA_VERSION = 1
 
-# Member-photo fallback for groups whose own QID yielded no image (orbit classes,
-# obscure operators, etc.). Walks member objects in sitelink-rank order and picks
-# from their Commons photos. Tuned so the gallery always has enough to show.
+# Member-photo fallback for groups whose own QID yielded no image. Walks
+# member objects in sitelink-rank order, tuned so the gallery always fills.
 GROUP_FALLBACK_TARGET_COUNT = 15
 GROUP_FALLBACK_PER_MEMBER_CAP = 3
 GROUP_FALLBACK_MIN_GALLERY_DIM = 800
 GROUP_FALLBACK_MIN_HERO_DIM = 1600
-# Subjects that keep their cutaways and schematics: things humans built, where
-# the schematic is often the only illustration there is. Everything else drops
-# them — see ``image_exclusion_reason(drop_subject_diagrams=...)``.
+# Built things keep cutaways/schematics — often the only illustration a
+# probe has. Everything else drops them, see ``image_exclusion_reason``.
 _SCHEMATIC_OBJECT_TYPES = frozenset(
     {ObjectType.spacecraft.value, ObjectType.debris.value}
 )
-# A group follows its members. `applies_to` answers this for every group except
-# the browse categories, which share one value whatever they hold — so the three
-# whose members are craft are named.
+# `applies_to` covers most groups; browse categories share one value
+# regardless of contents, so the three whose members are craft are named.
 _SCHEMATIC_GROUP_CATEGORIES = frozenset({GroupCategory.EARTH_SAT, GroupCategory.PROBE})
 _SCHEMATIC_CATEGORY_SLUGS = frozenset({SATELLITES_SLUG, DEBRIS_SLUG, PROBES_SLUG})
-# Earth-sat filter mirrored from `membership.build_earth_groups_data` so the
-# fallback's member set matches the rows actually shipped per zone.
+# Mirrors `membership.build_earth_groups_data` so the fallback's member set
+# matches the rows actually shipped per zone.
 _FALLBACK_SAT_TYPE_VALUES = [ObjectType.spacecraft.value, ObjectType.debris.value]
 _FALLBACK_EARTH_OBJECT_ID = "naif-399"
 
@@ -140,9 +131,8 @@ def ingest() -> None:
         .all()
     )
     objects = [(oid, qid) for oid, qid, _ in object_rows]
-    # Only built things keep their schematics: a cutaway of a planet or a ring
-    # system restates a view the app renders, but for a probe the schematic is
-    # often the only illustration that exists.
+    # Only built things keep schematics: a planet cutaway restates a view the
+    # app renders, but for a probe it's often the only illustration there is.
     craft = {
         oid for oid, _, obj_type in object_rows if obj_type in _SCHEMATIC_OBJECT_TYPES
     }
@@ -180,11 +170,8 @@ def ingest() -> None:
     _write_cache(FEATURE_IMAGES_PATH, "features", feature_selections)
     _log_written(FEATURE_IMAGES_PATH, "features", feature_selections, features)
 
-    # Groups: registry-driven (referenced/ also holds operators/countries), plus
-    # the dynamically-built probe missions keyed by their mission QID. Country
-    # groups are skipped here: their own Wikidata image is a geographic locator
-    # map, irrelevant to a space map, so they draw solely from member photos via
-    # the fallback below.
+    # Country groups skip this pass: their own Wikidata image is a geographic
+    # locator map, irrelevant here, so they draw only from the member fallback.
     groups = [
         (g.slug, g.wikidata_qid)
         for g in GROUPS
@@ -208,8 +195,7 @@ def ingest() -> None:
         unit="group",
         keep_diagrams=craft_groups,
     )
-    # Picture-less groups (no own QID or QID yielded no image) fall back to
-    # photos of their member objects, ranked by member sitelink count.
+    # Picture-less groups fall back to member photos, ranked by sitelinks.
     _fill_groups_from_members(
         group_selections,
         metadata_cache,
@@ -245,9 +231,8 @@ def _select_for_qids(
 ) -> dict[str, list[dict]]:
     """Run :func:`_select_for_qid` over ``(key, qid)`` pairs, deduping per QID.
 
-    Subjects in ``keep_diagrams`` keep their cutaways and schematics; every
-    other subject drops them (see ``drop_subject_diagrams``). The two answers
-    are cached separately, since one QID can be reached from both sides.
+    Subjects in ``keep_diagrams`` keep cutaways/schematics, others drop them;
+    cached separately per QID since either answer may be needed.
     """
     qid_cache: dict[tuple[str, bool], list[dict]] = {}
     selections: dict[str, list[dict]] = {}
@@ -315,12 +300,10 @@ def _select_for_qid(
 
     metadata_by_filename = _MetadataView(metadata_cache)
 
-    # Drop redundant candidates (orbit diagrams, comparison diagrams, locator
-    # maps) up front so a servable real photo elsewhere in the tree wins. An
-    # object whose only candidate was an orbit diagram correctly ends up
-    # image-less — the app draws the orbit itself.
-    # Feature locator maps (red-dot/outline "where is this crater") are
-    # redundant with the app showing the feature's position; objects/groups
+    # Drop redundant candidates (orbit diagrams, locator maps) up front so a
+    # servable real photo elsewhere in the tree wins; an object whose only
+    # candidate was a diagram correctly ends up image-less. Feature locator
+    # maps are redundant with the app's own position marker; objects/groups
     # keep locator-categorised images (e.g. constellation coverage maps).
     drop_locator_maps = aux_kind == "locator"
 
@@ -383,11 +366,8 @@ def _select_from_pages(
 ) -> dict[str, list[dict]]:
     """Pictures from a topic-page table, keyed by the body each row is about.
 
-    The tables map a body to the articles *about* one aspect of it — its rings,
-    its atmosphere, its insides. Those articles are already downloaded (the
-    panels cite them), and their pictures are scored by the same tree walk as
-    everything else. The body's own images are no use for this: a portrait of
-    the planet says nothing about the rings it wears.
+    Uses the topic articles (rings, atmosphere, interior), not the body's own
+    images — a portrait of the planet says nothing about the rings it wears.
     """
     out: dict[str, list[dict]] = {}
     for body, qids in pages.items():
@@ -462,11 +442,10 @@ def _fill_ring_systems(
 ) -> None:
     """Pool the per-system pictures onto the Ring Systems collection page.
 
-    Its own Wikidata item is the generic "planetary ring" concept and the
-    member fallback would fill a page about rings with portraits of Jupiter and
-    Saturn, so the systems' own pictures lead. Saturn goes first, because the
-    first image is what the collection's tile shows and its rings are what the
-    subject is recognised by.
+    The page's own Wikidata item is the generic "planetary ring" concept, so
+    the member fallback would show portraits of Jupiter/Saturn instead of
+    rings; the systems' own pictures lead, with Saturn's first since its
+    rings are the page's tile image.
     """
     exemplar = "naif-699"
     # `sorted` is stable, so the rest keep the catalogue's order behind Saturn.
@@ -505,13 +484,10 @@ def _fill_groups_from_members(
 ) -> None:
     """Augment every group's selection in-place with member-object photos.
 
-    Existing entries (logo / group-own image) keep their slots — they were
-    deliberately chosen — and member photos append to fill out the gallery
-    up to :data:`GROUP_FALLBACK_TARGET_COUNT`. Groups that arrived empty
-    additionally get a hero photo promoted to index 0 when a member supplies
-    one above :data:`GROUP_FALLBACK_MIN_HERO_DIM`. Members are walked in
-    descending sitelink order, each contributing at most
-    :data:`GROUP_FALLBACK_PER_MEMBER_CAP` photos.
+    Existing entries keep their slots; member photos append up to
+    :data:`GROUP_FALLBACK_TARGET_COUNT`, ranked by descending sitelink order
+    with at most :data:`GROUP_FALLBACK_PER_MEMBER_CAP` per member. Groups
+    that arrived empty also get a hero photo promoted to index 0.
     """
     members_by_slug = _build_group_member_qids(session)
     sitelink_cache: dict[str, int] = {}
@@ -591,8 +567,7 @@ def _build_group_member_qids(session) -> dict[str, list[str]]:
         if pha:
             out.setdefault(f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha", []).append(qid)
 
-    # Earth-sat groups: constellation/operator/launch-site/manufacturer/country
-    # — mirror the filter in `membership.build_earth_groups_data` so the
+    # Mirrors the filter in `membership.build_earth_groups_data` so the
     # member set matches the rows actually shipped.
     earth_rows = (
         session.query(
@@ -633,10 +608,8 @@ def _build_group_member_qids(session) -> dict[str, list[str]]:
             if country is not None:
                 out.setdefault(f"{COUNTRY_SLUG_PREFIX}{country.slug}", []).append(qid)
 
-    # Earth-sat orbit zones: their generic orbit-concept QIDs rarely have a
-    # usable Commons image (Lagrange zones have none), so each zone's gallery is
-    # filled from member-sat photos. Lagrange sats are Sun-parented, admitted by
-    # orbit_center.
+    # Orbit-zone concept QIDs rarely have a usable image, so galleries fill
+    # from member-sat photos. Lagrange sats are Sun-parented, admitted by orbit_center.
     zone_rows = (
         session.query(
             Object.wikidata_qid,
@@ -661,11 +634,9 @@ def _build_group_member_qids(session) -> dict[str, list[str]]:
         if slug is not None:
             out.setdefault(slug, []).append(qid)
 
-    # Body-aggregating categories: the planets, dwarf planets and moons, plus
-    # the Solar System root (Sun + planets — a curated hero set, not the whole
-    # catalogue). The Wikidata class entities (Q634/Q2199/Q2537) rarely carry a
-    # usable photo, so these pages lean on the member fallback for their hero +
-    # gallery, ranked by member sitelink count (top moon, top dwarf, ...).
+    # The Wikidata class entities (planet/dwarf-planet/moon) rarely carry a
+    # usable photo, so these pages lean on the member fallback. Solar System
+    # root is a curated Sun+planets hero set, not the whole catalogue.
     def _typed_qids(*types: ObjectType) -> list[str]:
         return [
             qid
@@ -752,14 +723,10 @@ def _pick_fallback_images(
 ) -> list[dict]:
     """Pick up to ``target_count`` member photos for one group.
 
-    When ``promote_hero`` is True (the group has no pre-existing entry the
-    hero would displace), the first photo of the highest-sitelink member
-    that clears :data:`GROUP_FALLBACK_MIN_HERO_DIM` leads the result; if no
-    member qualifies, the gallery leader survives at lower resolution rather
-    than ship no image. ``exclude_files`` is a set of Commons filenames
-    already chosen elsewhere (e.g. by the existing P154 pass) and must not
-    be re-emitted. Each member's :func:`_select_for_qid` result is computed
-    once and reused across hero scan and gallery fill.
+    When ``promote_hero`` is True, the first hero-resolution photo of the
+    highest-sitelink member leads the result; if none qualifies, the
+    gallery leader survives at lower resolution rather than ship nothing.
+    ``exclude_files`` are Commons filenames already chosen elsewhere.
     """
     if target_count <= 0:
         return []
@@ -873,10 +840,8 @@ class _MetadataView:
 def _merge_manual_extras(selections: dict[str, list[dict]]) -> None:
     """Append manual-extra entries to the per-object selections in place.
 
-    Files not yet on disk or with a non-servable license are dropped with a
-    warning — the downloader is responsible for fetching them, so absence
-    here means the manual entry was added without re-running download, or
-    the upstream license disqualifies it.
+    Drops entries not yet downloaded or with a non-servable license, with
+    a warning — the downloader is responsible for fetching them.
     """
     for obj_id, entries in read_manual_extras().items():
         existing = selections.setdefault(obj_id, [])

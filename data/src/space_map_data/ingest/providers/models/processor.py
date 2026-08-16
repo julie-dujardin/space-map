@@ -1,18 +1,12 @@
 """ModelProcessor: read 3D manifests, convert + optimise, emit per-slug glTF bundles.
 
-Pipeline:
-1. Convert every convertible source file in every manifest entry to a
-   compressed (high+low knobs) GLB in ``CONVERTED_DIR`` — caches across runs.
-2. Per entry, compare cached candidates' post-compression sizes and pick:
-   - high = largest ``.high.glb`` ≤ ``MAX_FILE_BYTES``
-   - low  = smallest ``.low.glb`` ≤ ``MAX_FILE_BYTES``
-   When no candidate's high fits under the cap, the slug is skipped with a
-   warning (don't ship something that won't deploy to Pages).
-3. Hardlink the picks into ``EXPORT_DIR/v1/models/{slug}/{high,low}.glb``
-   (copy fallback on cross-fs); write slim per-tier prod metadata.json.
-4. Write a debug sidecar to ``EXPORT_METADATA_DIR/v1/models/{slug}/`` with
-   every candidate's size/sha + the pick reasoning + invalidation key.
-5. Point each mission's ``Object.model_name`` at its winning slug.
+Pipeline: convert every source file to a compressed high+low GLB pair
+(cached in ``CONVERTED_DIR``); per entry pick the largest high and smallest
+low that fit ``MAX_FILE_BYTES`` (skip the slug with a warning if none fits);
+hardlink picks into ``EXPORT_DIR/v1/models/{slug}/`` with slim prod
+metadata; write a debug sidecar to ``EXPORT_METADATA_DIR`` with every
+candidate's size/sha + pick reasoning + invalidation key; point each
+mission's ``Object.model_name`` at its winning slug.
 
 Slugs are unique across all manifests (NASA + ESA + merged.yaml). Merged
 entries win for ``Object.model_name`` since their manifest loads first.
@@ -380,13 +374,10 @@ class ModelProcessor:
     def _load_satcat_object_ids(self) -> dict[int, str]:
         """Map every satcat NORAD → its actual ``Object.id``.
 
-        After CelesTrak ingest, each satcat NORAD is claimed by exactly one
-        Object via ``Object.satcat_norad_cat_id`` — either a ``norad_satcat-N``
-        stub or, when consolidated via COSPAR, an existing probe Object
-        (e.g. NORAD 25008 → ``probe-88592384``). For joint launches that
-        produce multiple probe claims sharing a NORAD, we pick the first
-        one returned by the query (deterministic in practice via DB row
-        order — Phase 5 will tighten this).
+        Each NORAD is claimed by exactly one Object via
+        ``Object.satcat_norad_cat_id`` — a ``norad_satcat-N`` stub, or an
+        existing probe Object when consolidated via COSPAR. Joint launches
+        sharing a NORAD across multiple probes pick the first row returned.
         """
         session = get_session()
         out: dict[int, str] = {}

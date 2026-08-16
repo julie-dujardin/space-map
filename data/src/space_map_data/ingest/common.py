@@ -42,49 +42,30 @@ def ingest_objects(download_dir: Path) -> None:
     """Ingest orbital bodies: SBDB, SPICE, spacecraft.
 
     Order: naturals first (sbdb → spice → sbdb_moons), then artificial
-    earth-sat / spacecraft (satcat → probes → celestrak).
-
-    Kepler elements for natural NAIF-keyed bodies land on the Horizons
-    sub-table via SPICE ingest (the table name is historical; SPICE is now
-    the only writer).
-
-    Satcat ingests before probes so probe rows can FK their
-    `satcat_norad_cat_id` directly against existing satcat rows at insert
-    time. CelesTrak runs last so it can claim the celestrak FK on the
-    appropriate probe row (or mint `norad_satcat-N` when no probe matches).
+    earth-sat / spacecraft (satcat → probes → celestrak). Satcat ingests
+    before probes so probe rows can FK `satcat_norad_cat_id` at insert time;
+    celestrak runs last so it can claim the FK on the matching probe row
+    (or mint `norad_satcat-N` when none matches).
     """
     # --- Natural bodies ---
     sbdb.ingest(download_dir)
     spice.ingest(download_dir)
-    # sbdb_moons runs after spice so the name-match against Horizons/SPICE
-    # moons can find existing rows (e.g. Pluto's Charon) and merge SBDB
-    # metadata onto them instead of producing duplicate Object rows.
+    # After spice so name-matching against Horizons/SPICE moons merges SBDB
+    # metadata onto existing rows instead of duplicating them.
     sbdb_moons.ingest(download_dir)
-    # Taxonomic classes for the small bodies, keyed on the SBDB SPK-IDs the
-    # sbdb ingest above just wrote.
+    # Taxonomic classes, keyed on the SPK-IDs sbdb just wrote.
     ssodnet.ingest(download_dir)
-    # Discovery year for natural moons; matches the JPL table to existing
-    # SPICE/Horizons moon rows by name/designation.
     jpl_satellite_discovery.ingest(download_dir)
     # --- Artificial / earth-sat objects ---
     satcat.ingest(download_dir)
-    # Spacecraft Object rows from `missions/*/_index.json`. Their IDs are
-    # `probe-<int>` rather than `naif-<int>` because NAIF IDs are recycled.
-    # Sets `satcat_norad_cat_id` FK against the satcat table populated above.
+    # IDs are `probe-<int>` not `naif-<int>` because NAIF IDs are recycled.
     probes.ingest(download_dir)
     celestrak.ingest(download_dir)
-    # GCAT launch-vehicle table (lv.tsv): family lineage + specs per LV name,
-    # the join target for launchlog.lv_type. Independent of Object rows.
     launch_vehicle.ingest(download_dir)
-    # GCAT site tables (sites.tsv, lp.tsv): the coordinates behind the site and
-    # pad codes the launchlog carries. Independent of Object rows.
     launch_site.ingest(download_dir)
-    # GCAT launch log: mirror the table and link each row to an Object by
-    # COSPAR (piece == cospar_id). Runs last so every cospar-bearing Object
-    # (incl. backfilled norad_satcat-* rows) already exists.
+    # Runs last so every cospar-bearing Object, including backfilled
+    # norad_satcat-* rows, already exists to link against.
     launchlog.ingest(download_dir)
-    # Post-ingest invariants: probe-* and norad_satcat-* must be disjoint by
-    # NORAD + COSPAR, and the FK ↔ denormalized norad_cat_id must agree.
     assert_no_namespace_collision(get_session())
 
 
@@ -109,16 +90,10 @@ def ingest_wikidata(download_dir: Path) -> None:
 
 
 def ingest_images() -> None:
-    """Compute the per-object best Commons image and set ``image_available``.
+    """Pick the best Commons image per object, ranked by assessment >
+    pageimage frequency > globalusage, and set ``Object.image_available``.
 
-    Writes ``OBJECT_IMAGES_PATH`` keyed by ``Object.id``,
-    with at most one filename per derivative-tree component (best by
-    assessment > pageimage frequency > globalusage). Sets
-    ``Object.image_available`` based on whether any image survives the
-    selection.
-
-    Must run after ``ingest_wikidata`` so every Object's ``wikidata_qid`` is
-    in place — discovery joins on QID.
+    Must run after ``ingest_wikidata`` — discovery joins on ``wikidata_qid``.
     """
     image_selection.ingest()
 

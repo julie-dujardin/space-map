@@ -19,12 +19,10 @@ from space_map_data.models.object.base import Base
 
 
 class TestSyntheticSpkid:
-    """The synthetic SPK-ID formula for asteroid moons:
-    ``synth_spkid = (sat_index + 1) * 100_000_000 + parent_spkid``.
+    """``synth_spkid = (sat_index + 1) * 100_000_000 + parent_spkid``.
 
-    Mirrors the SPICE NAIF convention for binary asteroid satellites
-    (``BODY1<spkid>``, ``BODY2<spkid>``, ...) so catalogued binaries get
-    JPL-compatible IDs by construction.
+    Mirrors the SPICE NAIF convention for binary asteroid satellites,
+    giving catalogued binaries JPL-compatible IDs by construction.
     """
 
     def test_dimorphos_matches_jpl_naif(self):
@@ -58,10 +56,8 @@ class TestSyntheticSpkid:
 
 
 class TestCanonicalNaifSatelliteRange:
-    """``_canonical_naif`` must pass binary-satellite NAIF IDs through
-    unchanged — SBDB-moon Object rows carry ``naif_id == spkid`` in this
-    range, so PCK rows keyed on the raw 1xxxxxxxx value join correctly.
-    """
+    """Binary-satellite NAIF IDs pass through unchanged, so PCK rows keyed
+    on the raw 1xxxxxxxx value join correctly against ``naif_id == spkid``."""
 
     def test_dimorphos_passes_through(self):
         assert _canonical_naif(120_065_803) == 120_065_803
@@ -76,10 +72,8 @@ class TestCanonicalNaifSatelliteRange:
 
 
 class TestBuildNewObjectRow:
-    """``_build_new_object_row`` sets both ``spkid`` and ``naif_id`` to the
-    synthetic value so spkid-based queries and PCK (naif-keyed) lookups
-    both find the row.
-    """
+    """Sets both ``spkid`` and ``naif_id`` to the synthetic value, so
+    spkid-based queries and PCK (naif-keyed) lookups both find the row."""
 
     def _row(
         self,
@@ -87,8 +81,7 @@ class TestBuildNewObjectRow:
         sat_row: dict | None = None,
         parent_designation: str | None = None,
     ) -> dict:
-        # The method doesn't touch self — instantiate without __init__ to
-        # avoid spinning up a DB session.
+        # Instantiate without __init__ to avoid spinning up a DB session.
         ingestor = SBDBMoonsIngestor.__new__(SBDBMoonsIngestor)
         return ingestor._build_new_object_row(
             sat_id="spkid-120065803",
@@ -204,14 +197,12 @@ def _write_payload(moons_dir, filename, des, spkid, sat_name=None):
 
 
 class TestParentResolution:
-    """The ingest must resolve a parent by its permanent designation when the
-    SPK-ID the satellite payload was keyed under has drifted out of the objects
-    table, and must not ingest the same body twice from aliased SPK-IDs.
-    """
+    """Resolves a parent by permanent designation when its SPK-ID has drifted
+    out of the objects table, without double-ingesting aliased SPK-IDs."""
 
     def _parent(self, session):
-        # Objects table holds 1998 WV24 under its older SPK-ID; the payloads
-        # below arrive keyed under the drifted 50-form.
+        # Objects table holds the older SPK-ID; payloads arrive keyed
+        # under the drifted 50-form.
         session.add(
             Object(
                 id="spkid-3024247",
@@ -242,8 +233,7 @@ class TestParentResolution:
     def test_aliased_twin_payloads_ingest_one_body(self, session, tmp_path):
         self._parent(session)
         moons = tmp_path / "sources" / "position" / "sbdb" / "moons"
-        # Same body, two payloads: one keyed by the in-table SPK-ID, one by the
-        # drifted alias. Only one moon must result.
+        # Same body under two SPK-ID keys — only one moon must result.
         _write_payload(moons, "3024247.json", "1998 WV24", 50_024_270)
         _write_payload(moons, "50024270.json", "1998 WV24", 50_024_270)
 

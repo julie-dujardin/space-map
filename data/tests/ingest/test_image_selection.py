@@ -1,9 +1,7 @@
 """Tests for space_map_data.ingest.providers.image_selection.
 
-The DB-update step is mechanical — these tests cover the pure-function core
-(``_select_for_qid``) over a staged tmp-path layout, so the failure-mode
-matrix is observable: missing metadata, non-servable parent + servable
-sibling, multi-tree object, etc.
+The DB-update step is mechanical; these tests exercise the pure-function
+core (``_select_for_qid``) over a staged tmp-path layout.
 """
 
 import json
@@ -173,9 +171,8 @@ class TestSelectForQid:
         )
 
     def test_picks_featured_tree_member_over_direct_pageimage(self, layout):
-        # The un-centered raw is the Wikidata pageimage; the centered crop
-        # is featured. The crop should win even though it's not a direct
-        # candidate.
+        # The centered crop is featured and should win despite the raw
+        # pageimage being the direct candidate.
         _stage_wikidata(layout, "Q308", p18=["Mercury_raw.jpg"])
         _stage_metadata(
             layout, "Mercury_raw.jpg", other_versions=["Mercury_centered.jpg"]
@@ -189,9 +186,8 @@ class TestSelectForQid:
         assert result == [{"file": "Mercury_centered.jpg", "kind": "photo"}]
 
     def test_pageimage_count_breaks_assessment_tie(self, layout):
-        # Two unrelated direct candidates in the SAME tree (siblings via
-        # shared parent). Both un-assessed; the one chosen by more language
-        # wikis wins.
+        # Two un-assessed direct candidates share a tree; the one with more
+        # language-wiki pageimages wins.
         _stage_wikidata(layout, "Q1234", p18=["primary.jpg"])
         for lang in LANGUAGES[:3]:
             _stage_pageimage(layout, lang, "Q1234", "primary.jpg")
@@ -221,9 +217,7 @@ class TestSelectForQid:
         ]
 
     def test_falls_back_to_servable_direct_when_tree_winner_not_servable(self, layout):
-        # Featured tree-only crop has a non-free license; the direct
-        # candidate is plain CC BY-SA. The export must still receive a
-        # servable file — fall back to the next-best in the component.
+        # Featured crop is non-free; must fall back to the servable direct candidate.
         _stage_wikidata(layout, "Q1234", p18=["raw.jpg"])
         _stage_metadata(layout, "raw.jpg", other_versions=["fancy_but_nonfree.jpg"])
         _stage_metadata(
@@ -393,9 +387,8 @@ class TestPickFallbackImages:
         assert [p["file"] for p in out] == ["shared.jpg"]
 
     def test_hero_promoted_to_index_zero(self, layout):
-        # Top member has only a gallery-resolution photo; the next member has
-        # a hero-resolution photo. The hero leads even though it's a lower-
-        # ranked member.
+        # Lower-ranked member's hero-res photo should lead over the top
+        # member's gallery-res photo.
         _stage_member(
             layout, "Q1", photo="leader-small.jpg", sitelinks=10, width=900, height=900
         )
@@ -501,9 +494,8 @@ class TestPickFallbackImages:
         assert len(out) == 2
 
     def test_promote_hero_false_preserves_sitelink_order(self, layout):
-        # When promote_hero=False we don't reorder for hero-resolution; the
-        # highest-sitelink member's gallery-floor photo leads even if a
-        # lower-ranked member has a hero-res shot.
+        # promote_hero=False: sitelink order wins even over a lower-ranked
+        # member's hero-res shot.
         _stage_member(
             layout, "Q1", photo="leader.jpg", sitelinks=10, width=900, height=900
         )
