@@ -1,9 +1,5 @@
 <script lang="ts">
-	/**
-	 * How much material each ring system holds, on a log scale — the answer
-	 * spans fourteen decades (Saturn outweighs Jupiter by a trillion), so a
-	 * linear share-of-largest bar would leave every other system at zero width.
-	 */
+	/** How much material each ring system holds. */
 
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 	import { formatRingMass } from '$lib/rings/stats';
@@ -28,9 +24,8 @@
 		)
 	);
 
-	// `n` is where the bar ends. A range plots at its geometric mean, the middle
-	// of the span on a log axis; Jupiter's two published decades would otherwise
-	// draw at whichever end was picked.
+	// `n` is where the bar ends. A range plots at its geometric mean; Jupiter's
+	// two published decades would otherwise draw at whichever end was picked.
 	let entries = $derived.by<CountPerBodyEntry[]>(() =>
 		members
 			.filter((entry) => entry.id && masses.has(entry.id))
@@ -51,20 +46,6 @@
 		members.filter((entry) => entry.id && !entry.ring_mass).map((entry) => name(entry))
 	);
 
-	// A decade of headroom under the lightest system so its bar is still a bar
-	// rather than the zero-width sliver an exact floor would leave it.
-	let scale = $derived.by(() => {
-		if (!entries.length) return null;
-		const low = Math.floor(Math.log10(Math.min(...entries.map((e) => e.n)))) - 1;
-		const high = Math.ceil(Math.log10(Math.max(...entries.map((e) => e.n))));
-		return { low, span: high - low };
-	});
-
-	function fraction(entry: CountPerBodyEntry): number {
-		if (!scale) return 0;
-		return Math.min(1, Math.max(0, (Math.log10(entry.n) - scale.low) / scale.span));
-	}
-
 	function text(entry: CountPerBodyEntry): string {
 		const mass = masses.get(entry.primary_id ?? '');
 		if (!mass) return '';
@@ -75,14 +56,7 @@
 
 {#if entries.length > 0}
 	<div class="flex flex-col gap-1">
-		<CountPerBodyChart
-			{entries}
-			{fraction}
-			{text}
-			title={m.group_ring_mass_title()}
-			hint={m.chart_log_scale()}
-			tab="rings"
-		/>
+		<CountPerBodyChart {entries} {text} title={m.group_ring_mass_title()} tab="rings" />
 		{#if unmeasured.length > 0}
 			<p class="text-muted-foreground text-xs">
 				{m.group_ring_mass_unknown({ names: unmeasured.join(', ') })}
