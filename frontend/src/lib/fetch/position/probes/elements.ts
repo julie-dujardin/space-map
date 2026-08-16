@@ -1,18 +1,10 @@
 /**
  * Osculating Keplerian elements from a probe's currently-active sub-chunk.
- *
- * Each sub-chunk is fit against the probe's stamped primary (Moon for lunar
- * orbiters, Sun for cruise, …), so elements come out in that primary's frame
- * directly — the caller passes the primary's GM and the elements are usable
- * by the trail refresh path without further transform.
- *
- *   - kepler_pure  → static OrbitalElements (no drift).
- *   - kepler_drift → OrbitalElements + omDot/wDot in deg/day.
- *   - chebyshev    → osculating elements from a state-vector sample.
- *   - uncoverable  → null; trail is skipped.
- *
- * Returns null when `mu <= 0` for the Kepler paths or when the chebyshev
- * state sample is null / degenerate.
+ * Each sub-chunk is fit against the probe's stamped primary, so elements come
+ * out in that frame directly, usable by the trail refresh path unchanged:
+ * kepler_pure → static; kepler_drift → + omDot/wDot; chebyshev → from a
+ * state-vector sample; uncoverable → null. Null also when `mu <= 0` or the
+ * chebyshev sample is degenerate.
  */
 
 import type { OrbitalElements } from '$lib/types/objects';

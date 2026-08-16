@@ -1,11 +1,9 @@
 /**
- * Binary reader for the chebyshev payload of a position file.
- *
- * One body per record; each body holds segment-wise Chebyshev coefficients for
- * ECLIPJ2000 parent-relative position in km. Segment starts/ends are float64
- * (JD precision); coefficients are float32 by default, float64 when the file
- * header's `CHEBYSHEV_FLAG_FLOAT64_COEFFS` bit is set (Sun-orbiter zones where
- * the body's distance from its parent exceeds float32's resolution budget).
+ * Binary reader for the chebyshev payload of a position file. One body per
+ * record, each holding segment-wise Chebyshev coefficients for ECLIPJ2000
+ * parent-relative position in km. Segment starts/ends are float64;
+ * coefficients are float32 unless `CHEBYSHEV_FLAG_FLOAT64_COEFFS` is set
+ * (Sun-orbiter zones, where distance exceeds float32's resolution budget).
  */
 
 import {
@@ -17,16 +15,9 @@ import {
 } from '$lib/fetch/position/format';
 
 export interface ChebyshevBody {
-	/**
-	 * Full Object ID (`<prefix>-<numeric>`), reconstructed from the body
-	 * header's `id_type` + `obj_id_value`. Pluto and the perturber asteroids
-	 * ride as `spkid-…` even though `naifId` is their planetary NAIF ID, so
-	 * use this for cross-referencing with the elements export and object
-	 * detail bundles.
-	 *
-	 * Empty string when the body header carries an unknown id-type — the
-	 * consumer should drop the row rather than ship a malformed key.
-	 */
+	/** Full Object ID (`<prefix>-<numeric>`). Pluto and perturber asteroids ride
+	 *  as `spkid-…` even though `naifId` is their planetary NAIF ID, so use
+	 *  this for cross-referencing. Empty string on unknown id-type — drop the row. */
 	id: string;
 	naifId: number;
 	parentId: number;
@@ -47,13 +38,10 @@ export interface ChebyshevBody {
 	startJds: Float64Array;
 	/** Segment ends (JD TDB), exclusive upper bound of each segment. */
 	endJds: Float64Array;
-	/**
-	 * Flat coefficient store, laid out per segment as
-	 * `[cx_0..cx_{N-1}, cy_0..cy_{N-1}, cz_0..cz_{N-1}]` with `N = coeffsPerAxis`.
-	 * Length = `segmentCount * 3 * coeffsPerAxis`. Concrete type is
-	 * `Float32Array` for most zones, `Float64Array` for Sun-orbiter zones —
-	 * propagation reads it through indexed access so either dtype works.
-	 */
+	/** Flat coefficient store, per segment as `[cx_0..cx_{N-1}, cy_0..cy_{N-1},
+	 *  cz_0..cz_{N-1}]` with `N = coeffsPerAxis`. `Float32Array` for most
+	 *  zones, `Float64Array` for Sun-orbiter zones — read via indexed access
+	 *  so either dtype works. */
 	coeffs: Float32Array | Float64Array;
 }
 

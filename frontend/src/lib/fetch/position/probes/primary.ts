@@ -1,16 +1,10 @@
 /**
- * Resolve a probe's per-header fit-center override into a state vector
- * relative to the zone's stored fit center.
- *
- * Probe binaries now stamp each probe with its actual gravitational primary
- * (Moon for lunar orbiters, Titan for Cassini at Titan, Vesta for Dawn, …).
- * The render path needs that primary's state in the *zone's* fit-center
- * frame so it can compose `world = zoneCenter_world + (probeOffset - primaryOffset)`
- * and derive orbital elements in the right frame.
- *
- * The compose works as long as the primary and the zone center share a
- * chebyshev parent (Moon & Earth → EMB; Titan & Saturn → Saturn-bary;
- * Vesta & Sun → SSB). That holds for every body the writer can pick today.
+ * Resolve a probe's per-header fit-center override (Moon for lunar orbiters,
+ * Titan for Cassini at Titan, …) into a state vector relative to the zone's
+ * stored fit center, so the render path can compose
+ * `world = zoneCenter_world + (probeOffset - primaryOffset)`. Requires the
+ * primary and zone center to share a chebyshev parent — true for every body
+ * the writer can pick today.
  */
 
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';

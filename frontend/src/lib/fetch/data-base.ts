@@ -3,9 +3,9 @@ import { env } from '$env/dynamic/public';
 export const DATA_BASE = env.PUBLIC_DATA_URL || 'https://static.spacemap.co';
 
 /**
- * Images ship from their own origin (a separate Workers static-assets project)
- * so the frequently-redeployed data tree stays small. Follows an explicit data
- * origin when set — dev's `/data` proxy serves images too — else the prod host.
+ * Images ship from their own origin so the frequently-redeployed data tree
+ * stays small. Follows an explicit data origin when set — dev's `/data`
+ * proxy serves images too — else the prod host.
  */
 export const IMAGES_BASE = env.PUBLIC_DATA_URL || 'https://images.spacemap.co';
 
@@ -27,11 +27,9 @@ export function getDataVersions(): Record<string, string> {
 }
 
 /**
- * Build a data URL with its content class's cache-busting token appended as
- * `?v=`. Use for files under an immutable `Cache-Control` rule (see
- * `infrastructure/deploy/_headers`) so a content change yields a fresh URL.
- * Roots that stay on the revalidating default (metadata, systems, groups,
- * labels, credits) build straight off `DATA_BASE` instead.
+ * Data URL with its content class's cache-busting token appended as `?v=`,
+ * for files under an immutable `Cache-Control` rule. Roots on the
+ * revalidating default build straight off `DATA_BASE` instead.
  */
 export function versionedUrl(path: string, cls: string): string {
 	return buildVersionedUrl(DATA_BASE, path, cls);
@@ -46,9 +44,8 @@ export function versionedImageUrl(path: string): string {
 function buildVersionedUrl(base: string, path: string, cls: string): string {
 	const token = versions[cls];
 	if (!token) {
-		// Only reachable before metadata resolves or on a legacy export with no
-		// `versions`. Under the immutable header an unversioned URL risks a stale
-		// cache entry, so surface it rather than fail silently.
+		// Before metadata resolves, or on a legacy export: an unversioned URL
+		// risks a stale cache entry under the immutable header, so surface it.
 		console.error(`versionedUrl: missing '${cls}' token for ${path}`);
 		return `${base}${path}`;
 	}

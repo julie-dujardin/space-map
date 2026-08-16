@@ -1,8 +1,8 @@
 /**
  * Keeps `memberEntryKey` in sync with `feature_member_key` in
- * `data/src/space_map_data/export/notable.py`. Feature members carry their
- * host body's id, so keying on `id` alone crashes a `{#each}` on any body with
- * two named features (`each_key_duplicate`).
+ * `data/src/space_map_data/export/notable.py`. Feature members share their
+ * host body's id, so keying on `id` alone crashes `{#each}` on a body with
+ * two named features.
  */
 
 import { describe, expect, it } from 'vitest';

@@ -1,8 +1,6 @@
 /**
- * The IAU code ↔ `ft-` slug mapping is served by `groups/__index__.json` rather
- * than mirrored in the frontend, so the 57-entry table lives only in the export.
- * These lock the lookup both ways (feature → its type page, type page → its
- * member search filter).
+ * The IAU code ↔ `ft-` slug table lives only in the export, served via
+ * `groups/__index__.json`. Locks the lookup both ways.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';

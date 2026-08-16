@@ -1,11 +1,9 @@
 /**
- * The Images tab's shelves, in display order.
- *
- * A page's pictures come from several selections, one per subject: the object's
- * own (`images`), its ring system (`ring_images`), and the pooled galleries the
- * exporter attaches (`galleries` — its features, its moons, or one shelf per
- * member on a collection). This assembles them into the ordered list the panel
- * renders and the `&gal=` URL indexes into.
+ * The Images tab's shelves, in display order. A page's pictures come from
+ * several selections, one per subject: the object's own (`images`), its ring
+ * system (`ring_images`), and the pooled galleries the exporter attaches
+ * (`galleries`). Assembles them into the ordered list the panel renders and
+ * the `&gal=` URL indexes into.
  */
 
 import type { Snippet } from 'svelte';
@@ -34,10 +32,10 @@ export interface Gallery {
 }
 
 /**
- * Where a shelf, or a picture inside one, leads: the object it is about, or the
- * tab on this page that covers the same subject. Resolved by the drawer — only
- * it knows the host body, which tabs exist, and the localized names — so the
- * gallery components stay unaware of routing.
+ * Where a shelf, or a picture inside one, leads: the object it is about, or
+ * the tab on this page covering the same subject. Resolved by the drawer —
+ * only it knows the host body, tabs and localized names — keeping the
+ * gallery components unaware of routing.
  */
 export interface ShelfLink {
 	/** Where it lands — what the jump changes. */
@@ -56,12 +54,8 @@ export interface ShelfLink {
 	background?: Snippet;
 }
 
-/**
- * How many pictures the page holds in total, across every shelf.
- *
- * Deduped by filename: the exporter keeps the pooled shelves clear of the
- * object's own pictures, but the ring selection can repeat one of them.
- */
+/** How many pictures the page holds, across every shelf. Deduped by
+ *  filename — the ring selection can repeat one of the object's own. */
 export function imageCount(galleries: Gallery[]): number {
 	const files = new Set<string>();
 	for (const gallery of galleries) {
@@ -86,12 +80,9 @@ const POOLED_TITLES: Record<string, () => string> = {
 	[MOONS_GALLERY]: m.moons_section
 };
 
-/**
- * Shelf order, mirroring the drawer's tab bar: the object's own pictures lead,
- * then one shelf per aspect in the order the tabs covering them are listed. A
- * shelf that names a subject instead of an aspect — a collection's members —
- * has no tab to follow and keeps the exporter's order behind them.
- */
+/** Shelf order mirroring the drawer's tab bar: the object's own pictures
+ *  lead, then one shelf per aspect. A shelf naming a subject rather than an
+ *  aspect (a collection's members) has no tab to follow and trails behind. */
 const SHELF_ORDER = [
 	MAIN_GALLERY,
 	FEATURES_GALLERY,
@@ -140,10 +131,10 @@ export function buildGalleries(
 }
 
 /**
- * What a tile is captioned with, best first: the picture's title in the reading
- * language, the exporter's base-language one, the subject it is a picture of
- * (in a pooled shelf, where the subject says more than the picture's own name),
- * and failing all of those the Commons filename.
+ * What a tile is captioned with, best first: the reading-language title, the
+ * exporter's base-language one, the subject it's a picture of (a pooled
+ * shelf's subject often says more than the picture's own name), then the
+ * Commons filename.
  */
 export function imageTitle(
 	image: ObjectImage,

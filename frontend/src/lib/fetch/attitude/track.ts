@@ -1,10 +1,8 @@
 /**
  * Per-probe attitude: a lazily chunk-loaded keyframe stream + optional spin
  * baseline, evaluated per frame to a scene-frame body→world quaternion.
- * Coverage spans years, so chunks fetch on demand — only the one under the
- * playhead is resident. Created on focus; only the focused probe holds a track.
- *
- * Stored quaternions are `pxform("J2000", frame)` (J2000→body), so eval
+ * Coverage spans years, so only the chunk under the playhead is resident.
+ * Stored quaternions are `pxform("J2000", frame)` (J2000→body); eval
  * conjugates for body→world, then rotates into the scene via `EQ_TO_SCENE`.
  */
 
@@ -54,10 +52,9 @@ export class AttitudeTrack {
 		private readonly probeId: string,
 		manifest: ProbeAttitude
 	) {
-		// Derive coverage from the chunk files, not manifest start/end_jd — those
-		// echo CK-claimed windows, which can start years before the first real
-		// keyframe (Spitzer claims 2000, first keyframe 2005). Trusting them
-		// freeze-clamps the model where the pointing fallback should take over.
+		// Derive coverage from the chunk files, not manifest start/end_jd —
+		// those echo CK-claimed windows that can start years before the first
+		// real keyframe (Spitzer claims 2000, first keyframe 2005).
 		this.startJd = manifest.files.length ? manifest.files[0].start_jd : 0;
 		this.endJd = manifest.files.length ? manifest.files[manifest.files.length - 1].end_jd : 0;
 		this.baselines = manifest.baselines;
@@ -87,8 +84,7 @@ export class AttitudeTrack {
 
 		// Recompose this chunk's spin baseline (if any): q_full =
 		// spin(rate·(t−anchor_jd))·anchor·residual. A spinner that changes rate
-		// across phases carries one baseline per phase; the chunk's
-		// baseline_index picks the span active here.
+		// across phases carries one baseline per phase, picked by baseline_index.
 		const baseline = this.baselines?.[this.files[ci].baseline_index ?? 0];
 		if (baseline) {
 			const { axis, rate_rad_s, anchor, anchor_jd } = baseline;

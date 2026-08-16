@@ -1,12 +1,8 @@
 /**
  * A body row built from an object's global JSON rather than from a binary
- * chunk.
- *
- * The chunks are where elements normally come from, but they only cover what
- * the scene is currently streaming. The global bundle describes every object in
- * the catalogue, so it is what stands in when the chunk has not landed (the
- * render placeholder) and what answers for a body the scene never loads at all
- * (a trip end far outside the view).
+ * chunk. Chunks only cover what the scene is streaming; the global bundle
+ * describes every object, so it stands in for the render placeholder before a
+ * chunk lands, and for a body the scene never loads at all.
  */
 
 import { ObjectType, type BodyData } from '$lib/types/objects';
@@ -22,10 +18,9 @@ function parseObjectType(typeStr: string): ObjectType {
 }
 
 /**
- * Map a global JSON `orbit.source` string (the lowercase `OrbitalSource` enum
- * value) back to the numeric ordinal — a body described by its JSON has no
- * binary header to pull from, so we parse the string. Returns `UNKNOWN` if the
- * server sent a value the frontend doesn't know.
+ * Map a global JSON `orbit.source` string (the lowercase `OrbitalSource`
+ * enum value) to the numeric ordinal — no binary header to pull it from.
+ * Returns `UNKNOWN` for an unrecognized value.
  */
 const ORBIT_SOURCE_BY_NAME: Record<string, OrbitalSource> = {
 	horizons: OrbitalSource.HORIZONS,
@@ -39,12 +34,9 @@ function parseOrbitalSource(name: string | undefined): OrbitalSource {
 	return ORBIT_SOURCE_BY_NAME[name] ?? OrbitalSource.UNKNOWN;
 }
 
-/**
- * SGP4 rows (Earth satellites) are only good near their epoch, so they carry a
- * tight validity window the propagation gate hides them outside of. The real
- * chunk overwrites it once it lands. Keplerian and parabolic orbits have no
- * hard cutoff.
- */
+/** SGP4 rows (Earth satellites) are only good near their epoch, so they
+ *  carry a validity window the propagation gate hides them outside of, until
+ *  the real chunk overwrites it. Keplerian/parabolic orbits have no cutoff. */
 const SGP4_VALIDITY_SLACK_DAYS = 14;
 
 /**

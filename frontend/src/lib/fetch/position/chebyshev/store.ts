@@ -1,21 +1,13 @@
 /**
- * Per-zone cache of Chebyshev chunks.
+ * Per-zone cache of Chebyshev chunks, from binaries at
+ * `/data/v1/position/{zone}/[0/]{chunkIdx}.bin.gz`. Each chunked zone
+ * declares its own `chunks`/`chunk_days`/`start_jd` — Saturn's ~46-day
+ * cadence and Pluto's ~730-day cadence coexist with no global tier metadata;
+ * chunk index for a JD is `floor((jd - start_jd) / chunk_days)`.
  *
- * The export ships per-zone, per-time-chunk binaries under
- * `/data/v1/position/{zone}/[0/]{chunkIdx}.bin.gz` (the `0/` segment only for
- * `major`). Each chebyshev zone in
- * `metadata.position.zones` (those with `shape: "chunked"`) declares its
- * own `chunks`, `chunk_days`, and `start_jd` — Saturn's ~46-day cadence
- * and Pluto's ~730-day cadence coexist with no global tier metadata. A zone's
- * chunk index for any JD is `floor((jd - start_jd) / chunk_days)`.
- *
- * For now we eager-load the chunk containing the current JD plus its two
- * neighbors across every zone. Time scrubbing advances one chunk at a time, so
- * ±1 is enough to avoid a fetch stall at chunk boundaries; the tail chunk is
- * evicted when we slide forward.
- *
- * Bodies are keyed by their full object id (`<prefix>-<numeric>`), built into
- * each body header and surfaced as `ChebyshevBody.id`.
+ * Eager-loads the chunk containing the current JD plus its two neighbors —
+ * scrubbing advances one chunk at a time, so ±1 avoids a fetch stall at
+ * boundaries. Bodies are keyed by full object id (`<prefix>-<numeric>`).
  */
 
 import { fetchChebyshev, type FetchedChebyshev } from '$lib/fetch/position/chebyshev/fetch';

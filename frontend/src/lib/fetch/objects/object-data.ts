@@ -42,13 +42,10 @@ export interface TemperatureReading {
 	condition?: TemperatureCondition;
 }
 
-/**
- * A body's temperatures, ordered headline-first by the exporter.
- *
- * `origin` is the whole block's, not per reading: an estimate is a radiative
- * equilibrium calculation, and mixing one into measured readings would leave
- * the bar readable as neither.
- */
+/** A body's temperatures, ordered headline-first by the exporter. `origin`
+ *  applies to the whole block, not per reading: mixing an estimated
+ *  radiative-equilibrium figure into measured readings would leave the bar
+ *  readable as neither. */
 export interface Temperatures {
 	readings: TemperatureReading[];
 	origin: 'measured' | 'estimated';
@@ -56,24 +53,20 @@ export interface Temperatures {
 }
 
 /**
- * Per-image thumbnail manifest emitted by the exporter.
- *
- * Keys are size labels (s=512px, m=1024px, xl=4096px on the longest side),
- * values are file extensions (without a leading dot). A label is absent when
- * the source was smaller than the bucket — we never upscale. The smallest
- * available label always covers the source, since a source below 512px gets
- * emitted as `s` verbatim.
+ * Per-image thumbnail manifest. Keys are size labels (s=512px, m=1024px,
+ * xl=4096px on the longest side), values are extensions without the dot. A
+ * label is absent when the source was smaller than the bucket — never
+ * upscaled.
  */
 export type ImageVariants = Partial<Record<'s' | 'm' | 'xl', string>>;
 
 export interface ObjectImage {
 	file: string;
 	source_url: string;
-	/** `photo` (P18 / Wikipedia pageimage) and `logo` (P154) are the object-side
-	 *  kinds; `locator` (P242) is feature-only — IAU outline maps for surface
-	 *  features. `radar` flags small-body radar/shape-model renders, kept visible
-	 *  for now but filterable once 3D shape rendering replaces them. New kinds may
-	 *  appear; consumers should treat unknown values as generic photos. */
+	/** `photo`/`logo` are object-side kinds; `locator` is feature-only (IAU
+	 *  outline maps); `radar` flags small-body radar/shape-model renders,
+	 *  filterable once 3D shape rendering replaces them. Unknown values should
+	 *  be treated as generic photos. */
 	kind: 'photo' | 'logo' | 'locator' | 'radar';
 	variants: ImageVariants;
 	/** Attribution tier from the Commons license, for social-card use where a
@@ -97,10 +90,10 @@ export interface ObjectImage {
 }
 
 /**
- * One pooled image gallery beside the subject's own `images` — pictures of its
- * surface features, of its moons, or (on a collection) of one member. The key
- * is the URL token: a fixed name for the pooled kinds, the member's Object.id
- * for a collection's shelves.
+ * One pooled image gallery beside the subject's own `images` — its surface
+ * features, its moons, or (on a collection) one member. `key` is the URL
+ * token: a fixed name for pooled kinds, the member's Object.id for a
+ * collection's shelves.
  */
 export interface ImageGalleryData {
 	key: string;
@@ -121,11 +114,9 @@ export interface TextureAttribution {
 	frames?: number;
 }
 
-/**
- * One denormalized notable object for the detail-page strip + list — a group
- * member (asteroid) or a moon. Picked at export time; carries everything the
- * UI needs so no per-object bundle fetch is required to render the tile/row.
- */
+/** One denormalized notable object for the detail-page strip + list — a
+ *  group member or a moon. Picked at export time; carries everything the UI
+ *  needs so no per-object bundle fetch is required to render the tile/row. */
 export interface NotableMemberEntry {
 	/** English Wikidata label (matching object bundles), or the DB fallback name. */
 	name: string;
@@ -172,9 +163,8 @@ export interface NotableMemberEntry {
 	/** Mass of the member's *rings*, not the member — the Ring Systems page
 	 *  charts its eight against each other. Ringed bodies only. */
 	ring_mass?: RingMass;
-	/** The Structure & Activity collections: the figure that page ranks its
-	 *  members by, and what its tile draws instead of a photograph. Each is set
-	 *  only on the page it belongs to. */
+	/** The Structure & Activity collections: the figure each page ranks its
+	 *  members by, drawn on its tile instead of a photograph. */
 	ocean?: MemberOcean;
 	atmosphere_pressure?: AtmospherePressure;
 	/** The layer stack, trimmed to what a tile-sized cutaway draws — geometry,
@@ -236,10 +226,10 @@ export function memberEntryKey(e: NotableMemberEntry): string {
 	return e.group ?? e.id ?? '';
 }
 
-/** One rate-stable spin span's baseline, subtracted before encoding so the
- *  keyframes carry only the slow residual. A spinner that changes rate across
- *  mission phases (Juno: 1↔2 RPM) has one per phase; each file's
- *  `baseline_index` selects the span active over it. */
+/** One rate-stable spin span's baseline, subtracted before encoding so
+ *  keyframes carry only the slow residual. A spinner that changes rate
+ *  across mission phases (Juno: 1↔2 RPM) has one per phase, selected per
+ *  file by `baseline_index`. */
 export interface SpinBaseline {
 	kind: 'spin';
 	/** Unit spin axis in J2000. */
@@ -253,11 +243,9 @@ export interface SpinBaseline {
 	end_jd: number;
 }
 
-/**
- * Per-probe attitude manifest (refit from NAIF CK kernels), carried in the
- * probe's `__global__` bundle. Binary chunks live at `v1/attitude/{id}/{name}`
- * in `ATTI` v2 format (see `docs/export-format/probe-attitude.md`).
- */
+/** Per-probe attitude manifest (refit from NAIF CK kernels), carried in the
+ *  probe's `__global__` bundle. Binary chunks live at
+ *  `v1/attitude/{id}/{name}` in `ATTI` v2 format. */
 export interface ProbeAttitude {
 	/** Where the orientation stream came from. Only `spice_ck` today (refit from
 	 *  NAIF CK kernels); absent on pre-`source` bundles — treat as `spice_ck`. */
@@ -559,13 +547,12 @@ export interface ModelSource {
 	mission?: FragmentOf;
 }
 
-/** Cited atmospheric facts for the ~two dozen bodies that have a measured
- *  gaseous envelope. Distinct from the render parameters in
- *  `v1/atmospheres.json`: those are stated at whichever level the shell is
- *  drawn from, these at the level a reader expects (surface, or the cloud
- *  deck for the giants). */
-/** One published pressure. The level is not decoration: the four giants all
- *  read 0.1 bar, and that is a cloud top rather than a surface. */
+/** Cited atmospheric facts for the ~two dozen bodies with a measured gaseous
+ *  envelope — distinct from the render parameters in `v1/atmospheres.json`,
+ *  which are stated at whichever level the shell is drawn from rather than
+ *  the level a reader expects. One published pressure: the level is not
+ *  decoration, since the four giants all read 0.1 bar at the cloud top, not
+ *  the surface. */
 export interface AtmospherePressure {
 	pa: number;
 	/** Reference level the pressure is quoted at ("surface", "cloud_top", …). */
@@ -596,8 +583,8 @@ export interface AtmosphereBlock {
 }
 
 /** The vertical axis the block's single pressure sits on. Every field is
- *  optional because a boundary is a turning point in temperature rather than a
- *  surface, so a source pins sometimes a height, sometimes a pressure. */
+ *  optional: a boundary is a turning point in temperature, not a surface, so
+ *  a source pins sometimes a height, sometimes a pressure. */
 export interface AtmosphereStructure {
 	/** What altitude 0 means. The giants hang off the 1 bar level and run
 	 *  negative below it. */
@@ -679,12 +666,9 @@ export interface InteriorBlock {
 }
 
 /** What the body is still doing: heat reaching the surface, the tide that
- *  supplies it, and the field a convecting core makes. 23 bodies.
- *
- *  The shape is lopsided on purpose — the categorical fields are complete and
- *  the numbers are not. Five bodies (Europa, Callisto, Mimas, Dione, Charon)
- *  carry a status and nothing else, which is the state of the literature and
- *  not a gap. Lead with the status; treat every measurement as optional. */
+ *  supplies it, and the field a convecting core makes. 23 bodies. Lopsided on
+ *  purpose — categorical fields are complete, numbers are not, and five
+ *  bodies carry only a status. Lead with the status; measurements optional. */
 export interface ActivityBlock {
 	volcanism?: Volcanism;
 	/** Rides with `volcanism`, never alone. */
@@ -828,12 +812,10 @@ export interface InteriorLayer {
 	 *  where the pressure picks one. It supersedes `state`: "solid water" is
 	 *  true of both an ice shell and the ice mantle far below it. */
 	phase?: string;
-	/** "basalt", "andesite", "anorthosite", "peridotite" — the name a
-	 *  petrologist gives the whole layer. It supersedes `state` for the same
-	 *  reason `phase` does: "solid silicate" is true of Earth's continents,
-	 *  its ocean floor and the lunar highlands, which are three rocks. Absent
-	 *  far more often than not, and deliberately so where the literature has
-	 *  not settled on one. */
+	/** "basalt", "andesite", "anorthosite", "peridotite" — the petrologist's
+	 *  name for the whole layer, superseding `state` for the same reason
+	 *  `phase` does. Absent far more often than not, deliberately, where the
+	 *  literature hasn't settled on one. */
 	rock?: string;
 	/** "core_size_disputed", "shell_thickness_modelled", … — provenance
 	 *  metadata, except "continental_crust_only" which renames the layer. */
@@ -844,11 +826,10 @@ export interface InteriorLayer {
 	/** No boundary to draw: `outer_radius_km` is where the layer fades out
 	 *  rather than where it ends. Jupiter's core is the case. */
 	diffuse?: true;
-	/** At `outer_radius_km`. Geotherms are published at boundaries — the Moho,
-	 *  660 km, the core-mantle boundary — so a layer's span is this against the
-	 *  next layer down's, and the innermost closes against the body's centre.
-	 *  Never on the outermost layer: that boundary is the surface, which
-	 *  `temperatures` measures. */
+	/** At `outer_radius_km`. Geotherms publish at boundaries — the Moho, 660 km,
+	 *  the core-mantle boundary — so a layer's span reads against the next
+	 *  layer down's. Never on the outermost layer: `temperatures` covers that
+	 *  boundary. */
 	outer_temperature_k?: number;
 	/** Usually the whole claim, `outer_temperature_k` being absent: most of
 	 *  these are a spread across models rather than an error bar on one. */

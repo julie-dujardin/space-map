@@ -47,14 +47,10 @@ const SUN_NAIF_ID = 10;
 
 /**
  * Osculating Keplerian elements from a chebyshev body's state at `jd`, with
- * the parent's GM. Returns null when the parent has no GM (SPICE coverage
- * hole or pre-load timing on `systems/global.json`), the chebyshev sample
- * misses, or the resulting state degenerates (radial / parabolic). The
- * snapshot drives the trail curve through the same kepler path as
- * SBDB-sourced bodies — see `processChebyshev` below. The trail refresh
- * path re-invokes this periodically via `PositionedBody.rederiveElements` to
- * keep the ellipse aligned with the actual chebyshev path as time advances
- * within a chunk.
+ * the parent's GM. Null when the parent has no GM, the sample misses, or the
+ * state degenerates. Drives the trail curve through the same kepler path as
+ * SBDB-sourced bodies (see `processChebyshev`); re-invoked periodically via
+ * `PositionedBody.rederiveElements` to keep the ellipse aligned as time advances.
  */
 function chebyshevOsculatingElements(
 	body: ChebyshevBody,
@@ -84,16 +80,11 @@ function chebyshevOsculatingElements(
 
 /**
  * The Sun-centred orbit of a body the ephemeris places against the barycentre.
- *
- * The elements above are fitted to an SSB-relative state, which is the frame
- * the body is drawn in but is not an orbit: nothing goes round the barycentre,
- * and the fit absorbs the Sun's own wobble into the semi-major axis — Venus
- * comes out 1.5% wide, and the mean motion that follows walks the body tens of
- * millions of kilometres off over a few years. Harmless for an ellipse redrawn
- * every frame, ruinous for anything that propagates years ahead, which is what
- * the trajectory planner does. So heliocentric bodies carry a second fit, taken
- * against the Sun with the Sun's GM, which tracks the kernel to under half a
- * million kilometres over five years.
+ * The SSB-relative fit isn't a real orbit — nothing goes round the barycentre,
+ * and it absorbs the Sun's wobble into the semi-major axis (Venus comes out
+ * 1.5% wide), walking a propagated position tens of millions of km off over a
+ * few years. Fine for a redrawn ellipse, ruinous for the trajectory planner —
+ * so heliocentric bodies get a second fit against the Sun's GM instead.
  */
 function chebyshevHelioElements(
 	body: ChebyshevBody,
@@ -104,24 +95,15 @@ function chebyshevHelioElements(
 	return chebyshevOsculatingElements(body, SUN_NAIF_ID, jd, sun);
 }
 
-/**
- * Build the URL for an elements-payload position file. Static parted zones
- * (most SBDB zones, spacecraft) skip the time component; chunked-parted zones
- * (earth date-segmented, moons chunk-indexed) inject it as a path segment.
- *
- * Chebyshev zones don't go through this loader — they're handled by the
- * `ChebyshevStore`'s own URL builder (`chunkedUrl`) and don't carry parts.
- */
+/** Build the URL for an elements-payload position file. Static parted zones
+ *  skip the time component; chunked-parted zones inject it as a path segment.
+ *  Chebyshev zones use `ChebyshevStore`'s own builder instead. */
 function elementsUrl(zone: string, zoom: number | null, part: number, time: string | null): string {
 	return time ? chunkedPartedUrl(zone, zoom, time, part) : partedUrl(zone, zoom, part);
 }
 
-/**
- * Capacity for the parsed-elements cache. Sized to comfortably hold the
- * Earth-sat hot-reload window (a handful of recent snapshots) plus a few
- * other zones the user might bounce between. Each entry retains the parsed
- * typed-array views and their ArrayBuffer — Earth's ~25K rows are ~5–10 MB.
- */
+/** Sized to hold the Earth-sat hot-reload window plus a few other zones the
+ *  user might bounce between. Each entry retains ~5–10 MB (Earth's ~25K rows). */
 const PARSED_ELEMENTS_CACHE_CAPACITY = 8;
 const elementsCache = new LruPromiseCache<ElementColumns>(PARSED_ELEMENTS_CACHE_CAPACITY);
 
@@ -167,21 +149,16 @@ export class ChunkLoader {
 	/** Barycenter elements used for planet orbit drawing. `processChebyshev`
 	 *  populates first (so `process` sees them when resolving planet parents). */
 	barycenters = new Map<string, OrbitalElements>();
-	/** Body IDs whose positions must be retained even when the body would
-	 *  normally be skipped from `positions` (writePositions=false / non-major).
-	 *  Seeded by the orchestrator with the parent IDs needed by downstream zones
-	 *  (e.g. `small_body_moons` parents whose asteroid bodies live in
-	 *  `small_bodies/*` zones — without this set, asteroid-moon parents would
-	 *  never end up in `positions` and the moons would skip / fall back). */
+	/** Body IDs whose positions must be retained even when normally skipped —
+	 *  seeded by the orchestrator with parent IDs downstream zones need (e.g.
+	 *  `small_body_moons` parents living in `small_bodies/*`). */
 	neededParentIds = new Set<string>();
 
 	/**
-	 * Past-position ring buffers for probes whose chunk has at least one
-	 * chebyshev sub-chunk. Keyed by probe.id and tagged with the current
-	 * parent key; when the probe crosses zones the parent flips and the
-	 * stored entries (in the OLD parent's frame) get cleared. Owned here so
-	 * accumulated trail history survives chunk-load passes — `processProbes`
-	 * mutates this map but never replaces it.
+	 * Past-position ring buffers for probes with at least one chebyshev
+	 * sub-chunk. Keyed by probe.id, tagged with the current parent key so a
+	 * zone crossing (parent flip) clears stale OLD-frame entries. Owned here
+	 * so trail history survives chunk-load passes.
 	 */
 	private readonly probeBuffers = new Map<string, { buffer: TrailBuffer; parentKey: string }>();
 
@@ -191,11 +168,10 @@ export class ChunkLoader {
 
 	/**
 	 * Build PositionedBody[] for every chebyshev body covered by `date`. Caller
-	 * must `await store.ensure(jd).done` first; zones with no loaded chunk are
-	 * skipped. Walks in barycenter-first order so children resolve parents from
-	 * `positions`. Each body carries osculating Keplerian elements derived from
-	 * the chebyshev state + parent GM, matching the SBDB/Horizons shape so the
-	 * trail builder uses the unified kepler curve in {@link makeTrail}.
+	 * must `await store.ensure(jd).done` first. Walks barycenter-first so
+	 * children resolve parents from `positions`; each body carries osculating
+	 * Keplerian elements matching the SBDB/Horizons shape for the unified
+	 * kepler trail curve.
 	 */
 	processChebyshev(date: Date, labels: LabelMap): PositionedBody[] {
 		if (!this.cheb) return [];
@@ -364,41 +340,20 @@ export class ChunkLoader {
 	}
 
 	/**
-	 * Build PositionedBody[] for every probe whose current chunk is resident
-	 * in `probeStore`. Mirrors `processChebyshev` but for spacecraft probes:
+	 * Build PositionedBody[] for every probe whose current chunk is resident in
+	 * `probeStore`. Mirrors `processChebyshev`: resolves each probe's fit-center
+	 * body (chebyshev must have run first) and its GM, needed to evaluate
+	 * Kepler-pure sub-chunks.
 	 *
-	 *   1. Iterate `probeStore.probesAt(jd)` — yields one entry per probe whose
-	 *      chunk for jd is loaded, deduped across zones (a flyby probe lives in
-	 *      both the planet zone and interplanetary; the store collapses them).
-	 *      The per-frame propagator re-resolves with the focused-system filter
-	 *      and flips parentId when the user zooms into a planet's zone.
-	 *   2. Resolve the fit-center body (Sun for `probes/interplanetary`,
-	 *      Mercury for `probes/mercury`, …) in `this.positions` — chebyshev
-	 *      must have run first so these are present.
-	 *   3. Look up GM(km³/s²) for the fit center; without it Kepler-pure
-	 *      sub-chunks can't be evaluated (no `sqrt(mu/a³)` for M drift).
-	 *      systems-global may not be loaded yet at first paint; the renderer
-	 *      retries each frame so eventual consistency catches up.
+	 * Trail handling splits per probe: pure-Kepler probes carry an osculating
+	 * snapshot (`orbitElements` + `rederiveElements`) that `refreshTrail`
+	 * re-snapshots across sub-chunk boundaries. A probe with any chebyshev
+	 * sub-chunk instead gets a `TrailBuffer` of past positions — an osculating
+	 * ellipse misrepresents a flyby/capture/depart maneuver, so the real path
+	 * is polylined instead.
 	 *
-	 * The returned `BodyData` carries zero osculating elements (the fit methods
-	 * produce position directly, no need to round-trip through Kepler for the
-	 * body itself). Trail handling splits per probe:
-	 *
-	 *   - **Pure Kepler** (no chebyshev sub-chunks anywhere in the probe): the
-	 *     `PositionedBody`'s `orbitElements` + `rederiveElements` carry a
-	 *     per-sub-chunk osculating snapshot. `refreshTrail`
-	 *     re-snapshots periodically so the curve tracks the next sub-chunk
-	 *     across boundaries.
-	 *   - **Has at least one chebyshev sub-chunk**: a `TrailBuffer` of past
-	 *     sampled positions takes over. `orbitElements` is left undefined so
-	 *     the trail builder takes the buffer codepath; the buffer is
-	 *     back-filled here against the current parent's frame and appended to
-	 *     each frame by `updatePositions`. An osculating ellipse misrepresents
-	 *     a flyby / capture / depart maneuver, so we polyline the real path.
-	 *
-	 * `validityStart/End` come from the chunk's common-header bounds, used by
-	 * the renderer to hide a probe whose chunk isn't loaded yet rather than
-	 * render a stale position.
+	 * `validityStart/End` come from the chunk's header bounds, so the renderer
+	 * can hide a probe whose chunk isn't loaded rather than render stale data.
 	 */
 	processProbes(probeStore: ProbeStore, date: Date, labels: LabelMap): PositionedBody[] {
 		const jd = dateToJD(date);
@@ -556,13 +511,9 @@ export class ChunkLoader {
 		return result;
 	}
 
-	/**
-	 * Fetch + parse a zone's elements file and register every row's parent ID
-	 * in `neededParentIds`. Call before processing zones whose parents live in
-	 * a different zone (e.g. `small_body_moons` parents in `small_bodies/*`) —
-	 * without pre-registration, the parent's `process()` pass drops the
-	 * position and the dependent body would skip.
-	 */
+	/** Fetch + parse a zone's elements file and register every row's parent ID
+	 *  in `neededParentIds`. Call before processing zones whose parents live in
+	 *  a different zone, or the dependent body's position would be dropped. */
 	async seedNeededParents(
 		zone: string,
 		zoom: number | null,
@@ -578,14 +529,11 @@ export class ChunkLoader {
 
 	/**
 	 * Fetch + parse one minor-body chunk into columnar form, without building a
-	 * per-row `PositionedBody`. The point cloud lives off the worker's per-frame
-	 * solve; the few bodies that become objects materialize on demand via
-	 * {@link MinorBucket}. Replaces the AoS `process()` path for asteroid zones.
-	 *
-	 * Still resolves a world position for the handful of rows in
-	 * `neededParentIds` (asteroid hosts of `small_body_moons`) into
-	 * `this.positions`, since the moons' `process()` pass looks their parent up
-	 * there — `process()` no longer runs for asteroid zones to do it.
+	 * per-row `PositionedBody` — the point cloud runs off the worker's per-frame
+	 * solve, and the few bodies that become objects materialize on demand via
+	 * {@link MinorBucket}. Still resolves positions for `neededParentIds` rows
+	 * into `this.positions`, since `process()` no longer runs for asteroid zones
+	 * to do it.
 	 */
 	async fetchMinorColumns(
 		zone: string,

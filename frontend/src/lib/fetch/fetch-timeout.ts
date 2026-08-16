@@ -1,15 +1,14 @@
 import { loadProgress } from '$lib/scene/state/load-progress.svelte';
 
-/** Wall-clock cap for a single boot data fetch. A stalled connection would
- *  otherwise hang the "Loading data" screen forever; aborting lets the caller
- *  surface an error the user can retry. Generous enough for large chunks on a
- *  slow-but-progressing mobile link. */
+/** Wall-clock cap for a boot data fetch — aborting lets the caller surface a
+ *  retryable error instead of hanging "Loading data" forever. Generous
+ *  enough for large chunks on a slow-but-progressing mobile link. */
 export const BOOT_FETCH_TIMEOUT_MS = 30_000;
 
 /**
- * Tee the compressed response stream through a byte counter so the loading bar
- * reflects real download activity. Skipped past boot (`active` false) or without
- * a Content-Length to fill the gap against. Callers still decompress the body.
+ * Tee the compressed response through a byte counter so the loading bar
+ * reflects real download activity. Skipped past boot, or without a
+ * Content-Length to measure against.
  */
 function countBootBytes(res: Response): Response {
 	if (!loadProgress.active || !res.body) return res;
@@ -30,10 +29,9 @@ function countBootBytes(res: Response): Response {
 }
 
 /**
- * `fetch` that aborts after `timeoutMs` (default {@link BOOT_FETCH_TIMEOUT_MS}).
- * Composes with a caller-supplied `signal`, so focus-change cancellation still
- * works. On timeout the rejection is a plain `Error` (not a bare `AbortError`)
- * so boot error UI reads clearly.
+ * `fetch` that aborts after `timeoutMs` (default {@link BOOT_FETCH_TIMEOUT_MS}),
+ * composing with a caller-supplied `signal`. Timeout rejects with a plain
+ * `Error`, not a bare `AbortError`, so boot error UI reads clearly.
  */
 export async function fetchWithTimeout(
 	input: string | URL,

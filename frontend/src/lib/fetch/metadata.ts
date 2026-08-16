@@ -1,8 +1,5 @@
-/**
- * Shared loader for `/data/v1/metadata.json`. Memoized — every consumer
- * (chunk prefetcher, Chebyshev store init, object-detail bundle lookup)
- * shares the same fetch.
- */
+/** Shared, memoized loader for `/data/v1/metadata.json` — every consumer
+ *  shares the same fetch. */
 
 import type { ChebyshevZoneParams } from './position/chebyshev/store';
 import type { ProbeZoneParams } from './position/probes/store';
@@ -10,13 +7,11 @@ import { DATA_BASE, setDataVersions } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
 
 /**
- * Bucket counts for hash-bucketed object detail bundles. `global` is the
- * count for `/data/v1/objects/__global__/{bucket}.json.gz`; each language key
- * gives the bundle count for that language's localized detail dir.
- *
- * The backend picks N at export time so average members-per-bundle hits a
- * fixed K (100 global, 200 localized). Consumers compute
- * `hash(id) % N` to locate the bundle holding a given object.
+ * Bucket counts for hash-bucketed object detail bundles. `global` counts
+ * `/data/v1/objects/__global__/{bucket}.json.gz`; each language key counts
+ * that language's localized detail dir. The export picks N so average
+ * members-per-bundle hits a fixed K; consumers locate a bundle via
+ * `hash(id) % N`.
  */
 export type ObjectBundles = {
 	global: number;
@@ -30,12 +25,10 @@ export interface PartedZoom {
 }
 
 /** Time-chunked + parted, ISO-date label (currently `earth`):
- *  `position/{zone}/[{zoom}/]{YYYY-MM-DD}/{part}.bin.gz`. The available snapshot
- *  dates are sparse and irregular (recent CelesTrak dailies + historical
- *  Space-Track weeklies), so `parts_by_date` doubles as the date index — its
- *  keys are exactly the exported snapshots — and gives each date's part count
- *  (historical weeks carry the full decayed catalog, recent dailies fewer).
- *  `parts` is the max across dates, a convenience bound. */
+ *  `position/{zone}/[{zoom}/]{YYYY-MM-DD}/{part}.bin.gz`. Snapshot dates are
+ *  sparse and irregular, so `parts_by_date` doubles as the date index — its
+ *  keys are the exported snapshots, each with its own part count. `parts` is
+ *  the max across dates, a convenience bound. */
 export interface DateSegmentedZoom {
 	shape: 'chunked-parted';
 	label: 'date';
@@ -67,9 +60,9 @@ export interface ChebyshevZoom {
 	end_jd: number;
 }
 
-/** Probe zones — emitted directly at zone level (no `zooms` wrapper) so the URL
- *  is `position/{zone}/{chunk}.bin.gz`. The distinct `probes` shape tag tells
- *  them apart from flat chebyshev zones, which also sit at zone level. */
+/** Probe zones — emitted directly at zone level (no `zooms` wrapper), URL
+ *  `position/{zone}/{chunk}.bin.gz`. The `probes` shape tag distinguishes
+ *  them from flat chebyshev zones, which also sit at zone level. */
 export interface ProbeZoneMetadata {
 	shape: 'probes';
 	chunks: number;
@@ -79,15 +72,13 @@ export interface ProbeZoneMetadata {
 	subchunk_days: number;
 	float64_coeffs: boolean;
 	/** NAIF ID of the body each probe's position is relative to (10=Sun for
-	 *  interplanetary, 199=Mercury for probes/mercury, …). The frontend looks
-	 *  up the body's world position and GM via this id. */
+	 *  interplanetary, 199=Mercury for probes/mercury, …). */
 	fit_center_naif_id: number;
 	parent_id_type?: string;
-	/** Inclusive-inclusive `[start, end]` ranges of chunk indices that actually
-	 *  have a `.bin.gz` on the export. Zones are sparse (Pluto = New Horizons
-	 *  flyby only, …) and most slots in `[0, chunks)` have no file; clients
-	 *  must treat any chunk index outside every range as authoritatively absent
-	 *  and skip the GET. Ranges are sorted ascending and non-overlapping. */
+	/** Inclusive `[start, end]` chunk-index ranges that actually have a
+	 *  `.bin.gz`. Zones are sparse (Pluto = New Horizons flyby only, …); a
+	 *  chunk outside every range is authoritatively absent — skip the GET.
+	 *  Sorted ascending, non-overlapping. */
 	present: [number, number][];
 }
 
@@ -189,11 +180,10 @@ function sortedDateMs(zoom: DateSegmentedZoom): number[] {
 }
 
 /**
- * Return the ISO `YYYY-MM-DD` of the exported snapshot nearest `date`. Snapshot
- * dates are sparse and irregular (weekly history + daily recent), so this snaps
- * to the closest available date rather than truncating — a plain day-truncation
- * would miss the export for any non-daily date. Out-of-range dates clamp to the
- * first/last snapshot.
+ * ISO `YYYY-MM-DD` of the exported snapshot nearest `date`. Snaps to the
+ * closest available date rather than truncating — dates are sparse and
+ * irregular, so day-truncation would miss non-daily exports. Out-of-range
+ * dates clamp to the first/last snapshot.
  */
 export function snapshotDate(zoom: DateSegmentedZoom, date: Date): string {
 	const dates = sortedDateMs(zoom);
@@ -220,12 +210,11 @@ export function snapshotDate(zoom: DateSegmentedZoom, date: Date): string {
 const SNAPSHOT_VALIDITY_SLACK_DAYS = 14;
 
 /**
- * Satellite-zone coverage at a time, from the available snapshots (each ±slack),
- * not a resident chunk's window.
- *  - `covered`: a snapshot's slack reaches it, or it predates the first snapshot
- *    (pre-space-age — no warning).
- *  - `after`: past the last snapshot's slack; `lastMs` is the render cutoff.
- *  - `gap`: inside the span but no snapshot's slack reaches it.
+ * Satellite-zone coverage at a time, from the available snapshots (each
+ * ±slack) rather than a resident chunk's window. `covered`: a snapshot's
+ * slack reaches it, or it predates the first (pre-space-age, no warning).
+ * `after`: past the last snapshot's slack, `lastMs` the render cutoff.
+ * `gap`: inside the span but no snapshot's slack reaches it.
  */
 export type DateCoverage =
 	| { kind: 'covered' }
@@ -279,9 +268,8 @@ export interface PositionMetadata {
 /**
  * Cubemap-skybox bundle metadata embedded at the top level. The renderer
  * picks the largest tier whose per-face size fits the device's max texture
- * dimension and loads the six face WebPs into a `CubeTexture` that becomes
- * `scene.background`. Face URLs:
- * `/v1/textures/{skybox.id}/{tier}_{face}.webp`.
+ * dimension and loads the six face WebPs (`/v1/textures/{skybox.id}/
+ * {tier}_{face}.webp`) into a `CubeTexture` as `scene.background`.
  */
 export interface SkyboxMetadata {
 	id: string;
@@ -302,19 +290,17 @@ export interface Metadata {
 	position: PositionMetadata;
 	object_bundles: ObjectBundles;
 	/** Bucket counts for `nomenclature/details/{__global__|<lang>}/{bucket}.json.gz`.
-	 *  Keyed identically to `object_bundles`. Bucket id is computed from
-	 *  `hash("${bodyId}:${featureId}") % N` so a body's features cluster into one
-	 *  bundle — opening one feature warms the rest. Optional so frontends
-	 *  loading a pre-feature-details export degrade gracefully. */
+	 *  Bucket id is `hash("${bodyId}:${featureId}") % N`, so a body's features
+	 *  cluster into one bundle. Optional — a pre-feature-details export degrades
+	 *  gracefully without it. */
 	feature_bundles?: ObjectBundles;
 	/** Bucket counts for `groups/{__global__|<lang>}/{bucket}.json.gz`. Bucket
-	 *  id is `hashBucket(slug, N)`. Optional so frontends loading a pre-groups
-	 *  export degrade gracefully. */
+	 *  id is `hashBucket(slug, N)`. Optional — a pre-groups export degrades
+	 *  gracefully. */
 	group_bundles?: ObjectBundles;
-	/** Per-content-class cache-busting tokens (content hashes). The frontend
-	 *  appends `versions[class]` as `?v=` on URLs for classes served under an
-	 *  immutable `Cache-Control` rule. Optional so pre-versioning exports load
-	 *  (those URLs degrade to the revalidating default). Mirrors
+	/** Per-content-class cache-busting tokens, appended as `?v=` on URLs for
+	 *  classes served under an immutable `Cache-Control` rule. Optional — a
+	 *  pre-versioning export degrades to the revalidating default. Mirrors
 	 *  `VERSIONED_CLASSES` in `data/.../pipeline/orchestrator.py`. */
 	versions?: Record<string, string>;
 	skybox?: SkyboxMetadata;
@@ -345,10 +331,9 @@ export function fetchMetadata(): Promise<Metadata> {
 }
 
 /**
- * The chebyshev zones from `metadata.position.zones`, as the per-zone params
- * `ChebyshevStore` consumes. Cheb lives at `zooms['0']` for `major`, at zone
- * level for flat zones (`major_asteroids`, `moons/*`); `zoom` records which (0
- * vs null) for the URL. Empty when none exist — callers gate on `size > 0`.
+ * Chebyshev zones from `metadata.position.zones`, as `ChebyshevStore`'s
+ * per-zone params. Cheb lives at `zooms['0']` for `major`, at zone level for
+ * flat zones; `zoom` records which (0 vs null) for the URL.
  */
 export function chebyshevZoneParams(meta: Metadata): Map<string, ChebyshevZoneParams> {
 	const out = new Map<string, ChebyshevZoneParams>();
@@ -369,17 +354,12 @@ export function chebyshevZoneParams(meta: Metadata): Map<string, ChebyshevZonePa
 }
 
 /**
- * Probe zones (`probes/*`) — flat manifest entries the `ProbeStore` consumes.
- * Returns an empty map when no probe zones exist; callers gate construction
- * on `size > 0`.
- *
- * `interplanetary` is intentionally inserted last so the `ProbeStore`'s
- * first-match-wins resolution prefers a planet-centric zone over the catch-all
- * heliocentric one. A flyby probe is emitted into both zones at the same jd
- * (see `data/.../trace.py`), and elements derived against the Sun would render
- * as a meaningless near-hyperbolic curve while the probe is captured around a
- * planet (e=>1 because the probe's Sun-relative velocity is dominated by the
- * planet's orbital velocity).
+ * Probe zones (`probes/*`) as `ProbeStore`'s per-zone params.
+ * `interplanetary` is inserted last so `ProbeStore`'s first-match-wins
+ * resolution prefers a planet-centric zone over the catch-all heliocentric
+ * one — a flyby probe is emitted into both at the same jd, and Sun-relative
+ * elements would render as a meaningless near-hyperbolic curve while it's
+ * captured around a planet.
  */
 export function probeZoneParams(meta: Metadata): Map<string, ProbeZoneParams> {
 	const out = new Map<string, ProbeZoneParams>();

@@ -4,16 +4,14 @@
  *   /data/v1/images/<file>/{s,m,xl}.<ext>
  *   /data/v1/images/<file>/sidecar.json.gz   (only when EXIF can't carry)
  *
- * The exporter emits only the variants the source actually covers — small
- * sources produce only `s` (verbatim, no upscale). Callers pass a target
- * pixel width; `pickImageUrl` returns the URL for the smallest variant that
- * meets it, falling back to the largest available when the source is
- * smaller than the request.
+ * The exporter emits only the variants the source covers — small sources
+ * produce only `s`, never upscaled. `pickImageUrl` returns the smallest
+ * variant meeting a target pixel width, falling back to the largest
+ * available.
  *
- * Viewer metadata (license/artist/description/…) rides inside each raster
- * variant's EXIF — a per-image JSON file would count against the images
- * Worker's file budget. Bundles whose variants can't embed (SVG/WebM
- * passthrough, oversize payloads) ship the sidecar instead.
+ * Viewer metadata rides inside each raster variant's EXIF, since a per-image
+ * JSON file would count against the images Worker's file budget. Bundles
+ * that can't embed (SVG/WebM, oversize payloads) ship the sidecar instead.
  */
 
 import { getLocale } from '$lib/paraglide/runtime.js';
@@ -31,12 +29,9 @@ function availableLabels(variants: ImageVariants): VariantLabel[] {
 }
 
 /**
- * Pick the smallest emitted variant whose bucket dimension covers
- * `targetDevicePx` (CSS px × devicePixelRatio). Falls back to the largest
- * available variant when the source is smaller than the request.
- *
- * Returns undefined only when the image has no declared variants — which
- * shouldn't happen for servable images but is guarded defensively.
+ * Smallest emitted variant whose bucket dimension covers `targetDevicePx`
+ * (CSS px × devicePixelRatio), falling back to the largest available.
+ * Undefined only when the image has no declared variants.
  */
 export function pickImageUrl(image: ObjectImage, targetDevicePx: number): string | undefined {
 	const available = availableLabels(image.variants);
@@ -107,11 +102,10 @@ export function smallestRasterVariant(variants: ImageVariants): VariantLabel | u
 const META_SENTINEL = 'SPACEMAP-META:v1:';
 
 /**
- * Extract the exporter's sentinel-wrapped metadata JSON from raw image bytes.
- *
- * A byte scan, not an EXIF parse: the payload is length-prefixed ASCII JSON
- * (`SPACEMAP-META:v1:<byte-len>:<json>`) placed in an EXIF ImageDescription,
- * so searching bytes is container-agnostic (WebP/JPEG/AVIF) and works in
+ * Extract the exporter's sentinel-wrapped metadata JSON from raw image
+ * bytes. A byte scan, not an EXIF parse: the payload is length-prefixed
+ * ASCII JSON (`SPACEMAP-META:v1:<byte-len>:<json>`) in an EXIF
+ * ImageDescription, so scanning bytes is container-agnostic and works in
  * workerd, whose TextDecoder is UTF-8-only.
  */
 export function extractEmbeddedImageMetadata(bytes: Uint8Array): ImageMetadata | null {
@@ -174,9 +168,9 @@ export async function fetchImageMetadata(image: ObjectImage): Promise<ImageMetad
 
 /**
  * Trimmed shape written by the exporter. Bare strings appear when Commons
- * didn't return a multilang blob; when a dict is present its keys are
- * restricted to the supported locales (ar/en/fr/ja/ru/zh). HTML fragments
- * from Commons still ride through — callers must strip.
+ * returned no multilang blob; a dict's keys are restricted to the supported
+ * locales. HTML fragments from Commons still ride through — callers must
+ * strip.
  */
 export interface ImageMetadata {
 	source_url: string;
@@ -189,16 +183,10 @@ export interface ImageMetadata {
 	depicts?: string[];
 }
 
-/** Resolve a multilang metadata field to plain text.
- *
- *  The exporter writes bare strings when Commons didn't return a multilang
- *  blob and `{<locale>: str}` dicts (restricted to supported locales) when it
- *  did. HTML fragments from Commons ride along and are stripped here.
- *
- *  With `strictLocale` a dict resolves only for the reader's own locale — a
- *  description in an arbitrary other language is unreadable, where a credit
- *  ("NASA/JPL") is the same name whatever the locale. Bare strings are
- *  returned either way. */
+/** Resolve a multilang metadata field to plain text, stripping any Commons
+ *  HTML. With `strictLocale` a dict resolves only for the reader's own
+ *  locale — a description in another language is unreadable, where a credit
+ *  ("NASA/JPL") reads the same regardless. Bare strings return either way. */
 export function imageMetadataText(
 	value: string | Record<string, string> | undefined,
 	strictLocale = false

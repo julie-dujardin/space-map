@@ -1,7 +1,7 @@
 /**
- * Top-level reader for position files. Dispatches on the format byte at offset
- * 6 of the common header to one of the section parsers (elements columnar
- * layout, chebyshev per-body segments, or probes per-sub-chunk records).
+ * Top-level reader for position files. Dispatches on the format byte at
+ * offset 6 to a section parser (elements columnar, chebyshev per-body, probes
+ * per-sub-chunk).
  *
  * Common header layout (24 bytes, 8-aligned):
  *   0   char[4]  magic = "SMAP"
@@ -11,11 +11,9 @@
  *   8   float64  start_jd
  *   16  float64  end_jd
  *
- * The probes payload's coefficient dtype (f32 vs f64) isn't in the file
- * header — it's a zone-level property surfaced by
- * `metadata.position.zones[zone].float64_coeffs`. Callers fetching a probes
- * file must pass `opts.probesFloat64` accordingly; the flag is ignored for
- * non-probes payloads.
+ * The probes coefficient dtype (f32/f64) isn't in the header — it's
+ * `metadata.position.zones[zone].float64_coeffs`; pass `opts.probesFloat64`
+ * accordingly (ignored for non-probes payloads).
  */
 
 import { parseChebyshevPayload, type ChebyshevChunk } from '$lib/fetch/position/chebyshev/parse';

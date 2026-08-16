@@ -1,11 +1,8 @@
 /**
- * Per-body atmospheric scattering parameters, fetched once at app start from
- * `/data/v1/atmospheres.json`. Produced by the data pipeline from cited gas
- * optics + reference-level constants (data/src/space_map_data/constants/
- * atmosphere/), replacing what used to be hardcoded frontend tables.
- *
- * Bodies absent from the file simply get no scattering shell, so a failed
- * fetch degrades to airless rendering rather than breaking the scene.
+ * Per-body atmospheric scattering parameters, fetched once from
+ * `/data/v1/atmospheres.json`. Bodies absent from the file get no scattering
+ * shell, so a failed fetch degrades to airless rendering rather than
+ * breaking the scene.
  */
 
 import type {

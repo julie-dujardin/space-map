@@ -1,10 +1,7 @@
 /**
- * Tests for `chunkIndexForJd` and the zoom-shape discriminators.
- *
- * The frontend's moon hot-reload trusts these two helpers to map sim time
- * onto the right binary chunk. A wrong clamp here puts the user on a stale
- * chunk (or off-by-one) without any visible error, so the boundary cases
- * matter more than the fence-post arithmetic suggests.
+ * Tests for `chunkIndexForJd` and the zoom-shape discriminators. A wrong
+ * clamp silently puts the sim on a stale or off-by-one chunk, so boundary
+ * cases matter more than the arithmetic suggests.
  */
 
 import { describe, expect, it } from 'vitest';

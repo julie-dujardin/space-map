@@ -1,19 +1,13 @@
 /**
- * The vehicle catalogue, fetched once from `/data/v1/spacecraft.json`.
+ * The vehicle catalogue, fetched once from `/data/v1/spacecraft.json`. A
+ * figure arrives with its source key so the panel can cite it — except the
+ * fitted fiction, where nobody published one. A failed fetch leaves the
+ * catalogue empty, which the panel reads as "no vehicle filter"; routes still
+ * solve.
  *
- * Built by the pipeline from cited constants (data/src/space_map_data/
- * constants/spacecraft/), replacing the invented table the travel panel used
- * to be driven by. A figure arrives with the source key behind it, so the panel
- * can show a citation next to a number rather than a number alone — except for
- * the fitted fiction, where nobody published one and the figure ships bare.
- *
- * A failed fetch leaves the catalogue empty, which the panel reads as "no
- * vehicle filter" — the routes still solve.
- *
- * Names come from a second, per-locale file rather than from the catalogue
- * itself: a name is the only part of a vehicle that differs per reader, and
- * twelve locales of them would cost more than the physics does. The two are
- * fetched together, and a missing name bundle leaves the picker on its English
+ * Names come from a second, per-locale file: a name is the only part that
+ * differs per reader, and twelve locales of the rest would cost more than
+ * the physics does. A missing name bundle leaves the picker on English
  * fallbacks rather than failing the load.
  */
 

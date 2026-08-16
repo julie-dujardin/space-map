@@ -1,10 +1,8 @@
 /**
- * IAU quadrangle index — one small file covering every mapped body
- * (Mercury, Venus, Mars, the Moon). Written by
- * `data/src/space_map_data/export/nomenclature/quadrangles.py`.
- *
- * Fetched once and memoized: the Surface tab's hero draws these boxes over the
- * body's map texture, and a selected box narrows the feature list.
+ * IAU quadrangle index — one small file covering every mapped body (Mercury,
+ * Venus, Mars, the Moon), fetched once and memoized. The Surface tab's hero
+ * draws these boxes over the body's map texture; a selected box narrows the
+ * feature list.
  */
 
 import { fetchGzipBundle } from '$lib/fetch/bundle-cache';

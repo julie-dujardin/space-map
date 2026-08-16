@@ -1,18 +1,11 @@
 /**
  * Evaluate parent-relative probe position from a parsed `ProbeChunk`.
+ * Dispatches per sub-chunk on the method byte: kepler_pure (M drifts at
+ * sqrt(mu/a³)), kepler_drift (Ω̇/ω̇/ṅ linear drift), chebyshev (Clenshaw
+ * recurrence), or uncoverable (null, consumer hides the probe).
  *
- * Dispatches per sub-chunk on the method byte:
- *   - kepler_pure  : 6 elements + anchor offset; M drifts at sqrt(mu/a³) from t_anchor
- *   - kepler_drift : 6 elements + fitted Ω̇/ω̇/ṅ; M, om, w drift linearly from t_anchor
- *   - chebyshev    : Clenshaw recurrence over per-segment coefficients
- *   - uncoverable  : returns null (consumer hides the probe)
- *
- * Units throughout: positions in km, ECLIPJ2000 frame, parent-relative (parent =
- * the zone's `fit_center_naif_id` body); times in ET seconds past J2000.
- * `kmToScene` + axis swap maps to the Three.js basis the rest of the scene uses.
- *
- * `mu` is the gravitational parameter (km³/s²) of the zone's fit center, looked
- * up by the caller via `getGmKm3s2(fit_center_naif_id)`.
+ * Units: km, ECLIPJ2000, parent-relative; times in ET seconds past J2000.
+ * `mu` (km³/s²) is the zone's fit center, via `getGmKm3s2(fit_center_naif_id)`.
  */
 
 import { kmToScene } from '$lib/math/units';
@@ -183,15 +176,9 @@ function evalSubChunk(
 	}
 }
 
-/**
- * Parent-relative probe position in km at `jd` (TDB). Returns null when the
- * probe has no sub-chunk covering `jd`, or the sub-chunk is uncoverable, or
- * the underlying fit produced a non-finite value.
- *
- * `muKm3S2` is the GM of the zone's `fit_center_naif_id` body. Pass 0 to
- * disable Kepler-pure evaluation explicitly — callers that don't have the GM
- * yet should drop the body for the frame rather than call this with junk.
- */
+/** Parent-relative probe position in km at `jd` (TDB). Null when no sub-chunk
+ *  covers `jd`, it's uncoverable, or the fit is non-finite. `muKm3S2` is the
+ *  fit center's GM — pass 0 to explicitly disable Kepler-pure evaluation. */
 export function probePositionKm(
 	probe: Probe,
 	jd: number,
@@ -280,22 +267,14 @@ const VELOCITY_FD_HALF_WINDOW_JD = VELOCITY_FD_HALF_WINDOW_S / SECONDS_PER_DAY;
 
 /**
  * Parent-relative probe state (km, km/day) at `jd` via finite difference of
- * {@link probePositionKm}. Method-agnostic — handles Kepler-pure, Kepler-drift,
- * and Chebyshev sub-chunks uniformly. Velocity units match {@link chebyshevStateKm}
- * so downstream conversions to AU/day are shared.
+ * {@link probePositionKm}, method-agnostic across sub-chunk types. Velocity
+ * units match {@link chebyshevStateKm}.
  *
- * Prefers a centered FD (second-order accuracy). At the very first / very last
- * sub-chunk's boundary one side of the window falls outside any sub-chunk —
- * NH's interplanetary chunk 64 has its first sub-chunk start snapped to
- * 2014-12-10 00:00 because the kernel only opens at 2014-12-08 05:12, so jd-30s
- * has no sub-chunk to evaluate against. In that case fall back to a one-sided
- * forward / backward FD (first-order) so the osculating element derivation
- * still works at coverage edges instead of leaving the drawer empty.
- *
- * Returns null only when the center sample itself misses (jd outside coverage)
- * or when both side samples miss (a sub-chunk so short it's smaller than the
- * FD window on both sides — should never happen with the writer's 7-day
- * minimum interplanetary sub-chunks).
+ * Prefers a centered FD; falls back to one-sided forward/backward FD at a
+ * coverage edge where one side of the window falls outside any sub-chunk
+ * (e.g. NH's first sub-chunk snapped to where its kernel opens). Returns null
+ * only when the center sample misses, or both sides miss (a sub-chunk shorter
+ * than the FD window — shouldn't happen given the writer's 7-day minimum).
  */
 export function probeStateKm(
 	probe: Probe,

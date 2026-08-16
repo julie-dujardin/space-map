@@ -36,14 +36,9 @@ export const PROBE_METHOD_UNCOVERABLE = 0;
 export const PROBE_METHOD_KEPLER_PURE = 1;
 export const PROBE_METHOD_KEPLER_DRIFT = 2;
 export const PROBE_METHOD_CHEBYSHEV = 3;
-/**
- * `PROBE_METHOD_LANDED` sits OUTSIDE the regular sub-chunk grid — one
- * trailing record per probe per chunk, gated by
- * `PROBE_FLAG_HAS_LANDED_RECORD` in the probe header. Carries its own
- * start/end ET offsets so its lifetime is decoupled from
- * `subchunk_days × n_subchunks`. The parser skips past it for now;
- * landed probes simply have no trail in the renderer.
- */
+/** Sits OUTSIDE the regular sub-chunk grid — one trailing record per probe
+ *  per chunk, gated by `PROBE_FLAG_HAS_LANDED_RECORD`, with its own start/end
+ *  ET offsets decoupled from `subchunk_days × n_subchunks`. */
 export const PROBE_METHOD_LANDED = 4;
 
 /** Per-probe header size inside a probes-payload file. */
@@ -56,13 +51,9 @@ export const SYSTEM_INTERVAL_SIZE = 17;
 /** Probe-header flags byte (offset 7) bit assignments. */
 export const PROBE_FLAG_HAS_LANDED_RECORD = 0x01;
 
-/**
- * Bit in the chebyshev extension's flags byte (offset 28 of the common header)
- * that marks the file's per-segment coefficients as float64 instead of the
- * default float32. Sun-orbiter zones (`major`, `major_asteroids`) carry their
- * absolute distances far enough from the SSB that float32 quantization shows
- * up at km scale, so they ship f64. Moon zones stay f32.
- */
+/** Chebyshev extension flags bit marking per-segment coefficients as float64.
+ *  Sun-orbiter zones (`major`, `major_asteroids`) sit far enough from the SSB
+ *  that float32 quantization shows up at km scale, so they ship f64. */
 export const CHEBYSHEV_FLAG_FLOAT64_COEFFS = 0x01;
 
 /** Pre-interaction labels file: one global gzipped index per language listing
@@ -78,16 +69,11 @@ function zoomSegment(zoom: number | null): string {
 }
 
 /**
- * Build the position-file URL for one (zone, zoom, ...) combination.
- *
- * Three URL shapes, dispatched by the zone's `shape` discriminator in
- * `metadata.position.zones[zone]` (under `zooms[zoom]` for multi-zoom zones,
- * at zone level for flat ones). `zoom` is `null` for flat zones:
- *
- *   - `parted`         → `position/{zone}/[{zoom}/]{part}.bin.gz`
- *   - `chunked-parted` → `position/{zone}/[{zoom}/]{label}/{part}.bin.gz`
- *                        (label is an ISO date for `earth`, a chunk index for `moons`)
- *   - `chunked`        → `position/{zone}/[{zoom}/]{chunk}.bin.gz` (chebyshev)
+ * Build the position-file URL for one (zone, zoom, ...) combination. Three
+ * URL shapes, dispatched by the zone's `shape` discriminator: `parted` →
+ * `position/{zone}/[{zoom}/]{part}.bin.gz`; `chunked-parted` → same +
+ * `{label}/` (ISO date for `earth`, chunk index for `moons`); `chunked` →
+ * `position/{zone}/[{zoom}/]{chunk}.bin.gz` (chebyshev).
  */
 export function partedUrl(zone: string, zoom: number | null, part: number): string {
 	return versionedUrl(`/v1/position/${zone}/${zoomSegment(zoom)}${part}.bin.gz`, 'position');
@@ -118,14 +104,9 @@ export enum Scale {
 	SYSTEM = 1
 }
 
-/**
- * Provenance of the orbital elements in a position file's elements payload.
- * Ordinals must stay in sync with `SOURCE_ORDINAL` in
- * `data/src/space_map_data/export/position/format.py`. The elements extension
- * stores the ordinal at byte offset 26 (extension byte 2). `UNKNOWN` (255) is
- * the sentinel for files pre-dating the byte (kept so failed parses don't
- * crash the UI).
- */
+/** Provenance of the orbital elements payload. Ordinals must stay in sync
+ *  with `SOURCE_ORDINAL` in format.py. `UNKNOWN` (255) is the sentinel for
+ *  files pre-dating the byte, so failed parses don't crash the UI. */
 export enum OrbitalSource {
 	HORIZONS = 0,
 	SBDB = 1,
@@ -137,13 +118,9 @@ export enum OrbitalSource {
 	UNKNOWN = 255
 }
 
-/**
- * Object-ID prefix for every row in an elements payload (or every body in a
- * chebyshev payload). Combined with the numeric value to rebuild the full
- * `<prefix>-<numeric>` form (e.g. `naif-399`). Ordinals must stay in sync
- * with `ID_TYPE_ORDINAL` in
- * `data/src/space_map_data/export/position/format.py`.
- */
+/** Object-ID prefix for every row (elements) or body (chebyshev). Combined
+ *  with the numeric value to rebuild `<prefix>-<numeric>` (e.g. `naif-399`).
+ *  Ordinals must stay in sync with `ID_TYPE_ORDINAL` in format.py. */
 export enum IdType {
 	NAIF = 0,
 	SPKID = 1,

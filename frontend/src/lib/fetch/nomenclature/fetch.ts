@@ -2,13 +2,9 @@
  * Per-body IAU nomenclature loader: fetches the SMNF positions blob and the
  * matching per-language label file in parallel, joining them by *position
  * index* — line i of `labels/{lang}/{bodyId}.txt.gz` names record i of
- * `positions/{bodyId}.bin.gz`. The writer pins that order invariant
- * (`test_labels_order_matches_positions_order`).
- *
- * Callers should gate on `objectGlobal.has_nomenclature` before calling — a
- * body without features ships no files, and we'd hit a guaranteed 404. A 404
- * here is treated as "no features" (empty array) to keep the call site simple
- * if the gate is ever bypassed.
+ * `positions/{bodyId}.bin.gz`. Callers should gate on
+ * `objectGlobal.has_nomenclature` first, since a body with no features ships
+ * no files; a 404 here still degrades to an empty array.
  */
 
 import { getLocale } from '$lib/paraglide/runtime.js';

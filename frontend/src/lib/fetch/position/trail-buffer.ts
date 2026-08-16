@@ -1,27 +1,19 @@
 /**
- * Fixed-capacity ring buffer of past trail positions for a probe whose
- * trajectory uses chebyshev sub-chunks. Positions are stored in the probe's
- * fit-center-relative frame (parent-relative scene units), so rendering just
- * adds the current parent position at draw time.
+ * Fixed-capacity ring buffer of past trail positions for a probe with
+ * chebyshev sub-chunks, stored in the fit-center-relative frame so rendering
+ * just adds the current parent position. `append` overwrites the oldest entry
+ * when full; time-speed agnostic since samples are spaced by `stepDays` on
+ * average, keeping one orbital period of coverage once full.
  *
- * Capacity is a constant; `append` overwrites the oldest entry when full. The
- * buffer is agnostic to time speed — callers sample positions at jd values
- * spaced by `stepDays` on average, so the trail covers one orbital period once
- * full and keeps that time-coverage regardless of how fast sim time moves.
- *
- * When `epsilonScene` is finite, callers may sample non-uniformly via chord-error
- * adaptive subdivision (dense near periapsis/gravity assists, sparse near
- * apoapsis). `stepDays` then sets the *canonical/average* step — derived bounds
- * `ADAPTIVE_MIN_STEP_FACTOR` and `ADAPTIVE_MAX_STEP_FACTOR` bracket how far an
- * individual segment can deviate from that average.
+ * When `epsilonScene` is finite, callers may sample non-uniformly via
+ * chord-error adaptive subdivision (dense near periapsis, sparse near
+ * apoapsis); `stepDays` is then the canonical/average step, bracketed by
+ * `ADAPTIVE_MIN/MAX_STEP_FACTOR`.
  */
 
-/**
- * Per-segment bounds for adaptive sampling, as multipliers of `stepDays`. The
- * min floor is deep so eccentric-orbit periapsis passages can subdivide finely
- * enough to meet the chord tolerance; it's only a floor, so the chord-error
- * search still stops early on cruise arcs and doesn't over-sample.
- */
+/** Per-segment bounds for adaptive sampling, as multipliers of `stepDays`.
+ *  The min floor is deep so periapsis passages can subdivide finely; it's
+ *  only a floor, so cruise arcs still stop early and don't over-sample. */
 export const ADAPTIVE_MAX_STEP_FACTOR = 16;
 export const ADAPTIVE_MIN_STEP_FACTOR = 1 / 256;
 
@@ -29,20 +21,12 @@ export class TrailBuffer {
 	readonly capacity: number;
 	/** Canonical/average time between consecutive samples (days). */
 	stepDays: number;
-	/**
-	 * Chord-error tolerance in scene units for adaptive subdivision. `Infinity`
-	 * disables adaptive sampling — callers fall back to uniform `stepDays`
-	 * spacing, which is the legacy behaviour.
-	 */
+	/** Chord-error tolerance in scene units. `Infinity` disables adaptive
+	 *  sampling — callers fall back to uniform `stepDays` spacing. */
 	epsilonScene: number;
-	/**
-	 * How far back the back-fill may walk (days). One orbital period for
-	 * elliptical orbits — retracing loops wastes the sample budget. `Infinity`
-	 * for hyperbolic flyby frames, where there is no loop to retrace: the walk
-	 * is bounded by capacity and by zone coverage / the parent gate instead,
-	 * so the encounter trail spans everything loaded rather than one chunk
-	 * window.
-	 */
+	/** How far back the back-fill may walk (days). One orbital period for
+	 *  ellipses; `Infinity` for hyperbolic flybys, where capacity and zone
+	 *  coverage bound the walk instead of one chunk window. */
 	spanDays: number;
 	private readonly positions: Float32Array;
 	private readonly jds: Float64Array;
@@ -63,14 +47,11 @@ export class TrailBuffer {
 		return this._count;
 	}
 
-	/**
-	 * Re-derive sampling parameters for a new frame or orbit. Must be called
-	 * whenever the buffer is reseeded against a different parent — stepDays and
-	 * epsilonScene are orbit-scale-dependent, and reusing heliocentric-cruise
-	 * values for a planet-frame flyby (or vice versa) makes the reseed sample
-	 * far too coarsely (spiky encounter trails) or span far too little time.
-	 * Non-finite/non-positive `stepDays` keeps the previous value.
-	 */
+	/** Re-derive sampling parameters for a new frame or orbit. Must be called
+	 *  on every reseed against a different parent — stepDays/epsilonScene are
+	 *  orbit-scale-dependent, so reusing heliocentric-cruise values for a
+	 *  planet-frame flyby samples far too coarsely or too little time.
+	 *  Non-finite/non-positive `stepDays` keeps the previous value. */
 	reconfigure(stepDays: number, epsilonScene: number, spanDays?: number): void {
 		if (Number.isFinite(stepDays) && stepDays > 0) this.stepDays = stepDays;
 		this.epsilonScene = epsilonScene;

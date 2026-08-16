@@ -1,22 +1,16 @@
 /**
- * Per-zone cache of probe chunks. One zone per Hill-sphere-2× region
- * (`probes/interplanetary`, `probes/mercury`, …, `probes/pluto`); each ships
- * `position/probes/{zone}/{chunkIdx}.bin.gz` with no zoom segment.
+ * Per-zone cache of probe chunks: one zone per Hill-sphere-2× region
+ * (`probes/interplanetary`, `probes/mercury`, …), each shipping
+ * `position/probes/{zone}/{chunkIdx}.bin.gz`.
  *
- * Unlike chebyshev, a probe can appear in *multiple* zone files: cruise
- * samples land in `probes/interplanetary`, captured-orbit samples land in
- * `probes/{planet}`, and a flyby probe lives in BOTH at once (the planet
- * zone over the encounter, interplanetary across the whole flying phase —
- * see data/probes/trace.py). When zones overlap at a jd, the resolver picks
- * the zone the caller asks for via the optional `isPreferred` predicate
- * (typically "is this zone's fit center inside the user's focused system?")
- * and falls through to the metadata-iteration order (interplanetary first →
- * heliocentric fit for the solar view) when nothing matches.
+ * Unlike chebyshev, a probe can appear in multiple zone files at once — a
+ * flyby lives in both its planet zone (over the encounter) and interplanetary
+ * (the whole flying phase). When zones overlap at a jd, the optional
+ * `isPreferred` predicate picks the caller's zone, falling back to metadata
+ * order (interplanetary first) when nothing matches.
  *
  * Eager-loads the chunk containing the current JD plus its two neighbors
- * across every zone (same policy as `ChebyshevStore`). Sub-chunks within a
- * chunk are time-windowed so callers can dispatch position(jd) by binary
- * search through the parsed `Probe` record.
+ * across every zone (same policy as `ChebyshevStore`).
  */
 
 import { fetchProbes, type FetchedProbes } from '$lib/fetch/position/probes/fetch';
@@ -35,18 +29,13 @@ const NEIGHBOR_WINDOW = 1;
  *  and each may pull one chunk per zone, so this holds a whole refinement. */
 const WARMED_CHUNKS = 24;
 
-/** Per-zone params lifted from `metadata.position.zones[zone]` (flat, no
- *  `zooms` wrapper). `fit_center_naif_id` is the body each probe's position
- *  is relative to (10=Sun for interplanetary, 199=Mercury, …); the store
- *  hands it back to callers so they can look up the body's world position
- *  and GM via the systems-global file.
+/** Per-zone params from `metadata.position.zones[zone]`. `fit_center_naif_id`
+ *  is the body each probe's position is relative to, handed back to callers
+ *  to look up world position and GM via systems-global.
  *
  *  `present` lists every chunk index a `.bin.gz` actually exists for, as
- *  inclusive-inclusive ranges (sorted, non-overlapping). Probe zones are
- *  sparse — `chunks` is the full theoretical span across `[start_jd, end_jd]`,
- *  but most slots have no file (Pluto = single New Horizons flyby chunk,
- *  Uranus/Neptune = a single Voyager 2 flyby pair, …). The store consults
- *  `present` before issuing any GET so absent chunks cost zero round-trips. */
+ *  sorted non-overlapping ranges — probe zones are sparse (Pluto = a single
+ *  New Horizons flyby chunk), so the store consults this before any GET. */
 export interface ProbeZoneParams {
 	chunks: number;
 	chunk_days: number;
@@ -155,15 +144,10 @@ export class ProbeStore {
 		};
 	}
 
-	/**
-	 * Load whatever covers `jd` for the trip planner, off to one side.
-	 *
-	 * The window above belongs to the clock: it holds one date and drops the rest,
-	 * so a caller asking where a probe will be when a transfer reaches it — years
-	 * from whatever the clock says — would evict the frame's own chunks to be
-	 * answered, and lose the answer again on the next tick. These are kept apart
-	 * and capped instead, so neither cache can starve the other.
-	 */
+	/** Load whatever covers `jd` for the trip planner, off to one side. The
+	 *  window above belongs to the clock (one date, drops the rest); a planner
+	 *  query years away would evict the clock's own chunks, so these are kept
+	 *  apart and capped instead. */
 	async warmAt(jd: number): Promise<void> {
 		const jobs: Promise<void>[] = [];
 		for (const [zone, params] of this.zoneParams) {
@@ -242,14 +226,10 @@ export class ProbeStore {
 		this._version++;
 	}
 
-	/**
-	 * Iterate every probe whose chunk for `jd` is loaded, deduped to one entry
-	 * per `probe.id`. When `isPreferred` is supplied, the zone whose fit center
-	 * passes the predicate wins; otherwise the first zone in metadata order
-	 * (interplanetary first) wins. Sub-chunk coverage is NOT checked here —
-	 * callers needing coverage gate via `resolve` / `probeWithCenter`. Callers
-	 * must `await ensure(jd).done` first.
-	 */
+	/** Iterate every probe whose chunk for `jd` is loaded, deduped to one entry
+	 *  per `probe.id` — `isPreferred`'s zone wins if supplied, else metadata
+	 *  order. Sub-chunk coverage isn't checked here; use `resolve` /
+	 *  `probeWithCenter` for that. Callers must `await ensure(jd).done` first. */
 	*probesAt(
 		jd: number,
 		isPreferred?: (fitCenterNaif: number) => boolean
@@ -284,20 +264,12 @@ export class ProbeStore {
 		yield* best.values();
 	}
 
-	/** Iterate zones in metadata order; for each, find every record matching
-	 *  `objectId` in the chunk for `jd` (the writer may emit >1 record per probe
-	 *  per chunk when an interval splits inside the chunk window) and return the
-	 *  first one whose sub-chunks actually cover `jd`. Falls through to the next
-	 *  zone if the records exist but none cover `jd` — handles cross-zone
-	 *  transitions (cruise → captured orbit at a flyby/capture boundary): the
-	 *  interplanetary chunk lists the probe up to the boundary, the planet
-	 *  chunk picks up from there, and the renderer follows the live one without
-	 *  a frame where the probe is hidden.
-	 *
-	 *  When `isPreferred` is supplied, a covering record in a preferred zone
-	 *  beats a covering record in any other zone — so a Mars-flyby probe gets
-	 *  its Mars-relative fit (and parentId=Mars) when the user is zoomed into
-	 *  Mars, but its heliocentric fit otherwise. */
+	/** Iterate zones in metadata order, returning the first record for
+	 *  `objectId` whose sub-chunks cover `jd`. Falls through zones with no
+	 *  covering record — handles cross-zone transitions (cruise → captured
+	 *  orbit) so the renderer follows the live zone without a hidden frame. A
+	 *  covering record in a preferred zone (`isPreferred`) always wins, e.g. a
+	 *  Mars-flyby probe gets its Mars-relative fit when zoomed into Mars. */
 	private resolve(
 		objectId: string,
 		jd: number,
@@ -379,13 +351,9 @@ export class ProbeStore {
 
 	/**
 	 * Planetary-system barycenter NAIF the probe is inside, or `null` for
-	 * heliocentric cruise / unknown. Sync; no chunk-load dependency beyond
-	 * the interplanetary chunk (which `ensure` warms regardless of view).
-	 *
-	 * Interplanetary first: a hit on the `systemIntervals` annotation wins;
-	 * a miss means pure cruise → `null`. Falls back to walking planet zones
-	 * for probes only present there (captured orbiters, MEX/MAVEN), where
-	 * the zone identity is the system — barycenter NAIF derived as
+	 * heliocentric cruise / unknown. Interplanetary chunk's `systemIntervals`
+	 * wins first; a miss means pure cruise. Falls back to walking planet zones
+	 * for probes only present there, deriving the barycenter as
 	 * `floor(fit_center_naif_id / 100)` (199→1, 499→4, …).
 	 */
 	containingSystemAt(probeId: string, jd: number): number | null {

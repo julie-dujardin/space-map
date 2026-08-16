@@ -1,17 +1,13 @@
 /**
  * Back-populate a probe trail buffer by walking jd backwards from `centerJd`,
  * placing samples via chord-error adaptive subdivision (dense near
- * periapsis/gravity assists, sparse near apoapsis). When `buf.epsilonScene` is
- * `Infinity` the loop degenerates to uniform `stepDays` sampling — the legacy
- * behaviour. Samples live in the probe's fit-center-relative scene frame; the
- * renderer adds the current parent position at draw time.
+ * periapsis/gravity assists, sparse near apoapsis). `buf.epsilonScene ===
+ * Infinity` degenerates to uniform `stepDays` sampling. Samples live in the
+ * fit-center-relative scene frame; the renderer adds the parent position at
+ * draw time.
  *
- * Stops walking back once the probe's stamped primary at the candidate jd no
- * longer matches `currentParentKey` — cross-zone transitions move the probe
- * under a new fit center, and mixing frames inside one buffer warps the trail.
- * Called from `processProbes` on chunk load (cold-start back-fill) and from
- * `updatePositions` when the live parent flips mid-play (cruise → captured
- * orbit).
+ * Stops walking once the probe's stamped primary no longer matches
+ * `currentParentKey` — mixing frames inside one buffer warps the trail.
  */
 
 import {
@@ -34,21 +30,14 @@ type Sampler = (t: number) => Vec3 | null;
 /**
  * Trail sampling parameters from osculating elements in the trail's frame.
  * `stepDays` spreads the sample budget over one orbital period (or
- * `fallbackSpanDays` when the orbit is hyperbolic / elements unavailable).
- * Epsilon scales to periapsis q = a(1−e), not a: it keeps facets small where
- * the curve is sharpest instead of loosening with apoapsis on eccentric
- * orbits, and q > 0 for ellipses and hyperbolic flybys alike, so gravity
- * assists sample adaptively too. Infinity (uniform) until elements resolve.
+ * `fallbackSpanDays` if hyperbolic/unavailable). Epsilon scales to periapsis
+ * q = a(1−e), not a, so facets stay small where the curve is sharpest and
+ * gravity assists sample adaptively too; Infinity (uniform) until elements
+ * resolve. `spanDays` caps the back-fill at one period for ellipses, but is
+ * uncapped for hyperbolic flybys, where there's no loop to retrace.
  *
- * `spanDays` caps the back-fill at one period for elliptical orbits (the
- * budget shouldn't retrace loops), but is uncapped for adaptive hyperbolic
- * flybys — there is no loop, adaptive sampling leaves most of the budget
- * unused, and a chunk-window cap would cut the encounter trail to ~a dozen
- * days. Coverage and the parent gate bound the walk instead.
- *
- * All values are frame-dependent — a reseed against a new parent MUST
- * re-derive them (via `TrailBuffer.reconfigure`) with elements relative to
- * that parent, or the walk samples at the wrong orbit scale entirely.
+ * Frame-dependent throughout — a reseed against a new parent MUST re-derive
+ * these via `TrailBuffer.reconfigure`, or the walk samples the wrong scale.
  */
 export function deriveProbeTrailParams(
 	elements: OrbitalElements | null,
@@ -64,14 +53,10 @@ export function deriveProbeTrailParams(
 	return { stepDays, epsilonScene, spanDays };
 }
 
-/**
- * Prefer the zone whose fit center IS the trail's own frame, so overlapping
- * zones resolve in `currentParentKey`'s frame. A heliocentric trail keeps the
- * interplanetary fit across a flyby instead of falling to the planet zone (whose
- * samples the gate then drops, bridging the encounter with a straight line).
- * Override frames (probe captured around a moon) match no zone fit center and
- * fall through to the resolver's default order — unchanged.
- */
+/** Prefer the zone whose fit center IS the trail's own frame, so overlapping
+ *  zones resolve in `currentParentKey`'s frame — a heliocentric trail keeps
+ *  its interplanetary fit across a flyby instead of dropping to the planet
+ *  zone and bridging the encounter with a straight line. */
 export function frameFitPreference(currentParentKey: string): (fitCenterNaif: number) => boolean {
 	const frameNaif = Number(currentParentKey.slice('naif-'.length));
 	return (fitCenterNaif) => fitCenterNaif === frameNaif;
@@ -101,14 +86,9 @@ export function buildParentGatedSampler(
 	};
 }
 
-/**
- * Chord-error metric: distance from the curve's midpoint to the chord's
- * midpoint. Smooth low-curvature regions have small chord error and tolerate
- * long segments; sharp turns have large chord error and need subdivision.
- * Returns null when the midpoint sample is unavailable (caller treats as
- * "subdivide further" — we don't have enough information to commit to a long
- * segment).
- */
+/** Chord-error metric: distance from the curve's midpoint to the chord's
+ *  midpoint. Smooth regions tolerate long segments; sharp turns need
+ *  subdivision. Null when the midpoint sample is unavailable. */
 function chordError(sample: Sampler, t0: number, p0: Vec3, t1: number, p1: Vec3): number | null {
 	const mid = sample((t0 + t1) / 2);
 	if (!mid) return null;
@@ -118,24 +98,17 @@ function chordError(sample: Sampler, t0: number, p0: Vec3, t1: number, p1: Vec3)
 	return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-/**
- * Scale-relative slack added to the absolute chord tolerance: a segment is
- * acceptable when its chord error ≤ `max(epsilon, TRAIL_REL_TOL · chordLength)`.
- * The relative term bounds the facet *angle* (~4·TRAIL_REL_TOL rad) so far from
- * the fit center — where a Float32 Chebyshev fit's noise floor dwarfs the
- * periapsis-scaled `epsilon` — the walk bridges sub-chunk-boundary noise with a
- * long segment instead of crawling at `minStep` and emitting near-duplicate,
- * noise-angled points. Near periapsis `epsilon` dominates and keeps it sharp.
- */
+/** Scale-relative slack on the chord tolerance: a segment is acceptable when
+ *  its error ≤ `max(epsilon, TRAIL_REL_TOL · chordLength)`. Far from the fit
+ *  center, where Float32 Chebyshev noise dwarfs the periapsis-scaled
+ *  `epsilon`, this bridges sub-chunk-boundary noise with a long segment
+ *  instead of crawling at `minStep`. Near periapsis `epsilon` still dominates. */
 const TRAIL_REL_TOL = 0.005;
 
-/**
- * Largest step in `[minStep, maxStep]` from `tFrom` in time direction `dir`
- * (−1 walking back, +1 walking forward) whose chord to `tFrom` stays within
- * tolerance of the curve. Binary search, with a fast path that accepts
- * `maxStep` outright in low-curvature regions. Returns null when no candidate
- * in the window has a valid sample (coverage gap or zone mismatch throughout).
- */
+/** Largest step in `[minStep, maxStep]` from `tFrom` (dir −1/+1) whose chord
+ *  stays within tolerance. Binary search, with a fast path that accepts
+ *  `maxStep` outright in low-curvature regions. Null when no candidate in the
+ *  window has a valid sample. */
 function findAdaptiveStep(
 	sample: Sampler,
 	tFrom: number,
@@ -197,13 +170,9 @@ export function populateProbeTrailBuffer(
 	backfillTrailFromSampler(buf, sample, centerJd);
 }
 
-/**
- * Back-fill `buf` by walking `sample` backwards from `centerJd`, using the same
- * chord-error subdivision (or uniform `stepDays` when `epsilonScene` is
- * Infinity) as {@link extendProbeTrailBuffer}. Split out from
- * {@link populateProbeTrailBuffer} so callers with a ready sampler (and tests)
- * can drive the exact production walk without the store lookup.
- */
+/** Back-fill `buf` by walking `sample` backwards from `centerJd`, same
+ *  chord-error subdivision as {@link extendProbeTrailBuffer}. Split out from
+ *  {@link populateProbeTrailBuffer} so tests can drive the walk without a store. */
 export function backfillTrailFromSampler(
 	buf: TrailBuffer,
 	sample: Sampler,
@@ -265,15 +234,11 @@ export function backfillTrailFromSampler(
 	}
 }
 
-/**
- * Extend a buffer forward from its newest sample (`lastJd`/`lastPos`) to
- * `headJd`, inserting intermediate samples with the same chord-error
- * subdivision as the back-fill. The live-play appender only ever adds the
- * current frame's position, so a fast periapsis pass at high time-speed jumps a
- * large arc per frame and draws one long facet; this fills those gaps. `sample`
- * must return positions in the buffer's frame. Iteration is capped at capacity
- * so a near-span gap can't spin (the ring overwrites older samples anyway).
- */
+/** Extend a buffer forward from its newest sample to `headJd`, inserting
+ *  intermediate samples with the same chord-error subdivision as the
+ *  back-fill — the live-play appender only adds the current frame's
+ *  position, so a fast periapsis pass at high time-speed would otherwise
+ *  draw one long facet. Capped at capacity iterations. */
 export function extendProbeTrailBuffer(
 	buf: TrailBuffer,
 	sample: Sampler,

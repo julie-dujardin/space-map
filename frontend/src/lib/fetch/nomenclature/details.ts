@@ -1,12 +1,9 @@
 /**
  * Per-feature detail loader: hash-bucketed JSON bundles, mirroring the
  * objects-pipeline shape. Fetched on drawer open, not eagerly with the
- * marker positions — the eager `fetchBodyNomenclature` call only carries
- * the lean per-body marker metadata.
- *
- * Bucket key: `${bodyId}:${featureId}` (must match `feature_bucket_key`
- * in `data/src/space_map_data/export/nomenclature/writer.py`). Bucket
- * count for each tier ships in `metadata.feature_bundles`.
+ * marker positions — those only carry lean per-body marker metadata.
+ * Bucket key `${bodyId}:${featureId}` must match `feature_bucket_key` in
+ * `data/src/space_map_data/export/nomenclature/writer.py`.
  */
 
 import { getLocale } from '$lib/paraglide/runtime.js';
@@ -83,13 +80,9 @@ export function featureBucketKey(bodyId: string, featureId: number): string {
 }
 
 /**
- * Fetch the global + localized detail bundles for one IAU feature.
- *
- * Mirrors `fetchObjectDetail` — looks up bucket counts in
- * `metadata.feature_bundles`, hashes the `${bodyId}:${featureId}` key, and
- * pulls the gzipped JSON bundles in parallel. Returns `{global: null,
- * localized: null}` when the metadata predates feature bundles or no
- * bucket holds this feature.
+ * Fetch the global + localized detail bundles for one IAU feature. Mirrors
+ * `fetchObjectDetail`. Returns `{global: null, localized: null}` when the
+ * metadata predates feature bundles or no bucket holds this feature.
  */
 export async function fetchFeatureDetail(
 	bodyId: string,
