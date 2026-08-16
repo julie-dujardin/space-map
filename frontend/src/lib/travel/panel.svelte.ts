@@ -211,8 +211,14 @@ export class TravelPanelState {
 	#assistFor: string | null = null;
 	/** The last solve's inputs, so a hand-picked point is priced the same way
 	 *  the grid it was read off was. Reactive because the ends in it are also
-	 *  what the trajectory is drawn from — see {@link pricedEnds}. */
-	#pricing = $state<{ origin: TravelBody; target: TravelBody; options: RouteOptions } | null>(null);
+	 *  what the trajectory is drawn from — see {@link pricedEnds}.
+	 *
+	 *  Raw for the reason {@link originOrbit} is: the ends in here ride back into
+	 *  the worker on the swing-by hunt, and a deep `$state` proxy cannot be
+	 *  structured-cloned. Replaced wholesale, never written into. */
+	#pricing = $state.raw<{ origin: TravelBody; target: TravelBody; options: RouteOptions } | null>(
+		null
+	);
 	/** A pick that arrived before there was a grid to price it against — off a
 	 *  shared link — held until the first solve lands. */
 	#pendingPick = $state<TripPick | null>(null);
@@ -255,6 +261,11 @@ export class TravelPanelState {
 	 *  re-describe an end without moving a single date, so a caller keyed on
 	 *  what a route says has no other way to notice. */
 	pricedRevision = $state(0);
+	/** The same count off the rune. Counting on the rune itself would read what
+	 *  it writes, and {@link block} is called straight out of an effect: that
+	 *  read makes the effect depend on the count it just bumped, and the panel
+	 *  spins until Svelte kills it. */
+	#revision = 0;
 
 	/** The trip as the URL carries it. The hand pick is reported whether or not a
 	 *  solve has priced it, or a link would drop its own pick on the way in. */
@@ -830,18 +841,26 @@ export class TravelPanelState {
 
 		const token = ++this.#assistToken;
 		this.assistSearching = true;
-		const route = await this.#solver.findAssist(origin, target, vias, {
-			...options,
-			nowJd: earliestJd,
-			deadlineJd,
-			departureMode: this.departureMode,
-			arrivalMode: this.arrivalMode,
-			...this.endTerms,
-			// Load-bearing: the hunt is only ever compared against the direct
-			// routes, so an arrival priced on a different braking mode isn't a
-			// comparison at all — it reads as a swing-by that saves nothing.
-			aero: this.effectiveAero
-		});
+		let route: Route | null = null;
+		try {
+			route = await this.#solver.findAssist(origin, target, vias, {
+				...options,
+				nowJd: earliestJd,
+				deadlineJd,
+				departureMode: this.departureMode,
+				arrivalMode: this.arrivalMode,
+				...this.endTerms,
+				// Load-bearing: the hunt is only ever compared against the direct
+				// routes, so an arrival priced on a different braking mode isn't a
+				// comparison at all — it reads as a swing-by that saves nothing.
+				aero: this.effectiveAero
+			});
+		} catch (e) {
+			// A hunt that cannot even be posted is still an answer: without this the
+			// question is never asked again — the key above is already set — and the
+			// tab reads "still looking" for the rest of the session.
+			console.error('[travel] the swing-by hunt could not be run:', e);
+		}
 		// A newer hunt has replaced this one; it owns the flag now.
 		if (token !== this.#assistToken) return;
 		this.assistSearching = false;
@@ -920,7 +939,7 @@ export class TravelPanelState {
 		this.#assistFor = null;
 		this.#pendingProfile = null;
 		this.#pricing = null;
-		this.pricedRevision++;
+		this.pricedRevision = ++this.#revision;
 	}
 
 	/**
@@ -1031,7 +1050,7 @@ export class TravelPanelState {
 		this.routes = result.routes;
 		this.grid = result.grid;
 		this.#pricing = { origin, target, options: solveOptions };
-		this.pricedRevision++;
+		this.pricedRevision = ++this.#revision;
 		this.custom = this.#repriceCustom() ?? this.#pricePendingPick();
 		this.status = this.offered.length > 0 ? 'ready' : 'empty';
 
