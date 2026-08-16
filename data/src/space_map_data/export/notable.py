@@ -21,7 +21,7 @@ from space_map_data.export.images import (
 from space_map_data.export.systems import displacement_block
 from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.models.object.main import Object
 
 
@@ -203,12 +203,13 @@ def notable_entries(
     the frontend can tell "no texture" from a pre-flag bundle it should still probe.
     """
     out: list[dict] = []
+    entry: dict
     for member in members:
         wd = _member_entity(member, wikidata_entities)
-        name = (wd["labels"].get("en") if wd else None) or member.fallback_name
+        name = entity_label(wd, "en") or member.fallback_name
         # Group members route to /g/<slug>; object members focus their mesh.
         if member.group_slug is not None:
-            entry: dict = {"name": name, "group": member.group_slug}
+            entry = {"name": name, "group": member.group_slug}
             thumbnail = pick_thumbnail(collect_group_images(member.group_slug))
             if thumbnail:
                 entry["thumbnail"] = thumbnail
@@ -289,7 +290,7 @@ def notable_names(
         wd = _member_entity(member, wikidata_entities)
         if not wd:
             continue
-        label = wd["labels"].get(lang)
+        label = entity_label(wd, lang)
         if label and label != entry["name"]:
             out[_member_key(member)] = label
     return out

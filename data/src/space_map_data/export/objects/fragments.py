@@ -28,7 +28,7 @@ from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.images import collect_object_images, pick_thumbnail
 from space_map_data.export.notable import NotableObject, notable_entries, notable_names
 from space_map_data.export.objects.writer import ChunkObjectData
-from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.models.object.main import Object
 from space_map_data.models.object.sbdb import SBDB, CometPrefix
 
@@ -60,8 +60,7 @@ def _parent_display_name(
 ) -> str | None:
     """Wikidata English label when available, else the catalog name."""
     if qid:
-        wd = wikidata_entities.get_entity(qid)
-        label = wd["labels"].get("en") if wd else None
+        label = entity_label(wikidata_entities.get_entity(qid), "en")
         if label:
             return label
     return obj_name or full_name
@@ -107,12 +106,7 @@ def _resolve_parentless_qid(
         qid
         for qid in candidates
         if not _FRAGMENT_LABEL_RE.search(
-            (
-                wd["labels"].get("en")
-                if (wd := wikidata_entities.get_entity(qid))
-                else ""
-            )
-            or ""
+            entity_label(wikidata_entities.get_entity(qid), "en") or ""
         )
     }
     return next(iter(comet_level)) if len(comet_level) == 1 else None

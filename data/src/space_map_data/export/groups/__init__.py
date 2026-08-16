@@ -64,7 +64,7 @@ from space_map_data.export.objects.missions import (
     first_probe_launch_year,
 )
 from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.models.object.main import Object
 from space_map_data.models.object.sbdb import SBDB
 from space_map_data.utils.paths import EXPORT_DIR, SOURCES_METADATA_DIR
@@ -304,7 +304,7 @@ def _split_comet_groups(
             if len(candidates) == 1:
                 qid = candidates[0]
                 wd = wikidata_entities.get_entity(qid)
-                name = (wd["labels"].get("en") if wd else None) or name
+                name = entity_label(wd, "en") or name
                 by_designation += 1
         slug = family_group_slug(family.parent_pdes)
         out.groups.append(

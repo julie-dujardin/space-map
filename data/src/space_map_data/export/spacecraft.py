@@ -25,7 +25,7 @@ from space_map_data.constants.spacecraft import (
     solver_can_judge,
 )
 from space_map_data.constants.spacecraft.specs import C3Curve, Measured
-from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.utils.paths import EXPORT_DIR, SOURCES_LAUNCH_PERFORMANCE_DIR
 
 logger = logging.getLogger(__name__)
@@ -181,9 +181,11 @@ def build_name_bundles(cache: WikidataEntityCache) -> dict[str, dict[str, dict]]
         if entity is None:
             unnamed.append(craft.id)
             continue
-        english = entity["labels"].get("en") or craft.name
+        english = entity_label(entity, "en") or craft.name
         for lang in LANGUAGES:
-            label = entity["labels"].get(lang)
+            # `mul` is a real name in this language, not an English fallback,
+            # so it counts as a hit for the tally below.
+            label = entity["labels"].get(lang) or entity["labels"].get("mul")
             name = label or english
             if not name:
                 continue

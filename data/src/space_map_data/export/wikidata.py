@@ -151,21 +151,29 @@ def _parse_entity(entity: dict) -> WikidataEntity | None:
     )
 
 
+def entity_label(wd: WikidataEntity | None, lang: str) -> str | None:
+    """Best label for *lang*: the language's own, else ``mul``, else English.
+
+    Wikidata files a name under ``mul`` when it is the same in every language
+    (catalog designations, most spacecraft buses); those entities often carry
+    no per-language label at all, so skipping ``mul`` leaves the caller with
+    nothing to show. It outranks English because it is the language-neutral
+    form, not a translation into one.
+    """
+    if not wd:
+        return None
+    labels = wd["labels"]
+    return labels.get(lang) or labels.get("mul") or labels.get("en")
+
+
 def resolve_name(
     obj: Object,
     lang: str,
     wd: WikidataEntity | None,
 ) -> str | None:
     """Resolve the best available name for an object in a given language."""
-    if wd:
-        labels = wd["labels"]
-        if lang in labels:
-            return labels[lang]
-        if "en" in labels:
-            # TODO: save an export of where/how many fallbacks to english were done
-            return labels["en"]
-
-    return obj.name
+    # TODO: save an export of where/how many fallbacks to english were done
+    return entity_label(wd, lang) or obj.name
 
 
 def _extract_lang_values(data: dict) -> dict[str, str]:

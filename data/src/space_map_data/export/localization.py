@@ -27,6 +27,7 @@ from space_map_data.export.wikidata import (
     WikidataEntity,
     WikidataEntityCache,
     active_statements,
+    entity_label,
 )
 from space_map_data.utils.paths import PROJECT_ROOT, SOURCES_METADATA_DIR
 
@@ -126,7 +127,7 @@ def _collect_unit_labels(
     for lang in LANGUAGES:
         labels: dict[str, str] = {}
         for key, (_qid, entity) in units.items():
-            label = entity["labels"].get(lang) or entity["labels"].get("en")
+            label = entity_label(entity, lang)
             if label:
                 labels[f"unit_name_{key}"] = label
 
@@ -160,7 +161,7 @@ def _collect_property_labels(
             key = PID_TO_KEY.get(pid)
             if not key:
                 continue
-            label = entity["labels"].get(lang) or entity["labels"].get("en")
+            label = entity_label(entity, lang)
             if label:
                 labels[f"property_name_{key}"] = label
         result[lang] = labels
@@ -190,7 +191,7 @@ def _collect_feature_type_labels(
 
         if entity:
             for lang in LANGUAGES:
-                if label := entity["labels"].get(lang):
+                if label := (entity["labels"].get(lang) or entity["labels"].get("mul")):
                     result[lang][label_key] = label[:1].upper() + label[1:]
                 if desc := entity["descriptions"].get(lang):
                     result[lang][desc_key] = desc[:1].upper() + desc[1:]
@@ -237,7 +238,9 @@ def _collect_group_name_labels(
             entity = wikidata_entities.get_referenced(group.wikidata_qid)
             if entity:
                 for lang in LANGUAGES:
-                    if label := entity["labels"].get(lang):
+                    if label := (
+                        entity["labels"].get(lang) or entity["labels"].get("mul")
+                    ):
                         result[lang][key] = label
         base.setdefault(key, _group_fallback_name(group))
 

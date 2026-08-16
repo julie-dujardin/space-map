@@ -25,6 +25,7 @@ from space_map_data.export.wikidata import (
     WikidataEntity,
     WikidataEntityCache,
     active_statements,
+    entity_label,
 )
 from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,
@@ -723,13 +724,9 @@ def _build_localized(
     data: dict = {}
 
     if wd:
-        labels = wd["labels"]
-        # target lang → English → omit, matching resolve_name's fallback chain.
         # No obj.name fallback: that's already in the global file.
-        if lang in labels:
-            data["name"] = labels[lang]
-        elif "en" in labels:
-            data["name"] = labels["en"]
+        if name := entity_label(wd, lang):
+            data["name"] = name
 
         desc = wd["descriptions"].get(lang)
         if desc:

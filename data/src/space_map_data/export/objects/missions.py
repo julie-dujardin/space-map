@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.notable import NotableObject, notable_entries, notable_names
 from space_map_data.export.objects.writer import ChunkObjectData
-from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.probes.landing_events import EVENTS_DIR
 from space_map_data.probes.probe_id import load_registry
 
@@ -166,8 +166,7 @@ def build_probe_missions() -> list[ProbeMission]:
 def _mission_name(
     mission_qid: str, fallback: str, wikidata_entities: WikidataEntityCache
 ) -> str:
-    wd = wikidata_entities.get_entity(mission_qid)
-    return (wd["labels"].get("en") if wd else None) or fallback
+    return entity_label(wikidata_entities.get_entity(mission_qid), "en") or fallback
 
 
 def attach_probe_missions(

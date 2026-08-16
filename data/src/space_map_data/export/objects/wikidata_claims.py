@@ -15,6 +15,7 @@ from space_map_data.export.wikidata import (
     WikidataEntity,
     WikidataEntityCache,
     active_statements,
+    entity_label,
     prefer_rank,
     undeprecated_statements,
 )
@@ -383,7 +384,10 @@ def resolve_entity_ref(
     wd = wikidata_entities.get_referenced(qid)
     if not wd:
         return None
-    name = wd["labels"].get(lang)
+    # No English fallback on purpose: an untranslated ref is dropped rather
+    # than shown in the wrong language. `mul` is not a translation, so it
+    # counts for every locale.
+    name = wd["labels"].get(lang) or wd["labels"].get("mul")
     if not name:
         return None
     ref = EntityRef(name=name)
@@ -443,7 +447,7 @@ def resolve_unit(
     """Resolve a unit QID to a normalized English label, or None if not found."""
     unit_wd = wikidata_entities.get_referenced(unit_qid)
     if unit_wd:
-        label = unit_wd["labels"].get("en")
+        label = entity_label(unit_wd, "en")
         if label:
             return label.lower().replace(" ", "_")
     logger.warning("could not resolve unit %s", unit_qid)
@@ -707,7 +711,7 @@ def _parse_quantity(dv: dict) -> dict | float | None:
         return None
     try:
         value = float(dv["amount"])
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
     unit = dv.get("unit", "1")
     if unit == "1":

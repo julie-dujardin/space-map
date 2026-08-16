@@ -87,7 +87,7 @@ from space_map_data.export.objects.wikipedia import (
     load_wikipedia_summaries_for_qid,
 )
 from space_map_data.export.objects.writer import hash_bucket
-from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 
 logger = logging.getLogger(__name__)
 
@@ -485,7 +485,7 @@ def _build_localized(
                 group.type not in (GroupType.CATEGORY, GroupType.ORBIT_CLASS)
                 and group.slug not in _LAGRANGE_CLASS_SLUGS
             ):
-                name = wd["labels"].get(lang) or wd["labels"].get("en")
+                name = entity_label(wd, lang)
                 if name:
                     # Wikidata labels orbit zones and landforms sentence-case
                     # ("low Earth orbit", "crater"); the UI wants a capitalized
@@ -569,7 +569,7 @@ def _build_localized(
             object_id: label
             for object_id, qid in ft_stats.body_qids.items()
             if (wd := wikidata_entities.get_entity(qid))
-            and (label := wd["labels"].get(lang))
+            and (label := entity_label(wd, lang))
         }
         if body_names:
             data["body_names"] = body_names

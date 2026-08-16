@@ -28,6 +28,8 @@ class SatelliteBusSpec:
     slug: str
     wikidata_qid: str | None
     manufacturer: ManufacturerSpec
+    # First entry is the display name wherever Wikidata has no label for the
+    # bus, so it must be the canonical form even when that repeats the slug.
     also_known_as: tuple[str, ...] = ()
     first_launch: str | None = None
     mass_kg_range: tuple[int, int] | None = None
@@ -145,7 +147,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         slug="hs-381",
         wikidata_qid=None,
         manufacturer=MANUFACTURER_BY_SLUG["hughes"],
-        also_known_as=("Leasat bus", "Syncom IV bus"),
+        also_known_as=("HS-381", "Leasat bus", "Syncom IV bus"),
         first_launch="1984",
         mass_kg_range=(1315, 3400),
         known_satellites=(
@@ -547,7 +549,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         slug="lm-700",
         wikidata_qid="Q6459000",
         manufacturer=MANUFACTURER_BY_SLUG["lockheed-martin"],
-        also_known_as=("LM 700", "LM-700A", "LM-700B", "Iridium bus"),
+        also_known_as=("LM-700", "LM 700", "LM-700A", "LM-700B", "Iridium bus"),
         first_launch="1997-05-05",
         mass_kg_range=(680, 689),
         known_satellites=tuple(f"IRIDIUM {i}" for i in range(1, 99)),
@@ -559,6 +561,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         slug="elitebus1000",
         wikidata_qid="Q125698667",
         manufacturer=MANUFACTURER_BY_SLUG["thales-alenia-space"],
+        also_known_as=("ELiTeBus-1000",),
         first_launch="2010-10-19",
         known_satellites=tuple(
             [f"IRIDIUM {i}" for i in range(100, 182)]
@@ -860,7 +863,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         slug="leostar",
         wikidata_qid=None,  # No dedicated item for the umbrella; Q133286575 covers only LEOStar-3
         manufacturer=MANUFACTURER_BY_SLUG["orbital-sciences"],
-        also_known_as=("LEOStar-1", "LEOStar-2", "LEOStar-3"),
+        also_known_as=("LEOStar", "LEOStar-1", "LEOStar-2", "LEOStar-3"),
         first_launch="2003",  # OrbView-4 (2001) was the first LEOStar flight but failed to orbit
         mass_kg_range=(300, 4000),
         known_satellites=(
@@ -988,6 +991,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         slug="spacebus-2000",
         wikidata_qid="Q125680105",  # Spacebus-2000 (no enwiki sitelink)
         manufacturer=MANUFACTURER_BY_SLUG["aerospatiale"],
+        also_known_as=("Spacebus-2000",),
         first_launch="1990-08-30",
         mass_kg_range=(1800, 2500),
         solar_span_m=22.4,
@@ -1868,6 +1872,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         slug="arsat-3k",
         wikidata_qid="Q22084804",
         manufacturer=MANUFACTURER_BY_SLUG["invap"],
+        also_known_as=("ARSAT-3K",),
         first_launch="2014-10-16",
         mass_kg_range=(2900, 3000),
         known_satellites=(
@@ -1920,7 +1925,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         slug="arkyd-100",
         wikidata_qid="Q25449222",
         manufacturer=MANUFACTURER_BY_SLUG["planetary-resources"],
-        also_known_as=("Leo Space Telescope", "Ceres"),
+        also_known_as=("Arkyd-100", "Leo Space Telescope", "Ceres"),
         first_launch=None,
         mass_kg_range=(11, 15),
         notes="Planned LEO space telescope; only ground-test prototypes; cancelled after 2018 ConsenSys acquisition.",
@@ -1929,7 +1934,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         slug="arkyd-200",
         wikidata_qid=None,  # Q17620827 is the generic "Arkyd" series item, not the 200; no dedicated item
         manufacturer=MANUFACTURER_BY_SLUG["planetary-resources"],
-        also_known_as=("Interceptor",),
+        also_known_as=("Arkyd-200", "Interceptor"),
         first_launch=None,
         notes="Planned asteroid interceptor; full-size prototype built 2016; never launched.",
     ),
@@ -1937,7 +1942,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         slug="arkyd-300",
         wikidata_qid=None,  # Q17620827 is the generic "Arkyd" series item, not the 300; no dedicated item
         manufacturer=MANUFACTURER_BY_SLUG["planetary-resources"],
-        also_known_as=("Rendezvous Prospector", "Arkyd-301"),
+        also_known_as=("Arkyd-300", "Rendezvous Prospector", "Arkyd-301"),
         first_launch=None,
         notes="Concept only; cancelled 2018.",
     ),

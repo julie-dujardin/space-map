@@ -254,7 +254,7 @@ def _build_labels(
         if f.wikidata_qid:
             wd = wikidata_entities.get_feature_entity(f.wikidata_qid)
             if wd is not None:
-                wd_label = wd["labels"].get(lang)
+                wd_label = wd["labels"].get(lang) or wd["labels"].get("mul")
                 if wd_label:
                     label = wd_label
         lines.append(label)

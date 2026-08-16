@@ -251,7 +251,9 @@ def ring_system_localized(
     entry: dict = {}
     for qid in RING_SYSTEM_PAGES.get(body_id, ()):
         entity = wikidata_entities.get_referenced(qid)
-        if entity and (label := entity["labels"].get(lang)):
+        if entity and (
+            label := entity["labels"].get(lang) or entity["labels"].get("mul")
+        ):
             entry.setdefault("name", label)
         if summary := _summaries(qid).get(lang):
             if summary.extract:
@@ -280,7 +282,11 @@ def ring_feature_localized(
             # English keeps the catalogue name: Wikidata's English label is a
             # translation of the French/Italian title, e.g. IAU's "Huygens Gap"
             # would become "Huygens Division".
-            if lang != "en" and entity and (label := entity["labels"].get(lang)):
+            if (
+                lang != "en"
+                and entity
+                and (label := entity["labels"].get(lang) or entity["labels"].get("mul"))
+            ):
                 entry.setdefault("name", label)
             if summary := _summaries(qid).get(lang):
                 if summary.extract:

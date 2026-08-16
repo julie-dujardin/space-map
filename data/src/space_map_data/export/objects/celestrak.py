@@ -152,8 +152,8 @@ def _bus_group_ref(
 ) -> EntityRef | None:
     """EntityRef for a satellite bus, pointing at /g/bus-<slug>.
 
-    Falls back to the slug when no QID is registered, matching the bus group
-    page's own fallback.
+    Falls back to the curated name, matching the bus group page's own
+    fallback — a third of these buses have no Wikidata label to resolve.
     """
     spec = BUS_BY_SLUG.get(slug)
     if spec is None:
@@ -165,7 +165,8 @@ def _bus_group_ref(
             ref.primary_type = "group"
             ref.primary_id = group_slug
             return ref
-    return EntityRef(name=slug, primary_type="group", primary_id=group_slug)
+    name = spec.also_known_as[0] if spec.also_known_as else slug
+    return EntityRef(name=name, primary_type="group", primary_id=group_slug)
 
 
 def merge_operator_qids(extracted: dict, sat: Satcat | None) -> None:

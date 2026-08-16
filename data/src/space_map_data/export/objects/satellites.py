@@ -27,7 +27,11 @@ from space_map_data.export.images import (
     pick_thumbnail,
 )
 from space_map_data.export.objects.writer import ChunkObjectData
-from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
+from space_map_data.export.wikidata import (
+    WikidataEntity,
+    WikidataEntityCache,
+    entity_label,
+)
 from space_map_data.models.object.main import Object, ObjectType
 
 logger = logging.getLogger(__name__)
@@ -40,7 +44,7 @@ _CONSTELLATION_QID = {c.slug: c.wikidata_qid for c in CONSTELLATIONS}
 
 def _en_name(entity: WikidataEntity | None, fallback: str) -> str:
     """English Wikidata label, else the DB/slug fallback."""
-    return (entity["labels"].get("en") if entity else None) or fallback
+    return entity_label(entity, "en") or fallback
 
 
 def _localized(
@@ -53,7 +57,7 @@ def _localized(
     if entity is None:
         return
     for lang in LANGUAGES:
-        label = entity["labels"].get(lang)
+        label = entity_label(entity, lang)
         if label and label != en_name:
             out[lang][key] = label
 

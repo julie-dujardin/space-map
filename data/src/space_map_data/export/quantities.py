@@ -7,7 +7,7 @@ claims on preloaded unit entities, replacing hardcoded conversion tables.
 import logging
 from typing import NamedTuple
 
-from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ class UnitConverter:
             for qty_type in qty_types:
                 base_units.setdefault(qty_type, set()).add(base_qid)
 
-            label_raw = entity["labels"].get("en")
+            label_raw = entity_label(entity, "en")
             if not label_raw:
                 continue
             label = label_raw.lower().replace(" ", "_")
@@ -240,7 +240,7 @@ class UnitConverter:
                 continue
             try:
                 amount = float(val["amount"])
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 continue
             unit_uri = val.get("unit", "1")
             if unit_uri == "1":
