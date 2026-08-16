@@ -19,6 +19,7 @@ import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { bodyQuaternion, type Orientation } from '$lib/math/orientation';
 import { J2000_JD } from '$lib/time/jd';
 import { estimateMu, muFromElements, type TravelBody } from '$lib/math/travel';
+import { AU_KM } from '$lib/math/units';
 import type { Vec3 } from '$lib/math/travel/vec3';
 
 const DEG2RAD = Math.PI / 180;
@@ -175,8 +176,9 @@ export function toTravelBody(
 	detail: GlobalObjectData | null = null,
 	orbit: OrbitChoice = 'heliocentric'
 ): TravelBody | null {
-	const ancestor = orbit === 'own' ? body : heliocentricAncestor(body, lookup);
-	if (!ancestor) return null;
+	const chain = orbit === 'own' ? [body] : ancestry(body, lookup);
+	if (!chain) return null;
+	const ancestor = chain[chain.length - 1];
 	// A trip is solved by propagating these years ahead, so the Sun-centred fit
 	// wins wherever one exists — see `helioElements`. `own` orbits are already
 	// about the body they go round.
@@ -187,7 +189,7 @@ export function toTravelBody(
 	const measuredMu = id === null ? undefined : getGmKm3s2(id);
 	const aeroPa = aeroPressurePa(detail);
 
-	return {
+	const travel: TravelBody = {
 		id: body.id,
 		// Most of the catalogue has no measured mass; an assumed density is close
 		// enough that capture and landing stay in the right order of magnitude.
@@ -221,9 +223,28 @@ export function toTravelBody(
 			aeroPa === undefined ? undefined : getAtmosphereParams(body.id)?.rayleighScaleHeightKm,
 		spinRadPerSec: spinRadPerSec(detail?.orientation),
 		poleEcliptic: poleEcliptic(detail?.orientation),
-		parentId: body.parentId,
-		borrowedElements: orbit !== 'own' && ancestor.id !== body.id
+		parentId: body.parentId
 	};
+	travel.borrowedElements = straysFromElements(chain, travel);
+	return travel;
+}
+
+/**
+ * Whether the elements put the body somewhere it is not.
+ *
+ * Every body in a heliocentric plan flies on an ancestor's ellipse, so "the
+ * elements are someone else's" cannot be the test: a planet borrows its own
+ * system barycentre, which for the Earth-Moon pair sits 4700 km from Earth's
+ * centre — inside the planet. The body itself is the scale that decides. A
+ * centre under the surface is the body's own place at any zoom a trip is drawn
+ * at; the Moon, Europa and Charon are whole orbits away from theirs and have to
+ * be drawn off themselves.
+ */
+function straysFromElements(chain: readonly BodyData[], travel: TravelBody): boolean {
+	// The farthest the body gets from the borrowed centre: every orbit on the way
+	// up to it, each at its own apoapsis.
+	const offsetKm = chain.slice(0, -1).reduce((sum, link) => sum + link.a * (1 + link.e) * AU_KM, 0);
+	return offsetKm > travel.radiusKm;
 }
 
 /**

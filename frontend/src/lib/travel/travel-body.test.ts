@@ -104,6 +104,19 @@ describe('toTravelBody', () => {
 		expect(earth.elements.a).toBeCloseTo(1.00000261, 9);
 	});
 
+	// What decides whether an end is drawn where the crossing meets it or off the
+	// live body. Read structurally — "the elements are an ancestor's" — it caught
+	// every planet, since each one flies on its own system barycentre, and put
+	// both ends of every trip on the bodies instead of at the arcs' ends.
+	it('marks elements as borrowed only where the body leaves the centre they name', () => {
+		const borrowed = (id: string) => toTravelBody(bodies.get(id)!, look)!.borrowedElements;
+		// The Earth-Moon barycentre is 4700 km out: inside Earth.
+		expect(borrowed('naif-399')).toBe(false);
+		expect(borrowed('naif-599')).toBe(false);
+		expect(borrowed('naif-301')).toBe(true);
+		expect(borrowed('naif-502')).toBe(true);
+	});
+
 	it('estimates mu when no measured value is loaded', () => {
 		// systems-global is unloaded in tests, so every body takes the fallback.
 		const earth = toTravelBody(bodies.get('naif-399')!, look)!;

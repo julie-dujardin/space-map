@@ -57,10 +57,13 @@ export interface TravelBody {
 	/** Primary this body orbits; absent for heliocentric bodies. */
 	parentId?: string;
 	/**
-	 * True when `elements` are an ancestor's, standing in for a satellite in a
-	 * heliocentric plan — the Moon flown as "a Moon-sized body on Earth's orbit".
-	 * The crossing is right to use them; anything drawn *at* this body is not,
-	 * since the position they give is the ancestor's, not the body's own.
+	 * True when `elements` place a centre the body is nowhere near — the Moon
+	 * flown as "a Moon-sized body on Earth's orbit". The crossing is right to use
+	 * them; anything drawn *at* this body is not, since the position they give is
+	 * the ancestor's.
+	 *
+	 * Not simply "the elements are someone else's": a planet borrows its own
+	 * system barycentre, which for Earth is a point under the surface.
 	 */
 	borrowedElements?: boolean;
 }
