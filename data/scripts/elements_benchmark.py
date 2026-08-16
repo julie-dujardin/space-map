@@ -1,18 +1,12 @@
 """Benchmark exported Keplerian elements files against SPICE truth.
 
-Reads `EXPORT_DIR/v1/position/{zone}/0/.../*.bin.gz` for every elements
-file with sub-format Keplerian, propagates each body via the same
-formulation the frontend uses (`orbitalElementsToPositionJD` —
-mean-anomaly drift plus optional secular om/w drift), and compares the
-result against `spiceypy.spkezr` truth for bodies the kernel pool
-covers. Aggregates per-zone, plus a per-body table of the worst
-offenders.
-
-Catches what the chebyshev benchmark can't: the static asteroid orbits
-(SBDB Kepler) and the time-chunked SPICE moons (Method C mean-element
-fit with secular drift). Asteroid rows without SPICE coverage are
-skipped silently — only the 373 bodies in `sb441-n373.bsp` plus anything
-covered by mission kernels are scored.
+Propagates each body via the same formulation the frontend uses
+(`orbitalElementsToPositionJD`) and compares against `spiceypy.spkezr`
+truth. Catches what the chebyshev benchmark can't: static asteroid orbits
+(SBDB Kepler) and time-chunked SPICE moons (Method C mean-element fit
+with secular drift). Asteroid rows without SPICE coverage are skipped
+silently — only the 373 bodies in `sb441-n373.bsp` plus anything covered
+by mission kernels are scored.
 
 Run from data/:
     uv run python scripts/elements_benchmark.py

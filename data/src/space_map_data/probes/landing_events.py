@@ -1,12 +1,11 @@
 """Load landed phases from probe event JSONs.
 
 Walks ``DOWNLOAD_DIR/probes/events/*.json``, yields one ``LandingPhase`` per
-``landing`` event on a probe that has a root ``landing_site`` block. Phase
-end = the next event in ``_DEPARTURE_TYPES`` (re-launch, departure, next
-landing, …) or ``end_date`` on the landing itself; otherwise the probe is
-considered landed forever (Apollo descent stages, Veneras, Surveyors).
-Earth landings are capped to one month so sample-return capsules and launch
-failures don't clutter Earth long after touchdown.
+``landing`` event on a probe with a root ``landing_site`` block. Phase end
+is the next ``_DEPARTURE_TYPES`` event or ``end_date`` on the landing
+itself; otherwise the probe stays landed forever (Apollo descent stages,
+Veneras, Surveyors). Earth landings are capped to one month so sample-return
+capsules and launch failures don't clutter Earth after touchdown.
 
 Schema is the canonical one produced by ``scripts/normalize_probe_events.py``:
 
@@ -26,10 +25,9 @@ Schema is the canonical one produced by ``scripts/normalize_probe_events.py``:
     }
 
 Asteroid landings use Horizons-NAIF in ``target_body_naif``
-(``2_000_000+n``); the body-id resolver maps to SBDB SPKID
-(``20_000_000+n``) so the encoded id matches the asteroid's row in the
-DB (keyed ``spkid-N``). Comets share the ``1_000_000+n`` scheme between
-NAIF and SPKID; only the id-type byte changes.
+(``2_000_000+n``), mapped to SBDB SPKID (``20_000_000+n``) to match the
+DB row (``spkid-N``). Comets share the ``1_000_000+n`` scheme between
+NAIF and SPKID — only the id-type byte changes.
 """
 
 import datetime
@@ -46,13 +44,11 @@ logger = logging.getLogger(__name__)
 
 EVENTS_DIR = SOURCES_POSITION_DIR / "probe-events"
 
-# Events that terminate a landed phase. ``mission_end`` / ``contact_lost`` are
-# deliberately excluded — a probe that dies on the surface (Apollo descent
-# stages, every Venera, Surveyor 1) is still landed. ``stage_separation`` is
-# also excluded: a piece falling off (heatshield, ascent stage release from
-# the descent stage's POV) doesn't move the probe whose row this is. Ascent
-# stages crash back to the surface as their own probe with their own
-# landing event.
+# Events that terminate a landed phase. ``mission_end``/``contact_lost``
+# are excluded — dying on the surface (Apollo descent stages, every Venera,
+# Surveyor 1) still counts as landed. ``stage_separation`` is excluded too:
+# a piece falling off doesn't move the probe whose row this is; ascent
+# stages get their own probe row and landing event.
 _DEPARTURE_TYPES = frozenset(
     {
         "launch",
@@ -122,10 +118,9 @@ def _resolve_body(naif: int) -> tuple[int, int]:
     """Map ``target_body_naif`` (Horizons convention) to the renderer's
     ``(id_type, id_value)`` pair.
 
-    Numbered asteroids: Horizons ``2_000_000+i`` → SBDB SPKID ``20_000_000+i``
-    (different offsets per the SBDB mapping). Comets share the
-    ``1_000_000+i`` scheme between NAIF and SPKID; the value is identical,
-    only the id-type differs (DB rows for comets are spkid-keyed).
+    Numbered asteroids: Horizons ``2_000_000+i`` -> SBDB SPKID
+    ``20_000_000+i``. Comets share ``1_000_000+i`` between NAIF and SPKID
+    unchanged — only the id-type differs (comet rows are spkid-keyed).
     """
     if 2_000_000 < naif < 3_000_000:
         return _SPKID, naif + 18_000_000
@@ -137,14 +132,12 @@ def _resolve_body(naif: int) -> tuple[int, int]:
 def _phase_end_et(
     events: list[dict], landing_idx: int, start_et: float
 ) -> float | None:
-    """Return ET at which the landed phase started by ``events[landing_idx]``
-    ends, or ``None`` if the probe stays landed indefinitely (dies on the
-    surface). Priority: ``end_date`` on the landing event itself → next
-    event in ``_DEPARTURE_TYPES`` whose parsed ET is strictly later than
-    ``start_et`` (skip same-instant duplicates and same-day lower-precision
-    events that would otherwise compare equal or earlier — Chang'e returners
-    follow a timestamped ``landing`` with a date-only ``sample_return`` that
-    resolves to the day's 00:00).
+    """ET at which the phase from ``events[landing_idx]`` ends, or ``None``
+    if the probe stays landed indefinitely. Priority: ``end_date`` on the
+    landing itself, then the next ``_DEPARTURE_TYPES`` event strictly later
+    than ``start_et`` — skips same-instant/same-day lower-precision events
+    that would otherwise compare equal or earlier (Chang'e returners follow
+    a timestamped ``landing`` with a date-only ``sample_return`` at 00:00).
     """
     landing = events[landing_idx]
     if landing.get("end_date"):
@@ -173,12 +166,10 @@ def _phase_end_et(
 def _spk_covered_cospars() -> set[str]:
     """COSPAR IDs already owned by an SPK-covered probe in the registry.
 
-    Used to skip events-driven phases for missions that also publish a SPICE
-    landed kernel — Viking 1/2 have both an events-DB registry entry (named
-    after the mission) and an SPK entry (named after the lander), pointing at
-    the same physical lander via COSPAR. The SPICE landed pipeline already
-    emits METHOD_LANDED for the SPK probe; emitting another phase here would
-    double-render the spacecraft.
+    Skips events-driven phases for missions that also publish a SPICE
+    landed kernel — Viking 1/2 have both an events-DB entry and an SPK
+    entry pointing at the same lander via COSPAR. Emitting a phase here
+    too would double-render the spacecraft.
     """
     from space_map_data.probes.probe_id import load_registry
 
@@ -219,9 +210,9 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                     "events: probe %r in %s has no probe_id", name, path.name
                 )
                 continue
-            # SPK-covered missions (Viking 1/2 Lander, …) are handled by the
-            # SPICE landed pipeline; the events file carries them too for
-            # completeness but they'd double-render if we emitted phases.
+            # SPK-covered missions (Viking 1/2 Lander, …) are handled by
+            # the SPICE landed pipeline; emitting a phase here too would
+            # double-render them.
             cospar = probe.get("cospar_id")
             if cospar and cospar in spk_cospars:
                 skipped_spk_covered += 1
@@ -233,10 +224,9 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                 continue
             site = probe.get("landing_site")
             if not isinstance(site, dict):
-                # Probes without a landing_site never reached a fixed surface
-                # point (burnups, ISO-orbit failures, orbit-only missions
-                # with end-of-mission impacts we couldn't resolve). Skip
-                # silently — the script flagged any surprises at migration.
+                # No landing_site means no fixed surface point was reached
+                # (burnups, orbit-only end-of-mission impacts). Skip
+                # silently — the script flagged surprises at migration.
                 continue
             naif = site.get("target_body_naif")
             lat = site.get("lat_deg")
@@ -256,9 +246,8 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                 if ev.get("type") != "landing":
                     continue
                 if ev.get("outcome") == "burnup_above_surface":
-                    # Defensive: a landing event flagged as burnup shouldn't
-                    # coexist with a root landing_site, but if it does the
-                    # burnup outcome wins and the phase is suppressed.
+                    # Defensive: shouldn't coexist with a root landing_site,
+                    # but if it does, burnup wins and the phase is dropped.
                     continue
                 try:
                     start_et = jd_to_et(_parse_iso_to_jd(ev["date"]))

@@ -8,13 +8,8 @@ from space_map_data.utils.convert import date_to_julian
 
 
 class TestDateToJulian:
-    """JD conversion must be timezone-safe.
-
-    CelesTrak's gp.csv ships EPOCH without a Z suffix or offset (e.g.
-    ``2026-04-25T14:51:50.576832``). A naive ``datetime.timestamp()`` would
-    treat that as local time and shift the JD by the host's TZ offset —
-    moving every Earth satellite off its true ground track.
-    """
+    """JD conversion must be timezone-safe: CelesTrak EPOCH has no Z/offset, and a
+    naive local-time parse would shift every satellite off its true ground track."""
 
     def test_naive_iso_string_treated_as_utc(self, monkeypatch):
         # Force a non-UTC local TZ so a naive parse + .timestamp() would diverge.
@@ -23,10 +18,8 @@ class TestDateToJulian:
 
         time.tzset()
         celestrak_epoch = "2026-04-25T14:51:50.576832"
-        # 2026-04-25 14:51:50.576832 UTC = JD 2461156.119335 (within a tiny rounding).
         jd = date_to_julian(celestrak_epoch)
         assert jd is not None
-        # Compare to the JD of the same instant explicitly tagged as UTC.
         utc_jd = (
             datetime.fromisoformat(celestrak_epoch + "+00:00").timestamp() / 86400.0
             + 2440587.5

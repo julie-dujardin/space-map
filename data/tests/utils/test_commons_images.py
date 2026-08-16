@@ -214,8 +214,7 @@ class TestCollectQidCommonsFilenames:
 
     def test_dedupes_across_sources_keeping_first_kind(self, dirs):
         wd, wp = dirs
-        # P18 lists it as a photo; P154 also claims it — the photo kind wins
-        # because P18 is visited first and dedup is by canonical filename.
+        # P18 is visited first, so its kind wins on dedup by filename.
         self._write_wd(wd, "Q1", p18=["Shared.png"], p154=["Shared.png"])
         result = ci.collect_qid_commons_filenames("Q1", wikidata_dir=wd, wiki_dir=wp)
         assert result == [{"filename": "Shared.png", "kind": "photo"}]
@@ -299,18 +298,15 @@ class TestImageExclusionReason:
     @pytest.mark.parametrize(
         "filename, categories",
         [
-            # Category alone, in the language the text is baked in — and in
-            # English, which is no different.
+            # Category alone, matching the language baked into the image.
             ("Neptunian_rings_scheme_ru.png", ["Russian-language diagrams"]),
             ("Neptunian_rings_scheme_2.svg", ["English-language SVG diagrams"]),
             ("Whatever.png", ["Astronomical diagrams"]),
-            # Filename alone: uploaders often file these under nothing but the
-            # body they draw.
+            # Filename alone: uploaders often categorise these by body only.
             ("Uranian_rings_scheme.png", ["Uranus (rings)"]),
             ("Anillos_de_Neptuno_esquema.svg", ["Rings of Neptune"]),
             ("Uranian_system_schematic-en.svg", []),
-            # A photograph relabelled in one language; its categories are those
-            # of the photograph it was drawn over.
+            # A relabelled photo keeps the categories of the photo underneath.
             ("Annotated_Uranian_rings.png", ["Images by NIRCam", "PD NASA"]),
         ],
     )
@@ -333,8 +329,7 @@ class TestImageExclusionReason:
     def test_spacecraft_schematics_survive_where_the_flag_is_off(
         self, filename, categories
     ):
-        # The same signals tag a probe's cutaway, which is often the only
-        # illustration of it there is — so the flag is off for built things.
+        # A cutaway is often the only illustration of a probe, so kept by default.
         assert (
             ci.image_exclusion_reason(filename, _meta_with_categories(*categories))
             is None
@@ -343,8 +338,7 @@ class TestImageExclusionReason:
     @pytest.mark.parametrize(
         "filename, categories",
         [
-            # Localized spacecraft schematics must NOT be tagged comparison —
-            # the broad "<lang>-language diagrams" category is deliberately unused.
+            # "<lang>-language diagrams" alone must not tag these as comparisons.
             ("Astro-h_schema.jpg", ["ASTRO-H", "French-language diagrams"]),
             ("Astro-H_schema_(en).png", ["ASTRO-H", "English-language diagrams"]),
             ("1090_Sumida_Light_Curve.png", ["Light curves of asteroids"]),

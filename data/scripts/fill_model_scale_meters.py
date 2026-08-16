@@ -1,13 +1,12 @@
 """Fill ``scale_meters`` into model manifests from Wikidata size claims.
 
 The frontend normalises every GLB to unit-radius and sizes it off the body's
-scene radius, so it needs the real length of each model's longest dimension to
-render to scale. This backfills that number into the manifest entries from
-Wikidata physical-size claims (length / width / height / diameter / wingspan),
-choosing the largest value (the longest extent, matching how the mesh's
-bounding box is normalised). Rejected claims are recorded in a comment so the
-choice can be reviewed and overridden by hand; entries with no usable claim get
-a ``null`` slot and a TODO so the gap is visible.
+scene radius, so it needs the real length of each model's longest dimension.
+This backfills that from Wikidata physical-size claims (length / width /
+height / diameter / wingspan), choosing the largest value — the longest
+extent, matching how the mesh's bounding box is normalised. Rejected claims
+are recorded in a comment for manual review; entries with no usable claim
+get a ``null`` slot and a TODO.
 
 QID per entry: the manifest's own ``wikidata_qid`` when present, else resolved
 through its missions to a DB Object and that object's ``wikidata_qid``.

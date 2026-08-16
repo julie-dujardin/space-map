@@ -1,13 +1,7 @@
-"""Per-object derivative-tree dump with score components.
+"""Dumps per-object derivative-candidate trees with score components, to
+audit the image selection rule before committing to it.
 
-Walks every Object in the DB that has a Wikidata QID and prints, for each
-one, the trees its direct candidates land in. Each tree member is annotated
-with the three score components plus depicts/direct flags so we can
-visually audit the selection rule before committing it.
-
-Single-member trees (one direct candidate, no tree-only members reachable)
-are skipped — the selection there is trivial. Only multi-member trees and
-the objects that contain at least one are printed.
+Single-member trees are skipped — the selection there is trivial.
 
 Score notation (higher is better, lexicographic):
 

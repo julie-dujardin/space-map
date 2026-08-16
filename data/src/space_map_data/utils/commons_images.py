@@ -51,17 +51,15 @@ _ORBIT_FILENAME_SUBSTRINGS = (
 )
 _DIAGRAM_FILENAME_PREFIXES = ("innersolarsystem", "outersolarsystem", "eighttnos")
 
-# Diagrams of a *subject the app draws itself* — ring cutaways, belt maps, moon
-# line-ups, orbit schematics. Dropped only for those subjects (see
-# ``drop_subject_diagrams``), never for spacecraft, whose schematics are often
+# Diagrams of a *subject the app draws itself* — ring cutaways, belt maps,
+# moon line-ups, orbit schematics. Dropped only for those subjects (see
+# ``drop_subject_diagrams``), never spacecraft, whose schematics are often
 # the only illustration that exists.
 #
-# Two signals, because neither covers the family alone. The category one catches
-# the translated sets, whose uploads are tagged by the language of the text
-# baked into them; the filename one catches the diagrams that carry no category
-# beyond the body they depict (Commons files the uploader only filed under
-# "Uranus (rings)"). "annotated" is a prefix rather than a substring: it marks a
-# photograph relabelled in one language, and only ever leads a filename.
+# Two signals: the category one catches translated sets tagged by their
+# baked-in text language; the filename one catches diagrams filed only
+# under the depicted body (e.g. "Uranus (rings)"). "annotated" is a
+# filename-leading prefix marking a relabelled photograph.
 _SUBJECT_DIAGRAM_FILENAME_SUBSTRINGS = ("scheme", "schema", "esquema", "schematic")
 _SUBJECT_DIAGRAM_FILENAME_PREFIXES = ("annotated",)
 _LANGUAGE_DIAGRAM_CATEGORY = re.compile(r"-language (svg )?diagrams$")
@@ -133,23 +131,20 @@ def image_exclusion_reason(
 ) -> str | None:
     """Classify an image as redundant noise to skip, or ``None`` to keep.
 
-    Drops images the app already renders natively or that carry no value as a
-    photo: ``"orbit-diagram"`` (orbit/trajectory plots) and
-    ``"comparison-diagram"`` (Solar-System schematic & size-comparison diagrams,
-    including localized text-baked variants). With ``drop_locator_maps`` (the
-    nomenclature-feature pass) also drops ``"locator-map"`` red-dot/outline
-    locators — these are surface features whose position the app shows itself.
+    Drops images the app already renders natively: ``"orbit-diagram"``
+    (orbit/trajectory plots) and ``"comparison-diagram"`` (Solar-System
+    schematic & size-comparison diagrams, including localized text-baked
+    variants). ``drop_locator_maps`` (the nomenclature-feature pass) also
+    drops ``"locator-map"`` red-dot/outline locators — surface features
+    whose position the app shows itself.
 
-    ``drop_subject_diagrams`` adds ``"subject-diagram"``: cutaways and maps of
-    the subject itself — ring schemes, belt maps, moon line-ups — which restate
-    what the scene and the charts already draw, and restate it in one language,
-    since these families are drawn once and then retranslated file by file. It
-    is off by default, and off for spacecraft in particular: the same signals
-    tag *localized spacecraft schematics* (Astro-H, Ranger, Skylab), and for a
-    probe with no photograph the schematic is the only illustration there is.
-    Locator detection is likewise scoped to features so constellation coverage
-    maps (categorised as country locator maps) survive; country groups drop
-    their own maps via the selection skip.
+    ``drop_subject_diagrams`` adds ``"subject-diagram"``: cutaways/maps of
+    the subject itself (ring schemes, belt maps, moon line-ups) that
+    restate the scene in one language. Off by default, and off for
+    spacecraft — the same signals tag localized spacecraft schematics
+    (Astro-H, Ranger, Skylab), often the only illustration a probe has.
+    Locator detection is scoped to features so constellation coverage maps
+    survive; country groups drop their own maps elsewhere.
     """
     lname = filename.lower()
     if is_excluded(filename) or any(s in lname for s in _ORBIT_FILENAME_SUBSTRINGS):
@@ -261,18 +256,16 @@ def collect_qid_image_candidates(
 ) -> tuple[list[str], dict[str, str], dict[str, int]]:
     """Return ``(direct, kind_of, pageimage_count)`` for a QID's Commons images.
 
-    ``direct`` is the deduped, ordered list of canonical filenames discovered
-    as Wikidata P18 (photo) → Wikipedia pageimages (photo) → Wikidata
-    ``aux_pid`` (``aux_kind``) so the "first image" stays stable as Wikipedia
-    sources come and go. ``kind_of`` maps each filename to ``"photo"`` or
-    ``aux_kind``. ``pageimage_count[name]`` counts how many language wikis
-    picked that file as their pageimage for this QID.
+    ``direct`` is the deduped, ordered filename list, discovery order
+    Wikidata P18 -> Wikipedia pageimages -> Wikidata ``aux_pid``, so the
+    "first image" stays stable as Wikipedia sources come and go.
+    ``kind_of`` maps each filename to ``"photo"`` or ``aux_kind``;
+    ``pageimage_count[name]`` counts language wikis that picked it as
+    pageimage.
 
-    The default ``aux_pid``/``aux_kind`` model objects (P154 logo); pass
-    ``aux_pid="P242", aux_kind="locator"`` to model IAU nomenclature features.
-
-    Non-Commons Wikipedia images and excluded-prefix filenames are filtered
-    out; callers see only servable candidates.
+    Default ``aux_pid``/``aux_kind`` model P154 (logo); pass
+    ``aux_pid="P242", aux_kind="locator"`` for IAU nomenclature features.
+    Non-Commons and excluded-prefix filenames are filtered out.
     """
     wikidata_dir = wikidata_dir or (SOURCES_METADATA_DIR / "wikidata" / "objects")
     wiki_dir = wiki_dir or (SOURCES_METADATA_DIR / "wikipedia")

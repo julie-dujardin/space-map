@@ -1,16 +1,13 @@
 """Walk a probe's SPK coverage and emit which zone(s) it's in over time.
 
-Coarse cadence — we don't need second-by-second resolution. Sampling at
-day-scale catches zone transitions to within a day, which is below every
-zone's chunk size. A probe is in `interplanetary` always *and* in any
-planetary zone it falls inside (dupe is intentional, see `zones.py`).
+Day-scale sampling — zone transitions land within a day, well below any
+zone's chunk size. A probe is always in `interplanetary` *and* any
+planetary zone it falls inside (dupe intentional, see `zones.py`).
 
 Per-sample landed detection splits coverage into alternating flying and
-landed phases (a probe can land, fly again, and land again — Apollo
-splashdowns, GRAIL pre-launch on the pad → lunar impact, sample-return
-capsules). Zone classification runs on flying phases only; landed phases
-carry just (body, start_et, end_et) for the consumer to decide what to
-do with.
+landed phases (a probe can land, fly, and land again — Apollo splashdowns,
+GRAIL's pad-to-impact, sample-return capsules). Zone classification runs on
+flying phases only; landed phases carry just (body, start_et, end_et).
 """
 
 import logging
@@ -161,22 +158,15 @@ def _per_sample_landed_body(
 ) -> np.ndarray:
     """Per-sample body NAIF the probe is landed on (or 0 = flying).
 
-    Two-pass test per sample:
+    Two-pass: (1) cheap altitude prefilter via cached SSB positions — only
+    touches DE/sat kernels, not the mission's hundreds of segments; samples
+    outside `_LANDED_ALT_KM` of every body skip pass two. (2) body-fixed
+    velocity via spkezr in the body's IAU frame — a lander tracks rotation
+    (|v_bf| ≈ 0), a low orbiter doesn't (~1.6 km/s); landed iff
+    |v_bf| < `_LANDED_VBF_M_PER_S`.
 
-      1. Cheap altitude prefilter using cached SSB-relative positions —
-         spkpos against each `_LANDING_TARGETS` only touches DE/sat
-         kernels (a handful of segments, not the mission's hundreds).
-         Samples that aren't within `_LANDED_ALT_KM` of any body skip
-         the second pass entirely.
-
-      2. For each candidate sample, spkezr in the body's IAU frame to
-         get body-fixed velocity. A lander tracks rotation → |v_bf| ≈ 0;
-         a low orbiter at low altitude still has ~1.6 km/s body-fixed.
-         Sample is landed iff |v_bf| < `_LANDED_VBF_M_PER_S`.
-
-    `target_ssb_cache` is shared with zone classification (planet bodies
-    are not zone barycenters, but the function will mutate the cache so
-    later callers can reuse computed SSB tracks).
+    `target_ssb_cache` is shared with zone classification so later callers
+    reuse computed SSB tracks.
     """
     n = len(sample_ets)
     near_body = np.zeros(n, dtype=int)
@@ -224,29 +214,23 @@ def classify_trace(
     kernel_paths: list[str],
     sample_dt_days: float = 1.0,
 ) -> TraceResult:
-    """Sample the probe's trajectory at `sample_dt_days` cadence and return
-    the run-length-encoded zone-membership timeline plus any landed phases.
+    """Sample the trajectory at `sample_dt_days` cadence; return the RLE
+    zone-membership timeline plus any landed phases.
 
-    A probe is placed in:
-      * any planetary zone whose `r_zone_km` it's inside at that time
-      * `interplanetary` across each flying-phase contiguous range
+    A probe is placed in any planetary zone it's inside, plus
+    `interplanetary` across each flying-phase range — not carved by
+    planetary windows, so a flyby or captured orbit lands in BOTH, letting
+    the frontend render either view without a cross-zone stitch (see
+    `zones.py`).
 
-    Interplanetary is NOT carved by planetary windows — during a flyby (or
-    a full captured-orbit phase) the probe is emitted into BOTH the planet
-    zone and interplanetary, so the frontend renders correctly in whichever
-    view the user is in without having to stitch chunks across zones at the
-    boundary moment. See `zones.py` for the rationale.
+    Gapped SPK archives (NH's 2007-2014 hole between Jupiter-flyby and
+    Pluto-approach kernels) are classified per-contiguous-interval so the
+    gap isn't misread as interplanetary coverage.
 
-    Probes with gapped SPK archives (NH has a 2007-2014 hole between the
-    Jupiter-flyby and Pluto-approach kernels) are sampled per-contiguous-
-    interval and the per-interval classifications are concatenated, so the
-    gap doesn't show up as fake interplanetary coverage.
-
-    Landed phases (probe sitting on a major body's surface — altitude <
-    50 km AND body-fixed |v| < 10 m/s) are excluded from zone classification
-    and returned separately. A probe can have arbitrarily many landed
-    phases interleaved with flying ones (Apollo splashdowns, GRAIL's
-    pre-launch sample at Cape Canaveral, sample-return capsules).
+    Landed phases (altitude < 50 km AND body-fixed |v| < 10 m/s) are
+    excluded from zone classification and returned separately; a probe can
+    have several, interleaved with flying ones (Apollo splashdowns, GRAIL's
+    pad sample, sample-return capsules).
     """
     merged = _merged_intervals(naif_id, kernel_paths)
     if not merged:
@@ -273,12 +257,10 @@ def _classify_contiguous_interval(
     n_samples = max(2, int(np.ceil((t1 - t0) / dt_s)) + 1)
     ets = np.linspace(t0, t1, n_samples)
 
-    # Compute probe-rel-SSB once per ET. This is the dominant cost when a
-    # mission has many loaded segments (e.g. MEX with 282 BSPs): each spkpos
-    # walks the segment list to find the probe. The per-zone loop below then
-    # subtracts cached planet-rel-SSB positions — those calls only touch DE /
-    # satellite kernels (a handful of segments) so they're an order of
-    # magnitude cheaper. Cuts MEX classify_trace from ~62 min to ~7 min.
+    # Compute probe-rel-SSB once per ET — dominant cost for missions with
+    # many segments (MEX has 282 BSPs). The per-zone loop below then
+    # subtracts cached planet-rel-SSB positions, which only touch a handful
+    # of DE/satellite kernel segments. Cuts MEX classify_trace 62min -> 7min.
     probe_ssb = _positions_wrt_ssb(naif_id, ets)
 
     # Per-sample landed body (or 0 = flying). RLE into phases; flying ranges
@@ -319,25 +301,20 @@ def _classify_flying_subrange(
     target_ssb_cache: dict[int, np.ndarray],
     out: list[ZoneInterval],
 ) -> None:
-    """Run zone classification over `ets[s_idx:e_idx+1]` and append the
-    resulting `ZoneInterval`s to `out`.
+    """Run zone classification over `ets[s_idx:e_idx+1]`, appending
+    `ZoneInterval`s to `out`.
 
-    Interplanetary spans the full sub-range EXCEPT "captured" periods. A
-    zone-X run is captured when the probe is still inside zone X at the
-    last sample of this flying sub-range — i.e. it never exits before the
-    SPK coverage ends. Captured runs emit ONLY the planet zone; flyby
-    runs emit BOTH the planet zone and interplanetary (so the frontend
-    can render in either view without a cross-zone handoff at the
-    boundary moment, see zones.py).
+    Interplanetary spans the sub-range except "captured" periods — a
+    zone-X run still inside zone X at the sub-range's last sample (never
+    exits before SPK coverage ends). Captured runs emit only the planet
+    zone; flyby runs emit both, so the frontend can render either view
+    without a cross-zone handoff (see zones.py).
 
-    Orbiters (MEX in Mars, HST in Earth-Moon, Cassini-post-SOI in Saturn,
-    Europa Clipper's future Jupiter orbit, …) have their planet zone as
-    the last in-zone run reaching the end of coverage → captured →
-    skip interplanetary for that span. A 7-day Kepler/Chebyshev fit
-    centered on the Sun can't simultaneously capture the planet's
-    heliocentric motion and the spacecraft's much faster planet-centered
-    motion, so folding a captured span into interplanetary too would blow
-    up to ≈ planet-Sun distance (~1 AU) error.
+    Orbiters (MEX at Mars, HST at Earth-Moon, Cassini post-SOI, …) end
+    their coverage captured, so skip interplanetary for that span: a
+    7-day Sun-centered fit can't capture both the planet's heliocentric
+    motion and the spacecraft's faster planet-centered motion — folding a
+    captured span into interplanetary would blow up to ~1 AU error.
     """
     n_sub = e_idx - s_idx + 1
     if n_sub < 1:

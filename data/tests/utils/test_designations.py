@@ -50,8 +50,7 @@ class TestIsIauNamed:
         assert not is_iau_named("", "S2019_S37")
 
     def test_non_ascii_name(self):
-        # Gǃòʼé‑Hú, S/2008 (229762) 1 — click consonants, and mojibake of it,
-        # which a "does the name contain a digit" test misreads (the mangled
-        # form holds a superscript two).
+        # Mojibake of a click-consonant name holds a superscript two, which a
+        # "does the name contain a digit" test would misread.
         assert is_iau_named("Gǃòʼé‑Hú", "S/2008 (229762) 1")
         assert is_iau_named("GÇƒÃ²Ê¼Ã©ÇƒHÃº", "S/2008 (229762) 1")

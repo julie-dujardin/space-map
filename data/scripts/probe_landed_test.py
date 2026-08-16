@@ -1,19 +1,12 @@
 """Test lat/lng sampling for landed probes against real SPICE data.
 
-Reads `LANDED_MISSIONS_DIR/<MISSION>/_index.json` (written by the probes
-downloader's landed bucket) and for each spacecraft with a landed phase:
-
-  1. Builds an "anchor" ET list: phase start, every 00:00 UTC strictly
-     inside the phase, phase end. These are emitted as samples
-     unconditionally — the user spec is "one daily lat/lng at 00:00 UTC".
-  2. Sub-samples between anchors at `--fine-dt` cadence to catch intra-day
-     motion. A sub-sample is emitted whenever its displacement since the
-     last kept sample reaches `--motion-m`.
-  3. Each sample is converted to (lat°, lon°, alt_km) via `spiceypy.recgeo`
-     so numbers match published lander/rover coordinates (areodetic on
-     Mars, geodetic on Earth, spherical on bodies with f=0).
-  4. Phases whose peak displacement stays under `--stationary-m` are
-     collapsed to a single fixed lat/lng.
+For each spacecraft with a landed phase: emits one anchor sample per UTC
+midnight plus phase start/end, then sub-samples at `--fine-dt` cadence and
+keeps extras wherever displacement since the last kept sample reaches
+`--motion-m`. Each sample converts to (lat°, lon°, alt_km) via
+`spiceypy.recgeo` (areodetic on Mars, geodetic on Earth, spherical where
+f=0). Phases under `--stationary-m` peak displacement collapse to a
+single fixed lat/lng.
 
 Reports a summary table per (probe, phase) plus aggregate counts, and can
 dump full per-sample data to JSON for inspection.

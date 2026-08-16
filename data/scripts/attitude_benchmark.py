@@ -1,14 +1,10 @@
 """Benchmark exported probe-attitude chunks against SPICE truth.
 
-For every mission with an `_attitude_index.json`, furnishes its kernels,
-runs the real `extract_attitude`, then decodes the shipped `.bin.gz` chunks
-with the same logic the frontend uses and compares the reconstructed
-orientation against `pxform("J2000", frame)` truth.
-
-Reports per-probe coverage, chunk count + sizes (the max chunk is what the
-frontend loads per focus, since chunks fetch on demand), keyframe count,
-baseline kind, and angular error (median / p95 / max), mirroring
-`probe_benchmark.py` for positions.
+Runs the real `extract_attitude`, decodes the shipped chunks with the same
+logic the frontend uses, and compares against `pxform("J2000", frame)`
+truth. Mirrors `probe_benchmark.py` for positions. Reports include max
+chunk size, since that's what the frontend loads per focus (chunks fetch
+on demand).
 
 Run from data/:
     uv run python scripts/attitude_benchmark.py

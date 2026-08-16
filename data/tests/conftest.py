@@ -29,18 +29,9 @@ _KEPLER_DEFAULTS: dict[str, Any] = {
 
 
 def make_object(**overrides) -> Object:
-    """Create an Object with the right sub-table populated for kepler reads.
-
-    Kepler kwargs (epoch_jd, a, e, i, om, w, ma, n, om_dot, w_dot) are popped
-    off and routed to:
-    * Horizons sub-table for spice / None sources (the default fallback the
-      writer uses when ``Object.orbital_source`` doesn't pin a sub-table —
-      the sub-table's name is historical; SPICE is now its only writer)
-    * a transient ``_daily_kepler`` dict for celestrak source — celestrak rows
-      don't persist kepler elements, the daily overlay supplies them
-    SBDB-source tests should set ``obj.sbdb`` themselves with element values
-    on the SBDB row directly (its column names already match the unified set).
-    """
+    """Create an Object with kepler kwargs routed to the sub-table its orbital_source
+    reads from: Horizons for spice/None, a transient `_daily_kepler` overlay for
+    celestrak. SBDB-source tests should set ``obj.sbdb`` themselves."""
     kepler = {k: overrides.pop(k) for k in list(overrides) if k in _KEPLER_KEYS}
     daily_kepler = overrides.pop("daily_kepler", None)
 

@@ -1,41 +1,32 @@
 """Stable per-probe identifier, packed into a single int32.
 
-NAIF IDs are recycled across missions (NAIF -76 was Mariner 10 and is now MSL,
-NAIF -12 is shared by LADEE and Pioneer Venus Multiprobe, etc.), so they can't
-serve as a primary key for spacecraft. COSPAR survives forever but is
-non-numeric and ambiguous when one launch carries multiple operated
-spacecraft (rover + cruise stage + lander).
-
-A `probe_id` packs the spacecraft's inception MJD with a per-day dedupe index:
+NAIF IDs are recycled across missions (-76 was Mariner 10, now MSL), and
+COSPAR is non-numeric and ambiguous when one launch carries several
+operated spacecraft (rover + cruise stage + lander) — neither works as a
+primary key.
 
     probe_id = ((mjd - MJD_EPOCH) << DEDUPE_BITS) | (dedupe & DEDUPE_MASK)
 
-`MJD_EPOCH` corresponds to 1945-01-01 so the date field starts at zero for
-the post-WWII era (sub-Sputnik margin for any future archival reclassification
-of V-2 / early rocket trajectories). 20-bit date × 12-bit dedupe fits int32 and
-covers up to year ~4817 with 4096 distinct probes per inception day.
+`MJD_EPOCH` is 1945-01-01 (sub-Sputnik margin for any future V-2 / early
+rocket reclassification). 20-bit date x 12-bit dedupe fits int32, covering
+year ~4817 with 4096 probes per inception day.
 
 Inception date is the start of the spacecraft's longest contiguous SPK
-coverage interval at first registration. Persisted to `REGISTRY_PATH` and
-**frozen** thereafter — `assign()` reuses the stored value rather than
-recomputing, so adding earlier-coverage kernels later doesn't shift
-`probe_id`, which would break URL stability.
+coverage at first registration, then **frozen**: `assign()` reuses the
+stored value, so later-discovered earlier kernels can't shift `probe_id`
+and break URL stability.
 
-File shape: a JSON list of entries. Each entry has
+File shape: a JSON list of entries with `probe_id, name, naif_id,
+inception_mjd, dedupe, wikidata_qid, cospar_id, norad_cat_id,
+kernel_sources: [{"mission": ..., "naif_id": ...}, ...]`.
 
-    probe_id, name, naif_id, inception_mjd, dedupe,
-    wikidata_qid, cospar_id, norad_cat_id,
-    kernel_sources: [{"mission": ..., "naif_id": ...}, ...]
+`kernel_sources` is the source of truth for which (mission, naif_id) pairs
+feed this probe — joint-mission folders (Cassini under both CASSINI/-82
+and HUYGENS/-82) declare both sources on one entry instead of two rows.
 
-`kernel_sources` is the source of truth for which (mission, naif_id) pairs in
-the SPICE tree contribute kernels to this probe — joint-mission folders
-(Cassini orbiter exposed under both CASSINI/-82 and HUYGENS/-82) declare both
-sources on the same canonical entry rather than minting two probe rows.
-
-The registry is the curated source of truth for probe identity. It's not a
-cache — once an entry exists it persists, identity fields are hand-edited,
-and frozen fields (`probe_id`, `inception_mjd`, `dedupe`) are never
-overwritten.
+The registry is curated, not a cache: entries persist once created,
+identity fields are hand-edited, and frozen fields (`probe_id`,
+`inception_mjd`, `dedupe`) are never overwritten.
 """
 
 import json
@@ -114,15 +105,13 @@ def decode(probe_id: int) -> tuple[int, int]:
 
 def is_spacecraft_naif(naif: int, all_targets: set[int]) -> bool:
     """True if `naif` is a real spacecraft target, not a landing-site or
-    instrument/frame sub-NAIF. Shared so the ingest walk and the export's
-    `enumerate_probes` agree on what gets a probe row — otherwise the export
-    assigns probe_ids the ingest never created Object rows for.
+    instrument/frame sub-NAIF. Shared so ingest and the export's
+    `enumerate_probes` agree on what gets a probe row.
 
-    Excludes negatives that are:
-      * landing-site NAIFs `-X900` (spacecraft × 1000 - 900) — fixed body points;
-      * instrument NAIFs `-X*1000 - k` (small k) when `-X` is itself a target
-        (e.g. MSL rover -76's arm joints -76501..-76620, Perseverance -168's
-        -168501..-168587 frames).
+    Excludes landing-site NAIFs `-X900` (spacecraft x 1000 - 900, fixed
+    body points) and instrument NAIFs `-X*1000 - k` when `-X` is itself a
+    target (MSL rover -76's arm joints -76501..-76620, Perseverance -168's
+    -168501..-168587 frames).
     """
     if naif >= 0:
         return False
@@ -172,14 +161,13 @@ def index_by_source(registry: list[dict]) -> dict[tuple[str, int], dict]:
 
 
 def load_probe_labels() -> dict[int, str]:
-    """`probe_id → "<canonical-name>/<naif>"` for diagnostic scripts.
+    """`probe_id -> "<canonical-name>/<naif>"` for diagnostic scripts.
 
-    Label is the canonical mission folder name by default, except for
-    HORIZONS-SYNTH where the umbrella name is replaced with the per-naif
-    Horizons spacecraft name from `missions/HORIZONS-SYNTH/_index.json` (so
-    probes read as "Aditya-L1 (spacecraft)/-156" rather than
-    "HORIZONS-SYNTH/-156"). Falls back gracefully when the synth index is
-    missing or unreadable.
+    Label is the canonical mission folder name, except HORIZONS-SYNTH
+    entries get the per-naif Horizons spacecraft name from
+    `missions/HORIZONS-SYNTH/_index.json` ("Aditya-L1 (spacecraft)/-156"
+    instead of "HORIZONS-SYNTH/-156"). Falls back gracefully if the synth
+    index is missing.
     """
     registry = load_registry()
     labels: dict[int, str] = {}
@@ -207,9 +195,9 @@ def load_probe_labels() -> dict[int, str]:
         if f.get("name_horizons")
     }
     for entry in registry:
-        # Only relabel entries whose first (canonical) kernel source is the
-        # synth folder — agency-canonical probes that happen to ALSO include
-        # a HORIZONS-SYNTH source keep their agency name.
+        # Only relabel entries whose first (canonical) source is the synth
+        # folder — probes that merely also include a HORIZONS-SYNTH source
+        # keep their agency name.
         if entry["kernel_sources"][0]["mission"] != "HORIZONS-SYNTH":
             continue
         nm = naif_to_name.get(int(entry["naif_id"]))
@@ -244,16 +232,13 @@ def assign(
 ) -> ProbeIdRecord:
     """Return a stable probe_id for `(mission, naif_id)`.
 
-    Looks up an existing entry whose `kernel_sources` contains the given
-    (mission, naif_id). If found, returns it verbatim — `probe_id`,
-    `inception_mjd`, and `dedupe` are frozen on the persisted entry, so
-    re-computed inception drift doesn't renumber existing probes.
+    Returns an existing entry verbatim if `kernel_sources` already has this
+    pair — `probe_id`/`inception_mjd`/`dedupe` are frozen, so recomputed
+    inception drift can't renumber existing probes.
 
-    Otherwise allocates a new entry: the lowest unused dedupe slot for the
-    inception MJD, with the new `(mission, naif_id)` as the sole
-    kernel_source. The caller is responsible for save_registry() if
-    `registry` is supplied; in stand-alone mode (registry=None) this
-    function loads + saves.
+    Otherwise allocates the lowest unused dedupe slot for the inception
+    MJD. Caller must call save_registry() when `registry` is supplied; in
+    stand-alone mode (registry=None) this loads + saves itself.
     """
     owned = registry is None
     if registry is None:
@@ -301,13 +286,12 @@ def load_mission_qids() -> set[str]:
 def assign_many(
     items: list[tuple[str, int, int]],
 ) -> dict[tuple[str, int], ProbeIdRecord]:
-    """Bulk-assign probe IDs. Loads & saves the registry once.
+    """Bulk-assign probe IDs, loading & saving the registry once.
 
-    `items` is a list of `(mission, naif_id, inception_mjd)`. Deterministic
-    over input order — when two items share an inception date and neither is
-    registered yet, dedupe slots are assigned in the order they appear in
-    `items`. Callers should pre-sort by `(inception_mjd, naif_id)` for stable
-    output across runs.
+    `items` is `(mission, naif_id, inception_mjd)`. Deterministic over
+    input order — when two unregistered items share an inception date,
+    dedupe slots go in `items` order, so callers should pre-sort by
+    `(inception_mjd, naif_id)` for stable output.
     """
     registry = load_registry()
     source_index = index_by_source(registry)

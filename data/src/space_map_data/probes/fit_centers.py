@@ -37,10 +37,9 @@ _DEFAULT_SAMPLES_PER_WINDOW = 5
 class FitCenterCandidate:
     """One body the writer may route a probe to.
 
-    `naif_id` drives SPICE calls; `id_type` + `id_value` are what the binary
-    stores so the frontend can resolve the right Object id (asteroids ingest
-    under SPKID, everything else NAIF). `primary_naif_id` is the dominant
-    gravitating body — planet for moons, Sun for SSB-orbiting asteroids —
+    `naif_id` drives SPICE calls; `id_type`/`id_value` are what the binary
+    stores (asteroids under SPKID, else NAIF). `primary_naif_id` is the
+    dominant gravitating body — planet for moons, Sun for SSB asteroids —
     used for the Hill-sphere check.
     """
 

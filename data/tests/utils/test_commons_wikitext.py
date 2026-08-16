@@ -9,11 +9,7 @@ class TestParseWikitextRealExamples:
     """parse_wikitext on representative real Commons file pages."""
 
     def test_mercury_centered_information_template(self):
-        """File:Mercury_in_color_-_Prockter07_centered.jpg as captured 2026-05.
-
-        Uses {{derived from|...|...}} inside other_versions= AND a sibling
-        [[:File:...]] link. Both need to surface.
-        """
+        """A template inside other_versions= and a sibling wikilink must both surface."""
         wikitext = """
 {{Information
 |Description=Full color image
@@ -95,16 +91,13 @@ class TestParseWikitextEdgeCases:
 }}
 """
         _, others = cw.parse_wikitext(wikitext)
-        # Inner.jpg is inside a nested {{also|...}} that we don't recognise
-        # as a parent/child template, so it's NOT picked up. Sibling.jpg is
-        # a plain wikilink and IS picked up.
+        # {{also|...}} isn't a recognised parent/child template, so Inner.jpg is skipped.
         assert others == ["Sibling.jpg"]
 
     def test_pipe_inside_wikilink_does_not_split(self):
         wikitext = "{{derived from|File:Foo.jpg|[[:File:Bar.jpg|display text]]}}"
         derived, _ = cw.parse_wikitext(wikitext)
-        # _clean_filename only strips ``:``/``File:`` prefixes, so arg 2's
-        # leading "[[" survives and it's discarded as junk. Conservative but fine.
+        # arg 2's leading "[[" survives cleaning and is discarded as junk.
         assert "Foo.jpg" in derived
 
     def test_unbalanced_braces_returns_partial(self):
@@ -151,13 +144,8 @@ class TestParseWikitextEdgeCases:
         assert others == ["A.jpg", "B.jpg"]
 
     def test_extension_required_drops_descriptive_args(self):
-        """Non-filename text in template args (display labels, stale links) is dropped.
-
-        Real Commons usage: people sometimes put descriptions in {{derived from}}
-        or [[:File:...]] links that point at non-existent pages. These match the
-        regex but aren't filenames and would cause spurious "missing on Commons"
-        API calls during graph expansion.
-        """
+        """Non-filename text (display labels, stale links) is dropped so it can't
+        trigger spurious "missing on Commons" lookups during graph expansion."""
         wikitext = (
             "{{derived from|File:Real.jpg|cropped_from_original|low_res_version}}"
             "{{Information|other_versions=[[:File:Apollo_landing_sites]]"

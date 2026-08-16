@@ -5,22 +5,20 @@ from dataclasses import dataclass
 from space_map_data.models.object import ObjectType, DWARF_PLANETS
 
 
-# Moons that get full Chebyshev treatment. Two reasons a moon ends up here:
+# Moons that get full Chebyshev treatment, for two reasons:
+# 1. Surface-feature bodies — zoomed visualization needs pixel-accurate
+#    positions (Io, Europa, Titan, …).
+# 2. Method C (mean-element fit) can't describe non-Keplerian-secular
+#    orbits: co-orbital Trojans (Helene/Polydeuces, Telesto/Calypso) librate
+#    around L4/L5 with residuals of hundreds of degrees. Cheap (~38-50
+#    KB/year), so Chebyshev pays for itself.
 #
-# 1. Surface-feature bodies — visualization zooms into them and the user expects
-#    pixel-accurate positions (Io, Europa, Titan, …).
-# 2. Method C (sampled mean-element fit) cannot describe their orbit because
-#    it's not Keplerian-secular: co-orbital Trojans librate around L4/L5
-#    (Helene/Polydeuces around Dione, Telesto/Calypso around Tethys) and the
-#    fit residual is hundreds of degrees. They're cheap (~38–50 KB/year) so
-#    Chebyshev pays for itself.
+# Other inadequate cases (ring shepherds, inner Uranus/Neptune moons, small
+# inner shepherds) are flagged but not added — each costs ~148 KB/year and
+# x29 of them would balloon the export. They ship with Method C at ~1e5 km
+# error.
 #
-# Other inadequate cases (Saturn ring shepherds, inner Uranus/Neptune moons,
-# Mars/Jupiter/Saturn small inner shepherds) are flagged at extraction time
-# but not added here — each costs ~148 KB/year (0.5d floor) and ×29 of them
-# would balloon the export. They ship with Method C and accept ~1e5 km error.
-#
-# Names are matched case-insensitively against Horizons / SPICE labels.
+# Names matched case-insensitively against Horizons / SPICE labels.
 CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
     {
         # Earth

@@ -72,8 +72,7 @@ def test_apollo_descent_stage_stays_landed_forever(events_root: Path) -> None:
 
 
 def test_two_landings_emit_two_phases_with_root_site(events_root: Path) -> None:
-    """A probe with two landing events on the same body emits two phases
-    bounded by the next landing (which is a departure type)."""
+    """Two landings on the same body emit two phases, bounded by the next departure-type event."""
     _write(
         events_root,
         "asteroids.json",
@@ -114,16 +113,12 @@ def test_two_landings_emit_two_phases_with_root_site(events_root: Path) -> None:
     assert b.body_id_value == 20025143
     # First phase ends where the second begins (next departure-type event).
     assert a.end_et == pytest.approx(_et("2005-11-25T22:07:00"))
-    # Second phase ends at orbit_departure, NOT mission_end (mission_end is
-    # excluded from departure types because dying-on-surface keeps the probe
-    # pinned — but here orbit_departure precedes it).
+    # Ends at orbit_departure, not mission_end: dying on the surface keeps a probe pinned.
     assert b.end_et == pytest.approx(_et("2007-04-25"))
 
 
 def test_pioneer_venus_uses_end_date(events_root: Path) -> None:
-    """`end_date` on the landing event itself wins over next-departure
-    scanning — Pioneer Venus Day Probe transmitted 67 minutes from the
-    surface before dying; end_date is set on the landing directly."""
+    """An `end_date` on the landing event itself wins over next-departure scanning."""
     _write(
         events_root,
         "venus.json",
@@ -157,9 +152,7 @@ def test_pioneer_venus_uses_end_date(events_root: Path) -> None:
 
 
 def test_missing_landing_site_is_skipped(events_root: Path) -> None:
-    """A landing event without a root ``landing_site`` block yields no phase —
-    this covers Galileo Probe / Philae / orbiter end-of-mission impacts whose
-    coords couldn't be resolved at migration time."""
+    """A landing event without a root ``landing_site`` block yields no phase."""
     _write(
         events_root,
         "lunar.json",
@@ -181,9 +174,7 @@ def test_missing_landing_site_is_skipped(events_root: Path) -> None:
 
 
 def test_burnup_above_surface_yields_no_phase(events_root: Path) -> None:
-    """Probes that burned up in the atmosphere have no landing_site and a
-    ``burnup_above_surface`` outcome — they shouldn't get a landed phase even
-    if a stray landing_site sneaks through."""
+    """A ``burnup_above_surface`` outcome yields no phase even if landing_site is present."""
     _write(
         events_root,
         "venus.json",
@@ -191,8 +182,7 @@ def test_burnup_above_surface_yields_no_phase(events_root: Path) -> None:
             {
                 "probe_id": 50446340,
                 "name": "Pioneer Venus 2 Bus",
-                # Deliberate: landing_site present AND outcome=burnup — the
-                # outcome wins, no phase emitted.
+                # outcome wins over the stray landing_site.
                 "landing_site": {
                     "target_body_naif": 299,
                     "lat_deg": -37.9,
@@ -214,8 +204,7 @@ def test_burnup_above_surface_yields_no_phase(events_root: Path) -> None:
 
 
 def test_sample_return_capsule_lands_on_earth(events_root: Path) -> None:
-    """Earth landings use the normal NAIF id 399 and are capped to one month
-    (sample-return capsules clutter Earth long after touchdown otherwise)."""
+    """Earth landings are capped to one month so sample-return capsules don't clutter Earth."""
     _write(
         events_root,
         "sample-return.json",
@@ -250,8 +239,7 @@ def test_sample_return_capsule_lands_on_earth(events_root: Path) -> None:
 
 
 def test_short_earth_landing_keeps_real_end(events_root: Path) -> None:
-    """An Earth landing that ends within a month keeps its real end_date — the
-    cap only truncates longer/indefinite phases, never extends short ones."""
+    """The one-month cap only truncates long phases, never extends short ones."""
     _write(
         events_root,
         "venus-style-earth.json",
@@ -282,8 +270,7 @@ def test_short_earth_landing_keeps_real_end(events_root: Path) -> None:
 
 
 def test_comet_naif_keeps_value_changes_id_type(events_root: Path) -> None:
-    """Comets share the 1_000_000+i scheme between Horizons and SBDB; only
-    the id_type byte changes (DB row keyed `spkid-N`)."""
+    """Comets share the 1_000_000+i scheme between Horizons and SBDB; only id_type changes."""
     _write(
         events_root,
         "comet.json",
@@ -314,9 +301,8 @@ def test_comet_naif_keeps_value_changes_id_type(events_root: Path) -> None:
 
 
 def test_lower_precision_followup_is_skipped(events_root: Path) -> None:
-    """Chang'e 6 returner has `landing` with a full timestamp followed by
-    `sample_return` recorded only as a date — the date-only event resolves
-    to 00:00 (earlier than landing), so it must not be picked as phase-end."""
+    """A date-only follow-up event resolves to 00:00, earlier than the landing timestamp,
+    so it must not be picked as phase-end."""
     _write(
         events_root,
         "sample-return.json",
@@ -343,8 +329,7 @@ def test_lower_precision_followup_is_skipped(events_root: Path) -> None:
     )
     phases = landing_events.load_phases(_INDEFINITE_END)
     assert len(phases) == 1
-    # Date-only follow-up isn't chosen as phase-end; the indefinite phase is
-    # then capped to one month (Earth landing), not _INDEFINITE_END.
+    # Falls through to the one-month Earth cap, not _INDEFINITE_END.
     assert phases[0].end_et == pytest.approx(
         phases[0].start_et + landing_events._EARTH_LANDING_MAX_S
     )
@@ -353,11 +338,8 @@ def test_lower_precision_followup_is_skipped(events_root: Path) -> None:
 def test_spk_covered_probe_skipped_by_cospar(
     events_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Viking 1/2 Landers have BOTH an events-DB registry entry (mission
-    name, no kernels) and an SPK entry (VIKING/-327, VIKING/-330). The
-    events JSON's `cospar_id` matches the SPK probe's COSPAR; the loader
-    must skip the events phase so the SPICE pipeline owns the landing.
-    """
+    """When a probe's `cospar_id` matches an SPK-covered probe, the loader skips
+    the events phase so the SPICE pipeline owns the landing."""
     monkeypatch.setattr(
         landing_events,
         "_spk_covered_cospars",

@@ -1,14 +1,10 @@
 """Benchmark exported Chebyshev chunks against SPICE truth.
 
-Reads `EXPORT_DIR/v1/position/{zone}/0/{chunk}.bin.gz` (zone ∈ {major,
-major_asteroids, moons/<parent>}), parses every body's segments via the
-same decode logic the frontend will use, and compares positions against
-`spiceypy.spkezr` truth. Reports per-zone and per-body aggregates
-(median / p95 / max error, file sizes, segment counts).
-
-Validates the *shipped* binary end-to-end — catches packing bugs, float32
-coefficient quantization, and frontend-mirror drift. Don't trust the
-fit-time err report from the extractor alone; this is the real number.
+Parses shipped segments via the same decode logic the frontend uses and
+compares against `spiceypy.spkezr` truth. Validates the *shipped* binary
+end-to-end — catches packing bugs, float32 coefficient quantization, and
+frontend-mirror drift. Don't trust the fit-time err report from the
+extractor alone; this is the real number.
 
 Run from data/:
     uv run python scripts/chebyshev_benchmark.py

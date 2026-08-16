@@ -63,8 +63,7 @@ class TestTreeComponents:
             "parent.jpg": _meta(),
             "child.jpg": _meta(derived_from=["parent.jpg"]),
         }
-        # Two direct candidates that are linked via derived_from end up in
-        # one component, ordered by their position in direct_candidates.
+        # Linked via derived_from, so both end up in one component.
         assert image_scoring.tree_components(["parent.jpg", "child.jpg"], meta) == [
             ["parent.jpg", "child.jpg"]
         ]
@@ -89,15 +88,12 @@ class TestTreeComponents:
         ]
 
     def test_missing_metadata_terminates_walk_cleanly(self):
-        # Files without an entry in the metadata dict are treated as leaves.
-        # No KeyError, just no further expansion.
+        # Files missing from the metadata dict are leaves, not a KeyError.
         meta = {"a.jpg": _meta(derived_from=["unknown.jpg"])}
         assert image_scoring.tree_components(["a.jpg"], meta) == [["a.jpg"]]
 
     def test_siblings_via_shared_parent_in_same_component(self):
-        # Two siblings derived from a common parent — neither lists the
-        # other, but they share a parent. They must end up in one component.
-        # (Forward-only directional BFS would miss this.)
+        # Siblings share a parent but don't list each other; forward-only BFS would miss this.
         meta = {
             "sib-a.jpg": _meta(derived_from=["common-parent.jpg"]),
             "sib-b.jpg": _meta(derived_from=["common-parent.jpg"]),
@@ -179,8 +175,7 @@ class TestBestInTree:
         assert result == "first.jpg"
 
     def test_tree_only_member_can_win(self):
-        # The winner doesn't need to be a direct candidate — a featured
-        # tree-only crop beats a non-assessed direct pageimage.
+        # A tree-only featured crop can beat a non-assessed direct pageimage.
         meta = {
             "direct.jpg": _meta(other_versions=["tree-only-crop.jpg"]),
             "tree-only-crop.jpg": _meta(assessments="featured"),
@@ -194,8 +189,7 @@ class TestBestInTree:
         assert result == "tree-only-crop.jpg"
 
     def test_walks_tree_from_each_candidate_in_component(self):
-        # Two siblings derived from a common parent. The walk needs to
-        # consider all members reachable from any of them.
+        # The walk must reach all members from any sibling in the component.
         meta = {
             "sibling-a.jpg": _meta(derived_from=["parent.jpg"]),
             "sibling-b.jpg": _meta(derived_from=["parent.jpg"]),

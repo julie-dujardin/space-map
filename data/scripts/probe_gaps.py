@@ -1,28 +1,14 @@
-"""Find time windows where the export has no data for a probe between its
-overall start and end — i.e. holes the user would notice as the probe
-disappearing mid-mission.
+"""Find time windows with no export data for a probe between its overall
+start and end — holes the user would notice as the probe vanishing
+mid-mission. A gap spans no chunk in the union of all zones, excludes
+pre-launch/post-mission, and exceeds `--min-gap-days`.
 
-For each probe, union all chunks across every zone. A gap is any time
-span where:
-  * `t_start > first_chunk_start` and `t_end < last_chunk_end`
-    (so we don't flag pre-launch or post-mission),
-  * no chunk overlaps it,
-  * the gap is longer than `--min-gap-days`.
-
-Post-FIT_VERSION 5, interplanetary spans the full contiguous SPK coverage
-interval (flybys are no longer carved out), so the union is mostly
-redundant — interplanetary alone covers every probe's full timeline
-except for genuine multi-interval SPK archives. The cross-zone union
-still helps in two cases:
-  * the probe's mission archive only ships planet-zone coverage and
-    nothing for the cruise (e.g. Juno, whose SPK opens at JOI 2016-07-05);
-    interplanetary co-covers the orbiter phase but never the pre-2016
-    cruise, so no false gap is reported there.
-  * a fix regresses and interplanetary loses the flyby/capture portion
-    again — the planet-zone coverage masks it so we don't blow up.
-
-The classic case this catches is NH's 2007-2014 hole between the Jupiter-
-flyby and Pluto-approach kernels: no zone has data because no kernel does.
+Interplanetary alone now covers most timelines (post-FIT_VERSION 5, it
+spans the full contiguous SPK interval), but the cross-zone union still
+catches missions with only planet-zone cruise coverage (e.g. Juno) and
+masks regressions where interplanetary loses a flyby/capture span. The
+classic catch: NH's 2007-2014 hole between the Jupiter-flyby and
+Pluto-approach kernels.
 
 Run from data/:
     uv run python scripts/probe_gaps.py

@@ -1,24 +1,22 @@
 """Parse Wikimedia Commons file-page wikitext for derivative-of / other-versions links.
 
-Commons files often record relationships between images that no API exposes as
-structured data:
+Commons records these relationships in wikitext, not structured data:
 
-- ``{{Information|other_versions=...}}`` — free-form pointer to "see also"
-  alternates: crops, recolors, variants in different aspect ratios.
-- ``{{derived from|File:A|File:B}}`` — explicit declaration that THIS file is
-  derived from those parents (typically used inside ``other_versions=``).
+- ``{{Information|other_versions=...}}`` — free-form "see also" alternates:
+  crops, recolors, aspect-ratio variants.
+- ``{{derived from|File:A|File:B}}`` — this file is derived from those
+  parents (typically inside ``other_versions=``).
 - ``{{Extracted from|File:X}}``, ``{{Retouched picture|File:X}}``,
   ``{{Image extracted|File:X}}`` — single-parent variants.
-- ``{{derivative versions|File:A|File:B}}`` — opposite direction: lists
-  derivatives of THIS file.
+- ``{{derivative versions|File:A|File:B}}`` — reverse direction: lists
+  derivatives of this file.
 
-Structured Data on Commons (P144 "based on", P4969 "derivative work") covers
-some of this, but is sparsely populated. Parsing the wikitext catches the rest.
+Structured Data on Commons (P144, P4969) covers some of this but is
+sparsely populated; the wikitext catches the rest.
 
-The parser is best-effort: it recognises these specific templates and any
-``[[File:...]]`` / ``[[Image:...]]`` wikilinks inside ``other_versions=``.
-Anything outside those patterns is ignored — stray File: links elsewhere on
-the page are usually unrelated.
+Best-effort: recognises only these templates and ``[[File:...]]`` /
+``[[Image:...]]`` wikilinks inside ``other_versions=``. Anything else is
+ignored — stray File: links elsewhere are usually unrelated.
 """
 
 import re

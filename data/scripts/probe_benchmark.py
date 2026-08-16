@@ -1,13 +1,10 @@
 """Benchmark exported probe chunks against SPICE truth.
 
-Reads `EXPORT_DIR/v1/position/probes/{zone}/{chunk}.bin.gz`, parses every
-sub-chunk via the same decode logic the frontend will use, and compares
-positions against `spiceypy.spkezr` truth. Reports per-probe and per-zone
-aggregates (median / p95 / max error, file sizes, sample counts).
-
-Validates the *shipped* binary end-to-end — catches packing bugs, float32
-quantization, and frontend-mirror drift. Don't trust the fit-time err
-report from sizing.py alone; this is the real number.
+Parses shipped sub-chunks via the same decode logic the frontend uses and
+compares against `spiceypy.spkezr` truth. Validates the *shipped* binary
+end-to-end — catches packing bugs, float32 quantization, and
+frontend-mirror drift. Don't trust the fit-time err report from
+sizing.py alone; this is the real number.
 
 Run from data/:
     uv run python scripts/probe_benchmark.py

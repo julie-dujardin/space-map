@@ -1,29 +1,21 @@
 """Display zones for probe trajectories.
 
-A zone bundles one planetary system (or `interplanetary` for everything
-outside every system) and dictates:
+A zone bundles one planetary system (or `interplanetary`, everything outside
+every system) and sets three things:
 
-  * Membership radius around the system barycenter (`r_zone_km`). A probe is
-    "in" the zone whenever its distance from the barycenter is below this.
-    Sized at 2× Hill radius for every planet — strictly larger than the
-    outermost confirmed moon in every system, and large enough to cover
-    Sun-Earth L1/L2 (the JWST / Gaia halo orbits sit at ~1.5 M km from
-    Earth, well inside Earth's 3 M km zone).
+  * `r_zone_km` — membership radius from the barycenter. 2x Hill radius per
+    planet: larger than any confirmed moon, and covers Sun-Earth L1/L2
+    (JWST/Gaia halo orbits sit ~1.5 M km out, inside Earth's 3 M km zone).
+  * `chunk_days` — the frontend's streaming unit, tuned to the zone's
+    playback rate (slow interplanetary needs long chunks; fast Earth-Moon
+    tolerates short ones). Must be an integer multiple of
+    `kepler_subchunk_days`, enforced at construction.
+  * `accuracy_threshold_km` — per-chunk auto-promote rule: a Kepler fit
+    exceeding this escalates the chunk to Chebyshev.
 
-  * Time-chunk duration (`chunk_days`). The unit the frontend loads from
-    disk. Tuned to match the expected playback rate per zone — slow zoom
-    levels (interplanetary at 1 y/s) need long chunks to avoid thrashing,
-    fast zoom levels (Earth-Moon at maybe a day/s) tolerate shorter ones.
-    Must be an integer multiple of `kepler_subchunk_days` so the sub-chunk
-    grid exactly tiles the chunk — enforced at construction.
-
-  * Accuracy threshold (`accuracy_threshold_km`). Per-chunk auto-promote
-    rule: if a Method-C Kepler fit exceeds this, the chunk is escalated to
-    Chebyshev. Tighter thresholds for planetary detail than interplanetary.
-
-A probe can appear in multiple zones at once (e.g., a flyby probe inside
-a planet's Hill radius is also still inside `interplanetary`). Frontend
-loads one zone's chunks at a time so the duplication is on-disk only.
+A probe can be in multiple zones at once (a flyby inside a planet's Hill
+radius is also `interplanetary`); the frontend loads one zone at a time so
+the duplication is disk-only.
 """
 
 from dataclasses import dataclass
@@ -39,35 +31,25 @@ class Zone:
     """Streaming chunk duration (days) — the unit the frontend swaps from disk."""
 
     accuracy_threshold_km: float
-    """Per *Kepler sub-chunk* error threshold. If a sub-chunk's Kepler fit
-    exceeds this, the chunk-builder emits Chebyshev for that sub-chunk
-    instead.
-    """
+    """Per Kepler sub-chunk error threshold (km); exceeding it promotes
+    that sub-chunk to Chebyshev."""
 
     kepler_subchunk_days: float
-    """Width of one Kepler element snapshot. Short enough that perturbations
-    (other-planet pull on the central body, J2 evolution for orbiters)
-    stay below the accuracy threshold over the sub-chunk. Multiple sub-
-    chunks pack into one streaming chunk so the frontend can scrub through
-    them cheaply.
-    """
+    """Width of one Kepler element snapshot — short enough that
+    perturbations (other-planet pull, J2 drift) stay below the accuracy
+    threshold. Multiple sub-chunks pack into one streaming chunk."""
 
     float64_coeffs: bool = False
-    """Store Chebyshev coefficients (and Kepler elements) as float64 instead
-    of float32 (1.9× bigger). Required for zones where the spacecraft can
-    sit at deep heliocentric distances where float32 hits its ~600 km
-    quantization floor (interplanetary). Planet-centric zones never see
-    positions > a few R_planet, so float32 is plenty.
-    """
+    """Store coefficients as float64 (1.9x bigger) instead of float32.
+    Needed only for interplanetary, where deep heliocentric distances hit
+    float32's ~600 km quantization floor; planet-centric zones never
+    approach it."""
 
     short_orbit_threshold_km: float = 500.0
-    """Looser accuracy threshold for spacecraft whose orbital period is less
-    than `short_orbit_period_s`. Lets short-period planetary orbiters
-    (MAVEN, MEX, MRO) stay on the cheap Kepler-with-drift representation
-    at the cost of ~50-100 km position phase-shift — visible but tolerable
-    at planet-system zoom, and the orbit shape still renders correctly
-    because Ω/ω/n are fitted accurately.
-    """
+    """Looser threshold for orbiters with period < `short_orbit_period_s`
+    (MAVEN, MEX, MRO), keeping them on cheap Kepler-with-drift at the cost
+    of ~50-100 km phase-shift — tolerable at planet-system zoom since the
+    orbit shape itself still fits accurately."""
 
     short_orbit_period_s: float = 12 * 3600  # 12 hours
 
@@ -98,16 +80,14 @@ INTERPLANETARY = Zone(
     float64_coeffs=True,  # Voyager/Pioneer at 100+ AU need float64 to clear the float32 floor
 )
 
-# Per-planet zones at 2× Hill sphere. Hill radius numbers from
-#   r_hill = a_planet * (M_planet / (3 M_sun))^(1/3)
-# rounded slightly up; doubling guarantees coverage of L1/L2 + halo orbits
-# (which sit at ~1 Hill radius) plus a safety margin for distant irregular
-# moons that swing outside their formal Hill sphere occasionally.
+# Per-planet zones at 2x Hill sphere (r_hill = a_planet * (M_planet / (3
+# M_sun))^(1/3), rounded up). Doubling covers L1/L2 + halo orbits (~1 Hill
+# radius) plus margin for irregular moons that swing outside the formal
+# sphere.
 PLANETARY_ZONES: tuple[Zone, ...] = (
-    # Kepler sub-chunk durations: 0.5–1 day for planetary zones (fast
-    # orbiters' J2 drift moves Ω/ω several degrees per week, so we want
-    # frequent re-snapshots), 7 days for interplanetary (slow Sun-relative
-    # motion + N-body wobbles dominated by other planets).
+    # Kepler sub-chunk durations: 0.5-1 day for planetary zones (fast
+    # orbiters' J2 drift moves Ω/ω several degrees/week); 7 days for
+    # interplanetary (slow, N-body-dominated Sun-relative motion).
     Zone("mercury", 1, 199, 0.44e6, 183.0, 10.0, 1.0),  # ≈ 0.5 y
     Zone("venus", 2, 299, 2.0e6, 183.0, 10.0, 1.0),
     Zone("earth-moon", 3, 399, 3.0e6, 30.0, 10.0, 0.5),  # 60 × 0.5-d subs
@@ -125,11 +105,9 @@ ALL_ZONES: tuple[Zone, ...] = (INTERPLANETARY, *PLANETARY_ZONES)
 ZONES_BY_KEY: dict[str, Zone] = {z.key: z for z in ALL_ZONES}
 
 
-# NAIF IDs that override the per-zone accuracy threshold with the tighter
-# `PRIORITY_THRESHOLD_KM` — flagship missions, manned spaceflight, EDLs,
-# and one-shot rendezvous events where antenna-pointing-grade positioning
-# is what the user came to see. Empty list means we rely entirely on the
-# per-zone defaults; add IDs as we encounter missions worth the upgrade.
+# NAIF IDs overriding the zone default with tighter `PRIORITY_THRESHOLD_KM`
+# — flagship missions, manned spaceflight, EDLs, one-shot rendezvous where
+# antenna-pointing-grade positioning is the point. Empty for now.
 PRIORITY_NAIF_IDS: frozenset[int] = frozenset(
     {
         # Apollo manned lunar program. Add Apollo {7..17} command modules
