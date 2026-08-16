@@ -12,10 +12,9 @@ class AtmosphereReference(NamedTuple):
     title: str
     url: str
     contribution: str
-    # Two or three words for the object panel's credit line, in the style of
-    # its provider roles ("sizes, albedos & spectral types"). Only the fact
-    # sources carry one: the render literature below is credited on /credits,
-    # where the sentence above is what there is room for.
+    # Two or three words for the object panel's credit line, styled like the
+    # provider roles ("sizes, albedos & spectral types"). Only fact sources
+    # carry one — render literature is credited on /credits instead.
     note: str = ""
 
 
@@ -345,16 +344,13 @@ ATMOSPHERE_REFERENCES: tuple[AtmosphereReference, ...] = (
 )
 
 
-# Sources behind the per-body atmospheric facts in `facts.py` and the vertical
-# layers in `structure.py`, keyed so each value can cite one. One registry for
-# both: a body's panel credits its conditions and its cross-section together,
-# and several works back numbers in each. These also ship per body in the
-# object bundles, so the
-# panel can credit exactly the works its numbers came from — hence the split
-# from the render literature above, which is credited globally.
+# Sources behind facts.py and structure.py, keyed so each value can cite one.
+# One registry for both: a body's panel credits its conditions and its
+# cross-section together, and ships per body in the object bundles — hence
+# the split from the render literature above, which is credited globally.
 #
-# NSSDCA fact sheets link Internet Archive snapshots: the site has been offline
-# since early 2025, and the snapshot is what was actually read.
+# NSSDCA fact sheets link Internet Archive snapshots: the site has been
+# offline since early 2025, and the snapshot is what was actually read.
 ATMOSPHERE_FACT_SOURCES: dict[str, AtmosphereReference] = {
     "nssdc_sun": AtmosphereReference(
         "NASA Sun Fact Sheet (NSSDCA)",

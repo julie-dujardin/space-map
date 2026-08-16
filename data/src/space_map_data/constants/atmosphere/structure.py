@@ -1,26 +1,22 @@
 """Named vertical layers of each atmosphere — the panel's cross-section.
 
-`facts.py` states one condition per body: the pressure and the mixing ratios at
-a single level. This is the axis that level sits on. A layer boundary is almost
-always a turning point in temperature rather than a surface — a tropopause is
-where the profile stops cooling — so what a source pins is sometimes an
-altitude, sometimes a pressure, rarely both; every field here is optional for
-that reason, and `pressure_source` exists because the two often come from
-different works.
+`facts.py` states one condition per body, at one level; this is the axis that
+level sits on. A layer boundary is almost always a temperature turning point
+rather than a surface — a tropopause is where the profile stops cooling — so
+a source pins an altitude, a pressure, or rarely both; every field here is
+optional for that reason, and `pressure_source` exists because the two often
+come from different works.
 
-Composition stays in `facts.py` wherever the layer is well mixed, which is
-everything below the homopause: repeating the body's own numbers per layer
-would be the same measurement written five times, and would drift. A layer
-carries its own composition only where the literature measures one that
-differs — Titan's methane, which halves between the surface and the
-stratosphere.
+Composition stays in `facts.py` wherever the layer is well mixed (everything
+below the homopause) — repeating it per layer would be the same measurement
+written five times, and would drift. A layer carries its own composition
+only where the literature measures one that differs, like Titan's methane,
+which halves between the surface and the stratosphere.
 
 Gas giants have no surface, so their altitudes hang off the 1 bar level and
-run negative below it; `datum` says which zero a body uses. They also need
-`datum_temperature_k`, because a layer is only readable as a layer once both
-its ends are known and the lowest one's base is the datum — everywhere else
-that base is the body's own surface reading and the export takes it from
-there.
+run negative below it; `datum` says which zero a body uses, and
+`datum_temperature_k` closes the lowest layer's base — everywhere else that
+base is the body's own surface reading.
 """
 
 from typing import NamedTuple
@@ -140,10 +136,9 @@ class BodyStructure(NamedTuple):
 ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
     # The Sun. Heights run from optical depth 1 at 500 nm, the surface every
     # other solar number is quoted against. The photosphere's top is its
-    # temperature minimum rather than a density boundary: VAL-C puts that at
-    # 515 km and 4170 K, and NSSDCA's 0.868 mb row is the same level's
-    # pressure. Everything above it gets hotter, which is the part nobody has
-    # fully explained.
+    # temperature minimum, not a density boundary: VAL-C puts that at 515 km
+    # and 4170 K, and NSSDCA's 0.868 mb row is the same level's pressure.
+    # Everything above it gets hotter — the part nobody has fully explained.
     "naif-10": BodyStructure(
         datum="photosphere",
         layers=(
@@ -267,14 +262,13 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 top_temperature_k=186.87,
             ),
             # The top moves with the Sun: 500 km at solar minimum, 1000 km at
-            # maximum, which is also why low-orbit satellites decay in bursts.
-            # The temperature moves with it — Arecibo reads 800-1500 K at the
-            # thermopause over a cycle.
-            # The pressure is the standard atmosphere's at the nominal 600 km,
-            # not at the moving thermopause. Do not read a height off this and
-            # the mesopause by interpolating between them: the scale height
-            # more than triples across the thermosphere, and doing so puts the
-            # 100 km level — the one altitude here everybody knows — at 167.
+            # maximum — why low-orbit satellites decay in bursts. Temperature
+            # follows it too (Arecibo reads 800-1500 K at the thermopause over
+            # a cycle). Pressure is the standard atmosphere's at the nominal
+            # 600 km, not the moving thermopause — do not interpolate a
+            # height from this and the mesopause: the scale height more than
+            # triples across the thermosphere, putting the well-known 100 km
+            # level at 167.
             AtmosphereLayer(
                 role="thermosphere",
                 top_km=600.0,
@@ -383,22 +377,21 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 note="diffuse_top",
             ),
         ),
-        # 165 +/- 5 K. Lindal's Table 2 gives all four giants at 1 bar from
-        # their Voyager and Pioneer occultations, so the four data below come
-        # from one method and one set of assumed H/He mixes rather than from
-        # four papers that each define the level slightly differently.
+        # 165 ± 5 K. Lindal's Table 2 gives all four giants at 1 bar from
+        # their Voyager and Pioneer occultations — one method and one set of
+        # assumed H/He mixes, rather than four papers each defining the
+        # level slightly differently.
         datum_temperature_k=165.0,
         datum_temperature_source="lindal_1992",
         homopause_km=320.0,
         homopause_source="yelle_miller_2004",
     ),
-    # Saturn. The tropopause is Voyager 2's ingress profile, whose Table I is
-    # pressure, temperature and height above 1 bar together — the temperature
-    # minimum is 82.0 K at 60 mbar, 106 km up. The 80-87 K width is that
-    # profile's own equator-to-south-pole spread; Cassini/CIRS later put the
-    # boundary nearer 80 mbar (Del Genio et al. 2009). Above it the middle
-    # atmosphere is one region — radiative control from the tropopause to a
-    # few 10⁻⁵ mbar — so no separate mesopause is claimed.
+    # Saturn. Tropopause from Voyager 2's ingress profile (Table I: pressure,
+    # temperature and height above 1 bar together) — minimum 82.0 K at
+    # 60 mbar, 106 km up. The 80-87 K width is the profile's own equator-to-
+    # pole spread; Cassini/CIRS later put the boundary nearer 80 mbar (Del
+    # Genio et al. 2009). Above it the middle atmosphere is one radiatively
+    # controlled region to a few 10⁻⁵ mbar, so no separate mesopause is claimed.
     "naif-699": BodyStructure(
         datum="one_bar",
         layers=(
@@ -500,17 +493,13 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
         homopause_source="moses_2018",
     ),
     # Neptune, from Voyager 2's radio occultation: 72±2 K at the 1 bar level,
-    # and the tropopause 40 km above it at ~100 mbar and 52±2 K. The
-    # stratosphere above is still climbing at the top of that profile — 130±12
-    # K at 0.3 mbar — and does not stop until the 750 K thermosphere, which is
-    # the outlier of the four giants: Neptune gets a thousandth of Earth's
-    # sunlight and is as hot up there as Uranus.
-    #
-    # Nothing measures a temperature between the two, though: Lindal's
-    # occultation ends at 0.3 mbar and 130 ± 12 K with the profile still
-    # climbing, and the UVS picks it up again only where it is already
-    # hundreds of kelvin. The heights below are real; the shape between them
-    # is not known.
+    # tropopause 40 km up at ~100 mbar and 52±2 K. The stratosphere is still
+    # climbing at the top of that profile — 130±12 K at 0.3 mbar — and does
+    # not stop until the 750 K thermosphere, the outlier of the four giants:
+    # a thousandth of Earth's sunlight and as hot up there as Uranus. Nothing
+    # measures a temperature between the two: the occultation ends still
+    # climbing, and the UVS picks it up again only hundreds of kelvin later.
+    # The heights below are real; the shape between them is not known.
     "naif-899": BodyStructure(
         datum="one_bar",
         layers=(
@@ -522,11 +511,10 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 top_temperature_k=52.0,
                 top_temperature_range_k=(50.0, 54.0),
             ),
-            # Placed at the homopause, the way Saturn's is: on a giant the
-            # stratosphere has no temperature turning point to end on, and the
-            # level where mixing stops is the one thing anyone measured up
-            # there. Voyager's UVS puts it at 400-500 km, and the pressure
-            # Moses's photochemistry gives sits inside the same band.
+            # Placed at the homopause, like Saturn's — a giant's stratosphere
+            # has no temperature turning point to end on, so mixing stopping
+            # is the one thing measured. Voyager's UVS puts it at 400-500 km;
+            # Moses's photochemistry pressure sits inside that band.
             AtmosphereLayer(
                 role="stratosphere",
                 top_km=450.0,
@@ -563,12 +551,12 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
         homopause_pressure_pa=8.0e-3,
         homopause_source="moses_2018",
     ),
-    # Titan, from HASI's own descent profile — the only planetary atmosphere
-    # besides Earth's whose whole structure was measured by one instrument
-    # falling through it. Methane is the one composition that genuinely
-    # changes between layers: 5.65% at the surface, constant to ~7 km, then
-    # falling to a constant 1.48% through the stratosphere as it condenses
-    # out. HASI found the mesosphere nearly absent where models wanted one.
+    # Titan, from HASI's own descent profile — the only atmosphere besides
+    # Earth's whose whole structure was measured by one instrument falling
+    # through it. Methane is the one composition that genuinely changes
+    # between layers: 5.65% at the surface, constant to ~7 km, then falling
+    # to a constant 1.48% through the stratosphere as it condenses out. HASI
+    # found the mesosphere nearly absent where models wanted one.
     "naif-606": BodyStructure(
         datum="surface",
         layers=(

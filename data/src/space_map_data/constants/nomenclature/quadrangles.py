@@ -1,17 +1,16 @@
 """Hand-curated Wikidata mapping for IAU planetary quadrangles.
 
-Keyed by ``(object_id, quad_code)`` matching ``Feature.quad_code``. Values are
-Wikidata QIDs only — Wikipedia sitelinks (per-language URL) come from the
-downloaded entity payload at export time, via ``WikidataEntityCache``.
+Keyed by ``(object_id, quad_code)`` matching ``Feature.quad_code``; values
+are QIDs only — Wikipedia sitelinks come from the downloaded entity payload
+at export time via ``WikidataEntityCache``.
 
-Scope: Mercury (15), Mars (30), Venus (61). The Moon's IAU LAC 1:1M grid
-uses a different scale than Wikipedia's coverage so its 144 quadrangles
-are not mapped here. Venus v62 (south pole) has no Wikidata entity yet.
+Scope: Mercury (15), Mars (30), Venus (61). The Moon's LAC 1:1M grid is a
+different scale than Wikipedia's coverage, so it's unmapped here. Venus v62
+(south pole) has no Wikidata entity yet.
 
-Notes on name drift (the QID points to the same area; the IAU name in our
-DB may pre-date the current Wikipedia label):
-- Mercury H-04/05/09/10/13/14 renamed since IAU ingest.
-- Venus v06 Regio→Mons, v38 Maat Mons→Stanton, v47 Dorsum→Chasma.
+Name drift (QID is the same area; the IAU name may predate the Wikipedia
+label): Mercury H-04/05/09/10/13/14 renamed since ingest; Venus v06
+Regio→Mons, v38 Maat Mons→Stanton, v47 Dorsum→Chasma.
 """
 
 from space_map_data.constants.nomenclature.quadrangle_grid import quadrangle

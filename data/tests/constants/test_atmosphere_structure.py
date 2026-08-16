@@ -58,9 +58,8 @@ class TestTable:
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_layers_stack_outwards(self, object_id: str):
-        """Each layer is described by its top and the next one starts there, so
-        an out-of-order altitude or a pressure that rises with height would
-        draw a cross-section inside out."""
+        """An out-of-order altitude or pressure would draw the cross-section
+        inside out."""
         body = ATMOSPHERE_STRUCTURE[object_id]
         altitudes = [layer.top_km for layer in body.layers if layer.top_km is not None]
         assert altitudes == sorted(altitudes)
@@ -73,14 +72,12 @@ class TestTable:
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_published_widths_bracket_the_shipped_value(self, object_id: str):
-        """The point value is what gets drawn and the range is the honest
-        spread around it, so a range that misses it would draw a boundary the
-        source never places there."""
+        """The range is the honest spread around the drawn point value; a range
+        that misses it would draw a boundary the source never places there."""
         for layer in ATMOSPHERE_STRUCTURE[object_id].layers:
             for value, span in (
                 (layer.top_km, layer.top_km_range),
-                # Resolved, not read off the field: a boundary that reads its
-                # temperature from the panel still has a range of its own.
+                # Resolved, not read off the field: it has a range of its own.
                 (layer_temperature(object_id, layer), layer.top_temperature_range_k),
             ):
                 if span is None:
@@ -91,8 +88,8 @@ class TestTable:
                 assert low <= value <= high
 
     def test_no_source_is_credited_for_nothing(self):
-        """The registry feeds credits.json, so a key nothing cites ships a work
-        into the credits page that contributed no number to the site."""
+        """A key nothing cites ships a credit for a work that contributed no
+        number to the site."""
         used: set[str] = set()
         for facts in ATMOSPHERE_FACTS.values():
             used |= {s.source for s in facts.composition}
@@ -106,18 +103,16 @@ class TestTable:
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_the_homopause_is_placed_on_one_axis_or_the_other(self, object_id: str):
-        """Either coordinate answers, but a cited homopause with no value and a
-        value with no citation are both half a fact."""
+        """A cited homopause with no value, or a value with no citation, is
+        half a fact."""
         body = ATMOSPHERE_STRUCTURE[object_id]
         placed = body.homopause_km is not None or body.homopause_pressure_pa is not None
         assert placed == (body.homopause_source is not None)
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_only_a_surfaceless_body_states_its_datum_temperature(self, object_id: str):
-        """The base of the lowest layer is the body's surface reading wherever
-        it has a surface, and the export takes it from there. Restating it here
-        would be a second copy of a measured number, free to drift from the one
-        the temperature scale draws."""
+        """The export reads a surface's temperature off the lowest layer;
+        restating it here would be a second copy free to drift."""
         body = ATMOSPHERE_STRUCTURE[object_id]
         assert (body.datum_temperature_k is not None) == (body.datum == "one_bar")
         assert (body.datum_temperature_source is not None) == (
@@ -126,14 +121,14 @@ class TestTable:
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_the_body_has_conditions_to_go_with_its_layers(self, object_id: str):
-        """A cross-section with no pressure or composition beside it is half a
-        panel; `facts.py` is where the other half lives."""
+        """A cross-section needs the pressure and composition `facts.py`
+        carries, or the panel is half done."""
         assert object_id in ATMOSPHERE_FACTS
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_layer_composition_uses_the_bodys_unit(self, object_id: str):
-        """Per-layer species are shares in the body's own composition unit, so
-        a volume fraction can never exceed 1."""
+        """Per-layer species share the body's composition unit; a volume
+        fraction can't exceed 1."""
         if ATMOSPHERE_FACTS[object_id].composition_unit != "volume_fraction":
             return
         for layer in ATMOSPHERE_STRUCTURE[object_id].layers:
@@ -167,11 +162,9 @@ class TestAgainstPSGProfiles:
         )
         coldest = min(levels, key=lambda level: level.temperature_k)
         assert tropopause.top_pressure_pa is not None
-        # Within a factor of three, which is the honest width of the claim:
-        # PSG's profile is one latitude and season, the tabulated boundary is a
-        # global nominal, and on Earth alone those differ by 2.3× (226 hPa at
-        # the US-Standard 11 km, 100 hPa at the tropical cold point). What this
-        # catches is a boundary in the wrong layer, not a disagreement.
+        # 3x tolerance: PSG's profile is one latitude/season vs. the tabulated
+        # global nominal (2.3x apart on Earth alone). Catches a boundary in the
+        # wrong layer, not a fine disagreement.
         ratio = coldest.pressure_pa / tropopause.top_pressure_pa
         assert 1 / 3 <= ratio <= 3.0, (
             f"{object_id}: profile is coldest at {coldest.pressure_pa:.4g} Pa, "
@@ -182,10 +175,9 @@ class TestAgainstPSGProfiles:
         "object_id", ["naif-599", "naif-699", "naif-799", "naif-899"]
     )
     def test_the_1_bar_temperature_matches_the_profile(self, object_id: str):
-        """The giants' datum temperature against an independent model of the
-        same level. 15% is the honest width: PSG's templates are models rather
-        than the Voyager occultations these values come from, and they disagree
-        by 10 K on Jupiter."""
+        """Checks the giants' datum temperature against an independent model.
+        15% tolerance: PSG's templates disagree with the source Voyager
+        occultations by 10 K on Jupiter alone."""
         try:
             levels = read_profile(object_id)
         except FileNotFoundError:
@@ -202,8 +194,7 @@ class TestAgainstPSGProfiles:
             (level for level in rows if level.pressure_pa >= _ONE_BAR_PA),
             key=lambda level: level.pressure_pa,
         )
-        # Temperature runs linear in log pressure between two levels, which is
-        # what a scale height is.
+        # Temperature runs linear in log pressure between two levels.
         span = math.log(above.pressure_pa / below.pressure_pa)
         fraction = math.log(_ONE_BAR_PA / below.pressure_pa) / span if span else 0.0
         modelled = below.temperature_k + fraction * (
@@ -216,11 +207,9 @@ class TestAgainstPSGProfiles:
 
     @pytest.mark.parametrize("object_id", sorted(PSG_BODIES.values()))
     def test_profile_spans_the_bodys_reference_level(self, object_id: str):
-        """A profile that stops short of the level `facts.py` quotes can say
-        nothing about the layer that level sits in. The 10% slack is at the
-        bottom, where a surface body's profile ends right at the quoted
-        pressure and the two come from separate datasets — MERRA-2 puts
-        Earth's sea level at 1.006 bar against NSSDCA's 1.014."""
+        """A profile that stops short of `facts.py`'s reference level says
+        nothing about that layer. 10% slack at the bottom: separate datasets
+        disagree (MERRA-2's Earth sea level is 1.006 bar vs. NSSDCA's 1.014)."""
         try:
             levels = read_profile(object_id)
         except FileNotFoundError:

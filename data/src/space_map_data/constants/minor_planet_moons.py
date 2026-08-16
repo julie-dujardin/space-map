@@ -1,19 +1,16 @@
 """Curated Wikidata QIDs for minor-planet moons (satellites of asteroids/TNOs).
 
-These bodies have a Wikidata entity (instance-of P31 = Q657829 "minor planet
-moon") and often a Wikipedia article, but no external-ID property our SPARQL
-resolver can join on: their SPK-IDs are synthetic (see
-``ingest/providers/objects/sbdb_moons.py``), so P716/P2956 never match. We
-therefore hardcode the QID here and attach it at ingest by ``provisional_
-designation`` — that key is unique, non-null, and stable, whereas a Wikidata
-label routinely disagrees with ours on discovery year (WD ``S/2006 (7088) 1``
-vs our ``S/2005 (7088) 1``), on numbered-vs-provisional parent token, and on
-spelling (WD ``Ilmarë`` vs our ``Ilmare``).
+These bodies have a Wikidata entity (P31 = Q657829 "minor planet moon") but
+no external-ID property to join on — their SPK-IDs are synthetic (see
+``ingest/providers/objects/sbdb_moons.py``), so P716/P2956 never match.
+Hardcoded here and attached at ingest by ``provisional_designation``, since
+a Wikidata label routinely disagrees with ours on discovery year (WD
+``S/2006 (7088) 1`` vs our ``S/2005 (7088) 1``), parent token, or spelling
+(WD ``Ilmarë`` vs our ``Ilmare``).
 
-Maintained by hand. The wikidata downloader's ``warn_minor_planet_moon_drift``
-re-runs the P31 query and warns when Wikidata and this table diverge in either
-direction, but these values stay authoritative — a live label match is too
-flaky to link on.
+Maintained by hand. ``warn_minor_planet_moon_drift`` re-runs the P31 query
+and warns on divergence, but these values stay authoritative — a live label
+match is too flaky to link on.
 
 Source query (https://query.wikidata.org):
     SELECT ?item WHERE { ?item wdt:P31 wd:Q657829 }

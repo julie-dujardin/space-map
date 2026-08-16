@@ -1,19 +1,15 @@
 """Geometry of the IAU planetary quadrangle grids.
 
-Each mapped body divides its surface into a fixed set of numbered chart areas —
-Mercury's 15 ``H-`` quadrangles, Mars' 30 ``mc``, Venus' 62 ``v``, the Moon's
-144 ``LAC`` charts. The grids are regular: latitude rows of equal-width
-longitude cells, so a compact row spec reproduces every box exactly.
+Mercury (15 ``H-``), Mars (30 ``mc``), Venus (62 ``v``), Moon (144 ``LAC``) —
+regular grids of latitude rows split into equal-width longitude cells.
 
-The specs below were reconstructed from the gazetteer itself — every one of the
-13,668 features carrying a ``quad_code`` falls inside the box derived here for
-that code, bar ten Mars albedo features whose centre lands exactly on a cell
-edge. Longitudes are east-positive 0–360, matching ``Feature.center_lon``.
+Reconstructed from the gazetteer: all 13,668 ``quad_code`` features fall
+inside the derived box, bar ten Mars albedo features centred exactly on a
+cell edge. Longitudes are east-positive 0-360 (``Feature.center_lon``).
 
-Note the numbering directions differ: Mercury's rows run west (H-2 is the
-0–90°W cell), Mars' start at the 180° antimeridian, Venus' at the prime
-meridian, and the Moon's begin near the western limb on a grid whose cell edges
-are offset 10° east of the prime meridian.
+Numbering direction differs per body: Mercury runs west from H-2 (0-90°W),
+Mars from the 180° antimeridian, Venus from the prime meridian, Moon from
+near the western limb on a grid offset 10°E of the prime meridian.
 """
 
 from dataclasses import dataclass
@@ -138,9 +134,8 @@ def quadrangle(body_id: str, code: str) -> Quadrangle | None:
 def quadrangle_for(body_id: str, lat: float, lon: float) -> str | None:
     """The quadrangle code containing a point, or None off the mapped bodies.
 
-    Cells are half-open in longitude, so a feature centred exactly on a cell
-    edge lands in the eastern neighbour — which is how the ten Mars albedo
-    features noted in the module docstring drift from the IAU's own assignment.
+    Cells are half-open in longitude — a point on a cell edge lands in the
+    eastern neighbour, explaining the ten Mars albedo drift noted above.
     """
     quads = QUADRANGLES.get(body_id)
     if quads is None:

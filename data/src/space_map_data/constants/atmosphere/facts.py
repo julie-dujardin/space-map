@@ -1,17 +1,15 @@
 """Per-body atmospheric facts for the object panel's stat block.
 
-Separate from `bodies.py` on purpose: that table states each atmosphere at the
-level the *shell is rendered from* (Venus at its cloud top, the giants at the
-visible deck), while these are the numbers a reader expects to see — surface
-pressure where there is a surface, the cloud deck for the giants — with a
-citation per value rather than a render tuning behind them.
+Separate from `bodies.py` on purpose: that table states each atmosphere at
+the level the shell renders from (Venus's cloud top, the giants' visible
+deck), while these are the numbers a reader expects — surface pressure where
+there is one — each with its own citation rather than a render tuning behind
+it.
 
-Values were re-checked against the cited source rather than carried over from
-the compiled dataset they started as; corrections are noted inline. NSSDCA
-fact sheets were read from Internet Archive snapshots (the site has been
-offline since early 2025), so their numbers are the 2024-2025 editions.
-
-Nothing here feeds rendering.
+Re-checked against the cited source rather than carried over from the
+compiled dataset this started as; corrections are noted inline. NSSDCA fact
+sheets were read from Internet Archive snapshots (offline since early 2025),
+so their numbers are the 2024-2025 editions. Nothing here feeds rendering.
 """
 
 from typing import NamedTuple
@@ -38,11 +36,9 @@ PRESSURE_LEVELS = frozenset(
 # `Pressure.qualifier` values — shown as a tag next to the atmosphere type.
 QUALIFIERS = frozenset({"upper_limit", "approximate", "variable"})
 
-# `BodyFacts.note` values — what keeps this atmosphere the way it is, where
-# the classification alone leaves the interesting half unsaid (why Io's
-# atmosphere snows out every eclipse, why Pluto's follows its orbit). The
-# frontend turns each into a sentence; keeping them as keys keeps the prose
-# translatable.
+# `BodyFacts.note` values — the reason behind the classification, where that
+# is the interesting half (why Io's atmosphere snows out every eclipse, why
+# Pluto's follows its orbit). Frontend turns each into a translatable sentence.
 NOTES = frozenset(
     {
         "surface_bounded",
@@ -84,9 +80,8 @@ class Species(NamedTuple):
     formula: str
     value: float
     source: str
-    # True where the measurement is a non-detection limit rather than an
-    # abundance. Kept in the bar (it is the best number there is) but the
-    # panel says so.
+    # A non-detection limit, not an abundance — kept in the bar (the best
+    # number there is), but the panel says so.
     upper_limit: bool = False
 
 

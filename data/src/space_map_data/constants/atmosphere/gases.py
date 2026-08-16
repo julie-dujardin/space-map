@@ -1,21 +1,21 @@
 """Optical constants per gas, from primary dispersion measurements.
 
-Refractivity is stored as a dispersion fit so later spectral rendering can
-evaluate any visible wavelength, not just the three render channels:
+Refractivity is stored as a dispersion fit so rendering can evaluate any
+visible wavelength, not just the three render channels:
 
     (n - 1) × 1e8 = const + cauchy_b·s² + Σ  b / (c - s²)      s = 1/λ [µm⁻¹]
 
-which covers the published fit families (Peck-style Sellmeier terms, Cauchy).
-Each fit applies at the source's own reference density (`fit_number_density`);
-Rayleigh cross sections are density-independent because (n-1) scales with N.
+covering the published fit families (Peck-style Sellmeier, Cauchy). Each fit
+applies at its source's reference density (`fit_number_density`); Rayleigh
+cross sections are density-independent since (n-1) scales with N.
 
-King correction (depolarisation): F = king_a + king_b·s² + king_c·s⁴ — the
-forms used by Bates 1984 and Sneep & Ubachs 2005 (JQSRT 92, 293). Monatomic
-gases and tetrahedral CH₄ are isotropic (F = 1).
+King correction (depolarisation): F = king_a + king_b·s² + king_c·s⁴, per
+Bates 1984 and Sneep & Ubachs 2005 (JQSRT 92, 293). Monatomic gases and
+tetrahedral CH₄ are isotropic (F = 1).
 
-Derived cross sections are validated in tests/export/test_atmospheres.py
-against measured values (He et al. 2021, ACP 21, 14927; Sneep & Ubachs 2005)
-and, for H₂, the Dalgarno & Williams 1962 ab initio formula.
+Validated in tests/export/test_atmospheres.py against measured values (He et
+al. 2021, ACP 21, 14927; Sneep & Ubachs 2005) and, for H₂, the Dalgarno &
+Williams 1962 ab initio formula.
 """
 
 from typing import NamedTuple

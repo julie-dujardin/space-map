@@ -1,10 +1,8 @@
 """Curated "featured satellites" for Earth's Satellites strip.
 
-A manual MVP pick (ISS, Hubble, Starlink): the export bakes each one's name +
-thumbnail into Earth's object bundle so the frontend can render them right after
-the Moon, with a "+N more" tile linking to the Satellites browse page. ISS and
-Hubble are object rows (route to the object); Starlink is a constellation group
-(routes to its group page), so it's referenced by slug, not an object id.
+Manual MVP pick (ISS, Hubble, Starlink), baked into Earth's object bundle so
+the frontend renders them right after the Moon. Starlink is a constellation
+group, referenced by slug rather than object id.
 """
 
 from dataclasses import dataclass

@@ -1,17 +1,13 @@
 """
-Structured catalog of satellite buses / spacecraft platforms with Wikipedia articles.
-Intended for use by the Space Map visualization app for tagging individual satellites
-(by TLE OBJECT_NAME) to their bus, and for locating a free 3D model when available.
+Catalog of satellite buses / spacecraft platforms with Wikipedia articles, for
+tagging satellites (by TLE OBJECT_NAME) to their bus and locating a 3D model.
 
-Compiled April 2026 from:
-- English Wikipedia (article infoboxes + "List of satellites" tables)
-- Wikipedia Category:Satellites_using_the_<bus>_bus pages for exhaustive satellite lists
-- Wikidata (QIDs via wbgetentities)
-- Sketchfab / NASA 3D Resources / ESA / CGTrader / TurboSquid for 3D models
+Compiled April 2026 from English Wikipedia (infoboxes + "List of satellites"
+and Category:Satellites_using_the_<bus>_bus pages), Wikidata (QIDs), and
+Sketchfab / NASA 3D Resources / ESA / CGTrader / TurboSquid for 3D models.
 
-Note: known_satellites uses TLE OBJECT_NAME uppercase conventions where possible.
-Where a Wikipedia article lists a satellite under a slightly different name (e.g.
-"Intelsat VI F-2" vs SATCAT "INTELSAT 602"), the SATCAT/TLE spelling is preferred.
+``known_satellites`` uses TLE OBJECT_NAME conventions; where Wikipedia's name
+differs from SATCAT's (e.g. "Intelsat VI F-2" vs "INTELSAT 602"), SATCAT wins.
 """
 
 import re
@@ -40,19 +36,16 @@ class SatelliteBusSpec:
     model_url: str | None = None
     model_format: str | None = None
     model_license: str | None = None
-    # Slug of a model bundle under EXPORT_DIR/v1/models/ to apply to every
-    # entry in known_satellites. The models ingest sets each matching Object's
-    # model_name to this slug as a post-pass after explicit per-mission
-    # assignments win first.
+    # Model bundle slug (EXPORT_DIR/v1/models/) applied to every known_satellites
+    # entry, as a post-pass after explicit per-mission assignments win first.
     model_slug: str | None = None
     notes: str | None = None
 
 
-# AI disclosure:
-# Ran deep research, then checked/fixed QIDs & matched known_satellites to satcat.csv.
-# Full review complete (all entries verified against Wikidata, Wikipedia, Gunter's Space Page,
-# and CelesTrak satcat.csv). Entries that don't resolve in satcat are annotated inline
-# (launch failures, not-yet-launched, deep-space, decayed-and-removed, or ambiguous names).
+# AI disclosure: deep research, then QIDs and known_satellites checked against
+# Wikidata, Wikipedia, Gunter's Space Page, and satcat.csv. Entries that don't
+# resolve in satcat are annotated inline (launch failure, not-yet-launched,
+# deep-space, decayed-and-removed, or ambiguous name).
 SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     # ---------- Hughes / Boeing (spin-stabilized drums, then 3-axis) ----------
     SatelliteBusSpec(

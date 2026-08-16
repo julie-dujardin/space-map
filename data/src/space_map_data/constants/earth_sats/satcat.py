@@ -1,8 +1,7 @@
 """Typed enums for CelesTrak SATCAT coded fields.
 
-Raw SATCAT codes (e.g. ``+``, ``R/B``, ``PRC``) are converted into descriptive
-string-enum values during ingest. Unknown codes raise ``ValueError`` to keep
-the downstream schema honest.
+Raw SATCAT codes (``+``, ``R/B``, ``PRC``, ...) become descriptive string-enum
+values during ingest. Unknown codes raise ``ValueError``.
 
 Sources:
 - https://celestrak.org/satcat/satcat-format.php

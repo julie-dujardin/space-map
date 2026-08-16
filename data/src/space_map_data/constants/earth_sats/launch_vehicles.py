@@ -1,15 +1,13 @@
 """Launch-vehicle group entities (``/g/lv-<slug>``).
 
-Each launch vehicle merges two views of itself: spent stages tracked in orbit
-(via the ROCKET ``ConstellationSpec`` of the same slug) and its launch history
-(GCAT launchlog rows whose ``lv_type`` matches ``lv_prefixes``). Most slugs
-reuse a constellation for orbital membership + QID; launch-only families with
-no catalogued debris (Space Shuttle, deep-space expendables, recent commercial
-flights) declare their own QID inline.
+Each merges two views: spent stages tracked in orbit (via the ROCKET
+``ConstellationSpec`` of the same slug) and launch history (GCAT launchlog
+rows whose ``lv_type`` matches ``lv_prefixes``). Families with no catalogued
+debris (Shuttle, deep-space expendables, recent commercial) declare their own
+QID inline instead of reusing a constellation's.
 
-``lv_type`` matching is longest-prefix-wins so nested names resolve correctly:
-"Thor Delta" → ``delta`` beats "Thor " → ``thor-rocket``; "GSLV Mk III" →
-``lvm3`` beats "GSLV" → ``gslv``.
+``lv_type`` matching is longest-prefix-wins, so nested names resolve
+correctly — e.g. "GSLV Mk III" → ``lvm3`` beats "GSLV" → ``gslv``.
 """
 
 from dataclasses import dataclass
@@ -26,10 +24,9 @@ LAUNCH_VEHICLE_SLUG_PREFIX = "lv-"
 class LaunchVehicleSpec:
     """A launch-vehicle group page.
 
-    ``constellation_slug`` links a ROCKET constellation supplying orbital
-    rocket-body members and (when ``wikidata_qid`` is unset) the QID + display
-    name. Launch-only families leave it ``None`` and set ``wikidata_qid`` /
-    ``name`` directly.
+    ``constellation_slug`` links a ROCKET constellation for orbital members
+    and, when ``wikidata_qid`` is unset, its QID + name. Launch-only families
+    set ``wikidata_qid``/``name`` directly instead.
     """
 
     slug: str

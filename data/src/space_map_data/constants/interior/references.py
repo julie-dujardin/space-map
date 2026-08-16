@@ -1,17 +1,17 @@
 """Citable sources behind the interior facts, for the /credits page.
 
-One entry per work a number actually comes from, keyed by the `source` strings
-used in `bodies.py` and `taxonomy.py`. Per-value provenance stays as comments
-next to each constant; this is what gets exported.
+One entry per work a number actually comes from, keyed by the `source`
+strings used in `bodies.py` and `taxonomy.py`. Per-value provenance stays as
+comments next to each constant; this is what gets exported.
 
 Two works are deliberately absent: SsODNet, which supplies the spectral
 classes rather than any interior number, and Mahlke, whose scheme and albedo
-cut decide the class letter. They are credited under object metadata on the
-/credits page and reach the panel through `interior.taxonomy_sources`, which
+cut decide the class letter. They're credited under object metadata on
+/credits and reach the panel through `interior.taxonomy_sources`, which
 ships ids rather than citations because 171,000 asteroids carry them.
 
 `contribution` is the credits page's sentence; `note` is the two or three
-words the object panel's credit line has room for, in the style of its
+words the object panel's credit line has room for, styled like its
 provider roles ("sizes, albedos & spectral types").
 """
 

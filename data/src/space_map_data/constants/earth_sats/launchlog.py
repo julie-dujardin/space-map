@@ -1,11 +1,9 @@
 """Typed enums for the GCAT SatType field (launchlog ``Type`` column).
 
-SatType is a 12-byte positional string; each byte is an independent flag.
-In the launch log byte 1 is always ``P`` (payload) and bytes 10-12 are
-McDowell's plot/bookkeeping bytes, so only bytes 2-9 are decoded here. A blank
-or ``-`` byte is a positional filler (not applicable) → None; an unrecognised
-code is logged and mapped to None rather than raised, since the field spans a
-large combinatorial space.
+SatType is a 12-byte positional flag string. Byte 1 is always ``P`` (payload)
+and bytes 10-12 are McDowell's bookkeeping bytes, so only 2-9 are decoded.
+Blank/``-`` → None; unrecognised codes are logged and mapped to None rather
+than raised, since the field spans a large combinatorial space.
 
 Source: https://planet4589.org/space/gcat/web/intro/type.html
 """

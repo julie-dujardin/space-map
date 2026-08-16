@@ -1,24 +1,22 @@
 """Wikidata topic pages behind the interior panel.
 
-The thinnest section of the four. English Wikipedia has a dedicated
-interior article for Earth and the Moon only; Italian carries a
-"Struttura interna di X" series that covers seven more bodies and nothing
-else does.
+The thinnest section of the four. English Wikipedia has a dedicated interior
+article for Earth and the Moon only; Italian carries a "Struttura interna di
+X" series covering seven more bodies and nothing else does.
 
 That series predates Juno, InSight and Margot 2021, so on the giants it
-describes a layering our own cross-section declines to draw. It ships anyway:
-it is the right kind of article, and no amount of curation here keeps a
+describes a layering our own cross-section declines to draw. It ships
+anyway — it's the right kind of article, and no curation here keeps a
 Wikipedia lead current.
 
-Values are tuples because one topic occasionally splits across two Wikidata
-items with disjoint sitelinks — no single item covers every language. Nothing
-resolves to English when a locale is missing: a reader either gets the article
-in the language they are reading in, or no link at all, so the coverage
-comment on each row is the whole story about where a link will appear.
+Values are tuples because one topic sometimes splits across two Wikidata
+items with disjoint sitelinks. Nothing falls back to English when a locale
+is missing — a reader gets the article in their language or no link at all,
+so the per-row coverage comment is the whole story.
 
 Locale codes follow ``constants.providers.LANGUAGES``; "all 12" means every
-one of them. Coverage was read off Wikidata and drifts as articles are
-written or merged — treat the comments as of 2026-07-31.
+one. Coverage was read off Wikidata and drifts as articles change — treat
+the comments as of 2026-07-31.
 """
 
 # Keyed by body id. Io, Europa, Callisto, Enceladus, Dione, Triton, Charon,

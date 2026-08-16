@@ -1,15 +1,14 @@
 """Texture download manifests, merged into one entry list.
 
 Layout under ``textures/`` mirrors the download dir it describes: the root
-manifest covers the flat per-body surface textures in ``surfaces/``, and each
+manifest covers flat per-body surface textures in ``surfaces/``, and each
 manually-staged asset (``star-map/``, ``night/earth/``, ``displacement/moon/``,
-…) carries its own manifest at the position of the directory holding its
-files. That mirroring is what lets each entry's source directory be recovered
-from its manifest's own path, now that the manifests no longer sit next to
-their bytes.
+…) carries its own manifest at the directory holding its files — so a source
+directory can be recovered from its manifest's own path, now that manifests no
+longer sit next to their bytes.
 
-``clouds/`` and ``rings/`` are excluded — they use their own metadata files,
-written by their downloaders rather than by hand.
+``clouds/`` and ``rings/`` are excluded — they use their own downloader-written
+metadata files, not hand-curated ones.
 """
 
 import logging
@@ -28,8 +27,8 @@ SURFACES_SUBDIR = "surfaces"
 
 
 def load_entries(textures_dir: Path) -> list[dict]:
-    """Every texture entry, stamped with ``_source_dir``: the directory holding
-    its files, resolved under ``textures_dir`` (the textures source root)."""
+    """Every texture entry, stamped with ``_source_dir`` (its files' directory,
+    resolved under ``textures_dir``)."""
     entries: list[dict] = []
     for manifest, source_dir in _manifests(textures_dir):
         bodies = (yaml.safe_load(manifest.read_text()) or {}).get("bodies") or []

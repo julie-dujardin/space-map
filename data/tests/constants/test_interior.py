@@ -55,10 +55,9 @@ class TestBodies:
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_layer_masses_account_for_the_whole_body(self, object_id: str):
-        """A body whose layers do not sum to its mass would silently distort
-        the roll-up, which is the one number the panel shows. A body whose
-        source gives geometry but no masses is allowed to carry none at all —
-        but not some, which would under-count without ever looking wrong."""
+        """Layers not summing to 1 would silently distort the roll-up the
+        panel shows. All-or-nothing: partial masses would under-count without
+        looking wrong."""
         fractions = [layer.mass_fraction for layer in INTERIOR_FACTS[object_id].layers]
         if all(f is None for f in fractions):
             return
@@ -67,11 +66,10 @@ class TestBodies:
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_an_ocean_note_comes_with_an_ocean_layer(self, object_id: str):
-        """Ganymede shipped for a while as a body labelled "has a subsurface
-        ocean" whose cross-section was solid ice from the surface to the rock.
-        The note and the layer are the same claim and have to travel together,
-        in both directions. What makes an ocean subsurface is having something
-        above it, which is why Earth's does not take the note."""
+        """Ganymede once shipped labelled "has a subsurface ocean" with a
+        solid-ice cross-section — note and layer are the same claim and must
+        travel together. "Subsurface" means something covers it, which is
+        why Earth's ocean carries no note."""
         body = INTERIOR_FACTS[object_id]
         buried = any(layer.role == "ocean" for layer in body.layers[1:])
         assert buried == (body.note == "subsurface_ocean")
@@ -89,19 +87,17 @@ class TestBodies:
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_a_partial_layer_covers_part_of_the_surface(self, object_id: str):
-        """`area_fraction` is what says a layer is a patch rather than a shell,
-        so 1.0 is not a value it can take — an unset field already means the
-        layer goes all the way round."""
+        """`area_fraction` marks a patch, not a shell; 1.0 is invalid since
+        unset already means full coverage."""
         for layer in INTERIOR_FACTS[object_id].layers:
             if layer.area_fraction is not None:
                 assert 0.0 < layer.area_fraction < 1.0, layer.role
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_a_patch_carries_its_own_floor(self, object_id: str):
-        """A shell's floor is the next layer's top; a patch's is not — what is
-        under Earth's ocean is the sea floor, not the continental crust that
-        follows it in the list. Without this the cross-section draws the ocean
-        41 km deep and the card says so."""
+        """A patch's floor isn't the next layer's top — Earth's ocean floor is
+        the sea floor, not the continental crust after it. Without this the
+        cross-section draws a 41 km deep ocean."""
         for layer in INTERIOR_FACTS[object_id].layers:
             if layer.area_fraction is None:
                 continue
@@ -141,9 +137,8 @@ class TestBodies:
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_a_rock_name_sits_on_rock(self, object_id: str):
-        """The vocabulary is igneous petrology, so it can only describe a layer
-        the roll-up already calls silicate — an ice shell named `basalt` would
-        pass every other check in this file."""
+        """Rock names are igneous petrology, valid only on silicate layers —
+        an ice shell named `basalt` would pass every other check here."""
         for layer in INTERIOR_FACTS[object_id].layers:
             if layer.rock is None:
                 continue
@@ -152,9 +147,9 @@ class TestBodies:
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_published_widths_bracket_the_shipped_value(self, object_id: str):
-        """The point value is what the roll-up uses and the range is what the
-        panel draws around it, so a range that does not contain its own value
-        would put the marker outside its own error bar."""
+        """The roll-up uses the point value, the panel draws the range around
+        it; a range excluding its own value puts the marker outside its error
+        bar."""
         for layer in INTERIOR_FACTS[object_id].layers:
             if layer.mass_fraction_range:
                 assert layer.mass_fraction is not None
@@ -244,9 +239,8 @@ class TestTaxonomy:
         assert all(c.material in MATERIALS for c in entry.composition)
 
     def test_metal_types_are_not_pure_iron(self):
-        """M-types read as solid iron to the eye but are not: the population's
-        best analogue carries silicate inclusions, and saying otherwise would
-        overstate what a spectrum can tell us."""
+        """M-types read as solid iron but aren't: the best analogue carries
+        silicate inclusions, so claiming pure iron overstates the spectrum."""
         metal = dict(
             (c.material, c.fraction) for c in TAXONOMY_COMPOSITION["M"].composition
         )
@@ -299,7 +293,7 @@ class TestResolveClass:
 
     @pytest.mark.parametrize("reported", ["D", "P"])
     def test_disputed_analogues_stay_absent(self, reported: str):
-        """D and P have no settled meteorite analogue — the Tagish Lake link
-        that once carried D is no longer thought representative. This test
-        exists so adding one is a deliberate act, not a drive-by."""
+        """D and P have no settled meteorite analogue — the once-claimed
+        Tagish Lake link for D is no longer thought representative. Guards
+        against a drive-by addition."""
         assert resolve_class(reported, reported, 0.05) is None

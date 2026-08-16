@@ -1,22 +1,22 @@
 """What a taxonomic class implies about what an asteroid is made of.
 
 A spectrum names a meteorite analogue; the analogue's measured bulk chemistry
-gives the composition. Both steps are inference, so every asteroid served from
-this table ships flagged as an estimate from its spectrum — the panel says
+gives the composition. Both steps are inference, so every asteroid served
+here ships flagged as an estimate from its spectrum — the panel says
 "estimated from its S-type spectrum", never "is".
 
-Splits are mass fractions rounded to whole percent. Rounding is the point: the
-class-to-analogue step is worth about that much, and a table of four-digit
-fractions would claim a precision the mapping does not have. Metal and
-sulphide come from the modal abundances in Krot et al. 2014 recomputed by
-mass, except on the ordinary chondrites, where Jarosewich 1990's bulk
-analyses give the H→LL metal span directly and are cited instead; volatile
-contents are the carbonaceous-chondrite water and carbon of Wasson &
-Kallemeyn 1988.
+Splits are mass fractions rounded to whole percent: the class-to-analogue
+step is worth about that much, and four-digit fractions would claim a
+precision the mapping doesn't have. Metal and sulphide come from Krot et al.
+2014's modal abundances recomputed by mass, except the ordinary chondrites,
+where Jarosewich 1990's bulk analyses give the H→LL metal span directly;
+volatile contents are Wasson & Kallemeyn 1988's carbonaceous-chondrite water
+and carbon.
 
-Classes whose analogue is genuinely disputed are absent rather than guessed —
-X is the clearest case, where the same spectrum fits an iron, an enstatite
-chondrite and a hydrated primitive body, and only albedo separates them.
+Classes whose analogue is genuinely disputed are absent rather than
+guessed — X is the clearest case, where the same spectrum fits an iron, an
+enstatite chondrite and a hydrated primitive body, and only albedo separates
+them.
 """
 
 from typing import NamedTuple
@@ -171,15 +171,15 @@ TAXONOMY_COMPOSITION: dict[str, ClassComposition] = {
 # prefixes lie: a "Cgh" is a C, but an "L" is not an "LS".
 COMPLEX_FALLBACK = frozenset({"S", "C", "V", "B", "K", "A", "Q"})
 
-# The X complex is three different rocks sharing one featureless spectrum, and
-# only albedo tells them apart: dark P, moderate M, bright E. That is Tholen's
-# original split, which Mahlke et al. 2022 reinstated by feeding albedo back
-# into the classification — so applying it here reproduces their method for
-# the objects classified under schemes that left it out.
+# The X complex is three different rocks sharing one featureless spectrum,
+# split only by albedo: dark P, moderate M, bright E. Tholen's original
+# split, reinstated by Mahlke et al. 2022 feeding albedo back into the
+# classification — applying it here reproduces their method for objects
+# classified under schemes that left it out.
 #
-# P is absent from the table above on purpose. Its analogue is genuinely
-# unsettled (the Tagish Lake link that once carried it is no longer thought
-# representative), so dark X-types get no composition rather than a guess.
+# P is absent on purpose: its analogue is genuinely unsettled (the Tagish
+# Lake link that once carried it is no longer thought representative), so
+# dark X-types get no composition rather than a guess.
 X_ALBEDO_METAL = 0.10  # below this is P, above is M
 X_ALBEDO_ENSTATITE = 0.30  # above this is E
 

@@ -1,11 +1,10 @@
 """Organizations: the unified company/agency entity behind /g/org-<slug>.
 
-An organization merges the operator and manufacturer roles for one real-world
-entity. Operators and manufacturers are still defined separately (they drive
-SATCAT classification and constellation/bus linkage); this layer unions them by
-slug for the group page so a company appears once, tagged ``operator`` and/or
-``manufacturer``. Duals share both slug and Wikidata QID across the two tables,
-so the slug is a safe identity key.
+Operators and manufacturers stay defined separately (they drive SATCAT
+classification and constellation/bus linkage); this layer unions them by slug
+so a company appears once on its group page, tagged ``operator`` and/or
+``manufacturer``. Duals share slug and QID across both tables, so slug is a
+safe identity key.
 """
 
 from dataclasses import dataclass
@@ -13,16 +12,14 @@ from dataclasses import dataclass
 from space_map_data.constants.earth_sats.manufacturers import MANUFACTURERS
 from space_map_data.constants.earth_sats.operators import OPERATORS
 
-# Group slug namespace: organization group slugs are
-# ``f"{ORGANIZATION_SLUG_PREFIX}{org.slug}"`` so they don't collide with bare
-# constellation slugs, ``site-*`` launch-site slugs, etc.
+# Prefix so org group slugs don't collide with bare constellation or site-*
+# slugs: ``f"{ORGANIZATION_SLUG_PREFIX}{org.slug}"``.
 ORGANIZATION_SLUG_PREFIX = "org-"
 
-# Duals whose operated and manufactured satellite sets are *disjoint* — counting
-# both would inflate the fleet with hardware the org doesn't fly. CNES is the
-# only such case (operates 76, built 18, zero overlap); it's shown as a pure
-# operator, dropping the 18 manufactured-only sats (they still appear under
-# whoever operates them). Every other dual is nested, so the union is exact.
+# Duals whose operated/manufactured sets are *disjoint* — counting both would
+# inflate the fleet. CNES is the only case (operates 76, built 18, zero
+# overlap); shown as pure operator, dropping the 18 manufactured-only sats
+# (they still appear under whoever operates them).
 OPERATOR_ONLY_MEMBERSHIP_SLUGS: frozenset[str] = frozenset({"cnes"})
 
 

@@ -1,42 +1,35 @@
 """Tidal heating, body by body.
 
-A moon on a circular orbit gets none of this: the bulge has to move to do any
-work, and it only moves if the orbit is eccentric or the spin is tilted. So
-every entry below either names a resonance that keeps the eccentricity from
-damping away, or explains why the heating is a leftover rather than a supply.
+A circular orbit gets none of this — the bulge only moves, and does work, if
+the orbit is eccentric or the spin tilted. Each entry names the resonance that
+keeps the eccentricity up, or says why the heating is a leftover.
 
-The heating rate itself is rarely measured. What is measured is the heat coming
-*out* — Io's infrared radiometry, Enceladus's south polar emission — and on
-those two bodies the tide is so dominant that the observed loss is taken as the
-production. Everywhere else the numbers are modelled, and are left out here
-rather than shipped as though a spacecraft had weighed them. `role` is the
+The rate itself is rarely measured; what's measured is the heat coming *out*
+(Io's infrared radiometry, Enceladus's south polar emission), and only on
+those two is the tide so dominant that observed loss can stand for
+production. Elsewhere the numbers are modelled and left out, so `role` is the
 honest resolution for most of the list.
 
-Powers are watts and fluxes W m⁻², matching `Volcanism.endogenic_power_w` so
-the two can be read against each other: on Io they are the same number, which
-is the whole finding.
+Powers are watts, fluxes W m⁻², matching `Volcanism.endogenic_power_w` so the
+two read against each other — on Io they're the same number.
 """
 
 from space_map_data.constants.activity.schema import Measurement, TidalHeating
 
 TIDAL_HEATING: dict[str, TidalHeating] = {
-    # Moon. Earth raises a tide on it and always has, but the Moon is cold and
-    # therefore barely dissipative, so the heating does nothing to its present
-    # thermal state. Kept in the table because its absence is the control on
-    # Io: the same orbital distance, a planet 300 times lighter, and no
-    # resonance to keep the eccentricity up.
+    # Moon. Earth raises a tide, but the Moon is cold and barely dissipative,
+    # so it does nothing to its present thermal state. Kept as the control on
+    # Io: same orbital distance, a planet 300 times lighter, no resonance to
+    # keep the eccentricity up.
     "naif-301": TidalHeating(
         raised_by="naif-399",
         role="negligible",
         role_sources=("nimmo_2025",),
     ),
-    # Earth. The rare case where the tide is dissipated in an ocean rather than
-    # in rock, and the only body where it is measured by satellite altimetry
-    # rather than modelled. 3.7 TW is the whole astronomical tide, lunar and
-    # solar; about a quarter of it goes into internal waves in the deep ocean
-    # and the rest into friction in shallow seas. Set against 47 TW of internal
-    # heat, the tide is a twelfth of Earth's energy budget — and it is the
-    # reason the day is lengthening.
+    # Earth. Dissipated in the ocean rather than rock, and the only body
+    # measured by satellite altimetry rather than modelled. 3.7 TW is the
+    # whole lunar+solar tide — a twelfth of Earth's 47 TW internal heat budget,
+    # and the reason the day is lengthening.
     "naif-399": TidalHeating(
         raised_by="naif-301",
         role="minor",
@@ -44,16 +37,12 @@ TIDAL_HEATING: dict[str, TidalHeating] = {
         power_w=Measurement(3.7e12, "munk_1998"),
         note="ocean_tides",
     ),
-    # Io. The measurement, not a model: Veeder gives "an average total power of
-    # 1.05 × 10¹⁴ W (2.5 W m⁻²)" from infrared radiometry over a decade, which
-    # is thirty times Earth's flux and more than any other body in the system
-    # by two orders of magnitude. No uncertainty is attached to it there; the
-    # 105 ± 12 TW seen in later work is Davies's restatement, so the bracket is
-    # left off rather than credited to a paper that does not carry it. Juno's
-    # Love number gives the other half of the story — k₂ of 0.125 is *small*,
-    # too small for the global magma ocean the heating was long thought to
-    # require, and Q of 11.4 is the lossiest interior ever measured. Io is
-    # mostly solid rock being kneaded, not a ball of melt.
+    # Io. The measurement, not a model: Veeder's 1.05×10¹⁴ W (2.5 W m⁻²) from
+    # a decade of infrared radiometry, thirty times Earth's flux. No
+    # uncertainty attached there; the ±12 TW seen elsewhere is Davies's later
+    # restatement, so it's left off. Juno's Love number k₂ = 0.125 is too
+    # small for the global magma ocean once assumed, and Q = 11.4 is the
+    # lossiest interior measured anywhere — solid rock being kneaded.
     "naif-501": TidalHeating(
         raised_by="naif-599",
         role="dominant",
@@ -66,11 +55,10 @@ TIDAL_HEATING: dict[str, TidalHeating] = {
         resonance_source="matsuyama_2022",
         note="laplace_resonance",
     ),
-    # Europa. Second in the same resonance, and the tide is what keeps its
-    # ocean liquid, but nobody has weighed it: published dissipation rates
-    # depend on an ice-shell thickness that is itself only known to within a
-    # factor of ten. The one firm surface number is the shell, about 20 km from
-    # impact craters.
+    # Europa. Second in the resonance; the tide keeps its ocean liquid, but
+    # nobody has weighed it — dissipation depends on an ice-shell thickness
+    # known only to within a factor of ten. The firm number is the shell
+    # itself, about 20 km from impact craters.
     "naif-502": TidalHeating(
         raised_by="naif-599",
         role="significant",
@@ -80,9 +68,9 @@ TIDAL_HEATING: dict[str, TidalHeating] = {
         note="laplace_resonance",
     ),
     # Ganymede. Third in the resonance and far enough out that present-day
-    # heating is negligible — but its grooved terrain records a pulse of tidal
-    # heating around 2 Ga, when the resonance was being assembled. The ocean it
-    # has now is kept liquid by radiogenic heat and depth, not by the tide.
+    # heating is negligible, but grooved terrain records a heating pulse
+    # around 2 Ga as the resonance assembled. Its ocean now is kept liquid by
+    # radiogenic heat and depth, not the tide.
     "naif-503": TidalHeating(
         raised_by="naif-599",
         role="past",
@@ -91,25 +79,22 @@ TIDAL_HEATING: dict[str, TidalHeating] = {
         resonance_source="matsuyama_2022",
         note="ancient_heating_pulse",
     ),
-    # Mimas. The surprise of 2024. Its surface is the most heavily cratered in
-    # the Saturn system and shows nothing, but the way its orbit precesses only
-    # works if there is a global ocean under 20-30 km of ice — and the ocean
-    # has to be young, because an older one would have deformed the shell
-    # enough to see. Between 2 and 25 Myr old, which is nothing.
+    # Mimas. The surprise of 2024: its surface is the most heavily cratered in
+    # the Saturn system and shows nothing, but its orbital precession only
+    # works with a global ocean under 20-30 km of ice — and a young one, 2-25
+    # Myr, since an older ocean would have deformed the shell visibly.
     "naif-601": TidalHeating(
         raised_by="naif-699",
         role="significant",
         role_sources=("lainey_2024",),
         note="young_ocean",
     ),
-    # Enceladus. 15.8 GW leaving the south polar terrain, measured by Cassini's
-    # far-infrared spectrometer, against 0.34 GW of radiogenic heat in the
-    # whole body — a factor of fifty, and the reason nobody doubts the tide is
-    # the source. The global mean flux of 0.04 W m⁻² badly understates the
-    # tiger stripes themselves, where it is concentrated into four fractures.
-    # The Dione resonance is what holds the eccentricity up, though the
-    # equilibrium rate it can sustain is short of what is observed, which is
-    # the open problem.
+    # Enceladus. 15.8 GW leaving the south polar terrain (Cassini far-infrared)
+    # against 0.34 GW radiogenic — a factor of fifty, why nobody doubts the
+    # tide is the source. The 0.04 W m⁻² global mean badly understates the
+    # tiger stripes, where it's concentrated into four fractures. The Dione
+    # resonance holds the eccentricity up, but its equilibrium rate falls
+    # short of what's observed — the open problem.
     "naif-602": TidalHeating(
         raised_by="naif-699",
         role="dominant",
@@ -120,9 +105,9 @@ TIDAL_HEATING: dict[str, TidalHeating] = {
         resonance_source="nimmo_2018",
         note="south_polar_terrain",
     ),
-    # Dione. The other end of the Enceladus resonance, which means it is being
-    # heated too, and its own fractured trailing hemisphere and possible ocean
-    # are the evidence. Nothing is erupting.
+    # Dione. The other end of the Enceladus resonance, so it's heated too —
+    # evidence is its fractured trailing hemisphere and possible ocean.
+    # Nothing is erupting.
     "naif-604": TidalHeating(
         raised_by="naif-699",
         role="minor",
@@ -130,31 +115,28 @@ TIDAL_HEATING: dict[str, TidalHeating] = {
         resonance_with=("naif-602",),
         resonance_source="nimmo_2018",
     ),
-    # Titan. In no eccentricity resonance, and its own eccentricity is small
-    # enough that the tide is modest — the ocean under it is deep and salty
-    # rather than tidally stoked. Kept for the contrast with Enceladus, which
-    # is a fiftieth of its size and puts out more heat.
+    # Titan. In no eccentricity resonance and modest eccentricity, so the tide
+    # is modest — its ocean is deep and salty, not tidally stoked. Kept for
+    # the contrast with Enceladus, a fiftieth its size but putting out more
+    # heat.
     "naif-606": TidalHeating(
         raised_by="naif-699",
         role="minor",
         role_sources=("nimmo_2025",),
     ),
-    # Triton. Captured from the Kuiper belt onto a retrograde, wildly eccentric
-    # orbit, and the circularisation of that orbit is thought to have melted
-    # the moon through. That episode is over — the orbit is circular now — but
-    # the orbit is still *inclined*, so the bulge moves north and south each
-    # revolution, and obliquity tides may be what keeps Triton's surface only
-    # ~10 Myr old.
+    # Triton. Captured onto a retrograde, wildly eccentric orbit; its
+    # circularisation is thought to have melted the moon through. That episode
+    # is over — the orbit is circular now, but still *inclined*, so obliquity
+    # tides may be what keeps the surface only ~10 Myr old.
     "naif-801": TidalHeating(
         raised_by="naif-899",
         role="past",
         role_sources=("nimmo_2025",),
         note="obliquity_tides",
     ),
-    # Charon. Pluto and Charon are doubly synchronous — each keeps one face to
-    # the other, which is where tidal evolution ends and heating stops. What is
-    # left is the early episode, while the two were still spinning down, and
-    # Charon's tectonised Vulcan Planitia is the record of it.
+    # Charon. Pluto and Charon are doubly synchronous — tidal evolution ends
+    # once each keeps one face to the other. What's left is the earlier
+    # spin-down episode, recorded in Charon's tectonised Vulcan Planitia.
     "naif-901": TidalHeating(
         raised_by="naif-999",
         role="past",

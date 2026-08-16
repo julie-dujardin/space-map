@@ -1,15 +1,15 @@
 """Spectral absorption data for future many-wavelength rendering.
 
 Gas Rayleigh spectra need no tables — evaluate `gases.GAS_OPTICS`'s dispersion
-fits at any visible wavelength. This module holds what dispersion can't give:
-band absorption cross sections.
+fits at any wavelength. This module holds what dispersion can't give: band
+absorption cross sections.
 
-Known gap: Karkoschka's 300-1000 nm CH₄ absorption coefficients (what makes
-Uranus/Neptune teal — Karkoschka 1994, Icarus 111, 174; Karkoschka & Tomasko
-2010, Icarus 205, 674) have no verified public machine-readable copy; the
-tabulations circulate inside RT codes (NEMESIS) and Patrick Irwin's band files
-cover only 1-5 µm. Extract from the 1994 paper table when the giants go
-physical; the render currently carries their colour in the surface textures.
+Known gap: Karkoschka's 300-1000 nm CH₄ coefficients (what makes Uranus/
+Neptune teal — Karkoschka 1994, Icarus 111, 174; Karkoschka & Tomasko 2010,
+Icarus 205, 674) have no verified machine-readable copy; tabulations circulate
+inside RT codes (NEMESIS), and Irwin's band files cover only 1-5 µm. Extract
+from the 1994 table when the giants go physical — the render carries their
+colour in the surface textures meanwhile.
 """
 
 # Ozone Chappuis-band cross sections, cm² molecule⁻¹ at 293 K on a 10 nm

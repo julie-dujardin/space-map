@@ -2,14 +2,14 @@
 
 The reference level is what the rendered sphere shows, not necessarily the
 surface: terrestrial bodies use the surface, Venus the cloud-top/tropopause
-region its texture depicts, and the giants the ~0.3 bar visible deck (their
+region its texture depicts, and the giants the ~0.3 bar visible deck (a
 1-bar derivation would white-wash the banding the shell sits above).
-Rayleigh coefficients and scale heights are derived from these
-conditions by export/atmospheres/; nothing here is a scattering coefficient.
+export/atmospheres/ derives Rayleigh coefficients and scale heights from
+these conditions; nothing here is a scattering coefficient.
 
 NSSDCA fact-sheet values were read from Internet Archive snapshots of the
-2024-2025 sheets (nssdc.gsfc.nasa.gov was offline 2026-07); mission values
-from the cited primary papers.
+2024-2025 sheets (offline since 2026-07); mission values from the cited
+primary papers.
 """
 
 from typing import NamedTuple

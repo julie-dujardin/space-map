@@ -1,12 +1,10 @@
 """Earth-orbit zone classification.
 
-Shape classes (VLEO/LEO/MEO/HEO/GSO/GEO/IGSO/GRA/HIGH/MOL/TUN/GTO/CIS/
-VHEO) are mutually exclusive — the most specific match wins. Low orbits
-add at most one inclination band (SSO/Polar/Retrograde/Equatorial),
-GCAT-style. Bands follow GCAT
-(planet4589.org/space/gcat/web/intro/orbits.html);
-period/eccentricity-based GCAT cuts are approximated on the perigee/
-apogee plane.
+Shape classes (VLEO/LEO/MEO/HEO/GSO/GEO/IGSO/GRA/HIGH/MOL/TUN/GTO/CIS/VHEO)
+are mutually exclusive — most specific wins. Low orbits add at most one
+inclination band (SSO/Polar/Retrograde/Equatorial), GCAT-style. Bands follow
+GCAT (planet4589.org/space/gcat/web/intro/orbits.html); its period/
+eccentricity-based cuts are approximated on the perigee/apogee plane.
 """
 
 from dataclasses import dataclass
@@ -49,12 +47,10 @@ class _OrbitZone:
 class EarthOrbitClass(_OrbitZone, Enum):
     """Shape classes + inclination bands for Earth-orbiting payloads.
 
-    Each member carries a Wikidata ``qid`` (used to localize the orbit-class
-    popover — ``None`` skips enrichment; each QID targets the precise concept
-    the zone encodes, e.g. GSO is *any* inclination, so "geosynchronous" not
-    "geostationary") and a ``primary`` flag (``True`` for the mutually-exclusive
-    shape classes, ``False`` for the SSO/Polar/Retrograde/Equatorial inclination
-    bands a low orbit adds on top of its shape class).
+    ``qid`` localizes the orbit-class popover (``None`` skips enrichment);
+    each targets the precise concept, e.g. GSO is *any* inclination, so
+    "geosynchronous" not "geostationary". ``primary`` is ``True`` for the
+    mutually-exclusive shape classes, ``False`` for inclination bands.
     """
 
     LEO = "Q663611"  # low Earth orbit

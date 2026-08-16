@@ -102,8 +102,7 @@ class TestCitations:
 
 
 class TestMeasurements:
-    """`Measurement` exists so a bound never reads as a value. These are the
-    ways that could still go wrong."""
+    """`Measurement` exists so a bound never reads as a value."""
 
     @pytest.mark.parametrize(
         "object_id, table",
@@ -117,8 +116,8 @@ class TestMeasurements:
                 continue
             low, high = measurement.range
             assert low <= high
-            # An upper limit's value is the limit itself, so it is allowed to
-            # sit at the top of its own bracket rather than inside it.
+            # An upper limit's value is the limit, free to sit at the edge of
+            # its own bracket.
             assert low <= measurement.value <= high
 
 
@@ -129,15 +128,9 @@ class TestCrossTable:
     def test_a_body_is_spelled_the_way_the_rest_of_the_constants_spell_it(
         self, object_id: str
     ):
-        """An id nothing else uses is a body nothing will ever match.
-
-        Vesta is the case: NAIF numbers it 2000004, but the export carries it
-        under its SBDB id, so `naif-2000004` cost it its whole block and did so
-        silently — every citation checked out, every enum was valid, and no
-        object ever asked for it. `interior/bodies.py` covers all 23 of these
-        bodies today; if a future one has activity and no layer model, widen
-        this rather than dropping it.
-        """
+        """A mismatched id fails silently: Vesta's NAIF id 2000004 differs from
+        its SBDB export id, so `naif-2000004` matched nothing and no other test
+        caught it. Widen `interior/bodies.py`'s 23 ids rather than drop this."""
         assert object_id in INTERIOR_FACTS
 
     @pytest.mark.parametrize("object_id", TIDAL_IDS)
@@ -151,9 +144,8 @@ class TestCrossTable:
 
     @pytest.mark.parametrize("object_id", TIDAL_IDS)
     def test_a_live_tide_names_what_sustains_it(self, object_id: str):
-        """An eccentricity tide damps itself out in far less than the age of
-        the solar system. A body dissipating today without a resonance behind
-        it is either a data error or a claim big enough to need a note."""
+        """Eccentricity tides damp out fast; a body still dissipating without a
+        resonance behind it is either a data error or needs a note."""
         tidal = TIDAL_HEATING[object_id]
         if tidal.role not in {"dominant", "significant"}:
             return
@@ -161,12 +153,8 @@ class TestCrossTable:
 
     @pytest.mark.parametrize("object_id", ACTIVITY_IDS)
     def test_a_body_loses_at_least_the_heat_its_tide_makes(self, object_id: str):
-        """The two tables quote the same body's energy from opposite ends —
-        what the tide puts in, what the surface radiates — and the second
-        cannot be the smaller. On Io they are the same number, which is the
-        finding; on Earth the tide is a twelfth of the heat loss, which is a
-        different finding. A table that had them the other way round would be
-        showing a body cooling faster than it is heated."""
+        """Tidal input can't exceed radiated heat loss, or the body would be
+        cooling faster than it's heated. Equal on Io; a twelfth on Earth."""
         power = GEOLOGIC_ACTIVITY[object_id].volcanism.endogenic_power_w
         tidal = TIDAL_HEATING.get(object_id)
         if power is None or tidal is None or tidal.power_w is None:
@@ -193,18 +181,15 @@ class TestAgainstTheVolcanoCatalogue:
         ],
     )
     def test_earth_counts_match_the_catalogue(self, field: str, key: str):
-        """Both of these are rolled up from the downloaded eruption record, so
-        drift means either the database has been revised — in which case the
-        constant wants updating and its `as_of` with it — or the roll-up in
-        `download/providers/gvp.py` has changed meaning under us."""
+        """Rolled up from the downloaded record; drift means the constant is
+        stale (update `as_of`) or the roll-up in `gvp.py` changed meaning."""
         stats = self._statistics()
         measurement = getattr(GEOLOGIC_ACTIVITY["naif-399"].volcanism, field)
         assert measurement.value == pytest.approx(stats[key], rel=0.02)
 
     def test_the_catalogue_still_reproduces_gvps_own_summary(self):
-        """The roll-up is only trustworthy because it lands on the figures GVP
-        publishes from the same data. If that stops holding, the derivation is
-        wrong however self-consistent it looks."""
+        """Trustworthy only because it reproduces GVP's own published figures —
+        self-consistency alone wouldn't catch a wrong derivation."""
         stats = self._statistics()
         assert stats["mean_new_eruptions_per_year"] == pytest.approx(35, rel=0.03)
         assert stats["mean_volcanoes_active_per_year"] == pytest.approx(73, rel=0.03)

@@ -1,13 +1,11 @@
 """Satellite operators (companies, agencies, intergovernmental orgs).
 
-An operator is a real-world entity that owns/operates satellites. It is linked
-to the fleet through one of two paths:
+Linked to the fleet through one of two paths:
 
-- ``source``: a SATCAT ``OWNER`` code (see ``sources.py``) — used when
-  CelesTrak assigns the operator its own code (Intelsat, Eutelsat, ...).
-- ``constellations``: a tuple of constellation slugs — used when the operator
-  isn't a SATCAT source but owns one or more constellations (SpaceX operates
-  Starlink, Amazon operates Kuiper, EUMETSAT operates MetOp/Meteosat, ...).
+- ``source``: a SATCAT ``OWNER`` code (see ``sources.py``) — when CelesTrak
+  assigns the operator its own code (Intelsat, Eutelsat, ...).
+- ``constellations``: constellation slugs — when the operator isn't a SATCAT
+  source but owns one or more constellations (SpaceX/Starlink, Amazon/Kuiper).
 
 ``slug`` is the URL-friendly identifier; the merged organization group page
 prefixes it with ``org-`` (see ``organizations.py``).

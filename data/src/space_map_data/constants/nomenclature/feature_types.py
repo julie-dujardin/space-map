@@ -1,20 +1,16 @@
 """IAU 2-letter feature type codes → display names, descriptions + Wikidata QIDs.
 
-The ``type`` field in the IAU KML ships as ``"singular, plural"`` (e.g.
-``"Crater, craters"``) for most codes, but a handful have no plural form
-(``"Albedo Feature"``, ``"Satellite Feature"``, ``"Statio"``, ...) — for those,
-``plural`` mirrors ``singular``.
+``plural`` mirrors ``singular`` for codes with no plural form in the IAU KML
+(Albedo Feature, Satellite Feature, Statio, ...).
 
-``description`` mirrors the ``edomvd`` text in each KMZ's
-``metadata_nomenclature_points_*.xml``. Six codes (CL, FT, LO, LU, SA, ST) don't
-appear in any KMZ metadata file (the KMZs were built before those types were
-defined); their descriptions come from the same canonical source the metadata
-cites: https://planetarynames.wr.usgs.gov/DescriptorTerms
+``description`` mirrors ``edomvd`` in each KMZ's
+``metadata_nomenclature_points_*.xml``; CL, FT, LO, LU, SA, ST predate that
+metadata and come from https://planetarynames.wr.usgs.gov/DescriptorTerms
+instead.
 
-``qid`` is the Wikidata QID used to localize the nomenclature popover (label +
-description) in the frontend. Sourced via SPARQL ``?item wdt:P361 wd:Q1463003``
-(planetary nomenclature). Four codes (CL, LF, LO, ST) have no matching Wikidata
-entry — those keep their English-only constants in the frontend.
+``qid`` is the Wikidata QID for the nomenclature popover, sourced via SPARQL
+``?item wdt:P361 wd:Q1463003``. CL, LF, LO, ST have no match and keep
+English-only constants in the frontend.
 """
 
 import re

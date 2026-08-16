@@ -50,52 +50,48 @@ CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(PLANETS_SLUG, "Planets", "Q634"),
     CategorySpec(DWARF_PLANETS_SLUG, "Dwarf Planets", "Q2199"),  # "dwarf planet"
     CategorySpec(MOONS_SLUG, "Moons", "Q2537"),  # "natural satellite"
-    # "planetary ring" rather than "ring system" (Q28951811): the concept is the
-    # same but only the former has an article in all twelve locales, and the
-    # latter's Korean sitelink is about a single exoplanet candidate.
+    # "planetary ring" over "ring system" (Q28951811): the former has an
+    # article in all twelve locales; the latter's Korean sitelink is about a
+    # single exoplanet candidate.
     CategorySpec(RING_SYSTEMS_SLUG, "Ring Systems", "Q179792"),
     CategorySpec(ASTEROIDS_SLUG, "Asteroids", "Q3863"),
     CategorySpec(COMETS_SLUG, "Comets", "Q3559"),
     CategorySpec(SATELLITES_SLUG, "Satellites", "Q26540"),
-    # Sibling of Satellites: the spent stages and breakup fragments SATCAT
-    # tracks alongside working payloads.
+    # Sibling of Satellites: spent stages and breakup fragments SATCAT tracks
+    # alongside working payloads.
     CategorySpec(DEBRIS_SLUG, "Space Debris", "Q275450"),
     CategorySpec(PROBES_SLUG, "Probes", "Q26529"),  # "space probe"
     # Parent of the ft- feature-type pages; the QID the IAU descriptor terms
     # hang off (`?item wdt:P361 wd:Q1463003`).
     CategorySpec(SURFACE_FEATURES_SLUG, "Surface Features", "Q1463003"),
-    # The third axis of the browse tree. Planets/Moons/Comets say what a body
-    # is and Surface Features what it has; these say what it is made of and
-    # what it is still doing. Members are bodies carrying a property rather
-    # than bodies of a kind, so a moon appears under both.
+    # Third axis of the browse tree: what a body is made of and still doing,
+    # vs. what it is (Planets/Moons/Comets) or has (Surface Features).
+    # Members carry a property rather than belong to a kind, so a moon can
+    # appear under both.
     CategorySpec(STRUCTURE_ACTIVITY_SLUG, "Structure & Activity", "Q104499"),
-    # "atmosphere" rather than "extraterrestrial atmosphere" (Q5422261): the
-    # precise term has articles in five of the twelve locales, the generic one
-    # in all twelve, and this page is not about Earth's.
+    # "atmosphere" over "extraterrestrial atmosphere" (Q5422261): the precise
+    # term covers five of twelve locales, the generic one all twelve, and
+    # this page isn't about Earth's.
     CategorySpec(ATMOSPHERES_SLUG, "Atmospheres", "Q8104"),
-    # "Extraterrestrial liquid water" — a topic article in six of the twelve
-    # locales, and the only candidate whose subject is the water itself. The two
-    # obvious alternatives both put wrong prose in the header, which takes the
-    # Wikidata description ahead of any Wikipedia lede: "ocean world"
-    # (Q1045138) covers 11 locales but 9 of them open on a hypothetical
-    # water-covered exoplanet, and "List of ocean worlds in the Solar System"
-    # (Q139377044) is a Wikimedia list item, so every locale reads "Wikimedia
-    # list article" over Europa and Enceladus.
+    # "Extraterrestrial liquid water" — the only candidate whose subject is
+    # the water itself, in six of twelve locales. Alternatives are worse:
+    # "ocean world" (Q1045138, 11 locales) mostly opens on a hypothetical
+    # exoplanet; "List of ocean worlds..." (Q139377044) is a Wikimedia list
+    # item, so every locale would read "Wikimedia list article".
     CategorySpec(OCEANS_SLUG, "Oceans", "Q1319471"),
-    # One page per mechanism, because the two are not the same size: volcanism
-    # is on fifteen bodies with five fields, tectonics on ten with two. Sharing
-    # a page made tectonics a suffix on volcanism's rows.
+    # One page per mechanism — volcanism (fifteen bodies, five fields) and
+    # tectonics (ten bodies, two) aren't the same size; sharing a page made
+    # tectonics a suffix on volcanism's rows.
     CategorySpec(VOLCANISM_SLUG, "Volcanism", "Q505748"),
-    # "Tectonics" (Q193343) has articles in only four of the twelve locales, and
-    # is still the right item: its lede is the one that says "the field of
-    # planetary tectonics extends the concept to other planets and moons". The
-    # better-covered "tectonics" (Q78125729, ten locales) is a trap — its
-    # English sitelink is *Plate tectonics theory*, and Earth is the only body
-    # on this page with plate tectonics.
+    # "Tectonics" (Q193343, four locales) is still right: its lede says "the
+    # field of planetary tectonics extends the concept to other planets and
+    # moons". The better-covered "tectonics" (Q78125729, ten locales) is a
+    # trap — its English sitelink is *Plate tectonics theory*, and Earth is
+    # the only body here with plate tectonics.
     CategorySpec(TECTONICS_SLUG, "Tectonics", "Q193343"),
     # "magnetosphere" over "planetary magnetic field" (Q4274059): the precise
-    # term has articles in French and Russian only, this one in all twelve, and
-    # what the page lists is bodies whose field is detectable from outside.
+    # term covers French and Russian only, this one all twelve, and the page
+    # lists bodies whose field is detectable from outside.
     CategorySpec(MAGNETIC_FIELDS_SLUG, "Magnetic Fields", "Q6915"),
     CategorySpec(TIDAL_HEATING_SLUG, "Tidal Heating", "Q7800788"),
 )

@@ -1,10 +1,6 @@
-"""Tests for the spacecraft catalogue's internal consistency.
-
-Everything here checks a claim the catalogue makes about itself: that its
-enums are the declared ones, that every cited source exists, that every link
-points at something already in the map, and that the derived Δv lands where
-the missions it describes actually landed.
-"""
+"""Spacecraft catalogue self-consistency: declared enums, cited sources
+exist, links resolve, and derived Δv lands where each mission actually
+landed."""
 
 import json
 
@@ -124,12 +120,9 @@ class TestLinks:
 
 
 class TestDepartures:
-    """Where a trip can start with each entry.
-
-    The two lists below are spelled out rather than derived: an entry that
-    forgot the field would otherwise read as "cannot depart at all" and quietly
-    vanish from the panel's suggestions for every trip.
-    """
+    """Where a trip can start with each entry. Spelled out rather than
+    derived — a forgotten field would silently read as "cannot depart" and
+    vanish from the panel's suggestions."""
 
     def test_launchers_leave_from_the_ground_and_nowhere_else(self):
         for craft in CATALOGUE.values():
@@ -179,9 +172,8 @@ class TestPerformance:
             assert payloads[-1] > 0, craft.id
 
     def test_saturn_v_curve_lands_where_apollo_did(self):
-        # The Saturn V curve is the one traced off a chart rather than read
-        # from a table, so it is pinned to the flight: Apollo 11 left orbit
-        # with 45,700 kg on top of the S-IVB at a C3 of about -1.8.
+        # Traced off a chart, not a table, so pinned to the flight: Apollo 11
+        # left orbit with 45,700 kg atop the S-IVB at C3 ≈ -1.8.
         curve = CATALOGUE["saturn-v"].c3_curve
         assert curve is not None
         (below, m_below), (above, m_above) = curve.points[0], curve.points[1]
@@ -189,10 +181,9 @@ class TestPerformance:
         assert 44_000 < m_below + t * (m_above - m_below) < 47_000
 
     def test_falcon_9_curve_carries_the_advertised_figure(self):
-        # The Falcon 9 curve is rebuilt around one published number — the
-        # website's 4,020 kg to Mars, taken at C3 = 10 — so that number must
-        # sit on it exactly, and the curve must admit it stops before the
-        # vehicle does.
+        # Rebuilt around one published number — 4,020 kg to Mars at C3 = 10 —
+        # so it must sit on the curve exactly, which must admit it stops
+        # before the vehicle does.
         curve = CATALOGUE["falcon-9-expendable"].c3_curve
         assert curve is not None
         assert (10.0, 4020.0) in curve.points
@@ -238,9 +229,8 @@ class TestPerformance:
         assert low_kms <= delta_v <= high_kms, f"{craft_id}: {delta_v:.2f} km/s"
 
     def test_delta_v_is_none_without_all_three_inputs(self):
-        # Crew Dragon's masses are known and its engine is not — nobody has
-        # published a Draco specific impulse — so the panel has to say so
-        # rather than round something plausible.
+        # Crew Dragon's masses are known, its engine isn't — no published
+        # Draco Isp — so the panel must say so, not round something plausible.
         assert delta_v_kms(CATALOGUE["crew-dragon"]) is None
 
     def test_electric_craft_are_recognisably_low_thrust(self):

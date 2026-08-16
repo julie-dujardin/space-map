@@ -1,25 +1,17 @@
 """Wikidata entities for GCAT launch sites and pads, keyed by GCAT code.
 
-No Wikidata property carries a GCAT code, so this is a curated table rather
-than a join. It was derived by matching GCAT's positions and designators
-against Wikidata's launch-facility classes and then checking every entry by
-hand, which is why it is frozen here: the matching is fuzzy, the result is
-not, and a wrong QID would put the wrong photograph on a pad with nothing
-downstream to catch it.
-
-Sites are keyed by ``LaunchSite.ucode`` (the identity that survives GCAT's
-renaming phases), pads by that ucode and then the pad code. Coverage is thin
-by nature — Wikidata has an entity for a few hundred of GCAT's several
-thousand places — so a missing code is the normal case, not a gap to fill.
+No Wikidata property carries a GCAT code, so this is a curated, hand-checked
+table rather than a join — frozen because the matching is fuzzy but the QIDs
+must not be wrong. Sites are keyed by ``LaunchSite.ucode`` (survives GCAT's
+renaming), pads by ucode then pad code. Coverage is inherently thin — a
+missing code is the normal case, not a gap to fill.
 
 Two entries worth knowing about:
 
-* ``VOST`` resolves to Svobodny, not Vostochny. GCAT files them as one place;
-  Wikidata keeps an entity per era, and Svobodny is both the name GCAT records
-  for the ucode and the point it sits nearer.
-* Several GCAT pads can share one QID where GCAT is the finer catalogue —
-  Wallops' eight LA2 launcher rows are one Wikidata launch area. The reverse
-  never holds: a QID appears against at most one site.
+* ``VOST`` resolves to Svobodny, not Vostochny — GCAT files them as one place,
+  but Wikidata keeps an entity per era and Svobodny is the nearer match.
+* Several GCAT pads can share one QID where GCAT is the finer catalogue (e.g.
+  Wallops' eight LA2 rows = one Wikidata launch area); never the reverse.
 """
 
 GCAT_SITE_QIDS: dict[str, str] = {

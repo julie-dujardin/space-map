@@ -122,9 +122,9 @@ class TestCatalogue:
 
 
 class TestRenderTablesAgree:
-    """The rendered strips resolve their geometry from the catalogue rows, so
-    only the explicit picks — τ, stand-in widths and spans, thickness figures
-    from other sources — can disagree with it. Check those."""
+    """Rendered strips resolve geometry from the catalogue rows; only the
+    explicit picks — τ, stand-in widths/spans, thickness from other sources
+    — can disagree with it. Check those."""
 
     @staticmethod
     def _rendered(body: str) -> list[RenderedFeature]:
@@ -239,9 +239,9 @@ class TestSystemFigures:
             assert thickness.low_m == pytest.approx(row.thickness_km * 1000), body
 
     def test_saturn_thickness_brackets_the_measured_zones(self):
-        """The card's 5–20 m is NSSDCA's own column; the per-region figures
-        the strip generator uses come from the same table, so the two move
-        together or the card is quoting a range nothing draws."""
+        """The card's 5–20 m is NSSDCA's own column, the same table the strip
+        generator uses — they move together or the card quotes a range
+        nothing draws."""
         thickness = RING_CATALOGS["naif-699"].thickness
         assert thickness is not None and thickness.high_m is not None
         zones = [zone.thickness_m for zone in SATURN_MEASURED_THICKNESS]

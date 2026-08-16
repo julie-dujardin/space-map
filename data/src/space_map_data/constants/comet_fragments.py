@@ -1,15 +1,13 @@
 """Parsing of split-comet fragment designations.
 
-SBDB encodes a fragment as ``<parent pdes>-<letters>`` in the primary
-designation (``pdes``): ``73P-C``, ``73P-BB``, ``C/2019 Y4-A`` (fragment ``A``
-of ``C/2019 Y4``). The prefix (P/C/D/X) rides on ``SBDB.prefix``, never in
-``pdes``, so the split is uniform across periodic and non-periodic comets.
+SBDB encodes a fragment as ``<parent pdes>-<letters>`` (``73P-C``, ``73P-BB``,
+``C/2019 Y4-A``); the prefix (P/C/D/X) lives in ``SBDB.prefix``, never in
+``pdes``.
 
-The comet-prefix guard is essential: Palomar-Leiden / Trojan survey asteroids
-reuse the same dash syntax (``6344 P-L``, ``3138 T-1``) but carry no comet
-prefix, so requiring one excludes them. A comet ``pdes`` never contains a
-hyphen unless it names a fragment, so a trailing ``-<LETTERS>`` on a
-comet-prefixed designation is an unambiguous fragment marker.
+The comet-prefix guard matters: Palomar-Leiden / Trojan survey asteroids reuse
+the same dash syntax (``6344 P-L``, ``3138 T-1``) with no comet prefix, and a
+comet ``pdes`` never has a hyphen except to mark a fragment — so requiring the
+prefix excludes the false positives unambiguously.
 """
 
 import re

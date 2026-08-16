@@ -1,18 +1,16 @@
 """Wikidata topic pages that belong to no single constants package.
 
-Geology, exploration, magnetic fields and the physical quantities the
-stat cards name. Grouped by the panel they read against rather than by
-subject, since that is how they will be consumed.
+Geology, exploration, magnetic fields and the physical quantities the stat
+cards name. Grouped by the panel they read against, not by subject.
 
-Values are tuples because one topic occasionally splits across two Wikidata
-items with disjoint sitelinks — no single item covers every language. Nothing
-resolves to English when a locale is missing: a reader either gets the article
-in the language they are reading in, or no link at all, so the coverage
-comment on each row is the whole story about where a link will appear.
+Values are tuples because a topic occasionally splits across two Wikidata
+items with disjoint sitelinks. No locale falls back to English — a reader
+gets the article in their language or no link, so the coverage comment on
+each row is the whole story.
 
-Locale codes follow ``constants.providers.LANGUAGES``; "all 12" means every
-one of them. Coverage was read off Wikidata and drifts as articles are
-written or merged — treat the comments as of 2026-07-31.
+Locale codes follow ``constants.providers.LANGUAGES``; "all 12" means all of
+them. Coverage drifts as Wikidata articles are written or merged — comments
+are as of 2026-07-31.
 """
 
 MISC_PAGES: dict[str, tuple[str, ...]] = {

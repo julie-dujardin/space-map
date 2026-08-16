@@ -1,27 +1,18 @@
 """Satellite constellation catalog.
 
-Each constellation has a ``slug`` (primary key), an optional ``wikidata_qid``
-(display names are sourced from Wikipedia/Wikidata), a ``category`` (one of
-CelesTrak's top-level groupings), and one of three membership selectors: an
-object-name ``prefix`` (detected from the TLE ``OBJECT_NAME``), a CelesTrak
-``group`` slug (fetched via ``gp.php?GROUP=``), or a SATCAT ``source`` code
-(matched against the ``OWNER`` field, i.e. the CelesTrak source/operator code).
-
-Prefix-based membership is preferred since it avoids fetching 10k+ rows just to
-tag a single constellation (Starlink alone is most of that). Group fetches are
-reserved for constellations whose members don't share an obvious name prefix.
-Source-based membership is used for commercial operators whose fleet is
-identified in SATCAT but whose satellites don't share a name prefix.
-
-Categories mirror the top-level sections of https://celestrak.org/NORAD/elements/
+Each entry has a ``slug`` (primary key), an optional ``wikidata_qid``, a
+``category`` (CelesTrak's top-level groupings), and one membership selector:
+name ``prefix`` (TLE ``OBJECT_NAME``, preferred — avoids fetching 10k+ rows
+for one constellation), CelesTrak ``group`` slug (for fleets without a shared
+prefix), or SATCAT ``source``/``OWNER`` code (commercial fleets identified in
+SATCAT but without a shared name prefix).
 """
 
 from dataclasses import dataclass
 from enum import StrEnum
 
-# Group-page slug prefix. The bare ``ConstellationSpec.slug`` stays the internal
-# primary key (cross-referenced by operators/manufacturers and CelesTrak
-# matching); the ``/g/`` page is prefixed so every group type carries one.
+# Bare ``slug`` stays the internal primary key; the ``/g/`` page URL gets this
+# prefix so every group type carries one.
 CONSTELLATION_SLUG_PREFIX = "const-"
 
 
@@ -59,11 +50,8 @@ class ConstellationSpec:
 
 
 """
-Science programs with members but no pattern and (certainly) lacking wikidata backlinks
-- https://en.wikipedia.org/wiki/Explorers_Program (later ones)
-- https://en.wikipedia.org/wiki/Cosmic_Vision
-- https://en.wikipedia.org/wiki/Discovery_Program
-- https://en.wikipedia.org/wiki/New_Frontiers_program
+Science programs with members but no name pattern, likely lacking wikidata backlinks:
+Explorers Program (later ones), Cosmic Vision, Discovery Program, New Frontiers.
 """
 
 
@@ -1256,9 +1244,8 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         (SatelliteCategory.COMMUNICATIONS, SatelliteCategory.MILITARY),
         prefix="SKYNET",
     ),
-    # IDSCS / DSCS catalogued as "OPS NNNN (...)" or bare; exact lists needed to
-    # win over us-ops-classified (prefix "OPS " resolves first otherwise).
-    # IDSCS (Initial DSCS, phase I) is a distinct program from DSCS-II/III.
+    # Exact list needed to win over us-ops-classified ("OPS " prefix resolves
+    # first otherwise). IDSCS (phase I) is a distinct program from DSCS-II/III.
     ConstellationSpec(
         "idscs",
         "Q106946774",
@@ -1469,10 +1456,8 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         (SatelliteCategory.OBSERVATION, SatelliteCategory.MILITARY),
         prefix=("OFEQ", "TECSAR"),
     ),
-    # Naval Ocean Surveillance System (White Cloud/PARCAE → Ranger → Intruder).
-    # SIGINT clusters/pairs catalogued under classified USA/OPS names + obscure
-    # first-gen subsat tags; exact list beats usa-classified / us-ops-classified.
-    # Rideshare cubesats on the NROL-36/-55 launches are deliberately excluded.
+    # Naval Ocean Surveillance System (White Cloud → Ranger → Intruder). Exact list
+    # beats the classified-owner fallback; NROL-36/-55 rideshare cubesats excluded.
     ConstellationSpec(
         "noss-intruder",
         "Q3074873",
@@ -1609,9 +1594,7 @@ DEBRIS_CONSTELLATION_SLUGS: frozenset[str] = frozenset(
     c.slug for c in CONSTELLATIONS if SatelliteCategory.DEBRIS in c.category
 )
 
-# Matching is case-insensitive: SATCAT names are upper-case, so keys are
-# upper-cased here (and the name upper-cased at lookup) — otherwise a mixed-case
-# rule string silently never matches.
+# Upper-cased for case-insensitive matching against SATCAT's upper-case names.
 PREFIX_TO_SLUG: dict[str, str] = dict(
     sorted(
         (
@@ -1656,9 +1639,8 @@ CLASSIFIED_BY_OWNER: dict[str, str] = {
     "US": "usa-classified",
 }
 
-# When several rules match the same sat (name-prefix vs group vs source),
-# slugs listed here win — in order. Used to resolve conflicts like a debris
-# fragment of Iridium-33 that would otherwise also match the "iridium" prefix.
+# Resolves conflicts between rules (name-prefix vs group vs source), in order —
+# e.g. an Iridium-33 debris fragment that would otherwise also match "iridium".
 PREFERRED_SLUGS: tuple[str, ...] = (
     "fengyun-1c-asat-debris",
     "iridium-33-debris",

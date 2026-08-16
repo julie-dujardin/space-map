@@ -3,18 +3,18 @@ has actually constrained.
 
 Every mass fraction is either quoted from the cited work or marked `derived`
 and computed here from that work's radii and densities — the arithmetic is
-written out in the comment so it can be checked. Nothing is carried over from
-a compilation without reading the source, and a body whose split cannot be
-sourced is absent rather than estimated.
+written out so it can be checked. Nothing is carried over from a compilation
+without reading the source; a body whose split can't be sourced is absent
+rather than estimated.
 
 Layers run outermost to innermost. Fractions within a body are of its total
-mass and are expected to sum to ~1; the export checks that. A body whose
-source constrains geometry and composition but not masses — the Sun — carries
-no mass fractions at all rather than some, and drops out of the roll-up.
+mass and expected to sum to ~1, which the export checks. A body whose source
+constrains geometry and composition but not masses — the Sun — carries no
+mass fractions at all, and drops out of the roll-up.
 
 Where a source publishes a width rather than a value, both ship: the point
-value is what the roll-up uses and `mass_fraction_range` / `fraction_range`
-is what the panel draws around it.
+value is what the roll-up uses, `mass_fraction_range` / `fraction_range` is
+what the panel draws around it.
 """
 
 from space_map_data.constants.interior.schema import (
@@ -943,49 +943,48 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
         ),
     ),
-    # Ganymede, and a rare case of a newer measurement knowing *less*. Juno's
-    # flyby, solved without assuming the degree-2 field is hydrostatic, raises
-    # C/MR² from Galileo's 0.3105 ± 0.0028 to 0.3159 ± 0.0052 — a body slightly
-    # less concentrated towards its centre than the Galileo analysis implied,
-    # and with error bars twice as wide, because dropping the hydrostatic
-    # assumption is what those bars were hiding.
+    # Ganymede, a rare case of a newer measurement knowing less. Juno's flyby,
+    # solved without assuming the degree-2 field is hydrostatic, raises C/MR²
+    # from Galileo's 0.3105 ± 0.0028 to 0.3159 ± 0.0052 — slightly less
+    # concentrated towards the centre than Galileo implied, with error bars
+    # twice as wide, since dropping the hydrostatic assumption is what those
+    # bars were hiding.
     #
-    # Same three-layer construction as before — Fe-FeS core at 5150 kg/m³, a
-    # silicate mantle at 3300, an ice-water layer the paper leaves free between
-    # 1060 and 1370 — and again two constraints for three unknowns, so it is a
-    # family, not an answer. Solving mass balance with C/MR² across that ice
-    # range walks the core from nothing to 0.527 R:
+    # Same three-layer construction as before — Fe-FeS core at 5150 kg/m³,
+    # silicate mantle at 3300, ice-water layer the paper leaves free between
+    # 1060 and 1370 — again two constraints for three unknowns, so a family,
+    # not an answer. Solving mass balance with C/MR² across that ice range
+    # walks the core from nothing to 0.527 R:
     #   ice 1060 → no core at all
     #   ice 1215 → core 835 km (0.317 R) → 0.0849, and this is what ships
     #   ice 1370 → core 1388 km (0.527 R) → 0.389, and no mantle left
-    # The two ends reproduce the paper's own limits — it puts the core "up to
-    # ~50% of the total radius, representing up to 33% of Ganymede's mass", and
-    # says it cannot exceed that "without the complete disappearance of the
-    # mantle". The midpoint of the ice range is the shipped member because the
-    # paper prefers none.
+    # The two ends reproduce the paper's own limits — core "up to ~50% of the
+    # total radius, representing up to 33% of Ganymede's mass", not beyond
+    # "without the complete disappearance of the mantle". The midpoint of the
+    # ice range ships because the paper prefers none.
     #
-    # That 834 km of "ice" is not ice. Ganymede's ocean is about as settled as
-    # an unvisited ocean gets: Galileo found an induced magnetic field, and
-    # Hubble then watched the auroral ovals rock by 2.0° ± 1.3° against the
-    # 5.8° ± 1.3° a Ganymede without a conducting layer would give — the ocean
-    # is what holds them still. Gravity cannot see any boundary inside the
-    # water, so the stratigraphy is Vance's thermodynamic model, whose middle
-    # case puts 70 km of ice I over a 375 km ocean over high-pressure ice VI
-    # down to rock at 1803 km — within 5 km of the 1798 solved for above,
-    # which is the check worth having, since the two came from different data.
+    # That 834 km of "ice" is not ice. Ganymede's ocean is about as settled
+    # as an unvisited ocean gets: Galileo found an induced magnetic field,
+    # and Hubble watched the auroral ovals rock by 2.0° ± 1.3° against the
+    # 5.8° ± 1.3° a conductor-free Ganymede would give. Gravity sees no
+    # boundary inside the water, so the stratigraphy is Vance's thermodynamic
+    # model, whose middle case puts 70 km of ice I over a 375 km ocean over
+    # high-pressure ice VI down to rock at 1803 km — within 5 km of the 1798
+    # solved above, the check worth having since the two came from different
+    # data.
     #
-    # Taking those boundaries and the densities the phases actually have at
-    # these pressures, ice I 920, ocean 1100, ice VI 1460:
+    # Taking those boundaries and the phase densities at these pressures,
+    # ice I 920, ocean 1100, ice VI 1460:
     #   ice I  2632.7 → 2562.7 km → 0.0369
     #   ocean  2562.7 → 2187.7 km → 0.1977
     #   ice VI 2187.7 → 1798.0 km → 0.1922
-    # which averages 1214 kg/m³ over the whole hydrosphere — the 1215 the
-    # uniform solve used, arrived at from the phase diagram instead. So the
-    # rock and metal below do not move; only the water above them is resolved.
+    # averaging 1214 kg/m³ over the whole hydrosphere against the 1215 the
+    # uniform solve used from the phase diagram — so the rock and metal below
+    # don't move, only the water above is resolved.
     #
     # Each sublayer carries the hydrosphere's own 0.3324-0.5979 spread scaled
-    # onto it, because what the moment of inertia is uncertain about is how
-    # much water there is, not how it is stacked.
+    # onto it: the moment of inertia is uncertain about how much water there
+    # is, not how it is stacked.
     "naif-503": BodyInterior(
         structure="differentiated",
         structure_source="gomez_casajus_2022",
@@ -1050,11 +1049,11 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
         ),
     ),
     # Callisto, the one that never finished. C/MR² = 0.3549 is below 0.4 but
-    # above the 0.38 of an undifferentiated Callisto, so rock sank — but not
-    # far enough: every model consistent with the data keeps ice and rock mixed
-    # to a depth of at least 1000 km. The paper prefers a clean ice shell over a
-    # uniform ice-rock interior; solving that two-layer case for the observed
-    # moment of inertia at an ice density of 1000 kg/m³ gives
+    # above the 0.38 of an undifferentiated Callisto — rock sank, but not far:
+    # every model consistent with the data keeps ice and rock mixed to at
+    # least 1000 km depth. The paper prefers a clean ice shell over a uniform
+    # ice-rock interior; solving that two-layer case for the observed moment
+    # of inertia at an ice density of 1000 kg/m³ gives
     #   shell    320 km thick → 0.190 of the mass, all water
     #   interior 2280 kg/m³, which is half ice and half rock-metal by volume
     #            when the rock is bulk Io at 3560 → 0.78 rock, 0.22 water by mass
@@ -1062,20 +1061,19 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     # balance on the mean density gives, so the split survives the model.
     #
     # That shell is not all frozen. Galileo's magnetometer found an induced
-    # field at Callisto as well as at Europa, which needs a layer conducting
-    # better than 0.02 S/m within 300 km of the surface, and nothing but salty
-    # water does that on a body this cold. Vance's model puts 100 km of ice I
-    # over a 132 km ocean over ice V, reaching rock at 2166 km — 76 km deeper
-    # than the 2090 the moment of inertia gives, so the ice V is stretched to
-    # meet it:
+    # field at Callisto too, needing a layer conducting better than 0.02 S/m
+    # within 300 km of the surface — nothing but salty water does that this
+    # cold. Vance's model puts 100 km of ice I over a 132 km ocean over ice V,
+    # reaching rock at 2166 km — 76 km deeper than the 2090 the moment of
+    # inertia gives, so the ice V is stretched to meet it:
     #   ice I 2410.3 → 2310.3 km at 920  → 0.0599
     #   ocean 2310.3 → 2178.3 km at 1000 → 0.0777
     #   ice V 2178.3 → 2090.0 km at 1240 → 0.0583
-    # 0.1958 against the 0.190 the uniform-1000 shell gave: a structured shell
-    # is 3% heavier, which takes the interior below it from 2280 to 2263 kg/m³
-    # and its rock fraction from 0.78 to 0.776. Nothing that shows, and the
-    # difference is the honest one — an ocean and high-pressure ice are both
-    # denser than the ice the two-layer solve assumed throughout.
+    # 0.1958 against the uniform shell's 0.190: 3% heavier, taking the
+    # interior below from 2280 to 2263 kg/m³ and rock fraction from 0.78 to
+    # 0.776 — nothing that shows, and the honest difference, since an ocean
+    # and high-pressure ice are both denser than the ice the two-layer solve
+    # assumed throughout.
     "naif-504": BodyInterior(
         structure="partially_differentiated",
         structure_source="anderson_2001_callisto",
@@ -1272,38 +1270,36 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
         ),
     ),
-    # Vesta, which was the asteroid with a metal core until somebody measured
-    # the moment of inertia. Dawn's gravity and shape alone allow anything from
-    # a small planet to a rock, and the model that stood for a decade took the
-    # most-differentiated end of that range — a 110 km core at 7800 kg/m³ under
-    # a 40 km basaltic crust, a sixth of Vesta in metal.
+    # Vesta was the asteroid with a metal core until the moment of inertia was
+    # measured. Dawn's gravity and shape alone allow anything from a small
+    # planet to a rock; the model that stood for a decade took the
+    # most-differentiated end — a 110 km core at 7800 kg/m³ under a 40 km
+    # basaltic crust, a sixth of Vesta in metal.
     #
-    # The nutation and precession amplitudes in Dawn's tracking finally give
-    # the moment of inertia directly, and it is C/MR² = 0.4208 ± 0.0047 — only
-    # 6.6% below the 0.4505 of a body of uniform density. There is almost no
-    # concentration towards the centre to explain, so there is almost no core:
-    # the four-parameter inversion returns a crust 47 (+12/−13) km thick at
-    # 2.70 g/cm³, a mantle of 4.1 g/cm³, and a core of 45 (+32/−32) km at
-    # 5.6 g/cm³ inside a body of volumetric radius 261.3 km.
+    # Nutation and precession amplitudes in Dawn's tracking give the moment
+    # of inertia directly: C/MR² = 0.4208 ± 0.0047, only 6.6% below the
+    # 0.4505 of a uniform body — almost no concentration towards the centre,
+    # so almost no core. The four-parameter inversion returns a crust
+    # 47 (+12/−13) km thick at 2.70 g/cm³, a mantle at 4.1 g/cm³, and a core
+    # of 45 (+32/−32) km at 5.6 g/cm³ inside a body of volumetric radius
+    # 261.3 km:
     #   crust  261.3 → 214.3 km at 2700 = 9.05e19 kg / 2.590e20 → 0.349
     #   core   (4/3)π(45.3 km)³ × 5600                          → 0.008
     #   mantle the remainder, which needs 4074 kg/m³            → 0.642
-    # A core that is 0.8% of the body rather than 17%, and a mantle denser than
-    # olivine — Vesta's interior is closer to a mesosiderite, metal and silicate
-    # still mixed, than to a small Earth. Either it began to differentiate and
-    # stopped, or it is the re-accreted debris of something larger; the paper
-    # declines to choose, and both leave it `partially_differentiated`.
+    # A core 0.8% of the body rather than 17%, and a mantle denser than
+    # olivine: Vesta's interior is closer to a mesosiderite, metal and
+    # silicate still mixed, than to a small Earth. Either it began to
+    # differentiate and stopped, or it is the re-accreted debris of
+    # something larger; the paper declines to choose, hence
+    # `partially_differentiated`.
     #
-    # The 45 km is a median with a 5-95% interval of 13 to 132 km, which at
-    # the median density is 0.0002 to 0.21 of the body — so the *upper* end
-    # still allows something like the old model. What it no longer allows is
-    # calling that the answer, and the paper's own reading of the same
-    # ensemble is that 90% of it has a core-mantle density contrast under
-    # 1.7 g/cm³, which no metal core produces.
+    # The 45 km core is a median with a 5-95% interval of 13-132 km — 0.0002
+    # to 0.21 of the body by mass, so the upper end still allows something
+    # like the old model, though 90% of the ensemble has a core-mantle
+    # density contrast under 1.7 g/cm³, which no metal core produces.
     #
-    # The HED meteorites and the basaltic crust are unaffected: the crust is
-    # thicker than the old model's and still the same rock. What went is the
-    # core.
+    # The HED meteorites and the basaltic crust are unaffected — thicker
+    # than the old model's, same rock. What went is the core.
     "spkid-20000004": BodyInterior(
         structure="partially_differentiated",
         structure_source="park_2025_vesta",
@@ -1349,28 +1345,27 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
         ),
     ),
-    # Ceres, which got part of the way. Dawn's gravity and shape need a density
+    # Ceres got part of the way. Dawn's gravity and shape need a density
     # gradient but not a rock core: the deepest interior is CM-chondrite-like
-    # rather than dehydrated silicate, so what separated was the volatiles, not
-    # the metal. Taking the paper's CM end member — a 280 km core at 2900 kg/m³
+    # rather than dehydrated silicate, so what separated was the volatiles,
+    # not the metal. The paper's CM end member — a 280 km core at 2900 kg/m³
     # under a 190 km shell at 1950 —
     #   core  (4/3)π(280 km)³ = 9.195e16 m³ × 2900 = 2.67e20 kg → 0.285
     #   shell the outer 190 km × 1950                          → 0.715
-    # (normalised: the two-layer model comes to 2158 kg/m³ against 2162 observed)
-    # and the shell's 1950 is 48% ice by volume between that same rock and pure
-    # ice, so 23% of the shell is free water. The bound water inside the rock —
-    # a CM chondrite is roughly a tenth water by mass — is real but unquantified
-    # here, so this understates how wet Ceres is.
+    # (normalised: the two-layer model comes to 2158 kg/m³ against 2162
+    # observed) puts the shell's 1950 at 48% ice by volume against that same
+    # rock and pure ice, so 23% is free water — understating how wet Ceres
+    # is, since the rock's own bound water (a CM chondrite is roughly a
+    # tenth water by mass) isn't quantified here.
     #
     # 48% ice by volume is also what the craters say, by a route with no
-    # gravity in it. Ceres's craters have not relaxed away, which for twenty
-    # years was read as an ice-poor crust; running the same finite-element
-    # models with an ice rheology that lets impurities pin the grain
-    # boundaries reverses it, and the crust that best fits the topography *and*
-    # the gravity is ~90% ice at the surface grading to none at 117 km — a
-    # mean near half by volume over the layer. So the shell's composition
-    # stands, and what it is gains a history: a global ocean that froze from
-    # the top down, concentrating its dirt downwards as it went.
+    # gravity in it: they have not relaxed away, which for twenty years was
+    # read as an ice-poor crust, but the same finite-element models with an
+    # ice rheology that lets impurities pin the grain boundaries reverse it —
+    # the crust that best fits topography and gravity is ~90% ice at the
+    # surface grading to none at 117 km, near half by volume over the layer.
+    # So the shell's composition gains a history: a global ocean that froze
+    # top-down, concentrating its dirt as it went.
     "naif-2000001": BodyInterior(
         structure="partially_differentiated",
         structure_source="park_2016",

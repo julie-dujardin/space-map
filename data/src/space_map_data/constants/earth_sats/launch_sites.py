@@ -5,9 +5,8 @@ See: https://celestrak.org/satcat/launchsites.php
 
 from dataclasses import dataclass
 
-# Group slug namespace: launch-site group slugs are
-# ``f"{LAUNCH_SITE_SLUG_PREFIX}{site.slug}"`` so they don't collide with
-# constellation or operator slugs in the group registry.
+# Prefix so launch-site group slugs don't collide with constellation/operator
+# slugs in the group registry: ``f"{LAUNCH_SITE_SLUG_PREFIX}{site.slug}"``.
 LAUNCH_SITE_SLUG_PREFIX = "site-"
 
 
@@ -17,13 +16,10 @@ class LaunchSiteSpec:
     slug: str  # URL slug used for the per-site group page
     name: str  # Human-readable description
     wikidata_qid: str | None = None
-    # GCAT unified site codes (sites.tsv UCode) this SATCAT site covers, which
-    # is where its position and pads come from. The mapping is curated because
-    # the two catalogues carve the world up differently: SATCAT names ranges
-    # ("Eastern Test Range"), GCAT names places within them, so one SATCAT code
-    # can span several, and each is exported with its own point and pads.
-    # Empty for the mobile platforms and air-launch release boxes, which have
-    # no fixed position to state.
+    # GCAT unified site codes (sites.tsv UCode) this site covers — position and
+    # pads come from here. Curated: SATCAT names ranges ("Eastern Test Range"),
+    # GCAT names places within them, so one SATCAT code can span several.
+    # Empty for mobile platforms and air-launch release boxes (no fixed point).
     gcat_sites: tuple[str, ...] = ()
 
 

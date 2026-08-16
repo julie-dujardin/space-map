@@ -1,21 +1,21 @@
 """Types and vocabularies for the solid-body interior facts.
 
-Three levels live in one structure. Every layer carries a **material** split —
-the coarse vocabulary below, comparable across a metal core and a comet-like
-ice shell — because that is what rolls up into a single whole-body bar. A
-layer may *also* carry a detailed oxide or mineral composition where the
-literature gives one, and a **rock** name where the literature has agreed on
-one, which is the level a reader already thinks in: the useful thing to know
-about the ocean floor is that it is basalt.
+Three levels live in one structure. Every layer carries a **material**
+split — the coarse vocabulary below, comparable across a metal core and a
+comet-like ice shell — because that rolls up into a single whole-body bar.
+A layer may also carry a detailed oxide/mineral composition where the
+literature gives one, and a **rock** name where it has agreed on one — the
+level a reader already thinks in: the useful thing about the ocean floor is
+that it is basalt.
 
-The roll-up is deliberately a mass balance over layers rather than an
-elemental one: a reader reads "two-thirds rock, one-third water", and water
-bound in a phyllosilicate is water, not oxygen shared out among the rocks.
+The roll-up is deliberately a mass balance over layers, not an elemental
+one: a reader reads "two-thirds rock, one-third water", and water bound in a
+phyllosilicate is water, not oxygen shared among the rocks.
 
-Temperature runs on the boundaries rather than on the shells, because that is
-the form the literature publishes: a geotherm is quoted at the Moho, at 660 km,
-at the core-mantle boundary. A layer's two ends are its own boundary and the
-next one down's, which is the same contract the atmosphere layers use.
+Temperature runs on the boundaries rather than the shells, since that is the
+form the literature publishes — a geotherm quoted at the Moho, at 660 km, at
+the core-mantle boundary. A layer's two ends are its own boundary and the
+next one down's, the same contract the atmosphere layers use.
 """
 
 from typing import NamedTuple
@@ -34,11 +34,11 @@ VOLATILE = "volatile"
 ORGANIC = "organic"  # carbonaceous matter
 HYDROGEN = "hydrogen"
 HELIUM = "helium"
-# Everything above helium, where nothing separates it further. This is the
-# astronomer's Z, and it is a statement about the evidence rather than the
-# rock: an ice giant's heavy elements weigh 0.76 of the planet if you model
-# them as rock and 0.89 if you model them as ice, and no measurement chooses.
-# Use SILICATE/WATER instead wherever a source does resolve the split.
+# Everything above helium, where nothing separates it further — the
+# astronomer's Z, a statement about the evidence rather than the rock: an
+# ice giant's heavy elements weigh 0.76 of the planet modelled as rock,
+# 0.89 as ice, and no measurement chooses. Use SILICATE/WATER instead
+# wherever a source does resolve the split.
 HEAVY_ELEMENTS = "heavy_elements"
 
 MATERIALS = frozenset(
@@ -125,10 +125,10 @@ NOTES = frozenset(
     }
 )
 
-# `Layer.state` values — the state of matter, which is the other half of what a
-# reader wants under a layer's name: "liquid iron alloy" says more than "core".
-# Left unset wherever a source stops short of it — Venus's core is the case in
-# point, where the tides allow a solid one and nobody knows.
+# `Layer.state` values — the state of matter, the other half of what a
+# reader wants under a layer's name: "liquid iron alloy" says more than
+# "core". Left unset wherever a source stops short of it, like Venus's core,
+# where the tides allow a solid one and nobody knows.
 STATES = frozenset(
     {
         "solid",
@@ -156,15 +156,14 @@ PHASES = frozenset(
 # `Layer.rock` values — the name a petrologist gives the layer, where one
 # exists. "Solid rock" is the same phrase on Earth's continents, its ocean
 # floor, the lunar highlands and Vesta, and those four are not the same rock;
-# the coarse `silicate` material cannot say so and an oxide table says it only
-# to a reader who can read one.
+# the coarse `silicate` material can't say so, and an oxide table only says
+# it to a reader who can read one.
 #
-# The vocabulary stays this short on purpose. Each entry is a name a source
-# applies to a *whole layer* — not the most abundant rock in it, and not the
-# rock of the part of it anyone has sampled. Where the literature offers two
-# names and no verdict the field goes unset, which is why Mercury's crust has
-# none: its lavas are read as komatiites, as norites and as boninites, by
-# three sets of authors who all had the same MESSENGER data.
+# The vocabulary stays short on purpose: each entry is a name a source
+# applies to a whole layer, not its most abundant rock or the part anyone
+# has sampled. Two names and no verdict leaves the field unset — Mercury's
+# crust has none, its lavas read as komatiites, norites and boninites by
+# three sets of authors with the same MESSENGER data.
 BASALT = "basalt"
 ANDESITE = "andesite"
 ANORTHOSITE = "anorthosite"

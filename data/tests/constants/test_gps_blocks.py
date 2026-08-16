@@ -1,9 +1,6 @@
-"""GPS/NAVSTAR generations modeled as per-block satellite buses.
-
-Block assignments are keyed off the USA/OPS designator (not the NAVSTAR
-ordinal). Names are taken verbatim from CelesTrak SATCAT. Exercises the real
-matching logic so the manufacturer follows the resolved bus.
-"""
+"""GPS/NAVSTAR generations as per-block satellite buses, keyed off the
+USA/OPS designator (not the NAVSTAR ordinal). Names are verbatim CelesTrak
+SATCAT. Exercises the real matching logic so manufacturer follows bus."""
 
 from space_map_data.constants.earth_sats.satellite_models import bus_for_satellite
 from space_map_data.ingest.providers.objects.enrichment import (

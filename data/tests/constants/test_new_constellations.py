@@ -1,9 +1,6 @@
 """Selector + disambiguation tests for the 2026-06 constellation batch.
-
-These exercise the real matching logic (``slug_from_name`` / ``resolve_constellation``)
-rather than the live satcat.csv, so they stay deterministic. Names are taken
-verbatim from CelesTrak SATCAT.
-"""
+Exercises the real matching logic, not live satcat.csv, so it stays
+deterministic. Names are verbatim CelesTrak SATCAT."""
 
 from space_map_data.constants.earth_sats.constellations import slug_from_name
 from space_map_data.ingest.providers.objects.enrichment import (

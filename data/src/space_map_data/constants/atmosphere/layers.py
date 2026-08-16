@@ -1,11 +1,10 @@
 """Layered aerosol vertical structure. export/atmospheres/profiles.py reduces
 these to the shipped forms: Venus/Titan Mie-density LUTs and the Mars
 Conrath-ν seasonal scale heights; the rest (Earth Junge layer, Pluto's
-embedded layers) still awaits a consumer.
+embedded layers) awaits a consumer.
 
-Each body keeps its source's own shape and units rather than being forced into
-one generic schema; the consumer that samples these decides the
-parameterisation.
+Each body keeps its source's own shape and units instead of one generic
+schema; the consumer that samples these decides the parameterisation.
 """
 
 from typing import NamedTuple
@@ -25,13 +24,11 @@ class VenusCloudLayer(NamedTuple):
     modes: tuple[tuple[float, float], ...]
 
 
-# Additional structure (Titov 2018): sub-cloud hazes down to ~30 km; upper
-# haze reaches ~110 km with extinction falling > 2 orders over 25 km; cloud
-# top 72±1 km at low latitudes descending to 61-67 km at the poles; global
-# mean total opacity at 1 µm ≈ 34.7 (Haus et al. 2013). Detached haze layers
-# at 80-85 km appear in ~60% of high-resolution profiles. That latitude
-# spread is why the shipped cross-section carries VIRA's 65 km global
-# reference instead (structure.py).
+# Additional Titov 2018 structure: sub-cloud hazes to ~30 km; upper haze to
+# ~110 km, extinction falling >2 orders over 25 km; cloud top 72±1 km at low
+# latitudes, 61-67 km at the poles; mean 1 µm opacity ≈34.7 (Haus et al.
+# 2013). Detached layers at 80-85 km in ~60% of profiles — that latitude
+# spread is why structure.py ships VIRA's 65 km global reference instead.
 VENUS_CLOUD_LAYERS: tuple[VenusCloudLayer, ...] = (
     VenusCloudLayer("upper haze", 70.0, 90.0, 0.2, 1.0, ((0.4, 500.0),)),
     VenusCloudLayer("upper cloud", 56.5, 70.0, 6.0, 8.0, ((0.4, 1500.0), (2.0, 50.0))),
@@ -53,10 +50,10 @@ class TitanHazeRegime(NamedTuple):
     wavelength_slope: float
 
 
-# Number density ~5 cm⁻³ at 80 km falling with a 65 km scale height (Tomasko
-# 2008); Doose et al. 2016 revision: optical-depth scale height ~50 km above
-# ~100 km, transitioning to roughly linear optical-depth growth below, with a
-# condensate extinction increase under 55 km.
+# Number density ~5 cm⁻³ at 80 km, 65 km scale height (Tomasko 2008); Doose
+# et al. 2016 revision: optical-depth scale height ~50 km above ~100 km,
+# roughly linear growth below, with a condensate extinction increase under
+# 55 km.
 TITAN_HAZE_REGIMES: tuple[TitanHazeRegime, ...] = (
     TitanHazeRegime(80.0, None, 2.34),
     TitanHazeRegime(30.0, 80.0, 1.41),

@@ -1,9 +1,6 @@
-"""Selector + wiring tests for the 2026-06 rocket-family batch.
-
-Exercise the real matching logic (``slug_from_name`` / ``resolve_constellation``)
-against verbatim CelesTrak SATCAT names rather than the live CSV, so they stay
-deterministic.
-"""
+"""Selector + wiring tests for the 2026-06 rocket-family batch. Exercises
+the real matching logic against verbatim CelesTrak SATCAT names, not the
+live CSV, so it stays deterministic."""
 
 from space_map_data.constants.earth_sats.constellations import slug_from_name
 from space_map_data.ingest.providers.objects.enrichment import (

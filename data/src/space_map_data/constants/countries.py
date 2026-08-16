@@ -1,14 +1,13 @@
 """ISO 3166-1 alpha-2 country codes mapped to Wikidata entities.
 
 Covers every code referenced from ``earth_sats/sources.py`` (SATCAT OWNER →
-countries pivot) plus the ``EU`` pseudo-code used for European
-intergovernmental sources. QIDs sourced from Wikidata property P297 except
-``EU`` (which has no ISO 3166-1 code — Q458 is the canonical European Union
-entity).
+countries pivot), plus ``EU`` for European intergovernmental sources. QIDs
+sourced from Wikidata property P297, except ``EU`` (no ISO code — Q458 is
+the European Union entity).
 
-Note: ``NL`` maps to Q29999 (Kingdom of the Netherlands), not Q55
-(Netherlands constituent country), because Wikidata's P297 attaches the ISO
-code to the sovereign-state level.
+``NL`` maps to Q29999 (Kingdom of the Netherlands), not Q55 (Netherlands
+constituent country) — P297 attaches the ISO code at the sovereign-state
+level.
 """
 
 from dataclasses import dataclass

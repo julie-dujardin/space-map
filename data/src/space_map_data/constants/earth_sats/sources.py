@@ -13,9 +13,8 @@ class SourceSpec:
     countries: tuple[str, ...] = ()  # ISO 3166-1 alpha-2 codes
 
 
-# Operator metadata (name + Wikidata QID, keyed by source code) lives in
-# operators.py — query OPERATOR_BY_SOURCE for the structured operator linked to
-# any of the non-country source codes below.
+# Operator metadata (name + QID) lives in operators.py — query
+# OPERATOR_BY_SOURCE for non-country source codes below.
 # https://en.wikipedia.org/wiki/List_of_ISO_3166_country_codes
 SOURCES: tuple[SourceSpec, ...] = (
     SourceSpec(

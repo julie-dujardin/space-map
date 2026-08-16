@@ -1,22 +1,18 @@
 """Volcanism and tectonics, body by body.
 
-The interesting column here is `status`, not any of the numbers. Whether Venus
-is erupting *right now* rests on two surface changes in Magellan's radar and
-nothing else; whether the Moon erupted within the last hundred million years
-turns on seventy small mounds whose crater counts may be measuring roughness
-rather than age. Collapsing that into "active/inactive"
-would throw away what the last twenty years of work actually established, so
-the vocabulary keeps five rungs and each body's comment says which rung its
-evidence reaches and why.
+The interesting column is `status`, not the numbers. Whether Venus is erupting
+*right now* rests on two surface changes in Magellan's radar; whether the Moon
+erupted in the last hundred million years turns on crater counts that may be
+measuring roughness, not age. Collapsing that into active/inactive would throw
+away what the evidence actually supports, so the vocabulary keeps five rungs
+and each comment says which rung its evidence reaches and why.
 
 Cryovolcanism is the same word for a different machine — brine and ammonia
-where Earth has basalt — and it is given the same fields because the
-observables are the same: vents, plumes, a resurfacing rate, an age for the
-youngest thing anyone can date.
+where Earth has basalt — with the same fields, since the observables (vents,
+plumes, resurfacing rate, youngest dated activity) are the same.
 
-Counts of active vents are snapshots of surveys and carry `as_of`. Nobody has
-counted the volcanoes of any world; they have counted what an instrument
-resolved on the days it looked.
+Vent counts are survey snapshots and carry `as_of`: nobody has counted the
+volcanoes of any world, only what an instrument resolved on the days it looked.
 """
 
 from space_map_data.constants.activity.schema import (
@@ -29,13 +25,11 @@ from space_map_data.constants.activity.schema import (
 )
 
 GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
-    # Mercury. Effusive volcanism built the northern smooth plains and then
-    # stopped: crater counts put the end of widespread eruption at about
-    # 3.5 Ga, the planet having cooled and contracted enough that magma could
-    # no longer reach the surface through a lithosphere in compression. The
-    # tectonics outlived the volcanism and are the reason — up to 7 km of
-    # radial shrinkage taken up in thrust faults, and small scarps crisp enough
-    # to be less than 50 Myr old, which makes Mercury the only one-plate planet
+    # Mercury. Effusive volcanism built the northern smooth plains and stopped
+    # by about 3.5 Ga, once the planet cooled and contracted enough that magma
+    # could no longer reach through a lithosphere in compression. Tectonics
+    # outlived it: up to 7 km of radial shrinkage in thrust faults, with
+    # scarps crisp enough to be under 50 Myr old — the only one-plate planet
     # with a case for active faulting.
     "naif-199": BodyActivity(
         volcanism=Volcanism(
@@ -53,21 +47,18 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
         ),
     ),
     # Venus. The hard case, and the reason `probable` exists. Nobody has seen
-    # an eruption. The whole direct case is one vent on Maat Mons that went
-    # from 2.2 km² and near-circular to 4.0 km² and irregular between two
-    # Magellan passes eight months apart in 1991 — and Herrick & Hensley found
-    # exactly that one change while examining ~1.5% of the planet's surface,
-    # which they read as Venus being less active than Io but not a small
-    # fraction of Earth. Radar backscatter changes at Sif Mons and Niobe
-    # Planitia are the second, independent detection.
+    # an eruption; the direct case is one vent on Maat Mons that grew from
+    # 2.2 to 4.0 km² and turned irregular between two Magellan passes eight
+    # months apart in 1991, found while examining ~1.5% of the surface —
+    # read as Venus being less active than Io but not a small fraction of
+    # Earth. Radar backscatter changes at Sif Mons and Niobe Planitia are a
+    # second, independent detection.
     #
-    # The eruption *count* is not a measurement of Venus at all — it is Earth's
-    # 1980-2021 record scaled by mass and area — while the erupted volume is,
-    # being derived from the cratering record and from atmospheric chemistry;
-    # hence one is flagged modelled and the other is not. The surface age is
-    # the counterweight: 250 Ma to 1 Ga depending on the crater model, so
-    # whatever is happening now, the planet was resurfaced wholesale once and
-    # has been mostly quiet since.
+    # The eruption count is Earth's 1980-2021 record scaled by mass and area
+    # (`modelled=True`); erupted volume is derived from the cratering record
+    # and atmospheric chemistry, so it isn't flagged. Surface age (250 Ma to
+    # 1 Ga depending on crater model) is the counterweight: the planet was
+    # resurfaced wholesale once and has been mostly quiet since.
     "naif-299": BodyActivity(
         volcanism=Volcanism(
             kind=SILICATE,
@@ -80,12 +71,10 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             surface_age_years=Measurement(6.0e8, "gillmann_2024", range=(2.5e8, 1.0e9)),
             note="no_eruption_observed",
         ),
-        # `mobile_lid` records the deformation that is actually mapped —
-        # coronae, rifts, the localised trenches — and not a settled regime,
-        # because there isn't one. The competing reading has Venus in the
-        # quiescent stagnant-lid half of an episodic cycle, which fits the same
-        # crater statistics; a third has equilibrium resurfacing under a weak,
-        # intrusion-riddled crust. The note is what the panel should say.
+        # `mobile_lid` records the mapped deformation (coronae, rifts,
+        # localised trenches), not a settled regime — there isn't one. Rivals:
+        # a quiescent stagnant-lid phase of an episodic cycle fitting the same
+        # crater statistics, or equilibrium resurfacing under a weak crust.
         tectonics=Tectonics(
             style="mobile_lid",
             status="probable",
@@ -93,13 +82,12 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             note="regime_debated",
         ),
     ),
-    # Earth. Both counts are the Smithsonian's catalogue rather than physical
-    # constants, so each carries the version it was read at, and both are
-    # rederived from the downloaded eruption record by `download/providers/
-    # gvp.py` and checked against it by the constants test — 1,196 Holocene
-    # volcanoes and 79.2 eruptions in an average year over 2010-2024. The 47 TW
-    # is the whole planet's heat loss, of which volcanism carries only a
-    # fraction — most of it conducts out through the sea floor.
+    # Earth. Both counts are the Smithsonian's catalogue, not physical
+    # constants — 1,196 Holocene volcanoes and 79.2 eruptions/yr (2010-2024
+    # mean), rederived from the downloaded record by `download/providers/
+    # gvp.py` and checked by the constants test. The 47 TW is the whole
+    # planet's heat loss; volcanism carries only a fraction, most conducting
+    # out through the sea floor.
     "naif-399": BodyActivity(
         volcanism=Volcanism(
             kind=SILICATE,
@@ -114,8 +102,7 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             ),
             heat_flux_w_per_m2=Measurement(0.08, "nimmo_2025"),
         ),
-        # The only body in this file whose surface is destroyed as fast as it
-        # is made.
+        # The only body here whose surface is destroyed as fast as it's made.
         tectonics=Tectonics(
             style="plate_tectonics",
             status="active",
@@ -123,13 +110,12 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
         ),
     ),
     # Moon. Mare volcanism ended around 1 Ga on the usual reading, but seventy
-    # irregular mare patches on the nearside have crater counts implying
-    # eruptions within the last 100 Myr — contested, since the same
-    # morphologies can be made by ancient magmatic foam that never developed a
-    # crater-retaining surface. Recorded as extinct with the young date as an
-    # upper limit rather than a claim. The thrust scarps are firmer: shallow
-    # moonquakes recorded by Apollo cluster near faults young enough to cut
-    # small craters, so the Moon is still shrinking.
+    # irregular nearside patches have crater counts implying eruptions within
+    # the last 100 Myr — contested, since the same morphology can come from
+    # ancient magmatic foam with no crater-retaining surface. Recorded extinct
+    # with the young date as an upper limit, not a claim. The thrust scarps
+    # are firmer: Apollo-recorded moonquakes cluster near faults young enough
+    # to cut small craters, so the Moon is still shrinking.
     "naif-301": BodyActivity(
         volcanism=Volcanism(
             kind=SILICATE,
@@ -145,12 +131,11 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             note="global_contraction",
         ),
     ),
-    # Mars. Olympus Mons is the largest volcano in the system and has not
-    # erupted in tens of millions of years, but a dark, pyroxene-rich deposit
-    # spread symmetrically around a segment of Cerberus Fossae dates to 53 ka
-    # — geologically now. InSight then found the same fissure system to be the
-    # most seismically active place on the planet. Neither observation is an
-    # eruption, which is why this is `suspected` and Venus is `probable`.
+    # Mars. Olympus Mons hasn't erupted in tens of millions of years, but a
+    # pyroxene-rich deposit around Cerberus Fossae dates to 53 ka — now,
+    # geologically — and InSight found the same fissure system the planet's
+    # most seismically active. Neither is an eruption, hence `suspected`
+    # rather than Venus's `probable`.
     "naif-499": BodyActivity(
         volcanism=Volcanism(
             kind=SILICATE,
@@ -168,17 +153,15 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             note="marsquakes",
         ),
     ),
-    # Io. Not a matter of interpretation anywhere: 343 distinct thermal sources
-    # in the global map through mid-2023, radiating 57.7 TW between them, out
-    # of 105 TW leaving the body. The 47 TW difference — the size of Earth's
-    # entire heat flow — is not accounted for by any resolved volcano, which is
-    # the standing puzzle: either a great many sources below the resolution
-    # limit, or heat conducting out through the plains.
+    # Io. Not a matter of interpretation: 343 thermal sources mapped through
+    # mid-2023, radiating 57.7 TW of the 105 TW leaving the body. The 47 TW
+    # gap — Earth's entire heat flow — isn't accounted for by any resolved
+    # volcano: either many sources below resolution, or heat conducting out
+    # through the plains.
     #
-    # The power and the flux are one measurement of Veeder's, and are the same
-    # numbers `tidal.py` carries: on Io the observed loss is taken as the
-    # production. Neither carries the ±12 TW quoted in later work, which is
-    # Davies's restatement rather than an uncertainty Veeder attached.
+    # Power and flux are Veeder's measurement, the same numbers `tidal.py`
+    # carries: observed loss stands for production. Neither carries the
+    # ±12 TW quoted elsewhere — that's Davies's restatement, not Veeder's.
     "naif-501": BodyActivity(
         volcanism=Volcanism(
             kind=SILICATE,
@@ -191,11 +174,9 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
         ),
     ),
     # Europa. Ridges, bands and chaos say the shell moves; whether anything
-    # erupts through it is thirty years unresolved. Hubble saw ultraviolet
-    # emission over the south pole in 2012, Galileo's magnetometer data
-    # reinterpreted in 2018 showed a plume-shaped perturbation on a 1997 pass,
-    # and a ground-based search found water vapour on one night out of
-    # seventeen. Nothing repeats, which is the problem.
+    # erupts through it is thirty years unresolved. Hubble UV emission in
+    # 2012, a reinterpreted 1997 Galileo magnetometer perturbation, one night
+    # of water vapour out of seventeen searched — nothing repeats.
     "naif-502": BodyActivity(
         volcanism=Volcanism(
             kind=CRYO,
@@ -210,9 +191,9 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             note="chaos_and_bands",
         ),
     ),
-    # Ganymede. The grooved terrain that covers two-thirds of it is extensional
-    # tectonics, and it is old — associated with a pulse of tidal heating
-    # around 2 Ga as the Laplace resonance assembled. Nothing since.
+    # Ganymede. Grooved terrain covering two-thirds of it is extensional
+    # tectonics, old — from a pulse of tidal heating around 2 Ga as the
+    # Laplace resonance assembled. Nothing since.
     "naif-503": BodyActivity(
         volcanism=Volcanism(
             kind=CRYO,
@@ -227,11 +208,10 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             note="grooved_terrain",
         ),
     ),
-    # Enceladus. 101 distinct jets located along the four tiger stripes by a
-    # 6.5-year imaging survey,
-    # throwing 200 kg of water vapour a second into Saturn's E ring, from a
-    # body 500 km across. The plume is the only place in the solar system where
-    # a subsurface ocean is being sampled in flight.
+    # Enceladus. 101 jets located along the four tiger stripes by a 6.5-year
+    # imaging survey, throwing 200 kg/s of water vapour into Saturn's E ring
+    # from a body 500 km across — the only place a subsurface ocean is being
+    # sampled in flight.
     "naif-602": BodyActivity(
         volcanism=Volcanism(
             kind=CRYO,
@@ -251,10 +231,10 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
         ),
     ),
     # Titan. Sotra Patera with Doom and Erebor Montes is the best cryovolcanic
-    # candidate anywhere on Titan — a depression beside two peaks with flows
-    # running from them, in radar and infrared together. It is also the only
-    # one that survived re-examination; several earlier candidates turned out
-    # to be something else, and no model explains how the plumbing would work.
+    # candidate on Titan — a depression beside two peaks with flows, seen in
+    # radar and infrared together — and the only one that survived
+    # re-examination; earlier candidates turned out to be something else, and
+    # no model explains the plumbing.
     "naif-606": BodyActivity(
         volcanism=Volcanism(
             kind=CRYO,
@@ -263,12 +243,11 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             note="candidate_only",
         ),
     ),
-    # Triton. Four plumes caught in the act by Voyager 2, dark columns rising
-    # 8 km and then shearing over to trail more than 100 km downwind. Whether
-    # they are driven from inside or by sunlight warming nitrogen ice under a
-    # transparent surface layer is still open — the second is a solid-state
-    # greenhouse, not volcanism — but either way the surface is about 10 Myr
-    # old, so something is resurfacing it.
+    # Triton. Four plumes caught by Voyager 2, dark columns rising 8 km and
+    # shearing to trail 100+ km downwind. Driven from inside, or by sunlight
+    # warming nitrogen ice under a transparent layer (a solid-state
+    # greenhouse, not volcanism) — still open. Either way the surface is
+    # ~10 Myr old, so something is resurfacing it.
     "naif-801": BodyActivity(
         volcanism=Volcanism(
             kind=CRYO,
@@ -285,11 +264,10 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             note="cantaloupe_terrain",
         ),
     ),
-    # Charon. Vulcan Planitia is a plain of cryovolcanic material that flooded
-    # the whole southern hemisphere, and the fault system that bounds it
-    # records the ocean underneath freezing and expanding. All of it happened
-    # early, while Charon was still spinning down towards the double-
-    # synchronous state it is in now.
+    # Charon. Vulcan Planitia is cryovolcanic material that flooded the whole
+    # southern hemisphere; its bounding faults record the ocean underneath
+    # freezing and expanding. All early, while Charon was still spinning down
+    # towards the double-synchronous state it's in now.
     "naif-901": BodyActivity(
         volcanism=Volcanism(
             kind=CRYO,
@@ -303,12 +281,11 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             note="ocean_freezing",
         ),
     ),
-    # Pluto. Wright Mons and Piccard Mons are 4-5 km and 7 km high, and the
-    # ground around them is a hummocky terrain with no impact craters at all —
-    # read as many overlapping cryovolcanic flows rather than as two volcanoes.
-    # 2.4×10⁴ km³ in the main rise of Wright alone, about the volume of Mauna
-    # Loa. What powers it on a body that should have frozen through is the
-    # unresolved part.
+    # Pluto. Wright Mons (4-5 km) and Piccard Mons (7 km) sit in hummocky
+    # terrain with no impact craters at all — read as overlapping cryovolcanic
+    # flows, not two volcanoes. Wright's main rise alone is 2.4×10⁴ km³, about
+    # Mauna Loa's volume. What powers it on a body that should have frozen
+    # through is unresolved.
     "naif-999": BodyActivity(
         volcanism=Volcanism(
             kind=CRYO,
@@ -320,11 +297,10 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
             note="energy_source_unexplained",
         ),
     ),
-    # Ceres. Twenty-two domes of the same shape as Ahuna Mons but progressively
-    # flatter with age — cryovolcanic mountains relaxing under their own weight
-    # because they are mostly ice. Fitting the flattening to the population
-    # gives an average extrusion rate of 10,000 m³ a year, which is 10⁻⁵ km³:
-    # a hundred-millionth of Earth's volcanic output, and still not zero.
+    # Ceres. 22 domes shaped like Ahuna Mons but progressively flatter with
+    # age — cryovolcanic mountains, mostly ice, relaxing under their own
+    # weight. Fitting the flattening gives 10,000 m³/yr (10⁻⁵ km³), a
+    # hundred-millionth of Earth's output and still not zero.
     "naif-2000001": BodyActivity(
         volcanism=Volcanism(
             kind=CRYO,
@@ -336,9 +312,8 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
         ),
     ),
     # Vesta. The oldest volcanic record anywhere: the eucrites are basalt from
-    # Vesta's surface, and they crystallised within the first few million years
-    # of the solar system. A magma ocean, a crust, and then nothing for 4.5
-    # billion years.
+    # Vesta's surface, crystallised within the first few million years of the
+    # solar system. A magma ocean, a crust, then nothing for 4.5 billion years.
     "spkid-20000004": BodyActivity(
         volcanism=Volcanism(
             kind=SILICATE,

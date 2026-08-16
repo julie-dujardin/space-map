@@ -1,22 +1,17 @@
 """Spin poles and triaxial shapes measured by stellar occultation.
 
-These four bodies carry rings, and a ring can only be drawn in its host's
-equatorial plane, so the renderer needs a pole for each. None of them has one:
-they are absent from every SPICE PCK, and DAMIT's convex lightcurve inversions
-do not cover them either. What does exist is the occultation literature, which
-fits the ring plane and the body's limb from the same chords and therefore
-publishes both the pole and the semi-axes to better accuracy than a lightcurve
-would give.
+These four ringed bodies need a pole to draw the ring's equatorial plane, but
+none has one in SPICE PCK or DAMIT's lightcurve inversions. Occultation
+literature fits the ring plane and the limb from the same chords, giving both
+pole and semi-axes at better accuracy than a lightcurve.
 
-Poles are the ring poles, which is the meaningful statement: every one of
-these systems is equatorial, and for Haumea and Quaoar the moons' orbits agree.
-Occultation fits are mirror-ambiguous, so each paper's preferred solution is
-the one taken; the mirror describes the same plane with the opposite spin
-sense, which nothing here can distinguish and no rendered pixel depends on.
+Poles are the ring poles (every system here is equatorial; for Haumea and
+Quaoar the moons' orbits agree). Fits are mirror-ambiguous, so each paper's
+preferred solution is taken — the mirror is the same plane with opposite
+spin sense, undistinguishable and irrelevant to any rendered pixel.
 
-W is not measured for any of them. There is no map texture to align, so the
-prime meridian is set to zero at J2000 and only the rotation rate carries
-information.
+W is unmeasured for all four: no map texture to align, so the prime meridian
+is zero at J2000 and only the rotation rate carries information.
 """
 
 import math
@@ -40,9 +35,8 @@ class OccultationShape(NamedTuple):
     period_h: float
     # Best-fitting ellipsoid semi-axes, a >= b >= c, km.
     semi_axes_km: tuple[float, float, float]
-    # The paper the pole is taken from, exported with the orientation so the
-    # sidebar credits it instead of the PCK these bodies never appear in. Same
-    # works the ring catalogue cites for the geometry; this is the pole claim.
+    # Paper the pole is taken from, exported so the sidebar credits it
+    # instead of the PCK these bodies never appear in.
     pole_reference_title: str
     pole_reference_url: str
 

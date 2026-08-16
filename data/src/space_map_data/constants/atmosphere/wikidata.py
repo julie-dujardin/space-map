@@ -1,20 +1,18 @@
 """Wikidata topic pages behind the atmosphere panel.
 
-Keyed by body id, a superset of ``ATMOSPHERE_BODIES`` — an article exists for
-several bodies we hold no atmosphere data for yet. Coverage here is worse than
-it looks: English Wikipedia folds most moon atmospheres into the body article,
-while French and Italian split them out, so several rows below have no English
-article at all.
+Keyed by body id, a superset of ``ATMOSPHERE_BODIES`` — some bodies have an
+article but no atmosphere data yet. Coverage is worse than it looks: English
+folds most moon atmospheres into the body article, while French and Italian
+split them out.
 
-Values are tuples because one topic occasionally splits across two Wikidata
-items with disjoint sitelinks — no single item covers every language. Nothing
-resolves to English when a locale is missing: a reader either gets the article
-in the language they are reading in, or no link at all, so the coverage
-comment on each row is the whole story about where a link will appear.
+Values are tuples because one topic sometimes splits across two Wikidata
+items with disjoint sitelinks. Nothing falls back to English when a locale is
+missing — a reader gets the article in their language or no link at all, so
+the per-row coverage comment is the whole story.
 
 Locale codes follow ``constants.providers.LANGUAGES``; "all 12" means every
-one of them. Coverage was read off Wikidata and drifts as articles are
-written or merged — treat the comments as of 2026-07-31.
+one. Coverage was read off Wikidata and drifts as articles change — treat
+the comments as of 2026-07-31.
 """
 
 # One entry per body that has a dedicated article somewhere. Absent bodies —

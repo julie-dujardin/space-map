@@ -1,20 +1,17 @@
 """Landform families: the eight buckets the 57 IAU descriptor codes group into.
 
-The IAU gazetteer has no such grouping — descriptor terms are a flat list — so
-this is curated, assigned from each term's own definition in
-:mod:`space_map_data.constants.nomenclature.feature_types`. It exists to make 57
-chips browsable; a family is a *naming* bucket, not a geological claim about any
-individual feature. The buckets don't share one axis: impact/volcanic/tectonic/
-erosional are processes, liquid/relief/albedo are what the term names, human is
-where the name came from.
+Curated, not an IAU grouping — assigned from each term's definition in
+:mod:`space_map_data.constants.nomenclature.feature_types`. A family is a
+*naming* bucket for browsing 57 chips, not a geological claim; the axes mix
+(process for impact/volcanic/tectonic/erosional, referent for
+liquid/relief/albedo, origin for human).
 
 Judgement calls worth knowing:
 
-- ``erosional`` vs ``liquid`` is the axis collision, and the boundary is the
-  term's referent, not whether liquid is present: ``erosional`` takes landforms
-  something carved or piled up (water, wind, ice, gravity), ``liquid`` takes
-  terms naming a standing body of liquid. Hence Flumen — a channel — parts ways
-  with Lacuna, a dry lake bed.
+- ``erosional`` vs ``liquid``: the boundary is the term's referent, not
+  whether liquid is present — ``erosional`` is what carved or piled up the
+  land, ``liquid`` names a standing body. Flumen (a channel) vs Lacuna (a dry
+  lake bed).
 - ``MO`` Mons is defined as plain "Mountain"; most named montes are volcanic
   edifices (Olympus, Maat), but lunar Montes are impact-basin rims.
 - ``RE`` Regio is defined twice over — "reflectivity or color distinctions" *or*
@@ -29,8 +26,7 @@ Judgement calls worth knowing:
 
 from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
 
-# Ordered by formation narrative (impact → volcanic → tectonic → erosional →
-# …), not by size: the display keeps this order so the list reads the same on
+# Ordered by formation narrative, not size — display keeps this order across
 # every body's gazetteer.
 FEATURE_FAMILY_CODES: dict[str, tuple[str, ...]] = {
     "impact": ("AA", "SF", "CA", "LG"),

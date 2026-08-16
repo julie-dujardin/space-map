@@ -114,17 +114,15 @@ class TestCitations:
     @pytest.mark.parametrize("object_id", DOSED_IDS)
     def test_a_number_names_the_work_it_came_from(self, object_id: str):
         """A classification can rest on arithmetic — Titan's does — but a dose
-        rate is somebody's measurement or somebody's model, and it has to say
-        whose."""
+        rate is someone's measurement or model, and must say whose."""
         for measurement in _measurements(RADIATION_ENVIRONMENTS[object_id]):
             assert measurement.source
 
     @pytest.mark.parametrize("object_id", ENVIRONMENT_IDS)
     def test_every_classification_names_a_work(self, object_id: str):
-        """`kind` is the one field with full coverage, so it is the one a
-        reader will trust without looking. Every rung of it is somebody's
-        finding — that Mercury cannot hold a belt, that Titan's cascade stops
-        65 km up — and none of it is self-evident from the body."""
+        """`kind` has full coverage, so readers trust it without looking.
+        Every rung is a finding, not self-evident — e.g. Mercury holds no
+        belt, Titan's cascade stops 65 km up."""
         assert RADIATION_ENVIRONMENTS[object_id].kind_sources
 
 
@@ -167,10 +165,9 @@ class TestCrossTable:
 
     @pytest.mark.parametrize("object_id", BELT_IDS)
     def test_a_belt_belongs_to_a_body_that_could_hold_one(self, object_id: str):
-        """A belt needs a field to be trapped in. Mercury is the awkward case
-        and the reason this checks the environment rather than the magnetism
-        table: its belt is real but intermittent, so its dose environment is
-        `cosmic` while it still gets an entry here."""
+        """A belt needs a field to trap it. Mercury is why this checks the
+        environment table, not magnetism: its belt is real but intermittent,
+        so its dose reads `cosmic` while still getting an entry."""
         assert object_id in RADIATION_ENVIRONMENTS
 
     @pytest.mark.parametrize("object_id", BELT_IDS)
@@ -200,9 +197,9 @@ class TestOrdering:
     Each of these has been got wrong in a published table somewhere."""
 
     def test_the_moon_is_harsher_than_mars(self):
-        """Both are cosmic-ray environments and the only difference is Mars's
-        atmosphere, so the airless one has to read higher. If this ever flips,
-        a solar-cycle correction has been applied to one and not the other."""
+        """Mars's atmosphere is the only difference between these cosmic-ray
+        environments, so airless must read higher; a flip means a solar-cycle
+        correction hit one and not the other."""
         moon = RADIATION_ENVIRONMENTS["naif-301"].surface_dose
         mars = RADIATION_ENVIRONMENTS["naif-499"].surface_dose
         assert moon and mars
@@ -231,9 +228,9 @@ class TestOrdering:
         )
 
     def test_europa_is_in_a_different_regime_entirely(self):
-        """The point of the table. If Europa ever comes within three orders of
-        magnitude of a cosmic-ray surface, a unit has been dropped: rads to
-        grays is a factor of 100 and per-second to per-day is 86,400."""
+        """The point of the table: within 3 orders of magnitude of a
+        cosmic-ray surface means a dropped unit (rad→Gy is 100x,
+        per-second→per-day is 86,400x)."""
         europa = RADIATION_ENVIRONMENTS["naif-502"].surface_dose
         moon = RADIATION_ENVIRONMENTS["naif-301"].surface_dose
         assert europa and moon
@@ -241,10 +238,9 @@ class TestOrdering:
 
 
 class TestFlownData:
-    """The whole case for the field model. It is calibrated in cruise and at
-    Earth, and everything else it says is extrapolation from those — so what
-    matters is not that the fits fit, but that the two anchors nothing was
-    fitted to come out right anyway."""
+    """Calibrated only in cruise and at Earth; everything else is
+    extrapolation. What matters is the anchors nothing was fitted to still
+    coming out right."""
 
     @pytest.mark.parametrize("name", sorted(FLOWN_ANCHORS))
     def test_the_model_reproduces_what_was_measured(self, name: str):
@@ -261,10 +257,9 @@ class TestFlownData:
         assert FLOWN_ANCHORS[name].role in ANCHOR_ROLES
 
     def test_the_moon_and_mars_are_never_fitted_to(self):
-        """The guard that keeps this suite honest. Every parameter in the model
-        has an anchor it was fitted to, and a residual can always be made to
-        vanish by fitting to one more. These two have to stay out of sample or
-        the agreement stops meaning anything."""
+        """Keeps the suite honest: any fitted parameter can force its residual
+        to vanish, so these two must stay out of sample or agreement means
+        nothing."""
         assert FLOWN_ANCHORS["lnd_moon"].role == PREDICTION
         assert FLOWN_ANCHORS["rad_gale"].role == PREDICTION
 
@@ -297,10 +292,9 @@ class TestAtmosphere:
     """A thin atmosphere is not a shield, and the code has to say so."""
 
     def test_a_thin_column_barely_attenuates(self):
-        """Mars is the evidence: at Gale's 22 g/cm² the secondaries knocked
-        loose roughly replace the primaries knocked out, once quality factors
-        are counted. Anything that made this materially less than 1 would
-        break the Gale prediction."""
+        """Mars evidence: at Gale's 22 g/cm², secondaries roughly replace
+        knocked-out primaries once quality factors count. Materially below 1
+        would break the Gale prediction."""
         assert atmospheric_attenuation(22.0) == pytest.approx(1.0)
 
     def test_nothing_overhead_attenuates_nothing(self):
@@ -315,10 +309,9 @@ class TestAtmosphere:
         assert seen == sorted(seen, reverse=True)
 
     def test_a_giant_column_reports_the_floor_not_a_fantasy(self):
-        """Titan's 10,900 g/cm² sends the cascade exponential to 1e-29, which
-        is not a small number but a meaningless one — what gets through a
-        column that deep is muons obeying a different law. The floor is how
-        the model admits it has stopped knowing."""
+        """Titan's 10,900 g/cm² drives the bare exponential to 1e-29 —
+        meaningless, since what gets through that deep is muons under a
+        different law. The floor admits the model has stopped knowing."""
         assert atmospheric_attenuation(10_900.0) == ATTENUATION_FLOOR
 
     def test_column_depth_recovers_earths_thousand_g_per_cm2(self):
@@ -344,9 +337,9 @@ class TestCutoff:
         assert cutoff_rigidity_gv(7.69e22, 1.0, 0.0) == pytest.approx(14.9, rel=0.01)
 
     def test_the_poles_are_open(self):
-        """cos⁴ latitude is why cosmic rays reach the ground at the poles and
-        not at the equator, and why a polar orbit costs more dose than an
-        equatorial one at the same altitude."""
+        """cos⁴ latitude is why cosmic rays reach the poles and not the
+        equator, and why a polar orbit costs more dose at the same
+        altitude."""
         assert cutoff_rigidity_gv(7.69e22, 1.0, 90.0) == pytest.approx(0.0, abs=1e-12)
 
     def test_it_falls_off_with_distance(self):
@@ -355,9 +348,8 @@ class TestCutoff:
         assert near == pytest.approx(far * 16.0, rel=1e-6)
 
     def test_an_inclined_orbit_averages_below_its_own_inclination(self):
-        """A satellite lingers near its turning points, so the mean of cos⁴ is
-        not cos⁴ of the mean. Getting this wrong is a factor of three in the
-        ISS cutoff and would drag the fitted response with it."""
+        """A satellite lingers near turning points, so mean cos⁴ isn't cos⁴
+        of the mean — wrong here is a factor of three in the ISS cutoff."""
         assert mean_cos4_latitude(51.6) == pytest.approx(0.527, rel=0.01)
         assert mean_cos4_latitude(0.0) == pytest.approx(1.0)
 
@@ -438,9 +430,9 @@ class TestBeltProfile:
         assert rates == sorted(rates, reverse=True)
 
     def test_callisto_sits_where_johnson_puts_it_against_europa(self):
-        """The outer slope came from this ratio, so it is a round trip — but it
-        is the one that stops the profile collapsing, and an earlier form got
-        it wrong by three orders of magnitude."""
+        """A round trip — the outer slope came from this ratio — but it's the
+        one that stops the profile collapsing; an earlier form was off by
+        three orders of magnitude."""
         ratio = jovian_belt_rate_gy_per_day(9.4) / jovian_belt_rate_gy_per_day(26.3)
         assert ratio == pytest.approx(250.0, rel=0.01)
 
@@ -476,15 +468,11 @@ class TestBeltPasses:
         assert 3.0 < predicted / anchor.measured_gy < 5.0
 
     def test_speed_is_what_buys_a_pass_down(self):
-        """Dose is a time integral, so at one periapsis the faster pass is the
-        cheaper one — the mechanism behind Pioneer 11 surviving a closer
-        approach than Pioneer 10.
-
-        Only the mechanism, not that result: within this model Pioneer 11 is
-        still the worse pass, because it flew inside the peak where the profile
-        is held flat and because it went over the pole, which nothing here
-        knows about. That gap is `test_the_polar_pass_is_over_predicted`.
-        """
+        """Dose is a time integral, so at fixed periapsis the faster pass is
+        cheaper — why Pioneer 11 survived closer than Pioneer 10. Only the
+        mechanism: in this model Pioneer 11 is still worse, since it flew
+        inside the flat peak and over the pole, a gap this model doesn't know
+        (see `test_the_polar_pass_is_over_predicted`)."""
         slow = belt_pass_dose_gy(3.0 * JUPITER_RADIUS_KM, 5.0, 0.11)
         fast = belt_pass_dose_gy(3.0 * JUPITER_RADIUS_KM, 20.0, 0.11)
         assert fast < slow
