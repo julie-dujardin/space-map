@@ -49,7 +49,12 @@
 		transferPlan,
 		type TransferPlan
 	} from '$lib/travel/travel-body';
-	import { TravelPanelState, type BlockReason } from '$lib/travel/panel.svelte';
+	import {
+		solveRequestKey,
+		TravelPanelState,
+		type BlockReason,
+		type SolveRequest
+	} from '$lib/travel/panel.svelte';
 	import { ASSIST_BODY_IDS } from '$lib/travel/assist-bodies';
 	import {
 		ORIGIN_MODES,
@@ -515,10 +520,10 @@
 	// the same one. A mode with no orbit of its own — a landing, a flyby — leaves
 	// it unset and the kernel falls back to its parking orbit.
 	$effect(() => {
-		panel.originOrbit = originChoices.find((c) => c.kind === panel.originMode)?.orbit;
+		panel.setEndOrbit('origin', originChoices.find((c) => c.kind === panel.originMode)?.orbit);
 	});
 	$effect(() => {
-		panel.targetOrbit = targetChoices.find((c) => c.kind === panel.targetMode)?.orbit;
+		panel.setEndOrbit('target', targetChoices.find((c) => c.kind === panel.targetMode)?.orbit);
 	});
 
 	/**
@@ -704,38 +709,35 @@
 		);
 	}
 
-	// One effect owns re-solving, so every input that should trigger one is
-	// listed here rather than hidden behind an async write elsewhere.
-	$effect(() => {
-		const from = originTravel;
-		const to = targetTravel;
-		const blocking = block;
-		const mode = panel.timeMode;
-		const picked = panel.pickedJd;
-		const departure = panel.originMode;
-		const arrival = panel.targetMode;
-		const aero = panel.effectiveAero;
-		// Coordinates land after the trip does — a feature has to be looked up —
-		// and they move the price, so they re-solve like any other term.
-		const originLat = panel.originSiteLatDeg;
-		const targetLat = panel.targetSiteLatDeg;
-		void mode;
-		void picked;
-		void departure;
-		void arrival;
-		void aero;
-		void originLat;
-		void targetLat;
+	/** What to put to the panel: one whole question, or the reason there isn't
+	 *  one. An end that never resolved has no orbit to leave from. */
+	let job = $derived<{ block: BlockReason } | { request: SolveRequest }>(
+		block
+			? { block }
+			: originTravel && targetTravel
+				? {
+						request: {
+							origin: originTravel,
+							target: targetTravel,
+							nowJd,
+							frame,
+							terms: panel.solveTerms
+						}
+					}
+				: { block: 'unknown-orbit' }
+	);
 
-		if (blocking) {
-			panel.block(blocking);
-			return;
-		}
-		if (!from || !to) {
-			panel.block('unknown-orbit');
-			return;
-		}
-		void panel.solve(from, to, nowJd, frame, refineEnd);
+	// One effect owns re-solving, and it turns on this key alone. Content, not
+	// identity: the ends are rebuilt whenever the scene re-describes a body, and
+	// a porkchop is far too expensive to redo because an equal object arrived.
+	let solveKey = $derived('block' in job ? `blocked|${job.block}` : solveRequestKey(job.request));
+
+	$effect(() => {
+		void solveKey;
+		untrack(() => {
+			if ('block' in job) panel.block(job.block);
+			else void panel.solve(job.request, refineEnd);
+		});
 	});
 
 	// The two trajectories that come off the craft are their own effect: they

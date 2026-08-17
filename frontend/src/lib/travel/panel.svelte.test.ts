@@ -9,8 +9,37 @@ import {
 	type TravelBody,
 	type Vehicle
 } from '$lib/math/travel';
-import { TravelPanelState } from './panel.svelte';
+import {
+	solveRequestKey,
+	TravelPanelState,
+	type RefineEnd,
+	type SolveRequest
+} from './panel.svelte';
 import { DEFAULT_TRIP } from './trip';
+import type { TransferFrame } from './travel-body';
+
+/** A trip as the component puts it: the two ends and the frame from the page,
+ *  every other term read off the panel itself. */
+function requestFor(
+	panel: TravelPanelState,
+	origin: TravelBody,
+	target: TravelBody,
+	nowJd: number,
+	frame: TransferFrame = { orbit: 'heliocentric' }
+): SolveRequest {
+	return { origin, target, nowJd, frame, terms: panel.solveTerms };
+}
+
+function solveTrip(
+	panel: TravelPanelState,
+	origin: TravelBody,
+	target: TravelBody,
+	nowJd: number,
+	refine?: RefineEnd,
+	frame?: TransferFrame
+): Promise<void> {
+	return panel.solve(requestFor(panel, origin, target, nowJd, frame), refine);
+}
 
 describe('TravelPanelState arrival mode', () => {
 	it('maps each destination mode onto the kernel case it means', () => {
@@ -63,7 +92,7 @@ describe('TravelPanelState hand-picked windows', () => {
 
 	async function solved(): Promise<TravelPanelState> {
 		const panel = new TravelPanelState();
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 		return panel;
 	}
 
@@ -89,7 +118,7 @@ describe('TravelPanelState hand-picked windows', () => {
 		const fromOrbit = panel.custom!.totalDvKms;
 
 		panel.originMode = 'low-orbit';
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 
 		expect(panel.offered.at(-1)?.profile).toBe('custom');
 		expect(panel.custom?.departJd).toBeCloseTo(depart, 6);
@@ -101,7 +130,7 @@ describe('TravelPanelState hand-picked windows', () => {
 		const panel = await solved();
 		panel.pickCustom(...centre(panel));
 
-		await panel.solve(MARS, EARTH, J2000);
+		await solveTrip(panel, MARS, EARTH, J2000);
 
 		expect(panel.custom).toBeNull();
 		expect(panel.selectedProfile).not.toBe('custom');
@@ -196,7 +225,7 @@ describe('TravelPanelState constant-thrust arc', () => {
 			vehicleId: 'rocinante',
 			profile: 'fast'
 		});
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 
 		panel.updateTorch(EARTH, MARS, J2000);
 		expect(panel.torchPresets).toEqual([]);
@@ -217,7 +246,7 @@ describe('TravelPanelState constant-thrust arc', () => {
 			vehicleId: 'rocinante',
 			profile: 'constant-thrust'
 		});
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 
 		panel.updateTorch(EARTH, MARS, J2000);
 		expect(panel.selectedProfile).toBe('constant-thrust');
@@ -237,7 +266,7 @@ describe('TravelPanelState constant-thrust arc', () => {
 			vehicleId: 'no-such-ship',
 			profile: 'constant-thrust'
 		});
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 		panel.acceptVehicles([ROCINANTE]);
 
 		panel.updateTorch(EARTH, MARS, J2000);
@@ -250,7 +279,7 @@ describe('TravelPanelState constant-thrust arc', () => {
 	// until the catalogue lands, and answered against it when it does.
 	it('drops a craft the catalogue turns out not to have', async () => {
 		const panel = new TravelPanelState({ ...DEFAULT_TRIP, vehicleId: 'no-such-ship' });
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 		// Still asked for while nobody can say otherwise — the link is not wrong yet.
 		expect(panel.vehicleId).toBe('no-such-ship');
 		expect(panel.craftKnown).toBe(false);
@@ -275,7 +304,7 @@ describe('TravelPanelState constant-thrust arc', () => {
 	it('offers the arc when a craft is chosen without opening it', async () => {
 		const panel = new TravelPanelState();
 		panel.acceptVehicles([ROCINANTE]);
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 		panel.selectVehicle('rocinante');
 
 		panel.updateTorch(EARTH, MARS, J2000);
@@ -289,7 +318,7 @@ describe('TravelPanelState choosing a trajectory', () => {
 	/** The panel's two steps: nothing chosen is the list, a choice is the detail. */
 	it('chooses nothing on its own when a search lands', async () => {
 		const panel = new TravelPanelState();
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 
 		expect(panel.offered.length).toBeGreaterThan(0);
 		expect(panel.selectedProfile).toBeNull();
@@ -299,7 +328,7 @@ describe('TravelPanelState choosing a trajectory', () => {
 
 	it('reads the one it is given, and goes back to the list on request', async () => {
 		const panel = new TravelPanelState();
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 
 		panel.choose('efficient');
 		expect(panel.selected?.profile).toBe('efficient');
@@ -314,7 +343,7 @@ describe('TravelPanelState choosing a trajectory', () => {
 	// The trajectory being read is a term of the trip, so a link opens on it.
 	it('carries the choice in the trip and opens on it again', async () => {
 		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'fast' });
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 
 		expect(panel.trip.profile).toBe('fast');
 		expect(panel.selected?.profile).toBe('fast');
@@ -334,7 +363,7 @@ describe('TravelPanelState refining a moving end', () => {
 	it('leaves a trip alone when neither end has anything to add', async () => {
 		const panel = new TravelPanelState();
 		const asked: [string, number][] = [];
-		await panel.solve(EARTH, MARS, J2000, undefined, async (role, jd) => {
+		await solveTrip(panel, EARTH, MARS, J2000, async (role, jd) => {
 			asked.push([role, jd]);
 			return null;
 		});
@@ -349,7 +378,7 @@ describe('TravelPanelState refining a moving end', () => {
 	it('asks each end at the dates the last pass landed on', async () => {
 		const panel = new TravelPanelState();
 		const dates: number[] = [];
-		await panel.solve(EARTH, MARS, J2000, undefined, async (role, jd) => {
+		await solveTrip(panel, EARTH, MARS, J2000, async (role, jd) => {
 			if (role !== 'target') return null;
 			dates.push(jd);
 			return MOVED;
@@ -365,7 +394,7 @@ describe('TravelPanelState refining a moving end', () => {
 	it('stops once a pass stops moving the answer', async () => {
 		const panel = new TravelPanelState();
 		let passes = 0;
-		await panel.solve(EARTH, MARS, J2000, undefined, async (role) => {
+		await solveTrip(panel, EARTH, MARS, J2000, async (role) => {
 			if (role === 'target') passes++;
 			return MOVED;
 		});
@@ -377,9 +406,7 @@ describe('TravelPanelState refining a moving end', () => {
 
 	it('reports the ends the routes were priced against', async () => {
 		const panel = new TravelPanelState();
-		await panel.solve(EARTH, MARS, J2000, undefined, async (role) =>
-			role === 'target' ? MOVED : null
-		);
+		await solveTrip(panel, EARTH, MARS, J2000, async (role) => (role === 'target' ? MOVED : null));
 
 		expect(panel.pricedEnds?.origin).toBe(EARTH);
 		expect(panel.pricedEnds?.target).toBe(MOVED);
@@ -432,8 +459,13 @@ describe('TravelPanelState drawing what it priced', () => {
 	async function solvedToHalo(): Promise<TravelPanelState> {
 		const panel = new TravelPanelState();
 		panel.targetMode = 'low-orbit';
-		await panel.solve(EARTH, STALE, J2000, FRAME, async (role) =>
-			role === 'target' ? REFINED : null
+		await solveTrip(
+			panel,
+			EARTH,
+			STALE,
+			J2000,
+			async (role) => (role === 'target' ? REFINED : null),
+			FRAME
 		);
 		return panel;
 	}
@@ -476,7 +508,7 @@ describe('TravelPanelState arrival deadline', () => {
 			timeMode: 'arrive',
 			pickedJd: deadlineJd
 		});
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 		return panel;
 	}
 
@@ -496,7 +528,7 @@ describe('TravelPanelState arrival deadline', () => {
 		const deadlineJd = J2000 + 300;
 		const panel = await byJd(deadlineJd);
 		const open = new TravelPanelState();
-		await open.solve(EARTH, MARS, J2000);
+		await solveTrip(open, EARTH, MARS, J2000);
 
 		const cheapest = Math.min(...panel.routes.map((choice) => choice.route.totalDvKms));
 		const survivors = open.routes.filter((choice) => choice.route.arriveJd <= deadlineJd);
@@ -515,7 +547,7 @@ describe('TravelPanelState arrival deadline', () => {
 
 	it('claims no deadline was missed when none was set', async () => {
 		const panel = new TravelPanelState();
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 		expect(panel.missedDeadline).toBe(false);
 	});
 
@@ -531,7 +563,7 @@ describe('TravelPanelState arrival deadline', () => {
 				pickedJd: deadlineJd
 			});
 			panel.targetMode = 'low-orbit';
-			await panel.solve(EARTH, MARS, J2000);
+			await solveTrip(panel, EARTH, MARS, J2000);
 			return panel;
 		}
 
@@ -567,7 +599,7 @@ describe('TravelPanelState arrival deadline', () => {
 			const panel = await aerobraked(J2000 + crossing + 20);
 			panel.targetMode = 'surface';
 			expect(panel.effectiveAero).toBe('none');
-			await panel.solve(EARTH, MARS, J2000);
+			await solveTrip(panel, EARTH, MARS, J2000);
 
 			expect(panel.routes.length).toBeGreaterThan(0);
 			// And back: returning to a low orbit gets the held choice back.
@@ -596,7 +628,7 @@ describe('TravelPanelState spiral', () => {
 	async function chosen(): Promise<TravelPanelState> {
 		const panel = new TravelPanelState({ ...DEFAULT_TRIP, originMode: 'low-orbit' });
 		panel.acceptVehicles([DAWN]);
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 		panel.selectVehicle('dawn');
 		panel.updateSpiral(EARTH, MARS, J2000);
 		return panel;
@@ -646,7 +678,7 @@ describe('TravelPanelState spiral', () => {
 			vehicleId: 'dawn',
 			profile: 'low-thrust'
 		});
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 		panel.updateSpiral(EARTH, MARS, J2000);
 		expect(panel.selectedProfile).toBe('low-thrust');
 
@@ -662,7 +694,7 @@ describe('TravelPanelState spiral', () => {
 	it('offers none from a surface', async () => {
 		const panel = new TravelPanelState({ ...DEFAULT_TRIP, originMode: 'surface' });
 		panel.acceptVehicles([DAWN]);
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 		panel.selectVehicle('dawn');
 		// Choosing it moved the origin off the ground, since Dawn departs from
 		// orbit; the trip that insists is the one with no spiral to offer.
@@ -744,7 +776,7 @@ describe('TravelPanelState pick off a shared link', () => {
 		expect(panel.custom).toBeNull();
 		expect(panel.trip.pick).toEqual(pick);
 
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 
 		expect(panel.custom?.departJd).toBeCloseTo(pick.departJd, 6);
 		expect(panel.custom?.tofDays).toBeCloseTo(pick.tofDays, 6);
@@ -758,7 +790,7 @@ describe('TravelPanelState pick off a shared link', () => {
 			pick: { departJd: J2000 + 50_000, tofDays: 3 }
 		});
 
-		await panel.solve(EARTH, MARS, J2000);
+		await solveTrip(panel, EARTH, MARS, J2000);
 
 		expect(panel.custom).toBeNull();
 		expect(panel.trip.pick).toBeNull();
@@ -773,7 +805,7 @@ describe('TravelPanelState swing-by route', () => {
 	async function withAssist(): Promise<TravelPanelState> {
 		const panel = new TravelPanelState();
 		panel.targetMode = 'low-orbit';
-		await panel.solve(EARTH, SATURN, NOW);
+		await solveTrip(panel, EARTH, SATURN, NOW);
 		await panel.updateAssist(EARTH, SATURN, [JUPITER], NOW);
 		return panel;
 	}
@@ -846,7 +878,7 @@ describe('TravelPanelState swing-by route', () => {
 	// the trajectory the link was sent with.
 	it('keeps a link’s choice while the hunt is still running', async () => {
 		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'gravity-assist' });
-		await panel.solve(EARTH, SATURN, NOW);
+		await solveTrip(panel, EARTH, SATURN, NOW);
 		expect(panel.trip.profile).toBe('gravity-assist');
 		await panel.updateAssist(EARTH, SATURN, [JUPITER], NOW);
 		expect(panel.selectedProfile).toBe('gravity-assist');
@@ -858,7 +890,7 @@ describe('TravelPanelState swing-by route', () => {
 	// asked for one has to let go of it rather than wait forever.
 	it('lets the choice go once the hunt answers with nothing worth offering', async () => {
 		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'gravity-assist' });
-		await panel.solve(EARTH, MARS, NOW);
+		await solveTrip(panel, EARTH, MARS, NOW);
 		await panel.updateAssist(EARTH, MARS, [JUPITER], NOW);
 		expect(panel.offered.some((choice) => choice.profile === 'gravity-assist')).toBe(false);
 		expect(panel.selectedProfile).toBeNull();
@@ -870,7 +902,7 @@ describe('TravelPanelState swing-by route', () => {
 	// made by hand outranks the one the link arrived asking for.
 	it('lets a choice made during the hunt stand when the hunt lands', async () => {
 		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'gravity-assist' });
-		await panel.solve(EARTH, SATURN, NOW);
+		await solveTrip(panel, EARTH, SATURN, NOW);
 		panel.choose('fast');
 		await panel.updateAssist(EARTH, SATURN, [JUPITER], NOW);
 		expect(panel.selectedProfile).toBe('fast');
@@ -879,7 +911,7 @@ describe('TravelPanelState swing-by route', () => {
 
 	it('lets stepping back to the list settle a link’s wait too', async () => {
 		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'gravity-assist' });
-		await panel.solve(EARTH, SATURN, NOW);
+		await solveTrip(panel, EARTH, SATURN, NOW);
 		panel.clearSelection();
 		expect(panel.trip.profile).toBeNull();
 	});
@@ -891,7 +923,7 @@ describe('TravelPanelState swing-by route', () => {
 	// return waiting on it would block every later settle.
 	it('lets a link’s choice go when the pair has nothing to hunt', async () => {
 		const panel = new TravelPanelState({ ...DEFAULT_TRIP, profile: 'gravity-assist' });
-		await panel.solve(EARTH, MARS, NOW);
+		await solveTrip(panel, EARTH, MARS, NOW);
 		panel.clearAssist();
 		expect(panel.trip.profile).toBeNull();
 		expect(panel.selectedProfile).toBeNull();
@@ -903,7 +935,7 @@ describe('TravelPanelState swing-by route', () => {
 	it('prices its arrival the way the routes it is judged against are', async () => {
 		const air = SATURN;
 		const panel = new TravelPanelState();
-		await panel.solve(EARTH, air, NOW);
+		await solveTrip(panel, EARTH, air, NOW);
 		await panel.updateAssist(EARTH, air, [JUPITER], NOW);
 		expect(panel.assist?.aero).toBe('aerocapture');
 		expect(panel.offered.some((choice) => choice.profile === 'gravity-assist')).toBe(true);
@@ -914,7 +946,7 @@ describe('TravelPanelState swing-by route', () => {
 	it('hunts again when the braking mode changes', async () => {
 		const air = SATURN;
 		const panel = new TravelPanelState();
-		await panel.solve(EARTH, air, NOW);
+		await solveTrip(panel, EARTH, air, NOW);
 		await panel.updateAssist(EARTH, air, [JUPITER], NOW);
 		const aerocaptured = panel.assist!.totalDvKms;
 		panel.aero = 'none';
@@ -930,10 +962,10 @@ describe('TravelPanelState swing-by route', () => {
 		const dry = { ...SATURN, aeroPressurePa: undefined, aeroScaleHeightKm: undefined };
 		const air = SATURN;
 		const panel = new TravelPanelState();
-		await panel.solve(EARTH, dry, NOW);
+		await solveTrip(panel, EARTH, dry, NOW);
 		await panel.updateAssist(EARTH, dry, [JUPITER], NOW);
 		const airless = panel.assist!.totalDvKms;
-		await panel.solve(EARTH, air, NOW);
+		await solveTrip(panel, EARTH, air, NOW);
 		await panel.updateAssist(EARTH, air, [JUPITER], NOW);
 		expect(panel.assist!.totalDvKms).toBeLessThan(airless);
 		expect(panel.offered.some((choice) => choice.profile === 'gravity-assist')).toBe(true);
@@ -946,5 +978,93 @@ describe('TravelPanelState swing-by route', () => {
 		});
 		expect(panel.assist).not.toBeNull();
 		expect(panel.offered).toEqual([]);
+	});
+});
+
+describe('TravelPanelState request key', () => {
+	function ask(panel: TravelPanelState, origin: TravelBody = EARTH, target: TravelBody = MARS) {
+		return solveRequestKey(requestFor(panel, origin, target, J2000));
+	}
+
+	// The scene rewrites an end whenever its clock runs or a bundle lands, and
+	// every rewrite is a fresh object describing the same body. Keyed on identity
+	// each of them would cost a whole porkchop.
+	it('asks the same question of an end rebuilt from the same body', () => {
+		const panel = new TravelPanelState();
+		const rebuilt = { ...EARTH, elements: { ...EARTH.elements, ma: EARTH.elements.ma + 30 } };
+		expect(ask(panel, rebuilt)).toBe(ask(panel));
+	});
+
+	// Each of these moves a price, and not one of them is either end.
+	it('asks a new question of every term the routes are priced with', () => {
+		const panel = new TravelPanelState();
+		const base = ask(panel);
+
+		panel.targetMode = 'flyby';
+		expect(ask(panel)).not.toBe(base);
+		panel.targetMode = DEFAULT_TRIP.targetMode;
+
+		panel.aero = 'none';
+		expect(ask(panel)).not.toBe(base);
+		panel.aero = DEFAULT_TRIP.aero;
+
+		panel.timeMode = 'depart';
+		panel.pickedJd = J2000 + 400;
+		expect(ask(panel)).not.toBe(base);
+		panel.timeMode = DEFAULT_TRIP.timeMode;
+		panel.pickedJd = DEFAULT_TRIP.pickedJd;
+
+		panel.originAtSite = true;
+		panel.originSiteLatDeg = 28.5;
+		expect(ask(panel)).not.toBe(base);
+		panel.originAtSite = false;
+		panel.originSiteLatDeg = null;
+
+		panel.setEndOrbit('target', { rPeriKm: 4000, rApoKm: 4000 });
+		expect(ask(panel)).not.toBe(base);
+		panel.setEndOrbit('target', undefined);
+
+		expect(ask(panel)).toBe(base);
+	});
+
+	// The measured positions land after the first solve and outrank the elements,
+	// so what they describe is a different trip.
+	it('asks again once an end has been measured', () => {
+		const panel = new TravelPanelState();
+		const measured: TravelBody = {
+			...MARS,
+			samples: { centerId: 'sun', jds: [J2000], r: [[0, 0, 0]], v: [[0, 0, 0]] }
+		};
+		expect(ask(panel, EARTH, measured)).not.toBe(ask(panel));
+	});
+
+	// The choice list is rebuilt from fresh objects whenever anything about the
+	// body changes. Taking one would dirty the search on a choice nobody made.
+	it('keeps the orbit it holds when an equal one is handed over', () => {
+		const panel = new TravelPanelState();
+		panel.setEndOrbit('target', { rPeriKm: 4000, rApoKm: 4000 });
+		const held = panel.targetOrbit;
+		panel.setEndOrbit('target', { rPeriKm: 4000, rApoKm: 4000 });
+		expect(panel.targetOrbit).toBe(held);
+		panel.setEndOrbit('target', { rPeriKm: 4000, rApoKm: 9000 });
+		expect(panel.targetOrbit).not.toBe(held);
+	});
+});
+
+describe('TravelPanelState blocking', () => {
+	// A block is called straight out of an effect, and blocking twice for the same
+	// reason says nothing new. Replacing each list with a fresh empty one would
+	// dirty every reader of them on a call that changed nothing.
+	it('says nothing new the second time it blocks for the same reason', async () => {
+		const panel = new TravelPanelState();
+		await solveTrip(panel, EARTH, MARS, J2000);
+		panel.block('no-target');
+		const routes = panel.routes;
+		const presets = panel.torchPresets;
+		panel.block('no-target');
+		expect(panel.routes).toBe(routes);
+		expect(panel.torchPresets).toBe(presets);
+		panel.block('no-origin');
+		expect(panel.blocked).toBe('no-origin');
 	});
 });

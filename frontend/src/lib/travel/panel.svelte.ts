@@ -7,6 +7,11 @@
  * visible in one place instead of hidden behind a self-feeding async write.
  * Superseded solves are dropped by token, so a fast destination change can't
  * be overwritten by the answer to the previous one.
+ *
+ * {@link solve} is a function of its {@link SolveRequest} and nothing else: it
+ * reads no state of its own, so a term the request doesn't carry cannot be one
+ * the search quietly turns on. The trajectories the craft flies are still read
+ * off the panel, and each gates on a key of its own instead.
  */
 
 import {
@@ -35,6 +40,7 @@ import {
 	type TravelBody,
 	type Vehicle
 } from '$lib/math/travel';
+import { untrack } from 'svelte';
 import { ensureVehicles, vehicleCatalogue } from './vehicles';
 import { earliestDepartJd, searchWindow } from './search-window';
 import { listedTorchArcs, TORCH_PRESETS, type TorchArc } from './torch-arcs';
@@ -98,6 +104,106 @@ const MAX_REFINE_PASSES = 3;
 /** How little the dates have to move for a further pass to be answering the
  *  same question. Well under the day a porkchop cell spans. */
 const REFINE_SETTLED_DAYS = 0.5;
+
+/** What each end of the trip is met at. */
+export type EndTerms = Pick<
+	RouteOptions,
+	'departureOrbit' | 'targetOrbit' | 'departureSiteLatDeg' | 'targetSiteLatDeg'
+>;
+
+/** The trip's own terms as a search takes them — everything the panel decides,
+ *  short of the two ends and the frame, which come from the page. Every term
+ *  here but the two dates is a `RouteOptions` field, so a route is priced with
+ *  whatever is left once those are dropped. */
+export interface SolveTerms extends EndTerms {
+	timeMode: TimeMode;
+	pickedJd: number | null;
+	departureMode: DepartureMode;
+	arrivalMode: ArrivalMode;
+	aero: AeroAssist;
+}
+
+/** One whole question to put to the solver. */
+export interface SolveRequest {
+	origin: TravelBody;
+	target: TravelBody;
+	/** The captured "now" the trip is planned from, not the live clock. */
+	nowJd: number;
+	frame: TransferFrame;
+	terms: SolveTerms;
+}
+
+/** What an orbit is worth to a key. Rounded to the kilometre, which is the one
+ *  tolerance in play here: anything finer is a difference nobody chose. */
+function orbitFragment(orbit?: EndOrbit): string {
+	return orbit ? `${Math.round(orbit.rPeriKm)}/${Math.round(orbit.rApoKm)}` : '';
+}
+
+function latFragment(deg?: number): string {
+	return deg === undefined ? '' : deg.toFixed(2);
+}
+
+/** What the ends' orbits and sites are worth to a key. */
+export function endTermsKey(terms: EndTerms): string {
+	return [
+		orbitFragment(terms.departureOrbit),
+		orbitFragment(terms.targetOrbit),
+		latFragment(terms.departureSiteLatDeg),
+		latFragment(terms.targetSiteLatDeg)
+	].join('|');
+}
+
+/** What an end is worth to a request key: what it is, and the two things about
+ *  it that move a price. Its elements are deliberately left out — they belong
+ *  to the scene, which rewrites them as its clock runs, and the same trip asked
+ *  again is the same question however far the planets have moved since. */
+function endKey(body: TravelBody): string {
+	return `${body.id}/${air(body)}/${body.samples ? 'm' : ''}`;
+}
+
+/**
+ * What a request asks, as a string.
+ *
+ * The gate on the solve effect, and the reason a rebuilt end costs nothing: two
+ * requests with the same key have the same answer, so the porkchop behind them
+ * is worth keeping. Content only — an object replaced with an equal one is not
+ * a new question.
+ */
+export function solveRequestKey(request: SolveRequest): string {
+	const { origin, target, nowJd, frame, terms } = request;
+	return [
+		endKey(origin),
+		endKey(target),
+		nowJd,
+		frame.orbit,
+		frame.centralMu ?? '',
+		frame.systemPrimary ?? '',
+		frame.orbitChange ? 'oc' : '',
+		terms.timeMode,
+		terms.pickedJd ?? '',
+		terms.departureMode,
+		terms.arrivalMode,
+		terms.aero,
+		endTermsKey(terms)
+	].join('|');
+}
+
+/** The terms a route is priced with, as the kernel takes them. The dates are
+ *  left behind: they shape the window a search sweeps, not the arcs in it. */
+function routeOptionsFrom(terms: SolveTerms): RouteOptions {
+	// Dropped by name rather than copied field by field, so a term added to the
+	// trip reaches the kernel without an edit here.
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const { timeMode, pickedJd, ...options } = terms;
+	return options;
+}
+
+/** Whether two orbits are the same orbit, as the keys read them. Sharing their
+ *  rounding is the point: a difference the gate would drop must not be one that
+ *  dirties state. */
+function sameOrbit(a: EndOrbit | undefined, b: EndOrbit | undefined): boolean {
+	return orbitFragment(a) === orbitFragment(b);
+}
 
 /** When a trip leaves and when it arrives, as the search has it. */
 interface TripDates {
@@ -414,10 +520,7 @@ export class TravelPanelState {
 	 *  flyby names no orbit, nor does an end whose body hasn't been measured
 	 *  yet. A latitude is only worth quoting where the trip actually touches
 	 *  the ground — anywhere else the ascent it would price never happens. */
-	get endTerms(): Pick<
-		RouteOptions,
-		'departureOrbit' | 'targetOrbit' | 'departureSiteLatDeg' | 'targetSiteLatDeg'
-	> {
+	get endTerms(): EndTerms {
 		return {
 			departureOrbit: this.departureMode === 'surface' ? undefined : this.originOrbit,
 			targetOrbit:
@@ -431,17 +534,43 @@ export class TravelPanelState {
 		};
 	}
 
+	/**
+	 * Hand over the orbit an end is met in, from the choice list only the
+	 * component can build.
+	 *
+	 * Written through rather than assigned so an equal orbit is not a new one:
+	 * the list is rebuilt whenever anything about the body changes, and each
+	 * rebuild makes fresh objects. Assigning those straight would dirty every
+	 * reader — the search among them — on a choice nobody changed.
+	 */
+	setEndOrbit(role: 'origin' | 'target', orbit: EndOrbit | undefined): void {
+		const key = role === 'origin' ? 'originOrbit' : 'targetOrbit';
+		if (
+			!sameOrbit(
+				untrack(() => this[key]),
+				orbit
+			)
+		)
+			this[key] = orbit;
+	}
+
+	/** Everything a search turns on that the panel owns. The two ends and the
+	 *  frame come from the page; put together they are a {@link SolveRequest},
+	 *  which is the whole of what {@link solve} reads. */
+	get solveTerms(): SolveTerms {
+		return {
+			timeMode: this.timeMode,
+			pickedJd: this.pickedJd,
+			departureMode: this.departureMode,
+			arrivalMode: this.arrivalMode,
+			aero: this.effectiveAero,
+			...this.endTerms
+		};
+	}
+
 	/** What the ends' orbits and sites are worth to a cache key. */
 	#orbitKey(): string {
-		const {
-			departureOrbit: d,
-			targetOrbit: t,
-			departureSiteLatDeg,
-			targetSiteLatDeg
-		} = this.endTerms;
-		const one = (o?: EndOrbit) => (o ? `${Math.round(o.rPeriKm)}/${Math.round(o.rApoKm)}` : '');
-		const lat = (v?: number) => (v === undefined ? '' : v.toFixed(2));
-		return `${one(d)}|${one(t)}|${lat(departureSiteLatDeg)}|${lat(targetSiteLatDeg)}`;
+		return endTermsKey(this.endTerms);
 	}
 
 	get departureMode(): DepartureMode {
@@ -627,18 +756,6 @@ export class TravelPanelState {
 	#meetsDeadline(route: Route): boolean {
 		const deadlineJd = this.deadlineJd;
 		return deadlineJd == null || routeEndJd(route) <= deadlineJd;
-	}
-
-	/** Days this trip's arrival still owes once the crossing is over. Read off
-	 *  the same orbit the routes are priced against, or it would answer about
-	 *  another trip. */
-	#arrivalCampaignDays(target: TravelBody): number {
-		return arrivalCampaignDays(
-			target,
-			this.arrivalMode,
-			this.effectiveAero,
-			this.endTerms.targetOrbit
-		);
 	}
 
 	#earliestDepartJd(nowJd: number): number {
@@ -939,8 +1056,12 @@ export class TravelPanelState {
 		}
 	}
 
-	/** Mark a trip impossible before any solve is attempted. */
+	/** Mark a trip impossible before any solve is attempted. Blocking for the
+	 *  same reason twice says nothing new, and the guard is what makes it cost
+	 *  nothing: without it a repeat call replaces every list with a fresh empty
+	 *  one and dirties every reader of them. */
 	block(reason: BlockReason): void {
+		if (this.blocked === reason && this.status === 'blocked') return;
 		this.#token++;
 		this.blocked = reason;
 		this.status = 'blocked';
@@ -961,30 +1082,24 @@ export class TravelPanelState {
 	}
 
 	/**
-	 * Solve the current trip. Safe to call on every input change — the newest
-	 * call wins and the rest are discarded when they land.
+	 * Answer one {@link SolveRequest}. Safe to call on every input change — the
+	 * newest call wins and the rest are discarded when they land.
 	 *
-	 * `frame` says what the transfer goes round: nothing for an arc about the
-	 * Sun, an end for a trip to that body's own moon, a μ for two moons of one
-	 * planet.
+	 * Nothing below reaches back into the panel for a term, which is what lets
+	 * the caller's effect gate on {@link solveRequestKey}: a question it can't
+	 * see is a question it can't decide has already been asked.
 	 *
 	 * `refine` is how an end that doesn't keep still gets answered honestly —
 	 * see {@link RefineEnd}. Each pass is a whole search, so the first answer
 	 * is on screen at the usual speed and the corrections land behind it.
 	 */
-	async solve(
-		origin: TravelBody,
-		target: TravelBody,
-		nowJd: number,
-		frame: TransferFrame = { orbit: 'heliocentric' },
-		refine?: RefineEnd
-	): Promise<void> {
+	async solve(request: SolveRequest, refine?: RefineEnd): Promise<void> {
 		const token = ++this.#token;
-		let from = origin;
-		let to = target;
+		let from = request.origin;
+		let to = request.target;
 		let previous: TripDates | null = null;
 		for (let pass = 0; ; pass++) {
-			if (!(await this.#solvePass(from, to, nowJd, frame, token))) return;
+			if (!(await this.#solvePass({ ...request, origin: from, target: to }, token))) return;
 
 			// Where this pass says the craft leaves and arrives. Read off the
 			// cheapest route rather than each of them: the families share a
@@ -1017,30 +1132,26 @@ export class TravelPanelState {
 		}
 	}
 
-	/** One search against the ends as given. False when it didn't land — the
+	/** One search against the request as given. False when it didn't land — the
 	 *  trip was blocked, the search was superseded, or nothing came back. */
-	async #solvePass(
-		origin: TravelBody,
-		target: TravelBody,
-		nowJd: number,
-		frame: TransferFrame,
-		token: number
-	): Promise<boolean> {
+	async #solvePass(request: SolveRequest, token: number): Promise<boolean> {
+		const { origin, target, nowJd, frame, terms } = request;
 		const options = searchWindow({
 			origin,
 			target,
 			nowJd,
-			timeMode: this.timeMode,
-			pickedJd: this.pickedJd,
+			timeMode: terms.timeMode,
+			pickedJd: terms.pickedJd,
 			systemPrimary: frame.systemPrimary,
 			centralMu: frame.centralMu,
 			// A same-body trip's grid is its two orbits, so the terms that name
 			// them are part of the request rather than of the solve alone.
 			orbitChange: frame.orbitChange,
-			departureMode: this.departureMode,
-			arrivalMode: this.arrivalMode,
-			...this.endTerms,
-			arrivalDays: this.#arrivalCampaignDays(target)
+			departureMode: terms.departureMode,
+			arrivalMode: terms.arrivalMode,
+			departureOrbit: terms.departureOrbit,
+			targetOrbit: terms.targetOrbit,
+			arrivalDays: arrivalCampaignDays(target, terms.arrivalMode, terms.aero, terms.targetOrbit)
 		});
 		if (!options) {
 			console.debug(
@@ -1054,13 +1165,7 @@ export class TravelPanelState {
 		this.blocked = null;
 		this.status = 'solving';
 
-		const solveOptions = {
-			...options,
-			departureMode: this.departureMode,
-			arrivalMode: this.arrivalMode,
-			...this.endTerms,
-			aero: this.effectiveAero
-		};
+		const solveOptions = { ...options, ...routeOptionsFrom(terms) };
 		const result = await this.#solver.solve(origin, target, solveOptions);
 
 		// A newer solve has already started, or already answered.
