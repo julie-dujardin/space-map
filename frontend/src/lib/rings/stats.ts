@@ -5,7 +5,7 @@
 
 import type { RingMass } from '$lib/fetch/objects/object-data';
 import { convertMass } from '$lib/format/mass';
-import { formatNumber, formatUnit } from '$lib/format/quantities';
+import { formatNumber, formatUnit, type Parts } from '$lib/format/quantities';
 
 /** Mass with the hedges its source published.
  *
@@ -13,12 +13,7 @@ import { formatNumber, formatUnit } from '$lib/format/quantities';
  * "zettagrams". `note` carries only the published ± — every other hedge is
  * already in the value.
  */
-export function formatRingMass(mass: RingMass): {
-	/** Figure + qualifier, no unit — the Overview hangs the ± off this alone. */
-	number: string;
-	unit: string;
-	note?: string;
-} {
+export function formatRingMass(mass: RingMass): Parts & { note?: string } {
 	// Upper bound picks the unit; lower end is expressed in it, so a range
 	// isn't two quantities with two units.
 	const reference = mass.high_kg ?? mass.low_kg;
@@ -30,7 +25,9 @@ export function formatRingMass(mass: RingMass): {
 	// Same grammar as formatOpticalDepth: "< x" for a bound, "≈ x" for a
 	// rounded single figure, a bare range needs no hedge.
 	const low = inUnit(mass.low_kg);
-	const number = mass.upper_limit
+	// The figure carries its own qualifier and no unit: the Overview hangs the
+	// published ± off this alone.
+	const value = mass.upper_limit
 		? `< ${low}`
 		: mass.high_kg !== undefined
 			? `${low}–${inUnit(mass.high_kg)}`
@@ -40,5 +37,5 @@ export function formatRingMass(mass: RingMass): {
 
 	const note =
 		mass.uncertainty_kg !== undefined ? `± ${inUnit(mass.uncertainty_kg)} ${unit}` : undefined;
-	return { number, unit, note };
+	return { value, unit, note };
 }

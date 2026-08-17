@@ -16,6 +16,50 @@ export function formatUnit(unit: string, short?: boolean): string {
 	return fn();
 }
 
+/**
+ * A figure and the unit it is quoted in, kept apart.
+ *
+ * Two things need the split: a stat tile that sets the unit in its own type,
+ * and a span that says the unit once. `unit` is empty for a bare count.
+ *
+ * A unit is always a symbol standing alone, never a message with the figure
+ * baked into it. A "{value} kg/s" message can only wrap a string that is
+ * already finished, so a range comes out "200 (170–230) kg/s" beside a
+ * prefixed unit's "15.8 GW (12.7–18.9 GW)" — the same reading punctuated two
+ * ways, which is how the two forms drifted apart in the first place.
+ */
+export interface Parts {
+	value: string;
+	unit: string;
+	/** Degrees and their like bind to the digits with no space between. */
+	tight?: boolean;
+}
+
+/** How a quantity of one kind picks its unit — watts to terawatts, pascals to
+ *  bar. The argument is the raw SI figure. */
+export type PartsOf = (value: number) => Parts;
+
+/** "15.8 GW", "4°", "1,196" — the pair as one string. */
+export function joinParts(parts: Parts): string {
+	if (!parts.unit) return parts.value;
+	return parts.tight ? `${parts.value}${parts.unit}` : `${parts.value} ${parts.unit}`;
+}
+
+/**
+ * Two readings as one span, low end first.
+ *
+ * The unit is said once where both ends carry the same one, and twice where
+ * they do not: Earth's stratosphere runs 0.226 bar to 66.9 Pa, and one unit
+ * across that is off by four orders of magnitude. The wider form takes the
+ * wider separator, so "250 Ma – 1 Ga" doesn't read as one hyphenated quantity.
+ */
+export function formatSpan(low: Parts, high: Parts): string {
+	if (low.unit === high.unit && low.tight === high.tight) {
+		return joinParts({ ...high, value: `${low.value}–${high.value}` });
+	}
+	return `${joinParts(low)} – ${joinParts(high)}`;
+}
+
 // Units whose long name inflects with the value (locale-aware plural, e.g.
 // "1 Earth mass" vs "2 Earth masses"). Others keep the invariant unit_name_*
 // label. Symbols never pluralize.
@@ -59,7 +103,7 @@ export function formatQuantity(q: { value: number; unit: string }, short_unit?: 
 	const display = formatNumber(q.value);
 	const plural = short_unit ? undefined : PLURAL_UNIT_NAMES[q.unit];
 	if (plural) return plural({ count: q.value, display });
-	return `${display} ${formatUnit(q.unit, short_unit)}`;
+	return joinParts({ value: display, unit: formatUnit(q.unit, short_unit) });
 }
 
 /** Density in g/cm³, whichever unit Wikidata stored it in.

@@ -16,16 +16,19 @@
 	import {
 		activitySummary,
 		ageParts,
+		degreeParts,
 		dipoleMomentNote,
 		fieldKindLabel,
 		fieldParts,
 		fieldStrengthNote,
+		massRateParts,
 		measurement,
 		momentParts,
 		type PartsOf,
 		powerParts,
 		qualifier,
-		spellAge
+		spellAge,
+		volumeRateParts
 	} from '$lib/format/activity';
 	import { formatKm } from '$lib/format/distance';
 	import { ltrIsolate } from '$lib/format/bidi';
@@ -91,9 +94,7 @@
 		<Row
 			label={m.activity_erupted_volume()}
 			valueTooltip={qualifier(volcanism.erupted_volume_km3_per_year)}
-			value={m.activity_volume_rate({
-				value: num(volcanism.erupted_volume_km3_per_year)
-			})}
+			value={num(volcanism.erupted_volume_km3_per_year, volumeRateParts)}
 		/>
 	{/if}
 	{#if volcanism.plumes}
@@ -107,7 +108,7 @@
 		<Row
 			label={m.activity_plume_mass()}
 			valueTooltip={qualifier(volcanism.plume_mass_kg_per_s)}
-			value={m.activity_mass_rate({ value: num(volcanism.plume_mass_kg_per_s) })}
+			value={num(volcanism.plume_mass_kg_per_s, massRateParts)}
 		/>
 	{/if}
 	{#if volcanism.youngest_activity_years}
@@ -179,7 +180,7 @@
 		<Row
 			label={m.activity_dipole_tilt()}
 			valueTooltip={qualifier(magnetism.dipole_tilt_deg)}
-			value={m.activity_degrees({ value: num(magnetism.dipole_tilt_deg) })}
+			value={num(magnetism.dipole_tilt_deg, degreeParts)}
 		/>
 	{/if}
 	{#if magnetism.dynamo_ended_years}

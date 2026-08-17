@@ -10,6 +10,7 @@ import {
 	formatCompactCurrency,
 	formatNumber,
 	formatQuantity,
+	joinParts,
 	ucfirst
 } from '$lib/format/quantities';
 import { formatAcceleration, formatDv } from '$lib/travel/format';
@@ -87,14 +88,14 @@ export function craftSpecs(vehicle: Vehicle, route: Route): CraftSpec[] {
 	if (vehicle.ispS) {
 		specs.push({
 			label: m.travel_spec_isp(),
-			value: m.travel_unit_s({ value: formatNumber(vehicle.ispS.value) }),
+			value: joinParts({ value: formatNumber(vehicle.ispS.value), unit: m.symbol_second() }),
 			source: vehicle.ispS.source
 		});
 	}
 	if (vehicle.thrustN) {
 		specs.push({
 			label: m.travel_spec_thrust(),
-			value: m.travel_unit_n({ value: formatNumber(vehicle.thrustN.value) }),
+			value: joinParts({ value: formatNumber(vehicle.thrustN.value), unit: m.symbol_newton() }),
 			source: vehicle.thrustN.source
 		});
 	}

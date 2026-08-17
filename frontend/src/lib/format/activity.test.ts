@@ -5,11 +5,13 @@ import { describe, it, expect } from 'vitest';
 import {
 	activitySummary,
 	ageParts,
+	degreeParts,
 	dipoleMomentNote,
 	fieldParts,
 	fieldStrengthNote,
 	fieldSummary,
 	headline,
+	massRateParts,
 	measurement,
 	momentParts,
 	powerParts,
@@ -65,6 +67,19 @@ describe('measurement', () => {
 		// Titan's moment is a non-detection. A "<" and a bracket would be two
 		// different statements about the same absence.
 		expect(measurement({ value: 7.8e-10, upper_limit: true }, fieldParts)).toBe('< 0.78 nT');
+	});
+
+	it('brackets a fixed unit the way it brackets a prefixed one', () => {
+		// Enceladus's plumes, on the same panel as its 15.8 GW. The rate used to
+		// wrap the whole reading in a message of its own and came out
+		// "200 (170–230) kg/s" beside "15.8 GW (12.7–18.9 GW)".
+		expect(measurement({ value: 200, range: [170, 230] }, massRateParts)).toBe(
+			'200 kg/s (170–230 kg/s)'
+		);
+	});
+
+	it('binds a degree sign to its digits', () => {
+		expect(measurement({ value: 9.6, range: [9.4, 9.9] }, degreeParts)).toBe('9.6° (9.4–9.9°)');
 	});
 });
 

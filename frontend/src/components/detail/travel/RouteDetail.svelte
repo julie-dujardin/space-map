@@ -140,7 +140,11 @@
 					unit: m.travel_percent_c(),
 					tooltip: m.travel_percent_c_name()
 				}
-			: { label: m.travel_top_speed(), value: formatNumber(topSpeedKms), unit: m.travel_km_s() }
+			: {
+					label: m.travel_top_speed(),
+					value: formatNumber(topSpeedKms),
+					unit: m.symbol_kilometre_per_second()
+				}
 	);
 	let tiles = $derived<Tile[]>([
 		// The whole trip, not just the transfer: a route that arrives sooner and

@@ -1,5 +1,5 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
-import { formatQuantity, formatUnit, precisionOptions } from './quantities';
+import { formatQuantity, formatUnit, joinParts, precisionOptions } from './quantities';
 import { AU_KM } from '$lib/math/units';
 
 type DistanceUnit = 'astronomical_unit' | 'kilometre';
@@ -48,6 +48,6 @@ export function formatKmRange(fromKm: number, toKm: number): string {
 	);
 	const unit = formatUnit(metres ? 'metre' : 'kilometre', true);
 	const from = format.format(from_);
-	if (from === format.format(to_)) return `${from} ${unit}`;
-	return `${format.formatRange(from_, to_)} ${unit}`;
+	if (from === format.format(to_)) return joinParts({ value: from, unit });
+	return joinParts({ value: format.formatRange(from_, to_), unit });
 }

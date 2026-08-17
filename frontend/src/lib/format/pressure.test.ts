@@ -22,7 +22,9 @@ describe('formatPressure', () => {
 
 describe('formatPressureSpan', () => {
 	it('says the unit once where both ends are in it', () => {
-		expect(formatPressureSpan(1.014e5, 22632)).toBe('1.01 – 0.226 bar');
+		// Closed up, the way every other span in the app sets one: the wide
+		// separator is what the two ends take when each carries its own unit.
+		expect(formatPressureSpan(1.014e5, 22632)).toBe('1.01–0.226 bar');
 	});
 
 	it('repeats it across the bar/pascal boundary', () => {
@@ -32,7 +34,7 @@ describe('formatPressureSpan', () => {
 	});
 
 	it('keeps scientific notation at the thin end', () => {
-		expect(formatPressureSpan(0.3734, 8.213e-8)).toBe('0.373 – 8.2×10⁻⁸ Pa');
+		expect(formatPressureSpan(0.3734, 8.213e-8)).toBe('0.373–8.2×10⁻⁸ Pa');
 	});
 
 	it('states one number where the ends round together', () => {

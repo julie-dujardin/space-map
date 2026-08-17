@@ -5,7 +5,8 @@
  */
 
 import { formatKm, formatKmRange } from '$lib/format/distance';
-import { sigFigures } from '$lib/format/quantities';
+import { joinParts, sigFigures, type Parts } from '$lib/format/quantities';
+import { sievertParts } from '$lib/format/radiation';
 import type { EndOrbit } from '$lib/math/travel/maneuvers';
 import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
@@ -28,25 +29,30 @@ function fixed(value: number, digits: number): string {
 	});
 }
 
+/** Figure and unit split apart, for the stat tile that sets its own type.
+ *  `decimals` is what separates the panel's Δv from the route row's tighter
+ *  one; the unit and the floor it climbs at are shared. */
+function dvPartsAt(kms: number, decimals: number): Parts {
+	if (!Number.isFinite(kms)) return { value: '—', unit: '' };
+	if (kms >= MEGAMETRE_FLOOR_KMS) {
+		return { value: megametres(kms), unit: m.symbol_megametre_per_second() };
+	}
+	return { value: fixed(kms, decimals), unit: m.symbol_kilometre_per_second() };
+}
+
+/** One decimal, which is what a tile and a route row have room for. */
+export function dvParts(kms: number): Parts {
+	return dvPartsAt(kms, 1);
+}
+
 /** Δv with two decimals — the precision the estimates actually carry. */
 export function formatDv(kms: number): string {
-	if (!Number.isFinite(kms)) return '—';
-	if (kms >= MEGAMETRE_FLOOR_KMS) return m.travel_unit_mm_s({ value: megametres(kms) });
-	return m.travel_unit_km_s({ value: fixed(kms, 2) });
+	return joinParts(dvPartsAt(kms, 2));
 }
 
 /** The route row's tighter form: one decimal, same unit climb. */
 export function formatDvBrief(kms: number): string {
-	if (!Number.isFinite(kms)) return '—';
-	if (kms >= MEGAMETRE_FLOOR_KMS) return m.travel_unit_mm_s({ value: megametres(kms) });
-	return m.travel_unit_km_s({ value: fixed(kms, 1) });
-}
-
-/** Figure and unit split apart, for the stat tile that sets its own type. */
-export function dvParts(kms: number): { value: string; unit: string } {
-	if (!Number.isFinite(kms)) return { value: '—', unit: '' };
-	if (kms >= MEGAMETRE_FLOOR_KMS) return { value: megametres(kms), unit: m.travel_mm_s() };
-	return { value: fixed(kms, 1), unit: m.travel_km_s() };
+	return joinParts(dvParts(kms));
 }
 
 /** Two significant figures. Nothing about a dose is known to more — the cosmic
@@ -60,17 +66,15 @@ function doseFigure(value: number): string {
  *  unit serves both. */
 export function formatSievert(sv: number): string {
 	if (!Number.isFinite(sv)) return '—';
-	if (sv >= 1) return m.travel_unit_sv({ value: doseFigure(sv) });
-	if (sv >= 1e-3) return m.travel_unit_msv({ value: doseFigure(sv * 1e3) });
-	return m.travel_unit_usv({ value: doseFigure(sv * 1e6) });
+	return joinParts(sievertParts(sv, doseFigure));
 }
 
 /** An absorbed dose, in grays. Only belts produce these, in quantities that
  *  need the kilogray — Pioneer 10 took 4.5 of them past Jupiter. */
 export function formatGray(gy: number): string {
 	if (!Number.isFinite(gy)) return '—';
-	if (gy >= 1000) return m.travel_unit_kgy({ value: doseFigure(gy / 1000) });
-	return m.travel_unit_gy({ value: doseFigure(gy) });
+	if (gy >= 1000) return joinParts({ value: doseFigure(gy / 1000), unit: m.symbol_kilogray() });
+	return joinParts({ value: doseFigure(gy), unit: m.symbol_gray() });
 }
 
 /** An end orbit as the height it is flown at: one figure when circular, low
@@ -100,22 +104,21 @@ function significant(value: number): string {
 /** The acceleration a drive holds, split from its unit for the tile that sets
  *  its own type. Three units, each covering drives the other two cannot say
  *  anything legible about. */
-export function accelerationParts(accelMs2: number): { value: string; unit: string } {
+export function accelerationParts(accelMs2: number): Parts {
 	if (!Number.isFinite(accelMs2) || accelMs2 <= 0) return { value: '—', unit: '' };
 	const gravities = accelMs2 / G0_M_S2;
 	if (gravities >= GRAVITIES_FLOOR) {
-		return { value: significant(gravities), unit: m.travel_g() };
+		return { value: significant(gravities), unit: m.symbol_standard_gravity() };
 	}
 	if (accelMs2 >= METRES_FLOOR_MS2) {
 		return { value: significant(accelMs2), unit: m.unit_symbol_metres_per_second_squared() };
 	}
-	return { value: significant(accelMs2 * 1e6), unit: m.travel_um_s2() };
+	return { value: significant(accelMs2 * 1e6), unit: m.symbol_micrometre_per_square_second() };
 }
 
 /** The same figure as one string, for the places that run it into a line. */
 export function formatAcceleration(accelMs2: number): string {
-	const { value, unit } = accelerationParts(accelMs2);
-	return unit ? `${value} ${unit}` : value;
+	return joinParts(accelerationParts(accelMs2));
 }
 
 const LIGHT_SPEED_KMS = 299792.458;

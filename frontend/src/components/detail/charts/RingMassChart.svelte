@@ -2,6 +2,7 @@
 	/** How much material each ring system holds. */
 
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
+	import { joinParts } from '$lib/format/quantities';
 	import { formatRingMass } from '$lib/rings/stats';
 	import * as m from '$lib/paraglide/messages.js';
 	import CountPerBodyChart, { type CountPerBodyEntry } from './CountPerBodyChart.svelte';
@@ -49,8 +50,7 @@
 	function text(entry: CountPerBodyEntry): string {
 		const mass = masses.get(entry.primary_id ?? '');
 		if (!mass) return '';
-		const { number, unit } = formatRingMass(mass);
-		return `${number} ${unit}`;
+		return joinParts(formatRingMass(mass));
 	}
 </script>
 

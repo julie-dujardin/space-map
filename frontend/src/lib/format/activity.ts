@@ -1,11 +1,12 @@
 /**
  * Rendering for the activity block — what a body is still doing.
  *
- * Two shapes of number live here. Heat, magnetic field and age carry a symbol
- * that changes with magnitude (GW to TW, nT to µT, ka to Ga), so they render
- * through `parts` and a span can say its unit once. Everything else — a rate,
- * a flux, an offset in body radii — carries a fixed unit that belongs inside
- * its own message, where a translator can put it where the language wants it.
+ * Every quantity picks its unit through a `PartsOf`, whether the unit changes
+ * with the magnitude (GW to TW, nT to µT, ka to Ga) or is the only one the
+ * quantity is ever quoted in (kg/s, km³/yr, degrees). One shape for both, so
+ * `measurement` punctuates every row the same way — the fixed units used to
+ * wrap the finished string in a message of their own and came out
+ * "200 (170–230) kg/s" next to "15.8 GW (12.7–18.9 GW)".
  *
  * Every value goes through `measurement`, because in this subject the
  * qualifier is usually the finding: a bound and a measurement would otherwise
@@ -20,16 +21,17 @@ import type {
 	Volcanism
 } from '$lib/fetch/objects/object-data';
 import { ltrIsolate } from './bidi';
-import { earthRatio, scientificNotation, sigFigures, ucfirst } from './quantities';
+import {
+	earthRatio,
+	formatSpan,
+	joinParts,
+	scientificNotation,
+	sigFigures,
+	ucfirst,
+	type PartsOf
+} from './quantities';
 
-/** A number and its unit apart, so a span can say the unit once. `unit` is
- *  empty for the bare counts. */
-interface Parts {
-	value: string;
-	unit: string;
-}
-
-export type PartsOf = (value: number) => Parts;
+export type { PartsOf };
 
 /**
  * A number with no unit — a count, a Love number, a fraction of a radius.
@@ -49,24 +51,47 @@ const bare: PartsOf = (value) => {
 	};
 };
 
-// Watt and tesla have their symbols here rather than through `formatUnit`,
-// whose `unit_symbol_*` namespace is generated from Wikidata and would render
-// "47 terawatt" until an export refreshed it. These are also the units where
-// the *prefix* inflects — micro is мк in Russian — so one key per prefixed
-// unit, the same shape the generated ones take.
+// These symbols come from the hand-written `symbol_*` messages rather than
+// through `formatUnit`, whose `unit_symbol_*` namespace is generated from
+// Wikidata and would render "47 terawatt" until an export refreshed it. They
+// are also the units where the *prefix* inflects — micro is мк in Russian — so
+// there is one key per prefixed unit, the same shape the generated ones take.
 
 /** Heat leaving a body, from Enceladus's 15.8 GW to Io's 105 TW. */
 export const powerParts: PartsOf = (w) => {
-	if (w >= 1e12) return { value: sigFigures(w / 1e12), unit: m.activity_unit_terawatt() };
-	if (w >= 1e9) return { value: sigFigures(w / 1e9), unit: m.activity_unit_gigawatt() };
-	return { value: sigFigures(w), unit: m.activity_unit_watt() };
+	if (w >= 1e12) return { value: sigFigures(w / 1e12), unit: m.symbol_terawatt() };
+	if (w >= 1e9) return { value: sigFigures(w / 1e9), unit: m.symbol_gigawatt() };
+	return { value: sigFigures(w), unit: m.symbol_watt() };
 };
 
 /** Surface fields run from Titan's 0.78 nT bound to Jupiter's 418 µT. */
 export const fieldParts: PartsOf = (tesla) =>
 	tesla >= 1e-6
-		? { value: sigFigures(tesla * 1e6), unit: m.activity_unit_microtesla() }
-		: { value: sigFigures(tesla * 1e9), unit: m.activity_unit_nanotesla() };
+		? { value: sigFigures(tesla * 1e6), unit: m.symbol_microtesla() }
+		: { value: sigFigures(tesla * 1e9), unit: m.symbol_nanotesla() };
+
+// The quantities with one unit at every magnitude. They still go through
+// `PartsOf` rather than a message that swallows the figure, so a published
+// width is bracketed the way every other row's is.
+
+/** What Enceladus's plumes lift, in kg/s. */
+export const massRateParts: PartsOf = (kgPerSecond) => ({
+	value: bare(kgPerSecond).value,
+	unit: m.symbol_kilogram_per_second()
+});
+
+/** What a body extrudes in a year, in km³. */
+export const volumeRateParts: PartsOf = (km3PerYear) => ({
+	value: bare(km3PerYear).value,
+	unit: m.symbol_cubic_kilometre_per_year()
+});
+
+/** An angle — the tilt between a magnetic axis and a rotation axis. */
+export const degreeParts: PartsOf = (degrees) => ({
+	value: bare(degrees).value,
+	unit: m.symbol_degree(),
+	tight: true
+});
 
 // Geologists' notation, and the only one that fits a stat cell: "53 ka" against
 // "53 thousand years ago". Not localized because ka/Ma/Ga are symbols rather
@@ -86,7 +111,7 @@ const AGE_UNITS: [number, string][] = [
  */
 export const momentParts: PartsOf = (value) => ({
 	value: scientificNotation(value, 3),
-	unit: m.activity_unit_ampere_square_metre()
+	unit: m.symbol_ampere_square_metre()
 });
 
 /** Years before present. */
@@ -117,11 +142,7 @@ export function measurement(value: Measurement, parts: PartsOf = bare): string {
 	const text = headline(value, parts);
 	if (value.upper_limit || !value.range) return text;
 	const [low, high] = value.range.map(parts);
-	const span =
-		low.unit === high.unit
-			? `${low.value}–${high.value}${high.unit ? ` ${high.unit}` : ''}`
-			: `${join(low)} – ${join(high)}`;
-	return `${text} (${span})`;
+	return `${text} (${formatSpan(low, high)})`;
 }
 
 /**
@@ -133,12 +154,8 @@ export function measurement(value: Measurement, parts: PartsOf = bare): string {
  * as the row below does. The bound stays, because "<" is what the number *is*.
  */
 export function headline(value: Measurement, parts: PartsOf = bare): string {
-	const text = join(parts(value.value));
+	const text = joinParts(parts(value.value));
 	return value.upper_limit ? `< ${text}` : text;
-}
-
-function join(parts: Parts): string {
-	return parts.unit ? `${parts.value} ${parts.unit}` : parts.value;
 }
 
 /**

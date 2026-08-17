@@ -13,23 +13,36 @@
 import * as m from '$lib/paraglide/messages.js';
 import { CANCER_RISK_PER_SV, LETHAL_DOSE_GY } from '$lib/math/travel';
 import { formatDuration } from './duration';
-import { formatPercent, scientificNotation, sigFigures } from './quantities';
+import { formatPercent, joinParts, scientificNotation, sigFigures, type Parts } from './quantities';
 
-/** SI prefixes are the same in every language, so they are built here rather
- *  than carried as twelve copies of "m". */
-const PREFIXES: readonly (readonly [number, string])[] = [
-	[1, ''],
-	[1e-3, 'm'],
-	[1e-6, 'µ'],
-	[1e-9, 'n'],
-	[1e-12, 'p']
+// One symbol per prefixed sievert rather than a Latin prefix glued onto a
+// translated unit: Russian writes the sievert Зв, and concatenation produced
+// "мSv" here while the travel panel said "мЗв" for the same dose.
+const SIEVERTS: readonly (readonly [number, () => string])[] = [
+	[1, m.symbol_sievert],
+	[1e-3, m.symbol_millisievert],
+	[1e-6, m.symbol_microsievert],
+	[1e-9, m.symbol_nanosievert],
+	[1e-12, m.symbol_picosievert]
 ];
+
+/**
+ * A dose in whichever sievert keeps the mantissa readable, from Venus's 2
+ * pSv/day to Europa's thousand Sv/day.
+ *
+ * `figure` is the caller's own rounding, which is the one thing the two
+ * readers disagree on: an environment is quoted to three significant figures
+ * and a trip total to two, because the models behind them are known that far.
+ */
+export function sievertParts(sv: number, figure: (value: number) => string): Parts {
+	const [scale, unit] = SIEVERTS.find(([step]) => sv >= step) ?? SIEVERTS[SIEVERTS.length - 1];
+	return { value: figure(sv / scale), unit: unit() };
+}
 
 /** A dose in sieverts, prefixed so the mantissa stays readable. */
 export function formatSieverts(sv: number): string {
 	if (!Number.isFinite(sv) || sv <= 0) return '';
-	const [scale, prefix] = PREFIXES.find(([step]) => sv >= step) ?? PREFIXES[PREFIXES.length - 1];
-	return `${sigFigures(sv / scale, 3)} ${prefix}Sv`;
+	return joinParts(sievertParts(sv, (value) => sigFigures(value, 3)));
 }
 
 /** The same, as the rate it actually is. */

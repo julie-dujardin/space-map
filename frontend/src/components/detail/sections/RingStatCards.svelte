@@ -9,6 +9,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { RingStats } from '$lib/fetch/objects/object-data';
+	import { joinParts } from '$lib/format/quantities';
 	import { formatRingMass } from '$lib/rings/stats';
 	import { formatKm, formatKmRange } from '$lib/format/distance';
 
@@ -25,8 +26,8 @@
 
 	let massStat = $derived.by<Stat | null>(() => {
 		if (!stats?.mass) return null;
-		const { number, unit, note } = formatRingMass(stats.mass);
-		return { label: m.property_name_mass(), value: `${number} ${unit}`, tooltip: note };
+		const { note, ...parts } = formatRingMass(stats.mass);
+		return { label: m.property_name_mass(), value: joinParts(parts), tooltip: note };
 	});
 
 	let thicknessStat = $derived.by<Stat | null>(() => {

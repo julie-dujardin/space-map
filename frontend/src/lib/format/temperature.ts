@@ -5,6 +5,7 @@ import {
 	formatNumber,
 	formatQuantity,
 	formatUnit,
+	joinParts,
 	precisionOptions
 } from './quantities';
 
@@ -104,13 +105,16 @@ export function formatTemperatureRange(
 	const compact = peak >= COMPACT_ABOVE;
 	const unit = formatUnit(a.unit, true);
 	if (a.value === b.value) {
-		return `${compact ? formatCompactNumber(a.value) : formatNumber(a.value)} ${unit}`;
+		return joinParts({
+			value: compact ? formatCompactNumber(a.value) : formatNumber(a.value),
+			unit
+		});
 	}
 	const format = new Intl.NumberFormat(
 		getLocale(),
 		compact ? { notation: 'compact', maximumSignificantDigits: 3 } : precisionOptions(peak)
 	);
-	return `${format.formatRange(a.value, b.value)} ${unit}`;
+	return joinParts({ value: format.formatRange(a.value, b.value), unit });
 }
 
 // Spaced, because an end can be negative and "464 –-28" jams a separator
@@ -138,8 +142,8 @@ export function formatTemperatureSpan(
 	const b = convertTemperature(top, target);
 	const unit = formatUnit(a.unit, true);
 	// An isothermal layer has one temperature, not a span of the same number.
-	if (a.value === b.value) return `${oneNumber(a.value)} ${unit}`;
-	return `${oneNumber(a.value)}${SPAN_SEPARATOR}${oneNumber(b.value)} ${unit}`;
+	if (a.value === b.value) return joinParts({ value: oneNumber(a.value), unit });
+	return joinParts({ value: `${oneNumber(a.value)}${SPAN_SEPARATOR}${oneNumber(b.value)}`, unit });
 }
 
 function oneNumber(value: number): string {

@@ -86,7 +86,7 @@
 						<Tooltip.Trigger>
 							{#snippet child({ props })}
 								<span class="cursor-help underline decoration-dotted underline-offset-2" {...props}>
-									{mass.number}
+									{mass.value}
 								</span>
 							{/snippet}
 						</Tooltip.Trigger>
@@ -94,7 +94,7 @@
 					</Tooltip.Root>
 					{mass.unit}
 				{:else}
-					{mass.number} {mass.unit}
+					{mass.value} {mass.unit}
 				{/if}
 			</Row>
 		{/if}
