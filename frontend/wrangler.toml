@@ -1,9 +1,16 @@
 name = "space-map"
 main = ".svelte-kit/cloudflare/_worker.js"
-# Env lives in the CF dashboard; without this, deploys would wipe it.
+# Inherits vars set elsewhere; it can't restore one that's already gone.
 keep_vars = true
 compatibility_date = "2026-04-01"
 compatibility_flags = ["nodejs_compat"]
+
+# $env/dynamic/public reads these at runtime. Here, not in the dashboard, so a
+# version upload can't drop them.
+[vars]
+PUBLIC_MEILI_URL = "https://search.spacemap.co"
+# Search-only key, served to every visitor in /_app/env.js — not a secret.
+PUBLIC_MEILI_SEARCH_KEY = "a549d817688915c6bb30515172fd90705880bc949e461602f1ddfa4620548b9b" # gitleaks:allow pragma: allowlist secret trufflehog:ignore
 
 [assets]
 directory = ".svelte-kit/cloudflare"
