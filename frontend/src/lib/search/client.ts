@@ -134,6 +134,16 @@ export type SearchHit = FeatureHit | ObjectHit | GroupHit | PadHit;
 /** What a trip can start or end at — everything but a collection. */
 export type EndpointHit = ObjectHit | FeatureHit | PadHit;
 
+// A dead search bar is indistinguishable from a healthy site: the UI renders its
+// disabled state and nothing throws. Say why, once, so the cause is one console
+// line rather than a bisect.
+let warned = false;
+function warnOnce(reason: string) {
+	if (warned) return;
+	warned = true;
+	console.warn(`[search] unavailable: ${reason}`);
+}
+
 // The Meilisearch SDK (~40 kB gzip) is dynamically imported so it splits out of
 // the main map chunk — it only loads once the user actually searches.
 let client: Meilisearch | null = null;
@@ -145,6 +155,12 @@ async function getClient(): Promise<Meilisearch | null> {
 			host: env.PUBLIC_MEILI_URL,
 			apiKey: env.PUBLIC_MEILI_SEARCH_KEY
 		});
+		// One unawaited probe on first use. Covers what the env check can't:
+		// unreachable host, CORS rejection, revoked key, missing index.
+		client
+			.index(INDEX)
+			.getStats()
+			.catch((e) => warnOnce(`${env.PUBLIC_MEILI_URL} unreachable — ${e}`));
 	}
 	return client;
 }
@@ -152,7 +168,10 @@ async function getClient(): Promise<Meilisearch | null> {
 /** Enablement is a pure env check — no client instantiation, so callers stay
  *  synchronous and the SDK isn't pulled in just to render the disabled state. */
 export function isSearchEnabled(): boolean {
-	return Boolean(env.PUBLIC_MEILI_URL && env.PUBLIC_MEILI_SEARCH_KEY);
+	const enabled = Boolean(env.PUBLIC_MEILI_URL && env.PUBLIC_MEILI_SEARCH_KEY);
+	// Runtime vars, so a build that passed CI still ships search dark.
+	if (!enabled) warnOnce('PUBLIC_MEILI_URL / PUBLIC_MEILI_SEARCH_KEY are unset');
+	return enabled;
 }
 
 /** Unified index name. Objects, surface features and group/collection pages
