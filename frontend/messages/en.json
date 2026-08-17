@@ -1506,6 +1506,8 @@
 	"travel_leg_injection": "Departure burn",
 	"travel_lifts": "Lifts {value}",
 	"travel_manifest": "What you are taking",
+	"travel_manifest_fewer": "Less {what}",
+	"travel_manifest_more": "More {what}",
 	"travel_mm_s": "Mm/s",
 	"travel_mode_flyby": "Flyby",
 	"travel_mode_orbit": "Orbit",

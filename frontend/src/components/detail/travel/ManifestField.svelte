@@ -3,11 +3,17 @@
 
   Neither changes the trajectory — they only decide what the chosen craft can
   do with the route already offered, checked against the room `fit` reports.
+
+  Stepped rather than typed: both start at nothing and most trips move them a
+  step or two, which a pair of buttons does in one press each. The figure
+  itself stays typeable for the trips that don't.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import PackageIcon from '@lucide/svelte/icons/package';
+	import MinusIcon from '@lucide/svelte/icons/minus';
+	import PlusIcon from '@lucide/svelte/icons/plus';
 	import type { ManifestFit } from '$lib/math/travel';
 	import { formatQuantity, formatUnit } from '$lib/format/quantities';
 
@@ -20,6 +26,10 @@
 		onPayloadChange: (value: number) => void;
 	}
 	let { passengers, payloadKg, fit, onPassengersChange, onPayloadChange }: Props = $props();
+
+	/** A crate at a time: the hold figures craft are rated by run to tonnes, so a
+	 *  single kilogram would be a step nobody could reach the top of. */
+	const CARGO_STEP_KG = 100;
 
 	/** An emptied box means nothing aboard, not a broken figure. */
 	function parseAmount(raw: string): number {
@@ -50,9 +60,11 @@
 	});
 
 	const FIELD =
-		'border-border/60 bg-background flex min-w-0 flex-1 items-center gap-1.5 rounded-md border px-2 py-1';
+		'border-border/60 bg-background flex min-w-0 flex-1 items-center gap-1.5 rounded-md border ps-2 pe-1 py-1';
 	const INPUT =
 		'text-foreground w-0 min-w-0 flex-1 bg-transparent text-end text-sm tabular-nums outline-none';
+	const STEP =
+		'border-border/60 bg-muted/40 hover:bg-muted disabled:text-muted-foreground/50 disabled:hover:bg-muted/40 flex size-5 shrink-0 items-center justify-center rounded border transition-colors';
 </script>
 
 <div class="flex flex-col gap-1.5">
@@ -69,6 +81,23 @@
 				class={INPUT}
 				oninput={(e) => onPassengersChange(Math.floor(parseAmount(e.currentTarget.value)))}
 			/>
+			<button
+				type="button"
+				class={STEP}
+				disabled={passengers <= 0}
+				aria-label={m.travel_manifest_fewer({ what: m.travel_people() })}
+				onclick={() => onPassengersChange(Math.max(0, passengers - 1))}
+			>
+				<MinusIcon class="size-3" aria-hidden="true" />
+			</button>
+			<button
+				type="button"
+				class={STEP}
+				aria-label={m.travel_manifest_more({ what: m.travel_people() })}
+				onclick={() => onPassengersChange(passengers + 1)}
+			>
+				<PlusIcon class="size-3" aria-hidden="true" />
+			</button>
 		</label>
 
 		<label class={FIELD}>
@@ -77,13 +106,30 @@
 			<input
 				type="number"
 				min="0"
-				step="100"
+				step={CARGO_STEP_KG}
 				inputmode="numeric"
 				value={payloadKg}
 				class={INPUT}
 				oninput={(e) => onPayloadChange(parseAmount(e.currentTarget.value))}
 			/>
 			<span class="text-muted-foreground shrink-0 text-[11px]">{formatUnit('kilogram', true)}</span>
+			<button
+				type="button"
+				class={STEP}
+				disabled={payloadKg <= 0}
+				aria-label={m.travel_manifest_fewer({ what: m.travel_cargo() })}
+				onclick={() => onPayloadChange(Math.max(0, payloadKg - CARGO_STEP_KG))}
+			>
+				<MinusIcon class="size-3" aria-hidden="true" />
+			</button>
+			<button
+				type="button"
+				class={STEP}
+				aria-label={m.travel_manifest_more({ what: m.travel_cargo() })}
+				onclick={() => onPayloadChange(payloadKg + CARGO_STEP_KG)}
+			>
+				<PlusIcon class="size-3" aria-hidden="true" />
+			</button>
 		</label>
 	</div>
 
@@ -91,3 +137,17 @@
 		<p class="{note.warn ? 'text-amber-500' : 'text-muted-foreground'} text-[11px]">{note.text}</p>
 	{/if}
 </div>
+
+<style>
+	/* The type stays `number` for the keypad it brings up on a phone; the native
+	   spinners go, because the buttons beside the figure are already the steppers
+	   and two sets of arrows on one field read as two different controls. */
+	input[type='number'] {
+		appearance: textfield;
+	}
+	input[type='number']::-webkit-inner-spin-button,
+	input[type='number']::-webkit-outer-spin-button {
+		appearance: none;
+		margin: 0;
+	}
+</style>

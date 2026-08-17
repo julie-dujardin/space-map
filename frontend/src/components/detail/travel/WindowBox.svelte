@@ -77,8 +77,7 @@
 			: [])
 	]);
 
-	let rowClass =
-		'flex w-full items-center gap-3 rounded-md px-3 pt-2 pb-1 text-start transition-colors';
+	let rowClass = 'block w-full rounded-md px-3 pt-2 pb-1 text-start transition-colors';
 </script>
 
 <!-- The box is the field: without one there is nothing to pick off. -->

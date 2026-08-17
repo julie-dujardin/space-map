@@ -40,8 +40,7 @@
 		return crossing > 0 ? coastDays / crossing : 0;
 	});
 
-	let rowClass =
-		'flex w-full items-center gap-3 rounded-md px-3 pt-2 pb-1 text-start transition-colors';
+	let rowClass = 'block w-full rounded-md px-3 pt-2 pb-1 text-start transition-colors';
 
 	/** Slider handle width, from its own `size-3` — marks on the same span must match it. */
 	const THUMB_PX = 12;

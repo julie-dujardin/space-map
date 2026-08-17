@@ -2,6 +2,9 @@
   The date behind "depart at" / "arrive by" — without it those modes are
   indistinguishable from "leave now", so the field starts on today rather
   than empty.
+
+  A pill on the timing line, next to the mode that asked for it: the mode
+  already names what the date means, so it carries no visible label.
 -->
 <script lang="ts">
 	import CalendarIcon from '@lucide/svelte/icons/calendar';
@@ -35,29 +38,26 @@
 	}
 </script>
 
-<div class="flex items-center justify-between gap-2">
-	<span class="text-muted-foreground shrink-0 text-xs">{label}</span>
-	<Popover.Root bind:open>
-		<Popover.Trigger
-			class="border-border/60 bg-muted/40 hover:bg-muted flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs tabular-nums"
-		>
-			<!-- Visible label sits outside the trigger, so it's repeated here as the
-			     accessible name — a bare date announces nothing about which one. -->
-			<span class="sr-only">{label}</span>
-			<CalendarIcon class="text-muted-foreground size-3.5 shrink-0" aria-hidden="true" />
-			{formatJulianDate(jd)}
-		</Popover.Trigger>
-		<Popover.Content class="w-auto p-0" align="end" sideOffset={6}>
-			<Calendar
-				type="single"
-				{value}
-				bind:placeholder
-				onValueChange={pick}
-				captionLayout="dropdown"
-				locale={getLocale()}
-				minValue={PICKER_MIN_DATE}
-				maxValue={PICKER_MAX_DATE}
-			/>
-		</Popover.Content>
-	</Popover.Root>
-</div>
+<Popover.Root bind:open>
+	<Popover.Trigger
+		class="border-border/60 bg-muted/40 hover:bg-muted flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs tabular-nums transition-colors"
+	>
+		<!-- A bare date announces nothing about which one, and the mode beside it is
+		     a separate control, so the label is the accessible name here. -->
+		<span class="sr-only">{label}</span>
+		<CalendarIcon class="text-muted-foreground size-3.5 shrink-0" aria-hidden="true" />
+		{formatJulianDate(jd)}
+	</Popover.Trigger>
+	<Popover.Content class="w-auto p-0" align="start" sideOffset={6}>
+		<Calendar
+			type="single"
+			{value}
+			bind:placeholder
+			onValueChange={pick}
+			captionLayout="dropdown"
+			locale={getLocale()}
+			minValue={PICKER_MIN_DATE}
+			maxValue={PICKER_MAX_DATE}
+		/>
+	</Popover.Content>
+</Popover.Root>

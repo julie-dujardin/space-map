@@ -83,7 +83,7 @@
 				<button
 					type="button"
 					disabled
-					class="border-border/60 flex w-full items-center gap-3 rounded-md border px-3 py-2 text-start opacity-50 transition-colors"
+					class="border-border/60 block w-full rounded-md border px-3 py-2 text-start opacity-50 transition-colors"
 				>
 					{@render rowBody()}
 				</button>
@@ -92,7 +92,7 @@
 				     swaps the step in place. -->
 				<a
 					href={tripRouteHref(appState, state.trip, choice.profile)}
-					class="border-border/60 hover:bg-muted/40 flex w-full items-center gap-3 rounded-md border px-3 py-2 text-start transition-colors"
+					class="border-border/60 hover:bg-muted/40 block w-full rounded-md border px-3 py-2 text-start transition-colors"
 					onclick={(e) => {
 						if (isModifiedClick(e)) return;
 						e.preventDefault();

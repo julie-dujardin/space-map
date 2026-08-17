@@ -1,9 +1,12 @@
 <!--
   The craft box: closed it names what you are flying, open it is a popover
-  over the catalogue with a search bar. Same shape as the endpoint boxes above
-  it — the catalogue runs to dozens of craft, and a scrolling list was pushing
-  the trajectories off the panel. The search filters what the trip could be
-  flown with, not the whole catalogue.
+  over the catalogue with a search bar. The catalogue runs to dozens of craft,
+  and a scrolling list was pushing the trajectories off the panel. The search
+  filters what the trip could be flown with, not the whole catalogue.
+
+  Closed, it is one line — name leading, stats trailing. The description reads
+  as prose and belongs to choosing a craft, not to having chosen one, so it
+  stays in the rows of the open list.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
@@ -23,7 +26,12 @@
 		type Route,
 		type Vehicle
 	} from '$lib/math/travel';
-	import { departureNote, vehicleDescription, vehicleName } from './vehicle-labels';
+	import {
+		departureNote,
+		vehicleDescription,
+		vehicleName,
+		vehicleStatsParts
+	} from './vehicle-labels';
 	import { isCoarsePointer } from '$lib/device';
 	import VehicleMeta from './VehicleMeta.svelte';
 
@@ -55,6 +63,12 @@
 		open,
 		onOpenChange
 	}: Props = $props();
+
+	/** The stats the closed field carries beside the name — the same figures the
+	 *  open rows show under theirs, on one line. */
+	let closedStats = $derived(
+		selected ? vehicleStatsParts(selected, route, manifest).join(' · ') : ''
+	);
 
 	let query = $state('');
 	let input = $state<HTMLInputElement | null>(null);
@@ -141,14 +155,17 @@
 		class="border-border/60 bg-muted/40 hover:bg-muted data-[state=open]:bg-background flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-start transition-colors"
 	>
 		<RocketIcon class="text-muted-foreground size-4 shrink-0" />
-		<span class="min-w-0 flex-1">
-			<span class="block truncate text-sm font-medium {selected ? '' : 'text-muted-foreground'}">
-				{selected ? vehicleName(selected) : m.travel_add_craft()}
-			</span>
-			{#if selected}
-				<VehicleMeta vehicle={selected} {route} {manifest} />
-			{/if}
+		<span
+			class="min-w-0 flex-1 truncate text-sm font-medium {selected ? '' : 'text-muted-foreground'}"
+		>
+			{selected ? vehicleName(selected) : m.travel_add_craft()}
 		</span>
+		{#if closedStats}
+			<!-- Gives way to the name: which craft it is outranks what it can do. -->
+			<span class="text-muted-foreground max-w-[55%] truncate text-xs tabular-nums">
+				{closedStats}
+			</span>
+		{/if}
 		<ChevronDownIcon class="text-muted-foreground size-4 shrink-0" />
 	</Popover.Trigger>
 

@@ -81,7 +81,7 @@
 	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import { formatAcceleration } from '$lib/travel/format';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import Segmented from './Segmented.svelte';
+	import InlineMenu from './InlineMenu.svelte';
 	import VehicleField from './VehicleField.svelte';
 	import DateField from './DateField.svelte';
 	import ManifestField from './ManifestField.svelte';
@@ -1152,215 +1152,226 @@
 			/>
 		{/if}
 	{:else}
-		<!-- Three rows: origin, connector, destination. The swap sits in the middle
-	     row so it stays between the two boxes however tall either one grows. -->
-		<div class="grid grid-cols-[1fr_2rem] gap-x-2 gap-y-1.5">
-			<div class="col-start-1 row-start-1 min-w-0">
-				<EndpointField
-					role="origin"
-					bodyName={originName}
-					placeholder={m.travel_choose_origin()}
-					isFeature={panel.originAtSite}
-					mode={panel.originMode}
-					onModeChange={(mode: EndpointMode) => (panel.originMode = mode)}
-					choices={originChoices}
-					customAltKm={panel.originAltKm}
-					maxAltKm={originTravel && originFacts
-						? maxCustomAltitudeKm(originTravel, originFacts)
-						: 0}
-					onCustomAlt={(km: number) => (panel.originAltKm = km)}
-					priceKms={(choice: OrbitChoice) => priceEnd('origin', choice)}
-					open={openField === 'origin'}
-					onOpenChange={(next: boolean) => setOpenField('origin', next)}
-					excludeIds={excludeForOrigin}
-					pads={originPads}
-					padCode={originPadCode}
-					groundLine={originGroundLine}
-					onPadPick={onOriginPadPick}
-					onPick={(pick) => {
-						onOriginChange(pick);
-						// A feature has already answered "how"; anything else moves on to it.
-						if (pick.featureId !== null) openField = null;
-					}}
-				/>
-			</div>
+		<!-- Every setup control is now a single row, so they take one even gap
+		     between them rather than the wider one that separated blocks. -->
+		<div class="flex flex-col gap-2.5">
+			<!-- Three rows: origin, connector, destination. The swap sits beside all
+	     three and spans them, so it reads as acting on the pair rather than on
+	     the join between them, and stays centred however tall either box grows. -->
+			<div class="grid grid-cols-[1fr_2rem] gap-x-2 gap-y-1.5">
+				<div class="col-start-1 row-start-1 min-w-0">
+					<EndpointField
+						role="origin"
+						bodyName={originName}
+						placeholder={m.travel_choose_origin()}
+						isFeature={panel.originAtSite}
+						mode={panel.originMode}
+						onModeChange={(mode: EndpointMode) => (panel.originMode = mode)}
+						choices={originChoices}
+						customAltKm={panel.originAltKm}
+						maxAltKm={originTravel && originFacts
+							? maxCustomAltitudeKm(originTravel, originFacts)
+							: 0}
+						onCustomAlt={(km: number) => (panel.originAltKm = km)}
+						priceKms={(choice: OrbitChoice) => priceEnd('origin', choice)}
+						open={openField === 'origin'}
+						onOpenChange={(next: boolean) => setOpenField('origin', next)}
+						excludeIds={excludeForOrigin}
+						pads={originPads}
+						padCode={originPadCode}
+						groundLine={originGroundLine}
+						onPadPick={onOriginPadPick}
+						onPick={(pick) => {
+							onOriginChange(pick);
+							// A feature has already answered "how"; anything else moves on to it.
+							if (pick.featureId !== null) openField = null;
+						}}
+					/>
+				</div>
 
-			<div class="col-start-1 row-start-2">
-				<!-- 18px puts the stub under the endpoint markers' centre: the boxes'
+				<div class="col-start-1 row-start-2">
+					<!-- 18px puts the stub under the endpoint markers' centre: the boxes'
 				     px-2.5 plus half their size-3.5 marker cell. -->
-				<span class="bg-border ms-[18px] block h-2.5 w-px" aria-hidden="true"></span>
+					<span class="bg-border ms-[18px] block h-2.5 w-px" aria-hidden="true"></span>
+				</div>
+
+				<div class="col-start-1 row-start-3 min-w-0">
+					<EndpointField
+						role="target"
+						bodyName={targetName}
+						placeholder={m.travel_choose_target()}
+						isFeature={panel.targetAtSite}
+						mode={panel.targetMode}
+						onModeChange={(mode: EndpointMode) => (panel.targetMode = mode)}
+						choices={targetChoices}
+						customAltKm={panel.targetAltKm}
+						maxAltKm={targetTravel && targetFacts
+							? maxCustomAltitudeKm(targetTravel, targetFacts)
+							: 0}
+						onCustomAlt={(km: number) => (panel.targetAltKm = km)}
+						priceKms={(choice: OrbitChoice) => priceEnd('target', choice)}
+						open={openField === 'target'}
+						onOpenChange={(next: boolean) => setOpenField('target', next)}
+						excludeIds={excludeForTarget}
+						pads={targetPads}
+						padCode={targetPadCode}
+						groundLine={targetGroundLine}
+						onPadPick={onTargetPadPick}
+						onPick={(pick) => {
+							onTargetChange(pick);
+							if (pick.featureId !== null) openField = null;
+						}}
+					/>
+				</div>
+
+				<div class="col-start-2 row-span-3 row-start-1 flex items-center justify-end">
+					<Button
+						variant="outline"
+						size="icon"
+						onclick={swap}
+						disabled={!anyEnd}
+						class="text-muted-foreground"
+						aria-label={m.travel_swap()}
+					>
+						<ArrowUpDownIcon />
+					</Button>
+				</div>
 			</div>
 
-			<div class="col-start-1 row-start-3 min-w-0">
-				<EndpointField
-					role="target"
-					bodyName={targetName}
-					placeholder={m.travel_choose_target()}
-					isFeature={panel.targetAtSite}
-					mode={panel.targetMode}
-					onModeChange={(mode: EndpointMode) => (panel.targetMode = mode)}
-					choices={targetChoices}
-					customAltKm={panel.targetAltKm}
-					maxAltKm={targetTravel && targetFacts
-						? maxCustomAltitudeKm(targetTravel, targetFacts)
-						: 0}
-					onCustomAlt={(km: number) => (panel.targetAltKm = km)}
-					priceKms={(choice: OrbitChoice) => priceEnd('target', choice)}
-					open={openField === 'target'}
-					onOpenChange={(next: boolean) => setOpenField('target', next)}
-					excludeIds={excludeForTarget}
-					pads={targetPads}
-					padCode={targetPadCode}
-					groundLine={targetGroundLine}
-					onPadPick={onTargetPadPick}
-					onPick={(pick) => {
-						onTargetChange(pick);
-						if (pick.featureId !== null) openField = null;
+			<!-- When and how it arrives are one line: two phrases with their menus,
+		     rather than two banks of buttons. Both are terms of the trip that most
+		     readers never change, so they state the answer and stay out of the way
+		     of the trajectories.
+
+		     The line always stands as tall as the date pill, which only two of the
+		     three timing modes show — otherwise picking one of them would shunt
+		     everything below it down by ten pixels. -->
+			<div class="flex min-h-6.5 items-center gap-2">
+				<InlineMenu
+					options={TIME_MODES}
+					value={panel.timeMode}
+					onchange={(mode: TimeMode) => {
+						panel.timeMode = mode;
+						// Seed the date on the way in, so the mode means something the moment
+						// it is chosen rather than after a second click.
+						if (mode !== 'now' && panel.pickedJd == null) panel.pickedJd = defaultPickedJd(mode);
+					}}
+					ariaLabel={m.travel_when()}
+				/>
+				{#if panel.timeMode !== 'now'}
+					<DateField
+						label={panel.timeMode === 'depart' ? m.travel_depart_on() : m.travel_arrive_by()}
+						jd={panel.pickedJd ?? defaultPickedJd(panel.timeMode)}
+						onChange={(jd) => (panel.pickedJd = jd)}
+					/>
+				{/if}
+				{#if showAero}
+					<!-- Trailing, muted, and second: braking answers the arrival, which is
+				     the later half of the same sentence the timing starts. -->
+					<span class="flex-1"></span>
+					<InlineMenu
+						options={aeroChoices}
+						value={aeroValue}
+						onchange={(aero: AeroAssist) => (panel.aero = aero)}
+						ariaLabel={m.travel_aero_assist()}
+						align="end"
+						muted
+					/>
+				{/if}
+			</div>
+
+			<div class="flex flex-col gap-2.5">
+				<!-- Above the craft, and beside it rather than inside it: what you are
+			     taking is a fact about the trip that stands on its own before one is
+			     chosen, and it is what narrows the catalogue down — so it is asked
+			     first, and the list below it is already the list that can carry it. -->
+				<ManifestField
+					passengers={panel.passengers}
+					payloadKg={panel.payloadKg}
+					fit={panel.manifestFit}
+					onPassengersChange={(value) => (panel.passengers = value)}
+					onPayloadChange={(value) => (panel.payloadKg = value)}
+				/>
+
+				<VehicleField
+					vehicles={shownVehicles}
+					loaded={panel.vehiclesReady}
+					selected={panel.vehicle}
+					route={panel.selectedRoute}
+					manifest={panel.manifest}
+					passengers={panel.passengers}
+					departureMode={panel.departureMode}
+					onSelect={(id) => panel.selectVehicle(id)}
+					open={openField === 'craft'}
+					onOpenChange={(next: boolean) => {
+						setOpenField('craft', next);
+						// Nothing waits on this — the routes are already solved, and the list
+						// fills in when it lands.
+						if (next) void panel.loadVehicles();
 					}}
 				/>
 			</div>
 
-			<div class="relative col-start-2 row-start-2">
-				<Button
-					variant="outline"
-					size="icon"
-					onclick={swap}
-					disabled={!anyEnd}
-					class="text-muted-foreground absolute end-0 top-1/2 -translate-y-1/2"
-					aria-label={m.travel_swap()}
-				>
-					<ArrowUpDownIcon />
-				</Button>
-			</div>
-		</div>
-
-		<div class="flex flex-col gap-2">
-			<Segmented
-				options={TIME_MODES}
-				value={panel.timeMode}
-				onchange={(mode: TimeMode) => {
-					panel.timeMode = mode;
-					// Seed the date on the way in, so the mode means something the moment
-					// it is chosen rather than after a second click.
-					if (mode !== 'now' && panel.pickedJd == null) panel.pickedJd = defaultPickedJd(mode);
-				}}
-				ariaLabel={m.travel_when()}
-			/>
-			{#if panel.timeMode !== 'now'}
-				<DateField
-					label={panel.timeMode === 'depart' ? m.travel_depart_on() : m.travel_arrive_by()}
-					jd={panel.pickedJd ?? defaultPickedJd(panel.timeMode)}
-					onChange={(jd) => (panel.pickedJd = jd)}
-				/>
-			{/if}
-		</div>
-
-		<div class="flex flex-col gap-2">
-			<VehicleField
-				vehicles={shownVehicles}
-				loaded={panel.vehiclesReady}
-				selected={panel.vehicle}
-				route={panel.selectedRoute}
-				manifest={panel.manifest}
-				passengers={panel.passengers}
-				departureMode={panel.departureMode}
-				onSelect={(id) => panel.selectVehicle(id)}
-				open={openField === 'craft'}
-				onOpenChange={(next: boolean) => {
-					setOpenField('craft', next);
-					// Nothing waits on this — the routes are already solved, and the list
-					// fills in when it lands.
-					if (next) void panel.loadVehicles();
-				}}
-			/>
-
-			<!-- Beside the craft rather than inside it: what you are taking is a fact
-		     about the trip, and it stands on its own before one is chosen — it is
-		     what narrows the catalogue down. -->
-			<ManifestField
-				passengers={panel.passengers}
-				payloadKg={panel.payloadKg}
-				fit={panel.manifestFit}
-				onPassengersChange={(value) => (panel.passengers = value)}
-				onPayloadChange={(value) => (panel.payloadKg = value)}
-			/>
-		</div>
-
-		<!-- A term of the trip rather than of the destination: it does not change
-	     where you end up, it changes what getting there costs and how long it
-	     takes. So it sits with the craft and the manifest, next to the list of
-	     trajectories whose figures it moves. -->
-		{#if showAero}
-			<div class="flex flex-col gap-1.5">
-				<span class="text-muted-foreground text-[10px] uppercase">{m.travel_aero_assist()}</span>
-				<Segmented
-					options={aeroChoices}
-					value={aeroValue}
-					onchange={(aero: AeroAssist) => (panel.aero = aero)}
-					ariaLabel={m.travel_aero_assist()}
-				/>
-			</div>
-		{/if}
-
-		{#if panel.status === 'blocked'}
-			<!-- An end left blank is a prompt, not a failure — no alert icon on it. -->
-			{#if panel.blocked === 'no-target'}
-				<p class="text-muted-foreground text-xs">{m.travel_no_target()}</p>
-			{:else if panel.blocked === 'no-origin'}
-				<p class="text-muted-foreground text-xs">{m.travel_no_origin()}</p>
-				<!-- Also a prompt rather than a failure: the two ends are the same place,
+			{#if panel.status === 'blocked'}
+				<!-- An end left blank is a prompt, not a failure — no alert icon on it. -->
+				{#if panel.blocked === 'no-target'}
+					<p class="text-muted-foreground text-xs">{m.travel_no_target()}</p>
+				{:else if panel.blocked === 'no-origin'}
+					<p class="text-muted-foreground text-xs">{m.travel_no_origin()}</p>
+					<!-- Also a prompt rather than a failure: the two ends are the same place,
 			     and moving either one is the whole fix. -->
-			{:else if panel.blocked === 'same-place'}
-				<p class="text-muted-foreground text-xs">{m.travel_same_place()}</p>
-			{:else if panel.blocked === 'surface-hop'}
-				<p class="text-muted-foreground text-xs">{m.travel_surface_hop()}</p>
-			{:else}
-				<p class="text-muted-foreground flex items-start gap-2 text-xs">
-					<CircleAlertIcon class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-					<span>
-						{panel.blocked === 'unknown-primary'
-							? m.travel_unknown_primary()
-							: m.travel_unknown_orbit()}
-					</span>
-				</p>
-			{/if}
-			<!-- Counted against everything offered rather than against the search: a
+				{:else if panel.blocked === 'same-place'}
+					<p class="text-muted-foreground text-xs">{m.travel_same_place()}</p>
+				{:else if panel.blocked === 'surface-hop'}
+					<p class="text-muted-foreground text-xs">{m.travel_surface_hop()}</p>
+				{:else}
+					<p class="text-muted-foreground flex items-start gap-2 text-xs">
+						<CircleAlertIcon class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+						<span>
+							{panel.blocked === 'unknown-primary'
+								? m.travel_unknown_primary()
+								: m.travel_unknown_orbit()}
+						</span>
+					</p>
+				{/if}
+				<!-- Counted against everything offered rather than against the search: a
 		     constant-thrust arc needs no grid, so it can be the only answer there
 		     is while the porkchop is still running. -->
-		{:else if panel.status === 'solving' && panel.offered.length === 0}
-			<p class="text-muted-foreground text-xs">{m.travel_solving()}</p>
-		{:else if panel.status !== 'idle' && panel.offered.length === 0}
-			<!-- On the offer list rather than on `status`: a route can be withdrawn
+			{:else if panel.status === 'solving' && panel.offered.length === 0}
+				<p class="text-muted-foreground text-xs">{m.travel_solving()}</p>
+			{:else if panel.status !== 'idle' && panel.offered.length === 0}
+				<!-- On the offer list rather than on `status`: a route can be withdrawn
 			     after a solve answered — a longer coast missing the deadline — and
 			     the panel still has to say so rather than go blank. -->
-			<!-- Which of the two nothings this is: the pair has no transfer at all, or
+				<!-- Which of the two nothings this is: the pair has no transfer at all, or
 			     it has them and they are all too slow for the date asked for. -->
-			<p class="text-muted-foreground text-xs">
-				{panel.missedDeadline ? m.travel_no_routes_by_date() : m.travel_no_routes()}
-			</p>
-			<!-- A coast long enough to miss the deadline is what took the arc off the
+				<p class="text-muted-foreground text-xs">
+					{panel.missedDeadline ? m.travel_no_routes_by_date() : m.travel_no_routes()}
+				</p>
+				<!-- A coast long enough to miss the deadline is what took the arc off the
 			     list, so the control that did it has to outlive the list. -->
-			{#if panel.torchMissedDeadline}<CruiseBox state={panel} />{/if}
-		{:else if panel.offered.length > 0}
-			<!-- Said above the list rather than instead of it: what is left when the
+				{#if panel.torchMissedDeadline}<CruiseBox state={panel} />{/if}
+			{:else if panel.offered.length > 0}
+				<!-- Said above the list rather than instead of it: what is left when the
 			     search found nothing in time is a hand-picked point or a craft's own
 			     arc, and neither of them answers for the search. -->
-			{#if panel.missedDeadline}
-				<p class="text-muted-foreground text-xs">{m.travel_no_routes_by_date()}</p>
-			{/if}
-			<!-- The arc is gone, so its tab is too, and the control that took it has
+				{#if panel.missedDeadline}
+					<p class="text-muted-foreground text-xs">{m.travel_no_routes_by_date()}</p>
+				{/if}
+				<!-- The arc is gone, so its tab is too, and the control that took it has
 			     nowhere left to live but over the list. -->
-			{#if panel.torchMissedDeadline}<CruiseBox state={panel} />{/if}
-			<!-- One family of trajectory is on offer often enough — a chemical craft
+				{#if panel.torchMissedDeadline}<CruiseBox state={panel} />{/if}
+				<!-- One family of trajectory is on offer often enough — a chemical craft
 			     with no swing-by to be had — that a single tab would be a control
 			     with nothing to choose. -->
-			{#if tabs.length > 1}
-				<RouteTabs {tabs} active={family} onSelect={(next) => (wantedFamily = next)}>
-					{@render trajectories()}
-				</RouteTabs>
-			{:else}
-				<div class="flex flex-col gap-2">{@render trajectories()}</div>
+				{#if tabs.length > 1}
+					<RouteTabs {tabs} active={family} onSelect={(next) => (wantedFamily = next)}>
+						{@render trajectories()}
+					</RouteTabs>
+				{:else}
+					<div class="flex flex-col gap-2">{@render trajectories()}</div>
+				{/if}
 			{/if}
-		{/if}
+		</div>
 	{/if}
 </div>
