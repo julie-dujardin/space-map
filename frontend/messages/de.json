@@ -1362,6 +1362,8 @@
 	"travel_list_separator": ", ",
 	"travel_locating_ends": "Wird nachgeschlagen…",
 	"travel_manifest": "Was Sie mitnehmen",
+	"travel_manifest_fewer": "Weniger {what}",
+	"travel_manifest_more": "Mehr {what}",
 	"travel_mm_s": "Mm/s",
 	"travel_mode_semi_sync": "Halbsynchron",
 	"travel_mode_stationary": "Stationärer Orbit",

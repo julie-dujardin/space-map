@@ -94,6 +94,9 @@
 	import { hazardKey, routeKey, timelineKey } from './route-keys';
 
 	interface Props {
+		/** Whether the panel is in the phone layout. Its pickers take the whole
+		 *  screen there rather than opening a popover over a drawer's width. */
+		isMobile?: boolean;
 		/** Where the trip starts; null until one is chosen. */
 		origin: BodyData | null;
 		/** Where it ends; null until one is chosen. */
@@ -175,6 +178,7 @@
 		sampleEnd?: (id: string, centerId: string) => Promise<EphemerisSamples | null>;
 	}
 	let {
+		isMobile = false,
 		origin,
 		target,
 		originName,
@@ -1162,6 +1166,7 @@
 				<div class="col-start-1 row-start-1 min-w-0">
 					<EndpointField
 						role="origin"
+						fullscreen={isMobile}
 						bodyName={originName}
 						placeholder={m.travel_choose_origin()}
 						isFeature={panel.originAtSite}
@@ -1198,6 +1203,7 @@
 				<div class="col-start-1 row-start-3 min-w-0">
 					<EndpointField
 						role="target"
+						fullscreen={isMobile}
 						bodyName={targetName}
 						placeholder={m.travel_choose_target()}
 						isFeature={panel.targetAtSite}
@@ -1245,8 +1251,12 @@
 
 		     The line always stands as tall as the date pill, which only two of the
 		     three timing modes show — otherwise picking one of them would shunt
-		     everything below it down by ten pixels. -->
-			<div class="flex min-h-6.5 items-center gap-2">
+		     everything below it down by ten pixels.
+
+		     It wraps rather than holding one line at any cost: on a narrow phone a
+		     date and a braking mode together outrun the width, and a control shoved
+		     off the end is gone rather than merely cramped. -->
+			<div class="flex min-h-6.5 flex-wrap items-center gap-2">
 				<InlineMenu
 					options={TIME_MODES}
 					value={panel.timeMode}
@@ -1267,16 +1277,19 @@
 				{/if}
 				{#if showAero}
 					<!-- Trailing, muted, and second: braking answers the arrival, which is
-				     the later half of the same sentence the timing starts. -->
-					<span class="flex-1"></span>
-					<InlineMenu
-						options={aeroChoices}
-						value={aeroValue}
-						onchange={(aero: AeroAssist) => (panel.aero = aero)}
-						ariaLabel={m.travel_aero_assist()}
-						align="end"
-						muted
-					/>
+				     the later half of the same sentence the timing starts. Pushed to the
+				     end by its own margin rather than by a spacer, which would eat a
+				     whole line to itself once the row wraps. -->
+					<span class="ms-auto">
+						<InlineMenu
+							options={aeroChoices}
+							value={aeroValue}
+							onchange={(aero: AeroAssist) => (panel.aero = aero)}
+							ariaLabel={m.travel_aero_assist()}
+							align="end"
+							muted
+						/>
+					</span>
 				{/if}
 			</div>
 
@@ -1294,6 +1307,7 @@
 				/>
 
 				<VehicleField
+					fullscreen={isMobile}
 					vehicles={shownVehicles}
 					loaded={panel.vehiclesReady}
 					selected={panel.vehicle}

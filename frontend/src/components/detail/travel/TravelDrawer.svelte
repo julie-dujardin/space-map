@@ -629,6 +629,7 @@
 			<TravelPanel
 				{origin}
 				{target}
+				{isMobile}
 				originName={fromId === null
 					? null
 					: origin

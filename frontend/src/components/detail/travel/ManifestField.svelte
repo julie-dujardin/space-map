@@ -59,8 +59,11 @@
 		return null;
 	});
 
+	/** The basis is what decides whether the two fields share a line: below it
+	 *  there is no room for a figure between the label and the steppers, so they
+	 *  take a line each rather than squeezing the number out of the box. */
 	const FIELD =
-		'border-border/60 bg-background flex min-w-0 flex-1 items-center gap-1.5 rounded-md border ps-2 pe-1 py-1';
+		'border-border/60 bg-background flex min-w-0 shrink grow basis-40 items-center gap-1.5 rounded-md border ps-2 pe-1 py-1';
 	const INPUT =
 		'text-foreground w-0 min-w-0 flex-1 bg-transparent text-end text-sm tabular-nums outline-none';
 	const STEP =
@@ -68,7 +71,7 @@
 </script>
 
 <div class="flex flex-col gap-1.5">
-	<div class="flex items-center gap-2" role="group" aria-label={m.travel_manifest()}>
+	<div class="flex flex-wrap items-center gap-2" role="group" aria-label={m.travel_manifest()}>
 		<label class={FIELD}>
 			<UsersIcon class="text-muted-foreground size-3.5 shrink-0" />
 			<span class="text-muted-foreground shrink-0 text-xs">{m.travel_people()}</span>

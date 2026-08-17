@@ -1365,6 +1365,8 @@
 	"travel_list_separator": "、",
 	"travel_locating_ends": "検索中…",
 	"travel_manifest": "積むもの",
+	"travel_manifest_fewer": "{what}を減らす",
+	"travel_manifest_more": "{what}を増やす",
 	"travel_mm_s": "Mm/s",
 	"travel_mode_semi_sync": "半同期軌道",
 	"travel_mode_stationary": "静止軌道",

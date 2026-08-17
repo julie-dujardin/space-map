@@ -1441,6 +1441,8 @@
 	"travel_list_separator": "، ",
 	"travel_locating_ends": "جارٍ البحث…",
 	"travel_manifest": "ما ستأخذه معك",
+	"travel_manifest_fewer": "{what} أقل",
+	"travel_manifest_more": "{what} أكثر",
 	"travel_mm_s": "‎Mm/s‎",
 	"travel_mode_semi_sync": "شبه متزامن",
 	"travel_mode_stationary": "مدار ثابت",

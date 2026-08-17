@@ -32,8 +32,10 @@
 		/** Bodies this end may not be: the other end, plus anything the kernel can't solve against it. */
 		excludeIds: ReadonlySet<string>;
 		onPick: (pick: TravelEndpointPick) => void;
+		/** Fill the height it is given rather than cap the list — the phone layout. */
+		fullscreen?: boolean;
 	}
-	let { label, excludeIds, onPick }: Props = $props();
+	let { label, excludeIds, onPick, fullscreen = false }: Props = $props();
 
 	const uid = $props.id();
 	const listboxId = `travel-endpoint-list-${uid}`;
@@ -188,9 +190,9 @@
 </script>
 
 {#if isSearchEnabled()}
-	<div class="flex flex-col gap-2">
+	<div class="flex min-h-0 flex-col gap-2 {fullscreen ? 'flex-1' : ''}">
 		<div
-			class="border-border/60 bg-background flex items-center gap-2 rounded-md border px-2 py-1.5"
+			class="border-border/60 bg-background flex shrink-0 items-center gap-2 rounded-md border px-2 py-1.5"
 		>
 			<SearchIcon class="text-muted-foreground size-3.5 shrink-0" />
 			<!-- Deliberately not type="search": its native cancel button is drawn far heavier than the rest. -->
@@ -227,8 +229,12 @@
 
 		{#if query.trim().length >= MIN_QUERY}
 			{#if visible.length > 0}
-				<!-- Tall enough for all SHOW_LIMIT rows — a scrollbar for nothing shorter. -->
-				<ScrollArea viewportClasses="max-h-72">
+				<!-- Tall enough for all SHOW_LIMIT rows — a scrollbar for nothing shorter.
+				     Given the whole screen, it takes what is left of it instead. -->
+				<ScrollArea
+					class={fullscreen ? 'min-h-0 flex-1' : ''}
+					viewportClasses={fullscreen ? 'h-full' : 'max-h-72'}
+				>
 					<ul id={listboxId} role="listbox" class="flex flex-col">
 						{#each visible as hit, index (hit.kind === 'feature' ? `f${hit.feature_id}` : hit.id)}
 							<li role="presentation">

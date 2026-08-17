@@ -1366,6 +1366,8 @@
 	"travel_list_separator": "、",
 	"travel_locating_ends": "正在查找…",
 	"travel_manifest": "携带什么",
+	"travel_manifest_fewer": "减少{what}",
+	"travel_manifest_more": "增加{what}",
 	"travel_mm_s": "Mm/s",
 	"travel_mode_semi_sync": "半同步轨道",
 	"travel_mode_stationary": "静止轨道",

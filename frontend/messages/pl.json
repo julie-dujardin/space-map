@@ -1380,6 +1380,8 @@
 	"travel_list_separator": ", ",
 	"travel_locating_ends": "Wyszukiwanie…",
 	"travel_manifest": "Co zabierasz",
+	"travel_manifest_fewer": "Mniej: {what}",
+	"travel_manifest_more": "Więcej: {what}",
 	"travel_mm_s": "Mm/s",
 	"travel_mode_semi_sync": "Półsynchroniczna",
 	"travel_mode_stationary": "Orbita stacjonarna",

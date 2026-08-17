@@ -1366,6 +1366,8 @@
 	"travel_list_separator": ", ",
 	"travel_locating_ends": "מחפש…",
 	"travel_manifest": "מה לוקחים",
+	"travel_manifest_fewer": "פחות {what}",
+	"travel_manifest_more": "יותר {what}",
 	"travel_mm_s": "Mm/s",
 	"travel_mode_semi_sync": "חצי-סינכרוני",
 	"travel_mode_stationary": "מסלול נייח",

@@ -1411,6 +1411,8 @@
 	"travel_list_separator": ", ",
 	"travel_locating_ends": "Поиск…",
 	"travel_manifest": "Что вы берёте с собой",
+	"travel_manifest_fewer": "Меньше: {what}",
+	"travel_manifest_more": "Больше: {what}",
 	"travel_mm_s": "Мм/с",
 	"travel_mode_semi_sync": "Полусинхронная",
 	"travel_mode_stationary": "Стационарная орбита",

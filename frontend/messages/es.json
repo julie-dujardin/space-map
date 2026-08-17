@@ -1364,6 +1364,8 @@
 	"travel_list_separator": ", ",
 	"travel_locating_ends": "Buscando…",
 	"travel_manifest": "Qué llevas",
+	"travel_manifest_fewer": "Menos {what}",
+	"travel_manifest_more": "Más {what}",
 	"travel_mm_s": "Mm/s",
 	"travel_mode_semi_sync": "Semisíncrona",
 	"travel_mode_stationary": "Órbita estacionaria",

@@ -7,6 +7,10 @@
   Closed, it is one line — name leading, stats trailing. The description reads
   as prose and belongs to choosing a craft, not to having chosen one, so it
   stays in the rows of the open list.
+
+  On a phone the list takes the whole screen instead of a popover, the way the
+  map's own search does: a catalogue of dozens read through a floating card the
+  width of a drawer is a keyhole.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
@@ -34,6 +38,11 @@
 	} from './vehicle-labels';
 	import { isCoarsePointer } from '$lib/device';
 	import VehicleMeta from './VehicleMeta.svelte';
+	import FullscreenPicker from './FullscreenPicker.svelte';
+
+	/** Shared by both presentations, so the closed field looks the same either way. */
+	const TRIGGER =
+		'border-border/60 bg-muted/40 hover:bg-muted flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-start transition-colors';
 
 	interface Props {
 		/** Craft the trip could be flown with, already filtered by the panel. */
@@ -50,6 +59,8 @@
 		onSelect: (id: string) => void;
 		open: boolean;
 		onOpenChange: (open: boolean) => void;
+		/** Take the whole screen rather than open a popover — the phone layout. */
+		fullscreen?: boolean;
 	}
 	let {
 		vehicles,
@@ -61,7 +72,8 @@
 		departureMode,
 		onSelect,
 		open,
-		onOpenChange
+		onOpenChange,
+		fullscreen = false
 	}: Props = $props();
 
 	/** The stats the closed field carries beside the name — the same figures the
@@ -150,131 +162,150 @@
 	}
 </script>
 
-<Popover.Root {open} onOpenChange={(next: boolean) => onOpenChange(next)}>
-	<Popover.Trigger
-		class="border-border/60 bg-muted/40 hover:bg-muted data-[state=open]:bg-background flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-start transition-colors"
+{#snippet triggerBody()}
+	<RocketIcon class="text-muted-foreground size-4 shrink-0" />
+	<span
+		class="min-w-0 flex-1 truncate text-sm font-medium {selected ? '' : 'text-muted-foreground'}"
 	>
-		<RocketIcon class="text-muted-foreground size-4 shrink-0" />
-		<span
-			class="min-w-0 flex-1 truncate text-sm font-medium {selected ? '' : 'text-muted-foreground'}"
-		>
-			{selected ? vehicleName(selected) : m.travel_add_craft()}
+		{selected ? vehicleName(selected) : m.travel_add_craft()}
+	</span>
+	{#if closedStats}
+		<!-- Gives way to the name: which craft it is outranks what it can do. -->
+		<span class="text-muted-foreground max-w-[55%] truncate text-xs tabular-nums">
+			{closedStats}
 		</span>
-		{#if closedStats}
-			<!-- Gives way to the name: which craft it is outranks what it can do. -->
-			<span class="text-muted-foreground max-w-[55%] truncate text-xs tabular-nums">
-				{closedStats}
-			</span>
-		{/if}
-		<ChevronDownIcon class="text-muted-foreground size-4 shrink-0" />
-	</Popover.Trigger>
+	{/if}
+	<ChevronDownIcon class="text-muted-foreground size-4 shrink-0" />
+{/snippet}
 
-	<Popover.Content
-		align="start"
-		sideOffset={6}
-		class="w-[22rem] max-w-[calc(100vw-2rem)] gap-0 p-2"
+{#snippet panel()}
+	<div
+		class="border-border/60 bg-background mb-2 flex shrink-0 items-center gap-2 rounded-md border px-2 py-1.5"
 	>
-		<div
-			class="border-border/60 bg-background mb-2 flex items-center gap-2 rounded-md border px-2 py-1.5"
-		>
-			<SearchIcon class="text-muted-foreground size-3.5 shrink-0" />
-			<!-- Deliberately not type="search": its native cancel button is drawn far
+		<SearchIcon class="text-muted-foreground size-3.5 shrink-0" />
+		<!-- Deliberately not type="search": its native cancel button is drawn far
 			     heavier than the rest of the panel. -->
-			<input
-				bind:this={input}
-				bind:value={query}
-				type="text"
-				placeholder={m.travel_search_placeholder()}
-				aria-label={m.travel_add_craft()}
-				role="combobox"
-				aria-expanded={shown.length > 0}
-				aria-controls={listboxId}
-				aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
-				aria-autocomplete="list"
-				onkeydown={onKey}
-				autocomplete="off"
-				spellcheck="false"
-				class="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
-			/>
-			{#if query}
-				<button
-					type="button"
-					onclick={() => {
-						query = '';
-						input?.focus();
-					}}
-					aria-label={m.search_clear_search()}
-					class="text-muted-foreground hover:bg-accent hover:text-foreground shrink-0 rounded-full p-0.5 transition-colors"
-				>
-					<XIcon class="size-3.5" />
-				</button>
-			{/if}
-		</div>
+		<input
+			bind:this={input}
+			bind:value={query}
+			type="text"
+			placeholder={m.travel_search_placeholder()}
+			aria-label={m.travel_add_craft()}
+			role="combobox"
+			aria-expanded={shown.length > 0}
+			aria-controls={listboxId}
+			aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
+			aria-autocomplete="list"
+			onkeydown={onKey}
+			autocomplete="off"
+			spellcheck="false"
+			class="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
+		/>
+		{#if query}
+			<button
+				type="button"
+				onclick={() => {
+					query = '';
+					input?.focus();
+				}}
+				aria-label={m.search_clear_search()}
+				class="text-muted-foreground hover:bg-accent hover:text-foreground shrink-0 rounded-full p-0.5 transition-colors"
+			>
+				<XIcon class="size-3.5" />
+			</button>
+		{/if}
+	</div>
 
-		{#if shown.length > 0}
-			<ScrollArea viewportClasses="max-h-[26rem]">
-				<ul bind:this={list} id={listboxId} role="listbox" class="flex flex-col pe-2">
-					{#each shown as vehicle, index (vehicle.id)}
-						<!-- Only the chosen craft survives the panel's filter without fitting
+	{#if shown.length > 0}
+		<ScrollArea
+			class={fullscreen ? 'min-h-0 flex-1' : ''}
+			viewportClasses={fullscreen ? 'h-full' : 'max-h-[26rem]'}
+		>
+			<ul bind:this={list} id={listboxId} role="listbox" class="flex flex-col pe-2">
+				{#each shown as vehicle, index (vehicle.id)}
+					<!-- Only the chosen craft survives the panel's filter without fitting
 						     the departure, so the note reads as "here is why it stopped
 						     working", not as a rule on the list. -->
-						{@const fits = canDepartFrom(vehicle, departureMode)}
-						{@const seats = passengers > 0 ? crewCapacity(vehicle) : null}
-						{@const tooSmall = seats !== null && seats < passengers}
-						{@const active = selected?.id === vehicle.id}
-						<li role="presentation">
-							<button
-								type="button"
-								role="option"
-								id={optionId(index)}
-								aria-selected={active}
-								tabindex="-1"
-								onclick={() => choose(vehicle)}
-								class="hover:bg-muted flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-start text-xs {active ||
-								index === activeIndex
-									? 'bg-muted'
-									: ''} {tooSmall ? 'opacity-50' : ''}"
-							>
-								<span class="min-w-0 flex-1">
-									<span class="flex items-center gap-2">
-										<span
-											class="min-w-0 flex-1 truncate font-medium {fits
-												? ''
-												: 'text-muted-foreground'}"
-										>
-											{vehicleName(vehicle)}
-										</span>
-										{#if !fits}
-											<span class="text-muted-foreground shrink-0 text-[11px]">
-												{departureNote(vehicle)}
-											</span>
-										{/if}
-										{#if seats !== null}
-											<span
-												class="text-muted-foreground flex shrink-0 items-center gap-1 tabular-nums"
-												title={m.travel_seats()}
-											>
-												<UsersIcon class="size-3.5" aria-hidden="true" />
-												<span class="sr-only">{m.travel_seats()}</span>{seats}
-											</span>
-										{/if}
-										{#if active}
-											<CheckIcon class="size-3.5 shrink-0" aria-hidden="true" />
-										{/if}
+					{@const fits = canDepartFrom(vehicle, departureMode)}
+					{@const seats = passengers > 0 ? crewCapacity(vehicle) : null}
+					{@const tooSmall = seats !== null && seats < passengers}
+					{@const active = selected?.id === vehicle.id}
+					<li role="presentation">
+						<button
+							type="button"
+							role="option"
+							id={optionId(index)}
+							aria-selected={active}
+							tabindex="-1"
+							onclick={() => choose(vehicle)}
+							class="hover:bg-muted flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-start text-xs {active ||
+							index === activeIndex
+								? 'bg-muted'
+								: ''} {tooSmall ? 'opacity-50' : ''}"
+						>
+							<span class="min-w-0 flex-1">
+								<span class="flex items-center gap-2">
+									<span
+										class="min-w-0 flex-1 truncate font-medium {fits
+											? ''
+											: 'text-muted-foreground'}"
+									>
+										{vehicleName(vehicle)}
 									</span>
-									<VehicleMeta {vehicle} {route} {manifest} />
+									{#if !fits}
+										<span class="text-muted-foreground shrink-0 text-[11px]">
+											{departureNote(vehicle)}
+										</span>
+									{/if}
+									{#if seats !== null}
+										<span
+											class="text-muted-foreground flex shrink-0 items-center gap-1 tabular-nums"
+											title={m.travel_seats()}
+										>
+											<UsersIcon class="size-3.5" aria-hidden="true" />
+											<span class="sr-only">{m.travel_seats()}</span>{seats}
+										</span>
+									{/if}
+									{#if active}
+										<CheckIcon class="size-3.5 shrink-0" aria-hidden="true" />
+									{/if}
 								</span>
-							</button>
-						</li>
-					{/each}
-				</ul>
-			</ScrollArea>
-		{:else if !loaded}
-			<p class="text-muted-foreground px-2 py-1 text-xs">{m.travel_craft_loading()}</p>
-		{:else if query.trim()}
-			<p class="text-muted-foreground px-2 py-1 text-xs">{m.travel_search_empty()}</p>
-		{:else}
-			<p class="text-muted-foreground px-2 py-1 text-xs">{m.travel_no_craft_for_route()}</p>
-		{/if}
-	</Popover.Content>
-</Popover.Root>
+								<VehicleMeta {vehicle} {route} {manifest} />
+							</span>
+						</button>
+					</li>
+				{/each}
+			</ul>
+		</ScrollArea>
+	{:else if !loaded}
+		<p class="text-muted-foreground px-2 py-1 text-xs">{m.travel_craft_loading()}</p>
+	{:else if query.trim()}
+		<p class="text-muted-foreground px-2 py-1 text-xs">{m.travel_search_empty()}</p>
+	{:else}
+		<p class="text-muted-foreground px-2 py-1 text-xs">{m.travel_no_craft_for_route()}</p>
+	{/if}
+{/snippet}
+
+{#if fullscreen}
+	<button type="button" class={TRIGGER} onclick={() => onOpenChange(true)}>
+		{@render triggerBody()}
+	</button>
+	{#if open}
+		<FullscreenPicker title={m.travel_add_craft()} onClose={() => onOpenChange(false)}>
+			{@render panel()}
+		</FullscreenPicker>
+	{/if}
+{:else}
+	<Popover.Root {open} onOpenChange={(next: boolean) => onOpenChange(next)}>
+		<Popover.Trigger class="{TRIGGER} data-[state=open]:bg-background">
+			{@render triggerBody()}
+		</Popover.Trigger>
+		<Popover.Content
+			align="start"
+			sideOffset={6}
+			class="w-[22rem] max-w-[calc(100vw-2rem)] gap-0 p-2"
+		>
+			{@render panel()}
+		</Popover.Content>
+	</Popover.Root>
+{/if}

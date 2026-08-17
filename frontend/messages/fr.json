@@ -1369,6 +1369,8 @@
 	"travel_list_separator": ", ",
 	"travel_locating_ends": "Recherche en cours…",
 	"travel_manifest": "Ce que vous emportez",
+	"travel_manifest_fewer": "Moins de {what}",
+	"travel_manifest_more": "Plus de {what}",
 	"travel_mm_s": "Mm/s",
 	"travel_mode_semi_sync": "Semi-synchrone",
 	"travel_mode_stationary": "Orbite stationnaire",
