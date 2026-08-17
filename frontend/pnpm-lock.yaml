@@ -9,6 +9,7 @@ overrides:
   postcss@<8.5.23: ^8.5.26
   sharp@<0.35.0: ^0.35.3
   undici@<7.29.0: ^7.29.0
+  ws@<8.21.0: ^8.21.3
 
 importers:
   .:
@@ -3388,10 +3389,10 @@ packages:
       '@cloudflare/workers-types':
         optional: true
 
-  ws@8.18.0:
+  ws@8.21.3:
     resolution:
       {
-        integrity: sha512-8VbfWfHLbbwu3+N6OKsOMpBdT4kXPDDB9cJk2bJ6mh9ucxdlnNvH1e+roYkKmN9Nxw2yjz7VzeO9oOz2zJ04Pw==
+        integrity: sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==
       }
     engines: { node: '>=10.0.0' }
     peerDependencies:
@@ -4709,7 +4710,7 @@ snapshots:
       sharp: 0.35.3(@types/node@25.9.1)
       undici: 7.29.0
       workerd: 1.20260421.1
-      ws: 8.18.0
+      ws: 8.21.3
       youch: 4.1.0-beta.10
     transitivePeerDependencies:
       - '@types/node'
@@ -5177,7 +5178,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  ws@8.18.0: {}
+  ws@8.21.3: {}
 
   yaml@1.10.2: {}
 
