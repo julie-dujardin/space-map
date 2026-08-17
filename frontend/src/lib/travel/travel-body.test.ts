@@ -420,6 +420,12 @@ describe('transferPlan', () => {
 		expect(mu / 1.26687e8).toBeCloseTo(1, 3);
 	});
 
+	// Both ends on one body: the trip is between two of its orbits, and it is the
+	// panel that decides whether the pair of them is a trip at all.
+	it('reads one body at both ends as an orbit change', () => {
+		expect(plan('naif-399', 'naif-399')).toEqual({ kind: 'orbit-change' });
+	});
+
 	it('blocks a pair whose shared centre has no mass to be found', () => {
 		const rows = [
 			body('rock', 'naif-10'),

@@ -1397,6 +1397,8 @@
 	"travel_no_routes": "Aucune trajectoire dans cette fenêtre.",
 	"travel_no_routes_by_date": "Aucune trajectoire n'arrive avant cette date.",
 	"travel_no_target": "Choisissez une destination pour voir comment y aller.",
+	"travel_same_place": "Les deux extrémités sont la même orbite. Déplacez-en une pour planifier un voyage.",
+	"travel_surface_hop": "Deux points sur le même sol forment un vol suborbital, que ceci ne chiffre pas.",
 	"travel_not_modelled": "Non modélisé",
 	"travel_on_arrival": "À l'arrivée",
 	"travel_launch_pad": "Pas de tir",

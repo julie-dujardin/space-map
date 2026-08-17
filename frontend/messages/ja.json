@@ -1393,6 +1393,8 @@
 	"travel_no_routes": "このウィンドウでは経路が見つかりません。",
 	"travel_no_routes_by_date": "この日付までに到着する経路はありません。",
 	"travel_no_target": "目的地を選ぶと行き方が表示されます。",
+	"travel_same_place": "両端が同じ軌道です。旅を計画するにはどちらかを変えてください。",
+	"travel_surface_hop": "同じ地表の2地点間は弾道飛行であり、ここでは計算しません。",
 	"travel_not_modelled": "モデル化なし",
 	"travel_on_arrival": "到着時",
 	"travel_launch_pad": "発射台",

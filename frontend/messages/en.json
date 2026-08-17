@@ -1520,6 +1520,8 @@
 	"travel_no_routes": "No route found in this window.",
 	"travel_no_routes_by_date": "No trajectory arrives by this date.",
 	"travel_no_target": "Pick a destination to see how to get there.",
+	"travel_same_place": "Both ends are the same orbit. Move one of them to plan a trip.",
+	"travel_surface_hop": "Two points on the same ground is a suborbital hop, which this does not price.",
 	"travel_not_modelled": "Not modelled",
 	"travel_on_arrival": "On arrival",
 	"travel_launch_pad": "Launch pad",

@@ -208,6 +208,16 @@ export function orbitPeriapsisSpeed(mu: number, orbit: EndOrbit): number {
 	return boundSpeed(mu, rPeriKm, rApoKm);
 }
 
+/**
+ * Speed on a named orbit where it crosses `rKm`, km/s. Vis-viva, so it answers
+ * at either apsis without caring which — what a burn joining two orbits at a
+ * shared radius is measured against.
+ */
+export function orbitSpeedAtRadius(mu: number, orbit: EndOrbit, rKm: number): number {
+	const { rPeriKm, rApoKm } = sane(orbit);
+	return Math.sqrt(Math.max(0, (2 * mu) / rKm - (2 * mu) / (rPeriKm + rApoKm)));
+}
+
 /** How long one revolution takes, hours. */
 export function orbitPeriodHours(mu: number, orbit: EndOrbit): number {
 	const { rPeriKm, rApoKm } = sane(orbit);
@@ -272,7 +282,7 @@ export interface ArrivalCost {
 }
 
 /** Nothing happens on arrival: a flyby, and the base every other case starts from. */
-const NO_ARRIVAL_COST: ArrivalCost = {
+export const NO_ARRIVAL_COST: ArrivalCost = {
 	captureKms: 0,
 	descentKms: 0,
 	aerobraked: false,

@@ -66,7 +66,16 @@ export interface OfferedRoute {
 }
 
 /** Why no trip can be offered at all, as opposed to no route being found. */
-export type BlockReason = 'unknown-primary' | 'unknown-orbit' | 'no-target' | 'no-origin';
+export type BlockReason =
+	| 'unknown-primary'
+	| 'unknown-orbit'
+	| 'no-target'
+	| 'no-origin'
+	/** Both ends are the same orbit about one body, which is not a trip. */
+	| 'same-place'
+	/** Both ends are on one body's ground: a suborbital hop, which is a
+	 *  different arc from the one this prices. */
+	| 'surface-hop';
 
 /**
  * A better description of one end at a date the search has landed on, or null
@@ -646,6 +655,9 @@ export class TravelPanelState {
 		frame: TransferFrame,
 		coastFraction: number
 	): Route | null {
+		// A held drive crosses between two bodies; between two orbits about one
+		// body there is nothing to cross.
+		if (frame.orbitChange) return null;
 		// Every departure date flies the same arc, so a date only says when to
 		// start counting. A deadline says nothing at all until it is met.
 		return buildConstantThrustRoute(origin, target, this.#earliestDepartJd(nowJd), accelMs2, {
@@ -764,6 +776,12 @@ export class TravelPanelState {
 		frame: TransferFrame = { orbit: 'heliocentric' }
 	): void {
 		if (!this.craftKnown) return;
+		// A spiral is a climb out of one well and a drop into another; a trip that
+		// never leaves one has neither.
+		if (frame.orbitChange) {
+			this.spiral = null;
+			return;
+		}
 
 		const vehicle = this.vehicle;
 		const drive = vehicle ? lowThrustDrive(vehicle, this.payloadKg) : undefined;
@@ -1016,6 +1034,12 @@ export class TravelPanelState {
 			pickedJd: this.pickedJd,
 			systemPrimary: frame.systemPrimary,
 			centralMu: frame.centralMu,
+			// A same-body trip's grid is its two orbits, so the terms that name
+			// them are part of the request rather than of the solve alone.
+			orbitChange: frame.orbitChange,
+			departureMode: this.departureMode,
+			arrivalMode: this.arrivalMode,
+			...this.endTerms,
 			arrivalDays: this.#arrivalCampaignDays(target)
 		});
 		if (!options) {
@@ -1048,7 +1072,10 @@ export class TravelPanelState {
 		}
 
 		this.routes = result.routes;
-		this.grid = result.grid;
+		// No field for a trip that never leaves its body: every departure prices
+		// the same, so a launch-window chart would draw a window that isn't there.
+		// The three routes already span the only choice, which is how fast to go.
+		this.grid = frame.orbitChange ? null : result.grid;
 		this.#pricing = { origin, target, options: solveOptions };
 		this.pricedRevision = ++this.#revision;
 		this.custom = this.#repriceCustom() ?? this.#pricePendingPick();

@@ -1394,6 +1394,8 @@
 	"travel_no_routes": "לא נמצא מסלול בחלון הזה.",
 	"travel_no_routes_by_date": "אין מסלול שמגיע עד התאריך הזה.",
 	"travel_no_target": "בחרו יעד כדי לראות איך מגיעים.",
+	"travel_same_place": "שני הקצוות הם אותו מסלול. שנו אחד מהם כדי לתכנן מסע.",
+	"travel_surface_hop": "שתי נקודות על אותו קרקע הן קפיצה תת־מסלולית, שאינה מחושבת כאן.",
 	"travel_not_modelled": "לא ממודל",
 	"travel_on_arrival": "בהגעה",
 	"travel_launch_pad": "כן שיגור",

@@ -1390,6 +1390,8 @@
 	"travel_no_routes": "In diesem Fenster keine Route gefunden.",
 	"travel_no_routes_by_date": "Keine Route trifft bis zu diesem Datum ein.",
 	"travel_no_target": "Wählen Sie ein Ziel, um den Weg dorthin zu sehen.",
+	"travel_same_place": "Beide Enden sind dieselbe Umlaufbahn. Ändern Sie eines davon, um eine Reise zu planen.",
+	"travel_surface_hop": "Zwei Punkte auf demselben Boden sind ein suborbitaler Sprung, der hier nicht berechnet wird.",
 	"travel_not_modelled": "Nicht modelliert",
 	"travel_on_arrival": "Bei der Ankunft",
 	"travel_launch_pad": "Startrampe",

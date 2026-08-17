@@ -306,13 +306,16 @@
 	}
 
 	// Bodies the search must not offer for one end, given the other. Only loaded
-	// bodies can be tested up front, so this catches the two cases that actually
-	// come up — the same body twice, and a moon of the other end's own primary —
-	// and leaves the rest to the panel, which says why once the pick resolves.
+	// bodies can be tested up front, so this catches the case that actually comes
+	// up — a moon of the other end's own primary — and leaves the rest to the
+	// panel, which says why once the pick resolves.
+	//
+	// The other end's own body is offered: a trip from one of its orbits to
+	// another is a trip. Which pair of ends is one is the panel's to answer,
+	// since it is the orbits rather than the bodies that have to differ.
 	function excluded(against: BodyData | null): ReadonlySet<string> {
 		const out = new Set<string>();
 		if (!against) return out;
-		out.add(against.id);
 		const lookup = lookupIn(sceneBodies);
 		for (const b of sceneBodies.values()) {
 			if (transferPlan(b, against, lookup).kind === 'blocked') out.add(b.id);

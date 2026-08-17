@@ -239,11 +239,16 @@ function straysFromElements(chain: readonly BodyData[], travel: TravelBody): boo
  * the trip is a transfer ellipse from its parking orbit. When neither is — Io
  * to Europa — the pair are siblings about a third body: an ordinary two-orbit
  * transfer again, just about a planet rather than the Sun.
+ *
+ * Both ends on one body is a trip too, and the shortest kind: the ellipse
+ * joining two orbits about it. Nothing moves under it, so there is no window —
+ * only how long the climb is given.
  */
 export type TransferPlan =
 	| { kind: 'heliocentric' }
 	| { kind: 'system'; primary: 'origin' | 'target' }
 	| { kind: 'sibling'; centreId: string; centralMu: number }
+	| { kind: 'orbit-change' }
 	| { kind: 'blocked'; reason: 'unknown-orbit' | 'unknown-primary' };
 
 /** How the kernel is pointed at a pair: which orbit describes each end, which
@@ -254,6 +259,8 @@ export interface TransferFrame {
 	systemPrimary?: 'departure' | 'target';
 	/** μ of the body the transfer orbits, km³/s². Absent means the Sun's. */
 	centralMu?: number;
+	/** Set when both ends are the same body — the arc joins two of its orbits. */
+	orbitChange?: boolean;
 }
 
 const HELIOCENTRIC_FRAME: TransferFrame = { orbit: 'heliocentric' };
@@ -265,6 +272,7 @@ export function transferFrame(plan: TransferPlan | null): TransferFrame {
 		return { orbit: 'own', systemPrimary: plan.primary === 'origin' ? 'departure' : 'target' };
 	}
 	if (plan?.kind === 'sibling') return { orbit: 'own', centralMu: plan.centralMu };
+	if (plan?.kind === 'orbit-change') return { orbit: 'own', orbitChange: true };
 	return HELIOCENTRIC_FRAME;
 }
 
@@ -292,6 +300,8 @@ export function transferCenterId(
 	// One end is the centre, and `relativeState` differences the other against
 	// it, so the positions come out about the body itself.
 	if (plan.kind === 'system') return plan.primary === 'origin' ? origin.id : target.id;
+	// Both ends are that centre.
+	if (plan.kind === 'orbit-change') return origin.id;
 	// Siblings keep their own elements, which are about the parent they share.
 	if (plan.kind === 'sibling') return origin.parentId;
 	const from = heliocentricAncestor(origin, lookup);
@@ -377,6 +387,8 @@ function reportUnwalkableChain(id: string): void {
 }
 
 export function transferPlan(origin: BodyData, target: BodyData, lookup: BodyLookup): TransferPlan {
+	// One body, both ends: nothing to cross, so the ends themselves are the trip.
+	if (origin.id === target.id) return { kind: 'orbit-change' };
 	const from = ancestry(origin, lookup);
 	const to = ancestry(target, lookup);
 	if (!from || !to) {

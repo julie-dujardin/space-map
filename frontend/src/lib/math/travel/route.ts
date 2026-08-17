@@ -15,8 +15,12 @@ import {
 	ascentDv,
 	characteristicEnergy,
 	departureCost,
+	NO_ARRIVAL_COST,
 	orbitPeriapsisSpeed,
+	orbitPeriodHours,
+	orbitSpeedAtRadius,
 	parkingOrbit,
+	parkingRadiusKm,
 	type AeroAssist,
 	type ArrivalCost,
 	type ArrivalMode,
@@ -162,6 +166,12 @@ export interface RouteOptions {
 	 * route is built from a transfer ellipse instead of a Lambert solve.
 	 */
 	systemPrimary?: 'departure' | 'target';
+	/**
+	 * Set when both ends are the same body: the arc joins two of its own orbits
+	 * rather than crossing to another. Nothing is escaped and nothing is caught
+	 * up with, so neither a Lambert solve nor a satellite's position applies.
+	 */
+	orbitChange?: boolean;
 }
 
 /**
@@ -227,10 +237,22 @@ export function buildRoute(
 		aero = 'none',
 		centralMu = GM_SUN_KM3_S2,
 		retrograde = false,
-		systemPrimary
+		systemPrimary,
+		orbitChange
 	} = options;
 
 	if (!(tofDays > 0)) return null;
+	if (orbitChange) {
+		return buildOrbitChangeRoute(departure, departJd, tofDays, {
+			departureMode,
+			arrivalMode,
+			departureOrbit,
+			targetOrbit,
+			departureSiteLatDeg,
+			targetSiteLatDeg,
+			aero
+		});
+	}
 	if (systemPrimary) {
 		return buildSystemRoute(departure, target, departJd, tofDays, {
 			departureMode,
@@ -413,6 +435,191 @@ function buildSystemRoute(
 		c3Km2S2: outbound ? -primary.mu * arc.inverseAKm : characteristicEnergy(vInf),
 		vInfDepKms: outbound ? 0 : vInf,
 		vInfArrKms: outbound ? vInf : 0,
+		departureMode,
+		arrivalMode,
+		departureOrbit,
+		targetOrbit,
+		aero,
+		entrySpeedKms: arr.entrySpeedKms
+	};
+}
+
+interface OrbitChangeOptions {
+	departureMode: DepartureMode;
+	arrivalMode: ArrivalMode;
+	departureOrbit?: EndOrbit;
+	targetOrbit?: EndOrbit;
+	departureSiteLatDeg?: number;
+	targetSiteLatDeg?: number;
+	aero: AeroAssist;
+}
+
+/** Radii closer than this are one radius: the trip is a single burn where the
+ *  two orbits already meet, not an arc between them — and two ends that agree
+ *  on both radii are the same orbit, which is not a trip at all. */
+export const SAME_RADIUS_KM = 1;
+
+/** The two orbits a same-body trip joins, and where the arc between them runs. */
+export interface OrbitChangeEnds {
+	from: EndOrbit;
+	to: EndOrbit;
+	/** Radius the craft leaves its own orbit at, and the one it meets the other
+	 *  orbit at, km. */
+	rFromKm: number;
+	rToKm: number;
+	/** True when the arc climbs away from the body, false when it comes down. */
+	climb: boolean;
+	/** True when both ends sit at one radius, so a single burn joins them. */
+	singleBurn: boolean;
+}
+
+/**
+ * Where the arc between two orbits about one body runs, or null when there is
+ * no trip in the pair.
+ *
+ * The arc joins the orbits where they come nearest each other: climbing, it
+ * leaves the low side of the departure orbit and meets the other at its high
+ * side; coming down, both the other way about. That one rule prices the
+ * ordinary cases as they are flown — a low orbit to a stationary one is the
+ * Hohmann pair of burns, and a low orbit to a transfer ellipse that already
+ * reaches it is the injection alone, with nothing owed on arrival.
+ *
+ * A landing comes down from wherever the craft already is, so it is never a
+ * climb. A flyby of the body you are at is not a trip, and neither is a hop
+ * between two points on its ground — that is a suborbital arc, not this one.
+ */
+export function orbitChangeEnds(
+	body: TravelBody,
+	options: Pick<
+		OrbitChangeOptions,
+		'departureMode' | 'arrivalMode' | 'departureOrbit' | 'targetOrbit'
+	>
+): OrbitChangeEnds | null {
+	const { departureMode, arrivalMode, departureOrbit, targetOrbit } = options;
+	if (arrivalMode === 'flyby') return null;
+	if (departureMode === 'surface' && arrivalMode === 'landing') return null;
+
+	const from =
+		departureMode === 'surface' ? parkingOrbit(body) : (departureOrbit ?? parkingOrbit(body));
+	const landingRadius = Math.min(parkingRadiusKm(body), from.rPeriKm);
+	const to =
+		arrivalMode === 'landing'
+			? { rPeriKm: landingRadius, rApoKm: landingRadius }
+			: (targetOrbit ?? parkingOrbit(body));
+	if (!(from.rPeriKm > 0) || !(to.rPeriKm > 0)) return null;
+
+	const climb = to.rApoKm > from.rApoKm || (to.rApoKm === from.rApoKm && to.rPeriKm > from.rPeriKm);
+	const rFromKm = climb ? from.rPeriKm : from.rApoKm;
+	const rToKm = climb ? to.rApoKm : to.rPeriKm;
+	const singleBurn = Math.abs(rToKm - rFromKm) < SAME_RADIUS_KM;
+	// Two ends at one radius with nothing else to tell them apart is the same
+	// place twice, which is not a trip.
+	if (singleBurn && departureMode !== 'surface' && arrivalMode !== 'landing') return null;
+	return { from, to, rFromKm, rToKm, climb, singleBurn };
+}
+
+/**
+ * Build a trip between two orbits about one body.
+ *
+ * Nothing is escaped and nothing is chased, so there is no Lambert solve and
+ * no launch window: the same pair of burns is there on every revolution, and
+ * the only choice is how fast to make the crossing between them. Coplanar like
+ * the rest of the kernel — a plane change is an inclination it never charges
+ * for, here or anywhere else.
+ */
+function buildOrbitChangeRoute(
+	body: TravelBody,
+	departJd: number,
+	tofDays: number,
+	options: OrbitChangeOptions
+): Route | null {
+	const {
+		departureMode,
+		arrivalMode,
+		departureOrbit,
+		targetOrbit,
+		departureSiteLatDeg,
+		targetSiteLatDeg,
+		aero
+	} = options;
+	const ends = orbitChangeEnds(body, options);
+	if (!ends) return null;
+	const { from, to, rFromKm, rToKm, climb, singleBurn } = ends;
+
+	const departureSite = surfaceSite(body, departureSiteLatDeg, null);
+	const targetSite = surfaceSite(body, targetSiteLatDeg, null);
+	const legs: RouteLeg[] = [];
+	let ascentKms = 0;
+	if (departureMode === 'surface') {
+		ascentKms = ascentDv(body, departureSite);
+		legs.push({ kind: 'ascent', dvKms: ascentKms, days: 0 });
+	}
+
+	// What joining the other orbit costs. A climb ends slower than the orbit it
+	// meets, so the burn is the difference itself; coming down it ends faster,
+	// which is the arrival every other route in the kernel prices — and the only
+	// direction an atmosphere can take any of.
+	let injectionKms: number;
+	let arr: ArrivalCost;
+	let inverseAKm: number;
+
+	if (singleBurn) {
+		// One burn where the two orbits already cross. What takes time is reaching
+		// the point it is made at: half a turn of the orbit the craft is on.
+		injectionKms = 0;
+		inverseAKm = 2 / (from.rPeriKm + from.rApoKm);
+		arr = arrivalCostFromSpeed(
+			body,
+			orbitSpeedAtRadius(body.mu, from, rToKm),
+			arrivalMode,
+			aero,
+			to,
+			targetSite
+		);
+	} else {
+		const rNear = Math.min(rFromKm, rToKm);
+		const rFar = Math.max(rFromKm, rToKm);
+		const arc = solveRadialArc(body.mu, rNear, rFar, tofDays);
+		if (!arc) return null;
+		inverseAKm = arc.inverseAKm;
+		// At the far end the arc carries speed along the radius as well as across
+		// the orbit; at the near end it is at periapsis, purely across.
+		const farBurn = (orbit: EndOrbit) =>
+			Math.hypot(
+				arc.vFarRadialKms,
+				arc.vFarTangentialKms - orbitSpeedAtRadius(body.mu, orbit, rFar)
+			);
+		if (climb) {
+			injectionKms = Math.abs(arc.vNearKms - orbitSpeedAtRadius(body.mu, from, rNear));
+			arr = { ...NO_ARRIVAL_COST, captureKms: farBurn(to) };
+		} else {
+			injectionKms = farBurn(from);
+			arr = arrivalCostFromSpeed(body, arc.vNearKms, arrivalMode, aero, to, targetSite);
+		}
+	}
+
+	legs.push({ kind: 'injection', dvKms: injectionKms, days: 0 });
+	const cruiseDays = singleBurn ? orbitPeriodHours(body.mu, from) / 48 : tofDays;
+	legs.push({ kind: 'cruise', dvKms: 0, days: cruiseDays });
+	legs.push(...arrivalLegs(arr, arrivalMode));
+
+	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
+	if (!isFinite(totalDvKms)) return null;
+
+	return {
+		departureId: body.id,
+		targetId: body.id,
+		departJd,
+		arriveJd: departJd + cruiseDays,
+		tofDays: cruiseDays,
+		legs,
+		totalDvKms,
+		inSpaceDvKms: totalDvKms - ascentKms,
+		// Bound to the body throughout, so the energy is negative: nothing here is
+		// a launch to anywhere a vehicle is rated against.
+		c3Km2S2: -body.mu * inverseAKm,
+		vInfDepKms: 0,
+		vInfArrKms: 0,
 		departureMode,
 		arrivalMode,
 		departureOrbit,

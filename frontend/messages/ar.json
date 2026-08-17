@@ -1469,6 +1469,8 @@
 	"travel_no_routes": "لا مسار في هذه النافذة.",
 	"travel_no_routes_by_date": "لا توجد مسارات تصل قبل هذا التاريخ.",
 	"travel_no_target": "اختر وجهة لترى كيف تصل إليها.",
+	"travel_same_place": "طرفا الرحلة على المدار نفسه. غيّر أحدهما لتخطيط رحلة.",
+	"travel_surface_hop": "نقطتان على السطح نفسه تعنيان قفزة دون مدارية، وهي غير محسوبة هنا.",
 	"travel_not_modelled": "غير ممثَّل",
 	"travel_on_arrival": "عند الوصول",
 	"travel_launch_pad": "منصة الإطلاق",

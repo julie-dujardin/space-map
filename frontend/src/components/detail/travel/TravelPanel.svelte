@@ -26,7 +26,10 @@
 		canDepartFrom,
 		checkFeasibility,
 		departureCost,
+		hohmannArcDays,
 		nextTransferWindows,
+		orbitChangeEnds,
+		SAME_RADIUS_KM,
 		systemArcBounds,
 		transferScale,
 		travelConstants,
@@ -432,14 +435,30 @@
 				})
 			: []
 	);
-	let targetChoices = $derived<OrbitChoice[]>(
-		targetTravel && targetFacts && !panel.targetAtSite
-			? orbitChoices(targetTravel, targetFacts, 'target', {
-					hasSurface: targetHasGround,
-					customAltKm: panel.targetAltKm
-				})
-			: []
-	);
+	let targetChoices = $derived.by<OrbitChoice[]>(() => {
+		const all =
+			targetTravel && targetFacts && !panel.targetAtSite
+				? orbitChoices(targetTravel, targetFacts, 'target', {
+						hasSurface: targetHasGround,
+						customAltKm: panel.targetAltKm
+					})
+				: [];
+		// Where the trip already is is not somewhere to go: on a same-body trip the
+		// departure's own orbit drops out of the arrivals, along with the two that
+		// mean nothing at home — flying past where you are, and landing back on the
+		// ground you lifted off.
+		if (!frame.orbitChange) return all;
+		const from = panel.originOrbit;
+		return all.filter((choice) => {
+			if (choice.kind === 'flyby') return false;
+			if (choice.kind === 'surface') return panel.departureMode !== 'surface';
+			if (!from || !choice.orbit) return true;
+			return (
+				Math.abs(choice.orbit.rPeriKm - from.rPeriKm) > SAME_RADIUS_KM ||
+				Math.abs(choice.orbit.rApoKm - from.rApoKm) > SAME_RADIUS_KM
+			);
+		});
+	});
 
 	/**
 	 * A mode the body cannot hold is not a mode: a link naming a stationary orbit
@@ -456,7 +475,11 @@
 	});
 	$effect(() => {
 		if (!targetDetail || !targetChoices.length) return;
-		if (!targetChoices.some((c) => c.kind === panel.targetMode)) panel.targetMode = 'low-orbit';
+		if (targetChoices.some((c) => c.kind === panel.targetMode)) return;
+		// The low orbit wherever it is offered, and otherwise whatever is — on a
+		// same-body trip the low orbit is sometimes the end the craft is already at.
+		panel.targetMode =
+			targetChoices.find((c) => c.kind === 'low-orbit')?.kind ?? targetChoices[0].kind;
 	});
 
 	/** Which pad each end stands on, when it stands on one — the row the box
@@ -579,6 +602,21 @@
 		});
 	});
 
+	// A trip at one body with no arc between its ends: the same orbit twice, or
+	// two points on the ground, which is a hop rather than an orbit change.
+	let samePlace = $derived(
+		plan?.kind === 'orbit-change' &&
+			originTravel !== null &&
+			orbitChangeEnds(originTravel, {
+				departureMode: panel.departureMode,
+				arrivalMode: panel.arrivalMode,
+				...panel.endTerms
+			}) === null
+	);
+	/** Which of the two same-body nothings it is: a hop between two points on the
+	 *  ground, or the one orbit named at both ends. */
+	let surfaceHop = $derived(panel.departureMode === 'surface' && panel.arrivalMode === 'landing');
+
 	// An end that never resolved is an end with no orbit, not an empty form. The
 	// destination is asked for first: it is the question the panel exists to
 	// answer, and a departure with nowhere to go prices nothing.
@@ -589,16 +627,24 @@
 				: !originPicked
 					? 'no-origin'
 					: 'unknown-orbit'
-			: plan.kind === 'blocked'
-				? plan.reason
-				: null
+			: samePlace
+				? surfaceHop
+					? 'surface-hop'
+					: 'same-place'
+				: plan.kind === 'blocked'
+					? plan.reason
+					: null
 	);
 
 	// A trip out to a body's own moon waits for nothing: the satellite comes round
 	// every orbit, so every departure date is a window and naming one would be
 	// noise. Two moons of one planet do have alignments, just fast ones.
 	let nextWindowJd = $derived.by(() => {
-		if (!originTravel || !targetTravel || block || frame.systemPrimary) return null;
+		// A trip between two orbits about one body waits for nothing either: the
+		// pair of burns is there on every revolution.
+		if (!originTravel || !targetTravel || block || frame.systemPrimary || frame.orbitChange) {
+			return null;
+		}
 		const windows = nextTransferWindows(originTravel, targetTravel, nowJd, 1, frame.centralMu);
 		return windows.length > 0 ? windows[0] : null;
 	});
@@ -613,6 +659,24 @@
 	// transfer out — the earliest date the trip could plausibly be held to.
 	function defaultPickedJd(mode: TimeMode): number {
 		if (mode !== 'arrive' || !originTravel || !targetTravel) return nowJd;
+		if (frame.orbitChange) {
+			// The half-ellipse between the two orbits is the slowest crossing here,
+			// and the only one a deadline has to admit.
+			const ends = orbitChangeEnds(originTravel, {
+				departureMode: panel.departureMode,
+				arrivalMode: panel.arrivalMode,
+				...panel.endTerms
+			});
+			if (!ends || ends.singleBurn) return nowJd;
+			return (
+				nowJd +
+				hohmannArcDays(
+					originTravel.mu,
+					Math.min(ends.rFromKm, ends.rToKm),
+					Math.max(ends.rFromKm, ends.rToKm)
+				)
+			);
+		}
 		const slowest = frame.systemPrimary
 			? (systemArcBounds(
 					frame.systemPrimary === 'departure' ? originTravel : targetTravel,
@@ -729,7 +793,9 @@
 		void braking;
 		void siteLats;
 
-		if (block || !from || !to || vias.length === 0) {
+		// A swing-by buys speed towards somewhere else; a trip that stays at one
+		// body has nowhere for it to buy speed towards.
+		if (block || !from || !to || vias.length === 0 || frame.orbitChange) {
 			panel.clearAssist();
 			return;
 		}
@@ -772,6 +838,7 @@
 			centerId: center,
 			centralMu: frame.centralMu,
 			systemPrimary: frame.systemPrimary,
+			orbitChange: frame.orbitChange,
 			frame: pathFrame,
 			// A swing-by route is drawn as two arcs meeting at a body neither end
 			// is, so the geometry needs the same candidates the search had.
@@ -905,6 +972,7 @@
 				centerId,
 				centralMu: frame.centralMu,
 				systemPrimary: frame.systemPrimary,
+				orbitChange: frame.orbitChange,
 				// A swing-by route is two arcs meeting at a body neither end is, so the
 				// scan needs the same candidates the search had to rebuild the second.
 				vias: assistBodies
@@ -1238,6 +1306,12 @@
 				<p class="text-muted-foreground text-xs">{m.travel_no_target()}</p>
 			{:else if panel.blocked === 'no-origin'}
 				<p class="text-muted-foreground text-xs">{m.travel_no_origin()}</p>
+				<!-- Also a prompt rather than a failure: the two ends are the same place,
+			     and moving either one is the whole fix. -->
+			{:else if panel.blocked === 'same-place'}
+				<p class="text-muted-foreground text-xs">{m.travel_same_place()}</p>
+			{:else if panel.blocked === 'surface-hop'}
+				<p class="text-muted-foreground text-xs">{m.travel_surface_hop()}</p>
 			{:else}
 				<p class="text-muted-foreground flex items-start gap-2 text-xs">
 					<CircleAlertIcon class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />

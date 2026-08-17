@@ -61,8 +61,15 @@ export {
 	speedAtRadius
 } from './maneuvers';
 
-export type { Route, RouteLeg, RouteOptions, LegKind } from './route';
-export { arrivalLegs, buildRoute, routeDurationDays, routeEndJd } from './route';
+export type { OrbitChangeEnds, Route, RouteLeg, RouteOptions, LegKind } from './route';
+export {
+	arrivalLegs,
+	buildRoute,
+	orbitChangeEnds,
+	routeDurationDays,
+	routeEndJd,
+	SAME_RADIUS_KM
+} from './route';
 
 export { propagateState } from './propagate';
 
@@ -124,6 +131,7 @@ export { computePorkchop, selectRoutes } from './porkchop';
 
 export type { RadialArc, SystemArcBounds } from './system-transfer';
 export {
+	fastestArcDays,
 	hohmannArcDays,
 	relativeState,
 	separationKm,

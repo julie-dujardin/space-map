@@ -8,8 +8,21 @@
  * them sets the scale of a sensible cruise.
  */
 
-import type { PorkchopOptions, TravelBody } from '$lib/math/travel';
-import { synodicPeriodDays, systemArcBounds, transferScale } from '$lib/math/travel';
+import type {
+	ArrivalMode,
+	DepartureMode,
+	EndOrbit,
+	PorkchopOptions,
+	TravelBody
+} from '$lib/math/travel';
+import {
+	fastestArcDays,
+	hohmannArcDays,
+	orbitChangeEnds,
+	synodicPeriodDays,
+	systemArcBounds,
+	transferScale
+} from '$lib/math/travel';
 import type { TimeMode } from './trip';
 
 /** Beyond this the grid is too coarse to resolve a window; slow pairs get capped. */
@@ -72,6 +85,13 @@ export interface WindowRequest {
 	arrivalDays?: number;
 	/** Set when the trip stays inside one system — see `RouteOptions`. */
 	systemPrimary?: 'departure' | 'target';
+	/** Set when both ends are the same body — see `RouteOptions`. The ends the
+	 *  arc runs between come from the trip's own terms, so they ride along. */
+	orbitChange?: boolean;
+	departureMode?: DepartureMode;
+	arrivalMode?: ArrivalMode;
+	departureOrbit?: EndOrbit;
+	targetOrbit?: EndOrbit;
 	/** μ of the body the transfer orbits, km³/s². Absent means the Sun's — set for
 	 *  a pair of moons, where the arc goes round their planet instead. */
 	centralMu?: number;
@@ -119,12 +139,57 @@ function systemWindow(request: WindowRequest): PorkchopOptions | null {
 }
 
 /**
+ * The grid for a trip between two orbits about one body.
+ *
+ * There is no window to find: the pair of burns comes round every revolution,
+ * so every departure prices the same and the departure axis is only there to
+ * carry a date. What does vary is the crossing between them, which runs from
+ * the half-ellipse touching both orbits to the fastest arc worth offering. A
+ * trip joined by a single burn has no crossing at all, and its one cruise is
+ * whatever the route builder makes of reaching the burn.
+ */
+function orbitChangeWindow(request: WindowRequest): PorkchopOptions | null {
+	const { origin, nowJd, timeMode, pickedJd } = request;
+	const ends = orbitChangeEnds(origin, {
+		departureMode: request.departureMode ?? 'surface',
+		arrivalMode: request.arrivalMode ?? 'capture',
+		departureOrbit: request.departureOrbit,
+		targetOrbit: request.targetOrbit
+	});
+	if (!ends) return null;
+
+	const departFromJd = earliestDepartJd(timeMode, pickedJd, nowJd);
+	const deadlineJd = timeMode === 'arrive' && pickedJd != null ? pickedJd : undefined;
+	const rNear = Math.min(ends.rFromKm, ends.rToKm);
+	const rFar = Math.max(ends.rFromKm, ends.rToKm);
+	// The builder ignores the cruise it is handed on a single burn, so one column
+	// is the whole grid — any positive length asks the same question.
+	const slowest = ends.singleBurn ? 1 : hohmannArcDays(origin.mu, rNear, rFar);
+	const fastest = ends.singleBurn ? 1 : fastestArcDays(origin.mu, rNear, rFar);
+	if (!(slowest > 0) || !(fastest > 0)) return null;
+
+	return {
+		departFromJd,
+		// A day of departures, since none of them differ: enough for the earliest
+		// one to be the one offered without gridding a window that isn't there.
+		departToJd: departFromJd + 1,
+		tofMinDays: fastest,
+		tofMaxDays: slowest,
+		departSteps: 2,
+		tofSteps: ends.singleBurn ? 1 : TOF_STEPS,
+		orbitChange: true,
+		deadlineJd
+	};
+}
+
+/**
  * Grid bounds for a search, or null when the pair has no usable orbits.
  *
  * The returned options go straight to `computePorkchop`.
  */
 export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 	const { origin, target, nowJd, timeMode, pickedJd, centralMu, arrivalDays = 0 } = request;
+	if (request.orbitChange) return orbitChangeWindow(request);
 	if (request.systemPrimary) return systemWindow(request);
 
 	// The Hohmann time where both orbits are round enough for it, else the

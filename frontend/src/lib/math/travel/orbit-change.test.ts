@@ -1,0 +1,217 @@
+/**
+ * Trips that stay at one body: what the arc between two of its orbits costs,
+ * which pairs are trips at all, and the ends that need no arc.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { EARTH } from './test-fixtures';
+import { buildRoute, type Route } from './route';
+import { orbitChangeEnds } from './route';
+import { circularSpeed, orbitPeriodHours, parkingRadiusKm, type EndOrbit } from './maneuvers';
+import { hohmannArcDays } from './system-transfer';
+import { buildTrajectoryPath } from './path';
+import { dot, norm, normalize } from './vec3';
+
+const J2000 = 2451545;
+const GEO_RADIUS_KM = 42164;
+const LOW: EndOrbit = { rPeriKm: parkingRadiusKm(EARTH), rApoKm: parkingRadiusKm(EARTH) };
+const GEO: EndOrbit = { rPeriKm: GEO_RADIUS_KM, rApoKm: GEO_RADIUS_KM };
+/** The transfer ellipse itself, as the planner offers it: low perigee, apogee
+ *  at the stationary orbit. */
+const GTO: EndOrbit = { rPeriKm: LOW.rPeriKm, rApoKm: GEO_RADIUS_KM };
+
+const HOHMANN_DAYS = hohmannArcDays(EARTH.mu, LOW.rPeriKm, GEO_RADIUS_KM);
+
+function route(
+	from: EndOrbit | 'ground',
+	to: EndOrbit | 'ground',
+	tofDays = HOHMANN_DAYS
+): Route | null {
+	return buildRoute(EARTH, EARTH, J2000, tofDays, {
+		orbitChange: true,
+		departureMode: from === 'ground' ? 'surface' : 'orbit',
+		arrivalMode: to === 'ground' ? 'landing' : 'capture',
+		departureOrbit: from === 'ground' ? undefined : from,
+		targetOrbit: to === 'ground' ? undefined : to
+	});
+}
+
+function dvOf(r: Route | null, kind: string): number {
+	return (r?.legs ?? [])
+		.filter((leg) => leg.kind === kind)
+		.reduce((sum, leg) => sum + leg.dvKms, 0);
+}
+
+describe('orbitChangeEnds', () => {
+	it('refuses the same orbit twice — that is not a trip', () => {
+		expect(
+			orbitChangeEnds(EARTH, {
+				departureMode: 'orbit',
+				arrivalMode: 'capture',
+				departureOrbit: LOW,
+				targetOrbit: LOW
+			})
+		).toBeNull();
+	});
+
+	it('refuses a hop between two points on the ground, which is another arc', () => {
+		expect(orbitChangeEnds(EARTH, { departureMode: 'surface', arrivalMode: 'landing' })).toBeNull();
+	});
+
+	it('refuses a flyby of the body you are already at', () => {
+		expect(
+			orbitChangeEnds(EARTH, { departureMode: 'orbit', arrivalMode: 'flyby', departureOrbit: LOW })
+		).toBeNull();
+	});
+
+	it('leaves the low side climbing and the high side coming down', () => {
+		const up = orbitChangeEnds(EARTH, {
+			departureMode: 'orbit',
+			arrivalMode: 'capture',
+			departureOrbit: LOW,
+			targetOrbit: GEO
+		});
+		expect(up?.climb).toBe(true);
+		expect(up?.rFromKm).toBeCloseTo(LOW.rPeriKm, 3);
+		expect(up?.rToKm).toBeCloseTo(GEO_RADIUS_KM, 3);
+
+		const down = orbitChangeEnds(EARTH, {
+			departureMode: 'orbit',
+			arrivalMode: 'capture',
+			departureOrbit: GEO,
+			targetOrbit: LOW
+		});
+		expect(down?.climb).toBe(false);
+		expect(down?.rFromKm).toBeCloseTo(GEO_RADIUS_KM, 3);
+		expect(down?.rToKm).toBeCloseTo(LOW.rPeriKm, 3);
+	});
+});
+
+describe('a trip between two orbits about one body', () => {
+	// The textbook figures for a low-Earth-to-geostationary Hohmann pair: 2.46
+	// km/s to leave, 1.47 to circularise at the top.
+	it('prices the low orbit to stationary climb as the Hohmann pair', () => {
+		const r = route(LOW, GEO);
+		expect(dvOf(r, 'injection')).toBeCloseTo(2.46, 1);
+		expect(dvOf(r, 'capture')).toBeCloseTo(1.47, 1);
+	});
+
+	it('costs the same coming back down', () => {
+		const up = route(LOW, GEO)?.totalDvKms ?? 0;
+		const down = route(GEO, LOW)?.totalDvKms ?? 0;
+		expect(down).toBeCloseTo(up, 2);
+	});
+
+	it('owes nothing on arrival when the arc already is the orbit asked for', () => {
+		// Injecting from a low orbit onto the transfer ellipse leaves the craft on
+		// it — there is no second burn until it decides to circularise.
+		const r = route(LOW, GTO);
+		expect(dvOf(r, 'injection')).toBeCloseTo(2.46, 1);
+		expect(dvOf(r, 'capture')).toBeCloseTo(0, 3);
+	});
+
+	it('charges the circularisation alone from the transfer ellipse to the stationary orbit', () => {
+		const r = route(GTO, GEO);
+		expect(r?.totalDvKms).toBeCloseTo(1.47, 1);
+	});
+
+	it('has nothing slower than the half-ellipse', () => {
+		expect(route(LOW, GEO, HOHMANN_DAYS * 1.1)).toBeNull();
+	});
+
+	it('costs more the faster the climb is asked to be', () => {
+		const slow = route(LOW, GEO, HOHMANN_DAYS)?.totalDvKms ?? 0;
+		const quick = route(LOW, GEO, HOHMANN_DAYS * 0.5)?.totalDvKms ?? 0;
+		expect(quick).toBeGreaterThan(slow);
+	});
+
+	it('stays bound to the body — nothing here is a launch to anywhere', () => {
+		expect(route(LOW, GEO)?.c3Km2S2).toBeLessThan(0);
+		expect(route(LOW, GEO)?.vInfDepKms).toBe(0);
+	});
+});
+
+describe('the arc it draws', () => {
+	const pathOf = (r: Route | null) =>
+		r ? buildTrajectoryPath(EARTH, EARTH, r, { centerId: EARTH.id, orbitChange: true }) : null;
+
+	it('runs from the orbit left to the one arrived at', () => {
+		const path = pathOf(route(LOW, GEO));
+		const points = path?.arcs[0].points ?? [];
+		expect(norm(points[0])).toBeCloseTo(LOW.rPeriKm, 0);
+		expect(norm(points[points.length - 1])).toBeCloseTo(GEO_RADIUS_KM, 0);
+	});
+
+	it('reads the same arc backwards coming down', () => {
+		const path = pathOf(route(GEO, LOW));
+		const points = path?.arcs[0].points ?? [];
+		expect(norm(points[0])).toBeCloseTo(GEO_RADIUS_KM, 0);
+		expect(norm(points[points.length - 1])).toBeCloseTo(LOW.rPeriKm, 0);
+	});
+
+	it('lies in the body’s own equator, the one plane the model can claim', () => {
+		const path = pathOf(route(LOW, GEO));
+		const pole = normalize(EARTH.poleEcliptic ?? [0, 0, 1]);
+		for (const point of path?.arcs[0].points ?? []) {
+			expect(Math.abs(dot(normalize(point), pole))).toBeLessThan(1e-9);
+		}
+	});
+
+	it('is dated by the trip it draws, end to end', () => {
+		const r = route(LOW, GEO);
+		const arc = pathOf(r)?.arcs[0];
+		expect(arc?.jds[0]).toBeCloseTo(r?.departJd ?? 0, 6);
+		expect(arc?.jds[arc.jds.length - 1]).toBeCloseTo(r?.arriveJd ?? 0, 6);
+	});
+
+	it('coasts round at one radius where a single burn joins the ends', () => {
+		const points = pathOf(route('ground', LOW))?.arcs[0].points ?? [];
+		expect(points.length).toBeGreaterThan(2);
+		for (const point of points) expect(norm(point)).toBeCloseTo(LOW.rPeriKm, 6);
+		// Half a turn: the far end is on the other side of the body.
+		expect(dot(normalize(points[0]), normalize(points[points.length - 1]))).toBeCloseTo(-1, 6);
+	});
+});
+
+describe('ends that need no arc between them', () => {
+	it('reaching orbit from the ground is the ascent and nothing else', () => {
+		const r = route('ground', LOW);
+		expect(dvOf(r, 'ascent')).toBeGreaterThan(8);
+		expect(dvOf(r, 'injection')).toBeCloseTo(0, 6);
+		expect(dvOf(r, 'capture')).toBeCloseTo(0, 6);
+		expect(r?.totalDvKms).toBeCloseTo(dvOf(r, 'ascent'), 6);
+	});
+
+	it('coming down from that orbit is the descent and nothing else', () => {
+		const r = route(LOW, 'ground');
+		expect(dvOf(r, 'injection')).toBeCloseTo(0, 6);
+		// Asked for nothing from the air, so the landing cancels the orbit on the
+		// engine — the ascent run backwards, which is what it costs.
+		expect(dvOf(r, 'descent')).toBeGreaterThan(circularSpeed(EARTH.mu, LOW.rPeriKm));
+		expect(r?.totalDvKms).toBeCloseTo(dvOf(r, 'descent'), 6);
+	});
+
+	it('lands on the air when the air is asked for', () => {
+		const engine = route(LOW, 'ground')?.totalDvKms ?? 0;
+		const parachute =
+			buildRoute(EARTH, EARTH, J2000, 1, {
+				orbitChange: true,
+				departureMode: 'orbit',
+				arrivalMode: 'landing',
+				departureOrbit: LOW,
+				aero: 'aerocapture'
+			})?.totalDvKms ?? 0;
+		expect(parachute).toBeLessThan(engine / 10);
+	});
+
+	it('takes half a turn of the orbit it is flown from', () => {
+		const r = route('ground', LOW);
+		const periodMin = orbitPeriodHours(EARTH.mu, LOW) * 60;
+		expect((r?.tofDays ?? 0) * 24 * 60).toBeCloseTo(periodMin / 2, 6);
+	});
+
+	it('comes down from wherever the craft is, even below the parking orbit', () => {
+		const low: EndOrbit = { rPeriKm: EARTH.radiusKm + 120, rApoKm: EARTH.radiusKm + 120 };
+		expect(route(low, 'ground')?.totalDvKms).toBeGreaterThan(0);
+	});
+});

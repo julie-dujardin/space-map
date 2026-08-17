@@ -24,9 +24,9 @@ import {
 	type EndOrbit
 } from './maneuvers';
 import { propagateState } from './propagate';
-import { routeDurationDays, type Route, type RouteOptions } from './route';
+import { orbitChangeEnds, routeDurationDays, type Route, type RouteOptions } from './route';
 import { elementsToState } from './state';
-import { relativeState, solveRadialArc } from './system-transfer';
+import { relativeState, solveRadialArc, type RadialArc } from './system-transfer';
 import { add, cross, dot, norm, normalize, scale, sub, type Vec3 } from './vec3';
 
 /** A point on the trip worth marking: burns and encounters, not every leg —
@@ -400,10 +400,12 @@ function buildCrossing(
 		centralMu = GM_SUN_KM3_S2,
 		retrograde = false,
 		systemPrimary,
+		orbitChange,
 		vias = [],
 		samples = DEFAULT_SAMPLES
 	} = options;
 
+	if (orbitChange) return orbitChangePath(departure, route, centerId, samples);
 	if (route.lowThrust) {
 		// A spiral inside one system is thousands of revolutions deep, which is a
 		// shape rather than a line: there is nothing to draw between the two ends
@@ -545,9 +547,10 @@ function endOrbitPaths(
 	const { centralMu = GM_SUN_KM3_S2, systemPrimary, frame = 'interplanetary' } = options;
 	// What each end body's sphere of influence is measured against: the primary
 	// inside one system, the Sun elsewhere.
-	const primaryMu = systemPrimary
-		? (systemPrimary === 'departure' ? departure : target).mu
-		: centralMu;
+	const primaryMu =
+		options.orbitChange || systemPrimary
+			? (systemPrimary === 'target' ? target : departure).mu
+			: centralMu;
 	const approaches = endApproaches(departure, target, route, options);
 
 	const orbits: EndOrbitPath[] = [];
@@ -628,6 +631,9 @@ function endApproaches(
 ): { from?: EndApproach; to?: EndApproach } {
 	const { centralMu = GM_SUN_KM3_S2, retrograde = false, systemPrimary, vias = [] } = options;
 	if (route.lowThrust || route.constantThrust != null) return {};
+	// A trip that stays at one body crosses no sphere of influence, so neither
+	// end is approached from outside one.
+	if (options.orbitChange) return {};
 
 	if (systemPrimary) {
 		// Only the way out: coming home, pricing uses the *outward* leg's excess
@@ -728,6 +734,8 @@ function endCenters(
 	options: PathOptions
 ): { from: Vec3; to: Vec3 } | null {
 	const { centralMu = GM_SUN_KM3_S2, systemPrimary } = options;
+	// Both ends are the body the frame is centred on, so both are the origin.
+	if (options.orbitChange) return { from: [0, 0, 0], to: [0, 0, 0] };
 	// Inside one system the primary *is* the frame, so it sits at the origin and
 	// only the satellite has to be placed.
 	if (systemPrimary) {
@@ -2034,38 +2042,210 @@ function systemPath(
 	const arc = solveRadialArc(primary.mu, rNear, rFar, route.tofDays);
 	if (!arc) return null;
 
+	// The plane is the satellite's, and the arc's far end is where it is.
+	const normal = normalize(cross(state.r, state.v));
+	if (!(norm(normal) > 0)) return null;
+	const sampled = radialArcSamples(
+		arc,
+		rNear,
+		rFar,
+		normalize(state.r),
+		normal,
+		route,
+		outbound,
+		samples
+	);
+	if (!sampled) return null;
+
+	return {
+		centerId,
+		arcs: [{ ...sampled, kind: 'cruise', startJd: route.departJd, endJd: route.arriveJd }],
+		stops: [departureStop, arrivalStop],
+		meeting
+	};
+}
+
+/**
+ * Sample a radial arc from its periapsis out to `rFarKm`, and date every point.
+ *
+ * The conic is placed by its far end: periapsis sits behind `farDir` by the
+ * true anomaly the arc reaches it at, in the plane `normal` describes. Read
+ * outbound the points run from periapsis outwards, and inbound they are the
+ * same arc reversed — the way home is the way out flown backwards.
+ */
+function radialArcSamples(
+	arc: RadialArc,
+	rNearKm: number,
+	rFarKm: number,
+	farDir: Vec3,
+	normal: Vec3,
+	route: Route,
+	outbound: boolean,
+	samples: number = DEFAULT_SAMPLES
+): { points: Vec3[]; jds: number[] } | null {
 	const a = 1 / arc.inverseAKm;
-	const e = 1 - rNear * arc.inverseAKm;
+	const e = 1 - rNearKm * arc.inverseAKm;
 	const p = a * (1 - e * e);
 	if (!isFinite(p) || !(p > 0)) return null;
 
-	// True anomaly where the arc meets the satellite, from the conic equation.
-	const cosNu = (p / rFar - 1) / (e || 1e-12);
+	// True anomaly where the arc reaches the far radius, from the conic equation.
+	const cosNu = (p / rFarKm - 1) / (e || 1e-12);
 	const nuFar = Math.acos(Math.max(-1, Math.min(1, cosNu)));
 	if (!isFinite(nuFar)) return null;
 
-	// The plane is the satellite's, and periapsis sits `nuFar` behind it along
-	// the direction the satellite is travelling.
-	const normal = normalize(cross(state.r, state.v));
-	if (!(norm(normal) > 0)) return null;
-	const far = normalize(state.r);
-	// Rotate `far` back by nuFar about the normal (Rodrigues, on unit vectors).
+	// Rotate `farDir` back by nuFar about the normal (Rodrigues, on unit vectors).
 	const cosBack = Math.cos(-nuFar);
 	const sinBack = Math.sin(-nuFar);
 	const periapsis = normalize(
 		add(
-			add(scale(far, cosBack), scale(cross(normal, far), sinBack)),
-			scale(normal, dot(normal, far) * (1 - cosBack))
+			add(scale(farDir, cosBack), scale(cross(normal, farDir), sinBack)),
+			scale(normal, dot(normal, farDir) * (1 - cosBack))
 		)
 	);
+	return sweepSamples(
+		e,
+		p,
+		nuFar,
+		periapsis,
+		normalize(cross(normal, periapsis)),
+		route,
+		outbound,
+		samples
+	);
+}
+
+/**
+ * The arc of a trip between two orbits about one body.
+ *
+ * Drawn in the body's own equator: the model prices no inclination, so the one
+ * plane it can honestly claim is the one the body itself turns in. Where the
+ * two orbits already meet there is no arc to draw at all, and what is drawn is
+ * the half turn the craft coasts to reach the burn.
+ */
+function orbitChangePath(
+	body: TravelBody,
+	route: Route,
+	centerId: string,
+	samples: number
+): PathGeometry | null {
+	const ends = orbitChangeEnds(body, {
+		departureMode: route.departureMode,
+		arrivalMode: route.arrivalMode,
+		departureOrbit: route.departureOrbit,
+		targetOrbit: route.targetOrbit
+	});
+	if (!ends) return null;
+
+	// The body's equator where its pole is published, the ecliptic where it is
+	// not: an unstated pole is not a claim that the orbit lies anywhere else.
+	const normal = normalize(body.poleEcliptic ?? ([0, 0, 1] as Vec3));
+	if (!(norm(normal) > 0)) return null;
+	// Nothing picks out a direction in the plane, so periapsis goes wherever the
+	// axes put it: any longitude draws the same trip.
+	const periapsis = normalize(cross(normal, Math.abs(normal[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]));
 	const inPlane = normalize(cross(normal, periapsis));
 
+	const rNear = Math.min(ends.rFromKm, ends.rToKm);
+	const rFar = Math.max(ends.rFromKm, ends.rToKm);
+	const sampled = ends.singleBurn
+		? sweepSamples(
+				eccentricityOf(ends.from),
+				semiLatusRectumOf(ends.from),
+				Math.PI,
+				periapsis,
+				inPlane,
+				route,
+				true,
+				samples
+			)
+		: sweepFromArc(body, rNear, rFar, periapsis, inPlane, route, ends.climb, samples);
+	if (!sampled) return null;
+
+	const { points, jds } = sampled;
+	const stops: PathStop[] = [
+		{
+			kind: 'departure',
+			jd: route.departJd,
+			r: points[0],
+			bodyId: body.id,
+			dvKms: dvOf(route, ['ascent', 'injection'])
+		},
+		{
+			kind: 'arrival',
+			jd: route.arriveJd,
+			r: points[points.length - 1],
+			bodyId: body.id,
+			dvKms: dvOf(route, ['capture', 'descent'])
+		}
+	];
+	return {
+		centerId,
+		arcs: [{ kind: 'cruise', points, jds, startJd: route.departJd, endJd: route.arriveJd }],
+		stops,
+		// The destination is the body the whole trip is measured from, so it never
+		// moves under the arc: the meeting is at its centre.
+		meeting: { bodyId: body.id, jd: route.arriveJd, r: [0, 0, 0] as Vec3 }
+	};
+}
+
+/** Eccentricity and semi-latus rectum of a named orbit — the two numbers a
+ *  sweep needs, from the two radii an end is described by. */
+function eccentricityOf(orbit: EndOrbit): number {
+	const sum = orbit.rApoKm + orbit.rPeriKm;
+	return sum > 0 ? (orbit.rApoKm - orbit.rPeriKm) / sum : 0;
+}
+
+function semiLatusRectumOf(orbit: EndOrbit): number {
+	const sum = orbit.rApoKm + orbit.rPeriKm;
+	return sum > 0 ? (2 * orbit.rApoKm * orbit.rPeriKm) / sum : 0;
+}
+
+/** The transfer ellipse between two radii about one body, sampled in a plane
+ *  that nothing else fixes. Climbing it runs outwards; coming down it is the
+ *  same arc read backwards. */
+function sweepFromArc(
+	body: TravelBody,
+	rNearKm: number,
+	rFarKm: number,
+	periapsis: Vec3,
+	inPlane: Vec3,
+	route: Route,
+	climb: boolean,
+	samples: number
+): { points: Vec3[]; jds: number[] } | null {
+	const arc = solveRadialArc(body.mu, rNearKm, rFarKm, route.tofDays);
+	if (!arc) return null;
+	const a = 1 / arc.inverseAKm;
+	const e = 1 - rNearKm * arc.inverseAKm;
+	const p = a * (1 - e * e);
+	if (!isFinite(p) || !(p > 0)) return null;
+	const cosNu = (p / rFarKm - 1) / (e || 1e-12);
+	const nuFar = Math.acos(Math.max(-1, Math.min(1, cosNu)));
+	if (!isFinite(nuFar)) return null;
+	return sweepSamples(e, p, nuFar, periapsis, inPlane, route, climb, samples);
+}
+
+/**
+ * Points and dates along a conic, from its periapsis through `nuEnd` of true
+ * anomaly. `outbound` reads it away from the body; false reads the same sweep
+ * backwards, which is the way home.
+ */
+function sweepSamples(
+	e: number,
+	p: number,
+	nuEnd: number,
+	periapsis: Vec3,
+	inPlane: Vec3,
+	route: Route,
+	outbound: boolean,
+	samples: number
+): { points: Vec3[]; jds: number[] } | null {
 	const points: Vec3[] = [];
-	// Time from periapsis to each sample, recovering dates from an arc sampled
+	// Time from periapsis to each sample, recovering dates from a sweep taken
 	// evenly in angle rather than time (Kepler's equation; units cancel below).
 	const sincePeriapsis: number[] = [];
 	for (let i = 0; i < samples; i++) {
-		const nu = (nuFar * i) / (samples - 1);
+		const nu = (nuEnd * i) / (samples - 1);
 		const radius = p / (1 + e * Math.cos(nu));
 		if (!isFinite(radius) || radius <= 0) return null;
 		points.push(scale(add(scale(periapsis, Math.cos(nu)), scale(inPlane, Math.sin(nu))), radius));
@@ -2074,22 +2254,15 @@ function systemPath(
 		sincePeriapsis.push(anomaly - e * Math.sin(anomaly));
 	}
 
-	// Scaled to the flight time the arc was solved for rather than to a period
-	// derived here, so the ends land exactly on the two dates the route names.
+	// Scaled to the flight time the route was solved for rather than to a period
+	// derived here, so the ends land exactly on the two dates it names.
 	const sweep = sincePeriapsis[samples - 1];
 	const elapsed = sincePeriapsis.map((mean) =>
 		sweep > 0 && isFinite(sweep) ? (route.tofDays * mean) / sweep : 0
 	);
 	const jds = outbound
 		? elapsed.map((days) => route.departJd + days)
-		: // Read the same arc backwards on the way home: the far end is left first.
-			elapsed.map((days) => route.arriveJd - days).reverse();
+		: elapsed.map((days) => route.arriveJd - days).reverse();
 	if (!outbound) points.reverse();
-
-	return {
-		centerId,
-		arcs: [{ kind: 'cruise', points, jds, startJd: route.departJd, endJd: route.arriveJd }],
-		stops: [departureStop, arrivalStop],
-		meeting
-	};
+	return { points, jds };
 }

@@ -378,6 +378,9 @@ export interface HazardContext {
 	centralMu?: number;
 	/** Set when the trip stays inside one system — see `RouteOptions`. */
 	systemPrimary?: 'departure' | 'target';
+	/** Set when both ends are the same body — see `RouteOptions`. The belts a
+	 *  climb between two orbits crosses are hazards like any other. */
+	orbitChange?: boolean;
 	/** Bodies a swing-by route passes; without the right one its second arc
 	 *  cannot be rebuilt and the scan has no geometry to read. */
 	vias?: readonly TravelBody[];
@@ -534,6 +537,7 @@ function scan(
 		centerId: context.centerId,
 		centralMu,
 		systemPrimary: context.systemPrimary,
+		orbitChange: context.orbitChange,
 		retrograde: context.retrograde,
 		vias: context.vias,
 		samples: hazardSamples(route)

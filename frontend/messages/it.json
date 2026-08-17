@@ -1392,6 +1392,8 @@
 	"travel_no_routes": "Nessuna rotta in questa finestra.",
 	"travel_no_routes_by_date": "Nessuna traiettoria arriva entro questa data.",
 	"travel_no_target": "Scegli una destinazione per vedere come arrivarci.",
+	"travel_same_place": "Le due estremità sono la stessa orbita. Cambiane una per pianificare un viaggio.",
+	"travel_surface_hop": "Due punti sullo stesso suolo sono un salto suborbitale, che qui non viene calcolato.",
 	"travel_not_modelled": "Non modellato",
 	"travel_on_arrival": "All'arrivo",
 	"travel_launch_pad": "Rampa di lancio",
