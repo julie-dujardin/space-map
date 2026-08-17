@@ -83,7 +83,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import InlineMenu from './InlineMenu.svelte';
 	import VehicleField from './VehicleField.svelte';
-	import DateField from './DateField.svelte';
+	import TimingField from './TimingField.svelte';
 	import ManifestField from './ManifestField.svelte';
 	import EndpointField from './EndpointField.svelte';
 	import RouteList from './RouteList.svelte';
@@ -657,12 +657,6 @@
 		const windows = nextTransferWindows(originTravel, targetTravel, nowJd, 1, frame.centralMu);
 		return windows.length > 0 ? windows[0] : null;
 	});
-
-	const TIME_MODES: { value: TimeMode; label: string }[] = [
-		{ value: 'now', label: m.travel_time_now() },
-		{ value: 'depart', label: m.travel_time_depart() },
-		{ value: 'arrive', label: m.travel_time_arrive() }
-	];
 
 	// A deadline in the present admits nothing, so "arrive by" opens one slowest
 	// transfer out — the earliest date the trip could plausibly be held to.
@@ -1257,24 +1251,17 @@
 		     date and a braking mode together outrun the width, and a control shoved
 		     off the end is gone rather than merely cramped. -->
 			<div class="flex min-h-6.5 flex-wrap items-center gap-2">
-				<InlineMenu
-					options={TIME_MODES}
-					value={panel.timeMode}
-					onchange={(mode: TimeMode) => {
+				<TimingField
+					mode={panel.timeMode}
+					jd={panel.pickedJd ?? defaultPickedJd(panel.timeMode)}
+					onModeChange={(mode: TimeMode) => {
 						panel.timeMode = mode;
 						// Seed the date on the way in, so the mode means something the moment
 						// it is chosen rather than after a second click.
 						if (mode !== 'now' && panel.pickedJd == null) panel.pickedJd = defaultPickedJd(mode);
 					}}
-					ariaLabel={m.travel_when()}
+					onDateChange={(jd: number) => (panel.pickedJd = jd)}
 				/>
-				{#if panel.timeMode !== 'now'}
-					<DateField
-						label={panel.timeMode === 'depart' ? m.travel_depart_on() : m.travel_arrive_by()}
-						jd={panel.pickedJd ?? defaultPickedJd(panel.timeMode)}
-						onChange={(jd) => (panel.pickedJd = jd)}
-					/>
-				{/if}
 				{#if showAero}
 					<!-- Trailing, muted, and second: braking answers the arrival, which is
 				     the later half of the same sentence the timing starts. Pushed to the
