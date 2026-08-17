@@ -87,6 +87,19 @@ class GroupExtraStats:
     # Tidal heating: members whose heat budget the tide is, rather than
     # contributes to.
     tide_dominant_count: int | None = None
+    # Radiation: members a dosimeter has actually been landed on and read out
+    # as a dose to a body, by name. Three of seven, and the card names them
+    # because the state of the subject is the page's first fact — everything
+    # else here is a transport code's output.
+    radiation_measured: list[str] | None = None
+    # Radiation: the least irradiated surface, as {..., sv_per_day}. Venus,
+    # nine orders below Earth's ground under a hundred thousand g/cm² of CO₂.
+    # The chart cannot show it — its bar is zero pixels against the Moon's.
+    quietest_surface: dict | None = None
+    # Radiation: the works every dose on the page is read off, as
+    # {title, url, note}. The page's own bibliography — its figures come from
+    # papers rather than from a catalogue, and no member bundle carries them.
+    radiation_sources: list[dict] | None = None
 
     def to_dict(self) -> dict:
         return {k: v for k, v in asdict(self).items() if v is not None}

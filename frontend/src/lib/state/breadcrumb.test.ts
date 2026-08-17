@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { PROPERTY_COLLECTION_SLUGS } from './category-config';
 import { parentCrumb } from './breadcrumb';
 import { CAT_SURFACE_FEATURES } from '$lib/fetch/groups/registry';
 import type { Focusable } from './focusable';
@@ -42,16 +43,17 @@ describe('parentCrumb: surface features', () => {
 		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-solar-system' });
 	});
 
-	it('climbs from a property collection to Structure & Activity, not the root', () => {
-		for (const slug of [
-			'cat-atmospheres',
-			'cat-oceans',
-			'cat-volcanism',
-			'cat-magnetic-fields',
-			'cat-tidal-heating'
-		]) {
+	it('climbs from every property collection to Structure & Activity, not the root', () => {
+		// Iterated rather than listed: the hand-written list here had gone stale
+		// against the config table twice, and each page it missed breadcrumbed
+		// past its own parent to the root.
+		expect(PROPERTY_COLLECTION_SLUGS.length).toBeGreaterThan(6);
+		for (const slug of PROPERTY_COLLECTION_SLUGS) {
 			const crumb = parentCrumb({ kind: 'group', slug }, undefined, null, null);
-			expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-structure-activity' });
+			expect(crumb?.target, slug).toMatchObject({
+				kind: 'group',
+				slug: 'cat-structure-activity'
+			});
 		}
 	});
 });

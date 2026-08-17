@@ -13,7 +13,7 @@
 import * as m from '$lib/paraglide/messages.js';
 import { CANCER_RISK_PER_SV, LETHAL_DOSE_GY } from '$lib/math/travel';
 import { formatDuration } from './duration';
-import { formatPercent, sigFigures } from './quantities';
+import { formatPercent, scientificNotation, sigFigures } from './quantities';
 
 /** SI prefixes are the same in every language, so they are built here rather
  *  than carried as twelve copies of "m". */
@@ -45,9 +45,16 @@ const DAYS_PER_YEAR = 365.25;
  * is linear, which is extrapolation above roughly 1 Sv — but a body a person
  * could stand on never gets near that in a year, and the ones that do are
  * `trapped` and take the sentence below instead.
+ *
+ * Below a ten-thousandth of a percent it switches to scientific notation, the
+ * same move `earthRatioParts` makes two decades earlier: Venus's year reads
+ * "0.0000000036%" written plainly, which nobody can take a size from. The
+ * threshold sits lower here because Earth's own 0.0016% is still legible and
+ * is the figure every other one is judged against.
  */
 export function cancerRiskPerYear(svPerDay: number): string {
-	return formatPercent(svPerDay * DAYS_PER_YEAR * CANCER_RISK_PER_SV);
+	const risk = svPerDay * DAYS_PER_YEAR * CANCER_RISK_PER_SV;
+	return risk >= 1e-6 ? formatPercent(risk) : `${scientificNotation(risk * 100)}%`;
 }
 
 /**

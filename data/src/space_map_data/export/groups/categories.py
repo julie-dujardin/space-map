@@ -32,6 +32,7 @@ from space_map_data.constants.categories import (
     TECTONICS_SLUG,
     MAGNETIC_FIELDS_SLUG,
     TIDAL_HEATING_SLUG,
+    RADIATION_SLUG,
 )
 from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
 from space_map_data.constants.atmosphere.structure import (
@@ -42,6 +43,7 @@ from space_map_data.constants.activity.magnetism import MAGNETIC_FIELDS
 from space_map_data.constants.activity.tidal import TIDAL_HEATING
 from space_map_data.constants.activity.volcanism import GEOLOGIC_ACTIVITY
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
+from space_map_data.constants.radiation.environments import RADIATION_ENVIRONMENTS
 from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_SLUG_PREFIX,
@@ -62,7 +64,9 @@ from space_map_data.export.notable import NotableObject, render_geometry
 from space_map_data.export.objects.activity import collection_row
 from space_map_data.export.objects.atmosphere import limb_profile, pressure_block
 from space_map_data.export.objects.interior import cutaway_layers, ocean_block
+from space_map_data.export.objects import radiation
 from space_map_data.export.objects.rings import ring_catalog_sources, ring_mass_block
+from space_map_data.export.objects.temperature import heliocentric_distance_au
 from space_map_data.export.small_body_color import (
     resolve_moon_color,
     resolve_small_body_color,
@@ -845,6 +849,127 @@ def _tidal_members(session, radii, gms, orientation) -> list[NotableObject]:
     )
 
 
+def radiation_places(session: Session) -> dict[str, radiation.Place]:
+    """Where each member of the Radiation page sits, which is what its dose
+    depends on.
+
+    Only the parent is looked up, and the semi-major axis is passed as absent:
+    every member is a planet or a major moon, so its parent is a barycentre
+    with a tabulated distance and the axis would never be consulted. A member
+    orbiting the Sun directly would fall through that and get no figure, which
+    is why the caller logs the ones that come back placeless.
+    """
+    parents = {
+        body: parent_id
+        for body, parent_id in session.query(Object.id, Object.parent_id).filter(
+            Object.id.in_(sorted(RADIATION_ENVIRONMENTS))
+        )
+    }
+    return {
+        body: radiation.Place(
+            parent_id=parents.get(body),
+            distance_au=heliocentric_distance_au(None, parents.get(body)),
+        )
+        for body in RADIATION_ENVIRONMENTS
+    }
+
+
+def _radiation_members(
+    session: Session,
+    places: dict[str, radiation.Place],
+    radii: dict[int, dict],
+    gms: dict[int, float],
+    orientation: dict[int, dict],
+) -> list[NotableObject]:
+    """Every place anyone has put a dose on, harshest first.
+
+    A figure is what makes a body a member, the rule the pressure and field
+    pages follow. Seven of the fourteen environments on record have one; the
+    other seven are known well enough to be classified and not well enough to
+    be quoted, and a row reading only "worst in the solar system" beside six
+    numbers is a caption, not a member.
+
+    Ranked across both mechanisms even though the charts split them, so the row
+    order is one list a reader can read down. The two belt moons take the top
+    by five orders of magnitude, which is the honest opening.
+    """
+    rows = {
+        body: row
+        for body in RADIATION_ENVIRONMENTS
+        if (row := radiation.collection_row(body, places[body])) is not None
+    }
+    logger.info(
+        "Radiation: %d of %d characterised places carry a dose; without one: %s",
+        len(rows),
+        len(RADIATION_ENVIRONMENTS),
+        ", ".join(sorted(set(RADIATION_ENVIRONMENTS) - set(rows))) or "none",
+    )
+    if placeless := [body for body in rows if places[body].distance_au is None]:
+        logger.warning(
+            "Radiation: %d members have no heliocentric distance, so no modelled "
+            "dose: %s",
+            len(placeless),
+            ", ".join(sorted(placeless)),
+        )
+
+    def rank(body: str) -> tuple[int, float, str]:
+        return _measured_first(_row_dose(rows[body]), body)
+
+    def attach(member: NotableObject, body: str) -> NotableObject:
+        return replace(member, radiation=rows[body], cutaway=cutaway_layers(body))
+
+    return _property_members(
+        session, sorted(rows, key=rank), attach, "Radiation", radii, gms, orientation
+    )
+
+
+def _row_dose(row: dict) -> float | None:
+    """The one figure a row plots: published where there is one, modelled where
+    there is not — the rule the body's own panel follows."""
+    published = row.get("surface_dose")
+    if published is not None:
+        return published["sv_per_day"]["value"]
+    modelled = row.get("modelled_surface_dose")
+    return modelled["sv_per_day"] if modelled is not None else None
+
+
+def _radiation_stats(
+    members: list[NotableObject], places: dict[str, radiation.Place]
+) -> GroupExtraStats:
+    """What the two charts cannot say.
+
+    The quietest surface is on one of them and draws nothing — Venus is nine
+    decades under the Moon, so its bar is zero pixels wide and the card is the
+    only place its figure reads. The other is the fact about the set: how much
+    of it anyone has actually measured, which is three of seven.
+    """
+    measured: list[str] = []
+    quietest: dict | None = None
+    for member in members:
+        row = member.radiation or {}
+        published = row.get("surface_dose")
+        if published is not None and not published["sv_per_day"].get("modelled"):
+            measured.append(member.fallback_name)
+        dose = _row_dose(row)
+        if dose is not None and (quietest is None or dose < quietest["sv_per_day"]):
+            quietest = {
+                "primary_type": "object",
+                "primary_id": member.object_id,
+                "name": member.fallback_name,
+                "sv_per_day": dose,
+            }
+    return GroupExtraStats(
+        radiation_measured=sorted(measured) or None,
+        quietest_surface=quietest,
+        # Scoped to the members: a bibliography backs what the page shows, and
+        # the seven places that lost their row took their citations with them.
+        radiation_sources=radiation.collection_sources(
+            {member.object_id: places[member.object_id] for member in members}
+        )
+        or None,
+    )
+
+
 def _volcanism_stats(members: list[NotableObject]) -> GroupExtraStats:
     """Erupting now, the hottest, and every vent anyone has mapped — none
     restating the status-rung chart below. The erupting card names its members
@@ -1075,6 +1200,10 @@ def build_category_data(
     tectonics_members = _tectonics_members(session, radii, gms, orientation)
     magnetic_members = _magnetic_members(session, radii, gms, orientation)
     tidal_members = _tidal_members(session, radii, gms, orientation)
+    radiation_where = radiation_places(session)
+    radiation_members = _radiation_members(
+        session, radiation_where, radii, gms, orientation
+    )
     star = _star_member(session, radii, gms, orientation)
     probe_members, probes_total = _probe_members(session, radii, gms, orientation)
     moons = _moon_data(session, planet_elements)
@@ -1108,13 +1237,18 @@ def build_category_data(
         # Ring Systems is a page of the same kind and deliberately not a child:
         # a ring is a swarm in orbit, closer to a moon than to a layer of the
         # body it goes round.
+        # Read outward and then by mechanism: the two envelopes, the crust and
+        # what moves it, the tide that supplies the heat, then the field and the
+        # particles it steers. Tidal heating sits with volcanism and tectonics
+        # because it is where their heat comes from, not with the field.
         STRUCTURE_ACTIVITY_SLUG: [
             ATMOSPHERES_SLUG,
             OCEANS_SLUG,
             VOLCANISM_SLUG,
             TECTONICS_SLUG,
-            MAGNETIC_FIELDS_SLUG,
             TIDAL_HEATING_SLUG,
+            MAGNETIC_FIELDS_SLUG,
+            RADIATION_SLUG,
         ],
     }
     # Object totals, not child counts: orbit classes partition their bodies, so
@@ -1165,6 +1299,7 @@ def build_category_data(
         TECTONICS_SLUG: len(tectonics_members),
         MAGNETIC_FIELDS_SLUG: len(magnetic_members),
         TIDAL_HEATING_SLUG: len(tidal_members),
+        RADIATION_SLUG: len(radiation_members),
         STRUCTURE_ACTIVITY_SLUG: len(
             {
                 member.object_id
@@ -1175,6 +1310,7 @@ def build_category_data(
                     tectonics_members,
                     magnetic_members,
                     tidal_members,
+                    radiation_members,
                 )
                 for member in page
             }
@@ -1240,6 +1376,8 @@ def build_category_data(
         notable_members[MAGNETIC_FIELDS_SLUG] = magnetic_members
     if tidal_members:
         notable_members[TIDAL_HEATING_SLUG] = tidal_members
+    if radiation_members:
+        notable_members[RADIATION_SLUG] = radiation_members
     if asteroid_notable:
         notable_members[ASTEROIDS_SLUG] = asteroid_notable
     if comet_notable:
@@ -1308,10 +1446,14 @@ def build_category_data(
         extra_stats[MAGNETIC_FIELDS_SLUG] = _magnetic_stats(magnetic_members)
     if tidal_members:
         extra_stats[TIDAL_HEATING_SLUG] = _tidal_stats(tidal_members)
+    if radiation_members:
+        extra_stats[RADIATION_SLUG] = _radiation_stats(
+            radiation_members, radiation_where
+        )
     logger.info(
         "Built category data: planets=%d, dwarf planets=%d, moons=%d (%d notable, "
         "%d planet/dwarf hosts), ring systems=%d, atmospheres=%d, oceans=%d, "
-        "volcanism=%d, tectonics=%d, magnetic=%d, tidal=%d, "
+        "volcanism=%d, tectonics=%d, magnetic=%d, tidal=%d, radiation=%d, "
         "asteroid zones=%d, comet "
         "families=%d, satellite groups=%d (%d payloads), debris groups=%d "
         "(%d pieces from %d sources), probes=%d",
@@ -1327,6 +1469,7 @@ def build_category_data(
         len(tectonics_members),
         len(magnetic_members),
         len(tidal_members),
+        len(radiation_members),
         len(asteroids),
         len(comets),
         len(satellites),

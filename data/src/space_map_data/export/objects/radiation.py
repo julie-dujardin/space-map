@@ -22,11 +22,13 @@ planet gets its `kind` and its note and no figure, which is what
 to every moon of Jupiter, Saturn, Uranus, Neptune and Earth.
 """
 
+from typing import NamedTuple
+
 from space_map_data.constants.activity.magnetism import MAGNETIC_FIELDS
 from space_map_data.constants.activity.schema import Measurement
 from space_map_data.constants.atmosphere.bodies import ATMOSPHERE_BODIES
 from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
-from space_map_data.constants.radiation.belts import TRAPPED_BELTS
+from space_map_data.constants.radiation.belts import TRAPPED_BELTS, TRAPPED_SYSTEMS
 from space_map_data.constants.radiation.environments import RADIATION_ENVIRONMENTS
 from space_map_data.constants.radiation.field import (
     FIELD_SOURCES,
@@ -105,6 +107,56 @@ def radiation_block(
     return block
 
 
+class Place(NamedTuple):
+    """Where a collection member sits, which is all its dose depends on."""
+
+    parent_id: str | None
+    distance_au: float | None
+
+
+def collection_row(object_id: str, place: Place) -> dict | None:
+    """The same block, trimmed to a figure and which chart it belongs on.
+
+    Built by calling `radiation_block` rather than by rebuilding it, so the
+    figure on the Radiation page and the figure in the body's own panel cannot
+    come apart. None where there is no figure, which is what keeps a body off
+    the page: everything else the block carries — the works, the belt's extents,
+    the note naming what dominates — is prose or geometry a row has no room for,
+    and the body's own panel is one click away.
+    """
+    block = radiation_block(
+        object_id, parent_id=place.parent_id, distance_au=place.distance_au
+    )
+    if block is None:
+        return None
+    row = {k: v for k, v in block.items() if k in _ROW_KEYS}
+    return row if len(row) > 1 else None
+
+
+# `kind` decides which of the two charts a row draws on, and which reading hangs
+# off its figure; the other two are the figure, only ever one of them.
+_ROW_KEYS = frozenset({"kind", "surface_dose", "modelled_surface_dose"})
+
+
+def collection_sources(places: dict[str, Place]) -> list[dict]:
+    """Every work behind a collection page's doses, deduped, first use first.
+
+    The page's own bibliography. Unlike the other Structure & Activity pages,
+    whose figures come from catalogues their members' bundles already credit,
+    every number here is read off a paper.
+    """
+    out: dict[str, dict] = {}
+    for object_id, place in places.items():
+        block = radiation_block(
+            object_id, parent_id=place.parent_id, distance_au=place.distance_au
+        )
+        if block is None:
+            continue
+        for source in block["sources"]:
+            out.setdefault(source["url"], source)
+    return list(out.values())
+
+
 def _in_a_magnetosphere(object_id: str, parent_id: str | None) -> bool:
     """Whether trapped particles, not cosmic rays, decide this body's dose.
 
@@ -113,8 +165,10 @@ def _in_a_magnetosphere(object_id: str, parent_id: str | None) -> bool:
     comes and goes with the solar wind and peaks at 93 keV, which is a finding
     about magnetospheres and not a hazard.
 
-    For a moon the parent's belt is the test, and distance from it is not
-    consulted. Titan and Iapetus really do orbit outside Saturn's belts and
+    For a moon the parent's belt is the test — the parent being a system
+    barycentre rather than the planet, which is why the set tested against
+    carries both — and distance from it is not consulted. Titan and Iapetus
+    really do orbit outside Saturn's belts and
     would be fair game, but the boundary is only known for the four planets
     `belts.py` covers, and getting it wrong costs six orders of magnitude in
     the direction that flatters a moon. The cheap rule is the safe one, and
@@ -125,7 +179,12 @@ def _in_a_magnetosphere(object_id: str, parent_id: str | None) -> bool:
     environment = RADIATION_ENVIRONMENTS.get(object_id)
     if environment is not None and environment.kind == TRAPPED:
         return True
-    return parent_id is not None and parent_id in TRAPPED_BELTS
+    # A planet is parented on its own system barycentre, so without this it
+    # would read as sitting inside its own belt. Whether it does is what its
+    # `kind` above already answered.
+    if object_id in TRAPPED_BELTS:
+        return False
+    return parent_id is not None and parent_id in TRAPPED_SYSTEMS
 
 
 def _modelled_surface_dose(

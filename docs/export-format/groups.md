@@ -77,6 +77,11 @@ interface NotableEntry {
   cutaway?: InteriorLayer[];        // `cat-oceans` + the three heat pages; the layer stack, geometry + phase + one material each
   limb?: MemberLimb;                // `cat-atmospheres`; 17 of the 20 members
   activity?: MemberActivity;        // `cat-volcanism` / `cat-tectonics` / `cat-magnetic-fields` / `cat-tidal-heating`
+  radiation?: MemberRadiation;      // `cat-radiation` only; on all 7 members. `kind` and the figure, nothing else:
+                                    // the object bundle's `radiation` block (see objects.md) also carries the works,
+                                    // the belt's extents and a note naming what dominates, all of them prose or
+                                    // geometry a row has no room for. `kind` decides which of the page's two charts
+                                    // the row draws on and which reading hangs off its figure.
   thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
 }
 ```
@@ -321,6 +326,12 @@ interface GlobalGroupData {
   // the three induced-field Jovian moons from `cat-magnetic-fields` (15 → 11).
   // `cat-volcanism` and `cat-tidal-heating` keep every body: their rows fall
   // back to a status rung and a role, which are what their sources commit to.
+  // `cat-radiation` needs both halves — a characterised environment *and* a
+  // figure (14 → 7). Without the first, the cosmic ray field answers for every
+  // airless rock in sunlight and the page becomes several hundred asteroids
+  // ranked by distance from the Sun; without the second, seven rows read
+  // "worst in the solar system" beside six numbers. Ranked by dose across both
+  // mechanisms, though the page charts them separately.
   // `cat-tectonics` is the sixth child, split out of Volcanism & Tectonics
   // because the two were not the same size — volcanism is 15 bodies and five
   // fields, tectonics 10 and two, so tectonics had been a suffix on the other's
@@ -439,6 +450,19 @@ interface GlobalGroupData {
   most_tilted_field?: { name: string; degrees: number; primary_type: "object"; primary_id: string };
   tide_dominant_count?: number;     // cat-tidal-heating — members whose heat budget the tide
                                     // *is*, rather than contributes to
+  radiation_measured?: string[];    // cat-radiation — members a dosimeter has been landed on and
+                                    // read out as a dose to a body, by name. Three of seven,
+                                    // which is the page's first fact; everything else is a
+                                    // transport code's output. The card names them in its tooltip.
+  // cat-radiation — the least irradiated surface. The chart cannot show it: Venus is nine decades
+  // under the Moon, so its bar is zero pixels wide and this card is where its figure reads.
+  quietest_surface?: { name: string; sv_per_day: number; primary_type: "object"; primary_id: string };
+  // cat-radiation — every work behind a dose on the page, deduped and scoped to the members. The
+  // page's own bibliography:
+  // unlike the other Structure & Activity pages, whose figures come from catalogues their members'
+  // bundles already credit, every number here is read off a paper. Same shape as the object
+  // bundle's `radiation.sources`.
+  radiation_sources?: Array<{ title: string; url: string; note?: string }>;
 
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)

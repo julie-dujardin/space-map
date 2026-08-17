@@ -8,6 +8,7 @@ import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
 import { fetchGzipBundle } from '$lib/fetch/bundle-cache';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import type {
+	CitedWork,
 	EntityRef,
 	ImageGalleryData,
 	NotableMemberEntry,
@@ -269,6 +270,15 @@ export interface GlobalGroupData {
 	most_tilted_field?: BodyRef & { degrees: number };
 	/** Tidal heating: members whose heat budget the tide *is*. */
 	tide_dominant_count?: number;
+	/** Radiation: members a dosimeter has been landed on and read out as a dose
+	 *  to a body, by name. Three of seven, which is the page's first fact. */
+	radiation_measured?: string[];
+	/** Radiation: the least irradiated surface. The chart cannot show it — Venus
+	 *  is nine decades under the Moon, so its bar is zero pixels wide. */
+	quietest_surface?: BodyRef & { sv_per_day: number };
+	/** Radiation: the works every dose on the page is read off. The page's own
+	 *  bibliography — its figures come from papers, not from a catalogue. */
+	radiation_sources?: CitedWork[];
 	/** Same Commons pipeline / bundle layout as ``GlobalObjectData.images``. */
 	images?: ObjectImage[];
 	/** One shelf per notable member, keyed by its Object.id. */

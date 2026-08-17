@@ -59,6 +59,7 @@ class NotableObject:
     atmosphere_pressure: dict | None = (
         None  # cat-atmospheres; `atmosphere.pressure_block`
     )
+    radiation: dict | None = None  # cat-radiation; `radiation.collection_row`
     # Tile art in place of a photo: cutaway or limb profile, trimmed to 60 px scale.
     cutaway: list[dict] | None = None  # `interior.cutaway_layers`
     limb: dict | None = None  # `atmosphere.limb_profile`
@@ -261,6 +262,8 @@ def notable_entries(
             entry["limb"] = member.limb
         if member.activity is not None:
             entry["activity"] = member.activity
+        if member.radiation is not None:
+            entry["radiation"] = member.radiation
         if member.first_obs:
             entry["first_obs"] = member.first_obs
         if displacement_metadata and (

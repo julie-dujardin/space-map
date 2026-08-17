@@ -180,6 +180,7 @@ export interface NotableMemberEntry {
 	/** The three heat pages share one row: a body is usually on more than one
 	 *  of them, and the three tables are three views of one question. */
 	activity?: MemberActivity;
+	radiation?: MemberRadiation;
 	thumbnail?: PickedThumbnail;
 }
 
@@ -215,6 +216,13 @@ export interface MemberActivity {
 		dipole_moment_a_m2_upper_limit?: true;
 	};
 }
+
+/** The body's own radiation block, minus what a collection row has no room
+ *  for: the works, which the page cites once for the whole set, and the belt's
+ *  extents, which are radii of a planet a row has no axis for. Whether there
+ *  is a belt survives, because that is what puts a member in the second
+ *  chart. */
+export type MemberRadiation = Omit<RadiationBlock, 'belt' | 'sources'> & { belt?: true };
 
 /** Enough atmosphere for a tile-sized limb: the bands, and what the air is
  *  mostly made of. `structure` is absent on the bodies with no named

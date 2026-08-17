@@ -19,7 +19,8 @@
 		CAT_VOLCANISM,
 		CAT_TECTONICS,
 		CAT_MAGNETIC_FIELDS,
-		CAT_TIDAL_HEATING
+		CAT_TIDAL_HEATING,
+		CAT_RADIATION
 	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
@@ -34,6 +35,7 @@
 	import { EARTH_ID } from '$lib/constants';
 	import { earthOceans, oceanVolume } from '../charts/OceanVolumeChart.svelte';
 	import { fieldParts, powerParts } from '$lib/format/activity';
+	import { formatDoseRate } from '$lib/format/radiation';
 	import {
 		formatCompactNumber,
 		formatNumber,
@@ -263,6 +265,33 @@
 		};
 	}
 
+	/** How much of the page anybody has actually measured. Three of seven, and
+	 *  the tooltip names them because the answer is the surprise: the Moon, Mars
+	 *  and Earth are the only places a dosimeter has been read out as a dose to
+	 *  a body. Everything else here is a transport code. */
+	function radiationMeasured(g: GlobalGroupData): Stat | null {
+		const measured = g.radiation_measured;
+		if (!measured?.length) return null;
+		return {
+			label: m.group_stat_radiation_measured(),
+			value: formatNumber(measured.length),
+			tooltip: measured.join(', ')
+		};
+	}
+
+	/** The chart cannot show this one: Venus is nine decades under the Moon, so
+	 *  its bar is zero pixels and the card is where its figure reads. */
+	function quietestSurface(g: GlobalGroupData): Stat | null {
+		const quietest = g.quietest_surface;
+		if (!quietest) return null;
+		return bodyCard(
+			m.group_stat_quietest(),
+			formatDoseRate(quietest.sv_per_day),
+			quietest,
+			'structure'
+		);
+	}
+
 	function hottestBody(g: GlobalGroupData): Stat | null {
 		const hottest = g.hottest_body;
 		if (!hottest) return null;
@@ -385,6 +414,8 @@
 				];
 			case CAT_TIDAL_HEATING:
 				return [hottestBody(g), count(m.group_stat_tide_driven(), g.tide_dominant_count)];
+			case CAT_RADIATION:
+				return [radiationMeasured(g), quietestSurface(g)];
 			case CAT_SATELLITES:
 				return [active(g)];
 			case CAT_DEBRIS:

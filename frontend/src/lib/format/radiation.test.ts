@@ -38,6 +38,12 @@ describe('what it does to a person', () => {
 		expect(cancerRiskPerYear(1.07e-6)).toMatch(/^0\.0/);
 	});
 
+	it('gives up on decimals before they outrun the digits', () => {
+		// Venus's surface. Written plainly it is "0.0000000036%", which reads as
+		// a typo rather than as a size.
+		expect(cancerRiskPerYear(2.4e-12)).toBe('3.6×10⁻⁹%');
+	});
+
 	it('turns a trapped rate into how long it takes to kill', () => {
 		// Europa's surface: 4.5 Gy at a thousand a day is under seven minutes,
 		// and a percentage of a lethal dose would read as two million percent.

@@ -12,16 +12,10 @@ import {
 	categoryLabel,
 	CATEGORY_SLUG_PREFIX,
 	CAT_ASTEROIDS,
-	CAT_ATMOSPHERES,
 	CAT_COMETS,
 	CAT_DEBRIS,
 	CAT_DWARF_PLANETS,
-	CAT_OCEANS,
 	CAT_STRUCTURE_ACTIVITY,
-	CAT_VOLCANISM,
-	CAT_TECTONICS,
-	CAT_MAGNETIC_FIELDS,
-	CAT_TIDAL_HEATING,
 	CAT_PLANETS,
 	CAT_PROBES,
 	CAT_SATELLITES,
@@ -33,6 +27,7 @@ import {
 	smallBodyCategory
 } from '$lib/fetch/groups/registry';
 import { classifyEarthOrbit, classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
+import { isPropertyCollection } from './category-config';
 import type { Focusable } from './focusable';
 import { urlTypeFromId } from './url';
 import { UrlType, type DrawerTab } from './view';
@@ -87,15 +82,6 @@ function classGroup(className: string): Crumb {
 
 /** The Structure & Activity children, which climb to it rather than to the
  *  root — the way the ft- pages climb to Surface Features. */
-const PROPERTY_COLLECTIONS: ReadonlySet<string> = new Set([
-	CAT_ATMOSPHERES,
-	CAT_OCEANS,
-	CAT_VOLCANISM,
-	CAT_TECTONICS,
-	CAT_MAGNETIC_FIELDS,
-	CAT_TIDAL_HEATING
-]);
-
 function categoryCrumb(slug: string): Crumb {
 	const label = categoryLabel(slug);
 	return { label, target: { kind: 'group', slug, name: label } };
@@ -133,7 +119,7 @@ export function parentCrumb(
 			}
 			// The property collections hang off Structure & Activity, the way the
 			// ft- pages hang off Surface Features.
-			if (PROPERTY_COLLECTIONS.has(slug)) {
+			if (isPropertyCollection(slug)) {
 				return categoryCrumb(CAT_STRUCTURE_ACTIVITY);
 			}
 			return categoryCrumb(CAT_SOLAR_SYSTEM);

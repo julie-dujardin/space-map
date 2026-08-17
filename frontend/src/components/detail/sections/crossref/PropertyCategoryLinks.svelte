@@ -17,6 +17,7 @@
 		CAT_ATMOSPHERES,
 		CAT_MAGNETIC_FIELDS,
 		CAT_OCEANS,
+		CAT_RADIATION,
 		CAT_STRUCTURE_ACTIVITY,
 		CAT_TECTONICS,
 		CAT_TIDAL_HEATING,
@@ -36,6 +37,15 @@
 	const PAGES: { slug: string; has: (g: GlobalObjectData) => boolean }[] = [
 		{ slug: CAT_OCEANS, has: (g) => !!g.interior?.layers?.some((l) => l.role === 'ocean') },
 		{ slug: CAT_ATMOSPHERES, has: (g) => !!g.atmosphere?.pressure },
+		// Both halves matter. A `kind` alone is a characterised environment with
+		// no number, which the page no longer lists; a figure alone is the cosmic
+		// ray model answering for any airless rock in sunlight, which would put
+		// several hundred asteroids on it.
+		{
+			slug: CAT_RADIATION,
+			has: (g) =>
+				!!g.radiation?.kind && !!(g.radiation.surface_dose || g.radiation.modelled_surface_dose)
+		},
 		{ slug: CAT_TECTONICS, has: (g) => !!g.activity?.tectonics },
 		{ slug: CAT_VOLCANISM, has: (g) => !!g.activity?.volcanism },
 		{ slug: CAT_MAGNETIC_FIELDS, has: (g) => !!g.activity?.magnetism?.surface_field_t },

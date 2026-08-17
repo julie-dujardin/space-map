@@ -44,6 +44,7 @@ VOLCANISM_SLUG = f"{CATEGORY_SLUG_PREFIX}volcanism"
 TECTONICS_SLUG = f"{CATEGORY_SLUG_PREFIX}tectonics"
 MAGNETIC_FIELDS_SLUG = f"{CATEGORY_SLUG_PREFIX}magnetic-fields"
 TIDAL_HEATING_SLUG = f"{CATEGORY_SLUG_PREFIX}tidal-heating"
+RADIATION_SLUG = f"{CATEGORY_SLUG_PREFIX}radiation"
 
 CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(SOLAR_SYSTEM_SLUG, "Solar System", "Q544"),
@@ -94,6 +95,14 @@ CATEGORIES: tuple[CategorySpec, ...] = (
     # lists bodies whose field is detectable from outside.
     CategorySpec(MAGNETIC_FIELDS_SLUG, "Magnetic Fields", "Q6915"),
     CategorySpec(TIDAL_HEATING_SLUG, "Tidal Heating", "Q7800788"),
+    # "Cosmic radiation" over "ionizing radiation" (Q186161): both cover all
+    # twelve locales, but Q186161's descriptions are a definition of the
+    # quantity — electrons liberated from atoms — with nothing in them about
+    # places, while every locale of this one opens on high-energy particles in
+    # space. It does undercount the page: two members are dosed by their
+    # planet's trapped belts rather than by galactic cosmic rays, and the page
+    # charts those separately for that reason.
+    CategorySpec(RADIATION_SLUG, "Radiation", "Q11547"),
 )
 
 CATEGORY_BY_SLUG: dict[str, CategorySpec] = {c.slug: c for c in CATEGORIES}

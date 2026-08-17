@@ -117,6 +117,32 @@ class TestMagnetospheres:
         assert titan["kind"] == "shielded"
         assert "modelled_surface_dose" not in titan
 
+    @pytest.mark.parametrize(
+        ("object_id", "parent_id"),
+        [("naif-606", "naif-6"), ("naif-602", "naif-6"), ("naif-801", "naif-8")],
+    )
+    def test_the_parent_a_moon_actually_carries_is_its_barycentre(
+        self, object_id: str, parent_id: str
+    ):
+        """The exclusion has to fire on the id the export really passes.
+
+        SPICE hangs a planet's moons off the system barycentre, never off the
+        planet, so a test written against `naif-699` proves nothing about
+        Enceladus. Titan, Enceladus and Triton would otherwise each publish a
+        cosmic ray floor from inside a belt.
+        """
+        moon = block(object_id, parent_id, 9.537)
+        assert moon is None or "modelled_surface_dose" not in moon
+
+    def test_a_planet_does_not_orbit_its_own_belt(self):
+        """Mercury is parented on its own barycentre and has a belt, and the
+        two together must not read as it sitting inside one. Its `kind` is
+        `cosmic` deliberately: the belt is intermittent and peaks at 93 keV.
+        """
+        mercury = block("naif-199", "naif-1", 0.387)
+        assert mercury is not None
+        assert mercury["modelled_surface_dose"]["sv_per_day"] > 0.0
+
     def test_every_trapped_body_is_excluded(self):
         for object_id, environment in RADIATION_ENVIRONMENTS.items():
             if environment.kind != "trapped":

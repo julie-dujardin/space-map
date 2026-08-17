@@ -122,6 +122,7 @@
 	import OceanVolumeChart, { oceanVolume } from './charts/OceanVolumeChart.svelte';
 	import AtmospherePressureChart from './charts/AtmospherePressureChart.svelte';
 	import ValuePerBodyChart from './charts/ValuePerBodyChart.svelte';
+	import RadiationDoseChart from './charts/RadiationDoseChart.svelte';
 	import PropertyCategoryLinks from './sections/crossref/PropertyCategoryLinks.svelte';
 	import TectonicStyleChart from './charts/TectonicStyleChart.svelte';
 	import VolcanismStatusChart from './charts/VolcanismStatusChart.svelte';
@@ -137,6 +138,7 @@
 	import { buildLineup, geometryFromMember } from './charts/lineup';
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 	import { formatPressure } from '$lib/format/pressure';
+	import { formatDoseRate } from '$lib/format/radiation';
 	import {
 		fieldKindLabel,
 		fieldParts,
@@ -498,6 +500,7 @@
 	function propertyFigure(member: NotableMemberEntry): string | undefined {
 		if (member.ocean) return oceanVolume(member.ocean.volume_km3);
 		if (member.atmosphere_pressure) return formatPressure(member.atmosphere_pressure.pa);
+		if (cat.property === 'radiation') return radiation(member.radiation);
 		const activity = member.activity;
 		if (!activity) return undefined;
 		switch (cat.property) {
@@ -541,6 +544,14 @@
 		if (tidal.power_w == null) return ucfirst(tidalRoleLabel(tidal.role));
 		const reading = powerParts(tidal.power_w);
 		return `${reading.value} ${reading.unit}`;
+	}
+
+	/** What a dosimeter would read. Every member has one — a figure is what puts
+	 *  a body on that page, so the row never falls back to prose. */
+	function radiation(entry: NotableMemberEntry['radiation']): string | undefined {
+		if (!entry) return undefined;
+		const dose = entry.surface_dose?.sv_per_day.value ?? entry.modelled_surface_dose?.sv_per_day;
+		return dose != null ? formatDoseRate(dose) : undefined;
 	}
 
 	let memberDescriptions = $derived(
@@ -794,10 +805,14 @@
 		(data?.global?.ring_sources ?? []).map((s) => ({ key: s.url, label: s.title, url: s.url }))
 	);
 	// Works a collection page cites outright: the ring catalogue's tables, where
-	// they back the mass chart and the tiles rather than one body's panel, and
-	// the published inventory both Solar System mass charts are drawn from.
+	// they back the mass chart and the tiles rather than one body's panel, the
+	// papers every dose on the Radiation page is read off, and the published
+	// inventory both Solar System mass charts are drawn from.
 	let groupWorkCredits = $derived.by<CitedSource[]>(() => {
-		const out: CitedSource[] = (groupDetail?.global?.ring_sources ?? []).map((s) => ({
+		const out: CitedSource[] = [
+			...(groupDetail?.global?.ring_sources ?? []),
+			...(groupDetail?.global?.radiation_sources ?? [])
+		].map((s) => ({
 			key: s.url,
 			label: s.title,
 			url: s.url
@@ -1485,6 +1500,8 @@
 							value={(e) => e.activity?.tidal?.power_w}
 							text={(v) => `${powerParts(v).value} ${powerParts(v).unit}`}
 						/>
+					{:else if cat.property === 'radiation'}
+						<RadiationDoseChart members={notableMembers} localizedNames={memberNames} />
 					{/if}
 				{/if}
 				{#if cat.planets && notableMembers && notableMembers.length > 0}

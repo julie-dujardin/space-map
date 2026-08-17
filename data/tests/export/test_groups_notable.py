@@ -21,12 +21,21 @@ from space_map_data.export.groups.categories import (
     _atmosphere_stats,
     _magnetic_stats,
     _ocean_stats,
+    _radiation_stats,
     _tidal_stats,
     _volcanism_stats,
     _probe_members,
     _ring_system_stats,
 )
+from space_map_data.constants.radiation.environments import RADIATION_ENVIRONMENTS
 from space_map_data.export.objects.activity import collection_row
+from space_map_data.export.objects.radiation import (
+    Place,
+    radiation_block,
+)
+from space_map_data.export.objects.radiation import (
+    collection_row as radiation_collection_row,
+)
 from space_map_data.export.objects.atmosphere import atmosphere_block, pressure_block
 from space_map_data.export.objects.interior import ocean_block
 from space_map_data.export.objects.rings import (
@@ -824,3 +833,115 @@ class TestHeatPageStats:
         assert stats.hottest_body["watts"] == max(
             t.power_w.value for t in TIDAL_HEATING.values() if t.power_w is not None
         )
+
+
+class TestRadiationCollection:
+    """The Radiation page: its rows, its cards, and the note vocabulary the
+    frontend has to keep up with."""
+
+    PLACES = {
+        body: Place(parent_id=f"naif-{body.removeprefix('naif-')[0]}", distance_au=au)
+        for body, au in {
+            "naif-199": 0.387,
+            "naif-299": 0.723,
+            "naif-301": 1.0,
+            "naif-399": 1.0,
+            "naif-499": 1.524,
+            "naif-501": 5.203,
+            "naif-502": 5.203,
+            "naif-503": 5.203,
+            "naif-504": 5.203,
+            "naif-599": 5.203,
+            "naif-606": 9.537,
+            "naif-699": 9.537,
+            "naif-799": 19.191,
+            "naif-899": 30.069,
+        }.items()
+    }
+
+    def _rows(self) -> dict[str, dict]:
+        """The members: the places carrying a figure, which is seven of the
+        fourteen environments on record."""
+        rows = {
+            body: radiation_collection_row(body, place)
+            for body, place in self.PLACES.items()
+        }
+        return {body: row for body, row in rows.items() if row is not None}
+
+    def _members(self) -> list[NotableObject]:
+        return [
+            NotableObject(
+                object_id=body,
+                wikidata_qid=None,
+                fallback_name=body,
+                diameter_km=None,
+                first_obs=None,
+                radiation=row,
+            )
+            for body, row in self._rows().items()
+        ]
+
+    def test_the_places_are_every_environment_on_record(self) -> None:
+        assert set(self.PLACES) == set(RADIATION_ENVIRONMENTS)
+
+    def test_a_figure_is_what_makes_a_body_a_member(self) -> None:
+        """A row reading only "worst in the solar system" beside six numbers is
+        a caption, not a member — the rule the pressure and field pages follow.
+        The seven dropped are classified but unquoted."""
+        assert set(self.PLACES) - set(self._rows()) == {
+            "naif-503",
+            "naif-504",
+            "naif-599",
+            "naif-606",
+            "naif-699",
+            "naif-799",
+            "naif-899",
+        }
+
+    def test_a_row_is_the_body_panel_minus_what_a_row_cannot_draw(self) -> None:
+        place = self.PLACES["naif-399"]
+        row = radiation_collection_row("naif-399", place)
+        block = radiation_block(
+            "naif-399", parent_id=place.parent_id, distance_au=place.distance_au
+        )
+        assert row is not None and block is not None
+        assert row["surface_dose"] == block["surface_dose"]
+        # A row is a figure and which chart it draws on. Everything else the
+        # block carries is prose or geometry, one click away on the body itself.
+        assert set(row) == {"kind", "surface_dose"}
+
+    def test_the_two_charts_split_on_kind_and_both_have_members(self) -> None:
+        """Trapped electrons and cosmic rays are not one quantity, and sharing
+        an axis would draw every cosmic ray surface as nothing."""
+        plotted = [
+            row
+            for row in self._rows().values()
+            if row.get("surface_dose") or row.get("modelled_surface_dose")
+        ]
+        assert plotted == list(self._rows().values())
+        trapped = [row for row in plotted if row["kind"] == "trapped"]
+        assert len(trapped) == 2
+        assert len(plotted) - len(trapped) == 5
+
+    def test_the_measured_card_counts_instruments_not_models(self) -> None:
+        """Three of seven, which is the page's first fact. Venus, Io and Europa
+        carry published figures that are somebody's transport code."""
+        stats = _radiation_stats(self._members(), self.PLACES)
+        assert stats.radiation_measured == ["naif-301", "naif-399", "naif-499"]
+
+    def test_the_quietest_card_carries_what_the_chart_cannot(self) -> None:
+        """Venus's bar is zero pixels wide against the Moon's."""
+        stats = _radiation_stats(self._members(), self.PLACES)
+        assert stats.quietest_surface is not None
+        assert stats.quietest_surface["primary_id"] == "naif-299"
+
+    def test_the_page_cites_every_work_behind_it(self) -> None:
+        """Scoped to the members: the seven places that lost their row took
+        their citations with them."""
+        stats = _radiation_stats(self._members(), self.PLACES)
+        assert stats.radiation_sources
+        titles = " ".join(row["title"] for row in stats.radiation_sources)
+        assert "Neptune Radiation Model" not in titles
+        assert all(row["title"] and row["url"] for row in stats.radiation_sources)
+        urls = [row["url"] for row in stats.radiation_sources]
+        assert len(urls) == len(set(urls))

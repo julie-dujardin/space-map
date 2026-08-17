@@ -117,3 +117,17 @@ TRAPPED_BELTS: dict[str, TrappedBelt] = {
         note="one_flyby_only",
     ),
 }
+
+
+def _system_barycentre(planet_id: str) -> str:
+    """NAIF numbers a planet 199 to 899 and its system barycentre 1 to 8."""
+    return f"naif-{planet_id.removeprefix('naif-')[0]}"
+
+
+# Every id a moon can be parented on and still be inside one of these belts.
+# The planet's own id is not one of them: SPICE hangs a planet's moons off the
+# system barycentre, so a test against `TRAPPED_BELTS` alone matches nothing
+# and lets every moon of a belted planet through.
+TRAPPED_SYSTEMS: frozenset[str] = frozenset(TRAPPED_BELTS) | {
+    _system_barycentre(planet) for planet in TRAPPED_BELTS
+}

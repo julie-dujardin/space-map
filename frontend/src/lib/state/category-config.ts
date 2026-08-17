@@ -17,7 +17,8 @@ import {
 	CAT_VOLCANISM,
 	CAT_TECTONICS,
 	CAT_MAGNETIC_FIELDS,
-	CAT_TIDAL_HEATING
+	CAT_TIDAL_HEATING,
+	CAT_RADIATION
 } from '$lib/fetch/groups/registry';
 import type { Focusable } from '$lib/state/focusable';
 
@@ -57,7 +58,8 @@ export type PropertyKind =
 	| 'volcanism'
 	| 'tectonics'
 	| 'magnetic-fields'
-	| 'tidal-heating';
+	| 'tidal-heating'
+	| 'radiation';
 
 const NONE: CategoryConfig = {
 	planets: false,
@@ -96,7 +98,8 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 	[CAT_VOLCANISM]: { property: 'volcanism', membersShownInFull: true },
 	[CAT_TECTONICS]: { property: 'tectonics', membersShownInFull: true },
 	[CAT_MAGNETIC_FIELDS]: { property: 'magnetic-fields', membersShownInFull: true },
-	[CAT_TIDAL_HEATING]: { property: 'tidal-heating', membersShownInFull: true }
+	[CAT_TIDAL_HEATING]: { property: 'tidal-heating', membersShownInFull: true },
+	[CAT_RADIATION]: { property: 'radiation', membersShownInFull: true }
 };
 
 // Merged configs, cached per slug so a stable reference comes back each call: a
@@ -122,10 +125,28 @@ export const PROPERTY_ACCENT: Record<PropertyKind, ReadonlySet<string> | undefin
 	// Tectonics happens in the outer solid shell, whether that is rock or ice.
 	tectonics: new Set(['crust', 'oceanic_crust', 'ice_shell']),
 	'magnetic-fields': new Set(['core', 'outer_core', 'inner_core', 'metallic_hydrogen']),
-	'tidal-heating': new Set(['mantle', 'ocean'])
+	'tidal-heating': new Set(['mantle', 'ocean']),
+	// The dose is taken on the outside, so the shell that takes it is the same
+	// one tectonics lifts — rock or ice, whichever the body ends in.
+	radiation: new Set(['crust', 'oceanic_crust', 'ice_shell'])
 };
 
 export function categoryConfig(focusable: Focusable): CategoryConfig {
 	if (focusable.kind !== 'group') return NONE;
 	return CONFIG_BY_SLUG.get(focusable.slug) ?? NONE;
+}
+
+/**
+ * The Structure & Activity collections, read off the table above rather than
+ * listed again — a second list is one a new page gets left out of. Both the
+ * breadcrumb (which climbs these to the meta node instead of the Solar System
+ * root) and its test went stale that way, and the page they both missed
+ * breadcrumbed past its own parent.
+ */
+export const PROPERTY_COLLECTION_SLUGS: readonly string[] = [...CONFIG_BY_SLUG]
+	.filter(([, cfg]) => cfg.property != null)
+	.map(([slug]) => slug);
+
+export function isPropertyCollection(slug: string): boolean {
+	return CONFIG_BY_SLUG.get(slug)?.property != null;
 }
