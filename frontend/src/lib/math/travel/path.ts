@@ -150,6 +150,11 @@ export interface EndOrbitPath {
 	 *  line's, so a trochoid smeared over millions of km still reads as the same
 	 *  small orbit not worth drawing at system scale. */
 	radiusKm: number;
+	/** When the craft passes each of `points`, JD — the one revolution after it
+	 *  settles into an arrival orbit, or before it leaves a departure one. What
+	 *  lets a reader keep the craft on the orbit past the trip's own line.
+	 *  Absent without a μ to date the revolution. */
+	pointJds?: number[];
 	/** When the craft is on the ground at this end — touchdown, or liftoff. Only
 	 *  at a surface end, whose `approach` runs all the way to it. */
 	surfaceJd?: number;
@@ -943,29 +948,38 @@ function endOrbitPath(end: {
 				? radiusCut(arc, ringCenter, orbit.rPeriKm, outward)
 				: count;
 
+	// An aero arrival meets its orbit at apoapsis, so the revolution's own
+	// clock starts half a period later, at the first periapsis it settles on.
+	const halfOrbitDays =
+		body.mu > 0
+			? (Math.PI * Math.sqrt(((orbit.rPeriKm + orbit.rApoKm) / 2) ** 3 / body.mu)) / SEC_PER_DAY
+			: 0;
+	// A surface end draws no ring of its own: the stretch of orbit the trip
+	// actually rides is part of the line above.
+	const ring = surface
+		? null
+		: orbitRing({
+				origin,
+				orbit,
+				normal,
+				periapsis,
+				mu: body.mu,
+				periJd: aeroLegs ? aeroLegs.endJd + halfOrbitDays : endPeriJd,
+				// A closed ring is only closed in the body's own frame; elsewhere it
+				// needs the body's motion. An end with no passage has no way to ask for
+				// it — and an aero arrival's is frozen with the rest of its campaign —
+				// so it closes anyway and stays honest only by being small.
+				bodyAt: anchored || frozen ? undefined : approach?.bodyAt,
+				center: ringCenter,
+				outward
+			});
+
 	return {
 		at,
 		bodyId: body.id,
 		anchorId: anchored ? body.id : centerId,
-		// A surface end draws no ring of its own: the stretch of orbit the trip
-		// actually rides is part of the line above.
-		points: surface
-			? []
-			: orbitRing({
-					origin,
-					orbit,
-					normal,
-					periapsis,
-					mu: body.mu,
-					periJd: aeroLegs?.endJd ?? endPeriJd,
-					// A closed ring is only closed in the body's own frame; elsewhere it
-					// needs the body's motion. An end with no passage has no way to ask for
-					// it — and an aero arrival's is frozen with the rest of its campaign —
-					// so it closes anyway and stays honest only by being small.
-					bodyAt: anchored || frozen ? undefined : approach?.bodyAt,
-					center: ringCenter,
-					outward
-				}),
+		points: ring?.points ?? [],
+		pointJds: ring?.jds,
 		approach: approachPoints,
 		jds: approachJds,
 		trimFrom,
@@ -1350,16 +1364,18 @@ function orbitRing(ring: {
 	bodyAt?: (jd: number) => Vec3 | null;
 	center: Vec3;
 	outward: boolean;
-}): Vec3[] {
+}): { points: Vec3[]; jds?: number[] } {
 	const { origin, orbit, normal, periapsis, mu, periJd, bodyAt, center, outward } = ring;
 	const closed = closedOrbit(origin, orbit, normal, periapsis);
 	const semiMajor = (orbit.rPeriKm + orbit.rApoKm) / 2;
-	if (!bodyAt || !(mu > 0) || !(semiMajor > 0)) return closed;
+	if (!(mu > 0) || !(semiMajor > 0)) return { points: closed };
 
 	const e = (orbit.rApoKm - orbit.rPeriKm) / (orbit.rApoKm + orbit.rPeriKm);
 	const periodDays = (2 * Math.PI * Math.sqrt(semiMajor ** 3 / mu)) / SEC_PER_DAY;
 
+	const jds: number[] = [];
 	const smeared: Vec3[] = [];
+	let broken = false;
 	for (let i = 0; i <= RING_SAMPLES; i++) {
 		const nu = (Math.PI * 2 * i) / RING_SAMPLES;
 		// Kepler's equation dates each ring point. A departure is in this orbit
@@ -1368,11 +1384,16 @@ function orbitRing(ring: {
 			2 * Math.atan2(Math.sqrt(1 - e) * Math.sin(nu / 2), Math.sqrt(1 + e) * Math.cos(nu / 2));
 		const mean = anomaly - e * Math.sin(anomaly);
 		const days = (periodDays * mean) / (Math.PI * 2) - (outward ? periodDays : 0);
+		jds.push(periJd + days);
+		if (broken || !bodyAt) continue;
 		const moved = bodyAt(periJd + days);
-		if (!moved) return closed;
+		if (!moved) {
+			broken = true;
+			continue;
+		}
 		smeared.push(add(closed[i], sub(moved, center)));
 	}
-	return smeared;
+	return { points: bodyAt && !broken ? smeared : closed, jds };
 }
 
 /** Index of the last date at or before `jd`, or -1 when there is none. */

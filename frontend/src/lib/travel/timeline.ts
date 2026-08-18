@@ -15,6 +15,7 @@
  */
 
 import { dateToJD, jdToDate } from '$lib/format/date';
+import { SECONDS_PER_DAY } from '$lib/format/duration';
 import type { LegKind, Route, TravelBody } from '$lib/math/travel';
 // Deep import, not the kernel's index: this module is on the map's own chunk,
 // and the index carries Lambert, the porkchop and the vehicle catalogue.
@@ -64,15 +65,36 @@ export interface TimelineEntry {
  * `bodies` is what the two ends are derived from; without it the trip is its
  * legs alone, what a timeline built before the bodies land shows.
  */
+/**
+ * Dates the drawn geometry knows better than the priced legs do. Pricing puts
+ * every arrival instant on the crossing's own date, but the drawn trip spreads
+ * them out — the burn at the real periapsis, the raise at the apoapsis after
+ * the pass, touchdown a coast and a fall past the arrival — and a card dated
+ * where its line is drawn is what makes picking it show that place.
+ */
+export interface DrawnDates {
+	liftoffJd?: number;
+	touchdownJd?: number;
+	/** Where the drawn crossing takes over from the departure's own escape. */
+	cruiseJd?: number;
+	/** The arrival's real periapsis — the capture burn, or the braking pass. */
+	captureJd?: number;
+	/** The engine's raise, at the drawn apoapsis after the atmosphere's part. */
+	raiseJd?: number;
+}
+
+/** Half a revolution of `orbit`, days — how far outside the trip its two
+ *  bracketing orbit cards sit, so they date apart from the burns at them. */
+function halfOrbitDays(orbit: EndOrbit, mu: number): number {
+	if (!(mu > 0)) return 0;
+	return (Math.PI * Math.sqrt(((orbit.rPeriKm + orbit.rApoKm) / 2) ** 3 / mu)) / SECONDS_PER_DAY;
+}
+
 export function buildTimeline(
 	route: Route,
 	nameFor: (bodyId: string) => string,
 	bodies?: { departure: TravelBody; target: TravelBody } | null,
-	/** When the trip is actually on the ground at each surface end, from the
-	 *  drawn geometry. The route prices a landing at the crossing's own date, but
-	 *  the craft touches down a coast and a fall later — dating the card there is
-	 *  what makes picking it show the planet with the site under the line. */
-	ground?: { liftoffJd?: number; touchdownJd?: number } | null
+	drawn?: DrawnDates | null
 ): TimelineEntry[] {
 	const entries: TimelineEntry[] = [];
 	const flybys = [...(route.flybys ?? [])];
@@ -84,12 +106,13 @@ export function buildTimeline(
 		kind: 'start-orbit' | 'final-orbit',
 		bodyId: string,
 		orbit: EndOrbit,
-		body: TravelBody
+		body: TravelBody,
+		at: number
 	): TimelineEntry => ({
 		id: kind,
 		kind,
-		startJd: jd,
-		endJd: jd,
+		startJd: at,
+		endJd: at,
 		days: 0,
 		isPhase: false,
 		bodyId,
@@ -101,8 +124,19 @@ export function buildTimeline(
 	const start =
 		bodies && endDepartureOrbit(bodies.departure, route.departureMode, route.departureOrbit);
 	if (bodies && start) {
-		entries.push(endEntry('start-orbit', route.departureId, start, bodies.departure));
+		// Half a revolution before the injection: in the orbit, not yet leaving —
+		// dated apart from the burn so the two cards are different moments.
+		entries.push(
+			endEntry(
+				'start-orbit',
+				route.departureId,
+				start,
+				bodies.departure,
+				jd - halfOrbitDays(start, bodies.departure.mu)
+			)
+		);
 	}
+	let cruiseTaken = false;
 
 	for (const [index, leg] of route.legs.entries()) {
 		// Which end of the trip a leg happens at. A coast is at neither — that's
@@ -121,19 +155,30 @@ export function buildTimeline(
 					? route.targetId
 					: (flyby?.bodyId ?? null);
 
-		// The ground dates replace the priced ones on the two cards that happen
-		// there; the accumulator stays priced, so nothing after them moves.
+		// The drawn dates replace the priced ones on the cards they know better;
+		// the accumulator stays priced, so nothing else moves. Only the first
+		// cruise leaves the departure body — a swing-by's later ones don't.
+		const firstCruise = leg.kind === 'cruise' && !cruiseTaken;
+		if (leg.kind === 'cruise') cruiseTaken = true;
 		const at =
-			leg.kind === 'ascent' && ground?.liftoffJd !== undefined
-				? ground.liftoffJd
-				: leg.kind === 'descent' && ground?.touchdownJd !== undefined
-					? ground.touchdownJd
-					: jd;
+			leg.kind === 'ascent' && drawn?.liftoffJd !== undefined
+				? drawn.liftoffJd
+				: leg.kind === 'descent' && drawn?.touchdownJd !== undefined
+					? drawn.touchdownJd
+					: firstCruise && drawn?.cruiseJd !== undefined
+						? drawn.cruiseJd
+						: (leg.kind === 'capture' || leg.kind === 'aero-pass') && drawn?.captureJd !== undefined
+							? drawn.captureJd
+							: leg.kind === 'raise' && drawn?.raiseJd !== undefined
+								? drawn.raiseJd
+								: jd;
 		entries.push({
 			id: `${index}:${leg.kind}`,
 			kind: leg.kind,
 			startJd: at,
-			endJd: at + leg.days,
+			// A phase's far end stays priced, so a re-dated start never pushes the
+			// legs after it; an instant is over the moment it happens.
+			endJd: leg.days > 0 ? jd + leg.days : at,
 			days: leg.days,
 			isPhase: leg.days > 0,
 			bodyId,
@@ -147,10 +192,20 @@ export function buildTimeline(
 	}
 
 	// After the last leg, not the arrival date: an aerobraking campaign is
-	// months of not being in the orbit yet.
+	// months of not being in the orbit yet. Half a revolution past the burn
+	// that entered it — settled in the orbit, a moment of its own.
 	const final = bodies && endArrivalOrbit(bodies.target, route.arrivalMode, route.targetOrbit);
 	if (bodies && final) {
-		entries.push(endEntry('final-orbit', route.targetId, final, bodies.target));
+		const entered = drawn?.raiseJd ?? drawn?.captureJd ?? jd;
+		entries.push(
+			endEntry(
+				'final-orbit',
+				route.targetId,
+				final,
+				bodies.target,
+				Math.max(entered, jd) + halfOrbitDays(final, bodies.target.mu)
+			)
+		);
 	}
 
 	return entries;

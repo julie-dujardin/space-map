@@ -52,19 +52,37 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 	};
 	const departure = passage('departure');
 	const arrival = passage('arrival');
+	/** The end's orbit as a dated revolution, where the drawing has one. */
+	const ringOf = (end: typeof departure) =>
+		end && end.pointJds && end.points.length > 1 && end.pointJds.length === end.points.length
+			? { points: end.points, jds: end.pointJds }
+			: null;
+	const startRing = ringOf(departure);
+	const finalRing = arrival?.surfaceJd === undefined ? ringOf(arrival) : null;
 
 	// Ground dates are the real span: liftoff/touchdown are hours before/after
-	// the priced departure/arrival, and the craft is in flight for both.
-	const begin = Math.min(first.startJd, departure?.surfaceJd ?? Infinity);
+	// the priced departure/arrival, and the craft is in flight for both. The
+	// dated end orbits stretch it by a revolution each way — the craft is in
+	// the starting orbit before it leaves, and in the final one after arriving.
+	const begin = Math.min(
+		first.startJd,
+		departure?.surfaceJd ?? Infinity,
+		startRing?.jds[0] ?? Infinity
+	);
 	// An arrival's line can outlast the crossing — the descent's hours, or an
 	// aerobraking campaign's months — and the craft is in flight for all of it.
 	const over = Math.max(
 		last.endJd,
 		arrival?.surfaceJd ?? -Infinity,
-		arrival ? arrival.jds[arrival.jds.length - 1] : -Infinity
+		arrival ? arrival.jds[arrival.jds.length - 1] : -Infinity,
+		finalRing ? finalRing.jds[finalRing.jds.length - 1] : -Infinity
 	);
 	if (jd < begin || jd > over) return null;
 
+	// Still going round the starting orbit, before the line leaves it.
+	if (departure && startRing && jd < departure.jds[0]) {
+		return { r: between(startRing.points, startRing.jds, jd), centerId: departure.anchorId };
+	}
 	// The escape, before the crossing it hands over to.
 	if (departure && jd <= departure.jds[departure.jds.length - 1]) {
 		return {
@@ -78,6 +96,15 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 		// The line's own last date, not `periJd`: an aero arrival keeps flying
 		// past periapsis, out to its trim burn or through its campaign.
 		const until = arrival.surfaceJd ?? arrival.jds[arrival.jds.length - 1];
+		// Past the line, the craft is in the orbit the trip ends in. The ring's
+		// own clock starts at its periapsis; an aero arrival joins at apoapsis,
+		// half a revolution before that, which the wrap carries.
+		if (finalRing && jd > until) {
+			const jds = finalRing.jds;
+			const period = jds[jds.length - 1] - jds[0];
+			const at = jd < jds[0] && period > 0 ? jd + period : jd;
+			return { r: between(finalRing.points, jds, at), centerId: arrival.anchorId };
+		}
 		return {
 			r: between(arrival.approach, arrival.jds, Math.min(jd, until)),
 			centerId: arrival.anchorId

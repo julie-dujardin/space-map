@@ -753,11 +753,21 @@ describe('craftPositionAt', () => {
 		const start = craftPositionAt(PATH, ROUTE.departJd)!.r;
 		expect(norm(sub(start, PATH.stops[0].r))).toBeCloseTo(parkingRadiusKm(EARTH), 0);
 		// Not on the arrival stop: that is the crossing reaching Mars' centre, a
-		// place the craft never goes. It ends at the periapsis the insertion burn is
-		// made at, which is where the drawn passage ends too.
+		// place the craft never goes. The line ends at the periapsis the insertion
+		// burn is made at; by the priced arrival, hours later, the craft has moved
+		// on round the orbit it was sold.
 		const arrival = PATH.endOrbits.find((end) => end.at === 'arrival')!;
 		const last = arrival.approach[arrival.approach.length - 1];
-		expect(relative(craftPositionAt(PATH, ROUTE.arriveJd)!.r, last)).toBeLessThan(1e-9);
+		const lineEnd = arrival.jds[arrival.jds.length - 1];
+		expect(relative(craftPositionAt(PATH, lineEnd)!.r, last)).toBeLessThan(1e-9);
+		const at = craftPositionAt(PATH, ROUTE.arriveJd)!.r;
+		let step = 0;
+		for (let i = 1; i < arrival.points.length; i++) {
+			step = Math.max(step, norm(sub(arrival.points[i], arrival.points[i - 1])));
+		}
+		let gap = Infinity;
+		for (const point of arrival.points) gap = Math.min(gap, norm(sub(at, point)));
+		expect(gap).toBeLessThan(step);
 	});
 
 	it('rides the drawn passage rather than the arc it replaces', () => {
@@ -777,9 +787,16 @@ describe('craftPositionAt', () => {
 		}
 	});
 
-	it('has no craft to place before it leaves or after it lands', () => {
+	it('rides each end orbit for one revolution, and is gone beyond them', () => {
 		expect(craftPositionAt(PATH, ROUTE.departJd - 1)).toBeNull();
-		expect(craftPositionAt(PATH, ROUTE.arriveJd + 1)).toBeNull();
+		// After the trip's line ends the craft stays on the drawn revolution of
+		// the orbit it was sold — that is where a "final orbit" pick lands — and
+		// only past that is there nothing left to place.
+		const arrival = PATH.endOrbits.find((end) => end.at === 'arrival')!;
+		const ringEnd = arrival.pointJds![arrival.pointJds!.length - 1];
+		expect(ringEnd).toBeGreaterThan(ROUTE.arriveJd);
+		expect(craftPositionAt(PATH, ringEnd - 0.01)).not.toBeNull();
+		expect(craftPositionAt(PATH, ringEnd + 0.01)).toBeNull();
 	});
 
 	it('rides the climb from liftoff, hours before the priced departure', () => {
@@ -991,6 +1008,28 @@ describe('aero-assisted arrivals', () => {
 		const skim = end.approach.map(norm).filter((r) => r < rEntry + 5 && r > MARS.radiusKm + 5);
 		expect(skim.length).toBeGreaterThan(5);
 		expect(norm(end.approach[end.approach.length - 1])).toBeCloseTo(MARS.radiusKm, 0);
+	});
+
+	it('keeps the craft going round the final orbit after the pass', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			arrivalMode: 'low-orbit',
+			aero: 'aerocapture'
+		})!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, {
+			centerId: SUN,
+			frame: 'planetary'
+		})!;
+		const end = path.endOrbits.find((e) => e.at === 'arrival')!;
+		const apoJd = end.jds[end.jds.length - 1];
+		// The ring's clock starts at its periapsis, half a revolution after the
+		// line hands over at apoapsis; the wrap carries the half between.
+		const settle = end.pointJds![0];
+		expect(settle).toBeGreaterThan(apoJd);
+		const midway = craftPositionAt(path, (apoJd + settle) / 2)!;
+		expect(norm(midway.r)).toBeCloseTo(parkingRadiusKm(MARS), -1);
+		const ringEnd = end.pointJds![end.pointJds!.length - 1];
+		expect(craftPositionAt(path, ringEnd - 0.001)).not.toBeNull();
+		expect(craftPositionAt(path, ringEnd + 0.001)).toBeNull();
 	});
 
 	it('draws the arrival propulsively when the body ignored the request', () => {

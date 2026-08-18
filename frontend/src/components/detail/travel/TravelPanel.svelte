@@ -76,7 +76,7 @@
 		type OrbitChoice
 	} from '$lib/travel/orbits';
 	import { activeFamily, familyOf, routeTabs, type RouteFamily } from '$lib/travel/route-families';
-	import { buildTimeline, type TimelineEntry } from '$lib/travel/timeline';
+	import { buildTimeline, type DrawnDates, type TimelineEntry } from '$lib/travel/timeline';
 	import { routeHazards, type Hazard } from '$lib/travel/hazards';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import { formatAcceleration } from '$lib/travel/format';
@@ -868,10 +868,10 @@
 		].join(';');
 	});
 
-	// When the drawn plan is actually on the ground at each end — the timeline's
-	// launch and landing cards take these dates, so picking one shows the planet
-	// with the site under the line.
-	let planGround = $state<{ liftoffJd?: number; touchdownJd?: number } | null>(null);
+	// The dates the drawn plan knows better than the priced legs — the timeline's
+	// cards take these, so picking one shows the place its line is drawn at
+	// instead of piling every arrival instant on the crossing's own date.
+	let planDrawn = $state<DrawnDates | null>(null);
 
 	// One effect owns the drawn path, the way one owns the solve. Everything it
 	// reads beyond the key is untracked, so a route object replaced with an equal
@@ -881,7 +881,7 @@
 		untrack(() => {
 			const route = panel.selectedRoute;
 			if (key === null || !route || !centerId) {
-				planGround = null;
+				planDrawn = null;
 				onPathChange(null);
 				return;
 			}
@@ -891,13 +891,20 @@
 					`[travel] no drawable path for ${route.departureId} → ${route.targetId} ` +
 						`(depart ${route.departJd}, ${route.tofDays} d)`
 				);
-				planGround = null;
+				planDrawn = null;
 				onPathChange(null);
 				return;
 			}
-			planGround = {
-				liftoffJd: path.endOrbits.find((end) => end.at === 'departure')?.surfaceJd,
-				touchdownJd: path.endOrbits.find((end) => end.at === 'arrival')?.surfaceJd
+			const departureEnd = path.endOrbits.find((end) => end.at === 'departure');
+			const arrivalEnd = path.endOrbits.find((end) => end.at === 'arrival');
+			planDrawn = {
+				liftoffJd: departureEnd?.surfaceJd,
+				touchdownJd: arrivalEnd?.surfaceJd,
+				cruiseJd: departureEnd?.jds.at(-1),
+				captureJd: arrivalEnd?.periJd,
+				// The line's last date is the raise only while the trip ends in
+				// orbit; a landing's runs on to the ground.
+				raiseJd: arrivalEnd?.surfaceJd === undefined ? arrivalEnd?.jds.at(-1) : undefined
 			};
 			onPathChange(labelled(panel.selectedProfile ?? 'plan', route, path));
 		});
@@ -1003,7 +1010,7 @@
 	let selectedTimelineKey = $derived.by(() => {
 		const route = panel.selectedRoute;
 		if (!route) return null;
-		return timelineKey(route, originName, targetName, timelineBodies, planGround);
+		return timelineKey(route, originName, targetName, timelineBodies, planDrawn);
 	});
 
 	/** The two ends as the kernel knows them, once both are known. What the orbit
@@ -1029,7 +1036,7 @@
 						return resolveBodyName(bodyId);
 					},
 					timelineBodies,
-					planGround
+					planDrawn
 				)
 			);
 		});

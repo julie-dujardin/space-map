@@ -10,6 +10,7 @@
  */
 
 import { routeEndJd, type EndOrbit, type Route, type TravelBody } from '$lib/math/travel';
+import type { DrawnDates } from '$lib/travel/timeline';
 import type { TransferFrame } from '$lib/travel/travel-body';
 
 /** The orbit an end was priced at, as a key fragment. */
@@ -59,9 +60,9 @@ export function timelineKey(
 	originName: string | null,
 	targetName: string | null,
 	bodies: { departure: TravelBody; target: TravelBody } | null,
-	/** The geometry's ground dates, which land after the legs do and re-date the
-	 *  launch and landing cards when they do. */
-	ground?: { liftoffJd?: number; touchdownJd?: number } | null
+	/** The geometry's own dates, which land after the legs do and re-date the
+	 *  cards the drawing knows better when they do. */
+	drawn?: DrawnDates | null
 ): string {
 	return [
 		route.departureId,
@@ -84,6 +85,8 @@ export function timelineKey(
 		// End orbits are sized off the bodies, which arrive with a fetched bundle
 		// — without this, a timeline built before they land keeps missing ends.
 		bodies ? `${bodies.departure.radiusKm}/${bodies.target.radiusKm}` : '',
-		`${ground?.liftoffJd ?? ''}/${ground?.touchdownJd ?? ''}`
+		[drawn?.liftoffJd, drawn?.touchdownJd, drawn?.cruiseJd, drawn?.captureJd, drawn?.raiseJd]
+			.map((date) => date ?? '')
+			.join('/')
 	].join('|');
 }

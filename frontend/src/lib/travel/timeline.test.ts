@@ -136,7 +136,10 @@ describe('buildTimeline', () => {
 				expect(entry.days).toBe(0);
 				expect(entry.isPhase).toBe(false);
 			}
-			expect(entries[0].startJd).toBeCloseTo(route.departJd, 9);
+			// The starting orbit sits half a revolution before the injection — in
+			// the orbit, not yet leaving — so it and the burn are different moments.
+			expect(entries[0].startJd).toBeLessThan(route.departJd);
+			expect(entries[0].startJd).toBeGreaterThan(route.departJd - 1);
 			expect(entries[0].bodyId).toBe(EARTH.id);
 			expect(entries[entries.length - 1].bodyId).toBe(MARS.id);
 			// The legs in between are untouched.
@@ -160,8 +163,39 @@ describe('buildTimeline', () => {
 			const entries = buildTimeline(route, idAsName, ENDS);
 			const final = entries[entries.length - 1];
 			expect(final.kind).toBe('final-orbit');
+			// Half a revolution past the campaign's end: settled in the orbit.
 			expect(final.startJd).toBeGreaterThan(route.arriveJd);
-			expect(final.startJd).toBeCloseTo(entries[entries.length - 2].endJd, 9);
+			expect(final.startJd).toBeGreaterThan(entries[entries.length - 2].endJd);
+			expect(final.startJd).toBeLessThan(entries[entries.length - 2].endJd + 1);
+		});
+
+		it('spreads coincidently priced arrival instants along the drawn dates', () => {
+			const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+				departureMode: 'surface',
+				arrivalMode: 'low-orbit',
+				aero: 'aerocapture'
+			})!;
+			// The drawn geometry's dates: liftoff before the injection, the crossing
+			// from the handover, the pass at its real periapsis, the raise at the
+			// apoapsis after it.
+			const drawn = {
+				liftoffJd: route.departJd - 0.1,
+				cruiseJd: route.departJd + 2.5,
+				captureJd: route.arriveJd - 0.1,
+				raiseJd: route.arriveJd + 0.05
+			};
+			const entries = buildTimeline(route, idAsName, ENDS, drawn);
+			const at = (kind: string) => entries.find((e) => e.kind === kind)!;
+			expect(at('ascent').startJd).toBe(drawn.liftoffJd);
+			expect(at('cruise').startJd).toBe(drawn.cruiseJd);
+			// The cruise's far end stays priced: a re-dated start pushes nothing.
+			expect(at('cruise').endJd).toBeCloseTo(route.arriveJd, 9);
+			expect(at('aero-pass').startJd).toBe(drawn.captureJd);
+			expect(at('raise').startJd).toBe(drawn.raiseJd);
+			expect(at('final-orbit').startJd).toBeGreaterThan(drawn.raiseJd);
+			// Every clickable instant is its own moment now.
+			const dates = entries.map((e) => e.startJd);
+			expect(new Set(dates).size).toBe(dates.length);
 		});
 
 		it('carries the shape of the orbit and the body it goes round', () => {
