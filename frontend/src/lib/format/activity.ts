@@ -22,6 +22,7 @@ import type {
 } from '$lib/fetch/objects/object-data';
 import { ltrIsolate } from './bidi';
 import {
+	angleParts,
 	earthRatio,
 	formatSpan,
 	joinParts,
@@ -87,19 +88,15 @@ export const volumeRateParts: PartsOf = (km3PerYear) => ({
 });
 
 /** An angle — the tilt between a magnetic axis and a rotation axis. */
-export const degreeParts: PartsOf = (degrees) => ({
-	value: bare(degrees).value,
-	unit: m.symbol_degree(),
-	tight: true
-});
+export const degreeParts: PartsOf = (degrees) => angleParts(bare(degrees).value);
 
 // Geologists' notation, and the only one that fits a stat cell: "53 ka" against
-// "53 thousand years ago". Not localized because ka/Ma/Ga are symbols rather
-// than words — the row's tooltip spells it out in the reader's language.
-const AGE_UNITS: [number, string][] = [
-	[1e9, 'Ga'],
-	[1e6, 'Ma'],
-	[1e3, 'ka']
+// "53 thousand years ago", which the row's tooltip says instead. Symbols like
+// every other unit here, so a locale that writes its own can.
+const AGE_UNITS: readonly (readonly [number, () => string])[] = [
+	[1e9, m.symbol_gigaannum],
+	[1e6, m.symbol_megaannum],
+	[1e3, m.symbol_kiloannum]
 ];
 
 /**
@@ -117,9 +114,9 @@ export const momentParts: PartsOf = (value) => ({
 /** Years before present. */
 export const ageParts: PartsOf = (years) => {
 	for (const [scale, unit] of AGE_UNITS) {
-		if (years >= scale) return { value: sigFigures(years / scale), unit };
+		if (years >= scale) return { value: sigFigures(years / scale), unit: unit() };
 	}
-	return { value: sigFigures(years), unit: 'a' };
+	return { value: sigFigures(years), unit: m.symbol_annum() };
 };
 
 /** The same age in words, for the tooltip that unpacks "3.5 Ga". */

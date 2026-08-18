@@ -127,6 +127,19 @@ export function formatPercent(fraction: number, significantDigits = 2): string {
 	return joinParts(percentParts(fraction, significantDigits));
 }
 
+/**
+ * An angle. The sign binds to the digits, and the figure is the caller's: a
+ * published measurement keeps its own digits where a stat cell rounds.
+ */
+export function angleParts(figure: string): Parts {
+	return { value: figure, unit: m.symbol_degree(), tight: true };
+}
+
+/** "23.4°" — an angle at the precision the panels read at. */
+export function formatDegrees(degrees: number): string {
+	return joinParts(angleParts(formatNumber(degrees)));
+}
+
 /** Locale-aware compact notation ("1.34M"), ~3 significant digits. */
 export function formatCompactNumber(n: number): string {
 	if (!Number.isFinite(n)) return String(n);

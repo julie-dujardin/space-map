@@ -19,6 +19,7 @@ import { extractEmbeddedImageMetadata, smallestRasterVariant } from '$lib/fetch/
 import { hashBucket } from '$lib/fetch/metadata';
 import { heroImage } from '$lib/fetch/objects/galleries';
 import { diameterKmFromH } from '$lib/math/h-magnitude';
+import { formatQuantity } from '$lib/format/quantities';
 import type {
 	GlobalObjectData,
 	LocalizedObjectData,
@@ -255,10 +256,11 @@ const CELESTRAK_NOUN: Record<string, () => string> = {
 	payload: m.seo_noun_satellite
 };
 
+// One clause for both units: the sentence says "across", the quantity says
+// which unit it is across in, the way every panel does it.
 function diameterClause(km: number): string {
-	if (km < 1) return m.seo_attr_diameter_m({ value: String(Math.round(km * 1000)) });
-	if (km < 10) return m.seo_attr_diameter_km({ value: km.toFixed(1) });
-	return m.seo_attr_diameter_km({ value: String(Math.round(km)) });
+	const q = km < 1 ? { value: km * 1000, unit: 'metre' } : { value: km, unit: 'kilometre' };
+	return m.seo_attr_diameter({ value: formatQuantity(q, true) });
 }
 
 function joinNames(names: string[]): string {

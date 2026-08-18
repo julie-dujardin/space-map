@@ -38,6 +38,7 @@
 	import { formatDoseRate } from '$lib/format/radiation';
 	import {
 		formatCompactNumber,
+		formatDegrees,
 		formatNumber,
 		formatQuantity,
 		formatUnit
@@ -314,14 +315,7 @@
 	function mostTiltedField(g: GlobalGroupData): Stat | null {
 		const tilted = g.most_tilted_field;
 		if (!tilted) return null;
-		return bodyCard(
-			m.group_stat_most_tilted(),
-			// The degree sign directly, as every other angle in the drawer does —
-			// the generated `unit_*` labels have no plain degree row.
-			`${formatNumber(tilted.degrees)}°`,
-			tilted,
-			'structure'
-		);
+		return bodyCard(m.group_stat_most_tilted(), formatDegrees(tilted.degrees), tilted, 'structure');
 	}
 
 	function largestFeature(g: GlobalGroupData): Stat | null {

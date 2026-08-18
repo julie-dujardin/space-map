@@ -18,7 +18,7 @@
 		type RingRow
 	} from '$lib/rings/catalog';
 	import { loadRingStrips, sampleProfiles, type RingStripProfile } from '$lib/rings/strip';
-	import { formatNumber } from '$lib/format/quantities';
+	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 	import { AU_KM } from '$lib/math/units';
 	import { TYPE_COLOR_MOON } from '$lib/constants';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -689,7 +689,7 @@
 	function width(slug: string): string | null {
 		const feature = rows.get(slug)!.feature;
 		if (feature.width_km === undefined) return null;
-		return `${formatNumber(feature.width_km)} km`;
+		return formatQuantity({ value: feature.width_km, unit: 'kilometre' }, true);
 	}
 
 	/** What a row owes its own width mark, the flex gaps beside it included.

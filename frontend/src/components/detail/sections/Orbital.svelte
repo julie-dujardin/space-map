@@ -20,7 +20,7 @@
 		landedPositionAt
 	} from '$lib/fetch/position/probes/propagate';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-	import { formatNumber, formatQuantity } from '$lib/format/quantities';
+	import { formatDegrees, formatNumber, formatQuantity } from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
 	import { formatIsoDate, formatJulianDate, formatJulianDateRelative } from '$lib/format/date';
@@ -267,12 +267,12 @@
 	<Section title={m.surface_position()}>
 		<Row
 			label={m.latitude()}
-			value={`${formatNumber(landedSample.latDeg)}°`}
+			value={formatDegrees(landedSample.latDeg)}
 			tooltip={m.tooltip_latitude()}
 		/>
 		<Row
 			label={m.longitude()}
-			value={`${formatNumber(landedSample.lngDeg)}°`}
+			value={formatDegrees(landedSample.lngDeg)}
 			tooltip={m.tooltip_longitude()}
 		/>
 		<Row
@@ -348,7 +348,7 @@
 		{#if orbit?.i != null}
 			<Row
 				label={m.inclination()}
-				value={`${formatNumber(orbit.i)}°`}
+				value={formatDegrees(orbit.i)}
 				tooltip={m.tooltip_inclination()}
 			/>
 		{/if}
@@ -398,12 +398,12 @@
 		{#if subPoint}
 			<Row
 				label={m.latitude()}
-				value={`${formatNumber(subPoint.latitude)}°`}
+				value={formatDegrees(subPoint.latitude)}
 				tooltip={m.tooltip_latitude()}
 			/>
 			<Row
 				label={m.longitude()}
-				value={`${formatNumber(subPoint.longitude)}°`}
+				value={formatDegrees(subPoint.longitude)}
 				tooltip={m.tooltip_longitude()}
 			/>
 		{/if}
