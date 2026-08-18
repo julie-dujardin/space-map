@@ -11,8 +11,14 @@
 	import type { TemperatureBracket } from '$lib/charts/layer-appearance';
 	import { layerName, phaseName, rockName, stateName } from '$lib/charts/interior-layers';
 	import { materialEntries, detailEntries, materialName } from '$lib/charts/interior-materials';
-	import { ucfirst } from '$lib/format/quantities';
-	import { formatPercent } from '$lib/format/quantities';
+	import {
+		formatPercent,
+		joinParts,
+		percentParts,
+		spanFields,
+		ucfirst,
+		type Parts
+	} from '$lib/format/quantities';
 	import { formatKm, formatKmRange } from '$lib/format/distance';
 	import { formatKelvinRange } from '$lib/format/temperature';
 	import { ltrIsolate } from '$lib/format/bidi';
@@ -82,12 +88,12 @@
 	/** Two significant digits, except where that would round a layer up to the
 	 *  whole body: Tethys's ice shell is 99.942% of it and the 0.058% left is
 	 *  the core sitting right underneath in the same list. */
-	function massPercent(fraction: number): string {
+	function massPercent(fraction: number): Parts {
 		for (let digits = 2; digits < 6; digits++) {
-			const text = formatPercent(fraction, digits);
-			if (fraction >= 1 || !text.includes('100')) return text;
+			const parts = percentParts(fraction, digits);
+			if (fraction >= 1 || !parts.value.includes('100')) return parts;
 		}
-		return formatPercent(fraction, 6);
+		return percentParts(fraction, 6);
 	}
 
 	/** Share of the body, with its published range where the source gives one
@@ -96,12 +102,14 @@
 	 *  than shown as a bracket that says only that a range existed. */
 	let mass = $derived.by(() => {
 		if (layer.mass_fraction === undefined) return null;
-		const value = massPercent(layer.mass_fraction);
+		const parts = massPercent(layer.mass_fraction);
+		const value = joinParts(parts);
 		const range = layer.mass_fraction_range;
 		if (!range) return m.structure_layer_mass({ value });
 		const [low, high] = range.map(massPercent);
-		if (low === value && high === value) return m.structure_layer_mass({ value });
-		return m.structure_layer_mass_range({ value, low, high });
+		if (low.value === parts.value && high.value === parts.value)
+			return m.structure_layer_mass({ value });
+		return m.structure_layer_mass_range({ value, ...spanFields(low, high) });
 	});
 
 	/** Share of the globe the layer covers, for patchy layers rather than

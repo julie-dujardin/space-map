@@ -10,7 +10,7 @@
 import * as m from '$lib/paraglide/messages.js';
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatDurationNarrow, SECONDS_PER_DAY } from '$lib/format/duration';
-import { formatPercent } from '$lib/format/quantities';
+import { formatPercent, percentParts, spanFields } from '$lib/format/quantities';
 import { formatKelvin } from '$lib/format/temperature';
 // Leaf import, not the kernel's barrel — this file is on the map's own chunk,
 // and `$lib/math/travel` would drag Lambert and the propagator onto it.
@@ -141,19 +141,20 @@ export function hazardDetail(hazard: Hazard, originName: string, bodyName = ''):
 				value: ltrIsolate(formatSievert(hazard.rateAtPeak ?? 0)),
 				risk: ltrIsolate(formatPercent(cancerRiskFraction(hazard.peak)))
 			});
-		case 'belt-crossing':
-			return hazard.unpriced
-				? m.travel_hazard_belt_unpriced_detail({ body: bodyName })
-				: m.travel_hazard_belt_detail({
-						body: bodyName,
-						value: ltrIsolate(formatPercent(lethalDoseFraction(hazard.peak))),
-						low: ltrIsolate(
-							formatPercent(lethalDoseFraction(hazard.peak) / BELT_MODEL_UNCERTAINTY_FACTOR)
-						),
-						high: ltrIsolate(
-							formatPercent(lethalDoseFraction(hazard.peak) * BELT_MODEL_UNCERTAINTY_FACTOR)
-						)
-					});
+		case 'belt-crossing': {
+			if (hazard.unpriced) return m.travel_hazard_belt_unpriced_detail({ body: bodyName });
+			const dose = lethalDoseFraction(hazard.peak);
+			const span = spanFields(
+				percentParts(dose / BELT_MODEL_UNCERTAINTY_FACTOR),
+				percentParts(dose * BELT_MODEL_UNCERTAINTY_FACTOR)
+			);
+			return m.travel_hazard_belt_detail({
+				body: bodyName,
+				value: ltrIsolate(formatPercent(dose)),
+				low: ltrIsolate(span.low),
+				high: ltrIsolate(span.high)
+			});
+		}
 	}
 }
 

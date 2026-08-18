@@ -1,8 +1,10 @@
 import {
 	earthRatio,
-	formatNumber,
 	formatQuantity,
+	formatSpan,
 	formatUnit,
+	joinParts,
+	quantityParts,
 	scientificNotation
 } from './quantities';
 
@@ -39,7 +41,10 @@ export function formatMass(kg: number): string {
 export function formatMassRange(loKg: number, hiKg: number): string {
 	const { unit } = convertMass(hiKg);
 	const kgPer = MASS_UNITS.find((u) => u.unit === unit)!.kg;
-	return `${formatNumber(loKg / kgPer)} – ${formatQuantity({ value: hiKg / kgPer, unit })}`;
+	return formatSpan(
+		quantityParts({ value: loKg / kgPer, unit }),
+		quantityParts({ value: hiKg / kgPer, unit })
+	);
 }
 
 /** So a body's mass can be read against the one anyone has a feel for. */
@@ -61,7 +66,7 @@ export function massKg(q: { value: number; unit: string }): number | null {
  * pages. Kilograms and an exponent are the same shape for all of them.
  */
 export function formatMassKg(kg: number): string {
-	return `${scientificNotation(kg, 3)} ${formatUnit('kilogram', true)}`;
+	return joinParts({ value: scientificNotation(kg, 3), unit: formatUnit('kilogram', true) });
 }
 
 /** What that comes to against Earth, which is the only part of a 25-digit

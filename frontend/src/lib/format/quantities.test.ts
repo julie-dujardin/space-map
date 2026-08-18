@@ -6,7 +6,10 @@ import {
 	formatCompactCurrency,
 	formatCurrency,
 	formatNumber,
+	formatPercent,
+	percentParts,
 	scientificNotation,
+	spanFields,
 	ucfirst
 } from './quantities';
 
@@ -72,6 +75,34 @@ describe('scientificNotation', () => {
 		{ n: 9.9996e5, digits: 3, expected: '1×10⁶' }
 	])('carries the rounded mantissa: $n → "$expected"', ({ n, digits, expected }) => {
 		expect(scientificNotation(n, digits)).toBe(expected);
+	});
+});
+
+describe('percentParts', () => {
+	it('splits the sign off the digits', () => {
+		expect(percentParts(0.24)).toEqual({ value: '24', unit: '%', tight: true });
+	});
+
+	it('joins back to what Intl wrote', () => {
+		expect(formatPercent(0.2437, 3)).toBe('24.4%');
+	});
+});
+
+describe('spanFields', () => {
+	it('says a shared sign once', () => {
+		// A layer's published mass share, in the sentence that brackets it: the
+		// two ends used to be formatted apart and came out "24%–57%".
+		expect(spanFields(percentParts(0.24), percentParts(0.57))).toEqual({
+			low: '24',
+			high: '57%'
+		});
+	});
+
+	it('says both units where they differ', () => {
+		expect(spanFields({ value: '250', unit: 'Ma' }, { value: '1', unit: 'Ga' })).toEqual({
+			low: '250 Ma',
+			high: '1 Ga'
+		});
 	});
 });
 

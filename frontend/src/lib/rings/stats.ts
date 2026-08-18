@@ -5,7 +5,7 @@
 
 import type { RingMass } from '$lib/fetch/objects/object-data';
 import { convertMass } from '$lib/format/mass';
-import { formatNumber, formatUnit, type Parts } from '$lib/format/quantities';
+import { formatNumber, formatUnit, joinParts, type Parts } from '$lib/format/quantities';
 
 /** Mass with the hedges its source published.
  *
@@ -36,6 +36,8 @@ export function formatRingMass(mass: RingMass): Parts & { note?: string } {
 				: low;
 
 	const note =
-		mass.uncertainty_kg !== undefined ? `± ${inUnit(mass.uncertainty_kg)} ${unit}` : undefined;
+		mass.uncertainty_kg !== undefined
+			? joinParts({ value: `± ${inUnit(mass.uncertainty_kg)}`, unit })
+			: undefined;
 	return { value, unit, note };
 }

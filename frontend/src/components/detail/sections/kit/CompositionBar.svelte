@@ -10,7 +10,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { foldTrace, MIN_TRACE, type CompositionEntry } from '$lib/charts/composition-bar';
-	import { formatPercent } from '$lib/format/quantities';
+	import { formatPercent, percentParts, spanFields } from '$lib/format/quantities';
 
 	interface Props {
 		entries: CompositionEntry[];
@@ -61,10 +61,9 @@
 {#snippet detail(segment: CompositionEntry)}
 	{#if segment.range}
 		<span class="opacity-70">
-			{m.structure_share_range({
-				low: formatPercent(segment.range[0]),
-				high: formatPercent(segment.range[1])
-			})}
+			{m.structure_share_range(
+				spanFields(percentParts(segment.range[0]), percentParts(segment.range[1]))
+			)}
 		</span>
 	{/if}
 	{#if segment.key === TRACE_KEY}

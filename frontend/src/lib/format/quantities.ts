@@ -60,6 +60,19 @@ export function formatSpan(low: Parts, high: Parts): string {
 	return `${joinParts(low)} – ${joinParts(high)}`;
 }
 
+/**
+ * The same span for a message that sets its own separator — "{low}–{high}".
+ *
+ * A few spans are written inside a sentence a translator owns, and the
+ * separator is part of that sentence: Japanese writes 24〜57 where the others
+ * write 24–57. The message keeps the punctuation and this keeps the rule about
+ * the unit, which is the half that kept coming out different per call site.
+ */
+export function spanFields(low: Parts, high: Parts): { low: string; high: string } {
+	const once = low.unit === high.unit && low.tight === high.tight;
+	return { low: once ? low.value : joinParts(low), high: joinParts(high) };
+}
+
 // Units whose long name inflects with the value (locale-aware plural, e.g.
 // "1 Earth mass" vs "2 Earth masses"). Others keep the invariant unit_name_*
 // label. Symbols never pluralize.
@@ -82,12 +95,36 @@ export function formatNumber(n: number): string {
 	return n.toLocaleString(getLocale(), precisionOptions(n));
 }
 
-/** "12%", from a 0–1 fraction. */
-export function formatPercent(fraction: number, significantDigits = 2): string {
-	return new Intl.NumberFormat(getLocale(), {
+/**
+ * A percentage split from its sign, so a span can say the sign once.
+ *
+ * The sign carries whatever the locale sets around it — French's no-break
+ * space, Arabic's marks — so the pair still joins back to exactly what Intl
+ * wrote. A locale that leads with the sign has nothing to split off and keeps
+ * the whole reading as its figure.
+ */
+export function percentParts(fraction: number, significantDigits = 2): Parts {
+	const parts = new Intl.NumberFormat(getLocale(), {
 		style: 'percent',
 		maximumSignificantDigits: significantDigits
-	}).format(fraction);
+	}).formatToParts(fraction);
+	const text = (from: number, to?: number) =>
+		parts
+			.slice(from, to)
+			.map((p) => p.value)
+			.join('');
+
+	const sign = parts.findIndex((p) => p.type === 'percentSign');
+	if (sign <= 0) return { value: text(0), unit: '' };
+	// The space before the sign belongs to the sign, not to the digits.
+	let cut = sign;
+	while (cut > 0 && parts[cut - 1].type === 'literal') cut--;
+	return { value: text(0, cut), unit: text(cut), tight: true };
+}
+
+/** "12%", from a 0–1 fraction. */
+export function formatPercent(fraction: number, significantDigits = 2): string {
+	return joinParts(percentParts(fraction, significantDigits));
 }
 
 /** Locale-aware compact notation ("1.34M"), ~3 significant digits. */
@@ -99,11 +136,16 @@ export function formatCompactNumber(n: number): string {
 	}).format(n);
 }
 
+/** An exported quantity as a figure and its label, for spans and stat tiles. */
+export function quantityParts(q: { value: number; unit: string }, short_unit?: boolean): Parts {
+	return { value: formatNumber(q.value), unit: formatUnit(q.unit, short_unit) };
+}
+
 export function formatQuantity(q: { value: number; unit: string }, short_unit?: boolean): string {
-	const display = formatNumber(q.value);
 	const plural = short_unit ? undefined : PLURAL_UNIT_NAMES[q.unit];
-	if (plural) return plural({ count: q.value, display });
-	return joinParts({ value: display, unit: formatUnit(q.unit, short_unit) });
+	// The inflected names read as one phrase and cannot be split in two.
+	if (plural) return plural({ count: q.value, display: formatNumber(q.value) });
+	return joinParts(quantityParts(q, short_unit));
 }
 
 /** Density in g/cm³, whichever unit Wikidata stored it in.
