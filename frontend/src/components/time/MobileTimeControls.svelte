@@ -20,6 +20,7 @@
 	} from '$lib/scene/time-scales';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { untrack } from 'svelte';
+	import { DRAWER_TOP_GAP_PX } from '$lib/drawer';
 	import {
 		applyDateToClock,
 		applyTimeToClock,
@@ -55,9 +56,6 @@
 	let timeValue = $derived(clockTimeValue(clock.jd));
 
 	let dateLabel = $derived(formatJulianDateTime(clock.jd, TIME_DATE_OPTS));
-	let activeScale = $derived(
-		TIME_SCALES.find((s) => s.value === Math.abs(clock.timeScale)) ?? TIME_SCALES[0]
-	);
 
 	// The inline year-select doesn't see minValue/maxValue and would otherwise
 	// fall back to a hardcoded [currentYear-100, currentYear] window.
@@ -84,7 +82,8 @@
 	<Vaul.Portal>
 		<Vaul.Overlay class="fixed inset-0 z-[60] bg-black/40" />
 		<Vaul.Content
-			class="fixed inset-x-0 bottom-0 z-[61] flex flex-col rounded-t-xl border-t bg-background shadow-lg outline-none max-h-[95dvh]"
+			class="fixed inset-x-0 bottom-0 z-[61] flex flex-col rounded-t-xl border-t bg-background shadow-lg outline-none"
+			style="max-height: calc(100dvh - {DRAWER_TOP_GAP_PX}px);"
 		>
 			<div class="flex shrink-0 flex-col items-center gap-2 px-4 pt-3 pb-2">
 				<div class="h-1 w-10 rounded-full bg-muted-foreground/40"></div>
@@ -189,11 +188,6 @@
 					>
 						{m.time_now()}
 					</button>
-				</div>
-
-				<div class="flex items-center justify-between">
-					<span class="text-sm text-muted-foreground">{m.time_speed_label()}</span>
-					<span class="text-sm tabular-nums">{activeScale.label()}</span>
 				</div>
 
 				<div class="-mx-4 overflow-x-auto">

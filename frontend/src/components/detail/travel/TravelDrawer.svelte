@@ -14,6 +14,7 @@
 	import { toast } from 'svelte-sonner';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { BodyData } from '$lib/types/objects';
+	import { DRAWER_TOP_GAP_PX } from '$lib/drawer';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { fetchObjectDetail, type GlobalObjectData } from '$lib/fetch/objects/object-data';
@@ -525,8 +526,6 @@
 	// is what the page is for — but still has to drag down, or the map it plans
 	// a route across is unreachable.
 	const MID_SNAP = 0.4;
-	// Leaves the same sliver of map above the sheet as the detail drawer does.
-	const TOP_GAP_PX = 16;
 
 	let innerH = $state(typeof window === 'undefined' ? 800 : window.innerHeight);
 	let headerEl = $state<HTMLDivElement | null>(null);
@@ -535,7 +534,7 @@
 	const HEADER_GUESS_PX = 68;
 	let headerHeightPx = $state(HEADER_GUESS_PX);
 	let collapsedSnap = $derived(`${headerHeightPx}px`);
-	let topSnap = $derived(`${Math.max(1, innerH - TOP_GAP_PX)}px`);
+	let topSnap = $derived(`${Math.max(1, innerH - DRAWER_TOP_GAP_PX)}px`);
 	let snapPoints = $derived([collapsedSnap, MID_SNAP, topSnap]);
 	let activeSnapPoint = $state<number | string | null>(`${HEADER_GUESS_PX}px`);
 	let isAtTop = $derived(activeSnapPoint === topSnap);
@@ -555,8 +554,8 @@
 			// Re-pin a top-snapped sheet to the new height. Otherwise a viewport resize
 			// (the mobile keyboard) leaves activeSnapPoint on a px string that is no
 			// longer in snapPoints, and vaul silently refuses to re-snap.
-			if (activeSnapPoint === `${Math.max(1, prev - TOP_GAP_PX)}px`) {
-				activeSnapPoint = `${Math.max(1, next - TOP_GAP_PX)}px`;
+			if (activeSnapPoint === `${Math.max(1, prev - DRAWER_TOP_GAP_PX)}px`) {
+				activeSnapPoint = `${Math.max(1, next - DRAWER_TOP_GAP_PX)}px`;
 			}
 			prev = next;
 			innerH = next;
@@ -709,7 +708,7 @@
 				</div>
 				<div
 					class="min-h-0 flex-1 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
-					style="padding-bottom: calc(1rem + {TOP_GAP_PX}px + var(--safe-bottom));"
+					style="padding-bottom: calc(1rem + {DRAWER_TOP_GAP_PX}px + var(--safe-bottom));"
 				>
 					{@render body('px-4 pt-4')}
 				</div>

@@ -16,6 +16,7 @@
 	import BodyCategoryTile from './sections/crossref/BodyCategoryTile.svelte';
 	import FeatureGroupLinks from './sections/crossref/FeatureGroupLinks.svelte';
 	import { ObjectType } from '$lib/types/objects';
+	import { DRAWER_TOP_GAP_PX } from '$lib/drawer';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
@@ -334,9 +335,6 @@
 	// real header height — buttons, fonts, locale length all affect it), mid,
 	// full.
 	const MID_SNAP = 0.3;
-	// Meets the collapsed search bar's top (pinned at top-4 = 16px), covering it
-	// while leaving that same map sliver above; a px snap keeps the inset fixed.
-	const TOP_GAP_PX = 16;
 
 	let innerH = $state(typeof window === 'undefined' ? 800 : window.innerHeight);
 	$effect(() => {
@@ -345,8 +343,8 @@
 			const next = window.innerHeight;
 			// Re-pin a top-snapped drawer to the resized height: otherwise
 			// activeSnapPoint is a stale px string absent from snapPoints, and vaul refuses to re-snap.
-			if (activeSnapPoint === `${Math.max(1, prev - TOP_GAP_PX)}px`) {
-				activeSnapPoint = `${Math.max(1, next - TOP_GAP_PX)}px`;
+			if (activeSnapPoint === `${Math.max(1, prev - DRAWER_TOP_GAP_PX)}px`) {
+				activeSnapPoint = `${Math.max(1, next - DRAWER_TOP_GAP_PX)}px`;
 			}
 			prev = next;
 			innerH = next;
@@ -360,7 +358,7 @@
 	// so the drawer opens at a sensible height before the first measurement.
 	let headerHeightPx = $state(68);
 	let collapsedSnap = $derived(`${headerHeightPx}px`);
-	let topSnap = $derived(`${Math.max(1, innerH - TOP_GAP_PX)}px`);
+	let topSnap = $derived(`${Math.max(1, innerH - DRAWER_TOP_GAP_PX)}px`);
 	let snapPoints = $derived([collapsedSnap, MID_SNAP, topSnap]);
 	let activeSnapPoint = $state<number | string | null>('68px');
 	let isAtTop = $derived(activeSnapPoint === topSnap);
@@ -1794,7 +1792,7 @@
 				>
 					<div
 						class="flex-1 min-h-0 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
-						style="padding-bottom: calc(1rem + {TOP_GAP_PX}px + var(--safe-bottom));"
+						style="padding-bottom: calc(1rem + {DRAWER_TOP_GAP_PX}px + var(--safe-bottom));"
 					>
 						{@render activeHero()}
 						{@render tabsBar()}
