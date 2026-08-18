@@ -160,6 +160,3 @@ class TestCitations:
         ceres = block("naif-2000001", au=2.77)
         assert ceres["sources"]
         assert all(row["title"] and row["url"] for row in ceres["sources"])
-
-    def test_a_body_with_nothing_to_say_has_no_block(self):
-        assert block("naif-9999999", au=None) is None

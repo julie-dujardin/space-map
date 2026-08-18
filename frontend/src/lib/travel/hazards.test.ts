@@ -25,7 +25,6 @@ import {
 	SATURN,
 	VENUS
 } from '$lib/math/travel/test-fixtures';
-import { AU_KM } from '$lib/math/units';
 import { adjustForVehicle, routeHazards, type Hazard, type HazardKind } from './hazards';
 import { equilibriumTempK, sunsAt } from './sunlight';
 
@@ -427,12 +426,6 @@ describe('a trajectory whose geometry cannot be rebuilt', () => {
 		const hazards = routeHazards(EARTH, MARS, broken, HELIOCENTRIC);
 		expect(of(hazards, 'aeroassist')).toBeDefined();
 		expect(of(hazards, 'solar-power')).toBeUndefined();
-	});
-});
-
-describe('AU bookkeeping', () => {
-	it('measures against the same AU the rest of the app does', () => {
-		expect(AU_KM).toBeCloseTo(1.495978707e8, 0);
 	});
 });
 

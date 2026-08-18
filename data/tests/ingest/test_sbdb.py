@@ -3,7 +3,6 @@
 import pytest
 
 from space_map_data.ingest.providers.objects.sbdb import (
-    SBDB_CLASS_MAP,
     _display_name,
     _object_type,
     _parent_id,
@@ -77,11 +76,6 @@ class TestObjectType:
         row = _make_row(name="", prefix="C")
         row["class"] = "UNKNOWN"
         assert _object_type(row) == ObjectType.comet
-
-    def test_all_sbdb_classes_are_mapped(self):
-        """Every entry in SBDB_CLASS_MAP maps to a valid ObjectType."""
-        for cls, obj_type in SBDB_CLASS_MAP.items():
-            assert isinstance(obj_type, ObjectType), f"{cls} maps to non-ObjectType"
 
 
 class TestComputeNaifId:

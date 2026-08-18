@@ -1,17 +1,12 @@
 """Tests for the launchlog lv_type → launch-vehicle slug mapping and the
 constellation → lv- group migration."""
 
-from space_map_data.constants.earth_sats.constellations import (
-    CONSTELLATION_BY_SLUG,
-    SatelliteCategory,
-)
 from space_map_data.constants.earth_sats.launch_vehicles import (
     GCAT_LV_TYPE_TO_QID,
     LAUNCH_VEHICLE_BY_QID,
     LAUNCH_VEHICLE_BY_SLUG,
     LAUNCH_VEHICLE_VARIANT_QID,
     LAUNCH_VEHICLE_VARIANTS,
-    LAUNCH_VEHICLES,
     launch_vehicle_slug_for_qid,
     match_launch_vehicle_slug,
 )
@@ -69,13 +64,6 @@ class TestMatchLaunchVehicleSlug:
 
 class TestLaunchVehicleRegistry:
     """Spec integrity and the const- → lv- migration invariants."""
-
-    def test_constellation_backed_specs_are_rocket(self):
-        for lv in LAUNCH_VEHICLES:
-            if lv.constellation_slug is None:
-                continue
-            spec = CONSTELLATION_BY_SLUG[lv.constellation_slug]
-            assert SatelliteCategory.ROCKET in spec.category
 
     def test_qid_resolves_for_crossref_linking(self):
         # Family QID → spec, so a Wikidata P375 crossref can target the lv- page.

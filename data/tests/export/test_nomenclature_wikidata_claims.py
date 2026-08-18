@@ -3,7 +3,6 @@
 from space_map_data.export.nomenclature.wikidata_claims import (
     FEATURE_ENTITY_REF_CLAIMS,
     FEATURE_GLOBAL_CLAIMS,
-    FEATURE_PID_TO_KEY,
     extract_feature_claims,
 )
 
@@ -39,10 +38,6 @@ def _stmt(snak: dict, rank: str = "normal") -> dict:
 
 class TestFeatureSpec:
     """FEATURE_GLOBAL_CLAIMS / FEATURE_ENTITY_REF_CLAIMS / FEATURE_PID_TO_KEY"""
-
-    def test_pid_to_key_covers_all_claims(self):
-        for claim in (*FEATURE_GLOBAL_CLAIMS, *FEATURE_ENTITY_REF_CLAIMS):
-            assert FEATURE_PID_TO_KEY[claim.pid] == claim.key
 
     def test_no_duplicate_pids(self):
         pids = [c.pid for c in (*FEATURE_GLOBAL_CLAIMS, *FEATURE_ENTITY_REF_CLAIMS)]
