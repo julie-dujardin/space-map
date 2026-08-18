@@ -749,24 +749,44 @@ export class TravelPathOverlay {
 	private addEndOrbits(path: TrajectoryPath): void {
 		for (const orbit of path.endOrbits) {
 			const anchorId = this.anchorOf(path, orbit);
-			// The ground stretch goes under the atmosphere's glow; the rest of the
-			// approach keeps the plan's own place above the trails. Split with one
-			// shared sample so the two pieces stay one line.
-			const ground = orbit.ground;
-			if (ground && ground.to > ground.from) {
-				const head = orbit.at === 'departure';
-				const far = head
-					? orbit.approach.slice(Math.max(0, ground.to - 1))
-					: orbit.approach.slice(0, ground.from + 1);
-				this.addLine(far, ARC_COLORS.cruise, LINE_WIDTH, LINE_BRIGHTNESS, null, { anchorId });
-				this.addLine(
-					orbit.approach.slice(ground.from, ground.to),
-					ARC_COLORS.cruise,
-					LINE_WIDTH,
-					LINE_BRIGHTNESS,
-					null,
-					{ anchorId, renderOrder: GROUND_RENDER_ORDER }
-				);
+			// The stretches inside the atmosphere — the ground leg, an aero pass's
+			// dips — go under its glow; the rest of the approach keeps the plan's
+			// own place above the trails. Neighbouring pieces share a sample so the
+			// whole run stays one line.
+			const grounds = (orbit.ground ?? []).filter((range) => range.to > range.from);
+			if (grounds.length > 0) {
+				let at = 0;
+				for (const range of grounds) {
+					if (range.from > at) {
+						this.addLine(
+							orbit.approach.slice(Math.max(0, at - 1), range.from + 1),
+							ARC_COLORS.cruise,
+							LINE_WIDTH,
+							LINE_BRIGHTNESS,
+							null,
+							{ anchorId }
+						);
+					}
+					this.addLine(
+						orbit.approach.slice(range.from, range.to),
+						ARC_COLORS.cruise,
+						LINE_WIDTH,
+						LINE_BRIGHTNESS,
+						null,
+						{ anchorId, renderOrder: GROUND_RENDER_ORDER }
+					);
+					at = range.to;
+				}
+				if (at < orbit.approach.length) {
+					this.addLine(
+						orbit.approach.slice(Math.max(0, at - 1)),
+						ARC_COLORS.cruise,
+						LINE_WIDTH,
+						LINE_BRIGHTNESS,
+						null,
+						{ anchorId }
+					);
+				}
 			} else {
 				this.addLine(orbit.approach, ARC_COLORS.cruise, LINE_WIDTH, LINE_BRIGHTNESS, null, {
 					anchorId

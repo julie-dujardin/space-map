@@ -19,7 +19,11 @@ export function entryDetail(entry: TimelineEntry): string {
 	}
 	if (entry.altitudeKm !== undefined) parts.push(ltrIsolate(formatKm(entry.altitudeKm)));
 	if (entry.dvKms > 0) parts.push(ltrIsolate(formatDv(entry.dvKms)));
+	if (entry.absorbedKms) parts.push(ltrIsolate(formatDv(entry.absorbedKms)));
 	if (entry.days > 0) parts.push(ltrIsolate(formatDurationNarrow(entry.days)));
-	if (entry.aerobraked) parts.push(m.travel_aerobraked());
+	// The aero legs already say the atmosphere did it in their own names.
+	if (entry.aerobraked && entry.kind !== 'aero-pass' && entry.kind !== 'aerobrake') {
+		parts.push(m.travel_aerobraked());
+	}
 	return parts.join(' · ');
 }

@@ -15,7 +15,7 @@ import { GM_SUN_KM3_S2 } from './constants';
 import * as travelConstants from './constants';
 import { AU_KM } from '$lib/math/units';
 import { sphereOfInfluenceKm } from './body';
-import { parkingRadiusKm } from './maneuvers';
+import { aeroPassRadiusKm, parkingRadiusKm } from './maneuvers';
 import { add, cross, dot, norm, normalize, sub, type Vec3 } from './vec3';
 import {
 	EARTH,
@@ -896,5 +896,114 @@ describe('pathViewpoint', () => {
 			const tip = end.approach[end.at === 'departure' ? 0 : end.approach.length - 1];
 			expect(view.r).toEqual(tip);
 		}
+	});
+});
+
+describe('aero-assisted arrivals', () => {
+	const radiusAbout = (end: { center: Vec3 }, p: Vec3) => norm(sub(p, end.center));
+
+	it('flies an aerocapture pass at the entry interface and coasts out to the trim burn', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			arrivalMode: 'low-orbit',
+			aero: 'aerocapture'
+		})!;
+		// The pass and the engine's raise are their own steps, in flight order.
+		expect(route.legs.slice(-2).map((l) => l.kind)).toEqual(['aero-pass', 'raise']);
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+		const end = path.endOrbits.find((e) => e.at === 'arrival')!;
+
+		// The lowest point of the line is the pass, in the air — not the parking
+		// orbit the trip was priced into.
+		// Within the seam correction's reach: the fall works off the two solvers'
+		// disagreement on the way down, so periapsis is only exact to that blend.
+		const rEntry = aeroPassRadiusKm(MARS);
+		const low = Math.min(...end.approach.map((p) => radiusAbout(end, p)));
+		expect(low).toBeLessThan(parkingRadiusKm(MARS) - 100);
+		expect(Math.abs(low - rEntry)).toBeLessThan(100);
+
+		// Past periapsis the line keeps flying: out to apoapsis of the post-pass
+		// ellipse, where the trim burn hands over to the priced orbit.
+		expect(end.jds[end.jds.length - 1]).toBeGreaterThan(end.periJd);
+		const last = end.approach[end.approach.length - 1];
+		expect(radiusAbout(end, last)).toBeCloseTo(parkingRadiusKm(MARS), -1);
+
+		// The dip below the shell is marked for the overlay to composite under
+		// the atmosphere's glow.
+		expect(end.ground!.length).toBeGreaterThan(0);
+	});
+
+	it('draws an aerobraking campaign as revolutions drag walks down, on the campaign dates', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			arrivalMode: 'low-orbit',
+			aero: 'aerobraking'
+		})!;
+		const campaign = route.legs.find((l) => l.kind === 'aerobrake')!.days;
+		expect(campaign).toBeGreaterThan(30);
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+		const end = path.endOrbits.find((e) => e.at === 'arrival')!;
+
+		// Capture goes out to the loose ellipse the engine burned into, then the
+		// campaign brings the line back down to the priced orbit. Only the part
+		// past periapsis is the campaign; before it is the passage, SOI-scale.
+		const rApoLoose = travelConstants.CAPTURE_APOAPSIS_RADII * MARS.radiusKm;
+		const after = end.approach.filter((_, i) => end.jds[i] > end.periJd + 1e-6);
+		const high = Math.max(...after.map((p) => radiusAbout(end, p)));
+		expect(high).toBeCloseTo(rApoLoose, -3);
+		const last = end.approach[end.approach.length - 1];
+		expect(radiusAbout(end, last)).toBeCloseTo(parkingRadiusKm(MARS), -1);
+
+		// The revolutions are spread over the campaign's real dates, so the
+		// craft is on them mid-campaign.
+		const span = end.jds[end.jds.length - 1] - end.periJd;
+		expect(span).toBeGreaterThan(campaign);
+		expect(span).toBeLessThan(campaign * 1.5);
+		const mid = craftPositionAt(path, end.periJd + campaign / 2)!;
+		expect(mid).not.toBeNull();
+		const rMid = norm(sub(mid.r, end.center));
+		expect(rMid).toBeGreaterThan(aeroPassRadiusKm(MARS) - 1);
+		expect(rMid).toBeLessThan(travelConstants.CAPTURE_APOAPSIS_RADII * MARS.radiusKm + 1);
+
+		// Every dip into the air is its own stretch for the overlay.
+		expect(end.ground!.length).toBeGreaterThan(2);
+	});
+
+	it('runs a direct entry from the pass to the ground with no parking coast', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			arrivalMode: 'landing',
+			aero: 'aerocapture'
+		})!;
+		// A direct entry never enters an orbit, so there is no insertion to list.
+		expect(route.legs.find((l) => l.kind === 'capture')).toBeUndefined();
+		// Planet-frame, so the descent's carried motion drops out and a sample's
+		// norm is its altitude.
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN, frame: 'planetary' })!;
+		const end = path.endOrbits.find((e) => e.at === 'arrival')!;
+
+		expect(end.surfaceJd).toBeDefined();
+		expect(end.points).toHaveLength(0);
+		// The passage crosses the parking radius on its way down, but nothing
+		// rides it: no run of samples holds that altitude the way a coast would.
+		const rPark = parkingRadiusKm(MARS);
+		const atParking = end.approach.map(norm).filter((r) => Math.abs(r - rPark) < 3);
+		expect(atParking.length).toBeLessThanOrEqual(2);
+		// The skim it rides instead is the pass, at the entry interface.
+		const rEntry = aeroPassRadiusKm(MARS);
+		const skim = end.approach.map(norm).filter((r) => r < rEntry + 5 && r > MARS.radiusKm + 5);
+		expect(skim.length).toBeGreaterThan(5);
+		expect(norm(end.approach[end.approach.length - 1])).toBeCloseTo(MARS.radiusKm, 0);
+	});
+
+	it('draws the arrival propulsively when the body ignored the request', () => {
+		const dryMars = { ...MARS, aeroPressurePa: undefined, aeroScaleHeightKm: undefined };
+		const route = buildRoute(EARTH, dryMars, MARS_WINDOW, MARS_TOF, {
+			arrivalMode: 'low-orbit',
+			aero: 'aerocapture'
+		})!;
+		expect(route.legs.at(-1)!.kind).toBe('capture');
+		expect(route.legs.some((l) => l.aerobraked)).toBe(false);
+		const path = buildTrajectoryPath(EARTH, dryMars, route, { centerId: SUN })!;
+		const end = path.endOrbits.find((e) => e.at === 'arrival')!;
+		// The passage ends at the priced periapsis, like any engine capture.
+		expect(end.jds[end.jds.length - 1]).toBeCloseTo(end.periJd, 6);
 	});
 });

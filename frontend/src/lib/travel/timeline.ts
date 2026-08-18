@@ -46,6 +46,8 @@ export interface TimelineEntry {
 	altitudeKm?: number;
 	/** The atmosphere did the braking rather than the engine. */
 	aerobraked?: boolean;
+	/** Δv the atmosphere removed on this leg, km/s — the aero legs only. */
+	absorbedKms?: number;
 	/** The orbit an end of the trip is, carried with the radius of the body it
 	 *  goes round so an altitude can be read off it. The two orbit entries only. */
 	orbit?: { shape: EndOrbit; bodyRadiusKm: number };
@@ -111,7 +113,9 @@ export function buildTimeline(
 			leg.kind === 'ascent' || leg.kind === 'injection' || leg.kind === 'spiral-out'
 				? route.departureId
 				: leg.kind === 'capture' ||
+					  leg.kind === 'aero-pass' ||
 					  leg.kind === 'aerobrake' ||
+					  leg.kind === 'raise' ||
 					  leg.kind === 'descent' ||
 					  leg.kind === 'spiral-in'
 					? route.targetId
@@ -136,7 +140,8 @@ export function buildTimeline(
 			bodyName: bodyId ? nameFor(bodyId) : '',
 			dvKms: leg.dvKms,
 			altitudeKm: flyby?.altitudeKm,
-			aerobraked: leg.aerobraked
+			aerobraked: leg.aerobraked,
+			absorbedKms: leg.absorbedKms
 		});
 		jd += leg.days;
 	}

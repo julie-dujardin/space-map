@@ -7,6 +7,7 @@
 	import RocketIcon from '@lucide/svelte/icons/rocket';
 	import ArrowUpIcon from '@lucide/svelte/icons/arrow-up';
 	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
+	import FlameIcon from '@lucide/svelte/icons/flame';
 	import OrbitIcon from '@lucide/svelte/icons/orbit';
 	import WindIcon from '@lucide/svelte/icons/wind';
 	import MoveRightIcon from '@lucide/svelte/icons/move-right';
@@ -110,7 +111,9 @@
 		'spiral-out': TornadoIcon,
 		'spiral-in': TornadoIcon,
 		capture: OrbitIcon,
+		'aero-pass': FlameIcon,
 		aerobrake: WindIcon,
+		raise: OrbitIcon,
 		descent: ArrowDownIcon
 	};
 
@@ -237,16 +240,25 @@
 						: formatDurationNarrow(leg.days)
 				);
 			}
-			// The campaign's own step already says what it is; this note belongs on
-			// the burns the air made smaller, naming which manoeuvre did it.
+			// The aero steps say what they are in their own names; the note that a
+			// leg was aerobraked belongs only on the one still wearing an engine
+			// name — the direct entry's descent.
 			if (leg.kind === 'aerobrake') notes.push(m.travel_aero_campaign());
+			else if (leg.kind === 'aero-pass') notes.push(m.travel_aero_absorbed());
 			else if (leg.aerobraked) {
 				notes.push(route.aero === 'aerocapture' ? m.travel_aerocaptured() : m.travel_aerobraked());
 			}
 			list.push({
 				key: `${index}:${leg.kind}`,
 				kind: leg.kind,
-				figure: leg.dvKms > 0 ? formatDv(leg.dvKms) : formatDurationNarrow(leg.days),
+				// The pass's figure is what the atmosphere removed — the step costs
+				// nothing, and that is the number that says why.
+				figure:
+					leg.kind === 'aero-pass' && leg.absorbedKms
+						? formatDv(leg.absorbedKms)
+						: leg.dvKms > 0
+							? formatDv(leg.dvKms)
+							: formatDurationNarrow(leg.days),
 				notes
 			});
 		}

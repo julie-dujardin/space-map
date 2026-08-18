@@ -56,7 +56,13 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 	// Ground dates are the real span: liftoff/touchdown are hours before/after
 	// the priced departure/arrival, and the craft is in flight for both.
 	const begin = Math.min(first.startJd, departure?.surfaceJd ?? Infinity);
-	const over = Math.max(last.endJd, arrival?.surfaceJd ?? -Infinity);
+	// An arrival's line can outlast the crossing — the descent's hours, or an
+	// aerobraking campaign's months — and the craft is in flight for all of it.
+	const over = Math.max(
+		last.endJd,
+		arrival?.surfaceJd ?? -Infinity,
+		arrival ? arrival.jds[arrival.jds.length - 1] : -Infinity
+	);
 	if (jd < begin || jd > over) return null;
 
 	// The escape, before the crossing it hands over to.
@@ -69,8 +75,11 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 	// The capture, after it. Periapsis lands before the priced arrival (the
 	// insertion burn happens there), and a landing's line runs on to the ground.
 	if (arrival && jd >= arrival.jds[0]) {
+		// The line's own last date, not `periJd`: an aero arrival keeps flying
+		// past periapsis, out to its trim burn or through its campaign.
+		const until = arrival.surfaceJd ?? arrival.jds[arrival.jds.length - 1];
 		return {
-			r: between(arrival.approach, arrival.jds, Math.min(jd, arrival.surfaceJd ?? arrival.periJd)),
+			r: between(arrival.approach, arrival.jds, Math.min(jd, until)),
 			centerId: arrival.anchorId
 		};
 	}

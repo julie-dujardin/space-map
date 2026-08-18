@@ -11,12 +11,13 @@
 
 import { AU_KM } from '$lib/math/units';
 import { sphereOfInfluenceKm, type TravelBody } from './body';
-import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
+import { CAPTURE_APOAPSIS_RADII, GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { solveFlyby } from './flyby';
 import { sampleHeldDrive, type HeldDriveSample } from './held-drive';
 import { solveLambert } from './lambert';
 import { rebuildSpiral } from './low-thrust';
 import {
+	aeroPassRadiusKm,
 	endArrivalOrbit,
 	endDepartureOrbit,
 	parkingOrbit,
@@ -24,7 +25,13 @@ import {
 	type EndOrbit
 } from './maneuvers';
 import { propagateState } from './propagate';
-import { orbitChangeEnds, routeDurationDays, type Route, type RouteOptions } from './route';
+import {
+	orbitChangeEnds,
+	routeDurationDays,
+	type Route,
+	type RouteLeg,
+	type RouteOptions
+} from './route';
 import { elementsToState } from './state';
 import { relativeState, solveRadialArc, type RadialArc } from './system-transfer';
 import { add, cross, dot, norm, normalize, scale, sub, type Vec3 } from './vec3';
@@ -146,10 +153,11 @@ export interface EndOrbitPath {
 	/** When the craft is on the ground at this end — touchdown, or liftoff. Only
 	 *  at a surface end, whose `approach` runs all the way to it. */
 	surfaceJd?: number;
-	/** The stretch of `approach` that is the ground leg — coast and half-ellipse —
-	 *  as a half-open index range, so it can be composited under the atmosphere's
+	/** The stretches of `approach` inside the rendered atmosphere — the ground
+	 *  leg, and every dip an aero arrival flies below the shell — as half-open
+	 *  index ranges in order, so they can be composited under the atmosphere's
 	 *  glow instead of erased by it. */
-	ground?: { from: number; to: number };
+	ground?: { from: number; to: number }[];
 }
 
 export interface TrajectoryPath {
@@ -203,8 +211,16 @@ export function pathViewpoint(
 		const arc =
 			crossings.find((a) => a.startJd <= startJd + 1e-6 && a.endJd >= endJd - 1e-6) ??
 			crossings.find((a) => a.startJd <= middle && a.endJd >= middle);
-		if (!arc) return null;
-		return { r: arc.points[Math.floor(arc.points.length / 2)] };
+		if (arc) return { r: arc.points[Math.floor(arc.points.length / 2)] };
+		// Past the last arc there can still be trip: an aerobraking campaign is
+		// flown on the arrival end's own line, after the crossing is over.
+		const arrival = path.endOrbits.find((end) => end.at === 'arrival');
+		if (arrival && arrival.jds.length > 0 && middle >= arrival.jds[0]) {
+			let i = arrival.jds.length - 1;
+			while (i > 0 && arrival.jds[i] > middle) i--;
+			return { r: arrival.approach[i], centerId: arrival.anchorId };
+		}
+		return null;
 	}
 
 	// A surface end owns its instant: the nearby stop is the body's centre at the
@@ -436,7 +452,7 @@ function buildCrossing(
 		jd: route.arriveJd,
 		r: to.r,
 		bodyId: target.id,
-		dvKms: dvOf(route, ['capture', 'descent'])
+		dvKms: dvOf(route, ['capture', 'raise', 'descent'])
 	};
 	const meeting = { bodyId: target.id, jd: route.arriveJd, r: to.r };
 
@@ -591,7 +607,8 @@ function endOrbitPaths(
 				primaryMu,
 				frame,
 				centerId: path.centerId,
-				surface: toGround ? { siteAt: sites.arrival } : undefined
+				surface: toGround ? { siteAt: sites.arrival } : undefined,
+				aero: arrivalAero(target, route)
 			})
 		);
 	}
@@ -777,9 +794,14 @@ function endOrbitPath(end: {
 	/** Present when this end is the ground rather than the orbit — the trip still
 	 *  passes through the orbit, and the drawn line carries on to the site. */
 	surface?: { siteAt?: (jd: number) => Vec3 | null };
+	/** How the atmosphere takes part in an aero-assisted arrival. */
+	aero?: AeroArrival;
 }): EndOrbitPath {
 	const { at, body, center, orbit, arc, periJd, approach, primaryMu, frame, centerId, surface } =
 		end;
+	// The atmosphere's part of the arrival hangs off the pass, so with no
+	// passage to place it on the end draws as if unassisted.
+	const aero = at === 'arrival' && approach ? end.aero : undefined;
 	const outward = at === 'departure';
 	const count = arc.points.length;
 	// A satellite in a heliocentric plan flies on borrowed elements, so the
@@ -795,12 +817,15 @@ function endOrbitPath(end: {
 	const crossed = cross(a, b);
 	const arcNormal = norm(crossed) > 0 ? normalize(crossed) : ([0, 0, 1] as Vec3);
 
+	// An aerocaptured arrival never burns at the orbit's periapsis: the pass
+	// itself is the insertion, flown at the entry interface.
+	const rPassKm = aero?.mode === 'aerocapture' ? aero.rEntryKm : orbit.rPeriKm;
 	const passageOf = (planeHint?: Vec3) =>
 		approach
 			? hyperbolicPassage({
 					body,
 					approach,
-					rPeriKm: orbit.rPeriKm,
+					rPeriKm: rPassKm,
 					arcNormal,
 					at,
 					primaryMu,
@@ -818,8 +843,9 @@ function endOrbitPath(end: {
 	// the descent.
 	if (surface?.siteAt && passage) {
 		const halfDays =
-			(Math.PI * Math.sqrt(((orbit.rPeriKm + body.radiusKm) / 2) ** 3 / body.mu)) / SEC_PER_DAY;
-		const site = surface.siteAt(passage.periJd + (outward ? -halfDays : halfDays));
+			(Math.PI * Math.sqrt(((rPassKm + body.radiusKm) / 2) ** 3 / body.mu)) / SEC_PER_DAY;
+		const roughDays = halfDays + (aero?.campaignDays ?? 0);
+		const site = surface.siteAt(passage.periJd + (outward ? -roughDays : roughDays));
 		if (site && norm(site) > 0) passage = passageOf(normalize(site)) ?? passage;
 	}
 	const normal = passage?.normal ?? arcNormal;
@@ -834,18 +860,34 @@ function endOrbitPath(end: {
 	// crossing.
 	const origin: Vec3 = anchored ? [0, 0, 0] : ringCenter;
 
+	// Direct entry: the pass that would have captured the craft puts it on the
+	// ground instead, so the ground leg falls straight from the entry interface
+	// with no parking coast in between.
+	const directEntry = aero?.mode === 'aerocapture' && surface != null && passage != null;
+	const aeroLegs =
+		aero && passage && !directEntry
+			? aeroArrivalLegs({ aero, body, orbit, normal, periapsis, periJd: endPeriJd })
+			: null;
+	// Everything inward of an aerobraking pass is frozen where the body was at
+	// the encounter: the campaign lasts months, and carrying the body's real
+	// motion would smear the revolutions over half its orbit. The seam is safe —
+	// the passage's carried offset is zero at periapsis by construction.
+	const frozen = aeroLegs != null;
+
 	const ground = surface
 		? surfaceLeg({
 				outward,
 				body,
-				rParkKm: orbit.rPeriKm,
+				rParkKm: directEntry && aero ? aero.rEntryKm : orbit.rPeriKm,
 				normal,
-				periapsis,
-				periJd: endPeriJd,
+				// After a campaign the craft leaves from the final apoapsis, on the
+				// far side of the line of apsides from where the passage came in.
+				periapsis: aeroLegs ? scale(periapsis, -1) : periapsis,
+				periJd: aeroLegs?.endJd ?? endPeriJd,
 				siteAt: surface.siteAt,
-				bodyAt: anchored ? undefined : approach?.bodyAt,
+				bodyAt: anchored || frozen ? undefined : approach?.bodyAt,
 				center: ringCenter,
-				includePeriapsis: !passage
+				includePeriapsis: !passage && !aeroLegs
 			})
 		: null;
 
@@ -870,14 +912,18 @@ function endOrbitPath(end: {
 		append(passage);
 	} else {
 		append(passage);
+		append(aeroLegs);
 		append(ground, true);
 	}
-	const groundRange =
+	const groundRanges =
 		ground && groundKept > 0
 			? outward
-				? { from: 0, to: groundKept }
-				: { from: approachPoints.length - groundKept, to: approachPoints.length }
-			: undefined;
+				? [{ from: 0, to: groundKept }]
+				: [{ from: approachPoints.length - groundKept, to: approachPoints.length }]
+			: [];
+	const airRanges = aero
+		? underShell(groundRanges, approachPoints, origin, body, aero)
+		: groundRanges;
 
 	// A surface end with no passage still owns the last of its crossing, or the
 	// arc would run through the body's centre and the ground stretch that
@@ -911,11 +957,12 @@ function endOrbitPath(end: {
 					normal,
 					periapsis,
 					mu: body.mu,
-					periJd: endPeriJd,
+					periJd: aeroLegs?.endJd ?? endPeriJd,
 					// A closed ring is only closed in the body's own frame; elsewhere it
 					// needs the body's motion. An end with no passage has no way to ask for
-					// it, so it closes anyway and stays honest only by being small.
-					bodyAt: anchored ? undefined : approach?.bodyAt,
+					// it — and an aero arrival's is frozen with the rest of its campaign —
+					// so it closes anyway and stays honest only by being small.
+					bodyAt: anchored || frozen ? undefined : approach?.bodyAt,
 					center: ringCenter,
 					outward
 				}),
@@ -927,7 +974,7 @@ function endOrbitPath(end: {
 		periJd: endPeriJd,
 		radiusKm: orbit.rApoKm,
 		surfaceJd: ground?.groundJd,
-		ground: groundRange
+		ground: airRanges.length > 0 ? airRanges : undefined
 	};
 }
 
@@ -948,6 +995,174 @@ function radiusCut(arc: PathArc, center: Vec3, rKm: number, outward: boolean): n
 		if (norm(sub(arc.points[i], center)) > rKm) return Math.max(i + 1, 2);
 	}
 	return count;
+}
+
+/**
+ * How the atmosphere takes part in an arrival, read off the priced route — the
+ * geometry is re-derived from the same terms the pricing used, never carried.
+ */
+interface AeroArrival {
+	mode: 'aerocapture' | 'aerobraking';
+	/** Radius the braking pass is flown at, km. */
+	rEntryKm: number;
+	/** Days the aerobraking campaign takes; zero for a single pass. */
+	campaignDays: number;
+	/** Apoapsis of the loose ellipse an aerobraking capture burn drops into, km. */
+	rApoLooseKm: number;
+	/** Altitude the rendered shell tops out at, km, when known. */
+	shellTopKm?: number;
+}
+
+/** The aero part of a route's arrival, when the pricing actually flew one — a
+ *  request the body ignored (no air, or a pass that wouldn't fit under the
+ *  orbit) leaves the drawing propulsive too. */
+function arrivalAero(body: TravelBody, route: Route): AeroArrival | undefined {
+	if (route.aero === 'none' || !route.legs.some((leg: RouteLeg) => leg.aerobraked)) {
+		return undefined;
+	}
+	return {
+		mode: route.aero,
+		rEntryKm: aeroPassRadiusKm(body),
+		campaignDays: route.legs.find((leg) => leg.kind === 'aerobrake')?.days ?? 0,
+		rApoLooseKm: CAPTURE_APOAPSIS_RADII * body.radiusKm,
+		shellTopKm: body.aeroShellTopKm
+	};
+}
+
+/** Fewest points per half revolution of an aero arrival's ellipses; the wide
+ *  ones get more — a campaign's loose ellipse spans tens of radii on screen,
+ *  where this few reads as a polygon. */
+const AERO_HALF_SAMPLES = 32;
+const AERO_HALF_SAMPLES_MAX = 128;
+
+/** Points for half a revolution, scaled up with how far the ellipse reaches,
+ *  so the wide ones stay as smooth per unit of screen as the small ones. */
+function aeroHalfSamples(rp: number, ra: number): number {
+	const scaled = Math.round(AERO_HALF_SAMPLES * Math.sqrt(ra / Math.max(rp, 1)));
+	return Math.min(AERO_HALF_SAMPLES_MAX, Math.max(AERO_HALF_SAMPLES, scaled));
+}
+/** Drawn revolutions standing in for an aerobraking campaign's hundreds — one
+ *  per few weeks of campaign, within reason. */
+const AEROBRAKE_MIN_REVS = 4;
+const AEROBRAKE_MAX_REVS = 10;
+
+/**
+ * What an aero arrival flies between the pass and the orbit it was priced
+ * into, in flight order from the passage's periapsis, body-relative km.
+ * Aerocapture: the post-pass ellipse out to apoapsis, where the trim burn
+ * lifts periapsis clear of the air. Aerobraking: the loose capture ellipse out
+ * to the walk-in, then drag's shrinking revolutions — a few drawn in place of
+ * the real hundreds, spread over the campaign's true dates so a scrub rides
+ * them. Every ellipse shares the line of apsides (drag at periapsis doesn't
+ * turn it), so each seam lands on a shared apsis exactly.
+ */
+function aeroArrivalLegs(leg: {
+	aero: AeroArrival;
+	body: TravelBody;
+	orbit: EndOrbit;
+	normal: Vec3;
+	periapsis: Vec3;
+	periJd: number;
+}): { points: Vec3[]; jds: number[]; endJd: number } | null {
+	const { aero, body, orbit, normal, periapsis, periJd } = leg;
+	if (!(body.mu > 0)) return null;
+	const inPlane = normalize(cross(normal, periapsis));
+	const points: Vec3[] = [];
+	const jds: number[] = [];
+	const put = (point: Vec3, jd: number) => {
+		if (jds.length > 0 && jd <= jds[jds.length - 1] + 1e-9) return;
+		points.push(point);
+		jds.push(jd);
+	};
+	const halfPeriodDays = (rp: number, ra: number) =>
+		Math.PI / Math.sqrt(body.mu / ((rp + ra) / 2) ** 3) / SEC_PER_DAY;
+	// Half a revolution, dated by Kepler: periapsis to apoapsis, or apoapsis
+	// down. Stepped in eccentric anomaly, whose parameterisation is a squashed
+	// circle — even steps in true anomaly crowd the line's turning at periapsis
+	// and leave the wide side as long straight chords. `stretch` rescales the
+	// dates, standing a drawn revolution in for many real ones. Returns the
+	// date at the far apsis.
+	const half = (rp: number, ra: number, descending: boolean, jd0: number, stretch = 1) => {
+		const a = (rp + ra) / 2;
+		const e = (ra - rp) / (ra + rp);
+		const b = a * Math.sqrt(1 - e * e);
+		const meanMotion = Math.sqrt(body.mu / a ** 3);
+		const fromPeri = (E: number) => (E - e * Math.sin(E)) / meanMotion / SEC_PER_DAY;
+		const count = aeroHalfSamples(rp, ra);
+		for (let i = 1; i <= count; i++) {
+			const E = (descending ? Math.PI : 0) + (Math.PI * i) / count;
+			const elapsed = fromPeri(E) - (descending ? fromPeri(Math.PI) : 0);
+			put(
+				add(scale(periapsis, a * (Math.cos(E) - e)), scale(inPlane, b * Math.sin(E))),
+				jd0 + elapsed * stretch
+			);
+		}
+		return jd0 + fromPeri(Math.PI) * stretch;
+	};
+
+	if (aero.mode === 'aerocapture') {
+		// One pass leaves the craft on an ellipse whose periapsis is still in the
+		// air; it coasts out to apoapsis, and the trim burn there hands over to
+		// the priced orbit along their shared apsis.
+		const endJd = half(aero.rEntryKm, orbit.rApoKm, false, periJd);
+		return { points, jds, endJd };
+	}
+
+	// Aerobraking: the engine captured at the orbit's own periapsis into the
+	// loose ellipse; the walk-in at its apoapsis drops periapsis into the air.
+	const revs = Math.max(
+		AEROBRAKE_MIN_REVS,
+		Math.min(AEROBRAKE_MAX_REVS, Math.round(aero.campaignDays / 25))
+	);
+	const apoAt = (k: number) => aero.rApoLooseKm * (orbit.rApoKm / aero.rApoLooseKm) ** (k / revs);
+	let natural = 0;
+	for (let k = 0; k < revs; k++) {
+		natural +=
+			halfPeriodDays(aero.rEntryKm, apoAt(k)) + halfPeriodDays(aero.rEntryKm, apoAt(k + 1));
+	}
+	const stretch = natural > 0 && aero.campaignDays > 0 ? aero.campaignDays / natural : 1;
+	let jd = half(orbit.rPeriKm, aero.rApoLooseKm, false, periJd);
+	for (let k = 0; k < revs; k++) {
+		jd = half(aero.rEntryKm, apoAt(k), true, jd, stretch);
+		jd = half(aero.rEntryKm, apoAt(k + 1), false, jd, stretch);
+	}
+	// The walk-out at the final apoapsis lifts periapsis clear; the priced orbit
+	// takes over from the same apsis.
+	return { points, jds, endJd: jd };
+}
+
+/**
+ * Where the drawn line is inside the rendered atmosphere: the ground stretch
+ * it arrives holding, plus every dip an aero arrival flies below the shell —
+ * which the overlay must composite under the glow, or the shell's depth write
+ * erases them. Judged by radius, so a shell the pass skims above marks
+ * nothing, which is right: that stretch isn't occluded either.
+ */
+function underShell(
+	ranges: { from: number; to: number }[],
+	points: readonly Vec3[],
+	origin: Vec3,
+	body: TravelBody,
+	aero: AeroArrival
+): { from: number; to: number }[] {
+	const topKm = body.radiusKm + (aero.shellTopKm ?? 2 * (aero.rEntryKm - body.radiusKm));
+	const inAir = new Array<boolean>(points.length).fill(false);
+	for (const range of ranges) {
+		for (let i = range.from; i < range.to; i++) inAir[i] = true;
+	}
+	// Carried motion inflates a sample's apparent radius, never shrinks it to
+	// shell scale, so the test stays honest for the passage's outer reaches.
+	for (let i = 0; i < points.length; i++) {
+		if (norm(sub(points[i], origin)) < topKm) inAir[i] = true;
+	}
+	const merged: { from: number; to: number }[] = [];
+	for (let i = 0; i < inAir.length; i++) {
+		if (!inAir[i]) continue;
+		const last = merged[merged.length - 1];
+		if (last && last.to === i) last.to = i + 1;
+		else merged.push({ from: i, to: i + 1 });
+	}
+	return merged;
 }
 
 /** Points down a ground leg's half-ellipse. Fewer than a ring: it is half of
@@ -1835,7 +2050,7 @@ function flownCrossing(
 				jd: route.arriveJd,
 				r: endR,
 				bodyId: targetId,
-				dvKms: dvOf(route, ['capture', 'descent'])
+				dvKms: dvOf(route, ['capture', 'raise', 'descent'])
 			}
 		],
 		meeting: { bodyId: targetId, jd: route.arriveJd, r: endR }
@@ -1970,7 +2185,7 @@ function straightCrossing(
 				jd: route.arriveJd,
 				r: end,
 				bodyId: targetId,
-				dvKms: dvOf(route, ['capture', 'descent'])
+				dvKms: dvOf(route, ['capture', 'raise', 'descent'])
 			}
 		],
 		meeting: { bodyId: targetId, jd: route.arriveJd, r: end }
@@ -2021,7 +2236,7 @@ function systemPath(
 		jd: route.arriveJd,
 		r: outbound ? state.r : scale(normalize(state.r), rNear),
 		bodyId: target.id,
-		dvKms: dvOf(route, ['capture', 'descent'])
+		dvKms: dvOf(route, ['capture', 'raise', 'descent'])
 	};
 
 	if (route.constantThrust != null) {
@@ -2175,7 +2390,7 @@ function orbitChangePath(
 			jd: route.arriveJd,
 			r: points[points.length - 1],
 			bodyId: body.id,
-			dvKms: dvOf(route, ['capture', 'descent'])
+			dvKms: dvOf(route, ['capture', 'raise', 'descent'])
 		}
 	];
 	return {

@@ -202,6 +202,7 @@ export function toTravelBody(
 		// is instead of at one Mars-calibrated altitude.
 		aeroScaleHeightKm:
 			aeroPa === undefined ? undefined : getAtmosphereParams(body.id)?.rayleighScaleHeightKm,
+		aeroShellTopKm: aeroPa === undefined ? undefined : getAtmosphereParams(body.id)?.topAltitudeKm,
 		spinRadPerSec: spinRadPerSec(detail?.orientation),
 		poleEcliptic: poleEcliptic(detail?.orientation),
 		parentId: body.parentId

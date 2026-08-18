@@ -60,6 +60,9 @@ export interface TravelBody {
 	aeroPressurePa?: number;
 	/** Density scale height of that envelope, km — sets how deep the pass sits. */
 	aeroScaleHeightKm?: number;
+	/** Altitude the rendered atmosphere shell tops out at, km — where a drawn
+	 *  line starts compositing under the glow instead of over it. */
+	aeroShellTopKm?: number;
 	/** Rotation rate about its own axis, rad/s, sign dropped — what the ground at
 	 *  the equator is already moving at, and so what an ascent is spared. */
 	spinRadPerSec?: number;

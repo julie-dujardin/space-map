@@ -273,6 +273,10 @@ export interface ArrivalCost {
 	descentKms: number;
 	/** True when an atmosphere absorbed part of the arrival. */
 	aerobraked: boolean;
+	/** The slice of `captureKms` flown after the atmosphere's part — the
+	 *  periapsis raise that lifts the orbit clear of the air, km/s. Zero when
+	 *  the whole capture is one engine burn. */
+	raiseKms: number;
 	/** Δv drag removed instead of the engine, km/s. */
 	absorbedKms: number;
 	/** How long it took to remove it, days. Zero for a single pass. */
@@ -286,6 +290,7 @@ export const NO_ARRIVAL_COST: ArrivalCost = {
 	captureKms: 0,
 	descentKms: 0,
 	aerobraked: false,
+	raiseKms: 0,
 	absorbedKms: 0,
 	aerobrakeDays: 0
 };
@@ -389,6 +394,7 @@ export function arrivalCostFromSpeed(
 		if (mode === 'landing') {
 			return {
 				captureKms: 0,
+				raiseKms: 0,
 				descentKms: descent,
 				aerobraked: true,
 				absorbedKms: vEntry,
@@ -398,8 +404,10 @@ export function arrivalCostFromSpeed(
 		}
 		// One pass leaves the craft on an ellipse whose periapsis is still in the
 		// air; all it then owes is lifting that periapsis back out at apoapsis.
+		const raise = periapsisRaiseDv(mu, rEntry, rPeri, rApo) + AEROCAPTURE_TRIM_KMS;
 		return {
-			captureKms: periapsisRaiseDv(mu, rEntry, rPeri, rApo) + AEROCAPTURE_TRIM_KMS,
+			captureKms: raise,
+			raiseKms: raise,
 			descentKms: descent,
 			aerobraked: true,
 			absorbedKms: Math.max(0, vEntry - boundSpeed(mu, rEntry, rApo)),
@@ -430,6 +438,7 @@ export function arrivalCostFromSpeed(
 
 	return {
 		captureKms: insertion + walkIn + walkOut,
+		raiseKms: walkOut,
 		descentKms: descent,
 		aerobraked: true,
 		absorbedKms: absorbed,

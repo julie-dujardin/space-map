@@ -51,9 +51,15 @@ export type LegKind =
 	 *  the whole point; the Δv is what the geometry could not supply. */
 	| 'assist'
 	| 'capture'
+	/** One braking pass through the target's atmosphere doing the whole
+	 *  insertion at once — the aero half of an aerocapture, costing nothing. */
+	| 'aero-pass'
 	/** Months of passes through the target's atmosphere, walking the orbit down.
 	 *  The only leg that costs time without a burn or a crossing to show for it. */
 	| 'aerobrake'
+	/** The engine burn after the atmosphere's part: lifting periapsis clear of
+	 *  the air, into the orbit that was asked for. */
+	| 'raise'
 	| 'descent';
 
 export interface RouteLeg {
@@ -64,6 +70,8 @@ export interface RouteLeg {
 	days: number;
 	/** Set when an atmosphere absorbed part of the leg rather than propellant. */
 	aerobraked?: boolean;
+	/** Δv the atmosphere removed on this leg, km/s — the aero legs only. */
+	absorbedKms?: number;
 }
 
 export interface Route {
@@ -183,11 +191,34 @@ export interface RouteOptions {
  */
 export function arrivalLegs(cost: ArrivalCost, mode: ArrivalMode): RouteLeg[] {
 	const legs: RouteLeg[] = [];
-	if (mode !== 'flyby' && cost.captureKms > 0) {
-		legs.push({ kind: 'capture', dvKms: cost.captureKms, days: 0, aerobraked: cost.aerobraked });
+	// The engine's steps and the atmosphere's are separate legs, in flight
+	// order: an aerocapture pass is its own step before the raise that follows
+	// it, and an aerobraking campaign sits between its insertion and walk-out.
+	// A direct entry stays one descent — the pass and the landing are one fall.
+	if (mode !== 'flyby' && cost.aerobraked && cost.aerobrakeDays === 0 && mode !== 'landing') {
+		legs.push({
+			kind: 'aero-pass',
+			dvKms: 0,
+			days: 0,
+			aerobraked: true,
+			absorbedKms: cost.absorbedKms
+		});
+	}
+	const engine = cost.captureKms - cost.raiseKms;
+	if (mode !== 'flyby' && engine > 0) {
+		legs.push({ kind: 'capture', dvKms: engine, days: 0 });
 	}
 	if (cost.aerobrakeDays > 0) {
-		legs.push({ kind: 'aerobrake', dvKms: 0, days: cost.aerobrakeDays, aerobraked: true });
+		legs.push({
+			kind: 'aerobrake',
+			dvKms: 0,
+			days: cost.aerobrakeDays,
+			aerobraked: true,
+			absorbedKms: cost.absorbedKms
+		});
+	}
+	if (cost.raiseKms > 0) {
+		legs.push({ kind: 'raise', dvKms: cost.raiseKms, days: 0 });
 	}
 	if (cost.descentKms > 0) {
 		legs.push({ kind: 'descent', dvKms: cost.descentKms, days: 0, aerobraked: cost.aerobraked });
