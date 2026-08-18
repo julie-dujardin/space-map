@@ -5,7 +5,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { focusClick, focusHref } from '$lib/state/focus-link';
-	import { formatNumber, formatQuantity } from '$lib/format/quantities';
+	import { asPercent, formatNumber, formatQuantity, joinParts } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
@@ -77,7 +77,7 @@
 	});
 
 	function sharePct(s: number): string {
-		return `${formatNumber(s * 100)}%`;
+		return joinParts(asPercent(formatNumber(s * 100)));
 	}
 </script>
 

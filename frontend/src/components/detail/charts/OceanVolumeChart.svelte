@@ -1,15 +1,15 @@
 <script lang="ts" module>
-	import { earthRatioParts, formatUnit, scientificNotation } from '$lib/format/quantities';
+	import { earthRatioParts, joinParts, scientificNotation } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
 
 	/**
-	 * Water volume, in the unit it was measured in. The exponent is a literal —
-	 * Wikidata has no cubic-kilometre `unit_*` row, same reason the tilt card
-	 * writes its own degree sign. Scientific notation, not a compact suffix:
-	 * these span two decades and "27B km³" is ambiguous and unfamiliar.
+	 * Water volume, in the unit it was measured in. Its own symbol rather than a
+	 * superscript after the kilometre one, which Chinese writes 立方千米 and the
+	 * glued form rendered 公里³. Scientific notation, not a compact suffix: these
+	 * span two decades and "27B km³" is ambiguous and unfamiliar.
 	 */
 	export function oceanVolume(km3: number): string {
-		return `${scientificNotation(km3)} ${formatUnit('kilometre', true)}³`;
+		return joinParts({ value: scientificNotation(km3), unit: m.symbol_cubic_kilometre() });
 	}
 
 	/**

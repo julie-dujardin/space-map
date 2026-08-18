@@ -10,7 +10,13 @@
 	import { NO_SURFACE_BODY_IDS } from '$lib/constants';
 	import { isNaturalBodyType } from '$lib/types/objects';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-	import { formatDensity, formatNumber, formatUnit, formatQuantity } from '$lib/format/quantities';
+	import {
+		formatDensity,
+		formatNumber,
+		formatQuantity,
+		formatUnit,
+		joinParts
+	} from '$lib/format/quantities';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import { diameterKmFromH, BRIGHT_ALBEDO, DARK_ALBEDO } from '$lib/math/h-magnitude';
 	import { formatDuration } from '$lib/format/duration';
@@ -40,14 +46,14 @@
 		if (!radii) return null;
 		const { a, b, c } = radii;
 		const unit = formatUnit('kilometre');
+		const km = (value: string) => joinParts({ value, unit });
 		if (a === b && b === c) {
-			return [{ label: m.property_name_radius(), value: `${formatNumber(a)} ${unit}` }];
+			return [{ label: m.property_name_radius(), value: km(formatNumber(a)) }];
 		}
-		const equatorial =
-			a === b ? `${formatNumber(a)} ${unit}` : `${formatNumber(a)} × ${formatNumber(b)} ${unit}`;
+		const equatorial = km(a === b ? formatNumber(a) : `${formatNumber(a)} × ${formatNumber(b)}`);
 		return [
 			{ label: m.equatorial_radius(), value: equatorial },
-			{ label: m.polar_radius(), value: `${formatNumber(c)} ${unit}` }
+			{ label: m.polar_radius(), value: km(formatNumber(c)) }
 		];
 	});
 
@@ -122,7 +128,10 @@
 		{:else if wd?.radius}
 			<Row label={m.property_name_radius()} value={formatQuantity(wd.radius)} />
 		{:else if sbdb?.diameter}
-			<Row label={m.diameter()} value={`${sbdb.diameter} ${formatUnit('kilometre')}`} />
+			<Row
+				label={m.diameter()}
+				value={formatQuantity({ value: sbdb.diameter, unit: 'kilometre' })}
+			/>
 		{/if}
 		{#if wd?.length && !radii && !wd?.radius && !sbdb?.diameter}
 			<Row label={m.property_name_length()} value={formatQuantity(wd.length)} />

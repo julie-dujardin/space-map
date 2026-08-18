@@ -10,7 +10,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { foldTrace, MIN_TRACE, type CompositionEntry } from '$lib/charts/composition-bar';
-	import { formatPercent, percentParts, spanFields } from '$lib/format/quantities';
+	import { formatBound, formatPercent, percentParts, spanFields } from '$lib/format/quantities';
 
 	interface Props {
 		entries: CompositionEntry[];
@@ -40,7 +40,8 @@
 	});
 
 	function value(segment: CompositionEntry): string {
-		return `${segment.limit ? '<' : ''}${formatPercent(segment.share)}`;
+		const share = formatPercent(segment.share);
+		return segment.limit ? formatBound(share) : share;
 	}
 
 	function tooltip(segment: CompositionEntry): string {

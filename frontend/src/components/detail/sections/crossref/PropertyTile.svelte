@@ -14,7 +14,7 @@
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { categoryLabel, CAT_STRUCTURE_ACTIVITY, CAT_VOLCANISM } from '$lib/fetch/groups/registry';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
-	import { formatCompactNumber } from '$lib/format/quantities';
+	import { formatCompactNumber, joinParts } from '$lib/format/quantities';
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 	import { categoryConfig, PROPERTY_ACCENT } from '$lib/state/category-config';
 	import * as m from '$lib/paraglide/messages.js';
@@ -104,7 +104,9 @@
 	<GroupTile
 		{slug}
 		name={name ?? categoryLabel(slug)}
-		label={total != null ? `${formatCompactNumber(total)} ${m.group_stat_members()}` : ''}
+		label={total != null
+			? joinParts({ value: formatCompactNumber(total), unit: m.group_stat_members() })
+			: ''}
 		background={drawn ? drawings : undefined}
 		class={className}
 	/>

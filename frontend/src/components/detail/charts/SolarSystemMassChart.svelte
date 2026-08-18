@@ -10,7 +10,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import { isModifiedClick } from '$lib/state/focus-link';
-	import { formatNumber } from '$lib/format/quantities';
+	import { asPercent, formatNumber, joinParts } from '$lib/format/quantities';
 	import { formatMass, formatMassRange } from '$lib/format/mass';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -92,7 +92,7 @@
 
 	function sharePct(s: number): string {
 		const p = s * 100;
-		return p >= 0.01 ? `${formatNumber(p)}%` : `${p.toExponential(1)}%`;
+		return joinParts(asPercent(p >= 0.01 ? formatNumber(p) : p.toExponential(1)));
 	}
 </script>
 

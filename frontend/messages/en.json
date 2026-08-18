@@ -37,6 +37,7 @@
 	"activity_eruptions_per_year": "Volcanic eruptions per year",
 	"activity_erupted_volume": "Volume erupted per year",
 	"symbol_cubic_kilometre_per_year": "km³/yr",
+	"symbol_cubic_kilometre": "km³",
 	"activity_plumes": "Plumes observed",
 	"activity_plume_mass": "Mass lifted by plumes",
 	"symbol_kilogram_per_second": "kg/s",

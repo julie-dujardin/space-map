@@ -37,6 +37,7 @@
 	"activity_eruptions_per_year": "年間の火山噴火回数",
 	"activity_erupted_volume": "年間の噴出量",
 	"symbol_cubic_kilometre_per_year": "km³/年",
+	"symbol_cubic_kilometre": "km³",
 	"activity_plumes": "観測されたプルーム",
 	"activity_plume_mass": "プルームの質量放出率",
 	"symbol_kilogram_per_second": "kg/秒",

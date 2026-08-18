@@ -13,7 +13,7 @@
 import * as m from '$lib/paraglide/messages.js';
 import { CANCER_RISK_PER_SV, LETHAL_DOSE_GY } from '$lib/math/travel';
 import { formatDuration } from './duration';
-import { formatPercent, joinParts, scientificNotation, sigFigures, type Parts } from './quantities';
+import { formatPercent, formatTinyPercent, joinParts, sigFigures, type Parts } from './quantities';
 
 // One symbol per prefixed sievert rather than a Latin prefix glued onto a
 // translated unit: Russian writes the sievert Зв, and concatenation produced
@@ -67,7 +67,7 @@ const DAYS_PER_YEAR = 365.25;
  */
 export function cancerRiskPerYear(svPerDay: number): string {
 	const risk = svPerDay * DAYS_PER_YEAR * CANCER_RISK_PER_SV;
-	return risk >= 1e-6 ? formatPercent(risk) : `${scientificNotation(risk * 100)}%`;
+	return risk >= 1e-6 ? formatPercent(risk) : formatTinyPercent(risk);
 }
 
 /**

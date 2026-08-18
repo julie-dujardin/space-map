@@ -37,6 +37,7 @@
 	"activity_eruptions_per_year": "每年火山喷发次数",
 	"activity_erupted_volume": "每年喷出量",
 	"symbol_cubic_kilometre_per_year": "立方千米/年",
+	"symbol_cubic_kilometre": "立方千米",
 	"activity_plumes": "观测到的羽流",
 	"activity_plume_mass": "羽流物质流量",
 	"symbol_kilogram_per_second": "千克/秒",

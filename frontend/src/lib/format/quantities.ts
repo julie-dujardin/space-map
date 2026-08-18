@@ -127,6 +127,30 @@ export function formatPercent(fraction: number, significantDigits = 2): string {
 	return joinParts(percentParts(fraction, significantDigits));
 }
 
+/** The locale's percent sign on a figure the caller wrote — a chart's share
+ *  picks its own digits where `percentParts` takes Intl's. */
+export function asPercent(figure: string): Parts {
+	return { ...percentParts(0), value: figure };
+}
+
+/**
+ * A percentage too small to write plainly — Venus's added cancer risk is
+ * 0.0000000036%, which nobody can take a size from.
+ */
+export function formatTinyPercent(fraction: number): string {
+	return joinParts(asPercent(scientificNotation(fraction * 100)));
+}
+
+/**
+ * A non-detection: "< 0.78 nT".
+ *
+ * The space is what separates a bound from a quantity that happens to start
+ * with a sign, and it is the same space in every panel that has one.
+ */
+export function formatBound(text: string): string {
+	return `< ${text}`;
+}
+
 /**
  * An angle. The sign binds to the digits, and the figure is the caller's: a
  * published measurement keeps its own digits where a stat cell rounds.
@@ -229,7 +253,7 @@ export function earthRatioParts(ratio: number): EarthRatio | null {
 	if (ratio >= 1) return { multiple: ltrIsolate(sigFigures(ratio)) };
 	// Under a hundredth of a percent Intl spells out a row of leading zeros, and
 	// Mercury's exosphere is 5×10⁻¹³ of Earth's pressure.
-	const text = ratio >= 1e-4 ? formatPercent(ratio, 2) : `${scientificNotation(ratio * 100)}%`;
+	const text = ratio >= 1e-4 ? formatPercent(ratio, 2) : formatTinyPercent(ratio);
 	return { percent: ltrIsolate(text) };
 }
 

@@ -1,5 +1,6 @@
 import type { RingFeature, RingFeatureKind } from '$lib/fetch/objects/object-data';
 import * as m from '$lib/paraglide/messages.js';
+import { formatBound } from '$lib/format/quantities';
 
 /** A feature plus the parts of its geometry the panel derives once. */
 export interface RingRow {
@@ -106,7 +107,7 @@ export function formatOpticalDepth(tau: NonNullable<RingFeature['optical_depth']
 		const value = mantissa.replace(/\.0$/, '');
 		return `${value}\u00d710${[...exponent].map((c) => SUPERSCRIPT[c] ?? c).join('')}`;
 	};
-	if (tau.upper_limit) return `< ${digits(tau.low)}`;
+	if (tau.upper_limit) return formatBound(digits(tau.low));
 	const prefix = tau.approximate ? '≈ ' : '';
 	return tau.high !== undefined && tau.high !== tau.low
 		? `${digits(tau.low)}–${digits(tau.high)}`

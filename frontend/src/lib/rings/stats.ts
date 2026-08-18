@@ -5,7 +5,13 @@
 
 import type { RingMass } from '$lib/fetch/objects/object-data';
 import { convertMass } from '$lib/format/mass';
-import { formatNumber, formatUnit, joinParts, type Parts } from '$lib/format/quantities';
+import {
+	formatBound,
+	formatNumber,
+	formatUnit,
+	joinParts,
+	type Parts
+} from '$lib/format/quantities';
 
 /** Mass with the hedges its source published.
  *
@@ -28,7 +34,7 @@ export function formatRingMass(mass: RingMass): Parts & { note?: string } {
 	// The figure carries its own qualifier and no unit: the Overview hangs the
 	// published ± off this alone.
 	const value = mass.upper_limit
-		? `< ${low}`
+		? formatBound(low)
 		: mass.high_kg !== undefined
 			? `${low}–${inUnit(mass.high_kg)}`
 			: mass.approximate

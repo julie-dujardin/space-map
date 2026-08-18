@@ -50,6 +50,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { ltrIsolate } from '$lib/format/bidi';
+	import { joinParts } from '$lib/format/quantities';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
@@ -104,7 +105,9 @@
 				maximumFractionDigits: digits[i]
 			})
 		);
-		return ltrIsolate(`${nums.join('–')} ${m.unit_symbol_astronomical_unit()}`);
+		return ltrIsolate(
+			joinParts({ value: nums.join('–'), unit: m.unit_symbol_astronomical_unit() })
+		);
 	}
 
 	interface PlacedBody {

@@ -24,6 +24,7 @@ import { ltrIsolate } from './bidi';
 import {
 	angleParts,
 	earthRatio,
+	formatBound,
 	formatSpan,
 	joinParts,
 	scientificNotation,
@@ -152,7 +153,7 @@ export function measurement(value: Measurement, parts: PartsOf = bare): string {
  */
 export function headline(value: Measurement, parts: PartsOf = bare): string {
 	const text = joinParts(parts(value.value));
-	return value.upper_limit ? `< ${text}` : text;
+	return value.upper_limit ? formatBound(text) : text;
 }
 
 /**
@@ -335,7 +336,7 @@ const EARTH_SURFACE_FIELD_T = 2.9733e-5;
 function vsEarth(value: Measurement, earth: number): string | null {
 	const text = earthRatio(value.value / earth);
 	if (text === null) return null;
-	return value.upper_limit ? `< ${text}` : text;
+	return value.upper_limit ? formatBound(text) : text;
 }
 
 /**

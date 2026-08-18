@@ -23,7 +23,7 @@
 		hasBound
 	} from '$lib/search/client';
 	import { capitalize, optionDomId, secondaryText, typeLabel } from '$lib/search/format';
-	import { formatCompactNumber } from '$lib/format/quantities';
+	import { formatCompactNumber, joinParts } from '$lib/format/quantities';
 	import { announce } from '$lib/a11y/announcer.svelte';
 	import { rangeDef } from '$lib/search/ranges';
 	import { SearchModel, type FilterToken } from '$lib/search/model.svelte';
@@ -646,7 +646,7 @@
 	function rangeTokenLabel(facet: RangeFacet, b: RangeBound, locale: string): string {
 		const def = rangeDef(facet);
 		const dim = messages[def.labelKey]?.() ?? facet;
-		const unit = def.unit === 'km' ? ` ${m.unit_symbol_kilometre()}` : '';
+		const unit = def.unit === 'km' ? m.unit_symbol_kilometre() : '';
 		// Years render ungrouped (no "1,990"); sizes compact; magnitudes as-is.
 		const fmt = (v: number) =>
 			def.unit === 'km'
@@ -660,7 +660,7 @@
 					: `≤ ${fmt(b.max as number)}`;
 		// Isolate the value as an LTR run so the ≥/≤ sign and digits don't
 		// bidi-mirror/reorder inside an RTL chip.
-		return `${dim}: ${ltrIsolate(`${val}${unit}`)}`;
+		return `${dim}: ${ltrIsolate(joinParts({ value: val, unit }))}`;
 	}
 
 	const tokens = $derived.by((): FilterToken[] => {

@@ -37,11 +37,13 @@
 	import { fieldParts, powerParts } from '$lib/format/activity';
 	import { formatDoseRate } from '$lib/format/radiation';
 	import {
+		asPercent,
 		formatCompactNumber,
 		formatDegrees,
 		formatNumber,
 		formatQuantity,
-		formatUnit
+		formatUnit,
+		joinParts
 	} from '$lib/format/quantities';
 
 	interface Props {
@@ -177,7 +179,10 @@
 			label: m.group_stat_widest(),
 			// Compact, because the answer is millions of km wide and a card is a
 			// third of the drawer.
-			value: `${formatCompactNumber(widest.span_km)} ${formatUnit('kilometre', true)}`,
+			value: joinParts({
+				value: formatCompactNumber(widest.span_km),
+				unit: formatUnit('kilometre', true)
+			}),
 			tooltip: widest.name,
 			href: serializeUrl(
 				applyFocus(appState.view, {
@@ -222,7 +227,7 @@
 			m.group_stat_tallest(),
 			// Not compact: 4,000 km renders as "4K km", and a thousands suffix
 			// beside a unit reads as kelvin.
-			`${formatNumber(tallest.km)} ${formatUnit('kilometre', true)}`,
+			joinParts({ value: formatNumber(tallest.km), unit: formatUnit('kilometre', true) }),
 			tallest,
 			'structure'
 		);
@@ -233,7 +238,7 @@
 		if (!deepest) return null;
 		return bodyCard(
 			m.group_stat_deepest(),
-			`${formatNumber(deepest.thickness_km)} ${formatUnit('kilometre', true)}`,
+			joinParts({ value: formatNumber(deepest.thickness_km), unit: formatUnit('kilometre', true) }),
 			deepest,
 			'structure'
 		);
@@ -353,7 +358,7 @@
 		if (!g.launch_count || g.success_count == null) return null;
 		return {
 			label: m.group_stat_success(),
-			value: `${formatNumber((g.success_count / g.launch_count) * 100)}%`,
+			value: joinParts(asPercent(formatNumber((g.success_count / g.launch_count) * 100))),
 			tooltip: m.group_stat_failures({ count: g.failure_count ?? 0 }),
 			dot: 'bg-emerald-400'
 		};

@@ -2,7 +2,7 @@
 	import { getContext, untrack } from 'svelte';
 	import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { FeatureDetailData } from '$lib/fetch/nomenclature/details';
-	import { formatNumber, formatQuantity, formatUnit } from '$lib/format/quantities';
+	import { formatDegrees, formatQuantity } from '$lib/format/quantities';
 	import { formatApprovalDate } from '$lib/format/date';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
@@ -36,11 +36,11 @@
 		// IAU diameters span metres (small craters) to thousands of km (maria),
 		// so flip to km once the value is sub-precise in metres.
 		if (feature.diameterM >= 1000) {
-			return `${formatNumber(feature.diameterM / 1000)} ${formatUnit('kilometre')}`;
+			return formatQuantity({ value: feature.diameterM / 1000, unit: 'kilometre' });
 		}
-		return `${formatNumber(feature.diameterM)} ${formatUnit('metre')}`;
+		return formatQuantity({ value: feature.diameterM, unit: 'metre' });
 	});
-	let coordsText = $derived(`${formatNumber(feature.lat)}°, ${formatNumber(feature.lon)}°`);
+	let coordsText = $derived(`${formatDegrees(feature.lat)}, ${formatDegrees(feature.lon)}`);
 
 	// The type row links to that type's collection page. The slug comes from the
 	// group index (untracked so resolving it doesn't re-trigger the load).
