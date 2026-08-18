@@ -183,6 +183,21 @@ export function entryIndexAt(entries: readonly TimelineEntry[], jd: number): num
 	return index;
 }
 
+/** Where a step of `delta` entries lands from `jd`, clamped to the trip.
+ *  Stepping back from inside a phase means that phase's start, not the entry
+ *  before it — the clock is past the entry, not on it. */
+export function stepEntryIndex(
+	entries: readonly TimelineEntry[],
+	jd: number,
+	delta: number
+): number {
+	const at = entryIndexAt(entries, jd);
+	if (at < 0) return 0;
+	const onEntry = entries[at].startJd === jd;
+	const next = delta < 0 && !onEntry ? at : at + delta;
+	return Math.min(entries.length - 1, Math.max(0, next));
+}
+
 export type TickUnit = 'year' | 'month' | 'day' | 'hour';
 
 export interface AxisTick {

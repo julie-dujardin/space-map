@@ -22,6 +22,7 @@
 	import {
 		axisTicks,
 		entryIndexAt,
+		stepEntryIndex,
 		type AxisTick,
 		type TimelineEntry,
 		type TimelineFocus
@@ -79,20 +80,25 @@
 
 	let clockFraction = $derived(fraction(clock.jd));
 
+	/** Land on `entries[index]` exactly as a click on the track there would:
+	 *  clock on its date, camera on the craft. The entry's own place on the
+	 *  line stands in for a date the craft isn't drawn at. */
 	function pick(index: number): void {
 		player.stop();
-		player.go(index);
+		const entry = entries[index];
+		if (!entry) return;
+		if (!seekToJd(entry.startJd)) focusEntry(entry);
 	}
 
 	let trackEl: HTMLButtonElement | undefined = $state();
 
-	/** Move the clock, and take the camera along with the craft it moves. */
-	function seekToFraction(f: number): void {
-		const jd = startJd + spanDays * Math.min(1, Math.max(0, f));
+	/** Move the clock, and take the camera along with the craft it moves. True
+	 *  when the craft was there to land on. */
+	function seekToJd(jd: number): boolean {
 		clock.setJD(jd);
-		if (!path) return;
+		if (!path) return false;
 		const craft = craftPositionAt(path, jd);
-		if (!craft) return;
+		if (!craft) return false;
 		onFocus({
 			kind: 'point',
 			// The craft names its own frame: at an end drawn planet-frame it is
@@ -101,6 +107,11 @@
 			r: craft.r,
 			track: true
 		});
+		return true;
+	}
+
+	function seekToFraction(f: number): void {
+		seekToJd(startJd + spanDays * Math.min(1, Math.max(0, f)));
 	}
 
 	function fractionFromClientX(clientX: number): number {
@@ -183,7 +194,7 @@
 			<button
 				type="button"
 				class="hover:bg-muted inline-flex size-7 items-center justify-center rounded-md transition-colors"
-				onclick={() => player.step(-1)}
+				onclick={() => pick(stepEntryIndex(entries, clock.jd, -1))}
 				aria-label={m.travel_timeline_prev()}
 				title={m.travel_timeline_prev()}
 			>
@@ -205,7 +216,7 @@
 			<button
 				type="button"
 				class="hover:bg-muted inline-flex size-7 items-center justify-center rounded-md transition-colors"
-				onclick={() => player.step(1)}
+				onclick={() => pick(stepEntryIndex(entries, clock.jd, 1))}
 				aria-label={m.travel_timeline_next()}
 				title={m.travel_timeline_next()}
 			>

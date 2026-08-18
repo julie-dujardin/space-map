@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { axisTicks, buildTimeline, entryIndexAt } from './timeline';
+import { axisTicks, buildTimeline, entryIndexAt, stepEntryIndex } from './timeline';
 import { legSeconds } from './playback.svelte';
 import {
 	buildAssistRoute,
@@ -209,6 +209,25 @@ describe('entryIndexAt', () => {
 
 	it('has nothing to answer with for no entries', () => {
 		expect(entryIndexAt([], J2000)).toBe(-1);
+	});
+});
+
+describe('stepEntryIndex', () => {
+	const entries = buildTimeline(buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF)!, idAsName);
+	const cruise = entries.findIndex((e) => e.kind === 'cruise');
+
+	it('steps back to the start of the phase it is inside, not past it', () => {
+		const mid = entries[cruise].startJd + entries[cruise].days / 2;
+		// Mid-crossing, "back" means the start of the crossing; from there, the
+		// entry before it.
+		expect(stepEntryIndex(entries, mid, -1)).toBe(cruise);
+		expect(stepEntryIndex(entries, entries[cruise].startJd, -1)).toBe(cruise - 1);
+	});
+
+	it('clamps at both ends of the trip', () => {
+		expect(stepEntryIndex(entries, entries[0].startJd - 500, -1)).toBe(0);
+		const lastJd = entries[entries.length - 1].startJd;
+		expect(stepEntryIndex(entries, lastJd + 1000, 1)).toBe(entries.length - 1);
 	});
 });
 

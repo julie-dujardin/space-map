@@ -71,19 +71,6 @@ export class TripPlayback {
 		this.host.focus(entry);
 	}
 
-	/** Move `delta` entries from wherever the clock currently is. */
-	step(delta: number): void {
-		const entries = this.host.entries();
-		if (entries.length === 0) return;
-		this.stop();
-		const at = entryIndexAt(entries, this.host.clock.jd);
-		// Stepping back from inside a phase means that phase's start, not the
-		// entry before it — the clock is past `at`, not on it.
-		const onEntry = entries[at].startJd === this.host.clock.jd;
-		const next = delta < 0 && !onEntry ? at : at + delta;
-		this.go(Math.min(entries.length - 1, Math.max(0, next)));
-	}
-
 	toggle(): void {
 		if (this.playing) this.stop();
 		else this.start();

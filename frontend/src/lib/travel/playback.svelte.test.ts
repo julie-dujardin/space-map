@@ -149,23 +149,6 @@ describe('TripPlayback', () => {
 		moving.dispose();
 	});
 
-	it('steps back to the start of the phase it is inside, not past it', () => {
-		clock.jd = BASE + CRUISE_DAYS / 2;
-		player.step(-1);
-		// Mid-crossing, "back" means the start of the crossing.
-		expect(clock.jd).toBe(BASE);
-		// And again from there, the burn before it.
-		player.step(-1);
-		expect(clock.jd).toBe(BASE);
-	});
-
-	it('stops playing the moment it is stepped', () => {
-		player.start();
-		run(2000);
-		player.step(1);
-		expect(player.playing).toBe(false);
-	});
-
 	// A trip can end on a phase rather than a burn — a flyby ends on the cruise,
 	// a torch route on its braking half, an aerobrake arrival on the campaign —
 	// and that phase's own span is a leg like any other.
