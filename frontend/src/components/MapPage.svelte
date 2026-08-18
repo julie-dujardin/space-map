@@ -785,9 +785,13 @@
 				</button>
 			{/if}
 			{#if searchEnabled && !searchExpanded}
-				<!-- Chips beside whatever's shown (sidebar/search bar); mobile stacks below. -->
+				<!-- Chips beside whatever's shown (sidebar/search bar); mobile stacks below.
+				     A phone has one row there, so the map pill takes it when it appears:
+				     shortcuts away from the map matter less than the control for what the
+				     reader is looking at. -->
 				<div
-					class="pointer-events-auto fixed start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] top-[calc(var(--safe-top)_+_4.125rem)] z-10 md:end-[calc(var(--safe-end)_+_1rem)] md:top-[calc(var(--safe-top)_+_1rem)] md:flex md:h-10 md:items-center md:start-[var(--featured-start)]"
+					class="pointer-events-auto fixed start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] top-[calc(var(--safe-top)_+_4.125rem)] z-10 md:end-[calc(var(--safe-end)_+_1rem)] md:top-[calc(var(--safe-top)_+_1rem)] md:flex md:h-10 md:items-center md:start-[var(--featured-start)]
+						{framesDiffer || ringPillShown ? 'max-md:hidden' : ''}"
 					style="--featured-start: {featuredStart}"
 				>
 					<FeaturedBar onObject={(id, name) => focusObject(id, name)} onGroup={openGroup} />
@@ -902,7 +906,7 @@
 				<div
 					inert={bgInert}
 					class="pointer-events-none fixed start-[var(--safe-start)] end-[var(--safe-end)] z-10 flex
-						justify-center top-[calc(var(--safe-top)_+_4.5rem)] md:top-[calc(var(--safe-top)_+_4rem)]"
+						justify-center top-[calc(var(--safe-top)_+_4.125rem)] md:top-[calc(var(--safe-top)_+_4rem)]"
 				>
 					<!-- One slot, so the two never stack: the planner and a body's ring
 					     catalogue are not open at the same time. -->
@@ -916,6 +920,7 @@
 					{:else}
 						<SegmentedPill
 							label={m.rings_brightness()}
+							shortLabel={m.tab_rings()}
 							options={ringBrightnessOptions()}
 							value={settings.overexposeRings}
 							onSelect={(next) => settings.setOverexposeRings(next)}
