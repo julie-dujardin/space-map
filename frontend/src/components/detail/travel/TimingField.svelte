@@ -78,7 +78,15 @@
 			aria-hidden="true"
 		/>
 	</Popover.Trigger>
-	<Popover.Content class="w-auto p-2" align="start" sideOffset={6}>
+	<!-- Full width on a phone: the calendar is the widest thing the app asks a
+	     reader to touch, and a popover sized to its trigger leaves the day cells
+	     too small to hit. -->
+	<Popover.Content
+		class="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] p-2 sm:w-auto sm:max-w-none"
+		align="start"
+		sideOffset={6}
+		collisionPadding={8}
+	>
 		<div
 			class="bg-muted/40 flex rounded-md p-0.5 text-xs"
 			role="tablist"

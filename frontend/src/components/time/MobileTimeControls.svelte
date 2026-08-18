@@ -84,9 +84,9 @@
 	<Vaul.Portal>
 		<Vaul.Overlay class="fixed inset-0 z-[60] bg-black/40" />
 		<Vaul.Content
-			class="fixed inset-x-0 bottom-0 z-[61] flex flex-col rounded-t-xl border-t bg-background shadow-lg outline-none max-h-[90dvh]"
+			class="fixed inset-x-0 bottom-0 z-[61] flex flex-col rounded-t-xl border-t bg-background shadow-lg outline-none max-h-[95dvh]"
 		>
-			<div class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
+			<div class="flex shrink-0 flex-col items-center gap-2 px-4 pt-3 pb-2">
 				<div class="h-1 w-10 rounded-full bg-muted-foreground/40"></div>
 				<div class="flex w-full items-center justify-between">
 					<Vaul.Title class="text-sm font-semibold">{m.time_header()}</Vaul.Title>
@@ -97,7 +97,11 @@
 				</div>
 			</div>
 
-			<div class="flex flex-col gap-4 px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+			<!-- The calendar makes the drawer outgrow a short screen, so the body scrolls
+			     under a pinned header rather than the picker being cut off. -->
+			<div
+				class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
+			>
 				<button
 					type="button"
 					class="flex w-full items-center justify-between gap-3 rounded-lg border bg-background px-3 py-3
@@ -118,8 +122,12 @@
 				</button>
 
 				{#if showCalendar}
-					<div class="self-center overflow-hidden rounded-md border bg-background">
+					<div class="w-full shrink-0 overflow-hidden rounded-md border bg-background">
+						<!-- The columns share the drawer's width rather than each taking a fixed
+						     cell, so the day targets are as big as the phone allows. Each day
+						     keeps its own size and centres in the column it was given. -->
 						<Calendar
+							class="w-full [&_td]:w-[calc(100%/7)] [&_th]:w-[calc(100%/7)] [&_[data-bits-day]]:mx-auto"
 							type="single"
 							bind:value={pickerValue}
 							bind:placeholder={pickerPlaceholder}
