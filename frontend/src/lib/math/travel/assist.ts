@@ -17,7 +17,7 @@
 
 import { AU_KM } from '$lib/math/units';
 import type { TravelBody } from './body';
-import { sphereOfInfluenceKm } from './body';
+import { equatorialTiltDeg, sphereOfInfluenceKm } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import {
 	flybyDvKms,
@@ -32,6 +32,7 @@ import {
 	arrivalCost,
 	characteristicEnergy,
 	departureCost,
+	asymptoteTurnDeg,
 	surfaceSite,
 	type AeroAssist,
 	type ArrivalMode,
@@ -101,7 +102,8 @@ export function buildAssistRoute(
 		vInfDep,
 		departureMode,
 		options.departureOrbit,
-		surfaceSite(departure, options.departureSiteLatDeg, vInfDepVec)
+		surfaceSite(departure, options.departureSiteLatDeg, vInfDepVec),
+		asymptoteTurnDeg(options.departureOrbit, equatorialTiltDeg(departure, vInfDepVec))
 	);
 	const arr = arrivalCost(
 		target,
@@ -109,7 +111,8 @@ export function buildAssistRoute(
 		arrivalMode,
 		aero,
 		options.targetOrbit,
-		surfaceSite(target, options.targetSiteLatDeg, vInfArrVec)
+		surfaceSite(target, options.targetSiteLatDeg, vInfArrVec),
+		asymptoteTurnDeg(options.targetOrbit, equatorialTiltDeg(target, vInfArrVec))
 	);
 
 	const legs: RouteLeg[] = [];
@@ -217,7 +220,8 @@ function approach(
 		vInfDepKms,
 		departureMode,
 		departureOrbit,
-		surfaceSite(departure, departureSiteLatDeg, vInfDepVec)
+		surfaceSite(departure, departureSiteLatDeg, vInfDepVec),
+		asymptoteTurnDeg(departureOrbit, equatorialTiltDeg(departure, vInfDepVec))
 	);
 	const vInfIn = sub(arc1.v2, mid.v);
 
@@ -271,7 +275,8 @@ function tailCostKms(
 		arrivalMode,
 		aero,
 		targetOrbit,
-		surfaceSite(target, targetSiteLatDeg, vInfArrVec)
+		surfaceSite(target, targetSiteLatDeg, vInfArrVec),
+		asymptoteTurnDeg(targetOrbit, equatorialTiltDeg(target, vInfArrVec))
 	);
 	const withoutPass = app.headKms + arr.captureKms + arr.descentKms;
 	if (!(withoutPass < ceiling)) return NaN;

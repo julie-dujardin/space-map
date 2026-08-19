@@ -13,14 +13,17 @@ import {
 	arrivalCost,
 	arrivalCostFromSpeed,
 	ascentDv,
+	asymptoteTurnDeg,
 	characteristicEnergy,
+	combinedBurn,
 	departureCost,
 	NO_ARRIVAL_COST,
-	orbitPeriapsisSpeed,
 	orbitPeriodHours,
 	orbitSpeedAtRadius,
 	parkingOrbit,
 	parkingRadiusKm,
+	periapsisBurnWithTurn,
+	planeTurnDeg,
 	type AeroAssist,
 	type ArrivalCost,
 	type ArrivalMode,
@@ -28,6 +31,7 @@ import {
 	type DepartureMode,
 	type EndOrbit
 } from './maneuvers';
+import { equatorialTiltDeg } from './body';
 import { elementsToState } from './state';
 import { relativeState, solveRadialArc } from './system-transfer';
 import { cross, dot, norm, sub } from './vec3';
@@ -311,12 +315,15 @@ export function buildRoute(
 	const vInfArr = norm(vInfArrVec);
 	if (!isFinite(vInfDep) || !isFinite(vInfArr)) return null;
 
+	// A named plane that cannot lean far enough to hold its asymptote owes the
+	// shortfall as a turn; a free plane simply flies where the asymptote points.
 	const dep = departureCost(
 		departure,
 		vInfDep,
 		departureMode,
 		departureOrbit,
-		surfaceSite(departure, departureSiteLatDeg, vInfDepVec)
+		surfaceSite(departure, departureSiteLatDeg, vInfDepVec),
+		asymptoteTurnDeg(departureOrbit, equatorialTiltDeg(departure, vInfDepVec))
 	);
 	const arr = arrivalCost(
 		target,
@@ -324,7 +331,8 @@ export function buildRoute(
 		arrivalMode,
 		aero,
 		targetOrbit,
-		surfaceSite(target, targetSiteLatDeg, vInfArrVec)
+		surfaceSite(target, targetSiteLatDeg, vInfArrVec),
+		asymptoteTurnDeg(targetOrbit, equatorialTiltDeg(target, vInfArrVec))
 	);
 
 	const legs: RouteLeg[] = [];
@@ -425,9 +433,13 @@ function buildSystemRoute(
 	const vInf = Math.hypot(arc.vFarRadialKms - satRadial, arc.vFarTangentialKms - satTangential);
 	if (!isFinite(vInf)) return null;
 
+	// The arc's plane has to hold the satellite where the crossing meets it, so
+	// a named primary orbit that leans less than the satellite's declination
+	// owes the shortfall as a turn.
+	const primaryTurn = asymptoteTurnDeg(primaryOrbit, equatorialTiltDeg(primary, state.r));
 	// At the primary the craft never leaves, so the burn is measured against the
 	// parking orbit rather than against an escape.
-	const primaryBurn = arc.vNearKms - orbitPeriapsisSpeed(primary.mu, primaryOrbit);
+	const primaryBurn = periapsisBurnWithTurn(primary.mu, primaryOrbit, arc.vNearKms, primaryTurn);
 
 	const legs: RouteLeg[] = [];
 	let ascentKms = 0;
@@ -446,7 +458,15 @@ function buildSystemRoute(
 
 	const arr = outbound
 		? arrivalCost(satellite, vInf, arrivalMode, aero, satelliteOrbit, targetSite)
-		: arrivalCostFromSpeed(primary, arc.vNearKms, arrivalMode, aero, primaryOrbit, targetSite);
+		: arrivalCostFromSpeed(
+				primary,
+				arc.vNearKms,
+				arrivalMode,
+				aero,
+				primaryOrbit,
+				targetSite,
+				primaryTurn
+			);
 	legs.push(...arrivalLegs(arr, arrivalMode));
 
 	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
@@ -544,8 +564,15 @@ export function orbitChangeEnds(
 	const rToKm = climb ? to.rApoKm : to.rPeriKm;
 	const singleBurn = Math.abs(rToKm - rFromKm) < SAME_RADIUS_KM;
 	// Two ends at one radius with nothing else to tell them apart is the same
-	// place twice, which is not a trip.
-	if (singleBurn && departureMode !== 'surface' && arrivalMode !== 'landing') return null;
+	// place twice, which is not a trip — but two named planes at one radius
+	// are, and the trip is the turn between them.
+	if (
+		singleBurn &&
+		departureMode !== 'surface' &&
+		arrivalMode !== 'landing' &&
+		!(planeTurnDeg(from.incDeg, to.incDeg) > 0)
+	)
+		return null;
 	return { from, to, rFromKm, rToKm, climb, singleBurn };
 }
 
@@ -554,9 +581,9 @@ export function orbitChangeEnds(
  *
  * Nothing is escaped and nothing is chased, so there is no Lambert solve and
  * no launch window: the same pair of burns is there on every revolution, and
- * the only choice is how fast to make the crossing between them. Coplanar like
- * the rest of the kernel — a plane change is an inclination it never charges
- * for, here or anywhere else.
+ * the only choice is how fast to make the crossing between them. Where the two
+ * ends name planes, the turn between them is charged at the arc's far end,
+ * the slowest point the trip visits.
  */
 function buildOrbitChangeRoute(
 	body: TravelBody,
@@ -577,8 +604,29 @@ function buildOrbitChangeRoute(
 	if (!ends) return null;
 	const { from, to, rFromKm, rToKm, climb, singleBurn } = ends;
 
-	const departureSite = surfaceSite(body, departureSiteLatDeg, null);
-	const targetSite = surfaceSite(body, targetSiteLatDeg, null);
+	// The plane each end flies. A launch climbs straight into the target's
+	// plane when its latitude reaches it, and into the nearest plane it can
+	// when not — the rest is a turn made out in the arc, the split every
+	// geostationary mission flies. A landing comes down in the plane the craft
+	// was already in, and the descent pays for how steep it lies over the
+	// moving ground.
+	const latFrom = Math.abs(departureSiteLatDeg ?? 0);
+	const fromIncDeg =
+		departureMode === 'surface'
+			? to.incDeg === undefined
+				? undefined
+				: Math.min(Math.max(to.incDeg, latFrom), 180 - latFrom)
+			: from.incDeg;
+	const turnDeg = arrivalMode === 'landing' ? 0 : planeTurnDeg(fromIncDeg, to.incDeg);
+
+	const departureSite =
+		departureSiteLatDeg === undefined
+			? undefined
+			: { latDeg: departureSiteLatDeg, asymptoteTiltDeg: fromIncDeg };
+	const targetSite =
+		targetSiteLatDeg === undefined
+			? undefined
+			: { latDeg: targetSiteLatDeg, asymptoteTiltDeg: from.incDeg };
 	const legs: RouteLeg[] = [];
 	let ascentKms = 0;
 	if (departureMode === 'surface') {
@@ -605,7 +653,8 @@ function buildOrbitChangeRoute(
 			arrivalMode,
 			aero,
 			to,
-			targetSite
+			targetSite,
+			turnDeg
 		);
 	} else {
 		const rNear = Math.min(rFromKm, rToKm);
@@ -614,17 +663,19 @@ function buildOrbitChangeRoute(
 		if (!arc) return null;
 		inverseAKm = arc.inverseAKm;
 		// At the far end the arc carries speed along the radius as well as across
-		// the orbit; at the near end it is at periapsis, purely across.
-		const farBurn = (orbit: EndOrbit) =>
+		// the orbit; at the near end it is at periapsis, purely across. The turn
+		// between the two planes rides the far burn: the out-of-plane component
+		// only touches the across part, and the far end is where it is cheapest.
+		const farBurn = (orbit: EndOrbit, farTurnDeg: number) =>
 			Math.hypot(
 				arc.vFarRadialKms,
-				arc.vFarTangentialKms - orbitSpeedAtRadius(body.mu, orbit, rFar)
+				combinedBurn(arc.vFarTangentialKms, orbitSpeedAtRadius(body.mu, orbit, rFar), farTurnDeg)
 			);
 		if (climb) {
 			injectionKms = Math.abs(arc.vNearKms - orbitSpeedAtRadius(body.mu, from, rNear));
-			arr = { ...NO_ARRIVAL_COST, captureKms: farBurn(to) };
+			arr = { ...NO_ARRIVAL_COST, captureKms: farBurn(to, turnDeg) };
 		} else {
-			injectionKms = farBurn(from);
+			injectionKms = farBurn(from, turnDeg);
 			arr = arrivalCostFromSpeed(body, arc.vNearKms, arrivalMode, aero, to, targetSite);
 		}
 	}

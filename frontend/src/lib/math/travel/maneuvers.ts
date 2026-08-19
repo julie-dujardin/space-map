@@ -45,6 +45,14 @@ export function parkingRadiusKm(body: TravelBody): number {
 export interface EndOrbit {
 	rPeriKm: number;
 	rApoKm: number;
+	/**
+	 * Inclination to the body's equator, degrees, 0–180 — above 90 the orbit
+	 * runs retrograde. Absent leaves the plane free: the trip flies whatever
+	 * plane is cheapest, which is how every orbit was priced before the field
+	 * existed. No node is tracked, so two named planes are charged at the best
+	 * case, the burn made where they cross.
+	 */
+	incDeg?: number;
 }
 
 /** The parking orbit as an `EndOrbit`. */
@@ -61,7 +69,67 @@ export function captureOrbit(body: TravelBody): EndOrbit {
 /** An orbit with its apoapsis never below its periapsis, whatever was asked
  *  for. Guards the vis-viva terms below against a reversed pair. */
 function sane(orbit: EndOrbit): EndOrbit {
-	return { rPeriKm: orbit.rPeriKm, rApoKm: Math.max(orbit.rApoKm, orbit.rPeriKm) };
+	return {
+		rPeriKm: orbit.rPeriKm,
+		rApoKm: Math.max(orbit.rApoKm, orbit.rPeriKm),
+		incDeg: orbit.incDeg === undefined ? undefined : Math.min(180, Math.max(0, orbit.incDeg))
+	};
+}
+
+/** Steepest declination a plane at inclination `incDeg` reaches, degrees.
+ *  Symmetric about 90: a retrograde orbit leans no further than its mirror. */
+export function planeReachDeg(incDeg: number): number {
+	return Math.min(incDeg, 180 - incDeg);
+}
+
+/**
+ * Angle the plane must turn to point the trip out at declination `tiltDeg`,
+ * degrees. A plane reaches every declination up to its own lean, so only the
+ * shortfall is owed; a free plane, or a tilt nobody could compute, owes
+ * nothing.
+ */
+export function asymptoteTurnDeg(orbit: EndOrbit | undefined, tiltDeg: number | undefined): number {
+	if (orbit?.incDeg === undefined || tiltDeg === undefined) return 0;
+	return Math.max(0, Math.abs(tiltDeg) - planeReachDeg(sane(orbit).incDeg!));
+}
+
+/** Angle between two named planes, degrees — zero when either is free. */
+export function planeTurnDeg(fromIncDeg?: number, toIncDeg?: number): number {
+	if (fromIncDeg === undefined || toIncDeg === undefined) return 0;
+	return Math.abs(fromIncDeg - toIncDeg);
+}
+
+/** One burn that takes the speed from `v1` to `v2` and turns it `turnDeg` at
+ *  the same time, km/s — the law of cosines. */
+export function combinedBurn(v1: number, v2: number, turnDeg: number): number {
+	const cos = Math.cos(turnDeg * (Math.PI / 180));
+	return Math.sqrt(Math.max(0, v1 * v1 + v2 * v2 - 2 * v1 * v2 * cos));
+}
+
+/** A pure plane change at speed `vKms`, km/s. */
+export function planeChangeDv(vKms: number, turnDeg: number): number {
+	return 2 * vKms * Math.abs(Math.sin((turnDeg * Math.PI) / 360));
+}
+
+/**
+ * Δv joining an orbit's periapsis to speed `vKms` there while the plane also
+ * turns `turnDeg`, km/s. Flown whichever way is cheaper: the turn folded into
+ * the burn itself, or made on its own at apoapsis, where the orbit is slowest
+ * — the split every geostationary mission flies.
+ */
+export function periapsisBurnWithTurn(
+	mu: number,
+	orbit: EndOrbit,
+	vKms: number,
+	turnDeg: number
+): number {
+	const { rPeriKm, rApoKm } = sane(orbit);
+	const plain = Math.max(0, vKms - boundSpeed(mu, rPeriKm, rApoKm));
+	if (!(turnDeg > 0)) return plain;
+	return Math.min(
+		combinedBurn(vKms, boundSpeed(mu, rPeriKm, rApoKm), turnDeg),
+		plain + planeChangeDv(apoapsisSpeed(mu, rPeriKm, rApoKm), turnDeg)
+	);
 }
 
 /**
@@ -103,10 +171,11 @@ export interface SurfaceSite {
 	/** Latitude of the pad or the landing site, degrees. */
 	latDeg: number;
 	/**
-	 * How far the arc's asymptote lies out of the body's equator, degrees. The
-	 * plane must hold it as well as reach the site, so the steeper of the two is
-	 * what the ascent flies. Absent when the plan can't say, leaving latitude
-	 * alone to set it.
+	 * How far the plane the trip flies lies out of the body's equator, degrees
+	 * — the arc's asymptote on an escape, the named orbit on a same-body trip.
+	 * The plane must hold it as well as reach the site, so the steeper of the
+	 * two is what the ascent flies. Absent when the plan can't say, leaving
+	 * latitude alone to set it.
 	 */
 	asymptoteTiltDeg?: number;
 }
@@ -137,14 +206,15 @@ export function surfaceSite(
  *
  * Charges the shortfall against ω·R, not the credit: the ascents
  * {@link ascentDv} is calibrated on are eastward near-equatorial launches that
- * already keep nearly all of it, so the equator costs nothing extra and a
- * polar climb pays the full surface speed.
+ * already keep nearly all of it, so the equator costs nothing extra, a polar
+ * climb pays the full surface speed, and a retrograde plane pays more still —
+ * it fights the ground instead of riding it.
  */
 export function planeTiltPenaltyKms(body: TravelBody, site?: SurfaceSite): number {
 	const omega = Math.abs(body.spinRadPerSec ?? 0);
 	if (!site || !(omega > 0)) return 0;
 	const incDeg = Math.min(
-		90,
+		180,
 		Math.max(Math.abs(site.latDeg), Math.abs(site.asymptoteTiltDeg ?? 0))
 	);
 	return omega * body.radiusKm * (1 - Math.cos(incDeg * (Math.PI / 180)));
@@ -307,7 +377,8 @@ export function arrivalCost(
 	mode: ArrivalMode,
 	aero: AeroAssist = 'none',
 	orbit?: EndOrbit,
-	site?: SurfaceSite
+	site?: SurfaceSite,
+	turnDeg = 0
 ): ArrivalCost {
 	// The approach is priced at the periapsis it is flown to, which is the one the
 	// orbit asked for — arriving into a stationary orbit still dips low first.
@@ -318,7 +389,8 @@ export function arrivalCost(
 		mode,
 		aero,
 		orbit,
-		site
+		site,
+		turnDeg
 	);
 }
 
@@ -346,12 +418,17 @@ export function arrivalCostFromSpeed(
 	mode: ArrivalMode,
 	aero: AeroAssist = 'none',
 	orbit?: EndOrbit,
-	site?: SurfaceSite
+	site?: SurfaceSite,
+	turnDeg = 0
 ): ArrivalCost {
 	if (mode === 'flyby') return NO_ARRIVAL_COST;
 
 	const { mu } = body;
-	const { rPeriKm: rPeri, rApoKm: rApo } = pricedArrivalOrbit(body, mode, orbit);
+	const priced = pricedArrivalOrbit(body, mode, orbit);
+	const { rPeriKm: rPeri, rApoKm: rApo } = priced;
+	// A landing ignores the requested orbit, so it owes that orbit no turn
+	// either — the site's own tilt is priced in the descent.
+	const turn = mode === 'landing' ? 0 : turnDeg;
 	const assisted = aero !== 'none' && canAeroBrake(body);
 
 	// An atmosphere is the whole descent. Without one, landing is the ascent run
@@ -369,7 +446,7 @@ export function arrivalCostFromSpeed(
 	if (!assisted) {
 		return {
 			...NO_ARRIVAL_COST,
-			captureKms: Math.max(0, vPeriKms - boundSpeed(mu, rPeri, rApo)),
+			captureKms: periapsisBurnWithTurn(mu, priced, vPeriKms, turn),
 			descentKms: descent
 		};
 	}
@@ -380,7 +457,7 @@ export function arrivalCostFromSpeed(
 	if (!(rEntry < rPeri)) {
 		return {
 			...NO_ARRIVAL_COST,
-			captureKms: Math.max(0, vPeriKms - boundSpeed(mu, rPeri, rApo)),
+			captureKms: periapsisBurnWithTurn(mu, priced, vPeriKms, turn),
 			descentKms: descent
 		};
 	}
@@ -403,8 +480,11 @@ export function arrivalCostFromSpeed(
 			};
 		}
 		// One pass leaves the craft on an ellipse whose periapsis is still in the
-		// air; all it then owes is lifting that periapsis back out at apoapsis.
-		const raise = periapsisRaiseDv(mu, rEntry, rPeri, rApo) + AEROCAPTURE_TRIM_KMS;
+		// air; all it then owes is lifting that periapsis back out at apoapsis —
+		// where any plane the pass could not fly is also cheapest to turn to.
+		const raise =
+			combinedBurn(apoapsisSpeed(mu, rEntry, rApo), apoapsisSpeed(mu, rPeri, rApo), turn) +
+			AEROCAPTURE_TRIM_KMS;
 		return {
 			captureKms: raise,
 			raiseKms: raise,
@@ -425,12 +505,18 @@ export function arrivalCostFromSpeed(
 	if (!(rApoLoose > rApo)) {
 		return {
 			...NO_ARRIVAL_COST,
-			captureKms: Math.max(0, vPeriKms - boundSpeed(mu, rPeri, rApo)),
+			captureKms: periapsisBurnWithTurn(mu, priced, vPeriKms, turn),
 			descentKms: descent
 		};
 	}
 	const insertion = Math.max(0, vPeriKms - boundSpeed(mu, rPeri, rApoLoose));
-	const walkIn = periapsisRaiseDv(mu, rPeri, rEntry, rApoLoose);
+	// The burn that drops periapsis into the air sits at the loose apoapsis,
+	// the slowest point the whole arrival visits — any turn owed is made there.
+	const walkIn = combinedBurn(
+		apoapsisSpeed(mu, rPeri, rApoLoose),
+		apoapsisSpeed(mu, rEntry, rApoLoose),
+		turn
+	);
 	const walkOut = periapsisRaiseDv(mu, rEntry, rPeri, rApo);
 	// What drag has to remove: the difference the pass makes at the depth it is
 	// flown at, between the orbit it starts on and the one it ends on.
@@ -501,19 +587,23 @@ export function departureCost(
 	vInfKms: number,
 	mode: DepartureMode,
 	orbit?: EndOrbit,
-	site?: SurfaceSite
+	site?: SurfaceSite,
+	turnDeg = 0
 ): { ascentKms: number; injectionKms: number } {
 	// An ascent goes to the parking orbit and leaves from there: which orbit the
-	// craft would otherwise have been sitting in is not a question a launch asks.
+	// craft would otherwise have been sitting in is not a question a launch asks
+	// — and its plane is the ascent's to pick, so a launch owes no turn either.
 	const from = mode === 'surface' || !orbit ? parkingOrbit(body) : sane(orbit);
 	return {
 		ascentKms: mode === 'surface' ? ascentDv(body, site) : 0,
 		// Spent at periapsis, where the Oberth effect is largest — and where an
 		// elliptical parking orbit is already moving faster than a circular one, so
 		// leaving from one is cheaper still.
-		injectionKms: Math.max(
-			0,
-			periapsisSpeed(body.mu, from.rPeriKm, vInfKms) - orbitPeriapsisSpeed(body.mu, from)
+		injectionKms: periapsisBurnWithTurn(
+			body.mu,
+			from,
+			periapsisSpeed(body.mu, from.rPeriKm, vInfKms),
+			mode === 'surface' ? 0 : turnDeg
 		)
 	};
 }

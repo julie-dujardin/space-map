@@ -4,14 +4,20 @@ import {
 	arrivalCampaignDays,
 	arrivalCost,
 	ascentDv,
+	asymptoteTurnDeg,
 	captureDv,
 	circularSpeed,
+	combinedBurn,
 	departureCost,
 	injectionDv,
+	orbitSpeedAtRadius,
+	periapsisBurnWithTurn,
 	periapsisSpeed,
 	parkingOrbit,
 	parkingRadiusKm,
-	planeTiltPenaltyKms
+	planeChangeDv,
+	planeTiltPenaltyKms,
+	planeTurnDeg
 } from './maneuvers';
 import { EARTH, JUPITER, MARS, MOON, SATURN, VENUS } from './test-fixtures';
 
@@ -324,5 +330,97 @@ describe('departureCost', () => {
 		const fromOrbit = departureCost(EARTH, 3, 'orbit');
 		expect(fromOrbit.ascentKms).toBe(0);
 		expect(fromOrbit.injectionKms).toBeCloseTo(fromSurface.injectionKms, 12);
+	});
+});
+
+describe('a named plane', () => {
+	const LEO = parkingOrbit(EARTH);
+
+	it('owes nothing while it is free, or while nobody could compute the tilt', () => {
+		expect(asymptoteTurnDeg(undefined, 30)).toBe(0);
+		expect(asymptoteTurnDeg(LEO, 30)).toBe(0);
+		expect(asymptoteTurnDeg({ ...LEO, incDeg: 10 }, undefined)).toBe(0);
+		expect(planeTurnDeg(undefined, 45)).toBe(0);
+		expect(planeTurnDeg(45, undefined)).toBe(0);
+	});
+
+	it('owes the shortfall to an asymptote it cannot lean far enough for', () => {
+		expect(asymptoteTurnDeg({ ...LEO, incDeg: 10 }, 30)).toBeCloseTo(20, 12);
+		expect(asymptoteTurnDeg({ ...LEO, incDeg: 51.6 }, 30)).toBe(0);
+		// A retrograde orbit leans no further than its prograde mirror.
+		expect(asymptoteTurnDeg({ ...LEO, incDeg: 150 }, 30)).toBe(0);
+		expect(asymptoteTurnDeg({ ...LEO, incDeg: 170 }, 30)).toBeCloseTo(20, 12);
+	});
+
+	it('turns through 60° for the speed itself, and through 0° for free', () => {
+		expect(planeChangeDv(7.67, 60)).toBeCloseTo(7.67, 12);
+		expect(combinedBurn(7.67, 7.67, 0)).toBe(0);
+		expect(combinedBurn(11, 7.67, 0)).toBeCloseTo(11 - 7.67, 12);
+		expect(combinedBurn(7.67, 7.67, 90)).toBeCloseTo(7.67 * Math.SQRT2, 12);
+	});
+
+	it('makes the turn wherever it is cheaper: in the burn, or out at apoapsis', () => {
+		const loose = { rPeriKm: parkingRadiusKm(EARTH), rApoKm: 20 * EARTH.radiusKm };
+		const vBurn = periapsisSpeed(EARTH.mu, loose.rPeriKm, 3);
+		const plain = periapsisBurnWithTurn(EARTH.mu, loose, vBurn, 0);
+		const vApo = orbitSpeedAtRadius(EARTH.mu, loose, loose.rApoKm);
+		// A wide turn walks out to the slow apoapsis; folding it into a burn made
+		// at periapsis speed would cost several times as much.
+		expect(periapsisBurnWithTurn(EARTH.mu, loose, vBurn, 40)).toBeCloseTo(
+			plain + planeChangeDv(vApo, 40),
+			12
+		);
+		// A sliver of a turn on a circular orbit hides in the burn itself,
+		// second-order small — cheaper than even the slowest separate burn.
+		const leo = parkingOrbit(EARTH);
+		const vLeo = periapsisSpeed(EARTH.mu, leo.rPeriKm, 3);
+		const plainLeo = periapsisBurnWithTurn(EARTH.mu, leo, vLeo, 0);
+		const sliver = periapsisBurnWithTurn(EARTH.mu, leo, vLeo, 1);
+		expect(sliver).toBeLessThan(plainLeo + planeChangeDv(circularSpeed(EARTH.mu, leo.rPeriKm), 1));
+		expect(sliver - plainLeo).toBeLessThan(0.02);
+	});
+
+	it('prices the turn into the injection, except for a launch, which picks its plane', () => {
+		const inOrbit = (turn: number) =>
+			departureCost(EARTH, 3, 'orbit', LEO, undefined, turn).injectionKms;
+		expect(inOrbit(30)).toBeGreaterThan(inOrbit(0));
+		const launch = (turn: number) =>
+			departureCost(EARTH, 3, 'surface', LEO, undefined, turn).injectionKms;
+		expect(launch(30)).toBeCloseTo(launch(0), 12);
+	});
+
+	it('prices the turn into the capture, except for a landing, which never keeps the orbit', () => {
+		const capture = (turn: number) =>
+			arrivalCost(EARTH, 3, 'low-orbit', 'none', LEO, undefined, turn).captureKms;
+		expect(capture(30)).toBeGreaterThan(capture(0));
+		const landing = (turn: number) =>
+			arrivalCost(EARTH, 3, 'landing', 'none', LEO, undefined, turn);
+		expect(landing(30).captureKms).toBeCloseTo(landing(0).captureKms, 12);
+		expect(landing(30).descentKms).toBeCloseTo(landing(0).descentKms, 12);
+	});
+
+	it('turns an aero arrival at its apoapsis, where it is nearly free', () => {
+		const lmo = parkingOrbit(MARS);
+		const arrive = (aero: 'aerocapture' | 'aerobraking', turn: number) =>
+			arrivalCost(MARS, 3, 'low-orbit', aero, lmo, undefined, turn);
+		for (const aero of ['aerocapture', 'aerobraking'] as const) {
+			const turned = arrive(aero, 30);
+			const flat = arrive(aero, 0);
+			expect(turned.captureKms).toBeGreaterThan(flat.captureKms);
+			// The engine pays for the turn; the air's share is untouched.
+			expect(turned.absorbedKms).toBeCloseTo(flat.absorbedKms, 12);
+			// Far cheaper than making the same turn down at circular speed.
+			expect(turned.captureKms - flat.captureKms).toBeLessThan(
+				planeChangeDv(circularSpeed(MARS.mu, lmo.rPeriKm), 30)
+			);
+		}
+	});
+
+	it('charges a retrograde plane more surface speed than the whole credit', () => {
+		const penalty = (tilt: number) =>
+			planeTiltPenaltyKms(EARTH, { latDeg: 0, asymptoteTiltDeg: tilt });
+		expect(penalty(150)).toBeGreaterThan(penalty(90));
+		const surface = (EARTH.spinRadPerSec ?? 0) * EARTH.radiusKm;
+		expect(penalty(180)).toBeCloseTo(2 * surface, 12);
 	});
 });

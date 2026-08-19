@@ -13,9 +13,12 @@ import { routeEndJd, type EndOrbit, type Route, type TravelBody } from '$lib/mat
 import type { DrawnDates } from '$lib/travel/timeline';
 import type { TransferFrame } from '$lib/travel/travel-body';
 
-/** The orbit an end was priced at, as a key fragment. */
+/** The orbit an end was priced at, as a key fragment. A free plane writes
+ *  nothing, so every key minted before planes existed still matches. */
 function orbitEcho(orbit?: EndOrbit): string {
-	return orbit ? `${orbit.rPeriKm}/${orbit.rApoKm}` : '';
+	if (!orbit) return '';
+	const plane = orbit.incDeg === undefined ? '' : `/${orbit.incDeg}`;
+	return `${orbit.rPeriKm}/${orbit.rApoKm}${plane}`;
 }
 
 /** What shapes the drawn arc: the crossing itself, and the end-orbit rings,

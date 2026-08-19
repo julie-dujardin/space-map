@@ -7,7 +7,14 @@ import { describe, expect, it } from 'vitest';
 import { EARTH } from './test-fixtures';
 import { buildRoute, type Route } from './route';
 import { orbitChangeEnds } from './route';
-import { circularSpeed, orbitPeriodHours, parkingRadiusKm, type EndOrbit } from './maneuvers';
+import {
+	circularSpeed,
+	combinedBurn,
+	orbitPeriodHours,
+	parkingRadiusKm,
+	planeChangeDv,
+	type EndOrbit
+} from './maneuvers';
 import { hohmannArcDays } from './system-transfer';
 import { buildTrajectoryPath } from './path';
 import { dot, norm, normalize } from './vec3';
@@ -213,5 +220,71 @@ describe('ends that need no arc between them', () => {
 	it('comes down from wherever the craft is, even below the parking orbit', () => {
 		const low: EndOrbit = { rPeriKm: EARTH.radiusKm + 120, rApoKm: EARTH.radiusKm + 120 };
 		expect(route(low, 'ground')?.totalDvKms).toBeGreaterThan(0);
+	});
+});
+
+describe('a turn between two planes', () => {
+	it('makes two planes at one radius a trip: the turn between them', () => {
+		const r = route({ ...LOW, incDeg: 0 }, { ...LOW, incDeg: 45 })!;
+		expect(r).not.toBeNull();
+		expect(r.totalDvKms).toBeCloseTo(planeChangeDv(circularSpeed(EARTH.mu, LOW.rPeriKm), 45), 6);
+		// Flipping all the way round to retrograde costs twice the orbit's speed.
+		const flip = route({ ...LOW, incDeg: 0 }, { ...LOW, incDeg: 180 })!;
+		expect(flip.totalDvKms).toBeCloseTo(2 * circularSpeed(EARTH.mu, LOW.rPeriKm), 6);
+	});
+
+	it('prices matched planes exactly as free ones', () => {
+		const named = route({ ...LOW, incDeg: 51.6 }, { ...GEO, incDeg: 51.6 })!;
+		const free = route(LOW, GEO)!;
+		expect(named.totalDvKms).toBeCloseTo(free.totalDvKms, 12);
+	});
+
+	it('makes the turn at the far end of the arc, where it is cheapest', () => {
+		const turned = route({ ...LOW, incDeg: 0 }, { ...GEO, incDeg: 28.6 })!;
+		const flat = route({ ...LOW, incDeg: 0 }, { ...GEO, incDeg: 0 })!;
+		// The climb out is the same arc either way; the far burn absorbs the turn.
+		expect(dvOf(turned, 'injection')).toBeCloseTo(dvOf(flat, 'injection'), 12);
+		expect(dvOf(turned, 'capture')).toBeGreaterThan(dvOf(flat, 'capture'));
+		// The arc tops out slower than the ring by exactly the flat burn, so the
+		// turned burn is the law of cosines between those two speeds.
+		const vGeo = circularSpeed(EARTH.mu, GEO_RADIUS_KM);
+		expect(dvOf(turned, 'capture')).toBeCloseTo(
+			combinedBurn(vGeo - dvOf(flat, 'capture'), vGeo, 28.6),
+			3
+		);
+	});
+
+	it('launches into the plane it can, and turns the rest out in the arc', () => {
+		const geo = (incDeg: number | undefined, latDeg?: number) =>
+			buildRoute(EARTH, EARTH, J2000, HOHMANN_DAYS, {
+				orbitChange: true,
+				departureMode: 'surface',
+				arrivalMode: 'capture',
+				targetOrbit: incDeg === undefined ? GEO : { ...GEO, incDeg },
+				departureSiteLatDeg: latDeg
+			})!;
+		// An equatorial target from an inclined pad: the ascent flies the pad's
+		// own latitude and the circularisation burn carries the 28.6° turn —
+		// the split every geostationary mission flies.
+		const cape = geo(0, 28.6);
+		expect(dvOf(cape, 'ascent')).toBeCloseTo(dvOf(geo(undefined, 28.6), 'ascent'), 12);
+		expect(dvOf(cape, 'capture')).toBeGreaterThan(dvOf(geo(0, 0), 'capture'));
+		// A polar target instead costs its spin on the way up, not a turn later.
+		const polar = geo(90, 28.6);
+		expect(dvOf(polar, 'ascent')).toBeGreaterThan(dvOf(cape, 'ascent'));
+		expect(dvOf(polar, 'capture')).toBeCloseTo(dvOf(geo(undefined, 28.6), 'capture'), 12);
+	});
+
+	it('charges a landing out of a polar orbit for the ground speed it cannot ride', () => {
+		const land = (incDeg?: number) =>
+			buildRoute(EARTH, EARTH, J2000, HOHMANN_DAYS, {
+				orbitChange: true,
+				departureMode: 'orbit',
+				arrivalMode: 'landing',
+				departureOrbit: incDeg === undefined ? GEO : { ...GEO, incDeg },
+				targetSiteLatDeg: 0
+			})!;
+		expect(dvOf(land(90), 'descent')).toBeGreaterThan(dvOf(land(0), 'descent'));
+		expect(dvOf(land(undefined), 'descent')).toBeCloseTo(dvOf(land(0), 'descent'), 12);
 	});
 });

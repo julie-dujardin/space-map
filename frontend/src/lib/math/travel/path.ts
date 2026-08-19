@@ -2353,10 +2353,11 @@ function radialArcSamples(
 /**
  * The arc of a trip between two orbits about one body.
  *
- * Drawn in the body's own equator: the model prices no inclination, so the one
- * plane it can honestly claim is the one the body itself turns in. Where the
- * two orbits already meet there is no arc to draw at all, and what is drawn is
- * the half turn the craft coasts to reach the burn.
+ * Drawn in the body's own equator: the pricing charges a named plane's turn,
+ * but no node is tracked, so the one plane the drawing can honestly claim is
+ * the one the body itself turns in. Where the two orbits already meet there is
+ * no arc to draw at all, and what is drawn is the half turn the craft coasts
+ * to reach the burn.
  */
 function orbitChangePath(
 	body: TravelBody,

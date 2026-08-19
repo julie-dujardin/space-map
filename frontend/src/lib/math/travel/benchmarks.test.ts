@@ -31,7 +31,7 @@ import {
 } from './maneuvers';
 import { computePorkchop } from './porkchop';
 import { buildRoute } from './route';
-import { systemArcBounds } from './system-transfer';
+import { hohmannArcDays, systemArcBounds } from './system-transfer';
 import type { ArrivalMode } from './maneuvers';
 import {
 	EARTH,
@@ -142,6 +142,26 @@ const BENCHMARKS: Benchmark[] = [
 		unit: 'km/s',
 		tolerance: 0.03,
 		compute: () => lunarLegDv('injection', 'low-orbit')
+	},
+	{
+		quantity: 'combined plane change and circularisation, GTO to GEO',
+		source: 'textbook apogee burn for a 28.6° inclined GTO, ~1.84 km/s',
+		expected: 1.84,
+		unit: 'km/s',
+		tolerance: 0.01,
+		compute: () => {
+			const gto = { rPeriKm: parkingRadiusKm(EARTH), rApoKm: 42164, incDeg: 28.6 };
+			const geo = { rPeriKm: 42164, rApoKm: 42164, incDeg: 0 };
+			const tof = hohmannArcDays(EARTH.mu, gto.rPeriKm, 42164);
+			const route = buildRoute(EARTH, EARTH, J2000, tof, {
+				orbitChange: true,
+				departureMode: 'orbit',
+				arrivalMode: 'low-orbit',
+				departureOrbit: gto,
+				targetOrbit: geo
+			});
+			return route?.legs.find((leg) => leg.kind === 'capture')?.dvKms ?? NaN;
+		}
 	},
 	{
 		quantity: 'lunar orbit insertion',

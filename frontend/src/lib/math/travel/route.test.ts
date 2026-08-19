@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildRoute, routeDurationDays, type Route } from './route';
-import { ascentDv } from './maneuvers';
+import { ascentDv, parkingOrbit } from './maneuvers';
 import { computePorkchop, selectRoutes } from './porkchop';
 import { nextTransferWindows, hohmannTransferDays } from './windows';
 import { EARTH, J2000, JUPITER, MARS, MOON, PARABOLIC_COMET } from './test-fixtures';
@@ -293,5 +293,31 @@ describe('selectRoutes under an arrival deadline', () => {
 
 	it('offers nothing when no cell arrives in time', () => {
 		expect(selectRoutes(grid, EARTH, MARS, { ...options, deadlineJd: MARS_WINDOW })).toEqual([]);
+	});
+});
+
+describe('an orbit whose plane cannot hold the asymptote', () => {
+	const mars = (end: 'departureOrbit' | 'targetOrbit', incDeg?: number) =>
+		buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			departureMode: end === 'departureOrbit' ? 'orbit' : 'surface',
+			[end]:
+				incDeg === undefined
+					? parkingOrbit(end === 'departureOrbit' ? EARTH : MARS)
+					: { ...parkingOrbit(end === 'departureOrbit' ? EARTH : MARS), incDeg }
+		})!;
+
+	it('pays a turn to depart, where a polar plane departs for free', () => {
+		// A Mars transfer leaves near the ecliptic, a score of degrees out of
+		// Earth's equator — an equatorial parking orbit cannot point there.
+		expect(mars('departureOrbit', 0).totalDvKms).toBeGreaterThan(mars('departureOrbit').totalDvKms);
+		expect(mars('departureOrbit', 90).totalDvKms).toBeCloseTo(
+			mars('departureOrbit').totalDvKms,
+			12
+		);
+	});
+
+	it('pays a turn to be caught, where a free plane just takes the approach', () => {
+		expect(mars('targetOrbit', 0).totalDvKms).toBeGreaterThan(mars('targetOrbit').totalDvKms);
+		expect(mars('targetOrbit', 90).totalDvKms).toBeCloseTo(mars('targetOrbit').totalDvKms, 12);
 	});
 });

@@ -58,6 +58,8 @@ export {
 	parkingOrbit,
 	parkingRadiusKm,
 	periapsisRaiseDv,
+	planeChangeDv,
+	planeReachDeg,
 	speedAtRadius
 } from './maneuvers';
 

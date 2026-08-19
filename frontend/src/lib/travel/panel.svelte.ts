@@ -136,7 +136,9 @@ export interface SolveRequest {
 /** What an orbit is worth to a key. Rounded to the kilometre, which is the one
  *  tolerance in play here: anything finer is a difference nobody chose. */
 function orbitFragment(orbit?: EndOrbit): string {
-	return orbit ? `${Math.round(orbit.rPeriKm)}/${Math.round(orbit.rApoKm)}` : '';
+	if (!orbit) return '';
+	const plane = orbit.incDeg === undefined ? '' : `/${orbit.incDeg.toFixed(1)}`;
+	return `${Math.round(orbit.rPeriKm)}/${Math.round(orbit.rApoKm)}${plane}`;
 }
 
 function latFragment(deg?: number): string {
