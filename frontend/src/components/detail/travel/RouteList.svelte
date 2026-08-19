@@ -69,7 +69,15 @@
 <ul class="flex flex-col gap-2">
 	{#each shown as choice (choice.profile)}
 		{@const blocked = blockedText(state, choice.route)}
-		<li>
+		{@const lit = hovered === choice.profile}
+		<!-- Hover rides the row's box, not the control in it: a blocked row is a
+		     disabled button, which swallows pointer events. -->
+		<li
+			onpointerenter={() => onHover?.(choice.profile)}
+			onpointerleave={() => {
+				if (hovered === choice.profile) onHover?.(null);
+			}}
+		>
 			{#snippet rowBody()}
 				<RouteRowBody
 					profile={choice.profile}
@@ -83,7 +91,9 @@
 				<button
 					type="button"
 					disabled
-					class="border-border/60 block w-full rounded-md border px-3 py-2 text-start opacity-50 transition-colors"
+					class="border-border/60 block w-full rounded-md border px-3 py-2 text-start opacity-50 transition-colors {lit
+						? 'bg-muted/40'
+						: ''}"
 				>
 					{@render rowBody()}
 				</button>
@@ -92,11 +102,17 @@
 				     swaps the step in place. -->
 				<a
 					href={tripRouteHref(appState, state.trip, choice.profile)}
-					class="border-border/60 hover:bg-muted/40 block w-full rounded-md border px-3 py-2 text-start transition-colors"
+					class="border-border/60 hover:bg-muted/40 block w-full rounded-md border px-3 py-2 text-start transition-colors {lit
+						? 'bg-muted/40'
+						: ''}"
 					onclick={(e) => {
 						if (isModifiedClick(e)) return;
 						e.preventDefault();
 						state.choose(choice.profile);
+					}}
+					onfocus={() => onHover?.(choice.profile)}
+					onblur={() => {
+						if (hovered === choice.profile) onHover?.(null);
 					}}
 				>
 					{@render rowBody()}
