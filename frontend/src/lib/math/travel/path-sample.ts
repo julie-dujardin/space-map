@@ -61,27 +61,26 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 	const finalRing = arrival?.surfaceJd === undefined ? ringOf(arrival) : null;
 
 	// Ground dates are the real span: liftoff/touchdown are hours before/after
-	// the priced departure/arrival, and the craft is in flight for both. The
-	// dated end orbits stretch it by a revolution each way — the craft is in
-	// the starting orbit before it leaves, and in the final one after arriving.
-	const begin = Math.min(
-		first.startJd,
-		departure?.surfaceJd ?? Infinity,
-		startRing?.jds[0] ?? Infinity
-	);
-	// An arrival's line can outlast the crossing — the descent's hours, or an
-	// aerobraking campaign's months — and the craft is in flight for all of it.
-	const over = Math.max(
+	// the priced departure/arrival, and the craft is in flight for both. An
+	// arrival's line can outlast the crossing too — the descent's hours, or an
+	// aerobraking campaign's months.
+	const leaves = Math.min(first.startJd, departure?.surfaceJd ?? Infinity);
+	const settles = Math.max(
 		last.endJd,
-		arrival?.surfaceJd ?? -Infinity,
-		arrival ? arrival.jds[arrival.jds.length - 1] : -Infinity,
-		finalRing ? finalRing.jds[finalRing.jds.length - 1] : -Infinity
+		arrival ? (arrival.surfaceJd ?? arrival.jds[arrival.jds.length - 1]) : -Infinity
 	);
+	// The dated end orbits stretch that by a revolution each way: the craft is in
+	// the starting orbit before it leaves and in the final one after it settles.
+	// Measured off the trip rather than off the rings' own clocks, which start at
+	// their periapses — a plane turn's coast, or a crossing priced to the body's
+	// centre, can put the craft most of a revolution from either.
+	const begin = startRing ? leaves - period(startRing) : leaves;
+	const over = finalRing ? settles + period(finalRing) : settles;
 	if (jd < begin || jd > over) return null;
 
 	// Still going round the starting orbit, before the line leaves it.
 	if (departure && startRing && jd < departure.jds[0]) {
-		return { r: between(startRing.points, startRing.jds, jd), centerId: departure.anchorId };
+		return { r: onRing(startRing, jd), centerId: departure.anchorId };
 	}
 	// The escape, before the crossing it hands over to.
 	if (departure && jd <= departure.jds[departure.jds.length - 1]) {
@@ -96,14 +95,10 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 		// The line's own last date, not `periJd`: an aero arrival keeps flying
 		// past periapsis, out to its trim burn or through its campaign.
 		const until = arrival.surfaceJd ?? arrival.jds[arrival.jds.length - 1];
-		// Past the line, the craft is in the orbit the trip ends in. The ring's
-		// own clock starts at its periapsis; an aero arrival joins at apoapsis,
-		// half a revolution before that, which the wrap carries.
+		// Past the line, the craft is in the orbit the trip ends in, at whatever
+		// phase of it the date falls on.
 		if (finalRing && jd > until) {
-			const jds = finalRing.jds;
-			const period = jds[jds.length - 1] - jds[0];
-			const at = jd < jds[0] && period > 0 ? jd + period : jd;
-			return { r: between(finalRing.points, jds, at), centerId: arrival.anchorId };
+			return { r: onRing(finalRing, jd), centerId: arrival.anchorId };
 		}
 		return {
 			r: between(arrival.approach, arrival.jds, Math.min(jd, until)),
@@ -122,6 +117,33 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 	}
 	const { from, to } = crossingWindow(path, at);
 	return { r: between(points, jds, jd, from, to), centerId: path.centerId };
+}
+
+/** A dated revolution: `points` with the date each is passed. */
+interface Ring {
+	points: readonly Vec3[];
+	jds: readonly number[];
+}
+
+/** How long one revolution of `ring` takes, days. */
+function period(ring: Ring): number {
+	return ring.jds[ring.jds.length - 1] - ring.jds[0];
+}
+
+/**
+ * Where the craft is on `ring` at `jd`, wrapped by whole revolutions.
+ *
+ * The ring is one revolution of an orbit the craft keeps flying, and its clock
+ * starts at its own periapsis — which is not when the craft joins it. An aero
+ * arrival joins half a revolution early, and a plane turn's coast can hand over
+ * most of a revolution late; either way the date wanted is a phase of the
+ * orbit, not a moment inside one arbitrary revolution of it.
+ */
+function onRing(ring: Ring, jd: number): Vec3 {
+	const revolution = period(ring);
+	const from = ring.jds[0];
+	const at = revolution > 0 ? from + ((((jd - from) % revolution) + revolution) % revolution) : jd;
+	return between(ring.points, ring.jds, at);
 }
 
 /** The point at `jd` along a dated run of samples, clamped to its ends. */

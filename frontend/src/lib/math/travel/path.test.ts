@@ -349,6 +349,35 @@ describe('end orbits', () => {
 		);
 	});
 
+	// The trip ends a revolution after it joins its final orbit, whatever phase of
+	// that orbit it joins on. Counted from the ring's own clock instead, a long
+	// coast to the node eats the end of the trip — and the card for the orbit it
+	// ends in, dated half a revolution past the joint, lands outside the trip.
+	it('flies a whole revolution of a final orbit it joins away from periapsis', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			departureMode: 'orbit',
+			arrivalMode: 'low-orbit',
+			targetOrbit: { ...parkingOrbit(MARS), incDeg: 0 }
+		})!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN, frame: 'planetary' })!;
+		const arrival = path.endOrbits.find((end) => end.at === 'arrival')!;
+		// The line joins the ring at the node, which is nowhere near the periapsis
+		// the ring's own dates start from.
+		const jointJd = arrival.jds[arrival.jds.length - 1];
+		const jds = arrival.pointJds!;
+		const revolution = jds[jds.length - 1] - jds[0];
+		expect(jointJd - jds[0]).toBeGreaterThan(revolution / 4);
+		// Every moment from there to a revolution past the trip's end, the card for
+		// the final orbit among them, is on the ring.
+		const settled = Math.max(route.arriveJd, jointJd);
+		for (const fraction of [0, 0.25, 0.5, 0.75, 1]) {
+			const at = craftPositionAt(path, jointJd + (settled + revolution - jointJd) * fraction);
+			expect(at).not.toBeNull();
+			expect(norm(at!.r)).toBeCloseTo(parkingRadiusKm(MARS), -1);
+		}
+		expect(craftPositionAt(path, settled + revolution * 1.01)).toBeNull();
+	});
+
 	// The same turn run backwards: the craft is in the named plane first and turns
 	// out of it, so the coast comes before the passage rather than after it.
 	it('sets out from the node when the departure orbit names a plane', () => {
@@ -883,10 +912,11 @@ describe('craftPositionAt', () => {
 		// the orbit it was sold — that is where a "final orbit" pick lands — and
 		// only past that is there nothing left to place.
 		const arrival = PATH.endOrbits.find((end) => end.at === 'arrival')!;
-		const ringEnd = arrival.pointJds![arrival.pointJds!.length - 1];
-		expect(ringEnd).toBeGreaterThan(ROUTE.arriveJd);
-		expect(craftPositionAt(PATH, ringEnd - 0.01)).not.toBeNull();
-		expect(craftPositionAt(PATH, ringEnd + 0.01)).toBeNull();
+		const jds = arrival.pointJds!;
+		const revolution = jds[jds.length - 1] - jds[0];
+		expect(revolution).toBeGreaterThan(0);
+		expect(craftPositionAt(PATH, ROUTE.arriveJd + revolution - 0.01)).not.toBeNull();
+		expect(craftPositionAt(PATH, ROUTE.arriveJd + revolution + 0.01)).toBeNull();
 	});
 
 	it('rides the climb from liftoff, hours before the priced departure', () => {
@@ -1144,9 +1174,12 @@ describe('aero-assisted arrivals', () => {
 		expect(settle).toBeGreaterThan(apoJd);
 		const midway = craftPositionAt(path, (apoJd + settle) / 2)!;
 		expect(norm(midway.r)).toBeCloseTo(parkingRadiusKm(MARS), -1);
-		const ringEnd = end.pointJds![end.pointJds!.length - 1];
-		expect(craftPositionAt(path, ringEnd - 0.001)).not.toBeNull();
-		expect(craftPositionAt(path, ringEnd + 0.001)).toBeNull();
+		// A revolution of the orbit past the handover, counted from where the line
+		// joins it rather than from the ring's own clock.
+		const jds = end.pointJds!;
+		const revolution = jds[jds.length - 1] - jds[0];
+		expect(craftPositionAt(path, apoJd + revolution - 0.001)).not.toBeNull();
+		expect(craftPositionAt(path, apoJd + revolution + 0.001)).toBeNull();
 	});
 
 	it('draws the arrival propulsively when the body ignored the request', () => {
