@@ -5,3 +5,9 @@
  * the same line.
  */
 export const DRAWER_TOP_GAP_PX = 16;
+
+/** The mobile sheet's top snap point for a given viewport height. Shared so
+ *  the drawer's resize re-pin and the sheet's snap list can't disagree. */
+export function topSnapPx(innerHeight: number): string {
+	return `${Math.max(1, innerHeight - DRAWER_TOP_GAP_PX)}px`;
+}
