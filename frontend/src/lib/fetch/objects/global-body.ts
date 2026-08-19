@@ -9,7 +9,7 @@ import { ObjectType, type BodyData } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { buildSatrec } from '$lib/math/orbit/sgp4';
 import { AU_KM } from '$lib/math/units';
-import type { ObjectDetailData } from './object-data';
+import type { GlobalObjectData, ObjectDetailData } from './object-data';
 
 /** Map a GlobalObjectData.type string (e.g. "asteroid_main_belt") to the ObjectType enum. */
 function parseObjectType(typeStr: string): ObjectType {
@@ -113,4 +113,25 @@ export function bodyDataFromGlobal(id: string, detail: ObjectDetailData): BodyDa
 		...(isParabolic ? { q: orbit.q, tp: orbit.tp } : {}),
 		...(satrec ? { satrec } : {})
 	};
+}
+
+/**
+ * Whether the map can put this object anywhere.
+ *
+ * Mirrors `Object.has_position` on the pipeline side, read off the bundle the
+ * client already has: the ingest sets that flag from the same fields, and an
+ * object without it ships in no position zone and no labels file.
+ *
+ * The `naif-` bodies and the probes ride sampled ephemerides rather than
+ * elements, so their bundles say nothing about it and they are always placed.
+ * What this rejects is a satellite the archive holds no elements for, a moon of
+ * an asteroid published without an orbit, and — the one case wider than the
+ * flag — a decayed object whose elements are gone from the current week.
+ */
+export function canBePlaced(id: string, global: GlobalObjectData | null): boolean {
+	if (id.startsWith('naif-') || id.startsWith('probe-')) return true;
+	const orbit = global?.orbit;
+	if (!orbit) return false;
+	if (orbit.q != null && orbit.tp != null) return true; // parabolic comet
+	return orbit.epoch_jd != null && orbit.a != null && orbit.ma != null && orbit.n != null;
 }

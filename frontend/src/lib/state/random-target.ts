@@ -13,6 +13,9 @@
  * Solar System itself down to a satellite operator — rather than a stop on the
  * way down, so reaching one doesn't depend on how deep it sits.
  *
+ * Whatever comes up has to be somewhere: an object the scene can't place is
+ * redrawn, so the reader never lands on a page with an empty sky beside it.
+ *
  * Planets, dwarf planets and ringed bodies are not slots: the planets are the
  * one thing already on screen, and a dwarf planet still comes up through its
  * orbit zone. Their pages stay drawable as collections.
@@ -36,7 +39,12 @@ import {
 	CAT_SOLAR_SYSTEM,
 	CAT_STRUCTURE_ACTIVITY
 } from '$lib/fetch/groups/registry';
-import { memberEntryKey, type NotableMemberEntry } from '$lib/fetch/objects/object-data';
+import { canBePlaced } from '$lib/fetch/objects/global-body';
+import {
+	fetchObjectDetail,
+	memberEntryKey,
+	type NotableMemberEntry
+} from '$lib/fetch/objects/object-data';
 import {
 	isSearchEnabled,
 	localizedName,
@@ -198,7 +206,7 @@ async function descend(start: Node, locale: Locale): Promise<Draw | null> {
 			continue;
 		}
 
-		const member = await randomMember(node.slug, detail, locale);
+		const member = await placeableMember(node.slug, detail, locale);
 		if (!member) return here(node, start.slug);
 		// An Earth-orbit zone lists the constellations that live in it; descend
 		// into one rather than handing back a collection the reader picked past.
@@ -211,6 +219,29 @@ async function descend(start: Node, locale: Locale): Promise<Draw | null> {
 /** The walk stopping where it stands. */
 function here(node: Node, category: string): Draw {
 	return { target: { kind: 'group', ...node }, category };
+}
+
+/** A member the map can show. A destination the scene can't place is a page
+ *  with an empty sky next to it — most of the moons of asteroids were published
+ *  without an orbit, and a decayed satellite has no elements left. Redrawing
+ *  within the collection keeps the walk's shape: the reader still lands where
+ *  the tree sent them, on something that is there. */
+async function placeableMember(
+	slug: string,
+	detail: GroupDetailData,
+	locale: Locale
+): Promise<RandomTarget | null> {
+	for (let attempt = 0; attempt < MEMBER_ATTEMPTS; attempt++) {
+		const member = await randomMember(slug, detail, locale);
+		if (!member || member.kind !== 'object') return member;
+		const global = await fetchObjectDetail(member.id, false, locale)
+			.then((d) => d.global)
+			.catch(() => null);
+		if (canBePlaced(member.id, global)) return member;
+	}
+	// Every draw came back unplaceable — a collection of nothing but decayed
+	// debris is a real thing. Its page still has something to read.
+	return null;
 }
 
 /** One member of a collection that lists no child collections. */
@@ -272,6 +303,13 @@ interface RecentDraws {
 const RECENT_KEY = 'space-map-random-recent';
 const RECENT_TARGETS = 100;
 const RECENT_CATEGORIES = 3;
+
+/** Draws inside one collection before the walk gives up on it and hands back
+ *  the page itself. Half of the catalogued moons are moons of asteroids with no
+ *  published orbit, so three tries hand the Moons page back one time in seven;
+ *  five brings that under one in twenty, and only a collection that is genuinely
+ *  all placeholders pays for all five. */
+export const MEMBER_ATTEMPTS = 5;
 
 /** Enough tries to get clear of the recent list wherever the tree is wide,
  *  and few enough that a reader who has seen a small collection out still gets

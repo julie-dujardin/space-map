@@ -18,7 +18,7 @@ import {
 } from '$lib/fetch/groups/registry';
 import type { GroupDetailData } from '$lib/fetch/groups/details';
 import type { GroupMemberPage } from '$lib/search/client';
-import { randomTarget, randomTargetPath } from './random-target';
+import { MEMBER_ATTEMPTS, randomTarget, randomTargetPath } from './random-target';
 
 vi.mock('$app/paths', () => ({
 	resolve: (route: string, params: Record<string, string>) => `${route} ${JSON.stringify(params)}`
@@ -76,17 +76,33 @@ vi.mock('$lib/fetch/groups/details', () => ({
 }));
 
 let lastQuery: { slug: string; offset: number } | null = null;
+/** Ids the collection hands out, in order, when a test cares which. */
+let memberIds: string[] = [];
 vi.mock('$lib/search/client', () => ({
 	MAX_TOTAL_HITS: 1000,
 	isSearchEnabled: () => true,
 	localizedName: (hit: { name: string }) => hit.name,
 	searchGroupMembers: (slug: string, offset: number): Promise<GroupMemberPage> => {
 		lastQuery = { slug, offset };
+		const id = memberIds.shift() ?? `naif-${offset}`;
 		return Promise.resolve({
-			hits: [{ kind: 'object', id: `naif-${offset}`, name: `member ${offset}` }],
+			hits: [{ kind: 'object', id, name: `member ${offset}` }],
 			estimatedTotalHits: 1000
 		} as GroupMemberPage);
 	}
+}));
+
+/** What the drawn objects' bundles hold. A `naif-` body is placed whatever the
+ *  bundle says, so a test that wants an unplaceable one draws a `spkid-`. */
+const bundles: Record<string, { orbit?: Record<string, number> } | null> = {
+	'spkid-1': null,
+	'spkid-2': { orbit: { epoch_jd: 2460000, a: 2.3, ma: 1, n: 0.2 } }
+};
+
+vi.mock('$lib/fetch/objects/object-data', async (importOriginal) => ({
+	...(await importOriginal<typeof import('$lib/fetch/objects/object-data')>()),
+	fetchObjectDetail: (id: string) =>
+		Promise.resolve({ global: bundles[id] ?? null, localized: null })
 }));
 
 /** Successive draws over the unit interval, so a test names the branch it takes. */
@@ -114,6 +130,7 @@ function recorded() {
 beforeEach(() => {
 	store.clear();
 	lastQuery = null;
+	memberIds = [];
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -209,6 +226,30 @@ describe('randomTarget: what the last draws already covered', () => {
 		draws(MOONS, 0.5);
 		await randomTarget();
 		expect(recorded()).toEqual({ targets: ['naif-493'], categories: [CAT_MOONS] });
+	});
+});
+
+describe('randomTarget: what the map can place', () => {
+	it('redraws an object the scene has nowhere to put', async () => {
+		// A moon of an asteroid published without an orbit, then a real one.
+		memberIds = ['spkid-1', 'spkid-2'];
+		draws(MOONS, 0.5);
+		await expect(randomTarget()).resolves.toMatchObject({ id: 'spkid-2' });
+	});
+
+	it('hands back the collection when nothing in it can be placed', async () => {
+		memberIds = Array.from({ length: MEMBER_ATTEMPTS }, () => 'spkid-1');
+		draws(MOONS, 0.5);
+		await expect(randomTarget()).resolves.toEqual({
+			kind: 'group',
+			slug: CAT_MOONS,
+			name: CAT_MOONS
+		});
+	});
+
+	it('asks nothing of a landform or a collection', async () => {
+		draws(COLLECTIONS, 0.9);
+		await expect(randomTarget()).resolves.toMatchObject({ kind: 'group' });
 	});
 });
 
