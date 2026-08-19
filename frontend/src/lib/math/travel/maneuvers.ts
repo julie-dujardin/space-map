@@ -9,7 +9,7 @@
  */
 
 import { equatorialTiltDeg, type TravelBody } from './body';
-import type { Vec3 } from './vec3';
+import { add, cross, dot, norm, normalize, perpendicularTo, scale, sub, type Vec3 } from './vec3';
 import {
 	AEROBRAKING_RATE_KMS_PER_DAY,
 	AEROCAPTURE_TRIM_KMS,
@@ -91,6 +91,64 @@ export function planeReachDeg(incDeg: number): number {
 export function asymptoteTurnDeg(orbit: EndOrbit | undefined, tiltDeg: number | undefined): number {
 	if (orbit?.incDeg === undefined || tiltDeg === undefined) return 0;
 	return Math.max(0, Math.abs(tiltDeg) - planeReachDeg(sane(orbit).incDeg!));
+}
+
+/**
+ * Which plane an end orbit is actually flown in, as its normal.
+ *
+ * An inclination says how far the plane leans off the pole but not where it
+ * crosses the equator, so the one flown is the cheapest of them: the plane at
+ * that lean holding the asymptote, where the lean reaches far enough, and
+ * otherwise the one leaning nearest to it — the plane whose shortfall
+ * {@link asymptoteTurnDeg} charges. Two planes hold any one asymptote, and the
+ * nearer of them to the plane the craft arrives in is the one kept.
+ *
+ * `arrivalNormal` stands in wherever nothing fixes a plane: a free inclination,
+ * a body shipping no pole, or an end with no asymptote to hold.
+ */
+export function endOrbitNormal(
+	orbit: EndOrbit,
+	pole: Vec3 | undefined,
+	asymptote: Vec3 | undefined,
+	arrivalNormal: Vec3
+): Vec3 {
+	if (orbit.incDeg === undefined || !pole || norm(pole) === 0) return arrivalNormal;
+	const p = normalize(pole);
+	const incRad = sane(orbit).incDeg! * (Math.PI / 180);
+	const cosI = Math.cos(incRad);
+	const sinI = Math.sin(incRad);
+	/** The plane at this lean tipped off the pole towards `toward`. */
+	const lean = (toward: Vec3, sign: number) => {
+		const off = sub(toward, scale(p, dot(p, toward)));
+		const w = norm(off) > 0 ? normalize(off) : perpendicularTo(p);
+		return add(scale(p, cosI), scale(w, sign * sinI));
+	};
+
+	const d = asymptote && norm(asymptote) > 0 ? normalize(asymptote) : undefined;
+	// Nothing to hold, so the plane stays as near as its lean allows to the one
+	// the craft is already in.
+	if (!d) return lean(arrivalNormal, 1);
+
+	const sinDec = dot(p, d);
+	const cosDec = Math.sqrt(Math.max(0, 1 - sinDec * sinDec));
+	// The lean falls short of the asymptote's declination: no plane at it holds
+	// the asymptote at all, and the nearest is the one tipped straight at it.
+	// This is the case the route is charged a turn for.
+	if (cosDec === 0 || Math.abs(cosI) > cosDec) {
+		const up = lean(d, 1);
+		const down = lean(d, -1);
+		return Math.abs(dot(up, d)) <= Math.abs(dot(down, d)) ? up : down;
+	}
+
+	// Both planes at this lean that hold the asymptote, of which the one nearer
+	// the arrival's own is flown.
+	const e1 = normalize(sub(p, scale(d, sinDec)));
+	const e2 = cross(d, e1);
+	const phi = Math.acos(Math.min(1, Math.max(-1, cosI / cosDec)));
+	const at = (angle: number) => add(scale(e1, Math.cos(angle)), scale(e2, Math.sin(angle)));
+	const up = at(phi);
+	const down = at(-phi);
+	return dot(up, arrivalNormal) >= dot(down, arrivalNormal) ? up : down;
 }
 
 /** Angle between two named planes, degrees — zero when either is free. */

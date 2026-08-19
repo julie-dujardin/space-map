@@ -858,6 +858,27 @@ export class TravelPathOverlay {
 						{ anchorId }
 					);
 				}
+			} else if (orbit.turn) {
+				// The wait for the node is the orbit already, not the way in, so it
+				// takes the ring's own weight: at the trip's it is the brighter of two
+				// circles the same size and reads as the orbit the trip ends in.
+				const { from, to } = orbit.turn;
+				const before = orbit.approach.slice(0, from + 1);
+				const after = orbit.approach.slice(to - 1);
+				// The coast sits at one end or the other, so the stretch beyond it is
+				// usually the single shared sample and nothing to draw.
+				for (const part of [before, after]) {
+					if (part.length < 2) continue;
+					this.addLine(part, ARC_COLORS.cruise, LINE_WIDTH, LINE_BRIGHTNESS, null, { anchorId });
+				}
+				this.addLine(
+					orbit.approach.slice(from > 0 ? from - 1 : 0, to),
+					ARC_COLORS.cruise,
+					RING_WIDTH,
+					RING_BRIGHTNESS,
+					null,
+					{ anchorId }
+				);
 			} else {
 				this.addLine(orbit.approach, ARC_COLORS.cruise, LINE_WIDTH, LINE_BRIGHTNESS, null, {
 					anchorId

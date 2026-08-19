@@ -30,9 +30,9 @@ export interface OrbitZoneTarget {
 /**
  * Zone class name → the arrival that lands there.
  *
- * The stationary belt splits three ways over one orbit: GSO is it in whatever
- * plane, so it keeps the named orbit, while GEO and IGSO are it held to a plane
- * and go to the custom orbit at the same altitude.
+ * The stationary belt splits three ways over one orbit, on plane alone: GEO is
+ * the equatorial one the named orbit already is, while GSO in whatever plane and
+ * IGSO in an inclined one go to the custom orbit at the same altitude.
  */
 export const ZONE_TARGETS: Record<string, OrbitZoneTarget> = {
 	VLEO: { mode: 'low-orbit' },
@@ -40,8 +40,8 @@ export const ZONE_TARGETS: Record<string, OrbitZoneTarget> = {
 	// custom orbit, opened at an altitude inside it and movable from there.
 	LEO: { mode: 'custom', altKm: 1000 },
 	MEO: { mode: 'semi-sync' },
-	GSO: { mode: 'stationary' },
-	GEO: { mode: 'custom', altKm: GEO_ALT_KM, incDeg: 0 },
+	GSO: { mode: 'custom', altKm: GEO_ALT_KM },
+	GEO: { mode: 'stationary' },
 	// Every inclined synchronous orbit is one, from QZSS at 43° to BeiDou at 55°.
 	IGSO: { mode: 'custom', altKm: GEO_ALT_KM, incDeg: 45 },
 	GTO: { mode: 'transfer' },

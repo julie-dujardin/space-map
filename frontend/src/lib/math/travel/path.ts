@@ -20,6 +20,7 @@ import {
 	aeroPassRadiusKm,
 	endArrivalOrbit,
 	endDepartureOrbit,
+	endOrbitNormal,
 	parkingOrbit,
 	parkingRadiusKm,
 	type EndOrbit
@@ -34,7 +35,7 @@ import {
 } from './route';
 import { elementsToState } from './state';
 import { relativeState, solveRadialArc, type RadialArc } from './system-transfer';
-import { add, cross, dot, norm, normalize, scale, sub, type Vec3 } from './vec3';
+import { add, cross, dot, norm, normalize, perpendicularTo, scale, sub, type Vec3 } from './vec3';
 
 /** A point on the trip worth marking: burns and encounters, not every leg —
  *  an ascent and its injection happen in the same place, so one marker does. */
@@ -165,6 +166,10 @@ export interface EndOrbitPath {
 	 *  index ranges in order, so they can be composited under the atmosphere's
 	 *  glow instead of erased by it. */
 	ground?: { from: number; to: number }[];
+	/** The stretch of `approach` already flown in the end orbit's own shape,
+	 *  waiting on the node the plane is turned at. It belongs to the orbit rather
+	 *  than to the trip, and is drawn as one. */
+	turn?: { from: number; to: number };
 }
 
 export interface TrajectoryPath {
@@ -535,6 +540,9 @@ function buildCrossing(
 /** Points round an end orbit. Enough that the ring is a curve at the zoom it
  *  starts being drawn at, which is a body filling a good part of the screen. */
 const RING_SAMPLES = 96;
+
+/** Samples along the coast from a passage to the node it turns plane at. */
+const TURN_SAMPLES = 48;
 /** Points along a passage. Spread evenly in true anomaly, so they crowd where
  *  the path is bending and thin out where it is already its own asymptote. */
 const PASSAGE_SAMPLES = 160;
@@ -926,6 +934,15 @@ function endOrbitPath(end: {
 	const crossed = cross(a, b);
 	const arcNormal = norm(crossed) > 0 ? normalize(crossed) : ([0, 0, 1] as Vec3);
 
+	// The plane the end orbit is really flown in, where it names one — a
+	// stationary orbit hangs over the equator whatever direction the trip came
+	// from. Undefined leaves the passage free to pick its own plane and the ring
+	// to keep it, which is every end that names none.
+	const orbitPlane =
+		orbit.incDeg !== undefined && body.poleEcliptic
+			? endOrbitNormal(orbit, body.poleEcliptic, approach?.vInf, arcNormal)
+			: undefined;
+
 	// An aerocaptured arrival never burns at the orbit's periapsis: the pass
 	// itself is the insertion, flown at the entry interface.
 	const rPassKm = aero?.mode === 'aerocapture' ? aero.rEntryKm : orbit.rPeriKm;
@@ -999,6 +1016,29 @@ function endOrbitPath(end: {
 	// the passage's carried offset is zero at periapsis by construction.
 	const frozen = aeroLegs != null;
 
+	// The coast to the node where the plane is turned. A plane change can only
+	// happen where the two planes meet, so it is not flown at the low point the
+	// passage came in on, and the stretch in between belongs to the line.
+	//
+	// An aero campaign flies its revolutions in the plane it entered in, so it
+	// sets out from the apoapsis it ends on rather than from the passage. A
+	// surface end never reaches the orbit and names no plane, so it has none.
+	const turned =
+		orbitPlane && passage && !surface
+			? planeTurn({
+					orbit,
+					normal,
+					periapsis,
+					ringNormal: orbitPlane,
+					mu: body.mu,
+					startNu: aeroLegs ? Math.PI : 0,
+					startJd: aeroLegs?.endJd ?? endPeriJd,
+					outward,
+					bodyAt: anchored || frozen ? undefined : approach?.bodyAt,
+					center: ringCenter
+				})
+			: null;
+
 	const ground = surface
 		? surfaceLeg({
 				outward,
@@ -1023,7 +1063,8 @@ function endOrbitPath(end: {
 	const approachJds: number[] = [];
 	let groundKept = 0;
 	const append = (part: { points: Vec3[]; jds: number[] } | null, isGround = false) => {
-		if (!part) return;
+		const from = approachPoints.length;
+		if (!part) return { from, to: from };
 		for (let i = 0; i < part.points.length; i++) {
 			const jd = part.jds[i];
 			if (approachJds.length > 0 && jd <= approachJds[approachJds.length - 1] + 1e-9) continue;
@@ -1031,13 +1072,17 @@ function endOrbitPath(end: {
 			approachJds.push(jd);
 			if (isGround) groundKept++;
 		}
+		return { from, to: approachPoints.length };
 	};
+	let coastRange: { from: number; to: number };
 	if (outward) {
 		append(ground, true);
+		coastRange = append(turned?.coast ?? null);
 		append(passage);
 	} else {
 		append(passage);
 		append(aeroLegs);
+		coastRange = append(turned?.coast ?? null);
 		append(ground, true);
 	}
 	const groundRanges =
@@ -1076,15 +1121,16 @@ function endOrbitPath(end: {
 			: 0;
 	// A surface end draws no ring of its own: the stretch of orbit the trip
 	// actually rides is part of the line above.
+	const ringNormal = turned?.normal ?? normal;
 	const ring = surface
 		? null
 		: orbitRing({
 				origin,
 				orbit,
-				normal,
-				periapsis,
+				normal: ringNormal,
+				periapsis: turned?.periapsis ?? periapsis,
 				mu: body.mu,
-				periJd: aeroLegs ? aeroLegs.endJd + halfOrbitDays : endPeriJd,
+				periJd: turned?.ringPeriJd ?? (aeroLegs ? aeroLegs.endJd + halfOrbitDays : endPeriJd),
 				// A closed ring is only closed in the body's own frame; elsewhere it
 				// needs the body's motion. An end with no passage has no way to ask for
 				// it — and an aero arrival's is frozen with the rest of its campaign —
@@ -1108,7 +1154,8 @@ function endOrbitPath(end: {
 		periJd: endPeriJd,
 		radiusKm: orbit.rApoKm,
 		surfaceJd: ground?.groundJd,
-		ground: airRanges.length > 0 ? airRanges : undefined
+		ground: airRanges.length > 0 ? airRanges : undefined,
+		turn: coastRange.to > coastRange.from ? coastRange : undefined
 	};
 }
 
@@ -1516,6 +1563,106 @@ function orbitRing(ring: {
 	return { points: bodyAt && !broken ? smeared : closed, jds };
 }
 
+/**
+ * The turn from the plane a passage is flown in to the plane the end orbit is.
+ *
+ * A plane can only be turned where two planes cross, so the burn is at a node
+ * and not at the low point the passage ends on. Between the two the craft
+ * already flies the end orbit's shape, in the plane it arrived in — that coast
+ * is what joins the passage to the ring. The ring is then laid with its own low
+ * point the same way round from the node, since a turn changes an orbit's plane
+ * and nothing else about it, which leaves its dates where they were.
+ *
+ * Null where the two are one plane, which is every end that names no plane.
+ */
+function planeTurn(turn: {
+	orbit: EndOrbit;
+	normal: Vec3;
+	periapsis: Vec3;
+	ringNormal: Vec3;
+	mu: number;
+	/** True anomaly the craft is already at when the turn is asked for: the low
+	 *  point a passage inserts at, or the high one a campaign ends on. */
+	startNu: number;
+	startJd: number;
+	outward: boolean;
+	bodyAt?: (jd: number) => Vec3 | null;
+	center: Vec3;
+}): {
+	normal: Vec3;
+	periapsis: Vec3;
+	ringPeriJd: number;
+	coast: { points: Vec3[]; jds: number[] } | null;
+} | null {
+	const { orbit, normal, periapsis, ringNormal, mu, startNu, startJd, outward, bodyAt, center } =
+		turn;
+	const line = cross(normal, ringNormal);
+	const semiMajor = (orbit.rPeriKm + orbit.rApoKm) / 2;
+	if (!(norm(line) > 1e-9) || !(mu > 0) || !(semiMajor > 0)) return null;
+
+	const e = (orbit.rApoKm - orbit.rPeriKm) / (orbit.rApoKm + orbit.rPeriKm);
+	const p = semiMajor * (1 - e * e);
+	const periodDays = (2 * Math.PI * Math.sqrt(semiMajor ** 3 / mu)) / SEC_PER_DAY;
+	/** Days after the low point that the orbit reaches true anomaly `nu`, over
+	 *  however many revolutions `nu` runs to. */
+	const daysAt = (nu: number) => {
+		const revs = Math.floor(nu / (Math.PI * 2));
+		const wrapped = nu - revs * Math.PI * 2;
+		let anomaly =
+			2 *
+			Math.atan2(
+				Math.sqrt(1 - e) * Math.sin(wrapped / 2),
+				Math.sqrt(1 + e) * Math.cos(wrapped / 2)
+			);
+		if (anomaly < 0) anomaly += Math.PI * 2;
+		return revs * periodDays + (periodDays * (anomaly - e * Math.sin(anomaly))) / (Math.PI * 2);
+	};
+
+	// Both nodes, of which the trip takes whichever is the shorter coast: the
+	// first one reached from where the craft already is arriving, the last one
+	// before the low point it leaves from.
+	const ahead = normalize(line);
+	const behind = scale(ahead, -1);
+	const nuAhead = angleAbout(periapsis, ahead, normal);
+	const nuBehind = angleAbout(periapsis, behind, normal);
+	/** The same node one revolution on, where the craft has already passed it. */
+	const next = (nu: number) => (nu > startNu + 1e-9 ? nu : nu + Math.PI * 2);
+	const takeAhead = outward ? nuAhead > nuBehind : next(nuAhead) < next(nuBehind);
+	const node = takeAhead ? ahead : behind;
+	const nuNode = takeAhead
+		? outward
+			? nuAhead
+			: next(nuAhead)
+		: outward
+			? nuBehind
+			: next(nuBehind);
+
+	const inPlane = normalize(cross(normal, periapsis));
+	const from = outward ? nuNode : startNu;
+	const to = outward ? Math.PI * 2 : nuNode;
+	const points: Vec3[] = [];
+	const jds: number[] = [];
+	for (let i = 0; i <= TURN_SAMPLES; i++) {
+		const nu = from + ((to - from) * i) / TURN_SAMPLES;
+		const jd = startJd + daysAt(nu) - (outward ? periodDays : daysAt(startNu));
+		const radius = p / (1 + e * Math.cos(nu));
+		const direction = add(scale(periapsis, Math.cos(nu)), scale(inPlane, Math.sin(nu)));
+		const moved = bodyAt?.(jd);
+		const point = scale(direction, radius);
+		points.push(moved ? add(point, sub(moved, center)) : point);
+		jds.push(jd);
+	}
+
+	return {
+		normal: ringNormal,
+		periapsis: rotateAbout(node, ringNormal, -nuNode),
+		// The coast is the same orbit in the plane it came from, so the ring it
+		// hands over to keeps that orbit's own low point.
+		ringPeriJd: outward ? startJd : startJd - daysAt(startNu),
+		coast: { points, jds }
+	};
+}
+
 /** Index of the last date at or before `jd`, or -1 when there is none. */
 function lastBefore(jds: readonly number[], jd: number): number {
 	let index = -1;
@@ -1615,12 +1762,6 @@ function hyperbolicPassage(end: {
 
 	const outward = at === 'departure';
 	const asymptote = normalize(vInf);
-	const off = planeHint
-		? cross(asymptote, planeHint)
-		: sub(arcNormal, scale(asymptote, dot(arcNormal, asymptote)));
-	let normal = norm(off) > 0 ? normalize(off) : perpendicularTo(asymptote);
-	// Of the two senses the hinted plane allows, keep the crossing's own.
-	if (planeHint && dot(normal, arcNormal) < 0) normal = scale(normal, -1);
 
 	const e = 1 + (rPeriKm * speed * speed) / body.mu;
 	if (!(e > 1)) return null;
@@ -1628,6 +1769,13 @@ function hyperbolicPassage(end: {
 	// True anomaly of the asymptote: departs that far after periapsis, arrives
 	// that far before.
 	const nuInf = Math.acos(-1 / e);
+
+	const off = planeHint
+		? cross(asymptote, planeHint)
+		: sub(arcNormal, scale(asymptote, dot(arcNormal, asymptote)));
+	let normal = norm(off) > 0 ? normalize(off) : perpendicularTo(asymptote);
+	// Of the two senses the hinted plane allows, keep the crossing's own.
+	if (planeHint && dot(normal, arcNormal) < 0) normal = scale(normal, -1);
 	const periapsis = outward
 		? rotateAbout(asymptote, normal, -nuInf)
 		: rotateAbout(scale(asymptote, -1), normal, nuInf);
@@ -2052,12 +2200,6 @@ function passageRadiusKm(body: TravelBody, primaryMu: number, rPeriKm: number): 
 	const soi = sphereOfInfluenceKm(body, primaryMu, Math.abs(body.elements.a) * AU_KM);
 	const cap = rPeriKm * PASSAGE_MAX_RADII;
 	return Number.isFinite(soi) && soi > rPeriKm ? Math.min(soi, cap) : cap;
-}
-
-/** Any unit vector at right angles to `n`. */
-function perpendicularTo(n: Vec3): Vec3 {
-	const axis: Vec3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
-	return normalize(cross(n, axis));
 }
 
 /**

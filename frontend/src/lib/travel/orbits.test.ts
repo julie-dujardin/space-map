@@ -124,9 +124,9 @@ describe('orbitChoices', () => {
 	// A named orbit is named for its shape, so the plane goes to the one orbit
 	// that is not: flying "stationary orbit" in two planes would be two entries
 	// under one name.
-	it('gives the plane to the custom orbit and to no other', () => {
+	it('gives the plane the trip named to the custom orbit and to no other', () => {
 		for (const choice of orbitChoices(EARTH, EARTH_FACTS, 'target', { ...OPTS, incDeg: 63.4 })) {
-			if (!choice.orbit) continue;
+			if (!choice.orbit || choice.kind === 'stationary') continue;
 			expect(choice.orbit.incDeg, choice.kind).toBe(choice.kind === 'custom' ? 63.4 : undefined);
 		}
 	});
@@ -135,7 +135,19 @@ describe('orbitChoices', () => {
 	// orbit nobody asked to be in.
 	it('leaves the plane off when the trip names none', () => {
 		for (const choice of orbitChoices(EARTH, EARTH_FACTS, 'target', OPTS)) {
+			if (choice.kind === 'stationary') continue;
 			expect(choice.orbit?.incDeg, choice.kind).toBeUndefined();
+		}
+	});
+
+	// The one orbit whose plane is not the trip's to choose: off the equator it
+	// drifts over the ground and is no longer the orbit that was asked for.
+	it('holds the stationary orbit to the equator whatever the trip names', () => {
+		for (const incDeg of [null, 63.4]) {
+			const stationary = orbitChoices(EARTH, EARTH_FACTS, 'target', { ...OPTS, incDeg }).find(
+				(c) => c.kind === 'stationary'
+			);
+			expect(stationary?.orbit?.incDeg).toBe(0);
 		}
 	});
 

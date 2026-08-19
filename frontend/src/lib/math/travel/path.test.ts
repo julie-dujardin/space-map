@@ -15,7 +15,7 @@ import { GM_SUN_KM3_S2 } from './constants';
 import * as travelConstants from './constants';
 import { AU_KM } from '$lib/math/units';
 import { sphereOfInfluenceKm } from './body';
-import { aeroPassRadiusKm, parkingRadiusKm } from './maneuvers';
+import { aeroPassRadiusKm, parkingOrbit, parkingRadiusKm } from './maneuvers';
 import { add, cross, dot, norm, normalize, sub, type Vec3 } from './vec3';
 import {
 	EARTH,
@@ -308,6 +308,65 @@ describe('end orbits', () => {
 		expect(arrival.bodyId).toBe(MARS.id);
 		checkRing(departure, parkingRadiusKm(EARTH), parkingRadiusKm(EARTH));
 		checkRing(arrival, parkingRadiusKm(MARS), parkingRadiusKm(MARS));
+	});
+
+	// The ring is the orbit the trip ends in, not the plane it came in on. Missed,
+	// a stationary orbit draws leaning wherever the trip happened to arrive from,
+	// which is the one thing it can never be.
+	it('lays an orbit that names the equator flat in it, whatever plane the trip flew', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			departureMode: 'orbit',
+			arrivalMode: 'low-orbit',
+			targetOrbit: { ...parkingOrbit(MARS), incDeg: 0 }
+		})!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN, frame: 'planetary' })!;
+		const arrival = path.endOrbits.find((end) => end.at === 'arrival')!;
+		const pole = MARS.poleEcliptic!;
+		for (const point of arrival.points) {
+			expect(Math.abs(dot(point, pole))).toBeLessThan(parkingRadiusKm(MARS) * 1e-9);
+		}
+		// The passage is flown before the turn, so it keeps the plane it arrived in
+		// — this is a burn between two planes, not one plane throughout.
+		expect(Math.abs(dot(arrival.approach[0], pole))).toBeGreaterThan(1);
+		// And the line still reaches the ring: it carries on past the low point to
+		// the node the turn happens at, which is a point of both orbits.
+		const joint = arrival.approach[arrival.approach.length - 1];
+		expect(Math.abs(dot(joint, pole))).toBeLessThan(parkingRadiusKm(MARS) * 1e-9);
+		expect(norm(joint)).toBeCloseTo(parkingRadiusKm(MARS), 6);
+		// And it joins where the ring's own clock says it should: the turn moves the
+		// low point round the orbit, it does not move the craft along it.
+		const jointJd = arrival.jds[arrival.jds.length - 1];
+		expect(jointJd).toBeGreaterThan(route.arriveJd);
+		const nearest = arrival.pointJds!.reduce(
+			(best, jd, i) =>
+				Math.abs(jd - jointJd) < Math.abs(arrival.pointJds![best] - jointJd) ? i : best,
+			0
+		);
+		// One sample of the ring covers a 96th of it, which is the whole of what
+		// stands between the joint and the point that lands on it.
+		expect(norm(sub(arrival.points[nearest], joint))).toBeLessThan(
+			(2 * Math.PI * parkingRadiusKm(MARS)) / 96
+		);
+	});
+
+	// The same turn run backwards: the craft is in the named plane first and turns
+	// out of it, so the coast comes before the passage rather than after it.
+	it('sets out from the node when the departure orbit names a plane', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			departureMode: 'orbit',
+			arrivalMode: 'low-orbit',
+			departureOrbit: { ...parkingOrbit(EARTH), incDeg: 0 }
+		})!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN, frame: 'planetary' })!;
+		const departure = path.endOrbits.find((end) => end.at === 'departure')!;
+		const pole = EARTH.poleEcliptic!;
+		for (const point of departure.points) {
+			expect(Math.abs(dot(point, pole))).toBeLessThan(parkingRadiusKm(EARTH) * 1e-9);
+		}
+		const joint = departure.approach[0];
+		expect(Math.abs(dot(joint, pole))).toBeLessThan(parkingRadiusKm(EARTH) * 1e-9);
+		expect(norm(joint)).toBeCloseTo(parkingRadiusKm(EARTH), 6);
+		expect(departure.jds[0]).toBeLessThan(route.departJd);
 	});
 
 	it('names the frame each end is drawn in, so nothing has to guess', () => {
@@ -978,6 +1037,33 @@ describe('aero-assisted arrivals', () => {
 		// The dip below the shell is marked for the overlay to composite under
 		// the atmosphere's glow.
 		expect(end.ground!.length).toBeGreaterThan(0);
+	});
+
+	// The campaign is flown in the plane the pass entered in, so a named plane is
+	// still owed a turn when it is over. Missed, the orbit the trip ends in leans
+	// with the approach — the whole of what an equatorial orbit cannot do.
+	it('turns into a named plane after the campaign, not never', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			arrivalMode: 'low-orbit',
+			aero: 'aerobraking',
+			targetOrbit: { ...parkingOrbit(MARS), incDeg: 0 }
+		})!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN, frame: 'planetary' })!;
+		const end = path.endOrbits.find((e) => e.at === 'arrival')!;
+		const pole = MARS.poleEcliptic!;
+		for (const point of end.points) {
+			expect(Math.abs(dot(point, pole))).toBeLessThan(parkingRadiusKm(MARS) * 1e-9);
+		}
+		// The revolutions before it are not in that plane, or there would be
+		// nothing to turn.
+		const campaign = end.approach.slice(0, end.turn!.from);
+		expect(Math.max(...campaign.map((p) => Math.abs(dot(p, pole))))).toBeGreaterThan(1);
+		// And the coast leaves the campaign where it ends, at apoapsis, for the
+		// node where the two planes meet.
+		const joint = end.approach[end.approach.length - 1];
+		expect(norm(end.approach[end.turn!.from])).toBeCloseTo(parkingRadiusKm(MARS), -1);
+		expect(Math.abs(dot(joint, pole))).toBeLessThan(parkingRadiusKm(MARS) * 1e-9);
+		expect(norm(joint)).toBeCloseTo(parkingRadiusKm(MARS), 6);
 	});
 
 	it('draws an aerobraking campaign as revolutions drag walks down, on the campaign dates', () => {

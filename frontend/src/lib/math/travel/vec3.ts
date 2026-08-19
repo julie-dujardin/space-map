@@ -35,3 +35,9 @@ export function normalize(a: Vec3): Vec3 {
 export function isFiniteVec(a: Vec3): boolean {
 	return isFinite(a[0]) && isFinite(a[1]) && isFinite(a[2]);
 }
+
+/** Any unit vector at right angles to `n`, for a choice that is free. */
+export function perpendicularTo(n: Vec3): Vec3 {
+	const axis: Vec3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+	return normalize(cross(n, axis));
+}

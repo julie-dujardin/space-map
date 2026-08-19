@@ -16,7 +16,9 @@ function zonesOf(target: OrbitZoneTarget): string[] {
 		incDeg: target.incDeg ?? null
 	}).find((c) => c.kind === target.mode);
 	if (choice?.periAltKm === undefined || choice.apoAltKm === undefined) return [];
-	return classifyEarthOrbit(choice.periAltKm, choice.apoAltKm, target.incDeg ?? null);
+	// The plane read off the orbit rather than off the target: a named orbit can
+	// carry one the page never asked for.
+	return classifyEarthOrbit(choice.periAltKm, choice.apoAltKm, choice.orbit?.incDeg ?? null);
 }
 
 describe('orbit zone targets', () => {
@@ -34,13 +36,14 @@ describe('orbit zone targets', () => {
 		})) {
 			if (choice.periAltKm === undefined || choice.apoAltKm === undefined) continue;
 			expect(zones, choice.kind).toContain(
-				classifyEarthOrbit(choice.periAltKm, choice.apoAltKm, null)[0]
+				classifyEarthOrbit(choice.periAltKm, choice.apoAltKm, choice.orbit?.incDeg ?? null)[0]
 			);
 		}
 	});
 
-	// One orbit, three zones: the plane is the whole of what tells them apart, and
-	// only the custom orbit has one, so the named orbit keeps the plane-free zone.
+	// One orbit, three zones: the plane is the whole of what tells them apart. The
+	// named orbit is the equatorial one, so it takes GEO, and the two the page
+	// leaves open go to the custom orbit.
 	it('separates the three zones of the stationary belt by plane alone', () => {
 		expect(zonesOf(ZONE_TARGETS.GSO)).toEqual(['GSO']);
 		expect(zonesOf(ZONE_TARGETS.GEO)).toEqual(['GEO']);

@@ -5,6 +5,7 @@ import {
 	arrivalCost,
 	ascentDv,
 	asymptoteTurnDeg,
+	endOrbitNormal,
 	captureDv,
 	circularSpeed,
 	combinedBurn,
@@ -20,6 +21,7 @@ import {
 	planeTurnDeg
 } from './maneuvers';
 import { EARTH, JUPITER, MARS, MOON, SATURN, VENUS } from './test-fixtures';
+import { dot, type Vec3 } from './vec3';
 
 // Whether these figures match Earth, Apollo and Mars ascents is asserted in
 // benchmarks.test.ts, which owns every published number and its tolerance.
@@ -350,6 +352,59 @@ describe('a named plane', () => {
 		// A retrograde orbit leans no further than its prograde mirror.
 		expect(asymptoteTurnDeg({ ...LEO, incDeg: 150 }, 30)).toBe(0);
 		expect(asymptoteTurnDeg({ ...LEO, incDeg: 170 }, 30)).toBeCloseTo(20, 12);
+	});
+
+	// A pole leaning 30° off the ecliptic's, met by an asymptote along the
+	// ecliptic that therefore comes in 30° out of this body's equator — Saturn's
+	// case, near enough, and the one a stationary orbit has to turn out of.
+	const POLE: Vec3 = [0, -Math.sin(Math.PI / 6), Math.cos(Math.PI / 6)];
+	const ASYMPTOTE: Vec3 = [0, 1, 0];
+	const ARRIVAL_NORMAL: Vec3 = [0, 0, 1];
+	const angleTo = (normal: Vec3, other: Vec3) =>
+		(Math.acos(Math.min(1, Math.max(-1, dot(normal, other)))) * 180) / Math.PI;
+	/** Inclination of the plane a normal names, degrees to the equator. */
+	const incOf = (normal: Vec3) => angleTo(normal, POLE);
+	/** How far the plane misses the asymptote by, degrees. */
+	const missDeg = (normal: Vec3) => (Math.asin(Math.abs(dot(normal, ASYMPTOTE))) * 180) / Math.PI;
+
+	it('leaves the plane where the craft arrives while the trip names none', () => {
+		expect(endOrbitNormal(LEO, POLE, ASYMPTOTE, ARRIVAL_NORMAL)).toEqual(ARRIVAL_NORMAL);
+		expect(endOrbitNormal({ ...LEO, incDeg: 0 }, undefined, ASYMPTOTE, ARRIVAL_NORMAL)).toEqual(
+			ARRIVAL_NORMAL
+		);
+	});
+
+	// The one that reads wrong on the map when it is missed: an orbit drawn in
+	// the plane the craft flew in rather than the equator it has to hang over.
+	it('lays a stationary orbit on the equator, whichever way the trip came in', () => {
+		expect(endOrbitNormal({ ...LEO, incDeg: 0 }, POLE, ASYMPTOTE, ARRIVAL_NORMAL)).toEqual(POLE);
+		expect(endOrbitNormal({ ...LEO, incDeg: 0 }, POLE, [0, 1, 0], [1, 0, 0])).toEqual(POLE);
+		// Retrograde is the same plane flown the other way round.
+		const back = endOrbitNormal({ ...LEO, incDeg: 180 }, POLE, ASYMPTOTE, ARRIVAL_NORMAL);
+		expect(dot(back, POLE)).toBeCloseTo(-1, 12);
+	});
+
+	it('holds the asymptote in a plane leaning far enough to reach it', () => {
+		for (const incDeg of [30, 45, 90, 135]) {
+			const normal = endOrbitNormal({ ...LEO, incDeg }, POLE, ASYMPTOTE, ARRIVAL_NORMAL);
+			expect(incOf(normal), `${incDeg}`).toBeCloseTo(incDeg, 6);
+			expect(dot(normal, ASYMPTOTE), `${incDeg}`).toBeCloseTo(0, 12);
+		}
+	});
+
+	// The plane the route was charged the shortfall for: 10° of lean against a
+	// 30° asymptote leaves 20° owing, and the plane is the one tipped straight at
+	// it, missing by exactly that.
+	it('leans as near the asymptote as it can when it cannot hold it', () => {
+		const normal = endOrbitNormal({ ...LEO, incDeg: 10 }, POLE, ASYMPTOTE, ARRIVAL_NORMAL);
+		expect(incOf(normal)).toBeCloseTo(10, 6);
+		expect(missDeg(normal)).toBeCloseTo(20, 6);
+		expect(asymptoteTurnDeg({ ...LEO, incDeg: 10 }, 30)).toBeCloseTo(20, 6);
+	});
+
+	it('leans off the plane it is in when there is no asymptote to hold', () => {
+		const normal = endOrbitNormal({ ...LEO, incDeg: 20 }, POLE, undefined, ARRIVAL_NORMAL);
+		expect(incOf(normal)).toBeCloseTo(20, 6);
 	});
 
 	it('turns through 60° for the speed itself, and through 0° for free', () => {

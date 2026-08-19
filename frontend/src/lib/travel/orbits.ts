@@ -9,7 +9,8 @@
  *
  * Only shapes the kernel prices differently are offered, and a plane is left to
  * the custom orbit: the named orbits are named for a shape, and one of them
- * flown in two planes would be two entries under one name.
+ * flown in two planes would be two entries under one name. The stationary orbit
+ * is the exception, since it is named for a shape it can only hold in one plane.
  */
 
 import type { BodyData } from '$lib/types/objects';
@@ -122,7 +123,7 @@ export interface OrbitOptions {
 	hasSurface: boolean;
 	customAltKm: number;
 	/** Plane the custom orbit is flown in, degrees to the body's equator. Null
-	 *  leaves it free, which is what the named orbits are always offered in. */
+	 *  leaves it free, which is how the named orbits are offered. */
 	incDeg?: number | null;
 }
 
@@ -188,7 +189,11 @@ export function orbitChoices(
 			out.push({ kind, group });
 			return;
 		}
-		const plane = kind === 'custom' ? options.incDeg : null;
+		// A stationary orbit hangs over one point, which it can only do from the
+		// equator, so it names its plane where the other named orbits leave it
+		// free. On a tilted body that plane is not the one arrivals come in on,
+		// and the turn into it is most of what the orbit costs.
+		const plane = kind === 'custom' ? options.incDeg : kind === 'stationary' ? 0 : null;
 		const orbit = plane == null ? shape : { ...shape, incDeg: plane };
 		out.push({
 			kind,

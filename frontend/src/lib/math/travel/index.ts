@@ -52,6 +52,7 @@ export {
 	circularSpeed,
 	departureCost,
 	endArrivalOrbit,
+	endOrbitNormal,
 	endDepartureOrbit,
 	injectionDv,
 	orbitPeriodHours,
