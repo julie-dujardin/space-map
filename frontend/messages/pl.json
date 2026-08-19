@@ -196,6 +196,8 @@
 	"featured_random": "Losowo",
 	"random_title": "Losowy cel",
 	"random_loading": "Szukanie celu…",
+	"uniform_random_title": "Cel losowany jednostajnie",
+	"uniform_random_loading": "Losowanie z całego katalogu…",
 	"search_placeholder": "Szukaj",
 	"search_no_results": "Brak dopasowań",
 	"search_secondary_orbiting": "{type} obiektu {parent}",

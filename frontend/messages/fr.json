@@ -1172,6 +1172,8 @@
 	"featured_random": "Au hasard",
 	"random_title": "Destination au hasard",
 	"random_loading": "Recherche d'une destination…",
+	"uniform_random_title": "Destination uniformément aléatoire",
+	"uniform_random_loading": "Tirage dans tout le catalogue…",
 	"time_scale_realtime": "1×",
 	"seo_noun_asteroid": "Astéroïde",
 	"seo_noun_main_belt_asteroid": "Astéroïde de la ceinture principale",

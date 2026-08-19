@@ -196,6 +196,8 @@
 	"featured_random": "Zufall",
 	"random_title": "Zufälliges Ziel",
 	"random_loading": "Ein Ziel wird gesucht…",
+	"uniform_random_title": "Gleichverteilt zufälliges Ziel",
+	"uniform_random_loading": "Ziehung aus dem gesamten Katalog…",
 	"search_placeholder": "Suchen",
 	"search_no_results": "Keine Treffer",
 	"search_secondary_orbiting": "{type} von {parent}",

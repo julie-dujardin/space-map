@@ -141,6 +141,8 @@
 	"featured_random": "Random",
 	"random_title": "Random destination",
 	"random_loading": "Finding somewhere to go…",
+	"uniform_random_title": "Uniformly random destination",
+	"uniform_random_loading": "Drawing from the whole catalogue…",
 	"search_placeholder": "Search",
 	"search_no_results": "No matches",
 	"search_secondary_orbiting": "{type} of {parent}",

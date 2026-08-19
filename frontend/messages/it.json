@@ -196,6 +196,8 @@
 	"featured_random": "A caso",
 	"random_title": "Destinazione casuale",
 	"random_loading": "Ricerca di una destinazione…",
+	"uniform_random_title": "Destinazione uniformemente casuale",
+	"uniform_random_loading": "Estrazione dall'intero catalogo…",
 	"search_placeholder": "Cerca",
 	"search_no_results": "Nessuna corrispondenza",
 	"search_secondary_orbiting": "{type} di {parent}",

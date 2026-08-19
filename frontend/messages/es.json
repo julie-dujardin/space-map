@@ -196,6 +196,8 @@
 	"featured_random": "Al azar",
 	"random_title": "Destino al azar",
 	"random_loading": "Buscando un destino…",
+	"uniform_random_title": "Destino uniformemente aleatorio",
+	"uniform_random_loading": "Sorteando en todo el catálogo…",
 	"search_placeholder": "Buscar",
 	"search_no_results": "Sin coincidencias",
 	"search_secondary_orbiting": "{type} de {parent}",

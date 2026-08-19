@@ -196,6 +196,8 @@
 	"featured_random": "عشوائي",
 	"random_title": "وجهة عشوائية",
 	"random_loading": "جارٍ البحث عن وجهة…",
+	"uniform_random_title": "وجهة عشوائية منتظمة",
+	"uniform_random_loading": "جارٍ السحب من الفهرس بأكمله…",
 	"search_placeholder": "بحث",
 	"search_no_results": "لا توجد نتائج",
 	"search_secondary_orbiting": "{type} لـ{parent}",

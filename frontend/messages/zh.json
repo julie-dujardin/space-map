@@ -196,6 +196,8 @@
 	"featured_random": "随机",
 	"random_title": "随机目的地",
 	"random_loading": "正在寻找目的地…",
+	"uniform_random_title": "均匀随机目的地",
+	"uniform_random_loading": "正在从整个目录中抽取…",
 	"search_placeholder": "搜索",
 	"search_no_results": "无匹配结果",
 	"search_secondary_orbiting": "{parent}的{type}",

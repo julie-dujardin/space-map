@@ -194,6 +194,8 @@
 	"featured_random": "ランダム",
 	"random_title": "ランダムな行き先",
 	"random_loading": "行き先を探しています…",
+	"uniform_random_title": "一様ランダムな行き先",
+	"uniform_random_loading": "カタログ全体から抽選しています…",
 	"search_placeholder": "検索",
 	"search_no_results": "該当なし",
 	"search_secondary_orbiting": "{parent}の{type}",
