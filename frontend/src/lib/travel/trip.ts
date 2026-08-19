@@ -112,6 +112,12 @@ export interface TripState {
 	 *  is, so switching away and back does not lose the altitude that was set. */
 	originAltKm: number;
 	targetAltKm: number;
+	/** Plane the `custom` orbit is flown in at each end, degrees to that body's
+	 *  equator, above 90 for a retrograde one. Null leaves the plane free, which
+	 *  prices the trip as one that never named a plane. Carried whatever the mode
+	 *  is, like the altitude beside it. */
+	originIncDeg: number | null;
+	targetIncDeg: number | null;
 	aero: AeroAssist;
 	timeMode: TimeMode;
 	/** The date behind the two non-'now' modes, as a JD; null under 'now', which
@@ -140,6 +146,8 @@ export const DEFAULT_TRIP: TripState = {
 	targetMode: 'low-orbit',
 	originAltKm: DEFAULT_CUSTOM_ALT_KM,
 	targetAltKm: DEFAULT_CUSTOM_ALT_KM,
+	originIncDeg: null,
+	targetIncDeg: null,
 	// Somewhere with air is somewhere you use the air: arriving at Mars on the
 	// engine alone is the unusual choice, and the one worth having to make.
 	aero: 'aerocapture',
@@ -169,6 +177,12 @@ export function serializeTripSuffix(trip: TripState): string {
 	// Only carried by the mode that means anything by it.
 	if (trip.originMode === 'custom') parts.push(`falt=${trim(trip.originAltKm, 1)}`);
 	if (trip.targetMode === 'custom') parts.push(`talt=${trim(trip.targetAltKm, 1)}`);
+	if (trip.originMode === 'custom' && trip.originIncDeg !== null) {
+		parts.push(`finc=${trim(trip.originIncDeg, 1)}`);
+	}
+	if (trip.targetMode === 'custom' && trip.targetIncDeg !== null) {
+		parts.push(`tinc=${trim(trip.targetIncDeg, 1)}`);
+	}
 	if (trip.aero !== DEFAULT_TRIP.aero) parts.push(`aero=${trip.aero}`);
 	// The date is what the mode means; a mode without one searches the same span
 	// "now" does, so it is not a choice worth carrying.
@@ -222,6 +236,17 @@ function parseAltitude(raw: string | null): number {
 	return raw !== null && Number.isFinite(value) && value > 0 ? value : DEFAULT_CUSTOM_ALT_KM;
 }
 
+/** A plane, degrees to the equator. Absent or unusable leaves it free rather
+ *  than pinning it to the equator, which is an orbit of its own and a dearer
+ *  one. Clamped to the half-turn past which an inclination names a plane it has
+ *  already named. */
+function parseInclination(raw: string | null): number | null {
+	if (raw === null) return null;
+	const value = Number(raw);
+	if (!Number.isFinite(value)) return null;
+	return Math.min(Math.max(value, 0), 180);
+}
+
 /** A manifest figure. Anything unusable reads as nothing aboard, which is what
  *  an empty form says too. */
 function parseAmount(raw: string | null): number {
@@ -258,6 +283,8 @@ export function parseTrip(params: URLSearchParams): TripState {
 		targetMode: parseMode(params.get('tm'), TARGET_MODES, DEFAULT_TRIP.targetMode),
 		originAltKm: parseAltitude(params.get('falt')),
 		targetAltKm: parseAltitude(params.get('talt')),
+		originIncDeg: parseInclination(params.get('finc')),
+		targetIncDeg: parseInclination(params.get('tinc')),
 		aero: aero !== null && AERO_ASSISTS.includes(aero) ? aero : DEFAULT_TRIP.aero,
 		...parseWhen(params.get('when')),
 		vehicleId: params.get('craft') || null,

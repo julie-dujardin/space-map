@@ -13,7 +13,7 @@ import { AU_KM } from '$lib/math/units';
 import { sphereOfInfluenceKm, type TravelBody } from './body';
 import { CAPTURE_APOAPSIS_RADII, GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { solveFlyby } from './flyby';
-import { sampleHeldDrive, type HeldDriveSample } from './held-drive';
+import { sampleHeldDrive, samplePoweredFlight, type HeldDriveSample } from './held-drive';
 import { solveLambert } from './lambert';
 import { rebuildSpiral } from './low-thrust';
 import {
@@ -114,10 +114,12 @@ export interface EndOrbitPath {
 	 * periapsis, in flight order and the same frame, sharing periapsis with the
 	 * orbit so the two meet along one tangent. At a surface end it keeps going:
 	 * the ground leg (coast to the deorbit point plus the half-ellipse to the
-	 * site, or the reverse) is part of this line rather than its own ring. Empty
-	 * where there is no passage to draw: a held drive or spiral arrives under
-	 * thrust rather than on a conic, and an in-system transfer never escapes the
-	 * primary's parking orbit.
+	 * site, or the reverse) is part of this line rather than its own ring. A held
+	 * drive climbs out under thrust rather than along an asymptote, so its
+	 * departure is flown instead of derived; its arrival is the ordinary conic
+	 * the capture was priced against. Empty where there is no passage at all: a
+	 * spiral is under thrust the whole way, and an in-system transfer never
+	 * escapes the primary's parking orbit.
 	 */
 	approach: Vec3[];
 	/** When each of `approach` is passed, JD. Same length, increasing, but not
@@ -572,7 +574,7 @@ function endOrbitPaths(
 		options.orbitChange || systemPrimary
 			? (systemPrimary === 'target' ? target : departure).mu
 			: centralMu;
-	const approaches = endApproaches(departure, target, route, options);
+	const approaches = endApproaches(departure, target, route, options, path);
 
 	const orbits: EndOrbitPath[] = [];
 	const sites = options.surfaceSites ?? {};
@@ -628,31 +630,47 @@ function endOrbitPaths(
  * {@link hyperbolicPassage} carries its true displacement so the drawn line is
  * the patched-conic worldline, not a straight-line stand-in.
  *
- * Absent wherever there's no hyperbolic passage to draw: a held drive or
- * spiral arrives under thrust rather than on a conic, and inside one system
- * the transfer ellipse already leaves its parking orbit at periapsis, tangent
- * to the arc with nothing in between.
+ * Absent wherever there's no passage to draw: a spiral crosses under thrust
+ * the whole way, and inside one system the transfer ellipse already leaves its
+ * parking orbit at periapsis, tangent to the arc with nothing in between.
  */
 interface EndApproach {
-	/** Excess velocity, km/s: the craft's own less the body's. */
+	/** Excess velocity, km/s: the craft's own less the body's. Zero at an end
+	 *  climbed out of under thrust, which has no asymptote to fall along. */
 	vInf: Vec3;
 	/** The body's position at `jd` in the transfer frame, km. */
 	bodyAt: (jd: number) => Vec3 | null;
-	/** The craft's state on the crossing conic at this end's priced date — what
-	 *  the sphere-of-influence crossing is solved against. */
-	craft: { r: Vec3; v: Vec3; jd: number };
-	/** The μ the crossing conic is flown under. */
-	crossingMu: number;
+	/** Where the crossing puts the craft at a date, km — chased to find where it
+	 *  really crosses the sphere of influence. A conic for a coasting route; a
+	 *  held drive is under thrust, so it reads its own flown samples instead. */
+	craftAt: (jd: number) => Vec3 | null;
+	/** This end's priced date, where that chase starts. */
+	jd: number;
+	/** Set where the craft leaves under thrust rather than on a conic: the
+	 *  drive's inertial direction and what it holds, km/s². */
+	drive?: { dir: Vec3; accelKmS2: number };
+}
+
+/** Where the crossing conic puts the craft, for the ends flown on one. */
+function conicCraftAt(
+	craft: { r: Vec3; v: Vec3; jd: number },
+	mu: number
+): (jd: number) => Vec3 | null {
+	return (jd) => propagateState(craft.r, craft.v, (jd - craft.jd) * SEC_PER_DAY, mu);
 }
 
 function endApproaches(
 	departure: TravelBody,
 	target: TravelBody,
 	route: Route,
-	options: PathOptions
+	options: PathOptions,
+	path: PathGeometry
 ): { from?: EndApproach; to?: EndApproach } {
 	const { centralMu = GM_SUN_KM3_S2, retrograde = false, systemPrimary, vias = [] } = options;
-	if (route.lowThrust || route.constantThrust != null) return {};
+	if (route.lowThrust) return {};
+	if (route.constantThrust != null) {
+		return heldDriveApproaches(departure, target, route, options, path);
+	}
 	// A trip that stays at one body crosses no sphere of influence, so neither
 	// end is approached from outside one.
 	if (options.orbitChange) return {};
@@ -681,8 +699,8 @@ function endApproaches(
 			to: {
 				vInf: sub(vArc, state.v),
 				bodyAt: (jd) => relativeState(target, departure, jd)?.r ?? null,
-				craft: { r: state.r, v: vArc, jd: route.arriveJd },
-				crossingMu: departure.mu
+				craftAt: conicCraftAt({ r: state.r, v: vArc, jd: route.arriveJd }, departure.mu),
+				jd: route.arriveJd
 			}
 		};
 	}
@@ -717,14 +735,14 @@ function endApproaches(
 			from: {
 				vInf: sub(out.v1, from.v),
 				bodyAt: departureAt,
-				craft: { r: from.r, v: out.v1, jd: route.departJd },
-				crossingMu: centralMu
+				craftAt: conicCraftAt({ r: from.r, v: out.v1, jd: route.departJd }, centralMu),
+				jd: route.departJd
 			},
 			to: {
 				vInf: sub(back.v2, to.v),
 				bodyAt: targetAt,
-				craft: { r: to.r, v: back.v2, jd: route.arriveJd },
-				crossingMu: centralMu
+				craftAt: conicCraftAt({ r: to.r, v: back.v2, jd: route.arriveJd }, centralMu),
+				jd: route.arriveJd
 			}
 		};
 	}
@@ -735,14 +753,100 @@ function endApproaches(
 		from: {
 			vInf: sub(arc.v1, from.v),
 			bodyAt: departureAt,
-			craft: { r: from.r, v: arc.v1, jd: route.departJd },
-			crossingMu: centralMu
+			craftAt: conicCraftAt({ r: from.r, v: arc.v1, jd: route.departJd }, centralMu),
+			jd: route.departJd
 		},
 		to: {
 			vInf: sub(arc.v2, to.v),
 			bodyAt: targetAt,
-			craft: { r: to.r, v: arc.v2, jd: route.arriveJd },
-			crossingMu: centralMu
+			craftAt: conicCraftAt({ r: to.r, v: arc.v2, jd: route.arriveJd }, centralMu),
+			jd: route.arriveJd
+		}
+	};
+}
+
+/** Where the drawn crossing puts the craft at `jd`, read between the samples it
+ *  was flown at. What stands in for a conic where there isn't one: a held drive
+ *  is under thrust, so nothing closed-form follows it. */
+function arcCraftAt(arcs: readonly PathArc[]): (jd: number) => Vec3 | null {
+	const jds: number[] = [];
+	const points: Vec3[] = [];
+	for (const arc of arcs) {
+		for (let i = 0; i < arc.jds.length; i++) {
+			// Neighbouring stretches share the state they meet at.
+			if (jds.length > 0 && arc.jds[i] <= jds[jds.length - 1]) continue;
+			jds.push(arc.jds[i]);
+			points.push(arc.points[i]);
+		}
+	}
+	return (jd) => {
+		if (jds.length < 2 || jd < jds[0] || jd > jds[jds.length - 1]) return null;
+		let hi = 1;
+		while (hi < jds.length - 1 && jds[hi] < jd) hi++;
+		const span = jds[hi] - jds[hi - 1];
+		const along = span > 0 ? (jd - jds[hi - 1]) / span : 0;
+		return add(points[hi - 1], scale(sub(points[hi], points[hi - 1]), along));
+	};
+}
+
+/**
+ * How a held drive meets each end. The two are not the same shape because the
+ * pricing is not: the ship climbs out of the first well under thrust at no
+ * excess speed at all, and falls into the second carrying whatever the crossing
+ * left it with, paying an ordinary capture for it. So the departure is flown
+ * and the arrival is the conic that capture was priced against.
+ *
+ * The arrival's excess speed is the route's own; only its *direction* is read
+ * off the crossing, from the last step it takes against the body's motion over
+ * the same moment.
+ */
+function heldDriveApproaches(
+	departure: TravelBody,
+	target: TravelBody,
+	route: Route,
+	options: PathOptions,
+	path: PathGeometry
+): { from?: EndApproach; to?: EndApproach } {
+	const { centralMu = GM_SUN_KM3_S2, systemPrimary } = options;
+	const last = path.arcs[path.arcs.length - 1];
+	if (route.constantThrust == null || !last || last.points.length < 2) return {};
+	// Inside one system the crossing already runs between the primary's parking
+	// orbit and the satellite, so only the satellite is met from outside a
+	// sphere of influence — and coming home it is left rather than met.
+	if (systemPrimary === 'target') return {};
+	const inSystem = systemPrimary === 'departure';
+	const targetAt = inSystem
+		? (jd: number) => relativeState(target, departure, jd)?.r ?? null
+		: (jd: number) => elementsToState(target.elements, jd, centralMu)?.r ?? null;
+	const craftAt = arcCraftAt(path.arcs);
+
+	const from: EndApproach | undefined =
+		inSystem || !route.thrustDir
+			? undefined
+			: {
+					vInf: [0, 0, 0],
+					bodyAt: (jd) => elementsToState(departure.elements, jd, centralMu)?.r ?? null,
+					craftAt,
+					jd: route.departJd,
+					drive: {
+						dir: [route.thrustDir[0], route.thrustDir[1], route.thrustDir[2]],
+						accelKmS2: route.constantThrust / 1000
+					}
+				};
+
+	const count = last.points.length;
+	const before = targetAt(last.jds[count - 2]);
+	const after = targetAt(last.jds[count - 1]);
+	if (!before || !after) return { from };
+	const step = sub(sub(last.points[count - 1], last.points[count - 2]), sub(after, before));
+	if (!(norm(step) > 0) || !(route.vInfArrKms > 0)) return { from };
+	return {
+		from,
+		to: {
+			vInf: scale(normalize(step), route.vInfArrKms),
+			bodyAt: targetAt,
+			craftAt,
+			jd: route.arriveJd
 		}
 	};
 }
@@ -825,9 +929,25 @@ function endOrbitPath(end: {
 	// An aerocaptured arrival never burns at the orbit's periapsis: the pass
 	// itself is the insertion, flown at the entry interface.
 	const rPassKm = aero?.mode === 'aerocapture' ? aero.rEntryKm : orbit.rPeriKm;
-	const passageOf = (planeHint?: Vec3) =>
-		approach
-			? hyperbolicPassage({
+	const passageOf = (planeHint?: Vec3) => {
+		if (!approach) return null;
+		// An end left under thrust has no asymptote to fall along, so it is flown
+		// out rather than derived.
+		const drive = approach.drive;
+		return drive && outward
+			? poweredEscape({
+					body,
+					approach,
+					drive,
+					rPeriKm: rPassKm,
+					arcNormal,
+					primaryMu,
+					arc,
+					endJd: periJd,
+					frame,
+					planeHint
+				})
+			: hyperbolicPassage({
 					body,
 					approach,
 					rPeriKm: rPassKm,
@@ -839,8 +959,8 @@ function endOrbitPath(end: {
 					endJd: periJd,
 					frame,
 					planeHint
-				})
-			: null;
+				});
+	};
 	let passage = passageOf();
 	// A landing is aimed somewhere, so the plane's free choice is spent holding
 	// the site rather than the crossing's own plane. Read at a rough touchdown;
@@ -1434,6 +1554,20 @@ function closedOrbit(center: Vec3, orbit: EndOrbit, normal: Vec3, periapsis: Vec
 	return points;
 }
 
+/** One end's join between the orbit round a body and the crossing outside it. */
+interface Passage {
+	/** Measured from the body, in flight order — the caller puts them wherever
+	 *  that body is in the frame it is drawing. */
+	points: Vec3[];
+	jds: number[];
+	periapsis: Vec3;
+	normal: Vec3;
+	/** The crossing sample the passage takes over at. */
+	cut: number;
+	center: Vec3;
+	periJd: number;
+}
+
 /**
  * The escape or capture an end of a trip is flown on, from the crossing down
  * to periapsis or back out. Conic is derived (eccentricity from excess speed
@@ -1473,17 +1607,7 @@ function hyperbolicPassage(end: {
 	 *  The plane is the passage's one free choice, and an end that is aimed
 	 *  somewhere spends it there rather than on the crossing's own plane. */
 	planeHint?: Vec3;
-}): {
-	/** Measured from the body, in flight order — the caller puts them wherever
-	 *  that body is in the frame it is drawing. */
-	points: Vec3[];
-	jds: number[];
-	periapsis: Vec3;
-	normal: Vec3;
-	cut: number;
-	center: Vec3;
-	periJd: number;
-} | null {
+}): Passage | null {
 	const { body, approach, rPeriKm, arcNormal, at, primaryMu, arc, endJd, frame, planeHint } = end;
 	const { vInf, bodyAt } = approach;
 	const speed = norm(vInf);
@@ -1583,6 +1707,111 @@ function seamBlend(x: number): number {
 	return t * t * (3 - 2 * t);
 }
 
+/** RK4 steps walked between one drawn point of a climb and the next. The drive
+ *  is constant and the field smooth, so a handful holds it to metres. */
+const ESCAPE_STEPS = 8;
+
+/**
+ * The climb out of a well under thrust — how a held drive leaves, the drive
+ * being on from the parking orbit onwards. There is no asymptote to fall
+ * along and no conic to derive, so it is flown: away from periapsis at the
+ * escape speed the well was priced at (v∞ = 0), with the drive pointing where
+ * the crossing says it points, until the date the crossing leaves the sphere
+ * of influence.
+ *
+ * The burn is placed where the orbit already runs along the drive, which is
+ * the one point on it an injection costs what it was priced at — and leaves
+ * the ring and the climb sharing a tangent.
+ *
+ * Same frames and the same seam as {@link hyperbolicPassage}: the crossing
+ * reckons the ship free of the body from the first moment, this one holds it
+ * back, and the whole of their disagreement is worked off between the join and
+ * periapsis.
+ */
+function poweredEscape(end: {
+	body: TravelBody;
+	approach: EndApproach;
+	drive: { dir: Vec3; accelKmS2: number };
+	rPeriKm: number;
+	arcNormal: Vec3;
+	primaryMu: number;
+	arc: PathArc;
+	endJd: number;
+	frame: TrajectoryFrame;
+	planeHint?: Vec3;
+}): Passage | null {
+	const { body, approach, drive, rPeriKm, arcNormal, primaryMu, arc, endJd, frame } = end;
+	if (!(body.mu > 0) || !(rPeriKm > 0) || !(norm(drive.dir) > 0) || !(drive.accelKmS2 > 0)) {
+		return null;
+	}
+	const along = normalize(drive.dir);
+	const off = end.planeHint
+		? cross(along, end.planeHint)
+		: sub(arcNormal, scale(along, dot(arcNormal, along)));
+	let normal = norm(off) > 0 ? normalize(off) : perpendicularTo(along);
+	if (end.planeHint && dot(normal, arcNormal) < 0) normal = scale(normal, -1);
+	// A quarter turn back from the drive, so the orbit's own motion there is the
+	// way the ship is going.
+	const periapsis = normalize(cross(along, normal));
+
+	const outer = passageRadiusKm(body, primaryMu, rPeriKm);
+	// The speed the walk steps by: how fast the drive alone crosses the sphere,
+	// since the excess speed every other end is scaled from is zero here.
+	const crossJd = soiCrossingJd(approach, outer, true, Math.sqrt((outer * drive.accelKmS2) / 2));
+	if (crossJd === null) return null;
+	const joinDays = crossJd - endJd;
+	if (!(joinDays > 0)) return null;
+	const center = approach.bodyAt(endJd);
+	if (!center) return null;
+
+	// Where the crossing gives way: its first sample past the sphere.
+	const cut = firstAfter(arc.jds, crossJd);
+	if (cut < 1 || cut > arc.points.length - 2) return null;
+
+	// Sampled squared in time, so the steps crowd at periapsis where the line
+	// bends — the integration follows them, which is what keeps the first
+	// revolution's worth of curve honest under a drive too weak to dominate it.
+	const spans: number[] = [];
+	for (let i = 0; i < PASSAGE_SAMPLES; i++) {
+		const fraction = i / (PASSAGE_SAMPLES - 1);
+		spans.push(joinDays * fraction * fraction);
+	}
+	const flown = samplePoweredFlight(
+		{ r: scale(periapsis, rPeriKm), v: scale(along, Math.sqrt((2 * body.mu) / rPeriKm)) },
+		scale(along, drive.accelKmS2),
+		body.mu,
+		spans.map((days) => days * SEC_PER_DAY),
+		ESCAPE_STEPS
+	);
+	if (flown.length < PASSAGE_SAMPLES) return null;
+	const carried = (days: number): Vec3 | null => {
+		const moved = approach.bodyAt(endJd + days);
+		return moved ? sub(moved, center) : null;
+	};
+	const joinCarried = carried(joinDays);
+	if (!joinCarried) return null;
+	const miss = sub(sub(arc.points[cut], center), add(flown[flown.length - 1], joinCarried));
+	const solar = frame === 'interplanetary' && body.borrowedElements !== true;
+
+	const points: Vec3[] = [];
+	const jds: number[] = [];
+	for (let i = 0; i < PASSAGE_SAMPLES; i++) {
+		const days = spans[i];
+		const point = flown[i];
+		jds.push(endJd + days);
+		const seam = seamBlend((norm(point) - rPeriKm) / (outer - rPeriKm));
+		const corrected = add(point, scale(miss, seam));
+		if (!solar) {
+			points.push(corrected);
+			continue;
+		}
+		const moved = carried(days);
+		if (!moved) return null;
+		points.push(add(corrected, moved));
+	}
+	return { points, jds, periapsis, normal, cut, center, periJd: endJd };
+}
+
 /** Points along each branch of a swing-by pass. The two share periapsis, so the
  *  drawn passage is one sample short of twice this. */
 const FLYBY_BRANCH_SAMPLES = 80;
@@ -1675,7 +1904,12 @@ function assistPassage(pass: {
 	const viaAt = (jd: number) => elementsToState(via.elements, jd, centralMu)?.r ?? null;
 	const chase = (v: Vec3, vInf: Vec3, leaving: boolean) =>
 		soiCrossingJd(
-			{ vInf, bodyAt: viaAt, craft: { r: mid.r, v, jd: flybyJd }, crossingMu: centralMu },
+			{
+				vInf,
+				bodyAt: viaAt,
+				craftAt: conicCraftAt({ r: mid.r, v, jd: flybyJd }, centralMu),
+				jd: flybyJd
+			},
 			soi,
 			leaving
 		);
@@ -1742,23 +1976,36 @@ function assistPassage(pass: {
  * Null when the walk never leaves the sphere or either curve can't be
  * evaluated; the caller falls back to the hyperbola's own clock.
  */
-function soiCrossingJd(approach: EndApproach, soiKm: number, outward: boolean): number | null {
-	const { vInf, bodyAt, craft, crossingMu } = approach;
-	const speed = norm(vInf);
+/** Doublings the walk out to the sphere takes, and the share of its first guess
+ *  it starts from — the same number, so the walk still reaches far past that
+ *  guess when the sphere is crossed slower than the excess speed suggests. */
+const WALK_STEPS = 16;
+
+function soiCrossingJd(
+	approach: EndApproach,
+	soiKm: number,
+	outward: boolean,
+	speedKms?: number
+): number | null {
+	const { bodyAt, craftAt, jd: fromJd } = approach;
+	const speed = speedKms ?? norm(approach.vInf);
 	if (!(speed > 0) || !(soiKm > 0)) return null;
 
 	const separation = (jd: number): number | null => {
-		const r = propagateState(craft.r, craft.v, (jd - craft.jd) * SEC_PER_DAY, crossingMu);
+		const r = craftAt(jd);
 		const body = bodyAt(jd);
 		return r && body ? norm(sub(r, body)) - soiKm : null;
 	};
 
 	const direction = outward ? 1 : -1;
-	let step = soiKm / speed / SEC_PER_DAY / 2;
-	let inside = craft.jd;
+	// Doubled out from well inside the excess speed's own estimate of the
+	// crossing: under thrust the craft covers the sphere far faster than that,
+	// and a first probe past the end of what can be evaluated finds nothing.
+	let step = soiKm / speed / SEC_PER_DAY / WALK_STEPS;
+	let inside = fromJd;
 	let outside: number | null = null;
-	for (let i = 0; i < 12 && outside === null; i++) {
-		const jd = craft.jd + direction * step;
+	for (let i = 0; i < WALK_STEPS && outside === null; i++) {
+		const jd = fromJd + direction * step;
 		const apart = separation(jd);
 		if (apart === null) return null;
 		if (apart >= 0) outside = jd;

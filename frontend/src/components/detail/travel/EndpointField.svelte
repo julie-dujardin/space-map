@@ -25,7 +25,7 @@
 	import type { LaunchPad } from '$lib/travel/launch-pad';
 	import EndpointSearch from './EndpointSearch.svelte';
 	import FullscreenPicker from './FullscreenPicker.svelte';
-	import { endpointModeLabel } from './endpoint-labels';
+	import { endpointModeLabel, planeLabel, planeReadout } from './endpoint-labels';
 
 	interface Props {
 		/** Origins get a hollow dot; destinations get a pin. */
@@ -44,6 +44,9 @@
 		customAltKm: number;
 		maxAltKm: number;
 		onCustomAlt: (km: number) => void;
+		/** Plane this end is met in, degrees to its equator; null leaves it free. */
+		incDeg: number | null;
+		onIncChange: (deg: number | null) => void;
 		/** Δv this choice costs at this end, km/s — null while nothing is priced. */
 		priceKms?: (choice: OrbitChoice) => number | null;
 		open: boolean;
@@ -72,6 +75,8 @@
 		customAltKm,
 		maxAltKm,
 		onCustomAlt,
+		incDeg,
+		onIncChange,
 		priceKms,
 		open,
 		onOpenChange,
@@ -111,8 +116,14 @@
 	let customAltShown = $derived(
 		chosen?.kind === 'custom' ? (chosen.periAltKm ?? customAltKm) : customAltKm
 	);
-	// The closed box shows the height. The words "custom altitude" give no data.
-	let modeLabel = $derived(endpointModeLabel(mode, role, customAltShown));
+	// The closed box shows the orbit itself rather than the words naming it, which
+	// carry no data: its height, and its plane where one is named — two ends
+	// differing only in plane are different trips.
+	let modeLabel = $derived.by(() => {
+		const shape = endpointModeLabel(mode, role, customAltShown);
+		if (incDeg === null || mode !== 'custom') return shape;
+		return `${shape} · ${planeLabel(incDeg)}`;
+	});
 	// Pad site is what distinguishes a range; a single-place range says it once, up top.
 	let padPlaces = $derived(new Set(pads.map((p) => p.siteName)).size);
 
@@ -302,22 +313,58 @@
 							</button>
 
 							{#if active && choice.kind === 'custom'}
-								<div class="flex items-center gap-2 px-2 pt-1 pb-2">
-									<input
-										type="range"
-										min={1}
-										max={Math.round(maxAltKm)}
-										value={customAltShown}
-										oninput={(e) => onCustomAlt(Number(e.currentTarget.value))}
-										class="accent-primary h-1 flex-1"
-										aria-label={m.travel_orbit_altitude()}
-										aria-valuetext={formatKm(customAltShown)}
-									/>
-									<span
-										class="text-muted-foreground w-20 shrink-0 text-end text-[10px] tabular-nums"
-									>
-										{formatKm(customAltShown)}
-									</span>
+								<div class="flex flex-col gap-1.5 px-2 pt-1 pb-2">
+									<!-- Captions rather than a label column: the popover is too narrow to
+									     give up a third of the slider to one. -->
+									<label class="flex flex-col gap-0.5">
+										<span class="text-muted-foreground text-[10px] tracking-wide uppercase">
+											{m.travel_orbit_altitude()}
+										</span>
+										<span class="flex items-center gap-2">
+											<input
+												type="range"
+												min={1}
+												max={Math.round(maxAltKm)}
+												value={customAltShown}
+												oninput={(e) => onCustomAlt(Number(e.currentTarget.value))}
+												class="accent-primary h-1 flex-1"
+												aria-valuetext={formatKm(customAltShown)}
+											/>
+											<span
+												class="text-muted-foreground w-24 shrink-0 text-end text-[10px] tabular-nums"
+											>
+												{formatKm(customAltShown)}
+											</span>
+										</span>
+									</label>
+									<!-- A free plane is the step below the equator rather than a control of
+									     its own: it is the least a trip can ask of its plane, not a different
+									     kind of answer. -->
+									<label class="flex flex-col gap-0.5">
+										<span class="text-muted-foreground text-[10px] tracking-wide uppercase">
+											{m.travel_orbit_plane()}
+										</span>
+										<span class="flex items-center gap-2">
+											<input
+												type="range"
+												min={-1}
+												max={180}
+												step={1}
+												value={incDeg ?? -1}
+												oninput={(e) => {
+													const deg = Number(e.currentTarget.value);
+													onIncChange(deg < 0 ? null : deg);
+												}}
+												class="accent-primary h-1 flex-1"
+												aria-valuetext={planeLabel(incDeg)}
+											/>
+											<span
+												class="text-muted-foreground w-24 shrink-0 text-end text-[10px] tabular-nums"
+											>
+												{planeReadout(incDeg)}
+											</span>
+										</span>
+									</label>
 								</div>
 							{/if}
 						{/each}

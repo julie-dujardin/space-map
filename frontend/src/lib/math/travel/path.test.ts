@@ -549,16 +549,47 @@ describe('end orbits', () => {
 		expect(arrival.jds[arrival.jds.length - 1]).toBe(arrival.periJd);
 	});
 
-	it('has no passage to draw where nothing is flown on a conic', () => {
-		// A drive held all the way arrives under braking rather than on a hyperbola,
-		// so its ends are the orbit alone.
+	it('joins a held drive to the orbits at both its ends', () => {
 		const route = buildConstantThrustRoute(EARTH, MARS, J2000, 0.1, {
 			departureMode: 'orbit',
 			arrivalMode: 'low-orbit'
 		})!;
 		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
+		const [departure, arrival] = path.endOrbits;
 		expect(path.endOrbits).toHaveLength(2);
-		for (const end of path.endOrbits) expect(end.approach).toEqual([]);
+
+		for (const end of [departure, arrival]) {
+			const outward = end.at === 'departure';
+			const arc = outward ? path.arcs[0] : path.arcs[path.arcs.length - 1];
+			const kept = arc.points.slice(end.trimFrom, end.trimTo);
+			const radius = (p: Vec3) => norm(sub(p, end.center));
+			// The line goes orbit → periapsis → passage → crossing, in one piece:
+			// it starts on the orbit it was priced for...
+			const low = outward ? end.approach[0] : end.approach[end.approach.length - 1];
+			expect(Math.min(...end.points.map((p) => norm(sub(p, low))))).toBeLessThan(1);
+			expect(radius(low)).toBeLessThanOrEqual(end.radiusKm + 1);
+			// ...and hands over to the crossing exactly where the crossing is cut.
+			const join = outward ? end.approach[end.approach.length - 1] : end.approach[0];
+			const meets = outward ? arc.points[end.trimFrom] : arc.points[end.trimTo - 1];
+			expect(norm(sub(join, meets))).toBeLessThan(1);
+			// So no stretch of crossing is left running into the body.
+			expect(Math.min(...kept.map(radius))).toBeGreaterThan(radius(join) * 0.99);
+		}
+
+		// The climb out is flown under the drive, so it takes what that drive
+		// takes rather than the fortnight a coast out to the same sphere would.
+		const climb = departure.jds[departure.jds.length - 1] - departure.jds[0];
+		expect(climb).toBeGreaterThan(0);
+		expect(climb).toBeLessThan(3);
+		// And it leaves the way the drive points — read off the body, since the
+		// drawn line carries Earth's own motion, which over that long is further.
+		const bare = buildTrajectoryPath(EARTH, MARS, route, {
+			centerId: SUN,
+			frame: 'planetary'
+		})!.endOrbits[0];
+		const out = bare.approach[bare.approach.length - 1];
+		const dir = route.thrustDir!;
+		expect(dot(normalize(out), normalize([dir[0], dir[1], dir[2]]))).toBeGreaterThan(0.9);
 	});
 
 	it('draws the loose ellipse a capture leaves the craft in', () => {

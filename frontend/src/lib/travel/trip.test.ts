@@ -51,6 +51,8 @@ describe('trip URL round trip', () => {
 			targetMode: 'elliptical',
 			originAltKm: DEFAULT_TRIP.originAltKm,
 			targetAltKm: DEFAULT_TRIP.targetAltKm,
+			originIncDeg: null,
+			targetIncDeg: null,
 			aero: 'aerobraking',
 			timeMode: 'arrive',
 			pickedJd: DEPART_JD,
@@ -62,6 +64,26 @@ describe('trip URL round trip', () => {
 			coastFraction: 0.4
 		};
 		expect(reparse(trip)).toEqual(trip);
+	});
+
+	// A plane is what tells two otherwise identical trips apart, so an unnamed one
+	// has to come back unnamed rather than as the equator.
+	it('leaves a plane nobody named out of the link', () => {
+		expect(serializeTripSuffix(DEFAULT_TRIP)).toBe('');
+		expect(reparse(DEFAULT_TRIP).originIncDeg).toBeNull();
+		// Nought is a plane like any other — the equator — and has to survive the trip.
+		const equatorial = { ...DEFAULT_TRIP, originMode: 'custom' as const, originIncDeg: 0 };
+		expect(reparse(equatorial).originIncDeg).toBe(0);
+	});
+
+	// The custom orbit is the only one with a plane to set, so it is the only mode
+	// the plane rides along with — the same rule its altitude follows.
+	it('carries the plane only alongside the orbit that has one', () => {
+		const custom = { ...DEFAULT_TRIP, targetMode: 'custom' as const, targetIncDeg: 45 };
+		expect(serializeTripSuffix(custom)).toContain('tinc=45');
+		expect(
+			serializeTripSuffix({ ...DEFAULT_TRIP, targetMode: 'stationary', targetIncDeg: 45 })
+		).not.toContain('tinc');
 	});
 
 	it('keeps the picked date to the second', () => {

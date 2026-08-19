@@ -26,10 +26,14 @@
 
 	let target = $derived(orbitZoneTarget(slug));
 	// The altitude rides along only for the custom orbit, which is the one that
-	// means anything by it.
+	// means anything by it; the plane only for a zone that is one.
 	let terms = $derived(
 		target
-			? { targetMode: target.mode, ...(target.altKm ? { targetAltKm: target.altKm } : {}) }
+			? {
+					targetMode: target.mode,
+					...(target.altKm ? { targetAltKm: target.altKm } : {}),
+					...(target.incDeg === undefined ? {} : { targetIncDeg: target.incDeg })
+				}
 			: undefined
 	);
 	let href = $derived(terms ? navHref(appState, null, EARTH_ID, terms) : undefined);

@@ -435,6 +435,37 @@ export function sampleHeldDrive(
 	return out;
 }
 
+/**
+ * One stretch under one held thrust, at the moments asked for — the climb out
+ * of a well, which is flown rather than fallen along an asymptote for the same
+ * reason the crossing is: the drive is on. `thrust` is the acceleration vector,
+ * km/s², held throughout.
+ *
+ * `elapsed` are seconds from the start, increasing, and each gap is walked in
+ * `stepsPerSample` steps — so asking for points that crowd near periapsis, where
+ * the path bends hardest, integrates finely there as well.
+ */
+export function samplePoweredFlight(
+	start: { r: Vec3; v: Vec3 },
+	thrust: Vec3,
+	mu: number,
+	elapsed: readonly number[],
+	stepsPerSample: number
+): Vec3[] {
+	const out: Vec3[] = [];
+	let state = start;
+	let since = 0;
+	for (const at of elapsed) {
+		if (at > since) {
+			state = flyBurn(state, at - since, mu, thrust, stepsPerSample, 'boost', 0, IGNORE);
+			since = at;
+		}
+		if (!isFinite(state.r[0] + state.r[1] + state.r[2])) return out;
+		out.push(state.r);
+	}
+	return out;
+}
+
 /** How far off the target a solved arc actually lands, km. The solve drives this
  *  under tolerance; tests assert on it rather than trusting that it did. */
 export function heldDriveMissKm(problem: HeldDriveProblem, arc: HeldDriveArc): number | null {

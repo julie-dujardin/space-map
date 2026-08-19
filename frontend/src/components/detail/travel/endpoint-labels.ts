@@ -3,6 +3,7 @@
 import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { formatKm } from '$lib/format/distance';
+import { formatDegrees } from '$lib/format/quantities';
 import type { LaunchPad } from '$lib/travel/launch-pad';
 import type { EndpointMode } from '$lib/travel/trip';
 
@@ -28,6 +29,24 @@ export function endpointModeLabel(
 		return role === 'origin' ? m.travel_mode_surface() : m.travel_mode_landing();
 	if (mode === 'custom' && altKm !== null) return m.travel_orbit_at({ altitude: formatKm(altKm) });
 	return LABELS[mode]();
+}
+
+/** The plane beside its slider: the angle alone, since the words next to it
+ *  would be the same on every reading and there is no room for them. */
+export function planeReadout(incDeg: number | null): string {
+	return incDeg === null ? m.travel_orbit_plane_free() : formatDegrees(incDeg);
+}
+
+/**
+ * The plane an end is met in, said in full. Above a quarter turn the orbit runs
+ * against the body's own spin, which is the fact worth saying rather than the
+ * angle it is stated as.
+ */
+export function planeLabel(incDeg: number | null): string {
+	if (incDeg === null) return m.travel_orbit_plane_free();
+	return incDeg > 90
+		? m.travel_orbit_plane_retrograde({ degrees: formatDegrees(180 - incDeg) })
+		: m.travel_orbit_plane_at({ degrees: formatDegrees(incDeg) });
 }
 
 /**

@@ -7,9 +7,9 @@
  * the space it controls) and for every tidally locked moon at once —
  * synchronous works out at 3^(1/3) = 1.44 Hill radii for all of them.
  *
- * Only orbits the kernel prices differently are offered: a polar or
- * sun-synchronous orbit costs the same as any other circular orbit at that
- * altitude here, so offering one would claim a distinction the model lacks.
+ * Only shapes the kernel prices differently are offered, and a plane is left to
+ * the custom orbit: the named orbits are named for a shape, and one of them
+ * flown in two planes would be two entries under one name.
  */
 
 import type { BodyData } from '$lib/types/objects';
@@ -117,6 +117,15 @@ export function hasGround(travel: TravelBody): boolean {
 
 export type OrbitGroup = 'land' | 'orbit' | 'pass';
 
+/** What the trip asks of an end, beyond the body itself. */
+export interface OrbitOptions {
+	hasSurface: boolean;
+	customAltKm: number;
+	/** Plane the custom orbit is flown in, degrees to the body's equator. Null
+	 *  leaves it free, which is what the named orbits are always offered in. */
+	incDeg?: number | null;
+}
+
 export interface OrbitChoice {
 	kind: EndpointMode;
 	group: OrbitGroup;
@@ -165,7 +174,7 @@ export function orbitChoices(
 	travel: TravelBody,
 	facts: OrbitFacts,
 	role: 'origin' | 'target',
-	options: { hasSurface: boolean; customAltKm: number }
+	options: OrbitOptions
 ): OrbitChoice[] {
 	const target = role === 'target';
 	const R = travel.radiusKm;
@@ -174,11 +183,13 @@ export function orbitChoices(
 	const park: EndOrbit = { rPeriKm: rLow, rApoKm: rLow };
 	const out: OrbitChoice[] = [];
 
-	const add = (kind: EndpointMode, group: OrbitGroup, orbit?: EndOrbit) => {
-		if (!orbit) {
+	const add = (kind: EndpointMode, group: OrbitGroup, shape?: EndOrbit) => {
+		if (!shape) {
 			out.push({ kind, group });
 			return;
 		}
+		const plane = kind === 'custom' ? options.incDeg : null;
+		const orbit = plane == null ? shape : { ...shape, incDeg: plane };
 		out.push({
 			kind,
 			group,
@@ -235,7 +246,7 @@ export function orbitFor(
 	travel: TravelBody,
 	facts: OrbitFacts,
 	role: 'origin' | 'target',
-	options: { hasSurface: boolean; customAltKm: number }
+	options: OrbitOptions
 ): EndOrbit | undefined {
 	return orbitChoices(travel, facts, role, options).find((c) => c.kind === kind)?.orbit;
 }

@@ -440,7 +440,8 @@
 		originTravel && originFacts && !panel.originAtSite
 			? orbitChoices(originTravel, originFacts, 'origin', {
 					hasSurface: originHasGround,
-					customAltKm: panel.originAltKm
+					customAltKm: panel.originAltKm,
+					incDeg: panel.originIncDeg
 				})
 			: []
 	);
@@ -449,7 +450,8 @@
 			targetTravel && targetFacts && !panel.targetAtSite
 				? orbitChoices(targetTravel, targetFacts, 'target', {
 						hasSurface: targetHasGround,
-						customAltKm: panel.targetAltKm
+						customAltKm: panel.targetAltKm,
+						incDeg: panel.targetIncDeg
 					})
 				: [];
 		// Where the trip already is is not somewhere to go: on a same-body trip the
@@ -1078,10 +1080,15 @@
 		// three a departure cannot be: a flyby, a capture ellipse, a transfer orbit.
 		const previousOriginMode = panel.originMode;
 		const previousOriginAlt = panel.originAltKm;
+		const previousOriginInc = panel.originIncDeg;
 		panel.originMode = ORIGIN_MODES.includes(panel.targetMode) ? panel.targetMode : 'low-orbit';
 		panel.targetMode = previousOriginMode;
 		panel.originAltKm = panel.targetAltKm;
 		panel.targetAltKm = previousOriginAlt;
+		// A plane is measured against its own body's equator, so it rides with the
+		// end it belongs to rather than staying put.
+		panel.originIncDeg = panel.targetIncDeg;
+		panel.targetIncDeg = previousOriginInc;
 		onSwap();
 	}
 </script>
@@ -1179,6 +1186,8 @@
 							? maxCustomAltitudeKm(originTravel, originFacts)
 							: 0}
 						onCustomAlt={(km: number) => (panel.originAltKm = km)}
+						incDeg={panel.originIncDeg}
+						onIncChange={(deg: number | null) => (panel.originIncDeg = deg)}
 						priceKms={(choice: OrbitChoice) => priceEnd('origin', choice)}
 						open={openField === 'origin'}
 						onOpenChange={(next: boolean) => setOpenField('origin', next)}
@@ -1216,6 +1225,8 @@
 							? maxCustomAltitudeKm(targetTravel, targetFacts)
 							: 0}
 						onCustomAlt={(km: number) => (panel.targetAltKm = km)}
+						incDeg={panel.targetIncDeg}
+						onIncChange={(deg: number | null) => (panel.targetIncDeg = deg)}
 						priceKms={(choice: OrbitChoice) => priceEnd('target', choice)}
 						open={openField === 'target'}
 						onOpenChange={(next: boolean) => setOpenField('target', next)}

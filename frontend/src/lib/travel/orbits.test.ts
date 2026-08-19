@@ -28,6 +28,7 @@ const HILL: Record<string, number> = {
 };
 
 const OPTS = { hasSurface: true, customAltKm: 1000 };
+const EARTH_FACTS: OrbitFacts = { rotationHours: EARTH_DAY_H, hillKm: HILL.earth };
 
 function kinds(body: TravelBody, facts: OrbitFacts, role: 'origin' | 'target' = 'target') {
 	return orbitChoices(body, facts, role, OPTS).map((c) => c.kind);
@@ -118,6 +119,31 @@ describe('orbitChoices', () => {
 			customAltKm: 1e9
 		}).find((c) => c.kind === 'custom');
 		expect(custom?.orbit?.rApoKm).toBeLessThanOrEqual(HILL.moon / 3);
+	});
+
+	// A named orbit is named for its shape, so the plane goes to the one orbit
+	// that is not: flying "stationary orbit" in two planes would be two entries
+	// under one name.
+	it('gives the plane to the custom orbit and to no other', () => {
+		for (const choice of orbitChoices(EARTH, EARTH_FACTS, 'target', { ...OPTS, incDeg: 63.4 })) {
+			if (!choice.orbit) continue;
+			expect(choice.orbit.incDeg, choice.kind).toBe(choice.kind === 'custom' ? 63.4 : undefined);
+		}
+	});
+
+	// An unnamed plane has to stay unnamed: naming it would price a turn into an
+	// orbit nobody asked to be in.
+	it('leaves the plane off when the trip names none', () => {
+		for (const choice of orbitChoices(EARTH, EARTH_FACTS, 'target', OPTS)) {
+			expect(choice.orbit?.incDeg, choice.kind).toBeUndefined();
+		}
+	});
+
+	it('takes the equator as a plane like any other', () => {
+		const custom = orbitChoices(EARTH, EARTH_FACTS, 'target', { ...OPTS, incDeg: 0 }).find(
+			(c) => c.kind === 'custom'
+		);
+		expect(custom?.orbit?.incDeg).toBe(0);
 	});
 });
 
