@@ -151,6 +151,44 @@ export function endOrbitNormal(
 	return dot(up, arrivalNormal) >= dot(down, arrivalNormal) ? up : down;
 }
 
+/**
+ * The picked orbit as a closed ring of body-centred ecliptic points, km — the
+ * picture the picker shows while the choice is still being made, not the plane
+ * the trip will fly. Nothing here knows an arrival, so the ring lies in the
+ * body's equator leaned by the named inclination (a free plane draws flat, and
+ * a body with no published pole falls back to the ecliptic), hinged on the
+ * equator's ecliptic node so the plane slider visibly tips it; an ellipse
+ * points its periapsis along that hinge. All drawing choices — the solved
+ * trajectory replaces this with {@link endOrbitNormal}'s flown plane.
+ */
+export function endOrbitPreviewRing(
+	orbit: EndOrbit,
+	pole: Vec3 | undefined,
+	samples = 128
+): Vec3[] {
+	const o = sane(orbit);
+	if (!(o.rPeriKm > 0)) return [];
+	const p = pole && norm(pole) > 0 ? normalize(pole) : ([0, 0, 1] as Vec3);
+	const node = cross([0, 0, 1], p);
+	const hinge = norm(node) > 1e-9 ? normalize(node) : perpendicularTo(p);
+	const incRad = ((o.incDeg ?? 0) * Math.PI) / 180;
+	const normal = add(scale(p, Math.cos(incRad)), scale(cross(hinge, p), Math.sin(incRad)));
+	const inPlane = cross(normal, hinge);
+
+	const a = (o.rPeriKm + o.rApoKm) / 2;
+	const e = (o.rApoKm - o.rPeriKm) / (o.rApoKm + o.rPeriKm);
+	const semiLatus = a * (1 - e * e);
+	const points: Vec3[] = [];
+	for (let i = 0; i < samples; i++) {
+		const nu = (2 * Math.PI * i) / samples;
+		const r = semiLatus / (1 + e * Math.cos(nu));
+		points.push(add(scale(hinge, r * Math.cos(nu)), scale(inPlane, r * Math.sin(nu))));
+	}
+	// Closed exactly, not to within sin(2π): the line geometry joins the ends.
+	points.push(points[0]);
+	return points;
+}
+
 /** Angle between two named planes, degrees — zero when either is free. */
 export function planeTurnDeg(fromIncDeg?: number, toIncDeg?: number): number {
 	if (fromIncDeg === undefined || toIncDeg === undefined) return 0;

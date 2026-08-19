@@ -53,6 +53,7 @@ export {
 	departureCost,
 	endArrivalOrbit,
 	endOrbitNormal,
+	endOrbitPreviewRing,
 	endDepartureOrbit,
 	injectionDv,
 	orbitPeriodHours,

@@ -98,6 +98,7 @@ import { PointCloudSystem, type CloudViewInfo } from './pointclouds/system';
 import { rebaseTrailLocals, refreshBufferTrail } from './objects/trail/refresh';
 import { setTrailResolution } from './objects/trail/material';
 import { TravelPathOverlay } from './objects/travel/path-overlay';
+import { OrbitPreviewOverlay, type OrbitPreview } from './objects/travel/orbit-preview';
 // Deep import for the same reason the overlay uses one: the kernel's index also
 // re-exports Lambert, the porkchop and the vehicle catalogue.
 import { eclipticToScene } from '$lib/math/travel/state';
@@ -215,6 +216,10 @@ export class SceneRenderer {
 	private skyDebugMarkers!: SkyDebugMarkers;
 	private haloDebug!: HaloDebugOverlay;
 	private travelPath!: TravelPathOverlay;
+	private orbitPreview!: OrbitPreviewOverlay;
+	/** Where the last preview framing flew, so the same transition is never
+	 *  restarted by another ask for it. */
+	private previewFlyBodyId: string | null = null;
 	/** A place on the drawn trajectory the camera is parked on, held in the
 	 *  transfer frame's own terms so it can be re-derived as that frame moves. */
 	private travelFocus: { centerId: string; local: Vec3 } | null = null;
@@ -350,6 +355,8 @@ export class SceneRenderer {
 		this.haloDebug = new HaloDebugOverlay(this.canvas);
 		this.travelPath = new TravelPathOverlay(this.scene, this.canvas);
 		this.travelPath.setLayer(SceneRenderer.MAP_LAYER);
+		this.orbitPreview = new OrbitPreviewOverlay(this.scene);
+		this.orbitPreview.setLayer(SceneRenderer.MAP_LAYER);
 		this.skyboxAdjuster.set(0, 0, 0);
 		void loadSkybox(this.scene, this.renderer, ctx);
 
@@ -541,6 +548,51 @@ export class SceneRenderer {
 	 *  line's colour and width are uniforms. */
 	setTravelHover(id: string | null): void {
 		this.travelPath.setHovered(id);
+	}
+
+	/** Draw the orbits the trip's ends are being picked in, round their live
+	 *  bodies — empty clears them. `frame` names the ring being interacted with,
+	 *  for the camera to put on screen; null leaves the camera alone. */
+	setOrbitPreview(
+		previews: readonly OrbitPreview[],
+		frame: { bodyId: string; radiusKm: number } | null = null
+	): void {
+		this.orbitPreview.set(previews);
+		this.refreshOrbitPreview();
+		if (frame) this.frameOrbitPreview(frame);
+	}
+
+	private frameOrbitPreview(frame: { bodyId: string; radiusKm: number }): void {
+		const body = this.ctx.getBody(frame.bodyId);
+		if (!body) return;
+		const rScene = kmToScene(frame.radiusKm);
+		if (!(rScene > 0)) return;
+		// A fly already heading to this body is this transition: restarting it on
+		// every hover over the list reads as stutter, so it is left to land. The
+		// camera's mid-flight position says nothing anyway.
+		const flying = performance.now() - this.focus.focusStartTime < this.focus.focusDurationMs;
+		if (flying && this.previewFlyBodyId === frame.bodyId) return;
+		const basis = this.focus.focusTruePos;
+		const dx = body.position[0] - basis[0] - this.camera.position.x;
+		const dy = body.position[1] - basis[1] - this.camera.position.y;
+		const dz = body.position[2] - basis[2] - this.camera.position.z;
+		const distance = Math.hypot(dx, dy, dz);
+		// The ring already reads at this vantage — neither inside it nor so far
+		// out it is a speck — so the reader's own framing survives.
+		if (distance > rScene * 1.35 && distance < rScene * 45) return;
+		this.previewFlyBodyId = frame.bodyId;
+		this.focusController.focusOnBody(frame.bodyId, rScene * 4);
+	}
+
+	/** Place the preview rings on their live bodies — every frame, like the
+	 *  path, since the bodies move under them. */
+	private refreshOrbitPreview(): void {
+		if (this.orbitPreview.isEmpty) return;
+		this.orbitPreview.reposition(
+			(id) => this.ctx.getBody(id)?.position ?? null,
+			this.focus.focusTruePos
+		);
+		this.orbitPreview.updateCameraOffset(this.camera.position);
 	}
 
 	/** Place the drawn path against this frame's positions — the centre body
@@ -855,6 +907,7 @@ export class SceneRenderer {
 		// screen space against every other label, and the cull inside that pass is
 		// where the space is handed out.
 		this.refreshTravelPath();
+		this.refreshOrbitPreview();
 
 		this.cullFrameCounter = updateBodyVisibility(
 			this.bodyObjects,

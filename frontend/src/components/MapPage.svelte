@@ -876,6 +876,7 @@
 						travelHazards = hazards;
 						drawTravel();
 					}}
+					onOrbitPreview={(previews, frame) => scene?.setOrbitPreview(previews, frame)}
 					onClose={() => closeTravel()}
 					onSheetResize={(h) => (drawerHeightDvh = h)}
 				/>

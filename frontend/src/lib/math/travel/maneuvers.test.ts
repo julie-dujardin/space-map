@@ -6,6 +6,7 @@ import {
 	ascentDv,
 	asymptoteTurnDeg,
 	endOrbitNormal,
+	endOrbitPreviewRing,
 	captureDv,
 	circularSpeed,
 	combinedBurn,
@@ -477,5 +478,41 @@ describe('a named plane', () => {
 		expect(penalty(150)).toBeGreaterThan(penalty(90));
 		const surface = (EARTH.spinRadPerSec ?? 0) * EARTH.radiusKm;
 		expect(penalty(180)).toBeCloseTo(2 * surface, 12);
+	});
+});
+
+describe('endOrbitPreviewRing', () => {
+	const POLE: Vec3 = [0, -Math.sin(Math.PI / 6), Math.cos(Math.PI / 6)];
+	const radius = (p: Vec3) => Math.sqrt(dot(p, p));
+
+	it('draws a circle at the orbit radius, closed and on the equator', () => {
+		const ring = endOrbitPreviewRing({ rPeriKm: 7000, rApoKm: 7000 }, POLE);
+		expect(ring.length).toBe(129);
+		expect(ring[0]).toEqual(ring[ring.length - 1]);
+		for (const p of ring) {
+			expect(radius(p)).toBeCloseTo(7000, 6);
+			// A free plane draws flat in the equator, so every point is on it.
+			expect(dot(p, POLE)).toBeCloseTo(0, 6);
+		}
+	});
+
+	it('spans periapsis to apoapsis on an ellipse', () => {
+		const ring = endOrbitPreviewRing({ rPeriKm: 7000, rApoKm: 64000 }, POLE);
+		const radii = ring.map(radius);
+		expect(Math.min(...radii)).toBeCloseTo(7000, 6);
+		expect(Math.max(...radii)).toBeCloseTo(64000, 6);
+	});
+
+	it('leans the ring off the equator by the named inclination', () => {
+		const ring = endOrbitPreviewRing({ rPeriKm: 7000, rApoKm: 7000, incDeg: 60 }, POLE);
+		const reach = Math.max(
+			...ring.map((p) => (Math.asin(dot(p, POLE) / radius(p)) * 180) / Math.PI)
+		);
+		expect(reach).toBeCloseTo(60, 3);
+	});
+
+	it('falls back to the ecliptic when the body ships no pole', () => {
+		const ring = endOrbitPreviewRing({ rPeriKm: 7000, rApoKm: 7000 }, undefined);
+		for (const p of ring) expect(p[2]).toBeCloseTo(0, 9);
 	});
 });

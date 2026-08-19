@@ -12,6 +12,7 @@
 	} from '$lib/types/objects';
 	import { kmToScene } from '$lib/math/units';
 	import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
+	import type { OrbitPreview } from '$lib/scene/objects/travel/orbit-preview';
 	import type { Hazard } from '$lib/travel/hazards';
 	import { page } from '$app/state';
 	import { sphericalToCartesian } from '$lib/math/spherical';
@@ -168,6 +169,16 @@
 	}
 
 	/** Pick one of the offered trajectories out of the rest, or none. */
+	/** Draw (or clear) the orbits the travel panel's ends are being picked in,
+	 *  round their live bodies. `frame` names the ring being interacted with,
+	 *  for the camera to put on screen. */
+	export function setOrbitPreview(
+		previews: readonly OrbitPreview[],
+		frame: { bodyId: string; radiusKm: number } | null
+	): void {
+		renderer?.setOrbitPreview(previews, frame);
+	}
+
 	export function setTravelHover(id: string | null): void {
 		renderer?.setTravelHover(id);
 	}

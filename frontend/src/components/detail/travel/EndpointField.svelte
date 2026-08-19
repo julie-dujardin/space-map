@@ -50,6 +50,11 @@
 		/** Plane this end is met in, degrees to its equator; null leaves it free. */
 		incDeg: number | null;
 		onIncChange: (deg: number | null) => void;
+		/** The orbit the reader is looking at while the list is up — the row under
+		 *  the pointer, else the one picked. Null when the list closes; an open
+		 *  list on a row naming no orbit (a landing, a flyby) reports the wrapper
+		 *  with a null orbit, which is a different silence. */
+		onPreview?: (state: { orbit: NonNullable<OrbitChoice['orbit']> | null } | null) => void;
 		/** Δv this choice costs at this end, km/s — null while nothing is priced. */
 		priceKms?: (choice: OrbitChoice) => number | null;
 		open: boolean;
@@ -82,6 +87,7 @@
 		onCustomApoAlt,
 		incDeg,
 		onIncChange,
+		onPreview,
 		priceKms,
 		open,
 		onOpenChange,
@@ -110,7 +116,32 @@
 	// Closing puts the box back at its first step: the next time it opens is a
 	// new question, not the tail of the last one.
 	$effect(() => {
-		if (!open) step = 'where';
+		if (!open) {
+			step = 'where';
+			previewKind = null;
+		}
+	});
+
+	/** The row the pointer (or focus) is on, previewed ahead of the pick. */
+	let previewKind = $state<EndpointMode | null>(null);
+
+	// The map draws the orbit under consideration while the list is up. Not on a
+	// phone, where the picker covers the map it would be drawn on.
+	$effect(() => {
+		if (!onPreview || fullscreen) return;
+		const isOpen = open;
+		const onOrbits = step === 'how' && !showPads;
+		if (!isOpen || !onOrbits) {
+			onPreview(null);
+			return;
+		}
+		const shown = (previewKind && choices.find((c) => c.kind === previewKind)) || chosen;
+		onPreview({ orbit: shown?.orbit ?? null });
+	});
+	// On unmount only — the per-run posts above must not blink the ring off
+	// between two values.
+	$effect(() => {
+		return () => onPreview?.(null);
 	});
 
 	/** Whether there's a second step, and which: a pad end has no orbits, others have no pads. */
@@ -349,6 +380,14 @@
 							<button
 								type="button"
 								onclick={() => choose(choice)}
+								onpointerenter={() => (previewKind = choice.kind)}
+								onpointerleave={() => {
+									if (previewKind === choice.kind) previewKind = null;
+								}}
+								onfocus={() => (previewKind = choice.kind)}
+								onblur={() => {
+									if (previewKind === choice.kind) previewKind = null;
+								}}
 								aria-pressed={active}
 								class="hover:bg-muted flex flex-col gap-0.5 rounded-md px-2 py-1.5 text-start {active
 									? 'bg-muted'

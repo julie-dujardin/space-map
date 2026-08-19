@@ -27,6 +27,7 @@
 		checkFeasibility,
 		departureCost,
 		hohmannArcDays,
+		endOrbitPreviewRing,
 		nextTransferWindows,
 		orbitChangeEnds,
 		SAME_RADIUS_KM,
@@ -34,12 +35,14 @@
 		transferScale,
 		travelConstants,
 		type AeroAssist,
+		type EndOrbit,
 		type EphemerisSamples,
 		type Route,
 		type TrajectoryFrame,
 		type TrajectoryPath,
 		type TravelBody
 	} from '$lib/math/travel';
+	import type { OrbitPreview } from '$lib/scene/objects/travel/orbit-preview';
 	import {
 		aeroPressurePa,
 		lookupIn,
@@ -167,6 +170,15 @@
 		 *  its arc with. Trajectory only — the craft's own reading of them stays in
 		 *  the detail. */
 		onHazardsChange: (hazards: readonly Hazard[]) => void;
+		/** The orbits the two ends are being met in, as rings for the map to draw
+		 *  round the live bodies while the trip is still being put together —
+		 *  hovered row standing in for its end while an endpoint's list is up.
+		 *  `frame` names the ring being interacted with, for the camera to put on
+		 *  screen. Empty once a trajectory is chosen: the path draws its own. */
+		onOrbitPreview?: (
+			previews: readonly OrbitPreview[],
+			frame: { bodyId: string; radiusKm: number } | null
+		) => void;
 		/** What a body passed on the way is called. The two ends name themselves;
 		 *  this is for the ones in between — the body a swing-by goes past. */
 		resolveBodyName: (bodyId: string) => string;
@@ -210,6 +222,7 @@
 		onHoverChange,
 		onTimelineChange,
 		onHazardsChange,
+		onOrbitPreview,
 		resolveBodyName,
 		refineBody,
 		sampleEnd
@@ -542,6 +555,50 @@
 	 * none before the first solve, since "how much is a stationary orbit" has no
 	 * answer without an arc.
 	 */
+	/** What each endpoint's list is showing, reported by the field: null while
+	 *  the list is closed, a null orbit for an open list on a row naming none. */
+	let originList = $state.raw<{ orbit: EndOrbit | null } | null>(null);
+	let targetList = $state.raw<{ orbit: EndOrbit | null } | null>(null);
+
+	/** An end's orbit as a ring round its live body: the row its open list is
+	 *  showing, else the picked one. The ring is the picked shape in the picked
+	 *  plane — the flown plane waits for a solve, and the settled trajectory
+	 *  draws that itself. */
+	function endRing(role: 'origin' | 'target'): OrbitPreview | null {
+		const list = role === 'origin' ? originList : targetList;
+		const body = role === 'origin' ? origin : target;
+		const travel = role === 'origin' ? originTravel : targetTravel;
+		const orbit = list ? list.orbit : role === 'origin' ? panel.originOrbit : panel.targetOrbit;
+		if (!orbit || !body || !travel) return null;
+		return {
+			bodyId: body.id,
+			pointsKm: endOrbitPreviewRing(orbit, travel.poleEcliptic),
+			radiusKm: orbit.rApoKm
+		};
+	}
+
+	// Both ends' rings ride the map through the whole choosing state, not just
+	// while a list is up — which orbit a trajectory ends in is part of reading
+	// it. The camera only moves for the end being interacted with.
+	$effect(() => {
+		if (!onOrbitPreview) return;
+		if (chosen) {
+			onOrbitPreview([], null);
+			return;
+		}
+		const rings: OrbitPreview[] = [];
+		let frame: { bodyId: string; radiusKm: number } | null = null;
+		for (const role of ['origin', 'target'] as const) {
+			const ring = endRing(role);
+			if (!ring) continue;
+			rings.push(ring);
+			const list = role === 'origin' ? originList : targetList;
+			if (list && openField === role) frame = { bodyId: ring.bodyId, radiusKm: ring.radiusKm };
+		}
+		onOrbitPreview(rings, frame);
+	});
+	$effect(() => () => onOrbitPreview?.([], null));
+
 	function priceEnd(role: 'origin' | 'target', choice: OrbitChoice): number | null {
 		// Before a trajectory is chosen the balanced one stands in for the trip:
 		// which orbit is cheap depends on how fast the arc is going when it gets
@@ -1196,6 +1253,7 @@
 						onCustomApoAlt={(km: number) => (panel.originApoAltKm = km)}
 						incDeg={panel.originIncDeg}
 						onIncChange={(deg: number | null) => (panel.originIncDeg = deg)}
+						onPreview={(state) => (originList = state)}
 						priceKms={(choice: OrbitChoice) => priceEnd('origin', choice)}
 						open={openField === 'origin'}
 						onOpenChange={(next: boolean) => setOpenField('origin', next)}
@@ -1237,6 +1295,7 @@
 						onCustomApoAlt={(km: number) => (panel.targetApoAltKm = km)}
 						incDeg={panel.targetIncDeg}
 						onIncChange={(deg: number | null) => (panel.targetIncDeg = deg)}
+						onPreview={(state) => (targetList = state)}
 						priceKms={(choice: OrbitChoice) => priceEnd('target', choice)}
 						open={openField === 'target'}
 						onOpenChange={(next: boolean) => setOpenField('target', next)}

@@ -22,6 +22,7 @@
 	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
 	import type { TimelineEntry } from '$lib/travel/timeline';
 	import type { Hazard } from '$lib/travel/hazards';
+	import type { OrbitPreview } from '$lib/scene/objects/travel/orbit-preview';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import type { EphemerisSamples, TrajectoryFrame } from '$lib/math/travel';
 	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
@@ -76,6 +77,13 @@
 		onTimelineChange: (entries: TimelineEntry[] | null) => void;
 		/** What that trajectory puts the craft through, for the map to band it with. */
 		onHazardsChange: (hazards: readonly Hazard[]) => void;
+		/** The orbits the trip's ends are being met in, for the map to draw round
+		 *  the live bodies while the trip is still being put together. `frame`
+		 *  names the ring being interacted with, for the camera to frame. */
+		onOrbitPreview?: (
+			previews: readonly OrbitPreview[],
+			frame: { bodyId: string; radiusKm: number } | null
+		) => void;
 	}
 	let {
 		fromId,
@@ -95,7 +103,8 @@
 		onOptionsChange,
 		onHoverChange,
 		onTimelineChange,
-		onHazardsChange
+		onHazardsChange,
+		onOrbitPreview
 	}: Props = $props();
 
 	// The planner reasons from a captured "now" rather than the live clock, which
@@ -666,6 +675,7 @@
 				{onHoverChange}
 				{onTimelineChange}
 				{onHazardsChange}
+				{onOrbitPreview}
 				resolveBodyName={(id) => names[id] ?? ctx?.getBody(id)?.data.name ?? id}
 				onTripChange={(next) => appState?.setTrip(next)}
 				onOriginChange={(pick: TravelEndpointPick) => moveNav(pickedEnd(pick), 'from')}
