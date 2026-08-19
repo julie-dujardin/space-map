@@ -108,10 +108,14 @@ export interface TripPick {
 export interface TripState {
 	originMode: EndpointMode;
 	targetMode: EndpointMode;
-	/** Altitude of the `custom` orbit at each end, km. Carried whatever the mode
-	 *  is, so switching away and back does not lose the altitude that was set. */
+	/** Periapsis altitude of the `custom` orbit at each end, km. Carried whatever
+	 *  the mode is, so switching away and back does not lose what was set. */
 	originAltKm: number;
 	targetAltKm: number;
+	/** Apoapsis altitude of the same orbit, km. Equal to the periapsis is the
+	 *  circular orbit the custom end was before it had two ends. */
+	originApoAltKm: number;
+	targetApoAltKm: number;
 	/** Plane the `custom` orbit is flown in at each end, degrees to that body's
 	 *  equator, above 90 for a retrograde one. Null leaves the plane free, which
 	 *  prices the trip as one that never named a plane. Carried whatever the mode
@@ -146,6 +150,8 @@ export const DEFAULT_TRIP: TripState = {
 	targetMode: 'low-orbit',
 	originAltKm: DEFAULT_CUSTOM_ALT_KM,
 	targetAltKm: DEFAULT_CUSTOM_ALT_KM,
+	originApoAltKm: DEFAULT_CUSTOM_ALT_KM,
+	targetApoAltKm: DEFAULT_CUSTOM_ALT_KM,
 	originIncDeg: null,
 	targetIncDeg: null,
 	// Somewhere with air is somewhere you use the air: arriving at Mars on the
@@ -177,6 +183,16 @@ export function serializeTripSuffix(trip: TripState): string {
 	// Only carried by the mode that means anything by it.
 	if (trip.originMode === 'custom') parts.push(`falt=${trim(trip.originAltKm, 1)}`);
 	if (trip.targetMode === 'custom') parts.push(`talt=${trim(trip.targetAltKm, 1)}`);
+	// Only the ellipse writes its far end, and only where it is above the near one:
+	// a circular orbit is the one the link already says, which is what every link
+	// written before the orbit had two ends says, and a far end under the near one
+	// is not an orbit the link may name.
+	if (trip.originMode === 'custom' && trip.originApoAltKm > trip.originAltKm) {
+		parts.push(`fapo=${trim(trip.originApoAltKm, 1)}`);
+	}
+	if (trip.targetMode === 'custom' && trip.targetApoAltKm > trip.targetAltKm) {
+		parts.push(`tapo=${trim(trip.targetApoAltKm, 1)}`);
+	}
 	if (trip.originMode === 'custom' && trip.originIncDeg !== null) {
 		parts.push(`finc=${trim(trip.originIncDeg, 1)}`);
 	}
@@ -229,11 +245,20 @@ function parseWhen(raw: string | null): Pick<TripState, 'timeMode' | 'pickedJd'>
 	return { timeMode: mode, pickedJd: dateToJD(date) };
 }
 
-/** A custom orbit's altitude. Anything unusable falls back to the default rather
- *  than to the surface, which is not an orbit. */
-function parseAltitude(raw: string | null): number {
+/** A custom orbit's altitude. Anything unusable falls back to `fallback`, which
+ *  is the default at the near end and the near end itself at the far one — a
+ *  link naming one altitude names a circular orbit. */
+function parseAltitude(raw: string | null, fallback = DEFAULT_CUSTOM_ALT_KM): number {
 	const value = Number(raw);
-	return raw !== null && Number.isFinite(value) && value > 0 ? value : DEFAULT_CUSTOM_ALT_KM;
+	return raw !== null && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+/** The two ends of a custom orbit, near one first. Sorted rather than taken as
+ *  written: the link names an orbit, not the order its ends were typed in. */
+function parseShape(params: URLSearchParams, alt: string, apo: string): [number, number] {
+	const near = parseAltitude(params.get(alt));
+	const far = parseAltitude(params.get(apo), near);
+	return [Math.min(near, far), Math.max(near, far)];
 }
 
 /** A plane, degrees to the equator. Absent or unusable leaves it free rather
@@ -278,11 +303,15 @@ function parseFraction(raw: string | null): number {
 export function parseTrip(params: URLSearchParams): TripState {
 	const profile = params.get('route') as RouteOption | null;
 	const aero = params.get('aero') as AeroAssist | null;
+	const [originAltKm, originApoAltKm] = parseShape(params, 'falt', 'fapo');
+	const [targetAltKm, targetApoAltKm] = parseShape(params, 'talt', 'tapo');
 	return {
 		originMode: parseMode(params.get('fm'), ORIGIN_MODES, DEFAULT_TRIP.originMode),
 		targetMode: parseMode(params.get('tm'), TARGET_MODES, DEFAULT_TRIP.targetMode),
-		originAltKm: parseAltitude(params.get('falt')),
-		targetAltKm: parseAltitude(params.get('talt')),
+		originAltKm,
+		targetAltKm,
+		originApoAltKm,
+		targetApoAltKm,
 		originIncDeg: parseInclination(params.get('finc')),
 		targetIncDeg: parseInclination(params.get('tinc')),
 		aero: aero !== null && AERO_ASSISTS.includes(aero) ? aero : DEFAULT_TRIP.aero,

@@ -586,6 +586,19 @@ function endOrbitPaths(
 
 	const orbits: EndOrbitPath[] = [];
 	const sites = options.surfaceSites ?? {};
+	// A trip that stays at one body never leaves an orbit, it joins another: the
+	// arc runs between one apsis of each, the low one on the side it sets out
+	// from and the high one on the side it climbs to. Nothing else places those
+	// rings, there being no passage at either end to read them off.
+	const climbing =
+		options.orbitChange &&
+		norm(sub(last.points[last.points.length - 1], centers.to)) >
+			norm(sub(first.points[0], centers.from));
+	const joins = options.orbitChange
+		? climbing
+			? ({ from: 'periapsis', to: 'apoapsis' } as const)
+			: ({ from: 'apoapsis', to: 'periapsis' } as const)
+		: undefined;
 	// A launch/landing is priced through the parking orbit, so a surface end
 	// takes that orbit and carries the line on to the ground.
 	const fromGround = route.departureMode === 'surface';
@@ -603,7 +616,8 @@ function endOrbitPaths(
 				primaryMu,
 				frame,
 				centerId: path.centerId,
-				surface: fromGround ? { siteAt: sites.departure } : undefined
+				surface: fromGround ? { siteAt: sites.departure } : undefined,
+				join: joins?.from
 			})
 		);
 	}
@@ -623,7 +637,8 @@ function endOrbitPaths(
 				frame,
 				centerId: path.centerId,
 				surface: toGround ? { siteAt: sites.arrival } : undefined,
-				aero: arrivalAero(target, route)
+				aero: arrivalAero(target, route),
+				join: joins?.to
 			})
 		);
 	}
@@ -913,6 +928,10 @@ function endOrbitPath(end: {
 	surface?: { siteAt?: (jd: number) => Vec3 | null };
 	/** How the atmosphere takes part in an aero-assisted arrival. */
 	aero?: AeroArrival;
+	/** Which apsis of this end's orbit the arc joins it at. Set only for a trip
+	 *  that stays at one body, where there is no passage to read the ring off and
+	 *  the shared apsis is the whole of what places it. */
+	join?: 'periapsis' | 'apoapsis';
 }): EndOrbitPath {
 	const { at, body, center, orbit, arc, periJd, approach, primaryMu, frame, centerId, surface } =
 		end;
@@ -934,13 +953,21 @@ function endOrbitPath(end: {
 	const crossed = cross(a, b);
 	const arcNormal = norm(crossed) > 0 ? normalize(crossed) : ([0, 0, 1] as Vec3);
 
+	// Where the arc meets this end's orbit, as a direction from the body. The one
+	// thing the two shapes share, so it is what an end with no passage is placed
+	// by — and a plane holding it leans away from the arc about that very line,
+	// which is what a plane change at a node is.
+	const joinDir = end.join
+		? normalize(sub(outward ? arc.points[0] : arc.points[count - 1], center))
+		: undefined;
+
 	// The plane the end orbit is really flown in, where it names one — a
 	// stationary orbit hangs over the equator whatever direction the trip came
 	// from. Undefined leaves the passage free to pick its own plane and the ring
 	// to keep it, which is every end that names none.
 	const orbitPlane =
 		orbit.incDeg !== undefined && body.poleEcliptic
-			? endOrbitNormal(orbit, body.poleEcliptic, approach?.vInf, arcNormal)
+			? endOrbitNormal(orbit, body.poleEcliptic, approach?.vInf ?? joinDir, arcNormal)
 			: undefined;
 
 	// An aerocaptured arrival never burns at the orbit's periapsis: the pass
@@ -1119,18 +1146,33 @@ function endOrbitPath(end: {
 		body.mu > 0
 			? (Math.PI * Math.sqrt(((orbit.rPeriKm + orbit.rApoKm) / 2) ** 3 / body.mu)) / SEC_PER_DAY
 			: 0;
+	// An end joined at an apsis rather than approached from outside: the ring
+	// hangs off that apsis, leaning into the plane the orbit named. Joined at the
+	// high point, its own clock starts at the periapsis half a revolution later.
+	const joined =
+		end.join && joinDir
+			? {
+					normal: orbitPlane ?? normal,
+					periapsis: end.join === 'periapsis' ? joinDir : scale(joinDir, -1),
+					periJd: end.join === 'periapsis' ? endPeriJd : endPeriJd + halfOrbitDays
+				}
+			: null;
+
 	// A surface end draws no ring of its own: the stretch of orbit the trip
 	// actually rides is part of the line above.
-	const ringNormal = turned?.normal ?? normal;
+	const ringNormal = turned?.normal ?? joined?.normal ?? normal;
 	const ring = surface
 		? null
 		: orbitRing({
 				origin,
 				orbit,
 				normal: ringNormal,
-				periapsis: turned?.periapsis ?? periapsis,
+				periapsis: turned?.periapsis ?? joined?.periapsis ?? periapsis,
 				mu: body.mu,
-				periJd: turned?.ringPeriJd ?? (aeroLegs ? aeroLegs.endJd + halfOrbitDays : endPeriJd),
+				periJd:
+					turned?.ringPeriJd ??
+					joined?.periJd ??
+					(aeroLegs ? aeroLegs.endJd + halfOrbitDays : endPeriJd),
 				// A closed ring is only closed in the body's own frame; elsewhere it
 				// needs the body's motion. An end with no passage has no way to ask for
 				// it — and an aero arrival's is frozen with the rest of its campaign —

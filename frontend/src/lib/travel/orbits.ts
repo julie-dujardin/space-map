@@ -7,10 +7,11 @@
  * the space it controls) and for every tidally locked moon at once —
  * synchronous works out at 3^(1/3) = 1.44 Hill radii for all of them.
  *
- * Only shapes the kernel prices differently are offered, and a plane is left to
- * the custom orbit: the named orbits are named for a shape, and one of them
- * flown in two planes would be two entries under one name. The stationary orbit
- * is the exception, since it is named for a shape it can only hold in one plane.
+ * Only shapes the kernel prices differently are offered, and the shape itself is
+ * left to the custom orbit: the named orbits are named for a shape, so one of
+ * them flown in another plane, or with its two ends set apart, would be two
+ * entries under one name. The stationary orbit is the exception, since it is
+ * named for a shape it can only hold in one plane.
  */
 
 import type { BodyData } from '$lib/types/objects';
@@ -121,7 +122,11 @@ export type OrbitGroup = 'land' | 'orbit' | 'pass';
 /** What the trip asks of an end, beyond the body itself. */
 export interface OrbitOptions {
 	hasSurface: boolean;
+	/** Periapsis altitude of the custom orbit, km. */
 	customAltKm: number;
+	/** Apoapsis altitude of it, km. Absent, or under the periapsis, is circular
+	 *  — the only shape the custom orbit had before it had two ends. */
+	customApoAltKm?: number;
 	/** Plane the custom orbit is flown in, degrees to the body's equator. Null
 	 *  leaves it free, which is how the named orbits are offered. */
 	incDeg?: number | null;
@@ -225,8 +230,12 @@ export function orbitChoices(
 		if (rHeo > rLow) add('heo', 'orbit', { rPeriKm: rLow, rApoKm: rHeo });
 	}
 
-	const rCustom = Math.min(R + Math.max(options.customAltKm, 1), rMax);
-	if (rCustom > R) add('custom', 'orbit', { rPeriKm: rCustom, rApoKm: rCustom });
+	// The one orbit the trip shapes itself: both ends inside what the body holds,
+	// and the far one never under the near one, which would be the same ellipse
+	// named backwards.
+	const rPeriCustom = Math.min(R + Math.max(options.customAltKm, 1), rMax);
+	const rApoCustom = Math.min(Math.max(R + (options.customApoAltKm ?? 0), rPeriCustom), rMax);
+	if (rPeriCustom > R) add('custom', 'orbit', { rPeriKm: rPeriCustom, rApoKm: rApoCustom });
 
 	if (target) add('flyby', 'pass');
 	return out;

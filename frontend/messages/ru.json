@@ -1432,6 +1432,8 @@
 	"travel_orbit_circular": "{altitude}, круговая",
 	"travel_orbit_ellipse": "{periapsis} × {apoapsis}",
 	"travel_orbit_altitude": "Высота орбиты",
+	"travel_orbit_periapsis": "Высота перицентра",
+	"travel_orbit_apoapsis": "Высота апоцентра",
 	"travel_orbit_plane_free": "Любая плоскость",
 	"travel_orbit_plane_at": "{degrees} к экватору",
 	"travel_orbit_plane_retrograde": "{degrees} ретроградно",

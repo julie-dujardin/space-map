@@ -378,6 +378,39 @@ describe('end orbits', () => {
 		expect(craftPositionAt(path, settled + revolution * 1.01)).toBeNull();
 	});
 
+	// A named plane and two ends set apart at once — the Molniya case, and the only
+	// orbit a trip shapes for itself. Nothing about the approach knows either
+	// figure, so both have to come off the orbit that was asked for.
+	it('draws an orbit that names a plane and an ellipse as both', () => {
+		const rPeriKm = MARS.radiusKm + 500;
+		const rApoKm = MARS.radiusKm + 20000;
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			departureMode: 'orbit',
+			arrivalMode: 'low-orbit',
+			targetOrbit: { rPeriKm, rApoKm, incDeg: 63.4 }
+		})!;
+		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN, frame: 'planetary' })!;
+		const arrival = path.endOrbits.find((end) => end.at === 'arrival')!;
+		const radii = arrival.points.map(norm);
+		expect(Math.min(...radii)).toBeCloseTo(rPeriKm, 3);
+		expect(Math.max(...radii)).toBeCloseTo(rApoKm, 3);
+		// One plane throughout, leaning by the angle the trip named — measured off
+		// three points of the ring rather than off the pole, which would only be
+		// asking the same construction the drawing used.
+		const normal = normalize(
+			cross(sub(arrival.points[24], arrival.points[0]), sub(arrival.points[48], arrival.points[0]))
+		);
+		for (const point of arrival.points) expect(Math.abs(dot(point, normal))).toBeLessThan(1e-6);
+		expect((Math.acos(Math.abs(dot(normal, MARS.poleEcliptic!))) * 180) / Math.PI).toBeCloseTo(
+			63.4,
+			3
+		);
+		// And the coast still lands on the ring, at the node the two planes share.
+		const joint = arrival.approach[arrival.approach.length - 1];
+		expect(Math.abs(dot(joint, normal))).toBeLessThan(1e-6);
+		expect(norm(joint)).toBeGreaterThan(rPeriKm);
+	});
+
 	// The same turn run backwards: the craft is in the named plane first and turns
 	// out of it, so the coast comes before the passage rather than after it.
 	it('sets out from the node when the departure orbit names a plane', () => {

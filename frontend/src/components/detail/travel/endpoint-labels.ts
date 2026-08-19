@@ -19,16 +19,20 @@ const LABELS: Record<EndpointMode, () => string> = {
 	flyby: () => m.travel_mode_flyby()
 };
 
-/** Give altKm if you know it. A custom orbit shows its height. */
+/** Give the altitudes if you know them. A custom orbit shows its shape: one
+ *  height where it is circular, both ends where it is not. */
 export function endpointModeLabel(
 	mode: EndpointMode,
 	role: 'origin' | 'target',
-	altKm: number | null = null
+	altKm: number | null = null,
+	apoAltKm: number | null = null
 ): string {
 	if (mode === 'surface')
 		return role === 'origin' ? m.travel_mode_surface() : m.travel_mode_landing();
-	if (mode === 'custom' && altKm !== null) return m.travel_orbit_at({ altitude: formatKm(altKm) });
-	return LABELS[mode]();
+	if (mode !== 'custom' || altKm === null) return LABELS[mode]();
+	if (apoAltKm === null || apoAltKm === altKm)
+		return m.travel_orbit_at({ altitude: formatKm(altKm) });
+	return m.travel_orbit_ellipse({ periapsis: formatKm(altKm), apoapsis: formatKm(apoAltKm) });
 }
 
 /** The plane beside its slider: the angle alone, since the words next to it

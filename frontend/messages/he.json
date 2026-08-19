@@ -1387,6 +1387,8 @@
 	"travel_orbit_circular": "מעגלי בגובה {altitude}",
 	"travel_orbit_ellipse": "{periapsis} × {apoapsis}",
 	"travel_orbit_altitude": "גובה המסלול",
+	"travel_orbit_periapsis": "גובה הפריאפסיס",
+	"travel_orbit_apoapsis": "גובה האפואפסיס",
 	"travel_orbit_plane_free": "כל מישור",
 	"travel_orbit_plane_at": "{degrees} מקו המשווה",
 	"travel_orbit_plane_retrograde": "{degrees} רטרוגרדי",

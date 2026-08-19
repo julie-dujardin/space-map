@@ -1385,6 +1385,8 @@
 	"travel_orbit_circular": "{altitude} circolare",
 	"travel_orbit_ellipse": "{periapsis} × {apoapsis}",
 	"travel_orbit_altitude": "Quota dell'orbita",
+	"travel_orbit_periapsis": "Quota del periapside",
+	"travel_orbit_apoapsis": "Quota dell'apoapside",
 	"travel_orbit_plane_free": "Qualsiasi piano",
 	"travel_orbit_plane_at": "{degrees} rispetto all'equatore",
 	"travel_orbit_plane_retrograde": "{degrees} retrogrado",

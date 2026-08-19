@@ -7,23 +7,24 @@
  * `classifyEarthOrbit` in `orbit-zone-target.test.ts` rather than asserted here.
  *
  * A zone the named orbits miss goes to the custom orbit, opened inside the zone
- * and movable from there: an altitude inside it, and for an inclination band the
- * plane too, since the custom orbit is the one that has a plane at all.
+ * and movable from there: a shape inside it, and for an inclination band the
+ * plane too, since the custom orbit is the one that is shaped at all.
  *
- * That leaves out only the zones no offered orbit reaches: the eccentric shapes,
- * which need a periapsis and an apoapsis set apart and so cannot be the custom
- * orbit either (HEO, TUN, MOL), the one beyond what Earth holds (VHEO), and the
- * Lagrange points, which are not orbits about Earth.
+ * That leaves out only the zones no offered orbit reaches: the one beyond what
+ * Earth holds — a third of the Hill radius stops 8000 km short of the 500000 km
+ * VHEO begins at — and the Lagrange points, which are not orbits about Earth.
  */
 
 import { CLASS_SLUG_PREFIX, GEO_ALT_KM } from '$lib/charts/orbit-zones';
 import type { EndpointMode } from './trip';
 
-/** How a zone is arrived at: the mode, and for `custom` the altitude that puts
- *  the circular orbit inside the zone and the plane that puts it in the band. */
+/** How a zone is arrived at: the mode, and for `custom` the two altitudes that
+ *  put the orbit inside the zone and the plane that puts it in the band. An
+ *  apoapsis left off is the periapsis, which is a circular orbit. */
 export interface OrbitZoneTarget {
 	mode: EndpointMode;
 	altKm?: number;
+	apoAltKm?: number;
 	incDeg?: number;
 }
 
@@ -45,6 +46,13 @@ export const ZONE_TARGETS: Record<string, OrbitZoneTarget> = {
 	// Every inclined synchronous orbit is one, from QZSS at 43° to BeiDou at 55°.
 	IGSO: { mode: 'custom', altKm: GEO_ALT_KM, incDeg: 45 },
 	GTO: { mode: 'transfer' },
+	// The eccentric shapes, each opened on the orbit it is named after. Molniya
+	// and Tundra are the same 63.4° plane that holds an apogee still over one
+	// hemisphere, at a half-day and a whole one; the plain HEO names no plane,
+	// since nothing but its shape makes it one.
+	HEO: { mode: 'custom', altKm: 1000, apoAltKm: 47000 },
+	MOL: { mode: 'custom', altKm: 600, apoAltKm: 39750, incDeg: 63.4 },
+	TUN: { mode: 'custom', altKm: 27400, apoAltKm: 44200, incDeg: 63.4 },
 	// Clear of the stationary belt by more than the 200 km that defines the
 	// graveyard, close enough to still be it rather than a high orbit.
 	GRA: { mode: 'custom', altKm: GEO_ALT_KM + 300 },

@@ -1387,6 +1387,8 @@
 	"travel_orbit_circular": "{altitude}圆轨道",
 	"travel_orbit_ellipse": "{periapsis} × {apoapsis}",
 	"travel_orbit_altitude": "轨道高度",
+	"travel_orbit_periapsis": "近拱点高度",
+	"travel_orbit_apoapsis": "远拱点高度",
 	"travel_orbit_plane_free": "任意轨道面",
 	"travel_orbit_plane_at": "与赤道成{degrees}",
 	"travel_orbit_plane_retrograde": "逆行{degrees}",

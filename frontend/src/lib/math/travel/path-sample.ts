@@ -4,7 +4,7 @@
  * builder's Lambert/porkchop/vehicle-catalogue imports are needed.
  */
 
-import type { TrajectoryPath } from './path';
+import type { EndOrbitPath, TrajectoryPath } from './path';
 import { add, scale, sub, type Vec3 } from './vec3';
 
 /**
@@ -46,12 +46,16 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 	const last = path.arcs[path.arcs.length - 1];
 	if (!first || !last) return null;
 
-	const passage = (at: 'departure' | 'arrival') => {
-		const end = path.endOrbits.find((orbit) => orbit.at === at);
-		return end && end.approach.length > 1 ? end : null;
-	};
-	const departure = passage('departure');
-	const arrival = passage('arrival');
+	const endAt = (at: 'departure' | 'arrival') =>
+		path.endOrbits.find((orbit) => orbit.at === at) ?? null;
+	const departure = endAt('departure');
+	const arrival = endAt('arrival');
+	// The stretch of line an end draws between its orbit and the arc. A trip that
+	// stays at one body crosses no sphere of influence and lands on nothing, so
+	// its ends are rings alone and the arc hands straight over to them.
+	const lineOf = (end: EndOrbitPath | null) => (end && end.approach.length > 1 ? end : null);
+	const departureLine = lineOf(departure);
+	const arrivalLine = lineOf(arrival);
 	/** The end's orbit as a dated revolution, where the drawing has one. */
 	const ringOf = (end: typeof departure) =>
 		end && end.pointJds && end.points.length > 1 && end.pointJds.length === end.points.length
@@ -67,7 +71,7 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 	const leaves = Math.min(first.startJd, departure?.surfaceJd ?? Infinity);
 	const settles = Math.max(
 		last.endJd,
-		arrival ? (arrival.surfaceJd ?? arrival.jds[arrival.jds.length - 1]) : -Infinity
+		arrival?.surfaceJd ?? arrivalLine?.jds[arrivalLine.jds.length - 1] ?? -Infinity
 	);
 	// The dated end orbits stretch that by a revolution each way: the craft is in
 	// the starting orbit before it leaves and in the final one after it settles.
@@ -78,32 +82,36 @@ export function craftPositionAt(path: TrajectoryPath, jd: number): CraftAt | nul
 	const over = finalRing ? settles + period(finalRing) : settles;
 	if (jd < begin || jd > over) return null;
 
-	// Still going round the starting orbit, before the line leaves it.
-	if (departure && startRing && jd < departure.jds[0]) {
+	// Still going round the starting orbit, before the trip leaves it — at the
+	// line's first date where there is one, and at the arc's own otherwise.
+	if (departure && startRing && jd < (departureLine?.jds[0] ?? first.startJd)) {
 		return { r: onRing(startRing, jd), centerId: departure.anchorId };
 	}
 	// The escape, before the crossing it hands over to.
-	if (departure && jd <= departure.jds[departure.jds.length - 1]) {
+	if (departureLine && jd <= departureLine.jds[departureLine.jds.length - 1]) {
 		return {
-			r: between(departure.approach, departure.jds, jd),
-			centerId: departure.anchorId
+			r: between(departureLine.approach, departureLine.jds, jd),
+			centerId: departureLine.anchorId
 		};
 	}
 	// The capture, after it. Periapsis lands before the priced arrival (the
 	// insertion burn happens there), and a landing's line runs on to the ground.
-	if (arrival && jd >= arrival.jds[0]) {
+	if (arrival && jd >= (arrivalLine?.jds[0] ?? last.endJd)) {
 		// The line's own last date, not `periJd`: an aero arrival keeps flying
 		// past periapsis, out to its trim burn or through its campaign.
-		const until = arrival.surfaceJd ?? arrival.jds[arrival.jds.length - 1];
+		const until = arrival.surfaceJd ?? arrivalLine?.jds[arrivalLine.jds.length - 1] ?? last.endJd;
 		// Past the line, the craft is in the orbit the trip ends in, at whatever
-		// phase of it the date falls on.
-		if (finalRing && jd > until) {
+		// phase of it the date falls on. An end with no line is in it from the
+		// moment the arc reaches it, there being nothing in between.
+		if (finalRing && (!arrivalLine || jd > until)) {
 			return { r: onRing(finalRing, jd), centerId: arrival.anchorId };
 		}
-		return {
-			r: between(arrival.approach, arrival.jds, Math.min(jd, until)),
-			centerId: arrival.anchorId
-		};
+		if (arrivalLine) {
+			return {
+				r: between(arrivalLine.approach, arrivalLine.jds, Math.min(jd, until)),
+				centerId: arrival.anchorId
+			};
+		}
 	}
 
 	// Between two arcs — at a swing-by, say — the later one owns the instant.

@@ -1383,6 +1383,8 @@
 	"travel_orbit_circular": "{altitude} kreisförmig",
 	"travel_orbit_ellipse": "{periapsis} × {apoapsis}",
 	"travel_orbit_altitude": "Bahnhöhe",
+	"travel_orbit_periapsis": "Periapsishöhe",
+	"travel_orbit_apoapsis": "Apoapsishöhe",
 	"travel_orbit_plane_free": "Beliebige Bahnebene",
 	"travel_orbit_plane_at": "{degrees} zum Äquator",
 	"travel_orbit_plane_retrograde": "{degrees} rückläufig",

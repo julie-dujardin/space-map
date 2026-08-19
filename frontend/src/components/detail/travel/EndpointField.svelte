@@ -40,10 +40,13 @@
 		onModeChange: (mode: EndpointMode) => void;
 		/** Every way this end can be met. Empty until the body is measured. */
 		choices: OrbitChoice[];
-		/** Altitude of the custom orbit, km, and how high it may go. */
+		/** The two ends of the custom orbit, km, and how high either may go. Equal
+		 *  altitudes are the circular orbit the control opens on. */
 		customAltKm: number;
+		customApoAltKm: number;
 		maxAltKm: number;
 		onCustomAlt: (km: number) => void;
+		onCustomApoAlt: (km: number) => void;
 		/** Plane this end is met in, degrees to its equator; null leaves it free. */
 		incDeg: number | null;
 		onIncChange: (deg: number | null) => void;
@@ -73,8 +76,10 @@
 		onModeChange,
 		choices,
 		customAltKm,
+		customApoAltKm,
 		maxAltKm,
 		onCustomAlt,
+		onCustomApoAlt,
 		incDeg,
 		onIncChange,
 		priceKms,
@@ -112,15 +117,19 @@
 	let showPads = $derived(pads.length > 1 && onPadPick !== undefined);
 	let showStepTwo = $derived(showPads || (bodyName !== null && !isFeature && choices.length > 0));
 	let chosen = $derived(choices.find((c) => c.kind === mode));
-	/** The priced altitude, in km. A too high request decreases to the maximum. */
+	/** The priced orbit, in km. A too high request decreases to the maximum. */
 	let customAltShown = $derived(
 		chosen?.kind === 'custom' ? (chosen.periAltKm ?? customAltKm) : customAltKm
 	);
+	let customApoShown = $derived(
+		chosen?.kind === 'custom' ? (chosen.apoAltKm ?? customApoAltKm) : customApoAltKm
+	);
+	let circular = $derived(customApoShown === customAltShown);
 	// The closed box shows the orbit itself rather than the words naming it, which
 	// carry no data: its height, and its plane where one is named — two ends
 	// differing only in plane are different trips.
 	let modeLabel = $derived.by(() => {
-		const shape = endpointModeLabel(mode, role, customAltShown);
+		const shape = endpointModeLabel(mode, role, customAltShown, customApoShown);
 		if (incDeg === null || mode !== 'custom') return shape;
 		return `${shape} · ${planeLabel(incDeg)}`;
 	});
@@ -164,6 +173,37 @@
 		if (pick.featureId === null) step = 'how';
 	}
 
+	/**
+	 * Where an altitude sits on its slider, and back again.
+	 *
+	 * Geometric rather than linear: what a body holds spans five orders of
+	 * magnitude — Earth holds an orbit out to half a million kilometres — so a
+	 * step is a fixed share of the height instead of a fixed number of
+	 * kilometres. It is the only way a 600 km perigee and a 39750 km apogee are
+	 * both reachable by hand on the same control.
+	 */
+	const SLIDER_STEPS = 1000;
+	function sliderPosition(km: number): number {
+		return Math.round((SLIDER_STEPS * Math.log(Math.max(km, 1))) / Math.log(maxAltKm));
+	}
+	function sliderAltitude(position: number): number {
+		return Math.round(Math.exp((position * Math.log(maxAltKm)) / SLIDER_STEPS));
+	}
+
+	/**
+	 * The near end carries the far one up with it: an apoapsis under the periapsis
+	 * is not an orbit, and the end being dragged is the one meant.
+	 *
+	 * Measured against what was asked for rather than against the priced orbit,
+	 * which already reads back as circular the moment the near end passes the far
+	 * one — comparing against that would leave the far end where it was and put a
+	 * link out naming the orbit the other way round.
+	 */
+	function setPeriapsis(km: number) {
+		if (km > customApoAltKm) onCustomApoAlt(km);
+		onCustomAlt(km);
+	}
+
 	function choose(choice: OrbitChoice) {
 		onModeChange(choice.kind);
 		// A slider still being dragged is not a decision made.
@@ -191,6 +231,29 @@
 		{/if}
 	</span>
 	<ChevronDownIcon class="text-muted-foreground size-4 shrink-0" />
+{/snippet}
+
+<!-- Captions rather than a label column: the popover is too narrow to give up a
+     third of the slider to one. -->
+{#snippet altitude(caption: string, km: number, minKm: number, onChange: (km: number) => void)}
+	<label class="flex flex-col gap-0.5">
+		<span class="text-muted-foreground text-[10px] tracking-wide uppercase">{caption}</span>
+		<span class="flex items-center gap-2">
+			<input
+				type="range"
+				min={sliderPosition(minKm)}
+				max={SLIDER_STEPS}
+				step={1}
+				value={sliderPosition(km)}
+				oninput={(e) => onChange(sliderAltitude(Number(e.currentTarget.value)))}
+				class="accent-primary h-1 flex-1"
+				aria-valuetext={formatKm(km)}
+			/>
+			<span class="text-muted-foreground w-24 shrink-0 text-end text-[10px] tabular-nums">
+				{formatKm(km)}
+			</span>
+		</span>
+	</label>
 {/snippet}
 
 {#snippet panel()}
@@ -314,29 +377,20 @@
 
 							{#if active && choice.kind === 'custom'}
 								<div class="flex flex-col gap-1.5 px-2 pt-1 pb-2">
-									<!-- Captions rather than a label column: the popover is too narrow to
-									     give up a third of the slider to one. -->
-									<label class="flex flex-col gap-0.5">
-										<span class="text-muted-foreground text-[10px] tracking-wide uppercase">
-											{m.travel_orbit_altitude()}
-										</span>
-										<span class="flex items-center gap-2">
-											<input
-												type="range"
-												min={1}
-												max={Math.round(maxAltKm)}
-												value={customAltShown}
-												oninput={(e) => onCustomAlt(Number(e.currentTarget.value))}
-												class="accent-primary h-1 flex-1"
-												aria-valuetext={formatKm(customAltShown)}
-											/>
-											<span
-												class="text-muted-foreground w-24 shrink-0 text-end text-[10px] tabular-nums"
-											>
-												{formatKm(customAltShown)}
-											</span>
-										</span>
-									</label>
+									<!-- A circular orbit has one height rather than two the same, so the
+									     near end is only named as one once the far end has left it. -->
+									{@render altitude(
+										circular ? m.travel_orbit_altitude() : m.travel_orbit_periapsis(),
+										customAltShown,
+										1,
+										setPeriapsis
+									)}
+									{@render altitude(
+										m.travel_orbit_apoapsis(),
+										customApoShown,
+										customAltShown,
+										onCustomApoAlt
+									)}
 									<!-- A free plane is the step below the equator rather than a control of
 									     its own: it is the least a trip can ask of its plane, not a different
 									     kind of answer. -->

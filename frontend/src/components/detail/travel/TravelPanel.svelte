@@ -441,6 +441,7 @@
 			? orbitChoices(originTravel, originFacts, 'origin', {
 					hasSurface: originHasGround,
 					customAltKm: panel.originAltKm,
+					customApoAltKm: panel.originApoAltKm,
 					incDeg: panel.originIncDeg
 				})
 			: []
@@ -451,6 +452,7 @@
 				? orbitChoices(targetTravel, targetFacts, 'target', {
 						hasSurface: targetHasGround,
 						customAltKm: panel.targetAltKm,
+						customApoAltKm: panel.targetApoAltKm,
 						incDeg: panel.targetIncDeg
 					})
 				: [];
@@ -511,9 +513,10 @@
 		// the place and stops there — which pad of a range, or which corner of a
 		// crater, is the picker's business and would treble the line's height.
 		if (isFeature || choices.length === 0) return null;
-		// Use the priced altitude. A body has a maximum orbit height.
-		const alt = choices.find((c) => c.kind === mode)?.periAltKm ?? null;
-		return endpointModeLabel(mode, role, alt);
+		// Use the priced shape. A body has a maximum orbit height, and both ends of
+		// a custom orbit come off it.
+		const priced = choices.find((c) => c.kind === mode);
+		return endpointModeLabel(mode, role, priced?.periAltKm ?? null, priced?.apoAltKm ?? null);
 	}
 	let originModeLabel = $derived(
 		endLabel('origin', panel.originAtSite, panel.originMode, originChoices)
@@ -1080,11 +1083,14 @@
 		// three a departure cannot be: a flyby, a capture ellipse, a transfer orbit.
 		const previousOriginMode = panel.originMode;
 		const previousOriginAlt = panel.originAltKm;
+		const previousOriginApo = panel.originApoAltKm;
 		const previousOriginInc = panel.originIncDeg;
 		panel.originMode = ORIGIN_MODES.includes(panel.targetMode) ? panel.targetMode : 'low-orbit';
 		panel.targetMode = previousOriginMode;
 		panel.originAltKm = panel.targetAltKm;
 		panel.targetAltKm = previousOriginAlt;
+		panel.originApoAltKm = panel.targetApoAltKm;
+		panel.targetApoAltKm = previousOriginApo;
 		// A plane is measured against its own body's equator, so it rides with the
 		// end it belongs to rather than staying put.
 		panel.originIncDeg = panel.targetIncDeg;
@@ -1182,10 +1188,12 @@
 						onModeChange={(mode: EndpointMode) => (panel.originMode = mode)}
 						choices={originChoices}
 						customAltKm={panel.originAltKm}
+						customApoAltKm={panel.originApoAltKm}
 						maxAltKm={originTravel && originFacts
 							? maxCustomAltitudeKm(originTravel, originFacts)
 							: 0}
 						onCustomAlt={(km: number) => (panel.originAltKm = km)}
+						onCustomApoAlt={(km: number) => (panel.originApoAltKm = km)}
 						incDeg={panel.originIncDeg}
 						onIncChange={(deg: number | null) => (panel.originIncDeg = deg)}
 						priceKms={(choice: OrbitChoice) => priceEnd('origin', choice)}
@@ -1221,10 +1229,12 @@
 						onModeChange={(mode: EndpointMode) => (panel.targetMode = mode)}
 						choices={targetChoices}
 						customAltKm={panel.targetAltKm}
+						customApoAltKm={panel.targetApoAltKm}
 						maxAltKm={targetTravel && targetFacts
 							? maxCustomAltitudeKm(targetTravel, targetFacts)
 							: 0}
 						onCustomAlt={(km: number) => (panel.targetAltKm = km)}
+						onCustomApoAlt={(km: number) => (panel.targetApoAltKm = km)}
 						incDeg={panel.targetIncDeg}
 						onIncChange={(deg: number | null) => (panel.targetIncDeg = deg)}
 						priceKms={(choice: OrbitChoice) => priceEnd('target', choice)}

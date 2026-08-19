@@ -25,13 +25,16 @@
 	const appState = getContext<AppState | undefined>('appState');
 
 	let target = $derived(orbitZoneTarget(slug));
-	// The altitude rides along only for the custom orbit, which is the one that
-	// means anything by it; the plane only for a zone that is one.
+	// The shape rides along only for the custom orbit, which is the one that means
+	// anything by it; the plane only for a zone that is one. A zone naming no far
+	// end is met on a circular orbit, so both ends take the one altitude.
 	let terms = $derived(
 		target
 			? {
 					targetMode: target.mode,
-					...(target.altKm ? { targetAltKm: target.altKm } : {}),
+					...(target.altKm
+						? { targetAltKm: target.altKm, targetApoAltKm: target.apoAltKm ?? target.altKm }
+						: {}),
 					...(target.incDeg === undefined ? {} : { targetIncDeg: target.incDeg })
 				}
 			: undefined

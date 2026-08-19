@@ -13,6 +13,7 @@ function zonesOf(target: OrbitZoneTarget): string[] {
 	const choice = orbitChoices(EARTH, EARTH_FACTS, 'target', {
 		hasSurface: true,
 		customAltKm: target.altKm ?? 1000,
+		customApoAltKm: target.apoAltKm,
 		incDeg: target.incDeg ?? null
 	}).find((c) => c.kind === target.mode);
 	if (choice?.periAltKm === undefined || choice.apoAltKm === undefined) return [];
@@ -51,11 +52,21 @@ describe('orbit zone targets', () => {
 		expect(ZONE_TARGETS.GSO.incDeg).toBeUndefined();
 	});
 
-	// Left out for a reason rather than overlooked: an orbit with its two ends set
-	// apart, which no offered shape and no custom orbit has, and an apogee past
-	// the third of the Hill radius Earth holds an orbit within.
+	// The three eccentric zones are the custom orbit's, and are told apart from
+	// each other by plane as much as by shape — a Molniya flown level is an
+	// ordinary highly elliptical orbit.
+	it('separates the eccentric zones', () => {
+		expect(zonesOf(ZONE_TARGETS.HEO)).toEqual(['HEO']);
+		expect(zonesOf(ZONE_TARGETS.MOL)).toEqual(['MOL']);
+		expect(zonesOf(ZONE_TARGETS.TUN)).toEqual(['TUN']);
+		expect(ZONE_TARGETS.HEO.incDeg).toBeUndefined();
+	});
+
+	// Left out for a reason rather than overlooked: an apogee past the third of
+	// the Hill radius Earth holds an orbit within, and two points that are not
+	// orbits about Earth at all.
 	it('leaves out the zones no offered orbit reaches', () => {
-		for (const className of ['HEO', 'TUN', 'MOL', 'VHEO', 'EL1', 'EL2']) {
+		for (const className of ['VHEO', 'EL1', 'EL2']) {
 			expect(orbitZoneTarget(`${CLASS_SLUG_PREFIX}${className}`), className).toBeNull();
 		}
 	});

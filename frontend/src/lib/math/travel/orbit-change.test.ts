@@ -17,7 +17,8 @@ import {
 } from './maneuvers';
 import { hohmannArcDays } from './system-transfer';
 import { buildTrajectoryPath } from './path';
-import { dot, norm, normalize } from './vec3';
+import { craftPositionAt } from './path-sample';
+import { cross, dot, norm, normalize, sub } from './vec3';
 
 const J2000 = 2451545;
 const GEO_RADIUS_KM = 42164;
@@ -177,6 +178,93 @@ describe('the arc it draws', () => {
 		for (const point of points) expect(norm(point)).toBeCloseTo(LOW.rPeriKm, 6);
 		// Half a turn: the far end is on the other side of the body.
 		expect(dot(normalize(points[0]), normalize(points[points.length - 1]))).toBeCloseTo(-1, 6);
+	});
+});
+
+describe('the orbits at its ends', () => {
+	const pathOf = (r: Route | null) =>
+		r ? buildTrajectoryPath(EARTH, EARTH, r, { centerId: EARTH.id, orbitChange: true }) : null;
+	/** A Molniya: the shape and the plane both named, and neither one flat. */
+	const MOLNIYA: EndOrbit = {
+		rPeriKm: EARTH.radiusKm + 600,
+		rApoKm: EARTH.radiusKm + 39750,
+		incDeg: 63.4
+	};
+	const toMolniya = () =>
+		buildRoute(EARTH, EARTH, J2000, 0.22, {
+			orbitChange: true,
+			departureMode: 'surface',
+			arrivalMode: 'capture',
+			targetOrbit: MOLNIYA
+		});
+
+	// The arc and the ring share one point and nothing else fixes either, so the
+	// ring hangs off it. Placed by the direction the arc came in from instead —
+	// which is across the orbit at an apsis, not along it — the ring comes out a
+	// quarter turn round and the trip ends beside the orbit it was flown to.
+	it('meets the orbit it ends in, at the apsis they share', () => {
+		const path = pathOf(toMolniya())!;
+		const arc = path.arcs[0];
+		const end = path.endOrbits.find((e) => e.at === 'arrival')!;
+		const last = arc.points[arc.points.length - 1];
+		expect(Math.min(...end.points.map((p) => norm(sub(p, last))))).toBeLessThan(1);
+		// It is the high point of the orbit that the climb arrives at.
+		expect(norm(last)).toBeCloseTo(MOLNIYA.rApoKm, 6);
+		const apo = end.points.reduce((far, p) => (norm(p) > norm(far) ? p : far), end.points[0]);
+		expect(dot(normalize(apo), normalize(last))).toBeCloseTo(1, 9);
+	});
+
+	// The arc is flown in the equator because no node is tracked, but the orbit it
+	// ends in named a plane and the trip was charged for turning into it. Drawn
+	// flat as well, the picture is of a trip that never made the burn it paid for.
+	it('leans the ring into the plane the trip named, from the point they share', () => {
+		const path = pathOf(toMolniya())!;
+		const end = path.endOrbits.find((e) => e.at === 'arrival')!;
+		const pole = normalize(EARTH.poleEcliptic!);
+		const normal = normalize(
+			cross(sub(end.points[24], end.points[0]), sub(end.points[48], end.points[0]))
+		);
+		expect((Math.acos(Math.abs(dot(normal, pole))) * 180) / Math.PI).toBeCloseTo(63.4, 3);
+		// The point the arc hands over at is the one place the two planes meet, so
+		// it is a node of this one — the only place the turn could be made.
+		const last = path.arcs[0].points[path.arcs[0].points.length - 1];
+		expect(Math.abs(dot(last, pole))).toBeLessThan(1e-6);
+	});
+
+	// The craft keeps flying after it arrives. Read as if the trip were over at
+	// the last arc sample, the marker has nowhere to be and holds still on the
+	// screen for as long as anyone watches.
+	it('goes on round the orbit it arrived in', () => {
+		const r = toMolniya()!;
+		const path = pathOf(r)!;
+		const revolution = orbitPeriodHours(EARTH.mu, MOLNIYA) / 24;
+		const radii = [0.1, 0.3, 0.5, 0.7, 0.9].map((f) => {
+			const at = craftPositionAt(path, r.arriveJd + revolution * f);
+			expect(at).not.toBeNull();
+			return norm(at!.r);
+		});
+		// Down from the high point it arrives at and back up again, over the two
+		// radii the orbit is made of.
+		expect(Math.min(...radii)).toBeLessThan(MOLNIYA.rApoKm / 2);
+		expect(Math.max(...radii)).toBeGreaterThan(MOLNIYA.rApoKm * 0.9);
+		for (const radius of radii) {
+			expect(radius).toBeGreaterThan(MOLNIYA.rPeriKm - 1);
+			expect(radius).toBeLessThan(MOLNIYA.rApoKm + 1);
+		}
+	});
+
+	// Coming down, the arc arrives at the low point instead — the same rule read
+	// the other way, and the one that keeps a descent from drawing its ring
+	// upside down.
+	it('joins the low point of an orbit it drops into', () => {
+		const path = pathOf(route(GEO, GTO))!;
+		const arc = path.arcs[0];
+		const end = path.endOrbits.find((e) => e.at === 'arrival')!;
+		const last = arc.points[arc.points.length - 1];
+		expect(norm(last)).toBeCloseTo(GTO.rPeriKm, 6);
+		expect(Math.min(...end.points.map((p) => norm(sub(p, last))))).toBeLessThan(1);
+		const peri = end.points.reduce((near, p) => (norm(p) < norm(near) ? p : near), end.points[0]);
+		expect(dot(normalize(peri), normalize(last))).toBeCloseTo(1, 9);
 	});
 });
 

@@ -232,6 +232,9 @@ export class TravelPanelState {
 	targetMode = $state<EndpointMode>(DEFAULT_TRIP.targetMode);
 	originAltKm = $state(DEFAULT_TRIP.originAltKm);
 	targetAltKm = $state(DEFAULT_TRIP.targetAltKm);
+	/** Far end of the same orbit, km. Equal to the near one is circular. */
+	originApoAltKm = $state(DEFAULT_TRIP.originApoAltKm);
+	targetApoAltKm = $state(DEFAULT_TRIP.targetApoAltKm);
 	/** Plane each end is met in, degrees to its equator; null leaves it free.
 	 *  Held here rather than on the orbit because it outlives the choice of
 	 *  orbit — the component puts it onto whichever one is picked. */
@@ -397,6 +400,8 @@ export class TravelPanelState {
 			targetMode: this.targetMode,
 			originAltKm: this.originAltKm,
 			targetAltKm: this.targetAltKm,
+			originApoAltKm: this.originApoAltKm,
+			targetApoAltKm: this.targetApoAltKm,
 			originIncDeg: this.originIncDeg,
 			targetIncDeg: this.targetIncDeg,
 			aero: this.aero,
@@ -422,6 +427,8 @@ export class TravelPanelState {
 		this.targetMode = trip.targetMode;
 		this.originAltKm = trip.originAltKm;
 		this.targetAltKm = trip.targetAltKm;
+		this.originApoAltKm = trip.originApoAltKm;
+		this.targetApoAltKm = trip.targetApoAltKm;
 		this.originIncDeg = trip.originIncDeg;
 		this.targetIncDeg = trip.targetIncDeg;
 		this.aero = trip.aero;

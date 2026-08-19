@@ -1401,6 +1401,8 @@
 	"travel_orbit_circular": "{altitude}, kołowa",
 	"travel_orbit_ellipse": "{periapsis} × {apoapsis}",
 	"travel_orbit_altitude": "Wysokość orbity",
+	"travel_orbit_periapsis": "Wysokość perycentrum",
+	"travel_orbit_apoapsis": "Wysokość apocentrum",
 	"travel_orbit_plane_free": "Dowolna płaszczyzna",
 	"travel_orbit_plane_at": "{degrees} względem równika",
 	"travel_orbit_plane_retrograde": "{degrees} wstecznie",

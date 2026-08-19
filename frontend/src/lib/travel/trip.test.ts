@@ -51,6 +51,8 @@ describe('trip URL round trip', () => {
 			targetMode: 'elliptical',
 			originAltKm: DEFAULT_TRIP.originAltKm,
 			targetAltKm: DEFAULT_TRIP.targetAltKm,
+			originApoAltKm: DEFAULT_TRIP.originApoAltKm,
+			targetApoAltKm: DEFAULT_TRIP.targetApoAltKm,
 			originIncDeg: null,
 			targetIncDeg: null,
 			aero: 'aerobraking',
@@ -84,6 +86,37 @@ describe('trip URL round trip', () => {
 		expect(
 			serializeTripSuffix({ ...DEFAULT_TRIP, targetMode: 'stationary', targetIncDeg: 45 })
 		).not.toContain('tinc');
+	});
+
+	// A circular custom orbit is one altitude, which is what every link written
+	// before the orbit had two ends says, so the far end is written only where it
+	// is somewhere else.
+	it('writes the far end of the orbit only where it is one', () => {
+		const circular = { ...DEFAULT_TRIP, targetMode: 'custom' as const, targetAltKm: 800 };
+		expect(serializeTripSuffix({ ...circular, targetApoAltKm: 800 })).not.toContain('tapo');
+		const ellipse = { ...circular, targetApoAltKm: 39750 };
+		expect(serializeTripSuffix(ellipse)).toContain('tapo=39750');
+		expect(reparse(ellipse).targetApoAltKm).toBe(39750);
+	});
+
+	// The near end of a custom orbit carries the far one up with it, so a far end
+	// left below it is a stale figure and not a shape anybody asked for. Writing it
+	// would hand back the orbit inside out, since the ends are sorted on the way in.
+	it('never names the orbit backwards', () => {
+		const stale = {
+			...DEFAULT_TRIP,
+			targetMode: 'custom' as const,
+			targetAltKm: 130925,
+			targetApoAltKm: 39750
+		};
+		expect(serializeTripSuffix(stale)).not.toContain('tapo');
+		expect(reparse(stale).targetApoAltKm).toBe(130925);
+	});
+
+	// The link says an orbit, not the order its ends were written in.
+	it('reads an orbit named the other way round as the same orbit', () => {
+		const trip = parseTrip(new URLSearchParams('tm=custom&talt=39750&tapo=600'));
+		expect([trip.targetAltKm, trip.targetApoAltKm]).toEqual([600, 39750]);
 	});
 
 	it('keeps the picked date to the second', () => {

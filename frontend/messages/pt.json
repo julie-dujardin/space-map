@@ -1385,6 +1385,8 @@
 	"travel_orbit_circular": "{altitude} circular",
 	"travel_orbit_ellipse": "{periapsis} × {apoapsis}",
 	"travel_orbit_altitude": "Altitude da órbita",
+	"travel_orbit_periapsis": "Altitude do periapsis",
+	"travel_orbit_apoapsis": "Altitude do apoapsis",
 	"travel_orbit_plane_free": "Qualquer plano",
 	"travel_orbit_plane_at": "{degrees} em relação ao equador",
 	"travel_orbit_plane_retrograde": "{degrees} retrógrado",

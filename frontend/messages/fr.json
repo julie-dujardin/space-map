@@ -1390,6 +1390,8 @@
 	"travel_orbit_circular": "{altitude} circulaire",
 	"travel_orbit_ellipse": "{periapsis} × {apoapsis}",
 	"travel_orbit_altitude": "Altitude de l'orbite",
+	"travel_orbit_periapsis": "Altitude du périastre",
+	"travel_orbit_apoapsis": "Altitude de l'apoastre",
 	"travel_orbit_plane_free": "Plan libre",
 	"travel_orbit_plane_at": "{degrees} par rapport à l'équateur",
 	"travel_orbit_plane_retrograde": "{degrees} rétrograde",

@@ -1462,6 +1462,8 @@
 	"travel_orbit_circular": "دائري على {altitude}",
 	"travel_orbit_ellipse": "{periapsis} × {apoapsis}",
 	"travel_orbit_altitude": "ارتفاع المدار",
+	"travel_orbit_periapsis": "ارتفاع الحضيض",
+	"travel_orbit_apoapsis": "ارتفاع الأوج",
 	"travel_orbit_plane_free": "أي مستوٍ",
 	"travel_orbit_plane_at": "{degrees} عن خط الاستواء",
 	"travel_orbit_plane_retrograde": "{degrees} تراجعي",

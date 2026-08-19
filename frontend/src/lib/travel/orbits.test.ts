@@ -121,6 +121,48 @@ describe('orbitChoices', () => {
 		expect(custom?.orbit?.rApoKm).toBeLessThanOrEqual(HILL.moon / 3);
 	});
 
+	// The custom orbit is the only one the trip shapes, so the far end goes to it
+	// and to no other — a named orbit given one would be a second orbit under the
+	// same name.
+	it('gives the far end the trip named to the custom orbit and to no other', () => {
+		const choices = orbitChoices(EARTH, EARTH_FACTS, 'target', {
+			...OPTS,
+			customAltKm: 600,
+			customApoAltKm: 39750
+		});
+		const custom = choices.find((c) => c.kind === 'custom');
+		expect(custom?.periAltKm).toBeCloseTo(600, 6);
+		expect(custom?.apoAltKm).toBeCloseTo(39750, 6);
+		// A Molniya's half-day period comes out of the shape alone.
+		expect(custom?.periodHours).toBeCloseTo(11.97, 1);
+		for (const choice of choices) {
+			if (choice.kind === 'custom' || choice.orbit === undefined) continue;
+			expect(choice.orbit.rApoKm, choice.kind).not.toBeCloseTo(EARTH.radiusKm + 39750, 6);
+		}
+	});
+
+	// An orbit whose far end is under its near one is not an orbit, and the near
+	// end is the one the trip set on purpose.
+	it('never puts the far end of a custom orbit under the near one', () => {
+		const custom = orbitChoices(EARTH, EARTH_FACTS, 'target', {
+			...OPTS,
+			customAltKm: 5000,
+			customApoAltKm: 800
+		}).find((c) => c.kind === 'custom');
+		expect(custom?.periAltKm).toBeCloseTo(5000, 6);
+		expect(custom?.apoAltKm).toBeCloseTo(5000, 6);
+	});
+
+	it('keeps the far end of a custom orbit inside what the body holds', () => {
+		const custom = orbitChoices(MOON, { hillKm: HILL.moon }, 'target', {
+			hasSurface: true,
+			customAltKm: 200,
+			customApoAltKm: 1e9
+		}).find((c) => c.kind === 'custom');
+		expect(custom?.orbit?.rApoKm).toBeLessThanOrEqual(HILL.moon / 3);
+		expect(custom?.orbit?.rPeriKm).toBeCloseTo(MOON.radiusKm + 200, 6);
+	});
+
 	// A named orbit is named for its shape, so the plane goes to the one orbit
 	// that is not: flying "stationary orbit" in two planes would be two entries
 	// under one name.

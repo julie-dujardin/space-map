@@ -1386,6 +1386,8 @@
 	"travel_orbit_circular": "高度{altitude}の円軌道",
 	"travel_orbit_ellipse": "{periapsis} × {apoapsis}",
 	"travel_orbit_altitude": "軌道高度",
+	"travel_orbit_periapsis": "近点高度",
+	"travel_orbit_apoapsis": "遠点高度",
 	"travel_orbit_plane_free": "任意の軌道面",
 	"travel_orbit_plane_at": "赤道から{degrees}",
 	"travel_orbit_plane_retrograde": "逆行{degrees}",
