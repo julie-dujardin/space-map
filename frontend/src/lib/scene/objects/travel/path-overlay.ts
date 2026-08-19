@@ -27,7 +27,8 @@ import {
 } from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { attachCanvasForwarders } from '$lib/scene/label/forward';
-import { reserveLabelRects, type AcceptedRect } from '$lib/scene/label/culling';
+import { isScreenOccluded, reserveLabelRects, type AcceptedRect } from '$lib/scene/label/culling';
+import { liveScreenOccluders } from '$lib/scene/visibility/update';
 import { ndcZVisible } from '$lib/scene/setup/depth-mode';
 import { HALO_RADIUS_PX } from '$lib/scene/types';
 import '$lib/scene/label/label.css';
@@ -37,7 +38,7 @@ import '$lib/scene/label/label.css';
 // is types-only for the same reason; built-path reads live in `path-sample`.
 import type { EndOrbitPath, PathArc, TrajectoryPath } from '$lib/math/travel/path';
 import type { Vec3 as TravelVec3 } from '$lib/math/travel/vec3';
-import type { PathEndLabel, LabelledPath } from '$lib/travel/labelled-path';
+import type { PathEndLabel, PathStep, LabelledPath } from '$lib/travel/labelled-path';
 import { craftPositionAt, crossingWindow } from '$lib/math/travel/path-sample';
 import { eclipticToScene } from '$lib/math/travel/state';
 import { kmToScene } from '$lib/math/units';
@@ -87,9 +88,10 @@ const RING_WIDTH = 1.5;
 const RING_BRIGHTNESS = 0.85;
 const RING_VISIBLE_RADII = 60;
 
-/** Screen size of the markers, in the units an unattenuated sprite scales by. */
-const STOP_SIZE = 0.018;
-const MEETING_SIZE = 0.045;
+/** Screen sizes of the markers, in the units an unattenuated sprite scales by.
+ *  A step is white like the craft that flies it, smaller — the trip has many
+ *  of these and one craft. */
+const STEP_SIZE = 0.018;
 /** The craft is the one marker that moves, so it is the one that reads first. */
 const CRAFT_SIZE = 0.026;
 const CRAFT_COLOR = '#ffffff';
@@ -147,23 +149,9 @@ function dotTexture(color: string): CanvasTexture {
 	return new CanvasTexture(canvas);
 }
 
-/** A hollow ring: where the destination will be, as opposed to where it is. */
-function ringTexture(color: string): CanvasTexture {
-	const size = 128;
-	const canvas = document.createElement('canvas');
-	canvas.width = canvas.height = size;
-	const ctx = canvas.getContext('2d')!;
-	ctx.beginPath();
-	ctx.arc(size / 2, size / 2, size / 2 - 12, 0, Math.PI * 2);
-	ctx.lineWidth = 9;
-	ctx.strokeStyle = color;
-	ctx.stroke();
-	return new CanvasTexture(canvas);
-}
-
 /**
  * A hazard's own marker: a filled triangle, the one shape on this overlay that
- * is neither a dot nor a ring.
+ * is not a dot.
  */
 function warningTexture(color: string): CanvasTexture {
 	const size = 64;
@@ -279,6 +267,11 @@ interface DrawnLabel {
 	/** An alternative's end once one trajectory has been taken: the ring alone, and
 	 *  out of the cull — a ring is small enough not to be in anyone's way. */
 	faint: boolean;
+	/** A step of the trip: ranked under the end labels for screen space, and
+	 *  hidden outright — dot and all — behind a body. */
+	step?: boolean;
+	/** The step's own dot, shown and hidden with the label. */
+	sprite?: Sprite;
 }
 
 /**
@@ -350,6 +343,54 @@ function makeEndLabel(
 	return object;
 }
 
+/**
+ * The label a step of the trip wears: name and date beside its dot. The halo
+ * slot is an invisible hit area over the dot — the dot itself is the marker —
+ * so a dimmed step is still pressable at the point. Same drag guard as the
+ * end labels: a camera drag starting on it must not read as a press.
+ */
+function makeStepLabel(step: PathStep, canvas: HTMLCanvasElement): CSS2DObject {
+	const el = document.createElement('button');
+	el.type = 'button';
+	el.className = 'scene-path-label scene-path-label--step';
+	el.setAttribute('aria-label', `${step.name} — ${step.when}`);
+
+	const hit = document.createElement('span');
+	hit.className = 'scene-path-label__halo';
+	const text = document.createElement('span');
+	text.className = 'scene-path-label__text';
+	const nameEl = document.createElement('span');
+	nameEl.className = 'scene-path-label__name';
+	nameEl.dir = 'auto';
+	nameEl.textContent = step.name;
+	const whenEl = document.createElement('span');
+	whenEl.className = 'scene-path-label__when';
+	whenEl.dir = 'auto';
+	whenEl.textContent = step.when;
+	text.append(nameEl, whenEl);
+	el.append(hit, text);
+
+	attachCanvasForwarders(el, canvas);
+	let downX = 0;
+	let downY = 0;
+	el.addEventListener('pointerdown', (event) => {
+		const e = event as PointerEvent;
+		downX = e.clientX;
+		downY = e.clientY;
+	});
+	el.addEventListener('click', (event) => {
+		const e = event as MouseEvent;
+		e.stopPropagation();
+		const dx = e.clientX - downX;
+		const dy = e.clientY - downY;
+		if (dx * dx + dy * dy <= 9) step.onPick();
+	});
+
+	const object = new CSS2DObject(el);
+	object.center.set(0, 0.5);
+	return object;
+}
+
 export class TravelPathOverlay {
 	private readonly group = new Group();
 	private arcs: DrawnArc[] = [];
@@ -359,6 +400,8 @@ export class TravelPathOverlay {
 	private markers: DrawnMarker[] = [];
 	/** The ends of the options, named and dated; empty once one is chosen. */
 	private labels: DrawnLabel[] = [];
+	/** The plan's drawn steps, for hazards about the same moment to ride. */
+	private drawnSteps: { step: PathStep; label: DrawnLabel }[] = [];
 	/** Where the craft is right now; hidden whenever it is not in flight. */
 	private craft: DrawnMarker | null = null;
 	private path: TrajectoryPath | null = null;
@@ -422,7 +465,8 @@ export class TravelPathOverlay {
 	set(
 		plan: LabelledPath | null,
 		options: readonly LabelledPath[] = [],
-		hazards: readonly Hazard[] = []
+		hazards: readonly Hazard[] = [],
+		steps: readonly PathStep[] = []
 	): void {
 		this.clear();
 		this.path = plan?.path ?? null;
@@ -441,7 +485,7 @@ export class TravelPathOverlay {
 			this.addEndLabels(option, chosen);
 		}
 		if (plan) {
-			this.addPlan(plan);
+			this.addPlan(plan, steps);
 			// After the plan, so its markers are already in the group and this only
 			// adds its own. Hazards belong to the trajectory being read: an
 			// alternative is a shape rather than an itinerary, and half a dozen sets
@@ -482,6 +526,11 @@ export class TravelPathOverlay {
 				});
 			}
 
+			// A hazard about a step of the trip — the entry warning, a belt pass —
+			// rides that step's label as one more line instead of chipping beside
+			// it, where the two would sit on the same point and fight.
+			if (this.mergeIntoStep(hazard, color)) continue;
+
 			// An arrival hazard can start where the arc ends, and one whose geometry
 			// was never rebuilt has nowhere to go at all: no point, no marker.
 			const at = craftPositionAt(path, hazard.startJd);
@@ -515,6 +564,46 @@ export class TravelPathOverlay {
 				faint: true
 			});
 		}
+	}
+
+	/**
+	 * Hand `hazard` to the step it is about, where there is one: the entry
+	 * warning to the aero pass, a belt pass to its swing-by. Everything else —
+	 * cruise-long doses, conjunctions, lag — is about no step and keeps its
+	 * chip. True when a step took it, as one more line on its label.
+	 */
+	private mergeIntoStep(hazard: Hazard, color: string): boolean {
+		const wanted =
+			hazard.kind === 'aeroassist'
+				? 'aero-pass'
+				: hazard.kind === 'belt-crossing'
+					? 'assist'
+					: null;
+		if (!wanted) return false;
+		let best: DrawnLabel | null = null;
+		let bestGap = Infinity;
+		for (const { step, label } of this.drawnSteps) {
+			if (step.kind !== wanted) continue;
+			if (hazard.bodyId && step.bodyId !== hazard.bodyId) continue;
+			// Nearest by date, for a trip that swings by the same body twice. The
+			// dates are priced on one side and drawn on the other, so they need not
+			// agree to the day — being about the same moment is what is matched.
+			const gap = Math.abs(step.jd - hazard.peakJd);
+			if (gap < bestGap) {
+				bestGap = gap;
+				best = label;
+			}
+		}
+		if (!best) return false;
+		const el = best.object.element;
+		const line = document.createElement('span');
+		line.className = 'scene-path-label__hazard';
+		line.style.color = color;
+		line.dir = 'auto';
+		line.textContent = hazardChip(hazard);
+		el.querySelector('.scene-path-label__text')?.append(line);
+		el.setAttribute('aria-label', `${el.getAttribute('aria-label')} — ${hazardChip(hazard)}`);
+		return true;
 	}
 
 	/** One coloured band along a stretch of a drawn arc, under the line it names. */
@@ -560,38 +649,14 @@ export class TravelPathOverlay {
 		});
 	}
 
-	/** The chosen trajectory: its arcs at full strength, its ends named, the points
-	 *  it is spent at, and the dot that rides it. */
-	private addPlan(plan: LabelledPath): void {
+	/** The chosen trajectory: its arcs at full strength, its steps as pressable
+	 *  dots, and the dot that rides it. No end labels of its own — the first and
+	 *  last steps are the ends, named and dated by the timeline. */
+	private addPlan(plan: LabelledPath, steps: readonly PathStep[]): void {
 		const path = plan.path;
 		this.addArcs(path, LINE_WIDTH, LINE_BRIGHTNESS, null, true);
 		this.addEndOrbits(path);
-		// A labelled end already wears a ring, so it takes the marker's place rather
-		// than sitting inside one.
-		const labelled = this.addEndLabels(plan);
-
-		// Where the destination will be when the craft gets there. Skipped when the
-		// destination is the body everything is measured from — it is already at the
-		// centre and does not move in its own frame.
-		const meets = path.meeting.bodyId !== path.centerId;
-		if (meets && !labelled.arrival) {
-			this.markers.push({
-				sprite: makeSprite(ringTexture(ARC_COLORS.cruise), MEETING_SIZE),
-				local: eclipticToScene(path.meeting.r) as Vec3,
-				anchorId: null
-			});
-		}
-		for (const stop of path.stops) {
-			// The ring already marks the arrival, and it sits on the same point; a dot
-			// under it would only thicken the circle's centre.
-			if (stop.kind === 'arrival' && meets) continue;
-			if (stop.kind === 'departure' && labelled.departure) continue;
-			this.markers.push({
-				sprite: makeSprite(dotTexture(ARC_COLORS.cruise), STOP_SIZE),
-				local: eclipticToScene(stop.r) as Vec3,
-				anchorId: null
-			});
-		}
+		this.addSteps(path, steps);
 		for (const marker of this.markers) this.group.add(marker.sprite);
 
 		// Added last so it draws over the burn it is sitting on when the two meet.
@@ -605,61 +670,69 @@ export class TravelPathOverlay {
 	}
 
 	/**
-	 * Label a trajectory at both ends, and answer which ends got one.
+	 * The plan's instant steps — burns, passes — each a dot on the arc with a
+	 * pressable label. Placed from where the craft is on the step's date, the
+	 * same rule the hazard markers follow, so the dots sit on the drawn line.
+	 */
+	private addSteps(path: TrajectoryPath, steps: readonly PathStep[]): void {
+		for (const step of steps) {
+			const at = craftPositionAt(path, step.jd);
+			if (!at) continue;
+			const local = eclipticToScene(at.r) as Vec3;
+			const anchorId = at.centerId === path.centerId ? null : at.centerId;
+			const sprite = makeSprite(dotTexture(CRAFT_COLOR), STEP_SIZE);
+			this.markers.push({ sprite, local, anchorId });
+			const object = makeStepLabel(step, this.canvas);
+			this.group.add(object);
+			this.labels.push({
+				object,
+				local,
+				anchorId,
+				// No owner: the plan is not part of the hover link with the field.
+				owner: null,
+				width: 0,
+				height: 0,
+				dimmed: false,
+				faint: false,
+				step: true,
+				sprite
+			});
+			this.drawnSteps.push({ step, label: this.labels[this.labels.length - 1] });
+		}
+	}
+
+	/**
+	 * Label a trajectory at both ends.
 	 *
-	 * Arrival labels the *meeting* point — where the destination will be when
-	 * the craft gets there, not its position today. Planet-frame there's no
-	 * such distinction: that end is measured off the body, so the label rides
-	 * it like the orbit does.
+	 * Only the alternatives wear these — the plan's ends are its first and
+	 * last steps, named and dated by the timeline. Each label caps its own
+	 * arc: the departure point, and the *meeting* point where the destination
+	 * will be when the craft gets there. Those are dated places, so a set of
+	 * offers spreads along the orbits instead of stacking on the bodies.
 	 *
 	 * Each end takes the colour of the arc it caps, so the two differ when a
 	 * trajectory is flown differently at each end (e.g. boost then braking).
 	 */
-	private addEndLabels(
-		trajectory: LabelledPath,
-		faint = false
-	): { departure: boolean; arrival: boolean } {
+	private addEndLabels(trajectory: LabelledPath, faint = false): void {
 		const { path, onSelect } = trajectory;
 		const first = path.arcs[0];
 		const last = path.arcs[path.arcs.length - 1];
 		const departure = path.stops.find((stop) => stop.kind === 'departure');
-		// An end drawn off its body puts its label at the body, not the frozen
-		// encounter — except a surface end, whose label rides the touchdown or
-		// liftoff point instead.
-		const anchorAt = (at: 'departure' | 'arrival', r: TravelVec3) => {
-			const orbit = path.endOrbits.find((end) => end.at === at);
-			const anchorId = orbit ? this.anchorOf(path, orbit) : null;
-			const ground =
-				orbit && orbit.surfaceJd !== undefined && orbit.approach.length > 0
-					? orbit.approach[at === 'departure' ? 0 : orbit.approach.length - 1]
-					: null;
-			const local = ground ?? (anchorId === null ? r : null);
-			return { anchorId, local: (local ? eclipticToScene(local) : [0, 0, 0]) as Vec3 };
-		};
-		const ends: {
-			local: Vec3;
-			anchorId: string | null;
-			end: PathEndLabel;
-			color: string;
-			at: 'departure' | 'arrival';
-		}[] = [
+		const ends: { local: Vec3; end: PathEndLabel; color: string }[] = [
 			{
-				...anchorAt('arrival', path.meeting.r),
+				local: eclipticToScene(path.meeting.r) as Vec3,
 				end: trajectory.arrival,
-				color: ARC_COLORS[last?.kind ?? 'cruise'],
-				at: 'arrival'
+				color: ARC_COLORS[last?.kind ?? 'cruise']
 			}
 		];
 		if (departure) {
 			ends.push({
-				...anchorAt('departure', departure.r),
+				local: eclipticToScene(departure.r) as Vec3,
 				end: trajectory.departure,
-				color: ARC_COLORS[first?.kind ?? 'cruise'],
-				at: 'departure'
+				color: ARC_COLORS[first?.kind ?? 'cruise']
 			});
 		}
-		const drawn = { departure: false, arrival: false };
-		for (const { local, anchorId, end, color, at } of ends) {
+		for (const { local, end, color } of ends) {
 			if (!end.name) continue;
 			const object = makeEndLabel(end, color, trajectory, this.canvas);
 			if (faint) object.element.classList.add('scene-path-label--faint');
@@ -667,16 +740,14 @@ export class TravelPathOverlay {
 			this.labels.push({
 				object,
 				local,
-				anchorId,
+				anchorId: null,
 				owner: onSelect ? trajectory.id : null,
 				width: 0,
 				height: 0,
 				dimmed: false,
 				faint
 			});
-			drawn[at] = true;
 		}
-		return drawn;
 	}
 
 	/**
@@ -991,6 +1062,8 @@ export class TravelPathOverlay {
 	 * These outrank every body/feature label (a trajectory being chosen is
 	 * what the map is for), but not each other — nearest to the camera wins,
 	 * the rest fall back to their ring like a body label falls back to its halo.
+	 * The plan's step labels sit between: under the end labels, over the
+	 * scene's own. A losing step falls back to its dot.
 	 *
 	 * Projected here rather than measured off the DOM: `getBoundingClientRect`
 	 * on every label every frame forces layout.
@@ -1019,16 +1092,32 @@ export class TravelPathOverlay {
 			if (!label.width) continue;
 			this.projected.copy(label.object.position).project(camera);
 			if (!ndcZVisible(this.projected.z)) continue;
+			const x = (this.projected.x * 0.5 + 0.5) * screenWidth;
+			const y = (-this.projected.y * 0.5 + 0.5) * screenHeight;
+			const distance = label.object.position.distanceTo(camera.position);
+			// A step behind a body goes away, dot and all — an end label stays, being
+			// what the trajectory is. The occluders are the visibility pass's, which
+			// runs after this — a frame stale, sub-pixel at any real camera speed.
+			if (label.step) {
+				const occluded = isScreenOccluded(x, y, distance, '', liveScreenOccluders);
+				this.setStepVisible(label, !occluded);
+				if (occluded) continue;
+			}
 			this.order.push({
 				label,
 				// Anchored on the point with the halo pulled back over it, so the box
 				// starts a halo radius to the left and runs right from there.
-				left: (this.projected.x * 0.5 + 0.5) * screenWidth - HALO_RADIUS_PX,
-				y: (-this.projected.y * 0.5 + 0.5) * screenHeight,
-				distance: label.object.position.distanceTo(camera.position)
+				left: x - HALO_RADIUS_PX,
+				y,
+				distance
 			});
 		}
-		this.order.sort((a, b) => a.distance - b.distance);
+		// The end labels outrank the steps whatever the distances say; within a
+		// tier, nearest to the camera wins.
+		this.order.sort((a, b) => {
+			if (a.label.step !== b.label.step) return a.label.step ? 1 : -1;
+			return a.distance - b.distance;
+		});
 
 		let count = 0;
 		for (const { label, left, y } of this.order) {
@@ -1055,6 +1144,13 @@ export class TravelPathOverlay {
 			count++;
 		}
 		reserveLabelRects(this.rects, count);
+	}
+
+	/** A step and its dot, in or out of sight together. Cheap enough to write
+	 *  every frame — `visible` is a plain flag on both. */
+	private setStepVisible(label: DrawnLabel, visible: boolean): void {
+		label.object.visible = visible;
+		if (label.sprite) label.sprite.visible = visible;
 	}
 
 	/** Down to its ring, or back to its full self. Written only on the change —
@@ -1087,6 +1183,7 @@ export class TravelPathOverlay {
 		this.rings = [];
 		this.markers = [];
 		this.labels = [];
+		this.drawnSteps = [];
 		this.craft = null;
 		this.path = null;
 		this.center = null;

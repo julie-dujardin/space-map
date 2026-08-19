@@ -11,7 +11,7 @@
 		type PositionedBody
 	} from '$lib/types/objects';
 	import { kmToScene } from '$lib/math/units';
-	import type { LabelledPath } from '$lib/travel/labelled-path';
+	import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
 	import type { Hazard } from '$lib/travel/hazards';
 	import { page } from '$app/state';
 	import { sphericalToCartesian } from '$lib/math/spherical';
@@ -161,9 +161,10 @@
 	export function setTravelPath(
 		plan: LabelledPath | null,
 		options: readonly LabelledPath[] = [],
-		hazards: readonly Hazard[] = []
+		hazards: readonly Hazard[] = [],
+		steps: readonly PathStep[] = []
 	): void {
-		renderer?.setTravelPath(plan, options, hazards);
+		renderer?.setTravelPath(plan, options, hazards, steps);
 	}
 
 	/** Pick one of the offered trajectories out of the rest, or none. */

@@ -55,6 +55,10 @@ const _focusV3 = new Vector3();
 // `.length = active` so existing iter/`for-of` consumers keep working. Empty
 // frames cost zero allocations (vs. `const x = []` + N pushes the old way).
 const _occluderPool: ScreenOccluder[] = [];
+/** The pool, readable by overlays whose markers hide behind a body the way
+ *  labels do. Rebuilt in place each visibility pass, so a reader running
+ *  earlier in the frame sees the previous frame's — off by one frame at most. */
+export const liveScreenOccluders: readonly ScreenOccluder[] = _occluderPool;
 function ensureOccluder(idx: number): ScreenOccluder {
 	let o = _occluderPool[idx];
 	if (!o) {

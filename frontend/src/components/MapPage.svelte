@@ -4,7 +4,7 @@
 	import Scene from './Scene.svelte';
 	import { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import { SimClock } from '$lib/scene/state/clock.svelte';
-	import { dateToJD, jdToDate } from '$lib/format/date';
+	import { dateToJD, formatJulianDate, jdToDate } from '$lib/format/date';
 	import { ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import {
@@ -20,7 +20,9 @@
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { fetchBodyNomenclature, type NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { Focusable, FocusFeature, FocusObject } from '$lib/state/focusable';
-	import type { LabelledPath } from '$lib/travel/labelled-path';
+	import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
+	import { craftPositionAt } from '$lib/math/travel/path-sample';
+	import { legLabel } from './detail/travel/leg-labels';
 	import type { TrajectoryFrame } from '$lib/math/travel';
 	import SegmentedPill from './map-pill/SegmentedPill.svelte';
 	import { frameOptions } from './travel-frame/frame-options';
@@ -43,6 +45,9 @@
 	// and its geometry so the timeline can put the camera on the arc itself.
 	let timelineEntries = $state.raw<TimelineEntry[] | null>(null);
 	let travelPlan = $state.raw<LabelledPath | null>(null);
+	// The mounted timeline, so a step dot on the map can press the card it
+	// stands for — playback stop included.
+	let tripTimeline = $state<{ pickId: (id: string) => void } | null>(null);
 
 	/**
 	 * Which frame the drawn trip's ends are measured from. The map owns it
@@ -302,8 +307,43 @@
 		travelDrawQueued = true;
 		queueMicrotask(() => {
 			travelDrawQueued = false;
-			scene?.setTravelPath(travelPlan, travelOptions, travelHazards);
+			scene?.setTravelPath(travelPlan, travelOptions, travelHazards, travelSteps());
 		});
+	}
+
+	/** The trip's instant steps, as the map draws them: dots on the arc that
+	 *  press their own timeline card. The end orbits stay off it — they are
+	 *  places the trip is bracketed by, not things that happen on it. */
+	function travelSteps(): PathStep[] {
+		if (!travelPlan) return [];
+		return (timelineEntries ?? [])
+			.filter((e) => !e.isPhase && e.kind !== 'start-orbit' && e.kind !== 'final-orbit')
+			.map((e) => ({
+				id: e.id,
+				kind: e.kind,
+				bodyId: e.bodyId,
+				jd: e.startJd,
+				name: legLabel(e.kind),
+				when: formatJulianDate(e.startJd),
+				onPick: () => pickStep(e)
+			}));
+	}
+
+	/** What pressing a step dot does: the timeline's own pick when it is up,
+	 *  otherwise the same seek by hand. */
+	function pickStep(entry: TimelineEntry): void {
+		if (tripTimeline) {
+			tripTimeline.pickId(entry.id);
+			return;
+		}
+		clock.setJD(entry.startJd);
+		const path = travelPlan?.path;
+		const craft = path ? craftPositionAt(path, entry.startJd) : null;
+		if (craft) {
+			focusTimeline({ kind: 'point', centerId: craft.centerId, r: craft.r, track: true });
+		} else if (entry.bodyId) {
+			focusTimeline({ kind: 'body', bodyId: entry.bodyId });
+		}
 	}
 
 	/** Look at whatever part of the trip the timeline was asked about. Never an
@@ -828,7 +868,10 @@
 						drawTravel();
 					}}
 					onHoverChange={(id) => scene?.setTravelHover(id)}
-					onTimelineChange={(entries) => (timelineEntries = entries)}
+					onTimelineChange={(entries) => {
+						timelineEntries = entries;
+						drawTravel();
+					}}
 					onHazardsChange={(hazards) => {
 						travelHazards = hazards;
 						drawTravel();
@@ -840,6 +883,7 @@
 			{#if isNav && TripTimeline && timelineEntries && timelineEntries.length > 1}
 				<div inert={bgInert} class="contents">
 					<TripTimeline
+						bind:this={tripTimeline}
 						entries={timelineEntries}
 						path={travelPlan?.path ?? null}
 						{clock}

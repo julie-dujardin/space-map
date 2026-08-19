@@ -146,7 +146,7 @@ export function isScreenOccluded(
 	sy: number,
 	dist: number,
 	selfId: string,
-	occluders: ScreenOccluder[]
+	occluders: readonly ScreenOccluder[]
 ): boolean {
 	for (const occ of occluders) {
 		if (occ.id === selfId) continue;

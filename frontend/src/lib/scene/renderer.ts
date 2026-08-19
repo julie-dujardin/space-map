@@ -23,7 +23,7 @@ import {
 	type WebGLRenderer
 } from 'three';
 import type { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
-import type { LabelledPath } from '$lib/travel/labelled-path';
+import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
 import type { Hazard } from '$lib/travel/hazards';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -530,9 +530,10 @@ export class SceneRenderer {
 	setTravelPath(
 		plan: LabelledPath | null,
 		options: readonly LabelledPath[] = [],
-		hazards: readonly Hazard[] = []
+		hazards: readonly Hazard[] = [],
+		steps: readonly PathStep[] = []
 	): void {
-		this.travelPath.set(plan, options, hazards);
+		this.travelPath.set(plan, options, hazards, steps);
 		this.refreshTravelPath();
 	}
 

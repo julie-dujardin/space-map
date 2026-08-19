@@ -8,6 +8,7 @@
  */
 
 import type { TrajectoryPath } from '$lib/math/travel/path';
+import type { TimelineKind } from '$lib/travel/timeline';
 
 /** One end of a trip, as a label: where, and when the craft is there. */
 export interface PathEndLabel {
@@ -28,4 +29,20 @@ export interface LabelledPath {
 	/** The pointer entered or left one of its labels, so whatever else stands for
 	 *  this trajectory can answer. */
 	onHover?: (hovered: boolean) => void;
+}
+
+/** An instant step of the trip — a burn, a pass — as a dot on the drawn arc. */
+export interface PathStep {
+	/** The timeline entry it is, so pressing the dot presses that card. */
+	id: string;
+	/** What kind of step, so a hazard about the same moment — an entry warning,
+	 *  a belt pass — can ride its label instead of chipping beside it. */
+	kind: TimelineKind;
+	/** The body it happens at, where there is one — see TimelineEntry. */
+	bodyId: string | null;
+	jd: number;
+	name: string;
+	when: string;
+	/** Land the clock and camera on this step — what pressing the dot does. */
+	onPick: () => void;
 }

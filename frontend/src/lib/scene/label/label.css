@@ -213,6 +213,30 @@
 	transform: scale(0.75);
 }
 
+/* A step of the trip: the marker is the dot sprite under it, so the halo slot
+ * is only a hit area over the dot, invisible until hovered. Text a size under
+ * the end labels', which outrank it. */
+.scene-path-label--step .scene-path-label__halo {
+	border: 0;
+	background: none;
+}
+.scene-path-label--step:hover .scene-path-label__halo {
+	background: rgba(255, 255, 255, 0.12);
+}
+.scene-path-label--step .scene-path-label__name {
+	font-size: 12px;
+	font-weight: 600;
+}
+.scene-path-label--step .scene-path-label__when {
+	font-size: 11px;
+}
+/* A hazard riding a step's label — the entry warning on the aero pass, a belt
+ * pass on its swing-by. Same type as a chip; the colour is the hazard's own. */
+.scene-path-label__hazard {
+	font-size: 11px;
+	font-weight: bold;
+}
+
 /* Pointed at, from here or from its mark on the launch-window field. */
 .scene-path-label--lit {
 	color: #fff;

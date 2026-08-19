@@ -90,6 +90,13 @@
 		if (!seekToJd(entry.startJd)) focusEntry(entry);
 	}
 
+	/** Land on the entry with this id — how a step dot on the map presses the
+	 *  card it stands for, playback stop included. */
+	export function pickId(id: string): void {
+		const index = entries.findIndex((entry) => entry.id === id);
+		if (index >= 0) pick(index);
+	}
+
 	let trackEl: HTMLButtonElement | undefined = $state();
 
 	/** Move the clock, and take the camera along with the craft it moves. True
