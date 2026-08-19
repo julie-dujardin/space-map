@@ -19,14 +19,18 @@ import {
 	DRAWER_TABS,
 	SUN_VIEW_ZOOM,
 	UrlType,
+	urlTypeFromId,
+	urlTypeToIdPrefix,
 	type DrawerTab,
 	type MapViewState,
 	type NavPlace
 } from './view';
 
-// The grammar of a trip end lives apart so the route's own guard, which runs
-// where `$app/state` does not, can share it.
+// The grammar of a trip end, and the id ↔ type-segment mapping, live apart so
+// route guards and loads — which run where `$app/state` does not — can share
+// them.
 export { formatNavEnd, isBodyId, NAV_UNSET, parseNavEnd };
+export { urlTypeFromId, urlTypeToIdPrefix };
 
 /** Tabs that serialize a `&tab=` block; overview is the null default. */
 const DEEP_LINK_TABS: readonly string[] = DRAWER_TABS.filter((t) => t !== 'overview');
@@ -55,24 +59,6 @@ function parseImageIndex(raw: string | null): number | null {
 	if (!raw) return null;
 	const n = Number(raw);
 	return Number.isInteger(n) && n >= 0 ? n : null;
-}
-
-/** Map URL type segment to backend ID prefix. Inverse of urlTypeFromId. */
-export function urlTypeToIdPrefix(urlType: string): string {
-	if (urlType === UrlType.SmallBody) return 'spkid';
-	if (urlType === UrlType.EarthSatellite) return 'norad_satcat';
-	if (urlType === UrlType.Probe) return 'probe';
-	if (urlType === UrlType.Extra) return 'extra';
-	return 'naif'; // UrlType.Body
-}
-
-/** Derive URL type segment from a body ID. Use this for URL generation — it's always consistent with the ID. */
-export function urlTypeFromId(id: string): UrlType {
-	if (id.startsWith('spkid-')) return UrlType.SmallBody;
-	if (id.startsWith('norad_satcat-')) return UrlType.EarthSatellite;
-	if (id.startsWith('probe-')) return UrlType.Probe;
-	if (id.startsWith('extra-')) return UrlType.Extra;
-	return UrlType.Body; // naif-
 }
 
 /** Earth-system zoom — mirrors MapPage's minimize-from-sat distance. */

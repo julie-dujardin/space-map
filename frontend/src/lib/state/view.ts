@@ -17,6 +17,27 @@ export enum UrlType {
 	Nav = 'nav' // /nav/<fromId>/<toId> — trajectory planner between two bodies
 }
 
+/** Map URL type segment to backend ID prefix. Inverse of urlTypeFromId. */
+export function urlTypeToIdPrefix(urlType: string): string {
+	if (urlType === UrlType.SmallBody) return 'spkid';
+	if (urlType === UrlType.EarthSatellite) return 'norad_satcat';
+	if (urlType === UrlType.Probe) return 'probe';
+	if (urlType === UrlType.Extra) return 'extra';
+	return 'naif'; // UrlType.Body
+}
+
+/** Derive URL type segment from a body ID. Use this for URL generation — it's
+ *  always consistent with the ID. Lives here rather than beside the rest of the
+ *  URL codec so route loads and SSR can reach it: `url.ts` pulls in client-only
+ *  `$app/state`. */
+export function urlTypeFromId(id: string): UrlType {
+	if (id.startsWith('spkid-')) return UrlType.SmallBody;
+	if (id.startsWith('norad_satcat-')) return UrlType.EarthSatellite;
+	if (id.startsWith('probe-')) return UrlType.Probe;
+	if (id.startsWith('extra-')) return UrlType.Extra;
+	return UrlType.Body; // naif-
+}
+
 /** Type segments valid on the body/group route `/[type]/[id]/[[name]]`; anything
  *  else 404s instead of coercing to a `naif-` body. Feature ('f') is nested. */
 export const BODY_ROUTE_TYPES: ReadonlySet<string> = new Set([

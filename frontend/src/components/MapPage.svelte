@@ -834,7 +834,11 @@
 						{framesDiffer || ringPillShown ? 'max-md:hidden' : ''}"
 					style="--featured-start: {featuredStart}"
 				>
-					<FeaturedBar onObject={(id, name) => focusObject(id, name)} onGroup={openGroup} />
+					<FeaturedBar
+						onObject={(id, name) => focusObject(id, name)}
+						onGroup={openGroup}
+						onFeature={focusFeature}
+					/>
 				</div>
 			{/if}
 			<div
