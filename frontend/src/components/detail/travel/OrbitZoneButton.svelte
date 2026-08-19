@@ -35,7 +35,8 @@
 					...(target.altKm
 						? { targetAltKm: target.altKm, targetApoAltKm: target.apoAltKm ?? target.altKm }
 						: {}),
-					...(target.incDeg === undefined ? {} : { targetIncDeg: target.incDeg })
+					...(target.incDeg === undefined ? {} : { targetIncDeg: target.incDeg }),
+					...(target.argPeriDeg === undefined ? {} : { targetArgPeriDeg: target.argPeriDeg })
 				}
 			: undefined
 	);

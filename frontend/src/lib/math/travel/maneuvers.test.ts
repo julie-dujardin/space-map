@@ -12,6 +12,7 @@ import {
 	combinedBurn,
 	departureCost,
 	injectionDv,
+	orbitPeriapsisSpeed,
 	orbitSpeedAtRadius,
 	periapsisBurnWithTurn,
 	periapsisSpeed,
@@ -19,13 +20,89 @@ import {
 	parkingRadiusKm,
 	planeChangeDv,
 	planeTiltPenaltyKms,
-	planeTurnDeg
+	planeTurnDeg,
+	planeTurnRadiusKm,
+	type EndOrbit
 } from './maneuvers';
 import { EARTH, JUPITER, MARS, MOON, SATURN, VENUS } from './test-fixtures';
 import { dot, type Vec3 } from './vec3';
 
 // Whether these figures match Earth, Apollo and Mars ascents is asserted in
 // benchmarks.test.ts, which owns every published number and its tolerance.
+describe('an argument of periapsis', () => {
+	const MOL = (argPeriDeg?: number): EndOrbit => ({
+		rPeriKm: EARTH.radiusKm + 600,
+		rApoKm: EARTH.radiusKm + 39750,
+		incDeg: 63.4,
+		argPeriDeg
+	});
+
+	// The node line is free until an argument of periapsis pins it, and a trip
+	// free to put a node anywhere puts it at the top, where turning is cheapest.
+	it('turns at apoapsis while nothing says where periapsis is', () => {
+		expect(planeTurnRadiusKm(MOL())).toBeCloseTo(MOL().rApoKm, 6);
+	});
+
+	// Hanging apogee over a hemisphere puts both nodes at the semi-latus rectum,
+	// a quarter of the way round from the low point — and that is where the turn
+	// has to be made, well short of the leisurely speed at the top.
+	it('turns at the semi-latus rectum when apoapsis is held off the equator', () => {
+		const orbit = MOL(270);
+		const semiLatus = (2 * orbit.rPeriKm * orbit.rApoKm) / (orbit.rPeriKm + orbit.rApoKm);
+		expect(planeTurnRadiusKm(orbit)).toBeCloseTo(semiLatus, 6);
+		expect(planeTurnRadiusKm(MOL(90))).toBeCloseTo(semiLatus, 6);
+	});
+
+	// Periapsis on the node is the case the free orbit was already flying, so it
+	// has to come out at exactly the old answer rather than near it.
+	it('is the free orbit again when periapsis sits on the node', () => {
+		for (const argPeriDeg of [0, 180]) {
+			expect(planeTurnRadiusKm(MOL(argPeriDeg))).toBeCloseTo(MOL().rApoKm, 6);
+		}
+	});
+
+	// The picker's preview and the flown trajectory have to agree about which way
+	// an orbit lies, or choosing a Molniya shows one shape and flying it another.
+	it('swings the preview ring round with the angle', () => {
+		const pole: Vec3 = [0, 0, 1];
+		const highest = (orbit: EndOrbit) => {
+			const ring = endOrbitPreviewRing(orbit, pole);
+			const apo = ring.reduce((f, p) => (Math.hypot(...p) > Math.hypot(...f) ? p : f), ring[0]);
+			return (Math.asin(dot(apo, pole) / Math.hypot(...apo)) * 180) / Math.PI;
+		};
+		expect(highest(MOL(270))).toBeCloseTo(63.4, 1);
+		expect(highest(MOL(90))).toBeCloseTo(-63.4, 1);
+		// Unnamed leaves the low point on the hinge, which is the old picture.
+		expect(highest(MOL())).toBeCloseTo(0, 6);
+	});
+
+	// The whole of what it costs: the same turn, made lower down and faster.
+	it('makes a named plane dearer to turn into', () => {
+		const speed = periapsisSpeed(EARTH.mu, MOL().rPeriKm, 1);
+		const free = periapsisBurnWithTurn(EARTH.mu, MOL(), speed, 63.4);
+		const held = periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, 63.4);
+		expect(held).toBeGreaterThan(free);
+		// And with no turn owed it changes nothing at all: an orbit is not dearer
+		// to enter for knowing where its own low point is.
+		expect(periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, 0)).toBeCloseTo(
+			periapsisBurnWithTurn(EARTH.mu, MOL(), speed, 0),
+			12
+		);
+	});
+
+	// Folding the turn into the insertion means turning at periapsis, which an
+	// orbit that has moved its periapsis off the node cannot do.
+	it('cannot fold the turn into a burn made off the node', () => {
+		const speed = periapsisSpeed(EARTH.mu, MOL().rPeriKm, 3);
+		const plain = Math.max(0, speed - orbitPeriapsisSpeed(EARTH.mu, MOL(270)));
+		expect(periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, 63.4)).toBeCloseTo(
+			plain +
+				planeChangeDv(orbitSpeedAtRadius(EARTH.mu, MOL(270), planeTurnRadiusKm(MOL(270))), 63.4),
+			12
+		);
+	});
+});
+
 describe('ascentDv', () => {
 	it('ranks bodies by how hard they are to leave', () => {
 		expect(ascentDv(MOON)).toBeLessThan(ascentDv(MARS));

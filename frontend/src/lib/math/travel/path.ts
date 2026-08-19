@@ -22,17 +22,12 @@ import {
 	endDepartureOrbit,
 	endOrbitNormal,
 	parkingOrbit,
+	turnNodeTrueAnomaly,
 	parkingRadiusKm,
 	type EndOrbit
 } from './maneuvers';
 import { propagateState } from './propagate';
-import {
-	orbitChangeEnds,
-	routeDurationDays,
-	type Route,
-	type RouteLeg,
-	type RouteOptions
-} from './route';
+import { routeDurationDays, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState } from './state';
 import { relativeState, solveRadialArc, type RadialArc } from './system-transfer';
 import { add, cross, dot, norm, normalize, perpendicularTo, scale, sub, type Vec3 } from './vec3';
@@ -586,18 +581,17 @@ function endOrbitPaths(
 
 	const orbits: EndOrbitPath[] = [];
 	const sites = options.surfaceSites ?? {};
-	// A trip that stays at one body never leaves an orbit, it joins another: the
-	// arc runs between one apsis of each, the low one on the side it sets out
-	// from and the high one on the side it climbs to. Nothing else places those
-	// rings, there being no passage at either end to read them off.
-	const climbing =
-		options.orbitChange &&
-		norm(sub(last.points[last.points.length - 1], centers.to)) >
-			norm(sub(first.points[0], centers.from));
-	const joins = options.orbitChange
-		? climbing
-			? ({ from: 'periapsis', to: 'apoapsis' } as const)
-			: ({ from: 'apoapsis', to: 'periapsis' } as const)
+	// A trip that stays at one body never leaves an orbit, it joins another, and
+	// nothing else places those rings — there is no passage at either end to read
+	// them off. The arc sets out from one apsis of its own orbit and meets the
+	// other at the apsis on the side it climbs to, unless it turns between two
+	// planes on the way, which can only be done where the planes cross.
+	const change = route.orbitChange;
+	const joins = change
+		? {
+				from: (change.climb ? 'periapsis' : 'apoapsis') as JoinPoint,
+				to: (change.turnDeg > 0 ? 'node' : change.climb ? 'apoapsis' : 'periapsis') as JoinPoint
+			}
 		: undefined;
 	// A launch/landing is priced through the parking orbit, so a surface end
 	// takes that orbit and carries the line on to the ground.
@@ -928,10 +922,11 @@ function endOrbitPath(end: {
 	surface?: { siteAt?: (jd: number) => Vec3 | null };
 	/** How the atmosphere takes part in an aero-assisted arrival. */
 	aero?: AeroArrival;
-	/** Which apsis of this end's orbit the arc joins it at. Set only for a trip
-	 *  that stays at one body, where there is no passage to read the ring off and
-	 *  the shared apsis is the whole of what places it. */
-	join?: 'periapsis' | 'apoapsis';
+	/** Where the arc joins this end's orbit. Set only for a trip that stays at one
+	 *  body, which has no passage to read the ring off: the shared point is the
+	 *  whole of what places it. A node where the trip turns between two planes,
+	 *  and an apsis where it stays in one. */
+	join?: JoinPoint;
 }): EndOrbitPath {
 	const { at, body, center, orbit, arc, periJd, approach, primaryMu, frame, centerId, surface } =
 		end;
@@ -1146,17 +1141,16 @@ function endOrbitPath(end: {
 		body.mu > 0
 			? (Math.PI * Math.sqrt(((orbit.rPeriKm + orbit.rApoKm) / 2) ** 3 / body.mu)) / SEC_PER_DAY
 			: 0;
-	// An end joined at an apsis rather than approached from outside: the ring
-	// hangs off that apsis, leaning into the plane the orbit named. Joined at the
-	// high point, its own clock starts at the periapsis half a revolution later.
+	// An end joined at a point rather than approached from outside: the ring hangs
+	// off that point, leaning into the plane the orbit named.
+	//
+	// Where the orbit says where its periapsis sits, the point is a node and the
+	// ring is built about it — the plane hinged on the node line, the low point
+	// the named angle round from it. That is the whole of what hangs a Molniya's
+	// apogee over a hemisphere rather than over the equator. Where it does not,
+	// the point is an apsis and the ring is simply laid on it.
 	const joined =
-		end.join && joinDir
-			? {
-					normal: orbitPlane ?? normal,
-					periapsis: end.join === 'periapsis' ? joinDir : scale(joinDir, -1),
-					periJd: end.join === 'periapsis' ? endPeriJd : endPeriJd + halfOrbitDays
-				}
-			: null;
+		end.join && joinDir ? placeRing(orbit, body, end.join, joinDir, endPeriJd, arcNormal) : null;
 
 	// A surface end draws no ring of its own: the stretch of orbit the trip
 	// actually rides is part of the line above.
@@ -1724,6 +1718,83 @@ function approachSide(normal: Vec3, a: Vec3, b: Vec3): Vec3 {
 	const back = scale(sub(b, a), -1);
 	const along = sub(back, scale(normal, dot(normal, back)));
 	return norm(along) > 0 ? normalize(along) : perpendicularTo(normal);
+}
+
+/**
+ * Where an end orbit's ring sits when an arc joins it at one point: the plane
+ * it is flown in, the direction of its low point, and the date its own clock
+ * starts at.
+ *
+ * A named argument of periapsis pins the orbit to its nodes, so the join is one
+ * of them and the ring is built outward from there. The node line itself is
+ * free — nothing in the model fixes a longitude — which is what lets it be put
+ * exactly where the arc arrives.
+ */
+function placeRing(
+	orbit: EndOrbit,
+	body: TravelBody,
+	join: JoinPoint,
+	joinDir: Vec3,
+	joinJd: number,
+	planeNormal: Vec3
+): { normal: Vec3; periapsis: Vec3; periJd: number } {
+	const nu = joinTrueAnomaly(orbit, join);
+	const pole = body.poleEcliptic;
+	// Turned into from another plane: the join is the node the two share, so the
+	// ring is hinged on it and the low point set the named angle round from
+	// there. Which node it is decides which way the plane hangs, and with it
+	// which hemisphere the high point ends up over.
+	if (join === 'node' && pole && orbit.incDeg !== undefined) {
+		const ascending = normalize(nu < 0 ? joinDir : scale(joinDir, -1));
+		const normal = planeAboutNode(normalize(pole), ascending, orbit.incDeg);
+		return {
+			normal,
+			periapsis: apsisDirection(orbit, normal, ascending, 'periapsis'),
+			periJd: joinJd - daysFromPeriapsis(body.mu, orbit, nu)
+		};
+	}
+	// Flown in the one plane the arc is already in, and met at an apsis of it —
+	// which the arc was drawn to reach, so the direction is simply that.
+	return {
+		normal: planeNormal,
+		periapsis: join === 'apoapsis' ? scale(joinDir, -1) : joinDir,
+		periJd: joinJd - daysFromPeriapsis(body.mu, orbit, nu)
+	};
+}
+
+/** Where the arc joins an end's orbit: an apsis of it, or the node it shares
+ *  with the plane the arc was flown in. */
+type JoinPoint = 'periapsis' | 'apoapsis' | 'node';
+
+/**
+ * The plane at inclination `incDeg` whose *ascending* node lies along `node`,
+ * as its normal. Tipped the one way that leaves the craft climbing north
+ * through the node rather than falling south through it.
+ */
+function planeAboutNode(pole: Vec3, node: Vec3, incDeg: number): Vec3 {
+	const inc = incDeg * (Math.PI / 180);
+	const east = cross(pole, node);
+	return normalize(sub(scale(pole, Math.cos(inc)), scale(east, Math.sin(inc))));
+}
+
+/** True anomaly the arc joins an orbit at, radians: a node where the orbit has
+ *  pinned them, and the apsis the arc reaches otherwise. */
+function joinTrueAnomaly(orbit: EndOrbit, join: JoinPoint): number {
+	if (join === 'node') return turnNodeTrueAnomaly(orbit);
+	return join === 'apoapsis' ? Math.PI : 0;
+}
+
+/** Days from periapsis to true anomaly `nu`, over whatever part of a revolution
+ *  that is. Kepler's equation, so it answers for a negative angle too — the
+ *  same phase read backwards. */
+function daysFromPeriapsis(mu: number, orbit: EndOrbit, nu: number): number {
+	const semiMajor = (orbit.rPeriKm + orbit.rApoKm) / 2;
+	if (!(mu > 0) || !(semiMajor > 0)) return 0;
+	const e = (orbit.rApoKm - orbit.rPeriKm) / (orbit.rApoKm + orbit.rPeriKm);
+	const periodDays = (2 * Math.PI * Math.sqrt(semiMajor ** 3 / mu)) / SEC_PER_DAY;
+	const anomaly =
+		2 * Math.atan2(Math.sqrt(1 - e) * Math.sin(nu / 2), Math.sqrt(1 + e) * Math.cos(nu / 2));
+	return (periodDays * (anomaly - e * Math.sin(anomaly))) / (Math.PI * 2);
 }
 
 /** A bound orbit as a closed ring about `center`, low point along `periapsis`. */
@@ -2796,37 +2867,41 @@ function orbitChangePath(
 	centerId: string,
 	samples: number
 ): PathGeometry | null {
-	const ends = orbitChangeEnds(body, {
-		departureMode: route.departureMode,
-		arrivalMode: route.arrivalMode,
-		departureOrbit: route.departureOrbit,
-		targetOrbit: route.targetOrbit
-	});
+	const ends = route.orbitChange;
 	if (!ends) return null;
 
 	// The body's equator where its pole is published, the ecliptic where it is
 	// not: an unstated pole is not a claim that the orbit lies anywhere else.
-	const normal = normalize(body.poleEcliptic ?? ([0, 0, 1] as Vec3));
-	if (!(norm(normal) > 0)) return null;
-	// Nothing picks out a direction in the plane, so periapsis goes wherever the
-	// axes put it: any longitude draws the same trip.
-	const periapsis = normalize(cross(normal, Math.abs(normal[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]));
-	const inPlane = normalize(cross(normal, periapsis));
+	const pole = normalize(body.poleEcliptic ?? ([0, 0, 1] as Vec3));
+	if (!(norm(pole) > 0)) return null;
+	// Nothing in the model fixes a longitude, so the node line goes wherever the
+	// axes put it: every trip draws the same shape whichever way round it lies.
+	const nodeLine = normalize(cross(pole, Math.abs(pole[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]));
+	// The arc lies in the plane the trip is priced as flying — the departure's,
+	// which for a launch is the plane the ascent climbs into. Only a trip that
+	// turns is flown in two planes, and it turns at the far end.
+	const normal = planeAboutNode(pole, nodeLine, ends.arcIncDeg ?? 0);
+
+	// Where the arc has to end. A turn can only be made where the two planes
+	// cross, so it ends on the node line; otherwise it ends at an apsis of the
+	// orbit it joins, which an argument of periapsis may have moved off the node.
+	const joinApsis = ends.climb ? 'apoapsis' : 'periapsis';
+	const endDir = ends.turnDeg > 0 ? nodeLine : apsisDirection(ends.to, normal, nodeLine, joinApsis);
 
 	const rNear = Math.min(ends.rFromKm, ends.rToKm);
 	const rFar = Math.max(ends.rFromKm, ends.rToKm);
 	const sampled = ends.singleBurn
-		? sweepSamples(
+		? sweepToEnd(
 				eccentricityOf(ends.from),
 				semiLatusRectumOf(ends.from),
 				Math.PI,
-				periapsis,
-				inPlane,
+				normal,
+				endDir,
 				route,
 				true,
 				samples
 			)
-		: sweepFromArc(body, rNear, rFar, periapsis, inPlane, route, ends.climb, samples);
+		: sweepFromArc(body, rNear, rFar, normal, endDir, route, ends.climb, samples);
 	if (!sampled) return null;
 
 	const { points, jds } = sampled;
@@ -2875,8 +2950,8 @@ function sweepFromArc(
 	body: TravelBody,
 	rNearKm: number,
 	rFarKm: number,
-	periapsis: Vec3,
-	inPlane: Vec3,
+	normal: Vec3,
+	endDir: Vec3,
 	route: Route,
 	climb: boolean,
 	samples: number
@@ -2890,7 +2965,50 @@ function sweepFromArc(
 	const cosNu = (p / rFarKm - 1) / (e || 1e-12);
 	const nuFar = Math.acos(Math.max(-1, Math.min(1, cosNu)));
 	if (!isFinite(nuFar)) return null;
-	return sweepSamples(e, p, nuFar, periapsis, inPlane, route, climb, samples);
+	return sweepToEnd(e, p, nuFar, normal, endDir, route, climb, samples);
+}
+
+/**
+ * The same sweep, turned in its plane so that its last sample lands along
+ * `endDir` — the point the arc has to hand over at, which the orbit it joins
+ * has already fixed. Climbing, that last sample is the far end of the sweep;
+ * coming down it is the near one, the sweep being read backwards.
+ */
+function sweepToEnd(
+	e: number,
+	p: number,
+	nuEnd: number,
+	normal: Vec3,
+	endDir: Vec3,
+	route: Route,
+	outbound: boolean,
+	samples: number
+): { points: Vec3[]; jds: number[] } | null {
+	const periapsis = normalize(rotateAbout(endDir, normal, outbound ? -nuEnd : 0));
+	return sweepSamples(
+		e,
+		p,
+		nuEnd,
+		periapsis,
+		normalize(cross(normal, periapsis)),
+		route,
+		outbound,
+		samples
+	);
+}
+
+/** Which way an orbit's apsis points, given the plane it is flown in and where
+ *  that plane crosses the equator. An argument of periapsis measures from the
+ *  ascending node; without one the low point sits on the node itself. */
+function apsisDirection(
+	orbit: EndOrbit,
+	normal: Vec3,
+	ascendingNode: Vec3,
+	apsis: 'periapsis' | 'apoapsis'
+): Vec3 {
+	const arg = (orbit.argPeriDeg ?? 0) * (Math.PI / 180);
+	const peri = normalize(rotateAbout(ascendingNode, normal, arg));
+	return apsis === 'periapsis' ? peri : scale(peri, -1);
 }
 
 /**

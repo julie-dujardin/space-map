@@ -25,7 +25,7 @@
 	import type { LaunchPad } from '$lib/travel/launch-pad';
 	import EndpointSearch from './EndpointSearch.svelte';
 	import FullscreenPicker from './FullscreenPicker.svelte';
-	import { endpointModeLabel, planeLabel, planeReadout } from './endpoint-labels';
+	import { argPeriReadout, endpointModeLabel, planeLabel, planeReadout } from './endpoint-labels';
 
 	interface Props {
 		/** Origins get a hollow dot; destinations get a pin. */
@@ -55,6 +55,10 @@
 		 *  list on a row naming no orbit (a landing, a flyby) reports the wrapper
 		 *  with a null orbit, which is a different silence. */
 		onPreview?: (state: { orbit: NonNullable<OrbitChoice['orbit']> | null } | null) => void;
+		/** Where periapsis sits, degrees round from the equator crossing; null
+		 *  leaves it free. Only asked for on an ellipse in a named plane. */
+		argPeriDeg: number | null;
+		onArgPeriChange: (deg: number | null) => void;
 		/** Δv this choice costs at this end, km/s — null while nothing is priced. */
 		priceKms?: (choice: OrbitChoice) => number | null;
 		open: boolean;
@@ -88,6 +92,8 @@
 		incDeg,
 		onIncChange,
 		onPreview,
+		argPeriDeg,
+		onArgPeriChange,
 		priceKms,
 		open,
 		onOpenChange,
@@ -156,6 +162,10 @@
 		chosen?.kind === 'custom' ? (chosen.apoAltKm ?? customApoAltKm) : customApoAltKm
 	);
 	let circular = $derived(customApoShown === customAltShown);
+	// An angle round from the equator crossing needs a plane to be measured from
+	// and two ends set apart to be an angle on: a circle has no low point to
+	// place, and a free plane has no crossing to place it against.
+	let hasArgPeri = $derived(!circular && incDeg !== null);
 	// The closed box shows the orbit itself rather than the words naming it, which
 	// carry no data: its height, and its plane where one is named — two ends
 	// differing only in plane are different trips.
@@ -430,6 +440,35 @@
 										customAltShown,
 										onCustomApoAlt
 									)}
+									{#if hasArgPeri}
+										<!-- Reads as a compass round the orbit rather than a lean: a quarter
+										     turn on hangs the high point over one pole. -->
+										<label class="flex flex-col gap-0.5">
+											<span class="text-muted-foreground text-[10px] tracking-wide uppercase">
+												{m.travel_orbit_arg_peri()}
+											</span>
+											<span class="flex items-center gap-2">
+												<input
+													type="range"
+													min={-1}
+													max={359}
+													step={1}
+													value={argPeriDeg ?? -1}
+													oninput={(e) => {
+														const deg = Number(e.currentTarget.value);
+														onArgPeriChange(deg < 0 ? null : deg);
+													}}
+													class="accent-primary h-1 flex-1"
+													aria-valuetext={argPeriReadout(argPeriDeg)}
+												/>
+												<span
+													class="text-muted-foreground w-24 shrink-0 text-end text-[10px] tabular-nums"
+												>
+													{argPeriReadout(argPeriDeg)}
+												</span>
+											</span>
+										</label>
+									{/if}
 									<!-- A free plane is the step below the equator rather than a control of
 									     its own: it is the least a trip can ask of its plane, not a different
 									     kind of answer. -->

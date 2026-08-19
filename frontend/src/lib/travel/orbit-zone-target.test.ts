@@ -14,7 +14,8 @@ function zonesOf(target: OrbitZoneTarget): string[] {
 		hasSurface: true,
 		customAltKm: target.altKm ?? 1000,
 		customApoAltKm: target.apoAltKm,
-		incDeg: target.incDeg ?? null
+		incDeg: target.incDeg ?? null,
+		argPeriDeg: target.argPeriDeg ?? null
 	}).find((c) => c.kind === target.mode);
 	if (choice?.periAltKm === undefined || choice.apoAltKm === undefined) return [];
 	// The plane read off the orbit rather than off the target: a named orbit can

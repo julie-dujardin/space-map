@@ -116,6 +116,12 @@ export interface TripState {
 	 *  circular orbit the custom end was before it had two ends. */
 	originApoAltKm: number;
 	targetApoAltKm: number;
+	/** Where periapsis sits on the `custom` orbit at each end, degrees round from
+	 *  the equator crossing. Null leaves it free, which lets the trip put the
+	 *  crossing at the high point, the cheapest place to turn. Means nothing on a
+	 *  circle or in an unnamed plane, and is not offered there. */
+	originArgPeriDeg: number | null;
+	targetArgPeriDeg: number | null;
 	/** Plane the `custom` orbit is flown in at each end, degrees to that body's
 	 *  equator, above 90 for a retrograde one. Null leaves the plane free, which
 	 *  prices the trip as one that never named a plane. Carried whatever the mode
@@ -154,6 +160,8 @@ export const DEFAULT_TRIP: TripState = {
 	targetApoAltKm: DEFAULT_CUSTOM_ALT_KM,
 	originIncDeg: null,
 	targetIncDeg: null,
+	originArgPeriDeg: null,
+	targetArgPeriDeg: null,
 	// Somewhere with air is somewhere you use the air: arriving at Mars on the
 	// engine alone is the unusual choice, and the one worth having to make.
 	aero: 'aerocapture',
@@ -166,6 +174,17 @@ export const DEFAULT_TRIP: TripState = {
 	pick: null,
 	coastFraction: 0
 };
+
+/** Whether an end's argument of periapsis says anything: it is an angle round
+ *  from the equator crossing, so it needs a plane to be measured from and two
+ *  ends set apart to be an angle on. */
+export function argPeriMeans(trip: TripState, end: 'origin' | 'target'): boolean {
+	const arg = end === 'origin' ? trip.originArgPeriDeg : trip.targetArgPeriDeg;
+	const inc = end === 'origin' ? trip.originIncDeg : trip.targetIncDeg;
+	const alt = end === 'origin' ? trip.originAltKm : trip.targetAltKm;
+	const apo = end === 'origin' ? trip.originApoAltKm : trip.targetApoAltKm;
+	return arg !== null && inc !== null && apo > alt;
+}
 
 /** Trailing zeros carry no meaning and make a shared trip harder to read. */
 function trim(value: number, digits: number): string {
@@ -198,6 +217,14 @@ export function serializeTripSuffix(trip: TripState): string {
 	}
 	if (trip.targetMode === 'custom' && trip.targetIncDeg !== null) {
 		parts.push(`tinc=${trim(trip.targetIncDeg, 1)}`);
+	}
+	// Only alongside the plane it is measured from, and the ellipse it is an angle
+	// on: on a circle or in a free plane it names nothing.
+	if (trip.originMode === 'custom' && argPeriMeans(trip, 'origin')) {
+		parts.push(`fargp=${trim(trip.originArgPeriDeg!, 1)}`);
+	}
+	if (trip.targetMode === 'custom' && argPeriMeans(trip, 'target')) {
+		parts.push(`targp=${trim(trip.targetArgPeriDeg!, 1)}`);
 	}
 	if (trip.aero !== DEFAULT_TRIP.aero) parts.push(`aero=${trip.aero}`);
 	// The date is what the mode means; a mode without one searches the same span
@@ -261,6 +288,15 @@ function parseShape(params: URLSearchParams, alt: string, apo: string): [number,
 	return [Math.min(near, far), Math.max(near, far)];
 }
 
+/** An angle round the orbit from the equator crossing. Wrapped rather than
+ *  clamped: unlike a plane, it runs the whole way round and 370° is 10°. */
+function parseArgPeri(raw: string | null): number | null {
+	if (raw === null) return null;
+	const value = Number(raw);
+	if (!Number.isFinite(value)) return null;
+	return ((value % 360) + 360) % 360;
+}
+
 /** A plane, degrees to the equator. Absent or unusable leaves it free rather
  *  than pinning it to the equator, which is an orbit of its own and a dearer
  *  one. Clamped to the half-turn past which an inclination names a plane it has
@@ -314,6 +350,8 @@ export function parseTrip(params: URLSearchParams): TripState {
 		targetApoAltKm,
 		originIncDeg: parseInclination(params.get('finc')),
 		targetIncDeg: parseInclination(params.get('tinc')),
+		originArgPeriDeg: parseArgPeri(params.get('fargp')),
+		targetArgPeriDeg: parseArgPeri(params.get('targp')),
 		aero: aero !== null && AERO_ASSISTS.includes(aero) ? aero : DEFAULT_TRIP.aero,
 		...parseWhen(params.get('when')),
 		vehicleId: params.get('craft') || null,

@@ -130,6 +130,10 @@ export interface OrbitOptions {
 	/** Plane the custom orbit is flown in, degrees to the body's equator. Null
 	 *  leaves it free, which is how the named orbits are offered. */
 	incDeg?: number | null;
+	/** Where its periapsis sits, degrees round from the equator crossing. Null
+	 *  leaves the crossing free to be at the high point, which is where a plane
+	 *  is cheapest to turn. */
+	argPeriDeg?: number | null;
 }
 
 export interface OrbitChoice {
@@ -199,7 +203,17 @@ export function orbitChoices(
 		// free. On a tilted body that plane is not the one arrivals come in on,
 		// and the turn into it is most of what the orbit costs.
 		const plane = kind === 'custom' ? options.incDeg : kind === 'stationary' ? 0 : null;
-		const orbit = plane == null ? shape : { ...shape, incDeg: plane };
+		// An angle round from the equator crossing, so it goes to the one orbit
+		// that has a plane to measure it from and two ends to make it an angle.
+		const arg =
+			kind === 'custom' && plane != null && shape.rApoKm > shape.rPeriKm
+				? options.argPeriDeg
+				: null;
+		const orbit: EndOrbit = {
+			...shape,
+			...(plane == null ? {} : { incDeg: plane }),
+			...(arg == null ? {} : { argPeriDeg: arg })
+		};
 		out.push({
 			kind,
 			group,

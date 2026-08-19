@@ -55,6 +55,8 @@ describe('trip URL round trip', () => {
 			targetApoAltKm: DEFAULT_TRIP.targetApoAltKm,
 			originIncDeg: null,
 			targetIncDeg: null,
+			originArgPeriDeg: null,
+			targetArgPeriDeg: null,
 			aero: 'aerobraking',
 			timeMode: 'arrive',
 			pickedJd: DEPART_JD,
@@ -117,6 +119,32 @@ describe('trip URL round trip', () => {
 	it('reads an orbit named the other way round as the same orbit', () => {
 		const trip = parseTrip(new URLSearchParams('tm=custom&talt=39750&tapo=600'));
 		expect([trip.targetAltKm, trip.targetApoAltKm]).toEqual([600, 39750]);
+	});
+
+	// An angle round the orbit needs a plane to be measured from and an ellipse to
+	// be an angle on, so a circle or a free plane carries none — it would name a
+	// point on the orbit that does not exist.
+	it('carries the argument of periapsis only where it says something', () => {
+		const molniya = {
+			...DEFAULT_TRIP,
+			targetMode: 'custom' as const,
+			targetAltKm: 600,
+			targetApoAltKm: 39750,
+			targetIncDeg: 63.4,
+			targetArgPeriDeg: 270
+		};
+		expect(serializeTripSuffix(molniya)).toContain('targp=270');
+		expect(reparse(molniya).targetArgPeriDeg).toBe(270);
+		// Take the plane away and it is measured from nothing; round the orbit off
+		// and there is no low point to be an angle to.
+		expect(serializeTripSuffix({ ...molniya, targetIncDeg: null })).not.toContain('targp');
+		expect(serializeTripSuffix({ ...molniya, targetApoAltKm: 600 })).not.toContain('targp');
+	});
+
+	// It runs the whole way round, unlike a plane, so it wraps rather than sticks.
+	it('wraps an angle past a full turn', () => {
+		expect(parseTrip(new URLSearchParams('targp=390')).targetArgPeriDeg).toBe(30);
+		expect(parseTrip(new URLSearchParams('targp=-90')).targetArgPeriDeg).toBe(270);
 	});
 
 	it('keeps the picked date to the second', () => {

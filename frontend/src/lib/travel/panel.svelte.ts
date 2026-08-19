@@ -138,7 +138,8 @@ export interface SolveRequest {
 function orbitFragment(orbit?: EndOrbit): string {
 	if (!orbit) return '';
 	const plane = orbit.incDeg === undefined ? '' : `/${orbit.incDeg.toFixed(1)}`;
-	return `${Math.round(orbit.rPeriKm)}/${Math.round(orbit.rApoKm)}${plane}`;
+	const arg = orbit.argPeriDeg === undefined ? '' : `@${orbit.argPeriDeg.toFixed(1)}`;
+	return `${Math.round(orbit.rPeriKm)}/${Math.round(orbit.rApoKm)}${plane}${arg}`;
 }
 
 function latFragment(deg?: number): string {
@@ -240,6 +241,10 @@ export class TravelPanelState {
 	 *  orbit — the component puts it onto whichever one is picked. */
 	originIncDeg = $state<number | null>(DEFAULT_TRIP.originIncDeg);
 	targetIncDeg = $state<number | null>(DEFAULT_TRIP.targetIncDeg);
+	/** Where periapsis sits on that orbit, degrees round from the equator
+	 *  crossing; null leaves it free. Held here for the same reason the plane is. */
+	originArgPeriDeg = $state<number | null>(DEFAULT_TRIP.originArgPeriDeg);
+	targetArgPeriDeg = $state<number | null>(DEFAULT_TRIP.targetArgPeriDeg);
 	/**
 	 * The orbit each end is met in, km from the centre.
 	 *
@@ -404,6 +409,8 @@ export class TravelPanelState {
 			targetApoAltKm: this.targetApoAltKm,
 			originIncDeg: this.originIncDeg,
 			targetIncDeg: this.targetIncDeg,
+			originArgPeriDeg: this.originArgPeriDeg,
+			targetArgPeriDeg: this.targetArgPeriDeg,
 			aero: this.aero,
 			timeMode: this.timeMode,
 			pickedJd: this.pickedJd,
@@ -431,6 +438,8 @@ export class TravelPanelState {
 		this.targetApoAltKm = trip.targetApoAltKm;
 		this.originIncDeg = trip.originIncDeg;
 		this.targetIncDeg = trip.targetIncDeg;
+		this.originArgPeriDeg = trip.originArgPeriDeg;
+		this.targetArgPeriDeg = trip.targetArgPeriDeg;
 		this.aero = trip.aero;
 		this.timeMode = trip.timeMode;
 		this.pickedJd = trip.pickedJd;

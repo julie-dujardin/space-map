@@ -26,6 +26,9 @@ export interface OrbitZoneTarget {
 	altKm?: number;
 	apoAltKm?: number;
 	incDeg?: number;
+	/** Where periapsis sits, degrees round from the equator crossing. What hangs
+	 *  a Molniya's apogee over the north rather than over the equator. */
+	argPeriDeg?: number;
 }
 
 /**
@@ -47,12 +50,13 @@ export const ZONE_TARGETS: Record<string, OrbitZoneTarget> = {
 	IGSO: { mode: 'custom', altKm: GEO_ALT_KM, incDeg: 45 },
 	GTO: { mode: 'transfer' },
 	// The eccentric shapes, each opened on the orbit it is named after. Molniya
-	// and Tundra are the same 63.4° plane that holds an apogee still over one
-	// hemisphere, at a half-day and a whole one; the plain HEO names no plane,
-	// since nothing but its shape makes it one.
+	// and Tundra are the same 63.4° plane that holds an apogee still, and both
+	// put that apogee three quarters of a turn from the equator crossing, which
+	// is what parks it over the northern hemisphere they were flown to serve.
+	// The plain HEO names neither, since nothing but its shape makes it one.
 	HEO: { mode: 'custom', altKm: 1000, apoAltKm: 47000 },
-	MOL: { mode: 'custom', altKm: 600, apoAltKm: 39750, incDeg: 63.4 },
-	TUN: { mode: 'custom', altKm: 27400, apoAltKm: 44200, incDeg: 63.4 },
+	MOL: { mode: 'custom', altKm: 600, apoAltKm: 39750, incDeg: 63.4, argPeriDeg: 270 },
+	TUN: { mode: 'custom', altKm: 27400, apoAltKm: 44200, incDeg: 63.4, argPeriDeg: 270 },
 	// Clear of the stationary belt by more than the 200 km that defines the
 	// graveyard, close enough to still be it rather than a high orbit.
 	GRA: { mode: 'custom', altKm: GEO_ALT_KM + 300 },

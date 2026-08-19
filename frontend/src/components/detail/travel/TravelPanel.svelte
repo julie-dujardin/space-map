@@ -455,7 +455,8 @@
 					hasSurface: originHasGround,
 					customAltKm: panel.originAltKm,
 					customApoAltKm: panel.originApoAltKm,
-					incDeg: panel.originIncDeg
+					incDeg: panel.originIncDeg,
+					argPeriDeg: panel.originArgPeriDeg
 				})
 			: []
 	);
@@ -466,7 +467,8 @@
 						hasSurface: targetHasGround,
 						customAltKm: panel.targetAltKm,
 						customApoAltKm: panel.targetApoAltKm,
-						incDeg: panel.targetIncDeg
+						incDeg: panel.targetIncDeg,
+						argPeriDeg: panel.targetArgPeriDeg
 					})
 				: [];
 		// Where the trip already is is not somewhere to go: on a same-body trip the
@@ -1142,6 +1144,7 @@
 		const previousOriginAlt = panel.originAltKm;
 		const previousOriginApo = panel.originApoAltKm;
 		const previousOriginInc = panel.originIncDeg;
+		const previousOriginArg = panel.originArgPeriDeg;
 		panel.originMode = ORIGIN_MODES.includes(panel.targetMode) ? panel.targetMode : 'low-orbit';
 		panel.targetMode = previousOriginMode;
 		panel.originAltKm = panel.targetAltKm;
@@ -1152,6 +1155,8 @@
 		// end it belongs to rather than staying put.
 		panel.originIncDeg = panel.targetIncDeg;
 		panel.targetIncDeg = previousOriginInc;
+		panel.originArgPeriDeg = panel.targetArgPeriDeg;
+		panel.targetArgPeriDeg = previousOriginArg;
 		onSwap();
 	}
 </script>
@@ -1254,6 +1259,8 @@
 						incDeg={panel.originIncDeg}
 						onIncChange={(deg: number | null) => (panel.originIncDeg = deg)}
 						onPreview={(state) => (originList = state)}
+						argPeriDeg={panel.originArgPeriDeg}
+						onArgPeriChange={(deg: number | null) => (panel.originArgPeriDeg = deg)}
 						priceKms={(choice: OrbitChoice) => priceEnd('origin', choice)}
 						open={openField === 'origin'}
 						onOpenChange={(next: boolean) => setOpenField('origin', next)}
@@ -1296,6 +1303,8 @@
 						incDeg={panel.targetIncDeg}
 						onIncChange={(deg: number | null) => (panel.targetIncDeg = deg)}
 						onPreview={(state) => (targetList = state)}
+						argPeriDeg={panel.targetArgPeriDeg}
+						onArgPeriChange={(deg: number | null) => (panel.targetArgPeriDeg = deg)}
 						priceKms={(choice: OrbitChoice) => priceEnd('target', choice)}
 						open={openField === 'target'}
 						onOpenChange={(next: boolean) => setOpenField('target', next)}

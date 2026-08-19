@@ -18,6 +18,7 @@ import {
 	combinedBurn,
 	departureCost,
 	NO_ARRIVAL_COST,
+	orbitJoinRadiusKm,
 	orbitPeriodHours,
 	orbitSpeedAtRadius,
 	parkingOrbit,
@@ -99,6 +100,10 @@ export interface Route {
 	 *  so that drawing a trip does not have to be handed the choices again. */
 	departureOrbit?: EndOrbit;
 	targetOrbit?: EndOrbit;
+	/** Where the arc runs, on a trip between two orbits about one body. Echoed
+	 *  rather than worked out again by the drawing: the plane and the radii it
+	 *  joins at depend on the launch site, which no route carries. */
+	orbitChange?: OrbitChangeEnds;
 	/** What was asked of the target's atmosphere. Reported as asked even where
 	 *  the body had none to give, so the route says what trip it answers. */
 	aero: AeroAssist;
@@ -522,6 +527,13 @@ export interface OrbitChangeEnds {
 	climb: boolean;
 	/** True when both ends sit at one radius, so a single burn joins them. */
 	singleBurn: boolean;
+	/** Plane the departure is flown in, degrees. A launch climbs into the one it
+	 *  can reach; an orbit brings its own; a free one is flown as the target's,
+	 *  which is what makes it free. Undefined when neither end names a plane. */
+	arcIncDeg?: number;
+	/** Angle the trip turns between the two planes, degrees. Zero where they
+	 *  match, where either is free, and for a landing, which owes none. */
+	turnDeg: number;
 }
 
 /**
@@ -543,10 +555,10 @@ export function orbitChangeEnds(
 	body: TravelBody,
 	options: Pick<
 		OrbitChangeOptions,
-		'departureMode' | 'arrivalMode' | 'departureOrbit' | 'targetOrbit'
+		'departureMode' | 'arrivalMode' | 'departureOrbit' | 'targetOrbit' | 'departureSiteLatDeg'
 	>
 ): OrbitChangeEnds | null {
-	const { departureMode, arrivalMode, departureOrbit, targetOrbit } = options;
+	const { departureMode, arrivalMode, departureOrbit, targetOrbit, departureSiteLatDeg } = options;
 	if (arrivalMode === 'flyby') return null;
 	if (departureMode === 'surface' && arrivalMode === 'landing') return null;
 
@@ -559,9 +571,31 @@ export function orbitChangeEnds(
 			: (targetOrbit ?? parkingOrbit(body));
 	if (!(from.rPeriKm > 0) || !(to.rPeriKm > 0)) return null;
 
-	const climb = to.rApoKm > from.rApoKm || (to.rApoKm === from.rApoKm && to.rPeriKm > from.rPeriKm);
-	const rFromKm = climb ? from.rPeriKm : from.rApoKm;
-	const rToKm = climb ? to.rApoKm : to.rPeriKm;
+	// The plane each end is flown in. A launch climbs straight into the target's
+	// plane where its latitude reaches it, and into the nearest it can when not;
+	// the rest is turned out in the arc. A landing comes down in the plane the
+	// craft is already in and owes no turn.
+	const latFrom = Math.abs(departureSiteLatDeg ?? 0);
+	const fromIncDeg =
+		departureMode === 'surface'
+			? to.incDeg === undefined
+				? undefined
+				: Math.min(Math.max(to.incDeg, latFrom), 180 - latFrom)
+			: from.incDeg;
+	const turnDeg = arrivalMode === 'landing' ? 0 : planeTurnDeg(fromIncDeg, to.incDeg);
+	// A free plane is flown as the one it is going to, which is the whole of what
+	// makes it free — so the arc lies in the target's wherever it names one.
+	const arcIncDeg = fromIncDeg ?? to.incDeg;
+
+	// Which orbit is the bigger of the two, and so which side of each the arc
+	// meets. Two orbits in different planes can only be joined where those planes
+	// cross, so a turn moves the meeting to a node; without one they meet at the
+	// apsis, and the arc's own direction is read back off the two radii.
+	const up = to.rApoKm > from.rApoKm || (to.rApoKm === from.rApoKm && to.rPeriKm > from.rPeriKm);
+	const atNode = turnDeg > 0;
+	const rFromKm = orbitJoinRadiusKm(from, up ? 'periapsis' : 'apoapsis', atNode);
+	const rToKm = orbitJoinRadiusKm(to, up ? 'apoapsis' : 'periapsis', atNode);
+	const climb = rToKm >= rFromKm;
 	const singleBurn = Math.abs(rToKm - rFromKm) < SAME_RADIUS_KM;
 	// Two ends at one radius with nothing else to tell them apart is the same
 	// place twice, which is not a trip — but two named planes at one radius
@@ -573,7 +607,7 @@ export function orbitChangeEnds(
 		!(planeTurnDeg(from.incDeg, to.incDeg) > 0)
 	)
 		return null;
-	return { from, to, rFromKm, rToKm, climb, singleBurn };
+	return { from, to, rFromKm, rToKm, climb, singleBurn, arcIncDeg, turnDeg };
 }
 
 /**
@@ -602,22 +636,10 @@ function buildOrbitChangeRoute(
 	} = options;
 	const ends = orbitChangeEnds(body, options);
 	if (!ends) return null;
-	const { from, to, rFromKm, rToKm, climb, singleBurn } = ends;
-
-	// The plane each end flies. A launch climbs straight into the target's
-	// plane when its latitude reaches it, and into the nearest plane it can
-	// when not — the rest is a turn made out in the arc, the split every
-	// geostationary mission flies. A landing comes down in the plane the craft
-	// was already in, and the descent pays for how steep it lies over the
-	// moving ground.
-	const latFrom = Math.abs(departureSiteLatDeg ?? 0);
-	const fromIncDeg =
-		departureMode === 'surface'
-			? to.incDeg === undefined
-				? undefined
-				: Math.min(Math.max(to.incDeg, latFrom), 180 - latFrom)
-			: from.incDeg;
-	const turnDeg = arrivalMode === 'landing' ? 0 : planeTurnDeg(fromIncDeg, to.incDeg);
+	const { from, to, rFromKm, rToKm, climb, singleBurn, turnDeg } = ends;
+	// The plane the ascent climbs into, which the descent's own tilt is read
+	// against. Where the arc lies is the ends' answer, not this builder's.
+	const fromIncDeg = ends.arcIncDeg;
 
 	const departureSite =
 		departureSiteLatDeg === undefined
@@ -706,6 +728,7 @@ function buildOrbitChangeRoute(
 		arrivalMode,
 		departureOrbit,
 		targetOrbit,
+		orbitChange: ends,
 		aero,
 		entrySpeedKms: arr.entrySpeedKms
 	};

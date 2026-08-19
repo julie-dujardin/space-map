@@ -13,12 +13,13 @@ import {
 	orbitPeriodHours,
 	parkingRadiusKm,
 	planeChangeDv,
+	planeTurnRadiusKm,
 	type EndOrbit
 } from './maneuvers';
 import { hohmannArcDays } from './system-transfer';
 import { buildTrajectoryPath } from './path';
 import { craftPositionAt } from './path-sample';
-import { cross, dot, norm, normalize, sub } from './vec3';
+import { cross, dot, norm, normalize, sub, type Vec3 } from './vec3';
 
 const J2000 = 2451545;
 const GEO_RADIUS_KM = 42164;
@@ -265,6 +266,108 @@ describe('the orbits at its ends', () => {
 		expect(Math.min(...end.points.map((p) => norm(sub(p, last))))).toBeLessThan(1);
 		const peri = end.points.reduce((near, p) => (norm(p) < norm(near) ? p : near), end.points[0]);
 		expect(dot(normalize(peri), normalize(last))).toBeCloseTo(1, 9);
+	});
+});
+
+describe('an orbit that says where its periapsis is', () => {
+	const pathOf = (r: Route | null) =>
+		r ? buildTrajectoryPath(EARTH, EARTH, r, { centerId: EARTH.id, orbitChange: true }) : null;
+	const MOL = (argPeriDeg?: number): EndOrbit => ({
+		rPeriKm: EARTH.radiusKm + 600,
+		rApoKm: EARTH.radiusKm + 39750,
+		incDeg: 63.4,
+		argPeriDeg
+	});
+	const pole = normalize(EARTH.poleEcliptic!);
+	/** Latitude a drawn point sits at, degrees. */
+	const latOf = (v: Vec3) => (Math.asin(dot(normalize(v), pole) as number) * 180) / Math.PI;
+	/** The half-ellipse between whatever radii these two ends are joined at —
+	 *  which the argument of periapsis moves, so it cannot be a fixed figure. */
+	const arcRoute = (from: EndOrbit | 'ground', to: EndOrbit) => {
+		const options = {
+			orbitChange: true as const,
+			departureMode: (from === 'ground' ? 'surface' : 'orbit') as 'surface' | 'orbit',
+			arrivalMode: 'capture' as const,
+			departureOrbit: from === 'ground' ? undefined : from,
+			targetOrbit: to
+		};
+		const ends = orbitChangeEnds(EARTH, options)!;
+		const tof = hohmannArcDays(
+			EARTH.mu,
+			Math.min(ends.rFromKm, ends.rToKm),
+			Math.max(ends.rFromKm, ends.rToKm)
+		);
+		return buildRoute(EARTH, EARTH, J2000, tof, options);
+	};
+	const launchTo = (to: EndOrbit) => arcRoute('ground', to);
+
+	// The whole point of the field. Left free, the high point sits on the equator
+	// because the node line is free to be put there; named, it hangs over the
+	// hemisphere it was asked to, which is what a Molniya is for.
+	it('hangs apoapsis over the hemisphere it names', () => {
+		const highest = (to: EndOrbit) => {
+			const end = pathOf(launchTo(to))!.endOrbits.find((e) => e.at === 'arrival')!;
+			return latOf(end.points.reduce((f, p) => (norm(p) > norm(f) ? p : f), end.points[0]));
+		};
+		expect(highest(MOL(270))).toBeCloseTo(63.4, 1);
+		expect(highest(MOL(90))).toBeCloseTo(-63.4, 1);
+		// Free is the old picture, flat on the equator, exactly.
+		expect(highest(MOL())).toBeCloseTo(0, 6);
+	});
+
+	// The ascent climbs straight into the plane it is going to, so there is no
+	// turn to make and nothing to pay for knowing where the low point sits.
+	it('costs a launch nothing, the ascent having flown the plane already', () => {
+		expect(launchTo(MOL(270))!.totalDvKms).toBeCloseTo(launchTo(MOL())!.totalDvKms, 9);
+	});
+
+	// The arc is drawn in the plane the trip is priced as flying, so a launch into
+	// an inclined orbit is not drawn crossing the equator on its way there.
+	it('flies the arc in the plane the trip is priced in', () => {
+		const path = pathOf(launchTo(MOL(270)))!;
+		const points = path.arcs[0].points;
+		// Off two points a quarter turn apart: the ends of a half-ellipse are
+		// opposite each other, and their cross product says nothing.
+		const normal = normalize(cross(points[0], points[Math.floor(points.length / 3)]));
+		expect((Math.acos(Math.abs(dot(normal, pole))) * 180) / Math.PI).toBeCloseTo(63.4, 1);
+		// And it still lands exactly on the ring it hands over to.
+		const end = path.endOrbits.find((e) => e.at === 'arrival')!;
+		const last = points[points.length - 1];
+		expect(Math.min(...end.points.map((p) => norm(sub(p, last))))).toBeLessThan(1);
+		expect(latOf(last)).toBeCloseTo(63.4, 1);
+	});
+
+	// Coming from a plane the trip is not free to choose, the turn is real, and a
+	// turn can only be made where the planes cross. That is the node, which the
+	// argument of periapsis has moved down off the top of the orbit.
+	it('turns at the node, and pays for meeting it lower down', () => {
+		const from: EndOrbit = {
+			rPeriKm: parkingRadiusKm(EARTH),
+			rApoKm: parkingRadiusKm(EARTH),
+			incDeg: 0
+		};
+		const climb = (to: EndOrbit) => {
+			const r = arcRoute(from, to)!;
+			const path = pathOf(r)!;
+			const last = path.arcs[0].points[path.arcs[0].points.length - 1];
+			return { r, last, end: path.endOrbits.find((e) => e.at === 'arrival')! };
+		};
+		const held = climb(MOL(270));
+		const free = climb(MOL());
+		// The arc stops at the node, on the equator, well short of apoapsis.
+		expect(latOf(held.last)).toBeCloseTo(0, 6);
+		expect(norm(held.last)).toBeCloseTo(planeTurnRadiusKm(MOL(270)), 3);
+		expect(norm(held.last)).toBeLessThan(MOL().rApoKm / 2);
+		// A free orbit still turns at the top, where turning is cheapest.
+		expect(norm(free.last)).toBeCloseTo(MOL().rApoKm, 3);
+		expect(held.r.totalDvKms).toBeGreaterThan(free.r.totalDvKms);
+		// Both still meet the ring they hand over to.
+		for (const { last, end } of [held, free]) {
+			expect(Math.min(...end.points.map((p) => norm(sub(p, last))))).toBeLessThan(1);
+		}
+		// And the high point is over the hemisphere either way it was reached.
+		const apo = held.end.points.reduce((f, p) => (norm(p) > norm(f) ? p : f), held.end.points[0]);
+		expect(latOf(apo)).toBeCloseTo(63.4, 1);
 	});
 });
 

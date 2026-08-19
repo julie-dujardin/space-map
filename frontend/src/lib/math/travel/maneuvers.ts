@@ -49,10 +49,25 @@ export interface EndOrbit {
 	 * Inclination to the body's equator, degrees, 0–180 — above 90 the orbit
 	 * runs retrograde. Absent leaves the plane free: the trip flies whatever
 	 * plane is cheapest, which is how every orbit was priced before the field
-	 * existed. No node is tracked, so two named planes are charged at the best
-	 * case, the burn made where they cross.
+	 * existed. Where no argument of periapsis is named the node line is free
+	 * too, so two named planes are charged at the best case, the burn made where
+	 * they cross.
 	 */
 	incDeg?: number;
+	/**
+	 * Angle from the ascending node to periapsis, degrees, 0–360 — where the low
+	 * point sits relative to the equator crossing. It is the whole of what puts a
+	 * Molniya's apogee over one hemisphere instead of over the equator.
+	 *
+	 * Naming it fixes the two nodes to radii, and a plane can only be turned at
+	 * one of those: an orbit that hangs its apogee over the north pays for its
+	 * turn halfway up rather than at the top. Absent leaves the node line free,
+	 * which puts a node at apoapsis, the cheapest place there is.
+	 *
+	 * Means nothing on a circle, which has no periapsis, or in an equatorial
+	 * plane, which has no node.
+	 */
+	argPeriDeg?: number;
 }
 
 /** The parking orbit as an `EndOrbit`. */
@@ -72,8 +87,74 @@ function sane(orbit: EndOrbit): EndOrbit {
 	return {
 		rPeriKm: orbit.rPeriKm,
 		rApoKm: Math.max(orbit.rApoKm, orbit.rPeriKm),
-		incDeg: orbit.incDeg === undefined ? undefined : Math.min(180, Math.max(0, orbit.incDeg))
+		incDeg: orbit.incDeg === undefined ? undefined : Math.min(180, Math.max(0, orbit.incDeg)),
+		argPeriDeg: orbit.argPeriDeg
 	};
+}
+
+/** Eccentricity of an orbit, from the two radii it is described by. */
+export function orbitEccentricity(orbit: EndOrbit): number {
+	const { rPeriKm, rApoKm } = sane(orbit);
+	const sum = rPeriKm + rApoKm;
+	return sum > 0 ? (rApoKm - rPeriKm) / sum : 0;
+}
+
+/**
+ * True anomaly of the node a plane is turned at, radians — the node the orbit
+ * is slowest at, which is the cheaper of the two.
+ *
+ * With the argument of periapsis named, the nodes sit at true anomaly −ω and
+ * π − ω, and the higher of them is wherever the cosine goes negative. Without
+ * one the node line is free, so the trip puts a node at apoapsis.
+ */
+export function turnNodeTrueAnomaly(orbit: EndOrbit): number {
+	const argPeriDeg = orbit.argPeriDeg;
+	if (argPeriDeg === undefined) return Math.PI;
+	const arg = argPeriDeg * (Math.PI / 180);
+	return Math.cos(arg) < 0 ? -arg : Math.PI - arg;
+}
+
+/**
+ * Radius at which a named plane can be turned, km. The whole of what an
+ * argument of periapsis costs: an orbit holding its apogee over one hemisphere
+ * crosses the equator halfway up, and pays for the turn at that speed rather
+ * than at the leisurely one it has at the top.
+ */
+export function planeTurnRadiusKm(orbit: EndOrbit): number {
+	const { rPeriKm, rApoKm } = sane(orbit);
+	if (orbit.argPeriDeg === undefined) return rApoKm;
+	const e = orbitEccentricity(orbit);
+	const semiLatus = (2 * rPeriKm * rApoKm) / (rPeriKm + rApoKm);
+	return semiLatus / (1 + e * Math.cos(turnNodeTrueAnomaly(orbit)));
+}
+
+/**
+ * Radius an arc joins an orbit at, km — the node where the orbit says where its
+ * periapsis sits, and otherwise the apsis on the side the arc meets it from.
+ *
+ * Two orbits in different planes can only be joined on the line those planes
+ * share, so an orbit that has pinned its nodes to radii can only be met there —
+ * which is what `atNode` says. Two orbits already in one plane meet wherever
+ * they like, and the apsis is both the cheapest and the natural place.
+ */
+export function orbitJoinRadiusKm(
+	orbit: EndOrbit,
+	apsis: 'periapsis' | 'apoapsis',
+	atNode: boolean
+): number {
+	const { rPeriKm, rApoKm } = sane(orbit);
+	if (atNode && orbit.argPeriDeg !== undefined && orbit.incDeg !== undefined) {
+		return planeTurnRadiusKm(orbit);
+	}
+	return apsis === 'periapsis' ? rPeriKm : rApoKm;
+}
+
+/** Whether periapsis is itself a node, which is the only case a plane change
+ *  can be folded into the burn made there. Free leaves the node line to the
+ *  trip, which is free to put one there. */
+function periapsisIsNode(orbit: EndOrbit): boolean {
+	if (orbit.argPeriDeg === undefined) return true;
+	return Math.abs(Math.sin(orbit.argPeriDeg * (Math.PI / 180))) < 1e-9;
 }
 
 /** Steepest declination a plane at inclination `incDeg` reaches, degrees.
@@ -174,6 +255,12 @@ export function endOrbitPreviewRing(
 	const incRad = ((o.incDeg ?? 0) * Math.PI) / 180;
 	const normal = add(scale(p, Math.cos(incRad)), scale(cross(hinge, p), Math.sin(incRad)));
 	const inPlane = cross(normal, hinge);
+	// The hinge is the ascending node, so periapsis sits the named angle round
+	// from it and the ellipse swings as that angle moves. Unnamed leaves it on
+	// the hinge, which is where a free orbit puts its low point anyway.
+	const arg = ((o.argPeriDeg ?? 0) * Math.PI) / 180;
+	const peri = add(scale(hinge, Math.cos(arg)), scale(inPlane, Math.sin(arg)));
+	const across = add(scale(hinge, -Math.sin(arg)), scale(inPlane, Math.cos(arg)));
 
 	const a = (o.rPeriKm + o.rApoKm) / 2;
 	const e = (o.rApoKm - o.rPeriKm) / (o.rApoKm + o.rPeriKm);
@@ -182,7 +269,7 @@ export function endOrbitPreviewRing(
 	for (let i = 0; i < samples; i++) {
 		const nu = (2 * Math.PI * i) / samples;
 		const r = semiLatus / (1 + e * Math.cos(nu));
-		points.push(add(scale(hinge, r * Math.cos(nu)), scale(inPlane, r * Math.sin(nu))));
+		points.push(add(scale(peri, r * Math.cos(nu)), scale(across, r * Math.sin(nu))));
 	}
 	// Closed exactly, not to within sin(2π): the line geometry joins the ends.
 	points.push(points[0]);
@@ -210,8 +297,10 @@ export function planeChangeDv(vKms: number, turnDeg: number): number {
 /**
  * Δv joining an orbit's periapsis to speed `vKms` there while the plane also
  * turns `turnDeg`, km/s. Flown whichever way is cheaper: the turn folded into
- * the burn itself, or made on its own at apoapsis, where the orbit is slowest
- * — the split every geostationary mission flies.
+ * the burn itself, or made on its own out at the node, where the orbit is
+ * slowest — the split every geostationary mission flies. Folding it in needs
+ * periapsis to be a node, which an orbit holding its apogee off the equator
+ * is exactly the case it is not.
  */
 export function periapsisBurnWithTurn(
 	mu: number,
@@ -222,10 +311,10 @@ export function periapsisBurnWithTurn(
 	const { rPeriKm, rApoKm } = sane(orbit);
 	const plain = Math.max(0, vKms - boundSpeed(mu, rPeriKm, rApoKm));
 	if (!(turnDeg > 0)) return plain;
-	return Math.min(
-		combinedBurn(vKms, boundSpeed(mu, rPeriKm, rApoKm), turnDeg),
-		plain + planeChangeDv(apoapsisSpeed(mu, rPeriKm, rApoKm), turnDeg)
-	);
+	const atNode =
+		plain + planeChangeDv(orbitSpeedAtRadius(mu, orbit, planeTurnRadiusKm(orbit)), turnDeg);
+	if (!periapsisIsNode(orbit)) return atNode;
+	return Math.min(combinedBurn(vKms, boundSpeed(mu, rPeriKm, rApoKm), turnDeg), atNode);
 }
 
 /**
