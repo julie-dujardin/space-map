@@ -337,6 +337,22 @@ describe('an orbit that says where its periapsis is', () => {
 		expect(latOf(last)).toBeCloseTo(63.4, 1);
 	});
 
+	// The orbit left behind says where its low point is just as loudly as the one
+	// arrived at. Staying in one plane there is a rotation to spend, and with the
+	// arrival circular — which has no low point to lose — it goes to the departure.
+	it('hangs the departure’s apoapsis over its own hemisphere too', () => {
+		// Same plane at both ends, so nothing is turned and the arc is free to lie
+		// wherever the orbits want it.
+		const parked: EndOrbit = { rPeriKm: GEO_RADIUS_KM, rApoKm: GEO_RADIUS_KM, incDeg: 63.4 };
+		const highest = (from: EndOrbit) => {
+			const end = pathOf(arcRoute(from, parked))!.endOrbits.find((e) => e.at === 'departure')!;
+			return latOf(end.points.reduce((f, p) => (norm(p) > norm(f) ? p : f), end.points[0]));
+		};
+		expect(highest(MOL(270))).toBeCloseTo(63.4, 1);
+		expect(highest(MOL(90))).toBeCloseTo(-63.4, 1);
+		expect(highest(MOL())).toBeCloseTo(0, 6);
+	});
+
 	// Coming from a plane the trip is not free to choose, the turn is real, and a
 	// turn can only be made where the planes cross. That is the node, which the
 	// argument of periapsis has moved down off the top of the orbit.

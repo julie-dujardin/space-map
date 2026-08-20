@@ -149,10 +149,15 @@ export function orbitJoinRadiusKm(
 	return apsis === 'periapsis' ? rPeriKm : rApoKm;
 }
 
-/** Whether periapsis is itself a node, which is the only case a plane change
- *  can be folded into the burn made there. Free leaves the node line to the
- *  trip, which is free to put one there. */
-function periapsisIsNode(orbit: EndOrbit): boolean {
+/**
+ * Whether the line of apsides is the node line, which is the only case a plane
+ * change can be folded into a burn made at either apsis. Free leaves the node
+ * line to the trip, which is free to put one there.
+ *
+ * Answers for both apsides at once: nodes come in an antipodal pair, so if one
+ * of them is periapsis the other is apoapsis.
+ */
+function apsidesAreNodes(orbit: EndOrbit): boolean {
 	if (orbit.argPeriDeg === undefined) return true;
 	return Math.abs(Math.sin(orbit.argPeriDeg * (Math.PI / 180))) < 1e-9;
 }
@@ -295,26 +300,94 @@ export function planeChangeDv(vKms: number, turnDeg: number): number {
 }
 
 /**
- * Δv joining an orbit's periapsis to speed `vKms` there while the plane also
- * turns `turnDeg`, km/s. Flown whichever way is cheaper: the turn folded into
- * the burn itself, or made on its own out at the node, where the orbit is
- * slowest — the split every geostationary mission flies. Folding it in needs
- * periapsis to be a node, which an orbit holding its apogee off the equator
- * is exactly the case it is not.
+ * A plane change an end owes: how far it turns, and the radius it is turned at.
+ *
+ * An orbit free to put its node line wherever it likes turns at its own
+ * slowest crossing, which is what an absent radius means. One that has been
+ * told where its low point sits has had that crossing pinned somewhere else,
+ * and whoever solved for it says where.
  */
+export interface EndTurn {
+	deg: number;
+	radiusKm?: number;
+}
+
+/** An end with no plane to change, which is most of them. */
+export const NO_TURN: EndTurn = { deg: 0 };
+
+/**
+ * The cheaper way to make a burn that also owes a turn: folded into the burn
+ * itself, or made on its own where the two planes actually cross — the split
+ * every geostationary mission flies.
+ *
+ * Folding needs the burn to be at the crossing. A free node line is put at
+ * whichever apsis the burn is made at, so it always is; a pinned one has to be
+ * met where it is, and the coast out to it is what naming an argument of
+ * periapsis costs.
+ */
+function turnedBurn(burn: {
+	mu: number;
+	/** The orbit carried away from the burn, which is the one flown to the node. */
+	flown: EndOrbit;
+	rBurnKm: number;
+	plainKms: number;
+	v1: number;
+	v2: number;
+	turn: EndTurn;
+}): number {
+	const { mu, flown, rBurnKm, plainKms, v1, v2, turn } = burn;
+	if (!(turn.deg > 0)) return plainKms;
+	const rNodeKm = turn.radiusKm ?? planeTurnRadiusKm(flown);
+	const apart = plainKms + planeChangeDv(orbitSpeedAtRadius(mu, flown, rNodeKm), turn.deg);
+	const foldable =
+		turn.radiusKm === undefined
+			? apsidesAreNodes(flown)
+			: Math.abs(rNodeKm - rBurnKm) <= 1e-9 * rBurnKm;
+	return foldable ? Math.min(combinedBurn(v1, v2, turn.deg), apart) : apart;
+}
+
+/** Δv joining an orbit's periapsis to speed `vKms` there while the plane also
+ *  turns, km/s. */
 export function periapsisBurnWithTurn(
 	mu: number,
 	orbit: EndOrbit,
 	vKms: number,
-	turnDeg: number
+	turn: EndTurn = NO_TURN
 ): number {
-	const { rPeriKm, rApoKm } = sane(orbit);
-	const plain = Math.max(0, vKms - boundSpeed(mu, rPeriKm, rApoKm));
-	if (!(turnDeg > 0)) return plain;
-	const atNode =
-		plain + planeChangeDv(orbitSpeedAtRadius(mu, orbit, planeTurnRadiusKm(orbit)), turnDeg);
-	if (!periapsisIsNode(orbit)) return atNode;
-	return Math.min(combinedBurn(vKms, boundSpeed(mu, rPeriKm, rApoKm), turnDeg), atNode);
+	const flown = sane(orbit);
+	const settled = boundSpeed(mu, flown.rPeriKm, flown.rApoKm);
+	return turnedBurn({
+		mu,
+		flown,
+		rBurnKm: flown.rPeriKm,
+		plainKms: Math.max(0, vKms - settled),
+		v1: vKms,
+		v2: settled,
+		turn
+	});
+}
+
+/**
+ * Δv for a burn made at an orbit's apoapsis that takes the speed from `v1` to
+ * `v2` while the plane also turns, km/s — the burns an aero arrival makes out
+ * at the top.
+ */
+export function apoapsisBurnWithTurn(
+	mu: number,
+	flown: EndOrbit,
+	v1: number,
+	v2: number,
+	turn: EndTurn = NO_TURN
+): number {
+	return turnedBurn({
+		mu,
+		flown,
+		rBurnKm: sane(flown).rApoKm,
+		plainKms: Math.abs(v1 - v2),
+		v1,
+		v2,
+		turn
+	});
 }
 
 /**
@@ -563,7 +636,7 @@ export function arrivalCost(
 	aero: AeroAssist = 'none',
 	orbit?: EndOrbit,
 	site?: SurfaceSite,
-	turnDeg = 0
+	turn: EndTurn = NO_TURN
 ): ArrivalCost {
 	// The approach is priced at the periapsis it is flown to, which is the one the
 	// orbit asked for — arriving into a stationary orbit still dips low first.
@@ -575,7 +648,7 @@ export function arrivalCost(
 		aero,
 		orbit,
 		site,
-		turnDeg
+		turn
 	);
 }
 
@@ -604,7 +677,7 @@ export function arrivalCostFromSpeed(
 	aero: AeroAssist = 'none',
 	orbit?: EndOrbit,
 	site?: SurfaceSite,
-	turnDeg = 0
+	turn: EndTurn = NO_TURN
 ): ArrivalCost {
 	if (mode === 'flyby') return NO_ARRIVAL_COST;
 
@@ -613,7 +686,7 @@ export function arrivalCostFromSpeed(
 	const { rPeriKm: rPeri, rApoKm: rApo } = priced;
 	// A landing ignores the requested orbit, so it owes that orbit no turn
 	// either — the site's own tilt is priced in the descent.
-	const turn = mode === 'landing' ? 0 : turnDeg;
+	const owed = mode === 'landing' ? NO_TURN : turn;
 	const assisted = aero !== 'none' && canAeroBrake(body);
 
 	// An atmosphere is the whole descent. Without one, landing is the ascent run
@@ -631,7 +704,7 @@ export function arrivalCostFromSpeed(
 	if (!assisted) {
 		return {
 			...NO_ARRIVAL_COST,
-			captureKms: periapsisBurnWithTurn(mu, priced, vPeriKms, turn),
+			captureKms: periapsisBurnWithTurn(mu, priced, vPeriKms, owed),
 			descentKms: descent
 		};
 	}
@@ -642,7 +715,7 @@ export function arrivalCostFromSpeed(
 	if (!(rEntry < rPeri)) {
 		return {
 			...NO_ARRIVAL_COST,
-			captureKms: periapsisBurnWithTurn(mu, priced, vPeriKms, turn),
+			captureKms: periapsisBurnWithTurn(mu, priced, vPeriKms, owed),
 			descentKms: descent
 		};
 	}
@@ -665,11 +738,18 @@ export function arrivalCostFromSpeed(
 			};
 		}
 		// One pass leaves the craft on an ellipse whose periapsis is still in the
-		// air; all it then owes is lifting that periapsis back out at apoapsis —
-		// where any plane the pass could not fly is also cheapest to turn to.
+		// air; all it then owes is lifting that periapsis back out at apoapsis,
+		// which is also where a plane the pass could not fly is cheapest to turn
+		// to — unless the orbit has named where its high point sits, and so moved
+		// its crossings off the top.
 		const raise =
-			combinedBurn(apoapsisSpeed(mu, rEntry, rApo), apoapsisSpeed(mu, rPeri, rApo), turn) +
-			AEROCAPTURE_TRIM_KMS;
+			apoapsisBurnWithTurn(
+				mu,
+				priced,
+				apoapsisSpeed(mu, rEntry, rApo),
+				apoapsisSpeed(mu, rPeri, rApo),
+				owed
+			) + AEROCAPTURE_TRIM_KMS;
 		return {
 			captureKms: raise,
 			raiseKms: raise,
@@ -690,17 +770,27 @@ export function arrivalCostFromSpeed(
 	if (!(rApoLoose > rApo)) {
 		return {
 			...NO_ARRIVAL_COST,
-			captureKms: periapsisBurnWithTurn(mu, priced, vPeriKms, turn),
+			captureKms: periapsisBurnWithTurn(mu, priced, vPeriKms, owed),
 			descentKms: descent
 		};
 	}
 	const insertion = Math.max(0, vPeriKms - boundSpeed(mu, rPeri, rApoLoose));
-	// The burn that drops periapsis into the air sits at the loose apoapsis,
-	// the slowest point the whole arrival visits — any turn owed is made there.
-	const walkIn = combinedBurn(
+	// The burn that drops periapsis into the air sits at the loose apoapsis, the
+	// slowest point the whole arrival visits, and any turn owed is made there —
+	// but only while the top is a crossing. The loose ellipse shares the orbit's
+	// line of apsides, so it inherits where that orbit put its nodes.
+	const loose: EndOrbit = {
+		rPeriKm: rEntry,
+		rApoKm: rApoLoose,
+		incDeg: priced.incDeg,
+		argPeriDeg: priced.argPeriDeg
+	};
+	const walkIn = apoapsisBurnWithTurn(
+		mu,
+		loose,
 		apoapsisSpeed(mu, rPeri, rApoLoose),
 		apoapsisSpeed(mu, rEntry, rApoLoose),
-		turn
+		owed
 	);
 	const walkOut = periapsisRaiseDv(mu, rEntry, rPeri, rApo);
 	// What drag has to remove: the difference the pass makes at the depth it is
@@ -773,7 +863,7 @@ export function departureCost(
 	mode: DepartureMode,
 	orbit?: EndOrbit,
 	site?: SurfaceSite,
-	turnDeg = 0
+	turn: EndTurn = NO_TURN
 ): { ascentKms: number; injectionKms: number } {
 	// An ascent goes to the parking orbit and leaves from there: which orbit the
 	// craft would otherwise have been sitting in is not a question a launch asks
@@ -788,7 +878,7 @@ export function departureCost(
 			body.mu,
 			from,
 			periapsisSpeed(body.mu, from.rPeriKm, vInfKms),
-			mode === 'surface' ? 0 : turnDeg
+			mode === 'surface' ? NO_TURN : turn
 		)
 	};
 }

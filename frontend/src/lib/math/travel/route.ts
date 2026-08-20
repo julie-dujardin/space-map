@@ -10,10 +10,12 @@ import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import type { FlybyPass } from './flyby';
 import { solveLambert } from './lambert';
 import {
+	aeroPassRadiusKm,
 	arrivalCost,
 	arrivalCostFromSpeed,
 	ascentDv,
 	asymptoteTurnDeg,
+	canAeroBrake,
 	characteristicEnergy,
 	combinedBurn,
 	departureCost,
@@ -33,6 +35,7 @@ import {
 	type EndOrbit
 } from './maneuvers';
 import { equatorialTiltDeg } from './body';
+import { endTurn } from './passage-node';
 import { elementsToState } from './state';
 import { relativeState, solveRadialArc } from './system-transfer';
 import { cross, dot, norm, sub } from './vec3';
@@ -320,15 +323,17 @@ export function buildRoute(
 	const vInfArr = norm(vInfArrVec);
 	if (!isFinite(vInfDep) || !isFinite(vInfArr)) return null;
 
-	// A named plane that cannot lean far enough to hold its asymptote owes the
-	// shortfall as a turn; a free plane simply flies where the asymptote points.
+	// What each end owes for the plane it has to be reached in: nothing where the
+	// orbit is free to swing its nodes under the asymptote, the shortfall where it
+	// leans too little to hold it, and the whole angle between two forced planes
+	// where the orbit has said where its own low point sits.
 	const dep = departureCost(
 		departure,
 		vInfDep,
 		departureMode,
 		departureOrbit,
 		surfaceSite(departure, departureSiteLatDeg, vInfDepVec),
-		asymptoteTurnDeg(departureOrbit, equatorialTiltDeg(departure, vInfDepVec))
+		endTurn({ body: departure, orbit: departureOrbit, vInf: vInfDepVec, outward: true })
 	);
 	const arr = arrivalCost(
 		target,
@@ -337,7 +342,15 @@ export function buildRoute(
 		aero,
 		targetOrbit,
 		surfaceSite(target, targetSiteLatDeg, vInfArrVec),
-		asymptoteTurnDeg(targetOrbit, equatorialTiltDeg(target, vInfArrVec))
+		endTurn({
+			body: target,
+			orbit: targetOrbit,
+			vInf: vInfArrVec,
+			// An aerocaptured arrival never falls to the orbit's own low point: the
+			// pass is the insertion, and it is flown in the air.
+			rPeriKm: capturedByAir(target, aero, targetOrbit),
+			outward: false
+		})
 	);
 
 	const legs: RouteLeg[] = [];
@@ -388,6 +401,18 @@ interface SystemRouteOptions {
  * against the parking orbit's speed; at the satellite's end it crosses a
  * sphere of influence, the ordinary interplanetary arrival and departure.
  */
+/** Radius an arrival's passage is really flown at, km. An aerocapture never
+ *  reaches the orbit's own low point — the pass is the insertion, made in the
+ *  air — so the plane it can be flown in is settled down there. */
+function capturedByAir(
+	body: TravelBody,
+	aero: AeroAssist,
+	orbit: EndOrbit | undefined
+): number | undefined {
+	if (aero !== 'aerocapture' || !canAeroBrake(body)) return orbit?.rPeriKm;
+	return aeroPassRadiusKm(body);
+}
+
 function buildSystemRoute(
 	departure: TravelBody,
 	target: TravelBody,
@@ -444,7 +469,9 @@ function buildSystemRoute(
 	const primaryTurn = asymptoteTurnDeg(primaryOrbit, equatorialTiltDeg(primary, state.r));
 	// At the primary the craft never leaves, so the burn is measured against the
 	// parking orbit rather than against an escape.
-	const primaryBurn = periapsisBurnWithTurn(primary.mu, primaryOrbit, arc.vNearKms, primaryTurn);
+	const primaryBurn = periapsisBurnWithTurn(primary.mu, primaryOrbit, arc.vNearKms, {
+		deg: primaryTurn
+	});
 
 	const legs: RouteLeg[] = [];
 	let ascentKms = 0;
@@ -463,15 +490,9 @@ function buildSystemRoute(
 
 	const arr = outbound
 		? arrivalCost(satellite, vInf, arrivalMode, aero, satelliteOrbit, targetSite)
-		: arrivalCostFromSpeed(
-				primary,
-				arc.vNearKms,
-				arrivalMode,
-				aero,
-				primaryOrbit,
-				targetSite,
-				primaryTurn
-			);
+		: arrivalCostFromSpeed(primary, arc.vNearKms, arrivalMode, aero, primaryOrbit, targetSite, {
+				deg: primaryTurn
+			});
 	legs.push(...arrivalLegs(arr, arrivalMode));
 
 	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
@@ -676,7 +697,7 @@ function buildOrbitChangeRoute(
 			aero,
 			to,
 			targetSite,
-			turnDeg
+			{ deg: turnDeg }
 		);
 	} else {
 		const rNear = Math.min(rFromKm, rToKm);

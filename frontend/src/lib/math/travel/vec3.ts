@@ -41,3 +41,16 @@ export function perpendicularTo(n: Vec3): Vec3 {
 	const axis: Vec3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
 	return normalize(cross(n, axis));
 }
+
+/** Rotate `v` about the unit axis `n` by `angle`, Rodrigues. */
+export function rotateAbout(v: Vec3, n: Vec3, angle: number): Vec3 {
+	const cos = Math.cos(angle);
+	const sin = Math.sin(angle);
+	return add(add(scale(v, cos), scale(cross(n, v), sin)), scale(n, dot(n, v) * (1 - cos)));
+}
+
+/** Angle from `a` to `b` about `n`, radians in [0, 2π). */
+export function angleAbout(a: Vec3, b: Vec3, n: Vec3): number {
+	const angle = Math.atan2(dot(cross(a, b), n), dot(a, b));
+	return angle < 0 ? angle + Math.PI * 2 : angle;
+}

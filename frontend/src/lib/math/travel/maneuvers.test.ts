@@ -79,13 +79,13 @@ describe('an argument of periapsis', () => {
 	// The whole of what it costs: the same turn, made lower down and faster.
 	it('makes a named plane dearer to turn into', () => {
 		const speed = periapsisSpeed(EARTH.mu, MOL().rPeriKm, 1);
-		const free = periapsisBurnWithTurn(EARTH.mu, MOL(), speed, 63.4);
-		const held = periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, 63.4);
+		const free = periapsisBurnWithTurn(EARTH.mu, MOL(), speed, { deg: 63.4 });
+		const held = periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, { deg: 63.4 });
 		expect(held).toBeGreaterThan(free);
 		// And with no turn owed it changes nothing at all: an orbit is not dearer
 		// to enter for knowing where its own low point is.
-		expect(periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, 0)).toBeCloseTo(
-			periapsisBurnWithTurn(EARTH.mu, MOL(), speed, 0),
+		expect(periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, { deg: 0 })).toBeCloseTo(
+			periapsisBurnWithTurn(EARTH.mu, MOL(), speed, { deg: 0 }),
 			12
 		);
 	});
@@ -95,7 +95,7 @@ describe('an argument of periapsis', () => {
 	it('cannot fold the turn into a burn made off the node', () => {
 		const speed = periapsisSpeed(EARTH.mu, MOL().rPeriKm, 3);
 		const plain = Math.max(0, speed - orbitPeriapsisSpeed(EARTH.mu, MOL(270)));
-		expect(periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, 63.4)).toBeCloseTo(
+		expect(periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, { deg: 63.4 })).toBeCloseTo(
 			plain +
 				planeChangeDv(orbitSpeedAtRadius(EARTH.mu, MOL(270), planeTurnRadiusKm(MOL(270))), 63.4),
 			12
@@ -495,11 +495,11 @@ describe('a named plane', () => {
 	it('makes the turn wherever it is cheaper: in the burn, or out at apoapsis', () => {
 		const loose = { rPeriKm: parkingRadiusKm(EARTH), rApoKm: 20 * EARTH.radiusKm };
 		const vBurn = periapsisSpeed(EARTH.mu, loose.rPeriKm, 3);
-		const plain = periapsisBurnWithTurn(EARTH.mu, loose, vBurn, 0);
+		const plain = periapsisBurnWithTurn(EARTH.mu, loose, vBurn, { deg: 0 });
 		const vApo = orbitSpeedAtRadius(EARTH.mu, loose, loose.rApoKm);
 		// A wide turn walks out to the slow apoapsis; folding it into a burn made
 		// at periapsis speed would cost several times as much.
-		expect(periapsisBurnWithTurn(EARTH.mu, loose, vBurn, 40)).toBeCloseTo(
+		expect(periapsisBurnWithTurn(EARTH.mu, loose, vBurn, { deg: 40 })).toBeCloseTo(
 			plain + planeChangeDv(vApo, 40),
 			12
 		);
@@ -507,27 +507,27 @@ describe('a named plane', () => {
 		// second-order small — cheaper than even the slowest separate burn.
 		const leo = parkingOrbit(EARTH);
 		const vLeo = periapsisSpeed(EARTH.mu, leo.rPeriKm, 3);
-		const plainLeo = periapsisBurnWithTurn(EARTH.mu, leo, vLeo, 0);
-		const sliver = periapsisBurnWithTurn(EARTH.mu, leo, vLeo, 1);
+		const plainLeo = periapsisBurnWithTurn(EARTH.mu, leo, vLeo, { deg: 0 });
+		const sliver = periapsisBurnWithTurn(EARTH.mu, leo, vLeo, { deg: 1 });
 		expect(sliver).toBeLessThan(plainLeo + planeChangeDv(circularSpeed(EARTH.mu, leo.rPeriKm), 1));
 		expect(sliver - plainLeo).toBeLessThan(0.02);
 	});
 
 	it('prices the turn into the injection, except for a launch, which picks its plane', () => {
 		const inOrbit = (turn: number) =>
-			departureCost(EARTH, 3, 'orbit', LEO, undefined, turn).injectionKms;
+			departureCost(EARTH, 3, 'orbit', LEO, undefined, { deg: turn }).injectionKms;
 		expect(inOrbit(30)).toBeGreaterThan(inOrbit(0));
 		const launch = (turn: number) =>
-			departureCost(EARTH, 3, 'surface', LEO, undefined, turn).injectionKms;
+			departureCost(EARTH, 3, 'surface', LEO, undefined, { deg: turn }).injectionKms;
 		expect(launch(30)).toBeCloseTo(launch(0), 12);
 	});
 
 	it('prices the turn into the capture, except for a landing, which never keeps the orbit', () => {
 		const capture = (turn: number) =>
-			arrivalCost(EARTH, 3, 'low-orbit', 'none', LEO, undefined, turn).captureKms;
+			arrivalCost(EARTH, 3, 'low-orbit', 'none', LEO, undefined, { deg: turn }).captureKms;
 		expect(capture(30)).toBeGreaterThan(capture(0));
 		const landing = (turn: number) =>
-			arrivalCost(EARTH, 3, 'landing', 'none', LEO, undefined, turn);
+			arrivalCost(EARTH, 3, 'landing', 'none', LEO, undefined, { deg: turn });
 		expect(landing(30).captureKms).toBeCloseTo(landing(0).captureKms, 12);
 		expect(landing(30).descentKms).toBeCloseTo(landing(0).descentKms, 12);
 	});
@@ -535,7 +535,7 @@ describe('a named plane', () => {
 	it('turns an aero arrival at its apoapsis, where it is nearly free', () => {
 		const lmo = parkingOrbit(MARS);
 		const arrive = (aero: 'aerocapture' | 'aerobraking', turn: number) =>
-			arrivalCost(MARS, 3, 'low-orbit', aero, lmo, undefined, turn);
+			arrivalCost(MARS, 3, 'low-orbit', aero, lmo, undefined, { deg: turn });
 		for (const aero of ['aerocapture', 'aerobraking'] as const) {
 			const turned = arrive(aero, 30);
 			const flat = arrive(aero, 0);
@@ -546,6 +546,25 @@ describe('a named plane', () => {
 			expect(turned.captureKms - flat.captureKms).toBeLessThan(
 				planeChangeDv(circularSpeed(MARS.mu, lmo.rPeriKm), 30)
 			);
+		}
+	});
+
+	it('makes an aero arrival turn at the node once the orbit says where its top is', () => {
+		// An ellipse whose apoapsis hangs off the equator crosses it halfway up, so
+		// the campaign's turn is paid at that speed rather than at the leisurely one
+		// it has at the top.
+		const shape = { rPeriKm: MARS.radiusKm + 400, rApoKm: MARS.radiusKm + 12000, incDeg: 60 };
+		const arrive = (aero: 'aerocapture' | 'aerobraking', argPeriDeg?: number) =>
+			arrivalCost(MARS, 3, 'low-orbit', aero, { ...shape, argPeriDeg }, undefined, { deg: 30 })
+				.captureKms;
+		for (const aero of ['aerocapture', 'aerobraking'] as const) {
+			// A free node line, and one the orbit has put at its own apsides, are the
+			// same orbit: both leave the crossing where the turn is cheapest.
+			expect(arrive(aero, 180)).toBeCloseTo(arrive(aero, undefined), 9);
+			expect(arrive(aero, 270)).toBeGreaterThan(arrive(aero, undefined));
+			// Quarter turns either way put the crossing at the same radius, so they
+			// cost the same.
+			expect(arrive(aero, 90)).toBeCloseTo(arrive(aero, 270), 9);
 		}
 	});
 

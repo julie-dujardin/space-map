@@ -26,11 +26,24 @@ import {
 	parkingRadiusKm,
 	type EndOrbit
 } from './maneuvers';
+import { namesArgPeri, passageNode, planeAboutNode } from './passage-node';
 import { propagateState } from './propagate';
 import { routeDurationDays, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState } from './state';
 import { relativeState, solveRadialArc, type RadialArc } from './system-transfer';
-import { add, cross, dot, norm, normalize, perpendicularTo, scale, sub, type Vec3 } from './vec3';
+import {
+	add,
+	angleAbout,
+	cross,
+	dot,
+	norm,
+	normalize,
+	perpendicularTo,
+	rotateAbout,
+	scale,
+	sub,
+	type Vec3
+} from './vec3';
 
 /** A point on the trip worth marking: burns and encounters, not every leg —
  *  an ascent and its injection happen in the same place, so one marker does. */
@@ -956,18 +969,30 @@ function endOrbitPath(end: {
 		? normalize(sub(outward ? arc.points[0] : arc.points[count - 1], center))
 		: undefined;
 
+	// An aerocaptured arrival never burns at the orbit's periapsis: the pass
+	// itself is the insertion, flown at the entry interface.
+	const rPassKm = aero?.mode === 'aerocapture' ? aero.rEntryKm : orbit.rPeriKm;
+
+	// An orbit that says where its low point sits has spent the freedom the two
+	// planes would otherwise share, so both are solved together: the node they
+	// must meet on decides the passage's plane and the orbit's at once. This is
+	// the same solve the price was taken from, so what is drawn is what was paid
+	// for. Null where no node line reaches the phase the angle asks for, which
+	// leaves the end drawn as free as it is priced.
+	const pinned =
+		approach && namesArgPeri(orbit)
+			? passageNode({ body, orbit, vInf: approach.vInf, rPeriKm: rPassKm, outward })
+			: null;
+
 	// The plane the end orbit is really flown in, where it names one — a
 	// stationary orbit hangs over the equator whatever direction the trip came
 	// from. Undefined leaves the passage free to pick its own plane and the ring
 	// to keep it, which is every end that names none.
 	const orbitPlane =
-		orbit.incDeg !== undefined && body.poleEcliptic
+		pinned?.orbitNormal ??
+		(orbit.incDeg !== undefined && body.poleEcliptic
 			? endOrbitNormal(orbit, body.poleEcliptic, approach?.vInf ?? joinDir, arcNormal)
-			: undefined;
-
-	// An aerocaptured arrival never burns at the orbit's periapsis: the pass
-	// itself is the insertion, flown at the entry interface.
-	const rPassKm = aero?.mode === 'aerocapture' ? aero.rEntryKm : orbit.rPeriKm;
+			: undefined);
 	const passageOf = (planeHint?: Vec3) => {
 		if (!approach) return null;
 		// An end left under thrust has no asymptote to fall along, so it is flown
@@ -997,10 +1022,13 @@ function endOrbitPath(end: {
 					arc,
 					endJd: periJd,
 					frame,
-					planeHint
+					planeHint,
+					plane: pinned?.normal
 				});
 	};
-	let passage = passageOf();
+	// The node is a direction the passage's plane has to contain, which is exactly
+	// what a hint is for.
+	let passage = passageOf(pinned?.node);
 	// A landing is aimed somewhere, so the plane's free choice is spent holding
 	// the site rather than the crossing's own plane. Read at a rough touchdown;
 	// the ground leg re-reads it exactly and works off-plane residue out along
@@ -1057,7 +1085,8 @@ function endOrbitPath(end: {
 					startJd: aeroLegs?.endJd ?? endPeriJd,
 					outward,
 					bodyAt: anchored || frozen ? undefined : approach?.bodyAt,
-					center: ringCenter
+					center: ringCenter,
+					preferNode: pinned?.node
 				})
 			: null;
 
@@ -1624,6 +1653,11 @@ function planeTurn(turn: {
 	outward: boolean;
 	bodyAt?: (jd: number) => Vec3 | null;
 	center: Vec3;
+	/** Which end of the node line to turn at, where the price has already picked
+	 *  one. Both leave the ring in the same place, so the choice is only ever
+	 *  about what the turn costs — and that is not the coast's to make once it
+	 *  has been paid for. */
+	preferNode?: Vec3;
 }): {
 	normal: Vec3;
 	periapsis: Vec3;
@@ -1663,7 +1697,12 @@ function planeTurn(turn: {
 	const nuBehind = angleAbout(periapsis, behind, normal);
 	/** The same node one revolution on, where the craft has already passed it. */
 	const next = (nu: number) => (nu > startNu + 1e-9 ? nu : nu + Math.PI * 2);
-	const takeAhead = outward ? nuAhead > nuBehind : next(nuAhead) < next(nuBehind);
+	// The shorter coast, unless the price has already said which end it paid for.
+	const takeAhead = turn.preferNode
+		? dot(turn.preferNode, ahead) >= 0
+		: outward
+			? nuAhead > nuBehind
+			: next(nuAhead) < next(nuBehind);
 	const node = takeAhead ? ahead : behind;
 	const nuNode = takeAhead
 		? outward
@@ -1766,17 +1805,6 @@ function placeRing(
  *  with the plane the arc was flown in. */
 type JoinPoint = 'periapsis' | 'apoapsis' | 'node';
 
-/**
- * The plane at inclination `incDeg` whose *ascending* node lies along `node`,
- * as its normal. Tipped the one way that leaves the craft climbing north
- * through the node rather than falling south through it.
- */
-function planeAboutNode(pole: Vec3, node: Vec3, incDeg: number): Vec3 {
-	const inc = incDeg * (Math.PI / 180);
-	const east = cross(pole, node);
-	return normalize(sub(scale(pole, Math.cos(inc)), scale(east, Math.sin(inc))));
-}
-
 /** True anomaly the arc joins an orbit at, radians: a node where the orbit has
  *  pinned them, and the apsis the arc reaches otherwise. */
 function joinTrueAnomaly(orbit: EndOrbit, join: JoinPoint): number {
@@ -1867,6 +1895,11 @@ function hyperbolicPassage(end: {
 	 *  The plane is the passage's one free choice, and an end that is aimed
 	 *  somewhere spends it there rather than on the crossing's own plane. */
 	planeHint?: Vec3;
+	/** The plane itself, where it has already been solved for. A hint leaves the
+	 *  sense of the plane to the crossing; an end whose orbit named where its low
+	 *  point sits has had the sense settled too, and taking the other one would
+	 *  fly the passage the wrong way round and land the orbit somewhere else. */
+	plane?: Vec3;
 }): Passage | null {
 	const { body, approach, rPeriKm, arcNormal, at, primaryMu, arc, endJd, frame, planeHint } = end;
 	const { vInf, bodyAt } = approach;
@@ -1887,8 +1920,10 @@ function hyperbolicPassage(end: {
 		? cross(asymptote, planeHint)
 		: sub(arcNormal, scale(asymptote, dot(arcNormal, asymptote)));
 	let normal = norm(off) > 0 ? normalize(off) : perpendicularTo(asymptote);
-	// Of the two senses the hinted plane allows, keep the crossing's own.
-	if (planeHint && dot(normal, arcNormal) < 0) normal = scale(normal, -1);
+	// Of the two senses the hinted plane allows, keep the crossing's own — unless
+	// the sense was solved for too, in which case it is not a free choice.
+	if (end.plane) normal = normalize(end.plane);
+	else if (planeHint && dot(normal, arcNormal) < 0) normal = scale(normal, -1);
 	const periapsis = outward
 		? rotateAbout(asymptote, normal, -nuInf)
 		: rotateAbout(scale(asymptote, -1), normal, nuInf);
@@ -2388,19 +2423,6 @@ function ridingWith(
 	return { kind, points, jds, startJd: fromJd, endJd: toJd };
 }
 
-/** Rotate `v` about the unit axis `n` by `angle`, Rodrigues. */
-function rotateAbout(v: Vec3, n: Vec3, angle: number): Vec3 {
-	const cos = Math.cos(angle);
-	const sin = Math.sin(angle);
-	return add(add(scale(v, cos), scale(cross(n, v), sin)), scale(n, dot(n, v) * (1 - cos)));
-}
-
-/** Angle from `a` to `b` about `n`, radians in [0, 2π). */
-function angleAbout(a: Vec3, b: Vec3, n: Vec3): number {
-	const angle = Math.atan2(dot(cross(a, b), n), dot(a, b));
-	return angle < 0 ? angle + Math.PI * 2 : angle;
-}
-
 /**
  * The crossing of a spiral route: the orbit opening out from one body's to the
  * other's over however many revolutions that takes. Radii and angle come from
@@ -2882,26 +2904,37 @@ function orbitChangePath(
 	// turns is flown in two planes, and it turns at the far end.
 	const normal = planeAboutNode(pole, nodeLine, ends.arcIncDeg ?? 0);
 
-	// Where the arc has to end. A turn can only be made where the two planes
-	// cross, so it ends on the node line; otherwise it ends at an apsis of the
-	// orbit it joins, which an argument of periapsis may have moved off the node.
+	// Where the arc is pinned. A turn can only be made where the two planes cross,
+	// so a trip that turns ends on the node line whatever else it wanted.
+	//
+	// Staying in one plane, the arc has a single rotation to spend and one of its
+	// ends gets it. It goes to whichever orbit says where its low point sits,
+	// since that is the end with something to lose: the other is free to meet the
+	// arc wherever it arrives. The arrival is asked first, both because it is the
+	// orbit the trip is for and because it is where the picture is read.
 	const joinApsis = ends.climb ? 'apoapsis' : 'periapsis';
-	const endDir = ends.turnDeg > 0 ? nodeLine : apsisDirection(ends.to, normal, nodeLine, joinApsis);
+	const startApsis = ends.climb ? 'periapsis' : 'apoapsis';
+	const anchor: Anchor =
+		ends.turnDeg > 0
+			? { dir: nodeLine, at: 'last' }
+			: namesArgPeri(ends.to) || !namesArgPeri(ends.from)
+				? { dir: apsisDirection(ends.to, normal, nodeLine, joinApsis), at: 'last' }
+				: { dir: apsisDirection(ends.from, normal, nodeLine, startApsis), at: 'first' };
 
 	const rNear = Math.min(ends.rFromKm, ends.rToKm);
 	const rFar = Math.max(ends.rFromKm, ends.rToKm);
 	const sampled = ends.singleBurn
-		? sweepToEnd(
+		? sweepAnchored(
 				eccentricityOf(ends.from),
 				semiLatusRectumOf(ends.from),
 				Math.PI,
 				normal,
-				endDir,
+				anchor,
 				route,
 				true,
 				samples
 			)
-		: sweepFromArc(body, rNear, rFar, normal, endDir, route, ends.climb, samples);
+		: sweepFromArc(body, rNear, rFar, normal, anchor, route, ends.climb, samples);
 	if (!sampled) return null;
 
 	const { points, jds } = sampled;
@@ -2951,7 +2984,7 @@ function sweepFromArc(
 	rNearKm: number,
 	rFarKm: number,
 	normal: Vec3,
-	endDir: Vec3,
+	anchor: Anchor,
 	route: Route,
 	climb: boolean,
 	samples: number
@@ -2965,26 +2998,37 @@ function sweepFromArc(
 	const cosNu = (p / rFarKm - 1) / (e || 1e-12);
 	const nuFar = Math.acos(Math.max(-1, Math.min(1, cosNu)));
 	if (!isFinite(nuFar)) return null;
-	return sweepToEnd(e, p, nuFar, normal, endDir, route, climb, samples);
+	return sweepAnchored(e, p, nuFar, normal, anchor, route, climb, samples);
+}
+
+/** The end of a sweep that is pinned to a direction, and which end it is in
+ *  flight order. The other end lands wherever the shape then puts it. */
+interface Anchor {
+	dir: Vec3;
+	at: 'first' | 'last';
 }
 
 /**
- * The same sweep, turned in its plane so that its last sample lands along
- * `endDir` — the point the arc has to hand over at, which the orbit it joins
- * has already fixed. Climbing, that last sample is the far end of the sweep;
- * coming down it is the near one, the sweep being read backwards.
+ * The same sweep, turned in its plane so that the anchored sample lands along
+ * `anchor.dir` — the point the arc shares with the orbit that fixed it.
+ *
+ * Which true anomaly that sample sits at is the whole of the arithmetic:
+ * climbing, the sweep runs from its low point out to `nuEnd`; coming down it is
+ * the same sweep read backwards, so the ends swap.
  */
-function sweepToEnd(
+function sweepAnchored(
 	e: number,
 	p: number,
 	nuEnd: number,
 	normal: Vec3,
-	endDir: Vec3,
+	anchor: Anchor,
 	route: Route,
 	outbound: boolean,
 	samples: number
 ): { points: Vec3[]; jds: number[] } | null {
-	const periapsis = normalize(rotateAbout(endDir, normal, outbound ? -nuEnd : 0));
+	const first = outbound ? 0 : nuEnd;
+	const nuAnchor = anchor.at === 'first' ? first : outbound ? nuEnd : 0;
+	const periapsis = normalize(rotateAbout(anchor.dir, normal, -nuAnchor));
 	return sweepSamples(
 		e,
 		p,
