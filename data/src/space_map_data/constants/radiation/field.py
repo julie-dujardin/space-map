@@ -172,7 +172,14 @@ def atmospheric_attenuation(column_g_cm2: float) -> float:
 # whatever direction it arrives from. The full expression carries the arrival
 # direction; the vertical case is the one that is tabulated and the one that
 # stands in for an average over the sky.
-EARTH_EQUATORIAL_CUTOFF_GV = 14.9
+#
+# Smart & Shea's constant for IGRF 2000. They warn that many texts still
+# quote Størmer's 1930 dipole constant, which ignores how the field has moved
+# since — worked through, that obsolete constant gives the 14.9 GV older
+# sources carry. The dipole term alone sets 14.5; the non-dipole terms swing
+# the real cutoff between 14 and 16 around the equator and the mid-latitudes,
+# so this is a centre rather than a sharp edge.
+EARTH_EQUATORIAL_CUTOFF_GV = 14.5
 _CUTOFF_SOURCE = "smart_shea_2005"
 
 # Earth's dipole moment, the denominator that makes `cutoff_rigidity_gv` take a

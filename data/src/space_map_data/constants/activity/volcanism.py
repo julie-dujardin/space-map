@@ -209,18 +209,49 @@ GEOLOGIC_ACTIVITY: dict[str, BodyActivity] = {
         ),
     ),
     # Enceladus. 101 jets located along the four tiger stripes by a 6.5-year
-    # imaging survey, throwing 200 kg/s of water vapour into Saturn's E ring
+    # imaging survey, throwing 300 kg/s of water vapour into Saturn's E ring
     # from a body 500 km across — the only place a subsurface ocean is being
     # sampled in flight.
+    #
+    # The rate is Hansen's revision, not the 200 kg/s that circulated from the
+    # same team for a decade. Summing the occultation signal timestep by
+    # timestep catches the plume's broad wings, where multiplying a peak column
+    # density by a width had clipped them; the range spans the five
+    # occultations they could recompute. It is still a floor, because the
+    # 450 m/s thermal velocity behind it is assumed rather than observed and
+    # they read it as a lower limit. Output over 13 years varies by under 15%
+    # — and JWST, watching from Earth orbit with none of Cassini's geometry,
+    # read the same 300 kg/s in 2022 (Villanueva 2023). The steadiness is in
+    # the vapour: the particle brightness swings threefold with orbital phase
+    # (Hedman 2013), the tide working the cracks open and shut.
+    # The 300 kg/s is vapour only: the collimated jets carry 15-25% of it, and
+    # the solid grains feeding the E ring are a separate ~50 kg/s channel
+    # (Ingersoll & Ewald 2011) that no field here counts.
+    #
+    # The heat number is Spencer's resolved scans, not Howett's 15.8 GW: at
+    # CIRS's earlier resolution the tiger stripes and the sunlit terrain
+    # between them blur together, and the endogenic share depends on how the
+    # passive background is modelled out. Scans that resolve the stripes see
+    # 4.2 GW radiated, plus ~0.5 GW leaving as the plume's latent heat; the
+    # top of the range is Howett's disk-integrated estimate, which Miles 2025
+    # still treats as the honest upper end because conduction between the
+    # stripes is unresolved. The same work reads 20-35 GW of conductive loss
+    # over the whole globe, but that is the body's budget, not the south
+    # polar terrain's output.
     "naif-602": BodyActivity(
         volcanism=Volcanism(
             kind=CRYO,
             status="active",
             status_sources=("porco_2014",),
             plumes=Measurement(101.0, "porco_2014", as_of="Cassini ISS, 6.5 yr survey"),
-            plume_mass_kg_per_s=Measurement(200.0, "hansen_2011", range=(170.0, 230.0)),
+            plume_mass_kg_per_s=Measurement(
+                300.0,
+                "hansen_2020",
+                range=(275.0, 338.0),
+                as_of="Cassini UVIS, 13 yr of occultations",
+            ),
             endogenic_power_w=Measurement(
-                1.58e10, "howett_2011", range=(1.27e10, 1.89e10)
+                4.7e9, "spencer_2013", range=(4.2e9, 1.89e10)
             ),
         ),
         tectonics=Tectonics(

@@ -684,10 +684,11 @@ ATMOSPHERE_FACT_SOURCES: dict[str, AtmosphereReference] = {
         "Mars homopause altitude (MAVEN NGIMS)",
         "Mars homopause",
     ),
-    "seiff_1998": AtmosphereReference(
-        "Seiff et al. 1998 (JGR 103)",
-        "https://doi.org/10.1029/98JE01766",
-        "Jupiter tropopause conditions (Galileo probe ASI)",
+    "lindal_1981": AtmosphereReference(
+        "Lindal et al. 1981 (JGR 86)",
+        "https://doi.org/10.1029/JA086iA10p08721",
+        "Jupiter tropopause conditions and deep ammonia abundance (Voyager 1 "
+        "radio occultation)",
         "Jupiter tropopause",
     ),
     "yelle_miller_2004": AtmosphereReference(

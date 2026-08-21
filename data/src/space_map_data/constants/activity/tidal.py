@@ -89,17 +89,18 @@ TIDAL_HEATING: dict[str, TidalHeating] = {
         role_sources=("lainey_2024",),
         note="young_ocean",
     ),
-    # Enceladus. 15.8 GW leaving the south polar terrain (Cassini far-infrared)
-    # against 0.34 GW radiogenic — a factor of fifty, why nobody doubts the
-    # tide is the source. The 0.04 W m⁻² global mean badly understates the
-    # tiger stripes, where it's concentrated into four fractures. The Dione
-    # resonance holds the eccentricity up, but its equilibrium rate falls
-    # short of what's observed — the open problem.
+    # Enceladus. ~4.7 GW leaving the south polar terrain (Spencer's resolved
+    # scans; the range and the earlier 15.8 GW are explained on the volcanism
+    # entry) against 0.34 GW radiogenic — a factor of ten even at the floor,
+    # why nobody doubts the tide is the source. The 0.04 W m⁻² global mean
+    # badly understates the tiger stripes, where it's concentrated into four
+    # fractures. The Dione resonance holds the eccentricity up, but its
+    # equilibrium rate falls short of what's observed — the open problem.
     "naif-602": TidalHeating(
         raised_by="naif-699",
         role="dominant",
         role_sources=("howett_2011",),
-        power_w=Measurement(1.58e10, "howett_2011", range=(1.27e10, 1.89e10)),
+        power_w=Measurement(4.7e9, "spencer_2013", range=(4.2e9, 1.89e10)),
         flux_w_per_m2=Measurement(0.04, "nimmo_2025"),
         resonance_with=("naif-604",),
         resonance_source="nimmo_2018",

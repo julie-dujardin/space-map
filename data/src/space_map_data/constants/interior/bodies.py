@@ -108,7 +108,10 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                         ("MgO", 0.3689),
                         ("Al2O3", 0.0457),
                         ("CaO", 0.0226),
+                        ("Na2O", 0.0197),
                         ("TiO2", 0.0024),
+                        ("K2O", 0.0005),
+                        ("FeO", 0.0002),
                     ),
                     source="nittler_2018",
                 ),
@@ -126,10 +129,11 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=2020.0,
                 derived=True,
                 state="liquid",
-                # Hauck's 1475-1825 C at the core-mantle boundary, which is
-                # what Mercury's models constrain; the centre is hotter by an
+                # The 1700-2100 K band Hauck's Monte Carlo samples at the
+                # core-mantle boundary — a model prior the geodesy cannot
+                # narrow, not a measurement. The centre is hotter by an
                 # adiabat nobody has pinned.
-                outer_temperature_range_k=(1750.0, 2100.0),
+                outer_temperature_range_k=(1700.0, 2100.0),
                 temperature_sources=("hauck_2013",),
             ),
             Layer(
@@ -387,9 +391,16 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                     entries=(
                         ("SiO2", 0.450),
                         ("MgO", 0.378),
-                        ("FeO", 0.081),
-                        ("Al2O3", 0.045),
-                        ("CaO", 0.036),
+                        ("FeO", 0.0805),
+                        ("Al2O3", 0.0445),
+                        ("CaO", 0.0355),
+                        ("Cr2O3", 0.00384),
+                        ("Na2O", 0.0036),
+                        ("NiO", 0.0025),
+                        ("TiO2", 0.00201),
+                        ("MnO", 0.00135),
+                        ("K2O", 0.00029),
+                        ("P2O5", 0.00021),
                     ),
                     source="mcdonough_1995",
                 ),
@@ -434,16 +445,32 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                         ("Si", 0.060),
                         ("Ni", 0.052),
                         ("S", 0.019),
+                        ("Cr", 0.009),
+                        # Table 4 prints "0.25" with no % marker, which its
+                        # footnote would read as ppm; the value is wt%.
                         ("Co", 0.0025),
+                        ("P", 0.002),
+                        ("C", 0.002),
+                        ("H", 0.0006),
+                        ("Mn", 0.0003),
                     ),
                     source="mcdonough_2003",
                 ),
                 state="liquid",
-                # A spread across experiments rather than an error bar: the
-                # pyrolite solidus bounds it from above at 3570 ± 200 K, and
-                # iron melting curves and later solidus work land either side.
-                # No experiment prefers a number the others do not contest.
-                outer_temperature_range_k=(3400.0, 4200.0),
+                # Nomura's own bracket, ~3100 K to 3570 ± 200 K, and the two
+                # ends are different arguments. The top is where pyrolite
+                # begins to melt: any hotter and the whole base of the mantle
+                # would be partly molten, whereas the ultra-low-velocity zones
+                # seismology finds are local patches, so they read as pockets
+                # of odd chemistry rather than a global layer. The floor comes
+                # from the core instead — hydrogen at 1.2 wt% accounts for the
+                # 10% density deficit and depresses the alloy that far.
+                # Conventional estimates sat near 4000 K on a higher solidus;
+                # that is the figure this measurement displaced. FeO melting
+                # at 4140 ± 110 K (Dobrosavljevic 2023) leaves even iron-rich
+                # patches solid anywhere in this bracket, which lets the
+                # ultra-low-velocity zones be chemistry without melt.
+                outer_temperature_range_k=(3100.0, 3770.0),
                 temperature_sources=("nomura_2014",),
             ),
             Layer(
@@ -541,6 +568,10 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 # measurements rather than from one instrument — major elements
                 # off S- and Cl-free soil and dust corrected for a meteoritic
                 # component, cross-checked against Odyssey's gamma-ray maps.
+                # Table 6.4 entire, down to the 0.36% oxides; it totals 1.0002
+                # because the published figures are rounded, and cutting the
+                # tail to make it close would be the panel's decision to make,
+                # not this table's.
                 detail=Detail(
                     unit=OXIDE_WEIGHT,
                     entries=(
@@ -549,6 +580,12 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                         ("Al2O3", 0.105),
                         ("MgO", 0.0906),
                         ("CaO", 0.0692),
+                        ("Na2O", 0.0297),
+                        ("TiO2", 0.0098),
+                        ("P2O5", 0.0090),
+                        ("K2O", 0.0045),
+                        ("Cr2O3", 0.0038),
+                        ("MnO", 0.0036),
                     ),
                     source="taylor_mclennan_2009",
                 ),
@@ -583,6 +620,13 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                         ("FeO", 0.181),
                         ("Al2O3", 0.0304),
                         ("CaO", 0.0243),
+                        ("Cr2O3", 0.0073),
+                        ("Na2O", 0.0053),
+                        ("MnO", 0.0044),
+                        # Table 5 prints "P2 O3"; the oxide is P2O5.
+                        ("P2O5", 0.0015),
+                        ("TiO2", 0.0014),
+                        ("K2O", 0.0004),
                     ),
                     source="taylor_2013",
                 ),
@@ -702,6 +746,9 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                         ("CaO", 0.160),
                         ("FeO", 0.045),
                         ("MgO", 0.045),
+                        ("Na2O", 0.0045),
+                        ("TiO2", 0.003),
+                        ("K2O", 0.00075),
                     ),
                     source="taylor_mclennan_2009",
                 ),
@@ -721,6 +768,26 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="garcia_2011",
                 outer_radius_km=1698.9,
                 derived=True,
+                # Table 2.1's bulk-Moon column, standing in for the mantle:
+                # no direct mantle estimate exists, and with the crust at 5%
+                # of the mass and the core at 1% the mantle is nearly the
+                # whole. The table's own footnote allots 2.3 of the 13% FeO
+                # to a core and 10.7 to the mantle; the crust's floated
+                # alumina is the other visible skew.
+                detail=Detail(
+                    unit=OXIDE_WEIGHT,
+                    entries=(
+                        ("SiO2", 0.470),
+                        ("MgO", 0.290),
+                        ("FeO", 0.130),
+                        ("Al2O3", 0.060),
+                        ("CaO", 0.046),
+                        ("TiO2", 0.003),
+                        ("Na2O", 0.0009),
+                        ("K2O", 0.0001),
+                    ),
+                    source="taylor_mclennan_2009",
+                ),
                 state="solid",
             ),
             Layer(

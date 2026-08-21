@@ -347,11 +347,19 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
     "naif-599": BodyStructure(
         datum="one_bar",
         layers=(
+            # Voyager 1's equatorial occultation: 110 K at 140 mbar. No source
+            # prints the height, so it comes off the two levels Lindal does
+            # pin — 165 K at 1000 mbar, falling adiabatically at 2.1 K/km:
+            #   (165 - 110) / 2.1 ≈ 26 km
+            # The Galileo probe measured 28 km directly and agrees, but it
+            # descended into a 5 µm hot spot and read the boundary at 260 mbar
+            # by a different definition, so it corroborates this altitude
+            # rather than setting it.
             AtmosphereLayer(
                 role="troposphere",
-                top_km=50.0,
-                top_pressure_pa=1.0e4,
-                source="seiff_1998",
+                top_km=26.0,
+                top_pressure_pa=1.4e4,
+                source="lindal_1981",
                 top_temperature_k=110.0,
             ),
             AtmosphereLayer(
@@ -419,6 +427,10 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
             ),
             # Hotter at the poles than the equator, which is backwards for
             # solar heating and is the giants' unsolved energy-crisis problem.
+            # The width is latitude, not error: Koskinen's occultations run
+            # 100-150 K colder at the equator than at the poles, and the
+            # Grand Finale's 23 occultations read the same gradient slightly
+            # wider (340-586 K, Brown 2020).
             AtmosphereLayer(
                 role="thermosphere",
                 top_km=2800.0,
@@ -426,7 +438,7 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
                 source="koskinen_2013",
                 top_temperature_k=400.0,
                 top_km_range=(2700.0, 3000.0),
-                top_temperature_range_k=(370.0, 590.0),
+                top_temperature_range_k=(370.0, 540.0),
                 note="exobase",
             ),
             AtmosphereLayer(
@@ -605,19 +617,22 @@ ATMOSPHERE_STRUCTURE: dict[str, BodyStructure] = {
         ),
     ),
     # Pluto. There is no troposphere to speak of — New Horizons found a
-    # boundary layer only 4 km deep, and not everywhere. Above it methane
-    # warms the air by 2-6 K per kilometre to a stratopause near 30 km, and
-    # then it cools again: no thermosphere, because at 39 AU there is nothing
-    # to heat one. The haze is layered all the way through.
+    # boundary layer only 3.5 km deep, and not everywhere: REX saw it on entry
+    # over Sputnik Planitia and not on exit, where the air meets the ground at
+    # 51.6 K with no nitrogen ice under it. Above it methane warms the air by
+    # 2-6 K per kilometre to a stratopause near 30 km, and then it cools again:
+    # no thermosphere, because at 39 AU there is nothing to heat one. The haze
+    # is layered all the way through.
     "naif-999": BodyStructure(
         datum="surface",
         layers=(
             AtmosphereLayer(
                 role="boundary_layer",
-                top_km=4.0,
+                top_km=3.5,
                 top_pressure_pa=None,
                 source="hinson_2017",
-                top_temperature_k=37.0,
+                top_temperature_k=38.9,
+                top_temperature_range_k=(36.8, 41.0),
                 note="weakly_defined",
             ),
             AtmosphereLayer(

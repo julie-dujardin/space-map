@@ -148,11 +148,11 @@ ACTIVITY_SOURCES: dict[str, ActivityReference] = {
         "their relation to tidal stress",
         "Enceladus geysers",
     ),
-    "hansen_2011": ActivityReference(
-        "Hansen et al. 2011 (Geophysical Research Letters 38)",
-        "https://doi.org/10.1029/2011GL047415",
-        "Water-vapour flux and jet structure of the Enceladus plume from Cassini "
-        "ultraviolet occultations",
+    "hansen_2020": ActivityReference(
+        "Hansen et al. 2020 (Icarus 344)",
+        "https://doi.org/10.1016/j.icarus.2019.113461",
+        "Water-vapour source rate of the Enceladus plume from the complete set of "
+        "Cassini ultraviolet occultations",
         "Enceladus plume rate",
     ),
     "paganini_2019": ActivityReference(
@@ -229,6 +229,13 @@ ACTIVITY_SOURCES: dict[str, ActivityReference] = {
         "https://doi.org/10.1029/2010JE003718",
         "Endogenic power of Enceladus's south polar terrain from Cassini "
         "far-infrared spectra",
+        "Enceladus heat output",
+    ),
+    "spencer_2013": ActivityReference(
+        "Spencer et al. 2013 (EPSC Abstracts 8, EPSC2013-840)",
+        "https://meetingorganizer.copernicus.org/EPSC2013/EPSC2013-840-1.pdf",
+        "Enceladus south polar heat flow from Cassini scans that resolve the "
+        "tiger stripes",
         "Enceladus heat output",
     ),
     "lainey_2024": ActivityReference(

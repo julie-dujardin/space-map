@@ -208,6 +208,9 @@ ATMOSPHERE_FACTS: dict[str, BodyFacts] = {
     # Jupiter at the 0.1 bar deck — the level the banding people see sits at,
     # and the one the giants' "cloud tops" means. He is the Galileo probe
     # value (von Zahn et al. 1998); NSSDCA still carries the Voyager-era 10.2%.
+    # NH₃ is Lindal's 0.022 ± 0.008% from the microwave absorption the radio
+    # occultation saw in the 1000-mbar region — below the deck, where the
+    # vapour is not yet condensing out.
     "naif-599": BodyFacts(
         atmosphere_type="gas_giant_envelope",
         composition_unit=VOLUME_FRACTION,
@@ -215,7 +218,7 @@ ATMOSPHERE_FACTS: dict[str, BodyFacts] = {
             Species("H2", 0.861, "von_zahn_1998"),
             Species("He", 0.136, "von_zahn_1998"),
             Species("CH4", 3.0e-3, "nssdc_jupiter"),
-            Species("NH3", 2.6e-4, "nssdc_jupiter"),
+            Species("NH3", 2.2e-4, "lindal_1981"),
             Species("HD", 2.8e-5, "nssdc_jupiter"),
             Species("C2H6", 5.8e-6, "nssdc_jupiter"),
             Species("H2O", 4.0e-6, "nssdc_jupiter"),
@@ -301,8 +304,12 @@ ATMOSPHERE_FACTS: dict[str, BodyFacts] = {
         note="transient_vapour",
     ),
     # Pluto. 1.15 Pa is the New Horizons radio occultation; the atmosphere is
-    # strongly seasonal — 0.4 Pa in 1988, peaking near 1.3 Pa in 2015, back to
-    # 0.97 Pa by 2019 as Pluto recedes and nitrogen freezes out.
+    # strongly seasonal — 0.4 Pa in 1988, tripling to ~1.3 Pa by 2015 (Meza
+    # 2019's occultation series). A 2019 "freezing out" (Arimatsu 2020) did
+    # not hold up: the occultations show a plateau through about 2021, and
+    # only by 2023 had the pressure clearly started to fall — 16 ± 2% down at
+    # the 1215 km reference level (Sickafoose 2026) — as Pluto recedes and
+    # nitrogen condenses back onto Sputnik Planitia.
     "naif-999": BodyFacts(
         atmosphere_type="thin_atmosphere",
         composition_unit=VOLUME_FRACTION,
@@ -357,13 +364,20 @@ ATMOSPHERE_FACTS: dict[str, BodyFacts] = {
         note="no_detection",
     ),
     # Dione: Cassini INMS/CAPS see molecular oxygen and carbon dioxide, but
-    # only O₂ has a published neutral density — one species is a fact, not a
-    # composition.
+    # only O₂ has a published *surface* density — Teolis & Waite's CO₂ is a
+    # reading at 99 km, and one species at the ground is a fact, not a
+    # composition. The figure is the model n₀ Tokar scales his O₂⁺ pick-up
+    # ions against, not a derived value: what CAPS in the wake actually pins
+    # is the 0.6-5·10⁴ cm⁻³ spread it sits inside, and he calls even that a
+    # rough lower bound because the sampled fluid elements may never reach
+    # the ground. Teolis & Waite later confirmed the exosphere directly with
+    # INMS, which is why the type rests on them and the number does not —
+    # their 1·10⁴ cm⁻³ O₂ is likewise at 99 km, not at the surface.
     "naif-604": BodyFacts(
         atmosphere_type="exosphere",
         composition_unit=NUMBER_DENSITY,
-        composition=(Species("O2", 2.0e4, "teolis_waite_2016"),),
-        type_source="tokar_2012",
+        composition=(Species("O2", 2.0e4, "tokar_2012"),),
+        type_source="teolis_waite_2016",
         note="sputtered_ice",
     ),
     # Rhea's oxygen-carbon dioxide exosphere, as the ratio of the two peak
