@@ -152,7 +152,7 @@
 							`${formatNumber(estimatedDiameterKm.nominal)} ${km} (${formatNumber(estimatedDiameterKm.range[0])} – ${formatNumber(estimatedDiameterKm.range[1])} ${km})`
 						)
 					: `${formatNumber(estimatedDiameterKm.nominal)} ${km}`}
-				tooltip={m.tooltip_diameter_estimated()}
+				valueTooltip={m.tooltip_diameter_estimated()}
 			/>
 		{/if}
 		{#if surfaceAreaKm2 != null}

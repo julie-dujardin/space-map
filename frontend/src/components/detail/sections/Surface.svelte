@@ -121,7 +121,7 @@
 			/>
 		{:else if sbdb?.H != null}
 			<Row
-				label={m.absolute_magnitude_h()}
+				label={m.property_name_absolute_magnitude()}
 				value={formatNumber(sbdb.H)}
 				tooltip={m.tooltip_absolute_magnitude_h()}
 			/>

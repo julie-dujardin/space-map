@@ -49,9 +49,6 @@ export interface TemperatureReading {
 export interface Temperatures {
 	readings: TemperatureReading[];
 	origin: 'measured' | 'estimated';
-	/** Set when the readings are Wikidata's rather than a cited work's — there
-	 *  is no paper to list under `sources`, so the bar names the item instead. */
-	provenance?: 'wikidata';
 	sources?: CitedWork[];
 }
 

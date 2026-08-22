@@ -71,9 +71,6 @@
 	);
 
 	let estimated = $derived(temperatures.origin === 'estimated');
-	// A measured reading with no paper behind it: the value is Wikidata's, and
-	// the bar has to say so where the footer's generic credit cannot.
-	let fromWikidata = $derived(temperatures.provenance === 'wikidata');
 
 	let gradient = $derived(
 		`linear-gradient(to right, ${gradientStops(regime)
@@ -167,12 +164,9 @@
 		</Tooltip.Root>
 
 		<!-- Where the number came from, next to the number: nobody has measured
-		     most of these bodies, and of the ones that were, some are reported
-		     by an item rather than a paper. -->
+		     most of these bodies. -->
 		{#if estimated}
 			{@render provenanceBadge(m.temperature_estimated(), m.tooltip_temperature_estimated())}
-		{:else if fromWikidata}
-			{@render provenanceBadge(m.source_wikidata_name(), m.tooltip_temperature_wikidata())}
 		{/if}
 	</div>
 
