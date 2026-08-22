@@ -1031,6 +1031,7 @@
 	"go_to_object": "الانتقال إلى الجرم",
 	"zoom_out_to_system": "التصغير إلى النظام",
 	"object_not_found": "الجرم {name} غير موجود",
+	"object_no_position": "لا توجد بيانات موضع لـ {name} في هذا التاريخ",
 	"out_of_range_title": "البيانات محدودة في هذا الوقت",
 	"out_of_range_selected": "الجرم المحدد ليس له بيانات في هذا الوقت",
 	"out_of_range_satellites_after": "الأقمار الصناعية: لا توجد بيانات بعد {date}",

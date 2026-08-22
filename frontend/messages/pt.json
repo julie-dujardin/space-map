@@ -978,6 +978,7 @@
 	"go_to_object": "Ir para o objeto",
 	"zoom_out_to_system": "Afastar para o sistema",
 	"object_not_found": "Não foi possível mostrar {name} — pode não existir ou não ter dados orbitais",
+	"object_no_position": "{name} não tem dados de posição nesta data",
 	"out_of_range_title": "Dados limitados neste momento",
 	"out_of_range_selected": "O objeto selecionado não tem dados neste momento",
 	"out_of_range_satellites_after": "Satélites: sem dados após {date}",

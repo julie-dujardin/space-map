@@ -978,6 +978,7 @@
 	"go_to_object": "עבור לעצם",
 	"zoom_out_to_system": "התרחק למערכת",
 	"object_not_found": "לא ניתן להציג את {name} — ייתכן שאינו קיים או שאין לו נתוני מסלול",
+	"object_no_position": "ל־{name} אין נתוני מיקום בתאריך זה",
 	"out_of_range_title": "נתונים מוגבלים בזמן זה",
 	"out_of_range_selected": "לעצם הנבחר אין נתונים בזמן זה",
 	"out_of_range_satellites_after": "לוויינים: אין נתונים אחרי {date}",

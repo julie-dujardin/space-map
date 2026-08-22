@@ -970,6 +970,7 @@
 	"go_to_object": "前往该对象",
 	"zoom_out_to_system": "缩小至该系统",
 	"object_not_found": "未找到对象 {name}",
+	"object_no_position": "{name} 在此日期没有位置数据",
 	"out_of_range_title": "此时段数据有限",
 	"out_of_range_selected": "所选对象在此时段没有数据",
 	"out_of_range_satellites_after": "卫星：{date} 之后无数据",

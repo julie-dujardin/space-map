@@ -20,24 +20,36 @@ export function refreshMinorBodyPosition(
 ): void {
 	const d = body.data;
 	const isParabolic = d.q != null;
-	if (d.a === 0 && !isParabolic && !d.satrec) return; // coincides with parent — nothing to propagate
-	if (jd < d.validityStart || jd > d.validityEnd) return; // outside chunk validity — avoid SGP4 divergence
-	const offset = d.satrec
-		? sgp4PositionScene(d.satrec, jd)
-		: isParabolic
-			? parabolicToPositionJD(d, jd)
-			: orbitalElementsToPositionJD(d, jd);
-	if (!offset) return;
 	// Only the SSB is the scene origin — the Sun wobbles ~1e6 km around the
-	// barycenter. Any other parent must be loaded; hide rather than anchor at
-	// the origin. Mirrors update-positions.
+	// barycenter. Any other parent must be loaded; leave the body unplaced
+	// rather than anchor it at the origin. Mirrors update-positions.
 	let parentPos: readonly [number, number, number];
 	if (d.parentId === SSB_ID) {
 		parentPos = [0, 0, 0];
 	} else {
 		const resolved = ctx.getBody(d.parentId)?.position;
-		if (!resolved) return;
+		if (!resolved) {
+			body.positionUnknown = true;
+			return;
+		}
 		parentPos = resolved;
+	}
+	// Outside chunk validity there is nothing to propagate — avoid SGP4 divergence.
+	if (jd < d.validityStart || jd > d.validityEnd) {
+		body.positionUnknown = true;
+		return;
+	}
+	const coincidesWithParent = d.a === 0 && !isParabolic && !d.satrec;
+	const offset = coincidesWithParent
+		? ([0, 0, 0] as [number, number, number])
+		: d.satrec
+			? sgp4PositionScene(d.satrec, jd)
+			: isParabolic
+				? parabolicToPositionJD(d, jd)
+				: orbitalElementsToPositionJD(d, jd);
+	if (!offset) {
+		body.positionUnknown = true;
+		return;
 	}
 	body.position[0] = parentPos[0] + offset[0];
 	body.position[1] = parentPos[1] + offset[1];
@@ -47,4 +59,5 @@ export function refreshMinorBodyPosition(
 		body.orbitCenter[1] = parentPos[1];
 		body.orbitCenter[2] = parentPos[2];
 	}
+	body.positionUnknown = false;
 }

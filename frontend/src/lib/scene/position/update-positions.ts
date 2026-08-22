@@ -173,14 +173,21 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 	const computePosition = (body: PositionedBody) => {
 		const d = body.data;
 		const bo = bodyObjects.get(d.id);
+		// No placement this frame: hide the mesh and mark `position` a stand-in so
+		// the camera is never framed on it. `notForToast` covers the sat-validity
+		// case, where zone coverage drives the toast instead.
+		const hide = (notForToast = false) => {
+			if (bo) bo.outOfRange = true;
+			body.positionUnknown = true;
+			if (!notForToast && d.id === focusedId) oorState.focusedOutOfRange = true;
+		};
 		const isChebTracked = ctx.chebStore?.has(d.id) ?? false;
 		const isProbe = d.orbitalSource === OrbitalSource.SPICE_PROBE;
 		// Discovery gate: hide a body before it came into existence (moon/sat
 		// discovery or launch). NaN/undefined visibleFromDays = always visible.
 		// outOfRange hides the mesh + label; writeMoons() drops the dot too.
 		if (d.visibleFromDays !== undefined && jd - J2000_JD < d.visibleFromDays) {
-			if (bo) bo.outOfRange = true;
-			if (d.id === focusedId) oorState.focusedOutOfRange = true;
+			hide();
 			return;
 		}
 		// Probes re-resolve their fit center below (cruise → captured orbit can
@@ -190,12 +197,13 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		// back to SSB — the origin would place asteroid-moons at the Sun.
 		let parentPos: Vec3;
 		if (isProbe) {
+			// Placeholder: the probe branch re-resolves its fit center below and
+			// overwrites this before any position is derived from it.
 			parentPos = positionMap.get(d.parentId) ?? ([0, 0, 0] as Vec3);
 		} else {
 			const lookup = positionMap.get(d.parentId);
 			if (!lookup) {
-				if (bo) bo.outOfRange = true;
-				if (d.id === focusedId) oorState.focusedOutOfRange = true;
+				hide();
 				diagnostics.warnOnce(
 					'missing-parent',
 					d.id,
@@ -211,10 +219,9 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		// Skipped for chebyshev (validityStart/End is the startup chunk's window,
 		// not the full segment range) — its `positionScene` is the gate instead.
 		if (!isChebTracked && !isProbe && (jd < d.validityStart || jd > d.validityEnd)) {
-			if (bo) bo.outOfRange = true;
 			// Hide the sat; the group toast comes from zone coverage below, not a
 			// stale chunk. Only SGP4 has finite validity (Keplerian/parabolic ±Inf).
-			if (d.satrec && d.id === focusedId) oorState.focusedOutOfRange = true;
+			hide(!d.satrec);
 			return;
 		}
 		let x: number;
@@ -225,7 +232,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			// extrapolated positions would break eclipse geometry.
 			const chebOffset = ctx.chebStore!.positionScene(d.id, jd);
 			if (!chebOffset) {
-				if (bo) bo.outOfRange = true;
+				hide(true);
 				// Only count as OOR-for-toast when jd is outside zone coverage;
 				// inside coverage means a chunk is still loading (transient).
 				const coverage = ctx.chebStore!.zoneCoverage(d.id);
@@ -266,8 +273,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			// so trail geometry and trail-anchor writes follow the new parent.
 			const located = ctx.probeStore?.probeWithCenter(d.id, jd, probeZonePreference) ?? null;
 			if (!located) {
-				if (bo) bo.outOfRange = true;
-				if (d.id === focusedId) oorState.focusedOutOfRange = true;
+				hide();
 				diagnostics.warnOnce('probe-unavailable', d.id, () => {
 					const reason = !ctx.probeStore
 						? 'no ProbeStore'
@@ -290,11 +296,11 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 					bodyObjects
 				);
 				if (!landedRender) {
-					if (bo) bo.outOfRange = true;
-					if (d.id === focusedId) oorState.focusedOutOfRange = true;
+					hide();
 					return;
 				}
 				diagnostics.clear('probe-unavailable', d.id);
+				body.positionUnknown = false;
 				if (bo) {
 					bo.outOfRange = false;
 					if (!bo.isLanded) {
@@ -348,8 +354,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			const primaryMu = getGmKm3s2(probePrimaryNaif) ?? 0;
 			const probeOffsetKm = probePositionKm(located.probe, jd, primaryMu);
 			if (!probeOffsetKm) {
-				if (bo) bo.outOfRange = true;
-				if (d.id === focusedId) oorState.focusedOutOfRange = true;
+				hide();
 				diagnostics.warnOnce(
 					'probe-unavailable',
 					d.id,
@@ -394,7 +399,21 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				);
 			}
 			if (probeParentChanged) d.parentId = probeParentKey;
-			parentPos = positionMap.get(probeParentKey) ?? ([0, 0, 0] as Vec3);
+			// The fit center must be placed first: without it the probe would land
+			// at the scene origin, which reads as a jump to the barycentre.
+			const probeParentPos = positionMap.get(probeParentKey);
+			if (!probeParentPos) {
+				hide();
+				diagnostics.warnOnce(
+					'probe-unavailable',
+					d.id,
+					() =>
+						`probe ${d.id} (${d.name ?? 'unnamed'}): hidden — fit center ${probeParentKey} ` +
+						'has no position this frame'
+				);
+				return;
+			}
+			parentPos = probeParentPos;
 			const probeOffsetX = kmToScene(probeOffsetKm[0]);
 			const probeOffsetY = kmToScene(probeOffsetKm[2]);
 			const probeOffsetZ = -kmToScene(probeOffsetKm[1]);
@@ -467,12 +486,18 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				: isParabolic
 					? parabolicToPositionJD(d, jd)
 					: orbitalElementsToPositionJD(d, jd);
-			if (!offset) return;
+			// A propagator that fails here (SGP4 decay, degenerate elements) leaves
+			// the last sample in `position` — hide rather than keep drawing it.
+			if (!offset) {
+				hide();
+				return;
+			}
 			x = parentPos[0] + offset[0];
 			y = parentPos[1] + offset[1];
 			z = parentPos[2] + offset[2];
 		}
 		if (bo) bo.outOfRange = false;
+		body.positionUnknown = false;
 		body.position[0] = x;
 		body.position[1] = y;
 		body.position[2] = z;

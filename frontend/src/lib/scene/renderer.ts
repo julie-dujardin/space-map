@@ -30,7 +30,12 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import type { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OrbitControls as OrbitControlsClass } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
-import { UrlType, type MapViewState } from '$lib/state/view';
+import {
+	DEFAULT_FRAMING_LAT,
+	DEFAULT_FRAMING_LON,
+	DEFAULT_VIEW,
+	type MapViewState
+} from '$lib/state/view';
 import {
 	isSurfaceFeature,
 	ObjectType,
@@ -361,16 +366,16 @@ export class SceneRenderer {
 		void loadSkybox(this.scene, this.renderer, ctx);
 
 		const sunBody = ctx.bodies.majorBodies.find((b) => b.data.id === SUN_ID);
-		const matchedBody = ctx.getBody(initialView.id);
-		// When the URL target isn't resident yet (e.g. an Earth sat whose element
-		// chunk is still streaming), settle the camera on its parent body rather
-		// than the Sun — a far gentler starting frame that MapPage eases onto the
-		// real target from once it lands. Falls back to the Sun if even the parent
-		// isn't loaded.
-		const fallbackParentId = initialView.type === UrlType.EarthSatellite ? EARTH_ID : null;
+		const resident = ctx.getBody(initialView.id);
+		// An unplaced target (no ephemeris at this time) carries a stand-in
+		// position; treat it as absent so the camera settles somewhere real.
+		const matchedBody = resident && !resident.positionUnknown ? resident : undefined;
+		// Without a target — still streaming, absent, or unplaceable — the camera
+		// settles on the default view's body, which MapPage then eases onto the
+		// real target from once it lands. The Sun stands in only if Earth itself
+		// hasn't loaded.
 		const fallbackBody =
-			(fallbackParentId && ctx.bodies.majorBodies.find((b) => b.data.id === fallbackParentId)) ||
-			sunBody;
+			ctx.bodies.majorBodies.find((b) => b.data.id === DEFAULT_VIEW.id) || sunBody;
 		const focusBody = matchedBody ?? fallbackBody;
 		const focusPos: Vec3 = focusBody?.position ?? [0, 0, 0];
 
@@ -446,22 +451,32 @@ export class SceneRenderer {
 		// the mesh quaternion is still identity (orientation metadata hasn't
 		// loaded yet), so this falls back to scene-frame. Stash the requested
 		// view and re-apply once orientation loads.
+		// The URL framing belongs to the target: a probe's metre-scale zoom against
+		// the fallback body would bury the camera inside it. Default framing until
+		// the target lands.
+		const framing = matchedBody
+			? initialView
+			: {
+					latitude: DEFAULT_FRAMING_LAT,
+					longitude: DEFAULT_FRAMING_LON,
+					zoom: DEFAULT_VIEW.zoom
+				};
 		const camPos = sphericalToCartesian(
 			[0, 0, 0],
-			initialView.latitude,
-			initialView.longitude,
-			initialView.zoom,
+			framing.latitude,
+			framing.longitude,
+			framing.zoom,
 			this.focusController.focusedBodyQuat()
 		);
 		this.camera.position.set(...camPos);
 		this.focusController.setPendingInitialView({
-			latitude: initialView.latitude,
-			longitude: initialView.longitude,
-			zoom: initialView.zoom
+			latitude: framing.latitude,
+			longitude: framing.longitude,
+			zoom: framing.zoom
 		});
 
 		if (focusBody) ctx.visibility.setFocused(focusBody);
-		ctx.visibility.updateCamera(initialView.zoom, this.clock.jd);
+		ctx.visibility.updateCamera(framing.zoom, this.clock.jd);
 
 		callbacks.onFocusChange(focusBody);
 

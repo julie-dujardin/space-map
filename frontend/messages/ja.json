@@ -1048,6 +1048,7 @@
 	"go_to_object": "オブジェクトに移動",
 	"zoom_out_to_system": "惑星系までズームアウト",
 	"object_not_found": "オブジェクト {name} が見つかりません",
+	"object_no_position": "{name} はこの日付の位置データがありません",
 	"out_of_range_title": "この時刻のデータは限定的です",
 	"out_of_range_selected": "選択したオブジェクトのこの時刻のデータはありません",
 	"out_of_range_satellites_after": "人工衛星：{date} 以降のデータはありません",

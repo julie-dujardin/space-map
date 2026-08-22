@@ -95,7 +95,9 @@ export class MinorBucket {
 	}
 
 	/** Materialize (and cache) the body for one id. Position starts at the
-	 *  origin; pick/promotion recompute it via `refreshMinorBodyPosition`. */
+	 *  origin, flagged as a stand-in until `refreshMinorBodyPosition` places it
+	 *  at pick/promotion time — framing the origin would read as a jump to the
+	 *  barycentre. */
 	get(id: string): PositionedBody | undefined {
 		const cached = this.cache.get(id);
 		if (cached) return cached;
@@ -103,7 +105,7 @@ export class MinorBucket {
 		if (!ref) return undefined;
 		const data = materializeBodyData(this.chunks[ref.c], ref.i, this.labels, this.parentIdType);
 		if (!data) return undefined;
-		const body: PositionedBody = { data, position: [0, 0, 0] };
+		const body: PositionedBody = { data, position: [0, 0, 0], positionUnknown: true };
 		this.cache.set(id, body);
 		return body;
 	}

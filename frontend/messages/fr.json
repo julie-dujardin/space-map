@@ -1040,6 +1040,7 @@
 	"go_to_object": "Aller à l'objet",
 	"zoom_out_to_system": "Dézoomer vers le système",
 	"object_not_found": "Objet {name} introuvable",
+	"object_no_position": "{name} n'a pas de données de position à cette date",
 	"out_of_range_title": "Données limitées à cette date",
 	"out_of_range_selected": "L'objet sélectionné n'a pas de données à cette date",
 	"out_of_range_satellites_after": "Satellites : aucune donnée après le {date}",

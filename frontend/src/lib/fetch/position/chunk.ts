@@ -388,12 +388,14 @@ export class ChunkLoader {
 			}
 			const offsetKm = probePositionKm(probe, jd, primaryMu);
 			if (!offsetKm) nullOffsets.add(probe.id);
-			const anchor = primaryPos ?? this.positions.get('naif-0')!;
+			const anchor = primaryPos ?? ([0, 0, 0] as [number, number, number]);
 			const offset: [number, number, number] | null = offsetKm
 				? [kmToScene(offsetKm[0]), kmToScene(offsetKm[2]), -kmToScene(offsetKm[1])]
 				: null;
-			// No offset: probe is outside its sub-chunk windows here — emit at the
-			// parent's location; the per-frame propagator hides it.
+			// A gap in the sub-chunks (or an unresolved fit center) leaves the probe
+			// unplaceable: it still enters the scene so a scrub into coverage picks
+			// it up, but `positionUnknown` keeps the camera off the stand-in.
+			const positionUnknown = !offset || !primaryPos;
 			const pos: [number, number, number] = offset
 				? [anchor[0] + offset[0], anchor[1] + offset[1], anchor[2] + offset[2]]
 				: [anchor[0], anchor[1], anchor[2]];
@@ -466,6 +468,7 @@ export class ChunkLoader {
 			result.push({
 				data,
 				position: pos,
+				positionUnknown,
 				// Kept even when the buffer drives the trail: the detail panel reads
 				// these for its orbital-elements section (the trail path ignores them).
 				orbitElements: elements ?? undefined,
@@ -488,7 +491,7 @@ export class ChunkLoader {
 		for (const [parentKey, probeIds] of missingParents) {
 			console.warn(
 				`processProbes: fit-center ${parentKey} not in positions ` +
-					`(anchored at SSB) — ${probeIds.size} probe(s): ${Array.from(probeIds).slice(0, 5).join(', ')}` +
+					`(unplaceable, kept hidden) — ${probeIds.size} probe(s): ${Array.from(probeIds).slice(0, 5).join(', ')}` +
 					(probeIds.size > 5 ? ` (+${probeIds.size - 5} more)` : '')
 			);
 		}
@@ -645,9 +648,9 @@ export class ChunkLoader {
 			// enforce SGP4-only propagation for earth sats.
 			if (!body) continue;
 			// If the load-time jd is outside the chunk's validity window (e.g.
-			// user URL-loaded a far-future date), seed with the parent position.
-			// The per-frame propagation gate keeps the body hidden until jd
-			// re-enters range.
+			// user URL-loaded a far-future date), seed with the parent position and
+			// mark it a stand-in: the per-frame propagation gate keeps the body
+			// hidden until jd re-enters range, and nothing may frame the seed.
 			const inRange = jd >= body.validityStart && jd <= body.validityEnd;
 			const offset = !inRange
 				? ([0, 0, 0] as [number, number, number])
@@ -690,6 +693,7 @@ export class ChunkLoader {
 				bodies.push({
 					data: body,
 					position: pos,
+					positionUnknown: !inRange,
 					orbitElements: body.a > 0 ? body : undefined,
 					orbitCenter: parentPos
 				});
@@ -712,13 +716,15 @@ export class ChunkLoader {
 				bodies.push({
 					data: body,
 					position: pos,
+					positionUnknown: !inRange,
 					orbitElements: isMoon ? body : (this.barycenters.get(parentKey) ?? body),
 					orbitCenter: isMoon || !hasBarycenter ? parentPos : undefined
 				});
 			} else {
 				bodies.push({
 					data: body,
-					position: pos
+					position: pos,
+					positionUnknown: !inRange
 				});
 			}
 		}

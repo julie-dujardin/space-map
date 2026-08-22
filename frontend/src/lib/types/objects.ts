@@ -157,6 +157,14 @@ export interface PositionedBody {
 	 *  (the seat); everything data-facing (terrain, nomenclature, attribution)
 	 *  defers to `featureAnchor.hostId`. */
 	featureAnchor?: FeatureAnchor;
+	/**
+	 * `position` is a stand-in — the parent's place, the scene origin, or a
+	 * stale sample — because the body has no ephemeris at the current time.
+	 * Nothing may frame the camera on such a body: the stand-in reads as a
+	 * teleport to the Sun or the barycentre. Maintained per frame by
+	 * `updatePositions`.
+	 */
+	positionUnknown?: boolean;
 }
 
 /** A synthetic surface-feature focus target — see {@link FeatureAnchor}. */

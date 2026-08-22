@@ -139,6 +139,7 @@ export class FocusController {
 	/** Pan to frame `body` without changing the focused body — used to re-center on
 	 *  the parent when focus goes out of range, keeping the "no data" toast on the original. */
 	panCameraToBody(body: PositionedBody): void {
+		if (body.positionUnknown) return;
 		const { focus, camera } = this.deps;
 		prepareFocusTarget(
 			focus,
@@ -189,6 +190,7 @@ export class FocusController {
 			return;
 		}
 		this.setFocusTarget(body);
+		if (body.positionUnknown) return; // camera never moved — nothing to report
 		const camWorld = this.cameraTruePos();
 		const { latitude, longitude, distance } = cartesianToSpherical(
 			camWorld,
@@ -281,14 +283,19 @@ export class FocusController {
 			if (landingBody) loadTexture(landingBody);
 		}
 		systemData.syncToFocus();
-		prepareFocusTarget(
-			focus,
-			[...body.position],
-			camera,
-			this.cameraTruePos(),
-			camPos,
-			getSettings().resolvedReducedMotion
-		);
+		// An unplaced body's `position` is a stand-in (its parent, or the scene
+		// origin): moving the camera there would fly it to the Sun or the
+		// barycentre. Take the focus, leave the camera where the user left it.
+		if (!body.positionUnknown) {
+			prepareFocusTarget(
+				focus,
+				[...body.position],
+				camera,
+				this.cameraTruePos(),
+				camPos,
+				getSettings().resolvedReducedMotion
+			);
+		}
 		// Re-emit: the clear button excludes the focused body, so it must stay in sync.
 		this.promotion.emitUserPromotedCount();
 	}
@@ -304,6 +311,12 @@ export class FocusController {
 		// Point-cloud bodies materialize frozen at [0,0,0]; refresh before computing
 		// the camera destination below, or we'd frame the SSB instead of the body.
 		if (!ctx.bodies.bodiesById.has(id)) refreshMinorBodyPosition(body, clock.jd, ctx);
+		// Nowhere to fly: take the focus (drawer, trails, system data) and hold the
+		// camera. Framing the stand-in position would read as a jump to the Sun.
+		if (body.positionUnknown) {
+			this.setFocusTarget(body);
+			return 0;
+		}
 		let camPos: Vec3 | undefined;
 		if (zoom !== undefined) {
 			if (latitude !== undefined && longitude !== undefined) {
@@ -372,7 +385,7 @@ export class FocusController {
 	 *  late-arriving chunk landing after the camera settled on the placeholder parent. */
 	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
 		const body = this.deps.ctx.getBody(id);
-		if (!body) return;
+		if (!body || body.positionUnknown) return;
 		this.settleOnBodyInstant(body);
 		this.snapToBodyFrame(latitude, longitude, zoom);
 	}
@@ -383,7 +396,7 @@ export class FocusController {
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {
 		const { ctx, camera, controls, callbacks } = this.deps;
 		const body = ctx.getBody(id);
-		if (!body) return;
+		if (!body || body.positionUnknown) return;
 		this.settleOnBodyInstant(body);
 		const toward = ctx.getBody(towardId)?.position ?? [0, 0, 0];
 		const offset = offsetFacing(body.position, toward, elevationDeg, distance);

@@ -139,7 +139,15 @@
 				console.warn(`[map] focusObject: ${id} not resolvable — nothing to focus.`);
 				return;
 			}
-			if (opts?.moveCamera === false) {
+			if (body.positionUnknown) {
+				// No ephemeris at this time: take the focus so the drawer opens, and
+				// say why the camera did not move.
+				toast.warning(m.object_no_position({ name: name || id }), {
+					id: 'object-no-position',
+					closeButton: true
+				});
+				scene?.focusOnBody(id);
+			} else if (opts?.moveCamera === false) {
 				// Re-anchor focus only, no fly (comet fragments).
 				scene?.focusOnBody(id);
 			} else if (type === UrlType.Probe || type === UrlType.EarthSatellite) {
@@ -580,17 +588,21 @@
 		// Error screen already shown: don't also fire the "not found" toast over it.
 		if (ctx.error) return;
 		const initialBody = ctx.getBody(initialId);
-		if (initialBody && appState.view.featureId !== null) {
+		// A body that is resident but has no ephemeris at this time carries a
+		// stand-in position (its parent, or the scene origin), so there is still
+		// nothing to fly to — it takes the same landing as a missing one.
+		const placed = initialBody?.positionUnknown ? undefined : initialBody;
+		if (placed && appState.view.featureId !== null) {
 			// Feature deep-link: the featureId→activeFeature effect frames the
 			// camera on the feature seat. Skip host framing here, it runs after
 			// that effect and would clobber the feature focus.
-		} else if (initialBody) {
+		} else if (placed) {
 			if (initialId === EARTH_ID && !appState.view.framed) {
 				// Home view (`/` redirects here): Earth looking sunward, tilted above the ecliptic.
 				scene?.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
 			} else if (!appState.view.framed) {
 				// No URL camera: frame by the target's size/model, same as search.
-				const distance = framingDistanceFor(appState.view.type, initialBody);
+				const distance = framingDistanceFor(appState.view.type, placed);
 				scene?.snapToBody(initialId, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON, distance);
 			} else if (cameraFocus?.data.id !== initialId) {
 				// Explicit URL camera, but the renderer settled on the parent while
@@ -616,12 +628,25 @@
 			// Persistent (no auto-dismiss): the scene-load main-thread churn can
 			// starve a transient toast so its duration timer expires before it ever
 			// paints. A stable id de-dupes if the load is retried.
-			toast.warning(m.object_not_found({ name: initialName }), {
-				id: 'object-not-found',
-				duration: Number.POSITIVE_INFINITY,
-				closeButton: true
-			});
+			toast.warning(
+				initialBody
+					? m.object_no_position({ name: initialName })
+					: m.object_not_found({ name: initialName }),
+				{
+					id: initialBody ? 'object-no-position' : 'object-not-found',
+					duration: Number.POSITIVE_INFINITY,
+					closeButton: true
+				}
+			);
 			appState.setFocus({ type: DEFAULT_VIEW.type, id: DEFAULT_VIEW.id, name: DEFAULT_VIEW.name });
+			// The renderer settled the camera on whatever it could find (the Sun);
+			// land on the default view instead, so an unplaceable URL opens home.
+			scene?.snapToBodyFacing(
+				DEFAULT_VIEW.id,
+				SUN_ID,
+				DEFAULT_VIEW_ELEVATION_DEG,
+				DEFAULT_VIEW.zoom
+			);
 		}
 	});
 
