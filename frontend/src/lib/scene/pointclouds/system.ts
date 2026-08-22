@@ -360,12 +360,24 @@ export class PointCloudSystem {
 		})();
 	}
 
+	/** In-flight recovery, shared by concurrent callers. */
+	private recovering: Promise<boolean> | null = null;
+
 	/**
 	 * Respawn the pool and re-wire every group if a worker died. Returns true on
 	 * respawn. Moons solve on the main thread, so they're unaffected.
+	 *
+	 * Single-flight: a mobile tab returning fires both `visibilitychange` and
+	 * `webglcontextrestored`, and two overlapping probes would respawn twice —
+	 * the second respawn killing the pool the first was still re-wiring into.
 	 */
-	async recoverWorkersIfDead(): Promise<boolean> {
-		if (await this.orbitPool.ping()) return false;
+	recoverWorkersIfDead(timeoutMs?: number): Promise<boolean> {
+		this.recovering ??= this.runRecovery(timeoutMs).finally(() => (this.recovering = null));
+		return this.recovering;
+	}
+
+	private async runRecovery(timeoutMs?: number): Promise<boolean> {
+		if (await this.orbitPool.ping(timeoutMs)) return false;
 		this.orbitPool.respawn();
 		// Respawned pool has no wiring; re-mark all and clear the gate so a full
 		// repack runs even mid-stream.
@@ -394,6 +406,12 @@ export class PointCloudSystem {
 		}
 		const seedBasis: Vec3 = [this.basisPos[0], this.basisPos[1], this.basisPos[2]];
 		const k = this.orbitPool.workerCount;
+		// A respawn landing mid-pass throws away every wire made so far, and the
+		// consumed dirty markers would offer no second chance — so remember what
+		// this pass drained and re-mark it if the pool turned over underneath.
+		const generation = this.orbitPool.poolGeneration;
+		const drainedZones: string[] = [];
+		const drainedGroups: string[] = [];
 		// The skip-set (promoted ids) is captured fresh per group right before its
 		// pack, not once here: this pass is async, and a promotion that lands during
 		// an earlier group's await would otherwise be missed — leaving its body in
@@ -404,6 +422,7 @@ export class PointCloudSystem {
 			const bucket = this.ctx.bodies.asteroidBodiesByZone.get(zone);
 			if (this.deferPackWhileStreaming(`asteroid:${zone}`, bucket?.size ?? 0)) continue;
 			this.ctx.bodies.dirtyAsteroidZones.delete(zone);
+			drainedZones.push(zone);
 			// Fill the worker SoA straight from the bucket's columns — no
 			// PositionedBody[] round-trip, no throwaway main-thread Kepler solve.
 			const skip = new Set(this.bodyObjects.keys());
@@ -473,6 +492,7 @@ export class PointCloudSystem {
 			const bucket = this.ctx.bodies.spacecraftByParent.get(gid);
 			if (this.deferPackWhileStreaming(`spacecraft:${gid}`, bucket?.size ?? 0)) continue;
 			this.ctx.bodies.dirtySpacecraftGroups.delete(gid);
+			drainedGroups.push(gid);
 			const allBodies = bucket ? Array.from(bucket.values()) : [];
 			const { buckets, baseWorker } = await partitionForWorkersSliced(gid, allBodies, k);
 			// Capture after the partition await so group promotion (which runs on a
@@ -540,6 +560,13 @@ export class PointCloudSystem {
 					this.pendingSceneAdds.push(pts);
 				}
 			}
+		}
+
+		if (this.orbitPool.poolGeneration !== generation) {
+			for (const zone of drainedZones) this.ctx.bodies.dirtyAsteroidZones.add(zone);
+			for (const gid of drainedGroups) this.ctx.bodies.dirtySpacecraftGroups.add(gid);
+			this.lastPackedSize.clear();
+			this.rebuildQueued = true;
 		}
 	}
 

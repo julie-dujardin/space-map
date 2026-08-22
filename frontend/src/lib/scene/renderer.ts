@@ -1851,8 +1851,8 @@ export class SceneRenderer {
 	}
 
 	/** Respawn orbit workers if the OS killed them (frozen asteroids/spacecraft). */
-	recoverWorkersIfDead(): Promise<boolean> {
-		return this.pointClouds.recoverWorkersIfDead();
+	recoverWorkersIfDead(timeoutMs?: number): Promise<boolean> {
+		return this.pointClouds.recoverWorkersIfDead(timeoutMs);
 	}
 
 	resize(width: number, height: number): void {

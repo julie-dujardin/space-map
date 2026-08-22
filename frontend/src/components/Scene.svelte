@@ -209,6 +209,7 @@
 	// Reclaiming a backgrounded mobile tab drops the GL context (and can kill
 	// workers). preventDefault opts into the browser's own restore on tab return.
 	let lostOverlayTimer: ReturnType<typeof setTimeout> | undefined;
+	const RESTORE_PING_TIMEOUT_MS = 4000;
 	function onContextLost(e: Event) {
 		e.preventDefault();
 		console.warn('[scene] WebGL context lost');
@@ -226,7 +227,10 @@
 		renderer?.handleContextRestored();
 		// Context loss often coincides with dead workers, which onVisibility skips
 		// while the context is lost — so probe here too (no-op if they survived).
-		void renderer?.recoverWorkersIfDead();
+		// Generous timeout: the main thread is busy re-uploading every VBO and the
+		// skybox here, so a live worker's pong can be slow to be read, and a false
+		// negative costs a full repack of the main belt.
+		void renderer?.recoverWorkersIfDead(RESTORE_PING_TIMEOUT_MS);
 	}
 
 	// OS-killed workers fire no event; probe on tab-return to recover frozen clouds.

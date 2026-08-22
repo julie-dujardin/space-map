@@ -65,7 +65,13 @@ export class OrbitWorkerPool {
 	private onResult: GroupResultHandler | null = null;
 	private readonly size: number;
 	/** In-flight liveness probe; resolves once every worker has ponged. */
-	private pendingPing: { need: number; got: number; resolve: (ok: boolean) => void } | null = null;
+	private pendingPing: {
+		need: number;
+		got: number;
+		promise: Promise<boolean>;
+		resolve: (ok: boolean) => void;
+	} | null = null;
+	private generation = 0;
 
 	constructor(size: number = navigator.hardwareConcurrency ?? 4) {
 		// Floor at 2 so even 2-core phones (hardwareConcurrency=2) get parallel
@@ -86,27 +92,31 @@ export class OrbitWorkerPool {
 	/**
 	 * True once every worker answers within `timeoutMs`. A backgrounded tab's
 	 * workers can be killed by the mobile OS yet still look alive on the main
-	 * thread — a timeout is the only signal they're dead.
+	 * thread — a timeout is the only signal they're dead. A concurrent caller
+	 * joins the in-flight probe: cancelling it would report a live pool as dead
+	 * and trigger a second respawn on top of the first one's rewire.
 	 */
 	ping(timeoutMs = 800): Promise<boolean> {
 		if (this.workers.length === 0) return Promise.resolve(false);
-		this.pendingPing?.resolve(false);
-		return new Promise<boolean>((resolve) => {
-			// Guard by identity so a superseded or already-resolved probe no-ops;
-			// lets the dangling timer expire without a clearTimeout.
-			const state = {
-				need: this.workers.length,
-				got: 0,
-				resolve: (ok: boolean) => {
-					if (this.pendingPing !== state) return;
-					this.pendingPing = null;
-					resolve(ok);
-				}
-			};
-			this.pendingPing = state;
-			setTimeout(() => state.resolve(false), timeoutMs);
-			for (const w of this.workers) w.postMessage({ type: 'ping' });
-		});
+		if (this.pendingPing) return this.pendingPing.promise;
+		let resolveOuter!: (ok: boolean) => void;
+		const promise = new Promise<boolean>((r) => (resolveOuter = r));
+		// Guard by identity so an already-resolved probe no-ops; lets the
+		// dangling timer expire without a clearTimeout.
+		const state = {
+			need: this.workers.length,
+			got: 0,
+			promise,
+			resolve: (ok: boolean) => {
+				if (this.pendingPing !== state) return;
+				this.pendingPing = null;
+				resolveOuter(ok);
+			}
+		};
+		this.pendingPing = state;
+		setTimeout(() => state.resolve(false), timeoutMs);
+		for (const w of this.workers) w.postMessage({ type: 'ping' });
+		return promise;
 	}
 
 	/**
@@ -118,7 +128,14 @@ export class OrbitWorkerPool {
 		for (const w of this.workers) w.terminate();
 		this.workers = [];
 		this.groups.clear();
+		this.generation++;
 		this.spawn();
+	}
+
+	/** Bumped by every {@link respawn}. A rewire pass that spans a bump wired
+	 *  groups into a pool that no longer exists and must redo them. */
+	get poolGeneration(): number {
+		return this.generation;
 	}
 
 	setResultHandler(handler: GroupResultHandler): void {
