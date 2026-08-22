@@ -4,6 +4,8 @@ Runs against real downloaded summaries, since a mocked loader can't prove a
 row resolves to prose on disk. Skipped when the download is absent.
 """
 
+from urllib.parse import urlsplit
+
 import pytest
 
 from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
@@ -61,7 +63,7 @@ class TestShape:
         first, second = "Q_no_such_page", "Q1664027"
         page = _page_localized((first, second), "en")
         assert page is not None
-        assert "wikipedia.org" in page["url"]
+        assert urlsplit(page["url"]).hostname == "en.wikipedia.org"
 
 
 class TestCoverage:

@@ -169,11 +169,16 @@ async function resolveOgCard(
 	return { image: pick.url, description: `${credit}. ${baseDescription}` };
 }
 
+// A single pass leaves a tag behind whenever one was nested inside another
+// ("<<b>i>" collapses to "<i>"), so strip to a fixpoint.
 function stripHtml(raw: string): string {
-	return raw
-		.replace(/<[^>]*>/g, '')
-		.replace(/\s+/g, ' ')
-		.trim();
+	let out = raw;
+	let prev: string;
+	do {
+		prev = out;
+		out = out.replace(/<[^>]*>/g, '');
+	} while (out !== prev);
+	return out.replace(/\s+/g, ' ').trim();
 }
 
 function truncate(text: string, max: number): string {

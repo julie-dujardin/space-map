@@ -507,8 +507,9 @@ function buildSort(sort: SortId, reverse: boolean): string[] {
 	return [`${field}:${dir ? 'desc' : 'asc'}`];
 }
 
+// Backslash has to be escaped too, or a trailing one escapes the closing quote.
 function quote(v: string): string {
-	return `"${v.replace(/"/g, '\\"')}"`;
+	return `"${v.replace(/[\\"]/g, '\\$&')}"`;
 }
 
 function orClause(field: string, vals: string[] | undefined): string | null {
