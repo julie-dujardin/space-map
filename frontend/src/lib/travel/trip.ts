@@ -33,18 +33,24 @@ export type EndpointMode =
 	| 'transfer'
 	| 'heo'
 	| 'custom'
+	/** Meeting a craft rather than a body: matching its state, since there is no
+	 *  well to fall into and nothing to go round. The only way, besides passing
+	 *  it, that a spacecraft can be an end. */
+	| 'rendezvous'
 	| 'flyby';
 
 /** Modes each end can be in. A departure is never a flyby, and never onto a
  *  transfer orbit or a capture ellipse — both are shapes an arrival leaves you
- *  in, not ones you set out from. */
+ *  in, not ones you set out from. Casting off from a craft is a departure like
+ *  any other, so a rendezvous is on both lists. */
 export const ORIGIN_MODES: readonly EndpointMode[] = [
 	'surface',
 	'low-orbit',
 	'semi-sync',
 	'stationary',
 	'heo',
-	'custom'
+	'custom',
+	'rendezvous'
 ];
 export const TARGET_MODES: readonly EndpointMode[] = [
 	'surface',
@@ -55,6 +61,7 @@ export const TARGET_MODES: readonly EndpointMode[] = [
 	'transfer',
 	'heo',
 	'custom',
+	'rendezvous',
 	'flyby'
 ];
 

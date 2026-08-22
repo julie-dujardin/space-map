@@ -157,9 +157,14 @@ const IMPULSIVE_FLOOR_M_S2 = 1e-4;
  * silently dropping every vehicle from the picker would be worse than
  * offering one that can't lift off. An empty list *is* a claim: a rover
  * departs from nowhere.
+ *
+ * Casting off from another craft asks the same of a vehicle as leaving an
+ * orbit does, and the catalogue only ever says the two things it is fitted
+ * from — so a rendezvous departure is read as the orbit one.
  */
 export function canDepartFrom(vehicle: Vehicle, mode: DepartureMode): boolean {
-	return vehicle.departsFrom === undefined || vehicle.departsFrom.includes(mode);
+	const asked = mode === 'rendezvous' ? 'orbit' : mode;
+	return vehicle.departsFrom === undefined || vehicle.departsFrom.includes(asked);
 }
 
 /** Capabilities that imply something to fly an atmospheric pass behind. Entry

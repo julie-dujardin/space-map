@@ -14,7 +14,7 @@
  * named for a shape it can only hold in one plane.
  */
 
-import type { BodyData } from '$lib/types/objects';
+import { ObjectType, type BodyData } from '$lib/types/objects';
 import type { EndOrbit, TravelBody } from '$lib/math/travel';
 import { GM_SUN_KM3_S2, PARKING_ALTITUDE_KM, orbitPeriodHours } from '$lib/math/travel';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
@@ -47,6 +47,9 @@ export interface OrbitFacts {
 	rotationHours?: number;
 	/** How far the body holds an orbit against its primary, km. */
 	hillKm?: number;
+	/** True for something built rather than found. Nothing orbits a spacecraft:
+	 *  it is met or passed, which is all {@link orbitChoices} then offers. */
+	isCraft?: boolean;
 }
 
 /**
@@ -68,7 +71,16 @@ export function orbitFacts(
 		spinDegPerDay && Math.abs(spinDegPerDay) > 0
 			? (HOURS_PER_DAY * 360) / Math.abs(spinDegPerDay)
 			: undefined;
-	return { rotationHours, hillKm: hillRadiusKm(body, travel, lookup) };
+	return { rotationHours, hillKm: hillRadiusKm(body, travel, lookup), isCraft: isCraft(body) };
+}
+
+/**
+ * Whether the object is a craft — a spacecraft or a piece of one. Its own
+ * gravity is nothing anything could hold an orbit against, so it is a place to
+ * meet rather than a body to go round.
+ */
+export function isCraft(body: BodyData): boolean {
+	return body.objectType === ObjectType.SPACECRAFT || body.objectType === ObjectType.DEBRIS;
 }
 
 /**
@@ -117,7 +129,7 @@ export function hasGround(travel: TravelBody): boolean {
 	return !(travel.hasAtmosphere === true && travel.surfacePressureBar === undefined);
 }
 
-export type OrbitGroup = 'land' | 'orbit' | 'pass';
+export type OrbitGroup = 'meet' | 'land' | 'orbit' | 'pass';
 
 /** What the trip asks of an end, beyond the body itself. */
 export interface OrbitOptions {
@@ -179,6 +191,9 @@ function maxRadiusKm(facts: OrbitFacts): number {
  * `role` decides two things: only a destination can be flown past or arrived
  * at on a transfer orbit, and only a departure can be from a body with no
  * ground — which is why `hasSurface` is asked rather than assumed.
+ *
+ * A craft is met or passed and nothing else: it holds no orbit, has no ground
+ * worth naming, and matching its state is the whole of arriving at one.
  */
 export function orbitChoices(
 	travel: TravelBody,
@@ -223,6 +238,12 @@ export function orbitChoices(
 			periodHours: orbitPeriodHours(travel.mu, orbit)
 		});
 	};
+
+	if (facts.isCraft) {
+		add('rendezvous', 'meet');
+		if (target) add('flyby', 'pass');
+		return out;
+	}
 
 	if (options.hasSurface) add('surface', 'land');
 	if (target) {

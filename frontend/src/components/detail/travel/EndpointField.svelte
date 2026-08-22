@@ -111,6 +111,7 @@
 		'border-border/60 bg-muted/40 hover:bg-muted flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-start transition-colors';
 
 	const GROUP_LABELS: Record<OrbitGroup, () => string> = {
+		meet: () => m.travel_orbit_group_meet(),
 		land: () => m.travel_orbit_group_land(),
 		orbit: () => m.travel_mode_orbit(),
 		pass: () => m.travel_orbit_group_pass()
@@ -184,7 +185,7 @@
 	// column is tall enough for them, and a fold would hide the one comparison
 	// the Δv column exists to make.
 	let groups = $derived(
-		(['land', 'orbit', 'pass'] as OrbitGroup[])
+		(['meet', 'land', 'orbit', 'pass'] as OrbitGroup[])
 			.map((group) => ({ group, items: choices.filter((c) => c.group === group) }))
 			.filter((g) => g.items.length > 0)
 	);

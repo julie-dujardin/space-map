@@ -472,7 +472,7 @@ function buildCrossing(
 		jd: route.arriveJd,
 		r: to.r,
 		bodyId: target.id,
-		dvKms: dvOf(route, ['capture', 'raise', 'descent'])
+		dvKms: dvOf(route, ['capture', 'rendezvous', 'raise', 'descent'])
 	};
 	const meeting = { bodyId: target.id, jd: route.arriveJd, r: to.r };
 
@@ -2595,7 +2595,7 @@ function flownCrossing(
 				jd: route.arriveJd,
 				r: endR,
 				bodyId: targetId,
-				dvKms: dvOf(route, ['capture', 'raise', 'descent'])
+				dvKms: dvOf(route, ['capture', 'rendezvous', 'raise', 'descent'])
 			}
 		],
 		meeting: { bodyId: targetId, jd: route.arriveJd, r: endR }
@@ -2730,7 +2730,7 @@ function straightCrossing(
 				jd: route.arriveJd,
 				r: end,
 				bodyId: targetId,
-				dvKms: dvOf(route, ['capture', 'raise', 'descent'])
+				dvKms: dvOf(route, ['capture', 'rendezvous', 'raise', 'descent'])
 			}
 		],
 		meeting: { bodyId: targetId, jd: route.arriveJd, r: end }
@@ -2781,7 +2781,7 @@ function systemPath(
 		jd: route.arriveJd,
 		r: outbound ? state.r : scale(normalize(state.r), rNear),
 		bodyId: target.id,
-		dvKms: dvOf(route, ['capture', 'raise', 'descent'])
+		dvKms: dvOf(route, ['capture', 'rendezvous', 'raise', 'descent'])
 	};
 
 	if (route.constantThrust != null) {
@@ -2951,7 +2951,7 @@ function orbitChangePath(
 			jd: route.arriveJd,
 			r: points[points.length - 1],
 			bodyId: body.id,
-			dvKms: dvOf(route, ['capture', 'raise', 'descent'])
+			dvKms: dvOf(route, ['capture', 'rendezvous', 'raise', 'descent'])
 		}
 	];
 	return {

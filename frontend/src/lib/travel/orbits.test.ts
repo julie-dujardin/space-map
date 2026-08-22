@@ -6,6 +6,7 @@ import { ObjectType } from '$lib/types/objects';
 import {
 	hasGround,
 	hillPrimaryOf,
+	isCraft,
 	lowOrbitAltitudeKm,
 	orbitChoices,
 	synchronousRadiusKm,
@@ -198,6 +199,38 @@ describe('orbitChoices', () => {
 			(c) => c.kind === 'custom'
 		);
 		expect(custom?.orbit?.incDeg).toBe(0);
+	});
+});
+
+describe('orbitChoices at a craft', () => {
+	// A spacecraft's own gravity holds nothing, so every named orbit round one is
+	// a shape nothing could fly — it is met or passed and nothing else.
+	const CRAFT_FACTS: OrbitFacts = { isCraft: true, hillKm: HILL.earth };
+	const CRAFT: TravelBody = { ...EARTH, id: 'probe-voyager-1', mu: 1e-12, radiusKm: 0.01 };
+
+	it('offers only a rendezvous and a pass at a destination craft', () => {
+		expect(kinds(CRAFT, CRAFT_FACTS)).toEqual(['rendezvous', 'flyby']);
+	});
+
+	it('offers only a rendezvous to leave one from', () => {
+		expect(kinds(CRAFT, CRAFT_FACTS, 'origin')).toEqual(['rendezvous']);
+	});
+
+	it('names no orbit for the rendezvous, since it is not one', () => {
+		expect(orbitChoices(CRAFT, CRAFT_FACTS, 'target', OPTS)[0].orbit).toBeUndefined();
+	});
+});
+
+describe('isCraft', () => {
+	const typed = (objectType: ObjectType): BodyData => ({ objectType }) as BodyData;
+
+	it('counts a spacecraft and the pieces of one', () => {
+		expect(isCraft(typed(ObjectType.SPACECRAFT))).toBe(true);
+		expect(isCraft(typed(ObjectType.DEBRIS))).toBe(true);
+	});
+
+	it('does not count a body', () => {
+		expect(isCraft(typed(ObjectType.MOON))).toBe(false);
 	});
 });
 

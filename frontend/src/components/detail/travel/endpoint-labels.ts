@@ -16,6 +16,7 @@ const LABELS: Record<EndpointMode, () => string> = {
 	transfer: () => m.travel_mode_transfer(),
 	heo: () => m.travel_mode_heo(),
 	custom: () => m.travel_mode_custom(),
+	rendezvous: () => m.travel_mode_rendezvous(),
 	flyby: () => m.travel_mode_flyby()
 };
 

@@ -582,7 +582,10 @@ function apoapsisSpeed(mu: number, rPeriKm: number, rApoKm: number): number {
 	return Math.sqrt(Math.max(0, (2 * mu) / rApoKm - (2 * mu) / (rPeriKm + rApoKm)));
 }
 
-export type ArrivalMode = 'flyby' | 'capture' | 'low-orbit' | 'landing';
+/** How a trip meets its destination. `rendezvous` is matching another craft:
+ *  there is no well to fall into and no orbit to enter, only the relative
+ *  speed to cancel. */
+export type ArrivalMode = 'flyby' | 'capture' | 'low-orbit' | 'landing' | 'rendezvous';
 
 /**
  * Whether the atmosphere is used on arrival, and how — a different trade, not
@@ -639,11 +642,13 @@ export function arrivalCost(
 	turn: EndTurn = NO_TURN
 ): ArrivalCost {
 	// The approach is priced at the periapsis it is flown to, which is the one the
-	// orbit asked for — arriving into a stationary orbit still dips low first.
+	// orbit asked for — arriving into a stationary orbit still dips low first. A
+	// rendezvous is flown to a craft, which has no periapsis and no well to fall
+	// down: the closing speed is the excess speed itself.
 	const rPeri = pricedArrivalOrbit(body, mode, orbit).rPeriKm;
 	return arrivalCostFromSpeed(
 		body,
-		periapsisSpeed(body.mu, rPeri, vInfKms),
+		mode === 'rendezvous' ? vInfKms : periapsisSpeed(body.mu, rPeri, vInfKms),
 		mode,
 		aero,
 		orbit,
@@ -656,6 +661,9 @@ export function arrivalCost(
  * The orbit an arrival ends in. A landing passes through the parking orbit
  * whatever was asked for — you don't stop in a stationary orbit on the way
  * down — and a flyby ends in no orbit at all, so both ignore the request.
+ *
+ * A rendezvous never reaches here: it ends in no orbit and is priced off the
+ * closing speed alone.
  */
 function pricedArrivalOrbit(body: TravelBody, mode: ArrivalMode, orbit?: EndOrbit): EndOrbit {
 	if (mode === 'landing' || mode === 'flyby') return parkingOrbit(body);
@@ -680,6 +688,10 @@ export function arrivalCostFromSpeed(
 	turn: EndTurn = NO_TURN
 ): ArrivalCost {
 	if (mode === 'flyby') return NO_ARRIVAL_COST;
+	// Nothing to insert into and nothing to fall through: meeting a craft is
+	// cancelling the speed you close on it with, and no atmosphere or plane
+	// change enters into it.
+	if (mode === 'rendezvous') return { ...NO_ARRIVAL_COST, captureKms: Math.max(0, vPeriKms) };
 
 	const { mu } = body;
 	const priced = pricedArrivalOrbit(body, mode, orbit);
@@ -826,7 +838,10 @@ export function arrivalCampaignDays(
 	return arrivalCostFromSpeed(body, 0, mode, aero, orbit).aerobrakeDays;
 }
 
-export type DepartureMode = 'surface' | 'orbit';
+/** Where a trip sets out from. `rendezvous` is casting off from another craft
+ *  — the mirror of the arrival of the same name, with no orbit to leave and no
+ *  well to climb. */
+export type DepartureMode = 'surface' | 'orbit' | 'rendezvous';
 
 /**
  * The orbit a trip is flown out of, or null when it starts on the ground.
@@ -843,13 +858,14 @@ export function endDepartureOrbit(
 	return orbit ? sane(orbit) : parkingOrbit(body);
 }
 
-/** The orbit a trip ends in, or null for a landing or a flyby — neither does. */
+/** The orbit a trip ends in, or null for a landing, a flyby or a rendezvous —
+ *  none of them does. */
 export function endArrivalOrbit(
 	body: TravelBody,
 	mode: ArrivalMode,
 	orbit?: EndOrbit
 ): EndOrbit | null {
-	if (mode === 'flyby' || mode === 'landing') return null;
+	if (mode === 'flyby' || mode === 'landing' || mode === 'rendezvous') return null;
 	return pricedArrivalOrbit(body, mode, orbit);
 }
 
@@ -868,6 +884,10 @@ export function departureCost(
 	// An ascent goes to the parking orbit and leaves from there: which orbit the
 	// craft would otherwise have been sitting in is not a question a launch asks
 	// — and its plane is the ascent's to pick, so a launch owes no turn either.
+	// Casting off from another craft is the arrival run backwards: the burn is
+	// the whole of the excess speed, since the hull it leaves has no well to
+	// help and no orbit to leave from.
+	if (mode === 'rendezvous') return { ascentKms: 0, injectionKms: Math.max(0, vInfKms) };
 	const from = mode === 'surface' || !orbit ? parkingOrbit(body) : sane(orbit);
 	return {
 		ascentKms: mode === 'surface' ? ascentDv(body, site) : 0,

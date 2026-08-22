@@ -280,7 +280,7 @@ function spiralPlan(
 			// Arriving at the primary, the spiral ends in the orbit that was asked
 			// for and there is nothing further to pay.
 			captureKms:
-				outbound && arrivalMode !== 'flyby'
+				outbound && arrivalMode !== 'flyby' && arrivalMode !== 'rendezvous'
 					? circularSpeed(satellite.mu, arrivalRadiusKm(satellite, arrivalMode, targetOrbit))
 					: 0,
 			phased: false
@@ -303,11 +303,12 @@ function spiralPlan(
 		v1Kms: circularSpeed(centralMu, r1),
 		planeChangeRad: planeChangeRad(from, to),
 		escapeKms: circularSpeed(departure.mu, departureOrbit?.rPeriKm ?? parkingRadiusKm(departure)),
-		// A flyby has nothing to slow down for. The crossing is still charged in
-		// full: the craft has to reach the target's orbit to cross it, and the
+		// A flyby has nothing to slow down for, and neither has a rendezvous: the
+		// craft it meets has no well to settle into. The crossing is still charged
+		// in full: the craft has to reach the target's orbit to cross it, and the
 		// cheaper arc that merely passes through is not one this model draws.
 		captureKms:
-			arrivalMode === 'flyby'
+			arrivalMode === 'flyby' || arrivalMode === 'rendezvous'
 				? 0
 				: circularSpeed(target.mu, arrivalRadiusKm(target, arrivalMode, targetOrbit)),
 		phased: true

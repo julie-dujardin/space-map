@@ -8,6 +8,7 @@
 	import ArrowUpIcon from '@lucide/svelte/icons/arrow-up';
 	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
 	import FlameIcon from '@lucide/svelte/icons/flame';
+	import HandshakeIcon from '@lucide/svelte/icons/handshake';
 	import OrbitIcon from '@lucide/svelte/icons/orbit';
 	import WindIcon from '@lucide/svelte/icons/wind';
 	import MoveRightIcon from '@lucide/svelte/icons/move-right';
@@ -111,6 +112,7 @@
 		'spiral-out': TornadoIcon,
 		'spiral-in': TornadoIcon,
 		capture: OrbitIcon,
+		rendezvous: HandshakeIcon,
 		'aero-pass': FlameIcon,
 		aerobrake: WindIcon,
 		raise: OrbitIcon,

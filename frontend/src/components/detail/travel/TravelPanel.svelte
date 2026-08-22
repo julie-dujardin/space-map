@@ -499,7 +499,11 @@
 	 */
 	$effect(() => {
 		if (!originDetail || !originChoices.length) return;
-		if (!originChoices.some((c) => c.kind === panel.originMode)) panel.originMode = 'low-orbit';
+		if (originChoices.some((c) => c.kind === panel.originMode)) return;
+		// The low orbit wherever it is offered, and otherwise whatever is — a craft
+		// holds none, and is cast off from instead.
+		panel.originMode =
+			originChoices.find((c) => c.kind === 'low-orbit')?.kind ?? originChoices[0].kind;
 	});
 	$effect(() => {
 		if (!targetDetail || !targetChoices.length) return;
@@ -612,7 +616,15 @@
 			panel.offered[0]?.route ??
 			null;
 		const body = role === 'origin' ? originTravel : targetTravel;
-		if (!route || !body || !choice.orbit) return null;
+		if (!route || !body) return null;
+		// Meeting a craft is cancelling the speed you close on it with, which no
+		// orbit enters into — so it is priced from the arc alone.
+		if (choice.kind === 'rendezvous') {
+			return role === 'target'
+				? arrivalCost(body, route.vInfArrKms, 'rendezvous').captureKms
+				: departureCost(body, route.vInfDepKms, 'rendezvous').injectionKms;
+		}
+		if (!choice.orbit) return null;
 		if (role === 'target') {
 			const mode = choice.kind === 'elliptical' ? 'capture' : 'low-orbit';
 			return arrivalCost(body, route.vInfArrKms, mode, panel.effectiveAero, choice.orbit)

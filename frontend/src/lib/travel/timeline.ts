@@ -147,6 +147,7 @@ export function buildTimeline(
 			leg.kind === 'ascent' || leg.kind === 'injection' || leg.kind === 'spiral-out'
 				? route.departureId
 				: leg.kind === 'capture' ||
+					  leg.kind === 'rendezvous' ||
 					  leg.kind === 'aero-pass' ||
 					  leg.kind === 'aerobrake' ||
 					  leg.kind === 'raise' ||
@@ -167,7 +168,8 @@ export function buildTimeline(
 					? drawn.touchdownJd
 					: firstCruise && drawn?.cruiseJd !== undefined
 						? drawn.cruiseJd
-						: (leg.kind === 'capture' || leg.kind === 'aero-pass') && drawn?.captureJd !== undefined
+						: (leg.kind === 'capture' || leg.kind === 'rendezvous' || leg.kind === 'aero-pass') &&
+							  drawn?.captureJd !== undefined
 							? drawn.captureJd
 							: leg.kind === 'raise' && drawn?.raiseJd !== undefined
 								? drawn.raiseJd

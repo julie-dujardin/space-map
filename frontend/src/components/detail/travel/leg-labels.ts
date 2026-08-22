@@ -30,6 +30,8 @@ export function legLabel(kind: TimelineKind): string {
 			return m.travel_leg_assist();
 		case 'capture':
 			return m.travel_leg_capture();
+		case 'rendezvous':
+			return m.travel_leg_rendezvous();
 		case 'aero-pass':
 			return m.travel_leg_aero_pass();
 		case 'aerobrake':

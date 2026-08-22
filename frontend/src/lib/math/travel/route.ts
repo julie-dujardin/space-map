@@ -59,6 +59,9 @@ export type LegKind =
 	 *  the whole point; the Δv is what the geometry could not supply. */
 	| 'assist'
 	| 'capture'
+	/** The burn that cancels the speed the craft closes on another craft with.
+	 *  What an insertion is to a body, this is to something with no well. */
+	| 'rendezvous'
 	/** One braking pass through the target's atmosphere doing the whole
 	 *  insertion at once — the aero half of an aerocapture, costing nothing. */
 	| 'aero-pass'
@@ -218,7 +221,7 @@ export function arrivalLegs(cost: ArrivalCost, mode: ArrivalMode): RouteLeg[] {
 	}
 	const engine = cost.captureKms - cost.raiseKms;
 	if (mode !== 'flyby' && engine > 0) {
-		legs.push({ kind: 'capture', dvKms: engine, days: 0 });
+		legs.push({ kind: mode === 'rendezvous' ? 'rendezvous' : 'capture', dvKms: engine, days: 0 });
 	}
 	if (cost.aerobrakeDays > 0) {
 		legs.push({
@@ -571,6 +574,8 @@ export interface OrbitChangeEnds {
  * A landing comes down from wherever the craft already is, so it is never a
  * climb. A flyby of the body you are at is not a trip, and neither is a hop
  * between two points on its ground — that is a suborbital arc, not this one.
+ * Nor is meeting another craft: the two ends are then two objects, however
+ * close together they are, and the arc between them is a transfer.
  */
 export function orbitChangeEnds(
 	body: TravelBody,
@@ -581,6 +586,7 @@ export function orbitChangeEnds(
 ): OrbitChangeEnds | null {
 	const { departureMode, arrivalMode, departureOrbit, targetOrbit, departureSiteLatDeg } = options;
 	if (arrivalMode === 'flyby') return null;
+	if (arrivalMode === 'rendezvous' || departureMode === 'rendezvous') return null;
 	if (departureMode === 'surface' && arrivalMode === 'landing') return null;
 
 	const from =

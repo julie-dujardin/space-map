@@ -165,6 +165,13 @@ describe('parseTrip', () => {
 		expect(parseTrip(new URLSearchParams('tm=flyby')).targetMode).toBe('flyby');
 	});
 
+	// Meeting a craft is a departure as much as an arrival: you cast off from
+	// one the same way you match another.
+	it('reads a rendezvous at either end', () => {
+		expect(parseTrip(new URLSearchParams('fm=rendezvous')).originMode).toBe('rendezvous');
+		expect(parseTrip(new URLSearchParams('tm=rendezvous')).targetMode).toBe('rendezvous');
+	});
+
 	it('reads nothing aboard from a manifest that makes no sense', () => {
 		const trip = parseTrip(new URLSearchParams('crew=-3&cargo=lots'));
 		expect(trip.passengers).toBe(0);

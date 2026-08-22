@@ -535,6 +535,7 @@ export class TravelPanelState {
 	get arrivalMode(): ArrivalMode {
 		if (this.targetAtSite) return 'landing';
 		if (this.targetMode === 'flyby') return 'flyby';
+		if (this.targetMode === 'rendezvous') return 'rendezvous';
 		if (this.targetMode === 'surface') return 'landing';
 		// The remaining case no longer sets the orbit — `targetOrbit` does — but
 		// still decides what an aerobraking campaign starts from, and a loose
@@ -543,15 +544,20 @@ export class TravelPanelState {
 	}
 
 	/** What each end of the trip is, as route options: the orbit it's met in,
-	 *  and the latitude it stands at where it stands on a surface. A landing or
-	 *  flyby names no orbit, nor does an end whose body hasn't been measured
-	 *  yet. A latitude is only worth quoting where the trip actually touches
+	 *  and the latitude it stands at where it stands on a surface. A landing, a
+	 *  flyby and a meeting with another craft name no orbit, nor does an end
+	 *  whose body hasn't been measured yet. A latitude is only worth quoting where the trip actually touches
 	 *  the ground — anywhere else the ascent it would price never happens. */
 	get endTerms(): EndTerms {
 		return {
-			departureOrbit: this.departureMode === 'surface' ? undefined : this.originOrbit,
+			departureOrbit:
+				this.departureMode === 'surface' || this.departureMode === 'rendezvous'
+					? undefined
+					: this.originOrbit,
 			targetOrbit:
-				this.arrivalMode === 'landing' || this.arrivalMode === 'flyby'
+				this.arrivalMode === 'landing' ||
+				this.arrivalMode === 'flyby' ||
+				this.arrivalMode === 'rendezvous'
 					? undefined
 					: this.targetOrbit,
 			departureSiteLatDeg:
@@ -602,6 +608,7 @@ export class TravelPanelState {
 
 	get departureMode(): DepartureMode {
 		if (this.originAtSite) return 'surface';
+		if (this.originMode === 'rendezvous') return 'rendezvous';
 		return this.originMode === 'surface' ? 'surface' : 'orbit';
 	}
 

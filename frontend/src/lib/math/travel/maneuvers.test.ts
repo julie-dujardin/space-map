@@ -4,6 +4,7 @@ import {
 	arrivalCampaignDays,
 	arrivalCost,
 	ascentDv,
+	endArrivalOrbit,
 	asymptoteTurnDeg,
 	endOrbitNormal,
 	endOrbitPreviewRing,
@@ -24,6 +25,7 @@ import {
 	planeTurnRadiusKm,
 	type EndOrbit
 } from './maneuvers';
+import type { TravelBody } from './body';
 import { EARTH, JUPITER, MARS, MOON, SATURN, VENUS } from './test-fixtures';
 import { dot, type Vec3 } from './vec3';
 
@@ -217,6 +219,16 @@ describe('aeroPassRadiusKm', () => {
 });
 
 describe('arrivalCost', () => {
+	/** A craft: measurable radius, gravity that holds nothing. */
+	const PROBE: TravelBody = { ...MOON, mu: 1e-12, radiusKm: 0.01 };
+
+	// The whole of a rendezvous is cancelling the speed you close at: there is no
+	// well to fall down on the way in and nothing to be in orbit of at the end.
+	it('charges a rendezvous the speed it closes at, and no orbit', () => {
+		expect(arrivalCost(PROBE, 3.2, 'rendezvous').captureKms).toBeCloseTo(3.2, 6);
+		expect(endArrivalOrbit(PROBE, 'rendezvous')).toBeNull();
+	});
+
 	it('charges nothing for a flyby', () => {
 		const cost = arrivalCost(MARS, 3.2, 'flyby');
 		expect(cost.captureKms).toBe(0);
@@ -405,6 +417,13 @@ describe('landing at a site', () => {
 });
 
 describe('departureCost', () => {
+	// Casting off from another craft is the rendezvous run backwards.
+	it('charges leaving a craft the whole of the excess speed', () => {
+		const off = departureCost({ ...MOON, mu: 1e-12, radiusKm: 0.01 }, 3, 'rendezvous');
+		expect(off.ascentKms).toBe(0);
+		expect(off.injectionKms).toBeCloseTo(3, 12);
+	});
+
 	it('drops the ascent when departing from orbit', () => {
 		const fromSurface = departureCost(EARTH, 3, 'surface');
 		const fromOrbit = departureCost(EARTH, 3, 'orbit');
