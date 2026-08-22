@@ -122,7 +122,9 @@
 	const initialParams = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 
 	let bodyId = $state('naif-399');
-	let realistic = $state(false);
+	// Sun-distance blend: 0 = flat sun (Earth-equivalent, ×1), 1 = full
+	// inverse-square at the body's AU; interpolates in log space between them.
+	let sunDistT = $state(0);
 	let sunScaleX = $state(0); // log2 global multiplier on shell + surface sunlight
 
 	// The camera sits on the view sphere: altitude (body radii) plus a
@@ -472,7 +474,7 @@
 		sunEl = DEFAULT_SUN_EL;
 		sunScaleX = 0;
 		// Back to the body's shipped default, not flat — matches buildBody.
-		realistic = shipped().realisticSunAlways ?? false;
+		sunDistT = shipped().realisticSunAlways ? 1 : 0;
 	}
 
 	// Drag orbits (longitude/latitude); wheel changes altitude.
@@ -534,7 +536,7 @@
 		p.set('saz', r(sunAz));
 		p.set('sel', r(sunEl));
 		p.set('slit', r(sunScaleX));
-		p.set('real', realistic ? '1' : '0');
+		p.set('real', r(sunDistT));
 		p.set('comp', r(comp));
 		p.set('asun', r(sunIntensity));
 		p.set('msc', r(multiScatter));
@@ -574,7 +576,8 @@
 		sunAz = num('saz', sunAz);
 		sunEl = num('sel', sunEl);
 		sunScaleX = num('slit', sunScaleX);
-		if (p.has('real')) realistic = p.get('real') === '1';
+		// Also parses the old boolean URLs ('0'/'1').
+		sunDistT = num('real', sunDistT);
 		comp = num('comp', comp);
 		sunIntensity = num('asun', sunIntensity);
 		multiScatter = num('msc', multiScatter);
@@ -652,7 +655,7 @@
 		currentBody = BODIES.find((b) => b.id === bodyId) ?? BODIES[1];
 		// Always-realistic bodies start with inverse-square on; the URL's `real`
 		// param can still override it, since applyInitialState runs after.
-		realistic = shipped().realisticSunAlways ?? false;
+		sunDistT = shipped().realisticSunAlways ? 1 : 0;
 		syncFromShipped();
 
 		const geometry = new SphereGeometry(RADIUS_SCENE, 128, 128);
@@ -717,7 +720,9 @@
 
 		const sd = sunDirection();
 		const sunScale = 2 ** sunScaleX; // sun-light bar (log2)
-		const invSq = 1 / (currentBody.au * currentBody.au);
+		// Real-sun blend: au^(-2t) walks from flat (t=0) to inverse-square at the
+		// body's AU (t=1), i.e. an effective distance of au^t.
+		const invSq = currentBody.au ** (-2 * sunDistT);
 
 		// Scene-shared eclipse refs + tint enables, per frame — SPA navigation
 		// can leave the map page's last state in them.
@@ -759,16 +764,14 @@
 		const realAngRadius = SUN_RADIUS_KM / (currentBody.au * AU_KM);
 		const minAngRadius = (SUN_MIN_PX * ((camera.fov * DEG) / canvas.clientHeight)) / 2;
 		sunMesh.scale.setScalar(Math.max(realAngRadius, minAngRadius) * distToSun);
-		const diskFactor = sunScale * (realistic ? invSq : 1);
-		(sunMesh.material as MeshBasicMaterial).color.setScalar(SUN_DISC_BRIGHTNESS * diskFactor);
+		(sunMesh.material as MeshBasicMaterial).color.setScalar(SUN_DISC_BRIGHTNESS * sunScale * invSq);
 
 		if (atmoNode && planetMesh) {
 			const u = atmoNode.material.uniforms;
 			(u.uSunDir.value as Vector3).copy(sd);
-			// Unlike production, the checkbox alone decides inverse-square here, so
+			// Unlike production, the slider alone decides inverse-square here, so
 			// always-realistic bodies (Pluto/Triton) can still be inspected flat-sun.
-			const shellFactor = sunScale * (realistic ? invSq : 1);
-			u.uSunIntensity.value = atmoNode.params.sunIntensity * shellFactor;
+			u.uSunIntensity.value = atmoNode.params.sunIntensity * sunScale * invSq;
 			// Flip to BackSide once the camera enters the shell so the sky still
 			// renders from inside; drop depth writes there too, mirroring production.
 			const shellR = atmoNode.geometryRadiusScene * atmoNode.mesh.scale.x;
@@ -981,6 +984,21 @@
 
 				<span
 					class="lbl"
+					title="Inverse-square dimming of the disc + shell sunlight: Earth-equivalent (×1) → the body's {currentBody.au} AU"
+					>Sun distance</span
+				>
+				<input type="range" min="0" max="1" step="0.01" bind:value={sunDistT} />
+				<span class="val">@{(currentBody.au ** sunDistT).toFixed(2)}AU</span>
+
+				<span></span>
+				<div class="marks" aria-hidden="true">
+					<span>Earth</span>
+					<span>realistic</span>
+				</div>
+				<span></span>
+
+				<span
+					class="lbl"
 					title="Camera→sun-centre transmittance chroma ÷ luminance — the disc itself shades per fragment; the shell handles the dimming"
 					>Sun tint</span
 				>
@@ -993,11 +1011,6 @@
 						.join(' ')})"
 				></span>
 			</div>
-
-			<label class="toggle">
-				<input type="checkbox" bind:checked={realistic} />
-				<span>Realistic sun (inverse-square at {currentBody.au} AU)</span>
-			</label>
 
 			<div class="section">
 				<span>Quality</span>
@@ -1357,6 +1370,14 @@
 	input[type='range'] {
 		width: 100%;
 		height: 12px;
+	}
+	/* End labels for the Sun-distance slider (Earth = flat ×1, realistic = body AU). */
+	.marks {
+		display: flex;
+		justify-content: space-between;
+		margin-top: -6px;
+		font-size: 10px;
+		color: #7c828e;
 	}
 	.toggle {
 		display: flex;
