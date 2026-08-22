@@ -9,7 +9,9 @@ import type { SmallBodyFilter } from '$lib/fetch/groups/registry';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { buildMajorBodies, disposeMaterial } from '$lib/scene/objects/body/lifecycle';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
-import { loadBodyLabel } from '$lib/scene/objects/body/textures';
+import { loadBodyLabel, unloadBodyTexture } from '$lib/scene/objects/body/textures';
+import { unloadBodyModel } from '$lib/scene/objects/body/model';
+import { disposeNomenclatureLabels } from '$lib/scene/objects/surface/nomenclature';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
 
@@ -431,6 +433,12 @@ export class PromotionRegistry {
 				bo.label.element.remove();
 				bo.label.removeFromParent();
 			}
+			bo.loadingEl?.remove();
+			// A previously-focused body can still carry its model, surface
+			// textures, and feature labels — scene.remove alone would leak them.
+			unloadBodyModel(bo);
+			unloadBodyTexture(bo);
+			disposeNomenclatureLabels(bo);
 			scene.remove(bo.group);
 			// Mesh + (for stars) corona/starPoint/etc. are added to scene directly.
 			for (const obj of bo.extraObjects) scene.remove(obj);
@@ -441,6 +449,11 @@ export class PromotionRegistry {
 				const idx = clickables.indexOf(bo.mesh);
 				if (idx >= 0) clickables.splice(idx, 1);
 				meshToBody.delete(bo.mesh);
+			}
+			if (bo.atmosphere) {
+				bo.atmosphere.mesh.geometry.dispose();
+				disposeMaterial(bo.atmosphere.mesh.material);
+				bo.atmosphere = null;
 			}
 			if (bo.trail) {
 				bo.trail.geometry.dispose();

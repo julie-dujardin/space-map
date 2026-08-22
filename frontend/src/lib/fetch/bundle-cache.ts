@@ -1,14 +1,22 @@
 /**
- * Shared cache for hash-bucketed gzipped-JSON bundles, keyed by full URL.
+ * Shared LRU cache for hash-bucketed gzipped-JSON bundles, keyed by full URL.
  * Rejections evict so a boot-time blip doesn't poison a URL with no retry;
- * a 404 resolves to `{}` and stays cached.
+ * a 404 resolves to `{}` and stays cached. Capped: a parsed bucket is ~2MB,
+ * and a long session touches hundreds of distinct buckets — unbounded, this
+ * was the largest steady heap growth in the app.
  */
 import { fetchWithTimeout } from './fetch-timeout';
 
+const MAX_BUNDLES = 24;
 const cache = new Map<string, Promise<Record<string, unknown>>>();
 
 export function fetchGzipBundle<T>(url: string): Promise<Record<string, T>> {
 	let p = cache.get(url);
+	if (p) {
+		// Refresh recency (Map iterates in insertion order).
+		cache.delete(url);
+		cache.set(url, p);
+	}
 	if (!p) {
 		p = (async () => {
 			// On the phase-1 critical path for deep-linked satellites, so a
@@ -25,6 +33,10 @@ export function fetchGzipBundle<T>(url: string): Promise<Record<string, T>> {
 		p.catch(() => {
 			if (cache.get(url) === p) cache.delete(url);
 		});
+		for (const key of cache.keys()) {
+			if (cache.size <= MAX_BUNDLES) break;
+			cache.delete(key);
+		}
 	}
 	return p as Promise<Record<string, T>>;
 }

@@ -73,16 +73,32 @@ async function loadTierBitmaps(id: string, tier: string): Promise<ImageBitmap[]>
 	);
 }
 
-/** Fetch+decode promises, shared so the early prefetch and the install reuse one fetch per tier. */
+/** Fetch+decode promises, shared so the early prefetch and the install reuse
+ *  one fetch per tier. Entries are dropped (and bitmaps closed) once the tier
+ *  is on the GPU — the decoded faces are ~480MB across tiers, far too much to
+ *  keep as a CPU-side copy for the whole session. */
 const tierPrefetch = new Map<string, Promise<ImageBitmap[]>>();
 
+function tierKey(id: string, tier: string): string {
+	return `${id}:${tier}`;
+}
+
 function tierBitmaps(id: string, tier: string): Promise<ImageBitmap[]> {
-	let p = tierPrefetch.get(tier);
+	const key = tierKey(id, tier);
+	let p = tierPrefetch.get(key);
 	if (!p) {
 		p = loadTierBitmaps(id, tier);
-		tierPrefetch.set(tier, p);
+		tierPrefetch.set(key, p);
 	}
 	return p;
+}
+
+/** Drop the cache entry and free the decoded faces. The CubeTexture keeps
+ *  referencing the closed bitmaps, so it can never re-upload — context
+ *  restore must go through a full skybox reload instead. */
+function releaseTierBitmaps(id: string, tier: string, bitmaps: ImageBitmap[]): void {
+	tierPrefetch.delete(tierKey(id, tier));
+	for (const b of bitmaps) b.close();
 }
 
 function makeCube(bitmaps: ImageBitmap[]): CubeTexture {
@@ -107,7 +123,7 @@ function pickLowTier(meta: SkyboxMetadata): string | null {
  */
 export function prefetchSkyboxTiers(meta: SkyboxMetadata): void {
 	const low = pickLowTier(meta);
-	if (low) void tierBitmaps(meta.id, low).catch(() => tierPrefetch.delete(low));
+	if (low) void tierBitmaps(meta.id, low).catch(() => tierPrefetch.delete(tierKey(meta.id, low)));
 }
 
 /** Full-res tier load waits on the eager point cloud, but never longer than this. */
@@ -128,14 +144,22 @@ async function loadFromMeta(
 	// would risk clobbering a user adjustment that raced ahead of this load.
 	const lowTier = pickLowTier(meta);
 	// Holder: TS can't narrow an async-race assignment through a plain `let`.
-	const lowRef: { cube: CubeTexture | null } = { cube: null };
+	const lowRef: { cube: CubeTexture | null; bitmaps: ImageBitmap[] | null } = {
+		cube: null,
+		bitmaps: null
+	};
 	let fullInstalled = false;
 	if (lowTier && lowTier !== tier) {
 		// Install low only if it wins the race, so a cached full tier goes straight up.
 		void tierBitmaps(meta.id, lowTier)
 			.then((bitmaps) => {
-				if (fullInstalled) return;
+				// Full already up: the low faces were fetched for nothing — free them.
+				if (fullInstalled) {
+					releaseTierBitmaps(meta.id, lowTier, bitmaps);
+					return;
+				}
 				lowRef.cube = makeCube(bitmaps);
+				lowRef.bitmaps = bitmaps;
 				scene.background = lowRef.cube;
 				performance.mark('sm-skybox-low');
 			})
@@ -147,7 +171,8 @@ async function loadFromMeta(
 		eagerMinorsDone,
 		new Promise<void>((resolve) => setTimeout(resolve, FULL_TIER_GATE_TIMEOUT_MS))
 	]);
-	const full = makeCube(await tierBitmaps(meta.id, tier));
+	const fullBitmaps = await tierBitmaps(meta.id, tier);
+	const full = makeCube(fullBitmaps);
 	// Upload during idle time so the first sampling render doesn't absorb the cost.
 	await new Promise<void>((resolve) =>
 		'requestIdleCallback' in window
@@ -156,9 +181,18 @@ async function loadFromMeta(
 	);
 	renderer.initTexture(full);
 	fullInstalled = true;
+	const prevBackground = scene.background;
 	scene.background = full;
 	performance.mark('sm-skybox-high');
 	lowRef.cube?.dispose();
+	// A context-restore reload replaces an earlier full cube; free its GL slot.
+	if (prevBackground && prevBackground !== lowRef.cube && prevBackground instanceof CubeTexture)
+		prevBackground.dispose();
+	// The GPU now holds the only copy that matters; the decoded faces would
+	// otherwise pin ~480MB of CPU RAM for the session.
+	releaseTierBitmaps(meta.id, tier, fullBitmaps);
+	if (lowTier && lowTier !== tier && lowRef.bitmaps)
+		releaseTierBitmaps(meta.id, lowTier, lowRef.bitmaps);
 }
 
 /**

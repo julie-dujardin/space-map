@@ -1844,6 +1844,9 @@ export class SceneRenderer {
 		this.renderer.setPixelRatio(cappedPixelRatio());
 		this.composer.setPixelRatio(cappedPixelRatio());
 		this.resize(this.canvas.clientWidth, this.canvas.clientHeight);
+		// The skybox's decoded faces are freed after upload, so three cannot
+		// re-upload the old CubeTexture — refetch and rebuild it instead.
+		void loadSkybox(this.scene, this.renderer, this.ctx);
 		this.resume();
 	}
 

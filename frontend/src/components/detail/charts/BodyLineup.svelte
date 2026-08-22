@@ -675,6 +675,13 @@
 			clearMeshes();
 			silhouette?.dispose();
 			silhouette = undefined;
+			// Safe across effect re-runs: three re-uploads a disposed geometry's
+			// buffers on the next render.
+			geometry.dispose();
+			dispGeometry.dispose();
+			// dispose() alone leaves the GL context alive until GC; the browser
+			// caps live contexts (~16) and force-drops the oldest.
+			renderer?.forceContextLoss();
 			renderer?.dispose();
 			renderer = scene = camera = undefined;
 		};

@@ -176,7 +176,22 @@ export function surfaceDataEpoch(): number {
 	return dataEpoch;
 }
 
-/** One-shot low-tier readback per body (~2 MB), shared by every sampler. */
+/** Each resident field is ~2 MB; keep the most recently used few instead of
+ *  one per DEM body ever visited. Evicted fields reload on demand. */
+const MAX_LOW_FIELDS = 6;
+
+function evictLowFields(): void {
+	let resident = 0;
+	for (const v of lowFields.values()) if (v !== 'failed') resident++;
+	for (const [key, v] of lowFields) {
+		if (resident <= MAX_LOW_FIELDS) break;
+		if (v === 'failed') continue;
+		lowFields.delete(key);
+		resident--;
+	}
+}
+
+/** Low-tier readback per body (~2 MB), shared by every sampler. */
 function loadLowField(bodyId: string, meta: DisplacementMeta): Promise<HeightField | null> {
 	let load = lowFieldLoads.get(bodyId);
 	if (load) return load;
@@ -197,9 +212,13 @@ function loadLowField(bodyId: string, meta: DisplacementMeta): Promise<HeightFie
 		};
 		bitmap.close();
 		lowFields.set(bodyId, hf);
+		evictLowFields();
 		dataEpoch++;
 		return hf;
 	})();
+	// The entry only dedupes concurrent loads; holding it after settle would
+	// pin an evicted field's buffer for the session.
+	load.finally(() => lowFieldLoads.delete(bodyId));
 	lowFieldLoads.set(bodyId, load);
 	return load;
 }
@@ -213,7 +232,13 @@ function heightFieldFor(bo: BodyObjects, bodyId: string): HeightField | null {
 		return { data: image.data, width: image.width, height: image.height, bottomUp: true };
 	}
 	const cached = lowFields.get(bodyId);
-	if (cached && cached !== 'failed') return cached;
+	if (cached && cached !== 'failed') {
+		// Refresh recency (Map iterates in insertion order) so the focused
+		// body's field isn't the eviction victim.
+		lowFields.delete(bodyId);
+		lowFields.set(bodyId, cached);
+		return cached;
+	}
 	const meta = bo.displacementMeta;
 	if (!cached && meta) void loadLowField(bodyId, meta);
 	return null;
