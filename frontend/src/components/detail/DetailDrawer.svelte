@@ -540,16 +540,26 @@
 		{onSheetResize}
 		tab={activeTab}
 		onTabChange={(v) => appState.setTab(v as DrawerTab)}
+		solo={!!soloTab}
 	>
 		{#snippet header()}
-			<DrawerTitle {crumb} title={displayName} id="detail-drawer-title" />
+			<DrawerTitle
+				crumb={soloCrumb ?? crumb}
+				title={soloTitle}
+				ariaLabel={soloTab ? `${displayName} \u2014 ${soloTitle}` : undefined}
+				id="detail-drawer-title"
+			/>
 			<div class="flex items-center gap-1.5">
 				{@render drawerToolbar()}
 			</div>
 		{/snippet}
-		{@render activeHero()}
-		{@render tabsBar()}
-		{@render tabPanels('px-4 pt-4')}
+		{#if soloTab}
+			{@render soloPanel('px-4 pt-4')}
+		{:else}
+			{@render activeHero()}
+			{@render tabsBar()}
+			{@render tabPanels('px-4 pt-4')}
+		{/if}
 	</MobileSheet>
 {:else}
 	<aside

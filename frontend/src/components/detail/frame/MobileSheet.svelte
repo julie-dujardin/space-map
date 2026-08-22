@@ -14,6 +14,9 @@
 		onSheetResize?: (heightDvh: number) => void;
 		tab: string;
 		onTabChange: (tab: string) => void;
+		/** A promoted tab or an open gallery owns the whole sheet: its panel is no
+		 *  longer a tabpanel, so there is no tab context to render it in. */
+		solo?: boolean;
 		/** Title row content; the sheet supplies the handle and measures the header. */
 		header: Snippet;
 		/** Scrollable content region (hero + tab bar + panels). */
@@ -26,6 +29,7 @@
 		onSheetResize,
 		tab,
 		onTabChange,
+		solo = false,
 		header,
 		children
 	}: Props = $props();
@@ -85,6 +89,15 @@
 	});
 </script>
 
+{#snippet scroller()}
+	<div
+		class="flex-1 min-h-0 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
+		style="padding-bottom: calc(1rem + {DRAWER_TOP_GAP_PX}px + var(--safe-bottom));"
+	>
+		{@render children()}
+	</div>
+{/snippet}
+
 <Vaul.Root
 	open={true}
 	{snapPoints}
@@ -106,14 +119,13 @@
 					{@render header()}
 				</div>
 			</div>
-			<Tabs.Root value={tab} onValueChange={onTabChange} class="flex flex-1 min-h-0 flex-col">
-				<div
-					class="flex-1 min-h-0 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
-					style="padding-bottom: calc(1rem + {DRAWER_TOP_GAP_PX}px + var(--safe-bottom));"
-				>
-					{@render children()}
-				</div>
-			</Tabs.Root>
+			{#if solo}
+				{@render scroller()}
+			{:else}
+				<Tabs.Root value={tab} onValueChange={onTabChange} class="flex flex-1 min-h-0 flex-col">
+					{@render scroller()}
+				</Tabs.Root>
+			{/if}
 		</Vaul.Content>
 	</Vaul.Portal>
 </Vaul.Root>
