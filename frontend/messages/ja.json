@@ -1096,6 +1096,7 @@
 	"tooltip_earth_moid": "この軌道と地球軌道の最小交差距離",
 	"tooltip_condition_code": "軌道品質（0 = 精度良好、9 = 不確実性大）",
 	"tooltip_position_accuracy": "軌道のコンディションコード（{code}/9、小さいほど良好）に基づく計算位置の信頼度",
+	"tooltip_position_accuracy_element_age": "{age}前の軌道要素から計算した位置。要素が古くなるほど予測はずれていきます",
 	"tooltip_observation_arc": "使用された最初と最後の観測の間隔",
 	"tooltip_observations_used": "軌道計算に使用された観測数",
 	"tooltip_neo": "軌道が太陽から1.3AU以内に近づく天体",

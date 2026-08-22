@@ -1018,6 +1018,7 @@
 	"tooltip_earth_moid": "Minimal mögliche Distanz zwischen dieser Bahn und der Erdbahn",
 	"tooltip_condition_code": "Bahnqualität von 0 (gut bestimmt) bis 9 (sehr unsicher)",
 	"tooltip_position_accuracy": "Zuverlässigkeit der berechneten Position, aus dem Qualitätscode der Bahn ({code}/9, niedriger ist besser)",
+	"tooltip_position_accuracy_element_age": "Position aus Bahnelementen berechnet, die {age} alt sind — die Vorhersage driftet, je älter der Elementsatz ist",
 	"tooltip_observation_arc": "Zeitspanne zwischen erster und letzter verwendeter Beobachtung",
 	"tooltip_observations_used": "Anzahl der in der Bahnlösung verwendeten Beobachtungen",
 	"tooltip_neo": "Objekt, dessen Bahn es bis auf 1,3 AE an die Sonne heranführt",

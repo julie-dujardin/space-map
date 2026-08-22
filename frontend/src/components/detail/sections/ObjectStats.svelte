@@ -27,6 +27,12 @@
 
 	const ctx = getContext<ContextManager>('ctx');
 
+	// TLE age past which SGP4's position is worth flagging. A week is roughly
+	// where LEO drift becomes visible at map scale; past three weeks the element
+	// set is only indicative.
+	const ELEMENT_AGE_WARN_DAYS = 7;
+	const ELEMENT_AGE_POOR_DAYS = 21;
+
 	interface Props {
 		global: GlobalObjectData | null;
 		body?: PositionedBody;
@@ -122,6 +128,14 @@
 	});
 
 	let stats = $derived(probeStats ?? earthSatStats);
+
+	// How stale the TLE driving this satellite is. Snapshots are weekly, and a
+	// week a satellite went untracked is filled from a neighbouring one up to 30
+	// days out, so a visible age means the position is propagated further than
+	// SGP4 stays trustworthy. Only surfaced once it degrades — see `cards`.
+	let elementAgeDays = $derived(
+		isEarthSat && orbitElements?.epoch != null ? Math.abs(jd - orbitElements.epoch) : null
+	);
 
 	interface Card {
 		label: string;
@@ -267,6 +281,21 @@
 				value: formatDuration(s.lightLagDays),
 				tooltip: m.tooltip_light_lag()
 			});
+		// Stale elements take the third card's slot (orbital period), matching how
+		// the small-body condition code displaces one rather than adding a fourth.
+		// No card while the elements are fresh: an always-green tile trains the eye
+		// to skip it, and the accurate case is the overwhelming majority.
+		const age = elementAgeDays;
+		if (age != null && age > ELEMENT_AGE_WARN_DAYS) {
+			if (out.length >= 3) out.splice(2, 1);
+			out.push({
+				label: m.position_accuracy(),
+				value:
+					age > ELEMENT_AGE_POOR_DAYS ? m.position_accuracy_low() : m.position_accuracy_medium(),
+				tooltip: m.tooltip_position_accuracy_element_age({ age: formatDuration(age) }),
+				dot: age > ELEMENT_AGE_POOR_DAYS ? 'bg-rose-400' : 'bg-amber-400'
+			});
+		}
 		return out;
 	});
 </script>

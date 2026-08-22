@@ -1018,6 +1018,7 @@
 	"tooltip_earth_moid": "该轨道与地球轨道之间的最小可能距离",
 	"tooltip_condition_code": "轨道测定精度，从0（确定性好）到9（高度不确定）",
 	"tooltip_position_accuracy": "根据轨道状况代码（{code}/9，越低越好）得出的计算位置可靠度",
+	"tooltip_position_accuracy_element_age": "根据 {age} 前的轨道根数计算的位置——根数越旧，预测偏差越大",
 	"tooltip_observation_arc": "首次和末次观测之间的时间跨度",
 	"tooltip_observations_used": "轨道解算中使用的观测次数",
 	"tooltip_neo": "轨道使其在距太阳1.3AU以内运行的天体",

@@ -1088,6 +1088,7 @@
 	"tooltip_earth_moid": "Distance minimale possible entre cette orbite et celle de la Terre",
 	"tooltip_condition_code": "Qualité de l'orbite de 0 (bien déterminée) à 9 (très incertaine)",
 	"tooltip_position_accuracy": "Fiabilité de la position calculée, d'après le code de condition de l'orbite ({code}/9, plus bas = meilleur)",
+	"tooltip_position_accuracy_element_age": "Position calculée à partir d'éléments orbitaux vieux de {age} — la prévision dérive à mesure que les éléments vieillissent",
 	"tooltip_observation_arc": "Intervalle entre la première et la dernière observation utilisées",
 	"tooltip_observations_used": "Nombre d'observations utilisées dans la solution orbitale",
 	"tooltip_neo": "Objet dont l'orbite l'amène à moins de 1,3 UA du Soleil",

@@ -7,19 +7,24 @@ export overlay and ingest catalogue consume them unchanged:
   today's date — the freshest catalogue;
 * weekly snapshots for the completed Mondays of the current year, matching the
   historical archive's cadence (one element per satellite, nearest the week's
-  midpoint). Each is built from a single-day ``gp_history`` pull around the
-  midpoint, then a targeted follow-up over the rest of the week for any live
-  satellite the midpoint day missed — so every still-on-orbit object that had a
-  TLE that week gets one. These bridge the gap between the archive (which ends
-  with the prior year) and today.
+  midpoint). Each is built from seven full-catalogue ``gp_history`` day pulls,
+  one per day of the week, which captures every object that got a TLE that week.
+  A snapshot left by an earlier, narrower scheme is topped up with just the days
+  it lacks rather than re-pulled. These bridge the gap between the archive
+  (which ends with the prior year) and today.
+
+Objects that got no TLE at all in a week (~2-5%, more when tracking gaps) are
+not chased with extra queries — the export fills them from neighbouring weekly
+snapshots instead, which costs nothing because every week is pulled anyway. See
+``export.position.elements.celestrak_source.fill_gaps``.
 
 Credentials come from the environment (``SPACETRACK_IDENTITY`` /
 ``SPACETRACK_PASSWORD``); the API rejects anonymous access and throttles
-``gp_history`` hard, so every history request is paced and the backfill is
-capped per run.
+``gp_history`` hard, so every history request is paced.
 """
 
 import csv
+import json
 import logging
 import os
 import time
@@ -50,38 +55,35 @@ GP_HISTORY_QUERY = (
     "https://www.space-track.org/basicspacedata/query/class/gp_history"
     "/epoch/{start}--{end}/format/csv"
 )
-# Same class bounded by a comma-delimited NORAD list — the follow-up that fills
-# sats the bulk days missed. Bounding by NORAD keeps the response small so a
-# wider EPOCH window is safe (catches rarely-updated objects), but the list goes
-# in the URL, so it must stay short — a long list trips Space-Track's edge with a
-# 403. Hence the small chunk size below.
-GP_HISTORY_LIST_QUERY = (
-    "https://www.space-track.org/basicspacedata/query/class/gp_history"
-    "/NORAD_CAT_ID/{norads}/epoch/{start}--{end}/format/csv"
-)
-
 # Week midpoint, in days from the week's Monday 00:00 UTC — the archive anchors
 # each weekly snapshot here (Thursday 12:00), and we keep the element nearest it.
 _WEEK_MIDPOINT_DAYS = 3.5
-# Full-catalogue days to pull per week (offsets from Monday), spread across the
-# midweek so a sat updated on any of them is covered. A single day misses
-# 15–30% of the catalogue; three spread days knock that to ~8% before the
-# follow-up runs.
-_BULK_DAY_OFFSETS = (1, 3, 5)  # Tue / Thu / Sat
-# Follow-up search half-window (days each side of the midpoint) and how many
-# NORADs per follow-up query (small — the list is in the URL).
-_FOLLOWUP_HALF_WINDOW_DAYS = 7
-_FOLLOWUP_CHUNK = 200
+# Every day of the week, so the snapshot holds every object that got a TLE at
+# all that week. Measured against the 2025 archive: one day alone reaches
+# 82-88% of the week's objects, three spread days 95.6%, all seven 100%.
+_WEEK_DAYS = 7
+# Records how a stored snapshot was built, so a week is topped up rather than
+# re-pulled. It cannot be recovered from the CSV: the nearest-midpoint merge
+# discards the losing rows, so a fetched day can leave no trace. Daily snapshots
+# are marked as such — one landing on a Monday would otherwise look like a
+# weekly that is short a few days.
+_DAYS_SIDECAR = "gp-active.days.json"
+# What a snapshot written before the sidecar holds. Those runs pulled Tue/Thu/Sat
+# plus a NORAD-bounded follow-up over the midpoint +-7 days; the follow-up rows
+# are kept (they cover satellites no bulk day had), so only the four untouched
+# days are still owed.
+_LEGACY_DAY_OFFSETS = frozenset({1, 3, 5})
+_ALL_DAY_OFFSETS = frozenset(range(_WEEK_DAYS))
 
 
 class SpaceTrackDownloader(Downloader):
     name = PROVIDERS.SPACETRACK
 
     # Space-Track caps gp_history at 10 pulls / 15 min (and 30/min, 300/hr
-    # overall). A week costs several requests (one bulk day + follow-up chunks),
-    # so spend >=100s between every history request — 10 per 15 min exactly — and
-    # backfill few weeks per run.
-    MAX_BACKFILL_WEEKS_PER_RUN = 3
+    # overall). 100s between requests holds us to 9 per 15 min whatever the run
+    # length, so the per-run cap only bounds wall-clock: 7 requests a week means
+    # a 6-week run takes ~70 min.
+    MAX_BACKFILL_WEEKS_PER_RUN = 6
     HISTORY_DELAY_S = 100.0
 
     def __init__(self, client: httpx.Client) -> None:
@@ -92,6 +94,23 @@ class SpaceTrackDownloader(Downloader):
 
     def _day_dir(self, day: date) -> Path:
         return self.out_dir / f"{day.year:04d}" / f"{day.month:02d}" / f"{day.day:02d}"
+
+    def _covered_offsets(self, monday: date) -> frozenset[int]:
+        """Day offsets the stored snapshot for ``monday`` was built from.
+
+        Empty when no snapshot exists. Snapshots written before the sidecar
+        report :data:`_LEGACY_DAY_OFFSETS`.
+        """
+        day_dir = self._day_dir(monday)
+        if not (day_dir / "gp-active.csv").exists():
+            return frozenset()
+        sidecar = day_dir / _DAYS_SIDECAR
+        if sidecar.exists():
+            meta = json.loads(sidecar.read_text())
+            if meta.get("daily"):
+                return _ALL_DAY_OFFSETS  # the live catalogue, not a week to fill
+            return frozenset(meta["day_offsets"])
+        return _LEGACY_DAY_OFFSETS
 
     def _login(self) -> None:
         identity = os.environ.get("SPACETRACK_IDENTITY")
@@ -122,7 +141,7 @@ class SpaceTrackDownloader(Downloader):
             record_count = daily_file.read_text().count("\n") - 1
         else:
             record_count = self._fetch_current(today)
-        fetched, remaining = self._backfill_weeks(today, self._load_live_launch(today))
+        fetched, remaining = self._backfill_weeks(today)
         # No ``complete`` flag — ``is_complete`` is file-based.
         self._save_metadata(
             GP_QUERY,
@@ -147,6 +166,7 @@ class SpaceTrackDownloader(Downloader):
         day_dir.mkdir(parents=True, exist_ok=True)
         out_file = day_dir / "gp-active.csv"
         out_file.write_text(body)
+        (day_dir / _DAYS_SIDECAR).write_text(json.dumps({"daily": True}))
         record_count = body.count("\n") - 1
         logger.info(
             "Saved %s GP records -> %s",
@@ -155,50 +175,35 @@ class SpaceTrackDownloader(Downloader):
         )
         return record_count
 
-    def _missing_weeks(self, today: date) -> list[date]:
-        """Completed Mondays of the current year with no snapshot yet, oldest first."""
+    def _incomplete_weeks(self, today: date) -> list[date]:
+        """Completed Mondays of the current year still owed days, oldest first.
+
+        Covers weeks with no snapshot at all and weeks built from a subset of
+        the seven days, which are topped up in place.
+        """
         return [
             m
             for m in _completed_year_mondays(today)
-            if not (self._day_dir(m) / "gp-active.csv").exists()
+            if len(self._covered_offsets(m)) < _WEEK_DAYS
         ]
 
-    def _load_live_launch(self, today: date) -> dict[str, str]:
-        """Map ``NORAD -> LAUNCH_DATE`` from today's live catalogue.
-
-        The set of currently-on-orbit objects is the "should be up" reference for
-        the weekly follow-up; the launch date lets us skip a sat for weeks before
-        it existed.
-        """
-        daily = self._day_dir(today) / "gp-active.csv"
-        if not daily.exists():
-            return {}
-        with open(daily, newline="") as f:
-            return {
-                r["NORAD_CAT_ID"]: r.get("LAUNCH_DATE") or ""
-                for r in csv.DictReader(f)
-                if r.get("NORAD_CAT_ID")
-            }
-
-    def _backfill_weeks(
-        self, today: date, live_launch: dict[str, str]
-    ) -> tuple[int, int]:
+    def _backfill_weeks(self, today: date) -> tuple[int, int]:
         """Fetch missing weekly snapshots for the current year, oldest first.
 
         Returns ``(fetched_this_run, still_missing_after_run)``. Capped per run;
         stops at the first failure (the rest retry on a later run) rather than
         hammering the API once it starts rejecting us.
         """
-        missing = self._missing_weeks(today)
+        missing = self._incomplete_weeks(today)
         if not missing:
             return 0, 0
 
-        logger.info("Weekly backfill: %d week(s) missing", len(missing))
+        logger.info("Weekly backfill: %d week(s) incomplete", len(missing))
         self._history_requests = 0
         fetched = 0
         for monday in missing[: self.MAX_BACKFILL_WEEKS_PER_RUN]:
             try:
-                self._fetch_week(monday, live_launch)
+                self._fetch_week(monday)
             except Exception:
                 logger.exception(
                     "Weekly snapshot for %s failed; stopping backfill",
@@ -223,21 +228,37 @@ class SpaceTrackDownloader(Downloader):
             )
         return body
 
-    def _fetch_week(self, monday: date, live_launch: dict[str, str]) -> None:
-        """Reconstruct one weekly snapshot, anchored on the week's midpoint.
+    def _fetch_week(self, monday: date) -> None:
+        """Build or top up one weekly snapshot, anchored on the week's midpoint.
 
-        A few full-catalogue days cover most of the catalogue; a follow-up then
-        fetches every still-on-orbit sat (launched by then) the days missed, over
-        a wider window. Each satellite keeps the row nearest the midpoint, written
-        to a ``gp-active.csv`` under the Monday's date.
+        Pulls the days of the week the stored snapshot does not already hold, so
+        a week built by an earlier, narrower scheme costs only the days it
+        missed. Existing rows are merged back in first and compete on the same
+        nearest-the-midpoint rule, so a better row replaces them and a row no
+        fetched day can supply survives. The result is written to a
+        ``gp-active.csv`` under the Monday's date, with a sidecar recording the
+        days it now covers. Objects with no TLE that week are left out; the
+        export fills them from neighbouring weeks.
         """
         midnight = datetime(monday.year, monday.month, monday.day, tzinfo=timezone.utc)
         midpoint = midnight + timedelta(days=_WEEK_MIDPOINT_DAYS)
+        day_dir = self._day_dir(monday)
+        out_file = day_dir / "gp-active.csv"
 
-        # 1. Bulk: a few full-catalogue days (no NORAD list -> no URL limit).
         best: dict[str, tuple[float, str]] = {}
         header = ""
-        for off in _BULK_DAY_OFFSETS:
+        covered = self._covered_offsets(monday)
+        if covered:
+            header = self._merge_nearest(out_file.read_text(), midpoint, best)
+            logger.info(
+                "Week %s: topping up %d stored satellites, %d day(s) still owed",
+                monday.isoformat(),
+                len(best),
+                _WEEK_DAYS - len(covered),
+            )
+        for off in range(_WEEK_DAYS):
+            if off in covered:
+                continue
             body = self._history_get(
                 GP_HISTORY_QUERY.format(
                     start=(monday + timedelta(days=off)).isoformat(),
@@ -246,38 +267,18 @@ class SpaceTrackDownloader(Downloader):
                 f"{monday} day+{off}",
             )
             header = self._merge_nearest(body, midpoint, best)
-        from_bulk = len(best)
 
-        # 2. Follow-up: chase live sats the bulk days missed, in short URL-safe
-        #    chunks over a wider window.
-        expected = {
-            n for n, launch in live_launch.items() if _launched_by(launch, midpoint)
-        }
-        missing = sorted(expected - set(best), key=lambda n: int(n))
-        lo = (midpoint - timedelta(days=_FOLLOWUP_HALF_WINDOW_DAYS)).date()
-        hi = (midpoint + timedelta(days=_FOLLOWUP_HALF_WINDOW_DAYS)).date()
-        for i in range(0, len(missing), _FOLLOWUP_CHUNK):
-            chunk = missing[i : i + _FOLLOWUP_CHUNK]
-            body = self._history_get(
-                GP_HISTORY_LIST_QUERY.format(
-                    norads=",".join(chunk), start=lo.isoformat(), end=hi.isoformat()
-                ),
-                f"{monday} follow-up {i // _FOLLOWUP_CHUNK + 1}",
-            )
-            self._merge_nearest(body, midpoint, best)
-
-        day_dir = self._day_dir(monday)
         day_dir.mkdir(parents=True, exist_ok=True)
         rows = [entry[1] for entry in best.values()]
-        (day_dir / "gp-active.csv").write_text("\n".join([header, *rows]) + "\n")
+        out_file.write_text("\n".join([header, *rows]) + "\n")
+        (day_dir / _DAYS_SIDECAR).write_text(
+            json.dumps({"day_offsets": sorted(_ALL_DAY_OFFSETS)})
+        )
         logger.info(
-            "Week %s: %d satellites (%d from %d bulk days, %d filled, %d still missing)",
+            "Week %s: %d satellites across %d days",
             monday.isoformat(),
             len(best),
-            from_bulk,
-            len(_BULK_DAY_OFFSETS),
-            len(best) - from_bulk,
-            len(expected - best.keys()),
+            _WEEK_DAYS,
         )
 
     @staticmethod
@@ -299,7 +300,7 @@ class SpaceTrackDownloader(Downloader):
             fields = next(csv.reader([line]))
             try:
                 epoch = datetime.fromisoformat(fields[epoch_i])
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 continue
             if epoch.tzinfo is None:
                 epoch = epoch.replace(tzinfo=timezone.utc)
@@ -309,16 +310,6 @@ class SpaceTrackDownloader(Downloader):
             if current is None or dist < current[0]:
                 best[norad] = (dist, line)
         return header
-
-
-def _launched_by(launch: str, midpoint: datetime) -> bool:
-    """Whether a satellite existed by the week's midpoint (unknown date → yes)."""
-    if not launch:
-        return True
-    try:
-        return date.fromisoformat(launch) <= midpoint.date()
-    except ValueError:
-        return True
 
 
 def _completed_year_mondays(today: date) -> list[date]:
