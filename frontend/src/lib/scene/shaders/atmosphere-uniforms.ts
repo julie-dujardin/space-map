@@ -171,7 +171,8 @@ function cullShellOccluders(
  * Refresh per-frame shell state: sun direction, spin axis, and material side
  * — flips to BackSide when the camera enters the shell so the sky keeps
  * rendering from inside. `realistic` scales sun intensity by inverse-square
- * solar distance (or always, for `realisticSunAlways` bodies). `quality.insideView:
+ * solar distance (`realisticSunAlways` bodies get half the log-space dimming
+ * even without it). `quality.insideView:
  * false` keeps every shell outside-only, so the depth prepass never runs.
  */
 export function updateAtmosphereShaders(
@@ -230,10 +231,15 @@ export function updateAtmosphereShaders(
 			sunPos[2] - bz
 		);
 		const params = bo.atmosphere.params;
-		uniforms.uSunIntensity.value =
-			params.sunIntensity *
-			(realistic || params.realisticSunAlways ? sunIrradianceFactor(sunVec.length()) : 1) *
-			sunScale;
+		// realisticSunAlways bodies (Pluto, Triton) get the geometric mean of
+		// inverse-square and flat: full realism is near-black at 30–40 AU, flat
+		// sun drowns the haze. Global realistic lighting still applies in full.
+		const irradiance = realistic
+			? sunIrradianceFactor(sunVec.length())
+			: params.realisticSunAlways
+				? Math.sqrt(sunIrradianceFactor(sunVec.length()))
+				: 1;
+		uniforms.uSunIntensity.value = params.sunIntensity * irradiance * sunScale;
 		sunVec.normalize();
 		// applyOrientation puts the pole on mesh-local +Y; the quaternion's spin
 		// component is about that same axis, so the phase doesn't matter.
