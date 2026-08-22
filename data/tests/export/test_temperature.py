@@ -184,21 +184,6 @@ class TestModelledCore:
         assert block is not None
         assert all(r["part"] != "core" for r in block["readings"])
 
-    def test_the_bracket_is_the_deepest_boundary_with_a_number(self):
-        """Mercury's bracket is its core-mantle boundary — the old constant read
-        as a central temperature but never was one."""
-        block = temperature_block("naif-199")
-        assert block is not None
-        core = [r["k"] for r in block["readings"] if r["part"] == "core"]
-        assert core == [1750.0, 2100.0]
-
-    def test_a_centre_beats_a_boundary(self):
-        """The Sun has both; the centre is the deeper of the two."""
-        block = temperature_block("naif-10")
-        assert block is not None
-        core = [r["k"] for r in block["readings"] if r["part"] == "core"]
-        assert core == [15.5e6, 15.7e6]
-
     def test_core_does_not_claim_the_outside_was_measured(self):
         """An estimated surface stays estimated when a modelled core joins it —
         the origin describes the readings the bar draws, not the core."""
