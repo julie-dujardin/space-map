@@ -188,7 +188,17 @@ def write_probes(
 
         sigs = expected_fit_sigs(plans, download_dir, candidates_hash_by_zone)
         stale = stale_fits(sigs)
-        build_fits(plans, stale, generic_spk_paths, start_jd, candidates_by_zone)
+        canonical_naif_by_probe_id = {
+            int(e["probe_id"]): int(e["naif_id"]) for e in probe_registry
+        }
+        build_fits(
+            plans,
+            stale,
+            generic_spk_paths,
+            start_jd,
+            candidates_by_zone,
+            canonical_naif_by_probe_id,
+        )
         fit_cache.prune_orphans(set(sigs.keys()))
         dirty = decide_dirty_chunks(chunk_index, sigs, metas_by_probe_id, out_dir)
         by_zone_chunk = collect_for_repack(dirty, chunk_index)

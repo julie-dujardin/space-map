@@ -130,6 +130,7 @@ def build_fits(
     generic_spk_paths: list[Path],
     start_jd: float,
     candidates_by_zone: dict[str, list[FitCenterCandidate]],
+    canonical_naif_by_probe_id: dict[int, int],
 ) -> None:
     """Re-fit every stale (probe, zone, chunk) and save to the cache.
 
@@ -155,7 +156,13 @@ def build_fits(
     writer's grid padder then puts the decoder out of sync with catastrophic
     errors (verified on INTEGRAL earth-moon chunks). The first plan to fit a
     (zone, chunk) claims it; later plans skip flying contributions there.
-    Intra-plan gap contributions still accumulate.
+    Intra-plan gap contributions still accumulate. Plans are sorted so the
+    plan whose naif matches the registry-canonical `naif_id` claims first:
+    plan arrival order is `as_completed` (nondeterministic), and for a
+    QID-merged spacecraft PAIR like M-MATISSE (Henri -101 / Marguerite
+    -102, ~15,000 km apart) the loser of that race once shipped — while
+    the benchmark evaluates the canonical naif, reporting the whole fit as
+    a systematic inter-spacecraft offset.
 
     TODO(source-priority-for-glitchy-kernels): the multi-source probes
     can still ship bad data on specific chunks when their primary SPK
@@ -187,7 +194,14 @@ def build_fits(
     )
 
     for i, probe_id in enumerate(probe_ids, 1):
-        plans_for_probe = plans_by_probe[probe_id]
+        canonical_naif = canonical_naif_by_probe_id.get(probe_id)
+        plans_for_probe = sorted(
+            plans_by_probe[probe_id],
+            key=lambda p: (
+                p.naif_id != canonical_naif,
+                str(p.kernels[0]) if p.kernels else "",
+            ),
+        )
         stale_keys = stale_by_probe[probe_id]
         by_chunk: dict[tuple[str, int], ChunkProbeRecord] = {}
         # None = small-bodies chunk with no matchable target; skip its
