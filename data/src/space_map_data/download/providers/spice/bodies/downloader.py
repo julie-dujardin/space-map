@@ -182,6 +182,17 @@ class SpiceDownloader(Downloader):
                 len({p.parent.name for p in mission_pcks}),
             )
 
+        # Small-body target PCKs (ProbesDownloader's `target_bodies` phase drops
+        # them into the shared pck/ dir) ride along like mission PCKs: they
+        # carry GMs/radii for probe-visited bodies (Bennu, 67P, Dinkinesh, …)
+        # that no generic kernel defines, and gm.csv must include those.
+        downloaded = set(kernel_paths)
+        extra_pcks = sorted(
+            p for p in (self.kernels_dir / "pck").glob("*.tpc") if p not in downloaded
+        )
+        for path in extra_pcks:
+            spiceypy.furnsh(str(path))
+
         for path in kernel_paths:
             spiceypy.furnsh(str(path))
 

@@ -65,12 +65,20 @@ def _primary_for_barycenter(barycenter_naif_id: int) -> int:
 
 def _resolve_id_for_naif(naif_id: int) -> tuple[int, int]:
     """`(id_type_ordinal, id_value)` for the per-probe-header fit_center
-    encoding. Asteroids use SPKID (Vesta = `spkid-20000004`); everything
-    else stays NAIF."""
+    encoding. Must match the catalogue's object ids: numbered asteroids and
+    comets are SPKID (Vesta = `spkid-20000004`, 67P = `spkid-1000012`),
+    except Ceres, which rides the major-body pipeline as `naif-2000001`;
+    everything else stays NAIF."""
+    if naif_id == 2000001:
+        return ID_TYPE_ORDINAL[ID_TYPES.NAIF], naif_id
     if 2_000_000 <= naif_id <= 2_999_999:
         spkid = spk_id_from_naif(naif_id)
         if spkid is not None:
             return ID_TYPE_ORDINAL[ID_TYPES.SPKID], spkid
+    # Extended-range numbered asteroids and comets: SPKID and NAIF share the
+    # same value.
+    if 20_000_000 <= naif_id <= 29_999_999 or 1_000_000 <= naif_id <= 1_999_999:
+        return ID_TYPE_ORDINAL[ID_TYPES.SPKID], naif_id
     return ID_TYPE_ORDINAL[ID_TYPES.NAIF], naif_id
 
 
@@ -251,6 +259,26 @@ def detect_nearest_center(
         ):
             best = (d_min, cand)
     return best[1] if best is not None else None
+
+
+def fit_center_recode_map(
+    candidates: list[FitCenterCandidate],
+) -> dict[tuple[int, int], tuple[int, int]]:
+    """`(id_value, id_type_ordinal)` → current encoding, applied when
+    repacking cached fits. The encoding lives inside the cached
+    `ChunkProbeRecord` but is not fit-relevant, so an encoding fix must
+    reach shipped headers without re-fitting; keys cover every encoding an
+    earlier `_resolve_id_for_naif` could have written for the candidate."""
+    out: dict[tuple[int, int], tuple[int, int]] = {}
+    naif_ordinal = ID_TYPE_ORDINAL[ID_TYPES.NAIF]
+    spkid_ordinal = ID_TYPE_ORDINAL[ID_TYPES.SPKID]
+    for c in candidates:
+        new = (c.id_value, c.id_type_ordinal)
+        out[(c.naif_id, naif_ordinal)] = new
+        spkid = spk_id_from_naif(c.naif_id)
+        if spkid is not None:
+            out[(spkid, spkid_ordinal)] = new
+    return out
 
 
 def candidates_hash(candidates: list[FitCenterCandidate]) -> str:

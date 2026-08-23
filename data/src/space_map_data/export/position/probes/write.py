@@ -188,9 +188,13 @@ def write_pass(
     out_dir: Path,
     start_jd: float,
     end_jd: float,
+    fit_center_recode: dict[tuple[int, int], tuple[int, int]] | None = None,
 ) -> dict[str, dict]:
     """Pass 3: serialize dirty chunks (binary + sidecar, atomic), and build
-    the manifest for every zone with at least one planned chunk."""
+    the manifest for every zone with at least one planned chunk.
+
+    `fit_center_recode` maps stale cached fit-center encodings to the
+    current one at pack time — see `fit_center_recode_map`."""
     probes_dir = out_dir / "position" / "probes"
     manifest: dict[str, dict] = {}
     for zone in ALL_ZONES:
@@ -262,6 +266,10 @@ def write_pass(
                     padded_flying[0] if padded_flying else rec.first_offset
                 )
                 flying = padded_flying[1] if padded_flying else rec.flying
+                fc_value, fc_type = (fit_center_recode or {}).get(
+                    (rec.fit_center_id_value, rec.fit_center_id_type),
+                    (rec.fit_center_id_value, rec.fit_center_id_type),
+                )
                 buf.append(
                     pack_probe_header(
                         probe_id=meta.probe_id,
@@ -270,8 +278,8 @@ def write_pass(
                         n_subchunks=len(flying),
                         first_subchunk_offset=rec.first_offset,
                         has_landed_record=rec.landed is not None,
-                        fit_center_id_value=rec.fit_center_id_value,
-                        fit_center_id_type=rec.fit_center_id_type,
+                        fit_center_id_value=fc_value,
+                        fit_center_id_type=fc_type,
                         n_system_intervals=len(rec.system_intervals),
                     )
                 )

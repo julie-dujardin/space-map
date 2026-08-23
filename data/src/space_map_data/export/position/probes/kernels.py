@@ -50,11 +50,16 @@ def kernel_precedence(name: str) -> int:
     Breaks SPICE last-loaded-wins ties in favor of the higher-quality kernel
     when two cover the same ET — e.g. GAIA's `gaia_rec_*` over `gaia_flp_*`,
     JUNO's `juno_rec_orbit` over `juno_pred_orbit`.
+
+    Design-reference arcs (ORX `pgaa*`, DEEPIMPACT `drm*`) are predict-tier:
+    they span launch→return in one file, and ORX's `spk_`-prefixed variant
+    name-sorts after every od reconstruction — it put OSIRIS-REx 30 km from
+    Bennu (vs 0.9 km real) while Bennu itself came from an od file.
     """
     tokens = re.split(r"[_.\-]", name.lower())
     if any(t in _RECON_TOKENS for t in tokens):
         return 2
-    if any(t in _PREDICT_TOKENS for t in tokens):
+    if any(t in _PREDICT_TOKENS or t.startswith(("pgaa", "drm")) for t in tokens):
         return 0
     return 1
 

@@ -15,7 +15,7 @@ import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/or
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { isLandedAt, probePositionKm } from '$lib/fetch/position/probes/propagate';
-import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
+import { resolveProbePrimary } from '$lib/fetch/position/probes/primary';
 import {
 	buildParentGatedSampler,
 	deriveProbeTrailParams,
@@ -24,7 +24,6 @@ import {
 } from '$lib/fetch/position/probes/trail';
 import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
 import { ADAPTIVE_MIN_STEP_FACTOR } from '$lib/fetch/position/trail-buffer';
-import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { J2000_JD } from '$lib/time/jd';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -337,21 +336,29 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				return;
 			}
 			// Resolve the probe's stamped primary (Moon for lunar orbiters,
-			// Titan for Cassini-at-Titan, …) or fall back to the zone center.
-			// Sub-chunks are fit against THAT body, so the propagator's mu
-			// must match.
-			const zoneCenterKey = `naif-${located.fitCenterNaifId}`;
-			const rawOverride = resolvePrimaryOverride(
+			// Ryugu for Hayabusa2, …) or the zone center. Sub-chunks are fit
+			// against THAT body, so the propagator's mu must match; a primary
+			// that can't be placed this frame means hide, not fall back.
+			const primary = resolveProbePrimary(
 				located.probe,
 				jd,
-				zoneCenterKey,
-				ctx.chebStore ?? null
+				located.fitCenterNaifId,
+				ctx.chebStore ?? null,
+				(id) => positionMap.has(id)
 			);
-			const overridePos = rawOverride ? positionMap.get(rawOverride.id) : undefined;
-			const useOverride = !!(rawOverride && overridePos);
-			const probeParentKey = useOverride ? rawOverride!.id : zoneCenterKey;
-			const probePrimaryNaif = useOverride ? rawOverride!.naifId : located.fitCenterNaifId;
-			const primaryMu = getGmKm3s2(probePrimaryNaif) ?? 0;
+			if (!primary) {
+				hide();
+				diagnostics.warnOnce(
+					'probe-unavailable',
+					d.id,
+					() =>
+						`probe ${d.id} (${d.name ?? 'unnamed'}): hidden — stamped fit center ` +
+						'is not placeable this frame'
+				);
+				return;
+			}
+			const probeParentKey = primary.id;
+			const primaryMu = primary.muKm3S2;
 			const probeOffsetKm = probePositionKm(located.probe, jd, primaryMu);
 			if (!probeOffsetKm) {
 				hide();

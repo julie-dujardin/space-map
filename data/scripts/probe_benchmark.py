@@ -219,25 +219,27 @@ def _resolve_fit_center_naif(
     `MISSING_ID_TYPE`) means the probe stayed on the zone's stored fit center
     — pass that through unchanged.
 
-    SPKID → NAIF goes through `naif_id_from_spk` (e.g. Vesta `spkid-20000004`
-    → naif 2000004). NAIF is already a SPICE ID — no transform needed. Other
-    id types are a configuration bug (the writer should only emit NAIF/SPKID
-    for fit centers) so log and fall back to the zone default rather than
-    silently mis-evaluate."""
+    SPKID → NAIF mirrors the frontend's `spkidPrimary`: the legacy mapping
+    (`spkid = naif + 18e6`, Vesta `spkid-20000004` → naif 2000004) wins when
+    the furnished pool defines that body, else the raw value stands — comets
+    and extended-range NAIF ids (Didymos 20065803) share their spkid. NAIF
+    is already a SPICE ID — no transform needed. Other id types are a
+    configuration bug (the writer should only emit NAIF/SPKID for fit
+    centers) so log and fall back to the zone default rather than silently
+    mis-evaluate."""
     if fit_center_id_value == MISSING_INT32 or fit_center_id_type == MISSING_ID_TYPE:
         return zone_default_naif_id
     if fit_center_id_type == _NAIF_ID_TYPE_ORDINAL:
         return fit_center_id_value
     if fit_center_id_type == _SPKID_ID_TYPE_ORDINAL:
-        mapped = naif_id_from_spk(fit_center_id_value)
-        if mapped is None:
-            logger.warning(
-                "fit_center spkid=%d unmapped; falling back to zone default %d",
-                fit_center_id_value,
-                zone_default_naif_id,
-            )
-            return zone_default_naif_id
-        return mapped
+        legacy = naif_id_from_spk(fit_center_id_value)
+        if legacy is not None:
+            try:
+                spiceypy.bodvrd(str(legacy), "GM", 1)
+                return legacy
+            except spiceypy.exceptions.SpiceyError:
+                pass
+        return fit_center_id_value
     logger.warning(
         "unexpected fit_center id_type=%d (value=%d); falling back to zone default %d",
         fit_center_id_type,

@@ -11,8 +11,7 @@
 	} from '$lib/types/objects';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import { isLandedAt, probeStateKm } from '$lib/fetch/position/probes/propagate';
-	import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
-	import { getGmKm3s2 } from '$lib/fetch/systems-global';
+	import { resolveProbePrimary } from '$lib/fetch/position/probes/primary';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import { dominantPlanetId, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 	import { currentStateFromElements } from '$lib/math/orbit/state';
@@ -76,19 +75,17 @@
 		if (!located) return null;
 		// Landed probes get the surface-position section instead.
 		if (located.probe.landed && isLandedAt(located.probe, jd)) return null;
-		const zoneCenterKey = `naif-${located.fitCenterNaifId}`;
-		const override = resolvePrimaryOverride(
+		const resolved = resolveProbePrimary(
 			located.probe,
 			jd,
-			zoneCenterKey,
-			ctx.chebStore ?? null
+			located.fitCenterNaifId,
+			ctx.chebStore ?? null,
+			(id) => ctx.getBody(id) !== undefined
 		);
-		const primaryKey = override ? override.id : zoneCenterKey;
-		const primaryNaif = override ? override.naifId : located.fitCenterNaifId;
-		const mu = getGmKm3s2(primaryNaif) ?? 0;
-		const state = probeStateKm(located.probe, jd, mu);
+		if (!resolved) return null;
+		const state = probeStateKm(located.probe, jd, resolved.muKm3S2);
 		if (!state) return null;
-		const primary = ctx.bodies.bodiesById.get(primaryKey) ?? null;
+		const primary = ctx.getBody(resolved.id) ?? null;
 		const rKm = Math.hypot(state.position[0], state.position[1], state.position[2]);
 		// probeStateKm velocity is km/day; the cards report km/s.
 		const speedKms =

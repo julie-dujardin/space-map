@@ -30,6 +30,7 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import type { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OrbitControls as OrbitControlsClass } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
+import { OrbitalSource } from '$lib/fetch/position/format';
 import {
 	DEFAULT_FRAMING_LAT,
 	DEFAULT_FRAMING_LON,
@@ -1436,7 +1437,34 @@ export class SceneRenderer {
 	 *  the current body's new-time position. No-op when jd is already current.
 	 *  `allowOorRefocus` (tick loop only) pans onto the parent when a seek lands
 	 *  where the focus no longer exists. */
+	/** Keys already sent to `ensureFocusedProbeTarget`'s stream-and-promote,
+	 *  so a frame loop never re-requests a target. */
+	private requestedProbeTargets = new Set<string>();
+	private lastProbeTargetCheck: string | null = null;
+
+	/** Stream + promote the focused probe's stamped fit-center body (Ryugu for
+	 *  Hayabusa2, …) so its body-relative fit can take over from the
+	 *  heliocentric one. Cheap no-op unless focus or jd changed. */
+	private ensureFocusedProbeTarget(): void {
+		const focused = this.focusController.current;
+		const store = this.ctx.probeStore;
+		if (!focused || !store?.fitCenterUsable) return;
+		if (focused.data.orbitalSource !== OrbitalSource.SPICE_PROBE) return;
+		const checkKey = `${focused.data.id}@${this.clock.jd}`;
+		if (checkKey === this.lastProbeTargetCheck) return;
+		this.lastProbeTargetCheck = checkKey;
+		const fcId = store.stampedFitCenterAt(focused.data.id, this.clock.jd);
+		if (!fcId || store.fitCenterUsable(fcId)) return;
+		if (this.requestedProbeTargets.has(fcId)) return;
+		this.requestedProbeTargets.add(fcId);
+		void this.ctx.ensureBody(fcId, jdToDate(this.clock.jd)).then(() => {
+			const body = this.ctx.getBody(fcId);
+			if (body) this.focusController.promotion.ensureBodyObjects(body);
+		});
+	}
+
 	private applyJdUpdate(allowOorRefocus = false): void {
+		this.ensureFocusedProbeTarget();
 		// Recompute on a focused-system change too, not just a jd change: moons
 		// outside the focused system are skipped and their world positions freeze.
 		// Likewise on a seat config change: the host body's mesh upgrades on

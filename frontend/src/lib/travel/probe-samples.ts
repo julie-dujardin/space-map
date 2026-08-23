@@ -76,7 +76,9 @@ export async function probeSamples(
 		}
 		// Coverage ending is where the series ends, the honest answer. So is a
 		// probe that goes round something else by then: that is not this trip.
-		if (!located || located.fitCenterNaifId !== centerNaifId) break;
+		// A stamped fit-center override (Moon, Ryugu, …) means exactly that —
+		// the offsets are body-relative, whatever the zone's center says.
+		if (!located || located.fitCenterNaifId !== centerNaifId || located.probe.fitCenter) break;
 		const state = probeStateKm(located.probe, jd, mu);
 		if (!state) break;
 		jds.push(jd);

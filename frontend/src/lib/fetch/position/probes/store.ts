@@ -74,6 +74,15 @@ interface ProbeLocation {
 }
 
 export class ProbeStore {
+	/** Whether a record's stamped fit-center body can currently be composed
+	 *  against (chebyshev-tracked or live in the scene). Records whose fit
+	 *  center fails this are skipped by `resolve`/`probesAt` — their offsets
+	 *  are relative to that body, so any fallback anchor misplaces the probe
+	 *  by the body's full heliocentric distance. The small-bodies zone
+	 *  (Ryugu, 67P, …) resurfaces once its target is promoted; until then the
+	 *  probe falls through to its interplanetary fit. Unset = no gating. */
+	fitCenterUsable: ((id: string) => boolean) | null = null;
+
 	private readonly zoneParams: Map<string, ProbeZoneParams>;
 	/** `zone → chunkIdx → parsed chunk`. */
 	private readonly chunks = new Map<string, Map<number, FetchedProbes>>();
@@ -191,6 +200,12 @@ export class ProbeStore {
 		return this.chunks.get(zone)?.has(chunkIdx) ?? false;
 	}
 
+	private fitCenterCovered(probe: Probe): boolean {
+		const fc = probe.fitCenter;
+		if (!fc || !this.fitCenterUsable) return true;
+		return this.fitCenterUsable(fc.id);
+	}
+
 	private allCurrentChunksLoaded(jd: number): boolean {
 		for (const [zone, params] of this.zoneParams) {
 			const center = chunkIndexForJd(params, jd);
@@ -246,6 +261,7 @@ export class ProbeStore {
 				const id = probe.id;
 				if (!id) continue;
 				if (preferred.has(id)) continue;
+				if (!this.fitCenterCovered(probe)) continue;
 				const entry: ProbeWithWindow = {
 					zone,
 					zoneCenterNaifId: params.fit_center_naif_id,
@@ -284,6 +300,7 @@ export class ProbeStore {
 			for (let i = 0; i < chunk.probes.length; i++) {
 				if (chunk.ids[i] !== objectId) continue;
 				const probe = chunk.probes[i];
+				if (!this.fitCenterCovered(probe)) break;
 				const hasFlying = findSubChunkIndex(probe, et) >= 0;
 				const landed = probe.landed;
 				const hasLanded = landed !== undefined && et >= landed.startEt && et < landed.endEt;
@@ -297,6 +314,26 @@ export class ProbeStore {
 			}
 		}
 		return firstMatch;
+	}
+
+	/** Stamped fit-center id of the record that would win for `objectId` at
+	 *  `jd` were its body placeable, or null (no record / no stamp). Ungated
+	 *  on purpose: it tells the scene which body to promote so the precise
+	 *  fit can take over (Ryugu when Hayabusa2 is focused). */
+	stampedFitCenterAt(objectId: string, jd: number): string | null {
+		const et = jdToEt(jd);
+		for (const [zone, params] of this.zoneParams) {
+			const chunkIdx = chunkIndexForJd(params, jd);
+			const chunk = this.chunks.get(zone)?.get(chunkIdx) ?? this.warmed.get(`${zone}:${chunkIdx}`);
+			if (!chunk) continue;
+			for (let i = 0; i < chunk.probes.length; i++) {
+				if (chunk.ids[i] !== objectId) continue;
+				const probe = chunk.probes[i];
+				if (findSubChunkIndex(probe, et) < 0) break;
+				return probe.fitCenter?.id ?? null;
+			}
+		}
+		return null;
 	}
 
 	/** Parsed probe record for `objectId` at `jd`, across every loaded zone.
@@ -374,7 +411,8 @@ export class ProbeStore {
 			}
 		}
 		for (const [zone, params] of this.zoneParams) {
-			if (zone === INTERPLANETARY_ZONE) continue;
+			// Sun-centered zones (small-bodies) have no containing planetary system.
+			if (zone === INTERPLANETARY_ZONE || params.fit_center_naif_id === 10) continue;
 			const chunkIdx = chunkIndexForJd(params, jd);
 			const chunk = this.chunks.get(zone)?.get(chunkIdx);
 			if (!chunk) continue;

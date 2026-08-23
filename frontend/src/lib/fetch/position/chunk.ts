@@ -31,7 +31,7 @@ import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import { probePositionKm } from '$lib/fetch/position/probes/propagate';
 import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
-import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
+import { resolveProbePrimary } from '$lib/fetch/position/probes/primary';
 import { deriveProbeTrailParams, populateProbeTrailBuffer } from '$lib/fetch/position/probes/trail';
 import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
@@ -369,12 +369,19 @@ export class ChunkLoader {
 			if (zoneCenterNaifId === undefined) undefinedCenterProbes.add(probe.id);
 			const zoneCenterKey = `naif-${zoneCenterNaifId}`;
 			// Sub-chunks are fit against the probe's actual fit center — the stamped
-			// override (Moon for lunar orbiters, …) or the zone center — so its
-			// NAIF/GM/position drive the propagator and anchor.
-			const override = resolvePrimaryOverride(probe, jd, zoneCenterKey, this.cheb);
-			const primaryKey = override ? override.id : zoneCenterKey;
-			const primaryNaif = override ? override.naifId : zoneCenterNaifId;
-			const primaryMu = primaryNaif === undefined ? 0 : (getGmKm3s2(primaryNaif) ?? 0);
+			// override (Moon for lunar orbiters, Ryugu for Hayabusa2, …) or the zone
+			// center — so its NAIF/GM/position drive the propagator and anchor. An
+			// unplaceable stamped center degrades to the zone center key with
+			// `positionUnknown` (never a position: the offset is body-relative).
+			const primary =
+				zoneCenterNaifId === undefined
+					? null
+					: resolveProbePrimary(probe, jd, zoneCenterNaifId, this.cheb, (id) =>
+							this.positions.has(id)
+						);
+			const primaryKey = primary ? primary.id : zoneCenterKey;
+			const primaryMu = primary?.muKm3S2 ?? 0;
+			const primaryUnplaceable = primary === null;
 			const primaryPos = this.positions.get(primaryKey);
 			if (!primaryPos) {
 				let s = missingParents.get(primaryKey);
@@ -395,10 +402,11 @@ export class ChunkLoader {
 			// A gap in the sub-chunks (or an unresolved fit center) leaves the probe
 			// unplaceable: it still enters the scene so a scrub into coverage picks
 			// it up, but `positionUnknown` keeps the camera off the stand-in.
-			const positionUnknown = !offset || !primaryPos;
-			const pos: [number, number, number] = offset
-				? [anchor[0] + offset[0], anchor[1] + offset[1], anchor[2] + offset[2]]
-				: [anchor[0], anchor[1], anchor[2]];
+			const positionUnknown = !offset || !primaryPos || primaryUnplaceable;
+			const pos: [number, number, number] =
+				offset && !primaryUnplaceable
+					? [anchor[0] + offset[0], anchor[1] + offset[1], anchor[2] + offset[2]]
+					: [anchor[0], anchor[1], anchor[2]];
 			const data: BodyData = {
 				id: probe.id,
 				name: pickLabel(labels, probe.id),
@@ -430,11 +438,18 @@ export class ChunkLoader {
 			const rederiveElements = (newJd: number): OrbitalElements | null => {
 				const located = probeStore.probeWithCenter(ownId, newJd);
 				if (!located) return null;
-				const freshZoneKey = `naif-${located.fitCenterNaifId}`;
-				const freshOverride = resolvePrimaryOverride(located.probe, newJd, freshZoneKey, cheb);
-				const freshPrimaryNaif = freshOverride ? freshOverride.naifId : located.fitCenterNaifId;
-				const freshPrimaryMu = getGmKm3s2(freshPrimaryNaif) ?? 0;
-				return probeOsculatingElements(located.probe, newJd, freshPrimaryMu);
+				const fresh = resolveProbePrimary(
+					located.probe,
+					newJd,
+					located.fitCenterNaifId,
+					cheb,
+					() =>
+						// Elements only need mu, not a live position — a stamped small
+						// body resolves by identity here.
+						true
+				);
+				if (!fresh) return null;
+				return probeOsculatingElements(located.probe, newJd, fresh.muKm3S2);
 			};
 			// Every probe polylines its real past positions rather than an
 			// osculating-ellipse curve: the ellipse is wrong during non-Kepler phases

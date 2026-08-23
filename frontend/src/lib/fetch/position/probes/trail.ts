@@ -15,9 +15,8 @@ import {
 	ADAPTIVE_MIN_STEP_FACTOR
 } from '$lib/fetch/position/trail-buffer';
 import { AU_SCALE } from '$lib/math/units';
-import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
+import { resolveProbePrimary } from '$lib/fetch/position/probes/primary';
 import { probePositionScene } from '$lib/fetch/position/probes/propagate';
-import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
@@ -76,13 +75,17 @@ export function buildParentGatedSampler(
 	return (t) => {
 		const located = probeStore.probeWithCenter(probeId, t, isPreferred);
 		if (!located) return null;
-		const pastZoneKey = `naif-${located.fitCenterNaifId}`;
-		const pastOverride = resolvePrimaryOverride(located.probe, t, pastZoneKey, cheb);
-		const pastPrimaryKey = pastOverride ? pastOverride.id : pastZoneKey;
-		if (pastPrimaryKey !== currentParentKey) return null;
-		const pastPrimaryNaif = pastOverride ? pastOverride.naifId : located.fitCenterNaifId;
-		const pastMu = getGmKm3s2(pastPrimaryNaif) ?? 0;
-		return probePositionScene(located.probe, t, pastMu);
+		// The gate below discards any other frame, so a stamped small body is
+		// live by construction when it IS the trail's own parent.
+		const past = resolveProbePrimary(
+			located.probe,
+			t,
+			located.fitCenterNaifId,
+			cheb,
+			(id) => id === currentParentKey
+		);
+		if (!past || past.id !== currentParentKey) return null;
+		return probePositionScene(located.probe, t, past.muKm3S2);
 	};
 }
 

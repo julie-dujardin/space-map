@@ -35,6 +35,12 @@ from space_map_data.probes.zones import Zone
 # travel via `BINARY_VERSION` in the signature dict — don't bump here for those.
 FIT_VERSION = 16
 
+# Bump to repack every chunk from cached fits without re-fitting — for
+# header-only changes the fit signatures can't see (fit-center id encoding).
+# 3: propagate the pgaa/drm kernel-precedence re-fits (furnish order isn't
+# part of the fit signature, so those chunks never self-dirty).
+PACK_VERSION = 3
+
 
 def zone_signature(zone: Zone) -> str:
     """Stable short hash of the zone parameters that affect fit output."""
@@ -92,6 +98,7 @@ def build_chunk_signature(
     """
     return {
         "binary_version": BINARY_VERSION,
+        "pack_version": PACK_VERSION,
         "zone_hash": zone_signature(zone),
         "probes": dict(sorted(probe_block.items())),
     }

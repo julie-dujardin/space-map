@@ -53,6 +53,7 @@ from space_map_data.probes.fit_centers import (
     FitCenterCandidate,
     candidates_for_zone,
     candidates_hash,
+    fit_center_recode_map,
     load_candidates,
     small_body_candidates,
 )
@@ -205,6 +206,9 @@ def write_probes(
     finally:
         spiceypy.kclear()
 
+    fit_center_recode = fit_center_recode_map(
+        [c for zone_cands in candidates_by_zone.values() for c in zone_cands]
+    )
     zone_manifest = write_pass(
         chunk_index,
         dirty,
@@ -213,6 +217,7 @@ def write_probes(
         out_dir,
         start_jd,
         end_jd,
+        fit_center_recode,
     )
     coverage = _compute_probe_coverage(plans, metas_by_probe_id)
     return zone_manifest, coverage

@@ -217,6 +217,13 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	loadProgress.reach('metadata');
 	ctx.chebStore = await chebPromise;
 	ctx.probeStore = await probePromise;
+	if (ctx.probeStore) {
+		// A record fit to a stamped body (Moon, Ryugu, …) only surfaces while
+		// that body can anchor it; until then the probe falls through to its
+		// heliocentric fit. Promoting a small body flips this live.
+		ctx.probeStore.fitCenterUsable = (id) =>
+			(ctx.chebStore?.has(id) ?? false) || (ctx.hasMeshBody?.(id) ?? false);
+	}
 	loadProgress.reach('ephemeris');
 	const loader = new ChunkLoader(ctx.chebStore);
 
