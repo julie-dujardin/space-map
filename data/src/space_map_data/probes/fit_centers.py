@@ -23,6 +23,7 @@ from space_map_data.export.position.format import (
     MISSING_ID_TYPE,
     MISSING_INT32,
 )
+from space_map_data.probes.small_bodies import SMALL_BODY_TARGET_NAIF_IDS
 from space_map_data.probes.zones import Zone
 from space_map_data.utils.naif import spk_id_from_naif
 
@@ -88,7 +89,7 @@ def load_candidates(chebyshev_dir: Path) -> list[FitCenterCandidate]:
             continue
         try:
             meta = np.load(npz)["meta"]
-        except (OSError, KeyError):
+        except OSError, KeyError:
             logger.debug("fit_centers: failed to read meta from %s", npz.name)
             continue
         barycenter_naif_id = int(meta[1])
@@ -176,6 +177,80 @@ def detect_fit_center(
                 if n_inside >= threshold_count:
                     return cand
     return None
+
+
+def small_body_candidates() -> list[FitCenterCandidate]:
+    """Candidates for the `small-bodies` zone: the curated target list from
+    `probes.small_bodies`, all Sun-primary. Separate from the npz-derived
+    interplanetary candidates ON PURPOSE — folding these into interplanetary
+    would flip its candidates hash and invalidate every cached
+    interplanetary fit. Requires LSK/PCK furnished; targets without a GM are
+    skipped with a log (their fit would fail in `size_chunk` anyway)."""
+    sun_mu = float(spiceypy.bodvrd("10", "GM", 1)[1][0])
+    out: list[FitCenterCandidate] = []
+    for naif_id in SMALL_BODY_TARGET_NAIF_IDS:
+        try:
+            mu = float(spiceypy.bodvrd(str(naif_id), "GM", 1)[1][0])
+        except spiceypy.exceptions.SpiceyError:
+            logger.warning("small_body_candidates: no GM for %d, skipped", naif_id)
+            continue
+        id_type_ordinal, id_value = _resolve_id_for_naif(naif_id)
+        out.append(
+            FitCenterCandidate(
+                naif_id=naif_id,
+                id_type_ordinal=id_type_ordinal,
+                id_value=id_value,
+                barycenter_naif_id=0,
+                primary_naif_id=10,
+                mu_km3_s2=mu,
+                primary_mu_km3_s2=sun_mu,
+            )
+        )
+    return out
+
+
+def detect_nearest_center(
+    candidates: list[FitCenterCandidate],
+    probe_naif_id: int,
+    t_start_et: float,
+    t_end_et: float,
+    max_dist_km: float,
+    n_samples: int = 9,
+) -> FitCenterCandidate | None:
+    """Pick the candidate with the smallest minimum distance to the probe
+    over the window, or None when none comes within `max_dist_km`.
+
+    Distance-based rather than Hill-based because flyby targets (Lucy's
+    Trojans, Arrokoth) have Hill spheres of tens of km that the spacecraft
+    never enters — the encounter is still what the zone exists to show.
+    Minimum rather than median for the same reason: a Halley-speed flyby is
+    inside the radius for hours of a multi-day window. Failed spkpos
+    lookups drop the sample; a candidate with no valid sample is out."""
+    ets = np.linspace(t_start_et, t_end_et, n_samples)
+    best: tuple[float, FitCenterCandidate] | None = None
+    for cand in candidates:
+        d_min: float | None = None
+        for et in ets:
+            try:
+                rel, _ = spiceypy.spkpos(
+                    str(probe_naif_id),
+                    float(et),
+                    _FIT_CENTER_FRAME,
+                    "NONE",
+                    str(cand.naif_id),
+                )
+            except spiceypy.exceptions.SpiceyError:
+                continue
+            d = float(np.linalg.norm(rel))
+            if d_min is None or d < d_min:
+                d_min = d
+        if (
+            d_min is not None
+            and d_min < max_dist_km
+            and (best is None or d_min < best[0])
+        ):
+            best = (d_min, cand)
+    return best[1] if best is not None else None
 
 
 def candidates_hash(candidates: list[FitCenterCandidate]) -> str:

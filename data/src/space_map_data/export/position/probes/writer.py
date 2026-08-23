@@ -54,10 +54,11 @@ from space_map_data.probes.fit_centers import (
     candidates_for_zone,
     candidates_hash,
     load_candidates,
+    small_body_candidates,
 )
 from space_map_data.probes.landing_events import load_phases as load_landing_phases
 from space_map_data.probes.probe_id import index_by_source, load_registry
-from space_map_data.probes.zones import ALL_ZONES
+from space_map_data.probes.zones import ALL_ZONES, SMALL_BODIES
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +145,12 @@ def write_probes(
     candidates_by_zone: dict[str, list[FitCenterCandidate]] = {}
     candidates_hash_by_zone: dict[str, str] = {}
     for zone in ALL_ZONES:
-        zone_cands = candidates_for_zone(all_candidates, zone)
+        if zone.key == SMALL_BODIES.key:
+            # Curated target list, not the npz-derived set — see
+            # `small_body_candidates` on why these stay out of interplanetary.
+            zone_cands = small_body_candidates()
+        else:
+            zone_cands = candidates_for_zone(all_candidates, zone)
         candidates_by_zone[zone.key] = zone_cands
         candidates_hash_by_zone[zone.key] = candidates_hash(zone_cands)
     logger.info(

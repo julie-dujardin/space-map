@@ -40,9 +40,11 @@ from space_map_data.export.position.format import (
 from space_map_data.probes.fit_centers import (
     FitCenterCandidate,
     detect_fit_center,
+    detect_nearest_center,
     fit_center_header_fields,
 )
-from space_map_data.probes.zones import INTERPLANETARY, ZONES_BY_KEY
+from space_map_data.probes.small_bodies import SMALL_BODY_ZONE_RADIUS_KM
+from space_map_data.probes.zones import INTERPLANETARY, SMALL_BODIES, ZONES_BY_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +190,9 @@ def build_fits(
         plans_for_probe = plans_by_probe[probe_id]
         stale_keys = stale_by_probe[probe_id]
         by_chunk: dict[tuple[str, int], ChunkProbeRecord] = {}
-        fit_center_naif_by_key: dict[tuple[str, int], int] = {}
+        # None = small-bodies chunk with no matchable target; skip its
+        # contributions instead of falling back to a Sun-relative fit.
+        fit_center_naif_by_key: dict[tuple[str, int], int | None] = {}
         # First plan to fit a (zone, chunk) claims it — see build_fits
         # docstring on multi-source dedupe.
         flying_owner_by_key: dict[tuple[str, int], int] = {}
@@ -217,14 +221,33 @@ def build_fits(
                     rec = by_chunk.get(key)
                     if c.kind == "flying":
                         sub_s = zone.kepler_subchunk_days * S_PER_DAY
-                        cached_center = fit_center_naif_by_key.get(key)
-                        if cached_center is None:
-                            chosen = detect_fit_center(
-                                candidates_by_zone.get(c.zone_key, []),
-                                plan.naif_id,
-                                c.c_start_et,
-                                c.c_end_et,
-                            )
+                        if key not in fit_center_naif_by_key:
+                            if zone.key == SMALL_BODIES.key:
+                                # Nearest-target attachment, and never the
+                                # zone default: a Sun-relative record in this
+                                # f32 zone would quantize at ~10 km, so a
+                                # chunk with no matchable body is dropped.
+                                chosen = detect_nearest_center(
+                                    candidates_by_zone.get(c.zone_key, []),
+                                    plan.naif_id,
+                                    c.c_start_et,
+                                    c.c_end_et,
+                                    SMALL_BODY_ZONE_RADIUS_KM,
+                                )
+                                if chosen is None:
+                                    logger.warning(
+                                        "small-bodies chunk %s for naif=%d has "
+                                        "no matchable target; dropped",
+                                        key,
+                                        plan.naif_id,
+                                    )
+                            else:
+                                chosen = detect_fit_center(
+                                    candidates_by_zone.get(c.zone_key, []),
+                                    plan.naif_id,
+                                    c.c_start_et,
+                                    c.c_end_et,
+                                )
                             center_naif = (
                                 chosen.naif_id
                                 if chosen is not None
@@ -233,8 +256,17 @@ def build_fits(
                             center_id_value, center_id_type = fit_center_header_fields(
                                 chosen
                             )
-                            fit_center_naif_by_key[key] = center_naif
+                            fit_center_naif_by_key[key] = (
+                                None
+                                if chosen is None and zone.key == SMALL_BODIES.key
+                                else center_naif
+                            )
+                            if fit_center_naif_by_key[key] is None:
+                                continue
                         else:
+                            cached_center = fit_center_naif_by_key[key]
+                            if cached_center is None:
+                                continue
                             center_naif = cached_center
                             center_id_value = (
                                 rec.fit_center_id_value if rec else MISSING_INT32

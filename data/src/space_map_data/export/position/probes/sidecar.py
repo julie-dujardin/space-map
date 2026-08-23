@@ -38,18 +38,22 @@ FIT_VERSION = 16
 
 def zone_signature(zone: Zone) -> str:
     """Stable short hash of the zone parameters that affect fit output."""
-    payload = json.dumps(
-        {
-            "chunk_days": zone.chunk_days,
-            "kepler_subchunk_days": zone.kepler_subchunk_days,
-            "accuracy_threshold_km": zone.accuracy_threshold_km,
-            "short_orbit_threshold_km": zone.short_orbit_threshold_km,
-            "short_orbit_period_s": zone.short_orbit_period_s,
-            "float64_coeffs": zone.float64_coeffs,
-            "fit_center_naif_id": zone.fit_center_naif_id,
-        },
-        sort_keys=True,
-    )
+    fields = {
+        "chunk_days": zone.chunk_days,
+        "kepler_subchunk_days": zone.kepler_subchunk_days,
+        "accuracy_threshold_km": zone.accuracy_threshold_km,
+        "short_orbit_threshold_km": zone.short_orbit_threshold_km,
+        "short_orbit_period_s": zone.short_orbit_period_s,
+        "float64_coeffs": zone.float64_coeffs,
+        "fit_center_naif_id": zone.fit_center_naif_id,
+    }
+    # Added only when non-default so the zones that don't use them (all but
+    # small-bodies) keep their historical hash and their cached fits.
+    if zone.kepler_max_center_dist_km is not None:
+        fields["kepler_max_center_dist_km"] = zone.kepler_max_center_dist_km
+    if not zone.short_orbit_forces_kepler:
+        fields["short_orbit_forces_kepler"] = False
+    payload = json.dumps(fields, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 

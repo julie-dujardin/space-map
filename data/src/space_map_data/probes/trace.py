@@ -16,9 +16,14 @@ from dataclasses import dataclass
 import numpy as np
 import spiceypy
 
+from space_map_data.probes.small_bodies import (
+    SMALL_BODY_TARGET_NAIF_IDS,
+    SMALL_BODY_ZONE_RADIUS_KM,
+)
 from space_map_data.probes.zones import (
     INTERPLANETARY,
     PLANETARY_ZONES,
+    SMALL_BODIES,
 )
 
 logger = logging.getLogger(__name__)
@@ -350,6 +355,46 @@ def _classify_flying_subrange(
         # it from interplanetary.
         if in_zone_mask[-1]:
             captured_mask[starts[-1] :] = True
+
+    # Small-body encounters: per-target distance membership, dual-listed
+    # with interplanetary (a heliocentric fit of a small-body orbiter stays
+    # valid — the local orbit is metres-to-km scale, unlike planet orbiters
+    # — so no captured-exclusion). Targets without SPK coverage at these
+    # epochs yield NaN distances and drop out. The target must also be
+    # closer than every planet: Apophis's 2029 pass brings it within the
+    # membership radius of the entire Earth-satellite population, and those
+    # belong to earth-moon, not to Apophis — while OSIRIS-APEX riding along
+    # 100 km from Apophis during that same pass stays in.
+    min_planet_dist = np.full(n_sub, np.inf)
+    for zone in PLANETARY_ZONES:
+        rel = (
+            sub_probe_ssb - target_ssb_cache[zone.barycenter_naif_id][s_idx : e_idx + 1]
+        )
+        dist = np.linalg.norm(rel, axis=1)
+        min_planet_dist = np.fmin(
+            min_planet_dist, np.where(np.isnan(dist), np.inf, dist)
+        )
+    small_body_mask = np.zeros(n_sub, dtype=bool)
+    for tgt in SMALL_BODY_TARGET_NAIF_IDS:
+        if tgt not in target_ssb_cache:
+            target_ssb_cache[tgt] = _positions_wrt_ssb(tgt, ets)
+        rel = sub_probe_ssb - target_ssb_cache[tgt][s_idx : e_idx + 1]
+        dist = np.linalg.norm(rel, axis=1)
+        small_body_mask |= (
+            (~np.isnan(dist))
+            & (dist < SMALL_BODY_ZONE_RADIUS_KM)
+            & (dist < min_planet_dist)
+        )
+    if small_body_mask.any():
+        diffs = np.diff(small_body_mask.astype(int), prepend=0, append=0)
+        for s, e in zip(np.where(diffs == 1)[0], np.where(diffs == -1)[0], strict=True):
+            out.append(
+                ZoneInterval(
+                    SMALL_BODIES.key,
+                    float(sub_ets[s]),
+                    float(sub_ets[min(e, n_sub - 1)]),
+                )
+            )
 
     # Interplanetary spans the flying sub-range except captured periods.
     interp_mask = ~captured_mask

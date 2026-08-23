@@ -19,6 +19,7 @@ from ..naif_http import merge_intervals, spk_coverage, spk_targets, stream_to
 from .attitude.ck_kernels import download_attitude_capped
 from .layout import LANDED_MISSIONS_DIR, MISSIONS_DIR
 from .listings import list_mission_pcks, list_mission_spks
+from .target_bodies import download_target_bodies
 from .sources import (
     ESA_BASE,
     NAIF_BASE,
@@ -46,7 +47,7 @@ def _existing_extrap_records(mission_dir: Path) -> list[dict]:
         return []
     try:
         idx = json.loads(idx_path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return []
     return [
         f
@@ -95,6 +96,15 @@ class ProbesDownloader(Downloader):
             if selected is not None and source.mission not in selected:
                 continue
             results.append(self._process_mission(source, max_mib))
+
+        # Small-body target ephemerides + GM patch for the small-bodies
+        # zone. Independent of the mission selection — it's one fixed set.
+        tb_files, tb_mib = download_target_bodies(self.client)
+        logger.info(
+            "ProbesDownloader: %d small-body target files (%.1f MiB)",
+            tb_files,
+            tb_mib,
+        )
 
         # Phase 2: Attitude CK + FK + SCLK, in size-ascending order, capped
         # at `_ATTITUDE_MAX_GIB`. Runs as a separate pass so the small

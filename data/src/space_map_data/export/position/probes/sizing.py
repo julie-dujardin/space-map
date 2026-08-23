@@ -404,6 +404,22 @@ def _fit_sub_chunk(
     sub_mid = 0.5 * (sub_t_start + sub_t_end)
     cheb_bytes_per_seg = _chebyshev_bytes_per_segment(zone.float64_coeffs)
 
+    if zone.kepler_max_center_dist_km is not None:
+        mid_state = _safe_spkezr(naif_id, sub_mid, "ECLIPJ2000", fit_center_naif_id)
+        if (
+            mid_state is not None
+            and float(np.linalg.norm(mid_state[0][:3])) > zone.kepler_max_center_dist_km
+        ):
+            return _fit_chebyshev_only(
+                naif_id,
+                fit_center_naif_id,
+                sub_t_start,
+                sub_t_end,
+                base_threshold_km,
+                cheb_bytes_per_seg,
+                kepler_err=float("inf"),
+            )
+
     # Fit window: default ±2 days, narrowed for short-period orbits — for a
     # 2-hour lunar orbiter, a wide window averages over dozens of
     # mascon-perturbed orbits and the linear-drift assumption collapses
@@ -474,7 +490,9 @@ def _fit_sub_chunk(
             # byte budget and would alias, putting the probe below the
             # surface — pin to the lower-residual Kepler variant instead;
             # accuracy_threshold is advisory in this regime.
-            if kepler_err <= threshold_km or is_short_period:
+            if kepler_err <= threshold_km or (
+                is_short_period and zone.short_orbit_forces_kepler
+            ):
                 method = (
                     METHOD_KEPLER_DRIFT
                     if best_v[0].get("mode") == "drift"
@@ -499,8 +517,30 @@ def _fit_sub_chunk(
     else:
         threshold_km = base_threshold_km
 
-    # Chebyshev fallback. Try coarsest intlen first; keep the first whose
-    # max residual is below threshold. Otherwise keep the lowest-error one.
+    return _fit_chebyshev_only(
+        naif_id,
+        fit_center_naif_id,
+        sub_t_start,
+        sub_t_end,
+        threshold_km,
+        cheb_bytes_per_seg,
+        kepler_err,
+    )
+
+
+def _fit_chebyshev_only(
+    naif_id: int,
+    fit_center_naif_id: int,
+    sub_t_start: float,
+    sub_t_end: float,
+    threshold_km: float,
+    cheb_bytes_per_seg: int,
+    kepler_err: float,
+) -> SubChunkFit:
+    """Chebyshev intlen sweep for one sub-chunk. Try coarsest first; keep
+    the first whose max residual is below threshold, else the lowest-error
+    one."""
+    sub_s = sub_t_end - sub_t_start
     best_under: tuple[float, float, np.ndarray] | None = None
     best_over: tuple[float, float, np.ndarray] | None = None
     for intlen_d in INTLEN_SWEEP_DAYS:

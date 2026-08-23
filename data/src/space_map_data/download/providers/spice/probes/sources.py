@@ -27,6 +27,10 @@ NAIF_PDS_BASE = "https://naif.jpl.nasa.gov/pub/naif/pds"
 DARTS_BASE = "https://data.darts.isas.jaxa.jp/pub"
 
 PDS3_DATASETS: dict[str, str] = {
+    # The op tree only has `Dawn_ephem_2018.bsp`, which starts 2013 (no
+    # cruise, no Vesta) and parks Dawn at Ceres two years early; the PDS3
+    # `dawn_rec_*` series is the full launch→EOM reconstruction.
+    "DAWN": "dawn-m_a-spice-6-v1.0",
     "NEWHORIZONS": "nh-j_p_ss-spice-6-v1.0",
     "MESSENGER": "mess-e_v_h-spice-6-v1.0",
     "MGS": "mgs-m-spice-6-v1.0",
@@ -72,6 +76,7 @@ NAIF_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
         # DARTS_SOURCES — keep the two lists in sync.
         "CLEMENTINE",  # no PDS dataset wired yet (clem1-l-spice-6-v1.0)
         "DART",  # PDS4
+        "DAWN",  # PDS3
         "DS1",  # no PDS dataset wired yet (ds1-a_c-spice-6-v1.0)
         "GRAIL",  # PDS3
         "HAYABUSA",  # PDS3

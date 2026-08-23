@@ -30,7 +30,7 @@ from space_map_data.export.position.probes.time_grid import (
 )
 from space_map_data.probes.probe_id import assign, et_to_mjd
 from space_map_data.probes.trace import classify_trace, inception_et
-from space_map_data.probes.zones import INTERPLANETARY, ZONES_BY_KEY
+from space_map_data.probes.zones import ZONES_BY_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -102,10 +102,9 @@ def _compute_system_intervals(
     Sorted by start_et, non-overlapping."""
     raw: list[tuple[float, float, int]] = []
     for zone_key, s, e in intervals:
-        if zone_key == INTERPLANETARY.key:
-            continue
         zone = ZONES_BY_KEY.get(zone_key)
-        if zone is None:
+        if zone is None or zone.r_zone_km is None:
+            # interplanetary and small-bodies: no containing planetary system.
             continue
         raw.append((float(s), float(e), int(zone.barycenter_naif_id)))
     for body_naif, s, e in landed_phases:

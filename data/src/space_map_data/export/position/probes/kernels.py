@@ -148,7 +148,7 @@ def collect_generic_kernels(
     since a recycled NAIF (MSL's -76 = old Mariner 10) would win
     last-loaded-wins and drag the earlier probe onto the lander's body.
     """
-    skip_dirs = {"missions", "landed-missions", "probes"}
+    skip_dirs = {"missions", "landed-missions", "probes", "attitude-benchmark"}
     lsk_pck: list[Path] = []
     generic_spk: list[Path] = []
     for path in sorted(kernels_dir.rglob("*")):
@@ -157,7 +157,9 @@ def collect_generic_kernels(
         if any(part in skip_dirs for part in path.relative_to(kernels_dir).parts):
             continue
         suffix = path.suffix.lower()
-        if suffix in (".tls", ".tpc"):
+        # .tf: frame kernels — Hayabusa's SPKs are expressed in the
+        # ITOKAWA_FIXED frame and can't be evaluated without one.
+        if suffix in (".tls", ".tpc", ".tf"):
             lsk_pck.append(path)
         elif suffix == ".bsp":
             generic_spk.append(path)

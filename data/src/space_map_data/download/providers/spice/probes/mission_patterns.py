@@ -29,7 +29,10 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "CASSINI": (r"^200128RU_SCPSE_\d+_\d+\.bsp$",),
     "EXOMARS2016": (r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",),
     "ExoMars2016": (r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",),
-    "DAWN": (r"^Dawn_ephem_\d+\.bsp$",),
+    # The `dawn_rec_*` series is the full-mission PDS3 reconstruction
+    # (launch → Vesta → Ceres → EOM 2018-10); source switched from the op
+    # tree, whose only kernel starts 2013 with no Vesta phase.
+    "DAWN": (r"^dawn_rec_\d+[-_]\d+_\d+_v\d+\.bsp$",),
     # `bc_mpo_fcp_*` is the flown trajectory (launch→2027, ops-updated); the
     # mct/mlt planning series disagrees with it by hours/thousands of km at
     # the swingbys. `fcp` is a recon token so it out-furnishes them wherever
@@ -84,7 +87,15 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     # `juice_orbc_<iter>_<start>_<end>_v<N>.bsp` — iteration ID and version
     # both bump on every ESA release, so match generically rather than pin them.
     "JUICE": (r"^juice_orbc_\d+_\d+_\d+_v\d+\.bsp$",),
-    "LUCY": (r"^lcy_\d+_330\d+_.*sconly_v\d+\.bsp$",),
+    # The sconly recons start 2025-07; the long-arc series supplies
+    # 2021-launch → 2033 coverage (Dinkinesh + Donaldjohanson flybys) and
+    # loses to the sconly files wherever both cover. The long-arc pattern's
+    # dash-only OD blob deliberately can't match `_sconly_` names, so
+    # LATEST_ONLY resolves each pattern to its own newest issue.
+    "LUCY": (
+        r"^lcy_\d+_330\d+_.*sconly_v\d+\.bsp$",
+        r"^lcy_211016_330402_\d+_[A-Za-z0-9-]+_v\d+\.bsp$",
+    ),
     # Match any L-version so future NAIF bumps don't need re-pinning.
     "SOLAR-ORBITER": (r"^solo_ANC_soc-orbit_\d+-\d+_L\d+_V\d+_\d+_V\d+\.bsp$",),
     "JWST": (r"^jwst_(?:rec|pred)\.bsp$",),
@@ -280,10 +291,15 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^dart_\d+_\d+_\d+_\d+_rec_v\d+\.bsp$",
     ),
     "HYB2": (
-        # Long-arc reconstructed Hayabusa2 trajectory (cruise + Ryugu
-        # proximity); the per-MASCOT/opnav/struct kernels are skipped.
+        # Long-arc reconstructed Hayabusa2 trajectory; the per-MASCOT/
+        # opnav/struct kernels are skipped. The long-arc set has a hole
+        # over the entire Ryugu proximity phase (2018-06 → 2019-11) — the
+        # hpk kernel is the Ryugu-relative home-position reconstruction
+        # that fills it (needs `hyb2_hp_v01.tf` + the Ryugu SPK from the
+        # generic pool to evaluate).
         r"^hyb2_\d{8}-\d{8}_\d+[hm]_final_ver\d+\.bsp$",
         r"^hyb2_asteroid_to_earth_\d+_v\d+\.bsp$",
+        r"^hyb2_hpk_\d{8}_\d{8}_v\d+\.bsp$",
     ),
     "VCO": (
         # Akatsuki / PLANET-C per-year reconstruction, 2010 launch onward.
@@ -386,6 +402,7 @@ MISSION_LATEST_ONLY: frozenset[str] = frozenset(
         "GAIA",
         "JUNO",
         "JUICE",
+        "LUCY",
     }
 )
 

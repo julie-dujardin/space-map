@@ -53,6 +53,20 @@ class Zone:
 
     short_orbit_period_s: float = 12 * 3600  # 12 hours
 
+    kepler_max_center_dist_km: float | None = None
+    """Skip Method-C Kepler when the probe is farther than this from the
+    fit center (None = no limit). For the small-bodies zone: against a
+    micro-μ body, conic elements at millions of km are numerically
+    degenerate — a fit can pass the eval samples yet wander tens of km
+    between them — while Chebyshev handles the smooth approach arc."""
+
+    short_orbit_forces_kepler: bool = True
+    """Pin short-period orbiters to Kepler even over threshold. Right for
+    planet zones (Chebyshev aliases across a 30-day chunk at any affordable
+    byte budget), wrong for small-bodies: its 1-day sub-chunks sweep down
+    to 259 s segments, which resolve Dawn's 4.3 h LAMO cleanly, while
+    forced Kepler shipped ~500 km errors around a 460 km body."""
+
     def __post_init__(self) -> None:
         # Same invariant as `SubChunkGrid`; raised here so it fires at module import.
         ratio = self.chunk_days / self.kepler_subchunk_days
@@ -101,7 +115,28 @@ PLANETARY_ZONES: tuple[Zone, ...] = (
     Zone("pluto", 9, 999, 12.8e6, 1826.0, 10.0, 1.0),
 )
 
-ALL_ZONES: tuple[Zone, ...] = (INTERPLANETARY, *PLANETARY_ZONES)
+# Rendezvous/flyby encounters with asteroids and comets. Membership is
+# per-target (within `SMALL_BODY_ZONE_RADIUS_KM` of any curated small body,
+# see `probes/small_bodies.py`), not barycentric — `barycenter_naif_id` and
+# `fit_center_naif_id` are placeholders and every record in this zone
+# carries a per-probe fit-center override to the matched body; chunks with
+# no matchable body are dropped, never fit against the Sun (a Sun-relative
+# f32 payload would quantize at ~10 km). Tight threshold because "accurate"
+# here means metres next to a body hundreds of metres across.
+SMALL_BODIES = Zone(
+    key="small-bodies",
+    barycenter_naif_id=0,
+    fit_center_naif_id=10,
+    r_zone_km=None,
+    chunk_days=28.0,
+    accuracy_threshold_km=0.5,
+    kepler_subchunk_days=1.0,
+    short_orbit_threshold_km=0.5,
+    kepler_max_center_dist_km=1.0e5,
+    short_orbit_forces_kepler=False,
+)
+
+ALL_ZONES: tuple[Zone, ...] = (INTERPLANETARY, *PLANETARY_ZONES, SMALL_BODIES)
 ZONES_BY_KEY: dict[str, Zone] = {z.key: z for z in ALL_ZONES}
 
 
