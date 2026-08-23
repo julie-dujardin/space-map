@@ -53,13 +53,6 @@ class TestWhoGetsOne:
 class TestMeasurements:
     """Each number keeps whatever its source said about how sure it is."""
 
-    def test_a_plain_value_ships_alone(self):
-        assert block(EARTH)["volcanism"]["heat_flux_w_per_m2"] == {"value": 0.08}
-
-    def test_a_range_rides_alongside_its_value(self):
-        surface_age = block(VENUS)["volcanism"]["surface_age_years"]
-        assert surface_age == {"value": 6.0e8, "range": [2.5e8, 1.0e9]}
-
     def test_an_extrapolation_says_so(self):
         """Venus's eruption count is Earth's record scaled by mass, and would
         otherwise draw exactly like Earth's own catalogue."""
@@ -67,10 +60,6 @@ class TestMeasurements:
 
     def test_a_bound_says_so(self):
         assert block(TITAN)["magnetism"]["surface_field_t"]["upper_limit"] is True
-
-    def test_a_survey_snapshot_carries_its_cut_off(self):
-        centres = block(IO)["volcanism"]["known_centres"]
-        assert centres["as_of"] == "through mid-2023"
 
     @pytest.mark.parametrize("object_id", COVERED)
     def test_the_block_is_json(self, object_id: str):

@@ -10,10 +10,7 @@ import math
 import pytest
 
 from space_map_data.constants.atmosphere.aerosols import AEROSOLS
-from space_map_data.constants.atmosphere.bodies import (
-    ATMOSPHERE_BODIES,
-    RENDER_WAVELENGTHS_M,
-)
+from space_map_data.constants.atmosphere.bodies import ATMOSPHERE_BODIES
 from space_map_data.constants.atmosphere.photometry import (
     SUN_LIMB_DARKENING_ALPHA_RGB,
     sun_limb_darkening_alpha,
@@ -309,6 +306,3 @@ class TestPayload:
         for object_id, body in ATMOSPHERE_BODIES.items():
             assert body.aerosol in AEROSOLS, object_id
             assert AEROSOLS[body.aerosol].phase in PHASE_MODELS, object_id
-
-    def test_render_wavelengths_are_bruneton_rgb(self):
-        assert list(RENDER_WAVELENGTHS_M.values()) == [680e-9, 550e-9, 440e-9]

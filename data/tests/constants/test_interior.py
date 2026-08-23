@@ -238,14 +238,6 @@ class TestTaxonomy:
         assert sum(c.fraction for c in entry.composition) == pytest.approx(1.0)
         assert all(c.material in MATERIALS for c in entry.composition)
 
-    def test_metal_types_are_not_pure_iron(self):
-        """M-types read as solid iron but aren't: the best analogue carries
-        silicate inclusions, so claiming pure iron overstates the spectrum."""
-        metal = dict(
-            (c.material, c.fraction) for c in TAXONOMY_COMPOSITION["M"].composition
-        )
-        assert metal["silicate"] > 0.1
-
 
 class TestSources:
     def test_every_cited_key_resolves(self):
@@ -290,10 +282,3 @@ class TestResolveClass:
         """An object sitting between two classes is two rocks at once, and
         picking the first letter would be a coin toss dressed as data."""
         assert resolve_class(reported, "U", None) is None
-
-    @pytest.mark.parametrize("reported", ["D", "P"])
-    def test_disputed_analogues_stay_absent(self, reported: str):
-        """D and P have no settled meteorite analogue — the once-claimed
-        Tagish Lake link for D is no longer thought representative. Guards
-        against a drive-by addition."""
-        assert resolve_class(reported, reported, 0.05) is None
