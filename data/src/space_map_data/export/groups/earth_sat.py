@@ -98,17 +98,19 @@ class EarthOrbitClassStats:
 def _load_latest_inclinations() -> dict[int, float]:
     """Return NORAD → inclination (deg) from the latest CelesTrak day-dir.
 
-    Reads ``gp-active.csv`` + ``groups/*.csv`` so ASAT-test artefacts
-    aren't lost. Older days are skipped — stale TLEs add noise.
+    Reads Space-Track's ``gp-active.csv`` for the catalogue, then CelesTrak's
+    ``groups/*.csv`` so ASAT-test artefacts aren't lost — those groups are
+    curated lists Space-Track has no equivalent for. Older days are skipped:
+    stale TLEs add noise.
     """
     from space_map_data.utils.paths import DOWNLOAD_DIR
 
-    celestrak_dir = DOWNLOAD_DIR / "sources" / "position" / "celestrak"
-    days = iter_day_dirs(celestrak_dir)
+    position_dir = DOWNLOAD_DIR / "sources" / "position"
+    days = iter_day_dirs(position_dir / "spacetrack" / "current")
     if not days:
         logger.warning(
-            "No CelesTrak day-dirs under %s; orbit-class overlays will be empty",
-            celestrak_dir,
+            "No Space-Track day-dirs under %s; orbit-class overlays will be empty",
+            position_dir / "spacetrack" / "current",
         )
         return {}
     _iso, latest = days[-1]
@@ -129,8 +131,9 @@ def _load_latest_inclinations() -> dict[int, float]:
     else:
         logger.warning("gp-active.csv missing in %s", latest)
 
-    groups_dir = latest / "groups"
-    if groups_dir.exists():
+    celestrak_days = iter_day_dirs(position_dir / "celestrak")
+    groups_dir = (celestrak_days[-1][1] / "groups") if celestrak_days else None
+    if groups_dir is not None and groups_dir.exists():
         for g in sorted(groups_dir.glob("*.csv")):
             if g.stat().st_size == 0:
                 continue

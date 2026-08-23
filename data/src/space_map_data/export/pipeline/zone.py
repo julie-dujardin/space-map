@@ -369,8 +369,8 @@ def export_earth_zone(
     fingerprints match its on-disk marker is skipped without parsing; its parts
     stay and the manifest is rebuilt from a disk scan so they still ship. The
     result: a steady-state daily CelesTrak refresh re-parses zero archive groups.
-    Recent dailies are stamped CELESTRAK, historical weeks SPACETRACK — same
-    SGP4 wire format, distinct provenance for attribution.
+    Every snapshot is stamped SPACETRACK: the dailies and the reconstructed
+    weeks both come from Space-Track now, as does the archive.
     """
     # The per-object global bundle ships one "current" orbit block the frontend
     # reads to place a URL-navigated sat before (or in lieu of) its element
@@ -429,9 +429,9 @@ def export_earth_zone(
             time=date_iso, count=len(kept), num_parts=num_parts
         )
 
-    # Recent CelesTrak dailies — already materialised, small.
+    # Recent dailies — already materialised, small.
     for date_iso, elements in celestrak_days.items():
-        write(date_iso, elements, OrbitalSource.celestrak)
+        write(date_iso, elements, OrbitalSource.spacetrack)
 
     # Historical archive: parse each source group once. Pre-2004 history all
     # lives in the 2004 mega-dump, so those years form one group streamed in a

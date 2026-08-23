@@ -35,6 +35,13 @@ ARCHIVE_NORAD_CACHE = DERIVED_POSITION_DIR / "spacetrack" / "archive_norads.json
 # move when only code changes, so a stale cache would otherwise survive.
 _NORAD_SCAN_VERSION = 3
 
+# Weekly snapshots from the end of the newest archive year, cached so the
+# current-year snapshots can fill their gaps across the year boundary. Without
+# it the first weeks of the backfilled year have nothing behind them to look
+# back to, and objects untracked that week vanish from the scene.
+ARCHIVE_TAIL_CACHE = DERIVED_POSITION_DIR / "spacetrack" / "archive_tail.json"
+_TAIL_VERSION = 1
+
 # Same problem one layer up — bump to force every archive year to re-distil
 # when which TLEs land in which week changes.
 ARCHIVE_WEEK_VERSION = 2
@@ -326,6 +333,96 @@ def load_archive_weeks(
     return result
 
 
+def load_archive_tail(lookback_days: float) -> dict[str, dict[int, CelesTrakElements]]:
+    """Weekly snapshots covering the final ``lookback_days`` of the archive.
+
+    Donor-only material for :func:`celestrak_source.fill_gaps`, so a satellite
+    missing from the first weeks of the backfilled year can still be placed from
+    late in the archive year before it. Cached on the newest year's zip
+    fingerprint — distilling it means streaming that year's ~3 GB of TLEs, which
+    is not worth repeating per export.
+    """
+    newest = max(ARCHIVE_YEARS)
+    fingerprint = archive_zip_fingerprints([newest])
+    cached = _load_tail_cache()
+    if (
+        cached.get("fingerprint") == fingerprint
+        and cached.get("lookback_days") == lookback_days
+    ):
+        return {
+            monday: {int(n): e for n, e in week.items()}
+            for monday, week in cached["weeks"].items()
+        }
+
+    zips = _source_zips_for(newest)
+    if not zips:
+        logger.warning("No archive zip for %d; year-boundary fill unavailable", newest)
+        return {}
+    # Last instant the archive year covers, minus the lookback.
+    end_jd = (
+        datetime(newest + 1, 1, 1, tzinfo=timezone.utc).timestamp() / 86400.0
+        + _JD_UNIX_EPOCH
+    )
+    cutoff_jd = end_jd - lookback_days
+    best: dict[str, dict[int, tuple[float, CelesTrakElements]]] = {}
+    for zip_path in zips:
+        for norad, epoch_jd, elements in _iter_zip_tles(zip_path):
+            if epoch_jd < cutoff_jd:
+                continue
+            monday, midpoint_jd, _owner = _week_of(epoch_jd)
+            dist = abs(epoch_jd - midpoint_jd)
+            week = best.setdefault(monday, {})
+            current = week.get(norad)
+            if current is None or dist < current[0]:
+                week[norad] = (dist, elements)
+    result = {
+        monday: {norad: ev[1] for norad, ev in week.items()}
+        for monday, week in sorted(best.items())
+    }
+    _write_tail_cache(fingerprint, lookback_days, result)
+    logger.info(
+        "Archive tail: %d week(s) from %d, %d satellite-weeks",
+        len(result),
+        newest,
+        sum(len(w) for w in result.values()),
+    )
+    return result
+
+
+def _load_tail_cache() -> dict:
+    """Load the archive-tail cache, or {} if absent/unreadable/stale."""
+    if not ARCHIVE_TAIL_CACHE.exists():
+        return {}
+    try:
+        cache = json.loads(ARCHIVE_TAIL_CACHE.read_text())
+    except OSError, json.JSONDecodeError:
+        logger.warning(
+            "Unreadable archive tail cache %s — rebuilding", ARCHIVE_TAIL_CACHE
+        )
+        return {}
+    if cache.get("version") != _TAIL_VERSION:
+        return {}
+    return cache
+
+
+def _write_tail_cache(
+    fingerprint: list[dict],
+    lookback_days: float,
+    weeks: dict[str, dict[int, CelesTrakElements]],
+) -> None:
+    ARCHIVE_TAIL_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    ARCHIVE_TAIL_CACHE.write_text(
+        json.dumps(
+            {
+                "version": _TAIL_VERSION,
+                "fingerprint": fingerprint,
+                "lookback_days": lookback_days,
+                "weeks": weeks,
+            }
+        )
+    )
+
+
 def _scan_source_norads(zips: list[Path], out_years: Iterable[int]) -> set[int]:
     """NORADs whose distilled week lands in ``out_years``, scanning ``zips``
     once. Buckets by epoch week (not raw epoch) to match
@@ -350,7 +447,7 @@ def _load_norad_cache() -> dict:
         return {}
     try:
         cache = json.loads(ARCHIVE_NORAD_CACHE.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         logger.warning(
             "Unreadable archive NORAD cache %s — rebuilding", ARCHIVE_NORAD_CACHE
         )

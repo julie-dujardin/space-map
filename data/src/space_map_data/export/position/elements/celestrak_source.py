@@ -1,9 +1,16 @@
-"""Load CelesTrak GP/TLE elements from disk for export overlay.
+"""Load GP/TLE elements from disk for export overlay.
 
 The DB is authoritative for satellite metadata (SATCAT, names, constellation
 tags), but orbital elements are time-stamped and we keep one snapshot per day
 on disk. The exporter reads every day-dir so the frontend can pick a snapshot
 near the user's simulated time, instead of always propagating from the latest.
+
+Elements come from Space-Track alone. CelesTrak's GROUP=active fed this path
+until the weekly backfill closed the 2026 gap; it is a ~18k subset of
+Space-Track's ~32k catalogue, so mixing the two made a day's object count depend
+on which provider happened to supply it. CelesTrak is still downloaded for
+classification (SATCAT, constellation and category groups) — just not for
+ephemeris.
 """
 
 import bisect
@@ -83,17 +90,9 @@ def iter_day_dirs(celestrak_dir: Path) -> list[tuple[str, Path]]:
 
 
 def current_day_dirs(download_dir: Path) -> list[tuple[str, Path]]:
-    """Merge daily element snapshots from ``spacetrack/current`` and ``celestrak``,
-    oldest first. Both hold a ``gp-active.csv`` in the same OMM CSV shape; on a
-    shared date Space-Track wins as the complete catalogue.
-    """
+    """Daily element snapshots from ``spacetrack/current``, oldest first."""
     position_dir = download_dir / "sources" / "position"
-    by_iso: dict[str, Path] = {}
-    for iso, day_dir in iter_day_dirs(position_dir / "celestrak"):
-        by_iso[iso] = day_dir
-    for iso, day_dir in iter_day_dirs(position_dir / "spacetrack" / "current"):
-        by_iso[iso] = day_dir
-    return sorted(by_iso.items())
+    return iter_day_dirs(position_dir / "spacetrack" / "current")
 
 
 def _parse_row(row: dict) -> tuple[int, CelesTrakElements] | None:
@@ -157,28 +156,28 @@ def _load_day(day_dir: Path) -> dict[int, CelesTrakElements]:
     return out
 
 
-def fill_gaps(days: dict[str, dict[int, CelesTrakElements]], dates: set[str]) -> None:
-    """Fill missing satellites in the ``dates`` snapshots from earlier ones.
+def fill_gaps(
+    days: dict[str, dict[int, CelesTrakElements]],
+    donors: dict[str, dict[int, CelesTrakElements]] | None = None,
+) -> None:
+    """Fill each snapshot's missing satellites from earlier ones.
+
+    ``donors`` supplies extra earlier snapshots that are read but never filled —
+    the tail of the archive year, so the first weeks of the current year can
+    look back across the year boundary instead of starting from nothing.
 
     A satellite absent from a snapshot takes the most recent element set from
     at or before that snapshot's date, within :data:`FILL_LOOKBACK_DAYS`.
     Entries are shared by reference, not copied — the frontend reads each row's
     own ``epoch_jd``, so a filled row carries its true age and renders with the
     stale-element warning rather than pretending to be current.
-
-    Only Space-Track dates take part, as donor and recipient both. CelesTrak's
-    GROUP=active is a ~18k subset of Space-Track's ~32k catalogue, so mixing the
-    two would not fill a tracking gap — it would restate a CelesTrak day as a
-    full catalogue out of month-old rows.
     """
-    # Sub-dicts are shared with the caller's mapping, so filling them mutates it.
-    eligible = {iso: elements for iso, elements in days.items() if iso in dates}
-    if not eligible:
+    if not days:
         return
     # NORAD -> its element sets across every snapshot, epochs kept in a parallel
     # sorted list so each lookup is a bisect rather than a scan over snapshots.
     seen: dict[int, list[tuple[float, CelesTrakElements]]] = {}
-    for elements in eligible.values():
+    for elements in [*(donors or {}).values(), *days.values()]:
         for norad, row in elements.items():
             epoch = row["epoch_jd"]
             if epoch is not None:
@@ -191,7 +190,7 @@ def fill_gaps(days: dict[str, dict[int, CelesTrakElements]], dates: set[str]) ->
         rows_by_norad[norad] = [row for _epoch, row in entries]
 
     filled = 0
-    for iso, elements in eligible.items():
+    for iso, elements in days.items():
         target_jd = date_to_julian(iso)
         if target_jd is None:
             continue
@@ -210,25 +209,23 @@ def fill_gaps(days: dict[str, dict[int, CelesTrakElements]], dates: set[str]) ->
     )
 
 
-def spacetrack_day_isos(download_dir: Path) -> set[str]:
-    """ISO dates whose snapshot comes from Space-Track's full catalogue."""
-    position_dir = download_dir / "sources" / "position"
-    return {iso for iso, _dir in iter_day_dirs(position_dir / "spacetrack" / "current")}
-
-
-def load_all_days(download_dir: Path) -> dict[str, dict[int, CelesTrakElements]]:
+def load_all_days(
+    download_dir: Path,
+    donors: dict[str, dict[int, CelesTrakElements]] | None = None,
+) -> dict[str, dict[int, CelesTrakElements]]:
     """Return every available day's GP elements indexed by ISO date → NORAD.
 
     Outer keys are ``YYYY-MM-DD`` strings sorted oldest-first; inner values
     match :func:`_parse_row` output. Empty result if no day-dirs are present.
-    Gaps are filled from neighbouring snapshots; see :func:`fill_gaps`.
+    Gaps are filled from earlier snapshots, and from ``donors`` — the archive
+    year's tail, which the caller supplies so this module stays independent of
+    the archive reader. See :func:`fill_gaps`.
     """
     days = current_day_dirs(download_dir)
     if not days:
         logger.warning(
-            "No Space-Track/CelesTrak day-dirs under %s; Earth zone export "
-            "will be empty",
-            download_dir / "sources" / "position",
+            "No Space-Track day-dirs under %s; Earth zone export will be empty",
+            download_dir / "sources" / "position" / "spacetrack" / "current",
         )
         return {}
     result = {
@@ -237,5 +234,5 @@ def load_all_days(download_dir: Path) -> dict[str, dict[int, CelesTrakElements]]
     }
     total = sum(len(d) for d in result.values())
     logger.info("Loaded %d CelesTrak elements across %d days", total, len(result))
-    fill_gaps(result, spacetrack_day_isos(download_dir))
+    fill_gaps(result, donors)
     return result

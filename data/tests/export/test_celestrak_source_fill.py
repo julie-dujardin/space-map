@@ -5,7 +5,8 @@ from space_map_data.export.position.elements.celestrak_source import (
     fill_gaps,
 )
 
-# 2026-01-05, 2026-01-12 and 2026-02-23 as Julian Dates.
+# 2025-12-29, 2026-01-05, 2026-01-12 and 2026-02-23 as Julian Dates.
+_JD_DEC_29 = 2461038.5
 _JD_JAN_05 = 2461045.5
 _JD_JAN_12 = 2461052.5
 _JD_FEB_23 = 2461094.5
@@ -37,7 +38,7 @@ class TestFillGaps:
             "2026-01-05": {5: _elements(_JD_JAN_05), 11: _elements(_JD_JAN_05)},
             "2026-01-12": {5: _elements(_JD_JAN_12)},  # 11 went untracked
         }
-        fill_gaps(days, {"2026-01-05", "2026-01-12"})
+        fill_gaps(days)
         assert set(days["2026-01-12"]) == {5, 11}
         # The filled row keeps its own epoch, so the frontend can flag its age.
         assert days["2026-01-12"][11]["epoch_jd"] == _JD_JAN_05
@@ -47,7 +48,7 @@ class TestFillGaps:
             "2026-01-05": {11: _elements(_JD_JAN_05)},
             "2026-02-23": {5: _elements(_JD_FEB_23)},  # 49 days later
         }
-        fill_gaps(days, {"2026-01-05", "2026-02-23"})
+        fill_gaps(days)
         assert set(days["2026-02-23"]) == {5}
 
     def test_never_fills_from_a_later_snapshot(self):
@@ -56,7 +57,7 @@ class TestFillGaps:
             "2026-01-05": {5: _elements(_JD_JAN_05)},  # 11 went untracked
             "2026-01-12": {5: _elements(_JD_JAN_12), 11: _elements(_JD_JAN_12)},
         }
-        fill_gaps(days, {"2026-01-05", "2026-01-12"})
+        fill_gaps(days)
         assert set(days["2026-01-05"]) == {5}
 
     def test_picks_the_most_recent_of_several_earlier_snapshots(self):
@@ -65,21 +66,26 @@ class TestFillGaps:
             "2026-01-12": {11: _elements(_JD_JAN_12)},
             "2026-01-19": {5: _elements(_JD_JAN_12 + 7)},
         }
-        fill_gaps(days, {"2026-01-05", "2026-01-12", "2026-01-19"})
+        fill_gaps(days)
         assert days["2026-01-19"][11]["epoch_jd"] == _JD_JAN_12
 
-    def test_ignores_snapshots_outside_the_eligible_dates(self):
-        """CelesTrak's GROUP=active is a subset of Space-Track's catalogue, so it
-        must neither donate to nor receive from a Space-Track snapshot."""
-        days = {
-            "2026-01-05": {5: _elements(_JD_JAN_05), 11: _elements(_JD_JAN_05)},
-            "2026-01-12": {5: _elements(_JD_JAN_12)},
-        }
-        fill_gaps(days, {"2026-01-12"})  # Jan 5 is a CelesTrak day
-        assert set(days["2026-01-12"]) == {5}
-        assert set(days["2026-01-05"]) == {5, 11}
-
-    def test_no_eligible_dates_is_a_no_op(self):
+    def test_donors_fill_but_are_never_filled_themselves(self):
+        """The archive tail lets the year's first week look back across the
+        boundary, without the archive week itself gaining rows."""
         days = {"2026-01-05": {5: _elements(_JD_JAN_05)}}
-        fill_gaps(days, set())
-        assert days == {"2026-01-05": {5: _elements(_JD_JAN_05)}}
+        donors = {"2025-12-29": {5: _elements(_JD_DEC_29), 11: _elements(_JD_DEC_29)}}
+        fill_gaps(days, donors)
+        assert set(days["2026-01-05"]) == {5, 11}
+        assert days["2026-01-05"][11]["epoch_jd"] == _JD_DEC_29
+        assert set(donors["2025-12-29"]) == {5, 11}  # untouched
+
+    def test_donors_still_respect_the_lookback(self):
+        days = {"2026-02-23": {5: _elements(_JD_FEB_23)}}
+        donors = {"2025-12-29": {11: _elements(_JD_DEC_29)}}  # 56 days earlier
+        fill_gaps(days, donors)
+        assert set(days["2026-02-23"]) == {5}
+
+    def test_no_days_is_a_no_op(self):
+        days: dict = {}
+        fill_gaps(days, {"2025-12-29": {5: _elements(_JD_DEC_29)}})
+        assert days == {}

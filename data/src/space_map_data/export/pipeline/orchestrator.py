@@ -83,10 +83,14 @@ from space_map_data.export.pipeline.zone import (
 from space_map_data.export.position import CHUNK_SIZE, write_chebyshev
 from space_map_data.export.position.chebyshev.coverage import chebyshev_coverage
 from space_map_data.export.position.elements.celestrak_source import (
+    FILL_LOOKBACK_DAYS,
     CelesTrakElements,
     load_all_days,
 )
-from space_map_data.export.position.elements.spacetrack_source import ARCHIVE_YEARS
+from space_map_data.export.position.elements.spacetrack_source import (
+    ARCHIVE_YEARS,
+    load_archive_tail,
+)
 from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.export.position.probes import write_probes
 from space_map_data.export.position.spacecraft_orientation import (
@@ -1022,7 +1026,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     def celestrak_loader() -> Mapping[str, dict[int, CelesTrakElements]]:
         nonlocal _celestrak_days
         if _celestrak_days is None:
-            _celestrak_days = load_all_days(DOWNLOAD_DIR)
+            # The archive tail lets the first weeks of the current year fill
+            # their gaps across the year boundary.
+            _celestrak_days = load_all_days(
+                DOWNLOAD_DIR, load_archive_tail(FILL_LOOKBACK_DAYS)
+            )
         return _celestrak_days
 
     agg = _Aggregators()
