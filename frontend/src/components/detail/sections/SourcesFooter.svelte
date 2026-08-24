@@ -263,7 +263,7 @@
 					title={source.label}
 					class="truncate underline hover:text-foreground">{source.label}</a
 				>
-				{#if source.note}<span class="ms-1 shrink-0 opacity-75">({source.note})</span>{/if}
+				{#if source.note}<span class="text-muted-subtle ms-1 shrink-0">({source.note})</span>{/if}
 			</div>
 		{/each}
 	</div>

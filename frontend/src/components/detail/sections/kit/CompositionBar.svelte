@@ -61,14 +61,14 @@
      around it, and what the trace bucket stands for so it is not a dead end. -->
 {#snippet detail(segment: CompositionEntry)}
 	{#if segment.range}
-		<span class="opacity-70">
+		<span class="text-muted-subtle">
 			{m.structure_share_range(
 				spanFields(percentParts(segment.range[0]), percentParts(segment.range[1]))
 			)}
 		</span>
 	{/if}
 	{#if segment.key === TRACE_KEY}
-		<dl class="mt-1 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 leading-snug opacity-70">
+		<dl class="mt-1 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 leading-snug text-muted-subtle">
 			{#each composition.folded as member (member.key)}
 				<dt>{member.name}</dt>
 				<!-- One significant digit: trace members run down to parts per billion,

@@ -130,7 +130,7 @@
 		<Tooltip.Trigger>
 			{#snippet child({ props })}
 				<span
-					class="text-muted-foreground/80 border-muted-foreground/30 w-fit cursor-help rounded border px-1 text-[0.65rem] uppercase"
+					class="text-muted-subtle border-muted-foreground/30 w-fit cursor-help rounded border px-1 text-[0.65rem] uppercase"
 					{...props}
 				>
 					{label}
@@ -205,7 +205,7 @@
 					class:text-muted-foreground={reading.kind !== 'mean'}
 					style:left="{placed[i]}%"
 				>
-					<span class="opacity-60">{reading.label}</span>
+					<span class="text-muted-subtle">{reading.label}</span>
 					<span>{reading.text}</span>
 				</span>
 			{/each}

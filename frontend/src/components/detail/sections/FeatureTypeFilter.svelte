@@ -95,7 +95,7 @@
 					: 'border-border/60 hover:bg-muted/60 text-muted-foreground'}"
 			>
 				{t.label}
-				<span class="tabular-nums opacity-60">{formatCompactNumber(t.n)}</span>
+				<span class="text-muted-subtle tabular-nums">{formatCompactNumber(t.n)}</span>
 			</button>
 		{/each}
 		{#if hidden > 0 || expanded}

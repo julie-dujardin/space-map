@@ -244,7 +244,7 @@
 			href={ref.wikipedia}
 			target="_blank"
 			rel="noopener"
-			class="hover:text-foreground inline-flex items-center gap-1 align-bottom underline"
+			class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 align-bottom underline"
 			>{name}<ExternalLinkIcon class="size-3 shrink-0" /></a
 		>
 	{:else}
@@ -364,7 +364,7 @@
 		<a
 			href={groupHref(slug, name)}
 			onclick={(ev) => handleGroupClick(ev, slug, name)}
-			class="pointer-events-auto hover:text-foreground inline-flex min-w-0 items-center gap-1 truncate underline"
+			class="text-muted-foreground pointer-events-auto hover:text-foreground inline-flex min-w-0 items-center gap-1 truncate underline"
 			><span class="truncate">{e.name}</span></a
 		>
 	{:else if e.wikipedia}
@@ -372,7 +372,8 @@
 			href={e.wikipedia}
 			target="_blank"
 			rel="noopener"
-			class="pointer-events-auto hover:text-foreground truncate underline">{e.name}</a
+			class="text-muted-foreground pointer-events-auto hover:text-foreground truncate underline"
+			>{e.name}</a
 		>
 	{:else}
 		<span class="truncate">{e.name}</span>

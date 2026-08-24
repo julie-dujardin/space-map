@@ -16,6 +16,7 @@
 		/** Extra classes — e.g. `col-span-2` to span a full grid row. */
 		class?: string;
 	}
+
 	let {
 		href,
 		onclick,
@@ -26,14 +27,21 @@
 		label,
 		class: className
 	}: Props = $props();
+
+	const TILE_CLASS =
+		'border-border/60 bg-muted pointer-events-auto relative block h-20 overflow-hidden rounded-md border';
 </script>
 
-<a
-	{href}
-	{onclick}
-	{title}
-	class="border-border/60 bg-muted pointer-events-auto relative block h-20 overflow-hidden rounded-md border {className}"
->
+<!-- A tile with nowhere to go stays a tile: the name and the hero are worth
+     showing, but an <a> without an href reads as a link to everything that
+     inspects it and clicks as nothing. -->
+{#if href}
+	<a {href} {onclick} {title} class="{TILE_CLASS} {className}">{@render tile()}</a>
+{:else}
+	<div {title} class="{TILE_CLASS} {className}">{@render tile()}</div>
+{/if}
+
+{#snippet tile()}
 	{#if background}
 		<div class="absolute inset-0">{@render background()}</div>
 	{:else}
@@ -54,4 +62,4 @@
 		<span class="truncate text-sm font-semibold text-white">{display}</span>
 		<span class="truncate text-[10px] uppercase text-white/70">{label}</span>
 	</div>
-</a>
+{/snippet}

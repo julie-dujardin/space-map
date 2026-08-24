@@ -210,7 +210,7 @@
 			class="text-muted-foreground flex shrink-0 flex-col justify-between text-end text-[10px] leading-none"
 		>
 			<span>{tofShort}</span>
-			<span class="text-muted-foreground/70">{m.travel_tof_axis()}</span>
+			<span class="text-muted-subtle">{m.travel_tof_axis()}</span>
 			<span>{tofLong}</span>
 		</div>
 
@@ -301,7 +301,7 @@
 	<figcaption class="text-muted-foreground flex flex-col gap-1 text-[10px]">
 		<div class="flex items-baseline justify-between gap-2 tabular-nums">
 			<span class="truncate">{departFrom}</span>
-			<span class="text-muted-foreground/70 shrink-0">{m.travel_departure_axis()}</span>
+			<span class="text-muted-subtle shrink-0">{m.travel_departure_axis()}</span>
 			<span class="truncate">{departTo}</span>
 		</div>
 		<div class="flex items-center justify-end gap-1">

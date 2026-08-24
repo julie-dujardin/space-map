@@ -70,7 +70,7 @@
 						{#if reading}
 							<div class="text-muted-foreground text-xs tabular-nums">{reading}</div>
 						{:else}
-							<div class="text-muted-foreground/70 text-xs">{m.unknown()}</div>
+							<div class="text-muted-subtle text-xs">{m.unknown()}</div>
 						{/if}
 					</div>
 				</a>

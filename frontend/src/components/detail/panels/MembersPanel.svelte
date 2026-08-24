@@ -17,7 +17,7 @@
 	let { isGroupMode, groupDetail, body, members, lineup }: Props = $props();
 </script>
 
-<div class="flex flex-col gap-3">
+<div class="flex flex-col gap-4">
 	{#if isGroupMode && groupDetail?.global}
 		<PaginatedMemberList
 			source={{ kind: 'group', slug: groupDetail.global.slug }}

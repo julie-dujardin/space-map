@@ -257,7 +257,7 @@
 					<span class="text-muted-foreground w-full truncate text-xs tabular-nums">
 						{formatJulianDate(entry.startJd)}
 					</span>
-					<span class="text-muted-foreground/70 w-full truncate text-[11px] tabular-nums">
+					<span class="text-muted-subtle w-full truncate text-[11px] tabular-nums">
 						{entryDetail(entry)}
 					</span>
 				</button>
@@ -320,7 +320,7 @@
 			</button>
 			{#each ticks as tick (tick.jd)}
 				<span
-					class="text-muted-foreground/70 absolute top-4 -translate-x-1/2 text-[10px] whitespace-nowrap tabular-nums"
+					class="text-muted-subtle absolute top-4 -translate-x-1/2 text-[10px] whitespace-nowrap tabular-nums"
 					style="inset-inline-start: {fraction(tick.jd) * 100}%"
 				>
 					{tickLabel(tick)}

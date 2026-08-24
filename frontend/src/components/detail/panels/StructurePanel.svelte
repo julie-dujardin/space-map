@@ -19,7 +19,7 @@
 	);
 </script>
 
-<div class="flex flex-col gap-5">
+<div class="flex flex-col gap-4">
 	<!-- Above both sections rather than inside either: mass belongs to the
 	     interior, pressure to the atmosphere, and the third slot to whichever
 	     of the two this body has anything to say about. -->

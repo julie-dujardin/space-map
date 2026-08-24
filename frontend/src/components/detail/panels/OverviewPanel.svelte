@@ -138,12 +138,20 @@
 		<Button variant="secondary" size="sm" onclick={load.retry}>{m.retry()}</Button>
 	</div>
 {:else if load.loading}
-	<div class="flex flex-col gap-4">
-		<Skeleton class="w-full h-20" />
-		<Skeleton class="w-full h-32" />
+	<!-- Shaped like what lands: the stat-card row, the description, one
+	     section. A skeleton whose blocks sit elsewhere reads as a second
+	     reflow when the real content replaces it. -->
+	<div class="flex flex-col gap-4" aria-hidden="true">
+		<div class="grid auto-cols-fr grid-flow-col gap-2">
+			<Skeleton class="h-[60px]" />
+			<Skeleton class="h-[60px]" />
+			<Skeleton class="h-[60px]" />
+		</div>
+		<Skeleton class="h-16 w-full" />
+		<Skeleton class="h-32 w-full" />
 	</div>
 {:else}
-	<div class="flex flex-col gap-5">
+	<div class="flex flex-col gap-4">
 		{#if isGroupMode && groupDetail?.global}
 			<GroupStatCards global={groupDetail.global} />
 		{:else if feature}

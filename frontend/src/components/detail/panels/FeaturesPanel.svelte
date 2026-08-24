@@ -16,7 +16,7 @@
 	let { body, surface, appState }: Props = $props();
 </script>
 
-<div class="flex flex-col gap-3">
+<div class="flex flex-col gap-4">
 	{#if surface.quadText}
 		<ObjectDescription
 			extract={surface.quadText.extract}

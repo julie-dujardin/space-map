@@ -27,6 +27,7 @@
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
+	--color-muted-subtle: var(--muted-subtle);
 	--color-muted: var(--muted);
 	--color-secondary-foreground: var(--secondary-foreground);
 	--color-secondary: var(--secondary);
@@ -59,7 +60,11 @@
 	--secondary: oklch(0.97 0 0);
 	--secondary-foreground: oklch(0.205 0 0);
 	--muted: oklch(0.97 0 0);
-	--muted-foreground: oklch(0.556 0 0);
+	/* Two tiers of secondary text, both held above 4.5:1 on their own surface.
+	   Light has no room under the old 0.556 (4.74:1), so the base moves up and
+	   the dimmer tier takes the value the base used to have. */
+	--muted-foreground: oklch(0.5 0 0);
+	--muted-subtle: oklch(0.556 0 0);
 	--accent: oklch(0.97 0 0);
 	--accent-foreground: oklch(0.205 0 0);
 	--destructive: oklch(0.577 0.245 27.325);
@@ -243,6 +248,7 @@ body {
 	--secondary-foreground: oklch(0.985 0 0);
 	--muted: oklch(0.269 0 0);
 	--muted-foreground: oklch(0.708 0 0);
+	--muted-subtle: oklch(0.61 0 0);
 	--accent: oklch(0.269 0 0);
 	--accent-foreground: oklch(0.985 0 0);
 	--destructive: oklch(0.704 0.191 22.216);

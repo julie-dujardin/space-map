@@ -41,7 +41,11 @@
 </script>
 
 {#if href}
-	<a {href} onclick={focusClick(focusObject, id, display)} class="hover:text-foreground underline">
+	<a
+		{href}
+		onclick={focusClick(focusObject, id, display)}
+		class="text-muted-foreground hover:text-foreground underline"
+	>
 		{display}
 	</a>
 {:else}
