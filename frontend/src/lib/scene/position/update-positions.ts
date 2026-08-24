@@ -550,10 +550,10 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		}
 		if (body.orientation && (bo.mesh || bo.model)) {
 			if (bo.mesh) applyOrientation(bo.mesh, body.orientation, jd, body.nutPrec);
-			// Natural-body shape model shares the sphere's IAU spin. It's a
-			// modelScene child (identity parent → world==local), so only the
-			// quaternion is needed; the overlay seats its position. The label
-			// anchor co-rotates so surface features stay pinned to the model.
+			// Natural-body shape model shares the sphere's IAU spin. Neither its
+			// mount nor the overlay carries rotation, so writing the local
+			// quaternion is enough. The label anchor co-rotates so surface
+			// features stay pinned to the model.
 			if (bo.model) applyOrientation(bo.model, body.orientation, jd, body.nutPrec);
 			if (bo.nomenclatureAnchor)
 				applyOrientation(bo.nomenclatureAnchor, body.orientation, jd, body.nutPrec);

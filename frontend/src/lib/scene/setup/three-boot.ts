@@ -98,9 +98,11 @@ export function bootThree(
 	setReversedDepth(renderer.capabilities.reversedDepthBuffer);
 	renderer.setPixelRatio(cappedPixelRatio());
 	renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
-	// Shadow maps are enabled globally for the model-overlay scene's directional
-	// sun (see renderer.ts). Main-scene lights keep `castShadow = false`, so the
-	// cost is paid only when a focused body has a 3D model attached.
+	// Shadow maps serve the focused 3D model only: the overlay scene's
+	// directional sun for spacecraft, or the main-scene shadow light while a
+	// natural-body model is mounted (toggled with a model-tight frustum in
+	// `SceneRenderer.updateFocusedMountedModel`). The cost is paid only when a
+	// focused body has a 3D model attached.
 	renderer.shadowMap.enabled = true;
 	renderer.shadowMap.type = PCFSoftShadowMap;
 	// ACES rolls the Sun's HDR output to saturated white. LDR overlays (trails,
@@ -120,6 +122,9 @@ export function bootThree(
 	scene.add(ambientLight);
 	const shadowLight = new DirectionalLight(0xffffff, 0);
 	shadowLight.castShadow = false;
+	// 4096² keeps a grazing-Sun shadow crisp across a model-tight frustum.
+	shadowLight.shadow.mapSize.set(4096, 4096);
+	shadowLight.shadow.bias = -0.0001;
 	scene.add(shadowLight);
 	scene.add(shadowLight.target);
 

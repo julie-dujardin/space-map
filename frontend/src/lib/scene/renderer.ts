@@ -160,6 +160,15 @@ const SUN_PROXY_FAR_FRACTION = 0.9;
 /** Scratch for the refraction lift in {@link SceneRenderer.updateSunProxy}. */
 const _sunLiftDir = new Vector3();
 
+/** Focused mounted-model shadow frustum, in model units (× modelUnitScene per
+ *  frame). Light at 10 with near 4 / far 28 reaches well past the silhouette
+ *  so a grazing-Sun shadow streaking along the light axis isn't clipped. */
+const MODEL_SHADOW_DIST = 10;
+const MODEL_SHADOW_EXTENT = 4;
+const MODEL_SHADOW_NEAR = 4;
+const MODEL_SHADOW_FAR = 28;
+const MODEL_SHADOW_NORMAL_BIAS = 0.02;
+
 export class SceneRenderer {
 	private renderer: WebGLRenderer;
 	private composer: EffectComposer;
@@ -205,6 +214,10 @@ export class SceneRenderer {
 	private modelScene!: Scene;
 	private modelCamera!: PerspectiveCamera;
 	private modelLight!: DirectionalLight;
+	/** A spacecraft model is resident, so the overlay pass runs and natural-body
+	 *  models join it as secondaries (probe/target depth must resolve in one
+	 *  pass). Otherwise naturals render mounted in the main scene. */
+	private overlayActive = false;
 	/** Contact-shadow receiver for landed probes — an invisible `ShadowMaterial`
 	 *  plane at the surface, so the rover casts a soft shadow onto the terrain. */
 	private modelShadowPlane: Mesh | null = null;
@@ -1017,6 +1030,9 @@ export class SceneRenderer {
 			getSettings().realisticLighting,
 			this.sunIntensityScale
 		);
+		// After updateSunShadowLight: may re-seat the shadow light around a
+		// focused mounted model with a model-tight frustum.
+		this.updateModelMounts();
 
 		// One point-cloud upload per frame to spread GPU cost. Auto-promotion
 		// now happens push-style at chunk-arrival time (PromotionRegistry
@@ -1181,12 +1197,98 @@ export class SceneRenderer {
 	}
 
 	/**
+	 * Route resident models between the main scene and the overlay, and run the
+	 * per-frame upkeep of a focused mounted model. Natural-body models render
+	 * mounted in the main scene — reversed-Z holds up at asteroid scale, and
+	 * single closed scan meshes don't carry the coplanar geometry that z-fights
+	 * on spacecraft GLBs. While a spacecraft model is resident they re-parent
+	 * into the overlay instead, so probe/target depth resolves in one pass.
+	 */
+	private updateModelMounts(): void {
+		let overlayActive = false;
+		for (const bo of this.bodyObjects.values()) {
+			if (bo.model && isModelBearing(bo.body)) {
+				overlayActive = true;
+				break;
+			}
+		}
+		this.overlayActive = overlayActive;
+		for (const bo of this.bodyObjects.values()) {
+			const root = bo.model;
+			const mount = bo.modelRoot;
+			if (!root || !mount) continue;
+			if (overlayActive) {
+				if (root.parent !== this.modelScene) this.modelScene.add(root);
+			} else if (root.parent !== mount) {
+				// Back from an overlay episode: restore the fit normalisation the
+				// secondary-model pass overwrote.
+				mount.add(root);
+				const fit = root.userData as { fitScale?: number; centerOffset?: Vector3 };
+				root.scale.setScalar(fit.fitScale ?? 1);
+				root.position.set(0, 0, 0);
+				if (fit.centerOffset) root.position.addScaledVector(fit.centerOffset, -1);
+			}
+		}
+		if (overlayActive) {
+			this.shadowLight.castShadow = false;
+			return;
+		}
+		this.updateFocusedMountedModel();
+	}
+
+	/**
+	 * Per-frame upkeep of a focused mounted model: mount scale and a
+	 * model-tight self-shadow frustum on the shared subsystem sun light.
+	 * Direct lighting and eclipse need no special handling — the model shares
+	 * the scene lights and per-fragment eclipse factor with every other body.
+	 */
+	private updateFocusedMountedModel(): void {
+		const bo = this.overlayModelBo();
+		const mount = bo?.model && bo.model.parent === bo.modelRoot ? bo.modelRoot : null;
+		if (!bo || !mount) {
+			this.shadowLight.castShadow = false;
+			return;
+		}
+		// radiusScene can move after load (true_scale); keep the mount's
+		// model-unit → scene-unit scale synced.
+		const s = modelUnitScene(bo);
+		mount.scale.setScalar(s);
+
+		// Self-shadows reuse the subsystem sun light with its frustum shrunk to
+		// a tight box around the model. The light is re-seated MODEL_SHADOW_DIST·s
+		// from the model: lighting only reads the direction, but shadow-depth
+		// float32 math would cancel catastrophically at scene-scale distance.
+		const castShadow = this.shadowLight.intensity > 0;
+		this.shadowLight.castShadow = castShadow;
+		if (!castShadow) return;
+		const sunBody = this.bodyObjects.get(SUN_ID)?.body;
+		if (!sunBody) return;
+		const [sx, sy, sz] = sunBody.position;
+		const [bx, by, bz] = bo.body.position;
+		this._tmpSun.set(sx - bx, sy - by, sz - bz).normalize();
+		this.shadowLight.position
+			.copy(bo.group.position)
+			.addScaledVector(this._tmpSun, MODEL_SHADOW_DIST * s);
+		this.shadowLight.target.position.copy(bo.group.position);
+		const cam = this.shadowLight.shadow.camera;
+		cam.left = cam.bottom = -MODEL_SHADOW_EXTENT * s;
+		cam.right = cam.top = MODEL_SHADOW_EXTENT * s;
+		cam.near = MODEL_SHADOW_NEAR * s;
+		cam.far = MODEL_SHADOW_FAR * s;
+		cam.updateProjectionMatrix();
+		this.shadowLight.shadow.normalBias = MODEL_SHADOW_NORMAL_BIAS * s;
+	}
+
+	/**
 	 * Composite the focused body's 3D model on top of the main render. The model
 	 * lives in `modelScene` at unit scale; the overlay camera mirrors the main
 	 * camera's orientation at a distance that keeps the model's screen footprint
 	 * matching what the body sphere occupied, with tight near/far for depth.
+	 * Skipped while no spacecraft model is resident — natural-body models then
+	 * render mounted in the main scene (see `updateModelMounts`).
 	 */
 	private renderModelOverlay(): void {
+		if (!this.overlayActive) return;
 		const bo = this.overlayModelBo();
 		if (!bo?.model) return;
 
@@ -1695,6 +1797,9 @@ export class SceneRenderer {
 	 *  overlay space with `modelCamera` (refreshed every rendered frame), which
 	 *  mirrors the main camera exactly. */
 	private pickFocusedModel(ndcX: number, ndcY: number): PositionedBody | null {
+		// Overlay idle → mounted models are main-scene meshes; the pointer's own
+		// raycast picks them.
+		if (!this.overlayActive) return null;
 		const bo = this.overlayModelBo();
 		if (!bo?.model) return null;
 		this._pickNdc.set(ndcX, ndcY);
@@ -1981,6 +2086,9 @@ export class SceneRenderer {
 		this.controls.dispose();
 		this.haloDebug.dispose();
 		this.travelPath.dispose();
+		// Unload resident models: the module-level mount registry must not carry
+		// disposed meshes into the next renderer lifetime.
+		for (const bo of this.bodyObjects.values()) if (bo.model) unloadBodyModel(bo);
 		// Worker pool + cloud buffers — the biggest per-navigation leak.
 		this.pointClouds.dispose();
 		// renderer.dispose() frees only its own caches, not our geometries/

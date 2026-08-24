@@ -123,15 +123,15 @@ export async function attachNomenclatureLabels(
 	const radial = new Float32Array(n);
 	let parent: Object3D;
 	if (model) {
-		// Shape-model body: the sphere is hidden, so sample the overlay mesh.
+		// Shape-model body: the sphere is hidden, so sample the model mesh.
 		const surface = await sampleModelSurface(model, renderable);
 		if (bo.nomenclatureLabels || bo.model !== model) return; // unloaded mid-sample
 		const s = modelUnitScene(bo);
 		for (let i = 0; i < n; i++) radial[i] = surface.radii[i] * s;
 		bo.nomenclatureNormals = surface.normals;
 		const anchor = new Group();
-		// The overlay recentres the model by a constant -centerOffset; mirror it
-		// (scaled) so labels track the rendered surface, not the raw COM frame.
+		// The model is recentred by a constant -centerOffset; mirror it (scaled)
+		// so labels track the rendered surface, not the raw COM frame.
 		const centerOffset = model.userData.centerOffset as Vector3 | undefined;
 		if (centerOffset) anchor.position.copy(centerOffset).multiplyScalar(-s);
 		anchor.quaternion.copy(model.quaternion); // hold attitude until the next frame's pass

@@ -27,6 +27,7 @@ import { setLabelNote } from '../../label/factory';
 import { applyShapeModelMaterial, makeShapeModelMaterial, setShapeModelMap } from './model-texture';
 import { shapeModelSkipReason } from './shape-model-policy';
 import { applyBodyOrientation } from './orientation-apply';
+import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
 
 /** Types whose placeholder sphere is meaningless and hidden the moment a load
  *  starts, before the detail fetch confirms `model_name`. Planets and moons
@@ -94,19 +95,58 @@ export function shapeModelCredit(meta: ModelBundleMeta): {
 }
 
 /**
- * Scene-units length of one overlay-model unit. Single source of truth for
- * mirroring the overlay in main-scene space: the overlay camera, label
- * occlusion, and surface-feature placement all derive from it.
+ * Scene-units length of one model unit (models are normalised to unit radius
+ * at load). Single source of truth for the mount's scale, the overlay camera,
+ * label occlusion, and surface-feature placement.
  */
 export function modelUnitScene(bo: BodyObjects): number {
 	return bo.radiusScene;
 }
 
+/** Mounts of natural-body models currently attached in the main scene (1–2
+ *  alive: the focused body's, or a focused feature's host's). Pointer raycasts
+ *  hit these recursively; `userData.pickBody` resolves hits to the body. */
+export const attachedModelRoots = new Set<Object3D>();
+
 /**
- * Fetch and attach the body's 3D model into the overlay scene at unit-radius
- * scale, hiding the placeholder sphere. No-op when the body has no
- * `model_name`. Concurrent calls share one in-flight load, since callers chain
- * settle-time work (e.g. nomenclature reading `bo.model`) off its resolution.
+ * Mount the normalised model in the main scene: a wrapper scaled to
+ * `modelUnitScene` under the body's group, so the model rides the body's
+ * per-frame position while all unit-scale conventions (occluder spheres,
+ * recentring offsets, surface casts) stay valid inside it.
+ */
+function mountModel(bo: BodyObjects, root: Object3D): void {
+	const wrapper = new Group();
+	wrapper.scale.setScalar(modelUnitScene(bo));
+	wrapper.userData.pickBody = bo.body;
+	wrapper.add(root);
+	bo.group.add(wrapper);
+	bo.modelRoot = wrapper;
+	bo.model = root;
+	attachedModelRoots.add(wrapper);
+}
+
+/** Attach the analytical eclipse factor to every standard material under
+ *  `root`, sharing the body's self-position uniform so the per-frame eclipse
+ *  pass drives the model exactly like it drives the sphere. */
+function attachModelEclipse(bo: BodyObjects, root: Object3D): void {
+	const seen = new Set<MeshStandardMaterial>();
+	root.traverse((obj) => {
+		if (!(obj instanceof Mesh)) return;
+		const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+		for (const m of mats) {
+			if (!(m instanceof MeshStandardMaterial) || seen.has(m)) continue;
+			seen.add(m);
+			bo.eclipseShadow = attachEclipseShadowToBody(m, bo.eclipseShadow ?? undefined);
+		}
+	});
+}
+
+/**
+ * Fetch and attach the body's 3D model, hiding the placeholder sphere: natural
+ * bodies mount in the main scene, spacecraft in the unit-radius overlay scene.
+ * No-op when the body has no `model_name`. Concurrent calls share one
+ * in-flight load, since callers chain settle-time work (e.g. nomenclature
+ * reading `bo.model`) off its resolution.
  */
 export function loadBodyModel(
 	bo: BodyObjects,
@@ -115,12 +155,10 @@ export function loadBodyModel(
 ): Promise<void> {
 	if (bo.model) return Promise.resolve();
 	if (bo.modelLoadPromise) return bo.modelLoadPromise;
-	// Shape-model bundles share the overlay path too — extreme zoom corrupts
-	// in-scene meshes, so both live at unit-radius.
 	const p = (
 		isModelBearing(bo.body)
 			? loadSpacecraftModel(bo, modelScene, ctx)
-			: loadNaturalBodyModel(bo, modelScene, ctx)
+			: loadNaturalBodyModel(bo, ctx)
 	).finally(() => {
 		if (bo.modelLoadPromise === p) bo.modelLoadPromise = undefined;
 	});
@@ -205,16 +243,12 @@ async function loadSpacecraftModel(
 }
 
 /**
- * Load a natural body's shape-model mesh into the unit-radius overlay scene,
- * hiding the sphere. Normalised like a spacecraft model so `renderModelOverlay`
- * reproduces its on-screen size, oriented by the same IAU rotation the sphere
- * gets. No-op with no `model_name` or a non-shape-model bundle.
+ * Load a natural body's shape-model mesh, hiding the sphere. Normalised to
+ * unit radius and mounted in the main scene (the mount reproduces true size
+ * via radiusScene), oriented by the same IAU rotation the sphere gets. No-op
+ * with no `model_name` or a non-shape-model bundle.
  */
-async function loadNaturalBodyModel(
-	bo: BodyObjects,
-	modelScene: Scene,
-	ctx?: ContextManager
-): Promise<void> {
+async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Promise<void> {
 	// Debug: shape mesh off → keep the textured (triaxial) sphere, skip the mesh.
 	if (!getSettings().showShapeMesh) return;
 	const epoch = bo.modelLoadEpoch ?? 0;
@@ -256,7 +290,7 @@ async function loadNaturalBodyModel(
 			return;
 		}
 		const root = gltf.scene;
-		fitToUnitRadius(root); // normalise to radius 1; overlay reproduces true size via radiusScene
+		fitToUnitRadius(root); // normalise to radius 1; the mount reproduces true size via radiusScene
 		applyShapeModelMaterial(
 			root,
 			makeShapeModelMaterial(bo.body.data.color ?? bodyMeshColor(bo.body.data))
@@ -267,12 +301,10 @@ async function loadNaturalBodyModel(
 		if (sphereMap)
 			setShapeModelMap(root, sphereMap, bodyMeshColor(bo.body.data), bo.body.data.color);
 		enableShadows(root);
-		modelScene.add(root);
-		bo.model = root;
-		bo.modelName = slug;
-		if (bo.mesh) bo.mesh.visible = false;
-		// Size the overlay against the real half-extent, matching radiusScene's
-		// role: model radius 1 ↔ max_extent_km/2.
+		attachModelEclipse(bo, root);
+		// Size the mount against the real half-extent, matching radiusScene's
+		// role: model radius 1 ↔ max_extent_km/2. Must land before mountModel so
+		// the wrapper scale is right on frame 1.
 		if (meta.true_scale) {
 			bo.radiusScene = kmToScene(meta.true_scale.max_extent_km / 2);
 			// Backfill radiusKm from the model's calibrated scale when the chunk
@@ -284,6 +316,9 @@ async function loadNaturalBodyModel(
 				setLabelNote(bo, false);
 			}
 		}
+		mountModel(bo, root);
+		bo.modelName = slug;
+		if (bo.mesh) bo.mesh.visible = false;
 		const credit = shapeModelCredit(meta);
 		const shape = detail.global?.model_source;
 		ctx?.credits.registerModel({
@@ -320,6 +355,11 @@ export function unloadBodyModel(bo: BodyObjects): void {
 	if (!root) {
 		if (bo.mesh && restoreSphere) bo.mesh.visible = true;
 		return;
+	}
+	if (bo.modelRoot) {
+		attachedModelRoots.delete(bo.modelRoot);
+		bo.modelRoot.removeFromParent();
+		bo.modelRoot = null;
 	}
 	root.parent?.remove(root);
 	disposeGltf(root);
@@ -361,9 +401,8 @@ function withBaseFrame(scene: Object3D, q: Quaternion | null): Object3D {
 
 /**
  * Uniformly scale + translate `root` so its bbox max-dim becomes 2 (inscribed
- * in a unit-radius sphere), bbox center at origin. Run before adding to the
- * overlay scene, whose camera then orbits a unit-radius target regardless of
- * the focused body's tiny scene-space radius.
+ * in a unit-radius sphere), bbox center at origin. A mount's or the overlay
+ * camera's single scale factor then makes it true-sized.
  *
  * Records `centerOffset`/`feetOffset` in `userData` — the overlay seats a
  * landed probe on its feet, not bbox-centred. `occluderSpheres` feeds the
@@ -462,15 +501,19 @@ const MODEL_MIN_RADIUS = 0.05;
 const _castBodyDir = new Vector3();
 const _castDir = new Vector3();
 const _castOrigin = new Vector3();
+const _castScale = new Vector3();
 const _castInvQuat = new Quaternion();
 const _caster = new Raycaster();
 
 /**
  * Surface distance (model units, from local origin) along a body-fixed lat/lon
- * direction, by ray-casting the overlay mesh from outside — outermost hit, so
- * concave terrain can't swallow the result. Direction rotates into the model's
- * current attitude (hit distances are rotation-invariant). `outNormal`, if
- * given, receives the hit's body-fixed surface normal. Null on a miss (scan holes).
+ * direction, by ray-casting the mesh from outside — outermost hit, so concave
+ * terrain can't swallow the result. Direction rotates into the model's current
+ * attitude (hit distances are rotation-invariant). The cast runs in world
+ * space: origin and hit distances go through the parent mount's uniform scale
+ * (1 for overlay-scene models), while directions pass through untouched — the
+ * mount carries no rotation. `outNormal`, if given, receives the hit's
+ * body-fixed surface normal. Null on a miss (scan holes).
  */
 export function castModelRadius(
 	model: Object3D,
@@ -478,10 +521,16 @@ export function castModelRadius(
 	lonRad: number,
 	outNormal?: Vector3
 ): number | null {
+	const mount = model.parent;
+	if (!mount) return null;
+	mount.updateMatrixWorld(true);
+	const s = mount.getWorldScale(_castScale).x;
+	if (!(s > 0)) return null;
 	const cosLat = Math.cos(latRad);
 	_castBodyDir.set(cosLat * Math.cos(lonRad), Math.sin(latRad), -cosLat * Math.sin(lonRad));
 	_castDir.copy(_castBodyDir).applyQuaternion(model.quaternion);
 	_castOrigin.copy(model.position).addScaledVector(_castDir, MODEL_CAST_DIST);
+	mount.localToWorld(_castOrigin);
 	_caster.set(_castOrigin, _castDir.negate());
 	const hit = _caster.intersectObject(model, true)[0];
 	if (!hit) return null;
@@ -491,7 +540,7 @@ export function castModelRadius(
 			.transformDirection(hit.object.matrixWorld)
 			.applyQuaternion(_castInvQuat.copy(model.quaternion).invert());
 	}
-	return Math.max(MODEL_CAST_DIST - hit.distance, MODEL_MIN_RADIUS);
+	return Math.max(MODEL_CAST_DIST - hit.distance / s, MODEL_MIN_RADIUS);
 }
 
 function enableShadows(root: Object3D): void {

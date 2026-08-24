@@ -1,5 +1,6 @@
 import { Mesh, MeshStandardMaterial, type Object3D, SRGBColorSpace, type Texture } from 'three';
 import { tintBaseColor } from './texture-tint';
+import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
 
 /**
  * Equirectangular `map` sampling for shape-model meshes, which ship no texture
@@ -56,6 +57,9 @@ export function makeShapeModelMaterial(color: string | number): MeshStandardMate
 				#endif`
 			);
 	};
+	// Named so a chained modifier (eclipse, in the main scene) can't collide
+	// with a sphere material ending in the same hook.
+	tagShaderModifier(material, 'shapeModel');
 	return material;
 }
 

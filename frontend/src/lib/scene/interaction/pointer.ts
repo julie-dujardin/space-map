@@ -13,6 +13,7 @@ import type { FocusState } from '$lib/scene/animation/focus';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
+import { attachedModelRoots } from '$lib/scene/objects/body/model';
 import { pickMoonDot } from './picking';
 import type { GpuPickPass } from './gpu-pick';
 import type { PickRegistry } from './pick-registry';
@@ -94,9 +95,13 @@ export class PointerInteraction {
 
 		this.raycaster.setFromCamera(this.pointer, this.camera);
 
-		// Mesh under the cursor — the planet you clicked. Only a fallback: a
-		// point-cloud body always wins so small dots stay clickable (esp. touch).
-		const meshBody = this.resolveMeshHit(this.raycaster.intersectObjects(this.clickables))?.body;
+		// Mesh under the cursor — a planet, or a mounted natural-body model (the
+		// hidden sphere covers only part of an irregular silhouette, so the model
+		// must be hit-testable itself). Only a fallback: a point-cloud body
+		// always wins so small dots stay clickable (esp. touch).
+		const meshBody = this.resolveMeshHit(
+			this.raycaster.intersectObjects<Object3D>([...this.clickables, ...attachedModelRoots])
+		)?.body;
 
 		// Moon dots (CPU — few hundred) and asteroid/spacecraft dots (GPU pick
 		// pass). The nearer-to-cursor of the two wins, depth breaking ties, so a
@@ -170,29 +175,39 @@ export class PointerInteraction {
 	}
 
 	/** First raycast hit that resolves to a body. Walks parents so child meshes
-	 *  (cloud shells, nomenclature labels) resolve to their planet. */
+	 *  (cloud shells, nomenclature labels, model sub-meshes) resolve to their
+	 *  body — model mounts carry theirs in `userData.pickBody`. */
 	private resolveMeshHit(
 		hits: Intersection[]
 	): { body: PositionedBody; distance: number } | undefined {
 		for (const hit of hits) {
 			let obj: Object3D | null = hit.object;
-			while (obj && !this.meshToBody.has(obj as Mesh)) obj = obj.parent;
-			const body = obj ? this.meshToBody.get(obj as Mesh) : undefined;
-			if (body) return { body, distance: hit.distance };
+			while (obj) {
+				const mapped = this.meshToBody.get(obj as Mesh) ?? obj.userData.pickBody;
+				if (mapped) return { body: mapped as PositionedBody, distance: hit.distance };
+				obj = obj.parent;
+			}
 		}
 		return undefined;
 	}
 
-	/** A dot is visible unless a solid mesh — or the focused body's overlay
-	 *  model, which composites over the main scene — sits in front of it on its
-	 *  own ray. Non-recursive: only the depth-writing surface spheres occlude,
-	 *  not their transparent cloud/atmosphere shells. */
+	/** A dot is visible unless a solid mesh, a mounted natural-body model, or
+	 *  the focused body's overlay model (which composites over the main scene)
+	 *  sits in front of it on its own ray. Non-recursive over clickables: only
+	 *  the depth-writing surface spheres occlude, not their transparent
+	 *  cloud/atmosphere shells. */
 	private isDotVisible = (ndcX: number, ndcY: number, worldDist: number): boolean => {
 		if (this.modelPick(ndcX, ndcY)) return false;
-		if (this.clickables.length === 0) return true;
+		if (this.clickables.length === 0 && attachedModelRoots.size === 0) return true;
 		this._tmpPointer.set(ndcX, ndcY);
 		this.raycaster.setFromCamera(this._tmpPointer, this.camera);
 		const hits = this.raycaster.intersectObjects(this.clickables, false);
-		return hits.length === 0 || hits[0].distance >= worldDist * 0.999;
+		if (attachedModelRoots.size > 0) {
+			hits.push(...this.raycaster.intersectObjects<Object3D>([...attachedModelRoots], true));
+		}
+		if (hits.length === 0) return true;
+		let nearest = Infinity;
+		for (const h of hits) if (h.distance < nearest) nearest = h.distance;
+		return nearest >= worldDist * 0.999;
 	};
 }

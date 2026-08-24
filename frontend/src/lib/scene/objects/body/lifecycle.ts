@@ -276,8 +276,8 @@ export function downgradeBodyMesh(
 	meshToBody: Map<Mesh, PositionedBody>
 ): void {
 	bo.focusUpgraded = false;
-	// 3D model lives in the overlay scene — dispose first to release its
-	// textures + geometry before the sphere teardown below.
+	// Dispose the 3D model first to release its textures + geometry before the
+	// sphere teardown below.
 	unloadBodyModel(bo);
 	const mesh = bo.mesh;
 	if (mesh) {

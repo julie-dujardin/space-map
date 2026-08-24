@@ -150,6 +150,10 @@ export interface BodyObjects {
 	labelMaximized?: boolean;
 	/** Loaded GLTF root for spacecraft 3D models; null when not focused or no model bundle. */
 	model: Object3D | null;
+	/** Main-scene mount for a natural body's `model`: a wrapper under `group`
+	 *  scaled to `modelUnitScene`, so unit-scale model conventions hold inside
+	 *  it. Spacecraft models render in the overlay scene and have none. */
+	modelRoot?: Group | null;
 	/** Slug of the currently loaded model bundle. */
 	modelName?: string;
 	/** In-flight model load, shared by concurrent loadBodyModel calls so every
