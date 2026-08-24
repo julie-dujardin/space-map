@@ -3,6 +3,7 @@
   you are left with on arrival, and the steps in order.
 -->
 <script lang="ts">
+	import Link from '../sections/kit/Link.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import RocketIcon from '@lucide/svelte/icons/rocket';
 	import ArrowUpIcon from '@lucide/svelte/icons/arrow-up';
@@ -538,12 +539,8 @@
 			<span>{m.travel_spec_sources()}</span>
 			{#each sources as source (source.url)}
 				<div class="flex">
-					<a
-						href={source.url}
-						target="_blank"
-						rel="noopener"
-						title={source.title}
-						class="hover:text-foreground truncate underline">{source.title}</a
+					<Link href={source.url} external icon={false} title={source.title} class="truncate"
+						>{source.title}</Link
 					>
 				</div>
 			{/each}

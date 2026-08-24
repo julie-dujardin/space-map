@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
-	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+	import Link from './Link.svelte';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -98,21 +98,15 @@
 				{#snippet child({ props })}
 					<span class="min-w-0 max-w-full" use:detectTruncation={entity.name} {...props}>
 						{#if entity.primary_id && appState}
-							<a
+							<Link
 								href={entityHref(entity)}
 								onclick={(e) => handleEntityClick(e, entity)}
-								class="pointer-events-auto underline hover:text-foreground inline-flex items-center gap-1 max-w-full align-bottom"
-								><span class="truncate">{display}</span></a
+								class="inline-flex max-w-full items-center gap-1 align-bottom"
+								><span class="truncate">{display}</span></Link
 							>
 						{:else if entity.wikipedia}
-							<a
-								href={entity.wikipedia}
-								target="_blank"
-								rel="noopener"
-								class="pointer-events-auto underline hover:text-foreground inline-flex items-center gap-1 max-w-full align-bottom"
-								><span class="truncate">{display}</span><ExternalLinkIcon
-									class="size-3 shrink-0"
-								/></a
+							<Link href={entity.wikipedia} external class="max-w-full align-bottom"
+								><span class="truncate">{display}</span></Link
 							>
 						{:else}
 							<span class="truncate block">{display}</span>

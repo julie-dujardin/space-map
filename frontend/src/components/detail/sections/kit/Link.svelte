@@ -3,8 +3,11 @@
 	 *  source. Underlined, so it is a link even where colour does not carry.
 	 *  Quiet: the link is chrome around what you are reading — "see all", a
 	 *  breadcrumb. Colour and position carry it; an underline would compete
-	 *  with the content. */
-	export type LinkVariant = 'body' | 'quiet';
+	 *  with the content.
+	 *  Heading: the link IS the heading. It keeps the heading's own colour and
+	 *  weight — muting it would flatten the hierarchy the heading exists to
+	 *  make — and earns its underline on hover. */
+	export type LinkVariant = 'body' | 'quiet' | 'heading';
 </script>
 
 <script lang="ts">
@@ -52,10 +55,11 @@
 	// pointer-events-auto because parts of the drawer sit over a canvas that
 	// takes the pointer; rounded-xs so the focus ring follows the text box.
 	const BASE =
-		'text-muted-foreground hover:text-foreground pointer-events-auto rounded-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
+		'pointer-events-auto rounded-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
 	const VARIANT: Record<LinkVariant, string> = {
-		body: 'underline underline-offset-2',
-		quiet: 'no-underline'
+		body: 'text-muted-foreground hover:text-foreground underline underline-offset-2',
+		quiet: 'text-muted-foreground hover:text-foreground no-underline',
+		heading: 'hover:underline underline-offset-2'
 	};
 </script>
 

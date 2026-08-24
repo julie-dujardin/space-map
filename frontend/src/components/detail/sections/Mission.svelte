@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Link from './kit/Link.svelte';
 	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import type {
@@ -174,11 +175,9 @@
 						<span title={cc}
 							>{countryFlag(cc)}
 							{#if appState}
-								<a
+								<Link
 									href={countryGroupHref(cc, name)}
-									onclick={(e) => handleCountryClick(e, cc, name)}
-									class="text-muted-foreground pointer-events-auto underline hover:text-foreground"
-									>{name}</a
+									onclick={(e) => handleCountryClick(e, cc, name)}>{name}</Link
 								>
 							{:else}
 								{name}

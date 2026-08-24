@@ -1,7 +1,7 @@
 <script lang="ts">
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
-	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+	import Link from './kit/Link.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
@@ -49,15 +49,7 @@
 				{#if wikipediaUrl}
 					<span class="ms-auto">
 						{m.source_prefix()}
-						<a
-							href={wikipediaUrl}
-							target="_blank"
-							rel="noopener"
-							class="underline hover:text-foreground inline-flex items-center gap-1"
-						>
-							{m.source_wikipedia_name()}
-							<ExternalLinkIcon class="size-3 shrink-0" />
-						</a>
+						<Link href={wikipediaUrl} external>{m.source_wikipedia_name()}</Link>
 					</span>
 				{/if}
 			</div>

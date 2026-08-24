@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
+	import Link from './Link.svelte';
 
 	interface Props {
 		title: string;
@@ -47,14 +48,15 @@
 	<div class="flex items-baseline justify-between gap-3">
 		<h3 class="min-w-0 text-sm font-medium">
 			{#if titleHref}
-				<a
+				<Link
 					href={titleHref}
 					onclick={onActivate}
-					class="flex min-w-0 items-baseline gap-2 hover:underline"
+					variant="heading"
+					class="flex min-w-0 items-baseline gap-2"
 				>
 					<span class="truncate">{title}</span>
 					{#if titleMeta}{@render titleCount()}{/if}
-				</a>
+				</Link>
 			{:else}
 				<span class="flex min-w-0 items-baseline gap-2">
 					<span class="truncate">{title}</span>
@@ -67,15 +69,16 @@
 			     "See layers" is one of several identical links down the panel to
 			     anyone listening to them rather than reading them. It follows the
 			     visible text rather than replacing it, which an aria-label would. -->
-			<a
+			<Link
 				href={activateHref}
 				onclick={onActivate}
-				class="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs"
+				variant="quiet"
+				class="inline-flex shrink-0 items-center gap-1 text-xs"
 			>
 				{activateLabel}
 				<span class="sr-only">— {title}</span>
 				<ArrowRightIcon class="size-3 rtl:rotate-180" />
-			</a>
+			</Link>
 		{/if}
 	</div>
 	<div class="border-border/60 border-t"></div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Link from './kit/Link.svelte';
 	import { getContext, untrack } from 'svelte';
 	import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { FeatureDetailData } from '$lib/fetch/nomenclature/details';
@@ -103,9 +104,7 @@
 
 {#snippet typeText()}
 	{#if typeHref}
-		<a href={typeHref} onclick={openType} class="pointer-events-auto hover:text-foreground"
-			>{typeLabel}</a
-		>
+		<Link href={typeHref} onclick={openType}>{typeLabel}</Link>
 	{:else}
 		{typeLabel}
 	{/if}
@@ -172,11 +171,8 @@
 		<Row label={m.feature_quadrangle()}>
 			{#if quadTarget}
 				<span class="text-muted-foreground flex min-w-0 items-center justify-end gap-1.5">
-					<a
-						href={quadTarget.href}
-						onclick={openQuad}
-						class="hover:text-foreground pointer-events-auto truncate underline"
-						>{loc.quadrangle.name}</a
+					<Link href={quadTarget.href} onclick={openQuad} class="truncate"
+						>{loc.quadrangle.name}</Link
 					>
 					{#if loc.quadrangle.wikipedia}
 						<a
