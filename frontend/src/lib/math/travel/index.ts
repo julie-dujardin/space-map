@@ -26,7 +26,7 @@
  * module for every approximation by name.
  */
 
-export { GM_SUN_KM3_S2, PARKING_ALTITUDE_KM } from './constants';
+export { GM_SUN_KM3_S2, HILL_STABLE_FRACTION, PARKING_ALTITUDE_KM } from './constants';
 
 export type { Vec3 } from './vec3';
 export { add, cross, dot, norm, normalize, scale, sub } from './vec3';
@@ -57,6 +57,7 @@ export {
 	endDepartureOrbit,
 	injectionDv,
 	orbitPeriodHours,
+	parkingAltitudeKm,
 	parkingOrbit,
 	parkingRadiusKm,
 	periapsisRaiseDv,

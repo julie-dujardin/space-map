@@ -1524,6 +1524,12 @@ export class SceneRenderer {
 			diagnostics: this.positionDiagnostics
 		});
 		this.pointClouds.updateForJd(this.clock.jd, this.cloudViewInfo());
+		// The travel focus is measured off a body this update just moved: re-derive
+		// it before the rebase below, or everything is rebased against the previous
+		// frame's origin and the focused body wobbles by its own per-frame motion —
+		// frame-time sized, so worst mid-drag. A body focus is re-anchored inside
+		// updatePositions itself and doesn't need this.
+		this.refreshTravelFocus();
 		// stepFocusAnimation handles repositionAll while animating.
 		const elapsed = performance.now() - this.focus.focusStartTime;
 		if (elapsed >= this.focus.focusDurationMs) {
@@ -1711,10 +1717,17 @@ export class SceneRenderer {
 	/** The body whose model the overlay composites: the focused body (a surface
 	 *  feature defers to its host), else a focused flying probe's fit-center
 	 *  target (Bennu under OSIRIS-REx) once its model is resident — a close
-	 *  orbit needs terrain to read against. */
+	 *  orbit needs terrain to read against. A trajectory-point focus has no
+	 *  body at all, but the point is framed off one, and a resident model is
+	 *  that body's whole visual — the sphere mesh stays hidden under it, so
+	 *  skipping the overlay would blank the body out of its own descent. */
 	private overlayModelBo(): BodyObjects | null {
 		const focusBody = this.focusController.current;
-		if (!focusBody) return null;
+		if (!focusBody) {
+			const centerId = this.travelFocus?.centerId;
+			const bo = centerId ? this.bodyObjects.get(centerId) : undefined;
+			return bo?.model ? bo : null;
+		}
 		const modelId = isSurfaceFeature(focusBody)
 			? focusBody.featureAnchor!.hostId
 			: focusBody.data.id;

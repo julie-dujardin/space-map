@@ -21,6 +21,8 @@ import {
 	ASCENT_DRAG_LOSS_KMS_PER_BAR,
 	ASCENT_GRAVITY_LOSS_FRACTION,
 	CAPTURE_APOAPSIS_RADII,
+	HILL_STABLE_FRACTION,
+	LOW_ORBIT_CEILING_SHARE,
 	PARKING_ALTITUDE_KM,
 	POWERED_TOUCHDOWN_KMS
 } from './constants';
@@ -30,9 +32,22 @@ export function circularSpeed(mu: number, rKm: number): number {
 	return Math.sqrt(mu / rKm);
 }
 
+/**
+ * Altitude the standard parking orbit sits at, km. One flat altitude keeps the
+ * big bodies comparable, but a small body has no room for it — 200 km above a
+ * kilometre-wide asteroid is outside the region it holds, and an orbit that
+ * size takes years to fall from — so the altitude comes off the ceiling
+ * instead. No Hill radius means no ceiling.
+ */
+export function parkingAltitudeKm(radiusKm: number, hillKm?: number): number {
+	const ceiling = hillKm ? hillKm * HILL_STABLE_FRACTION - radiusKm : Infinity;
+	if (!isFinite(ceiling)) return PARKING_ALTITUDE_KM;
+	return Math.max(Math.min(PARKING_ALTITUDE_KM, ceiling * LOW_ORBIT_CEILING_SHARE), 0.001);
+}
+
 /** Radius of the standard parking orbit about a body, km. */
 export function parkingRadiusKm(body: TravelBody): number {
-	return body.radiusKm + PARKING_ALTITUDE_KM;
+	return body.radiusKm + parkingAltitudeKm(body.radiusKm, body.hillKm);
 }
 
 /**

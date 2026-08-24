@@ -105,6 +105,25 @@ describe('an argument of periapsis', () => {
 	});
 });
 
+describe('parkingRadiusKm', () => {
+	it('sits at the standard altitude where the body has room', () => {
+		expect(parkingRadiusKm(EARTH)).toBe(EARTH.radiusKm + 200);
+	});
+
+	// A Bennu-sized body holds ~31 km: a 200 km "orbit" there is not bound at
+	// all, and drawing a descent from it dates touchdown years after insertion.
+	it('comes off the Hill ceiling at a body with no room for it', () => {
+		const bennu: TravelBody = { ...MOON, radiusKm: 0.245, mu: 4.9e-9, hillKm: 31 };
+		const altKm = parkingRadiusKm(bennu) - bennu.radiusKm;
+		expect(altKm).toBeLessThan(31 / 3 - bennu.radiusKm);
+		expect(altKm).toBeGreaterThan(0);
+	});
+
+	it('stands unclamped when the room is unknown', () => {
+		expect(parkingRadiusKm({ ...MOON, radiusKm: 0.245, mu: 4.9e-9 })).toBe(0.245 + 200);
+	});
+});
+
 describe('ascentDv', () => {
 	it('ranks bodies by how hard they are to leave', () => {
 		expect(ascentDv(MOON)).toBeLessThan(ascentDv(MARS));

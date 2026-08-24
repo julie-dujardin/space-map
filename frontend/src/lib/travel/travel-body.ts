@@ -18,7 +18,7 @@ import { OrbitalSource } from '$lib/fetch/position/format';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { bodyQuaternion, type Orientation } from '$lib/math/orientation';
 import { J2000_JD } from '$lib/time/jd';
-import { estimateMu, muFromElements, type TravelBody } from '$lib/math/travel';
+import { estimateMu, GM_SUN_KM3_S2, muFromElements, type TravelBody } from '$lib/math/travel';
 import { AU_KM } from '$lib/math/units';
 import type { Vec3 } from '$lib/math/travel/vec3';
 
@@ -148,6 +148,42 @@ export function aeroPressurePa(detail: GlobalObjectData | null): number | undefi
  */
 export type OrbitChoice = 'heliocentric' | 'own';
 
+/**
+ * What a body's Hill sphere is measured against: the Sun, or the NAIF id of
+ * the body it goes round. A barycentre is never the answer: the planet *of*
+ * one — 399 in 3 — only wobbles about it and is really in orbit about the Sun,
+ * while a moon in the same barycentre — 301 in 3 — is held by the planet
+ * inside it. Reading "parent is a barycentre" as "this is a planet" gives the
+ * Moon a heliocentric Hill radius twenty times too big, and with it a
+ * stationary orbit it cannot hold.
+ */
+export function hillPrimaryOf(body: BodyData): 'sun' | number | null {
+	const parentNaif = naifId(body.parentId);
+	const bodyNaif = naifId(body.id);
+	if (isHeliocentricRoot(body.parentId)) return 'sun';
+	if (parentNaif === null) return null;
+	const barycentre = parentNaif >= 1 && parentNaif <= 9;
+	if (!barycentre) return parentNaif;
+	return bodyNaif === parentNaif * 100 + 99 ? 'sun' : parentNaif * 100 + 99;
+}
+
+/** Hill radius from the orbit the body is actually on — its own about its
+ *  planet for a moon, its heliocentric one for a planet, since a planet's
+ *  orbit about its barycentre says nothing about what it holds. */
+function hillRadiusKm(body: BodyData, mu: number, lookup: BodyLookup): number | undefined {
+	const primary = hillPrimaryOf(body);
+	if (primary === null) return undefined;
+	const primaryMu = primary === 'sun' ? GM_SUN_KM3_S2 : getGmKm3s2(primary);
+	// About the Sun it's the heliocentric orbit, not the wobble; about a planet
+	// it's the body's own.
+	const orbit = primary === 'sun' ? (heliocentricAncestor(body, lookup) ?? body) : body;
+	const aKm = orbit.a * AU_KM;
+	if (!primaryMu || !(primaryMu > 0) || !(aKm > 0) || !(mu > 0)) return undefined;
+
+	const e = Number.isFinite(orbit.e) ? Math.min(Math.max(orbit.e, 0), 0.99) : 0;
+	return aKm * (1 - e) * Math.cbrt(mu / (3 * primaryMu));
+}
+
 /** Build the kernel's view of `body`. `detail` is optional — without it the
  *  body is treated as airless, which only changes whether the arrival gets an
  *  aerocapture discount. Returns null when the body has no orbit of the
@@ -207,6 +243,7 @@ export function toTravelBody(
 		poleEcliptic: poleEcliptic(detail?.orientation),
 		parentId: body.parentId
 	};
+	travel.hillKm = hillRadiusKm(body, travel.mu, lookup);
 	travel.borrowedElements = straysFromElements(chain, travel);
 	return travel;
 }

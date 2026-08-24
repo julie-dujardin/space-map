@@ -73,6 +73,12 @@ export interface TravelBody {
 	 * a body with no shipped orientation.
 	 */
 	poleEcliptic?: Vec3;
+	/**
+	 * Hill radius against the body's real primary, km — how far it holds an
+	 * orbit. Bounds the parking orbit on bodies too small for the standard
+	 * altitude; absent leaves that altitude unclamped.
+	 */
+	hillKm?: number;
 	/** Primary this body orbits; absent for heliocentric bodies. */
 	parentId?: string;
 	/** Measured positions about the primary, where the elements cannot be

@@ -14,6 +14,13 @@ export const SEC_PER_DAY = 86400;
  */
 export const PARKING_ALTITUDE_KM = 200;
 
+/** Beyond a third of the Hill radius the primary stops being what you orbit. */
+export const HILL_STABLE_FRACTION = 1 / 3;
+
+/** Share of the room a body has that a low orbit may take up. A quarter of the
+ *  way to the ceiling is still recognisably low; the whole way is the ceiling. */
+export const LOW_ORBIT_CEILING_SHARE = 1 / 4;
+
 /**
  * Apoapsis of the "captured" elliptical orbit, expressed as a multiple of the
  * target's radius. Capture into a loose ellipse is far cheaper than

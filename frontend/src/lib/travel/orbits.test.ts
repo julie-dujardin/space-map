@@ -5,13 +5,13 @@ import type { BodyData } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
 import {
 	hasGround,
-	hillPrimaryOf,
 	isCraft,
 	lowOrbitAltitudeKm,
 	orbitChoices,
 	synchronousRadiusKm,
 	type OrbitFacts
 } from './orbits';
+import { hillPrimaryOf } from './travel-body';
 
 /** Sidereal days, hours. */
 const EARTH_DAY_H = 23.9345;

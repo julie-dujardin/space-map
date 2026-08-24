@@ -760,6 +760,32 @@ describe('end orbits', () => {
 		expect(relative(last, spin(arrival.surfaceJd!))).toBeLessThan(1e-9);
 	});
 
+	// Bennu-scale: the parking orbit takes days while the ground turns in hours,
+	// so the site read is far too twitchy for naive re-iteration — which used to
+	// date the coast past the ground and dedupe the whole fall off the line.
+	it('reaches the ground of a fast-spinning small body', () => {
+		const bennu = { ...MARS, id: 'spkid-20101955', radiusKm: 0.245, mu: 4.9e-9, hillKm: 31 };
+		const route = buildRoute(EARTH, bennu, MARS_WINDOW, MARS_TOF, { arrivalMode: 'landing' })!;
+		const spinRad = (2 * Math.PI) / (4.3 / 24);
+		const spin = (jd: number): Vec3 => {
+			const angle = (jd - J2000) * spinRad;
+			return [Math.cos(angle) * bennu.radiusKm, Math.sin(angle) * bennu.radiusKm, 0];
+		};
+		const path = buildTrajectoryPath(EARTH, bennu, route, {
+			centerId: SUN,
+			frame: 'planetary',
+			surfaceSites: { arrival: spin }
+		})!;
+		const arrival = path.endOrbits.find((end) => end.at === 'arrival')!;
+		const last = arrival.approach[arrival.approach.length - 1];
+		expect(norm(last)).toBeCloseTo(bennu.radiusKm, 6);
+		expect(relative(last, spin(arrival.surfaceJd!))).toBeLessThan(1e-6);
+		expect(arrival.jds[arrival.jds.length - 1]).toBeCloseTo(arrival.surfaceJd!, 9);
+		for (let i = 1; i < arrival.jds.length; i++) {
+			expect(arrival.jds[i]).toBeGreaterThan(arrival.jds[i - 1]);
+		}
+	});
+
 	it('climbs off the ground before it leaves', () => {
 		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { departureMode: 'surface' })!;
 		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN, frame: 'planetary' })!;

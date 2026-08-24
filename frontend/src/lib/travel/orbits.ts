@@ -16,19 +16,13 @@
 
 import { ObjectType, type BodyData } from '$lib/types/objects';
 import type { EndOrbit, TravelBody } from '$lib/math/travel';
-import { GM_SUN_KM3_S2, PARKING_ALTITUDE_KM, orbitPeriodHours } from '$lib/math/travel';
-import { getGmKm3s2 } from '$lib/fetch/systems-global';
+import { HILL_STABLE_FRACTION, orbitPeriodHours, parkingAltitudeKm } from '$lib/math/travel';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-import { heliocentricAncestor, isHeliocentricRoot, naifId, type BodyLookup } from './travel-body';
 // Type-only: the modes are a term of the trip, and `trip.ts` is on every page
 // load's path — it must not pull the kernel in behind this module.
 import type { EndpointMode } from './trip';
 
-const AU_KM = 149597870.7;
 const HOURS_PER_DAY = 24;
-
-/** Beyond a third of the Hill radius the primary stops being what you orbit. */
-const HILL_STABLE_FRACTION = 1 / 3;
 
 /** Apoapsis of the loose capture ellipse, in body radii. Mirrors the kernel's
  *  own constant — the ellipse offered here is the one it prices. */
@@ -36,10 +30,6 @@ const CAPTURE_APOAPSIS_RADII = 20;
 
 /** How high a "highly elliptical" orbit reaches, as a share of synchronous. */
 const HEO_APOAPSIS_SYNC_RATIO = 1.5;
-
-/** Share of the room a body has that a "low" orbit may take up. A quarter of the
- *  way to the ceiling is still recognisably low; the whole way is the ceiling. */
-const LOW_ORBIT_CEILING_SHARE = 1 / 4;
 
 /** What the body itself contributes to which orbits exist. */
 export interface OrbitFacts {
@@ -53,25 +43,21 @@ export interface OrbitFacts {
 }
 
 /**
- * Rotation and Hill radius for a body.
- *
- * Spin comes from the IAU prime-meridian rate the orientation bundle already
- * carries; Hill radius from the orbit the body is actually on — its own about
- * its planet for a moon, its heliocentric one for a planet, since a planet's
- * orbit about its barycentre says nothing about what it holds.
+ * Rotation and Hill radius for a body. Spin comes from the IAU prime-meridian
+ * rate the orientation bundle already carries; the Hill radius rides on the
+ * travel body, where `toTravelBody` put it.
  */
 export function orbitFacts(
 	body: BodyData,
 	travel: TravelBody,
-	detail: GlobalObjectData | null | undefined,
-	lookup: BodyLookup
+	detail: GlobalObjectData | null | undefined
 ): OrbitFacts {
 	const spinDegPerDay = detail?.orientation?.w1;
 	const rotationHours =
 		spinDegPerDay && Math.abs(spinDegPerDay) > 0
 			? (HOURS_PER_DAY * 360) / Math.abs(spinDegPerDay)
 			: undefined;
-	return { rotationHours, hillKm: hillRadiusKm(body, travel, lookup), isCraft: isCraft(body) };
+	return { rotationHours, hillKm: travel.hillKm, isCraft: isCraft(body) };
 }
 
 /**
@@ -81,39 +67,6 @@ export function orbitFacts(
  */
 export function isCraft(body: BodyData): boolean {
 	return body.objectType === ObjectType.SPACECRAFT || body.objectType === ObjectType.DEBRIS;
-}
-
-/**
- * What a body's Hill sphere is measured against: the Sun, or the NAIF id of
- * the body it goes round. A barycentre is never the answer: the planet *of*
- * one — 399 in 3 — only wobbles about it and is really in orbit about the Sun,
- * while a moon in the same barycentre — 301 in 3 — is held by the planet
- * inside it. Reading "parent is a barycentre" as "this is a planet" gives the
- * Moon a heliocentric Hill radius twenty times too big, and with it a
- * stationary orbit it cannot hold.
- */
-export function hillPrimaryOf(body: BodyData): 'sun' | number | null {
-	const parentNaif = naifId(body.parentId);
-	const bodyNaif = naifId(body.id);
-	if (isHeliocentricRoot(body.parentId)) return 'sun';
-	if (parentNaif === null) return null;
-	const barycentre = parentNaif >= 1 && parentNaif <= 9;
-	if (!barycentre) return parentNaif;
-	return bodyNaif === parentNaif * 100 + 99 ? 'sun' : parentNaif * 100 + 99;
-}
-
-function hillRadiusKm(body: BodyData, travel: TravelBody, lookup: BodyLookup): number | undefined {
-	const primary = hillPrimaryOf(body);
-	if (primary === null) return undefined;
-	const primaryMu = primary === 'sun' ? GM_SUN_KM3_S2 : getGmKm3s2(primary);
-	// About the Sun it's the heliocentric orbit, not the wobble; about a planet
-	// it's the body's own.
-	const orbit = primary === 'sun' ? (heliocentricAncestor(body, lookup) ?? body) : body;
-	const aKm = orbit.a * AU_KM;
-	if (!primaryMu || !(primaryMu > 0) || !(aKm > 0) || !(travel.mu > 0)) return undefined;
-
-	const e = Number.isFinite(orbit.e) ? Math.min(Math.max(orbit.e, 0), 0.99) : 0;
-	return aKm * (1 - e) * Math.cbrt(travel.mu / (3 * primaryMu));
 }
 
 /**
@@ -168,15 +121,11 @@ export function synchronousRadiusKm(mu: number, rotationHours: number): number {
 /**
  * Altitude a low orbit sits at, km.
  *
- * The kernel's one parking altitude keeps the big bodies comparable and every
- * published Δv is calibrated against it, so it stands wherever the body has
- * the room. A small body doesn't: 200 km above a kilometre-wide asteroid is
- * outside the region it holds, so the altitude comes off the ceiling instead.
+ * The kernel's own parking altitude, so the orbit offered here is the one it
+ * prices and draws.
  */
 export function lowOrbitAltitudeKm(travel: TravelBody, facts: OrbitFacts): number {
-	const ceiling = maxRadiusKm(facts) - travel.radiusKm;
-	if (!isFinite(ceiling)) return PARKING_ALTITUDE_KM;
-	return Math.max(Math.min(PARKING_ALTITUDE_KM, ceiling * LOW_ORBIT_CEILING_SHARE), 0.001);
+	return parkingAltitudeKm(travel.radiusKm, facts.hillKm);
 }
 
 /** The highest radius still bound to the body, km. Unknown Hill radius means no

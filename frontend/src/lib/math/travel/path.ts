@@ -1489,19 +1489,85 @@ function surfaceLeg(leg: {
 
 	let geo = shape(siteAt?.(periJd) ?? null);
 	if (!geo) return null;
-	let groundJd = periJd + (outward ? -1 : 1) * (geo.coastDays + geo.halfDays);
+	const sign = outward ? -1 : 1;
+	const groundOf = (g: { coastDays: number; halfDays: number }) =>
+		periJd + sign * (g.coastDays + g.halfDays);
+	let groundJd = groundOf(geo);
 	if (siteAt) {
-		for (let i = 0; i < 3; i++) {
-			const next = shape(siteAt(groundJd));
-			if (!next) return null;
-			geo = next;
-			groundJd = periJd + (outward ? -1 : 1) * (geo.coastDays + geo.halfDays);
+		// The ground date has to solve its own geometry: the site is read at that
+		// date, but moving the date spins the site under the orbit — and with it
+		// the coast to the deorbit gate. On a fast rotator that feedback is far
+		// too steep for re-iteration to settle, and a date taken from one site
+		// read with angles from another dates the coast past the ground, which
+		// drops the whole fall. So solve outright: scan the revolution of
+		// candidate dates for a crossing and bisect it, skipping the seams where
+		// the coast angle wraps.
+		const miss = (t: number): number | null => {
+			const g = shape(siteAt(t));
+			return g ? groundOf(g) - t : null;
+		};
+		const SCAN = 512;
+		const span = periodDays + 2 * geo.halfDays;
+		let tA: number | null = null;
+		let tB = 0;
+		let missA = 0;
+		let best = groundJd;
+		let bestMiss = Infinity;
+		let prevT: number | null = null;
+		let prevMiss: number | null = null;
+		for (let i = 0; i <= SCAN; i++) {
+			const t = periJd + (sign * (span * i)) / SCAN;
+			const m = miss(t);
+			if (m === null) {
+				prevT = null;
+				prevMiss = null;
+				continue;
+			}
+			if (Math.abs(m) < bestMiss) {
+				bestMiss = Math.abs(m);
+				best = t;
+			}
+			if (
+				prevT !== null &&
+				prevMiss !== null &&
+				prevMiss * m <= 0 &&
+				Math.abs(m - prevMiss) < periodDays / 2
+			) {
+				tA = prevT;
+				tB = t;
+				missA = prevMiss;
+				break;
+			}
+			prevT = t;
+			prevMiss = m;
 		}
-		// One last read at the settled date, holding the date itself: the ground
-		// sample has to be the site exactly as read at the `groundJd` reported.
-		const settled = shape(siteAt(groundJd));
+		// No clean crossing found (a spin the scan can't resolve): the nearest
+		// miss still yields a consistent line below, just aimed at a slightly
+		// stale site.
+		let t = best;
+		if (tA !== null) {
+			let lo = tA;
+			let hi = tB;
+			let missLo = missA;
+			for (let i = 0; i < 48; i++) {
+				const mid = (lo + hi) / 2;
+				const m = miss(mid);
+				if (m === null) break;
+				if (missLo * m <= 0) hi = mid;
+				else {
+					lo = mid;
+					missLo = m;
+				}
+			}
+			t = (lo + hi) / 2;
+		}
+		const settled = shape(siteAt(t));
 		if (!settled) return null;
 		geo = settled;
+		// From the settled geometry, not `t`: the sampled coast and fall must
+		// agree with the date they are laid against, or the dedupe below eats
+		// whichever samples land out of order.
+		groundJd = groundOf(geo);
 	}
 	const { sHat, rSite, sPlane, tilt, gate, coastDays, coast, e, p, meanMotion } = geo;
 

@@ -442,10 +442,10 @@
 	// What each body contributes to which orbits it can hold: its spin, from the
 	// detail bundle, and how much room it has, from the orbit it is itself on.
 	let originFacts = $derived(
-		origin && originTravel ? orbitFacts(origin, originTravel, originDetail, lookup) : null
+		origin && originTravel ? orbitFacts(origin, originTravel, originDetail) : null
 	);
 	let targetFacts = $derived(
-		target && targetTravel ? orbitFacts(target, targetTravel, targetDetail, lookup) : null
+		target && targetTravel ? orbitFacts(target, targetTravel, targetDetail) : null
 	);
 	// A named place on a surface has already answered how it is met, so its box
 	// offers nothing — which is what an empty list means to `EndpointField`.
