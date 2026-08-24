@@ -30,7 +30,7 @@
 		spreadRows,
 		stackedRows
 	} from '$lib/charts/label-fit';
-	import { formatKm, formatKmRange } from '$lib/format/distance';
+	import { formatKm } from '$lib/format/distance';
 	import { formatKelvinRange } from '$lib/format/temperature';
 	import { ltrIsolate } from '$lib/format/bidi';
 
@@ -95,9 +95,11 @@
 		return value ? formatKelvinRange(value.lowK, value.highK) : null;
 	}
 
-	/** "0–50 km", the way anyone places a layer. */
-	function depthRange(band: InteriorBand): string {
-		return ltrIsolate(formatKmRange(band.depthFromKm, band.depthToKm));
+	/** The layer's thickness — the same second line the atmosphere chart runs,
+	 *  so the two cross-sections read alike. Where a layer sits stays visible
+	 *  in the drawing itself. */
+	function layerWidth(band: InteriorBand): string {
+		return ltrIsolate(formatKm(band.depthToKm - band.depthFromKm));
 	}
 
 	/** Each band anchors its label at its own midpoint on the radius axis —
@@ -246,7 +248,7 @@
 					{/if}
 				{/if}
 				<text x={GUTTER} y={row.labelY + SECOND_LINE_DY} class="fill-muted-foreground text-[9px]">
-					{row.band ? depthRange(row.band) : ltrIsolate(formatKm(section.atmosphere?.km ?? 0))}
+					{row.band ? layerWidth(row.band) : ltrIsolate(formatKm(section.atmosphere?.km ?? 0))}
 				</text>
 			</g>
 		{/each}

@@ -1,8 +1,9 @@
 <script lang="ts">
 	/**
-	 * The Structure tab's stat block: how much body there is, what it is under,
-	 * and the one thing it is still doing. A headline, not a summary — the tab
-	 * runs three charts deep, so a card may restate a row below.
+	 * The Structure tab's stat block: what standing there feels like, what it
+	 * is under, and the one thing it is still doing. A headline, not a
+	 * summary — the tab runs three charts deep, so a card may restate a row
+	 * below.
 	 *
 	 * The third slot is best-first: watts where measured, then a magnetic
 	 * field, then volcanism — numbers before categories, matching `ObjectStats`,
@@ -29,28 +30,49 @@
 		volcanismKindLabel
 	} from '$lib/format/activity';
 	import { formatEarthRatio, formatPressure, pressureLevelLabel } from '$lib/format/pressure';
-	import { formatMassKg, massEarthNote, massKg } from '$lib/format/mass';
+	import { accelMs2, formatGees, formatMs2, gravityLabel } from '$lib/format/gravity';
+	import { massKg } from '$lib/format/mass';
 	import { ucfirst } from '$lib/format/quantities';
 	import { ltrIsolate } from '$lib/format/bidi';
+	import { G_KM3_KG_S2 } from '$lib/math/travel/constants';
 
 	interface Props {
 		global: GlobalObjectData | null;
 	}
 	let { global }: Props = $props();
 
-	// Kilograms rather than the export's per-body unit: "5.97 Rg" on Earth beside
-	// "318 M⊕" on Jupiter is three scales across three neighbouring pages, and
-	// neither symbol means anything on sight. The ruler is in the tooltip.
-	let massStat = $derived.by<Stat | null>(() => {
+	// Gees rather than the published m/s²: the card answers what standing there
+	// feels like, and the SI reading goes to the tooltip. GM/r² stands in where
+	// nothing is published — most small bodies with a mass.
+	let gravityStat = $derived.by<Stat | null>(() => {
+		const published = global?.wikidata?.surface_gravity;
+		const ms2 = (published && accelMs2(published)) || derivedMs2();
+		if (ms2 === null || ms2 <= 0) return null;
+		return {
+			label: gravityLabel(global?.atmosphere?.pressure?.level),
+			value: ltrIsolate(formatGees(ms2)),
+			tooltip: ltrIsolate(formatMs2(ms2))
+		};
+	});
+
+	function derivedMs2(): number | null {
 		const mass = global?.sbdb?.mass ?? global?.wikidata?.mass;
 		const kg = mass ? massKg(mass) : null;
 		if (kg === null) return null;
-		return {
-			label: m.property_name_mass(),
-			value: ltrIsolate(formatMassKg(kg)),
-			tooltip: massEarthNote(kg)
-		};
-	});
+		const radii = global?.radii;
+		const wdRadius = global?.wikidata?.radius;
+		const radiusKm = radii
+			? (radii.a + radii.b + radii.c) / 3
+			: wdRadius?.unit === 'kilometre'
+				? wdRadius.value
+				: wdRadius?.unit === 'metre'
+					? wdRadius.value / 1000
+					: global?.sbdb?.diameter
+						? global.sbdb.diameter / 2
+						: null;
+		if (radiusKm == null || radiusKm <= 0) return null;
+		return ((G_KM3_KG_S2 * kg) / (radiusKm * radiusKm)) * 1000;
+	}
 
 	// Labelled by the level it is quoted at, the way the Overview's row is: a
 	// figure at Saturn's cloud deck and one at Mars's datum are not the same
@@ -125,7 +147,7 @@
 		return null;
 	});
 
-	let cards = $derived([massStat, pressureStat, activityStat].filter((s) => s !== null));
+	let cards = $derived([gravityStat, pressureStat, activityStat].filter((s) => s !== null));
 </script>
 
 <StatCardRow stats={cards} />

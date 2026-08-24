@@ -23,6 +23,9 @@ export interface AtmosphereBand {
 	/** Fraction of the drawn height, 0–1. Bottom and top edges. */
 	base: number;
 	top: number;
+	/** Where the layer starts, in km — the layer below's top. Null where that
+	 *  boundary is unmeasured, so a thickness can't be claimed. */
+	baseKm: number | null;
 	/** The temperature at the bottom of the band — the layer below's top, or
 	 *  the datum's for the lowest one. A layer's own reading is its top, so
 	 *  without this the label states a boundary and reads as a layer. Null
@@ -76,6 +79,7 @@ export function atmosphereProfile(structure: AtmosphereStructure): AtmospherePro
 	// it is split: a capped band still takes its base from the layer under it.
 	const stack = layers.map((layer, i) => ({
 		layer,
+		baseKm: i === 0 ? 0 : (layers[i - 1].top_km ?? null),
 		baseTemperatureK:
 			(i === 0 ? structure.datum_temperature_k : layers[i - 1].top_temperature_k) ?? null,
 		basePressurePa: (i === 0 ? structure.datum_pressure_pa : layers[i - 1].top_pressure_pa) ?? null

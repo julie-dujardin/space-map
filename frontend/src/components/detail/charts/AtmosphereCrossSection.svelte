@@ -212,6 +212,8 @@
 	{@const value = temperature(row.band)}
 	{@const air = pressure(row.band)}
 	{@const topKm = row.band.layer.top_km}
+	{@const widthKm =
+		topKm !== undefined && row.band.baseKm !== null ? topKm - row.band.baseKm : undefined}
 	<path
 		d="M {SCRIM_X - 26} {row.anchorY} L {GUTTER - 4} {row.labelY - 3} L {GUTTER} {row.labelY - 3}"
 		class="stroke-border fill-none"
@@ -231,8 +233,10 @@
 			{value}
 		</text>
 	{/if}
+	<!-- The layer's thickness, not its top: the interior chart's second line
+	     says the same thing, so the two cross-sections read alike. -->
 	<text x={GUTTER + 4} y={row.labelY + SECOND_LINE_DY} class="fill-muted-foreground text-[9px]">
-		{[topKm !== undefined ? km(topKm) : '', stacked[i] ? air : ''].filter(Boolean).join(' · ')}
+		{[widthKm !== undefined ? km(widthKm) : '', stacked[i] ? air : ''].filter(Boolean).join(' · ')}
 	</text>
 	{#if air && !stacked[i]}
 		<text

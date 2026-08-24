@@ -8,7 +8,6 @@
 	 */
 	import * as m from '$lib/paraglide/messages.js';
 	import { NO_SURFACE_BODY_IDS } from '$lib/constants';
-	import { isNaturalBodyType } from '$lib/types/objects';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import {
 		formatDensity,
@@ -18,6 +17,7 @@
 		joinParts
 	} from '$lib/format/quantities';
 	import { ltrIsolate } from '$lib/format/bidi';
+	import { gravityLabel } from '$lib/format/gravity';
 	import { diameterKmFromH, BRIGHT_ALBEDO, DARK_ALBEDO } from '$lib/math/h-magnitude';
 	import { formatDuration } from '$lib/format/duration';
 	import Section from './kit/Section.svelte';
@@ -39,30 +39,32 @@
 		orientation?.w1 ? 360 / Math.abs(orientation.w1) : sbdb?.rot_per ? sbdb.rot_per / 24 : null
 	);
 
-	// {a, b} are the equatorial radii (X, Y); c is along the spin axis. Most
+	// {a, b} are the equatorial radii (X, Y); c is along the spin axis, shown
+	// doubled — the section quotes diameters everywhere, one convention. Most
 	// bodies have rotational symmetry (a==b) so the equatorial side collapses
 	// to a single value; truly triaxial bodies (Pan, Phobos, ...) keep both.
-	let radiiRows = $derived.by(() => {
+	let diameterRows = $derived.by(() => {
 		if (!radii) return null;
 		const { a, b, c } = radii;
 		const unit = formatUnit('kilometre');
 		const km = (value: string) => joinParts({ value, unit });
 		if (a === b && b === c) {
-			return [{ label: m.property_name_radius(), value: km(formatNumber(a)) }];
+			return [{ label: m.diameter(), value: km(formatNumber(2 * a)) }];
 		}
-		const equatorial = km(a === b ? formatNumber(a) : `${formatNumber(a)} × ${formatNumber(b)}`);
+		const equatorial = km(
+			a === b ? formatNumber(2 * a) : `${formatNumber(2 * a)} × ${formatNumber(2 * b)}`
+		);
 		return [
-			{ label: m.equatorial_radius(), value: equatorial },
-			{ label: m.polar_radius(), value: km(formatNumber(c)) }
+			{ label: m.equatorial_diameter(), value: equatorial },
+			{ label: m.polar_diameter(), value: km(formatNumber(2 * c)) }
 		];
 	});
 
-	// Derived from whichever size source feeds the radius row; triaxial bodies
-	// use Knud Thomsen's approximation (p=1.6075, ~1% error). Hidden for
-	// non-natural bodies (radius bounds a model, not a sphere) and for the Sun
-	// and gas/ice giants (radius bounds a gas envelope, not a surface).
+	// Triaxial bodies use Knud Thomsen's approximation (p=1.6075, ~1% error).
+	// Only spheroids get one — planets and dwarf planets — and the giants drop
+	// out too (their radius bounds a gas envelope, not a surface).
 	let surfaceAreaKm2 = $derived.by(() => {
-		if (!isNaturalBodyType(global?.type)) return null;
+		if (global?.type !== 'planet' && global?.type !== 'dwarf_planet') return null;
 		if (global && NO_SURFACE_BODY_IDS.has(global.id)) return null;
 		if (radii) {
 			const { a, b, c } = radii;
@@ -121,12 +123,15 @@
 		{:else if wd?.mass}
 			<Row label={m.property_name_mass()} value={formatQuantity(wd.mass)} />
 		{/if}
-		{#if radiiRows}
-			{#each radiiRows as row (row.label)}
+		{#if diameterRows}
+			{#each diameterRows as row (row.label)}
 				<Row label={row.label} value={row.value} />
 			{/each}
 		{:else if wd?.radius}
-			<Row label={m.property_name_radius()} value={formatQuantity(wd.radius)} />
+			<Row
+				label={m.diameter()}
+				value={formatQuantity({ value: wd.radius.value * 2, unit: wd.radius.unit })}
+			/>
 		{:else if sbdb?.diameter}
 			<Row
 				label={m.diameter()}
@@ -165,7 +170,10 @@
 			<Row label={m.property_name_density()} value={formatDensity(wd.density)} />
 		{/if}
 		{#if wd?.surface_gravity}
-			<Row label={m.property_name_surface_gravity()} value={formatQuantity(wd.surface_gravity)} />
+			<Row
+				label={gravityLabel(global?.atmosphere?.pressure?.level)}
+				value={formatQuantity(wd.surface_gravity)}
+			/>
 		{/if}
 		{#if rotationPeriodDays != null}
 			<Row
