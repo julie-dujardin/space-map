@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { G0_M_S2 } from '$lib/math/travel/constants';
 import {
 	dvParts,
 	formatAcceleration,
@@ -10,8 +11,8 @@ import {
 
 describe('formatAcceleration', () => {
 	it('quotes a drive you could stand up in as a fraction of a gravity', () => {
-		expect(formatAcceleration(9.80665 / 3)).toBe('0.33 g');
-		expect(formatAcceleration(9.80665 * 1.5)).toBe('1.5 g');
+		expect(formatAcceleration(G0_M_S2 / 3)).toBe('0.33 g');
+		expect(formatAcceleration(G0_M_S2 * 1.5)).toBe('1.5 g');
 	});
 
 	// A hundredth of a gravity is where the fraction stops saying anything.

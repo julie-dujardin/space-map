@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { G0_M_S2 } from '$lib/math/travel/constants';
 import { EARTH, J2000, JUPITER, MARS, SATURN } from '$lib/math/travel/test-fixtures';
 import {
 	arrivalCampaignDays,
@@ -622,7 +623,7 @@ describe('TravelPanelState spiral', () => {
 		ispS: { value: 3100, source: 'test' },
 		thrustN: { value: 0.092, source: 'test' },
 		// Derived in the pipeline from the three above, and carried in the export.
-		dvKms: 3100 * 9.80665 * Math.log(1218 / 793) * 1e-3
+		dvKms: 3100 * G0_M_S2 * Math.log(1218 / 793) * 1e-3
 	} as unknown as Vehicle;
 
 	async function chosen(): Promise<TravelPanelState> {

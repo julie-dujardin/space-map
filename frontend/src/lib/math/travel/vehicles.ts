@@ -8,6 +8,7 @@
  * are different answers.
  */
 
+import { G0_M_S2 } from './constants';
 import type { LowThrustDrive } from './low-thrust';
 import type { DepartureMode } from './maneuvers';
 import { routeDurationDays, type Route } from './route';
@@ -275,9 +276,6 @@ export function crewCapacity(vehicle: Vehicle): number | null {
 	if (vehicle.crew) return vehicle.crew.value;
 	return vehicle.kind === 'crewed' || vehicle.kind === 'fictional' ? null : 0;
 }
-
-/** Standard gravity, m/s² — what turns an Isp in seconds into an exhaust speed. */
-const G0_M_S2 = 9.80665;
 
 /**
  * Δv the vehicle has once the cargo is aboard, km/s. The published figure is

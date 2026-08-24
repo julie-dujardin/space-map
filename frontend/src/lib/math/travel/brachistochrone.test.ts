@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { buildConstantThrustRoute, solveConstantThrustArc } from './brachistochrone';
-import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
+import { G0_M_S2, GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { heldDriveMissKm } from './held-drive';
 import { elementsToState } from './state';
 import { dot, norm, normalize, sub } from './vec3';
 import { EARTH, J2000, MARS, MOON } from './test-fixtures';
 
 /** A third of a gravity, the cruise every torch ship in fiction is flown at. */
-const THIRD_G = 9.80665 / 3;
+const THIRD_G = G0_M_S2 / 3;
 /** An ion drive: the same arc, four orders of magnitude slower. */
 const ION = 0.002;
 

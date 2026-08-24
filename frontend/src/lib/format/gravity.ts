@@ -1,4 +1,5 @@
 import * as m from '$lib/paraglide/messages.js';
+import { G0_M_S2 } from '$lib/math/travel/constants';
 import { formatUnit, joinParts, scientificNotation, sigFigures } from './quantities';
 
 // The two rungs the export's Wikidata acceleration ladder actually emits.
@@ -6,8 +7,6 @@ const MS2_PER_UNIT: Record<string, number> = {
 	metres_per_second_squared: 1,
 	centimetre_per_square_second: 0.01
 };
-
-export const STANDARD_GRAVITY_MS2 = 9.80665;
 
 // Keyed by the same reference level the headline pressure is quoted at:
 // "surface" on a giant or the Sun would claim a floor that isn't there.
@@ -37,7 +36,7 @@ function figure(value: number): string {
 /** "0.38 g" — gravity against the one field anyone has a feel for. */
 export function formatGees(ms2: number): string {
 	return joinParts({
-		value: figure(ms2 / STANDARD_GRAVITY_MS2),
+		value: figure(ms2 / G0_M_S2),
 		unit: m.symbol_standard_gravity()
 	});
 }

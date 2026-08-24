@@ -8,7 +8,7 @@ import {
 	spiralTransfer,
 	type LowThrustDrive
 } from './low-thrust';
-import { GM_SUN_KM3_S2 } from './constants';
+import { G0_M_S2, GM_SUN_KM3_S2 } from './constants';
 import { circularSpeed, parkingRadiusKm } from './maneuvers';
 import { buildTrajectoryPath } from './path';
 import { craftPositionAt } from './path-sample';
@@ -24,7 +24,7 @@ import { EARTH, J2000, MARS, MOON, VENUS } from './test-fixtures';
  */
 const DAWN: LowThrustDrive = {
 	accelMs2: 0.092 / (793 + 425),
-	veKms: (3100 * 9.80665) / 1000
+	veKms: (3100 * G0_M_S2) / 1000
 };
 /** Dawn's own Δv, km/s, from the same three figures. */
 const DAWN_BUDGET_KMS = DAWN.veKms * Math.log((793 + 425) / 793);

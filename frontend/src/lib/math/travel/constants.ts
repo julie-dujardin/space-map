@@ -109,3 +109,7 @@ export const ASSUMED_DENSITY_KG_M3 = 2000;
 
 /** Gravitational constant, km³/(kg·s²), for deriving GM from an assumed density. */
 export const G_KM3_KG_S2 = 6.6743e-20;
+
+/** Standard gravity, m/s² — the odd metric unit out here, because its uses are
+ *  metric: Isp → exhaust speed, and readings quoted in gees. */
+export const G0_M_S2 = 9.80665;

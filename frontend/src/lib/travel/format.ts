@@ -7,6 +7,7 @@
 import { formatKm, formatKmRange } from '$lib/format/distance';
 import { joinParts, sigFigures, type Parts } from '$lib/format/quantities';
 import { sievertParts } from '$lib/format/radiation';
+import { G0_M_S2 } from '$lib/math/travel/constants';
 import type { EndOrbit } from '$lib/math/travel/maneuvers';
 import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
@@ -87,8 +88,6 @@ export function formatEndOrbit(orbit: EndOrbit, bodyRadiusKm: number): string {
 	return apo > peri ? formatKmRange(peri, apo) : formatKm(peri);
 }
 
-/** Standard gravity, m/s² — the unit every torch drive in fiction is quoted in. */
-const G0_M_S2 = 9.80665;
 /** Below this a multiple of a gravity is four leading zeros and no meaning. An
  *  ion drive is a hundredth of this, and reads better in its own unit. */
 const GRAVITIES_FLOOR = 0.01;
