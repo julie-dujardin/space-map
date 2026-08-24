@@ -587,7 +587,26 @@
 		]);
 		// Error screen already shown: don't also fire the "not found" toast over it.
 		if (ctx.error) return;
-		const initialBody = ctx.getBody(initialId);
+		if (!ctx.getBody(initialId)) {
+			// The load pass can't graft a probe whose only record needs its
+			// stamped fit-center streamed first (Deep Impact → Tempel 1);
+			// ensureBody owns that chain, so give it one shot before landing
+			// on the not-found fallback.
+			await ctx
+				.ensureBody(initialId, jdToDate(clock.jd))
+				.catch((e) => console.warn(`[map] initial target ${initialId} could not be streamed:`, e));
+		}
+		let initialBody = ctx.getBody(initialId);
+		// A freshly grafted probe can spend a few frames unplaced while its
+		// stamped fit center streams in and the position pass picks it up —
+		// don't judge it unplaceable until that settles.
+		if (initialBody?.positionUnknown) {
+			const deadline = performance.now() + 1500;
+			while (initialBody?.positionUnknown && performance.now() < deadline) {
+				await new Promise(requestAnimationFrame);
+				initialBody = ctx.getBody(initialId);
+			}
+		}
 		// A body that is resident but has no ephemeris at this time carries a
 		// stand-in position (its parent, or the scene origin), so there is still
 		// nothing to fly to — it takes the same landing as a missing one.

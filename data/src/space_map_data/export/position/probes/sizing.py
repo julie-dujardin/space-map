@@ -287,6 +287,21 @@ def _kepler_max_err_km(
     return max_err
 
 
+_fit_center_radius_cache: dict[int, float | None] = {}
+
+
+def _fit_center_max_radius_km(naif_id: int) -> float | None:
+    """Largest ellipsoid radius of the fit-center body from the furnished
+    pool, or None when it defines no RADII."""
+    if naif_id not in _fit_center_radius_cache:
+        try:
+            _, radii = spiceypy.bodvrd(str(naif_id), "RADII", 3)
+            _fit_center_radius_cache[naif_id] = float(max(radii))
+        except spiceypy.exceptions.SpiceyError:
+            _fit_center_radius_cache[naif_id] = None
+    return _fit_center_radius_cache[naif_id]
+
+
 def _chebyshev_sub_interval_count(intlen_s: float, chunk_s: float) -> int:
     return max(1, int(math.ceil(chunk_s / intlen_s)))
 
@@ -459,6 +474,10 @@ def _fit_sub_chunk(
     # 200 fit samples gives Nyquist-clean coverage at any reasonable window.
     fit_ets = np.linspace(sub_mid - fit_half_s, sub_mid + fit_half_s, 200)
     variants = _fit_method_c(naif_id, fit_center_naif_id, mu, fit_ets)
+    if zone.reject_subsurface_kepler and variants:
+        radius_km = _fit_center_max_radius_km(fit_center_naif_id)
+        if radius_km is not None:
+            variants = [v for v in variants if v["a_km"] * (1.0 - v["e"]) > radius_km]
 
     kepler_err = float("inf")
     if variants:

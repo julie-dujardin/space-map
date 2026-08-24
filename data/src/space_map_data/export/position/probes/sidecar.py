@@ -59,6 +59,8 @@ def zone_signature(zone: Zone) -> str:
         fields["kepler_max_center_dist_km"] = zone.kepler_max_center_dist_km
     if not zone.short_orbit_forces_kepler:
         fields["short_orbit_forces_kepler"] = False
+    if zone.reject_subsurface_kepler:
+        fields["reject_subsurface_kepler"] = True
     payload = json.dumps(fields, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 

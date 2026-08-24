@@ -67,6 +67,14 @@ class Zone:
     to 259 s segments, which resolve Dawn's 4.3 h LAMO cleanly, while
     forced Kepler shipped ~500 km errors around a 460 km body."""
 
+    reject_subsurface_kepler: bool = False
+    """Drop Kepler variants whose periapsis sits inside the fit-center body.
+    A hovering probe (Hayabusa station-keeping at Itokawa) fits as a
+    degenerate radial ellipse through the body — it passes the eval samples
+    yet propagates and draws an orbit inside the asteroid. Chebyshev
+    follows the true hover drift instead. Off for planet zones: their
+    thresholds already reject anything that degenerate."""
+
     def __post_init__(self) -> None:
         # Same invariant as `SubChunkGrid`; raised here so it fires at module import.
         ratio = self.chunk_days / self.kepler_subchunk_days
@@ -134,6 +142,7 @@ SMALL_BODIES = Zone(
     short_orbit_threshold_km=0.5,
     kepler_max_center_dist_km=1.0e5,
     short_orbit_forces_kepler=False,
+    reject_subsurface_kepler=True,
 )
 
 ALL_ZONES: tuple[Zone, ...] = (INTERPLANETARY, *PLANETARY_ZONES, SMALL_BODIES)

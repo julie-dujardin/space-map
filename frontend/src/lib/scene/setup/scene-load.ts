@@ -217,15 +217,19 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	loadProgress.reach('metadata');
 	ctx.chebStore = await chebPromise;
 	ctx.probeStore = await probePromise;
+	loadProgress.reach('ephemeris');
+	const loader = new ChunkLoader(ctx.chebStore);
 	if (ctx.probeStore) {
 		// A record fit to a stamped body (Moon, Ryugu, …) only surfaces while
 		// that body can anchor it; until then the probe falls through to its
-		// heliocentric fit. Promoting a small body flips this live.
+		// heliocentric fit. Promoting a small body flips this live, as does a
+		// position seeded by `ensureBody` streaming the stamped body in — the
+		// only anchor an encounter-only probe (Deep Impact → Tempel 1) has.
 		ctx.probeStore.fitCenterUsable = (id) =>
-			(ctx.chebStore?.has(id) ?? false) || (ctx.hasMeshBody?.(id) ?? false);
+			(ctx.chebStore?.has(id) ?? false) ||
+			(ctx.hasMeshBody?.(id) ?? false) ||
+			loader.positions.has(id);
 	}
-	loadProgress.reach('ephemeris');
-	const loader = new ChunkLoader(ctx.chebStore);
 
 	const major = await loadMajorBodies(ctx, loader, metadata, date, jd);
 	loadProgress.reach('majors');

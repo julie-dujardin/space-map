@@ -232,7 +232,22 @@ export class ZoneRefresher {
 		if (targetId.startsWith('probe-')) {
 			const store = this.ctx.probeStore;
 			if (!store) return;
-			await store.ensure(dateToJD(date)).done;
+			const jd = dateToJD(date);
+			await store.ensure(jd).done;
+			// A record stamped to a small body (Deep Impact → Tempel 1) is gated
+			// until that body can anchor it. Stream the body in and seed its
+			// position so the graft below comes out placed even when no other
+			// zone covers this date.
+			const fcId = store.stampedFitCenterAt(targetId, jd);
+			if (fcId) {
+				if (!this.ctx.getBody(fcId)) {
+					await ensureTargetStreamed(this.ctx, fcId, date, this.loader);
+				}
+				const fcBody = this.ctx.getBody(fcId);
+				if (fcBody && !fcBody.positionUnknown && !this.loader.positions.has(fcId)) {
+					this.loader.positions.set(fcId, fcBody.position);
+				}
+			}
 			const labels = await fetchLabels();
 			const target = this.loader
 				.processProbes(store, date, labels)

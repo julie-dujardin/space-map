@@ -121,7 +121,14 @@ export class ProbeStore {
 	 */
 	ensure(jd: number): { ready: boolean; done: Promise<void> } {
 		if (jd === this.lastEnsuredJd) {
-			return { ready: this.allCurrentChunksLoaded(jd), done: Promise.resolve() };
+			// Same jd doesn't mean loaded: the first caller's fetches may still be
+			// in flight, and a second awaiter (ensureBody grafting a probe) must
+			// not proceed against absent chunks.
+			const pending = Array.from(this.inflight.values());
+			return {
+				ready: this.allCurrentChunksLoaded(jd),
+				done: pending.length > 0 ? Promise.all(pending).then(() => undefined) : Promise.resolve()
+			};
 		}
 		this.lastEnsuredJd = jd;
 		const jobs: Promise<void>[] = [];
