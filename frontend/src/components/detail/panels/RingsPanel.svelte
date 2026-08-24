@@ -38,7 +38,7 @@
 	let ringNamesLocalized = $derived(ringLocalized.some((f) => f.name));
 </script>
 
-<div class="flex flex-col gap-3 p-1">
+<div class="flex flex-col gap-3">
 	{#if ringFeatures}
 		<!-- System-wide, so it sits above the chart rather than inside it:
 		     these three do not change as you drill into a ring. -->

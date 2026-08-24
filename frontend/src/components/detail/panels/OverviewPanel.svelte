@@ -138,12 +138,12 @@
 		<Button variant="secondary" size="sm" onclick={load.retry}>{m.retry()}</Button>
 	</div>
 {:else if load.loading}
-	<div class="flex flex-col gap-4 p-1">
+	<div class="flex flex-col gap-4">
 		<Skeleton class="w-full h-20" />
 		<Skeleton class="w-full h-32" />
 	</div>
 {:else}
-	<div class="flex flex-col gap-5 p-1">
+	<div class="flex flex-col gap-5">
 		{#if isGroupMode && groupDetail?.global}
 			<GroupStatCards global={groupDetail.global} />
 		{:else if feature}

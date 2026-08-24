@@ -41,7 +41,7 @@
 	}
 </script>
 
-<div class="flex flex-col gap-4 p-1">
+<div class="flex flex-col gap-4">
 	{#if open}
 		{#if link}
 			<!-- Half width, in the drawer's cross-reference language: where this
