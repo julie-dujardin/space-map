@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
-	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+	import Link from './kit/Link.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
@@ -291,13 +291,7 @@
 		{#if dataSourceLabel}
 			<Row label={m.orbit_data_source()} tooltip={m.tooltip_orbit_data_source()}>
 				{#if dataSourceUrl}
-					<a
-						href={dataSourceUrl}
-						target="_blank"
-						rel="noopener"
-						class="text-muted-foreground inline-flex items-center gap-1 underline hover:text-foreground"
-						>{dataSourceLabel}<ExternalLinkIcon class="size-3 shrink-0" /></a
-					>
+					<Link href={dataSourceUrl} external>{dataSourceLabel}</Link>
 				{:else}
 					{dataSourceLabel}
 				{/if}
@@ -447,13 +441,7 @@
 		{#if dataSourceLabel}
 			<Row label={m.orbit_data_source()} tooltip={m.tooltip_orbit_data_source()}>
 				{#if dataSourceUrl}
-					<a
-						href={dataSourceUrl}
-						target="_blank"
-						rel="noopener"
-						class="text-muted-foreground inline-flex items-center gap-1 underline hover:text-foreground"
-						>{dataSourceLabel}<ExternalLinkIcon class="size-3 shrink-0" /></a
-					>
+					<Link href={dataSourceUrl} external>{dataSourceLabel}</Link>
 				{:else}
 					{dataSourceLabel}
 				{/if}

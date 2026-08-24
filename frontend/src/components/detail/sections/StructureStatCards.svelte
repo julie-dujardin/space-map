@@ -13,7 +13,8 @@
 	 * slot was tried and cut.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
-	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
+	import StatCardRow from './kit/StatCardRow.svelte';
+	import type { Stat } from './kit/StatCard.svelte';
 	import type { GlobalObjectData, Measurement } from '$lib/fetch/objects/object-data';
 	import {
 		fieldKindLabel,
@@ -36,12 +37,6 @@
 		global: GlobalObjectData | null;
 	}
 	let { global }: Props = $props();
-
-	interface Stat {
-		label: string;
-		value: string;
-		tooltip?: string;
-	}
 
 	// Kilograms rather than the export's per-body unit: "5.97 Rg" on Earth beside
 	// "318 M⊕" on Jupiter is three scales across three neighbouring pages, and
@@ -133,31 +128,4 @@
 	let cards = $derived([massStat, pressureStat, activityStat].filter((s) => s !== null));
 </script>
 
-{#if cards.length > 0}
-	<div class="grid auto-cols-fr grid-flow-col gap-2">
-		{#each cards as s (s.label)}
-			<div
-				class="border-border/60 bg-muted/40 flex flex-col gap-1 rounded-md border p-2.5 {s.tooltip
-					? 'cursor-help'
-					: ''}"
-			>
-				<div class="text-muted-foreground text-[10px] uppercase">{s.label}</div>
-				<!-- Anchored on the value, never the label: each of these says
-				     something about this particular number — what it comes to against
-				     Earth, which survey it belongs to, whether it is a bound. -->
-				{#if s.tooltip}
-					<Tooltip.Root>
-						<Tooltip.Trigger>
-							{#snippet child({ props })}
-								<div class="text-sm font-semibold tabular-nums" {...props}>{s.value}</div>
-							{/snippet}
-						</Tooltip.Trigger>
-						<Tooltip.Content>{s.tooltip}</Tooltip.Content>
-					</Tooltip.Root>
-				{:else}
-					<div class="text-sm font-semibold tabular-nums">{s.value}</div>
-				{/if}
-			</div>
-		{/each}
-	</div>
-{/if}
+<StatCardRow stats={cards} />

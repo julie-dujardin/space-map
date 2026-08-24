@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
-	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
+	import StatCardRow from './kit/StatCardRow.svelte';
+	import type { Stat } from './kit/StatCard.svelte';
 	import type { GlobalGroupData } from '$lib/fetch/groups/details';
 	import {
 		CAT_ASTEROIDS,
@@ -59,24 +60,10 @@
 	// Mirrors the members strip: past this, the count rides its tab badge.
 	const STRIP_CAPACITY = 5;
 	// A hazardous share is a fraction of a percent — the bar would be a speck.
-	const MIN_BAR_SHARE = 0.05;
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 	const focusFeature = getContext<FocusFeature | undefined>('focusFeature');
-
-	interface Stat {
-		label: string;
-		value: string;
-		tooltip?: string;
-		/** Only where the colour carries meaning: state, hazard, outcome. */
-		dot?: string;
-		/** 0–1; draws the bar that gives the value its denominator. Below
-		 *  MIN_BAR_SHARE the bar is a sliver that says less than the tooltip. */
-		share?: number;
-		href?: string;
-		onClick?: (e: MouseEvent) => void;
-	}
 
 	function focusBody(id: string, name: string, e: MouseEvent, tab?: 'rings' | 'structure') {
 		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -502,53 +489,4 @@
 	});
 </script>
 
-{#snippet valueNode(s: Stat)}
-	{#if s.href}
-		<a
-			href={s.href}
-			onclick={s.onClick}
-			class="pointer-events-auto hover:text-foreground text-lg font-semibold tabular-nums underline decoration-dotted underline-offset-2"
-		>
-			{s.value}
-		</a>
-	{:else}
-		<div class="text-lg font-semibold tabular-nums">{s.value}</div>
-	{/if}
-{/snippet}
-
-{#if stats.length > 0}
-	<div class="grid auto-cols-fr grid-flow-col gap-2">
-		{#each stats as s (s.label)}
-			<div class="border-border/60 bg-muted/40 flex flex-col gap-1 rounded-md border p-2.5">
-				<div class="text-muted-foreground flex items-center gap-1.5 text-[10px] uppercase">
-					{#if s.dot}
-						<span class="inline-block size-1.5 rounded-full {s.dot}"></span>
-					{/if}
-					{s.label}
-				</div>
-				{#if s.tooltip}
-					<Tooltip.Root>
-						<Tooltip.Trigger>
-							{#snippet child({ props })}
-								<div class="cursor-help" {...props}>
-									{@render valueNode(s)}
-								</div>
-							{/snippet}
-						</Tooltip.Trigger>
-						<Tooltip.Content>{s.tooltip}</Tooltip.Content>
-					</Tooltip.Root>
-				{:else}
-					{@render valueNode(s)}
-				{/if}
-				{#if s.share != null && s.share >= MIN_BAR_SHARE}
-					<div class="bg-muted-foreground/30 h-0.5 w-full overflow-hidden rounded-full">
-						<div
-							class="h-full rounded-full {s.dot ?? 'bg-muted-foreground'}"
-							style="width: {Math.min(100, Math.max(0, s.share * 100))}%"
-						></div>
-					</div>
-				{/if}
-			</div>
-		{/each}
-	</div>
-{/if}
+<StatCardRow {stats} size="lg" />

@@ -131,7 +131,7 @@
 						<select
 							class="appearance-none rounded-md border border-input bg-background pe-7 ps-2.5 py-1.5 text-sm
 								cursor-pointer hover:bg-accent transition-colors
-								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 							aria-labelledby="settings-language-label"
 							value={settings.language}
 							onchange={(e) => {
@@ -346,7 +346,7 @@
 						<select
 							class="appearance-none rounded-md border border-input bg-background pe-7 ps-2.5 py-1.5 text-sm
 								cursor-pointer hover:bg-accent transition-colors
-								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 							aria-labelledby="settings-atmo-quality-label"
 							value={settings.atmosphereQuality}
 							onchange={(e) =>
@@ -380,7 +380,7 @@
 							type="button"
 							class="ms-auto shrink-0 underline underline-offset-2 hover:text-foreground
 								disabled:opacity-60 disabled:no-underline transition-colors
-								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 rounded-sm"
+								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
 							disabled={recalibrating}
 							onclick={rerunBenchmark}
 						>
@@ -407,7 +407,7 @@
 					aria-checked={settings.showDebugInfo}
 					aria-label={m.settings_debug_info()}
 					class="relative inline-flex shrink-0 h-5 w-9 items-center rounded-full transition-colors cursor-pointer
-						focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50
+						focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
 						{settings.showDebugInfo ? 'bg-primary' : 'bg-muted'}"
 					onclick={() => settings.setShowDebugInfo(!settings.showDebugInfo)}
 				>

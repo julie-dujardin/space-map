@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
-	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
+	import StatCardRow from './kit/StatCardRow.svelte';
+	import type { Stat } from './kit/StatCard.svelte';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import {
 		ObjectType,
@@ -134,21 +135,12 @@
 		isEarthSat && orbitElements?.epoch != null ? Math.abs(jd - orbitElements.epoch) : null
 	);
 
-	interface Card {
-		label: string;
-		value: string;
-		tooltip?: string;
-		/** Same convention as the group stat row: a dot only where the colour
-		 *  means something, and the same green/amber/red for good/degraded/bad. */
-		dot?: string;
-	}
-
 	// Glanceable trio for natural bodies, each block first-available: a physical
 	// magnitude, orbital speed, then rotation period (falling back to a live
 	// distance). Full figures still live in the Physical/Orbital panels below.
-	let bodyCards = $derived.by<Card[]>(() => {
+	let bodyCards = $derived.by<Stat[]>(() => {
 		if (isProbe || isEarthSat || !body || !isNaturalBodyType(global?.type)) return [];
-		const out: Card[] = [];
+		const out: Stat[] = [];
 		const sbdb = global?.sbdb;
 		const wd = global?.wikidata;
 		const radii = global?.radii;
@@ -250,10 +242,10 @@
 		return out;
 	});
 
-	let cards = $derived.by<Card[]>(() => {
+	let cards = $derived.by<Stat[]>(() => {
 		const s = stats;
 		if (!s) return bodyCards;
-		const out: Card[] = [];
+		const out: Stat[] = [];
 		if (s.altitudeKm != null)
 			out.push({
 				label: m.altitude(),
@@ -297,36 +289,4 @@
 	});
 </script>
 
-{#snippet cardBody(c: Card, props: Record<string, unknown>)}
-	<div
-		class="border-border/60 bg-muted/40 pointer-events-auto flex flex-col gap-1 rounded-md border p-2.5 {c.tooltip
-			? 'cursor-help'
-			: ''}"
-		{...props}
-	>
-		<div class="text-muted-foreground flex items-center gap-1.5 text-[10px] uppercase">
-			{#if c.dot}
-				<span class="inline-block size-1.5 rounded-full {c.dot}"></span>
-			{/if}
-			{c.label}
-		</div>
-		<div class="text-sm font-semibold tabular-nums">{c.value}</div>
-	</div>
-{/snippet}
-
-{#if cards.length > 0}
-	<div class="grid auto-cols-fr grid-flow-col gap-2">
-		{#each cards as c (c.label)}
-			{#if c.tooltip}
-				<Tooltip.Root>
-					<Tooltip.Trigger>
-						{#snippet child({ props })}{@render cardBody(c, props)}{/snippet}
-					</Tooltip.Trigger>
-					<Tooltip.Content>{c.tooltip}</Tooltip.Content>
-				</Tooltip.Root>
-			{:else}
-				{@render cardBody(c, {})}
-			{/if}
-		{/each}
-	</div>
-{/if}
+<StatCardRow stats={cards} />

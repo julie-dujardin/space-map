@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
-	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+	import Link from './kit/Link.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
@@ -240,13 +240,7 @@
 
 {#snippet wikipediaLabel(name: string, ref: EntityRef | undefined)}
 	{#if ref?.wikipedia}
-		<a
-			href={ref.wikipedia}
-			target="_blank"
-			rel="noopener"
-			class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 align-bottom underline"
-			>{name}<ExternalLinkIcon class="size-3 shrink-0" /></a
-		>
+		<Link href={ref.wikipedia} external class="align-bottom">{name}</Link>
 	{:else}
 		{name}
 	{/if}
@@ -361,20 +355,14 @@
 	{#if appState && e.primary_type === 'group' && e.primary_id}
 		{@const slug = e.primary_id}
 		{@const name = e.name}
-		<a
+		<Link
 			href={groupHref(slug, name)}
 			onclick={(ev) => handleGroupClick(ev, slug, name)}
-			class="text-muted-foreground pointer-events-auto hover:text-foreground inline-flex min-w-0 items-center gap-1 truncate underline"
-			><span class="truncate">{e.name}</span></a
+			class="inline-flex min-w-0 items-center gap-1 truncate"
+			><span class="truncate">{e.name}</span></Link
 		>
 	{:else if e.wikipedia}
-		<a
-			href={e.wikipedia}
-			target="_blank"
-			rel="noopener"
-			class="text-muted-foreground pointer-events-auto hover:text-foreground truncate underline"
-			>{e.name}</a
-		>
+		<Link href={e.wikipedia} external icon={false} class="truncate">{e.name}</Link>
 	{:else}
 		<span class="truncate">{e.name}</span>
 	{/if}

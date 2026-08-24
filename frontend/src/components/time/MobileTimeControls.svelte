@@ -145,7 +145,7 @@
 								aria-label={m.time_pick_time()}
 								class="h-9 w-full rounded-md border bg-transparent px-2 font-mono tabular-nums text-base
 									scheme-light-dark
-									focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+									focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
 							/>
 						</div>
 					</div>

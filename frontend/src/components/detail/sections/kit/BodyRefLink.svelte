@@ -9,6 +9,7 @@
 	 * flight or if it fails.
 	 */
 	import { getContext } from 'svelte';
+	import Link from './Link.svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
@@ -40,14 +41,4 @@
 	let href = $derived(focusHref(appState, id, display));
 </script>
 
-{#if href}
-	<a
-		{href}
-		onclick={focusClick(focusObject, id, display)}
-		class="text-muted-foreground hover:text-foreground underline"
-	>
-		{display}
-	</a>
-{:else}
-	{display}
-{/if}
+<Link {href} onclick={focusClick(focusObject, id, display)}>{display}</Link>

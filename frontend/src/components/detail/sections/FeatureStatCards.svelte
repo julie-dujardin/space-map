@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
+	import StatCardRow from './kit/StatCardRow.svelte';
+	import type { Stat } from './kit/StatCard.svelte';
 	import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import { formatQuantity } from '$lib/format/quantities';
@@ -10,12 +11,6 @@
 		detail: FeatureDetailData | null;
 	}
 	let { feature, detail }: Props = $props();
-
-	interface Stat {
-		label: string;
-		value: string;
-		tooltip?: string;
-	}
 
 	// How big, how deep or tall, when it was named — coordinates place the
 	// feature rather than describe it, so they stay a property row below.
@@ -62,28 +57,4 @@
 	}
 </script>
 
-{#if stats.length > 0}
-	<div class="grid auto-cols-fr grid-flow-col gap-2">
-		{#each stats as s (s.label)}
-			<div
-				class="border-border/60 bg-muted/40 flex flex-col gap-1 rounded-md border p-2.5 {s.tooltip
-					? 'cursor-help'
-					: ''}"
-			>
-				<div class="text-muted-foreground text-[10px] uppercase">{s.label}</div>
-				{#if s.tooltip}
-					<Tooltip.Root>
-						<Tooltip.Trigger>
-							{#snippet child({ props })}
-								<div class="text-sm font-semibold tabular-nums" {...props}>{s.value}</div>
-							{/snippet}
-						</Tooltip.Trigger>
-						<Tooltip.Content>{s.tooltip}</Tooltip.Content>
-					</Tooltip.Root>
-				{:else}
-					<div class="text-sm font-semibold tabular-nums">{s.value}</div>
-				{/if}
-			</div>
-		{/each}
-	</div>
-{/if}
+<StatCardRow {stats} />

@@ -70,7 +70,10 @@
 	--destructive: oklch(0.577 0.245 27.325);
 	--border: oklch(0.922 0 0);
 	--input: oklch(0.922 0 0);
-	--ring: oklch(0.708 0 0);
+	/* A focus ring is non-text contrast: it needs 3:1 against the surface it
+	   sits on. The old value came to 2.4:1 here, and half that through the
+	   /50 the utilities carried. */
+	--ring: oklch(0.6 0 0);
 	--chart-1: oklch(0.809 0.105 251.813);
 	--chart-2: oklch(0.623 0.214 259.815);
 	--chart-3: oklch(0.546 0.245 262.881);
@@ -254,7 +257,7 @@ body {
 	--destructive: oklch(0.704 0.191 22.216);
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 15%);
-	--ring: oklch(0.556 0 0);
+	--ring: oklch(0.62 0 0);
 	--chart-1: oklch(0.809 0.105 251.813);
 	--chart-2: oklch(0.623 0.214 259.815);
 	--chart-3: oklch(0.546 0.245 262.881);
@@ -353,13 +356,22 @@ body {
 
 @layer base {
 	* {
-		@apply border-border outline-ring/50;
+		@apply border-border outline-ring;
 	}
 	body {
 		@apply bg-background text-foreground;
 	}
 	html {
 		@apply font-sans;
+	}
+	/* Preflight sets buttons to the default cursor, so every hand-rolled
+	   control had to remember cursor-pointer and most did not — one row of the
+	   drawer's header offered it on one control of four. Anything that is not
+	   disabled and takes a click says so. */
+	button:not(:disabled),
+	[role='button']:not([aria-disabled='true']),
+	label:has(> input[type='checkbox']:not(:disabled)) {
+		cursor: pointer;
 	}
 }
 

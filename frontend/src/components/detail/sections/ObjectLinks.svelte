@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+	import Link from './kit/Link.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import Row from './kit/Row.svelte';
@@ -39,13 +39,13 @@
 		return out;
 	});
 
-	interface Link {
+	interface LinkRef {
 		href: string;
 		label: string;
 	}
 
 	let links = $derived.by(() => {
-		const result: Link[] = [];
+		const result: LinkRef[] = [];
 		if (wikipediaUrl) result.push({ href: wikipediaUrl, label: m.source_wikipedia_name() });
 		if (nasaScienceUrl) result.push({ href: nasaScienceUrl, label: m.nasa_science() });
 		for (const url of websites)
@@ -95,13 +95,7 @@
 				</p>
 			{/if}
 			{#each links as link (link.href)}
-				<a
-					href={link.href}
-					target="_blank"
-					rel="noopener"
-					class="w-fit inline-flex items-center gap-1 underline hover:text-foreground text-muted-foreground"
-					>{link.label}<ExternalLinkIcon class="size-3 shrink-0" /></a
-				>
+				<Link href={link.href} external class="w-fit">{link.label}</Link>
 			{/each}
 		</div>
 	</div>

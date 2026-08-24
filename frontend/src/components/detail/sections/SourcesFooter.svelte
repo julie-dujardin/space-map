@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+	import Link from './kit/Link.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { archiveLabel, archiveRole, archiveUrl } from '$lib/credits/archive-labels';
 	import {
@@ -237,11 +237,8 @@
 {#if wikipediaLicensed}
 	<p class="text-xs text-muted-foreground">
 		{m.wikipedia_license_notice()}
-		<a
-			href="https://creativecommons.org/licenses/by-sa/4.0/"
-			target="_blank"
-			rel="noopener noreferrer license"
-			class="underline hover:text-foreground">CC BY-SA 4.0</a
+		<Link href="https://creativecommons.org/licenses/by-sa/4.0/" external icon={false} rel="license"
+			>CC BY-SA 4.0</Link
 		>.
 	</p>
 {/if}
@@ -256,12 +253,8 @@
 		<span>{m.metadata_sources_prefix()}</span>
 		{#each sources as source (source.key)}
 			<div class="flex">
-				<a
-					href={source.url}
-					target="_blank"
-					rel="noopener"
-					title={source.label}
-					class="truncate underline hover:text-foreground">{source.label}</a
+				<Link href={source.url} external icon={false} title={source.label} class="truncate"
+					>{source.label}</Link
 				>
 				{#if source.note}<span class="text-muted-subtle ms-1 shrink-0">({source.note})</span>{/if}
 			</div>
@@ -272,13 +265,7 @@
 	<p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
 		<span>{m.attribution_imagery()}:</span>
 		{#each imagery as source (source.key)}
-			<a
-				href={source.url}
-				target="_blank"
-				rel="noopener"
-				class="inline-flex items-center gap-1 underline hover:text-foreground"
-				>{source.label}<ExternalLinkIcon class="size-3 shrink-0" /></a
-			>
+			<Link href={source.url} external icon={false}>{source.label}</Link>
 		{/each}
 	</p>
 {/if}
