@@ -10,18 +10,18 @@ Chunk span is the on-disk streaming-chunk duration (the unit the frontend swaps 
 
 | Zone | Chunk span | Coeff dtype | Files | Sub-chunks | Median err | p95 err | Max err | Median KiB | p95 KiB | Max KiB | Total MiB | k_pure | k_drift | cheb | uncov |
 |---|---:|:--:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `earth-moon` | 30d | `f32` | 2286 | 1114898 | 357m | 4303.5km | 6.0e+07km | 0.7 | 238.0 | 350.6 | 82.9 | 653203 | 214842 | 246558 | 295 |
-| `interplanetary` | 364d | `f64` | 189 | 245423 | 0m | 5.7km | 1684.4km | 65.4 | 529.2 | 950.4 | 22.6 | 214857 | 857 | 29032 | 677 |
+| `earth-moon` | 30d | `f32` | 2286 | 1114896 | 357m | 4303.5km | 6.0e+07km | 0.7 | 238.0 | 350.5 | 82.9 | 653203 | 214842 | 246556 | 295 |
+| `interplanetary` | 364d | `f64` | 189 | 245423 | 0m | 5.7km | 1684.4km | 65.4 | 503.8 | 951.2 | 22.4 | 214858 | 860 | 29028 | 677 |
 | `jupiter` | 1y | `f32` | 35 | 10290 | 125m | 1.6km | 23.5km | 70.5 | 175.6 | 179.9 | 2.5 | 0 | 0 | 10290 | 0 |
-| `mars` | 30d | `f32` | 2169 | 45652 | 10.9km | 1366.6km | 19879.4km | 0.3 | 48.0 | 282.7 | 12.8 | 4487 | 37513 | 3408 | 244 |
+| `mars` | 30d | `f32` | 2169 | 45678 | 9.8km | 47.7km | 12975.8km | 0.3 | 48.0 | 282.7 | 12.8 | 4486 | 37540 | 3408 | 244 |
 | `mercury` | 183d | `f32` | 26 | 4344 | 551m | 4.3km | 7763.3km | 5.7 | 55.6 | 57.8 | 0.3 | 254 | 3867 | 105 | 118 |
 | `neptune` | 5y | `f32` | 2 | 319 | 2.2km | 7.7km | 9.8km | 100.8 | 100.8 | 100.8 | 0.1 | 0 | 0 | 319 | 0 |
 | `pluto` | 5y | `f32` | 1 | 20 | 117m | 444m | 492m | 3.3 | 3.3 | 3.3 | 0.0 | 0 | 0 | 20 | 0 |
 | `saturn` | 1y | `f32` | 51 | 5813 | 1.6km | 9686.5km | 137111.6km | 0.1 | 88.3 | 130.8 | 1.1 | 3338 | 0 | 2475 | 0 |
-| `small-bodies` | 28d | `f32` | 190 | 6761 | 1m | 109m | 17.1km | 5.2 | 95.2 | 233.2 | 3.9 | 1116 | 19 | 5564 | 62 |
+| `small-bodies` | 28d | `f32` | 193 | 6833 | 4m | 109m | 17.1km | 4.6 | 95.2 | 233.2 | 3.9 | 1358 | 311 | 5102 | 62 |
 | `uranus` | 5y | `f32` | 1 | 218 | 1.1km | 3.7km | 7.9km | 57.2 | 57.2 | 57.2 | 0.1 | 0 | 0 | 218 | 0 |
 | `venus` | 183d | `f32` | 360 | 8943 | 5m | 1.6km | 526.1km | 0.2 | 538.0 | 869.0 | 17.0 | 314 | 1724 | 6661 | 244 |
-| **total** | | | **5310** | **1442681** | **228m** | **4036.5km** | **6.0e+07km** | **0.7** | **211.0** | **950.4** | **143.1** | **877569** | **258822** | **304650** | **1640** |
+| **total** | | | **5313** | **1442777** | **228m** | **4013.9km** | **6.0e+07km** | **0.7** | **211.0** | **951.2** | **142.9** | **877811** | **259144** | **304182** | **1640** |
 
 ## Per-probe error (worst-first within each zone)
 
@@ -131,7 +131,7 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `earth-moon` | `120958977` | IMAP (spacecraft) | -43 | 2800 | 34m | 63m | 8.5km |
 | `earth-moon` | `120958978` | Carruthers Geocorona Observatory ( | -171 | 8990 | 33m | 62m | 8.5km |
 | `earth-moon` | `120958976` | SWFO-L1 (spacecraft) | -231 | 7790 | 36m | 62m | 8.5km |
-| `earth-moon` | `107429888` | ORX | -64 | 590 | 29m | 109m | 8.3km |
+| `earth-moon` | `107429888` | ORX | -64 | 580 | 25m | 102m | 8.3km |
 | `earth-moon` | `117293056` | JUICE | -28 | 450 | 33m | 119m | 8.3km |
 | `earth-moon` | `118394880` | CLPS | -244 | 100 | 14m | 2.8km | 8.2km |
 | `earth-moon` | `86196224` | CONTOUR | -200 | 1135 | 34m | 3.5km | 7.8km |
@@ -225,7 +225,7 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `interplanetary` | `110526464` | BEPICOLOMBO | -121 | 2340 | 1.9km | 121.0km | 976.1km |
 | `interplanetary` | `92663808` | STEREO-B (spacecraft) | -235 | 37350 | 0m | 3.3km | 971.8km |
 | `interplanetary` | `120614912` | LUCY | -49 | 2985 | 2.0km | 20.2km | 971.6km |
-| `interplanetary` | `107429888` | ORX | -64 | 3525 | 2.0km | 32.2km | 970.3km |
+| `interplanetary` | `107429888` | ORX | -64 | 3525 | 2.4km | 38.1km | 970.3km |
 | `interplanetary` | `97996800` | VCO | -5 | 1435 | 4.7km | 127.8km | 963.4km |
 | `interplanetary` | `96477184` | Planck Space Observatory (spacecra | -489 | 10595 | 1.1km | 8.7km | 961.1km |
 | `interplanetary` | `49000448` | VOYAGER | -32 | 13920 | 0m | 0m | 957.3km |
@@ -301,7 +301,7 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `jupiter` | `49065984` | VOYAGER | -31 | 1040 | 804m | 3.5km | 4.0km |
 | `jupiter` | `117293056` | JUICE | -28 | 915 | 928m | 3.2km | 4.0km |
 | `jupiter` | `104804352` | NEWHORIZONS | -98 | 625 | 972m | 3.1km | 3.9km |
-| `mars` | `140111872` | M-MATISSE | -102 | 10925 | 11041.2km | 17235.2km | 19879.4km |
+| `mars` | `140111872` | M-MATISSE | -102 | 11055 | 8.8km | 32.5km | 12975.8km |
 | `mars` | `80715776` | MGS | -94 | 16715 | 17.2km | 52.2km | 4079.9km |
 | `mars` | `120983552` | MAVEN | -202 | 20460 | 12.1km | 39.7km | 3495.1km |
 | `mars` | `78118912` | Mars Pathfinder (spacecraft) | -530 | 905 | 1347.3km | 2672.9km | 3454.9km |
@@ -346,7 +346,7 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `small-bodies` | `101912576` | DAWN | -203 | 11005 | 1m | 139m | 11.6km |
 | `small-bodies` | `90976256` | HAYABUSA | -130 | 360 | 0m | 166m | 8.4km |
 | `small-bodies` | `112156672` | HYB2 | -37 | 4275 | 18m | 115m | 499m |
-| `small-bodies` | `107429888` | ORX | -64 | 7040 | 0m | 59m | 379m |
+| `small-bodies` | `107429888` | ORX | -64 | 7400 | 8m | 63m | 491m |
 | `small-bodies` | `120614912` | LUCY | -49 | 445 | 27m | 106m | 379m |
 | `small-bodies` | `118050816` | PSYCHE | -255 | 1430 | 27m | 137m | 305m |
 | `small-bodies` | `104804352` | NEWHORIZONS | -98 | 25 | 23m | 136m | 148m |

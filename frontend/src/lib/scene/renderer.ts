@@ -489,16 +489,10 @@ export class SceneRenderer {
 		if (focusBody) this.focusController.promotion.ensureBodyObjects(focusBody);
 
 		// Initial focus on a halo-only type (asteroid/comet/probe) builds its mesh
-		// immediately; for moons-of-asteroids `upgradeMeshTargets` also upgrades
-		// the parent host so it appears as a sphere alongside the focused moon.
+		// immediately; for moons-of-asteroids and probes the sync also upgrades
+		// the parent host so it appears alongside the focused body.
 		// setFocusTarget handles subsequent focus changes symmetrically.
-		if (focusBody) {
-			const didUpgrade = this.focusController.upgradeMeshTargets(focusBody);
-			if (didUpgrade) {
-				buildTrails(this.bodyObjects, this.scene, this.pointClouds.basis(), this.clock.jd);
-				this.assignMapLayerToTrails();
-			}
-		}
+		if (focusBody) this.focusController.syncUpgradeTargets(focusBody);
 
 		this.repositionAll();
 
@@ -1193,19 +1187,20 @@ export class SceneRenderer {
 	 * matching what the body sphere occupied, with tight near/far for depth.
 	 */
 	private renderModelOverlay(): void {
-		const focusBody = this.focusController.current;
-		if (!focusBody) return;
-		// A focused surface feature has no model of its own — its host carries the
-		// overlay model the camera is orbiting.
-		const modelId = isSurfaceFeature(focusBody)
-			? focusBody.featureAnchor!.hostId
-			: focusBody.data.id;
-		const bo = this.bodyObjects.get(modelId);
+		const bo = this.overlayModelBo();
 		if (!bo?.model) return;
 
 		// Seat a landed probe on its feet at the surface (origin) so it rests on the
-		// terrain, not bbox-centred half-buried; flying probes stay centred.
-		const fit = bo.model.userData as { centerOffset?: Vector3; feetOffset?: Vector3 };
+		// terrain, not bbox-centred half-buried; flying probes stay centred. Scale
+		// and position may carry a secondary-model transform from an earlier frame
+		// (see below) — reset to the fit normalisation before seating.
+		const fit = bo.model.userData as {
+			centerOffset?: Vector3;
+			feetOffset?: Vector3;
+			fitScale?: number;
+		};
+		bo.model.scale.setScalar(fit.fitScale ?? 1);
+		bo.model.position.set(0, 0, 0);
 		if (bo.isLanded && fit.feetOffset) {
 			bo.model.position
 				.copy(fit.feetOffset)
@@ -1223,12 +1218,30 @@ export class SceneRenderer {
 		// Model is normalised to radius 1 in modelScene; this overlayDist makes it
 		// subtend exactly what the radiusScene sphere would, so the model renders
 		// true-to-scale and label occlusion/anchoring can mirror it via modelUnitScene.
-		const overlayDist = camDist / modelUnitScene(bo);
+		const unit = modelUnitScene(bo);
+		const overlayDist = camDist / unit;
 		this.modelCamera.position.copy(this._tmpV3).normalize().multiplyScalar(overlayDist);
 		this.modelCamera.quaternion.copy(this.camera.quaternion);
 		this.modelCamera.aspect = this.camera.aspect;
-		this.modelCamera.near = Math.max(0.01, overlayDist - 5);
-		this.modelCamera.far = overlayDist + 50;
+
+		// Secondary resident models — a focused probe and its fit-center target
+		// (OSIRIS-REx over Bennu) hold one model each — draw in the same pass at
+		// their true relative offset and scale, expressed in primary-model units.
+		let extraReach = 0;
+		for (const other of this.bodyObjects.values()) {
+			const m = other.model;
+			if (!m || other === bo) continue;
+			const s = modelUnitScene(other) / unit;
+			const ofitScale = (m.userData as { fitScale?: number }).fitScale ?? 1;
+			m.scale.setScalar(ofitScale * s);
+			m.position.subVectors(other.group.position, bo.group.position).divideScalar(unit);
+			const ofit = m.userData as { centerOffset?: Vector3 };
+			if (ofit.centerOffset) m.position.addScaledVector(ofit.centerOffset, -s);
+			const reach = m.position.length() + s;
+			if (reach > extraReach) extraReach = reach;
+		}
+		this.modelCamera.near = Math.max(0.01, overlayDist - 5 - extraReach);
+		this.modelCamera.far = overlayDist + 50 + extraReach;
 		this.modelCamera.updateProjectionMatrix();
 
 		// Sun direction in the overlay = (sun - focus) normalised, applied as
@@ -1437,14 +1450,16 @@ export class SceneRenderer {
 	 *  the current body's new-time position. No-op when jd is already current.
 	 *  `allowOorRefocus` (tick loop only) pans onto the parent when a seek lands
 	 *  where the focus no longer exists. */
-	/** Keys already sent to `ensureFocusedProbeTarget`'s stream-and-promote,
-	 *  so a frame loop never re-requests a target. */
-	private requestedProbeTargets = new Set<string>();
 	private lastProbeTargetCheck: string | null = null;
+	/** Fit-center ids already sent to `ensureBody`, so a frame loop never
+	 *  re-requests a stream. */
+	private requestedProbeTargets = new Set<string>();
 
-	/** Stream + promote the focused probe's stamped fit-center body (Ryugu for
-	 *  Hayabusa2, …) so its body-relative fit can take over from the
-	 *  heliocentric one. Cheap no-op unless focus or jd changed. */
+	/** Stream + promote the focused probe's stamped fit-center body (Bennu for
+	 *  OSIRIS-REx, Ryugu for Hayabusa2, …) so its body-relative fit can take
+	 *  over, then re-run the focus flow's `syncUpgradeTargets` — the single
+	 *  owner of mesh/texture/model upgrades — since the probe's parentId flips
+	 *  per-frame, outside setFocusTarget. Cheap no-op unless focus or jd changed. */
 	private ensureFocusedProbeTarget(): void {
 		const focused = this.focusController.current;
 		const store = this.ctx.probeStore;
@@ -1454,13 +1469,18 @@ export class SceneRenderer {
 		if (checkKey === this.lastProbeTargetCheck) return;
 		this.lastProbeTargetCheck = checkKey;
 		const fcId = store.stampedFitCenterAt(focused.data.id, this.clock.jd);
-		if (!fcId || store.fitCenterUsable(fcId)) return;
-		if (this.requestedProbeTargets.has(fcId)) return;
-		this.requestedProbeTargets.add(fcId);
-		void this.ctx.ensureBody(fcId, jdToDate(this.clock.jd)).then(() => {
-			const body = this.ctx.getBody(fcId);
-			if (body) this.focusController.promotion.ensureBodyObjects(body);
-		});
+		if (!fcId) return;
+		const body = this.ctx.getBody(fcId);
+		if (!body) {
+			if (this.requestedProbeTargets.has(fcId)) return;
+			this.requestedProbeTargets.add(fcId);
+			void this.ctx.ensureBody(fcId, jdToDate(this.clock.jd));
+			return;
+		}
+		// Promotion makes `fitCenterUsable` pass, which flips the probe onto the
+		// body-relative fit; the parent then enters upgradeTargets next tick.
+		this.focusController.promotion.ensureBodyObjects(body);
+		this.focusController.syncUpgradeTargets(focused);
 	}
 
 	private applyJdUpdate(allowOorRefocus = false): void {
@@ -1669,13 +1689,42 @@ export class SceneRenderer {
 	 *  overlay space with `modelCamera` (refreshed every rendered frame), which
 	 *  mirrors the main camera exactly. */
 	private pickFocusedModel(ndcX: number, ndcY: number): PositionedBody | null {
-		const focused = this.focusController.current;
-		if (!focused) return null;
-		const bo = this.bodyObjects.get(focused.data.id);
+		const bo = this.overlayModelBo();
 		if (!bo?.model) return null;
 		this._pickNdc.set(ndcX, ndcY);
 		this._modelRaycaster.setFromCamera(this._pickNdc, this.modelCamera);
-		return this._modelRaycaster.intersectObject(bo.model, true).length > 0 ? focused : null;
+		// Every resident model renders in the overlay (probe + fit-center target);
+		// pick the nearest hit so clicking the target's shape focuses it.
+		let best: PositionedBody | null = null;
+		let bestDist = Infinity;
+		for (const other of this.bodyObjects.values()) {
+			if (!other.model) continue;
+			const hits = this._modelRaycaster.intersectObject(other.model, true);
+			if (hits.length > 0 && hits[0].distance < bestDist) {
+				bestDist = hits[0].distance;
+				best = other.body;
+			}
+		}
+		return best;
+	}
+
+	/** The body whose model the overlay composites: the focused body (a surface
+	 *  feature defers to its host), else a focused flying probe's fit-center
+	 *  target (Bennu under OSIRIS-REx) once its model is resident — a close
+	 *  orbit needs terrain to read against. */
+	private overlayModelBo(): BodyObjects | null {
+		const focusBody = this.focusController.current;
+		if (!focusBody) return null;
+		const modelId = isSurfaceFeature(focusBody)
+			? focusBody.featureAnchor!.hostId
+			: focusBody.data.id;
+		const bo = this.bodyObjects.get(modelId);
+		if (bo?.model) return bo;
+		if (focusBody.data.orbitalSource === OrbitalSource.SPICE_PROBE && !bo?.isLanded) {
+			const pbo = this.bodyObjects.get(focusBody.data.parentId);
+			if (pbo?.model) return pbo;
+		}
+		return null;
 	}
 
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {

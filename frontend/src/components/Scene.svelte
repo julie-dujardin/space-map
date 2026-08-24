@@ -248,6 +248,11 @@
 		let cleanupInner = () => {};
 		try {
 			renderer = buildRenderer();
+			// Dev-only handle for headless render diagnostics (CDP scripts).
+			if (import.meta.env.DEV) {
+				(window as unknown as Record<string, unknown>).__smRenderer = renderer;
+				(window as unknown as Record<string, unknown>).__smCtx = ctx;
+			}
 			cleanupInner = wireRenderer();
 		} catch (e) {
 			console.error('[scene] renderer init failed:', e);

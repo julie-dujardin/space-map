@@ -104,8 +104,8 @@ describe('asteroid-moon focus gate', () => {
 		const { vis, sylvia, remus } = buildScene();
 		vis.setFocused(sylvia);
 		vis.updateCamera(CLOSE_AU * AU_SCALE, 2451545);
-		// Top-level parent → no system root; the focusedBodyId match must carry.
-		expect(vis.focusedSystemId).toBeNull();
+		// A focused Sun-orbiting small body roots its own sub-system.
+		expect(vis.focusedSystemId).toBe(SYLVIA);
 		expect(vname(vis.getMoonVisibility(remus))).toBe(vname(VISIBILITY.FULL));
 	});
 

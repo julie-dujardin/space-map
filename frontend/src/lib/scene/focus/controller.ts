@@ -1,6 +1,7 @@
 import { Vector3, type Mesh, type PerspectiveCamera, type Scene } from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ObjectType, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
+import { OrbitalSource } from '$lib/fetch/position/format';
 import { cartesianToSpherical, offsetFacing, sphericalToCartesian } from '$lib/math/spherical';
 import type { BodyObjects, Callbacks } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -58,6 +59,8 @@ export class FocusController {
 	/** Initial lat/lon/zoom stashed until orientation loads and the camera can be
 	 *  re-placed in body-fixed coords. Cleared once applied or once moved. */
 	private pendingInitialView: { latitude: number; longitude: number; zoom: number } | null = null;
+	/** Members of the last {@link syncUpgradeTargets} pass. */
+	private upgradeTargetIds = new Set<string>();
 
 	constructor(
 		private readonly deps: FocusDeps,
@@ -120,20 +123,65 @@ export class FocusController {
 		];
 	}
 
-	/** Initial-focus mesh upgrade via {@link upgradeTargets}, for first paint
-	 *  before {@link setFocusTarget} takes over. Returns true if trails need rebuilding. */
-	upgradeMeshTargets(body: PositionedBody): boolean {
-		const { ctx, scene, clickables, meshToBody, bodyObjects } = this.deps;
+	/**
+	 * Single owner of focus-driven mesh upgrades. Computes the bodies the
+	 * current focus needs upgraded ({@link upgradeTargets}: the focus itself, a
+	 * moon's parent, a probe's fit center), downgrades `upgradeTargetIds`
+	 * members that left the set, upgrades joiners, and loads non-focus
+	 * joiners' textures/models. Bodies staying in the set are left untouched,
+	 * so their resident texture/DEM/model survive focus switches within it
+	 * (Bennu ↔ OSIRIS-REx). Called from initial focus,
+	 * {@link setFocusTarget}, and the renderer when a focused probe's fit
+	 * center flips mid-focus. Returns the new target ids.
+	 */
+	syncUpgradeTargets(body: PositionedBody): Set<string> {
+		const {
+			ctx,
+			scene,
+			clickables,
+			meshToBody,
+			bodyObjects,
+			pointClouds,
+			clock,
+			loadTexture,
+			assignMapLayerToTrails
+		} = this.deps;
+		const targets = upgradeTargets(body, ctx);
+		const newIds = new Set(targets.map((t) => t.data.id));
+		for (const id of this.upgradeTargetIds) {
+			if (newIds.has(id)) continue;
+			const bo = bodyObjects.get(id);
+			if (!bo) continue;
+			// Majors keep their own sphere + texture (system residency owns
+			// those); only the overlay model is target-scoped.
+			if (isMeshUpgradable(bo.body)) downgradeBodyMesh(bo, scene, clickables, meshToBody);
+			else unloadBodyModel(bo);
+		}
 		let didUpgrade = false;
-		for (const t of upgradeTargets(body, ctx)) {
+		for (const t of targets) {
+			if (this.upgradeTargetIds.has(t.data.id)) continue;
 			this.promotion.ensureBodyObjects(t);
 			const tBo = bodyObjects.get(t.data.id);
-			if (!tBo) continue;
-			const wasUpgraded = tBo.focusUpgraded === true;
-			upgradeBodyMesh(tBo, scene, clickables, meshToBody);
-			if (!wasUpgraded && tBo.focusUpgraded) didUpgrade = true;
+			if (!tBo) {
+				// Not buildable yet (still streaming): stay a non-member so the
+				// next sync retries the join.
+				newIds.delete(t.data.id);
+				continue;
+			}
+			if (isMeshUpgradable(t)) {
+				upgradeBodyMesh(tBo, scene, clickables, meshToBody);
+				didUpgrade = true;
+			}
+			// The focused body's own texture load stays with the focus flow.
+			if (t.data.id !== body?.data.id) loadTexture(t);
 		}
-		return didUpgrade;
+		if (didUpgrade) {
+			// Halo-only bodies had no trail; build now that `bo.mesh` is set.
+			buildTrails(bodyObjects, scene, pointClouds.basis(), clock.jd);
+			assignMapLayerToTrails();
+		}
+		this.upgradeTargetIds = newIds;
+		return newIds;
 	}
 
 	/** Pan to frame `body` without changing the focused body — used to re-center on
@@ -201,22 +249,8 @@ export class FocusController {
 	}
 
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
-		const {
-			ctx,
-			scene,
-			clickables,
-			meshToBody,
-			bodyObjects,
-			controls,
-			callbacks,
-			focus,
-			camera,
-			pointClouds,
-			clock,
-			systemData,
-			loadTexture,
-			assignMapLayerToTrails
-		} = this.deps;
+		const { ctx, bodyObjects, controls, callbacks, focus, camera, systemData, loadTexture } =
+			this.deps;
 		// Surface-feature bodies render nothing themselves — the host draws the
 		// terrain. Skip halo/label allocation.
 		if (!isSurfaceFeature(body)) this.promotion.ensureBodyObjects(body);
@@ -231,37 +265,16 @@ export class FocusController {
 		const prevModelId =
 			prev && (isSurfaceFeature(prev) ? prev.featureAnchor!.hostId : prev.data.id);
 		const newModelId = isSurfaceFeature(body) ? body.featureAnchor!.hostId : body.data.id;
-		if (prevModelId && prevModelId !== newModelId) {
+		const newTargetIds = this.syncUpgradeTargets(body);
+		// A target that stays upgraded keeps its model too (a probe's fit
+		// center focused, then unfocused back to the probe).
+		if (prevModelId && prevModelId !== newModelId && !newTargetIds.has(prevModelId)) {
 			const prevBo = bodyObjects.get(prevModelId);
 			if (prevBo) unloadBodyModel(prevBo);
 		}
 		if (prevNomBodyId && prevNomBodyId !== newNomBodyId) {
 			const prevNomBo = bodyObjects.get(prevNomBodyId);
 			if (prevNomBo) disposeNomenclatureLabels(prevNomBo);
-		}
-		const prevTargets = upgradeTargets(prev, ctx);
-		const newTargets = upgradeTargets(body, ctx);
-		const prevIds = new Set(prevTargets.map((b) => b.data.id));
-		const newIds = new Set(newTargets.map((b) => b.data.id));
-		for (const t of prevTargets) {
-			if (newIds.has(t.data.id)) continue;
-			const tBo = bodyObjects.get(t.data.id);
-			if (tBo) downgradeBodyMesh(tBo, scene, clickables, meshToBody);
-		}
-		let didUpgrade = false;
-		for (const t of newTargets) {
-			if (prevIds.has(t.data.id)) continue;
-			this.promotion.ensureBodyObjects(t);
-			const tBo = bodyObjects.get(t.data.id);
-			if (tBo) {
-				upgradeBodyMesh(tBo, scene, clickables, meshToBody);
-				didUpgrade = true;
-			}
-		}
-		if (didUpgrade) {
-			// Halo-only bodies had no trail; build now that `bo.mesh` is set.
-			buildTrails(bodyObjects, scene, pointClouds.basis(), clock.jd);
-			assignMapLayerToTrails();
 		}
 
 		this.focusedBody = body;
@@ -478,7 +491,9 @@ export class FocusController {
 }
 
 /** Bodies whose mesh should be upgraded while `focus` is focused: the focus
- *  itself, plus (for asteroid moons) the parent, so it stays a sphere + trail. */
+ *  itself, plus the parent for asteroid moons (so it stays a sphere + trail)
+ *  and for probes (the fit center the probe is orbiting — Bennu under
+ *  OSIRIS-REx — which needs its mesh/model to read the orbit against). */
 function upgradeTargets(focus: PositionedBody | undefined, ctx: ContextManager): PositionedBody[] {
 	if (!focus) return [];
 	// A surface feature renders no mesh; its host must so the camera has terrain
@@ -489,9 +504,15 @@ function upgradeTargets(focus: PositionedBody | undefined, ctx: ContextManager):
 	}
 	const out: PositionedBody[] = [];
 	if (isMeshUpgradable(focus)) out.push(focus);
-	if (focus.data.objectType === ObjectType.MOON) {
+	const wantsParent =
+		focus.data.objectType === ObjectType.MOON ||
+		focus.data.orbitalSource === OrbitalSource.SPICE_PROBE;
+	if (wantsParent) {
+		// Non-upgradable parents (Ceres under Dawn) join too: they keep their
+		// own mesh, but membership drives their texture/DEM/model load and
+		// protects the resident state across focus switches.
 		const parent = ctx.getBody(focus.data.parentId);
-		if (parent && isMeshUpgradable(parent)) out.push(parent);
+		if (parent) out.push(parent);
 	}
 	return out;
 }

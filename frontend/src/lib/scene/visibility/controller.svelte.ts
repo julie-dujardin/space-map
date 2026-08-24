@@ -6,7 +6,7 @@ import {
 	type PositionedBody
 } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { AU_SCALE } from '$lib/math/units';
+import { AU_KM, AU_SCALE } from '$lib/math/units';
 import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { f64dist } from '$lib/scene/animation/math';
@@ -30,6 +30,18 @@ const SMALL_BODY_ZONE_PREFIX = 'small_bodies/';
  *  any probe inside the Earth system zone (Earth orbiters, lunar orbiters,
  *  mid-flyby probes). */
 const EARTH_SYSTEM_NAIF = 3;
+
+/** Declutter reach (AU) for a small-body sub-system, which has no satellite
+ *  topology to derive one from. Mirrors the data pipeline's small-bodies zone
+ *  radius (4e6 km), inside which probes carry body-relative fits. */
+const SMALL_BODY_SYSTEM_REACH_AU = 4.0e6 / AU_KM;
+
+/** Sun-orbiting types that root their own sub-system when focused (declutter,
+ *  body-relative probes, moons parented directly on them). Kept as a function
+ *  call — inline `A && (B || C)` groupings miscompile in `.svelte.ts`. */
+function isSmallBodyType(ot: ObjectType): boolean {
+	return isAsteroid(ot) || ot === ObjectType.COMET || ot === ObjectType.DWARF_PLANET;
+}
 
 /**
  * Owns focus state and turns camera distance + focus into per-body visibility
@@ -132,7 +144,10 @@ export class VisibilityController {
 		const focused = this.bodies.bodiesById.get(this.focusedBodyIdPlain);
 		if (!focused || focused.data.orbitalSource !== OrbitalSource.SPICE_PROBE) return;
 		const sysNaif = ps.containingSystemAt(focused.data.id, this.currentJd);
-		const sysId = sysNaif !== null ? `naif-${sysNaif}` : null;
+		// Small-body zones carry no barycentric system; the stamped per-record
+		// fit center (Bennu for OSIRIS-REx) is the system instead.
+		const sysId =
+			sysNaif !== null ? `naif-${sysNaif}` : ps.stampedFitCenterAt(focused.data.id, this.currentJd);
 		if (sysId === this.focusedSystemIdPlain) return;
 		this.focusedSystemId = sysId;
 		this.focusedSystemIdPlain = sysId;
@@ -154,7 +169,12 @@ export class VisibilityController {
 			body.data.objectType === ObjectType.STAR ||
 			(!isSystemBarycenter && isTopLevelParent(body.data.parentId));
 		if (isSystemBarycenter) return body.data.id;
-		if (isTopLevel) return null;
+		if (isTopLevel) {
+			// Sun-orbiting small bodies are their own (sub-)system: their moons
+			// and body-relative probes parent directly on them, and the zoomed-in
+			// declutter must engage near them just like near a planet. Local
+			return isSmallBodyType(body.data.objectType) ? body.data.id : null;
+		}
 		// parentId is either the system barycenter (e.g. Earth's parent is naif-3) or
 		// a system member one level deeper (e.g. an Earth satellite's parent is naif-399,
 		// whose parent is naif-3). Satellites aren't recorded as barycenter children
@@ -203,8 +223,7 @@ export class VisibilityController {
 	/** Ratio-based visibility for a moon, gated on the focused system — the
 	 *  distance ratio alone says nothing about proximity to the parent, so an
 	 *  ungated moon pops in whenever the camera zooms close to anything.
-	 *  Focusing the asteroid itself leaves focusedSystemId null, so also match
-	 *  focusedBodyId. Asteroid moons skip the crowding cap (sparse per parent). */
+	 *  Asteroid moons skip the crowding cap (sparse per parent). */
 	getMoonVisibility(moon: PositionedBody): VISIBILITY {
 		const cached = this.moonVisibilityCache.get(moon.data.id);
 		if (cached !== undefined) return cached;
@@ -212,8 +231,9 @@ export class VisibilityController {
 		// Asteroid parents live in `asteroidBodiesByZone`, not `bodiesById`, so go through getBody.
 		const parent = this.bodies.getBody(moon.data.parentId);
 		const isAsteroidMoon = parent !== undefined && isAsteroid(parent.data.objectType);
-		let inFamily = this.isInFocusedSystem(moon.data.parentId);
-		if (isAsteroidMoon && moon.data.parentId === this.focusedBodyIdPlain) inFamily = true;
+		// A focused small body roots its own sub-system (resolveSystemId), so
+		// the system gate covers asteroid moons without a focusedBodyId match.
+		const inFamily = this.isInFocusedSystem(moon.data.parentId);
 		if (!inFamily) {
 			vis = VISIBILITY.HIDE;
 		} else if (isAsteroidMoon && !this.matchesSmallBodyClass(moon.data.parentId)) {
@@ -610,6 +630,12 @@ export class VisibilityController {
 			}
 		};
 		visit(sysId, true);
+		if (max === 0) {
+			// Small-body sub-system (Bennu, 67P, Ceres…): members live outside
+			// `bodiesById`, so the walk finds nothing — use the fixed zone reach.
+			const root = this.bodies.getBody(sysId);
+			if (root && isSmallBodyType(root.data.objectType)) return SMALL_BODY_SYSTEM_REACH_AU;
+		}
 		return max;
 	}
 }

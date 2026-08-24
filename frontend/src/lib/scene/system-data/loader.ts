@@ -4,6 +4,7 @@ import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { loadSystemData, unloadSystemTextures } from '$lib/scene/objects/body/system';
+import { isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 
 /** Tracks which system's textures + orientation are resident, plus a
  *  deferred-unload queue so a reversing focus-fly doesn't thrash the GPU.
@@ -27,15 +28,16 @@ export class SystemDataLoader {
 	/** On barycenter change, queue the prior system for unload and load the new one. */
 	syncToFocus(): void {
 		const sysId = this.ctx.visibility.focusedSystemId;
-		if (!sysId) {
-			// Standalone focus (Sun, Ceres, comet…): queue any prior system for unload.
+		const baryId = sysId ? this.resolveBaryId(sysId) : null;
+		if (!baryId) {
+			// Standalone focus (Sun, a small-body sub-system…): queue any prior
+			// system for unload.
 			if (this.lastBaryId) {
 				this.pendingUnloads.add(this.lastBaryId);
 				this.lastBaryId = null;
 			}
 			return;
 		}
-		const baryId = this.resolveBaryId(sysId);
 		if (baryId === this.lastBaryId) return;
 		// Drop it from pending unloads in case the user re-enters mid-fly.
 		if (this.lastBaryId) this.pendingUnloads.add(this.lastBaryId);
@@ -50,7 +52,7 @@ export class SystemDataLoader {
 	 *  land on white spheres. Balanced by {@link discardPrefetch}. */
 	prefetch(sysId: string): void {
 		const baryId = this.resolveBaryId(sysId);
-		if (baryId === this.lastBaryId || this.prefetched.has(baryId)) return;
+		if (!baryId || baryId === this.lastBaryId || this.prefetched.has(baryId)) return;
 		this.prefetched.add(baryId);
 		this.pendingUnloads.delete(baryId);
 		this.load(baryId);
@@ -59,14 +61,18 @@ export class SystemDataLoader {
 	/** Queue a warmed-but-never-entered system back for unload. */
 	discardPrefetch(sysId: string): void {
 		const baryId = this.resolveBaryId(sysId);
-		if (!this.prefetched.delete(baryId)) return;
+		if (!baryId || !this.prefetched.delete(baryId)) return;
 		if (baryId !== this.lastBaryId) this.pendingUnloads.add(baryId);
 	}
 
-	/** Resolve sysId to its barycenter (planet → parent, barycenter → itself). */
-	private resolveBaryId(sysId: string): string {
+	/** Resolve sysId to its barycenter (planet → parent, barycenter → itself),
+	 *  or null for a small-body sub-system (Bennu, 67P) — those resolve to the
+	 *  Sun/SSB, which has no per-system file; textures load standalone. */
+	private resolveBaryId(sysId: string): string | null {
 		const body = this.ctx.getBody(sysId);
-		return body?.data.objectType === ObjectType.BARYCENTER ? sysId : (body?.data.parentId ?? sysId);
+		if (body?.data.objectType === ObjectType.BARYCENTER) return sysId;
+		const baryId = body?.data.parentId ?? sysId;
+		return isTopLevelParent(baryId) ? null : baryId;
 	}
 
 	private load(baryId: string): void {

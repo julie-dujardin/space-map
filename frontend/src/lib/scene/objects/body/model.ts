@@ -378,6 +378,9 @@ function fitToUnitRadius(root: Object3D): void {
 	if (maxDim <= 0) return;
 	const k = 2 / maxDim;
 	root.scale.multiplyScalar(k);
+	// The normalisation lives in root.scale; the overlay rescales secondary
+	// models per frame and must compose with (not clobber) this factor.
+	root.userData.fitScale = root.scale.x;
 	root.position.copy(center).multiplyScalar(-k);
 	root.userData.centerOffset = center.clone().multiplyScalar(k);
 	root.userData.feetOffset = new Vector3(center.x, bbox.min.y, center.z).multiplyScalar(k);

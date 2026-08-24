@@ -169,7 +169,10 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 	// Pass 1: compute positions + orbitCenters. Don't touch trail geometry
 	// here — it depends on focus.focusTruePos, which can't be updated until
 	// the focused body's own position is known below.
+	const computed = new Set<string>();
 	const computePosition = (body: PositionedBody) => {
+		if (computed.has(body.data.id)) return;
+		computed.add(body.data.id);
 		const d = body.data;
 		const bo = bodyObjects.get(d.id);
 		// No placement this frame: hide the mesh and mark `position` a stand-in so
@@ -406,6 +409,15 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				);
 			}
 			if (probeParentChanged) d.parentId = probeParentKey;
+			// The fit center can sit later in the update order (promoted small
+			// bodies run after `bodiesById`): evaluate it now, or the probe anchors
+			// to its previous-frame position — a v·Δt offset (~0.4 km/frame at
+			// Bennu) that reads as altitude error plus frame-time flicker.
+			if (!computed.has(probeParentKey)) {
+				const parentBody =
+					ctx.bodies.bodiesById.get(probeParentKey) ?? bodyObjects.get(probeParentKey)?.body;
+				if (parentBody) computePosition(parentBody);
+			}
 			// The fit center must be placed first: without it the probe would land
 			// at the scene origin, which reads as a jump to the barycentre.
 			const probeParentPos = positionMap.get(probeParentKey);
