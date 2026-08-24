@@ -78,8 +78,9 @@
 		interior?.composition ? materialEntries(interior.composition) : []
 	);
 
-	// A craft's mass belongs to Mission, not to an interior it doesn't have.
-	let bulkRows = $derived(isNaturalBodyType(global?.type) && hasMassDensity(global));
+	// A craft's mass belongs to the Spacecraft section, not to an interior it
+	// doesn't have.
+	let showMassDensity = $derived(isNaturalBodyType(global?.type) && hasMassDensity(global));
 
 	// Two rows, both categorical, since most bodies here have a status but few
 	// measurements (those live on the Structure tab). Kept orthogonal rather
@@ -88,7 +89,7 @@
 	let field = $derived(fieldSummary(global?.activity?.magnetism));
 </script>
 
-{#if interior || coreTemperature || activity || field || bulkRows}
+{#if interior || coreTemperature || activity || field || showMassDensity}
 	<Section
 		title={m.interior()}
 		activateHref={structureHref}
@@ -99,7 +100,7 @@
 			<CompositionBar {entries} />
 		{/snippet}
 
-		{#if bulkRows}
+		{#if showMassDensity}
 			<MassDensityRows {global} />
 		{/if}
 		{#if interior?.structure}

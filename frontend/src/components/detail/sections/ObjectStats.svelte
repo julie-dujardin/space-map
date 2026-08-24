@@ -4,6 +4,7 @@
 	import StatCardRow from './kit/StatCardRow.svelte';
 	import type { Stat } from './kit/StatCard.svelte';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+	import { rotationPeriodDays } from '$lib/fetch/objects/physical';
 	import {
 		ObjectType,
 		isNaturalBodyType,
@@ -191,12 +192,11 @@
 		// from whatever the elements orbit, so only Sun/SSB orbiters are truly
 		// heliocentric; everything else reports altitude over its primary, or
 		// distance to it when no radius is known.
-		const w1 = global?.orientation?.w1;
-		const rotationPeriodDays = w1 ? 360 / Math.abs(w1) : sbdb?.rot_per ? sbdb.rot_per / 24 : null;
-		if (rotationPeriodDays != null)
+		const rotationDays = rotationPeriodDays(global);
+		if (rotationDays != null)
 			out.push({
 				label: m.rotation_period(),
-				value: formatDuration(rotationPeriodDays),
+				value: formatDuration(rotationDays),
 				tooltip: m.tooltip_rotation_period()
 			});
 		else if (state && !primary)

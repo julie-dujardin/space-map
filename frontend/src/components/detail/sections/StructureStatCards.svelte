@@ -32,6 +32,7 @@
 	import { formatEarthRatio, formatPressure, pressureLevelLabel } from '$lib/format/pressure';
 	import { accelMs2, formatGees, formatMs2, gravityLabel } from '$lib/format/gravity';
 	import { massKg } from '$lib/format/mass';
+	import { meanRadiusKm } from '$lib/fetch/objects/physical';
 	import { ucfirst } from '$lib/format/quantities';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import { G_KM3_KG_S2 } from '$lib/math/travel/constants';
@@ -46,10 +47,10 @@
 	// nothing is published — most small bodies with a mass.
 	let gravityStat = $derived.by<Stat | null>(() => {
 		const published = global?.wikidata?.surface_gravity;
-		const ms2 = (published && accelMs2(published)) || derivedMs2();
+		const ms2 = (published ? accelMs2(published) : null) ?? derivedMs2();
 		if (ms2 === null || ms2 <= 0) return null;
 		return {
-			label: gravityLabel(global?.atmosphere?.pressure?.level),
+			label: gravityLabel(global),
 			value: ltrIsolate(formatGees(ms2)),
 			tooltip: ltrIsolate(formatMs2(ms2))
 		};
@@ -59,17 +60,7 @@
 		const mass = global?.sbdb?.mass ?? global?.wikidata?.mass;
 		const kg = mass ? massKg(mass) : null;
 		if (kg === null) return null;
-		const radii = global?.radii;
-		const wdRadius = global?.wikidata?.radius;
-		const radiusKm = radii
-			? (radii.a + radii.b + radii.c) / 3
-			: wdRadius?.unit === 'kilometre'
-				? wdRadius.value
-				: wdRadius?.unit === 'metre'
-					? wdRadius.value / 1000
-					: global?.sbdb?.diameter
-						? global.sbdb.diameter / 2
-						: null;
+		const radiusKm = meanRadiusKm(global);
 		if (radiusKm == null || radiusKm <= 0) return null;
 		return ((G_KM3_KG_S2 * kg) / (radiusKm * radiusKm)) * 1000;
 	}

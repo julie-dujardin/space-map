@@ -1,4 +1,5 @@
 import * as m from '$lib/paraglide/messages.js';
+import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 import { G0_M_S2 } from '$lib/math/travel/constants';
 import { formatUnit, joinParts, scientificNotation, sigFigures } from './quantities';
 
@@ -15,8 +16,9 @@ const GRAVITY_LABEL: Record<string, () => string> = {
 	photosphere: m.gravity_photosphere
 };
 
-export function gravityLabel(pressureLevel: string | undefined): string {
-	return ((pressureLevel && GRAVITY_LABEL[pressureLevel]) || m.gravity_surface)();
+export function gravityLabel(global: GlobalObjectData | null): string {
+	const level = global?.atmosphere?.pressure?.level;
+	return ((level && GRAVITY_LABEL[level]) || m.gravity_surface)();
 }
 
 /** Back to m/s² from whatever unit the source published, null if unknown. */

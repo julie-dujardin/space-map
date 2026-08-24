@@ -18,6 +18,7 @@
 	import { cancerRiskPerYear, formatDoseRate, timeToLethalDose } from '$lib/format/radiation';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import { gravityLabel } from '$lib/format/gravity';
+	import { meanRadiusKm } from '$lib/fetch/objects/physical';
 	import { diameterKmFromH, BRIGHT_ALBEDO, DARK_ALBEDO } from '$lib/math/h-magnitude';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
@@ -32,7 +33,8 @@
 	let wd = $derived(global?.wikidata);
 	let sbdb = $derived(global?.sbdb);
 	let radii = $derived(global?.radii);
-	// Size rows are for bodies only — a craft's dimensions belong to Mission.
+	// Body rows are for bodies only — a craft's dimensions belong to the
+	// Spacecraft section.
 	let natural = $derived(isNaturalBodyType(global?.type));
 
 	// {a, b} are the equatorial radii (X, Y); c is along the spin axis, shown
@@ -61,22 +63,14 @@
 	// out too (their radius bounds a gas envelope, not a surface).
 	let surfaceAreaKm2 = $derived.by(() => {
 		if (global?.type !== 'planet' && global?.type !== 'dwarf_planet') return null;
-		if (global && NO_SURFACE_BODY_IDS.has(global.id)) return null;
+		if (NO_SURFACE_BODY_IDS.has(global.id)) return null;
 		if (radii) {
 			const { a, b, c } = radii;
 			const p = 1.6075;
 			const mean = (Math.pow(a * b, p) + Math.pow(a * c, p) + Math.pow(b * c, p)) / 3;
 			return 4 * Math.PI * Math.pow(mean, 1 / p);
 		}
-		const radiusKm = wd?.radius
-			? wd.radius.unit === 'kilometre'
-				? wd.radius.value
-				: wd.radius.unit === 'metre'
-					? wd.radius.value / 1000
-					: null
-			: sbdb?.diameter
-				? sbdb.diameter / 2
-				: null;
+		const radiusKm = meanRadiusKm(global);
 		if (radiusKm == null) return null;
 		return 4 * Math.PI * radiusKm * radiusKm;
 	});
@@ -146,7 +140,7 @@
 
 	// Its own derived: Svelte's transform drops load-bearing parens around an
 	// inline `natural && (a || b || …)` group.
-	let hasSizeRows = $derived(
+	let hasBodyRows = $derived(
 		!!(
 			diameterRows ||
 			wd?.radius ||
@@ -155,7 +149,6 @@
 			wd?.length ||
 			wd?.width ||
 			estimatedDiameterKm ||
-			surfaceAreaKm2 != null ||
 			wd?.surface_gravity ||
 			wd?.population
 		)
@@ -171,7 +164,7 @@
 			sbdb?.spec_T ||
 			colour ||
 			dose != null ||
-			(natural && hasSizeRows)
+			(natural && hasBodyRows)
 	);
 </script>
 
@@ -192,15 +185,16 @@
 					label={m.diameter()}
 					value={formatQuantity({ value: sbdb.diameter, unit: 'kilometre' })}
 				/>
-			{/if}
-			{#if wd?.length && !radii && !wd?.radius && !sbdb?.diameter}
-				<Row label={m.property_name_length()} value={formatQuantity(wd.length)} />
-			{/if}
-			{#if wd?.width && !radii && !wd?.radius && !sbdb?.diameter}
-				<Row label={m.property_name_width()} value={formatQuantity(wd.width)} />
-			{/if}
-			{#if sbdb?.extent && !radii && !wd?.radius && !sbdb?.diameter}
-				<Row label={m.extent()} value={sbdb.extent} tooltip={m.tooltip_extent()} />
+			{:else}
+				{#if wd?.length}
+					<Row label={m.property_name_length()} value={formatQuantity(wd.length)} />
+				{/if}
+				{#if wd?.width}
+					<Row label={m.property_name_width()} value={formatQuantity(wd.width)} />
+				{/if}
+				{#if sbdb?.extent}
+					<Row label={m.extent()} value={sbdb.extent} tooltip={m.tooltip_extent()} />
+				{/if}
 			{/if}
 			{#if estimatedDiameterKm}
 				{@const km = formatUnit('kilometre', true)}
@@ -222,10 +216,10 @@
 				/>
 			{/if}
 			{#if wd?.surface_gravity}
-				<Row
-					label={gravityLabel(global?.atmosphere?.pressure?.level)}
-					value={formatQuantity(wd.surface_gravity)}
-				/>
+				<Row label={gravityLabel(global)} value={formatQuantity(wd.surface_gravity)} />
+			{/if}
+			{#if wd?.population}
+				<Row label={m.property_name_population()} value={formatNumber(wd.population)} />
 			{/if}
 		{/if}
 		{#if dose != null}
@@ -293,9 +287,6 @@
 					></span>
 				</span>
 			</Row>
-		{/if}
-		{#if natural && wd?.population}
-			<Row label={m.property_name_population()} value={formatNumber(wd.population)} />
 		{/if}
 		{#snippet footer()}
 			{#if outsideTemperatures}
