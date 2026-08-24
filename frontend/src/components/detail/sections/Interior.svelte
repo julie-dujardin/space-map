@@ -4,6 +4,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+	import { isNaturalBodyType } from '$lib/types/objects';
 	import { materialEntries } from '$lib/charts/interior-materials';
 	import { coreBracket } from '$lib/charts/layer-appearance';
 	import { structureLink } from '$lib/charts/structure-link';
@@ -15,6 +16,7 @@
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
 	import CompositionBar from './kit/CompositionBar.svelte';
+	import MassDensityRows, { hasMassDensity } from './kit/MassDensityRows.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -76,6 +78,9 @@
 		interior?.composition ? materialEntries(interior.composition) : []
 	);
 
+	// A craft's mass belongs to Mission, not to an interior it doesn't have.
+	let bulkRows = $derived(isNaturalBodyType(global?.type) && hasMassDensity(global));
+
 	// Two rows, both categorical, since most bodies here have a status but few
 	// measurements (those live on the Structure tab). Kept orthogonal rather
 	// than merged — Jupiter has a field and no tide, Mimas the reverse.
@@ -83,7 +88,7 @@
 	let field = $derived(fieldSummary(global?.activity?.magnetism));
 </script>
 
-{#if interior || coreTemperature || activity || field}
+{#if interior || coreTemperature || activity || field || bulkRows}
 	<Section
 		title={m.interior()}
 		activateHref={structureHref}
@@ -94,6 +99,9 @@
 			<CompositionBar {entries} />
 		{/snippet}
 
+		{#if bulkRows}
+			<MassDensityRows {global} />
+		{/if}
 		{#if interior?.structure}
 			<Row
 				label={m.interior_structure()}

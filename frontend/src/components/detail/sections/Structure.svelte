@@ -27,6 +27,7 @@
 	import Row from './kit/Row.svelte';
 	import TopicSummary from './kit/TopicSummary.svelte';
 	import AtmosphereComposition, { hasCompositionBar } from './kit/AtmosphereComposition.svelte';
+	import MassDensityRows from './kit/MassDensityRows.svelte';
 	import InteriorCrossSection from '../charts/InteriorCrossSection.svelte';
 	import AtmosphereCrossSection from '../charts/AtmosphereCrossSection.svelte';
 	import LayerCard from '../charts/LayerCard.svelte';
@@ -168,6 +169,7 @@
 		<!-- Above the cutaway, on the section's own `dl`: these are numbers about
 		     the whole body, and the drawing is the thing they are about. The layer
 		     cards stay directly under it as its legend. -->
+		<MassDensityRows {global} />
 		{#if activity}
 			<Activity {activity} />
 		{/if}

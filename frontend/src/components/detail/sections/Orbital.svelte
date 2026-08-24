@@ -135,6 +135,16 @@
 	);
 	let sbdb = $derived(global?.sbdb);
 	let celestrak = $derived(global?.celestrak);
+	let sats = $derived(sbdb?.sats);
+
+	// The IAU pole model where one is ingested, else SBDB's hours.
+	let rotationPeriodDays = $derived(
+		global?.orientation?.w1
+			? 360 / Math.abs(global.orientation.w1)
+			: sbdb?.rot_per
+				? sbdb.rot_per / 24
+				: null
+	);
 	// Earth sats and probes surface altitude/speed/period in the ObjectStats
 	// cards instead, so those rows are suppressed here to avoid duplicating them.
 	let isEarthSat = $derived(celestrak?.orbit_center === 'earth');
@@ -259,7 +269,9 @@
 			epochJd != null ||
 			(showApogeePerigee && (celestrak?.apogee != null || celestrak?.perigee != null)) ||
 			dataSourceLabel != null ||
-			propagationMethodLabel != null
+			propagationMethodLabel != null ||
+			rotationPeriodDays != null ||
+			(sats != null && sats > 0)
 	);
 </script>
 
@@ -330,6 +342,20 @@
 				label={m.orbital_period()}
 				value={formatDuration(elementsPeriodDays)}
 				tooltip={m.tooltip_orbital_period()}
+			/>
+		{/if}
+		{#if rotationPeriodDays != null}
+			<Row
+				label={m.rotation_period()}
+				value={formatDuration(rotationPeriodDays)}
+				tooltip={m.tooltip_rotation_period()}
+			/>
+		{/if}
+		{#if sats != null && sats > 0}
+			<Row
+				label={m.known_satellites()}
+				tooltip={m.tooltip_known_satellites()}
+				value={String(sats)}
 			/>
 		{/if}
 		{#if orbit?.e != null}
@@ -454,5 +480,14 @@
 				tooltip={m.tooltip_propagation_method()}
 			/>
 		{/if}
+	</Section>
+{:else if rotationPeriodDays != null}
+	<!-- A star: its barycentric wobble stays suppressed above, but it still spins. -->
+	<Section title={m.rotation()}>
+		<Row
+			label={m.rotation_period()}
+			value={formatDuration(rotationPeriodDays)}
+			tooltip={m.tooltip_rotation_period()}
+		/>
 	</Section>
 {/if}

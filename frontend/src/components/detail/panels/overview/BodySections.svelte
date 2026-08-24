@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Bulk from '../../sections/Bulk.svelte';
+	import Spacecraft from '../../sections/Spacecraft.svelte';
 	import Atmosphere from '../../sections/Atmosphere.svelte';
 	import Surface from '../../sections/Surface.svelte';
 	import Interior from '../../sections/Interior.svelte';
@@ -21,7 +21,7 @@
 	let { body, data, orbitElements, parentBody, jd }: Props = $props();
 </script>
 
-<Bulk global={data?.global ?? null} />
+<Spacecraft global={data?.global ?? null} />
 <Atmosphere global={data?.global ?? null} />
 <Surface global={data?.global ?? null} />
 <Interior global={data?.global ?? null} />
