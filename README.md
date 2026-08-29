@@ -29,12 +29,23 @@ Each of these is displayed at its current position, and shown at its real size (
 
 - Time control: Speed up or reverse time, go to any date.
 - Collections: See all [Starlink](https://spacemap.co/g/const-starlink), [GPS](https://spacemap.co/g/const-gps), [Geostationary](https://spacemap.co/g/class-GEO) satellites, the [Jupiter Trojan asteroids](https://spacemap.co/g/class-TJN/Jupiter%20Trojan?at=now,34.60900,58.08478,131.68), [hyperbolic comets](https://spacemap.co/g/class-HYP/Hyperbolic%20Comet?at=now,20.47956,140.22461,42.430).
-- [Data driven atmospheric rendering](https://spacemap.co/e/25544/International%20Space%20Station?at=2026-07-08T22:35:21.390Z,12.53355,29.96924,1.0570e-8) down to [ground level](https://spacemap.co/p/100265984/Mars%20Science%20Laboratory?at=2026-07-28T14:17:41.132Z,-42.90792,-107.14203,4.6896e-10).
 - Search: Text search & filters, infinite scroll - it's 2026, time to doomscroll [potentially hazardous asteroids](https://spacemap.co/b/399?f=pha).
-- Historical positions for earth satellites & probes from [1959](https://spacemap.co/b/399/Earth?at=1959-06-30T23:46:01.557Z,42.14541,151.20487,0.0023256). Coverage is limited for early & non-US/EU/JA spacecraft.
-- Over 250 spacecraft with 3D models: [ISS](https://spacemap.co/e/25544/International%20Space%20Station?at=now,35.24905,-17.25253,1.3451e-8), [Hubble](https://spacemap.co/e/20580/Hubble%20Space%20Telescope?at=now,19.83363,-95.19624,1.9914e-9), [James Webb](https://spacemap.co/p/115347456/James%20Webb%20Space%20Telescope?at=now,54.61394,115.76731,1.9039e-9), [Juno](https://spacemap.co/p/107159552/Juno?at=2022-08-17T15:29:50.557Z,64.88818,-21.50912,1.0027e-9), [Cassini](https://spacemap.co/p/88592384/Cassini?at=2013-07-09T06:37:40.977Z,63.94176,-121.21263,2.1247e-9), [New Horizons](https://spacemap.co/p/104804352/New%20Horizons?at=2015-07-14T11:30:51.731Z,45.06167,34.07062,8.5505e-10), [Voyager 2](https://spacemap.co/p/49000448/Voyager%202?at=1989-08-25T02:58:36.961Z,76.62626,0.66449,1.4615e-9).
+- [Navigation to any object](https://spacemap.co/nav/naif-399/naif-499?at=2029-12-20T12:28:52.605Z,53.98086,8.01888,26.955), with transfer windows, gravity assists, and brachistochrone trajectories, real & fictional spacecraft, and [end-to-end directions](https://spacemap.co/nav/naif-399/naif-699?at=2029-12-20T12:28:04.084Z,25.07064,-78.08883,0.050851&tm=custom&talt=221099&tinc=9&route=balanced).
+
+### Natural bodies
+
+- [Data driven atmospheric rendering](https://spacemap.co/e/25544/International%20Space%20Station?at=2026-07-08T22:35:21.390Z,12.53355,29.96924,1.0570e-8) down to [ground level](https://spacemap.co/p/100265984/Mars%20Science%20Laboratory?at=2026-07-28T14:17:41.132Z,-42.90792,-107.14203,4.6896e-10).
 - Textures for all planets, 25 moons, and 14 minor bodies; 3d models for 11k [asteroids](https://spacemap.co/s/20101955/101955%20Bennu?at=now,-0.99190,142.87246,4.7560e-8), [comets](https://spacemap.co/s/1000012/67P%2FChuryumov%E2%80%93Gerasimenko?at=now,48.95132,65.96561,3.7911e-7), and [moons](https://spacemap.co/b/618/Pan?at=now,20.79260,41.75821,0.0000048744); colors for 2k small bodies from [TrueColorTools](https://github.com/Askaniy/TrueColorTools).
 - System-scale lighting with [accurate eclipses](https://spacemap.co/b/399/Earth?at=2027-08-02T10:00:00.000Z,28.17996,30.91585,0.00082651), [self-shadowing](https://spacemap.co/b/301/Moon?at=now,15.74410,-121.08716,0.00026972).
+- Rich data on planetary ring systems from [NASA PDS](https://pds-rings.seti.org/saturn/saturn_rings_table.html), the atmospheres & interiors of 21 planets and moons from 100+ papers.
+
+### Probes
+
+- Historical positions for earth satellites & probes from [1959](https://spacemap.co/b/399/Earth?at=1959-06-30T23:46:01.557Z,42.14541,151.20487,0.0023256). Coverage is limited for early & non-US/EU/JA spacecraft.
+- Over 250 spacecraft with 3D models: [ISS](https://spacemap.co/e/25544/International%20Space%20Station?at=now,35.24905,-17.25253,1.3451e-8), [Hubble](https://spacemap.co/e/20580/Hubble%20Space%20Telescope?at=now,19.83363,-95.19624,1.9914e-9), [James Webb](https://spacemap.co/p/115347456/James%20Webb%20Space%20Telescope?at=now,54.61394,115.76731,1.9039e-9), [Juno](https://spacemap.co/p/107159552/Juno?at=2022-08-17T15:29:50.557Z,64.88818,-21.50912,1.0027e-9), [Cassini](https://spacemap.co/p/88592384/Cassini?at=2013-07-09T06:37:40.977Z,63.94176,-121.21263,2.1247e-9), [New Horizons](https://spacemap.co/p/104804352/New%20Horizons?at=2015-07-14T11:30:51.731Z,45.06167,34.07062,8.5505e-10), [Voyager 2](https://spacemap.co/p/49000448/Voyager%202?at=1989-08-25T02:58:36.961Z,76.62626,0.66449,1.4615e-9).
+
+### More
+
 - Deep links: Easily share what you're looking at.
 - Images from Wikimedia Commons for 4k objects, descriptions from Wikipedia for 64k. Metadata from Wikidata and [Jonathan C. McDowell's GCAT](https://planet4589.org/space/gcat/index.html).
 - Localization: Full localization in 12 languages, with content from Wikipedia. UI elements were localized by Claude Opus 4.8 & Fable 5.
