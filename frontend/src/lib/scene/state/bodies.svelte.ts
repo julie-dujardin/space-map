@@ -14,6 +14,14 @@ export function dominantPlanetId(id: string): string | null {
 	return m ? `naif-${m[1]}99` : null;
 }
 
+/** The body whose halo a barycenter's would sit on top of when the two are
+ *  too close to tell apart on screen: the dominant planet, or the Sun for the
+ *  SSB. Null for anything that isn't a barycenter. */
+export function barycenterPrimaryId(id: string): string | null {
+	if (id === SSB_ID) return SUN_ID;
+	return dominantPlanetId(id);
+}
+
 /** The physical body a focused object could clip into: its direct parent,
  *  resolved to dominant planet. Undefined for Sun/SSB orbiters — too far to reach. */
 export function collisionParentId(parentId: string): string | undefined {

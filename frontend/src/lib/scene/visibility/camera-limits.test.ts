@@ -3,7 +3,7 @@ import { PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { kmToScene } from '$lib/math/units';
-import { collisionParentId } from '$lib/scene/state/bodies.svelte';
+import { barycenterPrimaryId, collisionParentId } from '$lib/scene/state/bodies.svelte';
 import {
 	clampCameraOutsideBody,
 	LANDED_KEEP_AWAY_KM,
@@ -186,5 +186,20 @@ describe('collisionParentId', () => {
 	it('keeps a physical parent (planet or moon) as-is', () => {
 		expect(collisionParentId('naif-399')).toBe('naif-399');
 		expect(collisionParentId('naif-301')).toBe('naif-301');
+	});
+});
+
+describe('barycenterPrimaryId', () => {
+	it('resolves every planetary barycenter to its dominant planet', () => {
+		expect(barycenterPrimaryId('naif-6')).toBe('naif-699');
+		expect(barycenterPrimaryId('naif-9')).toBe('naif-999');
+	});
+
+	it('resolves the SSB to the Sun', () => {
+		expect(barycenterPrimaryId('naif-0')).toBe('naif-10');
+	});
+
+	it('is null for a physical body', () => {
+		expect(barycenterPrimaryId('naif-699')).toBeNull();
 	});
 });

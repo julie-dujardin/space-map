@@ -10,7 +10,7 @@ import {
 	setEllipsoidOccluder
 } from './ellipsoid';
 import { VISIBILITY } from './thresholds';
-import { BARYCENTER_PRIMARY } from '$lib/constants';
+import { barycenterPrimaryId } from '$lib/scene/state/bodies.svelte';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import {
 	applyLabelDisplay,
@@ -367,19 +367,21 @@ export function updateBodyVisibility(
 		// type-aware gates even when sizeless and meshless — else they'd skip the
 		// moon-label cap and show every halo unbounded.
 		if (bo.mesh === null && !isMajorBody(body.data.objectType)) {
-			// Barycenters/Lagrange points: navigational aids, always visible once
-			// built (overlap check so SSB/Sun and Pluto-BC/Pluto don't stack).
+			// Barycenters/Lagrange points: navigational aids, visible once built,
+			// except a barycenter sitting within a halo of its primary on screen —
+			// unseparated it reads as a stray marker over the planet (most
+			// planetary barycenters are inside their own planet).
 			// Auto-promoted asteroids/comets/probes: same distance-ratio + active-
 			// system gate as the mesh path, so they fade with the point clouds they replace.
 			const ot = body.data.objectType;
 			if (ot === ObjectType.BARYCENTER || ot === ObjectType.LAGRANGE_POINT) {
 				let visible = true;
-				const primaryId = !isFocused ? BARYCENTER_PRIMARY.get(body.data.id) : undefined;
+				const primaryId = !isFocused ? barycenterPrimaryId(body.data.id) : undefined;
 				if (primaryId) {
-					const primaryBo = bodyObjects.get(primaryId);
-					if (primaryBo) {
-						const sepWorld = f64dist(body.position, primaryBo.body.position);
-						const camToPrimary = f64dist(camTrue, primaryBo.body.position);
+					const primary = bodyObjects.get(primaryId)?.body ?? ctx.getBody(primaryId);
+					if (primary) {
+						const sepWorld = f64dist(body.position, primary.position);
+						const camToPrimary = f64dist(camTrue, primary.position);
 						const pxSep = (sepWorld / camToPrimary) * projScale;
 						if (pxSep < HALO_RADIUS_PX) visible = false;
 					}

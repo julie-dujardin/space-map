@@ -76,8 +76,8 @@ export const NO_SURFACE_BODY_IDS: ReadonlySet<string> = new Set([
  * getting too busy while still surfacing main-belt giants and notable Trojans,
  * plus the few barycenters that visibly differ from their primary at close
  * zoom (the Sun wobbles around the SSB; Pluto-Charon's barycenter sits between
- * the two). Those barycenters stay hidden at wide zoom — see
- * {@link BARYCENTER_PRIMARY}.
+ * the two). Those barycenters stay hidden at wide zoom, until the camera is
+ * close enough to see the offset from their primary.
  */
 export const MINOR_PROMOTED_IDS: ReadonlySet<string> = new Set([
 	'naif-0', // Solar System Barycenter
@@ -117,15 +117,4 @@ export const MINOR_PROMOTED_IDS: ReadonlySet<string> = new Set([
 	'spkid-1000945', // Great Comet of 1901
 	'spkid-1000967', // Great January Comet of 1910
 	'spkid-1001121' // Comet Ikeya–Seki
-]);
-
-/**
- * Barycenters whose halo overlaps a single dominant body when zoomed out, and
- * should only render once the camera is close enough to see the offset.
- * Maps barycenter id → primary body id; the visibility update hides the
- * barycenter until the projected pixel separation exceeds one halo diameter.
- */
-export const BARYCENTER_PRIMARY: ReadonlyMap<string, string> = new Map([
-	['naif-0', 'naif-10'], // Solar System Barycenter ↔ Sun
-	['naif-9', 'naif-999'] // Pluto-Charon Barycenter ↔ Pluto
 ]);
