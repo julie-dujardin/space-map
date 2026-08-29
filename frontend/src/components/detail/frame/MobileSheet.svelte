@@ -14,8 +14,8 @@
 		onSheetResize?: (heightDvh: number) => void;
 		tab: string;
 		onTabChange: (tab: string) => void;
-		/** A promoted tab or an open gallery owns the whole sheet: its panel is no
-		 *  longer a tabpanel, so there is no tab context to render it in. */
+		/** A promoted tab owns the whole sheet: its panel is no longer a
+		 *  tabpanel, so there is no tab context to render it in. */
 		solo?: boolean;
 		/** Title row content; the sheet supplies the handle and measures the header. */
 		header: Snippet;

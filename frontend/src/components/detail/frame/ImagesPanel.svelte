@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { imageTitle, type Gallery, type ShelfLink } from '$lib/fetch/objects/galleries';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
-	import { isModifiedClick } from '$lib/state/focus-link';
+	import { getContext } from 'svelte';
+	import * as m from '$lib/paraglide/messages.js';
+	import { formatNumber } from '$lib/format/quantities';
+	import type { AppState } from '$lib/state/app-state.svelte';
+	import { galleryHref, isModifiedClick } from '$lib/state/focus-link';
+	import Section from '../sections/kit/Section.svelte';
 	import CrossRefCard from '../sections/crossref/CrossRefCard.svelte';
 	import ImageGallery from './ImageGallery.svelte';
 	import ImageRail from './ImageRail.svelte';
@@ -10,6 +15,9 @@
 		galleries: Gallery[];
 		/** The open gallery; undefined shows the index of shelves. */
 		active?: Gallery;
+		/** The drawer title does not name the open gallery, so the panel does,
+		 *  with a way back to the index. */
+		headed: boolean;
 		alt: string;
 		/** Names a pooled picture's subject — a moon, a surface feature. */
 		subjectName?: (subject: string) => string | undefined;
@@ -21,7 +29,9 @@
 		titles?: Record<string, string>;
 	}
 
-	let { galleries, active, alt, subjectName, shelfLink, titles }: Props = $props();
+	let { galleries, active, headed, alt, subjectName, shelfLink, titles }: Props = $props();
+
+	const appState = getContext<AppState>('appState');
 
 	const label = (image: ObjectImage) => imageTitle(image, titles, subjectName);
 
@@ -39,7 +49,18 @@
 		e.preventDefault();
 		link.open();
 	}
+
+	let indexHref = $derived(galleryHref(appState, null));
+	function toIndex(e: MouseEvent) {
+		if (isModifiedClick(e)) return;
+		e.preventDefault();
+		appState.setGallery(null);
+	}
 </script>
+
+{#snippet grid(shelf: Gallery)}
+	<ImageGallery images={shelf.images} gallery={shelf.key} {alt} {label} />
+{/snippet}
 
 <div class="flex flex-col gap-4">
 	{#if open}
@@ -59,7 +80,20 @@
 				/>
 			</div>
 		{/if}
-		<ImageGallery images={open.images} gallery={open.key} {alt} {label} />
+		<!-- A lone shelf is the index: nothing to go back to. -->
+		{#if headed && galleries.length > 1}
+			<Section
+				title={open.title}
+				titleMeta={formatNumber(open.images.length)}
+				activateHref={indexHref}
+				onActivate={toIndex}
+				activateLabel={m.gallery_all()}
+			>
+				{#snippet footer()}{@render grid(open)}{/snippet}
+			</Section>
+		{:else}
+			{@render grid(open)}
+		{/if}
 	{:else}
 		{#each galleries as gallery (gallery.key)}
 			<ImageRail

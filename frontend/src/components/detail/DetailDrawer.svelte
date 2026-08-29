@@ -351,18 +351,19 @@
 	// A promoted tab drops the bar and takes the header instead: the object's name
 	// moves into the crumb and the tab names the view. Still the same tab in the
 	// URL — only the chrome around it differs.
-	let soloTab = $derived<DrawerTab | null>(
-		promotedTabs.has(activeTab) || activeGallery ? activeTab : null
-	);
+	let soloTab = $derived<DrawerTab | null>(promotedTabs.has(activeTab) ? activeTab : null);
+	// An open gallery only takes the header when its tab is solo; under the bar
+	// the panel headlines it itself.
+	let soloGallery = $derived(soloTab === 'images' ? activeGallery : undefined);
 	let soloCrumb = $derived<Crumb | null>(
-		activeGallery
+		soloGallery
 			? { label: m.tab_images(), target: { kind: 'tab', tab: 'images' } }
 			: soloTab
 				? { label: displayName, target: { kind: 'tab', tab: 'overview' } }
 				: null
 	);
 	let soloTitle = $derived(
-		activeGallery ? activeGallery.title : soloTab === 'images' ? m.tab_images() : displayName
+		soloGallery ? soloGallery.title : soloTab === 'images' ? m.tab_images() : displayName
 	);
 	let barTabCount = $derived(tabCount - promotedTabs.size);
 
@@ -444,6 +445,7 @@
 	<ImagesPanel
 		galleries={gallery.galleries}
 		active={activeGallery}
+		headed={!soloGallery}
 		alt={displayName}
 		subjectName={(subject) => gallery.subjectNames.get(subject)}
 		shelfLink={gallery.shelfLink}
