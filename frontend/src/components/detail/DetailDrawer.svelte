@@ -56,6 +56,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { categoryConfig } from '$lib/state/category-config';
 	import { LineupHero } from './charts/lineup-hero.svelte';
+	import { PlanetarySystemState } from './charts/planetary-system.svelte';
 	import { MembersState } from './state/members-state.svelte';
 	import { buildLineup, geometryFromMember } from './charts/lineup';
 
@@ -234,6 +235,13 @@
 		moonDescriptions: () => (isGroupMode ? undefined : data?.localized?.notable_moon_descriptions)
 	});
 
+	// A planetary barycenter is the page for its whole system: the primary plus
+	// every moon the scene has under it, drawn as the overview hero.
+	const planetarySystem = new PlanetarySystemState({
+		bodyId: () => body?.data.id,
+		ctx: () => ctx
+	});
+
 	// Galleries + image-viewer model (see gallery-state.svelte.ts). The shelf
 	// backdrop snippets stay here in the template, injected as a function.
 	const gallery: GalleryState = new GalleryState({
@@ -402,6 +410,7 @@
 		{surface}
 		{members}
 		{lineup}
+		{planetarySystem}
 	/>
 {/snippet}
 
@@ -511,6 +520,7 @@
 			{surface}
 			{lineup}
 			{parentBody}
+			{planetarySystem}
 		/>
 	</Tabs.Content>
 	<Tabs.Content value="images" class={contentClass}>

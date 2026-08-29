@@ -51,6 +51,10 @@ from space_map_data.export.groups.small_body import (
     build_small_body_group_stats,
     write_orbit_samples,
 )
+from space_map_data.export.groups.moon_discovery import (
+    build_moon_discovery,
+    write_moon_discovery,
+)
 from space_map_data.export.groups.solar_system_map import (
     build_solar_system_map,
     write_solar_system_map,
@@ -414,6 +418,7 @@ def run_groups_tier(
         launch_vehicle_stats = build_launch_vehicle_stats(session)
         launch_site_stats = build_launch_site_stats(session)
         textured_ids = textured_object_ids(session)
+        moon_discovery = build_moon_discovery(session)
         solar_system_map = build_solar_system_map(
             session,
             radii,
@@ -496,6 +501,7 @@ def run_groups_tier(
     write_orbit_samples(out_dir, small_body_stats.orbit_samples)
     write_earth_orbit_samples(out_dir, earth_orbit_stats.orbit_samples)
     write_solar_system_map(out_dir, solar_system_map)
+    write_moon_discovery(out_dir, moon_discovery)
 
     return write_group_bundles(
         out_dir,

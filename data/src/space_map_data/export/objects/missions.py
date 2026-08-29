@@ -25,11 +25,6 @@ MISSION_SLUG_PREFIX = "mission-"
 
 _MJD_ZERO = datetime.date(1858, 11, 17)
 
-# The events files track each craft's physical fate; a mission page only wants
-# to know whether anything is still flying it.
-_STILL_FLYING = frozenset({"active", "in_transit"})
-_LOST = frozenset({"lost"})
-
 
 @dataclass
 class ProbeMission:
@@ -45,13 +40,13 @@ class ProbeMission:
     status: str | None = None
 
 
-def _probe_statuses() -> dict[str, str]:
+def _probe_statuses() -> dict[str, dict]:
     """Curated craft status by COSPAR id and by name, from the events files.
 
     Both keys are needed: pre-COSPAR and never-catalogued craft (Comet
     Interceptor) carry no id, and registry names match the events files.
     """
-    out: dict[str, str] = {}
+    out: dict[str, dict] = {}
     for path in sorted(EVENTS_DIR.glob("*.json")):
         try:
             probes = json.loads(path.read_text()).get("probes", [])
@@ -69,12 +64,20 @@ def _probe_statuses() -> dict[str, str]:
     return out
 
 
-def _mission_status(raw: str | None) -> str | None:
-    if raw is None:
+def _mission_status(raw: dict | None) -> str | None:
+    """Mission status from a craft's events-file status block.
+
+    The block records a physical fate — ``where`` it ended up and whether it is
+    ``alive`` — but a mission page only asks whether anything is still flying.
+    A craft whose `alive` is unset (never-launched, or a fate nobody recorded)
+    leaves the mission's status unstated rather than claiming it ended.
+    """
+    if not isinstance(raw, dict):
         return None
-    if raw in _STILL_FLYING:
-        return "operating"
-    return "lost" if raw in _LOST else "ended"
+    alive = raw.get("alive")
+    if alive is None:
+        return None
+    return "operating" if alive else "ended"
 
 
 def probe_launch_year(inception_mjd: int | None) -> int | None:

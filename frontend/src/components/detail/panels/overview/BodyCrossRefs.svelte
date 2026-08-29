@@ -7,6 +7,8 @@
 	import MoonGroupLinks from '../../sections/crossref/MoonGroupLinks.svelte';
 	import BodyCategoryTile from '../../sections/crossref/BodyCategoryTile.svelte';
 	import SmallBodyGroupLinks from '../../sections/crossref/SmallBodyGroupLinks.svelte';
+	import SystemGroupLinks from '../../sections/crossref/SystemGroupLinks.svelte';
+	import { STRIP_CAPACITY } from '../../members/MemberStrip.svelte';
 	import SatCrossRefs from '../../sections/SatCrossRefs.svelte';
 	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
@@ -14,6 +16,7 @@
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import type { MembersState } from '../../state/members-state.svelte';
+	import type { PlanetarySystemState } from '../../charts/planetary-system.svelte';
 	import type { Focusable } from '$lib/state/focusable';
 
 	type FocusedFeature = Extract<Focusable, { kind: 'feature' }>['feature'];
@@ -26,9 +29,11 @@
 		members: MembersState;
 		orbitElements: OrbitalElements | undefined;
 		jd: number;
+		planetarySystem: PlanetarySystemState;
 	}
 
-	let { body, feature, featureType, data, members, orbitElements, jd }: Props = $props();
+	let { body, feature, featureType, data, members, orbitElements, jd, planetarySystem }: Props =
+		$props();
 
 	const ctx = getContext<ContextManager>('ctx');
 
@@ -52,6 +57,9 @@
 	// A moon's host planet (resolved past the nameless barycenter) for its tile.
 	let moonParent = $derived(isMoonBody && body ? parentPlanet(ctx, body.data.parentId) : undefined);
 	let isStarBody = $derived(body?.data.objectType === ObjectType.STAR);
+	// A planetary barycenter stands for its whole system, so it cross-refs the
+	// primary and the moon list rather than the barycenter's own (empty) pages.
+	let system = $derived(planetarySystem.system);
 </script>
 
 {#if fragmentOf}
@@ -72,6 +80,14 @@
 	<MoonGroupLinks
 		parentId={moonParent?.data.id ?? body?.data.parentId}
 		parentName={moonParent?.data.name ?? data?.global?.parent_name}
+	/>
+{:else if system}
+	<SystemGroupLinks
+		primaryId={system.planet.data.id}
+		primaryName={system.planetName}
+		hasMoons={system.moonCount > STRIP_CAPACITY}
+		moonDiscs={system.moonDiscs}
+		hasRings={system.hasRingCatalog}
 	/>
 {:else if isStarBody}
 	<BodyCategoryTile slug={CAT_SOLAR_SYSTEM} />

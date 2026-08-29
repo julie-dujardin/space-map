@@ -8,6 +8,7 @@
 	import GalleryHero from '../sections/GalleryHero.svelte';
 	import BodyLineup from '../charts/BodyLineup.svelte';
 	import SolarSystemMap from '../charts/SolarSystemMap.svelte';
+	import PlanetarySystemMap from '../charts/PlanetarySystemMap.svelte';
 	import { groupTypeLabel, organizationRoleLabel, satelliteCategoryLabel } from '$lib/format/group';
 	import { ATMOSPHERE_GALLERY, MAIN_GALLERY, RINGS_GALLERY } from '$lib/fetch/objects/galleries';
 	import { imageHref, tabHref } from '$lib/state/focus-link';
@@ -20,6 +21,7 @@
 	import type { SurfaceState } from '../state/surface-state.svelte';
 	import type { MembersState } from '../state/members-state.svelte';
 	import type { LineupHero } from '../charts/lineup-hero.svelte';
+	import type { PlanetarySystemState } from '../charts/planetary-system.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
@@ -32,10 +34,21 @@
 		surface: SurfaceState;
 		members: MembersState;
 		lineup: LineupHero;
+		planetarySystem: PlanetarySystemState;
 	}
 
-	let { body, cat, fallbackName, activeTab, load, gallery, surface, members, lineup }: Props =
-		$props();
+	let {
+		body,
+		cat,
+		fallbackName,
+		activeTab,
+		load,
+		gallery,
+		surface,
+		members,
+		lineup,
+		planetarySystem
+	}: Props = $props();
 
 	const appState = getContext<AppState>('appState');
 
@@ -65,6 +78,12 @@
 	<SolarSystemMap ariaLabel={fallbackName} localizedNames={members.memberNames} />
 {/snippet}
 
+{#snippet planetarySystemMapSnippet()}
+	{#if planetarySystem.system}
+		<PlanetarySystemMap system={planetarySystem.system} ariaLabel={fallbackName} />
+	{/if}
+{/snippet}
+
 {#if activeTab === 'overview'}
 	{#if load.loading}
 		<div class="flex flex-col gap-4 px-4 pt-1 pb-3" aria-hidden="true">
@@ -81,9 +100,11 @@
 				leadingBadges={groupHeaderBadges}
 				hero={cat.solarSystem
 					? solarSystemMapSnippet
-					: lineup.hero && !lineup.isMoonLineup
-						? lineupHeroSnippet
-						: undefined}
+					: planetarySystem.system
+						? planetarySystemMapSnippet
+						: lineup.hero && !lineup.isMoonLineup
+							? lineupHeroSnippet
+							: undefined}
 				galleryHref={imageHref(appState, 0, MAIN_GALLERY)}
 				onShowGallery={() => appState.setImage(0, MAIN_GALLERY)}
 				listHref={tabHref(appState, 'images')}

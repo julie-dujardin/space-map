@@ -11,6 +11,7 @@
 	import SourcesFooter, { type Source as CitedSource } from '../sections/SourcesFooter.svelte';
 	import MemberStrip from '../members/MemberStrip.svelte';
 	import BodyCrossRefs from './overview/BodyCrossRefs.svelte';
+	import SystemDiscovery from '../sections/SystemDiscovery.svelte';
 	import BodySections from './overview/BodySections.svelte';
 	import GroupOverviewSections from './overview/GroupOverviewSections.svelte';
 	import { MASS_INVENTORY_URL } from '$lib/data/solar-system-mass';
@@ -23,6 +24,7 @@
 	import type { MembersState } from '../state/members-state.svelte';
 	import type { SurfaceState } from '../state/surface-state.svelte';
 	import type { LineupHero } from '../charts/lineup-hero.svelte';
+	import type { PlanetarySystemState } from '../charts/planetary-system.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
 	type FocusFeatureEntry = Extract<Focusable, { kind: 'feature' }>['feature'];
@@ -40,6 +42,7 @@
 		surface: SurfaceState;
 		lineup: LineupHero;
 		parentBody: PositionedBody | undefined;
+		planetarySystem: PlanetarySystemState;
 	}
 
 	let {
@@ -53,7 +56,8 @@
 		members,
 		surface,
 		lineup,
-		parentBody
+		parentBody,
+		planetarySystem
 	}: Props = $props();
 
 	let data = $derived(load.data);
@@ -178,7 +182,13 @@
 				{members}
 				orbitElements={drawerOrbitElements}
 				jd={sampledJd}
+				{planetarySystem}
 			/>
+		{/if}
+		<!-- When this system's moons were found; sits under its cross-refs, which
+		     are the parts of the system this counts. -->
+		{#if planetarySystem.discoveryHistogram}
+			<SystemDiscovery histogram={planetarySystem.discoveryHistogram} />
 		{/if}
 		{#each overviewStrips as strip (strip.heading)}
 			<MemberStrip

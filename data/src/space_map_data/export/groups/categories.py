@@ -373,29 +373,39 @@ def _wikidata_discovery_histogram(
     return histogram
 
 
-def _moon_discovery_histogram(session: Session) -> dict[int, int]:
-    """Moons per year of discovery.
+def moon_discovery_rows(session: Session) -> list[tuple[str, int]]:
+    """Every dated moon as ``(host id, discovery year)``.
 
     The JPL satellite-discovery table covers the moons with an IAU name; SBDB's
     satellite records carry the provisional ones, and the two agree wherever
-    they overlap.
+    they overlap. The host is the moon's parent, which for a planetary moon is
+    its system barycenter — see `groups/moon_discovery.py`, which splits these
+    rows per system.
     """
     rows = (
-        session.query(Object.discovery_year, SBDBMoon.year)
+        session.query(Object.parent_id, Object.discovery_year, SBDBMoon.year)
         .outerjoin(SBDBMoon, SBDBMoon.object_id == Object.id)
         .filter(Object.object_type == ObjectType.moon)
         .all()
     )
-    histogram: dict[int, int] = {}
+    dated: list[tuple[str, int]] = []
     undated = 0
-    for jpl_year, sbdb_year in rows:
+    for parent_id, jpl_year, sbdb_year in rows:
         year = jpl_year if jpl_year is not None else sbdb_year
         if year is None:
             undated += 1
             continue
-        histogram[year] = histogram.get(year, 0) + 1
+        dated.append((parent_id, year))
     if undated:
         logger.info("%d moons carry no discovery year", undated)
+    return dated
+
+
+def _moon_discovery_histogram(session: Session) -> dict[int, int]:
+    """Moons per year of discovery, across every host."""
+    histogram: dict[int, int] = {}
+    for _, year in moon_discovery_rows(session):
+        histogram[year] = histogram.get(year, 0) + 1
     return histogram
 
 
