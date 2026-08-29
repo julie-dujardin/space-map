@@ -23,12 +23,32 @@ import re
 # trajectory extraction.
 MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     # --- Operational-tree missions ---
-    # 2020-reprocessed reconstruction (~156 files, ~2.7 GiB). The PDS3 archive
+    # 2020-reprocessed reconstruction (~161 files, ~2.7 GiB). The PDS3 archive
     # `co-s_j_e_v-spice-6-v1.0` carries the same data more cleanly if this
     # turns out too heavy.
-    "CASSINI": (r"^200128RU_SCPSE_\d+_\d+\.bsp$",),
-    "EXOMARS2016": (r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",),
-    "ExoMars2016": (r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",),
+    "CASSINI": (
+        r"^200128RU_SCPSE_\d+_\d+\.bsp$",
+        # The tour series starts 2004-02-06, seven years after launch. These
+        # five reconstruction arcs carry the cruise: launch → Venus 1 → Venus
+        # 2 → Earth → Jupiter → SOI, chaining end-to-end into the tour.
+        r"^000331R_SK_LP0_V1P32\.bsp$",
+        r"^000331R_SK_V1P32_V2P12\.bsp$",
+        r"^000331R_SK_V2P12_EP15\.bsp$",
+        r"^010420R_SCPSE_EP1_JP83\.bsp$",
+        r"^041014R_SCPSE_01066_04199\.bsp$",
+    ),
+    # The single `mlt` file starts 2017-12-05, 20 months after launch. `fcp`
+    # is the flown cruise reconstruction, launch → Mars orbit insertion. The
+    # 2017 aerobraking year between them stays uncovered on purpose: only the
+    # `flp` predicts span it, at ~300 MiB each for one milestone.
+    "EXOMARS2016": (
+        r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",
+        r"^em16_tgo_fcp_\d+_\d+_\d+_\d+_v\d+\.bsp$",
+    ),
+    "ExoMars2016": (
+        r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",
+        r"^em16_tgo_fcp_\d+_\d+_\d+_\d+_v\d+\.bsp$",
+    ),
     # The `dawn_rec_*` series is the full-mission PDS3 reconstruction
     # (launch → Vesta → Ceres → EOM 2018-10); source switched from the op
     # tree, whose only kernel starts 2013 with no Vesta phase.
@@ -48,11 +68,14 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^bc_mmo_slt_extension_\d+_\d+_v\d+\.bsp$",
         r"^bc_mpo_slt_extension_\d+_\d+_v\d+\.bsp$",
     ),
-    # `spk_ref_*` is the long-arc trajectory reference predict (~7 yr); lex-last
-    # picks the most recent issue, which extends past `juno_pred_orbit`.
+    # `juno_rec_orbit` starts at Jupiter arrival; the per-arc `spk_rec_*`
+    # series reaches back to launch day and covers the Earth gravity assist.
+    # `spk_ref_*` is the long-arc trajectory reference predict (~7 yr) — every
+    # issue is kept, and the newest wins under last-loaded on the predict tier.
     "JUNO": (
         r"^juno_rec_orbit\.bsp$",
         r"^juno_pred_orbit\.bsp$",
+        r"^spk_rec_\d{6}_\d{6}_\d{6}\.bsp$",
         r"^spk_ref_\d{6}_\d{6}_\d{6}\.bsp$",
     ),
     # ESA `MEX/` 404s — canonical dir is `MARS-EXPRESS/` (NAIF `MEX/` mirrors
@@ -151,6 +174,9 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "MAVEN": (
         r"^maven_orb_rec\.bsp$",
         r"^maven_orb_rec_\d{6}_\d{6}_v\d+\.bsp$",
+        # The orbit series starts at Mars arrival; this is the cruise
+        # reconstruction, launch day → orbit insertion.
+        r"^trj_c_\d{6}-\d{6}_rec_v\d+\.bsp$",
     ),
     # `ref_trj_*_scpse.bsp` full-mission references; per-arc `trj_*_OD\d+_v\d+.bsp`
     # reconstructions are not matched here.
@@ -168,7 +194,12 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "PHSRM": (r"^phsrm_\d+_\d+_\d+_nom\d+\.bsp$",),  # Phobos-Grunt (planned)
     "PHOBOS88": (r"^p88mrg\.bsp$", r"^iam_r2\.bsp$"),  # Phobos 2
     "LPM": (r"^lp_ask_\d+-\d+\.bsp$",),  # Lunar Prospector
-    "GLL": (r"^gll_951120_021126_raj2021\.bsp$",),  # Galileo, 2021 reanalysis
+    # `raj2021` is the 2021 reanalysis of the Jupiter tour and starts at
+    # arrival. The `s<yymmdd><rev>` series carries the six-year cruise (Venus,
+    # both Earth flybys, Gaspra, Ida) and the tail past the tour to the 2003
+    # Jupiter impact. `raj` is a recon token, so the reanalysis still wins
+    # wherever the two overlap.
+    "GLL": (r"^gll_951120_021126_raj2021\.bsp$", r"^s\d{6}[a-z]\.bsp$"),
     "HELIOS": (
         r"^\d+R_helios[12]_\d+_\d+\.bsp$",
         r"^\d+AP_helios[12]_\d+_\d+\.bsp$",
@@ -182,10 +213,16 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     ),
     "PHOENIX": (r"^phx_cruise\.bsp$", r"^phx_edl_rec_traj\.bsp$"),
     "LADEE": (r"^ladee_r_\d+_\d+_(?:pha|loa|sci)_v\d+\.bsp$",),
+    # The three encounter kernels leave launch → Tempel 1 uncovered and a
+    # 220-day hole after it; `preenc174` spans 2005-01 → 2009-01 across both.
+    # It is a pre-encounter nav solution, so it sits on the predict tier and
+    # never displaces an encounter reconstruction.
     "DEEPIMPACT": (
         r"^di_finalenc_nav_v\d+\.bsp$",
         r"^dif_dixi_nav_v\d+\.bsp$",
         r"^dif_epoch_nav_v\d+\.bsp$",
+        r"^dif_preenc174_nav_v\d+\.bsp$",
+        r"^dii_preenc174_nav_v\d+\.bsp$",
     ),
     "CONTOUR": (
         r"^contour\.traj\.\d+\.noplephem-\d+\.bsp$",
@@ -194,7 +231,10 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "STEREO": (r"^STEREO-A_merged\.bsp$",),  # STEREO-B failed 2014
     "ULYSSES": (r"^ulysses_\d+_\d+_\d+\.bsp$",),
     "VEGA": (r"^vega\..*\.bsp$",),
-    "VIKING": (r"^vo[12]_rcon\.bsp$",),  # orbiters only; landers are surface
+    # Orbiters only; landers are surface. `vo1_ext_gem` would reach the 1980
+    # mission end but is 33 scattered sub-day arcs, not a trajectory — the
+    # orbiter would blink for 19 months rather than fly.
+    "VIKING": (r"^vo[12]_rcon\.bsp$",),
     "VOYAGER": (r"^[Vv]oyager_[12]\.[A-Za-z0-9.+_]+merged\.bsp$",),
     "MCO": (r"^mco_cruise\.bsp$",),  # Mars Climate Orbiter (lost)
     "M2": (r"^m2_\d+_\d+_ja_v\d+\.bsp$",),  # Mariner 2
@@ -338,9 +378,9 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
 #     SPICE last-loaded-wins picks whichever is loaded later.
 #
 # Excludes the `_gc_` pre-flight planning variants, `_nom_*` nominal
-# planning, `_struct_*` instrument FKs, `_still_at_ls_v*` pre-launch
-# placeholders (which would otherwise span 2000→2099 at the landing site
-# and inflate sample counts).
+# planning and `_struct_*` instrument FKs. `_still_at_ls_v*` is a static
+# "never moved again" tail running to 2100; it is excluded wherever a real
+# surface track exists and kept for MER, which has none.
 LANDED_INCLUDE: dict[str, tuple[str, ...]] = {
     # Static landers
     "INSIGHT": (
@@ -358,11 +398,14 @@ LANDED_INCLUDE: dict[str, tuple[str, ...]] = {
     # it carries instrument-FK target NAIFs (-76501..-76620 etc.) in a mission
     # frame (-76910 / -168910) that we don't load the FK for, and the rover-
     # body NAIF (-76, -168) is fully covered by `*_surf_rover_loc_*` segments
-    # in IAU_MARS. Same for MER: the `surf_iddg` kernels carry joint angle
-    # data in an unknown mission frame; only `_ls_` (landing-site position)
-    # is useful here since the rover-body NAIF (-253, -254) has no separate
-    # trajectory kernel in the archive — MER positions reduce to the static
-    # landing site.
+    # in IAU_MARS. MER is the same story with a worse archive: `surf_iddg`
+    # and `surf_rover_ext*` both position the rover through site frames whose
+    # FK we don't load, so both fail with UNKNOWNFRAME, and `_ls_` carries
+    # the landing-site NAIF (-253900, -254900) rather than the rover. That
+    # left both rovers with no coverage at all past touchdown;
+    # `_still_at_ls_` is the one kernel that puts the rover NAIF on the
+    # surface, from landing day onward. `rvr_rpf` (a few days of real drive
+    # data per rover) is kept as a pattern but NAIF no longer serves it.
     "MSL": (
         r"^msl_atls_ops\d+_v\d+\.bsp$",
         r"^msl_ls_ops\d+_iau2000_v\d+\.bsp$",
@@ -383,6 +426,7 @@ LANDED_INCLUDE: dict[str, tuple[str, ...]] = {
     "MER": (
         r"^mer[12]_ls_\d+_iau2000_v\d+\.bsp$",
         r"^mer[12]_rvr_rpf_\d+\.bsp$",
+        r"^mer[12]_still_at_ls_v\d+\.bsp$",
     ),
 }
 
@@ -397,10 +441,11 @@ MISSION_LATEST_ONLY: frozenset[str] = frozenset(
         # iterations. (BepiColombo MMO/MPO MLT explicitly doesn't qualify:
         # different MLT iterations cover *different* date windows, so we
         # keep all matches.)
+        # JUNO is deliberately absent: its `spk_rec_*` arcs each cover their
+        # own window, and lex-last would keep one and drop the cruise.
         "INTEGRAL",
         "HERA",
         "GAIA",
-        "JUNO",
         "JUICE",
         "LUCY",
     }

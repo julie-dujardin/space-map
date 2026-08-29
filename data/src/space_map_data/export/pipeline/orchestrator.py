@@ -801,10 +801,10 @@ def _content_token(root: Path) -> str:
 
 def _inject_probe_coverage(
     global_data: dict[str, dict],
-    probe_coverage: Mapping[str, Mapping[str, float]],
+    probe_coverage: Mapping[str, Mapping[str, float | list]],
 ) -> None:
-    """Stamp each probe's `(start_jd, end_jd)` onto its global bundle entry
-    under `coverage`, mirroring `write_attitude`'s `attitude` injection."""
+    """Stamp each probe's coverage onto its global bundle entry under
+    `coverage`, mirroring `write_attitude`'s `attitude` injection."""
     for obj_id, cov in probe_coverage.items():
         entry = global_data.get(obj_id)
         if entry is None:
@@ -912,7 +912,7 @@ def _run_probes(
     probe_ids: set[str],
     agg: _Aggregators,
     tier_b_clean: bool,
-) -> tuple[dict[str, dict], dict[str, dict[str, float]]]:
+) -> tuple[dict[str, dict], dict[str, dict[str, float | list]]]:
     """Run (or skip) the probes pass behind its input signature.
 
     Same tier-B coupling as chebyshev: probe Object rows and has_localized

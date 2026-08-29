@@ -55,11 +55,19 @@ def kernel_precedence(name: str) -> int:
     they span launch→return in one file, and ORX's `spk_`-prefixed variant
     name-sorts after every od reconstruction — it put OSIRIS-REx 30 km from
     Bennu (vs 0.9 km real) while Bennu itself came from an od file.
+    DEEPIMPACT `preenc*` joins them: it is a pre-encounter nav solution
+    spanning both comet encounters, and must not displace either final
+    reconstruction.
+
+    Galileo's `raj*` reanalysis is recon-tier so it outranks the `s<date>`
+    cruise series it overlaps.
     """
     tokens = re.split(r"[_.\-]", name.lower())
-    if any(t in _RECON_TOKENS for t in tokens):
+    if any(t in _RECON_TOKENS or t.startswith("raj") for t in tokens):
         return 2
-    if any(t in _PREDICT_TOKENS or t.startswith(("pgaa", "drm")) for t in tokens):
+    if any(
+        t in _PREDICT_TOKENS or t.startswith(("pgaa", "drm", "preenc")) for t in tokens
+    ):
         return 0
     return 1
 

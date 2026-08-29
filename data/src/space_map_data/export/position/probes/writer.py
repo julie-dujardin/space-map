@@ -64,27 +64,48 @@ from space_map_data.probes.zones import ALL_ZONES, SMALL_BODIES
 logger = logging.getLogger(__name__)
 
 
+# Contributions are chunk-sliced, so one continuous arc arrives as a run of
+# spans that meet at chunk boundaries. Anything under a day apart is that
+# seam, or a sub-day hole no date-precision event could land in.
+_COVERAGE_MERGE_DAYS = 1.0
+
+
+def _merge_spans(spans: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Sorted spans with touching and near-touching neighbours coalesced."""
+    merged: list[list[float]] = []
+    for s, e in sorted(spans):
+        if merged and s <= merged[-1][1] + _COVERAGE_MERGE_DAYS:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
+    return [(s, e) for s, e in merged]
+
+
 def _compute_probe_coverage(
     plans: list[ProbePlan],
     metas_by_probe_id: dict[int, ProbeMeta],
-) -> dict[str, dict[str, float]]:
-    """Per-probe outermost coverage envelope across every (zone, chunk_idx) —
-    union of every `ChunkContribution`'s span, covering flying and landed
-    contributions across zones. Keyed by `Object.id` so a focused probe's
-    coverage end is one lookup away."""
-    bounds_by_probe: dict[int, tuple[float, float]] = {}
+) -> dict[str, dict[str, float | list[tuple[float, float]]]]:
+    """Per-probe coverage across every (zone, chunk_idx) — union of every
+    `ChunkContribution`'s span, covering flying and landed contributions
+    across zones. Keyed by `Object.id` so a focused probe's coverage is one
+    lookup away.
+
+    `windows` are the spans a date can be resolved to a position in, to
+    whole-day resolution. An archive with holes in it yields several:
+    Pioneer Venus Orbiter is tracked for four years, missing for five, then
+    tracked again, and a date in the middle has no spacecraft to draw.
+    `start_jd`/`end_jd` bound them all, which is what a reader that predates
+    `windows` sees.
+    """
+    spans_by_probe: dict[int, list[tuple[float, float]]] = {}
     for plan in plans:
         for c in plan.contributions:
-            cur = bounds_by_probe.get(plan.probe_id)
-            if cur is None:
-                bounds_by_probe[plan.probe_id] = (c.c_start_et, c.c_end_et)
-            else:
-                bounds_by_probe[plan.probe_id] = (
-                    min(cur[0], c.c_start_et),
-                    max(cur[1], c.c_end_et),
-                )
-    coverage: dict[str, dict[str, float]] = {}
-    for probe_id, (s_et, e_et) in bounds_by_probe.items():
+            spans_by_probe.setdefault(plan.probe_id, []).append(
+                (et_to_jd(c.c_start_et), et_to_jd(c.c_end_et))
+            )
+    coverage: dict[str, dict[str, float | list[tuple[float, float]]]] = {}
+    n_gapped = 0
+    for probe_id, spans in spans_by_probe.items():
         meta = metas_by_probe_id.get(probe_id)
         if meta is None:
             logger.warning(
@@ -93,10 +114,18 @@ def _compute_probe_coverage(
                 probe_id,
             )
             continue
+        windows = _merge_spans(spans)
+        n_gapped += len(windows) > 1
         coverage[meta.obj_id] = {
-            "start_jd": et_to_jd(s_et),
-            "end_jd": et_to_jd(e_et),
+            "start_jd": windows[0][0],
+            "end_jd": windows[-1][1],
+            "windows": windows,
         }
+    logger.info(
+        "probe_coverage: %d probes, %d with more than one window",
+        len(coverage),
+        n_gapped,
+    )
     return coverage
 
 
@@ -105,7 +134,7 @@ def write_probes(
     download_dir: Path,
     out_dir: Path,
     has_localized: dict[str, bool],
-) -> tuple[dict[str, dict], dict[str, dict[str, float]]]:
+) -> tuple[dict[str, dict], dict[str, dict[str, float | list]]]:
     """Build per-zone, per-chunk binary files for every probe on disk.
 
     Incremental export with per-probe fit caching: (1) classify each probe
@@ -115,7 +144,7 @@ def write_probes(
     pack + atomic-write just the dirty chunks.
 
     Returns `(zone_manifest, probe_coverage)`. `probe_coverage` is
-    `{Object.id: {start_jd, end_jd}}`, stamped onto each probe's
+    `{Object.id: {start_jd, end_jd, windows}}`, stamped onto each probe's
     `__global__` entry for the frontend coverage-end pause.
     """
     if not MISSIONS_DIR.exists():
