@@ -19,7 +19,7 @@
 	import { navEndOf, parseUrl, urlTypeFromId } from '$lib/state/url';
 	import { UrlType } from '$lib/state/view';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { dateToJD, jdToDate } from '$lib/format/date';
+	import { jdToDate } from '$lib/format/date';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import LoadingBar from './LoadingBar.svelte';
@@ -193,11 +193,6 @@
 		renderer?.trackPathPoint(centerId, rKm);
 	}
 
-	function isLive(): boolean {
-		// Within ~1 day of wall clock and playing at 1× → URL omits the time.
-		return clock.timeScale === 1 && Math.abs(clock.jd - dateToJD(new Date())) < 1;
-	}
-
 	function syncCameraToUrl(latitude: number, longitude: number, zoom: number) {
 		if (!focusedBody) return;
 		appState.setCamera({ latitude, longitude, zoom });
@@ -334,7 +329,7 @@
 		// Keep the URL's time stamp in sync with the sim clock so reload/share preserves the moment.
 		const clockSyncId = setInterval(() => {
 			if (!focusedBody) return;
-			appState.setDate(jdToDate(clock.jd), isLive());
+			appState.setDate(jdToDate(clock.jd), false);
 		}, 500);
 
 		const onPopState = () => {
@@ -367,7 +362,7 @@
 		if (jumps === seenJumps) return;
 		seenJumps = jumps;
 		untrack(() => {
-			if (focusedBody) appState.setDate(jdToDate(clock.jd), isLive(), true);
+			if (focusedBody) appState.setDate(jdToDate(clock.jd), false, true);
 		});
 	});
 
