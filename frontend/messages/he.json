@@ -169,6 +169,7 @@
 	"page_title": "Space Map",
 	"skip_to_content": "דלג לתוכן הראשי",
 	"category_name_solar_system": "מערכת השמש",
+	"category_name_planetary_systems": "מערכות כוכבי לכת",
 	"category_name_planets": "כוכבי לכת",
 	"category_name_dwarf_planets": "כוכבי לכת ננסיים",
 	"category_name_moons": "ירחים",
@@ -680,6 +681,8 @@
 	"planetary_system_primary": "גוף ראשי",
 	"planetary_system_retrograde": "רטרוגרדי",
 	"planetary_system_title": "מערכת {primary}",
+	"planetary_system_title_earth_moon": "מערכת ארץ–ירח",
+	"planetary_system_badge": "מערכת כוכבי לכת",
 	"moons_count_moon": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

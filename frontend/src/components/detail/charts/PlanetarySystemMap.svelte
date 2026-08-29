@@ -10,7 +10,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { focusHref, focusClick } from '$lib/state/focus-link';
-	import type { PlanetarySystem } from './planetary-system.svelte';
+	import type { PlanetarySystemMapData } from './planetary-system.svelte';
 
 	const TOP_MOON_R = 14;
 	const PX_PER_DEG = 0.62;
@@ -20,13 +20,17 @@
 	// baseline rides in the upper third — the card's caption takes the lower half,
 	// and moons drawn behind the text read as dirt on the picture.
 	const BG_VIEW = '0 96 320 144';
+	/** A full-width tile has room for the whole axis, shown whole and centred. */
+	const BG_VIEW_WIDE = '0 96 720 144';
 
 	interface Props {
-		system: PlanetarySystem;
+		system: PlanetarySystemMapData;
 		ariaLabel: string;
 		variant?: 'hero' | 'background';
+		/** Background on a tile spanning the row: the whole axis fits. */
+		wide?: boolean;
 	}
-	let { system, ariaLabel, variant = 'hero' }: Props = $props();
+	let { system, ariaLabel, variant = 'hero', wide = false }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -58,9 +62,9 @@
 
 	let model = $derived.by<SystemMapModel>(() => {
 		const rKm = system.planetRadiusKm;
-		const planet = system.planet.data;
+		const planetId = system.planetId;
 		return {
-			primary: { id: planet.id, name: system.planetName, radiusKm: rKm, color: system.planetColor },
+			primary: { id: planetId, name: system.planetName, radiusKm: rKm, color: system.planetColor },
 			bodies: system.moons.map((mn) => ({
 				id: mn.id,
 				name: mn.name,
@@ -77,8 +81,8 @@
 							innerKm: system.rings.innerRp * rKm,
 							outerKm: system.rings.outerRp * rKm,
 							tone: 'amber',
-							href: focusHref(appState, planet.id, system.planetName, 'rings'),
-							onclick: focusClick(focusObject, planet.id, system.planetName, { tab: 'rings' })
+							href: focusHref(appState, planetId, system.planetName, 'rings'),
+							onclick: focusClick(focusObject, planetId, system.planetName, { tab: 'rings' })
 						}
 					]
 				: [],
@@ -88,7 +92,8 @@
 			axisLabel: m.planetary_system_axis_unit(),
 			pxPerKm,
 			pxPerDeg: PX_PER_DEG,
-			backgroundView: BG_VIEW
+			backgroundView: wide ? BG_VIEW_WIDE : BG_VIEW,
+			backgroundFit: wide ? 'fit' : 'slice'
 		};
 	});
 </script>

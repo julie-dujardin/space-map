@@ -34,6 +34,7 @@ import {
 	CAT_DEBRIS,
 	CAT_DWARF_PLANETS,
 	CAT_PLANETS,
+	CAT_PLANETARY_SYSTEMS,
 	CAT_RING_SYSTEMS,
 	CAT_SATELLITES,
 	CAT_SOLAR_SYSTEM,
@@ -67,12 +68,13 @@ const EXTRA_ROOT_CHILDREN = [CAT_SATELLITES, CAT_DEBRIS];
 
 /** Root slots that draw no bodies of their own.
  *
- *  Planets and ring systems hold the same dozen bodies the map opens on; a
- *  dwarf planet is drawn as the small body it is, from its orbit zone. Structure
- *  & Activity holds nothing but collections, which have their own slot. All four
- *  pages stay reachable there. */
+ *  Planets, systems and ring systems hold the same dozen bodies the map opens
+ *  on; a dwarf planet is drawn as the small body it is, from its orbit zone.
+ *  Structure & Activity holds nothing but collections, which have their own
+ *  slot. All five pages stay reachable there. */
 const NON_DRAWING_CATEGORIES: readonly string[] = [
 	CAT_PLANETS,
+	CAT_PLANETARY_SYSTEMS,
 	CAT_DWARF_PLANETS,
 	CAT_RING_SYSTEMS,
 	CAT_STRUCTURE_ACTIVITY

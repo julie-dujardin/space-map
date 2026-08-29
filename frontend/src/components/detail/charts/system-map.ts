@@ -57,4 +57,7 @@ export interface SystemMapModel {
 	pxPerDeg: number;
 	/** Crop for the background variant; the whole map when absent. */
 	backgroundView?: string;
+	/** How the crop meets its box: anchored left and sliced by default; `fit`
+	 *  shows it whole, centred. */
+	backgroundFit?: 'slice' | 'fit';
 }

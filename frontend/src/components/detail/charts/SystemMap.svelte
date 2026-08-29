@@ -294,9 +294,11 @@
 		bind:this={svgEl}
 		viewBox={(isBackground && model.backgroundView) || `0 0 ${VIEW_W} ${VIEW_H}`}
 		preserveAspectRatio={isBackground
-			? model.backgroundView
-				? 'xMinYMid slice'
-				: 'xMidYMid slice'
+			? model.backgroundFit === 'fit'
+				? 'xMidYMid meet'
+				: model.backgroundView
+					? 'xMinYMid slice'
+					: 'xMidYMid slice'
 			: 'xMidYMid meet'}
 		class="text-muted-foreground block w-full touch-pan-y {isBackground ? 'h-full' : 'h-auto'}"
 		role="group"

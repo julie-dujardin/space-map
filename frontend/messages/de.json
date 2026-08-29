@@ -169,6 +169,7 @@
 	"page_title": "Space Map",
 	"skip_to_content": "Zum Hauptinhalt springen",
 	"category_name_solar_system": "Sonnensystem",
+	"category_name_planetary_systems": "Planetensysteme",
 	"category_name_planets": "Planeten",
 	"category_name_dwarf_planets": "Zwergplaneten",
 	"category_name_moons": "Monde",
@@ -680,6 +681,8 @@
 	"planetary_system_primary": "Primärkörper",
 	"planetary_system_retrograde": "retrograd",
 	"planetary_system_title": "System {primary}",
+	"planetary_system_title_earth_moon": "Erde-Mond-System",
+	"planetary_system_badge": "Planetensystem",
 	"moons_count_moon": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

@@ -169,6 +169,7 @@
 	"page_title": "宇宙マップ",
 	"skip_to_content": "メインコンテンツにスキップ",
 	"category_name_solar_system": "太陽系",
+	"category_name_planetary_systems": "惑星系",
 	"category_name_planets": "惑星",
 	"category_name_dwarf_planets": "準惑星",
 	"category_name_moons": "衛星",
@@ -692,6 +693,8 @@
 	"planetary_system_primary": "主星",
 	"planetary_system_retrograde": "逆行",
 	"planetary_system_title": "{primary}系",
+	"planetary_system_title_earth_moon": "地球–月系",
+	"planetary_system_badge": "惑星系",
 	"moons_count_moon": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

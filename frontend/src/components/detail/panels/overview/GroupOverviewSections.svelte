@@ -3,6 +3,7 @@
 	import CategoryCrossRefs from '../../sections/crossref/CategoryCrossRefs.svelte';
 	import CategoryChildTiles from '../../sections/crossref/CategoryChildTiles.svelte';
 	import RingSystemTiles from '../../sections/crossref/RingSystemTiles.svelte';
+	import PlanetarySystemTiles from '../../sections/crossref/PlanetarySystemTiles.svelte';
 	import PropertyMemberList from '../../sections/PropertyMemberList.svelte';
 	import ChildGroups from '../../sections/ChildGroups.svelte';
 	import FeatureTypeFamilies from '../../sections/FeatureTypeFamilies.svelte';
@@ -71,6 +72,9 @@
 {/if}
 {#if cat.solarSystem && visibleChildGroups.length}
 	<CategoryChildTiles childGroups={visibleChildGroups} />
+{/if}
+{#if cat.planetarySystems && notableMembers && notableMembers.length > 0}
+	<PlanetarySystemTiles members={notableMembers} localizedNames={memberNames} />
 {/if}
 {#if cat.ringSystems && notableMembers && notableMembers.length > 0}
 	<RingSystemTiles members={notableMembers} localizedNames={memberNames} />

@@ -79,7 +79,12 @@
 		systemName={planetarySystem.systemName}
 	/>
 {:else if isDwarfPlanetBody}
-	<DwarfPlanetGroupLinks {orbitClass} />
+	<DwarfPlanetGroupLinks
+		{orbitClass}
+		systemId={planetarySystem.systemId ?? undefined}
+		system={planetarySystem.system ?? undefined}
+		systemName={planetarySystem.systemName}
+	/>
 {:else if isMoonBody}
 	<MoonGroupLinks
 		parentId={moonParent?.data.id ?? body?.data.parentId}

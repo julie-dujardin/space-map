@@ -55,6 +55,10 @@ from space_map_data.export.groups.moon_discovery import (
     build_moon_discovery,
     write_moon_discovery,
 )
+from space_map_data.export.groups.planetary_systems_map import (
+    build_planetary_systems_map,
+    write_planetary_systems_map,
+)
 from space_map_data.export.groups.solar_system_map import (
     build_solar_system_map,
     write_solar_system_map,
@@ -370,7 +374,11 @@ def run_groups_tier(
     ``radii``/``gms`` (SPICE PCK) give the category planet + moon members their
     mass + triaxial radii for the planets/moons-page charts.
     """
-    from space_map_data.export.systems import load_orientation, load_planet_elements
+    from space_map_data.export.systems import (
+        load_orientation,
+        load_planet_elements,
+        load_ring_metadata,
+    )
     from space_map_data.utils.paths import DOWNLOAD_DIR
 
     units = UnitConverter(wikidata_entities)
@@ -426,6 +434,14 @@ def run_groups_tier(
             units,
             small_body_stats.orbit_samples,
             planet_elements,
+        )
+        planetary_systems_map = build_planetary_systems_map(
+            session,
+            radii,
+            orientation,
+            load_ring_metadata(out_dir),
+            units,
+            wikidata_entities,
         )
     missions = _mission_groups()
 
@@ -501,6 +517,7 @@ def run_groups_tier(
     write_orbit_samples(out_dir, small_body_stats.orbit_samples)
     write_earth_orbit_samples(out_dir, earth_orbit_stats.orbit_samples)
     write_solar_system_map(out_dir, solar_system_map)
+    write_planetary_systems_map(out_dir, planetary_systems_map)
     write_moon_discovery(out_dir, moon_discovery)
 
     return write_group_bundles(

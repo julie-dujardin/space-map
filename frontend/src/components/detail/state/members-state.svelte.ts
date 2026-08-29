@@ -4,12 +4,34 @@
 
 import { STRIP_CAPACITY } from '../members/MemberStrip.svelte';
 import { fetchGroupIndex } from '$lib/fetch/groups/registry';
-import type { NotableMemberEntry, ObjectDetailData } from '$lib/fetch/objects/object-data';
+import {
+	memberEntryKey,
+	type NotableMemberEntry,
+	type ObjectDetailData
+} from '$lib/fetch/objects/object-data';
 import type { GroupDetailData } from '$lib/fetch/groups/details';
 import type { AppState } from '$lib/state/app-state.svelte';
 import type { CategoryConfig } from '$lib/state/category-config';
 import { groupHref, tabHref } from '$lib/state/focus-link';
 import * as m from '$lib/paraglide/messages.js';
+import { systemTitle } from '../charts/planetary-system.svelte';
+
+/** A planetary system's member is labelled by its primary; the page reads it
+ *  as "<primary> system", the name its own page carries. Built over every
+ *  entry, since English carries no localized map at all. */
+function systemNames(
+	members: NotableMemberEntry[] | undefined,
+	names: Record<string, string> | undefined,
+	cat: CategoryConfig
+): Record<string, string> | undefined {
+	if (!cat.planetarySystems || !members) return names;
+	return Object.fromEntries(
+		members.map((mm) => {
+			const key = memberEntryKey(mm);
+			return [key, systemTitle(key, names?.[key] ?? mm.name)];
+		})
+	);
+}
 
 export interface MembersStateDeps {
 	isGroupMode: () => boolean;
@@ -92,7 +114,11 @@ export class MembersState {
 		);
 		this.memberNames = $derived(
 			d.isGroupMode()
-				? d.groupDetail()?.localized?.notable_member_names
+				? systemNames(
+						d.groupDetail()?.global?.notable_members,
+						d.groupDetail()?.localized?.notable_member_names,
+						d.cat()
+					)
 				: this.satellitesGroup
 					? {
 							...d.data()?.localized?.notable_moon_names,
@@ -177,7 +203,7 @@ export class MembersState {
 
 		this.isSmallBodyZone = $derived(d.groupDetail()?.global?.type === 'orbit_class');
 
-		// Lineup/small-body/Solar-System/ring pages route members through their own
+		// Lineup/small-body/Solar-System/ring/system pages route members through their own
 		// hero or tiles, so they drop the plain members strip.
 		this.membersStrip = $derived.by(() => {
 			const cat = d.cat();
@@ -186,6 +212,7 @@ export class MembersState {
 				cat.lineup ||
 				cat.solarSystem ||
 				cat.ringSystems ||
+				cat.planetarySystems ||
 				// A property collection lists every member below with its own drawing;
 				// a strip of photographs above it would be the same bodies said worse.
 				cat.property ||

@@ -7,7 +7,8 @@
 import { describe, expect, it } from 'vitest';
 import { PROPERTY_COLLECTION_SLUGS } from './category-config';
 import { parentCrumb } from './breadcrumb';
-import { CAT_SURFACE_FEATURES } from '$lib/fetch/groups/registry';
+import { CAT_PLANETARY_SYSTEMS, CAT_SURFACE_FEATURES } from '$lib/fetch/groups/registry';
+import { ObjectType } from '$lib/types/objects';
 import type { Focusable } from './focusable';
 
 const MOON = { data: { id: 'naif-301', name: 'Moon' } } as never;
@@ -55,5 +56,34 @@ describe('parentCrumb: surface features', () => {
 				slug: 'cat-structure-activity'
 			});
 		}
+	});
+});
+
+describe('parentCrumb: planetary systems', () => {
+	function barycenter(id: string): Focusable {
+		return {
+			kind: 'body',
+			body: { data: { id, name: id, objectType: ObjectType.BARYCENTER } }
+		} as never;
+	}
+
+	it('climbs from a planetary system to the Planetary Systems collection', () => {
+		const crumb = parentCrumb(barycenter('naif-5'), undefined, null, null);
+		expect(crumb?.target).toMatchObject({ kind: 'group', slug: CAT_PLANETARY_SYSTEMS });
+	});
+
+	it('climbs from the Solar System barycenter to the root', () => {
+		const crumb = parentCrumb(barycenter('naif-0'), undefined, null, null);
+		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-solar-system' });
+	});
+
+	it('climbs from the Planetary Systems collection to the root', () => {
+		const crumb = parentCrumb(
+			{ kind: 'group', slug: CAT_PLANETARY_SYSTEMS },
+			undefined,
+			null,
+			null
+		);
+		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-solar-system' });
 	});
 });

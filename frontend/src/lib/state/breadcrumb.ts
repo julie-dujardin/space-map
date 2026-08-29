@@ -8,6 +8,7 @@ import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
 import type { GlobalGroupData } from '$lib/fetch/groups/details';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
+import { SSB_ID } from '$lib/constants';
 import {
 	categoryLabel,
 	CATEGORY_SLUG_PREFIX,
@@ -20,6 +21,7 @@ import {
 	CAT_PROBES,
 	CAT_SATELLITES,
 	CAT_SOLAR_SYSTEM,
+	CAT_PLANETARY_SYSTEMS,
 	CLASS_SLUG_PREFIX,
 	COMET_FAMILY_SLUG_PREFIX,
 	CAT_SURFACE_FEATURES,
@@ -155,10 +157,11 @@ export function parentCrumb(
 	if (data.objectType === ObjectType.PLANET) return categoryCrumb(CAT_PLANETS);
 	if (data.objectType === ObjectType.STAR) return categoryCrumb(CAT_SOLAR_SYSTEM);
 
-	// A planetary system → the Solar System root, which is the collection it is
-	// one of; its own primary is the first cross-ref tile instead. The Solar
-	// System barycenter climbs there too — it is that system's own centre.
-	if (data.objectType === ObjectType.BARYCENTER) return categoryCrumb(CAT_SOLAR_SYSTEM);
+	// A planetary system → the collection of systems; its own primary is the
+	// first cross-ref tile instead. The Solar System barycenter is that
+	// system's own centre, so it climbs to the root.
+	if (data.objectType === ObjectType.BARYCENTER)
+		return categoryCrumb(data.id === SSB_ID ? CAT_SOLAR_SYSTEM : CAT_PLANETARY_SYSTEMS);
 
 	// Moon (planetary or small-body) → its parent (planet, not the barycenter;
 	// or the host asteroid). Must precede the URL-type branches: small-body

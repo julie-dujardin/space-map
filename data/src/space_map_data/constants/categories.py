@@ -27,6 +27,7 @@ class CategorySpec:
 
 
 SOLAR_SYSTEM_SLUG = f"{CATEGORY_SLUG_PREFIX}solar-system"
+PLANETARY_SYSTEMS_SLUG = f"{CATEGORY_SLUG_PREFIX}planetary-systems"
 PLANETS_SLUG = f"{CATEGORY_SLUG_PREFIX}planets"
 DWARF_PLANETS_SLUG = f"{CATEGORY_SLUG_PREFIX}dwarf-planets"
 MOONS_SLUG = f"{CATEGORY_SLUG_PREFIX}moons"
@@ -48,6 +49,9 @@ RADIATION_SLUG = f"{CATEGORY_SLUG_PREFIX}radiation"
 
 CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(SOLAR_SYSTEM_SLUG, "Solar System", "Q544"),
+    # The barycenter pages: a primary with what orbits it. Its own parent is
+    # the Solar System, which is one system up.
+    CategorySpec(PLANETARY_SYSTEMS_SLUG, "Planetary Systems", "Q206717"),
     CategorySpec(PLANETS_SLUG, "Planets", "Q634"),
     CategorySpec(DWARF_PLANETS_SLUG, "Dwarf Planets", "Q2199"),  # "dwarf planet"
     CategorySpec(MOONS_SLUG, "Moons", "Q2537"),  # "natural satellite"

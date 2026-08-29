@@ -169,6 +169,7 @@
 	"page_title": "Carte de l'espace",
 	"skip_to_content": "Aller au contenu principal",
 	"category_name_solar_system": "Système solaire",
+	"category_name_planetary_systems": "Systèmes planétaires",
 	"category_name_planets": "Planètes",
 	"category_name_dwarf_planets": "Planètes naines",
 	"category_name_moons": "Lunes",
@@ -684,6 +685,8 @@
 	"planetary_system_primary": "primaire",
 	"planetary_system_retrograde": "rétrograde",
 	"planetary_system_title": "Système de {primary}",
+	"planetary_system_title_earth_moon": "Système Terre–Lune",
+	"planetary_system_badge": "Système planétaire",
 	"moons_count_moon": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

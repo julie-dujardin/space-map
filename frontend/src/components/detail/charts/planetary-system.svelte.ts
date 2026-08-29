@@ -18,6 +18,7 @@ import * as m from '$lib/paraglide/messages.js';
 import { resolveBodyColor } from '$lib/utils';
 import { buildLineup, geometryFromMember } from './lineup';
 import { fetchMoonDiscovery, type MoonDiscoveryFile } from '$lib/fetch/groups/moon-discovery';
+import type { PlanetarySystemsMapEntry } from '$lib/fetch/groups/planetary-systems-map';
 import type { LineupBody } from './BodyLineup.svelte';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import {
@@ -45,19 +46,58 @@ export interface SystemRings {
 	outerRp: number;
 }
 
-export interface PlanetarySystem {
-	planet: PositionedBody;
+/** What the system map draws — built from the live scene on a system page,
+ *  or from the export's baked maps on the collection page. */
+export interface PlanetarySystemMapData {
+	planetId: string;
 	planetName: string;
 	planetRadiusKm: number;
 	planetColor: string;
 	moons: SystemMoon[];
 	rings: SystemRings | null;
+	/** Moons the catalogue knows about, which is more than the scene loads. */
+	moonCount: number;
+}
+
+export interface PlanetarySystem extends PlanetarySystemMapData {
+	planet: PositionedBody;
 	/** The primary has a named-ring catalogue, so its Rings tab is worth a tile. */
 	hasRingCatalog: boolean;
 	/** The primary's notable moons, largest first, for the moon tile's disc row. */
 	moonDiscs: LineupBody[];
-	/** Moons the catalogue knows about, which is more than the scene loads. */
-	moonCount: number;
+}
+
+/** The Earth–Moon barycenter and Earth itself. */
+const EARTH_MOON_IDS = new Set(['naif-3', 'naif-399']);
+
+/** "<primary> system" — except Earth's, which nobody calls the Earth system. */
+export function systemTitle(id: string, primary: string): string {
+	return EARTH_MOON_IDS.has(id)
+		? m.planetary_system_title_earth_moon()
+		: m.planetary_system_title({ primary });
+}
+
+/** A baked map entry as the system map draws it. */
+export function systemFromMapEntry(
+	entry: PlanetarySystemsMapEntry,
+	name: string
+): PlanetarySystemMapData {
+	return {
+		planetId: entry.primary.id,
+		planetName: name,
+		planetRadiusKm: entry.primary.radius_km,
+		planetColor: BODY_COLORS[entry.primary.id] ?? DEFAULT_BODY_COLOR,
+		moons: entry.moons.map((mn) => ({
+			id: mn.id,
+			name: mn.id,
+			aRp: mn.a_rp,
+			tiltDeg: mn.tilt_deg,
+			radiusKm: mn.radius_km,
+			color: BODY_COLORS[mn.id] ?? mn.color ?? DEFAULT_BODY_COLOR
+		})),
+		rings: entry.rings ? { innerRp: entry.rings.inner_rp, outerRp: entry.rings.outer_rp } : null,
+		moonCount: entry.moon_count
+	};
 }
 
 const DEG2RAD = Math.PI / 180;
@@ -182,7 +222,7 @@ export class PlanetarySystemState {
 			if (!planetId) return undefined;
 			const detail = this.#primary?.global?.id === planetId ? this.#primary : null;
 			const primary = detail?.localized?.name ?? detail?.global?.name;
-			return primary ? m.planetary_system_title({ primary }) : undefined;
+			return primary ? systemTitle(planetId, primary) : undefined;
 		});
 
 		this.system = $derived.by<PlanetarySystem | null>(() => {
@@ -228,6 +268,7 @@ export class PlanetarySystemState {
 
 			return {
 				planet,
+				planetId,
 				planetName: detail?.localized?.name ?? global?.name ?? planet.data.name ?? planetId,
 				planetRadiusKm: radiusKm,
 				planetColor: BODY_COLORS[planetId] ?? DEFAULT_BODY_COLOR,

@@ -40,6 +40,9 @@ class NotableObject:
     fallback_name: str  # used when no Wikidata label exists
     diameter_km: float | None
     first_obs: str | None  # discovery proxy, YYYY-MM-DD or YYYY
+    # Set → the thumbnail is this object's: a planetary system routes to its
+    # barycenter, which has no photograph, and borrows its primary's.
+    image_of: str | None = None
     group_slug: str | None = None  # set → a group member, routes to /g/<slug>
     feature_id: int | None = None  # set → a surface feature on `object_id`
     sitelinks_count: int | None = None  # Wikidata prominence, for cross-member ranking
@@ -274,7 +277,9 @@ def notable_entries(
             entry["model"] = slug
         if textured_ids is not None:
             entry["texture"] = member.object_id in textured_ids
-        thumbnail = pick_thumbnail(collect_object_images(member.object_id))
+        thumbnail = pick_thumbnail(
+            collect_object_images(member.image_of or member.object_id)
+        )
         if thumbnail:
             entry["thumbnail"] = thumbnail
         out.append(entry)

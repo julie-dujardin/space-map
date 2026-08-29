@@ -50,6 +50,7 @@ export const FEATURE_TYPE_SLUG_PREFIX = 'ft-';
 /** Mirrors ``CATEGORY_SLUG_PREFIX`` in ``data/constants/categories.py``. */
 export const CATEGORY_SLUG_PREFIX = 'cat-';
 export const CAT_SOLAR_SYSTEM = `${CATEGORY_SLUG_PREFIX}solar-system`;
+export const CAT_PLANETARY_SYSTEMS = `${CATEGORY_SLUG_PREFIX}planetary-systems`;
 export const CAT_PLANETS = `${CATEGORY_SLUG_PREFIX}planets`;
 export const CAT_DWARF_PLANETS = `${CATEGORY_SLUG_PREFIX}dwarf-planets`;
 export const CAT_MOONS = `${CATEGORY_SLUG_PREFIX}moons`;
@@ -72,6 +73,7 @@ export const CAT_RADIATION = `${CATEGORY_SLUG_PREFIX}radiation`;
 /** Plural category headers, not the singular Wikidata label. */
 const CATEGORY_NAME: Record<string, () => string> = {
 	[CAT_SOLAR_SYSTEM]: m.category_name_solar_system,
+	[CAT_PLANETARY_SYSTEMS]: m.category_name_planetary_systems,
 	[CAT_PLANETS]: m.category_name_planets,
 	[CAT_DWARF_PLANETS]: m.category_name_dwarf_planets,
 	[CAT_MOONS]: m.category_name_moons,

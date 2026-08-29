@@ -23,6 +23,7 @@ from space_map_data.constants.categories import (
     DWARF_PLANETS_SLUG,
     MOONS_SLUG,
     OCEANS_SLUG,
+    PLANETARY_SYSTEMS_SLUG,
     PLANETS_SLUG,
     PROBES_SLUG,
     RING_SYSTEMS_SLUG,
@@ -270,6 +271,52 @@ def _planet_members(
         _body_member(*row, radii=radii, gms=gms, orientation=orientation)
         for row in rows
     ]
+
+
+def _planetary_system_members(
+    session: Session,
+    radii: dict[int, dict],
+    gms: dict[int, float],
+    orientation: dict[int, dict],
+) -> list[NotableObject]:
+    """One member per barycenter with a moon, in heliocentric order. Each
+    routes to the barycenter page but carries its primary's QID and images:
+    the barycenter has neither a photograph nor a label anyone would search
+    for, and the frontend titles the member "<primary> system" off the label.
+    """
+    barycenters = {
+        bary_id: naif_id
+        for bary_id, naif_id in session.query(Object.id, Object.naif_id).filter(
+            Object.object_type == ObjectType.barycenter
+        )
+    }
+    with_moons = {
+        parent_id
+        for (parent_id,) in session.query(Object.parent_id)
+        .filter(
+            Object.object_type == ObjectType.moon, Object.parent_id.in_(barycenters)
+        )
+        .distinct()
+    }
+    hosts = (
+        session.query(
+            Object.parent_id,
+            Object.id,
+            Object.naif_id,
+            Object.wikidata_qid,
+            Object.name,
+        )
+        .filter(Object.object_type.in_(_PLANET_TYPES), Object.parent_id.in_(with_moons))
+        .all()
+    )
+    members = []
+    for bary_id, host_id, naif_id, qid, name in hosts:
+        host = _body_member(
+            host_id, naif_id, qid, name, radii=radii, gms=gms, orientation=orientation
+        )
+        members.append(replace(host, object_id=bary_id, image_of=host_id))
+    members.sort(key=lambda m: barycenters[m.object_id] or 0)
+    return members
 
 
 def _wikidata_diameter_km(
@@ -1333,6 +1380,7 @@ def build_category_data(
         session, radiation_where, radii, gms, orientation
     )
     star = _star_member(session, radii, gms, orientation)
+    system_members = _planetary_system_members(session, radii, gms, orientation)
     probe_members, probes_total = _probe_members(session, radii, gms, orientation)
     moons = _moon_data(session, planet_elements)
     moons_total, moon_counts = moons.total, moons.rows
@@ -1344,18 +1392,19 @@ def build_category_data(
     )
     children = {
         # Satellites is reachable under Earth (its real parent), not the root.
+        # Systems and probes lead: what the map is made of, then what we sent
+        # into it; the kinds of body follow.
         SOLAR_SYSTEM_SLUG: [
+            PLANETARY_SYSTEMS_SLUG,
+            PROBES_SLUG,
             PLANETS_SLUG,
             DWARF_PLANETS_SLUG,
             MOONS_SLUG,
             RING_SYSTEMS_SLUG,
             ASTEROIDS_SLUG,
             COMETS_SLUG,
-            # The two browse nodes pair off, and Probes — the only child that is
-            # not a kind of thing in the sky — takes the odd row on its own.
             SURFACE_FEATURES_SLUG,
             STRUCTURE_ACTIVITY_SLUG,
-            PROBES_SLUG,
         ],
         ASTEROIDS_SLUG: asteroids,
         COMETS_SLUG: comets,
@@ -1407,6 +1456,9 @@ def build_category_data(
         SATELLITES_SLUG: satellites_total,
         DEBRIS_SLUG: debris_total,
         PLANETS_SLUG: len(planet_members),
+        # A system is its bodies, all counted elsewhere, so it stays out of the
+        # root total too.
+        PLANETARY_SYSTEMS_SLUG: len(system_members),
         # Dwarf planets are SBDB-tracked, so they already fall inside
         # asteroids_total (their orbit classes) — counted here for the page's own
         # tally, but not re-added to the root total above.
@@ -1534,6 +1586,8 @@ def build_category_data(
     solar_system = _solar_system_members(session, star, radii, gms, orientation)
     if solar_system:
         notable_members[SOLAR_SYSTEM_SLUG] = solar_system
+    if system_members:
+        notable_members[PLANETARY_SYSTEMS_SLUG] = system_members
 
     # Stat cards. The small-body categories inherit the biggest member of any
     # class that partitions them; the major-body ones rank PCK radii. Flags are
