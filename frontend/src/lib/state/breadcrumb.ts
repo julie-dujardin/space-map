@@ -138,6 +138,10 @@ export function parentCrumb(
 		if (appliesTo === 'earth_sat') {
 			return categoryCrumb(groupGlobal?.parent_category ?? CAT_SATELLITES);
 		}
+		// A mission collects craft, so it climbs where its craft do. Closes the
+		// chain: a probe already climbs to its mission, which would otherwise end
+		// there.
+		if (appliesTo === 'probe') return categoryCrumb(CAT_PROBES);
 		return null;
 	}
 
@@ -152,11 +156,9 @@ export function parentCrumb(
 	if (data.objectType === ObjectType.STAR) return categoryCrumb(CAT_SOLAR_SYSTEM);
 
 	// A planetary system → the Solar System root, which is the collection it is
-	// one of. Its own primary is the first cross-ref tile instead. Gated on
-	// having a primary, so the Solar System barycenter itself keeps no crumb.
-	if (data.objectType === ObjectType.BARYCENTER && dominantPlanetId(data.id)) {
-		return categoryCrumb(CAT_SOLAR_SYSTEM);
-	}
+	// one of; its own primary is the first cross-ref tile instead. The Solar
+	// System barycenter climbs there too — it is that system's own centre.
+	if (data.objectType === ObjectType.BARYCENTER) return categoryCrumb(CAT_SOLAR_SYSTEM);
 
 	// Moon (planetary or small-body) → its parent (planet, not the barycenter;
 	// or the host asteroid). Must precede the URL-type branches: small-body
