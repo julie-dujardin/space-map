@@ -151,6 +151,13 @@ export function parentCrumb(
 	if (data.objectType === ObjectType.PLANET) return categoryCrumb(CAT_PLANETS);
 	if (data.objectType === ObjectType.STAR) return categoryCrumb(CAT_SOLAR_SYSTEM);
 
+	// A planetary system → the Solar System root, which is the collection it is
+	// one of. Its own primary is the first cross-ref tile instead. Gated on
+	// having a primary, so the Solar System barycenter itself keeps no crumb.
+	if (data.objectType === ObjectType.BARYCENTER && dominantPlanetId(data.id)) {
+		return categoryCrumb(CAT_SOLAR_SYSTEM);
+	}
+
 	// Moon (planetary or small-body) → its parent (planet, not the barycenter;
 	// or the host asteroid). Must precede the URL-type branches: small-body
 	// moons carry spkid- ids and would otherwise resolve to an orbit-class zone.
