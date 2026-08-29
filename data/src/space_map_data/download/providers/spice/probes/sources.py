@@ -38,7 +38,19 @@ PDS3_DATASETS: dict[str, str] = {
     "NEAR": "near-a-spice-6-v1.0",
     "GRAIL": "grail-l-spice-6-v1.0",
     "HAYABUSA": "hay-a-spice-6-v1.0",
+    # Clementine, Deep Space 1 and Stardust have a directory at the NAIF root
+    # but no kernels under it; the PDS3 archive is where their trajectories
+    # actually live.
+    "CLEMENTINE": "clem1-l-spice-6-v1.0",
+    "DS1": "ds1-a_c-spice-6-v1.0",
+    "SDU": "sdu-c-spice-6-v1.0",
 }
+
+# NAIF op-tree missions whose SPKs sit one level below `kernels/spk/`.
+# Magellan splits its archive into the mission navigation solution and two
+# later gravity-science reprocessings; `nav` is the one that spans every
+# mission phase. Keys are NAIF directory names, so no ESA mission collides.
+NAIF_SPK_SUBDIR: dict[str, str] = {"MGN": "nav"}
 
 PDS4_BUNDLES: dict[str, str] = {
     "DART": "dart/dart_spice",
@@ -63,21 +75,18 @@ NAIF_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
     {
         # Not real probe trajectories.
         "TDRSS",  # geostationary relay fleet — celestrak
-        "GNS",  # Galileo NavSat / GNSS — celestrak
-        "SDU",  # Stardust sample-return capsule — PDS3 archive
         "FIDO",  # Mars-yard rover prototype (Earth surface)
         "ROCKY7",  # Mars-yard rover prototype (Earth surface)
         "MSR",  # Mars Sample Return — pre-decisional / canceled
-        "MGN",  # Magellan — no SPKs published anywhere on NAIF
         # Dirs that exist at the NAIF root but whose `kernels/spk/` 404s
         # because the canonical kernels live on a PDS3/PDS4 archive (or on
         # DARTS for SELENE). Without skipping, every run logs a 404 warning
         # for these. Each entry is fetched via PDS3_DATASETS / PDS4_BUNDLES /
         # DARTS_SOURCES — keep the two lists in sync.
-        "CLEMENTINE",  # no PDS dataset wired yet (clem1-l-spice-6-v1.0)
+        "CLEMENTINE",  # PDS3
         "DART",  # PDS4
         "DAWN",  # PDS3
-        "DS1",  # no PDS dataset wired yet (ds1-a_c-spice-6-v1.0)
+        "DS1",  # PDS3
         "GRAIL",  # PDS3
         "HAYABUSA",  # PDS3
         "LRO",  # PDS3
@@ -93,6 +102,7 @@ NAIF_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
         "MPF",
         "NEAR",  # PDS3
         "NEWHORIZONS",  # PDS3
+        "SDU",  # PDS3
         "SELENE",  # DARTS
         "SPP",  # Parker Solar Probe — no SPKs published at NAIF
         # Tree housekeeping.
@@ -142,7 +152,11 @@ def discover_mirror_sources(
         mission = h.rstrip("/")
         if mission in skip or mission.startswith("."):
             continue
-        out.append(MissionSource(server, mission, f"{base_url}/{mission}/kernels/spk/"))
+        spk_url = f"{base_url}/{mission}/kernels/spk/"
+        subdir = NAIF_SPK_SUBDIR.get(mission)
+        if subdir:
+            spk_url += f"{subdir}/"
+        out.append(MissionSource(server, mission, spk_url))
     return sorted(out, key=lambda s: s.mission)
 
 

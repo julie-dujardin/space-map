@@ -103,6 +103,20 @@ def decode(probe_id: int) -> tuple[int, int]:
     return MJD_EPOCH + offset, dedupe
 
 
+# Sample-return capsules NAIF numbered in the shape of the sub-NAIF patterns
+# below: -29900 and -47900 read as landing sites, -64090 as an instrument
+# frame under OSIRIS-REx (-64). Each separates from its bus and flies its own
+# entry trajectory, so name them rather than loosen rules that correctly
+# exclude MER's -253900 and Curiosity's arm joints.
+SAMPLE_RETURN_NAIFS: frozenset[int] = frozenset(
+    {
+        -29900,  # Stardust SRC
+        -47900,  # Genesis SRC
+        -64090,  # OSIRIS-REx SRC
+    }
+)
+
+
 def is_spacecraft_naif(naif: int, all_targets: set[int]) -> bool:
     """True if `naif` is a real spacecraft target, not a landing-site or
     instrument/frame sub-NAIF. Shared so ingest and the export's
@@ -111,10 +125,12 @@ def is_spacecraft_naif(naif: int, all_targets: set[int]) -> bool:
     Excludes landing-site NAIFs `-X900` (spacecraft x 1000 - 900, fixed
     body points) and instrument NAIFs `-X*1000 - k` when `-X` is itself a
     target (MSL rover -76's arm joints -76501..-76620, Perseverance -168's
-    -168501..-168587 frames).
+    -168501..-168587 frames), less the `SAMPLE_RETURN_NAIFS` exceptions.
     """
     if naif >= 0:
         return False
+    if naif in SAMPLE_RETURN_NAIFS:
+        return True
     n = -naif
     if n % 1000 == 900:
         return False
@@ -186,7 +202,7 @@ def load_probe_labels() -> dict[int, str]:
         return labels
     try:
         idx = json.loads(synth_idx.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return labels
     naif_to_name: dict[int, str] = {
         int(t): f["name_horizons"]

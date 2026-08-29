@@ -234,6 +234,10 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     # Orbiters only; landers are surface. `vo1_ext_gem` would reach the 1980
     # mission end but is 33 scattered sub-day arcs, not a trajectory — the
     # orbiter would blink for 19 months rather than fly.
+    # Orbiters only; landers are surface. Neither `vo1_ext_gem` nor the PDS3
+    # `vo[12]_sedr` reach the 1980 mission end in any usable way: both are
+    # per-image snapshots, ~1400 windows totalling four days of real coverage
+    # across four years. The orbiter would blink, not fly.
     "VIKING": (r"^vo[12]_rcon\.bsp$",),
     "VOYAGER": (r"^[Vv]oyager_[12]\.[A-Za-z0-9.+_]+merged\.bsp$",),
     "MCO": (r"^mco_cruise\.bsp$",),  # Mars Climate Orbiter (lost)
@@ -251,6 +255,16 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "PIONEER10": (r"^p10-a\.bsp$",),
     "PIONEER11": (r"^p11-a\.bsp$", r"^p11_sat336\.bsp$"),
     "PIONEER12": (r"^pvo_\d+_\d+_ssd\d+\.bsp$",),  # Pioneer Venus Orbiter
+    # Genesis (NAIF -47). One launch→2010 reconstruction; `zzarchive` holds
+    # the mission-planning backup and extended-mission options, which are
+    # alternative futures rather than the flown trajectory.
+    "GNS": (r"^gns_\d+_\d+_\d+\.bsp$",),
+    # Magellan (NAIF -18), navigation solution split by mission phase. The
+    # archive is Venus-only: it opens days before orbit insertion, 15 months
+    # after launch, so the cruise stays uncovered. The two later
+    # gravity-science reprocessings under `jplgrav*` cover the mapping cycles
+    # at higher fidelity but have nothing before cycle 1.
+    "MGN": (r"^precycl1\.bsp$", r"^aerobrak\.bsp$", r"^cycle[1-6]\.bsp$"),
     "NOZOMI": (r"^planetb_pb98\.bsp$",),
     # ESA-only missions (newly enabled).
     "EUCLID": (r"^euclid_flp_\d{8}_\d{8}_v\d+\.bsp$",),
@@ -320,6 +334,27 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^near_eroslanded_nav_v\d+\.bsp$",
     ),
     "GRAIL": (r"^grail_\d+_\d+_nav_v\d+\.bsp$",),
+    # Only the NRL solution spans the whole mission; the JPL and GSFC
+    # reanalyses both start at lunar orbit insertion, three weeks after launch.
+    "CLEMENTINE": (r"^clem_nrl\.bsp$",),
+    # `radionav` is the launch→2003 radio-tracked reconstruction. The two
+    # `opnav` kernels are optical solutions across the Braille and Borrelly
+    # encounters, where the radio arc is weakest.
+    "DS1": (
+        r"^ds1_radionav\.bsp$",
+        r"^ds1_opnav_braille\.bsp$",
+        r"^ds1_opnav_borrelly\.bsp$",
+    ),
+    # Per-year reconstruction from the 1999 launch to the 2011 NExT ending,
+    # plus the sample capsule's own entry arc (NAIF -29900) on 2006-01-15 and
+    # the one-day optical solution across the Wild 2 flyby. `sdu_ant_v01` is
+    # an antenna offset and `sdu_l_em` re-spans years the annual files
+    # already carry.
+    "SDU": (
+        r"^sdu_l_\d{4}\w*\.bsp$",
+        r"^sdu_s_src\.bsp$",
+        r"^sdu_w2_opnav\.bsp$",
+    ),
     "HAYABUSA": (
         r"^hay_jaxa_\d+_\d+_v\d+n?\.bsp$",
         r"^hayabusa_itokawarendezvous_v\d+\.bsp$",
