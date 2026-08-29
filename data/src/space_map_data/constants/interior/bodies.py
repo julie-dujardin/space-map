@@ -252,6 +252,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             # do together on any layer that is a patch rather than a shell.
             Layer(
                 role="ocean",
+                evidence="sampled",
                 mass_fraction=0.000231,
                 mass_fraction_range=(0.000228, 0.000234),
                 composition=(Component(WATER, 1.0, "millero_2008"),),
@@ -824,6 +825,87 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
         ),
     ),
+    # Mimas, the moon that looks deadest and is not. Its libration amplitude,
+    # -50.3 ± 1.0 arcmin from Cassini images, needs either a silicate core
+    # squashed into an equatorial pancake or a shell sliding on liquid. The
+    # drift of its pericentre, -9.4 ± 0.9 km over the mission, decides between
+    # them: the pancake only reproduces both measurements if it is elongated
+    # far enough to break the surface, which nothing sees. What is left is a
+    # global ocean under 20-30 km of ice.
+    #
+    # The ocean is 2-25 Myr old and still growing — an older one would have
+    # deformed the shell visibly, and Herschel crater is still there. That is
+    # the whole reason Mimas reads as inert, and it is carried on the tidal
+    # heating entry as `young_ocean` rather than here, where nothing about the
+    # layers records their age.
+    #
+    # Layers: the ice shell is the measurement, 20-30 km, and the rock core is
+    # the 95 km of the thermal-orbital run. Ice at 920, ocean at 1000 (1% NH₃,
+    # the fraction Enceladus's plume shows), and the core takes the rest of
+    # Mimas's 3.7493e19 kg inside 198.2 km:
+    #   ice     198.2 → 173.2 km at 920  → 0.2662
+    #   ocean   173.2 →  95.0 km at 1000 → 0.4847
+    #   core    the remainder inside 95 km, 2600 kg/m³ → 0.2491
+    # 2600 kg/m³ is the check: it lands on Enceladus's core, which is the body
+    # Lainey's model is built to resemble, without being told to. The range is
+    # the published 20-30 km walked across the shell, with the core held.
+    #
+    # Half of Mimas by mass is ocean, which reads wrong until you notice how
+    # little rock there is: 95 km of core inside a 198 km moon leaves the
+    # hydrosphere everything else, and the shell is a thin lid on it.
+    "naif-601": BodyInterior(
+        structure="differentiated",
+        structure_source="lainey_2024",
+        structure_standing="favoured",
+        structure_standing_as_of="2026-08",
+        note="subsurface_ocean",
+        layers=(
+            Layer(
+                role="ice_shell",
+                mass_fraction=0.2662,
+                mass_fraction_range=(0.2186, 0.3112),
+                composition=(Component(WATER, 1.0, "lainey_2024"),),
+                source="lainey_2024",
+                outer_radius_km=198.2,
+                derived=True,
+                state="solid",
+                phase="ice_i",
+                evidence="libration",
+                standing="favoured",
+                standing_as_of="2026-08",
+                standing_sources=("tajeddine_2014", "lainey_2024"),
+            ),
+            Layer(
+                role="ocean",
+                mass_fraction=0.4847,
+                mass_fraction_range=(0.4398, 0.5323),
+                composition=(Component(WATER, 1.0, "lainey_2024"),),
+                source="lainey_2024",
+                outer_radius_km=173.2,
+                derived=True,
+                state="liquid",
+                outer_temperature_range_k=ICE_OCEAN_INTERFACE_K,
+                temperature_sources=("vance_2018",),
+                evidence="libration",
+                standing="favoured",
+                standing_as_of="2026-08",
+                standing_sources=("tajeddine_2014", "lainey_2024"),
+            ),
+            Layer(
+                role="core",
+                mass_fraction=0.2491,
+                composition=(Component(SILICATE, 1.0, "lainey_2024"),),
+                source="lainey_2024",
+                outer_radius_km=95.0,
+                derived=True,
+                state="solid",
+                evidence="libration",
+                standing="favoured",
+                standing_as_of="2026-08",
+                standing_sources=("tajeddine_2014", "lainey_2024"),
+            ),
+        ),
+    ),
     # Enceladus. Cassini's gravity solution gives a bulk density of 1609 kg/m³
     # against an ice mantle at 920 and an ocean at 1000, and models the body as
     # a core of radius xR and density Aρ₀ under an H₂O mantle of density ρ₀:
@@ -862,6 +944,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
             Layer(
                 role="ocean",
+                evidence="sampled",
                 mass_fraction=0.196,
                 composition=(Component(WATER, 1.0, "iess_2014"),),
                 source="beuthe_2016",
@@ -978,6 +1061,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
             Layer(
                 role="ocean",
+                evidence="induction",
                 mass_fraction=0.0450,
                 mass_fraction_range=(0.0299, 0.0460),
                 composition=(Component(WATER, 1.0, "vance_2018"),),
@@ -1070,6 +1154,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
             Layer(
                 role="ocean",
+                evidence="induction",
                 mass_fraction=0.1977,
                 mass_fraction_range=(0.1538, 0.2766),
                 composition=(Component(WATER, 1.0, "saur_2015"),),
@@ -1158,6 +1243,12 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
             Layer(
                 role="ocean",
+                evidence="induction",
+                standing="favoured",
+                standing_as_of="2026-08",
+                # Two flybys left an ocean and a bare ionosphere equally good;
+                # the third is what separates them.
+                standing_sources=("zimmer_2000", "hartkorn_2017", "cochrane_2025"),
                 mass_fraction=0.0777,
                 composition=(Component(WATER, 1.0, "zimmer_2000"),),
                 source="vance_2018",
@@ -1191,38 +1282,44 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
         ),
     ),
-    # Titan. Cassini's tidal Love number k₂ ≈ 0.6 is an order of magnitude
-    # above what a solid body of Titan's size could manage, so some global
-    # layer inside it deforms like a fluid on a 16-day timescale — an ocean.
-    # The end-of-mission gravity solution adds the piece k₂ alone could not
-    # give: J₂ and C₂₂ put the moment of inertia at 0.341, and a re-analysis
-    # of the same Cassini tracking searches the four-layer space directly,
-    # coming out with a core of 2110 ± 76 km at 2528 ± 175 kg/m³ — quoted,
-    # rather than solved for here. Its mass follows:
-    #   (4/3)π(2110 km)³ × 2528 = 9.947e22 kg / 1.3452e23 → 0.7395
-    # and the 465 km of H₂O left over has to average 1090 kg/m³ to make up
-    # Titan's mass. That is the check worth having: the same paper derives an
-    # ocean density of 1091 ± 107 kg/m³ from the Love number, by a route that
-    # never touches this arithmetic.
+    # Titan, and the one ocean here that is argued about rather than measured.
+    # Cassini's tidal Love number k₂ ≈ 0.6 is an order of magnitude above what
+    # a solid body this size could manage, which is why Titan has been called
+    # an ocean world since 2012. Petricca recovered the other half of the same
+    # number in 2025 — the lag, Im(k₂) = 0.135 ± 0.035, so Q = 4.5 ± 1.1 and
+    # 3-4 TW dissipated — and a liquid layer shields everything under it from
+    # tidal working, so no ocean model gets past Im(k₂) ≈ 0.05. Their Titan is
+    # 170 km of ice I over 378 km of high-pressure ice near its melting point:
+    # slush and pockets, no global ocean.
     #
-    # That coincidence is also what splits the hydrosphere. Gravity sees no
-    # boundary inside the water — the paper could pin neither the ocean nor
-    # the crust, and its solutions pile up against the 50 km floor it imposed
-    # rather than converging. But if the whole 465 km averages 1090 and the
-    # ocean *is* 1091, then the ice I above it, which is lighter, has to be
-    # paid for by high-pressure ice below it, which is heavier, and the two
-    # have to cancel. That is one equation, so one thickness still has to come
-    # from outside: Vance's conductive case gives 120-149 km of ice I. Taking
-    # 140 km at 920, ice VI at 1400 and the ocean at its measured 1091,
-    #   ice I  2574.7 → 2434.7 km → 0.0755
-    #   ocean  2434.7 → 2212.4 km → 0.1224
-    #   ice VI 2212.4 → 2110.0 km → 0.0626
-    # and the sum is 0.2605 by construction. Ice I between 120 and 149 km
-    # walks the ocean over 207-256 km, which is the range each layer carries.
-    # Thinner ice than that is not excluded by any of this; it is excluded by
-    # nothing, which is why the shell keeps `shell_thickness_modelled`.
+    # It is not settled. Čadek's group finds that ocean-free interior thermally
+    # unstable, melting through within a few Myr, and the Schumann resonance
+    # Huygens heard on the way down still wants a conductor 55-80 km below the
+    # surface — a measurement the tidal argument does not touch. So the ocean
+    # stays, marked `disputed`, and the geometry moves off Goossens: that
+    # solution's low k₂ = 0.375 is the one Durante, Iess and Lainey filed a
+    # comment against in 2026, and Petricca's own Re(k₂) = 0.608 ± 0.048 lands
+    # with them rather than with it.
     #
-    # 2528 kg/m³ is far too light for dry rock, so the core is hydrated or
+    # What replaces it is Vance's Table 8, pure water, Tb = 265 K — the column
+    # whose ice I thickness, 74 km, falls inside what Huygens heard, and the
+    # same framework Ganymede and Callisto already use here. Thicknesses are
+    # the paper's, the core is its own ρ 2598 kg/m³, ice I goes at 920 and ice
+    # VI at 1310, and the ocean is what is left of Titan's mass:
+    #   core   2104.7 km at 2598 = 1.015e23 kg / 1.3452e23 → 0.7543
+    #   ice I  2574.7 → 2500.7 km at 920                   → 0.0410
+    #   ice VI 2131.7 → 2104.7 km at 1310                  → 0.0148
+    #   ocean  2500.7 → 2131.7 km, the remainder           → 0.1899
+    # That leaves the ocean at 1025 kg/m³, which is what a pure water ocean
+    # under 100 MPa should weigh — the check, since nothing in the arithmetic
+    # was made to come out there.
+    #
+    # The ranges sweep the ice shell across the Schumann bound, 55-80 km, with
+    # the core and the ice VI held and the ocean taking up the slack; the
+    # ocean stays between 1019 and 1027 kg/m³ throughout. Where on that the
+    # shell actually sits is a thermal model, hence the note.
+    #
+    # 2598 kg/m³ is far too light for dry rock, so the core is hydrated or
     # porous or both — the same story as Enceladus, one order of magnitude up.
     "naif-606": BodyInterior(
         structure="differentiated",
@@ -1269,6 +1366,10 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 area_fraction=0.011,
                 derived=True,
                 state="liquid",
+                # The altimeter got a bottom echo through Ligeia, Punga and two
+                # arms of Kraken. Whatever happens to the water underneath,
+                # Titan keeps standing liquid on top.
+                evidence="sounding",
                 # Ligeia Mare, from the best-fit loss tangent of the T91
                 # sounding against Mitchell's lab permittivities. The maria
                 # hold essentially all the volume, so they answer for the
@@ -1287,8 +1388,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
             Layer(
                 role="ice_shell",
-                mass_fraction=0.0755,
-                mass_fraction_range=(0.0652, 0.0801),
+                mass_fraction=0.0410,
+                mass_fraction_range=(0.0307, 0.0442),
                 # That the outer layer is water rather than light rock is the
                 # moment of inertia's statement, not this paper's.
                 composition=(Component(WATER, 1.0, "durante_2019"),),
@@ -1300,37 +1401,45 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
             Layer(
                 role="ocean",
-                mass_fraction=0.1224,
-                mass_fraction_range=(0.1140, 0.1413),
+                mass_fraction=0.1899,
+                mass_fraction_range=(0.1867, 0.2002),
                 composition=(Component(WATER, 1.0, "iess_2012"),),
-                source="goossens_2024",
-                outer_radius_km=2434.73,
+                source="vance_2018",
+                outer_radius_km=2500.73,
                 derived=True,
                 state="liquid",
                 outer_temperature_range_k=ICE_OCEAN_INTERFACE_K,
                 temperature_sources=("vance_2018",),
+                # The tide is what put the ocean here and what is now trying
+                # to take it away, so it stays the evidence either way.
+                evidence="tidal",
+                standing="disputed",
+                standing_as_of="2026-08",
+                # For, against, and against the against. Béghin is the one
+                # voice not arguing about k₂ at all.
+                standing_sources=(
+                    "beghin_2012",
+                    "goossens_2024",
+                    "petricca_2025",
+                    "aygun_2026",
+                ),
             ),
             Layer(
                 role="ice_mantle",
-                mass_fraction=0.0626,
-                mass_fraction_range=(0.0539, 0.0664),
+                mass_fraction=0.0148,
                 composition=(Component(WATER, 1.0, "durante_2019"),),
-                source="goossens_2024",
-                outer_radius_km=2212.4,
+                source="vance_2018",
+                outer_radius_km=2131.73,
                 derived=True,
                 state="solid",
-                # Vance's phase, not Goossens's: the gravity solution sees one
-                # hydrosphere, and ice VI is what the 1400 kg/m³ above was.
                 phase="ice_vi",
-                phase_source="vance_2018",
             ),
             Layer(
                 role="core",
-                mass_fraction=0.7395,
-                mass_fraction_range=(0.7083, 0.7654),
-                composition=(Component(SILICATE, 1.0, "goossens_2024"),),
-                source="goossens_2024",
-                outer_radius_km=2110.0,
+                mass_fraction=0.7543,
+                composition=(Component(SILICATE, 1.0, "vance_2018"),),
+                source="vance_2018",
+                outer_radius_km=2104.73,
                 derived=True,
                 note="hydrated_rock",
                 state="solid",
@@ -1409,6 +1518,10 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=45.3,
                 derived=True,
                 note="core_size_disputed",
+                evidence="gravity",
+                standing="disputed",
+                standing_as_of="2026-08",
+                standing_sources=("ermakov_2014", "park_2025_vesta"),
             ),
         ),
     ),
@@ -1493,6 +1606,10 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             ),
             Layer(
                 role="ocean",
+                evidence="gravity",
+                standing="favoured",
+                standing_as_of="2026-08",
+                standing_sources=("beuthe_2016",),
                 mass_fraction=0.140,
                 composition=(Component(WATER, 1.0, "zannoni_2020"),),
                 source="beuthe_2016",
@@ -1672,6 +1789,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     "naif-999": BodyInterior(
         structure="differentiated",
         structure_source="nimmo_2025",
+        structure_standing="favoured",
+        structure_standing_as_of="2026-08",
         # An undifferentiated Pluto would have turned its deep ice to ice II as
         # it cooled and contracted; the surface is almost entirely extensional
         # instead. That is the strongest evidence any of the three has. The
@@ -1698,9 +1817,16 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 derived=True,
                 note="shell_thickness_modelled",
                 state="solid",
+                evidence="thermal_model",
+                standing="favoured",
+                standing_as_of="2026-08",
             ),
             Layer(
                 role="ocean",
+                evidence="thermal_model",
+                standing="favoured",
+                standing_as_of="2026-08",
+                standing_sources=("nimmo_2025",),
                 mass_fraction=0.078,
                 mass_fraction_range=(0.016, 0.155),
                 composition=(Component(WATER, 1.0, "nimmo_2025"),),
@@ -1718,6 +1844,9 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="nimmo_2025",
                 outer_radius_km=840.0,
                 note="from_bulk_density",
+                evidence="bulk_density",
+                standing="favoured",
+                standing_as_of="2026-08",
             ),
         ),
     ),
@@ -1727,6 +1856,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     "naif-901": BodyInterior(
         structure="differentiated",
         structure_source="nimmo_2025",
+        structure_standing="favoured",
+        structure_standing_as_of="2026-08",
         layers=(
             Layer(
                 role="ice_shell",
@@ -1735,6 +1866,9 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="nimmo_2025",
                 outer_radius_km=606.0,
                 note="from_bulk_density",
+                evidence="bulk_density",
+                standing="favoured",
+                standing_as_of="2026-08",
             ),
             Layer(
                 role="core",
@@ -1743,6 +1877,9 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="nimmo_2025",
                 outer_radius_km=412.0,
                 note="from_bulk_density",
+                evidence="bulk_density",
+                standing="favoured",
+                standing_as_of="2026-08",
             ),
         ),
     ),
@@ -1913,6 +2050,8 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     "naif-801": BodyInterior(
         structure="differentiated",
         structure_source="nimmo_2025",
+        structure_standing="favoured",
+        structure_standing_as_of="2026-08",
         layers=(
             Layer(
                 role="ice_shell",
@@ -1921,6 +2060,9 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="nimmo_2025",
                 outer_radius_km=1353.4,
                 note="from_bulk_density",
+                evidence="bulk_density",
+                standing="favoured",
+                standing_as_of="2026-08",
             ),
             Layer(
                 role="core",
@@ -1929,6 +2071,9 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 source="nimmo_2025",
                 outer_radius_km=1028.0,
                 note="from_bulk_density",
+                evidence="bulk_density",
+                standing="favoured",
+                standing_as_of="2026-08",
             ),
         ),
     ),
@@ -1942,22 +2087,24 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
 # is inference from bulk density and nothing more, which is what the note key
 # says; the split is worth about the two figures given here.
 #
-# Nine of the paper's rows are not used here, each because something better
+# Ten of the paper's rows are not used here, each because something better
 # came along: Enceladus and Dione were flown close enough for Cassini to weigh
-# properly, Pluto and Charon were sized properly by New Horizons (the radii
-# this paper used are ~4% small, which inflates the density it fitted and so
-# the rock fraction it reports, 0.72 against 0.68 for Pluto), and the five
-# Uranian moons are redone below on post-Voyager masses.
+# properly, Mimas turned out to have an ocean, Pluto and Charon were sized
+# properly by New Horizons (the radii this paper used are ~4% small, which
+# inflates the density it fitted and so the rock fraction it reports, 0.72
+# against 0.68 for Pluto), and the five Uranian moons are redone below on
+# post-Voyager masses.
 #
 # Rhea is the row to treat most carefully. Cassini's second gravity flyby put
 # J₂/C₂₂ at 3.91, off hydrostatic, so the measured gravity does not resolve
 # whether Rhea is differentiated at all — models from near-homogeneous
 # (C/MR² = 0.399) to well separated (0.335) all fit. The 0.27 below is what a
-# thermal model gives if you assume it separated, which is what the note says.
+# thermal model gives if you assume it separated. Both rows therefore ship as
+# `hypothetical`: nothing has detected either core, and the arrangement is the
+# model's rather than the measurement's.
 #
 # (object_id, satellite radius km, core radius km, core mass fraction)
 _ICY_TWO_LAYER: tuple[tuple[str, float, float, float], ...] = (
-    ("naif-601", 198.8, 78.1, 0.18),  # Mimas
     ("naif-605", 764.5, 347.2, 0.27),  # Rhea
     ("naif-608", 734.5, 242.9, 0.12),  # Iapetus
 )
@@ -1967,6 +2114,8 @@ INTERIOR_FACTS.update(
         object_id: BodyInterior(
             structure="differentiated",
             structure_source="hussmann_2006",
+            structure_standing="hypothetical",
+            structure_standing_as_of="2026-08",
             layers=(
                 Layer(
                     role="ice_shell",
@@ -1975,6 +2124,9 @@ INTERIOR_FACTS.update(
                     source="hussmann_2006",
                     outer_radius_km=radius_km,
                     note="from_bulk_density",
+                    evidence="bulk_density",
+                    standing="hypothetical",
+                    standing_as_of="2026-08",
                 ),
                 Layer(
                     role="core",
@@ -1983,6 +2135,9 @@ INTERIOR_FACTS.update(
                     source="hussmann_2006",
                     outer_radius_km=core_radius_km,
                     note="from_bulk_density",
+                    evidence="bulk_density",
+                    standing="hypothetical",
+                    standing_as_of="2026-08",
                 ),
             ),
         )
@@ -2004,6 +2159,16 @@ INTERIOR_FACTS.update(
 # A 2500 kg/m³ Enceladus-like core instead of 3500 would push each core radius
 # out by roughly 100 km, which is what the note is warning about.
 #
+# None of them gets an ocean layer here, because nothing has measured one.
+# Castillo-Rogez 2023 allows residual oceans under 30 km in Ariel and Umbriel
+# and under 50 km in Titania and Oberon, with chlorides and ammonia doing the
+# antifreezing; Strom 2024 reads ≥100 km of ocean under ≤30 km of ice out of
+# Miranda's coronae, from stress modelling against Voyager 2 images and
+# nothing else. What would settle it is a libration amplitude: Hemingway 2024
+# puts the ice shells of the inner three above 100 m if a decoupling ocean is
+# there, which is a measurement a Uranus orbiter could make and Voyager could
+# not.
+#
 # (object_id, satellite radius km, core radius km, core mass fraction)
 _URANIAN_TWO_LAYER: tuple[tuple[str, float, float, float], ...] = (
     ("naif-701", 578.9, 342.0, 0.497),  # Ariel
@@ -2018,6 +2183,8 @@ INTERIOR_FACTS.update(
         object_id: BodyInterior(
             structure="differentiated",
             structure_source="bierson_2022",
+            structure_standing="hypothetical",
+            structure_standing_as_of="2026-08",
             layers=(
                 Layer(
                     role="ice_shell",
@@ -2027,6 +2194,9 @@ INTERIOR_FACTS.update(
                     outer_radius_km=radius_km,
                     derived=True,
                     note="from_bulk_density",
+                    evidence="bulk_density",
+                    standing="hypothetical",
+                    standing_as_of="2026-08",
                 ),
                 Layer(
                     role="core",
@@ -2036,6 +2206,9 @@ INTERIOR_FACTS.update(
                     outer_radius_km=core_radius_km,
                     derived=True,
                     note="from_bulk_density",
+                    evidence="bulk_density",
+                    standing="hypothetical",
+                    standing_as_of="2026-08",
                 ),
             ),
         )
@@ -2054,6 +2227,8 @@ INTERIOR_FACTS.update(
 INTERIOR_FACTS["naif-603"] = BodyInterior(
     structure="partially_differentiated",
     structure_source="hussmann_2006",
+    structure_standing="hypothetical",
+    structure_standing_as_of="2026-08",
     layers=(
         Layer(
             role="ice_shell",
@@ -2063,6 +2238,9 @@ INTERIOR_FACTS["naif-603"] = BodyInterior(
             outer_radius_km=531.0,
             note="from_bulk_density",
             state="solid",
+            evidence="bulk_density",
+            standing="hypothetical",
+            standing_as_of="2026-08",
         ),
         Layer(
             role="core",
@@ -2073,6 +2251,9 @@ INTERIOR_FACTS["naif-603"] = BodyInterior(
             derived=True,
             note="from_bulk_density",
             state="solid",
+            evidence="bulk_density",
+            standing="hypothetical",
+            standing_as_of="2026-08",
         ),
     ),
 )

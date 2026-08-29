@@ -26,11 +26,13 @@ from space_map_data.constants.interior.references import (
 )
 from space_map_data.constants.interior.schema import (
     DETAIL_UNITS,
+    EVIDENCE,
     LAYER_ROLES,
     MATERIALS,
     NOTES,
     PHASES,
     ROCKS,
+    STANDINGS,
     STATES,
     STRUCTURES,
     BodyInterior,
@@ -184,6 +186,11 @@ def _from_layers(
     _validate(object_id, facts, refs)
 
     block: dict = {"structure": facts.structure}
+    # Only off the default: shipping "established" on every body would put the
+    # word on 24 panels that have nothing to caveat.
+    if facts.structure_standing != "established":
+        block["structure_standing"] = facts.structure_standing
+        block["structure_standing_as_of"] = facts.structure_standing_as_of
     if facts.note is not None:
         block["note"] = facts.note
     if facts.centre_temperature_k is not None:
@@ -341,6 +348,11 @@ def _layer(object_id: str, layer: Layer) -> dict:
         out["rock"] = layer.rock
     if layer.note is not None:
         out["note"] = layer.note
+    if layer.evidence is not None:
+        out["evidence"] = layer.evidence
+    if layer.standing != "established":
+        out["standing"] = layer.standing
+        out["standing_as_of"] = layer.standing_as_of
     if layer.derived:
         out["derived"] = True
     if layer.diffuse:
@@ -407,6 +419,7 @@ def _layer_source_keys(
         if layer.rock_source is not None:
             keys.append(layer.rock_source)
         keys.extend(layer.temperature_sources)
+        keys.extend(layer.standing_sources)
         in_layer = shown | {c["material"] for c in drawn["composition"]}
         keys.extend(c.source for c in layer.composition if c.material in in_layer)
         if layer.detail is not None:
@@ -500,6 +513,15 @@ def _validate(
         raise ValueError(f"{object_id}: unknown structure {facts.structure}")
     if facts.note is not None and facts.note not in NOTES:
         raise ValueError(f"{object_id}: unknown note {facts.note}")
+    _validate_standing(
+        object_id,
+        "structure",
+        facts.structure_standing,
+        facts.structure_standing_as_of,
+        None,
+        (),
+        refs,
+    )
     _validate_temperature(
         object_id,
         "centre",
@@ -523,6 +545,15 @@ def _validate(
             raise ValueError(f"{object_id}: unknown rock {layer.rock}")
         if layer.rock_source is not None and layer.rock is None:
             raise ValueError(f"{object_id}: {layer.role} cites a rock it has not got")
+        _validate_standing(
+            object_id,
+            layer.role,
+            layer.standing,
+            layer.standing_as_of,
+            layer.evidence,
+            layer.standing_sources,
+            refs,
+        )
         if layer.detail is not None and layer.detail.unit not in DETAIL_UNITS:
             raise ValueError(f"{object_id}: unknown detail unit {layer.detail.unit}")
         for component in layer.composition:
@@ -536,6 +567,38 @@ def _validate(
             layer.temperature_sources,
             refs,
         )
+
+
+def _validate_standing(
+    object_id: str,
+    where: str,
+    standing: str,
+    as_of: str | None,
+    evidence: str | None,
+    sources: tuple[str, ...],
+    refs: dict[str, InteriorReference],
+) -> None:
+    """A claim off `established` has to say what backs it and when it was read.
+
+    Both matter for the same reason: a layer marked `disputed` with no evidence
+    and no date is our own hedge rather than the literature's, and it would
+    never come off again because nothing records what to re-read.
+    """
+    if standing not in STANDINGS:
+        raise ValueError(f"{object_id}: unknown standing {standing}")
+    if evidence is not None and evidence not in EVIDENCE:
+        raise ValueError(f"{object_id}: unknown evidence {evidence}")
+    for key in sources:
+        if key not in refs:
+            raise ValueError(f"{object_id}: no such interior source {key}")
+    if standing == "established":
+        return
+    if as_of is None:
+        raise ValueError(f"{object_id}: {where} standing {standing} has no date")
+    # The structure claim carries no evidence of its own — it is whatever its
+    # layers were arranged by.
+    if where != "structure" and evidence is None:
+        raise ValueError(f"{object_id}: {where} standing {standing} has no evidence")
 
 
 def _validate_temperature(

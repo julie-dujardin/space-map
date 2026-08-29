@@ -251,6 +251,48 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "Titan tidal Love number — evidence for a global subsurface ocean",
         "Titan ocean evidence",
     ),
+    "beghin_2012": InteriorReference(
+        "Béghin et al. 2012 (Icarus 218)",
+        "https://doi.org/10.1016/j.icarus.2012.02.005",
+        "Titan's Schumann resonance — a conducting layer 55-80 km down",
+        "Titan ocean depth",
+    ),
+    "petricca_2025": InteriorReference(
+        "Petricca et al. 2025 (Nature 648)",
+        "https://doi.org/10.1038/s41586-025-09818-x",
+        "Titan's dissipative tidal response, and the case against its ocean",
+        "Titan tidal dissipation",
+    ),
+    "aygun_2026": InteriorReference(
+        "Aygün, Kihoulou & Čadek 2026 (preprint)",
+        "https://doi.org/10.22541/essoar.177307884.44798188/v1",
+        "Titan's heat budget against an ocean-free interior",
+        "Titan heat budget",
+    ),
+    "tajeddine_2014": InteriorReference(
+        "Tajeddine et al. 2014 (Science 346)",
+        "https://doi.org/10.1126/science.1255299",
+        "Mimas libration amplitude from Cassini imaging",
+        "Mimas libration",
+    ),
+    "lainey_2024": InteriorReference(
+        "Lainey et al. 2024 (Nature 626)",
+        "https://doi.org/10.1038/s41586-023-06975-9",
+        "Mimas ice-shell thickness and ocean, from libration and periapsis drift",
+        "Mimas ocean",
+    ),
+    "hartkorn_2017": InteriorReference(
+        "Hartkorn & Saur 2017 (J. Geophys. Res. Space Physics 122)",
+        "https://doi.org/10.1002/2017JA024269",
+        "Callisto's ionosphere as an alternative source of the induction signal",
+        "Callisto ionosphere",
+    ),
+    "cochrane_2025": InteriorReference(
+        "Cochrane et al. 2025 (AGU Advances 6)",
+        "https://doi.org/10.1029/2024AV001237",
+        "Multifrequency Galileo induction favouring an ocean inside Callisto",
+        "Callisto ocean evidence",
+    ),
     "hussmann_2006": InteriorReference(
         "Hussmann, Sohl & Spohn 2006 (Icarus 185)",
         "https://doi.org/10.1016/j.icarus.2006.06.005",

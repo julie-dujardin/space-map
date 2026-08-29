@@ -16,6 +16,12 @@ Temperature runs on the boundaries rather than the shells, since that is the
 form the literature publishes — a geotherm quoted at the Moho, at 660 km, at
 the core-mantle boundary. A layer's two ends are its own boundary and the
 next one down's, the same contract the atmosphere layers use.
+
+Across all of that runs a second axis, `evidence` and `standing`, about
+whether the layer is there at all. The ranges say how well a number is known
+and say nothing about this: Enceladus's ocean has been through a mass
+spectrometer, Rhea's core is two assumed densities and a mean, and without
+these fields the panel draws them the same way.
 """
 
 from typing import NamedTuple
@@ -122,6 +128,45 @@ NOTES = frozenset(
         # and chemistry of the continents, with the ocean floor carried
         # separately as `oceanic_crust` rather than averaged in.
         "continental_crust_only",
+    }
+)
+
+# `Layer.evidence` values — what detected the layer, in the sense of what a
+# reader should picture someone having done. This is about the layer *being
+# there*; `source`, `derived` and the ranges already cover how well its numbers
+# are known, which is a different question. Ganymede's ocean thickness is a
+# model and its existence is a magnetometer reading.
+#
+# Roughly ordered by how directly the layer answers: the first four are the
+# layer itself responding, the last two are a body-wide number that only one
+# arrangement of layers fits.
+EVIDENCE = frozenset(
+    {
+        "sampled",  # material from the layer has been measured — Enceladus's plume
+        "sounding",  # a returned echo off the layer; Titan's seas by radar altimetry
+        "seismic",
+        "induction",  # a conducting shell answering an external field
+        "libration",  # the shell moving independently of the interior
+        "tidal",  # k2/h2 too large, or Q too small, for a solid body
+        "gravity",  # moment of inertia, static field, isostasy
+        "thermal_model",
+        "bulk_density",  # the mean density and an assumed pair of densities
+    }
+)
+
+# `Layer.standing` / `BodyInterior.structure_standing` values — where the claim
+# sits in the literature, not how sure we are. It is the one field here that
+# goes stale on its own, which is what `standing_as_of` is for: Titan was
+# `established` until December 2025 and no number about it changed.
+#
+# `established` is the default because most of this table is measured; the
+# exceptions are marked, and carry `evidence` and `standing_as_of` with them.
+STANDINGS = frozenset(
+    {
+        "established",  # no serious dissent
+        "favoured",  # the best explanation going, with live alternatives published
+        "disputed",  # peer-reviewed works currently disagree that it is there
+        "hypothetical",  # allowed by the data, never detected
     }
 )
 
@@ -266,6 +311,20 @@ class Layer(NamedTuple):
     # because a gamma-ray spectrometer and a rover agreed on the chemistry.
     rock: str | None = None
     rock_source: str | None = None
+    # One of EVIDENCE, and one of STANDINGS. Together they say what a reader
+    # would otherwise have to take on trust — that Europa's ocean is a
+    # magnetometer reading and Rhea's core is an assumed pair of densities,
+    # which the panel draws identically. Required together off `established`;
+    # `evidence` alone is welcome anywhere it is crisp.
+    evidence: str | None = None
+    standing: str = "established"
+    # YYYY-MM, the month the standing was last read against the literature.
+    # Required off `established`, because that is the value with a shelf life.
+    standing_as_of: str | None = None
+    # Plural, and both sides of an argument: a dispute is only a dispute
+    # because two works disagree, and crediting one of them tells the reader
+    # the opposite of what happened.
+    standing_sources: tuple[str, ...] = ()
     note: str | None = None
     # True where the mass fraction is arithmetic on the source's radii and
     # densities rather than a number the source quotes. Ships through to the
@@ -305,6 +364,12 @@ class BodyInterior(NamedTuple):
     structure: str
     layers: tuple[Layer, ...]
     structure_source: str | None = None
+    # Whether the body separated at all, on the same ladder its layers use.
+    # Its own claim: Rhea's gravity is measured and still fits everything from
+    # near-homogeneous to well separated, so the layers below it inherit that
+    # doubt rather than causing it.
+    structure_standing: str = "established"
+    structure_standing_as_of: str | None = None
     note: str | None = None
     # The centre, which closes the innermost layer's span the way the datum
     # closes the atmosphere's lowest one. Separate from any layer because it is

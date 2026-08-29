@@ -6,12 +6,14 @@ import pytest
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.interior.schema import (
+    EVIDENCE,
     LAYER_ROLES,
     MATERIALS,
     NOTES,
     PHASES,
     ROCKS,
     SILICATE,
+    STANDINGS,
     STATES,
     STRUCTURES,
 )
@@ -42,6 +44,7 @@ def _source_keys() -> set[str]:
                 keys.add(layer.rock_source)
             keys |= {c.source for c in layer.composition}
             keys |= set(layer.temperature_sources)
+            keys |= set(layer.standing_sources)
             if layer.detail:
                 keys.add(layer.detail.source)
     for entry in TAXONOMY_COMPOSITION.values():
@@ -126,7 +129,10 @@ class TestBodies:
         body = INTERIOR_FACTS[object_id]
         assert body.structure in STRUCTURES
         assert body.note is None or body.note in NOTES
+        assert body.structure_standing in STANDINGS
         for layer in body.layers:
+            assert layer.standing in STANDINGS
+            assert layer.evidence is None or layer.evidence in EVIDENCE
             assert layer.role in LAYER_ROLES
             assert layer.note is None or layer.note in NOTES
             assert layer.state is None or layer.state in STATES
@@ -161,6 +167,28 @@ class TestBodies:
                     lo, hi = component.fraction_range
                     assert lo <= component.fraction <= hi
                     assert lo < hi
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_a_contested_layer_says_what_and_when(self, object_id: str):
+        """`standing` is the one field here that goes stale on its own. Without
+        a date nothing says when to re-read it, and without evidence the caveat
+        reads as our doubt rather than the literature's."""
+        facts = INTERIOR_FACTS[object_id]
+        if facts.structure_standing != "established":
+            assert facts.structure_standing_as_of is not None
+        for layer in facts.layers:
+            if layer.standing == "established":
+                continue
+            assert layer.standing_as_of is not None, layer.role
+            assert layer.evidence is not None, layer.role
+
+    @pytest.mark.parametrize("object_id", BODY_IDS)
+    def test_an_ocean_says_how_it_was_found(self, object_id: str):
+        """The Oceans page ranks eight of these side by side, and a plume
+        sample and a two-layer thermal model draw the same bar."""
+        for layer in INTERIOR_FACTS[object_id].layers:
+            if layer.role in ("ocean", "sea"):
+                assert layer.evidence is not None, layer.role
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_layers_run_outermost_first(self, object_id: str):
