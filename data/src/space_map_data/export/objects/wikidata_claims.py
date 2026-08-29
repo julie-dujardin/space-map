@@ -936,3 +936,24 @@ def diameter_km_from_claims(
 ) -> float | None:
     """Diameter in km from raw Wikidata claims (P2386), or None."""
     return _length_km_from_claims(claims, "P2386", units, qid)
+
+
+def discovery_year_from_claims(
+    claims: dict, wikidata_entities: WikidataEntityCache | None = None
+) -> int | None:
+    """Discovery year from raw Wikidata claims (P575), or None.
+
+    The earliest claim wins, as on the object detail page. SBDB's `first_obs`
+    is no substitute: it dates the observation arc, so precovery plates put
+    Eris in 1954 and Ceres in 1995.
+    """
+    times = _all_times(claims, "P575", wikidata_entities)
+    if not times:
+        return None
+    # Leading sign, then a zero-padded year: ISO strings sort chronologically.
+    year = min(times)[1:5]
+    try:
+        return int(year)
+    except ValueError:
+        logger.warning("Unparseable P575 year %r", min(times))
+        return None

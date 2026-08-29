@@ -73,6 +73,7 @@ from space_map_data.export.small_body_color import (
 )
 from space_map_data.export.objects.wikidata_claims import (
     diameter_km_from_claims,
+    discovery_year_from_claims,
     radius_km_from_claims,
 )
 from space_map_data.export.quantities import UnitConverter
@@ -80,6 +81,7 @@ from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.ingest.providers.objects.sbdb import G_KM3_PER_KG_S2
 from space_map_data.models.object.main import Object, ObjectType, OrbitalSource
 from space_map_data.models.object.sbdb import SBDB, OrbitClass
+from space_map_data.models.object.sbdb_moon import SBDBMoon
 
 logger = logging.getLogger(__name__)
 
@@ -327,6 +329,62 @@ def _dwarf_planet_members(
             member.color = resolve_small_body_color(spkid, spec_b or spec_t, albedo)[0]
         members.append(member)
     return members
+
+
+def _wikidata_discovery_histogram(
+    members: list[NotableObject], entities: WikidataEntityCache
+) -> dict[int, int]:
+    """Discoveries per year over a body list, from each member's Wikidata P575.
+
+    For bodies the JPL satellite table doesn't cover and whose SBDB arc starts
+    on a precovery plate — the dwarf planets — Wikidata is the only date that
+    means "discovered".
+    """
+    histogram: dict[int, int] = {}
+    for member in members:
+        entity = (
+            entities.get_entity(member.wikidata_qid) if member.wikidata_qid else None
+        )
+        year = (
+            discovery_year_from_claims(entity["claims"], entities)
+            if entity is not None
+            else None
+        )
+        if year is None:
+            logger.warning(
+                "No discovery date for %s (%s); it won't count in the timeline",
+                member.object_id,
+                member.wikidata_qid,
+            )
+            continue
+        histogram[year] = histogram.get(year, 0) + 1
+    return histogram
+
+
+def _moon_discovery_histogram(session: Session) -> dict[int, int]:
+    """Moons per year of discovery.
+
+    The JPL satellite-discovery table covers the moons with an IAU name; SBDB's
+    satellite records carry the provisional ones, and the two agree wherever
+    they overlap.
+    """
+    rows = (
+        session.query(Object.discovery_year, SBDBMoon.year)
+        .outerjoin(SBDBMoon, SBDBMoon.object_id == Object.id)
+        .filter(Object.object_type == ObjectType.moon)
+        .all()
+    )
+    histogram: dict[int, int] = {}
+    undated = 0
+    for jpl_year, sbdb_year in rows:
+        year = jpl_year if jpl_year is not None else sbdb_year
+        if year is None:
+            undated += 1
+            continue
+        histogram[year] = histogram.get(year, 0) + 1
+    if undated:
+        logger.info("%d moons carry no discovery year", undated)
+    return histogram
 
 
 @dataclass
@@ -1325,6 +1383,12 @@ def build_category_data(
         discovery_out[ASTEROIDS_SLUG] = asteroid_hist
     if comet_hist := _sum_histograms(comet_classes, discovery_histograms):
         discovery_out[COMETS_SLUG] = comet_hist
+    # The two body categories with a real discovery record of their own: both
+    # count members one by one, since neither is partitioned into orbit classes.
+    if dwarf_hist := _wikidata_discovery_histogram(dwarf_members, entities):
+        discovery_out[DWARF_PLANETS_SLUG] = dwarf_hist
+    if moon_hist := _moon_discovery_histogram(session):
+        discovery_out[MOONS_SLUG] = moon_hist
     launch_out: dict[str, dict[int, int]] = {}
     for cat_slug, side in (
         (SATELLITES_SLUG, earth_orbit.payload_satcat_stats),
