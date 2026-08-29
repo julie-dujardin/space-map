@@ -6,6 +6,7 @@ constellations) or bodies (Planets, Moons, Probes) — the former feed
 ``child_groups``, the latter ride ``notable_members``.
 """
 
+import datetime
 import logging
 from dataclasses import dataclass, field, replace
 
@@ -61,6 +62,7 @@ from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.small_body import LargestBody, _notable_members
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.notable import NotableObject, render_geometry
+from space_map_data.export.objects.missions import probe_launch_year
 from space_map_data.export.objects.activity import collection_row
 from space_map_data.export.objects.atmosphere import limb_profile, pressure_block
 from space_map_data.export.objects.interior import cutaway_layers, ocean_block
@@ -82,6 +84,7 @@ from space_map_data.ingest.providers.objects.sbdb import G_KM3_PER_KG_S2
 from space_map_data.models.object.main import Object, ObjectType, OrbitalSource
 from space_map_data.models.object.sbdb import SBDB, OrbitClass
 from space_map_data.models.object.sbdb_moon import SBDBMoon
+from space_map_data.probes.probe_id import load_registry
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +143,15 @@ def _sum_histograms(
     out: dict[int, int] = {}
     for slug in slugs:
         for year, n in source.get(slug, {}).items():
+            out[year] = out.get(year, 0) + n
+    return out
+
+
+def _merge_histograms(*histograms: dict[int, int]) -> dict[int, int]:
+    """Add year histograms that come from different member sets."""
+    out: dict[int, int] = {}
+    for histogram in histograms:
+        for year, n in histogram.items():
             out[year] = out.get(year, 0) + n
     return out
 
@@ -384,6 +396,54 @@ def _moon_discovery_histogram(session: Session) -> dict[int, int]:
         histogram[year] = histogram.get(year, 0) + 1
     if undated:
         logger.info("%d moons carry no discovery year", undated)
+    return histogram
+
+
+def _ring_discovery_histogram(members: list[NotableObject]) -> dict[int, int]:
+    """Ring systems per year of discovery, over the bodies the page tiles.
+
+    Scoped to `members` like the stat row: a catalogued body with no object row
+    gets no tile, so it should not sit in the chart either.
+    """
+    shown = {member.object_id for member in members}
+    histogram: dict[int, int] = {}
+    for body, catalog in RING_CATALOGS.items():
+        if body not in shown or catalog.discovery_year is None:
+            continue
+        year = catalog.discovery_year
+        histogram[year] = histogram.get(year, 0) + 1
+    return histogram
+
+
+def _probe_launch_histogram(session: Session) -> dict[int, int]:
+    """Probes per launch year, over the craft the page counts.
+
+    The registry runs wider than the export (craft we carry no kernel for), so
+    it is filtered to the SPICE-tracked objects. Missions still on the pad are
+    dropped: the chart records what has flown, and its cumulative line would
+    otherwise count craft that have not launched.
+    """
+    probe_ids = {
+        obj_id
+        for (obj_id,) in session.query(Object.id).filter(
+            Object.orbital_source == OrbitalSource.spice_probe
+        )
+    }
+    this_year = datetime.date.today().year
+    histogram: dict[int, int] = {}
+    planned = 0
+    for entry in load_registry():
+        if f"probe-{entry['probe_id']}" not in probe_ids:
+            continue
+        year = probe_launch_year(entry.get("inception_mjd"))
+        if year is None:
+            continue
+        if year > this_year:
+            planned += 1
+            continue
+        histogram[year] = histogram.get(year, 0) + 1
+    if planned:
+        logger.info("%d probes are not launched yet; left out of the timeline", planned)
     return histogram
 
 
@@ -1383,13 +1443,26 @@ def build_category_data(
         discovery_out[ASTEROIDS_SLUG] = asteroid_hist
     if comet_hist := _sum_histograms(comet_classes, discovery_histograms):
         discovery_out[COMETS_SLUG] = comet_hist
-    # The two body categories with a real discovery record of their own: both
-    # count members one by one, since neither is partitioned into orbit classes.
+    # The body categories with a discovery record of their own: each counts its
+    # members one by one, none being partitioned into orbit classes.
     if dwarf_hist := _wikidata_discovery_histogram(dwarf_members, entities):
         discovery_out[DWARF_PLANETS_SLUG] = dwarf_hist
-    if moon_hist := _moon_discovery_histogram(session):
+    moon_hist = _moon_discovery_histogram(session)
+    if moon_hist:
         discovery_out[MOONS_SLUG] = moon_hist
+    if ring_hist := _ring_discovery_histogram(ring_members):
+        discovery_out[RING_SYSTEMS_SLUG] = ring_hist
+    # The root page's own curve: every body we have a discovery date for. The
+    # dwarf planets are not added on top — nine of the ten already count inside
+    # their orbit class, and one more body would not move a 1.5 M-strong total.
+    if solar_hist := _merge_histograms(
+        _sum_histograms(asteroid_classes + comet_classes, discovery_histograms),
+        moon_hist,
+    ):
+        discovery_out[SOLAR_SYSTEM_SLUG] = solar_hist
     launch_out: dict[str, dict[int, int]] = {}
+    if probe_hist := _probe_launch_histogram(session):
+        launch_out[PROBES_SLUG] = probe_hist
     for cat_slug, side in (
         (SATELLITES_SLUG, earth_orbit.payload_satcat_stats),
         (DEBRIS_SLUG, earth_orbit.debris_satcat_stats),

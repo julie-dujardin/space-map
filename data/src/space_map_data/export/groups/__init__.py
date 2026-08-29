@@ -59,10 +59,7 @@ from space_map_data.constants.comet_fragments import family_group_slug
 from space_map_data.export.notable import NotableObject, textured_object_ids
 from space_map_data.export.objects.fragments import build_comet_families
 from space_map_data.export.groups.stats import GroupExtraStats
-from space_map_data.export.objects.missions import (
-    build_probe_missions,
-    first_probe_launch_year,
-)
+from space_map_data.export.objects.missions import build_probe_missions
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.models.object.main import Object
@@ -490,7 +487,10 @@ def run_groups_tier(
     extra_stats.setdefault(PROBES_SLUG, GroupExtraStats()).child_group_count = len(
         missions.groups
     )
-    extra_stats[PROBES_SLUG].launch_year = first_probe_launch_year()
+    # Same source as the page's launch chart, so the card's year is the year
+    # the first bar sits on.
+    if probe_launches := category_data.launch_histograms.get(PROBES_SLUG):
+        extra_stats[PROBES_SLUG].launch_year = min(probe_launches)
 
     write_earth_membership(out_dir, build.membership)
     write_orbit_samples(out_dir, small_body_stats.orbit_samples)

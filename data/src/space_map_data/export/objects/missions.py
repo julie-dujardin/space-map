@@ -77,24 +77,10 @@ def _mission_status(raw: str | None) -> str | None:
     return "lost" if raw in _LOST else "ended"
 
 
-def _launch_year(inception_mjd: int | None) -> int | None:
+def probe_launch_year(inception_mjd: int | None) -> int | None:
     if inception_mjd is None:
         return None
     return (_MJD_ZERO + datetime.timedelta(days=int(inception_mjd))).year
-
-
-def first_probe_launch_year() -> int | None:
-    """Earliest launch year across every registered probe, for the Probes page.
-
-    Wider than the mission pages: most probes fly outside a multi-craft mission,
-    and the first of them predates every mission group.
-    """
-    years = [
-        year
-        for entry in load_registry()
-        if (year := _launch_year(entry.get("inception_mjd"))) is not None
-    ]
-    return min(years) if years else None
 
 
 def _notable(entry: dict) -> NotableObject:
@@ -148,7 +134,7 @@ def build_probe_missions() -> list[ProbeMission]:
                 primary_object_id=f"probe-{entry['probe_id']}",
                 primary=_notable(entry),
                 members=[_notable(r) for r in member_rows],
-                launch_year=_launch_year(entry.get("inception_mjd")),
+                launch_year=probe_launch_year(entry.get("inception_mjd")),
                 status=_mission_status(raw_status),
             )
         )
