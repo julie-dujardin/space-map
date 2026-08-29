@@ -282,6 +282,12 @@ def ocean_block(object_id: str) -> dict | None:
         }
         if layer.mass_fraction is not None:
             out["mass_fraction"] = _sig(layer.mass_fraction)
+        # The collection chart ranks nine of these against each other, and four
+        # are what a model requires rather than what anyone detected.
+        if layer.evidence is not None:
+            out["evidence"] = layer.evidence
+        if layer.standing != "established":
+            out["standing"] = layer.standing
         return out
     return None
 

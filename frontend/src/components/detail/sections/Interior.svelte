@@ -59,7 +59,15 @@
 	// sentence to unpack.
 	let note = $derived.by(() => {
 		if (!interior) return null;
-		if (interior.note === 'subsurface_ocean') return m.interior_note_subsurface_ocean();
+		if (interior.note === 'subsurface_ocean') {
+			// The sentence has to follow the ocean layer's own standing. Titan
+			// and Enceladus both carry this note, and stating them the same way
+			// is the thing the standing field exists to stop.
+			const ocean = interior.layers?.find((layer) => layer.role === 'ocean');
+			if (ocean?.standing === 'disputed') return m.interior_note_subsurface_ocean_disputed();
+			if (ocean?.standing) return m.interior_note_subsurface_ocean_possible();
+			return m.interior_note_subsurface_ocean();
+		}
 		if (interior.estimated) return m.interior_note_taxonomy_estimate();
 		if (interior.structure === 'rubble_pile') return m.interior_note_rubble_pile();
 		return null;

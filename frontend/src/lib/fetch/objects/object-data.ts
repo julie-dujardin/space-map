@@ -182,13 +182,18 @@ export interface NotableMemberEntry {
 }
 
 /** The body's ocean, as one row of the cat-oceans chart. Volume is geometry off
- *  the same radii the cross-section draws, since no one work quotes all eight. */
+ *  the same radii the cross-section draws, since no one work quotes all nine. */
 export interface MemberOcean {
 	volume_km3: number;
 	thickness_km: number;
 	/** Under something — true on all but Earth's, which is the page's whole point. */
 	subsurface: boolean;
 	mass_fraction?: number;
+	/** What found it, and whether anyone disagrees that it is there. The chart
+	 *  ranks a plume sample against a thermal model, and a bar length says
+	 *  nothing about which is which. Absent `standing` means established. */
+	evidence?: string;
+	standing?: 'probable' | 'disputed' | 'hypothetical';
 }
 
 /** Headline values only — the widths, qualifiers and citations that ride on
@@ -666,6 +671,11 @@ export interface InteriorBlock {
 	/** "subsurface_ocean", "hydrated_rock", … — only the ocean note gets a
 	 *  sentence; the rest is provenance metadata. */
 	note?: string;
+	/** Whether the body separated at all, on the same ladder the layers use.
+	 *  Absent means established. Rhea's gravity is measured and still fits
+	 *  everything from near-homogeneous to well separated. */
+	structure_standing?: 'probable' | 'disputed' | 'hypothetical';
+	structure_standing_as_of?: string;
 	/** At r=0, closing the innermost layer's span. Only where a body has a
 	 *  published centre rather than a boundary — the Sun, and the giants whose
 	 *  dilute cores have no radius to hang one on. */
@@ -875,6 +885,18 @@ export interface InteriorLayer {
 	/** "core_size_disputed", "shell_thickness_modelled", … — provenance
 	 *  metadata, except "continental_crust_only" which renames the layer. */
 	note?: string;
+	/** What found the layer: "sampled", "sounding", "seismic", "induction",
+	 *  "libration", "tidal", "gravity", "thermal_model", "bulk_density". About
+	 *  the layer being there, which the ranges say nothing about — Ganymede's
+	 *  ocean thickness is a model and its existence is a magnetometer. */
+	evidence?: string;
+	/** Where the claim sits in the literature: "probable", "disputed",
+	 *  "hypothetical". Absent means established, which is most of the table —
+	 *  present means the layer needs a caveat drawn on it. */
+	standing?: 'probable' | 'disputed' | 'hypothetical';
+	/** YYYY-MM, when the standing was last read against the literature. Rides
+	 *  with `standing` because that is the one field here with a shelf life. */
+	standing_as_of?: string;
 	/** The mass is arithmetic on the source's radii and densities rather than a
 	 *  number it quotes. */
 	derived?: true;

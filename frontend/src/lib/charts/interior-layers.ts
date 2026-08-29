@@ -103,3 +103,46 @@ export function stateName(state: string): string {
 	}
 	return fn();
 }
+
+/** What found the layer. Separate from `standing` on purpose: the two answer
+ *  different questions, and a reader wants "magnetic induction" as much as
+ *  "disputed". Set on established layers too, wherever a source is crisp. */
+const EVIDENCE_NAME: Record<string, () => string> = {
+	sampled: m.interior_evidence_sampled,
+	sounding: m.interior_evidence_sounding,
+	seismic: m.interior_evidence_seismic,
+	induction: m.interior_evidence_induction,
+	libration: m.interior_evidence_libration,
+	tidal: m.interior_evidence_tidal,
+	gravity: m.interior_evidence_gravity,
+	thermal_model: m.interior_evidence_thermal_model,
+	bulk_density: m.interior_evidence_bulk_density
+};
+
+/** Where the claim sits in the literature. Only three: an absent `standing`
+ *  means established, which is most of the table and needs no caveat drawn. */
+const STANDING_NAME: Record<string, () => string> = {
+	probable: m.interior_standing_probable,
+	disputed: m.interior_standing_disputed,
+	hypothetical: m.interior_standing_hypothetical
+};
+
+/** Null for a vocabulary we have no name for yet, so a new pipeline key is a
+ *  missing clause rather than a raw slug on the card. */
+export function evidenceName(evidence: string): string | null {
+	const fn = EVIDENCE_NAME[evidence];
+	if (!fn) {
+		console.warn(`Missing interior evidence name: ${evidence}`);
+		return null;
+	}
+	return fn();
+}
+
+export function standingName(standing: string): string | null {
+	const fn = STANDING_NAME[standing];
+	if (!fn) {
+		console.warn(`Missing interior standing name: ${standing}`);
+		return null;
+	}
+	return fn();
+}

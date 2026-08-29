@@ -28,6 +28,7 @@
 
 <script lang="ts">
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
+	import { evidenceName, standingName } from '$lib/charts/interior-layers';
 	import ValuePerBodyChart from './ValuePerBodyChart.svelte';
 
 	interface Props {
@@ -42,6 +43,21 @@
 	let earthVolume = $derived(
 		members.find((entry) => entry.id === EARTH_ID)?.ocean?.volume_km3 ?? null
 	);
+
+	/** How the ocean was found, and whether it is agreed on, after the volume.
+	 *  Four of these bars are what a model requires rather than what anyone
+	 *  detected, and a bar length cannot say so. */
+	function provenance(ocean: NotableMemberEntry['ocean']): string | undefined {
+		const parts = [
+			ocean?.standing ? standingName(ocean.standing) : null,
+			ocean?.evidence ? evidenceName(ocean.evidence) : null
+		].filter(Boolean);
+		return parts.length ? parts.join(' · ') : undefined;
+	}
+
+	/** Only where some row on this page has one, so a page of measured oceans
+	 *  is not told that some of them might not be there. */
+	let anyContested = $derived(members.some((entry) => entry.ocean?.standing));
 </script>
 
 <ValuePerBodyChart
@@ -50,5 +66,9 @@
 	title={m.group_ocean_volume_title()}
 	value={(entry) => entry.ocean?.volume_km3}
 	text={oceanVolume}
-	tooltip={(km3) => (earthVolume ? (earthOceans(km3 / earthVolume) ?? undefined) : undefined)}
+	note={anyContested ? m.group_ocean_standing_note() : undefined}
+	tooltip={(km3, member) => {
+		const scale = earthVolume ? earthOceans(km3 / earthVolume) : null;
+		return [scale, provenance(member.ocean)].filter(Boolean).join(' · ') || undefined;
+	}}
 />

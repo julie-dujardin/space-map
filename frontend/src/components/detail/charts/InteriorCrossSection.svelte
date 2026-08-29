@@ -195,6 +195,7 @@
 					opacity={active === null || active === i ? 1 : 0.4}
 					stroke={fades ? 'none' : 'rgb(0 0 0 / 0.45)'}
 					stroke-width="0.8"
+					stroke-dasharray={band.layer.standing ? '3 2' : undefined}
 					role="presentation"
 					onmouseenter={() => (active = i)}
 					onmouseleave={() => (active = null)}

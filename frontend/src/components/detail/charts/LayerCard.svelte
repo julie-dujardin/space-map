@@ -9,7 +9,14 @@
 	import type { InteriorBand } from '$lib/charts/interior-cross-section';
 	import type { CompositionEntry } from '$lib/charts/composition-bar';
 	import type { TemperatureBracket } from '$lib/charts/layer-appearance';
-	import { layerName, phaseName, rockName, stateName } from '$lib/charts/interior-layers';
+	import {
+		evidenceName,
+		layerName,
+		phaseName,
+		rockName,
+		standingName,
+		stateName
+	} from '$lib/charts/interior-layers';
 	import { materialEntries, detailEntries, materialName } from '$lib/charts/interior-materials';
 	import {
 		formatPercent,
@@ -130,6 +137,13 @@
 				: m.structure_layer_diffuse()
 			: ''
 	);
+
+	// What found the layer, and whether anyone disagrees that it is there. The
+	// ranges above say how well the numbers are known and nothing about this,
+	// so a plume sample and a two-layer thermal model read identically without
+	// it. Absent `standing` means established and draws no caveat.
+	let evidence = $derived(layer.evidence ? evidenceName(layer.evidence) : null);
+	let standing = $derived(layer.standing ? standingName(layer.standing) : null);
 </script>
 
 <div
@@ -164,6 +178,24 @@
 	{#if mass || coverage || footnote}
 		<div class="text-muted-foreground mt-1 text-[10px] leading-snug">
 			{[mass, coverage, footnote].filter(Boolean).join(' · ')}
+		</div>
+	{/if}
+
+	<!-- Its own line rather than another clause in the footnote: this is the
+	     one thing on the card that can undo the rest of it, and it reads as
+	     fine print when it trails a list of percentages.
+
+	     Amber only for `disputed`, on the same mid-palette reasoning as the
+	     trajectory hazards. `probable` and `hypothetical` are ordinary states
+	     of knowledge about two dozen layers here; a colour on all of them
+	     would cry wolf, and the words carry it. -->
+	{#if standing || evidence}
+		<div
+			class="mt-1 text-[10px] leading-snug"
+			class:text-amber-500={layer.standing === 'disputed'}
+			class:text-muted-foreground={layer.standing !== 'disputed'}
+		>
+			{[standing, evidence].filter(Boolean).join(' · ')}
 		</div>
 	{/if}
 </div>

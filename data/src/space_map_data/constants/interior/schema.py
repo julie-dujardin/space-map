@@ -164,7 +164,7 @@ EVIDENCE = frozenset(
 STANDINGS = frozenset(
     {
         "established",  # no serious dissent
-        "favoured",  # the best explanation going, with live alternatives published
+        "probable",  # the best explanation going, with live alternatives published
         "disputed",  # peer-reviewed works currently disagree that it is there
         "hypothetical",  # allowed by the data, never detected
     }

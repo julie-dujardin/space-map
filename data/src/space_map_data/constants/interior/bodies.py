@@ -856,7 +856,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     "naif-601": BodyInterior(
         structure="differentiated",
         structure_source="lainey_2024",
-        structure_standing="favoured",
+        structure_standing="probable",
         structure_standing_as_of="2026-08",
         note="subsurface_ocean",
         layers=(
@@ -871,7 +871,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 state="solid",
                 phase="ice_i",
                 evidence="libration",
-                standing="favoured",
+                standing="probable",
                 standing_as_of="2026-08",
                 standing_sources=("tajeddine_2014", "lainey_2024"),
             ),
@@ -887,7 +887,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_temperature_range_k=ICE_OCEAN_INTERFACE_K,
                 temperature_sources=("vance_2018",),
                 evidence="libration",
-                standing="favoured",
+                standing="probable",
                 standing_as_of="2026-08",
                 standing_sources=("tajeddine_2014", "lainey_2024"),
             ),
@@ -900,7 +900,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 derived=True,
                 state="solid",
                 evidence="libration",
-                standing="favoured",
+                standing="probable",
                 standing_as_of="2026-08",
                 standing_sources=("tajeddine_2014", "lainey_2024"),
             ),
@@ -1244,7 +1244,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             Layer(
                 role="ocean",
                 evidence="induction",
-                standing="favoured",
+                standing="probable",
                 standing_as_of="2026-08",
                 # Two flybys left an ocean and a bare ionosphere equally good;
                 # the third is what separates them.
@@ -1607,7 +1607,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
             Layer(
                 role="ocean",
                 evidence="gravity",
-                standing="favoured",
+                standing="probable",
                 standing_as_of="2026-08",
                 standing_sources=("beuthe_2016",),
                 mass_fraction=0.140,
@@ -1789,7 +1789,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     "naif-999": BodyInterior(
         structure="differentiated",
         structure_source="nimmo_2025",
-        structure_standing="favoured",
+        structure_standing="probable",
         structure_standing_as_of="2026-08",
         # An undifferentiated Pluto would have turned its deep ice to ice II as
         # it cooled and contracted; the surface is almost entirely extensional
@@ -1818,13 +1818,13 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 note="shell_thickness_modelled",
                 state="solid",
                 evidence="thermal_model",
-                standing="favoured",
+                standing="probable",
                 standing_as_of="2026-08",
             ),
             Layer(
                 role="ocean",
                 evidence="thermal_model",
-                standing="favoured",
+                standing="probable",
                 standing_as_of="2026-08",
                 standing_sources=("nimmo_2025",),
                 mass_fraction=0.078,
@@ -1845,7 +1845,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=840.0,
                 note="from_bulk_density",
                 evidence="bulk_density",
-                standing="favoured",
+                standing="probable",
                 standing_as_of="2026-08",
             ),
         ),
@@ -1856,7 +1856,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     "naif-901": BodyInterior(
         structure="differentiated",
         structure_source="nimmo_2025",
-        structure_standing="favoured",
+        structure_standing="probable",
         structure_standing_as_of="2026-08",
         layers=(
             Layer(
@@ -1867,7 +1867,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=606.0,
                 note="from_bulk_density",
                 evidence="bulk_density",
-                standing="favoured",
+                standing="probable",
                 standing_as_of="2026-08",
             ),
             Layer(
@@ -1878,7 +1878,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=412.0,
                 note="from_bulk_density",
                 evidence="bulk_density",
-                standing="favoured",
+                standing="probable",
                 standing_as_of="2026-08",
             ),
         ),
@@ -2050,7 +2050,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
     "naif-801": BodyInterior(
         structure="differentiated",
         structure_source="nimmo_2025",
-        structure_standing="favoured",
+        structure_standing="probable",
         structure_standing_as_of="2026-08",
         layers=(
             Layer(
@@ -2061,7 +2061,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=1353.4,
                 note="from_bulk_density",
                 evidence="bulk_density",
-                standing="favoured",
+                standing="probable",
                 standing_as_of="2026-08",
             ),
             Layer(
@@ -2072,7 +2072,7 @@ INTERIOR_FACTS: dict[str, BodyInterior] = {
                 outer_radius_km=1028.0,
                 note="from_bulk_density",
                 evidence="bulk_density",
-                standing="favoured",
+                standing="probable",
                 standing_as_of="2026-08",
             ),
         ),
