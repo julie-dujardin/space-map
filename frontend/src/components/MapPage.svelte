@@ -7,6 +7,7 @@
 	import { dateToJD, formatJulianDate, jdToDate } from '$lib/format/date';
 	import { ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
+	import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
 	import {
 		DEFAULT_FRAMING_LAT,
 		DEFAULT_FRAMING_LON,
@@ -113,13 +114,32 @@
 		clock.setJD(bounded ? (cov!.startJd! + cov!.endJd!) / 2 : snap);
 	}
 
+	/** A system barycenter has no radius of its own, and for every planet but
+	 *  Pluto it sits inside the primary — framing on it would put the camera under
+	 *  the cloud tops. Frame the primary instead, so a system page opens where its
+	 *  planet's page does. */
+	function framingBody(body: PositionedBody): PositionedBody {
+		const planetId = dominantPlanetId(body.data.id);
+		return (planetId ? ctx.getBody(planetId) : undefined) ?? body;
+	}
+
+	/** Camera distance that frames `body`, or its primary when it is a barycenter.
+	 *  A barycenter whose primary has not streamed in yet would otherwise frame on
+	 *  a zero radius, which is the inside-the-planet case again — hold at the
+	 *  default distance until there is a body to measure. */
+	function framingZoom(body: PositionedBody): number {
+		const framed = framingBody(body);
+		if (framed.data.radiusKm <= 0) return DEFAULT_VIEW.zoom;
+		return minCameraDistance(framed) * 5;
+	}
+
 	// Default camera distance: dive close to model/cuboid bodies, hold back for
 	// bare markers. Sync (isModelBearing, no fetch) so the camera moves at once.
 	function framingDistanceFor(type: string, body: PositionedBody): number {
 		if (type === UrlType.Probe || type === UrlType.EarthSatellite) {
 			return isModelBearing(body) ? minCameraDistance(body) * 5 : 0.005;
 		}
-		return minCameraDistance(body) * 5;
+		return framingZoom(body);
 	}
 
 	// Generic focus for the search bar, featured chips, and in-drawer links:
@@ -714,7 +734,7 @@
 				const snap = snapJdIntoWindow(clock.jd, window);
 				if (snap !== null) clock.setJD(snap);
 			}
-			scene?.focusOnBody(primary.primary_id, body ? minCameraDistance(body) * 5 : undefined);
+			scene?.focusOnBody(primary.primary_id, body ? framingZoom(body) : undefined);
 		})();
 	});
 </script>
@@ -948,7 +968,7 @@
 					onClose={() => closeDetail()}
 					onMaximize={() => {
 						if (!selectedBody) return;
-						scene?.focusOnBody(selectedBody.data.id, minCameraDistance(selectedBody) * 5);
+						scene?.focusOnBody(selectedBody.data.id, framingZoom(selectedBody));
 					}}
 					onMinimize={() => {
 						if (!selectedBody) return;

@@ -79,7 +79,7 @@
 {/snippet}
 
 {#snippet planetarySystemMapSnippet()}
-	{#if planetarySystem.system}
+	{#if planetarySystem.isSystemPage && planetarySystem.system}
 		<PlanetarySystemMap system={planetarySystem.system} ariaLabel={fallbackName} />
 	{/if}
 {/snippet}
@@ -100,7 +100,7 @@
 				leadingBadges={groupHeaderBadges}
 				hero={cat.solarSystem
 					? solarSystemMapSnippet
-					: planetarySystem.system
+					: planetarySystem.isSystemPage && planetarySystem.system
 						? planetarySystemMapSnippet
 						: lineup.hero && !lineup.isMoonLineup
 							? lineupHeroSnippet

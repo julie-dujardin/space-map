@@ -615,6 +615,16 @@
 	"planetary_system_radii": "{value} 个{primary}半径",
 	"planetary_system_retrograde": "逆行",
 	"planetary_system_title": "{primary}系统",
+	"moons_count_moon": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 颗卫星",
+				"countPlural=other": "{count} 颗卫星"
+			}
+		}
+	],
 	"system_moon_discovery": "卫星发现",
 	"type_comet": "彗星",
 	"type_debris": "碎片",

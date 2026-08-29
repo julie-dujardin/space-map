@@ -14,6 +14,7 @@ import { AU_KM } from '$lib/math/units';
 import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import * as m from '$lib/paraglide/messages.js';
 import { resolveBodyColor } from '$lib/utils';
 import { buildLineup, geometryFromMember } from './lineup';
 import { fetchMoonDiscovery, type MoonDiscoveryFile } from '$lib/fetch/groups/moon-discovery';
@@ -118,15 +119,31 @@ function primaryRadiusKm(planet: PositionedBody, global: GlobalObjectData | null
 	return planet.data.radiusKm;
 }
 
+/** The planetary system a body belongs to, as its barycenter id — the
+ *  barycenter itself, or the one a planet or moon hangs off. Null for anything
+ *  outside a planetary system (the Sun, small bodies, the SSB). */
+export function systemBarycenterId(
+	body: PositionedBody | null,
+	ctx: ContextManager | undefined
+): string | null {
+	if (!body) return null;
+	if (dominantPlanetId(body.data.id)) return body.data.id;
+	const parent = ctx?.getBody(body.data.parentId);
+	if (parent?.data.objectType !== ObjectType.BARYCENTER) return null;
+	return dominantPlanetId(parent.data.id) ? parent.data.id : null;
+}
+
 export interface PlanetarySystemDeps {
-	/** Focused body id; a planetary barycenter builds a system, anything else
-	 *  builds none. */
-	bodyId: () => string | undefined;
+	/** Focused body; its system is resolved with `systemBarycenterId`, so a
+	 *  planet and its moons all resolve the same one. */
+	body: () => PositionedBody | null;
 	ctx: () => ContextManager | undefined;
 }
 
 /**
- * Builds the focused barycenter's system, or null when the page is not one.
+ * Builds the focused body's planetary system, or null outside one. Every member
+ * resolves the same system, so a planet and a moon can both cross-refer to it;
+ * `isSystemPage` is what separates the barycenter's own page from those.
  * Bodies stream in after the first paint, so the class subscribes to
  * `onBodiesAdded` and re-derives — a plain `$derived` over the index's Maps
  * would never see the moons arrive.
@@ -138,6 +155,13 @@ export class PlanetarySystemState {
 	#primary = $state<ObjectDetailData | null>(null);
 	#discovery = $state<MoonDiscoveryFile | null>(null);
 	readonly system: PlanetarySystem | null;
+	/** The barycenter this system is keyed by, and the page a tile links to. */
+	readonly systemId: string | null;
+	/** True only on the barycenter's own page, which the system map heroes. */
+	readonly isSystemPage: boolean;
+	/** "<primary> system" — the name the drawer titles this page with, in place
+	 *  of the SPICE "<primary> Barycenter" the 3D labels keep. */
+	readonly systemName: string | undefined;
 	/** Moons found per year in this system, for the discovery chart. Undefined
 	 *  where no moon carries a discovery year — the Moon has none. */
 	readonly discoveryHistogram: Record<string, number> | undefined;
@@ -145,14 +169,25 @@ export class PlanetarySystemState {
 	readonly primaryId: string | undefined;
 
 	constructor(d: PlanetarySystemDeps) {
+		this.systemId = $derived(systemBarycenterId(d.body(), d.ctx()));
+		this.isSystemPage = $derived(!!this.systemId && d.body()?.data.id === this.systemId);
 		this.primaryId = $derived.by(() => {
-			const id = d.bodyId();
+			const id = this.systemId;
 			return id ? (dominantPlanetId(id) ?? undefined) : undefined;
+		});
+		// Named off the primary's own bundle, so it does not wait on the moons the
+		// map needs — Mercury and Venus are systems too, they just have no moons.
+		this.systemName = $derived.by(() => {
+			const planetId = this.primaryId;
+			if (!planetId) return undefined;
+			const detail = this.#primary?.global?.id === planetId ? this.#primary : null;
+			const primary = detail?.localized?.name ?? detail?.global?.name;
+			return primary ? m.planetary_system_title({ primary }) : undefined;
 		});
 
 		this.system = $derived.by<PlanetarySystem | null>(() => {
 			void this.#version; // re-derive as the system's bodies load
-			const baryId = d.bodyId();
+			const baryId = this.systemId;
 			const planetId = this.primaryId;
 			const ctx = d.ctx();
 			if (!baryId || !planetId || !ctx) return null;
@@ -211,8 +246,10 @@ export class PlanetarySystemState {
 		// found in one year has no timeline to draw — Mars would be a single block
 		// bar — so it keeps the year on its Discovery rows instead.
 		this.discoveryHistogram = $derived.by(() => {
-			const baryId = d.bodyId();
-			if (!baryId || !this.system) return undefined;
+			const baryId = this.systemId;
+			// The chart belongs to the system's own page; a planet or moon in it
+			// cross-refers there rather than repeating the timeline.
+			if (!baryId || !this.isSystemPage || !this.system) return undefined;
 			const histogram = this.#discovery?.[baryId];
 			return histogram && Object.keys(histogram).length >= 2 ? histogram : undefined;
 		});

@@ -695,6 +695,18 @@
 	"planetary_system_radii": "{value} promieni {primary}",
 	"planetary_system_retrograde": "wsteczna",
 	"planetary_system_title": "Układ {primary}",
+	"moons_count_moon": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} księżyc",
+				"countPlural=few": "{count} księżyce",
+				"countPlural=many": "{count} księżyców",
+				"countPlural=other": "{count} księżyce"
+			}
+		}
+	],
 	"system_moon_discovery": "Odkrycia księżyców",
 	"type_comet": "kometa",
 	"type_debris": "szczątki",

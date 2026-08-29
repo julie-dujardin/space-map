@@ -164,7 +164,19 @@
 	);
 
 	let fallbackName = $derived(focusableFallbackName(focusable));
-	let resolvedName = $derived(data?.localized?.name ?? data?.global?.name ?? fallbackName);
+	// A planetary barycenter is the page for its whole system: the primary plus
+	// every moon the scene has under it, drawn as the overview hero.
+	const planetarySystem = new PlanetarySystemState({
+		body: () => body,
+		ctx: () => ctx
+	});
+
+	let resolvedName = $derived(
+		(planetarySystem.isSystemPage ? planetarySystem.systemName : undefined) ??
+			data?.localized?.name ??
+			data?.global?.name ??
+			fallbackName
+	);
 	let displayName = $derived(resolvedName ?? (loading ? m.loading() : focusableKey(focusable)));
 
 	// Push the resolved name into the URL/title. On permanent failure, log once
@@ -233,13 +245,6 @@
 		memberNames: () => members.memberNames,
 		memberDescriptions: () => members.memberDescriptions,
 		moonDescriptions: () => (isGroupMode ? undefined : data?.localized?.notable_moon_descriptions)
-	});
-
-	// A planetary barycenter is the page for its whole system: the primary plus
-	// every moon the scene has under it, drawn as the overview hero.
-	const planetarySystem = new PlanetarySystemState({
-		bodyId: () => body?.data.id,
-		ctx: () => ctx
 	});
 
 	// Galleries + image-viewer model (see gallery-state.svelte.ts). The shelf
@@ -533,7 +538,7 @@
 		<FeaturesPanel {body} {surface} {appState} />
 	</Tabs.Content>
 	<Tabs.Content value="rings" class={contentClass}>
-		<RingsPanel {ringFeatures} {data} {body} {parentBody} {clock} />
+		<RingsPanel {ringFeatures} {data} {body} {parentBody} {clock} {planetarySystem} />
 	</Tabs.Content>
 	<Tabs.Content value="structure" class={contentClass}>
 		<StructurePanel {data} isBody={focusable.kind === 'body'} />

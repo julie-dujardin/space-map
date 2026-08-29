@@ -672,6 +672,20 @@
 	"planetary_system_radii": "{value} من أنصاف أقطار {primary}",
 	"planetary_system_retrograde": "تراجعي",
 	"planetary_system_title": "نظام {primary}",
+	"moons_count_moon": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا أقمار",
+				"countPlural=one": "قمر واحد",
+				"countPlural=two": "قمران",
+				"countPlural=few": "{count} أقمار",
+				"countPlural=many": "{count} قمرًا",
+				"countPlural=other": "{count} قمر"
+			}
+		}
+	],
 	"system_moon_discovery": "اكتشافات الأقمار",
 	"type_comet": "مذنب",
 	"type_debris": "حطام",

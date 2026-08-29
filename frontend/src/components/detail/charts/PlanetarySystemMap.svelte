@@ -36,6 +36,11 @@
 	/** Axis ticks, in primary radii — the decade ladder, trimmed to the domain. */
 	const TICK_LADDER = [1, 2, 3, 5, 10, 20, 30, 50, 100, 200, 300, 500, 1000, 2000, 5000];
 
+	// Tile crop: the primary's limb and the moons nearest it, framed so the
+	// baseline rides in the upper third — the card's caption takes the lower half,
+	// and moons drawn behind the text read as dirt on the picture.
+	const BG_VIEW = '0 96 320 144';
+
 	/** A moon going the other way round its primary. Called out in the tooltip
 	 *  only: every moon is drawn the same, so size and distance stay the chart's
 	 *  two variables. */
@@ -57,8 +62,14 @@
 	interface Props {
 		system: PlanetarySystem;
 		ariaLabel: string;
+		/** 'background' strips the axis, labels, links and tooltips and fills+crops
+		 *  its box — a static diagram behind a cross-ref tile. Anchored left, so the
+		 *  crop keeps the primary's limb and the inner moons rather than the empty
+		 *  middle of the axis. */
+		variant?: 'hero' | 'background';
 	}
-	let { system, ariaLabel }: Props = $props();
+	let { system, ariaLabel, variant = 'hero' }: Props = $props();
+	let isBackground = $derived(variant === 'background');
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -248,12 +259,17 @@
 	}
 </script>
 
-<div class="bg-muted/30 relative w-full overflow-hidden rounded-md" bind:clientWidth={containerW}>
+<div
+	class={isBackground
+		? 'pointer-events-none h-full w-full overflow-hidden'
+		: 'bg-muted/30 relative w-full overflow-hidden rounded-md'}
+	bind:clientWidth={containerW}
+>
 	<svg
 		bind:this={svgEl}
-		viewBox="0 0 {VIEW_W} {VIEW_H}"
-		preserveAspectRatio="xMidYMid meet"
-		class="text-muted-foreground block h-auto w-full touch-pan-y"
+		viewBox={isBackground ? BG_VIEW : `0 0 ${VIEW_W} ${VIEW_H}`}
+		preserveAspectRatio={isBackground ? 'xMinYMid slice' : 'xMidYMid meet'}
+		class="text-muted-foreground block w-full touch-pan-y {isBackground ? 'h-full' : 'h-auto'}"
 		role="group"
 		aria-label={ariaLabel}
 		onpointerdown={onScrubDown}
@@ -280,45 +296,43 @@
 		</defs>
 
 		<!-- Axis: faint gridlines + log ticks in primary radii along the top. -->
-		{#each ticks as t (t)}
-			<line
-				x1={xOf(t)}
-				x2={xOf(t)}
-				y1="20"
-				y2={VIEW_H - 20}
-				stroke="currentColor"
-				stroke-width="0.5"
-				opacity="0.12"
-			/>
+		{#if !isBackground}
+			{#each ticks as t (t)}
+				<line
+					x1={xOf(t)}
+					x2={xOf(t)}
+					y1="20"
+					y2={VIEW_H - 20}
+					stroke="currentColor"
+					stroke-width="0.5"
+					opacity="0.12"
+				/>
+				<text
+					x={xOf(t)}
+					y="16"
+					text-anchor="middle"
+					font-size="16"
+					fill="currentColor"
+					opacity="0.85"
+				>
+					{t}
+				</text>
+			{/each}
 			<text
-				x={xOf(t)}
-				y="16"
-				text-anchor="middle"
-				font-size="16"
+				x={X_RIGHT}
+				y={VIEW_H - 8}
+				text-anchor="end"
+				font-size="14"
 				fill="currentColor"
-				opacity="0.85"
+				opacity="0.65"
 			>
-				{t}
+				{m.planetary_system_axis_unit()}
 			</text>
-		{/each}
-		<text
-			x={X_RIGHT}
-			y={VIEW_H - 8}
-			text-anchor="end"
-			font-size="14"
-			fill="currentColor"
-			opacity="0.65"
-		>
-			{m.planetary_system_axis_unit()}
-		</text>
+		{/if}
 
 		<!-- Rings: a band across the radii they span, behind the moons that share them. -->
 		{#if ringBand}
-			<g
-				role="presentation"
-				onpointerenter={() => (hoveredRings = true)}
-				onpointerleave={() => (hoveredRings = false)}
-			>
+			{#snippet ringDots()}
 				<rect
 					x={ringBand.x}
 					y="30"
@@ -327,73 +341,94 @@
 					fill="url(#psmap-ring)"
 					class="text-amber-200/80"
 				/>
-				<rect
-					x={ringBand.x}
-					y="30"
-					width={ringBand.width}
-					height={VIEW_H - 58}
-					fill="transparent"
-				/>
-				<text
-					x={ringBand.x + ringBand.width / 2}
-					y={VIEW_H - 8}
-					text-anchor="middle"
-					font-size="18"
-					class="fill-amber-200/90 font-semibold"
+			{/snippet}
+			{#if isBackground}
+				{@render ringDots()}
+			{:else}
+				<g
+					role="presentation"
+					onpointerenter={() => (hoveredRings = true)}
+					onpointerleave={() => (hoveredRings = false)}
 				>
-					{m.tab_rings()}
-				</text>
-			</g>
+					{@render ringDots()}
+					<rect
+						x={ringBand.x}
+						y="30"
+						width={ringBand.width}
+						height={VIEW_H - 58}
+						fill="transparent"
+					/>
+					<text
+						x={ringBand.x + ringBand.width / 2}
+						y={VIEW_H - 8}
+						text-anchor="middle"
+						font-size="18"
+						class="fill-amber-200/90 font-semibold"
+					>
+						{m.tab_rings()}
+					</text>
+				</g>
+			{/if}
 		{/if}
 
 		<!-- The primary, framed so only its lit right limb shows, tilted into the
 		     baseline the moons sit on. A focus link like every moon. -->
-		<a
-			href={focusHref(appState, system.planet.data.id, system.planetName)}
-			onclick={focusClick(focusObject, system.planet.data.id, system.planetName)}
-			onpointerenter={() => (hoveredId = system.planet.data.id)}
-			onpointerleave={() => hoveredId === system.planet.data.id && (hoveredId = null)}
-			onfocus={() => (hoveredId = system.planet.data.id)}
-			onblur={() => hoveredId === system.planet.data.id && (hoveredId = null)}
-			aria-label={system.planetName}
-		>
+		{#snippet planetDisc()}
 			<circle cx={planetCx} cy={CY} r={planetR} fill="url(#psmap-planet)" />
-		</a>
-
-		<!-- Moons: each a focus link (middle/⌘-click opens the real URL). Retrograde
-		     orbits draw hollow. -->
-		{#each placed as mn (mn.id)}
+		{/snippet}
+		{#if isBackground}
+			{@render planetDisc()}
+		{:else}
 			<a
-				href={focusHref(appState, mn.id, mn.name)}
-				onclick={focusClick(focusObject, mn.id, mn.name)}
-				onpointerenter={() => (hoveredId = mn.id)}
-				onpointerleave={() => hoveredId === mn.id && (hoveredId = null)}
-				onfocus={() => (hoveredId = mn.id)}
-				onblur={() => hoveredId === mn.id && (hoveredId = null)}
-				aria-label={mn.name}
+				href={focusHref(appState, system.planet.data.id, system.planetName)}
+				onclick={focusClick(focusObject, system.planet.data.id, system.planetName)}
+				onpointerenter={() => (hoveredId = system.planet.data.id)}
+				onpointerleave={() => hoveredId === system.planet.data.id && (hoveredId = null)}
+				onfocus={() => (hoveredId = system.planet.data.id)}
+				onblur={() => hoveredId === system.planet.data.id && (hoveredId = null)}
+				aria-label={system.planetName}
 			>
-				{#if hoveredId === mn.id}
-					<circle
-						cx={mn.cx}
-						cy={mn.cy}
-						r={mn.r + 3.5}
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1"
-						opacity="0.8"
-					/>
-				{/if}
-				<circle cx={mn.cx} cy={mn.cy} r={mn.r} fill={mn.color} />
-				<!-- Transparent hit target — the chart renders at ~0.4×, so a viewBox
-				     unit is a fraction of a device pixel. -->
-				<circle cx={mn.cx} cy={mn.cy} r={mn.r + HIT_MARGIN} fill="transparent" />
+				{@render planetDisc()}
 			</a>
+		{/if}
+
+		<!-- Moons: each a focus link (middle/⌘-click opens the real URL). -->
+		{#each placed as mn (mn.id)}
+			{#if isBackground}
+				<circle cx={mn.cx} cy={mn.cy} r={mn.r} fill={mn.color} />
+			{:else}
+				<a
+					href={focusHref(appState, mn.id, mn.name)}
+					onclick={focusClick(focusObject, mn.id, mn.name)}
+					onpointerenter={() => (hoveredId = mn.id)}
+					onpointerleave={() => hoveredId === mn.id && (hoveredId = null)}
+					onfocus={() => (hoveredId = mn.id)}
+					onblur={() => hoveredId === mn.id && (hoveredId = null)}
+					aria-label={mn.name}
+				>
+					{#if hoveredId === mn.id}
+						<circle
+							cx={mn.cx}
+							cy={mn.cy}
+							r={mn.r + 3.5}
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1"
+							opacity="0.8"
+						/>
+					{/if}
+					<circle cx={mn.cx} cy={mn.cy} r={mn.r} fill={mn.color} />
+					<!-- Transparent hit target — the chart renders at ~0.4×, so a viewBox
+				     unit is a fraction of a device pixel. -->
+					<circle cx={mn.cx} cy={mn.cy} r={mn.r + HIT_MARGIN} fill="transparent" />
+				</a>
+			{/if}
 		{/each}
 	</svg>
 
 	<!-- Tooltip overlay, positioned in px and clamped to the chart box. The aspect
 	     is fixed, so a viewBox unit maps to containerW/VIEW_W px on both axes. -->
-	{#if tip}
+	{#if tip && !isBackground}
 		{@const cxPx = (tip.cx / VIEW_W) * containerW}
 		{@const leftPx = Math.min(Math.max(cxPx, TIP_HALF), Math.max(TIP_HALF, containerW - TIP_HALF))}
 		{@const topPx = Math.max(4, (tip.cy / VIEW_W) * containerW - TIP_H)}

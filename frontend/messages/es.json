@@ -681,6 +681,16 @@
 	"planetary_system_radii": "{value} radios de {primary}",
 	"planetary_system_retrograde": "retrógrado",
 	"planetary_system_title": "Sistema de {primary}",
+	"moons_count_moon": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} luna",
+				"countPlural=other": "{count} lunas"
+			}
+		}
+	],
 	"system_moon_discovery": "Descubrimientos de lunas",
 	"type_comet": "cometa",
 	"type_debris": "restos",

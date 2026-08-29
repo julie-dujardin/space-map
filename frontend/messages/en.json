@@ -734,6 +734,16 @@
 	"planetary_system_radii": "{value} {primary} radii",
 	"planetary_system_retrograde": "retrograde",
 	"planetary_system_title": "{primary} system",
+	"moons_count_moon": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} moon",
+				"countPlural=other": "{count} moons"
+			}
+		}
+	],
 	"system_moon_discovery": "Moon discoveries",
 	"type_comet": "comet",
 	"type_debris": "debris",

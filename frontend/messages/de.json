@@ -681,6 +681,16 @@
 	"planetary_system_radii": "{value} {primary}-Radien",
 	"planetary_system_retrograde": "retrograd",
 	"planetary_system_title": "System {primary}",
+	"moons_count_moon": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} Mond",
+				"countPlural=other": "{count} Monde"
+			}
+		}
+	],
 	"system_moon_discovery": "Mondentdeckungen",
 	"type_comet": "Komet",
 	"type_debris": "Trümmer",

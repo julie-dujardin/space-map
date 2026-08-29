@@ -647,6 +647,18 @@
 	"planetary_system_radii": "{value} радиусов {primary}",
 	"planetary_system_retrograde": "обратное",
 	"planetary_system_title": "Система {primary}",
+	"moons_count_moon": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} спутник",
+				"countPlural=few": "{count} спутника",
+				"countPlural=many": "{count} спутников",
+				"countPlural=other": "{count} спутника"
+			}
+		}
+	],
 	"system_moon_discovery": "Открытия спутников",
 	"type_comet": "комета",
 	"type_debris": "обломки",

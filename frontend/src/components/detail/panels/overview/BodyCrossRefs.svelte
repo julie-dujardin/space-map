@@ -59,7 +59,7 @@
 	let isStarBody = $derived(body?.data.objectType === ObjectType.STAR);
 	// A planetary barycenter stands for its whole system, so it cross-refs the
 	// primary and the moon list rather than the barycenter's own (empty) pages.
-	let system = $derived(planetarySystem.system);
+	let system = $derived(planetarySystem.isSystemPage ? planetarySystem.system : null);
 </script>
 
 {#if fragmentOf}
@@ -73,13 +73,20 @@
 		typeLabel={featureType?.label}
 	/>
 {:else if isPlanetBody}
-	<PlanetGroupLinks />
+	<PlanetGroupLinks
+		systemId={planetarySystem.systemId ?? undefined}
+		system={planetarySystem.system ?? undefined}
+		systemName={planetarySystem.systemName}
+	/>
 {:else if isDwarfPlanetBody}
 	<DwarfPlanetGroupLinks {orbitClass} />
 {:else if isMoonBody}
 	<MoonGroupLinks
 		parentId={moonParent?.data.id ?? body?.data.parentId}
 		parentName={moonParent?.data.name ?? data?.global?.parent_name}
+		systemId={planetarySystem.systemId ?? undefined}
+		system={planetarySystem.system ?? undefined}
+		systemName={planetarySystem.systemName}
 	/>
 {:else if system}
 	<SystemGroupLinks

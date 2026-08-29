@@ -681,6 +681,16 @@
 	"planetary_system_radii": "{value} raggi di {primary}",
 	"planetary_system_retrograde": "retrogrado",
 	"planetary_system_title": "Sistema di {primary}",
+	"moons_count_moon": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} luna",
+				"countPlural=other": "{count} lune"
+			}
+		}
+	],
 	"system_moon_discovery": "Scoperte di lune",
 	"type_comet": "cometa",
 	"type_debris": "detriti",

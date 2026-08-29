@@ -693,6 +693,16 @@
 	"planetary_system_radii": "{primary}半径 {value}",
 	"planetary_system_retrograde": "逆行",
 	"planetary_system_title": "{primary}系",
+	"moons_count_moon": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} 個の衛星",
+				"countPlural=other": "{count} 個の衛星"
+			}
+		}
+	],
 	"system_moon_discovery": "衛星の発見",
 	"type_comet": "彗星",
 	"type_debris": "デブリ",

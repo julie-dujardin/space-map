@@ -681,6 +681,16 @@
 	"planetary_system_radii": "{value} רדיוסים של {primary}",
 	"planetary_system_retrograde": "רטרוגרדי",
 	"planetary_system_title": "מערכת {primary}",
+	"moons_count_moon": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "ירח {count}",
+				"countPlural=other": "{count} ירחים"
+			}
+		}
+	],
 	"system_moon_discovery": "גילויי ירחים",
 	"type_comet": "שביט",
 	"type_debris": "פסולת",
