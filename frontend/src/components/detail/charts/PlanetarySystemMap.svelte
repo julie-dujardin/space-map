@@ -12,25 +12,19 @@
 
 	// Sizes are linear and scaled so the largest moon reads at TOP_MOON_R, which
 	// keeps moon-against-moon true within a system — the comparison the page is
-	// about. The primary follows at the same scale and so runs off the left edge,
-	// showing only the limb: exactly how the Solar System map frames the Sun.
-	// Its drawn radius is clamped only to keep the SVG circle sane; the visible
-	// crescent is the same 40 px wide whatever the radius, since the right limb is
-	// pinned just left of the axis.
+	// about. The primary is at the same scale, right limb pinned just left of the
+	// axis: a giant runs off the left edge as a wall, a Pluto-sized primary sits
+	// there as a whole disc. Same framing as the Solar System map's Sun.
 	const TOP_MOON_R = 14;
-	// Past this the limb is a straight edge and the primary reads as a wall, not
-	// a body; giants clamp here and so are explicitly not to the moons' scale.
-	const PLANET_R_MAX = 300;
 	const MIN_R = 1.9; // floor so the small irregulars stay visible dots
-	const PLANET_LIMB_X = X_LEFT - 4; // where the primary's right limb sits
+	const PLANET_LIMB_X = X_LEFT - 4;
+	const PLANET_RIM = 10; // px of limb shading, fixed so a wall-sized primary keeps a visible edge
 
 	const PX_PER_DEG = 0.62; // inclination → vertical offset
 	const MAX_OFFSET = 84;
 
 	const HIT_MARGIN = 14;
 
-	const TIP_HALF = 72;
-	const TIP_H = 28;
 	const DRAG_SLOP = 8;
 
 	/** Axis ticks, in primary radii — the decade ladder, trimmed to the domain. */
@@ -51,11 +45,12 @@
 
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { getLocale } from '$lib/paraglide/runtime.js';
-	import { ltrIsolate } from '$lib/format/bidi';
+	import { formatDistance } from '$lib/format/distance';
+	import { AU_KM } from '$lib/math/units';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { getContext } from 'svelte';
+	import ChartTip from './ChartTip.svelte';
 	import { focusHref, focusClick } from '$lib/state/focus-link';
 	import type { PlanetarySystem, SystemMoon } from './planetary-system.svelte';
 
@@ -106,14 +101,10 @@
 		})
 	);
 
-	/** Locale-aware "N R<primary>" — the axis unit and every distance readout. */
-	function rpLabel(rp: number): string {
-		const digits = rp < 10 ? 1 : 0;
-		const n = rp.toLocaleString(getLocale(), {
-			minimumFractionDigits: digits,
-			maximumFractionDigits: digits
-		});
-		return ltrIsolate(m.planetary_system_radii({ value: n, primary: system.planetName }));
+	/** Real units for the tooltips; the axis alone keeps primary radii, which is
+	 *  what makes one system comparable with another. */
+	function kmLabel(rp: number): string {
+		return formatDistance((rp * system.planetRadiusKm) / AU_KM);
 	}
 
 	interface PlacedMoon extends SystemMoon {
@@ -134,7 +125,7 @@
 	let kmToPx = $derived(
 		TOP_MOON_R / Math.max(...system.moons.map((mn) => mn.radiusKm).filter((r) => r > 0), 1)
 	);
-	let planetR = $derived(Math.min(PLANET_R_MAX, system.planetRadiusKm * kmToPx));
+	let planetR = $derived(system.planetRadiusKm * kmToPx);
 	let planetCx = $derived(PLANET_LIMB_X - planetR);
 
 	// Same greedy placement as the Solar System map: inclination sets the vertical
@@ -179,7 +170,12 @@
 	}
 	let tip = $derived.by<Tip | null>(() => {
 		if (hoveredId === system.planet.data.id)
-			return { cx: X_LEFT, cy: 46, title: system.planetName, sub: m.planetary_system_primary() };
+			return {
+				cx: Math.max(X_LEFT, planetCx),
+				cy: CY - Math.min(planetR, CY - 40),
+				title: system.planetName,
+				sub: m.planetary_system_primary()
+			};
 		const mn = placed.find((p) => p.id === hoveredId);
 		if (mn)
 			return {
@@ -187,15 +183,15 @@
 				cy: mn.cy - mn.r - 4,
 				title: mn.name,
 				sub: isRetrograde(mn.tiltDeg)
-					? `${rpLabel(mn.aRp)} · ${m.planetary_system_retrograde()}`
-					: rpLabel(mn.aRp)
+					? `${kmLabel(mn.aRp)} · ${m.planetary_system_retrograde()}`
+					: kmLabel(mn.aRp)
 			};
 		if (hoveredRings && ringBand && system.rings)
 			return {
 				cx: ringBand.x + ringBand.width / 2,
 				cy: 50,
 				title: m.tab_rings(),
-				sub: `${rpLabel(system.rings.innerRp)}–${rpLabel(system.rings.outerRp)}`
+				sub: `${kmLabel(system.rings.innerRp)}–${kmLabel(system.rings.outerRp)}`
 			};
 		return null;
 	});
@@ -283,11 +279,20 @@
 			<!-- Limb darkening of the primary's own tint, matching how the Solar
 			     System map frames the Sun: only the outer edge of this gradient is on
 			     screen, so the darkening is what gives the sliver its curve. -->
-			<radialGradient id="psmap-planet" cx="50%" cy="50%" r="50%">
+			<radialGradient
+				id="psmap-planet"
+				gradientUnits="userSpaceOnUse"
+				cx={planetCx}
+				cy={CY}
+				r={planetR}
+			>
 				<stop offset="0%" stop-color={system.planetColor} stop-opacity="1" />
-				<stop offset="70%" stop-color={system.planetColor} stop-opacity="0.85" />
-				<stop offset="92%" stop-color={system.planetColor} stop-opacity="0.5" />
-				<stop offset="100%" stop-color={system.planetColor} stop-opacity="0.15" />
+				<stop
+					offset={Math.max(0, 1 - PLANET_RIM / planetR)}
+					stop-color={system.planetColor}
+					stop-opacity="0.85"
+				/>
+				<stop offset="100%" stop-color={system.planetColor} stop-opacity="0.35" />
 			</radialGradient>
 			<pattern id="psmap-ring" width="8" height="8" patternUnits="userSpaceOnUse">
 				<circle cx="2" cy="2" r="0.8" fill="currentColor" opacity="0.5" />
@@ -330,7 +335,8 @@
 			</text>
 		{/if}
 
-		<!-- Rings: a band across the radii they span, behind the moons that share them. -->
+		<!-- Rings: a band across the radii they span, behind the moons that share
+		     them. Links to the primary's Rings tab like a belt links to its group. -->
 		{#if ringBand}
 			{#snippet ringDots()}
 				<rect
@@ -345,10 +351,16 @@
 			{#if isBackground}
 				{@render ringDots()}
 			{:else}
-				<g
-					role="presentation"
+				<a
+					href={focusHref(appState, system.planet.data.id, system.planetName, 'rings')}
+					onclick={focusClick(focusObject, system.planet.data.id, system.planetName, {
+						tab: 'rings'
+					})}
 					onpointerenter={() => (hoveredRings = true)}
 					onpointerleave={() => (hoveredRings = false)}
+					onfocus={() => (hoveredRings = true)}
+					onblur={() => (hoveredRings = false)}
+					aria-label={m.tab_rings()}
 				>
 					{@render ringDots()}
 					<rect
@@ -367,7 +379,7 @@
 					>
 						{m.tab_rings()}
 					</text>
-				</g>
+				</a>
 			{/if}
 		{/if}
 
@@ -426,18 +438,14 @@
 		{/each}
 	</svg>
 
-	<!-- Tooltip overlay, positioned in px and clamped to the chart box. The aspect
-	     is fixed, so a viewBox unit maps to containerW/VIEW_W px on both axes. -->
+	<!-- The aspect is fixed, so a viewBox unit maps to containerW/VIEW_W px. -->
 	{#if tip && !isBackground}
-		{@const cxPx = (tip.cx / VIEW_W) * containerW}
-		{@const leftPx = Math.min(Math.max(cxPx, TIP_HALF), Math.max(TIP_HALF, containerW - TIP_HALF))}
-		{@const topPx = Math.max(4, (tip.cy / VIEW_W) * containerW - TIP_H)}
-		<div
-			class="bg-background/90 text-foreground pointer-events-none absolute z-10 -translate-x-1/2 rounded px-2 py-1 text-xs whitespace-nowrap shadow-sm backdrop-blur-sm"
-			style="left: {leftPx}px; top: {topPx}px"
-		>
-			<span class="font-medium">{tip.title}</span>
-			{#if tip.sub}<span class="text-muted-foreground">· {tip.sub}</span>{/if}
-		</div>
+		<ChartTip
+			cx={(tip.cx / VIEW_W) * containerW}
+			cy={(tip.cy / VIEW_W) * containerW}
+			{containerW}
+			title={tip.title}
+			sub={tip.sub}
+		/>
 	{/if}
 </div>

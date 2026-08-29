@@ -669,7 +669,6 @@
 	"type_barycenter": "مركز ثقل",
 	"planetary_system_axis_unit": "أنصاف أقطار الجرم الرئيسي · لوغاريتمي",
 	"planetary_system_primary": "الجرم الرئيسي",
-	"planetary_system_radii": "{value} من أنصاف أقطار {primary}",
 	"planetary_system_retrograde": "تراجعي",
 	"planetary_system_title": "نظام {primary}",
 	"moons_count_moon": [

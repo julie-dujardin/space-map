@@ -678,7 +678,6 @@
 	"type_barycenter": "Baryzentrum",
 	"planetary_system_axis_unit": "Primärradien · log",
 	"planetary_system_primary": "Primärkörper",
-	"planetary_system_radii": "{value} {primary}-Radien",
 	"planetary_system_retrograde": "retrograd",
 	"planetary_system_title": "System {primary}",
 	"moons_count_moon": [

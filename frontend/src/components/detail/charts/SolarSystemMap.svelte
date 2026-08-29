@@ -37,9 +37,6 @@
 
 	const AXIS_TICKS = [0.3, 1, 3, 10, 30];
 
-	const TIP_HALF = 64; // px; keeps the tooltip's center this far from either edge
-	const TIP_H = 28; // px; approx tooltip height, to seat it above the anchor
-
 	function xOf(a: number): number {
 		return X_LEFT + ((Math.log10(a) - LOG_MIN) / LOG_SPAN) * (X_RIGHT - X_LEFT);
 	}
@@ -47,6 +44,7 @@
 
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
+	import ChartTip from './ChartTip.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { ltrIsolate } from '$lib/format/bidi';
@@ -632,19 +630,14 @@
 		{/if}
 	</svg>
 
-	<!-- Tooltip overlay, positioned in px and clamped to the chart box so it can't
-	     spill past any edge (the chart itself is overflow-clipped). The aspect is
-	     fixed, so a viewBox unit maps to containerW/VIEW_W px on both axes. -->
+	<!-- The aspect is fixed, so a viewBox unit maps to containerW/VIEW_W px. -->
 	{#if tip}
-		{@const cxPx = (tip.cx / VIEW_W) * containerW}
-		{@const leftPx = Math.min(Math.max(cxPx, TIP_HALF), Math.max(TIP_HALF, containerW - TIP_HALF))}
-		{@const topPx = Math.max(4, (tip.cy / VIEW_W) * containerW - TIP_H)}
-		<div
-			class="bg-background/90 text-foreground pointer-events-none absolute z-10 -translate-x-1/2 rounded px-2 py-1 text-xs whitespace-nowrap shadow-sm backdrop-blur-sm"
-			style="left: {leftPx}px; top: {topPx}px"
-		>
-			<span class="font-medium">{tip.title}</span>
-			{#if tip.sub}<span class="text-muted-foreground">· {tip.sub}</span>{/if}
-		</div>
+		<ChartTip
+			cx={(tip.cx / VIEW_W) * containerW}
+			cy={(tip.cy / VIEW_W) * containerW}
+			{containerW}
+			title={tip.title}
+			sub={tip.sub}
+		/>
 	{/if}
 </div>

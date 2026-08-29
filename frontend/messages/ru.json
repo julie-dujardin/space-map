@@ -644,7 +644,6 @@
 	"type_barycenter": "барицентр",
 	"planetary_system_axis_unit": "радиусы главного тела · лог",
 	"planetary_system_primary": "главное тело",
-	"planetary_system_radii": "{value} радиусов {primary}",
 	"planetary_system_retrograde": "обратное",
 	"planetary_system_title": "Система {primary}",
 	"moons_count_moon": [

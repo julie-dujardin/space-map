@@ -692,7 +692,6 @@
 	"type_barycenter": "barycentrum",
 	"planetary_system_axis_unit": "promienie ciała głównego · log",
 	"planetary_system_primary": "ciało główne",
-	"planetary_system_radii": "{value} promieni {primary}",
 	"planetary_system_retrograde": "wsteczna",
 	"planetary_system_title": "Układ {primary}",
 	"moons_count_moon": [

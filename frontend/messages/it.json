@@ -678,7 +678,6 @@
 	"type_barycenter": "baricentro",
 	"planetary_system_axis_unit": "raggi del primario · log",
 	"planetary_system_primary": "primario",
-	"planetary_system_radii": "{value} raggi di {primary}",
 	"planetary_system_retrograde": "retrogrado",
 	"planetary_system_title": "Sistema di {primary}",
 	"moons_count_moon": [
