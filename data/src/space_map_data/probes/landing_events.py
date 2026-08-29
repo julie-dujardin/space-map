@@ -1,33 +1,35 @@
 """Load landed phases from probe event JSONs.
 
 Walks ``DOWNLOAD_DIR/probes/events/*.json``, yields one ``LandingPhase`` per
-``landing`` event on a probe with a root ``landing_site`` block. Phase end
-is the next ``_DEPARTURE_TYPES`` event or ``end_date`` on the landing
-itself; otherwise the probe stays landed forever (Apollo descent stages,
-Veneras, Surveyors). Earth landings are capped to one month so sample-return
-capsules and launch failures don't clutter Earth after touchdown.
+``landing`` or ``reentry`` event that carries a ``site``. Phase end is the
+next ``_DEPARTURE_TYPES`` event or ``end_date`` on the landing itself;
+otherwise the probe stays landed forever (Apollo descent stages, Veneras,
+Surveyors). Earth landings are capped to one month so sample-return capsules
+and launch failures don't clutter Earth after touchdown.
 
-Schema is the canonical one produced by ``scripts/normalize_probe_events.py``:
+The site sits on the event, not the probe, so a craft that touches down more
+than once gets a phase per touchdown at its own coordinates (Hayabusa2's
+three Ryugu contacts, LCROSS, the Chang'e 5/6 lander-ascenders):
 
     {
+      "probe_id": 12345,
       "name": "...",
-      "landing_site": {
-        "target_body_naif": 299,
-        "lat_deg": 7.5,
-        "lon_deg": 177.7,
-        "site_name": "..." | null
-      },
       "events": [
         ...,
         {"type": "landing", "date": "...", "outcome": "...",
+         "target": {"naif": 299, "name": "Venus"},
+         "site": {"lat_deg": 7.5, "lon_deg": 177.7, "name": "..." | null},
          "intentional"?: bool, "end_date"?: "...", ...}
       ]
     }
 
-Asteroid landings use Horizons-NAIF in ``target_body_naif``
-(``2_000_000+n``), mapped to SBDB SPKID (``20_000_000+n``) to match the
-DB row (``spkid-N``). Comets share the ``1_000_000+n`` scheme between
-NAIF and SPKID — only the id-type byte changes.
+An event with no ``site`` — or a ``burnup_above_surface`` outcome — reached
+no fixed surface point and yields no phase.
+
+Asteroid landings use Horizons-NAIF in ``target.naif`` (``2_000_000+n``),
+mapped to SBDB SPKID (``20_000_000+n``) to match the DB row (``spkid-N``).
+Comets share the ``1_000_000+n`` scheme between NAIF and SPKID — only the
+id-type byte changes.
 """
 
 import datetime
@@ -65,6 +67,11 @@ _DEPARTURE_TYPES = frozenset(
         "interstellar_boundary_crossed",
     }
 )
+
+# Events that can pin the probe to a surface point. ``reentry`` carries the
+# splashdown coordinates for craft that never reached their target and came
+# down on Earth instead (Mars 96, Fobos-Grunt, Yinghuo-1).
+_SITED_TYPES = frozenset({"landing", "reentry"})
 
 _NAIF = ID_TYPE_ORDINAL[ID_TYPES.NAIF]
 _SPKID = ID_TYPE_ORDINAL[ID_TYPES.SPKID]
@@ -145,7 +152,7 @@ def _phase_end_et(
             end = jd_to_et(_parse_iso_to_jd(landing["end_date"]))
             if end > start_et:
                 return end
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             logger.warning(
                 "events: unparseable end_date %r on %s; falling back to next-departure",
                 landing.get("end_date"),
@@ -156,50 +163,47 @@ def _phase_end_et(
             continue
         try:
             end = jd_to_et(_parse_iso_to_jd(nxt["date"]))
-        except (ValueError, TypeError, KeyError):
+        except ValueError, TypeError, KeyError:
             continue
         if end > start_et:
             return end
     return None
 
 
-def _spk_covered_cospars() -> set[str]:
-    """COSPAR IDs already owned by an SPK-covered probe in the registry.
+def _spk_covered_probe_ids() -> set[int]:
+    """Registry probe_ids already owned by an SPK kernel.
 
     Skips events-driven phases for missions that also publish a SPICE
     landed kernel — Viking 1/2 have both an events-DB entry and an SPK
-    entry pointing at the same lander via COSPAR. Emitting a phase here
-    too would double-render the spacecraft.
+    entry for the same lander. Emitting a phase here too would
+    double-render the spacecraft.
     """
     from space_map_data.probes.probe_id import load_registry
 
-    out: set[str] = set()
-    for entry in load_registry():
-        if all(s["mission"] == "EVENTS-DB" for s in entry["kernel_sources"]):
-            continue
-        cospar = entry.get("cospar_id")
-        if cospar:
-            out.add(cospar)
-    return out
+    return {
+        int(entry["probe_id"])
+        for entry in load_registry()
+        if not all(s["mission"] == "EVENTS-DB" for s in entry["kernel_sources"])
+    }
 
 
 def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
-    """Read every events JSON; emit one ``LandingPhase`` per ``landing`` event
-    on a probe that has a root ``landing_site`` block.
+    """Read every events JSON; emit one ``LandingPhase`` per ``landing`` or
+    ``reentry`` event carrying a ``site``.
     ``end_et_for_indefinite`` is the upper bound for probes that stay on the
     surface (caller passes ``jd_to_et(year_to_jd(PROBE_EXPORT_END_YEAR))``).
     """
     if not EVENTS_DIR.exists():
         logger.info("No events dir at %s; no events-driven landings", EVENTS_DIR)
         return []
-    spk_cospars = _spk_covered_cospars()
+    spk_probe_ids = _spk_covered_probe_ids()
     out: list[LandingPhase] = []
-    skipped_no_landing_site = 0
+    skipped_incomplete_site = 0
     skipped_spk_covered = 0
     for path in sorted(EVENTS_DIR.glob("*.json")):
         try:
             data = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError):
+        except OSError, json.JSONDecodeError:
             logger.exception("events: failed to read %s; skipping", path)
             continue
         for probe in data.get("probes", []):
@@ -213,51 +217,45 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
             # SPK-covered missions (Viking 1/2 Lander, …) are handled by
             # the SPICE landed pipeline; emitting a phase here too would
             # double-render them.
-            cospar = probe.get("cospar_id")
-            if cospar and cospar in spk_cospars:
+            if int(pid) in spk_probe_ids:
                 skipped_spk_covered += 1
                 logger.debug(
-                    "events: %s has SPK coverage (COSPAR %s); deferring to SPICE pipeline",
-                    name,
-                    cospar,
+                    "events: %s has SPK coverage; deferring to SPICE pipeline", name
                 )
                 continue
-            site = probe.get("landing_site")
-            if not isinstance(site, dict):
-                # No landing_site means no fixed surface point was reached
-                # (burnups, orbit-only end-of-mission impacts). Skip
-                # silently — the script flagged surprises at migration.
-                continue
-            naif = site.get("target_body_naif")
-            lat = site.get("lat_deg")
-            lng = site.get("lon_deg")
-            if naif is None or lat is None or lng is None:
-                skipped_no_landing_site += 1
-                logger.info(
-                    "events: %s landing_site missing required field "
-                    "(target_body_naif/lat_deg/lon_deg); skipping",
-                    name,
-                )
-                continue
-            body_id_type, body_id_value = _resolve_body(int(naif))
-            site_name = site.get("site_name")
             events = probe.get("events", [])
             for i, ev in enumerate(events):
-                if ev.get("type") != "landing":
+                if ev.get("type") not in _SITED_TYPES:
+                    continue
+                site = ev.get("site")
+                if not isinstance(site, dict):
                     continue
                 if ev.get("outcome") == "burnup_above_surface":
-                    # Defensive: shouldn't coexist with a root landing_site,
-                    # but if it does, burnup wins and the phase is dropped.
+                    # A burn-up reached no surface, so any site on it is a
+                    # ground track rather than a resting place.
+                    continue
+                naif = (ev.get("target") or {}).get("naif")
+                lat = site.get("lat_deg")
+                lng = site.get("lon_deg")
+                if naif is None or lat is None or lng is None:
+                    skipped_incomplete_site += 1
+                    logger.info(
+                        "events: %s %s site missing required field "
+                        "(target.naif/lat_deg/lon_deg); skipping",
+                        name,
+                        ev.get("type"),
+                    )
                     continue
                 try:
                     start_et = jd_to_et(_parse_iso_to_jd(ev["date"]))
-                except (ValueError, TypeError, KeyError):
+                except ValueError, TypeError, KeyError:
                     logger.exception(
                         "events: %s landing date %r unparseable; skipping",
                         name,
                         ev.get("date"),
                     )
                     continue
+                body_id_type, body_id_value = _resolve_body(int(naif))
                 end_et = _phase_end_et(events, i, start_et)
                 if end_et is None:
                     end_et = end_et_for_indefinite
@@ -273,14 +271,14 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                         lng_deg=float(lng),
                         start_et=start_et,
                         end_et=end_et,
-                        site_name=site_name,
+                        site_name=site.get("name"),
                     )
                 )
     logger.info(
-        "events: loaded %d landed phases (skipped: %d unresolvable landing_site, "
+        "events: loaded %d landed phases (skipped: %d incomplete site, "
         "%d deferred to SPICE)",
         len(out),
-        skipped_no_landing_site,
+        skipped_incomplete_site,
         skipped_spk_covered,
     )
     return out

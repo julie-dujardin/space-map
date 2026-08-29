@@ -40,13 +40,14 @@ class ProbeMission:
     status: str | None = None
 
 
-def _probe_statuses() -> dict[str, dict]:
-    """Curated craft status by COSPAR id and by name, from the events files.
+def _probe_statuses() -> dict[int, dict]:
+    """Curated craft status by registry probe_id, from the events files.
 
-    Both keys are needed: pre-COSPAR and never-catalogued craft (Comet
-    Interceptor) carry no id, and registry names match the events files.
+    probe_id is the only identifier both sides always carry: the events files
+    name craft their own way (``Galileo Orbiter`` for the registry's
+    ``Galileo``) and pre-COSPAR craft have no catalogue id.
     """
-    out: dict[str, dict] = {}
+    out: dict[int, dict] = {}
     for path in sorted(EVENTS_DIR.glob("*.json")):
         try:
             probes = json.loads(path.read_text()).get("probes", [])
@@ -55,12 +56,9 @@ def _probe_statuses() -> dict[str, dict]:
             continue
         for probe in probes:
             status = probe.get("status")
-            if not status:
-                continue
-            if cospar := probe.get("cospar_id"):
-                out[cospar] = status
-            if name := probe.get("name"):
-                out.setdefault(name, status)
+            probe_id = probe.get("probe_id")
+            if status and probe_id is not None:
+                out[int(probe_id)] = status
     return out
 
 
@@ -125,9 +123,7 @@ def build_probe_missions() -> list[ProbeMission]:
         )
         # The mission's state is its primary craft's; siblings are stages and
         # landers whose own fates the page lists individually.
-        raw_status = statuses.get(entry.get("cospar_id") or "") or statuses.get(
-            entry.get("name") or ""
-        )
+        raw_status = statuses.get(int(entry["probe_id"]))
         if raw_status is None:
             unmatched.append(entry.get("name") or slug)
         missions.append(

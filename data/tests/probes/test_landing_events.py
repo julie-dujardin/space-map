@@ -41,17 +41,17 @@ def test_apollo_descent_stage_stays_landed_forever(events_root: Path) -> None:
             {
                 "probe_id": 36904960,
                 "name": "Apollo 11 LM Eagle Descent Stage",
-                "landing_site": {
-                    "target_body_naif": 301,
-                    "lat_deg": 0.67408,
-                    "lon_deg": 23.47297,
-                    "site_name": "Tranquility Base",
-                },
                 "events": [
                     {
                         "type": "landing",
                         "date": "1969-07-20T20:17:40Z",
                         "outcome": "controlled",
+                        "target": {"naif": 301, "name": "Moon"},
+                        "site": {
+                            "lat_deg": 0.67408,
+                            "lon_deg": 23.47297,
+                            "name": "Tranquility Base",
+                        },
                     },
                     {"type": "observation", "date": "1969-07-21"},
                 ],
@@ -71,8 +71,9 @@ def test_apollo_descent_stage_stays_landed_forever(events_root: Path) -> None:
     assert p.site_name == "Tranquility Base"
 
 
-def test_two_landings_emit_two_phases_with_root_site(events_root: Path) -> None:
-    """Two landings on the same body emit two phases, bounded by the next departure-type event."""
+def test_two_landings_emit_two_phases(events_root: Path) -> None:
+    """Two touchdowns on one body emit two phases at their own coordinates,
+    bounded by the next departure-type event."""
     _write(
         events_root,
         "asteroids.json",
@@ -80,22 +81,21 @@ def test_two_landings_emit_two_phases_with_root_site(events_root: Path) -> None:
             {
                 "probe_id": 87474176,
                 "name": "Hayabusa",
-                "landing_site": {
-                    "target_body_naif": 2025143,  # Itokawa, Horizons NAIF
-                    "lat_deg": 3.0,
-                    "lon_deg": 4.0,
-                    "site_name": None,
-                },
                 "events": [
                     {
                         "type": "landing",
                         "date": "2005-11-19T21:30:00Z",
                         "outcome": "controlled",
+                        # Itokawa, Horizons NAIF
+                        "target": {"naif": 2025143, "name": "Itokawa"},
+                        "site": {"lat_deg": 3.0, "lon_deg": 4.0, "name": None},
                     },
                     {
                         "type": "landing",
                         "date": "2005-11-25T22:07:00Z",
                         "outcome": "controlled",
+                        "target": {"naif": 2025143, "name": "Itokawa"},
+                        "site": {"lat_deg": -8.0, "lon_deg": 12.0, "name": None},
                     },
                     {"type": "orbit_departure", "date": "2007-04-25"},
                     {"type": "mission_end", "date": "2010-06-13T13:57:00Z"},
@@ -111,6 +111,9 @@ def test_two_landings_emit_two_phases_with_root_site(events_root: Path) -> None:
     assert a.body_id_value == 20025143
     assert b.body_id_type == _SPKID
     assert b.body_id_value == 20025143
+    # Each touchdown keeps its own coordinates.
+    assert (a.lat_deg, a.lng_deg) == pytest.approx((3.0, 4.0))
+    assert (b.lat_deg, b.lng_deg) == pytest.approx((-8.0, 12.0))
     # First phase ends where the second begins (next departure-type event).
     assert a.end_et == pytest.approx(_et("2005-11-25T22:07:00"))
     # Ends at orbit_departure, not mission_end: dying on the surface keeps a probe pinned.
@@ -126,18 +129,15 @@ def test_pioneer_venus_uses_end_date(events_root: Path) -> None:
             {
                 "probe_id": 50446339,
                 "name": "Pioneer Venus Day Probe",
-                "landing_site": {
-                    "target_body_naif": 299,
-                    "lat_deg": -31.3,
-                    "lon_deg": -43.0,  # 317°E wrapped
-                    "site_name": None,
-                },
                 "events": [
                     {
                         "type": "landing",
                         "date": "1978-12-09T19:47:59Z",
                         "end_date": "1978-12-09T20:55:36Z",
                         "outcome": "controlled",
+                        "target": {"naif": 299, "name": "Venus"},
+                        # 317°E wrapped
+                        "site": {"lat_deg": -31.3, "lon_deg": -43.0, "name": None},
                     },
                     {"type": "mission_end", "date": "1978-12-09T20:55:36Z"},
                 ],
@@ -151,8 +151,8 @@ def test_pioneer_venus_uses_end_date(events_root: Path) -> None:
     assert p.end_et == pytest.approx(_et("1978-12-09T20:55:36"))
 
 
-def test_missing_landing_site_is_skipped(events_root: Path) -> None:
-    """A landing event without a root ``landing_site`` block yields no phase."""
+def test_missing_site_is_skipped(events_root: Path) -> None:
+    """A landing event carrying no ``site`` block yields no phase."""
     _write(
         events_root,
         "lunar.json",
@@ -174,7 +174,7 @@ def test_missing_landing_site_is_skipped(events_root: Path) -> None:
 
 
 def test_burnup_above_surface_yields_no_phase(events_root: Path) -> None:
-    """A ``burnup_above_surface`` outcome yields no phase even if landing_site is present."""
+    """A ``burnup_above_surface`` outcome yields no phase even with a site on the event."""
     _write(
         events_root,
         "venus.json",
@@ -182,19 +182,15 @@ def test_burnup_above_surface_yields_no_phase(events_root: Path) -> None:
             {
                 "probe_id": 50446340,
                 "name": "Pioneer Venus 2 Bus",
-                # outcome wins over the stray landing_site.
-                "landing_site": {
-                    "target_body_naif": 299,
-                    "lat_deg": -37.9,
-                    "lon_deg": -69.1,
-                    "site_name": None,
-                },
                 "events": [
                     {
                         "type": "landing",
                         "date": "1978-12-09T20:21:52Z",
                         "outcome": "burnup_above_surface",
                         "intentional": True,
+                        # Outcome wins over the stray site.
+                        "target": {"naif": 299, "name": "Venus"},
+                        "site": {"lat_deg": -37.9, "lon_deg": -69.1, "name": None},
                     },
                 ],
             }
@@ -212,17 +208,17 @@ def test_sample_return_capsule_lands_on_earth(events_root: Path) -> None:
             {
                 "probe_id": 113000000,
                 "name": "OSIRIS-REx SRC",
-                "landing_site": {
-                    "target_body_naif": 399,
-                    "lat_deg": 40.4,
-                    "lon_deg": -113.0,
-                    "site_name": "Utah Test and Training Range",
-                },
                 "events": [
                     {
                         "type": "landing",
                         "date": "2023-09-24T14:52Z",
                         "outcome": "controlled",
+                        "target": {"naif": 399, "name": "Earth"},
+                        "site": {
+                            "lat_deg": 40.4,
+                            "lon_deg": -113.0,
+                            "name": "Utah Test and Training Range",
+                        },
                     }
                 ],
             }
@@ -247,18 +243,14 @@ def test_short_earth_landing_keeps_real_end(events_root: Path) -> None:
             {
                 "probe_id": 113000001,
                 "name": "Short-lived Earth capsule",
-                "landing_site": {
-                    "target_body_naif": 399,
-                    "lat_deg": 0.0,
-                    "lon_deg": 0.0,
-                    "site_name": None,
-                },
                 "events": [
                     {
                         "type": "landing",
                         "date": "2023-09-24T14:52:00Z",
                         "end_date": "2023-09-24T16:00:00Z",
                         "outcome": "controlled",
+                        "target": {"naif": 399, "name": "Earth"},
+                        "site": {"lat_deg": 0.0, "lon_deg": 0.0, "name": None},
                     },
                 ],
             }
@@ -278,17 +270,13 @@ def test_comet_naif_keeps_value_changes_id_type(events_root: Path) -> None:
             {
                 "probe_id": 95001000,
                 "name": "Imagined Comet Lander",
-                "landing_site": {
-                    "target_body_naif": 1000012,
-                    "lat_deg": 10.0,
-                    "lon_deg": 20.0,
-                    "site_name": None,
-                },
                 "events": [
                     {
                         "type": "landing",
                         "date": "2020-01-01T00:00:00Z",
                         "outcome": "controlled",
+                        "target": {"naif": 1000012, "name": "Imagined Comet"},
+                        "site": {"lat_deg": 10.0, "lon_deg": 20.0, "name": None},
                     }
                 ],
             }
@@ -310,17 +298,13 @@ def test_lower_precision_followup_is_skipped(events_root: Path) -> None:
             {
                 "probe_id": 115000000,
                 "name": "Chang'e 6 returner module",
-                "landing_site": {
-                    "target_body_naif": 399,
-                    "lat_deg": 41.6,
-                    "lon_deg": 111.7,
-                    "site_name": None,
-                },
                 "events": [
                     {
                         "type": "landing",
                         "date": "2024-06-25T06:07:00Z",
                         "outcome": "controlled",
+                        "target": {"naif": 399, "name": "Earth"},
+                        "site": {"lat_deg": 41.6, "lon_deg": 111.7, "name": None},
                     },
                     {"type": "sample_return", "date": "2024-06-25"},
                 ],
@@ -335,15 +319,15 @@ def test_lower_precision_followup_is_skipped(events_root: Path) -> None:
     )
 
 
-def test_spk_covered_probe_skipped_by_cospar(
+def test_spk_covered_probe_skipped(
     events_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """When a probe's `cospar_id` matches an SPK-covered probe, the loader skips
-    the events phase so the SPICE pipeline owns the landing."""
+    """A probe the registry backs with a real kernel is left to the SPICE
+    landed pipeline, so the events loader emits nothing for it."""
     monkeypatch.setattr(
         landing_events,
-        "_spk_covered_cospars",
-        lambda: {"1975-075C"},
+        "_spk_covered_probe_ids",
+        lambda: {46006272},
     )
     _write(
         events_root,
@@ -352,24 +336,56 @@ def test_spk_covered_probe_skipped_by_cospar(
             {
                 "probe_id": 46006272,
                 "name": "Viking 1 Lander",
-                "cospar_id": "1975-075C",
-                "landing_site": {
-                    "target_body_naif": 499,
-                    "lat_deg": 22.697,
-                    "lon_deg": -48.222,
-                    "site_name": "Chryse Planitia",
-                },
                 "events": [
                     {
                         "type": "landing",
                         "date": "1976-07-20T11:53:06Z",
                         "outcome": "controlled",
+                        "target": {"naif": 499, "name": "Mars"},
+                        "site": {
+                            "lat_deg": 22.697,
+                            "lon_deg": -48.222,
+                            "name": "Chryse Planitia",
+                        },
                     }
                 ],
             }
         ],
     )
     assert landing_events.load_phases(_INDEFINITE_END) == []
+
+
+def test_reentry_site_pins_a_failed_probe_to_earth(events_root: Path) -> None:
+    """A craft that never left Earth orbit comes down at a `reentry` site
+    rather than a `landing` one (Mars 96, Fobos-Grunt, Yinghuo-1)."""
+    _write(
+        events_root,
+        "mars.json",
+        [
+            {
+                "probe_id": 77787136,
+                "name": "Mars 96",
+                "events": [
+                    {"type": "launch", "date": "1996-11-16T20:48:53Z"},
+                    {
+                        "type": "reentry",
+                        "date": "1996-11-17T01:00:00Z",
+                        "target": {"naif": 399, "name": "Earth"},
+                        "site": {
+                            "lat_deg": -20.0,
+                            "lon_deg": -75.0,
+                            "name": "Pacific Ocean / Atacama region",
+                        },
+                    },
+                ],
+            }
+        ],
+    )
+    phases = landing_events.load_phases(_INDEFINITE_END)
+    assert len(phases) == 1
+    assert phases[0].body_id_value == 399
+    assert phases[0].lat_deg == pytest.approx(-20.0)
+    assert phases[0].site_name == "Pacific Ocean / Atacama region"
 
 
 def test_parse_iso_handles_partial_dates() -> None:
