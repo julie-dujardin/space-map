@@ -371,6 +371,10 @@ export interface GlobalObjectData {
 	/** Archive id (e.g. `"naif"`, `"esa"`, `"naif-pds3"`); resolves to a
 	 *  label via `$lib/credits/archive-labels`. */
 	ephemeris_source?: string;
+	/** Median position error in km, present only where the trajectory was
+	 *  derived from published elements rather than tracked. Its absence means
+	 *  the position is an archive solution, not that the error is unknown. */
+	ephemeris_accuracy_km?: number;
 	cross_refs?: {
 		wikidata_qid?: string;
 		naif_id?: number;

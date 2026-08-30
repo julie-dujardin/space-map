@@ -20,7 +20,10 @@ from pathlib import Path
 
 from space_map_data.constants.occultation_shapes import occultation_radii
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.export.ephemeris import ephemeris_archive_for
+from space_map_data.export.ephemeris import (
+    ephemeris_accuracy_for,
+    ephemeris_archive_for,
+)
 from space_map_data.export.wikidata import (
     WikidataEntity,
     WikidataEntityCache,
@@ -238,6 +241,7 @@ def build_chunk_object_data(
     displacement_metadata: dict[str, dict],
     model_sources: dict[str, dict],
     probe_kernel_sources: dict[int, str | None],
+    probe_ephemeris_accuracy: dict[int, float],
     nomenclature_body_ids: set[str],
     parent_names: dict[str, str],
     taxonomy: dict,
@@ -285,6 +289,7 @@ def build_chunk_object_data(
             displacement_metadata,
             model_sources,
             probe_kernel_sources,
+            probe_ephemeris_accuracy,
             nomenclature_body_ids,
             parent_names,
             taxonomy,
@@ -486,6 +491,7 @@ def _build_global(
     displacement_metadata: dict[str, dict],
     model_sources: dict[str, dict],
     probe_kernel_sources: dict[int, str | None],
+    probe_ephemeris_accuracy: dict[int, float],
     nomenclature_body_ids: set[str],
     parent_names: dict[str, str],
     taxonomy: dict,
@@ -573,6 +579,11 @@ def _build_global(
     archive = ephemeris_archive_for(obj, probe_kernel_sources)
     if archive is not None:
         data["ephemeris_source"] = archive
+    # Present only where the trajectory was derived, so its absence means
+    # tracked rather than unknown.
+    accuracy_km = ephemeris_accuracy_for(obj, probe_ephemeris_accuracy)
+    if accuracy_km is not None:
+        data["ephemeris_accuracy_km"] = round(accuracy_km)
 
     # Orbital elements — parabolic comets use q/tp instead of a/ma/n
     sbdb = obj.sbdb if obj.spkid is not None else None

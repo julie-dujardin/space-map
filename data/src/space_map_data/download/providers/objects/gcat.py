@@ -7,6 +7,8 @@ import httpx
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import DownloadError, Downloader
+from pathlib import Path
+
 from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
@@ -93,6 +95,31 @@ TABLES: tuple[GCATTable, ...] = (
 )
 
 
+def fetch_gcat_table(
+    client: httpx.Client, base_url: str, table: GCATTable, out_dir: Path
+) -> int:
+    """Fetch one GCAT TSV and write it to ``out_dir``. Returns the row count.
+
+    The header check is the contract with the publisher: a redesigned column
+    set fails here rather than reaching the parsers as silently different
+    data. Shared with the Deep Space Catalog, which is a separate publication
+    on the same site with the same conventions."""
+    url = f"{base_url}/{table.path}"
+    response = client.get(url)
+    if response.status_code in (403, 404):
+        raise DownloadError(
+            f"HTTP {response.status_code} fetching {table.filename} — stopping (do not retry)"
+        )
+    response.raise_for_status()
+
+    body = response.text
+    if not body.startswith(table.header):
+        raise DownloadError(f"Unexpected {table.filename} response: {body[:80]!r}")
+
+    (out_dir / table.filename).write_text(body)
+    return sum(1 for line in body.splitlines() if line and not line.startswith("#"))
+
+
 class GCATDownloader(Downloader):
     name = PROVIDERS.GCAT
 
@@ -126,25 +153,6 @@ class GCATDownloader(Downloader):
 
     def _download_table(self, table: GCATTable) -> int:
         logger.info("Downloading GCAT %s...", table.description)
-        url = f"{GCAT_BASE}/{table.path}"
-        response = self.client.get(url)
-        if response.status_code in (403, 404):
-            raise DownloadError(
-                f"HTTP {response.status_code} fetching {table.filename} — stopping (do not retry)"
-            )
-        response.raise_for_status()
-
-        body = response.text
-        if not body.startswith(table.header):
-            raise DownloadError(f"Unexpected {table.filename} response: {body[:80]!r}")
-
-        (self.out_dir / table.filename).write_text(body)
-        # Two comment lines (header + "# Updated ...") precede the data rows.
-        record_count = body.count("\n") - 2
-        logger.info(
-            "Saved %s %s rows -> %s",
-            f"{record_count:,}",
-            table.description,
-            table.filename,
-        )
-        return record_count
+        rows = fetch_gcat_table(self.client, GCAT_BASE, table, self.out_dir)
+        logger.info("  %s: %d rows", table.filename, rows)
+        return rows

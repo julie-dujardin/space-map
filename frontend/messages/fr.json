@@ -968,6 +968,8 @@
 	"tooltip_orbit_epoch": "Date de référence à laquelle les éléments orbitaux sont valides",
 	"orbit_data_source": "Source des données",
 	"tooltip_orbit_data_source": "Fournisseur des éléments orbitaux",
+	"orbit_position_accuracy": "Précision de position",
+	"tooltip_orbit_position_accuracy": "Cette trajectoire a été calculée à partir d'éléments orbitaux publiés et non suivie par une archive de mission ; la position est donc approximative. Le chiffre est l'erreur médiane mesurée sur les sondes qui disposent des deux.",
 	"propagation_method": "Méthode de propagation",
 	"tooltip_propagation_method": "Algorithme utilisé pour calculer la position du corps au cours du temps",
 	"method_kepler": "Kepler à deux corps",
@@ -1265,6 +1267,7 @@
 	"archive_role_naif": "planètes, lunes et engins spatiaux",
 	"archive_role_esa": "trajectoires d'engins spatiaux",
 	"archive_role_naif_pds3": "trajectoires d'engins spatiaux archivées",
+	"archive_role_gcat_deep": "trajectoires déduites d'éléments publiés",
 	"archive_role_naif_pds4": "trajectoires d'engins spatiaux archivées",
 	"archive_role_jaxa_darts": "trajectoires d'engins spatiaux",
 	"country_count": [

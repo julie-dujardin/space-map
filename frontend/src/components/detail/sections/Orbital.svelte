@@ -197,6 +197,16 @@
 		return label();
 	});
 
+	// Present only on trajectories we derived from published elements, so its
+	// absence means an archive solution rather than an unmeasured one.
+	// In AU like every other distance in this panel, and because the figure
+	// comes from a two-significant-figure constant — rendering it in km spells
+	// out seven digits of a number that has two.
+	let positionAccuracy = $derived.by(() => {
+		const km = global?.ephemeris_accuracy_km;
+		return km != null ? `±${formatDistance(km / AU_KM)}` : null;
+	});
+
 	let dataSourceUrl = $derived.by(() => {
 		const archive = global?.ephemeris_source;
 		if (archive) return archiveUrl(archive);
@@ -302,6 +312,7 @@
 				{/if}
 			</Row>
 		{/if}
+		{@render accuracyRow()}
 	</Section>
 {:else if hasContent && !isStar}
 	<Section title={m.orbital_elements()}>
@@ -462,6 +473,7 @@
 				{/if}
 			</Row>
 		{/if}
+		{@render accuracyRow()}
 		{#if propagationMethodLabel}
 			<Row
 				label={m.propagation_method()}
@@ -476,6 +488,16 @@
 		{@render rotationRow(rotationDays)}
 	</Section>
 {/if}
+
+{#snippet accuracyRow()}
+	{#if positionAccuracy}
+		<Row
+			label={m.orbit_position_accuracy()}
+			value={positionAccuracy}
+			tooltip={m.tooltip_orbit_position_accuracy()}
+		/>
+	{/if}
+{/snippet}
 
 {#snippet rotationRow(days: number)}
 	<Row

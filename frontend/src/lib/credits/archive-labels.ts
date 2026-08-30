@@ -56,6 +56,11 @@ const ARCHIVES: Record<string, Archive> = {
 		label: m.source_archive_jaxa_darts,
 		url: 'https://darts.isas.jaxa.jp/',
 		role: m.archive_role_horizons
+	},
+	'gcat-deepcat': {
+		label: m.source_archive_gcat_deep,
+		url: 'https://planet4589.org/space/deepcat/',
+		role: m.archive_role_gcat_deep
 	}
 };
 

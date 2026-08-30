@@ -4,6 +4,7 @@ from enum import StrEnum
 class PROVIDERS(StrEnum):
     CELESTRAK = "celestrak"
     GCAT = "gcat"
+    GCAT_DEEP = "gcat_deep"
     SBDB = "sbdb"
     SBDB_MOONS = "sbdb_moons"
     SSODNET = "ssodnet"
@@ -12,6 +13,7 @@ class PROVIDERS(StrEnum):
     SPICE = "spice"
     SPICE_PROBES = "spice_probes"
     SPICE_PROBES_PROPAGATION = "spice_probes_propagation"
+    SPICE_DEEPCAT = "spice_deepcat"
     SPICE_HORIZONS_SYNTH = "spice_horizons_synth"
     WIKIDATA = "wikidata"
     WIKIPEDIA = "wikipedia"

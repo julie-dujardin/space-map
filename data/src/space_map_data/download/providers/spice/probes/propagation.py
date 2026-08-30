@@ -17,11 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-import numpy as np
 import spiceypy
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
+from space_map_data.probes.probe_id import EVENTS_STATE_MISSION
 from space_map_data.probes.propagation import (
     GM_SUN,
     Candidate,
@@ -32,10 +32,17 @@ from space_map_data.probes.propagation import (
 from space_map_data.utils.time import jd_to_et, year_to_jd
 
 from .layout import MISSIONS_DIR
+from .synthetic_index import (
+    EXTRAP_SUFFIX,
+    cached_provenance,
+    drop_file,
+    ensure_index,
+    record_file,
+    write_type5,
+)
 
 logger = logging.getLogger(__name__)
 
-EXTRAP_SUFFIX = "-extrap.bsp"
 # Bump to invalidate every cached kernel — only when the synthesis itself
 # changes shape (frame, central body); state changes already flow via the hash.
 SYNTH_VERSION = 1
@@ -66,99 +73,6 @@ def _state_hash(
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
 
 
-def _write_type5_segment(
-    out_path: Path,
-    naif: int,
-    state6: tuple[float, ...],
-    start_et: float,
-    end_et: float,
-    segid: str,
-) -> None:
-    """Write a single-segment SPK Type 5 at ``out_path``. Overwrites; caller
-    handles atomicity. ``segid`` is truncated to CSPICE's 40-char limit."""
-    if out_path.exists():
-        out_path.unlink()
-    handle = spiceypy.spkopn(str(out_path), f"extrap{naif}", 0)
-    try:
-        spiceypy.spkw05(
-            handle=handle,
-            body=naif,
-            center=10,
-            inframe="ECLIPJ2000",
-            first=start_et,
-            last=end_et,
-            segid=segid[:40],
-            gm=GM_SUN,
-            n=1,
-            states=np.array([list(state6)], dtype=float),
-            epochs=np.array([start_et], dtype=float),
-        )
-    finally:
-        spiceypy.spkcls(handle)
-
-
-def _update_index(
-    mission_dir: Path,
-    extrap_name: str,
-    naif: int,
-    state_hash: str,
-) -> None:
-    """Replace any prior entry for ``extrap_name`` so re-runs converge."""
-    idx_path = mission_dir / "_index.json"
-    if not idx_path.exists():
-        logger.warning(
-            "propagation: %s missing _index.json; skipping index update",
-            mission_dir,
-        )
-        return
-    idx = json.loads(idx_path.read_text())
-    files = [f for f in idx.get("files", []) if f.get("name") != extrap_name]
-    extrap_path = mission_dir / extrap_name
-    files.append(
-        {
-            "name": extrap_name,
-            "size_bytes": extrap_path.stat().st_size,
-            "targets": [naif],
-            "propagation": {"state_hash": state_hash},
-        }
-    )
-    idx["files"] = sorted(files, key=lambda f: f["name"])
-    targets = idx.get("targets", {})
-    coverage = sorted(set(targets.get(str(naif), []) + [extrap_name]))
-    targets[str(naif)] = coverage
-    idx["targets"] = targets
-    idx_path.write_text(json.dumps(idx, indent=2, sort_keys=True))
-
-
-def _drop_from_index(mission_dir: Path, extrap_name: str, naif: int) -> None:
-    """Remove an extrap entry from ``_index.json``."""
-    idx_path = mission_dir / "_index.json"
-    if not idx_path.exists():
-        return
-    idx = json.loads(idx_path.read_text())
-    idx["files"] = [f for f in idx.get("files", []) if f.get("name") != extrap_name]
-    targets = idx.get("targets", {})
-    if str(naif) in targets:
-        targets[str(naif)] = [n for n in targets[str(naif)] if n != extrap_name]
-        if not targets[str(naif)]:
-            targets.pop(str(naif))
-    idx["targets"] = targets
-    idx_path.write_text(json.dumps(idx, indent=2, sort_keys=True))
-
-
-def _cached_state_hash(mission_dir: Path, extrap_name: str) -> str | None:
-    """Recorded state hash for this filename, or None if absent."""
-    idx_path = mission_dir / "_index.json"
-    if not idx_path.exists():
-        return None
-    idx = json.loads(idx_path.read_text())
-    for f in idx.get("files", []):
-        if f.get("name") == extrap_name:
-            prop = f.get("propagation") or {}
-            return prop.get("state_hash")
-    return None
-
-
 def synthesise_from_candidate(cand: Candidate, end_year: int) -> SynthResult | None:
     """Write or refresh the extrap kernel for one PROPAGATE_* candidate.
     Returns None for non-candidates; short-circuits when the state hash is
@@ -179,23 +93,36 @@ def synthesise_from_candidate(cand: Candidate, end_year: int) -> SynthResult | N
     state_hash = _state_hash(
         cand.naif, cand.state_km_kms, cand.end_et, end_et, "ECLIPJ2000"
     )
-    if _cached_state_hash(mission_dir, extrap_name) == state_hash:
+    cached = cached_provenance(mission_dir, extrap_name, "propagation")
+    if cached is not None and cached.get("state_hash") == state_hash:
         return SynthResult(
             cand.mission, cand.naif, mission_dir / extrap_name, "unchanged"
         )
 
     out_path = mission_dir / extrap_name
     tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
-    _write_type5_segment(
+    write_type5(
         tmp_path,
         cand.naif,
-        cand.state_km_kms,
-        cand.end_et,
-        end_et,
-        segid=f"EXTRAP {cand.mission} {cand.naif}",
+        f"extrap{cand.naif}",
+        [
+            (
+                cand.state_km_kms,
+                cand.end_et,
+                cand.end_et,
+                end_et,
+                f"EXTRAP {cand.mission} {cand.naif}",
+            )
+        ],
     )
     tmp_path.replace(out_path)
-    _update_index(mission_dir, extrap_name, cand.naif, state_hash)
+    record_file(
+        mission_dir,
+        extrap_name,
+        cand.naif,
+        "propagation",
+        {"state_hash": state_hash},
+    )
     return SynthResult(cand.mission, cand.naif, out_path, "written")
 
 
@@ -207,7 +134,7 @@ def remove_obsolete(cand: Candidate) -> SynthResult | None:
     if not out_path.exists():
         return None
     out_path.unlink()
-    _drop_from_index(mission_dir, extrap_name, cand.naif)
+    drop_file(mission_dir, extrap_name, cand.naif)
     return SynthResult(cand.mission, cand.naif, out_path, "removed")
 
 
@@ -275,46 +202,40 @@ def _synthesise_from_state_entry(probe: dict, end_year: int) -> SynthResult | No
     end_et = jd_to_et(year_to_jd(end_year))
     if end_et <= start_et:
         return None
-    mission_dir = MISSIONS_DIR / "EVENTS-STATE"
+    mission_dir = MISSIONS_DIR / EVENTS_STATE_MISSION
     mission_dir.mkdir(parents=True, exist_ok=True)
-    idx_path = mission_dir / "_index.json"
-    if not idx_path.exists():
-        idx_path.write_text(
-            json.dumps(
-                {
-                    "server": "EVENTS-STATE",
-                    "mission": "EVENTS-STATE",
-                    "spk_url": None,
-                    "bucket": "trajectory",
-                    "files": [],
-                    "targets": {},
-                },
-                indent=2,
-                sort_keys=True,
-            )
-        )
+    ensure_index(mission_dir, EVENTS_STATE_MISSION)
 
     state6 = tuple(float(x) for x in state)
     state_hash = _state_hash(int(naif), state6, start_et, end_et, "ECLIPJ2000")
     extrap_name = f"{naif}{EXTRAP_SUFFIX}"
-    if _cached_state_hash(mission_dir, extrap_name) == state_hash:
+    cached = cached_provenance(mission_dir, extrap_name, "propagation")
+    if cached is not None and cached.get("state_hash") == state_hash:
         return SynthResult(
-            "EVENTS-STATE", int(naif), mission_dir / extrap_name, "unchanged"
+            EVENTS_STATE_MISSION, int(naif), mission_dir / extrap_name, "unchanged"
         )
 
     out_path = mission_dir / extrap_name
     tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
-    _write_type5_segment(
+    write_type5(
         tmp_path,
         int(naif),
-        state6,
-        start_et,
-        end_et,
-        segid=f"EVENTS-STATE {probe.get('name', '?')} {naif}",
+        f"extrap{naif}",
+        [
+            (
+                state6,
+                start_et,
+                start_et,
+                end_et,
+                f"{EVENTS_STATE_MISSION} {probe.get('name', '?')} {naif}",
+            )
+        ],
     )
     tmp_path.replace(out_path)
-    _update_index(mission_dir, extrap_name, int(naif), state_hash)
-    return SynthResult("EVENTS-STATE", int(naif), out_path, "written")
+    record_file(
+        mission_dir, extrap_name, int(naif), "propagation", {"state_hash": state_hash}
+    )
+    return SynthResult(EVENTS_STATE_MISSION, int(naif), out_path, "written")
 
 
 class PropagationDownloader(Downloader):

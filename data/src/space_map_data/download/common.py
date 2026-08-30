@@ -12,7 +12,9 @@ from space_map_data.utils.paths import CONFIG_FILE, DOWNLOAD_DIR
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.objects.celestrak import CelesTrakDownloader
 from space_map_data.download.providers.objects.gcat import GCATDownloader
+from space_map_data.download.providers.objects.gcat_deep import GCATDeepDownloader
 from space_map_data.download.providers.spice import (
+    DeepcatSynthDownloader,
     HorizonsSyntheticDownloader,
     ProbesDownloader,
     PropagationDownloader,
@@ -56,6 +58,7 @@ PROVIDERS_CLASSES = [
     CelesTrakDownloader,
     SpaceTrackDownloader,
     GCATDownloader,
+    GCATDeepDownloader,
     SBDBDownloader,
     SBDBMoonsDownloader,
     SsODNetDownloader,
@@ -64,6 +67,7 @@ PROVIDERS_CLASSES = [
     ProbesDownloader,
     HorizonsSyntheticDownloader,
     PropagationDownloader,
+    DeepcatSynthDownloader,
     WikidataDownloader,
     ManualDownloader,
     WikipediaDownloader,

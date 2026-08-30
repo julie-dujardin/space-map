@@ -23,8 +23,8 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.download.providers.spice.probes.propagation import (  # noqa: E402
-    _write_type5_segment,
+from space_map_data.download.providers.spice.probes.synthetic_index import (  # noqa: E402
+    write_type5,
 )
 from space_map_data.export.position.probes.kernels import (  # noqa: E402
     enumerate_probes,
@@ -117,20 +117,19 @@ def _run_case(
     # Compare by furnishing/unloading the synth around each sample (cheaper
     # than maintaining two SPICE contexts).
     extrap_path = tmpdir / f"{mission}-{naif}-extrap.bsp"
-    _write_type5_segment(
+    write_type5(
         extrap_path,
-        naif=naif,
-        state6=(
-            float(state6[0]),
-            float(state6[1]),
-            float(state6[2]),
-            float(state6[3]),
-            float(state6[4]),
-            float(state6[5]),
-        ),
-        start_et=cutoff_et,
-        end_et=t_end,
-        segid=f"VALIDATE {mission} {naif}",
+        naif,
+        f"validate{naif}",
+        [
+            (
+                tuple(float(v) for v in state6),
+                cutoff_et,
+                cutoff_et,
+                t_end,
+                f"VALIDATE {mission} {naif}",
+            )
+        ],
     )
 
     samples: list[DriftSample] = []

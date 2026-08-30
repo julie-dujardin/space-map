@@ -62,6 +62,9 @@ class ObjectDataContext:
     # shape-model slug -> provenance block (technique/archive/mission link).
     model_sources: dict[str, dict]
     probe_kernel_sources: dict[int, str | None]
+    # probe_id -> median position error in km, for the probes whose trajectory
+    # was derived from published elements rather than tracked.
+    probe_ephemeris_accuracy: dict[int, float]
     nomenclature_body_ids: set[str]
     # parent Object.id -> display name, for moons whose parent may live in
     # another chunk (lets the frontend breadcrumb name the host without the
@@ -151,6 +154,7 @@ def build_zone_object_data(
         displacement_metadata=ctx.displacement_metadata,
         model_sources=ctx.model_sources,
         probe_kernel_sources=ctx.probe_kernel_sources,
+        probe_ephemeris_accuracy=ctx.probe_ephemeris_accuracy,
         nomenclature_body_ids=ctx.nomenclature_body_ids,
         parent_names=ctx.parent_names,
         taxonomy=ctx.taxonomy,

@@ -222,6 +222,47 @@ def load_probe_labels() -> dict[int, str]:
     return labels
 
 
+# Mission names the registry treats specially, spelled once here because the
+# producers, the export credit table and the registry itself all have to agree
+# on them.
+#
+# `EVENTS-DB` is a probe registered from the events database with no kernels at
+# all. The other two are folders we write rather than mirror, each holding
+# kernels for a probe that already exists under some other source: they borrow
+# that probe's NAIF, so they attach to its entry instead of allocating a second
+# probe for the same spacecraft.
+EVENTS_DB_MISSION = "EVENTS-DB"
+EVENTS_STATE_MISSION = "EVENTS-STATE"
+GCAT_DEEP_MISSION = "GCAT-DEEP"
+SYNTHETIC_MISSIONS: frozenset[str] = frozenset(
+    {EVENTS_STATE_MISSION, GCAT_DEEP_MISSION}
+)
+
+
+def _attach_synthetic_source(
+    registry: list[dict], mission: str, naif_id: int
+) -> dict | None:
+    """Append ``mission`` to the entry that already owns ``naif_id``.
+
+    Returns None when no entry owns it, or when more than one does — NAIF ids
+    are reused across missions decades apart, and guessing which spacecraft a
+    synthesised kernel belongs to would silently graft a trajectory onto the
+    wrong probe."""
+    owners = [e for e in registry if int(e["naif_id"]) == naif_id]
+    if len(owners) != 1:
+        if owners:
+            logger.warning(
+                "%s/%d: %d registry entries claim this NAIF; not attaching",
+                mission,
+                naif_id,
+                len(owners),
+            )
+        return None
+    entry = owners[0]
+    entry["kernel_sources"].append({"mission": mission, "naif_id": naif_id})
+    return entry
+
+
 def record_from_entry(entry: dict) -> ProbeIdRecord:
     sources = tuple(
         (src["mission"], int(src["naif_id"])) for src in entry["kernel_sources"]
@@ -263,6 +304,12 @@ def assign(
         source_index = index_by_source(registry)
 
     existing = source_index.get((mission, naif_id))
+    if existing is None and mission in SYNTHETIC_MISSIONS:
+        existing = _attach_synthetic_source(registry, mission, naif_id)
+        if existing is not None:
+            source_index[(mission, naif_id)] = existing
+            if owned:
+                save_registry(registry)
     if existing is not None:
         return record_from_entry(existing)
 

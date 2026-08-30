@@ -13,8 +13,17 @@ from space_map_data.download.providers.spice.probes import (
     LANDED_MISSIONS_DIR,
     MISSIONS_DIR,
 )
+from space_map_data.download.providers.spice.probes.deepcat_synth import (
+    MISSION_DIR_NAME as DERIVED_MISSION,
+    PROVENANCE_KEY as DERIVED_PROVENANCE_KEY,
+)
 from space_map_data.models.object import Object, OrbitalSource
-from space_map_data.probes.probe_id import REGISTRY_PATH as PROBE_IDS_REGISTRY
+from space_map_data.probes.probe_id import (
+    EVENTS_DB_MISSION,
+    REGISTRY_PATH as PROBE_IDS_REGISTRY,
+    load_registry,
+)
+from space_map_data.probes.propagation import AU_KM
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +38,13 @@ ARCHIVE_HORIZONS = "horizons"
 ARCHIVE_SBDB = "sbdb"
 ARCHIVE_CELESTRAK = "celestrak"
 ARCHIVE_SPACETRACK = "spacetrack"
+ARCHIVE_GCAT_DEEP = "gcat-deepcat"
 
 
 # `server` strings written into `_index.json` by `ProbesDownloader`. Synth
-# probes get the Horizons credit since their trajectory came from there.
+# probes get the Horizons credit since their trajectory came from there, and
+# catalogue-derived probes credit the catalogue their elements came from —
+# their trajectory is nobody's archive solution.
 _SERVER_TO_ARCHIVE: dict[str, str] = {
     "NAIF": ARCHIVE_NAIF,
     "ESA": ARCHIVE_ESA,
@@ -40,6 +52,7 @@ _SERVER_TO_ARCHIVE: dict[str, str] = {
     "NAIF-PDS4": ARCHIVE_NAIF_PDS4,
     "JAXA-DARTS": ARCHIVE_JAXA_DARTS,
     "JPL-Horizons-synth": ARCHIVE_HORIZONS,
+    "GCAT-DEEP": ARCHIVE_GCAT_DEEP,
 }
 
 # Generic SPICE kernels (planets/moons/asteroids) come from NAIF's tree.
@@ -66,12 +79,18 @@ def _read_mission_server(mission_dir: Path) -> str | None:
 def load_probe_kernel_sources() -> dict[int, str | None]:
     """Build `{probe_id → archive_id | None}` by joining mission `_index.json`
     servers against the probe registry. Joint missions (Cassini in CASSINI +
-    HUYGENS) credit the canonical (first) source's server. `None` suppresses
-    the credit (EVENTS-DB-only entries); absent entries fall back to NAIF.
+    HUYGENS) credit the first source that names an archive. `None` suppresses
+    the credit (entries with no archived source at all); absent entries fall
+    back to NAIF.
+
+    The first source is not always an archive: a probe with no kernels of its
+    own is registered under `EVENTS-DB` and only later gains a synthesised
+    trajectory, which lands second in the list and is the thing to credit.
     """
-    if not PROBE_IDS_REGISTRY.exists():
+    registry = load_registry()
+    if not registry:
         logger.info(
-            "probe_ids registry missing at %s; no probe sources to map",
+            "probe_ids registry missing or empty at %s; no probe sources to map",
             PROBE_IDS_REGISTRY,
         )
         return {}
@@ -87,35 +106,33 @@ def load_probe_kernel_sources() -> dict[int, str | None]:
             if server is not None:
                 mission_to_server[mdir.name] = server
 
-    try:
-        registry = json.loads(PROBE_IDS_REGISTRY.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("probe registry at %s unreadable (%s)", PROBE_IDS_REGISTRY, exc)
-        return {}
-
     out: dict[int, str | None] = {}
     unmapped_servers: set[str] = set()
     missing_missions: set[str] = set()
     for entry in registry:
         sources = entry.get("kernel_sources") or []
-        if not sources:
-            continue
-        mission = sources[0].get("mission")
         probe_id = entry.get("probe_id")
-        if mission is None or probe_id is None:
+        if not sources or probe_id is None:
             continue
-        if mission == "EVENTS-DB":
-            out[int(probe_id)] = None
-            continue
-        server = mission_to_server.get(mission)
-        if server is None:
-            missing_missions.add(mission)
-            continue
-        archive = _SERVER_TO_ARCHIVE.get(server)
-        if archive is None:
-            unmapped_servers.add(server)
-            continue
-        out[int(probe_id)] = archive
+        credit: str | None = None
+        for source in sources:
+            mission = source.get("mission")
+            # Not a credit decision any more — EVENTS-DB has no mission folder,
+            # so the server lookup below would skip it anyway. Skipping early
+            # keeps it out of the missing-mission log.
+            if mission is None or mission == EVENTS_DB_MISSION:
+                continue
+            server = mission_to_server.get(mission)
+            if server is None:
+                missing_missions.add(mission)
+                continue
+            archive = _SERVER_TO_ARCHIVE.get(server)
+            if archive is None:
+                unmapped_servers.add(server)
+                continue
+            credit = archive
+            break
+        out[int(probe_id)] = credit
 
     if missing_missions:
         logger.info(
@@ -130,6 +147,50 @@ def load_probe_kernel_sources() -> dict[int, str | None]:
             sorted(unmapped_servers),
         )
     return out
+
+
+def load_probe_ephemeris_accuracy() -> dict[int, float]:
+    """`{probe_id → median position error, km}` for probes whose trajectory was
+    derived rather than tracked.
+
+    Only the catalogue-derived kernels carry a figure: an archive reconstruction
+    states no error and inventing one for it would be worse than silence."""
+    index = MISSIONS_DIR / DERIVED_MISSION / "_index.json"
+    if not index.exists():
+        return {}
+    try:
+        files = json.loads(index.read_text()).get("files", [])
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("derived-ephemeris index at %s unreadable (%s)", index, exc)
+        return {}
+
+    by_naif: dict[int, float] = {}
+    for record in files:
+        error_au = (record.get(DERIVED_PROVENANCE_KEY) or {}).get("median_error_au")
+        if error_au is None:
+            continue
+        for naif in record.get("targets", []):
+            by_naif[int(naif)] = float(error_au) * AU_KM
+
+    out: dict[int, float] = {}
+    for entry in load_registry():
+        for source in entry.get("kernel_sources") or []:
+            if source.get("mission") != DERIVED_MISSION:
+                continue
+            error_km = by_naif.get(int(source["naif_id"]))
+            if error_km is not None:
+                out[int(entry["probe_id"])] = error_km
+    return out
+
+
+def ephemeris_accuracy_for(
+    obj: Object, probe_accuracy: dict[int, float]
+) -> float | None:
+    """Median position error in km, or None where the trajectory was tracked
+    rather than derived."""
+    if obj.orbital_source is not OrbitalSource.spice_probe or obj.probe_id is None:
+        return None
+    return probe_accuracy.get(obj.probe_id)
 
 
 def ephemeris_archive_for(
@@ -195,5 +256,10 @@ EPHEMERIS_ARCHIVES: list[dict[str, str]] = [
         "id": ARCHIVE_JAXA_DARTS,
         "source": "https://darts.isas.jaxa.jp/",
         "organisation": "JAXA DARTS",
+    },
+    {
+        "id": ARCHIVE_GCAT_DEEP,
+        "source": "https://planet4589.org/space/deepcat/",
+        "organisation": "McDowell, Deep Space Catalog",
     },
 ]

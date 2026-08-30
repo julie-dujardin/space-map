@@ -22,7 +22,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
 from space_map_data.export.credits import write_credits
-from space_map_data.export.ephemeris import load_probe_kernel_sources
+from space_map_data.export.ephemeris import (
+    load_probe_ephemeris_accuracy,
+    load_probe_kernel_sources,
+)
 from space_map_data.export.groups import run_groups_tier
 from space_map_data.export.labels import write_global_labels
 from space_map_data.export.localization import write_messages
@@ -993,6 +996,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         {e["probe_id"]: e["name"] for e in load_registry() if e.get("name")},
     )
     probe_kernel_sources = load_probe_kernel_sources()
+    probe_ephemeris_accuracy = load_probe_ephemeris_accuracy()
 
     ctx = ObjectDataContext(
         wikidata_entities=wikidata_entities,
@@ -1007,6 +1011,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         displacement_metadata=displacement_metadata,
         model_sources=model_sources,
         probe_kernel_sources=probe_kernel_sources,
+        probe_ephemeris_accuracy=probe_ephemeris_accuracy,
         nomenclature_body_ids=set(nomenclature_by_body.keys()),
         parent_names=moon_parent_names,
         taxonomy=load_taxonomy(session),
