@@ -23,6 +23,7 @@ from space_map_data.constants.rings.wikidata import (
     RING_FEATURE_PAGES,
     RING_SYSTEM_PAGES,
 )
+from space_map_data.constants.spacecraft.wikidata import EXPLORATION_PAGES
 from space_map_data.constants.wikidata_misc import MISC_PAGES
 
 TOPIC_PAGE_TABLES: tuple[dict[str, tuple[str, ...]], ...] = (
@@ -40,6 +41,7 @@ TOPIC_PAGE_TABLES: tuple[dict[str, tuple[str, ...]], ...] = (
     RING_EXTRA_PAGES,
     RING_CONCEPT_PAGES,
     MISC_PAGES,
+    EXPLORATION_PAGES,
 )
 
 

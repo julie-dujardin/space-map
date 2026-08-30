@@ -12,9 +12,10 @@ export interface TabItem {
 }
 
 // Past this budget, tabs promote to whatever in the overview already leads
-// to them (the hero pill, for Images) — a tab with no such way in can't be listed.
+// to them (the probes strip, the hero pill for Images) — a tab with no such
+// way in can't be listed. Images leaves first: its pill sits in the hero.
 export const TAB_BUDGET = 4;
-export const PROMOTABLE: readonly DrawerTab[] = ['images'];
+export const PROMOTABLE: readonly DrawerTab[] = ['images', 'probes'];
 
 // Shelves named after an aspect of this object rather than a subject of their
 // own: the tab that covers the same ground is where the rest of it is.

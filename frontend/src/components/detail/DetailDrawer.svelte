@@ -52,6 +52,7 @@
 		RINGS_GALLERY
 	} from '$lib/fetch/objects/galleries';
 	import MemberList from './members/MemberList.svelte';
+	import TopicSummary from './sections/kit/TopicSummary.svelte';
 	import { promoteTabs, type TabItem } from './tab-visibility';
 	import * as m from '$lib/paraglide/messages.js';
 	import { categoryConfig } from '$lib/state/category-config';
@@ -288,7 +289,8 @@
 		structure: showStructureTab,
 		rings: showRingsTab,
 		members: members.showMembersTab,
-		fragments: members.showFragmentsTab
+		fragments: members.showFragmentsTab,
+		probes: members.showProbesTab
 	});
 	let tabCount = $derived(Object.values(tabPresent).filter(Boolean).length);
 
@@ -303,7 +305,8 @@
 		{ tab: 'structure', label: m.tab_structure() },
 		{ tab: 'rings', label: m.tab_rings() },
 		{ tab: 'members', label: members.membersTabLabel, count: members.memberTotal },
-		{ tab: 'fragments', label: m.tab_fragments(), count: members.fragmentTotal }
+		{ tab: 'fragments', label: m.tab_fragments(), count: members.fragmentTotal },
+		{ tab: 'probes', label: m.tab_probes(), count: members.probeTotal }
 	]);
 	let tabLabels = $derived(
 		Object.fromEntries(tabItems.map((t) => [t.tab, t.label])) as Partial<Record<DrawerTab, string>>
@@ -363,7 +366,13 @@
 				: null
 	);
 	let soloTitle = $derived(
-		soloGallery ? soloGallery.title : soloTab === 'images' ? m.tab_images() : displayName
+		soloGallery
+			? soloGallery.title
+			: soloTab === 'images'
+				? m.tab_images()
+				: soloTab === 'probes'
+					? m.tab_probes()
+					: displayName
 	);
 	let barTabCount = $derived(tabCount - promotedTabs.size);
 
@@ -465,6 +474,13 @@
 	</div>
 {/snippet}
 
+{#snippet probesPanel()}
+	<TopicSummary page={data?.localized?.probes_page} />
+	{#if members.probes && members.probes.length > 0}
+		<MemberList members={members.probes} localizedNames={members.probeNames} />
+	{/if}
+{/snippet}
+
 {#snippet drawerToolbar()}
 	{#if showCameraButtons}
 		<Button
@@ -509,6 +525,8 @@
 	<div class={contentClass}>
 		{#if soloTab === 'images'}
 			{@render imagesPanel()}
+		{:else if soloTab === 'probes'}
+			{@render probesPanel()}
 		{/if}
 	</div>
 {/snippet}
@@ -547,6 +565,9 @@
 	</Tabs.Content>
 	<Tabs.Content value="fragments" class={contentClass}>
 		{@render fragmentsPanel()}
+	</Tabs.Content>
+	<Tabs.Content value="probes" class={contentClass}>
+		{@render probesPanel()}
 	</Tabs.Content>
 {/snippet}
 

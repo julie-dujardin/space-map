@@ -1,7 +1,8 @@
-"""The "Atmosphere of X" / "Internal structure of X" article, per locale.
+"""The "Atmosphere of X" / "Internal structure of X" / "Exploration of X"
+article, per locale.
 
-One link at the foot of each half of the Structure tab, the only prose next to
-its charts. No English fallback, same as the ring articles: a reader gets the
+One link at the foot of each half of the Structure tab and one atop the
+Probes tab, the only prose next to their charts and lists. No English fallback, same as the ring articles: a reader gets the
 article in their own language or no link. See coverage comments in
 ``constants.{atmosphere,interior}``.
 """
@@ -10,6 +11,7 @@ from functools import cache
 
 from space_map_data.constants.atmosphere.wikidata import ATMOSPHERE_PAGES
 from space_map_data.constants.interior.wikidata import INTERIOR_PAGES
+from space_map_data.constants.spacecraft.wikidata import EXPLORATION_PAGES
 from space_map_data.export.objects.wikipedia import load_wikipedia_summaries_for_qid
 
 
@@ -41,3 +43,7 @@ def interior_page_localized(body_id: str, lang: str) -> dict | None:
 
 def atmosphere_page_localized(body_id: str, lang: str) -> dict | None:
     return _page_localized(ATMOSPHERE_PAGES.get(body_id, ()), lang)
+
+
+def exploration_page_localized(body_id: str, lang: str) -> dict | None:
+    return _page_localized(EXPLORATION_PAGES.get(body_id, ()), lang)

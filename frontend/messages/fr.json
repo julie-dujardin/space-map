@@ -688,6 +688,8 @@
 	"group": "Groupe",
 	"fragments_section": "Fragments",
 	"tab_fragments": "Fragments",
+	"tab_probes": "Sondes",
+	"probes_section": "Sondes",
 	"loading": "Chargement…",
 	"show_less": "Voir moins",
 	"read_more": "Lire la suite",

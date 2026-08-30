@@ -724,6 +724,8 @@
 	"fragments_section": "Fragments",
 	"tab_structure": "Structure",
 	"tab_fragments": "Fragments",
+	"tab_probes": "Probes",
+	"probes_section": "Probes",
 	"loading": "Loading...",
 	"show_less": "Show less",
 	"read_more": "Read more",

@@ -79,6 +79,12 @@ export class MembersState {
 	// primary craft still shows a strip of its sibling craft.
 	readonly missionMembers: NotableMemberEntry[] | undefined;
 
+	// Probes whose events target this body: a strip + tab, mirroring moons.
+	readonly probes: NotableMemberEntry[] | undefined;
+	readonly probeNames: Record<string, string> | undefined;
+	readonly probeTotal: number;
+	readonly showProbesTab: boolean;
+
 	// Asteroid/comet SBDB zones (orbit_class), distinct from earth_orbit_class
 	// satellite zones; their overview drops the notable-members strip.
 	readonly isSmallBodyZone: boolean;
@@ -86,6 +92,7 @@ export class MembersState {
 	readonly membersStrip: OverviewStrip | null;
 	readonly fragmentsStrip: OverviewStrip | null;
 	readonly missionStrip: OverviewStrip | null;
+	readonly probesStrip: OverviewStrip | null;
 
 	// "+N more" matches the Satellites group's categorized member total (group
 	// index `n`), not Earth's raw satcat tally, which includes debris.
@@ -201,6 +208,13 @@ export class MembersState {
 			if (link) d.appState()?.setGroup(link.primary_id, link.name);
 		};
 
+		this.probes = $derived(d.isGroupMode() ? undefined : d.data()?.global?.probes);
+		this.probeNames = $derived(d.data()?.localized?.probe_names);
+		this.probeTotal = $derived(d.data()?.global?.probe_count ?? 0);
+		const hasProbes = $derived(!!this.probes && this.probes.length > 0);
+		// Present from the first probe: the tab carries the exploration blurb the strip doesn't.
+		this.showProbesTab = $derived(hasProbes);
+
 		this.isSmallBodyZone = $derived(d.groupDetail()?.global?.type === 'orbit_class');
 
 		// Lineup/small-body/Solar-System/ring/system pages route members through their own
@@ -251,6 +265,17 @@ export class MembersState {
 				heading: m.mission_members_section(),
 				seeAllHref: seeAllMissionMembersHref,
 				onSeeAll: seeAllMissionMembers
+			};
+		});
+		this.probesStrip = $derived.by(() => {
+			if (!hasProbes || !this.probes) return null;
+			return {
+				members: this.probes,
+				localizedNames: this.probeNames,
+				totalCount: this.probeTotal,
+				heading: m.probes_section(),
+				seeAllHref: tabHref(d.appState(), 'probes'),
+				onSeeAll: () => d.appState().setTab('probes')
 			};
 		});
 	}

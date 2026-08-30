@@ -56,6 +56,7 @@ from space_map_data.export.objects.temperature import (
 )
 from space_map_data.export.objects.topic_pages import (
     atmosphere_page_localized,
+    exploration_page_localized,
     interior_page_localized,
 )
 from space_map_data.export.objects.sbdb import build_sbdb
@@ -795,5 +796,9 @@ def _build_localized(
     atmosphere_page = atmosphere_page_localized(obj.id, lang)
     if atmosphere_page:
         data["atmosphere_page"] = atmosphere_page
+    # The Probes tab's blurb; the tab itself exists only where events target the body.
+    probes_page = exploration_page_localized(obj.id, lang)
+    if probes_page:
+        data["probes_page"] = probes_page
 
     return data

@@ -66,23 +66,7 @@ MISC_PAGES: dict[str, tuple[str, ...]] = {
     "frost_line": ("Q590180",),  # frost line — en fr ja zh ru pt de it es he pl
     "sublimation": ("Q131800",),  # sublimation — all 12
     # Exploration, for the mission panel.
-    # exploration of Mercury — en fr ja zh ar ru pt it
-    "exploration_mercury": ("Q1188264",),
-    # exploration of the Moon — en fr ja zh ar ru pt it es he
-    "exploration_moon": ("Q1064739",),
-    # exploration of Mars — en fr ja zh ar ru pt it es pl
-    "exploration_mars": ("Q716774",),
-    # exploration of Jupiter — en fr ja zh ar ru pt it es
-    "exploration_jupiter": ("Q3276",),
-    # exploration of Saturn — en fr ja zh ar ru it he
-    "exploration_saturn": ("Q2724351",),
-    # exploration of Uranus — en fr ja zh ar pt it es
-    "exploration_uranus": ("Q2609494",),
-    # exploration of Neptune — en fr ja zh ar ru it
-    "exploration_neptune": ("Q1110754",),
-    "exploration_pluto": ("Q23581368",),  # exploration of Pluto — en zh ar ru it es
-    "exploration_titan": ("Q43402238",),  # exploration of Titan — en it
-    "exploration_io": ("Q5421330",),  # exploration of Io — en fr ar it
+    # "Exploration of X" moved to constants.spacecraft.wikidata, keyed by body.
     # Discovery panel.
     # discovery of Neptune — en fr ja zh ar ru it es he
     "discovery_neptune": ("Q1356165",),

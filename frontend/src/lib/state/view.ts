@@ -69,7 +69,8 @@ export const DRAWER_TABS = [
 	'structure',
 	'rings',
 	'members',
-	'fragments'
+	'fragments',
+	'probes'
 ] as const;
 
 export type DrawerTab = (typeof DRAWER_TABS)[number];

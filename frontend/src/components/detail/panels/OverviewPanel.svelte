@@ -63,13 +63,14 @@
 	let data = $derived(load.data);
 	let groupDetail = $derived(load.groupDetail);
 
-	// Features sit below the moons strip, above fragments and mission craft.
+	// Features sit below the moons strip, above fragments, mission craft and probes.
 	let overviewStrips = $derived(
 		[
 			members.membersStrip,
 			surface.featuresStrip,
 			members.fragmentsStrip,
-			members.missionStrip
+			members.missionStrip,
+			members.probesStrip
 		].filter((s) => s !== null)
 	);
 

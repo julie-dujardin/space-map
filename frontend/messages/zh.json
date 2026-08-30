@@ -617,6 +617,8 @@
 	"group": "分组",
 	"fragments_section": "碎片",
 	"tab_fragments": "碎片",
+	"tab_probes": "探测器",
+	"probes_section": "探测器",
 	"loading": "加载中…",
 	"show_less": "收起",
 	"read_more": "阅读更多",

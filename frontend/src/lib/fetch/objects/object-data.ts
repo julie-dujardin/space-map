@@ -528,6 +528,11 @@ export interface GlobalObjectData {
 	 *  of" card. Routes to the parent object, or the family group when the intact
 	 *  comet isn't catalogued (parentless families like Shoemaker-Levy 9). */
 	fragment_of?: FragmentOf;
+	/** Every probe whose curated events target this body, oldest launch first;
+	 *  `first_obs` carries the launch date. Localized labels in `probe_names`. */
+	probes?: NotableMemberEntry[];
+	/** Present iff `probes` is. */
+	probe_count?: number;
 	/** On a mission's primary probe: link up to the /g/mission-<slug> page. Same
 	 *  card + shape as fragment_of (always a group link). */
 	mission?: FragmentOf;
@@ -977,6 +982,8 @@ export interface LocalizedObjectData {
 	interior_page?: TopicPage;
 	/** "Atmosphere of X" in this locale, for the Structure tab. */
 	atmosphere_page?: TopicPage;
+	/** "Exploration of X" in this locale, atop the Probes tab. */
+	probes_page?: TopicPage;
 	/** notable-moon Object.id → localized label, only where it differs from the global name. */
 	/** Commons filename → localized picture title, only where the language has
 	 *  one of its own. Covers every gallery on the page — they key by filename. */
@@ -992,6 +999,8 @@ export interface LocalizedObjectData {
 	fragment_names?: Record<string, string>;
 	/** mission-member Object.id → localized label, only where it differs from the global name. */
 	mission_member_names?: Record<string, string>;
+	/** probe Object.id → localized label, only where it differs from the global name. */
+	probe_names?: Record<string, string>;
 }
 
 /** What a ring feature is, in nomenclature terms. `division` is the broad
