@@ -154,6 +154,15 @@ export interface GlobalGroupData {
 	/** Moons category only: moons per planet/dwarf host, ordered by heliocentric
 	 *  distance. Drives the moons-per-planet bar chart. */
 	moon_counts?: { name: string; primary_type: 'object'; primary_id: string; n: number }[];
+	/** Probes category only: probes sent per target, most-visited first, ties by
+	 *  sitelink count. The Sun-Earth libration points have no object of their
+	 *  own, so those rows point at their `class-` collection instead. */
+	probe_targets?: {
+		name: string;
+		primary_type?: 'object' | 'group';
+		primary_id?: string;
+		n: number;
+	}[];
 	/** Feature-type only: distinct bodies carrying this feature type. Also set on
 	 *  the Surface Features category, where it counts bodies across every type. */
 	body_count?: number;
@@ -333,7 +342,8 @@ export interface LocalizedGroupData {
 	notable_member_names?: Record<string, string>;
 	/** member Object.id → localized Wikidata short description, for the lineup hero's hover tooltip. */
 	notable_member_descriptions?: Record<string, string>;
-	/** ft- only: `feature_bodies` row Object.id → localized body label. */
+	/** Per-body chart row Object.id → localized body label: `feature_bodies`
+	 *  on an ft- page, `probe_targets` on the Probes category. */
 	body_names?: Record<string, string>;
 }
 

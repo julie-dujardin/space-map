@@ -1191,6 +1191,7 @@
 	"group_type_plural_launch_vehicle": "Vettori di lancio",
 	"pagination_go_to_page": "Vai alla pagina {n}",
 	"group_moons_per_planet": "Lune per pianeta",
+	"group_targets_title": "Obiettivi",
 	"chart_log_scale": "scala log.",
 	"group_ring_mass_title": "Massa per sistema",
 	"group_ring_mass_unknown": "Nessuna stima pubblicata per {names}.",

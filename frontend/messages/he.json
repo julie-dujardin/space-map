@@ -1193,6 +1193,7 @@
 	"group_type_plural_launch_vehicle": "משגרים",
 	"pagination_go_to_page": "מעבר לעמוד {n}",
 	"group_moons_per_planet": "ירחים לכל כוכב לכת",
+	"group_targets_title": "יעדים",
 	"chart_log_scale": "סקאלה לוגריתמית",
 	"group_ring_mass_title": "מסה לכל מערכת",
 	"group_ring_mass_unknown": "אין אומדן שפורסם עבור {names}.",

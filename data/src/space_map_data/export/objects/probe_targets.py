@@ -19,6 +19,7 @@ the probe is still alive there, the end date.
 import datetime
 import json
 import logging
+from dataclasses import dataclass
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.notable import NotableObject, notable_entries, notable_names
@@ -30,7 +31,7 @@ from space_map_data.probes.probe_id import load_registry
 logger = logging.getLogger(__name__)
 
 _MJD_ZERO = datetime.date(1858, 11, 17)
-_EARTH = "naif-399"
+_EARTH_NAIF = 399
 _KIND_RANK = (
     "flyby",
     "impactor",
@@ -101,8 +102,11 @@ def _visit(probe: dict, events: list[dict]) -> dict:
 def target_object_ids(naif: int) -> tuple[str, ...]:
     """Candidate object ids for an event-target NAIF (Horizons convention),
     best first. Numbered asteroids are SBDB rows, except the dwarf planets
-    the renderer keeps under their NAIF id (Ceres is ``naif-2000001``).
-    Mirrors ``probes/landing_events._resolve_body``."""
+    the renderer keeps under their NAIF id (Ceres is ``naif-2000001``);
+    satellites of asteroids keep the id as written (Dimorphos is
+    ``spkid-120065803``). Mirrors ``probes/landing_events._resolve_body``."""
+    if naif > 100_000_000:
+        return (f"spkid-{naif}",)
     if 2_000_000 < naif < 3_000_000:
         return (f"spkid-{naif + 18_000_000}", f"naif-{naif}")
     if 1_000_000 < naif < 2_000_000:
@@ -110,23 +114,44 @@ def target_object_ids(naif: int) -> tuple[str, ...]:
     return (f"naif-{naif}",)
 
 
-def _probes_by_target(
-    known_ids: set[str],
-) -> tuple[dict[str, dict[int, dict]], dict[int, str]]:
-    """Body object id → {probe_id: visit} for every probe whose events name
-    it, plus each probe's ``launch`` event date. The registry's
-    ``inception_mjd`` is kernel coverage, not launch (Dawn's reads 2013), so
-    the events file is the date of record."""
-    hits: dict[str, dict[int, list[dict]]] = {}
+@dataclass(frozen=True)
+class TargetIndex:
+    """The curated events read backwards: what each probe was sent to."""
+
+    #: Target NAIF -> probe id -> its dated events naming that target.
+    events: dict[int, dict[int, list[dict]]]
+    #: Target NAIF -> the name the events give it, the only label a target
+    #: with no catalogue row of its own has.
+    names: dict[int, str]
+    #: Probe id -> its whole record, which a visit reads for the mission type
+    #: and for the probe's own end.
+    probes: dict[int, dict]
+    #: Probe id -> launch date. The registry's ``inception_mjd`` is kernel
+    #: coverage rather than launch (Dawn's reads 2013), so the ``launch``
+    #: event is the date of record.
+    launches: dict[int, str]
+
+
+def read_target_index() -> TargetIndex:
+    """Parse the events files into their target index.
+
+    Earth is skipped: its events are launches, homecomings and assists, not
+    visits. So is any flyby whose ``purpose`` is a gravity assist — a
+    slingshot is not a visit either — and any event marked ``failed`` or
+    undated. Planned events count: the index is who has been sent, not who
+    arrived.
+    """
+    events: dict[int, dict[int, list[dict]]] = {}
+    names: dict[int, str] = {}
     probes_by_id: dict[int, dict] = {}
     launches: dict[int, str] = {}
     for path in sorted(EVENTS_DIR.glob("*.json")):
         try:
-            probes = json.loads(path.read_text()).get("probes", [])
+            entries = json.loads(path.read_text()).get("probes", [])
         except (OSError, json.JSONDecodeError) as exc:
             logger.warning("Probe events file %s unreadable (%s); skipped", path, exc)
             continue
-        for probe in probes:
+        for probe in entries:
             probe_id = probe.get("probe_id")
             if probe_id is None:
                 continue
@@ -142,21 +167,40 @@ def _probes_by_target(
                     and event.get("purpose") == "gravity_assist"
                 ):
                     continue
-                if event.get("failed"):
+                if event.get("failed") or not event.get("date"):
                     continue
-                candidates = target_object_ids(int(target["naif"]))
-                body_id = next((c for c in candidates if c in known_ids), candidates[0])
-                if body_id == _EARTH or not event.get("date"):
+                naif = int(target["naif"])
+                if naif == _EARTH_NAIF:
                     continue
-                hits.setdefault(body_id, {}).setdefault(int(probe_id), []).append(event)
+                events.setdefault(naif, {}).setdefault(int(probe_id), []).append(event)
+                if name := target.get("name"):
+                    names.setdefault(naif, name)
+    return TargetIndex(
+        events=events, names=names, probes=probes_by_id, launches=launches
+    )
+
+
+def _probes_by_target(
+    known_ids: set[str],
+) -> tuple[dict[str, dict[int, dict]], dict[int, str]]:
+    """Body object id -> {probe_id: visit} for every probe whose events name
+    it, plus each probe's launch date. A target none of whose candidate ids
+    is known keeps its first candidate, so the caller can log it."""
+    index = read_target_index()
+    hits: dict[str, dict[int, list[dict]]] = {}
+    for naif, by_probe in index.events.items():
+        candidates = target_object_ids(naif)
+        body_id = next((c for c in candidates if c in known_ids), candidates[0])
+        for probe_id, events in by_probe.items():
+            hits.setdefault(body_id, {}).setdefault(probe_id, []).extend(events)
     out = {
         body_id: {
-            probe_id: _visit(probes_by_id[probe_id], events)
+            probe_id: _visit(index.probes[probe_id], events)
             for probe_id, events in by_probe.items()
         }
         for body_id, by_probe in hits.items()
     }
-    return out, launches
+    return out, index.launches
 
 
 def _launch_date(inception_mjd: int | None) -> str | None:

@@ -1137,6 +1137,7 @@
 	"group_type_plural_launch_vehicle": "运载火箭",
 	"pagination_go_to_page": "前往第 {n} 页",
 	"group_moons_per_planet": "各行星的卫星数",
+	"group_targets_title": "目标",
 	"chart_log_scale": "对数刻度",
 	"group_ring_mass_title": "各系统质量",
 	"group_ring_mass_unknown": "{names} 没有已发表的估计值。",

@@ -499,6 +499,7 @@
 	"distance_from_sun": "Distance au Soleil",
 	"distance_from_body": "Distance à {name}",
 	"group_moons_per_planet": "Lunes par planète",
+	"group_targets_title": "Cibles",
 	"chart_log_scale": "échelle log",
 	"group_ring_mass_title": "Masse par système",
 	"group_ring_mass_unknown": "Aucune estimation publiée pour {names}.",

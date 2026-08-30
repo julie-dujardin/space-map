@@ -1183,6 +1183,7 @@
 	"group_type_plural_launch_vehicle": "Ракеты-носители",
 	"pagination_go_to_page": "Перейти на страницу {n}",
 	"group_moons_per_planet": "Спутников на планету",
+	"group_targets_title": "Цели",
 	"chart_log_scale": "лог. шкала",
 	"group_ring_mass_title": "Масса каждой системы",
 	"group_ring_mass_unknown": "Для {names} нет опубликованной оценки.",

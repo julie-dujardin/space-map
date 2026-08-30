@@ -60,6 +60,7 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.groups.membership import GroupSatcatStats
+from space_map_data.export.groups.probe_targets import build_probe_target_chart
 from space_map_data.export.groups.small_body import LargestBody, _notable_members
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.notable import NotableObject, render_geometry
@@ -129,8 +130,11 @@ class CategoryData:
     # the membership-backed groups produce.
     satcat_stats: dict[str, GroupSatcatStats] = field(default_factory=dict)
     extra_stats: dict[str, GroupExtraStats] = field(default_factory=dict)
-    # cat slug -> bar-chart rows (moons per planet/dwarf, distance-ordered).
-    moon_counts: dict[str, list[dict]] = field(default_factory=dict)
+    # cat slug -> bundle field -> bar-chart rows (moons per planet/dwarf,
+    # distance-ordered; probes per target, most-visited first).
+    chart_rows: dict[str, dict[str, list[dict]]] = field(default_factory=dict)
+    # cat slug -> chart row object id -> QID, for localized row labels.
+    chart_qids: dict[str, dict[str, str]] = field(default_factory=dict)
     # cat slug -> {bare constellation slug: fleet size}; the Satellites page's
     # top-constellations bar chart and the Debris page's top-sources one (the
     # bundle ranks + caps the list).
@@ -1384,6 +1388,7 @@ def build_category_data(
     probe_members, probes_total = _probe_members(session, radii, gms, orientation)
     moons = _moon_data(session, planet_elements)
     moons_total, moon_counts = moons.total, moons.rows
+    probe_targets = build_probe_target_chart(session)
 
     # Most-populated type first: with 57 chips, alphabetical would bury craters.
     feature_types = sorted(
@@ -1657,7 +1662,7 @@ def build_category_data(
         "volcanism=%d, tectonics=%d, magnetic=%d, tidal=%d, radiation=%d, "
         "asteroid zones=%d, comet "
         "families=%d, satellite groups=%d (%d payloads), debris groups=%d "
-        "(%d pieces from %d sources), probes=%d",
+        "(%d pieces from %d sources), probes=%d (%d targets)",
         len(planet_members),
         len(dwarf_members),
         moons_total,
@@ -1679,6 +1684,7 @@ def build_category_data(
         debris_total,
         len(earth_orbit.debris_source_counts),
         probes_total,
+        len(probe_targets.rows),
     )
     return CategoryData(
         children=children,
@@ -1693,7 +1699,15 @@ def build_category_data(
         pha_counts={ASTEROIDS_SLUG: pha_total} if pha_total else {},
         satcat_stats=satcat_out,
         extra_stats=extra_stats,
-        moon_counts={MOONS_SLUG: moon_counts} if moon_counts else {},
+        chart_rows={
+            slug: {field_name: rows}
+            for slug, field_name, rows in (
+                (MOONS_SLUG, "moon_counts", moon_counts),
+                (PROBES_SLUG, "probe_targets", probe_targets.rows),
+            )
+            if rows
+        },
+        chart_qids={PROBES_SLUG: probe_targets.qids} if probe_targets.qids else {},
         constellation_counts={
             slug: counts
             for slug, counts in (

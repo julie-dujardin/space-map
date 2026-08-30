@@ -1189,6 +1189,7 @@
 	"group_type_plural_launch_vehicle": "Trägerraketen",
 	"pagination_go_to_page": "Zu Seite {n} gehen",
 	"group_moons_per_planet": "Monde pro Planet",
+	"group_targets_title": "Ziele",
 	"chart_log_scale": "log. Skala",
 	"group_ring_mass_title": "Masse pro System",
 	"group_ring_mass_unknown": "Keine veröffentlichte Schätzung für {names}.",

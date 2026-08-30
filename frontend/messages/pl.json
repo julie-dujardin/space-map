@@ -1209,6 +1209,7 @@
 	"group_type_plural_launch_vehicle": "Rakiety nośne",
 	"pagination_go_to_page": "Przejdź do strony {n}",
 	"group_moons_per_planet": "Księżyce według planety",
+	"group_targets_title": "Cele",
 	"chart_log_scale": "skala log.",
 	"group_ring_mass_title": "Masa każdego systemu",
 	"group_ring_mass_unknown": "Brak opublikowanych szacunków dla {names}.",

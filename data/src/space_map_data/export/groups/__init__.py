@@ -534,7 +534,8 @@ def run_groups_tier(
         gallery_subjects=gallery_subjects,
         extra_named_counts=extra_named_counts,
         extra_notable_members=extra_notable_members,
-        extra_moon_counts=category_data.moon_counts,
+        extra_chart_rows=category_data.chart_rows,
+        extra_chart_qids=category_data.chart_qids,
         extra_primary_ids=missions.primary_ids,
         child_slugs_by_group={
             **category_data.children,

@@ -317,6 +317,7 @@
 	"naming_origin_aztec": "Aztec",
 	"naming_origin_colombia": "Colombia",
 	"group_moons_per_planet": "Moons per planet",
+	"group_targets_title": "Targets",
 	"chart_log_scale": "log scale",
 	"group_ring_mass_title": "Mass per system",
 	"group_ring_mass_unknown": "No published estimate for {names}.",

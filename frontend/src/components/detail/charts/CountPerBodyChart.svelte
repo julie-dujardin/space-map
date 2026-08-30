@@ -6,15 +6,16 @@
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
-	import { focusClick, focusHref } from '$lib/state/focus-link';
+	import { focusClick, focusHref, groupClick, groupHref } from '$lib/state/focus-link';
 	import type { DrawerTab } from '$lib/state/view';
 
 	/** One tally per row — moons per planet, features per body, names per origin.
 	 *  Rows with no `primary_id` (naming origins) have nowhere to go, so they
-	 *  render unlinked. */
+	 *  render unlinked; a `group` row opens a collection page instead of
+	 *  focusing a body (the libration points probes are sent to). */
 	export interface CountPerBodyEntry {
 		name: string;
-		primary_type?: 'object';
+		primary_type?: 'object' | 'group';
 		primary_id?: string;
 		n: number;
 		/** The member's own exported tint, for the bodies `BODY_COLORS` has no
@@ -64,6 +65,18 @@
 
 	function label(e: CountPerBodyEntry): string {
 		return (e.primary_id ? names?.[e.primary_id] : undefined) ?? e.name;
+	}
+
+	function href(e: CountPerBodyEntry, id: string): string | undefined {
+		return e.primary_type === 'group'
+			? groupHref(appState, id, label(e))
+			: focusHref(appState, id, label(e), tab, featureType);
+	}
+
+	function onclick(e: CountPerBodyEntry, id: string): (ev: MouseEvent) => void {
+		return e.primary_type === 'group'
+			? groupClick(appState, id, label(e))
+			: focusClick(focusObject, id, label(e), { tab, featureType });
 	}
 
 	/** Same order MoonDiscRow uses: the hand-picked UI tint, then whatever the
@@ -131,8 +144,8 @@
 			{#each visible as e (e.primary_id ?? e.name)}
 				{#if appState && e.primary_id}
 					<a
-						href={focusHref(appState, e.primary_id, label(e), tab, featureType)}
-						onclick={focusClick(focusObject, e.primary_id, label(e), { tab, featureType })}
+						href={href(e, e.primary_id)}
+						onclick={onclick(e, e.primary_id)}
 						class="hover:bg-muted/40 col-span-3 grid grid-cols-subgrid items-center rounded-sm px-1 py-px"
 					>
 						{@render row(e)}

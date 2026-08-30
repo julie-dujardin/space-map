@@ -1191,6 +1191,7 @@
 	"group_type_plural_launch_vehicle": "Veículos de lançamento",
 	"pagination_go_to_page": "Ir para a página {n}",
 	"group_moons_per_planet": "Luas por planeta",
+	"group_targets_title": "Alvos",
 	"chart_log_scale": "escala log.",
 	"group_ring_mass_title": "Massa por sistema",
 	"group_ring_mass_unknown": "Não há estimativa publicada para {names}.",

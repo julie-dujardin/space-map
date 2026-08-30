@@ -113,6 +113,7 @@ def test_target_ids_follow_horizons_convention() -> None:
     assert target_object_ids(499) == ("naif-499",)
     assert target_object_ids(2000433) == ("spkid-20000433", "naif-2000433")
     assert target_object_ids(1000036) == ("spkid-1000036",)
+    assert target_object_ids(120065803) == ("spkid-120065803",)
 
 
 def test_probes_per_body_once_latest_first(events: None) -> None:

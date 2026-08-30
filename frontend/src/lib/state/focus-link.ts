@@ -127,3 +127,17 @@ export function focusClick(
 		});
 	};
 }
+
+/** Click handler that opens a `/g/<slug>` collection page in-app, unless the
+ *  click is modified. */
+export function groupClick(
+	appState: AppState | undefined,
+	slug: string,
+	name: string
+): (e: MouseEvent) => void {
+	return (e) => {
+		if (isModifiedClick(e) || !appState) return;
+		e.preventDefault();
+		appState.setGroup(slug, name);
+	};
+}

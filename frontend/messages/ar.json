@@ -1212,6 +1212,7 @@
 	"group_type_plural_launch_vehicle": "مركبات إطلاق",
 	"pagination_go_to_page": "الانتقال إلى الصفحة ‎{n}‎",
 	"group_moons_per_planet": "الأقمار لكل كوكب",
+	"group_targets_title": "الأهداف",
 	"chart_log_scale": "مقياس لوغاريتمي",
 	"group_ring_mass_title": "كتلة كل نظام",
 	"group_ring_mass_unknown": "لا يوجد تقدير منشور لـ {names}.",

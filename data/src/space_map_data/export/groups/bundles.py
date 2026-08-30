@@ -231,7 +231,7 @@ def _build_global(
     pha_count: int,
     named_count: int,
     notable_members: list[dict] | None,
-    moon_counts: list[dict] | None,
+    chart_rows: dict[str, list[dict]] | None,
     primary_id: str | None,
     lv_stats: LaunchVehicleStats | None,
     orbit_classes: list[str] | None,
@@ -368,9 +368,10 @@ def _build_global(
         }
     if notable_members:
         data["notable_members"] = notable_members
-    # Moons category: per-planet/dwarf moon tallies driving its bar chart.
-    if moon_counts:
-        data["moon_counts"] = moon_counts
+    # Bar-chart rows a category page draws under its members: moons per
+    # planet, probes per target. Each producer names its own bundle field.
+    if chart_rows:
+        data.update(chart_rows)
     # Focus redirect for mission pages (fly to the primary probe, not a filter).
     if primary_id:
         data["primary"] = {"primary_type": "object", "primary_id": primary_id}
@@ -464,6 +465,7 @@ def _build_localized(
     constellation_counts: dict[str, int] | None = None,
     ft_stats: FeatureTypeStats | None = None,
     site_stats: LaunchSiteStats | None = None,
+    chart_qids: dict[str, str] | None = None,
 ) -> dict:
     data: dict = {}
     # Categories carry a hand-set plural name (the Wikidata label is singular
@@ -562,12 +564,13 @@ def _build_localized(
         )
         if child_groups:
             data["child_groups"] = child_groups
-    # Localized labels for the feature-type page's per-body bar chart; the
-    # global rows carry English body names.
-    if ft_stats is not None and ft_stats.body_qids:
+    # Localized labels for a page's per-body bar chart (features per body,
+    # probes per target); the global rows carry English body names.
+    row_qids = {**(ft_stats.body_qids if ft_stats else {}), **(chart_qids or {})}
+    if row_qids:
         body_names = {
             object_id: label
-            for object_id, qid in ft_stats.body_qids.items()
+            for object_id, qid in row_qids.items()
             if (wd := wikidata_entities.get_entity(qid))
             and (label := entity_label(wd, lang))
         }
@@ -910,7 +913,8 @@ def write_group_bundles(
     extra_stats: dict[str, GroupExtraStats] | None = None,
     extra_named_counts: dict[str, int] | None = None,
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
-    extra_moon_counts: dict[str, list[dict]] | None = None,
+    extra_chart_rows: dict[str, dict[str, list[dict]]] | None = None,
+    extra_chart_qids: dict[str, dict[str, str]] | None = None,
     extra_primary_ids: dict[str, str] | None = None,
     gallery_subjects: dict[str, GallerySubject] | None = None,
     child_slugs_by_group: dict[str, list[str]] | None = None,
@@ -972,7 +976,7 @@ def write_group_bundles(
             if members
             else None
         )
-        moon_counts = (extra_moon_counts or {}).get(group.slug)
+        chart_rows = (extra_chart_rows or {}).get(group.slug)
         lv_stats = (launch_vehicle_stats or {}).get(group.slug)
         ft_stats = (feature_type_stats or {}).get(group.slug)
         galleries = _member_galleries(
@@ -996,7 +1000,7 @@ def write_group_bundles(
             pha_count,
             named_count,
             member_entries,
-            moon_counts,
+            chart_rows,
             (extra_primary_ids or {}).get(group.slug),
             lv_stats,
             (constellation_orbit_classes or {}).get(group.slug),
@@ -1025,6 +1029,7 @@ def write_group_bundles(
                 constellation_counts,
                 ft_stats,
                 (launch_site_stats or {}).get(group.slug),
+                (extra_chart_qids or {}).get(group.slug),
             )
             member_names = _gallery_subject_names(
                 galleries, gallery_subjects, lang, wikidata_entities

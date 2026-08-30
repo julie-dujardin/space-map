@@ -507,6 +507,7 @@
 	"distance_from_sun": "太陽からの距離",
 	"distance_from_body": "{name}からの距離",
 	"group_moons_per_planet": "惑星ごとの衛星数",
+	"group_targets_title": "目標",
 	"chart_log_scale": "対数目盛",
 	"group_ring_mass_title": "系ごとの質量",
 	"group_ring_mass_unknown": "{names} の推定値は公表されていません。",

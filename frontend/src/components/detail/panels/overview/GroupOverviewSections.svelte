@@ -20,7 +20,12 @@
 	import VolcanismStatusChart from '../../charts/VolcanismStatusChart.svelte';
 	import SolarSystemMassChart from '../../charts/SolarSystemMassChart.svelte';
 	import { propertyFigure } from './group-figures';
-	import { categoryPlotType, classNameFromSlug, scatterZoneSlugs } from '$lib/charts/orbit-zones';
+	import {
+		categoryPlotType,
+		classNameFromSlug,
+		orbitClassLabel,
+		scatterZoneSlugs
+	} from '$lib/charts/orbit-zones';
 	import { CAT_STRUCTURE_ACTIVITY } from '$lib/fetch/groups/registry';
 	import { PROPERTY_ACCENT, type CategoryConfig } from '$lib/state/category-config';
 	import { fieldParts, powerParts } from '$lib/format/activity';
@@ -47,6 +52,19 @@
 	// Moons category: the per-planet/dwarf bar chart replaces the notable-members
 	// strip and members list this page deliberately omits.
 	let moonCounts = $derived(cat.moons ? groupDetail?.global?.moon_counts : undefined);
+	// Probes category: where the fleet was sent. Rows open the target's
+	// overview, whose probes strip is the list behind the bar.
+	let probeTargets = $derived(groupDetail?.global?.probe_targets);
+	// The libration points are rows on a collection, not a body, so their label
+	// comes from the zone names rather than the bundle's body_names.
+	let targetNames = $derived.by(() => {
+		const names = { ...(groupDetail?.localized?.body_names ?? {}) };
+		for (const row of probeTargets ?? []) {
+			const cls = row.primary_id ? classNameFromSlug(row.primary_id) : null;
+			if (cls) names[row.primary_id!] = orbitClassLabel(cls);
+		}
+		return names;
+	});
 	// Surface Features only: its type chips group by landform family.
 	let featureFamilies = $derived(groupDetail?.global?.feature_families);
 	let visibleChildGroups = $derived.by(() => {
@@ -126,6 +144,9 @@
 {/if}
 {#if moonCounts && moonCounts.length > 0}
 	<CountPerBodyChart entries={moonCounts} title={m.group_moons_per_planet()} tab="members" />
+{/if}
+{#if probeTargets && probeTargets.length > 0}
+	<CountPerBodyChart entries={probeTargets} title={m.group_targets_title()} names={targetNames} />
 {/if}
 {#if categoryPlot && groupDetail?.global}
 	<GroupOrbitMap global={groupDetail.global} plotOverride={categoryPlot} />
