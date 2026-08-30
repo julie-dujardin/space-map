@@ -30,6 +30,7 @@ from tqdm import tqdm
 from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.models.object import Object, ObjectType, OrbitalSource, Satcat
 from space_map_data.export.position.probes.time_grid import PROBE_EXPORT_END_YEAR
+from space_map_data.probes.attachments import resolve_attachments
 from space_map_data.probes.landing_events import probe_ids_with_phases
 from space_map_data.probes.probe_id import (
     ProbeIdRecord,
@@ -106,7 +107,7 @@ def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]
                 for t in f.get("targets", []):
                     try:
                         name_hints.setdefault((mdir.name, int(t)), hint)
-                    except (TypeError, ValueError):
+                    except TypeError, ValueError:
                         logger.warning(
                             "skipping non-int NAIF target %r in %s",
                             t,
@@ -246,18 +247,21 @@ class ProbesIngestor:
         self, spk_keys: set[tuple[str, int]]
     ) -> list[tuple[dict, ProbeIdRecord]]:
         """Synthesise ingest records for registry entries whose only
-        ``kernel_sources`` is ``EVENTS-DB`` and which have at least one
-        landed phase in the events JSONs. Skips entries already covered by
-        an SPK-walk record (``spk_keys``)."""
+        ``kernel_sources`` is ``EVENTS-DB`` and which the export can place:
+        a landed phase in the events JSONs, or a ride on a carrier that has
+        a trajectory. Skips entries already covered by an SPK-walk record
+        (``spk_keys``)."""
         registry = load_registry()
         end_et = jd_to_et(year_to_jd(PROBE_EXPORT_END_YEAR))
-        pids_with_phases = probe_ids_with_phases(end_et)
+        placeable = probe_ids_with_phases(end_et) | {
+            a.probe_id for a in resolve_attachments()
+        }
         out: list[tuple[dict, ProbeIdRecord]] = []
         for entry in registry:
             sources = entry["kernel_sources"]
             if not all(s["mission"] == "EVENTS-DB" for s in sources):
                 continue
-            if int(entry["probe_id"]) not in pids_with_phases:
+            if int(entry["probe_id"]) not in placeable:
                 continue
             mission = sources[0]["mission"]
             naif_id = int(sources[0]["naif_id"])

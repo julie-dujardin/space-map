@@ -931,6 +931,8 @@
 	"apogee": "Apogee",
 	"perigee": "Perigee",
 	"earth_moid": "Earth MOID",
+	"carried_by": "Carried by",
+	"carried_by_scene_label": "Carried by {carrier}",
 	"mission": "Mission",
 	"satellite": "Satellite",
 	"ops_status": "Status",

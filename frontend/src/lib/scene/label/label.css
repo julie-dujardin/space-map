@@ -82,9 +82,11 @@
 	font-size: 16px;
 }
 
-/* Close-range note for bodies with nothing physical to draw. Dim, not red —
- * informational, not an error. */
-.scene-label__note {
+/* Captions under a body's name: what it has nothing of (`__note`, close range
+ * only) and whose position it is drawn at (`__sub`). Dim, not red — both are
+ * informational, not errors. */
+.scene-label__note,
+.scene-label__sub {
 	position: absolute;
 	top: 28px;
 	/* Align with the name text start (halo width + name padding). */
@@ -97,6 +99,8 @@
 		0 0 3px #000,
 		0 0 3px #000;
 	pointer-events: none;
+}
+.scene-label__note {
 	opacity: 0;
 	transition: opacity 0.15s;
 }

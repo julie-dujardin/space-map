@@ -561,6 +561,9 @@ export interface GlobalObjectData {
 	mission_member_count?: number;
 	/** On a member probe: the mission it belongs to, for the breadcrumb + card. */
 	part_of_mission?: FragmentOf;
+	/** On a craft with no trajectory of its own: the one carrying it, whose
+	 *  position it borrows. Same card shape as `part_of_mission`. */
+	carried_by?: FragmentOf;
 }
 
 export interface FragmentOf {

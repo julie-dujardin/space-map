@@ -788,6 +788,8 @@
 	"apogee": "Apogeo",
 	"perigee": "Perigeo",
 	"earth_moid": "MOID terrestre",
+	"carried_by": "Trasportato da",
+	"carried_by_scene_label": "Trasportato da {carrier}",
 	"mission": "Missione",
 	"satellite": "Satellite",
 	"ops_status": "Stato",

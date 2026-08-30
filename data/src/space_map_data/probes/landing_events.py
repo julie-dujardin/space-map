@@ -98,8 +98,8 @@ class LandingPhase:
     site_name: str | None
 
 
-def _parse_iso_to_jd(s: str) -> float:
-    """Parse an ISO-ish date from the events files into a JD.
+def parse_event_jd(s: str) -> float:
+    """Parse an ISO-ish date from an events file into a JD.
 
     Accepts ``YYYY``, ``YYYY-MM``, ``YYYY-MM-DD``, ``YYYY-MM-DDTHH:MM[:SS]Z``.
     Treats UTC as TDB — the ~37 s offset is irrelevant for landed-phase
@@ -149,7 +149,7 @@ def _phase_end_et(
     landing = events[landing_idx]
     if landing.get("end_date"):
         try:
-            end = jd_to_et(_parse_iso_to_jd(landing["end_date"]))
+            end = jd_to_et(parse_event_jd(landing["end_date"]))
             if end > start_et:
                 return end
         except ValueError, TypeError:
@@ -162,7 +162,7 @@ def _phase_end_et(
         if nxt.get("type") not in _DEPARTURE_TYPES:
             continue
         try:
-            end = jd_to_et(_parse_iso_to_jd(nxt["date"]))
+            end = jd_to_et(parse_event_jd(nxt["date"]))
         except ValueError, TypeError, KeyError:
             continue
         if end > start_et:
@@ -247,7 +247,7 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                     )
                     continue
                 try:
-                    start_et = jd_to_et(_parse_iso_to_jd(ev["date"]))
+                    start_et = jd_to_et(parse_event_jd(ev["date"]))
                 except ValueError, TypeError, KeyError:
                     logger.exception(
                         "events: %s landing date %r unparseable; skipping",

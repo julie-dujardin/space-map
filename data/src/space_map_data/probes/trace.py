@@ -88,6 +88,19 @@ _IAU_FRAME: dict[int, str] = {
 _LANDED_ALT_KM = 50.0
 _LANDED_VBF_M_PER_S = 10.0
 
+# The scan runs on a day grid, which puts a touchdown up to a day late: the
+# landing date on the page is wrong and the descent that leads to it has no
+# record. Each landed edge is bisected down to this, cheap because only the
+# two samples either side of a transition are re-tested.
+_LANDED_EDGE_TOL_S = 60.0
+
+# A different question from `_LANDED_VBF_M_PER_S`, which asks "lander or low
+# orbiter?" — a craft under a parachute already answers that one (Huygens
+# clears it 67 min above Titan). Dating the touchdown asks "at rest?", which
+# only a craft tracking the body's rotation answers. A phase whose landed
+# sample never passes it keeps the scan's own boundary.
+_AT_REST_VBF_M_PER_S = 1.0
+
 
 def _merged_intervals(
     naif_id: int, kernel_paths: list[str]
@@ -160,6 +173,8 @@ def _per_sample_landed_body(
     sample_ets: np.ndarray,
     probe_ssb: np.ndarray,
     target_ssb_cache: dict[int, np.ndarray] | None = None,
+    targets: tuple[int, ...] = _LANDING_TARGETS,
+    vbf_max_m_per_s: float = _LANDED_VBF_M_PER_S,
 ) -> np.ndarray:
     """Per-sample body NAIF the probe is landed on (or 0 = flying).
 
@@ -176,7 +191,7 @@ def _per_sample_landed_body(
     n = len(sample_ets)
     near_body = np.zeros(n, dtype=int)
     cache = target_ssb_cache if target_ssb_cache is not None else {}
-    for body_naif in _LANDING_TARGETS:
+    for body_naif in targets:
         try:
             radii = spiceypy.bodvrd(str(body_naif), "RADII", 3)[1]
         except spiceypy.exceptions.SpiceyError:
@@ -209,9 +224,42 @@ def _per_sample_landed_body(
         except spiceypy.exceptions.SpiceyError:
             continue
         v_bf_m_per_s = float(np.linalg.norm(state[3:])) * 1000.0
-        if v_bf_m_per_s < _LANDED_VBF_M_PER_S:
+        if v_bf_m_per_s < vbf_max_m_per_s:
             out[k] = body
     return out
+
+
+def _is_at_rest_at(naif_id: int, et: float, body_naif: int) -> bool:
+    """Whether the craft is down on `body_naif` at one instant."""
+    ets = np.asarray([et])
+    landed = _per_sample_landed_body(
+        naif_id,
+        ets,
+        _positions_wrt_ssb(naif_id, ets),
+        targets=(body_naif,),
+        vbf_max_m_per_s=_AT_REST_VBF_M_PER_S,
+    )
+    return int(landed[0]) != 0
+
+
+def _refine_landed_edge(
+    naif_id: int, body_naif: int, flying_et: float, landed_et: float
+) -> float:
+    """The instant the craft touches down on (or lifts off from) `body_naif`,
+    bisected between the last flying sample and the first landed one.
+
+    The endpoints were classified by the phase gate, not the at-rest one, so
+    the landed end may not itself read as at rest; then nothing moves and the
+    scan's own boundary stands. The result never leaves the bracket either
+    way, so it cannot overlap the flying range.
+    """
+    while abs(landed_et - flying_et) > _LANDED_EDGE_TOL_S:
+        mid = 0.5 * (flying_et + landed_et)
+        if _is_at_rest_at(naif_id, mid, body_naif):
+            landed_et = mid
+        else:
+            flying_et = mid
+    return landed_et
 
 
 def classify_trace(
@@ -284,10 +332,20 @@ def _classify_contiguous_interval(
         while j + 1 < n_samples and int(landed_body[j + 1]) == cur:
             j += 1
         if cur != 0:
+            # Edges only: the scan's samples are a day apart, a landing is an
+            # instant.
+            start_et = (
+                _refine_landed_edge(naif_id, cur, float(ets[i - 1]), float(ets[i]))
+                if i > 0 and int(landed_body[i - 1]) == 0
+                else float(ets[i])
+            )
+            end_et = (
+                _refine_landed_edge(naif_id, cur, float(ets[j + 1]), float(ets[j]))
+                if j + 1 < n_samples and int(landed_body[j + 1]) == 0
+                else float(ets[j])
+            )
             landed_phases.append(
-                LandedPhase(
-                    body_naif_id=cur, start_et=float(ets[i]), end_et=float(ets[j])
-                )
+                LandedPhase(body_naif_id=cur, start_et=start_et, end_et=end_et)
             )
         else:
             _classify_flying_subrange(

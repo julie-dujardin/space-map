@@ -30,6 +30,7 @@ import { prefetchSkyboxTiers } from '$lib/scene/objects/sky/skybox';
 import { markEagerMinorsDone } from '$lib/scene/setup/load-gates';
 import { isLowEndDevice } from '$lib/device';
 import { createPlaceholderBody } from '$lib/scene/setup/placeholder';
+import { passengerFor, type PassengerGraft } from '$lib/fetch/position/probes/passenger';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getSettings } from '$lib/state/settings.svelte';
 import { loadProgress } from '$lib/scene/state/load-progress.svelte';
@@ -124,7 +125,8 @@ async function loadMajorBodies(
 	loader: ChunkLoader,
 	metadata: Metadata,
 	date: Date,
-	jd: number
+	jd: number,
+	passenger?: PassengerGraft
 ): Promise<PositionedBody[]> {
 	const major: PositionedBody[] = [];
 	let cachedLabels: Awaited<ReturnType<typeof fetchLabels>> | null = null;
@@ -134,6 +136,9 @@ async function loadMajorBodies(
 	}
 	if (ctx.probeStore) {
 		cachedLabels ??= await fetchLabels();
+		// Registered before the pass: `probesAt` is what emits a riding craft,
+		// which otherwise has no record of its own to come out of any chunk.
+		if (passenger) ctx.probeStore.registerCarried(passenger);
 		major.push(...loader.processProbes(ctx.probeStore, date, cachedLabels));
 	}
 	const majorZone = metadata.position.zones.major;
@@ -212,6 +217,10 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		return store;
 	});
 	const probePromise = metadataPromise.then((metadata) => buildProbeStore(metadata, jd));
+	// A craft still bolted to another has no record of its own to find. Started
+	// here rather than at the probe pass so its bundle rides along with the
+	// metadata and ephemeris fetches instead of adding a round trip to boot.
+	const passengerPromise = passengerFor(targetId);
 
 	const metadata = await metadataPromise;
 	loadProgress.reach('metadata');
@@ -231,7 +240,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 			loader.positions.has(id);
 	}
 
-	const major = await loadMajorBodies(ctx, loader, metadata, date, jd);
+	const major = await loadMajorBodies(ctx, loader, metadata, date, jd, await passengerPromise);
 	loadProgress.reach('majors');
 	await atmospheresPromise;
 	ctx.bodies.addBodies(major);

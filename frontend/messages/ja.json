@@ -802,6 +802,8 @@
 	"apogee": "遠地点",
 	"perigee": "近地点",
 	"earth_moid": "地球 MOID",
+	"carried_by": "搭載元",
+	"carried_by_scene_label": "{carrier}に搭載",
 	"mission": "ミッション",
 	"satellite": "人工衛星",
 	"ops_status": "状態",

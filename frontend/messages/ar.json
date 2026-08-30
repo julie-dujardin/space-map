@@ -783,6 +783,8 @@
 	"apogee": "الأوج الأرضي",
 	"perigee": "الحضيض الأرضي",
 	"earth_moid": "MOID الأرض",
+	"carried_by": "محمول على متن",
+	"carried_by_scene_label": "محمول على متن {carrier}",
 	"mission": "المهمة",
 	"satellite": "قمر صناعي",
 	"ops_status": "الحالة",

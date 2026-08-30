@@ -133,6 +133,10 @@ export interface PositionedBody {
 	 * Takes precedence over `orbitElements` in the trail builder.
 	 */
 	trailBuffer?: TrailBuffer;
+	/** Name of the craft this one is riding, when its position is borrowed from
+	 *  it (Huygens on Cassini). Credited under the scene label — the position on
+	 *  screen is the carrier's, and the label has to say so. */
+	carriedBy?: string;
 	/** Probe sits at Sun–Earth L1/L2 this frame, so its Earth-relative trail
 	 *  is a halo loop: drawn co-rotating with the Sun–Earth line and sized to
 	 *  one halo period instead of the geocentric osculating orbit. */

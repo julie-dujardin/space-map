@@ -289,6 +289,8 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			// applying its IAU orientation. Skip the flying-fit path entirely.
 			const probeLanded = located.probe.landed;
 			if (probeLanded && isLandedAt(located.probe, jd)) {
+				// Captured before `renderLandedProbe` re-parents the craft.
+				const flyingFrameId = d.parentId;
 				const landedRender = renderLandedProbe(
 					d,
 					located.probe,
@@ -304,6 +306,12 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				}
 				diagnostics.clear('probe-unavailable', d.id);
 				body.positionUnknown = false;
+				// A craft that lands on a body other than the one its flying fits
+				// were against — Huygens fitted on Saturn, standing on Titan —
+				// leaves a buffer full of offsets from the wrong origin. Drawn
+				// against the new one they rule a line from the landing site out
+				// to the old frame, so the descent trail ends at touchdown.
+				if (flyingFrameId !== d.parentId) body.trailBuffer?.clear();
 				if (bo) {
 					bo.outOfRange = false;
 					if (!bo.isLanded) {

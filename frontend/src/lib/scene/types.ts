@@ -38,6 +38,9 @@ export interface BodyObjects {
 	mesh: Mesh | null;
 	label: CSS2DObject | null;
 	labelHalo: HTMLElement | null;
+	/** Credit line under the name — whose position this craft is drawn at.
+	 *  Only a carried craft has one; shown and hidden with the name. */
+	labelSub: HTMLElement | null;
 	/** Viewport-pinned model-load spinner, shown when the halo would be hidden. */
 	loadingEl: HTMLElement | null;
 	/** Top-level scene objects that track this body's position. */

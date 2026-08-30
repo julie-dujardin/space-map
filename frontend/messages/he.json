@@ -788,6 +788,8 @@
 	"apogee": "אפוגיאון",
 	"perigee": "פריגיאון",
 	"earth_moid": "MOID של כדור הארץ",
+	"carried_by": "נישא על ידי",
+	"carried_by_scene_label": "נישא על ידי {carrier}",
 	"mission": "משימה",
 	"satellite": "לוויין",
 	"ops_status": "סטטוס",

@@ -9,8 +9,10 @@
 	} from '$lib/fetch/objects/object-data';
 	import type { OrbitalElements, PositionedBody } from '$lib/types/objects';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import type { FocusObject } from '$lib/state/focusable';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
+	import { focusClick, focusHref, isModifiedClick } from '$lib/state/focus-link';
 	import {
 		CLASS_SLUG_PREFIX,
 		classifyEarthOrbit,
@@ -34,6 +36,7 @@
 	let { global, localized, orbitElements, body }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
+	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
 	let celestrak = $derived(global?.celestrak);
 	let orbitsEarth = $derived(celestrak?.orbit_center === 'earth');
@@ -125,6 +128,14 @@
 		};
 	});
 
+	// What is carrying it. More specific than the mission it belongs to — and
+	// the two would say nearly the same thing — so it outranks the affiliation.
+	let carriedByRef = $derived.by<CrossRef | null>(() => {
+		const carrier = global?.carried_by;
+		if (!carrier) return null;
+		return { label: m.carried_by(), display: carrier.name, ref: fragmentRef(carrier) };
+	});
+
 	// What the craft belongs to: its mission, else the constellation it flies in.
 	let affiliationRef = $derived.by<CrossRef | null>(() => {
 		const mission = global?.mission ?? global?.part_of_mission;
@@ -184,6 +195,7 @@
 		const available: CrossRef[] = [];
 		for (const c of [
 			orbitClassRef ?? lagrangeRef,
+			carriedByRef,
 			affiliationRef,
 			platformRef,
 			launchVehicleRef,
@@ -205,16 +217,29 @@
 		const img = detail.global?.images?.[0];
 		return img ? pickImageUrl(img, 300) : undefined;
 	}
-	let tiles = $derived(cards.map((c) => ({ card: c, hero: fetchHero(c.ref.primary_id) })));
+	let tiles = $derived(
+		cards.map((c) => ({
+			card: c,
+			// Only groups have a page with a lead image; an object ref would 404.
+			hero: c.ref.primary_type === 'group' ? fetchHero(c.ref.primary_id) : undefined
+		}))
+	);
 
 	function href(ref: EntityRef): string | undefined {
 		if (!appState || !ref.primary_id) return undefined;
-		return serializeUrl(applyGroup(appState.view, ref.primary_id, ref.name));
+		// Every tile but `carried_by` points at a group; that one names a craft.
+		return ref.primary_type === 'object'
+			? focusHref(appState, ref.primary_id, ref.name)
+			: serializeUrl(applyGroup(appState.view, ref.primary_id, ref.name));
 	}
 
 	function open(e: MouseEvent, ref: EntityRef) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 		if (!appState || !ref.primary_id) return;
+		if (ref.primary_type === 'object') {
+			focusClick(focusObject, ref.primary_id, ref.name)(e);
+			return;
+		}
+		if (isModifiedClick(e)) return;
 		e.preventDefault();
 		appState.setGroup(ref.primary_id, ref.name);
 	}

@@ -804,6 +804,8 @@
 	"apogee": "Apogeum",
 	"perigee": "Perygeum",
 	"earth_moid": "MOID Ziemi",
+	"carried_by": "Przenoszony przez",
+	"carried_by_scene_label": "Przenoszony przez {carrier}",
 	"mission": "Misja",
 	"satellite": "Satelita",
 	"ops_status": "Status",

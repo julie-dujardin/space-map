@@ -259,6 +259,20 @@ export function partsForDate(zoom: DateSegmentedZoom, isoDate: string, cap = 0):
 export interface ProbeCoverage {
 	start_jd: number;
 	end_jd: number;
+	/** Spans a date resolves to a position in. An archive with holes yields
+	 *  several; `start_jd`/`end_jd` bound them all. */
+	windows?: [number, number][];
+	/** Set on a craft with no trajectory of its own over part of its life:
+	 *  it was bolted to `object_id` and is drawn wherever that craft is,
+	 *  until it separates. */
+	position_from?: CarriedFrom;
+}
+
+/** The craft a passenger borrows its position from, and for how long. */
+export interface CarriedFrom {
+	object_id: string;
+	start_jd: number;
+	end_jd: number;
 }
 
 export interface PositionMetadata {

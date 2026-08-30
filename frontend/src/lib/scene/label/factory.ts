@@ -108,7 +108,9 @@ export function createLabel(
 	onClick: () => void,
 	isLarge = false,
 	onHoverChange?: (hovered: boolean) => void,
-	isMinor = false
+	isMinor = false,
+	/** Credit line under the name — see {@link PositionedBody.carriedBy}. */
+	subtitle?: string
 ): CSS2DObject | null {
 	if (variant === 'none') return null;
 
@@ -121,8 +123,9 @@ export function createLabel(
 	el.draggable = false;
 	// Permanent accessible name: the visible name span is display:none'd while
 	// culled/dimmed, which strips it from the name computation, so the anchor
-	// carries its own aria-label that survives every dim/restore state.
-	if (name) el.setAttribute('aria-label', name);
+	// carries its own aria-label that survives every dim/restore state. It
+	// overrides the contents, so the credit line has to be spelled into it.
+	if (name) el.setAttribute('aria-label', subtitle ? `${name}, ${subtitle}` : name);
 
 	// halo: visual ring/hexagon, transition lives here not on root
 	let halo: HTMLElement | SVGSVGElement;
@@ -170,6 +173,14 @@ export function createLabel(
 
 	// Name text: absolutely positioned to the right, vertically centered on indicator
 	if (name) addLabelNameSpan(el, name, variant, isLarge);
+	// Under the name, so it reads as a caption on it rather than a second name.
+	if (name && subtitle) {
+		const sub = document.createElement('span');
+		sub.className = 'scene-label__sub';
+		sub.dir = 'auto';
+		sub.textContent = subtitle;
+		el.appendChild(sub);
+	}
 
 	// Minor halos collapse to the same scale as occluded/dimmed labels by
 	// default; on hover they grow to the regular hover size, on mouseleave

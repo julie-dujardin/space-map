@@ -28,6 +28,7 @@ import {
 import { ChunkLoader } from '$lib/fetch/position/chunk';
 import { dateToJD, jdToDate } from '$lib/format/date';
 import { fetchLabels } from '$lib/fetch/position/labels';
+import { passengerFor } from '$lib/fetch/position/probes/passenger';
 import { ensureTargetStreamed } from '$lib/scene/setup/placeholder';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getSettings } from '$lib/state/settings.svelte';
@@ -228,15 +229,22 @@ export class ZoneRefresher {
 		if (this.ctx.getBody(targetId)) return;
 		// Probes carry no orbital elements (the placeholder path can't build them)
 		// and an out-of-coverage probe isn't in bodiesById at boot. Load its chunk
-		// for the (coverage-snapped) date, re-run processProbes, graft in the target.
+		// for the (coverage-snapped) date and re-run processProbes for it.
 		if (targetId.startsWith('probe-')) {
 			const store = this.ctx.probeStore;
 			if (!store) return;
 			const jd = dateToJD(date);
+			// Started before the chunk wait so the two fetches overlap.
+			const passengerPromise = passengerFor(targetId);
 			await store.ensure(jd).done;
+			// Registered before the store is asked anything about the craft: a
+			// passenger answers off its carrier, the stamped fit center below
+			// included.
+			const passenger = await passengerPromise;
+			if (passenger) store.registerCarried(passenger);
 			// A record stamped to a small body (Deep Impact → Tempel 1) is gated
 			// until that body can anchor it. Stream the body in and seed its
-			// position so the graft below comes out placed even when no other
+			// position so the probe below comes out placed even when no other
 			// zone covers this date.
 			const fcId = store.stampedFitCenterAt(targetId, jd);
 			if (fcId) {

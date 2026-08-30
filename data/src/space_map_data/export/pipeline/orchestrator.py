@@ -97,6 +97,7 @@ from space_map_data.export.position.elements.spacetrack_source import (
 )
 from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.export.position.probes import write_probes
+from space_map_data.export.position.probes.writer import ProbeCoverage, ProbeCoverageMap
 from space_map_data.export.position.spacecraft_orientation import (
     apply_orientation_config,
 )
@@ -805,7 +806,7 @@ def _content_token(root: Path) -> str:
 
 def _inject_probe_coverage(
     global_data: dict[str, dict],
-    probe_coverage: Mapping[str, Mapping[str, float | list]],
+    probe_coverage: ProbeCoverageMap,
 ) -> None:
     """Stamp each probe's coverage onto its global bundle entry under
     `coverage`, mirroring `write_attitude`'s `attitude` injection."""
@@ -817,6 +818,35 @@ def _inject_probe_coverage(
             )
             continue
         entry["coverage"] = dict(cov)
+        _inject_carried_by(global_data, obj_id, cov)
+
+
+def _inject_carried_by(
+    global_data: dict[str, dict], obj_id: str, cov: ProbeCoverage
+) -> None:
+    """Stamp the passenger's `carried_by` cross-ref from its `position_from`.
+
+    Same shape as `part_of_mission` so the detail panel renders it with the
+    existing card. Built here rather than in the probes writer because the
+    carrier's display name lives on its global entry, which the writer never
+    sees."""
+    carried = cov.get("position_from")
+    if carried is None:
+        return
+    carrier_id = carried["object_id"]
+    carrier = global_data.get(carrier_id)
+    if carrier is None:
+        logger.warning(
+            "carried_by: %s rides %s, which has no global entry; link dropped",
+            obj_id,
+            carrier_id,
+        )
+        return
+    global_data[obj_id]["carried_by"] = {
+        "name": carrier.get("name") or carrier_id,
+        "primary_type": "object",
+        "primary_id": carrier_id,
+    }
 
 
 def _write_metadata_json(
@@ -916,7 +946,7 @@ def _run_probes(
     probe_ids: set[str],
     agg: _Aggregators,
     tier_b_clean: bool,
-) -> tuple[dict[str, dict], dict[str, dict[str, float | list]]]:
+) -> tuple[dict[str, dict], ProbeCoverageMap]:
     """Run (or skip) the probes pass behind its input signature.
 
     Same tier-B coupling as chebyshev: probe Object rows and has_localized

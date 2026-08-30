@@ -364,9 +364,12 @@ export class ChunkLoader {
 		const undefinedCenterProbes = new Set<string>();
 		// At boot there's no focused system, so the initial zone wins by metadata
 		// order (interplanetary first); the per-frame propagator flips parentId later.
-		for (const { probe, zoneCenterNaifId, startJd, endJd } of probeStore.probesAt(jd)) {
-			if (!probe.id) continue;
-			if (zoneCenterNaifId === undefined) undefinedCenterProbes.add(probe.id);
+		// `id` is the probe's own, except for a craft riding another: the record
+		// is then the carrier's, and everything identity-keyed below — label,
+		// trail buffer, re-derive — belongs to the passenger.
+		for (const { id, probe, zoneCenterNaifId, startJd, endJd } of probeStore.probesAt(jd)) {
+			if (!id) continue;
+			if (zoneCenterNaifId === undefined) undefinedCenterProbes.add(id);
 			const zoneCenterKey = `naif-${zoneCenterNaifId}`;
 			// Sub-chunks are fit against the probe's actual fit center — the stamped
 			// override (Moon for lunar orbiters, Ryugu for Hayabusa2, …) or the zone
@@ -386,15 +389,15 @@ export class ChunkLoader {
 			if (!primaryPos) {
 				let s = missingParents.get(primaryKey);
 				if (!s) missingParents.set(primaryKey, (s = new Set()));
-				s.add(probe.id);
+				s.add(id);
 			}
 			if (primaryMu === 0) {
 				let s = missingGm.get(primaryKey);
 				if (!s) missingGm.set(primaryKey, (s = new Set()));
-				s.add(probe.id);
+				s.add(id);
 			}
 			const offsetKm = probePositionKm(probe, jd, primaryMu);
-			if (!offsetKm) nullOffsets.add(probe.id);
+			if (!offsetKm) nullOffsets.add(id);
 			const anchor = primaryPos ?? ([0, 0, 0] as [number, number, number]);
 			const offset: [number, number, number] | null = offsetKm
 				? [kmToScene(offsetKm[0]), kmToScene(offsetKm[2]), -kmToScene(offsetKm[1])]
@@ -408,9 +411,9 @@ export class ChunkLoader {
 					? [anchor[0] + offset[0], anchor[1] + offset[1], anchor[2] + offset[2]]
 					: [anchor[0], anchor[1], anchor[2]];
 			const data: BodyData = {
-				id: probe.id,
-				name: pickLabel(labels, probe.id),
-				isMinor: pickIsMinor(labels, probe.id),
+				id,
+				name: pickLabel(labels, id),
+				isMinor: pickIsMinor(labels, id),
 				hasLocalized: probe.hasLocalized,
 				objectType: probe.objectType as ObjectType,
 				parentId: primaryKey,
@@ -433,7 +436,7 @@ export class ChunkLoader {
 			// Re-read the probe and its fit center on every call: scrubbing can move
 			// it to another chunk (stale Probe ref) or zone (cruise → captured
 			// orbit), and a late GM table self-heals on the next re-derive.
-			const ownId = probe.id;
+			const ownId = id;
 			const cheb = this.cheb;
 			const rederiveElements = (newJd: number): OrbitalElements | null => {
 				const located = probeStore.probeWithCenter(ownId, newJd);
@@ -465,7 +468,7 @@ export class ChunkLoader {
 					endJd - startJd,
 					NUM_TRAIL_POINTS
 				);
-				const cached = this.probeBuffers.get(probe.id);
+				const cached = this.probeBuffers.get(id);
 				if (cached && cached.parentKey === primaryKey) {
 					trailBuffer = cached.buffer;
 					// Heal a boot-time uniform buffer (elements unavailable at first
@@ -476,12 +479,15 @@ export class ChunkLoader {
 					}
 				} else {
 					trailBuffer = new TrailBuffer(NUM_TRAIL_POINTS, stepDays, epsilonScene, spanDays);
-					populateProbeTrailBuffer(trailBuffer, probeStore, cheb, probe.id, primaryKey, jd);
-					this.probeBuffers.set(probe.id, { buffer: trailBuffer, parentKey: primaryKey });
+					populateProbeTrailBuffer(trailBuffer, probeStore, cheb, id, primaryKey, jd);
+					this.probeBuffers.set(id, { buffer: trailBuffer, parentKey: primaryKey });
 				}
 			}
 			result.push({
 				data,
+				// Riding another craft's record: the position on screen is the
+				// carrier's, and the label has to say whose.
+				carriedBy: id === probe.id ? undefined : (pickLabel(labels, probe.id) ?? undefined),
 				position: pos,
 				positionUnknown,
 				// Kept even when the buffer drives the trail: the detail panel reads

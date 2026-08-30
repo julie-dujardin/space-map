@@ -52,7 +52,8 @@ export function dimLabel(
 	labelHalo: HTMLElement | null,
 	nameSpan: HTMLElement | null,
 	clickable: boolean,
-	scale = 0.3
+	scale = 0.3,
+	subSpan: HTMLElement | null = null
 ): void {
 	if (labelHalo) {
 		labelHalo.style.transform = `scale(${scale})`;
@@ -66,13 +67,17 @@ export function dimLabel(
 		nameSpan.style.display = 'none';
 		nameSpan.style.fontSize = '';
 	}
+	// The credit line captions the name; alone next to a collapsed halo it
+	// reads as a body called "Carried by Cassini".
+	if (subSpan) subSpan.style.display = 'none';
 }
 
 export function restoreLabel(
 	labelHalo: HTMLElement | null,
 	nameSpan: HTMLElement | null,
 	isHovered: boolean,
-	isFocused: boolean
+	isFocused: boolean,
+	subSpan: HTMLElement | null = null
 ): void {
 	if (labelHalo) {
 		if (!isHovered) labelHalo.style.transform = '';
@@ -84,6 +89,7 @@ export function restoreLabel(
 		nameSpan.style.display = '';
 		nameSpan.style.fontSize = isFocused ? '18px' : '';
 	}
+	if (subSpan) subSpan.style.display = '';
 }
 
 /**
@@ -370,7 +376,7 @@ export function cullOverlappingLabels(
 		const labelHalo = c.labelHalo;
 		const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
 		if (c.isCapped && !c.isSelected) {
-			dimLabel(labelHalo, nameSpan, true);
+			dimLabel(labelHalo, nameSpan, true, 0.3, c.bo!.labelSub);
 			c.bo!.labelMaximized = false;
 			continue;
 		}
@@ -403,7 +409,7 @@ export function cullOverlappingLabels(
 					break;
 				}
 			}
-			dimLabel(labelHalo, nameSpan, !minorOverlaps, minorOverlaps ? 0.3 : 0.5);
+			dimLabel(labelHalo, nameSpan, !minorOverlaps, minorOverlaps ? 0.3 : 0.5, c.bo!.labelSub);
 			c.bo!.labelMaximized = false;
 			continue;
 		}
@@ -421,10 +427,10 @@ export function cullOverlappingLabels(
 			a.right = c.labelRight;
 			a.y = c.screenY;
 			a.h = LH;
-			restoreLabel(labelHalo, nameSpan, hoveredBodyIds.has(c.bodyId), c.isFocused);
+			restoreLabel(labelHalo, nameSpan, hoveredBodyIds.has(c.bodyId), c.isFocused, c.bo!.labelSub);
 			c.bo!.labelMaximized = true;
 		} else {
-			dimLabel(labelHalo, nameSpan, false);
+			dimLabel(labelHalo, nameSpan, false, 0.3, c.bo!.labelSub);
 			c.bo!.labelMaximized = false;
 		}
 	}

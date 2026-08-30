@@ -20,6 +20,7 @@ orchestrator.
 
 import logging
 from pathlib import Path
+from typing import NotRequired, TypedDict
 
 import spiceypy
 from sqlalchemy.orm import Session
@@ -57,6 +58,7 @@ from space_map_data.probes.fit_centers import (
     load_candidates,
     small_body_candidates,
 )
+from space_map_data.probes.attachments import resolve_attachments
 from space_map_data.probes.landing_events import load_phases as load_landing_phases
 from space_map_data.probes.probe_id import index_by_source, load_registry
 from space_map_data.probes.zones import ALL_ZONES, SMALL_BODIES
@@ -68,6 +70,36 @@ logger = logging.getLogger(__name__)
 # spans that meet at chunk boundaries. Anything under a day apart is that
 # seam, or a sub-day hole no date-precision event could land in.
 _COVERAGE_MERGE_DAYS = 1.0
+
+# Fits are cut to whole sub-chunk slots (`chunk_aligned_range`), so a craft's
+# own arc can start up to one slot after it separates. Nothing else can place
+# it over that hole, and the two are still within a pixel of each other, so it
+# keeps riding until its own fits pick it up. One slot of the widest grid is
+# the ceiling: past that the craft is really missing.
+_DETACH_BRIDGE_DAYS = max(z.kepler_subchunk_days for z in ALL_ZONES)
+
+
+class CarriedFrom(TypedDict):
+    """Where a passenger borrows its position, and for how long."""
+
+    object_id: str
+    start_jd: float
+    end_jd: float
+
+
+class ProbeCoverage(TypedDict):
+    """One probe's resolvable span. `windows` are the spans a date can be
+    turned into a position in; `position_from` is set only on a craft that
+    rides another one."""
+
+    start_jd: float
+    end_jd: float
+    windows: list[tuple[float, float]]
+    position_from: NotRequired[CarriedFrom]
+
+
+# Keyed by `Object.id`.
+type ProbeCoverageMap = dict[str, ProbeCoverage]
 
 
 def _merge_spans(spans: list[tuple[float, float]]) -> list[tuple[float, float]]:
@@ -84,7 +116,7 @@ def _merge_spans(spans: list[tuple[float, float]]) -> list[tuple[float, float]]:
 def _compute_probe_coverage(
     plans: list[ProbePlan],
     metas_by_probe_id: dict[int, ProbeMeta],
-) -> dict[str, dict[str, float | list[tuple[float, float]]]]:
+) -> ProbeCoverageMap:
     """Per-probe coverage across every (zone, chunk_idx) — union of every
     `ChunkContribution`'s span, covering flying and landed contributions
     across zones. Keyed by `Object.id` so a focused probe's coverage is one
@@ -103,7 +135,7 @@ def _compute_probe_coverage(
             spans_by_probe.setdefault(plan.probe_id, []).append(
                 (et_to_jd(c.c_start_et), et_to_jd(c.c_end_et))
             )
-    coverage: dict[str, dict[str, float | list[tuple[float, float]]]] = {}
+    coverage: ProbeCoverageMap = {}
     n_gapped = 0
     for probe_id, spans in spans_by_probe.items():
         meta = metas_by_probe_id.get(probe_id)
@@ -129,12 +161,97 @@ def _compute_probe_coverage(
     return coverage
 
 
+def _clip(
+    windows: list[tuple[float, float]], start: float, end: float
+) -> list[tuple[float, float]]:
+    out = [(max(s, start), min(e, end)) for s, e in windows]
+    return [(s, e) for s, e in out if e > s]
+
+
+def _subtract(
+    windows: list[tuple[float, float]], holes: list[tuple[float, float]]
+) -> list[tuple[float, float]]:
+    out = list(windows)
+    for h_start, h_end in holes:
+        cut: list[tuple[float, float]] = []
+        for s, e in out:
+            if h_start > s:
+                cut.append((s, min(e, h_start)))
+            if h_end < e:
+                cut.append((max(s, h_end), e))
+        out = [(s, e) for s, e in cut if e > s]
+    return out
+
+
+def _add_carried_coverage(
+    coverage: ProbeCoverageMap,
+) -> None:
+    """Give each carried craft its carrier's coverage over the ride.
+
+    The passenger has no fits of its own to pack, so nothing renders it and
+    the timeline has no window to scrub. Stamping the carrier's windows plus
+    a `position_from` pointer lets the frontend read the carrier's position
+    under the passenger's identity. A carrier that adds nothing the craft
+    already has is not stamped at all — the frontend prefers a craft's own
+    record wherever one exists.
+
+    The ride ends where the craft's own fits begin rather than at the
+    separation instant, when the two are within `_DETACH_BRIDGE_DAYS`: the
+    grid drops the partial slot between them, and a craft that is unplaceable
+    for the first day of its own flight reads as a bug, not as an archive
+    limit.
+    """
+    n_added = 0
+    n_bridged = 0
+    for attachment in resolve_attachments():
+        obj_id = f"probe-{attachment.probe_id}"
+        carrier_id = f"probe-{attachment.carrier_probe_id}"
+        carrier = coverage.get(carrier_id)
+        if carrier is None:
+            logger.warning(
+                "attachments: %s carries %s but has no coverage; skipped",
+                carrier_id,
+                obj_id,
+            )
+            continue
+        own = coverage.get(obj_id)
+        own_windows = own["windows"] if own else []
+        end_jd = attachment.end_jd
+        next_own = min((s for s, _ in own_windows if s >= end_jd), default=None)
+        if next_own is not None and next_own - end_jd <= _DETACH_BRIDGE_DAYS:
+            end_jd = next_own
+            n_bridged += 1
+        # The union is what gets stamped; the difference only says whether the
+        # carrier reaches anywhere this craft cannot already reach itself.
+        borrowed = _clip(carrier["windows"], attachment.start_jd, end_jd)
+        if not _subtract(borrowed, own_windows):
+            continue
+        windows = _merge_spans(own_windows + borrowed)
+        coverage[obj_id] = {
+            "start_jd": windows[0][0],
+            "end_jd": windows[-1][1],
+            "windows": windows,
+            "position_from": {
+                "object_id": carrier_id,
+                "start_jd": attachment.start_jd,
+                "end_jd": end_jd,
+            },
+        }
+        n_added += 1
+    logger.info(
+        "attachments: stamped position_from on %d carried craft "
+        "(%d ridden past separation to their own first fit)",
+        n_added,
+        n_bridged,
+    )
+
+
 def write_probes(
     session: Session,
     download_dir: Path,
     out_dir: Path,
     has_localized: dict[str, bool],
-) -> tuple[dict[str, dict], dict[str, dict[str, float | list]]]:
+) -> tuple[dict[str, dict], ProbeCoverageMap]:
     """Build per-zone, per-chunk binary files for every probe on disk.
 
     Incremental export with per-probe fit caching: (1) classify each probe
@@ -249,4 +366,5 @@ def write_probes(
         fit_center_recode,
     )
     coverage = _compute_probe_coverage(plans, metas_by_probe_id)
+    _add_carried_coverage(coverage)
     return zone_manifest, coverage

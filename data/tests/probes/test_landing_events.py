@@ -17,16 +17,7 @@ _INDEFINITE_END = jd_to_et(3000000.0)  # well past PROBE_EXPORT_END_YEAR
 
 
 def _et(iso: str) -> float:
-    return jd_to_et(landing_events._parse_iso_to_jd(iso))
-
-
-@pytest.fixture
-def events_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point the loader at a temp dir so each test owns its event JSONs."""
-    root = tmp_path / "events"
-    root.mkdir()
-    monkeypatch.setattr(landing_events, "EVENTS_DIR", root)
-    return root
+    return jd_to_et(landing_events.parse_event_jd(iso))
 
 
 def _write(root: Path, name: str, probes: list[dict]) -> None:
@@ -390,13 +381,13 @@ def test_reentry_site_pins_a_failed_probe_to_earth(events_root: Path) -> None:
 
 def test_parse_iso_handles_partial_dates() -> None:
     """Loader must accept YYYY / YYYY-MM / YYYY-MM-DD / full timestamps."""
-    assert landing_events._parse_iso_to_jd("2024") == pytest.approx(
-        landing_events._parse_iso_to_jd("2024-01-01T00:00:00")
+    assert landing_events.parse_event_jd("2024") == pytest.approx(
+        landing_events.parse_event_jd("2024-01-01T00:00:00")
     )
-    assert landing_events._parse_iso_to_jd("2024-07") == pytest.approx(
-        landing_events._parse_iso_to_jd("2024-07-01T00:00:00")
+    assert landing_events.parse_event_jd("2024-07") == pytest.approx(
+        landing_events.parse_event_jd("2024-07-01T00:00:00")
     )
     # Trailing Z is stripped, microseconds ok.
-    a = landing_events._parse_iso_to_jd("2024-07-15T12:00:00Z")
-    b = landing_events._parse_iso_to_jd("2024-07-15T12:00:00")
+    a = landing_events.parse_event_jd("2024-07-15T12:00:00Z")
+    b = landing_events.parse_event_jd("2024-07-15T12:00:00")
     assert a == b

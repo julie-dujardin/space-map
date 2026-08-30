@@ -21,7 +21,8 @@ import {
 	probePositionScene
 } from '$lib/fetch/position/probes/propagate';
 import type { Probe } from '$lib/fetch/position/probes/parse';
-import { chunkIndexForJd } from '$lib/fetch/metadata';
+import { chunkIndexForJd, type CarriedFrom } from '$lib/fetch/metadata';
+import type { PassengerGraft } from '$lib/fetch/position/probes/passenger';
 
 const NEIGHBOR_WINDOW = 1;
 
@@ -62,6 +63,9 @@ function isPresent(present: [number, number][], idx: number): boolean {
 export interface ProbeWithWindow {
 	zone: string;
 	zoneCenterNaifId: number;
+	/** Identity to build under: its own, except for a craft riding another,
+	 *  where `probe` is the carrier's record supplying the ephemeris. */
+	id: string;
 	probe: Probe;
 	startJd: number;
 	endJd: number;
@@ -93,6 +97,9 @@ export class ProbeStore {
 	 *  `ensure()` calls don't kick off duplicate fetches. */
 	private readonly inflight = new Map<string, Promise<void>>();
 	private lastEnsuredJd: number = NaN;
+	/** Passenger object id → the craft it rides and when. See
+	 *  {@link registerCarried}. */
+	private readonly carried = new Map<string, CarriedFrom>();
 	/** Bumped per stored chunk. The renderer watches it so a paused clock still
 	 *  gets a position pass when probe data arrives after the boot pass. */
 	private _version = 0;
@@ -272,6 +279,7 @@ export class ProbeStore {
 				const entry: ProbeWithWindow = {
 					zone,
 					zoneCenterNaifId: params.fit_center_naif_id,
+					id,
 					probe,
 					startJd: chunk.startJd,
 					endJd: chunk.endJd
@@ -284,7 +292,75 @@ export class ProbeStore {
 				}
 			}
 		}
-		yield* best.values();
+		yield* this.withPassengers(best, jd).values();
+	}
+
+	/**
+	 * Hand each riding craft its carrier's record under its own identity, and
+	 * drop the carrier's own entry while it does: the two sit closer together
+	 * than a pixel, so a second marker there is unreadable rather than
+	 * informative. A passenger with a record of its own is already flying —
+	 * it keeps that, and the carrier keeps its entry.
+	 */
+	private withPassengers(
+		best: Map<string, ProbeWithWindow>,
+		jd: number
+	): Map<string, ProbeWithWindow> {
+		if (this.carried.size === 0) return best;
+		const rides: [string, ProbeWithWindow, CarriedFrom][] = [];
+		for (const [id, ride] of this.carried) {
+			if (jd < ride.start_jd || jd >= ride.end_jd || best.has(id)) continue;
+			const carrier = best.get(ride.object_id);
+			if (carrier) rides.push([id, carrier, ride]);
+		}
+		for (const [id, carrier, ride] of rides) {
+			best.delete(ride.object_id);
+			best.set(id, {
+				...carrier,
+				id,
+				// Clipped to the ride: scrubbing past separation must drop the
+				// passenger rather than leave it stuck to the carrier.
+				startJd: Math.max(carrier.startJd, ride.start_jd),
+				endJd: Math.min(carrier.endJd, ride.end_jd)
+			});
+		}
+		return best;
+	}
+
+	/**
+	 * Note the craft rides another one over `carriedFrom`'s window: {@link probesAt}
+	 * emits it off the carrier's record, and every lookup for it inside that
+	 * window falls through to the carrier. Registered from the focused probe's
+	 * `coverage.position_from`; unknown craft are simply never carried.
+	 */
+	registerCarried(passenger: PassengerGraft): void {
+		this.carried.set(passenger.id, passenger.carriedFrom);
+	}
+
+	/**
+	 * The craft whose records answer for `objectId` at `jd` once its own have come
+	 * up empty, or null when it flies under its own power. A passenger is bolted
+	 * to its carrier, so every question about it — where it is, which system it is
+	 * in, whether its fit is heliocentric — has the carrier's answer. Callers try
+	 * their own lookup first: a record of its own wins, since a lander's descent
+	 * kernel starts at separation.
+	 */
+	private carrierAt(objectId: string, jd: number): string | null {
+		if (this.carried.size === 0) return null;
+		const ride = this.carried.get(objectId);
+		if (!ride || jd < ride.start_jd || jd >= ride.end_jd) return null;
+		return ride.object_id;
+	}
+
+	private resolve(
+		objectId: string,
+		jd: number,
+		isPreferred?: (fitCenterNaif: number) => boolean
+	): ProbeLocation | null {
+		const own = this.resolveOwn(objectId, jd, isPreferred);
+		if (own) return own;
+		const carrier = this.carrierAt(objectId, jd);
+		return carrier ? this.resolveOwn(carrier, jd, isPreferred) : null;
 	}
 
 	/** Iterate zones in metadata order, returning the first record for
@@ -293,7 +369,7 @@ export class ProbeStore {
 	 *  orbit) so the renderer follows the live zone without a hidden frame. A
 	 *  covering record in a preferred zone (`isPreferred`) always wins, e.g. a
 	 *  Mars-flyby probe gets its Mars-relative fit when zoomed into Mars. */
-	private resolve(
+	private resolveOwn(
 		objectId: string,
 		jd: number,
 		isPreferred?: (fitCenterNaif: number) => boolean
@@ -328,6 +404,13 @@ export class ProbeStore {
 	 *  on purpose: it tells the scene which body to promote so the precise
 	 *  fit can take over (Ryugu when Hayabusa2 is focused). */
 	stampedFitCenterAt(objectId: string, jd: number): string | null {
+		const own = this.stampedFitCenterAtOwn(objectId, jd);
+		if (own !== null) return own;
+		const carrier = this.carrierAt(objectId, jd);
+		return carrier ? this.stampedFitCenterAtOwn(carrier, jd) : null;
+	}
+
+	private stampedFitCenterAtOwn(objectId: string, jd: number): string | null {
 		const et = jdToEt(jd);
 		for (const [zone, params] of this.zoneParams) {
 			const chunkIdx = chunkIndexForJd(params, jd);
@@ -401,6 +484,13 @@ export class ProbeStore {
 	 * `floor(fit_center_naif_id / 100)` (199→1, 499→4, …).
 	 */
 	containingSystemAt(probeId: string, jd: number): number | null {
+		const own = this.containingSystemAtOwn(probeId, jd);
+		if (own !== null) return own;
+		const carrier = this.carrierAt(probeId, jd);
+		return carrier ? this.containingSystemAtOwn(carrier, jd) : null;
+	}
+
+	private containingSystemAtOwn(probeId: string, jd: number): number | null {
 		const et = jdToEt(jd);
 		const interParams = this.zoneParams.get(INTERPLANETARY_ZONE);
 		if (interParams) {
@@ -437,6 +527,12 @@ export class ProbeStore {
 	 * sphere); a captured orbiter, emitted only to its planet zone, does not.
 	 */
 	hasHeliocentricFit(objectId: string, jd: number): boolean {
+		if (this.hasHeliocentricFitOwn(objectId, jd)) return true;
+		const carrier = this.carrierAt(objectId, jd);
+		return carrier !== null && this.hasHeliocentricFitOwn(carrier, jd);
+	}
+
+	private hasHeliocentricFitOwn(objectId: string, jd: number): boolean {
 		const params = this.zoneParams.get(INTERPLANETARY_ZONE);
 		if (!params) return false;
 		const chunkIdx = chunkIndexForJd(params, jd);
