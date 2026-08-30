@@ -54,7 +54,7 @@ class EarthOrbitClass(_OrbitZone, Enum):
     """
 
     LEO = "Q663611"  # low Earth orbit
-    # Sun–Earth libration points: classified by SATCAT orbit_center, not
+    # Sun–Earth libration points: membership from the probe events, not
     # perigee/apogee. QIDs are the generic L1/L2 items (no Sun–Earth-specific one).
     EL1 = "Q15881550"  # first Lagrange point
     EL2 = "Q15725508"  # second Lagrange point
@@ -78,8 +78,10 @@ class EarthOrbitClass(_OrbitZone, Enum):
     EQU = "Q60964821", False  # equatorial orbit
 
 
-# Sun–Earth Lagrange zones — membership by SATCAT orbit_center, not shape.
-LAGRANGE_CLASSES = (EarthOrbitClass.EL1, EarthOrbitClass.EL2)
+# Sun–Earth Lagrange zones, keyed by the NAIF id the probe events target. A
+# zone holds every probe ever sent there, not whoever SATCAT places there now.
+LAGRANGE_CLASS_BY_NAIF = {391: EarthOrbitClass.EL1, 392: EarthOrbitClass.EL2}
+LAGRANGE_CLASSES = tuple(LAGRANGE_CLASS_BY_NAIF.values())
 
 
 def classify_earth_orbit(

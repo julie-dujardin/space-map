@@ -9,9 +9,7 @@
 	} from '$lib/fetch/objects/object-data';
 	import type { OrbitalElements, PositionedBody } from '$lib/types/objects';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import { OrbitalSource } from '$lib/fetch/position/format';
-	import { EARTH_ID, SUN_ID } from '$lib/constants';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import {
 		CLASS_SLUG_PREFIX,
@@ -19,7 +17,8 @@
 		orbitClassLabel,
 		orbitClassShortLabel
 	} from '$lib/charts/orbit-zones';
-	import { classifyLagrange } from '$lib/math/orbit/lagrange';
+	import { LAGRANGE_CLASS_NAMES } from '$lib/math/orbit/lagrange';
+	import { fetchEarthMembership } from '$lib/fetch/groups/membership';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { pickImageUrl } from '$lib/fetch/objects/images';
 	import CrossRefCard from './crossref/CrossRefCard.svelte';
@@ -29,14 +28,12 @@
 		localized: LocalizedObjectData | null;
 		/** TLE-derived elements (for the orbit inclination band). */
 		orbitElements?: OrbitalElements;
-		/** Focused body — used to detect a probe's Sun–Earth L-point at sim time. */
+		/** Focused body — a probe's L-point chip keys off its id and source. */
 		body?: PositionedBody;
-		jd: number;
 	}
-	let { global, localized, orbitElements, body, jd }: Props = $props();
+	let { global, localized, orbitElements, body }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
-	const ctx = getContext<ContextManager | undefined>('ctx');
 
 	let celestrak = $derived(global?.celestrak);
 	let orbitsEarth = $derived(celestrak?.orbit_center === 'earth');
@@ -99,23 +96,32 @@
 		};
 	});
 
-	// Probe orbit class: Sun–Earth L1/L2 from live scene geometry. Mutually
-	// exclusive with the earth-sat orbit-class slot above.
-	let lagrangeRef = $derived.by<CrossRef | null>(() => {
-		if (!ctx || !body || body.data.orbitalSource !== OrbitalSource.SPICE_PROBE) return null;
-		void jd; // re-run as sim time advances; positions below are read live
-		const earth = ctx.getBody(EARTH_ID)?.position;
-		const sun = ctx.getBody(SUN_ID)?.position;
-		const p = ctx.getBody(body.data.id)?.position ?? body.position;
-		if (!earth || !sun) return null;
-		const geocentric = [p[0] - earth[0], p[1] - earth[1], p[2] - earth[2]] as const;
-		const earthToSun = [sun[0] - earth[0], sun[1] - earth[1], sun[2] - earth[2]] as const;
-		const point = classifyLagrange(geocentric, earthToSun);
-		if (!point) return null;
-		return {
-			label: m.orbit(),
-			display: orbitClassShortLabel(point),
-			ref: groupRef(orbitClassLabel(point), `${CLASS_SLUG_PREFIX}${point}`)
+	// Probe orbit class: the Sun–Earth L1/L2 zone whose membership lists this
+	// probe — the same source as the zone page, so chip and page agree.
+	// Mutually exclusive with the earth-sat orbit-class slot above.
+	let lagrangeRef = $state<CrossRef | null>(null);
+	$effect(() => {
+		const id = body?.data.id;
+		if (!id || body?.data.orbitalSource !== OrbitalSource.SPICE_PROBE) {
+			lagrangeRef = null;
+			return;
+		}
+		let stale = false;
+		fetchEarthMembership().then((mem) => {
+			if (stale) return;
+			const point = [...LAGRANGE_CLASS_NAMES].find((c) =>
+				mem[`${CLASS_SLUG_PREFIX}${c}`]?.includes(id)
+			);
+			lagrangeRef = point
+				? {
+						label: m.orbit(),
+						display: orbitClassShortLabel(point),
+						ref: groupRef(orbitClassLabel(point), `${CLASS_SLUG_PREFIX}${point}`)
+					}
+				: null;
+		});
+		return () => {
+			stale = true;
 		};
 	});
 

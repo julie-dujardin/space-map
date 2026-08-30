@@ -1,11 +1,12 @@
-/** Sun–Earth Lagrange points (`class-EL1`/`class-EL2`). Group pages come from the
- *  backend orbit-class pipeline; this module only does the sim-time geometry. */
+/** Sun–Earth Lagrange points (`class-EL1`/`class-EL2`). Zone membership comes
+ *  from the export (probe event targets); this module only does the sim-time
+ *  geometry that picks the rotating trail frame. */
 export type LagrangePoint = 'EL1' | 'EL2';
 
-const LAGRANGE_CLASS_NAMES: ReadonlySet<string> = new Set(['EL1', 'EL2']);
+export const LAGRANGE_CLASS_NAMES: ReadonlySet<LagrangePoint> = new Set(['EL1', 'EL2']);
 
 export function isLagrangeClass(className: string): boolean {
-	return LAGRANGE_CLASS_NAMES.has(className);
+	return (LAGRANGE_CLASS_NAMES as ReadonlySet<string>).has(className);
 }
 
 /** Earth/Sun mass ratio. The collinear L-points sit at R·cbrt(ratio/3) ≈ 0.01 R

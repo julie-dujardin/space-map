@@ -1,9 +1,11 @@
-"""Probes per target, for the Probes category page's bar chart.
+"""Probe targets read as groups: the Probes category page's bar chart, and
+the Sun-Earth libration zones.
 
-The same reverse index the object bundles read, counted rather than listed:
-one row per place probes have been sent to, most-visited first. Rows the
-catalogue holds link to the body; the Sun-Earth libration points have no object
-to focus but do have a collection page, so they link to that instead.
+Both come from the reverse index the object bundles read. The chart counts it,
+one row per place probes have been sent to, most-visited first; rows the
+catalogue holds link to the body, the libration points to their zone. The
+zones list it: no object sits at L1/L2, so each zone's members are the probes
+whose events target it.
 """
 
 import logging
@@ -11,9 +13,11 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
+from space_map_data.constants.earth_sats.orbit_class import LAGRANGE_CLASS_BY_NAIF
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
+from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.probe_targets import (
+    build_probe_targets,
     read_target_index,
     target_object_ids,
 )
@@ -21,12 +25,25 @@ from space_map_data.models.object.main import Object, ObjectType
 
 logger = logging.getLogger(__name__)
 
-# The events write the Sun-Earth libration points as NAIF 391/392; no object
-# sits there, but each is an Earth-orbit zone with a page of its own.
 _LAGRANGE_GROUPS = {
-    391: f"{CLASS_SLUG_PREFIX}{EarthOrbitClass.EL1.name}",
-    392: f"{CLASS_SLUG_PREFIX}{EarthOrbitClass.EL2.name}",
+    naif: f"{CLASS_SLUG_PREFIX}{cls.name}"
+    for naif, cls in LAGRANGE_CLASS_BY_NAIF.items()
 }
+
+
+def build_lagrange_zones() -> dict[str, list[NotableObject]]:
+    """Zone slug -> its probes, latest arrival first, for every Sun-Earth
+    libration zone (empty when nothing targets it)."""
+    by_target = build_probe_targets(set())
+    zones = {
+        slug: by_target.get(f"naif-{naif}", [])
+        for naif, slug in _LAGRANGE_GROUPS.items()
+    }
+    logger.info(
+        "Lagrange zones: %s",
+        ", ".join(f"{slug}={len(probes)}" for slug, probes in zones.items()),
+    )
+    return zones
 
 
 @dataclass

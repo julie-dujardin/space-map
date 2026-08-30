@@ -25,7 +25,6 @@ import {
 	type SmallBodyFlagName
 } from '$lib/fetch/groups/registry';
 import { EARTH_ID } from '$lib/constants';
-import { isLagrangeClass } from '$lib/math/orbit/lagrange';
 
 export type { SmallBodyFilter } from '$lib/fetch/groups/registry';
 
@@ -208,13 +207,7 @@ export class ContextManager {
 		if (slug !== this.currentGroupSlug) return;
 
 		const nextSmallBody = this.resolveSmallBodyFilter(slug, entry?.applies_to, entry?.n);
-		// SGP4 can't place TLE sats at an L-point, so filtering would just empty
-		// the scene — leave Lagrange zones unfiltered until membership is geometric.
-		const isLagrange =
-			slug != null &&
-			slug.startsWith(CLASS_SLUG_PREFIX) &&
-			isLagrangeClass(slug.slice(CLASS_SLUG_PREFIX.length));
-		const nextEarthSlug = entry?.applies_to === 'earth_sat' && !isLagrange ? slug : null;
+		const nextEarthSlug = entry?.applies_to === 'earth_sat' ? slug : null;
 		const nextTypes = EARTH_TYPES_BY_CATEGORY[slug ?? ''] ?? null;
 		if (!smallBodyFiltersEqual(this.smallBodyFilter, nextSmallBody)) {
 			this.smallBodyFilter = nextSmallBody;

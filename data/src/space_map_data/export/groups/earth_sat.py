@@ -16,7 +16,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import orjson
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.earth_sats.constellations import (
@@ -31,6 +30,7 @@ from space_map_data.constants.earth_sats.orbit_class import (
 )
 from space_map_data.constants.earth_sats.satcat import OrbitCenter, OrbitType
 from space_map_data.export.groups.membership import GroupSatcatStats, _accumulate
+from space_map_data.export.groups.probe_targets import build_lagrange_zones
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.position.elements.celestrak_source import iter_day_dirs
@@ -151,43 +151,12 @@ def _load_latest_inclinations() -> dict[int, float]:
     return out
 
 
-_LAGRANGE_CLASS_BY_CENTER = {
-    OrbitCenter.EARTH_L1: EarthOrbitClass.EL1,
-    OrbitCenter.EARTH_L2: EarthOrbitClass.EL2,
-}
-LAGRANGE_ORBIT_CENTERS = tuple(_LAGRANGE_CLASS_BY_CENTER)
-
-
-def primary_orbit_class_slug(
-    perigee: float | None,
-    apogee: float | None,
-    orbit_center: OrbitCenter | None,
-) -> str | None:
-    """The ``class-`` slug of a sat's primary Earth-orbit zone, or None when it
-    can't be classified. Lagrange sats bucket by orbit_center; the rest by
-    perigee/apogee (the inclination overlays never change the primary)."""
-    lagrange = (
-        _LAGRANGE_CLASS_BY_CENTER.get(orbit_center)
-        if orbit_center is not None
-        else None
-    )
-    if lagrange is not None:
-        return f"{CLASS_SLUG_PREFIX}{lagrange.name}"
-    if perigee is None or apogee is None:
-        return None
-    classes = classify_earth_orbit(perigee, apogee, None)
-    if not classes:
-        return None
-    primary = next(c for c in classes if c.primary)
-    return f"{CLASS_SLUG_PREFIX}{primary.name}"
-
-
 def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
     """Bucket active Earth-orbiting SATCAT rows into zones.
 
-    Active = no decay_date, orbit_type=ORBIT. Normal zones need orbit_center
-    =EARTH + Earth parent (mirrors the Earth-zone export filter); Sun–Earth
-    L1/L2 sats are Sun-parented and admitted by orbit_center instead.
+    Active = no decay_date, orbit_type=ORBIT, orbit_center=EARTH + Earth parent
+    (mirrors the Earth-zone export filter). The Sun–Earth L1/L2 zones are not
+    SATCAT-shaped at all: their members are the probes the events send there.
     """
     inclinations = _load_latest_inclinations()
 
@@ -214,12 +183,7 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
         .filter(
             Object.spkid.is_(None),
             Object.object_type.in_(_SAT_TYPE_VALUES),
-            # Lagrange-point sats orbit the Sun (~1.5 M km out), so they're parented
-            # to the Sun, not Earth — admit them by orbit_center too.
-            or_(
-                Object.parent_id == _EARTH_OBJECT_ID,
-                Satcat.orbit_center.in_(tuple(_LAGRANGE_CLASS_BY_CENTER)),
-            ),
+            Object.parent_id == _EARTH_OBJECT_ID,
         )
         .all()
     )
@@ -258,26 +222,20 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
         if decay_date:
             skip_counters["decayed"] += 1
             continue
-        # Lagrange-point sats are bucketed by orbit_center, not perigee/apogee
-        # (they have no Keplerian shape and skip the scatter samples below).
-        lagrange = _LAGRANGE_CLASS_BY_CENTER.get(orbit_center)
         inc = inclinations.get(norad)
-        if lagrange is not None:
-            classes: list[EarthOrbitClass] = [lagrange]
-        else:
-            if orbit_center != OrbitCenter.EARTH:
-                skip_counters["not_earth_centered"] += 1
-                continue
-            if orbit_type is not None and orbit_type != OrbitType.ORBIT:
-                skip_counters["not_in_orbit"] += 1
-                continue
-            if perigee is None or apogee is None:
-                skip_counters["missing_perigee_or_apogee"] += 1
-                continue
-            classes = classify_earth_orbit(perigee, apogee, inc)
-            if not classes:
-                skip_counters["unclassified"] += 1
-                continue
+        if orbit_center != OrbitCenter.EARTH:
+            skip_counters["not_earth_centered"] += 1
+            continue
+        if orbit_type is not None and orbit_type != OrbitType.ORBIT:
+            skip_counters["not_in_orbit"] += 1
+            continue
+        if perigee is None or apogee is None:
+            skip_counters["missing_perigee_or_apogee"] += 1
+            continue
+        classes = classify_earth_orbit(perigee, apogee, inc)
+        if not classes:
+            skip_counters["unclassified"] += 1
+            continue
 
         class_names = [c.name for c in classes]
         slugs = [f"{CLASS_SLUG_PREFIX}{c}" for c in class_names]
@@ -297,8 +255,7 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
             stats.membership.setdefault(s, []).append(obj_id)
             population_per_class[s] += 1
             side_counts[s] = side_counts.get(s, 0) + 1
-            if lagrange is None:
-                perigee_pool.setdefault(s, []).append(float(perigee))
+            perigee_pool.setdefault(s, []).append(float(perigee))
             # Launch sites are deliberately not accumulated: a zone's top-sites
             # breakdown isn't meaningful, so the bundle ships without it.
             for bucket in (
@@ -325,11 +282,9 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
                 display_name,
             )
         )
-        # Lagrange sats have no Keplerian shape, so they skip the scatter pool.
-        if lagrange is None:
-            pool.setdefault(primary_slug, []).append(
-                (obj_id, display_name, float(perigee), float(apogee), inc, class_names)
-            )
+        pool.setdefault(primary_slug, []).append(
+            (obj_id, display_name, float(perigee), float(apogee), inc, class_names)
+        )
         if (
             constellation_slug
             and constellation_slug not in LAUNCH_VEHICLE_BY_CONSTELLATION
@@ -337,6 +292,10 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
             constellation_zone_counts.setdefault(constellation_slug, Counter())[
                 primary_slug
             ] += 1
+
+    for slug, probes in build_lagrange_zones().items():
+        stats.membership[slug] = [p.object_id for p in probes]
+        stats.notable_members[slug] = probes[:NOTABLE_MEMBER_COUNT]
 
     for slug, ids in stats.membership.items():
         ids.sort()

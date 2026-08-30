@@ -8,7 +8,9 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from space_map_data.export.groups.probe_targets import build_probe_target_chart
+from space_map_data.export.groups.probe_targets import (
+    build_probe_target_chart,
+)
 from space_map_data.export.objects import probe_targets
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.models.object.base import Base

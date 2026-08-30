@@ -182,7 +182,6 @@
 				{data}
 				{members}
 				orbitElements={drawerOrbitElements}
-				jd={sampledJd}
 				{planetarySystem}
 			/>
 		{/if}

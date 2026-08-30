@@ -28,11 +28,10 @@
 		data: ObjectDetailData | null;
 		members: MembersState;
 		orbitElements: OrbitalElements | undefined;
-		jd: number;
 		planetarySystem: PlanetarySystemState;
 	}
 
-	let { body, feature, featureType, data, members, orbitElements, jd, planetarySystem }: Props =
+	let { body, feature, featureType, data, members, orbitElements, planetarySystem }: Props =
 		$props();
 
 	const ctx = getContext<ContextManager>('ctx');
@@ -112,6 +111,5 @@
 		localized={data?.localized ?? null}
 		{orbitElements}
 		{body}
-		{jd}
 	/>
 {/if}
