@@ -6,6 +6,8 @@
 	import type { FocusObject } from '$lib/state/focusable';
 	import { applyFocus, applyGroup, serializeUrl, urlTypeFromId } from '$lib/state/url';
 	import { formatQuantity } from '$lib/format/quantities';
+	import { m } from '$lib/paraglide/messages';
+	import type { ProbeVisitKind } from '$lib/fetch/objects/object-data';
 
 	interface Props {
 		members: NotableMemberEntry[];
@@ -51,6 +53,25 @@
 		const year = member.first_obs?.slice(0, 4);
 		return year && Number.isFinite(parseInt(year, 10)) ? year : undefined;
 	}
+
+	const KIND_LABEL: Record<ProbeVisitKind, () => string> = {
+		flyby: m.probe_kind_flyby,
+		orbiter: m.probe_kind_orbiter,
+		lander: m.probe_kind_lander,
+		rover: m.probe_kind_rover,
+		impactor: m.probe_kind_impactor,
+		sample: m.probe_kind_sample,
+		atmospheric: m.probe_kind_atmospheric
+	};
+
+	/** Arrival–end years; a same-year visit collapses to one, an ongoing one
+	 *  keeps an open dash. */
+	function visitYears(visit: NonNullable<NotableMemberEntry['visit']>): string {
+		const from = visit.arrival.slice(0, 4);
+		const to = visit.end?.slice(0, 4);
+		if (to === from) return from;
+		return `${from}–${to ?? ''}`;
+	}
 </script>
 
 <div class="flex flex-col gap-1">
@@ -80,14 +101,20 @@
 					{/if}
 					<span class="min-w-0 flex-1 truncate text-sm font-medium">{displayName(member)}</span>
 					<span class="flex shrink-0 flex-col items-end text-xs tabular-nums">
-						{#if member.diameter_km != null}
-							<span>{formatQuantity({ value: member.diameter_km, unit: 'kilometre' }, true)}</span>
-						{/if}
-						{#if year}
-							<span class="text-muted-foreground">{year}</span>
-						{/if}
-						{#if member.diameter_km == null && !year}
-							<span class="text-muted-foreground">–</span>
+						{#if member.visit}
+							<span>{KIND_LABEL[member.visit.kind]()}</span>
+							<span class="text-muted-foreground">{visitYears(member.visit)}</span>
+						{:else}
+							{#if member.diameter_km != null}
+								<span>{formatQuantity({ value: member.diameter_km, unit: 'kilometre' }, true)}</span
+								>
+							{/if}
+							{#if year}
+								<span class="text-muted-foreground">{year}</span>
+							{/if}
+							{#if member.diameter_km == null && !year}
+								<span class="text-muted-foreground">–</span>
+							{/if}
 						{/if}
 					</span>
 				</a>

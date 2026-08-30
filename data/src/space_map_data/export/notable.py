@@ -47,6 +47,8 @@ class NotableObject:
     feature_id: int | None = None  # set → a surface feature on `object_id`
     sitelinks_count: int | None = None  # Wikidata prominence, for cross-member ranking
     mass_kg: float | None = None  # from PCK GM; major bodies only
+    # Probe-on-target only: {kind, arrival, end?} — what the probe did there.
+    visit: dict | None = None
     radii: dict | None = None  # triaxial PCK radii {a, b, c} km; major bodies only
     radius_km: float | None = None  # Wikidata P2120 fallback when no radii/diameter
     pole: dict | None = None  # IAU J2000 pole {ra, dec} deg, for the lineup's true tilt
@@ -269,6 +271,8 @@ def notable_entries(
             entry["radiation"] = member.radiation
         if member.first_obs:
             entry["first_obs"] = member.first_obs
+        if member.visit is not None:
+            entry["visit"] = member.visit
         if displacement_metadata and (
             disp := displacement_metadata.get(member.object_id)
         ):

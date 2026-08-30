@@ -1,7 +1,7 @@
 """Probes attached to the bodies their curated events target.
 
 The reverse of the events files: every event with a body ``target`` puts its
-probe on that body's bundle as ``probes`` (ranked chronologically by launch,
+probe on that body's bundle as ``probes`` (latest arrival first,
 the same record shape as ``notable_moons``) + ``probe_count``, with localized
 labels in ``probe_names``. Targets are taken as written — no inheritance from
 mission type or parent craft. Earth is skipped (its events are launches,
@@ -9,6 +9,11 @@ homecomings and gravity assists, not visits), and so is any flyby whose
 ``purpose`` is a gravity assist: a slingshot is not a visit either. An event
 marked ``failed`` (a miss, an insertion that did not take) is skipped too;
 planned events count, since the list is who is headed there.
+
+Each entry also carries a ``visit``: the most involved kind of event at that
+body (rover > lander > atmospheric > sample > orbiter > impactor > flyby —
+an orbiter's disposal impact stays an orbiter), the arrival date and, unless
+the probe is still alive there, the end date.
 """
 
 import datetime
@@ -26,6 +31,71 @@ logger = logging.getLogger(__name__)
 
 _MJD_ZERO = datetime.date(1858, 11, 17)
 _EARTH = "naif-399"
+_KIND_RANK = (
+    "flyby",
+    "impactor",
+    "orbiter",
+    "sample",
+    "atmospheric",
+    "lander",
+    "rover",
+)
+_PROBE_END_EVENTS = {"mission_end", "contact_loss", "reentry"}
+
+
+def _event_kind(event: dict, mission_type: str) -> str | None:
+    """Visit kind of one target event; None for events that say nothing."""
+    match event.get("type"):
+        case "flyby":
+            return "flyby"
+        case "orbit_insertion" | "orbit_departure":
+            return "orbiter"
+        case "sample_collection":
+            return "sample"
+        case "landing":
+            if "atmospheric" in mission_type or "balloon" in mission_type:
+                return "atmospheric"
+            if event.get("outcome") == "destroyed_at_landing" and event.get(
+                "intentional"
+            ):
+                return "impactor"
+            if "rover" in mission_type or "helicopter" in mission_type:
+                return "rover"
+            return "lander"
+        case "atmospheric_entry":
+            return "atmospheric"
+    return None
+
+
+def _visit(probe: dict, events: list[dict]) -> dict:
+    """``visit`` block from this probe's non-skipped events at one body."""
+    events = sorted(events, key=lambda e: e["date"])
+    kinds = [k for e in events if (k := _event_kind(e, probe.get("mission_type", "")))]
+    kind = max(kinds, key=_KIND_RANK.index) if kinds else "flyby"
+    arrival = events[0]["date"][:10]
+    departure = next(
+        (e["date"][:10] for e in events if e.get("type") == "orbit_departure"), None
+    )
+    end: str | None
+    if departure:
+        end = departure
+    elif kind == "flyby":
+        end = arrival
+    else:
+        end = next(
+            (
+                e["date"][:10]
+                for e in sorted(probe.get("events", []), key=lambda e: e["date"])
+                if e.get("type") in _PROBE_END_EVENTS and e["date"][:10] >= arrival
+            ),
+            None,
+        )
+        if end is None and probe.get("status", {}).get("alive") is not True:
+            end = events[-1].get("end_date", events[-1]["date"])[:10]
+    out = {"kind": kind, "arrival": arrival}
+    if end:
+        out["end"] = end
+    return out
 
 
 def target_object_ids(naif: int) -> tuple[str, ...]:
@@ -42,12 +112,13 @@ def target_object_ids(naif: int) -> tuple[str, ...]:
 
 def _probes_by_target(
     known_ids: set[str],
-) -> tuple[dict[str, set[int]], dict[int, str]]:
-    """Body object id → probe_ids of every probe whose events name it, plus
-    each probe's ``launch`` event date. The registry's ``inception_mjd`` is
-    kernel coverage, not launch (Dawn's reads 2013), so the events file is
-    the date of record."""
-    out: dict[str, set[int]] = {}
+) -> tuple[dict[str, dict[int, dict]], dict[int, str]]:
+    """Body object id → {probe_id: visit} for every probe whose events name
+    it, plus each probe's ``launch`` event date. The registry's
+    ``inception_mjd`` is kernel coverage, not launch (Dawn's reads 2013), so
+    the events file is the date of record."""
+    hits: dict[str, dict[int, list[dict]]] = {}
+    probes_by_id: dict[int, dict] = {}
     launches: dict[int, str] = {}
     for path in sorted(EVENTS_DIR.glob("*.json")):
         try:
@@ -59,6 +130,7 @@ def _probes_by_target(
             probe_id = probe.get("probe_id")
             if probe_id is None:
                 continue
+            probes_by_id[int(probe_id)] = probe
             for event in probe.get("events", []):
                 if event.get("type") == "launch" and event.get("date"):
                     launches.setdefault(int(probe_id), event["date"][:10])
@@ -74,9 +146,16 @@ def _probes_by_target(
                     continue
                 candidates = target_object_ids(int(target["naif"]))
                 body_id = next((c for c in candidates if c in known_ids), candidates[0])
-                if body_id == _EARTH:
+                if body_id == _EARTH or not event.get("date"):
                     continue
-                out.setdefault(body_id, set()).add(int(probe_id))
+                hits.setdefault(body_id, {}).setdefault(int(probe_id), []).append(event)
+    out = {
+        body_id: {
+            probe_id: _visit(probes_by_id[probe_id], events)
+            for probe_id, events in by_probe.items()
+        }
+        for body_id, by_probe in hits.items()
+    }
     return out, launches
 
 
@@ -87,7 +166,7 @@ def _launch_date(inception_mjd: int | None) -> str | None:
 
 
 def build_probe_targets(known_ids: set[str]) -> dict[str, list[NotableObject]]:
-    """Body object id → its probes, oldest launch first. Probes missing from
+    """Body object id → its probes, latest arrival first. Probes missing from
     the registry have no object of their own and are dropped; a target whose
     no candidate id is in ``known_ids`` keeps its first candidate, so the
     caller can log it."""
@@ -95,9 +174,9 @@ def build_probe_targets(known_ids: set[str]) -> dict[str, list[NotableObject]]:
     out: dict[str, list[NotableObject]] = {}
     unknown: set[int] = set()
     by_target, launches = _probes_by_target(known_ids)
-    for body_id, probe_ids in by_target.items():
+    for body_id, visits in by_target.items():
         rows = []
-        for probe_id in probe_ids:
+        for probe_id in visits:
             row = registry.get(probe_id)
             if row is None:
                 unknown.add(probe_id)
@@ -109,7 +188,7 @@ def build_probe_targets(known_ids: set[str]) -> dict[str, list[NotableObject]]:
                 r.get("inception_mjd")
             )
 
-        rows.sort(key=lambda r: (launch(r) is None, launch(r) or ""))
+        rows.sort(key=lambda r: visits[int(r["probe_id"])]["arrival"], reverse=True)
         out[body_id] = [
             NotableObject(
                 object_id=f"probe-{r['probe_id']}",
@@ -117,6 +196,7 @@ def build_probe_targets(known_ids: set[str]) -> dict[str, list[NotableObject]]:
                 fallback_name=r.get("name") or f"probe-{r['probe_id']}",
                 diameter_km=None,
                 first_obs=launch(r),
+                visit=visits[int(r["probe_id"])],
             )
             for r in rows
         ]

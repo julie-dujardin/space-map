@@ -120,6 +120,15 @@ export interface TextureAttribution {
 /** One denormalized notable object for the detail-page strip + list — a
  *  group member or a moon. Picked at export time; carries everything the UI
  *  needs so no per-object bundle fetch is required to render the tile/row. */
+export type ProbeVisitKind =
+	| 'flyby'
+	| 'orbiter'
+	| 'lander'
+	| 'rover'
+	| 'impactor'
+	| 'sample'
+	| 'atmospheric';
+
 export interface NotableMemberEntry {
 	/** English Wikidata label (matching object bundles), or the DB fallback name. */
 	name: string;
@@ -155,6 +164,10 @@ export interface NotableMemberEntry {
 	color?: string;
 	/** Discovery proxy — SBDB first_obs, YYYY-MM-DD or YYYY (members only). */
 	first_obs?: string;
+	/** Probe entries on a target body: what the probe did there. `end` is the
+	 *  departure or end of mission; absent while the visit is ongoing. Dates
+	 *  are ISO, possibly truncated to a month or year for planned events. */
+	visit?: { kind: ProbeVisitKind; arrival: string; end?: string };
 	/** DEM sibling bundle — lets the lineup render the same relief as the main map. */
 	displacement?: DisplacementMeta;
 	/** Shape-model slug (`v1/models/<slug>/`); the lineup loads the mesh instead
