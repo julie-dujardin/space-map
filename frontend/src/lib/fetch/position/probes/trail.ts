@@ -23,6 +23,9 @@ import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import type { OrbitalElements } from '$lib/types/objects';
 
 type Vec3 = [number, number, number];
+
+/** One halo period is ~180 d; a little more closes the loop with margin. */
+const LAGRANGE_TRAIL_SPAN_DAYS = 200;
 type Sample = { jd: number; pos: Vec3 };
 type Sampler = (t: number) => Vec3 | null;
 
@@ -35,14 +38,26 @@ type Sampler = (t: number) => Vec3 | null;
  * resolve. `spanDays` caps the back-fill at one period for ellipses, but is
  * uncapped for hyperbolic flybys, where there's no loop to retrace.
  *
+ * A Lagrange loop (`lagrange`) is not an orbit about the fit centre: the
+ * elements would size the walk to a meaningless geocentric period, so it
+ * gets one halo period, sampled uniformly.
+ *
  * Frame-dependent throughout — a reseed against a new parent MUST re-derive
  * these via `TrailBuffer.reconfigure`, or the walk samples the wrong scale.
  */
 export function deriveProbeTrailParams(
 	elements: OrbitalElements | null,
 	fallbackSpanDays: number,
-	capacity: number
+	capacity: number,
+	lagrange = false
 ): { stepDays: number; epsilonScene: number; spanDays: number } {
+	if (lagrange) {
+		return {
+			stepDays: LAGRANGE_TRAIL_SPAN_DAYS / capacity,
+			epsilonScene: Infinity,
+			spanDays: LAGRANGE_TRAIL_SPAN_DAYS
+		};
+	}
 	const elliptical = elements !== null && elements.n > 0;
 	const periodDays = elliptical ? 360 / elements.n : fallbackSpanDays;
 	const stepDays = periodDays > 0 ? periodDays / capacity : 1;

@@ -6,6 +6,7 @@ import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { NUM_TRAIL_POINTS, buildTrailPoints } from './points';
 import { commitTrail, getTrailWorkingArrays, writeFatTrailVertices } from './geometry';
 import { writeBufferVerticesWithLiveHead } from './builder';
+import { lagrangeSampleTransform } from './lagrange-frame';
 
 // Re-render the precessing-elements curve when accumulated drift on Ω or ω
 // exceeds this many degrees. At 0.01° the chord offset stays sub-body-radius
@@ -31,12 +32,23 @@ export function refreshBufferTrail(
 	body: PositionedBody,
 	line: Line | Mesh,
 	buffer: TrailBuffer,
-	basisPos: [number, number, number]
+	basisPos: [number, number, number],
+	jd: number
 ): void {
 	const useTrail = line.userData.useTrail as boolean;
 	const oc = line.userData.orbitCenter as Vector3;
 	const { posArr, trailArr, fullArr } = getTrailWorkingArrays(line);
-	const total = writeBufferVerticesWithLiveHead(body, buffer, posArr, oc.x, oc.y, oc.z, basisPos);
+	const lagrange = body.lagrangeTrail ? lagrangeSampleTransform(jd) : null;
+	const total = writeBufferVerticesWithLiveHead(
+		body,
+		buffer,
+		posArr,
+		oc.x,
+		oc.y,
+		oc.z,
+		basisPos,
+		lagrange ?? undefined
+	);
 	commitTrail(line, posArr, trailArr, fullArr, total, true, useTrail);
 }
 
@@ -85,7 +97,7 @@ export function refreshTrail(
 	// on missing `sourceCurve` — there's no curve cache to fall back on.
 	const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
 	if (trailBuffer) {
-		refreshBufferTrail(body, line, trailBuffer, basisPos);
+		refreshBufferTrail(body, line, trailBuffer, basisPos, jd);
 		return;
 	}
 

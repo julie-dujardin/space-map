@@ -6,6 +6,7 @@ import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects'
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { NUM_TRAIL_POINTS, buildTrailPoints, writeTrailAlphas } from './points';
 import { buildFatLineFromThin, buildThinLineFromArrays, makeEmptyTrail } from './geometry';
+import type { SampleTransform } from './lagrange-frame';
 
 /**
  * Write a trail-buffer's contents into `posArr`, prefixed by a live-head
@@ -20,7 +21,8 @@ export function writeBufferVerticesWithLiveHead(
 	cx: number,
 	cy: number,
 	cz: number,
-	basisPos: [number, number, number]
+	basisPos: [number, number, number],
+	transform?: SampleTransform
 ): number {
 	const head = body.trailAnchor ?? body.position;
 	posArr[0] = head[0] - basisPos[0];
@@ -29,7 +31,7 @@ export function writeBufferVerticesWithLiveHead(
 	const bx = cx - basisPos[0];
 	const by = cy - basisPos[1];
 	const bz = cz - basisPos[2];
-	const n = buffer.writeVertices(posArr.subarray(3) as Float32Array, bx, by, bz);
+	const n = buffer.writeVertices(posArr.subarray(3) as Float32Array, bx, by, bz, transform);
 	return 1 + n;
 }
 

@@ -10,7 +10,8 @@ import {
 	type PointingSpec
 } from '$lib/math/orientation';
 import { isModelBearing } from '$lib/scene/objects/body/model';
-import { SUN_ID } from '$lib/constants';
+import { EARTH_ID, SUN_ID } from '$lib/constants';
+import { classifyLagrange } from '$lib/math/orbit/lagrange';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { OrbitalSource } from '$lib/fetch/position/format';
@@ -379,6 +380,21 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				setSpacecraftLanded(bo.labelHalo, false);
 				bo.isLanded = false;
 			}
+			// Sun–Earth L1/L2 is decided from the live geometry, so a probe gets
+			// its halo trail when it arrives and loses it when it leaves. The
+			// envelope is wide enough that a halo never wanders across the edge.
+			const earthPos = positionMap.get(EARTH_ID);
+			const sunPos = positionMap.get(SUN_ID);
+			const lagrangeTrail =
+				probeParentKey === EARTH_ID &&
+				earthPos !== undefined &&
+				sunPos !== undefined &&
+				classifyLagrange(
+					[kmToScene(probeOffsetKm[0]), kmToScene(probeOffsetKm[2]), -kmToScene(probeOffsetKm[1])],
+					[sunPos[0] - earthPos[0], sunPos[1] - earthPos[1], sunPos[2] - earthPos[2]]
+				) !== null;
+			const lagrangeChanged = lagrangeTrail !== (body.lagrangeTrail ?? false);
+			body.lagrangeTrail = lagrangeTrail;
 			// Reseed the trail buffer (when present) before flipping parentId,
 			// so the back-population samples against the OLD parent's frame are
 			// dropped and the new frame starts fresh. Sampling params must be
@@ -388,15 +404,18 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			// truncates a heliocentric trail to one chunk window. Skip on
 			// first-ever resolve (initial parentId was set by processProbes
 			// against the same parent) — only the live mid-play flip needs a clear.
+			// A Lagrange arrival or departure reseeds the same way: the halo
+			// span and the osculating span are different walks.
 			const probeParentChanged = d.parentId !== probeParentKey;
-			if (probeParentChanged && body.trailBuffer && ctx.probeStore) {
+			if ((probeParentChanged || lagrangeChanged) && body.trailBuffer && ctx.probeStore) {
 				const buf = body.trailBuffer;
 				buf.clear();
 				const freshElements = probeOsculatingElements(located.probe, jd, primaryMu);
 				const params = deriveProbeTrailParams(
 					freshElements,
 					d.validityEnd - d.validityStart,
-					buf.capacity
+					buf.capacity,
+					lagrangeTrail
 				);
 				buf.reconfigure(params.stepDays, params.epsilonScene, params.spanDays);
 				populateProbeTrailBuffer(
@@ -462,7 +481,8 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 					const params = deriveProbeTrailParams(
 						jumpElements,
 						d.validityEnd - d.validityStart,
-						tb.capacity
+						tb.capacity,
+						lagrangeTrail
 					);
 					tb.reconfigure(params.stepDays, params.epsilonScene, params.spanDays);
 					populateProbeTrailBuffer(

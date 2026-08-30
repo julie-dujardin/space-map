@@ -98,13 +98,32 @@ export class TrailBuffer {
 	 * Write the buffered positions into `out` in newest-to-oldest order, each
 	 * shifted by `(ox, oy, oz)` (typically `orbitCenter − basisPos`). Returns
 	 * the number of points written (`≤ count`, capped by `out` capacity).
+	 * `transform` rewrites each sample in place (given its jd) before the
+	 * shift, for drawing the stored inertial samples in another frame.
 	 */
-	writeVertices(out: Float32Array, ox: number, oy: number, oz: number): number {
+	writeVertices(
+		out: Float32Array,
+		ox: number,
+		oy: number,
+		oz: number,
+		transform?: (jd: number, v: Float64Array) => void
+	): number {
 		const n = Math.min(this._count, (out.length / 3) | 0);
+		const v = transform ? new Float64Array(3) : null;
 		for (let k = 0; k < n; k++) {
 			const idx = (this.head - 1 - k + this.capacity) % this.capacity;
 			const src = idx * 3;
 			const dst = k * 3;
+			if (transform && v) {
+				v[0] = this.positions[src];
+				v[1] = this.positions[src + 1];
+				v[2] = this.positions[src + 2];
+				transform(this.jds[idx], v);
+				out[dst] = v[0] + ox;
+				out[dst + 1] = v[1] + oy;
+				out[dst + 2] = v[2] + oz;
+				continue;
+			}
 			out[dst] = this.positions[src] + ox;
 			out[dst + 1] = this.positions[src + 1] + oy;
 			out[dst + 2] = this.positions[src + 2] + oz;

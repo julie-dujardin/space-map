@@ -829,7 +829,7 @@ export class SceneRenderer {
 			if (!line) continue;
 			const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
 			if (trailBuffer) {
-				refreshBufferTrail(bo.body, line, trailBuffer, basis);
+				refreshBufferTrail(bo.body, line, trailBuffer, basis, this.clock.jd);
 				continue;
 			}
 			const localPositions = line.userData.trailLocalPositions as

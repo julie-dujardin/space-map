@@ -133,6 +133,10 @@ export interface PositionedBody {
 	 * Takes precedence over `orbitElements` in the trail builder.
 	 */
 	trailBuffer?: TrailBuffer;
+	/** Probe sits at Sun–Earth L1/L2 this frame, so its Earth-relative trail
+	 *  is a halo loop: drawn co-rotating with the Sun–Earth line and sized to
+	 *  one halo period instead of the geocentric osculating orbit. */
+	lagrangeTrail?: boolean;
 	/** IAU pole + spin polynomial. Drives mesh orientation and body-fixed coords. */
 	orientation?: Orientation;
 	/** IAU nutation/precession sums (per-body coefficients + system-shared angles). */
