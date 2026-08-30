@@ -12,7 +12,7 @@
  */
 
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import { entryIndexAt, type TimelineEntry } from './timeline';
+import { entryIndexAt, type TimelineSpan } from '$lib/timeline/axis';
 
 /** Real seconds the whole trip takes, before the per-phase floor. */
 const TRIP_SECONDS = 12;
@@ -24,12 +24,12 @@ const DWELL_MS = 900;
  *  read, short enough that four in a row are not a wait. */
 const INSTANT_DWELL_MS = 450;
 
-export interface PlaybackHost {
+export interface PlaybackHost<T extends TimelineSpan> {
 	clock: SimClock;
 	/** Read fresh each time: the route can be re-picked mid-run. */
-	entries: () => readonly TimelineEntry[];
+	entries: () => readonly T[];
 	/** Point the camera at where this part of the trip happens. */
-	focus: (entry: TimelineEntry) => void;
+	focus: (entry: T) => void;
 }
 
 /** Ease in and out, so a leg starts and ends at rest instead of snapping. */
@@ -45,10 +45,10 @@ export function legSeconds(days: number, totalDays: number): number {
 	return Math.max(MIN_PHASE_SECONDS, (TRIP_SECONDS * days) / totalDays);
 }
 
-export class TripPlayback {
+export class TripPlayback<T extends TimelineSpan> {
 	playing = $state(false);
 
-	private host: PlaybackHost;
+	private host: PlaybackHost<T>;
 	private frame = 0;
 	/** The entry being flown to. */
 	private toIndex = 0;
@@ -59,7 +59,7 @@ export class TripPlayback {
 	/** Set while dwelling on an entry; the next leg starts when it passes. */
 	private dwellUntilMs = 0;
 
-	constructor(host: PlaybackHost) {
+	constructor(host: PlaybackHost<T>) {
 		this.host = host;
 	}
 

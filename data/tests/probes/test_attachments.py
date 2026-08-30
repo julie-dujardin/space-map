@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from space_map_data.probes import attachments
-from space_map_data.probes.landing_events import parse_event_jd
+from space_map_data.probes.events import event_jd
 
 
 def _write(root: Path, name: str, probes: list[dict]) -> None:
@@ -56,13 +56,13 @@ def test_passenger_rides_the_relative_that_has_a_trajectory(
     _setup(
         monkeypatch,
         [CARRIER, PASSENGER],
-        {-10: [(parse_event_jd("1999-01-01"), parse_event_jd("2010-01-01"))]},
+        {-10: [(event_jd("1999-01-01"), event_jd("2010-01-01"))]},
     )
     (attachment,) = attachments.resolve_attachments()
     assert attachment.probe_id == 200
     assert attachment.carrier_probe_id == 100
-    assert attachment.start_jd == pytest.approx(parse_event_jd("2000-01-01"))
-    assert attachment.end_jd == pytest.approx(parse_event_jd("2005-01-01"))
+    assert attachment.start_jd == pytest.approx(event_jd("2000-01-01"))
+    assert attachment.end_jd == pytest.approx(event_jd("2005-01-01"))
 
 
 def test_direction_follows_the_trajectory_not_the_hierarchy(
@@ -108,7 +108,7 @@ def test_direction_follows_the_trajectory_not_the_hierarchy(
     _setup(
         monkeypatch,
         [CARRIER, PASSENGER],
-        {-10: [(parse_event_jd("1999-01-01"), parse_event_jd("2010-01-01"))]},
+        {-10: [(event_jd("1999-01-01"), event_jd("2010-01-01"))]},
     )
     (attachment,) = attachments.resolve_attachments()
     assert (attachment.probe_id, attachment.carrier_probe_id) == (200, 100)
@@ -122,8 +122,8 @@ def test_craft_with_its_own_trajectory_is_not_a_passenger(
         monkeypatch,
         [CARRIER, PASSENGER],
         {
-            -10: [(parse_event_jd("1999-01-01"), parse_event_jd("2010-01-01"))],
-            -20: [(parse_event_jd("1999-01-01"), parse_event_jd("2010-01-01"))],
+            -10: [(event_jd("1999-01-01"), event_jd("2010-01-01"))],
+            -20: [(event_jd("1999-01-01"), event_jd("2010-01-01"))],
         },
     )
     assert attachments.resolve_attachments() == []
@@ -145,7 +145,7 @@ def test_carrier_covering_a_sliver_is_not_worth_borrowing(
     _setup(
         monkeypatch,
         [CARRIER, PASSENGER],
-        {-10: [(parse_event_jd("2004-12-01"), parse_event_jd("2005-01-01"))]},
+        {-10: [(event_jd("2004-12-01"), event_jd("2005-01-01"))]},
     )
     assert attachments.resolve_attachments() == []
 
@@ -157,7 +157,7 @@ def test_same_day_separation_is_not_a_window(
     _setup(
         monkeypatch,
         [CARRIER, PASSENGER],
-        {-10: [(parse_event_jd("1999-01-01"), parse_event_jd("2010-01-01"))]},
+        {-10: [(event_jd("1999-01-01"), event_jd("2010-01-01"))]},
     )
     assert attachments.resolve_attachments() == []
 
@@ -182,7 +182,7 @@ def test_no_separation_event_yields_nothing(
     _setup(
         monkeypatch,
         [CARRIER, PASSENGER],
-        {-10: [(parse_event_jd("1999-01-01"), parse_event_jd("2010-01-01"))]},
+        {-10: [(event_jd("1999-01-01"), event_jd("2010-01-01"))]},
     )
     assert attachments.resolve_attachments() == []
 
@@ -196,7 +196,7 @@ def test_synthetic_naif_never_indexes_a_kernel(
     _setup(
         monkeypatch,
         [{**CARRIER, "naif_id": -90000123}, PASSENGER],
-        {-90000123: [(parse_event_jd("1999-01-01"), parse_event_jd("2010-01-01"))]},
+        {-90000123: [(event_jd("1999-01-01"), event_jd("2010-01-01"))]},
     )
     assert attachments.resolve_attachments() == []
 
@@ -226,7 +226,7 @@ def test_passenger_launching_without_its_own_date_starts_at_the_carrier(
     _setup(
         monkeypatch,
         [CARRIER, PASSENGER],
-        {-10: [(parse_event_jd("2001-06-01"), parse_event_jd("2010-01-01"))]},
+        {-10: [(event_jd("2001-06-01"), event_jd("2010-01-01"))]},
     )
     (attachment,) = attachments.resolve_attachments()
-    assert attachment.start_jd == pytest.approx(parse_event_jd("2001-06-01"))
+    assert attachment.start_jd == pytest.approx(event_jd("2001-06-01"))

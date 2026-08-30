@@ -65,7 +65,19 @@ describe('formatIsoDate', () => {
 		// SBDB stores ancient observation dates with 3-digit unpadded years
 		// (e.g. C/568 O1 → "568-11-05"); parser must accept <4-digit years.
 		{ name: '3-digit-year SBDB date', raw: '568-11-05', expected: 'November 5, 568' },
-		{ name: '3-digit-year BCE SBDB date', raw: '-43-05-30', expected: 'May 30, 44 BC' }
+		{ name: '3-digit-year BCE SBDB date', raw: '-43-05-30', expected: 'May 30, 44 BC' },
+		// Probe events are written to the precision the sources have; a record
+		// with no seconds must not be rendered as though it had them.
+		{
+			name: 'minute-precision event date',
+			raw: '2023-09-24T14:52Z',
+			expected: 'September 24, 2023 2:52 PM'
+		},
+		{
+			name: 'second-precision event date',
+			raw: '1969-07-20T20:17:40Z',
+			expected: 'July 20, 1969 8:17:40 PM'
+		}
 	])('$name → $expected', ({ raw, expected }) => {
 		expect(formatIsoDate(raw)).toBe(expected);
 	});

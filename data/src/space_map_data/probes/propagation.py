@@ -2,12 +2,12 @@
 
 A candidate has a stale SPK and a dynamically simple end-state: hyperbolic
 Sun escape or bound heliocentric clear of every planet's Hill sphere. The
-events JSON ``status`` field vetoes (impacted / landed / completed). Caller
-owns the SPICE kernel pool; this module never calls ``kclear``.
+curated ``status`` vetoes a craft that is not coasting, or that is still
+being flown. Caller owns the SPICE kernel pool; this module never calls
+``kclear``.
 """
 
 import datetime
-import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import spiceypy
 
+from space_map_data.probes.events import EventProbe, ProbeStatus, events_by_probe_id
 from space_map_data.probes.probe_id import index_by_source, load_registry
 from space_map_data.probes.trace import _merged_intervals
 from space_map_data.utils.paths import SOURCES_POSITION_DIR
@@ -25,7 +26,6 @@ GM_SUN = 1.32712440018e11  # km³/s²
 AU_KM = 149597870.7
 S_PER_YEAR = 86400.0 * 365.25
 
-EVENTS_DIR = SOURCES_POSITION_DIR / "probe-events"
 
 # Outer planets use barycenter IDs because de440 doesn't carry planet bodies
 # past Mars. Moon and Sun entries from the shared Hill table are excluded
@@ -42,31 +42,22 @@ PLANET_NAMES: dict[int, str] = {
     8: "Neptune",
 }
 
-CONFIRMING_STATUSES = frozenset(
-    {
-        "heliocentric",
-        "dormant",
-        "lost",
-        "contact_lost",
-        "interstellar",
-    }
-)
-# Veto when status says deorbited/impacted, even if the last SPK sample looks
-# like a clean coast — the kernel may just end before the maneuver.
-VETO_STATUSES = frozenset(
-    {
-        "impacted",
-        "landed_inactive",
-        "landed_active",
-        "crashed",
-        "in_orbit_inactive",
-        "in_orbit_active",
-        "completed",
-        "active",
-        "in_transit",
-        "decayed",
-    }
-)
+# Nowhere else is a coast safe to assume: a craft that came down, went into
+# orbit or has not arrived yet may look like a clean coast at the end of its
+# kernel and still be somewhere else the next day.
+_COASTING = frozenset({"heliocentric", "interstellar", "unknown"})
+
+
+def coast_is_plausible(status: ProbeStatus | None) -> bool:
+    """Whether the curated record allows extrapolating past the archive."""
+    if status is None:
+        return True
+    if status.where not in _COASTING:
+        return False
+    # A craft still being flown gets a fresh kernel instead of a guess. The
+    # interstellar pair are the exception: they answer, and they coast.
+    return status.where == "interstellar" or status.alive is not True
+
 
 PROP_FORCE_ON = "force_on"
 PROP_FORCE_OFF = "force_off"
@@ -98,7 +89,7 @@ class Candidate:
     nearest_planet: str
     nearest_dist_km: float
     nearest_hill_km: float
-    events_status: str | None
+    events_status: ProbeStatus | None
     events_override: str | dict | None
     regime: str  # "hyperbolic" | "bound_clear" | "bound_in_soi"
     verdict: (
@@ -108,25 +99,6 @@ class Candidate:
     @property
     def is_propagate(self) -> bool:
         return self.verdict.startswith("PROPAGATE_")
-
-
-def load_events_by_cospar() -> dict[str, dict]:
-    """Probe entries keyed by COSPAR. NAIF would be ambiguous (reused across
-    decades — e.g. -76 was Mariner 10, now MSL)."""
-    out: dict[str, dict] = {}
-    if not EVENTS_DIR.exists():
-        return out
-    for path in sorted(EVENTS_DIR.glob("*.json")):
-        try:
-            data = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("propagation: failed to read %s: %s", path, exc)
-            continue
-        for probe in data.get("probes", []):
-            cospar = probe.get("cospar_id")
-            if cospar:
-                out[cospar] = probe
-    return out
 
 
 def classify_state(
@@ -182,7 +154,7 @@ def decide_verdict(
     regime: str,
     stale_yr: float,
     stale_thresh: float,
-    events_status: str | None,
+    events_status: ProbeStatus | None,
     events_override: str | dict | None,
 ) -> str:
     """Combine dynamics + curated status + manual override. ``force_on`` /
@@ -194,7 +166,7 @@ def decide_verdict(
         return "PROPAGATE_FORCED_ON"
     if stale_yr < stale_thresh:
         return "SKIP_FRESH"
-    if events_status in VETO_STATUSES:
+    if not coast_is_plausible(events_status):
         return "SKIP_VETOED"
     if regime == "hyperbolic":
         return "PROPAGATE_HYP"
@@ -210,7 +182,7 @@ def evaluate_probe(
     config: PropagationConfig,
     now_et: float,
     registry_by_source: dict[tuple[str, int], dict],
-    events_by_cospar: dict[str, dict],
+    events_by_pid: dict[int, EventProbe],
 ) -> Candidate | None:
     """Detector for one (mission, naif). Caller must have furnshed kernels.
     Returns None on no coverage or end-state lookup failure."""
@@ -236,9 +208,9 @@ def evaluate_probe(
     entry = registry_by_source.get((mdir_name, naif))
     cospar = entry.get("cospar_id") if entry else None
     name = entry["name"] if entry else mdir_name
-    ev_probe = events_by_cospar.get(cospar) if cospar else None
-    ev_status = ev_probe.get("status") if ev_probe else None
-    ev_override = ev_probe.get("propagation") if ev_probe else None
+    ev_probe = events_by_pid.get(int(entry["probe_id"])) if entry else None
+    ev_status = ev_probe.status if ev_probe else None
+    ev_override = ev_probe.propagation if ev_probe else None
 
     verdict = decide_verdict(regime, stale_yr, config.stale_yr, ev_status, ev_override)
     return Candidate(
@@ -294,7 +266,7 @@ def detect_all(config: PropagationConfig) -> list[Candidate]:
     furnish_generic_kernels(spice_root)
     registry = load_registry()
     by_source = index_by_source(registry)
-    events_by_cospar = load_events_by_cospar()
+    events_by_pid = events_by_probe_id()
     now = now_et()
 
     out: list[Candidate] = []
@@ -314,7 +286,7 @@ def detect_all(config: PropagationConfig) -> list[Candidate]:
                 config,
                 now,
                 by_source,
-                events_by_cospar,
+                events_by_pid,
             )
         finally:
             for k in kpaths:
@@ -325,11 +297,25 @@ def detect_all(config: PropagationConfig) -> list[Candidate]:
 
 
 def from_state_overrides() -> list[dict]:
-    """Events entries with ``"propagation": {"mode": "from_state", ...}`` —
-    probes with no SPK at all (Apollo S-IVBs, Mariner 2 with no NAIF, …)."""
+    """Curated records with ``"propagation": {"mode": "from_state", ...}`` —
+    probes with no SPK at all (Apollo S-IVBs, Mariner 2 with no NAIF, …).
+
+    The identifiers the synthesiser needs live in the registry, so each
+    record is returned joined to its registry row.
+    """
+    registry = {int(e["probe_id"]): e for e in load_registry()}
     out: list[dict] = []
-    for probe in load_events_by_cospar().values():
-        prop = probe.get("propagation")
-        if isinstance(prop, dict) and prop.get("mode") == "from_state":
-            out.append(probe)
+    for probe in events_by_probe_id().values():
+        prop = probe.propagation
+        if not (isinstance(prop, dict) and prop.get("mode") == "from_state"):
+            continue
+        entry = registry.get(probe.probe_id, {})
+        out.append(
+            {
+                "name": probe.name,
+                "naif_id": entry.get("naif_id"),
+                "cospar_id": entry.get("cospar_id"),
+                "propagation": prop,
+            }
+        )
     return out

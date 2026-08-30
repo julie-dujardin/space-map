@@ -76,7 +76,7 @@ def _print_table(cands: list[Candidate]) -> None:
             f"| {c.verdict:<20}| {c.mission:<14}| {c.naif:>5d} | "
             f"{c.name[:26]:<26}| {(c.cospar or '-'):<10}| {_et_to_utc(c.end_et):<10}| "
             f"{c.stale_yr:>8.1f} | {c.r_sun_au:>6.2f} | {c.v_kms:>6.2f} | "
-            f"{c.regime:<13}| {near:<16}| {(c.events_status or '-'):<15}|"
+            f"{c.regime:<13}| {near:<16}| {(c.events_status.where if c.events_status else '-'):<15}|"
         )
 
 

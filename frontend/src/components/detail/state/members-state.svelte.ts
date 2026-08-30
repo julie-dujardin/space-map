@@ -13,6 +13,7 @@ import type { GroupDetailData } from '$lib/fetch/groups/details';
 import type { AppState } from '$lib/state/app-state.svelte';
 import type { CategoryConfig } from '$lib/state/category-config';
 import { groupHref, tabHref } from '$lib/state/focus-link';
+import { targetVisits, type TargetVisit } from '$lib/probes/target-list';
 import * as m from '$lib/paraglide/messages.js';
 import { systemTitle } from '../charts/planetary-system.svelte';
 
@@ -93,6 +94,12 @@ export class MembersState {
 	readonly fragmentsStrip: OverviewStrip | null;
 	readonly missionStrip: OverviewStrip | null;
 	readonly probesStrip: OverviewStrip | null;
+	readonly targetsStrip: OverviewStrip | null;
+
+	// A probe's own destination list, read off its curated events — the body
+	// side's probes list mirrored. One derivation feeds the strip, the
+	// Targets tab and its badge, so they cannot disagree.
+	readonly targetVisits: TargetVisit[];
 
 	// "+N more" matches the Satellites group's categorized member total (group
 	// index `n`), not Earth's raw satcat tally, which includes debris.
@@ -276,6 +283,24 @@ export class MembersState {
 				heading: m.probes_section(),
 				seeAllHref: tabHref(d.appState(), 'probes'),
 				onSeeAll: () => d.appState().setTab('probes')
+			};
+		});
+
+		this.targetVisits = $derived(
+			d.isGroupMode() ? [] : targetVisits(d.data()?.global?.events?.items ?? [])
+		);
+		this.targetsStrip = $derived.by(() => {
+			if (this.targetVisits.length === 0) return null;
+			return {
+				members: this.targetVisits.map((v) => ({
+					name: v.target.name,
+					id: v.objectId,
+					thumbnail: v.target.thumbnail
+				})),
+				totalCount: this.targetVisits.length,
+				heading: m.tab_targets(),
+				seeAllHref: tabHref(d.appState(), 'targets'),
+				onSeeAll: () => d.appState().setTab('targets')
 			};
 		});
 	}

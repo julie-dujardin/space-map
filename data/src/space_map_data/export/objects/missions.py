@@ -8,7 +8,6 @@ Both link to the mission group page, whose focus resolves to the primary probe.
 """
 
 import datetime
-import json
 import logging
 from dataclasses import dataclass, field
 
@@ -16,7 +15,7 @@ from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.notable import NotableObject, notable_entries, notable_names
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.wikidata import WikidataEntityCache, entity_label
-from space_map_data.probes.landing_events import EVENTS_DIR
+from space_map_data.probes.events import ProbeStatus, events_by_probe_id
 from space_map_data.probes.probe_id import load_registry
 
 logger = logging.getLogger(__name__)
@@ -40,42 +39,15 @@ class ProbeMission:
     status: str | None = None
 
 
-def _probe_statuses() -> dict[int, dict]:
-    """Curated craft status by registry probe_id, from the events files.
-
-    probe_id is the only identifier both sides always carry: the events files
-    name craft their own way (``Galileo Orbiter`` for the registry's
-    ``Galileo``) and pre-COSPAR craft have no catalogue id.
-    """
-    out: dict[int, dict] = {}
-    for path in sorted(EVENTS_DIR.glob("*.json")):
-        try:
-            probes = json.loads(path.read_text()).get("probes", [])
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("Probe events file %s unreadable (%s); skipped", path, exc)
-            continue
-        for probe in probes:
-            status = probe.get("status")
-            probe_id = probe.get("probe_id")
-            if status and probe_id is not None:
-                out[int(probe_id)] = status
-    return out
-
-
-def _mission_status(raw: dict | None) -> str | None:
-    """Mission status from a craft's events-file status block.
-
-    The block records a physical fate — ``where`` it ended up and whether it is
-    ``alive`` — but a mission page only asks whether anything is still flying.
-    A craft whose `alive` is unset (never-launched, or a fate nobody recorded)
-    leaves the mission's status unstated rather than claiming it ended.
-    """
-    if not isinstance(raw, dict):
+def _mission_status(status: ProbeStatus | None) -> str | None:
+    """The curated records track each craft's physical fate; a mission page
+    only wants to know whether anything is still flying it, and whether it
+    ended the way it was meant to."""
+    if status is None:
         return None
-    alive = raw.get("alive")
-    if alive is None:
-        return None
-    return "operating" if alive else "ended"
+    if status.alive:
+        return "operating"
+    return "lost" if status.lost else "ended"
 
 
 def probe_launch_year(inception_mjd: int | None) -> int | None:
@@ -103,7 +75,7 @@ def build_probe_missions() -> list[ProbeMission]:
     are ranked by Wikidata-label presence then fallback name for a stable strip.
     """
     registry = load_registry()
-    statuses = _probe_statuses()
+    statuses = events_by_probe_id()
     unmatched: list[str] = []
     members_by_primary: dict[int, list[dict]] = {}
     for entry in registry:
@@ -123,8 +95,8 @@ def build_probe_missions() -> list[ProbeMission]:
         )
         # The mission's state is its primary craft's; siblings are stages and
         # landers whose own fates the page lists individually.
-        raw_status = statuses.get(int(entry["probe_id"]))
-        if raw_status is None:
+        curated = statuses.get(int(entry["probe_id"]))
+        if curated is None:
             unmatched.append(entry.get("name") or slug)
         missions.append(
             ProbeMission(
@@ -134,7 +106,7 @@ def build_probe_missions() -> list[ProbeMission]:
                 primary=_notable(entry),
                 members=[_notable(r) for r in member_rows],
                 launch_year=probe_launch_year(entry.get("inception_mjd")),
-                status=_mission_status(raw_status),
+                status=_mission_status(curated.status if curated else None),
             )
         )
     logger.info(

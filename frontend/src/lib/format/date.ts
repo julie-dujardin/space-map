@@ -25,7 +25,12 @@ function pad(n: number, width = 2): string {
  */
 function formatIso8601(
 	date: Date,
-	{ month, day, hasTime }: { month: number; day: number; hasTime: boolean }
+	{
+		month,
+		day,
+		hasTime,
+		hasSeconds = true
+	}: { month: number; day: number; hasTime: boolean; hasSeconds?: boolean }
 ): string {
 	const year = date.getUTCFullYear();
 	const sign = year < 0 ? '-' : year > 9999 ? '+' : '';
@@ -34,7 +39,10 @@ function formatIso8601(
 	if (month > 0) out += `-${pad(date.getUTCMonth() + 1)}`;
 	if (day > 0) out += `-${pad(date.getUTCDate())}`;
 	if (hasTime) {
-		out += `T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}Z`;
+		out += `T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+		// A source that wrote no seconds did not claim any.
+		if (hasSeconds) out += `:${pad(date.getUTCSeconds())}`;
+		out += 'Z';
 	}
 	return out;
 }
@@ -52,6 +60,8 @@ interface ParsedIsoDate {
 	day: number;
 	isBCE: boolean;
 	hasTime: boolean;
+	/** Whether the string carried a seconds field at all. */
+	hasSeconds: boolean;
 }
 
 /**
@@ -59,10 +69,13 @@ interface ParsedIsoDate {
  * ("2024-01-15"), ISO datetimes ("2024-01-15T00:00:00Z"), Wikidata-style
  * signed strings ("+1801-01-01T00:00:00Z", "-0466-00-00T00:00:00Z"), and
  * truncated forms ("2024", "2024-06") where omitted components signal
- * unknown precision — equivalent to the Wikidata "00" placeholder.
+ * unknown precision — equivalent to the Wikidata "00" placeholder. The
+ * seconds field is optional ("2023-09-24T14:52Z").
  */
 export function parseIsoDate(raw: string): ParsedIsoDate | null {
-	const m = raw.match(/^([+-]?)(\d+)(?:-(\d{2})(?:-(\d{2}))?)?(?:T(\d{2}):(\d{2}):(\d{2})Z)?$/);
+	const m = raw.match(
+		/^([+-]?)(\d+)(?:-(\d{2})(?:-(\d{2}))?)?(?:T(\d{2}):(\d{2})(?::(\d{2}))?Z)?$/
+	);
 	if (!m) return null;
 	const [, sign, yearStr, monthStr = '00', dayStr = '00', hh, mm, ss] = m;
 	const isBCE = sign === '-';
@@ -73,12 +86,27 @@ export function parseIsoDate(raw: string): ParsedIsoDate | null {
 	const date = new Date(0);
 	date.setUTCFullYear(isBCE ? -yearAbs : yearAbs, (month || 1) - 1, day || 1);
 	if (hh !== undefined) {
-		date.setUTCHours(parseInt(hh, 10), parseInt(mm, 10), parseInt(ss, 10), 0);
+		date.setUTCHours(
+			parseInt(hh, 10),
+			parseInt(mm, 10),
+			ss === undefined ? 0 : parseInt(ss, 10),
+			0
+		);
 	}
 	if (isNaN(date.getTime())) return null;
 
-	const hasTime = hh !== undefined && (hh !== '00' || mm !== '00' || ss !== '00');
-	return { date, month, day, isBCE, hasTime };
+	const hasTime = hh !== undefined && (hh !== '00' || mm !== '00' || (ss ?? '00') !== '00');
+	return { date, month, day, isBCE, hasTime, hasSeconds: ss !== undefined };
+}
+
+// Only a handful of option shapes exist, but the event lists call this per
+// row; constructing an Intl.DateTimeFormat each time is the expensive part.
+const dateTimeFormats = new Map<string, Intl.DateTimeFormat>();
+function cachedDateTimeFormat(locale: string, opts: Intl.DateTimeFormatOptions) {
+	const key = locale + JSON.stringify(opts);
+	let format = dateTimeFormats.get(key);
+	if (!format) dateTimeFormats.set(key, (format = new Intl.DateTimeFormat(locale, opts)));
+	return format;
 }
 
 /**
@@ -91,10 +119,10 @@ export function parseIsoDate(raw: string): ParsedIsoDate | null {
 export function formatIsoDate(raw: string): string {
 	const parsed = parseIsoDate(raw);
 	if (!parsed) return raw;
-	const { date, month, day, isBCE, hasTime } = parsed;
+	const { date, month, day, isBCE, hasTime, hasSeconds } = parsed;
 
 	if (getSettings().resolvedDateFormat === 'iso') {
-		return formatIso8601(date, { month, day, hasTime });
+		return formatIso8601(date, { month, day, hasTime, hasSeconds });
 	}
 
 	const opts: Intl.DateTimeFormatOptions = { year: 'numeric' };
@@ -106,9 +134,14 @@ export function formatIsoDate(raw: string): string {
 	// browser's offset. Time-bearing inputs are real instants and use local TZ.
 	if (!hasTime) opts.timeZone = 'UTC';
 
-	const dateStr = new Intl.DateTimeFormat(getLocale(), opts).format(date);
+	const dateStr = cachedDateTimeFormat(getLocale(), opts).format(date);
 	if (!hasTime || month === 0 || day === 0) return dateStr;
-	const timeOpts: Intl.DateTimeFormatOptions = { hour12: getSettings().resolvedHour12 };
+	const timeOpts: Intl.DateTimeFormatOptions = {
+		hour12: getSettings().resolvedHour12,
+		hour: 'numeric',
+		minute: '2-digit'
+	};
+	if (hasSeconds) timeOpts.second = '2-digit';
 	const timeStr = date.toLocaleTimeString(getLocale(), timeOpts);
 	return `${dateStr} ${timeStr}`;
 }

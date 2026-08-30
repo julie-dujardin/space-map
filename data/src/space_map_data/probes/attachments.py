@@ -32,7 +32,7 @@ from space_map_data.download.providers.spice.probes import (
     LANDED_MISSIONS_DIR,
     MISSIONS_DIR,
 )
-from space_map_data.probes.landing_events import EVENTS_DIR, parse_event_jd
+from space_map_data.probes.events import EVENTS_DIR, event_jd
 from space_map_data.probes.probe_id import load_registry
 from space_map_data.utils.time import et_to_jd
 
@@ -117,7 +117,7 @@ def _first_separation_jd(probe: dict) -> float | None:
         if event.get("type") != "stage_separation":
             continue
         try:
-            return parse_event_jd(event["date"])
+            return event_jd(event["date"])
         except ValueError, TypeError, KeyError:
             logger.warning(
                 "attachments: %s has an unparseable separation date %r",
@@ -189,9 +189,7 @@ def resolve_attachments() -> list[Attachment]:
             if not carrier_spans:
                 continue
             try:
-                start_jd = (
-                    parse_event_jd(launch["date"]) if launch else carrier_spans[0][0]
-                )
+                start_jd = event_jd(launch["date"]) if launch else carrier_spans[0][0]
             except ValueError, TypeError, KeyError:
                 continue
             window = end_jd - start_jd

@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
+	import MemberRow from './MemberRow.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { memberEntryKey, type NotableMemberEntry } from '$lib/fetch/objects/object-data';
-	import { pickedThumbnailUrl, type PickedThumbnail } from '$lib/fetch/objects/images';
+	import type { PickedThumbnail } from '$lib/fetch/objects/images';
 	import {
 		isSearchEnabled,
 		localizedName,
@@ -16,6 +17,7 @@
 	} from '$lib/search/client';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
+	import { isModifiedClick } from '$lib/state/focus-link';
 	import {
 		applyFeature,
 		applyFocus,
@@ -265,7 +267,7 @@
 	}
 
 	function focusRow(e: MouseEvent, row: Row) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		if (isModifiedClick(e)) return;
 		// A constellation row opens its group page; an object focuses its mesh.
 		if (row.group) {
 			if (!appState) return;
@@ -300,45 +302,27 @@
 	{/if}
 	<ul class="flex flex-col">
 		{#each rows as row (rowKey(row))}
-			<li>
-				<a
-					href={rowHref(row)}
-					onclick={(e) => focusRow(e, row)}
-					onmouseenter={() => onHoverFeature?.(row.featureId ?? null)}
-					onmouseleave={() => onHoverFeature?.(null)}
-					onfocus={() => onHoverFeature?.(row.featureId ?? null)}
-					onblur={() => onHoverFeature?.(null)}
-					class="pointer-events-auto hover:bg-muted/40 -mx-1 flex items-center gap-3 rounded-md px-1 py-2"
-				>
-					{#if row.thumbnail}
-						<img
-							src={pickedThumbnailUrl(row.thumbnail)}
-							alt=""
-							loading="lazy"
-							decoding="async"
-							class="bg-muted size-10 shrink-0 rounded-md object-cover"
-						/>
-					{:else}
-						<div
-							class="bg-muted text-muted-foreground flex size-10 shrink-0 items-center justify-center rounded-md text-sm font-medium"
-						>
-							{row.name.charAt(0)}
-						</div>
-					{/if}
-					<span class="min-w-0 flex-1 truncate text-sm font-medium">{row.name}</span>
-					<span class="flex shrink-0 flex-col items-end text-xs tabular-nums">
-						{#if row.diameter_km != null}
-							<span>{formatQuantity({ value: row.diameter_km, unit: 'kilometre' }, true)}</span>
-						{/if}
-						{#if row.year}
-							<span class="text-muted-foreground">{row.year}</span>
-						{/if}
-						{#if row.diameter_km == null && !row.year}
-							<span class="text-muted-foreground">–</span>
-						{/if}
-					</span>
-				</a>
-			</li>
+			<MemberRow
+				name={row.name}
+				thumbnail={row.thumbnail}
+				href={rowHref(row)}
+				onclick={(e) => focusRow(e, row)}
+				onmouseenter={() => onHoverFeature?.(row.featureId ?? null)}
+				onmouseleave={() => onHoverFeature?.(null)}
+				onfocus={() => onHoverFeature?.(row.featureId ?? null)}
+				onblur={() => onHoverFeature?.(null)}
+				valuesClass="tabular-nums"
+			>
+				{#if row.diameter_km != null}
+					<span>{formatQuantity({ value: row.diameter_km, unit: 'kilometre' }, true)}</span>
+				{/if}
+				{#if row.year}
+					<span class="text-muted-foreground">{row.year}</span>
+				{/if}
+				{#if row.diameter_km == null && !row.year}
+					<span class="text-muted-foreground">–</span>
+				{/if}
+			</MemberRow>
 		{/each}
 	</ul>
 	{#if hasMore}

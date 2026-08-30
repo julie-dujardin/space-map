@@ -253,7 +253,9 @@ export interface MemberLimb {
  *  the pair — mirrors `feature_member_key` in data/export/notable.py. */
 export function memberEntryKey(e: NotableMemberEntry): string {
 	if (e.feature_id != null) return `${e.id}:${e.feature_id}`;
-	return e.group ?? e.id ?? '';
+	// The name backstops entries with no page of their own (bare-name probe
+	// targets), so two of them never share a key.
+	return e.group ?? e.id ?? e.name;
 }
 
 /** One rate-stable spin span's baseline, subtracted before encoding so
@@ -297,6 +299,72 @@ export interface ProbeAttitude {
 		 *  present only when `baselines` is non-null. */
 		baseline_index?: number;
 	}[];
+}
+
+/** What a curated mission event was: the vocabulary states what happened, and
+ *  the fields around it say to what and how. */
+export type ProbeEventType =
+	| 'launch'
+	| 'stage_separation'
+	| 'flyby'
+	| 'orbit_insertion'
+	| 'orbit_departure'
+	| 'atmospheric_entry'
+	| 'landing'
+	| 'reentry'
+	| 'sample_collection'
+	| 'sample_return'
+	| 'observation'
+	| 'perihelion'
+	| 'contact_loss'
+	| 'hibernation'
+	| 'anomaly'
+	| 'mission_end'
+	| 'milestone';
+
+/** One event in a probe's curated record. `date` is ISO 8601 at whatever
+ *  precision the sources support, which `precision` names; `jd` is that date's
+ *  first instant, for seeking the clock. `end_date` makes the event a span. */
+export interface ProbeEvent {
+	type: ProbeEventType;
+	date: string;
+	jd: number;
+	precision: 'year' | 'month' | 'day' | 'minute' | 'second';
+	end_date?: string;
+	end_jd?: number;
+	/** The source itself hedges about the moment, whatever the precision. */
+	approximate?: true;
+	/** Attempted and missed — a flyby that flew wide, an insertion that did not take. */
+	failed?: true;
+	/** What the event was directed at. Carries `primary_id` (and the card
+	 *  thumbnail) when the body or craft has an object of its own, and is a
+	 *  bare name otherwise. */
+	target?: EntityRef & { thumbnail?: PickedThumbnail };
+	/** Flyby only. */
+	purpose?: 'gravity_assist' | 'science';
+	/** Landing only. */
+	outcome?: 'controlled' | 'destroyed_at_landing';
+	intentional?: boolean;
+	/** Landing/reentry only: where on the target it came down. */
+	site?: { lat_deg: number; lon_deg: number; name?: string };
+	/** What the published sources say, and what our kernels say. They share key
+	 *  names where they measure the same thing. */
+	stated?: Record<string, unknown>;
+	computed?: Record<string, unknown>;
+}
+
+/** Where the craft ended up, and whether it still answers. `alive` is absent
+ *  when nobody knows; `lost` separates a failure from a retirement. */
+export interface ProbeEventStatus {
+	where: string;
+	alive?: boolean;
+	lost?: true;
+}
+
+export interface ProbeEvents {
+	status: ProbeEventStatus;
+	/** In the order the curated file lists them, which is date order. */
+	items: ProbeEvent[];
 }
 
 export interface GlobalObjectData {
@@ -564,6 +632,8 @@ export interface GlobalObjectData {
 	/** On a craft with no trajectory of its own: the one carrying it, whose
 	 *  position it borrows. Same card shape as `part_of_mission`. */
 	carried_by?: FragmentOf;
+	/** Probe objects only: the curated mission record, drawn as the timeline. */
+	events?: ProbeEvents;
 }
 
 export interface FragmentOf {

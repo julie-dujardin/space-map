@@ -23,6 +23,7 @@ import logging
 from dataclasses import dataclass
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.probes.events import target_object_ids
 from space_map_data.export.notable import NotableObject, notable_entries, notable_names
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.wikidata import WikidataEntityCache
@@ -108,21 +109,6 @@ def _visit(probe: dict, events: list[dict]) -> dict:
     if end:
         out["end"] = end
     return out
-
-
-def target_object_ids(naif: int) -> tuple[str, ...]:
-    """Candidate object ids for an event-target NAIF (Horizons convention),
-    best first. Numbered asteroids are SBDB rows, except the dwarf planets
-    the renderer keeps under their NAIF id (Ceres is ``naif-2000001``);
-    satellites of asteroids keep the id as written (Dimorphos is
-    ``spkid-120065803``). Mirrors ``probes/landing_events._resolve_body``."""
-    if naif > 100_000_000:
-        return (f"spkid-{naif}",)
-    if 2_000_000 < naif < 3_000_000:
-        return (f"spkid-{naif + 18_000_000}", f"naif-{naif}")
-    if 1_000_000 < naif < 2_000_000:
-        return (f"spkid-{naif}",)
-    return (f"naif-{naif}",)
 
 
 @dataclass(frozen=True)

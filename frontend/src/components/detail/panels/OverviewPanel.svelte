@@ -69,6 +69,7 @@
 			members.membersStrip,
 			surface.featuresStrip,
 			members.fragmentsStrip,
+			members.targetsStrip,
 			members.missionStrip,
 			members.probesStrip
 		].filter((s) => s !== null)

@@ -64,6 +64,7 @@ export const FEATURE_ROUTE_TYPES: ReadonlySet<string> = new Set([
  *  the URL codec both derive from. */
 export const DRAWER_TABS = [
 	'overview',
+	'targets',
 	'images',
 	'features',
 	'structure',

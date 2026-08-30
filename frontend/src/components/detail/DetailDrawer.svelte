@@ -27,6 +27,7 @@
 	import FeaturesPanel from './panels/FeaturesPanel.svelte';
 	import RingsPanel from './panels/RingsPanel.svelte';
 	import StructurePanel from './panels/StructurePanel.svelte';
+	import TargetsPanel from './panels/TargetsPanel.svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { DrawerTab } from '$lib/state/view';
 	import {
@@ -284,6 +285,7 @@
 
 	let tabPresent = $derived<Record<DrawerTab, boolean>>({
 		overview: true,
+		targets: members.targetVisits.length > 0,
 		images: gallery.hasImages,
 		features: surface.showFeaturesTab,
 		structure: showStructureTab,
@@ -300,6 +302,7 @@
 	// would crowd the bar, and each panel states its total anyway.
 	let tabItems = $derived<TabItem[]>([
 		{ tab: 'overview', label: m.tab_overview() },
+		{ tab: 'targets', label: m.tab_targets(), count: members.targetVisits.length },
 		{ tab: 'images', label: m.tab_images(), count: gallery.imageTotal },
 		{ tab: 'features', label: m.tab_features() },
 		{ tab: 'structure', label: m.tab_structure() },
@@ -547,6 +550,9 @@
 			{parentBody}
 			{planetarySystem}
 		/>
+	</Tabs.Content>
+	<Tabs.Content value="targets" class={contentClass}>
+		<TargetsPanel visits={members.targetVisits} />
 	</Tabs.Content>
 	<Tabs.Content value="images" class={contentClass}>
 		{@render imagesPanel()}

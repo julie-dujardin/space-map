@@ -44,6 +44,7 @@ from space_map_data.export.nomenclature.writer import (
 )
 from space_map_data.export.objects.fragments import attach_comet_fragments
 from space_map_data.export.objects.missions import attach_probe_missions
+from space_map_data.export.objects.probe_events import attach_probe_events
 from space_map_data.export.objects.probe_targets import attach_probe_targets
 from space_map_data.export.notable import shape_model_slugs
 from space_map_data.probes.probe_id import load_registry
@@ -1167,6 +1168,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         )
         attach_probe_missions(agg.all_objects, wikidata_entities)
         attach_probe_targets(agg.all_objects, wikidata_entities)
+        attach_probe_events(agg.all_objects)
         # Pools the moon and feature lists the two passes above just wrote.
         attach_galleries(agg.all_objects)
         # Attitude extraction runs after probe positions are written but before

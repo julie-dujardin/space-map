@@ -42,6 +42,12 @@
 	let TripTimeline = $state<typeof import('./detail/travel/TripTimeline.svelte').default | null>(
 		null
 	);
+	// The same strip, for a spacecraft's own record — kept off while the
+	// Targets tab carries it; flip to bring the strip back.
+	const SHOW_PROBE_TIMELINE = false;
+	let ProbeTimeline = $state<typeof import('./detail/probes/ProbeTimeline.svelte').default | null>(
+		null
+	);
 	// The chosen trajectory as the planner hands it out: its legs for the timeline,
 	// and its geometry so the timeline can put the camera on the arc itself.
 	let timelineEntries = $state.raw<TimelineEntry[] | null>(null);
@@ -317,12 +323,21 @@
 		}
 	});
 
+	/** The focused craft, when one is focused and the planner isn't up — the
+	 *  strip is one slot, and a trip being planned owns it. */
+	let focusedProbeId = $derived(
+		!isNav && selectedBody?.data.id.startsWith('probe-') ? selectedBody.data.id : null
+	);
+
 	$effect(() => {
 		if (isNav && !TravelDrawer) {
 			import('./detail/travel/TravelDrawer.svelte').then((mod) => (TravelDrawer = mod.default));
 		}
 		if (isNav && !TripTimeline) {
 			import('./detail/travel/TripTimeline.svelte').then((mod) => (TripTimeline = mod.default));
+		}
+		if (SHOW_PROBE_TIMELINE && focusedProbeId && !ProbeTimeline) {
+			import('./detail/probes/ProbeTimeline.svelte').then((mod) => (ProbeTimeline = mod.default));
 		}
 	});
 
@@ -948,6 +963,15 @@
 					onClose={() => closeTravel()}
 					onSheetResize={(h) => (drawerHeightDvh = h)}
 				/>
+			{/if}
+			{#if SHOW_PROBE_TIMELINE && focusedProbeId && ProbeTimeline}
+				<div inert={bgInert} class="contents">
+					<ProbeTimeline
+						objectId={focusedProbeId}
+						name={appState.view.name || focusedProbeId}
+						{clock}
+					/>
+				</div>
 			{/if}
 			{#if isNav && TripTimeline && timelineEntries && timelineEntries.length > 1}
 				<div inert={bgInert} class="contents">

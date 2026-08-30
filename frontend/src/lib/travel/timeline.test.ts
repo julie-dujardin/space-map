@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { axisTicks, buildTimeline, entryIndexAt, stepEntryIndex } from './timeline';
+import { buildTimeline } from './timeline';
+import { axisTicks, entryIndexAt, stepEntryIndex } from '$lib/timeline/axis';
 import { legSeconds } from './playback.svelte';
 import {
 	buildAssistRoute,

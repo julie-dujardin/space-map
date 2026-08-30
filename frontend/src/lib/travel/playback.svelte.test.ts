@@ -51,7 +51,7 @@ describe('TripPlayback', () => {
 	let pending: FrameRequestCallback[] = [];
 	let clock: ReturnType<typeof fakeClock>;
 	let focused: string[];
-	let player: TripPlayback;
+	let player: TripPlayback<TimelineEntry>;
 
 	/** Run every frame queued so far, `ms` later. */
 	function frame(ms = 16) {
@@ -159,7 +159,7 @@ describe('TripPlayback', () => {
 			entry('injection', BASE, BASE),
 			entry('cruise', BASE, BASE + CRUISE_DAYS)
 		];
-		let flyer: TripPlayback;
+		let flyer: TripPlayback<TimelineEntry>;
 
 		beforeEach(() => {
 			flyer = new TripPlayback({
