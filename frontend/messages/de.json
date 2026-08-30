@@ -692,6 +692,7 @@
 	"probe_kind_impactor": "Impaktor",
 	"probe_kind_sample": "Probenrückführung",
 	"probe_kind_atmospheric": "Atmosphärensonde",
+	"probe_kind_observer": "Beobachter",
 	"loading": "Wird geladen ...",
 	"show_less": "Weniger anzeigen",
 	"read_more": "Mehr lesen",

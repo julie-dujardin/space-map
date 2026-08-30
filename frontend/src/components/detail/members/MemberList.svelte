@@ -61,7 +61,8 @@
 		rover: m.probe_kind_rover,
 		impactor: m.probe_kind_impactor,
 		sample: m.probe_kind_sample,
-		atmospheric: m.probe_kind_atmospheric
+		atmospheric: m.probe_kind_atmospheric,
+		observer: m.probe_kind_observer
 	};
 
 	/** Arrival–end years; a same-year visit collapses to one, an ongoing one

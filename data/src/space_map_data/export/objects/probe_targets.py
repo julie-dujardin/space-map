@@ -11,8 +11,9 @@ marked ``failed`` (a miss, an insertion that did not take) is skipped too;
 planned events count, since the list is who is headed there.
 
 Each entry also carries a ``visit``: the most involved kind of event at that
-body (rover > lander > atmospheric > sample > orbiter > impactor > flyby —
-an orbiter's disposal impact stays an orbiter), the arrival date and, unless
+body (rover > lander > atmospheric > sample > orbiter > impactor > flyby >
+observer — an orbiter's disposal impact stays an orbiter; a remote-sensing
+campaign at the Sun is an observer), the arrival date and, unless
 the probe is still alive there, the end date.
 """
 
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 _MJD_ZERO = datetime.date(1858, 11, 17)
 _EARTH_NAIF = 399
 _KIND_RANK = (
+    "observer",
     "flyby",
     "impactor",
     "orbiter",
@@ -47,6 +49,8 @@ _PROBE_END_EVENTS = {"mission_end", "contact_loss", "reentry"}
 def _event_kind(event: dict, mission_type: str) -> str | None:
     """Visit kind of one target event; None for events that say nothing."""
     match event.get("type"):
+        case "observation":
+            return "observer"
         case "flyby":
             return "flyby"
         case "orbit_insertion" | "orbit_departure":
@@ -82,17 +86,24 @@ def _visit(probe: dict, events: list[dict]) -> dict:
         end = departure
     elif kind == "flyby":
         end = arrival
+    elif closed := events[-1].get("end_date"):
+        # A campaign with an end_date is over; the probe's own later end
+        # (a reentry somewhere else) says nothing about this body.
+        end = closed[:10]
     else:
         end = next(
             (
                 e["date"][:10]
                 for e in sorted(probe.get("events", []), key=lambda e: e["date"])
-                if e.get("type") in _PROBE_END_EVENTS and e["date"][:10] >= arrival
+                if e.get("type") in _PROBE_END_EVENTS
+                and e["date"][:10] >= arrival
+                # A contact loss with an end_date was recovered from.
+                and not (e.get("type") == "contact_loss" and e.get("end_date"))
             ),
             None,
         )
         if end is None and probe.get("status", {}).get("alive") is not True:
-            end = events[-1].get("end_date", events[-1]["date"])[:10]
+            end = events[-1]["date"][:10]
     out = {"kind": kind, "arrival": arrival}
     if end:
         out["end"] = end

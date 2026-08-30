@@ -706,6 +706,7 @@
 	"probe_kind_impactor": "衝突機",
 	"probe_kind_sample": "サンプルリターン",
 	"probe_kind_atmospheric": "大気探査機",
+	"probe_kind_observer": "観測機",
 	"loading": "読み込み中…",
 	"show_less": "折りたたむ",
 	"read_more": "続きを読む",

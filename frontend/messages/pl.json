@@ -706,6 +706,7 @@
 	"probe_kind_impactor": "Impaktor",
 	"probe_kind_sample": "Zwrot próbek",
 	"probe_kind_atmospheric": "Sonda atmosferyczna",
+	"probe_kind_observer": "Obserwator",
 	"loading": "Wczytywanie...",
 	"show_less": "Pokaż mniej",
 	"read_more": "Czytaj więcej",

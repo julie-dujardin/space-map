@@ -683,6 +683,7 @@
 	"probe_kind_impactor": "مصادم",
 	"probe_kind_sample": "إعادة عينات",
 	"probe_kind_atmospheric": "مسبار جوي",
+	"probe_kind_observer": "مركبة رصد",
 	"loading": "جارٍ التحميل…",
 	"show_less": "عرض أقل",
 	"read_more": "اقرأ المزيد",

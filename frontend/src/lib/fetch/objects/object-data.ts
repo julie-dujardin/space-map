@@ -127,7 +127,8 @@ export type ProbeVisitKind =
 	| 'rover'
 	| 'impactor'
 	| 'sample'
-	| 'atmospheric';
+	| 'atmospheric'
+	| 'observer';
 
 export interface NotableMemberEntry {
 	/** English Wikidata label (matching object bundles), or the DB fallback name. */

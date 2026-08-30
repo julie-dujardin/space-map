@@ -79,6 +79,27 @@ def events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
                         ],
                     },
                     {
+                        "probe_id": 3,
+                        "name": "Solar",
+                        "mission_type": "solar_probe",
+                        "status": {"alive": False},
+                        "events": [
+                            {
+                                "type": "observation",
+                                "date": "1975-03",
+                                "end_date": "1986-02-10",
+                                "target": {"naif": 10, "name": "Sun"},
+                            },
+                            {"type": "perihelion", "date": "1975-09-21"},
+                            {
+                                "type": "contact_loss",
+                                "date": "1980-01-01",
+                                "end_date": "1980-02-01",
+                            },
+                            {"type": "mission_end", "date": "1995-01-01"},
+                        ],
+                    },
+                    {
                         "probe_id": 9,
                         "name": "Unregistered",
                         "events": [
@@ -105,6 +126,7 @@ def events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
                 "wikidata_qid": "Q2",
             },
             {"probe_id": 1, "name": "Earlier", "inception_mjd": 30000},
+            {"probe_id": 3, "name": "Solar", "inception_mjd": 42400},
         ],
     )
 
@@ -150,4 +172,16 @@ def test_visit_kind_and_dates(events: None) -> None:
         "kind": "flyby",
         "arrival": "2000-03-01",
         "end": "2000-03-01",
+    }
+
+
+def test_observation_is_an_observer_visit(events: None) -> None:
+    # A recovered contact loss is not an end, and the campaign's own end_date
+    # beats the probe's later mission_end.
+    sun = build_probe_targets({"naif-10"})["naif-10"]
+    assert [p.object_id for p in sun] == ["probe-3"]
+    assert sun[0].visit == {
+        "kind": "observer",
+        "arrival": "1975-03",
+        "end": "1986-02-10",
     }

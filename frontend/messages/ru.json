@@ -658,6 +658,7 @@
 	"probe_kind_impactor": "Ударный зонд",
 	"probe_kind_sample": "Возврат образцов",
 	"probe_kind_atmospheric": "Атмосферный зонд",
+	"probe_kind_observer": "Наблюдатель",
 	"loading": "Загрузка…",
 	"show_less": "Свернуть",
 	"read_more": "Читать далее",

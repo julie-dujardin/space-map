@@ -626,6 +626,7 @@
 	"probe_kind_impactor": "撞击器",
 	"probe_kind_sample": "采样返回",
 	"probe_kind_atmospheric": "大气探测器",
+	"probe_kind_observer": "观测器",
 	"loading": "加载中…",
 	"show_less": "收起",
 	"read_more": "阅读更多",

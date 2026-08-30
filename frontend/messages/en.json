@@ -734,6 +734,7 @@
 	"probe_kind_impactor": "Impactor",
 	"probe_kind_sample": "Sample return",
 	"probe_kind_atmospheric": "Atmospheric probe",
+	"probe_kind_observer": "Observer",
 	"loading": "Loading...",
 	"show_less": "Show less",
 	"read_more": "Read more",
