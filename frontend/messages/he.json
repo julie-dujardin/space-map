@@ -989,8 +989,6 @@
 	"layers_atmosphere_desc": "זוהר השמיים ופיזור אור בשוליים בשקיעה",
 	"layers_high_ambient": "תאורה סביבתית חזקה",
 	"layers_high_ambient_desc": "מאיר באופן אחיד את צד הלילה",
-	"layers_realistic_lighting": "תאורה ריאליסטית",
-	"layers_realistic_lighting_desc": "אור השמש נחלש עם המרחק מהשמש",
 	"settings_title": "הגדרות",
 	"settings_stored_locally": "נשמר מקומית במכשיר זה",
 	"settings_section_display": "תצוגה",

@@ -989,8 +989,6 @@
 	"layers_atmosphere_desc": "Brilho do céu e dispersão no limbo ao pôr do sol",
 	"layers_high_ambient": "Luz ambiente alta",
 	"layers_high_ambient_desc": "Ilumina uniformemente o lado noturno",
-	"layers_realistic_lighting": "Iluminação realista",
-	"layers_realistic_lighting_desc": "A luz solar diminui com a distância ao Sol",
 	"settings_title": "Definições",
 	"settings_stored_locally": "Guardadas localmente neste dispositivo",
 	"settings_section_display": "Visualização",

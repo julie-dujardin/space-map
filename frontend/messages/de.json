@@ -989,8 +989,6 @@
 	"layers_atmosphere_desc": "Himmelsleuchten und Streuung am Sonnenuntergangsrand",
 	"layers_high_ambient": "Starkes Umgebungslicht",
 	"layers_high_ambient_desc": "Beleuchtet die Nachtseite gleichmäßig",
-	"layers_realistic_lighting": "Realistische Beleuchtung",
-	"layers_realistic_lighting_desc": "Sonnenlicht nimmt mit dem Abstand zur Sonne ab",
 	"settings_title": "Einstellungen",
 	"settings_stored_locally": "Lokal auf diesem Gerät gespeichert",
 	"settings_section_display": "Anzeige",

@@ -79,16 +79,6 @@
 					onCheckedChange={(v) => settings.setHighAmbient(v)}
 				/>
 			</label>
-			<label class="flex items-center justify-between gap-3 cursor-pointer">
-				<div class="flex flex-col min-w-0">
-					<span class="text-sm font-medium">{m.layers_realistic_lighting()}</span>
-					<span class="text-xs text-muted-foreground">{m.layers_realistic_lighting_desc()}</span>
-				</div>
-				<Switch
-					checked={settings.realisticLighting}
-					onCheckedChange={(v) => settings.setRealisticLighting(v)}
-				/>
-			</label>
 		</section>
 	</div>
 </div>

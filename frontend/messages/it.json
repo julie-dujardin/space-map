@@ -989,8 +989,6 @@
 	"layers_atmosphere_desc": "Bagliore del cielo e diffusione al lembo al tramonto",
 	"layers_high_ambient": "Luce ambientale intensa",
 	"layers_high_ambient_desc": "Illumina uniformemente il lato notturno",
-	"layers_realistic_lighting": "Illuminazione realistica",
-	"layers_realistic_lighting_desc": "La luce solare si attenua con la distanza dal Sole",
 	"settings_title": "Impostazioni",
 	"settings_stored_locally": "Memorizzate localmente su questo dispositivo",
 	"settings_section_display": "Visualizzazione",

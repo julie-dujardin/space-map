@@ -91,7 +91,7 @@ class SettingsState {
 	/** Flood the scene with flat ambient fill so night sides are fully lit. */
 	highAmbient = $state(false);
 	/** Scale sunlight with the true inverse-square distance from the Sun instead
-	 *  of lighting every body as if it sat at 1 AU. */
+	 *  of lighting every body as if it sat at 1 AU. Debug menu only. */
 	realisticLighting = $state(false);
 	/** Render ring systems at their full stored dynamic range instead of the
 	 *  physical intensity scale — Jupiter/Uranus/Neptune's rings are otherwise

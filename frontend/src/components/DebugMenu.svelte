@@ -292,6 +292,17 @@
 		<label class="flex items-center gap-2 cursor-pointer">
 			<input
 				type="checkbox"
+				checked={settings.realisticLighting}
+				onchange={(e) => settings.setRealisticLighting(e.currentTarget.checked)}
+			/>
+			<span>
+				Realistic lighting
+				<span class="text-muted-foreground">(inverse-square sunlight)</span>
+			</span>
+		</label>
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
 				checked={settings.overexposeRings}
 				onchange={(e) => settings.setOverexposeRings(e.currentTarget.checked)}
 			/>
