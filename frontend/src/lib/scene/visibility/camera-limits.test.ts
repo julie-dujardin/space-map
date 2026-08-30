@@ -7,7 +7,7 @@ import { barycenterPrimaryId, collisionParentId } from '$lib/scene/state/bodies.
 import {
 	clampCameraOutsideBody,
 	LANDED_KEEP_AWAY_KM,
-	type LandedClampContext
+	type SurfaceClampContext
 } from './camera-limits';
 
 function mkBody(
@@ -75,8 +75,8 @@ describe('clampCameraOutsideBody', () => {
 
 	/** Terrain data still loading (radialKm → null) ⇒ shell at the probe. */
 	const landedCtx = (
-		radialKm: LandedClampContext['radialKm'] = () => null
-	): LandedClampContext => ({ invQuat: new Quaternion(), radialKm });
+		radialKm: SurfaceClampContext['radialKm'] = () => null
+	): SurfaceClampContext => ({ invQuat: new Quaternion(), radialKm, seated: true });
 
 	/** Near plane shrunk to nothing so only the eye constrains — three's default
 	 *  0.1 near is planet-sized against these kmToScene radii. */
@@ -159,6 +159,90 @@ describe('clampCameraOutsideBody', () => {
 		const hw = 2 * hh;
 		const worstCorner = Math.hypot(wall - hw, hh, cam.near);
 		expect(cam.position.distanceTo(center)).toBeCloseTo(wall + (wall - worstCorner), 12);
+	});
+
+	/** Shape-model host: mesh reaching 17 km out of a body quoted at 10 km. */
+	const modelBody = (pos: [number, number, number] = [0, 0, 0]) =>
+		mkBody({ id: 'spkid-2000433', objectType: ObjectType.ASTEROID, radiusKm: 10 }, pos);
+	const MODEL_CLEARANCE_KM = 0.1;
+	const meshCtx = (radialKm: SurfaceClampContext['radialKm']): SurfaceClampContext => ({
+		invQuat: new Quaternion(),
+		outerRadiusKm: 20,
+		radialKm
+	});
+
+	it('walls the camera on the shape model, past the sphere at its radius', () => {
+		const body = modelBody();
+		const cam = new PerspectiveCamera();
+		cam.position.set(kmToScene(15), 0, 0); // inside the mesh, outside the sphere
+		clampCameraOutsideBody(
+			cam,
+			body,
+			FOCUS,
+			meshCtx(() => 17)
+		);
+		expect(cam.position.length()).toBeCloseTo(kmToScene(17 + MODEL_CLEARANCE_KM), 12);
+	});
+
+	it('holds the mesh wall on the focused body itself (no orbiter cap)', () => {
+		// focusTruePos is the body: focusDist 0 would cap the wall to nothing.
+		const body = modelBody();
+		const cam = new PerspectiveCamera();
+		cam.position.set(0, kmToScene(2), 0);
+		clampCameraOutsideBody(
+			cam,
+			body,
+			FOCUS,
+			meshCtx(() => 6)
+		);
+		expect(cam.position.length()).toBeCloseTo(kmToScene(6 + MODEL_CLEARANCE_KM), 12);
+		expect(cam.position.y).toBeGreaterThan(0); // still on the +y radial
+	});
+
+	it('lets the camera into a narrow side the quoted radius would fence off', () => {
+		const body = modelBody();
+		const cam = new PerspectiveCamera();
+		cam.position.set(0, kmToScene(6), 0); // inside the sphere, outside the mesh
+		clampCameraOutsideBody(
+			cam,
+			body,
+			FOCUS,
+			meshCtx(() => 5)
+		);
+		expect(cam.position.length()).toBeCloseTo(kmToScene(6), 12);
+	});
+
+	it('skips the mesh cast outside the model bounding sphere', () => {
+		const body = modelBody();
+		const cam = new PerspectiveCamera();
+		cam.position.set(kmToScene(25), 0, 0);
+		let casts = 0;
+		clampCameraOutsideBody(
+			cam,
+			body,
+			FOCUS,
+			meshCtx(() => {
+				casts++;
+				return 17;
+			})
+		);
+		expect(casts).toBe(0);
+		expect(cam.position.length()).toBeCloseTo(kmToScene(25), 12);
+	});
+
+	it('falls back to the quoted radius where the mesh has a hole', () => {
+		// Not to the bounding sphere: that would fling a close-up camera out by
+		// most of a radius the moment a sample came back empty.
+		const body = modelBody();
+		const cam = new PerspectiveCamera();
+		cam.position.set(kmToScene(5), 0, 0);
+		clampCameraOutsideBody(
+			cam,
+			body,
+			FOCUS,
+			meshCtx(() => null)
+		);
+		expect(cam.position.length()).toBeCloseTo(kmToScene(10 + MODEL_CLEARANCE_KM), 12);
 	});
 
 	it('is a no-op for a sizeless parent (barycenter)', () => {

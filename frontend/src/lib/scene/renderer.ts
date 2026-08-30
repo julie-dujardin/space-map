@@ -75,7 +75,12 @@ import {
 	isModelBearing,
 	loadBodyModel,
 	unloadBodyModel,
-	modelUnitScene
+	modelUnitScene,
+	hasModelSurface,
+	modelCenterOffsetScene,
+	modelMinRadiusKm,
+	modelOuterRadiusKm,
+	modelSurfaceRadialKm
 } from './objects/body/model';
 import {
 	AMBIENT_BOOST_INTENSITY,
@@ -128,7 +133,11 @@ import {
 } from './animation/focus';
 import { FocusController } from './focus/controller';
 import { ProbeCoverageWatch } from './probe-coverage-watch';
-import { minCameraDistance, clampCameraOutsideBody } from './visibility/camera-limits';
+import {
+	minCameraDistance,
+	clampCameraOutsideBody,
+	type SurfaceClampContext
+} from './visibility/camera-limits';
 import { renderedSurfaceRadialKm, surfaceDataEpoch } from './position/rendered-surface';
 import { collisionParentId } from './state/bodies.svelte';
 import { updateBodyVisibility } from './visibility/update';
@@ -886,18 +895,24 @@ export class SceneRenderer {
 			const seated =
 				Boolean(this.bodyObjects.get(focused.data.id)?.isLanded) || isSurfaceFeature(focused);
 			if (parent) {
-				const parentBo = this.bodyObjects.get(parent.data.id);
-				// Model-bearing hosts render the shape model, not the sphere mesh the
-				// terrain sampler mirrors — fall back to the seat-radius shell there.
-				const landedCtx =
-					seated && parent.orientation && !parentBo?.model
-						? {
-								invQuat: bodyQuaternion(parent.orientation, this.clock.jd, parent.nutPrec).invert(),
-								radialKm: (dir: [number, number, number]) =>
-									renderedSurfaceRadialKm(parentBo, parent.data.id, parent.data.radiusKm, dir)
-							}
-						: undefined;
-				clampCameraOutsideBody(this.camera, parent, this.focus.focusTruePos, landedCtx);
+				clampCameraOutsideBody(
+					this.camera,
+					parent,
+					this.focus.focusTruePos,
+					this.surfaceClamp(parent, seated)
+				);
+			}
+			// A shape model reaches past the sphere its radius describes, so the
+			// focused body needs the same wall its parent gets — minDistance is a
+			// sphere and can't fence an elongated mesh without walling off its
+			// narrow sides.
+			if (hasModelSurface(this.bodyObjects.get(focused.data.id))) {
+				clampCameraOutsideBody(
+					this.camera,
+					focused,
+					this.focus.focusTruePos,
+					this.surfaceClamp(focused, false)
+				);
 			}
 		}
 
@@ -1196,6 +1211,32 @@ export class SceneRenderer {
 		this.sunProxyK = k;
 	}
 
+	/** How to sample the camera floor under `body`: its shape model when one is
+	 *  mounted, else the rendered DEM — which only a seated view is close enough
+	 *  to need, and only where the body carries an orientation to sample in.
+	 *  Undefined leaves the clamp on the sphere at the body's radius. */
+	private surfaceClamp(body: PositionedBody, seated: boolean): SurfaceClampContext | undefined {
+		const bo = this.bodyObjects.get(body.data.id);
+		if (hasModelSurface(bo))
+			// The model's own quaternion, not a recomputed one: the mount carries
+			// no rotation, so this is exactly the frame the mesh is drawn in —
+			// including for bodies whose attitude comes from somewhere other than
+			// the IAU spin the sphere would use.
+			return {
+				invQuat: bo!.model!.quaternion.clone().invert(),
+				seated,
+				outerRadiusKm: modelOuterRadiusKm(bo),
+				centerOffsetScene: modelCenterOffsetScene(bo),
+				radialKm: (dir) => modelSurfaceRadialKm(bo, dir)
+			};
+		if (!seated || !body.orientation) return undefined;
+		return {
+			invQuat: bodyQuaternion(body.orientation, this.clock.jd, body.nutPrec).invert(),
+			seated,
+			radialKm: (dir) => renderedSurfaceRadialKm(bo, body.data.id, body.data.radiusKm, dir)
+		};
+	}
+
 	/**
 	 * Route resident models between the main scene and the overlay, and run the
 	 * per-frame upkeep of a focused mounted model. Natural-body models render
@@ -1475,7 +1516,7 @@ export class SceneRenderer {
 		void loadBodyModel(bo, this.modelScene, this.ctx)
 			.then(() => {
 				if (this.focusController.current?.data.id === bo.body.data.id) {
-					this.controls.minDistance = minCameraDistance(bo.body);
+					this.controls.minDistance = minCameraDistance(bo.body, modelMinRadiusKm(bo));
 				}
 				return attachNomenclatureLabels(bo, this.canvas, (featureId, lat, lon, diameterM) =>
 					this.callbacks.onFeatureSelect?.(bo.body.data.id, featureId, lat, lon, diameterM)

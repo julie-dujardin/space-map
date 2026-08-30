@@ -11,7 +11,7 @@ import {
 	isMeshUpgradable,
 	upgradeBodyMesh
 } from '$lib/scene/objects/body/lifecycle';
-import { isModelBearing, unloadBodyModel } from '$lib/scene/objects/body/model';
+import { isModelBearing, modelMinRadiusKm, unloadBodyModel } from '$lib/scene/objects/body/model';
 import {
 	disposeNomenclatureLabels,
 	nomenclatureBodyId
@@ -280,7 +280,7 @@ export class FocusController {
 		this.focusedBody = body;
 		// Retire the synthetic feature body so getBody stops resolving a stale id.
 		if (!isSurfaceFeature(body)) ctx.bodies.focusFeature = null;
-		controls.minDistance = minCameraDistance(body);
+		controls.minDistance = minCameraDistance(body, modelMinRadiusKm(bodyObjects.get(body.data.id)));
 		// System/attribution follow the host (a crater has no ephemeris); camera
 		// still orbits the feature body.
 		const featureHost = isSurfaceFeature(body)

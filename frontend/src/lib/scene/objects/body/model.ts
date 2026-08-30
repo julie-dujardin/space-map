@@ -17,7 +17,7 @@ import { createAttitudeTrack } from '$lib/fetch/attitude/track';
 import { versionedUrl } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
-import { kmToScene } from '$lib/math/units';
+import { kmToScene, sceneToKm } from '$lib/math/units';
 import { frameMapQuaternion } from '$lib/math/orientation';
 import { bodyMeshColor } from '$lib/utils';
 import { getSettings } from '$lib/state/settings.svelte';
@@ -28,6 +28,7 @@ import { applyShapeModelMaterial, makeShapeModelMaterial, setShapeModelMap } fro
 import { shapeModelSkipReason } from './shape-model-policy';
 import { applyBodyOrientation } from './orientation-apply';
 import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
+import { buildRadialIndex, radialIndexDistance, type RadialIndex } from './model-radial';
 
 /** Types whose placeholder sphere is meaningless and hidden the moment a load
  *  starts, before the detail fetch confirms `model_name`. Planets and moons
@@ -291,6 +292,9 @@ async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Prom
 		}
 		const root = gltf.scene;
 		fitToUnitRadius(root); // normalise to radius 1; the mount reproduces true size via radiusScene
+		// Only a main-scene model is measurable: the camera clamp reads radii in
+		// mount units, which say nothing about an overlay model's drawn size.
+		root.userData.radialIndex = buildRadialIndex(root);
 		applyShapeModelMaterial(
 			root,
 			makeShapeModelMaterial(bo.body.data.color ?? bodyMeshColor(bo.body.data))
@@ -424,7 +428,15 @@ function fitToUnitRadius(root: Object3D): void {
 	root.userData.centerOffset = center.clone().multiplyScalar(k);
 	root.userData.feetOffset = new Vector3(center.x, bbox.min.y, center.z).multiplyScalar(k);
 	root.userData.halfExtents = size.clone().multiplyScalar(k * 0.5);
-	root.userData.occluderSpheres = buildOccluderSpheres(root, size, k);
+	const fit = buildOccluderSpheres(root, size, k);
+	root.userData.occluderSpheres = fit.spheres;
+	// Radii the camera clamp reads, from the model's own origin. The recentring
+	// offset widens the outer bound and narrows the inner one, so both still
+	// bound the mesh when read as spheres about the body centre — which is what
+	// the orbit-control fence and the sampling gate do.
+	const offset = root.userData.centerOffset.length();
+	root.userData.minRadius = Math.max(0, fit.minRadius - offset);
+	root.userData.maxRadius = root.userData.halfExtents.length() + offset;
 }
 
 /** A model-hugging occluder blob: `center` is post-fit units in the root's
@@ -447,8 +459,15 @@ const OCCLUDER_SAMPLE_TARGET = 4096;
  * union hugs bent/elongated shapes far better than a single sphere/ellipsoid.
  * Centers are relative to `root.position` so the per-frame pass can rotate
  * them with the model: world = root.position + quat · center.
+ *
+ * Also returns the smallest sampled vertex radius — the sphere that fits
+ * inside the model, which is how close the camera may come on any heading.
  */
-function buildOccluderSpheres(root: Object3D, size: Vector3, k: number): OccluderSphere[] {
+function buildOccluderSpheres(
+	root: Object3D,
+	size: Vector3,
+	k: number
+): { spheres: OccluderSphere[]; minRadius: number } {
 	root.updateMatrixWorld(true);
 	const axis = size.x >= size.y && size.x >= size.z ? 0 : size.y >= size.z ? 1 : 2;
 	// Total vertex count first, so sampling strides uniformly across meshes.
@@ -456,7 +475,7 @@ function buildOccluderSpheres(root: Object3D, size: Vector3, k: number): Occlude
 	root.traverse((obj) => {
 		if (obj instanceof Mesh) total += obj.geometry.attributes.position?.count ?? 0;
 	});
-	if (!total) return [];
+	if (!total) return { spheres: [], minRadius: 0 };
 	const stride = Math.max(1, Math.floor(total / OCCLUDER_SAMPLE_TARGET));
 
 	const pts: Vector3[] = [];
@@ -479,6 +498,9 @@ function buildOccluderSpheres(root: Object3D, size: Vector3, k: number): Occlude
 		buckets[idx].push(p);
 	}
 
+	let minRadius = Infinity;
+	for (const p of pts) minRadius = Math.min(minRadius, p.length());
+
 	const spheres: OccluderSphere[] = [];
 	for (const bucket of buckets) {
 		if (bucket.length < 3) continue; // sliver — neighbours cover it
@@ -489,7 +511,7 @@ function buildOccluderSpheres(root: Object3D, size: Vector3, k: number): Occlude
 		for (const p of bucket) r2 = Math.max(r2, center.distanceToSquared(p));
 		spheres.push({ center, r: Math.sqrt(r2) });
 	}
-	return spheres;
+	return { spheres, minRadius: Number.isFinite(minRadius) ? minRadius : 0 };
 }
 
 /** Ray-cast start distance — safely beyond a unit-normalised model's bounding
@@ -503,17 +525,19 @@ const _castDir = new Vector3();
 const _castOrigin = new Vector3();
 const _castScale = new Vector3();
 const _castInvQuat = new Quaternion();
+const _radialDir = new Vector3();
 const _caster = new Raycaster();
 
 /**
- * Surface distance (model units, from local origin) along a body-fixed lat/lon
- * direction, by ray-casting the mesh from outside — outermost hit, so concave
- * terrain can't swallow the result. Direction rotates into the model's current
- * attitude (hit distances are rotation-invariant). The cast runs in world
- * space: origin and hit distances go through the parent mount's uniform scale
- * (1 for overlay-scene models), while directions pass through untouched — the
- * mount carries no rotation. `outNormal`, if given, receives the hit's
- * body-fixed surface normal. Null on a miss (scan holes).
+ * Surface distance (model units, from the model's own origin) along a
+ * body-fixed lat/lon direction — the frame nomenclature latitudes and
+ * longitudes are quoted in — by ray-casting the mesh from outside. Outermost
+ * hit, so concave terrain can't swallow the result. The direction rotates into
+ * the model's current attitude (hit distances are rotation-invariant). The cast
+ * runs in world space: origin and hit distances go through the parent mount's
+ * uniform scale (1 for overlay-scene models), while directions pass through
+ * untouched — the mount carries no rotation. `outNormal`, if given, receives
+ * the hit's body-fixed surface normal. Null on a miss (scan holes).
  */
 export function castModelRadius(
 	model: Object3D,
@@ -541,6 +565,65 @@ export function castModelRadius(
 			.applyQuaternion(_castInvQuat.copy(model.quaternion).invert());
 	}
 	return Math.max(MODEL_CAST_DIST - hit.distance / s, MODEL_MIN_RADIUS);
+}
+
+/**
+ * Distance (km) from the body centre to the shape model's surface along a
+ * body-fixed unit direction — the mesh twin of the DEM sampler, so the camera
+ * floor follows the scan mesh a sphere at the body's radius pokes through.
+ * Answered off the face index, cheap enough to run every frame. Null with no
+ * model, or where the scan has a hole.
+ */
+export function modelSurfaceRadialKm(
+	bo: BodyObjects | undefined,
+	dir: [number, number, number]
+): number | null {
+	const index = bo?.model?.userData.radialIndex as RadialIndex | null | undefined;
+	if (!index) return null;
+	const r = radialIndexDistance(index, _radialDir.set(dir[0], dir[1], dir[2]));
+	return r === null ? null : sceneToKm(r * modelUnitScene(bo!));
+}
+
+/**
+ * Whether `bo` renders a shape model the camera clamp can measure against.
+ * Only a mounted main-scene model qualifies: a spacecraft model is drawn in
+ * the overlay at its own camera's scale, so the body's scene radius — a
+ * nominal stand-in for a craft with no measured size — would wall the camera
+ * off tens of craft lengths away.
+ */
+export function hasModelSurface(bo: BodyObjects | undefined): boolean {
+	// Mounted, not just loaded: during an overlay episode the secondary-model
+	// pass rewrites the model's scale and position, so mount units stop
+	// describing what's drawn and the clamp falls back to the sphere.
+	return Boolean(bo?.model?.userData.radialIndex) && bo!.model!.parent === bo!.modelRoot;
+}
+
+/** Where the mounted model's radii are measured from, in scene units off the
+ *  body centre: the fit recentres the mesh on its bounding box, so the model's
+ *  own origin — which every radius here is reckoned from — sits that far away.
+ *  The mount carries no rotation, so this offset is fixed in the scene frame. */
+export function modelCenterOffsetScene(
+	bo: BodyObjects | undefined
+): [number, number, number] | undefined {
+	if (!hasModelSurface(bo)) return undefined;
+	const p = bo!.model!.position;
+	const s = modelUnitScene(bo!);
+	return [p.x * s, p.y * s, p.z * s];
+}
+
+/** Radius (km) of a sphere the mounted model certainly fits inside — the
+ *  clamp skips its surface sampling outside it. */
+export function modelOuterRadiusKm(bo: BodyObjects | undefined): number | undefined {
+	if (!hasModelSurface(bo)) return undefined;
+	return sceneToKm((bo!.model!.userData.maxRadius as number) * modelUnitScene(bo!));
+}
+
+/** Radius (km) of the largest sphere that fits inside the mounted model — how
+ *  close the orbit controls may let the camera come on any heading, with the
+ *  per-frame mesh clamp holding the real surface. */
+export function modelMinRadiusKm(bo: BodyObjects | undefined): number | undefined {
+	if (!hasModelSurface(bo)) return undefined;
+	return sceneToKm((bo!.model!.userData.minRadius as number) * modelUnitScene(bo!));
 }
 
 function enableShadows(root: Object3D): void {
