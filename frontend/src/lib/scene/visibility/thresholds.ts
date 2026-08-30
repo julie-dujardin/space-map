@@ -38,12 +38,9 @@ export const MAX_FULL_MOONS = 40;
  *  circular moons). Higher = solar system stays visible longer when zoomed in. */
 export const FOCUS_HIDE_MOON_MULTIPLIER = 2;
 
-// The scrubbed trajectory craft counts as inside a system within the same
-// reach the declutter uses (`systemReachAU`), or its actual SOI reads as
-// empty space, planets away from any visible system.
-/** Reach of a system whose satellites can't measure one out (Mercury, Venus,
- *  small bodies), as a fraction of its sphere of influence. */
-export const TRAVEL_SYSTEM_SOI_FRACTION = 1 / 3;
+/** Reach of a system with no moon to measure one out (Mercury, Venus), as a
+ *  fraction of its Hill sphere. */
+export const MOONLESS_SYSTEM_HILL_FRACTION = 1 / 3;
 /** Warm a system's textures this far out (× the entry radius), so entering it
  *  doesn't land on white spheres. */
 export const TRAVEL_SYSTEM_PREFETCH_MULTIPLIER = 2;

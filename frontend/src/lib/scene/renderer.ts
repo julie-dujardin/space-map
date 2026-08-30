@@ -46,12 +46,9 @@ import {
 import { makeFeatureBody, seatFeatureBody } from './focus/feature-focus';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import { AU_KM, AU_SCALE, kmToScene } from '$lib/math/units';
+import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { f64dist } from '$lib/scene/animation/math';
-import {
-	TRAVEL_SYSTEM_PREFETCH_MULTIPLIER,
-	TRAVEL_SYSTEM_SOI_FRACTION
-} from '$lib/scene/visibility/thresholds';
+import { TRAVEL_SYSTEM_PREFETCH_MULTIPLIER } from '$lib/scene/visibility/thresholds';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { bootThree, CAMERA_FAR_DEFAULT } from './setup/three-boot';
 import { isReversedDepth } from './setup/depth-mode';
@@ -731,7 +728,7 @@ export class SceneRenderer {
 	/**
 	 * While the scrubbed craft owns the camera, its position names the focused
 	 * system: within the outermost resident moon's orbit (a slice of the sphere
-	 * of influence for a moonless end) it is in-system, and texture load and
+	 * Hill sphere for a moonless end) it is in-system, and texture load and
 	 * declutter follow through the same machinery as a flyby probe. A system
 	 * ahead is warmed before the flip so it doesn't land on white spheres.
 	 */
@@ -751,11 +748,8 @@ export class SceneRenderer {
 			if (!body) continue;
 			const sysId = this.ctx.visibility.resolveSystemId(body);
 			if (!sysId) continue;
-			// The same reach the declutter measures the camera against; SOI only
-			// where a system has no satellites to measure one out.
-			const reachAU = this.ctx.visibility.systemReachAU(sysId);
-			const soiKm = path.soiKm[stop.bodyId];
-			const enterAU = reachAU > 0 ? reachAU : ((soiKm ?? 0) * TRAVEL_SYSTEM_SOI_FRACTION) / AU_KM;
+			// The same reach the declutter measures the camera against.
+			const enterAU = this.ctx.visibility.systemReachAU(sysId);
 			if (!(enterAU > 0)) continue;
 			const distAU = f64dist(world, body.position) / AU_SCALE;
 			if (!inSystem && distAU <= enterAU) {

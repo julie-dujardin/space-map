@@ -10,6 +10,7 @@ import { AU_KM, AU_SCALE } from '$lib/math/units';
 import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { f64dist } from '$lib/scene/animation/math';
+import { hillRadiusAU } from '$lib/scene/visibility/hill';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import { smallBodyCategory, type SmallBodyFilter } from '$lib/fetch/groups/registry';
 import {
@@ -21,6 +22,7 @@ import {
 	FOCUSED_FULL_MULTIPLIER_SUN_ORBITING,
 	MAX_FULL_MOONS,
 	FOCUS_HIDE_MOON_MULTIPLIER,
+	MOONLESS_SYSTEM_HILL_FRACTION,
 	computeVisibilityFromRatio
 } from '$lib/scene/visibility/thresholds';
 
@@ -596,46 +598,20 @@ export class VisibilityController {
 	}
 
 	/** How far `sysId` reaches, AU — the declutter radius, and what the scrubbed
-	 *  trajectory craft measures itself against. Walks children of the system
-	 *  root and of its planet, taking moons (2×a) and spacecraft (distance to
-	 *  parent). 0 when no satellite qualifies. */
+	 *  trajectory craft measures itself against. Twice the outermost moon's
+	 *  semi-major axis; only natural satellites count, so the reach is fixed in
+	 *  time — a probe's distance to its parent moves every frame and would drag
+	 *  the threshold along with it. A moonless system falls back to a slice of
+	 *  its Hill sphere. */
 	systemReachAU(sysId: string): number {
-		let max = 0;
-		const visit = (parentId: string, recurse: boolean): void => {
-			const childIds = this.bodies.getChildren(parentId);
-			if (!childIds) return;
-			for (const id of childIds) {
-				const child = this.bodies.bodiesById.get(id);
-				if (!child) continue;
-				const ot = child.data.objectType;
-				if (ot === ObjectType.MOON) {
-					const v = FOCUS_HIDE_MOON_MULTIPLIER * child.data.a;
-					if (v > max) max = v;
-				} else if (ot === ObjectType.SPACECRAFT) {
-					// Skip flyby probes (loadParentId mismatches the current parentId
-					// flipped by the per-frame propagator) — their distance can reach
-					// 2× Hill and would spike the threshold past the encounter.
-					const lp = child.data.loadParentId;
-					if (lp && lp !== child.data.parentId) continue;
-					const parent = this.bodies.bodiesById.get(child.data.parentId);
-					if (!parent) continue;
-					const v = f64dist(child.position, parent.position) / AU_SCALE;
-					if (v > max) max = v;
-				} else if (recurse && (ot === ObjectType.PLANET || ot === ObjectType.DWARF_PLANET)) {
-					// Spacecraft typically parent on the planet itself (naif-X99),
-					// not the system barycenter — walk one extra level so LEO/GEO
-					// sats and similar planet-orbiters are picked up.
-					visit(child.data.id, false);
-				}
-			}
-		};
-		visit(sysId, true);
-		if (max === 0) {
-			// Small-body sub-system (Bennu, 67P, Ceres…): members live outside
-			// `bodiesById`, so the walk finds nothing — use the fixed zone reach.
-			const root = this.bodies.getBody(sysId);
-			if (root && isSmallBodyType(root.data.objectType)) return SMALL_BODY_SYSTEM_REACH_AU;
-		}
-		return max;
+		const maxA = this.bodies.maxMoonA(sysId);
+		if (maxA) return FOCUS_HIDE_MOON_MULTIPLIER * maxA;
+		const root = this.bodies.getBody(sysId);
+		if (!root) return 0;
+		// Small-body sub-system (Bennu, 67P, Ceres…): members live outside
+		// `bodiesById`, so `maxMoonA` sees nothing — use the fixed zone reach.
+		if (isSmallBodyType(root.data.objectType)) return SMALL_BODY_SYSTEM_REACH_AU;
+		const hill = hillRadiusAU(root.data);
+		return hill ? hill * MOONLESS_SYSTEM_HILL_FRACTION : 0;
 	}
 }
