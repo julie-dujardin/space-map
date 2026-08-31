@@ -756,6 +756,7 @@
 	"feature_quadrangle_cell": "{name}, {count} accidentes",
 	"feature_quadrangle_count": "{count} accidentes",
 	"feature_quadrangle_all": "Todos los cuadrángulos",
+	"lineup_span": "Envergadura",
 	"diameter": "Diámetro",
 	"extent": "Dimensiones",
 	"equatorial_diameter": "Diámetro ecuatorial",

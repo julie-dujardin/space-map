@@ -756,6 +756,7 @@
 	"feature_quadrangle_cell": "{name}, {count} formazioni",
 	"feature_quadrangle_count": "{count} formazioni",
 	"feature_quadrangle_all": "Tutti i quadrangoli",
+	"lineup_span": "Apertura",
 	"diameter": "Diametro",
 	"extent": "Estensione",
 	"equatorial_diameter": "Diametro equatoriale",

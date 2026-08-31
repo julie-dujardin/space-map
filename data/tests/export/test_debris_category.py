@@ -27,6 +27,7 @@ from space_map_data.export.groups.registry import (
     GROUP_BY_SLUG,
     GroupType,
 )
+from space_map_data.export.notable import NotableObject
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.models.object.base import Base
 from space_map_data.models.object.satcat import Satcat
@@ -143,6 +144,37 @@ class TestEarthOrbitSplit:
 
         assert stats.debris_counts.get(_LEO) is None
         assert stats.debris_notable_members == {}
+
+
+class TestLagrangeZones:
+    """The Sun-Earth libration zones, whose members are probes, not satellites."""
+
+    def test_zone_members_survive_the_satellite_ranking(self, session, monkeypatch):
+        # `_rank_notable` replaces the whole notable-member map, and no probe is
+        # ever in the pool it ranks — so writing the zones before it silently
+        # emptied both pages. Regression for that ordering.
+        monkeypatch.setattr(
+            "space_map_data.export.groups.earth_sat.build_lagrange_zones",
+            lambda: {
+                f"{CLASS_SLUG_PREFIX}EL2": [
+                    NotableObject(
+                        object_id="probe-1",
+                        wikidata_qid=None,
+                        fallback_name="Gaia",
+                        diameter_km=None,
+                        first_obs=None,
+                    )
+                ]
+            },
+        )
+        _add(session, 1)
+        stats = build_earth_orbit_classes(session)
+
+        el2 = f"{CLASS_SLUG_PREFIX}EL2"
+        assert [m.object_id for m in stats.notable_members[el2]] == ["probe-1"]
+        assert stats.member_counts[el2] == 1
+        # The satellite zones keep their own ranking.
+        assert [m.object_id for m in stats.notable_members[_LEO]] == ["norad_satcat-1"]
 
 
 class TestCategoryParent:

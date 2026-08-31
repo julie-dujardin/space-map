@@ -324,6 +324,48 @@ def _obj(object_id: str, qid: str | None, fallback: str) -> NotableObject:
     )
 
 
+class TestCraftModelSlugs:
+    """Which mesh a spacecraft member draws, and which bundles are unusable."""
+
+    def _bundle(self, session: Session, object_id: str, slug: str) -> None:
+        session.add(
+            Object(
+                id=object_id,
+                name=object_id,
+                object_type=ObjectType.spacecraft,
+                model_name=slug,
+            )
+        )
+        session.commit()
+
+    def test_pointer_picks_the_bundle_and_carries_its_span(
+        self, session: Session
+    ) -> None:
+        # Three bundles depict BepiColombo; the pointer is what settles which
+        # one the lineup draws, so the lineup and the map agree.
+        self._bundle(session, "probe-1", "bepi_mpo")
+        models = notable.craft_model_slugs(
+            session,
+            {
+                "bepi_mpo": {"kind": "probe", "scale_meters": 7.5},
+                "bepi_mcs": {"kind": "probe", "scale_meters": 30.0},
+            },
+        )
+        assert models == {"probe-1": notable.CraftModel("bepi_mpo", 7.5)}
+
+    def test_drops_shape_models_and_unmeasured_bundles(self, session: Session) -> None:
+        self._bundle(session, "spkid-1", "eros")
+        self._bundle(session, "probe-2", "teapot")
+        models = notable.craft_model_slugs(
+            session,
+            {
+                "eros": {"kind": "shape_model", "scale_meters": 16.8},
+                "teapot": {"kind": "probe"},
+            },
+        )
+        assert models == {}
+
+
 class TestNotableEntries:
     """Shared bundle-entry shape and localized name overrides."""
 
@@ -382,6 +424,24 @@ class TestNotableEntries:
         )
         assert entry["albedo"] == 0.42
         assert entry["spec"] == "V"
+
+    def test_craft_model_carries_its_span_and_beats_a_shape_slug(
+        self, monkeypatch
+    ) -> None:
+        # `length_m` is what tells the lineup a member is a craft, so the pair
+        # has to travel together; a member is never both kinds of mesh.
+        monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
+        members = [_obj("probe-1", None, "Cassini"), _obj("spkid-2", None, "Eros")]
+        entries = notable.notable_entries(
+            members,
+            _StubEntityCache({}),  # type: ignore[arg-type]
+            model_slugs={"probe-1": "eros", "spkid-2": "eros"},
+            craft_models={"probe-1": notable.CraftModel("cassini", 6.7)},
+        )
+        assert entries[0]["model"] == "cassini"
+        assert entries[0]["length_m"] == 6.7
+        assert entries[1]["model"] == "eros"
+        assert "length_m" not in entries[1]
 
     def test_texture_flag_explicit_true_false(self, monkeypatch) -> None:
         # Explicit false (not omission) distinguishes "no texture" from a

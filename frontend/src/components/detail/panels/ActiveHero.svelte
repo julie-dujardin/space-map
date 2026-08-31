@@ -150,6 +150,18 @@
 			/>
 		</div>
 	{/if}
+{:else if activeTab === 'probes'}
+	<!-- The craft that went there, to scale against each other, above the list
+	     that dates each visit. -->
+	{#if lineup.probeLineup}
+		<div class="px-4 pt-1 pb-3">
+			<BodyLineup
+				bodies={lineup.probeLineup.bodies}
+				ariaLabel={lineup.probeLineup.ariaLabel}
+				perPage={lineup.probeLineup.perPage}
+			/>
+		</div>
+	{/if}
 {:else if activeTab === 'members'}
 	<!-- The lineup is this tab's hero; its imagery/size credits ride at the
 	     foot of the panel, where the spheres render. -->

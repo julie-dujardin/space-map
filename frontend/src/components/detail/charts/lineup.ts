@@ -45,12 +45,25 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 	return { ...geom, ...RENDER_HINTS[m.id], color: BODY_COLORS[m.id] ? undefined : m.color };
 }
 
+/** A spacecraft member's lineup geometry. The mesh *is* the craft — there is no
+ *  sphere to fall back to — and the bundle's longest real dimension is the only
+ *  size it has, halved into km so one scale serves bodies and craft alike (the
+ *  convention the main scene sizes a craft by). `null` when either is missing. */
+export function craftGeometryFromMember(
+	m: NotableMemberEntry & { id: string }
+): LineupGeometry | null {
+	if (!m.model || m.length_m == null) return null;
+	return { radiusKm: m.length_m / 2000, model: m.model, craft: true };
+}
+
 /** Members renderable in a lineup: have an id and a resolvable size. Colour
  *  always resolves, so size is the binding requirement; callers gate on this. */
-export function renderableCount(members: NotableMemberEntry[] | undefined): number {
+export function renderableCount(
+	members: NotableMemberEntry[] | undefined,
+	resolve: (m: NotableMemberEntry & { id: string }) => LineupGeometry | null = geometryFromMember
+): number {
 	if (!members) return 0;
-	return members.filter((m) => m.id && geometryFromMember(m as NotableMemberEntry & { id: string }))
-		.length;
+	return members.filter((m) => m.id && resolve(m as NotableMemberEntry & { id: string })).length;
 }
 
 export interface LineupLocalization {

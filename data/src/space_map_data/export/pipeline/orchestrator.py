@@ -49,7 +49,7 @@ from space_map_data.export.objects.probe_targets import (
     attach_probe_targets,
     attach_system_probes,
 )
-from space_map_data.export.notable import shape_model_slugs
+from space_map_data.export.notable import craft_model_slugs, shape_model_slugs
 from space_map_data.probes.probe_id import load_registry
 from space_map_data.export.images import prune_image_bundles
 from space_map_data.export.sitemap import write_sitemap
@@ -1166,11 +1166,14 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             )
             attach_featured_satellites(session, agg.all_objects, wikidata_entities)
             attach_comet_fragments(session, agg.all_objects, wikidata_entities)
+            # {object_id: mesh + real length} for spacecraft, which the probe
+            # lists below put on their entries so a probe lineup can draw them.
+            craft_models = craft_model_slugs(session, model_metadata)
         attach_notable_features(
             agg.all_objects, nomenclature_by_body, wikidata_entities
         )
         attach_probe_missions(agg.all_objects, wikidata_entities)
-        attach_probe_targets(agg.all_objects, wikidata_entities)
+        attach_probe_targets(agg.all_objects, wikidata_entities, craft_models)
         # After the per-body pass, which it supersedes on a barycenter: the
         # Earth-Moon L2 craft target the barycenter directly and belong in the
         # system's rolled-up list rather than in one of their own.
@@ -1223,7 +1226,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             radii,
             gms,
             displacement_metadata,
-            model_slugs,
+            model_metadata,
         )
         incremental.write_tier_b_meta(
             out_dir, tier_b_fp, bundle_ns, feature_bundle_ns, group_bundle_ns

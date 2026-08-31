@@ -764,6 +764,7 @@
 	"feature_quadrangle_cell": "{name}, {count} reliefs",
 	"feature_quadrangle_count": "{count} reliefs",
 	"feature_quadrangle_all": "Tous les quadrangles",
+	"lineup_span": "Envergure",
 	"diameter": "Diamètre",
 	"extent": "Étendue",
 	"equatorial_diameter": "Diamètre équatorial",

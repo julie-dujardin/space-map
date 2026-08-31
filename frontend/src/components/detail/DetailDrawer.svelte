@@ -54,6 +54,7 @@
 	} from '$lib/fetch/objects/galleries';
 	import MemberList from './members/MemberList.svelte';
 	import TopicSummary from './sections/kit/TopicSummary.svelte';
+	import SourcesFooter from './sections/SourcesFooter.svelte';
 	import { promoteTabs, type TabItem } from './tab-visibility';
 	import * as m from '$lib/paraglide/messages.js';
 	import { categoryConfig } from '$lib/state/category-config';
@@ -244,6 +245,8 @@
 		// members belong to — none of them has a config entry.
 		sphereLineup: () => cat.sphereLineup || groupDetail?.global?.applies_to === 'small_body',
 		notableMembers: () => members.notableMembers,
+		probes: () => members.probes,
+		probeNames: () => members.probeNames,
 		memberNames: () => members.memberNames,
 		memberDescriptions: () => members.memberDescriptions,
 		moonDescriptions: () => (isGroupMode ? undefined : data?.localized?.notable_moon_descriptions)
@@ -488,6 +491,11 @@
 			targetNames={members.probeTargetNames}
 		/>
 	{/if}
+	<!-- The craft this tab draws are other people's meshes, several of them
+	     share-alike; the credit rides where they render. -->
+	{#if lineup.probeLineup}
+		<SourcesFooter global={null} imagery={lineup.craftImagery} />
+	{/if}
 {/snippet}
 
 {#snippet drawerToolbar()}
@@ -604,6 +612,9 @@
 			</div>
 		{/snippet}
 		{#if soloTab}
+			<!-- A promoted tab keeps its hero: it belongs to the tab, not to the tab
+			     bar, so losing the bar must not lose it. -->
+			{@render activeHero()}
 			{@render soloPanel('px-4 pt-4')}
 		{:else}
 			{@render activeHero()}
@@ -633,6 +644,7 @@
 		{#if soloTab}
 			<div class="flex flex-1 min-h-0 flex-col">
 				<ScrollArea class="flex-1 min-h-0">
+					{@render activeHero()}
 					{@render soloPanel('px-4 pt-4 pb-4')}
 				</ScrollArea>
 			</div>

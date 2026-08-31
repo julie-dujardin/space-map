@@ -772,6 +772,7 @@
 	"feature_quadrangle_cell": "{name}、地形{count}件",
 	"feature_quadrangle_count": "地形{count}件",
 	"feature_quadrangle_all": "すべての図郭",
+	"lineup_span": "全長",
 	"diameter": "直径",
 	"extent": "大きさ",
 	"equatorial_diameter": "赤道直径",

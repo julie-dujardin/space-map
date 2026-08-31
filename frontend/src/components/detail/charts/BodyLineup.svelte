@@ -27,9 +27,13 @@
 		/** DEM sibling bundle — same relief the main map renders. `absolute_radius`
 		 *  bodies (Vesta/Ceres) skip the oblateness scale and let it carry the shape. */
 		displacement?: DisplacementMeta;
-		/** Shape-model slug (`v1/models/<slug>/`); loads the mesh in place of the
+		/** Model bundle slug (`v1/models/<slug>/`); loads the mesh in place of the
 		 *  sphere, sized/tilted to match. Falls back to the sphere on any failure. */
 		model?: string;
+		/** A spacecraft: `model` is the craft itself, so there is no sphere under
+		 *  it and no surface to texture, and `radiusKm` is half the bundle's real
+		 *  longest dimension rather than a measured body radius. */
+		craft?: boolean;
 		/** Whether a `v1/textures/<id>/` surface map exists. Explicit `false`
 		 *  skips the fetch entirely; absent (pre-flag export) probes as before. */
 		texture?: boolean;
@@ -41,7 +45,9 @@
 	import {
 		ACESFilmicToneMapping,
 		AmbientLight,
+		Box3,
 		DirectionalLight,
+		Group,
 		Mesh,
 		MeshStandardMaterial,
 		type Object3D,
@@ -56,7 +62,13 @@
 	} from 'three';
 	import { SilhouetteGlow } from './lineup-silhouette';
 	import { makeLineupSunMaterial } from './lineup-sun';
-	import { disposeGltf, fetchBundleMeta, modelLoader } from '$lib/scene/objects/body/model';
+	import {
+		cheapTier,
+		craftTier,
+		disposeGltf,
+		fetchBundleMeta,
+		modelLoader
+	} from '$lib/scene/objects/body/model';
 	import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 	import { attachDisplacementMap } from '$lib/scene/objects/surface/displacement';
 	import {
@@ -71,6 +83,8 @@
 		type CloudMeta,
 		type CloudNode
 	} from '$lib/scene/objects/surface/clouds';
+	import { makeEnvMap } from '$lib/scene/lighting';
+	import { frameMapQuaternion } from '$lib/math/orientation';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR, SUN_ID } from '$lib/constants';
 	import { DATA_BASE, versionedUrl } from '$lib/fetch/data-base';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -101,6 +115,10 @@
 	const ECLIPTIC_RAD = 23.4392911 * DEG2RAD;
 	const VIEW_PITCH = 0.32;
 	const FACE_YAW = 0;
+	// Craft have no pole to tilt on, so their pose is pure staging: a
+	// three-quarter view that reads a bus and its booms as one shape.
+	const CRAFT_VIEW_PITCH = 0.24;
+	const CRAFT_VIEW_YAW = -0.7;
 	const AXIS_X = new Vector3(1, 0, 0);
 	const AXIS_Y = new Vector3(0, 1, 0);
 	const AXIS_Z = new Vector3(0, 0, 1);
@@ -118,6 +136,10 @@
 	/** Sphere orientation for the NW view; +Y is the texture's north. Roll = the
 	 *  body's real obliquity, so the visible tilt is true to the body. */
 	function styledQuaternion(b: LineupBody): Quaternion {
+		if (b.craft) {
+			const q = new Quaternion().setFromAxisAngle(AXIS_X, CRAFT_VIEW_PITCH);
+			return q.multiply(new Quaternion().setFromAxisAngle(AXIS_Y, CRAFT_VIEW_YAW));
+		}
 		const roll = b.poleRa != null && b.poleDec != null ? obliquityRad(b.poleRa, b.poleDec) : 0;
 		const q = new Quaternion().setFromAxisAngle(AXIS_Z, roll);
 		q.multiply(new Quaternion().setFromAxisAngle(AXIS_X, VIEW_PITCH));
@@ -146,6 +168,10 @@
 		const p = Math.min(page, pageCount - 1);
 		return sorted.slice(p * perPage, p * perPage + perPage);
 	});
+
+	// Enough room reflection to model a craft's foil and panels without washing
+	// out the key light's shading. Craft rows only — see setRoomEnvironment.
+	const CRAFT_ENV_INTENSITY = 0.45;
 
 	const HEIGHT = 204;
 	// Ortho depth separation between stacked bodies — large enough that their
@@ -185,23 +211,49 @@
 	// Layout knobs (tune freely):
 	const VPAD = 10; // equal margin above and below the largest body
 	const SIDE_PAD = 6;
+	const CRAFT_GAP = 8; // clear air between neighbouring craft boxes
+	// A craft fills its box to the edge, so a paginated row must keep clear of the
+	// page chevrons; spheres taper away from them on their own.
+	const CHEVRON_PAD = 26;
 
 	let layout = $derived.by<LaidOut[]>(() => {
 		if (!width || visibleItems.length === 0) return [];
 		// Already largest → smallest; left → right (mockup order).
 		const ordered = visibleItems;
 		const raw = ordered.map((p) => p.diameterKm / 2);
-		// Largest fits the height with equal top/bottom padding; true-linear from there.
-		const k = (HEIGHT - 2 * VPAD) / 2 / raw[0];
-		const prs = raw.map((r) => Math.max(2, r * k)); // floor so tiny worlds stay visible
 		const n = ordered.length;
-		// Constant center-to-center spacing, fit so the end spheres touch the pads.
+		// Largest fits the height with equal top/bottom padding; true-linear from there.
+		const heightK = (HEIGHT - 2 * VPAD) / 2 / raw[0];
+		// Overlapping discs still read as discs, so spheres take the height and
+		// crowd. A craft's mesh is its own silhouette — two of them overlapping
+		// read as one machine — so the row must fit them side by side as well,
+		// on the one scale that keeps the comparison honest.
+		const craftRow = ordered.some((p) => p.craft);
+		const sidePad = pageCount > 1 ? CHEVRON_PAD : SIDE_PAD;
+		const boxes = raw.reduce((a, r) => a + 2 * r, 0);
+		const k = craftRow
+			? Math.min(heightK, (width - 2 * sidePad - (n - 1) * CRAFT_GAP) / boxes)
+			: heightK;
+		const prs = raw.map((r) => Math.max(2, r * k)); // floor so tiny worlds stay visible
+		// Craft sit in their own boxes end to end, centred in the row; spheres get
+		// a constant centre-to-centre step, fit so the end ones touch the pads.
 		const step = n > 1 ? (width - prs[0] - prs[n - 1] - 2 * SIDE_PAD) / (n - 1) : 0;
+		const boxRun = prs.reduce((a, pr) => a + 2 * pr, 0) + (n - 1) * CRAFT_GAP;
+		let boxX = (width - boxRun) / 2;
 		const baseline = HEIGHT - VPAD;
 		const laid: LaidOut[] = ordered.map((p, i) => {
 			const pr = prs[i];
-			const cx = SIDE_PAD + prs[0] + i * step;
-			return { ...p, pr, cx, cy: baseline - pr, colLeft: 0, colWidth: 0 };
+			let cx: number;
+			if (craftRow) {
+				cx = boxX + pr;
+				boxX += 2 * pr + CRAFT_GAP;
+			} else {
+				cx = SIDE_PAD + prs[0] + i * step;
+			}
+			// A sphere stands on the row's baseline; a craft has no ground to stand
+			// on, and the width fit leaves it well short of the height, so it reads
+			// better centred than sunk to the floor.
+			return { ...p, pr, cx, cy: craftRow ? HEIGHT / 2 : baseline - pr, colLeft: 0, colWidth: 0 };
 		});
 		// Hit columns span midpoint-to-midpoint so tiny bodies get a roomy target.
 		for (let i = 0; i < laid.length; i++) {
@@ -385,11 +437,33 @@
 		modelRoots.clear();
 	}
 
+	/** Room reflections belong to craft rows only: they carry a spacecraft's
+	 *  metal, but on a sphere they would wash out the albedo the surface maps are
+	 *  tuned against. One instance survives paging within a craft lineup. */
+	function setRoomEnvironment(wanted: boolean) {
+		if (!scene || !renderer) return;
+		if (wanted && !scene.environment) {
+			scene.environment = makeEnvMap(renderer);
+			scene.environmentIntensity = CRAFT_ENV_INTENSITY;
+		} else if (!wanted && scene.environment) {
+			scene.environment.dispose();
+			scene.environment = null;
+		}
+	}
+
 	function buildMeshes() {
 		if (!scene) return;
 		clearMeshes();
+		setRoomEnvironment(visibleItems.some((b) => b.craft));
 		const loader = new TextureLoader();
 		for (const b of visibleItems) {
+			// A craft is only ever its mesh: nothing stands in while it loads, and
+			// nothing is left behind if it fails.
+			if (b.craft) {
+				baseQuats.set(b.id, styledQuaternion(b));
+				loadCraftMesh(b, buildToken);
+				continue;
+			}
 			const color = b.color ?? BODY_COLORS[b.id] ?? DEFAULT_BODY_COLOR;
 			// The Sun is self-luminous: unlit limb-darkened disc, no model/texture/relief.
 			if (b.id === SUN_ID) {
@@ -433,6 +507,52 @@
 		}
 	}
 
+	/** Load a spacecraft member's mesh, keeping the bundle's own materials — a
+	 *  craft's colour is its foil and panels, not a body tint. The mesh is
+	 *  normalised to unit radius inside a wrapper the view pose turns, so
+	 *  `render` scales that wrapper straight to the member's pixel size. */
+	async function loadCraftMesh(b: Body, token: number) {
+		if (!b.model) return;
+		try {
+			const meta = await fetchBundleMeta(b.model);
+			const gltf = await modelLoader.loadAsync(
+				versionedUrl(`/v1/models/${b.model}/${craftTier(meta)}.glb`, 'models')
+			);
+			if (token !== buildToken || !scene || !renderer) {
+				disposeGltf(gltf.scene);
+				return;
+			}
+			// The bundle's frame map is the model's own authoring convention, so it
+			// applies under the shared view pose — the order the scene uses too.
+			const baseFrame = meta.frame_map ? frameMapQuaternion(meta.frame_map) : null;
+			if (baseFrame) gltf.scene.quaternion.copy(baseFrame);
+			const fitted = new Group();
+			fitted.add(gltf.scene);
+			fitUnitRadius(fitted);
+			const root = new Group();
+			root.quaternion.copy(baseQuats.get(b.id) ?? new Quaternion());
+			root.add(fitted);
+			scene.add(root);
+			modelRoots.set(b.id, root);
+			render();
+		} catch {
+			/* a craft with no usable mesh simply isn't drawn */
+		}
+	}
+
+	/** Scale + recentre `group`'s contents so its bounding box spans 2 units on
+	 *  its longest axis, centred on the origin — the same normalisation the main
+	 *  scene applies, so `scale_meters` means the same thing in both. */
+	function fitUnitRadius(group: Group): void {
+		group.updateMatrixWorld(true);
+		const bbox = new Box3().setFromObject(group);
+		const maxDim = Math.max(...bbox.getSize(new Vector3()).toArray());
+		if (maxDim <= 0) return;
+		const k = 2 / maxDim;
+		group.scale.setScalar(k);
+		group.position.copy(bbox.getCenter(new Vector3())).multiplyScalar(-k);
+	}
+
 	/** Load a member's shape-model mesh, tinted like the sphere, tilted by the
 	 *  same base quaternion, and draped with the body's low-tier surface map
 	 *  when one exists. On any failure the placeholder sphere is left in place. */
@@ -442,9 +562,8 @@
 			const meta = await fetchBundleMeta(b.model);
 			// Guard against a spacecraft slug slipping through; those aren't lineup bodies.
 			if (meta.kind !== 'shape_model' || !meta.true_scale) return;
-			const tier = meta.tiers?.includes('low') ? 'low' : 'high';
 			const gltf = await modelLoader.loadAsync(
-				versionedUrl(`/v1/models/${b.model}/${tier}.glb`, 'models')
+				versionedUrl(`/v1/models/${b.model}/${cheapTier(meta)}.glb`, 'models')
 			);
 			if (token !== buildToken || !scene) {
 				disposeGltf(gltf.scene);
@@ -493,9 +612,9 @@
 			obj.position.set(p.cx + (bodyShift.get(p.id) ?? 0), HEIGHT - p.cy, -(n - 1 - i) * Z_STEP);
 			const modelRoot = modelRoots.get(p.id);
 			if (modelRoot) {
-				// Uniform px-per-km: the mesh renders at the same true scale the
-				// pr-sized spheres use (shape carries its own oblateness).
-				modelRoot.scale.setScalar(p.pr / p.radiusKm);
+				// Uniform px per real unit: a shape model carries true km, a craft's
+				// wrapper is already normalised to the unit radius `pr` measures.
+				modelRoot.scale.setScalar(p.craft ? p.pr : p.pr / p.radiusKm);
 			} else {
 				// Non-uniform: flatten the polar (local +Y) axis for oblateness. Applied
 				// in local space before the tilt quaternion, so it aligns with the pole.
@@ -673,6 +792,8 @@
 			if (shiftAnimId !== undefined) cancelAnimationFrame(shiftAnimId);
 			shiftAnimId = undefined;
 			clearMeshes();
+			// PMREM output belongs to this renderer; it can't outlive the context.
+			scene?.environment?.dispose();
 			silhouette?.dispose();
 			silhouette = undefined;
 			// Safe across effect re-runs: three re-uploads a disposed geometry's
@@ -817,7 +938,14 @@
 				<div class="text-muted-foreground text-[11px]">{hovered.description}</div>
 			{/if}
 			<div class="text-muted-foreground text-[11px] tabular-nums">
-				{m.diameter()}: {formatQuantity({ value: hovered.diameterKm, unit: 'kilometre' }, true)}
+				{#if hovered.craft}
+					{m.lineup_span()}: {formatQuantity(
+						{ value: hovered.diameterKm * 1000, unit: 'metre' },
+						true
+					)}
+				{:else}
+					{m.diameter()}: {formatQuantity({ value: hovered.diameterKm, unit: 'kilometre' }, true)}
+				{/if}
 			</div>
 		</div>
 	{/if}

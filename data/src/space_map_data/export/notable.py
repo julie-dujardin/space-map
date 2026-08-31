@@ -201,12 +201,46 @@ def shape_model_slugs(model_metadata: dict[str, dict]) -> dict[str, str]:
     return {oid: slug for oid, (_, slug) in best.items()}
 
 
+class CraftModel(NamedTuple):
+    """A spacecraft's model bundle: the mesh that draws the craft, and the real
+    length the craft lineup scales it by."""
+
+    slug: str
+    #: ``scale_meters`` — the model's longest real dimension. A spacecraft has
+    #: no radius, so this is the only size a lineup can put it on.
+    length_m: float
+
+
+def craft_model_slugs(
+    session: Session, model_metadata: dict[str, dict]
+) -> dict[str, CraftModel]:
+    """Spacecraft model bundle per object id, for the craft lineup.
+
+    ``Object.model_name`` is the pointer, so a lineup draws the same mesh the
+    map does where several bundles depict one mission (the BepiColombo stack,
+    Cassini with and without Huygens). Bundles with no ``scale_meters`` are
+    dropped: an unmeasured craft cannot go on a to-scale row.
+    """
+    out: dict[str, CraftModel] = {}
+    rows = session.query(Object.id, Object.model_name).filter(
+        Object.model_name.isnot(None)
+    )
+    for object_id, slug in rows:
+        meta = model_metadata.get(slug)
+        if meta is None or meta.get("kind") == "shape_model":
+            continue
+        if length := meta.get("scale_meters"):
+            out[object_id] = CraftModel(slug, float(length))
+    return out
+
+
 def notable_entries(
     members: list[NotableObject],
     wikidata_entities: WikidataEntityCache,
     displacement_metadata: dict[str, dict] | None = None,
     model_slugs: dict[str, str] | None = None,
     textured_ids: set[str] | None = None,
+    craft_models: dict[str, CraftModel] | None = None,
 ) -> list[dict]:
     """Denormalized records for a global bundle.
 
@@ -284,7 +318,12 @@ def notable_entries(
             disp := displacement_metadata.get(member.object_id)
         ):
             entry["displacement"] = displacement_block(disp)
-        if model_slugs and (slug := model_slugs.get(member.object_id)):
+        # A member draws from one mesh or the other, never both: a shape model
+        # is a natural body's own surface, a craft model a spacecraft's.
+        if craft_models and (craft := craft_models.get(member.object_id)):
+            entry["model"] = craft.slug
+            entry["length_m"] = craft.length_m
+        elif model_slugs and (slug := model_slugs.get(member.object_id)):
             entry["model"] = slug
         if textured_ids is not None:
             entry["texture"] = member.object_id in textured_ids

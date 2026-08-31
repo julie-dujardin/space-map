@@ -70,6 +70,7 @@ from space_map_data.export.images import (
     object_image_count,
 )
 from space_map_data.export.notable import (
+    CraftModel,
     NotableObject,
     notable_descriptions,
     notable_entries,
@@ -935,6 +936,7 @@ def write_group_bundles(
     extra_constellation_counts: dict[str, dict[str, int]] | None = None,
     displacement_metadata: dict[str, dict] | None = None,
     model_slugs: dict[str, str] | None = None,
+    craft_models: dict[str, CraftModel] | None = None,
     textured_ids: set[str] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
@@ -979,12 +981,17 @@ def write_group_bundles(
                 displacement_metadata,
                 model_slugs,
                 textured_ids,
+                craft_models,
             )
             if members
             else None
         )
         probes = (extra_probes or {}).get(group.slug)
-        probe_entries = notable_entries(probes, wikidata_entities) if probes else None
+        probe_entries = (
+            notable_entries(probes, wikidata_entities, craft_models=craft_models)
+            if probes
+            else None
+        )
         chart_rows = (extra_chart_rows or {}).get(group.slug)
         lv_stats = (launch_vehicle_stats or {}).get(group.slug)
         ft_stats = (feature_type_stats or {}).get(group.slug)

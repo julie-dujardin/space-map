@@ -826,6 +826,7 @@
 	"feature_quadrangle_cell": "{name}, {count} features",
 	"feature_quadrangle_count": "{count} features",
 	"feature_quadrangle_all": "All quadrangles",
+	"lineup_span": "Span",
 	"diameter": "Diameter",
 	"extent": "Extent",
 	"equatorial_diameter": "Equatorial diameter",

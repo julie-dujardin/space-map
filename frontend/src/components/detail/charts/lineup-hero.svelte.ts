@@ -2,11 +2,21 @@
  *  DetailDrawer. Picks which collection page gets a lineup, builds it, and
  *  tracks the texture credits the NC-licensed surface maps require. */
 
-import { buildLineup, geometryFromMember, renderableCount } from './lineup';
+import {
+	buildLineup,
+	craftGeometryFromMember,
+	geometryFromMember,
+	renderableCount
+} from './lineup';
 import { STRIP_CAPACITY } from '../members/MemberStrip.svelte';
 import type { LineupBody } from './BodyLineup.svelte';
 import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
-import { fetchBundleMeta, shapeModelCredit } from '$lib/scene/objects/body/model';
+import {
+	craftTier,
+	fetchBundleMeta,
+	modelTierCredit,
+	shapeModelCredit
+} from '$lib/scene/objects/body/model';
 import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 import type { CategoryConfig } from '$lib/state/category-config';
@@ -34,6 +44,9 @@ export interface LineupHeroDeps {
 	/** Whether this page asked for a sphere lineup — see `CategoryConfig`. */
 	sphereLineup: () => boolean;
 	notableMembers: () => NotableMemberEntry[] | undefined;
+	/** The probes this page lists — a body's visitors, or a collection's. */
+	probes: () => NotableMemberEntry[] | undefined;
+	probeNames: () => Record<string, string> | undefined;
 	memberNames: () => Record<string, string> | undefined;
 	memberDescriptions: () => Record<string, string> | undefined;
 	moonDescriptions: () => Record<string, string> | undefined;
@@ -57,10 +70,16 @@ export class LineupHero {
 	// a real lineup, not a lone sphere. Mirrors DetailDrawer's showMembersTab.
 	readonly isMoonLineup: boolean;
 	readonly hero: LineupHeroSpec | null;
+	// The probes tab's own hero: the craft that went there, to scale against each
+	// other. Independent of `hero` — an asteroid collection draws both.
+	readonly probeLineup: LineupHeroSpec | null;
 	// Solar System: the minimap is the page hero, so the sphere lineup moves into
 	// the members tab (paginated).
 	readonly solarSystemLineup: { bodies: LineupBody[]; perPage: number } | null;
 	readonly imagery: ImageryCredit[];
+	// The probe lineup's mesh credits, which the probes tab carries; several
+	// bundles are CC BY-SA and cannot be drawn uncredited.
+	readonly craftImagery: ImageryCredit[];
 	readonly pck: boolean;
 	readonly lightcurvePole: boolean;
 	readonly wikidata: boolean;
@@ -82,6 +101,20 @@ export class LineupHero {
 				descriptions: d.memberDescriptions()
 			})
 		);
+		// A collection of spacecraft: its members resolve to craft models, which
+		// only a spacecraft has. Group mode only — a body's own member list can
+		// hold satellites without the page being about them — and never the Solar
+		// System, whose hero is its minimap and whose credits track the sphere row
+		// down in the members tab.
+		const craftMembers = $derived(
+			d.isGroupMode() && !d.cat().solarSystem
+				? buildLineup(d.notableMembers() ?? [], craftGeometryFromMember, {
+						names: d.memberNames(),
+						descriptions: d.memberDescriptions()
+					})
+				: []
+		);
+
 		// Opt-in: a page must ask for spheres rather than getting them from having
 		// enough renderable members — ring systems has eight renderable bodies, but
 		// a row of spheres would picture the planets, not the rings.
@@ -130,6 +163,11 @@ export class LineupHero {
 				};
 			if (isSmallBodyLineup)
 				return { bodies: smallBodyBodies, ariaLabel: d.fallbackName(), perPage: 8 };
+			// One craft is still worth drawing: a mission page with two of them, or a
+			// body a single mesh-bearing probe ever reached, is a picture of the
+			// page. Sizes only start comparing at two, and that is a bonus here.
+			if (craftMembers.length > 0)
+				return { bodies: craftMembers, ariaLabel: d.fallbackName(), perPage: 3 };
 			if (this.isMoonLineup)
 				return {
 					bodies: buildLineup(members, geometryFromMember, {
@@ -140,6 +178,14 @@ export class LineupHero {
 					perPage: 5
 				};
 			return null;
+		});
+
+		this.probeLineup = $derived.by<LineupHeroSpec | null>(() => {
+			const bodies = buildLineup(d.probes() ?? [], craftGeometryFromMember, {
+				names: d.probeNames()
+			});
+			if (bodies.length === 0) return null;
+			return { bodies, ariaLabel: m.probes_section(), perPage: 3 };
 		});
 
 		this.solarSystemLineup = $derived.by(() => {
@@ -158,10 +204,8 @@ export class LineupHero {
 		const lineupBodies = $derived(this.hero?.bodies ?? this.solarSystemLineup?.bodies ?? null);
 
 		// Imagery credits for the on-screen bodies, deduped by author. Covers both
-		// surface-map textures and shape-model meshes — a mesh draped with a map
-		// credits both.
-		this.imagery = $derived.by(() => {
-			const bodies = lineupBodies;
+		// surface-map textures and meshes — a mesh draped with a map credits both.
+		const imageryFor = (bodies: LineupBody[] | null | undefined): ImageryCredit[] => {
 			if (!bodies) return [];
 			const textures = this.#credits;
 			const models = this.#modelCredits;
@@ -178,7 +222,9 @@ export class LineupHero {
 				add(models.get(b.id));
 			}
 			return out;
-		});
+		};
+		this.imagery = $derived(imageryFor(lineupBodies));
+		this.craftImagery = $derived(imageryFor(this.probeLineup?.bodies));
 
 		// Metadata sources the lineup members draw on: radii/pole/mass ⇒ PCK (moon
 		// diameters are PCK mean radii too); radius fallback ⇒ Wikidata; small-body
@@ -213,21 +259,27 @@ export class LineupHero {
 			loadTextureCredits().then((c) => (this.#credits = c));
 		});
 
-		// Shape-model members render from a mesh, not a texture, so their credit
-		// comes from the model bundle meta (cache-shared with BodyLineup's own
-		// load). Best-effort — a failed meta just omits that author.
+		// Members drawn from a mesh rather than a texture credit the model bundle
+		// meta (cache-shared with BodyLineup's own load): a body's shape model
+		// against its catalogue, a craft against whoever built the tier drawn.
+		// Best-effort — a failed meta just omits that author.
 		$effect(() => {
-			const bodies = lineupBodies;
-			if (!bodies) return;
-			const models = bodies.filter(lineupDrawsShapeModel);
+			const models = [...(lineupBodies ?? []), ...(this.probeLineup?.bodies ?? [])].filter(
+				(b) => b.craft || lineupDrawsShapeModel(b)
+			);
 			if (models.length === 0) return;
 			let cancelled = false;
 			Promise.all(
 				models.map(async (b) => {
 					try {
 						const meta = await fetchBundleMeta(b.model!);
-						if (meta.kind !== 'shape_model') return null;
-						const c = shapeModelCredit(meta);
+						const c =
+							meta.kind === 'shape_model'
+								? shapeModelCredit(meta)
+								: b.craft
+									? modelTierCredit(meta, craftTier(meta))
+									: null;
+						if (!c) return null;
 						return [b.id, { key: c.name, label: c.name, url: c.url }] as const;
 					} catch {
 						return null;

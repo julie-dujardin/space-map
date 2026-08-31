@@ -29,7 +29,12 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.probes.events import target_object_ids
-from space_map_data.export.notable import NotableObject, notable_entries, notable_names
+from space_map_data.export.notable import (
+    CraftModel,
+    NotableObject,
+    notable_entries,
+    notable_names,
+)
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.probes.landing_events import EVENTS_DIR
@@ -257,10 +262,14 @@ def build_probe_targets(known_ids: set[str]) -> dict[str, list[NotableObject]]:
 
 
 def attach_probe_targets(
-    chunk: ChunkObjectData, wikidata_entities: WikidataEntityCache
+    chunk: ChunkObjectData,
+    wikidata_entities: WikidataEntityCache,
+    craft_models: dict[str, CraftModel] | None = None,
 ) -> None:
     """Inject ``probes``/``probe_count`` (+ localized ``probe_names``) onto
-    each targeted body. Mutates ``chunk`` in place."""
+    each targeted body. ``craft_models`` puts each probe's mesh and real length
+    on its entry, which is what the craft lineup draws. Mutates ``chunk`` in
+    place."""
     attached = 0
     missing: list[str] = []
     for body_id, probes in build_probe_targets(set(chunk.global_data)).items():
@@ -268,7 +277,7 @@ def attach_probe_targets(
         if global_data is None:
             missing.append(body_id)
             continue
-        entries = notable_entries(probes, wikidata_entities)
+        entries = notable_entries(probes, wikidata_entities, craft_models=craft_models)
         global_data["probes"] = entries
         global_data["probe_count"] = len(entries)
         for lang in LANGUAGES:

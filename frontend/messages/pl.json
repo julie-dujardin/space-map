@@ -772,6 +772,7 @@
 	"feature_quadrangle_cell": "{name}, {count} form terenu",
 	"feature_quadrangle_count": "{count} form terenu",
 	"feature_quadrangle_all": "Wszystkie czworokąty",
+	"lineup_span": "Rozpiętość",
 	"diameter": "Średnica",
 	"extent": "Wymiary",
 	"equatorial_diameter": "Średnica równikowa",

@@ -690,6 +690,7 @@
 	"feature_quadrangle_cell": "{name}，{count} 处地形",
 	"feature_quadrangle_count": "{count} 处地形",
 	"feature_quadrangle_all": "全部图幅",
+	"lineup_span": "跨度",
 	"diameter": "直径",
 	"extent": "尺寸",
 	"equatorial_diameter": "赤道直径",

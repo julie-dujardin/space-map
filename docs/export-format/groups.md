@@ -67,7 +67,8 @@ interface NotableEntry {
     arrival: string;                // ISO date of the first event at that member
     end?: string;                   // departure or end of mission there; absent while the visit is ongoing
   }[];
-  model?: string;                   // shape-model slug (v1/models/<slug>/); lineup renders the mesh instead of a sphere. shape_model bundles only — spacecraft slugs excluded
+  model?: string;                   // model bundle slug (v1/models/<slug>/); lineup renders the mesh instead of a sphere. A body's shape model, or — when `length_m` is beside it — the spacecraft model that is the member itself
+  length_m?: number;                // spacecraft members only: the model bundle's `scale_meters`, its longest real dimension. A craft has no radius, so this is the size the craft lineup scales it by, and its presence is what marks the member as a craft. Set from Object.model_name, so the lineup draws the same mesh the map does
   texture?: boolean;                // v1/textures/<id>/ surface map exists; explicit false ⇒ lineup skips the fetch. Absent only on pre-flag bundles (and mission/fragment strips), which the lineup still probes
   ring_mass?: RingMass;             // mass of the member's *rings*, not the member; `cat-ring-systems` only, and only for the six systems a source puts a figure on. Same shape as the object bundle's `ring_stats.mass` (see objects.md)
   // Structure & Activity pages: the figure that page's chart ranks its members

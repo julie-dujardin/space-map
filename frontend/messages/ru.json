@@ -724,6 +724,7 @@
 	"feature_quadrangle_cell": "{name}, деталей: {count}",
 	"feature_quadrangle_count": "деталей: {count}",
 	"feature_quadrangle_all": "Все квадранглы",
+	"lineup_span": "Размах",
 	"diameter": "Диаметр",
 	"extent": "Размер",
 	"equatorial_diameter": "Экваториальный диаметр",

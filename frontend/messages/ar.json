@@ -751,6 +751,7 @@
 	"feature_quadrangle_cell": "{name}، {count} معلم",
 	"feature_quadrangle_count": "{count} معلم",
 	"feature_quadrangle_all": "كل المربعات",
+	"lineup_span": "الامتداد",
 	"diameter": "القطر",
 	"extent": "الامتداد",
 	"equatorial_diameter": "القطر الاستوائي",

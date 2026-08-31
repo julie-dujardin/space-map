@@ -65,7 +65,12 @@ from space_map_data.export.groups.solar_system_map import (
     write_solar_system_map,
 )
 from space_map_data.constants.comet_fragments import family_group_slug
-from space_map_data.export.notable import NotableObject, textured_object_ids
+from space_map_data.export.notable import (
+    NotableObject,
+    craft_model_slugs,
+    shape_model_slugs,
+    textured_object_ids,
+)
 from space_map_data.export.objects.fragments import build_comet_families
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.objects.missions import build_probe_missions
@@ -370,12 +375,14 @@ def run_groups_tier(
     radii: dict[int, dict],
     gms: dict[int, float],
     displacement_metadata: dict[str, dict] | None = None,
-    model_slugs: dict[str, str] | None = None,
+    model_metadata: dict[str, dict] | None = None,
 ) -> dict[str, int]:
     """Build + write the groups tier; returns bucket counts for metadata.json.
 
     ``radii``/``gms`` (SPICE PCK) give the category planet + moon members their
-    mass + triaxial radii for the planets/moons-page charts.
+    mass + triaxial radii for the planets/moons-page charts. ``model_metadata``
+    arrives raw because the two meshes it yields are read differently: a body's
+    shape model keys off the bundle, a spacecraft's off ``Object.model_name``.
     """
     from space_map_data.export.systems import (
         load_orientation,
@@ -390,7 +397,9 @@ def run_groups_tier(
     orientation = load_orientation(DOWNLOAD_DIR)
     # Horizons mean elements for the SBDB-less planets (minimap + moons chart).
     planet_elements = load_planet_elements(DOWNLOAD_DIR)
+    model_slugs = shape_model_slugs(model_metadata or {})
     with Session(engine) as session:
+        craft_models = craft_model_slugs(session, model_metadata or {})
         gallery_subjects = _gallery_subjects(session, wikidata_entities)
         build = build_earth_groups_data(session)
         small_body_stats = build_small_body_group_stats(
@@ -571,6 +580,7 @@ def run_groups_tier(
         extra_constellation_counts=category_data.constellation_counts,
         displacement_metadata=displacement_metadata,
         model_slugs=model_slugs,
+        craft_models=craft_models,
         textured_ids=textured_ids,
     )
 
@@ -586,7 +596,6 @@ def update_metadata_group_bundles(out_dir: Path, group_bundles: dict[str, int]) 
 def export_groups_only(engine: Engine) -> None:
     """Additive run: write groups + membership + patch metadata.json only."""
     from space_map_data.export.localization import write_group_messages
-    from space_map_data.export.notable import shape_model_slugs
     from space_map_data.export.systems import (
         load_displacement_metadata,
         load_gms,
@@ -602,7 +611,6 @@ def export_groups_only(engine: Engine) -> None:
     radii = load_radii(DOWNLOAD_DIR)
     gms = load_gms(DOWNLOAD_DIR)
     displacement_metadata = load_displacement_metadata(out_dir)
-    model_slugs = shape_model_slugs(load_model_metadata(out_dir))
     group_bundles = run_groups_tier(
         engine,
         out_dir,
@@ -610,7 +618,7 @@ def export_groups_only(engine: Engine) -> None:
         radii,
         gms,
         displacement_metadata,
-        model_slugs,
+        load_model_metadata(out_dir),
     )
     update_metadata_group_bundles(out_dir, group_bundles)
     write_group_messages(wikidata_entities)

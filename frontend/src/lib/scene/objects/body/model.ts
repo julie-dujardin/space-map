@@ -42,6 +42,20 @@ export function isModelBearing(body: PositionedBody): boolean {
 	);
 }
 
+export interface ModelCredit {
+	name: string;
+	url: string;
+	license?: string;
+}
+
+export type ModelTier = 'low' | 'high';
+
+export interface ModelTierExport {
+	credit: ModelCredit;
+	/** GLB size on the CDN; what a small drawing weighs its tier choice against. */
+	size_bytes?: number;
+}
+
 /** Subset of `metadata.json` the scene needs: the high-tier credit block and,
  *  when set, `scale_meters` — the model's real longest dimension, for sizing
  *  the mesh against scene units. Other exporter fields are ignored. */
@@ -51,13 +65,11 @@ export interface ModelBundleMeta {
 	/** Available GLB tiers; DAMIT bundles ship `high` only. */
 	tiers?: string[];
 	exports: {
-		high: {
-			credit: {
-				name: string;
-				url: string;
-				license?: string;
-			};
-		};
+		high: ModelTierExport;
+		/** A bundle can source its tiers from different catalogues (Cassini's
+		 *  high tier is ESA's, its low tier NASA's), so whoever loads `low`
+		 *  credits this one. */
+		low?: ModelTierExport;
 	};
 	scale_meters?: number;
 	/** Model axis → spacecraft-body axis (1–2 pairs), correcting models authored
@@ -87,12 +99,35 @@ export function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
 }
 
 /** Credit for a shape-model bundle: top-level credit if set, else the high-tier GLB's. */
-export function shapeModelCredit(meta: ModelBundleMeta): {
-	name: string;
-	url: string;
-	license?: string;
-} {
+export function shapeModelCredit(meta: ModelBundleMeta): ModelCredit {
 	return meta.credit ?? meta.exports.high.credit;
+}
+
+/** The cheap tier where a bundle ships one. A shape model's tiers are the same
+ *  surface decimated (20k triangles against 400k), and a lineup disc is far too
+ *  small to tell them apart, so it takes this one. */
+export function cheapTier(meta: ModelBundleMeta): ModelTier {
+	return meta.tiers?.includes('low') ? 'low' : 'high';
+}
+
+/** Bytes past which a small drawing gives up on a craft's best mesh. Three
+ *  bundles cross it — the ISS at a million triangles, MAVEN, ICESat-2 — and
+ *  nothing they carry survives being drawn 100 px wide. */
+const CRAFT_TIER_BUDGET = 4_000_000;
+
+/** The tier a craft lineup loads. A spacecraft's two tiers are often different
+ *  models from different catalogues rather than one decimated (Cassini's low is
+ *  NASA's, its high ESA's), so `low` is not simply a cheaper `high` — it can be
+ *  a cruder machine. Prefer `high`, which is also what the main scene loads, so
+ *  focusing the craft reuses the download. */
+export function craftTier(meta: ModelBundleMeta): ModelTier {
+	const size = meta.exports.high.size_bytes ?? 0;
+	return size > CRAFT_TIER_BUDGET ? cheapTier(meta) : 'high';
+}
+
+/** Credit for the tier actually drawn — the two can name different catalogues. */
+export function modelTierCredit(meta: ModelBundleMeta, tier: ModelTier): ModelCredit {
+	return meta.exports[tier]?.credit ?? meta.exports.high.credit;
 }
 
 /**

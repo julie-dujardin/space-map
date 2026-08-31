@@ -175,9 +175,14 @@ export interface NotableMemberEntry {
 	visits?: { id: string; name: string; arrival: string; end?: string }[];
 	/** DEM sibling bundle — lets the lineup render the same relief as the main map. */
 	displacement?: DisplacementMeta;
-	/** Shape-model slug (`v1/models/<slug>/`); the lineup loads the mesh instead
-	 *  of a sphere. Shape-model bundles only — never a spacecraft model. */
+	/** Model bundle slug (`v1/models/<slug>/`); the lineup loads the mesh instead
+	 *  of a sphere. A body's shape model, or — with `length_m` beside it — the
+	 *  spacecraft model that *is* the member. */
 	model?: string;
+	/** A spacecraft member's real longest dimension (m), from its model bundle.
+	 *  A craft has no radius, so this is the size the craft lineup scales it by,
+	 *  and its presence is what marks the member as a craft rather than a body. */
+	length_m?: number;
 	/** A `v1/textures/<id>/` surface map exists. Explicit `false` lets the
 	 *  lineup skip the fetch; absent (pre-flag bundle) means probe as before. */
 	texture?: boolean;

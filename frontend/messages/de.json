@@ -756,6 +756,7 @@
 	"feature_quadrangle_cell": "{name}, {count} Strukturen",
 	"feature_quadrangle_count": "{count} Strukturen",
 	"feature_quadrangle_all": "Alle Quadrangel",
+	"lineup_span": "Spannweite",
 	"diameter": "Durchmesser",
 	"extent": "Ausdehnung",
 	"equatorial_diameter": "Äquatordurchmesser",

@@ -293,6 +293,12 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
                 primary_slug
             ] += 1
 
+    stats.notable_members = _rank_notable(notable_pool)
+    stats.debris_notable_members = _rank_notable(debris_notable_pool)
+
+    # After the ranking above, which replaces the whole map: the libration
+    # zones' members are probes, not catalogued satellites, so they are never
+    # in the pool it ranks and an earlier write would be thrown away.
     for slug, probes in build_lagrange_zones().items():
         stats.membership[slug] = [p.object_id for p in probes]
         stats.notable_members[slug] = probes[:NOTABLE_MEMBER_COUNT]
@@ -305,9 +311,6 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
     for cls in EarthOrbitClass:
         slug = f"{CLASS_SLUG_PREFIX}{cls.name}"
         stats.member_counts.setdefault(slug, 0)
-
-    stats.notable_members = _rank_notable(notable_pool)
-    stats.debris_notable_members = _rank_notable(debris_notable_pool)
 
     # Each constellation belongs to its most-populated zone (count, then slug
     # for a stable tiebreak).
