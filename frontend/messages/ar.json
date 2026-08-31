@@ -712,6 +712,7 @@
 			}
 		}
 	],
+	"system_map_band_altitude": "ارتفاع {range}",
 	"system_moon_discovery": "اكتشافات الأقمار",
 	"type_comet": "مذنب",
 	"type_debris": "حطام",

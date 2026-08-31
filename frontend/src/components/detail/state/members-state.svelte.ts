@@ -228,8 +228,11 @@ export class MembersState {
 		this.probeTotal = $derived(
 			(d.isGroupMode() ? d.groupDetail()?.global?.probe_count : d.data()?.global?.probe_count) ?? 0
 		);
-		// Localized labels for the bodies a collection's probe rows name.
-		this.probeTargetNames = $derived(d.groupDetail()?.localized?.body_names);
+		// Localized labels for the bodies a probe row names — the members of a
+		// collection, or of a planetary system on its barycenter's page.
+		this.probeTargetNames = $derived(
+			d.isGroupMode() ? d.groupDetail()?.localized?.body_names : d.data()?.localized?.body_names
+		);
 		const hasProbes = $derived(!!this.probes && this.probes.length > 0);
 		// Present from the first probe: the tab carries the exploration blurb the strip doesn't.
 		this.showProbesTab = $derived(hasProbes);

@@ -15,12 +15,17 @@ body (rover > lander > atmospheric > sample > orbiter > impactor > flyby >
 observer — an orbiter's disposal impact stays an orbiter; a remote-sensing
 campaign at the Sun is an observer), the arrival date and, unless
 the probe is still alive there, the end date.
+
+The same index rolls up one level to each planetary system's barycenter,
+where a probe appears once and names the bodies in the system it reached.
 """
 
 import datetime
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
+from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.probes.events import target_object_ids
@@ -28,6 +33,7 @@ from space_map_data.export.notable import NotableObject, notable_entries, notabl
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.probes.landing_events import EVENTS_DIR
+from space_map_data.models.object.main import Object, ObjectType
 from space_map_data.probes.probe_id import load_registry
 
 logger = logging.getLogger(__name__)
@@ -278,4 +284,113 @@ def attach_probe_targets(
         attached,
         len(missing),
         ", ".join(sorted(missing)) if missing else "[]",
+    )
+
+
+def _system_members(session: Session) -> dict[str, dict[str, str]]:
+    """Planetary system barycenter id -> {member object id: English name}.
+
+    Members are the barycenter itself, its dominant planet and every moon
+    hanging off either — the same set the system map draws, plus the
+    barycenter, which the Earth-Moon L2 halo orbiters name as their target.
+    """
+    barycenters = {
+        f"naif-{n}": f"naif-{n}99" for n in range(1, 10)
+    }  # SPICE convention, matching the frontend's `dominantPlanetId`
+    rows = {
+        row.id: row.name or row.id
+        for row in session.query(Object.id, Object.name, Object.parent_id).filter(
+            Object.id.in_(set(barycenters) | set(barycenters.values()))
+        )
+    }
+    moons = (
+        session.query(Object.id, Object.name, Object.parent_id)
+        .filter(
+            Object.object_type == ObjectType.moon,
+            Object.parent_id.in_(set(barycenters) | set(barycenters.values())),
+        )
+        .all()
+    )
+    out: dict[str, dict[str, str]] = {}
+    for bary_id, primary_id in barycenters.items():
+        if bary_id not in rows:
+            continue
+        members = {mid: rows[mid] for mid in (bary_id, primary_id) if mid in rows}
+        for moon in moons:
+            if moon.parent_id in (bary_id, primary_id):
+                members[moon.id] = moon.name or moon.id
+        out[bary_id] = members
+    return out
+
+
+def attach_system_probes(
+    session: Session, chunk: ChunkObjectData, wikidata_entities: WikidataEntityCache
+) -> None:
+    """Inject ``probes``/``probe_count`` onto each planetary system's
+    barycenter: the probes sent to anything in the system, latest arrival
+    first. Mutates ``chunk`` in place.
+
+    A system page repeats what its planet's own page says, on purpose — the
+    system is where a reader looks for what has been there, and a probe that
+    called at Mars and both moons is one row here and three separate lists
+    otherwise. Each row names the bodies it reached rather than the kind of
+    call, as a collection's rows do: one probe rarely did the same thing at
+    all of them.
+    """
+    by_target = build_probe_targets(set(chunk.global_data))
+    attached: dict[str, int] = {}
+    for bary_id, members in _system_members(session).items():
+        global_data = chunk.global_data.get(bary_id)
+        if global_data is None:
+            continue
+        rows: dict[str, NotableObject] = {}
+        visits: dict[str, list[dict]] = {}
+        for member_id, member_name in members.items():
+            for probe in by_target.get(member_id, []):
+                rows.setdefault(probe.object_id, probe)
+                dates = {
+                    k: v
+                    for k, v in (probe.visit or {}).items()
+                    if k in ("arrival", "end")
+                }
+                visits.setdefault(probe.object_id, []).append(
+                    {"id": member_id, "name": member_name, **dates}
+                )
+        if not rows:
+            continue
+        ordered = sorted(
+            (
+                (probe_id, sorted(v, key=lambda x: x["arrival"], reverse=True))
+                for probe_id, v in visits.items()
+            ),
+            key=lambda row: row[1][0]["arrival"],
+            reverse=True,
+        )
+        probes = [
+            replace(rows[probe_id], visit=None, visits=v) for probe_id, v in ordered
+        ]
+        entries = notable_entries(probes, wikidata_entities)
+        global_data["probes"] = entries
+        global_data["probe_count"] = len(entries)
+        attached[bary_id] = len(entries)
+        for lang in LANGUAGES:
+            localized = chunk.localized_data.get(lang, {}).get(bary_id)
+            if localized is None:
+                continue
+            if names := notable_names(probes, entries, lang, wikidata_entities):
+                localized["probe_names"] = names
+            # The bodies each row names, in this language — read off the members'
+            # own bundles rather than Wikidata, which already localized them.
+            body_names = {
+                member_id: name
+                for member_id in {v["id"] for vs in visits.values() for v in vs}
+                if (member := chunk.localized_data[lang].get(member_id))
+                and (name := member.get("name"))
+                and name != members[member_id]
+            }
+            if body_names:
+                localized["body_names"] = body_names
+    logger.info(
+        "System probe lists: %s",
+        ", ".join(f"{bary}={n}" for bary, n in sorted(attached.items())) or "[]",
     )

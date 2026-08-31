@@ -619,7 +619,10 @@ export interface GlobalObjectData {
 	 *  comet isn't catalogued (parentless families like Shoemaker-Levy 9). */
 	fragment_of?: FragmentOf;
 	/** Every probe whose curated events target this body, oldest launch first;
-	 *  `first_obs` carries the launch date. Localized labels in `probe_names`. */
+	 *  `first_obs` carries the launch date. Localized labels in `probe_names`.
+	 *  On a planetary system's barycenter the list is the whole system's,
+	 *  latest arrival first, each row carrying the members it reached in
+	 *  `visits` instead of a single `visit`. */
 	probes?: NotableMemberEntry[];
 	/** Present iff `probes` is. */
 	probe_count?: number;
@@ -1096,6 +1099,9 @@ export interface LocalizedObjectData {
 	mission_member_names?: Record<string, string>;
 	/** probe Object.id → localized label, only where it differs from the global name. */
 	probe_names?: Record<string, string>;
+	/** Object.id → localized body label for the targets a system's probe rows
+	 *  name, only where it differs from the global name. */
+	body_names?: Record<string, string>;
 }
 
 /** What a ring feature is, in nomenclature terms. `division` is the broad

@@ -760,6 +760,7 @@
 			}
 		}
 	],
+	"system_map_band_altitude": "{range} altitude",
 	"system_moon_discovery": "Moon discoveries",
 	"type_comet": "comet",
 	"type_debris": "debris",

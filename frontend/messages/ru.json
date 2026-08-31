@@ -685,6 +685,7 @@
 			}
 		}
 	],
+	"system_map_band_altitude": "высота {range}",
 	"system_moon_discovery": "Открытия спутников",
 	"type_comet": "комета",
 	"type_debris": "обломки",

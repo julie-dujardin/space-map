@@ -733,6 +733,7 @@
 			}
 		}
 	],
+	"system_map_band_altitude": "高度 {range}",
 	"system_moon_discovery": "衛星の発見",
 	"type_comet": "彗星",
 	"type_debris": "デブリ",

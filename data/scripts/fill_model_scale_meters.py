@@ -8,6 +8,11 @@ extent, matching how the mesh's bounding box is normalised. Rejected claims
 are recorded in a comment for manual review; entries with no usable claim
 get a ``null`` slot and a TODO.
 
+``_MANUAL_SCALES`` wins over Wikidata where it has an entry. Wikidata's size
+claims describe the *stowed body* often enough to matter — Juno's 3.5 m is its
+hexagonal bus, not the 20.1 m it spans with the arrays out — and a model draws
+the deployed craft.
+
 QID per entry: the manifest's own ``wikidata_qid`` when present, else resolved
 through its missions to a DB Object and that object's ``wikidata_qid``.
 
@@ -45,12 +50,13 @@ SIZE_PROPS: list[tuple[str, str]] = [
     ("P2050", "wingspan"),
 ]
 
-# Hand-researched longest dimension (metres) for shipping models whose Wikidata
-# entry has no usable size claim. Each value is the longest extent a typical 3D
-# model depicts (deployed arrays / dishes / structural booms). For spin or
-# field missions whose longest feature is a thin wire/dipole boom that models
-# omit, the solid-body span is used instead (noted). Values sourced from
-# NASA/ESA/eoPortal/Gunter's; (slug -> (metres, "what it is")).
+# Hand-researched longest dimension (metres), overriding Wikidata. Each value
+# is the longest extent a typical 3D model depicts (deployed arrays / dishes /
+# structural booms). For spin or field missions whose longest feature is a thin
+# wire/dipole boom that models omit, the solid-body span is used instead
+# (noted). Values sourced from NASA/ESA/eoPortal/Gunter's, or measured off the
+# mesh where it is authored 1:1 in metres and a part with a published size
+# pins the scale; (slug -> (metres, "what it is")).
 _MANUAL_SCALES: dict[str, tuple[float, str]] = {
     "advanced-composition-explorer": (8.3, "solar-array/boom span"),
     "apollo-soyuz": (21.5, "docked Apollo+DM+Soyuz stack length"),
@@ -88,9 +94,15 @@ _MANUAL_SCALES: dict[str, tuple[float, str]] = {
     "ice-clouds-and-land-elevation-satellite-icesat": (3.2, "solar wing (per-wing)"),
     "ingenuity-mars-helicopter": (1.2, "rotor span"),
     "jason-1": (9.8, "deployed span (Proteus bus; low confidence)"),
+    # Wikidata's 3.5 m is the hexagonal bus; the arrays are three 8.9 m wings.
+    "juno": (20.1, "solar-array span (bus is the 3.5 m Wikidata gives)"),
     "landsat-1-2-and-3": (4.0, "solar-paddle span"),
     "landsat-4-and-5": (4.3, "body height"),
     "landsat-8": (9.0, "deployed solar array"),
+    # Panel-anchored: the deployed array is a published 168 x 126 in and the
+    # mesh draws it as one flat plane. Nobody publishes an overall span, and a
+    # second anchor (the 3.9 m launch envelope) argues for 5.1 m instead.
+    "lunar-reconnaissance-orbiter": (4.4, "deployed span (low confidence)"),
     "magellan": (9.2, "width, solar panels extended"),
     "magnetospheric-multiscale-mms": (3.5, "octagonal body span (wire booms omitted)"),
     "mars-global-surveyor": (10.0, "solar-array span"),
@@ -100,7 +112,14 @@ _MANUAL_SCALES: dict[str, tuple[float, str]] = {
     "near-shoemaker": (2.75, "body length"),
     "new-horizons": (2.74, "body long edge"),
     "ocean-surface-topography-mission-ostm-jason-2": (3.7, "body length"),
+    # Model is 1:1 in metres (its dish measures the published 2.74 m), so the
+    # span is read off the mesh: magnetometer boom one way, RTG truss the other.
+    "pioneer-10": (8.25, "magnetometer-boom span, measured on the 1:1 mesh"),
+    "osiris-rex": (6.17, "width, solar arrays deployed"),
     "polar": (2.8, "body diameter (wire booms omitted)"),
+    # Mesh is 1:1 in metres — the sample-return capsule measures the 0.81 m
+    # Wikidata gives, which is the claim that was being read as the whole craft.
+    "stardust": (5.01, "overall length, arrays out (span 4.72 m)"),
     "quick-scatterometer-quikscat": (2.2, "bus length (array span unverified)"),
     "radar-satellite-1-radarsat-1": (15.0, "deployed SAR antenna"),
     "satellite-for-scientific-applications-sac-c": (2.4, "body length"),
@@ -269,15 +288,15 @@ def _resolve_scale(
     qid_by_object: dict[str, str],
     satcat_norad: dict[int, str],
 ) -> tuple[float | None, str]:
-    """Return (scale_meters, review_comment): Wikidata first, then manual table."""
-    value, reason = _wikidata_scale(entry, cache, units, qid_by_object, satcat_norad)
-    if value is not None:
-        return value, reason
+    """Return (scale_meters, review_comment): the manual table, else Wikidata."""
     slug = entry.get("slug")
     manual = _MANUAL_SCALES.get(slug) if slug else None
     if manual:
         metres, what = manual
         return float(metres), f"manual: {what}"
+    value, reason = _wikidata_scale(entry, cache, units, qid_by_object, satcat_norad)
+    if value is not None:
+        return value, reason
     return None, f"TODO {reason}; fill scale_meters by hand"
 
 
@@ -342,9 +361,7 @@ def main() -> None:
                 _yaml.dump(doc, f)
             log.info("wrote %s", path.relative_to(config.MODELS_DOWNLOAD_DIR.parent))
 
-    log.info(
-        "=== %d entries: %d filled from Wikidata, %d gaps ===", n_total, n_filled, n_gap
-    )
+    log.info("=== %d entries: %d filled, %d gaps ===", n_total, n_filled, n_gap)
     if gaps:
         log.info("Gaps needing a manual scale_meters:\n%s", "\n".join(gaps))
     if not args.apply:

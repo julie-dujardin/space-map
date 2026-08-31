@@ -33,18 +33,31 @@ export interface MapBody {
 
 export interface MapBand {
 	key: string;
+	/** Drawn across the band, so it has to survive a band a few px wide. */
 	label: string;
+	/** Tooltip and aria title; `label` when absent. */
+	name?: string;
 	innerKm: number;
 	outerKm: number;
+	/** Tooltip second line; the band's own distance span when absent. */
+	sub?: string;
 	tone: 'muted' | 'sky' | 'amber';
 	href?: string;
 	onclick?: (e: MouseEvent) => void;
+}
+
+/** A population too large and too anonymous to draw as bodies: no name, no
+ *  link, no tooltip, one dot per member at its own semi-major axis. */
+export interface MapCloud {
+	points: { aKm: number; tiltDeg: number }[];
+	color: string;
 }
 
 export interface SystemMapModel {
 	primary: { id: string; name: string; radiusKm: number; color: string };
 	bodies: MapBody[];
 	bands: MapBand[];
+	cloud?: MapCloud;
 	/** The axis unit in km (AU, or the primary's radius). */
 	unitKm: number;
 	/** Log axis domain and tick values, in `unitKm`. */

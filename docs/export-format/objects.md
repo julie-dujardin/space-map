@@ -459,6 +459,21 @@ interface GlobalObjectData {
   mission_member_count?: number;
   part_of_mission?: { name: string; primary_type: "group"; primary_id: string };
 
+  // Every probe whose curated events target this body, latest arrival first.
+  // Each row carries `first_obs` (the probe's launch date) and a `visit`:
+  // {kind, arrival, end?} — the most involved thing it did there. Per-language
+  // label overrides: LocalizedObjectData.probe_names.
+  //
+  // A planetary system's barycenter (naif-1 … naif-9) carries the roll-up
+  // instead: every probe sent to the primary, to any of its moons, or to the
+  // barycenter itself (the Earth-Moon L2 halo orbiters target NAIF 3). One row
+  // per probe, and each carries `visits` — the members it reached, latest
+  // arrival first — in place of `visit`, since across a system the bodies are
+  // what the row has room to say. Their labels live in
+  // LocalizedObjectData.body_names.
+  probes?: NotableEntry[];
+  probe_count?: number;              // present iff `probes` is
+
   // Probe objects only. SPK coverage envelope (union across zones); the
   // focused-probe pause arms a SimClock boundary stop at the data wall. Read
   // only for the focused probe, so it rides here, not in metadata.json.
@@ -902,6 +917,8 @@ interface LocalizedObjectData {
   notable_satellite_names?: Record<string, string>; // featured-satellite id-or-slug → localized label, only where it differs
   fragment_names?: Record<string, string>;     // fragment Object.id → localized label, only where it differs from the global name
   mission_member_names?: Record<string, string>; // mission-member Object.id → localized label, only where it differs from the global name
+  probe_names?: Record<string, string>;        // probe Object.id → localized label, only where it differs from the global name
+  body_names?: Record<string, string>;         // Object.id → localized label for the bodies a system's probe rows name in `visits`
 }
 
 interface EntityRef { name: string; short_name?: string; wikipedia?: string; }

@@ -717,6 +717,7 @@
 			}
 		}
 	],
+	"system_map_band_altitude": "{range} Höhe",
 	"system_moon_discovery": "Mondentdeckungen",
 	"type_comet": "Komet",
 	"type_debris": "Trümmer",

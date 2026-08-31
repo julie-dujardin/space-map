@@ -717,6 +717,7 @@
 			}
 		}
 	],
+	"system_map_band_altitude": "{range} di quota",
 	"system_moon_discovery": "Scoperte di lune",
 	"type_comet": "cometa",
 	"type_debris": "detriti",

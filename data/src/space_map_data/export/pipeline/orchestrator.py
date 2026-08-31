@@ -45,7 +45,10 @@ from space_map_data.export.nomenclature.writer import (
 from space_map_data.export.objects.fragments import attach_comet_fragments
 from space_map_data.export.objects.missions import attach_probe_missions
 from space_map_data.export.objects.probe_events import attach_probe_events
-from space_map_data.export.objects.probe_targets import attach_probe_targets
+from space_map_data.export.objects.probe_targets import (
+    attach_probe_targets,
+    attach_system_probes,
+)
 from space_map_data.export.notable import shape_model_slugs
 from space_map_data.probes.probe_id import load_registry
 from space_map_data.export.images import prune_image_bundles
@@ -1168,6 +1171,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         )
         attach_probe_missions(agg.all_objects, wikidata_entities)
         attach_probe_targets(agg.all_objects, wikidata_entities)
+        # After the per-body pass, which it supersedes on a barycenter: the
+        # Earth-Moon L2 craft target the barycenter directly and belong in the
+        # system's rolled-up list rather than in one of their own.
+        with Session(engine) as session:
+            attach_system_probes(session, agg.all_objects, wikidata_entities)
         attach_probe_events(agg.all_objects)
         # Pools the moon and feature lists the two passes above just wrote.
         attach_galleries(agg.all_objects)

@@ -717,6 +717,7 @@
 			}
 		}
 	],
+	"system_map_band_altitude": "{range} de altitud",
 	"system_moon_discovery": "Descubrimientos de lunas",
 	"type_comet": "cometa",
 	"type_debris": "restos",

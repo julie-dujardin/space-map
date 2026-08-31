@@ -717,6 +717,7 @@
 			}
 		}
 	],
+	"system_map_band_altitude": "גובה {range}",
 	"system_moon_discovery": "גילויי ירחים",
 	"type_comet": "שביט",
 	"type_debris": "פסולת",

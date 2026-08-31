@@ -733,6 +733,7 @@
 			}
 		}
 	],
+	"system_map_band_altitude": "{range} wysokości",
 	"system_moon_discovery": "Odkrycia księżyców",
 	"type_comet": "kometa",
 	"type_debris": "szczątki",

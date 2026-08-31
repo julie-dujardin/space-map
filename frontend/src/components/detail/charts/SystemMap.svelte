@@ -30,6 +30,10 @@
 
 	const BAND_Y = 26;
 	const BAND_H = VIEW_H - 60;
+	// Narrow bands would otherwise be a few device px of hit target.
+	const BAND_MIN_HIT = 30;
+
+	const CLOUD_R = 1.2;
 
 	const DRAG_SLOP = 8;
 
@@ -49,7 +53,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { focusHref, focusClick } from '$lib/state/focus-link';
-	import type { MapBody, MapSatellite, SystemMapModel } from './system-map';
+	import type { MapBand, MapBody, MapSatellite, SystemMapModel } from './system-map';
 
 	interface Props {
 		model: SystemMapModel;
@@ -159,12 +163,44 @@
 		return out;
 	});
 
-	let bands = $derived(
-		model.bands.map((b) => {
-			const x = xOf(b.innerKm);
-			return { ...b, x, width: xOf(b.outerKm) - x };
-		})
+	interface PlacedBand extends MapBand {
+		x: number;
+		width: number;
+		/** Padded to BAND_MIN_HIT so a hairline band stays clickable. */
+		hitX: number;
+		hitWidth: number;
+	}
+	// Narrowest last: SVG paints in order, so the band hardest to hit ends up on
+	// top of the wide ones its padded hit target overlaps.
+	let bands = $derived.by<PlacedBand[]>(() =>
+		model.bands
+			.map((b) => {
+				const x = xOf(b.innerKm);
+				const width = xOf(b.outerKm) - x;
+				const hitWidth = Math.max(width, BAND_MIN_HIT);
+				return { ...b, x, width, hitX: x + (width - hitWidth) / 2, hitWidth };
+			})
+			.sort((a, b) => b.width - a.width)
 	);
+
+	// Anonymous population: inclination sets the offset as it does for bodies, its
+	// sign alternating so the cloud straddles the baseline instead of stacking on
+	// one side. Drawn as one path of round-capped zero-length strokes — a dot per
+	// element would be a thousand DOM nodes.
+	let cloudPath = $derived.by(() => {
+		const points = model.cloud?.points;
+		if (!points?.length) return '';
+		let d = '';
+		points.forEach((p, idx) => {
+			const aUnits = p.aKm / model.unitKm;
+			if (aUnits < model.domain[0] || aUnits > model.domain[1]) return;
+			const tilt = p.tiltDeg > 90 ? 180 - p.tiltDeg : p.tiltDeg;
+			const offset = Math.min(Math.max(tilt, 0) * model.pxPerDeg, MAX_OFFSET);
+			const cy = CY + (idx % 2 === 0 ? -offset : offset);
+			d += `M${xOf(p.aKm).toFixed(1)} ${cy.toFixed(1)}h0.01`;
+		});
+		return d;
+	});
 
 	let hoveredId = $state<string | null>(null);
 	let hoveredZone = $state<string | null>(null);
@@ -208,8 +244,8 @@
 			return {
 				cx: band.x + band.width / 2,
 				cy: 44,
-				title: band.label,
-				sub: `${distanceLabel(band.innerKm)}–${distanceLabel(band.outerKm)}`
+				title: band.name ?? band.label,
+				sub: band.sub ?? `${distanceLabel(band.innerKm)}–${distanceLabel(band.outerKm)}`
 			};
 		return null;
 	});
@@ -252,8 +288,15 @@
 				return;
 			}
 		}
-		for (const band of bands) {
-			if (vx >= band.x && vx <= band.x + band.width && vy >= BAND_Y && vy <= BAND_Y + BAND_H) {
+		// Reversed for the same reason the bands are painted narrowest-last.
+		for (let i = bands.length - 1; i >= 0; i--) {
+			const band = bands[i];
+			if (
+				vx >= band.hitX &&
+				vx <= band.hitX + band.hitWidth &&
+				vy >= BAND_Y &&
+				vy <= BAND_Y + BAND_H
+			) {
 				hoveredBand = band.key;
 				return;
 			}
@@ -356,6 +399,20 @@
 			</text>
 		{/if}
 
+		<!-- The anonymous population, under everything: it is the backdrop the
+		     bands and bodies are read against, never a target. -->
+		{#if cloudPath}
+			<path
+				d={cloudPath}
+				stroke={model.cloud?.color}
+				stroke-width={CLOUD_R * 2}
+				stroke-linecap="round"
+				fill="none"
+				opacity="0.45"
+				class="pointer-events-none"
+			/>
+		{/if}
+
 		<!-- Bands (behind the bodies); the whole band links to its target, except
 		     in the background variant where it's just texture. -->
 		{#each bands as band (band.key)}
@@ -379,9 +436,10 @@
 					onpointerleave={() => hoveredBand === band.key && (hoveredBand = null)}
 					onfocus={() => (hoveredBand = band.key)}
 					onblur={() => hoveredBand === band.key && (hoveredBand = null)}
-					aria-label={band.label}
+					aria-label={band.name ?? band.label}
 				>
 					{@render bandFill()}
+					<rect x={band.hitX} y={BAND_Y} width={band.hitWidth} height={BAND_H} fill="transparent" />
 					<text
 						x={band.x + band.width / 2}
 						y={VIEW_H - 8}
