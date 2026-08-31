@@ -1255,6 +1255,8 @@
 	"group_stat_launches": "Starts",
 	"group_stat_success": "Erfolg",
 	"group_stat_failures": "{count} Fehlschläge",
+	"group_stat_objects": "Objekte",
+	"group_stat_craft": "Raumfahrzeuge",
 	"group_type_launch_vehicle": "Trägerrakete",
 	"reload": "Neu laden",
 	"new_data_available": "Neue Daten sind verfügbar, lade neu, um sie zu sehen.",

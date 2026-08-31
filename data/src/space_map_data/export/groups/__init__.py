@@ -40,6 +40,7 @@ from space_map_data.export.groups.membership import (
     build_earth_groups_data,
     write_earth_membership,
 )
+from space_map_data.export.groups.probe_targets import build_group_probes
 from space_map_data.export.groups.registry import (
     ORGANIZATION_BUS_CHILDREN,
     Group,
@@ -84,6 +85,7 @@ class SplitCometGroups:
     groups: list[Group] = field(default_factory=list)
     member_counts: dict[str, int] = field(default_factory=dict)
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
+    member_ids: dict[str, list[str]] = field(default_factory=dict)
     names: dict[str, str] = field(default_factory=dict)
     extra_stats: dict[str, GroupExtraStats] = field(default_factory=dict)
 
@@ -324,6 +326,7 @@ def _split_comet_groups(
         out.notable_members[slug] = members
         out.names[slug] = name
         member_ids[slug] = [f.object_id for f in members]
+    out.member_ids = member_ids
     out.extra_stats = _split_comet_orbits(session, member_ids)
     enriched = sum(1 for g in out.groups if g.wikidata_qid)
     logger.info(
@@ -513,6 +516,21 @@ def run_groups_tier(
     if probe_launches := category_data.launch_histograms.get(PROBES_SLUG):
         extra_stats[PROBES_SLUG].launch_year = min(probe_launches)
 
+    group_probes = build_group_probes(
+        session,
+        {
+            object_id: slug
+            for slug, ids in split_comets.member_ids.items()
+            for object_id in ids
+        },
+    )
+    # The target labels ride the same body_names map the per-body charts fill.
+    extra_chart_qids = {
+        slug: dict(qids) for slug, qids in category_data.chart_qids.items()
+    }
+    for slug, qids in group_probes.qids.items():
+        extra_chart_qids.setdefault(slug, {}).update(qids)
+
     write_earth_membership(out_dir, build.membership)
     write_orbit_samples(out_dir, small_body_stats.orbit_samples)
     write_earth_orbit_samples(out_dir, earth_orbit_stats.orbit_samples)
@@ -534,8 +552,9 @@ def run_groups_tier(
         gallery_subjects=gallery_subjects,
         extra_named_counts=extra_named_counts,
         extra_notable_members=extra_notable_members,
+        extra_probes=group_probes.probes,
         extra_chart_rows=category_data.chart_rows,
-        extra_chart_qids=category_data.chart_qids,
+        extra_chart_qids=extra_chart_qids,
         extra_primary_ids=missions.primary_ids,
         child_slugs_by_group={
             **category_data.children,

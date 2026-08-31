@@ -1259,6 +1259,8 @@
 	"group_stat_launches": "שיגורים",
 	"group_stat_success": "הצלחה",
 	"group_stat_failures": "{count} כשלים",
+	"group_stat_objects": "עצמים",
+	"group_stat_craft": "חלליות",
 	"group_type_launch_vehicle": "משגר",
 	"reload": "טען מחדש",
 	"new_data_available": "נתונים חדשים זמינים, טען מחדש כדי לראותם.",

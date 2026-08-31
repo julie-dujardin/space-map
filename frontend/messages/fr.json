@@ -534,6 +534,8 @@
 	"tidal_role_negligible": "Négligeable",
 	"tidal_role_past": "Passée",
 	"group_stat_failures": "{count} échecs",
+	"group_stat_objects": "Objets",
+	"group_stat_craft": "Engins",
 	"group_stat_launches": "Lancements",
 	"group_stat_success": "Succès",
 	"group_type_plural_launch_vehicle": "Lanceurs",

@@ -15,10 +15,22 @@
 		onclick?: (e: MouseEvent) => void;
 		/** Extra classes on the right-hand column (e.g. tabular-nums). */
 		valuesClass?: string;
+		/** Wrap the right-hand column onto further lines instead of stacking it
+		 *  on one: a probe's list of targets is a sentence, not a pair of figures. */
+		valuesWrap?: boolean;
 		/** The right-hand column's stacked values. */
 		children?: Snippet;
 	}
-	let { name, thumbnail, href, onclick, valuesClass = '', children, ...rest }: Props = $props();
+	let {
+		name,
+		thumbnail,
+		href,
+		onclick,
+		valuesClass = '',
+		valuesWrap = false,
+		children,
+		...rest
+	}: Props = $props();
 </script>
 
 {#snippet content()}
@@ -39,7 +51,11 @@
 	{/if}
 	<span class="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
 	{#if children}
-		<span class="flex shrink-0 flex-col items-end text-xs {valuesClass}">
+		<span
+			class="flex text-xs {valuesWrap
+				? 'min-w-0 max-w-[70%] flex-wrap justify-end gap-x-3'
+				: 'shrink-0 flex-col items-end'} {valuesClass}"
+		>
 			{@render children()}
 		</span>
 	{/if}

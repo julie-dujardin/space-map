@@ -169,6 +169,10 @@ export interface NotableMemberEntry {
 	 *  departure or end of mission; absent while the visit is ongoing. Dates
 	 *  are ISO, possibly truncated to a month or year for planned events. */
 	visit?: { kind: ProbeVisitKind; arrival: string; end?: string };
+	/** Probe entries on a collection: the members it was sent to, latest first.
+	 *  Stands in for `visit` — one probe rarely did the same thing at all of
+	 *  them, so the row names the bodies instead of the kind of call. */
+	visits?: { id: string; name: string; arrival: string; end?: string }[];
 	/** DEM sibling bundle — lets the lineup render the same relief as the main map. */
 	displacement?: DisplacementMeta;
 	/** Shape-model slug (`v1/models/<slug>/`); the lineup loads the mesh instead

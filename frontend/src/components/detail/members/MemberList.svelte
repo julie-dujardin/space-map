@@ -13,10 +13,12 @@
 	interface Props {
 		members: NotableMemberEntry[];
 		localizedNames?: Record<string, string>;
+		/** Localized labels for the bodies a collection's probe rows name. */
+		targetNames?: Record<string, string>;
 		/** Fragment lists pass false: select the piece without flying to its mesh. */
 		focusMovesCamera?: boolean;
 	}
-	let { members, localizedNames, focusMovesCamera = true }: Props = $props();
+	let { members, localizedNames, targetNames, focusMovesCamera = true }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -68,7 +70,7 @@
 
 	/** Arrival–end years; a same-year visit collapses to one, an ongoing one
 	 *  keeps an open dash. */
-	function visitYears(visit: NonNullable<NotableMemberEntry['visit']>): string {
+	function visitYears(visit: { arrival: string; end?: string }): string {
 		const from = visit.arrival.slice(0, 4);
 		const to = visit.end?.slice(0, 4);
 		if (to === from) return from;
@@ -86,8 +88,16 @@
 				href={memberHref(member)}
 				onclick={(e) => focusMember(e, member)}
 				valuesClass="tabular-nums"
+				valuesWrap={member.visits !== undefined}
 			>
-				{#if member.visit}
+				{#if member.visits}
+					{#each member.visits as target (target.id)}
+						<span class="whitespace-nowrap">
+							{targetNames?.[target.id] ?? target.name}
+							<span class="text-muted-foreground">{visitYears(target)}</span>
+						</span>
+					{/each}
+				{:else if member.visit}
 					<span>{KIND_LABEL[member.visit.kind]()}</span>
 					<span class="text-muted-foreground">{visitYears(member.visit)}</span>
 				{:else}

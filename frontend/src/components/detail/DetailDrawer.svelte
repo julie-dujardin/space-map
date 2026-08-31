@@ -297,9 +297,11 @@
 	let tabCount = $derived(Object.values(tabPresent).filter(Boolean).length);
 
 	// One ordered tab table: the bar renders it and the gallery's shelf links
-	// read their labels off it, so the two can't diverge. Features and rings
-	// carry no count — five figures of nomenclature (or the widest ring bar)
-	// would crowd the bar, and each panel states its total anyway.
+	// read their labels off it, so the two can't diverge. Features, rings and
+	// members carry no count — five figures of nomenclature (or a collection's
+	// 1.38M) would crowd the bar past four tabs, and the page states each of
+	// those totals anyway: the members total on a stat card, the others in
+	// their own panel.
 	let tabItems = $derived<TabItem[]>([
 		{ tab: 'overview', label: m.tab_overview() },
 		{ tab: 'targets', label: m.tab_targets(), count: members.targetVisits.length },
@@ -307,7 +309,7 @@
 		{ tab: 'features', label: m.tab_features() },
 		{ tab: 'structure', label: m.tab_structure() },
 		{ tab: 'rings', label: m.tab_rings() },
-		{ tab: 'members', label: members.membersTabLabel, count: members.memberTotal },
+		{ tab: 'members', label: members.membersTabLabel },
 		{ tab: 'fragments', label: m.tab_fragments(), count: members.fragmentTotal },
 		{ tab: 'probes', label: m.tab_probes(), count: members.probeTotal }
 	]);
@@ -480,7 +482,11 @@
 {#snippet probesPanel()}
 	<TopicSummary page={data?.localized?.probes_page} />
 	{#if members.probes && members.probes.length > 0}
-		<MemberList members={members.probes} localizedNames={members.probeNames} />
+		<MemberList
+			members={members.probes}
+			localizedNames={members.probeNames}
+			targetNames={members.probeTargetNames}
+		/>
 	{/if}
 {/snippet}
 

@@ -1277,6 +1277,8 @@
 	"group_stat_launches": "عمليات الإطلاق",
 	"group_stat_success": "النجاح",
 	"group_stat_failures": "‎{count}‎ حالات فشل",
+	"group_stat_objects": "الأجسام",
+	"group_stat_craft": "المركبات",
 	"group_type_launch_vehicle": "مركبة إطلاق",
 	"time_scale_realtime": "‎1×‎",
 	"reload": "إعادة التحميل",

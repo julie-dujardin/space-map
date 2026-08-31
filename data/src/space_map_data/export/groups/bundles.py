@@ -231,6 +231,7 @@ def _build_global(
     pha_count: int,
     named_count: int,
     notable_members: list[dict] | None,
+    probes: list[dict] | None,
     chart_rows: dict[str, list[dict]] | None,
     primary_id: str | None,
     lv_stats: LaunchVehicleStats | None,
@@ -368,6 +369,11 @@ def _build_global(
         }
     if notable_members:
         data["notable_members"] = notable_members
+    # Probes sent to any member — the per-body list read one collection out.
+    # Same field names as an object bundle so the drawer reads one shape.
+    if probes:
+        data["probes"] = probes
+        data["probe_count"] = len(probes)
     # Bar-chart rows a category page draws under its members: moons per
     # planet, probes per target. Each producer names its own bundle field.
     if chart_rows:
@@ -913,6 +919,7 @@ def write_group_bundles(
     extra_stats: dict[str, GroupExtraStats] | None = None,
     extra_named_counts: dict[str, int] | None = None,
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
+    extra_probes: dict[str, list[NotableObject]] | None = None,
     extra_chart_rows: dict[str, dict[str, list[dict]]] | None = None,
     extra_chart_qids: dict[str, dict[str, str]] | None = None,
     extra_primary_ids: dict[str, str] | None = None,
@@ -976,6 +983,8 @@ def write_group_bundles(
             if members
             else None
         )
+        probes = (extra_probes or {}).get(group.slug)
+        probe_entries = notable_entries(probes, wikidata_entities) if probes else None
         chart_rows = (extra_chart_rows or {}).get(group.slug)
         lv_stats = (launch_vehicle_stats or {}).get(group.slug)
         ft_stats = (feature_type_stats or {}).get(group.slug)
@@ -1000,6 +1009,7 @@ def write_group_bundles(
             pha_count,
             named_count,
             member_entries,
+            probe_entries,
             chart_rows,
             (extra_primary_ids or {}).get(group.slug),
             lv_stats,
@@ -1040,6 +1050,12 @@ def write_group_bundles(
                 )
             if member_names:
                 lang_data["notable_member_names"] = member_names
+            if probes and probe_entries:
+                probe_names = notable_names(
+                    probes, probe_entries, lang, wikidata_entities
+                )
+                if probe_names:
+                    lang_data["probe_names"] = probe_names
             if members and member_entries:
                 member_descriptions = notable_descriptions(
                     members, lang, wikidata_entities

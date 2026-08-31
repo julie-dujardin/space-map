@@ -1275,6 +1275,8 @@
 	"group_stat_launches": "Starty",
 	"group_stat_success": "Udane",
 	"group_stat_failures": "{count} nieudanych",
+	"group_stat_objects": "Obiekty",
+	"group_stat_craft": "Statki",
 	"group_type_launch_vehicle": "Rakieta nośna",
 	"reload": "Odśwież",
 	"new_data_available": "Dostępne są nowe dane, odśwież, aby je zobaczyć.",

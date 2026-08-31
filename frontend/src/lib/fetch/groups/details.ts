@@ -151,6 +151,12 @@ export interface GlobalGroupData {
 	pha?: { n: number; primary_type: 'group'; primary_id: 'flag-pha' };
 	/** Top 20 members picked at export time (image/sitelinks/diameter rank); small-body groups only. */
 	notable_members?: NotableMemberEntry[];
+	/** Probes sent to anything in this collection, latest arrival first, each
+	 *  carrying the members it reached. Small-body classes, the Asteroids and
+	 *  Comets roll-ups over them, the NEO/PHA flags and split-comet families. */
+	probes?: NotableMemberEntry[];
+	/** Present iff `probes` is. */
+	probe_count?: number;
 	/** Moons category only: moons per planet/dwarf host, ordered by heliocentric
 	 *  distance. Drives the moons-per-planet bar chart. */
 	moon_counts?: { name: string; primary_type: 'object'; primary_id: string; n: number }[];
@@ -342,8 +348,11 @@ export interface LocalizedGroupData {
 	notable_member_names?: Record<string, string>;
 	/** member Object.id → localized Wikidata short description, for the lineup hero's hover tooltip. */
 	notable_member_descriptions?: Record<string, string>;
-	/** Per-body chart row Object.id → localized body label: `feature_bodies`
-	 *  on an ft- page, `probe_targets` on the Probes category. */
+	/** probe Object.id → localized label for `probes`, only where it differs. */
+	probe_names?: Record<string, string>;
+	/** Object.id → localized body label: the `feature_bodies` rows on an ft-
+	 *  page, `probe_targets` on the Probes category, and the targets each row
+	 *  of a collection's `probes` list names. */
 	body_names?: Record<string, string>;
 }
 

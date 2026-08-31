@@ -80,9 +80,11 @@ export class MembersState {
 	// primary craft still shows a strip of its sibling craft.
 	readonly missionMembers: NotableMemberEntry[] | undefined;
 
-	// Probes whose events target this body: a strip + tab, mirroring moons.
+	// Probes whose events target this body, or any member of this collection:
+	// a strip + tab, mirroring moons.
 	readonly probes: NotableMemberEntry[] | undefined;
 	readonly probeNames: Record<string, string> | undefined;
+	readonly probeTargetNames: Record<string, string> | undefined;
 	readonly probeTotal: number;
 	readonly showProbesTab: boolean;
 
@@ -215,9 +217,19 @@ export class MembersState {
 			if (link) d.appState()?.setGroup(link.primary_id, link.name);
 		};
 
-		this.probes = $derived(d.isGroupMode() ? undefined : d.data()?.global?.probes);
-		this.probeNames = $derived(d.data()?.localized?.probe_names);
-		this.probeTotal = $derived(d.data()?.global?.probe_count ?? 0);
+		// A collection lists the probes sent to any of its members; a body lists
+		// the ones sent to it. Same field names either side, same list UI.
+		this.probes = $derived(
+			d.isGroupMode() ? d.groupDetail()?.global?.probes : d.data()?.global?.probes
+		);
+		this.probeNames = $derived(
+			d.isGroupMode() ? d.groupDetail()?.localized?.probe_names : d.data()?.localized?.probe_names
+		);
+		this.probeTotal = $derived(
+			(d.isGroupMode() ? d.groupDetail()?.global?.probe_count : d.data()?.global?.probe_count) ?? 0
+		);
+		// Localized labels for the bodies a collection's probe rows name.
+		this.probeTargetNames = $derived(d.groupDetail()?.localized?.body_names);
 		const hasProbes = $derived(!!this.probes && this.probes.length > 0);
 		// Present from the first probe: the tab carries the exploration blurb the strip doesn't.
 		this.showProbesTab = $derived(hasProbes);

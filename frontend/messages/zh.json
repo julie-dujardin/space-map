@@ -1202,6 +1202,8 @@
 	"group_stat_launches": "发射",
 	"group_stat_success": "成功",
 	"group_stat_failures": "{count} 次失败",
+	"group_stat_objects": "物体",
+	"group_stat_craft": "航天器",
 	"group_type_launch_vehicle": "运载火箭",
 	"time_scale_realtime": "1×",
 	"reload": "重新加载",

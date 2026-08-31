@@ -57,8 +57,6 @@
 	// how it changes. A family with nothing for a slot leaves it empty rather
 	// than reaching for a fact the charts and rows below already show.
 	const MAX_CARDS = 3;
-	// Mirrors the members strip: past this, the count rides its tab badge.
-	const STRIP_CAPACITY = 5;
 	// A hazardous share is a fraction of a percent — the bar would be a speck.
 
 	const appState = getContext<AppState | undefined>('appState');
@@ -118,10 +116,9 @@
 		return { label, value: formatDistance(valueAu), tooltip };
 	}
 
-	/** The member total, unless a strip or the tab badge already spells it out. */
+	/** The member total. This card is where a collection states how big it is —
+	 *  the members tab carries no count badge, which crowded the bar. */
 	function members(g: GlobalGroupData, label: string): Stat | null {
-		const notable = g.notable_members?.length ?? 0;
-		if (notable > 0 && g.member_count > STRIP_CAPACITY) return null;
 		return count(label, g.member_count);
 	}
 
@@ -364,15 +361,29 @@
 
 	function categoryStats(g: GlobalGroupData): (Stat | null)[] {
 		switch (g.slug) {
+			// The hazardous subset is a child chip on this page already; the
+			// classes below it are not, so they keep their PHA card.
 			case CAT_ASTEROIDS:
-				return [count(m.group_stat_named(), g.named_count), largestBody(g), hazardous(g)];
+				return [
+					members(g, m.group_stat_objects()),
+					count(m.group_stat_named(), g.named_count),
+					largestBody(g)
+				];
 			case CAT_COMETS:
-				return [largestBody(g), count(m.group_stat_split_families(), g.child_group_count)];
+				return [
+					members(g, m.group_stat_objects()),
+					largestBody(g),
+					count(m.group_stat_split_families(), g.child_group_count)
+				];
 			case CAT_PLANETS:
 			case CAT_DWARF_PLANETS:
 				return [largestBody(g), count(m.group_stat_moons(), g.moon_total)];
 			case CAT_MOONS:
-				return [count(m.group_stat_hosts(), g.host_count), largestBody(g)];
+				return [
+					members(g, m.group_stat_objects()),
+					count(m.group_stat_hosts(), g.host_count),
+					largestBody(g)
+				];
 			// The tiles already count each system's rings and the chart plots
 			// their masses; these three are what neither says.
 			case CAT_RING_SYSTEMS:
@@ -403,11 +414,15 @@
 			case CAT_RADIATION:
 				return [radiationMeasured(g), quietestSurface(g)];
 			case CAT_SATELLITES:
-				return [active(g)];
+				return [members(g, m.group_stat_objects()), active(g)];
 			case CAT_DEBRIS:
-				return [count(m.group_stat_sources(), g.child_group_count)];
+				return [
+					members(g, m.group_stat_objects()),
+					count(m.group_stat_sources(), g.child_group_count)
+				];
 			case CAT_PROBES:
 				return [
+					members(g, m.group_stat_craft()),
 					count(m.group_stat_missions(), g.child_group_count),
 					year(m.group_stat_launched(), g.launch_year)
 				];
@@ -418,8 +433,9 @@
 					count(m.group_stat_bodies(), g.body_count)
 				];
 			default:
-				// The Solar System root: every number on it belongs to a child.
-				return [];
+				// The Solar System root: every number on it belongs to a child,
+				// except how many things there are altogether.
+				return [members(g, m.group_stat_objects())];
 		}
 	}
 
@@ -451,7 +467,7 @@
 					success(g)
 				];
 			case 'orbit_class':
-				return [count(m.group_stat_named(), g.named_count), largestBody(g), hazardous(g)];
+				return [members(g, m.group_stat_objects()), largestBody(g), hazardous(g)];
 			case 'small_body_flag':
 				return [
 					members(g, m.group_stat_objects()),
@@ -460,7 +476,7 @@
 				];
 			case 'feature_type':
 				return [
-					count(m.group_stat_bodies(), g.body_count),
+					members(g, m.group_stat_features()),
 					largestFeature(g),
 					km(m.group_stat_median_diameter(), g.median_diameter_km)
 				];

@@ -542,6 +542,8 @@
 	"tidal_role_negligible": "無視できる",
 	"tidal_role_past": "過去",
 	"group_stat_failures": "{count} 件の失敗",
+	"group_stat_objects": "物体",
+	"group_stat_craft": "機体",
 	"group_stat_launches": "打ち上げ回数",
 	"group_stat_success": "成功",
 	"group_type_plural_launch_vehicle": "打ち上げロケット",

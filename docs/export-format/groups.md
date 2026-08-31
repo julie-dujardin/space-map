@@ -60,7 +60,13 @@ interface NotableEntry {
   albedo?: number;                  // SBDB geometric albedo (small bodies only); see `color`
   spec?: string;                    // SBDB taxonomic type, SMASS else Tholen (small bodies only); see `color`
   color?: string;                   // #rrggbb physically-derived surface colour (TrueColorTools). Small bodies: per-body TCT/SBDB colour, else taxonomy chroma × albedo, else albedo grey. Moons: per-body TCT colour (NAIF-keyed), else neutral grey × JPL Horizons geometric albedo. Absent → frontend generic tint
-  first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it)
+  first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it). On a `probes` entry it is the probe's launch date
+  visits?: {                        // `probes` entries only: the members this probe reached, latest arrival first, uncapped
+    id: string;                     // member Object.id; per-language label overrides in LocalizedGroupData.body_names
+    name: string;                   // English Object.name
+    arrival: string;                // ISO date of the first event at that member
+    end?: string;                   // departure or end of mission there; absent while the visit is ongoing
+  }[];
   model?: string;                   // shape-model slug (v1/models/<slug>/); lineup renders the mesh instead of a sphere. shape_model bundles only — spacecraft slugs excluded
   texture?: boolean;                // v1/textures/<id>/ surface map exists; explicit false ⇒ lineup skips the fetch. Absent only on pre-flag bundles (and mission/fragment strips), which the lineup still probes
   ring_mass?: RingMass;             // mass of the member's *rings*, not the member; `cat-ring-systems` only, and only for the six systems a source puts a figure on. Same shape as the object bundle's `ring_stats.mass` (see objects.md)
@@ -343,6 +349,18 @@ interface GlobalGroupData {
   // (carrying `feature_id` beside their host body `id`), ranked by the
   // feature's own Wikidata sitelink count then diameter.
   notable_members?: NotableEntry[];
+
+  // Probes sent to anything in this collection, latest arrival first, each
+  // carrying the members it reached in `visits`. Read off the same curated
+  // events as a body's own `probes` list (objects.md), one collection out, so
+  // a probe that reached several members appears once. Set on the small-body
+  // orbit classes, the `cat-asteroids` / `cat-comets` roll-ups over them, the
+  // NEO/PHA flags and the split-comet families — absent where nothing has been
+  // sent. The Sun-Earth libration zones say the same thing through
+  // `notable_members`: no object sits at L1/L2, so their probes *are* the
+  // membership.
+  probes?: NotableEntry[];
+  probe_count?: number;             // present iff `probes` is
 
   // Feature-type groups (ft-<slug>, one per IAU 2-letter descriptor code) only.
   // Computed from the IAU gazetteer over the same features the map and search
@@ -669,7 +687,8 @@ interface LocalizedGroupData {
   reusable_vehicle_refs?: Record<string, EntityRef>;  // lv-<slug> only: reusable-vehicle name (from `reusable_vehicles`) → its Wikipedia ref. Shuttle orbiters resolve; Falcon cores have no article so are absent (shown as serial + count).
   pad_refs?: Record<string, EntityRef>;       // site-<slug> only: GCAT pad code (from `gcat_sites[].pads[].code`) → its Wikipedia ref, for the merged pad chart. Keyed across the whole range, so it survives the chart merging the GCAT sites away. The chart keeps the GCAT code as its label and uses this only for the link: a pad's Wikipedia title is often the parent complex's (Wallops' eight LA2 launcher rows are one article), and coverage outside en/de/ru is thin — `he` has none at all.
   notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name (feature members key on "<body id>:<feature_id>")
-  body_names?: Record<string, string>;        // ft-<slug> only: `feature_bodies` row Object.id → localized body label
+  probe_names?: Record<string, string>;       // `probes` entry Object.id → localized label, only where it differs from the global name
+  body_names?: Record<string, string>;        // Object.id → localized body label: `feature_bodies` rows on ft-<slug>, `probe_targets` rows on cat-probes, and the members each `probes` entry names in `visits`
 }
 ```
 

@@ -1248,6 +1248,8 @@
 	"group_stat_launches": "Запуски",
 	"group_stat_success": "Успешные",
 	"group_stat_failures": "{count} неудач",
+	"group_stat_objects": "Объекты",
+	"group_stat_craft": "Аппараты",
 	"group_type_launch_vehicle": "Ракета-носитель",
 	"time_scale_realtime": "1×",
 	"reload": "Перезагрузить",
