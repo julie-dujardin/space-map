@@ -29,9 +29,6 @@ from tqdm import tqdm
 
 from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.models.object import Object, ObjectType, OrbitalSource, Satcat
-from space_map_data.export.position.probes.time_grid import PROBE_EXPORT_END_YEAR
-from space_map_data.probes.attachments import resolve_attachments
-from space_map_data.probes.landing_events import probe_ids_with_phases
 from space_map_data.probes.probe_id import (
     ProbeIdRecord,
     record_from_entry,
@@ -42,7 +39,6 @@ from space_map_data.probes.probe_id import (
 )
 from space_map_data.probes.trace import inception_et
 from space_map_data.utils.db import get_session
-from space_map_data.utils.time import jd_to_et, year_to_jd
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +167,39 @@ def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]
     return out
 
 
+def _events_only_records(
+    spk_keys: set[tuple[str, int]],
+) -> list[tuple[dict, ProbeIdRecord]]:
+    """Synthesise ingest records for registry entries whose only
+    ``kernel_sources`` is ``EVENTS-DB``. Skips entries already covered by
+    an SPK-walk record (``spk_keys``).
+
+    Placement is not a condition. Some of these probes do reach the map —
+    a landed phase pins them to a surface, an attachment rides them on a
+    carrier — and the rest never do, but every one of them is a mission
+    the events name and bodies link to, so all of them need a page. The
+    export drops the unplaced ones from the labels file instead.
+    """
+    registry = load_registry()
+    out: list[tuple[dict, ProbeIdRecord]] = []
+    for entry in registry:
+        sources = entry["kernel_sources"]
+        if not all(s["mission"] == "EVENTS-DB" for s in sources):
+            continue
+        mission = sources[0]["mission"]
+        naif_id = int(sources[0]["naif_id"])
+        if (mission, naif_id) in spk_keys:
+            continue
+        record = {
+            "mission": mission,
+            "naif_id": naif_id,
+            "inception_mjd": int(entry["inception_mjd"]),
+            "name_hint": None,
+        }
+        out.append((record, record_from_entry(entry)))
+    return out
+
+
 class ProbesIngestor:
     BATCH = 500
 
@@ -243,39 +272,6 @@ class ProbesIngestor:
             "has_position": False,
         }
 
-    def _events_only_records(
-        self, spk_keys: set[tuple[str, int]]
-    ) -> list[tuple[dict, ProbeIdRecord]]:
-        """Synthesise ingest records for registry entries whose only
-        ``kernel_sources`` is ``EVENTS-DB`` and which the export can place:
-        a landed phase in the events JSONs, or a ride on a carrier that has
-        a trajectory. Skips entries already covered by an SPK-walk record
-        (``spk_keys``)."""
-        registry = load_registry()
-        end_et = jd_to_et(year_to_jd(PROBE_EXPORT_END_YEAR))
-        placeable = probe_ids_with_phases(end_et) | {
-            a.probe_id for a in resolve_attachments()
-        }
-        out: list[tuple[dict, ProbeIdRecord]] = []
-        for entry in registry:
-            sources = entry["kernel_sources"]
-            if not all(s["mission"] == "EVENTS-DB" for s in sources):
-                continue
-            if int(entry["probe_id"]) not in placeable:
-                continue
-            mission = sources[0]["mission"]
-            naif_id = int(sources[0]["naif_id"])
-            if (mission, naif_id) in spk_keys:
-                continue
-            record = {
-                "mission": mission,
-                "naif_id": naif_id,
-                "inception_mjd": int(entry["inception_mjd"]),
-                "name_hint": None,
-            }
-            out.append((record, record_from_entry(entry)))
-        return out
-
     def run(self) -> None:
         if not self.missions_dir.exists() and not self.landed_missions_dir.exists():
             logger.warning(
@@ -293,13 +289,13 @@ class ProbesIngestor:
             [(r["mission"], r["naif_id"], r["inception_mjd"]) for r in records]
         )
 
-        # Events-only probes (Apollo descent stages, Veneras, Pathfinder, …)
+        # Events-only probes (Apollo CSMs, Veneras, Magellan, Stardust, …)
         # have registry entries but no SPK kernels, so `_collect_probes`
-        # doesn't see them. Add Object rows for any whose `landing_events`
-        # yields a resolvable phase; without a row the position writer
-        # would skip them at fit time.
+        # doesn't see them. Without a row the position writer skips the
+        # placeable ones at fit time and the rest have no page at all, while
+        # bodies still link to them from their event targets.
         spk_keys = {(r["mission"], r["naif_id"]) for r in records}
-        events_records = self._events_only_records(spk_keys)
+        events_records = _events_only_records(spk_keys)
 
         self._clear()
         self._load_satcat_norads()

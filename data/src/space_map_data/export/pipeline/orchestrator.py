@@ -706,26 +706,24 @@ def _build_non_zone_object_data(
     return {p.id for p in probe_objs}
 
 
-def _load_rendered_ids(session: Session) -> set[str]:
+def _load_rendered_ids(session: Session, probe_coverage: ProbeCoverageMap) -> set[str]:
     """IDs of bodies that ship in some position file — gates label auto-promote.
 
     Sourced from the DB column rather than a runtime accumulator so the
     per-source ingest is the single writer of "is this row renderable in 3D".
     Probes carry `has_position=False` because their positions live in
-    dedicated chunk files (not the elements table), but they're equally
-    renderable in 3D, so OR them in by orbital_source.
+    dedicated chunk files (not the elements table), so they come from the
+    coverage the probes pass just wrote: a probe row the events name but no
+    kernel, landed phase or carrier can place ships a page and nothing else,
+    and a label for it would make the renderer's pending-promotion loop retry
+    an unfindable getBody every frame.
     """
     return {
         oid
         for (oid,) in session.query(Object.id)
-        .filter(
-            or_(
-                Object.has_position == True,  # noqa: E712
-                Object.orbital_source == OrbitalSource.spice_probe,
-            )
-        )
+        .filter(Object.has_position == True)  # noqa: E712
         .all()
-    }
+    } | set(probe_coverage)
 
 
 def _load_moon_parent_names(session: Session) -> dict[str, str]:
@@ -1134,7 +1132,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             session, out_dir, probe_ids, agg, tier_b_clean
         )
 
-        rendered_ids = _load_rendered_ids(session) if not tier_b_clean else set()
+        rendered_ids = (
+            _load_rendered_ids(session, probe_coverage) if not tier_b_clean else set()
+        )
 
     if tier_b_clean:
         # Outputs on disk are already current; reuse the bucket counts the
