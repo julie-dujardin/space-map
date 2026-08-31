@@ -2,7 +2,8 @@ import { Quaternion, Vector3 } from 'three';
 import type { PerspectiveCamera, Points, ShaderMaterial, WebGLRenderer } from 'three';
 import { ObjectType, isMajorBody } from '$lib/types/objects';
 import { sceneToKm } from '$lib/math/units';
-import { setLabelNote } from '../label/factory';
+import * as m from '$lib/paraglide/messages.js';
+import { setLabelAnnotation } from '../label/annotations';
 import {
 	ellipsoidCameraAxes,
 	ellipsoidAnchorOffset,
@@ -142,7 +143,13 @@ export function updateBodyVisibility(
 		// Note pops in once close enough that a body would be expected: 100 m for
 		// spacecraft (no model), 1 km for natural bodies (no measured size).
 		if (bo.noPhysical) {
-			setLabelNote(bo, sceneToKm(bo.cachedDist) < (bo.noPhysical === 'model' ? 0.1 : 1));
+			const isModel = bo.noPhysical === 'model';
+			const near = sceneToKm(bo.cachedDist) < (isModel ? 0.1 : 1);
+			setLabelAnnotation(
+				bo,
+				'missing',
+				near ? (isModel ? m.body_note_no_model() : m.body_note_no_radius()) : null
+			);
 		}
 		const label = bo.label;
 		if (!label) continue;

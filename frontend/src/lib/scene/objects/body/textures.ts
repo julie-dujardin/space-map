@@ -274,7 +274,7 @@ export async function loadBodyLabel(bo: BodyObjects): Promise<void> {
 	data.name ??= resolved;
 	const variant = getLabelVariant(bo.body);
 	const isLarge = data.objectType === ObjectType.STAR || data.objectType === ObjectType.PLANET;
-	setLabelName(bo.label, resolved, variant, isLarge);
+	setLabelName(bo, resolved, variant, isLarge);
 }
 
 /** Drop a body's loaded texture, reverting its material to base tint. No-op if nothing is loaded. */

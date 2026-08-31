@@ -1,6 +1,7 @@
 import type { Group, Line, Mesh, Object3D, Points, Sprite, Texture } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import type { LabelAnnotation } from './label/annotations';
 import type { RingNode } from './objects/surface/rings';
 import type { CloudNode } from './objects/surface/clouds';
 import type { AtmosphereNode } from './objects/surface/atmosphere';
@@ -38,10 +39,11 @@ export interface BodyObjects {
 	mesh: Mesh | null;
 	label: CSS2DObject | null;
 	labelHalo: HTMLElement | null;
-	/** Credit line under the name — whose position this craft is drawn at.
-	 *  Built on demand by `setLabelCredit` (only a carried craft ever gets one)
-	 *  and shown and hidden with the name. */
-	labelSub: HTMLElement | null;
+	/** Stack of caption lines under the name, shown and hidden with it. Built on
+	 *  demand by `setLabelAnnotation`; most bodies never get one. */
+	labelStack: HTMLElement | null;
+	/** The lines in that stack, by kind. */
+	labelAnnotations?: Partial<Record<LabelAnnotation, HTMLElement>>;
 	/** Viewport-pinned model-load spinner, shown when the halo would be hidden. */
 	loadingEl: HTMLElement | null;
 	/** Top-level scene objects that track this body's position. */
@@ -172,7 +174,6 @@ export interface BodyObjects {
 	 *  are deferred until then, and `mesh` alone can't stand in for it: a body
 	 *  with no measured size never gets a sphere, so it would wait forever. */
 	focusUpgraded?: boolean;
-	noteEl?: HTMLElement | null;
 }
 
 export interface Callbacks {

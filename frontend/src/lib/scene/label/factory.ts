@@ -1,54 +1,11 @@
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, isAsteroid, isMajorBody, type PositionedBody } from '$lib/types/objects';
-import * as m from '$lib/paraglide/messages.js';
 import { isModifiedClick } from '$lib/state/focus-link';
 import type { BodyObjects } from '../types';
+import { syncLabelAria } from './annotations';
 import './label.css';
 
 export type LabelVariant = 'major' | 'spacecraft' | 'debris' | 'none';
-
-/** Toggle the close-range "no … available" note under a body's label. Nested in
- *  the label element so it inherits the label's per-frame display culling. */
-export function setLabelNote(bo: BodyObjects, show: boolean): void {
-	if (show) {
-		if (!bo.noteEl) {
-			if (!bo.label || !bo.noPhysical) return;
-			const note = document.createElement('span');
-			note.className = 'scene-label__note';
-			note.textContent =
-				bo.noPhysical === 'model' ? m.body_note_no_model() : m.body_note_no_radius();
-			bo.label.element.appendChild(note);
-			bo.noteEl = note;
-		}
-		bo.noteEl.classList.add('scene-label__note--visible');
-	} else if (bo.noteEl) {
-		bo.noteEl.classList.remove('scene-label__note--visible');
-	}
-}
-
-/** Caption a craft's label with whose position it is drawn at, or clear it with
- *  `null`. Which craft of a carried pair is on screen changes with the date, so
- *  the line is written per frame rather than at build time. Nested in the label
- *  element to inherit its per-frame display culling; the anchor's aria-label has
- *  to spell it out, since it overrides the contents. */
-export function setLabelCredit(bo: BodyObjects, carrier: string | null): void {
-	const text = carrier === null ? '' : m.carried_by_scene_label({ carrier });
-	if (!bo.labelSub) {
-		if (!text || !bo.label) return;
-		const sub = document.createElement('span');
-		sub.className = 'scene-label__sub';
-		sub.dir = 'auto';
-		bo.label.element.appendChild(sub);
-		bo.labelSub = sub;
-	} else if (bo.labelSub.textContent === text) {
-		return;
-	}
-	// Emptied rather than removed: the span is absolutely positioned with no box
-	// of its own, so an empty one draws nothing and stays ready for the next ride.
-	bo.labelSub.textContent = text;
-	const name = bo.body.data.name;
-	if (name) bo.label?.element.setAttribute('aria-label', text ? `${name}, ${text}` : name);
-}
 
 /** Lucide `package` — the flying spacecraft glyph. */
 const SPACECRAFT_ICON_D =
@@ -78,7 +35,11 @@ function addLabelNameSpan(
 	span.className = `scene-label__name scene-label__name--${variant}${isLarge ? ' scene-label__name--large' : ''}`;
 	span.dir = 'auto'; // designations like "65803 Didymos" must not bidi-reorder in an RTL page
 	span.textContent = name;
-	el.appendChild(span);
+	// Straight after the halo, even when the name resolves after the annotation
+	// stack was built: label culling reads the name span as the halo's sibling.
+	const halo = el.firstElementChild;
+	if (halo) halo.after(span);
+	else el.appendChild(span);
 	return span;
 }
 
@@ -86,20 +47,17 @@ function addLabelNameSpan(
  *  minor body's localized name resolves after the mesh renders (we don't wait
  *  on Wikidata to show the body). No-op for `variant: 'none'`. */
 export function setLabelName(
-	label: CSS2DObject,
+	bo: BodyObjects,
 	name: string,
 	variant: LabelVariant,
 	isLarge: boolean
 ): void {
-	if (variant === 'none' || !name) return;
-	const el = label.element as HTMLElement;
-	el.setAttribute('aria-label', name);
+	if (variant === 'none' || !name || !bo.label) return;
+	const el = bo.label.element as HTMLElement;
 	const existing = el.querySelector('.scene-label__name') as HTMLSpanElement | null;
-	if (existing) {
-		existing.textContent = name;
-		return;
-	}
-	addLabelNameSpan(el, name, variant, isLarge);
+	if (existing) existing.textContent = name;
+	else addLabelNameSpan(el, name, variant, isLarge);
+	syncLabelAria(bo);
 }
 
 export function getLabelVariant(body: PositionedBody): LabelVariant {

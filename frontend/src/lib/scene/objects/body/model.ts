@@ -23,7 +23,7 @@ import { bodyMeshColor } from '$lib/utils';
 import { getSettings } from '$lib/state/settings.svelte';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
-import { setLabelNote } from '../../label/factory';
+import { setLabelAnnotation } from '../../label/annotations';
 import { applyShapeModelMaterial, makeShapeModelMaterial, setShapeModelMap } from './model-texture';
 import { shapeModelSkipReason } from './shape-model-policy';
 import { applyBodyOrientation } from './orientation-apply';
@@ -352,7 +352,7 @@ async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Prom
 			if (!radiusKnown) bo.body.data.radiusKm = meta.true_scale.max_extent_km / 2;
 			if (bo.noPhysical) {
 				bo.noPhysical = undefined;
-				setLabelNote(bo, false);
+				setLabelAnnotation(bo, 'missing', null);
 			}
 		}
 		mountModel(bo, root);

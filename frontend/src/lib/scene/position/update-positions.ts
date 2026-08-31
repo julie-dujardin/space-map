@@ -38,7 +38,9 @@ import {
 } from '$lib/scene/out-of-range-toast';
 import { refreshTrail } from '$lib/scene/objects/trail/refresh';
 import { renderLandedProbe } from './landed-probe';
-import { setLabelCredit, setSpacecraftLanded } from '$lib/scene/label/factory';
+import { setSpacecraftLanded } from '$lib/scene/label/factory';
+import { setLabelAnnotation } from '$lib/scene/label/annotations';
+import * as m from '$lib/paraglide/messages.js';
 import type { PositionDiagnostics } from './diagnostics';
 
 /** Module-scope scratch for adaptive trail chord-error sampling. JS is single-
@@ -208,7 +210,10 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				hide(true);
 				return;
 			}
-			if (bo) setLabelCredit(bo, rideMarkers.credits.get(d.id) ?? null);
+			if (bo) {
+				const carrier = rideMarkers.credits.get(d.id);
+				setLabelAnnotation(bo, 'carrier', carrier ? m.carried_by_scene_label({ carrier }) : null);
+			}
 		}
 		// Discovery gate: hide a body before it came into existence (moon/sat
 		// discovery or launch). NaN/undefined visibleFromDays = always visible.
