@@ -1052,6 +1052,7 @@
 	"zoom_out_to_system": "Auf System herauszoomen",
 	"object_not_found": "{name} konnte nicht angezeigt werden — es existiert möglicherweise nicht oder hat keine Bahndaten",
 	"object_no_position": "{name} hat zu diesem Datum keine Positionsdaten",
+	"object_position_unknown": "Die Karte hat keine Position für {name}",
 	"out_of_range_title": "Begrenzte Daten zu diesem Zeitpunkt",
 	"out_of_range_selected": "Das ausgewählte Objekt hat zu diesem Zeitpunkt keine Daten",
 	"out_of_range_satellites_after": "Satelliten: keine Daten nach {date}",

@@ -225,9 +225,14 @@ export class PromotionRegistry {
 		// spawn at the current jd instead of jumping next tick.
 		refreshMinorBodyPosition(body, clock.jd, ctx);
 		// Minor bodies from chunks lack orbitElements; populate so trails can build.
-		// Skip probes: their data is all-zero (state comes from sub-chunk dispatch),
-		// and zeroed orbitElements would defeat DetailDrawer's SPICE_PROBE guard.
-		if (!body.orbitElements && body.data.orbitalSource !== OrbitalSource.SPICE_PROBE) {
+		// Skip probes (data is all-zero, state comes from sub-chunk dispatch) and
+		// unplaceable stand-ins (data is NaN): elements from either would draw
+		// nothing and defeat the drawer's own guards.
+		if (
+			!body.orbitElements &&
+			!body.data.unplaceable &&
+			body.data.orbitalSource !== OrbitalSource.SPICE_PROBE
+		) {
 			body.orbitElements = body.data;
 			const parent = bodyObjects.get(body.data.parentId);
 			if (parent) body.orbitCenter = [...parent.body.position];

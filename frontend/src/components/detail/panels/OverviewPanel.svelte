@@ -75,14 +75,17 @@
 		].filter((s) => s !== null)
 	);
 
-	// Probes carry a=e=i=…=0 (no osculating elements); feeding zeros to the
-	// Orbital panel triggers a per-frame non-finite-elements warning, so leave it undefined here.
-	let drawerOrbitElements = $derived(
-		body
-			? (body.orbitElements ??
-					(body.data.orbitalSource === OrbitalSource.SPICE_PROBE ? undefined : body.data))
-			: undefined
-	);
+	// Bodies whose `data` holds no usable elements — probes carry a=e=i=…=0,
+	// unplaceable stand-ins carry NaN — must not reach the Orbital panel, which
+	// would warn (or throw on the epoch) once a frame.
+	let drawerOrbitElements = $derived.by(() => {
+		if (!body) return undefined;
+		if (body.orbitElements) return body.orbitElements;
+		if (body.data.unplaceable || body.data.orbitalSource === OrbitalSource.SPICE_PROBE) {
+			return undefined;
+		}
+		return body.data;
+	});
 
 	// Sample sim time at 2 Hz so speed/altitude in the description update
 	// smoothly without re-deriving on every animation frame. The seed read is

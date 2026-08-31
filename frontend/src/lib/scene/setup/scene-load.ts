@@ -292,6 +292,14 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 			const { body, zone } = placeholders[i];
 			if (ctx.getBody(body.data.id)) continue;
 			const type = body.data.objectType;
+			if (body.data.unplaceable) {
+				// Nowhere to route it: the zone buckets and spacecraft groups are
+				// keyed by a place this body doesn't have.
+				ctx.bodies.addBodies([body]);
+				addedSinceFlush.add(body.data.id);
+				ctx.credits.recordOrbitSources([body]);
+				continue;
+			}
 			const parentEntry = i > 0 ? placeholders[i - 1] : null;
 			// Asteroid-moon placeholders steer into `small_body_moons` so they
 			// reconcile via the auto-promote path into `bodyObjects` — not

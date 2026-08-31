@@ -1204,6 +1204,7 @@
 	"zoom_out_to_system": "Zoom out to system",
 	"object_not_found": "Couldn't show {name} — it may not exist or have no orbit data",
 	"object_no_position": "{name} has no position data at this date",
+	"object_position_unknown": "The map has no position for {name}",
 	"out_of_range_title": "Limited data at this time",
 	"out_of_range_selected": "The selected object has no data at this time",
 	"out_of_range_satellites_after": "Satellites: no data after {date}",

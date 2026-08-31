@@ -99,6 +99,12 @@ export interface BodyData extends OrbitalElements {
 	 */
 	orbitalSource: OrbitalSource;
 	/**
+	 * The catalogue carries no orbit for this object at all (an asteroid moon
+	 * published without elements, a probe with no ephemeris). It exists as a
+	 * page, never as a point: the position pass leaves it unplaced.
+	 */
+	unplaceable?: boolean;
+	/**
 	 * Days from J2000 to when the body came into existence (moon/sat discovery
 	 * or launch). The render gate hides it while `jd - 2451545 < visibleFromDays`.
 	 * NaN/undefined = always visible. Only elements-backed bodies carry it.

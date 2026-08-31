@@ -1052,6 +1052,7 @@
 	"zoom_out_to_system": "Alejar al sistema",
 	"object_not_found": "No se pudo mostrar {name} — puede que no exista o no tenga datos de órbita",
 	"object_no_position": "{name} no tiene datos de posición en esta fecha",
+	"object_position_unknown": "El mapa no tiene ninguna posición para {name}",
 	"out_of_range_title": "Datos limitados en este momento",
 	"out_of_range_selected": "El objeto seleccionado no tiene datos en este momento",
 	"out_of_range_satellites_after": "Satélites: sin datos después del {date}",

@@ -1,6 +1,6 @@
-import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, isAsteroid, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
-import { bodyDataFromGlobal } from '$lib/fetch/objects/global-body';
+import { bodyDataFromGlobal, unplacedBodyDataFromGlobal } from '$lib/fetch/objects/global-body';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { dateToJD } from '$lib/format/date';
@@ -14,8 +14,13 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
  * target's parent isn't yet in `loader.positions` (e.g. a moon-of-asteroid
  * URL-loaded before its host's chunk), recurses up the chain so the target
  * anchors on a real point instead of the SSB — ancestors are appended to the
- * result too. Empty array when the chain can't close (missing data, cycle):
- * the body stays hidden until its real chunk lands. Last entry is the target.
+ * result too. Last entry is the target.
+ *
+ * A target the catalogue can't place — no orbit of its own, no anchorable
+ * parent, a propagator that fails — still comes back, flagged `unplaceable`
+ * with a stand-in position: it has a page to open, and nothing frames the
+ * camera on it. Only an object with no bundle at all (or a cycle) yields an
+ * empty array.
  *
  * Each entry's `zone` is the SBDB-class id (e.g. `"APO"`); null when the body
  * has no SBDB record, in which case the caller falls back to `parentId`-based
@@ -40,11 +45,25 @@ export async function createPlaceholderBody(
 		return [];
 	}
 	const global = detail.global;
-	const data = bodyDataFromGlobal(targetId, detail);
-	if (!global || !data) {
-		console.warn(`createPlaceholderBody: no orbit data for ${targetId} — hiding`);
+	if (!global) {
+		console.warn(`createPlaceholderBody: no catalogue record for ${targetId} — hiding`);
 		return [];
 	}
+	const zone = global.sbdb?.class ?? null;
+	const unplaced = (from?: BodyData) => {
+		const unplacedData = from
+			? { ...from, unplaceable: true }
+			: unplacedBodyDataFromGlobal(targetId, detail);
+		if (!unplacedData) return [];
+		const body: PositionedBody = {
+			data: unplacedData,
+			position: [0, 0, 0],
+			positionUnknown: true
+		};
+		return [{ body, zone }];
+	};
+	const data = bodyDataFromGlobal(targetId, detail);
+	if (!data) return unplaced();
 	const satrec = data.satrec;
 	const isParabolic = data.q != null;
 
@@ -55,13 +74,11 @@ export async function createPlaceholderBody(
 		// host, registering the parent's position for siblings to share. Hide
 		// rather than fall back to SSB, which would place the body at the Sun.
 		const parentChain = await createPlaceholderBody(data.parentId, date, loader, visited);
-		if (parentChain.length === 0) {
-			console.warn(
-				`createPlaceholderBody: parent ${data.parentId} of ${targetId} not resolvable — hiding`
-			);
-			return [];
-		}
 		const parentEntry = parentChain[parentChain.length - 1];
+		if (!parentEntry || parentEntry.body.positionUnknown) {
+			// Nothing to anchor on: the target keeps its page, not a place.
+			return [...parentChain, ...unplaced(data)];
+		}
 		parentPos = parentEntry.body.position;
 		loader.positions.set(data.parentId, parentPos);
 		ancestors.push(...parentChain);
@@ -73,7 +90,7 @@ export async function createPlaceholderBody(
 			: orbitalElementsToPosition(data, date);
 	if (!offset) {
 		console.warn(`Failed to compute position for ${targetId} (e=${data.e})`);
-		return ancestors;
+		return [...ancestors, ...unplaced(data)];
 	}
 	const position: [number, number, number] = [
 		parentPos[0] + offset[0],
@@ -83,7 +100,7 @@ export async function createPlaceholderBody(
 
 	ancestors.push({
 		body: { data, position, orbitElements: data, orbitCenter: parentPos },
-		zone: global.sbdb?.class ?? null
+		zone
 	});
 	return ancestors;
 }
@@ -117,6 +134,13 @@ export async function ensureTargetStreamed(
 		const { body, zone } = placeholders[i];
 		if (ctx.getBody(body.data.id)) continue;
 		const type = body.data.objectType;
+		if (body.data.unplaceable) {
+			// Nowhere to route it: the zone buckets and spacecraft groups are
+			// keyed by a place this body doesn't have.
+			ctx.bodies.addBodies([body]);
+			added.push(body.data.id);
+			continue;
+		}
 		const parentEntry = i > 0 ? placeholders[i - 1] : null;
 		const resolvedZone =
 			type === ObjectType.MOON && parentEntry && isAsteroid(parentEntry.body.data.objectType)

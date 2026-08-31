@@ -193,6 +193,12 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			body.positionUnknown = true;
 			if (!notForToast && d.id === focusedId) oorState.focusedOutOfRange = true;
 		};
+		// No orbit in the catalogue at all: never placed, and never a reason for
+		// the "no data at this time" toast — the drawer says it outright.
+		if (d.unplaceable) {
+			hide(true);
+			return;
+		}
 		const isChebTracked = ctx.chebStore?.has(d.id) ?? false;
 		const isProbe = d.orbitalSource === OrbitalSource.SPICE_PROBE;
 		if (isProbe) {

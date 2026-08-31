@@ -166,12 +166,15 @@
 				return;
 			}
 			if (body.positionUnknown) {
-				// No ephemeris at this time: take the focus so the drawer opens, and
-				// say why the camera did not move.
-				toast.warning(m.object_no_position({ name: name || id }), {
-					id: 'object-no-position',
-					closeButton: true
-				});
+				// No ephemeris — at this time, or ever: take the focus so the drawer
+				// opens, and say why the camera did not move.
+				const label = name || id;
+				toast.warning(
+					body.data.unplaceable
+						? m.object_position_unknown({ name: label })
+						: m.object_no_position({ name: label }),
+					{ id: 'object-no-position', closeButton: true }
+				);
 				scene?.focusOnBody(id);
 			} else if (opts?.moveCamera === false) {
 				// Re-anchor focus only, no fly (comet fragments).
@@ -615,6 +618,9 @@
 			new Promise<void>((resolve) => {
 				const check = () => {
 					if (scene && ctx.getBody(initialId)) resolve();
+					// Timer alongside the frame: a backgrounded tab fires no rAF, and
+					// the poll would never come back.
+					else if (document.hidden) setTimeout(check, 100);
 					else requestAnimationFrame(check);
 				};
 				check();
@@ -638,13 +644,18 @@
 		if (initialBody?.positionUnknown) {
 			const deadline = performance.now() + 1500;
 			while (initialBody?.positionUnknown && performance.now() < deadline) {
-				await new Promise(requestAnimationFrame);
+				// Timer alongside the frame: a backgrounded tab fires no rAF, and the
+				// wait would never end for a body that is never placed.
+				await Promise.race([
+					new Promise(requestAnimationFrame),
+					new Promise((resolve) => setTimeout(resolve, 100))
+				]);
 				initialBody = ctx.getBody(initialId);
 			}
 		}
 		// A body that is resident but has no ephemeris at this time carries a
-		// stand-in position (its parent, or the scene origin), so there is still
-		// nothing to fly to — it takes the same landing as a missing one.
+		// stand-in position (its parent, or the scene origin), so there is
+		// nothing to fly to — it keeps the focus, the camera stays put.
 		const placed = initialBody?.positionUnknown ? undefined : initialBody;
 		if (placed && appState.view.featureId !== null) {
 			// Feature deep-link: the featureId→activeFeature effect frames the
@@ -678,23 +689,41 @@
 					framingDistanceFor(urlTypeFromId(fromId), departure)
 				);
 			}
-		} else {
-			// Persistent (no auto-dismiss): the scene-load main-thread churn can
-			// starve a transient toast so its duration timer expires before it ever
-			// paints. A stable id de-dupes if the load is retried.
+		} else if (initialBody) {
+			// Unplaceable, but its drawer still has everything to show: hold the
+			// focus the URL asked for and say why the camera did not move.
 			toast.warning(
-				initialBody
-					? m.object_no_position({ name: initialName })
-					: m.object_not_found({ name: initialName }),
+				initialBody.data.unplaceable
+					? m.object_position_unknown({ name: initialName })
+					: m.object_no_position({ name: initialName }),
 				{
-					id: initialBody ? 'object-no-position' : 'object-not-found',
+					id: 'object-no-position',
 					duration: Number.POSITIVE_INFINITY,
 					closeButton: true
 				}
 			);
+			// The renderer settles its own focus on a placed body and refuses an
+			// unplaced one, so this call is the only thing that opens the drawer
+			// here — retry until it takes, since the scene can still be mounting
+			// when the load pass wins the race above.
+			const focusBy = performance.now() + 3000;
+			do {
+				scene?.focusOnBody(initialId);
+				if (cameraFocus?.data.id === initialId) break;
+				await new Promise((resolve) => setTimeout(resolve, 50));
+			} while (performance.now() < focusBy);
+		} else {
+			// Persistent (no auto-dismiss): the scene-load main-thread churn can
+			// starve a transient toast so its duration timer expires before it ever
+			// paints. A stable id de-dupes if the load is retried.
+			toast.warning(m.object_not_found({ name: initialName }), {
+				id: 'object-not-found',
+				duration: Number.POSITIVE_INFINITY,
+				closeButton: true
+			});
 			appState.setFocus({ type: DEFAULT_VIEW.type, id: DEFAULT_VIEW.id, name: DEFAULT_VIEW.name });
 			// The renderer settled the camera on whatever it could find (the Sun);
-			// land on the default view instead, so an unplaceable URL opens home.
+			// land on the default view instead, so an unknown URL opens home.
 			scene?.snapToBodyFacing(
 				DEFAULT_VIEW.id,
 				SUN_ID,

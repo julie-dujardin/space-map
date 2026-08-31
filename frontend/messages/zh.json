@@ -1044,6 +1044,7 @@
 	"zoom_out_to_system": "缩小至该系统",
 	"object_not_found": "未找到对象 {name}",
 	"object_no_position": "{name} 在此日期没有位置数据",
+	"object_position_unknown": "地图中没有 {name} 的位置",
 	"out_of_range_title": "此时段数据有限",
 	"out_of_range_selected": "所选对象在此时段没有数据",
 	"out_of_range_satellites_after": "卫星：{date} 之后无数据",

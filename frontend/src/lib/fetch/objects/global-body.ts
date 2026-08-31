@@ -116,6 +116,43 @@ export function bodyDataFromGlobal(id: string, detail: ObjectDetailData): BodyDa
 }
 
 /**
+ * A body row for an object the catalogue carries no orbit for — an asteroid
+ * moon published without elements, a probe with no ephemeris. It can never be
+ * placed, but it has a page, so the scene keeps it as a focusable stand-in.
+ */
+export function unplacedBodyDataFromGlobal(id: string, detail: ObjectDetailData): BodyData | null {
+	const global = detail.global;
+	if (!global) return null;
+	return {
+		id,
+		name:
+			detail.localized?.name ??
+			global.name ??
+			global.sbdb_primary_designation ??
+			global.provisional_designation ??
+			null,
+		objectType: parseObjectType(global.type),
+		// No parent to hang off: the position pass reads `unplaceable` and stops
+		// before it ever looks one up.
+		parentId: '',
+		radiusKm: global.sbdb?.diameter ? global.sbdb.diameter / 2 : NaN,
+		hasLocalized: detail.localized != null,
+		unplaceable: true,
+		a: NaN,
+		e: NaN,
+		i: NaN,
+		om: NaN,
+		w: NaN,
+		ma: NaN,
+		n: NaN,
+		epoch: NaN,
+		validityStart: -Infinity,
+		validityEnd: Infinity,
+		orbitalSource: OrbitalSource.UNKNOWN
+	};
+}
+
+/**
  * Whether the map can put this object anywhere.
  *
  * Mirrors `Object.has_position` on the pipeline side, read off the bundle the

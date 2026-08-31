@@ -1082,6 +1082,7 @@
 	"zoom_out_to_system": "Отдалить до системы",
 	"object_not_found": "Объект {name} не найден",
 	"object_no_position": "Для объекта {name} нет данных о положении на эту дату",
+	"object_position_unknown": "На карте нет положения для объекта {name}",
 	"out_of_range_title": "Ограниченные данные на это время",
 	"out_of_range_selected": "Для выбранного объекта нет данных на это время",
 	"out_of_range_satellites_after": "Спутники: нет данных после {date}",

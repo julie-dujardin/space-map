@@ -261,7 +261,9 @@ export class ZoneRefresher {
 				.processProbes(store, date, labels)
 				.find((b) => b.data.id === targetId);
 			if (!target) {
-				console.warn(`zone-refresher.ensureBody: ${targetId} has no probe chunk at this date.`);
+				// No chunk anywhere for this craft: fall through to the global
+				// bundle, which stands it in as an unplaceable focus target.
+				await ensureTargetStreamed(this.ctx, targetId, date, this.loader);
 				return;
 			}
 			this.ctx.bodies.addBodies([target]);
