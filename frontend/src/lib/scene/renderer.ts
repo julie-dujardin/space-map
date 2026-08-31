@@ -130,6 +130,7 @@ import {
 } from './animation/focus';
 import { FocusController } from './focus/controller';
 import { ProbeCoverageWatch } from './probe-coverage-watch';
+import { passengerFor } from '$lib/fetch/position/probes/passenger';
 import {
 	minCameraDistance,
 	clampCameraOutsideBody,
@@ -1591,6 +1592,8 @@ export class SceneRenderer {
 	/** Fit-center ids already sent to `ensureBody`, so a frame loop never
 	 *  re-requests a stream. */
 	private requestedProbeTargets = new Set<string>();
+	/** Craft already asked about a ride, so a re-focus doesn't re-ask. */
+	private askedProbeRides = new Set<string>();
 
 	/** Stream + promote the focused probe's stamped fit-center body (Bennu for
 	 *  OSIRIS-REx, Ryugu for Hayabusa2, …) so its body-relative fit can take
@@ -1602,6 +1605,14 @@ export class SceneRenderer {
 		const store = this.ctx.probeStore;
 		if (!focused || !store?.fitCenterUsable) return;
 		if (focused.data.orbitalSource !== OrbitalSource.SPICE_PROBE) return;
+		// A craft reached by any path but the loader's — clicked through from its
+		// carrier's card, picked out of the search bar — is already in the scene,
+		// so nothing has told the store it rides anything. Without that it has no
+		// position at all before separation, and no carrier to credit.
+		if (!this.askedProbeRides.has(focused.data.id)) {
+			this.askedProbeRides.add(focused.data.id);
+			void passengerFor(focused.data.id).then((ride) => ride && store.registerCarried(ride));
+		}
 		const checkKey = `${focused.data.id}@${this.clock.jd}`;
 		if (checkKey === this.lastProbeTargetCheck) return;
 		this.lastProbeTargetCheck = checkKey;

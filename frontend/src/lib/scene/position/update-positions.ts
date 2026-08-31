@@ -24,6 +24,7 @@ import {
 	populateProbeTrailBuffer
 } from '$lib/fetch/position/probes/trail';
 import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
+import { planRideMarkers } from '$lib/fetch/position/probes/passenger';
 import { ADAPTIVE_MIN_STEP_FACTOR } from '$lib/fetch/position/trail-buffer';
 import { J2000_JD } from '$lib/time/jd';
 import type { BodyObjects } from '$lib/scene/types';
@@ -37,7 +38,7 @@ import {
 } from '$lib/scene/out-of-range-toast';
 import { refreshTrail } from '$lib/scene/objects/trail/refresh';
 import { renderLandedProbe } from './landed-probe';
-import { setSpacecraftLanded } from '$lib/scene/label/factory';
+import { setLabelCredit, setSpacecraftLanded } from '$lib/scene/label/factory';
 import type { PositionDiagnostics } from './diagnostics';
 
 /** Module-scope scratch for adaptive trail chord-error sampling. JS is single-
@@ -135,6 +136,14 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 	};
 	const focusedId = focusedBody?.data.id;
 
+	// Decided per frame rather than at load: the same carried pair is one marker
+	// before separation and two after it.
+	const rideMarkers = planRideMarkers(
+		ctx.probeStore?.ridesAt(jd) ?? [],
+		focusedId,
+		(id) => ctx.getBody(id)?.data.name
+	);
+
 	// Snapshot the focus's orbit-ancestor positions before computePosition
 	// overwrites them; the focus-sync block re-anchors off these when the focus
 	// goes out of range across a time jump.
@@ -186,6 +195,15 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		};
 		const isChebTracked = ctx.chebStore?.has(d.id) ?? false;
 		const isProbe = d.orbitalSource === OrbitalSource.SPICE_PROBE;
+		if (isProbe) {
+			// The other half of a carried pair. Hidden rather than out of range:
+			// nothing is missing, the marker already on screen is both of them.
+			if (rideMarkers.hidden.has(d.id)) {
+				hide(true);
+				return;
+			}
+			if (bo) setLabelCredit(bo, rideMarkers.credits.get(d.id) ?? null);
+		}
 		// Discovery gate: hide a body before it came into existence (moon/sat
 		// discovery or launch). NaN/undefined visibleFromDays = always visible.
 		// outOfRange hides the mesh + label; writeMoons() drops the dot too.

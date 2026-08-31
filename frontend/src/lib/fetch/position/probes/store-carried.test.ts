@@ -55,28 +55,16 @@ const CARRIED = {
 };
 
 describe('ProbeStore passenger emission', () => {
-	it("emits the passenger off its carrier's record, in place of the carrier", () => {
+	it("emits the passenger off its carrier's record, alongside the carrier", () => {
 		const store = storeWith('probe-100');
 		store.registerCarried(CARRIED);
 		const out = [...store.probesAt(2450020)];
-		expect(out.map((e) => e.id)).toEqual(['probe-200']);
+		// Both: which of the two is drawn is the renderer's per-frame call, and
+		// the carrier has to be in the scene to be the one left after separation.
+		expect(out.map((e) => e.id).sort()).toEqual(['probe-100', 'probe-200']);
+		const passenger = out.find((e) => e.id === 'probe-200');
 		// The record is the carrier's: that is where the ephemeris comes from.
-		expect(out[0].probe.id).toBe('probe-100');
-	});
-
-	it('names the carrier so the label can credit it', () => {
-		const store = storeWith('probe-100');
-		store.registerCarried(CARRIED);
-		const [entry] = [...store.probesAt(2450020)];
-		// `id` vs `probe.id` is what tells the loader to credit the carrier.
-		expect(entry.id).not.toBe(entry.probe.id);
-	});
-
-	it('clips the window to the ride so a scrub past separation drops it', () => {
-		const store = storeWith('probe-100');
-		store.registerCarried(CARRIED);
-		const [entry] = [...store.probesAt(2450020)];
-		expect([entry.startJd, entry.endJd]).toEqual([2450010, 2450050]);
+		expect(passenger?.probe.id).toBe('probe-100');
 	});
 
 	it('leaves the carrier alone outside the ride', () => {
@@ -108,11 +96,17 @@ describe('ProbeStore carried-craft fallback', () => {
 		expect(store.probe('probe-200', 2450020)?.id).toBe('probe-100');
 	});
 
-	it('does not resolve outside the ride', () => {
+	it('does not resolve before the ride', () => {
 		const store = storeWith('probe-100');
 		store.registerCarried(CARRIED);
 		expect(store.probe('probe-200', 2450005)).toBeNull();
-		expect(store.probe('probe-200', 2450050)).toBeNull();
+	});
+
+	it('keeps answering through the handover, then stops', () => {
+		const store = storeWith('probe-100');
+		store.registerCarried(CARRIED);
+		expect(store.probe('probe-200', 2450055)?.id).toBe('probe-100');
+		expect(store.probe('probe-200', 2450060)).toBeNull();
 	});
 
 	it("prefers the passenger's own record where it has one", () => {
@@ -146,5 +140,47 @@ describe('ProbeStore carried-craft fallback', () => {
 		store.registerCarried(CARRIED);
 		expect(store.containingSystemAt('probe-200', 2450060)).toBeNull();
 		expect(store.hasHeliocentricFit('probe-200', 2450060)).toBe(false);
+	});
+});
+
+describe('ProbeStore.ridesAt', () => {
+	it('reports the ride while the craft is bolted on', () => {
+		const store = storeWith('probe-100');
+		store.registerCarried(CARRIED);
+		expect(store.ridesAt(2450020)).toEqual([
+			{ passengerId: 'probe-200', carrierId: 'probe-100', attached: true }
+		]);
+	});
+
+	it('runs on past separation, uncredited, while the archive has nothing of its own', () => {
+		const store = storeWith('probe-100');
+		store.registerCarried(CARRIED);
+		expect(store.ridesAt(2450055)).toEqual([
+			{ passengerId: 'probe-200', carrierId: 'probe-100', attached: false }
+		]);
+	});
+
+	it("ends the moment the craft's own record answers", () => {
+		const store = storeWith('probe-100', 'probe-200');
+		store.registerCarried(CARRIED);
+		expect(store.ridesAt(2450055)).toEqual([]);
+	});
+
+	it('is over once the handover has run out of rope', () => {
+		const store = storeWith('probe-100');
+		store.registerCarried(CARRIED);
+		expect(store.ridesAt(2450060)).toEqual([]);
+	});
+
+	it("hands back the carrier's name for the credit line", () => {
+		const store = storeWith('probe-100');
+		store.registerCarried({ ...CARRIED, carrierName: 'Cassini' });
+		expect(store.ridesAt(2450020)[0].carrierName).toBe('Cassini');
+	});
+
+	it('reports nothing before the ride starts', () => {
+		const store = storeWith('probe-100');
+		store.registerCarried(CARRIED);
+		expect(store.ridesAt(2450005)).toEqual([]);
 	});
 });

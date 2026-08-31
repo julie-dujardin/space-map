@@ -71,13 +71,6 @@ logger = logging.getLogger(__name__)
 # seam, or a sub-day hole no date-precision event could land in.
 _COVERAGE_MERGE_DAYS = 1.0
 
-# Fits are cut to whole sub-chunk slots (`chunk_aligned_range`), so a craft's
-# own arc can start up to one slot after it separates. Nothing else can place
-# it over that hole, and the two are still within a pixel of each other, so it
-# keeps riding until its own fits pick it up. One slot of the widest grid is
-# the ceiling: past that the craft is really missing.
-_DETACH_BRIDGE_DAYS = max(z.kepler_subchunk_days for z in ALL_ZONES)
-
 
 class CarriedFrom(TypedDict):
     """Where a passenger borrows its position, and for how long."""
@@ -195,14 +188,13 @@ def _add_carried_coverage(
     already has is not stamped at all — the frontend prefers a craft's own
     record wherever one exists.
 
-    The ride ends where the craft's own fits begin rather than at the
-    separation instant, when the two are within `_DETACH_BRIDGE_DAYS`: the
-    grid drops the partial slot between them, and a craft that is unplaceable
-    for the first day of its own flight reads as a bug, not as an archive
-    limit.
+    The window runs to the separation instant and no further. Fits are cut to
+    whole sub-chunk slots, so a craft's own arc often starts hours after it
+    lets go; bridging that here would be guesswork, because `windows` are
+    whole chunks and cannot see where the slots actually fall. The frontend
+    reads the grid it renders from and carries the craft across.
     """
     n_added = 0
-    n_bridged = 0
     for attachment in resolve_attachments():
         obj_id = f"probe-{attachment.probe_id}"
         carrier_id = f"probe-{attachment.carrier_probe_id}"
@@ -216,14 +208,9 @@ def _add_carried_coverage(
             continue
         own = coverage.get(obj_id)
         own_windows = own["windows"] if own else []
-        end_jd = attachment.end_jd
-        next_own = min((s for s, _ in own_windows if s >= end_jd), default=None)
-        if next_own is not None and next_own - end_jd <= _DETACH_BRIDGE_DAYS:
-            end_jd = next_own
-            n_bridged += 1
         # The union is what gets stamped; the difference only says whether the
         # carrier reaches anywhere this craft cannot already reach itself.
-        borrowed = _clip(carrier["windows"], attachment.start_jd, end_jd)
+        borrowed = _clip(carrier["windows"], attachment.start_jd, attachment.end_jd)
         if not _subtract(borrowed, own_windows):
             continue
         windows = _merge_spans(own_windows + borrowed)
@@ -234,16 +221,11 @@ def _add_carried_coverage(
             "position_from": {
                 "object_id": carrier_id,
                 "start_jd": attachment.start_jd,
-                "end_jd": end_jd,
+                "end_jd": attachment.end_jd,
             },
         }
         n_added += 1
-    logger.info(
-        "attachments: stamped position_from on %d carried craft "
-        "(%d ridden past separation to their own first fit)",
-        n_added,
-        n_bridged,
-    )
+    logger.info("attachments: stamped position_from on %d carried craft", n_added)
 
 
 def write_probes(

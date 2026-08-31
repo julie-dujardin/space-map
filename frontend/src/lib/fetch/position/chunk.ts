@@ -485,9 +485,6 @@ export class ChunkLoader {
 			}
 			result.push({
 				data,
-				// Riding another craft's record: the position on screen is the
-				// carrier's, and the label has to say whose.
-				carriedBy: id === probe.id ? undefined : (pickLabel(labels, probe.id) ?? undefined),
 				position: pos,
 				positionUnknown,
 				// Kept even when the buffer drives the trail: the detail panel reads

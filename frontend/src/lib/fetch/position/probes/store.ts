@@ -21,7 +21,7 @@ import {
 	probePositionScene
 } from '$lib/fetch/position/probes/propagate';
 import type { Probe } from '$lib/fetch/position/probes/parse';
-import { chunkIndexForJd, type CarriedFrom } from '$lib/fetch/metadata';
+import { chunkIndexForJd } from '$lib/fetch/metadata';
 import type { PassengerGraft } from '$lib/fetch/position/probes/passenger';
 
 const NEIGHBOR_WINDOW = 1;
@@ -71,6 +71,26 @@ export interface ProbeWithWindow {
 	endJd: number;
 }
 
+/** A craft riding another one at some date, as {@link ProbeStore.ridesAt}
+ *  reports it. `attached` is false through the handover below — the craft has
+ *  let go, but the archive's first fit for it has not started yet. */
+export interface Ride {
+	passengerId: string;
+	carrierId: string;
+	carrierName?: string;
+	attached: boolean;
+}
+
+/** How long past separation a craft keeps reading its carrier's position.
+ *  Archives publish fits on the sub-chunk grid, so a solution that begins at
+ *  separation is packed from the next slot up — a day out in the planetary
+ *  zones, a week in interplanetary. Without this the craft is unplaceable over
+ *  its own first hours of flight, which draws as a hole in its trail. The two
+ *  drift apart over that stretch (Huygens is ~1000 km off Cassini by the time
+ *  its own fits start, against 1.2 million km to Saturn), which is far less
+ *  than a pixel wrong at any range the gap is visible from. */
+const DETACH_GRACE_DAYS = 7;
+
 interface ProbeLocation {
 	zone: string;
 	probe: Probe;
@@ -97,9 +117,8 @@ export class ProbeStore {
 	 *  `ensure()` calls don't kick off duplicate fetches. */
 	private readonly inflight = new Map<string, Promise<void>>();
 	private lastEnsuredJd: number = NaN;
-	/** Passenger object id → the craft it rides and when. See
-	 *  {@link registerCarried}. */
-	private readonly carried = new Map<string, CarriedFrom>();
+	/** Passenger object id → the ride it is on. See {@link registerCarried}. */
+	private readonly carried = new Map<string, PassengerGraft>();
 	/** Bumped per stored chunk. The renderer watches it so a paused clock still
 	 *  gets a position pass when probe data arrives after the boot pass. */
 	private _version = 0;
@@ -296,34 +315,24 @@ export class ProbeStore {
 	}
 
 	/**
-	 * Hand each riding craft its carrier's record under its own identity, and
-	 * drop the carrier's own entry while it does: the two sit closer together
-	 * than a pixel, so a second marker there is unreadable rather than
-	 * informative. A passenger with a record of its own is already flying —
-	 * it keeps that, and the carrier keeps its entry.
+	 * Hand each riding craft its carrier's record under its own identity, so a
+	 * craft with no fits of its own still enters the scene. Both stay in: which
+	 * of the two is drawn while they share a position is a per-frame call the
+	 * renderer makes from {@link ridesAt}, and the pair has to be in the scene
+	 * for either to be the one shown after they part.
 	 */
 	private withPassengers(
 		best: Map<string, ProbeWithWindow>,
 		jd: number
 	): Map<string, ProbeWithWindow> {
 		if (this.carried.size === 0) return best;
-		const rides: [string, ProbeWithWindow, CarriedFrom][] = [];
-		for (const [id, ride] of this.carried) {
+		const rides: [string, ProbeWithWindow][] = [];
+		for (const [id, { carriedFrom: ride }] of this.carried) {
 			if (jd < ride.start_jd || jd >= ride.end_jd || best.has(id)) continue;
 			const carrier = best.get(ride.object_id);
-			if (carrier) rides.push([id, carrier, ride]);
+			if (carrier) rides.push([id, carrier]);
 		}
-		for (const [id, carrier, ride] of rides) {
-			best.delete(ride.object_id);
-			best.set(id, {
-				...carrier,
-				id,
-				// Clipped to the ride: scrubbing past separation must drop the
-				// passenger rather than leave it stuck to the carrier.
-				startJd: Math.max(carrier.startJd, ride.start_jd),
-				endJd: Math.min(carrier.endJd, ride.end_jd)
-			});
-		}
+		for (const [id, carrier] of rides) best.set(id, { ...carrier, id });
 		return best;
 	}
 
@@ -334,7 +343,7 @@ export class ProbeStore {
 	 * `coverage.position_from`; unknown craft are simply never carried.
 	 */
 	registerCarried(passenger: PassengerGraft): void {
-		this.carried.set(passenger.id, passenger.carriedFrom);
+		this.carried.set(passenger.id, passenger);
 	}
 
 	/**
@@ -347,9 +356,35 @@ export class ProbeStore {
 	 */
 	private carrierAt(objectId: string, jd: number): string | null {
 		if (this.carried.size === 0) return null;
-		const ride = this.carried.get(objectId);
-		if (!ride || jd < ride.start_jd || jd >= ride.end_jd) return null;
+		const ride = this.carried.get(objectId)?.carriedFrom;
+		if (!ride || jd < ride.start_jd || jd >= ride.end_jd + DETACH_GRACE_DAYS) return null;
 		return ride.object_id;
+	}
+
+	/**
+	 * The rides live at `jd`, passenger and carrier both named. The renderer
+	 * draws one marker for the pair — they are far closer together than a pixel
+	 * — and captions it with the carrier while `attached`.
+	 *
+	 * A ride outlives separation for as long as the archive has nothing of the
+	 * craft's own, where the carrier's position beats no position at all. It
+	 * ends the moment the craft's own record answers.
+	 */
+	ridesAt(jd: number): Ride[] {
+		const out: Ride[] = [];
+		for (const [id, passenger] of this.carried) {
+			const ride = passenger.carriedFrom;
+			if (jd < ride.start_jd || jd >= ride.end_jd + DETACH_GRACE_DAYS) continue;
+			const attached = jd < ride.end_jd;
+			if (!attached && this.resolveOwn(id, jd)) continue;
+			out.push({
+				passengerId: id,
+				carrierId: ride.object_id,
+				carrierName: passenger.carrierName,
+				attached
+			});
+		}
+		return out;
 	}
 
 	private resolve(

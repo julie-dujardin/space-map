@@ -26,6 +26,30 @@ export function setLabelNote(bo: BodyObjects, show: boolean): void {
 	}
 }
 
+/** Caption a craft's label with whose position it is drawn at, or clear it with
+ *  `null`. Which craft of a carried pair is on screen changes with the date, so
+ *  the line is written per frame rather than at build time. Nested in the label
+ *  element to inherit its per-frame display culling; the anchor's aria-label has
+ *  to spell it out, since it overrides the contents. */
+export function setLabelCredit(bo: BodyObjects, carrier: string | null): void {
+	const text = carrier === null ? '' : m.carried_by_scene_label({ carrier });
+	if (!bo.labelSub) {
+		if (!text || !bo.label) return;
+		const sub = document.createElement('span');
+		sub.className = 'scene-label__sub';
+		sub.dir = 'auto';
+		bo.label.element.appendChild(sub);
+		bo.labelSub = sub;
+	} else if (bo.labelSub.textContent === text) {
+		return;
+	}
+	// Emptied rather than removed: the span is absolutely positioned with no box
+	// of its own, so an empty one draws nothing and stays ready for the next ride.
+	bo.labelSub.textContent = text;
+	const name = bo.body.data.name;
+	if (name) bo.label?.element.setAttribute('aria-label', text ? `${name}, ${text}` : name);
+}
+
 /** Lucide `package` — the flying spacecraft glyph. */
 const SPACECRAFT_ICON_D =
 	'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z';
@@ -108,9 +132,7 @@ export function createLabel(
 	onClick: () => void,
 	isLarge = false,
 	onHoverChange?: (hovered: boolean) => void,
-	isMinor = false,
-	/** Credit line under the name — see {@link PositionedBody.carriedBy}. */
-	subtitle?: string
+	isMinor = false
 ): CSS2DObject | null {
 	if (variant === 'none') return null;
 
@@ -123,9 +145,8 @@ export function createLabel(
 	el.draggable = false;
 	// Permanent accessible name: the visible name span is display:none'd while
 	// culled/dimmed, which strips it from the name computation, so the anchor
-	// carries its own aria-label that survives every dim/restore state. It
-	// overrides the contents, so the credit line has to be spelled into it.
-	if (name) el.setAttribute('aria-label', subtitle ? `${name}, ${subtitle}` : name);
+	// carries its own aria-label that survives every dim/restore state.
+	if (name) el.setAttribute('aria-label', name);
 
 	// halo: visual ring/hexagon, transition lives here not on root
 	let halo: HTMLElement | SVGSVGElement;
@@ -173,15 +194,6 @@ export function createLabel(
 
 	// Name text: absolutely positioned to the right, vertically centered on indicator
 	if (name) addLabelNameSpan(el, name, variant, isLarge);
-	// Under the name, so it reads as a caption on it rather than a second name.
-	if (name && subtitle) {
-		const sub = document.createElement('span');
-		sub.className = 'scene-label__sub';
-		sub.dir = 'auto';
-		sub.textContent = subtitle;
-		el.appendChild(sub);
-	}
-
 	// Minor halos collapse to the same scale as occluded/dimmed labels by
 	// default; on hover they grow to the regular hover size, on mouseleave
 	// they revert to the collapsed scale (instead of the no-transform default).

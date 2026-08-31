@@ -19,7 +19,6 @@ import {
 	type PositionedBody
 } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import * as m from '$lib/paraglide/messages.js';
 import { createLabel, getLabelVariant } from '../../label/factory';
 import { bodyHref } from '$lib/state/url';
 import { attachCanvasForwarders } from '../../label/forward';
@@ -152,8 +151,7 @@ export function buildMajorBodies(
 			() => handleFocus(body),
 			isLarge,
 			onHoverChange ? (hovered) => onHoverChange(id, hovered) : undefined,
-			isMinor,
-			body.carriedBy ? m.carried_by_scene_label({ carrier: body.carriedBy }) : undefined
+			isMinor
 		);
 		if (label) {
 			attachCanvasForwarders(label.element, rendererElement);
@@ -162,9 +160,6 @@ export function buildMajorBodies(
 
 		scene.add(group);
 		const labelHalo = label ? (label.element.firstElementChild as HTMLElement) : null;
-		const labelSub = label
-			? (label.element.querySelector('.scene-label__sub') as HTMLElement | null)
-			: null;
 		if (labelHalo) {
 			labelHalo.dataset.origBorder = labelHalo.style.border;
 		}
@@ -174,7 +169,7 @@ export function buildMajorBodies(
 			mesh,
 			label,
 			labelHalo,
-			labelSub,
+			labelSub: null,
 			loadingEl: null,
 			extraObjects,
 			corona: starExtras?.corona ?? null,

@@ -89,29 +89,17 @@ def test_carrier_without_coverage_is_skipped(caplog) -> None:
     assert "probe-100" in caplog.text
 
 
-def test_the_ride_runs_on_to_the_passengers_first_own_fit() -> None:
-    """The grid drops the partial slot between separation and the first
-    fitted sub-chunk; the craft rides across it instead of vanishing."""
+def test_the_ride_ends_at_separation() -> None:
+    """The stamp is the attachment, nothing more. A craft whose own fits
+    start later is carried across that hole by the frontend, which reads the
+    sub-chunk grid these whole-chunk windows cannot see."""
     coverage: ProbeCoverageMap = {
         "probe-100": _carrier(),
-        "probe-200": _own(RIDE_END + 1.0),
+        "probe-200": _own(RIDE_END + 5.0),
     }
     writer._add_carried_coverage(coverage)
-    assert coverage["probe-200"]["windows"] == [(RIDE_START, RIDE_END + 101.0)]
-    assert _carried_from(coverage["probe-200"])["end_jd"] == RIDE_END + 1.0
-
-
-def test_a_real_absence_after_separation_is_left_alone() -> None:
-    """Nothing is bridged past one sub-chunk of the widest grid: a craft
-    the archive picks up months later was genuinely missing."""
-    coverage: ProbeCoverageMap = {
-        "probe-100": _carrier(),
-        "probe-200": _own(RIDE_END + writer._DETACH_BRIDGE_DAYS + 1.0),
-    }
-    writer._add_carried_coverage(coverage)
-    own_start = RIDE_END + writer._DETACH_BRIDGE_DAYS + 1.0
     assert coverage["probe-200"]["windows"] == [
         (RIDE_START, RIDE_END),
-        (own_start, own_start + 100.0),
+        (RIDE_END + 5.0, RIDE_END + 105.0),
     ]
     assert _carried_from(coverage["probe-200"])["end_jd"] == RIDE_END
