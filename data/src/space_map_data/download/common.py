@@ -18,6 +18,7 @@ from space_map_data.download.providers.spice import (
     HorizonsSyntheticDownloader,
     ProbesDownloader,
     PropagationDownloader,
+    SpacetrackTleDownloader,
     SpiceDownloader,
 )
 from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
@@ -68,6 +69,7 @@ PROVIDERS_CLASSES = [
     HorizonsSyntheticDownloader,
     PropagationDownloader,
     DeepcatSynthDownloader,
+    SpacetrackTleDownloader,
     WikidataDownloader,
     ManualDownloader,
     WikipediaDownloader,

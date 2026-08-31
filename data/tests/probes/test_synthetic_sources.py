@@ -10,10 +10,14 @@ import json
 import pytest
 
 from space_map_data.probes import probe_id as probe_id_module
-from space_map_data.probes.probe_id import assign, index_by_source
+from space_map_data.probes.probe_id import (
+    assign,
+    has_archive_trajectory,
+    index_by_source,
+)
 
 
-def _entry(probe_id, naif, mission="EVENTS-DB", name="Venera 2"):
+def _entry(probe_id, naif, mission="EVENTS-DB", name="Venera 2", cospar=None):
     return {
         "probe_id": probe_id,
         "name": name,
@@ -21,7 +25,7 @@ def _entry(probe_id, naif, mission="EVENTS-DB", name="Venera 2"):
         "inception_mjd": 39000,
         "dedupe": 0,
         "wikidata_qid": None,
-        "cospar_id": None,
+        "cospar_id": cospar,
         "norad_cat_id": None,
         "kernel_sources": [{"mission": mission, "naif_id": naif}],
     }
@@ -102,3 +106,121 @@ class TestStandaloneModeSaves:
             "EVENTS-DB",
             "GCAT-DEEP",
         ]
+
+
+class TestCosparAttachment:
+    """A real kernel reaches an events-only probe through its COSPAR.
+
+    That probe's `naif_id` is a synthetic one no kernel is indexed under, so a
+    NAIF match cannot find it and the kernel would register a second probe for
+    the same spacecraft — DSCOVR carried its L1 trajectory on one page and its
+    mission on another for exactly this reason.
+    """
+
+    def test_a_kernel_joins_the_events_probe_sharing_its_cospar(self):
+        registry = [_entry(105070592, -90000220, name="DSCOVR", cospar="2015-007A")]
+        record = assign(
+            "HORIZONS-SYNTH",
+            -78,
+            39000,
+            registry,
+            index_by_source(registry),
+            cospar="2015-007A",
+        )
+        assert record.probe_id == 105070592
+        assert len(registry) == 1
+
+    def test_the_entry_adopts_the_naif_that_indexes_a_kernel(self):
+        registry = [_entry(105070592, -90000220, name="DSCOVR", cospar="2015-007A")]
+        assign(
+            "HORIZONS-SYNTH",
+            -78,
+            39000,
+            registry,
+            index_by_source(registry),
+            cospar="2015-007A",
+        )
+        assert registry[0]["naif_id"] == -78
+        # `_collect_probes` buckets on the first source, so the one naming a
+        # real kernel has to lead — the events source indexes nothing.
+        assert registry[0]["kernel_sources"][0] == {
+            "mission": "HORIZONS-SYNTH",
+            "naif_id": -78,
+        }
+
+    def test_a_probe_with_its_own_kernels_keeps_its_naif(self):
+        registry = [
+            _entry(1, -82, mission="CASSINI", name="Cassini", cospar="1997-061A")
+        ]
+        assign(
+            "HORIZONS-SYNTH",
+            -1000,
+            39000,
+            registry,
+            index_by_source(registry),
+            cospar="1997-061A",
+        )
+        assert registry[0]["naif_id"] == -82
+        assert registry[0]["kernel_sources"][0]["mission"] == "CASSINI"
+
+    def test_a_cospar_two_probes_share_is_left_alone(self):
+        # A joint launch puts several craft under one designator; picking one
+        # would graft the trajectory onto whichever sorted first.
+        registry = [
+            _entry(1, -90000001, name="Chang'e 5 Lander", cospar="2020-087A"),
+            _entry(2, -90000002, name="Chang'e 5 Orbiter", cospar="2020-087A"),
+        ]
+        record = assign(
+            "HORIZONS-SYNTH",
+            -155,
+            39000,
+            registry,
+            index_by_source(registry),
+            cospar="2020-087A",
+        )
+        assert record.probe_id not in (1, 2)
+        assert all(len(e["kernel_sources"]) == 1 for e in registry[:2])
+
+    def test_no_cospar_still_registers_a_new_probe(self):
+        registry = [_entry(105070592, -90000220, name="DSCOVR", cospar="2015-007A")]
+        record = assign(
+            "HORIZONS-SYNTH", -78, 39000, registry, index_by_source(registry)
+        )
+        assert record.probe_id != 105070592
+        assert len(registry) == 2
+
+
+class TestArchiveTrajectoryCheck:
+    """Which probes are left alone.
+
+    The check is asked of the registry entry, not of a NAIF: Stardust is
+    registered as -90000165 by the events database and tracked as -29 by
+    Horizons, so a NAIF-level test misses that it already has a trajectory and
+    drops a derived conic on top of a real one.
+    """
+
+    def test_a_probe_with_no_kernels_is_solved(self):
+        entry = {"kernel_sources": [{"mission": "EVENTS-DB", "naif_id": -90000123}]}
+        assert not has_archive_trajectory(entry)
+
+    def test_a_probe_tracked_under_another_naif_is_left_alone(self):
+        entry = {
+            "naif_id": -90000165,
+            "kernel_sources": [
+                {"mission": "EVENTS-DB", "naif_id": -90000165},
+                {"mission": "HORIZONS-SYNTH", "naif_id": -29},
+            ],
+        }
+        assert has_archive_trajectory(entry)
+
+    def test_our_own_folders_do_not_count_as_a_trajectory(self):
+        entry = {
+            "kernel_sources": [
+                {"mission": "EVENTS-DB", "naif_id": -90000123},
+                {"mission": "GCAT-DEEP", "naif_id": -90000123},
+            ]
+        }
+        assert not has_archive_trajectory(entry)
+
+    def test_an_entry_with_no_sources_has_no_trajectory(self):
+        assert not has_archive_trajectory({})

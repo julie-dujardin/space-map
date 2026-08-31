@@ -112,39 +112,3 @@ class TestArcHash:
         before = deepcat_synth._arc_hash(NAIF, [_arc(ArcClass.TRANSFER, 0.0, 100.0)])
         after = deepcat_synth._arc_hash(NAIF, [_arc(ArcClass.TRANSFER, 0.0, 200.0)])
         assert before != after
-
-
-class TestArchiveTrajectoryCheck:
-    """Which probes are left alone.
-
-    The check is asked of the registry entry, not of a NAIF: Stardust is
-    registered as -90000165 by the events database and tracked as -29 by
-    Horizons, so a NAIF-level test misses that it already has a trajectory and
-    drops a derived conic on top of a real one.
-    """
-
-    def test_a_probe_with_no_kernels_is_solved(self):
-        entry = {"kernel_sources": [{"mission": "EVENTS-DB", "naif_id": -90000123}]}
-        assert not deepcat_synth._has_archive_trajectory(entry)
-
-    def test_a_probe_tracked_under_another_naif_is_left_alone(self):
-        entry = {
-            "naif_id": -90000165,
-            "kernel_sources": [
-                {"mission": "EVENTS-DB", "naif_id": -90000165},
-                {"mission": "HORIZONS-SYNTH", "naif_id": -29},
-            ],
-        }
-        assert deepcat_synth._has_archive_trajectory(entry)
-
-    def test_our_own_folders_do_not_count_as_a_trajectory(self):
-        entry = {
-            "kernel_sources": [
-                {"mission": "EVENTS-DB", "naif_id": -90000123},
-                {"mission": "GCAT-DEEP", "naif_id": -90000123},
-            ]
-        }
-        assert not deepcat_synth._has_archive_trajectory(entry)
-
-    def test_an_entry_with_no_sources_has_no_trajectory(self):
-        assert not deepcat_synth._has_archive_trajectory({})

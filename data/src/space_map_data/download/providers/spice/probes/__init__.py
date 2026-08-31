@@ -5,6 +5,7 @@ from .downloader import ProbesDownloader
 from .layout import LANDED_MISSIONS_DIR, MISSIONS_DIR
 from .mission_patterns import LANDED_INCLUDE, MISSION_INCLUDE
 from .propagation import PropagationDownloader
+from .tle_synth import SpacetrackTleDownloader
 
 __all__ = [
     "LANDED_INCLUDE",
@@ -14,4 +15,5 @@ __all__ = [
     "MISSION_INCLUDE",
     "ProbesDownloader",
     "PropagationDownloader",
+    "SpacetrackTleDownloader",
 ]

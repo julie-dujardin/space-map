@@ -166,11 +166,14 @@ def year_zips(year: int) -> list[Path]:
     return [single] if single.exists() else []
 
 
-def _source_zips_for(year: int) -> list[Path]:
+def source_zips_for(year: int) -> list[Path]:
     """Physical archive zip(s) whose epochs cover output ``year``. Pre-2004
     history lives in the 2004 mega-dump, so every year ≤ 2004 resolves there.
     """
     return year_zips(_MEGA_DUMP_YEAR if year <= _MEGA_DUMP_YEAR else year)
+
+
+_source_zips_for = source_zips_for
 
 
 def archive_source_groups(years: Iterable[int]) -> list[tuple[str, list[int]]]:
@@ -468,15 +471,16 @@ def _write_norad_cache(cache: dict) -> None:
     ARCHIVE_NORAD_CACHE.write_text(json.dumps(cache))
 
 
-def archive_norad_set(years: Iterable[int]) -> set[int]:
-    """Union of every NORAD present in the archive across ``years``.
+def archive_norads_by_group(years: Iterable[int]) -> dict[str, set[int]]:
+    """Which NORADs each source group holds, keyed by group label.
 
-    Cached per source group, keyed on zip fingerprint + year span, so a group
-    only re-scans when its inputs change. Used by Earth-sat ingest to set
-    ``has_position`` on decayed sats that ship only in historical weeks.
+    Cached per source group on zip fingerprint + year span, so a group only
+    re-scans when its inputs change. Callers after a handful of satellites read
+    this first and open only the groups that carry one — the archive is ~12 GB
+    and most groups hold nothing they want.
     """
     cache = _load_norad_cache()
-    result: set[int] = set()
+    result: dict[str, set[int]] = {}
     scanned = 0
     for label, group_years in archive_source_groups(years):
         zips = _source_zips_for(group_years[0])
@@ -490,7 +494,7 @@ def archive_norad_set(years: Iterable[int]) -> set[int]:
             and entry.get("fingerprint") == fingerprint
             and entry.get("years") == group_years
         ):
-            result.update(entry["norads"])
+            result[label] = set(entry["norads"])
             continue
         logger.info("Archive NORAD cache miss for group %s — scanning zip(s)", label)
         group_norads = _scan_source_norads(zips, group_years)
@@ -499,13 +503,58 @@ def archive_norad_set(years: Iterable[int]) -> set[int]:
             "years": group_years,
             "norads": sorted(group_norads),
         }
-        result.update(group_norads)
+        result[label] = group_norads
         scanned += 1
     if scanned:
         _write_norad_cache(cache)
     logger.info(
-        "Archive NORAD set: %d distinct satellites (%d group(s) rescanned)",
+        "Archive NORAD set: %d group(s), %d distinct satellites (%d rescanned)",
         len(result),
+        len(set().union(*result.values())) if result else 0,
         scanned,
     )
     return result
+
+
+def archive_norad_set(years: Iterable[int]) -> set[int]:
+    """Union of every NORAD present in the archive across ``years``. Used by
+    Earth-sat ingest to set ``has_position`` on decayed sats that ship only in
+    historical weeks."""
+    groups = archive_norads_by_group(years)
+    return set().union(*groups.values()) if groups else set()
+
+
+def _strip_continuation(line: str) -> str:
+    """One archive line, trimmed back to the 69 columns a TLE has.
+
+    A third of the archive's first lines carry a trailing ``\\``. Column
+    slicing never notices, but a strict reader — `spiceypy.getelm` — rejects
+    the line outright, so anything handing raw lines onward strips it first.
+    """
+    return line.rstrip("\r\n").rstrip("\\").rstrip()
+
+
+def iter_archive_tle_lines(
+    zip_path: Path, norads: set[int]
+) -> Iterator[tuple[int, str, str]]:
+    """Stream the raw line pairs for ``norads`` from one archive zip.
+
+    Raw, not distilled: :func:`load_archive_weeks` keeps one element set per
+    satellite per week, which a consumer must then propagate up to 3.5 days
+    from epoch. Measured against a reconstruction that costs a median 216 km
+    where the archive's own ~daily cadence costs 26 km, so anything rebuilding
+    a trajectory reads the pairs itself.
+    """
+    wanted = {f"1 {norad:05d}" for norad in norads}
+    with zipfile.ZipFile(zip_path) as zf:
+        member = _archive_member(zf, zip_path)
+        with zf.open(member) as raw:
+            prev: str | None = None
+            for bline in raw:
+                line = _strip_continuation(bline.decode("ascii", "replace"))
+                if prev is not None:
+                    if line.startswith("2 "):
+                        yield int(prev[2:7]), prev, line
+                    prev = None
+                if line[:7] in wanted:
+                    prev = line

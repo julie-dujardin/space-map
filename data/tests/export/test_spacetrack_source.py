@@ -9,6 +9,8 @@ from space_map_data.export.position.elements import spacetrack_source
 from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
 from space_map_data.export.position.elements.spacetrack_source import (
     _archive_member,
+    _strip_continuation,
+    iter_archive_tle_lines,
     _decode_exp,
     _scan_source_norads,
     _source_zips_for,
@@ -354,3 +356,49 @@ class TestArchiveNoradSet:
         monkeypatch.setattr(spacetrack_source, "_scan_source_norads", counting_scan)
         assert archive_norad_set([2024]) == {5}
         assert scans == [[2024]]  # stale version → rescanned despite matching zip
+
+
+class TestRawLinePairs:
+    """Reading element sets back out of the archive as written.
+
+    The weekly distillation keeps one set per satellite per week; anything
+    rebuilding a trajectory reads the pairs themselves, and a strict reader
+    downstream is fussier about the archive's quirks than column slicing is.
+    """
+
+    def test_a_trailing_continuation_is_stripped(self):
+        line = "1 26463U 00045A   18003.68813341  .00000111  00000-0  00000+0 0  6906\\"
+        assert len(_strip_continuation(line)) == 69
+        assert not _strip_continuation(line).endswith("\\")
+
+    def test_a_clean_line_is_unchanged(self):
+        line = "2 26463 133.5552 334.5777 4689384 163.5081 359.1293  0.44232014 18965"
+        assert _strip_continuation(line) == line
+
+    def test_only_the_wanted_satellites_come_back(self, tmp_path):
+        path = tmp_path / "tle.txt.zip"
+        _make_tle_zip(
+            path,
+            [
+                "1 26463U 00045A   18003.68813341  .00000111  00000-0  00000+0 0  6906",
+                "2 26463 133.5552 334.5777 4689384 163.5081 359.1293  0.44232014 18965",
+                "1 27540U 02048A   18003.33541700  .00000111  00000-0  00000+0 0  6906",
+                "2 27540  49.1267 178.1151 8400000 163.5081 359.1293  0.37580000 18965",
+            ],
+        )
+        pairs = list(iter_archive_tle_lines(path, {26463}))
+        assert [norad for norad, _, _ in pairs] == [26463]
+
+    def test_an_unpaired_first_line_yields_nothing(self, tmp_path):
+        path = tmp_path / "tle.txt.zip"
+        _make_tle_zip(
+            path,
+            [
+                "1 26463U 00045A   18003.68813341  .00000111  00000-0  00000+0 0  6906",
+                "1 26463U 00045A   18005.94879523  .00000167  00000-0  00000+0 0  6913",
+                "2 26463 133.5517 334.6043 4690354 163.5769 359.0308  0.44228057 18974",
+            ],
+        )
+        pairs = list(iter_archive_tle_lines(path, {26463}))
+        assert len(pairs) == 1
+        assert pairs[0][1].startswith("1 26463U 00045A   18005")

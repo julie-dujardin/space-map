@@ -1,12 +1,12 @@
 """Bookkeeping for the SPK folders we write rather than mirror.
 
-Two synthesisers produce kernels instead of downloading them: the two-body
-extension of a stale archive, and the conics solved from the Deep Space
-Catalog. Both drop files into a mission folder the export walker reads like any
-other, so both need the same `_index.json` — a seed record, one entry per file
-carrying the provenance that makes a re-run idempotent, and removal once a
-kernel stops being justified. That bookkeeping lives here so the on-disk shape
-has one owner.
+Three synthesisers produce kernels instead of downloading them: the two-body
+extension of a stale archive, the conics solved from the Deep Space Catalog,
+and the element sets read out of the Space-Track archive. All drop files into a
+mission folder the export walker reads like any other, so all need the same
+`_index.json` — a seed record, one entry per file carrying the provenance that
+makes a re-run idempotent, and removal once a kernel stops being justified.
+That bookkeeping lives here so the on-disk shape has one owner.
 """
 
 import json
@@ -160,6 +160,63 @@ def write_type5(
         spiceypy.spkcls(handle)
 
 
+# WGS-72, the model the element sets are fitted against; SGP4 reproduces the
+# fit only when evaluated with the same constants. Order is the one spkw10
+# reads: J2, J3, J4, KE, QO, SO, ER, AE.
+_WGS72_GEOPHYSICAL: tuple[float, ...] = (
+    1.082616e-3,
+    -2.53881e-6,
+    -1.65597e-6,
+    7.43669161e-2,
+    120.0,
+    78.0,
+    6378.135,
+    1.0,
+)
+
+
+def write_type10(
+    out_path: Path,
+    naif: int,
+    internal_name: str,
+    segments: list[tuple[list[float], list[list[float]], str]],
+) -> None:
+    """Write one Type 10 segment per ``(epochs, element sets, segid)`` run.
+
+    Type 10 stores the element sets themselves and lets SPICE run its own
+    SGP4/SDP4 over them, so nothing here samples a trajectory or rotates TEME
+    into J2000 — both are the toolkit's job, and both are places a hand-rolled
+    version would quietly differ from the model the elements were fitted to.
+
+    One segment per contiguous run, so a break in the catalogue's tracking
+    stays a break: SPICE answers from the nearest element set within a segment,
+    which across a year-long hole would read as coverage.
+
+    Epochs must increase strictly. Overwrites; the caller owns atomicity.
+    """
+    if out_path.exists():
+        out_path.unlink()
+    handle = spiceypy.spkopn(str(out_path), internal_name[:60], 0)
+    try:
+        for epochs, elements, segid in segments:
+            flat = [value for element_set in elements for value in element_set]
+            spiceypy.spkw10(
+                handle=handle,
+                body=naif,
+                center=399,
+                inframe="J2000",
+                first=epochs[0],
+                last=epochs[-1],
+                segid=segid[:40],
+                consts=np.array(_WGS72_GEOPHYSICAL, dtype=float),
+                n=len(epochs),
+                elems=np.array(flat, dtype=float),
+                epochs=np.array(epochs, dtype=float),
+            )
+    finally:
+        spiceypy.spkcls(handle)
+
+
 __all__ = [
     "EXTRAP_SUFFIX",
     "INDEX_NAME",
@@ -168,4 +225,5 @@ __all__ = [
     "ensure_index",
     "record_file",
     "write_type5",
+    "write_type10",
 ]

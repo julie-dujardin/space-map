@@ -82,6 +82,7 @@ def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]
 
     per_mission_naifs: dict[tuple[str, int], dict] = {}
     name_hints: dict[tuple[str, int], str] = {}
+    cospar_hints: dict[tuple[str, int], str] = {}
 
     def _ingest_bucket(base: Path) -> None:
         if not base.exists():
@@ -98,17 +99,23 @@ def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]
             idx = json.loads(idx_path.read_text())
             for f in idx.get("files", []):
                 hint = f.get("name_horizons")
-                if not hint:
+                cospar = f.get("cospar")
+                if not hint and not cospar:
                     continue
                 for t in f.get("targets", []):
                     try:
-                        name_hints.setdefault((mdir.name, int(t)), hint)
+                        key = (mdir.name, int(t))
                     except TypeError, ValueError:
                         logger.warning(
                             "skipping non-int NAIF target %r in %s",
                             t,
                             idx_path,
                         )
+                        continue
+                    if hint:
+                        name_hints.setdefault(key, hint)
+                    if cospar:
+                        cospar_hints.setdefault(key, cospar)
             # Negatives are spacecraft per SPICE convention (modern commercial
             # missions exceed -1..-999: Blue Ghost 1 -2711, IM-1 -370011), minus
             # landing-site/instrument sub-NAIFs — see is_spacecraft_naif.
@@ -160,6 +167,7 @@ def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]
                 "naif_id": naif_id,
                 "inception_mjd": et_to_mjd(t0),
                 "name_hint": name_hints.get((mission, naif_id)),
+                "cospar_hint": cospar_hints.get((mission, naif_id)),
             }
         )
     # Deterministic dedupe order: (inception, naif_id, mission).
@@ -195,6 +203,7 @@ def _events_only_records(
             "naif_id": naif_id,
             "inception_mjd": int(entry["inception_mjd"]),
             "name_hint": None,
+            "cospar_hint": None,
         }
         out.append((record, record_from_entry(entry)))
     return out
@@ -286,7 +295,10 @@ class ProbesIngestor:
 
         # Pin every (mission, naif_id) to a stable probe_id via the on-disk cache.
         assignments = assign_many(
-            [(r["mission"], r["naif_id"], r["inception_mjd"]) for r in records]
+            [(r["mission"], r["naif_id"], r["inception_mjd"]) for r in records],
+            cospars={
+                (r["mission"], r["naif_id"]): r.get("cospar_hint") for r in records
+            },
         )
 
         # Events-only probes (Apollo CSMs, Veneras, Magellan, Stardust, …)

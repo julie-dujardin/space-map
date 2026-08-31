@@ -301,11 +301,16 @@ def agency_naif_coverage(
     return {n: merge_intervals(iv) for n, iv in by_naif.items()}
 
 
-def _write_index(coverage: dict[int, str]) -> None:
+def _write_index(
+    coverage: dict[int, str], cospars: dict[int, str | None] | None = None
+) -> None:
     """Emit a `missions/HORIZONS-SYNTH/_index.json` so the ingest walker finds
     these kernels alongside the rest. Matches ProbesDownloader's per-mission
     index plus per-file `name_horizons`/`revised` (for a future precedence
-    resolver: synth wins over agency only when its `revised` is newer).
+    resolver: synth wins over agency only when its `revised` is newer) and the
+    MB list's `cospar`, which is how a kernel reaches the probe it belongs to
+    when that probe was registered from the events database under a synthetic
+    NAIF of its own.
     """
     SYNTH_KERNELS_DIR.mkdir(parents=True, exist_ok=True)
     files = []
@@ -328,6 +333,7 @@ def _write_index(coverage: dict[int, str]) -> None:
                 "size_bytes": spk.stat().st_size,
                 "targets": [naif_id],
                 "name_horizons": name,
+                "cospar": (cospars or {}).get(naif_id),
                 "revised": revised,
             }
         )

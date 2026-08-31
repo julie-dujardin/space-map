@@ -15,6 +15,7 @@ class PROVIDERS(StrEnum):
     SPICE_PROBES_PROPAGATION = "spice_probes_propagation"
     SPICE_DEEPCAT = "spice_deepcat"
     SPICE_HORIZONS_SYNTH = "spice_horizons_synth"
+    SPICE_SPACETRACK_TLE = "spice_spacetrack_tle"
     WIKIDATA = "wikidata"
     WIKIPEDIA = "wikipedia"
     COMMONS = "commons"

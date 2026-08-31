@@ -39,6 +39,7 @@ class TestEventsOnlyRecords:
             "naif_id": -90000282,
             "inception_mjd": 50000,
             "name_hint": None,
+            "cospar_hint": None,
         }
 
     def test_entry_with_a_real_kernel_source_is_left_to_the_spk_walk(self):

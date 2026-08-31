@@ -47,7 +47,7 @@ class HorizonsSyntheticDownloader(Downloader):
         self.out_dir = SYNTH_CACHE_ROOT
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
-    def _candidates(self, limit: int | None) -> list[tuple[int, str]]:
+    def _candidates(self, limit: int | None) -> list[tuple[int, str, str | None]]:
         mb_path = DERIVED_POSITION_DIR / "tables" / MB_FILENAME
         if not mb_path.exists():
             raise DownloadError(
@@ -57,8 +57,8 @@ class HorizonsSyntheticDownloader(Downloader):
         ct_excludes = celestrak_active_excludes(all_sc)
         qid_dups = qid_deduped_synth_naifs()
         candidates = [
-            (n, nm)
-            for n, nm, _cospar in all_sc
+            (n, nm, cospar)
+            for n, nm, cospar in all_sc
             if n not in ct_excludes and n not in qid_dups
         ]
         logger.info(
@@ -78,10 +78,11 @@ class HorizonsSyntheticDownloader(Downloader):
         candidates = self._candidates(limit)
         agency_coverage = agency_naif_coverage(exclude_mission="HORIZONS-SYNTH")
         succeeded: dict[int, str] = {}
+        cospars: dict[int, str | None] = {}
         skipped: list[tuple[int, str, str]] = []
         failed: list[tuple[int, str, str]] = []
 
-        for i, (naif_id, name) in enumerate(candidates, 1):
+        for i, (naif_id, name, cospar) in enumerate(candidates, 1):
             logger.info("[%d/%d] naif %d (%s)", i, len(candidates), naif_id, name)
             try:
                 fetch_one(self.client, naif_id)
@@ -128,10 +129,11 @@ class HorizonsSyntheticDownloader(Downloader):
                         name,
                     )
             succeeded[naif_id] = name
+            cospars[naif_id] = cospar
             # Light pacing between spacecraft.
             time.sleep(0.5)
 
-        _write_index(succeeded)
+        _write_index(succeeded, cospars)
         self._save_metadata(
             HORIZONS_URL,
             len(succeeded),

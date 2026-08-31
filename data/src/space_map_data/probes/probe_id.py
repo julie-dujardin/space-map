@@ -224,42 +224,105 @@ def load_probe_labels() -> dict[int, str]:
 
 # Mission names the registry treats specially, spelled once here because the
 # producers, the export credit table and the registry itself all have to agree
-# on them.
-#
-# `EVENTS-DB` is a probe registered from the events database with no kernels at
-# all. The other two are folders we write rather than mirror, each holding
-# kernels for a probe that already exists under some other source: they borrow
-# that probe's NAIF, so they attach to its entry instead of allocating a second
-# probe for the same spacecraft.
+# on them. `EVENTS-DB` is a probe registered from the events database with no
+# kernels at all.
 EVENTS_DB_MISSION = "EVENTS-DB"
 EVENTS_STATE_MISSION = "EVENTS-STATE"
 GCAT_DEEP_MISSION = "GCAT-DEEP"
-SYNTHETIC_MISSIONS: frozenset[str] = frozenset(
-    {EVENTS_STATE_MISSION, GCAT_DEEP_MISSION}
+HORIZONS_SYNTH_MISSION = "HORIZONS-SYNTH"
+SPACETRACK_TLE_MISSION = "SPACETRACK-TLE"
+
+# Folders holding a trajectory we derived rather than one an archive published:
+# a two-body extension, a conic solved from a catalogue, element sets read out
+# of the Space-Track archive. A probe carrying only these still counts as
+# having no trajectory of its own, which is what the synthesisers select on.
+DERIVED_MISSIONS: frozenset[str] = frozenset(
+    {EVENTS_STATE_MISSION, GCAT_DEEP_MISSION, SPACETRACK_TLE_MISSION}
 )
+
+# Folders we write rather than mirror. Each holds kernels for a probe that
+# already exists under some other source, so they attach to its entry instead
+# of allocating a second probe for the same spacecraft. Horizons synthesis
+# belongs here and not in DERIVED_MISSIONS: it is JPL's own ephemeris, just
+# delivered as vectors rather than as a kernel.
+SYNTHETIC_MISSIONS: frozenset[str] = DERIVED_MISSIONS | {HORIZONS_SYNTH_MISSION}
+
+_NON_ARCHIVE_MISSIONS = DERIVED_MISSIONS | {EVENTS_DB_MISSION}
+
+
+def has_archive_trajectory(entry: dict) -> bool:
+    """Whether the probe already has a trajectory from somewhere real.
+
+    Asked of the registry entry rather than of a NAIF, because the two do not
+    line up: a probe's `naif_id` is whichever id first registered it, while its
+    archive kernels can sit under a different id entirely — Stardust is
+    registered as -90000165 from the events database and tracked as -29 by
+    Horizons.
+    """
+    return any(
+        source.get("mission") not in _NON_ARCHIVE_MISSIONS
+        for source in entry.get("kernel_sources") or []
+    )
+
+
+def synthetic_sources(entry: dict) -> set[str]:
+    """Which derived-kernel folders already claim this probe."""
+    return {
+        source.get("mission")
+        for source in entry.get("kernel_sources") or []
+        if source.get("mission") in SYNTHETIC_MISSIONS
+    }
 
 
 def _attach_synthetic_source(
-    registry: list[dict], mission: str, naif_id: int
+    registry: list[dict], mission: str, naif_id: int, cospar: str | None = None
 ) -> dict | None:
-    """Append ``mission`` to the entry that already owns ``naif_id``.
+    """Append ``mission`` to the entry that already owns this spacecraft.
+
+    Matched on NAIF first, then on COSPAR. The second pass is what joins a
+    real kernel to a probe the events database registered: that probe's
+    ``naif_id`` is a synthetic one that indexes no kernel anywhere, so a NAIF
+    match can never find it and the kernel would allocate a parallel probe for
+    the same spacecraft — which is how DSCOVR ended up with its L1 trajectory
+    on one page and its mission on another.
 
     Returns None when no entry owns it, or when more than one does — NAIF ids
     are reused across missions decades apart, and guessing which spacecraft a
     synthesised kernel belongs to would silently graft a trajectory onto the
-    wrong probe."""
+    wrong probe.
+    """
     owners = [e for e in registry if int(e["naif_id"]) == naif_id]
+    matched_on = "NAIF"
+    if not owners and cospar:
+        owners = [e for e in registry if e.get("cospar_id") == cospar]
+        matched_on = "COSPAR"
     if len(owners) != 1:
         if owners:
             logger.warning(
-                "%s/%d: %d registry entries claim this NAIF; not attaching",
+                "%s/%d: %d registry entries claim this %s; not attaching",
                 mission,
                 naif_id,
                 len(owners),
+                matched_on,
             )
         return None
     entry = owners[0]
-    entry["kernel_sources"].append({"mission": mission, "naif_id": naif_id})
+    source = {"mission": mission, "naif_id": naif_id}
+    if has_archive_trajectory(entry) or matched_on == "NAIF":
+        entry["kernel_sources"].append(source)
+        return entry
+    # The probe had no kernel of any kind, so its stored NAIF indexes nothing.
+    # The incoming one does, and `_collect_probes` walks kernels under the
+    # first source's NAIF — so this source leads and the entry adopts its id.
+    entry["kernel_sources"].insert(0, source)
+    entry["naif_id"] = naif_id
+    logger.info(
+        "%s: adopted NAIF %d for %r, matched on COSPAR %s",
+        mission,
+        naif_id,
+        entry.get("name"),
+        cospar,
+    )
     return entry
 
 
@@ -286,6 +349,7 @@ def assign(
     inception_mjd: int,
     registry: list[dict] | None = None,
     source_index: dict[tuple[str, int], dict] | None = None,
+    cospar: str | None = None,
 ) -> ProbeIdRecord:
     """Return a stable probe_id for `(mission, naif_id)`.
 
@@ -305,7 +369,7 @@ def assign(
 
     existing = source_index.get((mission, naif_id))
     if existing is None and mission in SYNTHETIC_MISSIONS:
-        existing = _attach_synthetic_source(registry, mission, naif_id)
+        existing = _attach_synthetic_source(registry, mission, naif_id, cospar)
         if existing is not None:
             source_index[(mission, naif_id)] = existing
             if owned:
@@ -348,6 +412,7 @@ def load_mission_qids() -> set[str]:
 
 def assign_many(
     items: list[tuple[str, int, int]],
+    cospars: dict[tuple[str, int], str | None] | None = None,
 ) -> dict[tuple[str, int], ProbeIdRecord]:
     """Bulk-assign probe IDs, loading & saving the registry once.
 
@@ -355,13 +420,22 @@ def assign_many(
     input order — when two unregistered items share an inception date,
     dedupe slots go in `items` order, so callers should pre-sort by
     `(inception_mjd, naif_id)` for stable output.
+
+    `cospars` names each item's COSPAR where the mission index records one. A
+    synthesised kernel uses it to find the probe it belongs to when that probe
+    was registered under a NAIF of its own.
     """
     registry = load_registry()
     source_index = index_by_source(registry)
     out: dict[tuple[str, int], ProbeIdRecord] = {}
     for mission, naif_id, mjd in items:
         out[(mission, naif_id)] = assign(
-            mission, naif_id, mjd, registry=registry, source_index=source_index
+            mission,
+            naif_id,
+            mjd,
+            registry=registry,
+            source_index=source_index,
+            cospar=(cospars or {}).get((mission, naif_id)),
         )
     save_registry(registry)
     return out

@@ -27,9 +27,8 @@ from space_map_data.download.downloader import Downloader
 from space_map_data.probes.deepcat import load_deepcat
 from space_map_data.probes.deepcat_arcs import SolvedArc, solve_object
 from space_map_data.probes.probe_id import (
-    EVENTS_DB_MISSION,
     GCAT_DEEP_MISSION,
-    SYNTHETIC_MISSIONS,
+    has_archive_trajectory,
     load_registry,
 )
 from space_map_data.probes.propagation import (
@@ -139,27 +138,6 @@ def _drop_stale(mission_dir: Path, keep: set[str]) -> list[DeepcatSynthResult]:
     return removed
 
 
-# Registry missions that are not an archive trajectory: the events database
-# registers a probe with no kernels at all, and the synthetic folders hold
-# kernels we derived. Derived from the registry's own set so a third
-# synthesiser cannot be added there and forgotten here.
-_NON_ARCHIVE_MISSIONS = SYNTHETIC_MISSIONS | {EVENTS_DB_MISSION}
-
-
-def _has_archive_trajectory(entry: dict) -> bool:
-    """Whether the probe already has a trajectory from somewhere real.
-
-    Asked of the registry entry rather than of a NAIF, because the two do not
-    line up: a probe's `naif_id` is whichever id first registered it, while its
-    archive kernels can sit under a different id entirely — Stardust is
-    registered as -90000165 from the events database and tracked as -29 by
-    Horizons."""
-    return any(
-        source.get("mission") not in _NON_ARCHIVE_MISSIONS
-        for source in entry.get("kernel_sources") or []
-    )
-
-
 def synthesise_all() -> list[DeepcatSynthResult]:
     """Solve every catalogued deep-space object that joins to a probe with no
     trajectory of its own, and write its arcs.
@@ -194,7 +172,7 @@ def synthesise_all() -> list[DeepcatSynthResult]:
             if entry is None:
                 continue
             naif = entry.get("naif_id")
-            if naif is None or naif in curated or _has_archive_trajectory(entry):
+            if naif is None or naif in curated or has_archive_trajectory(entry):
                 continue
             arcs, _ = solve_object(obj, by_object.get(deep_id, []))
             if not arcs:

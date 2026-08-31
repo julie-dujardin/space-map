@@ -12,6 +12,7 @@ from .probes import (
     DeepcatSynthDownloader,
     ProbesDownloader,
     PropagationDownloader,
+    SpacetrackTleDownloader,
 )
 from .synth import HorizonsSyntheticDownloader
 
@@ -20,5 +21,6 @@ __all__ = [
     "HorizonsSyntheticDownloader",
     "ProbesDownloader",
     "PropagationDownloader",
+    "SpacetrackTleDownloader",
     "SpiceDownloader",
 ]
