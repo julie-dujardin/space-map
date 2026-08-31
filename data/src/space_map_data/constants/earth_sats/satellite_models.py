@@ -41,6 +41,9 @@ class SatelliteBusSpec:
     # Model bundle slug (EXPORT_DIR/v1/models/) applied to every known_satellites
     # entry, as a post-pass after explicit per-mission assignments win first.
     model_slug: str | None = None
+    # known_satellites that keep the bus membership but not its mesh, because
+    # the bus model reads as the wrong spacecraft for them.
+    model_excludes: tuple[str, ...] = ()
     notes: str | None = None
 
 
@@ -751,6 +754,9 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         model_format="glTF/OBJ",
         model_license="NASA Public Domain",
         model_slug="space-systems-loral-ssl-1300",
+        # Psyche flies the 1300 chassis, but the mesh is a GEO commsat with a
+        # comms dish; on a deep-space probe that reads as the wrong craft.
+        model_excludes=("PSYCHE",),
         notes="3-axis box + two solar wings, GEO. First Western commsat with electric propulsion "
         "(MBSat 2004). Rebranded Lanteris 1300 Oct 2025 after Intuitive Machines acquisition. "
         "Sketchfab community model: sketchfab.com/3d-models/loral-ssl-1300-satellite-b3fddca0b88346cfad87b2bb0700549f",

@@ -177,6 +177,8 @@ class ModelProcessor:
         damit_processor.process(force=force)
         session.commit()
 
+        self._write_bundle_index(session)
+
     def _load_manifests(self) -> None:
         """Discover every 3D manifest under ``MODELS_DOWNLOAD_DIR``.
 
@@ -425,10 +427,18 @@ class ModelProcessor:
                 return True
         return False
 
-    def _bus_object_ids(self, spec, db_object_ids: set[str]) -> list[str]:
-        """Object IDs for every ``known_satellites`` entry currently in DB."""
+    def _bus_object_ids(
+        self, spec, db_object_ids: set[str], *, for_model: bool = False
+    ) -> list[str]:
+        """Object IDs for every ``known_satellites`` entry currently in DB.
+
+        ``for_model`` drops the craft the bus mesh would misrepresent.
+        """
         out: list[str] = []
+        excluded = set(spec.model_excludes) if for_model else set()
         for name in spec.known_satellites:
+            if name.strip() in excluded:
+                continue
             norad = self._satcat_name_to_norad.get(name.strip())
             if norad is None:
                 continue
@@ -458,7 +468,7 @@ class ModelProcessor:
         for spec in SATELLITE_BUSES:
             if not spec.model_slug:
                 continue
-            oids = self._bus_object_ids(spec, db_object_ids)
+            oids = self._bus_object_ids(spec, db_object_ids, for_model=True)
             if not oids:
                 continue
             for oid in oids:
@@ -495,6 +505,51 @@ class ModelProcessor:
                 }
             )
         session.commit()
+
+    def _write_bundle_index(self, session) -> None:
+        """Publish ``v1/models/index.json``: every curated bundle and the Objects
+        that draw it.
+
+        Written after every pointer pass, so it states what the map actually
+        renders rather than what a manifest asked for — the surface on which a
+        mesh landing on the wrong craft is visible. DAMIT bundles are left out:
+        11k lightcurve models are derived per-asteroid and swamp the file.
+        """
+        attached: dict[str, list[dict]] = defaultdict(list)
+        rows = (
+            session.query(Object.id, Object.name, Object.object_type, Object.model_name)
+            .filter(Object.model_name.is_not(None))
+            .all()
+        )
+        for oid, name, object_type, slug in rows:
+            attached[slug].append({"id": oid, "name": name, "type": str(object_type)})
+
+        bundles: dict[str, dict] = {}
+        for slug_dir in sorted(config.PROCESSED_DIR.iterdir()):
+            meta_file = slug_dir / "metadata.json"
+            if not slug_dir.is_dir() or not meta_file.exists():
+                continue
+            meta = json.loads(meta_file.read_text())
+            if meta.get("provenance") == "lightcurve":
+                continue
+            bundles[slug_dir.name] = {
+                "kind": meta.get("kind"),
+                "tiers": meta.get("tiers") or [],
+                "scale_meters": meta.get("scale_meters"),
+                "objects": sorted(attached[slug_dir.name], key=lambda o: o["id"]),
+            }
+
+        path = config.PROCESSED_DIR / "index.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "bundles": bundles,
+                }
+            )
+        )
+        log.info("model index: %d bundles → %s", len(bundles), path)
 
     def _process_entry(self, entry: dict, yaml_path: Path, *, force: bool) -> None:
         slug = entry.get("slug")
@@ -687,7 +742,7 @@ class ModelProcessor:
             return False
         try:
             existing = json.loads(sidecar_path.read_text())
-        except (OSError, json.JSONDecodeError):
+        except OSError, json.JSONDecodeError:
             return False
         return existing.get("invalidation") == cap_hash
 
