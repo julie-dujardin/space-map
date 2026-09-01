@@ -3,6 +3,7 @@
 import pytest
 
 from space_map_data.ingest.providers.objects.sbdb import (
+    SBDBIngestor,
     _display_name,
     _object_type,
     _parent_id,
@@ -202,3 +203,43 @@ class TestSbdbDict:
         d = _sbdb_dict(row)
         assert d["producer"] is None
         assert d["extent"] is None
+
+
+class TestClaimedSpkids:
+    """A SPK-ID a later pass adopted is skipped, not re-minted into a clash."""
+
+    @staticmethod
+    def _ingestor(claimed):
+        i = SBDBIngestor.__new__(SBDBIngestor)
+        i.claimed_spkids = claimed
+        i.session = None
+        return i
+
+    @staticmethod
+    def _rows(*spkids):
+        return [{"object": {"spkid": s}, "sbdb": {"spkid": s}} for s in spkids]
+
+    def test_unclaimed_rows_are_kept(self, monkeypatch):
+        i = self._ingestor(set())
+        seen = []
+        monkeypatch.setattr(
+            i, "_write", lambda o, s: seen.append([r["spkid"] for r in o])
+        )
+        i._insert(self._rows(1, 2))
+        assert seen == [[1, 2]]
+
+    def test_claimed_rows_are_dropped(self, monkeypatch):
+        i = self._ingestor({20134340})
+        seen = []
+        monkeypatch.setattr(
+            i, "_write", lambda o, s: seen.append([r["spkid"] for r in o])
+        )
+        i._insert(self._rows(1, 20134340, 2))
+        assert seen == [[1, 2]]
+
+    def test_a_wholly_claimed_batch_writes_nothing(self, monkeypatch):
+        i = self._ingestor({1, 2})
+        seen = []
+        monkeypatch.setattr(i, "_write", lambda o, s: seen.append(o))
+        i._insert(self._rows(1, 2))
+        assert seen == []

@@ -355,6 +355,7 @@ class SBDBIngestor:
         self.session = get_session()
         self.sbdb_dir = download_dir / "sources" / "position" / "sbdb"
         self.total_rows = 0
+        self.claimed_spkids: set[int] = set()
 
     @property
     def db_file(self) -> Path:
@@ -376,24 +377,39 @@ class SBDBIngestor:
             )
 
     def _insert(self, rows: list[dict]) -> None:
-        """Insert Object + SBDB row pairs in batches."""
+        """Insert Object + SBDB row pairs in batches, minus claimed SPK-IDs."""
+        rows = [r for r in rows if r["object"]["spkid"] not in self.claimed_spkids]
         if not rows:
             return
         objects = [r["object"] for r in rows]
         sbdb_rows = [r["sbdb"] for r in rows]
         for i in range(0, len(objects), self.BATCH):
-            obj_batch = objects[i : i + self.BATCH]
-            self.session.execute(insert(Object), obj_batch)
-            sbdb_batch = sbdb_rows[i : i + self.BATCH]
-            self.session.execute(insert(SBDBRow), sbdb_batch)
-            self.session.commit()
+            self._write(objects[i : i + self.BATCH], sbdb_rows[i : i + self.BATCH])
+
+    def _write(self, objects: list[dict], sbdb_rows: list[dict]) -> None:
+        self.session.execute(insert(Object), objects)
+        self.session.execute(insert(SBDBRow), sbdb_rows)
+        self.session.commit()
 
     def _clear(self) -> None:
+        """Drop this pass's own rows, then note the SPK-IDs it may not re-mint.
+
+        A later pass can adopt an SBDB body onto its own row — Pluto and Ceres
+        end up as `naif-*` under SPICE — and that row is not ours to delete. Its
+        SPK-ID stays taken, so re-minting it violates the unique constraint and
+        the whole ingest dies partway through a rebuild.
+        """
         self.session.execute(delete(SBDBRow))
         self.session.execute(
             delete(Object).where(Object.orbital_source == OrbitalSource.sbdb)
         )
         self.session.commit()
+        self.claimed_spkids = {
+            row[0]
+            for row in self.session.query(Object.spkid).filter(
+                Object.spkid.is_not(None)
+            )
+        }
 
     def run(self) -> None:
         if not self.db_file.exists():

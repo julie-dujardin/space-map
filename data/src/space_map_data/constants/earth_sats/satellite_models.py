@@ -756,7 +756,16 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         model_slug="space-systems-loral-ssl-1300",
         # Psyche flies the 1300 chassis, but the mesh is a GEO commsat with a
         # comms dish; on a deep-space probe that reads as the wrong craft.
-        model_excludes=("PSYCHE",),
+        # GOES-I/M are SS/L-built on a bespoke single-wing weather-satellite
+        # chassis, so the symmetric two-wing commsat mesh is the wrong shape.
+        model_excludes=(
+            "PSYCHE",
+            "GOES 8",
+            "GOES 9",
+            "GOES 10",
+            "GOES 11",
+            "GOES 12",
+        ),
         notes="3-axis box + two solar wings, GEO. First Western commsat with electric propulsion "
         "(MBSat 2004). Rebranded Lanteris 1300 Oct 2025 after Intuitive Machines acquisition. "
         "Sketchfab community model: sketchfab.com/3d-models/loral-ssl-1300-satellite-b3fddca0b88346cfad87b2bb0700549f",
