@@ -1,5 +1,11 @@
 """CelesTrak SATCAT source (owner) codes.
 
+Secondary to GCAT since the switch to its per-object registry columns: this
+table answers for objects GCAT has not catalogued yet, and its multi-country
+codes still name the partners behind a joint programme, which a state of
+registry cannot (see ``gcat_states.py``). It remains the primary path for
+operators that CelesTrak gives a code of their own.
+
 Source: https://celestrak.org/satcat/sources.php
 """
 

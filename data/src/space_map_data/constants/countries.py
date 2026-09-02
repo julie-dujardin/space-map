@@ -1,9 +1,11 @@
 """ISO 3166-1 alpha-2 country codes mapped to Wikidata entities.
 
-Covers every code referenced from ``earth_sats/sources.py`` (SATCAT OWNER →
-countries pivot), plus ``EU`` for European intergovernmental sources. QIDs
-sourced from Wikidata property P297, except ``EU`` (no ISO code — Q458 is
-the European Union entity).
+Covers every code GCAT's State column resolves to (see
+``earth_sats/gcat_states.py``), plus ``EU`` for European intergovernmental
+organisations. QIDs sourced from Wikidata property P297, except ``EU``,
+``SU`` and ``CS`` — the European Union has no ISO code, and the Soviet Union
+and Czechoslovakia are states GCAT still files launches under, correctly, so
+they need an entity even though ISO retired their codes.
 
 ``NL`` maps to Q29999 (Kingdom of the Netherlands), not Q55 (Netherlands
 constituent country) — P297 attaches the ISO code at the sovereign-state
@@ -44,6 +46,7 @@ COUNTRIES: tuple[CountrySpec, ...] = (
     CountrySpec("CN", "cn", "Q148"),  # China (PRC)
     CountrySpec("CO", "co", "Q739"),  # Colombia
     CountrySpec("CR", "cr", "Q800"),  # Costa Rica
+    CountrySpec("CS", "cs", "Q33946"),  # Czechoslovakia; dissolved 1992, no ISO code
     CountrySpec("CZ", "cz", "Q213"),  # Czech Republic
     CountrySpec("DE", "de", "Q183"),  # Germany
     CountrySpec("DJ", "dj", "Q977"),  # Djibouti
@@ -74,6 +77,7 @@ COUNTRIES: tuple[CountrySpec, ...] = (
     CountrySpec("JO", "jo", "Q810"),  # Jordan
     CountrySpec("JP", "jp", "Q17"),  # Japan
     CountrySpec("KE", "ke", "Q114"),  # Kenya
+    CountrySpec("KY", "ky", "Q5785"),  # Cayman Islands
     CountrySpec("KP", "kp", "Q423"),  # North Korea / DPRK
     CountrySpec("KR", "kr", "Q884"),  # South Korea
     CountrySpec("KW", "kw", "Q817"),  # Kuwait
@@ -81,6 +85,7 @@ COUNTRIES: tuple[CountrySpec, ...] = (
     CountrySpec("LA", "la", "Q819"),  # Laos
     CountrySpec("LK", "lk", "Q854"),  # Sri Lanka
     CountrySpec("LT", "lt", "Q37"),  # Lithuania
+    CountrySpec("LV", "lv", "Q211"),  # Latvia
     CountrySpec("LU", "lu", "Q32"),  # Luxembourg
     CountrySpec("LY", "ly", "Q1016"),  # Libya
     CountrySpec("MA", "ma", "Q1028"),  # Morocco
@@ -98,9 +103,11 @@ COUNTRIES: tuple[CountrySpec, ...] = (
     CountrySpec("NP", "np", "Q837"),  # Nepal
     CountrySpec("NZ", "nz", "Q664"),  # New Zealand
     CountrySpec("PE", "pe", "Q419"),  # Peru
+    CountrySpec("PG", "pg", "Q691"),  # Papua New Guinea
     CountrySpec("PH", "ph", "Q928"),  # Philippines
     CountrySpec("PK", "pk", "Q843"),  # Pakistan
     CountrySpec("PL", "pl", "Q36"),  # Poland
+    CountrySpec("PR", "pr", "Q1183"),  # Puerto Rico
     CountrySpec("PT", "pt", "Q45"),  # Portugal
     CountrySpec("PY", "py", "Q733"),  # Paraguay
     CountrySpec("QA", "qa", "Q846"),  # Qatar
@@ -111,6 +118,7 @@ COUNTRIES: tuple[CountrySpec, ...] = (
     CountrySpec("SB", "sb", "Q685"),  # Solomon Islands
     CountrySpec("SD", "sd", "Q1049"),  # Sudan
     CountrySpec("SE", "se", "Q34"),  # Sweden
+    CountrySpec("SU", "su", "Q15180"),  # Soviet Union; dissolved 1991, no ISO code
     CountrySpec("SG", "sg", "Q334"),  # Singapore
     CountrySpec("SI", "si", "Q215"),  # Slovenia
     CountrySpec("SK", "sk", "Q214"),  # Slovakia

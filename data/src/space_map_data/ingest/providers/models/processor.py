@@ -90,6 +90,7 @@ def _nasa_checkout_iso() -> str | None:
 class ModelProcessor:
     def __init__(self) -> None:
         self._yaml_docs: list[tuple[Path, dict]] = []
+        self._norads_by_bus: dict[str, list[int]] = {}
         self._catalog_downloaded_at: dict[str, str] = {}
         self._has_blender = conversion.blender_available()
         self._has_gltf_transform = conversion.gltf_transform_available()
@@ -130,7 +131,7 @@ class ModelProcessor:
         # missions only carry a `name:` (no probe_id/naif_id/norad/spkid)
         # would leave orphan bundles shipping on the CDN forever.
         self._satcat_norad_to_object_id = self._load_satcat_object_ids()
-        self._satcat_name_to_norad = self._load_satcat_name_to_norad()
+        self._norads_by_bus = self._load_norads_by_bus()
         # model_slug → bus spec; lets us treat a manifest entry as "wanted"
         # when a SATELLITE_BUS spec depends on it.
         self._buses_by_model_slug: dict[str, list] = defaultdict(list)
@@ -405,8 +406,8 @@ class ModelProcessor:
         """Skip entries that resolve to no Object row — saves Blender/gltf work
         on generic catalog assets (tools, ground infra, unbuilt concepts) that
         no mission would ever reference. An entry is also kept when a
-        ``SatelliteBusSpec.model_slug`` points at it and at least one of the
-        bus's ``known_satellites`` exists in the Object table.
+        ``SatelliteBusSpec.model_slug`` points at it and at least one satellite
+        on that bus exists in the Object table.
 
         Also drops naturally-occurring bodies (asteroid, astronomical_object)
         even when they resolve cleanly — those should render with their actual
@@ -430,32 +431,29 @@ class ModelProcessor:
     def _bus_object_ids(
         self, spec, db_object_ids: set[str], *, for_model: bool = False
     ) -> list[str]:
-        """Object IDs for every ``known_satellites`` entry currently in DB.
+        """Object IDs of the satellites the satcat ingest put on this bus.
 
         ``for_model`` drops the craft the bus mesh would misrepresent.
         """
-        out: list[str] = []
         excluded = set(spec.model_excludes) if for_model else set()
-        for name in spec.known_satellites:
-            if name.strip() in excluded:
-                continue
-            norad = self._satcat_name_to_norad.get(name.strip())
-            if norad is None:
+        out: list[str] = []
+        for norad in self._norads_by_bus.get(spec.slug, ()):
+            if norad in excluded:
                 continue
             oid = self._satcat_norad_to_object_id.get(norad)
             if oid is not None and oid in db_object_ids:
                 out.append(oid)
         return out
 
-    def _load_satcat_name_to_norad(self) -> dict[str, int]:
+    def _load_norads_by_bus(self) -> dict[str, list[int]]:
         session = get_session()
-        return {
-            name: norad
-            for norad, name in session.query(
-                Satcat.NORAD_CAT_ID, Satcat.OBJECT_NAME
-            ).all()
-            if name
-        }
+        out: dict[str, list[int]] = defaultdict(list)
+        for norad, bus_slug in session.query(
+            Satcat.NORAD_CAT_ID, Satcat.bus_slug
+        ).all():
+            if bus_slug:
+                out[bus_slug].append(norad)
+        return out
 
     def _write_bus_pointers(self) -> None:
         """Apply ``SatelliteBusSpec.model_slug`` to every bus satellite.

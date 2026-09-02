@@ -6,9 +6,9 @@ ingestor (group-only fallback rows).
 
 import csv
 import logging
-from pathlib import Path
-
 import re
+from itertools import zip_longest
+from pathlib import Path
 
 from space_map_data.constants.earth_sats.constellations import (
     CLASSIFIED_BY_OWNER,
@@ -23,7 +23,9 @@ from space_map_data.constants.earth_sats.constellations import (
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_CODES
 from space_map_data.constants.earth_sats.manufacturers import (
     MANUFACTURER_BY_CONSTELLATION,
+    MANUFACTURER_BY_SLUG,
 )
+from space_map_data.constants.earth_sats.organizations import ORGANIZATION_BY_SLUG
 from space_map_data.constants.earth_sats.operators import (
     OPERATOR_BY_CONSTELLATION,
     OPERATOR_BY_SOURCE,
@@ -36,7 +38,12 @@ from space_map_data.constants.earth_sats.satcat import (
     parse_orbit_center,
     parse_orbit_type,
 )
-from space_map_data.constants.earth_sats.satellite_models import bus_for_satellite
+from space_map_data.constants.earth_sats.gcat_orgs import (
+    MANUFACTURER_BY_GCAT,
+    OPERATOR_BY_GCAT,
+)
+from space_map_data.constants.earth_sats.gcat_states import countries_for_state
+from space_map_data.constants.earth_sats.satellite_models import bus_for_object
 from space_map_data.constants.earth_sats.sources import SOURCE_BY_CODE, parse_source
 from space_map_data.ingest.convert import float_or_none, int_or_none, string_or_none
 
@@ -209,8 +216,21 @@ def resolve_operator_qids(
     constellation: str | None,
     launch_date: str | None = None,
     decay_date: str | None = None,
+    gcat_owner: tuple[str, ...] = (),
 ) -> list[str]:
+    """QIDs of the organisations that operated this sat.
+
+    GCAT's Owner is per object and already dated, so it needs none of the
+    active-period filtering the CelesTrak owner code does — that code is one
+    organisation for the whole catalogue, which is why an operator there has to
+    say when it existed.
+    """
     qids: set[str] = set()
+    for code in gcat_owner:
+        slug = OPERATOR_BY_GCAT.get(code)
+        org = ORGANIZATION_BY_SLUG.get(slug) if slug else None
+        if org is not None and org.wikidata_qid is not None:
+            qids.add(org.wikidata_qid)
     if owner is not None:
         op = OPERATOR_BY_SOURCE.get(owner)
         if op is not None and op.wikidata_qid is not None:
@@ -225,42 +245,58 @@ def resolve_operator_qids(
 
 
 def resolve_manufacturer_qids(
-    constellation: str | None, name: str | None = None
+    constellation: str | None,
+    gcat_codes: tuple[str, ...] = (),
+    gcat_ucodes: tuple[str, ...] = (),
 ) -> list[str]:
-    """QIDs of primes that build hardware for this sat.
+    """QIDs of the organisations that built this sat.
 
-    Two paths: constellation slug (Starlink, GPS III, ...) and the resolved
-    satellite bus, whose manufacturer applies to every sat on that bus. The bus
-    path uses the same word-boundary matcher as ``resolve_bus_slug``, so a sat
-    that gets a bus always gets its bus's manufacturer.
+    Two paths: the constellation slug, which names a prime for every member,
+    and GCAT's per-object Manufacturer, which is the finer of the two — it
+    names the plant that actually built the satellite, and it carries joint
+    builds as several codes.
     """
     qids: set[str] = set()
     if constellation is not None:
         for mfr in MANUFACTURER_BY_CONSTELLATION.get(constellation, ()):
             if mfr.wikidata_qid is not None:
                 qids.add(mfr.wikidata_qid)
-    if name is not None:
-        bus = bus_for_satellite(name)
-        if bus is not None and bus.manufacturer.wikidata_qid is not None:
-            qids.add(bus.manufacturer.wikidata_qid)
+    # The as-filed code first: it dates the build to the organisation that made
+    # it, where the UCode would answer with whoever owns that lineage today.
+    for code, ucode in zip_longest(gcat_codes, gcat_ucodes):
+        slug = MANUFACTURER_BY_GCAT.get(code) or MANUFACTURER_BY_GCAT.get(ucode)
+        if slug is None:
+            continue
+        mfr = MANUFACTURER_BY_SLUG.get(slug)
+        if mfr is not None and mfr.wikidata_qid is not None:
+            qids.add(mfr.wikidata_qid)
     return sorted(qids)
 
 
-def resolve_bus_slug(name: str | None) -> str | None:
-    """Match OBJECT_NAME to a satellite bus slug (legacy GEO sats, mostly)."""
-    if name is None:
-        return None
-    bus = bus_for_satellite(name)
+def resolve_bus_slug(norad: int | None, gcat_bus: str | None) -> str | None:
+    """Satellite bus slug for a catalogued object, from GCAT's Bus column."""
+    bus = bus_for_object(norad, gcat_bus)
     return bus.slug if bus is not None else None
 
 
-def resolve_country_codes(owner: str | None) -> list[str]:
-    if owner is None:
-        return []
-    source = SOURCE_BY_CODE.get(owner)
-    if source is None:
-        return []
-    return list(source.countries)
+def resolve_country_codes(
+    owner: str | None, gcat_state: str | None = None
+) -> list[str]:
+    """Countries for an object, from GCAT's state of registry.
+
+    GCAT dates its answer — a 1975 launch is Soviet, not Russian — so it leads.
+    A CelesTrak owner code naming several countries is a partnership rather
+    than a registry (CHBZ, FGER, SEAL), and those partners are added: the
+    registry says China for CBERS, but the programme is half Brazilian. A
+    single-country owner code only fills in while GCAT has not catalogued the
+    object, the normal state of a launch from the last fortnight.
+    """
+    source = SOURCE_BY_CODE.get(owner) if owner is not None else None
+    partners = tuple(source.countries) if source and len(source.countries) > 1 else ()
+    countries = countries_for_state(gcat_state)
+    if countries:
+        return sorted({*countries, *partners})
+    return list(source.countries) if source else []
 
 
 # ---------------------------------------------------------------------------

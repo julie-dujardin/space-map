@@ -2,6 +2,7 @@
 
 import csv
 import logging
+from collections import Counter
 from pathlib import Path
 
 from sqlalchemy import delete, insert
@@ -21,6 +22,11 @@ from space_map_data.ingest.providers.objects.enrichment import (
     resolve_manufacturer_qids,
     resolve_operator_qids,
 )
+from space_map_data.ingest.providers.objects.gcat_satcat import (
+    GcatHardware,
+    load_gcat_hardware,
+)
+from space_map_data.constants.earth_sats.satcat import SatcatObjectType
 from space_map_data.models.object.satcat import Satcat
 from space_map_data.utils.db import get_session
 
@@ -30,11 +36,18 @@ logger = logging.getLogger(__name__)
 class SatcatIngestor:
     BATCH = 10_000
 
+    # A GCAT bus string this catalogue does not claim is normal for the long
+    # tail (form-factor buckets, one-off platforms); one that covers a lot of
+    # satellites means a bus worth naming, or a string GCAT has renamed.
+    UNCLAIMED_BUS_REPORT = 20
+
     def __init__(self, download_dir: Path):
         self.session = get_session()
         self.provider_dir = download_dir / "sources" / "position" / "celestrak"
         self.satcat_path = self.provider_dir / "satcat.csv"
         self.groups_dir = latest_day_dir(self.provider_dir) / "groups"
+        self.gcat: dict[int, GcatHardware] = load_gcat_hardware(download_dir)
+        self.unclaimed_buses: Counter[str] = Counter()
         self.total_rows = 0
         self.missing_operator = 0
         self.constellation_conflicts = 0
@@ -55,14 +68,57 @@ class SatcatIngestor:
 
         constellation = resolve_constellation(norad, name, owner, groups)
         categories = resolve_categories(constellation, groups)
-        operator_qids = resolve_operator_qids(
-            owner, constellation, fields["launch_date"], fields["decay_date"]
+        hardware = self.gcat.get(norad)
+        gcat_bus = hardware.bus if hardware else None
+        gcat_owner = (
+            tuple(
+                dict.fromkeys(
+                    c for c in (hardware.owner_code, hardware.owner_ucode) if c
+                )
+            )
+            if hardware
+            else ()
         )
-        manufacturer_qids = resolve_manufacturer_qids(constellation, name)
-        bus_slug = resolve_bus_slug(name)
-        country_codes = resolve_country_codes(owner)
+        operator_qids = resolve_operator_qids(
+            owner,
+            constellation,
+            fields["launch_date"],
+            fields["decay_date"],
+            gcat_owner,
+        )
+        manufacturer_qids = resolve_manufacturer_qids(
+            constellation,
+            hardware.manufacturer_codes if hardware else (),
+            hardware.manufacturer_ucodes if hardware else (),
+        )
+        bus_slug = resolve_bus_slug(norad, gcat_bus)
+        if (
+            bus_slug is None
+            and gcat_bus is not None
+            and fields["object_type"] is SatcatObjectType.PAYLOAD
+        ):
+            self.unclaimed_buses[gcat_bus] += 1
+        country_codes = resolve_country_codes(
+            owner, hardware.state if hardware else None
+        )
         if not operator_qids:
             self.missing_operator += 1
+
+        # Size and mass have no CelesTrak equivalent, so they are GCAT's or absent.
+        physical = (
+            dict(
+                mass_kg=hardware.mass_kg,
+                dry_mass_kg=hardware.dry_mass_kg,
+                span_m=hardware.span_m,
+                length_m=hardware.length_m,
+                diameter_m=hardware.diameter_m,
+                shape=hardware.shape,
+                mass_estimated=hardware.mass_estimated,
+                span_estimated=hardware.span_estimated,
+            )
+            if hardware
+            else {}
+        )
 
         return dict(
             NORAD_CAT_ID=norad,
@@ -74,6 +130,7 @@ class SatcatIngestor:
             operator_qids=operator_qids,
             manufacturer_qids=manufacturer_qids,
             country_codes=country_codes,
+            **physical,
             **fields,
         )
 
@@ -111,6 +168,10 @@ class SatcatIngestor:
         self._insert(batch)
 
         logger.info("Ingested %d SATCAT rows", self.total_rows)
+        for bus, count in self.unclaimed_buses.most_common():
+            if count < self.UNCLAIMED_BUS_REPORT:
+                break
+            logger.info("GCAT bus %r covers %d payloads and has no entry", bus, count)
         if self.missing_operator:
             logger.warning(
                 "%d/%d satellites could not be matched to an operator",

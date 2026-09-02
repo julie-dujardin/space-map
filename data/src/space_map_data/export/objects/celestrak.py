@@ -39,6 +39,12 @@ _GLOBAL_FIELDS = (
     "apogee",
     "perigee",
     "rcs",
+    "mass_kg",
+    "dry_mass_kg",
+    "span_m",
+    "length_m",
+    "diameter_m",
+    "shape",
     "orbit_center",
     "orbit_center_docked_to",
     "launch_site_code",
@@ -55,6 +61,12 @@ def build_satcat_global(sat: Satcat) -> dict:
         val = getattr(sat, attr)
         if val is not None:
             data[attr] = val
+    # Only sent when true: an absent flag reads as "GCAT stated this", which is
+    # the common case and the one the client should not annotate.
+    if sat.mass_estimated and sat.mass_kg is not None:
+        data["mass_estimated"] = True
+    if sat.span_estimated and sat.span_m is not None:
+        data["span_estimated"] = True
     if sat.categories:
         data["categories"] = sat.categories
     if sat.country_codes:

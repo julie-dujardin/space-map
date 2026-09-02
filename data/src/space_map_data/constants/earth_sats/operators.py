@@ -777,6 +777,21 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Q17124852",
         constellations=("unha", "chollima-1"),
     ),
+    # Operators GCAT's Owner column names that no CelesTrak owner code does;
+    # see gcat_orgs.py for the code → slug table.
+    OperatorSpec("Eutelsat OneWeb", "oneweb", "Q24039799"),
+    OperatorSpec("China Satellite Network Group", "china-satnet", "Q109051243"),
+    OperatorSpec("China Manned Space Agency", "cmsa", "Q5099768"),
+    OperatorSpec(
+        "People's Liberation Army General Armaments Department",
+        "pla-gad",
+        "Q6148033",
+    ),
+    OperatorSpec("Ministry of Aerospace Industry", "mai-china", "Q6866598"),
+    OperatorSpec("Soviet Air Defence Forces", "pvo", "Q631009"),
+    OperatorSpec("Sitronics", "sitronics", "Q1022148"),
+    OperatorSpec("National Space Development Agency of Japan", "nasda", "Q2704796"),
+    OperatorSpec("Environmental Science Services Administration", "essa", "Q3055447"),
 )
 
 

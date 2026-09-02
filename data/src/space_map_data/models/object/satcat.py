@@ -44,6 +44,18 @@ class Satcat(Base):
     orbit_center_docked_to: Mapped[int | None] = mapped_column(default=None)
     orbit_type: Mapped[OrbitType | None] = mapped_column(String, default=None)
 
+    # GCAT satcat.tsv, which states hardware facts CelesTrak's catalogue does
+    # not carry. The *_estimated flags mark GCAT's own "?" — an inferred figure
+    # rather than one read off a source.
+    mass_kg: Mapped[float | None] = mapped_column(default=None)
+    dry_mass_kg: Mapped[float | None] = mapped_column(default=None)
+    span_m: Mapped[float | None] = mapped_column(default=None)
+    length_m: Mapped[float | None] = mapped_column(default=None)
+    diameter_m: Mapped[float | None] = mapped_column(default=None)
+    shape: Mapped[str | None] = mapped_column(default=None)
+    mass_estimated: Mapped[bool] = mapped_column(default=False)
+    span_estimated: Mapped[bool] = mapped_column(default=False)
+
     # Enrichment (derived from SATCAT owner, object name, group memberships)
     constellation_slug: Mapped[str | None] = mapped_column(default=None)
     bus_slug: Mapped[str | None] = mapped_column(default=None)

@@ -48,16 +48,13 @@ class TestBusModelExcludes:
     @staticmethod
     def _processor():
         p = ModelProcessor.__new__(ModelProcessor)
-        p._satcat_name_to_norad = {"GOES 8": 23051, "ECHOSTAR 5": 25913}
+        p._norads_by_bus = {"ssl-1300": [23051, 25913]}
         p._satcat_norad_to_object_id = {23051: "o-goes8", 25913: "o-echo5"}
         return p
 
     @staticmethod
     def _spec():
-        return SimpleNamespace(
-            known_satellites=("GOES 8", "ECHOSTAR 5"),
-            model_excludes=("GOES 8",),
-        )
+        return SimpleNamespace(slug="ssl-1300", model_excludes=(23051,))
 
     def test_membership_keeps_the_excluded_craft(self):
         ids = self._processor()._bus_object_ids(self._spec(), {"o-goes8", "o-echo5"})

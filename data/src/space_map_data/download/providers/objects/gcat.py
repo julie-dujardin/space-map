@@ -80,6 +80,14 @@ TABLES: tuple[GCATTable, ...] = (
     # the launchlog names sites and pads only by code. `lp.tsv` is the finer
     # of the two: a site row is one coarse point for a whole range, a launch
     # point is the individual pad.
+    # Organisation codes: satcat's Manufacturer and Owner columns are GCAT org
+    # codes, and this is the only table that expands them to a name.
+    GCATTable(
+        "orgs.tsv",
+        "tables/orgs.tsv",
+        "#Code\t",
+        "organisations",
+    ),
     GCATTable(
         "sites.tsv",
         "tables/sites.tsv",
