@@ -20,7 +20,16 @@
 		WebGLRenderer
 	} from 'three';
 	import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-	import { disposeGltf, fetchBundleMeta, modelLoader } from '$lib/scene/objects/body/model';
+	import {
+		disposeGltf,
+		fetchBundleMeta,
+		modelLoader,
+		modelTierCredit,
+		shapeModelCredit,
+		type ModelBundleMeta,
+		type ModelTier,
+		type ModelTierExport
+	} from '$lib/scene/objects/body/model';
 	import { makeEnvMap } from '$lib/scene/lighting';
 	import { frameMapQuaternion } from '$lib/math/orientation';
 	import { fetchMetadata } from '$lib/fetch/metadata';
@@ -37,6 +46,20 @@
 		tiers?: string[];
 		scale_meters?: number | null;
 		objects: IndexObject[];
+	}
+	/** Sidecar fields the scene ignores but a credit line needs. */
+	type TierExport = ModelTierExport & { catalog?: string };
+	interface BundleMeta extends ModelBundleMeta {
+		provenance?: string;
+		archive?: string;
+		exports: { high: TierExport; low?: TierExport };
+	}
+	interface Credit {
+		tiers: string;
+		name: string;
+		url: string;
+		license?: string;
+		catalog?: string;
 	}
 	interface Bundle extends IndexBundle {
 		slug: string;
@@ -60,6 +83,8 @@
 	let onlySuspect = $state(false);
 	let selected = $state<Bundle | null>(null);
 	let spin = $state(true);
+	/** Per-bundle sidecars, keyed by slug — where the credits live. */
+	let metas = $state<Record<string, BundleMeta>>({});
 
 	const shown = $derived(
 		bundles.filter((b) => {
@@ -95,6 +120,41 @@
 		});
 	}
 
+	// --- credits -------------------------------------------------------------
+
+	/** index.json carries no attribution, so a bundle can only be credited once
+	 *  its sidecar lands — fetched as the card scrolls in, beside the thumbnail. */
+	async function ensureMeta(slug: string): Promise<BundleMeta> {
+		const meta = (await fetchBundleMeta(slug)) as BundleMeta;
+		metas[slug] = meta;
+		return meta;
+	}
+
+	/** Who a tier's GLB belongs to, by the same rules the scene credits it under:
+	 *  a shape model's top-level credit covers the bundle, while a craft's tiers
+	 *  can name different catalogues (Cassini's high is ESA's, its low NASA's). */
+	function tierCredit(meta: BundleMeta | undefined, tier: string): Credit | null {
+		if (!meta?.exports?.high) return null;
+		const c =
+			meta.kind === 'shape_model'
+				? shapeModelCredit(meta)
+				: modelTierCredit(meta, tier as ModelTier);
+		return { tiers: tier, ...c, catalog: meta.exports[tier as ModelTier]?.catalog };
+	}
+
+	/** One line per distinct credit, merging the tiers that share one. */
+	function bundleCredits(meta: BundleMeta | undefined): Credit[] {
+		const out: Credit[] = [];
+		for (const tier of meta?.tiers ?? []) {
+			const c = tierCredit(meta, tier);
+			if (!c) continue;
+			const same = out.find((p) => p.name === c.name && p.url === c.url && p.catalog === c.catalog);
+			if (same) same.tiers += `+${tier}`;
+			else out.push(c);
+		}
+		return out;
+	}
+
 	// --- one shared renderer -------------------------------------------------
 
 	let renderer: WebGLRenderer | undefined;
@@ -124,7 +184,7 @@
 	/** Load a bundle's GLB, normalised to unit radius at the origin under the
 	 *  bundle's own frame map — the pose the main scene mounts it in. */
 	async function loadModel(slug: string, tier: string): Promise<Object3D> {
-		const meta = await fetchBundleMeta(slug);
+		const meta = await ensureMeta(slug);
 		const gltf = await modelLoader.loadAsync(
 			versionedUrl(`/v1/models/${slug}/${tier}.glb`, 'models')
 		);
@@ -179,6 +239,8 @@
 		let job: (() => Promise<void>) | null = null;
 		const io = new IntersectionObserver((entries) => {
 			if (!entries.some((e) => e.isIntersecting) || job || node.dataset.drawn) return;
+			// Ahead of the draw queue: the credit shouldn't wait on a GLB.
+			void ensureMeta(b.slug);
 			job = () => drawThumb(b, node);
 			queue.push(job);
 			pump();
@@ -201,6 +263,8 @@
 	let animId: number | undefined;
 	let viewerTier = $state('high');
 	let viewerError = $state<string | null>(null);
+	const viewerMeta = $derived(selected ? metas[selected.slug] : undefined);
+	const viewerCredit = $derived(tierCredit(viewerMeta, viewerTier));
 
 	function open(b: Bundle) {
 		selected = b;
@@ -348,6 +412,8 @@
 
 		<ul class="grid">
 			{#each shown as b (b.slug)}
+				{@const meta = metas[b.slug]}
+				{@const credits = bundleCredits(meta)}
 				<li>
 					<button onclick={() => open(b)} aria-label={`Maximize ${b.slug}`}>
 						<canvas width={THUMB} height={THUMB} use:thumb={b}></canvas>
@@ -358,6 +424,20 @@
 						{#if b.scale_meters}· {b.scale_meters} m{/if}
 						· {(b.tiers ?? []).join('+') || 'no tiers'}
 					</p>
+					{#if credits.length > 0}
+						<ul class="credits">
+							{#each credits as c (c.tiers)}
+								<li>
+									<span class="tiers">{c.tiers}</span>
+									<a href={c.url} target="_blank" rel="noreferrer">{c.name}</a>
+									{#if c.catalog}<span class="catalog">{c.catalog}</span>{/if}
+									{#if c.license}<span class="license">{c.license}</span>{/if}
+								</li>
+							{/each}
+						</ul>
+					{:else if meta}
+						<p class="warn">no credit in metadata.json</p>
+					{/if}
 					{#if b.objects.length === 0}
 						<p class="none">attached to nothing</p>
 					{:else}
@@ -409,6 +489,18 @@
 					<a href={bodyHref(o.id, o.name ?? '')}>{o.name ?? o.id}</a>
 				{/each}
 			{/if}
+			<span class="credit">
+				{#if viewerCredit}
+					{viewerTier} mesh ·
+					<a href={viewerCredit.url} target="_blank" rel="noreferrer">{viewerCredit.name}</a>
+					{#if viewerCredit.license}· {viewerCredit.license}{/if}
+					{#if viewerCredit.catalog}· {viewerCredit.catalog}{/if}
+					{#if viewerMeta?.provenance}· {viewerMeta.provenance}{/if}
+					{#if viewerMeta?.archive}· {viewerMeta.archive}{/if}
+				{:else if viewerMeta}
+					<span class="warn">no credit in metadata.json</span>
+				{/if}
+			</span>
 		</footer>
 	</div>
 {/if}
@@ -484,6 +576,31 @@
 		color: #b45309;
 		font-size: 0.75rem;
 		margin: 0.35rem 0 0;
+	}
+	.credits {
+		list-style: none;
+		padding: 0;
+		margin: 0.35rem 0 0;
+		font-size: 0.72rem;
+		color: #888;
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+	}
+	.credits .tiers {
+		color: #666;
+	}
+	.credits .tiers::after {
+		content: ' ·';
+	}
+	.credits .catalog::before,
+	.credits .license::before {
+		content: '· ';
+	}
+	.credit {
+		margin-left: auto;
+		color: #888;
+		font-size: 0.78rem;
 	}
 	.objects {
 		list-style: none;
