@@ -7,7 +7,7 @@
 
 	interface Sample {
 		path: string;
-		tier: 'free' | 'credit' | 'drop' | 'none' | 'minimal' | 'auto';
+		tier: 'free' | 'credit' | 'drop' | 'none' | 'minimal' | 'auto' | 'custom';
 		note: string;
 	}
 	interface Card extends Sample {
@@ -44,6 +44,8 @@
 
 	let cards = $state<Card[]>([]);
 	let loading = $state(false);
+	let urlInput = $state('');
+	let custom = $state<Card | null>(null);
 
 	function metaOf(doc: Document, sel: string): string {
 		return doc.querySelector(sel)?.getAttribute('content') ?? '';
@@ -68,8 +70,30 @@
 
 	async function load() {
 		loading = true;
+		const pending = custom ? fetchCard(custom) : null;
 		cards = await Promise.all(SAMPLES.map(fetchCard));
+		if (pending) custom = await pending;
 		loading = false;
+	}
+
+	// Accept a bare path or a full URL of any origin: a production link is
+	// rewritten onto this server so its card renders from local output.
+	function pathOf(input: string): string {
+		try {
+			const u = new URL(input.trim(), location.origin);
+			return u.pathname + u.search;
+		} catch {
+			return '';
+		}
+	}
+
+	async function previewUrl(e: SubmitEvent) {
+		e.preventDefault();
+		const path = pathOf(urlInput);
+		if (!path) return;
+		const sample: Sample = { path, tier: 'custom', note: 'entered URL' };
+		custom = sample;
+		custom = await fetchCard(sample);
 	}
 
 	onMount(load);
@@ -101,48 +125,68 @@
 		<button onclick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
 	</header>
 
+	<form class="lookup" onsubmit={previewUrl}>
+		<input
+			bind:value={urlInput}
+			aria-label="Path or URL to preview"
+			placeholder="/b/399 — or paste a full URL from any origin"
+		/>
+		<button type="submit" disabled={!pathOf(urlInput)}>Preview</button>
+		{#if custom}
+			<button type="button" onclick={() => (custom = null)}>Clear</button>
+		{/if}
+	</form>
+
+	{#if custom}
+		<div class="grid">{@render cardItem(custom)}</div>
+	{/if}
+
 	<div class="grid">
 		{#each cards as c (c.path)}
-			{@const parts = creditParts(c.description)}
-			<div class="item">
-				<div class="meta">
-					<span class="tag {c.tier}">{c.tier}</span>
-					<a class="path" href={c.path} target="_blank" rel="noreferrer">{c.path}</a>
-					<span class="note">· {c.note}</span>
-				</div>
-
-				<a
-					class="card"
-					class:summary={!c.image}
-					class:err={c.error}
-					href={c.path}
-					target="_blank"
-					rel="noreferrer"
-				>
-					{#if c.error}
-						<div class="body"><div class="desc">{c.error}</div></div>
-					{:else}
-						{#if c.image}
-							<img class="img" src={c.image} alt="" loading="lazy" />
-						{/if}
-						<div class="body">
-							<div class="domain">{host(c.image)}</div>
-							<div class="title">{c.title}</div>
-							<div class="desc">
-								{#if parts.credit}<span class="credit-hl">{parts.credit}</span>{/if}{parts.rest}
-							</div>
-						</div>
-					{/if}
-				</a>
-
-				<div class="meta small">
-					twitter:card=<b>{c.twitter || '—'}</b> · og:image=<b>{c.image ? 'yes' : 'none'}</b> · http
-					{c.status ?? '—'}
-				</div>
-			</div>
+			{@render cardItem(c)}
 		{/each}
 	</div>
 </div>
+
+{#snippet cardItem(c: Card)}
+	{@const parts = creditParts(c.description)}
+	<div class="item">
+		<div class="meta">
+			<span class="tag {c.tier}">{c.tier}</span>
+			<a class="path" href={c.path} target="_blank" rel="noreferrer">{c.path}</a>
+			<span class="note">· {c.note}</span>
+		</div>
+
+		<a
+			class="card"
+			class:summary={!c.image}
+			class:err={c.error}
+			href={c.path}
+			target="_blank"
+			rel="noreferrer"
+		>
+			{#if c.error}
+				<div class="body"><div class="desc">{c.error}</div></div>
+			{:else}
+				{#if c.image}
+					<img class="img" src={c.image} alt="" loading="lazy" />
+				{/if}
+				<div class="body">
+					<div class="domain">{host(c.image)}</div>
+					<div class="title">{c.title}</div>
+					<div class="desc">
+						{#if parts.credit}<span class="credit-hl">{parts.credit}</span>{/if}{parts.rest}
+					</div>
+				</div>
+			{/if}
+		</a>
+
+		<div class="meta small">
+			twitter:card=<b>{c.twitter || '—'}</b> · og:image=<b>{c.image ? 'yes' : 'none'}</b> · http
+			{c.status ?? '—'}
+		</div>
+	</div>
+{/snippet}
 
 <style>
 	.wrap {
@@ -191,9 +235,28 @@
 	button:hover:not(:disabled) {
 		background: #2b313a;
 	}
+	.lookup {
+		max-width: 1200px;
+		margin: 0 auto 20px;
+		display: flex;
+		gap: 8px;
+	}
+	.lookup input {
+		flex: 1;
+		min-width: 0;
+		background: #0b0d11;
+		color: var(--text);
+		border: 1px solid var(--line);
+		border-radius: 6px;
+		padding: 6px 10px;
+		font: inherit;
+	}
+	.lookup button {
+		margin-left: 0;
+	}
 	.grid {
 		max-width: 1200px;
-		margin: 0 auto;
+		margin: 0 auto 20px;
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
 		gap: 20px;
@@ -229,6 +292,9 @@
 	}
 	.tag.auto {
 		background: #58a6ff;
+	}
+	.tag.custom {
+		background: #bc8cff;
 	}
 	.tag.drop,
 	.tag.none,
