@@ -1178,7 +1178,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # Earth-Moon L2 craft target the barycenter directly and belong in the
         # system's rolled-up list rather than in one of their own.
         with Session(engine) as session:
-            attach_system_probes(session, agg.all_objects, wikidata_entities)
+            attach_system_probes(
+                session, agg.all_objects, wikidata_entities, craft_models
+            )
         attach_probe_events(agg.all_objects)
         # Pools the moon and feature lists the two passes above just wrote.
         attach_galleries(agg.all_objects)

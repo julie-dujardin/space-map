@@ -52,6 +52,9 @@ export interface OverviewStrip {
 	heading: string;
 	seeAllHref?: string;
 	onSeeAll: () => void;
+	/** Show "See all" even when the strip holds every member — for a
+	 *  destination that carries more than the list. */
+	alwaysSeeAll?: boolean;
 	focusMovesCamera?: boolean;
 }
 
@@ -297,7 +300,10 @@ export class MembersState {
 				totalCount: this.probeTotal,
 				heading: m.probes_section(),
 				seeAllHref: tabHref(d.appState(), 'probes'),
-				onSeeAll: () => d.appState().setTab('probes')
+				onSeeAll: () => d.appState().setTab('probes'),
+				// The tab exists from the first probe, and once promoted out of the bar
+				// this link is the only way to reach it.
+				alwaysSeeAll: true
 			};
 		});
 

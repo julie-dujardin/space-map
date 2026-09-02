@@ -30,6 +30,10 @@
 		/** Where "See all" goes — a tab of this object, or a collection page. */
 		seeAllHref?: string;
 		onSeeAll: () => void;
+		/** Keep the link when everything already fits: the probes tab carries
+		 *  the exploration blurb and the craft lineup, which the strip cannot
+		 *  show, and a promoted tab has no other way in. */
+		alwaysSeeAll?: boolean;
 		/** Fragment lists pass false: select the piece without flying to its mesh. */
 		focusMovesCamera?: boolean;
 	}
@@ -40,6 +44,7 @@
 		heading,
 		seeAllHref,
 		onSeeAll,
+		alwaysSeeAll = false,
 		focusMovesCamera = true
 	}: Props = $props();
 
@@ -108,7 +113,7 @@
 <div class="flex flex-col gap-1">
 	<div class="flex items-baseline justify-between gap-2">
 		<h3 class="text-sm font-medium min-w-0 truncate">{heading}</h3>
-		{#if hasOverflow}
+		{#if hasOverflow || alwaysSeeAll}
 			<a
 				href={seeAllHref}
 				onclick={seeAll}

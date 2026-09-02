@@ -333,11 +333,15 @@ def _system_members(session: Session) -> dict[str, dict[str, str]]:
 
 
 def attach_system_probes(
-    session: Session, chunk: ChunkObjectData, wikidata_entities: WikidataEntityCache
+    session: Session,
+    chunk: ChunkObjectData,
+    wikidata_entities: WikidataEntityCache,
+    craft_models: dict[str, CraftModel] | None = None,
 ) -> None:
     """Inject ``probes``/``probe_count`` onto each planetary system's
     barycenter: the probes sent to anything in the system, latest arrival
-    first. Mutates ``chunk`` in place.
+    first. ``craft_models`` puts each probe's mesh and real length on its
+    entry, which is what the craft lineup draws. Mutates ``chunk`` in place.
 
     A system page repeats what its planet's own page says, on purpose — the
     system is where a reader looks for what has been there, and a probe that
@@ -378,7 +382,7 @@ def attach_system_probes(
         probes = [
             replace(rows[probe_id], visit=None, visits=v) for probe_id, v in ordered
         ]
-        entries = notable_entries(probes, wikidata_entities)
+        entries = notable_entries(probes, wikidata_entities, craft_models=craft_models)
         global_data["probes"] = entries
         global_data["probe_count"] = len(entries)
         attached[bary_id] = len(entries)

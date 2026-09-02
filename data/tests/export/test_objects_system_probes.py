@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from space_map_data.export.notable import CraftModel
 from space_map_data.export.objects import probe_targets
 from space_map_data.export.objects.probe_targets import attach_system_probes
 from space_map_data.export.objects.writer import ChunkObjectData
@@ -188,3 +189,19 @@ def test_a_system_nothing_reached_gets_no_list(
 ) -> None:
     attach_system_probes(session, chunk, WikidataEntityCache())
     assert "probes" not in chunk.global_data["naif-499"]
+
+
+def test_rows_carry_the_craft_mesh(
+    session: Session, events: None, chunk: ChunkObjectData
+) -> None:
+    """The system's probe lineup draws the same meshes the per-body lists do."""
+    attach_system_probes(
+        session,
+        chunk,
+        WikidataEntityCache(),
+        {"probe-2": CraftModel("viking-orbiter", 3.3)},
+    )
+    rows = {p["id"]: p for p in chunk.global_data["naif-4"]["probes"]}
+    assert rows["probe-2"]["model"] == "viking-orbiter"
+    assert rows["probe-2"]["length_m"] == 3.3
+    assert "model" not in rows["probe-1"]

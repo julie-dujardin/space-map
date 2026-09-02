@@ -202,6 +202,7 @@
 				heading={strip.heading}
 				seeAllHref={strip.seeAllHref}
 				onSeeAll={strip.onSeeAll}
+				alwaysSeeAll={strip.alwaysSeeAll ?? false}
 				focusMovesCamera={strip.focusMovesCamera ?? true}
 			/>
 		{/each}
