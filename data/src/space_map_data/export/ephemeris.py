@@ -60,6 +60,7 @@ _NON_PROBE_ARCHIVE: dict[OrbitalSource, str] = {
     OrbitalSource.sbdb: ARCHIVE_SBDB,
     OrbitalSource.sbdb_moon: ARCHIVE_SBDB,
     OrbitalSource.celestrak: ARCHIVE_CELESTRAK,
+    OrbitalSource.spacetrack: ARCHIVE_SPACETRACK,
     OrbitalSource.spice: ARCHIVE_NAIF,
 }
 

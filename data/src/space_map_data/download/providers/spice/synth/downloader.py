@@ -17,7 +17,7 @@ from .index import (
     _parse_horizons_spacecraft,
     _write_index,
     agency_naif_coverage,
-    celestrak_active_excludes,
+    earth_orbit_excludes,
     qid_deduped_synth_naifs,
 )
 from .layout import SYNTH_CACHE_ROOT, SYNTH_KERNELS_DIR
@@ -30,8 +30,9 @@ class HorizonsSyntheticDownloader(Downloader):
     """Synthesize per-spacecraft SPKs from Horizons VECTORS.
 
     Walks the cached Horizons MB list, drops simulation/debris/stage/booster
-    entries and QID-matched agency duplicates, fetches+builds the rest, then
-    drops builds whose ET coverage overlaps an agency claim on the same NAIF
+    entries, uncurated Earth orbiters and QID-matched agency duplicates,
+    fetches+builds the rest, then drops builds whose ET coverage overlaps an
+    agency claim on the same NAIF
     (NAIF recycles low-magnitude IDs across eras — e.g. -9 = Mariner 9 (1971)
     and ESCAPADE-Blue (2025); only same-era collisions are real duplicates).
     Cache-skip via `Revised :` makes repeated runs cheap.
@@ -54,18 +55,18 @@ class HorizonsSyntheticDownloader(Downloader):
                 f"Need {mb_path}; run `space-map-download --sources spice` first"
             )
         all_sc = _parse_horizons_spacecraft(mb_path.read_text())
-        ct_excludes = celestrak_active_excludes(all_sc)
+        earth_excludes = earth_orbit_excludes(all_sc)
         qid_dups = qid_deduped_synth_naifs()
         candidates = [
             (n, nm, cospar)
             for n, nm, cospar in all_sc
-            if n not in ct_excludes and n not in qid_dups
+            if n not in earth_excludes and n not in qid_dups
         ]
         logger.info(
-            "horizons-synth: %d MB spacecraft - %d celestrak-active "
+            "horizons-synth: %d MB spacecraft - %d Earth-orbiting "
             "- %d qid-deduped against agency = %d to synthesize",
             len(all_sc),
-            len(ct_excludes),
+            len(earth_excludes),
             len(qid_dups),
             len(candidates),
         )

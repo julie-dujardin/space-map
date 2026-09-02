@@ -12,7 +12,6 @@ list. The frontend fetches one file at app start and uses its keys as the
 authoritative promoted set.
 """
 
-import csv
 import gzip
 import logging
 from pathlib import Path
@@ -22,77 +21,10 @@ from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.models.object import ObjectType
 from space_map_data.utils.designations import format_provisional_designation
-from space_map_data.probes.probe_id import load_registry
-from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
 
 _US = "\x1f"  # ASCII Unit Separator — delimiter between fields
-
-_GEO_KM = 35786.0
-_LOW_EARTH_ORBIT_APOGEE_KM = _GEO_KM * 1.2  # ~42 943 km
-
-
-def _low_earth_orbit_probe_ids() -> set[str]:
-    """Probe IDs whose SATCAT row places them in Earth orbit with apogee
-    under GEO+20%. Joined via the registry's cospar_id / norad_cat_id.
-
-    Promoting these clutters first paint with retired/decayed satellites
-    that are redundant with CelesTrak's live feed or no longer catalogued.
-    Probes with no SATCAT row, no apogee, or a non-Earth orbit center are NOT
-    filtered — that covers escape missions where SATCAT only recorded the
-    parking orbit.
-
-    TODO: drop this heuristic once Earth-sat coverage moves to space-track —
-    that catalog ships decayed/graveyard sats with current state vectors, so
-    the "is this thing redundant with point-cloud coverage" question becomes
-    "is this `obj_id` already a `norad_satcat-*` row" instead of an apogee
-    guess. Until then, a few corner cases slip through: SATCAT records the
-    *parking* orbit for escape attempts (Artemis-1 cubesats look EA-low even
-    when they reached cislunar space) and lacks state vectors for several
-    decayed entries (apogee=None ⇒ kept). The authoritative replacement is a
-    pass over each SPK for max distance from Earth across its coverage.
-    """
-    satcat = SOURCES_POSITION_DIR / "celestrak" / "satcat.csv"
-    if not satcat.exists():
-        return set()
-    by_norad: dict[int, tuple[float | None, str]] = {}
-    by_cospar: dict[str, tuple[float | None, str]] = {}
-    with satcat.open() as f:
-        for row in csv.DictReader(f):
-            try:
-                apogee_km = float(row.get("APOGEE") or "")
-            except ValueError:
-                apogee_km = None
-            orbit_center = (row.get("ORBIT_CENTER") or "").strip()
-            cospar = (row.get("OBJECT_ID") or "").strip()
-            norad_s = (row.get("NORAD_CAT_ID") or "").strip()
-            if norad_s:
-                try:
-                    by_norad[int(norad_s)] = (apogee_km, orbit_center)
-                except ValueError:
-                    pass
-            if cospar:
-                by_cospar[cospar] = (apogee_km, orbit_center)
-
-    out: set[str] = set()
-    for entry in load_registry():
-        ap_oc = None
-        norad = entry.get("norad_cat_id")
-        if norad is not None:
-            ap_oc = by_norad.get(int(norad))
-        if ap_oc is None and entry.get("cospar_id"):
-            ap_oc = by_cospar.get(entry["cospar_id"])
-        if ap_oc is None:
-            continue
-        apogee_km, orbit_center = ap_oc
-        if (
-            orbit_center == "EA"
-            and apogee_km is not None
-            and apogee_km < _LOW_EARTH_ORBIT_APOGEE_KM
-        ):
-            out.add(f"probe-{entry['probe_id']}")
-    return out
 
 
 def _is_promoted(
@@ -173,23 +105,11 @@ def write_global_labels(
             missing_extras,
         )
 
-    low_orbit_excludes = _low_earth_orbit_probe_ids() - PROMOTED_EXTRA_IDS
     promoted_ids = sorted(
         obj_id
         for obj_id, glob in all_objects.global_data.items()
-        if obj_id not in low_orbit_excludes
-        and _is_promoted(obj_id, glob, cheb_covered_ids, probe_ids, rendered_ids)
+        if _is_promoted(obj_id, glob, cheb_covered_ids, probe_ids, rendered_ids)
     )
-    dropped_low_orbit = sum(
-        1 for oid in all_objects.global_data if oid in low_orbit_excludes
-    )
-    if dropped_low_orbit:
-        logger.info(
-            "Filtered %d low-apogee Earth-orbit probes from labels "
-            "(apogee < %.0f km, ORBIT_CENTER=EA, not in PROMOTED_EXTRA_IDS)",
-            dropped_low_orbit,
-            _LOW_EARTH_ORBIT_APOGEE_KM,
-        )
 
     labels_dir = out_dir / "labels"
     labels_dir.mkdir(parents=True, exist_ok=True)

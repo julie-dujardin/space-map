@@ -366,3 +366,13 @@ def _load_event_probes(events_dir: Path) -> tuple[EventProbe, ...]:
 def events_by_probe_id() -> dict[int, EventProbe]:
     """Curated records keyed by registry probe_id, for joining onto exports."""
     return {p.probe_id: p for p in load_event_probes()}
+
+
+def manifest_probe_ids() -> frozenset[int]:
+    """Every probe the curated records name — the answer to "is this a probe".
+
+    A spacecraft nobody wrote a record for is not one: it orbits something,
+    and that thing's catalogue is where it belongs. The registry keeps its
+    identity either way, which is how it still reaches the map.
+    """
+    return frozenset(p.probe_id for p in load_event_probes())

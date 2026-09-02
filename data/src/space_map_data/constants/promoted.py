@@ -131,36 +131,30 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         # Retired
         "probe-112132096",  # Spitzer Space Telescope (mission SIRTF, naif -79)
         "probe-101912576",  # Dawn (mission DAWN, naif -203)
-        # Earth-orbiting (NORAD/CelesTrak TLEs). Daily SGP4 elements cover
-        # the expected lifespan — these are sats, never probes.
+        # Earth-orbiting, so satellites and not probes — the retired ones
+        # included, whose element sets the Space-Track archive still carries.
         "norad_satcat-20580",  # HST (Hubble)
         "norad_satcat-25544",  # ISS (Zarya)
         "norad_satcat-48274",  # CSS Tianhe (Tiangong)
-        # TESS has SPICE kernels and lands in the probe namespace.
+        "norad_satcat-25867",  # Chandra X-ray Observatory (Earth HEO)
+        "norad_satcat-16609",  # Mir
+        "norad_satcat-37820",  # Tiangong-1
+        # Famous Earth-orbit science missions.
+        "norad_satcat-36119",  # WISE / NEOWISE
+        "norad_satcat-27783",  # GALEX
+        "norad_satcat-10637",  # IUE (first major UV)
+        "norad_satcat-24720",  # HALCA (VSOP/MUSES-B)
+        "norad_satcat-26702",  # Odin (Swedish/Canadian)
+        "norad_satcat-33105",  # OSTM/Jason-2
+        "norad_satcat-27391",  # GRACE-1
+        "norad_satcat-29107",  # CloudSat
+        "norad_satcat-26619",  # EO-1
+        "norad_satcat-39089",  # NEOSSAT
+        # TESS reaches a lunar-resonant orbit, so it stays a probe.
         "probe-109834240",  # TESS (mission HORIZONS-SYNTH, naif -95)
-        "norad_satcat-25867",  # Chandra X-ray Observatory (Earth HEO; celestrak)
-        # Famous Earth-orbit science missions. Without these entries they'd be
-        # caught by `_low_earth_orbit_probe_ids` in export/labels.py and dropped
-        # alongside the GEO comsat noise. TODO: revisit when space-track
-        # integration lands — that catalog may surface them through
-        # `norad_satcat-*` and these probe-* curated overrides can move there.
-        "probe-97353728",  # WISE / NEOWISE          (mission HORIZONS-SYNTH, naif -163)
-        "probe-87433216",  # GALEX                   (mission HORIZONS-SYNTH, naif -53)
-        "probe-49655808",  # IUE (first major UV)    (mission HORIZONS-SYNTH, naif -12)
-        "probe-78147584",  # HALCA (VSOP/MUSES-B)    (mission HORIZONS-SYNTH, naif -10)
-        "probe-120102912",  # Odin (Swedish/Canadian) (mission HORIZONS-SYNTH, naif -2)
-        "probe-95129600",  # OSTM/Jason-2            (mission HORIZONS-SYNTH, naif -7)
-        "probe-85762048",  # GRACE-1                 (mission HORIZONS-SYNTH, naif -8)
-        "probe-91918336",  # CloudSat                (mission HORIZONS-SYNTH, naif -7)
-        "probe-83795968",  # EO-1                    (mission HORIZONS-SYNTH, naif -5)
-        "probe-123904000",  # NEO Surveyor (NEOSSAT)  (mission HORIZONS-SYNTH, naif -9)
-        # Space stations beyond those already covered above.
-        "probe-61722624",  # Mir                      (mission HORIZONS-SYNTH, naif -3)
-        "probe-100032512",  # Tiangong-1              (mission HORIZONS-SYNTH, naif -4)
-        # Lunar-trajectory attempts whose SATCAT row only records the Earth
-        # parking orbit (apogee filter would drop them). Multiple registry
-        # entries per cubesat — they get a probe_id per inception_mjd dedup,
-        # all listed so any rendered variant gets full-promoted.
+        # Lunar-trajectory attempts. Some cubesats have a registry entry per
+        # inception_mjd dedup slot; only the manifested one renders, and the
+        # rest are inert.
         "probe-104615936",  # Chang'e 5-T1            (lunar free-return test)
         "probe-104615937",  # Chang'e 5-T1
         "probe-104615938",  # Chang'e 5-T1 returner

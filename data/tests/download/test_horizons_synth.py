@@ -500,3 +500,104 @@ class TestSampleRuns:
         from space_map_data.download.providers.spice.synth.spk import _sample_runs
 
         assert _sample_runs(self._samples(0, 1, 2), [(-1.0, 3.0)]) == []
+
+
+class TestEarthOrbitExcludes:
+    """Candidates SATCAT places in Earth orbit, which synthesis skips."""
+
+    @staticmethod
+    def _satcat(tmp_path, rows: list[tuple[str, str]]):
+        """Write a satcat.csv holding `(cospar, orbit_centre)` rows."""
+        celestrak = tmp_path / "celestrak"
+        celestrak.mkdir(parents=True)
+        lines = ["OBJECT_ID,ORBIT_CENTER"]
+        lines += [f"{cospar},{centre}" for cospar, centre in rows]
+        (celestrak / "satcat.csv").write_text("\n".join(lines) + "\n")
+
+    @staticmethod
+    def _registry(monkeypatch, manifested: dict[int, tuple[str | None, int | None]]):
+        """Point the filter at a manifest of `{probe_id: (cospar, synth naif)}`."""
+        entries = [
+            {
+                "probe_id": pid,
+                "cospar_id": cospar,
+                "naif_id": naif or -1,
+                "kernel_sources": (
+                    [{"mission": "HORIZONS-SYNTH", "naif_id": naif}] if naif else []
+                ),
+            }
+            for pid, (cospar, naif) in manifested.items()
+        ]
+        monkeypatch.setattr(
+            "space_map_data.probes.probe_id.load_registry", lambda: entries
+        )
+        monkeypatch.setattr(
+            "space_map_data.probes.events.manifest_probe_ids",
+            lambda: frozenset(manifested),
+        )
+
+    def test_drops_an_uncurated_earth_orbiter(self, tmp_path, monkeypatch):
+        # Mir: decayed, so absent from the active feed, but still Earth-bound.
+        self._satcat(tmp_path, [("1986-017A", "EA")])
+        self._registry(monkeypatch, {})
+        monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
+        candidates: list[tuple[int, str, str | None]] = [
+            (-116609, "Mir (spacecraft)", "1986-017A")
+        ]
+        assert index.earth_orbit_excludes(candidates) == {-116609}
+
+    def test_keeps_an_earth_orbiter_the_manifest_claims(self, tmp_path, monkeypatch):
+        # TESS: SATCAT records the parking orbit, and the synth kernel is the
+        # only trajectory it has. The manifest outranks the orbit centre.
+        self._satcat(tmp_path, [("2018-038A", "EA")])
+        self._registry(monkeypatch, {109834240: ("2018-038A", None)})
+        monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
+        candidates: list[tuple[int, str, str | None]] = [(-95, "TESS", "2018-038A")]
+        assert index.earth_orbit_excludes(candidates) == set()
+
+    def test_keeps_an_earth_orbiter_claimed_by_synth_naif(self, tmp_path, monkeypatch):
+        # Chang'e 3: Horizons designates it differently from SATCAT, so only
+        # the registry's own HORIZONS-SYNTH key matches.
+        self._satcat(tmp_path, [("2013-070A", "EA")])
+        self._registry(monkeypatch, {114270209: (None, -139459)})
+        monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
+        candidates: list[tuple[int, str, str | None]] = [
+            (-139459, "Chang'e 3", "2013-070A")
+        ]
+        assert index.earth_orbit_excludes(candidates) == set()
+
+    def test_keeps_a_heliocentric_probe(self, tmp_path, monkeypatch):
+        self._satcat(tmp_path, [("1977-076A", "SU")])
+        self._registry(monkeypatch, {})
+        monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
+        candidates: list[tuple[int, str, str | None]] = [
+            (-32, "Voyager 2", "1977-076A")
+        ]
+        assert index.earth_orbit_excludes(candidates) == set()
+
+    def test_keeps_the_earth_lagrange_and_barycentre_centres(
+        self, tmp_path, monkeypatch
+    ):
+        # Where a departing craft's catalogue entry ends up; not Earth orbit.
+        self._satcat(tmp_path, [("1995-065A", "EL1"), ("2025-010A", "EM")])
+        self._registry(monkeypatch, {})
+        monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
+        candidates: list[tuple[int, str, str | None]] = [
+            (-21, "SOHO", "1995-065A"),
+            (-2711, "Blue Ghost 1", "2025-010A"),
+        ]
+        assert index.earth_orbit_excludes(candidates) == set()
+
+    def test_keeps_a_candidate_with_no_catalogue_row(self, tmp_path, monkeypatch):
+        self._satcat(tmp_path, [])
+        self._registry(monkeypatch, {})
+        monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
+        candidates: list[tuple[int, str, str | None]] = [
+            (-98, "New Horizons", None),
+            (-121, "Ramses", "2029-000A"),
+        ]
+        assert index.earth_orbit_excludes(candidates) == set()
+
+    def test_missing_satcat_keeps_everything(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
+        assert index.earth_orbit_excludes([(-116609, "Mir", "1986-017A")]) == set()

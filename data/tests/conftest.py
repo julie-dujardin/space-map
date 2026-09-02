@@ -31,7 +31,7 @@ _KEPLER_DEFAULTS: dict[str, Any] = {
 def make_object(**overrides) -> Object:
     """Create an Object with kepler kwargs routed to the sub-table its orbital_source
     reads from: Horizons for spice/None, a transient `_daily_kepler` overlay for
-    celestrak. SBDB-source tests should set ``obj.sbdb`` themselves."""
+    the Earth-sat sources. SBDB-source tests should set ``obj.sbdb`` themselves."""
     kepler = {k: overrides.pop(k) for k in list(overrides) if k in _KEPLER_KEYS}
     daily_kepler = overrides.pop("daily_kepler", None)
 
@@ -49,7 +49,7 @@ def make_object(**overrides) -> Object:
     merged = {**_KEPLER_DEFAULTS, **kepler}
     src = obj.orbital_source
 
-    if src == OrbitalSource.celestrak:
+    if src in (OrbitalSource.celestrak, OrbitalSource.spacetrack):
         if daily_kepler is None:
             daily_kepler = {
                 "epoch_jd": merged["epoch_jd"],

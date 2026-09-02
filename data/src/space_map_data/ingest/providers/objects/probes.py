@@ -14,6 +14,11 @@ The primary key is `probe-<probe_id>` so the row survives NAIF-ID recycling
 probe_ids). `naif_id` is still stored on the row but as an attribute, not
 the primary key.
 
+Which spacecraft get a row is the curated manifest's call, not the kernel
+tree's: only a probe named in `sources/position/probe-events/` ingests here.
+Everything else the walk finds is a satellite of whatever it orbits, and
+reaches the map through that catalogue instead — see `_manifested`.
+
 Identity fields (`name`, `cospar_id`, `norad_cat_id`, `wikidata_qid`) come
 from the probe registry at `spice/probe_ids.json` — never from MB-by-NAIF,
 which would give every recycled-NAIF entry the *current* tenant's identity.
@@ -30,6 +35,7 @@ from tqdm import tqdm
 from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.models.object import Object, ObjectType, OrbitalSource, Satcat
 from space_map_data.probes.probe_id import (
+    EVENTS_DB_MISSION,
     ProbeIdRecord,
     record_from_entry,
     assign_many,
@@ -37,6 +43,7 @@ from space_map_data.probes.probe_id import (
     is_spacecraft_naif,
     load_registry,
 )
+from space_map_data.probes.events import manifest_probe_ids
 from space_map_data.probes.trace import inception_et
 from space_map_data.utils.db import get_session
 
@@ -209,6 +216,55 @@ def _events_only_records(
     return out
 
 
+def _manifested(
+    pairs: list[tuple[dict, ProbeIdRecord]],
+) -> list[tuple[dict, ProbeIdRecord]]:
+    """Keep the records the curated manifest names, and log the rest.
+
+    A kernel says somebody computed a trajectory, never that the thing
+    flying it is a probe — Horizons publishes ephemerides for Mir and for a
+    dozen dead comsats alike. A spacecraft the manifest does not name
+    ingests as whatever its own catalogue says it is instead, which for
+    anything with a SATCAT row is a `norad_satcat-N` Earth satellite.
+
+    A drop the registry knows no identity for is worth a warning rather
+    than a count: it is a bare kernel bucket whose trajectory belongs to
+    some probe that has a record of its own, and it goes unused until the
+    two are declared as one entry. Pairing them by NAIF would be wrong,
+    since ids are recycled and -18 reads as both Magellan and LCROSS.
+    """
+    manifest = manifest_probe_ids()
+    kept: list[tuple[dict, ProbeIdRecord]] = []
+    dropped: list[str] = []
+    unnamed: list[str] = []
+    for record, rec in pairs:
+        source = f"{record['mission']}/{record['naif_id']}"
+        if rec.probe_id in manifest:
+            kept.append((record, rec))
+        elif rec.name or rec.wikidata_qid or rec.cospar_id:
+            dropped.append(f"{rec.name or rec.cospar_id or source} ({rec.probe_id})")
+        else:
+            unnamed.append(source)
+    if dropped:
+        logger.info(
+            "%d spacecraft carry kernels but no manifest record, so they "
+            "ingest as satellites of whatever they orbit; write a record in "
+            "sources/position/probe-events/ for any that is a probe",
+            len(dropped),
+        )
+        logger.debug("not in the probe manifest: %s", ", ".join(sorted(dropped)))
+    if unnamed:
+        logger.warning(
+            "%d kernel folders sit under a registry entry with no identity, "
+            "so nothing can say which probe they belong to and their "
+            "trajectories go unused: %s. Declare each as a kernel_source on "
+            "the entry of the probe that flew it.",
+            len(unnamed),
+            ", ".join(sorted(unnamed)),
+        )
+    return kept
+
+
 class ProbesIngestor:
     BATCH = 500
 
@@ -309,17 +365,17 @@ class ProbesIngestor:
         spk_keys = {(r["mission"], r["naif_id"]) for r in records}
         events_records = _events_only_records(spk_keys)
 
+        spk_records = [(r, assignments[(r["mission"], r["naif_id"])]) for r in records]
+        # Events-only entries are manifested by construction — one exists only
+        # because a record named it — but both branches run the gate so the
+        # rule is structural rather than incidental.
+        kept = _manifested(spk_records + events_records)
+
         self._clear()
         self._load_satcat_norads()
 
         rows: list[dict] = []
-        for r in tqdm(records, desc="Probes ingest"):
-            rec = assignments[(r["mission"], r["naif_id"])]
-            rows.append(self._build_row(r, rec))
-            if len(rows) >= self.BATCH:
-                self.session.execute(insert(Object), rows)
-                rows = []
-        for r, rec in events_records:
+        for r, rec in tqdm(kept, desc="Probes ingest"):
             rows.append(self._build_row(r, rec))
             if len(rows) >= self.BATCH:
                 self.session.execute(insert(Object), rows)
@@ -327,11 +383,12 @@ class ProbesIngestor:
         if rows:
             self.session.execute(insert(Object), rows)
         self.session.commit()
+        events_kept = sum(1 for _r, rec in kept if rec.mission == EVENTS_DB_MISSION)
         logger.info(
             "Ingested %d probe Objects (%d SPK-driven + %d events-only)",
-            len(records) + len(events_records),
-            len(records),
-            len(events_records),
+            len(kept),
+            len(kept) - events_kept,
+            events_kept,
         )
 
 

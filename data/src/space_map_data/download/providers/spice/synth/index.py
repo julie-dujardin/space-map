@@ -8,6 +8,10 @@ from collections import defaultdict
 
 import orjson
 
+from space_map_data.constants.earth_sats.satcat import (
+    OrbitCenter,
+    parse_orbit_center,
+)
 from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 from ..naif_http import merge_intervals, spk_coverage
@@ -37,30 +41,14 @@ _NAME_DROP_PATTERNS: tuple[re.Pattern, ...] = tuple(
 # COSPAR designator format printed in the MB list's "Designation" column.
 _COSPAR_RE = re.compile(r"^\d{4}-\d{3}[A-Z]+$")
 
-# Hand-curated NAIF blocklist for entries the CelesTrak filter can't catch
-# (no COSPAR in the MB row, or a special-case override). Most CelesTrak-tracked
-# Earth orbiters are filtered automatically via `celestrak_active_excludes()`.
-_NAIF_BLOCKLIST: frozenset[int] = frozenset()
-
-
-class CelestrakWhitelistConflict(RuntimeError):
-    """Raised when a CelesTrak-active NAIF is ALSO claimed by an agency probe.
-
-    Means our probe registry and SATCAT/CelesTrak disagree about the same
-    spacecraft. Fix the data (drop the stale registry entry or update SATCAT
-    cross-references) instead of silently dropping the agency record.
-    """
-
 
 def _parse_horizons_spacecraft(mb_text: str) -> list[tuple[int, str, str | None]]:
     """Parse Horizons MB listing → [(naif_id, name, cospar)] for real spacecraft.
 
     `cospar` is the contents of the MB list's "Designation" column (cols 46-56)
-    when it matches `YYYY-NNNX`, else None. Name patterns from
-    `_NAME_DROP_PATTERNS` and the hand-curated `_NAIF_BLOCKLIST` are applied
-    here; the CelesTrak/SATCAT cross-reference filter runs separately at the
-    caller (it depends on on-disk CelesTrak snapshots and the probe registry,
-    which we don't want to couple to a pure parser).
+    when it matches `YYYY-NNNX`, else None. `_NAME_DROP_PATTERNS` is applied
+    here; the SATCAT orbit-centre filter runs separately at the caller, which
+    reads from disk and shouldn't be coupled to a pure parser.
     """
     out: list[tuple[int, str, str | None]] = []
     in_data = False
@@ -81,127 +69,64 @@ def _parse_horizons_spacecraft(mb_text: str) -> list[tuple[int, str, str | None]
             continue
         if any(p.search(name) for p in _NAME_DROP_PATTERNS):
             continue
-        if naif_id in _NAIF_BLOCKLIST:
-            continue
         designation = line[46:57].strip() if len(line) > 46 else ""
         cospar = designation if _COSPAR_RE.match(designation) else None
         out.append((naif_id, name, cospar))
     return sorted(out, key=lambda r: -abs(r[0]))
 
 
-def _latest_gp_active_norads() -> set[int]:
-    """NORAD IDs in the freshest `gp-active.csv` snapshot.
+def earth_orbit_excludes(candidates: list[tuple[int, str, str | None]]) -> set[int]:
+    """NAIFs to drop as uncurated Earth satellites, not worth synthesising.
 
-    Empty set if no snapshot is on disk yet (e.g. CelesTrak hasn't been
-    downloaded) — the synth pipeline then falls back to the legacy behavior of
-    accepting every MB candidate.
+    Space-Track already holds an Earth orbiter's trajectory, in element sets
+    far denser than Horizons samples, so a synth kernel for one is work whose
+    only effect is to grow the registry with satellites.
+
+    Only ever a spending decision. The manifest says what is a probe, and a
+    candidate it claims is kept whatever SATCAT calls the orbit — SATCAT
+    records the parking orbit of a craft that left Earth, so TESS, the
+    Artemis-1 cubesats and Chang'e 3 all read as Earth-orbiting there, and
+    TESS has no other source to fall back on. A claim is read off the
+    registry's own `HORIZONS-SYNTH/<naif>` key first and its COSPAR only
+    second: Horizons designates Chang'e 3 differently from SATCAT, and
+    EQUULEUS has no COSPAR at all.
     """
-    celestrak_dir = SOURCES_POSITION_DIR / "celestrak"
-    paths = sorted(celestrak_dir.glob("*/*/*/gp-active.csv"))
-    if not paths:
-        logger.warning(
-            "no gp-active.csv under %s; skipping CelesTrak-active filter",
-            celestrak_dir,
-        )
-        return set()
-    norads: set[int] = set()
-    with paths[-1].open() as f:
-        for row in csv.DictReader(f):
-            try:
-                norads.add(int(row["NORAD_CAT_ID"]))
-            except (KeyError, ValueError, TypeError):
-                continue
-    logger.info(
-        "loaded %d CelesTrak-active NORADs from %s",
-        len(norads),
-        paths[-1].relative_to(SOURCES_POSITION_DIR),
-    )
-    return norads
+    from space_map_data.probes.events import manifest_probe_ids
+    from space_map_data.probes.probe_id import HORIZONS_SYNTH_MISSION, load_registry
 
-
-def _satcat_cospar_to_norad() -> dict[str, int]:
-    """`COSPAR → NORAD CAT ID` from CelesTrak SATCAT. Empty if missing."""
     satcat = SOURCES_POSITION_DIR / "celestrak" / "satcat.csv"
     if not satcat.exists():
-        logger.warning("no satcat.csv at %s; cannot resolve COSPAR→NORAD", satcat)
-        return {}
-    out: dict[str, int] = {}
+        logger.warning("no satcat.csv at %s; keeping every candidate", satcat)
+        return set()
+    manifest = manifest_probe_ids()
+    claimed_naifs: set[int] = set()
+    claimed_cospars: set[str] = set()
+    for entry in load_registry():
+        if entry["probe_id"] not in manifest:
+            continue
+        if entry.get("cospar_id"):
+            claimed_cospars.add(entry["cospar_id"])
+        claimed_naifs.update(
+            int(src["naif_id"])
+            for src in entry["kernel_sources"]
+            if src["mission"] == HORIZONS_SYNTH_MISSION
+        )
+    wanted = {
+        cospar
+        for naif, _name, cospar in candidates
+        if cospar and cospar not in claimed_cospars and naif not in claimed_naifs
+    }
+    earth_bound: set[str] = set()
     with satcat.open() as f:
         for row in csv.DictReader(f):
             cospar = (row.get("OBJECT_ID") or "").strip()
-            norad_s = (row.get("NORAD_CAT_ID") or "").strip()
-            if not cospar or not norad_s:
-                continue
-            try:
-                out[cospar] = int(norad_s)
-            except ValueError:
-                continue
-    return out
-
-
-def celestrak_active_excludes(
-    candidates: list[tuple[int, str, str | None]],
-    registry: list[dict] | None = None,
-) -> set[int]:
-    """NAIFs to drop because CelesTrak ships their NORAD as a daily-refreshed
-    SGP4 element (= no benefit from a parallel Horizons synth SPK).
-
-    Join: candidate COSPAR (MB designator) → NORAD (SATCAT) → membership in
-    the latest gp-active.csv snapshot. Candidates without a parseable COSPAR
-    are kept (no information to disqualify them).
-
-    Raises `CelestrakWhitelistConflict` if the resulting blacklist overlaps
-    the agency-backed probe registry whitelist — meaning two of our sources
-    claim the same NAIF and the discrepancy should be resolved before silently
-    dropping a probe with real agency SPK coverage.
-    """
-    from space_map_data.probes.probe_id import load_registry
-
-    active_norads = _latest_gp_active_norads()
-    if not active_norads:
-        return set()
-    cospar_to_norad = _satcat_cospar_to_norad()
-    if not cospar_to_norad:
-        return set()
-
-    excludes: set[int] = set()
-    for naif_id, _name, cospar in candidates:
-        if not cospar:
-            continue
-        norad = cospar_to_norad.get(cospar)
-        if norad is None:
-            continue
-        if norad in active_norads:
-            excludes.add(naif_id)
-
-    if registry is None:
-        registry = load_registry()
-    whitelist = {
-        int(entry["naif_id"])
-        for entry in registry
-        if (entry.get("kernel_sources") or [{"mission": "HORIZONS-SYNTH"}])[0][
-            "mission"
-        ]
-        != "HORIZONS-SYNTH"
-    }
-    conflict = excludes & whitelist
-    if conflict:
-        details = []
-        by_naif = {int(e["naif_id"]): e for e in registry}
-        for n in sorted(conflict):
-            entry = by_naif[n]
-            details.append(
-                f"naif={n} mission={entry['kernel_sources'][0]['mission']} "
-                f"name={entry.get('name')!r}"
-            )
-        raise CelestrakWhitelistConflict(
-            "CelesTrak-active filter would drop NAIFs that are agency-backed "
-            "in probe registry; resolve before merging. Conflicts:\n  "
-            + "\n  ".join(details)
-        )
-
+            if cospar in wanted:
+                centre, _docked = parse_orbit_center(row.get("ORBIT_CENTER"))
+                if centre is OrbitCenter.EARTH:
+                    earth_bound.add(cospar)
+    excludes = {naif for naif, _name, cospar in candidates if cospar in earth_bound}
     logger.info(
-        "CelesTrak-active filter: dropping %d / %d candidates",
+        "SATCAT orbit-centre filter: %d / %d candidates are uncurated Earth satellites",
         len(excludes),
         len(candidates),
     )
@@ -276,7 +201,7 @@ def agency_naif_coverage(
             continue
         try:
             idx = json.loads(idx_path.read_text())
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             continue
         tc = idx.get("targets_coverage")
         if tc:
@@ -325,7 +250,7 @@ def _write_index(
         if meta_path.exists():
             try:
                 revised = orjson.loads(meta_path.read_bytes()).get("revised", "unknown")
-            except (orjson.JSONDecodeError, OSError):
+            except orjson.JSONDecodeError, OSError:
                 pass
         files.append(
             {

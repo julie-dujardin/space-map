@@ -179,10 +179,12 @@ def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
     """Pick unified-name kepler elements from the right sub-table by ``orbital_source``.
 
     SBDB satellites store ``a`` in km (``a_km``); converted to AU here to match
-    the position writer's units.
+    the position writer's units. Earth sats hold no elements of their own — the
+    snapshot overlay attaches the week's set as ``_daily_kepler``, the same
+    dict the elements writer reads.
     """
     src = obj.orbital_source
-    if src == OrbitalSource.celestrak:
+    if src in (OrbitalSource.celestrak, OrbitalSource.spacetrack):
         daily = getattr(obj, "_daily_kepler", None)
         if daily is None:
             return {}
