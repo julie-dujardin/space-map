@@ -12,6 +12,11 @@ from space_map_data.constants.earth_sats.organizations import (
     ORGANIZATION_BY_SLUG,
     ORGANIZATION_SLUG_PREFIX,
 )
+from space_map_data.constants.earth_sats.launch_vehicles import LAUNCH_VEHICLE_BY_SLUG
+from space_map_data.constants.earth_sats.satellite_models import (
+    BUS_BY_SLUG,
+    BUS_SLUG_PREFIX,
+)
 from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPES,
     feature_type_key,
@@ -19,6 +24,7 @@ from space_map_data.constants.nomenclature.feature_types import (
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.groups.registry import (
     LAUNCH_SITE_SLUG_PREFIX,
+    LAUNCH_VEHICLE_SLUG_PREFIX,
     GROUPS,
     GroupType,
 )
@@ -258,6 +264,17 @@ def _group_fallback_name(group) -> str:
         site = LAUNCH_SITE_BY_SLUG.get(group.slug.removeprefix(LAUNCH_SITE_SLUG_PREFIX))
         if site is not None:
             return site.name
+    elif group.type is GroupType.BUS:
+        bus = BUS_BY_SLUG.get(group.slug.removeprefix(BUS_SLUG_PREFIX))
+        if bus is not None and bus.also_known_as:
+            return bus.also_known_as[0]
+    elif group.type is GroupType.LAUNCH_VEHICLE:
+        stem = group.slug.removeprefix(LAUNCH_VEHICLE_SLUG_PREFIX)
+        lv = LAUNCH_VEHICLE_BY_SLUG.get(stem)
+        if lv is not None:
+            # A family with no name of its own borrows the constellation
+            # behaviour: bare slug, prettified by the frontend.
+            return lv.name or stem
     elif group.type is GroupType.CONSTELLATION:
         # No name registry; the bare slug is the fallback the frontend prettifies.
         return group.slug.removeprefix(CONSTELLATION_SLUG_PREFIX)
