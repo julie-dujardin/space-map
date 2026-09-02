@@ -790,6 +790,10 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec("Ministry of Aerospace Industry", "mai-china", "Q6866598"),
     OperatorSpec("Soviet Air Defence Forces", "pvo", "Q631009"),
     OperatorSpec("Sitronics", "sitronics", "Q1022148"),
+    OperatorSpec("Russian Space Forces", "russian-space-forces", "Q1703142"),
+    OperatorSpec(
+        "Russian Aerospace Defence Forces", "russian-aerospace-defence", "Q2894518"
+    ),
     OperatorSpec("National Space Development Agency of Japan", "nasda", "Q2704796"),
     OperatorSpec("Environmental Science Services Administration", "essa", "Q3055447"),
 )

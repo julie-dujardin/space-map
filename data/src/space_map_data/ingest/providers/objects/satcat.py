@@ -70,21 +70,13 @@ class SatcatIngestor:
         categories = resolve_categories(constellation, groups)
         hardware = self.gcat.get(norad)
         gcat_bus = hardware.bus if hardware else None
-        gcat_owner = (
-            tuple(
-                dict.fromkeys(
-                    c for c in (hardware.owner_code, hardware.owner_ucode) if c
-                )
-            )
-            if hardware
-            else ()
-        )
         operator_qids = resolve_operator_qids(
             owner,
             constellation,
             fields["launch_date"],
             fields["decay_date"],
-            gcat_owner,
+            (hardware.owner_code,) if hardware and hardware.owner_code else (),
+            (hardware.owner_ucode,) if hardware and hardware.owner_ucode else (),
         )
         manufacturer_qids = resolve_manufacturer_qids(
             constellation,

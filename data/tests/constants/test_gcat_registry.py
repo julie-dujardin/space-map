@@ -16,6 +16,8 @@ from space_map_data.ingest.providers.objects.enrichment import (
 )
 
 SPACEX = "Q193701"
+SOVIET_ARMED_FORCES = "Q7915590"
+RUSSIAN_SPACE_FORCES = "Q1703142"
 NASA = "Q23548"
 
 
@@ -66,6 +68,18 @@ class TestOperatorResolution:
         """GCAT names the centre that ran the mission, not the agency."""
         assert NASA in resolve_operator_qids(None, None, gcat_owner=("GSFC",))
         assert NASA in resolve_operator_qids(None, None, gcat_owner=("JSC",))
+
+    def test_military_space_directorate_follows_its_era(self):
+        """Six names for one branch; GCAT dates each code, so a 1975 launch is
+        Soviet and a 2005 one is the Russian Space Forces."""
+        soviet = resolve_operator_qids(
+            None, None, gcat_owner=("GUKOS",), gcat_owner_ucodes=("GUKOS",)
+        )
+        russian = resolve_operator_qids(
+            None, None, gcat_owner=("KVR",), gcat_owner_ucodes=("GUKOS",)
+        )
+        assert soviet == [SOVIET_ARMED_FORCES]
+        assert russian == [RUSSIAN_SPACE_FORCES]
 
     def test_unknown_owner_code_leaves_the_owner_path(self):
         qids = resolve_operator_qids("ESA", None, gcat_owner=("NOSUCHORG",))

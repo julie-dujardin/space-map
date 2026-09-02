@@ -97,6 +97,22 @@ OPERATOR_BY_GCAT: dict[str, str] = {
     "ESSA": "essa",
     "EUTEL": "eutelsat",
     "GEESP": "geespace",
+    # The Soviet, then Russian, military space directorate under its six
+    # successive names. GCAT dates each code, so the era comes from the code
+    # rather than from the launch date: TSUKOS through UNKS are Soviet, and the
+    # rest track the reorganisations the branch went through after 1991.
+    "GRU": "soviet-armed-forces",
+    "GUKOS": "soviet-armed-forces",
+    "GUKOSR": "soviet-armed-forces",
+    "KVR": "russian-space-forces",
+    "TSUKOS": "soviet-armed-forces",
+    "UNKS": "soviet-armed-forces",
+    "UNKSR": "russian-space-forces",
+    "VKS": "russian-space-forces",
+    "VKSR": "russian-space-forces",
+    "VTS": "soviet-armed-forces",  # military topographic service
+    "VVKO": "russian-aerospace-defence",
+    "VVKOV": "russian-aerospace-forces",
     "GLOB": "globalstar",
     "GSFC": "nasa",
     "INTEL": "intelsat",

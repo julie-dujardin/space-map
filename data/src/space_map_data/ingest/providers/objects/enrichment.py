@@ -211,12 +211,31 @@ def resolve_categories(constellation: str | None, groups: set[str]) -> list[str]
     return sorted(cats)
 
 
+def _gcat_slugs(
+    codes: tuple[str, ...], ucodes: tuple[str, ...], table: dict[str, str]
+) -> list[str]:
+    """Slugs for GCAT org codes, the as-filed code before its UCode.
+
+    The UCode is the whole lineage under one name, so it answers with the body
+    that inherited the work rather than the one that did it — Airbus for a
+    Matra satellite, the Soviet space directorate for a Russian launch. It is
+    only consulted for a code this project does not know.
+    """
+    out: list[str] = []
+    for code, ucode in zip_longest(codes, ucodes):
+        slug = table.get(code) or table.get(ucode)
+        if slug is not None:
+            out.append(slug)
+    return out
+
+
 def resolve_operator_qids(
     owner: str | None,
     constellation: str | None,
     launch_date: str | None = None,
     decay_date: str | None = None,
     gcat_owner: tuple[str, ...] = (),
+    gcat_owner_ucodes: tuple[str, ...] = (),
 ) -> list[str]:
     """QIDs of the organisations that operated this sat.
 
@@ -226,9 +245,8 @@ def resolve_operator_qids(
     say when it existed.
     """
     qids: set[str] = set()
-    for code in gcat_owner:
-        slug = OPERATOR_BY_GCAT.get(code)
-        org = ORGANIZATION_BY_SLUG.get(slug) if slug else None
+    for slug in _gcat_slugs(gcat_owner, gcat_owner_ucodes, OPERATOR_BY_GCAT):
+        org = ORGANIZATION_BY_SLUG.get(slug)
         if org is not None and org.wikidata_qid is not None:
             qids.add(org.wikidata_qid)
     if owner is not None:
@@ -261,12 +279,7 @@ def resolve_manufacturer_qids(
         for mfr in MANUFACTURER_BY_CONSTELLATION.get(constellation, ()):
             if mfr.wikidata_qid is not None:
                 qids.add(mfr.wikidata_qid)
-    # The as-filed code first: it dates the build to the organisation that made
-    # it, where the UCode would answer with whoever owns that lineage today.
-    for code, ucode in zip_longest(gcat_codes, gcat_ucodes):
-        slug = MANUFACTURER_BY_GCAT.get(code) or MANUFACTURER_BY_GCAT.get(ucode)
-        if slug is None:
-            continue
+    for slug in _gcat_slugs(gcat_codes, gcat_ucodes, MANUFACTURER_BY_GCAT):
         mfr = MANUFACTURER_BY_SLUG.get(slug)
         if mfr is not None and mfr.wikidata_qid is not None:
             qids.add(mfr.wikidata_qid)
