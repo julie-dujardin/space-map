@@ -6,7 +6,7 @@ import {
 	CAT_MOONS,
 	CAT_DWARF_PLANETS,
 	CAT_SOLAR_SYSTEM,
-	CAT_PLANETARY_SYSTEMS,
+	CAT_SATELLITE_SYSTEMS,
 	CAT_ASTEROIDS,
 	CAT_COMETS,
 	CAT_SATELLITES,
@@ -30,7 +30,7 @@ export interface CategoryConfig {
 	solarSystem: boolean;
 	/** Members are the barycenter pages, named "<primary> system" off the
 	 *  primary's label and shown as one map tile each. */
-	planetarySystems: boolean;
+	satelliteSystems: boolean;
 	/** Members are the ringed bodies, shown as tiles onto their Rings tab. */
 	ringSystems: boolean;
 	/** planets/moons/dwarf: hero is a sphere lineup, so no member strip. */
@@ -70,7 +70,7 @@ const NONE: CategoryConfig = {
 	moons: false,
 	dwarfPlanets: false,
 	solarSystem: false,
-	planetarySystems: false,
+	satelliteSystems: false,
 	ringSystems: false,
 	lineup: false,
 	membersShownInFull: false,
@@ -91,7 +91,7 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 		crossRefs: true
 	},
 	[CAT_SOLAR_SYSTEM]: { solarSystem: true },
-	[CAT_PLANETARY_SYSTEMS]: { planetarySystems: true, membersShownInFull: true },
+	[CAT_SATELLITE_SYSTEMS]: { satelliteSystems: true, membersShownInFull: true },
 	[CAT_ASTEROIDS]: { smallBody: true, sphereLineup: true, crossRefs: true },
 	[CAT_COMETS]: { smallBody: true, sphereLineup: true, crossRefs: true },
 	[CAT_SATELLITES]: { crossRefs: true },

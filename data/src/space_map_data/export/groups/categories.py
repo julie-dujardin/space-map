@@ -23,11 +23,11 @@ from space_map_data.constants.categories import (
     DWARF_PLANETS_SLUG,
     MOONS_SLUG,
     OCEANS_SLUG,
-    PLANETARY_SYSTEMS_SLUG,
     PLANETS_SLUG,
     PROBES_SLUG,
     RING_SYSTEMS_SLUG,
     SATELLITES_SLUG,
+    SATELLITE_SYSTEMS_SLUG,
     SOLAR_SYSTEM_SLUG,
     STRUCTURE_ACTIVITY_SLUG,
     VOLCANISM_SLUG,
@@ -1400,7 +1400,7 @@ def build_category_data(
         # Systems and probes lead: what the map is made of, then what we sent
         # into it; the kinds of body follow.
         SOLAR_SYSTEM_SLUG: [
-            PLANETARY_SYSTEMS_SLUG,
+            SATELLITE_SYSTEMS_SLUG,
             PROBES_SLUG,
             PLANETS_SLUG,
             DWARF_PLANETS_SLUG,
@@ -1463,7 +1463,7 @@ def build_category_data(
         PLANETS_SLUG: len(planet_members),
         # A system is its bodies, all counted elsewhere, so it stays out of the
         # root total too.
-        PLANETARY_SYSTEMS_SLUG: len(system_members),
+        SATELLITE_SYSTEMS_SLUG: len(system_members),
         # Dwarf planets are SBDB-tracked, so they already fall inside
         # asteroids_total (their orbit classes) — counted here for the page's own
         # tally, but not re-added to the root total above.
@@ -1592,7 +1592,7 @@ def build_category_data(
     if solar_system:
         notable_members[SOLAR_SYSTEM_SLUG] = solar_system
     if system_members:
-        notable_members[PLANETARY_SYSTEMS_SLUG] = system_members
+        notable_members[SATELLITE_SYSTEMS_SLUG] = system_members
 
     # Stat cards. The small-body categories inherit the biggest member of any
     # class that partitions them; the major-body ones rank PCK radii. Flags are

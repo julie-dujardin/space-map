@@ -21,7 +21,7 @@ import {
 	CAT_PROBES,
 	CAT_SATELLITES,
 	CAT_SOLAR_SYSTEM,
-	CAT_PLANETARY_SYSTEMS,
+	CAT_SATELLITE_SYSTEMS,
 	CLASS_SLUG_PREFIX,
 	COMET_FAMILY_SLUG_PREFIX,
 	CAT_SURFACE_FEATURES,
@@ -161,7 +161,7 @@ export function parentCrumb(
 	// first cross-ref tile instead. The Solar System barycenter is that
 	// system's own centre, so it climbs to the root.
 	if (data.objectType === ObjectType.BARYCENTER)
-		return categoryCrumb(data.id === SSB_ID ? CAT_SOLAR_SYSTEM : CAT_PLANETARY_SYSTEMS);
+		return categoryCrumb(data.id === SSB_ID ? CAT_SOLAR_SYSTEM : CAT_SATELLITE_SYSTEMS);
 
 	// Moon (planetary or small-body) → its parent (planet, not the barycenter;
 	// or the host asteroid). Must precede the URL-type branches: small-body

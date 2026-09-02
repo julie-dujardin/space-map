@@ -91,7 +91,7 @@
 {#if cat.solarSystem && visibleChildGroups.length}
 	<CategoryChildTiles childGroups={visibleChildGroups} />
 {/if}
-{#if cat.planetarySystems && notableMembers && notableMembers.length > 0}
+{#if cat.satelliteSystems && notableMembers && notableMembers.length > 0}
 	<PlanetarySystemTiles members={notableMembers} localizedNames={memberNames} />
 {/if}
 {#if cat.ringSystems && notableMembers && notableMembers.length > 0}

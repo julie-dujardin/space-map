@@ -98,7 +98,7 @@
 				localized={data?.localized ?? null}
 				{fallbackName}
 				leadingBadges={groupHeaderBadges ??
-					(planetarySystem.isSystemPage ? [m.planetary_system_badge()] : undefined)}
+					(planetarySystem.isSystemPage ? [m.satellite_system_badge()] : undefined)}
 				hero={cat.solarSystem
 					? solarSystemMapSnippet
 					: planetarySystem.isSystemPage && planetarySystem.system

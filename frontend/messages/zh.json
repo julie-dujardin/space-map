@@ -182,7 +182,7 @@
 	"page_title": "太空地图",
 	"skip_to_content": "跳到主要内容",
 	"category_name_solar_system": "太阳系",
-	"category_name_planetary_systems": "行星系统",
+	"category_name_satellite_systems": "卫星系",
 	"category_name_planets": "行星",
 	"category_name_dwarf_planets": "矮行星",
 	"category_name_moons": "卫星",
@@ -640,7 +640,7 @@
 	"planetary_system_retrograde": "逆行",
 	"planetary_system_title": "{primary}系统",
 	"planetary_system_title_earth_moon": "地月系统",
-	"planetary_system_badge": "行星系统",
+	"satellite_system_badge": "卫星系",
 	"moons_count_moon": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

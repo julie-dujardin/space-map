@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { PROPERTY_COLLECTION_SLUGS } from './category-config';
 import { parentCrumb } from './breadcrumb';
-import { CAT_PLANETARY_SYSTEMS, CAT_SURFACE_FEATURES } from '$lib/fetch/groups/registry';
+import { CAT_SATELLITE_SYSTEMS, CAT_SURFACE_FEATURES } from '$lib/fetch/groups/registry';
 import { ObjectType } from '$lib/types/objects';
 import type { Focusable } from './focusable';
 
@@ -69,7 +69,7 @@ describe('parentCrumb: planetary systems', () => {
 
 	it('climbs from a planetary system to the Planetary Systems collection', () => {
 		const crumb = parentCrumb(barycenter('naif-5'), undefined, null, null);
-		expect(crumb?.target).toMatchObject({ kind: 'group', slug: CAT_PLANETARY_SYSTEMS });
+		expect(crumb?.target).toMatchObject({ kind: 'group', slug: CAT_SATELLITE_SYSTEMS });
 	});
 
 	it('climbs from the Solar System barycenter to the root', () => {
@@ -79,7 +79,7 @@ describe('parentCrumb: planetary systems', () => {
 
 	it('climbs from the Planetary Systems collection to the root', () => {
 		const crumb = parentCrumb(
-			{ kind: 'group', slug: CAT_PLANETARY_SYSTEMS },
+			{ kind: 'group', slug: CAT_SATELLITE_SYSTEMS },
 			undefined,
 			null,
 			null

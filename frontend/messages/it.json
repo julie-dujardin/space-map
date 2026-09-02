@@ -182,7 +182,7 @@
 	"page_title": "Space Map",
 	"skip_to_content": "Vai al contenuto principale",
 	"category_name_solar_system": "Sistema solare",
-	"category_name_planetary_systems": "Sistemi planetari",
+	"category_name_satellite_systems": "Sistemi di satelliti",
 	"category_name_planets": "Pianeti",
 	"category_name_dwarf_planets": "Pianeti nani",
 	"category_name_moons": "Lune",
@@ -706,7 +706,7 @@
 	"planetary_system_retrograde": "retrogrado",
 	"planetary_system_title": "Sistema di {primary}",
 	"planetary_system_title_earth_moon": "Sistema Terra–Luna",
-	"planetary_system_badge": "Sistema planetario",
+	"satellite_system_badge": "Sistema di satelliti",
 	"moons_count_moon": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

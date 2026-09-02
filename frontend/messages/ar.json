@@ -182,7 +182,7 @@
 	"page_title": "خريطة الفضاء",
 	"skip_to_content": "تخطي إلى المحتوى الرئيسي",
 	"category_name_solar_system": "المجموعة الشمسية",
-	"category_name_planetary_systems": "الأنظمة الكوكبية",
+	"category_name_satellite_systems": "أنظمة قمرية",
 	"category_name_planets": "كواكب",
 	"category_name_dwarf_planets": "كواكب قزمة",
 	"category_name_moons": "أقمار",
@@ -697,7 +697,7 @@
 	"planetary_system_retrograde": "تراجعي",
 	"planetary_system_title": "نظام {primary}",
 	"planetary_system_title_earth_moon": "نظام الأرض–القمر",
-	"planetary_system_badge": "نظام كوكبي",
+	"satellite_system_badge": "نظام قمري",
 	"moons_count_moon": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

@@ -27,7 +27,7 @@ class CategorySpec:
 
 
 SOLAR_SYSTEM_SLUG = f"{CATEGORY_SLUG_PREFIX}solar-system"
-PLANETARY_SYSTEMS_SLUG = f"{CATEGORY_SLUG_PREFIX}planetary-systems"
+SATELLITE_SYSTEMS_SLUG = f"{CATEGORY_SLUG_PREFIX}satellite-systems"
 PLANETS_SLUG = f"{CATEGORY_SLUG_PREFIX}planets"
 DWARF_PLANETS_SLUG = f"{CATEGORY_SLUG_PREFIX}dwarf-planets"
 MOONS_SLUG = f"{CATEGORY_SLUG_PREFIX}moons"
@@ -51,7 +51,13 @@ CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(SOLAR_SYSTEM_SLUG, "Solar System", "Q544"),
     # The barycenter pages: a primary with what orbits it. Its own parent is
     # the Solar System, which is one system up.
-    CategorySpec(PLANETARY_SYSTEMS_SLUG, "Planetary Systems", "Q206717"),
+    # "satellite system" over "planetary system" (Q206717): the latter is a
+    # star with its planets, this one a planetary-mass object with its moons
+    # "or its barycenter", which is what these pages are — and it leaves
+    # "planetary system" free for star systems beyond the Sun. It costs
+    # coverage (four locales have the article, six a label), but the
+    # well-covered item describes the wrong system.
+    CategorySpec(SATELLITE_SYSTEMS_SLUG, "Satellite Systems", "Q25346003"),
     CategorySpec(PLANETS_SLUG, "Planets", "Q634"),
     CategorySpec(DWARF_PLANETS_SLUG, "Dwarf Planets", "Q2199"),  # "dwarf planet"
     CategorySpec(MOONS_SLUG, "Moons", "Q2537"),  # "natural satellite"

@@ -182,7 +182,7 @@
 	"page_title": "Карта космоса",
 	"skip_to_content": "Перейти к основному содержимому",
 	"category_name_solar_system": "Солнечная система",
-	"category_name_planetary_systems": "Планетные системы",
+	"category_name_satellite_systems": "Системы спутников",
 	"category_name_planets": "Планеты",
 	"category_name_dwarf_planets": "Карликовые планеты",
 	"category_name_moons": "Луны",
@@ -672,7 +672,7 @@
 	"planetary_system_retrograde": "обратное",
 	"planetary_system_title": "Система {primary}",
 	"planetary_system_title_earth_moon": "Система Земля–Луна",
-	"planetary_system_badge": "Планетная система",
+	"satellite_system_badge": "Система спутников",
 	"moons_count_moon": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

@@ -182,7 +182,7 @@
 	"page_title": "Space Map",
 	"skip_to_content": "Przejdź do treści głównej",
 	"category_name_solar_system": "Układ Słoneczny",
-	"category_name_planetary_systems": "Układy planetarne",
+	"category_name_satellite_systems": "Układy satelitów",
 	"category_name_planets": "Planety",
 	"category_name_dwarf_planets": "Planety karłowate",
 	"category_name_moons": "Księżyce",
@@ -720,7 +720,7 @@
 	"planetary_system_retrograde": "wsteczna",
 	"planetary_system_title": "Układ {primary}",
 	"planetary_system_title_earth_moon": "Układ Ziemia–Księżyc",
-	"planetary_system_badge": "Układ planetarny",
+	"satellite_system_badge": "Układ satelitów",
 	"moons_count_moon": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

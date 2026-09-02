@@ -25,7 +25,7 @@ function systemNames(
 	names: Record<string, string> | undefined,
 	cat: CategoryConfig
 ): Record<string, string> | undefined {
-	if (!cat.planetarySystems || !members) return names;
+	if (!cat.satelliteSystems || !members) return names;
 	return Object.fromEntries(
 		members.map((mm) => {
 			const key = memberEntryKey(mm);
@@ -251,7 +251,7 @@ export class MembersState {
 				cat.lineup ||
 				cat.solarSystem ||
 				cat.ringSystems ||
-				cat.planetarySystems ||
+				cat.satelliteSystems ||
 				// A property collection lists every member below with its own drawing;
 				// a strip of photographs above it would be the same bodies said worse.
 				cat.property ||
