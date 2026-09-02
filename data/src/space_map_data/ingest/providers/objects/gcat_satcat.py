@@ -66,14 +66,21 @@ def _clean(value: str) -> str | None:
     return None if value in _EMPTY else value
 
 
-def _number(value: str) -> float | None:
+def _measure(value: str) -> float | None:
+    """One size column, or None where GCAT has no figure.
+
+    Zero is its unknown marker on every one of them — no catalogued object
+    masses nothing or spans nothing — and reads as a real measurement if it is
+    passed on.
+    """
     text = _clean(value)
     if text is None:
         return None
     try:
-        return float(text)
+        number = float(text)
     except ValueError:
         return None
+    return number or None
 
 
 def load_gcat_hardware(download_dir: Path) -> dict[int, GcatHardware]:
@@ -115,11 +122,11 @@ def load_gcat_hardware(download_dir: Path) -> dict[int, GcatHardware]:
             state=_clean(row.get("State", "")),
             owner_code=owner,
             owner_ucode=ucode_by_code.get(owner or "", owner),
-            mass_kg=_number(row.get("Mass", "")),
-            dry_mass_kg=_number(row.get("DryMass", "")),
-            span_m=_number(row.get("Span", "")),
-            length_m=_number(row.get("Length", "")),
-            diameter_m=_number(row.get("Diameter", "")),
+            mass_kg=_measure(row.get("Mass", "")),
+            dry_mass_kg=_measure(row.get("DryMass", "")),
+            span_m=_measure(row.get("Span", "")),
+            length_m=_measure(row.get("Length", "")),
+            diameter_m=_measure(row.get("Diameter", "")),
             mass_estimated=row.get("MassFlag", "").strip() == _UNSURE,
             span_estimated=row.get("SpanFlag", "").strip() == _UNSURE,
         )

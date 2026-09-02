@@ -355,6 +355,7 @@ class ProbesIngestor:
             cospars={
                 (r["mission"], r["naif_id"]): r.get("cospar_hint") for r in records
             },
+            names={(r["mission"], r["naif_id"]): r.get("name_hint") for r in records},
         )
 
         # Events-only probes (Apollo CSMs, Veneras, Magellan, Stardust, …)

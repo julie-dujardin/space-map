@@ -224,3 +224,46 @@ class TestArchiveTrajectoryCheck:
 
     def test_an_entry_with_no_sources_has_no_trajectory(self):
         assert not has_archive_trajectory({})
+
+
+class TestNameSeeding:
+    """A kernel's archive name fills an entry the registry left nameless."""
+
+    def test_a_nameless_entry_takes_the_archive_name(self):
+        registry = [_entry(22904832, -9, mission="HORIZONS-SYNTH", name=None)]
+        record = assign(
+            "HORIZONS-SYNTH",
+            -9,
+            39000,
+            registry,
+            index_by_source(registry),
+            name="ESCAPADE-Blue (spacecraft)",
+        )
+        assert record.name == "ESCAPADE-Blue (spacecraft)"
+        assert registry[0]["name"] == "ESCAPADE-Blue (spacecraft)"
+
+    def test_a_curated_name_wins_over_the_archive(self):
+        registry = [_entry(22904832, -9, mission="HORIZONS-SYNTH")]
+        record = assign(
+            "HORIZONS-SYNTH",
+            -9,
+            39000,
+            registry,
+            index_by_source(registry),
+            name="ESCAPADE-Blue (spacecraft)",
+        )
+        assert record.name == "Venera 2"
+        assert registry[0]["name"] == "Venera 2"
+
+    def test_a_new_entry_is_born_named(self):
+        registry: list[dict] = []
+        record = assign(
+            "SMILE", -463, 39000, registry, index_by_source(registry), name="SMILE"
+        )
+        assert record.name == "SMILE"
+        assert registry[0]["name"] == "SMILE"
+
+    def test_a_nameless_kernel_leaves_the_entry_nameless(self):
+        registry = [_entry(22904832, -463, mission="SMILE", name=None)]
+        assign("SMILE", -463, 39000, registry, index_by_source(registry), name=None)
+        assert registry[0]["name"] is None

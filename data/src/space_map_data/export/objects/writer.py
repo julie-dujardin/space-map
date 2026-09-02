@@ -74,6 +74,7 @@ from space_map_data.export.systems import (
 from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
+    resolve_wikidata_qid,
     attach_country_group_link,
     attach_launch_vehicle_group_link,
     drop_covered_qids,
@@ -254,11 +255,7 @@ def build_chunk_object_data(
     out = ChunkObjectData()
 
     for obj in objects:
-        qid = obj.wikidata_qid or (
-            obj.satcat.wikidata_qid
-            if obj.norad_cat_id is not None and obj.satcat
-            else None
-        )
+        qid = resolve_wikidata_qid(obj)
         wd = chunk_entities.get(qid) if qid else None
         try:
             extracted = (

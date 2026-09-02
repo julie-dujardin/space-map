@@ -40,7 +40,10 @@ from space_map_data.export.groups.membership import (
     build_earth_groups_data,
     write_earth_membership,
 )
-from space_map_data.export.groups.probe_targets import build_group_probes
+from space_map_data.export.groups.probe_targets import (
+    LAGRANGE_ZONE_SLUGS,
+    build_group_probes,
+)
 from space_map_data.export.groups.registry import (
     ORGANIZATION_BUS_CHILDREN,
     Group,
@@ -148,7 +151,13 @@ def _earth_zone_notable_members(
 ) -> dict[str, list[NotableObject]]:
     """Per-zone notable members: top sats merged with the constellations that
     call the zone home, re-ranked by Wikidata prominence so a prominent
-    constellation (Starlink) rides alongside individual sats."""
+    constellation (Starlink) rides alongside individual sats.
+
+    A libration zone is left as it arrives. Its members are probes, which
+    carry no sitelink count, so the ranking below would tie them all at zero
+    and fall through to the id — replacing "latest arrival first" with the
+    order the probe ids happen to sort in.
+    """
     zone_constellations: dict[str, list[str]] = {}
     for const_slug, zone_slug in earth_orbit_stats.constellation_zone.items():
         zone_constellations.setdefault(zone_slug, []).append(const_slug)
@@ -165,6 +174,9 @@ def _earth_zone_notable_members(
 
     out: dict[str, list[NotableObject]] = {}
     for zone_slug, sats in per_zone.items():
+        if zone_slug in LAGRANGE_ZONE_SLUGS:
+            out[zone_slug] = list(sats[:NOTABLE_MEMBER_COUNT])
+            continue
         members = list(sats)
         for const_slug in zone_constellations.get(zone_slug, ()):
             spec = CONSTELLATION_BY_SLUG.get(

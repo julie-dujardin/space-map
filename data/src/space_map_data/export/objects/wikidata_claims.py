@@ -11,6 +11,7 @@ from space_map_data.constants.earth_sats.launch_vehicles import (
     launch_vehicle_slug_for_qid,
 )
 from space_map_data.export.quantities import UnitConverter
+from space_map_data.models.object import Object
 from space_map_data.export.wikidata import (
     WikidataEntity,
     WikidataEntityCache,
@@ -21,6 +22,23 @@ from space_map_data.export.wikidata import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_wikidata_qid(obj: Object) -> str | None:
+    """The Wikidata entity describing *obj*, or None.
+
+    An Earth satellite with no claim of its own borrows its SATCAT row's. A
+    probe never does: a capsule, a lander and the craft that carried them all
+    share the one NORAD the launch was catalogued under, so the row names at
+    most one of them and the others would take that one's whole entity — the
+    same name, description and photograph on three pages. A probe's identity
+    is the registry's to give.
+    """
+    if obj.wikidata_qid:
+        return obj.wikidata_qid
+    if obj.probe_id is not None or obj.norad_cat_id is None or not obj.satcat:
+        return None
+    return obj.satcat.wikidata_qid
 
 
 @dataclass

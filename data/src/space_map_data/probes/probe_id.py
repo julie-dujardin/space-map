@@ -350,12 +350,16 @@ def assign(
     registry: list[dict] | None = None,
     source_index: dict[tuple[str, int], dict] | None = None,
     cospar: str | None = None,
+    name: str | None = None,
 ) -> ProbeIdRecord:
     """Return a stable probe_id for `(mission, naif_id)`.
 
     Returns an existing entry verbatim if `kernel_sources` already has this
     pair — `probe_id`/`inception_mjd`/`dedupe` are frozen, so recomputed
-    inception drift can't renumber existing probes.
+    inception drift can't renumber existing probes. `name` fills a nameless
+    entry and never replaces one, so a hand-curated name stays authoritative
+    while a probe the catalogue only knows by kernel still reads as itself
+    rather than as its own id.
 
     Otherwise allocates the lowest unused dedupe slot for the inception
     MJD. Caller must call save_registry() when `registry` is supplied; in
@@ -375,6 +379,10 @@ def assign(
             if owned:
                 save_registry(registry)
     if existing is not None:
+        if name and existing.get("name") is None:
+            existing["name"] = name
+            if owned:
+                save_registry(registry)
         return record_from_entry(existing)
 
     used = {
@@ -384,7 +392,7 @@ def assign(
     probe_id = encode(inception_mjd, dedupe)
     entry = {
         "probe_id": probe_id,
-        "name": None,
+        "name": name,
         "naif_id": naif_id,
         "inception_mjd": inception_mjd,
         "dedupe": dedupe,
@@ -413,6 +421,7 @@ def load_mission_qids() -> set[str]:
 def assign_many(
     items: list[tuple[str, int, int]],
     cospars: dict[tuple[str, int], str | None] | None = None,
+    names: dict[tuple[str, int], str | None] | None = None,
 ) -> dict[tuple[str, int], ProbeIdRecord]:
     """Bulk-assign probe IDs, loading & saving the registry once.
 
@@ -423,7 +432,8 @@ def assign_many(
 
     `cospars` names each item's COSPAR where the mission index records one. A
     synthesised kernel uses it to find the probe it belongs to when that probe
-    was registered under a NAIF of its own.
+    was registered under a NAIF of its own. `names` carries the name the
+    archive filed the kernel under, which seeds an entry that has none.
     """
     registry = load_registry()
     source_index = index_by_source(registry)
@@ -436,6 +446,7 @@ def assign_many(
             registry=registry,
             source_index=source_index,
             cospar=(cospars or {}).get((mission, naif_id)),
+            name=(names or {}).get((mission, naif_id)),
         )
     save_registry(registry)
     return out

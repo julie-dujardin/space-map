@@ -14,7 +14,10 @@ from space_map_data.export.position.format import (
     UNBOUNDED_START_JD,
 )
 from space_map_data.export.position.layout import position_zone_dir
-from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
+from space_map_data.export.objects.wikidata_claims import (
+    radius_km_from_claims,
+    resolve_wikidata_qid,
+)
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntity
 from space_map_data.models.object import Object, OrbitalSource
@@ -88,11 +91,7 @@ def write_chunk(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     radius_km_overrides: dict[str, float] = {}
     for obj in objects:
-        qid = obj.wikidata_qid or (
-            obj.satcat.wikidata_qid
-            if obj.norad_cat_id is not None and obj.satcat
-            else None
-        )
+        qid = resolve_wikidata_qid(obj)
         if qid and (wd := chunk_entities.get(qid)):
             try:
                 r = radius_km_from_claims(wd["claims"], units, qid=qid)

@@ -41,6 +41,10 @@ _LAGRANGE_GROUPS = {
     for naif, cls in LAGRANGE_CLASS_BY_NAIF.items()
 }
 
+#: The zones whose members are probes rather than catalogued satellites, so
+#: nothing that ranks a zone on satellite signals may touch them.
+LAGRANGE_ZONE_SLUGS: frozenset[str] = frozenset(_LAGRANGE_GROUPS.values())
+
 
 def build_lagrange_zones() -> dict[str, list[NotableObject]]:
     """Zone slug -> its probes, latest arrival first, for every Sun-Earth

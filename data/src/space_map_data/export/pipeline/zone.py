@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from space_map_data.export.earth_sat_filter import is_docked
+from space_map_data.export.objects.wikidata_claims import resolve_wikidata_qid
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
     build_chunk_object_data,
@@ -109,13 +110,6 @@ class ZoneExportResult:
     parent_id_type: str | None = None
 
 
-def _resolve_qid(obj: Object) -> str | None:
-    """Pick the wikidata QID we want for an object, falling back to satcat."""
-    return obj.wikidata_qid or (
-        obj.satcat.wikidata_qid if obj.norad_cat_id is not None and obj.satcat else None
-    )
-
-
 def _entities_for(
     objects: list[Object],
     wikidata_entities: WikidataEntityCache,
@@ -124,7 +118,7 @@ def _entities_for(
     return {
         qid: wikidata_entities.get_entity(qid)
         for obj in objects
-        if (qid := _resolve_qid(obj))
+        if (qid := resolve_wikidata_qid(obj))
     }
 
 
