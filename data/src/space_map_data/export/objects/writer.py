@@ -682,7 +682,7 @@ def _build_global(
 
     # CelesTrak enrichment
     if obj.norad_cat_id is not None and obj.satcat is not None:
-        celestrak_data = build_satcat_global(obj.satcat)
+        celestrak_data = build_satcat_global(obj.satcat, units)
         if celestrak_data:
             data["celestrak"] = celestrak_data
 

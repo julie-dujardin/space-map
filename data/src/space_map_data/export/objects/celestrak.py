@@ -25,6 +25,7 @@ from space_map_data.constants.earth_sats.satellite_models import (
     BUS_SLUG_PREFIX,
 )
 from space_map_data.export.objects.wikidata_claims import EntityRef, resolve_entity_ref
+from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Satcat
 
@@ -39,12 +40,6 @@ _GLOBAL_FIELDS = (
     "apogee",
     "perigee",
     "rcs",
-    "mass_kg",
-    "dry_mass_kg",
-    "span_m",
-    "length_m",
-    "diameter_m",
-    "shape",
     "orbit_center",
     "orbit_center_docked_to",
     "launch_site_code",
@@ -54,18 +49,36 @@ _GLOBAL_FIELDS = (
 )
 
 
-def build_satcat_global(sat: Satcat) -> dict:
+# GCAT's hardware figures, in the unit ladder the Wikidata claims already use
+# so a page never quotes one mass in tonnes and the next in kilograms.
+_SIZE_FIELDS: tuple[tuple[str, str, str], ...] = (
+    ("mass_kg", "mass", "mass"),
+    ("dry_mass_kg", "mass", "dry_mass"),
+    ("span_m", "length", "span"),
+    ("length_m", "length", "length"),
+    ("diameter_m", "length", "diameter"),
+)
+
+
+def build_satcat_global(sat: Satcat, units: UnitConverter) -> dict:
     """Non-localized SATCAT fields, omitting None/empty entries."""
     data: dict = {}
     for attr in _GLOBAL_FIELDS:
         val = getattr(sat, attr)
         if val is not None:
             data[attr] = val
-    # Only sent when true: an absent flag reads as "GCAT stated this", which is
-    # the common case and the one the client should not annotate.
-    if sat.mass_estimated and sat.mass_kg is not None:
+    for attr, qty_type, key in _SIZE_FIELDS:
+        val = getattr(sat, attr)
+        if val is None:
+            continue
+        converted = units.best_unit(val, qty_type)
+        if converted is not None:
+            data[key] = converted
+    # Only sent when true: an absent flag reads as "stated", which is the common
+    # case and the one the client should not annotate.
+    if sat.mass_estimated and "mass" in data:
         data["mass_estimated"] = True
-    if sat.span_estimated and sat.span_m is not None:
+    if sat.span_estimated and "span" in data:
         data["span_estimated"] = True
     if sat.categories:
         data["categories"] = sat.categories

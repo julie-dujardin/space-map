@@ -985,6 +985,13 @@
 	"category_miscellaneous": "Miscellaneous satellite",
 	"rcs": "Radar cross-section",
 	"tooltip_rcs": "Radar cross-section — a measure of how detectable the satellite is by radar.",
+	"country_cs": "Czechoslovakia",
+	"country_su": "Soviet Union",
+	"dry_mass": "Dry mass",
+	"span": "Span",
+	"tooltip_dry_mass": "Mass without propellant",
+	"tooltip_size_estimated": "An estimate, not a figure the catalogue states",
+	"tooltip_span": "Tip to tip with everything deployed",
 	"country_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

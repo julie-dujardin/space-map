@@ -42,7 +42,6 @@ class GcatHardware:
     span_m: float | None
     length_m: float | None
     diameter_m: float | None
-    shape: str | None
     # True where GCAT flags the size as its own estimate.
     mass_estimated: bool = False
     span_estimated: bool = False
@@ -121,7 +120,6 @@ def load_gcat_hardware(download_dir: Path) -> dict[int, GcatHardware]:
             span_m=_number(row.get("Span", "")),
             length_m=_number(row.get("Length", "")),
             diameter_m=_number(row.get("Diameter", "")),
-            shape=_clean(row.get("Shape", "")),
             mass_estimated=row.get("MassFlag", "").strip() == _UNSURE,
             span_estimated=row.get("SpanFlag", "").strip() == _UNSURE,
         )

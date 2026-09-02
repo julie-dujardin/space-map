@@ -104,7 +104,6 @@ class SatcatIngestor:
                 span_m=hardware.span_m,
                 length_m=hardware.length_m,
                 diameter_m=hardware.diameter_m,
-                shape=hardware.shape,
                 mass_estimated=hardware.mass_estimated,
                 span_estimated=hardware.span_estimated,
             )

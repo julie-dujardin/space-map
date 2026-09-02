@@ -65,10 +65,22 @@ export function formatCategory(slug: string): string {
 	}
 }
 
+/** States that no longer exist, which the browser resolves to their successor:
+ *  `SU` comes back as Russia and `CS` as Serbia. GCAT files a launch under the
+ *  state that registered it, so the whole point of those two codes is that they
+ *  are *not* the successor. */
+const HISTORICAL_COUNTRY: Record<string, () => string> = {
+	SU: () => m.country_su(),
+	CS: () => m.country_cs()
+};
+
 export function formatCountry(code: string): string {
+	const upper = code.toUpperCase();
+	const historical = HISTORICAL_COUNTRY[upper];
+	if (historical) return historical();
 	try {
 		const dn = new Intl.DisplayNames([getLocale()], { type: 'region' });
-		return dn.of(code.toUpperCase()) ?? code;
+		return dn.of(upper) ?? code;
 	} catch {
 		return code;
 	}

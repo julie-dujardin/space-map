@@ -52,7 +52,6 @@ class Satcat(Base):
     span_m: Mapped[float | None] = mapped_column(default=None)
     length_m: Mapped[float | None] = mapped_column(default=None)
     diameter_m: Mapped[float | None] = mapped_column(default=None)
-    shape: Mapped[str | None] = mapped_column(default=None)
     mass_estimated: Mapped[bool] = mapped_column(default=False)
     span_estimated: Mapped[bool] = mapped_column(default=False)
 

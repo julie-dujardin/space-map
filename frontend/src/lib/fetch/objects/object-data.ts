@@ -588,6 +588,17 @@ export interface GlobalObjectData {
 		apogee?: number; // km
 		perigee?: number; // km
 		rcs?: number; // m²
+		/** GCAT hardware figures. `mass` is the launch mass; `span` is tip to
+		 *  tip with everything deployed. The `_estimated` flags are GCAT's own
+		 *  "?" — an inferred figure rather than one read off a source, and only
+		 *  sent when true. */
+		mass?: QuantityWithUnit;
+		dry_mass?: QuantityWithUnit;
+		span?: QuantityWithUnit;
+		length?: QuantityWithUnit;
+		diameter?: QuantityWithUnit;
+		mass_estimated?: true;
+		span_estimated?: true;
 		orbit_center?: string;
 		orbit_center_docked_to?: number;
 		launch_site_code?: string;
