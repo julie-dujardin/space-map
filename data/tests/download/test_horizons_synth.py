@@ -116,6 +116,8 @@ _SAMPLE_MB = """\
       -32  Voyager 2 (spacecraft)             1977-076A    VGR2
        -3  Mars Orbiter Mission (spacecraft)  2013-060A
       -25  Lunar Prospector (LP) (spacecraft) 1998-001A
+     -152  Chandrayaan-2 (ORBITER) (spacecraft2019-042A    CH2 CH-2
+     -171  Carruthers Geocorona Observatory (s2025-215C    CGO
   -937001  2017 PDC (simulation)
   -999789  2023 NM (debris)
  -9901492  Luna-25 STAGE (spacecraft)
@@ -161,6 +163,24 @@ class TestParseHorizonsSpacecraft:
         assert cospars[-32] == "1977-076A"
         assert cospars[-3] == "2013-060A"
         assert cospars[-25] == "1998-001A"
+
+    def test_names_carry_no_kind_qualifier(self):
+        out = index._parse_horizons_spacecraft(_SAMPLE_MB)
+        names = {n: name for n, name, _ in out}
+        assert names[-32] == "Voyager 2"
+        assert names[-25] == "Lunar Prospector (LP)"
+
+    def test_a_truncated_name_keeps_its_last_character(self):
+        out = index._parse_horizons_spacecraft(_SAMPLE_MB)
+        names = {n: name for n, name, _ in out}
+        assert names[-152] == "Chandrayaan-2 (ORBITER)"
+        assert names[-171] == "Carruthers Geocorona Observatory"
+
+    def test_a_truncated_row_still_yields_its_designator(self):
+        out = index._parse_horizons_spacecraft(_SAMPLE_MB)
+        cospars = {n: c for n, _, c in out}
+        assert cospars[-152] == "2019-042A"
+        assert cospars[-171] == "2025-215C"
 
 
 _VOYAGER_OBJ = {
@@ -601,3 +621,37 @@ class TestEarthOrbitExcludes:
     def test_missing_satcat_keeps_everything(self, tmp_path, monkeypatch):
         monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
         assert index.earth_orbit_excludes([(-116609, "Mir", "1986-017A")]) == set()
+
+
+class TestStripKindQualifier:
+    """Horizons' "(spacecraft)" tag, whole or cut off by the column width."""
+
+    def test_drops_the_whole_tag(self):
+        assert index.strip_kind_qualifier("Mariner 2 (spacecraft)") == "Mariner 2"
+
+    def test_ignores_case(self):
+        assert index.strip_kind_qualifier("ICPS (Spacecraft)") == "ICPS"
+
+    def test_drops_a_bracket_the_column_cut(self):
+        for name, expected in (
+            ("Herschel Space Observatory (spacecr", "Herschel Space Observatory"),
+            ("Carruthers Geocorona Observatory (s", "Carruthers Geocorona Observatory"),
+            ("Chandrayaan-2 (ORBITER) (spacecraft", "Chandrayaan-2 (ORBITER)"),
+            # Not the kind tag, but half a word is no more a name than half a tag.
+            ("Kepler Booster (Third Stag", "Kepler Booster"),
+        ):
+            assert index.strip_kind_qualifier(name) == expected
+
+    def test_keeps_a_closed_bracket_that_says_something(self):
+        # (ORBITER) is the only thing telling the two Chandrayaan-2 craft apart.
+        for name in (
+            "Stardust (SRC)",
+            "Lunar Prospector (LP)",
+            "Chandrayaan-2 (ORBITER)",
+            "Kepler Booster (Third Stage)",
+            "CONTOUR-C (SPACECRAFT FRAGMENT)",
+        ):
+            assert index.strip_kind_qualifier(name) == name
+
+    def test_keeps_a_name_with_no_bracket(self):
+        assert index.strip_kind_qualifier("New Horizons") == "New Horizons"

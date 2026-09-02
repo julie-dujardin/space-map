@@ -41,14 +41,31 @@ _NAME_DROP_PATTERNS: tuple[re.Pattern, ...] = tuple(
 # COSPAR designator format printed in the MB list's "Designation" column.
 _COSPAR_RE = re.compile(r"^\d{4}-\d{3}[A-Z]+$")
 
+_KIND_TAG_RE = re.compile(r"\s*\(spacecraft\)\s*$", re.IGNORECASE)
+_UNCLOSED_BRACKET_RE = re.compile(r"\s*\([^()]*$")
+
+
+def strip_kind_qualifier(name: str) -> str:
+    """Drop the MB list's "(spacecraft)" tag and any bracket it was cut inside.
+
+    The tag says nothing — nearly every name carries it — and the Name column
+    is 35 characters wide, so on a long name it survives as a fragment. A
+    bracket left open is that cut and never anything else, which is why its
+    contents go unread: half of "(spacecraft)" and half of "(ORBITER)" are
+    equally not names. Closed brackets say something and stay.
+    """
+    return _KIND_TAG_RE.sub("", _UNCLOSED_BRACKET_RE.sub("", name))
+
 
 def _parse_horizons_spacecraft(mb_text: str) -> list[tuple[int, str, str | None]]:
     """Parse Horizons MB listing → [(naif_id, name, cospar)] for real spacecraft.
 
     `cospar` is the contents of the MB list's "Designation" column (cols 46-56)
     when it matches `YYYY-NNNX`, else None. `_NAME_DROP_PATTERNS` is applied
-    here; the SATCAT orbit-centre filter runs separately at the caller, which
-    reads from disk and shouldn't be coupled to a pure parser.
+    here, after the kind qualifier goes — the end-anchored patterns can never
+    match while it is still there. The SATCAT orbit-centre filter runs
+    separately at the caller, which reads from disk and shouldn't be coupled to
+    a pure parser.
     """
     out: list[tuple[int, str, str | None]] = []
     in_data = False
@@ -64,7 +81,8 @@ def _parse_horizons_spacecraft(mb_text: str) -> list[tuple[int, str, str | None]
         naif_id = int(id_str)
         if naif_id >= 0:
             continue
-        name = line[11:45].strip()
+        # Through col 45: an overlong name spills past the header's 34-char rule.
+        name = strip_kind_qualifier(line[11:46].strip())
         if not name:
             continue
         if any(p.search(name) for p in _NAME_DROP_PATTERNS):
