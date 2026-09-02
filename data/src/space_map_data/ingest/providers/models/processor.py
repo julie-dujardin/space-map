@@ -876,8 +876,10 @@ class ModelProcessor:
             "exports": exports,
             "processed_at": datetime.now(UTC).isoformat(),
         }
-        # Real length (metres) of the model's longest dimension; lets the
-        # frontend size the mesh against scene units. Optional, manifest-set.
+        # Real length (metres) of the model's longest dimension, so the
+        # frontend can size the mesh against scene units. Hand-maintained per
+        # entry in the manifests; a mesh normally draws the deployed craft, so
+        # this spans the arrays/dishes/booms rather than the stowed bus.
         if entry.get("scale_meters"):
             payload["scale_meters"] = entry["scale_meters"]
         # Model axis → spacecraft-body axis; corrects models authored in a
