@@ -17,6 +17,7 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
 import { KIND_KEPLER, KIND_SKIP, type OrbitColumns } from '$lib/math/orbit/soa';
 import { partitionForWorkersSliced, parentIdFromSubkey } from '$lib/math/orbit/partition';
+import { idToKey, keySetOf, NO_KEY } from '$lib/fetch/position/object-key';
 import { buildPointClouds } from '$lib/scene/objects/body/bulk';
 import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/pointcloud';
 import { resolveBodyColor } from '$lib/utils';
@@ -454,7 +455,7 @@ export class PointCloudSystem {
 			drainedZones.push(zone);
 			// Fill the worker SoA straight from the bucket's columns — no
 			// PositionedBody[] round-trip, no throwaway main-thread Kepler solve.
-			const skip = new Set(this.bodyObjects.keys());
+			const skip = keySetOf(this.bodyObjects.keys());
 			const { groups, baseWorker } = bucket
 				? await bucket.buildWorkerGroups(zone, k, skip, false)
 				: { groups: [], baseWorker: 0 };
@@ -484,7 +485,7 @@ export class PointCloudSystem {
 				this.lastSolvedJd.delete(groupId);
 				// Assign this group's GPU pick-id range before wiring — the worker
 				// writes `pickBase + row` per survivor for the pick pass to decode.
-				group.cols.pickBase = this.pickRegistry.allocate(groupId, group.ids);
+				group.cols.pickBase = this.pickRegistry.allocate(groupId, group.keys);
 				this.orbitPool.rewireOneCols(groupId, group.cols, (baseWorker + i) % k);
 				const existing = this.asteroidPoints.get(key);
 				if (existing) {
@@ -546,7 +547,7 @@ export class PointCloudSystem {
 				// the worker's `pickBase + row` pick-ids.
 				const pickBase = this.pickRegistry.allocate(
 					groupId,
-					bodies.map((b) => b.data.id)
+					Float64Array.from(bodies, (b) => idToKey(b.data.id) ?? NO_KEY)
 				);
 				await this.orbitPool.rewireOne(
 					groupId,

@@ -150,6 +150,15 @@ export function idTypePrefix(idType: number): string | undefined {
 	return ID_TYPE_PREFIX[idType];
 }
 
+const PREFIX_ID_TYPE = new Map<string, number>(
+	Object.entries(ID_TYPE_PREFIX).map(([type, prefix]) => [prefix, Number(type)])
+);
+
+/** Id-type byte of a string prefix, or undefined for one the export never emits. */
+export function idTypeForPrefix(prefix: string): number | undefined {
+	return PREFIX_ID_TYPE.get(prefix);
+}
+
 export function buildObjectId(idType: number, value: number): string | null {
 	const prefix = ID_TYPE_PREFIX[idType];
 	return prefix ? `${prefix}-${value}` : null;

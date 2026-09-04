@@ -64,8 +64,8 @@ export interface PromotionDeps {
  * filter changes).
  */
 export class PromotionRegistry {
-	/** Curated ids waiting for their body to arrive — promoted directly when
-	 *  {@link onBodiesAdded} fires for a matching id. */
+	/** Curated ids waiting for their body to arrive — probed on every
+	 *  {@link onBodiesAdded} and promoted once found. */
 	private readonly pendingDefaults = new Set<string>();
 	/** Stable curated set: labels-file keys ∪ MINOR_PROMOTED_IDS. */
 	private readonly defaults = new Set<string>();
@@ -86,17 +86,17 @@ export class PromotionRegistry {
 	private countStableHi = -Infinity;
 
 	constructor(private readonly deps: PromotionDeps) {
-		deps.ctx.bodies.onBodiesAdded((ids) => {
-			this.onBodiesAdded(ids);
-			this.autoPromoteAsteroidMoons(ids);
+		deps.ctx.bodies.onBodiesAdded(() => {
+			this.onBodiesAdded();
+			this.autoPromoteAsteroidMoons();
 			this.reevaluateEarthSatMode();
 			if (this.smallBodyZone !== null) this.refreshSmallBodyEmphasis();
 		});
 		// An add-free rollover fires no `onBodiesAdded`, yet the valid count shifts.
 		deps.ctx.onEarthSatRollover(() => this.reevaluateEarthSatMode());
 		// URL-loaded placeholders flushed before this registry was wired up
-		// don't fire the live `onBodiesAdded` listener — sweep them now.
-		this.promoteExistingAsteroidMoons();
+		// missed the live `onBodiesAdded` notification — sweep them now.
+		this.autoPromoteAsteroidMoons();
 		// Group filter is applied in MapPage.onMount *before* the scene loads —
 		// by the time we exist, the filter may already be set, so seed from the
 		// current value rather than waiting for the next change event.
@@ -140,48 +140,40 @@ export class PromotionRegistry {
 	 *  curated/labels promotion path skips them; auto-promote on arrival so they
 	 *  show by default. Also promotes the parent asteroid if it was pre-routed to
 	 *  `bodiesById` as a placeholder, else the host stays invisible while its
-	 *  moon renders. */
-	private autoPromoteAsteroidMoons(ids: readonly string[]): void {
-		// Only `small_body_moons` can match — a per-id `ctx.getBody` fallback would
-		// scan every zone bucket and dominate flush time during chunk streaming.
+	 *  moon renders. Walks the moon bucket (a few hundred rows) rather than the
+	 *  arrivals, which run to a million rows per flush. */
+	private autoPromoteAsteroidMoons(): void {
 		const moonBucket = this.deps.ctx.bodies.asteroidBodiesByZone.get('small_body_moons');
 		if (!moonBucket || moonBucket.size === 0) return;
 		const matched: PositionedBody[] = [];
 		const seenParents = new Set<string>();
-		for (const id of ids) {
-			const body = moonBucket.get(id);
+		for (const key of moonBucket.keys()) {
+			const body = moonBucket.getKey(key);
 			if (!body || body.data.objectType !== ObjectType.MOON) continue;
 			const parent = this.deps.ctx.getBody(body.data.parentId);
 			if (!parent || !isAsteroid(parent.data.objectType)) continue;
 			// Parent first: the per-frame loop iterates insertion order, so the
-			// moon's parent lookup hits a fresh position, not last frame's.
+			// moon's parent lookup hits a fresh position, not last frame's. A moon
+			// the curated path already built still gets its host here.
 			if (!this.deps.bodyObjects.has(parent.data.id) && !seenParents.has(parent.data.id)) {
 				seenParents.add(parent.data.id);
 				matched.push(parent);
 			}
-			if (!this.deps.bodyObjects.has(id)) matched.push(body);
+			if (!this.deps.bodyObjects.has(body.data.id)) matched.push(body);
 		}
 		this.buildBatch(matched);
 	}
 
-	/** Promote asteroid moons already present at construction — `loadScene` adds
-	 *  URL-loaded placeholders before this registry exists, so `onBodiesAdded`
-	 *  misses them. */
-	private promoteExistingAsteroidMoons(): void {
-		const moonBucket = this.deps.ctx.bodies.asteroidBodiesByZone.get('small_body_moons');
-		if (!moonBucket || moonBucket.size === 0) return;
-		this.autoPromoteAsteroidMoons(Array.from(moonBucket.ids()));
-	}
-
-	/** Notification hook from {@link BodyIndex}. Promotes any newly-arrived
-	 *  curated bodies in a single batch (shared post-processing pass). */
-	private onBodiesAdded(ids: readonly string[]): void {
+	/** Notification hook from {@link BodyIndex}: probes each curated body still
+	 *  waiting and promotes the ones that have arrived, in one batch. */
+	private onBodiesAdded(): void {
 		if (this.pendingDefaults.size === 0) return;
 		const matched: PositionedBody[] = [];
-		for (const id of ids) {
-			if (!this.pendingDefaults.delete(id)) continue;
+		for (const id of this.pendingDefaults) {
 			const body = this.deps.ctx.getBody(id);
-			if (body && this.shouldAutoPromote(body, id)) matched.push(body);
+			if (!body) continue;
+			this.pendingDefaults.delete(id);
+			if (this.shouldAutoPromote(body, id)) matched.push(body);
 		}
 		this.buildBatch(matched);
 	}

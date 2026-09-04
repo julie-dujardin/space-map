@@ -12,7 +12,9 @@ import type { SatRec } from 'satellite.js';
 import { AU_KM } from '$lib/math/units';
 import { Scale } from '$lib/fetch/position/format';
 import { ObjectType, type BodyData } from '$lib/types/objects';
+import type { ObjectKey } from '$lib/fetch/position/object-key';
 import {
+	rowId,
 	type ElementColumns,
 	type KeplerianColumns,
 	type ParabolicColumns,
@@ -54,13 +56,13 @@ export function keplerianToBody(
 	cols: KeplerianColumns,
 	idx: number,
 	labels: LabelMap,
-	idMap: Map<number, string>,
 	parentIdType: string
-): BodyData {
+): BodyData | null {
 	const isPlanetScale = cols.scale[idx] === Scale.PLANET;
 	const omDot = cols.omDot[idx];
 	const wDot = cols.wDot[idx];
-	const id = idMap.get(idx)!;
+	const id = rowId(cols, idx);
+	if (id === null) return null;
 	const { name, isMinor } = pickLabelEntry(labels, id);
 	return {
 		id,
@@ -96,10 +98,10 @@ export function parabolicToBody(
 	cols: ParabolicColumns,
 	idx: number,
 	labels: LabelMap,
-	idMap: Map<number, string>,
 	parentIdType: string
-): BodyData {
-	const id = idMap.get(idx)!;
+): BodyData | null {
+	const id = rowId(cols, idx);
+	if (id === null) return null;
 	const { name, isMinor } = pickLabelEntry(labels, id);
 	return {
 		id,
@@ -137,10 +139,10 @@ export function sgp4ToBody(
 	cols: SGP4Columns,
 	idx: number,
 	labels: LabelMap,
-	idMap: Map<number, string>,
 	parentIdType: string
 ): BodyData | null {
-	const id = idMap.get(idx)!;
+	const id = rowId(cols, idx);
+	if (id === null) return null;
 	const { name, isMinor } = pickLabelEntry(labels, id);
 	const omm: SGP4Inputs = {
 		noradCatId: cols.id[idx],
@@ -211,10 +213,9 @@ export function materializeBodyData(
 	labels: LabelMap,
 	parentIdType: string
 ): BodyData | null {
-	if (cols.kind === 'parabolic')
-		return parabolicToBody(cols, idx, labels, cols.idMap, parentIdType);
-	if (cols.kind === 'sgp4') return sgp4ToBody(cols, idx, labels, cols.idMap, parentIdType);
-	return keplerianToBody(cols, idx, labels, cols.idMap, parentIdType);
+	if (cols.kind === 'parabolic') return parabolicToBody(cols, idx, labels, parentIdType);
+	if (cols.kind === 'sgp4') return sgp4ToBody(cols, idx, labels, parentIdType);
+	return keplerianToBody(cols, idx, labels, parentIdType);
 }
 
 /**
@@ -228,10 +229,10 @@ export function fillOrbitColumnRow(
 	idx: number,
 	out: OrbitColumns,
 	outIdx: number,
-	id?: string,
-	skip?: Set<string>
+	key?: ObjectKey,
+	skip?: ReadonlySet<ObjectKey>
 ): boolean {
-	if (skip && id !== undefined && skip.has(id)) {
+	if (skip && key !== undefined && skip.has(key)) {
 		out.kind[outIdx] = KIND_SKIP;
 		return false;
 	}

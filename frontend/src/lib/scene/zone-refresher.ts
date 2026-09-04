@@ -268,7 +268,7 @@ export class ZoneRefresher {
 			}
 			this.ctx.bodies.addBodies([target]);
 			this.ctx.credits.recordOrbitSources([target]);
-			this.ctx.bodies.notifyBodiesAdded([targetId]);
+			this.ctx.bodies.notifyBodiesAdded();
 			return;
 		}
 		await ensureTargetStreamed(this.ctx, targetId, date, this.loader);
@@ -323,7 +323,6 @@ export class ZoneRefresher {
 			let added = 0;
 			let updated = 0;
 			let removed = 0;
-			const addedIds: string[] = [];
 
 			// Reconcile to this snapshot's membership
 			for (const [key, freshBodies] of newBuckets) {
@@ -354,7 +353,6 @@ export class ZoneRefresher {
 						updated++;
 					} else {
 						bucket.set(id, b);
-						addedIds.push(id);
 						added++;
 					}
 				}
@@ -363,7 +361,7 @@ export class ZoneRefresher {
 
 			z.currentTime = time;
 			this.ctx.bodies.minorBodyVersion++;
-			this.ctx.bodies.notifyBodiesAdded(addedIds);
+			if (added > 0) this.ctx.bodies.notifyBodiesAdded();
 			// Re-evaluate emphasis even when this snapshot added no bodies (steady
 			// membership, only the valid count moved) — notifyBodiesAdded won't.
 			if (z.zone === 'earth') this.ctx.notifyEarthSatRollover();

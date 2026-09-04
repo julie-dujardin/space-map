@@ -23,9 +23,11 @@ import { yieldToMain } from '$lib/yield';
 import {
 	OrbitalSource,
 	chunkedPartedUrl,
-	idTypePrefix,
+	idTypeForPrefix,
 	partedUrl
 } from '$lib/fetch/position/format';
+import { idToKey, objectKey, type ObjectKey } from '$lib/fetch/position/object-key';
+import { rowId, rowKey } from '$lib/fetch/position/elements/parse';
 import { parsePosition } from '$lib/fetch/position/parse';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
 import { AU_KM, AU_SCALE, KM3_S2_TO_AU3_DAY2, KM_DAY_TO_AU_DAY, kmToScene } from '$lib/math/units';
@@ -157,9 +159,7 @@ export class ChunkLoader {
 	/** Body IDs whose positions must be retained even when normally skipped —
 	 *  seeded by the orchestrator with parent IDs downstream zones need (e.g.
 	 *  `small_body_moons` parents living in `small_bodies/*`). */
-	neededParentIds = new Set<string>();
-	/** The same ids by prefix as raw numbers, so the per-row scan never builds strings. */
-	private readonly neededNumeric = new Map<string, Set<number>>();
+	neededParentKeys = new Set<ObjectKey>();
 
 	/**
 	 * Past-position ring buffers for probes with at least one chebyshev
@@ -550,11 +550,10 @@ export class ChunkLoader {
 		parentIdType: string
 	): Promise<void> {
 		const cols = await fetchElements(zone, zoom, part, time);
-		let numeric = this.neededNumeric.get(parentIdType);
-		if (!numeric) this.neededNumeric.set(parentIdType, (numeric = new Set()));
+		const parentType = idTypeForPrefix(parentIdType);
+		if (parentType === undefined) return;
 		for (let i = 0; i < cols.rowCount; i++) {
-			this.neededParentIds.add(`${parentIdType}-${cols.parentId[i]}`);
-			numeric.add(cols.parentId[i]);
+			this.neededParentKeys.add(objectKey(parentType, cols.parentId[i]));
 		}
 	}
 
@@ -575,7 +574,7 @@ export class ChunkLoader {
 		parentIdType: string = 'naif'
 	): Promise<ElementColumns> {
 		const cols = await fetchElements(zone, zoom, part, time);
-		if (this.neededParentIds.size > 0) await this.resolveNeededParents(cols, date, parentIdType);
+		if (this.neededParentKeys.size > 0) await this.resolveNeededParents(cols, date, parentIdType);
 		return cols;
 	}
 
@@ -589,18 +588,16 @@ export class ChunkLoader {
 	): Promise<void> {
 		const jd = dateToJD(date);
 		const isParabolic = cols.kind === 'parabolic';
-		const prefix = idTypePrefix(cols.idType);
-		const needed = prefix ? this.neededNumeric.get(prefix) : undefined;
-		if (!needed?.size) return;
+		const needed = this.neededParentKeys;
 		let sliceStart = performance.now();
 		for (let i = 0; i < cols.rowCount; i++) {
 			if ((i & 4095) === 4095 && performance.now() - sliceStart > 6) {
 				await yieldToMain();
 				sliceStart = performance.now();
 			}
-			if (!needed.has(cols.id[i])) continue;
-			const id = cols.idMap.get(i);
-			if (id === undefined) continue;
+			if (!needed.has(rowKey(cols, i))) continue;
+			const id = rowId(cols, i);
+			if (id === null) continue;
 			const parentPos = this.positions.get(`${parentIdType}-${cols.parentId[i]}`);
 			if (!parentPos) continue;
 			const body = materializeBodyData(cols, i, NO_LABELS, parentIdType);
@@ -648,7 +645,6 @@ export class ChunkLoader {
 			fetchElements(zone, zoom, part, time),
 			fetchLabels()
 		]);
-		const idMap = cols.idMap;
 
 		const isParabolic = cols.kind === 'parabolic';
 		const isSGP4 = cols.kind === 'sgp4';
@@ -690,10 +686,10 @@ export class ChunkLoader {
 			}
 
 			const body = isParabolic
-				? parabolicToBody(cols as ParabolicColumns, idx, labels, idMap, parentIdType)
+				? parabolicToBody(cols as ParabolicColumns, idx, labels, parentIdType)
 				: isSGP4
-					? sgp4ToBody(cols as SGP4Columns, idx, labels, idMap, parentIdType)
-					: keplerianToBody(cols as KeplerianColumns, idx, labels, idMap, parentIdType);
+					? sgp4ToBody(cols as SGP4Columns, idx, labels, parentIdType)
+					: keplerianToBody(cols as KeplerianColumns, idx, labels, parentIdType);
 			if (!body) continue;
 			// An unnamed satellite nobody asked for stays a point-cloud dot until
 			// promotion places it; its SGP4 record is built then.
@@ -737,7 +733,8 @@ export class ChunkLoader {
 			// below only fire for barycenters / Lagrange points / major bodies,
 			// so without this an asteroid parent would never land in
 			// `this.positions`.
-			if (this.neededParentIds.has(body.id)) {
+			const bodyKey = idToKey(body.id);
+			if (bodyKey !== null && this.neededParentKeys.has(bodyKey)) {
 				this.positions.set(body.id, pos);
 			}
 

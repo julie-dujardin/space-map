@@ -166,5 +166,5 @@ export async function ensureTargetStreamed(
 	ctx.bodies.asteroidBodiesByZone = new Map(ctx.bodies.asteroidBodiesByZone);
 	ctx.bodies.spacecraftByParent = new Map(ctx.bodies.spacecraftByParent);
 	ctx.bodies.minorBodyVersion++;
-	if (added.length > 0) ctx.bodies.notifyBodiesAdded(added);
+	if (added.length > 0) ctx.bodies.notifyBodiesAdded();
 }

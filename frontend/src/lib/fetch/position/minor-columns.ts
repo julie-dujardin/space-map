@@ -8,7 +8,8 @@
  */
 
 import { Color } from 'three';
-import type { ElementColumns } from '$lib/fetch/position/elements/parse';
+import { rowId, rowKey, type ElementColumns } from '$lib/fetch/position/elements/parse';
+import { idToKey, keyToId, NO_KEY, type ObjectKey } from '$lib/fetch/position/object-key';
 import type { LabelMap } from '$lib/fetch/position/labels';
 import type { PositionedBody } from '$lib/types/objects';
 import { materializeBodyData, fillOrbitColumnRow } from '$lib/fetch/position/elements/row';
@@ -23,9 +24,9 @@ import { yieldToMain } from '$lib/yield';
 export interface WorkerGroup {
 	cols: OrbitColumns;
 	colors: Float32Array | null;
-	/** Body id per SoA row (KIND_SKIP rows included), so a GPU pick's global
+	/** Body key per SoA row (KIND_SKIP rows included), so a GPU pick's global
 	 *  pick-id (`cols.pickBase + row`) resolves back to a body. */
-	ids: string[];
+	keys: Float64Array;
 }
 
 /** Rows per chunk the packed row reference allows; a reference is `chunk * ROW_STRIDE + row`. */
@@ -45,9 +46,9 @@ function mixId(id: number): number {
 
 export class MinorBucket {
 	private readonly chunks: ElementColumns[] = [];
-	/** id → packed (chunk, row), see {@link ROW_STRIDE}. Latest chunk wins on
+	/** key → packed (chunk, row), see {@link ROW_STRIDE}. Latest chunk wins on
 	 *  collision (hot-reload), whichever ingest pass writes last. */
-	private readonly rowOf = new Map<string, number>();
+	private readonly rowOf = new Map<ObjectKey, number>();
 	private readonly cache = new Map<string, PositionedBody>();
 	/** URL-loaded placeholders: full bodies whose ref the renderer may already
 	 *  hold (promoted mesh), so `addChunk` reconciles their `data` in place. */
@@ -59,37 +60,40 @@ export class MinorBucket {
 
 	constructor(private readonly labels: LabelMap) {}
 
-	/** Ingest one parsed chunk; resolves with the ids new to this bucket. `keep`
+	/** Ingest one parsed chunk; resolves with how many rows were new. `keep`
 	 *  (the Earth-sat group filter) indexes only its members. Time-sliced: the
 	 *  main belt is >1M rows, and one synchronous pass over a part blocks
 	 *  input for hundreds of milliseconds on a slow phone. */
 	async addChunk(
 		cols: ElementColumns,
 		parentIdType: string,
-		keep?: Set<string> | null
-	): Promise<string[]> {
+		keep?: ReadonlySet<ObjectKey> | null
+	): Promise<number> {
 		this.parentIdType = parentIdType;
 		const c = this.chunks.length;
 		this.chunks.push(cols);
-		const added: string[] = [];
+		let added = 0;
+		const hasPlaceholders = this.placeholders.size > 0;
 		let sliceStart = performance.now();
 		for (let i = 0; i < cols.rowCount; i++) {
 			if (i % SLICE_ROWS === SLICE_ROWS - 1 && performance.now() - sliceStart > SLICE_MS) {
 				await yieldToMain();
 				sliceStart = performance.now();
 			}
-			const id = cols.idMap.get(i);
-			if (id === undefined) continue;
-			if (keep && !keep.has(id)) continue;
-			const prev = this.rowOf.get(id);
-			if (prev === undefined) added.push(id);
+			const key = rowKey(cols, i);
+			if (key === NO_KEY || (keep && !keep.has(key))) continue;
+			const prev = this.rowOf.get(key);
+			if (prev === undefined) added++;
 			if (prev === undefined || Math.floor(prev / ROW_STRIDE) <= c) {
-				this.rowOf.set(id, c * ROW_STRIDE + i);
+				this.rowOf.set(key, c * ROW_STRIDE + i);
 			}
-			const ph = this.placeholders.get(id);
-			if (ph) {
-				const fresh = materializeBodyData(cols, i, this.labels, this.parentIdType);
-				if (fresh) Object.assign(ph.data, fresh);
+			if (hasPlaceholders) {
+				const id = rowId(cols, i);
+				const ph = id === null ? undefined : this.placeholders.get(id);
+				if (ph) {
+					const fresh = materializeBodyData(cols, i, this.labels, this.parentIdType);
+					if (fresh) Object.assign(ph.data, fresh);
+				}
 			}
 		}
 		return added;
@@ -103,17 +107,40 @@ export class MinorBucket {
 
 	get size(): number {
 		let extra = 0;
-		for (const id of this.placeholders.keys()) if (!this.rowOf.has(id)) extra++;
+		for (const id of this.placeholders.keys()) if (!this.hasRow(id)) extra++;
 		return this.rowOf.size + extra;
 	}
 
+	private hasRow(id: string): boolean {
+		const key = idToKey(id);
+		return key !== null && this.rowOf.has(key);
+	}
+
 	has(id: string): boolean {
-		return this.rowOf.has(id) || this.placeholders.has(id);
+		return this.hasRow(id) || this.placeholders.has(id);
+	}
+
+	hasKey(key: ObjectKey): boolean {
+		if (this.rowOf.has(key)) return true;
+		if (this.placeholders.size === 0) return false;
+		const id = keyToId(key);
+		return id !== null && this.placeholders.has(id);
 	}
 
 	*ids(): IterableIterator<string> {
+		for (const key of this.rowOf.keys()) {
+			const id = keyToId(key);
+			if (id !== null) yield id;
+		}
+		for (const id of this.placeholders.keys()) if (!this.hasRow(id)) yield id;
+	}
+
+	*keys(): IterableIterator<ObjectKey> {
 		yield* this.rowOf.keys();
-		for (const id of this.placeholders.keys()) if (!this.rowOf.has(id)) yield id;
+		for (const id of this.placeholders.keys()) {
+			const key = idToKey(id);
+			if (key !== null && !this.rowOf.has(key)) yield key;
+		}
 	}
 
 	/** Materialize (and cache) the body for one id. Position starts at the
@@ -123,7 +150,8 @@ export class MinorBucket {
 	get(id: string): PositionedBody | undefined {
 		const cached = this.cache.get(id);
 		if (cached) return cached;
-		const ref = this.rowOf.get(id);
+		const key = idToKey(id);
+		const ref = key === null ? undefined : this.rowOf.get(key);
 		if (ref === undefined) return undefined;
 		const c = Math.floor(ref / ROW_STRIDE);
 		const data = materializeBodyData(
@@ -136,6 +164,11 @@ export class MinorBucket {
 		const body: PositionedBody = { data, position: [0, 0, 0], positionUnknown: true };
 		this.cache.set(id, body);
 		return body;
+	}
+
+	getKey(key: ObjectKey): PositionedBody | undefined {
+		const id = keyToId(key);
+		return id === null ? undefined : this.get(id);
 	}
 
 	*values(): IterableIterator<PositionedBody> {
@@ -163,7 +196,7 @@ export class MinorBucket {
 	async buildWorkerGroups(
 		name: string,
 		workerCount: number,
-		skip: Set<string>,
+		skip: ReadonlySet<ObjectKey>,
 		withColors: boolean
 	): Promise<{ groups: WorkerGroup[]; baseWorker: number }> {
 		const total = this.rowOf.size;
@@ -199,7 +232,7 @@ export class MinorBucket {
 			groups.push({
 				cols,
 				colors: withColors ? new Float32Array(counts[b] * 3) : null,
-				ids: new Array<string>(counts[b])
+				keys: new Float64Array(counts[b]).fill(NO_KEY)
 			});
 		}
 
@@ -221,9 +254,9 @@ export class MinorBucket {
 			const b = bucketOf[r];
 			const g = groups[b];
 			const outIdx = writeIdx[b]++;
-			const id = cols.idMap.get(i); // needed for both the skip test and pick-id mapping
-			g.ids[outIdx] = id ?? '';
-			if (fillOrbitColumnRow(cols, i, g.cols, outIdx, id, skip)) {
+			const key = rowKey(cols, i);
+			g.keys[outIdx] = key;
+			if (fillOrbitColumnRow(cols, i, g.cols, outIdx, key, skip)) {
 				if (cols.validityStart < starts[b]) starts[b] = cols.validityStart;
 				if (cols.validityEnd > ends[b]) ends[b] = cols.validityEnd;
 			}

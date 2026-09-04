@@ -267,18 +267,21 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// URL-loaded spacecraft placeholders: mutated in place when the real chunk
 	// lands so the renderer's held BodyObject ref stays valid.
 	const placeholderById = new Map<string, PositionedBody>();
-	// Ids added since the last flush, drained into `notifyBodiesAdded` so the
-	// promotion registry picks up new bodies without polling.
-	const addedSinceFlush = new Set<string>();
+	// Set when a flush has new bodies to announce: the promotion registry
+	// probes its own pending set on each notification, so no id list is kept.
+	let addedSinceFlush = false;
+	const noteAdded = () => {
+		addedSinceFlush = true;
+	};
 
 	const flush = () => {
 		// Re-wrap for reactivity — inner MinorBucket refs stay stable.
 		ctx.bodies.asteroidBodiesByZone = new Map(ctx.bodies.asteroidBodiesByZone);
 		ctx.bodies.spacecraftByParent = new Map(ctx.bodies.spacecraftByParent);
 		ctx.bodies.minorBodyVersion++;
-		if (addedSinceFlush.size > 0) {
-			ctx.bodies.notifyBodiesAdded([...addedSinceFlush]);
-			addedSinceFlush.clear();
+		if (addedSinceFlush) {
+			addedSinceFlush = false;
+			ctx.bodies.notifyBodiesAdded();
 		}
 	};
 
@@ -296,7 +299,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 				// Nowhere to route it: the zone buckets and spacecraft groups are
 				// keyed by a place this body doesn't have.
 				ctx.bodies.addBodies([body]);
-				addedSinceFlush.add(body.data.id);
+				noteAdded();
 				ctx.credits.recordOrbitSources([body]);
 				continue;
 			}
@@ -313,11 +316,11 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 				const key = body.data.parentId;
 				spacecraftBucket(key).set(body.data.id, body);
 				placeholderById.set(body.data.id, body);
-				addedSinceFlush.add(body.data.id);
+				noteAdded();
 				ctx.bodies.dirtySpacecraftGroups.add(key);
 			} else if (resolvedZone) {
 				asteroidBucket(resolvedZone).addPlaceholder(body);
-				addedSinceFlush.add(body.data.id);
+				noteAdded();
 				ctx.bodies.dirtyAsteroidZones.add(resolvedZone);
 			} else {
 				// Major / undocumented / wikidata-only — no zone to route into,
@@ -370,7 +373,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		ctx.credits.recordOrbitSource(cols.source);
 		if (cols.rowCount === 0) return;
 		const added = await asteroidBucket(zone).addChunk(cols, parentIdType);
-		for (const id of added) addedSinceFlush.add(id);
+		if (added > 0) noteAdded();
 		ctx.bodies.dirtyAsteroidZones.add(zone);
 	};
 
@@ -396,7 +399,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 			}
 			const key = b.data.parentId;
 			const bucket = spacecraftBucket(key);
-			if (!bucket.has(b.data.id)) addedSinceFlush.add(b.data.id);
+			if (!bucket.has(b.data.id)) noteAdded();
 			bucket.set(b.data.id, b);
 			ctx.bodies.dirtySpacecraftGroups.add(key);
 		}
@@ -410,7 +413,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		const bucket = asteroidBucket(zone);
 		for (const b of chunk) {
 			bucket.addPlaceholder(b);
-			addedSinceFlush.add(b.data.id);
+			noteAdded();
 		}
 		ctx.bodies.dirtyAsteroidZones.add(zone);
 	};

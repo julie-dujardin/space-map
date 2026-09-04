@@ -12,6 +12,7 @@ import {
 	SUBFORMAT_SGP4,
 	buildObjectId
 } from '$lib/fetch/position/format';
+import { objectKey, type ObjectKey } from '$lib/fetch/position/object-key';
 
 /**
  * File-level validity window (JD TDB). Propagation is only defined inside
@@ -30,12 +31,7 @@ export interface Validity {
  */
 export interface ChunkMeta extends Validity {
 	source: OrbitalSource;
-	/**
-	 * `<prefix>-<numeric>` Object IDs reconstructed from the file header's
-	 * id-type byte and column 0. Indexed by row.
-	 */
-	idMap: Map<number, string>;
-	/** Id-type byte of column 0; `idMap` spells its rows out. */
+	/** Id-type byte of column 0. {@link rowId} and {@link rowKey} read a row's id from it. */
 	idType: IdType;
 }
 
@@ -147,27 +143,14 @@ function parseExtension(view: DataView): {
 	};
 }
 
-/**
- * Walk column 0 once and build the row-index → full-id Map. Logs (without
- * crashing) when the file's id-type is unknown — the row remains numerically
- * usable but keyed lookups against object bundles will fail, so the consumer
- * sees the warning and the missing entry rather than a corrupted-looking ID.
- */
-function buildIdMap(idCol: Int32Array, idType: IdType): Map<number, string> {
-	const map = new Map<number, string>();
-	if (idType === IdType.UNKNOWN) {
-		if (idCol.length > 0) {
-			console.warn(
-				`elements payload has unknown id-type — ${idCol.length} row(s) will lack reconstructed IDs`
-			);
-		}
-		return map;
-	}
-	for (let i = 0; i < idCol.length; i++) {
-		const id = buildObjectId(idType, idCol[i]);
-		if (id !== null) map.set(i, id);
-	}
-	return map;
+/** Full `<prefix>-<number>` id of row `i`, or null when the file's id type is unknown. */
+export function rowId(cols: ElementColumns, i: number): string | null {
+	return buildObjectId(cols.idType, cols.id[i]);
+}
+
+/** Packed key of row `i`; see {@link ObjectKey}. */
+export function rowKey(cols: ElementColumns, i: number): ObjectKey {
+	return objectKey(cols.idType, cols.id[i]);
 }
 
 /** Parse shared columns 0–3 (id, objectType, parentId, scale). */
@@ -257,6 +240,11 @@ export function parseElementsPayload(
 ): ElementColumns {
 	const view = new DataView(buffer);
 	const { subFormat, rowCount, source, idType } = parseExtension(view);
+	if (idType === IdType.UNKNOWN && rowCount > 0) {
+		console.warn(
+			`elements payload has unknown id-type — ${rowCount} row(s) will lack reconstructed IDs`
+		);
+	}
 
 	if (subFormat === SUBFORMAT_PARABOLIC) {
 		return parseParabolicElements(buffer, rowCount, validityStart, validityEnd, source, idType);
@@ -289,7 +277,6 @@ export function parseElementsPayload(
 		validityStart,
 		validityEnd,
 		source,
-		idMap: buildIdMap(id, idType),
 		idType
 	};
 
@@ -339,7 +326,6 @@ function parseSGP4Elements(
 		validityStart,
 		validityEnd,
 		source,
-		idMap: buildIdMap(id, idType),
 		idType
 	};
 
@@ -413,7 +399,6 @@ function parseParabolicElements(
 		validityStart,
 		validityEnd,
 		source,
-		idMap: buildIdMap(id, idType),
 		idType
 	};
 

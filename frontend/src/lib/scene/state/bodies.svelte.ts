@@ -79,20 +79,19 @@ export class BodyIndex {
 
 	/** Subscribers notified after any bucket gains new ids — drives promotion
 	 *  matching without per-frame zone scans. */
-	private readonly addListeners = new Set<(ids: readonly string[]) => void>();
+	private readonly addListeners = new Set<() => void>();
 
 	/** Subscribe to bulk additions across any bucket. Fires with freshly-added
 	 *  ids only; updates to existing entries aren't announced. */
-	onBodiesAdded(cb: (ids: readonly string[]) => void): () => void {
+	onBodiesAdded(cb: () => void): () => void {
 		this.addListeners.add(cb);
 		return () => this.addListeners.delete(cb);
 	}
 
 	/** Fire `onBodiesAdded` listeners; also called directly by loaders that
 	 *  mutate zone buckets outside `addBodies`. */
-	notifyBodiesAdded(ids: readonly string[]): void {
-		if (ids.length === 0 || this.addListeners.size === 0) return;
-		for (const cb of this.addListeners) cb(ids);
+	notifyBodiesAdded(): void {
+		for (const cb of this.addListeners) cb();
 	}
 
 	/** Look up any body by ID. Pass `zone` to skip the linear bucket scan when
@@ -121,9 +120,9 @@ export class BodyIndex {
 	 *  and the moon-max-a tracker. Orbit-source attribution is the caller's job
 	 *  (see CreditsStore.recordOrbitSources). */
 	addBodies(bodies: PositionedBody[]): void {
-		const addedIds: string[] = [];
+		let added = false;
 		for (const b of bodies) {
-			if (!this.bodiesById.has(b.data.id)) addedIds.push(b.data.id);
+			if (!this.bodiesById.has(b.data.id)) added = true;
 			this.bodiesById.set(b.data.id, b);
 
 			const set = this.childrenByParent.get(b.data.parentId) ?? new Set<string>();
@@ -134,7 +133,7 @@ export class BodyIndex {
 				if (b.data.a > prev) this.moonMaxAByParent.set(b.data.parentId, b.data.a);
 			}
 		}
-		this.notifyBodiesAdded(addedIds);
+		if (added) this.notifyBodiesAdded();
 	}
 
 	/** Children of `parentId` (object ids), or undefined if none registered. */
