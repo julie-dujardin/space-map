@@ -16,6 +16,7 @@ ephemeris.
 import bisect
 import csv
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TypedDict
 
@@ -159,6 +160,7 @@ def _load_day(day_dir: Path) -> dict[int, CelesTrakElements]:
 def fill_gaps(
     days: dict[str, dict[int, CelesTrakElements]],
     donors: dict[str, dict[int, CelesTrakElements]] | None = None,
+    decay_jd: Mapping[int, float] | None = None,
 ) -> None:
     """Fill each snapshot's missing satellites from earlier ones.
 
@@ -171,6 +173,11 @@ def fill_gaps(
     Entries are shared by reference, not copied — the frontend reads each row's
     own ``epoch_jd``, so a filled row carries its true age and renders with the
     stale-element warning rather than pretending to be current.
+
+    ``decay_jd`` maps NORAD to its re-entry date; a satellite is never filled
+    into a snapshot at or after it. Its last TLE otherwise rides 30 days past
+    re-entry, and SGP4 refuses to propagate an orbit that ends below the
+    surface, so those rows only ship to be dropped at load.
     """
     if not days:
         return
@@ -189,7 +196,9 @@ def fill_gaps(
         epochs_by_norad[norad] = [epoch for epoch, _row in entries]
         rows_by_norad[norad] = [row for _epoch, row in entries]
 
+    decayed_at = decay_jd or {}
     filled = 0
+    skipped_decayed = 0
     for iso, elements in days.items():
         target_jd = date_to_julian(iso)
         if target_jd is None:
@@ -199,19 +208,27 @@ def fill_gaps(
                 continue
             # Rightmost epoch at or before the target — never a later one.
             idx = bisect.bisect_right(epochs, target_jd) - 1
-            if idx >= 0 and target_jd - epochs[idx] <= FILL_LOOKBACK_DAYS:
-                elements[norad] = rows_by_norad[norad][idx]
-                filled += 1
+            if idx < 0 or target_jd - epochs[idx] > FILL_LOOKBACK_DAYS:
+                continue
+            decayed = decayed_at.get(norad)
+            if decayed is not None and decayed <= target_jd:
+                skipped_decayed += 1
+                continue
+            elements[norad] = rows_by_norad[norad][idx]
+            filled += 1
     logger.info(
-        "Filled %d satellite-days from earlier snapshots (%gd lookback)",
+        "Filled %d satellite-days from earlier snapshots (%gd lookback); "
+        "held back %d satellite-days for satellites already re-entered",
         filled,
         FILL_LOOKBACK_DAYS,
+        skipped_decayed,
     )
 
 
 def load_all_days(
     download_dir: Path,
     donors: dict[str, dict[int, CelesTrakElements]] | None = None,
+    decay_jd: Mapping[int, float] | None = None,
 ) -> dict[str, dict[int, CelesTrakElements]]:
     """Return every available day's GP elements indexed by ISO date → NORAD.
 
@@ -219,7 +236,8 @@ def load_all_days(
     match :func:`_parse_row` output. Empty result if no day-dirs are present.
     Gaps are filled from earlier snapshots, and from ``donors`` — the archive
     year's tail, which the caller supplies so this module stays independent of
-    the archive reader. See :func:`fill_gaps`.
+    the archive reader. ``decay_jd`` keeps re-entered satellites out of that
+    fill. See :func:`fill_gaps`.
     """
     days = current_day_dirs(download_dir)
     if not days:
@@ -234,5 +252,5 @@ def load_all_days(
     }
     total = sum(len(d) for d in result.values())
     logger.info("Loaded %d CelesTrak elements across %d days", total, len(result))
-    fill_gaps(result, donors)
+    fill_gaps(result, donors, decay_jd)
     return result

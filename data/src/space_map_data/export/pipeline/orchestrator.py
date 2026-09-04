@@ -134,8 +134,10 @@ from space_map_data.models.object import (
     OrbitalSource,
     SBDB,
     SBDBMoon,
+    Satcat,
 )
 from space_map_data.models.object.sbdb import CometPrefix
+from space_map_data.utils.convert import date_to_julian
 from space_map_data.utils.paths import (
     DOWNLOAD_DIR,
     EXPORT_DIR,
@@ -364,6 +366,25 @@ def _iter_non_sbdb_zone_snapshots(
         else:
             snapshots = single_snapshot(objects)
         yield zone, zoom, snapshots
+
+
+def _satellite_decay_jds(session: Session) -> dict[int, float]:
+    """NORAD → re-entry date as a JD, for satellites SATCAT records as decayed.
+
+    Keeps the elements gap-fill from carrying a satellite's last TLE past its
+    re-entry (see :func:`celestrak_source.fill_gaps`).
+    """
+    decayed: dict[int, float] = {}
+    for norad, decay_date in (
+        session.query(Satcat.NORAD_CAT_ID, Satcat.decay_date)
+        .filter(Satcat.decay_date.is_not(None))
+        .all()
+    ):
+        jd = date_to_julian(decay_date)
+        if jd is not None:
+            decayed[norad] = jd
+    logger.info("SATCAT reports %d satellites re-entered", len(decayed))
+    return decayed
 
 
 def _moon_host_ids(session: Session) -> set[str]:
@@ -1064,10 +1085,15 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     def celestrak_loader() -> Mapping[str, dict[int, CelesTrakElements]]:
         nonlocal _celestrak_days
         if _celestrak_days is None:
+            # Own session: this runs lazily, inside and outside the caller's.
+            with Session(engine) as decay_session:
+                decay_jds = _satellite_decay_jds(decay_session)
             # The archive tail lets the first weeks of the current year fill
             # their gaps across the year boundary.
             _celestrak_days = load_all_days(
-                DOWNLOAD_DIR, load_archive_tail(FILL_LOOKBACK_DAYS)
+                DOWNLOAD_DIR,
+                load_archive_tail(FILL_LOOKBACK_DAYS),
+                decay_jd=decay_jds,
             )
         return _celestrak_days
 

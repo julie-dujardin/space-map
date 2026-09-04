@@ -85,6 +85,24 @@ class TestFillGaps:
         fill_gaps(days, donors)
         assert set(days["2026-02-23"]) == {5}
 
+    def test_never_fills_a_satellite_that_has_re_entered(self):
+        """A decayed satellite's last TLE would otherwise ride 30 days past
+        re-entry, and SGP4 refuses to propagate an orbit ending below ground."""
+        days = {
+            "2026-01-05": {5: _elements(_JD_JAN_05), 11: _elements(_JD_JAN_05)},
+            "2026-01-12": {5: _elements(_JD_JAN_12)},
+        }
+        fill_gaps(days, decay_jd={11: _JD_JAN_05 + 2})
+        assert set(days["2026-01-12"]) == {5}
+
+    def test_fills_a_satellite_still_flying_at_the_snapshot(self):
+        days = {
+            "2026-01-05": {5: _elements(_JD_JAN_05), 11: _elements(_JD_JAN_05)},
+            "2026-01-12": {5: _elements(_JD_JAN_12)},
+        }
+        fill_gaps(days, decay_jd={11: _JD_JAN_12 + 1})
+        assert set(days["2026-01-12"]) == {5, 11}
+
     def test_no_days_is_a_no_op(self):
         days: dict = {}
         fill_gaps(days, {"2025-12-29": {5: _elements(_JD_DEC_29)}})

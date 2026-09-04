@@ -165,15 +165,22 @@ def sbdb_zone_signature(cheb_covered_ids: set[str], host_ids: set[str]) -> dict:
     }
 
 
+# Bump when the elements a snapshot ends up holding change for reasons the
+# source fingerprints can't see — the gap-fill rules, say. Otherwise every
+# already-exported day keeps its old chunks.
+EARTH_BUILD_VERSION = 2
+
+
 def earth_zone_signature() -> dict:
     """Shared signature for both earth zooms.
 
     Covers every live day-dir's CSV fingerprints and the Space-Track archive
     zips feeding the historical weekly snapshots. A change to either re-runs
-    the zone.
+    the zone, as does a bump of :data:`EARTH_BUILD_VERSION`.
     """
     days = current_day_dirs(DOWNLOAD_DIR)
     return {
+        "version": EARTH_BUILD_VERSION,
         "days": {iso: build_earth_part_signature(day_dir) for iso, day_dir in days},
         "archive": archive_zip_fingerprints(ARCHIVE_YEARS),
     }
