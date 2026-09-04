@@ -60,9 +60,16 @@ function readPersisted(): Persisted {
 	}
 }
 
+/** Per-locale cache: the time bar asks every frame. */
+const hour12ByLocale = new Map<string, boolean>();
 function localeUses12h(locale: string): boolean {
-	const opts = new Intl.DateTimeFormat(locale, { hour: 'numeric' }).resolvedOptions();
-	return opts.hour12 === true || opts.hourCycle === 'h11' || opts.hourCycle === 'h12';
+	let uses12h = hour12ByLocale.get(locale);
+	if (uses12h === undefined) {
+		const opts = new Intl.DateTimeFormat(locale, { hour: 'numeric' }).resolvedOptions();
+		uses12h = opts.hour12 === true || opts.hourCycle === 'h11' || opts.hourCycle === 'h12';
+		hour12ByLocale.set(locale, uses12h);
+	}
+	return uses12h;
 }
 
 class SettingsState {

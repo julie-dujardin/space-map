@@ -871,7 +871,9 @@
 					onUserPromotedChange={(count) => (userPromotedCount = count)}
 				/>
 			</div>
-			<TimeControls {clock} />
+			{#if !isMobileViewport}
+				<TimeControls {clock} />
+			{/if}
 			<div
 				class="fixed top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] pointer-events-auto md:end-auto md:w-[min(400px,calc(100vw-7rem))] {searchExpanded
 					? 'z-[55]'
@@ -1046,9 +1048,11 @@
 					{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
 				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1.5rem + var(--safe-bottom));"
 			>
-				<div class="md:hidden pointer-events-auto">
-					<MobileTimeControls {clock} />
-				</div>
+				{#if isMobileViewport}
+					<div class="md:hidden pointer-events-auto">
+						<MobileTimeControls {clock} />
+					</div>
+				{/if}
 				<MyLocation
 					onLocate={(zoom: number, lat?: number, lng?: number) => {
 						if (lat !== undefined && lng !== undefined) scene?.setUserLocation(lat, lng);

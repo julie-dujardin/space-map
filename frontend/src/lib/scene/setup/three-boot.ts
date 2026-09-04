@@ -5,6 +5,7 @@ import {
 	DirectionalLight,
 	FloatType,
 	HalfFloatType,
+	PCFShadowMap,
 	PCFSoftShadowMap,
 	PerspectiveCamera,
 	Scene,
@@ -17,7 +18,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { kmToScene } from '$lib/math/units';
-import { cappedPixelRatio } from '$lib/device';
+import { currentRenderTier, renderPixelRatio } from '$lib/scene/render-tier';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import { setTrailResolution } from '$lib/scene/objects/trail/material';
@@ -96,7 +97,8 @@ export function bootThree(
 		console.warn('EXT_clip_control probe mismatch: reversed depth unavailable on main context');
 	}
 	setReversedDepth(renderer.capabilities.reversedDepthBuffer);
-	renderer.setPixelRatio(cappedPixelRatio());
+	const tier = currentRenderTier();
+	renderer.setPixelRatio(renderPixelRatio());
 	renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
 	// Shadow maps serve the focused 3D model only: the overlay scene's
 	// directional sun for spacecraft, or the main-scene shadow light while a
@@ -104,7 +106,7 @@ export function bootThree(
 	// `SceneRenderer.updateFocusedMountedModel`). The cost is paid only when a
 	// focused body has a 3D model attached.
 	renderer.shadowMap.enabled = true;
-	renderer.shadowMap.type = PCFSoftShadowMap;
+	renderer.shadowMap.type = tier.softShadows ? PCFSoftShadowMap : PCFShadowMap;
 	// ACES rolls the Sun's HDR output to saturated white. LDR overlays (trails,
 	// halos) are scaled in their own builders to compensate.
 	renderer.toneMapping = ACESFilmicToneMapping;
@@ -122,8 +124,8 @@ export function bootThree(
 	scene.add(ambientLight);
 	const shadowLight = new DirectionalLight(0xffffff, 0);
 	shadowLight.castShadow = false;
-	// 4096² keeps a grazing-Sun shadow crisp across a model-tight frustum.
-	shadowLight.shadow.mapSize.set(4096, 4096);
+	// A grazing-Sun shadow across a model-tight frustum wants 4096²; low tiers take less.
+	shadowLight.shadow.mapSize.set(tier.shadowMapSize, tier.shadowMapSize);
 	shadowLight.shadow.bias = -0.0001;
 	scene.add(shadowLight);
 	scene.add(shadowLight.target);
@@ -143,11 +145,13 @@ export function bootThree(
 			})
 		: undefined;
 	const composer = new EffectComposer(renderer, composerTarget);
-	composer.setPixelRatio(cappedPixelRatio());
+	composer.setPixelRatio(renderPixelRatio());
 	composer.setSize(canvas.clientWidth, canvas.clientHeight);
 	composer.addPass(new RenderPass(scene, camera));
+	// Sized in CSS pixels times the tier's scale: the Sun's glow has no detail
+	// to lose, so low tiers blur at half the canvas.
 	const bloomPass = new UnrealBloomPass(
-		new Vector2(canvas.clientWidth, canvas.clientHeight),
+		new Vector2(canvas.clientWidth * tier.bloomScale, canvas.clientHeight * tier.bloomScale),
 		0.3, // strength
 		0.5, // radius
 		1.0 // threshold — only HDR over-bright pixels (the Sun) bloom

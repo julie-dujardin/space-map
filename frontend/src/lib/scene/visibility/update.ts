@@ -470,6 +470,10 @@ export function updateBodyVisibility(
 			}
 		}
 
+		// A hidden group has nothing to draw, so three's per-frame matrix walk
+		// skips it; the flag turning back on refreshes it on the next render.
+		group.matrixWorldAutoUpdate = group.visible;
+
 		// Detach labels from hidden groups so CSS2DRenderer's recursive
 		// renderObject() doesn't visit them and write display:'none' every frame.
 		// Re-attach when the group becomes visible — CSS2DRenderer re-appends
@@ -481,6 +485,18 @@ export function updateBodyVisibility(
 			label.element.remove();
 		} else if (group.visible && label && label.parent !== group) {
 			group.add(label);
+		}
+
+		// A sphere under half a pixel draws nothing, yet costs a draw call: drop
+		// it from the camera's layer. Layer bits, not `visible`, so the model
+		// swap that owns `visible` is untouched.
+		if (bo.mesh && bo.radiusScene > 0) {
+			const subPixel = !isFocused && !isSystemRoot && (bo.radiusScene / dist) * projScale < 0.5;
+			if (subPixel !== bo.meshSubPixel) {
+				bo.meshSubPixel = subPixel;
+				if (subPixel) bo.mesh.layers.disable(0);
+				else bo.mesh.layers.enable(0);
+			}
 		}
 
 		if (applyLabelDisplay(bo, showLabel, isClose, dist, projScale, focusedBodyId)) {

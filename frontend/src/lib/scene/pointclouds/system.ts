@@ -137,6 +137,10 @@ export class PointCloudSystem {
 	private asteroidPoints = new Map<string, Points>();
 	private spacecraftPoints = new Map<string, Points>();
 	private moonPoints = new Map<string, Points>();
+	/** Points drawn at once over the visible asteroid and spacecraft clouds. */
+	private pointBudget = Infinity;
+	/** Prefix of each cloud drawn; rows are hash-ordered, so a prefix is a uniform sample. */
+	private drawFraction = 1;
 	private pendingSceneAdds: Points[] = [];
 	private basisPos: Vec3 = [0, 0, 0];
 	/** Snapshot of each group's parent position at its last worker dispatch.
@@ -192,6 +196,31 @@ export class PointCloudSystem {
 
 	basis(): Vec3 {
 		return this.basisPos;
+	}
+
+	setPointBudget(budget: number): void {
+		this.pointBudget = budget;
+		this.applyPointBudget();
+	}
+
+	/** Size the drawn prefix of every cloud so the visible ones fit the budget. */
+	applyPointBudget(): void {
+		let total = 0;
+		for (const pts of this.asteroidPoints.values()) {
+			if (pts.visible) total += (pts.userData.solvedCount as number | undefined) ?? 0;
+		}
+		for (const pts of this.spacecraftPoints.values()) {
+			if (pts.visible) total += (pts.userData.solvedCount as number | undefined) ?? 0;
+		}
+		const fraction = total > this.pointBudget ? this.pointBudget / total : 1;
+		if (fraction === this.drawFraction) return;
+		this.drawFraction = fraction;
+		for (const map of [this.asteroidPoints, this.spacecraftPoints]) {
+			for (const pts of map.values()) {
+				const n = pts.userData.solvedCount as number | undefined;
+				if (n !== undefined) pts.geometry.setDrawRange(0, Math.ceil(n * fraction));
+			}
+		}
 	}
 
 	/** Ramp earth-sat cloud size + alpha when only a few members remain. `count`
@@ -681,7 +710,8 @@ export class PointCloudSystem {
 		arr.set(positions);
 		posAttr.needsUpdate = true;
 		this.bindPickIds(pts, pickIds);
-		pts.geometry.setDrawRange(0, count);
+		pts.userData.solvedCount = count;
+		pts.geometry.setDrawRange(0, Math.ceil(count * this.drawFraction));
 		// The front buffer now reflects this jd; the gate measures drift from here.
 		this.lastSolvedJd.set(groupId, jd);
 		// Record the basis the worker used so reposition() can use it per-group:

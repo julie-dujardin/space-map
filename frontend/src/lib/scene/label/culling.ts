@@ -48,6 +48,15 @@ export type ScreenOccluder = {
 	ccz: number;
 };
 
+/** Last dim/restore state written to each halo, so the cull skips repeat
+ *  writes. Keyed on the halo: the name span and note stack follow it. */
+const labelStyleState = new WeakMap<Element, string>();
+
+/** Drop the cached state after an out-of-band style write (hover handlers). */
+export function forgetLabelStyle(labelHalo: Element): void {
+	labelStyleState.delete(labelHalo);
+}
+
 export function dimLabel(
 	labelHalo: HTMLElement | null,
 	nameSpan: HTMLElement | null,
@@ -56,6 +65,9 @@ export function dimLabel(
 	noteStack: HTMLElement | null = null
 ): void {
 	if (labelHalo) {
+		const key = `d${scale}${clickable ? 1 : 0}`;
+		if (labelStyleState.get(labelHalo) === key) return;
+		labelStyleState.set(labelHalo, key);
 		labelHalo.style.transform = `scale(${scale})`;
 		// Without this, hovering a dimmed halo's 32×32 root re-maximizes it and
 		// adds the body to hoveredBodyIds, stealing focus from whatever's behind.
@@ -80,6 +92,9 @@ export function restoreLabel(
 	noteStack: HTMLElement | null = null
 ): void {
 	if (labelHalo) {
+		const key = `r${isHovered ? 1 : 0}${isFocused ? 1 : 0}`;
+		if (labelStyleState.get(labelHalo) === key) return;
+		labelStyleState.set(labelHalo, key);
 		if (!isHovered) labelHalo.style.transform = '';
 		labelHalo.style.border = labelHalo.dataset.origBorder ?? '';
 		// A label unclickable on frame N must regain clicks when it wins frame N+1.
@@ -134,11 +149,17 @@ export function applyLabelDisplay(
 	if (bo.trail && hideHaloRing) bo.trail.visible = false;
 
 	label.visible = show;
-	if (labelHalo) labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';
+	if (labelHalo && bo.haloHidden !== hideHaloRing) {
+		labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';
+		bo.haloHidden = hideHaloRing;
+	}
 	// Loader DOM node only exists while a model is loading (managed by
 	// `setHaloLoading`). Show it exactly when the halo would be hidden by
 	// the close-zoom rule — it sits at the viewport centre.
-	if (bo.loadingEl) bo.loadingEl.style.display = hideHaloRing ? '' : 'none';
+	if (bo.loadingEl && bo.loadingShown !== hideHaloRing) {
+		bo.loadingEl.style.display = hideHaloRing ? '' : 'none';
+		bo.loadingShown = hideHaloRing;
+	}
 	// The anchor already sits on the near limb (see updateBodyVisibility); the name
 	// only needs a small fixed gap past it — 4px clear of the 32px halo box, always
 	// to the right (may run off screen, which is fine).

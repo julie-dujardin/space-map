@@ -244,7 +244,7 @@
 		try {
 			renderer = buildRenderer();
 			// Dev-only handle for headless render diagnostics (CDP scripts).
-			if (import.meta.env.DEV) {
+			if (import.meta.env.DEV || import.meta.env.VITE_BENCH_HOOK) {
 				(window as unknown as Record<string, unknown>).__smRenderer = renderer;
 				(window as unknown as Record<string, unknown>).__smCtx = ctx;
 			}
@@ -381,6 +381,13 @@
 
 	$effect(() => {
 		renderer?.setHaloDebugVisible(settings.showHaloDebug);
+	});
+
+	// A recalibration can move the render tier; read the signal before the
+	// optional call so it is tracked while the renderer is still unset.
+	$effect(() => {
+		void settings.atmosphereCalibration;
+		renderer?.applyRenderTier();
 	});
 
 	// Keyboard camera controls: arrows orbit the focused body, +/- zoom, Shift

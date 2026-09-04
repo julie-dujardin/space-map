@@ -1,6 +1,5 @@
 import { Line, Mesh, Vector3 } from 'three';
-import { orbitalElementsToCurve, sgp4Curve } from '$lib/math/orbit/curves';
-import { propagateOrbitAngles } from '$lib/math/orbit/position';
+import { isOpenOrbit, sgp4Curve } from '$lib/math/orbit/curves';
 import { dateToJD } from '$lib/format/date';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
@@ -109,20 +108,17 @@ export function makeTrail(
 	// ends on the body (data.n is deg/day here, hence /360 back to rev/day).
 	// Kept open: a sliding window never rejoins curve[0] to the body, so closing
 	// it draws a stray segment that spikes off the marker up close.
-	let curve: [number, number, number][];
+	let curve: [number, number, number][] | null;
 	let isOpenCurve: boolean;
 	if (data.satrec) {
 		curve = sgp4Curve(data.satrec, jd, data.n / 360, NUM_TRAIL_POINTS);
 		isOpenCurve = true;
 	} else {
 		if (!orbitElements) throw new Error('makeTrail called without orbitElements');
-		// Apply secular drift on Ω/ω so the ellipse matches the body's current
-		// orbit plane, not the chunk midpoint's. Re-rendered by refreshTrail once
-		// drift exceeds TRAIL_CURVE_REFRESH_DEG; curveJd below is its start point.
-		const propagated = propagateOrbitAngles(orbitElements, jd);
-		const result = orbitalElementsToCurve(propagated, NUM_TRAIL_POINTS);
-		curve = result.points;
-		isOpenCurve = result.isOpen;
+		// The Kepler curve waits for the first refresh that finds the trail
+		// visible (see refreshTrail): most of the hundreds built at load never show.
+		curve = null;
+		isOpenCurve = isOpenOrbit(orbitElements);
 	}
 
 	const cx = orbitCenter?.[0] ?? 0;
@@ -137,13 +133,13 @@ export function makeTrail(
 		data.objectType === ObjectType.COMET ||
 		isAsteroid(data.objectType);
 
-	const validPoints = buildTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
-	if (validPoints.length < 2) return makeEmptyTrail();
+	const validPoints = curve ? buildTrailPoints(body, curve, isOpenCurve, cx, cy, cz) : [];
+	if (curve && validPoints.length < 2) return makeEmptyTrail();
 
 	// Size buffers to the full curve length so later refreshes (e.g. SGP4
 	// trails growing after the first tick) don't hit refreshTrail's
 	// `posAttr.count < validPoints.length` early-return.
-	const bufferCapacity = Math.max(validPoints.length, curve.length);
+	const bufferCapacity = curve ? Math.max(validPoints.length, curve.length) : NUM_TRAIL_POINTS + 1;
 	const fullAlphas = new Float32Array(bufferCapacity);
 	const trailAlphas = new Float32Array(bufferCapacity);
 	writeTrailAlphas(
@@ -183,8 +179,9 @@ export function makeTrail(
 	// Float64 orbit-local positions for focus-change rebuilds; curve + flags
 	// for per-frame refresh while time plays.
 	obj.userData.orbitCenter = new Vector3(cx, cy, cz);
-	obj.userData.trailLocalPositions = validPoints;
-	obj.userData.sourceCurve = curve;
+	obj.userData.trailLocalPositions = curve ? validPoints : undefined;
+	obj.userData.sourceCurve = curve ?? undefined;
+	obj.userData.curvePending = curve === null;
 	obj.userData.isOpenCurve = isOpenCurve;
 	obj.userData.useTrail = useTrail;
 	obj.userData.curveJd = jd;

@@ -366,10 +366,10 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// Columnar ingest for the asteroid bulk: parsed columns go straight into a
 	// MinorBucket, no per-row PositionedBody or throwaway Kepler solve. Bodies
 	// that get promoted materialize on demand from these columns.
-	const handleColumnChunk = (zone: string, cols: ElementColumns, parentIdType: string) => {
+	const handleColumnChunk = async (zone: string, cols: ElementColumns, parentIdType: string) => {
 		ctx.credits.recordOrbitSource(cols.source);
 		if (cols.rowCount === 0) return;
-		const added = asteroidBucket(zone).addChunk(cols, parentIdType);
+		const added = await asteroidBucket(zone).addChunk(cols, parentIdType);
 		for (const id of added) addedSinceFlush.add(id);
 		ctx.bodies.dirtyAsteroidZones.add(zone);
 	};

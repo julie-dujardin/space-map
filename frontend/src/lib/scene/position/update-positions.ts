@@ -1,5 +1,5 @@
 import { Quaternion, Vector3 } from 'three';
-import { ObjectType, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, isMajorBody, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
 import { seatFeatureBody } from '$lib/scene/focus/feature-focus';
 import { kmToScene } from '$lib/math/units';
 import {
@@ -36,7 +36,7 @@ import {
 	updateOutOfRangeToast,
 	type OutOfRangeState
 } from '$lib/scene/out-of-range-toast';
-import { refreshTrail } from '$lib/scene/objects/trail/refresh';
+import { refreshTrail, type TrailView } from '$lib/scene/objects/trail/refresh';
 import { renderLandedProbe } from './landed-probe';
 import { setSpacecraftLanded } from '$lib/scene/label/factory';
 import { setLabelAnnotation } from '$lib/scene/label/annotations';
@@ -50,6 +50,11 @@ const newestPosScratch: [number, number, number] = [0, 0, 0];
 
 /** Scratch for the focused probe's attitude quaternion (one body per frame). */
 const attitudeQuat = new Quaternion();
+
+/** A hidden probe or minor body moves on every `HIDDEN_STRIDE`th frame only;
+ *  nothing on screen reads its position in between. */
+const HIDDEN_STRIDE = 4;
+let nextStaggerSlot = 0;
 
 /** Last world position per body for `velocity`-target pointing. Only the focused
  *  model carries a pointing spec, so this stays tiny. */
@@ -93,6 +98,10 @@ export interface UpdatePositionsParams {
 	/** Caller-owned scratch Map; cleared and reused each call. */
 	positionMap: Map<string, Vec3>;
 	diagnostics: PositionDiagnostics;
+	/** Camera for the trail rewrite gate; absent = rewrite every visible trail. */
+	trailView?: TrailView;
+	/** Frame counter for the hidden-body stagger; absent = move every body. */
+	frame?: number;
 }
 
 export interface UpdatePositionsResult {
@@ -110,7 +119,8 @@ export interface UpdatePositionsResult {
  * focus basis. Invisible lines are marked `refreshDeferred` for the next pass.
  */
 export function updatePositions(params: UpdatePositionsParams): UpdatePositionsResult {
-	const { jd, ctx, bodyObjects, focus, focusedBody, positionMap, diagnostics } = params;
+	const { jd, ctx, bodyObjects, focus, focusedBody, positionMap, diagnostics, trailView, frame } =
+		params;
 	// Keep the chebyshev working set centred on `jd`. Fire-and-forget: the
 	// frame may miss data for one or two ticks at a boundary, during which
 	// chebyshev-tracked bodies are hidden (outOfRange) just like SGP4.
@@ -187,6 +197,19 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		computed.add(body.data.id);
 		const d = body.data;
 		const bo = bodyObjects.get(d.id);
+		// A hidden leaf (probe, promoted minor) keeps its last position for a
+		// few frames: nothing reads it while hidden, and it was seeded above.
+		if (
+			bo &&
+			frame !== undefined &&
+			d.id !== focusedId &&
+			!bo.group.visible &&
+			!bo.trail?.visible &&
+			(d.orbitalSource === OrbitalSource.SPICE_PROBE || !isMajorBody(d.objectType))
+		) {
+			bo.staggerSlot ??= nextStaggerSlot++ % HIDDEN_STRIDE;
+			if (frame % HIDDEN_STRIDE !== bo.staggerSlot) return;
+		}
 		// No placement this frame: hide the mesh and mark `position` a stand-in so
 		// the camera is never framed on it. `notForToast` covers the sat-validity
 		// case, where zone coverage drives the toast instead.
@@ -447,6 +470,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			if ((probeParentChanged || lagrangeChanged) && body.trailBuffer && ctx.probeStore) {
 				const buf = body.trailBuffer;
 				buf.clear();
+				buf.needsPopulate = false;
 				const freshElements = probeOsculatingElements(located.probe, jd, primaryMu);
 				const params = deriveProbeTrailParams(
 					freshElements,
@@ -501,6 +525,19 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			// the back-fill, so a fast periapsis pass (a large arc per frame at high
 			// time-speed) densifies instead of drawing one long facet per frame.
 			const tb = body.trailBuffer;
+			// The load-time back-fill is owed until the trail first shows.
+			if (tb?.needsPopulate && bo?.trail?.visible && ctx.probeStore) {
+				tb.needsPopulate = false;
+				tb.clear();
+				populateProbeTrailBuffer(
+					tb,
+					ctx.probeStore,
+					ctx.chebStore ?? null,
+					d.id,
+					probeParentKey,
+					jd
+				);
+			}
 			if (tb) {
 				const last = tb.newestJd;
 				const dt = jd - last;
@@ -771,7 +808,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			line.userData.refreshDeferred = true;
 			continue;
 		}
-		refreshTrail(bo.body, line, basis, jd);
+		refreshTrail(bo.body, line, basis, jd, trailView);
 		line.userData.refreshDeferred = false;
 	}
 
@@ -787,13 +824,14 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 export function refreshDeferredTrails(
 	bodyObjects: Map<string, BodyObjects>,
 	focus: FocusState,
-	jd: number
+	jd: number,
+	trailView?: TrailView
 ): void {
 	const basis = focus.focusTruePos;
 	for (const bo of bodyObjects.values()) {
 		const line = bo.trail;
 		if (!line || !line.visible || !line.userData.refreshDeferred) continue;
-		refreshTrail(bo.body, line, basis, jd);
+		refreshTrail(bo.body, line, basis, jd, trailView);
 		line.userData.refreshDeferred = false;
 	}
 }

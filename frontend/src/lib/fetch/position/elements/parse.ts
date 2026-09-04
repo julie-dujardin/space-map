@@ -35,6 +35,8 @@ export interface ChunkMeta extends Validity {
 	 * id-type byte and column 0. Indexed by row.
 	 */
 	idMap: Map<number, string>;
+	/** Id-type byte of column 0; `idMap` spells its rows out. */
+	idType: IdType;
 }
 
 /** Trailing per-point columns shared by every sub-format. `hasLocalized` gates
@@ -287,7 +289,8 @@ export function parseElementsPayload(
 		validityStart,
 		validityEnd,
 		source,
-		idMap: buildIdMap(id, idType)
+		idMap: buildIdMap(id, idType),
+		idType
 	};
 
 	return {
@@ -336,7 +339,8 @@ function parseSGP4Elements(
 		validityStart,
 		validityEnd,
 		source,
-		idMap: buildIdMap(id, idType)
+		idMap: buildIdMap(id, idType),
+		idType
 	};
 
 	// Columns 13–15: bstar, mean_motion_dot, mean_motion_ddot (float32)
@@ -409,7 +413,8 @@ function parseParabolicElements(
 		validityStart,
 		validityEnd,
 		source,
-		idMap: buildIdMap(id, idType)
+		idMap: buildIdMap(id, idType),
+		idType
 	};
 
 	// Column 4: epoch_jd (float64 — Julian Dates need full precision)

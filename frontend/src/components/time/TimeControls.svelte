@@ -45,7 +45,10 @@
 
 	const handleDateChange = (v: DateValue | undefined) => applyDateToClock(clock, v);
 	const handleTimeChange = (e: Event) => applyTimeToClock(clock, e);
-	let timeValue = $derived(clockTimeValue(clock.jd));
+	// The label shows minutes; quantising to the second stops the formatter
+	// running on every frame of a 1x clock.
+	const shownJd = $derived(Math.floor(clock.jd * 86400) / 86400);
+	let timeValue = $derived(clockTimeValue(shownJd));
 
 	// Fixtures covering the variants that change rendered length: month
 	// abbreviations, meridiem/hour boundaries, day digit count. Measured as
@@ -65,7 +68,7 @@
 	];
 
 	const settings = getSettings();
-	let dateLabel = $derived(formatJulianDateTime(clock.jd, TIME_DATE_OPTS));
+	let dateLabel = $derived(formatJulianDateTime(shownJd, TIME_DATE_OPTS));
 
 	// Pins the label's min-width to the widest fixture so the bar doesn't
 	// jitter as the clock ticks.

@@ -421,9 +421,11 @@ function setHaloLoading(bo: BodyObjects, loading: boolean): void {
 		el.style.display = 'none';
 		document.body.appendChild(el);
 		bo.loadingEl = el;
+		bo.loadingShown = false;
 	} else if (bo.loadingEl) {
 		bo.loadingEl.remove();
 		bo.loadingEl = null;
+		bo.loadingShown = undefined;
 	}
 }
 

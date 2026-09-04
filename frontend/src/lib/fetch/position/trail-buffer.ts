@@ -28,6 +28,9 @@ export class TrailBuffer {
 	 *  ellipses; `Infinity` for hyperbolic flybys, where capacity and zone
 	 *  coverage bound the walk instead of one chunk window. */
 	spanDays: number;
+	/** Back-fill still owed: it runs the first frame the trail is visible, not
+	 *  at load, since most probe trails never show. */
+	needsPopulate = false;
 	private readonly positions: Float32Array;
 	private readonly jds: Float64Array;
 	/** Index of the next write slot. `(head − 1) mod capacity` is the newest. */

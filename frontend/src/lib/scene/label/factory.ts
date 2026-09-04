@@ -4,6 +4,7 @@ import { isModifiedClick } from '$lib/state/focus-link';
 import type { BodyObjects } from '../types';
 import { syncLabelAria } from './annotations';
 import './label.css';
+import { forgetLabelStyle } from './culling';
 
 export type LabelVariant = 'major' | 'spacecraft' | 'debris' | 'none';
 
@@ -165,6 +166,7 @@ export function createLabel(
 	});
 	el.addEventListener('mouseleave', () => {
 		halo.style.transform = isMinor ? 'scale(0.3)' : '';
+		forgetLabelStyle(halo);
 		document.body.style.cursor = '';
 		onHoverChange?.(false);
 	});

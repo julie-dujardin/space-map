@@ -20,7 +20,12 @@ import { LruPromiseCache } from '$lib/fetch/position/cache';
 import { isMajorBody } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
 import { yieldToMain } from '$lib/yield';
-import { OrbitalSource, chunkedPartedUrl, partedUrl } from '$lib/fetch/position/format';
+import {
+	OrbitalSource,
+	chunkedPartedUrl,
+	idTypePrefix,
+	partedUrl
+} from '$lib/fetch/position/format';
 import { parsePosition } from '$lib/fetch/position/parse';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
 import { AU_KM, AU_SCALE, KM3_S2_TO_AU3_DAY2, KM_DAY_TO_AU_DAY, kmToScene } from '$lib/math/units';
@@ -32,7 +37,7 @@ import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import { probePositionKm } from '$lib/fetch/position/probes/propagate';
 import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
 import { resolveProbePrimary } from '$lib/fetch/position/probes/primary';
-import { deriveProbeTrailParams, populateProbeTrailBuffer } from '$lib/fetch/position/probes/trail';
+import { deriveProbeTrailParams } from '$lib/fetch/position/probes/trail';
 import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
@@ -153,6 +158,8 @@ export class ChunkLoader {
 	 *  seeded by the orchestrator with parent IDs downstream zones need (e.g.
 	 *  `small_body_moons` parents living in `small_bodies/*`). */
 	neededParentIds = new Set<string>();
+	/** The same ids by prefix as raw numbers, so the per-row scan never builds strings. */
+	private readonly neededNumeric = new Map<string, Set<number>>();
 
 	/**
 	 * Past-position ring buffers for probes with at least one chebyshev
@@ -479,7 +486,7 @@ export class ChunkLoader {
 					}
 				} else {
 					trailBuffer = new TrailBuffer(NUM_TRAIL_POINTS, stepDays, epsilonScene, spanDays);
-					populateProbeTrailBuffer(trailBuffer, probeStore, cheb, id, primaryKey, jd);
+					trailBuffer.needsPopulate = true;
 					this.probeBuffers.set(id, { buffer: trailBuffer, parentKey: primaryKey });
 				}
 			}
@@ -543,8 +550,11 @@ export class ChunkLoader {
 		parentIdType: string
 	): Promise<void> {
 		const cols = await fetchElements(zone, zoom, part, time);
+		let numeric = this.neededNumeric.get(parentIdType);
+		if (!numeric) this.neededNumeric.set(parentIdType, (numeric = new Set()));
 		for (let i = 0; i < cols.rowCount; i++) {
 			this.neededParentIds.add(`${parentIdType}-${cols.parentId[i]}`);
+			numeric.add(cols.parentId[i]);
 		}
 	}
 
@@ -565,18 +575,32 @@ export class ChunkLoader {
 		parentIdType: string = 'naif'
 	): Promise<ElementColumns> {
 		const cols = await fetchElements(zone, zoom, part, time);
-		if (this.neededParentIds.size > 0) this.resolveNeededParents(cols, date, parentIdType);
+		if (this.neededParentIds.size > 0) await this.resolveNeededParents(cols, date, parentIdType);
 		return cols;
 	}
 
 	/** Solve + store positions for rows whose id is a needed moon-host parent.
-	 *  Mirrors the per-row offset selection in {@link process}. */
-	private resolveNeededParents(cols: ElementColumns, date: Date, parentIdType: string): void {
+	 *  Mirrors the per-row offset selection in {@link process}. Time-sliced
+	 *  like the ingest: it walks every row of every part. */
+	private async resolveNeededParents(
+		cols: ElementColumns,
+		date: Date,
+		parentIdType: string
+	): Promise<void> {
 		const jd = dateToJD(date);
 		const isParabolic = cols.kind === 'parabolic';
+		const prefix = idTypePrefix(cols.idType);
+		const needed = prefix ? this.neededNumeric.get(prefix) : undefined;
+		if (!needed?.size) return;
+		let sliceStart = performance.now();
 		for (let i = 0; i < cols.rowCount; i++) {
+			if ((i & 4095) === 4095 && performance.now() - sliceStart > 6) {
+				await yieldToMain();
+				sliceStart = performance.now();
+			}
+			if (!needed.has(cols.id[i])) continue;
 			const id = cols.idMap.get(i);
-			if (id === undefined || !this.neededParentIds.has(id)) continue;
+			if (id === undefined) continue;
 			const parentPos = this.positions.get(`${parentIdType}-${cols.parentId[i]}`);
 			if (!parentPos) continue;
 			const body = materializeBodyData(cols, i, NO_LABELS, parentIdType);

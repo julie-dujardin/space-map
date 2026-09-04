@@ -118,6 +118,8 @@ export function makeEmptyTrail(): Line | Mesh {
 	geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(6), 3));
 	const material = new ShaderMaterial({ transparent: true });
 	const line = new Line(geometry, material);
+	// Vertices are written focus-relative; the object itself never moves.
+	line.matrixAutoUpdate = false;
 	line.visible = false;
 	line.renderOrder = TRAIL_RENDER_ORDER;
 	return line;
@@ -137,6 +139,7 @@ export function buildThinLineFromArrays(
 	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
 	geometry.setDrawRange(0, total);
 	const line = new Line(geometry, makeTrailMaterial(color));
+	line.matrixAutoUpdate = false;
 	line.renderOrder = TRAIL_RENDER_ORDER;
 	return line;
 }
@@ -156,6 +159,7 @@ export function buildFatLineFromThin(
 	const geometry = makeFatTrailGeometry(capacity);
 	writeFatTrailVertices(geometry, posArr, trailAlphas, fullAlphas, total);
 	const mesh = new Mesh(geometry, makeFatTrailMaterial(color, lineWidth, brightness));
+	mesh.matrixAutoUpdate = false;
 	mesh.renderOrder = TRAIL_RENDER_ORDER;
 	return mesh;
 }

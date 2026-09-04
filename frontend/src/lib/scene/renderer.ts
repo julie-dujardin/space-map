@@ -52,7 +52,7 @@ import { TRAVEL_SYSTEM_PREFETCH_MULTIPLIER } from '$lib/scene/visibility/thresho
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { bootThree, CAMERA_FAR_DEFAULT } from './setup/three-boot';
 import { isReversedDepth } from './setup/depth-mode';
-import { cappedPixelRatio } from '$lib/device';
+import { currentRenderTier, renderPixelRatio, type RenderTierPreset } from './render-tier';
 import { PointerInteraction } from './interaction/pointer';
 import { GpuPickPass } from './interaction/gpu-pick';
 import { CameraUpController } from './camera/up-controller';
@@ -103,7 +103,7 @@ import { SkyDebugMarkers } from './debug/sky-markers';
 import { HaloDebugOverlay } from './debug/halo-overlay';
 import { collectDebugStats, type DebugStats } from './debug/stats';
 import { PointCloudSystem, type CloudViewInfo } from './pointclouds/system';
-import { rebaseTrailLocals, refreshBufferTrail } from './objects/trail/refresh';
+import { rebaseTrailLocals, refreshBufferTrail, type TrailView } from './objects/trail/refresh';
 import { setTrailResolution } from './objects/trail/material';
 import { TravelPathOverlay } from './objects/travel/path-overlay';
 import { OrbitPreviewOverlay, type OrbitPreview } from './objects/travel/orbit-preview';
@@ -166,6 +166,9 @@ const TIGHT_FAR_RELEASE = 2.3;
 const SUN_PROXY_FAR_FRACTION = 0.9;
 /** Scratch for the refraction lift in {@link SceneRenderer.updateSunProxy}. */
 const _sunLiftDir = new Vector3();
+
+/** On-screen drift a trail may accumulate before it is rewritten. */
+const TRAIL_DRIFT_PX = 0.25;
 
 /** Focused mounted-model shadow frustum, in model units (× modelUnitScene per
  *  frame). Light at 10 with near 4 / far 28 reaches well past the silhouette
@@ -278,6 +281,13 @@ export class SceneRenderer {
 	 *  the parent only on the transition in, not every frame parked there. */
 	private focusWasOutOfRange = false;
 	private readonly _positionMapScratch = new Map<string, Vec3>();
+	/** Frames rendered; the hidden-body stagger in `updatePositions` keys off it. */
+	private frameIndex = 0;
+	/** Per-frame camera state for the trail rewrite gate; mutated in place. */
+	private readonly _trailView: TrailView = { camX: 0, camY: 0, camZ: 0, tolAngle: 0 };
+	/** Canvas CSS height, cached so the per-frame maths never reads layout. */
+	private viewportH = 1;
+	private tier: RenderTierPreset = currentRenderTier();
 	/** Landing body driven by the current landed focused probe; tracked so the
 	 *  attach fires only on transitions (URL-direct, land/launch mid-session). */
 	private landedNomBodyId: string | null = null;
@@ -312,6 +322,8 @@ export class SceneRenderer {
 	 * meshes (layer 0) keep rendering.
 	 */
 	private static readonly MAP_LAYER = 1;
+	/** Layer the atmosphere depth prepass renders alone; meshes join it per pass. */
+	private static readonly ATMO_DEPTH_LAYER = 2;
 
 	constructor(
 		canvas: HTMLCanvasElement,
@@ -329,6 +341,7 @@ export class SceneRenderer {
 		this.labelContainer = labelContainer;
 
 		const boot = bootThree(canvas, labelContainer, ctx);
+		this.viewportH = canvas.clientHeight || 1;
 		this.renderer = boot.renderer;
 		this.labelRenderer = boot.labelRenderer;
 		this.scene = boot.scene;
@@ -350,9 +363,9 @@ export class SceneRenderer {
 		this.modelLight = new DirectionalLightClass(0xffffff, SUN_LIGHT_INTENSITY);
 		// Light sits at distance 10 from the unit-radius model. Frustum reaches well
 		// past the silhouette (deep near/far especially) so a grazing-Sun shadow
-		// streaking along the light axis isn't clipped; 4096² keeps it crisp.
+		// streaking along the light axis isn't clipped.
 		this.modelLight.castShadow = true;
-		this.modelLight.shadow.mapSize.set(4096, 4096);
+		this.modelLight.shadow.mapSize.set(this.tier.shadowMapSize, this.tier.shadowMapSize);
 		this.modelLight.shadow.camera.left = -4;
 		this.modelLight.shadow.camera.right = 4;
 		this.modelLight.shadow.camera.top = 4;
@@ -415,6 +428,7 @@ export class SceneRenderer {
 			() => this.rebuildTrailBasis()
 		);
 		this.pointClouds.seedBasis(focusPos);
+		this.pointClouds.setPointBudget(this.tier.pointBudget);
 
 		// OrbitControls — target always at origin
 		this.controls = new OrbitControlsClass(this.camera, canvas);
@@ -838,6 +852,7 @@ export class SceneRenderer {
 
 	private tick = (): void => {
 		this.rafId = requestAnimationFrame(this.tick);
+		this.frameIndex++;
 
 		const nowMs = performance.now();
 		const frameDtMs = this.lastTickMs ? nowMs - this.lastTickMs : 0;
@@ -965,9 +980,12 @@ export class SceneRenderer {
 			this.tightFar
 		);
 
+		// Point visibility just changed above; the budget spreads over what shows.
+		this.pointClouds.applyPointBudget();
+
 		// Catches lines updatePositions skipped (visible=false) that updateBodyVisibility
 		// just flipped on, so they don't render at a stale basis for one frame.
-		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd);
+		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd, this.trailView());
 
 		updateRingShaders(
 			this.bodyObjects,
@@ -1055,7 +1073,13 @@ export class SceneRenderer {
 		// opaque depth those shells clamp their march to, so haze stops at
 		// foreground terrain instead of painting over it.
 		if (atmoState.insideShell) {
-			this.atmoDepthPass.run(this.renderer, this.scene, this.camera, this.bodyObjects);
+			this.atmoDepthPass.run(
+				this.renderer,
+				this.scene,
+				this.camera,
+				this.bodyObjects,
+				SceneRenderer.ATMO_DEPTH_LAYER
+			);
 		}
 
 		this.composer.render();
@@ -1439,8 +1463,17 @@ export class SceneRenderer {
 
 	/** CSS pixels per radian of angular size at the camera. */
 	private pxPerRad(): number {
-		const height = this.renderer.domElement.clientHeight || 1;
-		return height / 2 / Math.tan((this.camera.fov * Math.PI) / 360);
+		return this.viewportH / 2 / Math.tan((this.camera.fov * Math.PI) / 360);
+	}
+
+	private trailView(): TrailView {
+		const v = this._trailView;
+		const cam = this.camera.position;
+		v.camX = cam.x;
+		v.camY = cam.y;
+		v.camZ = cam.z;
+		v.tolAngle = TRAIL_DRIFT_PX / this.pxPerRad();
+		return v;
 	}
 
 	private cloudViewInfo(): CloudViewInfo {
@@ -1669,7 +1702,9 @@ export class SceneRenderer {
 			focus: this.focus,
 			focusedBody: this.focusController.current,
 			positionMap: this._positionMapScratch,
-			diagnostics: this.positionDiagnostics
+			diagnostics: this.positionDiagnostics,
+			trailView: this.trailView(),
+			frame: this.frameIndex
 		});
 		this.pointClouds.updateForJd(this.clock.jd, this.cloudViewInfo());
 		// The travel focus is measured off a body this update just moved: re-derive
@@ -2097,8 +2132,8 @@ export class SceneRenderer {
 	/** three re-inits its own GL state on restore, but the composer's render
 	 *  targets don't — re-applying pixel ratio + size rebuilds them. */
 	handleContextRestored(): void {
-		this.renderer.setPixelRatio(cappedPixelRatio());
-		this.composer.setPixelRatio(cappedPixelRatio());
+		this.renderer.setPixelRatio(renderPixelRatio());
+		this.composer.setPixelRatio(renderPixelRatio());
 		this.resize(this.canvas.clientWidth, this.canvas.clientHeight);
 		// The skybox's decoded faces are freed after upload, so three cannot
 		// re-upload the old CubeTexture — refetch and rebuild it instead.
@@ -2111,12 +2146,26 @@ export class SceneRenderer {
 		return this.pointClouds.recoverWorkersIfDead(timeoutMs);
 	}
 
+	/** Re-read the tier after a recalibration. Pixel ratio and point budget
+	 *  follow at once; shadow map and bloom sizes are fixed at boot. */
+	applyRenderTier(): void {
+		this.tier = currentRenderTier();
+		const ratio = renderPixelRatio();
+		if (ratio !== this.renderer.getPixelRatio()) {
+			this.renderer.setPixelRatio(ratio);
+			this.composer.setPixelRatio(ratio);
+			this.resize(this.canvas.clientWidth, this.canvas.clientHeight);
+		}
+		this.pointClouds.setPointBudget(this.tier.pointBudget);
+	}
+
 	resize(width: number, height: number): void {
+		this.viewportH = height || 1;
 		this.renderer.setSize(width, height, false);
 		this.composer.setSize(width, height);
 		const drawSize = this.renderer.getDrawingBufferSize(new Vector2());
 		this.atmoDepthPass.setSize(drawSize.x, drawSize.y);
-		this.bloomPass.setSize(width, height);
+		this.bloomPass.setSize(width * this.tier.bloomScale, height * this.tier.bloomScale);
 		this.labelRenderer.setSize(width, height);
 		this.camera.aspect = width / height;
 		this.camera.updateProjectionMatrix();

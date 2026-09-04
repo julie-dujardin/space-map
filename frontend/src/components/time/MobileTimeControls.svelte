@@ -53,9 +53,12 @@
 
 	const handleDateChange = (v: DateValue | undefined) => applyDateToClock(clock, v);
 	const handleTimeChange = (e: Event) => applyTimeToClock(clock, e);
-	let timeValue = $derived(clockTimeValue(clock.jd));
+	// The label shows minutes; quantising to the second stops the formatter
+	// running on every frame of a 1x clock.
+	const shownJd = $derived(Math.floor(clock.jd * 86400) / 86400);
+	let timeValue = $derived(clockTimeValue(shownJd));
 
-	let dateLabel = $derived(formatJulianDateTime(clock.jd, TIME_DATE_OPTS));
+	let dateLabel = $derived(formatJulianDateTime(shownJd, TIME_DATE_OPTS));
 
 	// The inline year-select doesn't see minValue/maxValue and would otherwise
 	// fall back to a hardcoded [currentYear-100, currentYear] window.

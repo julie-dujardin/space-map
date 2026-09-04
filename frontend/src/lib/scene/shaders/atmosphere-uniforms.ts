@@ -13,7 +13,7 @@ import {
 } from '$lib/scene/objects/surface/atmosphere';
 import type { AtmosphereQualityConfig } from '$lib/scene/objects/surface/atmosphere-quality';
 import { seasonalParamsForJd } from '$lib/scene/objects/surface/atmosphere-season';
-import { getEclipseSceneUniforms } from '$lib/scene/objects/surface/eclipse-shadow';
+import { cullOccludersFor } from '$lib/scene/objects/surface/eclipse-shadow';
 import {
 	bindViewTint,
 	setSunTransmittanceEnabled,
@@ -132,39 +132,20 @@ const sunT = new Vector3();
 const camRel = new Vector3();
 const refractionUp = new Vector3();
 
-/**
- * Fill a shell's private occluder uniforms from the scene-wide set, keeping
- * only bodies whose shadow cone could touch the shell. The shell evaluates
- * this loop per march sample, so an uncapped scan dwarfed the march itself.
- * Conservative: kept occluders render identically, culled ones couldn't have
- * contributed. Requires `updateEclipseUniforms` to have run this frame.
- */
+/** Fill a shell's private occluder uniforms with the scene occluders whose
+ *  shadow cone could touch it; the shell evaluates the list per march sample. */
 function cullShellOccluders(
 	uniforms: Record<string, { value: unknown }>,
 	shellCenter: Vector3,
 	sunDir: Vector3,
 	shellRadius: number
 ): void {
-	const shared = getEclipseSceneUniforms();
-	const aSun = shared.uSunAngularRadius.value;
-	const src = shared.uOccluders.value;
-	const srcCount = shared.uOccluderCount.value;
-	const dst = uniforms.uOccluders.value as Vector4[];
-	let n = 0;
-	for (let i = 0; i < srcCount; i++) {
-		const oc = src[i];
-		const ox = oc.x - shellCenter.x;
-		const oy = oc.y - shellCenter.y;
-		const oz = oc.z - shellCenter.z;
-		const d2 = ox * ox + oy * oy + oz * oz;
-		if (d2 < oc.w * oc.w * 0.25) continue; // the shell's own planet (shader self-skip)
-		const t = ox * sunDir.x + oy * sunDir.y + oz * sunDir.z;
-		if (t < -(shellRadius + oc.w)) continue; // anti-sunward — casts away from the shell
-		const reach = shellRadius + oc.w + aSun * (t + shellRadius) * 1.5;
-		if (d2 - t * t > reach * reach) continue; // off the sun axis beyond any penumbra
-		dst[n++].copy(oc);
-	}
-	uniforms.uOccluderCount.value = n;
+	uniforms.uOccluderCount.value = cullOccludersFor(
+		uniforms.uOccluders.value as Vector4[],
+		shellCenter,
+		shellRadius,
+		sunDir
+	);
 }
 
 /**

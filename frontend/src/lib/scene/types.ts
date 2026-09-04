@@ -154,6 +154,14 @@ export interface BodyObjects {
 	 *  dimmed labels' rects, so it doesn't over-cull features against a
 	 *  near-invisible body. Undefined before the first cull → treated as maximized. */
 	labelMaximized?: boolean;
+	/** Sphere pulled off the camera layer while under half a pixel on screen. */
+	meshSubPixel?: boolean;
+	/** Frame slot this body moves on while hidden (see `updatePositions`). */
+	staggerSlot?: number;
+	/** Halo `visibility` as last written by `applyLabelDisplay`. */
+	haloHidden?: boolean;
+	/** `loadingEl` display as last written by `applyLabelDisplay`. */
+	loadingShown?: boolean;
 	/** Loaded GLTF root for spacecraft 3D models; null when not focused or no model bundle. */
 	model: Object3D | null;
 	/** Main-scene mount for a natural body's `model`: a wrapper under `group`

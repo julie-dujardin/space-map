@@ -23,6 +23,91 @@ const CHEB_ELEMENTS_REFRESH_PERIOD_FRACTION = 1 / 100;
 // gate becomes 1 d, the Moon's 0.28 d gate is already tighter.
 const MAX_REDERIVE_DAYS = 1.0;
 
+/** Camera state for the rewrite gate. A trail is rewritten only once its
+ *  vertices have drifted by more than `tolAngle` radians as seen from the
+ *  camera; at 1x playback that skips almost every frame. */
+export interface TrailView {
+	camX: number;
+	camY: number;
+	camZ: number;
+	tolAngle: number;
+}
+
+/** Scene-unit drift the trail may accumulate before its next rewrite: the
+ *  nearest vertex to the camera sets the angular scale. Zero without a view. */
+function rewriteTolerance(posArr: Float32Array, n: number, view: TrailView | undefined): number {
+	if (!view) return 0;
+	let best = Infinity;
+	for (let k = 0; k < n; k++) {
+		const dx = posArr[k * 3] - view.camX;
+		const dy = posArr[k * 3 + 1] - view.camY;
+		const dz = posArr[k * 3 + 2] - view.camZ;
+		const d = dx * dx + dy * dy + dz * dz;
+		if (d < best) best = d;
+	}
+	return Math.sqrt(best) * view.tolAngle;
+}
+
+/** True when the vertices written last time are still within tolerance of
+ *  where this frame would put them. `version` covers the curve or buffer. */
+function withinTolerance(
+	ud: Record<string, unknown>,
+	version: unknown,
+	offX: number,
+	offY: number,
+	offZ: number,
+	headX: number,
+	headY: number,
+	headZ: number,
+	view: TrailView | undefined
+): boolean {
+	if (version !== ud.lastVersion || ud.lastOffX === undefined) return false;
+	let tol = ud.rewriteTol as number;
+	if (view) {
+		// The camera may have closed in since the rewrite: shrink the tolerance
+		// by the distance it moved.
+		const mx = view.camX - (ud.lastCamX as number);
+		const my = view.camY - (ud.lastCamY as number);
+		const mz = view.camZ - (ud.lastCamZ as number);
+		tol = Math.max(0, tol - Math.sqrt(mx * mx + my * my + mz * mz) * view.tolAngle);
+	}
+	const dOff =
+		(offX - (ud.lastOffX as number)) ** 2 +
+		(offY - (ud.lastOffY as number)) ** 2 +
+		(offZ - (ud.lastOffZ as number)) ** 2;
+	const dHead =
+		(headX - (ud.lastHeadX as number)) ** 2 +
+		(headY - (ud.lastHeadY as number)) ** 2 +
+		(headZ - (ud.lastHeadZ as number)) ** 2;
+	return dOff <= tol * tol && dHead <= tol * tol;
+}
+
+function recordRewrite(
+	ud: Record<string, unknown>,
+	version: unknown,
+	offX: number,
+	offY: number,
+	offZ: number,
+	headX: number,
+	headY: number,
+	headZ: number,
+	posArr: Float32Array,
+	n: number,
+	view: TrailView | undefined
+): void {
+	ud.lastVersion = version;
+	ud.lastOffX = offX;
+	ud.lastOffY = offY;
+	ud.lastOffZ = offZ;
+	ud.lastHeadX = headX;
+	ud.lastHeadY = headY;
+	ud.lastHeadZ = headZ;
+	ud.lastCamX = view?.camX ?? 0;
+	ud.lastCamY = view?.camY ?? 0;
+	ud.lastCamZ = view?.camZ ?? 0;
+	ud.rewriteTol = rewriteTolerance(posArr, n, view);
+}
+
 /**
  * Rewrite a buffer-backed trail's vertex buffer from its current contents.
  * Unlike the Kepler/SGP4 path there's no cached vertex list to rebase — the
@@ -33,10 +118,23 @@ export function refreshBufferTrail(
 	line: Line | Mesh,
 	buffer: TrailBuffer,
 	basisPos: [number, number, number],
-	jd: number
+	jd: number,
+	view?: TrailView
 ): void {
-	const useTrail = line.userData.useTrail as boolean;
-	const oc = line.userData.orbitCenter as Vector3;
+	const ud = line.userData;
+	const useTrail = ud.useTrail as boolean;
+	const oc = ud.orbitCenter as Vector3;
+	const head = body.trailAnchor ?? body.position;
+	const offX = oc.x - basisPos[0];
+	const offY = oc.y - basisPos[1];
+	const offZ = oc.z - basisPos[2];
+	const headX = head[0] - oc.x;
+	const headY = head[1] - oc.y;
+	const headZ = head[2] - oc.z;
+	// A Lagrange-frame trail is re-sampled from jd every frame, so it never
+	// takes the gate.
+	const version = body.lagrangeTrail ? NaN : buffer.newestJd + buffer.count * 1e-9;
+	if (withinTolerance(ud, version, offX, offY, offZ, headX, headY, headZ, view)) return;
 	const { posArr, trailArr, fullArr } = getTrailWorkingArrays(line);
 	const lagrange = body.lagrangeTrail ? lagrangeSampleTransform(jd) : null;
 	const total = writeBufferVerticesWithLiveHead(
@@ -50,6 +148,7 @@ export function refreshBufferTrail(
 		lagrange ?? undefined
 	);
 	commitTrail(line, posArr, trailArr, fullArr, total, true, useTrail);
+	recordRewrite(ud, version, offX, offY, offZ, headX, headY, headZ, posArr, total, view);
 }
 
 /**
@@ -71,6 +170,8 @@ export function rebaseTrailLocals(
 		posArr[i * 3 + 1] = localPositions[i][1] + oy;
 		posArr[i * 3 + 2] = localPositions[i][2] + oz;
 	}
+	// The next refresh must not trust a tolerance measured before the rebase.
+	line.userData.lastOffX = undefined;
 	if (line.userData.isFatLine) {
 		writeFatTrailVertices(line.geometry, posArr, trailArr, fullArr, n);
 		return;
@@ -90,19 +191,30 @@ export function refreshTrail(
 	body: PositionedBody,
 	line: Line | Mesh,
 	basisPos: [number, number, number],
-	jd: number
+	jd: number,
+	view?: TrailView
 ): void {
 	// Trail-buffer path: copy `updatePositions`'s live samples into the vertex
 	// buffer, shifted by (orbitCenter − basis). Must run before the early-return
 	// on missing `sourceCurve` — there's no curve cache to fall back on.
 	const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
 	if (trailBuffer) {
-		refreshBufferTrail(body, line, trailBuffer, basisPos, jd);
+		refreshBufferTrail(body, line, trailBuffer, basisPos, jd, view);
 		return;
 	}
 
 	let curve = line.userData.sourceCurve as [number, number, number][] | undefined;
-	if (!curve) return;
+	if (!curve) {
+		// First visible refresh of a Kepler trail: build the curve makeTrail deferred.
+		if (!line.userData.curvePending || !body.orbitElements) return;
+		curve = orbitalElementsToCurve(
+			propagateOrbitAngles(body.orbitElements, jd),
+			NUM_TRAIL_POINTS
+		).points;
+		line.userData.sourceCurve = curve;
+		line.userData.curveJd = jd;
+		line.userData.curvePending = false;
+	}
 	const isOpenCurve = line.userData.isOpenCurve as boolean;
 	const useTrail = line.userData.useTrail as boolean;
 	const oc = line.userData.orbitCenter as Vector3;
@@ -110,10 +222,18 @@ export function refreshTrail(
 		cy = oc.y,
 		cz = oc.z;
 
-	// SGP4 curves are a sliding window ending at the current sim jd.
+	// SGP4 curves are a sliding window ending at the current sim jd. One
+	// sample step of lag is invisible, so the window slides once per step
+	// instead of every frame (513 propagations each).
 	if (body.data.satrec) {
-		curve = sgp4Curve(body.data.satrec, jd, body.data.n / 360, NUM_TRAIL_POINTS);
-		line.userData.sourceCurve = curve;
+		const meanMotion = body.data.n / 360;
+		const stepDays = meanMotion > 0 ? 1 / meanMotion / NUM_TRAIL_POINTS : 0;
+		const curveJd = line.userData.curveJd as number | undefined;
+		if (curve.length === 0 || curveJd === undefined || Math.abs(jd - curveJd) >= stepDays) {
+			curve = sgp4Curve(body.data.satrec, jd, meanMotion, NUM_TRAIL_POINTS);
+			line.userData.sourceCurve = curve;
+			line.userData.curveJd = jd;
+		}
 	} else if (body.orbitElements) {
 		// Chebyshev-derived elements: re-snapshot periodically so the static
 		// ellipse stays aligned with the body's real path. Mutates
@@ -160,18 +280,18 @@ export function refreshTrail(
 		}
 	}
 
-	// Memoization gate: skip the nearest-point search + buffer rewrite when
-	// curve, anchor, center, and basis are all unchanged — meaningful during
-	// paused camera drags where rAF still fires but nothing moved.
+	// Rewrite gate: the vertices depend on the curve, the head (anchor minus
+	// centre) and the offset (centre minus basis). Skip while all three sit
+	// within the tolerance measured at the last rewrite.
 	const anchor = body.trailAnchor ?? body.position;
 	const ud = line.userData;
-	const curveChanged = curve !== ud.lastCurveRef;
-	const anchorChanged =
-		anchor[0] !== ud.lastAnchorX || anchor[1] !== ud.lastAnchorY || anchor[2] !== ud.lastAnchorZ;
-	const centerChanged = cx !== ud.lastCenterX || cy !== ud.lastCenterY || cz !== ud.lastCenterZ;
-	const basisChanged =
-		basisPos[0] !== ud.lastBasisX || basisPos[1] !== ud.lastBasisY || basisPos[2] !== ud.lastBasisZ;
-	if (!curveChanged && !anchorChanged && !centerChanged && !basisChanged) return;
+	const offX = cx - basisPos[0];
+	const offY = cy - basisPos[1];
+	const offZ = cz - basisPos[2];
+	const headX = anchor[0] - cx;
+	const headY = anchor[1] - cy;
+	const headZ = anchor[2] - cz;
+	if (withinTolerance(ud, curve, offX, offY, offZ, headX, headY, headZ, view)) return;
 
 	const validPoints = buildTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
 	if (validPoints.length < 2) return;
@@ -191,14 +311,5 @@ export function refreshTrail(
 	commitTrail(line, posArr, trailArr, fullArr, n, isOpenCurve, useTrail);
 	// Cache the new orbit-local vertex list for the next focus-basis rebuild.
 	ud.trailLocalPositions = validPoints;
-	ud.lastCurveRef = curve;
-	ud.lastAnchorX = anchor[0];
-	ud.lastAnchorY = anchor[1];
-	ud.lastAnchorZ = anchor[2];
-	ud.lastCenterX = cx;
-	ud.lastCenterY = cy;
-	ud.lastCenterZ = cz;
-	ud.lastBasisX = basisPos[0];
-	ud.lastBasisY = basisPos[1];
-	ud.lastBasisZ = basisPos[2];
+	recordRewrite(ud, curve, offX, offY, offZ, headX, headY, headZ, posArr, n, view);
 }

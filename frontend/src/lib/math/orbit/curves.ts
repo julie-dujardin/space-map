@@ -128,6 +128,12 @@ export function sgp4Curve(
  * Generate orbit/trajectory curve points, dispatching to ellipse, parabola,
  * or hyperbola based on eccentricity.
  */
+/** Whether {@link orbitalElementsToCurve} draws these elements as an open arc. */
+export function isOpenOrbit(el: OrbitalElements): boolean {
+	const bound = isFinite(el.a) && el.a > 0;
+	return !bound && (el.q != null || el.e >= 1);
+}
+
 export function orbitalElementsToCurve(el: OrbitalElements, numPoints = 512): OrbitCurve {
 	// Bound orbits (a > 0, JPL convention) always render as ellipses, even if e
 	// rounds to 1.0 in float32 — matches the body's elliptic Kepler branch.

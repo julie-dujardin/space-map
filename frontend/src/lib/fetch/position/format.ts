@@ -145,6 +145,11 @@ const ID_TYPE_PREFIX: Record<number, string> = {
  * value. Returns null when the type is unknown — caller should treat the row
  * as unidentifiable rather than ship a malformed ID.
  */
+/** String prefix of an id-type byte, or undefined for an unknown type. */
+export function idTypePrefix(idType: number): string | undefined {
+	return ID_TYPE_PREFIX[idType];
+}
+
 export function buildObjectId(idType: number, value: number): string | null {
 	const prefix = ID_TYPE_PREFIX[idType];
 	return prefix ? `${prefix}-${value}` : null;

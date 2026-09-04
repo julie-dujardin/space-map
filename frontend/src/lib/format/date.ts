@@ -109,6 +109,26 @@ function cachedDateTimeFormat(locale: string, opts: Intl.DateTimeFormatOptions) 
 	return format;
 }
 
+/** Formatter per (options object, locale, hour12): the time bar formats on a
+ *  fixed options object many times per second, so identity beats a JSON key. */
+const formatsByOpts = new WeakMap<Intl.DateTimeFormatOptions, Map<string, Intl.DateTimeFormat>>();
+function formatterFor(
+	opts: Intl.DateTimeFormatOptions,
+	locale: string,
+	hour12: boolean | undefined
+) {
+	let byKey = formatsByOpts.get(opts);
+	if (!byKey) formatsByOpts.set(opts, (byKey = new Map()));
+	const key = `${locale}|${hour12}`;
+	let format = byKey.get(key);
+	if (!format) {
+		const merged: Intl.DateTimeFormatOptions = { ...opts };
+		if (hour12 !== undefined) merged.hour12 = hour12;
+		byKey.set(key, (format = new Intl.DateTimeFormat(locale, merged)));
+	}
+	return format;
+}
+
 /**
  * Format an ISO 8601 date string as a localized date (or pass-through ISO,
  * depending on the user's date-format setting). See {@link parseIsoDate} for
@@ -182,9 +202,8 @@ export function formatJulianDateTime(jd: number, opts: Intl.DateTimeFormatOption
 		const timePart = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 		return `${datePart} ${timePart}`;
 	}
-	const merged: Intl.DateTimeFormatOptions = { ...opts };
-	if (opts.hour !== undefined) merged.hour12 = settings.resolvedHour12;
-	return d.toLocaleString(getLocale(), merged);
+	const hour12 = opts.hour !== undefined ? settings.resolvedHour12 : undefined;
+	return formatterFor(opts, getLocale(), hour12).format(d);
 }
 
 /** Format a Julian Date relative to a reference JD as a localized "X ago" / "in X" string. */

@@ -132,10 +132,53 @@ export function getEclipseSceneUniforms(): EclipseSceneUniforms {
 	return SHARED;
 }
 
-/** Per-body eclipse uniforms. The renderer mutates `uEclipseSelfPos` in
- *  place each frame so the shader can skip self-occlusion. */
+/** Per-body eclipse uniforms, refilled each frame by `updateEclipseUniforms`:
+ *  the receiver's own centre (so the shader skips its own slot) and the scene
+ *  occluders whose shadow can reach it. The per-fragment loop runs over this
+ *  short list, not the scene-wide one. */
 export interface EclipseSelfUniforms {
 	uEclipseSelfPos: { value: Vector3 };
+	uOccluders: { value: Vector4[] };
+	uOccluderCount: { value: number };
+}
+
+export function makeEclipseSelfUniforms(): EclipseSelfUniforms {
+	return {
+		uEclipseSelfPos: { value: new Vector3() },
+		uOccluders: { value: Array.from({ length: MAX_OCCLUDERS }, () => new Vector4()) },
+		uOccluderCount: { value: 0 }
+	};
+}
+
+/**
+ * Copy into `dst` the scene occluders whose shadow cone can touch a sphere of
+ * `radius` at `center`, and return how many. Conservative: a kept occluder
+ * renders identically, a dropped one could not have contributed.
+ */
+export function cullOccludersFor(
+	dst: Vector4[],
+	center: Vector3,
+	radius: number,
+	sunDir: Vector3
+): number {
+	const aSun = SHARED.uSunAngularRadius.value;
+	const src = SHARED.uOccluders.value;
+	const srcCount = SHARED.uOccluderCount.value;
+	let n = 0;
+	for (let i = 0; i < srcCount; i++) {
+		const oc = src[i];
+		const ox = oc.x - center.x;
+		const oy = oc.y - center.y;
+		const oz = oc.z - center.z;
+		const d2 = ox * ox + oy * oy + oz * oz;
+		if (d2 < oc.w * oc.w * 0.25) continue; // the receiver itself (shader self-skip)
+		const t = ox * sunDir.x + oy * sunDir.y + oz * sunDir.z;
+		if (t < -(radius + oc.w)) continue; // anti-sunward: casts away from the receiver
+		const reach = radius + oc.w + aSun * (t + radius) * 1.5;
+		if (d2 - t * t > reach * reach) continue; // off the sun axis beyond any penumbra
+		dst[n++].copy(oc);
+	}
+	return n;
 }
 
 /**
@@ -215,12 +258,11 @@ export function attachEclipseShadowToBody(
 	material: MeshStandardMaterial,
 	selfUniforms?: EclipseSelfUniforms
 ): EclipseSelfUniforms {
-	const self: EclipseSelfUniforms = selfUniforms ?? {
-		uEclipseSelfPos: { value: new Vector3() }
-	};
+	const self = selfUniforms ?? makeEclipseSelfUniforms();
 	const prev = material.onBeforeCompile;
 	material.onBeforeCompile = (shader, renderer) => {
 		prev?.(shader, renderer);
+		// `self` last: its occluder list shadows the scene-wide one.
 		Object.assign(shader.uniforms, SHARED, self);
 
 		shader.vertexShader = shader.vertexShader

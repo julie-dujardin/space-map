@@ -28,6 +28,13 @@ export interface WorkerGroup {
 	ids: string[];
 }
 
+/** Rows per chunk the packed row reference allows; a reference is `chunk * ROW_STRIDE + row`. */
+const ROW_STRIDE = 2 ** 24;
+
+/** Rows walked between yield checks in the time-sliced passes. */
+const SLICE_ROWS = 4096;
+const SLICE_MS = 6;
+
 /** Integer hash for numeric-id partitioning — avoids building the id string. */
 function mixId(id: number): number {
 	let h = id >>> 0;
@@ -38,8 +45,9 @@ function mixId(id: number): number {
 
 export class MinorBucket {
 	private readonly chunks: ElementColumns[] = [];
-	/** id → (chunk, row). Latest chunk wins on collision (hot-reload). */
-	private readonly rowOf = new Map<string, { c: number; i: number }>();
+	/** id → packed (chunk, row), see {@link ROW_STRIDE}. Latest chunk wins on
+	 *  collision (hot-reload), whichever ingest pass writes last. */
+	private readonly rowOf = new Map<string, number>();
 	private readonly cache = new Map<string, PositionedBody>();
 	/** URL-loaded placeholders: full bodies whose ref the renderer may already
 	 *  hold (promoted mesh), so `addChunk` reconciles their `data` in place. */
@@ -51,19 +59,33 @@ export class MinorBucket {
 
 	constructor(private readonly labels: LabelMap) {}
 
-	/** Ingest one parsed chunk; returns the ids new to this bucket. `keep` (the
-	 *  Earth-sat group filter) indexes only its members. */
-	addChunk(cols: ElementColumns, parentIdType: string, keep?: Set<string> | null): string[] {
+	/** Ingest one parsed chunk; resolves with the ids new to this bucket. `keep`
+	 *  (the Earth-sat group filter) indexes only its members. Time-sliced: the
+	 *  main belt is >1M rows, and one synchronous pass over a part blocks
+	 *  input for hundreds of milliseconds on a slow phone. */
+	async addChunk(
+		cols: ElementColumns,
+		parentIdType: string,
+		keep?: Set<string> | null
+	): Promise<string[]> {
 		this.parentIdType = parentIdType;
 		const c = this.chunks.length;
 		this.chunks.push(cols);
 		const added: string[] = [];
+		let sliceStart = performance.now();
 		for (let i = 0; i < cols.rowCount; i++) {
+			if (i % SLICE_ROWS === SLICE_ROWS - 1 && performance.now() - sliceStart > SLICE_MS) {
+				await yieldToMain();
+				sliceStart = performance.now();
+			}
 			const id = cols.idMap.get(i);
 			if (id === undefined) continue;
 			if (keep && !keep.has(id)) continue;
-			if (!this.rowOf.has(id)) added.push(id);
-			this.rowOf.set(id, { c, i });
+			const prev = this.rowOf.get(id);
+			if (prev === undefined) added.push(id);
+			if (prev === undefined || Math.floor(prev / ROW_STRIDE) <= c) {
+				this.rowOf.set(id, c * ROW_STRIDE + i);
+			}
 			const ph = this.placeholders.get(id);
 			if (ph) {
 				const fresh = materializeBodyData(cols, i, this.labels, this.parentIdType);
@@ -102,8 +124,14 @@ export class MinorBucket {
 		const cached = this.cache.get(id);
 		if (cached) return cached;
 		const ref = this.rowOf.get(id);
-		if (!ref) return undefined;
-		const data = materializeBodyData(this.chunks[ref.c], ref.i, this.labels, this.parentIdType);
+		if (ref === undefined) return undefined;
+		const c = Math.floor(ref / ROW_STRIDE);
+		const data = materializeBodyData(
+			this.chunks[c],
+			ref - c * ROW_STRIDE,
+			this.labels,
+			this.parentIdType
+		);
 		if (!data) return undefined;
 		const body: PositionedBody = { data, position: [0, 0, 0], positionUnknown: true };
 		this.cache.set(id, body);
@@ -142,20 +170,26 @@ export class MinorBucket {
 		const k = total >= workerCount * MIN_BODIES_PER_BUCKET ? workerCount : 1;
 
 		// Pass 1: snapshot row order (stable — rowOf is append-only, and the order
-		// is the subgroups' vertex order) + bucket assignment + counts.
-		const refs: { c: number; i: number }[] = [];
-		const bucketOf: number[] = [];
+		// is the subgroups' vertex order) + bucket assignment + counts. An
+		// ingest still running keeps appending; the snapshot stops at `total`
+		// and the zone's dirty mark brings the rest in on the next pass.
+		const refs = new Float64Array(total);
+		const bucketOf = new Uint8Array(total);
 		const counts = new Array<number>(k).fill(0);
+		let n = 0;
 		let sliceStart = performance.now();
 		for (const ref of this.rowOf.values()) {
-			if (refs.length % 16384 === 0 && performance.now() - sliceStart > 6) {
+			if (n === total) break;
+			if (n % 16384 === 0 && performance.now() - sliceStart > 6) {
 				await yieldToMain();
 				sliceStart = performance.now();
 			}
-			const b = k === 1 ? 0 : mixId(this.chunks[ref.c].id[ref.i]) % k;
-			refs.push(ref);
-			bucketOf.push(b);
+			const c = Math.floor(ref / ROW_STRIDE);
+			const b = k === 1 ? 0 : mixId(this.chunks[c].id[ref - c * ROW_STRIDE]) % k;
+			refs[n] = ref;
+			bucketOf[n] = b;
 			counts[b]++;
+			n++;
 		}
 
 		const groups: WorkerGroup[] = [];
@@ -175,12 +209,14 @@ export class MinorBucket {
 		const writeIdx = new Array<number>(k).fill(0);
 		const tmp = withColors ? new Color() : null;
 		sliceStart = performance.now();
-		for (let r = 0; r < refs.length; r++) {
+		for (let r = 0; r < n; r++) {
 			if ((r & 16383) === 16383 && performance.now() - sliceStart > 6) {
 				await yieldToMain();
 				sliceStart = performance.now();
 			}
-			const { c, i } = refs[r];
+			const ref = refs[r];
+			const c = Math.floor(ref / ROW_STRIDE);
+			const i = ref - c * ROW_STRIDE;
 			const cols = this.chunks[c];
 			const b = bucketOf[r];
 			const g = groups[b];

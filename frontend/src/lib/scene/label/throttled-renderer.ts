@@ -94,9 +94,14 @@ export class ThrottledCSS2DRenderer {
 
 	private renderObject(object: Object3D, camera: Camera): void {
 		if (object.visible === false) {
-			this.hideObject(object);
+			// A hidden subtree is walked once; its labels stay hidden until it shows.
+			if (object.userData.css2dHidden !== true) {
+				this.hideObject(object);
+				object.userData.css2dHidden = true;
+			}
 			return;
 		}
+		if (object.userData.css2dHidden === true) object.userData.css2dHidden = false;
 
 		if (isCSS2D(object)) {
 			const element = object.element;
@@ -129,8 +134,10 @@ export class ThrottledCSS2DRenderer {
 			}
 
 			if (visible) {
-				const tx = this._vector.x * this._wHalf + this._wHalf;
-				const ty = -this._vector.y * this._hHalf + this._hHalf;
+				// Half-pixel steps: a label that drifts less than that between
+				// frames keeps its transform, so a still camera writes no styles.
+				const tx = Math.round((this._vector.x * this._wHalf + this._wHalf) * 2) / 2;
+				const ty = Math.round((-this._vector.y * this._hHalf + this._hHalf) * 2) / 2;
 				const cx = object.center.x;
 				const cy = object.center.y;
 

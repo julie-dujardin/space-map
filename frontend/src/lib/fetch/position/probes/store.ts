@@ -415,8 +415,7 @@ export class ProbeStore {
 			const chunkIdx = chunkIndexForJd(params, jd);
 			const chunk = this.chunks.get(zone)?.get(chunkIdx) ?? this.warmed.get(`${zone}:${chunkIdx}`);
 			if (!chunk) continue;
-			for (let i = 0; i < chunk.probes.length; i++) {
-				if (chunk.ids[i] !== objectId) continue;
+			for (const i of rowsFor(chunk, objectId)) {
 				const probe = chunk.probes[i];
 				if (!this.fitCenterCovered(probe)) break;
 				const hasFlying = findSubChunkIndex(probe, et) >= 0;
@@ -451,8 +450,7 @@ export class ProbeStore {
 			const chunkIdx = chunkIndexForJd(params, jd);
 			const chunk = this.chunks.get(zone)?.get(chunkIdx) ?? this.warmed.get(`${zone}:${chunkIdx}`);
 			if (!chunk) continue;
-			for (let i = 0; i < chunk.probes.length; i++) {
-				if (chunk.ids[i] !== objectId) continue;
+			for (const i of rowsFor(chunk, objectId)) {
 				const probe = chunk.probes[i];
 				if (findSubChunkIndex(probe, et) < 0) break;
 				return probe.fitCenter?.id ?? null;
@@ -532,8 +530,7 @@ export class ProbeStore {
 			const chunkIdx = chunkIndexForJd(interParams, jd);
 			const chunk = this.chunks.get(INTERPLANETARY_ZONE)?.get(chunkIdx);
 			if (chunk) {
-				for (let i = 0; i < chunk.ids.length; i++) {
-					if (chunk.ids[i] !== probeId) continue;
+				for (const i of rowsFor(chunk, probeId)) {
 					const probe = chunk.probes[i];
 					for (const iv of probe.systemIntervals) {
 						if (et >= iv.startEt && et < iv.endEt) return iv.systemNaifId;
@@ -548,8 +545,7 @@ export class ProbeStore {
 			const chunkIdx = chunkIndexForJd(params, jd);
 			const chunk = this.chunks.get(zone)?.get(chunkIdx);
 			if (!chunk) continue;
-			for (let i = 0; i < chunk.ids.length; i++) {
-				if (chunk.ids[i] !== probeId) continue;
+			for (const i of rowsFor(chunk, probeId)) {
 				return Math.floor(params.fit_center_naif_id / 100);
 			}
 		}
@@ -574,8 +570,7 @@ export class ProbeStore {
 		const chunk = this.chunks.get(INTERPLANETARY_ZONE)?.get(chunkIdx);
 		if (!chunk) return false;
 		const et = jdToEt(jd);
-		for (let i = 0; i < chunk.ids.length; i++) {
-			if (chunk.ids[i] !== objectId) continue;
+		for (const i of rowsFor(chunk, objectId)) {
 			if (findSubChunkIndex(chunk.probes[i], et) >= 0) return true;
 		}
 		return false;
@@ -585,3 +580,21 @@ export class ProbeStore {
 /** Heliocentric catch-all zone. Its records carry the `systemIntervals`
  *  annotation that drives flyby focus + visibility. */
 const INTERPLANETARY_ZONE = 'probes/interplanetary';
+
+const NO_ROWS: readonly number[] = [];
+/** Per-chunk id → rows index, built on first use. A probe can hold several
+ *  records in one chunk, so callers walk the rows in file order. */
+const rowIndex = new WeakMap<FetchedProbes, Map<string, number[]>>();
+function rowsFor(chunk: FetchedProbes, id: string): readonly number[] {
+	let index = rowIndex.get(chunk);
+	if (!index) {
+		index = new Map();
+		for (let i = 0; i < chunk.ids.length; i++) {
+			const rows = index.get(chunk.ids[i]);
+			if (rows) rows.push(i);
+			else index.set(chunk.ids[i], [i]);
+		}
+		rowIndex.set(chunk, index);
+	}
+	return index.get(id) ?? NO_ROWS;
+}

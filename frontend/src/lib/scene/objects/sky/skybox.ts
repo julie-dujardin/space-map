@@ -23,6 +23,7 @@ import { eagerMinorsDone } from '$lib/scene/setup/load-gates';
 import { fetchMetadata, type SkyboxMetadata } from '$lib/fetch/metadata';
 import { EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import { currentRenderTier } from '$lib/scene/render-tier';
 
 const DEG2RAD = Math.PI / 180;
 const OBLIQUITY_RAD = EARTH_OBLIQUITY_DEG * DEG2RAD;
@@ -134,7 +135,10 @@ async function loadFromMeta(
 	renderer: WebGLRenderer,
 	meta: SkyboxMetadata
 ): Promise<void> {
-	const tier = pickTier(meta, renderer.capabilities.maxTextureSize);
+	const tier = pickTier(
+		meta,
+		Math.min(renderer.capabilities.maxTextureSize, currentRenderTier().maxSkyboxFace)
+	);
 	if (!tier) {
 		console.warn(`Skybox ${meta.id}: no tiers declared`);
 		return;
@@ -167,10 +171,13 @@ async function loadFromMeta(
 	}
 	// Full tier is large (≈11MB) — hold it until the eager minor wave has its
 	// bandwidth, bounded by a timeout so a stalled load doesn't strand us on low.
-	await Promise.race([
-		eagerMinorsDone,
-		new Promise<void>((resolve) => setTimeout(resolve, FULL_TIER_GATE_TIMEOUT_MS))
-	]);
+	// A tier capped to low is small and goes up at once.
+	if (tier !== lowTier) {
+		await Promise.race([
+			eagerMinorsDone,
+			new Promise<void>((resolve) => setTimeout(resolve, FULL_TIER_GATE_TIMEOUT_MS))
+		]);
+	}
 	const fullBitmaps = await tierBitmaps(meta.id, tier);
 	const full = makeCube(fullBitmaps);
 	// Upload during idle time so the first sampling render doesn't absorb the cost.

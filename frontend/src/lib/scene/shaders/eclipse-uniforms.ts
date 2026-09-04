@@ -1,7 +1,11 @@
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { BodyObjects } from '$lib/scene/types';
 import { ObjectType } from '$lib/types/objects';
-import { getEclipseSceneUniforms, MAX_OCCLUDERS } from '$lib/scene/objects/surface/eclipse-shadow';
+import {
+	cullOccludersFor,
+	getEclipseSceneUniforms,
+	MAX_OCCLUDERS
+} from '$lib/scene/objects/surface/eclipse-shadow';
 import { SUN_ID } from '$lib/constants';
 
 // Reused across frames; trimmed to active prefix each call.
@@ -64,11 +68,21 @@ export function updateEclipseUniforms(
 	for (let i = 0; i < n; i++) candidates[i] = undefined as never;
 	candidates.length = 0;
 
-	// Mirror each receiver's focus-relative center so the shader can skip
-	// its own slot in the occluder loop.
+	// Each receiver gets its centre and the occluders that can reach it. A
+	// receiver too small to render keeps its last list: its fragments are
+	// never shaded, and the list is rebuilt the frame it grows back.
+	const sunDir = eclipse.uSunDir.value;
 	for (const bo of bodyObjects.values()) {
-		if (!bo.eclipseShadow) continue;
+		const self = bo.eclipseShadow;
+		if (!self) continue;
+		if (bo.cachedDist > 0 && bo.radiusScene < bo.cachedDist * 1e-4) continue;
 		const [bx, by, bz] = bo.body.position;
-		bo.eclipseShadow.uEclipseSelfPos.value.set(bx - fx, by - fy, bz - fz);
+		const center = self.uEclipseSelfPos.value.set(bx - fx, by - fy, bz - fz);
+		self.uOccluderCount.value = cullOccludersFor(
+			self.uOccluders.value,
+			center,
+			bo.radiusScene,
+			sunDir
+		);
 	}
 }

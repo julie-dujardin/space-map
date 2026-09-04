@@ -10,6 +10,7 @@ import {
 import { cloudFrameForJd, loadCloudTexture } from '$lib/scene/objects/surface/clouds';
 import { swapDisplacementTier } from '$lib/scene/objects/surface/displacement';
 import { getSettings } from '$lib/state/settings.svelte';
+import { maxTextureTier } from '$lib/scene/render-tier';
 
 /** DEM tier by altitude (in body radii from the center, like `altitudeRadii`),
  *  with wide hysteresis — a swap is a multi-MB fetch + full CPU decode. */
@@ -37,6 +38,7 @@ export function updateTextureLOD(
 	const activeSystem = ctx.visibility.activeSystemId;
 	const settings = getSettings();
 	const showClouds = settings.showClouds;
+	const tierCap = tierRank(maxTextureTier());
 
 	// Sync cloud-mesh visibility unconditionally — the LOD gate below skips
 	// bodies outside the active system, but visibility needs to track every
@@ -64,7 +66,7 @@ export function updateTextureLOD(
 		else desired = 'high';
 
 		const currentRank = tierRank(bo.textureTier);
-		const desiredRank = tierRank(desired);
+		const desiredRank = Math.min(tierRank(desired), tierCap);
 		const desiredFrame = textureFrameForJd(jd, bo.availableFrames);
 		const frameChanged = desiredFrame !== bo.textureFrame;
 		const wantsUpgrade = desiredRank > currentRank;
@@ -87,7 +89,7 @@ export function updateTextureLOD(
 			const capRank = maxTex >= 16383 ? 2 : maxTex >= 8192 ? 1 : 0;
 			const current = bo.displacementTier ?? 'low';
 			const target = highestAvailableTier(
-				Math.min(tierRank(desiredDemTier(altitudeRadii, current)), capRank),
+				Math.min(tierRank(desiredDemTier(altitudeRadii, current)), capRank, tierCap),
 				dispTiers
 			);
 			if (target && target !== current) void swapDisplacementTier(bo, target);
