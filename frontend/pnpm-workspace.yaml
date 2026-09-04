@@ -10,3 +10,6 @@ overrides:
   sharp@<0.35.0: ^0.35.3
   undici@<7.29.0: ^7.29.0
   ws@<8.21.0: ^8.21.3
+
+patchedDependencies:
+  vaul-svelte@1.0.0-next.7: patches/vaul-svelte@1.0.0-next.7.patch

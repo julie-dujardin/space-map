@@ -1,0 +1,172 @@
+diff --git a/dist/use-drawer-root.svelte.js b/dist/use-drawer-root.svelte.js
+index dffcf102fa23b5ab751407901513910d06980e09..0b3a66b9016a07e1ff2cbfcc5b4f28a828929e68 100644
+--- a/dist/use-drawer-root.svelte.js
++++ b/dist/use-drawer-root.svelte.js
+@@ -21,6 +21,7 @@ export function useDrawerRoot(opts) {
+     let isAllowedToDrag = false;
+     let nestedOpenChangeTimer = null;
+     let pointerStart = 0;
++    let pointerStartCross = 0;
+     let keyboardIsOpen = box(false);
+     let shouldAnimate = $state(!opts.open.current);
+     let previousDiffFromInitial = 0;
+@@ -75,16 +76,35 @@ export function useDrawerRoot(opts) {
+         // Ensure we maintain correct pointer capture even when going outside of the drawer
+         event.target.setPointerCapture(event.pointerId);
+         pointerStart = isVertical(opts.direction.current) ? event.pageY : event.pageX;
++        pointerStartCross = isVertical(opts.direction.current) ? event.pageX : event.pageY;
++    }
++    // Whether a user-scrollable ancestor of `el` can still scroll the way the
++    // finger moves. Such content owns the gesture whatever the drawer's
++    // position; overflow:hidden containers keep a scrollTop but never scroll by
++    // touch, so they don't count.
++    function isInsideScrollableContent(el, isDraggingInDirection) {
++        const fingerMovesDown = (opts.direction.current === "bottom") !== isDraggingInDirection;
++        const limit = drawerNode?.parentElement ?? null;
++        for (let node = el; node instanceof Element && node !== limit; node = node.parentElement) {
++            const room = node.scrollHeight - node.clientHeight;
++            if (room <= 0)
++                continue;
++            const overflowY = getComputedStyle(node).overflowY;
++            if (overflowY !== "auto" && overflowY !== "scroll")
++                continue;
++            if (fingerMovesDown ? node.scrollTop > 0 : node.scrollTop < room - 1)
++                return true;
++        }
++        return false;
+     }
+     function shouldDrag(el, isDraggingInDirection) {
+-        let element = el;
+         const highlightedText = window.getSelection()?.toString();
+         const swipeAmount = drawerNode ? getTranslate(drawerNode, opts.direction.current) : null;
+         const date = new Date();
+         // Fixes https://github.com/emilkowalski/vaul/issues/483
+-        if (element.tagName === "SELECT")
++        if (el.tagName === "SELECT")
+             return false;
+-        if (element.hasAttribute("data-vaul-no-drag") || element.closest("[data-vaul-no-drag]")) {
++        if (el.hasAttribute("data-vaul-no-drag") || el.closest("[data-vaul-no-drag]")) {
+             return false;
+         }
+         if (opts.direction.current === "right" || opts.direction.current === "left") {
+@@ -94,6 +114,10 @@ export function useDrawerRoot(opts) {
+         if (openTime && date.getTime() - openTime.getTime() < 500) {
+             return false;
+         }
++        if (isInsideScrollableContent(el, isDraggingInDirection)) {
++            lastTimeDragPrevented = date;
++            return false;
++        }
+         if (swipeAmount !== null) {
+             if (opts.direction.current === "bottom" ? swipeAmount > 0 : swipeAmount < 0) {
+                 return true;
+@@ -115,23 +139,6 @@ export function useDrawerRoot(opts) {
+             // We are dragging down so we should allow scrolling
+             return false;
+         }
+-        // Keep climbing up the DOM tree as long as there's a parent
+-        while (element) {
+-            // Check if the element is scrollable
+-            if (element.scrollHeight > element.clientHeight) {
+-                if (element.scrollTop !== 0) {
+-                    lastTimeDragPrevented = new Date();
+-                    // The element is scrollable and not scrolled to the top, so don't drag
+-                    return false;
+-                }
+-                if (element.getAttribute("role") === "dialog") {
+-                    return true;
+-                }
+-            }
+-            // Move up to the parent element
+-            element = element.parentNode;
+-        }
+-        // No scrollable parents not scrolled to the top found, so drag
+         return true;
+     }
+     function onDrag(event) {
+@@ -159,8 +166,8 @@ export function useDrawerRoot(opts) {
+         if (snapPointPercentageDragged !== null) {
+             percentageDragged = snapPointPercentageDragged;
+         }
+-        // Disallow close dragging beyond the smallest snap point.
+-        if (noCloseSnapPointsPreCondition && percentageDragged >= 1) {
++        // Freeze at the smallest snap point instead of closing.
++        if (noCloseSnapPointsPreCondition && snapPointsState.isBeyondFirstSnapPoint(draggedDistance)) {
+             return;
+         }
+         if (!isAllowedToDrag && !shouldDrag(event.target, isDraggingInDirection))
+@@ -220,6 +227,33 @@ export function useDrawerRoot(opts) {
+             });
+         }
+     }
++    // Chrome and Safari cancel the pointer as soon as they start panning a
++    // scroller under the finger, before the drawer could follow it. Claim the
++    // touch while the drawer is being dragged, or is about to be dragged
++    // towards closing; moves towards opening stay native so content can scroll.
++    function onTouchMove(event) {
++        if (!isDragging || !event.cancelable || event.touches.length !== 1)
++            return;
++        if (!isVertical(opts.direction.current))
++            return;
++        if (isAllowedToDrag) {
++            event.preventDefault();
++            return;
++        }
++        const touch = event.touches[0];
++        const directionMultiplier = opts.direction.current === "bottom" ? 1 : -1;
++        const along = (touch.pageY - pointerStart) * directionMultiplier;
++        const across = Math.abs(touch.pageX - pointerStartCross);
++        if (along <= 0 || across > along)
++            return;
++        if (shouldDrag(event.target, false))
++            event.preventDefault();
++    }
++    watch(() => drawerNode, () => {
++        if (!drawerNode)
++            return;
++        return on(drawerNode, "touchmove", onTouchMove, { passive: false });
++    });
+     $effect(() => {
+         window.requestAnimationFrame(() => {
+             shouldAnimate = true;
+diff --git a/dist/use-snap-points.svelte.d.ts b/dist/use-snap-points.svelte.d.ts
+index 1330d4af553c79d5b87019ae5c56b7434ecedb9c..efac28e279f33eca11a3c6fdc035974c03b59eaf 100644
+--- a/dist/use-snap-points.svelte.d.ts
++++ b/dist/use-snap-points.svelte.d.ts
+@@ -21,6 +21,7 @@ export declare function useSnapPoints({ snapPoints, drawerNode: drawerNode, over
+     readonly activeSnapPointIndex: number | undefined;
+     readonly snapPointsOffset: number[];
+     getPercentageDragged: (absDraggedDistance: number, isDraggingDown: boolean) => number | null;
++    isBeyondFirstSnapPoint: (draggedDistance: number) => boolean;
+     onRelease: ({ draggedDistance, closeDrawer, velocity, dismissible, }: {
+         draggedDistance: number;
+         closeDrawer: () => void;
+diff --git a/dist/use-snap-points.svelte.js b/dist/use-snap-points.svelte.js
+index 643d6e686c0b38a4ff82670e586795fe25278219..b85122eab98bf2c1ec06b840cbdbdc8e9936aa4d 100644
+--- a/dist/use-snap-points.svelte.js
++++ b/dist/use-snap-points.svelte.js
+@@ -199,6 +199,16 @@ export function useSnapPoints({ snapPoints, drawerNode: drawerNode, overlayNode:
+                 : `translate3d(${newValue}px, 0, 0)`,
+         });
+     }
++    // Whether the finger has pulled the drawer past its smallest snap point.
++    function isBeyondFirstSnapPoint(draggedDistance) {
++        if (typeof activeSnapPointOffset !== "number")
++            return false;
++        const dir = direction.current;
++        const newValue = isBottomOrRight(dir)
++            ? activeSnapPointOffset - draggedDistance
++            : activeSnapPointOffset + draggedDistance;
++        return isBottomOrRight(dir) ? newValue > snapPointsOffset[0] : newValue < snapPointsOffset[0];
++    }
+     function getPercentageDragged(absDraggedDistance, isDraggingDown) {
+         if (!snapPoints.current ||
+             typeof activeSnapPointIndex !== "number" ||
+@@ -249,6 +259,7 @@ export function useSnapPoints({ snapPoints, drawerNode: drawerNode, overlayNode:
+             return $state.snapshot(snapPointsOffset);
+         },
+         getPercentageDragged,
++        isBeyondFirstSnapPoint,
+         onRelease,
+         onDrag,
+     };
