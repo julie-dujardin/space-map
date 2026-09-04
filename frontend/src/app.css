@@ -157,10 +157,23 @@
 	--species-na2o: #cf7609;
 	--species-k2o: #ab7bc5;
 	--species-tio2: #8cb6f4;
+	/* The minor oxides and the core's minor metals. Every bar that carries one
+	   holds several, so they fold into the trace bucket together and this
+	   swatch draws only where a body lists exactly one of them. Still stepped
+	   against the bar they belong to: chrome green, bunsenite's dull green,
+	   manganosite's green-grey, phosphorus pentoxide's white powder, and the
+	   two metals' silver, cool for chromium against manganese's warm. */
+	--species-cr2o3: #2e7d4f;
+	--species-nio: #728f84;
+	--species-mno: #8d8f5e;
+	--species-p2o5: #d2cdc0;
 	--species-fe: var(--gas-fe);
 	--species-ni: #718943;
 	--species-co: #1858cb;
 	--species-s: #c3b32e;
+	--species-cr: #7fa6bd;
+	--species-mn: #a49c96;
+	--species-p: #e8dda0;
 	--species-si: var(--gas-si);
 	--species-fe-ni: #5a89c4;
 	/* Seawater and Titan's seas. Where the same substance already has a gas
@@ -325,10 +338,21 @@ body {
 	--species-na2o: #a09803;
 	--species-k2o: #9c62a5;
 	--species-tio2: #3f9fd0;
+	/* Minor oxides and metals, re-stepped. One accepted near-miss: Cr2O3 vs
+	   MgO ΔE 8.1 (vs 11) — pulling the green yellower to clear it collapses
+	   its CVD separation from Na2O, and the two never draw in one bar anyway,
+	   since Cr2O3 only escapes the trace bucket where it is the lone trace. */
+	--species-cr2o3: #35a165;
+	--species-nio: #94b4a0;
+	--species-mno: #b8b184;
+	--species-p2o5: #cbc6ba;
 	--species-fe: var(--gas-fe);
 	--species-ni: #346f00;
 	--species-co: #646bdc;
 	--species-s: #749815;
+	--species-cr: #8fb6cd;
+	--species-mn: #a9a29c;
+	--species-p: #e0d492;
 	--species-si: var(--gas-si);
 	--species-fe-ni: #748ed5;
 	--species-h2o: var(--gas-h2o);
