@@ -1,4 +1,5 @@
 import type { SatRec } from 'satellite.js';
+import type { SGP4Inputs } from '$lib/math/orbit/sgp4';
 import type { Quaternion } from 'three';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { NutPrec, Orientation, PointingSpec } from '$lib/math/orientation';
@@ -70,7 +71,11 @@ export interface BodyData extends OrbitalElements {
 	 * goes through sgp4() instead of the Kepler solver, capturing J2 and drag
 	 * effects that the mean-motion Kepler step ignores.
 	 */
+	/** SGP4 record for Earth satellites. A lazy accessor on rows from the
+	 *  elements files, so 20k records are not built at load; `omm` holds the
+	 *  inputs so the point-cloud workers build their own. */
 	satrec?: SatRec;
+	omm?: SGP4Inputs;
 	/**
 	 * The same orbit taken about the Sun instead of the barycentre, for the
 	 * bodies the ephemeris places against the SSB.

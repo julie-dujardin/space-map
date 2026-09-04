@@ -437,7 +437,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 			),
 			...spacecraftArgs.map(({ zone, zoom, part, time, parentIdType }) =>
 				loader
-					.process(zone, zoom, part, date, time, parentIdType)
+					.process(zone, zoom, part, date, time, parentIdType, new Set(placeholderById.keys()))
 					.then((chunk) => handleChunk(zone, chunk))
 					.catch(onChunkFail(zone, part))
 			)

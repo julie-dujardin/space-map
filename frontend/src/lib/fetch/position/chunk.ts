@@ -624,13 +624,17 @@ export class ChunkLoader {
 		}
 	}
 
+	/** `eagerIds`: satellites that need a load-time position (URL targets).
+	 *  Named satellites always get one; the rest of an Earth zone is placed on
+	 *  promotion, so 20k SGP4 records are never built here. */
 	async process(
 		zone: string,
 		zoom: number | null,
 		part: number,
 		date: Date,
 		time: string | null = null,
-		parentIdType: string = 'naif'
+		parentIdType: string = 'naif',
+		eagerIds?: ReadonlySet<string>
 	): Promise<PositionedBody[]> {
 		const writePositions = this.barycenters.size === 0;
 		const bodies: PositionedBody[] = [];
@@ -690,9 +694,20 @@ export class ChunkLoader {
 				: isSGP4
 					? sgp4ToBody(cols as SGP4Columns, idx, labels, idMap, parentIdType)
 					: keplerianToBody(cols as KeplerianColumns, idx, labels, idMap, parentIdType);
-			// sgp4ToBody returns null when satrec init fails — drop the row to
-			// enforce SGP4-only propagation for earth sats.
 			if (!body) continue;
+			// An unnamed satellite nobody asked for stays a point-cloud dot until
+			// promotion places it; its SGP4 record is built then.
+			if (isSGP4 && body.name === null && !eagerIds?.has(body.id)) {
+				bodies.push({
+					data: body,
+					position: [parentPos[0], parentPos[1], parentPos[2]],
+					positionUnknown: true
+				});
+				continue;
+			}
+			// An SGP4 record that fails to initialise drops the row: earth sats
+			// must not fall back to Kepler.
+			if (isSGP4 && !body.satrec) continue;
 			// If the load-time jd is outside the chunk's validity window (e.g.
 			// user URL-loaded a far-future date), seed with the parent position and
 			// mark it a stand-in: the per-frame propagation gate keeps the body

@@ -7,7 +7,8 @@
  */
 
 import type { LabelMap } from '$lib/fetch/position/labels';
-import { buildSatrec } from '$lib/math/orbit/sgp4';
+import { buildSatrec, type SGP4Inputs } from '$lib/math/orbit/sgp4';
+import type { SatRec } from 'satellite.js';
 import { AU_KM } from '$lib/math/units';
 import { Scale } from '$lib/fetch/position/format';
 import { ObjectType, type BodyData } from '$lib/types/objects';
@@ -141,26 +142,22 @@ export function sgp4ToBody(
 ): BodyData | null {
 	const id = idMap.get(idx)!;
 	const { name, isMinor } = pickLabelEntry(labels, id);
-	const satrec = buildSatrec(
-		{
-			noradCatId: cols.id[idx],
-			epochJd: cols.epochJd[idx],
-			meanMotion: cols.n[idx],
-			eccentricity: cols.e[idx],
-			inclination: cols.i[idx],
-			raOfAscNode: cols.om[idx],
-			argOfPericenter: cols.w[idx],
-			meanAnomaly: cols.ma[idx],
-			bstar: cols.bstar[idx],
-			meanMotionDot: cols.meanMotionDot[idx],
-			meanMotionDdot: cols.meanMotionDdot[idx],
-			elementSetNo: cols.elementSetNo[idx],
-			revAtEpoch: cols.revAtEpoch[idx]
-		},
-		name ?? undefined
-	);
-	if (!satrec) return null;
-	return {
+	const omm: SGP4Inputs = {
+		noradCatId: cols.id[idx],
+		epochJd: cols.epochJd[idx],
+		meanMotion: cols.n[idx],
+		eccentricity: cols.e[idx],
+		inclination: cols.i[idx],
+		raOfAscNode: cols.om[idx],
+		argOfPericenter: cols.w[idx],
+		meanAnomaly: cols.ma[idx],
+		bstar: cols.bstar[idx],
+		meanMotionDot: cols.meanMotionDot[idx],
+		meanMotionDdot: cols.meanMotionDdot[idx],
+		elementSetNo: cols.elementSetNo[idx],
+		revAtEpoch: cols.revAtEpoch[idx]
+	};
+	const data: BodyData = {
 		id,
 		name,
 		isMinor,
@@ -180,12 +177,28 @@ export function sgp4ToBody(
 		n: cols.n[idx] * 360,
 		epoch: cols.epochJd[idx],
 		equatorial: true,
-		satrec,
+		omm,
 		validityStart: cols.validityStart,
 		validityEnd: cols.validityEnd,
 		orbitalSource: cols.source,
 		visibleFromDays: cols.visibleFromDays[idx]
 	};
+	// Built on first read: only promoted satellites and trails ever need it.
+	// An init failure (a decayed satellite) marks the row unplaceable instead
+	// of letting the Kepler fallback draw a wrong orbit.
+	let satrec: SatRec | null | undefined;
+	Object.defineProperty(data, 'satrec', {
+		enumerable: true,
+		configurable: true,
+		get(): SatRec | undefined {
+			if (satrec === undefined) {
+				satrec = buildSatrec(omm, name ?? undefined);
+				if (!satrec) data.unplaceable = true;
+			}
+			return satrec ?? undefined;
+		}
+	});
+	return data;
 }
 
 /** Materialize the full `BodyData` for one row, dispatching on sub-format.
@@ -246,27 +259,13 @@ export function fillOrbitColumnRow(
 		return true;
 	}
 	if (cols.kind === 'sgp4') {
-		const satrec = buildSatrec({
-			noradCatId: cols.id[idx],
-			epochJd: cols.epochJd[idx],
-			meanMotion: cols.n[idx],
-			eccentricity: cols.e[idx],
-			inclination: cols.i[idx],
-			raOfAscNode: cols.om[idx],
-			argOfPericenter: cols.w[idx],
-			meanAnomaly: cols.ma[idx],
-			bstar: cols.bstar[idx],
-			meanMotionDot: cols.meanMotionDot[idx],
-			meanMotionDdot: cols.meanMotionDdot[idx],
-			elementSetNo: cols.elementSetNo[idx],
-			revAtEpoch: cols.revAtEpoch[idx]
-		});
-		if (!satrec) {
-			out.kind[outIdx] = KIND_SKIP;
-			return false;
-		}
+		// The worker builds the SGP4 record from these on its first solve.
 		out.kind[outIdx] = KIND_SGP4;
-		out.satrec[outIdx] = satrec;
+		out.satrec[outIdx] = null;
+		out.satnum[outIdx] = cols.id[idx];
+		out.bstar[outIdx] = cols.bstar[idx];
+		out.ndot[outIdx] = cols.meanMotionDot[idx];
+		out.nddot[outIdx] = cols.meanMotionDdot[idx];
 		out.a[outIdx] = cols.a[idx] / AU_KM;
 		out.e[outIdx] = cols.e[idx];
 		out.i[outIdx] = cols.i[idx];

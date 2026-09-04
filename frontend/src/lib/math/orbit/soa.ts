@@ -2,6 +2,7 @@ import { solveKepler, solveKeplerHyperbolic, solveBarker } from './solvers';
 import { AU_SCALE, AU_KM, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import type { PositionedBody } from '$lib/types/objects';
 import { sgp4, SatRecError, type SatRec } from 'satellite.js';
+import { buildSatrec } from './sgp4';
 import { yieldToMain } from '$lib/yield';
 import { J2000_JD } from '$lib/time/jd';
 
@@ -23,7 +24,8 @@ export const KIND_SGP4 = 3;
  *   0 = skip (promoted, a≈0 degenerate, etc.)
  *   1 = Keplerian: a, e, i, om, w, ma, n, epoch
  *   2 = Parabolic: e, i, om, w, epoch, q, tp
- *   3 = SGP4: satrec[i] (structured-cloned; SatRec is plain data, not transferable)
+ *   3 = SGP4: satnum, bstar, ndot, nddot plus the Kepler columns; `satrec[i]`
+ *       is the worker's own record, built on the first solve of that row
  *
  * Arrays are length `count`, Float64 throughout — precision for TNO epochs and
  * near-parabolic e; output positions are the only Float32.
@@ -43,8 +45,14 @@ export interface OrbitColumns {
 	epoch: Float64Array;
 	q: Float64Array;
 	tp: Float64Array;
-	/** Per-row SGP4 satrec — non-null iff kind[i] === KIND_SGP4. */
+	/** Per-row SGP4 record cache, filled by `writePositions` on the solving
+	 *  side; a row may also arrive pre-built (a placeholder body). */
 	satrec: (SatRec | null)[];
+	/** SGP4 inputs the Kepler columns lack: NORAD number, drag term, mean-motion derivatives. */
+	satnum: Int32Array;
+	bstar: Float64Array;
+	ndot: Float64Array;
+	nddot: Float64Array;
 	/** SBDB bits per point (0 = NEO, 1 = PHA); zero on non-SBDB rows. */
 	flags: Uint8Array;
 	/** Days from J2000 to the body's origin (discovery for small bodies, launch
@@ -89,7 +97,13 @@ function packRowInto(
 		cols.kind[idx] = KIND_SKIP;
 		return false;
 	}
-	if (d.satrec) {
+	if (d.omm) {
+		cols.kind[idx] = KIND_SGP4;
+		cols.satnum[idx] = d.omm.noradCatId;
+		cols.bstar[idx] = d.omm.bstar;
+		cols.ndot[idx] = d.omm.meanMotionDot;
+		cols.nddot[idx] = d.omm.meanMotionDdot;
+	} else if (d.satrec) {
 		cols.kind[idx] = KIND_SGP4;
 		cols.satrec[idx] = d.satrec;
 	} else if (d.q != null && d.tp != null && isFinite(d.q) && isFinite(d.tp)) {
@@ -184,7 +198,11 @@ export function columnsTransferList(cols: OrbitColumns): Transferable[] {
 		cols.q.buffer,
 		cols.tp.buffer,
 		cols.flags.buffer,
-		cols.visibleFromDays.buffer
+		cols.visibleFromDays.buffer,
+		cols.satnum.buffer,
+		cols.bstar.buffer,
+		cols.ndot.buffer,
+		cols.nddot.buffer
 	] as Transferable[];
 }
 
@@ -204,6 +222,10 @@ export function allocColumns(count: number): OrbitColumns {
 		q: new Float64Array(count),
 		tp: new Float64Array(count),
 		satrec: new Array<SatRec | null>(count).fill(null),
+		satnum: new Int32Array(count),
+		bstar: new Float64Array(count),
+		ndot: new Float64Array(count),
+		nddot: new Float64Array(count),
 		flags: new Uint8Array(count),
 		// NaN default = always visible; rows with an origin date overwrite per row.
 		visibleFromDays: new Float32Array(count).fill(NaN),
@@ -294,8 +316,29 @@ export function writePositions(
 		if (filterActive && (flags[idx] & requiredFlags) !== requiredFlags) continue;
 
 		if (k === KIND_SGP4) {
-			const sat = satrec[idx];
-			if (!sat) continue;
+			let sat = satrec[idx];
+			if (!sat) {
+				sat = buildSatrec({
+					noradCatId: cols.satnum[idx],
+					epochJd: epoch[idx],
+					meanMotion: n[idx] / 360,
+					eccentricity: e[idx],
+					inclination: i[idx],
+					raOfAscNode: om[idx],
+					argOfPericenter: w[idx],
+					meanAnomaly: ma[idx],
+					bstar: cols.bstar[idx],
+					meanMotionDot: cols.ndot[idx],
+					meanMotionDdot: cols.nddot[idx],
+					elementSetNo: 0,
+					revAtEpoch: 0
+				});
+				if (!sat) {
+					kind[idx] = KIND_SKIP;
+					continue;
+				}
+				satrec[idx] = sat;
+			}
 			const tsince = (jd - sat.jdsatepoch) * 1440;
 			const result = sgp4(sat, tsince);
 			if (!result || sat.error !== SatRecError.None) continue;
