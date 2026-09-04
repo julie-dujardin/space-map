@@ -56,6 +56,32 @@ describe('solveKeplerHyperbolic', () => {
 		const H = solveKeplerHyperbolic(M, CATALINA_HYP.e);
 		expect(CATALINA_HYP.e * Math.sinh(H) - H).toBeCloseTo(M, 8);
 	});
+
+	it('converges for a near-parabolic orbit at small M', () => {
+		// C/1962 C1 (Seki-Lines) propagated to 2026: e−1 ≈ 4e-6 flattens f'(0),
+		// which used to send Newton past H = 100 and leave it near 90 — a point
+		// ~1e40 AU out that overflowed the Float32 vertex buffer.
+		const e = 1.0000044604121461;
+		const M = 6.8e-4;
+		const H = solveKeplerHyperbolic(M, e);
+		expect(e * Math.sinh(H) - H).toBeCloseTo(M, 10);
+		expect(H).toBeLessThan(1);
+	});
+
+	it('round-trips M across eccentricities and magnitudes', () => {
+		for (const e of [1.0000001, 1.001, 1.1, 1.5, 3, 10]) {
+			for (const M of [-50, -1, -1e-6, 1e-6, 0.01, 1, 50, 1e4]) {
+				const H = solveKeplerHyperbolic(M, e);
+				expect(isFinite(H)).toBe(true);
+				// Relative: at M = 1e4 an absolute tolerance sits below f64 resolution.
+				expect((e * Math.sinh(H) - H) / M).toBeCloseTo(1, 9);
+			}
+		}
+	});
+
+	it('returns NaN when the root is past the sinh overflow limit', () => {
+		expect(solveKeplerHyperbolic(Number.MAX_VALUE, 1.5)).toBeNaN();
+	});
 });
 
 describe('solveBarker', () => {

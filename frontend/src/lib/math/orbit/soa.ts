@@ -215,6 +215,27 @@ export function allocColumns(count: number): OrbitColumns {
 }
 
 /**
+ * Write one point, rejecting coordinates the Float32 buffer can't hold. A row
+ * can solve finite in f64 and still overflow on store — a hyperbolic orbit far
+ * from perihelion reaches ~1e40 AU — and one Infinity makes the whole cloud's
+ * bounding sphere NaN, which disables frustum culling for every point in it.
+ */
+function writeVertex(
+	out: Float32Array,
+	writeIdx: number,
+	x: number,
+	y: number,
+	z: number
+): boolean {
+	if (!isFinite(Math.fround(x)) || !isFinite(Math.fround(y)) || !isFinite(Math.fround(z)))
+		return false;
+	out[writeIdx * 3] = x;
+	out[writeIdx * 3 + 1] = y;
+	out[writeIdx * 3 + 2] = z;
+	return true;
+}
+
+/**
  * Write basis-relative Float32 positions (parent + offset − basis, AU_SCALE
  * units) for every body in `cols` into `out`, packed contiguously at the
  * *start* — skipped/non-finite bodies are dropped, not zero-filled, mirroring
@@ -291,10 +312,16 @@ export function writePositions(
 			const sx = xs;
 			const sy = zEcl;
 			const sz = -yEcl;
-			if (!isFinite(sx) || !isFinite(sy) || !isFinite(sz)) continue;
-			out[writeIdx * 3] = parentX + sx - basisX;
-			out[writeIdx * 3 + 1] = parentY + sy - basisY;
-			out[writeIdx * 3 + 2] = parentZ + sz - basisZ;
+			if (
+				!writeVertex(
+					out,
+					writeIdx,
+					parentX + sx - basisX,
+					parentY + sy - basisY,
+					parentZ + sz - basisZ
+				)
+			)
+				continue;
 			if (outIds) {
 				const pid = pickBase + idx;
 				const o = writeIdx * 4;
@@ -377,9 +404,16 @@ export function writePositions(
 		const sy = z * AU_SCALE;
 		const sz = -y * AU_SCALE;
 
-		out[writeIdx * 3] = parentX + sx - basisX;
-		out[writeIdx * 3 + 1] = parentY + sy - basisY;
-		out[writeIdx * 3 + 2] = parentZ + sz - basisZ;
+		if (
+			!writeVertex(
+				out,
+				writeIdx,
+				parentX + sx - basisX,
+				parentY + sy - basisY,
+				parentZ + sz - basisZ
+			)
+		)
+			continue;
 		if (outIds) {
 			const pid = pickBase + idx;
 			const o = writeIdx * 4;

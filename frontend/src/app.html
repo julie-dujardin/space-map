@@ -16,8 +16,6 @@
 			// Early resource hints for the data origin, mirroring DATA_BASE
 			// ($lib/fetch/data-base) so the metadata + systems-global fetches can
 			// overlap the JS bundle download and warm the cross-origin connection.
-			// crossOrigin is set only for an absolute (prod CDN) host so it matches
-			// fetch()'s credentials mode; the dev proxy serves data same-origin.
 			// NOTE: editing this script changes its CSP hash — update svelte.config.js.
 			(function () {
 				try {
@@ -30,7 +28,10 @@
 						l.rel = rel;
 						l.href = href;
 						if (as) l.as = as;
-						if (cross) l.crossOrigin = 'anonymous';
+						// An as="fetch" preload needs crossorigin even same-origin: without
+						// it the preload sits in a different credentials mode than fetch(),
+						// so the browser discards it and downloads the file a second time.
+						if (cross || as === 'fetch') l.crossOrigin = 'anonymous';
 						document.head.appendChild(l);
 					};
 					if (cross) add('preconnect', base);

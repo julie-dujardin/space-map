@@ -611,6 +611,10 @@ export class ChunkLoader {
 		const writePositions = this.barycenters.size === 0;
 		const bodies: PositionedBody[] = [];
 		const skippedMissingParent = new Map<string, number>();
+		// Bodies whose propagator refused the load-time jd — SGP4 rejects a
+		// satellite that has already re-entered, and every decayed sat still in
+		// the chunk hits this. Tallied, not logged per body.
+		const unpropagated: string[] = [];
 
 		const [cols, labels] = await Promise.all([
 			fetchElements(zone, zoom, part, time),
@@ -680,9 +684,7 @@ export class ChunkLoader {
 							? parabolicToPosition(body, date)
 							: orbitalElementsToPosition(body, date);
 			if (!offset) {
-				console.warn(
-					`Failed to compute position for body id=${body.id} name=${body.name} (e=${body.e})`
-				);
+				unpropagated.push(body.id);
 				continue;
 			}
 			const pos: [number, number, number] = [
@@ -745,6 +747,14 @@ export class ChunkLoader {
 					positionUnknown: !inRange
 				});
 			}
+		}
+		if (unpropagated.length > 0) {
+			console.warn(
+				`process(${zone}/${zoom}/${part}): positioned ${bodies.length} body(ies), ` +
+					`dropped ${unpropagated.length} the propagator refused — ` +
+					`${unpropagated.slice(0, 5).join(', ')}` +
+					(unpropagated.length > 5 ? ` (+${unpropagated.length - 5} more)` : '')
+			);
 		}
 		if (skippedMissingParent.size > 0) {
 			const total = Array.from(skippedMissingParent.values()).reduce((a, b) => a + b, 0);

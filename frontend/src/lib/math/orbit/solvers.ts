@@ -17,10 +17,12 @@ export function solveKepler(M: number, e: number, tolerance = 1e-10, maxIter = 5
 	return E;
 }
 
+/** sinh overflows past this, so no root beyond it is representable. */
+const MAX_H = 700;
+
 /**
  * Solve the hyperbolic Kepler equation M = e*sinh(H) - H for hyperbolic anomaly H.
- * Uses Newton-Raphson iteration.
- * Returns NaN if the solver fails to converge or overflows.
+ * Newton-Raphson kept inside a bracket. Returns NaN when the root is out of range.
  */
 export function solveKeplerHyperbolic(
 	M: number,
@@ -28,16 +30,33 @@ export function solveKeplerHyperbolic(
 	tolerance = 1e-10,
 	maxIter = 50
 ): number {
-	let H = Math.abs(M) < 1 ? M : Math.sign(M) * Math.log((2 * Math.abs(M)) / e);
-	for (let i = 0; i < maxIter; i++) {
-		const sH = Math.sinh(H);
-		const cH = Math.cosh(H);
-		if (!isFinite(sH) || !isFinite(cH)) return NaN;
-		const dH = (e * sH - H - M) / (e * cH - 1);
-		H -= dH;
-		if (Math.abs(dH) < tolerance) break;
+	if (M === 0) return 0;
+	const sign = M < 0 ? -1 : 1;
+	const m = Math.abs(M);
+	// f(H) = e·sinh(H) − H − m climbs monotonically from f(0) = −m, so doubling
+	// brackets the root. Bare Newton diverges for near-parabolic e: f'(0) = e − 1
+	// is ~1e-6, the first step overshoots past H = 100, and the iteration limit
+	// hits while H is still ~90 — cosh(90)·a puts the body 1e40 AU out.
+	let lo = 0;
+	let hi = 1;
+	while (e * Math.sinh(hi) - hi < m) {
+		hi *= 2;
+		if (hi > MAX_H) return NaN;
 	}
-	return H;
+	let H = 0.5 * (lo + hi);
+	for (let i = 0; i < maxIter; i++) {
+		const f = e * Math.sinh(H) - H - m;
+		if (f > 0) hi = H;
+		else lo = H;
+		let next = H - f / (e * Math.cosh(H) - 1);
+		// Bisect whenever the Newton step leaves the bracket — that is exactly
+		// where the flat near-parabolic derivative sends it.
+		if (!(next > lo && next < hi)) next = 0.5 * (lo + hi);
+		const dH = Math.abs(next - H);
+		H = next;
+		if (dH < tolerance) break;
+	}
+	return sign * H;
 }
 
 /**

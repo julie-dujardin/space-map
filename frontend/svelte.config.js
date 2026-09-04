@@ -25,7 +25,7 @@ const config = {
 				'script-src': [
 					'self',
 					'wasm-unsafe-eval',
-					'sha256-DwoCeDQtDeE13/r23DyUnVrrkg6qiRPBM4fPbBJGXg0=',
+					'sha256-00sULoiWgZUWFz3HLYdu4XM9/ZIIYSABLHVjjyxWmFg=',
 					'sha256-3GkLjh8hUINKAQM1DYGLTD5hrwnZc1a0cFwUcKJaKSs='
 				],
 				// Svelte + Tailwind emit inline <style>; not a script vector.
