@@ -17,7 +17,7 @@
 	import { formatNumber, formatQuantity, formatUnit, joinParts } from '$lib/format/quantities';
 	import { cancerRiskPerYear, formatDoseRate, timeToLethalDose } from '$lib/format/radiation';
 	import { ltrIsolate } from '$lib/format/bidi';
-	import { gravityLabel } from '$lib/format/gravity';
+	import { accelMs2, formatGees, formatMs2, gravityLabel } from '$lib/format/gravity';
 	import { meanRadiusKm } from '$lib/fetch/objects/physical';
 	import { diameterKmFromH, BRIGHT_ALBEDO, DARK_ALBEDO } from '$lib/math/h-magnitude';
 	import Section from './kit/Section.svelte';
@@ -216,7 +216,14 @@
 				/>
 			{/if}
 			{#if wd?.surface_gravity}
-				<Row label={gravityLabel(global)} value={formatQuantity(wd.surface_gravity)} />
+				{@const ms2 = accelMs2(wd.surface_gravity)}
+				<!-- Gees, like the stat card: what standing there feels like. The
+				     SI reading rides on the value. -->
+				<Row
+					label={gravityLabel(global)}
+					value={ms2 === null ? formatQuantity(wd.surface_gravity) : ltrIsolate(formatGees(ms2))}
+					valueTooltip={ms2 === null ? undefined : ltrIsolate(formatMs2(ms2))}
+				/>
 			{/if}
 			{#if wd?.population}
 				<Row label={m.property_name_population()} value={formatNumber(wd.population)} />

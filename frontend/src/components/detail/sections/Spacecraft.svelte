@@ -8,6 +8,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, QuantityWithUnit } from '$lib/fetch/objects/object-data';
 	import { formatQuantity } from '$lib/format/quantities';
+	import { massKg } from '$lib/format/mass';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
 
@@ -25,10 +26,21 @@
 	// The estimate mark belongs to GCAT's figure, not to a Wikidata claim that
 	// happens to sit beside one.
 	let massEstimated = $derived(!wd?.mass && ct?.mass_estimated === true);
+	// A catalogue row can describe a different thing than the Wikidata entity:
+	// the ISS is filed under Zarya's NORAD number, whose 20 t and 24 m are one
+	// module's. When the two masses disagree by more than half, GCAT's hardware
+	// figures are not this object's and stay off the page.
+	let gcatDescribesThis = $derived.by(() => {
+		if (!wd?.mass || !ct?.mass) return true;
+		const a = massKg(wd.mass);
+		const b = massKg(ct.mass);
+		return a === null || b === null || Math.abs(a - b) <= 0.5 * Math.max(a, b);
+	});
+	let hardware = $derived(gcatDescribesThis ? ct : undefined);
 	// GCAT carries a dry mass for everything, equal to the launch mass wherever
 	// it knows of no propellant; saying the same number twice reads as an error.
 	let dryMass = $derived(
-		ct?.dry_mass && ct.dry_mass.value !== mass?.value ? ct.dry_mass : undefined
+		hardware?.dry_mass && hardware.dry_mass.value !== mass?.value ? hardware.dry_mass : undefined
 	);
 
 	interface Size {
@@ -42,19 +54,19 @@
 	// big a spacecraft is — a satellite is mostly solar array — and a body
 	// dimension only stands in where there is no span to give.
 	let size = $derived<Size | null>(
-		ct?.span
+		hardware?.span
 			? {
 					label: m.span(),
-					quantity: ct.span,
+					quantity: hardware.span,
 					tooltip: m.tooltip_span(),
-					estimated: ct.span_estimated === true
+					estimated: hardware.span_estimated === true
 				}
-			: (wd?.length ?? ct?.length)
-				? { label: m.property_name_length(), quantity: (wd?.length ?? ct?.length)! }
+			: (wd?.length ?? hardware?.length)
+				? { label: m.property_name_length(), quantity: (wd?.length ?? hardware?.length)! }
 				: wd?.width
 					? { label: m.property_name_width(), quantity: wd.width }
-					: ct?.diameter
-						? { label: m.diameter(), quantity: ct.diameter }
+					: hardware?.diameter
+						? { label: m.diameter(), quantity: hardware.diameter }
 						: null
 	);
 

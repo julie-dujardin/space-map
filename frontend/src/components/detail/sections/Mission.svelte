@@ -10,6 +10,7 @@
 	import { formatIsoDate } from '$lib/format/date';
 	import { formatCurrency, formatNumber } from '$lib/format/quantities';
 	import { countryFlag, formatCountry, formatOpsStatus } from '$lib/format/satellite';
+	import { sameRef } from '$lib/format/entity-refs';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import Section from './kit/Section.svelte';
@@ -43,21 +44,20 @@
 	let namedAfter = $derived(localized?.named_after);
 	let countries = $derived(ct?.country_codes ?? []);
 
-	/** Merge constellation + part_of, deduplicated by wikipedia URL. */
+	/** Constellation + part_of as one row, each thing once, and never the
+	 *  object itself (a station whose catalogue row is its first module). */
 	let mergedPartOf = $derived.by(() => {
+		const self: EntityRef = { name: localized?.name ?? '', wikipedia: localized?.wikipedia?.url };
 		const parts: EntityRef[] = [];
-		const seen = new Set<string>();
-		function add(e: EntityRef) {
-			const key = e.wikipedia ?? e.name;
-			if (!seen.has(key)) {
-				seen.add(key);
-				parts.push(e);
-			}
+		for (const e of [localized?.constellation, ...(localized?.part_of ?? [])]) {
+			if (e && !sameRef(e, self) && !parts.some((p) => sameRef(p, e))) parts.push(e);
 		}
-		if (localized?.constellation) add(localized.constellation);
-		if (localized?.part_of) localized.part_of.forEach(add);
 		return parts;
 	});
+
+	// GCAT files a craft that reached another world under "decayed", with the
+	// landing day as its decay date; the curated record says which it was.
+	let landed = $derived(ct?.ops_status === 'decayed' && global?.events?.status.where === 'landed');
 
 	let hasFields = $derived(
 		!!(
@@ -103,13 +103,16 @@
 			</Row>
 		{/if}
 		{#if ct?.ops_status}
-			<Row label={m.ops_status()} value={formatOpsStatus(ct.ops_status)} />
+			<Row
+				label={m.ops_status()}
+				value={landed ? m.ops_status_landed() : formatOpsStatus(ct.ops_status)}
+			/>
 		{/if}
 		{#if launchDate}
 			<Row label={m.launch_date()} value={formatIsoDate(launchDate)} />
 		{/if}
 		{#if decayDate}
-			<Row label={m.decay_date()} value={formatIsoDate(decayDate)} />
+			<Row label={landed ? m.landing_date() : m.decay_date()} value={formatIsoDate(decayDate)} />
 		{/if}
 		{#if operators && operators.length > 0}
 			<Row label={m.property_name_operators({ count: operators.length })}>
@@ -151,7 +154,9 @@
 				<EntityLinks entities={funder} />
 			</Row>
 		{/if}
-		{#if countryOfOrigin && countryOfOrigin.length > 0}
+		<!-- Wikidata's country only where GCAT has no owner codes: they name the
+		     same country, and the flags row below links to the country pages. -->
+		{#if countryOfOrigin && countryOfOrigin.length > 0 && countries.length === 0}
 			<Row label={m.property_name_country_of_origin({ count: countryOfOrigin.length })}>
 				<EntityLinks entities={countryOfOrigin} />
 			</Row>

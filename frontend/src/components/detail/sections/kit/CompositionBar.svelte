@@ -10,7 +10,13 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { foldTrace, MIN_TRACE, type CompositionEntry } from '$lib/charts/composition-bar';
-	import { formatBound, formatPercent, percentParts, spanFields } from '$lib/format/quantities';
+	import {
+		formatBound,
+		formatPercent,
+		formatShare,
+		percentParts,
+		spanFields
+	} from '$lib/format/quantities';
 
 	interface Props {
 		entries: CompositionEntry[];
@@ -39,16 +45,19 @@
 		];
 	});
 
+	function share(segment: CompositionEntry): string {
+		return formatShare(segment.share, segments.length === 1);
+	}
+
 	function value(segment: CompositionEntry): string {
-		const share = formatPercent(segment.share);
-		return segment.limit ? formatBound(share) : share;
+		return segment.limit ? formatBound(share(segment)) : share(segment);
 	}
 
 	function tooltip(segment: CompositionEntry): string {
 		const name = segment.name;
 		return segment.limit
-			? m.composition_limit({ name, value: formatPercent(segment.share) })
-			: m.composition_value({ name, value: formatPercent(segment.share) });
+			? m.composition_limit({ name, value: share(segment) })
+			: m.composition_value({ name, value: share(segment) });
 	}
 
 	// Upper limits are drawn hatched over their hue and read "under" in every

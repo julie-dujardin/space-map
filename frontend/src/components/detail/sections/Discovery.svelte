@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import { withoutRefs } from '$lib/format/entity-refs';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { formatIsoDate, parseIsoDate } from '$lib/format/date';
 	import Section from './kit/Section.svelte';
@@ -38,11 +39,18 @@
 	let discoverers = $derived(localized?.discoverers);
 	let discoverySite = $derived(localized?.discovery_site);
 	let asteroidFamily = $derived(localized?.asteroid_family);
-	let partOf = $derived(localized?.part_of);
+	let partOf = $derived(withoutRefs(localized?.part_of, asteroidFamily ? [asteroidFamily] : []));
 	let namedAfter = $derived(localized?.named_after);
 
 	let hasFields = $derived(
-		!!(discoveryDate || discoverers || discoverySite || asteroidFamily || partOf || namedAfter)
+		!!(
+			discoveryDate ||
+			discoverers ||
+			discoverySite ||
+			asteroidFamily ||
+			partOf.length > 0 ||
+			namedAfter
+		)
 	);
 	let hasContent = $derived(!isSpacecraft && hasFields);
 </script>
@@ -72,7 +80,7 @@
 				<EntityLinks entities={[asteroidFamily]} />
 			</Row>
 		{/if}
-		{#if partOf && partOf.length > 0}
+		{#if partOf.length > 0}
 			<Row label={m.property_name_part_of()}>
 				<EntityLinks entities={partOf} />
 			</Row>

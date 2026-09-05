@@ -197,19 +197,17 @@ export class ChunkLoader {
 		// stable by naif_id so the major bodies appear in a deterministic order.
 		const all = Array.from(this.cheb.bodiesAt(jd));
 		all.sort((a, b) => {
-			const tierA =
-				a.body.objectType === ObjectType.BARYCENTER
+			// Barycentres, the Sun, planets, then the rest: a moon's elements are
+			// taken about its planet, so the planet's position has to exist first.
+			const tier = (body: ChebyshevBody) =>
+				body.objectType === ObjectType.BARYCENTER
 					? 0
-					: a.body.objectType === ObjectType.STAR
+					: body.objectType === ObjectType.STAR
 						? 1
-						: 2;
-			const tierB =
-				b.body.objectType === ObjectType.BARYCENTER
-					? 0
-					: b.body.objectType === ObjectType.STAR
-						? 1
-						: 2;
-			return tierA - tierB || a.body.naifId - b.body.naifId;
+						: body.naifId % 100 === 99
+							? 2
+							: 3;
+			return tier(a.body) - tier(b.body) || a.body.naifId - b.body.naifId;
 		});
 
 		const cheb = this.cheb;
@@ -238,12 +236,26 @@ export class ChunkLoader {
 				parentPos[2] + offset[2]
 			];
 			const objType = body.objectType as ObjectType;
+			// A moon's elements are about its planet, not the system barycentre
+			// the ephemeris centres it on. The two differ by 4,700 km for the
+			// Moon, which read as a 25-day period and a 362,000 km semi-major
+			// axis; the barycentre's GM is still the right μ (planet plus moon).
+			const primaryId =
+				objType === ObjectType.MOON && body.parentId >= 1 && body.parentId <= 9
+					? `naif-${body.parentId * 100 + 99}`
+					: null;
+			const primaryPos = primaryId ? this.positions.get(primaryId) : undefined;
 			// Osculating elements snapshot: position + velocity from the
 			// polynomial, parent GM from the global systems file. Returns null
 			// when the parent has no GM (out-of-coverage in SPICE) or the
 			// state is degenerate; the body still gets a position-only entry
 			// so it can render, just without an orbit curve.
-			const elements = chebyshevOsculatingElements(body, body.parentId, jd);
+			const elements = chebyshevOsculatingElements(
+				body,
+				body.parentId,
+				jd,
+				primaryId ? (cheb.body(primaryId, jd) ?? undefined) : undefined
+			);
 			// Re-derive callback used by the trail refresh path. We can't
 			// close over the `ChebyshevBody` reference here — those records
 			// are *per-chunk*, so by the time the user crosses a chunk boundary
@@ -254,7 +266,12 @@ export class ChunkLoader {
 			const ownRederive = (newJd: number): OrbitalElements | null => {
 				const fresh = cheb.body(ownId, newJd);
 				if (!fresh) return null;
-				return chebyshevOsculatingElements(fresh, fresh.parentId, newJd);
+				return chebyshevOsculatingElements(
+					fresh,
+					fresh.parentId,
+					newJd,
+					primaryId ? (cheb.body(primaryId, newJd) ?? undefined) : undefined
+				);
 			};
 			// Position-magnitude proxy for visibility-ratio code when elements
 			// are unavailable. Cheb gives parent-relative offsets in scene units,
@@ -326,7 +343,8 @@ export class ChunkLoader {
 					data,
 					position: pos,
 					orbitElements: orbitElements ?? undefined,
-					orbitCenter: borrowedFromParent ? undefined : parentPos,
+					// A moon's curve sits on its planet, where its elements are taken.
+					orbitCenter: borrowedFromParent ? undefined : (primaryPos ?? parentPos),
 					// The borrowed curve traces the *barycenter*'s orbit, so the
 					// trail's bright end belongs on the barycenter. Fresh array
 					// (not the shared `parentPos` ref) so the per-frame mutator

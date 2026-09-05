@@ -43,6 +43,35 @@
 	});
 	let coordsText = $derived(`${formatDegrees(feature.lat)}, ${formatDegrees(feature.lon)}`);
 
+	// IAU types that run long rather than round: valleys, ridges, rilles,
+	// scarps, chains, furrows. The gazetteer's "diameter" is the longest
+	// dimension either way, so one row says it, by the name that fits.
+	const LINEAR_TYPES = new Set([
+		'AR',
+		'CA',
+		'CM',
+		'DO',
+		'FE',
+		'FM',
+		'FO',
+		'FT',
+		'LI',
+		'RI',
+		'RU',
+		'SC',
+		'SE',
+		'SU',
+		'VA',
+		'VI'
+	]);
+	let sizeRow = $derived.by(() => {
+		if (LINEAR_TYPES.has(feature.typeCode)) {
+			const value = wd?.length ? formatQuantity(wd.length) : diameterText;
+			return value ? { label: m.property_name_length(), value } : null;
+		}
+		return diameterText ? { label: m.diameter(), value: diameterText } : null;
+	});
+
 	// The type row links to that type's collection page. The slug comes from the
 	// group index (untracked so resolving it doesn't re-trigger the load).
 	let typeSlug = $state<string | undefined>(undefined);
@@ -128,14 +157,11 @@
 		{/if}
 	</Row>
 	<Row label={m.coordinates()} value={coordsText} />
-	{#if diameterText}
-		<Row label={m.diameter()} value={diameterText} />
+	{#if sizeRow}
+		<Row label={sizeRow.label} value={sizeRow.value} />
 	{/if}
 	{#if wd?.vertical_depth}
 		<Row label={m.feature_depth()} value={formatQuantity(wd.vertical_depth)} />
-	{/if}
-	{#if wd?.length}
-		<Row label={m.property_name_length()} value={formatQuantity(wd.length)} />
 	{/if}
 	{#if wd?.width}
 		<Row label={m.property_name_width()} value={formatQuantity(wd.width)} />

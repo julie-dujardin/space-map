@@ -70,19 +70,23 @@ export function convertTemperature(
 	return { value: Math.round(converted / precision) * precision, unit: target };
 }
 
-export function formatTemperature(
-	q: { value: number; unit: string },
-	target?: TemperatureUnit
-): string {
-	return formatQuantity(convertTemperature(q, target), true);
-}
-
 /**
  * Where a stellar reading stops being digits anyone reads and starts being a
  * width no chart label has. Set at a million so compact notation never reaches
  * for its thousands suffix: "15.5M °C" is clear, "5.5K °C" reads as kelvin.
  */
 const COMPACT_ABOVE = 1_000_000;
+
+/** Every temperature on a page comes through here or the range formatter
+ *  below, which share the compaction rule: the corona and the core read alike. */
+export function formatTemperature(
+	q: { value: number; unit: string },
+	target?: TemperatureUnit
+): string {
+	const t = convertTemperature(q, target);
+	if (Math.abs(t.value) < COMPACT_ABOVE) return formatQuantity(t, true);
+	return joinParts({ value: formatCompactNumber(t.value), unit: formatUnit(t.unit, true) });
+}
 
 /**
  * A temperature, or the bracket a model gives instead of one, in the space a

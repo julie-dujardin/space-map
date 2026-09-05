@@ -80,13 +80,27 @@ function activityLines(events: ProbeEvent[]): ActivityLine[] {
 	}));
 }
 
+const EARTH_ID = 'naif-399';
+
+/** Whether an event names somewhere the craft was sent. A craft it carried or
+ *  rode is not a destination, and neither is the Earth it left or came back
+ *  to; Earth counts only when the craft flew past or orbited it on purpose. */
+function isDestination(event: ProbeEvent): boolean {
+	const target = event.target!;
+	if (target.primary_type === 'probe') return false;
+	if (targetObjectId(target) === EARTH_ID) {
+		return event.type === 'flyby' || event.type === 'orbit_insertion';
+	}
+	return true;
+}
+
 export function targetVisits(items: readonly ProbeEvent[]): TargetVisit[] {
 	const byTarget = new Map<
 		string,
 		{ target: NonNullable<ProbeEvent['target']>; events: ProbeEvent[] }
 	>();
 	for (const event of items) {
-		if (!event.target) continue;
+		if (!event.target || !isDestination(event)) continue;
 		const key = targetObjectId(event.target) ?? event.target.name;
 		let group = byTarget.get(key);
 		if (!group) byTarget.set(key, (group = { target: event.target, events: [] }));

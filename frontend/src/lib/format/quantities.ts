@@ -127,6 +127,19 @@ export function formatPercent(fraction: number, significantDigits = 2): string {
 	return joinParts(percentParts(fraction, significantDigits));
 }
 
+/**
+ * One share among several. Two significant digits, except a share that would
+ * round up to 100% while others remain, which keeps digits until it stays
+ * under: "99.7%" beside "0.35%", never "100%" beside anything.
+ */
+export function formatShare(fraction: number, alone = false): string {
+	if (alone || fraction < 0.995) return formatPercent(fraction);
+	for (let digits = 3; digits <= 6; digits++) {
+		if (Number((fraction * 100).toPrecision(digits)) < 100) return formatPercent(fraction, digits);
+	}
+	return formatPercent(fraction, 6);
+}
+
 /** The locale's percent sign on a figure the caller wrote — a chart's share
  *  picks its own digits where `percentParts` takes Intl's. */
 export function asPercent(figure: string): Parts {
