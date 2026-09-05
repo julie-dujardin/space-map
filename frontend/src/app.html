@@ -35,8 +35,11 @@
 						document.head.appendChild(l);
 					};
 					if (cross) add('preconnect', base);
-					add('preload', base + '/v1/metadata.json', 'fetch');
-					add('preload', base + '/v1/systems/global.json', 'fetch');
+					// The map's first two fetches; the other routes never make them.
+					if (!/^\/(credits|debug|random|uniform-random)(\/|$)/.test(location.pathname)) {
+						add('preload', base + '/v1/metadata.json', 'fetch');
+						add('preload', base + '/v1/systems/global.json', 'fetch');
+					}
 					// Images load from a separate origin in prod; warm it too.
 					var img = url || 'https://images.spacemap.co';
 					if (/^https?:\/\//.test(img) && img !== base) add('preconnect', img);

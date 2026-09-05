@@ -1,6 +1,9 @@
 /** When is a body observable? Probes use their `coverage` envelope; Earth sats
- *  use SATCAT launch/decay dates. Returns null for other kinds. */
+ *  use SATCAT launch/decay dates. Returns null for other kinds, and for a
+ *  satellite with no elements to place it (decayed): moving the clock would
+ *  not help. */
 
+import { canBePlaced } from '$lib/fetch/objects/global-body';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { dateToJD } from '$lib/format/date';
 
@@ -17,6 +20,7 @@ export async function coverageWindowFor(id: string): Promise<CoverageWindow | nu
 	}
 	if (id.startsWith('norad_satcat-')) {
 		const detail = await fetchObjectDetail(id, false);
+		if (!canBePlaced(id, detail.global ?? null)) return null;
 		const ct = detail.global?.celestrak;
 		if (!ct) return null;
 		const startJd = ct.launch_date ? dateToJD(new Date(`${ct.launch_date}T00:00:00Z`)) : undefined;

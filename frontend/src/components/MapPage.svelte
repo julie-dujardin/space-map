@@ -1104,12 +1104,16 @@
 				{/if}
 			</div>
 			{#if framesDiffer || ringPillShown}
-				<!-- Centred on the window, not the map area left beside the planner:
-				     measured off that, it would slide sideways as the panel opens/closes. -->
+				<!-- Centred on the window, not the map area beside the panel: measured
+				     off that, it would slide sideways as the panel opens and closes. It
+				     only leaves centre when the panel would otherwise cover it. -->
 				<div
 					inert={bgInert}
-					class="pointer-events-none fixed start-[var(--safe-start)] end-[var(--safe-end)] z-10 flex
-						justify-center top-[calc(var(--safe-top)_+_4.125rem)] md:top-[calc(var(--safe-top)_+_4rem)]"
+					style:--panel-inset={!isMobileViewport && (!!focusable || isNav)
+						? 'calc(var(--detail-panel) + 0.75rem)'
+						: '0px'}
+					class="center-clear-of-panel pointer-events-none fixed left-1/2 z-10 flex
+						top-[calc(var(--safe-top)_+_4.125rem)] md:top-[calc(var(--safe-top)_+_4rem)]"
 				>
 					<!-- One slot, so the two never stack: the planner and a body's ring
 					     catalogue are not open at the same time. -->

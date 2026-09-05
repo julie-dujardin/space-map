@@ -240,6 +240,16 @@ body {
 	--detail-panel: 390px;
 }
 
+/* Centred on the window, but never under the detail panel: the start edge stops
+   at the panel's edge instead of sliding beneath it. Pair with `left-1/2`, and
+   set `--panel-inset` to the panel's width plus a gap, or 0 when it is closed. */
+@utility center-clear-of-panel {
+	translate: max(-50%, calc(var(--panel-inset, 0px) - 50vw)) 0;
+	[dir='rtl'] & {
+		translate: min(-50%, calc(50vw - var(--panel-inset, 0px) - 100%)) 0;
+	}
+}
+
 :root {
 	color-scheme: light;
 }

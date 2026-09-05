@@ -7,13 +7,4 @@
  * `[type]/[id]` route under SSR.
  */
 
-import { redirect } from '@sveltejs/kit';
-import { randomTargetPath } from '$lib/state/random-target';
-import { uniformRandomTarget } from '$lib/state/uniform-random-target';
-
 export const ssr = false;
-
-export const load = async () => {
-	const target = await uniformRandomTarget();
-	redirect(307, target ? randomTargetPath(target) : '/');
-};
