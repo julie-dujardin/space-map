@@ -16,26 +16,27 @@ rather than guessed at.
 
 import logging
 import re
-import unicodedata
 from pathlib import Path
 
 from sqlalchemy import delete, insert, select, update
 from tqdm import tqdm
 
+from space_map_data.ingest.providers.objects.sbdb_moons import KEPLER_REQUIRED
+from space_map_data.ingest.providers.objects.small_body_match import (
+    fold,
+    moons_by_parent,
+    small_body_index,
+    strip_tags,
+)
 from space_map_data.models.object import (
     AsterSatMoon,
     Object,
-    ObjectType,
     OrbitalSource,
     SBDBMoon,
 )
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
-
-# What SBDB's own row needs before it could place the moon on its own —
-# mirrors ``sbdb_moons``' gate, so releasing a row restores what it had.
-_SBDB_KEPLER_REQUIRED = ("epoch_jd", "a_km", "e", "i", "om", "w", "ma", "n")
 
 # "Satellite orbit (geoequat J2000):" then the element block, as printed.
 _ORBIT_RE = re.compile(r"Satellite orbit \(([^)]*)\):(.{0,600})", re.S)
@@ -61,23 +62,9 @@ _RADII_RE = {
 _LABEL_RE = re.compile(r"^(.*?)\s+Satellite\s+(.*)$")
 
 
-def _fold(text: str) -> str:
-    """Reduce a name or designation to comparable ASCII alphanumerics.
-
-    Drops spacing, punctuation and diacritics, so ``S/2001 (107) 1`` and
-    ``S/2001(107)1`` collapse together, as do ``Ilmarë`` and ``Ilmare``.
-    """
-    decomposed = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in decomposed.lower() if c.isascii() and c.isalnum())
-
-
-def _strip_tags(html: str) -> str:
-    return re.sub(r"<[^>]+>", " ", html)
-
-
 def _parse_orbit(page: str) -> dict | None:
     """Pull the element block and its fit provenance out of one response."""
-    text = _strip_tags(page)
+    text = strip_tags(page)
     match = _ORBIT_RE.search(text)
     if match is None:
         return None
@@ -133,80 +120,39 @@ class AsterSatIngestor:
                     SBDBMoon.object_id.in_(stale),
                     *(
                         getattr(SBDBMoon, column).is_not(None)
-                        for column in _SBDB_KEPLER_REQUIRED
+                        for column in KEPLER_REQUIRED
                     ),
                 )
             ).all()
         }
-        for oid in stale:
-            self.session.execute(
-                update(Object)
-                .where(Object.id == oid)
-                .values(
-                    orbital_source=OrbitalSource.sbdb_moon,
-                    has_position=oid in placeable,
+        for ids, positioned in ((placeable, True), (set(stale) - placeable, False)):
+            if ids:
+                self.session.execute(
+                    update(Object)
+                    .where(Object.id.in_(ids))
+                    .values(
+                        orbital_source=OrbitalSource.sbdb_moon,
+                        has_position=positioned,
+                    )
                 )
-            )
         self.session.commit()
-
-    def _parent_index(self) -> dict[str, str]:
-        """Map folded parent token -> Object.id for every small body.
-
-        Keyed on number, designation and name so AsterSat's mix of
-        ``(22) Kalliope`` and ``1998 WW31`` labels all resolve.
-        """
-        rows = self.session.execute(
-            select(
-                Object.id,
-                Object.spkid,
-                Object.name,
-                Object.mpc_designation,
-                Object.provisional_designation,
-            ).where(Object.spkid.is_not(None))
-        ).all()
-        index: dict[str, str] = {}
-        for oid, spkid, name, mpc, prov in rows:
-            # Asteroid SPK-IDs are 20000000 + catalogue number.
-            if spkid is not None and 20000001 <= spkid <= 21000000:
-                index.setdefault(str(spkid - 20000000), oid)
-            for token in (name, mpc, prov):
-                if token:
-                    index.setdefault(_fold(token), oid)
-        return index
-
-    def _moons_by_parent(self) -> dict[str, list[tuple[str, str | None, str | None]]]:
-        rows = self.session.execute(
-            select(
-                Object.id,
-                Object.parent_id,
-                Object.name,
-                Object.provisional_designation,
-            ).where(
-                Object.object_type == ObjectType.moon, Object.parent_id.is_not(None)
-            )
-        ).all()
-        out: dict[str, list[tuple[str, str | None, str | None]]] = {}
-        for oid, parent_id, name, prov in rows:
-            out.setdefault(parent_id, []).append((oid, name, prov))
-        return out
 
     def _resolve_parent(self, system_label: str, index: dict[str, str]) -> str | None:
         """``(22) Kalliope`` → the Object for 22; unnumbered → by designation."""
         numbered = re.match(r"\((\d+)\)", system_label)
         if numbered is not None:
             return index.get(numbered.group(1))
-        return index.get(_fold(system_label))
+        return index.get(fold(system_label))
 
     def _resolve_moon(
         self,
-        parent_id: str,
         satellite_label: str,
         moons: list[tuple[str, str | None, str | None]],
     ) -> str | None:
         """Pick the moon the label names, else the only one the parent has."""
-        wanted = _fold(satellite_label)
+        wanted = fold(satellite_label)
         for oid, name, prov in moons:
-            if wanted and wanted in {_fold(name or ""), _fold(prov or "")}:
+            if wanted and wanted in {fold(name or ""), fold(prov or "")}:
                 return oid
         # AsterSat writes "companion" for most unnamed TNO satellites and drops
         # the trailing index on some designations, so an unambiguous parent
@@ -222,11 +168,11 @@ class AsterSatIngestor:
             return
 
         self._clear()
-        parents = self._parent_index()
-        moons_by_parent = self._moons_by_parent()
+        parents = small_body_index(self.session)
+        moons = moons_by_parent(self.session)
 
         rows: list[dict] = []
-        claimed: list[str] = []
+        claimed: set[str] = set()
         entries = [
             line.split("\t", 1)
             for line in index_file.read_text().splitlines()
@@ -253,9 +199,7 @@ class AsterSatIngestor:
                 logger.info("%s: parent not in objects, skipping", label)
                 self.no_parent += 1
                 continue
-            moon_id = self._resolve_moon(
-                parent_id, satellite_label, moons_by_parent.get(parent_id, [])
-            )
+            moon_id = self._resolve_moon(satellite_label, moons.get(parent_id, []))
             if moon_id is None:
                 logger.warning(
                     "%s: no moon of %s matches %r, skipping",
@@ -269,7 +213,7 @@ class AsterSatIngestor:
                 logger.warning("%s: %s already claimed by another row", label, moon_id)
                 continue
 
-            claimed.append(moon_id)
+            claimed.add(moon_id)
             rows.append(
                 dict(
                     object_id=moon_id,

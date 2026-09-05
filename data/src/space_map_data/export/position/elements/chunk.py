@@ -13,6 +13,7 @@ from space_map_data.export.position.format import (
     UNBOUNDED_END_JD,
     UNBOUNDED_START_JD,
 )
+from space_map_data.export.position.frames import measured_moon_radius_km
 from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.export.objects.wikidata_claims import (
     radius_km_from_claims,
@@ -91,6 +92,11 @@ def write_chunk(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     radius_km_overrides: dict[str, float] = {}
     for obj in objects:
+        # Asteroid moons are measured by their own catalogues and almost never
+        # have a Wikidata item, so they must be read off the moon row or they
+        # fall back to a nominal size the bundle could have stated exactly.
+        if (measured := measured_moon_radius_km(obj)) is not None:
+            radius_km_overrides[obj.id] = measured
         qid = resolve_wikidata_qid(obj)
         if qid and (wd := chunk_entities.get(qid)):
             try:

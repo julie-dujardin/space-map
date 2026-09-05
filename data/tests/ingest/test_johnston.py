@@ -155,14 +155,45 @@ class TestParseDiscoveries:
         assert "CBET" not in str(parse_discoveries(text, ["secondary"]))
 
 
+# Shaped like the real page, which closes neither its rows nor its cells and
+# wraps each rank's entries in a <ul>. A tree parser folds all of this into one
+# row and loses every class but the last, so the fixture keeps the sloppiness.
 _CONFIDENCE_PAGE = """<table cellpadding=5 border=2>
-<tr><th>class<th>permanent<th>well observed<th>confirmed<th>probable
-<tr><td>near-Earth objects
-<td><li>(65803) Didymos <i>and</i> Dimorphos
-<td><li>(136617) 1994 CC (two satellites)
-<td><li>(1862) Apollo
-<td><li>(5143) Heracles
-</table>"""
+<tr>
+<th></th>
+<th>satellites<br> with permanent<br> designations</th>
+<th>well observed<br> satellites</th>
+<th>confirmed<br> satellites</th>
+<th>probable<br> satellites</th>
+</tr>
+
+<tr>
+<td><b>near-Earth objects</b></td>
+<td><ul>
+<li><a href=astmoons/am-65803.html> <b>(65803) Didymos <i>and</i> Dimorphos</b></a>
+</ul></td>
+<td><ul>
+<li><a href=astmoons/am-136617.html> <b>(136617) 1994 CC</b></a> (two satellites)
+</ul></td>
+<td><ul>
+<li><a href=astmoons/am-01862.html> <b>(1862) Apollo</b></a>
+</ul></td>
+<td><ul>
+<li><a href=astmoons/am-05646.html> (5646) 1990 TR</a>
+</ul></td>
+
+<tr>
+<td><b>Mars crossers</b></td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td><ul>
+<li><a href=astmoons/am-01139.html> <b>(1139) Atami</b></a>
+</ul></td>
+<td><ul>
+<li><a href=astmoons/am-05261.html> (5261) Eureka</a>
+</ul></td>
+</table>
+<p>&copy; 2001-2026 by Wm. Robert Johnston.</p>"""
 
 
 class TestParseConfidence:
@@ -173,4 +204,14 @@ class TestParseConfidence:
         assert ranks["65803"].value == "permanent"
         assert ranks["136617"].value == "well_observed"
         assert ranks["1862"].value == "confirmed"
-        assert ranks["5143"].value == "probable"
+        assert ranks["5646"].value == "probable"
+
+    def test_every_class_row_is_read(self):
+        """Unclosed <tr>s: a tree parser keeps only the last class."""
+        ranks = _parse_confidence(_CONFIDENCE_PAGE)
+        assert ranks["1139"].value == "confirmed"
+        assert ranks["5261"].value == "probable"
+
+    def test_the_footer_is_not_mistaken_for_an_entry(self):
+        """The final cell runs on past </table> into the copyright line."""
+        assert all(len(key) < 40 for key in _parse_confidence(_CONFIDENCE_PAGE))

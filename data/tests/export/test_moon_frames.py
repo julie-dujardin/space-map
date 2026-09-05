@@ -10,21 +10,55 @@ from space_map_data.export.position.frames import (
     is_equatorial,
     moon_orbit,
 )
-from space_map_data.models.object import AsterSatMoon, SBDBMoon
+from space_map_data.models.object import (
+    AsterSatMoon,
+    Object,
+    ObjectType,
+    OrbitalSource,
+    SBDBMoon,
+)
+from space_map_data.probes.propagation import AU_KM
 
-_AU_KM = 149_597_870.7
+
+def _ecliptic_to_equatorial(i_deg, om_deg, w_deg=None):
+    """The inverse rotation, written out, for round-tripping.
+
+    Spelled independently rather than by flipping the module's own obliquity:
+    a test that reaches in to reconfigure its subject stops checking it.
+    """
+    i, om = math.radians(i_deg), math.radians(om_deg)
+    w = math.radians(w_deg if w_deg is not None else 0.0)
+    peri = (
+        math.cos(om) * math.cos(w) - math.sin(om) * math.sin(w) * math.cos(i),
+        math.sin(om) * math.cos(w) + math.cos(om) * math.sin(w) * math.cos(i),
+        math.sin(w) * math.sin(i),
+    )
+    normal = (math.sin(om) * math.sin(i), -math.cos(om) * math.sin(i), math.cos(i))
+    cos_e, sin_e = math.cos(-_OBLIQUITY_RAD), math.sin(-_OBLIQUITY_RAD)
+    peri, normal = (
+        (v[0], v[1] * cos_e + v[2] * sin_e, -v[1] * sin_e + v[2] * cos_e)
+        for v in (peri, normal)
+    )
+    i_out = math.acos(max(-1.0, min(1.0, normal[2])))
+    om_out = math.atan2(normal[0], -normal[1])
+    w_out = math.atan2(
+        peri[2] / math.sin(i_out),
+        peri[0] * math.cos(om_out) + peri[1] * math.sin(om_out),
+    )
+    return (
+        math.degrees(i_out) % 360.0,
+        math.degrees(om_out) % 360.0,
+        math.degrees(w_out) % 360.0 if w_deg is not None else None,
+    )
 
 
-def _ecliptic_to_equatorial(i, om, w=None):
-    """The inverse rotation, for round-tripping."""
-    import space_map_data.export.position.frames as frames
-
-    saved = frames._OBLIQUITY_RAD
-    frames._OBLIQUITY_RAD = -saved
-    try:
-        return equatorial_to_ecliptic(i, om, w)
-    finally:
-        frames._OBLIQUITY_RAD = saved
+def _moon_object(moon, source):
+    """An Object carrying one moon row, as the export sees it."""
+    obj = Object(id=moon.object_id, object_type=ObjectType.moon, orbital_source=source)
+    setattr(
+        obj, "astersat_moon" if isinstance(moon, AsterSatMoon) else "sbdb_moon", moon
+    )
+    return obj
 
 
 class TestIsEquatorial:
@@ -100,9 +134,10 @@ class TestMoonOrbit:
             n=100.11980010,
             per_d=3.595692,
         )
-        out = moon_orbit(moon)
+        source = OrbitalSource.astersat
+        out = moon_orbit(_moon_object(moon, source), source)
         assert out["epoch_jd"] == pytest.approx(2452000.5)
-        assert out["a"] == pytest.approx(1078.3 / _AU_KM)
+        assert out["a"] == pytest.approx(1078.3 / AU_KM)
         # In-plane and temporal elements are the same in either frame.
         assert out["e"] == moon.e
         assert out["ma"] == moon.ma
@@ -128,7 +163,8 @@ class TestMoonOrbit:
             ma=10.0,
             n=3.5,
         )
-        out = moon_orbit(moon)
+        source = OrbitalSource.sbdb_moon
+        out = moon_orbit(_moon_object(moon, source), source)
         assert (out["i"], out["om"], out["w"]) == (moon.i, moon.om, moon.w)
 
     def test_sbdb_derives_mean_motion_from_the_period(self):
@@ -141,7 +177,9 @@ class TestMoonOrbit:
             frame="EQ",
             per_h=86.296,
         )
-        assert moon_orbit(moon)["n"] == pytest.approx(360.0 * 24.0 / 86.296)
+        source = OrbitalSource.sbdb_moon
+        out = moon_orbit(_moon_object(moon, source), source)
+        assert out["n"] == pytest.approx(360.0 * 24.0 / 86.296)
 
     def test_partial_row_yields_only_what_it_has(self):
         moon = SBDBMoon(
@@ -154,10 +192,24 @@ class TestMoonOrbit:
             i=93.4,
             om=286.2,
         )
-        out = moon_orbit(moon)
+        source = OrbitalSource.sbdb_moon
+        out = moon_orbit(_moon_object(moon, source), source)
         assert set(out) == {"a", "i", "om"}
         # The plane is still corrected even with no apse line to go with it.
         assert out["i"] != 93.4
 
-    def test_none_is_empty(self):
-        assert moon_orbit(None) == {}
+    def test_a_body_with_no_moon_row_is_empty(self):
+        obj = Object(id="naif-399", object_type=ObjectType.planet)
+        assert moon_orbit(obj, OrbitalSource.sbdb_moon) == {}
+
+    def test_a_non_moon_source_is_empty(self):
+        """Only the moon providers have a sub-table to read."""
+        moon = SBDBMoon(
+            object_id="spkid-120000022",
+            parent_object_id="spkid-20000022",
+            parent_spkid=20000022,
+            sat_index=0,
+            a_km=1063.0,
+        )
+        obj = _moon_object(moon, OrbitalSource.sbdb_moon)
+        assert moon_orbit(obj, OrbitalSource.spice) == {}

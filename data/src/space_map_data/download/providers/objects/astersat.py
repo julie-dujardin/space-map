@@ -106,9 +106,13 @@ class AsterSatDownloader(Downloader):
             to_fetch = to_fetch[:limit]
 
         failed = 0
-        for form_id, label in tqdm(
-            to_fetch, desc="AsterSat orbits", unit="sat", dynamic_ncols=True
+        for index, (form_id, label) in enumerate(
+            tqdm(to_fetch, desc="AsterSat orbits", unit="sat", dynamic_ncols=True)
         ):
+            # Ahead of the request: a refusal returns HTTP 200 with an exit
+            # code, and that is exactly when backing off matters.
+            if index:
+                time.sleep(PER_REQUEST_DELAY_SECONDS)
             try:
                 body = self._fetch(form_id)
             except Exception as exc:
@@ -122,7 +126,6 @@ class AsterSatDownloader(Downloader):
                 failed += 1
                 continue
             (self.out_dir / f"{form_id}.html").write_text(body)
-            time.sleep(PER_REQUEST_DELAY_SECONDS)
 
         on_disk = sum(
             1 for fid, _ in satellites if (self.out_dir / f"{fid}.html").exists()

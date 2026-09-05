@@ -575,7 +575,6 @@ export interface GlobalObjectData {
 		rms_arcsec?: number;
 		/** Decimal years, first to last observation. */
 		obs_arc?: [number, number];
-		gm?: number;
 		system_mass?: QuantityWithUnit;
 		primary_radius_km?: number;
 		radius_km?: number;
@@ -613,8 +612,6 @@ export interface GlobalObjectData {
 		primary_rotation_h?: number;
 		primary_rotation_h_sigma?: number;
 		primary_amplitude_mag?: number;
-		pole_beta_deg?: number;
-		pole_lambda_deg?: number;
 		// -- companion --
 		/** The archive's own block label: "secondary", "Romulus", "S/2003 (130) 1". */
 		label?: string;

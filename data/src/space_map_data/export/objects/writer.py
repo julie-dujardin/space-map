@@ -64,8 +64,9 @@ from space_map_data.export.objects.topic_pages import (
     interior_page_localized,
 )
 from space_map_data.export.objects.moon_sources import MoonSourceBlocks
+from space_map_data.export.objects.pick import pick_attrs
 from space_map_data.export.objects.sbdb import build_sbdb
-from space_map_data.export.position.frames import moon_orbit
+from space_map_data.export.position.frames import MOON_ORBIT_ATTR, moon_orbit
 from space_map_data.export.small_body_color import resolve_moon_color
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.systems import (
@@ -166,16 +167,6 @@ _SGP4_CELESTRAK_FIELDS = (
 _EARTH_OBJECT_ID = "naif-399"
 
 
-def _pick_attrs(obj: object, attrs: tuple[str, ...]) -> dict:
-    """Extract non-None attributes from an object into a dict."""
-    data: dict = {}
-    for attr in attrs:
-        val = getattr(obj, attr)
-        if val is not None:
-            data[attr] = val
-    return data
-
-
 def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
     """Pick unified-name kepler elements from the right sub-table by ``orbital_source``.
 
@@ -191,13 +182,12 @@ def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
             return {}
         return {a: daily[a] for a in attrs if daily.get(a) is not None}
     if src == OrbitalSource.sbdb:
-        return _pick_attrs(obj.sbdb, attrs) if obj.sbdb is not None else {}
-    if src in (OrbitalSource.sbdb_moon, OrbitalSource.astersat):
-        moon = obj.sbdb_moon if src == OrbitalSource.sbdb_moon else obj.astersat_moon
-        elements = moon_orbit(moon)
+        return pick_attrs(obj.sbdb, attrs) if obj.sbdb is not None else {}
+    if src in MOON_ORBIT_ATTR:
+        elements = moon_orbit(obj, src)
         return {a: elements[a] for a in attrs if a in elements}
     if src == OrbitalSource.spice:
-        return _pick_attrs(obj.horizons, attrs) if obj.horizons is not None else {}
+        return pick_attrs(obj.horizons, attrs) if obj.horizons is not None else {}
     return {}
 
 
@@ -558,7 +548,7 @@ def _build_global(
         data["discovery_year"] = obj.discovery_year
 
     # Cross-references
-    cross_refs = _pick_attrs(obj, _CROSS_REF_FIELDS)
+    cross_refs = pick_attrs(obj, _CROSS_REF_FIELDS)
     if cross_refs:
         data["cross_refs"] = cross_refs
 
@@ -674,7 +664,7 @@ def _build_global(
 
     # Asteroid-moon providers, one block each: SBDB says a moon exists,
     # AsterSat says where it is, Johnston says what it is and who found it.
-    data.update(moon_sources.blocks_for(obj.id))
+    data.update(moon_sources.get(obj.id, {}))
 
     # CelesTrak enrichment
     if obj.norad_cat_id is not None and obj.satcat is not None:

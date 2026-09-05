@@ -45,11 +45,9 @@
 		W: m.binary_type_w
 	};
 
-	/** A published value and its ± , where the archive gives one. */
-	function withSigma(value: number, sigma: number | undefined, unit?: string): string {
-		const figure =
-			sigma != null ? `${formatNumber(value)} ± ${formatNumber(sigma)}` : formatNumber(value);
-		return unit ? `${figure} ${unit}` : figure;
+	/** A published value and its ±, where the archive gives one. */
+	function withSigma(value: number, sigma: number | undefined): string {
+		return sigma != null ? `${formatNumber(value)} ± ${formatNumber(sigma)}` : formatNumber(value);
 	}
 
 	// The system mass is the pair's together — AsterSat derives it from the
@@ -68,6 +66,7 @@
 			johnston?.normalised_ang_mom != null ||
 			johnston?.rotation_h != null ||
 			johnston?.per_d != null ||
+			johnston?.page ||
 			systemMass
 		)
 	);

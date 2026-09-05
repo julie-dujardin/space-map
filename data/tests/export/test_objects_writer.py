@@ -5,11 +5,11 @@ import math
 import orjson
 from unittest.mock import MagicMock
 
+from space_map_data.export.objects.pick import pick_attrs
 from space_map_data.export.objects.writer import (
     K_GLOBAL,
     K_LOCALIZED,
     _iso_currency_code,
-    _pick_attrs,
     build_model_sources,
     hash_bucket,
     radii_source,
@@ -79,7 +79,7 @@ class TestIsoCurrencyCode:
 class TestPickAttrs:
     def test_extracts_present(self):
         obj = make_object(name="Earth", wikidata_qid="Q2", spkid=None)
-        result = _pick_attrs(obj, ("name", "wikidata_qid", "spkid"))
+        result = pick_attrs(obj, ("name", "wikidata_qid", "spkid"))
         assert result == {"name": "Earth", "wikidata_qid": "Q2"}
 
     def test_all_none(self):
@@ -88,12 +88,12 @@ class TestPickAttrs:
             spkid=None,
             norad_cat_id=None,
         )
-        result = _pick_attrs(obj, ("wikidata_qid", "spkid", "norad_cat_id"))
+        result = pick_attrs(obj, ("wikidata_qid", "spkid", "norad_cat_id"))
         assert result == {}
 
     def test_all_present(self):
         obj = make_object(name="Earth", wikidata_qid="Q2", naif_id=399)
-        result = _pick_attrs(obj, ("name", "wikidata_qid", "naif_id"))
+        result = pick_attrs(obj, ("name", "wikidata_qid", "naif_id"))
         assert result == {
             "name": "Earth",
             "wikidata_qid": "Q2",
@@ -101,14 +101,14 @@ class TestPickAttrs:
         }
 
     def test_works_on_plain_object(self):
-        """_pick_attrs is generic — works on any object with attributes."""
+        """pick_attrs is generic — works on any object with attributes."""
 
         class Bag:
             x = 1
             y = None
             z = "hello"
 
-        result = _pick_attrs(Bag(), ("x", "y", "z"))
+        result = pick_attrs(Bag(), ("x", "y", "z"))
         assert result == {"x": 1, "z": "hello"}
 
 

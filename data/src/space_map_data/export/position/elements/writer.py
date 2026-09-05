@@ -31,7 +31,7 @@ from space_map_data.export.position.format import (
     align8,
     pack_elements_header,
 )
-from space_map_data.export.position.frames import moon_orbit
+from space_map_data.export.position.frames import MOON_ORBIT_ATTR, moon_orbit
 from space_map_data.export.position.origin import visible_from_days
 from space_map_data.models.object import Object, OrbitalSource
 
@@ -56,10 +56,8 @@ def _kepler_attr(o: Object, attr: str, file_source: OrbitalSource) -> float | No
         return daily[attr] if daily is not None else None
     if src == OrbitalSource.sbdb:
         return getattr(o.sbdb, attr, None) if o.sbdb is not None else None
-    if src == OrbitalSource.sbdb_moon:
-        return moon_orbit(o.sbdb_moon).get(attr)
-    if src == OrbitalSource.astersat:
-        return moon_orbit(o.astersat_moon).get(attr)
+    if src in MOON_ORBIT_ATTR:
+        return moon_orbit(o, src).get(attr)
     if src == OrbitalSource.spice:
         return getattr(o.horizons, attr, None) if o.horizons is not None else None
     return None

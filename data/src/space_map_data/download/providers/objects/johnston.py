@@ -27,9 +27,7 @@ BASE_URL = "https://www.johnstonsarchive.net/astro/"
 INDEX_PAGE = "asteroidmoons.html"
 # Confidence ranking per system; the per-object pages don't carry it.
 CONFIDENCE_PAGE = "asteroidmoonslist3.html"
-# Reference codes ([D21a], [P07f], ...) used throughout the per-object pages.
-SOURCES_PAGE = "amsources.html"
-INDEX_PAGES = (INDEX_PAGE, CONFIDENCE_PAGE, SOURCES_PAGE)
+INDEX_PAGES = (INDEX_PAGE, CONFIDENCE_PAGE)
 
 # The site returns 429 after roughly 60 pages at 0.35 s/request. 5 s is a 10x
 # margin on the ~0.5 s that provoked it, and the walk is incremental anyway.
@@ -96,9 +94,14 @@ class JohnstonDownloader(Downloader):
             )
 
         failed = 0
-        for page in tqdm(
-            to_fetch, desc="Johnston systems", unit="page", dynamic_ncols=True
+        for index, page in enumerate(
+            tqdm(to_fetch, desc="Johnston systems", unit="page", dynamic_ncols=True)
         ):
+            # Ahead of the request, not after it: a run of failures would
+            # otherwise skip the delay and hammer the site, and the last page
+            # would sleep for nothing.
+            if index:
+                time.sleep(PER_REQUEST_DELAY_SECONDS)
             try:
                 body = self._get(f"astmoons/{page}.html")
             except DownloadError:
@@ -108,7 +111,6 @@ class JohnstonDownloader(Downloader):
                 failed += 1
                 continue
             (self.pages_dir / f"{page}.html").write_text(body)
-            time.sleep(PER_REQUEST_DELAY_SECONDS)
 
         on_disk = sum(1 for p in pages if (self.pages_dir / f"{p}.html").exists())
         self._save_metadata(

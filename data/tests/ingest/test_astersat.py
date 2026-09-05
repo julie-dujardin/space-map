@@ -2,7 +2,8 @@
 
 import pytest
 
-from space_map_data.ingest.providers.objects.astersat import _fold, _parse_orbit
+from space_map_data.ingest.providers.objects.astersat import _parse_orbit
+from space_map_data.ingest.providers.objects.small_body_match import fold
 
 # The header AsterSat prints above every ephemeris, trimmed to what we read.
 _PAGE = """<html><body><pre>
@@ -63,7 +64,7 @@ class TestParseOrbit:
 
 
 class TestFold:
-    """AsterSat's display labels and our designations differ cosmetically."""
+    """Published labels and our designations differ cosmetically."""
 
     @pytest.mark.parametrize(
         "left,right",
@@ -75,7 +76,7 @@ class TestFold:
         ],
     )
     def test_labels_that_should_match(self, left, right):
-        assert _fold(left) == _fold(right)
+        assert fold(left) == fold(right)
 
     def test_different_moons_stay_apart(self):
-        assert _fold("S/2001 (107) 1") != _fold("S/2016 (107) 1")
+        assert fold("S/2001 (107) 1") != fold("S/2016 (107) 1")

@@ -346,7 +346,8 @@ def _iter_non_sbdb_zone_snapshots(
             "small_body_moons",
             0,
             session.query(Object)
-            .options(joinedload(Object.sbdb_moon))
+            # johnston_moon rides along for the measured radius override.
+            .options(joinedload(Object.sbdb_moon), joinedload(Object.johnston_moon))
             .filter(
                 Object.orbital_source == OrbitalSource.sbdb_moon,
                 Object.has_position == True,  # noqa: E712
@@ -356,7 +357,7 @@ def _iter_non_sbdb_zone_snapshots(
             "small_body_moons",
             1,
             session.query(Object)
-            .options(joinedload(Object.astersat_moon))
+            .options(joinedload(Object.astersat_moon), joinedload(Object.johnston_moon))
             .filter(
                 Object.orbital_source == OrbitalSource.astersat,
                 Object.has_position == True,  # noqa: E712

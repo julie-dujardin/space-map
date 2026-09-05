@@ -98,7 +98,9 @@ class JohnstonMoon(Base):
         rotation_h              — hours
 
     Johnston reprints each paper's angles as published and does not say which
-    frame they are in, so ``i``/``om``/``w`` are NOT exported as a position.
+    frame they are in, so ``i``/``om``/``w`` — and ``ma``, which is only
+    meaningful alongside them — are held here but never exported. Their
+    uncertainties are kept for the same reason: the numbers they qualify are.
     """
 
     __tablename__ = "johnston_moon"

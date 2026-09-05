@@ -14,14 +14,19 @@ Object needs an SPK-ID we have no way to mint.
 
 import logging
 import re
-import unicodedata
 from pathlib import Path
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert
 from tqdm import tqdm
 
 from space_map_data.ingest.providers.objects.sbdb_moons import (
     resolve_parent_object_id,
+)
+from space_map_data.ingest.providers.objects.small_body_match import (
+    fold,
+    moons_by_parent,
+    small_body_index,
+    strip_tags,
 )
 from space_map_data.ingest.providers.objects.johnston_parse import (
     companion_labels,
@@ -34,8 +39,6 @@ from space_map_data.models.object import (
     JohnstonConfidence,
     JohnstonMoon,
     JohnstonSystem,
-    Object,
-    ObjectType,
 )
 from space_map_data.utils.db import get_session
 
@@ -55,24 +58,21 @@ _CONFIDENCE_ORDER = (
 )
 
 
-def _fold(text: str) -> str:
-    """Reduce a name or designation to comparable ASCII alphanumerics."""
-    decomposed = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in decomposed.lower() if c.isascii() and c.isalnum())
-
-
-def _strip_tags(html: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
-
-
 def _parse_confidence(page: str) -> dict[str, JohnstonConfidence]:
     """Map folded system designation -> Johnston's confidence rank.
 
-    The page is one table, one row per dynamical class, four cells per row in
-    ``_CONFIDENCE_ORDER``, each an ``<li>`` list of systems.
+    One table, one row per dynamical class, cells a label followed by four
+    ``<li>`` lists in ``_CONFIDENCE_ORDER``.
+
+    Split textually rather than with an HTML parser: the page closes neither
+    its rows nor its cells, so a tree builder folds all five class rows into
+    one 20-cell row and three classes are lost. Splitting on the opening tags
+    reads the document the way it is actually written.
     """
     out: dict[str, JohnstonConfidence] = {}
-    body = page.partition("<table")[2]
+    # Bounded at the closing tag — the last cell otherwise runs on into the
+    # page footer and mints a key out of the copyright line.
+    body = page.partition("<table")[2].partition("</table>")[0]
     for row in re.split(r"<tr[^>]*>", body)[1:]:
         cells = re.split(r"<td[^>]*>", row)[1:]
         # First cell is the row's class label; the four ranks follow.
@@ -80,10 +80,10 @@ def _parse_confidence(page: str) -> dict[str, JohnstonConfidence]:
             continue
         for rank, cell in zip(_CONFIDENCE_ORDER, cells[1:]):
             for item in re.split(r"<li>", cell)[1:]:
-                text = _strip_tags(item)
+                text = strip_tags(item)
                 # "(130) Elektra, S/2003 (130) 1, ..." — the system is the head.
                 number = re.match(r"\((\d+)\)", text)
-                key = number.group(1) if number else _fold(text.split("(")[0])
+                key = number.group(1) if number else fold(text.split("(")[0])
                 if key:
                     out.setdefault(key, rank)
     return out
@@ -101,42 +101,6 @@ class JohnstonIngestor:
         self.session.execute(delete(JohnstonMoon))
         self.session.execute(delete(JohnstonSystem))
         self.session.commit()
-
-    def _system_index(self) -> dict[str, str]:
-        """Map catalogue number / folded designation -> parent Object.id."""
-        rows = self.session.execute(
-            select(
-                Object.id,
-                Object.spkid,
-                Object.name,
-                Object.mpc_designation,
-                Object.provisional_designation,
-            ).where(Object.spkid.is_not(None))
-        ).all()
-        index: dict[str, str] = {}
-        for oid, spkid, name, mpc, prov in rows:
-            if spkid is not None and 20000001 <= spkid <= 21000000:
-                index.setdefault(str(spkid - 20000000), oid)
-            for token in (mpc, prov, name):
-                if token:
-                    index.setdefault(_fold(token), oid)
-        return index
-
-    def _moons_by_parent(self) -> dict[str, list[tuple[str, str | None, str | None]]]:
-        rows = self.session.execute(
-            select(
-                Object.id,
-                Object.parent_id,
-                Object.name,
-                Object.provisional_designation,
-            ).where(
-                Object.object_type == ObjectType.moon, Object.parent_id.is_not(None)
-            )
-        ).all()
-        out: dict[str, list[tuple[str, str | None, str | None]]] = {}
-        for oid, parent_id, name, prov in rows:
-            out.setdefault(parent_id, []).append((oid, name, prov))
-        return out
 
     def _match_companion(
         self,
@@ -157,11 +121,11 @@ class JohnstonIngestor:
                 discovery.get("provisional_designation") or "",
                 discovery.get("permanent_name") or "",
             ]
-        folded = {_fold(c) for c in candidates if c}
+        folded = {fold(c) for c in candidates if c}
         for oid, name, prov in moons:
             if oid in taken:
                 continue
-            if folded & {_fold(name or ""), _fold(prov or "")} - {""}:
+            if folded & {fold(name or ""), fold(prov or "")} - {""}:
                 return oid
         free = [oid for oid, _, _ in moons if oid not in taken]
         if len(moons) == 1 and free:
@@ -178,7 +142,7 @@ class JohnstonIngestor:
         index_html = index_file.read_text(errors="replace")
         entries: dict[str, str] = {}
         for page, label in _INDEX_RE.findall(index_html):
-            entries.setdefault(page, _strip_tags(label))
+            entries.setdefault(page, strip_tags(label))
 
         confidence_file = self.dir / CONFIDENCE_PAGE
         confidence = (
@@ -187,8 +151,8 @@ class JohnstonIngestor:
             else {}
         )
 
-        parents = self._system_index()
-        moons_by_parent = self._moons_by_parent()
+        parents = small_body_index(self.session)
+        moons_index = moons_by_parent(self.session)
         system_rows: list[dict] = []
         moon_rows: list[dict] = []
 
@@ -203,7 +167,7 @@ class JohnstonIngestor:
                 self.missing_pages += 1
                 continue
             number = re.match(r"\((\d+)\)", designation)
-            key = number.group(1) if number else _fold(designation)
+            key = number.group(1) if number else fold(designation)
             parent_id = parents.get(key)
             if parent_id is None:
                 self.unmatched_systems.append(designation)
@@ -220,7 +184,7 @@ class JohnstonIngestor:
             discoveries = parse_discoveries(text, labels)
             # Horizons parents a moon on its system barycentre, so Pluto's
             # five hang off naif-9 while its archive page is naif-999's.
-            moons = moons_by_parent.get(parent_id) or moons_by_parent.get(
+            moons = moons_index.get(parent_id) or moons_index.get(
                 resolve_parent_object_id(parent_id) or "", []
             )
             taken: set[str] = set()
@@ -279,7 +243,7 @@ def _pair_discovery(label: str, position: int, discoveries: list[dict]) -> dict 
     the same on every page that writes both in the same sequence.
     """
     for record in discoveries:
-        if _fold(record.get("label_hint", "")) == _fold(label):
+        if fold(record.get("label_hint", "")) == fold(label):
             return record
     if position < len(discoveries):
         return discoveries[position]

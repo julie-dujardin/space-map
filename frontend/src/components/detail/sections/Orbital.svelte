@@ -29,6 +29,7 @@
 	} from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
+	import { DAYS_PER_YEAR } from '$lib/time/jd';
 	import { formatIsoDate, formatJulianDate, formatJulianDateRelative } from '$lib/format/date';
 	import { currentStateFromElements } from '$lib/math/orbit/state';
 	import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
@@ -181,7 +182,7 @@
 	// same rows. Its arc is a pair of decimal years rather than a day count.
 	const astersat = $derived(global?.astersat);
 	let astersatArcDays = $derived(
-		astersat?.obs_arc ? (astersat.obs_arc[1] - astersat.obs_arc[0]) * 365.25 : null
+		astersat?.obs_arc ? (astersat.obs_arc[1] - astersat.obs_arc[0]) * DAYS_PER_YEAR : null
 	);
 	let observationArcDays = $derived(sbdb?.data_arc ?? astersatArcDays);
 	let observationsUsed = $derived(sbdb?.n_obs_used ?? astersat?.n_obs);

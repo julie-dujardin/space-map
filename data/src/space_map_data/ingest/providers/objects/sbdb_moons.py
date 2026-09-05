@@ -70,8 +70,9 @@ _ELEMENT_SIGMA_COLS = {
 
 # SBDBMoon columns the Keplerian writer hard-requires. A row missing any
 # of these can't ship in the small_body_moons position file; the ingest
-# sets ``Object.has_position`` accordingly.
-_KEPLER_REQUIRED = ("epoch_jd", "a_km", "e", "i", "om", "w", "ma", "n")
+# sets ``Object.has_position`` accordingly. Read by the AsterSat ingest too,
+# which restores this gate when it releases a moon back to SBDB.
+KEPLER_REQUIRED = ("epoch_jd", "a_km", "e", "i", "om", "w", "ma", "n")
 
 # Max sat_index that fits the synthetic-spkid scheme: prefix = sat_index + 1
 # must stay in 1..8. Prefix 9 is reserved for the SPICE binary-primary slot
@@ -326,7 +327,7 @@ class SBDBMoonsIngestor:
         # orbit at all; tag whether this row carries the full Keplerian set
         # the elements writer needs so export queries can route orbit-less
         # rows into the bundle-only path without re-checking each column.
-        has_position = all(sat_row.get(c) is not None for c in _KEPLER_REQUIRED)
+        has_position = all(sat_row.get(c) is not None for c in KEPLER_REQUIRED)
         return dict(
             id=sat_id,
             name=display_name,

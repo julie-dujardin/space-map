@@ -184,7 +184,6 @@ _OPENER = re.compile(
     r"(Companion(?: \"[^\"]+\")?|" + _ORDINALS + r"|S/\d{4} \([^)]+\) \d+|"
     r"[A-Z][\w\'’-]*) discovered\|? ?"
 )
-_PRIMARY_OPENERS = {"Primary"}
 
 
 def parse_discoveries(text: str, labels: list[str]) -> list[dict]:
@@ -212,7 +211,7 @@ def parse_discoveries(text: str, labels: list[str]) -> list[dict]:
     spans: list[tuple[str, int, int]] = []
     for match in _OPENER.finditer(section):
         opener = match.group(1)
-        if opener in _PRIMARY_OPENERS:
+        if opener == "Primary":
             continue
         generic = opener.startswith("Companion") or re.fullmatch(_ORDINALS, opener)
         if not generic and opener.lower() not in known and not opener.startswith("S/"):

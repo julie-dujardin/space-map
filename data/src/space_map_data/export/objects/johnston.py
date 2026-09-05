@@ -15,6 +15,7 @@ import math
 
 from sqlalchemy.orm import Session
 
+from space_map_data.export.objects.pick import pick_attrs
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.models.object import JohnstonMoon, JohnstonSystem
 
@@ -87,14 +88,6 @@ _MOON_FIELDS = (
 )
 
 
-def _pick(row: object, fields: tuple[str, ...]) -> dict:
-    return {
-        field: value
-        for field in fields
-        if (value := getattr(row, field, None)) is not None
-    }
-
-
 def _mass_is_consistent(row: JohnstonSystem) -> bool:
     """True unless the published mass contradicts the published bulk density."""
     if row.density_g_cm3 is None or row.diameter_km is None or not row.mass_kg:
@@ -122,7 +115,7 @@ def load_johnston_systems(session: Session, units: UnitConverter) -> dict[str, d
     """Map parent Object.id -> the system block."""
     out: dict[str, dict] = {}
     for row in session.query(JohnstonSystem).all():
-        block = _pick(row, _SYSTEM_FIELDS)
+        block = pick_attrs(row, _SYSTEM_FIELDS)
         block["page"] = _page_url(row.page)
         if row.mass_kg is not None and _mass_is_consistent(row):
             mass = units.best_unit(row.mass_kg, "mass")
@@ -142,5 +135,5 @@ def load_johnston_moons(session: Session) -> dict[str, dict]:
     for row, page in session.query(JohnstonMoon, JohnstonSystem.page).join(
         JohnstonSystem, JohnstonSystem.object_id == JohnstonMoon.parent_object_id
     ):
-        out[row.object_id] = _pick(row, _MOON_FIELDS) | {"page": _page_url(page)}
+        out[row.object_id] = pick_attrs(row, _MOON_FIELDS) | {"page": _page_url(page)}
     return out
