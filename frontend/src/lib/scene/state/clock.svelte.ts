@@ -31,14 +31,20 @@ export class SimClock {
 	 *  grid, say. Playback leaves it behind and it catches up once the clock comes
 	 *  to rest, at once on a jump or a pause since those are the reader's own doing. */
 	settledJd = $state(0);
+	/** True while the clock still tracks wall-clock time: started at now and
+	 *  never paused, jumped, reversed or run at another speed since. The URL
+	 *  writes `now` instead of a date while this holds, so a shared link stays
+	 *  live. */
+	live = $state(false);
 	private lastRealMs = 0;
 	private prevScale = 1;
 	private stops: BoundaryStops | null = null;
 	private settleTimer: ReturnType<typeof setTimeout> | null = null;
 
-	constructor(initialJd: number) {
+	constructor(initialJd: number, live = false) {
 		this.jd = initialJd;
 		this.settledJd = initialJd;
+		this.live = live;
 		this.lastRealMs = performance.now();
 	}
 
@@ -86,6 +92,7 @@ export class SimClock {
 		const signed = magnitude * this.direction;
 		if (signed !== 0) this.prevScale = signed;
 		this.timeScale = signed;
+		if (signed !== 1) this.live = false;
 		// Reset timer so scale changes don't cause a large jump from accumulated delta.
 		this.lastRealMs = performance.now();
 	}
@@ -94,12 +101,14 @@ export class SimClock {
 		this.direction = this.direction === 1 ? -1 : 1;
 		this.timeScale = -this.timeScale;
 		this.prevScale = -this.prevScale;
+		this.live = false;
 		this.lastRealMs = performance.now();
 	}
 
 	setJD(jd: number): void {
 		this.jd = jd;
 		this.seeked = true;
+		this.live = false;
 		this.lastRealMs = performance.now();
 		this.settleAfterPause();
 	}
@@ -133,12 +142,14 @@ export class SimClock {
 	 *  and firing it every sweep frame would drag the camera off its target. */
 	sweepTo(jd: number): void {
 		this.jd = jd;
+		this.live = false;
 		this.lastRealMs = performance.now();
 	}
 
 	pause(): void {
 		if (this.timeScale !== 0) this.prevScale = this.timeScale;
 		this.timeScale = 0;
+		this.live = false;
 		this.settle();
 	}
 
@@ -149,8 +160,11 @@ export class SimClock {
 		}
 	}
 
+	/** Back to wall-clock time; live again only if playback is at 1×, since a
+	 *  paused or fast clock drifts off it at once. */
 	now(): void {
 		this.jumpTo(dateToJD(new Date()));
+		this.live = this.timeScale === 1;
 	}
 
 	get playing(): boolean {

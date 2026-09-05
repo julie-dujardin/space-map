@@ -100,7 +100,11 @@ export class AppState {
 	 *  bypasses the throttle so the URL matches what the user just asked for,
 	 *  instead of landing somewhere inside the window already in flight. */
 	setDate(date: Date, isNow: boolean, flush = false) {
+		// `now` serialises the same whatever the date, so a live clock never
+		// touches history.
+		const stillNow = isNow && this.view.isNow;
 		this.view = { ...this.view, date, isNow };
+		if (stillNow) return;
 		if (flush) {
 			this.replaceNow();
 			return;

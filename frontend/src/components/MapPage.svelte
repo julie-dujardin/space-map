@@ -85,6 +85,7 @@
 	import FeaturedBar from './search/FeaturedBar.svelte';
 	import { isSearchEnabled, localizedName } from '$lib/search/client';
 	import { coverageWindowFor, snapJdIntoWindow } from '$lib/fetch/coverage';
+	import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { watchDataVersion } from '$lib/fetch/version-check';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { isModelBearing } from '$lib/scene/objects/body/model';
@@ -113,14 +114,28 @@
 	setContext('mapCover', mapCover);
 	const settings = getSettings();
 
-	// Snap the clock into `id`'s coverage window if `now` is outside it: the
-	// midpoint, not the boundary (no sample there). No-op when there's no window.
-	async function snapClockIntoCoverage(id: string) {
+	// Snap the clock into `id`'s coverage window if the sim date is outside it:
+	// the midpoint, not the boundary (no sample there). No-op when there's no
+	// window. A page that opens on another date than the one asked for has to
+	// say so, hence the toast.
+	async function snapClockIntoCoverage(id: string, name?: string) {
 		const cov = await coverageWindowFor(id);
 		const snap = cov ? snapJdIntoWindow(clock.jd, cov) : null;
 		if (snap === null) return;
+		const from = formatJulianDate(clock.jd);
 		const bounded = cov!.startJd !== undefined && cov!.endJd !== undefined;
 		clock.setJD(bounded ? (cov!.startJd! + cov!.endJd!) / 2 : snap);
+		// A bare `/e/<id>` link carries no name; the localized bundle does.
+		const label =
+			name && name !== id ? name : ((await fetchObjectDetail(id)).localized?.name ?? id);
+		// Persistent: it fires during the load, whose main-thread churn would eat
+		// a timed toast before it paints. The next snap replaces it.
+		toast.info(m.clock_moved_title(), {
+			id: 'clock-moved',
+			description: m.clock_moved_body({ name: label, from, to: formatJulianDate(clock.jd) }),
+			duration: Number.POSITIVE_INFINITY,
+			closeButton: true
+		});
 	}
 
 	/** A system barycenter has no radius of its own, and for every planet but
@@ -156,7 +171,7 @@
 	const focusObject: FocusObject = (id, name, opts) => {
 		void (async () => {
 			const type = urlTypeFromId(id);
-			await snapClockIntoCoverage(id);
+			await snapClockIntoCoverage(id, name);
 
 			// Stream an out-of-view target in place (probe/sat); no page reload.
 			if (!ctx.getBody(id)) await ctx.ensureBody(id, jdToDate(clock.jd));
@@ -197,7 +212,7 @@
 	// nomenclature and frames the feature.
 	const focusFeature: FocusFeature = (bodyId, featureId, name) => {
 		void (async () => {
-			await snapClockIntoCoverage(bodyId);
+			await snapClockIntoCoverage(bodyId, ctx.getBody(bodyId)?.data.name ?? undefined);
 			if (!ctx.getBody(bodyId)) await ctx.ensureBody(bodyId, jdToDate(clock.jd));
 			const body = ctx.getBody(bodyId);
 			if (!body) {
@@ -223,7 +238,7 @@
 		);
 	}
 
-	const clock = new SimClock(dateToJD(appState.view.date));
+	const clock = new SimClock(dateToJD(appState.view.date), appState.view.isNow);
 	// `.raw`: see Scene.svelte's `focusedBody` (avoids deep proxying of
 	// position/satrec, which the renderer and SGP4 mutate).
 	let selectedBody = $state.raw<PositionedBody | undefined>();
@@ -620,7 +635,7 @@
 		}
 		// Snap the clock into range first (same path search takes), else an
 		// `?at=` outside coverage would fail to resolve.
-		await snapClockIntoCoverage(initialId);
+		await snapClockIntoCoverage(initialId, initialName);
 		const loadPromise = ctx.load(jdToDate(clock.jd), initialId);
 		loadPromise.catch((e) => console.error('[map] scene load failed:', e));
 		// Frame as soon as the target's placeholder lands (phase 1, ~2s before
@@ -703,11 +718,13 @@
 			}
 		} else if (initialBody) {
 			// Unplaceable, but its drawer still has everything to show: hold the
-			// focus the URL asked for and say why the camera did not move.
+			// focus the URL asked for and say why the camera did not move. The
+			// catalogue name beats the URL slug, which a bare `/e/<id>` link lacks.
+			const label = initialBody.data.name ?? initialName;
 			toast.warning(
 				initialBody.data.unplaceable
-					? m.object_position_unknown({ name: initialName })
-					: m.object_no_position({ name: initialName }),
+					? m.object_position_unknown({ name: label })
+					: m.object_no_position({ name: label }),
 				{
 					id: 'object-no-position',
 					duration: Number.POSITIVE_INFINITY,
@@ -884,7 +901,7 @@
 				/>
 			</div>
 			{#if !isMobileViewport}
-				<TimeControls {clock} />
+				<TimeControls {clock} panelOpen={!!focusable || isNav} />
 			{/if}
 			<div
 				class="fixed top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] pointer-events-auto md:end-auto md:w-[min(400px,calc(100vw-7rem))] {searchExpanded

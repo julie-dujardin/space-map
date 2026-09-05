@@ -29,8 +29,19 @@
 		statusLabel,
 		volcanismKindLabel
 	} from '$lib/format/activity';
-	import { formatEarthRatio, formatPressure, pressureLevelLabel } from '$lib/format/pressure';
-	import { accelMs2, formatGees, formatMs2, gravityLabel } from '$lib/format/gravity';
+	import {
+		formatEarthRatio,
+		formatPressure,
+		pressureLevelLabel,
+		pressureLevelTooltip
+	} from '$lib/format/pressure';
+	import {
+		accelMs2,
+		formatGees,
+		formatMs2,
+		gravityLabel,
+		gravityTooltip
+	} from '$lib/format/gravity';
 	import { massKg } from '$lib/format/mass';
 	import { meanRadiusKm } from '$lib/fetch/objects/physical';
 	import { ucfirst } from '$lib/format/quantities';
@@ -43,8 +54,8 @@
 	let { global }: Props = $props();
 
 	// Gees rather than the published m/s²: the card answers what standing there
-	// feels like, and the SI reading goes to the tooltip. GM/r² stands in where
-	// nothing is published — most small bodies with a mass.
+	// feels like; the tooltip spells out the level and the SI reading. GM/r²
+	// stands in where nothing is published — most small bodies with a mass.
 	let gravityStat = $derived.by<Stat | null>(() => {
 		const published = global?.wikidata?.surface_gravity;
 		const ms2 = (published ? accelMs2(published) : null) ?? derivedMs2();
@@ -52,7 +63,7 @@
 		return {
 			label: gravityLabel(global),
 			value: ltrIsolate(formatGees(ms2)),
-			tooltip: ltrIsolate(formatMs2(ms2))
+			tooltip: `${gravityTooltip(global)} — ${ltrIsolate(formatMs2(ms2))}`
 		};
 	});
 
@@ -65,9 +76,9 @@
 		return ((G_KM3_KG_S2 * kg) / (radiusKm * radiusKm)) * 1000;
 	}
 
-	// Labelled by the level it is quoted at, the way the Overview's row is: a
-	// figure at Saturn's cloud deck and one at Mars's datum are not the same
-	// claim, and neither is a surface pressure.
+	// The level it is quoted at is part of the claim: a figure at Saturn's cloud
+	// deck and one at Mars's datum are not a surface pressure. The card label
+	// only hints at it; the tooltip says it.
 	let pressureStat = $derived.by<Stat | null>(() => {
 		const pressure = global?.atmosphere?.pressure;
 		if (!pressure) return null;
@@ -76,20 +87,23 @@
 			value: ltrIsolate(
 				`${pressure.qualifier === 'upper_limit' ? '<' : '≈'} ${formatPressure(pressure.pa)}`
 			),
-			tooltip: formatEarthRatio(pressure.pa) ?? undefined
+			tooltip: [pressureLevelTooltip(pressure.level), formatEarthRatio(pressure.pa)]
+				.filter(Boolean)
+				.join(' — ')
 		};
 	});
 
-	/** The card's own line, plus what the short form had to leave out: the full
-	 *  reading where a width was dropped, then what the source said about it. */
+	/** The card's own line, plus what the short forms had to leave out: the
+	 *  quantity spelled out behind a terse label, the full reading where a width
+	 *  was dropped, then what the source said about it. */
 	function reading(
 		value: Measurement,
 		parts: PartsOf,
-		{ note }: { note?: string } = {}
+		{ lead, note }: { lead?: string; note?: string } = {}
 	): Pick<Stat, 'value' | 'tooltip'> {
 		const short = headline(value, parts);
 		const full = measurement(value, parts);
-		const tooltip = [full === short ? null : full, note].filter(Boolean).join(' — ');
+		const tooltip = [lead, full === short ? null : full, note].filter(Boolean).join(' — ');
 		return { value: ltrIsolate(short), tooltip: tooltip || undefined };
 	}
 
@@ -99,25 +113,29 @@
 		const volcanism = activity?.volcanism;
 
 		// Io and Enceladus quote the same watts as tidal power and as heat leaving
-		// the body; the exporter flags which, and the card takes the tidal label
-		// instead of saying in a tooltip what it could say on the front.
+		// the body; the exporter flags which, and the card takes the tidal label.
 		const heat = volcanism?.endogenic_power_w ?? activity?.tidal?.power_w;
 		if (heat) {
 			const allTidal = activity?.tidal?.explains_heat_output === true;
 			return {
 				label: allTidal ? m.activity_tidal_power() : m.activity_heat_output(),
-				...reading(heat, powerParts, { note: allTidal ? undefined : qualifier(heat) })
+				...reading(heat, powerParts, {
+					lead: allTidal ? m.tooltip_tidal_power() : m.tooltip_heat_output(),
+					note: allTidal ? undefined : qualifier(heat)
+				})
 			};
 		}
 
-		// What kind of field it is stays in the row below — on the card it is the
-		// published width and what the number comes to against Earth, which are
-		// the two things the one line had to leave out.
+		// What kind of field it is stays in the row below — the card carries the
+		// strength, and its tooltip the published width and the Earth comparison.
 		const field = magnetism && magnetism.kind !== 'none' ? magnetism.surface_field_t : undefined;
 		if (magnetism && field) {
 			return {
 				label: m.activity_magnetic_field(),
-				...reading(field, fieldParts, { note: fieldStrengthNote(field) })
+				...reading(field, fieldParts, {
+					lead: m.tooltip_magnetic_field_strength(),
+					note: fieldStrengthNote(field)
+				})
 			};
 		}
 

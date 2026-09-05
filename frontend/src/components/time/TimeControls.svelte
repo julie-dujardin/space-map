@@ -27,9 +27,11 @@
 
 	interface Props {
 		clock: SimClock;
+		/** A detail panel is open on the start side; the bar keeps clear of it. */
+		panelOpen?: boolean;
 	}
 
-	let { clock }: Props = $props();
+	let { clock, panelOpen = false }: Props = $props();
 
 	let pickerOpen = $state(false);
 	let pickerValue = $state<DateValue | undefined>(undefined);
@@ -102,7 +104,8 @@
 </script>
 
 <div
-	class="fixed bottom-[calc(var(--safe-bottom)_+_1.25rem)] left-1/2 -translate-x-1/2 z-10
+	style:--panel-inset={panelOpen ? 'calc(var(--detail-panel) + 0.75rem)' : '0px'}
+	class="time-bar fixed bottom-[calc(var(--safe-bottom)_+_1.25rem)] left-1/2 z-10
 		hidden md:flex pointer-events-auto items-baseline gap-2 p-2 rounded-full
 		bg-primary-foreground/95 backdrop-blur text-primary
 		shadow-lg text-xs"
@@ -198,3 +201,14 @@
 		{m.time_now()}
 	</button>
 </div>
+
+<style>
+	/* Centred, but never under the detail panel: on narrow desktops the bar's
+	   start edge stops at the panel's edge instead of sliding beneath it. */
+	.time-bar {
+		translate: max(-50%, calc(var(--panel-inset) - 50vw)) 0;
+	}
+	:global([dir='rtl']) .time-bar {
+		translate: min(-50%, calc(50vw - var(--panel-inset) - 100%)) 0;
+	}
+</style>

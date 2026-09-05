@@ -328,10 +328,11 @@
 		});
 		ro.observe(canvas);
 
-		// Keep the URL's time stamp in sync with the sim clock so reload/share preserves the moment.
+		// Keep the URL's date on the sim clock so reload/share preserves the
+		// moment; a clock still on wall-clock time keeps writing `now`.
 		const clockSyncId = setInterval(() => {
 			if (!focusedBody) return;
-			appState.setDate(jdToDate(clock.jd), false);
+			appState.setDate(jdToDate(clock.jd), clock.live);
 		}, 500);
 
 		const onPopState = () => {
@@ -364,7 +365,7 @@
 		if (jumps === seenJumps) return;
 		seenJumps = jumps;
 		untrack(() => {
-			if (focusedBody) appState.setDate(jdToDate(clock.jd), false, true);
+			if (focusedBody) appState.setDate(jdToDate(clock.jd), clock.live, true);
 		});
 	});
 

@@ -99,9 +99,9 @@
 		return { label, value: formatQuantity({ value, unit: 'kilometre' }, true) };
 	}
 
-	function count(label: string, n: number | undefined): Stat | null {
+	function count(label: string, n: number | undefined, tooltip?: string): Stat | null {
 		if (!n) return null;
-		return { label, value: formatNumber(n) };
+		return { label, value: formatNumber(n), tooltip };
 	}
 
 	/** Years are labels, not quantities — no thousands separator. */
@@ -167,7 +167,7 @@
 				value: formatCompactNumber(widest.span_km),
 				unit: formatUnit('kilometre', true)
 			}),
-			tooltip: widest.name,
+			tooltip: `${m.tooltip_group_stat_widest()} — ${widest.name}`,
 			href: serializeUrl(
 				applyFocus(appState.view, {
 					type: urlTypeFromId(widest.primary_id),
@@ -185,13 +185,15 @@
 		label: string,
 		value: string,
 		ref: { name: string; primary_id: string } | undefined,
-		tab: 'structure'
+		tab: 'structure',
+		/** What a terse label stands for, ahead of the body's name. */
+		lead?: string
 	): Stat | null {
 		if (!ref || !appState) return null;
 		return {
 			label,
 			value,
-			tooltip: ref.name,
+			tooltip: lead ? `${lead} — ${ref.name}` : ref.name,
 			href: serializeUrl(
 				applyFocus(appState.view, {
 					type: urlTypeFromId(ref.primary_id),
@@ -304,7 +306,13 @@
 	function mostTiltedField(g: GlobalGroupData): Stat | null {
 		const tilted = g.most_tilted_field;
 		if (!tilted) return null;
-		return bodyCard(m.group_stat_most_tilted(), formatDegrees(tilted.degrees), tilted, 'structure');
+		return bodyCard(
+			m.group_stat_most_tilted(),
+			formatDegrees(tilted.degrees),
+			tilted,
+			'structure',
+			m.tooltip_group_stat_most_tilted()
+		);
 	}
 
 	function largestFeature(g: GlobalGroupData): Stat | null {
@@ -397,11 +405,15 @@
 			case CAT_OCEANS:
 				return [totalWater(g), deepestOcean(g)];
 			case CAT_VOLCANISM:
-				return [eruptingNow(g), hottestBody(g), count(m.group_stat_vents(), g.known_centres)];
+				return [
+					eruptingNow(g),
+					hottestBody(g),
+					count(m.group_stat_vents(), g.known_centres, m.tooltip_group_stat_vents())
+				];
 			case CAT_TECTONICS:
 				return [
 					count(m.group_stat_styles(), g.tectonic_style_count),
-					count(m.group_stat_moving(), g.tectonic_active_count)
+					count(m.group_stat_moving(), g.tectonic_active_count, m.tooltip_group_stat_moving())
 				];
 			case CAT_MAGNETIC_FIELDS:
 				return [
@@ -410,7 +422,14 @@
 					mostTiltedField(g)
 				];
 			case CAT_TIDAL_HEATING:
-				return [hottestBody(g), count(m.group_stat_tide_driven(), g.tide_dominant_count)];
+				return [
+					hottestBody(g),
+					count(
+						m.group_stat_tide_driven(),
+						g.tide_dominant_count,
+						m.tooltip_group_stat_tide_driven()
+					)
+				];
 			case CAT_RADIATION:
 				return [radiationMeasured(g), quietestSurface(g)];
 			case CAT_SATELLITES:

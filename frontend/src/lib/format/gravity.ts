@@ -10,15 +10,30 @@ const MS2_PER_UNIT: Record<string, number> = {
 };
 
 // Keyed by the same reference level the headline pressure is quoted at:
-// "surface" on a giant or the Sun would claim a floor that isn't there.
+// "surface" on a giant or the Sun would claim a floor that isn't there. The
+// label off the surface is just "Gravity" (a stat card is 92px wide), so the
+// tooltip spells the level out.
 const GRAVITY_LABEL: Record<string, () => string> = {
 	cloud_top: m.gravity_cloud_top,
 	photosphere: m.gravity_photosphere
 };
+const GRAVITY_TOOLTIP: Record<string, () => string> = {
+	cloud_top: m.tooltip_gravity_cloud_top,
+	photosphere: m.tooltip_gravity_photosphere
+};
+
+function pressureLevel(global: GlobalObjectData | null): string | undefined {
+	return global?.atmosphere?.pressure?.level;
+}
 
 export function gravityLabel(global: GlobalObjectData | null): string {
-	const level = global?.atmosphere?.pressure?.level;
+	const level = pressureLevel(global);
 	return ((level && GRAVITY_LABEL[level]) || m.gravity_surface)();
+}
+
+export function gravityTooltip(global: GlobalObjectData | null): string {
+	const level = pressureLevel(global);
+	return ((level && GRAVITY_TOOLTIP[level]) || m.tooltip_gravity_surface)();
 }
 
 /** Back to m/s² from whatever unit the source published, null if unknown. */

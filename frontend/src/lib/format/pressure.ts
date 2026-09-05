@@ -24,8 +24,22 @@ const LEVEL_LABEL: Record<string, () => string> = {
 	photosphere: m.atmosphere_pressure_photosphere
 };
 
+// The label is cut to fit a stat card; the tooltip keeps the level.
+const LEVEL_TOOLTIP: Record<string, () => string> = {
+	surface: m.tooltip_pressure_surface,
+	sea_level: m.tooltip_pressure_sea_level,
+	areoid: m.tooltip_pressure_areoid,
+	cloud_top: m.tooltip_pressure_cloud_top,
+	one_bar: m.tooltip_pressure_one_bar,
+	photosphere: m.tooltip_pressure_photosphere
+};
+
 export function pressureLevelLabel(level: string): string {
 	return (LEVEL_LABEL[level] ?? LEVEL_LABEL.surface)();
+}
+
+export function pressureLevelTooltip(level: string): string {
+	return (LEVEL_TOOLTIP[level] ?? LEVEL_TOOLTIP.surface)();
 }
 
 /**

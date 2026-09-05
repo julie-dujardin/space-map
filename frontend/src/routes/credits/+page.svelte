@@ -127,7 +127,7 @@
 		rel="noopener noreferrer"
 		class="text-foreground hover:underline underline-offset-2"
 	>
-		{label}{#if sub}<span class="text-muted-foreground"> — {sub}</span>{/if}
+		{label}{#if sub}<span class="text-muted-foreground">&nbsp;— {sub}</span>{/if}
 	</a>
 {/snippet}
 

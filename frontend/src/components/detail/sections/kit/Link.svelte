@@ -72,10 +72,10 @@
 		rel={relValue}
 		class="{BASE} {VARIANT[variant]} {showIcon ? 'inline-flex items-center gap-1' : ''} {className}"
 	>
-		{@render children()}
-		{#if showIcon}
-			<ExternalLinkIcon class="size-3 shrink-0" />
-		{/if}
+		<!-- No whitespace between the text and the icon slot: inside an inline
+		     anchor it renders as a trailing space, underlined, before whatever
+		     punctuation follows the link. -->
+		{@render children()}{#if showIcon}<ExternalLinkIcon class="size-3 shrink-0" />{/if}
 	</a>
 {:else}
 	{@render children()}

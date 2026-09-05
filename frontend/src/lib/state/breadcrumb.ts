@@ -201,6 +201,16 @@ export function parentCrumb(
 				};
 	}
 
+	// A carried craft → the carrier whose position it borrows (Huygens → the
+	// Cassini orbiter), not the mission that holds them both.
+	const carriedBy = detail?.global?.carried_by;
+	if (carriedBy?.primary_type === 'object') {
+		return {
+			label: carriedBy.name,
+			target: { kind: 'focus', id: carriedBy.primary_id, name: carriedBy.name }
+		};
+	}
+
 	// Probe in a mission → the mission group page (primary craft and members
 	// alike). Precedes the Probes-category fallback below.
 	const missionLink = detail?.global?.mission ?? detail?.global?.part_of_mission;
