@@ -5,9 +5,10 @@
  * cadence and Pluto's ~730-day cadence coexist with no global tier metadata;
  * chunk index for a JD is `floor((jd - start_jd) / chunk_days)`.
  *
- * Eager-loads the chunk containing the current JD plus its two neighbors —
- * scrubbing advances one chunk at a time, so ±1 avoids a fetch stall at
- * boundaries. Bodies are keyed by full object id (`<prefix>-<numeric>`).
+ * Loads the chunk containing the current JD and warms its two neighbors in
+ * the background — scrubbing advances one chunk at a time, so ±1 avoids a
+ * fetch stall at boundaries. Bodies are keyed by full object id
+ * (`<prefix>-<numeric>`).
  */
 
 import { fetchChebyshev, type FetchedChebyshev } from '$lib/fetch/position/chebyshev/fetch';
@@ -72,6 +73,8 @@ export class ChebyshevStore {
 	 * Returns `true` if every zone's current-chunk is already loaded (so the
 	 * caller can rely on position queries right away), `false` if a fetch was
 	 * kicked off (position queries may return `null` until it resolves).
+	 * `done` waits for the current chunks only: the neighbors are a warm-up
+	 * and must not hold the first frame.
 	 */
 	ensure(jd: number): { ready: boolean; done: Promise<void> } {
 		// Cheap skip: same jd as last call → caller already kicked ensures and
@@ -81,16 +84,19 @@ export class ChebyshevStore {
 		}
 		this.lastEnsuredJd = jd;
 		const jobs: Promise<void>[] = [];
+		const neighbors: [zone: string, idx: number][] = [];
 		let ready = true;
 		for (const [zone, params] of this.zoneParams) {
 			const center = chunkIndexForJd(params, jd);
 			const zoneMap = this.chunks.get(zone);
-			if (!zoneMap?.has(center)) ready = false;
+			if (!zoneMap?.has(center)) {
+				ready = false;
+				const job = this.loadChunk(zone, center, 'high');
+				if (job) jobs.push(job);
+			}
 			for (let d = -NEIGHBOR_WINDOW; d <= NEIGHBOR_WINDOW; d++) {
 				const idx = center + d;
-				if (idx < 0 || idx >= params.chunks) continue;
-				const job = this.loadChunk(zone, idx);
-				if (job) jobs.push(job);
+				if (d !== 0 && idx >= 0 && idx < params.chunks) neighbors.push([zone, idx]);
 			}
 			// Evict chunks outside the window so long scrubbing doesn't grow
 			// unbounded — each chunk holds parsed coeff buffers.
@@ -100,10 +106,15 @@ export class ChebyshevStore {
 				}
 			}
 		}
-		return {
-			ready,
-			done: jobs.length > 0 ? Promise.all(jobs).then(() => undefined) : Promise.resolve()
-		};
+		const done = jobs.length > 0 ? Promise.all(jobs).then(() => undefined) : Promise.resolve();
+		// Neighbors start once the current chunks are in: launched together they
+		// share the link, and a boot on a slow one waits for the whole set.
+		void done
+			.catch(() => {})
+			.then(() => {
+				for (const [zone, idx] of neighbors) this.loadChunk(zone, idx, 'low')?.catch(() => {});
+			});
+		return { ready, done };
 	}
 
 	/** True when every zone's chunk for `jd` is resident in memory. */
@@ -115,25 +126,33 @@ export class ChebyshevStore {
 		return true;
 	}
 
-	private loadChunk(zone: string, chunkIdx: number): Promise<void> | null {
+	private loadChunk(
+		zone: string,
+		chunkIdx: number,
+		priority: RequestPriority
+	): Promise<void> | null {
 		const zoneMap = this.chunks.get(zone);
 		if (zoneMap?.has(chunkIdx)) return null;
 		const key = `${zone}:${chunkIdx}`;
 		const existing = this.inflight.get(key);
 		if (existing) return existing;
-		const job = this.fetchAndStore(zone, chunkIdx);
+		const job = this.fetchAndStore(zone, chunkIdx, priority);
 		this.inflight.set(key, job);
 		job.finally(() => this.inflight.delete(key));
 		return job;
 	}
 
-	private async fetchAndStore(zone: string, chunkIdx: number): Promise<void> {
+	private async fetchAndStore(
+		zone: string,
+		chunkIdx: number,
+		priority: RequestPriority
+	): Promise<void> {
 		let zoneMap = this.chunks.get(zone);
 		if (!zoneMap) {
 			zoneMap = new Map();
 			this.chunks.set(zone, zoneMap);
 		}
-		const chunk = await fetchChebyshev(zone, this.zoneParams.get(zone)!.zoom, chunkIdx);
+		const chunk = await fetchChebyshev(zone, this.zoneParams.get(zone)!.zoom, chunkIdx, priority);
 		zoneMap.set(chunkIdx, chunk);
 		for (const id of chunk.byId.keys()) {
 			// Multiple chunks list the same body; zone assignment is stable across

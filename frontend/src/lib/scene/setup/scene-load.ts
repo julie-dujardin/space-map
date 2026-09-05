@@ -186,6 +186,9 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	);
 	const jd = dateToJD(date);
 	const metadataPromise = fetchMetadata();
+	// Needed by the major-body pass; started here so it rides with the
+	// metadata fetch instead of joining the queue once the chunks are in flight.
+	fetchLabels().catch(() => {});
 
 	// ZoneRefresher owns chunk-indexed moons prefetch; the flat-zone case (no
 	// chunk index) is handled here as a one-shot HTTP warm.
@@ -438,9 +441,20 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 					.then((cols) => handleColumnChunk(zone, cols, parentIdType))
 					.catch(onChunkFail(zone, part))
 			),
+			// High priority: a few small files that put the cloud around the
+			// default landing body, so they must not queue behind the asteroids.
 			...spacecraftArgs.map(({ zone, zoom, part, time, parentIdType }) =>
 				loader
-					.process(zone, zoom, part, date, time, parentIdType, new Set(placeholderById.keys()))
+					.process(
+						zone,
+						zoom,
+						part,
+						date,
+						time,
+						parentIdType,
+						new Set(placeholderById.keys()),
+						'high'
+					)
 					.then((chunk) => handleChunk(zone, chunk))
 					.catch(onChunkFail(zone, part))
 			)
@@ -480,7 +494,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 			await Promise.all(
 				deferredChunkArgs.map(({ zone, zoom, part, time, parentIdType }) =>
 					loader
-						.fetchMinorColumns(zone, zoom, part, date, time, parentIdType)
+						.fetchMinorColumns(zone, zoom, part, date, time, parentIdType, 'low')
 						.then((cols) => handleColumnChunk(zone, cols, parentIdType))
 						.catch(onChunkFail(zone, part))
 				)

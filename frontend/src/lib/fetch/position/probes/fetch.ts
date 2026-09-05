@@ -21,13 +21,16 @@ export interface FetchedProbes extends ProbeChunk {
 	ids: string[];
 }
 
+/** `priority` is high for the chunk the first frame waits on, low for a
+ *  neighbor warmed behind it. */
 export async function fetchProbes(
 	zone: string,
 	chunk: number,
-	float64Coeffs: boolean
+	float64Coeffs: boolean,
+	priority: RequestPriority
 ): Promise<FetchedProbes> {
 	const url = chunkedUrl(zone, null, chunk);
-	const res = await fetchWithTimeout(url);
+	const res = await fetchWithTimeout(url, { priority });
 	if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
 	const ds = new DecompressionStream('gzip');
 	const buffer = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();

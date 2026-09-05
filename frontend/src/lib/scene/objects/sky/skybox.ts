@@ -63,10 +63,14 @@ function faceUrl(id: string, tier: string, face: string): string {
  * pays converting the 4k tier. `imageOrientation: 'none'` matches the
  * `<img>` path's flipY=false upload, keeping SKYBOX_BASE_ROTATION valid.
  */
-async function loadTierBitmaps(id: string, tier: string): Promise<ImageBitmap[]> {
+async function loadTierBitmaps(
+	id: string,
+	tier: string,
+	priority?: RequestPriority
+): Promise<ImageBitmap[]> {
 	return Promise.all(
 		FACE_ORDER.map(async (face) => {
-			const res = await fetch(faceUrl(id, tier, face));
+			const res = await fetch(faceUrl(id, tier, face), { priority });
 			if (!res.ok) throw new Error(`Skybox face fetch failed (${res.status}): ${tier}_${face}`);
 			const blob = await res.blob();
 			return createImageBitmap(blob, { imageOrientation: 'none', premultiplyAlpha: 'none' });
@@ -84,11 +88,11 @@ function tierKey(id: string, tier: string): string {
 	return `${id}:${tier}`;
 }
 
-function tierBitmaps(id: string, tier: string): Promise<ImageBitmap[]> {
+function tierBitmaps(id: string, tier: string, priority?: RequestPriority): Promise<ImageBitmap[]> {
 	const key = tierKey(id, tier);
 	let p = tierPrefetch.get(key);
 	if (!p) {
-		p = loadTierBitmaps(id, tier);
+		p = loadTierBitmaps(id, tier, priority);
 		tierPrefetch.set(key, p);
 	}
 	return p;
@@ -178,7 +182,8 @@ async function loadFromMeta(
 			new Promise<void>((resolve) => setTimeout(resolve, FULL_TIER_GATE_TIMEOUT_MS))
 		]);
 	}
-	const fullBitmaps = await tierBitmaps(meta.id, tier);
+	// Low priority: the minor-body long tail is still streaming and matters more.
+	const fullBitmaps = await tierBitmaps(meta.id, tier, tier === lowTier ? undefined : 'low');
 	const full = makeCube(fullBitmaps);
 	// Upload during idle time so the first sampling render doesn't absorb the cost.
 	await new Promise<void>((resolve) =>

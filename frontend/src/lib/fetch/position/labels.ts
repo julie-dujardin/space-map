@@ -50,7 +50,9 @@ export async function fetchLabels(lang: string = getLocale()): Promise<LabelMap>
 	if (!p) {
 		p = (async () => {
 			const url = labelsUrl(lang);
-			const res = await fetchWithTimeout(url);
+			// Phase 1 of boot waits on this small file; it must not queue behind
+			// the chunk fetches in flight.
+			const res = await fetchWithTimeout(url, { priority: 'high' });
 			if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
 			const ds = new DecompressionStream('gzip');
 			const text = await new Response(res.body!.pipeThrough(ds)).text();

@@ -142,15 +142,20 @@ export class ProbeStore {
 	/**
 	 * Warm the chunks covering `jd` (and ±NEIGHBOR_WINDOW neighbors) for every
 	 * probe zone. Idempotent, safe to call every frame. Returns whether every
-	 * current-jd chunk is resident now, plus a promise that resolves when any
-	 * in-flight fetches land.
+	 * current-jd chunk is resident now, plus a promise that resolves when the
+	 * current-jd fetches land — neighbors warm in the background and never
+	 * hold the first frame.
 	 */
 	ensure(jd: number): { ready: boolean; done: Promise<void> } {
 		if (jd === this.lastEnsuredJd) {
 			// Same jd doesn't mean loaded: the first caller's fetches may still be
 			// in flight, and a second awaiter (ensureBody grafting a probe) must
 			// not proceed against absent chunks.
-			const pending = Array.from(this.inflight.values());
+			const pending: Promise<void>[] = [];
+			for (const [zone, params] of this.zoneParams) {
+				const job = this.inflight.get(`${zone}:${chunkIndexForJd(params, jd)}`);
+				if (job) pending.push(job);
+			}
 			return {
 				ready: this.allCurrentChunksLoaded(jd),
 				done: pending.length > 0 ? Promise.all(pending).then(() => undefined) : Promise.resolve()
@@ -158,18 +163,19 @@ export class ProbeStore {
 		}
 		this.lastEnsuredJd = jd;
 		const jobs: Promise<void>[] = [];
+		const neighbors: [zone: string, idx: number, params: ProbeZoneParams][] = [];
 		let ready = true;
 		for (const [zone, params] of this.zoneParams) {
 			const center = chunkIndexForJd(params, jd);
 			if (isPresent(params.present, center) && !this.isResident(zone, center)) {
 				ready = false;
+				const job = this.loadChunk(zone, center, params, 'high');
+				if (job) jobs.push(job);
 			}
 			for (let d = -NEIGHBOR_WINDOW; d <= NEIGHBOR_WINDOW; d++) {
 				const idx = center + d;
-				if (idx < 0 || idx >= params.chunks) continue;
-				if (!isPresent(params.present, idx)) continue;
-				const job = this.loadChunk(zone, idx, params);
-				if (job) jobs.push(job);
+				if (d === 0 || idx < 0 || idx >= params.chunks) continue;
+				if (isPresent(params.present, idx)) neighbors.push([zone, idx, params]);
 			}
 			// Evict chunks outside the window so scrubbing a long mission timeline
 			// doesn't accumulate every visited chunk.
@@ -180,10 +186,17 @@ export class ProbeStore {
 				}
 			}
 		}
-		return {
-			ready,
-			done: jobs.length > 0 ? Promise.all(jobs).then(() => undefined) : Promise.resolve()
-		};
+		const done = jobs.length > 0 ? Promise.all(jobs).then(() => undefined) : Promise.resolve();
+		// Neighbors start once the current chunks are in: launched together they
+		// share the link, and a boot on a slow one waits for the whole set.
+		void done
+			.catch(() => {})
+			.then(() => {
+				for (const [zone, idx, params] of neighbors) {
+					this.loadChunk(zone, idx, params, 'low')?.catch(() => {});
+				}
+			});
+		return { ready, done };
 	}
 
 	/** Load whatever covers `jd` for the trip planner, off to one side. The
@@ -218,7 +231,7 @@ export class ProbeStore {
 		chunkIdx: number,
 		params: ProbeZoneParams
 	): Promise<void> {
-		const chunk = await fetchProbes(zone, chunkIdx, params.float64_coeffs);
+		const chunk = await fetchProbes(zone, chunkIdx, params.float64_coeffs, 'low');
 		this.warmed.set(key, chunk);
 		// Oldest out: a planner asks about a handful of dates and then stops, and
 		// nothing here is on the render path to miss them.
@@ -248,12 +261,17 @@ export class ProbeStore {
 		return true;
 	}
 
-	private loadChunk(zone: string, chunkIdx: number, params: ProbeZoneParams): Promise<void> | null {
+	private loadChunk(
+		zone: string,
+		chunkIdx: number,
+		params: ProbeZoneParams,
+		priority: RequestPriority
+	): Promise<void> | null {
 		if (this.isResident(zone, chunkIdx)) return null;
 		const key = `${zone}:${chunkIdx}`;
 		const existing = this.inflight.get(key);
 		if (existing) return existing;
-		const job = this.fetchAndStore(zone, chunkIdx, params);
+		const job = this.fetchAndStore(zone, chunkIdx, params, priority);
 		this.inflight.set(key, job);
 		job.finally(() => this.inflight.delete(key));
 		return job;
@@ -262,14 +280,15 @@ export class ProbeStore {
 	private async fetchAndStore(
 		zone: string,
 		chunkIdx: number,
-		params: ProbeZoneParams
+		params: ProbeZoneParams,
+		priority: RequestPriority
 	): Promise<void> {
 		let zoneMap = this.chunks.get(zone);
 		if (!zoneMap) {
 			zoneMap = new Map();
 			this.chunks.set(zone, zoneMap);
 		}
-		const chunk = await fetchProbes(zone, chunkIdx, params.float64_coeffs);
+		const chunk = await fetchProbes(zone, chunkIdx, params.float64_coeffs, priority);
 		zoneMap.set(chunkIdx, chunk);
 		this._version++;
 	}

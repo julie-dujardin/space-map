@@ -319,11 +319,18 @@
 		return { kind: 'body', body: selectedBody };
 	});
 
-	// Kick off the drawer chunk fetch the first time anything is focused.
+	// The drawer chunk loads the first time anything is focused, in a main
+	// thread gap: at boot it would otherwise compete with scene setup.
 	$effect(() => {
-		if (focusable && !DetailDrawer) {
+		if (!focusable || DetailDrawer) return;
+		const load = () =>
 			import('./detail/DetailDrawer.svelte').then((mod) => (DetailDrawer = mod.default));
+		if ('requestIdleCallback' in window) {
+			const handle = requestIdleCallback(load, { timeout: 4000 });
+			return () => cancelIdleCallback(handle);
 		}
+		const timer = setTimeout(load, 1000);
+		return () => clearTimeout(timer);
 	});
 
 	/** The focused craft, when one is focused and the planner isn't up — the

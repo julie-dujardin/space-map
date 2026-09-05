@@ -8,8 +8,8 @@ import { chunkedUrl } from '$lib/fetch/position/format';
 import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 import type { ChebyshevBody, ChebyshevChunk } from '$lib/fetch/position/chebyshev/parse';
 
-async function fetchGzBuffer(url: string): Promise<ArrayBuffer> {
-	const res = await fetchWithTimeout(url);
+async function fetchGzBuffer(url: string, priority: RequestPriority): Promise<ArrayBuffer> {
+	const res = await fetchWithTimeout(url, { priority });
 	if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
 	const ds = new DecompressionStream('gzip');
 	return new Response(res.body!.pipeThrough(ds)).arrayBuffer();
@@ -19,12 +19,15 @@ export interface FetchedChebyshev extends ChebyshevChunk {
 	byId: Map<string, ChebyshevBody>;
 }
 
+/** `priority` is high for the chunk the first frame waits on, low for a
+ *  neighbor warmed behind it. */
 export async function fetchChebyshev(
 	zone: string,
 	zoom: number | null,
-	chunk: number
+	chunk: number,
+	priority: RequestPriority
 ): Promise<FetchedChebyshev> {
-	const buffer = await fetchGzBuffer(chunkedUrl(zone, zoom, chunk));
+	const buffer = await fetchGzBuffer(chunkedUrl(zone, zoom, chunk), priority);
 	const parsed = parsePosition(buffer);
 	if (parsed.kind !== 'chebyshev') {
 		throw new Error(`Expected chebyshev payload at ${zone}/${chunk}, got ${parsed.kind}`);

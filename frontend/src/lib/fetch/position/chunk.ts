@@ -118,11 +118,12 @@ async function fetchElements(
 	zone: string,
 	zoom: number | null,
 	part: number,
-	time: string | null
+	time: string | null,
+	priority?: RequestPriority
 ): Promise<ElementColumns> {
 	const key = `${zone}:${zoom ?? ''}:${part}:${time ?? ''}`;
 	return elementsCache.getOrCompute(key, async () => {
-		const res = await fetchWithTimeout(elementsUrl(zone, zoom, part, time));
+		const res = await fetchWithTimeout(elementsUrl(zone, zoom, part, time), { priority });
 		if (!res.ok) throw new Error(`Failed to fetch elements: ${res.status}`);
 		const ds = new DecompressionStream('gzip');
 		const buffer = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();
@@ -571,9 +572,10 @@ export class ChunkLoader {
 		part: number,
 		date: Date,
 		time: string | null = null,
-		parentIdType: string = 'naif'
+		parentIdType: string = 'naif',
+		priority?: RequestPriority
 	): Promise<ElementColumns> {
-		const cols = await fetchElements(zone, zoom, part, time);
+		const cols = await fetchElements(zone, zoom, part, time, priority);
 		if (this.neededParentKeys.size > 0) await this.resolveNeededParents(cols, date, parentIdType);
 		return cols;
 	}
@@ -631,7 +633,8 @@ export class ChunkLoader {
 		date: Date,
 		time: string | null = null,
 		parentIdType: string = 'naif',
-		eagerIds?: ReadonlySet<string>
+		eagerIds?: ReadonlySet<string>,
+		priority?: RequestPriority
 	): Promise<PositionedBody[]> {
 		const writePositions = this.barycenters.size === 0;
 		const bodies: PositionedBody[] = [];
@@ -642,7 +645,7 @@ export class ChunkLoader {
 		const unpropagated: string[] = [];
 
 		const [cols, labels] = await Promise.all([
-			fetchElements(zone, zoom, part, time),
+			fetchElements(zone, zoom, part, time, priority),
 			fetchLabels()
 		]);
 
