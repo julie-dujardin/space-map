@@ -5,7 +5,7 @@
 	import RewindIcon from '@lucide/svelte/icons/rewind';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { dateToJD, formatJulianDateTime } from '$lib/format/date';
-	import { getLocale } from '$lib/paraglide/runtime.js';
+	import { getLocale, getTextDirection } from '$lib/paraglide/runtime.js';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Popover from '$lib/components/ui/popover';
@@ -29,9 +29,41 @@
 		clock: SimClock;
 		/** A detail panel is open on the start side; the bar keeps clear of it. */
 		panelOpen?: boolean;
+		/** Whether the bar has room between the panel and the bottom-end
+		 *  buttons; the page swaps in a menu button when it hasn't. */
+		onFitChange?: (fits: boolean) => void;
 	}
 
-	let { clock, panelOpen = false }: Props = $props();
+	let { clock, panelOpen = false, onFitChange }: Props = $props();
+
+	/** The bottom-end button stack: 1rem margin, 2.5rem button, 0.75rem gap. */
+	const END_RESERVE_PX = 68;
+	let bar = $state<HTMLDivElement>();
+	let fits = $state(true);
+
+	$effect(() => {
+		const el = bar;
+		if (!el) return;
+		// The panel moves the bar without resizing it.
+		void panelOpen;
+		const rtl = getTextDirection(getLocale()) === 'rtl';
+		const measure = () => {
+			const r = el.getBoundingClientRect();
+			const next = rtl ? r.left >= END_RESERVE_PX : r.right <= window.innerWidth - END_RESERVE_PX;
+			if (next === untrack(() => fits)) return;
+			fits = next;
+			if (!next) pickerOpen = false;
+			onFitChange?.(next);
+		};
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		window.addEventListener('resize', measure);
+		return () => {
+			ro.disconnect();
+			window.removeEventListener('resize', measure);
+		};
+	});
 
 	let pickerOpen = $state(false);
 	let pickerValue = $state<DateValue | undefined>(undefined);
@@ -104,11 +136,12 @@
 </script>
 
 <div
+	bind:this={bar}
 	style:--panel-inset={panelOpen ? 'calc(var(--detail-panel) + 0.75rem)' : '0px'}
 	class="time-bar fixed bottom-[calc(var(--safe-bottom)_+_1.25rem)] left-1/2 z-10
 		hidden md:flex pointer-events-auto items-baseline gap-2 p-2 rounded-full
 		bg-primary-foreground/95 backdrop-blur text-primary
-		shadow-lg text-xs"
+		shadow-lg text-xs {fits ? '' : 'invisible'}"
 >
 	<button
 		type="button"

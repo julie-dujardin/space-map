@@ -77,7 +77,7 @@
 	import { getNorthChoices } from '$lib/scene/camera/north-reference';
 	import AttributionBar from './attribution/AttributionBar.svelte';
 	import TimeControls from './time/TimeControls.svelte';
-	import MobileTimeControls from './time/MobileTimeControls.svelte';
+	import TimeMenuButton from './time/TimeMenuButton.svelte';
 	import SettingsButton from './settings/SettingsButton.svelte';
 	import LayersButton from './layers/LayersButton.svelte';
 	import SearchIcon from '@lucide/svelte/icons/search';
@@ -276,6 +276,8 @@
 		return () => mq.removeEventListener('change', onChange);
 	});
 	const bgInert = $derived(searchExpanded && isMobileViewport);
+	// False when the time bar would run into the bottom-end buttons.
+	let timeBarFits = $state(true);
 	// That search overlay is opaque, so the map under it can stop drawing.
 	mapCover.hold(() => bgInert);
 	let userPromotedCount = $state(0);
@@ -901,7 +903,11 @@
 				/>
 			</div>
 			{#if !isMobileViewport}
-				<TimeControls {clock} panelOpen={!!focusable || isNav} />
+				<TimeControls
+					{clock}
+					panelOpen={!!focusable || isNav}
+					onFitChange={(v) => (timeBarFits = v)}
+				/>
 			{/if}
 			<div
 				class="fixed top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] pointer-events-auto md:end-auto md:w-[min(400px,calc(100vw-7rem))] {searchExpanded
@@ -1077,10 +1083,8 @@
 					{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
 				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1.5rem + var(--safe-bottom));"
 			>
-				{#if isMobileViewport}
-					<div class="md:hidden pointer-events-auto">
-						<MobileTimeControls {clock} />
-					</div>
+				{#if isMobileViewport || !timeBarFits}
+					<TimeMenuButton {clock} isMobile={isMobileViewport} />
 				{/if}
 				<MyLocation
 					onLocate={(zoom: number, lat?: number, lng?: number) => {

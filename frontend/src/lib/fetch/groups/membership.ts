@@ -5,6 +5,7 @@
  */
 
 import { versionedUrl } from '$lib/fetch/data-base';
+import { fetchMetadata } from '$lib/fetch/metadata';
 
 export type EarthMembership = Record<string, string[]>;
 
@@ -13,6 +14,9 @@ let pending: Promise<EarthMembership> | null = null;
 export function fetchEarthMembership(): Promise<EarthMembership> {
 	if (pending) return pending;
 	pending = (async () => {
+		// The version token comes from metadata; a group page can ask before
+		// any other fetch has awaited it.
+		await fetchMetadata();
 		const res = await fetch(versionedUrl('/v1/membership/earth.json.gz', 'membership'));
 		if (!res.ok) {
 			if (res.status === 404) return {};
