@@ -28,7 +28,8 @@ const ORBIT_SOURCE_BY_NAME: Record<string, OrbitalSource> = {
 	celestrak: OrbitalSource.CELESTRAK,
 	spacetrack: OrbitalSource.SPACETRACK,
 	spice: OrbitalSource.SPICE,
-	sbdb_moons: OrbitalSource.SBDB_MOON
+	sbdb_moons: OrbitalSource.SBDB_MOON,
+	astersat: OrbitalSource.ASTERSAT
 };
 function parseOrbitalSource(name: string | undefined): OrbitalSource {
 	if (!name) return OrbitalSource.UNKNOWN;

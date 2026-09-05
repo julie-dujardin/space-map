@@ -564,6 +564,86 @@ export interface GlobalObjectData {
 		n_obs_used?: number;
 		condition_code?: number;
 	};
+	/** How much the AsterSat mutual-orbit fit is worth: the observations behind
+	 *  it, their arc, the residuals, and the system mass and component radii
+	 *  published with it. The elements themselves ride in the position file. */
+	astersat?: {
+		/** As printed by the service — the frame the elements were fitted in,
+		 *  before the export rotates them onto the ecliptic. */
+		frame: string;
+		n_obs?: number;
+		rms_arcsec?: number;
+		/** Decimal years, first to last observation. */
+		obs_arc?: [number, number];
+		gm?: number;
+		system_mass?: QuantityWithUnit;
+		primary_radius_km?: number;
+		radius_km?: number;
+	};
+	/** Johnston's Archive. On a host this is the system block, on a moon the
+	 *  companion block — a body is one or the other, never both. The mutual
+	 *  orbit's orientation angles are deliberately absent: the archive reprints
+	 *  each paper's as published without stating a frame. */
+	johnston?: {
+		/** The system's page — the citation for everything in this block. */
+		page?: string;
+		last_updated?: string;
+		// -- system --
+		confidence?: 'permanent' | 'well_observed' | 'confirmed' | 'probable';
+		dynamical_type?: string;
+		h_mag?: number;
+		slope_g?: number;
+		diameter_km?: number;
+		diameter_km_sigma?: number;
+		albedo?: number;
+		albedo_sigma?: number;
+		taxonomy?: string;
+		mass?: QuantityWithUnit;
+		density_g_cm3?: number;
+		density_g_cm3_sigma?: number;
+		hill_radius_km?: number;
+		colour_ub?: number;
+		colour_bv?: number;
+		colour_vr?: number;
+		colour_vi?: number;
+		primary_diameter_km?: number;
+		primary_diameter_km_sigma?: number;
+		primary_dimensions?: string;
+		primary_axial_ratios?: string;
+		primary_rotation_h?: number;
+		primary_rotation_h_sigma?: number;
+		primary_amplitude_mag?: number;
+		pole_beta_deg?: number;
+		pole_lambda_deg?: number;
+		// -- companion --
+		/** The archive's own block label: "secondary", "Romulus", "S/2003 (130) 1". */
+		label?: string;
+		/** Pravec binary class: A, B, C, L, O, U or W. */
+		binary_type?: string;
+		a_km?: number;
+		a_km_sigma?: number;
+		a_over_primary_radius?: number;
+		a_over_hill_radius?: number;
+		per_d?: number;
+		per_d_sigma?: number;
+		e?: number;
+		e_sigma?: number;
+		/** As printed, e.g. "2004 Sep 01.0". */
+		epoch?: string;
+		normalised_ang_mom?: number;
+		diameter_ratio?: number;
+		diameter_ratio_sigma?: number;
+		dimensions?: string;
+		mag_difference?: number;
+		rotation_h?: number;
+		discovery_date?: string;
+		discoverers?: string;
+		discovery_method?: string;
+		discovery_facility?: string;
+		/** As printed by the archive, e.g. "2001 Sep 03". */
+		announced?: string;
+		provisional_designation?: string;
+	};
 	wikidata?: {
 		discovery_date?: string[];
 		launch_date?: string;

@@ -57,6 +57,11 @@ const ARCHIVES: Record<string, Archive> = {
 		url: 'https://darts.isas.jaxa.jp/',
 		role: m.archive_role_horizons
 	},
+	nsdb: {
+		label: m.source_nsdb_name,
+		url: 'https://www.sai.msu.ru/neb/nss/',
+		role: m.archive_role_nsdb
+	},
 	'gcat-deepcat': {
 		label: m.source_archive_gcat_deep,
 		url: 'https://planet4589.org/space/deepcat/',

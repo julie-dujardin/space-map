@@ -284,7 +284,8 @@ export function sbdbOrbitClass(a: number, e: number): string | null {
  */
 const NOMINAL_RADIUS_KM_BY_SOURCE: Partial<Record<OrbitalSource, number>> = {
 	[OrbitalSource.SPICE_PROBE]: 0.005,
-	[OrbitalSource.SBDB_MOON]: 0.01
+	[OrbitalSource.SBDB_MOON]: 0.01,
+	[OrbitalSource.ASTERSAT]: 0.01
 };
 const NOMINAL_RADIUS_KM_BY_TYPE: Partial<Record<ObjectType, number>> = {
 	[ObjectType.SPACECRAFT]: 0.005,

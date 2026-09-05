@@ -115,6 +115,7 @@ export enum OrbitalSource {
 	SBDB_MOON = 4,
 	SPICE_PROBE = 5,
 	SPACETRACK = 6,
+	ASTERSAT = 7,
 	UNKNOWN = 255
 }
 

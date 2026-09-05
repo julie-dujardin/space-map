@@ -142,6 +142,18 @@
 				m.source_jpl_satellite_discovery_role()
 			);
 
+		// Component sizes, system mass, the binary class and the discovery
+		// record of an asteroid moon are Johnston's compilation of the
+		// literature. The block carries its own system page — the exact entry
+		// the numbers were read off, so link that rather than the index.
+		if (global?.johnston)
+			add(
+				'johnston',
+				m.source_johnston_name(),
+				global.johnston.page ?? 'https://www.johnstonsarchive.net/astro/asteroidmoons.html',
+				m.source_johnston_role()
+			);
+
 		const mpc = global?.cross_refs?.mpc_designation;
 		if (mpc)
 			add(

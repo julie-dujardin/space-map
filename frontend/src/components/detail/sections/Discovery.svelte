@@ -35,12 +35,27 @@
 			})[0];
 	}
 
+	// Asteroid moons have almost no Wikidata item, so their whole discovery
+	// record is Johnston's: who found the companion, with what, from where,
+	// and when it was announced. Used only where Wikidata is silent.
+	let johnston = $derived(global?.johnston);
+
 	let discoveryDate = $derived(pickDiscoveryDate(global));
 	let discoverers = $derived(localized?.discoverers);
 	let discoverySite = $derived(localized?.discovery_site);
 	let asteroidFamily = $derived(localized?.asteroid_family);
 	let partOf = $derived(withoutRefs(localized?.part_of, asteroidFamily ? [asteroidFamily] : []));
 	let namedAfter = $derived(localized?.named_after);
+
+	// Printed as the archive writes it ("2001 Aug 29") — not an ISO date, and
+	// pinning a day to a month it may not state would invent precision.
+	let johnstonDate = $derived(discoveryDate ? undefined : johnston?.discovery_date);
+	let johnstonDiscoverers = $derived(
+		discoverers && discoverers.length > 0 ? undefined : johnston?.discoverers
+	);
+	let johnstonFacility = $derived(
+		discoverySite && discoverySite.length > 0 ? undefined : johnston?.discovery_facility
+	);
 
 	let hasFields = $derived(
 		!!(
@@ -49,7 +64,12 @@
 			discoverySite ||
 			asteroidFamily ||
 			partOf.length > 0 ||
-			namedAfter
+			namedAfter ||
+			johnstonDate ||
+			johnstonDiscoverers ||
+			johnstonFacility ||
+			johnston?.discovery_method ||
+			johnston?.announced
 		)
 	);
 	let hasContent = $derived(!isSpacecraft && hasFields);
@@ -65,10 +85,29 @@
 				<EntityLinks entities={discoverers} />
 			</Row>
 		{/if}
+		{#if johnstonDate}
+			<Row label={m.first_observed()} value={johnstonDate} />
+		{/if}
+		{#if johnstonDiscoverers}
+			<Row label={m.discoverers()} value={johnstonDiscoverers} />
+		{/if}
 		{#if discoverySite && discoverySite.length > 0}
 			<Row label={m.discovery_site()}>
 				<EntityLinks entities={discoverySite} />
 			</Row>
+		{/if}
+		{#if johnstonFacility}
+			<Row label={m.discovery_site()} value={johnstonFacility} />
+		{/if}
+		{#if johnston?.discovery_method}
+			<Row
+				label={m.discovery_method()}
+				value={johnston.discovery_method}
+				tooltip={m.tooltip_discovery_method()}
+			/>
+		{/if}
+		{#if johnston?.announced}
+			<Row label={m.discovery_announcement()} value={johnston.announced} />
 		{/if}
 		{#if namedAfter && namedAfter.length > 0}
 			<Row label={m.property_name_named_after()}>

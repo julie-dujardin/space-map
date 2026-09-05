@@ -177,6 +177,14 @@ export function formatDegrees(degrees: number): string {
 	return joinParts(angleParts(formatNumber(degrees)));
 }
 
+export function arcsecondParts(figure: string): Parts {
+	return { value: figure, unit: m.symbol_arcsecond(), tight: true };
+}
+
+export function formatArcseconds(arcseconds: number): string {
+	return joinParts(arcsecondParts(formatNumber(arcseconds)));
+}
+
 /** Locale-aware compact notation ("1.34M"), ~3 significant digits. */
 export function formatCompactNumber(n: number): string {
 	if (!Number.isFinite(n)) return String(n);

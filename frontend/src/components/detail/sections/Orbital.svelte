@@ -21,7 +21,12 @@
 	} from '$lib/fetch/position/probes/propagate';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import { rotationPeriodDays } from '$lib/fetch/objects/physical';
-	import { formatDegrees, formatNumber, formatQuantity } from '$lib/format/quantities';
+	import {
+		formatArcseconds,
+		formatDegrees,
+		formatNumber,
+		formatQuantity
+	} from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
 	import { formatIsoDate, formatJulianDate, formatJulianDateRelative } from '$lib/format/date';
@@ -46,6 +51,7 @@
 		[OrbitalSource.CELESTRAK]: m.source_celestrak_name,
 		[OrbitalSource.SPICE]: m.source_spice_ephemeris_name,
 		[OrbitalSource.SBDB_MOON]: m.source_sbdb_name,
+		[OrbitalSource.ASTERSAT]: m.source_nsdb_name,
 		[OrbitalSource.SPICE_PROBE]: m.source_spice_ephemeris_name
 	};
 
@@ -56,6 +62,7 @@
 		[OrbitalSource.CELESTRAK]: 'celestrak',
 		[OrbitalSource.SPICE]: 'naif',
 		[OrbitalSource.SBDB_MOON]: 'sbdb',
+		[OrbitalSource.ASTERSAT]: 'nsdb',
 		[OrbitalSource.SPICE_PROBE]: 'naif'
 	};
 
@@ -169,7 +176,18 @@
 	let cometPrefix = $derived(sbdb?.prefix);
 	let minorPlanetGroup = $derived(localized?.minor_planet_group);
 
-	let dataArcValue = $derived(sbdb?.data_arc != null ? formatDuration(sbdb.data_arc) : null);
+	// A small-body moon carries no `sbdb` block of its own — the fit behind its
+	// mutual orbit is AsterSat's, and describes the same thing, so it fills the
+	// same rows. Its arc is a pair of decimal years rather than a day count.
+	const astersat = $derived(global?.astersat);
+	let astersatArcDays = $derived(
+		astersat?.obs_arc ? (astersat.obs_arc[1] - astersat.obs_arc[0]) * 365.25 : null
+	);
+	let observationArcDays = $derived(sbdb?.data_arc ?? astersatArcDays);
+	let observationsUsed = $derived(sbdb?.n_obs_used ?? astersat?.n_obs);
+	let dataArcValue = $derived(
+		observationArcDays != null ? formatDuration(observationArcDays) : null
+	);
 	// Chebyshev-tracked bodies get osculating Kepler elements computed regularly to
 	// display trails — that epoch isn't a real observational one, so showing it is misleading.
 	let isChebyshev = $derived(body != null && ctx?.chebStore?.has(body.data.id) === true);
@@ -261,8 +279,9 @@
 			sbdb?.ad ||
 			sbdb?.moid ||
 			sbdb?.condition_code != null ||
-			sbdb?.data_arc != null ||
-			sbdb?.n_obs_used != null ||
+			observationArcDays != null ||
+			observationsUsed != null ||
+			astersat?.rms_arcsec != null ||
 			sbdb?.last_obs ||
 			orbitClass ||
 			cometPrefix ||
@@ -451,11 +470,18 @@
 		{#if dataArcValue}
 			<Row label={m.observation_arc()} value={dataArcValue} tooltip={m.tooltip_observation_arc()} />
 		{/if}
-		{#if sbdb?.n_obs_used != null}
+		{#if observationsUsed != null}
 			<Row
 				label={m.observations_used()}
-				value={formatNumber(sbdb.n_obs_used)}
+				value={formatNumber(observationsUsed)}
 				tooltip={m.tooltip_observations_used()}
+			/>
+		{/if}
+		{#if astersat?.rms_arcsec != null}
+			<Row
+				label={m.orbit_fit_residual()}
+				value={formatArcseconds(astersat.rms_arcsec)}
+				tooltip={m.tooltip_orbit_fit_residual()}
 			/>
 		{/if}
 		{#if sbdb?.last_obs}

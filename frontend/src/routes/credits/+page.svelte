@@ -215,6 +215,13 @@
 				</li>
 				<li>
 					{@render link(
+						'https://www.johnstonsarchive.net/astro/asteroidmoons.html',
+						m.source_johnston_name(),
+						m.source_johnston_role()
+					)}
+				</li>
+				<li>
+					{@render link(
 						'https://celestrak.org/satcat/',
 						m.source_celestrak_name(),
 						m.source_celestrak_role()

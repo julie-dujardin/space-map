@@ -17,6 +17,7 @@
 		[OrbitalSource.CELESTRAK]: m.source_celestrak_name,
 		[OrbitalSource.SPICE]: m.provider_nasa,
 		[OrbitalSource.SBDB_MOON]: m.provider_nasa,
+		[OrbitalSource.ASTERSAT]: m.source_nsdb_name,
 		[OrbitalSource.SPICE_PROBE]: m.provider_nasa,
 		[OrbitalSource.SPACETRACK]: m.source_spacetrack_name
 	};
@@ -26,6 +27,7 @@
 		OrbitalSource.SBDB,
 		OrbitalSource.SPICE,
 		OrbitalSource.SBDB_MOON,
+		OrbitalSource.ASTERSAT,
 		OrbitalSource.SPICE_PROBE,
 		OrbitalSource.CELESTRAK,
 		OrbitalSource.SPACETRACK

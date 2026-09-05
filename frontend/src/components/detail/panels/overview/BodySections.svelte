@@ -5,6 +5,7 @@
 	import Interior from '../../sections/Interior.svelte';
 	import Rings from '../../sections/Rings.svelte';
 	import Orbital from '../../sections/Orbital.svelte';
+	import BinarySystem from '../../sections/BinarySystem.svelte';
 	import Discovery from '../../sections/Discovery.svelte';
 	import Mission from '../../sections/Mission.svelte';
 	import type { OrbitalElements, PositionedBody } from '$lib/types/objects';
@@ -34,5 +35,6 @@
 	{parentBody}
 	{jd}
 />
+<BinarySystem global={data?.global ?? null} />
 <Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 <Mission global={data?.global ?? null} localized={data?.localized ?? null} />
