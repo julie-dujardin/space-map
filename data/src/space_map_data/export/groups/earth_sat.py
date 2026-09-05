@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_SLUG_PREFIX,
+    STATION_CONSTELLATION_SLUGS,
 )
 from space_map_data.constants.earth_sats.launch_vehicles import (
     LAUNCH_VEHICLE_BY_CONSTELLATION,
@@ -222,6 +223,10 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
         if decay_date:
             skip_counters["decayed"] += 1
             continue
+        # A station is no fleet: its modules count as members, not as a
+        # constellation in any top list.
+        if constellation_slug in STATION_CONSTELLATION_SLUGS:
+            constellation_slug = None
         inc = inclinations.get(norad)
         if orbit_center != OrbitCenter.EARTH:
             skip_counters["not_earth_centered"] += 1

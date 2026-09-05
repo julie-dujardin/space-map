@@ -3,6 +3,7 @@
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_BY_SLUG,
     CONSTELLATION_SLUG_PREFIX,
+    STATION_CONSTELLATION_SLUGS,
 )
 from space_map_data.constants.earth_sats.launch_vehicles import (
     LAUNCH_VEHICLE_BY_CONSTELLATION,
@@ -149,6 +150,8 @@ def _constellation_group_ref(
     page's own fallback. ROCKET constellations resolve to their lv-
     launch-vehicle page instead (a spent stage's "constellation" is its vehicle).
     """
+    if slug in STATION_CONSTELLATION_SLUGS:
+        return None
     lv = LAUNCH_VEHICLE_BY_CONSTELLATION.get(slug)
     if lv is not None:
         group_slug = f"{LAUNCH_VEHICLE_SLUG_PREFIX}{lv.slug}"

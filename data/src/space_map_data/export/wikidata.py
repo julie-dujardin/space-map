@@ -1,5 +1,6 @@
 """Wikidata entity loading, types, and name resolution."""
 
+import re
 import orjson
 import logging
 from collections.abc import Iterator
@@ -135,7 +136,7 @@ class WikidataEntityCache:
 
 
 def _parse_entity(entity: dict) -> WikidataEntity | None:
-    labels = _extract_lang_values(entity.get("labels", {}))
+    labels = _extract_lang_values(entity.get("labels", {}), labels=True)
     descriptions = _extract_lang_values(entity.get("descriptions", {}))
     aliases = _extract_lang_aliases(entity.get("aliases", {}))
     claims = entity.get("claims", {})
@@ -176,15 +177,43 @@ def resolve_name(
     return entity_label(wd, lang) or obj.name
 
 
-def _extract_lang_values(data: dict) -> dict[str, str]:
+def _extract_lang_values(data: dict, *, labels: bool = False) -> dict[str, str]:
     """Extract {lang: value} from Wikidata labels/descriptions format."""
     result: dict[str, str] = {}
     for lang_code, obj in data.items():
         if isinstance(obj, dict) and "value" in obj:
-            result[lang_code] = obj["value"]
+            value = obj["value"]
         elif isinstance(obj, str):
-            result[lang_code] = obj
+            value = obj
+        else:
+            continue
+        result[lang_code] = clean_label(value) if labels else clean_text(value)
     return result
+
+
+# Bidi and zero-width marks: invisible, but they survive into URLs and titles
+# ("Interim Cryogenic Propulsion Stage\u200e").
+_INVISIBLE_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]")
+_SPACES_RE = re.compile(r"\s+")
+# Wikidata disambiguators that only make sense on Wikidata's own search page.
+_DISAMBIGUATOR_RE = re.compile(
+    r"\s*\((?:satellite|spacecraft|space probe|probe|space station|rocket|launch vehicle)\)$",
+    re.IGNORECASE,
+)
+# A minus sign between letters is a typo for a dash ("Cassini−Huygens");
+# beside a digit it is arithmetic and stays.
+_MINUS_DASH_RE = re.compile(r"(?<=[^\W\d_])\u2212(?=[^\W\d_])")
+
+
+def clean_text(value: str) -> str:
+    """Prose or a label: invisible marks out, runs of whitespace to one space."""
+    return _SPACES_RE.sub(" ", _INVISIBLE_RE.sub("", value)).strip()
+
+
+def clean_label(value: str) -> str:
+    """A display name: :func:`clean_text`, minus a trailing disambiguator and
+    with minus signs used as dashes made dashes."""
+    return _DISAMBIGUATOR_RE.sub("", _MINUS_DASH_RE.sub("–", clean_text(value)))
 
 
 def _extract_lang_aliases(

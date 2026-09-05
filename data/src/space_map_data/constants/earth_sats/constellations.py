@@ -1588,6 +1588,54 @@ CONSTELLATION_BY_SLUG: dict[str, ConstellationSpec] = {
     c.slug: c for c in CONSTELLATIONS
 }
 
+# A station's "constellation" is the station itself plus what docked to it, not
+# a fleet: it classifies its members but gets no group page, tile or crumb.
+STATION_CONSTELLATION_SLUGS: frozenset[str] = frozenset(
+    c.slug for c in CONSTELLATIONS if SatelliteCategory.STATION in c.category
+)
+
+# Display names for constellations no Wikidata entity labels (or whose entity
+# carries no English label); without one the slug leaks onto the page
+# ("usa-classified").
+CONSTELLATION_NAMES: dict[str, str] = {
+    "aerocube": "AeroCube",
+    "blacksky": "BlackSky",
+    "capella": "Capella",
+    "cas": "CAS",
+    "centispace": "CentiSpace",
+    "checkmate": "Checkmate",
+    "chinasat": "ChinaSat",
+    "chuangxin": "Chuangxin",
+    "cis-classified": "CIS classified",
+    "connecta-iot": "Connecta IoT",
+    "grus-axelspace": "GRUS",
+    "hawkeye360": "HawkEye 360",
+    "iceye": "ICEYE",
+    "iran-classified": "Iranian classified",
+    "jason": "Jason",
+    "lynk": "Lynk",
+    "marecs": "MARECS",
+    "measat": "MEASAT",
+    "noaa": "NOAA",
+    "planet-pelican": "Pelican",
+    "prc-classified": "Chinese classified",
+    "qps-sar": "QPS-SAR",
+    "sitro-ais": "SITRO-AIS",
+    "skor-classified": "South Korean classified",
+    "strix-synspective": "StriX",
+    "thaicom": "Thaicom",
+    "tianqi": "Tianqi",
+    "tomorrow-io": "Tomorrow.io",
+    "umbra-sar": "Umbra",
+    "us-ops-classified": "OPS classified",
+    "usa-classified": "USA classified",
+    "viasat": "ViaSat",
+    "wildfire": "Wildfire",
+    "xw": "XW",
+    "zhongxing": "Zhongxing",
+    "zhuhai": "Zhuhai-1",
+}
+
 # Breakup clouds (ASAT tests, collisions, dispersals) rather than fleets: these
 # belong to the Debris category page, not Satellites.
 DEBRIS_CONSTELLATION_SLUGS: frozenset[str] = frozenset(

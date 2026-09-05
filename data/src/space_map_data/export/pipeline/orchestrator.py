@@ -865,11 +865,20 @@ def _inject_carried_by(
             carrier_id,
         )
         return
-    global_data[obj_id]["carried_by"] = {
+    passenger = global_data[obj_id]
+    passenger["carried_by"] = {
         "name": carrier.get("name") or carrier_id,
         "primary_type": "object",
         "primary_id": carrier_id,
     }
+    # A passenger never catalogued on its own borrows the carrier's SATCAT
+    # row (Huygens under Cassini's NORAD), whose mass, span, builder and
+    # end date describe the carrier. Its own claims stay; the row goes.
+    if passenger.get("norad_cat_id") is not None and passenger.get(
+        "norad_cat_id"
+    ) == carrier.get("norad_cat_id"):
+        passenger.pop("celestrak", None)
+        passenger.pop("norad_cat_id", None)
 
 
 def _write_metadata_json(

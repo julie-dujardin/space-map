@@ -25,6 +25,7 @@ from space_map_data.export.ephemeris import (
     ephemeris_archive_for,
 )
 from space_map_data.export.wikidata import (
+    clean_label,
     WikidataEntity,
     WikidataEntityCache,
     active_statements,
@@ -538,7 +539,7 @@ def _build_global(
     if obj.id in nomenclature_body_ids:
         data["has_nomenclature"] = True
     if obj.name is not None:
-        data["name"] = obj.name
+        data["name"] = clean_label(obj.name)
     # Host name for moons — top-level so position-less moonlets carry it too,
     # and the breadcrumb can label the parent even after it's culled from scene.
     if obj.object_type == ObjectType.moon and obj.parent_id is not None:

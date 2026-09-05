@@ -94,28 +94,29 @@ class TestBuildLabels:
         buf = _build_labels(feats, "en", _StubWikidata())
         assert buf.decode("utf-8").split("\n") == ["Tycho"]
 
-    def test_uses_wikidata_label_when_present(self):
+    def test_iau_name_in_english_wikidata_label_elsewhere(self):
         feats = [
             _feat(feature_id=1, name="Abu Nuwas", wikidata_qid="Q1"),
-            _feat(feature_id=2, name="Tycho", wikidata_qid="Q2"),
+            _feat(feature_id=2, name="Mare Tranquillitatis", wikidata_qid="Q2"),
             _feat(feature_id=3, name="Mons Hadley", wikidata_qid="Q3"),
         ]
         wd = _StubWikidata(
             {
                 "Q1": {"en": "Abu Nuwas (crater)", "ru": "Абу Нувас"},
-                "Q2": {"en": "Tycho", "ru": "Тихо"},
+                # A vandalised English label must not reach the page.
+                "Q2": {"en": "Mare Tranquilliton", "ru": "Море Спокойствия"},
                 # Q3 has no labels for either language.
                 "Q3": {},
             }
         )
         assert _build_labels(feats, "en", wd).decode("utf-8").split("\n") == [
-            "Abu Nuwas (crater)",
-            "Tycho",
+            "Abu Nuwas",
+            "Mare Tranquillitatis",
             "Mons Hadley",
         ]
         assert _build_labels(feats, "ru", wd).decode("utf-8").split("\n") == [
             "Абу Нувас",
-            "Тихо",
+            "Море Спокойствия",
             "Mons Hadley",
         ]
 

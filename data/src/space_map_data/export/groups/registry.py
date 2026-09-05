@@ -14,6 +14,7 @@ from space_map_data.constants.countries import COUNTRIES, COUNTRY_SLUG_PREFIX
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_SLUG_PREFIX,
     CONSTELLATIONS,
+    STATION_CONSTELLATION_SLUGS,
 )
 from space_map_data.constants.earth_sats.launch_vehicles import (
     LAUNCH_VEHICLE_BY_CONSTELLATION,
@@ -116,7 +117,8 @@ class Group:
 
 def _build_groups() -> tuple[Group, ...]:
     # ROCKET constellations are surfaced as lv- launch-vehicle pages instead;
-    # exclude them here so they don't also emit a const- page.
+    # exclude them here so they don't also emit a const- page. Station
+    # constellations only classify: a station and what docked to it is no fleet.
     constellations = tuple(
         Group(
             slug=f"{CONSTELLATION_SLUG_PREFIX}{c.slug}",
@@ -127,6 +129,7 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for c in CONSTELLATIONS
         if c.slug not in LAUNCH_VEHICLE_BY_CONSTELLATION
+        and c.slug not in STATION_CONSTELLATION_SLUGS
     )
     launch_vehicles = tuple(
         Group(

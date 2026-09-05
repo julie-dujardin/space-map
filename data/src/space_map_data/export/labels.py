@@ -18,6 +18,7 @@ from pathlib import Path
 
 from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS, PROMOTED_TYPES
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.wikidata import clean_label
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.models.object import ObjectType
 from space_map_data.utils.designations import format_provisional_designation
@@ -62,7 +63,7 @@ def _resolve_label(
     the map at first paint.
     """
     loc_name = loc.get("name") if loc else None
-    db_name = glob.get("name")
+    db_name = clean_label(glob["name"]) if glob.get("name") else None
     raw_designation = glob.get("provisional_designation")
     designation = format_provisional_designation(raw_designation)
     # A DB name that is just the designation reads better in the IAU spelling.

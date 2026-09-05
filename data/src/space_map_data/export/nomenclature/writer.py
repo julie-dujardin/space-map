@@ -44,6 +44,7 @@ from sqlalchemy.orm import Session
 from urllib.parse import quote
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.constants.providers import BASE_LOCALE
 from space_map_data.constants.nomenclature.quadrangles import QUADRANGLE_QIDS
 from space_map_data.export.images import collect_feature_images, localized_image_titles
 from space_map_data.export.nomenclature.format import (
@@ -243,7 +244,13 @@ def _build_labels(
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> bytes:
-    """Pack one line per feature: Wikidata label in *lang*, else IAU ``name``.
+    """Pack one line per feature: the IAU ``name`` in English, else the Wikidata
+    label in *lang*, else the IAU name.
+
+    The IAU is the naming authority, so its spelling is the English one;
+    Wikidata only supplies the other languages, where it has a native form
+    the gazetteer does not (a vandalised English label once shipped as
+    "Mare Tranquilliton").
 
     Order matches :func:`_build_positions`, by contract — frontend joins by
     index (positions[i] ↔ label_lines[i]).
@@ -251,7 +258,7 @@ def _build_labels(
     lines: list[str] = []
     for f in features:
         label = f.name
-        if f.wikidata_qid:
+        if f.wikidata_qid and lang != BASE_LOCALE:
             wd = wikidata_entities.get_feature_entity(f.wikidata_qid)
             if wd is not None:
                 wd_label = wd["labels"].get(lang) or wd["labels"].get("mul")

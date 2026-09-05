@@ -6,7 +6,10 @@ import logging
 import subprocess
 from collections.abc import Callable
 
-from space_map_data.constants.earth_sats.constellations import CONSTELLATION_SLUG_PREFIX
+from space_map_data.constants.earth_sats.constellations import (
+    CONSTELLATION_NAMES,
+    CONSTELLATION_SLUG_PREFIX,
+)
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_SLUG
 from space_map_data.constants.earth_sats.organizations import (
     ORGANIZATION_BY_SLUG,
@@ -21,7 +24,7 @@ from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPES,
     feature_type_key,
 )
-from space_map_data.constants.providers import LANGUAGES
+from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
 from space_map_data.export.groups.registry import (
     LAUNCH_SITE_SLUG_PREFIX,
     LAUNCH_VEHICLE_SLUG_PREFIX,
@@ -40,7 +43,6 @@ from space_map_data.utils.paths import PROJECT_ROOT, SOURCES_METADATA_DIR
 logger = logging.getLogger(__name__)
 
 MESSAGES_DIR = PROJECT_ROOT / "frontend" / "messages"
-BASE_LOCALE = "en"
 
 # All prefixes managed by this module. Generated values only fill gaps:
 # existing translations always win, and keys no longer generated for the
@@ -276,8 +278,8 @@ def _group_fallback_name(group) -> str:
             # behaviour: bare slug, prettified by the frontend.
             return lv.name or stem
     elif group.type is GroupType.CONSTELLATION:
-        # No name registry; the bare slug is the fallback the frontend prettifies.
-        return group.slug.removeprefix(CONSTELLATION_SLUG_PREFIX)
+        stem = group.slug.removeprefix(CONSTELLATION_SLUG_PREFIX)
+        return CONSTELLATION_NAMES.get(stem, stem)
     return group.slug
 
 
