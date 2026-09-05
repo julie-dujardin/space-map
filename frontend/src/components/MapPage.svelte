@@ -18,6 +18,7 @@
 	} from '$lib/state/view';
 	import { EARTH_ID, SUN_ID } from '$lib/constants';
 	import { createAppState } from '$lib/state/app-state.svelte';
+	import { MapCover } from '$lib/state/map-cover.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { fetchBodyNomenclature, type NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { Focusable, FocusFeature, FocusObject } from '$lib/state/focusable';
@@ -108,6 +109,8 @@
 
 	const appState = createAppState();
 	setContext('appState', appState);
+	const mapCover = new MapCover();
+	setContext('mapCover', mapCover);
 	const settings = getSettings();
 
 	// Snap the clock into `id`'s coverage window if `now` is outside it: the
@@ -258,6 +261,8 @@
 		return () => mq.removeEventListener('change', onChange);
 	});
 	const bgInert = $derived(searchExpanded && isMobileViewport);
+	// That search overlay is opaque, so the map under it can stop drawing.
+	mapCover.hold(() => bgInert);
 	let userPromotedCount = $state(0);
 	let northRefId = $state<string | null>(null);
 

@@ -5,8 +5,9 @@
 	// so a height change during a desktop interlude still repairs it.
 	import { Drawer as Vaul } from 'vaul-svelte';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
-	import { DRAWER_TOP_GAP_PX, topSnapPx } from '$lib/drawer';
-	import type { Snippet } from 'svelte';
+	import { DRAWER_TOP_GAP_PX, topSnapPx, trackSheetCover } from '$lib/drawer';
+	import { getContext, type Snippet } from 'svelte';
+	import type { MapCover } from '$lib/state/map-cover.svelte';
 
 	interface Props {
 		inert: boolean;
@@ -54,6 +55,12 @@
 	let topSnap = $derived(topSnapPx(innerH));
 	let snapPoints = $derived([collapsedSnap, MID_SNAP, topSnap]);
 	let isAtTop = $derived(activeSnapPoint === topSnap);
+
+	let covers = $state(false);
+	const cover = trackSheetCover((c) => (covers = c));
+	$effect(() => cover.setAtTop(isAtTop));
+	$effect(() => () => cover.dispose());
+	getContext<MapCover>('mapCover').hold(() => covers);
 
 	$effect(() => {
 		const el = headerEl;
@@ -105,6 +112,8 @@
 	shouldScaleBackground={false}
 	dismissible={false}
 	repositionInputs={false}
+	onDrag={cover.onDrag}
+	onRelease={cover.onRelease}
 >
 	<Vaul.Portal>
 		<Vaul.Content

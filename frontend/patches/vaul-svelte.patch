@@ -1,5 +1,5 @@
 diff --git a/dist/use-drawer-root.svelte.js b/dist/use-drawer-root.svelte.js
-index dffcf102fa23b5ab751407901513910d06980e09..0b3a66b9016a07e1ff2cbfcc5b4f28a828929e68 100644
+index dffcf102fa23b5ab751407901513910d06980e09..3a3953c473da640b5528dc807912ae480c07ca34 100644
 --- a/dist/use-drawer-root.svelte.js
 +++ b/dist/use-drawer-root.svelte.js
 @@ -21,6 +21,7 @@ export function useDrawerRoot(opts) {
@@ -95,7 +95,25 @@ index dffcf102fa23b5ab751407901513910d06980e09..0b3a66b9016a07e1ff2cbfcc5b4f28a8
              return;
          }
          if (!isAllowedToDrag && !shouldDrag(event.target, isDraggingInDirection))
-@@ -220,6 +227,33 @@ export function useDrawerRoot(opts) {
+@@ -168,6 +175,9 @@ export function useDrawerRoot(opts) {
+         drawerNode.classList.add(DRAG_CLASS);
+         // If shouldDrag gave true once after pressing down on the drawer, we set isAllowedToDrag to true and it will remain true until we let go, there's no reason to disable dragging mid way, ever, and that's the solution to it
+         isAllowedToDrag = true;
++        // Upstream only reports pulls that fade the overlay; an overlay-less sheet
++        // still has listeners that need every pull.
++        opts.onDrag.current?.(event, percentageDragged);
+         set(drawerNode, {
+             transition: "none",
+         });
+@@ -192,7 +202,6 @@ export function useDrawerRoot(opts) {
+         if (snapPointsState.shouldFade ||
+             (opts.fadeFromIndex.current &&
+                 snapPointsState.activeSnapPointIndex === opts.fadeFromIndex.current - 1)) {
+-            opts.onDrag.current?.(event, percentageDragged);
+             set(overlayNode, {
+                 opacity: `${opacityValue}`,
+                 transition: "none",
+@@ -220,6 +229,33 @@ export function useDrawerRoot(opts) {
              });
          }
      }

@@ -312,6 +312,8 @@ export class SceneRenderer {
 
 	private rafId = 0;
 	private paused = false;
+	/** Something fullscreen hides the canvas; see shouldRender. */
+	private covered = false;
 	private firstFrame = true;
 	private pendingUrlWrite = false;
 	private lastTickMs = 0;
@@ -1558,9 +1560,20 @@ export class SceneRenderer {
 	 * Render on demand: an idle scene (clock paused, camera at rest, nothing
 	 * streaming) renders only a heartbeat frame, and one moved by the clock
 	 * alone at real-time pace renders at half rate. Everything else renders
-	 * every frame.
+	 * every frame. Under a cover only loading renders — a flight, and the
+	 * uploads and unloads spread over frames — so the scene is ready to show
+	 * the moment the cover goes.
 	 */
 	private shouldRender(nowMs: number): boolean {
+		const flying = nowMs - this.focus.focusStartTime < this.focus.focusDurationMs;
+		const loading =
+			flying ||
+			this.focusKey() !== this.lastRenderedFocusKey ||
+			this.ctx.bodies.minorStreaming ||
+			this.pointClouds.hasPendingSceneAdds() ||
+			this.systemData.hasPendingUnloads();
+		if (loading) return true;
+		if (this.covered) return false;
 		if (this.frameIndex - this.lastRenderedFrame >= SceneRenderer.IDLE_HEARTBEAT_FRAMES)
 			return true;
 		// Damping never reaches exact rest, so motion counts once it could move a
@@ -1569,17 +1582,7 @@ export class SceneRenderer {
 		const cameraMoved =
 			cam.position.distanceToSquared(this.lastRenderedCamPos) > cam.position.lengthSq() * 1e-10 ||
 			8 * (1 - Math.abs(cam.quaternion.dot(this.lastRenderedCamQuat))) > 1e-8;
-		const flying = nowMs - this.focus.focusStartTime < this.focus.focusDurationMs;
-		const awake =
-			cameraMoved ||
-			flying ||
-			this.frameIndex < this.wakeUntilFrame ||
-			this.focusKey() !== this.lastRenderedFocusKey ||
-			this.ctx.bodies.minorStreaming ||
-			this.pointClouds.hasPendingSceneAdds() ||
-			this.systemData.hasPendingUnloads() ||
-			this.haloDebug.active;
-		if (awake) return true;
+		if (cameraMoved || this.frameIndex < this.wakeUntilFrame || this.haloDebug.active) return true;
 		if (this.clock.jd === this.lastRenderedJd) return false;
 		return (
 			Math.abs(this.clock.timeScale) > 1 ||
@@ -2218,6 +2221,15 @@ export class SceneRenderer {
 		this.paused = false;
 		this.invalidate();
 		this.tick();
+	}
+
+	/** Stop drawing under a fullscreen cover; the loop keeps ticking so the
+	 *  clock and coverage stops run on, and the first frame after uncovering
+	 *  is drawn at once. */
+	setCovered(covered: boolean): void {
+		if (this.covered === covered) return;
+		this.covered = covered;
+		if (!covered) this.invalidate();
 	}
 
 	isContextLost(): boolean {

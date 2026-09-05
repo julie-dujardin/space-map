@@ -14,7 +14,8 @@
 	import { toast } from 'svelte-sonner';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { BodyData } from '$lib/types/objects';
-	import { DRAWER_TOP_GAP_PX } from '$lib/drawer';
+	import { DRAWER_TOP_GAP_PX, trackSheetCover } from '$lib/drawer';
+	import type { MapCover } from '$lib/state/map-cover.svelte';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { fetchObjectDetail, type GlobalObjectData } from '$lib/fetch/objects/object-data';
@@ -548,6 +549,16 @@
 	let activeSnapPoint = $state<number | string | null>(`${HEADER_GUESS_PX}px`);
 	let isAtTop = $derived(activeSnapPoint === topSnap);
 
+	let covers = $state(false);
+	const cover = trackSheetCover((c) => (covers = c));
+	$effect(() => {
+		const mobile = isMobile;
+		const atTop = isAtTop;
+		cover.setAtTop(mobile && atTop);
+	});
+	$effect(() => () => cover.dispose());
+	getContext<MapCover>('mapCover').hold(() => covers);
+
 	// Opening the trip opens the sheet all the way — moved there after mount
 	// rather than started there, since vaul opens at its *first* snap point
 	// regardless of the bound value. Moving it is also what animates it up.
@@ -701,6 +712,8 @@
 		shouldScaleBackground={false}
 		dismissible={false}
 		repositionInputs={false}
+		onDrag={cover.onDrag}
+		onRelease={cover.onRelease}
 	>
 		<Vaul.Portal>
 			<Vaul.Content

@@ -19,6 +19,7 @@
 	import { navEndOf, parseUrl, urlTypeFromId } from '$lib/state/url';
 	import { UrlType } from '$lib/state/view';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import type { MapCover } from '$lib/state/map-cover.svelte';
 	import { jdToDate } from '$lib/format/date';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -80,6 +81,7 @@
 
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState>('appState');
+	const mapCover = getContext<MapCover>('mapCover');
 	const initialView = appState.view;
 
 	let canvas: HTMLCanvasElement;
@@ -435,6 +437,12 @@
 		if (!renderer) return;
 		if (benchRunning) renderer.pause();
 		else if (!renderer.isContextLost()) renderer.resume();
+	});
+
+	// Read before the `?.`, so the flag stays a dependency while the renderer is unset.
+	$effect(() => {
+		const hidden = mapCover.covered;
+		renderer?.setCovered(hidden);
 	});
 
 	onDestroy(() => {

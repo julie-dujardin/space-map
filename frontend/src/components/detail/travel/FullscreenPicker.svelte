@@ -15,7 +15,8 @@
   off body-wide and the portal puts this outside the subtree vaul re-enables.
 -->
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { getContext, type Snippet } from 'svelte';
+	import type { MapCover } from '$lib/state/map-cover.svelte';
 	import { Portal } from 'bits-ui';
 	import XIcon from '@lucide/svelte/icons/x';
 	import * as m from '$lib/paraglide/messages.js';
@@ -26,6 +27,9 @@
 		children: Snippet;
 	}
 	let { title, onClose, children }: Props = $props();
+
+	// Opaque and fullscreen for as long as it is mounted.
+	getContext<MapCover>('mapCover').hold();
 </script>
 
 <!-- Escape closes it, as it would the popover this stands in for. -->
