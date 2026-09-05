@@ -183,6 +183,8 @@ export interface NotableMemberEntry {
 	 *  A craft has no radius, so this is the size the craft lineup scales it by,
 	 *  and its presence is what marks the member as a craft rather than a body. */
 	length_m?: number;
+	/** The craft body within `length_m`, booms excluded; absent ⇒ the same. */
+	body_length_m?: number;
 	/** A `v1/textures/<id>/` surface map exists. Explicit `false` lets the
 	 *  lineup skip the fetch; absent (pre-flag bundle) means probe as before. */
 	texture?: boolean;

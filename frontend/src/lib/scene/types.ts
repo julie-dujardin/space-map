@@ -53,6 +53,11 @@ export interface BodyObjects {
 	/** Thin trails use `Line`; wider trails use a `Mesh` of expanded quads. */
 	trail: Line | Mesh | null;
 	radiusScene: number;
+	/** Scene units per model unit for a loaded spacecraft mesh, when its bundle
+	 *  distinguishes the craft body from what it deploys: the mesh is drawn on
+	 *  its full span while `radiusScene` shrinks to the body. Undefined ⇒ the
+	 *  two are the same and `radiusScene` serves both. */
+	modelUnitOverride?: number;
 	/**
 	 * True once SPICE triaxial radii have been applied as a non-uniform scale.
 	 * Gates re-application against the now-bumped `radiusScene`. Reset on mesh teardown.

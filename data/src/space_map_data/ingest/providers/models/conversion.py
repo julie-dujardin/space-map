@@ -173,3 +173,13 @@ def gltf_transform_optimize(src: Path, dst: Path, *, tier: str) -> None:
         cmd += ["--simplify", "false"]
     log.debug("gltf-transform optimize (%s) %s → %s", tier, src.name, dst.name)
     subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=600)
+
+
+def gltf_transform_copy(src: Path, dst: Path) -> None:
+    """Round-trip a glTF, decoding Meshopt/Draco into plain buffers.
+
+    The only way to get at an exported bundle's vertices from Python.
+    """
+    cmd = [*_gltf_transform_cmd(), "copy", str(src), str(dst)]
+    log.debug("gltf-transform copy %s → %s", src.name, dst.name)
+    subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)

@@ -202,13 +202,17 @@ def shape_model_slugs(model_metadata: dict[str, dict]) -> dict[str, str]:
 
 
 class CraftModel(NamedTuple):
-    """A spacecraft's model bundle: the mesh that draws the craft, and the real
-    length the craft lineup scales it by."""
+    """A spacecraft's model bundle: the mesh that draws the craft, and the two
+    real lengths the craft lineup needs — one to scale the mesh, one to place
+    it."""
 
     slug: str
-    #: ``scale_meters`` — the model's longest real dimension. A spacecraft has
-    #: no radius, so this is the only size a lineup can put it on.
+    #: ``scale_meters`` — the model's longest real dimension, everything it
+    #: draws included. What the mesh is scaled by.
     length_m: float
+    #: The craft body within that span, booms and wire antennas excluded. A
+    #: spacecraft has no radius, so this is the size a lineup places it on.
+    body_length_m: float
 
 
 def craft_model_slugs(
@@ -230,7 +234,8 @@ def craft_model_slugs(
         if meta is None or meta.get("kind") == "shape_model":
             continue
         if length := meta.get("scale_meters"):
-            out[object_id] = CraftModel(slug, float(length))
+            ratio = meta.get("body_span_ratio") or 1.0
+            out[object_id] = CraftModel(slug, float(length), float(length) * ratio)
     return out
 
 
@@ -323,6 +328,8 @@ def notable_entries(
         if craft_models and (craft := craft_models.get(member.object_id)):
             entry["model"] = craft.slug
             entry["length_m"] = craft.length_m
+            if craft.body_length_m != craft.length_m:
+                entry["body_length_m"] = round(craft.body_length_m, 3)
         elif model_slugs and (slug := model_slugs.get(member.object_id)):
             entry["model"] = slug
         if textured_ids is not None:

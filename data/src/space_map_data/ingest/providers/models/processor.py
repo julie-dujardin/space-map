@@ -25,7 +25,13 @@ from ruamel.yaml import YAML
 from tqdm import tqdm
 
 from space_map_data.constants.earth_sats.satellite_models import SATELLITE_BUSES
-from space_map_data.ingest.providers.models import cache, config, conversion, metadata
+from space_map_data.ingest.providers.models import (
+    cache,
+    config,
+    conversion,
+    geometry,
+    metadata,
+)
 from space_map_data.models.object import ModelProvenance, Object
 from space_map_data.models.object.satcat import Satcat
 from space_map_data.utils.db import get_session
@@ -534,6 +540,7 @@ class ModelProcessor:
                 "kind": meta.get("kind"),
                 "tiers": meta.get("tiers") or [],
                 "scale_meters": meta.get("scale_meters"),
+                "body_span_ratio": meta.get("body_span_ratio"),
                 "objects": sorted(attached[slug_dir.name], key=lambda o: o["id"]),
             }
 
@@ -679,7 +686,11 @@ class ModelProcessor:
             ),
         }
         self._write_prod_metadata(
-            out_dir=out_dir, slug=slug, entry=entry, exports=exports
+            out_dir=out_dir,
+            slug=slug,
+            entry=entry,
+            exports=exports,
+            body=self._body_geometry(entry, out_dir / "high.glb"),
         )
         self._write_sidecar_metadata(
             slug=slug,
@@ -690,6 +701,19 @@ class ModelProcessor:
             low_pick=low_pick,
             catalog_by_tier=catalog_by_tier,
         )
+
+    def _body_geometry(self, entry: dict, glb: Path) -> dict:
+        """Where the craft body sits inside the mesh, and how much of it it is.
+
+        Measured off the exported mesh (see ``geometry``), since only the mesh
+        knows what it draws; a manifest ``body_span_ratio``/``model_anchor``
+        overrides it where the measurement misreads a craft.
+        """
+        measured = geometry.measure_bundle(glb) or {}
+        for key in ("body_span_ratio", "model_anchor"):
+            if entry.get(key) is not None:
+                measured[key] = entry[key]
+        return measured
 
     def _cap_hash(
         self,
@@ -727,6 +751,8 @@ class ModelProcessor:
             "entry": {
                 "scale_meters": entry.get("scale_meters"),
                 "frame_map": sorted(frame_map.items()) if frame_map else None,
+                "body_span_ratio": entry.get("body_span_ratio"),
+                "model_anchor": entry.get("model_anchor"),
             },
         }
 
@@ -859,6 +885,7 @@ class ModelProcessor:
         slug: str,
         entry: dict,
         exports: dict[str, dict],
+        body: dict | None = None,
     ) -> None:
         """Write the public ``EXPORT_DIR/v1/models/{slug}/metadata.json``.
 
@@ -882,6 +909,11 @@ class ModelProcessor:
         # this spans the arrays/dishes/booms rather than the stowed bus.
         if entry.get("scale_meters"):
             payload["scale_meters"] = entry["scale_meters"]
+        # The craft body inside that span: ``body_span_ratio`` is its longest
+        # dimension as a fraction of the mesh's, ``model_anchor`` its centre's
+        # offset from the bounding-box centre in post-fit units. The mesh is
+        # drawn on the full span; the halo, label and lineup slot use the body.
+        payload.update(body or {})
         # Model axis → spacecraft-body axis; corrects models authored in a
         # different convention (usually Y-up) than the CK/pointing body frame.
         frame_map = _validated_frame_map(entry, slug)

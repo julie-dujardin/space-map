@@ -68,7 +68,8 @@ interface NotableEntry {
     end?: string;                   // departure or end of mission there; absent while the visit is ongoing
   }[];
   model?: string;                   // model bundle slug (v1/models/<slug>/); lineup renders the mesh instead of a sphere. A body's shape model, or — when `length_m` is beside it — the spacecraft model that is the member itself
-  length_m?: number;                // spacecraft members only: the model bundle's `scale_meters`, its longest real dimension. A craft has no radius, so this is the size the craft lineup scales it by, and its presence is what marks the member as a craft. Set from Object.model_name, so the lineup draws the same mesh the map does
+  length_m?: number;                // spacecraft members only: the model bundle's `scale_meters`, its longest real dimension, everything the mesh draws included. The size the lineup scales the mesh by, and its presence is what marks the member as a craft. Set from Object.model_name, so the lineup draws the same mesh the map does
+  body_length_m?: number;           // spacecraft members only, and only when it differs: the craft body inside `length_m`, booms and wire antennas excluded (the bundle's `body_span_ratio` applied). The size the lineup places the craft on, so a boom overhangs its slot instead of shrinking the craft to fit
   texture?: boolean;                // v1/textures/<id>/ surface map exists; explicit false ⇒ lineup skips the fetch. Absent only on pre-flag bundles (and mission/fragment strips), which the lineup still probes
   ring_mass?: RingMass;             // mass of the member's *rings*, not the member; `cat-ring-systems` only, and only for the six systems a source puts a figure on. Same shape as the object bundle's `ring_stats.mass` (see objects.md)
   // Structure & Activity pages: the figure that page's chart ranks its members
@@ -225,6 +226,7 @@ interface GlobalGroupData {
     gto_capacity_kg?: number;
     thrust_kn?: number;
     length_m?: number;
+    body_length_m?: number;
     diameter_m?: number;
   }[];
   reusable_vehicles?: {                        // Top individual reusable vehicles by flights (top 40, paginated); Shuttle orbiters + Falcon cores

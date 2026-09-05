@@ -58,7 +58,8 @@ export interface ModelTierExport {
 
 /** Subset of `metadata.json` the scene needs: the high-tier credit block and,
  *  when set, `scale_meters` — the model's real longest dimension, for sizing
- *  the mesh against scene units. Other exporter fields are ignored. */
+ *  the mesh against scene units — beside the body-vs-deployed split that sizes
+ *  the halo and seats the mesh. Other exporter fields are ignored. */
 export interface ModelBundleMeta {
 	/** `shape_model` for natural bodies; absent/other for spacecraft. */
 	kind?: string;
@@ -72,6 +73,14 @@ export interface ModelBundleMeta {
 		low?: ModelTierExport;
 	};
 	scale_meters?: number;
+	/** The craft body's longest dimension as a fraction of the mesh's. Below 1
+	 *  where the model draws booms or wire antennas around a much smaller craft
+	 *  (Ulysses: a 63 m dipole around a 2 m bus). */
+	body_span_ratio?: number;
+	/** The body centre's offset from the mesh's bounding-box centre, in post-fit
+	 *  units (the mesh spans 2 of them). Non-zero where the craft sits off to one
+	 *  side of what it deploys, so the mesh centres on the craft, not the box. */
+	model_anchor?: [number, number, number];
 	/** Model axis → spacecraft-body axis (1–2 pairs), correcting models authored
 	 *  in a different convention (usually Y-up) than the CK/pointing frame. */
 	frame_map?: Record<string, string>;
@@ -134,9 +143,13 @@ export function modelTierCredit(meta: ModelBundleMeta, tier: ModelTier): ModelCr
  * Scene-units length of one model unit (models are normalised to unit radius
  * at load). Single source of truth for the mount's scale, the overlay camera,
  * label occlusion, and surface-feature placement.
+ *
+ * Craft that deploy booms carry their own factor: `radiusScene` is the body,
+ * which the halo and the label are sized on, while the mesh is drawn on the
+ * full span it reaches.
  */
 export function modelUnitScene(bo: BodyObjects): number {
-	return bo.radiusScene;
+	return bo.modelUnitOverride ?? bo.radiusScene;
 }
 
 /** Mounts of natural-body models currently attached in the main scene (1–2
@@ -252,7 +265,9 @@ async function loadSpacecraftModel(
 		const baseFrame = meta?.frame_map ? frameMapQuaternion(meta.frame_map) : null;
 		bo.body.modelBaseFrame = baseFrame ?? undefined;
 		const root = withBaseFrame(gltf.scene, baseFrame);
-		fitToUnitRadius(root);
+		// The anchor is measured in the model's own frame, so it turns with it.
+		const anchor = meta?.model_anchor ? new Vector3(...meta.model_anchor) : null;
+		fitToUnitRadius(root, anchor && baseFrame ? anchor.applyQuaternion(baseFrame) : anchor);
 		enableShadows(root);
 		modelScene.add(root);
 		bo.model = root;
@@ -260,10 +275,15 @@ async function loadSpacecraftModel(
 		setHaloLoading(bo, false);
 		if (meta) {
 			// True-size from the model's longest dimension, so the overlay (sized
-			// off radiusScene) renders to scale against the solar system.
+			// off modelUnitScene) renders to scale against the solar system. The
+			// body radius is the craft itself — a boom or a wire dipole is drawn,
+			// but it is not how big the craft reads, so the halo, the label and
+			// the camera's closest approach stay off the body.
 			if (meta.scale_meters) {
-				bo.body.data.radiusKm = meta.scale_meters / 2000; // half the longest dim, km
+				const spanKm = meta.scale_meters / 2000; // half the longest dim, km
+				bo.body.data.radiusKm = spanKm * (meta.body_span_ratio ?? 1);
 				bo.radiusScene = kmToScene(effectiveRadiusKm(bo.body.data));
+				bo.modelUnitOverride = meta.body_span_ratio ? kmToScene(spanKm) : undefined;
 			}
 			ctx?.credits.registerModel({
 				bodyId: bo.body.data.id,
@@ -442,14 +462,15 @@ function withBaseFrame(scene: Object3D, q: Quaternion | null): Object3D {
 
 /**
  * Uniformly scale + translate `root` so its bbox max-dim becomes 2 (inscribed
- * in a unit-radius sphere), bbox center at origin. A mount's or the overlay
- * camera's single scale factor then makes it true-sized.
+ * in a unit-radius sphere), origin at the bbox center or, with an `anchor`, at
+ * the craft body inside it. A mount's or the overlay camera's single scale
+ * factor then makes it true-sized.
  *
  * Records `centerOffset`/`feetOffset` in `userData` — the overlay seats a
  * landed probe on its feet, not bbox-centred. `occluderSpheres` feeds the
  * label-occlusion pass so CSS2D labels behind the model get hidden.
  */
-function fitToUnitRadius(root: Object3D): void {
+function fitToUnitRadius(root: Object3D, anchor: Vector3 | null = null): void {
 	root.updateMatrixWorld(true);
 	const bbox = new Box3().setFromObject(root);
 	const size = bbox.getSize(new Vector3());
@@ -457,6 +478,10 @@ function fitToUnitRadius(root: Object3D): void {
 	const maxDim = Math.max(size.x, size.y, size.z);
 	if (maxDim <= 0) return;
 	const k = 2 / maxDim;
+	// Seat the craft body at the origin, not the box centre: the body is what
+	// the orbit anchors and the label point at, and a long boom drags the box
+	// centre off it. The anchor is in post-fit units, hence the half-span.
+	if (anchor) center.addScaledVector(anchor, maxDim / 2);
 	root.scale.multiplyScalar(k);
 	// The normalisation lives in root.scale; the overlay rescales secondary
 	// models per frame and must compose with (not clobber) this factor.
@@ -465,7 +490,7 @@ function fitToUnitRadius(root: Object3D): void {
 	root.userData.centerOffset = center.clone().multiplyScalar(k);
 	root.userData.feetOffset = new Vector3(center.x, bbox.min.y, center.z).multiplyScalar(k);
 	root.userData.halfExtents = size.clone().multiplyScalar(k * 0.5);
-	const fit = buildOccluderSpheres(root, size, k);
+	const fit = buildOccluderSpheres(root, size, k, root.userData.centerOffset);
 	root.userData.occluderSpheres = fit.spheres;
 	// Radii the camera clamp reads, from the model's own origin. The recentring
 	// offset widens the outer bound and narrows the inner one, so both still
@@ -503,7 +528,8 @@ const OCCLUDER_SAMPLE_TARGET = 4096;
 function buildOccluderSpheres(
 	root: Object3D,
 	size: Vector3,
-	k: number
+	k: number,
+	offset: Vector3
 ): { spheres: OccluderSphere[]; minRadius: number } {
 	root.updateMatrixWorld(true);
 	const axis = size.x >= size.y && size.x >= size.z ? 0 : size.y >= size.z ? 1 : 2;
@@ -527,7 +553,9 @@ function buildOccluderSpheres(
 		}
 	});
 
-	const half = (size.getComponent(axis) * k) / 2;
+	// Widened by the recentring offset: slicing is about the model's origin,
+	// which an anchored craft sits off-centre of.
+	const half = (size.getComponent(axis) * k) / 2 + Math.abs(offset.getComponent(axis));
 	const buckets: Vector3[][] = Array.from({ length: OCCLUDER_SLICES }, () => []);
 	for (const p of pts) {
 		const t = (p.getComponent(axis) + half) / (2 * half);

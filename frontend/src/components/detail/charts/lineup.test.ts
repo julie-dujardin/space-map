@@ -25,7 +25,20 @@ describe('craftGeometryFromMember', () => {
 		// The convention the main scene uses, so one lineup can hold both kinds.
 		expect(craftGeometryFromMember(mro)).toEqual({
 			radiusKm: 0.0068,
+			meshSpanRatio: 1,
 			model: 'mars-reconnaissance-orbiter',
+			craft: true
+		});
+	});
+
+	it('places a boom craft on its body and draws it on its full span', () => {
+		// Ulysses is mostly wire dipole; sizing its slot on that would read as a
+		// craft ten times the one that flew.
+		const ulysses = { name: 'Ulysses', id: 'probe-2', model: 'ulysses', length_m: 63.1 };
+		expect(craftGeometryFromMember({ ...ulysses, body_length_m: 2.04 })).toEqual({
+			radiusKm: 0.00102,
+			meshSpanRatio: 63.1 / 2.04,
+			model: 'ulysses',
 			craft: true
 		});
 	});

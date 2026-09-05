@@ -266,7 +266,7 @@ class BodyModelProcessor:
             json.dumps(
                 {
                     "knobs": config.BODY_KNOBS_VERSION,
-                    "schema": config.SCHEMA_VERSION,
+                    "schema": config.BODY_SCHEMA_VERSION,
                     "source_sha256": metadata.sha256_file(src),
                     "bounds": bounds,
                     "converted_at": datetime.now(UTC).isoformat(),
@@ -285,7 +285,7 @@ class BodyModelProcessor:
             return None
         if (
             meta.get("knobs") == config.BODY_KNOBS_VERSION
-            and meta.get("schema") == config.SCHEMA_VERSION
+            and meta.get("schema") == config.BODY_SCHEMA_VERSION
         ):
             return meta
         return None
@@ -354,7 +354,7 @@ class BodyModelProcessor:
 
         payload: dict = {
             "slug": slug,
-            "schema": config.SCHEMA_VERSION,
+            "schema": config.BODY_SCHEMA_VERSION,
             "kind": "shape_model",
             "provenance": tier,
             "object_id": object_id,

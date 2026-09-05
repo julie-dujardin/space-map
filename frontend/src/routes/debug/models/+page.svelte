@@ -45,6 +45,7 @@
 		kind?: string;
 		tiers?: string[];
 		scale_meters?: number | null;
+		body_span_ratio?: number | null;
 		objects: IndexObject[];
 	}
 	/** Sidecar fields the scene ignores but a credit line needs. */
@@ -422,6 +423,9 @@
 					<p class="facts">
 						{b.kind ?? '—'}
 						{#if b.scale_meters}· {b.scale_meters} m{/if}
+						{#if b.scale_meters && b.body_span_ratio && b.body_span_ratio < 0.9}
+							· body {(b.scale_meters * b.body_span_ratio).toFixed(1)} m
+						{/if}
 						· {(b.tiers ?? []).join('+') || 'no tiers'}
 					</p>
 					{#if credits.length > 0}
@@ -466,6 +470,9 @@
 			<span class="facts">
 				{selected.kind ?? '—'}
 				{#if selected.scale_meters}· {selected.scale_meters} m{/if}
+				{#if selected.scale_meters && selected.body_span_ratio}
+					· body {(selected.scale_meters * selected.body_span_ratio).toFixed(2)} m
+				{/if}
 			</span>
 			<label>
 				tier

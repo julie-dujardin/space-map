@@ -46,14 +46,22 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 }
 
 /** A spacecraft member's lineup geometry. The mesh *is* the craft — there is no
- *  sphere to fall back to — and the bundle's longest real dimension is the only
- *  size it has, halved into km so one scale serves bodies and craft alike (the
- *  convention the main scene sizes a craft by). `null` when either is missing. */
+ *  sphere to fall back to — so its size comes from the bundle, halved into km so
+ *  one scale serves bodies and craft alike (the convention the main scene sizes
+ *  a craft by). The craft is placed on its body and drawn on its full span, so
+ *  a boom overhangs its slot rather than shrinking the craft to fit. `null` when
+ *  either is missing. */
 export function craftGeometryFromMember(
 	m: NotableMemberEntry & { id: string }
 ): LineupGeometry | null {
 	if (!m.model || m.length_m == null) return null;
-	return { radiusKm: m.length_m / 2000, model: m.model, craft: true };
+	const body = m.body_length_m ?? m.length_m;
+	return {
+		radiusKm: body / 2000,
+		meshSpanRatio: m.length_m / body,
+		model: m.model,
+		craft: true
+	};
 }
 
 /** Members renderable in a lineup: have an id and a resolvable size. Colour

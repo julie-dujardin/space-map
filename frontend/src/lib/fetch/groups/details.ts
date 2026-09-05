@@ -37,6 +37,8 @@ export interface LaunchVehicleVariant {
 	gto_capacity_kg?: number;
 	thrust_kn?: number;
 	length_m?: number;
+	/** The craft body within `length_m`, booms excluded; absent ⇒ the same. */
+	body_length_m?: number;
 	diameter_m?: number;
 }
 

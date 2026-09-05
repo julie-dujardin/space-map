@@ -31,9 +31,13 @@
 		 *  sphere, sized/tilted to match. Falls back to the sphere on any failure. */
 		model?: string;
 		/** A spacecraft: `model` is the craft itself, so there is no sphere under
-		 *  it and no surface to texture, and `radiusKm` is half the bundle's real
-		 *  longest dimension rather than a measured body radius. */
+		 *  it and no surface to texture, and `radiusKm` is half the craft's real
+		 *  body length rather than a measured body radius. */
 		craft?: boolean;
+		/** Craft only: the mesh's full span ÷ the body `radiusKm` sizes the slot
+		 *  on. Above 1 where the model draws booms or antennas, which then
+		 *  overhang the slot instead of shrinking the craft. Default 1. */
+		meshSpanRatio?: number;
 		/** Whether a `v1/textures/<id>/` surface map exists. Explicit `false`
 		 *  skips the fetch entirely; absent (pre-flag export) probes as before. */
 		texture?: boolean;
@@ -528,7 +532,8 @@
 			if (baseFrame) gltf.scene.quaternion.copy(baseFrame);
 			const fitted = new Group();
 			fitted.add(gltf.scene);
-			fitUnitRadius(fitted);
+			const anchor = meta.model_anchor ? new Vector3(...meta.model_anchor) : null;
+			fitUnitRadius(fitted, anchor && baseFrame ? anchor.applyQuaternion(baseFrame) : anchor);
 			const root = new Group();
 			root.quaternion.copy(baseQuats.get(b.id) ?? new Quaternion());
 			root.add(fitted);
@@ -541,16 +546,19 @@
 	}
 
 	/** Scale + recentre `group`'s contents so its bounding box spans 2 units on
-	 *  its longest axis, centred on the origin — the same normalisation the main
-	 *  scene applies, so `scale_meters` means the same thing in both. */
-	function fitUnitRadius(group: Group): void {
+	 *  its longest axis, origin at the craft body (`anchor`) or else the box
+	 *  centre — the same normalisation the main scene applies, so `scale_meters`
+	 *  means the same thing in both. */
+	function fitUnitRadius(group: Group, anchor: Vector3 | null = null): void {
 		group.updateMatrixWorld(true);
 		const bbox = new Box3().setFromObject(group);
 		const maxDim = Math.max(...bbox.getSize(new Vector3()).toArray());
 		if (maxDim <= 0) return;
 		const k = 2 / maxDim;
+		const centre = bbox.getCenter(new Vector3());
+		if (anchor) centre.addScaledVector(anchor, maxDim / 2);
 		group.scale.setScalar(k);
-		group.position.copy(bbox.getCenter(new Vector3())).multiplyScalar(-k);
+		group.position.copy(centre).multiplyScalar(-k);
 	}
 
 	/** Load a member's shape-model mesh, tinted like the sphere, tilted by the
@@ -613,8 +621,10 @@
 			const modelRoot = modelRoots.get(p.id);
 			if (modelRoot) {
 				// Uniform px per real unit: a shape model carries true km, a craft's
-				// wrapper is already normalised to the unit radius `pr` measures.
-				modelRoot.scale.setScalar(p.craft ? p.pr : p.pr / p.radiusKm);
+				// wrapper is already normalised to the unit radius `pr` measures —
+				// grown back to the mesh's full span, which reaches past the body
+				// the slot was sized on.
+				modelRoot.scale.setScalar(p.craft ? p.pr * (p.meshSpanRatio ?? 1) : p.pr / p.radiusKm);
 			} else {
 				// Non-uniform: flatten the polar (local +Y) axis for oblateness. Applied
 				// in local space before the tilt quaternion, so it aligns with the pole.

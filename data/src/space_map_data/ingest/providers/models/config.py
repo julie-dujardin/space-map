@@ -22,7 +22,11 @@ CONVERTED_DIR = DERIVED_MODELS_DIR / "converted"
 
 # Bump when the public per-slug metadata.json shape changes — _try_skip
 # treats older files as stale and reprocesses them.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
+# The same, for natural-body shape models. Split from the spacecraft number
+# because the two bundles share nothing but a directory: a spacecraft-only
+# field would otherwise reprocess 16k body bundles for nothing.
+BODY_SCHEMA_VERSION = 5
 # Bump when gltf-transform invocation flags change. Caches with a different
 # value reconvert from source.
 COMPRESSION_KNOBS_VERSION = "v3-meshopt-webp-doublesided-opaque"

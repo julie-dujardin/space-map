@@ -351,7 +351,26 @@ class TestCraftModelSlugs:
                 "bepi_mcs": {"kind": "probe", "scale_meters": 30.0},
             },
         )
-        assert models == {"probe-1": notable.CraftModel("bepi_mpo", 7.5)}
+        assert models == {"probe-1": notable.CraftModel("bepi_mpo", 7.5, 7.5)}
+
+    def test_body_span_ratio_splits_the_craft_from_what_it_deploys(
+        self, session: Session
+    ) -> None:
+        # Ulysses' mesh is mostly wire dipole, so the length that scales the
+        # mesh and the length that places it are not the same number.
+        self._bundle(session, "probe-1", "ulysses")
+        models = notable.craft_model_slugs(
+            session,
+            {
+                "ulysses": {
+                    "kind": "probe",
+                    "scale_meters": 63.1,
+                    "body_span_ratio": 0.05,
+                }
+            },
+        )
+        assert models["probe-1"].length_m == 63.1
+        assert models["probe-1"].body_length_m == pytest.approx(3.155)
 
     def test_drops_shape_models_and_unmeasured_bundles(self, session: Session) -> None:
         self._bundle(session, "spkid-1", "eros")
@@ -436,12 +455,26 @@ class TestNotableEntries:
             members,
             _StubEntityCache({}),  # type: ignore[arg-type]
             model_slugs={"probe-1": "eros", "spkid-2": "eros"},
-            craft_models={"probe-1": notable.CraftModel("cassini", 6.7)},
+            craft_models={"probe-1": notable.CraftModel("cassini", 6.7, 6.7)},
         )
         assert entries[0]["model"] == "cassini"
         assert entries[0]["length_m"] == 6.7
+        # Equal spans: the lineup falls back to `length_m` rather than ship both.
+        assert "body_length_m" not in entries[0]
         assert entries[1]["model"] == "eros"
         assert "length_m" not in entries[1]
+
+    def test_craft_body_length_rides_along_when_it_differs(self, monkeypatch) -> None:
+        # A boom craft is placed on its body and drawn on its full span, so the
+        # lineup needs both.
+        monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
+        entries = notable.notable_entries(
+            [_obj("probe-1", None, "Ulysses")],
+            _StubEntityCache({}),  # type: ignore[arg-type]
+            craft_models={"probe-1": notable.CraftModel("ulysses", 63.1, 3.155)},
+        )
+        assert entries[0]["length_m"] == 63.1
+        assert entries[0]["body_length_m"] == 3.155
 
     def test_texture_flag_explicit_true_false(self, monkeypatch) -> None:
         # Explicit false (not omission) distinguishes "no texture" from a

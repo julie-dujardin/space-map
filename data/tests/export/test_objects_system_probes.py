@@ -199,7 +199,7 @@ def test_rows_carry_the_craft_mesh(
         session,
         chunk,
         WikidataEntityCache(),
-        {"probe-2": CraftModel("viking-orbiter", 3.3)},
+        {"probe-2": CraftModel("viking-orbiter", 3.3, 3.3)},
     )
     rows = {p["id"]: p for p in chunk.global_data["naif-4"]["probes"]}
     assert rows["probe-2"]["model"] == "viking-orbiter"

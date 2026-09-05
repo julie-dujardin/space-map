@@ -335,7 +335,7 @@ class DamitProcessor:
         }
         payload = {
             "slug": slug,
-            "schema": config.SCHEMA_VERSION,
+            "schema": config.BODY_SCHEMA_VERSION,
             "kind": "shape_model",
             "provenance": "lightcurve",
             "technique": m.technique,
