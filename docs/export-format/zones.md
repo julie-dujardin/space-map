@@ -6,7 +6,8 @@
   dwarf planets with Horizons ephemerides but no chebyshev coverage.
 - `major` zoom 2 — SBDB-only dwarves (Eris, Makemake, Quaoar, …) that aren't
   in any SPK kernel and still need a Kepler propagator.
-- `major_asteroids` — the ~15 sb441-n16 perturber asteroids (chebyshev only).
+- `major_asteroids` — the ~15 sb441-n16 perturber asteroids plus the
+  probe-visited small bodies (chebyshev only).
 - `moons` — non-whitelisted moons of planets with Method-C secular elements
   (chunk-indexed). Excludes SBDB-discovered satellites of small bodies — those
   ride in `small_body_moons`.

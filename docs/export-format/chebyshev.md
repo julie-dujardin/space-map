@@ -27,7 +27,24 @@ of body density.
 - `major_asteroids` — the ~15 sb441-n16 perturber asteroids (Pallas, Vesta,
   Juno, Hebe, Iris, Hygiea, Eunomia, Psyche, Amphitrite, Europa-asteroid,
   Cybele, Sylvia, Thisbe, Davida, Interamnia — Ceres is in `major` as a
-  dwarf planet).
+  dwarf planet), plus the probe-visited small bodies of
+  `probes/small_bodies.py` (Ryugu, Bennu, Itokawa, Eros, Arrokoth, Didymos,
+  Dinkinesh, Lucy's Trojans, and three comets — `major` is the Sun/planet/dwarf
+  tier, so every small-body type routes here). Those are fit from mission and
+  small-body kernels into a separate `.npz` pool — a body landing in the main
+  pool would join `fit_centers.load_candidates` and invalidate every cached
+  interplanetary probe fit — and merged into this zone at export, the perturber
+  fit winning for the bodies that are in both.
+  Coverage is only as wide as the kernels (Halley: 16 days around the 1986
+  flybys), and segment bounds are adaptive: fit error is scored between the
+  Chebyshev nodes and the interval halved until it clears 50 m, so Apophis'
+  2029 Earth flyby subdivides to the hour while the rest of its arc stays at
+  32 days.
+
+Chebyshev coverage replaces a body's element row, so every covered small body
+must also be in `PROMOTED_EXTRA_IDS` — otherwise it renders as an unnamed mesh
+with no point-cloud dot behind it. Coverage alone does not promote;
+`write_global_labels` warns about any covered body missing from the list.
 
 **Per-system moons** — one zone per parent, each with its own `chunk_years`:
 - `moons/earth` — the Moon (5y chunks).

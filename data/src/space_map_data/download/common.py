@@ -18,6 +18,7 @@ from space_map_data.download.providers.spice import (
     HorizonsSyntheticDownloader,
     ProbesDownloader,
     PropagationDownloader,
+    SmallBodyChebyshevDownloader,
     SpacetrackTleDownloader,
     SpiceDownloader,
 )
@@ -72,6 +73,7 @@ PROVIDERS_CLASSES = [
     ProbesDownloader,
     HorizonsSyntheticDownloader,
     PropagationDownloader,
+    SmallBodyChebyshevDownloader,
     DeepcatSynthDownloader,
     SpacetrackTleDownloader,
     WikidataDownloader,

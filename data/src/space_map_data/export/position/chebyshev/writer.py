@@ -28,9 +28,13 @@ from space_map_data.export.position.format import (
     pack_chebyshev_header,
 )
 from space_map_data.export.position.elements.writer import object_radius_km
-from space_map_data.export.position.layout import position_zone_dir
+from space_map_data.export.position.layout import (
+    chebyshev_npz_paths,
+    position_zone_dir,
+)
 from space_map_data.export.position.origin import visible_from_days
 from space_map_data.models.object import Object, ObjectType
+from space_map_data.probes.small_bodies import SMALL_BODY_TARGET_NAIF_IDS
 from space_map_data.utils.naif import (
     CHEBYSHEV_ASTEROID_WHITELIST,
     CHEBYSHEV_PARENT_CHUNK_YEARS,
@@ -41,10 +45,12 @@ from space_map_data.utils.time import DAYS_PER_YEAR, year_to_jd
 
 logger = logging.getLogger(__name__)
 
-# Core bodies + asteroids: flat `major`/`major_asteroids` zones, coarse chunk
-# cadence. Whitelisted moons: one `moons/<parent>` zone per parent, at
-# `CHEBYSHEV_PARENT_CHUNK_YEARS` cadence.
-_ASTEROID_TYPES = frozenset(
+# Core bodies + small bodies: flat `major`/`major_asteroids` zones, coarse
+# chunk cadence. Whitelisted moons: one `moons/<parent>` zone per parent, at
+# `CHEBYSHEV_PARENT_CHUNK_YEARS` cadence. Comets sit here with the asteroids
+# because `major` is the Sun/planet/dwarf tier — nothing this small belongs in
+# it, whatever route brought it into the export.
+_SMALL_BODY_TYPES = frozenset(
     {
         ObjectType.asteroid,
         ObjectType.asteroid_inner,
@@ -52,6 +58,7 @@ _ASTEROID_TYPES = frozenset(
         ObjectType.asteroid_trojan,
         ObjectType.asteroid_centaur,
         ObjectType.asteroid_tno,
+        ObjectType.comet,
     }
 )
 _PARENT_NAMES = {
@@ -106,8 +113,10 @@ def should_export(obj: Object, naif_id: int) -> bool:
     """Defense-in-depth gate against stale `.npz` files left by a whitelist
     tightening — mirrors the download-time filter so export reflects the
     current whitelist immediately, regardless of disk state."""
+    if naif_id in SMALL_BODY_TARGET_NAIF_IDS:
+        return True
     if (
-        obj.object_type in _ASTEROID_TYPES
+        obj.object_type in _SMALL_BODY_TYPES
         and naif_id not in CHEBYSHEV_ASTEROID_WHITELIST
     ):
         return False
@@ -126,9 +135,9 @@ def _slice_segments(
     return start_jds[mask], end_jds[mask], coeffs[mask]
 
 
-def _determine_zone(object_type: ObjectType, naif_id: int, parent_id: int) -> str:
+def _determine_zone(object_type: ObjectType, parent_id: int) -> str:
     """Route a body to its zone path. Moons go to `moons/<parent>`."""
-    if object_type in _ASTEROID_TYPES:
+    if object_type in _SMALL_BODY_TYPES:
         return "major_asteroids"
     if object_type == ObjectType.moon:
         parent_name = _PARENT_NAMES.get(parent_id, f"other-{parent_id}")
@@ -258,9 +267,9 @@ def write_chebyshev(
     Returns `{zone: {chunks, chunk_days, start_jd, end_jd}}`, or `{}` when
     there's nothing to export.
     """
-    cheb_dir = download_dir / "derived" / "position" / "chebyshev"
-    if not cheb_dir.exists():
-        logger.info("No Chebyshev data in %s, skipping", cheb_dir)
+    npz_paths = chebyshev_npz_paths(download_dir)
+    if not npz_paths:
+        logger.info("No Chebyshev data under %s, skipping", download_dir)
         return {}
 
     meta_path = download_dir / "derived" / "position" / "tables" / "metadata.json"
@@ -286,7 +295,7 @@ def write_chebyshev(
     # across the whole export after filtering).
     zone_bodies: dict[str, list] = defaultdict(list)
     skipped_filter = 0
-    for path in sorted(cheb_dir.glob("*.npz")):
+    for path in npz_paths:
         naif_id, parent_id, start_jds, end_jds, coeffs = _load_body_npz(path)
         obj = _object_for_naif_id(session, naif_id)
         if obj is None:
@@ -311,7 +320,7 @@ def write_chebyshev(
                     obj.id,
                     naif_id,
                 )
-        zone = _determine_zone(obj.object_type, naif_id, parent_id)
+        zone = _determine_zone(obj.object_type, parent_id)
         has_loc = bool(has_localized.get(obj.id, False))
         zone_bodies[zone].append(
             (obj, naif_id, parent_id, start_jds, end_jds, coeffs, radius, has_loc)

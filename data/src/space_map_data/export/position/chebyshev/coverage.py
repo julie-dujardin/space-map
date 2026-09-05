@@ -10,6 +10,7 @@ from space_map_data.export.position.chebyshev.writer import (
     _object_for_naif_id,
     should_export,
 )
+from space_map_data.export.position.layout import chebyshev_npz_paths
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,8 @@ def chebyshev_coverage(session: Session, download_dir: Path) -> set[str]:
     derive Kepler elements from chebyshev positions, so a duplicate row is
     just dead bytes.
     """
-    cheb_dir = download_dir / "derived" / "position" / "chebyshev"
-    if not cheb_dir.exists():
-        return set()
     ids: set[str] = set()
-    for path in sorted(cheb_dir.glob("*.npz")):
+    for path in chebyshev_npz_paths(download_dir):
         try:
             data = np.load(path)
             naif_id = int(data["meta"][0])

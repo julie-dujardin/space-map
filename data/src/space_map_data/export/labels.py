@@ -36,17 +36,20 @@ def _is_promoted(
     rendered_ids: set[str],
 ) -> bool:
     """A body is promoted if it'd be rendered as an individual mesh on first
-    paint. Type/curated/cheb/probe membership is the *intent* check;
-    ``rendered_ids`` is the *capability* check — a body absent from every
-    position file can't render in 3D, and promoting it anyway would make the
-    renderer retry an unfindable ``getBody`` every frame.
+    paint. Type/curated/probe membership is the *intent* check; ``rendered_ids``
+    plus ``cheb_covered_ids`` is the *capability* check — a body absent from
+    every position file can't render in 3D, and promoting it anyway would make
+    the renderer retry an unfindable ``getBody`` every frame.
+
+    Chebyshev coverage is deliberately not an intent signal: it decides how
+    precisely a body is placed, not whether it is worth showing. A covered body
+    that belongs on the map is listed in :data:`PROMOTED_EXTRA_IDS`.
     """
     if obj_id not in rendered_ids and obj_id not in cheb_covered_ids:
         return False
     return (
         global_data.get("type") in PROMOTED_TYPES
         or obj_id in PROMOTED_EXTRA_IDS
-        or obj_id in cheb_covered_ids
         or obj_id in probe_ids
     )
 
@@ -89,11 +92,10 @@ def write_global_labels(
 ) -> None:
     """Write ``/v1/labels/{lang}.gz`` for every supported language.
 
-    Bodies with chebyshev coverage are auto-promoted regardless of type,
-    since precise ephemerides mean they render as individual meshes anyway
-    (catches DE441 perturber asteroids outside :data:`PROMOTED_EXTRA_IDS`).
-    Every probe in ``probe_ids`` is likewise promoted, carrying the ``m``
-    flag unless it's a curated flagship.
+    Every probe in ``probe_ids`` is promoted, carrying the ``m`` flag unless
+    it's a curated flagship. ``cheb_covered_ids`` only widens the capability
+    check — chebyshev bodies ship no element row, so their ids never reach
+    ``rendered_ids``.
 
     ``rendered_ids`` excludes bodies present only in object bundles (e.g.
     orbit-less SBDB satellites) — promoting those would make the frontend
@@ -111,6 +113,16 @@ def write_global_labels(
         for obj_id, glob in all_objects.global_data.items()
         if _is_promoted(obj_id, glob, cheb_covered_ids, probe_ids, rendered_ids)
     )
+
+    unpromoted_cheb = sorted(cheb_covered_ids - set(promoted_ids))
+    if unpromoted_cheb:
+        logger.warning(
+            "Chebyshev covers %d bodies missing from the promoted set — they "
+            "render as unnamed meshes with no point-cloud dot behind them. Add "
+            "them to PROMOTED_EXTRA_IDS or drop their coverage: %s",
+            len(unpromoted_cheb),
+            ", ".join(unpromoted_cheb),
+        )
 
     labels_dir = out_dir / "labels"
     labels_dir.mkdir(parents=True, exist_ok=True)

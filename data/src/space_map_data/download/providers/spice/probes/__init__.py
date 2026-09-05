@@ -2,18 +2,21 @@
 
 from .deepcat_synth import DeepcatSynthDownloader
 from .downloader import ProbesDownloader
-from .layout import LANDED_MISSIONS_DIR, MISSIONS_DIR
+from .layout import LANDED_MISSIONS_DIR, MISSIONS_DIR, collect_generic_kernels
 from .mission_patterns import LANDED_INCLUDE, MISSION_INCLUDE
 from .propagation import PropagationDownloader
+from .target_chebyshev import SmallBodyChebyshevDownloader
 from .tle_synth import SpacetrackTleDownloader
 
 __all__ = [
     "LANDED_INCLUDE",
     "DeepcatSynthDownloader",
     "LANDED_MISSIONS_DIR",
+    "collect_generic_kernels",
     "MISSIONS_DIR",
     "MISSION_INCLUDE",
     "ProbesDownloader",
     "PropagationDownloader",
+    "SmallBodyChebyshevDownloader",
     "SpacetrackTleDownloader",
 ]

@@ -277,6 +277,7 @@ def chebyshev_signature() -> dict:
     return {
         "binary_version": BINARY_VERSION,
         "npz": _tree_digest(derived / "chebyshev", "*.npz"),
+        "npz_small_bodies": _tree_digest(derived / "chebyshev-small-bodies", "*.npz"),
         "tables_metadata": _file_stamp(derived / "tables" / "metadata.json"),
     }
 

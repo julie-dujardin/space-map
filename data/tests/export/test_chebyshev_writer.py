@@ -39,6 +39,12 @@ class TestShouldExport:
             obj = make_object(id="naif-499", object_type=object_type)
             assert should_export(obj, 499) is True, object_type
 
+    def test_comet_outside_the_target_list_is_filtered(self):
+        # Comets reach chebyshev only as probe targets, and share the
+        # small-body whitelist gate with the asteroids.
+        obj = make_object(id="spkid-1000999", object_type=ObjectType.comet)
+        assert should_export(obj, 1000999) is False
+
     def test_asteroid_subtype_also_filtered(self):
         # Zone routing groups every asteroid_* subtype together, so the
         # whitelist check must cover the whole family or a stray TNO would leak.

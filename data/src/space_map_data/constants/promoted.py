@@ -9,7 +9,10 @@ combine into the runtime promoted set:
 * The hand-picked spacecraft / satellites / asteroids / comets below — bodies
   that aren't in any of those categories but are interesting enough to surface
   on first paint (visited targets, hazardous NEOs, famous comets, flagship
-  probes).
+  probes). A chebyshev-covered small body has to appear here: the ephemeris
+  replaces its element row, so one left off the list still gets a mesh but no
+  name, and no point-cloud dot to fall back to. `write_global_labels` warns
+  when that happens.
 
 The frontend reads this list from the ``/v1/labels/{lang}.gz`` files,
 whose keys are exactly the promoted set.
@@ -172,26 +175,42 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "spkid-20000002",  # 2 Pallas
         "spkid-20000003",  # 3 Juno
         "spkid-20000004",  # 4 Vesta
+        "spkid-20000007",  # 7 Iris - sb441 perturber
         "spkid-20000010",  # 10 Hygiea
+        "spkid-20000015",  # 15 Eunomia - sb441 perturber
         "spkid-20000016",  # 16 Psyche
+        "spkid-20000021",  # 21 Lutetia - Rosetta flyby
+        "spkid-20000031",  # 31 Euphrosyne - sb441 perturber
+        "spkid-20000052",  # 52 Europa - sb441 perturber
+        "spkid-20000065",  # 65 Cybele - sb441 perturber
+        "spkid-20000087",  # 87 Sylvia - sb441 perturber
+        "spkid-20000088",  # 88 Thisbe - sb441 perturber
+        "spkid-20000107",  # 107 Camilla - sb441 perturber
         "spkid-20000130",  # 130 Elektra - 3 moons
         "spkid-20000243",  # 243 Ida
         "spkid-20000253",  # 253 Mathilde
         "spkid-20000433",  # 433 Eros
         "spkid-20000511",  # 511 Davida
         "spkid-20000588",  # 588 Achilles
+        "spkid-20000617",  # 617 Patroclus - Lucy 2033
         "spkid-20000624",  # 624 Hektor
         "spkid-20000704",  # 704 Interamnia
         "spkid-20000951",  # 951 Gaspra
         "spkid-20001862",  # 1862 Apollo
         "spkid-20002060",  # 2060 Chiron
+        "spkid-20003548",  # 3548 Eurybates - Lucy 2027
         "spkid-20004179",  # 4179 Toutatis
         "spkid-20010199",  # 10199 Chariklo
+        "spkid-20011351",  # 11351 Leucus - Lucy 2028
+        "spkid-20015094",  # 15094 Polymele - Lucy 2027
+        "spkid-20021900",  # 21900 Orus - Lucy 2028
         "spkid-20025143",  # 25143 Itokawa
         "spkid-20047171",  # 47171 Lempo
+        "spkid-20052246",  # 52246 Donaldjohanson - Lucy flyby 2025
         "spkid-20065803",  # 65803 Didymos
         "spkid-20099942",  # 99942 Apophis
         "spkid-20101955",  # 101955 Bennu
+        "spkid-20152830",  # 152830 Dinkinesh - Lucy flyby 2023
         "spkid-20162173",  # 162173 Ryugu
         "spkid-20486958",  # 486958 Arrokoth
         # Interstellar objects

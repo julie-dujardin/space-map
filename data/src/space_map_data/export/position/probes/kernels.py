@@ -20,6 +20,13 @@ from space_map_data.download.providers.spice.probes import (
     MISSION_INCLUDE,
     MISSIONS_DIR,
 )
+
+# The generic-kernel walk lives with the on-disk layout it describes, so the
+# download-side extraction can use it too; re-exported here because this module
+# is where the exporter and the diagnostic scripts already look for it.
+from space_map_data.download.providers.spice.probes.layout import (
+    collect_generic_kernels as collect_generic_kernels,
+)
 from space_map_data.download.providers.spice.synth import qid_deduped_synth_naifs
 from space_map_data.probes.probe_id import is_spacecraft_naif
 from space_map_data.utils.paths import DERIVED_POSITION_DIR
@@ -144,39 +151,6 @@ def _kernels_from_index_with(
         if path.name not in seen:
             candidates.append(path)
     return sorted(candidates, key=lambda p: (kernel_precedence(p.name), p.name))
-
-
-def collect_generic_kernels(
-    kernels_dir: Path,
-) -> tuple[list[Path], list[Path]]:
-    """Collect generic kernels under `kernels/`, splitting them by role.
-
-    Returns `(lsk_pck_paths, generic_spk_paths)`. Generic SPKs (planetary
-    ephemerides) must furnish AFTER mission kernels so they win for shared
-    targets — mission kernels like p11-a.bsp embed their own 1970s-era
-    planetary data that would otherwise contaminate the fit.
-
-    `missions/`, `landed-missions/`, and `probes/` subtrees are excluded
-    (handled per-probe): landed kernels especially must not leak in here,
-    since a recycled NAIF (MSL's -76 = old Mariner 10) would win
-    last-loaded-wins and drag the earlier probe onto the lander's body.
-    """
-    skip_dirs = {"missions", "landed-missions", "probes", "attitude-benchmark"}
-    lsk_pck: list[Path] = []
-    generic_spk: list[Path] = []
-    for path in sorted(kernels_dir.rglob("*")):
-        if not path.is_file():
-            continue
-        if any(part in skip_dirs for part in path.relative_to(kernels_dir).parts):
-            continue
-        suffix = path.suffix.lower()
-        # .tf: frame kernels — Hayabusa's SPKs are expressed in the
-        # ITOKAWA_FIXED frame and can't be evaluated without one.
-        if suffix in (".tls", ".tpc", ".tf"):
-            lsk_pck.append(path)
-        elif suffix == ".bsp":
-            generic_spk.append(path)
-    return lsk_pck, generic_spk
 
 
 def enumerate_probes() -> list[tuple[Path, list[Path], int]]:

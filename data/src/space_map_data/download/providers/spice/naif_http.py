@@ -84,16 +84,25 @@ def head_sizes_async(urls: list[str], *, concurrency: int = 16) -> list[int]:
     return asyncio.run(_run())
 
 
-def spk_targets(path: Path) -> set[int]:
+def spk_targets(path: Path, cell=None) -> set[int]:
     """Unique NAIF target IDs in `path`.
 
     Uses spiceypy.spkobj rather than jplephem because the latter only handles
     SPK types 2/3/13; older missions (Viking, Helios, early Mariners, some
     Pioneer files) use type 1 modified-difference arrays which jplephem reads
     as damaged. Returns an empty set on read failure.
+
+    Pass `cell` to reuse one SPICE cell across a sweep of thousands of kernels
+    — cells are only reclaimed lazily, and `spkobj` accumulates into whatever
+    it is given, so a shared cell is reset here before each read.
     """
     try:
-        ids = spiceypy.spkobj(str(path))
+        if cell is None:
+            ids = spiceypy.spkobj(str(path))
+        else:
+            spiceypy.scard(0, cell)
+            spiceypy.spkobj(str(path), cell)
+            ids = cell
     except spiceypy.exceptions.SpiceyError as exc:
         logger.warning("SPK open failed for %s: %s", path.name, exc)
         return set()
