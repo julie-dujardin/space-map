@@ -15,14 +15,15 @@ from space_map_data.ingest.providers import (
     wikipedia,
 )
 from space_map_data.ingest.providers.objects import (
+    astersat,
     celestrak,
     jpl_satellite_discovery,
     launch_site,
     launch_vehicle,
     launchlog,
     probes,
-    johnston,
     satcat,
+    johnston,
     sbdb,
     sbdb_moons,
     spice,
@@ -54,7 +55,9 @@ def ingest_objects(download_dir: Path) -> None:
     # After spice so name-matching against Horizons/SPICE moons merges SBDB
     # metadata onto existing rows instead of duplicating them.
     sbdb_moons.ingest(download_dir)
-    # Hangs its census and physical data off the moon rows sbdb_moons minted.
+    # Both hang metadata off the moon rows sbdb_moons just minted. AsterSat
+    # also repoints their orbital_source, so it runs before anything reads it.
+    astersat.ingest(download_dir)
     johnston.ingest(download_dir)
     # Taxonomic classes, keyed on the SPK-IDs sbdb just wrote.
     ssodnet.ingest(download_dir)

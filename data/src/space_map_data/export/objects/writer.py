@@ -65,6 +65,7 @@ from space_map_data.export.objects.topic_pages import (
 )
 from space_map_data.export.objects.moon_sources import MoonSourceBlocks
 from space_map_data.export.objects.sbdb import build_sbdb
+from space_map_data.export.position.frames import moon_orbit
 from space_map_data.export.small_body_color import resolve_moon_color
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.systems import (
@@ -175,14 +176,11 @@ def _pick_attrs(obj: object, attrs: tuple[str, ...]) -> dict:
     return data
 
 
-_AU_KM = 149_597_870.7
-
-
 def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
     """Pick unified-name kepler elements from the right sub-table by ``orbital_source``.
 
-    SBDB satellites store ``a`` in km (``a_km``); converted to AU here to match
-    the position writer's units. Earth sats hold no elements of their own — the
+    Small-body moons go through ``moon_orbit``, which matches the position
+    writer's units and frame. Earth sats hold no elements of their own — the
     snapshot overlay attaches the week's set as ``_daily_kepler``, the same
     dict the elements writer reads.
     """
@@ -194,20 +192,10 @@ def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
         return {a: daily[a] for a in attrs if daily.get(a) is not None}
     if src == OrbitalSource.sbdb:
         return _pick_attrs(obj.sbdb, attrs) if obj.sbdb is not None else {}
-    if src == OrbitalSource.sbdb_moon:
-        if obj.sbdb_moon is None:
-            return {}
-        out: dict = {}
-        for attr in attrs:
-            if attr == "a":
-                a_km = obj.sbdb_moon.a_km
-                if a_km is not None:
-                    out["a"] = a_km / _AU_KM
-                continue
-            val = getattr(obj.sbdb_moon, attr, None)
-            if val is not None:
-                out[attr] = val
-        return out
+    if src in (OrbitalSource.sbdb_moon, OrbitalSource.astersat):
+        moon = obj.sbdb_moon if src == OrbitalSource.sbdb_moon else obj.astersat_moon
+        elements = moon_orbit(moon)
+        return {a: elements[a] for a in attrs if a in elements}
     if src == OrbitalSource.spice:
         return _pick_attrs(obj.horizons, attrs) if obj.horizons is not None else {}
     return {}
@@ -684,8 +672,8 @@ def _build_global(
         if sbdb_data:
             data["sbdb"] = sbdb_data
 
-    # Johnston's compilation, kept in its own block: SBDB says a moon exists,
-    # the archive says what it is and who found it.
+    # Asteroid-moon providers, one block each: SBDB says a moon exists,
+    # AsterSat says where it is, Johnston says what it is and who found it.
     data.update(moon_sources.blocks_for(obj.id))
 
     # CelesTrak enrichment

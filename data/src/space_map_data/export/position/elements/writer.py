@@ -31,6 +31,7 @@ from space_map_data.export.position.format import (
     align8,
     pack_elements_header,
 )
+from space_map_data.export.position.frames import moon_orbit
 from space_map_data.export.position.origin import visible_from_days
 from space_map_data.models.object import Object, OrbitalSource
 
@@ -39,16 +40,14 @@ logger = logging.getLogger(__name__)
 _REQUIRED_KEPLERIAN = {"epoch_jd", "a", "e", "i", "om", "w", "ma", "n"}
 _REQUIRED_SGP4 = ("BSTAR", "MEAN_MOTION_DOT", "MEAN_MOTION_DDOT")
 
-_AU_KM = 149_597_870.7
-
 
 def _kepler_attr(o: Object, attr: str, file_source: OrbitalSource) -> float | None:
     """Read a unified-name kepler element off the right sub-table for
     ``orbital_source``. CelesTrak/Space-Track rows don't persist elements —
     the snapshot overlay attaches them as a transient ``_daily_kepler`` dict.
-    SBDBMoon stores ``a`` in km natively; converted to AU here so the
-    small_body_moons zone matches the moons zone's units. Rows with
-    ``orbital_source is None`` inherit the file source, matching
+    Small-body moons go through ``moon_orbit``, which converts km to AU and
+    rotates equatorial-frame angles onto the ecliptic this zone ships. Rows
+    with ``orbital_source is None`` inherit the file source, matching
     :func:`_source_ordinal`.
     """
     src = o.orbital_source or file_source
@@ -58,12 +57,9 @@ def _kepler_attr(o: Object, attr: str, file_source: OrbitalSource) -> float | No
     if src == OrbitalSource.sbdb:
         return getattr(o.sbdb, attr, None) if o.sbdb is not None else None
     if src == OrbitalSource.sbdb_moon:
-        if o.sbdb_moon is None:
-            return None
-        if attr == "a":
-            a_km = o.sbdb_moon.a_km
-            return a_km / _AU_KM if a_km is not None else None
-        return getattr(o.sbdb_moon, attr, None)
+        return moon_orbit(o.sbdb_moon).get(attr)
+    if src == OrbitalSource.astersat:
+        return moon_orbit(o.astersat_moon).get(attr)
     if src == OrbitalSource.spice:
         return getattr(o.horizons, attr, None) if o.horizons is not None else None
     return None

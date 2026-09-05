@@ -39,6 +39,7 @@ ARCHIVE_SBDB = "sbdb"
 ARCHIVE_CELESTRAK = "celestrak"
 ARCHIVE_SPACETRACK = "spacetrack"
 ARCHIVE_GCAT_DEEP = "gcat-deepcat"
+ARCHIVE_NSDB = "nsdb"
 
 
 # `server` strings written into `_index.json` by `ProbesDownloader`. Synth
@@ -59,6 +60,7 @@ _SERVER_TO_ARCHIVE: dict[str, str] = {
 _NON_PROBE_ARCHIVE: dict[OrbitalSource, str] = {
     OrbitalSource.sbdb: ARCHIVE_SBDB,
     OrbitalSource.sbdb_moon: ARCHIVE_SBDB,
+    OrbitalSource.astersat: ARCHIVE_NSDB,
     OrbitalSource.celestrak: ARCHIVE_CELESTRAK,
     OrbitalSource.spacetrack: ARCHIVE_SPACETRACK,
     OrbitalSource.spice: ARCHIVE_NAIF,
@@ -222,6 +224,11 @@ EPHEMERIS_ARCHIVES: list[dict[str, str]] = [
         "id": ARCHIVE_SBDB,
         "source": "https://ssd.jpl.nasa.gov/tools/sbdb_query.html",
         "organisation": "NASA JPL Small-Body Database",
+    },
+    {
+        "id": ARCHIVE_NSDB,
+        "source": "https://www.sai.msu.ru/neb/nss/",
+        "organisation": "Natural Satellites Data Base (SAI / IMCCE)",
     },
     {
         "id": ARCHIVE_CELESTRAK,

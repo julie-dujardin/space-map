@@ -1,6 +1,7 @@
 """SQLAlchemy ORM models for the space-map unified database."""
 
 from space_map_data.models.object.base import Base
+from space_map_data.models.object.astersat_moon import AsterSatMoon
 from space_map_data.models.object.celestrak import CelesTrak
 from space_map_data.models.object.horizons import Horizons
 from space_map_data.models.object.johnston import (
@@ -25,6 +26,7 @@ from space_map_data.models.object.sbdb_moon import SBDBMoon
 from space_map_data.models.object.ssodnet import SsODNet
 
 __all__ = [
+    "AsterSatMoon",
     "Base",
     "CelesTrak",
     "CometPrefix",

@@ -82,7 +82,7 @@ class ObjectDataContext:
     # planetary system read it here; the giants get theirs from their
     # system's metadata file instead.
     ring_metadata: dict[str, list[dict]]
-    # Per-provider blocks for asteroid moons and their hosts.
+    # SBDB / AsterSat / Johnston blocks for asteroid moons and their hosts.
     moon_sources: MoonSourceBlocks
 
 

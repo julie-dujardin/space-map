@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from space_map_data.models.object.satcat import Satcat
     from space_map_data.models.object.sbdb import SBDB
     from space_map_data.models.object.sbdb_moon import SBDBMoon
+    from space_map_data.models.object.astersat_moon import AsterSatMoon
     from space_map_data.models.object.johnston import JohnstonMoon, JohnstonSystem
     from space_map_data.models.object.ssodnet import SsODNet
 
@@ -90,6 +91,7 @@ class ElementsScale(StrEnum):
 class OrbitalSource(StrEnum):
     sbdb = PROVIDERS.SBDB
     sbdb_moon = PROVIDERS.SBDB_MOONS
+    astersat = PROVIDERS.ASTERSAT
     celestrak = PROVIDERS.CELESTRAK
     spacetrack = PROVIDERS.SPACETRACK
     spice = PROVIDERS.SPICE
@@ -245,6 +247,12 @@ class Object(Base):
     )
     sbdb_moons: Mapped[list["SBDBMoon"]] = relationship(
         foreign_keys="SBDBMoon.parent_object_id", back_populates="parent"
+    )
+    astersat_moon: Mapped["AsterSatMoon | None"] = relationship(
+        foreign_keys="AsterSatMoon.object_id", back_populates="object"
+    )
+    astersat_moons: Mapped[list["AsterSatMoon"]] = relationship(
+        foreign_keys="AsterSatMoon.parent_object_id", back_populates="parent"
     )
     johnston_moon: Mapped["JohnstonMoon | None"] = relationship(
         foreign_keys="JohnstonMoon.object_id", back_populates="object"

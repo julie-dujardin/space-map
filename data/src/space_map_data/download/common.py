@@ -26,6 +26,7 @@ from space_map_data.download.providers.objects.sbdb import SBDBDownloader
 from space_map_data.download.providers.objects.sbdb_moons import (
     SBDBMoonsDownloader,
 )
+from space_map_data.download.providers.objects.astersat import AsterSatDownloader
 from space_map_data.download.providers.objects.johnston import JohnstonDownloader
 from space_map_data.download.providers.objects.ssodnet import SsODNetDownloader
 from space_map_data.download.providers.objects.jpl_satellite_discovery import (
@@ -63,6 +64,7 @@ PROVIDERS_CLASSES = [
     GCATDeepDownloader,
     SBDBDownloader,
     SBDBMoonsDownloader,
+    AsterSatDownloader,
     JohnstonDownloader,
     SsODNetDownloader,
     JPLSatelliteDiscoveryDownloader,

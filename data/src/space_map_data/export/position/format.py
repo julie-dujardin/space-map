@@ -111,6 +111,7 @@ SOURCE_ORDINAL: dict[OrbitalSource, int] = {
     OrbitalSource.sbdb_moon: 4,
     OrbitalSource.spice_probe: 5,
     OrbitalSource.spacetrack: 6,
+    OrbitalSource.astersat: 7,
 }
 
 ID_TYPE_ORDINAL: dict[ID_TYPES, int] = {

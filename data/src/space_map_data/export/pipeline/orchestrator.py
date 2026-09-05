@@ -339,6 +339,9 @@ def _iter_non_sbdb_zone_snapshots(
                 Object.id.notin_(cheb_covered_ids) if cheb_covered_ids else sa_true(),
             ),
         ),
+        # Asteroid moons, split by provider like the majors above: zoom 0 is
+        # SBDB's handful of radar binaries, zoom 1 the AsterSat fits that
+        # place everything else.
         (
             "small_body_moons",
             0,
@@ -346,6 +349,16 @@ def _iter_non_sbdb_zone_snapshots(
             .options(joinedload(Object.sbdb_moon))
             .filter(
                 Object.orbital_source == OrbitalSource.sbdb_moon,
+                Object.has_position == True,  # noqa: E712
+            ),
+        ),
+        (
+            "small_body_moons",
+            1,
+            session.query(Object)
+            .options(joinedload(Object.astersat_moon))
+            .filter(
+                Object.orbital_source == OrbitalSource.astersat,
                 Object.has_position == True,  # noqa: E712
             ),
         ),

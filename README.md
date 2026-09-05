@@ -19,6 +19,7 @@ Space Map computes positions at any date, using orbital elements from NASA, ESA,
 | Planets | 8 | [NASA SPICE kernels (NAIF)](https://naif.jpl.nasa.gov/naif/) |
 | Dwarf planets | 10 | [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) |
 | Moons | 466 | [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) |
+| Asteroid & TNO moons | 526 | [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html), [Natural Satellites Data Base](https://www.sai.msu.ru/neb/nss/) (SAI/IMCCE), [Johnston's Archive](https://www.johnstonsarchive.net/astro/asteroidmoons.html) |
 | Asteroids | 1.5m | [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html) |
 | Comets | 4k | [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html) |
 | Spacecraft | 27k | [CelesTrak](https://celestrak.org/), [Space-Track](https://www.space-track.org/), NASA ([JPL Horizons](https://ssd.jpl.nasa.gov/horizons/), [NAIF](https://naif.jpl.nasa.gov/naif/), [PDS](https://pds.nasa.gov/)), [ESA SPICE Service](https://www.cosmos.esa.int/web/spice), [JAXA DARTS](https://darts.isas.jaxa.jp/) |
