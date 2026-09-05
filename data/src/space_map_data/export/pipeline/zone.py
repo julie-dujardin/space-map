@@ -32,6 +32,7 @@ from space_map_data.export.pipeline.snapshots import (
     ZoneSnapshots,
     _overlay_celestrak_elements,
 )
+from space_map_data.export.objects.moon_sources import MoonSourceBlocks
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.models.object import Object, OrbitalSource
@@ -81,6 +82,8 @@ class ObjectDataContext:
     # planetary system read it here; the giants get theirs from their
     # system's metadata file instead.
     ring_metadata: dict[str, list[dict]]
+    # Per-provider blocks for asteroid moons and their hosts.
+    moon_sources: MoonSourceBlocks
 
 
 @dataclass
@@ -152,6 +155,7 @@ def build_zone_object_data(
         nomenclature_body_ids=ctx.nomenclature_body_ids,
         parent_names=ctx.parent_names,
         taxonomy=ctx.taxonomy,
+        moon_sources=ctx.moon_sources,
         ring_moon_ids=ctx.ring_moon_ids,
         ring_metadata=ctx.ring_metadata,
     )

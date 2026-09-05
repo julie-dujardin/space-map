@@ -63,6 +63,7 @@ from space_map_data.export.objects.topic_pages import (
     exploration_page_localized,
     interior_page_localized,
 )
+from space_map_data.export.objects.moon_sources import MoonSourceBlocks
 from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.small_body_color import resolve_moon_color
 from space_map_data.export.quantities import UnitConverter
@@ -251,6 +252,7 @@ def build_chunk_object_data(
     taxonomy: dict,
     ring_moon_ids: dict[str, str],
     ring_metadata: dict[str, list[dict]],
+    moon_sources: MoonSourceBlocks,
 ) -> ChunkObjectData:
     """Build per-object global and localized JSON dicts (no I/O)."""
     out = ChunkObjectData()
@@ -295,6 +297,7 @@ def build_chunk_object_data(
             taxonomy,
             ring_moon_ids,
             ring_metadata,
+            moon_sources,
         )
 
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
@@ -497,6 +500,7 @@ def _build_global(
     taxonomy: dict,
     ring_moon_ids: dict[str, str],
     ring_metadata: dict[str, list[dict]],
+    moon_sources: MoonSourceBlocks,
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -679,6 +683,10 @@ def _build_global(
         sbdb_data = build_sbdb(sbdb, units)
         if sbdb_data:
             data["sbdb"] = sbdb_data
+
+    # Johnston's compilation, kept in its own block: SBDB says a moon exists,
+    # the archive says what it is and who found it.
+    data.update(moon_sources.blocks_for(obj.id))
 
     # CelesTrak enrichment
     if obj.norad_cat_id is not None and obj.satcat is not None:

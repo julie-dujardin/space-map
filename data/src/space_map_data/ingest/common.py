@@ -21,6 +21,7 @@ from space_map_data.ingest.providers.objects import (
     launch_vehicle,
     launchlog,
     probes,
+    johnston,
     satcat,
     sbdb,
     sbdb_moons,
@@ -53,6 +54,8 @@ def ingest_objects(download_dir: Path) -> None:
     # After spice so name-matching against Horizons/SPICE moons merges SBDB
     # metadata onto existing rows instead of duplicating them.
     sbdb_moons.ingest(download_dir)
+    # Hangs its census and physical data off the moon rows sbdb_moons minted.
+    johnston.ingest(download_dir)
     # Taxonomic classes, keyed on the SPK-IDs sbdb just wrote.
     ssodnet.ingest(download_dir)
     jpl_satellite_discovery.ingest(download_dir)

@@ -118,7 +118,7 @@ def _coerce_bool(val: str | None) -> bool | None:
     return None
 
 
-def _resolve_parent_object_id(parent_object_id: str | None) -> str | None:
+def resolve_parent_object_id(parent_object_id: str | None) -> str | None:
     """Apply the Horizons-convention barycenter swap.
 
     Horizons-sourced moons have ``parent_id`` set to the system barycenter's
@@ -422,7 +422,7 @@ class SBDBMoonsIngestor:
                 )
                 continue
             processed_parents.add(parent_object_id)
-            tree_parent_object_id = _resolve_parent_object_id(parent_object_id)
+            tree_parent_object_id = resolve_parent_object_id(parent_object_id)
 
             sat_array = payload.get("sat") or []
             for idx, sat in enumerate(sat_array):

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from space_map_data.models.object.satcat import Satcat
     from space_map_data.models.object.sbdb import SBDB
     from space_map_data.models.object.sbdb_moon import SBDBMoon
+    from space_map_data.models.object.johnston import JohnstonMoon, JohnstonSystem
     from space_map_data.models.object.ssodnet import SsODNet
 
 
@@ -244,6 +245,12 @@ class Object(Base):
     )
     sbdb_moons: Mapped[list["SBDBMoon"]] = relationship(
         foreign_keys="SBDBMoon.parent_object_id", back_populates="parent"
+    )
+    johnston_moon: Mapped["JohnstonMoon | None"] = relationship(
+        foreign_keys="JohnstonMoon.object_id", back_populates="object"
+    )
+    johnston_system: Mapped["JohnstonSystem | None"] = relationship(
+        foreign_keys="JohnstonSystem.object_id", back_populates="object"
     )
 
     __table_args__ = (
