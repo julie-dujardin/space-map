@@ -472,7 +472,11 @@ function withBaseFrame(scene: Object3D, q: Quaternion | null): Object3D {
  */
 function fitToUnitRadius(root: Object3D, anchor: Vector3 | null = null): void {
 	root.updateMatrixWorld(true);
-	const bbox = new Box3().setFromObject(root);
+	// Precise: the default walks each geometry's own box through the world
+	// matrix, which inflates it on any rotated node — 45% on Perseverance, so
+	// the rover drew at 69% of true size. It is also the box `model_anchor` was
+	// measured in, and the anchor only lands right in the box it came from.
+	const bbox = new Box3().setFromObject(root, true);
 	const size = bbox.getSize(new Vector3());
 	const center = bbox.getCenter(new Vector3());
 	const maxDim = Math.max(size.x, size.y, size.z);

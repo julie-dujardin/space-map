@@ -551,7 +551,8 @@
 	 *  means the same thing in both. */
 	function fitUnitRadius(group: Group, anchor: Vector3 | null = null): void {
 		group.updateMatrixWorld(true);
-		const bbox = new Box3().setFromObject(group);
+		// Precise, for the reason the scene's fitToUnitRadius gives.
+		const bbox = new Box3().setFromObject(group, true);
 		const maxDim = Math.max(...bbox.getSize(new Vector3()).toArray());
 		if (maxDim <= 0) return;
 		const k = 2 / maxDim;

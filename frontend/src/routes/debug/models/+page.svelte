@@ -193,7 +193,8 @@
 		if (frameQuat) gltf.scene.quaternion.copy(frameQuat);
 		const root = new Group();
 		root.add(gltf.scene);
-		const sphere = new Box3().setFromObject(root).getBoundingSphere(new Sphere());
+		// Precise, so a card frames the mesh the way the scene sizes it.
+		const sphere = new Box3().setFromObject(root, true).getBoundingSphere(new Sphere());
 		if (sphere.radius > 0) {
 			root.position.sub(sphere.center);
 			const fitted = new Group();
