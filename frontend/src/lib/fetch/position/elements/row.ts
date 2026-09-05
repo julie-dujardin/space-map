@@ -135,16 +135,15 @@ export function parabolicToBody(
  * silently falling back to Kepler (which diverges from the SGP4 curve by km and
  * breaks trail construction).
  */
-export function sgp4ToBody(
-	cols: SGP4Columns,
-	idx: number,
-	labels: LabelMap,
-	parentIdType: string
-): BodyData | null {
-	const id = rowId(cols, idx);
-	if (id === null) return null;
-	const { name, isMinor } = pickLabelEntry(labels, id);
-	const omm: SGP4Inputs = {
+/** Records built on first read, keyed by body: only promoted satellites and
+ *  trails ever need one. */
+const satrecs = new WeakMap<BodyData, SatRec | null>();
+/** Chunk row behind each SGP4 body, so its OMM inputs can be read back on
+ *  demand instead of held as a second object per satellite. */
+const sgp4Rows = new WeakMap<BodyData, [cols: SGP4Columns, idx: number]>();
+
+function ommOf(cols: SGP4Columns, idx: number): SGP4Inputs {
+	return {
 		noradCatId: cols.id[idx],
 		epochJd: cols.epochJd[idx],
 		meanMotion: cols.n[idx],
@@ -159,7 +158,40 @@ export function sgp4ToBody(
 		elementSetNo: cols.elementSetNo[idx],
 		revAtEpoch: cols.revAtEpoch[idx]
 	};
-	const data: BodyData = {
+}
+
+/** Shared prototype for SGP4 rows. A per-instance `satrec` accessor put every
+ *  satellite in dictionary mode at ~2 KB each; one getter on a shared
+ *  prototype keeps the objects small and in fast mode. An init failure (a
+ *  decayed satellite) marks the row unplaceable instead of letting the Kepler
+ *  fallback draw a wrong orbit. */
+const SGP4_BODY_PROTO = {
+	get omm(): SGP4Inputs | undefined {
+		const row = sgp4Rows.get(this as unknown as BodyData);
+		return row && ommOf(row[0], row[1]);
+	},
+	get satrec(): SatRec | undefined {
+		const body = this as unknown as BodyData;
+		let satrec = satrecs.get(body);
+		if (satrec === undefined) {
+			satrec = buildSatrec(body.omm!, body.name ?? undefined);
+			satrecs.set(body, satrec);
+			if (!satrec) body.unplaceable = true;
+		}
+		return satrec ?? undefined;
+	}
+};
+
+export function sgp4ToBody(
+	cols: SGP4Columns,
+	idx: number,
+	labels: LabelMap,
+	parentIdType: string
+): BodyData | null {
+	const id = rowId(cols, idx);
+	if (id === null) return null;
+	const { name, isMinor } = pickLabelEntry(labels, id);
+	const data = Object.assign(Object.create(SGP4_BODY_PROTO) as BodyData, {
 		id,
 		name,
 		isMinor,
@@ -179,27 +211,12 @@ export function sgp4ToBody(
 		n: cols.n[idx] * 360,
 		epoch: cols.epochJd[idx],
 		equatorial: true,
-		omm,
 		validityStart: cols.validityStart,
 		validityEnd: cols.validityEnd,
 		orbitalSource: cols.source,
 		visibleFromDays: cols.visibleFromDays[idx]
-	};
-	// Built on first read: only promoted satellites and trails ever need it.
-	// An init failure (a decayed satellite) marks the row unplaceable instead
-	// of letting the Kepler fallback draw a wrong orbit.
-	let satrec: SatRec | null | undefined;
-	Object.defineProperty(data, 'satrec', {
-		enumerable: true,
-		configurable: true,
-		get(): SatRec | undefined {
-			if (satrec === undefined) {
-				satrec = buildSatrec(omm, name ?? undefined);
-				if (!satrec) data.unplaceable = true;
-			}
-			return satrec ?? undefined;
-		}
 	});
+	sgp4Rows.set(data, [cols, idx]);
 	return data;
 }
 

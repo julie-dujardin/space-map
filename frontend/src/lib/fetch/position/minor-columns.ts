@@ -17,6 +17,7 @@ import { allocColumns, type OrbitColumns } from '$lib/math/orbit/soa';
 import { resolveBodyColor } from '$lib/utils';
 import { MIN_BODIES_PER_BUCKET, hashString } from '$lib/math/orbit/partition';
 import { yieldToMain } from '$lib/yield';
+import { RefIndex } from '$lib/fetch/position/ref-index';
 
 /** One worker-bound subgroup: the SoA to solve (KIND_SKIP rows included —
  *  `writePositions` packs survivors to the front), plus per-vertex `colors`
@@ -30,7 +31,9 @@ export interface WorkerGroup {
 }
 
 /** Rows per chunk the packed row reference allows; a reference is `chunk * ROW_STRIDE + row`. */
-const ROW_STRIDE = 2 ** 24;
+/** Row references pack `chunk * ROW_STRIDE + row` into a uint32 in
+ *  {@link RefIndex}: 2^20 rows per chunk leaves room for 4095 chunks. */
+const ROW_STRIDE = 2 ** 20;
 
 /** Rows walked between yield checks in the time-sliced passes. */
 const SLICE_ROWS = 4096;
@@ -48,7 +51,7 @@ export class MinorBucket {
 	private readonly chunks: ElementColumns[] = [];
 	/** key → packed (chunk, row), see {@link ROW_STRIDE}. Latest chunk wins on
 	 *  collision (hot-reload), whichever ingest pass writes last. */
-	private readonly rowOf = new Map<ObjectKey, number>();
+	private readonly rowOf = new RefIndex((ref) => this.keyOfRef(ref));
 	private readonly cache = new Map<string, PositionedBody>();
 	/** URL-loaded placeholders: full bodies whose ref the renderer may already
 	 *  hold (promoted mesh), so `addChunk` reconciles their `data` in place. */
@@ -70,6 +73,8 @@ export class MinorBucket {
 		keep?: ReadonlySet<ObjectKey> | null
 	): Promise<number> {
 		this.parentIdType = parentIdType;
+		if (cols.rowCount >= ROW_STRIDE)
+			throw new Error(`MinorBucket: chunk too large (${cols.rowCount} rows)`);
 		const c = this.chunks.length;
 		this.chunks.push(cols);
 		let added = 0;
@@ -82,10 +87,8 @@ export class MinorBucket {
 			}
 			const key = rowKey(cols, i);
 			if (key === NO_KEY || (keep && !keep.has(key))) continue;
-			const prev = this.rowOf.get(key);
-			if (prev === undefined) added++;
-			if (prev === undefined || Math.floor(prev / ROW_STRIDE) <= c) {
-				this.rowOf.set(key, c * ROW_STRIDE + i);
+			if (this.rowOf.set(key, c * ROW_STRIDE + i, (prev) => Math.floor(prev / ROW_STRIDE) <= c)) {
+				added++;
 			}
 			if (hasPlaceholders) {
 				const id = rowId(cols, i);
@@ -103,6 +106,11 @@ export class MinorBucket {
 	addPlaceholder(body: PositionedBody): void {
 		this.placeholders.set(body.data.id, body);
 		this.cache.set(body.data.id, body);
+	}
+
+	private keyOfRef(ref: number): ObjectKey {
+		const c = Math.floor(ref / ROW_STRIDE);
+		return rowKey(this.chunks[c], ref - c * ROW_STRIDE);
 	}
 
 	get size(): number {
