@@ -13,7 +13,7 @@ overrides:
   ws@<8.21.0: ^8.21.3
 
 patchedDependencies:
-  vaul-svelte@1.0.0-next.7: aabd5b45c786392b3b3edda6c26eb7bc59b7c25cf9c5c753cfe2bea38f10cfe4
+  vaul-svelte: aabd5b45c786392b3b3edda6c26eb7bc59b7c25cf9c5c753cfe2bea38f10cfe4
 
 importers:
   .:
