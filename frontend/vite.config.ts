@@ -2,6 +2,7 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { paraglideVitePlugin } from '@inlang/paraglide-js';
+import { paraglideLocaleSplit } from './paraglide-locale-split';
 import { defineConfig, loadEnv } from 'vite';
 
 // If PUBLIC_DATA_URL is an absolute URL (e.g. https://static.spacemap.co), route
@@ -36,8 +37,11 @@ export default defineConfig({
 			// browser-detected language. With the reverse order, setLocale() writes
 			// the cookie but preferredLanguage still wins on every getLocale call.
 			strategy: ['cookie', 'preferredLanguage', 'baseLocale'],
-			emitTsDeclarations: true
-		})
+			emitTsDeclarations: true,
+			// One module per locale so the client can load just the active one.
+			outputStructure: 'locale-modules'
+		}),
+		paraglideLocaleSplit('en')
 	],
 	server: {
 		allowedHosts: ['space.ilus.pw'],

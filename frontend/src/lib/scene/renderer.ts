@@ -19,6 +19,7 @@ import {
 	SpriteMaterial,
 	TextureLoader,
 	Vector2,
+	Quaternion,
 	Vector3,
 	type WebGLRenderer
 } from 'three';
@@ -283,6 +284,23 @@ export class SceneRenderer {
 	private readonly _positionMapScratch = new Map<string, Vec3>();
 	/** Frames rendered; the hidden-body stagger in `updatePositions` keys off it. */
 	private frameIndex = 0;
+	/** Frames kept rendering after the last invalidation: damping tails and
+	 *  label transitions the flags below don't see. */
+	private static readonly WAKE_FRAMES = 30;
+	/** A render every N idle frames catches what no flag reports (texture
+	 *  loads, settings) at a tenth of the cost of rendering every frame. */
+	private static readonly IDLE_HEARTBEAT_FRAMES = 10;
+	/** Minimum wall time between frames while only the clock moves the scene
+	 *  at real-time pace, where consecutive frames are indistinguishable. */
+	private static readonly REALTIME_FRAME_MS = 30;
+	private wakeUntilFrame = SceneRenderer.WAKE_FRAMES;
+	private lastRenderedFrame = 0;
+	private lastRenderMs = 0;
+	private lastRenderedJd = NaN;
+	private lastRenderedFocusKey = '';
+	private readonly lastRenderedCamPos = new Vector3(NaN, NaN, NaN);
+	private readonly lastRenderedCamQuat = new Quaternion();
+	private unsubscribeBodiesAdded: (() => void) | null = null;
 	/** Per-frame camera state for the trail rewrite gate; mutated in place. */
 	private readonly _trailView: TrailView = { camX: 0, camY: 0, camZ: 0, tolAngle: 0 };
 	/** Canvas CSS height, cached so the per-frame maths never reads layout. */
@@ -441,6 +459,13 @@ export class SceneRenderer {
 		this.controls.target.set(0, 0, 0);
 		this.controls.update();
 		this.controls.addEventListener('end', this.onControlsEnd);
+		this.controls.addEventListener('start', this.invalidate);
+		this.controls.addEventListener('end', this.invalidate);
+		for (const type of SceneRenderer.INPUT_EVENTS) {
+			canvas.addEventListener(type, this.invalidate, { passive: true });
+		}
+		window.addEventListener('keydown', this.invalidate);
+		this.unsubscribeBodiesAdded = ctx.bodies.onBodiesAdded(this.invalidate);
 
 		this.cameraUp = new CameraUpController(this.camera, this.controls, ctx, (id) =>
 			Boolean(this.bodyObjects.get(id)?.isLanded)
@@ -563,7 +588,11 @@ export class SceneRenderer {
 			this.circleTexture,
 			this.renderer.domElement,
 			(body) => this.focusController.handleFocus(body),
-			(id, hovered) => (hovered ? this.hoveredBodyIds.add(id) : this.hoveredBodyIds.delete(id))
+			(id, hovered) => {
+				if (hovered) this.hoveredBodyIds.add(id);
+				else this.hoveredBodyIds.delete(id);
+				this.invalidate();
+			}
 		);
 		this.pointClouds.buildInitial(new Set(this.bodyObjects.keys()));
 		// Defer trail geometry (100K+ Kepler solves) to after first paint.
@@ -857,12 +886,6 @@ export class SceneRenderer {
 		const nowMs = performance.now();
 		const frameDtMs = this.lastTickMs ? nowMs - this.lastTickMs : 0;
 		this.lastTickMs = nowMs;
-		if (this.fpsSamples.length < SceneRenderer.FPS_SAMPLE_FRAMES) {
-			this.fpsSamples.push(nowMs);
-		} else {
-			this.fpsSamples[this.fpsSampleHead] = nowMs;
-			this.fpsSampleHead = (this.fpsSampleHead + 1) % SceneRenderer.FPS_SAMPLE_FRAMES;
-		}
 
 		this.cameraUp.update(this.clock.jd);
 
@@ -877,8 +900,29 @@ export class SceneRenderer {
 		// flying past into the no-data region.
 		this.coverageWatch?.sync(this.focusController.current, this.clock.jd);
 
-		// Gate body updates on jd actually changing — skips work while paused.
 		this.clock.tick(performance.now());
+		if (!this.shouldRender(nowMs)) {
+			// Damping keeps stepping: a camera still moving fires 'change' and
+			// wakes the loop on the next frame.
+			this.controls.update();
+			return;
+		}
+		if (this.fpsSamples.length < SceneRenderer.FPS_SAMPLE_FRAMES) {
+			this.fpsSamples.push(nowMs);
+		} else {
+			this.fpsSamples[this.fpsSampleHead] = nowMs;
+			this.fpsSampleHead = (this.fpsSampleHead + 1) % SceneRenderer.FPS_SAMPLE_FRAMES;
+		}
+		// Only a frame that follows a rendered one measures a real frame time.
+		const renderedDtMs = this.lastRenderedFrame === this.frameIndex - 1 ? frameDtMs : 0;
+		this.lastRenderedFrame = this.frameIndex;
+		this.lastRenderMs = nowMs;
+		this.lastRenderedJd = this.clock.jd;
+		this.lastRenderedFocusKey = this.focusKey();
+		this.lastRenderedCamPos.copy(this.camera.position);
+		this.lastRenderedCamQuat.copy(this.camera.quaternion);
+
+		// Gate body updates on jd actually changing — skips work while paused.
 		this.applyJdUpdate(true);
 		// After the bodies move, before the focus animation reads its target: the
 		// point is measured off a body that has just been advanced.
@@ -1007,7 +1051,7 @@ export class SceneRenderer {
 			currentAtmosphereConfig(),
 			this.clock.jd
 		);
-		recordAtmospherePerf(frameDtMs, atmoState.shellProminent);
+		recordAtmospherePerf(renderedDtMs, atmoState.shellProminent);
 		// Inside a shell, stars dim by the extinction of the air above the
 		// camera plus a daylight-aware exposure compensation (skyboxDimFactor).
 		this.scene.backgroundIntensity = atmoState.skyboxIntensity;
@@ -1490,6 +1534,56 @@ export class SceneRenderer {
 			[cam.x, cam.y, cam.z],
 			[0, 0, 0],
 			this.focusController.focusedBodyQuat()
+		);
+	}
+
+	private static readonly INPUT_EVENTS = [
+		'pointerdown',
+		'pointermove',
+		'pointerup',
+		'wheel'
+	] as const;
+
+	/** Keep rendering for a while: something the frame flags can't see changed. */
+	invalidate = (): void => {
+		this.wakeUntilFrame = this.frameIndex + SceneRenderer.WAKE_FRAMES;
+	};
+
+	private focusKey(): string {
+		const vis = this.ctx.visibility;
+		return `${this.focusController.current?.data.id ?? ''}|${vis.focusedSystemId ?? ''}|${vis.activeSystemId ?? ''}`;
+	}
+
+	/**
+	 * Render on demand: an idle scene (clock paused, camera at rest, nothing
+	 * streaming) renders only a heartbeat frame, and one moved by the clock
+	 * alone at real-time pace renders at half rate. Everything else renders
+	 * every frame.
+	 */
+	private shouldRender(nowMs: number): boolean {
+		if (this.frameIndex - this.lastRenderedFrame >= SceneRenderer.IDLE_HEARTBEAT_FRAMES)
+			return true;
+		// Damping never reaches exact rest, so motion counts once it could move a
+		// pixel: about 1e-3 of the distance, with two orders of margin.
+		const cam = this.camera;
+		const cameraMoved =
+			cam.position.distanceToSquared(this.lastRenderedCamPos) > cam.position.lengthSq() * 1e-10 ||
+			8 * (1 - Math.abs(cam.quaternion.dot(this.lastRenderedCamQuat))) > 1e-8;
+		const flying = nowMs - this.focus.focusStartTime < this.focus.focusDurationMs;
+		const awake =
+			cameraMoved ||
+			flying ||
+			this.frameIndex < this.wakeUntilFrame ||
+			this.focusKey() !== this.lastRenderedFocusKey ||
+			this.ctx.bodies.minorStreaming ||
+			this.pointClouds.hasPendingSceneAdds() ||
+			this.systemData.hasPendingUnloads() ||
+			this.haloDebug.active;
+		if (awake) return true;
+		if (this.clock.jd === this.lastRenderedJd) return false;
+		return (
+			Math.abs(this.clock.timeScale) > 1 ||
+			nowMs - this.lastRenderMs >= SceneRenderer.REALTIME_FRAME_MS
 		);
 	}
 
@@ -2122,6 +2216,7 @@ export class SceneRenderer {
 	resume(): void {
 		if (!this.paused) return;
 		this.paused = false;
+		this.invalidate();
 		this.tick();
 	}
 
@@ -2160,6 +2255,7 @@ export class SceneRenderer {
 	}
 
 	resize(width: number, height: number): void {
+		this.invalidate();
 		this.viewportH = height || 1;
 		this.renderer.setSize(width, height, false);
 		this.composer.setSize(width, height);
@@ -2178,6 +2274,12 @@ export class SceneRenderer {
 		this.pointerInteraction.detach();
 		this.gpuPick.dispose();
 		this.controls.removeEventListener('end', this.onControlsEnd);
+		this.controls.removeEventListener('start', this.invalidate);
+		this.controls.removeEventListener('end', this.invalidate);
+		for (const type of SceneRenderer.INPUT_EVENTS)
+			this.canvas.removeEventListener(type, this.invalidate);
+		window.removeEventListener('keydown', this.invalidate);
+		this.unsubscribeBodiesAdded?.();
 		this.controls.dispose();
 		this.haloDebug.dispose();
 		this.travelPath.dispose();

@@ -944,6 +944,10 @@ export class PointCloudSystem {
 	}
 
 	/** Drain one pending point cloud onto the scene this frame (staggers GPU uploads). */
+	hasPendingSceneAdds(): boolean {
+		return this.pendingSceneAdds.length > 0;
+	}
+
 	drainOnePendingSceneAdd(): void {
 		if (this.pendingSceneAdds.length === 0) return;
 		const pts = this.pendingSceneAdds.shift()!;
