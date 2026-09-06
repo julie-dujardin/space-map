@@ -144,11 +144,18 @@ def measured_moon_radius_km(obj: Object) -> float | None:
     AsterSat prints a radius per component; Johnston a diameter. Neither body
     is likely to have the Wikidata item the usual radius override reads, so
     without this they render at the nominal size for an unknown body.
+
+    Only the moon zones eager-load these rows, and the position writers run on
+    objects the session has expunged, so a body from any other source has to
+    return before a relationship is touched or the lazy load raises.
     """
-    astersat = getattr(obj, "astersat_moon", None)
-    if astersat is not None and astersat.satellite_radius_km is not None:
-        return astersat.satellite_radius_km
-    johnston = getattr(obj, "johnston_moon", None)
+    if obj.orbital_source not in MOON_ORBIT_ATTR:
+        return None
+    if obj.orbital_source is OrbitalSource.astersat:
+        astersat = obj.astersat_moon
+        if astersat is not None and astersat.satellite_radius_km is not None:
+            return astersat.satellite_radius_km
+    johnston = obj.johnston_moon
     if johnston is not None and johnston.diameter_km is not None:
         return johnston.diameter_km / 2
     return None

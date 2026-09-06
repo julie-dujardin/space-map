@@ -3,22 +3,27 @@
 import math
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, joinedload
 
 from space_map_data.export.position.frames import (
     _OBLIQUITY_RAD,
     equatorial_to_ecliptic,
     equatorial_to_ecliptic_vector,
     is_equatorial,
+    measured_moon_radius_km,
     moon_orbit,
     moon_orbit_cached,
 )
 from space_map_data.models.object import (
     AsterSatMoon,
+    JohnstonMoon,
     Object,
     ObjectType,
     OrbitalSource,
     SBDBMoon,
 )
+from space_map_data.models.object.base import Base
 from space_map_data.probes.propagation import AU_KM
 
 
@@ -52,6 +57,42 @@ def _ecliptic_to_equatorial(i_deg, om_deg, w_deg=None):
         math.degrees(om_out) % 360.0,
         math.degrees(w_out) % 360.0 if w_deg is not None else None,
     )
+
+
+def _johnston_linus(**overrides) -> JohnstonMoon:
+    """Johnston's companion row for the same body."""
+    row = JohnstonMoon(
+        object_id="spkid-120000022",
+        parent_object_id="spkid-20000022",
+        label="Linus",
+    )
+    for key, value in overrides.items():
+        setattr(row, key, value)
+    return row
+
+
+def _astersat_linus(**overrides) -> AsterSatMoon:
+    """AsterSat's fit for Linus — a full element set, as every stored row has."""
+    row = AsterSatMoon(
+        object_id="spkid-120000022",
+        parent_object_id="spkid-20000022",
+        astersat_id="AN000022Kalliope",
+        system_label="(22) Kalliope",
+        satellite_label="Linus",
+        frame="geoequat J2000",
+        epoch_mjd=52000.0,
+        a_km=1078.3,
+        e=0.003814004,
+        i=94.38318390,
+        om=285.358496,
+        w=251.182253,
+        ma=8.797198,
+        n=100.11980010,
+        per_d=3.595692,
+    )
+    for key, value in overrides.items():
+        setattr(row, key, value)
+    return row
 
 
 def _moon_object(moon, source):
@@ -239,34 +280,16 @@ class TestEquatorialToEclipticVector:
 class TestMoonOrbitCached:
     """The elements file is column-major, so each row is read once per column."""
 
-    def _moon(self):
-        return AsterSatMoon(
-            object_id="spkid-120000022",
-            parent_object_id="spkid-20000022",
-            astersat_id="AN000022Kalliope",
-            system_label="(22) Kalliope",
-            satellite_label="Linus",
-            frame="geoequat J2000",
-            epoch_mjd=52000.0,
-            a_km=1078.3,
-            e=0.003814004,
-            i=94.38318390,
-            om=285.358496,
-            w=251.182253,
-            ma=8.797198,
-            n=100.11980010,
-            per_d=3.595692,
-        )
-
     def test_the_rotation_runs_once_per_row(self):
-        obj = _moon_object(self._moon(), OrbitalSource.astersat)
+        obj = _moon_object(_astersat_linus(), OrbitalSource.astersat)
         first = moon_orbit_cached(obj, OrbitalSource.astersat)
         assert moon_orbit_cached(obj, OrbitalSource.astersat) is first
 
     def test_the_cached_value_matches_the_direct_one(self):
-        obj = _moon_object(self._moon(), OrbitalSource.astersat)
+        obj = _moon_object(_astersat_linus(), OrbitalSource.astersat)
         assert moon_orbit_cached(obj, OrbitalSource.astersat) == moon_orbit(
-            _moon_object(self._moon(), OrbitalSource.astersat), OrbitalSource.astersat
+            _moon_object(_astersat_linus(), OrbitalSource.astersat),
+            OrbitalSource.astersat,
         )
 
     def test_an_empty_result_is_cached_too(self):
@@ -275,3 +298,76 @@ class TestMoonOrbitCached:
         first = moon_orbit_cached(obj, OrbitalSource.sbdb_moon)
         assert first == {}
         assert moon_orbit_cached(obj, OrbitalSource.sbdb_moon) is first
+
+
+class TestMeasuredMoonRadius:
+    """Only the two moon zones carry these rows; every other zone shares the writer."""
+
+    # What each zone's query eager-loads. The writers run in worker threads on
+    # rows the session has expunged, so anything outside this raises.
+    _ZONE_LOADS = {
+        OrbitalSource.sbdb_moon: (Object.sbdb_moon, Object.johnston_moon),
+        OrbitalSource.astersat: (Object.astersat_moon, Object.johnston_moon),
+        OrbitalSource.sbdb: (Object.sbdb,),
+    }
+
+    @pytest.fixture
+    def session(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        with Session(engine) as sess:
+            yield sess
+
+    def _expunged(self, session, source, *, astersat=None, johnston=None):
+        """One object as its zone worker gets it: eager-loaded, then detached."""
+        obj = Object(
+            id="spkid-120000022", object_type=ObjectType.moon, orbital_source=source
+        )
+        obj.astersat_moon = astersat
+        obj.johnston_moon = johnston
+        session.add(obj)
+        session.commit()
+        session.expunge_all()
+        loaded = (
+            session.query(Object)
+            .options(*(joinedload(rel) for rel in self._ZONE_LOADS[source]))
+            .one()
+        )
+        session.expunge(loaded)
+        return loaded
+
+    def test_astersat_radius_wins(self, session):
+        obj = self._expunged(
+            session,
+            OrbitalSource.astersat,
+            astersat=_astersat_linus(satellite_radius_km=7.0),
+            johnston=_johnston_linus(diameter_km=28.0),
+        )
+        assert measured_moon_radius_km(obj) == 7.0
+
+    def test_johnston_diameter_is_halved(self, session):
+        obj = self._expunged(
+            session,
+            OrbitalSource.astersat,
+            astersat=_astersat_linus(),
+            johnston=_johnston_linus(diameter_km=1.4),
+        )
+        assert measured_moon_radius_km(obj) == pytest.approx(0.7)
+
+    def test_an_sbdb_moon_never_reads_the_astersat_row(self, session):
+        """Its zone eager-loads sbdb_moon and johnston_moon, not astersat_moon."""
+        obj = self._expunged(
+            session, OrbitalSource.sbdb_moon, johnston=_johnston_linus(diameter_km=1.4)
+        )
+        assert measured_moon_radius_km(obj) == pytest.approx(0.7)
+
+    def test_a_source_with_no_moon_rows_reads_nothing(self, session):
+        """The small-body zones share the writer and load neither relationship."""
+        obj = self._expunged(session, OrbitalSource.sbdb)
+        assert measured_moon_radius_km(obj) is None
+
+    def test_a_moon_with_no_measurement(self, session):
+        obj = self._expunged(
+            session, OrbitalSource.astersat, astersat=_astersat_linus()
+        )
+        assert measured_moon_radius_km(obj) is None
