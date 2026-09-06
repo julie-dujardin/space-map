@@ -40,6 +40,17 @@ def is_equatorial(frame: str | None) -> bool:
     return frame.upper().startswith("EQ") or "EQUAT" in frame.upper()
 
 
+def equatorial_to_ecliptic_vector(
+    v: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    """Rotate a vector from the Earth equator of J2000 onto the ecliptic."""
+    return (
+        v[0],
+        v[1] * _COS_OBLIQUITY + v[2] * _SIN_OBLIQUITY,
+        -v[1] * _SIN_OBLIQUITY + v[2] * _COS_OBLIQUITY,
+    )
+
+
 def equatorial_to_ecliptic(
     i_deg: float, om_deg: float, w_deg: float | None = None
 ) -> tuple[float, float, float | None]:
@@ -64,14 +75,10 @@ def equatorial_to_ecliptic(
     )
     normal = (sin_om * sin_i, -cos_om * sin_i, cos_i)
 
-    def rotate(v: tuple[float, float, float]) -> tuple[float, float, float]:
-        return (
-            v[0],
-            v[1] * _COS_OBLIQUITY + v[2] * _SIN_OBLIQUITY,
-            -v[1] * _SIN_OBLIQUITY + v[2] * _COS_OBLIQUITY,
-        )
-
-    peri, normal = rotate(peri), rotate(normal)
+    peri, normal = (
+        equatorial_to_ecliptic_vector(peri),
+        equatorial_to_ecliptic_vector(normal),
+    )
 
     i_out = math.acos(max(-1.0, min(1.0, normal[2])))
     if math.sin(i_out) < 1e-12:
@@ -145,3 +152,18 @@ def measured_moon_radius_km(obj: Object) -> float | None:
     if johnston is not None and johnston.diameter_km is not None:
         return johnston.diameter_km / 2
     return None
+
+
+def moon_orbit_cached(obj: Object, source: OrbitalSource | None) -> dict[str, float]:
+    """``moon_orbit`` memoised on the row.
+
+    The elements file is written column by column, so an element accessor is
+    reached once per column — eight times per moon, each redoing a frame
+    rotation that couples i, om and w. Cached on the object like the
+    ``_daily_kepler`` overlay the earth-satellite writers read.
+    """
+    cached = getattr(obj, "_moon_orbit", None)
+    if cached is None:
+        cached = moon_orbit(obj, source)
+        obj._moon_orbit = cached  # type: ignore[attr-defined]
+    return cached

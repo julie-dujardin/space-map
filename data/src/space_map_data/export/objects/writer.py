@@ -66,7 +66,7 @@ from space_map_data.export.objects.topic_pages import (
 from space_map_data.export.objects.moon_sources import MoonSourceBlocks
 from space_map_data.export.objects.pick import pick_attrs
 from space_map_data.export.objects.sbdb import build_sbdb
-from space_map_data.export.position.frames import MOON_ORBIT_ATTR, moon_orbit
+from space_map_data.export.position.frames import MOON_ORBIT_ATTR, moon_orbit_cached
 from space_map_data.export.small_body_color import resolve_moon_color
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.systems import (
@@ -184,7 +184,7 @@ def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
     if src == OrbitalSource.sbdb:
         return pick_attrs(obj.sbdb, attrs) if obj.sbdb is not None else {}
     if src in MOON_ORBIT_ATTR:
-        elements = moon_orbit(obj, src)
+        elements = moon_orbit_cached(obj, src)
         return {a: elements[a] for a in attrs if a in elements}
     if src == OrbitalSource.spice:
         return pick_attrs(obj.horizons, attrs) if obj.horizons is not None else {}

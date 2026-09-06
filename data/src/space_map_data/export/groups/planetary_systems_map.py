@@ -21,12 +21,11 @@ from space_map_data.export.objects.writer import _orbit_elements
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.small_body_color import resolve_moon_color
 from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.position.frames import equatorial_to_ecliptic_vector
 from space_map_data.models.object.main import Object, ObjectType
+from space_map_data.probes.propagation import AU_KM
 
 logger = logging.getLogger(__name__)
-
-_AU_KM = 149_597_870.7
-_OBLIQUITY_RAD = math.radians(23.4392911)
 
 
 @dataclass
@@ -53,13 +52,12 @@ def _pole_ecliptic(orientation: dict) -> tuple[float, float, float]:
     elements are in."""
     ra = math.radians(orientation["pole_ra_0"])
     dec = math.radians(orientation["pole_dec_0"])
-    x = math.cos(dec) * math.cos(ra)
-    y = math.cos(dec) * math.sin(ra)
-    z = math.sin(dec)
-    return (
-        x,
-        y * math.cos(_OBLIQUITY_RAD) + z * math.sin(_OBLIQUITY_RAD),
-        -y * math.sin(_OBLIQUITY_RAD) + z * math.cos(_OBLIQUITY_RAD),
+    return equatorial_to_ecliptic_vector(
+        (
+            math.cos(dec) * math.cos(ra),
+            math.cos(dec) * math.sin(ra),
+            math.sin(dec),
+        )
     )
 
 
@@ -139,7 +137,7 @@ def build_planetary_systems_map(
             moons.append(
                 SystemMoon(
                     id=obj.id,
-                    a_rp=a_au * _AU_KM / radius_km,
+                    a_rp=a_au * AU_KM / radius_km,
                     tilt_deg=_tilt_to_equator(
                         el.get("i", 0.0), el.get("om", 0.0), pole
                     ),

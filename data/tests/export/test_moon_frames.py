@@ -7,8 +7,10 @@ import pytest
 from space_map_data.export.position.frames import (
     _OBLIQUITY_RAD,
     equatorial_to_ecliptic,
+    equatorial_to_ecliptic_vector,
     is_equatorial,
     moon_orbit,
+    moon_orbit_cached,
 )
 from space_map_data.models.object import (
     AsterSatMoon,
@@ -213,3 +215,63 @@ class TestMoonOrbit:
         )
         obj = _moon_object(moon, OrbitalSource.sbdb_moon)
         assert moon_orbit(obj, OrbitalSource.spice) == {}
+
+
+class TestEquatorialToEclipticVector:
+    """The vector form, shared with the planetary-systems pole rotation."""
+
+    def test_the_equatorial_pole_tilts_by_the_obliquity(self):
+        x, y, z = equatorial_to_ecliptic_vector((0.0, 0.0, 1.0))
+        assert x == pytest.approx(0.0)
+        assert math.atan2(y, z) == pytest.approx(_OBLIQUITY_RAD)
+
+    def test_the_equinox_is_the_shared_axis(self):
+        """Both frames measure longitude from it, so it does not move."""
+        assert equatorial_to_ecliptic_vector((1.0, 0.0, 0.0)) == pytest.approx(
+            (1.0, 0.0, 0.0)
+        )
+
+    def test_length_is_preserved(self):
+        rotated = equatorial_to_ecliptic_vector((0.36, -0.48, 0.8))
+        assert math.hypot(*rotated) == pytest.approx(1.0)
+
+
+class TestMoonOrbitCached:
+    """The elements file is column-major, so each row is read once per column."""
+
+    def _moon(self):
+        return AsterSatMoon(
+            object_id="spkid-120000022",
+            parent_object_id="spkid-20000022",
+            astersat_id="AN000022Kalliope",
+            system_label="(22) Kalliope",
+            satellite_label="Linus",
+            frame="geoequat J2000",
+            epoch_mjd=52000.0,
+            a_km=1078.3,
+            e=0.003814004,
+            i=94.38318390,
+            om=285.358496,
+            w=251.182253,
+            ma=8.797198,
+            n=100.11980010,
+            per_d=3.595692,
+        )
+
+    def test_the_rotation_runs_once_per_row(self):
+        obj = _moon_object(self._moon(), OrbitalSource.astersat)
+        first = moon_orbit_cached(obj, OrbitalSource.astersat)
+        assert moon_orbit_cached(obj, OrbitalSource.astersat) is first
+
+    def test_the_cached_value_matches_the_direct_one(self):
+        obj = _moon_object(self._moon(), OrbitalSource.astersat)
+        assert moon_orbit_cached(obj, OrbitalSource.astersat) == moon_orbit(
+            _moon_object(self._moon(), OrbitalSource.astersat), OrbitalSource.astersat
+        )
+
+    def test_an_empty_result_is_cached_too(self):
+        """A body with no moon row must not be re-checked per column."""
+        obj = Object(id="naif-399", object_type=ObjectType.planet)
+        first = moon_orbit_cached(obj, OrbitalSource.sbdb_moon)
+        assert first == {}
+        assert moon_orbit_cached(obj, OrbitalSource.sbdb_moon) is first
