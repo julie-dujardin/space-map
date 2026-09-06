@@ -1,6 +1,6 @@
 """Blender headless driver: import a source mesh, export to glTF binary.
 
-Invoked via ``blender -b --python blender_driver.py -- <src> <dst>``.
+Invoked via ``blender -b --python blender_driver.py -- <src> <dst> [frame]``.
 Runs in Blender's embedded Python, so only ``bpy`` and stdlib are available.
 """
 
@@ -10,13 +10,15 @@ import sys
 import bpy  # ty: ignore[unresolved-import]  # provided by Blender at runtime
 
 
-def _parse_args() -> tuple[str, str]:
+def _parse_args() -> tuple[str, str, int | None]:
     if "--" not in sys.argv:
-        raise SystemExit("usage: blender -b --python blender_driver.py -- <src> <dst>")
+        raise SystemExit(
+            "usage: blender -b --python blender_driver.py -- <src> <dst> [frame]"
+        )
     after = sys.argv[sys.argv.index("--") + 1 :]
-    if len(after) != 2:
-        raise SystemExit("expected two positional args: <src> <dst>")
-    return after[0], after[1]
+    if len(after) not in (2, 3):
+        raise SystemExit("expected <src> <dst> and an optional pose frame")
+    return after[0], after[1], int(after[2]) if len(after) == 3 else None
 
 
 def _clear_scene() -> None:
@@ -115,6 +117,9 @@ def _export_glb(path: str) -> None:
     with animation data but no shape keys (e.g. NASA's InSight Cruise Lander
     .blend files) — the operator swallows that error and returns
     ``CANCELLED`` instead of raising, so it can't be caught from Python.
+
+    What gets exported is whatever pose the original datablocks hold, so a
+    source whose deployment is animated needs ``_bake_pose_frame`` first.
     """
     bpy.ops.export_scene.gltf(
         filepath=path,
@@ -128,10 +133,49 @@ def _export_glb(path: str) -> None:
     )
 
 
+def _bake_pose_frame(frame: int) -> None:
+    """Freeze the scene into the pose it holds at ``frame``.
+
+    NASA's rover .blend files animate deployment out of the stowed launch
+    configuration, and a linked-in object starts on frame 1 — the stowed end.
+    Seeking is not enough: animation is evaluated into depsgraph copies, and
+    the exporter reads the original datablocks, which never move. So copy the
+    evaluated mesh and world matrix back onto each original and drop the
+    animation, parenting and modifiers that produced them. Armature
+    deformation comes along, being a modifier result.
+    """
+    scene = bpy.context.scene
+    scene.frame_start = min(scene.frame_start, frame)
+    scene.frame_end = max(scene.frame_end, frame)
+    scene.frame_set(frame)
+
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    posed = {}
+    for obj in scene.objects:
+        evaluated = obj.evaluated_get(depsgraph)
+        mesh = (
+            bpy.data.meshes.new_from_object(evaluated, depsgraph=depsgraph)
+            if obj.type == "MESH"
+            else None
+        )
+        posed[obj] = (evaluated.matrix_world.copy(), mesh)
+
+    for obj, (matrix, mesh) in posed.items():
+        obj.animation_data_clear()
+        obj.parent = None
+        if mesh is not None:
+            obj.data = mesh
+            obj.modifiers.clear()
+        obj.matrix_world = matrix
+    bpy.context.view_layer.update()
+
+
 def main() -> None:
-    src, dst = _parse_args()
+    src, dst, pose_frame = _parse_args()
     _clear_scene()
     _import(src)
+    if pose_frame is not None:
+        _bake_pose_frame(pose_frame)
     _force_double_sided()
     _force_opaque()
     os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)

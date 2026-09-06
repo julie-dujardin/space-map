@@ -159,7 +159,27 @@ async function loadMajorBodies(
 	if (moonsZoom) {
 		major.push(...(await loader.process('moons', null, 0, date, moonsTime)));
 	}
-	return major;
+	return dedupeById(major);
+}
+
+/** Keep the first record per id, in load order — so a body carrying both a
+ *  SPICE fit and an SBDB fallback (the TNO dwarves) keeps the SPICE one.
+ *  A repeat would otherwise reach `buildMajorBodies`, whose second pass
+ *  overwrites the `bodyObjects` entry and strands the first body's sphere in
+ *  the scene, unpositioned at the origin — which the focus-relative reposition
+ *  then parks in front of whatever the camera is looking at. */
+function dedupeById(bodies: PositionedBody[]): PositionedBody[] {
+	const byId = new Map<string, PositionedBody>();
+	const dropped: string[] = [];
+	for (const body of bodies) {
+		const id = body.data.id;
+		if (byId.has(id)) dropped.push(id);
+		else byId.set(id, body);
+	}
+	if (dropped.length > 0) {
+		console.warn(`majors: ${dropped.length} duplicate id(s) in phase 1, kept first:`, dropped);
+	}
+	return [...byId.values()];
 }
 
 /**

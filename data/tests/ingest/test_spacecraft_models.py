@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from space_map_data.ingest.providers.models.metadata import convertible_files
 from space_map_data.ingest.providers.models.processor import (
     ModelProcessor,
     _validated_frame_map,
@@ -65,3 +66,21 @@ class TestBusModelExcludes:
             self._spec(), {"o-goes8", "o-echo5"}, for_model=True
         )
         assert ids == ["o-echo5"]
+
+
+class TestConvertibleFiles:
+    """A candidate needs a convertible type and no `exclude` marker."""
+
+    def test_keeps_convertible_types(self):
+        files = [{"path": "a.glb", "type": "glb"}, {"path": "b.blend", "type": "blend"}]
+        assert convertible_files(files) == files
+
+    def test_drops_unconvertible_types(self):
+        assert convertible_files([{"path": "a.lwo", "type": "lwo"}]) == []
+
+    def test_drops_excluded_file(self):
+        files = [
+            {"path": "deployed.glb", "type": "glb"},
+            {"path": "stowed.glb", "type": "glb", "exclude": True},
+        ]
+        assert [f["path"] for f in convertible_files(files)] == ["deployed.glb"]

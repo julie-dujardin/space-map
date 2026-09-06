@@ -62,8 +62,11 @@ def _gltf_transform_cmd() -> list[str]:
     raise RuntimeError("gltf-transform not available")
 
 
-def blender_to_glb(src: Path, dst: Path) -> None:
+def blender_to_glb(src: Path, dst: Path, *, pose_frame: int | None = None) -> None:
     """Run Blender headless to convert ``src`` (.fbx/.blend/.obj/.3ds) to .glb at ``dst``.
+
+    ``pose_frame`` picks which frame of an animated source is baked into the
+    static export; without it the source's own starting pose is used.
 
     Raises ``CalledProcessError`` on failure. Output is suppressed by default;
     set ``LOG_LEVEL=DEBUG`` to see Blender's stderr.
@@ -82,7 +85,9 @@ def blender_to_glb(src: Path, dst: Path) -> None:
         str(src),
         str(dst),
     ]
-    log.debug("blender %s → %s", src.name, dst.name)
+    if pose_frame is not None:
+        cmd.append(str(pose_frame))
+    log.debug("blender %s → %s (pose_frame=%s)", src.name, dst.name, pose_frame)
     subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
 
 

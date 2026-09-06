@@ -40,6 +40,7 @@ class Cached:
     source_path: Path
     source_type: str
     source_sha256: str
+    pose_frame: int | None
     high_glb: Path
     low_glb: Path | None
 
@@ -66,12 +67,15 @@ def ensure_cached(
     source_type: str,
     has_blender: bool,
     has_gltf_transform: bool,
+    pose_frame: int | None = None,
 ) -> Cached | None:
     """Materialise (or reuse) the high+low compressed-GLB pair for one source.
 
     Returns None if the source can't be converted in the current
     environment (e.g. needs Blender but it's missing). Sha-matched cache
     entries skip both Blender and gltf-transform; mismatches re-run both.
+    ``pose_frame`` is part of the key: retuning it must reconvert, since the
+    same bytes then yield a different pose.
 
     Synthesising low from high requires gltf-transform; without it we
     leave ``low_glb=None`` and the picker treats this candidate as
@@ -87,12 +91,18 @@ def ensure_cached(
 
     source_sha256 = metadata.sha256_file(source_path)
 
-    if _cache_hit(cache_meta_path, source_sha256, low_required=has_gltf_transform):
+    if _cache_hit(
+        cache_meta_path,
+        source_sha256,
+        pose_frame,
+        low_required=has_gltf_transform,
+    ):
         return Cached(
             file_id=fid,
             source_path=source_path,
             source_type=source_type,
             source_sha256=source_sha256,
+            pose_frame=pose_frame,
             high_glb=high_glb,
             low_glb=low_glb if low_glb.exists() else None,
         )
@@ -116,7 +126,9 @@ def ensure_cached(
         intermediate = (
             source_path
             if source_type == "glb"
-            else _blender_to_glb_staged(source_path, tmp / "input.glb")
+            else _blender_to_glb_staged(
+                source_path, tmp / "input.glb", pose_frame=pose_frame
+            )
         )
 
         if has_gltf_transform:
@@ -132,6 +144,7 @@ def ensure_cached(
         cache_meta_path,
         source_sha256=source_sha256,
         source_type=source_type,
+        pose_frame=pose_frame,
         has_low=produced_low is not None,
     )
 
@@ -140,23 +153,32 @@ def ensure_cached(
         source_path=source_path,
         source_type=source_type,
         source_sha256=source_sha256,
+        pose_frame=pose_frame,
         high_glb=high_glb,
         low_glb=produced_low,
     )
 
 
-def _cache_hit(meta_path: Path, source_sha256: str, *, low_required: bool) -> bool:
+def _cache_hit(
+    meta_path: Path,
+    source_sha256: str,
+    pose_frame: int | None,
+    *,
+    low_required: bool,
+) -> bool:
     if not meta_path.exists():
         return False
     try:
         existing = json.loads(meta_path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return False
     if existing.get("schema") != config.SCHEMA_VERSION:
         return False
     if existing.get("knobs") != config.COMPRESSION_KNOBS_VERSION:
         return False
     if existing.get("source_sha256") != source_sha256:
+        return False
+    if existing.get("pose_frame") != pose_frame:
         return False
     # A run that had gltf-transform previously cached a `low`; if it's gone
     # now (user removed it), reuse high anyway. The opposite — needing low
@@ -171,6 +193,7 @@ def _write_cache_meta(
     *,
     source_sha256: str,
     source_type: str,
+    pose_frame: int | None,
     has_low: bool,
 ) -> None:
     payload = {
@@ -178,13 +201,16 @@ def _write_cache_meta(
         "knobs": config.COMPRESSION_KNOBS_VERSION,
         "source_type": source_type,
         "source_sha256": source_sha256,
+        "pose_frame": pose_frame,
         "has_low": has_low,
         "converted_at": datetime.now(UTC).isoformat(),
     }
     meta_path.write_text(json.dumps(payload, indent=2))
 
 
-def _blender_to_glb_staged(src: Path, dst: Path) -> Path:
+def _blender_to_glb_staged(
+    src: Path, dst: Path, *, pose_frame: int | None = None
+) -> Path:
     """Convert ``src`` to ``dst`` via Blender, staging any sibling textures.zip.
 
     Mirrors ``ModelProcessor._to_glb`` — kept as a free function so the
@@ -203,7 +229,7 @@ def _blender_to_glb_staged(src: Path, dst: Path) -> Path:
         for textures_zip in src.parent.glob("*_textures.zip"):
             with zipfile.ZipFile(textures_zip) as zf:
                 zf.extractall(staging)
-        conversion.blender_to_glb(staged_src, dst)
+        conversion.blender_to_glb(staged_src, dst, pose_frame=pose_frame)
     return dst
 
 

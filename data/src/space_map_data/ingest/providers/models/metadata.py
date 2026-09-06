@@ -47,9 +47,18 @@ def resolve_mission_object_id(
 def convertible_files(files: list[dict]) -> list[dict]:
     """Return entry files whose ``type`` is in ``CONVERTIBLE_FORMATS``.
 
+    ``exclude: true`` drops a file the catalogue ships but that must never be
+    drawn — usually a variant showing the craft stowed, which the size-based
+    picker would otherwise hand a tier. The entry keeps listing it so the
+    manifest still records what the catalogue holds.
+
     Tier picking happens post-compression, once every candidate is cached.
     """
-    return [m for m in files if m.get("type") in config.CONVERTIBLE_FORMATS]
+    return [
+        m
+        for m in files
+        if m.get("type") in config.CONVERTIBLE_FORMATS and not m.get("exclude")
+    ]
 
 
 def sha256_file(path: Path) -> str:

@@ -585,6 +585,7 @@ class ModelProcessor:
                     source_type=f["type"],
                     has_blender=self._has_blender,
                     has_gltf_transform=self._has_gltf_transform,
+                    pose_frame=f.get("pose_frame"),
                 )
             except subprocess.CalledProcessError as exc:
                 stderr = (exc.stderr or "")[-500:]
@@ -740,7 +741,7 @@ class ModelProcessor:
             "knobs": config.COMPRESSION_KNOBS_VERSION,
             "max_file_bytes": config.MAX_FILE_BYTES,
             "candidates": sorted(
-                {c.file_id: c.source_sha256 for _f, c in cached}.items()
+                {c.file_id: [c.source_sha256, c.pose_frame] for _f, c in cached}.items()
             ),
             "high": high_pick[1].file_id,
             "low": low_pick[1].file_id,
@@ -957,6 +958,7 @@ class ModelProcessor:
                     "source_type": c.source_type,
                     "source_sha256": c.source_sha256,
                     "file_id": c.file_id,
+                    "pose_frame": c.pose_frame,
                     "high_size": high_sz,
                     "low_size": low_sz,
                     "rejected": rejection,

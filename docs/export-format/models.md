@@ -9,9 +9,15 @@ Bundles are keyed by a human-readable `slug`; each depicted Object carries the s
 
 **Path:** `models/{slug}/{tier}.glb`
 
-Two tiers — `low` and `high` — both as glTF 2.0 binary (.glb). Optimised by [`@gltf-transform/cli optimize`](https://gltf-transform.dev/cli): geometry is Meshopt-compressed (faster decode than Draco, supports morph targets) and textures are re-encoded as WebP. When a manifest entry ships ≥ 2 hand-authored variants the smallest convertible one becomes `low` (if it's ≤ 50% the high tier's size); otherwise `low` is synthesised from `high` by downsampling textures to 1024 px and simplifying geometry to 50% of the original triangle count.
+Two tiers — `low` and `high` — both as glTF 2.0 binary (.glb). Optimised by [`@gltf-transform/cli optimize`](https://gltf-transform.dev/cli): geometry is Meshopt-compressed (faster decode than Draco, supports morph targets) and textures are re-encoded as WebP. Every convertible file in an entry is compressed twice, on high knobs and on low knobs (textures downsampled to 1024 px, geometry simplified to 50% of the triangle count); `high` is then the largest of those results and `low` the smallest, so an entry shipping several hand-authored variants can serve its two tiers from two different files.
 
 Source formats: pre-existing `.glb` is passed through; `.fbx`, `.blend`, `.obj`, `.3ds` are converted via Blender headless first. `.lwo` and `.7z` are skipped today.
+
+Three manifest keys override the size-based pick, all set per file:
+
+- `preferred: true` — take this file as `high` regardless of size. The largest variant is not always the best one; some are the most cluttered.
+- `exclude: true` — never use this file. Catalogues ship the same craft folded for launch as well as deployed, and a stowed variant compresses to a plausible size, so without this the picker can hand a tier a craft with its arrays still wrapped around the bus.
+- `pose_frame: <int>` — the animation frame Blender evaluates before it bakes the mesh. Sources whose deployment is animated (NASA's Curiosity, Perseverance and MER .blend files) open on the stowed end and often re-stow before the last frame, so the deployed pose is somewhere in the middle and has to be named. glTF sources cannot be re-posed this way: a viewer that plays no animation draws the bind pose, which is the stowed end again, so those get `exclude: true` instead.
 
 Slugs are globally unique across catalogs — a duplicate slug raises `SlugConflictError` at ingest time. A single mission may have multiple candidate slugs (e.g. "cassini" and "cassini-with-huygens" both depict the Cassini probe); in that case the first slug encountered wins and a warning is logged. TODO: explicit per-mission canonical selection once the frontend's variant-picking rule is known.
 
