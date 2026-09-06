@@ -1,15 +1,16 @@
 """Where position data lives: zone zoom segments, and the chebyshev npz pools.
 
-Only ``major`` (chebyshev + Horizons tiers) and ``small_bodies/{class}`` (named
-/ unnamed) are multi-zoom; every other zone is flat, like probes. Centralised
-so the writers, sidecars, prune pass, and manifest can't disagree.
+A zone is multi-zoom where it splits into tiers a file can't mix: ``major``
+(chebyshev + Horizons + SBDB), ``small_bodies/{class}`` (named / unnamed) and
+``small_body_moons`` (SBDB / AsterSat). Every other zone is flat, like probes.
+Centralised so the writers, sidecars, prune pass, and manifest can't disagree.
 """
 
 from pathlib import Path
 
 
 def zone_has_zoom_segment(zone: str) -> bool:
-    return zone == "major" or zone.startswith("small_bodies/")
+    return zone in ("major", "small_body_moons") or zone.startswith("small_bodies/")
 
 
 def position_zone_dir(out_dir: Path, zone: str, zoom: int) -> Path:

@@ -108,8 +108,8 @@ def build_position_metadata(
     zone that emitted chebyshev chunks; always at zoom 0) into a single map
     keyed by zone name.
 
-    Multi-zoom zones (`major`, `small_bodies/{class}`) nest their shapes under
-    a `zooms` map and keep a `{zoom}` URL segment. Structurally single-zoom
+    Multi-zoom zones (`major`, `small_bodies/{class}`, `small_body_moons`)
+    nest their shapes under a `zooms` map and keep a `{zoom}` URL segment. Structurally single-zoom
     zones are flat — the `shape` fields sit at zone level and the URL drops the
     segment (like probes). Each carries a `shape` discriminator so consumers
     build URLs without sniffing field presence (`[{zoom}/]` present only when

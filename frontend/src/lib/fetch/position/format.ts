@@ -63,7 +63,8 @@ export const CHEBYSHEV_FLAG_FLOAT64_COEFFS = 0x01;
 export const labelsUrl = (lang: string): string => `${dataBase()}/v1/labels/${lang}.gz`;
 
 /** The `{zoom}/` path segment — empty for flat single-zoom zones (zoom=null),
- *  present for multi-zoom zones (`major`, `small_bodies/{class}`). */
+ *  present for multi-zoom zones (`major`, `small_bodies/{class}`,
+ *  `small_body_moons`). */
 function zoomSegment(zoom: number | null): string {
 	return zoom === null ? '' : `${zoom}/`;
 }

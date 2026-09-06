@@ -12,13 +12,15 @@
   (chunk-indexed). Excludes SBDB-discovered satellites of small bodies — those
   ride in `small_body_moons`.
 - `moons/{parent}` — whitelisted moons under each parent body, chebyshev coverage.
-- `small_body_moons` — moons of asteroids/comets discovered via SBDB's
-  per-object satellite payload (e.g. Dactyl around Ida, Linus around Kalliope).
-  Static-parted, system-scale Keplerian. Only orbit-bearing rows ship here;
-  publication-placeholder rows (no orbit) appear in object bundles for
-  navigation but not in this position file. Parent ids are SPK-IDs (small
-  bodies don't have NAIF IDs), surfaced in the manifest via `parent_id_type:
-  "spkid"`.
+- `small_body_moons` — moons of asteroids and comets (e.g. Dactyl around Ida,
+  Linus around Kalliope), split by provider like `major` because a position
+  file states one source: zoom 0 is SBDB's per-object satellite payload, zoom 1
+  the AsterSat mutual-orbit fits, which cover almost everything SBDB leaves
+  without elements. Static-parted, system-scale Keplerian. Only orbit-bearing
+  rows ship here; publication-placeholder rows (no orbit) appear in object
+  bundles for navigation but not in this position file. Parent ids are
+  SPK-IDs (small bodies don't have NAIF IDs), surfaced in the manifest via
+  `parent_id_type: "spkid"`.
 - `earth` — Earth-orbiting spacecraft/debris (SGP4, date-segmented).
 - `spacecraft` — spacecraft/debris orbiting other bodies.
 - `probes/{zone}` — interplanetary and planetary-system probes refit from

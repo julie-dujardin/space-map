@@ -124,8 +124,8 @@ interface HasParentIdType {
 	parent_id_type?: string;
 }
 
-/** Multi-zoom zone (`major`, `small_bodies/{class}`): shapes nested under a
- *  `zooms` map, URL keeps a `{zoom}` segment. */
+/** Multi-zoom zone (`major`, `small_bodies/{class}`, `small_body_moons`):
+ *  shapes nested under a `zooms` map, URL keeps a `{zoom}` segment. */
 export interface ZoneMetadata extends HasParentIdType {
 	zooms: Record<string, ZoomMetadata>;
 }

@@ -1,8 +1,9 @@
 """Tests for the unified position manifest dispatch in `build_position_metadata`.
 
 Shape dispatch is on `SnapshotResult.chunk_days` and whether `time` is None,
-never on label format. Multi-zoom zones (`major`, `small_bodies/{class}`)
-nest shapes under a `zooms` map; other zones flatten to zone level.
+never on label format. Multi-zoom zones (`major`, `small_bodies/{class}`,
+`small_body_moons`) nest shapes under a `zooms` map; other zones flatten to
+zone level.
 """
 
 import pytest
@@ -326,8 +327,8 @@ class TestMixedZones:
 
 
 class TestFlatVsZoomed:
-    """Single-zoom zones flatten (no `zooms` wrapper); `major` and
-    `small_bodies/{class}` keep it. `parent_id_type` rides on the entry."""
+    """Single-zoom zones flatten (no `zooms` wrapper); the provider-split
+    zones keep it. `parent_id_type` rides on the entry."""
 
     def test_flat_zone_has_no_zooms_wrapper(self):
         meta = build_position_metadata(
@@ -357,6 +358,21 @@ class TestFlatVsZoomed:
         assert set(entry["zooms"]) == {"0", "1"}
         assert entry["parent_id_type"] == "naif"
 
+    def test_small_body_moons_keeps_wrapper(self):
+        """Its two zooms are providers (SBDB, AsterSat) sharing one zone."""
+        meta = build_position_metadata(
+            {
+                "small_body_moons": {
+                    0: _zoom(_result(num_parts=1), parent_id_type="spkid"),
+                    1: _zoom(_result(num_parts=1), parent_id_type="spkid"),
+                }
+            },
+            {},
+        )
+        entry = meta["zones"]["small_body_moons"]
+        assert set(entry["zooms"]) == {"0", "1"}
+        assert entry["parent_id_type"] == "spkid"
+
     def test_flat_chebyshev_zone_carries_naif_at_top(self):
         meta = build_position_metadata({}, {"major_asteroids": _cheb()})
         entry = meta["zones"]["major_asteroids"]
@@ -375,8 +391,8 @@ class TestFlatVsZoomed:
     def test_flat_chebyshev_collision_with_elements_rejected(self):
         with pytest.raises(ValueError, match="already in use by elements"):
             build_position_metadata(
-                {"small_body_moons": {0: _zoom(_result(num_parts=1))}},
-                {"small_body_moons": _cheb()},
+                {"moons": {0: _zoom(_result(num_parts=1))}},
+                {"moons": _cheb()},
             )
 
 

@@ -21,7 +21,7 @@ v1/
   seo/sitemap.xml                                 (not gzipped) notable-object + group URLs for search engines
   labels/{lang}.gz                                pre-interaction labels for the promoted set (one per language)
   position/
-    {zone}/[{zoom}/]{part}.bin.gz                 static parted        — small_bodies/{class} (zoomed), Earth-orbit spacecraft, small_body_moons
+    {zone}/[{zoom}/]{part}.bin.gz                 static parted        — small_bodies/{class} (zoomed), small_body_moons (zoomed), Earth-orbit spacecraft
     {zone}/[{zoom}/]{label}/{part}.bin.gz         time-chunked + parted — earth (date label, flat), moons (chunk-idx label, flat)
     {zone}/[{zoom}/]{chunk}.bin.gz                time-chunked, unparted — chebyshev zones (only major is zoomed; major_asteroids, moons/{parent} are flat)
     probes/{zone}/{chunk}.bin.gz                  time-chunked, always flat — interplanetary probes (format byte = 2)

@@ -2,9 +2,10 @@
 
 Entry point. Each `position.zones[zone]` entry carries a `shape`
 discriminator that tells the URL builder which path template to use.
-Multi-zoom zones (`major`, `small_bodies/{class}`) nest their shapes under a
-`zooms` map and gain a `{zoom}` path segment; all other zones carry the shape
-fields directly at zone level and are flat (no `{zoom}` segment):
+Multi-zoom zones (`major`, `small_bodies/{class}`, `small_body_moons`) nest
+their shapes under a `zooms` map and gain a `{zoom}` path segment; all other
+zones carry the shape fields directly at zone level and are flat (no `{zoom}`
+segment):
 
 ```jsonc
 {
@@ -18,8 +19,10 @@ fields directly at zone level and are flat (no `{zoom}` segment):
         "parent_id_type": "naif"
       },
       "small_body_moons": {
-        "shape": "parted",
-        "parts": 1,
+        "zooms": {
+          "0": { "shape": "parted", "parts": 1 },
+          "1": { "shape": "parted", "parts": 1 }
+        },
         "parent_id_type": "spkid"
       },
       "earth": {
@@ -130,12 +133,12 @@ must never also match an immutable glob.
 ## Shape → URL
 
 The `{zoom}` segment below is present **only** for the multi-zoom zones
-(`major`, `small_bodies/{class}`) — the ones whose manifest entry has a
-`zooms` wrapper. Flat zones omit it.
+(`major`, `small_bodies/{class}`, `small_body_moons`) — the ones whose
+manifest entry has a `zooms` wrapper. Flat zones omit it.
 
 | `shape`           | URL                                              | Used by                              |
 |-------------------|--------------------------------------------------|--------------------------------------|
-| `parted`          | `position/{zone}/[{zoom}/]{part}.bin.gz`         | `small_bodies/{class}` zones (zoomed), Earth-orbit spacecraft, `small_body_moons`, major/1 (horizons-sourced dwarves), major/2 (SBDB dwarves) |
+| `parted`          | `position/{zone}/[{zoom}/]{part}.bin.gz`         | `small_bodies/{class}` zones (zoomed), Earth-orbit spacecraft, `small_body_moons` (zoomed: 0 = SBDB, 1 = AsterSat), major/1 (horizons-sourced dwarves), major/2 (SBDB dwarves) |
 | `chunked-parted`  | `position/{zone}/[{zoom}/]{label}/{part}.bin.gz` | `earth` (label = ISO date), `moons` (label = chunk index) — both flat |
 | `chunked`         | `position/{zone}/[{zoom}/]{chunk}.bin.gz`        | every chebyshev zone; only `major` is zoomed, the flat cheby zones (`major_asteroids`, `moons/{parent}`) omit the segment |
 | `probes`          | `position/{zone}/{chunk}.bin.gz`                 | probe zones (`probes/*`) — always flat; a distinct tag from flat `chunked` cheby zones |

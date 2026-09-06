@@ -45,9 +45,9 @@ interface MinorChunkArg {
 
 /**
  * Parts are hash-bucketed shards, so the first N parts of a zoom bucket are a
- * representative sample. Unnamed (zoom-1) parts past this cap defer until the
- * eager wave finishes, so density lands before the long tail competes for
- * bandwidth. Only the main belt (133 zoom-1 parts) exceeds this today.
+ * representative sample. Parts past this cap in a zoom-1 bucket defer until
+ * the eager wave finishes, so density lands before the long tail competes for
+ * bandwidth. Only the main belt's unnamed asteroids (133 parts) exceed it.
  */
 const EAGER_ZOOM1_PARTS = 13;
 
