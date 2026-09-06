@@ -33,14 +33,14 @@
 			fallback={members.notableMembers}
 		/>
 	{/if}
-	<!-- Credits for the spheres this tab draws — a planet's moons, or the
-	     Solar System's own row. -->
-	{#if lineup.isMoonLineup || lineup.solarSystemLineup}
+	<!-- Credits for the lineup this tab draws. -->
+	{#if lineup.isMoonLineup || lineup.membersLineup}
 		<SourcesFooter
 			global={null}
 			pck={lineup.pck}
 			lightcurvePole={lineup.lightcurvePole}
 			wikidata={lineup.wikidata}
+			sbdb={lineup.sbdb}
 			imagery={lineup.imagery}
 		/>
 	{/if}

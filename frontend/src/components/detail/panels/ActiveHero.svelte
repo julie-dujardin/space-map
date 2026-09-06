@@ -163,19 +163,16 @@
 		</div>
 	{/if}
 {:else if activeTab === 'members'}
-	<!-- The lineup is this tab's hero; its imagery/size credits ride at the
-	     foot of the panel, where the spheres render. -->
+	<!-- The members drawn to scale, above the list that names them. Its
+	     imagery/size credits ride at the foot of the panel, where they render. -->
 	{#if lineup.isMoonLineup}
 		<div class="px-4 pt-1 pb-3">{@render lineupHeroSnippet()}</div>
-	{/if}
-	<!-- Solar System: the minimap is the page hero, so the sphere lineup lives
-	     here (paginated). -->
-	{#if lineup.solarSystemLineup}
+	{:else if lineup.membersLineup}
 		<div class="px-4 pt-1 pb-3">
 			<BodyLineup
-				bodies={lineup.solarSystemLineup.bodies}
-				ariaLabel={fallbackName}
-				perPage={lineup.solarSystemLineup.perPage}
+				bodies={lineup.membersLineup.bodies}
+				ariaLabel={lineup.membersLineup.ariaLabel}
+				perPage={lineup.membersLineup.perPage}
 			/>
 		</div>
 	{/if}

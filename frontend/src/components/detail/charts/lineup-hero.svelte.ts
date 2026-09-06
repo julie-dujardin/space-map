@@ -73,9 +73,9 @@ export class LineupHero {
 	// The probes tab's own hero: the craft that went there, to scale against each
 	// other. Independent of `hero` — an asteroid collection draws both.
 	readonly probeLineup: LineupHeroSpec | null;
-	// Solar System: the minimap is the page hero, so the sphere lineup moves into
-	// the members tab (paginated).
-	readonly solarSystemLineup: { bodies: LineupBody[]; perPage: number } | null;
+	// The members tab's own hero: this page's members, drawn to scale, paginated
+	// in step with the list under them. Null when too few of them resolve.
+	readonly membersLineup: LineupHeroSpec | null;
 	readonly imagery: ImageryCredit[];
 	// The probe lineup's mesh credits, which the probes tab carries; several
 	// bundles are CC BY-SA and cannot be drawn uncredited.
@@ -188,20 +188,28 @@ export class LineupHero {
 			return { bodies, ariaLabel: m.probes_section(), perPage: 3 };
 		});
 
-		this.solarSystemLineup = $derived.by(() => {
+		// Spheres where the members are bodies, meshes where they are craft. Two
+		// spheres are the least that compares; one craft already pictures the page.
+		this.membersLineup = $derived.by<LineupHeroSpec | null>(() => {
 			const members = d.notableMembers();
-			if (!d.cat().solarSystem || !members || members.length === 0) return null;
-			const bodies = buildLineup(members, geometryFromMember, {
+			if (!members || members.length === 0) return null;
+			const spheres = buildLineup(members, geometryFromMember, {
 				names: d.memberNames(),
 				descriptions: d.memberDescriptions()
 			});
-			return bodies.length === 0 ? null : { bodies, perPage: 8 };
+			if (spheres.length >= 2) return { bodies: spheres, ariaLabel: d.fallbackName(), perPage: 8 };
+			const craft = buildLineup(members, craftGeometryFromMember, {
+				names: d.memberNames(),
+				descriptions: d.memberDescriptions()
+			});
+			if (craft.length > 0) return { bodies: craft, ariaLabel: d.fallbackName(), perPage: 3 };
+			return null;
 		});
 
-		// Whichever lineup this page draws: the collection hero, or the Solar
-		// System's row of spheres down in the members tab. Both render real
-		// textures on real radii and owe the same credits.
-		const lineupBodies = $derived(this.hero?.bodies ?? this.solarSystemLineup?.bodies ?? null);
+		// Whichever lineup this page draws: the collection hero, or the row of
+		// spheres down in the members tab. Both render real textures on real radii
+		// and owe the same credits.
+		const lineupBodies = $derived(this.hero?.bodies ?? this.membersLineup?.bodies ?? null);
 
 		// Imagery credits for the on-screen bodies, deduped by author. Covers both
 		// surface-map textures and meshes — a mesh draped with a map credits both.
@@ -238,9 +246,10 @@ export class LineupHero {
 		);
 		this.sbdb = $derived(hasLineup && isSmallBodyLineup);
 
-		// Both lineups that live in the members tab leave the overview footer
-		// with nothing to credit — the spheres they credit are a tab away.
-		const lineupInMembersTab = $derived(this.isMoonLineup || !!this.solarSystemLineup);
+		// A lineup drawn only in the members tab leaves the overview footer with
+		// nothing to credit — the spheres it credits are a tab away. A page whose
+		// hero is that same lineup still credits it on both.
+		const lineupInMembersTab = $derived(this.isMoonLineup || (!this.hero && !!this.membersLineup));
 		this.overviewCredits = $derived(
 			lineupInMembersTab
 				? { pck: false, lightcurvePole: false, wikidata: false, sbdb: false, imagery: [] }
