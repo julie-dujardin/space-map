@@ -7,9 +7,9 @@ import type {
 
 /**
  * The display settings the scene reads. The app's persisted store satisfies
- * this structurally; an embed passes a plain object. One per page, registered
- * through {@link setSceneSettings}: the tier and quality helpers run deep in
- * material code with no map instance at hand.
+ * this structurally; an embed passes its own or takes the default. One per
+ * page, registered through {@link setSceneSettings}: the tier and quality
+ * helpers run deep in material code with no map instance at hand.
  */
 export interface SceneSettings {
 	resolvedReducedMotion: boolean;
@@ -34,9 +34,11 @@ export interface SceneSettings {
 	setAtmosphereAutoTier(v: ResolvedAtmosphereTier | null): void;
 }
 
-/** What a bare embed renders with: everything on, quality measured at boot. */
+/** What a bare embed renders with: everything on, quality measured at boot.
+ *  Reactive, so the calibration's tier reaches the renderer through the same
+ *  effects a host's own store drives. */
 export function defaultSceneSettings(): SceneSettings {
-	return {
+	const settings = $state<SceneSettings>({
 		resolvedReducedMotion:
 			typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches,
 		viewMode: 'map',
@@ -61,7 +63,8 @@ export function defaultSceneSettings(): SceneSettings {
 		setAtmosphereAutoTier(v) {
 			this.atmosphereAutoTier = v;
 		}
-	};
+	});
+	return settings;
 }
 
 let current: SceneSettings | null = null;

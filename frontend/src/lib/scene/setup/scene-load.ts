@@ -31,7 +31,7 @@ import { isLowEndDevice } from '$lib/device';
 import { createPlaceholderBody } from '$lib/scene/setup/placeholder';
 import { passengerFor, type PassengerGraft } from '$lib/fetch/position/probes/passenger';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { sceneSettings } from '$lib/scene/settings';
+import { sceneSettings } from '$lib/scene/settings.svelte';
 import { loadProgress } from '$lib/scene/state/load-progress.svelte';
 import { dateToJD } from '$lib/time/jd';
 

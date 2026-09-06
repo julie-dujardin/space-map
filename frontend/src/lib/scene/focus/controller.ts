@@ -26,7 +26,7 @@ import {
 	type FocusState
 } from '$lib/scene/animation/focus';
 import { f64dist, type Vec3 } from '$lib/scene/animation/math';
-import { sceneSettings } from '$lib/scene/settings';
+import { sceneSettings } from '$lib/scene/settings.svelte';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
 import type { SystemDataLoader } from '$lib/scene/system-data/loader';
 import { PromotionRegistry, type PromotionDeps } from './promotion';

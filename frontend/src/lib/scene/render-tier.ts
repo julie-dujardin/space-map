@@ -1,5 +1,5 @@
 import { isCoarsePointer, isLowEndDevice } from '$lib/device';
-import { sceneSettings } from '$lib/scene/settings';
+import { sceneSettings } from '$lib/scene/settings.svelte';
 
 /**
  * GPU class for the fill-bound render knobs. The boot atmosphere calibration

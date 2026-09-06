@@ -20,7 +20,7 @@ import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/o
 import { kmToScene, sceneToKm } from '$lib/math/units';
 import { frameMapQuaternion } from '$lib/math/orientation';
 import { bodyMeshColor } from '$lib/body-color';
-import { sceneSettings } from '$lib/scene/settings';
+import { sceneSettings } from '$lib/scene/settings.svelte';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
 import { setLabelAnnotation } from '../../label/annotations';

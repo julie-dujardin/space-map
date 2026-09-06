@@ -4,7 +4,7 @@ import { kmToScene } from '$lib/math/units';
 import { ObjectType } from '$lib/types/objects';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
-import { sceneSettings } from '$lib/scene/settings';
+import { sceneSettings } from '$lib/scene/settings.svelte';
 import { isLowEndDevice } from '$lib/device';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getLabelVariant, setLabelName } from '../../label/factory';

@@ -87,7 +87,7 @@ import {
 	makeEnvMap,
 	sunIrradianceFactor
 } from './lighting';
-import { sceneSettings } from '$lib/scene/settings';
+import { sceneSettings } from '$lib/scene/settings.svelte';
 import type { PointingSpec } from '$lib/math/orientation';
 import {
 	attachNomenclatureLabels,

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>spacemap SDK demo</title>
+		<style>
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				background: #000;
+				color: #e6e6e6;
+				font:
+					14px/1.45 system-ui,
+					sans-serif;
+			}
+			#map {
+				position: fixed;
+				inset: 0;
+			}
+			#panel {
+				position: fixed;
+				top: 12px;
+				left: 12px;
+				width: 300px;
+				max-height: calc(100% - 24px);
+				overflow: auto;
+				box-sizing: border-box;
+				padding: 12px 14px;
+				background: rgba(12, 14, 20, 0.86);
+				border: 1px solid #2c2f3a;
+				border-radius: 10px;
+				backdrop-filter: blur(8px);
+			}
+			h1 {
+				margin: 0 0 4px;
+				font-size: 16px;
+			}
+			h1 small {
+				font-weight: normal;
+				color: #9aa;
+			}
+			p {
+				margin: 6px 0;
+			}
+			label {
+				display: block;
+				margin: 8px 0 2px;
+				color: #9aa;
+				font-size: 12px;
+			}
+			select,
+			input,
+			button {
+				font: inherit;
+				color: inherit;
+				background: #171a24;
+				border: 1px solid #3a3e4d;
+				border-radius: 6px;
+				padding: 4px 8px;
+				min-width: 0;
+			}
+			button {
+				cursor: pointer;
+			}
+			button:disabled {
+				opacity: 0.5;
+				cursor: default;
+			}
+			.row {
+				display: flex;
+				gap: 6px;
+				margin: 8px 0;
+			}
+			.row > * {
+				flex: 1 1 0;
+			}
+			#children {
+				width: 100%;
+			}
+			code {
+				color: #bcd;
+			}
+			#log {
+				margin: 8px 0 0;
+				padding: 8px;
+				max-height: 140px;
+				overflow: auto;
+				font:
+					12px/1.4 ui-monospace,
+					monospace;
+				background: #0b0d13;
+				border-radius: 6px;
+				white-space: pre-wrap;
+			}
+			#error {
+				color: #f88;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<aside id="panel">
+			<h1>spacemap SDK <small>demo</small></h1>
+			<p id="status">Loading…</p>
+			<p id="error" hidden></p>
+			<label for="children">Children of the focused body</label>
+			<select id="children"></select>
+			<form id="go" class="row">
+				<input id="target" placeholder="object id, e.g. naif-499" />
+				<button>Focus</button>
+			</form>
+			<div class="row">
+				<button id="parent" type="button">Parent body</button>
+				<button id="play" type="button">Pause</button>
+				<select id="speed">
+					<option value="1">real time</option>
+					<option value="60">1 min/s</option>
+					<option value="3600">1 h/s</option>
+					<option value="86400">1 day/s</option>
+					<option value="604800">1 week/s</option>
+				</select>
+			</div>
+			<p><code id="clock"></code></p>
+			<p><code id="camera"></code></p>
+			<pre id="log"></pre>
+		</aside>
+		<script type="module">
+			import { createMap, jdToDate } from './spacemap.js';
+
+			// ?data=<export root> ?lang=<bcp47> ?body=<object id>
+			const params = new URLSearchParams(location.search);
+			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
+			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
+			const options = {};
+			if (dataUrl) options.dataUrl = dataUrl;
+			if (params.has('lang')) options.locale = params.get('lang');
+			if (params.has('body')) options.view = { id: params.get('body') };
+
+			const $ = (id) => document.getElementById(id);
+			const log = (line) => {
+				$('log').textContent = [line, ...$('log').textContent.split('\n')].slice(0, 12).join('\n');
+			};
+			const name = (body) => body?.data.name ?? body?.data.id ?? '?';
+
+			let map;
+			try {
+				map = await createMap($('map'), options);
+			} catch (e) {
+				$('status').textContent = 'Failed to start';
+				$('error').textContent = String(e?.message ?? e);
+				$('error').hidden = false;
+				throw e;
+			}
+			// The controller, for poking at from the console.
+			window.map = map;
+			$('status').textContent = `Data from ${dataUrl ?? 'static.spacemap.co'}`;
+
+			map.on('focuschange', ({ body, initial, feature }) => {
+				if (!body) return;
+				log(
+					`focuschange ${name(body)}${feature ? ' (feature)' : ''}${initial ? ' (initial)' : ''}`
+				);
+				const select = $('children');
+				select.replaceChildren(new Option(`— ${name(body)} —`, ''));
+				for (const id of map.ctx.bodies.getChildren(body.data.id) ?? []) {
+					const child = map.ctx.getBody(id);
+					if (child) select.add(new Option(name(child), id));
+				}
+				$('parent').disabled = !map.ctx.getBody(body.data.parentId);
+			});
+			map.on('camera', ({ latitude, longitude, zoom }) => {
+				$('camera').textContent =
+					`camera lat ${latitude.toFixed(1)}° lon ${longitude.toFixed(1)}° zoom ${zoom.toFixed(2)}`;
+			});
+			map.on('featureselect', (e) => {
+				log(`featureselect ${e.featureId} on ${e.bodyId}`);
+				map.focusOnFeature(e.bodyId, e.featureId, e.lat, e.lon, e.diameterM, null, 'pan');
+			});
+			map.on('contextlost', () => log('contextlost'));
+			map.on('contextrestored', () => log('contextrestored'));
+
+			$('children').addEventListener('change', (e) => {
+				if (e.target.value) map.focusOnBody(e.target.value);
+			});
+			$('go').addEventListener('submit', (e) => {
+				e.preventDefault();
+				const id = $('target').value.trim();
+				if (id) map.focusOnBody(id);
+			});
+			$('parent').addEventListener('click', () => {
+				const parent = map.focusedBody?.data.parentId;
+				if (parent) map.focusOnBody(parent);
+			});
+			$('play').addEventListener('click', () => {
+				if (map.clock.playing) map.clock.pause();
+				else map.clock.play();
+				$('play').textContent = map.clock.playing ? 'Pause' : 'Play';
+			});
+			$('speed').addEventListener('change', (e) => map.clock.setTimeScale(Number(e.target.value)));
+			setInterval(() => {
+				const iso = jdToDate(map.clock.jd).toISOString();
+				$('clock').textContent = `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
+			}, 500);
+		</script>
+	</body>
+</html>

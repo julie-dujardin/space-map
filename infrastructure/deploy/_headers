@@ -1,5 +1,7 @@
+# Any origin: the SDK embeds the map on other sites, the data is public and
+# static-asset egress is free.
 /*
-  Access-Control-Allow-Origin: https://spacemap.co
+  Access-Control-Allow-Origin: *
 
 # Content-addressed classes: the frontend appends a per-class `?v=` token
 # (metadata.json `versions`) so a content change yields a fresh URL. Safe to

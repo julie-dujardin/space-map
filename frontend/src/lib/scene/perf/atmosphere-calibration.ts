@@ -1,6 +1,6 @@
 import { WebGLRenderer } from 'three';
 import { cappedPixelRatio } from '$lib/device';
-import { sceneSettings } from '$lib/scene/settings';
+import { sceneSettings } from '$lib/scene/settings.svelte';
 import {
 	heuristicAtmosphereTier,
 	type ResolvedAtmosphereTier

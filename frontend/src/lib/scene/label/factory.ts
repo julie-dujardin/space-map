@@ -99,7 +99,8 @@ export function createLabel(
 	// here); draggable=false so a camera-drag over a label can't start a link drag.
 	const el = document.createElement('a');
 	el.className = `scene-label scene-label--${variant}`;
-	el.href = href;
+	// No href on a bare embed: the label focuses but leads nowhere.
+	if (href) el.href = href;
 	el.tabIndex = -1;
 	el.draggable = false;
 	// Permanent accessible name: the visible name span is display:none'd while

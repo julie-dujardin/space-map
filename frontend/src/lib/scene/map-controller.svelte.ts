@@ -9,7 +9,7 @@ import { SimClock } from './state/clock.svelte';
 import { SceneRenderer } from './renderer';
 import { calibrationUi } from './perf/calibration-state.svelte';
 import { scheduleAtmosphereCalibration } from './perf/atmosphere-calibration';
-import { sceneSettings, setSceneSettings, type SceneSettings } from './settings';
+import { sceneSettings, setSceneSettings, type SceneSettings } from './settings.svelte';
 import {
 	DEFAULT_FOCUS_ID,
 	DEFAULT_FRAMING_LAT,

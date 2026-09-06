@@ -5,6 +5,7 @@
 .wrangler
 /.svelte-kit
 /build
+/dist
 /src/lib/paraglide
 
 # OS

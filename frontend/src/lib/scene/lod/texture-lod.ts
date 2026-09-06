@@ -9,7 +9,7 @@ import {
 } from '$lib/scene/objects/body/textures';
 import { cloudFrameForJd, loadCloudTexture } from '$lib/scene/objects/surface/clouds';
 import { swapDisplacementTier } from '$lib/scene/objects/surface/displacement';
-import { sceneSettings } from '$lib/scene/settings';
+import { sceneSettings } from '$lib/scene/settings.svelte';
 import { maxTextureTier } from '$lib/scene/render-tier';
 
 /** DEM tier by altitude (in body radii from the center, like `altitudeRadii`),

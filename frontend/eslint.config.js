@@ -34,7 +34,7 @@ export default ts.config(
 	{
 		// The embeddable core stays host-agnostic; `pnpm check:core` enforces the
 		// same rule transitively.
-		files: ['src/lib/scene/**', 'src/lib/math/**', 'src/lib/fetch/**'],
+		files: ['src/lib/scene/**', 'src/lib/math/**', 'src/lib/fetch/**', 'src/sdk/**'],
 		rules: {
 			'@typescript-eslint/no-restricted-imports': [
 				'error',

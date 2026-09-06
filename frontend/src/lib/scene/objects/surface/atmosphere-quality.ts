@@ -1,5 +1,5 @@
 import { isCoarsePointer, isLowEndDevice } from '$lib/device';
-import { sceneSettings } from '$lib/scene/settings';
+import { sceneSettings } from '$lib/scene/settings.svelte';
 
 /**
  * Quality knobs for the atmosphere shells. Ray march cost is

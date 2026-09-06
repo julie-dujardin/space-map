@@ -4,11 +4,11 @@ module.exports = {
 		{
 			name: 'core-boundary',
 			comment:
-				'src/lib/{scene,math,fetch} is the embeddable core (future SDK). Nothing it reaches, ' +
+				'src/lib/{scene,math,fetch} is the embeddable core and src/sdk its entry. Nothing they reach, ' +
 				'directly or transitively, may depend on SvelteKit, the app UI stack, or the i18n bundles — ' +
 				'inject those through src/lib/host.ts instead.',
 			severity: 'error',
-			from: { path: '^src/lib/(scene|math|fetch)/', pathNot: '\\.test\\.ts$' },
+			from: { path: '^src/(lib/(scene|math|fetch)|sdk)/', pathNot: '\\.test\\.ts$' },
 			to: {
 				path:
 					'^\\$app/|^\\$env/|(^\\$lib|^src/lib)/paraglide/|^src/lib/components/|^src/components/|\\.svelte$|' +

@@ -19,6 +19,7 @@ import { findAssistRoute, type AssistOptions } from './assist';
 import { computePorkchop, selectRoutes, type PorkchopOptions } from './porkchop';
 import type { Route } from './route';
 import type { TravelRequest, TravelResponse } from './worker';
+import TravelWorker from './worker?worker';
 
 export interface SolveResult {
 	grid: import('./porkchop').PorkchopGrid;
@@ -56,7 +57,7 @@ export class TravelSolver {
 		const existing = this.#workers[kind];
 		if (existing) return existing;
 		if (typeof Worker === 'undefined') return null;
-		const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+		const worker = new TravelWorker();
 		worker.onmessage = (ev: MessageEvent<TravelResponse>) => {
 			const msg = ev.data;
 			const pending = this.#pending.get(msg.id);

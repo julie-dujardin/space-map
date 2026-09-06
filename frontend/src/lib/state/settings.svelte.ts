@@ -1,6 +1,6 @@
 import type { Locale } from '$lib/paraglide/runtime.js';
 import { getLocale } from '$lib/host';
-import type { SceneSettings } from '$lib/scene/settings';
+import type { SceneSettings } from '$lib/scene/settings.svelte';
 import type {
 	AtmosphereCalibration,
 	AtmosphereQualityConfig,

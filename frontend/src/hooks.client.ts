@@ -2,7 +2,7 @@ import type { ClientInit, HandleClientError } from '@sveltejs/kit';
 import { getLocale, overwriteGetLocale } from '$lib/paraglide/runtime.js';
 import { configureHost } from '$lib/host';
 import { KIT_HOST } from '$lib/state/kit-host';
-import { setSceneSettings } from '$lib/scene/settings';
+import { setSceneSettings } from '$lib/scene/settings.svelte';
 import { getSettings } from '$lib/state/settings.svelte';
 import { dismissNotice, showNotice } from '$lib/state/notices';
 import { bodyHref } from '$lib/state/url';
