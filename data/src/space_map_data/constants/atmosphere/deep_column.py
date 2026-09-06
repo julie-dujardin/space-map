@@ -77,10 +77,12 @@ TITAN_HASI_LEVELS: tuple[ProfileLevel, ...] = (
 
 
 class HazeSlab(NamedTuple):
-    """Aerosol over [base, top]: column extinction optical depth and single-
+    """Aerosol over [base, top]: extinction optical depth and single-
     scattering albedo per channel; `asymmetry` None takes the shell
-    aerosol's per-channel value; `shape` "uniform" spreads the column
-    evenly, "profile" follows the body's shipped Mie-density profile."""
+    aerosol's per-channel value. `shape` "uniform" spreads `tau` evenly over
+    the slab; "profile" follows the body's shipped Mie-density profile, and
+    `tau` is then the whole column's — the slab keeps the profile's share
+    between base and top, so one column can change albedo with altitude."""
 
     tau: tuple[float, float, float]
     albedo: tuple[float, float, float]
@@ -117,6 +119,11 @@ class DeepColumn(NamedTuple):
 
 
 _TITAN_THOLIN = AEROSOLS["titan_tholin"]
+# The shell aerosol's whole column, per channel.
+_TITAN_TAU: tuple[float, float, float] = tuple(
+    (s + a) * _TITAN_THOLIN.scale_height_km
+    for s, a in zip(_TITAN_THOLIN.scatter_per_km, _TITAN_THOLIN.absorption_per_km)
+)
 
 DEEP_COLUMNS: dict[str, DeepColumn] = {
     # Deck: the LCPS layers of layers.py at their mid-range τ (0.63 µm; the
@@ -160,30 +167,24 @@ DEEP_COLUMNS: dict[str, DeepColumn] = {
             top_km=35.0,
         ),
     ),
-    # The haze below 120 km — 80% of the column, τ ≈ 0.8 at 550 nm left
+    # The haze below 120 km — 70% of the column, τ ≈ 2 at 550 nm left
     # above it for the shell to march. Extinction is the shell aerosol's
-    # column on the shipped Doose et al. 2016 profile; the albedo is the
-    # tholin's own single-scattering value (Khare et al. 1984: k = 0.0024 at
-    # the red edge, 0.11 at the blue), not the shell's compounded one —
-    # the two-stream stack does the multiple scattering itself. Ground:
-    # DISR surface reflectance ≈ 0.15 in the red, falling into the blue
-    # (Tomasko et al. 2005).
+    # column on the shipped Doose et al. 2016 profile, in the three altitude
+    # regimes of Tomasko et al. 2008 table 2 with their measured single-
+    # scattering albedos at 675/555/430 nm: 0.97/0.955/0.92 below 30 km,
+    # 0.99/0.968/0.925 at 80 km, 0.93/0.91/0.82 at 144 km (the mean of the
+    # last two above 80 km). The dark laboratory tholin belongs to the high
+    # haze that colours the disc, not to the condensate-grown particles
+    # under it — the two-stream stack does the multiple scattering itself.
+    # Ground: DISR surface reflectance ≈ 0.15 in the red, falling into the
+    # blue (Tomasko et al. 2005).
     "naif-606": DeepColumn(
         profile=TITAN_HASI_LEVELS,
         top_km=120.0,
         hazes=(
-            HazeSlab(
-                tau=tuple(
-                    (s + a) * _TITAN_THOLIN.scale_height_km
-                    for s, a in zip(
-                        _TITAN_THOLIN.scatter_per_km, _TITAN_THOLIN.absorption_per_km
-                    )
-                ),
-                albedo=(0.95, 0.85, 0.55),
-                base_km=0.0,
-                top_km=600.0,
-                shape="profile",
-            ),
+            HazeSlab(_TITAN_TAU, (0.97, 0.955, 0.92), 0.0, 30.0, shape="profile"),
+            HazeSlab(_TITAN_TAU, (0.99, 0.968, 0.925), 30.0, 80.0, shape="profile"),
+            HazeSlab(_TITAN_TAU, (0.96, 0.94, 0.87), 80.0, 600.0, shape="profile"),
         ),
         ground_albedo=(0.16, 0.13, 0.10),
     ),

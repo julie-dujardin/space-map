@@ -282,9 +282,10 @@ export interface AtmosphereDeepColumn {
 	 *  at (Titan). */
 	topKm: number;
 	/** Downward diffuse flux over its surface value's luminance. The sky
-	 *  renormalises it to unit luminance at every altitude (a camera adapts
-	 *  across the column's ~20× range), so only its colour and the ratio
-	 *  below matter to the render. */
+	 *  re-exposes it at every altitude (a camera adapts across the column's
+	 *  ~20× range) so that its luminance or its brightest channel, whichever
+	 *  is larger, reaches unit — only its colour and the ratio below matter
+	 *  to the render. */
 	fluxDown: readonly number[];
 	/** Upward over downward flux — the ground albedo at the surface. */
 	fluxUpRatio: readonly number[];
@@ -480,13 +481,20 @@ const FRAGMENT_SHADER = `
 		return (length(p) - uDeepBaseR) / uDeepSpanR;
 	}
 
-	// Downward flux at altitude fraction u, exposed to unit luminance: the
-	// column spans ~20× in brightness from deck to ground, which no fixed
-	// exposure can show, so the sky keeps the profile's colour and lets the
-	// camera adapt like a descending probe's did.
+	// Downward flux at altitude fraction u, re-exposed: the column spans ~20×
+	// in brightness from deck to ground, which no fixed exposure can show, so
+	// the sky keeps the profile's colour and lets the camera adapt like a
+	// descending probe's did. Exposed for highlights — unit luminance, or
+	// unit brightest channel when the light is saturated enough that the
+	// two differ (Titan's is nearly pure red: at unit luminance its red sat
+	// near 3× and the tonemapper flattened every texture under it).
+	float deepExposure(vec3 f) {
+		return max(dot(f, vec3(0.2126, 0.7152, 0.0722)), max(f.r, max(f.g, f.b)));
+	}
+
 	vec3 deepDownFlux(float u) {
 		vec3 f = deepTap(0.0, u);
-		return f / max(dot(f, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+		return f / max(deepExposure(f), 1e-4);
 	}
 
 	// Flux entering the column: the sun's height over the local horizontal,

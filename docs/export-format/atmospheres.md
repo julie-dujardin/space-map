@@ -116,8 +116,9 @@ interface AtmosphereBody {
 		top_km: number;
 		// Downward diffuse flux over the surface value's photopic luminance:
 		// unit brightness at the surface with the column's colour kept. The
-		// frontend re-exposes it to unit luminance at every altitude (the
-		// column spans ~20× from deck to ground), so only the colour renders.
+		// frontend re-exposes it at every altitude (the column spans ~20×
+		// from deck to ground) so its luminance or brightest channel reaches
+		// unit, so only the colour renders.
 		flux_down: number[];
 		// Upward over downward flux — the ground albedo at the surface.
 		flux_up_ratio: number[];

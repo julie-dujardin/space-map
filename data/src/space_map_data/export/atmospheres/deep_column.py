@@ -28,7 +28,10 @@ from space_map_data.constants.atmosphere.deep_column import (
     ProfileLevel,
 )
 from space_map_data.export.atmospheres.conditions import render_conditions
-from space_map_data.export.atmospheres.profiles import mie_density_builder
+from space_map_data.export.atmospheres.profiles import (
+    MIN_PROFILE_TOP_KM,
+    mie_density_builder,
+)
 from space_map_data.export.atmospheres.rayleigh import rayleigh_beta_per_m
 
 logger = logging.getLogger(__name__)
@@ -88,15 +91,20 @@ def _tent(z_km: float, base: float, peak: float, top: float) -> float:
 
 
 def _slab_weights(
-    slabs: tuple[HazeSlab, ...], density: Callable[[float], float] | None
+    slabs: tuple[HazeSlab, ...],
+    density: Callable[[float], float] | None,
+    extent_km: float,
 ) -> list[Callable[[float], float]]:
-    """Per-slab vertical weight functions, each integrating to 1 over the
-    slab's own [base, top] — a slab reaching past the column keeps only the
-    share that lies inside it."""
+    """Per-slab vertical weight functions. A uniform slab's integrates to 1
+    over its own [base, top]; a profile-shaped slab's integrates to 1 over
+    the profile's whole `extent_km`, so the slab holds the profile's share
+    between base and top — either way a slab reaching past the column keeps
+    only what lies inside it."""
     weights: list[Callable[[float], float]] = []
+    norm_profile = None
     for slab in slabs:
-        span = slab.top_km - slab.base_km
         if slab.shape == "uniform":
+            span = slab.top_km - slab.base_km
             weights.append(
                 lambda z, s=slab, span=span: (
                     1.0 / span if s.base_km <= z < s.top_km else 0.0
@@ -105,11 +113,12 @@ def _slab_weights(
             continue
         if density is None:
             raise ValueError("a profile-shaped slab needs a Mie-density profile")
-        steps = 2000
-        dz = span / steps
-        norm = sum(density(slab.base_km + (k + 0.5) * dz) for k in range(steps)) * dz
+        if norm_profile is None:
+            steps = 4000
+            dz = extent_km / steps
+            norm_profile = sum(density((k + 0.5) * dz) for k in range(steps)) * dz
         weights.append(
-            lambda z, s=slab, norm=norm: (
+            lambda z, s=slab, norm=norm_profile: (
                 density(z) / norm if s.base_km <= z < s.top_km else 0.0
             )
         )
@@ -123,6 +132,7 @@ def _solve_channel(
     channel: int,
     cloud_g: float,
     density: Callable[[float], float] | None,
+    extent_km: float,
 ) -> tuple[list[float], list[float], list[float], float]:
     """Returns (F_down, F_up) at each sublayer interface from the ground up,
     the sublayer extinction per km, and the column's diffuse reflectance —
@@ -131,7 +141,7 @@ def _solve_channel(
     n = int(round(top_km / _SUBLAYER_KM))
     dz = top_km / n
     absorber = column.absorber
-    weights = _slab_weights(column.hazes, density)
+    weights = _slab_weights(column.hazes, density, extent_km)
     layers: list[tuple[float, float, float]] = []
     extinction: list[float] = []
     for i in range(n):
@@ -211,8 +221,12 @@ def build_deep_column(
     n_sub = int(round(top_km / _SUBLAYER_KM))
     dz = top_km / n_sub
     density = mie_density_builder(object_id)
+    # The profile-shaped slabs share the whole shipped profile's extent.
+    extent_km = MIN_PROFILE_TOP_KM.get(object_id, top_km)
     channels = [
-        _solve_channel(column, composition, wavelength, c, cloud_g[name], density)
+        _solve_channel(
+            column, composition, wavelength, c, cloud_g[name], density, extent_km
+        )
         for c, (name, wavelength) in enumerate(RENDER_WAVELENGTHS_M.items())
     ]
     surface_fraction = [f_down[0] for f_down, _, _, _ in channels]

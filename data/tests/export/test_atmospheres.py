@@ -349,10 +349,13 @@ class TestDeepColumn:
         deep = entry["deep_column"]
         assert deep["top_km"] == 120.0
         red, green, blue = deep["surface_flux_fraction"]
-        # Huygens: a dim orange overcast, the blue gone (Tomasko et al. 2005).
+        # Huygens: an orange overcast, the blue mostly gone (Tomasko et al.
+        # 2005) — the DISR surface colour has green near half of red and
+        # blue near a tenth.
         assert red > green > blue
-        assert 0.02 < red < 0.6
-        assert blue < 0.01
+        assert 0.1 < red < 0.6
+        assert 0.3 < green / red < 0.7
+        assert blue / red < 0.2
         n = payload["deep_n"]
         for c in range(3):
             down = deep["flux_down"][c * n : (c + 1) * n]

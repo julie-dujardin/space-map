@@ -123,9 +123,9 @@ export function refractionLiftRad(
 	return n1 * qHorizon * Math.exp(e / w);
 }
 
-/** Exposure of the deep-column sky: the irradiance luminance under it at
- *  every altitude (the profile carries the colour, the shader keeps unit
- *  luminance — see `deepDownFlux`). The scene's sun intensity, so the
+/** Exposure of the deep-column sky: the irradiance under it at every
+ *  altitude (the profile carries the colour, the shader re-exposes it for
+ *  highlights — see `deepDownFlux`). The scene's sun intensity, so the
  *  ground under the deck reads like sunlit ground elsewhere and the cloud
  *  top matches the lit overlay above it. */
 export const DEEP_SKY_EXPOSURE = SUN_LIGHT_INTENSITY;

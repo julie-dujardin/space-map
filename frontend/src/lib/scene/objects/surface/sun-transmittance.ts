@@ -187,9 +187,11 @@ const SUN_TINT_GLSL = `
 		vec3 up = normalize(rel);
 		float s = dot(up, uAtmoTSunDir);
 		float sun = max(s, 0.06 * smoothstep(-0.15, -0.02, s));
-		// Unit luminance at any altitude, like the sky: only the colour is kept.
+		// Re-exposed at any altitude like the sky (deepDownFlux): unit
+		// luminance or unit brightest channel, whichever is larger.
 		vec3 down = atmoTDeepTap(0.0, zf);
-		down *= (uAtmoTDeepIrradiance * sun) / max(dot(down, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+		float exposure = max(dot(down, vec3(0.2126, 0.7152, 0.0722)), max(down.r, max(down.g, down.b)));
+		down *= (uAtmoTDeepIrradiance * sun) / max(exposure, 1e-4);
 		float w = 0.5 + 0.5 * dot(worldNormal, up);
 		return mix(down * atmoTDeepTap(1.0, zf), down, w) * uAtmoTDeepBlend;
 	}

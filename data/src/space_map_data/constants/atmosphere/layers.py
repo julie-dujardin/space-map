@@ -51,9 +51,10 @@ class TitanHazeRegime(NamedTuple):
 
 
 # Number density ~5 cm⁻³ at 80 km, 65 km scale height (Tomasko 2008); Doose
-# et al. 2016 revision: optical-depth scale height ~50 km above ~100 km,
-# roughly linear growth below, with a condensate extinction increase under
-# 55 km.
+# et al. 2016 revision (fig. 4): extinction constant from the surface to
+# 55 km — ~0.055/km at 500 nm — a quarter lower above it up to a maximum
+# near 80 km, exponential beyond; τ from the top reaches ~8 at 500 nm and
+# ~4.8 at 700 nm at the surface.
 TITAN_HAZE_REGIMES: tuple[TitanHazeRegime, ...] = (
     TitanHazeRegime(80.0, None, 2.34),
     TitanHazeRegime(30.0, 80.0, 1.41),

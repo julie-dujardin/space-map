@@ -128,22 +128,24 @@ AEROSOLS: dict[str, Aerosol] = {
         scatter_per_km=(0.222, 0.222, 0.222),
         absorption_per_km=(4e-3, 7e-3, 2.8e-2),
     ),
-    # Titan tholin haze: extinction slope τ ∝ λ^-1.41 (30-80 km regime,
-    # Tomasko et al. 2008 via Bazzon et al. 2014) anchored at τ(550) ≈ 4
-    # over H = 60 km → optically thick, β_ext(550) ≈ 0.067/km. Albedo:
-    # the tholin's ω(680) ≈ 0.95 (Khare et al. 1984, k = 0.0024 at the red
-    # edge) is kept; green and blue carry roughly the cube of their single-
-    # scattering values, ω(550) ≈ 0.85 and ω(440) ≈ 0.55 (k = 0.11 at the
-    # blue edge) — the disc is light scattered several times through a
-    # τ ≈ 4 column and the march scatters it once, so the single-scattering
-    # albedo renders Titan cream. Calibrated on Cassini ISS natural colour:
-    # blue/red ≈ 0.2, green/red ≈ 0.55 in linear light. Extinction stays as
-    # measured; deep_column.py holds the single-scattering values.
+    # Titan tholin haze: the DISR column, τ ≈ 5.0/7.0/10 at 680/550/440 nm
+    # at the surface (Doose et al. 2016 fig. 4, read off the 400-1000 nm
+    # curves; Tomasko et al. 2008 fig. 50 runs ~15% higher), over the
+    # H = 60 km normalisation of profiles.py's shape → β_ext(550) ≈
+    # 0.117/km, 0.047/km below 55 km. Albedo: the tholin's ω(680) ≈ 0.95
+    # (Khare et al. 1984, k = 0.0024 at the red edge) is kept; green and
+    # blue carry roughly the cube of their single-scattering values,
+    # ω(550) ≈ 0.85 and ω(440) ≈ 0.55 (k = 0.11 at the blue edge) — the
+    # disc is light scattered several times through a τ ≈ 7 column and the
+    # march scatters it once, so the single-scattering albedo renders Titan
+    # cream. Calibrated on Cassini ISS natural colour: blue/red ≈ 0.2,
+    # green/red ≈ 0.55 in linear light. deep_column.py holds the
+    # single-scattering values.
     "titan_tholin": Aerosol(
         phase="titan_tholin",
         scale_height_km=60.0,
-        scatter_per_km=(4.7e-2, 3.9e-2, 1.9e-2),
-        absorption_per_km=(2.5e-3, 2.8e-2, 7.2e-2),
+        scatter_per_km=(7.9e-2, 6.8e-2, 3.5e-2),
+        absorption_per_km=(4.3e-3, 4.9e-2, 1.32e-1),
     ),
     # Jupiter + Saturn stratospheric/NH₃ haze above the 1-bar deck: compact
     # sub-µm particles (r = 0.2-0.5 µm, Zhang et al. 2013 low latitudes;

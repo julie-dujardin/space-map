@@ -51,17 +51,18 @@ def _venus_density(h_km: float) -> float:
 def _titan_density(h_km: float) -> float:
     """Mie density for Titan's haze (h = 0 at the surface).
 
-    Doose et al. 2016 structure: near-linear optical depth below ~100 km with
-    a condensate increase under 55 km, then ~50 km scale height above.
-    Detached layer at ~500 km (Lavvas et al. 2009 / West et al. 2011) with the
-    observed gap below it.
+    Doose et al. 2016 fig. 4: extinction constant from the surface to 55 km,
+    a quarter lower just above it and rising to a maximum near 80 km, then
+    falling exponentially with an ~80 km scale height. Detached layer at
+    ~500 km (Lavvas et al. 2009 / West et al. 2011) with the observed gap
+    below it.
     """
     if h_km < 55.0:
-        base = 1.0 - 0.33 * (h_km / 55.0)
-    elif h_km < 100.0:
-        base = 0.67
+        base = 1.0
+    elif h_km < 80.0:
+        base = 0.76 + 0.09 * (h_km - 55.0) / 25.0
     else:
-        base = 0.67 * math.exp(-(h_km - 100.0) / 50.0)
+        base = 0.85 * math.exp(-(h_km - 80.0) / 80.0)
     lo, hi = TITAN_DETACHED_LAYER_KM
     center = (lo + hi) / 2.0
     # The clearing between main haze and detached layer must cut deep enough
