@@ -67,20 +67,26 @@ class BodyAtmosphere(NamedTuple):
     # different epoch or rounding than the panel; truncated tails are
     # renormalised by the derivation, so fractions need not sum to 1.
     composition: dict[str, float] | None = None
+    # Height of the render level above the solid surface, km. Non-zero only
+    # where the shell renders from a deck (Venus's cloud top): the shell and
+    # cloud overlay sit that far above the body radius, and the column
+    # underneath is deep_column.py's.
+    reference_altitude_km: float = 0.0
 
 
 ATMOSPHERE_BODIES: dict[str, BodyAtmosphere] = {
-    # Venus, referenced to the ~60-65 km cloud-top/tropopause region the
+    # Venus, referenced to the ~65 km cloud-top/tropopause region the
     # texture shows: ~0.1 bar, 245 K (Gillmann et al. 2024 review of VIRA:
-    # tropopause 245 K near 60 km; Seiff et al. 1985). Composition: 96.5%
-    # CO₂ / 3.5% N₂ (VIRA via Limaye et al. 2017). g ≈ 8.7 at 65 km
-    # (8.87 surface, NSSDCA). Surface conditions (92 bar, 735 K) are NOT
-    # rendered — the deck is opaque.
+    # tropopause 245 K near 60 km; Seiff et al. 1985 Table 1-1: 0.116 bar at
+    # 64 km). Composition: 96.5% CO₂ / 3.5% N₂ (VIRA via Limaye et al.
+    # 2017). g ≈ 8.7 at 65 km (8.87 surface, NSSDCA). The 92-bar column
+    # under the deck is deep_column.py's diffuse-flux profile, not the shell.
     "naif-299": BodyAtmosphere(
         # The panel quotes the 92-bar surface; the deck is opaque, so the
         # shell starts at the cloud top. Its 245 K is the panel's own
         # cloud-top reading and is read from there.
         pressure_pa=1.0e4,
+        reference_altitude_km=65.0,
         gravity_m_s2=8.7,
         aerosol="h2so4_cloud",
         tuning=RenderTuning(

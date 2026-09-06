@@ -11,12 +11,14 @@ import pytest
 
 from space_map_data.constants.atmosphere.aerosols import AEROSOLS
 from space_map_data.constants.atmosphere.bodies import ATMOSPHERE_BODIES
+from space_map_data.constants.atmosphere.deep_column import DEEP_COLUMNS
 from space_map_data.constants.atmosphere.photometry import (
     SUN_LIMB_DARKENING_ALPHA_RGB,
     sun_limb_darkening_alpha,
 )
 from space_map_data.export.atmospheres import build_atmospheres
 from space_map_data.export.atmospheres.conditions import render_conditions
+from space_map_data.export.atmospheres.deep_column import DEEP_N, eddington_layer
 from space_map_data.export.atmospheres.profiles import (
     PROFILE_N,
     conrath_dust_scale_height_km,
@@ -306,3 +308,72 @@ class TestPayload:
         for object_id, body in ATMOSPHERE_BODIES.items():
             assert body.aerosol in AEROSOLS, object_id
             assert AEROSOLS[body.aerosol].phase in PHASE_MODELS, object_id
+
+
+class TestDeepColumn:
+    """Two-stream layer algebra and the Venus deep-column profile against the
+    descent-probe picture (Limaye et al. 2018 §5.2: ~2.5% of the incident
+    sunlight absorbed at the ground, blue stripped in the upper cloud)."""
+
+    @pytest.mark.parametrize("tau", [0.1, 1.0, 10.0, 100.0])
+    def test_conservative_layer_matches_closed_form(self, tau):
+        r, t = eddington_layer(tau, 1.0, 0.0)
+        assert r + t == pytest.approx(1.0)
+        assert t == pytest.approx(1.0 / (1.0 + 0.75 * tau))
+
+    def test_absorbing_layer_loses_energy_and_darkens_with_depth(self):
+        r1, t1 = eddington_layer(5.0, 0.99, 0.7)
+        r2, t2 = eddington_layer(20.0, 0.99, 0.7)
+        assert r1 + t1 < 1.0
+        assert t2 < t1
+        assert 0.0 < r1 < r2 < 1.0
+
+    def test_venus_block_shape(self, payload):
+        entry = payload["bodies"]["naif-299"]
+        assert entry["reference_altitude_km"] == 65.0
+        deep = entry["deep_column"]
+        n = payload["deep_n"]
+        assert n == DEEP_N
+        for key in ("flux_down", "flux_up_ratio", "extinction_per_km"):
+            assert len(deep[key]) == 3 * n
+            assert all(v >= 0.0 for v in deep[key])
+        assert all(
+            "deep_column" not in b
+            for k, b in payload["bodies"].items()
+            if k != "naif-299"
+        )
+
+    def test_venus_surface_light_is_orange_and_a_few_percent(self, payload):
+        deep = payload["bodies"]["naif-299"]["deep_column"]
+        red, green, blue = deep["surface_flux_fraction"]
+        assert 0.04 < red < 0.15
+        assert 0.02 < green < 0.07
+        assert blue < 0.01
+        assert red > green > blue
+
+    def test_venus_top_reflectance_dips_in_the_blue(self, payload):
+        # Spherical albedo: bright and flat through the visible, broad
+        # depression toward the blue (Limaye et al. 2018 fig. 29).
+        red, green, blue = payload["bodies"]["naif-299"]["deep_column"][
+            "top_reflectance"
+        ]
+        assert 0.8 < red < 0.95
+        assert 0.6 < blue / green < 0.9
+
+    def test_venus_profile_runs_surface_to_deck(self, payload):
+        deep = payload["bodies"]["naif-299"]["deep_column"]
+        n = payload["deep_n"]
+        surface = [deep["flux_down"][c * n] for c in range(3)]
+        # Unit luminance at the surface, colour kept: orange.
+        luminance = 0.2126 * surface[0] + 0.7152 * surface[1] + 0.0722 * surface[2]
+        assert luminance == pytest.approx(1.0, rel=2e-3)
+        assert surface[0] > surface[1] > surface[2]
+        ground = DEEP_COLUMNS["naif-299"].ground_albedo
+        for c in range(3):
+            down = deep["flux_down"][c * n : (c + 1) * n]
+            assert all(b >= a for a, b in zip(down, down[1:]))
+            assert deep["flux_up_ratio"][c * n] == pytest.approx(ground[c], abs=1e-3)
+        # Near-surface extinction: a few km of visibility, bluer is murkier.
+        ext = [deep["extinction_per_km"][c * n] for c in range(3)]
+        assert ext[0] < ext[1] < ext[2]
+        assert 0.2 < ext[0] < 1.0

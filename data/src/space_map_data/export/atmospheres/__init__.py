@@ -22,6 +22,7 @@ from space_map_data.constants.atmosphere.photometry import (
 )
 from space_map_data.export.atmospheres.absorber import absorber_band
 from space_map_data.export.atmospheres.conditions import render_conditions
+from space_map_data.export.atmospheres.deep_column import DEEP_N, build_deep_column
 from space_map_data.export.atmospheres.phase import PHASE_N, build_phase_lut
 from space_map_data.export.atmospheres.profiles import (
     MIN_PROFILE_TOP_KM,
@@ -49,6 +50,7 @@ def build_atmospheres() -> dict:
     """Assemble the full atmospheres payload (bodies + shared phase LUTs)."""
     bodies: dict[str, dict] = {}
     phases: dict[str, list[float]] = {}
+    asymmetries: dict[str, dict[str, float]] = {}
 
     for object_id, body in ATMOSPHERE_BODIES.items():
         aerosol = AEROSOLS[body.aerosol]
@@ -57,6 +59,7 @@ def build_atmospheres() -> dict:
                 PHASE_MODELS[aerosol.phase], RENDER_WAVELENGTHS_M
             )
             phases[aerosol.phase] = lut
+            asymmetries[aerosol.phase] = asymmetry
             logger.info(
                 "Phase LUT %s: g=(%.3f, %.3f, %.3f)",
                 aerosol.phase,
@@ -119,6 +122,12 @@ def build_atmospheres() -> dict:
             entry["ground_albedo"] = ground_albedo
         if (profile := build_mie_profile(object_id, round(top_km))) is not None:
             entry["mie_profile"] = [_sig(v) for v in profile]
+        if body.reference_altitude_km > 0:
+            entry["reference_altitude_km"] = body.reference_altitude_km
+        if (
+            deep := build_deep_column(object_id, body, asymmetries[aerosol.phase])
+        ) is not None:
+            entry["deep_column"] = deep
         if object_id == "naif-499":
             entry["seasonal"] = mars_seasonal_table()
         bodies[object_id] = entry
@@ -127,6 +136,7 @@ def build_atmospheres() -> dict:
         "phase_n": PHASE_N,
         "phases": phases,
         "profile_n": PROFILE_N,
+        "deep_n": DEEP_N,
         "sun": {"limb_darkening_alpha": list(SUN_LIMB_DARKENING_ALPHA_RGB)},
         "bodies": bodies,
     }

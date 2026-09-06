@@ -6,6 +6,7 @@
  */
 
 import type {
+	AtmosphereDeepColumn,
 	AtmosphereParams,
 	AtmosphereSeasonalTable
 } from '$lib/scene/objects/surface/atmosphere';
@@ -17,6 +18,12 @@ interface SeasonalEntry {
 	dust_tau_factor: number[];
 	dust_scale_height_km: number[];
 	pressure_factor: number[];
+}
+
+interface DeepColumnEntry {
+	flux_down: number[];
+	flux_up_ratio: number[];
+	extinction_per_km: number[];
 }
 
 interface AtmosphereBodyEntry {
@@ -41,12 +48,17 @@ interface AtmosphereBodyEntry {
 	mie_profile?: number[];
 	seasonal?: SeasonalEntry;
 	realistic_sun_always?: boolean;
+	/** Deck bodies: height of the render level over the solid surface. */
+	reference_altitude_km?: number;
+	/** `deep_n`-level profiles of the column under the render level. */
+	deep_column?: DeepColumnEntry;
 }
 
 interface AtmospheresFile {
 	phase_n: number;
 	phases: Record<string, number[]>;
 	profile_n?: number;
+	deep_n?: number;
 	sun?: { limb_darkening_alpha: [number, number, number] };
 	bodies: Record<string, AtmosphereBodyEntry>;
 }
@@ -72,6 +84,30 @@ function seasonalTable(entry: SeasonalEntry | undefined): AtmosphereSeasonalTabl
 		dustTauFactor: entry.dust_tau_factor,
 		dustScaleHeightKm: entry.dust_scale_height_km,
 		pressureFactor: entry.pressure_factor
+	};
+}
+
+function deepColumn(
+	id: string,
+	entry: DeepColumnEntry | undefined,
+	n: number | undefined
+): AtmosphereDeepColumn | undefined {
+	if (!entry) return undefined;
+	if (
+		!n ||
+		n < 2 ||
+		entry.flux_down.length !== 3 * n ||
+		entry.flux_up_ratio.length !== 3 * n ||
+		entry.extinction_per_km.length !== 3 * n
+	) {
+		console.warn(`atmospheres: ${id} has a malformed deep column — ignored`);
+		return undefined;
+	}
+	return {
+		n,
+		fluxDown: entry.flux_down,
+		fluxUpRatio: entry.flux_up_ratio,
+		extinctionPerKm: entry.extinction_per_km
 	};
 }
 
@@ -115,7 +151,9 @@ export function loadAtmospheres(): Promise<void> {
 				refractivity: entry.refractivity,
 				groundAlbedo: entry.ground_albedo,
 				mieProfile,
-				seasonal: seasonalTable(entry.seasonal)
+				seasonal: seasonalTable(entry.seasonal),
+				referenceAltitudeKm: entry.reference_altitude_km,
+				deepColumn: deepColumn(id, entry.deep_column, raw.deep_n)
 			});
 		}
 	})();

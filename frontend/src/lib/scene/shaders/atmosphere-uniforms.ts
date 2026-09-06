@@ -1,14 +1,14 @@
-import { BackSide, FrontSide, Vector3 } from 'three';
+import { Vector3 } from 'three';
 import type { BodyObjects } from '$lib/scene/types';
 import { SUN_ID } from '$lib/constants';
 import { getAtmosphereParams, getSunLimbAlpha } from '$lib/fetch/atmospheres';
-import { sunIrradianceFactor } from '$lib/scene/lighting';
+import { SUN_LIGHT_INTENSITY, sunIrradianceFactor } from '$lib/scene/lighting';
 import {
 	applyAtmosphereParams,
 	applyAtmosphereQuality,
-	ATMOSPHERE_INSIDE_RENDER_ORDER,
-	ATMOSPHERE_RENDER_ORDER,
-	TERRAIN_DIP_KM,
+	applyShellViewState,
+	deckBlendWeight,
+	deepColumnTransmittance,
 	type AtmosphereParams
 } from '$lib/scene/objects/surface/atmosphere';
 import type { AtmosphereQualityConfig } from '$lib/scene/objects/surface/atmosphere-quality';
@@ -122,6 +122,13 @@ export function refractionLiftRad(
 	return n1 * qHorizon * Math.exp(e / w);
 }
 
+/** Exposure of the deep-column sky: the irradiance luminance under it at
+ *  every altitude (the profile carries the colour, the shader keeps unit
+ *  luminance — see `deepDownFlux`). The scene's sun intensity, so the
+ *  ground under the deck reads like sunlit ground elsewhere and the cloud
+ *  top matches the lit overlay above it. */
+export const DEEP_SKY_EXPOSURE = SUN_LIGHT_INTENSITY;
+
 /** Camera distance bound, in shell radii, for the sun tints. Covers GEO and
  *  the Moon-distance Earth-eclipse ring (~57 R); far past it the band is
  *  sub-pixel and cross-system transits are out of scope. */
@@ -149,9 +156,9 @@ function cullShellOccluders(
 }
 
 /**
- * Refresh per-frame shell state: sun direction, spin axis, and material side
- * — flips to BackSide when the camera enters the shell so the sky keeps
- * rendering from inside. `realistic` scales sun intensity by inverse-square
+ * Refresh per-frame shell state: sun direction, spin axis, and the camera-side
+ * state ({@link applyShellViewState}) so the sky keeps rendering from inside
+ * — and from under a deck. `realistic` scales sun intensity by inverse-square
  * solar distance (`realisticSunAlways` bodies get half the log-space dimming
  * even without it). `quality.insideView:
  * false` keeps every shell outside-only, so the depth prepass never runs.
@@ -195,9 +202,13 @@ export function updateAtmosphereShaders(
 			if (bo.atmosphere.params !== target) {
 				applyAtmosphereParams(bo.atmosphere, target);
 				// The surface/cloud sunset-tint patches march the same columns.
-				const prs = bo.atmosphere.material.uniforms.uPlanetRadiusScene.value as number;
 				for (const patch of bo.sunTint ?? []) {
-					syncSunTransmittanceUniforms(patch, target, prs, bo.atmosphere.planetRadiusKm);
+					syncSunTransmittanceUniforms(
+						patch,
+						target,
+						bo.atmosphere.surfaceRadiusScene,
+						bo.atmosphere.surfaceRadiusKm
+					);
 				}
 			}
 		}
@@ -236,35 +247,34 @@ export function updateAtmosphereShaders(
 		if (quality.eclipseShadows)
 			cullShellOccluders(uniforms, atmoMesh.position, sunVec, shellRadius);
 		const inside = quality.insideView && camDist < shellRadius;
-		bo.atmosphere.material.side = inside ? BackSide : FrontSide;
-		// With depth test off inside, order alone decides compositing — hoist
-		// the sky above rings/other shells/dots so Saturn can't draw over
-		// Titan's haze from within it.
-		atmoMesh.renderOrder = inside ? ATMOSPHERE_INSIDE_RENDER_ORDER : ATMOSPHERE_RENDER_ORDER;
-		// From inside, the visible shell fragment is the far hemisphere — writing
-		// its depth would cull the point clouds/trails beyond the night sky, and
-		// depth-testing it against the nearer terrain would reject the very
-		// fragments that carry the camera→ground aerial perspective. So depth
-		// test/write are off; instead the shader samples the opaque-depth prepass
-		// (uUseDepth) to stop its march at real terrain.
-		bo.atmosphere.material.depthWrite = !inside;
-		bo.atmosphere.material.depthTest = !inside;
-		bo.atmosphere.material.uniforms.uUseDepth.value = inside ? 1 : 0;
-		// Sink the march floor under the datum only from inside, where a camera
-		// below it would otherwise have its horizon rays blocked at t≈0. See
-		// TERRAIN_DIP_KM — from outside the slab is pure spurious column.
-		uniforms.uSurfaceBlockR.value = inside ? 1 - TERRAIN_DIP_KM / bo.atmosphere.planetRadiusKm : 1;
+		const referenceKm = bo.atmosphere.planetRadiusKm;
+		const depthKm = referenceKm - bo.atmosphere.surfaceRadiusKm;
+		const kmPerScene = (referenceKm + params.topAltitudeKm) / shellRadius;
+		// Above the render level; negative under a deck.
+		const altKm = camDist * kmPerScene - referenceKm;
+		const underDeck = inside && !!params.deepColumn && altKm < 0;
+		const deckBlend = inside ? deckBlendWeight(params, altKm) : 0;
+		applyShellViewState(bo.atmosphere, inside, underDeck, deckBlend);
+		uniforms.uDeepIrradiance.value = DEEP_SKY_EXPOSURE * sunScale;
+		for (const patch of bo.sunTint ?? []) {
+			patch.uAtmoTDeepIrradiance.value = DEEP_SKY_EXPOSURE * sunScale;
+		}
 		if (inside) {
 			state.insideShell = true;
-			const kmPerScene = (bo.atmosphere.planetRadiusKm + params.topAltitudeKm) / shellRadius;
-			const altKm = camDist * kmPerScene - bo.atmosphere.planetRadiusKm;
 			const sinSunElev = camUp
 				.copy(cameraPosition)
 				.sub(atmoMesh.position)
 				.divideScalar(camDist)
 				.dot(sunVec);
-			state.skyboxIntensity *= skyboxDimFactor(params, altKm, sinSunElev);
-			if (quality.refraction && params.refractivity) {
+			let dim = skyboxDimFactor(params, altKm, sinSunElev);
+			if (underDeck && params.deepColumn) {
+				const t = deepColumnTransmittance(params.deepColumn, depthKm, altKm + depthKm);
+				dim *= LUM[0] * t[0] + LUM[1] * t[1] + LUM[2] * t[2];
+			}
+			// The cloud top closes over the stars as the deck's light takes over.
+			state.skyboxIntensity *= dim * (1 - deckBlend);
+			// No refraction lift under a deck: the disc is not visible there.
+			if (quality.refraction && params.refractivity && !underDeck) {
 				// Green-channel refractivity at the camera's altitude; the lift
 				// direction is the camera's zenith on this body.
 				const n1 =
@@ -283,8 +293,10 @@ export function updateAtmosphereShaders(
 		}
 		const shellRatio = camDist / shellRadius;
 		if (quality.sunTint && shellRatio < SUN_TINT_MAX_RATIO) {
+			// The tint helpers take the solid-body radius and add the deck offset.
 			const planetRadiusScene =
-				shellRadius / (1 + params.topAltitudeKm / bo.atmosphere.planetRadiusKm);
+				(shellRadius / (1 + params.topAltitudeKm / referenceKm)) *
+				(bo.atmosphere.surfaceRadiusKm / referenceKm);
 			camRel.copy(cameraPosition).sub(atmoMesh.position);
 			const shellSpinAxis = uniforms.uSpinAxis.value as Vector3;
 			const shellStretch = uniforms.uStretch.value as number;
@@ -294,7 +306,7 @@ export function updateAtmosphereShaders(
 					camRel,
 					sunVec,
 					planetRadiusScene,
-					bo.atmosphere.planetRadiusKm,
+					bo.atmosphere.surfaceRadiusKm,
 					sunT,
 					shellSpinAxis,
 					shellStretch
@@ -313,7 +325,7 @@ export function updateAtmosphereShaders(
 					params,
 					atmoMesh.position,
 					planetRadiusScene,
-					bo.atmosphere.planetRadiusKm,
+					bo.atmosphere.surfaceRadiusKm,
 					shellSpinAxis,
 					shellStretch
 				);

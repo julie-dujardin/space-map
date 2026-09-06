@@ -21,11 +21,19 @@
  * where the ellipsoid is a unit sphere (`uSpinAxis`/`uStretch`).
  *
  * The material flips FrontSide/BackSide as the camera crosses the shell
- * boundary ({@link updateAtmosphereShaders}) so the sky still renders from
+ * boundary ({@link applyShellViewState}) so the sky still renders from
  * inside, with terrain fragments depth-rejected.
+ *
+ * Deck bodies (Venus): the shell renders from the cloud top, `referenceAltitudeKm`
+ * above the solid surface, and everything here is normalised to that
+ * reference radius. Under the deck a single-scatter march has nothing to say
+ * about a τ≈60 column, so the shader swaps to the `deepColumn` profile — the
+ * diffuse flux solved offline — and paints an overcast sky that fogs the
+ * terrain with the local extinction.
  */
 
 import {
+	BackSide,
 	CustomBlending,
 	DataTexture,
 	FloatType,
@@ -118,6 +126,72 @@ function miePhaseTexture(table: readonly number[]): DataTexture {
 	return tex;
 }
 
+const deepTextures = new WeakMap<AtmosphereDeepColumn, DataTexture>();
+
+/** Pack a deep-column profile into an n×3 RGBA float texture (rows: downward
+ *  flux, up/down ratio, extinction per km). One per profile, shared by the
+ *  shell and the surface light patches, so it is never disposed. */
+export function deepColumnTexture(deep: AtmosphereDeepColumn): DataTexture {
+	let tex = deepTextures.get(deep);
+	if (tex) return tex;
+	const n = deep.n;
+	const data = new Float32Array(n * 3 * 4);
+	const rows = [deep.fluxDown, deep.fluxUpRatio, deep.extinctionPerKm];
+	for (let row = 0; row < 3; row++) {
+		for (let i = 0; i < n; i++) {
+			const o = (row * n + i) * 4;
+			for (let c = 0; c < 3; c++) data[o + c] = rows[row][c * n + i];
+			data[o + 3] = 1;
+		}
+	}
+	tex = new DataTexture(data, n, 3, RGBAFormat, FloatType);
+	tex.needsUpdate = true;
+	deepTextures.set(deep, tex);
+	return tex;
+}
+
+/** Rebind the deep profile when a param swap changes it. */
+function syncDeepTexture(
+	material: ShaderMaterial,
+	prev: AtmosphereDeepColumn | undefined,
+	next: AtmosphereDeepColumn | undefined
+): void {
+	if (prev === next) return;
+	const u = material.uniforms;
+	u.uDeepTex.value = next ? deepColumnTexture(next) : whiteTexture();
+	u.uDeepN.value = next?.n ?? 1;
+}
+
+/** Radius the shell is normalised to, for a solid-body radius: the deck
+ *  offset added on top. */
+export function referenceRadiusKm(params: AtmosphereParams, surfaceKm: number): number {
+	return surfaceKm + (params.referenceAltitudeKm ?? 0);
+}
+
+/** Per-channel direct transmittance of the deep column above altitude `zKm`
+ *  (over the solid surface): the profile's extinction integrated up to the
+ *  reference level, `depthKm` up. */
+export function deepColumnTransmittance(
+	deep: AtmosphereDeepColumn,
+	depthKm: number,
+	zKm: number
+): [number, number, number] {
+	const n = deep.n;
+	const dz = depthKm / (n - 1);
+	const start = Math.min(Math.max(zKm / dz, 0), n - 1);
+	const out: [number, number, number] = [1, 1, 1];
+	for (let c = 0; c < 3; c++) {
+		const ext = deep.extinctionPerKm;
+		let tau = 0;
+		for (let i = Math.floor(start); i < n - 1; i++) {
+			const lo = Math.max(start, i);
+			tau += ext[c * n + i] * (i + 1 - lo) * dz;
+		}
+		out[c] = Math.exp(-tau);
+	}
+	return out;
+}
+
 /**
  * Physical parameters of a body's atmosphere, in human-readable units (per-km
  * coefficients, kilometre scale heights/altitudes). {@link buildAtmosphereNode}
@@ -188,6 +262,30 @@ export interface AtmosphereParams {
 	/** Mars-style seasonal cycle (interpolated per frame from L_s). Lives on
 	 *  the base params; derived seasonal params drop it. */
 	seasonal?: AtmosphereSeasonalTable;
+	/** Height of the render level above the solid surface, km: the shell and
+	 *  cloud overlay sit that far above the body radius (Venus's cloud top).
+	 *  Absent or 0, the shell starts at the surface. */
+	referenceAltitudeKm?: number;
+	/** The column under the render level. With it, a camera below the
+	 *  reference level renders the overcast deep-column sky instead of the march. */
+	deepColumn?: AtmosphereDeepColumn;
+}
+
+/** Diffuse-flux profile of the column under a deck body's render level,
+ *  channel-major (`n` values for R, then G, then B) at equal altitude steps
+ *  from the solid surface to `referenceAltitudeKm`. Solved by
+ *  export/atmospheres/deep_column.py. */
+export interface AtmosphereDeepColumn {
+	n: number;
+	/** Downward diffuse flux over its surface value's luminance. The sky
+	 *  renormalises it to unit luminance at every altitude (a camera adapts
+	 *  across the column's ~20× range), so only its colour and the ratio
+	 *  below matter to the render. */
+	fluxDown: readonly number[];
+	/** Upward over downward flux — the ground albedo at the surface. */
+	fluxUpRatio: readonly number[];
+	/** Direct-beam extinction, per km. */
+	extinctionPerKm: readonly number[];
 }
 
 /** Piecewise-linear seasonal factors on a wrap-around solar-longitude grid. */
@@ -208,8 +306,12 @@ export interface AtmosphereNode {
 	params: AtmosphereParams;
 	/** Radius the shell's SphereGeometry was built with, scene units. */
 	geometryRadiusScene: number;
-	/** Reference radius (equatorial once SPICE radii land), km. */
+	/** Radius the shell is normalised to: the body's equatorial radius plus
+	 *  `referenceAltitudeKm`, km. */
 	planetRadiusKm: number;
+	/** Solid-body equatorial radius (what callers pass), km and scene units. */
+	surfaceRadiusKm: number;
+	surfaceRadiusScene: number;
 	/** {@link atmosphereConfigKey} of the quality config the program was
 	 *  compiled with — {@link applyAtmosphereQuality} rebuilds on mismatch. */
 	qualityKey: string;
@@ -291,6 +393,20 @@ const FRAGMENT_SHADER = `
 	uniform float uCameraNear;
 	uniform float uCameraFar;
 	uniform vec2 uResolution;
+	// Deck bodies: the column under the reference level (radius 1) down to the
+	// solid surface at 1 - uDeepDepthR. Rows of uDeepTex over that span:
+	// downward diffuse flux over its surface luminance, up/down flux ratio,
+	// direct-beam extinction per km. uDeepOn: camera under the reference level.
+	uniform sampler2D uDeepTex;
+	uniform float uDeepN;
+	uniform float uDeepDepthR;       // 0 = no deep column
+	uniform float uDeepKmPerRadius;
+	uniform float uDeepOn;
+	// Camera in the cloud top: 0 above, rising to 1 at the reference level
+	// and under it. Fades the marched haze into the deck's own light so the
+	// overlay dissolves into cloud instead of popping when it is culled.
+	uniform float uDeepBlend;
+	uniform float uDeepIrradiance;   // render-unit irradiance luminance, sun overhead
 
 	varying vec3 vWorldPos;
 	varying vec3 vPlanetCenter;
@@ -302,6 +418,11 @@ const FRAGMENT_SHADER = `
 	// recompile the program rather than branch per fragment.
 	#define ISO_PHASE 0.0795775   // 1 / 4π — isotropic phase for the ambient term
 	#define MS_DIFFUSION 0.3      // slant-τ weight in the diffusive ambient falloff
+	#define DEEP_STEPS 8
+	// Sunlight still entering a deck after the sun sets on the surface under
+	// it: the deck sits tens of km up and stays lit until the sun is ~8°
+	// under the surface horizon, so the deep sky fades over that band.
+	#define DEEP_TWILIGHT_FLOOR 0.06
 
 	// Rendered terrain (DEM craters, below-datum landing sites) dips under the
 	// analytic ellipsoid; the march floor sits ~6 km below the datum (set per
@@ -334,6 +455,52 @@ const FRAGMENT_SHADER = `
 		vec3 b = texture2D(uMiePhaseTex, vec2((i0 + 1.5) / 128.0, 0.5)).rgb;
 		return mix(a, b, w - i0);
 	}
+
+	#ifdef ATMO_INSIDE
+	// Deep-column profile row (0 down flux, 1 up ratio, 2 extinction) at
+	// altitude fraction u over [surface, reference level]; two taps + lerp
+	// like the other float LUTs.
+	vec3 deepTap(float row, float u) {
+		float w = clamp(u, 0.0, 1.0) * (uDeepN - 1.0);
+		float i0 = min(floor(w), uDeepN - 2.0);
+		float v = (row + 0.5) / 3.0;
+		vec3 a = texture2D(uDeepTex, vec2((i0 + 0.5) / uDeepN, v)).rgb;
+		vec3 b = texture2D(uDeepTex, vec2((i0 + 1.5) / uDeepN, v)).rgb;
+		return mix(a, b, w - i0);
+	}
+
+	// Altitude fraction over the deep column of a squashed-space point.
+	float deepFrac(vec3 p) {
+		return (length(p) - (1.0 - uDeepDepthR)) / uDeepDepthR;
+	}
+
+	// Downward flux at altitude fraction u, exposed to unit luminance: the
+	// column spans ~20× in brightness from deck to ground, which no fixed
+	// exposure can show, so the sky keeps the profile's colour and lets the
+	// camera adapt like a descending probe's did.
+	vec3 deepDownFlux(float u) {
+		vec3 f = deepTap(0.0, u);
+		return f / max(dot(f, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+	}
+
+	// Flux entering the column: the sun's height over the local horizontal,
+	// floored through the deck's twilight band.
+	float deepSunFactor(vec3 up) {
+		float s = dot(up, uSunDir);
+		return max(s, DEEP_TWILIGHT_FLOOR * smoothstep(-0.15, -0.02, s));
+	}
+
+	// Diffuse radiance at the camera toward cosZen. Inside a diffusing column
+	// the field is the Eddington one the profile was solved in, I₀ + I₁cos θ
+	// with I₀ = (F↓ + F↑)/2π and I₁ = 3(F↓ − F↑)/4π: near-isotropic in the
+	// bright deck, horizon at about half the zenith down by the ground, and
+	// blending under the horizon into the ground-bounced flux.
+	vec3 deepRadiance(vec3 eDown, vec3 upRatio, float cosZen) {
+		vec3 sky = eDown * (0.5 * (1.0 + upRatio) + 0.75 * (1.0 - upRatio) * max(cosZen, 0.0));
+		vec3 ground = eDown * upRatio;
+		return mix(sky, ground, smoothstep(0.0, 0.3, -cosZen)) / PI;
+	}
+	#endif
 
 	// Ray (origin ro, unit dir rd) vs sphere centred at the origin, radius r.
 	// Returns vec2(tNear, tFar). On a miss it returns (+huge, -huge) so that
@@ -471,7 +638,7 @@ const FRAGMENT_SHADER = `
 		// the analytic-surface march is blind to. Clamp tEnd *before* the step
 		// size is set so the samples spread smoothly up to the surface — a
 		// mid-march cutoff quantises the haze depth into bands down a slope. Only
-		// active inside the shell, where depthTest is off (updateAtmosphereShaders);
+		// active inside the shell, where depthTest is off (applyShellViewState);
 		// forward distance decodes as t = w·dLen / (R·(rd·camFwd)).
 		#ifdef ATMO_INSIDE
 		if (uUseDepth > 0.5) {
@@ -498,6 +665,38 @@ const FRAGMENT_SHADER = `
 		}
 		#endif
 		if (tEnd <= tStart) discard;
+
+		// Under a deck: fog the segment below the reference level with the
+		// profile's diffuse light, then let the march handle the shell above.
+		// Terrain and horizon rays never leave the column, so they are done here.
+		vec3 deepColor = vec3(0.0);
+		vec3 deepT = vec3(1.0);
+		#ifdef ATMO_INSIDE
+		if (uDeepOn > 0.5) {
+			float tDeck = raySphere(ro, rd, 1.0).y;
+			float tDeepEnd = min(tEnd, tDeck);
+			float ddt = (tDeepEnd - tStart) / float(DEEP_STEPS);
+			vec3 tauDeep = vec3(0.0);
+			for (int i = 0; i < DEEP_STEPS; i++) {
+				vec3 p = ro + rd * (tStart + ddt * (float(i) + 0.5));
+				tauDeep += deepTap(2.0, deepFrac(p)) * (ddt / dLen);
+			}
+			deepT = exp(-tauDeep * uDeepKmPerRadius);
+			vec3 up = normalize(roWorld);
+			float zc = deepFrac(ro);
+			vec3 eDown = deepDownFlux(zc) * (uDeepIrradiance * deepSunFactor(up));
+			deepColor = deepRadiance(eDown, deepTap(1.0, zc), dot(rdWorld, up)) * (vec3(1.0) - deepT);
+			if (tDeepEnd >= tEnd) {
+				gl_FragColor = vec4(
+					1.0 - exp(-deepColor),
+					1.0 - dot(deepT, vec3(0.2126, 0.7152, 0.0722))
+				);
+				#include <logdepthbuf_fragment>
+				return;
+			}
+			tStart = tDeck;
+		}
+		#endif
 
 		float mu = dot(rdWorld, uSunDir);         // phase angle is physical — world space
 		float phaseR = (3.0 / (16.0 * PI)) * (1.0 + mu * mu);
@@ -611,6 +810,22 @@ const FRAGMENT_SHADER = `
 		vec3 tauBaked = min(tauVert, tauView) * (uBakedComp * hitSurface);
 		color *= 1.0 - tauBaked / max(tauView, vec3(1e-6));
 
+		// The deep segment sits in front of the marched shell.
+		color = deepColor + deepT * color;
+
+		// In the cloud top: fade toward the deck's own light field, the same
+		// radiance the deep sky shows just under the reference level, so the
+		// crossing is continuous in both brightness and colour.
+		#ifdef ATMO_INSIDE
+		if (uDeepBlend > 0.0 && uDeepOn < 0.5) {
+			vec3 up = normalize(roWorld);
+			vec3 eDown = deepDownFlux(1.0) * (uDeepIrradiance * deepSunFactor(up));
+			vec3 cloud = deepRadiance(eDown, deepTap(1.0, 1.0), dot(rdWorld, up));
+			color = mix(color, cloud, uDeepBlend);
+			deepT *= 1.0 - uDeepBlend;
+		}
+		#endif
+
 		// Soft HDR rolloff: keeps thick-deck in-scatter below the bloom
 		// threshold and inside ACES's comfortable range while staying ≈ linear
 		// for faint glows.
@@ -620,7 +835,7 @@ const FRAGMENT_SHADER = `
 		// surface texture for disk rays, stars/bodies past the limb — minus the
 		// baked share the texture already absorbed. Scalar alpha
 		// (luminance-weighted) approximates the per-channel transmittance.
-		vec3 occT = exp(-(tauView - tauBaked));
+		vec3 occT = exp(-(tauView - tauBaked)) * deepT;
 		float alpha = 1.0 - dot(occT, vec3(0.2126, 0.7152, 0.0722));
 
 		// Fade out as the planet shrinks below ~half a pixel — beyond that the
@@ -660,7 +875,7 @@ function setRadiusUniforms(
 	const u = material.uniforms;
 	u.uPlanetRadiusScene.value = planetRadiusScene;
 	u.uAtmosphereRatio.value = 1 + params.topAltitudeKm / planetRadiusKm;
-	// Outside default; updateAtmosphereShaders sinks it once the camera is in.
+	// Outside default; applyShellViewState sinks it once the camera is in.
 	u.uSurfaceBlockR.value = 1;
 	(u.uRayleighScatter.value as Vector3).set(toNorm(r[0]), toNorm(r[1]), toNorm(r[2]));
 	u.uRayleighScaleHeight.value = params.rayleighScaleHeightKm / planetRadiusKm;
@@ -674,20 +889,26 @@ function setRadiusUniforms(
 	(u.uAbsorption.value as Vector3).set(toNorm(ab[0]), toNorm(ab[1]), toNorm(ab[2]));
 	u.uAbsorptionCenter.value = params.absorptionCenterKm / planetRadiusKm;
 	u.uAbsorptionWidth.value = params.absorptionWidthKm / planetRadiusKm;
+	u.uDeepDepthR.value = params.deepColumn ? (params.referenceAltitudeKm ?? 0) / planetRadiusKm : 0;
+	u.uDeepKmPerRadius.value = planetRadiusKm;
 }
 
 /**
- * Build the atmosphere shell for a body; the shell sphere is
- * `planetRadiusScene · (1 + topAltitudeKm / planetRadiusKm)`. The mesh carries
- * no position of its own — the renderer keeps it at the planet's centre via
- * `extraObjects` and pushes body→Sun direction each frame. Bodies start
- * spherical; `syncAtmosphereEllipsoid` reshapes the shell for SPICE triaxial radii.
+ * Build the atmosphere shell for a body of solid radius `surfaceRadius*`; the
+ * shell sphere is `reference radius · (1 + topAltitudeKm / reference km)`,
+ * the reference radius being the surface plus `referenceAltitudeKm`. The mesh
+ * carries no position of its own — the renderer keeps it at the planet's
+ * centre via `extraObjects` and pushes body→Sun direction each frame. Bodies
+ * start spherical; `syncAtmosphereEllipsoid` reshapes the shell for SPICE
+ * triaxial radii.
  */
 export function buildAtmosphereNode(
 	params: AtmosphereParams,
-	planetRadiusScene: number,
-	planetRadiusKm: number
+	surfaceRadiusScene: number,
+	surfaceRadiusKm: number
 ): AtmosphereNode {
+	const planetRadiusKm = referenceRadiusKm(params, surfaceRadiusKm);
+	const planetRadiusScene = (surfaceRadiusScene * planetRadiusKm) / surfaceRadiusKm;
 	const c = params.sunColor;
 	const eclipse = getEclipseSceneUniforms();
 	const quality = currentAtmosphereConfig();
@@ -728,6 +949,15 @@ export function buildAtmosphereNode(
 			},
 			uMieProfileOn: { value: params.mieProfile ? 1 : 0 },
 			uMieProfileN: { value: params.mieProfile?.length ?? 1 },
+			uDeepTex: {
+				value: params.deepColumn ? deepColumnTexture(params.deepColumn) : whiteTexture()
+			},
+			uDeepN: { value: params.deepColumn?.n ?? 1 },
+			uDeepDepthR: { value: 0 },
+			uDeepKmPerRadius: { value: 1 },
+			uDeepOn: { value: 0 },
+			uDeepBlend: { value: 0 },
+			uDeepIrradiance: { value: 0 },
 			// Quality-gated per frame by updateAtmosphereShaders (0 = off).
 			uGroundAlbedo: { value: params.groundAlbedo ?? 0 },
 			uAbsorption: { value: new Vector3() },
@@ -754,7 +984,7 @@ export function buildAtmosphereNode(
 		// cloud dots, trails at renderOrder 3) depth-sort against it: dots
 		// behind the limb glow hide, dots in front draw over. Nothing orbits
 		// inside the thin shell, so the single depth is a faithful proxy.
-		// updateAtmosphereShaders clears it when the camera is inside — the
+		// applyShellViewState clears it when the camera is inside — the
 		// far hemisphere must not cull the night sky's dots.
 		depthWrite: true,
 		// Premultiplied compositing: src + dst·(1−α). In-scatter radiance is
@@ -777,8 +1007,59 @@ export function buildAtmosphereNode(
 		params,
 		geometryRadiusScene,
 		planetRadiusKm,
+		surfaceRadiusKm,
+		surfaceRadiusScene,
 		qualityKey: atmosphereConfigKey(quality)
 	};
+}
+
+/**
+ * Per-frame camera-side state. Outside: FrontSide, depth written so foreground
+ * rings/dots sort against the glow. Inside: BackSide with depth off (the sky is
+ * the backdrop, drawn after every scene-level transparent), the march clamped
+ * to the opaque-depth prepass and sunk `TERRAIN_DIP_KM` under the datum so
+ * below-datum terrain keeps its haze. Deck bodies: the opaque cloud overlay
+ * sits on the reference level, so that stays the floor from above — a floor
+ * under it would let rays that hit the overlay but clear the floor march on
+ * through hundreds of km of haze behind it, a dark band along the deck's
+ * horizon. Under the deck the floor is the solid surface and the deep-column
+ * sky takes over; `deckBlend` (0..1) fades the shell into the deck's light
+ * over the cloud top just above it, see {@link deckBlendWeight}.
+ */
+export function applyShellViewState(
+	node: AtmosphereNode,
+	inside: boolean,
+	underDeck: boolean,
+	deckBlend = underDeck ? 1 : 0
+): void {
+	const material = node.material;
+	const u = material.uniforms;
+	const depthKm = node.planetRadiusKm - node.surfaceRadiusKm;
+	material.side = inside ? BackSide : FrontSide;
+	node.mesh.renderOrder = inside ? ATMOSPHERE_INSIDE_RENDER_ORDER : ATMOSPHERE_RENDER_ORDER;
+	material.depthWrite = !inside;
+	material.depthTest = !inside;
+	const clampToTerrain = inside && (underDeck || depthKm === 0);
+	u.uUseDepth.value = clampToTerrain ? 1 : 0;
+	u.uSurfaceBlockR.value = clampToTerrain
+		? 1 - (depthKm + TERRAIN_DIP_KM) / node.planetRadiusKm
+		: 1;
+	u.uDeepOn.value = underDeck ? 1 : 0;
+	u.uDeepBlend.value = deckBlend;
+}
+
+/** Cloud-top thickness the shell fades into the deck over, in Mie scale
+ *  heights: the visible cloud top is a τ≈1 level a few km deep, not a
+ *  surface. */
+const DECK_BLEND_SCALE_HEIGHTS = 2;
+
+/** Weight of the deck's light in the shell for a camera `altKm` above the
+ *  reference level: 1 under it, fading to 0 over the cloud top above. */
+export function deckBlendWeight(params: AtmosphereParams, altKm: number): number {
+	if (!params.deepColumn) return 0;
+	const bandKm = DECK_BLEND_SCALE_HEIGHTS * params.mieScaleHeightKm;
+	const t = Math.min(1, Math.max(0, altKm / bandKm));
+	return 1 - t * t * (3 - 2 * t);
 }
 
 function qualityDefines(config: AtmosphereQualityConfig): Record<string, string | number> {
@@ -814,10 +1095,12 @@ export function applyAtmosphereQuality(
  */
 export function applyAtmosphereParams(node: AtmosphereNode, params: AtmosphereParams): void {
 	syncProfileTexture(node.material, node.params.mieProfile, params.mieProfile);
+	syncDeepTexture(node.material, node.params.deepColumn, params.deepColumn);
 	node.params = params;
 	const u = node.material.uniforms;
 	u.uGroundAlbedo.value = params.groundAlbedo ?? 0;
-	const planetRadiusScene = u.uPlanetRadiusScene.value as number;
+	node.planetRadiusKm = referenceRadiusKm(params, node.surfaceRadiusKm);
+	const planetRadiusScene = (node.surfaceRadiusScene * node.planetRadiusKm) / node.surfaceRadiusKm;
 	setRadiusUniforms(node.material, params, planetRadiusScene, node.planetRadiusKm);
 	u.uMultiScatter.value = params.multiScatterGain;
 	u.uBakedComp.value = params.bakedCompensation;
@@ -840,10 +1123,14 @@ export function syncAtmosphereEllipsoid(
 	polarKm: number,
 	equatorialScene: number
 ): void {
-	node.planetRadiusKm = equatorialKm;
-	setRadiusUniforms(node.material, node.params, equatorialScene, equatorialKm);
-	node.material.uniforms.uStretch.value = equatorialKm / polarKm;
-	const shellScene = equatorialScene * (1 + node.params.topAltitudeKm / equatorialKm);
+	node.surfaceRadiusKm = equatorialKm;
+	node.surfaceRadiusScene = equatorialScene;
+	node.planetRadiusKm = referenceRadiusKm(node.params, equatorialKm);
+	const referenceScene = (equatorialScene * node.planetRadiusKm) / equatorialKm;
+	setRadiusUniforms(node.material, node.params, referenceScene, node.planetRadiusKm);
+	node.material.uniforms.uStretch.value =
+		node.planetRadiusKm / referenceRadiusKm(node.params, polarKm);
+	const shellScene = referenceScene * (1 + node.params.topAltitudeKm / node.planetRadiusKm);
 	node.mesh.scale.setScalar(shellScene / node.geometryRadiusScene);
 }
 

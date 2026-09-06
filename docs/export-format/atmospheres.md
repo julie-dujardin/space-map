@@ -28,6 +28,8 @@ interface AtmospheresFile {
 	phases: Record<string, number[]>;
 	// Samples in each layered `mie_profile` LUT (128).
 	profile_n: number;
+	// Levels in each `deep_column` profile (64).
+	deep_n: number;
 	// Solar-disc photometry: per-channel exponents of the Hestroffer &
 	// Magnan limb-darkening power law I(μ) = μ^α at the render wavelengths.
 	sun: { limb_darkening_alpha: [number, number, number] };
@@ -92,6 +94,37 @@ interface AtmosphereBody {
 	// published vertical structure; the shader's high/ultra tiers sample it,
 	// other tiers keep the mie_scale_height_km exponential.
 	mie_profile?: number[];
+	// Height of the render level above the solid surface, km — only where
+	// the shell renders from a deck (Venus: the ~65 km cloud top). The
+	// frontend sits the shell and cloud overlay that far above the body
+	// radius; absent means the shell starts at the surface.
+	reference_altitude_km?: number;
+	// The column under the render level (Venus: 92 bar of CO₂ plus the
+	// τ≈25 sulphuric-acid deck), solved per channel by a delta-Eddington
+	// two-stream adding stack for diffuse sunlight entering at the reference
+	// altitude over a Lambertian ground (constants/atmosphere/deep_column.py
+	// for the profile, deck albedo, sub-cloud haze and absorber, and ground
+	// albedo).
+	// Profiles are channel-major (deep_n values for R, then G, then B) at
+	// equal altitude steps over [0, reference_altitude_km]. A camera under
+	// the deck renders an overcast sky from these instead of the march.
+	deep_column?: {
+		// Downward diffuse flux over the surface value's photopic luminance:
+		// unit brightness at the surface with the column's colour kept. The
+		// frontend re-exposes it to unit luminance at every altitude (the
+		// column spans ~20× from deck to ground), so only the colour renders.
+		flux_down: number[];
+		// Upward over downward flux — the ground albedo at the surface.
+		flux_up_ratio: number[];
+		// Direct-beam extinction, per km — aerial perspective onto terrain.
+		extinction_per_km: number[];
+		// Surface downward flux as a fraction of the flux entering at the
+		// reference altitude, per channel; the top reflectance is the
+		// column's diffuse albedo seen from above. Both are checks against
+		// the descent-probe measurements, not shader inputs.
+		surface_flux_fraction: [number, number, number];
+		top_reflectance: [number, number, number];
+	};
 	// Mars only: seasonal climatology on a wrap-around solar-longitude grid
 	// (piecewise-linear in L_s, computed client-side from the sim clock).
 	// dust_tau_factor scales the dust column (1 = the clear-season baseline

@@ -111,17 +111,19 @@ AEROSOLS: dict[str, Aerosol] = {
     # shows — the deck is latitude-dependent, so structure.py ships VIRA's
     # 65 km global reference rather than this one:
     # τ(0.63 µm) 0.2-1.0, H = 4.4±1.0 km low latitudes (Titov et al. 2018,
-    # SSR 214, 126) → mid-range τ ≈ 0.5 → β_sca ≈ 0.11/km, grey (1 µm
-    # droplets). Absorption: the unknown UV absorber (0.32-0.5 µm band,
-    # upper cloud; Titov 2018) tails into the blue channel — magnitude
-    # tunable, composition literally unknown to science. Phase: Hansen &
-    # Hovenier 1974 mode-2 H₂SO₄: r_eff 1.05±0.10 µm, v_eff 0.07, n = 1.44
-    # at 550 nm (Palmer & Williams 1975: 75 wt% acid).
+    # SSR 214, 126), grey (1 µm droplets). The top of that range, τ ≈ 1 →
+    # β_sca ≈ 0.22/km: the overlay sits on the shell's datum, so this haze
+    # alone is the veil the disc reads through, and τ ≈ 1 keeps the cream
+    # look. Absorption: the unknown UV absorber (0.32-0.5 µm band, upper
+    # cloud; Titov 2018) tails into the blue channel — magnitude tunable,
+    # composition literally unknown to science. Phase: Hansen & Hovenier
+    # 1974 mode-2 H₂SO₄: r_eff 1.05±0.10 µm, v_eff 0.07, n = 1.44 at 550 nm
+    # (Palmer & Williams 1975: 75 wt% acid).
     "h2so4_cloud": Aerosol(
         phase="h2so4_cloud",
         scale_height_km=4.4,
-        scatter_per_km=(0.111, 0.111, 0.111),
-        absorption_per_km=(2e-3, 3.5e-3, 1.4e-2),
+        scatter_per_km=(0.222, 0.222, 0.222),
+        absorption_per_km=(4e-3, 7e-3, 2.8e-2),
     ),
     # Titan tholin haze: extinction slope τ ∝ λ^-1.41 (30-80 km regime,
     # Tomasko et al. 2008 via Bazzon et al. 2014) anchored at τ(550) ≈ 4

@@ -268,37 +268,50 @@ export async function loadSystemData(
 				// No exported snapshot yet — skip rather than park a frameless node.
 				continue;
 			}
+			// A deck body's overlay is its shell's render level (Venus: the cloud
+			// top, 65 km up) — the march floor, so no ray marches on behind it.
+			// Its direct light still sees only the haze above the usual
+			// clearance: the disc's tuned look, the sun dimming the deck under
+			// the whole column would be a different one. Elsewhere the overlay
+			// keeps its anti-z-fight clearance over the surface.
+			const deckRatio = bo.atmosphere
+				? bo.atmosphere.planetRadiusKm / bo.atmosphere.surfaceRadiusKm
+				: 1;
+			const cloudRatio = deckRatio > 1 ? deckRatio : CLOUD_RADIUS_OFFSET;
+			const cloudTintRatio = CLOUD_RADIUS_OFFSET * deckRatio;
 			promises.push(
-				loadCloudNode(parentMesh, bo.radiusScene, cloudMeta, initialFrame).then((node) => {
-					if (!node) return;
-					if (bo.clouds) {
-						// A concurrent system reload finished first — drop ours.
-						node.mesh.geometry.dispose();
-						node.material.map?.dispose();
-						node.material.dispose();
-						parentMesh.remove(node.mesh);
-						return;
-					}
-					// Cloud shares the body's center, so it reuses the eclipse
-					// self-skip uniform instead of a second per-frame write.
-					if (bo.eclipseShadow) {
-						attachEclipseShadowToBody(node.material, bo.eclipseShadow);
-						if (bo.atmosphere) {
-							(bo.sunTint ??= []).push(
-								attachSunTransmittanceToBody(
-									node.material,
-									bo.atmosphere.params,
-									bo.radiusScene,
-									bo.atmosphere.planetRadiusKm,
-									bo.eclipseShadow,
-									bo.atmosphere,
-									CLOUD_RADIUS_OFFSET
-								)
-							);
+				loadCloudNode(parentMesh, bo.radiusScene, cloudMeta, initialFrame, cloudRatio).then(
+					(node) => {
+						if (!node) return;
+						if (bo.clouds) {
+							// A concurrent system reload finished first — drop ours.
+							node.mesh.geometry.dispose();
+							node.material.map?.dispose();
+							node.material.dispose();
+							parentMesh.remove(node.mesh);
+							return;
 						}
+						// Cloud shares the body's center, so it reuses the eclipse
+						// self-skip uniform instead of a second per-frame write.
+						if (bo.eclipseShadow) {
+							attachEclipseShadowToBody(node.material, bo.eclipseShadow);
+							if (bo.atmosphere) {
+								(bo.sunTint ??= []).push(
+									attachSunTransmittanceToBody(
+										node.material,
+										bo.atmosphere.params,
+										bo.radiusScene,
+										bo.atmosphere.surfaceRadiusKm,
+										bo.eclipseShadow,
+										bo.atmosphere,
+										cloudTintRatio
+									)
+								);
+							}
+						}
+						bo.clouds = node;
 					}
-					bo.clouds = node;
-				})
+				)
 			);
 		}
 

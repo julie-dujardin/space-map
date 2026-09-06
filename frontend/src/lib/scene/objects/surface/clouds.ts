@@ -35,7 +35,7 @@ export interface CloudNode {
 	lastSwapMs?: number;
 }
 
-/** Offset above the surface (multiplicative on parent scale): small enough to be invisible, large enough to avoid coplanar depth-fighting. */
+/** Offset above the surface (multiplicative on parent scale): small enough to be invisible, large enough to avoid coplanar depth-fighting. Deck bodies (Venus) sit their overlay on the shell's reference level instead. */
 export const CLOUD_RADIUS_OFFSET = 1.002;
 
 /** Min interval between cloud-texture swaps. At high time-warp, a new 3h snapshot every render would cost fetch+decode+upload each frame. */
@@ -123,13 +123,15 @@ export function cloudFrameForJd(jd: number, frames: string[]): string | undefine
 /**
  * Build the cloud sphere as a child of `parentMesh`, load its `low`-tier
  * snapshot for `frame`. Inherits the parent's scale/quaternion so it tracks
- * the planet for free. Returns null on load failure.
+ * the planet for free. `radiusRatio` places it over the surface. Returns null
+ * on load failure.
  */
 export async function loadCloudNode(
 	parentMesh: Mesh,
 	parentRadiusScene: number,
 	meta: CloudMeta,
-	frame: string
+	frame: string,
+	radiusRatio = CLOUD_RADIUS_OFFSET
 ): Promise<CloudNode | null> {
 	const texture = await fetchCloudTexture(meta.id, 'low', frame);
 	if (!texture) return null;
@@ -141,9 +143,9 @@ export async function loadCloudNode(
 	});
 	const geometry = new SphereGeometry(parentRadiusScene, 64, 64);
 	const mesh = new Mesh(geometry, material);
-	// Slightly inflate over the surface; combined with depthWrite=false this
-	// avoids z-fighting without visibly puffing the sphere outward.
-	mesh.scale.setScalar(CLOUD_RADIUS_OFFSET);
+	// Inflate over the surface; combined with depthWrite=false this avoids
+	// z-fighting without visibly puffing the sphere outward.
+	mesh.scale.setScalar(radiusRatio);
 	// Draw after the opaque planet so transparent alpha composites correctly.
 	mesh.renderOrder = 1;
 	parentMesh.add(mesh);

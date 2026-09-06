@@ -8,8 +8,6 @@
 	import {
 		ACESFilmicToneMapping,
 		AmbientLight,
-		BackSide,
-		FrontSide,
 		Mesh,
 		MeshBasicMaterial,
 		MeshStandardMaterial,
@@ -31,11 +29,13 @@
 	import {
 		applyAtmosphereParams,
 		applyAtmosphereQuality,
+		applyShellViewState,
 		type AtmosphereNode,
 		type AtmosphereParams,
 		buildAtmosphereNode,
-		disposeAtmosphereNode,
-		TERRAIN_DIP_KM
+		deckBlendWeight,
+		deepColumnTransmittance,
+		disposeAtmosphereNode
 	} from '$lib/scene/objects/surface/atmosphere';
 	import { getAtmosphereParams, loadAtmospheres } from '$lib/fetch/atmospheres';
 	import {
@@ -55,7 +55,11 @@
 	import { AU_KM } from '$lib/math/units';
 	import { AMBIENT_INTENSITY, SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
 	import { loadSkybox, SKYBOX_BASE_ROTATION } from '$lib/scene/objects/sky/skybox';
-	import { refractionLiftRad, skyboxDimFactor } from '$lib/scene/shaders/atmosphere-uniforms';
+	import {
+		DEEP_SKY_EXPOSURE,
+		refractionLiftRad,
+		skyboxDimFactor
+	} from '$lib/scene/shaders/atmosphere-uniforms';
 	import {
 		attachEclipseShadowToBody,
 		getEclipseSceneUniforms
@@ -265,7 +269,8 @@
 	let lastFrameMs = 0;
 
 	// Star-map dim for the tuned params at the current altitude and sun — the
-	// same factor production feeds `scene.backgroundIntensity`.
+	// same factor production feeds `scene.backgroundIntensity`. Altitude is
+	// over the solid surface; the shell's is over its render level.
 	const skyDim = $derived.by(() => {
 		const latR = camLat * DEG;
 		const lonR = camLon * DEG;
@@ -276,7 +281,15 @@
 			Math.cos(latR) * Math.cos(lonR) * Math.cos(elR) * Math.cos(azR) +
 			Math.sin(latR) * Math.sin(elR) +
 			Math.cos(latR) * Math.sin(lonR) * Math.cos(elR) * Math.sin(azR);
-		return skyboxDimFactor(resolved(), altRadii * currentBody.radiusKm, sinSunElev);
+		const p = resolved();
+		const depthKm = p.referenceAltitudeKm ?? 0;
+		const altKm = altRadii * currentBody.radiusKm;
+		let dim = skyboxDimFactor(p, altKm - depthKm, sinSunElev);
+		if (p.deepColumn && altKm < depthKm) {
+			const t = deepColumnTransmittance(p.deepColumn, depthKm, altKm);
+			dim *= 0.2126 * t[0] + 0.7152 * t[1] + 0.0722 * t[2];
+		}
+		return dim;
 	});
 
 	const tintCam = new Vector3();
@@ -772,15 +785,22 @@
 			// Unlike production, the slider alone decides inverse-square here, so
 			// always-realistic bodies (Pluto/Triton) can still be inspected flat-sun.
 			u.uSunIntensity.value = atmoNode.params.sunIntensity * sunScale * invSq;
-			// Flip to BackSide once the camera enters the shell so the sky still
-			// renders from inside; drop depth writes there too, mirroring production.
+			// Camera-side state mirrors production: BackSide inside the shell, the
+			// deep-column sky under a deck body's render level.
 			const shellR = atmoNode.geometryRadiusScene * atmoNode.mesh.scale.x;
 			const inside = qInside && camera.position.lengthSq() < shellR * shellR;
-			atmoNode.material.side = inside ? BackSide : FrontSide;
-			atmoNode.material.depthWrite = !inside;
-			atmoNode.material.depthTest = !inside;
-			// Sub-datum march floor is an inside-only allowance (see TERRAIN_DIP_KM).
-			u.uSurfaceBlockR.value = inside ? 1 - TERRAIN_DIP_KM / atmoNode.planetRadiusKm : 1;
+			const referenceR = (RADIUS_SCENE * atmoNode.planetRadiusKm) / atmoNode.surfaceRadiusKm;
+			const altKm =
+				((camera.position.length() - referenceR) / referenceR) * atmoNode.planetRadiusKm;
+			const underDeck = inside && !!atmoNode.params.deepColumn && altKm < 0;
+			applyShellViewState(
+				atmoNode,
+				inside,
+				underDeck,
+				inside ? deckBlendWeight(atmoNode.params, altKm) : 0
+			);
+			u.uDeepIrradiance.value = DEEP_SKY_EXPOSURE * sunScale;
+			if (sunTUniforms) sunTUniforms.uAtmoTDeepIrradiance.value = DEEP_SKY_EXPOSURE * sunScale;
 		}
 		// Production dims the star map only via the inside-shell path; the
 		// readout still shows the would-be factor when the toggle is off.
