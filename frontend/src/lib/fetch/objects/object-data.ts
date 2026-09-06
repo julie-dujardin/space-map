@@ -625,7 +625,7 @@ export interface GlobalObjectData {
 		per_d_sigma?: number;
 		e?: number;
 		e_sigma?: number;
-		/** As printed, e.g. "2004 Sep 01.0". */
+		/** ISO 8601, at the precision the archive printed. */
 		epoch?: string;
 		normalised_ang_mom?: number;
 		diameter_ratio?: number;
@@ -637,7 +637,7 @@ export interface GlobalObjectData {
 		discoverers?: string;
 		discovery_method?: string;
 		discovery_facility?: string;
-		/** As printed by the archive, e.g. "2001 Sep 03". */
+		/** ISO 8601, at the precision the archive printed. */
 		announced?: string;
 		provisional_designation?: string;
 	};

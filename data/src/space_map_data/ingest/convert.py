@@ -10,7 +10,15 @@ from pathlib import Path
 
 GM_EARTH = 398600.4418  # km^3/s^2
 
-_GCAT_MONTHS = {abbr: i for i, abbr in enumerate(calendar.month_abbr) if abbr}
+# Both the abbreviated and the full spelling: GCAT writes "Jul", Johnston's
+# archive writes "September" in its page footers.
+_MONTHS = {
+    name: i
+    for names in (calendar.month_abbr, calendar.month_name)
+    for i, name in enumerate(names)
+    if name
+}
+_MINUTES_PER_DAY = 1440
 
 
 def count_csv_rows(path: Path) -> int:
@@ -99,12 +107,15 @@ def datetime_or_none(val: str) -> datetime.datetime | None:
     return datetime.datetime(d.year, d.month, d.day) + td
 
 
-def gcat_date_to_iso(val: str | None) -> str | None:
-    """Convert a GCAT "Vague Date" to a partial ISO 8601 string at its precision.
+def vague_date_to_iso(val: str | None) -> str | None:
+    """Convert a year-first date to a partial ISO 8601 string at its precision.
 
-    E.g. ``1958 Jul 25`` → ``1958-07-25``, ``1961 Apr`` → ``1961-04``. Times
-    are UTC (implied, like satcat's ``launch_date``). Returns None for empty
-    values or forms unused here (centiday, hour-suffix, BC, century).
+    GCAT's "Vague Date" — a date written to whatever precision the source
+    knew — and the shape Johnston's archive prints. ``1958 Jul 25`` →
+    ``1958-07-25``, ``1961 Apr`` → ``1961-04``, ``2003 Dec 06.5`` →
+    ``2003-12-06T12:00Z``. A time is stamped ``Z``: the sources write UTC, and
+    an unzoned instant reads as local wherever it lands. Returns None for empty
+    values or forms unused here (hour-suffix, BC, century).
     """
     if not val or not val.strip():
         return None
@@ -113,14 +124,22 @@ def gcat_date_to_iso(val: str | None) -> str | None:
         return None
     iso = f"{int(parts[0]):04d}"
     if len(parts) >= 2:
-        month = _GCAT_MONTHS.get(parts[1])
+        month = _MONTHS.get(parts[1])
         if month is None:
             return iso  # quarter (Q1-Q4) or unknown token — keep year
         iso += f"-{month:02d}"
     if len(parts) >= 3:
-        if not parts[2].isdigit():
+        day, _, frac = parts[2].partition(".")
+        if not day.isdigit():
             return iso
-        iso += f"-{int(parts[2]):02d}"
+        iso += f"-{int(day):02d}"
+        if frac:
+            # A fractional day is a UT time. Truncated, not rounded, so it can
+            # never roll into a day the source didn't write.
+            minutes = int(float(f"0.{frac}") * _MINUTES_PER_DAY)
+            if minutes == 0:
+                return iso
+            return f"{iso}T{minutes // 60:02d}:{minutes % 60:02d}Z"
     if len(parts) >= 4:
         clock, _, sec = parts[3].partition(":")
         if len(clock) != 4 or not clock.isdigit():
@@ -131,6 +150,7 @@ def gcat_date_to_iso(val: str | None) -> str | None:
                 iso += f":{int(float(sec)):02d}"
             except ValueError:
                 pass
+        iso += "Z"
     return iso
 
 

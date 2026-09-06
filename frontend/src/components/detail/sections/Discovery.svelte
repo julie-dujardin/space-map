@@ -47,9 +47,12 @@
 	let partOf = $derived(withoutRefs(localized?.part_of, asteroidFamily ? [asteroidFamily] : []));
 	let namedAfter = $derived(localized?.named_after);
 
-	// Printed as the archive writes it ("2001 Aug 29") — not an ISO date, and
-	// pinning a day to a month it may not state would invent precision.
 	let johnstonDate = $derived(discoveryDate ? undefined : johnston?.discovery_date);
+	// The archive dates the announcement as well as the discovery, days to
+	// years apart. Both answer "when was this found", so the announcement is
+	// only worth a row where no discovery date is known.
+	let hasFirstObserved = $derived(!!(discoveryDate || johnstonDate));
+	let announced = $derived(hasFirstObserved ? undefined : johnston?.announced);
 	let johnstonDiscoverers = $derived(
 		discoverers && discoverers.length > 0 ? undefined : johnston?.discoverers
 	);
@@ -69,7 +72,7 @@
 			johnstonDiscoverers ||
 			johnstonFacility ||
 			johnston?.discovery_method ||
-			johnston?.announced
+			announced
 		)
 	);
 	let hasContent = $derived(!isSpacecraft && hasFields);
@@ -86,7 +89,7 @@
 			</Row>
 		{/if}
 		{#if johnstonDate}
-			<Row label={m.first_observed()} value={johnstonDate} />
+			<Row label={m.first_observed()} value={formatIsoDate(johnstonDate)} />
 		{/if}
 		{#if johnstonDiscoverers}
 			<Row label={m.discoverers()} value={johnstonDiscoverers} />
@@ -106,8 +109,8 @@
 				tooltip={m.tooltip_discovery_method()}
 			/>
 		{/if}
-		{#if johnston?.announced}
-			<Row label={m.discovery_announcement()} value={johnston.announced} />
+		{#if announced}
+			<Row label={m.discovery_announcement()} value={formatIsoDate(announced)} />
 		{/if}
 		{#if namedAfter && namedAfter.length > 0}
 			<Row label={m.property_name_named_after()}>

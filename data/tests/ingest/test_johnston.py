@@ -86,7 +86,7 @@ class TestParseSystem:
         assert row["hill_radius_km"] == 4000.0
         assert row["density_g_cm3"] == 3.38
         assert row["dynamical_type"] == "main belt asteroid"
-        assert row["last_updated"] == "30 April 2022"
+        assert row["last_updated"] == "2022-04-30"
 
     def test_superscript_exponents(self, text):
         """Masses print as `8.13x10<sup>15</sup>`, not as a float literal."""
@@ -115,7 +115,7 @@ class TestParseCompanion:
         assert (row["i"], row["i_sigma"]) == (94.18, 0.42)
         assert (row["om"], row["om_sigma"]) == (284.3, 0.34)
         assert row["ma"] == 323.2
-        assert row["epoch"] == "2017 Jan 1.0"
+        assert row["epoch"] == "2017-01-01"
         assert row["a_over_primary_radius"] == 13.2
         assert row["a_over_hill_radius"] == 0.025
         assert row["normalised_ang_mom"] == 0.69
@@ -142,13 +142,27 @@ class TestParseDiscoveries:
         records = parse_discoveries(text, companion_labels(text))
         assert len(records) == 1
         record = records[0]
-        assert record["discovery_date"] == "2001 Aug 29"
+        assert record["discovery_date"] == "2001-08-29"
         assert record["discoverers"] == "J.-L. Margot and M. E. Brown"
         assert record["discovery_method"] == "adaptive optics telescope"
         assert record["discovery_facility"].startswith("CFHT Telescope/W. M. Keck II")
-        assert record["announced"] == "2001 Sep 03"
+        assert record["announced"] == "2001-09-03"
         assert record["provisional_designation"] == "S/2001 (22) 1"
         assert record["permanent_name"] == "Linus"
+
+    @pytest.mark.parametrize(
+        "prose,expected",
+        [
+            # The archive drops to whatever precision it has, and its prose
+            # runs a full stop straight onto the date.
+            ("Companion discovered 2013 Feb by lightcurve.", "2013-02"),
+            ("Companion discovered 2016 using radar observations.", "2016"),
+            ("Companion discovered 2004 Feb 12. Announced 2004 Feb 20.", "2004-02-12"),
+        ],
+    )
+    def test_precision_is_kept_and_prose_is_not(self, prose, expected):
+        records = parse_discoveries(f"discovery and notes|{prose}", ["secondary"])
+        assert records[0]["discovery_date"] == expected
 
     def test_link_lists_are_not_read_as_announcements(self, text):
         """The circulars below the notes belong to the page, not a companion."""

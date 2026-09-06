@@ -12,7 +12,7 @@ from pathlib import Path
 from sqlalchemy import delete, insert, select, update
 
 from space_map_data.constants.earth_sats.launchlog import parse_sat_type
-from space_map_data.ingest.convert import gcat_date_to_iso
+from space_map_data.ingest.convert import vague_date_to_iso
 from space_map_data.models.object import Launchlog, Object
 from space_map_data.utils.db import get_session
 
@@ -93,7 +93,7 @@ class LaunchlogIngestor:
                 seen_jcat.add(jcat)
 
                 raw_date = fields.pop("launch_date")  # not a column; kept iso + flag
-                launch_date_iso = gcat_date_to_iso(raw_date)
+                launch_date_iso = vague_date_to_iso(raw_date)
                 if launch_date_iso is None and raw_date is not None:
                     self.unparsed_dates += 1
 

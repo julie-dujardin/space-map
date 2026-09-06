@@ -13,6 +13,7 @@ from space_map_data.ingest.convert import (
     mean_motion_to_a_km,
     normalize_partial_date,
     string_or_none,
+    vague_date_to_iso,
 )
 
 
@@ -165,3 +166,42 @@ class TestMeanMotionToAKm:
         a_slow = mean_motion_to_a_km(1.0)
         a_fast = mean_motion_to_a_km(15.0)
         assert a_fast < a_slow
+
+
+class TestVagueDateToIso:
+    """A date written to whatever precision its source knew, kept at it."""
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("1958 Jul 25", "1958-07-25"),
+            ("1961 Apr", "1961-04"),
+            ("1961", "1961"),
+            # Johnston's page footers spell the month out.
+            ("2022 April 30", "2022-04-30"),
+            # A leading zero on the day, and GCAT's trailing uncertainty mark.
+            ("2005 Oct 06", "2005-10-06"),
+            ("1966 Feb 03?", "1966-02-03"),
+        ],
+    )
+    def test_precision(self, raw, expected):
+        assert vague_date_to_iso(raw) == expected
+
+    def test_fractional_day_becomes_a_utc_time(self):
+        assert vague_date_to_iso("2003 Dec 06.5") == "2003-12-06T12:00Z"
+        assert vague_date_to_iso("2015 Feb 01.95") == "2015-02-01T22:48Z"
+
+    def test_a_zero_fraction_stays_a_plain_date(self):
+        """Midnight is the fraction's absence, not a time the source claimed."""
+        assert vague_date_to_iso("2017 Jan 1.0") == "2017-01-01"
+
+    def test_clock_time(self):
+        assert vague_date_to_iso("1957 Oct 04 1928:34") == "1957-10-04T19:28:34Z"
+
+    def test_unknown_month_token_keeps_the_year(self):
+        """GCAT writes a quarter where it has no month."""
+        assert vague_date_to_iso("1961 Q1") == "1961"
+
+    def test_empty(self):
+        assert vague_date_to_iso("") is None
+        assert vague_date_to_iso(None) is None

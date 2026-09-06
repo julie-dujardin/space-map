@@ -40,7 +40,7 @@ class JohnstonSystem(Base):
     object_id: Mapped[str] = mapped_column(ForeignKey("objects.id"), primary_key=True)
     page: Mapped[str]  # "am-00022", the archive's own page id
     designation: Mapped[str]  # "(22) Kalliope", as the index lists it
-    last_updated: Mapped[str | None] = mapped_column(default=None)
+    last_updated: Mapped[str | None] = mapped_column(default=None)  # ISO 8601
     confidence: Mapped[JohnstonConfidence | None] = mapped_column(String, default=None)
     dynamical_type: Mapped[str | None] = mapped_column(default=None)  # "main belt"
 
@@ -131,9 +131,8 @@ class JohnstonMoon(Base):
     w_sigma: Mapped[float | None] = mapped_column(default=None)
     ma: Mapped[float | None] = mapped_column(default=None)
     ma_sigma: Mapped[float | None] = mapped_column(default=None)
-    epoch: Mapped[str | None] = mapped_column(
-        default=None
-    )  # as printed, e.g. "2004 Sep 01.0"
+    # ISO 8601 at the precision printed, e.g. "2004 Sep 01.5" -> 2004-09-01T12:00Z
+    epoch: Mapped[str | None] = mapped_column(default=None)
     normalised_ang_mom: Mapped[float | None] = mapped_column(default=None)
 
     # Component
@@ -146,12 +145,13 @@ class JohnstonMoon(Base):
     rotation_h: Mapped[float | None] = mapped_column(default=None)
 
     # Discovery — SBDB gives a year and one free-text reference; this is the
-    # rest of what the archive records.
+    # rest of what the archive records. Both dates are ISO 8601 at the
+    # precision printed: a companion known only to a month keeps "2013-02".
     discovery_date: Mapped[str | None] = mapped_column(default=None)
     discoverers: Mapped[str | None] = mapped_column(default=None)
     discovery_method: Mapped[str | None] = mapped_column(default=None)
     discovery_facility: Mapped[str | None] = mapped_column(default=None)
-    announced: Mapped[str | None] = mapped_column(default=None)  # "2001 Sep 03"
+    announced: Mapped[str | None] = mapped_column(default=None)
     provisional_designation: Mapped[str | None] = mapped_column(
         default=None, index=True
     )

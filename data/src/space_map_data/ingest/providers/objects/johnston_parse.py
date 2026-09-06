@@ -16,7 +16,16 @@ import html
 import logging
 import re
 
+from space_map_data.ingest.convert import vague_date_to_iso
+
 logger = logging.getLogger(__name__)
+
+# The archive dates everything year-first with an abbreviated month, the day
+# optional and sometimes fractional. Anchoring on real month names matters:
+# `\w{3}` swallows the next word of the prose ("2016 using radar…") and a
+# loose day group swallows the sentence's full stop.
+_MONTH = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec"
+_DATE = rf"[0-9]{{4}}(?: (?:{_MONTH})(?: [0-9]{{1,2}}(?:\.[0-9]+)?)?)?"
 
 # Trailing bracket is the source code; `?` means the archive has no value.
 _VALUE = r"\s*(\?|[-+]?[\d.]+(?:x10\|-?\d+\|)?)"
@@ -133,9 +142,11 @@ def parse_system(text: str) -> dict:
         row["pole_lambda_deg"] = _number(pole.group(2))
 
     row["dynamical_type"] = _text_field(text, r"\|dynamical type, primary:\|")
-    updated = re.search(r"last updated\s*\|?\s*([0-9]{1,2} \w+ [0-9]{4})", text)
+    # The footer reverses the archive's own order — "30 April 2022".
+    updated = re.search(r"last updated\s*\|?\s*([0-9]{1,2}) (\w+) ([0-9]{4})", text)
     if updated is not None:
-        row["last_updated"] = updated.group(1)
+        day, month, year = updated.groups()
+        row["last_updated"] = vague_date_to_iso(f"{year} {month} {day}")
     return {k: v for k, v in row.items() if v is not None}
 
 
@@ -159,7 +170,7 @@ def parse_companion(text: str, label: str) -> dict:
     row["om"], row["om_sigma"] = _field(orbit, r"ascending node \|Ω\|s\|:\|")
     row["w"], row["w_sigma"] = _field(orbit, r"argument of pericenter \|ω\|s\|:\|")
     row["ma"], row["ma_sigma"] = _field(orbit, r"mean anomaly \|M:\|")
-    row["epoch"] = _text_field(orbit, r"Epoch\|:\|")
+    row["epoch"] = vague_date_to_iso(_text_field(orbit, r"Epoch\|:\|"))
     row["normalised_ang_mom"], _ = _field(orbit, r"normalized ang\. mom\. \|α\|L\|:\|")
 
     row["diameter_km"], row["diameter_km_sigma"] = _field(
@@ -223,9 +234,9 @@ def parse_discoveries(text: str, labels: list[str]) -> list[dict]:
         body_end = spans[index + 1][1] if index + 1 < len(spans) else len(section)
         body = section[body_start:body_end]
         record: dict = {"label_hint": opener}
-        date = re.match(r"([0-9]{4}(?: \w{3}(?: [0-9.]+)?)?)", body)
+        date = re.match(f"({_DATE})", body)
         if date is not None:
-            record["discovery_date"] = date.group(1)
+            record["discovery_date"] = vague_date_to_iso(date.group(1))
         by = re.search(r"\|? ?\bby\|? (.*?)(?:\|? ?using|\.\s*\|?Announced|$)", body)
         if by is not None:
             names = re.sub(r"\s+", " ", by.group(1).replace("|", " ")).strip(" .,")
@@ -249,9 +260,9 @@ def parse_discoveries(text: str, labels: list[str]) -> list[dict]:
         # code into the archive's own source list; the circular numbers live in
         # the link block further down the page, which belongs to no one
         # companion. Only the date is a fact about this companion.
-        announced = re.search(r"Announced\|? ?([0-9]{4}(?: \w{3}(?: [0-9.]+)?)?)", body)
+        announced = re.search(rf"Announced\|? ?({_DATE})", body)
         if announced is not None:
-            record["announced"] = announced.group(1)
+            record["announced"] = vague_date_to_iso(announced.group(1))
         designation = re.search(r"[Pp]rovisional designation\|? ?(S/[^.|]+)", body)
         if designation is not None:
             record["provisional_designation"] = re.sub(
