@@ -1,0 +1,35 @@
+{
+	"name": "spacemap",
+	"version": "0.1.0",
+	"description": "The map of the Solar System from spacemap.co, for other pages: bodies, spacecraft and their orbits over time, in a container of your own.",
+	"keywords": [
+		"solar system",
+		"spacecraft",
+		"orbits",
+		"map",
+		"three.js"
+	],
+	"homepage": "https://spacemap.co",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/julie-dujardin/space-map.git",
+		"directory": "frontend"
+	},
+	"license": "MPL-2.0",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"default": "./index.js"
+		}
+	},
+	"peerDependencies": {
+		"@types/three": "^0.183.0",
+		"three": "^0.183.0"
+	},
+	"peerDependenciesMeta": {
+		"@types/three": {
+			"optional": true
+		}
+	}
+}

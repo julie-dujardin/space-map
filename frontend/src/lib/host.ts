@@ -5,19 +5,15 @@
  * what a bare embed gets.
  */
 
-import type * as m from '$lib/paraglide/messages.js';
-
-type CoreMessageKey =
-	| 'body_note_no_model'
-	| 'body_note_no_radius'
-	| 'carried_by_scene_label'
-	| 'scene_canvas_label';
-
 /** Scene text the core renders itself; everything else is the host's to format.
- *  Typed off the message bundle so the keys and inputs stay in step with it. */
-export type CoreMessages = {
-	[K in CoreMessageKey]: (...args: Parameters<(typeof m)[K]>) => string;
-};
+ *  Spelled out rather than typed off the app's message bundle, which would
+ *  put every message of the app into the SDK's types. */
+export interface CoreMessages {
+	body_note_no_model: () => string;
+	body_note_no_radius: () => string;
+	carried_by_scene_label: (inputs: { carrier: string }) => string;
+	scene_canvas_label: () => string;
+}
 
 /** A coverage edge the clock has crossed, and where it lies. */
 export interface CoverageEdge {

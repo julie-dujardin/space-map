@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import { paraglideLocaleSplit } from './paraglide-locale-split';
 import { defineConfig, loadEnv } from 'vite';
+import { fileURLToPath } from 'node:url';
 
 // If PUBLIC_DATA_URL is an absolute URL (e.g. https://static.spacemap.co), route
 // it through the dev proxy: the browser keeps hitting /data (same-origin, no
@@ -18,7 +19,17 @@ if (isRemoteDataUrl) {
 	process.env.PUBLIC_DATA_URL = '/data';
 }
 
+// satellite.js's optional WASM runtime: nothing calls it, and bundled it is a
+// 310 kB chunk with a top-level await.
+const noWasm = fileURLToPath(new URL('./src/lib/math/orbit/no-wasm.ts', import.meta.url));
+
 export default defineConfig({
+	resolve: {
+		alias: {
+			'#wasm-single-thread': noWasm,
+			'#wasm-multi-thread': noWasm
+		}
+	},
 	test: {
 		include: ['src/**/*.test.ts'],
 		// Lock TZ so date formatting tests are deterministic across machines.
