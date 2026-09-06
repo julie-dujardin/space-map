@@ -25,7 +25,7 @@ import {
 } from 'three';
 import type { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
-import type { Hazard } from '$lib/travel/hazards';
+import type { LabelledHazard } from '$lib/travel/hazards';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import type { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -57,7 +57,6 @@ import { currentRenderTier, renderPixelRatio, type RenderTierPreset } from './re
 import { PointerInteraction } from './interaction/pointer';
 import { GpuPickPass } from './interaction/gpu-pick';
 import { CameraUpController } from './camera/up-controller';
-import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies } from './objects/body/lifecycle';
 import { applyStarTint } from './objects/sun';
 import { getAtmosphereParams } from '$lib/fetch/atmospheres';
@@ -143,6 +142,7 @@ import { updateBodyVisibility } from './visibility/update';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location/marker';
 import { updateUserLocationOcclusion } from './user-location/occlusion';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { jdToDate } from '$lib/time/jd';
 
 /** OrbitControls inertia. The reduced-motion factor is far higher so the camera
  *  stops promptly on release instead of coasting (three's default is 0.05). */
@@ -612,7 +612,7 @@ export class SceneRenderer {
 	setTravelPath(
 		plan: LabelledPath | null,
 		options: readonly LabelledPath[] = [],
-		hazards: readonly Hazard[] = [],
+		hazards: readonly LabelledHazard[] = [],
 		steps: readonly PathStep[] = []
 	): void {
 		this.travelPath.set(plan, options, hazards, steps);
@@ -1820,7 +1820,7 @@ export class SceneRenderer {
 
 		// A seek just landed where the focus has no data — pan the camera onto the
 		// in-range ancestor it's now tracking. Only on the transition into
-		// out-of-range: the focus (and its "no data at this time" toast) stays on
+		// out-of-range: the focus (and its "no data at this time" notice) stays on
 		// the original body, so it keeps firing while parked here. Once per episode.
 		const enteringOutOfRange = result.focusedOutOfRange && !this.focusWasOutOfRange;
 		this.focusWasOutOfRange = result.focusedOutOfRange;

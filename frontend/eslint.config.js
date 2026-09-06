@@ -32,6 +32,25 @@ export default ts.config(
 		}
 	},
 	{
+		// The embeddable core stays host-agnostic; `pnpm check:core` enforces the
+		// same rule transitively.
+		files: ['src/lib/scene/**', 'src/lib/math/**', 'src/lib/fetch/**'],
+		rules: {
+			'@typescript-eslint/no-restricted-imports': [
+				'error',
+				{
+					patterns: [
+						{
+							group: ['$app/*', '$env/*', '$lib/paraglide/*', '$lib/components/*', 'svelte-sonner'],
+							allowTypeImports: true,
+							message: 'core code cannot depend on the host app — go through $lib/host'
+						}
+					]
+				}
+			]
+		}
+	},
+	{
 		ignores: ['build/', '.svelte-kit/', '.wrangler/', 'dist/', 'src/lib/paraglide/']
 	}
 );

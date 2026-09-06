@@ -26,7 +26,7 @@ import {
 	type Metadata
 } from '$lib/fetch/metadata';
 import { ChunkLoader } from '$lib/fetch/position/chunk';
-import { dateToJD, jdToDate } from '$lib/format/date';
+import { dateToJD, jdToDate } from '$lib/time/jd';
 import { fetchLabels } from '$lib/fetch/position/labels';
 import { passengerFor } from '$lib/fetch/position/probes/passenger';
 import { ensureTargetStreamed } from '$lib/scene/setup/placeholder';
@@ -168,7 +168,7 @@ export class ZoneRefresher {
 		this.tick(this.latestDate);
 	}
 
-	/** Earth-sat coverage at `jd` for the toast — from available snapshots, not the
+	/** Earth-sat coverage at `jd` for the notice — from available snapshots, not the
 	 *  resident chunk, so scrubbing to a covered time never falsely warns mid-load. */
 	satelliteCoverage(jd: number): DateCoverage {
 		const z = this.zones.find((s): s is TimeZoneState => s.kind === 'time' && s.zone === 'earth');

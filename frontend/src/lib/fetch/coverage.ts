@@ -5,7 +5,7 @@
 
 import { canBePlaced } from '$lib/fetch/objects/global-body';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
-import { dateToJD } from '$lib/format/date';
+import { dateToJD } from '$lib/time/jd';
 
 export interface CoverageWindow {
 	startJd?: number;

@@ -12,7 +12,8 @@
 	import type { FocusObject } from '$lib/state/focusable';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
-	import { focusClick, focusHref, isModifiedClick } from '$lib/state/focus-link';
+	import { focusClick, focusHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import {
 		CLASS_SLUG_PREFIX,
 		classifyEarthOrbit,

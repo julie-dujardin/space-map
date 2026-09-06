@@ -19,7 +19,7 @@ import {
 	cancerRiskFraction,
 	lethalDoseFraction
 } from '$lib/math/travel/radiation';
-import type { AdjustedHazard, Hazard, HazardKind } from './hazards';
+import type { AdjustedHazard, Hazard, HazardKind, LabelledHazard } from './hazards';
 import { equilibriumTempK } from './sunlight';
 import { formatDv, formatDvBrief, formatGray, formatSievert } from './format';
 
@@ -173,4 +173,9 @@ export function hazardCampaign(hazard: Hazard): string | null {
 	const days = hazard.endJd - hazard.startJd;
 	if (!(days > 1)) return null;
 	return m.travel_hazard_aero_campaign({ value: formatDurationNarrow(days) });
+}
+
+/** Attach the chip text the scene shows along the path. */
+export function labelHazards(hazards: readonly Hazard[]): LabelledHazard[] {
+	return hazards.map((hazard) => ({ ...hazard, label: hazardChip(hazard) }));
 }

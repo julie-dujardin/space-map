@@ -25,7 +25,7 @@
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
-	import { resolveBodyColor } from '$lib/utils';
+	import { resolveBodyColor } from '$lib/body-color';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import ObjectDescription from './ObjectDescription.svelte';
 

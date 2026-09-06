@@ -1,12 +1,12 @@
 import type { RequestHandler } from './$types';
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { dataBase } from '$lib/fetch/data-base';
 
 // Serve the export-built sitemap from the app origin so every <loc> host matches
 // the sitemap's own, avoiding Search Console cross-host verification.
 export const prerender = false;
 
 export const GET: RequestHandler = async ({ fetch }) => {
-	const upstream = await fetch(`${DATA_BASE}/v1/seo/sitemap.xml`);
+	const upstream = await fetch(`${dataBase()}/v1/seo/sitemap.xml`);
 	if (!upstream.ok) {
 		return new Response('sitemap unavailable', { status: 502 });
 	}

@@ -1,11 +1,11 @@
 import { Line, Mesh, Vector3 } from 'three';
 import { isOpenOrbit, sgp4Curve } from '$lib/math/orbit/curves';
-import { dateToJD } from '$lib/format/date';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { NUM_TRAIL_POINTS, buildTrailPoints, writeTrailAlphas } from './points';
 import { buildFatLineFromThin, buildThinLineFromArrays, makeEmptyTrail } from './geometry';
 import type { SampleTransform } from './lagrange-frame';
+import { dateToJD } from '$lib/time/jd';
 
 /**
  * Write a trail-buffer's contents into `posArr`, prefixed by a live-head

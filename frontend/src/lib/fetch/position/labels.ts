@@ -6,7 +6,7 @@
  * set; `m` marks a body as *minor* (collapsed halo by default).
  */
 
-import { getLocale } from '$lib/paraglide/runtime.js';
+import { getLocale } from '$lib/host';
 import { labelsUrl } from '$lib/fetch/position/format';
 import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 

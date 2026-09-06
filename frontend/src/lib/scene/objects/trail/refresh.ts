@@ -251,7 +251,7 @@ export function refreshTrail(
 			if (dt > refreshThreshold) {
 				const fresh = body.rederiveElements(jd);
 				// Null fresh = jd out of chebyshev coverage; the out-of-range
-				// toast already surfaces that, so keep the stale snapshot
+				// notice already surfaces that, so keep the stale snapshot
 				// silently rather than warn-spam per frame.
 				if (fresh) {
 					Object.assign(body.orbitElements, fresh);

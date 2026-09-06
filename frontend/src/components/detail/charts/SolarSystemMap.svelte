@@ -7,7 +7,7 @@
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import { AU_KM } from '$lib/math/units';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { isModifiedClick } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import {
 		fetchSolarSystemMap,

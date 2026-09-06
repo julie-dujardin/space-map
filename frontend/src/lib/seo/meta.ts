@@ -14,7 +14,7 @@
  */
 
 import * as m from '$lib/paraglide/messages.js';
-import { DATA_BASE, IMAGES_BASE } from '$lib/fetch/data-base';
+import { dataBase, imagesBase } from '$lib/fetch/data-base';
 import { extractEmbeddedImageMetadata, smallestRasterVariant } from '$lib/fetch/objects/images';
 import { hashBucket } from '$lib/fetch/metadata';
 import { heroImage } from '$lib/fetch/objects/galleries';
@@ -95,7 +95,7 @@ function pickOgImage(
 		if (!ext) continue;
 		const path = `/v1/images/${encodeURIComponent(img.file)}/${label}.${ext}`;
 		return {
-			url: absolutize(versioned(`${IMAGES_BASE}${path}`, imagesToken), origin),
+			url: absolutize(versioned(`${imagesBase()}${path}`, imagesToken), origin),
 			image: img,
 			attr: img.attr
 		};
@@ -131,7 +131,7 @@ async function fetchImageCredit(
 	origin: string,
 	imagesToken: string | undefined
 ): Promise<string | null> {
-	const base = `${IMAGES_BASE}/v1/images/${encodeURIComponent(image.file)}`;
+	const base = `${imagesBase()}/v1/images/${encodeURIComponent(image.file)}`;
 	const label = smallestRasterVariant(image.variants);
 	if (label) {
 		const url = absolutize(
@@ -381,7 +381,7 @@ export async function loadObjectSeo(
 	origin: string,
 	path: string
 ): Promise<SeoMeta | null> {
-	const base = absolutize(DATA_BASE, origin);
+	const base = absolutize(dataBase(), origin);
 	const metaRes = await fetch(`${base}/v1/metadata.json`);
 	if (!metaRes.ok) return null;
 	const meta = (await metaRes.json()) as {
@@ -437,7 +437,7 @@ export async function loadFeatureSeo(
 	origin: string,
 	path: string
 ): Promise<SeoMeta | null> {
-	const base = absolutize(DATA_BASE, origin);
+	const base = absolutize(dataBase(), origin);
 	const metaRes = await fetch(`${base}/v1/metadata.json`);
 	if (!metaRes.ok) return null;
 	const meta = (await metaRes.json()) as {
@@ -514,7 +514,7 @@ export async function loadGroupSeo(
 	origin: string,
 	path: string
 ): Promise<SeoMeta | null> {
-	const base = absolutize(DATA_BASE, origin);
+	const base = absolutize(dataBase(), origin);
 	const metaRes = await fetch(`${base}/v1/metadata.json`);
 	if (!metaRes.ok) return null;
 	const meta = (await metaRes.json()) as {

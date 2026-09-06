@@ -2,7 +2,7 @@ import { Quaternion, Vector3 } from 'three';
 import type { PerspectiveCamera, Points, ShaderMaterial, WebGLRenderer } from 'three';
 import { ObjectType, isMajorBody } from '$lib/types/objects';
 import { sceneToKm } from '$lib/math/units';
-import * as m from '$lib/paraglide/messages.js';
+import { host } from '$lib/host';
 import { setLabelAnnotation } from '../label/annotations';
 import {
 	ellipsoidCameraAxes,
@@ -148,7 +148,11 @@ export function updateBodyVisibility(
 			setLabelAnnotation(
 				bo,
 				'missing',
-				near ? (isModel ? m.body_note_no_model() : m.body_note_no_radius()) : null
+				near
+					? isModel
+						? host().messages.body_note_no_model()
+						: host().messages.body_note_no_radius()
+					: null
 			);
 		}
 		const label = bo.label;

@@ -12,7 +12,7 @@
 		serializeUrl,
 		urlTypeFromId
 	} from '$lib/state/url';
-	import { isModifiedClick } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 
 	type Props = {
 		hit: SearchHit;

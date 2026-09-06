@@ -36,6 +36,12 @@ repos:
         pass_filenames: false
         files: ^frontend/
 
+      - id: core-boundary-frontend
+        name: core boundary (frontend)
+        entry: bash -c 'cd frontend && pnpm check:core'
+        language: system
+        pass_filenames: false
+        files: ^frontend/src/
       - id: format-frontend
         name: format check (frontend)
         entry: bash -c 'cd frontend && pnpm format'

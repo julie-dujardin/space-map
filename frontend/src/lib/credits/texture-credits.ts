@@ -8,7 +8,7 @@
  * carries one entry per textured body; we load it once and key it by object
  * id so a lineup can look up exactly the bodies on screen.
  */
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { dataBase } from '$lib/fetch/data-base';
 
 export interface TextureSource {
 	/** Author/host shown as the credit label (e.g. "Steve Albers", "NASA"). */
@@ -29,7 +29,7 @@ export function loadTextureCredits(
 	cache = (async () => {
 		const out = new Map<string, TextureSource>();
 		try {
-			const res = await fetchFn(`${DATA_BASE}/v1/credits.json`);
+			const res = await fetchFn(`${dataBase()}/v1/credits.json`);
 			if (!res.ok) return out;
 			const data = await res.json();
 			for (const sys of data.systems ?? []) {

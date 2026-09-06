@@ -14,7 +14,8 @@
 	import type { Hazard } from '$lib/travel/hazards';
 	import { formatJulianDate } from '$lib/format/date';
 	import type { RouteOption } from '$lib/travel/trip';
-	import { isModifiedClick, tripRouteHref } from '$lib/state/focus-link';
+	import { tripRouteHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import PorkchopChart from './PorkchopChart.svelte';
 	import RouteRowBody from './RouteRowBody.svelte';

@@ -10,6 +10,7 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"check:core": "depcruise src/lib/scene src/lib/math src/lib/fetch --config .dependency-cruiser.cjs",
 		"lint": "eslint . --fix",
 		"format": "prettier --write ."
 	},
@@ -29,6 +30,7 @@
 		"@types/three": "^0.183.1",
 		"bits-ui": "^2.16.3",
 		"clsx": "^2.1.1",
+		"dependency-cruiser": "^18.2.0",
 		"eslint": "^10.0.3",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.15.1",

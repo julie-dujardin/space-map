@@ -13,7 +13,8 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { EARTH_ID } from '$lib/constants';
-	import { isModifiedClick, navHref } from '$lib/state/focus-link';
+	import { navHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { orbitZoneTarget } from '$lib/travel/orbit-zone-target';
 
 	interface Props {

@@ -9,7 +9,8 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { isModifiedClick, quadHref } from '$lib/state/focus-link';
+	import { quadHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { versionedUrl } from '$lib/fetch/data-base';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';

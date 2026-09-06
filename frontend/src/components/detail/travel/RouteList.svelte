@@ -15,7 +15,8 @@
 	import type { RouteOption } from '$lib/travel/trip';
 	import type { Hazard } from '$lib/travel/hazards';
 	import { blockedText } from './route-blocked';
-	import { isModifiedClick, tripRouteHref } from '$lib/state/focus-link';
+	import { tripRouteHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import RouteRowBody from './RouteRowBody.svelte';
 	import CruiseBox from './CruiseBox.svelte';

@@ -8,7 +8,8 @@
 	import { materialEntries } from '$lib/charts/interior-materials';
 	import { coreBracket } from '$lib/charts/layer-appearance';
 	import { structureLink } from '$lib/charts/structure-link';
-	import { isModifiedClick, tabHref } from '$lib/state/focus-link';
+	import { tabHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import type { CompositionEntry } from '$lib/charts/composition-bar';
 	import { formatKelvinRange } from '$lib/format/temperature';
 	import { ucfirst } from '$lib/format/quantities';

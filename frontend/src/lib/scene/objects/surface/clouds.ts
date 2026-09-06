@@ -6,7 +6,7 @@
 import { Mesh, MeshStandardMaterial, SphereGeometry, SRGBColorSpace, Texture } from 'three';
 
 import { versionedUrl } from '$lib/fetch/data-base';
-import { jdToDate } from '$lib/format/date';
+import { jdToDate } from '$lib/time/jd';
 
 /** Per-body cloud-overlay metadata — matches `clouds_block` in export/systems.py. */
 export interface CloudMeta {

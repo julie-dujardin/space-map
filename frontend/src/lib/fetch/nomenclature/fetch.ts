@@ -7,7 +7,7 @@
  * no files; a 404 here still degrades to an empty array.
  */
 
-import { getLocale } from '$lib/paraglide/runtime.js';
+import { getLocale } from '$lib/host';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { parseNomenclature, type NomenclatureRecord } from '$lib/fetch/nomenclature/parse';
 

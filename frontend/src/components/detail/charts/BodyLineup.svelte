@@ -90,10 +90,11 @@
 	import { makeEnvMap } from '$lib/scene/lighting';
 	import { frameMapQuaternion } from '$lib/math/orientation';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR, SUN_ID } from '$lib/constants';
-	import { DATA_BASE, versionedUrl } from '$lib/fetch/data-base';
+	import { dataBase, versionedUrl } from '$lib/fetch/data-base';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
-	import { focusHref, isModifiedClick } from '$lib/state/focus-link';
+	import { focusHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { formatQuantity } from '$lib/format/quantities';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
@@ -393,7 +394,7 @@
 	 *  Best-effort — clouds are optional. */
 	async function loadClouds(bodyId: string, systemId: string, bodyMesh: Mesh) {
 		try {
-			const res = await fetch(`${DATA_BASE}/v1/systems/${systemId}.json`);
+			const res = await fetch(`${dataBase()}/v1/systems/${systemId}.json`);
 			if (!res.ok) return;
 			const sys = await res.json();
 			const meta: CloudMeta | undefined = sys[bodyId]?.clouds;

@@ -1,6 +1,6 @@
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, isAsteroid, isMajorBody, type PositionedBody } from '$lib/types/objects';
-import { isModifiedClick } from '$lib/state/focus-link';
+import { isModifiedClick } from '$lib/modified-click';
 import type { BodyObjects } from '../types';
 import { syncLabelAria } from './annotations';
 import './label.css';

@@ -8,7 +8,7 @@
  * `nut_prec` array to evaluate pole/spin orientation.
  */
 
-import { DATA_BASE } from './data-base';
+import { dataBase } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
 
 const angles = new Map<number, number[]>();
@@ -18,7 +18,7 @@ let loadPromise: Promise<void> | null = null;
 export function loadSystemsGlobal(): Promise<void> {
 	if (loadPromise) return loadPromise;
 	const p = (async () => {
-		const r = await fetchWithTimeout(`${DATA_BASE}/v1/systems/global.json`);
+		const r = await fetchWithTimeout(`${dataBase()}/v1/systems/global.json`);
 		if (!r.ok) return;
 		const raw = (await r.json()) as {
 			gm?: Record<string, number>;

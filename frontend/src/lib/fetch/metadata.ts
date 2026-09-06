@@ -3,7 +3,7 @@
 
 import type { ChebyshevZoneParams } from './position/chebyshev/store';
 import type { ProbeZoneParams } from './position/probes/store';
-import { DATA_BASE, setDataVersions } from './data-base';
+import { dataBase, setDataVersions } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
 
 /**
@@ -324,7 +324,7 @@ let pending: Promise<Metadata> | null = null;
 
 export function fetchMetadata(): Promise<Metadata> {
 	if (pending) return pending;
-	const p = fetchWithTimeout(`${DATA_BASE}/v1/metadata.json`)
+	const p = fetchWithTimeout(`${dataBase()}/v1/metadata.json`)
 		.then((r) => {
 			if (!r.ok) throw new Error(`Failed to fetch metadata: ${r.status}`);
 			return r.json() as Promise<Metadata>;

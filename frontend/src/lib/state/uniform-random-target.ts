@@ -15,12 +15,12 @@ import { fetchGzipBundle } from '$lib/fetch/bundle-cache';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { fetchGroupDetail } from '$lib/fetch/groups/details';
 import {
-	categoryLabel,
 	fetchGroupIndex,
 	CAT_SOLAR_SYSTEM,
 	CAT_SURFACE_FEATURES,
 	type GroupIndex
 } from '$lib/fetch/groups/registry';
+import { categoryLabel } from '$lib/format/group';
 import { fetchMetadata } from '$lib/fetch/metadata';
 import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';

@@ -4,7 +4,7 @@
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import RewindIcon from '@lucide/svelte/icons/rewind';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
-	import { dateToJD, formatJulianDateTime } from '$lib/format/date';
+	import { formatJulianDateTime } from '$lib/format/date';
 	import { getLocale, getTextDirection } from '$lib/paraglide/runtime.js';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -17,13 +17,14 @@
 		TIME_DATE_OPTS,
 		PICKER_MIN_DATE,
 		PICKER_MAX_DATE
-	} from '$lib/scene/time-scales';
+	} from '$lib/time/time-scales';
 	import {
 		applyDateToClock,
 		applyTimeToClock,
 		clockTimeValue,
 		jdToCalendarDate
 	} from './clock-pickers';
+	import { dateToJD } from '$lib/time/jd';
 
 	interface Props {
 		clock: SimClock;

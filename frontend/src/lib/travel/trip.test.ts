@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dateToJD } from '$lib/format/date';
+import { dateToJD } from '$lib/time/jd';
 import { DEFAULT_TRIP, parseTrip, serializeTripSuffix, type TripState } from './trip';
 
 /** Read a suffix back the way `parseUrl` does — as the query it becomes. */

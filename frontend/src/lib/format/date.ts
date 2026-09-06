@@ -1,18 +1,6 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { getSettings } from '$lib/state/settings.svelte';
-
-const JD_UNIX_EPOCH = 2440587.5;
-const MS_PER_DAY = 86400000;
-
-/** Convert a JS Date to Julian Date. */
-export function dateToJD(date: Date): number {
-	return date.getTime() / MS_PER_DAY + JD_UNIX_EPOCH;
-}
-
-/** Convert a Julian Date to a JS Date. */
-export function jdToDate(jd: number): Date {
-	return new Date((jd - JD_UNIX_EPOCH) * MS_PER_DAY);
-}
+import { jdToDate } from '$lib/time/jd';
 
 function pad(n: number, width = 2): string {
 	const s = String(Math.abs(n));

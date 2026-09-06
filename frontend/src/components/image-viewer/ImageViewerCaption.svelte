@@ -19,7 +19,7 @@
 	import { formatIsoDate } from '$lib/format/date';
 	import { safeHttpUrl } from '$lib/utils';
 	import type { ShelfLink } from '$lib/fetch/objects/galleries';
-	import { isModifiedClick } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
 
 	interface Props {

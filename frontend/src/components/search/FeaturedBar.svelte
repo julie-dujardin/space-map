@@ -3,7 +3,8 @@
 	import { resolve } from '$app/paths';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { focusHref, groupHref, isModifiedClick } from '$lib/state/focus-link';
+	import { focusHref, groupHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { randomTarget } from '$lib/state/random-target';
 
 	// Curated shortcuts beside the search bar / detail sidebar. Objects fly the

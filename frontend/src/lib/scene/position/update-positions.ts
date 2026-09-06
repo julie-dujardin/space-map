@@ -33,14 +33,14 @@ import type { FocusState } from '$lib/scene/animation/focus';
 import type { Vec3 } from '$lib/scene/animation/math';
 import {
 	emptyGroup,
-	updateOutOfRangeToast,
+	updateOutOfRangeNotice,
 	type OutOfRangeState
-} from '$lib/scene/out-of-range-toast';
+} from '$lib/scene/out-of-range-notice';
 import { refreshTrail, type TrailView } from '$lib/scene/objects/trail/refresh';
 import { renderLandedProbe } from './landed-probe';
 import { setSpacecraftLanded } from '$lib/scene/label/factory';
 import { setLabelAnnotation } from '$lib/scene/label/annotations';
-import * as m from '$lib/paraglide/messages.js';
+import { host } from '$lib/host';
 import type { PositionDiagnostics } from './diagnostics';
 
 /** Module-scope scratch for adaptive trail chord-error sampling. JS is single-
@@ -114,7 +114,7 @@ export interface UpdatePositionsResult {
 /**
  * Per-frame body position + orientation update. Drives chebyshev, SPICE-probe,
  * SGP4, parabolic, and Keplerian paths; aggregates out-of-range bodies into a
- * single toast; locks focus onto the focused body's new position (unless an
+ * single notice; locks focus onto the focused body's new position (unless an
  * animation is driving it); refreshes trail geometry against the new
  * focus basis. Invisible lines are marked `refreshDeferred` for the next pass.
  */
@@ -136,12 +136,12 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		? (fitCenterNaif: number) => ctx.bodies.isInSystem(`naif-${fitCenterNaif}`, activeSysId)
 		: undefined;
 
-	// Aggregate data-unavailability into a single summary toast — per-body
-	// toasts would be spammy at chunk boundaries.
+	// Aggregate data-unavailability into a single summary notice — per-body
+	// notices would be spammy at chunk boundaries.
 	const oorState: OutOfRangeState = {
 		jd,
 		// Resolved from zone metadata after the loop; per-body validity only hides
-		// sats, it doesn't drive the toast.
+		// sats, it doesn't drive the notice.
 		satellites: { kind: 'covered' },
 		majorBodies: emptyGroup(),
 		focusedOutOfRange: false
@@ -211,15 +211,15 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			if (frame % HIDDEN_STRIDE !== bo.staggerSlot) return;
 		}
 		// No placement this frame: hide the mesh and mark `position` a stand-in so
-		// the camera is never framed on it. `notForToast` covers the sat-validity
-		// case, where zone coverage drives the toast instead.
-		const hide = (notForToast = false) => {
+		// the camera is never framed on it. `notForNotice` covers the sat-validity
+		// case, where zone coverage drives the notice instead.
+		const hide = (notForNotice = false) => {
 			if (bo) bo.outOfRange = true;
 			body.positionUnknown = true;
-			if (!notForToast && d.id === focusedId) oorState.focusedOutOfRange = true;
+			if (!notForNotice && d.id === focusedId) oorState.focusedOutOfRange = true;
 		};
 		// No orbit in the catalogue at all: never placed, and never a reason for
-		// the "no data at this time" toast — the drawer says it outright.
+		// the "no data at this time" notice — the drawer says it outright.
 		if (d.unplaceable) {
 			hide(true);
 			return;
@@ -235,7 +235,11 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			}
 			if (bo) {
 				const carrier = rideMarkers.credits.get(d.id);
-				setLabelAnnotation(bo, 'carrier', carrier ? m.carried_by_scene_label({ carrier }) : null);
+				setLabelAnnotation(
+					bo,
+					'carrier',
+					carrier ? host().messages.carried_by_scene_label({ carrier }) : null
+				);
 			}
 		}
 		// Discovery gate: hide a body before it came into existence (moon/sat
@@ -274,7 +278,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		// Skipped for chebyshev (validityStart/End is the startup chunk's window,
 		// not the full segment range) — its `positionScene` is the gate instead.
 		if (!isChebTracked && !isProbe && (jd < d.validityStart || jd > d.validityEnd)) {
-			// Hide the sat; the group toast comes from zone coverage below, not a
+			// Hide the sat; the group notice comes from zone coverage below, not a
 			// stale chunk. Only SGP4 has finite validity (Keplerian/parabolic ±Inf).
 			hide(!d.satrec);
 			return;
@@ -288,7 +292,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			const chebOffset = ctx.chebStore!.positionScene(d.id, jd);
 			if (!chebOffset) {
 				hide(true);
-				// Only count as OOR-for-toast when jd is outside zone coverage;
+				// Only count as OOR-for-notice when jd is outside zone coverage;
 				// inside coverage means a chunk is still loading (transient).
 				const coverage = ctx.chebStore!.zoneCoverage(d.id);
 				if (coverage && (jd < coverage.start || jd > coverage.end)) {
@@ -714,7 +718,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 	}
 
 	oorState.satellites = ctx.refresher?.satelliteCoverage(jd) ?? { kind: 'covered' };
-	updateOutOfRangeToast(oorState);
+	updateOutOfRangeNotice(oorState);
 
 	// Re-seat a focused surface feature on its host's current-LOD surface before
 	// the focus-tracking block pins focusTruePos to it. The host is a major, so
@@ -736,7 +740,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 	if (focusedBody && oorState.focusedOutOfRange) {
 		// Focused body has no data this frame — track the nearest in-range ancestor
 		// so the camera follows it instead of freezing in world space. The focus
-		// (and its "no data at this time" toast) stays on the original body; the
+		// (and its "no data at this time" notice) stays on the original body; the
 		// renderer pans the camera onto the anchor.
 		const anchor = focusAncestors.find((a) => a.bo && !a.bo.outOfRange);
 		if (anchor) {

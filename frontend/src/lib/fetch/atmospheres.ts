@@ -9,7 +9,7 @@ import type {
 	AtmosphereParams,
 	AtmosphereSeasonalTable
 } from '$lib/scene/objects/surface/atmosphere';
-import { DATA_BASE } from './data-base';
+import { dataBase } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
 
 interface SeasonalEntry {
@@ -78,7 +78,7 @@ function seasonalTable(entry: SeasonalEntry | undefined): AtmosphereSeasonalTabl
 export function loadAtmospheres(): Promise<void> {
 	if (loadPromise) return loadPromise;
 	const p = (async () => {
-		const r = await fetchWithTimeout(`${DATA_BASE}/v1/atmospheres.json`);
+		const r = await fetchWithTimeout(`${dataBase()}/v1/atmospheres.json`);
 		if (!r.ok) {
 			console.warn(`atmospheres: fetch failed (${r.status}) — rendering without shells`);
 			return;

@@ -5,7 +5,8 @@
 	import { imageSrcset, smallestVariantUrl } from '$lib/fetch/objects/images';
 	import { formatNumber } from '$lib/format/quantities';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { galleryHref, imageHref, isModifiedClick } from '$lib/state/focus-link';
+	import { galleryHref, imageHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import Section from '../sections/kit/Section.svelte';
 
 	interface Props {

@@ -13,18 +13,18 @@
 	import { kmToScene } from '$lib/math/units';
 	import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
 	import type { OrbitPreview } from '$lib/scene/objects/travel/orbit-preview';
-	import type { Hazard } from '$lib/travel/hazards';
+	import type { LabelledHazard } from '$lib/travel/hazards';
 	import { page } from '$app/state';
 	import { sphericalToCartesian } from '$lib/math/spherical';
 	import { navEndOf, parseUrl, urlTypeFromId } from '$lib/state/url';
 	import { UrlType } from '$lib/state/view';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { MapCover } from '$lib/state/map-cover.svelte';
-	import { jdToDate } from '$lib/format/date';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import LoadingBar from './LoadingBar.svelte';
 	import { startPageReload } from '$lib/reload';
+	import { jdToDate } from '$lib/time/jd';
 
 	const settings = getSettings();
 
@@ -164,7 +164,7 @@
 	export function setTravelPath(
 		plan: LabelledPath | null,
 		options: readonly LabelledPath[] = [],
-		hazards: readonly Hazard[] = [],
+		hazards: readonly LabelledHazard[] = [],
 		steps: readonly PathStep[] = []
 	): void {
 		renderer?.setTravelPath(plan, options, hazards, steps);

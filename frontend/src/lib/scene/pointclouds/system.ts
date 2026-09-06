@@ -20,7 +20,7 @@ import { partitionForWorkersSliced, parentIdFromSubkey } from '$lib/math/orbit/p
 import { idToKey, keySetOf, NO_KEY } from '$lib/fetch/position/object-key';
 import { buildPointClouds } from '$lib/scene/objects/body/bulk';
 import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/pointcloud';
-import { resolveBodyColor } from '$lib/utils';
+import { resolveBodyColor } from '$lib/body-color';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { PickRegistry } from '$lib/scene/interaction/pick-registry';
 

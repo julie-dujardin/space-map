@@ -9,7 +9,7 @@
  * The format byte at offset 6 of the common header dispatches between them.
  */
 
-import { DATA_BASE, versionedUrl } from '../data-base';
+import { dataBase, versionedUrl } from '../data-base';
 
 export const MAGIC = 0x50414d53; // "SMAP" as little-endian uint32
 export const VERSION = 13;
@@ -60,7 +60,7 @@ export const CHEBYSHEV_FLAG_FLOAT64_COEFFS = 0x01;
  *  every promoted body's display name. The frontend's promoted set is exactly
  *  this file's keys — there is no separate hardcoded list. Served on the
  *  revalidating default (small, on the boot path), so no `?v=` token. */
-export const labelsUrl = (lang: string): string => `${DATA_BASE}/v1/labels/${lang}.gz`;
+export const labelsUrl = (lang: string): string => `${dataBase()}/v1/labels/${lang}.gz`;
 
 /** The `{zoom}/` path segment — empty for flat single-zoom zones (zoom=null),
  *  present for multi-zoom zones (`major`, `small_bodies/{class}`). */

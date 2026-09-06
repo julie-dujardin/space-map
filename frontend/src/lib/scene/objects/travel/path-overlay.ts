@@ -50,8 +50,7 @@ import { ARC_COLORS } from '$lib/travel/arc-colors';
 import { HAZARD_COLORS } from '$lib/travel/hazard-colors';
 // Type only: `hazards.ts` reaches the trajectory kernel, and this module is held
 // by the renderer from the first frame.
-import type { Hazard, HazardSeverity } from '$lib/travel/hazards';
-import { hazardChip } from '$lib/travel/hazard-labels';
+import type { HazardSeverity, LabelledHazard } from '$lib/travel/hazards';
 import './hazards.css';
 
 /** Wide enough to read against a trail crossing it, not so wide it hides one. */
@@ -465,7 +464,7 @@ export class TravelPathOverlay {
 	set(
 		plan: LabelledPath | null,
 		options: readonly LabelledPath[] = [],
-		hazards: readonly Hazard[] = [],
+		hazards: readonly LabelledHazard[] = [],
 		steps: readonly PathStep[] = []
 	): void {
 		this.clear();
@@ -506,7 +505,7 @@ export class TravelPathOverlay {
 	 * hazard is labelled, even mild ones — they start at different arc points
 	 * by construction, so crowding is a coincidence, not the rule.
 	 */
-	private addHazards(path: TrajectoryPath, hazards: readonly Hazard[]): void {
+	private addHazards(path: TrajectoryPath, hazards: readonly LabelledHazard[]): void {
 		const ordered = [...hazards].sort(
 			(a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)
 		);
@@ -544,7 +543,7 @@ export class TravelPathOverlay {
 			const element = document.createElement('div');
 			element.className = 'scene-hazard-label';
 			element.style.color = color;
-			element.textContent = hazardChip(hazard);
+			element.textContent = hazard.label;
 			const object = new CSS2DObject(element);
 			// Anchored on the point with the text running off to its side, the way an
 			// end label is.
@@ -572,7 +571,7 @@ export class TravelPathOverlay {
 	 * cruise-long doses, conjunctions, lag — is about no step and keeps its
 	 * chip. True when a step took it, as one more line on its label.
 	 */
-	private mergeIntoStep(hazard: Hazard, color: string): boolean {
+	private mergeIntoStep(hazard: LabelledHazard, color: string): boolean {
 		const wanted =
 			hazard.kind === 'aeroassist'
 				? 'aero-pass'
@@ -600,9 +599,9 @@ export class TravelPathOverlay {
 		line.className = 'scene-path-label__hazard';
 		line.style.color = color;
 		line.dir = 'auto';
-		line.textContent = hazardChip(hazard);
+		line.textContent = hazard.label;
 		el.querySelector('.scene-path-label__text')?.append(line);
-		el.setAttribute('aria-label', `${el.getAttribute('aria-label')} — ${hazardChip(hazard)}`);
+		el.setAttribute('aria-label', `${el.getAttribute('aria-label')} — ${hazard.label}`);
 		return true;
 	}
 

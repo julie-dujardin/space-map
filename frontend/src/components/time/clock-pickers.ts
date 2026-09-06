@@ -1,6 +1,6 @@
 import { CalendarDate, type DateValue } from '@internationalized/date';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import { dateToJD, jdToDate } from '$lib/format/date';
+import { dateToJD, jdToDate } from '$lib/time/jd';
 
 export function jdToCalendarDate(jd: number): CalendarDate {
 	const d = jdToDate(jd);

@@ -8,7 +8,8 @@
 	import { ringBarWindow } from '$lib/rings/overview-bar';
 	import { formatRingMass } from '$lib/rings/stats';
 	import { formatKm } from '$lib/format/distance';
-	import { isModifiedClick, tabHref } from '$lib/state/focus-link';
+	import { tabHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import type { PositionedBody } from '$lib/types/objects';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';

@@ -8,7 +8,7 @@
 	import { formatCategory, formatObjectType } from '$lib/format/satellite';
 	import { formatNumber } from '$lib/format/quantities';
 	import { objectTypeLabel } from '$lib/format/object-type';
-	import { isModifiedClick } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 
 	interface Props {
 		global: GlobalObjectData | null;

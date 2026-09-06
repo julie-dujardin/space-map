@@ -9,7 +9,7 @@
 	} from '$lib/data/solar-system-mass';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
-	import { isModifiedClick } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { asPercent, formatNumber, joinParts } from '$lib/format/quantities';
 	import { formatMass, formatMassRange } from '$lib/format/mass';
 	import * as m from '$lib/paraglide/messages.js';

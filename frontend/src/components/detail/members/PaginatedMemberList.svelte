@@ -17,7 +17,7 @@
 	} from '$lib/search/client';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
-	import { isModifiedClick } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import {
 		applyFeature,
 		applyFocus,

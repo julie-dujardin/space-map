@@ -12,8 +12,8 @@
  */
 
 import type { DepartureMode, Vehicle } from '$lib/math/travel';
-import { getLocale } from '$lib/paraglide/runtime.js';
-import { DATA_BASE } from './data-base';
+import { getLocale } from '$lib/host';
+import { dataBase } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
 
 interface MeasuredEntry {
@@ -123,7 +123,7 @@ function toVehicle(entry: VehicleEntry): Vehicle {
 }
 
 async function loadCatalogue(): Promise<void> {
-	const r = await fetchWithTimeout(`${DATA_BASE}/v1/spacecraft.json`);
+	const r = await fetchWithTimeout(`${dataBase()}/v1/spacecraft.json`);
 	if (!r.ok) {
 		console.warn(`spacecraft: fetch failed (${r.status}) — travel panel has no vehicles`);
 		return;
@@ -134,7 +134,7 @@ async function loadCatalogue(): Promise<void> {
 }
 
 async function loadNames(lang: string): Promise<void> {
-	const r = await fetchWithTimeout(`${DATA_BASE}/v1/spacecraft/${lang}.json`);
+	const r = await fetchWithTimeout(`${dataBase()}/v1/spacecraft/${lang}.json`);
 	if (!r.ok) {
 		// Not fatal: `vehicleName` falls back to the catalogue's English name.
 		console.warn(`spacecraft: no ${lang} name bundle (${r.status}) — falling back to English`);

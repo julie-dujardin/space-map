@@ -7,7 +7,8 @@
 	 * Structure-tab crossrefs; everything else keeps its lead image.
 	 */
 	import type { ChildGroupEntry } from '$lib/fetch/groups/details';
-	import { categoryLabel, CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+	import { CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+	import { categoryLabel } from '$lib/format/group';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 	import PropertyTile from './PropertyTile.svelte';
 

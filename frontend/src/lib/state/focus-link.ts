@@ -8,6 +8,7 @@
  * modified-click test, and the click handler that focuses + flies the camera.
  */
 import type { RouteOption, TripState } from '$lib/travel/trip';
+import { isModifiedClick } from '$lib/modified-click';
 import type { AppState } from './app-state.svelte';
 import type { FocusObject } from './focusable';
 import type { DrawerTab } from './view';
@@ -98,11 +99,6 @@ export function galleryHref(
 /** The URL for the Surface tab narrowed to one quadrangle, or all of them. */
 export function quadHref(appState: AppState | undefined, code: string | null): string | undefined {
 	return appState ? serializeUrl(applyQuad(appState.view, code)) : undefined;
-}
-
-/** A non-primary / modified click (new tab, etc.) — leave it to the browser. */
-export function isModifiedClick(e: MouseEvent): boolean {
-	return e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
 }
 
 /** Click handler that focuses a body in-app (suppressing the href nav), unless

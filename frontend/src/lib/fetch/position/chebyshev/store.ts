@@ -167,7 +167,7 @@ export class ChebyshevStore {
 
 	/**
 	 * Full JD extent of the zone hosting `objectId` — union of all its chunks.
-	 * Distinguishes "jd permanently outside exported coverage" (toast-worthy)
+	 * Distinguishes "jd permanently outside exported coverage" (notice-worthy)
 	 * from "chunk still loading" (transient). Returns null if the body isn't
 	 * tracked or its zone hasn't been seen yet.
 	 */

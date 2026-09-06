@@ -1,13 +1,15 @@
-import { env } from '$env/dynamic/public';
+import { host } from '$lib/host';
 
-export const DATA_BASE = env.PUBLIC_DATA_URL || 'https://static.spacemap.co';
+/** Root of the data export, as the host configured it. */
+export function dataBase(): string {
+	return host().dataUrl;
+}
 
-/**
- * Images ship from their own origin so the frequently-redeployed data tree
- * stays small. Follows an explicit data origin when set — dev's `/data`
- * proxy serves images too — else the prod host.
- */
-export const IMAGES_BASE = env.PUBLIC_DATA_URL || 'https://images.spacemap.co';
+/** Root of the image export; its own origin in production so the
+ *  frequently-redeployed data tree stays small. */
+export function imagesBase(): string {
+	return host().imagesUrl;
+}
 
 /**
  * Per-content-class cache-busting tokens from `metadata.json → versions`.
@@ -29,16 +31,16 @@ export function getDataVersions(): Record<string, string> {
 /**
  * Data URL with its content class's cache-busting token appended as `?v=`,
  * for files under an immutable `Cache-Control` rule. Roots on the
- * revalidating default build straight off `DATA_BASE` instead.
+ * revalidating default build straight off `dataBase()` instead.
  */
 export function versionedUrl(path: string, cls: string): string {
-	return buildVersionedUrl(DATA_BASE, path, cls);
+	return buildVersionedUrl(dataBase(), path, cls);
 }
 
 /** Like `versionedUrl` but against the images origin (always the `images`
  *  content class). */
 export function versionedImageUrl(path: string): string {
-	return buildVersionedUrl(IMAGES_BASE, path, 'images');
+	return buildVersionedUrl(imagesBase(), path, 'images');
 }
 
 function buildVersionedUrl(base: string, path: string, cls: string): string {

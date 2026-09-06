@@ -5,7 +5,8 @@
 import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
 import type { FeatureDetailData } from '$lib/fetch/nomenclature/details';
 import type { GroupDetailData } from '$lib/fetch/groups/details';
-import { categoryLabel, CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+import { CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+import { categoryLabel } from '$lib/format/group';
 import { groupSlugLabel } from '$lib/state/focusable';
 
 export function featureDetailToObjectData(

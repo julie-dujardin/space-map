@@ -1,7 +1,7 @@
 import type { OrbitalElements } from '$lib/types/objects';
-import { dateToJD } from '$lib/format/date';
 import { AU_SCALE, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import { solveKepler, solveKeplerHyperbolic, solveBarker } from './solvers';
+import { dateToJD } from '$lib/time/jd';
 
 const DEG2RAD = Math.PI / 180;
 const COS_EPS = Math.cos(EARTH_OBLIQUITY_DEG * DEG2RAD);

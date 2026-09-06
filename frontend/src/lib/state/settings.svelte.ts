@@ -1,4 +1,5 @@
-import { cookieName, getLocale, setLocale, type Locale } from '$lib/paraglide/runtime.js';
+import type { Locale } from '$lib/paraglide/runtime.js';
+import { getLocale } from '$lib/host';
 import type {
 	AtmosphereCalibration,
 	AtmosphereQualityConfig,
@@ -269,19 +270,10 @@ class SettingsState {
 		this.persist();
 	}
 
-	/**
-	 * Switching language triggers a paraglide reload. 'auto' deletes the cookie
-	 * so preferredLanguage takes over again on next load.
-	 */
+	/** The stored choice only; `switchLanguage` reloads the page into it. */
 	setLanguage(v: LanguageChoice) {
 		this.language = v;
 		this.persist();
-		if (v === 'auto') {
-			document.cookie = `${cookieName}=; path=/; max-age=0`;
-			window.location.reload();
-		} else {
-			setLocale(v);
-		}
 	}
 
 	/** Resolved theme — never 'auto'. */

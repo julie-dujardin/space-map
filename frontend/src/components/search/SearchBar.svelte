@@ -30,10 +30,10 @@
 	import { parseSearchSuffix } from '$lib/search/url';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FilterNode, FilterLeaf } from '$lib/search/tree';
-	import { groupTypeLabelPlural } from '$lib/format/group';
+	import { groupTypeLabelPlural, categoryLabel } from '$lib/format/group';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
-	import { categoryLabel, fetchGroupIndex, CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+	import { fetchGroupIndex, CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import { featureTypeLabel as featureTypeName } from '$lib/format/feature-type';
 	import {
 		smallBodyCategory,

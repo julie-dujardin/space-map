@@ -8,7 +8,7 @@ import {
 	Scene,
 	SphereGeometry
 } from 'three';
-import { bodyMeshColor, resolveBodyColor } from '$lib/utils';
+import { bodyMeshColor, resolveBodyColor } from '$lib/body-color';
 import { MINOR_PROMOTED_IDS } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
 import {
@@ -20,7 +20,7 @@ import {
 } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { createLabel, getLabelVariant } from '../../label/factory';
-import { bodyHref } from '$lib/state/url';
+import { host } from '$lib/host';
 import { attachCanvasForwarders } from '../../label/forward';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../sun';
 import { getAtmosphereParams } from '$lib/fetch/atmospheres';
@@ -147,7 +147,7 @@ export function buildMajorBodies(
 			color,
 			body.data.name ?? '',
 			variant,
-			bodyHref(id, body.data.name ?? ''),
+			host().bodyHref(id, body.data.name ?? ''),
 			() => handleFocus(body),
 			isLarge,
 			onHoverChange ? (hovered) => onHoverChange(id, hovered) : undefined,

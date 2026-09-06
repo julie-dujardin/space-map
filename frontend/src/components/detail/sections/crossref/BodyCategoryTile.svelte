@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { groupTypeLabel } from '$lib/format/group';
-	import { categoryLabel, CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
+	import { groupTypeLabel, categoryLabel } from '$lib/format/group';
+	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
 	import GroupTile from './GroupTile.svelte';
 	import SolarSystemMap from '../../charts/SolarSystemMap.svelte';
 

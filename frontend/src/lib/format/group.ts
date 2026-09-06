@@ -1,5 +1,29 @@
 import * as m from '$lib/paraglide/messages.js';
-import type { GroupType, OrganizationRole, SatelliteCategory } from '$lib/fetch/groups/registry';
+import {
+	CAT_ASTEROIDS,
+	CAT_ATMOSPHERES,
+	CAT_COMETS,
+	CAT_DEBRIS,
+	CAT_DWARF_PLANETS,
+	CAT_MAGNETIC_FIELDS,
+	CAT_MOONS,
+	CAT_OCEANS,
+	CAT_PLANETS,
+	CAT_PROBES,
+	CAT_RADIATION,
+	CAT_RING_SYSTEMS,
+	CAT_SATELLITES,
+	CAT_SATELLITE_SYSTEMS,
+	CAT_SOLAR_SYSTEM,
+	CAT_STRUCTURE_ACTIVITY,
+	CAT_SURFACE_FEATURES,
+	CAT_TECTONICS,
+	CAT_TIDAL_HEATING,
+	CAT_VOLCANISM,
+	type GroupType,
+	type OrganizationRole,
+	type SatelliteCategory
+} from '$lib/fetch/groups/registry';
 
 export function groupTypeLabel(type: GroupType): string {
 	// Several types share the exact label of an object-detail field/link, so they
@@ -107,4 +131,33 @@ export function satelliteCategoryLabel(cat: SatelliteCategory): string {
 		case 'miscellaneous':
 			return m.satellite_category_miscellaneous();
 	}
+}
+
+/** Plural category headers, not the singular Wikidata label. */
+const CATEGORY_NAME: Record<string, () => string> = {
+	[CAT_SOLAR_SYSTEM]: m.category_name_solar_system,
+	[CAT_SATELLITE_SYSTEMS]: m.category_name_satellite_systems,
+	[CAT_PLANETS]: m.category_name_planets,
+	[CAT_DWARF_PLANETS]: m.category_name_dwarf_planets,
+	[CAT_MOONS]: m.category_name_moons,
+	[CAT_RING_SYSTEMS]: m.category_name_ring_systems,
+	[CAT_ASTEROIDS]: m.category_name_asteroids,
+	[CAT_COMETS]: m.category_name_comets,
+	[CAT_SATELLITES]: m.category_name_satellites,
+	[CAT_DEBRIS]: m.category_name_debris,
+	[CAT_PROBES]: m.category_name_probes,
+	[CAT_SURFACE_FEATURES]: m.category_name_surface_features,
+	[CAT_STRUCTURE_ACTIVITY]: m.category_name_structure_activity,
+	[CAT_ATMOSPHERES]: m.category_name_atmospheres,
+	[CAT_OCEANS]: m.category_name_oceans,
+	[CAT_VOLCANISM]: m.category_name_volcanism,
+	[CAT_TECTONICS]: m.category_name_tectonics,
+	[CAT_MAGNETIC_FIELDS]: m.category_name_magnetic_fields,
+	[CAT_TIDAL_HEATING]: m.category_name_tidal_heating,
+	[CAT_RADIATION]: m.category_name_radiation
+};
+
+/** Localized display name for a `cat-` slug; the raw slug if unknown. */
+export function categoryLabel(slug: string): string {
+	return CATEGORY_NAME[slug]?.() ?? slug;
 }

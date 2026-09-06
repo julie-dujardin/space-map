@@ -7,7 +7,7 @@
  * either subject.
  */
 
-import { dateToJD, jdToDate } from '$lib/format/date';
+import { dateToJD, jdToDate } from '$lib/time/jd';
 
 /** A stretch of time on the strip. An instant has `endJd === startJd`. */
 export interface TimelineSpan {

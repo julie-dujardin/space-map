@@ -7,7 +7,6 @@
  */
 
 import type { Snippet } from 'svelte';
-import * as m from '$lib/paraglide/messages.js';
 import { imageLabel } from './images';
 import type { ImageGalleryData, ObjectImage } from './object-data';
 
@@ -80,15 +79,6 @@ export function heroImage(source: GallerySource | null | undefined): ObjectImage
 	return source?.images?.[0] ?? source?.galleries?.[0]?.images?.[0];
 }
 
-/** Titles for the shelves the exporter names by kind rather than by subject:
- *  the body's own aspects first, then the shelves about other things. */
-const POOLED_TITLES: Record<string, () => string> = {
-	[ATMOSPHERE_GALLERY]: m.atmosphere,
-	interior: m.interior,
-	[FEATURES_GALLERY]: m.features_section,
-	[MOONS_GALLERY]: m.moons_section
-};
-
 /** Shelf order mirroring the drawer's tab bar: the object's own pictures
  *  lead, then one shelf per aspect. A shelf naming a subject rather than an
  *  aspect (a collection's members) has no tab to follow and trails behind. */
@@ -107,14 +97,16 @@ function shelfRank(key: string): number {
 }
 
 /**
- * Assemble the shelves for one page. `subjectName` resolves a pooled entry's
- * subject (an Object.id, or an IAU feature id) to its localized name — the
- * caller owns that, since the names ride in the localized bundle.
+ * Assemble the shelves for one page. The caller owns the words: `subjectName`
+ * resolves a pooled entry's subject (an Object.id, or an IAU feature id) to
+ * its localized name, `shelfTitle` names the shelves the exporter keys by
+ * kind (rings, atmosphere, …); a shelf neither knows falls back to its key.
  */
 export function buildGalleries(
 	source: GallerySource | undefined,
 	displayName: string,
-	subjectName?: (subject: string) => string | undefined
+	subjectName?: (subject: string) => string | undefined,
+	shelfTitle?: (key: string) => string | undefined
 ): Gallery[] {
 	if (!source) return [];
 	const out: Gallery[] = [];
@@ -122,15 +114,18 @@ export function buildGalleries(
 		out.push({ key: MAIN_GALLERY, title: displayName, images: source.images });
 	}
 	if (source.ring_images?.length) {
-		out.push({ key: RINGS_GALLERY, title: m.tab_rings(), images: source.ring_images });
+		out.push({
+			key: RINGS_GALLERY,
+			title: shelfTitle?.(RINGS_GALLERY) ?? RINGS_GALLERY,
+			images: source.ring_images
+		});
 	}
 	for (const gallery of source.galleries ?? []) {
 		if (!gallery.images?.length) continue;
-		const pooled = POOLED_TITLES[gallery.key];
 		const named = gallery.subject ? subjectName?.(gallery.subject) : undefined;
 		out.push({
 			key: gallery.key,
-			title: pooled ? pooled() : (named ?? gallery.key),
+			title: shelfTitle?.(gallery.key) ?? named ?? gallery.key,
 			images: gallery.images,
 			subjectId: gallery.subject
 		});

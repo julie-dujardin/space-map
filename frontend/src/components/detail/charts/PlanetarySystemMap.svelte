@@ -10,7 +10,8 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
-	import { focusHref, focusClick, isModifiedClick } from '$lib/state/focus-link';
+	import { focusHref, focusClick } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import { fetchSatOrbitSamples } from '$lib/fetch/groups/sat-orbit-samples';
 	import type { EarthOrbitSample } from '$lib/charts/orbit-zones';

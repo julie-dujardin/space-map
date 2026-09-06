@@ -10,7 +10,6 @@ import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
 import { SSB_ID } from '$lib/constants';
 import {
-	categoryLabel,
 	CATEGORY_SLUG_PREFIX,
 	CAT_ASTEROIDS,
 	CAT_COMETS,
@@ -28,6 +27,7 @@ import {
 	FEATURE_TYPE_SLUG_PREFIX,
 	smallBodyCategory
 } from '$lib/fetch/groups/registry';
+import { categoryLabel } from '$lib/format/group';
 import { classifyEarthOrbit, classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 import { isPropertyCollection } from './category-config';
 import type { Focusable } from './focusable';

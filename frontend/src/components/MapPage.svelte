@@ -4,7 +4,7 @@
 	import Scene from './Scene.svelte';
 	import { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import { SimClock } from '$lib/scene/state/clock.svelte';
-	import { dateToJD, formatJulianDate, jdToDate } from '$lib/format/date';
+	import { formatJulianDate } from '$lib/format/date';
 	import { ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
@@ -30,6 +30,7 @@
 	import { frameOptions } from './travel-frame/frame-options';
 	import { ringBrightnessOptions } from './rings/brightness-options';
 	import type { Hazard } from '$lib/travel/hazards';
+	import { labelHazards } from '$lib/travel/hazard-labels';
 	import type { TimelineEntry, TimelineFocus } from '$lib/travel/timeline';
 	// Lazy-loaded on first focus so its charts (d3-scale/d3-shape/layercake) and
 	// member lists split out of the initial map chunk.
@@ -99,6 +100,7 @@
 	import LoadingBar from './LoadingBar.svelte';
 	import { startPageReload } from '$lib/reload';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
+	import { dateToJD, jdToDate } from '$lib/time/jd';
 
 	const ctx = new ContextManager();
 	setContext('ctx', ctx);
@@ -382,7 +384,7 @@
 		travelDrawQueued = true;
 		queueMicrotask(() => {
 			travelDrawQueued = false;
-			scene?.setTravelPath(travelPlan, travelOptions, travelHazards, travelSteps());
+			scene?.setTravelPath(travelPlan, travelOptions, labelHazards(travelHazards), travelSteps());
 		});
 	}
 

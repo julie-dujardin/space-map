@@ -5,12 +5,15 @@
 import type { Snippet } from 'svelte';
 import {
 	ATMOSPHERE_GALLERY,
-	buildGalleries,
 	findGallery,
 	heroImage,
 	imageCount,
 	type Gallery,
-	type ShelfLink
+	type ShelfLink,
+	buildGalleries,
+	FEATURES_GALLERY,
+	MOONS_GALLERY,
+	RINGS_GALLERY
 } from '$lib/fetch/objects/galleries';
 import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 import { pickImageUrl } from '$lib/fetch/objects/images';
@@ -23,6 +26,15 @@ import { applyFeature, serializeUrl } from '$lib/state/url';
 import { SHELF_TABS } from '../tab-visibility';
 import type { DrawerTab } from '$lib/state/view';
 import * as m from '$lib/paraglide/messages.js';
+
+/** Titles for the shelves the exporter names by kind rather than by subject. */
+const SHELF_TITLES: Record<string, () => string> = {
+	[ATMOSPHERE_GALLERY]: m.atmosphere,
+	interior: m.interior,
+	[FEATURES_GALLERY]: m.features_section,
+	[MOONS_GALLERY]: m.moons_section,
+	[RINGS_GALLERY]: m.tab_rings
+};
 
 export interface GalleryStateDeps {
 	isGroupMode: () => boolean;
@@ -98,7 +110,8 @@ export class GalleryState {
 			buildGalleries(
 				(d.isGroupMode() ? d.groupDetail()?.global : d.data()?.global) ?? undefined,
 				d.displayName(),
-				(subject) => this.subjectNames.get(subject)
+				(subject) => this.subjectNames.get(subject),
+				(key) => SHELF_TITLES[key]?.()
 			)
 		);
 		this.activeGallery = $derived(findGallery(this.galleries, d.appState()?.view.gallery ?? null));

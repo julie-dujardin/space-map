@@ -29,7 +29,6 @@ import {
 	type GroupDetailData
 } from '$lib/fetch/groups/details';
 import {
-	categoryLabel,
 	fetchGroupIndex,
 	CAT_DEBRIS,
 	CAT_DWARF_PLANETS,
@@ -40,6 +39,7 @@ import {
 	CAT_SOLAR_SYSTEM,
 	CAT_STRUCTURE_ACTIVITY
 } from '$lib/fetch/groups/registry';
+import { categoryLabel } from '$lib/format/group';
 import { canBePlaced } from '$lib/fetch/objects/global-body';
 import {
 	fetchObjectDetail,

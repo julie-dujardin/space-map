@@ -185,7 +185,7 @@ export class FocusController {
 	}
 
 	/** Pan to frame `body` without changing the focused body — used to re-center on
-	 *  the parent when focus goes out of range, keeping the "no data" toast on the original. */
+	 *  the parent when focus goes out of range, keeping the "no data" notice on the original. */
 	panCameraToBody(body: PositionedBody): void {
 		if (body.positionUnknown) return;
 		const { focus, camera } = this.deps;

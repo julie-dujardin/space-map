@@ -12,7 +12,8 @@
 	 * memoizes by URL.
 	 */
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
-	import { categoryLabel, CAT_STRUCTURE_ACTIVITY, CAT_VOLCANISM } from '$lib/fetch/groups/registry';
+	import { CAT_STRUCTURE_ACTIVITY, CAT_VOLCANISM } from '$lib/fetch/groups/registry';
+	import { categoryLabel } from '$lib/format/group';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import { formatCompactNumber, joinParts } from '$lib/format/quantities';
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';

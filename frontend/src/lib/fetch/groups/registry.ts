@@ -4,9 +4,8 @@
  * without paying for the per-group detail bundle.
  */
 
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { dataBase } from '$lib/fetch/data-base';
 import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
-import * as m from '$lib/paraglide/messages.js';
 
 export type GroupType =
 	| 'constellation'
@@ -69,35 +68,6 @@ export const CAT_TECTONICS = `${CATEGORY_SLUG_PREFIX}tectonics`;
 export const CAT_MAGNETIC_FIELDS = `${CATEGORY_SLUG_PREFIX}magnetic-fields`;
 export const CAT_TIDAL_HEATING = `${CATEGORY_SLUG_PREFIX}tidal-heating`;
 export const CAT_RADIATION = `${CATEGORY_SLUG_PREFIX}radiation`;
-
-/** Plural category headers, not the singular Wikidata label. */
-const CATEGORY_NAME: Record<string, () => string> = {
-	[CAT_SOLAR_SYSTEM]: m.category_name_solar_system,
-	[CAT_SATELLITE_SYSTEMS]: m.category_name_satellite_systems,
-	[CAT_PLANETS]: m.category_name_planets,
-	[CAT_DWARF_PLANETS]: m.category_name_dwarf_planets,
-	[CAT_MOONS]: m.category_name_moons,
-	[CAT_RING_SYSTEMS]: m.category_name_ring_systems,
-	[CAT_ASTEROIDS]: m.category_name_asteroids,
-	[CAT_COMETS]: m.category_name_comets,
-	[CAT_SATELLITES]: m.category_name_satellites,
-	[CAT_DEBRIS]: m.category_name_debris,
-	[CAT_PROBES]: m.category_name_probes,
-	[CAT_SURFACE_FEATURES]: m.category_name_surface_features,
-	[CAT_STRUCTURE_ACTIVITY]: m.category_name_structure_activity,
-	[CAT_ATMOSPHERES]: m.category_name_atmospheres,
-	[CAT_OCEANS]: m.category_name_oceans,
-	[CAT_VOLCANISM]: m.category_name_volcanism,
-	[CAT_TECTONICS]: m.category_name_tectonics,
-	[CAT_MAGNETIC_FIELDS]: m.category_name_magnetic_fields,
-	[CAT_TIDAL_HEATING]: m.category_name_tidal_heating,
-	[CAT_RADIATION]: m.category_name_radiation
-};
-
-/** Localized display name for a `cat-` slug; the raw slug if unknown. */
-export function categoryLabel(slug: string): string {
-	return CATEGORY_NAME[slug]?.() ?? slug;
-}
 
 /** Slug suffix → flag bit mask. Mirrors `ELEMENTS_FLAG_*` in
  *  `$lib/fetch/position/elements/parse.ts`. */
@@ -198,7 +168,7 @@ export async function featureTypeSlug(code: string): Promise<string | undefined>
 
 export function fetchGroupIndex(): Promise<GroupIndex> {
 	if (pending) return pending;
-	const p = fetchWithTimeout(`${DATA_BASE}/v1/groups/__index__.json`).then((r) => {
+	const p = fetchWithTimeout(`${dataBase()}/v1/groups/__index__.json`).then((r) => {
 		if (!r.ok) throw new Error(`Failed to fetch group index: ${r.status}`);
 		return r.json() as Promise<GroupIndex>;
 	});

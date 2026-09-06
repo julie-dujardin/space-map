@@ -3,10 +3,10 @@
  * hash-bucketing scheme as object bundles (sha256-first-4-bytes % N).
  */
 
-import { getLocale } from '$lib/paraglide/runtime.js';
+import { getLocale } from '$lib/host';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
 import { fetchGzipBundle } from '$lib/fetch/bundle-cache';
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { dataBase } from '$lib/fetch/data-base';
 import type {
 	CitedWork,
 	EntityRef,
@@ -375,12 +375,12 @@ export async function fetchGroupDetail(slug: string, lang = getLocale()): Promis
 	]);
 
 	const globalPromise = fetchGzipBundle<GlobalGroupData>(
-		`${DATA_BASE}/v1/groups/__global__/${globalBucket}.json.gz`
+		`${dataBase()}/v1/groups/__global__/${globalBucket}.json.gz`
 	);
 	const localizedPromise: Promise<LocalizedGroupData | undefined> =
 		nLocalized > 0 && localizedBucket >= 0
 			? fetchGzipBundle<LocalizedGroupData>(
-					`${DATA_BASE}/v1/groups/${lang}/${localizedBucket}.json.gz`
+					`${dataBase()}/v1/groups/${lang}/${localizedBucket}.json.gz`
 				).then((b) => b[slug])
 			: Promise.resolve(undefined);
 

@@ -1,9 +1,8 @@
 import { MeshStandardMaterial, type Scene, type Texture, type TextureLoader } from 'three';
-import { bodyMeshColor } from '$lib/utils';
+import { bodyMeshColor } from '$lib/body-color';
 import { kmToScene } from '$lib/math/units';
 import { ObjectType } from '$lib/types/objects';
 import { versionedUrl } from '$lib/fetch/data-base';
-import { jdToDate } from '$lib/format/date';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { getSettings } from '$lib/state/settings.svelte';
 import { isLowEndDevice } from '$lib/device';
@@ -17,6 +16,7 @@ import { syncSunTransmittanceUniforms } from '../surface/sun-transmittance';
 import { setShapeModelMap, setSurfaceMap } from './model-texture';
 import type { BodyObjects } from '../../types';
 import { applyBodyOrientation } from './orientation-apply';
+import { jdToDate } from '$lib/time/jd';
 
 /** Ordered tier names: lower → higher resolution. Index = rank. */
 export const TIER_NAMES = ['low', 'medium', 'high'] as const;

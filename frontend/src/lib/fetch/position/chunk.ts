@@ -31,7 +31,6 @@ import { rowId, rowKey } from '$lib/fetch/position/elements/parse';
 import { parsePosition } from '$lib/fetch/position/parse';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
 import { AU_KM, AU_SCALE, KM3_S2_TO_AU3_DAY2, KM_DAY_TO_AU_DAY, kmToScene } from '$lib/math/units';
-import { dateToJD } from '$lib/format/date';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import { chebyshevPositionScene, chebyshevStateKm } from '$lib/fetch/position/chebyshev/propagate';
 import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
@@ -44,6 +43,7 @@ import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { NUM_TRAIL_POINTS } from '$lib/scene/objects/trail/points';
+import { dateToJD } from '$lib/time/jd';
 
 /** Position-only materialization (moon-host parents) doesn't need names. */
 const NO_LABELS: LabelMap = new Map();

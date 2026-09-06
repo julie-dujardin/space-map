@@ -10,7 +10,7 @@ import {
 	nextTransferWindows
 } from '$lib/math/travel';
 import { EARTH, J2000, JUPITER, MARS, VENUS } from '$lib/math/travel/test-fixtures';
-import { dateToJD } from '$lib/format/date';
+import { dateToJD } from '$lib/time/jd';
 
 const MARS_WINDOW = nextTransferWindows(EARTH, MARS, J2000, 1)[0];
 const MARS_TOF = hohmannTransferDays(EARTH, MARS)!;

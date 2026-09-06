@@ -97,6 +97,11 @@ export interface Hazard {
 	bands: readonly HazardBand[];
 }
 
+/** A hazard with its chip text already formatted, for the scene to show verbatim. */
+export interface LabelledHazard extends Hazard {
+	label: string;
+}
+
 /**
  * How finely the trajectory is walked, days per sample.
  *

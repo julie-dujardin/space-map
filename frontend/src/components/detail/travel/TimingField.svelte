@@ -12,12 +12,13 @@
 	import { type DateValue } from '@internationalized/date';
 	import * as Popover from '$lib/components/ui/popover';
 	import { Calendar } from '$lib/components/ui/calendar';
-	import { PICKER_MAX_DATE, PICKER_MIN_DATE } from '$lib/scene/time-scales';
-	import { dateToJD, formatJulianDate, jdToDate } from '$lib/format/date';
+	import { PICKER_MAX_DATE, PICKER_MIN_DATE } from '$lib/time/time-scales';
+	import { formatJulianDate } from '$lib/format/date';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { TimeMode } from '$lib/travel/trip';
 	import { jdToCalendarDate } from '../../time/clock-pickers';
+	import { dateToJD, jdToDate } from '$lib/time/jd';
 
 	interface Props {
 		mode: TimeMode;

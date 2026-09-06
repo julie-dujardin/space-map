@@ -6,7 +6,7 @@
  * `data/src/space_map_data/export/nomenclature/writer.py`.
  */
 
-import { getLocale } from '$lib/paraglide/runtime.js';
+import { getLocale } from '$lib/host';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
 import { fetchGzipBundle } from '$lib/fetch/bundle-cache';
 import { versionedUrl } from '$lib/fetch/data-base';

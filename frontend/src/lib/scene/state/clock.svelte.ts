@@ -1,6 +1,4 @@
-import { dateToJD } from '$lib/format/date';
-
-const MS_PER_DAY = 86_400_000;
+import { dateToJD, MS_PER_DAY } from '$lib/time/jd';
 
 /** How long a scrub has to hold still to count as come to rest. */
 const SETTLE_MS = 400;

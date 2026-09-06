@@ -4,7 +4,7 @@ import { effectiveRadiusKm } from '$lib/types/objects';
 import { isLowEndDevice } from '$lib/device';
 import { applyOrientation } from '$lib/math/orientation';
 import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { dataBase } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
 import { attachSunTransmittanceToBody } from '../surface/sun-transmittance';
@@ -100,7 +100,7 @@ export async function loadSystemData(
 ): Promise<void> {
 	let meta: Record<string, SystemBodyMeta>;
 	try {
-		const resp = await fetch(`${DATA_BASE}/v1/systems/${barycenterId}.json`);
+		const resp = await fetch(`${dataBase()}/v1/systems/${barycenterId}.json`);
 		if (!resp.ok) return;
 		meta = await resp.json();
 	} catch {

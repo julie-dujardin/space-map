@@ -1,5 +1,5 @@
 import { type CanvasTexture, type Points, type PointsMaterial, type Scene } from 'three';
-import { resolveBodyColor } from '$lib/utils';
+import { resolveBodyColor } from '$lib/body-color';
 import { BODY_COLORS } from '$lib/constants';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';

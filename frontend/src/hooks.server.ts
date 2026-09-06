@@ -1,7 +1,14 @@
 import { sequence } from '@sveltejs/kit/hooks';
-import type { Handle } from '@sveltejs/kit';
+import type { Handle, ServerInit } from '@sveltejs/kit';
+import { configureHost } from '$lib/host';
+import { KIT_HOST } from '$lib/state/kit-host';
 import { paraglideMiddleware } from '$lib/paraglide/server';
 import { getTextDirection } from '$lib/paraglide/runtime';
+
+// Data origins and language for the core's server-side callers (SEO meta).
+export const init: ServerInit = () => {
+	configureHost(KIT_HOST);
+};
 
 // Resolve the request locale (cookie → Accept-Language) and stamp it onto the
 // shell so the server-rendered <html> ships the right lang/dir. Without this

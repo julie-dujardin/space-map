@@ -4,7 +4,7 @@
  * only holds the active system's moons. Fetched once and cached.
  */
 
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { dataBase } from '$lib/fetch/data-base';
 
 export interface PlanetarySystemsMapMoon {
 	id: string;
@@ -32,7 +32,7 @@ let pending: Promise<PlanetarySystemsMapFile> | null = null;
 export function fetchPlanetarySystemsMap(): Promise<PlanetarySystemsMapFile> {
 	if (pending) return pending;
 	pending = (async () => {
-		const res = await fetch(`${DATA_BASE}/v1/groups/__planetary_systems_map__.json.gz`);
+		const res = await fetch(`${dataBase()}/v1/groups/__planetary_systems_map__.json.gz`);
 		if (!res.ok) throw new Error(`Failed to fetch planetary systems map: ${res.status}`);
 		const ds = new DecompressionStream('gzip');
 		return (await new Response(res.body!.pipeThrough(ds)).json()) as PlanetarySystemsMapFile;

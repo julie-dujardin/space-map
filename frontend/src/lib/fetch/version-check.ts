@@ -1,4 +1,4 @@
-import { DATA_BASE, getDataVersions } from '$lib/fetch/data-base';
+import { dataBase, getDataVersions } from '$lib/fetch/data-base';
 
 /**
  * Redeploy detection. `?v=` tokens are query strings on stable paths, so after a
@@ -7,7 +7,7 @@ import { DATA_BASE, getDataVersions } from '$lib/fetch/data-base';
  */
 async function dataVersionChanged(): Promise<boolean> {
 	try {
-		const res = await fetch(`${DATA_BASE}/v1/metadata.json`, { cache: 'no-store' });
+		const res = await fetch(`${dataBase()}/v1/metadata.json`, { cache: 'no-store' });
 		if (!res.ok) return false;
 		const meta = (await res.json()) as { versions?: Record<string, string> };
 		const live = getDataVersions();

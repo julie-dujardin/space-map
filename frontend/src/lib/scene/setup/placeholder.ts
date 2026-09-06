@@ -3,11 +3,11 @@ import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { bodyDataFromGlobal, unplacedBodyDataFromGlobal } from '$lib/fetch/objects/global-body';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
-import { dateToJD } from '$lib/format/date';
 import { fetchLabels } from '$lib/fetch/position/labels';
 import { MinorBucket } from '$lib/fetch/position/minor-columns';
 import type { ChunkLoader } from '$lib/fetch/position/chunk';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import { dateToJD } from '$lib/time/jd';
 
 /**
  * Placeholder PositionedBodies from the __global__ object file. If the

@@ -14,7 +14,7 @@
  * that can't embed (SVG/WebM, oversize payloads) ship the sidecar instead.
  */
 
-import { getLocale } from '$lib/paraglide/runtime.js';
+import { getLocale } from '$lib/host';
 import { versionedImageUrl } from '$lib/fetch/data-base';
 import type { ImageVariants, ObjectImage } from './object-data';
 

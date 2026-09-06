@@ -15,7 +15,7 @@ import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import * as m from '$lib/paraglide/messages.js';
-import { resolveBodyColor } from '$lib/utils';
+import { resolveBodyColor } from '$lib/body-color';
 import { buildLineup, geometryFromMember } from './lineup';
 import { fetchMoonDiscovery, type MoonDiscoveryFile } from '$lib/fetch/groups/moon-discovery';
 import type { PlanetarySystemsMapEntry } from '$lib/fetch/groups/planetary-systems-map';

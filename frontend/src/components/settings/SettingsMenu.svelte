@@ -13,6 +13,7 @@
 		type AtmosphereQualityTier
 	} from '$lib/scene/objects/surface/atmosphere-quality';
 	import { recalibrateAtmosphere } from '$lib/scene/perf/atmosphere-calibration';
+	import { switchLanguage } from '$lib/state/language';
 
 	const settings = getSettings();
 
@@ -136,7 +137,7 @@
 							value={settings.language}
 							onchange={(e) => {
 								const v = (e.currentTarget as HTMLSelectElement).value;
-								settings.setLanguage(v === 'auto' ? 'auto' : (v as Locale));
+								switchLanguage(v === 'auto' ? 'auto' : (v as Locale));
 							}}
 						>
 							<option value="auto">{m.settings_auto()}</option>

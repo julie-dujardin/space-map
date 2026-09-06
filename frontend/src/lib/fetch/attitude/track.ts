@@ -7,7 +7,7 @@
  */
 
 import { Matrix4, Quaternion, Vector3 } from 'three';
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { dataBase } from '$lib/fetch/data-base';
 import type { ProbeAttitude } from '$lib/fetch/objects/object-data';
 import { parseAttitudeChunk, type AttitudeChunk } from './parse';
 
@@ -172,7 +172,7 @@ export class AttitudeTrack {
 	private async load(i: number): Promise<void> {
 		const file = this.files[i];
 		try {
-			const res = await fetch(`${DATA_BASE}/v1/attitude/${this.probeId}/${file.name}`);
+			const res = await fetch(`${dataBase()}/v1/attitude/${this.probeId}/${file.name}`);
 			if (!res.ok) throw new Error(`${res.status}`);
 			const ds = new DecompressionStream('gzip');
 			const buf = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();

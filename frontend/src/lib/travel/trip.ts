@@ -10,7 +10,7 @@
  * on every page load, and the kernel is a chunk only the planner pulls in.
  */
 
-import { dateToJD, jdToDate } from '$lib/format/date';
+import { dateToJD, jdToDate } from '$lib/time/jd';
 import type { AeroAssist, RouteProfile } from '$lib/math/travel';
 
 /**

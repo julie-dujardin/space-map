@@ -6,7 +6,8 @@
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { atmosphereNote, atmosphereTypeName } from '$lib/charts/atmosphere-layers';
 	import { structureLink } from '$lib/charts/structure-link';
-	import { isModifiedClick, tabHref } from '$lib/state/focus-link';
+	import { tabHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { formatPressure, pressureLevelLabel, formatEarthRatio } from '$lib/format/pressure';
 	import { ucfirst } from '$lib/format/quantities';
 	import { ltrIsolate } from '$lib/format/bidi';

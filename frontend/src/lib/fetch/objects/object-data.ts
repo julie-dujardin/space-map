@@ -1,4 +1,4 @@
-import { getLocale } from '$lib/paraglide/runtime.js';
+import { getLocale } from '$lib/host';
 import { fetchMetadata, hashBucket, type ProbeCoverage } from '$lib/fetch/metadata';
 import { fetchGzipBundle } from '$lib/fetch/bundle-cache';
 import { versionedUrl } from '$lib/fetch/data-base';

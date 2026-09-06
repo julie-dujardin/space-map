@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { ChildGroupEntry } from '$lib/fetch/groups/details';
-	import { categoryLabel, CATEGORY_SLUG_PREFIX, type GroupType } from '$lib/fetch/groups/registry';
-	import { groupTypeLabelPlural } from '$lib/format/group';
+	import { CATEGORY_SLUG_PREFIX, type GroupType } from '$lib/fetch/groups/registry';
+	import { groupTypeLabelPlural, categoryLabel } from '$lib/format/group';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 	import ZoneChip from './kit/ZoneChip.svelte';
 

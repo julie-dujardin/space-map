@@ -14,7 +14,7 @@ import type { LabelMap } from '$lib/fetch/position/labels';
 import type { PositionedBody } from '$lib/types/objects';
 import { materializeBodyData, fillOrbitColumnRow } from '$lib/fetch/position/elements/row';
 import { allocColumns, type OrbitColumns } from '$lib/math/orbit/soa';
-import { resolveBodyColor } from '$lib/utils';
+import { resolveBodyColor } from '$lib/body-color';
 import { MIN_BODIES_PER_BUCKET, hashString } from '$lib/math/orbit/partition';
 import { yieldToMain } from '$lib/yield';
 import { RefIndex } from '$lib/fetch/position/ref-index';

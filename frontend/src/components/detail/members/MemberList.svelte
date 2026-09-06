@@ -4,7 +4,7 @@
 	import type { NotableMemberEntry } from '$lib/fetch/groups/details';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
-	import { isModifiedClick } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { applyFocus, applyGroup, serializeUrl, urlTypeFromId } from '$lib/state/url';
 	import { formatQuantity } from '$lib/format/quantities';
 	import { m } from '$lib/paraglide/messages';

@@ -13,7 +13,8 @@
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { EARTH_ID } from '$lib/constants';
-	import { isModifiedClick, navHref } from '$lib/state/focus-link';
+	import { navHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { transferPlan } from '$lib/travel/travel-body';
 
 	interface Props {

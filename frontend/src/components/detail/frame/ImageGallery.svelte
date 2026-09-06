@@ -3,7 +3,8 @@
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
 	import { imageSrcset, smallestVariantUrl } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { imageHref, isModifiedClick } from '$lib/state/focus-link';
+	import { imageHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 
 	interface Props {
 		images: ObjectImage[];

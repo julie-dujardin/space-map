@@ -22,7 +22,6 @@ import {
 	zoneLayers,
 	type Metadata
 } from '$lib/fetch/metadata';
-import { dateToJD } from '$lib/format/date';
 import { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import { ProbeStore } from '$lib/fetch/position/probes/store';
 import { ZoneRefresher } from '$lib/scene/zone-refresher';
@@ -34,6 +33,7 @@ import { passengerFor, type PassengerGraft } from '$lib/fetch/position/probes/pa
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getSettings } from '$lib/state/settings.svelte';
 import { loadProgress } from '$lib/scene/state/load-progress.svelte';
+import { dateToJD } from '$lib/time/jd';
 
 interface MinorChunkArg {
 	zone: string;

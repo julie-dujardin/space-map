@@ -48,7 +48,9 @@ describe('buildGalleries', () => {
 					{ key: 'features', images: [image('f.jpg', 14940)] }
 				]
 			},
-			'Jupiter'
+			'Jupiter',
+			undefined,
+			(key) => ({ features: 'Features', moons: 'Moons' })[key]
 		);
 		expect(galleries.map((g) => g.key)).toEqual([
 			MAIN_GALLERY,
@@ -57,8 +59,8 @@ describe('buildGalleries', () => {
 			RINGS_GALLERY,
 			'moons'
 		]);
-		expect(galleries[1].title).not.toBe('features');
-		expect(galleries[4].title).not.toBe('moons');
+		expect(galleries[1].title).toBe('Features');
+		expect(galleries[4].title).toBe('Moons');
 	});
 
 	// A collection's member shelves name a body, not an aspect, so no tab

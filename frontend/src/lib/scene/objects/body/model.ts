@@ -19,7 +19,7 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { kmToScene, sceneToKm } from '$lib/math/units';
 import { frameMapQuaternion } from '$lib/math/orientation';
-import { bodyMeshColor } from '$lib/utils';
+import { bodyMeshColor } from '$lib/body-color';
 import { getSettings } from '$lib/state/settings.svelte';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
