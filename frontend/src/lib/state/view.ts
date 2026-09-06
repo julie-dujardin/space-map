@@ -1,4 +1,9 @@
-import { EARTH_ID } from '$lib/constants';
+import {
+	DEFAULT_FOCUS_ID,
+	DEFAULT_FRAMING_LAT,
+	DEFAULT_FRAMING_LON,
+	DEFAULT_ZOOM
+} from '$lib/scene/framing';
 import { DEFAULT_TRIP, type TripState } from '$lib/travel/trip';
 
 /** URL path discriminator. Body types map 1:1 to ID prefix; Feature is a
@@ -162,17 +167,9 @@ export interface NavPlace {
 	padCode?: string | null;
 }
 
-/** Default vantage angle for a body framed with no explicit camera (search, click, group). */
-export const DEFAULT_FRAMING_LAT = 45;
-export const DEFAULT_FRAMING_LON = 0;
-/** Wide heliocentric framing for Sun-anchored group pages. */
-export const SUN_VIEW_ZOOM = 42.43;
-/** Landing-view tilt above the ecliptic, looking sunward from Earth. */
-export const DEFAULT_VIEW_ELEVATION_DEG = 30;
-
 export const DEFAULT_VIEW: MapViewState = {
 	type: UrlType.Body,
-	id: EARTH_ID,
+	id: DEFAULT_FOCUS_ID,
 	// Empty until the body resolves its localized name (replaceFocusName) — a
 	// hardcoded "Earth" would flash the wrong language for non-English locales.
 	name: '',
@@ -181,7 +178,7 @@ export const DEFAULT_VIEW: MapViewState = {
 	// Serialized fallback only — the landing snap places the camera sunward and writes lat/lon back.
 	latitude: DEFAULT_FRAMING_LAT,
 	longitude: DEFAULT_FRAMING_LON,
-	zoom: 15, // ~1.5 AU from Earth
+	zoom: DEFAULT_ZOOM,
 	imageIndex: null,
 	gallery: null,
 	featureId: null,

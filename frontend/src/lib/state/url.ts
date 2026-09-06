@@ -13,11 +13,11 @@ import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
 import { isLagrangeClass } from '$lib/math/orbit/lagrange';
 import { DEFAULT_TRIP, parseTrip, serializeTripSuffix, type TripState } from '$lib/travel/trip';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
+import { SUN_VIEW_ZOOM } from '$lib/scene/framing';
 import { formatNavEnd, isBodyId, NAV_UNSET, parseNavEnd } from './nav-end';
 import {
 	DEFAULT_VIEW,
 	DRAWER_TABS,
-	SUN_VIEW_ZOOM,
 	UrlType,
 	urlTypeFromId,
 	urlTypeToIdPrefix,

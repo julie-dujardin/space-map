@@ -3,7 +3,7 @@ import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ObjectType, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { cartesianToSpherical, offsetFacing, sphericalToCartesian } from '$lib/math/spherical';
-import type { BodyObjects, Callbacks } from '$lib/scene/types';
+import type { BodyObjects, Callbacks, CameraView } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import {
@@ -26,7 +26,7 @@ import {
 	type FocusState
 } from '$lib/scene/animation/focus';
 import { f64dist, type Vec3 } from '$lib/scene/animation/math';
-import { getSettings } from '$lib/state/settings.svelte';
+import { sceneSettings } from '$lib/scene/settings';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
 import type { SystemDataLoader } from '$lib/scene/system-data/loader';
 import { PromotionRegistry, type PromotionDeps } from './promotion';
@@ -58,7 +58,7 @@ export class FocusController {
 	private readonly _tmpV3 = new Vector3();
 	/** Initial lat/lon/zoom stashed until orientation loads and the camera can be
 	 *  re-placed in body-fixed coords. Cleared once applied or once moved. */
-	private pendingInitialView: { latitude: number; longitude: number; zoom: number } | null = null;
+	private pendingInitialView: CameraView | null = null;
 	/** Members of the last {@link syncUpgradeTargets} pass. */
 	private upgradeTargetIds = new Set<string>();
 
@@ -93,7 +93,7 @@ export class FocusController {
 		return this.focusedBody;
 	}
 
-	setPendingInitialView(view: { latitude: number; longitude: number; zoom: number }): void {
+	setPendingInitialView(view: CameraView): void {
 		this.pendingInitialView = view;
 	}
 
@@ -195,7 +195,7 @@ export class FocusController {
 			camera,
 			this.cameraTruePos(),
 			undefined,
-			getSettings().resolvedReducedMotion
+			sceneSettings().resolvedReducedMotion
 		);
 	}
 
@@ -225,7 +225,7 @@ export class FocusController {
 			camera,
 			camWorld,
 			camPos,
-			getSettings().resolvedReducedMotion
+			sceneSettings().resolvedReducedMotion
 		);
 		const spherical = cartesianToSpherical(camPos ?? camWorld, position, undefined);
 		callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);
@@ -306,7 +306,7 @@ export class FocusController {
 				camera,
 				this.cameraTruePos(),
 				camPos,
-				getSettings().resolvedReducedMotion
+				sceneSettings().resolvedReducedMotion
 			);
 		}
 		// Re-emit: the clear button excludes the focused body, so it must stay in sync.
@@ -379,7 +379,7 @@ export class FocusController {
 					camera,
 					this.cameraTruePos(),
 					camPos,
-					getSettings().resolvedReducedMotion
+					sceneSettings().resolvedReducedMotion
 				);
 			} else {
 				this.setFocusTarget(body, camPos);

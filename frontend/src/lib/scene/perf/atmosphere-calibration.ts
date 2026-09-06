@@ -1,6 +1,6 @@
 import { WebGLRenderer } from 'three';
 import { cappedPixelRatio } from '$lib/device';
-import { getSettings } from '$lib/state/settings.svelte';
+import { sceneSettings } from '$lib/scene/settings';
 import {
 	heuristicAtmosphereTier,
 	type ResolvedAtmosphereTier
@@ -76,7 +76,7 @@ function runCalibration(force: boolean): Promise<void> {
 }
 
 async function calibrate(force: boolean): Promise<void> {
-	const s = getSettings();
+	const s = sceneSettings();
 	// Explicit tier or atmospheres off: the user opted out of auto costs.
 	if (!force && (s.atmosphereQuality !== 'auto' || !s.showAtmospheres)) return;
 	let renderer: WebGLRenderer | null = null;

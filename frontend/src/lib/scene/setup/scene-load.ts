@@ -31,7 +31,7 @@ import { isLowEndDevice } from '$lib/device';
 import { createPlaceholderBody } from '$lib/scene/setup/placeholder';
 import { passengerFor, type PassengerGraft } from '$lib/fetch/position/probes/passenger';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { getSettings } from '$lib/state/settings.svelte';
+import { sceneSettings } from '$lib/scene/settings';
 import { loadProgress } from '$lib/scene/state/load-progress.svelte';
 import { dateToJD } from '$lib/time/jd';
 
@@ -61,7 +61,7 @@ function planMinorChunks(
 	metadata: Metadata,
 	date: Date
 ): { eager: MinorChunkArg[]; deferred: MinorChunkArg[] } {
-	const cap = getSettings().maxPartsPerZone;
+	const cap = sceneSettings().maxPartsPerZone;
 	const eager: MinorChunkArg[] = [];
 	const deferred: MinorChunkArg[] = [];
 	for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {

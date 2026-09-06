@@ -1,5 +1,5 @@
 import { isCoarsePointer, isLowEndDevice } from '$lib/device';
-import { getSettings } from '$lib/state/settings.svelte';
+import { sceneSettings } from '$lib/scene/settings';
 
 /**
  * Quality knobs for the atmosphere shells. Ray march cost is
@@ -107,13 +107,13 @@ export function heuristicAtmosphereTier(): ResolvedAtmosphereTier {
 /** Resolve 'auto': perf-governor tier wins (cleared each fresh calibration), else boot-benchmark tier, else the device-signal guess. */
 export function resolveAtmosphereTier(tier: AtmosphereQualityTier): ResolvedAtmosphereTier {
 	if (tier !== 'auto') return tier;
-	const s = getSettings();
+	const s = sceneSettings();
 	return s.atmosphereAutoTier ?? s.atmosphereCalibration?.tier ?? heuristicAtmosphereTier();
 }
 
 /** The effective config right now: resolved tier preset + session debug overrides. */
 export function currentAtmosphereConfig(): AtmosphereQualityConfig {
-	const s = getSettings();
+	const s = sceneSettings();
 	return {
 		...ATMOSPHERE_QUALITY_PRESETS[resolveAtmosphereTier(s.atmosphereQuality)],
 		...s.atmoQualityOverrides
@@ -146,7 +146,7 @@ let lastConfigKey = '';
  * Any config change re-arms a grace period so compile hitches don't count.
  */
 export function recordAtmospherePerf(dtMs: number, shellProminent: boolean): void {
-	const s = getSettings();
+	const s = sceneSettings();
 	if (s.atmosphereQuality !== 'auto' || dtMs <= 0 || dtMs > HITCH_MS) return;
 	const key = atmosphereConfigKey(currentAtmosphereConfig());
 	if (key !== lastConfigKey) {

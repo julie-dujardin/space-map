@@ -9,7 +9,7 @@ import {
 } from '$lib/scene/objects/body/textures';
 import { cloudFrameForJd, loadCloudTexture } from '$lib/scene/objects/surface/clouds';
 import { swapDisplacementTier } from '$lib/scene/objects/surface/displacement';
-import { getSettings } from '$lib/state/settings.svelte';
+import { sceneSettings } from '$lib/scene/settings';
 import { maxTextureTier } from '$lib/scene/render-tier';
 
 /** DEM tier by altitude (in body radii from the center, like `altitudeRadii`),
@@ -36,7 +36,7 @@ export function updateTextureLOD(
 	const screenH = renderer.domElement.clientHeight;
 	const projScale = screenH / (2 * Math.tan(fovRad / 2));
 	const activeSystem = ctx.visibility.activeSystemId;
-	const settings = getSettings();
+	const settings = sceneSettings();
 	const showClouds = settings.showClouds;
 	const tierCap = tierRank(maxTextureTier());
 

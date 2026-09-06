@@ -205,3 +205,16 @@ export interface Callbacks {
 		diameterM: number
 	): void;
 }
+
+/** A camera pose around the focused body: body-fixed latitude/longitude and
+ *  distance in scene units. */
+export interface CameraView {
+	latitude: number;
+	longitude: number;
+	zoom: number;
+}
+
+/** Where a map opens: the body to settle on and the camera around it. */
+export interface InitialView extends CameraView {
+	id: string;
+}

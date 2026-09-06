@@ -4,7 +4,7 @@ import { kmToScene } from '$lib/math/units';
 import { ObjectType } from '$lib/types/objects';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
-import { getSettings } from '$lib/state/settings.svelte';
+import { sceneSettings } from '$lib/scene/settings';
 import { isLowEndDevice } from '$lib/device';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getLabelVariant, setLabelName } from '../../label/factory';
@@ -217,7 +217,7 @@ export async function loadBodyTexture(
 		detail.global.displacement &&
 		!bo.displacementMap &&
 		bo.mesh &&
-		getSettings().showDisplacement
+		sceneSettings().showDisplacement
 	) {
 		const dispMeta = detail.global.displacement;
 		if (ctx) {
@@ -243,7 +243,7 @@ export async function loadBodyTexture(
 			bo.displacementMeta = dispMeta;
 			bo.displacementTier = 'low';
 			// Debug: self-shadow off → relief without in-shader cast shadows.
-			bo.selfShadow = getSettings().showSelfShadow
+			bo.selfShadow = sceneSettings().showSelfShadow
 				? attachSelfShadowToBody(material, tex, kmToScene(dispMeta.scale_km))
 				: null;
 		}
@@ -251,7 +251,7 @@ export async function loadBodyTexture(
 
 	if (bo.textureTier || bo.textureLoading) return;
 	// Debug: surface texture off → the sphere shows its flat base tint only.
-	if (!getSettings().showSurfaceTexture) return;
+	if (!sceneSettings().showSurfaceTexture) return;
 	bo.availableTiers ??= [...TIER_NAMES];
 	bo.availableFrames = detail.global.texture?.frames;
 	await swapBodyTexture(bo, 'low', textureFrameForJd(currentJd, bo.availableFrames), textureLoader);

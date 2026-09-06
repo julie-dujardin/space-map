@@ -2,12 +2,16 @@ import type { ClientInit, HandleClientError } from '@sveltejs/kit';
 import { getLocale, overwriteGetLocale } from '$lib/paraglide/runtime.js';
 import { configureHost } from '$lib/host';
 import { KIT_HOST } from '$lib/state/kit-host';
+import { setSceneSettings } from '$lib/scene/settings';
+import { getSettings } from '$lib/state/settings.svelte';
 import { dismissNotice, showNotice } from '$lib/state/notices';
 import { bodyHref } from '$lib/state/url';
 
-// The core's view of the app: data origins, language, label links, notices.
+// The core's view of the app: data origins, language, label links, notices,
+// and the persisted display settings.
 export const init: ClientInit = () => {
 	configureHost({ ...KIT_HOST, bodyHref, notify: showNotice, dismiss: dismissNotice });
+	setSceneSettings(getSettings());
 };
 
 // SvelteKit-caught errors; the returned shape becomes `page.error` for +error.svelte.

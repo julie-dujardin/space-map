@@ -1,5 +1,6 @@
 import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
 import { DEFAULT_VIEW, UrlType, type DrawerTab, type MapViewState, type NavPlace } from './view';
+import type { CameraView } from '$lib/scene/types';
 import {
 	applyFeature,
 	applyFocus,
@@ -91,7 +92,7 @@ export class AppState {
 		this.replaceNow();
 	}
 
-	setCamera(cam: { latitude: number; longitude: number; zoom: number }) {
+	setCamera(cam: CameraView) {
 		this.view = { ...this.view, ...cam };
 		this.replaceNow();
 	}

@@ -31,7 +31,7 @@ import { fetchLabels } from '$lib/fetch/position/labels';
 import { passengerFor } from '$lib/fetch/position/probes/passenger';
 import { ensureTargetStreamed } from '$lib/scene/setup/placeholder';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { getSettings } from '$lib/state/settings.svelte';
+import { sceneSettings } from '$lib/scene/settings';
 
 const MIN_LOAD_INTERVAL_MS = 2000;
 
@@ -99,7 +99,7 @@ export class ZoneRefresher {
 	) {
 		this.latestDate = initialDate;
 		const initialJd = dateToJD(initialDate);
-		const cap = getSettings().maxPartsPerZone;
+		const cap = sceneSettings().maxPartsPerZone;
 		for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
 			// zoneLayers yields nothing for probe zones — they load via ProbeStore.
 			const parentIdType = zoneData.parent_id_type ?? 'naif';

@@ -1,0 +1,28 @@
+/* The map's own DOM — a canvas under the label layer — as MapController builds it. */
+.sm-map {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+.sm-map__canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+	pointer-events: auto;
+	touch-action: none;
+}
+
+.sm-map__canvas:focus-visible {
+	outline: 2px solid var(--ring, Highlight);
+}
+
+/* CSS2DRenderer places each label absolutely inside this layer. */
+.sm-map .scene-overlay {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: 0;
+}

@@ -7,7 +7,11 @@
 
 import type * as m from '$lib/paraglide/messages.js';
 
-type CoreMessageKey = 'body_note_no_model' | 'body_note_no_radius' | 'carried_by_scene_label';
+type CoreMessageKey =
+	| 'body_note_no_model'
+	| 'body_note_no_radius'
+	| 'carried_by_scene_label'
+	| 'scene_canvas_label';
 
 /** Scene text the core renders itself; everything else is the host's to format.
  *  Typed off the message bundle so the keys and inputs stay in step with it. */
@@ -63,7 +67,8 @@ const DEFAULT_HOST: Host = {
 	messages: {
 		body_note_no_model: () => 'no model available',
 		body_note_no_radius: () => 'no size data available',
-		carried_by_scene_label: ({ carrier }) => `Carried by ${carrier}`
+		carried_by_scene_label: ({ carrier }) => `Carried by ${carrier}`,
+		scene_canvas_label: () => 'Interactive 3D map of the Solar System'
 	},
 	// A bare embed has no pages to link to, so labels stay put.
 	bodyHref: () => '',

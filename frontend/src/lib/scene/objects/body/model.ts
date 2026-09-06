@@ -20,7 +20,7 @@ import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/o
 import { kmToScene, sceneToKm } from '$lib/math/units';
 import { frameMapQuaternion } from '$lib/math/orientation';
 import { bodyMeshColor } from '$lib/body-color';
-import { getSettings } from '$lib/state/settings.svelte';
+import { sceneSettings } from '$lib/scene/settings';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
 import { setLabelAnnotation } from '../../label/annotations';
@@ -306,7 +306,7 @@ async function loadSpacecraftModel(
  */
 async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Promise<void> {
 	// Debug: shape mesh off → keep the textured (triaxial) sphere, skip the mesh.
-	if (!getSettings().showShapeMesh) return;
+	if (!sceneSettings().showShapeMesh) return;
 	const epoch = bo.modelLoadEpoch ?? 0;
 	try {
 		const detail = await fetchObjectDetail(bo.body.data.id, false);

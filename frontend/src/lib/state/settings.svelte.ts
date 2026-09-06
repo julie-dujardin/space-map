@@ -1,5 +1,6 @@
 import type { Locale } from '$lib/paraglide/runtime.js';
 import { getLocale } from '$lib/host';
+import type { SceneSettings } from '$lib/scene/settings';
 import type {
 	AtmosphereCalibration,
 	AtmosphereQualityConfig,
@@ -73,7 +74,7 @@ function localeUses12h(locale: string): boolean {
 	return uses12h;
 }
 
-class SettingsState {
+class SettingsState implements SceneSettings {
 	theme = $state<Theme>('auto');
 	clock = $state<Clock>('auto');
 	reducedMotion = $state<ReducedMotion>('auto');

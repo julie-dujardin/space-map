@@ -2,20 +2,18 @@
 	import { onMount, setContext, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Scene from './Scene.svelte';
-	import { ContextManager } from '$lib/scene/state/context-manager.svelte';
-	import { SimClock } from '$lib/scene/state/clock.svelte';
+	import { MapController } from '$lib/scene/map-controller.svelte';
 	import { formatJulianDate } from '$lib/format/date';
 	import { ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
+	import { DEFAULT_VIEW, UrlType } from '$lib/state/view';
 	import {
 		DEFAULT_FRAMING_LAT,
 		DEFAULT_FRAMING_LON,
-		DEFAULT_VIEW,
 		DEFAULT_VIEW_ELEVATION_DEG,
-		SUN_VIEW_ZOOM,
-		UrlType
-	} from '$lib/state/view';
+		SUN_VIEW_ZOOM
+	} from '$lib/scene/framing';
 	import { EARTH_ID, SUN_ID } from '$lib/constants';
 	import { createAppState } from '$lib/state/app-state.svelte';
 	import { MapCover } from '$lib/state/map-cover.svelte';
@@ -95,15 +93,11 @@
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { loadProgress } from '$lib/scene/state/load-progress.svelte';
-	import { scheduleAtmosphereCalibration } from '$lib/scene/perf/atmosphere-calibration';
 	import { calibrationUi } from '$lib/scene/perf/calibration-state.svelte';
 	import LoadingBar from './LoadingBar.svelte';
 	import { startPageReload } from '$lib/reload';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
-	import { dateToJD, jdToDate } from '$lib/time/jd';
-
-	const ctx = new ContextManager();
-	setContext('ctx', ctx);
+	import { jdToDate } from '$lib/time/jd';
 
 	let reloading = $state(false);
 	const startReload = () => startPageReload(() => (reloading = true));
@@ -112,6 +106,19 @@
 
 	const appState = createAppState();
 	setContext('appState', appState);
+	const map = new MapController({
+		date: appState.view.date,
+		live: appState.view.isNow,
+		view: {
+			id: appState.view.id,
+			latitude: appState.view.latitude,
+			longitude: appState.view.longitude,
+			zoom: appState.view.zoom
+		}
+	});
+	const ctx = map.ctx;
+	const clock = map.clock;
+	setContext('ctx', ctx);
 	const mapCover = new MapCover();
 	setContext('mapCover', mapCover);
 	const settings = getSettings();
@@ -195,15 +202,15 @@
 						: m.object_no_position({ name: label }),
 					{ id: 'object-no-position', closeButton: true }
 				);
-				scene?.focusOnBody(id);
+				map.focusOnBody(id);
 			} else if (opts?.moveCamera === false) {
 				// Re-anchor focus only, no fly (comet fragments).
-				scene?.focusOnBody(id);
+				map.focusOnBody(id);
 			} else if (type === UrlType.Probe || type === UrlType.EarthSatellite) {
 				const distance = framingDistanceFor(type, body);
-				scene?.focusOnBody(id, distance, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON);
+				map.focusOnBody(id, distance, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON);
 			} else {
-				scene?.focusOnBody(id, framingDistanceFor(type, body));
+				map.focusOnBody(id, framingDistanceFor(type, body));
 			}
 		})();
 	};
@@ -232,16 +239,10 @@
 		appState.setGroup(slug, name);
 		// setGroup parked view.id/zoom on the group anchor; the default framing
 		// angle lands the camera there instead of the prior angle.
-		scene?.focusOnBody(
-			appState.view.id,
-			appState.view.zoom,
-			DEFAULT_FRAMING_LAT,
-			DEFAULT_FRAMING_LON
-		);
+		map.focusOnBody(appState.view.id, appState.view.zoom, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON);
 	}
 
-	const clock = new SimClock(dateToJD(appState.view.date), appState.view.isNow);
-	// `.raw`: see Scene.svelte's `focusedBody` (avoids deep proxying of
+	// `.raw`: see MapController's `focusedBody` (avoids deep proxying of
 	// position/satrec, which the renderer and SGP4 mutate).
 	let selectedBody = $state.raw<PositionedBody | undefined>();
 	/**
@@ -263,7 +264,6 @@
 	// keeps tracking that body. Drives compass-north choices, which would
 	// otherwise drop to "Solar System only" the moment the drawer closes.
 	let cameraFocus = $state.raw<PositionedBody | undefined>();
-	let scene = $state<Scene>();
 	let drawerHeightDvh = $state(0);
 	let searchExpanded = $state(false);
 	let searchBar = $state<SearchBar>();
@@ -384,7 +384,7 @@
 		travelDrawQueued = true;
 		queueMicrotask(() => {
 			travelDrawQueued = false;
-			scene?.setTravelPath(travelPlan, travelOptions, labelHazards(travelHazards), travelSteps());
+			map.setTravelPath(travelPlan, travelOptions, labelHazards(travelHazards), travelSteps());
 		});
 	}
 
@@ -429,8 +429,8 @@
 	 *  under autoplay. A tracked point moves now; the rest swings over. */
 	function focusTimeline(target: TimelineFocus): void {
 		if (target.kind === 'body') focusCameraOn(target.bodyId);
-		else if (target.track) scene?.trackPathPoint(target.centerId, target.r);
-		else scene?.focusOnPathPoint(target.centerId, target.r);
+		else if (target.track) map.trackPathPoint(target.centerId, target.r);
+		else map.focusOnPathPoint(target.centerId, target.r);
 	}
 
 	// Look at a body without touching the URL. On /nav the trip owns the URL, so
@@ -443,7 +443,7 @@
 					.ensureBody(id, jdToDate(clock.jd))
 					.catch((e) => console.warn(`[map] timeline stop ${id} could not be streamed in:`, e));
 			}
-			scene?.focusOnBody(id);
+			map.focusOnBody(id);
 		})();
 	}
 
@@ -475,7 +475,7 @@
 			// Pan, don't fly: retargeting a trip is picking a place on a map, not
 			// visiting it. Omitting the zoom holds the camera where it is and
 			// only swings the pivot onto the new end.
-			scene?.focusOnBody(framed);
+			map.focusOnBody(framed);
 		})();
 	});
 
@@ -537,7 +537,7 @@
 		const body = selectedBody;
 		if (!f || !body || framedOrientationVersion < 0 || version === framedOrientationVersion) return;
 		framedOrientationVersion = version;
-		scene?.focusOnFeature(body.data.id, f.featureId, f.lat, f.lon, f.diameterM, f.name, 'frame');
+		map.focusOnFeature(body.data.id, f.featureId, f.lat, f.lon, f.diameterM, f.name, 'frame');
 	});
 
 	// Resolve `view.featureId` → `activeFeature` whenever either the URL's
@@ -549,7 +549,7 @@
 		const body = selectedBody;
 		if (fid === null || !body) {
 			activeFeature = null;
-			scene?.setSelectedFeature(null);
+			map.setSelectedFeature(null);
 			return;
 		}
 		// Same feature already resolved: skip the refetch.
@@ -567,7 +567,7 @@
 				const found = features.find((f) => f.featureId === fid);
 				if (found) {
 					activeFeature = found;
-					scene?.setSelectedFeature(fid);
+					map.setSelectedFeature(fid);
 					// A label click already panned the camera in place; re-driving here
 					// would restart the animation a beat later and hitch. Only the
 					// effect-only paths (deep-link, browser nav) drive from here.
@@ -575,7 +575,7 @@
 						panFeatureId = null;
 					} else {
 						framedOrientationVersion = ctx.bodies.orientationVersion;
-						scene?.focusOnFeature(
+						map.focusOnFeature(
 							bodyId,
 							found.featureId,
 							found.lat,
@@ -617,12 +617,6 @@
 		return watchDataVersion(showStale);
 	});
 
-	onMount(() => {
-		// Runs behind the loading screen, in parallel with the data loads: the
-		// screen holds until both settle, so the bench gets an uncontended GPU.
-		scheduleAtmosphereCalibration();
-	});
-
 	onMount(async () => {
 		const initialId = appState.view.id;
 		// Friendly label from the URL slug; captured before the Sun fallback
@@ -640,7 +634,7 @@
 		// Snap the clock into range first (same path search takes), else an
 		// `?at=` outside coverage would fail to resolve.
 		await snapClockIntoCoverage(initialId, initialName);
-		const loadPromise = ctx.load(jdToDate(clock.jd), initialId);
+		const loadPromise = map.load(initialId);
 		loadPromise.catch((e) => console.error('[map] scene load failed:', e));
 		// Frame as soon as the target's placeholder lands (phase 1, ~2s before
 		// ctx.load resolves); fall through to the full load if it never shows.
@@ -648,7 +642,7 @@
 			loadPromise.catch(() => {}),
 			new Promise<void>((resolve) => {
 				const check = () => {
-					if (scene && ctx.getBody(initialId)) resolve();
+					if (map.renderer && ctx.getBody(initialId)) resolve();
 					// Timer alongside the frame: a backgrounded tab fires no rAF, and
 					// the poll would never come back.
 					else if (document.hidden) setTimeout(check, 100);
@@ -695,15 +689,15 @@
 		} else if (placed) {
 			if (initialId === EARTH_ID && !appState.view.framed) {
 				// Home view (`/` redirects here): Earth looking sunward, tilted above the ecliptic.
-				scene?.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
+				map.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
 			} else if (!appState.view.framed) {
 				// No URL camera: frame by the target's size/model, same as search.
 				const distance = framingDistanceFor(appState.view.type, placed);
-				scene?.snapToBody(initialId, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON, distance);
+				map.snapToBody(initialId, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON, distance);
 			} else if (cameraFocus?.data.id !== initialId) {
 				// Explicit URL camera, but the renderer settled on the parent while
 				// the target streamed: snap onto it (no fly, opens already framed).
-				scene?.snapToBody(initialId, latitude, longitude, zoom);
+				map.snapToBody(initialId, latitude, longitude, zoom);
 			}
 		} else if (isNav) {
 			// A trip end the scene cannot place is the panel's story to tell.
@@ -713,7 +707,7 @@
 			const fromId = navFrom;
 			const departure = fromId === null ? null : ctx.getBody(fromId);
 			if (fromId && departure) {
-				scene?.snapToBody(
+				map.snapToBody(
 					fromId,
 					DEFAULT_FRAMING_LAT,
 					DEFAULT_FRAMING_LON,
@@ -741,7 +735,7 @@
 			// when the load pass wins the race above.
 			const focusBy = performance.now() + 3000;
 			do {
-				scene?.focusOnBody(initialId);
+				map.focusOnBody(initialId);
 				if (cameraFocus?.data.id === initialId) break;
 				await new Promise((resolve) => setTimeout(resolve, 50));
 			} while (performance.now() < focusBy);
@@ -757,12 +751,7 @@
 			appState.setFocus({ type: DEFAULT_VIEW.type, id: DEFAULT_VIEW.id, name: DEFAULT_VIEW.name });
 			// The renderer settled the camera on whatever it could find (the Sun);
 			// land on the default view instead, so an unknown URL opens home.
-			scene?.snapToBodyFacing(
-				DEFAULT_VIEW.id,
-				SUN_ID,
-				DEFAULT_VIEW_ELEVATION_DEG,
-				DEFAULT_VIEW.zoom
-			);
+			map.snapToBodyFacing(DEFAULT_VIEW.id, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
 		}
 	});
 
@@ -779,9 +768,9 @@
 	// which case the mission page just opens over the current view.
 	let missionFlownSlug: string | null = null;
 	$effect(() => {
-		// Read scene/loading synchronously so a direct /g/mission-… load retries
+		// Read renderer/loading synchronously so a direct /g/mission-… load retries
 		// once the renderer mounts (the effect first runs while ctx.loading).
-		const ready = !ctx.loading && scene;
+		const ready = !ctx.loading && map.renderer !== null;
 		const slug =
 			appState.view.type === UrlType.Group && appState.view.groupSlug
 				? appState.view.groupSlug
@@ -811,7 +800,7 @@
 				const snap = snapJdIntoWindow(clock.jd, window);
 				if (snap !== null) clock.setJD(snap);
 			}
-			scene?.focusOnBody(primary.primary_id, body ? framingZoom(body) : undefined);
+			map.focusOnBody(primary.primary_id, body ? framingZoom(body) : undefined);
 		})();
 	});
 </script>
@@ -875,8 +864,7 @@
 			     scene without adding a layout box. -->
 			<div class="contents" inert={bgInert}>
 				<Scene
-					bind:this={scene}
-					{clock}
+					{map}
 					{northRefId}
 					onFocusChange={(body) => {
 						cameraFocus = body;
@@ -899,7 +887,7 @@
 						});
 						// The $effect above resolves activeFeature; kick the camera here
 						// so the click feels instant instead of waiting on it.
-						scene?.focusOnFeature(bodyId, fid, lat, lon, d, f.name, 'pan');
+						map.focusOnFeature(bodyId, fid, lat, lon, d, f.name, 'pan');
 					}}
 					onUserPromotedChange={(count) => (userPromotedCount = count)}
 				/>
@@ -928,7 +916,7 @@
 								featureId: hit.feature_id,
 								featureName: name
 							});
-							scene?.focusOnFeature(
+							map.focusOnFeature(
 								hit.body_id,
 								hit.feature_id,
 								hit.center_lat,
@@ -1018,7 +1006,7 @@
 						travelOptions = options;
 						drawTravel();
 					}}
-					onHoverChange={(id) => scene?.setTravelHover(id)}
+					onHoverChange={(id) => map.setTravelHover(id)}
 					onTimelineChange={(entries) => {
 						timelineEntries = entries;
 						drawTravel();
@@ -1027,7 +1015,7 @@
 						travelHazards = hazards;
 						drawTravel();
 					}}
-					onOrbitPreview={(previews, frame) => scene?.setOrbitPreview(previews, frame)}
+					onOrbitPreview={(previews, frame) => map.setOrbitPreview(previews, frame)}
 					onClose={() => closeTravel()}
 					onSheetResize={(h) => (drawerHeightDvh = h)}
 				/>
@@ -1060,7 +1048,7 @@
 					onClose={() => closeDetail()}
 					onMaximize={() => {
 						if (!selectedBody) return;
-						scene?.focusOnBody(selectedBody.data.id, framingZoom(selectedBody));
+						map.focusOnBody(selectedBody.data.id, framingZoom(selectedBody));
 					}}
 					onMinimize={() => {
 						if (!selectedBody) return;
@@ -1074,7 +1062,7 @@
 							objectType === ObjectType.PLANET ||
 							objectType === ObjectType.DWARF_PLANET;
 						const distance = isSunOrbiter ? SUN_VIEW_ZOOM : 0.005;
-						scene?.focusOnBody(selectedBody.data.id, distance);
+						map.focusOnBody(selectedBody.data.id, distance);
 					}}
 					onSheetResize={(h) => (drawerHeightDvh = h)}
 				/>
@@ -1090,8 +1078,8 @@
 				{/if}
 				<MyLocation
 					onLocate={(zoom: number, lat?: number, lng?: number) => {
-						if (lat !== undefined && lng !== undefined) scene?.setUserLocation(lat, lng);
-						return scene?.focusOnBody('naif-399', zoom, lat, lng) ?? 0;
+						if (lat !== undefined && lng !== undefined) map.setUserLocation(lat, lng);
+						return map.focusOnBody('naif-399', zoom, lat, lng) ?? 0;
 					}}
 				/>
 				{#if northChoices.length > 1}
@@ -1102,7 +1090,7 @@
 					/>
 				{/if}
 				{#if userPromotedCount > 0}
-					<ClearPromoted count={userPromotedCount} onClear={() => scene?.clearUserPromoted()} />
+					<ClearPromoted count={userPromotedCount} onClear={() => map.clearUserPromoted()} />
 				{/if}
 			</div>
 			{#if framesDiffer || ringPillShown}

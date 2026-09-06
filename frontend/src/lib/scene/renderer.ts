@@ -33,11 +33,11 @@ import { OrbitControls as OrbitControlsClass } from 'three/addons/controls/Orbit
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import {
+	DEFAULT_FOCUS_ID,
 	DEFAULT_FRAMING_LAT,
 	DEFAULT_FRAMING_LON,
-	DEFAULT_VIEW,
-	type MapViewState
-} from '$lib/state/view';
+	DEFAULT_ZOOM
+} from './framing';
 import {
 	isSurfaceFeature,
 	ObjectType,
@@ -87,7 +87,7 @@ import {
 	makeEnvMap,
 	sunIrradianceFactor
 } from './lighting';
-import { getSettings } from '$lib/state/settings.svelte';
+import { sceneSettings } from '$lib/scene/settings';
 import type { PointingSpec } from '$lib/math/orientation';
 import {
 	attachNomenclatureLabels,
@@ -120,7 +120,7 @@ import { evaluateEclipseFactor } from './objects/surface/eclipse-shadow';
 import { updateSunShadowLight } from './shaders/sun-shadow-light';
 import { updateSphereLOD } from './lod/sphere-lod';
 import { updateTextureLOD } from './lod/texture-lod';
-import { type BodyObjects, type Callbacks } from './types';
+import { type BodyObjects, type Callbacks, type CameraView, type InitialView } from './types';
 import type { Vec3 } from './animation/math';
 import {
 	type FocusState,
@@ -350,7 +350,7 @@ export class SceneRenderer {
 		labelContainer: HTMLElement,
 		ctx: ContextManager,
 		clock: SimClock,
-		initialView: MapViewState,
+		initialView: InitialView,
 		callbacks: Callbacks
 	) {
 		this.canvas = canvas;
@@ -429,7 +429,7 @@ export class SceneRenderer {
 		// real target from once it lands. The Sun stands in only if Earth itself
 		// hasn't loaded.
 		const fallbackBody =
-			ctx.bodies.majorBodies.find((b) => b.data.id === DEFAULT_VIEW.id) || sunBody;
+			ctx.bodies.majorBodies.find((b) => b.data.id === DEFAULT_FOCUS_ID) || sunBody;
 		const focusBody = matchedBody ?? fallbackBody;
 		const focusPos: Vec3 = focusBody?.position ?? [0, 0, 0];
 
@@ -453,7 +453,7 @@ export class SceneRenderer {
 		// OrbitControls — target always at origin
 		this.controls = new OrbitControlsClass(this.camera, canvas);
 		this.controls.enableDamping = true;
-		this.controls.dampingFactor = getSettings().resolvedReducedMotion
+		this.controls.dampingFactor = sceneSettings().resolvedReducedMotion
 			? REDUCED_MOTION_DAMPING
 			: DEFAULT_DAMPING;
 		this.controls.minDistance = focusBody ? minCameraDistance(focusBody) : kmToScene(0.01);
@@ -521,7 +521,7 @@ export class SceneRenderer {
 			: {
 					latitude: DEFAULT_FRAMING_LAT,
 					longitude: DEFAULT_FRAMING_LON,
-					zoom: DEFAULT_VIEW.zoom
+					zoom: DEFAULT_ZOOM
 				};
 		const camPos = sphericalToCartesian(
 			[0, 0, 0],
@@ -1036,8 +1036,8 @@ export class SceneRenderer {
 		updateRingShaders(
 			this.bodyObjects,
 			this.focus.focusTruePos,
-			getSettings().realisticLighting,
-			getSettings().overexposeRings,
+			sceneSettings().realisticLighting,
+			sceneSettings().overexposeRings,
 			this.camera.position,
 			this.pxPerRad()
 		);
@@ -1047,8 +1047,8 @@ export class SceneRenderer {
 		const atmoState = updateAtmosphereShaders(
 			this.bodyObjects,
 			this.camera.position,
-			getSettings().showAtmospheres,
-			getSettings().realisticLighting,
+			sceneSettings().showAtmospheres,
+			sceneSettings().realisticLighting,
 			this.sunIntensityScale,
 			currentAtmosphereConfig(),
 			this.clock.jd
@@ -1067,8 +1067,8 @@ export class SceneRenderer {
 		// it with the focus body's solar distance — otherwise it exceeds direct
 		// sunlight past ~Saturn and night sides read brighter than day sides. The
 		// high-ambient boost stays unscaled: it exists to defeat darkness.
-		let ambient = getSettings().highAmbient ? AMBIENT_BOOST_INTENSITY : AMBIENT_INTENSITY;
-		if (!getSettings().highAmbient && getSettings().realisticLighting) {
+		let ambient = sceneSettings().highAmbient ? AMBIENT_BOOST_INTENSITY : AMBIENT_INTENSITY;
+		if (!sceneSettings().highAmbient && sceneSettings().realisticLighting) {
 			const sunPos = this.bodyObjects.get(SUN_ID)?.body.position;
 			if (sunPos && this.ctx.visibility.activeSystemId) {
 				const [fx, fy, fz] = this.focus.focusTruePos;
@@ -1101,7 +1101,7 @@ export class SceneRenderer {
 			this.sunPointLight,
 			distance,
 			this._tmpV3,
-			getSettings().realisticLighting,
+			sceneSettings().realisticLighting,
 			this.sunIntensityScale
 		);
 		// After updateSunShadowLight: may re-seat the shadow light around a
@@ -1460,7 +1460,8 @@ export class SceneRenderer {
 			const [sx, sy, sz] = sunBody.position;
 			const [fx, fy, fz] = bo.body.position;
 			this._tmpSun.set(sx - fx, sy - fy, sz - fz);
-			if (getSettings().realisticLighting) irradiance = sunIrradianceFactor(this._tmpSun.length());
+			if (sceneSettings().realisticLighting)
+				irradiance = sunIrradianceFactor(this._tmpSun.length());
 			this._tmpSun.normalize();
 			this.modelLight.position.copy(this._tmpSun).multiplyScalar(10);
 		}
@@ -1856,7 +1857,7 @@ export class SceneRenderer {
 		name: string | null,
 		zoom: number,
 		mode: 'pan' | 'frame' | 'snap' = 'frame',
-		view?: { latitude: number; longitude: number; zoom: number } | null
+		view?: CameraView | null
 	): number {
 		this.applyJdUpdate();
 		this.focusWasOutOfRange = false;
@@ -1961,7 +1962,7 @@ export class SceneRenderer {
 				this.camera,
 				camWorld,
 				camPos,
-				getSettings().resolvedReducedMotion
+				sceneSettings().resolvedReducedMotion
 			);
 		} else {
 			// Different object: approach fly, orbit mode so the host stays centred.

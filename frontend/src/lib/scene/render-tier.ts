@@ -1,5 +1,5 @@
 import { isCoarsePointer, isLowEndDevice } from '$lib/device';
-import { getSettings } from '$lib/state/settings.svelte';
+import { sceneSettings } from '$lib/scene/settings';
 
 /**
  * GPU class for the fill-bound render knobs. The boot atmosphere calibration
@@ -61,7 +61,7 @@ export function maxTextureTier(): 'low' | 'medium' | 'high' {
 }
 
 export function resolveRenderTier(): RenderTier {
-	const measured = getSettings().atmosphereCalibration?.tier;
+	const measured = sceneSettings().atmosphereCalibration?.tier;
 	if (measured === 'low' || measured === 'medium') return measured;
 	if (measured === 'high' || measured === 'ultra') return 'high';
 	if (isCoarsePointer()) return isLowEndDevice() ? 'low' : 'medium';
