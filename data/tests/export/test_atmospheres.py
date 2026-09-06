@@ -337,11 +337,26 @@ class TestDeepColumn:
         for key in ("flux_down", "flux_up_ratio", "extinction_per_km"):
             assert len(deep[key]) == 3 * n
             assert all(v >= 0.0 for v in deep[key])
-        assert all(
-            "deep_column" not in b
-            for k, b in payload["bodies"].items()
-            if k != "naif-299"
-        )
+        assert deep["top_km"] == 65.0
+        assert {k for k, b in payload["bodies"].items() if "deep_column" in b} == {
+            "naif-299",
+            "naif-606",
+        }
+
+    def test_titan_column_sits_under_a_surface_shell(self, payload):
+        entry = payload["bodies"]["naif-606"]
+        assert "reference_altitude_km" not in entry
+        deep = entry["deep_column"]
+        assert deep["top_km"] == 120.0
+        red, green, blue = deep["surface_flux_fraction"]
+        # Huygens: a dim orange overcast, the blue gone (Tomasko et al. 2005).
+        assert red > green > blue
+        assert 0.02 < red < 0.6
+        assert blue < 0.01
+        n = payload["deep_n"]
+        for c in range(3):
+            down = deep["flux_down"][c * n : (c + 1) * n]
+            assert all(b >= a for a, b in zip(down, down[1:]))
 
     def test_venus_surface_light_is_orange_and_a_few_percent(self, payload):
         deep = payload["bodies"]["naif-299"]["deep_column"]

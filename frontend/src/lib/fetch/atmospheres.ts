@@ -21,6 +21,7 @@ interface SeasonalEntry {
 }
 
 interface DeepColumnEntry {
+	top_km: number;
 	flux_down: number[];
 	flux_up_ratio: number[];
 	extinction_per_km: number[];
@@ -50,7 +51,8 @@ interface AtmosphereBodyEntry {
 	realistic_sun_always?: boolean;
 	/** Deck bodies: height of the render level over the solid surface. */
 	reference_altitude_km?: number;
-	/** `deep_n`-level profiles of the column under the render level. */
+	/** `deep_n`-level profiles of the optically thick column over the solid
+	 *  surface, up to its `top_km`. */
 	deep_column?: DeepColumnEntry;
 }
 
@@ -96,6 +98,7 @@ function deepColumn(
 	if (
 		!n ||
 		n < 2 ||
+		!(entry.top_km > 0) ||
 		entry.flux_down.length !== 3 * n ||
 		entry.flux_up_ratio.length !== 3 * n ||
 		entry.extinction_per_km.length !== 3 * n
@@ -105,6 +108,7 @@ function deepColumn(
 	}
 	return {
 		n,
+		topKm: entry.top_km,
 		fluxDown: entry.flux_down,
 		fluxUpRatio: entry.flux_up_ratio,
 		extinctionPerKm: entry.extinction_per_km

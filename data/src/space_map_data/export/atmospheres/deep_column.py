@@ -1,19 +1,21 @@
-"""Diffuse sunlight through the column under a shell's render level.
+"""Diffuse sunlight through a column too thick for the shell's march.
 
 A single-scatter march cannot light a column this thick (Venus: τ ≈ 60 at
-440 nm) — sunlight arrives at the ground by diffusion. Each channel is solved
-as a stack of thin homogeneous sublayers (Rayleigh gas + cloud deck +
-sub-cloud haze + gaseous absorber) with the delta-Eddington two-stream
-reflectance/transmittance of each, combined by the adding method for diffuse
-incidence from the top and a Lambertian ground. Shipped as a `DEEP_N`-level profile over [0, reference
-altitude]: downward flux (over the surface value's luminance, so the ground
-light keeps its colour at unit brightness), upward/downward flux ratio, and
-the direct-beam extinction — the frontend's deep-column sky samples it at the
+440 nm under the deck; Titan: τ ≈ 4 of tholin over the surface) — sunlight
+arrives at the ground by diffusion. Each channel is solved as a stack of
+thin homogeneous sublayers (Rayleigh gas + cloud deck + haze slabs + gaseous
+absorber) with the delta-Eddington two-stream reflectance/transmittance of
+each, combined by the adding method for diffuse incidence from the top and a
+Lambertian ground. Shipped as a `DEEP_N`-level profile over [0, top_km]:
+downward flux (over the surface value's luminance, so the ground light keeps
+its colour at unit brightness), upward/downward flux ratio, and the
+direct-beam extinction — the frontend's deep-column sky samples it at the
 camera's altitude and fogs terrain with the extinction.
 """
 
 import logging
 import math
+from collections.abc import Callable
 
 from space_map_data.constants.atmosphere.bodies import (
     RENDER_WAVELENGTHS_M,
@@ -22,9 +24,11 @@ from space_map_data.constants.atmosphere.bodies import (
 from space_map_data.constants.atmosphere.deep_column import (
     DEEP_COLUMNS,
     DeepColumn,
+    HazeSlab,
     ProfileLevel,
 )
 from space_map_data.export.atmospheres.conditions import render_conditions
+from space_map_data.export.atmospheres.profiles import mie_density_builder
 from space_map_data.export.atmospheres.rayleigh import rayleigh_beta_per_m
 
 logger = logging.getLogger(__name__)
@@ -83,51 +87,89 @@ def _tent(z_km: float, base: float, peak: float, top: float) -> float:
     return (top - z_km) / (top - peak)
 
 
+def _slab_weights(
+    slabs: tuple[HazeSlab, ...], density: Callable[[float], float] | None
+) -> list[Callable[[float], float]]:
+    """Per-slab vertical weight functions, each integrating to 1 over the
+    slab's own [base, top] — a slab reaching past the column keeps only the
+    share that lies inside it."""
+    weights: list[Callable[[float], float]] = []
+    for slab in slabs:
+        span = slab.top_km - slab.base_km
+        if slab.shape == "uniform":
+            weights.append(
+                lambda z, s=slab, span=span: (
+                    1.0 / span if s.base_km <= z < s.top_km else 0.0
+                )
+            )
+            continue
+        if density is None:
+            raise ValueError("a profile-shaped slab needs a Mie-density profile")
+        steps = 2000
+        dz = span / steps
+        norm = sum(density(slab.base_km + (k + 0.5) * dz) for k in range(steps)) * dz
+        weights.append(
+            lambda z, s=slab, norm=norm: (
+                density(z) / norm if s.base_km <= z < s.top_km else 0.0
+            )
+        )
+    return weights
+
+
 def _solve_channel(
     column: DeepColumn,
     composition: dict[str, float],
-    top_km: float,
     wavelength_m: float,
     channel: int,
     cloud_g: float,
+    density: Callable[[float], float] | None,
 ) -> tuple[list[float], list[float], list[float], float]:
     """Returns (F_down, F_up) at each sublayer interface from the ground up,
     the sublayer extinction per km, and the column's diffuse reflectance —
-    for unit diffuse flux entering at `top_km`."""
+    for unit diffuse flux entering at the column's top."""
+    top_km = column.top_km
     n = int(round(top_km / _SUBLAYER_KM))
     dz = top_km / n
     absorber = column.absorber
-    haze = column.subcloud_haze
+    weights = _slab_weights(column.hazes, density)
     layers: list[tuple[float, float, float]] = []
     extinction: list[float] = []
     for i in range(n):
         z = (i + 0.5) * dz
         t_k, p_pa = _interpolate_level(column.profile, z)
         tau_r = rayleigh_beta_per_m(composition, p_pa, t_k, wavelength_m) * 1e3 * dz
-        # Cloud scattering and absorption, layer by layer.
-        cloud_scatter = 0.0
-        cloud_absorb = 0.0
+        scatter = tau_r
+        absorb = 0.0
+        # Rayleigh is symmetric; the aerosols add their forward lobes.
+        g_weighted = 0.0
         for layer in column.cloud_layers:
             top = min(layer.top_km, top_km)
             if layer.base_km <= z < top:
                 tau_mid = 0.5 * (layer.tau_min + layer.tau_max)
                 tau_layer = tau_mid * dz / (top - layer.base_km)
                 omega = column.cloud_albedo[layer.name][channel]
-                cloud_scatter += omega * tau_layer
-                cloud_absorb += (1.0 - omega) * tau_layer
-        tau_h = 0.0
-        if haze.base_km <= z < min(haze.top_km, top_km):
-            tau_h = haze.tau[channel] * dz / (min(haze.top_km, top_km) - haze.base_km)
-        # The absorber rides the gas: its deficit scales the local Rayleigh depth.
-        tau_a = (
-            absorber.albedo_deficit[channel]
-            * _tent(z, absorber.base_km, absorber.peak_km, absorber.top_km)
-            * tau_r
-        )
-        scattered = tau_r + cloud_scatter + tau_h
-        tau = scattered + cloud_absorb + tau_a
-        g = (cloud_scatter * cloud_g + tau_h * haze.asymmetry) / scattered
-        layers.append((tau, scattered / tau, g))
+                scatter += omega * tau_layer
+                absorb += (1.0 - omega) * tau_layer
+                g_weighted += omega * tau_layer * cloud_g
+        for slab, weight in zip(column.hazes, weights):
+            tau_slab = slab.tau[channel] * weight(z) * dz
+            omega = slab.albedo[channel]
+            scatter += omega * tau_slab
+            absorb += (1.0 - omega) * tau_slab
+            g_weighted += (
+                omega
+                * tau_slab
+                * (cloud_g if slab.asymmetry is None else slab.asymmetry)
+            )
+        if absorber is not None:
+            # The absorber rides the gas: its deficit scales the local Rayleigh depth.
+            absorb += (
+                absorber.albedo_deficit[channel]
+                * _tent(z, absorber.base_km, absorber.peak_km, absorber.top_km)
+                * tau_r
+            )
+        tau = scatter + absorb
+        layers.append((tau, scatter / tau, g_weighted / scatter))
         extinction.append(tau / dz)
     rt = [eddington_layer(*layer) for layer in layers]
     # Reflectance of everything under interface i (interface i = the bottom of
@@ -155,19 +197,22 @@ def _resample(values: list[float], dz: float, z_km: float) -> float:
 def build_deep_column(
     object_id: str, body: BodyAtmosphere, cloud_g: dict[str, float]
 ) -> dict | None:
-    """The `deep_column` payload block, or None for bodies rendered from
-    their surface. `cloud_g` is the deck aerosol's per-channel asymmetry."""
+    """The `deep_column` payload block, or None for bodies without one.
+    `cloud_g` is the shell aerosol's per-channel asymmetry."""
     column = DEEP_COLUMNS.get(object_id)
     if column is None:
         return None
-    if body.reference_altitude_km <= 0:
-        raise ValueError(f"{object_id}: deep column needs a reference altitude")
-    top_km = body.reference_altitude_km
+    if not 0.0 <= body.reference_altitude_km <= column.top_km:
+        raise ValueError(
+            f"{object_id}: the render level must sit within the deep column"
+        )
+    top_km = column.top_km
     composition = render_conditions(object_id, body).composition
     n_sub = int(round(top_km / _SUBLAYER_KM))
     dz = top_km / n_sub
+    density = mie_density_builder(object_id)
     channels = [
-        _solve_channel(column, composition, top_km, wavelength, c, cloud_g[name])
+        _solve_channel(column, composition, wavelength, c, cloud_g[name], density)
         for c, (name, wavelength) in enumerate(RENDER_WAVELENGTHS_M.items())
     ]
     surface_fraction = [f_down[0] for f_down, _, _, _ in channels]
@@ -194,6 +239,7 @@ def build_deep_column(
         *top_reflectance,
     )
     return {
+        "top_km": top_km,
         # Channel-major: DEEP_N values for R, then G, then B.
         "flux_down": [_sig(v) for v in flux_down],
         "flux_up_ratio": [_sig(v) for v in flux_up_ratio],

@@ -9,6 +9,7 @@ import {
 	applyShellViewState,
 	deckBlendWeight,
 	deepColumnTransmittance,
+	inDeepColumn,
 	type AtmosphereParams
 } from '$lib/scene/objects/surface/atmosphere';
 import type { AtmosphereQualityConfig } from '$lib/scene/objects/surface/atmosphere-quality';
@@ -252,12 +253,13 @@ export function updateAtmosphereShaders(
 		const kmPerScene = (referenceKm + params.topAltitudeKm) / shellRadius;
 		// Above the render level; negative under a deck.
 		const altKm = camDist * kmPerScene - referenceKm;
-		const underDeck = inside && !!params.deepColumn && altKm < 0;
+		const underDeck = inside && inDeepColumn(params, altKm);
 		const deckBlend = inside ? deckBlendWeight(params, altKm) : 0;
 		applyShellViewState(bo.atmosphere, inside, underDeck, deckBlend);
 		uniforms.uDeepIrradiance.value = DEEP_SKY_EXPOSURE * sunScale;
 		for (const patch of bo.sunTint ?? []) {
 			patch.uAtmoTDeepIrradiance.value = DEEP_SKY_EXPOSURE * sunScale;
+			patch.uAtmoTDeepBlend.value = deckBlend;
 		}
 		if (inside) {
 			state.insideShell = true;
@@ -268,12 +270,12 @@ export function updateAtmosphereShaders(
 				.dot(sunVec);
 			let dim = skyboxDimFactor(params, altKm, sinSunElev);
 			if (underDeck && params.deepColumn) {
-				const t = deepColumnTransmittance(params.deepColumn, depthKm, altKm + depthKm);
+				const t = deepColumnTransmittance(params.deepColumn, altKm + depthKm);
 				dim *= LUM[0] * t[0] + LUM[1] * t[1] + LUM[2] * t[2];
 			}
 			// The cloud top closes over the stars as the deck's light takes over.
 			state.skyboxIntensity *= dim * (1 - deckBlend);
-			// No refraction lift under a deck: the disc is not visible there.
+			// No refraction lift inside the column: the disc is not visible there.
 			if (quality.refraction && params.refractivity && !underDeck) {
 				// Green-channel refractivity at the camera's altitude; the lift
 				// direction is the camera's zenith on this body.

@@ -1,4 +1,4 @@
-"""The atmosphere under a shell's render level.
+"""The optically thick column a shell's single-scatter march cannot light.
 
 Venus's shell renders from the ~65 km cloud top, so a camera on the surface
 sits under a column the shell never models: 92 bar of CO₂ (vertical Rayleigh
@@ -9,11 +9,16 @@ sky orange: the upper cloud's near-UV absorber, Rayleigh back-scatter and the
 sub-cloud absorber strip the blue, and the ground gets ~90 W m⁻² at the
 subsolar point — 17 W m⁻², 2.5% of the incident sunlight, absorbed there on
 average (Moroz et al. 1983, Icarus 53, 509; Tomasko et al. 1980, JGR 85,
-8167). export/atmospheres/deep_column.py solves the diffuse flux through it.
+8167). Titan's shell renders from its surface, but the τ ≈ 4 tholin haze
+over it is just as far beyond single scattering: Huygens landed under a dim
+orange overcast with the Sun a smudge (Tomasko et al. 2005, Nature 438,
+765). export/atmospheres/deep_column.py solves the diffuse flux through
+each column; the shell above (Venus) or over it (Titan) stays the march.
 """
 
 from typing import NamedTuple
 
+from space_map_data.constants.atmosphere.aerosols import AEROSOLS
 from space_map_data.constants.atmosphere.layers import (
     VENUS_CLOUD_LAYERS,
     VenusCloudLayer,
@@ -49,15 +54,40 @@ VENUS_VIRA_LEVELS: tuple[ProfileLevel, ...] = (
     ProfileLevel(70.0, 229.8, 0.0369),
 )
 
+# Titan, HASI descent (Fulchignoni et al. 2005, Nature 438, 785): 1.467 bar
+# and 93.65 K at the surface, the 70.4 K tropopause at 44 km, then the
+# stratospheric rise toward the 186 K stratopause near 250 km. Pressures
+# are hydrostatic on those temperatures (N₂ + 5.65% CH₄ below the
+# tropopause, 1.48% above; g = 1.35), within 10% of HASI's 0.115 bar at the
+# tropopause.
+TITAN_HASI_LEVELS: tuple[ProfileLevel, ...] = (
+    ProfileLevel(0.0, 93.65, 1.467),
+    ProfileLevel(10.0, 85.0, 0.878),
+    ProfileLevel(20.0, 78.0, 0.482),
+    ProfileLevel(30.0, 74.0, 0.245),
+    ProfileLevel(44.0, 70.4, 0.0967),
+    ProfileLevel(60.0, 82.0, 0.0354),
+    ProfileLevel(80.0, 105.0, 0.0126),
+    ProfileLevel(100.0, 128.0, 0.00559),
+    ProfileLevel(120.0, 145.0, 0.00281),
+    ProfileLevel(150.0, 165.0, 0.00115),
+    ProfileLevel(200.0, 178.0, 0.000241),
+    ProfileLevel(250.0, 186.0, 0.0000546),
+)
 
-class SubcloudHaze(NamedTuple):
-    """Conservative small-particle haze under the cloud base: column optical
-    depth per channel, spread uniformly over [base, top]."""
+
+class HazeSlab(NamedTuple):
+    """Aerosol over [base, top]: column extinction optical depth and single-
+    scattering albedo per channel; `asymmetry` None takes the shell
+    aerosol's per-channel value; `shape` "uniform" spreads the column
+    evenly, "profile" follows the body's shipped Mie-density profile."""
 
     tau: tuple[float, float, float]
+    albedo: tuple[float, float, float]
     base_km: float
     top_km: float
-    asymmetry: float
+    asymmetry: float | None = None
+    shape: str = "uniform"
 
 
 class AbsorberTent(NamedTuple):
@@ -73,14 +103,20 @@ class AbsorberTent(NamedTuple):
 
 class DeepColumn(NamedTuple):
     profile: tuple[ProfileLevel, ...]
-    cloud_layers: tuple[VenusCloudLayer, ...]
-    # Single-scattering albedo per channel at 680/550/440 nm, by layer name.
-    cloud_albedo: dict[str, tuple[float, float, float]]
-    subcloud_haze: SubcloudHaze
-    absorber: AbsorberTent
+    # Height of the column over the solid surface, km. A deck body's shell
+    # renders from here (Venus); a surface-referenced shell marches over it
+    # (Titan).
+    top_km: float
+    hazes: tuple[HazeSlab, ...]
     # Solid-surface albedo per channel — the ground bounce under the column.
     ground_albedo: tuple[float, float, float]
+    cloud_layers: tuple[VenusCloudLayer, ...] = ()
+    # Single-scattering albedo per channel at 680/550/440 nm, by layer name.
+    cloud_albedo: dict[str, tuple[float, float, float]] = {}
+    absorber: AbsorberTent | None = None
 
+
+_TITAN_THOLIN = AEROSOLS["titan_tholin"]
 
 DEEP_COLUMNS: dict[str, DeepColumn] = {
     # Deck: the LCPS layers of layers.py at their mid-range τ (0.63 µm; the
@@ -99,6 +135,17 @@ DEEP_COLUMNS: dict[str, DeepColumn] = {
     # 1986, which also saw no blue signal at all at the surface).
     "naif-299": DeepColumn(
         profile=VENUS_VIRA_LEVELS,
+        top_km=65.0,
+        hazes=(
+            HazeSlab(
+                tau=(0.84, 1.59, 3.1),
+                albedo=(1.0, 1.0, 1.0),
+                base_km=30.0,
+                top_km=48.0,
+                asymmetry=0.4,
+            ),
+        ),
+        ground_albedo=(0.10, 0.09, 0.08),
         cloud_layers=VENUS_CLOUD_LAYERS,
         cloud_albedo={
             "upper haze": (0.9998, 0.9995, 0.988),
@@ -106,15 +153,38 @@ DEEP_COLUMNS: dict[str, DeepColumn] = {
             "middle cloud": (0.9995, 0.9995, 0.9995),
             "lower cloud": (0.9995, 0.9995, 0.9995),
         },
-        subcloud_haze=SubcloudHaze(
-            tau=(0.84, 1.59, 3.1), base_km=30.0, top_km=48.0, asymmetry=0.4
-        ),
         absorber=AbsorberTent(
             albedo_deficit=(0.0, 0.0015, 0.006),
             base_km=0.0,
             peak_km=15.0,
             top_km=35.0,
         ),
-        ground_albedo=(0.10, 0.09, 0.08),
+    ),
+    # The haze below 120 km — 80% of the column, τ ≈ 0.8 at 550 nm left
+    # above it for the shell to march. Extinction is the shell aerosol's
+    # column on the shipped Doose et al. 2016 profile; the albedo is the
+    # tholin's own single-scattering value (Khare et al. 1984: k = 0.0024 at
+    # the red edge, 0.11 at the blue), not the shell's compounded one —
+    # the two-stream stack does the multiple scattering itself. Ground:
+    # DISR surface reflectance ≈ 0.15 in the red, falling into the blue
+    # (Tomasko et al. 2005).
+    "naif-606": DeepColumn(
+        profile=TITAN_HASI_LEVELS,
+        top_km=120.0,
+        hazes=(
+            HazeSlab(
+                tau=tuple(
+                    (s + a) * _TITAN_THOLIN.scale_height_km
+                    for s, a in zip(
+                        _TITAN_THOLIN.scatter_per_km, _TITAN_THOLIN.absorption_per_km
+                    )
+                ),
+                albedo=(0.95, 0.85, 0.55),
+                base_km=0.0,
+                top_km=600.0,
+                shape="profile",
+            ),
+        ),
+        ground_albedo=(0.16, 0.13, 0.10),
     ),
 }

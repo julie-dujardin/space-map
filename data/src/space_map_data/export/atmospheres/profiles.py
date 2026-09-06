@@ -7,6 +7,7 @@ tiers; bodies without a profile keep the single-exponential fallback.
 """
 
 import math
+from collections.abc import Callable
 
 from space_map_data.constants.atmosphere.aerosols import AEROSOLS
 from space_map_data.constants.atmosphere.bodies import ATMOSPHERE_BODIES
@@ -71,6 +72,12 @@ def _titan_density(h_km: float) -> float:
 
 
 _PROFILE_BUILDERS = {"naif-299": _venus_density, "naif-606": _titan_density}
+
+
+def mie_density_builder(object_id: str) -> Callable[[float], float] | None:
+    """The body's relative Mie density over altitude (km), or None for
+    single-exponential bodies."""
+    return _PROFILE_BUILDERS.get(object_id)
 
 
 def build_mie_profile(object_id: str, top_km: float) -> list[float] | None:

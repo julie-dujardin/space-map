@@ -26,10 +26,11 @@
  *
  * Deck bodies (Venus): the shell renders from the cloud top, `referenceAltitudeKm`
  * above the solid surface, and everything here is normalised to that
- * reference radius. Under the deck a single-scatter march has nothing to say
- * about a τ≈60 column, so the shader swaps to the `deepColumn` profile — the
- * diffuse flux solved offline — and paints an overcast sky that fogs the
- * terrain with the local extinction.
+ * reference radius. A single-scatter march has nothing to say about a τ≈60
+ * column under that deck, or about Titan's τ≈4 haze over its surface, so
+ * inside the `deepColumn` span the shader swaps to its profile — the diffuse
+ * flux solved offline — and paints an overcast sky that fogs the terrain with
+ * the local extinction; the shell marches on above it.
  */
 
 import {
@@ -169,15 +170,14 @@ export function referenceRadiusKm(params: AtmosphereParams, surfaceKm: number): 
 }
 
 /** Per-channel direct transmittance of the deep column above altitude `zKm`
- *  (over the solid surface): the profile's extinction integrated up to the
- *  reference level, `depthKm` up. */
+ *  (over the solid surface): the profile's extinction integrated up to its
+ *  top. */
 export function deepColumnTransmittance(
 	deep: AtmosphereDeepColumn,
-	depthKm: number,
 	zKm: number
 ): [number, number, number] {
 	const n = deep.n;
-	const dz = depthKm / (n - 1);
+	const dz = deep.topKm / (n - 1);
 	const start = Math.min(Math.max(zKm / dz, 0), n - 1);
 	const out: [number, number, number] = [1, 1, 1];
 	for (let c = 0; c < 3; c++) {
@@ -266,8 +266,8 @@ export interface AtmosphereParams {
 	 *  cloud overlay sit that far above the body radius (Venus's cloud top).
 	 *  Absent or 0, the shell starts at the surface. */
 	referenceAltitudeKm?: number;
-	/** The column under the render level. With it, a camera below the
-	 *  reference level renders the overcast deep-column sky instead of the march. */
+	/** The optically thick column over the solid surface. With it, a camera
+	 *  inside its span renders the overcast deep-column sky instead of the march. */
 	deepColumn?: AtmosphereDeepColumn;
 }
 
@@ -277,6 +277,10 @@ export interface AtmosphereParams {
  *  export/atmospheres/deep_column.py. */
 export interface AtmosphereDeepColumn {
 	n: number;
+	/** Height of the column over the solid surface, km: a deck body's render
+	 *  level (Venus), or the level a surface-referenced shell's march resumes
+	 *  at (Titan). */
+	topKm: number;
 	/** Downward diffuse flux over its surface value's luminance. The sky
 	 *  renormalises it to unit luminance at every altitude (a camera adapts
 	 *  across the column's ~20× range), so only its colour and the ratio
@@ -393,13 +397,15 @@ const FRAGMENT_SHADER = `
 	uniform float uCameraNear;
 	uniform float uCameraFar;
 	uniform vec2 uResolution;
-	// Deck bodies: the column under the reference level (radius 1) down to the
-	// solid surface at 1 - uDeepDepthR. Rows of uDeepTex over that span:
+	// The deep column: from the solid surface at radius uDeepBaseR up
+	// uDeepSpanR — to the reference level under a deck, over the surface
+	// under a surface-referenced shell. Rows of uDeepTex over that span:
 	// downward diffuse flux over its surface luminance, up/down flux ratio,
-	// direct-beam extinction per km. uDeepOn: camera under the reference level.
+	// direct-beam extinction per km. uDeepOn: camera inside the span.
 	uniform sampler2D uDeepTex;
 	uniform float uDeepN;
-	uniform float uDeepDepthR;       // 0 = no deep column
+	uniform float uDeepBaseR;
+	uniform float uDeepSpanR;        // 0 = no deep column
 	uniform float uDeepKmPerRadius;
 	uniform float uDeepOn;
 	// Camera in the cloud top: 0 above, rising to 1 at the reference level
@@ -471,7 +477,7 @@ const FRAGMENT_SHADER = `
 
 	// Altitude fraction over the deep column of a squashed-space point.
 	float deepFrac(vec3 p) {
-		return (length(p) - (1.0 - uDeepDepthR)) / uDeepDepthR;
+		return (length(p) - uDeepBaseR) / uDeepSpanR;
 	}
 
 	// Downward flux at altitude fraction u, exposed to unit luminance: the
@@ -666,14 +672,14 @@ const FRAGMENT_SHADER = `
 		#endif
 		if (tEnd <= tStart) discard;
 
-		// Under a deck: fog the segment below the reference level with the
+		// Inside the deep column: fog the segment up to its top with the
 		// profile's diffuse light, then let the march handle the shell above.
 		// Terrain and horizon rays never leave the column, so they are done here.
 		vec3 deepColor = vec3(0.0);
 		vec3 deepT = vec3(1.0);
 		#ifdef ATMO_INSIDE
 		if (uDeepOn > 0.5) {
-			float tDeck = raySphere(ro, rd, 1.0).y;
+			float tDeck = raySphere(ro, rd, uDeepBaseR + uDeepSpanR).y;
 			float tDeepEnd = min(tEnd, tDeck);
 			float ddt = (tDeepEnd - tStart) / float(DEEP_STEPS);
 			vec3 tauDeep = vec3(0.0);
@@ -813,9 +819,9 @@ const FRAGMENT_SHADER = `
 		// The deep segment sits in front of the marched shell.
 		color = deepColor + deepT * color;
 
-		// In the cloud top: fade toward the deck's own light field, the same
-		// radiance the deep sky shows just under the reference level, so the
-		// crossing is continuous in both brightness and colour.
+		// Just over the column's top: fade toward its own light field, the
+		// radiance the deep sky shows just under it, so the crossing is
+		// continuous in both brightness and colour.
 		#ifdef ATMO_INSIDE
 		if (uDeepBlend > 0.0 && uDeepOn < 0.5) {
 			vec3 up = normalize(roWorld);
@@ -889,7 +895,8 @@ function setRadiusUniforms(
 	(u.uAbsorption.value as Vector3).set(toNorm(ab[0]), toNorm(ab[1]), toNorm(ab[2]));
 	u.uAbsorptionCenter.value = params.absorptionCenterKm / planetRadiusKm;
 	u.uAbsorptionWidth.value = params.absorptionWidthKm / planetRadiusKm;
-	u.uDeepDepthR.value = params.deepColumn ? (params.referenceAltitudeKm ?? 0) / planetRadiusKm : 0;
+	u.uDeepBaseR.value = 1 - (params.referenceAltitudeKm ?? 0) / planetRadiusKm;
+	u.uDeepSpanR.value = params.deepColumn ? params.deepColumn.topKm / planetRadiusKm : 0;
 	u.uDeepKmPerRadius.value = planetRadiusKm;
 }
 
@@ -953,7 +960,8 @@ export function buildAtmosphereNode(
 				value: params.deepColumn ? deepColumnTexture(params.deepColumn) : whiteTexture()
 			},
 			uDeepN: { value: params.deepColumn?.n ?? 1 },
-			uDeepDepthR: { value: 0 },
+			uDeepBaseR: { value: 1 },
+			uDeepSpanR: { value: 0 },
 			uDeepKmPerRadius: { value: 1 },
 			uDeepOn: { value: 0 },
 			uDeepBlend: { value: 0 },
@@ -1022,15 +1030,15 @@ export function buildAtmosphereNode(
  * sits on the reference level, so that stays the floor from above — a floor
  * under it would let rays that hit the overlay but clear the floor march on
  * through hundreds of km of haze behind it, a dark band along the deck's
- * horizon. Under the deck the floor is the solid surface and the deep-column
- * sky takes over; `deckBlend` (0..1) fades the shell into the deck's light
- * over the cloud top just above it, see {@link deckBlendWeight}.
+ * horizon. Inside the deep column the floor is the solid surface and the
+ * deep-column sky takes over; `deckBlend` (0..1) fades the shell into the
+ * column's light over the band just above it, see {@link deckBlendWeight}.
  */
 export function applyShellViewState(
 	node: AtmosphereNode,
 	inside: boolean,
-	underDeck: boolean,
-	deckBlend = underDeck ? 1 : 0
+	inDeepColumn: boolean,
+	deckBlend = inDeepColumn ? 1 : 0
 ): void {
 	const material = node.material;
 	const u = material.uniforms;
@@ -1039,26 +1047,38 @@ export function applyShellViewState(
 	node.mesh.renderOrder = inside ? ATMOSPHERE_INSIDE_RENDER_ORDER : ATMOSPHERE_RENDER_ORDER;
 	material.depthWrite = !inside;
 	material.depthTest = !inside;
-	const clampToTerrain = inside && (underDeck || depthKm === 0);
+	const clampToTerrain = inside && (inDeepColumn || depthKm === 0);
 	u.uUseDepth.value = clampToTerrain ? 1 : 0;
 	u.uSurfaceBlockR.value = clampToTerrain
 		? 1 - (depthKm + TERRAIN_DIP_KM) / node.planetRadiusKm
 		: 1;
-	u.uDeepOn.value = underDeck ? 1 : 0;
+	u.uDeepOn.value = inDeepColumn ? 1 : 0;
 	u.uDeepBlend.value = deckBlend;
 }
 
-/** Cloud-top thickness the shell fades into the deck over, in Mie scale
- *  heights: the visible cloud top is a τ≈1 level a few km deep, not a
- *  surface. */
+/** Thickness of the band the shell fades into the deep column's light over,
+ *  in Mie scale heights above the column's top: a cloud top is a τ≈1 level a
+ *  few km deep, not a surface. */
 const DECK_BLEND_SCALE_HEIGHTS = 2;
 
-/** Weight of the deck's light in the shell for a camera `altKm` above the
- *  reference level: 1 under it, fading to 0 over the cloud top above. */
+/** Height of the deep column's top over the reference level, km: 0 for a
+ *  deck body, whose column ends at the deck. */
+export function deepTopAboveReferenceKm(params: AtmosphereParams): number {
+	return (params.deepColumn?.topKm ?? 0) - (params.referenceAltitudeKm ?? 0);
+}
+
+/** Whether a camera `altKm` above the reference level sits inside the deep
+ *  column. */
+export function inDeepColumn(params: AtmosphereParams, altKm: number): boolean {
+	return !!params.deepColumn && altKm < deepTopAboveReferenceKm(params);
+}
+
+/** Weight of the column's light in the shell for a camera `altKm` above the
+ *  reference level: 1 inside the column, fading to 0 over the band above. */
 export function deckBlendWeight(params: AtmosphereParams, altKm: number): number {
 	if (!params.deepColumn) return 0;
 	const bandKm = DECK_BLEND_SCALE_HEIGHTS * params.mieScaleHeightKm;
-	const t = Math.min(1, Math.max(0, altKm / bandKm));
+	const t = Math.min(1, Math.max(0, (altKm - deepTopAboveReferenceKm(params)) / bandKm));
 	return 1 - t * t * (3 - 2 * t);
 }
 

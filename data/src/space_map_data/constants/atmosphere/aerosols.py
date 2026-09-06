@@ -97,15 +97,18 @@ AEROSOLS: dict[str, Aerosol] = {
     # albedo features that define the disc) over an 11 km well-mixed column
     # (Conrath 1975 profile ≈ gas scale height) → β_ext ≈ 0.014/km, flat
     # across the visible (r_eff 1.6 µm » λ; Tomasko et al. 1999). Albedo
-    # split: ω0(650) = 0.975 (Wolff et al. 2009 via Chen-Chen 2019); k rises
-    # steeply shortward of 670 nm (Tomasko 1999), the g/b albedos
-    # interpolate that rise and are the tunable part — they set the
-    # butterscotch sky.
+    # split: ω(650) = 0.975 (Wolff et al. 2009 via Chen-Chen 2019); the
+    # green and blue values are the single-scattering albedo squared —
+    # ω(550) ≈ 0.80, ω(440) ≈ 0.62 (Wolff 2009, Tomasko 1999) — because the
+    # butterscotch sky is light scattered twice or more through the slant
+    # column and the march scatters it once. Calibrated on the Pathfinder
+    # sky: blue/red radiance ≈ 0.35-0.4, green/red ≈ 0.6 (Thomas et al.
+    # 1999, JGR 104, 8795). Extinction stays grey.
     "mars_dust": Aerosol(
         phase="mars_dust",
         scale_height_km=11.0,
-        scatter_per_km=(0.0133, 0.0125, 0.0095),
-        absorption_per_km=(3.4e-4, 1.1e-3, 4.1e-3),
+        scatter_per_km=(0.0133, 0.0090, 0.0055),
+        absorption_per_km=(3.4e-4, 4.6e-3, 8.2e-3),
     ),
     # Venus upper haze above the ~70 km low-latitude cloud tops the texture
     # shows — the deck is latitude-dependent, so structure.py ships VIRA's
@@ -127,15 +130,20 @@ AEROSOLS: dict[str, Aerosol] = {
     ),
     # Titan tholin haze: extinction slope τ ∝ λ^-1.41 (30-80 km regime,
     # Tomasko et al. 2008 via Bazzon et al. 2014) anchored at τ(550) ≈ 4
-    # over H = 60 km → optically thick, β_ext(550) ≈ 0.067/km. Albedo split
-    # from tholin k: ω(680) ≈ 0.95, dropping to ~0.55 at 440 (Khare et al.
-    # 1984: k = 0.0024 red edge → 0.11 blue edge) — the blue absorption is
-    # what makes the disc orange rather than cream.
+    # over H = 60 km → optically thick, β_ext(550) ≈ 0.067/km. Albedo:
+    # the tholin's ω(680) ≈ 0.95 (Khare et al. 1984, k = 0.0024 at the red
+    # edge) is kept; green and blue carry roughly the cube of their single-
+    # scattering values, ω(550) ≈ 0.85 and ω(440) ≈ 0.55 (k = 0.11 at the
+    # blue edge) — the disc is light scattered several times through a
+    # τ ≈ 4 column and the march scatters it once, so the single-scattering
+    # albedo renders Titan cream. Calibrated on Cassini ISS natural colour:
+    # blue/red ≈ 0.2, green/red ≈ 0.55 in linear light. Extinction stays as
+    # measured; deep_column.py holds the single-scattering values.
     "titan_tholin": Aerosol(
         phase="titan_tholin",
         scale_height_km=60.0,
-        scatter_per_km=(4.7e-2, 5.7e-2, 5.0e-2),
-        absorption_per_km=(2.5e-3, 1.0e-2, 4.1e-2),
+        scatter_per_km=(4.7e-2, 3.9e-2, 1.9e-2),
+        absorption_per_km=(2.5e-3, 2.8e-2, 7.2e-2),
     ),
     # Jupiter + Saturn stratospheric/NH₃ haze above the 1-bar deck: compact
     # sub-µm particles (r = 0.2-0.5 µm, Zhang et al. 2013 low latitudes;

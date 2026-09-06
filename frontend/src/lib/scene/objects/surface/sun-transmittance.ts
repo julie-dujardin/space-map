@@ -4,8 +4,9 @@
  * and never touches light striking a surface.
  *
  * - Surface patch: direct light × sun→fragment transmittance (sunset light).
- *   Under a deck body's reference level the direct beam is gone, and the
- *   patch lights the ground with the deep column's diffuse sky instead.
+ *   Inside a deep column (under Venus's deck, under Titan's haze) the direct
+ *   beam is gone, and the patch lights the ground with the column's diffuse
+ *   sky instead.
  * - {@link VIEW_TINT_GLSL}: camera→fragment chroma for the sun disc,
  *   per-fragment since from orbit the disc outsizes the atmosphere band.
  * - {@link sunPathTransmittance}: CPU ratio for corona/star point.
@@ -63,14 +64,17 @@ const PARAM_DECLS = `
 	uniform vec3 uAtmoTSpinAxis;     // unit, world — body pole
 	uniform float uAtmoTStretch;     // equatorial radius / polar radius, >= 1
 	uniform float uAtmoTMeshR;       // host mesh's nominal radius / planet radius
-	// Deck bodies: the deep-column profile under the reference level (rows:
-	// downward flux over its surface value, up/down ratio, extinction per km)
-	// down to the solid surface at 1 - uAtmoTDeepDepthR.
+	// The deep-column profile (rows: downward flux over its surface value,
+	// up/down ratio, extinction per km) from the solid surface at
+	// uAtmoTDeepBaseR up uAtmoTDeepSpanR. uAtmoTDeepBlend: the camera's own
+	// weight inside the column, 0 above its blend band.
 	uniform sampler2D uAtmoTDeepTex;
 	uniform float uAtmoTDeepN;
-	uniform float uAtmoTDeepDepthR;  // 0 = none
+	uniform float uAtmoTDeepBaseR;
+	uniform float uAtmoTDeepSpanR;   // 0 = none
 	uniform float uAtmoTDeepKmPerRadius;
 	uniform float uAtmoTDeepIrradiance; // render-unit irradiance luminance, sun overhead
+	uniform float uAtmoTDeepBlend;
 
 	vec3 atmoTDeepTap(float row, float u) {
 		float w = clamp(u, 0.0, 1.0) * (uAtmoTDeepN - 1.0);
@@ -81,10 +85,10 @@ const PARAM_DECLS = `
 		return mix(a, b, w - i0);
 	}
 
-	// Whether the host mesh sits under a deck body's reference level — the
-	// solid surface does, the cloud overlay at the deck does not.
+	// Whether the host mesh sits inside the deep column — the solid surface
+	// does, a cloud overlay at a deck does not.
 	bool atmoTUnderDeck() {
-		return uAtmoTDeepDepthR > 0.0 && uAtmoTMeshR < 1.0 - 0.5 * uAtmoTDeepDepthR;
+		return uAtmoTDeepSpanR > 0.0 && uAtmoTMeshR < uAtmoTDeepBaseR + 0.5 * uAtmoTDeepSpanR;
 	}
 
 	// Shell parity: stretch the spin-axis component so the oblate ellipsoid
@@ -121,17 +125,18 @@ const SUN_TINT_GLSL = `
 		// ripple below it between vertices (chords, DEM), and the exponential
 		// density turns that tessellation ripple into per-quad tint blotches.
 		p = normalize(p) * uAtmoTMeshR;
-		// Under a deck the beam crosses the deep column: gone on the ground,
-		// whole just under the deck. Gated on the host mesh, not the fragment:
-		// the overlay at the deck itself ripples under it between vertices.
+		// Inside the column the beam crosses what is left of it above: gone on
+		// the ground, whole at its top. Gated on the host mesh, not the
+		// fragment: an overlay at the top itself ripples under it between
+		// vertices.
 		if (atmoTUnderDeck()) {
-			float zf = (length(p) - (1.0 - uAtmoTDeepDepthR)) / uAtmoTDeepDepthR;
+			float zf = (length(p) - uAtmoTDeepBaseR) / uAtmoTDeepSpanR;
 			if (zf < 1.0) {
 				float mu = max(dot(normalize(p), uAtmoTSunDir), 0.05);
 				float dz = (1.0 - zf) / 6.0;
 				vec3 tau = vec3(0.0);
 				for (int i = 0; i < 6; i++) tau += atmoTDeepTap(2.0, zf + dz * (float(i) + 0.5));
-				return exp(-tau * (dz * uAtmoTDeepDepthR * uAtmoTDeepKmPerRadius / mu));
+				return exp(-tau * (dz * uAtmoTDeepSpanR * uAtmoTDeepKmPerRadius / mu));
 			}
 		}
 		vec3 sd = atmoTSquash(uAtmoTSunDir);
@@ -169,15 +174,16 @@ const SUN_TINT_GLSL = `
 		return exp(-max(tau - uAtmoTBakedComp * tauVert, vec3(0.0)));
 	}
 
-	// Diffuse sky irradiance on a surface under the deck: the profile's
+	// Diffuse sky irradiance on a surface inside the column: the profile's
 	// downward flux from above and ground-bounced flux from below, weighted by
 	// the normal's tilt, scaled by the sun's height over the local horizontal
-	// with a floor through the deck's twilight band (the deck stays lit until
-	// the sun is ~8° under the surface horizon). Zero elsewhere.
+	// with a floor through the column's twilight band (the top stays lit until
+	// the sun is ~8° under the surface horizon). Zero elsewhere, and faded by
+	// the camera's own crossing of the top so the ground light never pops.
 	vec3 atmoDeepSkyLight(vec3 worldPos, vec3 worldNormal) {
-		if (!atmoTUnderDeck() || uAtmoTEnable < 0.5) return vec3(0.0);
+		if (!atmoTUnderDeck() || uAtmoTEnable < 0.5 || uAtmoTDeepBlend <= 0.0) return vec3(0.0);
 		vec3 rel = (worldPos - uAtmoTCenter) / uAtmoTRadiusScene;
-		float zf = (length(rel) - (1.0 - uAtmoTDeepDepthR)) / uAtmoTDeepDepthR;
+		float zf = (length(rel) - uAtmoTDeepBaseR) / uAtmoTDeepSpanR;
 		vec3 up = normalize(rel);
 		float s = dot(up, uAtmoTSunDir);
 		float sun = max(s, 0.06 * smoothstep(-0.15, -0.02, s));
@@ -185,7 +191,7 @@ const SUN_TINT_GLSL = `
 		vec3 down = atmoTDeepTap(0.0, zf);
 		down *= (uAtmoTDeepIrradiance * sun) / max(dot(down, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
 		float w = 0.5 + 0.5 * dot(worldNormal, up);
-		return mix(down * atmoTDeepTap(1.0, zf), down, w);
+		return mix(down * atmoTDeepTap(1.0, zf), down, w) * uAtmoTDeepBlend;
 	}
 `;
 
@@ -251,10 +257,13 @@ export interface SunTransmittanceParamUniforms {
 	uAtmoTMeshR: { value: number };
 	uAtmoTDeepTex: { value: Texture };
 	uAtmoTDeepN: { value: number };
-	uAtmoTDeepDepthR: { value: number };
+	uAtmoTDeepBaseR: { value: number };
+	uAtmoTDeepSpanR: { value: number };
 	uAtmoTDeepKmPerRadius: { value: number };
 	/** Per frame: the deep sky's surface irradiance luminance (sun-scale included). */
 	uAtmoTDeepIrradiance: { value: number };
+	/** Per frame: the camera's weight inside the column ({@link deckBlendWeight}). */
+	uAtmoTDeepBlend: { value: number };
 }
 
 /** Surface-patch handle: params + the re-bound eclipse sun-dir/centre refs. */
@@ -288,9 +297,11 @@ function makeParamUniforms(enable: { value: number }): SunTransmittanceParamUnif
 		uAtmoTMeshR: { value: 1 },
 		uAtmoTDeepTex: { value: whiteTexture() },
 		uAtmoTDeepN: { value: 1 },
-		uAtmoTDeepDepthR: { value: 0 },
+		uAtmoTDeepBaseR: { value: 1 },
+		uAtmoTDeepSpanR: { value: 0 },
 		uAtmoTDeepKmPerRadius: { value: 1 },
-		uAtmoTDeepIrradiance: { value: 0 }
+		uAtmoTDeepIrradiance: { value: 0 },
+		uAtmoTDeepBlend: { value: 0 }
 	};
 }
 
@@ -335,7 +346,8 @@ export function syncSunTransmittanceUniforms(
 	const deep = params.deepColumn;
 	u.uAtmoTDeepTex.value = deep ? deepColumnTexture(deep) : whiteTexture();
 	u.uAtmoTDeepN.value = deep?.n ?? 1;
-	u.uAtmoTDeepDepthR.value = deep ? (planetRadiusKm - surfaceKm) / planetRadiusKm : 0;
+	u.uAtmoTDeepBaseR.value = surfaceKm / planetRadiusKm;
+	u.uAtmoTDeepSpanR.value = deep ? deep.topKm / planetRadiusKm : 0;
 	u.uAtmoTDeepKmPerRadius.value = planetRadiusKm;
 }
 

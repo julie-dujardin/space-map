@@ -35,6 +35,7 @@
 		buildAtmosphereNode,
 		deckBlendWeight,
 		deepColumnTransmittance,
+		inDeepColumn,
 		disposeAtmosphereNode
 	} from '$lib/scene/objects/surface/atmosphere';
 	import { getAtmosphereParams, loadAtmospheres } from '$lib/fetch/atmospheres';
@@ -285,8 +286,8 @@
 		const depthKm = p.referenceAltitudeKm ?? 0;
 		const altKm = altRadii * currentBody.radiusKm;
 		let dim = skyboxDimFactor(p, altKm - depthKm, sinSunElev);
-		if (p.deepColumn && altKm < depthKm) {
-			const t = deepColumnTransmittance(p.deepColumn, depthKm, altKm);
+		if (p.deepColumn && altKm < p.deepColumn.topKm) {
+			const t = deepColumnTransmittance(p.deepColumn, altKm);
 			dim *= 0.2126 * t[0] + 0.7152 * t[1] + 0.0722 * t[2];
 		}
 		return dim;
@@ -792,15 +793,14 @@
 			const referenceR = (RADIUS_SCENE * atmoNode.planetRadiusKm) / atmoNode.surfaceRadiusKm;
 			const altKm =
 				((camera.position.length() - referenceR) / referenceR) * atmoNode.planetRadiusKm;
-			const underDeck = inside && !!atmoNode.params.deepColumn && altKm < 0;
-			applyShellViewState(
-				atmoNode,
-				inside,
-				underDeck,
-				inside ? deckBlendWeight(atmoNode.params, altKm) : 0
-			);
+			const underDeck = inside && inDeepColumn(atmoNode.params, altKm);
+			const deckBlend = inside ? deckBlendWeight(atmoNode.params, altKm) : 0;
+			applyShellViewState(atmoNode, inside, underDeck, deckBlend);
 			u.uDeepIrradiance.value = DEEP_SKY_EXPOSURE * sunScale;
-			if (sunTUniforms) sunTUniforms.uAtmoTDeepIrradiance.value = DEEP_SKY_EXPOSURE * sunScale;
+			if (sunTUniforms) {
+				sunTUniforms.uAtmoTDeepIrradiance.value = DEEP_SKY_EXPOSURE * sunScale;
+				sunTUniforms.uAtmoTDeepBlend.value = deckBlend;
+			}
 		}
 		// Production dims the star map only via the inside-shell path; the
 		// readout still shows the would-be factor when the toggle is off.
