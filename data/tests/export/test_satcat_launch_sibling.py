@@ -8,6 +8,9 @@ launch is shared, the hardware is not, so only the launch fields survive.
 
 from typing import cast
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
 from space_map_data.export.objects.celestrak import (
     build_satcat_global,
     satcat_describes,
@@ -15,6 +18,7 @@ from space_map_data.export.objects.celestrak import (
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType, OrbitalSource, Satcat
+from space_map_data.models.object.base import Base
 
 from tests.conftest import make_object
 
@@ -39,6 +43,7 @@ def _probe(cospar: str | None, sat: Satcat | None) -> Object:
         probe_id=89915392,
         cospar_id=cospar,
         norad_cat_id=25008,
+        satcat_norad_cat_id=25008 if sat is not None else None,
     )
     obj.satcat = sat
     return obj
@@ -85,6 +90,7 @@ class TestSatcatDescribes:
             parent_id="naif-399",
             cospar_id="2025-276DT",
             norad_cat_id=66779,
+            satcat_norad_cat_id=66779,
         )
         obj.satcat = Satcat(NORAD_CAT_ID=66779, COSPAR_ID="2025-276DU")
         assert satcat_describes(obj) is True
@@ -101,3 +107,24 @@ class TestBuildSatcatGlobal:
     def test_siblings_row_ships_only_the_launch(self):
         data = build_satcat_global(_sat("1997-061A"), UNITS, own_craft=False)
         assert data == {"launch_date": "1997-10-15", "launch_site_code": "AFETR"}
+
+
+class TestDetachedObjects:
+    """An object handed to a worker thread must not fire a satcat lazy load."""
+
+    def test_expunged_object_without_a_satcat_row(self):
+        # SBDB batches are expunged as soon as they are submitted, so a
+        # relationship read in the worker raises instead of returning None.
+        engine = create_engine("sqlite://")
+        Base.metadata.create_all(engine)
+        with Session(engine, expire_on_commit=False) as session:
+            obj = make_object(
+                id="sbdb-2000433",
+                name="Eros",
+                object_type=ObjectType.asteroid,
+                orbital_source=OrbitalSource.sbdb,
+            )
+            session.add(obj)
+            session.commit()
+            session.expunge(obj)
+            assert satcat_describes(obj) is False

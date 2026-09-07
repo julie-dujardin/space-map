@@ -65,7 +65,13 @@ def satcat_describes(obj: Object) -> bool:
     than a different spacecraft. A probe only points at a row, via whichever
     NORAD the registry holds, and a COSPAR that disagrees means the row
     belongs to something else that flew on the same rocket.
+
+    Reads the FK column before the relationship: an object with no SATCAT row
+    must not fire a lazy load, which for a worker thread's detached objects
+    raises rather than returning None.
     """
+    if obj.satcat_norad_cat_id is None:
+        return False
     sat = obj.satcat
     if sat is None:
         return False
