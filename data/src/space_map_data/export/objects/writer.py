@@ -41,6 +41,7 @@ from space_map_data.export.objects.celestrak import (
     build_satcat_localized,
     covered_authoritative_qids,
     merge_operator_qids,
+    satcat_describes,
 )
 from space_map_data.export.objects.activity import activity_block
 from space_map_data.export.objects.radiation import radiation_block
@@ -250,7 +251,9 @@ def build_chunk_object_data(
             logger.error("Error extracting claims for %s (%s): %s", obj.id, qid, exc)
             extracted = {}
 
-        sat = obj.satcat if obj.norad_cat_id is not None else None
+        # A launch sibling's row says nothing about who operates this
+        # craft, and must not suppress its own Wikidata claims.
+        sat = obj.satcat if satcat_describes(obj) else None
         drop_covered_qids(extracted, covered_authoritative_qids(sat), obj.id)
         merge_operator_qids(extracted, sat)
 
@@ -668,7 +671,9 @@ def _build_global(
 
     # CelesTrak enrichment
     if obj.norad_cat_id is not None and obj.satcat is not None:
-        celestrak_data = build_satcat_global(obj.satcat, units)
+        celestrak_data = build_satcat_global(
+            obj.satcat, units, own_craft=satcat_describes(obj)
+        )
         if celestrak_data:
             data["celestrak"] = celestrak_data
 
@@ -771,7 +776,11 @@ def _build_localized(
     if obj.norad_cat_id is not None and obj.satcat is not None:
         # SATCAT-derived refs overwrite Wikidata-derived ones (e.g. launch_site)
         # since SATCAT is the authoritative source for satellite metadata.
-        data.update(build_satcat_localized(obj.satcat, lang, wikidata_entities))
+        data.update(
+            build_satcat_localized(
+                obj.satcat, lang, wikidata_entities, own_craft=satcat_describes(obj)
+            )
+        )
 
     if wiki_summary:
         data["wikipedia"] = wiki_summary.to_dict()

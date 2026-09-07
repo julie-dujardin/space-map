@@ -28,7 +28,7 @@ from space_map_data.constants.earth_sats.satellite_models import (
 from space_map_data.export.objects.wikidata_claims import EntityRef, resolve_entity_ref
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
-from space_map_data.models.object import Satcat
+from space_map_data.models.object import Object, Satcat
 
 
 _GLOBAL_FIELDS = (
@@ -50,6 +50,30 @@ _GLOBAL_FIELDS = (
 )
 
 
+# A probe's SATCAT row is sometimes a launch sibling's rather than its own:
+# Huygens is keyed to Cassini's row, a Venera lander to its flyby bus. The
+# launch is genuinely shared, so these two fields still describe the probe.
+# Everything else in the row describes the sibling's hardware.
+_LAUNCH_SHARED_FIELDS = ("launch_date", "launch_site_code")
+
+
+def satcat_describes(obj: Object) -> bool:
+    """Whether ``obj.satcat`` is this object's own catalogue row.
+
+    A `norad_satcat-N` object *is* its row and takes its identity from it, so
+    a COSPAR that drifts from the row means an upstream re-designation rather
+    than a different spacecraft. A probe only points at a row, via whichever
+    NORAD the registry holds, and a COSPAR that disagrees means the row
+    belongs to something else that flew on the same rocket.
+    """
+    sat = obj.satcat
+    if sat is None:
+        return False
+    if obj.probe_id is None or obj.cospar_id is None or sat.COSPAR_ID is None:
+        return True
+    return obj.cospar_id.upper() == sat.COSPAR_ID.upper()
+
+
 # GCAT's hardware figures, in the unit ladder the Wikidata claims already use
 # so a page never quotes one mass in tonnes and the next in kilograms.
 _SIZE_FIELDS: tuple[tuple[str, str, str], ...] = (
@@ -61,13 +85,21 @@ _SIZE_FIELDS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-def build_satcat_global(sat: Satcat, units: UnitConverter) -> dict:
-    """Non-localized SATCAT fields, omitting None/empty entries."""
+def build_satcat_global(
+    sat: Satcat, units: UnitConverter, *, own_craft: bool = True
+) -> dict:
+    """Non-localized SATCAT fields, omitting None/empty entries.
+
+    ``own_craft=False`` keeps only what the launch shares — see
+    `satcat_describes`.
+    """
     data: dict = {}
-    for attr in _GLOBAL_FIELDS:
+    for attr in _GLOBAL_FIELDS if own_craft else _LAUNCH_SHARED_FIELDS:
         val = getattr(sat, attr)
         if val is not None:
             data[attr] = val
+    if not own_craft:
+        return data
     for attr, qty_type, key in _SIZE_FIELDS:
         val = getattr(sat, attr)
         if val is None:
@@ -92,16 +124,21 @@ def build_satcat_localized(
     sat: Satcat,
     lang: str,
     wikidata_entities: WikidataEntityCache,
+    *,
+    own_craft: bool = True,
 ) -> dict:
-    """Localized SATCAT refs (constellation, launch_site, operators)."""
+    """Localized SATCAT refs (constellation, launch_site, operators).
+
+    ``own_craft=False`` keeps only the launch site — see `satcat_describes`.
+    """
     data: dict = {}
 
-    if sat.constellation_slug is not None:
+    if own_craft and sat.constellation_slug is not None:
         ref = _constellation_group_ref(sat.constellation_slug, lang, wikidata_entities)
         if ref is not None:
             data["constellation"] = ref.to_dict()
 
-    if sat.bus_slug is not None:
+    if own_craft and sat.bus_slug is not None:
         ref = _bus_group_ref(sat.bus_slug, lang, wikidata_entities)
         if ref is not None:
             data["bus"] = ref.to_dict()
@@ -123,12 +160,12 @@ def build_satcat_localized(
                 }
             ]
 
-    if sat.operator_qids:
+    if own_craft and sat.operator_qids:
         refs = resolve_operator_refs(sat.operator_qids, lang, wikidata_entities)
         if refs:
             data["operators"] = refs
 
-    if sat.manufacturer_qids:
+    if own_craft and sat.manufacturer_qids:
         mfr_refs = resolve_manufacturer_refs(
             sat.manufacturer_qids, lang, wikidata_entities
         )
