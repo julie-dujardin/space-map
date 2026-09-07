@@ -94,9 +94,6 @@ export class PromotionRegistry {
 		});
 		// An add-free rollover fires no `onBodiesAdded`, yet the valid count shifts.
 		deps.ctx.onEarthSatRollover(() => this.reevaluateEarthSatMode());
-		// URL-loaded placeholders flushed before this registry was wired up
-		// missed the live `onBodiesAdded` notification — sweep them now.
-		this.autoPromoteAsteroidMoons();
 		// Group filter is applied in MapPage.onMount *before* the scene loads —
 		// by the time we exist, the filter may already be set, so seed from the
 		// current value rather than waiting for the next change event.
@@ -123,6 +120,9 @@ export class PromotionRegistry {
 			// in the labels file (cheb-covered ones are); add idempotently.
 			for (const id of MINOR_PROMOTED_IDS) add(id);
 			this.buildBatch(alreadyLoaded);
+			// Also catches placeholders flushed before this registry was wired up,
+			// which missed the live `onBodiesAdded` notification.
+			this.autoPromoteAsteroidMoons();
 			// URL navigation that landed before labels resolved may have flagged
 			// a curated body as user-promoted; reconcile now.
 			let pruned = false;
@@ -136,12 +136,12 @@ export class PromotionRegistry {
 		});
 	}
 
-	/** Asteroid moons land in the `asteroidBodiesByZone` point-cloud bucket, so the
-	 *  curated/labels promotion path skips them; auto-promote on arrival so they
-	 *  show by default. Also promotes the parent asteroid if it was pre-routed to
-	 *  `bodiesById` as a placeholder, else the host stays invisible while its
-	 *  moon renders. Walks the moon bucket (a few hundred rows) rather than the
-	 *  arrivals, which run to a million rows per flush. */
+	/** Sweep the asteroid-moon bucket for satellites of a curated host, promoting
+	 *  the host too — pre-routed to `bodiesById` as a placeholder, it would
+	 *  otherwise stay invisible while its moon renders. Gating on the host leaves
+	 *  the hundreds of uncurated TNO and main-belt binaries as plain dots (see
+	 *  PROMOTED_TYPES in the exporter for why). Walks the moon bucket (a few
+	 *  hundred rows) rather than the arrivals, which run to a million per flush. */
 	private autoPromoteAsteroidMoons(): void {
 		const moonBucket = this.deps.ctx.bodies.asteroidBodiesByZone.get('small_body_moons');
 		if (!moonBucket || moonBucket.size === 0) return;
@@ -150,6 +150,9 @@ export class PromotionRegistry {
 		for (const key of moonBucket.keys()) {
 			const body = moonBucket.getKey(key);
 			if (!body || body.data.objectType !== ObjectType.MOON) continue;
+			// Before getBody: an uncurated host costs an all-zone probe that
+			// materializes and permanently caches a body we then discard.
+			if (!this.isDefault(body.data.parentId)) continue;
 			const parent = this.deps.ctx.getBody(body.data.parentId);
 			if (!parent || !isAsteroid(parent.data.objectType)) continue;
 			// Parent first: the per-frame loop iterates insertion order, so the

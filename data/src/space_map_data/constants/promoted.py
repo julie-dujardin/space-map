@@ -4,8 +4,11 @@ A "promoted" body shows up labeled on the map before the user interacts —
 rendered as an individual mesh rather than a point in a cloud. Two sources
 combine into the runtime promoted set:
 
-* All planets, dwarf planets, moons, stars, barycenters, and Lagrange points,
-  picked up automatically by object type.
+* All planets, dwarf planets, stars, barycenters, and Lagrange points, picked
+  up automatically by object type, plus the moons of any body promoted this
+  way. A moon rides on its host because small-body satellites sit at their
+  host's heliocentric position, so one whose host is only a point in a cloud
+  reads as a body of its own out in the belt.
 * The hand-picked spacecraft / satellites / asteroids / comets below — bodies
   that aren't in any of those categories but are interesting enough to surface
   on first paint (visited targets, hazardous NEOs, famous comets, flagship
@@ -24,7 +27,6 @@ PROMOTED_TYPES: frozenset[ObjectType] = frozenset(
     {
         ObjectType.planet,
         ObjectType.dwarf_planet,
-        ObjectType.moon,
         ObjectType.star,
         ObjectType.barycenter,
     }

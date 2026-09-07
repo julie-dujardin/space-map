@@ -2,8 +2,8 @@
 
 One ``/v1/labels/{lang}.gz`` is emitted per supported language, listing only
 *promoted* bodies — those rendered as individual meshes with labels on first
-paint (planets, dwarf planets, moons, stars, barycenters, Lagrange points,
-curated extras, and every high-accuracy probe).
+paint (planets, dwarf planets, stars, barycenters, Lagrange points, curated
+extras, every high-accuracy probe, and the moons of any of them).
 
 Format: gzipped UTF-8, one ``{id}\\x1f{name}\\x1f{flags}`` line per object.
 The only flag is ``m`` for *minor* (collapsed halo, expands on hover), set
@@ -28,30 +28,46 @@ logger = logging.getLogger(__name__)
 _US = "\x1f"  # ASCII Unit Separator — delimiter between fields
 
 
-def _is_promoted(
-    obj_id: str,
-    global_data: dict,
+def _promoted_ids(
+    all_global: dict[str, dict],
     cheb_covered_ids: set[str],
     probe_ids: set[str],
     rendered_ids: set[str],
-) -> bool:
-    """A body is promoted if it'd be rendered as an individual mesh on first
-    paint. Type/curated/probe membership is the *intent* check; ``rendered_ids``
-    plus ``cheb_covered_ids`` is the *capability* check — a body absent from
-    every position file can't render in 3D, and promoting it anyway would make
-    the renderer retry an unfindable ``getBody`` every frame.
+    moon_hosts: dict[str, str],
+) -> set[str]:
+    """The promoted set: bodies rendered as an individual mesh on first paint.
+
+    Type/curated/probe membership is the *intent* check; ``rendered_ids`` plus
+    ``cheb_covered_ids`` is the *capability* check — a body absent from every
+    position file can't render in 3D, and promoting it anyway would make the
+    renderer retry an unfindable ``getBody`` every frame.
 
     Chebyshev coverage is deliberately not an intent signal: it decides how
     precisely a body is placed, not whether it is worth showing. A covered body
     that belongs on the map is listed in :data:`PROMOTED_EXTRA_IDS`.
+
+    Moons resolve in a second pass against the finished set, so a satellite is
+    promoted exactly where its host is — see :mod:`space_map_data.constants.promoted`.
     """
-    if obj_id not in rendered_ids and obj_id not in cheb_covered_ids:
-        return False
-    return (
-        global_data.get("type") in PROMOTED_TYPES
+    renderable = {
+        obj_id
+        for obj_id in all_global
+        if obj_id in rendered_ids or obj_id in cheb_covered_ids
+    }
+    promoted = {
+        obj_id
+        for obj_id in renderable
+        if all_global[obj_id].get("type") in PROMOTED_TYPES
         or obj_id in PROMOTED_EXTRA_IDS
         or obj_id in probe_ids
-    )
+    }
+    promoted |= {
+        obj_id
+        for obj_id in renderable - promoted
+        if all_global[obj_id].get("type") == ObjectType.moon
+        and moon_hosts.get(obj_id) in promoted
+    }
+    return promoted
 
 
 def _resolve_label(
@@ -89,6 +105,7 @@ def write_global_labels(
     cheb_covered_ids: set[str],
     probe_ids: set[str],
     rendered_ids: set[str],
+    moon_hosts: dict[str, str],
 ) -> None:
     """Write ``/v1/labels/{lang}.gz`` for every supported language.
 
@@ -100,6 +117,9 @@ def write_global_labels(
     ``rendered_ids`` excludes bodies present only in object bundles (e.g.
     orbit-less SBDB satellites) — promoting those would make the frontend
     retry an unfindable ``getBody`` every frame.
+
+    ``moon_hosts`` maps each moon to its central body, so a satellite is
+    promoted only where its host already is.
     """
     missing_extras = sorted(PROMOTED_EXTRA_IDS - all_objects.global_data.keys())
     if missing_extras:
@@ -109,9 +129,13 @@ def write_global_labels(
         )
 
     promoted_ids = sorted(
-        obj_id
-        for obj_id, glob in all_objects.global_data.items()
-        if _is_promoted(obj_id, glob, cheb_covered_ids, probe_ids, rendered_ids)
+        _promoted_ids(
+            all_objects.global_data,
+            cheb_covered_ids,
+            probe_ids,
+            rendered_ids,
+            moon_hosts,
+        )
     )
 
     unpromoted_cheb = sorted(cheb_covered_ids - set(promoted_ids))

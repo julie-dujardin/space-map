@@ -765,24 +765,33 @@ def _load_rendered_ids(session: Session, probe_coverage: ProbeCoverageMap) -> se
     } | set(probe_coverage)
 
 
-def _load_moon_parent_names(session: Session) -> dict[str, str]:
+def _load_moon_hosts(session: Session) -> dict[str, str]:
+    """Map each moon Object.id to its central body's Object.id.
+
+    Gates label promotion: a satellite belongs on the map only where its host
+    already is (see :func:`space_map_data.export.labels._promoted_ids`).
+    """
+    return {
+        oid: parent_id
+        for oid, parent_id in session.query(Object.id, Object.parent_id).filter(
+            Object.object_type == ObjectType.moon.value,
+            Object.parent_id.is_not(None),
+        )
+    }
+
+
+def _load_moon_parent_names(
+    session: Session, moon_hosts: dict[str, str]
+) -> dict[str, str]:
     """Map each moon-host Object.id to its display name.
 
     Shipped in moon bundles (orbit.parent_name) so the frontend breadcrumb can
     name the host even when the host body isn't resident in the scene — small-
     body hosts get culled by the streaming loader once focus moves on.
     """
-    host_ids = (
-        session.query(Object.parent_id)
-        .filter(
-            Object.object_type == ObjectType.moon.value,
-            Object.parent_id.is_not(None),
-        )
-        .distinct()
-    )
     rows = (
         session.query(Object.id, Object.name)
-        .filter(Object.id.in_(host_ids), Object.name.is_not(None))
+        .filter(Object.id.in_(set(moon_hosts.values())), Object.name.is_not(None))
         .all()
     )
     return {oid: name for oid, name in rows}
@@ -1031,7 +1040,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     with Session(engine) as session:
         precheck_tables(session)
         nomenclature_by_body = build_nomenclature(session)
-        moon_parent_names = _load_moon_parent_names(session)
+        moon_hosts = _load_moon_hosts(session)
+        moon_parent_names = _load_moon_parent_names(session, moon_hosts)
         tier_b_fp = incremental.tier_b_fingerprint(session)
     tier_b_meta = incremental.read_tier_b_meta(out_dir)
     tier_b_clean = (
@@ -1269,7 +1279,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             )
         feature_bundle_ns = write_feature_detail_bundles(out_dir, feature_details)
         write_global_labels(
-            out_dir, agg.all_objects, cheb_covered_ids, probe_ids, rendered_ids
+            out_dir,
+            agg.all_objects,
+            cheb_covered_ids,
+            probe_ids,
+            rendered_ids,
+            moon_hosts,
         )
         write_messages(wikidata_entities, units.used_units)
         group_bundle_ns = run_groups_tier(

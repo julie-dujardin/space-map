@@ -16,7 +16,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS, PROMOTED_TYPES
-from space_map_data.export.labels import _is_promoted
+from space_map_data.export.labels import _promoted_ids
 from space_map_data.export.position.chebyshev.coverage import chebyshev_coverage
 from space_map_data.export.position.chebyshev.writer import (
     _determine_zone,
@@ -132,14 +132,14 @@ class TestPromotion:
         """The whole point of the explicit list: a covered body that nobody
         listed stays off the map."""
         assert (
-            _is_promoted(
-                "spkid-20000200",
-                {"type": ObjectType.asteroid_main_belt},
+            _promoted_ids(
+                {"spkid-20000200": {"type": ObjectType.asteroid_main_belt}},
                 {"spkid-20000200"},
                 set(),
                 set(),
+                {},
             )
-            is False
+            == set()
         )
 
     def test_every_covered_small_body_is_listed(self):
