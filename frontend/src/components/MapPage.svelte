@@ -30,6 +30,10 @@
 	import type { Hazard } from '$lib/travel/hazards';
 	import { labelHazards } from '$lib/travel/hazard-labels';
 	import type { TimelineEntry, TimelineFocus } from '$lib/travel/timeline';
+	import { SHEET_COLLAPSED_PX } from '$lib/drawer';
+	// Not lazy: the placeholder's whole job is to be on screen before the drawer
+	// chunk is.
+	import DrawerSkeleton from './detail/DrawerSkeleton.svelte';
 	// Lazy-loaded on first focus so its charts (d3-scale/d3-shape/layercake) and
 	// member lists split out of the initial map chunk.
 	let DetailDrawer = $state<typeof import('./detail/DetailDrawer.svelte').default | null>(null);
@@ -190,6 +194,10 @@
 			const body = ctx.getBody(id);
 			if (!body) {
 				console.warn(`[map] focusObject: ${id} not resolvable — nothing to focus.`);
+				// Take the name back off the URL: `setFocus` above promised a panel
+				// nothing is going to build, and the placeholder frame reads that
+				// promise.
+				appState.replaceFocusName('');
 				return;
 			}
 			if (body.positionUnknown) {
@@ -343,10 +351,37 @@
 		return { kind: 'body', body: selectedBody };
 	});
 
-	// The drawer chunk loads the first time anything is focused, in a main
-	// thread gap: at boot it would otherwise compete with scene setup.
+	/** Whether the URL promises a detail panel. A shared link names its object,
+	 *  but `focusable` only fills once the scene has streamed that body in and
+	 *  framed it — seconds later on a cold load. Closing the drawer keeps the id
+	 *  as the camera's anchor and drops the name, so a name (or a group/feature
+	 *  of its own) is what marks a panel rather than an anchor. */
+	const urlNamesPanel = $derived(
+		!isNav &&
+			Boolean(appState.view.groupSlug || appState.view.name || appState.view.featureId !== null)
+	);
+	/** The placeholder frame is up: the panel is promised but not built yet. */
+	const sidebarPending = $derived(urlNamesPanel && !focusable);
+	/** How much of the viewport the mobile sheet takes, the placeholder's own
+	 *  collapsed height included, so the buttons it lifts don't drop and rise
+	 *  again as the real sheet takes over. */
+	const panelHeightDvh = $derived(
+		sidebarPending && isMobileViewport
+			? (SHEET_COLLAPSED_PX / window.innerHeight) * 100
+			: drawerHeightDvh
+	);
+	/** What the panel will be about, for chrome that has to guess before the
+	 *  focusable exists. */
+	const pendingKind = $derived<'body' | 'feature' | 'group'>(
+		appState.view.groupSlug ? 'group' : appState.view.featureId !== null ? 'feature' : 'body'
+	);
+
+	// The drawer chunk loads the first time anything is focused — or the first
+	// time the URL says something will be, so the fetch overlaps the scene boot
+	// instead of following it. Still in a main-thread gap: at boot it would
+	// otherwise compete with scene setup.
 	$effect(() => {
-		if (!focusable || DetailDrawer) return;
+		if (DetailDrawer || (!focusable && !sidebarPending)) return;
 		const load = () =>
 			import('./detail/DetailDrawer.svelte').then((mod) => (DetailDrawer = mod.default));
 		if ('requestIdleCallback' in window) {
@@ -479,16 +514,20 @@
 		})();
 	});
 
+	// Everything the panel displaces moves on this, the placeholder frame
+	// included, so the chrome settles at first paint rather than jumping when
+	// the real drawer lands. It also stands in for the collapsed search pill,
+	// which the sidebar covers on desktop: close the sidebar, open search in
+	// its place.
+	const sidebarOpen = $derived(Boolean(focusable) || isNav || sidebarPending);
+
 	// Desktop inset: park chips just past the detail sidebar (and the search
 	// button beside it) when open, else the collapsed 240px search bar. Mobile
 	// stacks them below instead.
 	const featuredStart = $derived(
-		focusable || isNav ? 'calc(var(--detail-panel) + 3.5rem)' : 'calc(240px + 2rem)'
+		sidebarOpen ? 'calc(var(--detail-panel) + 3.5rem)' : 'calc(240px + 2rem)'
 	);
 
-	// The sidebar covers the search bar on desktop, so a button beside it stands
-	// in for the collapsed pill: close the sidebar, open search in its place.
-	const sidebarOpen = $derived(Boolean(focusable) || isNav);
 	function openSearchBesideSidebar() {
 		if (isNav) closeTravel(false);
 		else closeDetail(false);
@@ -731,14 +770,8 @@
 			);
 			// The renderer settles its own focus on a placed body and refuses an
 			// unplaced one, so this call is the only thing that opens the drawer
-			// here — retry until it takes, since the scene can still be mounting
-			// when the load pass wins the race above.
-			const focusBy = performance.now() + 3000;
-			do {
-				map.focusOnBody(initialId);
-				if (cameraFocus?.data.id === initialId) break;
-				await new Promise((resolve) => setTimeout(resolve, 50));
-			} while (performance.now() < focusBy);
+			// here. The map holds it if the scene is still mounting.
+			map.focusOnBody(initialId);
 		} else {
 			// Persistent (no auto-dismiss): the scene-load main-thread churn can
 			// starve a transient toast so its duration timer expires before it ever
@@ -893,11 +926,7 @@
 				/>
 			</div>
 			{#if !isMobileViewport}
-				<TimeControls
-					{clock}
-					panelOpen={!!focusable || isNav}
-					onFitChange={(v) => (timeBarFits = v)}
-				/>
+				<TimeControls {clock} panelOpen={sidebarOpen} onFitChange={(v) => (timeBarFits = v)} />
 			{/if}
 			<div
 				class="fixed top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] pointer-events-auto md:end-auto md:w-[min(400px,calc(100vw-7rem))] {searchExpanded
@@ -1040,6 +1069,9 @@
 					/>
 				</div>
 			{/if}
+			{#if sidebarPending || (focusable && !DetailDrawer)}
+				<DrawerSkeleton kind={pendingKind} />
+			{/if}
 			{#if focusable && DetailDrawer}
 				<DetailDrawer
 					{focusable}
@@ -1070,8 +1102,8 @@
 			<div
 				inert={bgInert}
 				class="fixed end-[calc(var(--safe-end)_+_1rem)] z-10 flex flex-col-reverse items-end gap-3 transition-[opacity,bottom] duration-300 ease-in-out
-					{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
-				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1.5rem + var(--safe-bottom));"
+					{panelHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
+				style="bottom: calc({Math.min(panelHeightDvh, 12)}dvh + 1.5rem + var(--safe-bottom));"
 			>
 				{#if isMobileViewport || !timeBarFits}
 					<TimeMenuButton {clock} isMobile={isMobileViewport} />
@@ -1099,7 +1131,7 @@
 				     only leaves centre when the panel would otherwise cover it. -->
 				<div
 					inert={bgInert}
-					style:--panel-inset={!isMobileViewport && (!!focusable || isNav)
+					style:--panel-inset={!isMobileViewport && sidebarOpen
 						? 'calc(var(--detail-panel) + 0.75rem)'
 						: '0px'}
 					class="center-clear-of-panel pointer-events-none fixed left-1/2 z-10 flex
@@ -1128,8 +1160,8 @@
 			<div
 				inert={bgInert}
 				class="fixed end-[var(--safe-end)] z-10 transition-opacity duration-300 ease-in-out
-					{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
-				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + var(--safe-bottom));"
+					{panelHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
+				style="bottom: calc({Math.min(panelHeightDvh, 12)}dvh + var(--safe-bottom));"
 			>
 				<AttributionBar />
 			</div>

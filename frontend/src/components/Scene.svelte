@@ -77,7 +77,8 @@
 	let isNavigatingBack = false;
 
 	onMount(() => {
-		map.mount(container);
+		// Listeners first: mounting builds the renderer, which settles the opening
+		// focus synchronously — a deep link's only `focuschange` fires in there.
 		const off = [
 			map.on('focuschange', ({ body, initial, feature }) => {
 				// The camera orbits the synthetic feature body, but the app focuses its
@@ -123,6 +124,7 @@
 				onFeatureSelect?.(bodyId, featureId, lat, lon, diameterM)
 			)
 		];
+		map.mount(container);
 
 		// Keep the URL's date on the sim clock so reload/share preserves the
 		// moment; a clock still on wall-clock time keeps writing `now`.

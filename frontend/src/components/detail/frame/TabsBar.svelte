@@ -3,6 +3,7 @@
 	// stay in the drawer, which owns the URL they scrub.
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
+	import TabsSkeleton from './skeleton/TabsSkeleton.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import type { DrawerTab } from '$lib/state/view';
 	import type { TabItem } from '../tab-visibility';
@@ -13,9 +14,12 @@
 		isMobile: boolean;
 		inBar: (tab: DrawerTab) => boolean;
 		items: TabItem[];
+		/** Which tabs the object has is only known with its payload, so the bar
+		 *  stands in for itself until then rather than arriving late. */
+		loading?: boolean;
 	}
 
-	let { activeTab, barTabCount, isMobile, inBar, items }: Props = $props();
+	let { activeTab, barTabCount, isMobile, inBar, items, loading = false }: Props = $props();
 
 	// Undo shadcn's flex-1 so slack falls between tabs, not inside the shortest
 	// one. The bar is a scroll container that clips at its padding box, so the
@@ -45,7 +49,11 @@
 <!-- A lone Overview tab switches nothing, so the bar goes with it. Scrolls on
      its own past the budget (mobile, which promotes nothing); without this the
      whole drawer scrolls sideways. -->
-{#if barTabCount >= 2}
+{#if loading}
+	<!-- The tab table is empty until the payload lands, which would drop the bar
+	     and then reflow the panel down once it filled. -->
+	<TabsSkeleton />
+{:else if barTabCount >= 2}
 	<div
 		bind:this={tabBarEl}
 		class="pt-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"

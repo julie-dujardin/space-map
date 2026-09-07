@@ -16,7 +16,7 @@
 	import MoonDiscRow from './charts/MoonDiscRow.svelte';
 	import SurfaceMapBar from './charts/SurfaceMapBar.svelte';
 	import MobileSheet from './frame/MobileSheet.svelte';
-	import { topSnapPx } from '$lib/drawer';
+	import { DRAWER_MQ, topSnapPx } from '$lib/drawer';
 	import { DetailLoad } from './state/detail-load.svelte';
 	import TabsBar from './frame/TabsBar.svelte';
 	import ActiveHero from './panels/ActiveHero.svelte';
@@ -133,10 +133,12 @@
 		data: () => data,
 		appState: () => appState
 	});
-	let isMobile = $state(false);
+	// Read up front, not on the first effect: the two frames differ by the whole
+	// width of the panel, and starting on the wrong one reflows the page.
+	let isMobile = $state(typeof window !== 'undefined' && window.matchMedia(DRAWER_MQ).matches);
 
 	$effect(() => {
-		const mq = window.matchMedia('(max-width: 768px)');
+		const mq = window.matchMedia(DRAWER_MQ);
 		isMobile = mq.matches;
 		const handler = (e: MediaQueryListEvent) => (isMobile = e.matches);
 		mq.addEventListener('change', handler);
@@ -419,7 +421,7 @@
 </script>
 
 {#snippet tabsBar()}
-	<TabsBar {activeTab} {barTabCount} {isMobile} {inBar} items={tabItems} />
+	<TabsBar {activeTab} {barTabCount} {isMobile} {inBar} items={tabItems} {loading} />
 {/snippet}
 
 {#snippet activeHero()}

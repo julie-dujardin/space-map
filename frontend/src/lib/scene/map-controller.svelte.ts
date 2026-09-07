@@ -118,6 +118,7 @@ export class MapController {
 	private stopWatching: (() => void) | null = null;
 	private lostPanelTimer: ReturnType<typeof setTimeout> | undefined;
 	private initialFocusPending = true;
+	private pendingFocusId: string | null = null;
 	private readonly listeners: { [K in keyof MapEvents]: Set<MapEvents[K]> } = {
 		focuschange: new Set(),
 		camera: new Set(),
@@ -201,6 +202,10 @@ export class MapController {
 			return;
 		}
 		this.renderer = renderer;
+		if (this.pendingFocusId !== null) {
+			renderer.focusOnBody(this.pendingFocusId);
+			this.pendingFocusId = null;
+		}
 		// Dev-only handle for headless render diagnostics (CDP scripts).
 		if (import.meta.env.DEV || import.meta.env.VITE_BENCH_HOOK) {
 			const w = window as unknown as Record<string, unknown>;
@@ -353,7 +358,14 @@ export class MapController {
 	};
 
 	focusOnBody(id: string, zoom?: number, latitude?: number, longitude?: number): number {
-		return this.renderer?.focusOnBody(id, zoom, latitude, longitude) ?? 0;
+		// A deep link on a body the renderer will not settle on itself (an
+		// unplaceable one) can ask for focus while the scene is still mounting;
+		// hold the ask rather than dropping it, and mount applies it.
+		if (!this.renderer) {
+			this.pendingFocusId = id;
+			return 0;
+		}
+		return this.renderer.focusOnBody(id, zoom, latitude, longitude);
 	}
 
 	/** Instantly focus + frame a body (no fly) — for deep links whose target

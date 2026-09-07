@@ -5,7 +5,7 @@
 	// so a height change during a desktop interlude still repairs it.
 	import { Drawer as Vaul } from 'vaul-svelte';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
-	import { DRAWER_TOP_GAP_PX, topSnapPx, trackSheetCover } from '$lib/drawer';
+	import { DRAWER_TOP_GAP_PX, SHEET_COLLAPSED_PX, topSnapPx, trackSheetCover } from '$lib/drawer';
 	import { getContext, type Snippet } from 'svelte';
 	import type { MapCover } from '$lib/state/map-cover.svelte';
 
@@ -48,9 +48,8 @@
 	});
 
 	let headerEl = $state<HTMLDivElement | null>(null);
-	// Initial guess close to the rendered size (icon-lg row + handle + paddings)
-	// so the drawer opens at a sensible height before the first measurement.
-	let headerHeightPx = $state(68);
+	// Opens on the placeholder's reserved height, then follows the measurement.
+	let headerHeightPx = $state(SHEET_COLLAPSED_PX);
 	let collapsedSnap = $derived(`${headerHeightPx}px`);
 	let topSnap = $derived(topSnapPx(innerH));
 	let snapPoints = $derived([collapsedSnap, MID_SNAP, topSnap]);

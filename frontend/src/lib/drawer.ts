@@ -6,6 +6,17 @@
  */
 export const DRAWER_TOP_GAP_PX = 16;
 
+/** Where the drawer stops being a sidebar and becomes a bottom sheet. Shared
+ *  so the placeholder frame and the drawer it stands in for can't disagree. */
+export const DRAWER_MQ = '(max-width: 768px)';
+
+/**
+ * The collapsed sheet's height: header chrome only. Measured at runtime once
+ * the sheet renders — this is what it opens on, and what the placeholder frame
+ * reserves before it exists.
+ */
+export const SHEET_COLLAPSED_PX = 68;
+
 /** The mobile sheet's top snap point for a given viewport height. Shared so
  *  the drawer's resize re-pin and the sheet's snap list can't disagree. */
 export function topSnapPx(innerHeight: number): string {

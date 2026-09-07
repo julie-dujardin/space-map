@@ -2,7 +2,7 @@
 	// The active tab's hero, rendered above the tab bar in both frames, so the
 	// tabs read as sub-navigation under it.
 	import { getContext } from 'svelte';
-	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import HeroSkeleton from '../frame/skeleton/HeroSkeleton.svelte';
 	import ObjectHeader from '../frame/ObjectHeader.svelte';
 	import SurfaceHero from '../sections/SurfaceHero.svelte';
 	import GalleryHero from '../sections/GalleryHero.svelte';
@@ -86,11 +86,7 @@
 
 {#if activeTab === 'overview'}
 	{#if load.loading}
-		<div class="flex flex-col gap-4 px-4 pt-1 pb-3" aria-hidden="true">
-			<Skeleton class="w-full h-36 rounded-md" />
-			<Skeleton class="w-3/4 h-6" />
-			<Skeleton class="w-1/2 h-4" />
-		</div>
+		<HeroSkeleton />
 	{:else if !load.loadError}
 		<div class="px-4 pt-1 pb-3">
 			<ObjectHeader

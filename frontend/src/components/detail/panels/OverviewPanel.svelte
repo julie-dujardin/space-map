@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import PanelSkeleton from '../frame/skeleton/PanelSkeleton.svelte';
 	import GroupStatCards from '../sections/GroupStatCards.svelte';
 	import FeatureStatCards from '../sections/FeatureStatCards.svelte';
 	import ObjectStats from '../sections/ObjectStats.svelte';
@@ -147,18 +147,7 @@
 		<Button variant="secondary" size="sm" onclick={load.retry}>{m.retry()}</Button>
 	</div>
 {:else if load.loading}
-	<!-- Shaped like what lands: the stat-card row, the description, one
-	     section. A skeleton whose blocks sit elsewhere reads as a second
-	     reflow when the real content replaces it. -->
-	<div class="flex flex-col gap-4" aria-hidden="true">
-		<div class="grid auto-cols-fr grid-flow-col gap-2">
-			<Skeleton class="h-[60px]" />
-			<Skeleton class="h-[60px]" />
-			<Skeleton class="h-[60px]" />
-		</div>
-		<Skeleton class="h-16 w-full" />
-		<Skeleton class="h-32 w-full" />
-	</div>
+	<PanelSkeleton />
 {:else}
 	<div class="flex flex-col gap-4">
 		{#if isGroupMode && groupDetail?.global}
