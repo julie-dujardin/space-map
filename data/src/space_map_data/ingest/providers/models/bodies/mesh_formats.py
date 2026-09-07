@@ -2,8 +2,8 @@
 
 Covers every encoding the bodies manifests list: passthrough meshes Blender
 reads directly (obj/ply/stl), gzip wrappers, Gaskell ICQ cube grids, the three
-PDS plate-table dialects, lat/lon/radius grids (either column order), and
-VRML2 IndexedFaceSet.
+PDS plate-table dialects, lat/lon/radius grids (either column order), binary
+SPICE DSK type-2 tessellations, and VRML2 IndexedFaceSet.
 """
 
 import gzip
@@ -13,10 +13,17 @@ import re
 import shutil
 from pathlib import Path
 
+import spiceypy as spice
+from spiceypy.utils.exceptions import NotFoundError
+
 log = logging.getLogger(__name__)
 
 # Formats Blender imports as-is; the rest need normalising to OBJ first.
 _BLENDER_NATIVE = frozenset({"obj", "ply", "stl"})
+
+# Vertices/plates read per DSK call — the arrays are returned by value, so a
+# whole 3M-plate segment in one call would materialise ~150 MB of Python floats.
+_DSK_CHUNK = 50_000
 
 
 def normalize_to_mesh(
@@ -43,6 +50,8 @@ def normalize_to_mesh(
     out = work_dir / (src.stem + ".obj")
     if fmt == "icq":
         icq_to_obj(src, out, scale=scale)
+    elif fmt == "dsk":
+        dsk_to_obj(src, out, scale=scale)
     elif fmt in ("pds-vertab", "wrl"):
         table_to_obj(src, out, lon_first=lon_first, scale=scale)
     else:
@@ -77,6 +86,38 @@ def icq_to_obj(src: Path, dst: Path, *, scale: float = 1.0) -> None:
                     c = a + (q + 1)
                     d = c + 1
                     out.write(f"f {a} {b} {d}\nf {a} {d} {c}\n")
+
+
+def dsk_to_obj(src: Path, dst: Path, *, scale: float = 1.0) -> None:
+    """Binary SPICE DSK (type 2, .bds) → OBJ.
+
+    NAIF ships several shape models only as DSKs — Donaldjohanson (DLR SPG),
+    the Dawn SPC cubes for Vesta and Ceres, Cassini's Enceladus. Vertices are
+    already km in the body-fixed frame, plate indices already 1-based.
+    Multi-segment files are concatenated with their indices rebased.
+    """
+    handle = spice.dasopr(str(src))
+    try:
+        with dst.open("w") as out:
+            offset = 0
+            dla = spice.dlabfs(handle)
+            while True:
+                nv, npl = spice.dskz02(handle, dla)
+                for start in range(1, nv + 1, _DSK_CHUNK):
+                    n = min(_DSK_CHUNK, nv - start + 1)
+                    for x, y, z in spice.dskv02(handle, dla, start, n):
+                        out.write(f"v {x * scale} {y * scale} {z * scale}\n")
+                for start in range(1, npl + 1, _DSK_CHUNK):
+                    n = min(_DSK_CHUNK, npl - start + 1)
+                    for a, b, c in spice.dskp02(handle, dla, start, n):
+                        out.write(f"f {a + offset} {b + offset} {c + offset}\n")
+                offset += nv
+                try:
+                    dla = spice.dlafns(handle, dla)
+                except NotFoundError:
+                    break
+    finally:
+        spice.dascls(handle)
 
 
 def table_to_obj(

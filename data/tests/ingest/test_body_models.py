@@ -75,6 +75,49 @@ class TestMeshFormats:
         text = out.read_text()
         assert text.count("\nf ") + text.startswith("f ") >= 12
 
+    def test_dsk_type2(self, tmp_path):
+        """NAIF ships some shapes only as binary DSKs; round-trip one."""
+        import spiceypy as spice
+
+        verts = np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        plates = np.array([[1, 2, 3]])
+        spaixd, spaixi = spice.dskmi2(
+            verts, plates, 0.5, 4, 100_000, 100_000, 100_000, True, 10_000_000
+        )
+        src = tmp_path / "s.bds"
+        handle = spice.dskopn(str(src), "test", 0)
+        spice.dskw02(
+            handle,
+            center=499,
+            surfid=1,
+            dclass=2,
+            fname="IAU_MARS",
+            corsys=1,
+            corpar=np.zeros(10),
+            mncor1=-math.pi,
+            mxcor1=math.pi,
+            mncor2=-math.pi / 2,
+            mxcor2=math.pi / 2,
+            mncor3=0.0,
+            mxcor3=2.0,
+            first=-1e9,
+            last=1e9,
+            vrtces=verts,
+            plates=plates,
+            spaixd=spaixd,
+            spaixi=spaixi,
+        )
+        spice.dskcls(handle, True)
+
+        out = tmp_path / "o.obj"
+        mesh_formats.dsk_to_obj(src, out)
+        lines = out.read_text().splitlines()
+        assert lines == ["v 0.0 0.0 1.0", "v 1.0 0.0 0.0", "v 0.0 1.0 0.0", "f 1 2 3"]
+
+        scaled = tmp_path / "s.obj"
+        mesh_formats.dsk_to_obj(src, scaled, scale=2.0)
+        assert scaled.read_text().splitlines()[0] == "v 0.0 0.0 2.0"
+
     def test_grid_column_order(self, tmp_path):
         # Stooke archives put longitude first; lon_first must match the lat-first mesh.
         lats, lons = (-90.0, 0.0, 90.0), (0.0, 120.0, 240.0, 360.0)

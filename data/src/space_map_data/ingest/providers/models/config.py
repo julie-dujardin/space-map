@@ -78,6 +78,11 @@ MODEL_CATALOGS: dict[str, dict[str, str]] = {
         "default_attribution": "NASA",
         "license": "Public domain",
     },
+    "NAIF SPICE Archive": {
+        "url": "https://naif.jpl.nasa.gov/naif/data.html",
+        "default_attribution": "NASA/JPL NAIF",
+        "license": "Public domain",
+    },
     "DAMIT": {
         "url": "https://damit.cuni.cz/projects/damit/",
         "default_attribution": "DAMIT (Ďurech et al.)",

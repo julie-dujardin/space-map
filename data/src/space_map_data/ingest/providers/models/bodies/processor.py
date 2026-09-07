@@ -39,6 +39,9 @@ _UNIT_TO_KM: dict[str, float] = {"km": 1.0, "m": 0.001}
 # Archive-string → MODEL_CATALOGS key, for the credits roll-up. PDS wins when a
 # body is co-hosted (e.g. 67P's ESAC draft + PDS mirror) — cleanest license.
 _CATALOG_MATCHERS: tuple[tuple[str, str], ...] = (
+    # NAIF first: its archive strings name the originating lab too ("JPL SSD"),
+    # which would otherwise be caught by the JPL radar matcher below.
+    ("NAIF", "NAIF SPICE Archive"),
     ("PDS", "PDS Small Bodies Node"),
     ("DARTS", "JAXA/ISAS DARTS"),
     ("JAXA", "JAXA/ISAS DARTS"),
@@ -309,12 +312,16 @@ class BodyModelProcessor:
             if catalog in config.MODEL_CATALOGS
             else None
         )
+        # A generic archive redistributes work someone else did: NAIF ships
+        # DLR's Donaldjohanson mesh and the Dawn team's SPC cubes alike, so an
+        # entry can name the team the chip should credit.
+        default_attribution = (
+            config.MODEL_CATALOGS[catalog]["default_attribution"]
+            if catalog in config.MODEL_CATALOGS
+            else "NASA"
+        )
         credit = {
-            "name": (
-                config.MODEL_CATALOGS[catalog]["default_attribution"]
-                if catalog in config.MODEL_CATALOGS
-                else "NASA"
-            ),
+            "name": entry.get("attribution") or default_attribution,
             "url": entry.get("archive_url") or catalog_url,
         }
         # Short, uniform license for the credit chip — from the catalog. The
