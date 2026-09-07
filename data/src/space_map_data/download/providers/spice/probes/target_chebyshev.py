@@ -17,6 +17,7 @@ Type 1/21, which carry no sub-interval length to copy, and a uniform grid fine
 enough for Apophis' 2029 Earth flyby would be wasted on the other 99 years.
 """
 
+import hashlib
 import logging
 from pathlib import Path
 
@@ -172,12 +173,25 @@ def _fit_windows(
     )
 
 
-def _cached(path: Path, naif_id: int, start_et: float, end_et: float) -> bool:
+def _source_digest(paths: list[Path]) -> str:
+    """Fingerprint of the kernels a body is fit from.
+
+    The kernels shape the fit more than any knob does — a new mission SPK
+    extends a target's coverage without moving the requested year range — so
+    they belong in the cache key alongside the fit parameters.
+    """
+    parts = sorted(f"{p.name}:{p.stat().st_size}:{p.stat().st_mtime_ns}" for p in paths)
+    return hashlib.sha1("\n".join(parts).encode()).hexdigest()
+
+
+def _cached(
+    path: Path, naif_id: int, start_et: float, end_et: float, digest: str
+) -> bool:
     """Whether the on-disk npz was fit under the parameters in force now.
 
-    Every knob that shapes the fit is compared, so tightening the tolerance or
-    widening the year range refits instead of silently shipping the old
-    coefficients.
+    Every knob that shapes the fit is compared, so tightening the tolerance,
+    widening the year range or landing a new kernel refits instead of silently
+    shipping the old coefficients.
     """
     if not path.exists():
         return False
@@ -186,7 +200,9 @@ def _cached(path: Path, naif_id: int, start_et: float, end_et: float) -> bool:
             meta, params = data["meta"], data["params"]
             if data["coeffs"].dtype != np.float64:
                 return False
-    except (OSError, KeyError, ValueError):
+            if str(data["sources"][0]) != digest:
+                return False
+    except OSError, KeyError, ValueError, IndexError:
         return False
     if meta.shape != (3,) or params.shape != (4,):
         return False
@@ -270,7 +286,8 @@ def extract_target_chebyshev(out_dir: Path = TARGET_CHEBYSHEV_DIR) -> int:
                 continue
 
             out_path = out_dir / f"{naif_id}.npz"
-            if _cached(out_path, naif_id, start_et, end_et):
+            digest = _source_digest(sources[naif_id])
+            if _cached(out_path, naif_id, start_et, end_et, digest):
                 kept.add(out_path)
                 cached += 1
                 continue
@@ -301,6 +318,7 @@ def extract_target_chebyshev(out_dir: Path = TARGET_CHEBYSHEV_DIR) -> int:
                     ],
                     dtype=np.float64,
                 ),
+                sources=np.array([digest]),
             )
             logger.info(
                 "small-body chebyshev: %d -> %d segments over %.1f..%.1f, "

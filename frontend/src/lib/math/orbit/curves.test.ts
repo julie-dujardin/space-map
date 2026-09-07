@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
 	ELLIPTIC_ORBITS,
 	EMB,
@@ -13,10 +13,6 @@ import {
 	sceneDistances,
 	maxGapRatio
 } from './test-helpers';
-
-vi.mock('$lib/format/date', () => ({
-	dateToJD: (d: Date) => d.getTime() / 86400000 + 2440587.5
-}));
 
 import {
 	orbitalElementsToEllipse,

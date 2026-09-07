@@ -28,7 +28,9 @@ _MONTH = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec"
 _DATE = rf"[0-9]{{4}}(?: (?:{_MONTH})(?: [0-9]{{1,2}}(?:\.[0-9]+)?)?)?"
 
 # Trailing bracket is the source code; `?` means the archive has no value.
-_VALUE = r"\s*(\?|[-+]?[\d.]+(?:x10\|-?\d+\|)?)"
+# An assumed value sits in its own parenthesised run ("|G:| |(0.15)| [*A]"), so
+# a separator and an opening bracket can stand between the label and the number.
+_VALUE = r"\s*\|?\s*\(?\s*(\?|[-+]?[\d.]+(?:x10\|-?\d+\|)?)"
 # An angle carries its degree sign on the value *and* on the sigma
 # ("94.18° ± 0.42°"), where a length puts the unit after both ("1098.6 ± 6.1 km").
 _SIGMA = r"(?:°?\s*±\s*([\d.]+(?:x10\|-?\d+\|)?))?"
@@ -105,7 +107,7 @@ def parse_system(text: str) -> dict:
     row: dict = {}
 
     row["h_mag"], _ = _field(combined, r"absolute mag\. \|H:\|")
-    row["slope_g"], _ = _field(combined, r"slope parameter \|G:\|\|?\(?")
+    row["slope_g"], _ = _field(combined, r"slope parameter \|G:\|")
     row["diameter_km"], row["diameter_km_sigma"] = _field(
         combined, r"effective diameter \|d\|E\|:\|"
     )
@@ -119,9 +121,22 @@ def parse_system(text: str) -> dict:
     row["colour_bv"], _ = _field(combined, r"color index \|B-V:\|")
     row["colour_vr"], _ = _field(combined, r"color index \|V-R:\|")
     row["colour_vi"], _ = _field(combined, r"color index \|V-I:\|")
-    taxonomy = re.findall(r"([A-Za-z:+/*-]+)\s*\((SMASSII|Tholen|G-mode)\)", combined)
+    # `?` keeps an uncertain class ("L? (SMASSII)"), which is still the type the
+    # archive has. A page listing several schemes prints them as separate runs
+    # under the one label, so they are matched wherever they sit in the block.
+    taxonomy = [
+        f"{cls} ({system})"
+        for cls, system in re.findall(
+            r"([A-Za-z:+/*?-]+)\s*\((SMASSII|Tholen|G-mode)\)", combined
+        )
+    ]
+    if not taxonomy:
+        # A few pages name the class and attribute it to no scheme at all.
+        bare = _text_field(combined, r"taxonomic type\|:\|")
+        if bare is not None and bare != "?":
+            taxonomy = [bare]
     if taxonomy:
-        row["taxonomy"] = ", ".join(f"{cls} ({system})" for cls, system in taxonomy)
+        row["taxonomy"] = ", ".join(taxonomy)
 
     row["primary_diameter_km"], row["primary_diameter_km_sigma"] = _field(
         primary, r"diameter \|d\|p\|:\|"

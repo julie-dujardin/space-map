@@ -64,6 +64,11 @@ def text():
     return flatten(_PAGE)
 
 
+def _combined(body: str) -> str:
+    """A page holding nothing but the system block, for one label at a time."""
+    return flatten(f"<b>other data, system (combined):</b><br>{body}")
+
+
 class TestCompanionLabels:
     """Each companion owns an `orbital data,` and an `other data,` block."""
 
@@ -96,6 +101,25 @@ class TestParseSystem:
 
     def test_taxonomy_keeps_every_scheme(self, text):
         assert parse_system(text)["taxonomy"] == "X (SMASSII), M (Tholen)"
+
+    def test_an_uncertain_class_is_still_a_class(self):
+        page = _combined("taxonomic type<b>:</b> L? (SMASSII) [P21g]<br>")
+        assert parse_system(page)["taxonomy"] == "L? (SMASSII)"
+
+    def test_a_class_with_no_scheme_is_kept(self):
+        page = _combined("taxonomic type<b>:</b> C [H11e]<br>")
+        assert parse_system(page)["taxonomy"] == "C"
+
+    def test_assumed_values_are_kept(self):
+        """The archive parenthesises a value it assumed rather than measured,
+        and gives it its own markup run."""
+        page = _combined(
+            "slope parameter <b>G:</b> <i>(0.15)</i> [*A]<br>"
+            "density <b>&rho;:</b> <i>(1.6 g/cm<sup>3</sup>)</i> [*A]<br>"
+        )
+        row = parse_system(page)
+        assert row["slope_g"] == 0.15
+        assert row["density_g_cm3"] == 1.6
 
     def test_primary_block_is_not_confused_with_the_companion(self, text):
         row = parse_system(text)

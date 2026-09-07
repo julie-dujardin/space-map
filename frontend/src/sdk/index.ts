@@ -11,9 +11,10 @@ import { dateToJD, jdToDate } from '$lib/time/jd';
 
 export interface MapOptions extends MapControllerOptions {
 	/** Root of the data export; the production CDN when omitted. Page-wide,
-	 *  like everything on the host: the last map created sets it. Images keep
-	 *  their own origin, since the production data origin does not serve them;
-	 *  a mirror that serves both sets `imagesUrl` through {@link configureHost}. */
+	 *  like everything on the host: the last map created sets it, and data
+	 *  already fetched keeps the origin it came from. Images keep their own
+	 *  origin, since the production data origin does not serve them; a mirror
+	 *  that serves both sets `imagesUrl` through {@link configureHost}. */
 	dataUrl?: string;
 	/** BCP-47 tag that picks localized names; English when omitted. */
 	locale?: string;
@@ -27,7 +28,7 @@ export async function createMap(
 ): Promise<MapController> {
 	const { dataUrl, locale, ...controller } = options;
 	const overrides: Partial<Host> = {};
-	if (dataUrl !== undefined) overrides.dataUrl = dataUrl.replace(/\/$/, '');
+	if (dataUrl !== undefined) overrides.dataUrl = dataUrl;
 	if (locale !== undefined) overrides.locale = () => locale;
 	configureHost(overrides);
 

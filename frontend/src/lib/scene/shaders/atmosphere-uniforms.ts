@@ -8,7 +8,6 @@ import {
 	applyAtmosphereQuality,
 	applyShellViewState,
 	deckBlendWeight,
-	deepColumnTransmittance,
 	inDeepColumn,
 	type AtmosphereParams
 } from '$lib/scene/objects/surface/atmosphere';
@@ -249,7 +248,6 @@ export function updateAtmosphereShaders(
 			cullShellOccluders(uniforms, atmoMesh.position, sunVec, shellRadius);
 		const inside = quality.insideView && camDist < shellRadius;
 		const referenceKm = bo.atmosphere.planetRadiusKm;
-		const depthKm = referenceKm - bo.atmosphere.surfaceRadiusKm;
 		const kmPerScene = (referenceKm + params.topAltitudeKm) / shellRadius;
 		// Above the render level; negative under a deck.
 		const altKm = camDist * kmPerScene - referenceKm;
@@ -268,12 +266,9 @@ export function updateAtmosphereShaders(
 				.sub(atmoMesh.position)
 				.divideScalar(camDist)
 				.dot(sunVec);
-			let dim = skyboxDimFactor(params, altKm, sinSunElev);
-			if (underDeck && params.deepColumn) {
-				const t = deepColumnTransmittance(params.deepColumn, altKm + depthKm);
-				dim *= LUM[0] * t[0] + LUM[1] * t[1] + LUM[2] * t[2];
-			}
-			// The cloud top closes over the stars as the deck's light takes over.
+			// The cloud top closes over the stars as the deck's light takes over,
+			// and the blend is already 1 everywhere under the column.
+			const dim = skyboxDimFactor(params, altKm, sinSunElev);
 			state.skyboxIntensity *= dim * (1 - deckBlend);
 			// No refraction lift inside the column: the disc is not visible there.
 			if (quality.refraction && params.refractivity && !underDeck) {

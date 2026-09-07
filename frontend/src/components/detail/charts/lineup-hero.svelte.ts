@@ -206,10 +206,14 @@ export class LineupHero {
 			return null;
 		});
 
-		// Whichever lineup this page draws: the collection hero, or the row of
-		// spheres down in the members tab. Both render real textures on real radii
-		// and owe the same credits.
-		const lineupBodies = $derived(this.hero?.bodies ?? this.membersLineup?.bodies ?? null);
+		// Every lineup this page draws: the collection hero and the row of spheres
+		// down in the members tab, which pick their members separately and are not
+		// always the same set. Both render real textures on real radii and owe the
+		// same credits, so the drawer credits the union of them.
+		const lineupBodies = $derived([
+			...(this.hero?.bodies ?? []),
+			...(this.membersLineup?.bodies ?? [])
+		]);
 
 		// Imagery credits for the on-screen bodies, deduped by author. Covers both
 		// surface-map textures and meshes — a mesh draped with a map credits both.
@@ -238,7 +242,7 @@ export class LineupHero {
 		// diameters are PCK mean radii too); radius fallback ⇒ Wikidata; small-body
 		// diameter/albedo/spectral data ⇒ SBDB.
 		const pckClaim = $derived(this.isMoonLineup || (d.notableMembers() ?? []).some(hasPckGeometry));
-		const hasLineup = $derived(!!lineupBodies);
+		const hasLineup = $derived(lineupBodies.length > 0);
 		this.pck = $derived(hasLineup && pckClaim);
 		this.lightcurvePole = $derived(hasLineup && (d.notableMembers() ?? []).some(hasLightcurvePole));
 		this.wikidata = $derived(
@@ -264,7 +268,7 @@ export class LineupHero {
 
 		// Load surface-imagery credits lazily, once a lineup is actually shown.
 		$effect(() => {
-			if (!lineupBodies) return;
+			if (lineupBodies.length === 0) return;
 			loadTextureCredits().then((c) => (this.#credits = c));
 		});
 
@@ -273,7 +277,7 @@ export class LineupHero {
 		// against its catalogue, a craft against whoever built the tier drawn.
 		// Best-effort — a failed meta just omits that author.
 		$effect(() => {
-			const models = [...(lineupBodies ?? []), ...(this.probeLineup?.bodies ?? [])].filter(
+			const models = [...lineupBodies, ...(this.probeLineup?.bodies ?? [])].filter(
 				(b) => b.craft || lineupDrawsShapeModel(b)
 			);
 			if (models.length === 0) return;

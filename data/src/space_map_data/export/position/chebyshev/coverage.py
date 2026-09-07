@@ -16,14 +16,25 @@ logger = logging.getLogger(__name__)
 
 
 def chebyshev_coverage(session: Session, download_dir: Path) -> set[str]:
-    """Object IDs covered by the chebyshev export.
+    """Object IDs the chebyshev export positions over the whole timeline.
 
     Filters cheb-covered bodies out of the elements zones — the frontend can
     derive Kepler elements from chebyshev positions, so a duplicate row is
-    just dead bytes.
+    just dead bytes. Probe-target fits are left out: they cover a flyby, not
+    the export range, so those bodies keep the element row that carries them
+    the rest of the time.
     """
+    return _ids_for(session, chebyshev_npz_paths(download_dir, full_range_only=True))
+
+
+def chebyshev_written_ids(session: Session, download_dir: Path) -> set[str]:
+    """Object IDs the chebyshev export writes segments for, overlays included."""
+    return _ids_for(session, chebyshev_npz_paths(download_dir))
+
+
+def _ids_for(session: Session, paths: list[Path]) -> set[str]:
     ids: set[str] = set()
-    for path in chebyshev_npz_paths(download_dir):
+    for path in paths:
         try:
             data = np.load(path)
             naif_id = int(data["meta"][0])

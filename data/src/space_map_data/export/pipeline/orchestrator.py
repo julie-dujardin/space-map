@@ -90,7 +90,10 @@ from space_map_data.export.pipeline.zone import (
     export_zone,
 )
 from space_map_data.export.position import CHUNK_SIZE, write_chebyshev
-from space_map_data.export.position.chebyshev.coverage import chebyshev_coverage
+from space_map_data.export.position.chebyshev.coverage import (
+    chebyshev_coverage,
+    chebyshev_written_ids,
+)
 from space_map_data.export.position.elements.celestrak_source import (
     FILL_LOOKBACK_DAYS,
     CelesTrakElements,
@@ -357,7 +360,13 @@ def _iter_non_sbdb_zone_snapshots(
             "small_body_moons",
             1,
             session.query(Object)
-            .options(joinedload(Object.astersat_moon), joinedload(Object.johnston_moon))
+            .options(
+                joinedload(Object.astersat_moon),
+                joinedload(Object.johnston_moon),
+                # The discovery-year gate reads it, and a lazy load here would
+                # fire inside a worker thread.
+                joinedload(Object.sbdb_moon),
+            )
             .filter(
                 Object.orbital_source == OrbitalSource.astersat,
                 Object.has_position == True,  # noqa: E712
@@ -937,7 +946,6 @@ def _run_chebyshev(
     session: Session,
     out_dir: Path,
     radii: dict[int, dict],
-    cheb_covered_ids: set[str],
     agg: _Aggregators,
     tier_b_clean: bool,
 ) -> dict[str, dict]:
@@ -962,7 +970,7 @@ def _run_chebyshev(
     else:
         has_loc = {
             oid: bool(agg.all_objects.has_localized.get(oid))
-            for oid in cheb_covered_ids
+            for oid in chebyshev_written_ids(session, DOWNLOAD_DIR)
         }
     _wipe_chebyshev_outputs(out_dir, meta)
     manifest = write_chebyshev(session, DOWNLOAD_DIR, out_dir, radii, has_loc)
@@ -1189,9 +1197,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         else:
             probe_ids = set()
 
-        chebyshev_zones = _run_chebyshev(
-            session, out_dir, radii, cheb_covered_ids, agg, tier_b_clean
-        )
+        chebyshev_zones = _run_chebyshev(session, out_dir, radii, agg, tier_b_clean)
         probe_zones, probe_coverage = _run_probes(
             session, out_dir, probe_ids, agg, tier_b_clean
         )

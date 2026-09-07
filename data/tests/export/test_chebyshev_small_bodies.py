@@ -17,7 +17,10 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS, PROMOTED_TYPES
 from space_map_data.export.labels import _promoted_ids
-from space_map_data.export.position.chebyshev.coverage import chebyshev_coverage
+from space_map_data.export.position.chebyshev.coverage import (
+    chebyshev_coverage,
+    chebyshev_written_ids,
+)
 from space_map_data.export.position.chebyshev.writer import (
     _determine_zone,
     write_chebyshev,
@@ -112,9 +115,18 @@ class TestTargetPool:
         ]
         assert paths[0].parent.name == "chebyshev"
 
-    def test_coverage_spans_both_pools(self, session, download_dir):
-        cov = chebyshev_coverage(session, download_dir)
-        assert cov == {"spkid-20000004", "spkid-20162173", "spkid-1000036"}
+    def test_only_full_range_fits_drop_the_element_row(self, session, download_dir):
+        """A target fit covers a flyby, so the body still needs the element row
+        that carries it the rest of the timeline; only Vesta's perturber fit
+        spans the export range and replaces one."""
+        assert chebyshev_coverage(session, download_dir) == {"spkid-20000004"}
+
+    def test_every_written_body_counts_as_written(self, session, download_dir):
+        assert chebyshev_written_ids(session, download_dir) == {
+            "spkid-20000004",
+            "spkid-20162173",
+            "spkid-1000036",
+        }
 
     def test_comets_never_land_in_the_major_zone(self):
         """`major` is the Sun/planet/dwarf tier — nothing comet-sized belongs

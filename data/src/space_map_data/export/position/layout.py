@@ -19,7 +19,9 @@ def position_zone_dir(out_dir: Path, zone: str, zoom: int) -> Path:
     return base / str(zoom) if zone_has_zoom_segment(zone) else base
 
 
-def chebyshev_npz_paths(download_dir: Path) -> list[Path]:
+def chebyshev_npz_paths(
+    download_dir: Path, *, full_range_only: bool = False
+) -> list[Path]:
     """Every body's `.npz`, perturber pool first.
 
     Probe targets are fit into a second pool because
@@ -28,10 +30,17 @@ def chebyshev_npz_paths(download_dir: Path) -> list[Path]:
     invalidates every cached probe fit. Consumers of the *fits* want both as
     one body set; a body in both (Ceres, Vesta, Psyche) takes its perturber
     file, whose coverage spans the full export range rather than one mission.
+
+    `full_range_only` drops the probe-target pool, whose segments span only a
+    mission's kernels: those bodies ship as an overlay on an element row that
+    still has to carry them everywhere else on the timeline.
     """
     derived = download_dir / "derived" / "position"
+    pools = [derived / "chebyshev"]
+    if not full_range_only:
+        pools.append(derived / "chebyshev-small-bodies")
     by_body: dict[str, Path] = {}
-    for pool in (derived / "chebyshev", derived / "chebyshev-small-bodies"):
+    for pool in pools:
         for path in sorted(pool.glob("*.npz")):
             by_body.setdefault(path.name, path)
     return list(by_body.values())

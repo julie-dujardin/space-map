@@ -36,7 +36,12 @@ def origin_date(o: Object) -> str | None:
         return o.sbdb.first_obs
     if o.satcat_norad_cat_id is not None and o.satcat is not None:
         return o.satcat.launch_date
-    if o.orbital_source == OrbitalSource.sbdb_moon and o.sbdb_moon is not None:
+    # AsterSat fits its own orbits but takes the discovery year from the same
+    # SBDB row, so both moon sources read it here.
+    if (
+        o.orbital_source in (OrbitalSource.sbdb_moon, OrbitalSource.astersat)
+        and o.sbdb_moon is not None
+    ):
         year = o.sbdb_moon.year
         return str(year) if year is not None else None
     if o.discovery_year is not None:

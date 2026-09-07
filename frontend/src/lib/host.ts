@@ -74,8 +74,13 @@ const DEFAULT_HOST: Host = {
 
 let current: Host = DEFAULT_HOST;
 
+/** Replace the host: what an override leaves out goes back to its default,
+ *  so a second embed on the page does not inherit the first one's settings. */
 export function configureHost(overrides: Partial<Host>): void {
-	current = { ...current, ...overrides };
+	current = { ...DEFAULT_HOST, ...overrides };
+	// A URL root is concatenated with paths that lead with a slash.
+	current.dataUrl = current.dataUrl.replace(/\/$/, '');
+	current.imagesUrl = current.imagesUrl.replace(/\/$/, '');
 }
 
 export function host(): Host {
