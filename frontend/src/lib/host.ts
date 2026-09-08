@@ -17,6 +17,11 @@ export interface CoreMessages {
 	attribution_orbits: () => string;
 	attribution_imagery: () => string;
 	credits_see_all: () => string;
+	layer_surface: () => string;
+	layer_clouds: () => string;
+	layer_night: () => string;
+	layer_graticule: () => string;
+	layer_nomenclature: () => string;
 }
 
 export interface Host {
@@ -45,7 +50,12 @@ const DEFAULT_HOST: Host = {
 		scene_canvas_label: () => 'Interactive 3D map of the Solar System',
 		attribution_orbits: () => 'Orbits',
 		attribution_imagery: () => 'Imagery',
-		credits_see_all: () => 'See full credits'
+		credits_see_all: () => 'See full credits',
+		layer_surface: () => 'Surface',
+		layer_clouds: () => 'Clouds',
+		layer_night: () => 'Night lights',
+		layer_graticule: () => 'Grid',
+		layer_nomenclature: () => 'Named features'
 	},
 	// A bare embed has no pages to link to, so labels stay put.
 	bodyHref: () => ''

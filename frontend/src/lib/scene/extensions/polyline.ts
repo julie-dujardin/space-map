@@ -98,8 +98,18 @@ export class PolylineExtension implements Extension, Polyline {
 		if (count > points.length) this.local.copyWithin(points.length * 3, 0, 3);
 		this.count = count;
 		if (count > this.capacity) this.rebuild(count);
+		this.fillAlphas();
 		// The vertex buffer still holds the previous points.
 		this.dirty = true;
+	}
+
+	/** Alpha per point, over the points there actually are: a shorter line has
+	 *  to fade over its own length, not over the buffer's. */
+	private fillAlphas(): void {
+		const n = this.count;
+		for (let i = 0; i < n; i++) {
+			this.alphas[i] = this.fade && n > 1 ? this.opacity * (1 - i / (n - 1)) : this.opacity;
+		}
 	}
 
 	setAnchor(anchor: Anchor): void {
@@ -160,10 +170,6 @@ export class PolylineExtension implements Extension, Polyline {
 		this.dirty = true;
 		this.scratch = new Float32Array(capacity * 3);
 		this.alphas = new Float32Array(capacity);
-		for (let i = 0; i < capacity; i++) {
-			this.alphas[i] =
-				this.fade && capacity > 1 ? this.opacity * (1 - i / (capacity - 1)) : this.opacity;
-		}
 		const mesh = buildFatLineFromThin(
 			capacity,
 			this.scratch,

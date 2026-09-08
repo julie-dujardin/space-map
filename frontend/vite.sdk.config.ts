@@ -179,9 +179,9 @@ export default defineConfig(({ mode }) => {
 						bundledTypes(here('./dist/sdk-npm')),
 						copied(readdirSync(here('./src/sdk/npm')).map((file) => here(`./src/sdk/npm/${file}`)))
 					]
-				: // The demo ships next to the CDN bundle, so `vite preview` serves both
+				: // The demos ship next to the CDN bundle, so `vite preview` serves them
 					// from an origin that is neither the app's nor the data's.
-					copied([here('./src/sdk/demo.html')])
+					copied([here('./src/sdk/demo.html'), here('./src/sdk/flatmap.html')])
 		],
 		resolve: {
 			alias: {

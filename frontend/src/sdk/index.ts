@@ -1,7 +1,12 @@
 /**
- * The map for pages outside spacemap.co, as one script. {@link createMap} puts
- * a MapController in a container; the class, the host seam and the clock's
- * date helpers are exported for hosts that drive them directly.
+ * The map for pages outside spacemap.co, as one script.
+ *
+ * There are two of them. {@link createMap} puts the Solar System in a
+ * container — bodies and spacecraft in three dimensions, over time.
+ * {@link createFlatMap} puts one body's surface there instead, drawn flat in a
+ * projection of the host's choosing, with layers it can switch and drawings of
+ * its own on top. The classes, the host seam and the clock's date helpers are
+ * exported for hosts that drive them directly.
  */
 
 import { configureHost, type CoreMessages, type HostOverrides } from '$lib/host';
@@ -13,7 +18,9 @@ import {
 import { atmosphereBootSettled } from '$lib/scene/perf/atmosphere-calibration';
 import { defaultSceneSettings } from '$lib/scene/settings.svelte';
 import { dateToJD, jdToDate } from '$lib/time/jd';
+import { FlatMap, type FlatMapEvents, type FlatMapOptions } from '$lib/flatmap/flat-map';
 import { mountAttribution } from './controls/attribution.svelte';
+import { mountFlatAttribution } from './controls/flat-attribution';
 
 export interface MapOptions extends MapControllerOptions {
 	/** Root of the data export; the production CDN when omitted. Page-wide,
@@ -67,7 +74,44 @@ export async function createMap(
 	return map;
 }
 
-export { configureHost, MapController, defaultSceneSettings, dateToJD, jdToDate };
+export interface FlatMapCreateOptions extends FlatMapOptions {
+	/** Root of the data export; the production CDN when omitted. Page-wide, as
+	 *  on {@link createMap} — the last map created sets it. */
+	dataUrl?: string;
+	/** BCP-47 tag that picks localized names; English when omitted. */
+	locale?: string;
+	/** Replaces the English wording the map renders itself, one key at a time. */
+	messages?: Partial<CoreMessages>;
+	/** Listeners attached before the first load, so a slow or failed load is
+	 *  observable while it runs. Later ones go through {@link FlatMap.on}. */
+	events?: { [K in keyof FlatMapEvents]?: FlatMapEvents[K] };
+}
+
+/** Mount a flat map of one body's surface in `container` and resolve once its
+ *  first picture is loaded. Rejects when the body has no map texture or the
+ *  data does not load. */
+export async function createFlatMap(
+	container: HTMLElement,
+	options: FlatMapCreateOptions = {}
+): Promise<FlatMap> {
+	const { dataUrl, locale, messages, events, ...flat } = options;
+	const overrides: HostOverrides = {};
+	if (dataUrl !== undefined) overrides.dataUrl = dataUrl;
+	if (locale !== undefined) overrides.locale = () => locale;
+	if (messages !== undefined) overrides.messages = messages;
+	configureHost(overrides);
+
+	const map = new FlatMap(flat);
+	map.mount(container);
+	for (const [event, listener] of Object.entries(events ?? {})) {
+		map.on(event as keyof FlatMapEvents, listener as FlatMapEvents[keyof FlatMapEvents]);
+	}
+	map.addControl((root) => mountFlatAttribution(map, root));
+	await map.load();
+	return map;
+}
+
+export { configureHost, MapController, FlatMap, defaultSceneSettings, dateToJD, jdToDate };
 export type {
 	ClockState,
 	FeatureSelect,
@@ -88,5 +132,26 @@ export type {
 	NoticeTopic,
 	OutOfRangeNotice
 } from '$lib/scene/notice';
+export type { FlatMapEvents, FlatMapOptions, FlatViewState } from '$lib/flatmap/flat-map';
+export type { Extent, Projection, ProjectionId, ProjectionOptions } from '$lib/flatmap/projection';
+export { createProjection, PROJECTION_IDS, projectionAspect } from '$lib/flatmap/projection';
+export type { Interpolation, LonLat } from '$lib/flatmap/geometry';
+export { boxRing, graticule, pathFor, smallCircle } from '$lib/flatmap/geometry';
+export { Viewport } from '$lib/flatmap/view';
+export type { ViewState } from '$lib/flatmap/view';
+export type { Layer, LayerCredit, LayerInfo, VectorLayer } from '$lib/flatmap/layers';
+// The flat map's shapes are named apart from the scene's: a host can hold both
+// maps on one page, and `Marker` there is an element pinned in three
+// dimensions, not a dot on a surface.
+export type {
+	BoxOptions,
+	CircleOptions,
+	FlatMarker,
+	FlatShape,
+	MarkerOptions as FlatMarkerOptions,
+	PolygonOptions as FlatPolygonOptions,
+	PolylineOptions as FlatPolylineOptions,
+	ShapeStyle
+} from '$lib/flatmap/overlay';
 export type { CoreMessages, Host, HostOverrides } from '$lib/host';
 export type { PositionedBody } from '$lib/types/objects';

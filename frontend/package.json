@@ -13,7 +13,7 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"check:core": "depcruise src/lib/scene src/lib/math src/lib/fetch src/sdk --config .dependency-cruiser.cjs",
+		"check:core": "depcruise src/lib/scene src/lib/math src/lib/fetch src/lib/flatmap src/sdk --config .dependency-cruiser.cjs",
 		"lint": "eslint . --fix",
 		"format": "prettier --write ."
 	},

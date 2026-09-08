@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>spacemap SDK — flat map demo</title>
+		<style>
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				background: #05070e;
+				color: #e6e6e6;
+				font:
+					14px/1.45 system-ui,
+					sans-serif;
+			}
+			#map {
+				position: fixed;
+				inset: 0;
+			}
+			#panel {
+				position: fixed;
+				top: 12px;
+				left: 12px;
+				width: 290px;
+				max-height: calc(100% - 24px);
+				overflow: auto;
+				box-sizing: border-box;
+				padding: 12px 14px;
+				background: rgba(12, 14, 20, 0.86);
+				border: 1px solid #2c2f3a;
+				border-radius: 10px;
+				backdrop-filter: blur(8px);
+			}
+			h1 {
+				margin: 0 0 4px;
+				font-size: 16px;
+			}
+			h1 small {
+				font-weight: normal;
+				color: #9aa;
+			}
+			h2 {
+				margin: 14px 0 4px;
+				font-size: 12px;
+				text-transform: uppercase;
+				letter-spacing: 0.06em;
+				color: #8b93a7;
+			}
+			p {
+				margin: 6px 0;
+			}
+			label {
+				display: block;
+				margin: 8px 0 2px;
+				color: #9aa;
+				font-size: 12px;
+			}
+			select,
+			input,
+			button {
+				font: inherit;
+				color: inherit;
+				background: #171a24;
+				border: 1px solid #3a3e4d;
+				border-radius: 6px;
+				padding: 4px 8px;
+				min-width: 0;
+			}
+			button {
+				cursor: pointer;
+			}
+			.row {
+				display: flex;
+				gap: 6px;
+				margin: 8px 0;
+			}
+			.row > * {
+				flex: 1 1 0;
+			}
+			#projection,
+			#body {
+				width: 100%;
+			}
+			#layers label {
+				display: flex;
+				align-items: center;
+				gap: 7px;
+				margin: 3px 0;
+				color: #dfe4ee;
+				font-size: 13px;
+			}
+			#layers input {
+				flex: none;
+				width: auto;
+				min-width: 0;
+				accent-color: #6af;
+			}
+			code {
+				color: #bcd;
+			}
+			#error {
+				color: #f88;
+			}
+			#readout {
+				font:
+					12px/1.5 ui-monospace,
+					monospace;
+				color: #9fb0c9;
+			}
+			/* Drawings the demo adds, styled from the host page — the shapes take a
+			   className through and are otherwise the host's to dress. */
+			.demo-track {
+				filter: drop-shadow(0 0 4px rgba(120, 200, 255, 0.6));
+			}
+			.demo-label {
+				padding: 1px 6px;
+				border: 1px solid #6af;
+				border-radius: 10px;
+				background: rgba(10, 20, 40, 0.85);
+				color: #cfe6ff;
+				font:
+					11px/1.5 system-ui,
+					sans-serif;
+				white-space: nowrap;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<aside id="panel">
+			<h1>spacemap flat map <small>demo</small></h1>
+			<p id="error" hidden></p>
+
+			<label for="body">Body</label>
+			<select id="body">
+				<option value="naif-399">Earth</option>
+				<option value="naif-499">Mars</option>
+				<option value="naif-301">the Moon</option>
+				<option value="naif-299">Venus</option>
+				<option value="naif-199">Mercury</option>
+				<option value="naif-606">Titan</option>
+				<option value="naif-502">Europa</option>
+			</select>
+
+			<label for="projection">Projection</label>
+			<select id="projection"></select>
+
+			<h2>Layers</h2>
+			<div id="layers"></div>
+
+			<h2>Drawing</h2>
+			<div class="row">
+				<button id="track" type="button">Great circle</button>
+				<button id="box" type="button">Box</button>
+			</div>
+			<div class="row">
+				<button id="circle" type="button">Circle</button>
+				<button id="pin" type="button">Pin</button>
+			</div>
+			<div class="row">
+				<button id="clear" type="button">Clear drawings</button>
+			</div>
+
+			<h2>Pointer</h2>
+			<p id="readout">move over the map</p>
+		</aside>
+
+		<script type="module">
+			import { createFlatMap, PROJECTION_IDS } from './spacemap.js';
+
+			// ?data=<export root> ?lang=<bcp47> ?body=<object id> ?projection=<id>
+			const params = new URLSearchParams(location.search);
+			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
+			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
+
+			const $ = (id) => document.getElementById(id);
+			const fail = (e) => {
+				$('error').textContent = String(e?.message ?? e);
+				$('error').hidden = false;
+			};
+
+			const LABELS = {
+				equirectangular: 'Equirectangular (plate carrée)',
+				equalEarth: 'Equal Earth (equal-area)',
+				mollweide: 'Mollweide (equal-area)',
+				sinusoidal: 'Sinusoidal (equal-area)',
+				robinson: 'Robinson (compromise)',
+				orthographic: 'Orthographic (globe)',
+				stereographic: 'Polar stereographic (globe)'
+			};
+			for (const id of PROJECTION_IDS) {
+				const option = document.createElement('option');
+				option.value = id;
+				option.textContent = LABELS[id] ?? id;
+				$('projection').append(option);
+			}
+
+			const options = { body: params.get('body') ?? 'naif-399' };
+			if (dataUrl) options.dataUrl = dataUrl;
+			if (params.has('lang')) options.locale = params.get('lang');
+			if (params.has('projection')) options.projection = params.get('projection');
+			options.events = { error: (e) => fail(e) };
+
+			let map;
+			try {
+				map = await createFlatMap($('map'), options);
+			} catch (e) {
+				fail(e);
+				throw e;
+			}
+			// The map, for poking at from the console.
+			globalThis.map = map;
+
+			$('body').value = options.body;
+			$('projection').value = map.viewState.projection;
+
+			// Layers are whatever the body actually has: Earth ships clouds and
+			// night lights, Mars neither. Rebuilt whenever that set changes.
+			const drawLayers = (layers) => {
+				$('layers').replaceChildren(
+					...layers.map((layer) => {
+						const box = document.createElement('input');
+						box.type = 'checkbox';
+						box.checked = layer.visible;
+						box.onchange = () => map.setLayerVisible(layer.id, box.checked);
+						const label = document.createElement('label');
+						label.append(box, layer.label);
+						return label;
+					})
+				);
+			};
+			drawLayers(map.layers);
+			map.on('layerschange', drawLayers);
+
+			$('projection').onchange = () => map.setProjection($('projection').value);
+			$('body').onchange = async () => {
+				try {
+					await map.setBody($('body').value);
+					$('error').hidden = true;
+				} catch (e) {
+					fail(e);
+				}
+			};
+
+			// Every drawing is given in longitude and latitude, so it survives a
+			// change of projection — switch below and the shapes come with it.
+			$('track').onclick = () => {
+				map.addPolyline({
+					points: [
+						{ lon: -74, lat: 41 },
+						{ lon: -0.1, lat: 51.5 },
+						{ lon: 139.7, lat: 35.7 }
+					],
+					// The short way over the sphere, not a straight line on the plane.
+					interpolate: 'geodesic',
+					color: '#7ec8ff',
+					widthPx: 2.5,
+					className: 'demo-track'
+				});
+			};
+			$('box').onclick = () => {
+				map.addBox({
+					latMin: 0,
+					latMax: 30,
+					lonMin: -20,
+					lonSpan: 60,
+					color: '#ffd479',
+					fill: 'rgb(255 212 121 / 22%)',
+					widthPx: 1.5
+				});
+			};
+			$('circle').onclick = () => {
+				map.addCircle({
+					center: { lon: 0, lat: 0 },
+					radiusDeg: 25,
+					color: '#9dffb0',
+					fill: 'rgb(157 255 176 / 18%)',
+					widthPx: 1.5
+				});
+			};
+			$('pin').onclick = () => {
+				const element = document.createElement('div');
+				element.className = 'demo-label';
+				element.textContent = 'here';
+				map.addMarker({ at: { lon: 12.5, lat: 41.9 }, element, align: [0.5, 1] });
+			};
+			$('clear').onclick = () => map.clearDrawings();
+
+			const fmt = (v, pos, neg) => `${Math.abs(v).toFixed(2)}°${v >= 0 ? pos : neg}`;
+			map.on('pointermove', (at) => {
+				$('readout').textContent = at
+					? `${fmt(at.lat, 'N', 'S')}  ${fmt(at.lon, 'E', 'W')}`
+					: 'off the map';
+			});
+			map.on('click', (at) => {
+				if (!at) return;
+				map.addMarker({ at });
+			});
+			map.on('viewchange', (view) => {
+				$('projection').value = view.projection;
+			});
+		</script>
+	</body>
+</html>
