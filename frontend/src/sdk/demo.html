@@ -160,6 +160,10 @@
 				<button>Focus</button>
 			</form>
 			<div class="row">
+				<button id="orbit" type="button">Fly a circle</button>
+				<button id="release" type="button" disabled>Give camera back</button>
+			</div>
+			<div class="row">
 				<button id="mark" type="button">Mark this place</button>
 				<button id="clearmarks" type="button">Clear marks</button>
 			</div>
@@ -318,6 +322,47 @@
 			});
 			$('clearmarks').addEventListener('click', () => {
 				for (const marker of marks.splice(0)) marker.remove();
+			});
+
+			// Driving the camera: hold it, then set a pose every frame. Positions
+			// are kilometres on ecliptic axes, measured from the body.
+			let hold = null;
+			let offFrame = null;
+			const stopOrbit = () => {
+				offFrame?.();
+				offFrame = null;
+				hold?.release();
+				hold = null;
+				$('release').disabled = true;
+				$('orbit').disabled = false;
+			};
+			$('orbit').addEventListener('click', () => {
+				const body = map.focusedBody;
+				if (!body || hold) return;
+				const id = body.data.id;
+				// Start where the camera already is, so the circle has its radius.
+				const from = map.getCamera();
+				const [x, y] = from?.position.offsetKm ?? [200000, 0, 0];
+				const radius = Math.hypot(x, y) || 200000;
+				const start = performance.now();
+				hold = map.holdCamera();
+				offFrame = map.on('frame', () => {
+					const angle = ((performance.now() - start) / 12000) * 2 * Math.PI;
+					hold.set({
+						position: {
+							body: id,
+							offsetKm: [radius * Math.cos(angle), radius * Math.sin(angle), radius * 0.25]
+						},
+						target: { body: id }
+					});
+				});
+				$('release').disabled = false;
+				$('orbit').disabled = true;
+				log(`camera held around ${name(body)}`);
+			});
+			$('release').addEventListener('click', () => {
+				stopOrbit();
+				log('camera released');
 			});
 
 			// One frame event per drawn frame; here it just keeps a counter.

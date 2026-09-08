@@ -132,6 +132,7 @@ import { FocusController } from './focus/controller';
 import { ProbeCoverageWatch } from './probe-coverage-watch';
 import { OutOfRangeNotifier } from './out-of-range-notice';
 import { ExtensionRegistry } from './extensions/registry';
+import { resolvePose, type CameraPose } from './extensions/camera';
 import { passengerFor } from '$lib/fetch/position/probes/passenger';
 import {
 	minCameraDistance,
@@ -219,6 +220,10 @@ export class SceneRenderer {
 	private readonly outOfRange: OutOfRangeNotifier;
 	/** Markers, lines and anything else the host added. */
 	readonly extensions = new ExtensionRegistry();
+	/** Set while a host drives the camera: the map's own controls, focus
+	 *  animation and collision clamps stand down until it is released. */
+	private cameraHold: CameraPose | null = null;
+	private holdingCamera = false;
 	private readonly _tmpV3 = new Vector3();
 
 	/**
@@ -896,7 +901,8 @@ export class SceneRenderer {
 		const frameDtMs = this.lastTickMs ? nowMs - this.lastTickMs : 0;
 		this.lastTickMs = nowMs;
 
-		this.cameraUp.update(this.clock.jd);
+		// The north reference writes camera.up, which a held pose owns instead.
+		if (!this.holdingCamera) this.cameraUp.update(this.clock.jd);
 
 		if (this.firstFrame) {
 			this.firstFrame = false;
@@ -940,13 +946,15 @@ export class SceneRenderer {
 		// yet: the seam where a host can read one and drive the other.
 		this.callbacks.onFrame?.(this.clock.jd, renderedDtMs);
 
-		const controlsSettled = stepFocusAnimation(
-			this.focus,
-			this.camera,
-			this.controls,
-			() => this.repositionAll(),
-			() => this.pointClouds.rebuildBasis()
-		);
+		const controlsSettled = this.holdingCamera
+			? this.applyHeldCamera()
+			: stepFocusAnimation(
+					this.focus,
+					this.camera,
+					this.controls,
+					() => this.repositionAll(),
+					() => this.pointClouds.rebuildBasis()
+				);
 
 		// Keep the camera from tunnelling into the focused object's parent (e.g.
 		// Earth while focused on the ISS): minDistance only guards the focused body
@@ -954,7 +962,7 @@ export class SceneRenderer {
 		// The clamp caps its wall at the focused object's own radial distance, so a
 		// low orbiter stays reachable without clipping the parent; a landed probe
 		// or surface feature gets a floor on the rendered terrain under the camera.
-		const focused = this.focusController.current;
+		const focused = this.holdingCamera ? undefined : this.focusController.current;
 		if (focused) {
 			const parentId = collisionParentId(focused.data.parentId);
 			const parent = parentId ? this.ctx.getBody(parentId) : undefined;
@@ -1581,7 +1589,80 @@ export class SceneRenderer {
 	 * uploads and unloads spread over frames — so the scene is ready to show
 	 * the moment the cover goes.
 	 */
+	/** Camera position relative to the focused body, in scene units. */
+	cameraOffsetFromFocus(): Vec3 {
+		const focused = this.focusController.current;
+		const basis = this.focus.focusTruePos;
+		const cam = this.camera.position;
+		if (!focused) return [cam.x, cam.y, cam.z];
+		return [
+			cam.x + basis[0] - focused.position[0],
+			cam.y + basis[1] - focused.position[1],
+			cam.z + basis[2] - focused.position[2]
+		];
+	}
+
+	/** Hand the camera to a host until {@link releaseCamera}. Any fly in flight
+	 *  is dropped: two things cannot drive one camera. */
+	holdCamera(): void {
+		if (this.holdingCamera) return;
+		this.holdingCamera = true;
+		this.controls.enabled = false;
+		this.focus.camOriginWorld = null;
+		this.focus.camTargetWorld = null;
+		this.focus.camTargetOffset = null;
+		this.focus.camOriginOffset = null;
+		this.focus.flyQ0 = null;
+		this.focus.orbitFly = false;
+		this.focus.arcOrbit = false;
+		this.focus.cameraStaysOnBody = false;
+	}
+
+	setHeldPose(pose: CameraPose): void {
+		this.cameraHold = pose;
+	}
+
+	/** Give the camera back: the controls pick it up where the host left it,
+	 *  orbiting the focused body again. */
+	releaseCamera(): void {
+		if (!this.holdingCamera) return;
+		this.holdingCamera = false;
+		this.cameraHold = null;
+		this.controls.enabled = true;
+		this.controls.target.set(0, 0, 0);
+		// Drop the damping delta accumulated while the controls were off, or the
+		// first frame back drags the camera toward a stale target.
+		this.controls.enableDamping = false;
+		this.controls.update();
+		this.controls.enableDamping = true;
+		this.invalidate();
+	}
+
+	/** Place the camera at the held pose for this frame. Returns true, standing
+	 *  in for "the controls have settled": nothing is animating. */
+	private applyHeldCamera(): boolean {
+		const pose = this.cameraHold;
+		const resolved = pose && resolvePose(pose, this.ctx, this.clock.jd);
+		if (!resolved) return true;
+		const basis = this.focus.focusTruePos;
+		this.camera.up.set(resolved.up[0], resolved.up[1], resolved.up[2]).normalize();
+		this.camera.position.set(
+			resolved.position[0] - basis[0],
+			resolved.position[1] - basis[1],
+			resolved.position[2] - basis[2]
+		);
+		this.camera.lookAt(
+			resolved.target[0] - basis[0],
+			resolved.target[1] - basis[1],
+			resolved.target[2] - basis[2]
+		);
+		return true;
+	}
+
 	private shouldRender(nowMs: number): boolean {
+		// A held camera moves between frames for reasons the frame flags cannot
+		// see, and the host's next pose arrives from a frame that is drawn.
+		if (this.holdingCamera) return true;
 		const flying = nowMs - this.focus.focusStartTime < this.focus.focusDurationMs;
 		const loading =
 			flying ||

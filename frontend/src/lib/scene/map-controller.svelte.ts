@@ -19,6 +19,7 @@ import {
 import type { Callbacks, CameraView, InitialView } from './types';
 import type { Notice, NoticeTopic } from './notice';
 import { MarkerExtension, type Marker, type MarkerOptions } from './extensions/marker';
+import { sceneToEcliptic, type CameraHold, type CameraPose } from './extensions/camera';
 import { loadProgress } from './state/load-progress.svelte';
 import type { Vec3 } from './animation/math';
 import type { OrbitPreview } from './objects/travel/orbit-preview';
@@ -158,6 +159,9 @@ export class MapController {
 	private lostPanelTimer: ReturnType<typeof setTimeout> | undefined;
 	private initialFocusPending = true;
 	private pendingFocusId: string | null = null;
+	/** Retires the host's hold on the camera. Kept so that a second hold, or
+	 *  unmounting, can take the camera off the hold before it. */
+	private retireCameraHold: (() => void) | null = null;
 	private readonly listeners: { [K in keyof MapEvents]: Set<MapEvents[K]> } = {
 		focuschange: new Set(),
 		camera: new Set(),
@@ -349,6 +353,8 @@ export class MapController {
 		canvas.removeEventListener('webglcontextlost', this.onContextLost);
 		canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
 		document.removeEventListener('visibilitychange', this.onVisibility);
+		this.retireCameraHold?.();
+		this.retireCameraHold = null;
 		this.renderer?.dispose();
 		this.renderer = null;
 		canvas.remove();
@@ -553,6 +559,54 @@ export class MapController {
 	/** @internal Re-aim at `body` without the focus handshake — for browser history. */
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
 		this.renderer?.setFocusTarget(body, camPos);
+	}
+
+	/** Where the camera is and what it orbits, as anchors a host can store,
+	 *  change and hand back to {@link holdCamera}. Null before the first frame
+	 *  or while nothing is focused. */
+	getCamera(): CameraPose | null {
+		const renderer = this.renderer;
+		const focused = this.focusedBody;
+		if (!renderer || !focused) return null;
+		const body = focused.data.id;
+		return {
+			position: { body, offsetKm: sceneToEcliptic(renderer.cameraOffsetFromFocus()) },
+			target: { body }
+		};
+	}
+
+	/** Take the camera off the map's own controls and place it yourself. The
+	 *  focused body still decides what is drawn in detail, so hold and focus
+	 *  the same body when you move in close. */
+	holdCamera(): CameraHold {
+		const renderer = this.renderer;
+		if (!renderer) throw new Error('MapController is not mounted');
+		// Two things cannot drive one camera, so taking the hold again retires
+		// the one before it: that handle reports it no longer has the camera and
+		// stops writing poses nothing would apply. The renderer is already
+		// holding, so the camera itself never goes back to the controls between
+		// the two.
+		this.retireCameraHold?.();
+		renderer.holdCamera();
+		let held = true;
+		const retire = (): void => {
+			held = false;
+		};
+		this.retireCameraHold = retire;
+		return {
+			get held() {
+				return held;
+			},
+			set: (pose: CameraPose) => {
+				if (held) renderer.setHeldPose(pose);
+			},
+			release: () => {
+				if (!held) return;
+				retire();
+				this.retireCameraHold = null;
+				renderer.releaseCamera();
+			}
+		};
 	}
 
 	/** Pin the host's own element to a place on the map. It is drawn in the
