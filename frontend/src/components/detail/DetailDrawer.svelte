@@ -78,6 +78,9 @@
 		// The mobile drawer portals out of <main>, so the parent's background-inert
 		// can't reach it; it inerts itself behind the expanded mobile search.
 		inert?: boolean;
+		/** The placeholder frame is already standing where the sheet opens, so the
+		 *  sheet takes its place instead of sliding in over it. */
+		inPlace?: boolean;
 	}
 
 	let {
@@ -87,7 +90,8 @@
 		onMaximize,
 		onMinimize,
 		onSheetResize,
-		inert = false
+		inert = false,
+		inPlace = false
 	}: Props = $props();
 
 	let body = $derived(focusable.kind === 'group' ? null : focusable.body);
@@ -596,6 +600,7 @@
 {#if isMobile}
 	<MobileSheet
 		{inert}
+		{inPlace}
 		bind:activeSnapPoint
 		{onSheetResize}
 		tab={activeTab}

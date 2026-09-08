@@ -370,6 +370,17 @@
 			? (SHEET_COLLAPSED_PX / window.innerHeight) * 100
 			: drawerHeightDvh
 	);
+	/** The placeholder frame is on screen — either promised by the URL, or
+	 *  standing in while the drawer chunk arrives. */
+	const placeholderUp = $derived(sidebarPending || (Boolean(focusable) && !DetailDrawer));
+	/** Latched for as long as the panel lives: the real drawer mounts on the tick
+	 *  the placeholder leaves, and has to know it is taking over a frame that is
+	 *  already drawn (see MobileSheet's `inPlace`). */
+	let placeholderHeld = $state(false);
+	$effect(() => {
+		if (placeholderUp) placeholderHeld = true;
+		else if (!focusable) placeholderHeld = false;
+	});
 	/** What the panel will be about, for chrome that has to guess before the
 	 *  focusable exists. */
 	const pendingKind = $derived<'body' | 'feature' | 'group'>(
@@ -1069,7 +1080,7 @@
 					/>
 				</div>
 			{/if}
-			{#if sidebarPending || (focusable && !DetailDrawer)}
+			{#if placeholderUp}
 				<DrawerSkeleton kind={pendingKind} />
 			{/if}
 			{#if focusable && DetailDrawer}
@@ -1077,6 +1088,7 @@
 					{focusable}
 					{clock}
 					inert={bgInert}
+					inPlace={placeholderHeld}
 					onClose={() => closeDetail()}
 					onMaximize={() => {
 						if (!selectedBody) return;

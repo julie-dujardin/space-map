@@ -21,10 +21,11 @@
 	// Zoom (bodies only), travel (anything with a body), share, close.
 	let buttonCount = $derived(kind === 'group' ? 2 : kind === 'feature' ? 3 : 4);
 
-	// vaul mounts its sheet off-screen and slides it up over about 400ms.
-	// Dropping this one on the tick the real sheet appears would blink the bar
-	// away and let it slide back in, so it holds its place underneath until the
-	// slide is over. No css and no tick: the node just stays where it is.
+	// The real sheet mounts off-screen and is only pinned to its snap point on
+	// the following frame, so dropping this one on the same tick leaves the
+	// bottom of the screen bare for a frame. It holds a moment longer, under a
+	// sheet drawn at the same place. No css and no tick: the node just stays
+	// where it is.
 	const hold = (_node: Element, config: TransitionConfig): TransitionConfig => config;
 </script>
 
@@ -44,7 +45,7 @@
 <!-- The sheet at its collapsed snap: chrome only, which is where vaul opens it. -->
 <div
 	aria-hidden="true"
-	out:hold|global={{ duration: 450 }}
+	out:hold|global={{ duration: 100 }}
 	class="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-xl border-t bg-background shadow-lg min-[769px]:hidden"
 >
 	<div class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">

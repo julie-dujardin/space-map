@@ -11,6 +11,8 @@
 
 	interface Props {
 		inert: boolean;
+		/** Open where the placeholder frame already stands, with no slide. */
+		inPlace?: boolean;
 		activeSnapPoint: number | string | null;
 		onSheetResize?: (heightDvh: number) => void;
 		tab: string;
@@ -26,6 +28,7 @@
 
 	let {
 		inert,
+		inPlace = false,
 		activeSnapPoint = $bindable(),
 		onSheetResize,
 		tab,
@@ -34,6 +37,20 @@
 		header,
 		children
 	}: Props = $props();
+
+	// vaul mounts the sheet off-screen and transitions the transform up to the
+	// snap point. Taking over from the placeholder frame, that slide would run
+	// over a bar already drawn at the same place — so the transition is killed
+	// for the mount frames and the sheet simply appears there. `!important`
+	// beats the inline transition vaul writes with the transform.
+	let landed = $state(false);
+	let landing = $derived(inPlace && !landed);
+	$effect(() => {
+		let raf = requestAnimationFrame(() => {
+			raf = requestAnimationFrame(() => (landed = true));
+		});
+		return () => cancelAnimationFrame(raf);
+	});
 
 	// Snap points: chrome-only collapsed (measured at runtime so it tracks the
 	// real header height — buttons, fonts, locale length all affect it), mid,
@@ -119,7 +136,8 @@
 			{inert}
 			trapFocus={false}
 			aria-labelledby="detail-drawer-title"
-			class="fixed inset-x-0 bottom-0 z-50 flex h-dvh max-h-dvh flex-col rounded-t-xl border-t bg-background shadow-lg outline-none"
+			class="fixed inset-x-0 bottom-0 z-50 flex h-dvh max-h-dvh flex-col rounded-t-xl border-t bg-background shadow-lg outline-none
+				{landing ? 'transition-none!' : ''}"
 		>
 			<div bind:this={headerEl} class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
 				<div class="h-1 w-10 rounded-full bg-muted-foreground/40"></div>
