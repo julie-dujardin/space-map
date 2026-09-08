@@ -97,6 +97,22 @@
 			#error {
 				color: #f88;
 			}
+			.demo-pin {
+				padding: 1px 6px;
+				border: 1px solid #6af;
+				border-radius: 10px;
+				background: rgba(10, 20, 40, 0.85);
+				color: #cfe6ff;
+				font:
+					11px/1.5 system-ui,
+					sans-serif;
+				white-space: nowrap;
+				cursor: pointer;
+			}
+			.demo-pin:hover {
+				border-color: #9cf;
+				color: #fff;
+			}
 			#notices {
 				color: #fd8;
 				white-space: pre-wrap;
@@ -144,6 +160,10 @@
 				<button>Focus</button>
 			</form>
 			<div class="row">
+				<button id="mark" type="button">Mark this place</button>
+				<button id="clearmarks" type="button">Clear marks</button>
+			</div>
+			<div class="row">
 				<button id="parent" type="button">Parent body</button>
 				<button id="play" type="button">Pause</button>
 				<select id="speed">
@@ -156,6 +176,7 @@
 			</div>
 			<p><code id="clock"></code></p>
 			<p><code id="camera"></code></p>
+			<p><code id="frames"></code></p>
 			<p id="notices"></p>
 			<pre id="log"></pre>
 		</aside>
@@ -270,6 +291,42 @@
 				if (map.clock.playing) map.clock.pause();
 				else map.clock.play();
 			});
+			// Markers: the host's own elements, pinned to a place that keeps up
+			// with the map. A surface anchor turns with the body; an inertial one
+			// is an offset in kilometres on ecliptic axes.
+			const marks = [];
+			$('mark').addEventListener('click', () => {
+				const body = map.focusedBody;
+				if (!body) return;
+				const latitude = Math.round((Math.random() * 120 - 60) * 10) / 10;
+				const longitude = Math.round((Math.random() * 360 - 180) * 10) / 10;
+				const el = document.createElement('div');
+				el.className = 'demo-pin';
+				el.textContent = `${name(body)} ${latitude}°, ${longitude}°`;
+				const marker = map.addMarker({
+					anchor: { body: body.data.id, latitude, longitude, altitudeKm: 0 },
+					element: el,
+					align: [0.5, 1],
+					occlude: true
+				});
+				el.addEventListener('click', () => {
+					marker.remove();
+					marks.splice(marks.indexOf(marker), 1);
+				});
+				marks.push(marker);
+				log(`marker on ${name(body)} at ${latitude}, ${longitude}`);
+			});
+			$('clearmarks').addEventListener('click', () => {
+				for (const marker of marks.splice(0)) marker.remove();
+			});
+
+			// One frame event per drawn frame; here it just keeps a counter.
+			let frames = 0;
+			map.on('frame', () => frames++);
+			setInterval(() => {
+				$('frames').textContent = `${frames} frames drawn`;
+			}, 1000);
+
 			$('speed').addEventListener('change', (e) => map.clock.setTimeScale(Number(e.target.value)));
 			map.on('clock', ({ date, playing }) => {
 				const iso = date.toISOString();

@@ -194,6 +194,10 @@ export interface Callbacks {
 	/** Where data-coverage conditions are reported. */
 	notices: NoticeSink;
 	onFocusChange(body: PositionedBody | undefined): void;
+	/** Start of a drawn frame: the bodies hold this frame's positions and the
+	 *  camera has not been moved yet. `dtMs` is 0 on a frame that follows a
+	 *  skipped one. */
+	onFrame?(jd: number, dtMs: number): void;
 	onCameraPosition?(latitude: number, longitude: number, zoom: number): void;
 	/** Number of user-promoted bodies that can be cleared (excludes the focused
 	 *  body — clearing it would leave the camera pointed at a torn-down mesh). */

@@ -131,6 +131,7 @@ import {
 import { FocusController } from './focus/controller';
 import { ProbeCoverageWatch } from './probe-coverage-watch';
 import { OutOfRangeNotifier } from './out-of-range-notice';
+import { ExtensionRegistry } from './extensions/registry';
 import { passengerFor } from '$lib/fetch/position/probes/passenger';
 import {
 	minCameraDistance,
@@ -216,6 +217,8 @@ export class SceneRenderer {
 	/** Null until scene setup; fetches each focused probe's coverage lazily. */
 	private coverageWatch: ProbeCoverageWatch | null = null;
 	private readonly outOfRange: OutOfRangeNotifier;
+	/** Markers, lines and anything else the host added. */
+	readonly extensions = new ExtensionRegistry();
 	private readonly _tmpV3 = new Vector3();
 
 	/**
@@ -368,6 +371,7 @@ export class SceneRenderer {
 		this.renderer = boot.renderer;
 		this.labelRenderer = boot.labelRenderer;
 		this.scene = boot.scene;
+		this.scene.add(this.extensions.group);
 		this.camera = boot.camera;
 		this.composer = boot.composer;
 		this.bloomPass = boot.bloomPass;
@@ -932,6 +936,9 @@ export class SceneRenderer {
 		// After the bodies move, before the focus animation reads its target: the
 		// point is measured off a body that has just been advanced.
 		this.refreshTravelFocus();
+		// Bodies are at this frame's positions and the camera has not been moved
+		// yet: the seam where a host can read one and drive the other.
+		this.callbacks.onFrame?.(this.clock.jd, renderedDtMs);
 
 		const controlsSettled = stepFocusAnimation(
 			this.focus,
@@ -1005,6 +1012,12 @@ export class SceneRenderer {
 		// where the space is handed out.
 		this.refreshTravelPath();
 		this.refreshOrbitPreview();
+		this.extensions.update({
+			jd: this.clock.jd,
+			basis: this.focus.focusTruePos,
+			camera: this.camera,
+			ctx: this.ctx
+		});
 
 		this.cullFrameCounter = updateBodyVisibility(
 			this.bodyObjects,
@@ -2300,6 +2313,7 @@ export class SceneRenderer {
 		this.controls.dispose();
 		this.haloDebug.dispose();
 		this.travelPath.dispose();
+		this.extensions.dispose();
 		// Unload resident models: the module-level mount registry must not carry
 		// disposed meshes into the next renderer lifetime.
 		for (const bo of this.bodyObjects.values()) if (bo.model) unloadBodyModel(bo);

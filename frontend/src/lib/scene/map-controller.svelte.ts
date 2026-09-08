@@ -18,6 +18,7 @@ import {
 } from './framing';
 import type { Callbacks, CameraView, InitialView } from './types';
 import type { Notice, NoticeTopic } from './notice';
+import { MarkerExtension, type Marker, type MarkerOptions } from './extensions/marker';
 import { loadProgress } from './state/load-progress.svelte';
 import type { Vec3 } from './animation/math';
 import type { OrbitPreview } from './objects/travel/orbit-preview';
@@ -100,6 +101,9 @@ export interface MapEvents {
 	notice: (notice: Notice) => void;
 	/** That topic's condition cleared. */
 	noticedismiss: (topic: NoticeTopic) => void;
+	/** Once per drawn frame, with the bodies at that frame's positions and the
+	 *  camera not yet moved. `dtMs` is 0 after a skipped frame. */
+	frame: (e: { jd: number; dtMs: number }) => void;
 }
 
 /** Renderer state derived from settings. One sink per field, so a reactive
@@ -167,7 +171,8 @@ export class MapController {
 		error: new Set(),
 		datastale: new Set(),
 		notice: new Set(),
-		noticedismiss: new Set()
+		noticedismiss: new Set(),
+		frame: new Set()
 	};
 
 	constructor(options: MapControllerOptions = {}) {
@@ -253,6 +258,15 @@ export class MapController {
 			// and then the load wins the race and the poll has to be called off.
 			watching = false;
 		}
+	}
+
+	/** Settle the camera on the opening view. The renderer could not do it when
+	 *  it was built: no data had loaded yet, so it framed nothing and reported
+	 *  no focus. Call it once {@link open} resolves. */
+	applyInitialView(): void {
+		const { id, latitude, longitude, zoom } = this.initialView;
+		if (this.focusedBody || !this.ctx.getBody(id)) return;
+		this.renderer?.snapToBody(id, latitude, longitude, zoom);
 	}
 
 	/** Build the canvas and label layer inside `container` and start rendering. */
@@ -411,6 +425,9 @@ export class MapController {
 					feature
 				});
 			},
+			onFrame: (jd, dtMs) => {
+				if (this.listeners.frame.size > 0) this.emit('frame', { jd, dtMs });
+			},
 			onCameraPosition: (latitude, longitude, zoom) =>
 				this.emit('camera', { latitude, longitude, zoom }),
 			onUserPromotedChange: (count) => this.emit('userpromoted', count),
@@ -536,6 +553,18 @@ export class MapController {
 	/** @internal Re-aim at `body` without the focus handshake — for browser history. */
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
 		this.renderer?.setFocusTarget(body, camPos);
+	}
+
+	/** Pin the host's own element to a place on the map. It is drawn in the
+	 *  map's label layer, so it pans with the scene and is removed with it. */
+	addMarker(options: MarkerOptions): Marker {
+		const renderer = this.renderer;
+		const canvas = this.canvas;
+		if (!renderer || !canvas) throw new Error('MapController is not mounted');
+		const marker = new MarkerExtension(options, canvas);
+		marker.bind(() => renderer.extensions.remove(marker));
+		renderer.extensions.add(marker);
+		return marker;
 	}
 
 	setNorthReference(id: string | null): void {

@@ -62,6 +62,7 @@ export async function createMap(
 	}
 	map.addControl((element) => mountAttribution(map, element));
 	await map.open();
+	map.applyInitialView();
 	await atmosphereBootSettled();
 	return map;
 }
@@ -75,6 +76,8 @@ export type {
 	MapEvents
 } from '$lib/scene/map-controller.svelte';
 export type { CameraView, InitialView } from '$lib/scene/types';
+export type { Anchor, InertialAnchor, OffsetKm, SurfaceAnchor } from '$lib/scene/extensions/anchor';
+export type { Marker, MarkerOptions } from '$lib/scene/extensions/marker';
 export type { SceneSettings } from '$lib/scene/settings.svelte';
 export type {
 	CoverageEdge,
