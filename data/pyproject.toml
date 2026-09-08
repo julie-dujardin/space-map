@@ -28,6 +28,7 @@ space-map-ingest = "space_map_data.ingest.__main__:cli"
 space-map-export = "space_map_data.export.__main__:cli"
 space-map-scheduler = "space_map_data.scheduler.__main__:main"
 space-map-search = "space_map_data.search.__main__:cli"
+space-map-panoramas = "space_map_data.panoramas.__main__:cli"
 
 [build-system]
 requires = ["hatchling"]

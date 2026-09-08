@@ -63,6 +63,9 @@ The positions for most asteroids & comets are computed in web workers: that's wh
 
 The data pipeline is built in Python. It downloads each dataset, joins them in a SQLite database, and exports them to static files. Those static files are served as static Cloudflare Workers assets: there's no backend for most of the app. This has drawbacks, but allows serving lots of data very fast, at very low cost. In particular, maintenance is very easy: all "endpoints" are served once, so there's no risk of runtime backend errors. The export format is [documented (written by AI)](docs/export-format/README.md). Search is provided by a Meilisearch database running in a VPS.
 
+The offline [Mars panorama pipeline](docs/mars-panoramas.md) prepares official
+Curiosity and Perseverance surface mosaics for a future street-view feature.
+
 ### Positions
 
 The export pipeline compresses orbital elements from ~100GiB down to 1.9GiB, and splits them in chunks so the frontend can propagate the current position quickly. The loss in accuracy is significant, but very small for major objects: [planets, moons, and important small objects](docs/chebyshev-accuracy.md), and [spacecraft](docs/probe-accuracy.md) are typically off by meters to hundreds of meters compared to high-accuracy tracking data.

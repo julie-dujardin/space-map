@@ -1,0 +1,158 @@
+PDS_VERSION_ID                  = PDS3
+
+/* IDENTIFICATION DATA ELEMENTS THAT APPLY TO ALL REFERENCED DATA FILES */
+
+   DATA_SET_ID                     = "MSL-M-NAVCAM-5-RDR-MOSAIC-V1.0"
+   DATA_SET_NAME                   = "MSL MARS NAVIGATION CAMERA 5 RDR
+                                     MOSAIC V1.0"
+   INSTRUMENT_HOST_NAME            = "MARS SCIENCE LABORATORY"
+   INSTRUMENT_NAME                 = "NAVIGATION CAMERA LEFT STRING A"
+   MISSION_PHASE_NAME              = "PRIMARY SURFACE MISSION"
+   PLANET_DAY_NUMBER               = 24
+   PRODUCT_ID                      = "N_L000_0024_EDR003CYLAS_0372_DRIVEM1"
+   RELEASE_ID                      = "0001"
+   TARGET_NAME                     = "MARS"
+   SPACECRAFT_CLOCK_START_COUNT    = "399627511.091"
+   SPACECRAFT_CLOCK_STOP_COUNT     = "399627919.856"
+   PRODUCT_CREATION_TIME           = 2012-09-03T00:01:03.000Z
+   START_TIME                      = 2012-08-30T19:41:01.490Z
+   STOP_TIME                       = 2012-08-30T19:48:03.184Z
+
+
+/* FILE DATA ELEMENTS */
+
+RECORD_TYPE                       = FIXED_LENGTH
+RECORD_BYTES                      = 15406
+FILE_RECORDS                      = 980
+LABEL_RECORDS                     = 2
+
+/* POINTERS TO DATA OBJECTS */
+
+^ODL_HEADER                  = ("N_L000_0024_EDR003CYLAS_0372_DRIVEM1.IMG"
+                                     ,1)
+^IMAGE_HEADER                = ("N_L000_0024_EDR003CYLAS_0372_DRIVEM1.IMG"
+                                     ,3)
+^IMAGE                       = ("N_L000_0024_EDR003CYLAS_0372_DRIVEM1.IMG"
+                                     ,4)
+
+/* IDENTIFICATION DATA ELEMENTS */
+
+SOURCE_PRODUCT_ID                 = ("NLA_399627919EDR_F0030372NCAM00406M1"
+                                     ,"NLA_399627511EDR_F0030372NCAM00407M1"
+                                     ,"NLA_399627538EDR_F0030372NCAM00407M1"
+                                     ,"NLA_399627567EDR_F0030372NCAM00407M1"
+                                     ,"NLA_399627595EDR_F0030372NCAM00407M1"
+                                     ,"NLA_399627623EDR_F0030372NCAM00407M1"
+                                     ,"NLA_399627657EDR_F0030372NCAM00406M1"
+                                     ,"NLA_399627692EDR_F0030372NCAM00406M1"
+                                     ,"NLA_399627727EDR_F0030372NCAM00406M1"
+                                     ,"NLA_399627814EDR_F0030372NCAM00406M1"
+                                     ,"NLA_399627849EDR_F0030372NCAM00406M1"
+                                     ,
+                                     "NLA_399627884EDR_F0030372NCAM00406M1")
+FRAME_ID                          = "LEFT"
+INSTRUMENT_HOST_ID                = "MSL"
+INSTRUMENT_ID                     = "NAV_LEFT_A"
+INSTRUMENT_TYPE                   = "IMAGING CAMERA"
+MISSION_NAME                      = "MARS SCIENCE LABORATORY"
+
+/* DERIVED IMAGE DATA ELEMENTS */
+
+GROUP                             = DERIVED_IMAGE_PARMS
+  MSL:INPUT_PRODUCT_ID            = ("NLA_399627919EDR_F0030372NCAM00406M1"
+                                     ,"NLA_399627511EDR_F0030372NCAM00407M1"
+                                     ,"NLA_399627538EDR_F0030372NCAM00407M1"
+                                     ,"NLA_399627567EDR_F0030372NCAM00407M4"
+                                     ,"NLA_399627595EDR_F0030372NCAM00407M1"
+                                     ,"NLA_399627623EDR_F0030372NCAM00407M1"
+                                     ,"NLA_399627657EDR_F0030372NCAM00406M1"
+                                     ,"NLA_399627692EDR_F0030372NCAM00406M1"
+                                     ,"NLA_399627727EDR_F0030372NCAM00406M1"
+                                     ,"NLA_399627814EDR_F0030372NCAM00406M1"
+                                     ,"NLA_399627849EDR_F0030372NCAM00406M1"
+                                     ,
+                                     "NLA_399627884EDR_F0030372NCAM00406M1")
+  MSL:RADIANCE_OFFSET             = 0.0 <W.m**-2.sr**-1.nm**-1>
+  MSL:RADIANCE_SCALING_FACTOR     = 1.0e-05 <W.m**-2.sr**-1.nm**-1>
+  RADIOMETRIC_CORRECTION_TYPE     = MIPLRAD
+END_GROUP                         = DERIVED_IMAGE_PARMS
+
+/* SURFACE PROJECTION DATA ELEMENTS */
+
+GROUP                             = SURFACE_PROJECTION_PARMS
+  MAP_PROJECTION_TYPE             = CYLINDRICAL
+  MAP_RESOLUTION                  = (21.3979 <pixel/degree>,
+                                     21.3979 <pixel/degree>)
+  MSL:MAXIMUM_ELEVATION           = 6.1515 <deg>
+  MSL:MINIMUM_ELEVATION           = -39.5108 <deg>
+  PROJECTION_ORIGIN_VECTOR        = (-1.30308,32.4263,-0.671233)
+  REFERENCE_COORD_SYSTEM_INDEX    = 3
+  REFERENCE_COORD_SYSTEM_NAME     = "SITE_FRAME"
+  START_AZIMUTH                   = 0.0 <deg>
+  STOP_AZIMUTH                    = 360.0 <deg>
+  ZERO_ELEVATION_LINE             = 132.629
+END_GROUP                         = SURFACE_PROJECTION_PARMS
+
+/* SURFACE MODEL DATA ELEMENTS */
+
+GROUP                             = SURFACE_MODEL_PARMS
+  REFERENCE_COORD_SYSTEM_INDEX    = 3
+  REFERENCE_COORD_SYSTEM_NAME     = "SITE_FRAME"
+  SURFACE_MODEL_TYPE              = PLANE
+  SURFACE_NORMAL_VECTOR           = (0.0270624,0.0349301,-0.999023)
+  SURFACE_GROUND_LOCATION         = (-0.112545,28.9838,1.38472)
+END_GROUP                         = SURFACE_MODEL_PARMS
+
+
+  INVALID_CONSTANT                = 0.0
+  MISSING_CONSTANT                = 0.0
+
+/* VICAR IMAGE HEADER DATA ELEMENTS */
+
+OBJECT                            = IMAGE_HEADER
+ HEADER_TYPE                      = VICAR2
+ INTERCHANGE_FORMAT               = ASCII
+ BYTES                            = 15406
+ ^DESCRIPTION                     = "VICAR2.TXT"
+END_OBJECT                        = IMAGE_HEADER
+
+/* ODL IMAGE HEADER DATA ELEMENTS */
+
+OBJECT                            = ODL_HEADER
+ HEADER_TYPE                      = ODL
+ INTERCHANGE_FORMAT               = ASCII
+ BYTES                            = 30812
+ ^DESCRIPTION                     = "ODL.TXT"
+END_OBJECT                        = ODL_HEADER
+
+/* IMAGE DATA ELEMENTS */
+OBJECT                            = IMAGE
+  INTERCHANGE_FORMAT              = BINARY
+  LINES                           = 977
+  LINE_SAMPLES                    = 7703
+  SAMPLE_TYPE                     = MSB_INTEGER
+  SAMPLE_BITS                     = 16
+  BANDS                           = 1
+  BAND_STORAGE_TYPE               = BAND_SEQUENTIAL
+END_OBJECT                        = IMAGE
+
+OBJECT                            = FILE
+  RECORD_TYPE                     = UNDEFINED
+  RECORD_BYTES                    = "N/A"
+  FILE_RECORDS                    = "N/A"
+  LABEL_RECORDS                   = "N/A"
+  ^FILE                           = "N_L000_0024_EDR003CYLAS_0372_DRIVEM1.LIS"
+  FILE_NAME                       = "N_L000_0024_EDR003CYLAS_0372_DRIVEM1.LIS"
+  ^DESCRIPTION                    = "MSL_CAMERA_SIS.PDF"
+END_OBJECT                        = FILE
+
+OBJECT                            = FILE
+  RECORD_TYPE                     = UNDEFINED
+  RECORD_BYTES                    = "N/A"
+  FILE_RECORDS                    = "N/A"
+  LABEL_RECORDS                   = "N/A"
+  ^FILE                           = "N_L000_0024_EDR003CYLAS_0372_DRIVEM1.NAV"
+  FILE_NAME                       = "N_L000_0024_EDR003CYLAS_0372_DRIVEM1.NAV"
+  ^DESCRIPTION                    = "MSL_CAMERA_SIS.PDF"
+END_OBJECT                        = FILE
+END
