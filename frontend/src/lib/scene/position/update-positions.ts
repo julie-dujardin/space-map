@@ -33,7 +33,7 @@ import type { FocusState } from '$lib/scene/animation/focus';
 import type { Vec3 } from '$lib/scene/animation/math';
 import {
 	emptyGroup,
-	updateOutOfRangeNotice,
+	type OutOfRangeNotifier,
 	type OutOfRangeState
 } from '$lib/scene/out-of-range-notice';
 import { refreshTrail, type TrailView } from '$lib/scene/objects/trail/refresh';
@@ -102,6 +102,8 @@ export interface UpdatePositionsParams {
 	trailView?: TrailView;
 	/** Frame counter for the hidden-body stagger; absent = move every body. */
 	frame?: number;
+	/** Reports the data-coverage notice for this map. */
+	outOfRange: OutOfRangeNotifier;
 }
 
 export interface UpdatePositionsResult {
@@ -119,8 +121,18 @@ export interface UpdatePositionsResult {
  * focus basis. Invisible lines are marked `refreshDeferred` for the next pass.
  */
 export function updatePositions(params: UpdatePositionsParams): UpdatePositionsResult {
-	const { jd, ctx, bodyObjects, focus, focusedBody, positionMap, diagnostics, trailView, frame } =
-		params;
+	const {
+		jd,
+		ctx,
+		bodyObjects,
+		focus,
+		focusedBody,
+		positionMap,
+		diagnostics,
+		trailView,
+		frame,
+		outOfRange
+	} = params;
 	// Keep the chebyshev working set centred on `jd`. Fire-and-forget: the
 	// frame may miss data for one or two ticks at a boundary, during which
 	// chebyshev-tracked bodies are hidden (outOfRange) just like SGP4.
@@ -718,7 +730,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 	}
 
 	oorState.satellites = ctx.refresher?.satelliteCoverage(jd) ?? { kind: 'covered' };
-	updateOutOfRangeNotice(oorState);
+	outOfRange.update(oorState);
 
 	// Re-seat a focused surface feature on its host's current-LOD surface before
 	// the focus-tracking block pins focusTruePos to it. The host is a major, so

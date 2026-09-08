@@ -97,10 +97,42 @@
 			#error {
 				color: #f88;
 			}
+			#notices {
+				color: #fd8;
+				white-space: pre-wrap;
+			}
+			#boot {
+				position: fixed;
+				inset: 0;
+				display: grid;
+				place-content: center;
+				gap: 10px;
+				justify-items: center;
+				background: #000;
+				z-index: 3;
+			}
+			#bar {
+				width: 220px;
+				height: 4px;
+				border-radius: 2px;
+				background: #222;
+				overflow: hidden;
+			}
+			#bar > i {
+				display: block;
+				height: 100%;
+				width: 0;
+				background: #6af;
+				transition: width 0.2s;
+			}
 		</style>
 	</head>
 	<body>
 		<div id="map"></div>
+		<div id="boot">
+			<div>Loading the Solar System…</div>
+			<div id="bar"><i></i></div>
+		</div>
 		<aside id="panel">
 			<h1>spacemap SDK <small>demo</small></h1>
 			<p id="status">Loading…</p>
@@ -124,6 +156,7 @@
 			</div>
 			<p><code id="clock"></code></p>
 			<p><code id="camera"></code></p>
+			<p id="notices"></p>
 			<pre id="log"></pre>
 		</aside>
 		<script type="module">
@@ -144,6 +177,14 @@
 			};
 			const name = (body) => body?.data.name ?? body?.data.id ?? '?';
 
+			// The boot screen runs off the map's own progress: listeners passed
+			// to createMap are attached before the first load starts.
+			options.events = {
+				progress: (fraction) => {
+					$('bar').firstElementChild.style.width = `${Math.round(fraction * 100)}%`;
+				}
+			};
+
 			let map;
 			try {
 				map = await createMap($('map'), options);
@@ -155,7 +196,39 @@
 			}
 			// The controller, for poking at from the console.
 			window.map = map;
+			$('boot').hidden = true;
 			$('status').textContent = `Data from ${dataUrl ?? 'static.spacemap.co'}`;
+
+			map.on('loading', (loading) => log(`loading ${loading}`));
+			map.on('error', (message) => log(`error ${message}`));
+			map.on('datastale', () => log('datastale'));
+
+			// One live notice per topic: the host words them and decides where
+			// they go. Dates arrive as Julian dates, formatted here.
+			const notices = new Map();
+			const showNotices = () => {
+				$('notices').textContent = [...notices.values()].join('\n');
+			};
+			const day = (jd) => jdToDate(jd).toISOString().slice(0, 10);
+			map.on('notice', (notice) => {
+				if (notice.topic === 'coverage-pause') {
+					notices.set(
+						notice.topic,
+						`No more trajectory for ${notice.name} after ${day(notice.jd)}.`
+					);
+				} else {
+					const parts = [];
+					if (notice.focusedOutOfRange) parts.push('the focused object has no data here');
+					if (notice.satellites) parts.push('satellites are out of range');
+					if (notice.majorBodies) parts.push('some planets are out of range');
+					notices.set(notice.topic, `At this date, ${parts.join(', ')}.`);
+				}
+				showNotices();
+			});
+			map.on('noticedismiss', (topic) => {
+				notices.delete(topic);
+				showNotices();
+			});
 
 			map.on('focuschange', ({ body, initial, feature }) => {
 				if (!body) return;
@@ -164,11 +237,11 @@
 				);
 				const select = $('children');
 				select.replaceChildren(new Option(`— ${name(body)} —`, ''));
-				for (const id of map.ctx.bodies.getChildren(body.data.id) ?? []) {
-					const child = map.ctx.getBody(id);
+				for (const id of map.getChildren(body.data.id)) {
+					const child = map.getBody(id);
 					if (child) select.add(new Option(name(child), id));
 				}
-				$('parent').disabled = !map.ctx.getBody(body.data.parentId);
+				$('parent').disabled = !map.getBody(body.data.parentId);
 			});
 			map.on('camera', ({ latitude, longitude, zoom }) => {
 				$('camera').textContent =
@@ -196,13 +269,13 @@
 			$('play').addEventListener('click', () => {
 				if (map.clock.playing) map.clock.pause();
 				else map.clock.play();
-				$('play').textContent = map.clock.playing ? 'Pause' : 'Play';
 			});
 			$('speed').addEventListener('change', (e) => map.clock.setTimeScale(Number(e.target.value)));
-			setInterval(() => {
-				const iso = jdToDate(map.clock.jd).toISOString();
+			map.on('clock', ({ date, playing }) => {
+				const iso = date.toISOString();
 				$('clock').textContent = `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
-			}, 500);
+				$('play').textContent = playing ? 'Pause' : 'Play';
+			});
 		</script>
 	</body>
 </html>

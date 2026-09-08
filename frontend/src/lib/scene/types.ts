@@ -10,6 +10,7 @@ import type { SunTransmittanceUniforms } from './objects/surface/sun-transmittan
 import type { SelfShadowUniforms } from './objects/surface/self-shadow';
 import type { DisplacementMeta } from './objects/surface/displacement';
 import type { TerrainWindowState } from './lod/terrain-window';
+import type { NoticeSink } from './notice';
 
 /** Mesh/halo screen-size ratio above which the body label is dropped: the mesh
  *  fills enough of the view to identify itself, and the silhouette-centre offset
@@ -190,6 +191,8 @@ export interface BodyObjects {
 }
 
 export interface Callbacks {
+	/** Where data-coverage conditions are reported. */
+	notices: NoticeSink;
 	onFocusChange(body: PositionedBody | undefined): void;
 	onCameraPosition?(latitude: number, longitude: number, zoom: number): void;
 	/** Number of user-promoted bodies that can be cleared (excludes the focused

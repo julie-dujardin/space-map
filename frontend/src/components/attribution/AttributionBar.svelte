@@ -2,6 +2,7 @@
 	import { getContext } from 'svelte';
 	import { siGithub } from 'simple-icons';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import { attributionChips, type OrbitSourceLabels } from '$lib/scene/state/attribution';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import { GITHUB_REPO_URL } from '$lib/constants';
 	import * as m from '$lib/paraglide/messages.js';
@@ -10,78 +11,22 @@
 
 	const ctx = getContext<ContextManager>('ctx');
 
-	// NASA-produced sources collapse to a single "NASA" chip; ORBIT_ORDER pins display order post-dedup.
-	const ORBIT_LABELS: Record<Exclude<OrbitalSource, OrbitalSource.UNKNOWN>, () => string> = {
-		[OrbitalSource.HORIZONS]: m.provider_nasa,
-		[OrbitalSource.SBDB]: m.provider_nasa,
-		[OrbitalSource.CELESTRAK]: m.source_celestrak_name,
-		[OrbitalSource.SPICE]: m.provider_nasa,
-		[OrbitalSource.SBDB_MOON]: m.provider_nasa,
-		[OrbitalSource.ASTERSAT]: m.source_nsdb_name,
-		[OrbitalSource.SPICE_PROBE]: m.provider_nasa,
-		[OrbitalSource.SPACETRACK]: m.source_spacetrack_name
-	};
-
-	const ORBIT_ORDER: OrbitalSource[] = [
-		OrbitalSource.HORIZONS,
-		OrbitalSource.SBDB,
-		OrbitalSource.SPICE,
-		OrbitalSource.SBDB_MOON,
-		OrbitalSource.ASTERSAT,
-		OrbitalSource.SPICE_PROBE,
-		OrbitalSource.CELESTRAK,
-		OrbitalSource.SPACETRACK
-	];
-
-	// Earth-satellite sources are only relevant inside the Earth-Moon system.
-	const EARTH_SAT_SOURCES = new Set([OrbitalSource.CELESTRAK, OrbitalSource.SPACETRACK]);
-
-	const orbitLabels = $derived.by(() => {
-		// CelesTrak/Space-Track only cover Earth satellites.
-		const inEarthSystem = ctx.visibility.isFocusedOnEarthSystem();
-		const seen = new Set<string>();
-		const out: string[] = [];
-		for (const src of ORBIT_ORDER) {
-			if (!ctx.credits.orbitSources.has(src)) continue;
-			if (EARTH_SAT_SOURCES.has(src) && !inEarthSystem) continue;
-			const label = ORBIT_LABELS[src as Exclude<OrbitalSource, OrbitalSource.UNKNOWN>]();
-			if (seen.has(label)) continue;
-			seen.add(label);
-			out.push(label);
-		}
-		return out;
+	// NASA-produced sources collapse to a single "NASA" chip; the shared
+	// derivation dedups on the label, so the translation decides.
+	const labels: OrbitSourceLabels = $derived({
+		[OrbitalSource.HORIZONS]: m.provider_nasa(),
+		[OrbitalSource.SBDB]: m.provider_nasa(),
+		[OrbitalSource.SPICE]: m.provider_nasa(),
+		[OrbitalSource.SBDB_MOON]: m.provider_nasa(),
+		[OrbitalSource.ASTERSAT]: m.source_nsdb_name(),
+		[OrbitalSource.SPICE_PROBE]: m.provider_nasa(),
+		[OrbitalSource.CELESTRAK]: m.source_celestrak_name(),
+		[OrbitalSource.SPACETRACK]: m.source_spacetrack_name()
 	});
 
-	// Rings/clouds/topography/models share this imagery chip (per-source
-	// breakout lives in the popover / credits page).
-	const textureOrgs = $derived.by(() => {
-		void ctx.credits.textureVersion;
-		void ctx.credits.ringVersion;
-		void ctx.credits.cloudVersion;
-		void ctx.credits.displacementVersion;
-		void ctx.credits.modelVersion;
-		const sysId = ctx.visibility.focusedSystemId;
-		const bodyId = ctx.visibility.focusedBodyId;
-		const orgs = new Set<string>();
-		const sources = [
-			ctx.credits.texture,
-			ctx.credits.ring,
-			ctx.credits.cloud,
-			ctx.credits.displacement
-		];
-		for (const credits of sources) {
-			for (const credit of credits.values()) {
-				if (credit.bodyId === bodyId || (sysId && credit.systemId === sysId)) {
-					orgs.add(credit.organisation);
-				}
-			}
-		}
-		// Models are body-scoped: a probe's model credit doesn't bleed into
-		// the system's other bodies.
-		const modelCredit = bodyId ? ctx.credits.model.get(bodyId) : undefined;
-		if (modelCredit) orgs.add(modelCredit.organisation);
-		return [...orgs].sort();
-	});
+	const chips = $derived(attributionChips(ctx, labels));
+	const orbitLabels = $derived(chips.orbits);
+	const textureOrgs = $derived(chips.imagery);
 </script>
 
 <div

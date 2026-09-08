@@ -17,6 +17,8 @@ import {
 	DEFAULT_ZOOM
 } from './framing';
 import type { Callbacks, CameraView, InitialView } from './types';
+import type { Notice, NoticeTopic } from './notice';
+import { loadProgress } from './state/load-progress.svelte';
 import type { Vec3 } from './animation/math';
 import type { OrbitPreview } from './objects/travel/orbit-preview';
 import {
@@ -59,6 +61,19 @@ export interface FeatureSelect {
 	diameterM: number;
 }
 
+/** The clock as the host sees it, sent whenever any of it changes. */
+export interface ClockState {
+	/** Simulation time, Julian date and as a `Date`. */
+	jd: number;
+	date: Date;
+	playing: boolean;
+	/** Simulated seconds per real second, and which way time runs. */
+	timeScale: number;
+	direction: 1 | -1;
+	/** The clock tracks wall-clock time. */
+	live: boolean;
+}
+
 export interface MapEvents {
 	focuschange: (e: FocusChange) => void;
 	/** The camera came to rest around the focused body. */
@@ -69,6 +84,22 @@ export interface MapEvents {
 	userpromoted: (count: number) => void;
 	contextlost: () => void;
 	contextrestored: () => void;
+	/** The clock moved, or its play state, rate or direction changed. */
+	clock: (e: ClockState) => void;
+	/** Data loading started or finished, the one-off quality benchmark
+	 *  included; `false` means the map is ready to look at. */
+	loading: (loading: boolean) => void;
+	/** Boot progress, 0 to 1, monotonic within one load. */
+	progress: (fraction: number) => void;
+	/** The data could not be loaded. The map stays mounted and empty. */
+	error: (message: string) => void;
+	/** The export was republished while this map was open: its data is now a
+	 *  version behind, and reloading the page picks the new one up. */
+	datastale: () => void;
+	/** A condition worth telling the reader about; one live notice per topic. */
+	notice: (notice: Notice) => void;
+	/** That topic's condition cleared. */
+	noticedismiss: (topic: NoticeTopic) => void;
 }
 
 /** Renderer state derived from settings. One sink per field, so a reactive
@@ -98,11 +129,14 @@ const CONTEXT_LOST_PANEL_DELAY_MS = 2000;
 const RESTORE_PING_TIMEOUT_MS = 4000;
 
 export class MapController {
+	/** @internal The map's data layer: the app drives it directly, a host
+	 *  reaches it through {@link getBody}, {@link getChildren} and events. */
 	readonly ctx = new ContextManager();
 	readonly clock: SimClock;
+	/** @internal */
 	readonly initialView: InitialView;
-	/** Null until {@link mount} builds it, and again after {@link unmount};
-	 *  reactive so a host can wait on it. */
+	/** @internal Null until {@link mount} builds it, and again after
+	 *  {@link unmount}; reactive so the app's debug overlays can wait on it. */
 	renderer = $state.raw<SceneRenderer | null>(null);
 	/** WebGL could not start: show a panel, not a black canvas. */
 	webglError = $state(false);
@@ -116,6 +150,7 @@ export class MapController {
 	private canvas: HTMLCanvasElement | null = null;
 	private labelLayer: HTMLDivElement | null = null;
 	private stopWatching: (() => void) | null = null;
+	private readonly controls: (() => void)[] = [];
 	private lostPanelTimer: ReturnType<typeof setTimeout> | undefined;
 	private initialFocusPending = true;
 	private pendingFocusId: string | null = null;
@@ -125,7 +160,14 @@ export class MapController {
 		featureselect: new Set(),
 		userpromoted: new Set(),
 		contextlost: new Set(),
-		contextrestored: new Set()
+		contextrestored: new Set(),
+		clock: new Set(),
+		loading: new Set(),
+		progress: new Set(),
+		error: new Set(),
+		datastale: new Set(),
+		notice: new Set(),
+		noticedismiss: new Set()
 	};
 
 	constructor(options: MapControllerOptions = {}) {
@@ -141,6 +183,7 @@ export class MapController {
 			zoom: DEFAULT_ZOOM,
 			...options.view
 		};
+		this.ctx.onDataStale = () => this.emit('datastale');
 		// Starts now so the bench overlaps the whole boot — clock snapping and
 		// data loads included — behind the host's loading screen, never the
 		// live scene. A stored result for this device returns at once.
@@ -158,9 +201,58 @@ export class MapController {
 		}
 	}
 
-	/** Fetch the scene's data for the clock's date. */
+	/** A loaded object by id, with its current position. */
+	getBody(id: string): PositionedBody | undefined {
+		return this.ctx.getBody(id);
+	}
+
+	/** Ids of the objects orbiting `id` that this map has loaded. Loading is
+	 *  driven by focus and by the clock, so the list grows as the reader moves. */
+	getChildren(id: string): string[] {
+		return [...(this.ctx.bodies.getChildren(id) ?? [])];
+	}
+
+	/** Fetch the scene's data for the clock's date. Resolves when all of it is
+	 *  in, small bodies included, which is well after there is something to
+	 *  look at — {@link open} is what a caller opening a map wants. */
 	load(targetId: string = this.initialView.id): Promise<void> {
 		return this.ctx.load(jdToDate(this.clock.jd), targetId);
+	}
+
+	/**
+	 * Load the scene and resolve as soon as it is worth looking at: the opening
+	 * body placed, with a renderer to draw it. That is the end of the load's
+	 * first phase; the small bodies behind it go on streaming for a second or
+	 * two, under a map the reader can already move.
+	 *
+	 * Rejects only if the load fails before there is anything to look at. Past
+	 * that point a failure has nowhere left to reject to, and reaches the host
+	 * as an `error` event instead.
+	 */
+	async open(targetId: string = this.initialView.id): Promise<void> {
+		const loaded = this.load(targetId);
+		loaded.catch(() => {
+			/* reported by the error effect, and logged by the data layer */
+		});
+		let watching = true;
+		const framable = new Promise<void>((resolve) => {
+			const check = (): void => {
+				if (!watching) return;
+				if (this.renderer && this.ctx.getBody(targetId)) resolve();
+				// A timer alongside the frame: a backgrounded tab fires no rAF, and
+				// the poll would never come back.
+				else if (document.hidden) setTimeout(check, 100);
+				else requestAnimationFrame(check);
+			};
+			check();
+		});
+		try {
+			await Promise.race([loaded, framable]);
+		} finally {
+			// The body may never arrive — a probe whose record streams in later —
+			// and then the load wins the race and the poll has to be called off.
+			watching = false;
+		}
 	}
 
 	/** Build the canvas and label layer inside `container` and start rendering. */
@@ -224,10 +316,18 @@ export class MapController {
 		};
 	}
 
+	/** @internal Attach a control to the mounted map's container; its teardown
+	 *  runs with {@link unmount}. */
+	addControl(mount: (container: HTMLElement) => () => void): void {
+		if (!this.container) throw new Error('MapController is not mounted');
+		this.controls.push(mount(this.container));
+	}
+
 	/** Stop rendering and take the map's DOM back out of the container. */
 	unmount(): void {
 		const { container, canvas } = this;
 		if (!container || !canvas) return;
+		for (const teardown of this.controls.splice(0)) teardown();
 		this.stopWatching?.();
 		this.stopWatching = null;
 		clearTimeout(this.lostPanelTimer);
@@ -252,6 +352,29 @@ export class MapController {
 		});
 		const s = sceneSettings();
 		for (const sink of SETTING_SINKS) $effect(() => sink(renderer, s));
+		const clock = this.clock;
+		$effect(() => {
+			// Every field is read before anything is decided: an effect only
+			// follows what it reads, and the clock ticks about sixty times a
+			// second, so the date and the event are built for a host that is
+			// listening and skipped for one that is not.
+			const { jd, playing, timeScale, direction, live } = clock;
+			if (this.listeners.clock.size === 0) return;
+			this.emit('clock', { jd, date: jdToDate(jd), playing, timeScale, direction, live });
+		});
+		$effect(() => {
+			// The boot benchmark counts as loading: it is the rest of what
+			// `createMap` waits for, and a host watching this would otherwise be
+			// told the map was ready and then left waiting with no signal.
+			const loading = this.ctx.loading;
+			const benching = calibrationUi.bootPending;
+			this.emit('loading', loading || benching);
+		});
+		$effect(() => this.emit('progress', loadProgress.value));
+		$effect(() => {
+			const error = this.ctx.error;
+			if (error !== null) this.emit('error', error);
+		});
 		// A benchmark re-run needs an uncontended GPU. Resume must not race the
 		// context-lost pause.
 		$effect(() => {
@@ -273,6 +396,10 @@ export class MapController {
 
 	private callbacks(): Callbacks {
 		return {
+			notices: {
+				notify: (notice) => this.emit('notice', notice),
+				dismiss: (topic) => this.emit('noticedismiss', topic)
+			},
 			onFocusChange: (body) => {
 				const initial = this.initialFocusPending;
 				this.initialFocusPending = false;
@@ -406,7 +533,7 @@ export class MapController {
 		return this.renderer?.focusOnFeature(anchor, name, zoom, mode, view) ?? 0;
 	}
 
-	/** Re-aim at `body` without the focus handshake — for browser history. */
+	/** @internal Re-aim at `body` without the focus handshake — for browser history. */
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
 		this.renderer?.setFocusTarget(body, camPos);
 	}
@@ -423,11 +550,13 @@ export class MapController {
 		this.renderer?.clearUserPromoted();
 	}
 
+	/** @internal */
 	setSelectedFeature(featureId: number | null): void {
 		this.renderer?.setSelectedFeature(featureId);
 	}
 
-	/** Draw the trip the planner is showing, and whatever it is being chosen from. */
+	/** @internal Draw the trip the planner is showing, and whatever it is being
+	 *  chosen from. */
 	setTravelPath(
 		plan: LabelledPath | null,
 		options: readonly LabelledPath[] = [],
@@ -437,9 +566,9 @@ export class MapController {
 		this.renderer?.setTravelPath(plan, options, hazards, steps);
 	}
 
-	/** Draw (or clear) the orbits the travel panel's ends are being picked in,
-	 *  round their live bodies. `frame` names the ring being interacted with,
-	 *  for the camera to put on screen. */
+	/** @internal Draw (or clear) the orbits the travel panel's ends are being
+	 *  picked in, round their live bodies. `frame` names the ring being
+	 *  interacted with, for the camera to put on screen. */
 	setOrbitPreview(
 		previews: readonly OrbitPreview[],
 		frame: { bodyId: string; radiusKm: number } | null
@@ -447,16 +576,18 @@ export class MapController {
 		this.renderer?.setOrbitPreview(previews, frame);
 	}
 
+	/** @internal */
 	setTravelHover(id: string | null): void {
 		this.renderer?.setTravelHover(id);
 	}
 
-	/** Look at a place on the trip, which is usually nowhere near a body. */
+	/** @internal Look at a place on the trip, which is usually nowhere near a body. */
 	focusOnPathPoint(centerId: string, rKm: readonly [number, number, number]): void {
 		this.renderer?.focusOnPathPoint(centerId, rKm);
 	}
 
-	/** Follow a place along the trip without re-framing — for a dragged clock. */
+	/** @internal Follow a place along the trip without re-framing — for a
+	 *  dragged clock. */
 	trackPathPoint(centerId: string, rKm: readonly [number, number, number]): void {
 		this.renderer?.trackPathPoint(centerId, rKm);
 	}

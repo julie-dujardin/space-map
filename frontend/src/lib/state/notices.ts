@@ -1,7 +1,7 @@
 import { toast } from 'svelte-sonner';
 import * as m from '$lib/paraglide/messages.js';
 import { formatJulianDate } from '$lib/format/date';
-import type { Notice, NoticeTopic, OutOfRangeNotice } from '$lib/host';
+import type { Notice, NoticeTopic, OutOfRangeNotice } from '$lib/scene/notice';
 
 function outOfRangeLines(notice: OutOfRangeNotice): string[] {
 	const lines: string[] = [];

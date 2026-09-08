@@ -4,13 +4,12 @@ import { configureHost } from '$lib/host';
 import { KIT_HOST } from '$lib/state/kit-host';
 import { setSceneSettings } from '$lib/scene/settings.svelte';
 import { getSettings } from '$lib/state/settings.svelte';
-import { dismissNotice, showNotice } from '$lib/state/notices';
 import { bodyHref } from '$lib/state/url';
 
-// The core's view of the app: data origins, language, label links, notices,
-// and the persisted display settings.
+// The core's view of the app: data origins, language, label links, and the
+// persisted display settings. What the map reports back arrives as events.
 export const init: ClientInit = () => {
-	configureHost({ ...KIT_HOST, bodyHref, notify: showNotice, dismiss: dismissNotice });
+	configureHost({ ...KIT_HOST, bodyHref });
 	setSceneSettings(getSettings());
 };
 

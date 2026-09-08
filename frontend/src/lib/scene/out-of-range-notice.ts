@@ -1,5 +1,5 @@
-import { host } from '$lib/host';
 import { unixMsToJD } from '$lib/time/jd';
+import type { NoticeSink } from './notice';
 import type { DateCoverage } from '$lib/fetch/metadata';
 
 /**
@@ -27,65 +27,67 @@ export function emptyGroup(): OutOfRangeGroup {
 
 type Side = 'after' | 'before' | 'outside' | 'gap' | null;
 
-/** What was last reported, as scalars: this runs every frame, so nothing is
- *  allocated until something changes. */
-const last = {
-	focused: false,
-	satSide: null as Side,
-	satJd: NaN,
-	majSide: null as Side,
-	majJd: NaN
-};
+/** Sends the out-of-range notice for one map, and only when it changes: the
+ *  state is recomputed every frame, so the last report is held as scalars and
+ *  nothing is allocated while it is stable. */
+export class OutOfRangeNotifier {
+	private focused = false;
+	private satSide: Side = null;
+	private satJd = NaN;
+	private majSide: Side = null;
+	private majJd = NaN;
 
-/** Sync the host's out-of-range notice to the state each frame; cheap no-op when stable. */
-export function updateOutOfRangeNotice(state: OutOfRangeState): void {
-	const { jd, majorBodies: group, satellites: cov } = state;
-	let majSide: Side = null;
-	let majJd = NaN;
-	if (group.count > 0) {
-		if (Number.isFinite(group.latestEnd) && jd > group.latestEnd) {
-			majSide = 'after';
-			majJd = group.latestEnd;
-		} else if (Number.isFinite(group.earliestStart) && jd < group.earliestStart) {
-			majSide = 'before';
-			majJd = group.earliestStart;
-		} else {
-			majSide = 'outside';
+	constructor(private readonly notices: NoticeSink) {}
+
+	update(state: OutOfRangeState): void {
+		const { jd, majorBodies: group, satellites: cov } = state;
+		let majSide: Side = null;
+		let majJd = NaN;
+		if (group.count > 0) {
+			if (Number.isFinite(group.latestEnd) && jd > group.latestEnd) {
+				majSide = 'after';
+				majJd = group.latestEnd;
+			} else if (Number.isFinite(group.earliestStart) && jd < group.earliestStart) {
+				majSide = 'before';
+				majJd = group.earliestStart;
+			} else {
+				majSide = 'outside';
+			}
 		}
-	}
-	// Pre-space-age is folded into `covered`, so only `after`/`gap` warn.
-	const satSide: Side = cov.kind === 'covered' ? null : cov.kind;
-	const satJd = cov.kind === 'after' ? unixMsToJD(cov.lastMs) : NaN;
-	const focused = state.focusedOutOfRange;
-	if (
-		focused === last.focused &&
-		satSide === last.satSide &&
-		Object.is(satJd, last.satJd) &&
-		majSide === last.majSide &&
-		Object.is(majJd, last.majJd)
-	) {
-		return;
-	}
-	Object.assign(last, { focused, satSide, satJd, majSide, majJd });
+		// Pre-space-age is folded into `covered`, so only `after`/`gap` warn.
+		const satSide: Side = cov.kind === 'covered' ? null : cov.kind;
+		const satJd = cov.kind === 'after' ? unixMsToJD(cov.lastMs) : NaN;
+		const focused = state.focusedOutOfRange;
+		if (
+			focused === this.focused &&
+			satSide === this.satSide &&
+			Object.is(satJd, this.satJd) &&
+			majSide === this.majSide &&
+			Object.is(majJd, this.majJd)
+		) {
+			return;
+		}
+		Object.assign(this, { focused, satSide, satJd, majSide, majJd });
 
-	if (!focused && satSide === null && majSide === null) {
-		host().dismiss('out-of-range');
-		return;
+		if (!focused && satSide === null && majSide === null) {
+			this.notices.dismiss('out-of-range');
+			return;
+		}
+		this.notices.notify({
+			topic: 'out-of-range',
+			focusedOutOfRange: focused,
+			satellites:
+				satSide === 'after'
+					? { side: 'after', jd: satJd }
+					: satSide === 'gap'
+						? { side: 'gap' }
+						: null,
+			majorBodies:
+				majSide === 'after' || majSide === 'before'
+					? { side: majSide, jd: majJd }
+					: majSide === 'outside'
+						? { side: 'outside' }
+						: null
+		});
 	}
-	host().notify({
-		topic: 'out-of-range',
-		focusedOutOfRange: focused,
-		satellites:
-			satSide === 'after'
-				? { side: 'after', jd: satJd }
-				: satSide === 'gap'
-					? { side: 'gap' }
-					: null,
-		majorBodies:
-			majSide === 'after' || majSide === 'before'
-				? { side: majSide, jd: majJd }
-				: majSide === 'outside'
-					? { side: 'outside' }
-					: null
-	});
 }

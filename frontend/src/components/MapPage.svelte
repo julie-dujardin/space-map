@@ -663,8 +663,12 @@
 				duration: Number.POSITIVE_INFINITY,
 				action: { label: m.reload(), onClick: () => location.reload() }
 			});
-		ctx.onDataStale = showStale;
-		return watchDataVersion(showStale);
+		const off = map.on('datastale', showStale);
+		const stopWatch = watchDataVersion(showStale);
+		return () => {
+			off();
+			stopWatch();
+		};
 	});
 
 	onMount(async () => {
@@ -684,23 +688,9 @@
 		// Snap the clock into range first (same path search takes), else an
 		// `?at=` outside coverage would fail to resolve.
 		await snapClockIntoCoverage(initialId, initialName);
-		const loadPromise = map.load(initialId);
-		loadPromise.catch((e) => console.error('[map] scene load failed:', e));
-		// Frame as soon as the target's placeholder lands (phase 1, ~2s before
-		// ctx.load resolves); fall through to the full load if it never shows.
-		await Promise.race([
-			loadPromise.catch(() => {}),
-			new Promise<void>((resolve) => {
-				const check = () => {
-					if (map.renderer && ctx.getBody(initialId)) resolve();
-					// Timer alongside the frame: a backgrounded tab fires no rAF, and
-					// the poll would never come back.
-					else if (document.hidden) setTimeout(check, 100);
-					else requestAnimationFrame(check);
-				};
-				check();
-			})
-		]);
+		// Resolves as soon as the target lands, about two seconds before the rest
+		// of the load; the error screen renders off ctx.error either way.
+		await map.open(initialId).catch(() => {});
 		// Error screen already shown: don't also fire the "not found" toast over it.
 		if (ctx.error) return;
 		if (!ctx.getBody(initialId)) {

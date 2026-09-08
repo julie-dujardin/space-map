@@ -130,6 +130,7 @@ import {
 } from './animation/focus';
 import { FocusController } from './focus/controller';
 import { ProbeCoverageWatch } from './probe-coverage-watch';
+import { OutOfRangeNotifier } from './out-of-range-notice';
 import { passengerFor } from '$lib/fetch/position/probes/passenger';
 import {
 	minCameraDistance,
@@ -214,6 +215,7 @@ export class SceneRenderer {
 	private focusController!: FocusController;
 	/** Null until scene setup; fetches each focused probe's coverage lazily. */
 	private coverageWatch: ProbeCoverageWatch | null = null;
+	private readonly outOfRange: OutOfRangeNotifier;
 	private readonly _tmpV3 = new Vector3();
 
 	/**
@@ -358,6 +360,7 @@ export class SceneRenderer {
 		ctx.hasMeshBody = (id) => this.bodyObjects.has(id);
 		this.clock = clock;
 		this.callbacks = callbacks;
+		this.outOfRange = new OutOfRangeNotifier(callbacks.notices);
 		this.labelContainer = labelContainer;
 
 		const boot = bootThree(canvas, labelContainer, ctx);
@@ -507,7 +510,7 @@ export class SceneRenderer {
 			this.renderer
 		);
 
-		this.coverageWatch = new ProbeCoverageWatch(clock);
+		this.coverageWatch = new ProbeCoverageWatch(clock, callbacks.notices);
 
 		// Camera initial placement: focus-relative. lat/lon are body-fixed, but
 		// the mesh quaternion is still identity (orientation metadata hasn't
@@ -1802,7 +1805,8 @@ export class SceneRenderer {
 			positionMap: this._positionMapScratch,
 			diagnostics: this.positionDiagnostics,
 			trailView: this.trailView(),
-			frame: this.frameIndex
+			frame: this.frameIndex,
+			outOfRange: this.outOfRange
 		});
 		this.pointClouds.updateForJd(this.clock.jd, this.cloudViewInfo());
 		// The travel focus is measured off a body this update just moved: re-derive

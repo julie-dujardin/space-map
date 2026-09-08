@@ -2,7 +2,8 @@
  * What the core (scene, math, fetch) needs from whoever embeds it — the
  * SvelteKit app today, the SDK later. Read lazily through {@link host} so the
  * host can configure it at boot without import-order games; the defaults are
- * what a bare embed gets.
+ * what a bare embed gets. Conditions the scene reports back travel the other
+ * way, as map events.
  */
 
 /** Scene text the core renders itself; everything else is the host's to format.
@@ -13,33 +14,10 @@ export interface CoreMessages {
 	body_note_no_radius: () => string;
 	carried_by_scene_label: (inputs: { carrier: string }) => string;
 	scene_canvas_label: () => string;
+	attribution_orbits: () => string;
+	attribution_imagery: () => string;
+	credits_see_all: () => string;
 }
-
-/** A coverage edge the clock has crossed, and where it lies. */
-export interface CoverageEdge {
-	side: 'before' | 'after';
-	jd: number;
-}
-
-/** Which groups lack data at the current time. */
-export interface OutOfRangeNotice {
-	topic: 'out-of-range';
-	focusedOutOfRange: boolean;
-	/** Zone-level satellite coverage: past the archive, or inside a hole. */
-	satellites: { side: 'after'; jd: number } | { side: 'gap' } | null;
-	majorBodies: CoverageEdge | { side: 'outside' } | null;
-}
-
-/** The clock stopped at the focused probe's trajectory data wall. */
-export interface CoveragePauseNotice {
-	topic: 'coverage-pause';
-	name: string;
-	direction: 'forward' | 'backward';
-	jd: number;
-}
-
-export type Notice = OutOfRangeNotice | CoveragePauseNotice;
-export type NoticeTopic = Notice['topic'];
 
 export interface Host {
 	/** Root of the data export; versioned files hang off it. */
@@ -51,10 +29,10 @@ export interface Host {
 	messages: CoreMessages;
 	/** Link target of a body's scene label. */
 	bodyHref: (id: string, name: string) => string;
-	/** Show a sticky notice; one per topic, a repeat replaces the previous. */
-	notify: (notice: Notice) => void;
-	dismiss: (topic: NoticeTopic) => void;
 }
+
+/** Overrides, with messages filled in one key at a time. */
+export type HostOverrides = Partial<Omit<Host, 'messages'>> & { messages?: Partial<CoreMessages> };
 
 const DEFAULT_HOST: Host = {
 	dataUrl: 'https://static.spacemap.co',
@@ -64,20 +42,25 @@ const DEFAULT_HOST: Host = {
 		body_note_no_model: () => 'no model available',
 		body_note_no_radius: () => 'no size data available',
 		carried_by_scene_label: ({ carrier }) => `Carried by ${carrier}`,
-		scene_canvas_label: () => 'Interactive 3D map of the Solar System'
+		scene_canvas_label: () => 'Interactive 3D map of the Solar System',
+		attribution_orbits: () => 'Orbits',
+		attribution_imagery: () => 'Imagery',
+		credits_see_all: () => 'See full credits'
 	},
 	// A bare embed has no pages to link to, so labels stay put.
-	bodyHref: () => '',
-	notify: () => {},
-	dismiss: () => {}
+	bodyHref: () => ''
 };
 
 let current: Host = DEFAULT_HOST;
 
-/** Replace the host: what an override leaves out goes back to its default,
- *  so a second embed on the page does not inherit the first one's settings. */
-export function configureHost(overrides: Partial<Host>): void {
-	current = { ...DEFAULT_HOST, ...overrides };
+/** Replace the host: what an override leaves out goes back to its default, so
+ *  a second embed on the page does not inherit the first one's settings.
+ *  Messages are the one thing filled in key by key — an override names the few
+ *  it wants reworded and the rest stay English. */
+export function configureHost(overrides: HostOverrides): void {
+	const { messages, ...rest } = overrides;
+	current = { ...DEFAULT_HOST, ...rest };
+	if (messages) current.messages = { ...DEFAULT_HOST.messages, ...messages };
 	// A URL root is concatenated with paths that lead with a slash.
 	current.dataUrl = current.dataUrl.replace(/\/$/, '');
 	current.imagesUrl = current.imagesUrl.replace(/\/$/, '');

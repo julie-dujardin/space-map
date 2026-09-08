@@ -15,6 +15,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import LoadingBar from './LoadingBar.svelte';
 	import { startPageReload } from '$lib/reload';
+	import { dismissNotice, showNotice } from '$lib/state/notices';
 
 	const settings = getSettings();
 
@@ -122,7 +123,9 @@
 			map.on('userpromoted', (count) => onUserPromotedChange?.(count)),
 			map.on('featureselect', ({ bodyId, featureId, lat, lon, diameterM }) =>
 				onFeatureSelect?.(bodyId, featureId, lat, lon, diameterM)
-			)
+			),
+			map.on('notice', showNotice),
+			map.on('noticedismiss', dismissNotice)
 		];
 		map.mount(container);
 

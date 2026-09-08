@@ -43,6 +43,7 @@ const KEY_VERSION = 'v1';
 
 let started = false;
 let inFlight: Promise<void> | null = null;
+let bootSettled = Promise.resolve();
 
 function calibrationKey(renderer: WebGLRenderer): string {
 	const gl = renderer.getContext();
@@ -58,10 +59,20 @@ export function scheduleAtmosphereCalibration(): void {
 	if (started || typeof window === 'undefined') return;
 	started = true;
 	calibrationUi.bootPending = true;
-	setTimeout(() => (calibrationUi.bootPending = false), BOOT_HOLD_MAX_MS);
-	setTimeout(() => {
-		void runCalibration(false).finally(() => (calibrationUi.bootPending = false));
-	}, START_DELAY_MS);
+	bootSettled = new Promise<void>((resolve) => {
+		const settle = (): void => {
+			calibrationUi.bootPending = false;
+			resolve();
+		};
+		setTimeout(settle, BOOT_HOLD_MAX_MS);
+		setTimeout(() => void runCalibration(false).finally(settle), START_DELAY_MS);
+	});
+}
+
+/** Resolves once the boot calibration is done (or gave up). An embed holds its
+ *  first frame on this: the bench needs the GPU to itself to measure anything. */
+export function atmosphereBootSettled(): Promise<void> {
+	return bootSettled;
 }
 
 /** Settings-menu re-run: measures again even when a stored result matches.
