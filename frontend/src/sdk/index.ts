@@ -79,6 +79,7 @@ export type { CameraView, InitialView } from '$lib/scene/types';
 export type { Anchor, InertialAnchor, OffsetKm, SurfaceAnchor } from '$lib/scene/extensions/anchor';
 export type { Marker, MarkerOptions } from '$lib/scene/extensions/marker';
 export type { CameraHold, CameraPose } from '$lib/scene/extensions/camera';
+export type { Polyline, PolylineOptions } from '$lib/scene/extensions/polyline';
 export type { SceneSettings } from '$lib/scene/settings.svelte';
 export type {
 	CoverageEdge,

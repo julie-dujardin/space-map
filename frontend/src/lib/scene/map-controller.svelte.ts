@@ -20,6 +20,7 @@ import type { Callbacks, CameraView, InitialView } from './types';
 import type { Notice, NoticeTopic } from './notice';
 import { MarkerExtension, type Marker, type MarkerOptions } from './extensions/marker';
 import { sceneToEcliptic, type CameraHold, type CameraPose } from './extensions/camera';
+import { PolylineExtension, type Polyline, type PolylineOptions } from './extensions/polyline';
 import { loadProgress } from './state/load-progress.svelte';
 import type { Vec3 } from './animation/math';
 import type { OrbitPreview } from './objects/travel/orbit-preview';
@@ -619,6 +620,17 @@ export class MapController {
 		marker.bind(() => renderer.extensions.remove(marker));
 		renderer.extensions.add(marker);
 		return marker;
+	}
+
+	/** Draw a line on the map. Its points are measured from an anchor, so a
+	 *  line round a body travels with it. */
+	addPolyline(options: PolylineOptions): Polyline {
+		const renderer = this.renderer;
+		if (!renderer) throw new Error('MapController is not mounted');
+		const line = new PolylineExtension(options);
+		line.bind(() => renderer.extensions.remove(line));
+		renderer.extensions.add(line);
+		return line;
 	}
 
 	setNorthReference(id: string | null): void {

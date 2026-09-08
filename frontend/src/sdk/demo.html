@@ -117,6 +117,10 @@
 				color: #fd8;
 				white-space: pre-wrap;
 			}
+			/* An id rule outranks the browser's own [hidden] rule. */
+			#boot[hidden] {
+				display: none;
+			}
 			#boot {
 				position: fixed;
 				inset: 0;
@@ -159,6 +163,10 @@
 				<input id="target" placeholder="object id, e.g. naif-499" />
 				<button>Focus</button>
 			</form>
+			<div class="row">
+				<button id="ring" type="button">Draw a ring</button>
+				<button id="clearlines" type="button">Clear lines</button>
+			</div>
 			<div class="row">
 				<button id="orbit" type="button">Fly a circle</button>
 				<button id="release" type="button" disabled>Give camera back</button>
@@ -322,6 +330,33 @@
 			});
 			$('clearmarks').addEventListener('click', () => {
 				for (const marker of marks.splice(0)) marker.remove();
+			});
+
+			// Lines: points are kilometres from an anchor, on ecliptic axes, so
+			// the ring travels with the body it is drawn around.
+			const lines = [];
+			$('ring').addEventListener('click', () => {
+				const body = map.focusedBody;
+				if (!body) return;
+				const radius = Math.max((body.data.radiusKm ?? 1000) * 2.5, 500);
+				const points = [];
+				for (let i = 0; i < 128; i++) {
+					const a = (i / 128) * 2 * Math.PI;
+					points.push([radius * Math.cos(a), radius * Math.sin(a), 0]);
+				}
+				lines.push(
+					map.addPolyline({
+						anchor: { body: body.data.id },
+						points,
+						color: '#66aaff',
+						widthPx: 2,
+						closed: true
+					})
+				);
+				log(`ring of ${Math.round(radius)} km round ${name(body)}`);
+			});
+			$('clearlines').addEventListener('click', () => {
+				for (const line of lines.splice(0)) line.remove();
 			});
 
 			// Driving the camera: hold it, then set a pose every frame. Positions
