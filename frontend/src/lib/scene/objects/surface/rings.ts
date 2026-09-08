@@ -319,15 +319,15 @@ const FRAGMENT_SHADER = `
 
 		vec2 uv = vec2(clamp(t, 0.0, 1.0), 0.5);
 
-		// Flip the world normal on the back face so lit-test compares against
-		// the outward direction of the face actually being viewed.
-		vec3 N = gl_FrontFacing ? vWorldNormal : -vWorldNormal;
-
-		bool lit = dot(uSunDir, N) > 0.0;
-
 		// cosAlpha = cos(phase angle): +1 low phase, -1 high phase.
 		vec3 viewDir = normalize(cameraPosition - vWorldPos);
 		float cosAlpha = dot(uSunDir, viewDir);
+
+		// Lit side = observer and sun on the same side of the sheet. Taken from
+		// the two directions rather than gl_FrontFacing, which several mobile
+		// drivers report wrongly — there it stuck the whole ring on the lit
+		// profile whatever the sun was doing.
+		bool lit = dot(uSunDir, vWorldNormal) * dot(viewDir, vWorldNormal) > 0.0;
 
 		vec3 finalAlbedo;
 		if (lit) {
