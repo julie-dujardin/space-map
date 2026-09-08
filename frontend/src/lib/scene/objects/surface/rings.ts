@@ -159,6 +159,7 @@ async function loadStripTextures(
 			`Ring strip ${url}: downscaling ${bitmap.width}px → ${targetWidth}px to fit GL MAX_TEXTURE_SIZE.`
 		);
 	}
+	const strip = readStripPixels(bitmap, url, maxTextureSize);
 	const textures = {} as StripTextures;
 	for (const [channel, row] of Object.entries(rows) as [keyof StripTextures, number][]) {
 		const canvas = document.createElement('canvas');
@@ -166,10 +167,9 @@ async function loadStripTextures(
 		canvas.height = 2;
 		const ctx = canvas.getContext('2d');
 		if (!ctx) throw new Error(`Failed to acquire 2D context for ring strip ${url}`);
-		ctx.imageSmoothingEnabled = true;
-		ctx.imageSmoothingQuality = 'high';
-		ctx.drawImage(bitmap, 0, row, bitmap.width, 1, 0, 0, targetWidth, 1);
-		ctx.drawImage(bitmap, 0, row, bitmap.width, 1, 0, 1, targetWidth, 1);
+		const line = boxFilterRow(strip, bitmap.width, row, targetWidth);
+		ctx.putImageData(line, 0, 0);
+		ctx.putImageData(line, 0, 1);
 
 		const tex = new CanvasTexture(canvas);
 		// Color is a perceptual albedo tint (sRGB); scalar profiles are linear.
@@ -187,6 +187,74 @@ async function loadStripTextures(
 	}
 	bitmap.close();
 	return textures;
+}
+
+/**
+ * The whole strip read back at native width, RGBA. Copied in chunks no wider
+ * than the GL limit, and always 1:1 — a scaling copy is what corrupts these
+ * rows (see {@link boxFilterRow}).
+ */
+function readStripPixels(
+	bitmap: ImageBitmap,
+	url: string,
+	maxTextureSize: number
+): Uint8ClampedArray {
+	const out = new Uint8ClampedArray(bitmap.width * bitmap.height * 4);
+	const canvas = document.createElement('canvas');
+	canvas.width = Math.min(bitmap.width, maxTextureSize);
+	canvas.height = bitmap.height;
+	const ctx = canvas.getContext('2d', { willReadFrequently: true });
+	if (!ctx) throw new Error(`Failed to acquire 2D context for ring strip ${url}`);
+	for (let x = 0; x < bitmap.width; x += canvas.width) {
+		const w = Math.min(canvas.width, bitmap.width - x);
+		ctx.clearRect(0, 0, w, bitmap.height);
+		ctx.drawImage(bitmap, x, 0, w, bitmap.height, 0, 0, w, bitmap.height);
+		const chunk = ctx.getImageData(0, 0, w, bitmap.height).data;
+		for (let y = 0; y < bitmap.height; y++) {
+			out.set(chunk.subarray(y * w * 4, (y + 1) * w * 4), (y * bitmap.width + x) * 4);
+		}
+	}
+	return out;
+}
+
+/**
+ * One strip row box-filtered down to `targetWidth`, as a 1-tall ImageData.
+ * Identity when no downscale is due.
+ *
+ * The arithmetic is ours because the browsers' is wrong on a strip: asked to
+ * scale down, Chrome mipmaps the source image, and a mip level of an N×6 strip
+ * averages the channel rows into each other — a 1-px-tall source rect does not
+ * fence it off. On a phone (GL limit 4096 against Saturn's 13177 samples) that
+ * blended every profile toward their common mean, and `unlitside`, the one row
+ * anti-correlated with its neighbours, lost its structure completely.
+ */
+function boxFilterRow(
+	pixels: Uint8ClampedArray,
+	srcWidth: number,
+	row: number,
+	targetWidth: number
+): ImageData {
+	const out = new ImageData(targetWidth, 1);
+	for (let x = 0; x < targetWidth; x++) {
+		const from = Math.floor((x * srcWidth) / targetWidth);
+		const to = Math.max(from + 1, Math.floor(((x + 1) * srcWidth) / targetWidth));
+		let r = 0;
+		let g = 0;
+		let b = 0;
+		for (let i = from; i < to; i++) {
+			const s = (row * srcWidth + i) * 4;
+			r += pixels[s];
+			g += pixels[s + 1];
+			b += pixels[s + 2];
+		}
+		const n = to - from;
+		const d = x * 4;
+		out.data[d] = Math.round(r / n);
+		out.data[d + 1] = Math.round(g / n);
+		out.data[d + 2] = Math.round(b / n);
+		out.data[d + 3] = 255;
+	}
+	return out;
 }
 
 const VERTEX_SHADER = `
@@ -319,15 +387,15 @@ const FRAGMENT_SHADER = `
 
 		vec2 uv = vec2(clamp(t, 0.0, 1.0), 0.5);
 
+		// Flip the world normal on the back face so lit-test compares against
+		// the outward direction of the face actually being viewed.
+		vec3 N = gl_FrontFacing ? vWorldNormal : -vWorldNormal;
+
+		bool lit = dot(uSunDir, N) > 0.0;
+
 		// cosAlpha = cos(phase angle): +1 low phase, -1 high phase.
 		vec3 viewDir = normalize(cameraPosition - vWorldPos);
 		float cosAlpha = dot(uSunDir, viewDir);
-
-		// Lit side = observer and sun on the same side of the sheet. Taken from
-		// the two directions rather than gl_FrontFacing, which several mobile
-		// drivers report wrongly — there it stuck the whole ring on the lit
-		// profile whatever the sun was doing.
-		bool lit = dot(uSunDir, vWorldNormal) * dot(viewDir, vWorldNormal) > 0.0;
 
 		vec3 finalAlbedo;
 		if (lit) {
