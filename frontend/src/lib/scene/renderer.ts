@@ -139,6 +139,7 @@ import {
 	clampCameraOutsideBody,
 	type SurfaceClampContext
 } from './visibility/camera-limits';
+import { cameraMotionScale, type MotionScale } from './camera/motion-scale';
 import { renderedSurfaceRadialKm, surfaceDataEpoch } from './position/rendered-surface';
 import { collisionParentId } from './state/bodies.svelte';
 import { updateBodyVisibility } from './visibility/update';
@@ -192,6 +193,8 @@ export class SceneRenderer {
 	private scene: Scene;
 	private camera: PerspectiveCamera;
 	private controls: OrbitControls;
+	/** Last {@link cameraMotionScale}; also read by the keyboard nudge. */
+	private motionScale: MotionScale = { rotate: 1, translate: 1 };
 	private pointerInteraction!: PointerInteraction;
 	private gpuPick!: GpuPickPass;
 
@@ -988,6 +991,9 @@ export class SceneRenderer {
 					this.surfaceClamp(focused, false)
 				);
 			}
+			this.setMotionScale(cameraMotionScale(this.camera, this.focus.focusTruePos, focused, parent));
+		} else {
+			this.setMotionScale({ rotate: 1, translate: 1 });
 		}
 
 		if (this.pendingUrlWrite && controlsSettled) {
@@ -1298,6 +1304,15 @@ export class SceneRenderer {
 		sunBo.mesh?.scale.setScalar(this.sunBaseMeshScale * k);
 		sunBo.corona?.scale.set(this.sunBaseCoronaScale * k, this.sunBaseCoronaScale * k, 1);
 		this.sunProxyK = k;
+	}
+
+	/** OrbitControls applies its speeds when the gesture event fires, not in
+	 *  `update()`, so the scale is refreshed once a frame and read from there. */
+	private setMotionScale(scale: MotionScale): void {
+		this.motionScale = scale;
+		this.controls.rotateSpeed = scale.rotate;
+		this.controls.panSpeed = scale.translate;
+		this.controls.zoomSpeed = scale.translate;
 	}
 
 	/** How to sample the camera floor under `body`: its shape model when one is
@@ -1699,10 +1714,14 @@ export class SceneRenderer {
 	 *  min/maxDistance clamping apply, but fires no 'end' event — sync the URL
 	 *  here like a pointer drag would. */
 	nudgeCamera(azimuth: number, polar: number, dolly: number): void {
-		if (azimuth !== 0) this.controls.rotateLeft(azimuth);
-		if (polar !== 0) this.controls.rotateUp(polar);
+		// These bypass rotateSpeed/zoomSpeed, so they take the ground-relative
+		// scale themselves — an arrow key over a surface must step as small as a
+		// drag does. Raising the dolly factor to it keeps the step multiplicative.
+		const { rotate, translate } = this.motionScale;
+		if (azimuth !== 0) this.controls.rotateLeft(azimuth * rotate);
+		if (polar !== 0) this.controls.rotateUp(polar * rotate);
 		// dollyIn scales the orbit radius by its argument, so zooming in needs <1.
-		if (dolly !== 1) this.controls.dollyIn(1 / dolly);
+		if (dolly !== 1) this.controls.dollyIn(1 / Math.pow(dolly, translate));
 		this.onControlsEnd();
 	}
 
