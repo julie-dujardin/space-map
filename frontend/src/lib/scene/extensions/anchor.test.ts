@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { Quaternion, Vector3 } from 'three';
 import { AU_SCALE } from '$lib/math/units';
-import { resolveAnchor } from './anchor';
+import { resolveAnchor, rotateByQuaternion, surfaceDirection } from './anchor';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { PositionedBody } from '$lib/types/objects';
 
@@ -67,5 +68,42 @@ describe('resolveAnchor', () => {
 		expect(pole[1]).toBeCloseTo(scale, 12);
 		const meridian = resolveAnchor({ body: 'test', latitude: 0, longitude: 0 }, ctx, 2460000)!;
 		expect(meridian[0]).toBeCloseTo(scale, 12);
+	});
+});
+
+describe('surfaceDirection', () => {
+	it('is a unit vector for any place', () => {
+		for (const [lat, lon] of [
+			[0, 0],
+			[45, 30],
+			[-60, 200],
+			[90, 0]
+		]) {
+			expect(Math.hypot(...surfaceDirection(lat, lon))).toBeCloseTo(1, 12);
+		}
+	});
+
+	it('sends longitude east, away from scene +z', () => {
+		const east = surfaceDirection(0, 90);
+		expect(east[0]).toBeCloseTo(0, 12);
+		expect(east[2]).toBeCloseTo(-1, 12);
+	});
+});
+
+describe('rotateByQuaternion', () => {
+	it('turns a vector the way three does', () => {
+		const q = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 3);
+		const expected = new Vector3(1, 2, 3).applyQuaternion(q);
+		const out = [0, 0, 0];
+		rotateByQuaternion(q, 1, 2, 3, out, 0);
+		expect(out[0]).toBeCloseTo(expected.x, 12);
+		expect(out[1]).toBeCloseTo(expected.y, 12);
+		expect(out[2]).toBeCloseTo(expected.z, 12);
+	});
+
+	it('writes where it is told to', () => {
+		const out = new Float64Array(6);
+		rotateByQuaternion(new Quaternion(), 1, 2, 3, out, 3);
+		expect([...out]).toEqual([0, 0, 0, 1, 2, 3]);
 	});
 });

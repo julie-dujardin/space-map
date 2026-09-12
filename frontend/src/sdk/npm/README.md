@@ -113,27 +113,90 @@ map.clock.now();
 
 ### Drawing on it
 
-Markers are your own elements, pinned to a place that keeps up with the map.
-Polylines are measured from an anchor, so a ring drawn round a body travels
-with it.
+Everything you draw is put somewhere by an **anchor**, and the anchor is what
+keeps it there as the map moves under it. There are two kinds. A surface anchor
+is a longitude, a latitude and a height on a body, and turns with the body as
+it spins; an inertial anchor is a body and an offset in kilometres on ecliptic
+axes, which travels with the body but does not turn. Either way the drawing
+follows what it is drawn on, over any distance and any date.
+
+Six things sit **in space**, measured from an anchor in kilometres:
 
 ```js
+// Your own element, pinned to a place.
 const marker = map.addMarker({
 	anchor: { body: 'naif-499', latitude: 18.4, longitude: 77.5, altitudeKm: 0 },
 	element: pin,
 	align: [0.5, 1],
 	occlude: true
 });
-marker.remove();
 
-map.addPolyline({
+// A line. Points are kilometres from the anchor, on ecliptic axes.
+map.addPolyline({ anchor: { body: 'naif-499' }, points, color: '#66aaff', closed: true });
+
+// An area, filled in its own colour unless you name another.
+map.addPolygon({ anchor: { body: 'naif-499' }, points, color: '#ffcc55', fillOpacity: 0.3 });
+
+// A circle round a place, in a plane you turn where you like. It is a ring
+// rather than a disc unless you give it a fill: what it is drawn round is
+// usually the point.
+const ring = map.addCircle({
 	anchor: { body: 'naif-499' },
-	points,
-	color: '#66aaff',
-	widthPx: 2,
-	closed: true
+	radiusKm: 20000,
+	normal: [0.4, 0, 1],
+	widthPx: 3
 });
+ring.setRadiusKm(30000);
+
+// Text at a place, without an element of your own to build and style.
+map.addLabel({ anchor: { body: 'naif-499', latitude: 18.4, longitude: 77.5 }, text: 'Elysium' });
+
+// A picture at a place. It holds its size on screen wherever the camera goes.
+map.addIcon({ anchor: { body: 'naif-499' }, url: badge, widthPx: 28, occlude: true });
 ```
+
+Three more are drawn **on a body**, following its curve and turning with it.
+These take longitude and latitude rather than kilometres — the same places the
+flat map's shapes take, so one list of points draws on both maps:
+
+```js
+map.addSurfacePolyline({ body: 'naif-499', points: track, interpolate: 'geodesic' });
+map.addSurfacePolygon({ body: 'naif-499', points: quadrangle, color: '#88ddff' });
+map.addSurfaceCircle({ body: 'naif-499', center: { lon: 77.5, lat: 18.4 }, radiusKm: 800 });
+```
+
+`boxRing`, `smallCircle` and `graticule`, the flat map's helpers, make point
+lists these take; `circlePoints` does the same for a circle in space.
+
+Every drawing answers `remove()` and `setVisible()`, a shape answers
+`setAnchor()` and `setPoints()`, and `map.clearDrawings()` takes them all away
+at once, leaving the map itself alone.
+
+`ShapeStyle` is shared by the shapes: `color`, `widthPx` in screen pixels,
+`opacity`, `fill` and `fillOpacity`. A width of zero leaves the outline out, for
+an area drawn as a fill alone. The flat map says the same things with the same
+words — its version is `FlatShapeStyle`, named apart because a page can hold
+both maps at once — so a drawing described once can be handed to either.
+
+Two rules fall out of the scene rather than out of taste. Widths are pixels
+because the map spans metres to astronomical units, and a line a kilometre wide
+is a wall from low orbit and nothing at all from the next planet out. And a body
+hides what is behind it: a shape in space is drawn with the orbit trails and is
+cut off at a body's edge exactly as they are, and a shape on a surface stops at
+the limb. Markers, labels and icons are HTML rather than geometry and would
+otherwise show through the body they sit on, so they take `occlude` to be hidden
+when the place they mark turns away.
+
+A shape on a surface floats a little above it by default — half a percent of the
+body's radius, which is 17 km at Mars. That clears the relief the map draws, so
+the shape reads as lying on the ground rather than sinking into it, and ground
+higher than that still comes through, as it should. Give it an `altitudeKm` of
+its own for a track flown rather than walked.
+
+Labels and icons are elements, so listen to them directly through their
+`element`; they take pointer events only once you pass `interactive: true`,
+since the camera is dragged through the layer they sit in. Shapes drawn as
+geometry are not clickable.
 
 ### Layers
 

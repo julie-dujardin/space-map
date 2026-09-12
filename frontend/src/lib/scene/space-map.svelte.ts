@@ -24,6 +24,19 @@ import type { Notice, NoticeTopic } from './notice';
 import { MarkerExtension, type Marker, type MarkerOptions } from './extensions/marker';
 import { sceneToEcliptic, type CameraHold, type CameraPose } from './extensions/camera';
 import { PolylineExtension, type Polyline, type PolylineOptions } from './extensions/polyline';
+import { PolygonExtension, type Polygon, type PolygonOptions } from './extensions/polygon';
+import { CircleExtension, type Circle, type CircleOptions } from './extensions/circle';
+import { LabelExtension, type Label, type LabelOptions } from './extensions/label';
+import { IconExtension, type Icon, type IconOptions } from './extensions/icon';
+import {
+	SurfaceShapeExtension,
+	type SurfaceCircleOptions,
+	type SurfacePolygonOptions,
+	type SurfacePolylineOptions,
+	type SurfaceShape
+} from './extensions/surface';
+import type { Extension } from './extensions/registry';
+import { smallCircle } from '$lib/flatmap/geometry';
 import { loadProgress } from './state/load-progress.svelte';
 import type { Vec3 } from './animation/math';
 import type { OrbitPreview } from './objects/travel/orbit-preview';
@@ -1010,27 +1023,97 @@ export class SpaceMap {
 		};
 	}
 
+	// -- drawing ----------------------------------------------------------------
+
 	/** Pin the host's own element to a place on the map. It is drawn in the
 	 *  map's label layer, so it pans with the scene and is removed with it. */
 	addMarker(options: MarkerOptions): Marker {
-		const renderer = this.renderer;
-		const canvas = this.canvas;
-		if (!renderer || !canvas) throw new Error('SpaceMap is not mounted');
-		const marker = new MarkerExtension(options, canvas);
-		marker.bind(() => renderer.extensions.remove(marker));
-		renderer.extensions.add(marker);
-		return marker;
+		return this.track(new MarkerExtension(options, this.requireCanvas()));
 	}
 
 	/** Draw a line on the map. Its points are measured from an anchor, so a
 	 *  line round a body travels with it. */
 	addPolyline(options: PolylineOptions): Polyline {
+		return this.track(new PolylineExtension(options));
+	}
+
+	/** Draw an area on the map, measured from an anchor like a line. It is
+	 *  filled in its own colour unless the host says otherwise. */
+	addPolygon(options: PolygonOptions): Polygon {
+		return this.track(new PolygonExtension({ fill: options.color ?? '#ffffff', ...options }));
+	}
+
+	/** Draw a circle round a place — an orbit's reach, a distance from a body.
+	 *  It is a ring rather than a disc unless the host asks for a fill, since
+	 *  what it is drawn round is usually the point. */
+	addCircle(options: CircleOptions): Circle {
+		return this.track(new CircleExtension(options));
+	}
+
+	/** Write a word at a place, in the map's own way of drawing one. A marker
+	 *  is for an element the host has styled itself. */
+	addLabel(options: LabelOptions): Label {
+		return this.track(new LabelExtension(options, this.requireCanvas()));
+	}
+
+	/** Draw a picture at a place. It holds its size on screen wherever the
+	 *  camera goes. */
+	addIcon(options: IconOptions): Icon {
+		return this.track(new IconExtension(options, this.requireCanvas()));
+	}
+
+	/** Draw a line on a body's surface, following its curve and turning with
+	 *  it. The places are longitude and latitude, as the flat map's are. */
+	addSurfacePolyline(options: SurfacePolylineOptions): SurfaceShape {
+		return this.track(new SurfaceShapeExtension(options));
+	}
+
+	/** Draw an area on a body's surface. It is filled in its own colour unless
+	 *  the host says otherwise, and closes itself. */
+	addSurfacePolygon(options: SurfacePolygonOptions): SurfaceShape {
+		return this.track(
+			new SurfaceShapeExtension({ fill: options.color ?? '#ffffff', ...options, closed: true })
+		);
+	}
+
+	/** Draw a cap on a body's surface: a footprint, a range, a horizon. */
+	addSurfaceCircle(options: SurfaceCircleOptions): SurfaceShape {
+		return this.addSurfacePolygon({
+			...options,
+			points: smallCircle(options.center, this.capRadiusDeg(options), options.steps)
+		});
+	}
+
+	/** Remove every drawing the host has added, leaving the map itself alone. */
+	clearDrawings(): void {
+		this.renderer?.extensions.clear();
+	}
+
+	/** A cap's radius as an angle, from whichever of the two ways the host gave
+	 *  it. A radius in kilometres needs the body's own radius, which an
+	 *  unloaded body has not published yet. */
+	private capRadiusDeg(options: SurfaceCircleOptions): number {
+		if (options.radiusDeg !== undefined) return options.radiusDeg;
+		const bodyRadiusKm = this.getBody(options.body)?.radiusKm;
+		if (options.radiusKm !== undefined && bodyRadiusKm) {
+			return (options.radiusKm / bodyRadiusKm) * (180 / Math.PI);
+		}
+		return 1;
+	}
+
+	/** Add a drawing and hand it the way back out. */
+	private track<T extends Extension & { bind(removeSelf: () => void): void }>(drawing: T): T {
 		const renderer = this.renderer;
 		if (!renderer) throw new Error('SpaceMap is not mounted');
-		const line = new PolylineExtension(options);
-		line.bind(() => renderer.extensions.remove(line));
-		renderer.extensions.add(line);
-		return line;
+		drawing.bind(() => renderer.extensions.remove(drawing));
+		renderer.extensions.add(drawing);
+		return drawing;
+	}
+
+	private requireCanvas(): HTMLCanvasElement {
+		const canvas = this.canvas;
+		if (!canvas) throw new Error('SpaceMap is not mounted');
+		return canvas;
 	}
 
 	setNorthReference(id: string | null): void {

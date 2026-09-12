@@ -192,6 +192,26 @@
 				<button id="mark" type="button">Mark this place</button>
 				<button id="clearmarks" type="button">Clear marks</button>
 			</div>
+			<h2>Drawing in three dimensions</h2>
+			<p>
+				Shapes in space are measured from an anchor in kilometres; shapes on a surface are longitude
+				and latitude, and turn with the body under them.
+			</p>
+			<div class="row">
+				<button id="polygon" type="button">Area</button>
+				<button id="circle" type="button">Tilted circle</button>
+			</div>
+			<div class="row">
+				<button id="label" type="button">Label</button>
+				<button id="icon" type="button">Icon</button>
+			</div>
+			<div class="row">
+				<button id="track" type="button">Ground track</button>
+				<button id="cap" type="button">Footprint</button>
+			</div>
+			<div class="row">
+				<button id="cleardrawings" type="button">Clear every drawing</button>
+			</div>
 			<div class="row">
 				<button id="parent" type="button">Parent body</button>
 				<button id="play" type="button">Pause</button>
@@ -405,6 +425,122 @@
 			});
 			$('clearlines').addEventListener('click', () => {
 				for (const line of lines.splice(0)) line.remove();
+			});
+
+			// The rest of the drawing vocabulary. Areas and circles sit in space
+			// and are measured from an anchor; labels and icons are text and a
+			// picture at a place; ground tracks and footprints are drawn on the
+			// body itself, in longitude and latitude, and turn with it.
+			const focused = () => map.getFocusedBody();
+			const spread = (body) => Math.max((body.radiusKm ?? 1000) * 2, 400);
+			const somewhere = () => [
+				Math.round((Math.random() * 120 - 60) * 10) / 10,
+				Math.round((Math.random() * 360 - 180) * 10) / 10
+			];
+
+			$('polygon').addEventListener('click', () => {
+				const body = focused();
+				if (!body) return;
+				const r = spread(body);
+				map.addPolygon({
+					anchor: { body: body.id },
+					points: [
+						[r, 0, 0],
+						[0, r, r * 0.4],
+						[-r, r * 0.3, -r * 0.2],
+						[-r * 0.4, -r, 0]
+					],
+					color: '#ffcc55',
+					widthPx: 2,
+					fillOpacity: 0.3
+				});
+				log(`area round ${name(body)}`);
+			});
+
+			$('circle').addEventListener('click', () => {
+				const body = focused();
+				if (!body) return;
+				map.addCircle({
+					anchor: { body: body.id },
+					radiusKm: spread(body) * 1.6,
+					// A plane tilted off the ecliptic, to show the ring is turned
+					// where the host asks rather than laid flat.
+					normal: [0.4, 0, 1],
+					color: '#66ffcc',
+					widthPx: 3
+				});
+				log(`circle round ${name(body)}`);
+			});
+
+			$('label').addEventListener('click', () => {
+				const body = focused();
+				if (!body) return;
+				const [latitude, longitude] = somewhere();
+				map.addLabel({
+					anchor: { body: body.id, latitude, longitude },
+					text: `${latitude}°, ${longitude}°`,
+					color: '#ffdd88',
+					occlude: true
+				});
+				log(`label on ${name(body)}`);
+			});
+
+			const BADGE =
+				'data:image/svg+xml,' +
+				encodeURIComponent(
+					'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
+						'<circle cx="12" cy="12" r="10" fill="#3a7bff" stroke="#fff" stroke-width="2"/>' +
+						'<path d="M12 6v12M6 12h12" stroke="#fff" stroke-width="2"/></svg>'
+				);
+			$('icon').addEventListener('click', () => {
+				const body = focused();
+				if (!body) return;
+				const [latitude, longitude] = somewhere();
+				map.addIcon({
+					anchor: { body: body.id, latitude, longitude },
+					url: BADGE,
+					widthPx: 28,
+					occlude: true,
+					alt: 'a place of interest'
+				});
+				log(`icon on ${name(body)}`);
+			});
+
+			$('track').addEventListener('click', () => {
+				const body = focused();
+				if (!body) return;
+				const points = [];
+				for (let lon = -180; lon <= 180; lon += 20) {
+					points.push({ lon, lat: 45 * Math.sin((lon * Math.PI) / 90) });
+				}
+				map.addSurfacePolyline({
+					body: body.id,
+					points,
+					interpolate: 'geodesic',
+					color: '#ff77aa',
+					widthPx: 3
+				});
+				log(`ground track on ${name(body)}`);
+			});
+
+			$('cap').addEventListener('click', () => {
+				const body = focused();
+				if (!body) return;
+				const [lat, lon] = somewhere();
+				map.addSurfaceCircle({
+					body: body.id,
+					center: { lon, lat },
+					radiusDeg: 20,
+					color: '#88ddff',
+					fillOpacity: 0.35
+				});
+				log(`footprint on ${name(body)} at ${lat}, ${lon}`);
+			});
+
+			$('cleardrawings').addEventListener('click', () => {
+				map.clearDrawings();
+				lines.length = 0;
+				marks.length = 0;
 			});
 
 			// Driving the camera: hold it, then set a pose every frame. Positions

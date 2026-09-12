@@ -51,11 +51,16 @@ export class ExtensionRegistry {
 		for (const extension of this.extensions) extension.update(frame);
 	}
 
-	dispose(): void {
+	/** Drop everything at once, leaving the registry ready for more. */
+	clear(): void {
 		for (const extension of this.extensions) {
 			this.group.remove(extension.object);
 			extension.dispose();
 		}
 		this.extensions.clear();
+	}
+
+	dispose(): void {
+		this.clear();
 	}
 }

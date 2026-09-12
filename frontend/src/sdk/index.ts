@@ -165,6 +165,20 @@ export type { Anchor, InertialAnchor, OffsetKm, SurfaceAnchor } from '$lib/scene
 export type { Marker, MarkerOptions } from '$lib/scene/extensions/marker';
 export type { CameraHold, CameraPose } from '$lib/scene/extensions/camera';
 export type { Polyline, PolylineOptions } from '$lib/scene/extensions/polyline';
+export type { Polygon, PolygonOptions } from '$lib/scene/extensions/polygon';
+export type { Circle, CircleOptions } from '$lib/scene/extensions/circle';
+export type { Label, LabelOptions } from '$lib/scene/extensions/label';
+export type { Icon, IconOptions } from '$lib/scene/extensions/icon';
+export type {
+	SurfaceCircleOptions,
+	SurfacePolygonOptions,
+	SurfacePolylineOptions,
+	SurfaceShape,
+	SurfaceShapeOptions
+} from '$lib/scene/extensions/surface';
+export type { Shape, ShapeStyle } from '$lib/scene/extensions/style';
+export { circlePoints, planeBasis } from '$lib/scene/extensions/geometry';
+export type { CirclePointsOptions } from '$lib/scene/extensions/geometry';
 export type {
 	CoverageEdge,
 	CoveragePauseNotice,
@@ -189,16 +203,17 @@ export type { FlatMapLimits, ViewState } from '$lib/flatmap/view';
 export type { Layer, LayerCredit, LayerInfo, VectorLayer } from '$lib/flatmap/layers';
 // The flat map's shapes are named apart from the scene's: a host can hold both
 // maps on one page, and `Marker` there is an element pinned in three
-// dimensions, not a dot on a surface.
+// dimensions, not a dot on a surface. Where the two maps draw the same thing,
+// the Solar System map has the plain name and the flat map's is prefixed.
 export type {
-	BoxOptions,
-	CircleOptions,
+	BoxOptions as FlatBoxOptions,
+	CircleOptions as FlatCircleOptions,
 	FlatMarker,
 	FlatShape,
 	MarkerOptions as FlatMarkerOptions,
 	PolygonOptions as FlatPolygonOptions,
 	PolylineOptions as FlatPolylineOptions,
-	ShapeStyle
+	ShapeStyle as FlatShapeStyle
 } from '$lib/flatmap/overlay';
 
 // -- the host seam ------------------------------------------------------------

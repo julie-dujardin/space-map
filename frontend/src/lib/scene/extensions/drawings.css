@@ -1,0 +1,31 @@
+/* Host labels and icons in the map's label layer. Both are drawn like the
+ * scene's own names — white on a shadow, so they stay legible over a lit limb
+ * as well as over the sky — and neither takes pointer events until the host
+ * asks, since the layer above the canvas is what the camera is dragged
+ * through. */
+
+.sm-drawing-label {
+	white-space: nowrap;
+	color: white;
+	font:
+		bold 14px/1.2 system-ui,
+		sans-serif;
+	text-shadow:
+		0 0 4px #000,
+		0 0 4px #000;
+	user-select: none;
+	pointer-events: none;
+}
+
+.sm-drawing-icon {
+	display: block;
+	user-select: none;
+	pointer-events: none;
+}
+
+.sm-drawing--interactive {
+	pointer-events: auto;
+	cursor: pointer;
+	/* Prevent browser pinch-zoom; a second finger is forwarded to the canvas. */
+	touch-action: none;
+}

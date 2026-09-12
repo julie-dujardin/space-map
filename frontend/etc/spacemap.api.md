@@ -49,17 +49,6 @@ export type BodyType =
 	| 'surface-feature'
 	| 'unknown';
 
-// @public (undocumented)
-export interface BoxOptions extends ShapeStyle {
-	// (undocumented)
-	latMax: number;
-	// (undocumented)
-	latMin: number;
-	// (undocumented)
-	lonMin: number;
-	lonSpan: number;
-}
-
 // @public
 export function boxRing(latMin: number, latMax: number, lonMin: number, lonSpan: number): LonLat[];
 
@@ -122,11 +111,25 @@ export interface CameraTarget extends CameraOptions {
 }
 
 // @public (undocumented)
+export interface Circle extends Shape {
+	setRadiusKm(radiusKm: number): void;
+}
+
+// @public (undocumented)
 export interface CircleOptions extends ShapeStyle {
-	// (undocumented)
-	center: LonLat;
-	radiusDeg?: number;
-	radiusKm?: number;
+	anchor: Anchor;
+	normal?: OffsetKm;
+	radiusKm: number;
+	steps?: number;
+}
+
+// @public
+export function circlePoints(radiusKm: number, options?: CirclePointsOptions): OffsetKm[];
+
+// @public (undocumented)
+export interface CirclePointsOptions {
+	normal?: OffsetKm;
+	steps?: number;
 }
 
 // @public
@@ -270,12 +273,31 @@ export class FlatAttributionControl implements Control<FlatMap> {
 }
 
 // @public (undocumented)
+export interface FlatBoxOptions extends FlatShapeStyle {
+	// (undocumented)
+	latMax: number;
+	// (undocumented)
+	latMin: number;
+	// (undocumented)
+	lonMin: number;
+	lonSpan: number;
+}
+
+// @public (undocumented)
+export interface FlatCircleOptions extends FlatShapeStyle {
+	// (undocumented)
+	center: LonLat;
+	radiusDeg?: number;
+	radiusKm?: number;
+}
+
+// @public (undocumented)
 export class FlatMap {
 	constructor(options?: FlatMapOptions);
 	// (undocumented)
-	addBox(options: BoxOptions): FlatShape;
+	addBox(options: FlatBoxOptions): FlatShape;
 	// (undocumented)
-	addCircle(options: CircleOptions): FlatShape;
+	addCircle(options: FlatCircleOptions): FlatShape;
 	addControl(control: Control<FlatMap>, position?: ControlPosition): this;
 	// (undocumented)
 	addMarker(options: FlatMarkerOptions): FlatMarker;
@@ -437,7 +459,7 @@ export interface FlatPolygonOptions extends Omit<FlatPolylineOptions, 'closed'> 
 }
 
 // @public (undocumented)
-export interface FlatPolylineOptions extends ShapeStyle {
+export interface FlatPolylineOptions extends FlatShapeStyle {
 	closed?: boolean;
 	interpolate?: Interpolation;
 	// (undocumented)
@@ -452,6 +474,26 @@ export interface FlatShape {
 	setPoints(points: readonly LonLat[]): void;
 	// (undocumented)
 	setVisible(visible: boolean): void;
+}
+
+// @public (undocumented)
+export interface FlatShapeStyle {
+	ariaLabel?: string;
+	className?: string;
+	color?: string;
+	dash?: string;
+	fill?: string;
+	// (undocumented)
+	fillOpacity?: number;
+	interactive?: boolean;
+	// (undocumented)
+	onclick?: (event: PointerEvent) => void;
+	// (undocumented)
+	onpointerenter?: (event: PointerEvent) => void;
+	// (undocumented)
+	onpointerleave?: (event: PointerEvent) => void;
+	opacity?: number;
+	widthPx?: number;
 }
 
 // @public (undocumented)
@@ -504,6 +546,29 @@ export type HostOverrides = Partial<Omit<Host, 'messages'>> & {
 	messages?: Partial<CoreMessages>;
 };
 
+// @public (undocumented)
+export interface Icon extends Shape {
+	readonly element: HTMLImageElement;
+	// (undocumented)
+	setUrl(url: string): void;
+}
+
+// @public (undocumented)
+export interface IconOptions {
+	align?: readonly [number, number];
+	alt?: string;
+	// (undocumented)
+	anchor: Anchor;
+	// (undocumented)
+	className?: string;
+	heightPx?: number;
+	interactive?: boolean;
+	occlude?: boolean;
+	opacity?: number;
+	url: string;
+	widthPx?: number;
+}
+
 // @public
 export interface InertialAnchor {
 	// (undocumented)
@@ -528,6 +593,28 @@ export function jdToDate(jd: number): Date;
 export interface JumpTarget extends CameraTarget {
 	elevationDeg?: number;
 	facing?: string;
+}
+
+// @public (undocumented)
+export interface Label extends Shape {
+	readonly element: HTMLElement;
+	// (undocumented)
+	setText(text: string): void;
+}
+
+// @public (undocumented)
+export interface LabelOptions {
+	align?: readonly [number, number];
+	// (undocumented)
+	anchor: Anchor;
+	className?: string;
+	color?: string;
+	// (undocumented)
+	fontSizePx?: number;
+	interactive?: boolean;
+	occlude?: boolean;
+	// (undocumented)
+	text: string;
 }
 
 // @public (undocumented)
@@ -679,6 +766,20 @@ export function pathFor(
 	options?: PathOptions
 ): string;
 
+// @public
+export function planeBasis(normal: OffsetKm): [OffsetKm, OffsetKm];
+
+// @public (undocumented)
+export interface Polygon extends Shape {
+	setPoints(points: readonly OffsetKm[]): void;
+}
+
+// @public (undocumented)
+export interface PolygonOptions extends ShapeStyle {
+	anchor: Anchor;
+	points: readonly OffsetKm[];
+}
+
 // @public (undocumented)
 export interface Polyline {
 	// (undocumented)
@@ -778,22 +879,19 @@ export interface SceneSettings {
 	viewMode: 'map' | 'immersive';
 }
 
+// @public
+export interface Shape {
+	// (undocumented)
+	remove(): void;
+	setAnchor(anchor: Anchor): void;
+	setVisible(visible: boolean): void;
+}
+
 // @public (undocumented)
 export interface ShapeStyle {
-	ariaLabel?: string;
-	className?: string;
 	color?: string;
-	dash?: string;
 	fill?: string;
-	// (undocumented)
 	fillOpacity?: number;
-	interactive?: boolean;
-	// (undocumented)
-	onclick?: (event: PointerEvent) => void;
-	// (undocumented)
-	onpointerenter?: (event: PointerEvent) => void;
-	// (undocumented)
-	onpointerleave?: (event: PointerEvent) => void;
 	opacity?: number;
 	widthPx?: number;
 }
@@ -843,9 +941,16 @@ export function smallCircle(center: LonLat, radiusDeg: number, steps?: number): 
 // @public (undocumented)
 export class SpaceMap {
 	constructor(options?: SpaceMapOptions);
+	addCircle(options: CircleOptions): Circle;
 	addControl(control: Control<SpaceMap>, position?: ControlPosition): this;
+	addIcon(options: IconOptions): Icon;
+	addLabel(options: LabelOptions): Label;
 	addMarker(options: MarkerOptions): Marker;
+	addPolygon(options: PolygonOptions): Polygon;
 	addPolyline(options: PolylineOptions): Polyline;
+	addSurfaceCircle(options: SurfaceCircleOptions): SurfaceShape;
+	addSurfacePolygon(options: SurfacePolygonOptions): SurfaceShape;
+	addSurfacePolyline(options: SurfacePolylineOptions): SurfaceShape;
 	// @internal
 	applyInitialView(): void;
 	// @internal
@@ -853,6 +958,7 @@ export class SpaceMap {
 	// @internal
 	attribution: Control<SpaceMap> | null;
 	readonly bodySelect: GestureHandler;
+	clearDrawings(): void;
 	// (undocumented)
 	clearUserPromoted(): void;
 	// (undocumented)
@@ -975,6 +1081,48 @@ export interface SurfaceAnchor {
 	latitude: number;
 	// (undocumented)
 	longitude: number;
+}
+
+// @public (undocumented)
+export interface SurfaceCircleOptions extends ShapeStyle {
+	// (undocumented)
+	altitudeKm?: number;
+	// (undocumented)
+	body: string;
+	// (undocumented)
+	center: LonLat;
+	radiusDeg?: number;
+	radiusKm?: number;
+	// (undocumented)
+	steps?: number;
+}
+
+// @public (undocumented)
+export interface SurfacePolygonOptions extends SurfaceShapeOptions {
+	fill?: string;
+}
+
+// @public (undocumented)
+export interface SurfacePolylineOptions extends SurfaceShapeOptions {
+	closed?: boolean;
+}
+
+// @public
+export interface SurfaceShape {
+	// (undocumented)
+	remove(): void;
+	setPoints(points: readonly LonLat[]): void;
+	// (undocumented)
+	setVisible(visible: boolean): void;
+}
+
+// @public (undocumented)
+export interface SurfaceShapeOptions extends ShapeStyle {
+	altitudeKm?: number;
+	body: string;
+	interpolate?: Interpolation;
+	points: readonly LonLat[];
+	stepDeg?: number;
 }
 
 // @public (undocumented)

@@ -8,6 +8,7 @@
  * with the body, as its surface features do.
  */
 
+import type { Quaternion } from 'three';
 import { bodyQuaternion } from '$lib/math/orientation';
 import { kmToScene } from '$lib/math/units';
 import { eclipticToScene } from '$lib/math/travel/state';
@@ -46,10 +47,29 @@ function isSurface(anchor: Anchor): anchor is SurfaceAnchor {
 /** Body-fixed unit vector for lat/lon in the scene's axes, before the body's
  *  own rotation: latitude 0, longitude 0 on +X, longitude increasing east.
  *  Matches the texture convention {@link bodyQuaternion} establishes. */
-function surfaceDirection(latitude: number, longitude: number): Vec3 {
+export function surfaceDirection(latitude: number, longitude: number): Vec3 {
 	const lat = latitude * RAD;
 	const lon = longitude * RAD;
 	return [Math.cos(lat) * Math.cos(lon), Math.sin(lat), -Math.cos(lat) * Math.sin(lon)];
+}
+
+/** Rotate (x, y, z) by `q` into `out` at index `at`. Written out and given an
+ *  output buffer to stay off the heap: a surface shape turns a few thousand of
+ *  these every frame. */
+export function rotateByQuaternion(
+	q: Quaternion,
+	x: number,
+	y: number,
+	z: number,
+	out: Float64Array | Float32Array | number[],
+	at: number
+): void {
+	const tx = 2 * (q.y * z - q.z * y);
+	const ty = 2 * (q.z * x - q.x * z);
+	const tz = 2 * (q.x * y - q.y * x);
+	out[at] = x + q.w * tx + (q.y * tz - q.z * ty);
+	out[at + 1] = y + q.w * ty + (q.z * tx - q.x * tz);
+	out[at + 2] = z + q.w * tz + (q.x * ty - q.y * tx);
 }
 
 /** World position of `anchor` in scene units, or null while its body is not
@@ -67,15 +87,9 @@ export function resolveAnchor(anchor: Anchor, ctx: ContextManager, jd: number): 
 		// place is put on the unrotated sphere rather than nowhere.
 		const q = body.orientation ? bodyQuaternion(body.orientation, jd, body.nutPrec) : null;
 		if (!q) return [cx + dx * distance, cy + dy * distance, cz + dz * distance];
-		// Quaternion rotation of (dx, dy, dz), written out to stay off the heap
-		// in the per-frame path.
-		const tx = 2 * (q.y * dz - q.z * dy);
-		const ty = 2 * (q.z * dx - q.x * dz);
-		const tz = 2 * (q.x * dy - q.y * dx);
-		const rx = dx + q.w * tx + (q.y * tz - q.z * ty);
-		const ry = dy + q.w * ty + (q.z * tx - q.x * tz);
-		const rz = dz + q.w * tz + (q.x * ty - q.y * tx);
-		return [cx + rx * distance, cy + ry * distance, cz + rz * distance];
+		const turned: Vec3 = [0, 0, 0];
+		rotateByQuaternion(q, dx, dy, dz, turned, 0);
+		return [cx + turned[0] * distance, cy + turned[1] * distance, cz + turned[2] * distance];
 	}
 
 	const offset = typeof anchor.offsetKm === 'function' ? anchor.offsetKm(jd) : anchor.offsetKm;
