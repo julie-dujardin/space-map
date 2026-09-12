@@ -274,7 +274,7 @@ export async function loadSystemData(
 			}
 			const cloudMeta = bodyMeta.clouds;
 			const parentMesh = bo.mesh;
-			const initialFrame = cloudFrameForJd(currentJd, cloudMeta.frames);
+			const initialFrame = cloudFrameForJd(currentJd, cloudMeta.frames, cloudMeta.coverage);
 			if (!initialFrame) {
 				// No exported snapshot yet — skip rather than park a frameless node.
 				continue;

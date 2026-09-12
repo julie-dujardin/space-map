@@ -99,7 +99,11 @@ export function updateTextureLOD(
 		// surface tier); frame slides separately with sim time.
 		if (bo.clouds && bo.textureTier) {
 			const cloudTarget = highestAvailableTier(tierRank(bo.textureTier), bo.clouds.availableTiers);
-			const cloudFrame = cloudFrameForJd(jd, bo.clouds.availableFrames);
+			const cloudFrame = cloudFrameForJd(
+				jd,
+				bo.clouds.availableFrames,
+				bo.clouds.availableCoverage
+			);
 			if (cloudTarget && cloudFrame) {
 				loadCloudTexture(bo.clouds, cloudTarget, cloudFrame);
 			}

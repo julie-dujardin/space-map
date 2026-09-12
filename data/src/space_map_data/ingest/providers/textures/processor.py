@@ -1,10 +1,11 @@
 """TextureProcessor: drives the per-entry pipelines and DB availability flag."""
 
 import gc
+import hashlib
 import json
 import logging
 import shutil
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import py360convert
@@ -35,6 +36,43 @@ from .metadata import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def _coverage_runs(slots: list[str]) -> list[list[str]]:
+    """``[first, last]`` slot id for each contiguous run of snapshots.
+
+    Built from every slot on disk, repeats included: a frozen upstream still
+    describes that time, it just doesn't change the picture. Only a missing
+    slot breaks a run, which is what the renderer must not hold a frame across.
+    """
+    step = timedelta(hours=config.CLOUDS_SLOT_HOURS)
+    runs: list[list[str]] = []
+    previous: datetime | None = None
+    for fid in slots:
+        moment = datetime.strptime(fid, "%Y%m%d%H").replace(tzinfo=UTC)
+        if previous is not None and moment - previous == step:
+            runs[-1][1] = fid
+        else:
+            runs.append([fid, fid])
+        previous = moment
+    return runs
+
+
+def _source_digest(path: Path, cached: dict | None) -> dict:
+    """sha256 of ``path``, reused from ``cached`` while its size and mtime hold.
+
+    The downloader rewrites the current slot on every run, so a digest keyed by
+    frame id alone would go stale.
+    """
+    stat = path.stat()
+    signature = [stat.st_size, int(stat.st_mtime)]
+    if cached and cached.get("signature") == signature:
+        return cached
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return {"signature": signature, "sha256": digest.hexdigest()}
 
 
 def _refresh_cloud_credits(meta_path: Path, download_meta: dict) -> None:
@@ -758,7 +796,9 @@ class TextureProcessor:
                 continue
             seen.add(fid)
             inputs.append((fid, p))
-        target_frames = [fid for fid, _ in inputs]
+        slots = [fid for fid, _ in inputs]
+        coverage = _coverage_runs(slots)
+        existing: dict = {}
 
         object_id = config.clouds_object_id(body_id)
         out_dir = config.PROCESSED_DIR / object_id
@@ -779,16 +819,39 @@ class TextureProcessor:
                 existing = json.loads(meta_path.read_text())
             except OSError, json.JSONDecodeError:
                 existing = {}
-            if existing.get("frames") == target_frames:
+            if existing.get("slots") == slots:
                 log.debug(
-                    "skipping clouds (already processed %d frames, use force=True to reprocess)",
-                    len(target_frames),
+                    "skipping clouds (already processed %d slots, use force=True to reprocess)",
+                    len(slots),
                 )
                 _refresh_cloud_credits(meta_path, download_meta)
                 self._mark_texture_available(object_id)
                 return out_dir
 
         out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Keep only the snapshots that differ from the frame before them:
+        # upstream freezes for days at a time, and a held picture needs one
+        # file, not one per slot. Cached digests keep a rerun off a full rehash.
+        cached_digests: dict = {} if force else dict(existing.get("digests") or {})
+        digests: dict = {}
+        kept: list[tuple[str, Path]] = []
+        previous_sha: str | None = None
+        for fid, src in inputs:
+            entry = _source_digest(src, cached_digests.get(fid))
+            digests[fid] = entry
+            if entry["sha256"] == previous_sha:
+                continue
+            previous_sha = entry["sha256"]
+            kept.append((fid, src))
+        target_frames = [fid for fid, _ in kept]
+        if len(kept) < len(inputs):
+            log.info(
+                "clouds %s: %d of %d slots repeat the frame before them",
+                object_id,
+                len(inputs) - len(kept),
+                len(inputs),
+            )
 
         # Drop outputs for frames the downloader no longer has on disk so
         # the bundle doesn't accumulate ghost snapshots.
@@ -802,7 +865,7 @@ class TextureProcessor:
                 log.info("removed stale cloud frame %s", f.name)
 
         tiers: list[str] = []
-        for fid, src in inputs:
+        for fid, src in kept:
             suffix = f"_{fid}"
             if not force and (out_dir / f"low{suffix}.webp").exists():
                 # Existing output covers this frame; tier discovery falls to
@@ -835,6 +898,11 @@ class TextureProcessor:
             "type": "clouds_overlay",
             "tiers": tiers,
             "frames": target_frames,
+            "coverage": coverage,
+            # Build-only, dropped by clouds_block: the slot inventory drives the
+            # cheap skip check, the digests spare a rerun the full rehash.
+            "slots": slots,
+            "digests": digests,
             "processed_at": datetime.now(UTC).isoformat(),
         }
         meta_path.parent.mkdir(parents=True, exist_ok=True)

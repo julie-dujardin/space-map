@@ -207,11 +207,17 @@ def clouds_block(meta: dict) -> dict:
     """Per-body ``clouds`` block for systems/{bary}.json and object detail.
 
     URLs: ``/v1/textures/{clouds.id}/{tier}_{frame}.webp``.
+
+    ``frames`` lists only the snapshots that differ from the one before them,
+    so each is the start of the span it covers. ``coverage`` gives the
+    ``[first, last]`` slot of every run where snapshots exist at all — between
+    those runs there is no data, and no frame should be held across the gap.
     """
     block: dict = {
         "id": meta["id"],
         "tiers": _tiers_from_meta(meta),
         "frames": list(meta.get("frames") or []),
+        "coverage": [list(span) for span in meta.get("coverage") or []],
         "source": meta["source"],
         "organisation": meta["organisation"],
         "type": meta["type"],

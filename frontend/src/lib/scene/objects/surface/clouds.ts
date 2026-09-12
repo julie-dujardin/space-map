@@ -8,12 +8,20 @@ import { Mesh, MeshStandardMaterial, SphereGeometry, SRGBColorSpace, Texture } f
 import { versionedUrl } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/time/jd';
 
+/**
+ * Runs of real coverage as `[firstSlot, lastSlot]` ids. Between two runs the
+ * upstream published nothing, so no frame is valid there.
+ */
+export type CloudCoverage = [string, string][];
+
 /** Per-body cloud-overlay metadata — matches `clouds_block` in export/systems.py. */
 export interface CloudMeta {
 	id: string;
 	tiers: string[];
-	/** Sortable `YYYYMMDDHH` snapshot ids, ascending. Empty means no snapshots are available. */
+	/** Sortable `YYYYMMDDHH` ids, ascending — only snapshots that differ from the one
+	 *  before, so each is the start of the span it covers. Empty means none are available. */
 	frames: string[];
+	coverage?: CloudCoverage;
 	source: string;
 	organisation: string;
 	license?: string;
@@ -29,6 +37,7 @@ export interface CloudNode {
 	id: string;
 	availableTiers: string[];
 	availableFrames: string[];
+	availableCoverage?: CloudCoverage;
 	textureTier?: string;
 	textureFrame?: string;
 	textureLoading?: boolean;
@@ -78,33 +87,48 @@ function frameIdToMs(frameId: string): number {
 	return Date.UTC(year, month, day, hour);
 }
 
+/** One upstream slot; the last frame of a coverage run holds for this long. Matches `CLOUDS_SLOT_HOURS`. */
+const CLOUD_SLOT_MS = 3 * 60 * 60 * 1000;
+
+/** Is `target` inside a run of real coverage? Without `coverage` (older export), the frame span stands in. */
+function withinCoverage(target: number, frames: string[], coverage?: CloudCoverage): boolean {
+	if (!coverage) {
+		return target >= frameIdToMs(frames[0]) && target <= frameIdToMs(frames[frames.length - 1]);
+	}
+	return coverage.some(
+		([from, to]) => target >= frameIdToMs(from) && target < frameIdToMs(to) + CLOUD_SLOT_MS
+	);
+}
+
 /**
- * Pick a snapshot for `jd` (`frames` pre-sorted ascending). In range: closest
- * by wall-clock distance. Outside range: same hour-of-day on the nearest
- * boundary date — not periodic, but keeps diurnal character instead of
- * pinning the scene to whatever frame sits at the data boundary.
+ * Pick a snapshot for `jd` (`frames` pre-sorted ascending).
+ *
+ * A frame holds until the next one is published, so in covered time the answer
+ * is the last frame at or before `jd` — never the next one early, however long
+ * the upstream stood still. Outside coverage there is no data: matching the
+ * sim's hour-of-day keeps diurnal character instead of pinning the scene to
+ * whatever frame sits at the boundary.
  */
-export function cloudFrameForJd(jd: number, frames: string[]): string | undefined {
+export function cloudFrameForJd(
+	jd: number,
+	frames: string[],
+	coverage?: CloudCoverage
+): string | undefined {
 	if (frames.length === 0) return undefined;
 	const target = jdToDate(jd).getTime();
 	const firstMs = frameIdToMs(frames[0]);
-	const lastMs = frameIdToMs(frames[frames.length - 1]);
 
-	if (target >= firstMs && target <= lastMs) {
-		// Binary search for first frame at or after target; string compare works
-		// because YYYYMMDDHH sorts identically to wall time.
+	if (withinCoverage(target, frames, coverage)) {
+		// Binary search for the first frame after target, then step back to the
+		// one holding over it; YYYYMMDDHH sorts identically to wall time.
 		let lo = 0;
 		let hi = frames.length;
 		while (lo < hi) {
 			const mid = (lo + hi) >>> 1;
-			if (frameIdToMs(frames[mid]) < target) lo = mid + 1;
+			if (frameIdToMs(frames[mid]) <= target) lo = mid + 1;
 			else hi = mid;
 		}
-		if (lo === 0) return frames[0];
-		if (lo === frames.length) return frames[frames.length - 1];
-		const before = frames[lo - 1];
-		const after = frames[lo];
-		return target - frameIdToMs(before) <= frameIdToMs(after) - target ? before : after;
+		return frames[Math.max(0, lo - 1)];
 	}
 
 	// Outside the dataset — match the sim hour-of-day. `% 24` handles the wrap
@@ -156,6 +180,7 @@ export async function loadCloudNode(
 		id: meta.id,
 		availableTiers: meta.tiers,
 		availableFrames: meta.frames,
+		availableCoverage: meta.coverage,
 		textureTier: 'low',
 		textureFrame: frame
 	};

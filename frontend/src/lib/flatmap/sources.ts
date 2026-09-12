@@ -13,8 +13,11 @@ import { textureFrameForJd } from '$lib/scene/objects/body/textures';
 export interface BundleMeta {
 	id: string;
 	tiers: string[];
-	/** Snapshot ids for a bundle that changes with time; absent for a still one. */
+	/** Snapshot ids for a bundle that changes with time; absent for a still one.
+	 *  Each is the start of the span it covers. */
 	frames?: string[];
+	/** Runs of real coverage, `[firstSlot, lastSlot]`; between them there is no data. */
+	coverage?: [string, string][];
 	source: string;
 	organisation: string;
 	license?: string;
@@ -134,7 +137,7 @@ export function bundleUrl(
 ): string {
 	const id = bundle.id;
 	if (bundle.frames?.length) {
-		const frame = cloudFrameForJd(jd, bundle.frames);
+		const frame = cloudFrameForJd(jd, bundle.frames, bundle.coverage);
 		if (frame) return versionedUrl(`/v1/textures/${id}/${tier}_${frame}.webp`, 'textures');
 	}
 	const month = textureFrameForJd(jd, bundle.monthlyFrames);

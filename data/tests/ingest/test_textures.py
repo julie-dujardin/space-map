@@ -384,8 +384,13 @@ class TestProcessClouds:
 
     @staticmethod
     def _seed_snapshot(
-        clouds_dir, when: tuple[int, int, int, int], mode: str = "RGBA"
+        clouds_dir,
+        when: tuple[int, int, int, int],
+        mode: str = "RGBA",
+        fill: int | None = None,
     ) -> str:
+        """Write one snapshot. Slots differ by default so the ingest keeps them
+        all; pass one ``fill`` to two slots to stage a frozen upstream."""
         year, month, day, hour = when
         path = (
             clouds_dir
@@ -395,9 +400,10 @@ class TestProcessClouds:
             / f"{hour:02d}.png"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
+        grey = fill if fill is not None else (day * 24 + hour) % 200 + 20
         # Upstream serves greyscale+alpha as well as RGBA; the mask is in alpha
         # either way.
-        color = (255, 128) if mode == "LA" else (255, 255, 255, 128)
+        color = (grey, 128) if mode == "LA" else (grey, grey, grey, 128)
         Image.new(mode, (256, 128), color=color).save(path)
         return path.relative_to(clouds_dir).as_posix()
 
@@ -448,6 +454,41 @@ class TestProcessClouds:
         assert exported.mode == "RGBA"
         # A flattened export would be alpha 255 everywhere, hiding the surface.
         assert np.asarray(exported)[..., 3].max() < 255
+
+    def test_drops_snapshots_that_repeat_the_frame_before(self, tmp_path, monkeypatch):
+        proc, src_dir = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(src_dir)
+        self._seed_snapshot(src_dir, (2026, 5, 5, 0), fill=90)
+        self._seed_snapshot(src_dir, (2026, 5, 5, 3), fill=90)
+        self._seed_snapshot(src_dir, (2026, 5, 5, 6), fill=90)
+        self._seed_snapshot(src_dir, (2026, 5, 5, 9), fill=140)
+
+        proc._process_clouds()
+
+        out_dir = config.PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
+        meta = json.loads((out_dir / "metadata.json").read_text())
+        # The frozen run ships once, as the start of the span it covers.
+        assert meta["frames"] == ["2026050500", "2026050509"]
+        assert not (out_dir / "low_2026050503.webp").exists()
+        # Frozen time is still covered time, so the run spans every slot.
+        assert meta["coverage"] == [["2026050500", "2026050509"]]
+
+    def test_coverage_breaks_at_a_missing_slot(self, tmp_path, monkeypatch):
+        proc, src_dir = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(src_dir)
+        self._seed_snapshot(src_dir, (2026, 5, 5, 0))
+        self._seed_snapshot(src_dir, (2026, 5, 5, 3))
+        # 06:00 and 09:00 never arrived.
+        self._seed_snapshot(src_dir, (2026, 5, 5, 12))
+
+        proc._process_clouds()
+
+        out_dir = config.PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
+        meta = json.loads((out_dir / "metadata.json").read_text())
+        assert meta["coverage"] == [
+            ["2026050500", "2026050503"],
+            ["2026050512", "2026050512"],
+        ]
 
     def test_incrementally_adds_new_snapshot(self, tmp_path, monkeypatch):
         proc, src_dir = self._make_processor(monkeypatch, tmp_path)

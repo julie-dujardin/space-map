@@ -18,6 +18,10 @@ SOURCE_METADATA_PARSED_DIR = DERIVED_TEXTURES_DIR / "source-metadata" / "parsed"
 # next to a `metadata.json` describing the source.
 CLOUDS_DIR = SOURCES_TEXTURES_DIR / "clouds"
 EARTH_CLOUDS_DIR = CLOUDS_DIR / "earth"
+# Upstream publishes on a 3 h UTC grid. Consecutive slots are one step apart;
+# a larger step is a real hole in coverage, which the export reports so the
+# renderer doesn't hold one picture across it.
+CLOUDS_SLOT_HOURS = 3
 
 # Maps cloud subdirectory name → NAIF body id. Each entry's processed bundle
 # lands at `PROCESSED_DIR / f"{body_id}_clouds"`.
