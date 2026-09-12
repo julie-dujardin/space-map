@@ -74,6 +74,19 @@ describe.each(PROJECTION_IDS)('%s', (id: ProjectionId) => {
 		expect(projection.inverse(maxX * 4, maxY * 4)).toBeNull();
 	});
 
+	it('calls its world rectangular only where every parallel reaches the edge', () => {
+		// What the flag is for: a map is repeated east–west only where the copy
+		// beside it meets a straight edge rather than a curve.
+		const { minX, maxX, minY, maxY } = projection.extent;
+		const half = (maxX - minX) / 2;
+		let filled = true;
+		for (let iy = 0; iy <= 40; iy++) {
+			const row = projection.rowInverse?.(minY + ((maxY - minY) * iy) / 40);
+			if (!row || row.maxAbsX < half - 1e-9) filled = false;
+		}
+		expect(projection.rectangular).toBe(filled);
+	});
+
 	it('rotates with the central meridian', () => {
 		const turned = createProjection(id, { centerLon: 40, centerLat: 0 });
 		const plane = turned.forward(40, 0);

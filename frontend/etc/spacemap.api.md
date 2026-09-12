@@ -905,6 +905,7 @@ export interface Projection {
 	// (undocumented)
 	readonly id: ProjectionId;
 	inverse(x: number, y: number): [number, number] | null;
+	readonly rectangular: boolean;
 	rowInverse?(y: number): ProjectionRow | null;
 }
 

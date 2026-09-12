@@ -61,9 +61,15 @@ export interface Projection {
 	readonly id: ProjectionId;
 	/** Meridian down the middle of the map. */
 	readonly centerLon: number;
-	/** True when the map repeats east–west, so panning wraps and a shape near
-	 *  the seam is drawn on both sides. */
+	/** True when the map's eastern and western edges are the same meridian, so a
+	 *  line drawn across the seam jumps the width of the world. */
 	readonly cyclic: boolean;
+	/** True when the world fills its whole extent, so a copy laid beside it
+	 *  meets its edge exactly. Only such a map is repeated east–west: setting a
+	 *  pointed world against its own curve leaves lens-shaped gaps and reads as
+	 *  two worlds rather than one carrying on, so those are drawn once and
+	 *  panning stops at the edge instead of wrapping. */
+	readonly rectangular: boolean;
 	/** True when the world is a disc rather than a rectangle: the corners of the
 	 *  extent are outside the map, and a point can be hidden behind the globe. */
 	readonly azimuthal: boolean;
@@ -152,6 +158,7 @@ function equirectangular(options: ProjectionOptions): Projection {
 		id: 'equirectangular',
 		centerLon: lon0,
 		cyclic: true,
+		rectangular: true,
 		azimuthal: false,
 		extent: { minX: -Math.PI, minY: -Math.PI / 2, maxX: Math.PI, maxY: Math.PI / 2 },
 		forward: (lon, lat) => [wrapLon(lon - lon0) * DEG, lat * DEG],
@@ -204,6 +211,7 @@ function equalEarth(options: ProjectionOptions): Projection {
 		id: 'equalEarth',
 		centerLon: lon0,
 		cyclic: true,
+		rectangular: false,
 		azimuthal: false,
 		extent: sampledExtent(forward),
 		forward,
@@ -233,6 +241,7 @@ function mollweide(options: ProjectionOptions): Projection {
 		id: 'mollweide',
 		centerLon: lon0,
 		cyclic: true,
+		rectangular: false,
 		azimuthal: false,
 		extent: { minX: -2 * MW_SQRT2, minY: -MW_SQRT2, maxX: 2 * MW_SQRT2, maxY: MW_SQRT2 },
 		forward: (lon, lat) => {
@@ -272,6 +281,7 @@ function sinusoidal(options: ProjectionOptions): Projection {
 		id: 'sinusoidal',
 		centerLon: lon0,
 		cyclic: true,
+		rectangular: false,
 		azimuthal: false,
 		extent: { minX: -Math.PI, minY: -Math.PI / 2, maxX: Math.PI, maxY: Math.PI / 2 },
 		forward: (lon, lat) => {
@@ -372,6 +382,7 @@ function robinson(options: ProjectionOptions): Projection {
 		id: 'robinson',
 		centerLon: lon0,
 		cyclic: true,
+		rectangular: false,
 		azimuthal: false,
 		extent: {
 			minX: -ROBINSON_KX * Math.PI,
@@ -437,6 +448,7 @@ function orthographic(options: ProjectionOptions): Projection {
 		id: 'orthographic',
 		centerLon: lon0,
 		cyclic: false,
+		rectangular: false,
 		azimuthal: true,
 		extent: discExtent(radius),
 		forward: (lon, lat) => {
@@ -475,6 +487,7 @@ function stereographic(options: ProjectionOptions): Projection {
 		id: 'stereographic',
 		centerLon: lon0,
 		cyclic: false,
+		rectangular: false,
 		azimuthal: true,
 		extent: discExtent(radius),
 		forward: (lon, lat) => {

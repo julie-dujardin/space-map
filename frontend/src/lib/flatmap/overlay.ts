@@ -211,8 +211,11 @@ class MarkerDrawing implements Drawing, FlatMarker {
 		// A place on the far side of a globe has nowhere to be.
 		this.element.style.display = screen ? '' : 'none';
 		if (!screen) return;
+		// One element, so it goes on whichever copy of the world is in the frame.
+		const shift =
+			viewport.repeatShifts.find((s) => screen[0] + s >= 0 && screen[0] + s <= viewport.width) ?? 0;
 		this.element.style.transform =
-			`translate(${screen[0]}px, ${screen[1]}px) ` +
+			`translate(${screen[0] + shift}px, ${screen[1]}px) ` +
 			`translate(${-this.align[0] * 100}%, ${-this.align[1] * 100}%)`;
 	}
 

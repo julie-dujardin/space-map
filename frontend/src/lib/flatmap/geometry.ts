@@ -138,7 +138,27 @@ export function projectSegments(
 		previous = screen;
 	}
 	if (run.length > 1) segments.push(run);
-	return segments;
+	return repeated(segments, viewport);
+}
+
+/** The segments again at every copy of the world in the frame, leaving out a
+ *  copy that would land entirely outside it. */
+function repeated(segments: [number, number][][], viewport: Viewport): [number, number][][] {
+	const out = [...segments];
+	for (const shift of viewport.repeatShifts) {
+		if (shift === 0) continue;
+		for (const segment of segments) {
+			let min = Infinity;
+			let max = -Infinity;
+			for (const [x] of segment) {
+				if (x < min) min = x;
+				if (x > max) max = x;
+			}
+			if (min + shift > viewport.width || max + shift < 0) continue;
+			out.push(segment.map(([x, y]) => [x + shift, y]));
+		}
+	}
+	return out;
 }
 
 function formatSegment(segment: [number, number][], close: boolean): string {
@@ -253,7 +273,10 @@ export function worldOutline(viewport: Viewport, stepDeg = 2): string {
 	};
 	side(projection.centerLon - edge, -90, 90);
 	side(projection.centerLon + edge, 90, -90);
-	return points.length > 2 ? formatSegment(points, true) : '';
+	if (points.length < 3) return '';
+	return repeated([points], viewport)
+		.map((ring) => formatSegment(ring, true))
+		.join('');
 }
 
 /** The four sides of a longitude and latitude box, in order. The corners alone

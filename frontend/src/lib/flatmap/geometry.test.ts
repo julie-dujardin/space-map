@@ -104,6 +104,33 @@ describe('densify', () => {
 });
 
 describe('projectSegments', () => {
+	it('draws a line again on every copy of the world in the frame', () => {
+		// Panned east to the seam: the world's own copy fills the left half of
+		// the frame and its eastern neighbour the right half.
+		const seam = new Viewport(createProjection('equirectangular'), 800, 400, {
+			zoom: 1,
+			centerX: Math.PI,
+			centerY: 0
+		});
+		const segments = projectSegments(
+			densify([
+				{ lon: 100, lat: 0 },
+				{ lon: 140, lat: 0 }
+			]),
+			seam
+		);
+		expect(segments).toHaveLength(1);
+		const near = projectSegments(
+			densify([
+				{ lon: -170, lat: 0 },
+				{ lon: -100, lat: 0 }
+			]),
+			seam
+		);
+		expect(near).toHaveLength(2);
+		expect(near[1][0][0] - near[0][0][0]).toBeCloseTo(800);
+	});
+
 	it('is one run for a line that stays on the map', () => {
 		const segments = projectSegments(
 			densify([

@@ -57,11 +57,59 @@ describe('clampView', () => {
 		expect(view.centerY).toBeCloseTo(asked.centerY, 12);
 	});
 
+	it('wraps a world that tiles and stops a pointed one at its edge', () => {
+		const extent = createProjection('equirectangular').extent;
+		const wrapped = clamp({ zoom: 4, centerX: extent.maxX + 1, centerY: 0 }, {});
+		expect(wrapped.centerX).toBeCloseTo(extent.minX + 1, 12);
+
+		// Mollweide's seam is the point of its lens, not a straight edge, so the
+		// frame stops there rather than coming round onto a second copy.
+		const pointed = createProjection('mollweide').extent;
+		const stopped = clamp({ zoom: 4, centerX: pointed.maxX + 1, centerY: 0 }, {}, 'mollweide');
+		expect(stopped.centerX).toBeGreaterThan(0);
+		expect(stopped.centerX).toBeLessThan(pointed.maxX);
+	});
+
 	it('still keeps the frame on the map when a band would take it off', () => {
 		// The band asks for the pole; the frame may not run off the top of the map.
 		const view = clamp({ zoom: 2, centerX: 0, centerY: 3 }, { minLat: 89, maxLat: 90 });
 		const extent = createProjection('equirectangular').extent;
 		expect(view.centerY).toBeLessThanOrEqual(extent.maxY);
+	});
+});
+
+/** Where the projected world sits in a box of pixels. */
+describe('Viewport', () => {
+	const whole: ViewState = { zoom: 1, centerX: 0, centerY: 0 };
+
+	it('draws a world that tiles again beside itself, and a pointed one once', () => {
+		const repeat = (id: Parameters<typeof createProjection>[0]) =>
+			new Viewport(createProjection(id), WIDTH, HEIGHT, whole).repeatsHorizontally;
+		expect(repeat('equirectangular')).toBe(true);
+		expect(repeat('mollweide')).toBe(false);
+		expect(repeat('orthographic')).toBe(false);
+	});
+
+	it('stops repeating once the frame is wider than the world', () => {
+		// A frame wider than 2:1 leaves the world short of its sides; a copy set
+		// beside it would stand apart rather than fill a gap.
+		const wide = new Viewport(createProjection('equirectangular'), WIDTH * 2, HEIGHT, whole);
+		expect(wide.repeatsHorizontally).toBe(false);
+	});
+
+	it('offers the copies of the world that reach into the frame, its own first', () => {
+		const projection = createProjection('equirectangular');
+		// The whole world fills the frame exactly: neither neighbour shows.
+		expect(new Viewport(projection, WIDTH, HEIGHT, whole).repeatShifts).toEqual([0]);
+		// Panned east to the seam, the copy to the east fills the right half.
+		const seam = new Viewport(projection, WIDTH, HEIGHT, { ...whole, centerX: Math.PI });
+		expect(seam.repeatShifts).toEqual([0, WIDTH]);
+		// Panned west, the other one.
+		const west = new Viewport(projection, WIDTH, HEIGHT, { ...whole, centerX: -Math.PI });
+		expect(west.repeatShifts).toEqual([0, -WIDTH]);
+		expect(new Viewport(createProjection('mollweide'), WIDTH, HEIGHT, whole).repeatShifts).toEqual([
+			0
+		]);
 	});
 });
 

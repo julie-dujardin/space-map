@@ -143,21 +143,25 @@ export function nomenclatureLayer(bodyId: string, label: string): VectorLayer {
 			features = [...all].sort((a, b) => b.diameterM - a.diameterM).slice(0, NOMENCLATURE_LIMIT);
 		},
 		render(viewport, group) {
+			const shifts = viewport.repeatShifts;
 			for (const feature of features) {
 				const at = viewport.project(feature.lon, feature.lat);
-				if (!at) continue;
-				if (at[0] < 0 || at[1] < 0 || at[0] > viewport.width || at[1] > viewport.height) continue;
-				const dot = document.createElementNS(SVG_NS, 'circle');
-				dot.setAttribute('cx', at[0].toFixed(1));
-				dot.setAttribute('cy', at[1].toFixed(1));
-				dot.setAttribute('r', '1.6');
-				dot.setAttribute('class', 'sm-flat__feature-dot');
-				const text = document.createElementNS(SVG_NS, 'text');
-				text.setAttribute('x', (at[0] + 4).toFixed(1));
-				text.setAttribute('y', (at[1] + 3).toFixed(1));
-				text.setAttribute('class', 'sm-flat__feature-label');
-				text.textContent = feature.name;
-				group.append(dot, text);
+				if (!at || at[1] < 0 || at[1] > viewport.height) continue;
+				for (const shift of shifts) {
+					const x = at[0] + shift;
+					if (x < 0 || x > viewport.width) continue;
+					const dot = document.createElementNS(SVG_NS, 'circle');
+					dot.setAttribute('cx', x.toFixed(1));
+					dot.setAttribute('cy', at[1].toFixed(1));
+					dot.setAttribute('r', '1.6');
+					dot.setAttribute('class', 'sm-flat__feature-dot');
+					const text = document.createElementNS(SVG_NS, 'text');
+					text.setAttribute('x', (x + 4).toFixed(1));
+					text.setAttribute('y', (at[1] + 3).toFixed(1));
+					text.setAttribute('class', 'sm-flat__feature-label');
+					text.textContent = feature.name;
+					group.append(dot, text);
+				}
 			}
 		}
 	};

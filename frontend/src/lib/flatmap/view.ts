@@ -103,34 +103,48 @@ export class Viewport {
 		return this.projection.inverse(x, y);
 	}
 
-	/** How wide the whole world is in pixels — the distance a cyclic map repeats
-	 *  over, which is what tells a drawn line it has crossed the seam. */
+	/** How wide the whole world is in pixels — the jump that tells a drawn line
+	 *  it has crossed the seam rather than moved. */
 	get worldWidthPx(): number {
 		const { minX, maxX } = this.projection.extent;
 		return (maxX - minX) * this.scale;
 	}
 
-	/** Whether a cyclic map should be drawn again either side of itself. It
-	 *  should wherever that only ever fills a gap — which is while one copy of
-	 *  the world is still at least as wide as the frame. Once the frame is the
-	 *  wider of the two, a copy set beside the first would stand apart from it
-	 *  and read as a second world rather than the same one carrying on. */
+	/** Whether the map should be drawn again either side of itself. */
 	get repeatsHorizontally(): boolean {
-		return this.projection.cyclic && coversFrame(this.worldWidthPx, this.width);
+		return repeats(this.projection, this.worldWidthPx, this.width);
+	}
+
+	/** Screen offsets of every copy of the world that reaches into the frame,
+	 *  the map's own always first. Anything drawn on the map is drawn once per
+	 *  offset, so a shape near the seam shows on both sides of it. */
+	get repeatShifts(): number[] {
+		if (!this.repeatsHorizontally) return [0];
+		const w = this.worldWidthPx;
+		const left = this.toScreen(this.projection.extent.minX, 0)[0];
+		return [0, -w, w].filter((shift) => left + shift < this.width && left + shift + w > 0);
 	}
 }
 
-/** Whether one copy of the world still spans the frame it is drawn in. Both
- *  the wrap-around and the copies either side of it turn on this, and they
- *  have to agree: panning a map that cannot be repeated only slides it off. */
-function coversFrame(worldWidthPx: number, width: number): boolean {
-	return worldWidthPx >= width - 0.5;
+/**
+ * Whether the map carries on east and west instead of ending. That needs a
+ * world that tiles — a rectangle whose two edges are the same meridian, not a
+ * pointed one whose curve would meet another curve — and a copy wide enough
+ * that setting the next one beside it only ever fills a gap. Once the frame is
+ * the wider of the two, a second copy stands apart from the first and reads as
+ * a second world rather than the same one carrying on.
+ *
+ * Panning and drawing both turn on this, and they have to agree: wrapping a map
+ * that is not drawn again would pan it off the frame into nothing.
+ */
+function repeats(projection: Projection, worldWidthPx: number, width: number): boolean {
+	return projection.cyclic && projection.rectangular && worldWidthPx >= width - 0.5;
 }
 
 /**
  * A view held inside what there is to look at: never zoomed out past the whole
- * world, and never panned so far that the frame runs off the map. A cyclic
- * projection wraps east–west instead of stopping, the way a world map should.
+ * world, and never panned so far that the frame runs off the map. A world that
+ * tiles wraps east–west instead of stopping, the way a world map should.
  */
 export function clampView(
 	view: ViewState,
@@ -163,11 +177,10 @@ export function clampView(
 		return Math.min(mid + world / 2 - half, Math.max(mid - world / 2 + half, v));
 	};
 
-	const centerX =
-		projection.cyclic && coversFrame(worldW * scale, width)
-			? // Wrapped, not clamped: panning east past the seam comes round again.
-				((((centred.centerX - extent.minX) % worldW) + worldW) % worldW) + extent.minX
-			: axis(centred.centerX, midX, halfW, worldW);
+	const centerX = repeats(projection, worldW * scale, width)
+		? // Wrapped, not clamped: panning east past the seam comes round again.
+			((((centred.centerX - extent.minX) % worldW) + worldW) % worldW) + extent.minX
+		: axis(centred.centerX, midX, halfW, worldW);
 	return { zoom, centerX, centerY: axis(centred.centerY, midY, halfH, worldH) };
 }
 

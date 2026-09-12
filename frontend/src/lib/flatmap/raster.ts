@@ -30,6 +30,15 @@ export interface RasterLayerDraw {
 	blend: 'normal' | 'add';
 }
 
+/** A picture's own pixel size. A source that does not say — an SVG image, whose
+ *  size is whatever it is drawn at — has none to report. */
+function sourceSize(source: CanvasImageSource): [number, number] | null {
+	const width = 'width' in source ? source.width : source.codedWidth;
+	const height = 'height' in source ? source.height : source.codedHeight;
+	if (typeof width !== 'number' || typeof height !== 'number' || !width || !height) return null;
+	return [width, height];
+}
+
 /**
  * Read a decoded picture back as pixels, shrinking it to `maxWidth` first.
  *
@@ -38,11 +47,9 @@ export interface RasterLayerDraw {
  * drawn smaller than its source.
  */
 export function imageToRaster(source: CanvasImageSource, maxWidth: number): RasterImage | null {
-	const sourceWidth =
-		'width' in source && typeof source.width === 'number' ? source.width : maxWidth;
-	const sourceHeight =
-		'height' in source && typeof source.height === 'number' ? source.height : maxWidth / 2;
-	if (!sourceWidth || !sourceHeight) return null;
+	// A texture that does not know its own size is taken to be a world map at the
+	// size asked for, which is the shape every map in the export has.
+	const [sourceWidth, sourceHeight] = sourceSize(source) ?? [maxWidth, maxWidth / 2];
 	const width = Math.max(2, Math.min(sourceWidth, Math.round(maxWidth)));
 	const height = Math.max(1, Math.round((width * sourceHeight) / sourceWidth));
 	const canvas = document.createElement('canvas');
@@ -123,9 +130,10 @@ export class InverseLookup {
 		const v = (90 - line.lat) / 180;
 		const { minX, maxX } = projection.extent;
 		const worldWidth = maxX - minX;
-		// A cyclic projection accepts any abscissa, since panning past the seam
-		// has to keep working. Where the world already fits, that would paint a
-		// second copy of it beside the first, so the plane is bounded instead.
+		// A cyclic projection's inverse accepts any abscissa, since panning past
+		// the seam has to keep working. Where the map is not drawn again — a
+		// pointed world, or a frame wider than one copy of it — that would paint a
+		// second world beside the first, so the plane is bounded instead.
 		const repeating = viewport.repeatsHorizontally;
 		for (let px = 0; px < width; px++) {
 			let x = x0 + (px + 0.5) * step;
@@ -241,9 +249,14 @@ export function compositeLayers(
 /**
  * Draw the stack with the browser's own scaler, for the one projection where
  * the texture needs no resampling at all: equirectangular is the space the
- * texture is already in, so the whole world is a rectangle and the picture
- * goes down as it is. A cyclic map is drawn again either side of itself so a
- * view straddling the seam has no gap in it.
+ * texture is already in, so the whole world is a rectangle and the picture goes
+ * down as it is.
+ *
+ * It goes down as a repeating pattern rather than as copies drawn side by side.
+ * A copy is filtered against its own edge, so two of them meet in a column that
+ * belongs to neither: the picture flattens for a pixel and then steps, which
+ * reads as a hairline down the seam. A pattern's filter wraps instead, and the
+ * seam comes out as smooth as anywhere else on the map.
  */
 export function drawEquirect(
 	ctx: CanvasRenderingContext2D,
@@ -252,28 +265,37 @@ export function drawEquirect(
 ): void {
 	const { minX, maxX, minY, maxY } = viewport.projection.extent;
 	// The texture always starts at −180°, while the plane starts at the central
-	// meridian minus 180°: the strip is laid down shifted by that difference, and
-	// the copies either side carry whatever the shift pushed off the far edge.
+	// meridian minus 180°: the pattern is laid down shifted by that difference,
+	// and its own repeat carries whatever the shift pushed off the far edge.
 	const meridian = (viewport.projection.centerLon * Math.PI) / 180;
 	const [left, top] = viewport.toScreen(minX - meridian, maxY);
 	const [right, bottom] = viewport.toScreen(maxX - meridian, minY);
-	const w = right - left;
-	const h = bottom - top;
-	const repeats = viewport.repeatsHorizontally || meridian !== 0 ? [-w, 0, w] : [0];
+	// Where the pattern is allowed to show: right across the canvas while the map
+	// carries on either side of itself, and otherwise the world's own width, so
+	// the repeat that rotates the meridian does not spill past the map's edge.
+	const from = viewport.repeatsHorizontally ? 0 : viewport.toScreen(minX, maxY)[0];
+	const to = viewport.repeatsHorizontally ? ctx.canvas.width : viewport.toScreen(maxX, maxY)[0];
+	// Saved and restored, so the pattern is not left on the context holding a
+	// picture the next draw has no use for.
+	ctx.save();
 	ctx.imageSmoothingEnabled = true;
 	ctx.imageSmoothingQuality = 'high';
 	for (const layer of layers) {
 		if (layer.opacity <= 0) continue;
+		const size = sourceSize(layer.image);
+		const pattern = size && ctx.createPattern(layer.image, 'repeat-x');
+		if (!pattern) continue;
+		pattern.setTransform(
+			new DOMMatrix()
+				.translateSelf(left, top)
+				.scaleSelf((right - left) / size[0], (bottom - top) / size[1])
+		);
 		ctx.globalAlpha = layer.opacity;
 		ctx.globalCompositeOperation = layer.blend === 'add' ? 'lighter' : 'source-over';
-		for (const shift of repeats) {
-			// Skip a copy that lands entirely outside the canvas.
-			if (left + shift > ctx.canvas.width || left + shift + w < 0) continue;
-			ctx.drawImage(layer.image, left + shift, top, w, h);
-		}
+		ctx.fillStyle = pattern;
+		ctx.fillRect(from, top, to - from, bottom - top);
 	}
-	ctx.globalAlpha = 1;
-	ctx.globalCompositeOperation = 'source-over';
+	ctx.restore();
 }
 
 /**
