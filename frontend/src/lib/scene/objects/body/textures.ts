@@ -71,6 +71,9 @@ async function swapBodyTexture(
 	textureLoader: TextureLoader
 ): Promise<void> {
 	if (!bo.mesh) return;
+	// A host has said what this body looks like: fetching a tier of the map's
+	// own would only download a picture to be taken straight back off.
+	if (bo.appearance?.surfaceOwned) return;
 	const fileId = bo.body.data.id;
 	const gen = (bo.textureLoadGen ??= 0);
 	bo.textureLoading = true;

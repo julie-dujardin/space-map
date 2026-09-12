@@ -198,6 +198,157 @@ Labels and icons are elements, so listen to them directly through their
 since the camera is dragged through the layer they sit in. Shapes drawn as
 geometry are not clickable.
 
+### Objects of your own
+
+A spacecraft, a station, a body the export has never heard of: your own thing on
+the map, moving under its own trajectory and drawn with your own model.
+
+```js
+const sat = map.objects.add({
+	id: 'my-sat',
+	name: 'My Satellite',
+	position: tle(line1, line2),
+	model: { object3d: myMesh, scaleM: 12, minPx: 24 },
+	label: true
+});
+
+map.objects.get('my-sat');
+map.objects.all();
+sat.remove();
+map.objects.clear();
+```
+
+**The map ships no model loader.** `object3d` is a three.js `Object3D` you have
+already built or loaded — a mesh of your own, or a GLB you put through your own
+`GLTFLoader`. That keeps a loader, its Draco and KTX2 decoders and their WASM out
+of a bundle every reader downloads, for a feature most embeds never use, and it
+leaves you the loader you already have rather than one this package chose for
+you. From npm, three.js is a peer dependency: your copy is the map's copy, and
+there is nothing to reconcile. From the CDN script the map's three.js is bundled
+inside it and private, so a page that builds a model loads its own copy; that
+works, since all the map does with the object is put it in a scene and place it,
+but the package is the way to do this without two copies of three.js on the page.
+
+`scaleM` is how big the model is drawn, in metres across its longest dimension
+— the real size, arrays and booms deployed. Left out, it is drawn at the size it
+was built. A twelve-metre satellite is nothing at all from a planetary view, so
+`minPx` gives it a floor in pixels: below that it is drawn bigger than life,
+above it, true to size.
+
+Four constructors say where an object is, and any of them can be used anywhere
+an anchor can — a marker, a drawing, a camera pose:
+
+```js
+import { elements, fixed, kmToAu, samples, tle } from 'spacemap';
+
+// Parked: on the ground, or at an offset from a body's centre.
+fixed({ body: 'naif-499', latitude: 18.4, longitude: 77.5, altitudeKm: 0 });
+fixed({ body: 'naif-499', offsetKm: [0, 20000, 0] });
+
+// A list of states, read between.
+samples({ body: 'naif-399', samples: [{ jd, km: [x, y, z] }, ...] });
+
+// A Keplerian orbit, propagated from its epoch.
+elements({
+	body: 'naif-399',
+	elements: {
+		a: kmToAu(6878), // semi-major axis, in AU
+		e: 0.001,
+		i: 51.6, // inclination, degrees
+		om: 247, // longitude of the ascending node
+		w: 130, // argument of pericentre
+		ma: 325, // mean anomaly at the epoch
+		n: 5658, // mean motion, degrees a day
+		epoch: 2460584.5, // Julian date
+		equatorial: true // referenced to Earth's equator, not the ecliptic
+	}
+});
+
+// Two lines of a NORAD element set, propagated with SGP4 round Earth.
+tle(line1, line2);
+```
+
+Offsets and states are kilometres on ecliptic J2000 axes, measured from the body
+they name — the Sun when they name none. Orbital elements are the export's own,
+which means the semi-major axis is in astronomical units: the one distance on
+this surface that is not in kilometres, because that is how elements are quoted
+everywhere the map reads them. `kmToAu` is there for that line alone. Set
+`equatorial` when the angles are referenced to Earth's equator, as a TLE's are.
+
+Between two states the path is a cubic through both of them, tangent to the
+slope their neighbours imply, which is the curve a coasting object actually
+follows — a straight line between states would cut every corner of an orbit.
+States may be given in any order and at any spacing; they are read at their own
+dates. **Outside the dates the states cover, the object is not drawn.** A list
+that has run out is not evidence of where anything is, and the map would rather
+show nothing than park a probe at its last known place. A TLE is the same the
+other way: SGP4 propagates it as far as you ask, accuracy falling away from the
+element set's epoch, and a date it cannot be propagated to — a decayed satellite
+— leaves the object undrawn. Keplerian elements are defined at every date, so an
+object on them is always somewhere.
+
+What an object takes part in, and what it does not, is worth saying plainly. It
+is drawn in the scene beside the bodies, so **a body in front of it hides it and
+it hides what is behind it**, and it holds its place as the map's origin moves
+from body to body. `label: true` writes its name beside it in the map's own
+label style, `occludeLabel` hiding that while the object is round the far side.
+
+It is **not** a body. `getBody` does not know it, `flyTo` cannot reach it, a
+click does not select it — the map resolves a click through a pass over its own
+objects, which a host object has no id in — and it draws no orbit trail of its
+own. Those all read the published catalogue, and an object of yours is not in
+it. What you get instead is its position, at any date you like, which is enough
+to do the rest yourself:
+
+```js
+sat.positionKm(map.clock.jd); // [x, y, z] km from the body it is measured from
+
+// Following it: its position is an anchor, so a held camera takes it as a
+// target, and a standoff behind it as its own place.
+const hold = map.holdCamera();
+map.on('frame', ({ jd }) => {
+	const km = sat.positionKm(jd);
+	if (!km) return;
+	hold.set({
+		position: { body: sat.position.body, offsetKm: [km[0] + 500, km[1], km[2] + 200] },
+		target: sat.position
+	});
+});
+
+// A trail: sample the trajectory and hand the points to a polyline.
+const points = [];
+for (let i = -60; i <= 0; i++) points.push(sat.positionKm(map.clock.jd + i / 1440));
+map.addPolyline({ anchor: { body: 'naif-399' }, points: points.filter(Boolean), fade: true });
+```
+
+`clearDrawings()` leaves objects alone — they are not drawings — and
+`map.objects.clear()` takes only them.
+
+### Its own imagery on a body
+
+A body the map already knows can wear your pictures instead of the export's:
+
+```js
+map.setBodyAppearance('naif-499', { surface: url, night: url, clouds: url });
+map.setBodyAppearance('naif-499', {}); // back to the map's own
+```
+
+Each is a URL the browser can load — an equirectangular map, east to the right,
+longitude 0 in the middle, which is how every body's imagery is drawn. `night`
+is the lights on the unlit side, `clouds` a layer over the surface whose alpha
+is the cover; a body with neither of its own gets one built for it. The set is
+replaced whole, so what a call leaves out goes back to the map's own picture.
+
+**A picture given here is what the body wears at every distance.** The map picks
+its own imagery by how much of the screen the body fills, stepping up a tier as
+you approach; there is nothing to pick once a host has said what the body looks
+like, so that pass stops fetching for it and, every frame, checks that what is on
+the body is still yours — a system reload, a defocus or a lost GPU context puts
+it straight back.
+
+The flat map needs nothing of its own for this: its pictures are layers already,
+and `addRasterLayer` puts one of yours over or in place of them.
+
 ### Layers
 
 What the map draws is a set of layers, each switched by id — the kinds of

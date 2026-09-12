@@ -33,7 +33,8 @@ export interface CloudMeta {
 export interface CloudNode {
 	mesh: Mesh;
 	material: MeshStandardMaterial;
-	/** Export bundle id (e.g. `naif-399_clouds`) — base path for tier URLs. */
+	/** Export bundle id (e.g. `naif-399_clouds`) — base path for tier URLs.
+	 *  Empty on a layer built for a host's own picture, which has no tiers. */
 	id: string;
 	availableTiers: string[];
 	availableFrames: string[];
@@ -159,7 +160,27 @@ export async function loadCloudNode(
 ): Promise<CloudNode | null> {
 	const texture = await fetchCloudTexture(meta.id, 'low', frame);
 	if (!texture) return null;
+	const node = mountCloudSphere(parentMesh, parentRadiusScene, texture, radiusRatio);
+	node.id = meta.id;
+	node.availableTiers = meta.tiers;
+	node.availableFrames = meta.frames;
+	node.availableCoverage = meta.coverage;
+	node.textureTier = 'low';
+	node.textureFrame = frame;
+	return node;
+}
 
+/**
+ * Build the sphere itself round `parentMesh` and hang `texture` on it, with no
+ * tiers and no snapshots to choose among. The export's own layer fills those
+ * in; a host's own cloud picture has none to fill in.
+ */
+export function mountCloudSphere(
+	parentMesh: Mesh,
+	parentRadiusScene: number,
+	texture: Texture,
+	radiusRatio = CLOUD_RADIUS_OFFSET
+): CloudNode {
 	const material = new MeshStandardMaterial({
 		map: texture,
 		transparent: true,
@@ -174,16 +195,7 @@ export async function loadCloudNode(
 	mesh.renderOrder = 1;
 	parentMesh.add(mesh);
 
-	return {
-		mesh,
-		material,
-		id: meta.id,
-		availableTiers: meta.tiers,
-		availableFrames: meta.frames,
-		availableCoverage: meta.coverage,
-		textureTier: 'low',
-		textureFrame: frame
-	};
+	return { mesh, material, id: '', availableTiers: [], availableFrames: [] };
 }
 
 /**

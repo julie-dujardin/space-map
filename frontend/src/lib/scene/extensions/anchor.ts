@@ -21,10 +21,13 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 export type OffsetKm = readonly [number, number, number];
 
 /** Fixed in the body's inertial frame: it travels with the body but does not
- *  turn with it. The body's centre when the offset is left out. */
+ *  turn with it. The body's centre when the offset is left out. An offset read
+ *  from a function is a trajectory — see {@link samples}, {@link elements} and
+ *  {@link tle} — and a date it says nothing about returns null, which leaves
+ *  whatever the anchor carries undrawn. */
 export interface InertialAnchor {
 	body: string;
-	offsetKm?: OffsetKm | ((jd: number) => OffsetKm);
+	offsetKm?: OffsetKm | ((jd: number) => OffsetKm | null);
 }
 
 /** A place on (or above) the body's surface, turning with it. */
@@ -74,7 +77,7 @@ export function rotateByQuaternion(
 
 /** World position of `anchor` in scene units, or null while its body is not
  *  loaded — which is normal: an embed can mark a place the reader has not
- *  travelled to yet. */
+ *  travelled to yet — or while a moving offset says nothing at this date. */
 export function resolveAnchor(anchor: Anchor, ctx: ContextManager, jd: number): Vec3 | null {
 	const body = ctx.getBody(anchor.body);
 	if (!body) return null;
@@ -93,7 +96,10 @@ export function resolveAnchor(anchor: Anchor, ctx: ContextManager, jd: number): 
 	}
 
 	const offset = typeof anchor.offsetKm === 'function' ? anchor.offsetKm(jd) : anchor.offsetKm;
-	if (!offset) return [cx, cy, cz];
+	// No offset at all is the body's centre; a trajectory that says nothing at
+	// this date is nowhere.
+	if (offset === null) return null;
+	if (offset === undefined) return [cx, cy, cz];
 	const [ox, oy, oz] = eclipticToScene(offset as Vec3);
 	return [cx + ox, cy + oy, cz + oz];
 }

@@ -258,7 +258,15 @@ export default defineConfig(({ mode }) => {
 				: [
 						// The demos ship next to the CDN bundle, so `vite preview` serves
 						// them from an origin that is neither the app's nor the data's.
-						copied([here('./src/sdk/demo.html'), here('./src/sdk/flatmap.html')]),
+						// three.js goes with them, unbundled: the demo builds a mesh of
+						// its own, and a page on the CDN copy has no way into the one
+						// inside it. It is the demo's dependency, not the SDK's.
+						copied([
+							here('./src/sdk/demo.html'),
+							here('./src/sdk/flatmap.html'),
+							here('./node_modules/three/build/three.module.min.js'),
+							here('./node_modules/three/build/three.core.min.js')
+						]),
 						sizeBudget(here('./dist/sdk'), 'spacemap.iife.js')
 					]
 		],

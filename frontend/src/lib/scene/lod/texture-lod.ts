@@ -11,6 +11,7 @@ import { cloudFrameForJd, loadCloudTexture } from '$lib/scene/objects/surface/cl
 import { swapDisplacementTier } from '$lib/scene/objects/surface/displacement';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import { maxTextureTier } from '$lib/scene/render-tier';
+import type { BodyAppearances } from '$lib/scene/objects/body/appearance';
 
 /** DEM tier by altitude (in body radii from the center, like `altitudeRadii`),
  *  with wide hysteresis — a swap is a multi-MB fetch + full CPU decode. */
@@ -30,8 +31,12 @@ export function updateTextureLOD(
 	ctx: ContextManager,
 	textureLoader: TextureLoader,
 	focusedId: string | undefined,
-	jd: number
+	jd: number,
+	appearances: BodyAppearances
 ): void {
+	// Before the tier work rather than after it: a host's picture is not one of
+	// the map's tiers, and the pass below must see that it is already there.
+	appearances.apply(bodyObjects, textureLoader);
 	const fovRad = (camera.fov * Math.PI) / 180;
 	const screenH = renderer.domElement.clientHeight;
 	const projScale = screenH / (2 * Math.tan(fovRad / 2));

@@ -68,6 +68,7 @@ import {
 	recordAtmospherePerf
 } from './objects/surface/atmosphere-quality';
 import { loadBodyTexture, unloadBodyTexture } from './objects/body/textures';
+import { BodyAppearances, type BodyAppearance } from './objects/body/appearance';
 import { applyOrientation, bodyQuaternion } from '$lib/math/orientation';
 import {
 	isModelBearing,
@@ -358,6 +359,8 @@ export class SceneRenderer {
 	private stashedSky: Scene['background'] = null;
 	private namesShown = true;
 	private readonly textureLoader = new TextureLoader();
+	/** Pictures a host has put on bodies of the map's own. */
+	private readonly appearances = new BodyAppearances();
 	private readonly shadowLight: DirectionalLight;
 	/** Both scenes' ambient fills; driven together by the high-ambient toggle. */
 	private readonly ambientLights: AmbientLight[];
@@ -1064,6 +1067,7 @@ export class SceneRenderer {
 			jd: this.clock.jd,
 			basis: this.focus.focusTruePos,
 			camera: this.camera,
+			viewportPx: this.viewportH,
 			ctx: this.ctx
 		});
 
@@ -1154,7 +1158,8 @@ export class SceneRenderer {
 			this.ctx,
 			this.textureLoader,
 			focusedIdLod,
-			this.clock.jd
+			this.clock.jd,
+			this.appearances
 		);
 		updateSphereLOD(this.bodyObjects, this.camera, this.renderer, this.ctx, focusedIdLod);
 
@@ -2294,6 +2299,12 @@ export class SceneRenderer {
 			focusedBody: this.focusController.current,
 			cameraDistanceScene: this.getCameraState().distance
 		});
+	}
+
+	/** Give a body the host's own pictures, or take them back off. The change
+	 *  lands on the next frame, as every other drawing decision does. */
+	setBodyAppearance(id: string, appearance: BodyAppearance): void {
+		this.appearances.set(id, appearance);
 	}
 
 	setNorthReference(id: string | null): void {

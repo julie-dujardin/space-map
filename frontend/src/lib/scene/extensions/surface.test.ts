@@ -24,7 +24,7 @@ function fakeCtx(position: [number, number, number]): ContextManager {
 }
 
 function frame(ctx: ContextManager, basis: [number, number, number]): ExtensionFrame {
-	return { jd: 2460000, basis, camera: new PerspectiveCamera(), ctx };
+	return { jd: 2460000, basis, camera: new PerspectiveCamera(), viewportPx: 900, ctx };
 }
 
 /** Vertices of one of the shape's meshes, as the side pairs the fat line draws

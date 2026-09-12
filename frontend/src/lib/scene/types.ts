@@ -4,6 +4,7 @@ import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import type { LabelAnnotation } from './label/annotations';
 import type { RingNode } from './objects/surface/rings';
 import type { CloudNode } from './objects/surface/clouds';
+import type { AppliedAppearance } from './objects/body/appearance';
 import type { AtmosphereNode } from './objects/surface/atmosphere';
 import type { EclipseSelfUniforms } from './objects/surface/eclipse-shadow';
 import type { SunTransmittanceUniforms } from './objects/surface/sun-transmittance';
@@ -107,6 +108,9 @@ export interface BodyObjects {
 	/** Emissive night-lights map. Stays at the low tier — only sampled on the
 	 *  unlit side, so fine detail isn't worth the bandwidth. */
 	emissiveMap: Texture | null;
+	/** The host's own pictures on this body, and the map's own that they
+	 *  displaced. Undefined on a body no host has re-dressed. */
+	appearance?: AppliedAppearance;
 	/** Displacement/height map. Starts at the low tier; the texture-LOD pass
 	 *  upgrades it by altitude so the terrain window has data to refine into. */
 	displacementMap: Texture | null;

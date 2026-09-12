@@ -212,6 +212,33 @@
 			<div class="row">
 				<button id="cleardrawings" type="button">Clear every drawing</button>
 			</div>
+			<h2>Objects of your own</h2>
+			<p>
+				Your own thing on the map, moving under its own trajectory. The SDK ships no loader, so the
+				model is a three.js <code>Object3D</code> you build or load yourself — this page builds one.
+			</p>
+			<div class="row">
+				<button id="objtle" type="button">Satellite (TLE)</button>
+				<button id="objelements" type="button">Moon (elements)</button>
+			</div>
+			<div class="row">
+				<button id="objsamples" type="button">Probe (states)</button>
+				<button id="objfixed" type="button">Beacon (fixed)</button>
+			</div>
+			<div class="row">
+				<button id="objfollow" type="button">Follow the last one</button>
+				<button id="objclear" type="button">Clear objects</button>
+			</div>
+			<p><code id="objwhere"></code></p>
+			<h2>Its own imagery</h2>
+			<p>
+				A picture of your own on a body the map already knows, at every distance: fly right in and
+				the tier swap does not take it back off.
+			</p>
+			<div class="row">
+				<button id="dress" type="button">Re-dress this body</button>
+				<button id="undress" type="button">Give it its own back</button>
+			</div>
 			<div class="row">
 				<button id="parent" type="button">Parent body</button>
 				<button id="play" type="button">Pause</button>
@@ -258,7 +285,11 @@
 			<pre id="log"></pre>
 		</aside>
 		<script type="module">
-			import { createMap, jdToDate } from './spacemap.js';
+			import { createMap, dateToJD, elements, jdToDate, kmToAu, samples, tle } from './spacemap.js';
+			// The host's own three.js, next to the demo rather than inside the
+			// bundle: the map's copy is private to it, so a page that builds a
+			// mesh brings one of its own.
+			import * as THREE from './three.module.min.js';
 
 			// ?data=<export root> ?lang=<bcp47> ?body=<object id>
 			const params = new URLSearchParams(location.search);
@@ -672,6 +703,246 @@
 				map.setLimits({});
 				showLimits();
 				log('limits cleared');
+			});
+
+			// -- objects of the host's own ------------------------------------
+			// A craft built here, in the page's own three.js: a bus, two arrays
+			// and a dish. Unlit materials, so it reads the same wherever the Sun
+			// is; a MeshStandardMaterial would be lit by the scene like a body.
+			const buildCraft = (color) => {
+				const craft = new THREE.Group();
+				const bus = new THREE.Mesh(
+					new THREE.BoxGeometry(0.35, 0.3, 0.3),
+					new THREE.MeshBasicMaterial({ color })
+				);
+				craft.add(bus);
+				const panel = new THREE.BoxGeometry(0.55, 0.02, 0.28);
+				const panelMaterial = new THREE.MeshBasicMaterial({ color: '#2b4a8a' });
+				for (const side of [-1, 1]) {
+					const wing = new THREE.Mesh(panel, panelMaterial);
+					wing.position.x = side * 0.5;
+					craft.add(wing);
+				}
+				const dish = new THREE.Mesh(
+					new THREE.ConeGeometry(0.12, 0.18, 12),
+					new THREE.MeshBasicMaterial({ color: '#dddddd' })
+				);
+				dish.position.y = 0.22;
+				craft.add(dish);
+				return craft;
+			};
+			// The builder too, for poking at from the console.
+			window.buildCraft = buildCraft;
+
+			const objects = [];
+			const addObject = (options) => {
+				const object = map.objects.add(options);
+				objects.push(object);
+				log(`object ${object.id} on ${object.position.body}`);
+				return object;
+			};
+
+			// The ISS, from a two-line element set. SGP4 propagates it, so it
+			// really goes round Earth as the clock runs.
+			const ISS = [
+				'1 25544U 98067A   24274.51782528 -.00002182  00000-0 -11606-4 0  9990',
+				'2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.72125391563537'
+			];
+			$('objtle').addEventListener('click', () => {
+				addObject({
+					id: 'iss',
+					name: 'ISS (TLE)',
+					position: tle(ISS[0], ISS[1]),
+					// 109 m across, which is nothing from a planetary view: the
+					// pixel floor keeps it visible without pretending it is bigger.
+					model: { object3d: buildCraft('#ffcc55'), scaleM: 109, minPx: 40 },
+					label: true,
+					occludeLabel: true
+				});
+			});
+
+			// A moon of your own: the export's own orbital elements, round
+			// whatever is focused. `a` is in astronomical units, as elements are
+			// everywhere the map reads them.
+			$('objelements').addEventListener('click', () => {
+				const body = map.getFocusedBody();
+				if (!body) return;
+				const orbitKm = Math.max((body.radiusKm ?? 2000) * 3, 4000);
+				addObject({
+					id: `moon-${body.id}`,
+					name: 'Fictional moon',
+					position: elements({
+						body: body.id,
+						elements: {
+							a: kmToAu(orbitKm),
+							e: 0.1,
+							i: 25,
+							om: 40,
+							w: 0,
+							ma: 0,
+							n: 60,
+							epoch: dateToJD(new Date())
+						}
+					}),
+					model: { object3d: buildCraft('#66ffcc'), scaleM: orbitKm * 20, minPx: 40 },
+					label: true
+				});
+			});
+
+			// A list of states the map reads between. Outside the dates they
+			// cover the object is not drawn — run the clock on and watch it go.
+			$('objsamples').addEventListener('click', () => {
+				const body = map.getFocusedBody();
+				if (!body) return;
+				const now = dateToJD(new Date());
+				const orbitKm = Math.max((body.radiusKm ?? 2000) * 5, 8000);
+				const states = [];
+				for (let i = 0; i <= 12; i++) {
+					const a = (i / 12) * Math.PI * 1.5;
+					states.push({
+						jd: now - 0.5 + i / 12,
+						km: [orbitKm * Math.cos(a), orbitKm * Math.sin(a), orbitKm * 0.3 * Math.sin(a * 2)]
+					});
+				}
+				addObject({
+					id: `probe-${body.id}`,
+					name: 'Sampled probe',
+					position: samples({ body: body.id, samples: states }),
+					model: { object3d: buildCraft('#ff77aa'), scaleM: orbitKm * 30, minPx: 40 },
+					label: true
+				});
+			});
+
+			// Parked on the ground: the same anchor a marker takes.
+			$('objfixed').addEventListener('click', () => {
+				const body = map.getFocusedBody();
+				if (!body) return;
+				const [latitude, longitude] = somewhere();
+				addObject({
+					name: 'Beacon',
+					position: { body: body.id, latitude, longitude, altitudeKm: 0 },
+					model: {
+						object3d: buildCraft('#88ddff'),
+						scaleM: Math.max((body.radiusKm ?? 1000) * 20, 20000),
+						minPx: 40
+					},
+					label: true,
+					occludeLabel: true
+				});
+			});
+
+			// Following one: an object's position is an anchor, so a held camera
+			// takes it as its target, and a standoff behind it as its own place.
+			$('objfollow').addEventListener('click', () => {
+				const object = objects[objects.length - 1];
+				if (!object || hold) return;
+				const at = object.positionKm(map.clock.jd);
+				if (!at) return;
+				const standoff = Math.max(Math.hypot(...at) * 0.6, 500);
+				hold = map.holdCamera();
+				offFrame = map.on('frame', ({ jd }) => {
+					const km = object.positionKm(jd);
+					if (!km) return;
+					hold.set({
+						position: {
+							body: object.position.body,
+							offsetKm: [km[0] + standoff, km[1] + standoff * 0.4, km[2] + standoff * 0.5]
+						},
+						target: object.position
+					});
+				});
+				$('release').disabled = false;
+				$('orbit').disabled = true;
+				log(`following ${object.name ?? object.id}`);
+			});
+
+			$('objclear').addEventListener('click', () => {
+				map.objects.clear();
+				objects.length = 0;
+				log('objects cleared');
+			});
+
+			setInterval(() => {
+				const object = objects[objects.length - 1];
+				const km = object?.positionKm(map.clock.jd);
+				$('objwhere').textContent = km
+					? `${object.name ?? object.id} at ${km.map((v) => Math.round(v)).join(', ')} km from ${object.position.body}`
+					: '';
+			}, 500);
+
+			// -- imagery of the host's own -------------------------------------
+			// Pictures drawn here rather than fetched, so the demo needs no
+			// asset of its own. Equirectangular, as every body's map is.
+			const picture = (draw) => {
+				const canvas = document.createElement('canvas');
+				canvas.width = 1024;
+				canvas.height = 512;
+				draw(canvas.getContext('2d'), canvas.width, canvas.height);
+				return canvas.toDataURL('image/png');
+			};
+			const surfacePicture = (label) =>
+				picture((g, w, h) => {
+					for (let x = 0; x < 16; x++) {
+						for (let y = 0; y < 8; y++) {
+							g.fillStyle = (x + y) % 2 ? '#1d4f7a' : '#8a3b1d';
+							g.fillRect((x * w) / 16, (y * h) / 8, w / 16, h / 8);
+						}
+					}
+					g.strokeStyle = 'rgba(255,255,255,0.6)';
+					for (let lon = 0; lon <= 16; lon++) {
+						g.beginPath();
+						g.moveTo((lon * w) / 16, 0);
+						g.lineTo((lon * w) / 16, h);
+						g.stroke();
+					}
+					g.fillStyle = '#ffffff';
+					g.font = 'bold 64px system-ui, sans-serif';
+					g.textAlign = 'center';
+					g.fillText(label, w / 2, h / 2 + 20);
+				});
+			const nightPicture = () =>
+				picture((g, w, h) => {
+					g.fillStyle = '#000000';
+					g.fillRect(0, 0, w, h);
+					g.fillStyle = '#ffdd88';
+					for (let i = 0; i < 400; i++) {
+						const x = Math.random() * w;
+						const y = h * 0.2 + Math.random() * h * 0.6;
+						g.fillRect(x, y, 3, 3);
+					}
+				});
+			const cloudPicture = () =>
+				picture((g, w, h) => {
+					g.clearRect(0, 0, w, h);
+					for (let i = 0; i < 22; i++) {
+						const x = Math.random() * w;
+						const y = Math.random() * h;
+						const r = 20 + Math.random() * 70;
+						const blob = g.createRadialGradient(x, y, 0, x, y, r);
+						blob.addColorStop(0, 'rgba(255,255,255,0.55)');
+						blob.addColorStop(1, 'rgba(255,255,255,0)');
+						g.fillStyle = blob;
+						g.beginPath();
+						g.arc(x, y, r, 0, Math.PI * 2);
+						g.fill();
+					}
+				});
+
+			$('dress').addEventListener('click', () => {
+				const body = map.getFocusedBody();
+				if (!body) return;
+				map.setBodyAppearance(body.id, {
+					surface: surfacePicture(name(body).toUpperCase()),
+					night: nightPicture(),
+					clouds: cloudPicture()
+				});
+				log(`${name(body)} re-dressed`);
+			});
+			$('undress').addEventListener('click', () => {
+				const body = map.getFocusedBody();
+				if (!body) return;
+				map.setBodyAppearance(body.id, {});
+				log(`${name(body)} back to its own imagery`);
 			});
 
 			$('speed').addEventListener('change', (e) => map.clock.setTimeScale(Number(e.target.value)));

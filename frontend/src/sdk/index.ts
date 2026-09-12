@@ -177,6 +177,20 @@ export type {
 	SurfaceShapeOptions
 } from '$lib/scene/extensions/surface';
 export type { Shape, ShapeStyle } from '$lib/scene/extensions/style';
+export type {
+	MapObject,
+	MapObjectModel,
+	MapObjectOptions,
+	MapObjects
+} from '$lib/scene/extensions/objects';
+export { elements, fixed, kmToAu, samples, tle } from '$lib/scene/extensions/trajectory';
+export type {
+	ElementsOptions,
+	SamplesOptions,
+	TrajectorySample
+} from '$lib/scene/extensions/trajectory';
+export type { OrbitalElements } from '$lib/types/objects';
+export type { BodyAppearance } from '$lib/scene/objects/body/appearance';
 export { circlePoints, planeBasis } from '$lib/scene/extensions/geometry';
 export type { CirclePointsOptions } from '$lib/scene/extensions/geometry';
 export type {

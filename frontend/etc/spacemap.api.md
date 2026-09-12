@@ -4,6 +4,7 @@
 
 ```ts
 import { Group } from 'three';
+import { Object3D } from 'three';
 import { Object3DEventMap } from 'three';
 import { PerspectiveCamera } from 'three';
 import { Quaternion } from 'three';
@@ -33,6 +34,13 @@ interface Body_2 {
 	type: BodyType;
 }
 export { Body_2 as Body };
+
+// @public
+export interface BodyAppearance {
+	clouds?: string;
+	night?: string;
+	surface?: string;
+}
 
 // @public
 export type BodyType =
@@ -227,6 +235,15 @@ export function dateToJD(date: Date): number;
 // @public
 export function defaultSceneSettings(): SceneSettings;
 
+// @public
+export function elements(options: ElementsOptions): InertialAnchor;
+
+// @public (undocumented)
+export interface ElementsOptions {
+	body?: string;
+	elements: OrbitalElements;
+}
+
 // @public (undocumented)
 export interface Extent {
 	// (undocumented)
@@ -261,6 +278,9 @@ export interface FeatureTarget extends CameraTarget {
 	// (undocumented)
 	feature: FeatureRef;
 }
+
+// @public
+export function fixed(place: Anchor): Anchor;
 
 // @public (undocumented)
 export class FlatAttributionControl implements Control<FlatMap> {
@@ -574,7 +594,7 @@ export interface InertialAnchor {
 	// (undocumented)
 	body: string;
 	// (undocumented)
-	offsetKm?: OffsetKm | ((jd: number) => OffsetKm);
+	offsetKm?: OffsetKm | ((jd: number) => OffsetKm | null);
 }
 
 // @public
@@ -594,6 +614,9 @@ export interface JumpTarget extends CameraTarget {
 	elevationDeg?: number;
 	facing?: string;
 }
+
+// @public
+export function kmToAu(km: number): number;
 
 // @public (undocumented)
 export interface Label extends Shape {
@@ -696,6 +719,48 @@ export type MapGesture = 'dragRotate' | 'scrollZoom' | 'keyboard' | 'bodySelect'
 // @public (undocumented)
 export type MapLayerId = (typeof MAP_LAYERS)[number];
 
+// @public
+export interface MapObject {
+	// (undocumented)
+	readonly id: string;
+	// (undocumented)
+	readonly name: string | null;
+	readonly position: Anchor;
+	positionKm(jd: number): readonly [number, number, number] | null;
+	// (undocumented)
+	remove(): void;
+	setPosition(position: Anchor): void;
+	// (undocumented)
+	setVisible(visible: boolean): void;
+}
+
+// @public (undocumented)
+export interface MapObjectModel {
+	minPx?: number;
+	object3d: Object3D;
+	scaleM?: number;
+}
+
+// @public (undocumented)
+export interface MapObjectOptions {
+	id?: string;
+	label?: boolean;
+	// (undocumented)
+	model?: MapObjectModel;
+	name?: string;
+	occludeLabel?: boolean;
+	position: Anchor;
+}
+
+// @public
+export interface MapObjects {
+	add(options: MapObjectOptions): MapObject;
+	all(): MapObject[];
+	clear(): void;
+	// (undocumented)
+	get(id: string): MapObject | undefined;
+}
+
 // @public (undocumented)
 export interface MapOptions extends CommonOptions, SpaceMapOptions {
 	controls?: Control<SpaceMap>[];
@@ -731,6 +796,34 @@ export type NoticeTopic = Notice['topic'];
 
 // @public
 export type OffsetKm = readonly [number, number, number];
+
+// @public (undocumented)
+export interface OrbitalElements {
+	// (undocumented)
+	a: number;
+	// (undocumented)
+	e: number;
+	// (undocumented)
+	epoch: number;
+	equatorial?: boolean;
+	// (undocumented)
+	i: number;
+	// (undocumented)
+	ma: number;
+	// (undocumented)
+	n: number;
+	// (undocumented)
+	om: number;
+	omDot?: number;
+	// (undocumented)
+	q?: number;
+	// (undocumented)
+	tp?: number;
+	// (undocumented)
+	w: number;
+	// (undocumented)
+	wDot?: number;
+}
 
 // @public
 export type OrbitClass = 'inner' | 'main-belt' | 'trojan' | 'centaur' | 'tno';
@@ -836,6 +929,15 @@ export interface ProjectionOptions {
 	centerLat?: number;
 	centerLon?: number;
 	clipAngle?: number;
+}
+
+// @public
+export function samples(options: SamplesOptions): InertialAnchor;
+
+// @public (undocumented)
+export interface SamplesOptions {
+	body?: string;
+	samples: readonly TrajectorySample[];
 }
 
 // @public
@@ -1006,6 +1108,7 @@ export class SpaceMap {
 	load(targetId?: string): Promise<void>;
 	// @internal
 	mount(container: HTMLElement): void;
+	readonly objects: MapObjects;
 	// (undocumented)
 	off<K extends keyof MapEvents>(event: K, listener: MapEvents[K]): void;
 	on<K extends keyof MapEvents>(event: K, listener: MapEvents[K]): () => void;
@@ -1018,6 +1121,7 @@ export class SpaceMap {
 	// @internal
 	renderer: SceneRenderer | null;
 	readonly scrollZoom: GestureHandler;
+	setBodyAppearance(id: string, appearance: BodyAppearance): this;
 	setCovered(covered: boolean): void;
 	// @internal
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void;
@@ -1123,6 +1227,15 @@ export interface SurfaceShapeOptions extends ShapeStyle {
 	interpolate?: Interpolation;
 	points: readonly LonLat[];
 	stepDeg?: number;
+}
+
+// @public
+export function tle(line1: string, line2: string): InertialAnchor;
+
+// @public
+export interface TrajectorySample {
+	jd: number;
+	km: OffsetKm;
 }
 
 // @public (undocumented)

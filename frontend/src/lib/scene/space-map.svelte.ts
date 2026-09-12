@@ -36,6 +36,8 @@ import {
 	type SurfaceShape
 } from './extensions/surface';
 import type { Extension } from './extensions/registry';
+import { MapObjectCollection, MapObjectExtension, type MapObjects } from './extensions/objects';
+import type { BodyAppearance } from './objects/body/appearance';
 import { smallCircle } from '$lib/flatmap/geometry';
 import { loadProgress } from './state/load-progress.svelte';
 import type { Vec3 } from './animation/math';
@@ -276,6 +278,12 @@ export class SpaceMap {
 	focusedBody = $state.raw<PositionedBody | undefined>();
 	/** @internal The credit line, which no host may take back off. */
 	attribution: Control<SpaceMap> | null = null;
+	/** Objects of the host's own: a spacecraft, a station, a body the export
+	 *  has never heard of. */
+	readonly objects: MapObjects = new MapObjectCollection(
+		() => this.requireRenderer().extensions,
+		() => this.requireCanvas()
+	);
 
 	/** Dragging to turn the camera round the focused body. A two-finger drag and
 	 *  a right-drag go with it: they are the same gesture to a reader told the
@@ -1084,9 +1092,26 @@ export class SpaceMap {
 		});
 	}
 
-	/** Remove every drawing the host has added, leaving the map itself alone. */
+	/** Remove every drawing the host has added, leaving the map itself alone.
+	 *  Objects the host has put on the map are not drawings and stay;
+	 *  {@link objects}.clear() takes those. */
 	clearDrawings(): void {
-		this.renderer?.extensions.clear();
+		this.renderer?.extensions.clear((extension) => extension instanceof MapObjectExtension);
+	}
+
+	/**
+	 * Put the host's own pictures on a body the map already knows, in place of
+	 * the ones the export publishes: a surface map, lights for the unlit side,
+	 * a cloud layer. Each is a URL, and what is left out stays the map's own,
+	 * so `setBodyAppearance(id, {})` gives the body its own imagery back.
+	 *
+	 * A picture given here is what the body wears at every distance. The map's
+	 * own imagery is chosen by how much of the screen the body fills, and there
+	 * is nothing to choose once a host has said what it looks like.
+	 */
+	setBodyAppearance(id: string, appearance: BodyAppearance): this {
+		this.requireRenderer().setBodyAppearance(id, appearance);
+		return this;
 	}
 
 	/** A cap's radius as an angle, from whichever of the two ways the host gave
@@ -1103,8 +1128,7 @@ export class SpaceMap {
 
 	/** Add a drawing and hand it the way back out. */
 	private track<T extends Extension & { bind(removeSelf: () => void): void }>(drawing: T): T {
-		const renderer = this.renderer;
-		if (!renderer) throw new Error('SpaceMap is not mounted');
+		const renderer = this.requireRenderer();
 		drawing.bind(() => renderer.extensions.remove(drawing));
 		renderer.extensions.add(drawing);
 		return drawing;
@@ -1114,6 +1138,12 @@ export class SpaceMap {
 		const canvas = this.canvas;
 		if (!canvas) throw new Error('SpaceMap is not mounted');
 		return canvas;
+	}
+
+	private requireRenderer(): SceneRenderer {
+		const renderer = this.renderer;
+		if (!renderer) throw new Error('SpaceMap is not mounted');
+		return renderer;
 	}
 
 	setNorthReference(id: string | null): void {

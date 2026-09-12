@@ -55,7 +55,16 @@ export async function attachNightLights(
 		return null;
 	}
 	texture.colorSpace = SRGBColorSpace;
+	attachNightTexture(material, texture);
+	return texture;
+}
 
+/**
+ * Put an already-loaded map on the unlit side, installing the shader hook the
+ * first time. Split out from the loader so a host's own picture goes on the
+ * same way the export's does.
+ */
+export function attachNightTexture(material: MeshStandardMaterial, texture: Texture): void {
 	material.emissiveMap = texture;
 	// White so totalEmissiveRadiance passes the raw texture colour unchanged.
 	material.emissive = new Color(0xffffff);
@@ -103,7 +112,6 @@ export async function attachNightLights(
 	}
 	tagShaderModifier(material, 'nightLights');
 	material.needsUpdate = true;
-	return texture;
 }
 
 /**
